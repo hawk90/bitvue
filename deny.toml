@@ -1,0 +1,100 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+targets = []
+all-features = false
+no-default-features = false
+
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "warn"
+ignore = [
+    # paste crate is unmaintained but not a security vulnerability
+    # It's a transitive dependency from egui ecosystem with no available fix
+    "RUSTSEC-2024-0436",
+]
+
+[licenses]
+version = 2
+# AGPL-3.0-or-later is our license
+# We allow all permissive licenses that are compatible with AGPL-3.0
+allow = [
+    "AGPL-3.0-or-later",  # Our project license
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "BSL-1.0",  # Boost Software License
+    "MPL-2.0",  # Mozilla Public License (compatible with AGPL)
+    "NCSA",     # University of Illinois/NCSA Open Source License (libfuzzer-sys)
+    "OFL-1.1",  # SIL Open Font License (fonts)
+]
+
+# AGPL-3.0 is compatible with GPL-3.0, but we should be explicit
+confidence-threshold = 0.8
+
+[[licenses.clarify]]
+crate = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 }
+]
+
+[[licenses.clarify]]
+# epaint_default_fonts uses non-SPDX Ubuntu Font License (UFL-1.0) for Ubuntu-Light font
+# UFL is a permissive font license similar to OFL, compatible with AGPL
+# Override to accepted SPDX licenses only (MIT, Apache-2.0, OFL-1.1 are all accepted)
+crate = "epaint_default_fonts"
+expression = "(MIT OR Apache-2.0) AND OFL-1.1"
+license-files = [
+    { path = "fonts/emoji-icon-font-mit-license.txt", hash = 0xbe4fb834 },
+    { path = "fonts/Hack-Regular.txt", hash = 0x10a5f5e4 },
+    { path = "fonts/OFL.txt", hash = 0x898314c0 },
+    { path = "fonts/UFL.txt", hash = 0x88e9330a },
+]
+
+[licenses.private]
+ignore = false
+registries = []
+
+# Exception for epaint_default_fonts which uses LicenseRef-UFL-1.0 (Ubuntu Font License)
+# UFL is a permissive font license compatible with AGPL, but it's not an SPDX identifier
+[[licenses.exceptions]]
+name = "epaint_default_fonts"
+allow = ["LicenseRef-UFL-1.0"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+deny = []
+
+# Skip dependencies that are allowed to have multiple versions
+skip = [
+    # Common cases where multiple versions are acceptable
+]
+
+skip-tree = []
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []

@@ -1,0 +1,326 @@
+name: Publish Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.1.0)'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish-crates-io:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdav1d-dev
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # Publish in dependency order
+          cd crates/bitvue-core && cargo publish --allow-dirty || true
+          sleep 10
+          cd ../bitvue-av1 && cargo publish --allow-dirty || true
+          sleep 10
+          cd ../bitvue-container && cargo publish --allow-dirty || true
+          sleep 10
+          cd ../bitvue-decode && cargo publish --allow-dirty || true
+          sleep 10
+          cd ../bitvue-cli && cargo publish --allow-dirty || true
+          sleep 10
+          cd ../bitvue-gui && cargo publish --allow-dirty || true
+
+  update-homebrew-tap:
+    name: Update Homebrew Tap
+    runs-on: ubuntu-latest
+    needs: publish-crates-io
+    steps:
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/homebrew-bitvue
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+
+      - name: Download release assets
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          mkdir -p downloads
+
+          # Download macOS binaries
+          gh release download "v${VERSION}" \
+            --repo ${{ github.repository }} \
+            --pattern "bitvue-*-macos-*.tar.gz" \
+            --dir downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate SHA256
+        id: sha256
+        run: |
+          cd downloads
+          ARM64_SHA=$(shasum -a 256 bitvue-cli-macos-arm64.tar.gz | awk '{print $1}')
+          X86_SHA=$(shasum -a 256 bitvue-cli-macos-x86_64.tar.gz | awk '{print $1}')
+          GUI_ARM64_SHA=$(shasum -a 256 bitvue-gui-macos-arm64.tar.gz | awk '{print $1}')
+          GUI_X86_SHA=$(shasum -a 256 bitvue-gui-macos-x86_64.tar.gz | awk '{print $1}')
+
+          echo "cli_arm64_sha=${ARM64_SHA}" >> $GITHUB_OUTPUT
+          echo "cli_x86_sha=${X86_SHA}" >> $GITHUB_OUTPUT
+          echo "gui_arm64_sha=${GUI_ARM64_SHA}" >> $GITHUB_OUTPUT
+          echo "gui_x86_sha=${GUI_X86_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Update Formula
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          cd homebrew-tap
+
+          # Create or update bitvue-cli formula
+          cat > Formula/bitvue-cli.rb <<EOF
+          class BitvueCli < Formula
+            desc "AV1 bitstream analyzer - CLI"
+            homepage "https://github.com/${{ github.repository }}"
+            version "${VERSION}"
+            license "AGPL-3.0-or-later"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/bitvue-cli-macos-arm64.tar.gz"
+                sha256 "${{ steps.sha256.outputs.cli_arm64_sha }}"
+              else
+                url "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/bitvue-cli-macos-x86_64.tar.gz"
+                sha256 "${{ steps.sha256.outputs.cli_x86_sha }}"
+              end
+            end
+
+            depends_on "dav1d"
+
+            def install
+              bin.install "bitvue-cli"
+            end
+
+            test do
+              system "#{bin}/bitvue-cli", "--version"
+            end
+          end
+          EOF
+
+          # Create or update bitvue-gui formula
+          cat > Formula/bitvue-gui.rb <<EOF
+          class BitvueGui < Formula
+            desc "AV1 bitstream analyzer - GUI"
+            homepage "https://github.com/${{ github.repository }}"
+            version "${VERSION}"
+            license "AGPL-3.0-or-later"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/bitvue-gui-macos-arm64.tar.gz"
+                sha256 "${{ steps.sha256.outputs.gui_arm64_sha }}"
+              else
+                url "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/bitvue-gui-macos-x86_64.tar.gz"
+                sha256 "${{ steps.sha256.outputs.gui_x86_sha }}"
+              end
+            end
+
+            depends_on "dav1d"
+
+            def install
+              bin.install "bitvue-gui"
+            end
+
+            test do
+              system "#{bin}/bitvue-gui", "--version"
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Formula/
+          git commit -m "Update to version ${{ steps.get_version.outputs.version }}"
+          git push
+
+  create-debian-package:
+    name: Create Debian Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdav1d-dev dpkg-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release
+        run: cargo build --release -p bitvue-cli -p bitvue-gui
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create debian package structure
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+
+          # CLI package
+          mkdir -p bitvue-cli_${VERSION}/DEBIAN
+          mkdir -p bitvue-cli_${VERSION}/usr/bin
+
+          cat > bitvue-cli_${VERSION}/DEBIAN/control <<EOF
+          Package: bitvue-cli
+          Version: ${VERSION}
+          Section: video
+          Priority: optional
+          Architecture: amd64
+          Depends: libdav1d6
+          Maintainer: bitvue contributors <noreply@github.com>
+          Description: AV1 bitstream analyzer - CLI
+           Professional AV1 bitstream analyzer command-line tool.
+          EOF
+
+          cp target/release/bitvue-cli bitvue-cli_${VERSION}/usr/bin/
+          chmod 755 bitvue-cli_${VERSION}/usr/bin/bitvue-cli
+          dpkg-deb --build bitvue-cli_${VERSION}
+
+          # GUI package
+          mkdir -p bitvue-gui_${VERSION}/DEBIAN
+          mkdir -p bitvue-gui_${VERSION}/usr/bin
+
+          cat > bitvue-gui_${VERSION}/DEBIAN/control <<EOF
+          Package: bitvue-gui
+          Version: ${VERSION}
+          Section: video
+          Priority: optional
+          Architecture: amd64
+          Depends: libdav1d6
+          Maintainer: bitvue contributors <noreply@github.com>
+          Description: AV1 bitstream analyzer - GUI
+           Professional AV1 bitstream analyzer with graphical interface.
+          EOF
+
+          cp target/release/bitvue-gui bitvue-gui_${VERSION}/usr/bin/
+          chmod 755 bitvue-gui_${VERSION}/usr/bin/bitvue-gui
+          dpkg-deb --build bitvue-gui_${VERSION}
+
+      - name: Upload debian packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-packages
+          path: |
+            bitvue-cli_*.deb
+            bitvue-gui_*.deb
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          gh release upload "v${VERSION}" bitvue-cli_${VERSION}.deb bitvue-gui_${VERSION}.deb
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-aur:
+    name: Update AUR Package
+    runs-on: ubuntu-latest
+    needs: publish-crates-io
+    steps:
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout AUR repository
+        uses: actions/checkout@v4
+        with:
+          repository: aur/bitvue-bin
+          token: ${{ secrets.AUR_SSH_KEY }}
+          path: aur-repo
+
+      - name: Update PKGBUILD
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          cd aur-repo
+
+          # Download and calculate checksums
+          wget "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/bitvue-cli-linux-x86_64.tar.gz"
+          CLI_SHA=$(sha256sum bitvue-cli-linux-x86_64.tar.gz | awk '{print $1}')
+
+          wget "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/bitvue-gui-linux-x86_64.tar.gz"
+          GUI_SHA=$(sha256sum bitvue-gui-linux-x86_64.tar.gz | awk '{print $1}')
+
+          # Create PKGBUILD
+          cat > PKGBUILD <<EOF
+          # Maintainer: bitvue contributors
+          pkgname=bitvue-bin
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc="Professional AV1 bitstream analyzer"
+          arch=('x86_64')
+          url="https://github.com/${{ github.repository }}"
+          license=('AGPL3')
+          depends=('dav1d')
+          provides=('bitvue')
+          conflicts=('bitvue')
+          source_x86_64=(
+            "bitvue-cli-\${pkgver}.tar.gz::https://github.com/${{ github.repository }}/releases/download/v\${pkgver}/bitvue-cli-linux-x86_64.tar.gz"
+            "bitvue-gui-\${pkgver}.tar.gz::https://github.com/${{ github.repository }}/releases/download/v\${pkgver}/bitvue-gui-linux-x86_64.tar.gz"
+          )
+          sha256sums_x86_64=(
+            '${CLI_SHA}'
+            '${GUI_SHA}'
+          )
+
+          package() {
+            install -Dm755 "\${srcdir}/bitvue-cli" "\${pkgdir}/usr/bin/bitvue-cli"
+            install -Dm755 "\${srcdir}/bitvue-gui" "\${pkgdir}/usr/bin/bitvue-gui"
+          }
+          EOF
+
+          # Update .SRCINFO
+          makepkg --printsrcinfo > .SRCINFO
+
+      - name: Commit and push to AUR
+        run: |
+          cd aur-repo
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to version ${{ steps.get_version.outputs.version }}"
+          git push

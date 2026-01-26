@@ -1,0 +1,59 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.so
+*.dylib
+*.dll
+
+# Test artifacts
+*.profraw
+*.profdata
+
+# Code coverage
+*.lcov
+*.lcov.info
+lcov*.info
+*/cov-html/
+cov-html/
+
+# Crate-specific targets (workspace overrides)
+# /target/ is already ignored, but some tools generate targets in crates/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.mcp.json
+
+# Parity harness input data
+V14_PARITY_HARNESS_ZIP/
+
+# Tauri + React
+node_modules/
+dist/
+build/
+.vite/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/WixTools/
+docs/
+archive/
+.claude/

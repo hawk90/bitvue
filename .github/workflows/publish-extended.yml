@@ -1,0 +1,302 @@
+name: Publish Extended Platforms
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish'
+        required: true
+
+jobs:
+  chocolatey:
+    name: Chocolatey (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create package
+        shell: powershell
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path "choco/tools"
+
+          @"
+          <?xml version="1.0"?>
+          <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+            <metadata>
+              <id>bitvue</id>
+              <version>$VERSION</version>
+              <title>bitvue - AV1 Bitstream Analyzer</title>
+              <authors>bitvue contributors</authors>
+              <projectUrl>https://github.com/${{ github.repository }}</projectUrl>
+              <license type="expression">AGPL-3.0-or-later</license>
+              <requireLicenseAcceptance>true</requireLicenseAcceptance>
+              <description>Professional AV1 bitstream analyzer with CLI and GUI interfaces</description>
+              <tags>av1 video codec analyzer bitstream</tags>
+            </metadata>
+          </package>
+          "@ | Out-File "choco/bitvue.nuspec" -Encoding UTF8
+
+          @"
+          `$ErrorActionPreference = 'Stop'
+          `$url64 = 'https://github.com/${{ github.repository }}/releases/download/v$VERSION/bitvue-windows-x86_64.zip'
+          `$checksum64 = 'PLACEHOLDER'
+
+          Install-ChocolateyZipPackage 'bitvue' `$url64 `$toolsDir -Checksum64 `$checksum64 -ChecksumType64 'sha256'
+          "@ | Out-File "choco/tools/chocolateyinstall.ps1" -Encoding UTF8
+
+      - name: Pack and push
+        shell: powershell
+        run: |
+          choco pack choco/bitvue.nuspec
+          choco push bitvue.${{ steps.version.outputs.version }}.nupkg -s https://push.chocolatey.org/ -k ${{ secrets.CHOCOLATEY_API_KEY }}
+
+  winget:
+    name: winget (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Submit to winget-pkgs
+        uses: vedantmgoyal2009/winget-releaser@v2
+        with:
+          identifier: bitvue.bitvue
+          installers-regex: 'bitvue-windows-.*\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}
+
+  snap:
+    name: Snap (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: snapcore/action-build@v1
+        id: build
+
+      - uses: snapcore/action-publish@v1
+        if: github.event_name == 'release'
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAP_TOKEN }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: stable
+
+  flatpak:
+    name: Flatpak (Linux)
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate cargo sources
+        run: |
+          python3 -m pip install aiohttp toml
+          curl -o flatpak-cargo-generator.py https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
+          python3 flatpak-cargo-generator.py ./Cargo.lock -o flatpak/cargo-sources.json
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: bitvue.flatpak
+          manifest-path: flatpak/com.github.bitvue.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Upload to Flathub
+        if: github.event_name == 'release'
+        run: |
+          # Submit PR to flathub/com.github.bitvue
+          echo "Manual Flathub submission required"
+
+  appimage:
+    name: AppImage (Linux)
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdav1d-dev libfuse2
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Create AppImage
+        run: |
+          mkdir -p AppDir/usr/bin
+          cp target/release/bitvue-{cli,gui} AppDir/usr/bin/
+
+          cat > AppDir/bitvue.desktop <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=bitvue
+          Exec=bitvue-gui
+          Icon=bitvue
+          Categories=AudioVideo;Video;
+          EOF
+
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: bitvue-*.AppImage
+
+  scoop:
+    name: Scoop (Windows)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/scoop-bucket
+          token: ${{ secrets.SCOOP_TOKEN }}
+
+      - name: Update manifest
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          cat > bucket/bitvue.json <<EOF
+          {
+            "version": "${VERSION}",
+            "description": "AV1 bitstream analyzer",
+            "homepage": "https://github.com/${{ github.repository }}",
+            "license": "AGPL-3.0-or-later",
+            "architecture": {
+              "64bit": {
+                "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/bitvue-windows-x86_64.zip",
+                "hash": "AUTO"
+              }
+            },
+            "bin": ["bitvue-cli.exe", "bitvue-gui.exe"],
+            "checkver": "github",
+            "autoupdate": {
+              "architecture": {
+                "64bit": {
+                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/bitvue-windows-x86_64.zip"
+                }
+              }
+            }
+          }
+          EOF
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add bucket/bitvue.json
+          git commit -m "bitvue: Update to ${VERSION}"
+          git push
+
+  nixpkgs:
+    name: nixpkgs (Nix)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v25
+
+      - name: Create nix expression
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          cat > default.nix <<EOF
+          { lib, rustPlatform, fetchFromGitHub, pkg-config, dav1d }:
+
+          rustPlatform.buildRustPackage rec {
+            pname = "bitvue";
+            version = "${VERSION}";
+
+            src = fetchFromGitHub {
+              owner = "${{ github.repository_owner }}";
+              repo = "bitvue";
+              rev = "v\${version}";
+              hash = "sha256-PLACEHOLDER";
+            };
+
+            cargoHash = "sha256-PLACEHOLDER";
+
+            nativeBuildInputs = [ pkg-config ];
+            buildInputs = [ dav1d ];
+
+            meta = with lib; {
+              description = "AV1 bitstream analyzer";
+              homepage = "https://github.com/${{ github.repository }}";
+              license = licenses.agpl3Plus;
+              maintainers = [];
+            };
+          }
+          EOF
+
+      - name: Submit to nixpkgs
+        run: |
+          echo "Manual nixpkgs PR required"
+          # Fork nixpkgs, create PR with default.nix
+
+  macports:
+    name: MacPorts (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Create Portfile
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          cat > Portfile <<EOF
+          # -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+          PortSystem          1.0
+          PortGroup           github 1.0
+          PortGroup           cargo 1.0
+
+          github.setup        ${{ github.repository_owner }} bitvue ${VERSION} v
+          revision            0
+
+          categories          multimedia
+          license             AGPL-3+
+          maintainers         nomaintainer
+
+          description         AV1 bitstream analyzer
+          long_description    Professional AV1 bitstream analyzer with CLI and GUI
+
+          checksums           rmd160  PLACEHOLDER \\
+                              sha256  PLACEHOLDER \\
+                              size    PLACEHOLDER
+
+          depends_lib         port:dav1d
+
+          cargo.crates_github
+          EOF
+
+      - name: Submit to MacPorts
+        run: |
+          echo "Manual MacPorts PR required"

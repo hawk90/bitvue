@@ -1,0 +1,53 @@
+# Codecov configuration
+coverage:
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+        informational: true
+
+ignore:
+  - "src-tauri/**"  # Tauri glue code
+  - "src/**"         # Frontend (separate coverage)
+  - "**/tests/**"
+  - "**/test_*.rs"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/bindings/**"
+  - "**/*-sys/**"
+
+comment:
+  layout: "reach,diff,flags,files,footer"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+github_checks:
+  annotations: true
+
+flags:
+  rust:
+    paths:
+      - "crates/"
+  avc:
+    paths:
+      - "crates/bitvue-avc/"
+  av1:
+    paths:
+      - "crates/bitvue-av1/"
+  hevc:
+    paths:
+      - "crates/bitvue-hevc/"
+  vp9:
+    paths:
+      - "crates/bitvue-vp9/"
+  vvc:
+    paths:
+      - "crates/bitvue-vvc/"

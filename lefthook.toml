@@ -1,0 +1,98 @@
+# Lefthook configuration - Optimized for Rust + TypeScript + CSS
+# https://github.com/evilmartians/lefthook
+
+[whitespace]
+enabled = true
+ignored_extensions = ["svg", "patch"]
+
+[ci]
+skip = ["local"]
+
+# ================================
+# Pre-commit hooks (run in parallel)
+# ================================
+
+[hooks.pre-commit]
+run = "parallel"
+
+[actions]
+# Quick checks (fail fast)
+
+[action.check_rust_formatting]
+command = "cargo fmt --all -- --check"
+run = "workspace"
+files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+
+# Auto-fix (if quick checks pass)
+
+[action.format_rust_code]
+command = "cargo fmt --all"
+run = "workspace"
+files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+
+[action.format_typescript_css]
+skip = ["not exist - src/node_modules"]
+command = "cd src && npm run format --silent || true"
+run = "workspace"
+files = ["src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
+
+# Linting
+
+[action.lint_rust]
+command = "cargo clippy --workspace -- -D warnings"
+run = "workspace"
+files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+
+[action.lint_typescript]
+skip = ["not exist - src/node_modules"]
+command = "cd src && npm run lint --silent || true"
+run = "workspace"
+files = ["src/**/*.{ts,tsx,js,jsx}"]
+
+[action.lint_css]
+skip = ["not exist - src/node_modules"]
+command = "cd src && npm run lint:css --silent || true"
+run = "workspace"
+files = ["src/**/*.{css,scss}"]
+
+# Tests
+
+[action.test_rust]
+command = "cargo test --workspace --no-fail-fast"
+run = "workspace"
+files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+
+[action.test_typescript]
+skip = ["not exist - src/node_modules"]
+command = "cd src && npm run test:run --silent || true"
+run = "workspace"
+files = ["src/**/*.{ts,tsx,js,jsx}"]
+
+# ================================
+# Pre-push: Full checks before pushing to main
+# ================================
+
+[hooks.pre-push]
+branch = ["main", "develop"]
+
+[action.full_test_suite]
+command = "cargo test --workspace --all-features"
+run = "workspace"
+
+[action.full_clippy]
+command = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+run = "workspace"
+
+# ================================
+# Commit-msg: Conventional commits
+# ================================
+
+[hooks.commit-msg]
+pattern = "^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\\(.+\\))?: .{10,}"
+
+# ================================
+# Pre-merge: Full checks before merging PR
+# ================================
+
+[hooks.pre-merge]
+run = "parallel"

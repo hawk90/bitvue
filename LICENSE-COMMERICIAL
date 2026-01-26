@@ -1,0 +1,55 @@
+COMMERCIAL SOFTWARE LICENSE AGREEMENT
+
+This Commercial License Agreement ("Agreement") is entered into between
+the Licensor (bitvue contributors) and the Licensee.
+
+1. Grant of License
+Subject to the terms of this Agreement, the Licensor grants the Licensee
+a non-exclusive, non-transferable, non-sublicensable license to use,
+modify, and distribute the Software in binary or source form for
+commercial purposes.
+
+2. Permitted Use
+This license permits:
+- Use in proprietary or closed-source software
+- Use in SaaS, hosted services, or APIs without source code disclosure
+- Use in commercial hardware or embedded systems
+- Distribution without the obligation to release source code under AGPL-3.0
+
+3. Restrictions
+The Licensee shall not:
+- Claim ownership of the Software
+- Remove or modify copyright notices
+- Redistribute the Software as a standalone competing product
+- Sublicense the Software to third parties
+
+4. Ownership
+The Software is licensed, not sold.
+All rights, title, and interest in the Software remain with the Licensor.
+All rights not expressly granted herein are reserved by the Licensor.
+
+5. Warranty Disclaimer
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+6. Limitation of Liability
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+7. Termination
+This license is effective until terminated.
+Violation of any term will automatically terminate this Agreement without
+notice from the Licensor.
+
+8. Governing Law
+This Agreement shall be governed by and construed in accordance with the
+laws of your jurisdiction.
+
+For commercial licensing inquiries, contact:
+license@bitvue.dev
