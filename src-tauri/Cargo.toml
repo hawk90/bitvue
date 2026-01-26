@@ -1,0 +1,44 @@
+[package]
+name = "bitvue"
+version = "0.10.0"
+description = "Bitvue - Video Bitstream Analyzer"
+authors = ["Bitvue Team"]
+license = "AGPL-3.0"
+repository = "https://github.com/user/bitvue"
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.9.5", features = [] }  # Features come from plugins
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-store = "2"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+base64 = "0.22"
+image = "0.24"
+
+# Bitvue core crates (existing Rust parsers/decoders)
+bitvue-core = { path = "../crates/bitvue-core" }
+bitvue-av1 = { path = "../crates/bitvue-av1" }
+bitvue-avc = { path = "../crates/bitvue-avc" }
+bitvue-hevc = { path = "../crates/bitvue-hevc" }
+bitvue-vp9 = { path = "../crates/bitvue-vp9" }
+bitvue-vvc = { path = "../crates/bitvue-vvc" }
+bitvue-av3 = { path = "../crates/bitvue-av3" }
+bitvue-decode = { path = "../crates/bitvue-decode" }
+bitvue-formats = { path = "../crates/bitvue-formats" }
+bitvue-metrics = { path = "../crates/bitvue-metrics", features = ["parallel"] }
