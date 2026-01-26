@@ -7,8 +7,8 @@
 
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { exportUtils, type ExportFormat } from '../../utils/exportUtils';
-import type { FrameInfo } from '../../types/video';
+import { exportUtils, type ExportFormat } from '../utils/exportUtils';
+import type { FrameInfo } from '../types/video';
 import './ExportDialog.css';
 
 interface ExportDialogProps {
