@@ -21,7 +21,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS (Apple Silicon only - remove x86_64 due to cross-compilation issues)
+          # macOS
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact_name: bitvue-x86_64-apple-darwin
+            artifact_ext: .app.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: bitvue-aarch64-apple-darwin
@@ -139,39 +143,39 @@ jobs:
           if-no-files-found: warn
 
   # Create universal macOS binary (optional)
-  # build-macos-universal:
-  #   name: Build macOS Universal
-  #   runs-on: macos-latest
-  #   needs: build
-  #   if: success()
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Download ARM64 artifact
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: bitvue-aarch64-apple-darwin
-  #         path: artifacts/arm64
-  #
-  #     - name: Download x86_64 artifact
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: bitvue-x86_64-apple-darwin
-  #         path: artifacts/x86_64
-  #
-  #     - name: Create universal binary
-  #       run: |
-  #         tar -xzf artifacts/arm64/*.tar.gz
-  #         tar -xzf artifacts/x86_64/*.tar.gz
-  #         # Merge into universal app
-  #         # (requires additional tooling)
-  #
-  #     - name: Upload universal artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: bitvue-macos-universal
-  #         path: bitvue.app
+  build-macos-universal:
+    name: Build macOS Universal
+    runs-on: macos-latest
+    needs: build
+    if: success()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bitvue-aarch64-apple-darwin
+          path: artifacts/arm64
+
+      - name: Download x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bitvue-x86_64-apple-darwin
+          path: artifacts/x86_64
+
+      - name: Create universal binary
+        run: |
+          tar -xzf artifacts/arm64/*.tar.gz
+          tar -xzf artifacts/x86_64/*.tar.gz
+          # Merge into universal app
+          # (requires additional tooling)
+
+      - name: Upload universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitvue-macos-universal
+          path: bitvue.app
 
   # Create GitHub Release on tag push
   release:
