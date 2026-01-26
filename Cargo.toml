@@ -1,0 +1,124 @@
+[workspace]
+resolver = "2"
+exclude = ["src-tauri"]  # Tauri app has its own Cargo.toml
+members = [
+    # Monster Pack v9 architecture
+    "crates/app",              # eframe/egui shell, docking, menu/commands
+    "crates/ui",               # Pure UI panels (no business logic)
+    "crates/bitvue-core",      # SelectionState, Command/Event bus, Worker runtime, Caches
+    "crates/bitvue-formats",   # Container parsers (IVF, MP4, MKV, TS)
+    "crates/bitvue-codecs",    # Codec parsers (AV1, H.264, HEVC) - integrates bitvue-av1
+    "crates/bitvue-decode",    # Decoders (dav1d for AV1)
+    "crates/bitvue-metrics",   # Quality metrics (PSNR, SSIM, VMAF)
+    "crates/bitvue-log",       # Abseil-style logging (CHECK, VLOG, rate-limiting)
+    "crates/bitvue-mcp",       # Model Context Protocol server for AI assistant integration
+
+    # Codec parsers (Pure Rust)
+    "crates/bitvue-avc",       # AVC/H.264 parser
+    "crates/bitvue-hevc",      # HEVC/H.265 parser
+    "crates/bitvue-mpeg2",     # MPEG-2 Video parser
+    "crates/bitvue-vp9",       # VP9 parser
+    "crates/bitvue-vvc",       # VVC/H.266 parser
+    "crates/bitvue-av3",       # AV3 parser
+
+    # Legacy (will be migrated/removed)
+    "crates/bitvue-av1",       # Will be moved into codecs/
+    "crates/bitvue-cli",       # CLI (keep for now)
+]
+
+[workspace.package]
+version = "0.10.0"  # Bitvue 0.10.0 Release - VQAnalyzer Feature Parity
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/user/bitvue"
+authors = ["bitvue contributors"]
+
+[workspace.dependencies]
+# Internal crates (Monster Pack v9 architecture)
+bitvue-core = { path = "crates/bitvue-core" }
+bitvue-formats = { path = "crates/bitvue-formats" }
+bitvue-codecs = { path = "crates/bitvue-codecs" }
+bitvue-decode = { path = "crates/bitvue-decode" }
+bitvue-metrics = { path = "crates/bitvue-metrics" }
+bitvue-log = { path = "crates/bitvue-log" }
+bitvue-mcp = { path = "crates/bitvue-mcp" }
+app = { path = "crates/app" }
+ui = { path = "crates/ui" }
+
+# Codec parsers
+bitvue-avc = { path = "crates/bitvue-avc" }
+bitvue-hevc = { path = "crates/bitvue-hevc" }
+bitvue-mpeg2 = { path = "crates/bitvue-mpeg2" }
+bitvue-vp9 = { path = "crates/bitvue-vp9" }
+bitvue-vvc = { path = "crates/bitvue-vvc" }
+
+# Legacy internal crates
+bitvue-av1 = { path = "crates/bitvue-av1" }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Time/Date
+chrono = { version = "0.4", features = ["serde"] }
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+
+# GUI (egui)
+eframe = "0.29"
+egui = "0.29"
+egui_extras = { version = "0.29", features = ["image"] }
+egui_plot = "0.29"
+egui_dock = { version = "0.14", features = ["serde"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+once_cell = "1.19"
+
+# Async/Threading (Monster Pack v3: Worker runtime)
+tokio = { version = "1.0", features = ["rt-multi-thread", "sync", "time"] }
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+
+# Decoding
+dav1d = "0.10"
+
+# Image processing
+image = "0.25"
+
+# File dialogs
+rfd = "0.15"
+
+# Testing
+tempfile = "3.10"
+
+# File I/O (Monster Pack v3: ByteCache)
+memmap2 = "0.9"
+bytes = "1.0"
+lru = "0.16"
+
+# Release profile optimizations
+[profile.release]
+opt-level = 3           # Maximum optimization
+lto = "thin"            # Link-time optimization (thin for faster builds)
+codegen-units = 1       # Better optimization at cost of compile time
+strip = true            # Strip symbols from binary
+panic = "abort"         # Abort on panic (smaller binary)
+
+# Release with debug info (for profiling)
+[profile.release-with-debug]
+inherits = "release"
+strip = false
+debug = true
+
+# Development tools
+# These are not part of the workspace but used for development
+[workspace.metadata.lefthook]
+# Install with: cargo install lefthook
+# Run: lefthook install
