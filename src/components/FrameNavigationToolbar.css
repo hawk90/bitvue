@@ -1,0 +1,370 @@
+/**
+ * Frame Navigation Toolbar Styles
+ * Uses unified component styles from theme/components.css
+ */
+
+.frame-nav-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgb(37 37 38 / 95%);
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  position: relative;
+}
+
+.frame-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Frame navigation buttons - matches unified .btn-icon styles */
+.frame-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  color: rgb(255 255 255 / 85%);
+}
+
+.frame-nav-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 15%);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s ease, height 0.4s ease;
+  pointer-events: none;
+}
+
+.frame-nav-btn:active::before {
+  width: 40px;
+  height: 40px;
+}
+
+.frame-nav-btn:hover:not(:disabled) {
+  background: rgb(255 255 255 / 8%);
+  transform: scale(1.05);
+}
+
+.frame-nav-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.frame-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.frame-nav-btn .codicon {
+  font-size: 14px;
+}
+
+.frame-nav-btn-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  opacity: 0.8;
+  text-transform: uppercase;
+}
+
+.frame-nav-btn-type {
+  padding: 0 4px;
+}
+
+/* Frame type badges */
+.frame-nav-type-badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.frame-type-i,
+.frame-type-key {
+  background: rgb(224 49 49 / 25%);
+  color: #ff6b6b;
+  border: 1px solid rgb(224 49 49 / 40%);
+}
+
+.frame-type-p {
+  background: rgb(45 164 78 / 25%);
+  color: #6bcf7f;
+  border: 1px solid rgb(45 164 78 / 40%);
+}
+
+.frame-type-b {
+  background: rgb(31 119 180 / 25%);
+  color: #6db3f2;
+  border: 1px solid rgb(31 119 180 / 40%);
+}
+
+/* Frame info display */
+.frame-nav-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+}
+
+.frame-nav-current {
+  color: #fff;
+  font-weight: 600;
+}
+
+.frame-nav-separator {
+  color: rgb(255 255 255 / 40%);
+}
+
+.frame-nav-total {
+  color: rgb(255 255 255 / 60%);
+}
+
+.frame-nav-divider {
+  width: 1px;
+  height: 20px;
+  background: rgb(255 255 255 / 10%);
+  margin: 0 6px;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Search Dropdown (matches unified dropdown styles)
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.frame-nav-search {
+  position: relative;
+}
+
+.frame-nav-search-btn.active {
+  background: rgb(0 122 204 / 20%);
+  border-color: rgb(0 122 204 / 40%);
+  color: #75beff;
+}
+
+.frame-nav-search-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 100%;
+  max-height: 280px;
+  background: rgb(25 25 30 / 98%);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
+  padding: 4px;
+  list-style: none;
+  margin: 4px 0 0;
+  z-index: 9999;
+  animation: dropdownFadeIn 0.2s ease-out;
+  overflow-y: auto;
+  pointer-events: auto;
+  width: 260px;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.frame-nav-search-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgb(30 30 35 / 80%);
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 4px 4px 0 0;
+}
+
+.frame-nav-search-input-wrapper .codicon {
+  font-size: 12px;
+  color: rgb(255 255 255 / 50%);
+  flex-shrink: 0;
+}
+
+.frame-nav-search-input-wrapper input {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: #fff;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  outline: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 28px;
+}
+
+.frame-nav-search-input-wrapper input::placeholder {
+  color: rgb(255 255 255 / 40%);
+}
+
+.frame-nav-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  color: rgb(255 255 255 / 50%);
+}
+
+.frame-nav-search-clear:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.frame-nav-search-results {
+  max-height: 200px;
+  overflow-y: auto;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  padding: 2px 0;
+}
+
+.frame-nav-search-count {
+  padding: 6px 10px;
+  font-size: 10px;
+  color: rgb(255 255 255 / 50%);
+  border-bottom: 1px solid rgb(255 255 255 / 5%);
+  font-weight: 500;
+}
+
+.frame-nav-search-result {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  min-height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgb(255 255 255 / 85%);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.frame-nav-search-result:hover {
+  background: rgb(255 255 255 / 8%);
+  color: #fff;
+  transform: translateX(2px);
+}
+
+.frame-nav-result-badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.frame-nav-result-index {
+  flex: 1;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: rgb(255 255 255 / 70%);
+  text-align: right;
+}
+
+.frame-nav-search-more {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  min-height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgb(255 255 255 / 50%);
+  font-size: 10px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  pointer-events: auto;
+  font-style: italic;
+}
+
+.frame-nav-search-empty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: rgb(255 255 255 / 50%);
+}
+
+.frame-nav-search-tips {
+  padding: 8px 10px;
+  background: rgb(30 30 35 / 50%);
+  font-size: 9px;
+  color: rgb(255 255 255 / 40%);
+  border-top: 1px solid rgb(255 255 255 / 5%);
+  border-radius: 0 0 4px 4px;
+}
+
+.frame-nav-search-tip {
+  font-style: italic;
+}

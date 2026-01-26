@@ -1,0 +1,130 @@
+/**
+ * Enhanced View Styles (Bitvue Exclusive)
+ *
+ * Multi-metric overlay with GOP boundary markers and scene change detection
+ */
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Enhanced View (Bitvue Exclusive)
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.enhanced-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+
+.enhanced-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: rgb(30 30 35 / 80%);
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  flex-shrink: 0;
+}
+
+.enhanced-nav-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.enhanced-nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.enhanced-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-height: 24px;
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease-out);
+}
+
+.enhanced-nav-btn:hover {
+  background: rgb(255 255 255 / 10%);
+  border-color: rgb(255 255 255 / 20%);
+  transform: translateY(-1px);
+}
+
+.enhanced-nav-btn:active {
+  transform: translateY(0);
+}
+
+.enhanced-nav-btn .codicon {
+  font-size: 12px;
+}
+
+.enhanced-thumbnails-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* GOP boundary marker */
+.enhanced-gop-marker {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: calc(100% + 16px);
+  background: linear-gradient(to bottom, rgb(0 212 170 / 80%), rgb(0 212 170 / 30%));
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Scene change indicator */
+.enhanced-scene-change {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  background: rgb(255 165 0 / 90%);
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 50%);
+  pointer-events: none;
+  z-index: 6;
+  box-shadow: 0 0 4px rgb(255 165 0 / 60%);
+}
+
+/* Diagnostic heatmap overlay */
+.enhanced-heatmap-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 3px;
+  z-index: 3;
+  transition: opacity var(--transition-fast) var(--ease-out);
+}
+
+/* Severity tooltip */
+.enhanced-severity-tooltip {
+  position: fixed;
+  background: rgb(30 30 35 / 95%);
+  border: 1px solid rgb(255 100 100 / 50%);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #ff6464;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
+}

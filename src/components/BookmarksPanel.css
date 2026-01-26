@@ -1,0 +1,208 @@
+/**
+ * Bookmarks Panel Styles
+ * VQAnalyzer-style bookmarks panel
+ */
+
+.bookmarks-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--vscode-sidebar-background);
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+
+.bookmarks-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-sideBar-border);
+}
+
+.bookmarks-panel .panel-header h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-foreground);
+}
+
+.add-bookmark-btn {
+  background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-button-secondaryBorder);
+  border-radius: 3px;
+  padding: 4px 8px;
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-bookmark-btn:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.add-bookmark-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-bookmark-btn .codicon {
+  font-size: 14px;
+}
+
+.bookmarks-panel .panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.bookmarks-panel .panel-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.bookmarks-panel .panel-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bookmarks-panel .panel-content::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 4px;
+}
+
+.bookmarks-panel .panel-content::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.7;
+  text-align: center;
+  padding: 20px;
+}
+
+.empty-state .codicon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  margin: 4px 0;
+}
+
+.empty-state .hint {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.bookmarks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.bookmark-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.bookmark-item.editing {
+  padding: 4px 6px;
+}
+
+.bookmark-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.bookmark-frame {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-textLink-foreground);
+  padding: 2px 6px;
+  background: var(--vscode-button-secondaryBackground);
+  border-radius: 3px;
+}
+
+.bookmark-desc {
+  flex: 1;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-edit-btn,
+.bookmark-remove-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+  color: var(--vscode-foreground);
+}
+
+.bookmark-edit-btn:hover,
+.bookmark-remove-btn:hover {
+  opacity: 1;
+}
+
+.bookmark-edit-btn .codicon,
+.bookmark-remove-btn .codicon {
+  font-size: 14px;
+}
+
+.bookmark-edit-input {
+  flex: 1;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-inputBorder);
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  outline: none;
+}
+
+.bookmark-edit-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-top: 1px solid var(--vscode-sideBar-border);
+}
+
+.bookmarks-count {
+  font-size: 9px;
+  color: var(--vscode-descriptionForeground);
+  font-weight: 500;
+}

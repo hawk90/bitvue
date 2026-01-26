@@ -1,0 +1,144 @@
+/**
+ * Compare Controls Styles
+ */
+
+.compare-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Sync toggle */
+.sync-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.sync-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-color);
+}
+
+.sync-toggle.off {
+  border-color: var(--color-error);
+}
+
+.sync-toggle.playhead {
+  border-color: var(--color-warning);
+}
+
+.sync-toggle.full {
+  border-color: var(--color-success);
+}
+
+.sync-icon {
+  font-size: 14px;
+}
+
+.sync-label {
+  font-weight: 500;
+}
+
+/* Offset controls */
+.offset-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-left: 1px solid var(--border-color);
+}
+
+.offset-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.offset-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.offset-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-color);
+}
+
+.offset-value {
+  min-width: 32px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.offset-reset {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.offset-reset:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Alignment badge */
+.alignment-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.alignment-badge.confidence-high {
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+
+.alignment-badge.confidence-medium {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+}
+
+.alignment-badge.confidence-low {
+  background: var(--color-error-bg);
+  color: var(--color-error-fg);
+}
+
+.alignment-method {
+  font-weight: 600;
+}
+
+.alignment-confidence {
+  opacity: 0.9;
+}
+
+.alignment-gaps {
+  opacity: 0.8;
+}

@@ -1,0 +1,236 @@
+/**
+ * Stream Tree Panel Styles
+ */
+
+.stream-tree-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bitvue-bg, #1e1e1e);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 8px 12px;
+  background: var(--bitvue-panel-header-bg, #252526);
+  border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bitvue-fg, #ccc);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stream-tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bitvue-bg-secondary, #2d2d30);
+  border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
+  flex-wrap: wrap;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--bitvue-fg, #ccc);
+  cursor: pointer;
+}
+
+.filter-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 16px;
+  background: var(--bitvue-border, #3c3c3c);
+}
+
+.frame-filter-select,
+.search-input {
+  padding: 3px 6px;
+  background: var(--bitvue-bg, #1e1e1e);
+  border: 1px solid var(--bitvue-border, #3c3c3c);
+  border-radius: 2px;
+  color: var(--bitvue-fg, #ccc);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.frame-filter-select:focus,
+.search-input:focus {
+  outline: none;
+  border-color: var(--bitvue-accent, #007acc);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 80px;
+  cursor: text;
+}
+
+.search-label {
+  font-size: 11px;
+  color: var(--bitvue-fg-dim, #858585);
+}
+
+.clear-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--bitvue-fg-dim, #858585);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.clear-search-btn:hover {
+  background: var(--bitvue-hover-bg, #2a2d2e);
+  color: var(--bitvue-fg, #ccc);
+}
+
+.clear-search-btn .codicon {
+  font-size: 12px;
+}
+
+.panel-divider {
+  height: 1px;
+  background: var(--bitvue-border, #3c3c3c);
+}
+
+.stream-tree-count {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--bitvue-fg-dim, #858585);
+  background: var(--bitvue-bg-secondary, #2d2d30);
+}
+
+.stream-tree-content {
+  flex: 1;
+  overflow: hidden auto;
+}
+
+.stream-tree-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.stream-tree-content::-webkit-scrollbar-track {
+  background: var(--bitvue-bg, #1e1e1e);
+}
+
+.stream-tree-content::-webkit-scrollbar-thumb {
+  background: var(--bitvue-scrollbar-slider, #424242);
+  border-radius: 5px;
+}
+
+.stream-tree-content::-webkit-scrollbar-thumb:hover {
+  background: var(--bitvue-scrollbar-slider-hover, #4f4f4f);
+}
+
+.stream-tree-node {
+  user-select: none;
+}
+
+.stream-tree-item {
+  display: flex;
+  align-items: center;
+  padding: 3px 0;
+  cursor: default;
+}
+
+.stream-tree-item:hover {
+  background: var(--bitvue-hover-bg, #2a2d2e);
+}
+
+.stream-tree-item.selected {
+  background: var(--bitvue-selection-bg, #094771);
+}
+
+.stream-tree-item.selected .stream-tree-label {
+  color: var(--bitvue-fg, #fff);
+}
+
+.expand-toggle {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-right: 2px;
+  font-size: 12px;
+  color: var(--bitvue-fg-dim, #858585);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.expand-toggle:hover {
+  color: var(--bitvue-fg, #ccc);
+}
+
+.expand-placeholder {
+  flex-shrink: 0;
+  width: 16px;
+  margin-right: 2px;
+}
+
+.stream-tree-label {
+  flex: 1;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.stream-tree-children {
+  animation: slideDown 0.15s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stream-tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: var(--bitvue-fg-dim, #858585);
+}
+
+.stream-tree-empty .codicon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.stream-tree-empty span:last-child {
+  font-size: 12px;
+}
+
+.stream-tree-empty-hint {
+  font-size: 10px;
+  opacity: 0.7;
+}

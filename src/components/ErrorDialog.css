@@ -1,0 +1,354 @@
+/**
+ * Error Dialog Styles
+ * Uses unified component styles from theme/components.css
+ */
+
+/* Overlay backdrop */
+.error-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 60%);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: dialogFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes dialogFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dialog container */
+.error-dialog {
+  background: rgb(30 30 35 / 98%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
+  max-width: 480px;
+  width: 90%;
+  animation: dialogSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes dialogSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Dialog header */
+.error-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.error-dialog-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgb(241 76 76 / 20%);
+  color: #ff6b6b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgb(241 76 76 / 30%);
+}
+
+.error-dialog-icon .codicon {
+  font-size: 18px;
+}
+
+.error-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+  flex: 1;
+}
+
+/* Dialog content */
+.error-dialog-content {
+  padding: 16px 20px;
+}
+
+.error-dialog-message {
+  margin: 0 0 12px;
+  color: rgb(255 255 255 / 90%);
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.error-dialog-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgb(0 0 0 / 20%);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.error-dialog-code-label {
+  color: rgb(255 255 255 / 60%);
+  font-weight: 500;
+}
+
+.error-dialog-code-value {
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  color: #75beff;
+  background: rgb(0 122 204 / 15%);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* Expandable details */
+.error-dialog-details {
+  margin-top: 12px;
+}
+
+.error-dialog-details summary {
+  cursor: pointer;
+  color: #75beff;
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+  padding: 4px 0;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.error-dialog-details summary:hover {
+  background: rgb(117 190 255 / 10%);
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.error-dialog-details-text {
+  margin-top: 8px;
+  padding: 12px;
+  background: rgb(0 0 0 / 20%);
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  color: rgb(255 255 255 / 80%);
+  overflow: auto;
+  max-height: 200px;
+  border: 1px solid rgb(255 255 255 / 5%);
+}
+
+/* Dialog footer */
+.error-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+/* Dialog buttons - matches unified button styles */
+.error-dialog-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  min-height: 32px;
+}
+
+.error-dialog-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 15%);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s ease, height 0.4s ease;
+  pointer-events: none;
+}
+
+.error-dialog-button:active::before {
+  width: 40px;
+  height: 40px;
+}
+
+.error-dialog-button:hover {
+  transform: translateY(-1px);
+}
+
+.error-dialog-button:active {
+  transform: translateY(0);
+}
+
+.error-dialog-button-primary {
+  background: linear-gradient(135deg, #007acc 0%, #4a9eff 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgb(0 122 204 / 30%);
+}
+
+.error-dialog-button-primary:hover {
+  background: linear-gradient(135deg, #1a8cdb 0%, #5aadff 100%);
+  box-shadow: 0 4px 12px rgb(0 122 204 / 40%);
+}
+
+.error-dialog-button-secondary {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 85%);
+  border-color: rgb(255 255 255 / 12%);
+}
+
+.error-dialog-button-secondary:hover {
+  background: rgb(255 255 255 / 12%);
+  color: #fff;
+  border-color: rgb(255 255 255 / 20%);
+}
+
+/* Warning banner (inline) */
+.warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid;
+}
+
+.warning-banner-warning {
+  background: rgb(255 184 108 / 15%);
+  border-color: rgb(255 184 108 / 30%);
+}
+
+.warning-banner-info {
+  background: rgb(66 165 245 / 15%);
+  border-color: rgb(66 165 245 / 30%);
+}
+
+.warning-banner-icon {
+  font-size: 16px;
+}
+
+.warning-banner-warning .warning-banner-icon {
+  color: #fbbf24;
+}
+
+.warning-banner-info .warning-banner-icon {
+  color: #60a5fa;
+}
+
+.warning-banner-message {
+  flex: 1;
+  color: rgb(255 255 255 / 90%);
+}
+
+.warning-banner-dismiss {
+  background: transparent;
+  border: none;
+  color: rgb(255 255 255 / 50%);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.warning-banner-dismiss:hover {
+  background: rgb(0 0 0 / 10%);
+  color: rgb(255 255 255 / 70%);
+}
+
+/* Error toast (bottom-right notification) */
+.error-toast {
+  position: fixed;
+  bottom: 40px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgb(30 30 35 / 98%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-left: 3px solid #ff6b6b;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%), 0 0 0 1px rgb(0 0 0 / 20%);
+  z-index: 9999;
+  animation: toastSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-width: 380px;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.error-toast-icon {
+  color: #ff6b6b;
+  font-size: 18px;
+}
+
+.error-toast-message {
+  flex: 1;
+  font-size: 12px;
+  color: rgb(255 255 255 / 90%);
+  line-height: 1.4;
+}
+
+.error-toast-dismiss {
+  background: transparent;
+  border: none;
+  color: rgb(255 255 255 / 50%);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.error-toast-dismiss:hover {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 80%);
+}

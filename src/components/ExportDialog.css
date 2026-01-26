@@ -1,0 +1,236 @@
+/* Export Dialog Styles */
+
+.export-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.export-dialog {
+  background: var(--bitvue-bg-primary);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.export-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--bitvue-border);
+}
+
+.export-dialog-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--bitvue-fg-primary);
+}
+
+.export-dialog-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--bitvue-fg-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.export-dialog-close:hover:not(:disabled) {
+  background: var(--bitvue-bg-tertiary);
+  color: var(--bitvue-fg-primary);
+}
+
+.export-dialog-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-dialog-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.export-dialog-section {
+  margin-bottom: 20px;
+}
+
+.export-dialog-section:last-child {
+  margin-bottom: 0;
+}
+
+.export-dialog-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bitvue-fg-secondary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.export-dialog-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-dialog-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.export-dialog-radio:hover {
+  background: var(--bitvue-bg-secondary);
+}
+
+.export-dialog-radio input[type="radio"] {
+  cursor: pointer;
+}
+
+.export-dialog-radio input[type="radio"]:disabled {
+  cursor: not-allowed;
+}
+
+.export-dialog-radio span {
+  font-size: 14px;
+  color: var(--bitvue-fg-primary);
+}
+
+.export-dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.export-dialog-checkbox:hover {
+  background: var(--bitvue-bg-secondary);
+}
+
+.export-dialog-checkbox input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.export-dialog-checkbox span {
+  font-size: 14px;
+  color: var(--bitvue-fg-primary);
+}
+
+.export-dialog-message {
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-top: 16px;
+}
+
+.export-dialog-message-idle {
+  background: var(--bitvue-bg-secondary);
+  color: var(--bitvue-fg-secondary);
+}
+
+.export-dialog-message-exporting {
+  background: var(--bitvue-accent-dim);
+  color: var(--bitvue-accent);
+}
+
+.export-dialog-message-success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.export-dialog-message-error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.export-dialog-info {
+  padding: 12px;
+  background: var(--bitvue-bg-secondary);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--bitvue-fg-secondary);
+  margin-top: 16px;
+}
+
+.export-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--bitvue-border);
+}
+
+.export-dialog-button {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.export-dialog-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-dialog-button-secondary {
+  background: var(--bitvue-bg-secondary);
+  color: var(--bitvue-fg-primary);
+}
+
+.export-dialog-button-secondary:hover:not(:disabled) {
+  background: var(--bitvue-bg-tertiary);
+}
+
+.export-dialog-button-primary {
+  background: var(--bitvue-accent);
+  color: white;
+}
+
+.export-dialog-button-primary:hover:not(:disabled) {
+  background: var(--bitvue-accent-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--bitvue-accent-dim);
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .export-dialog {
+  background: #2d2d2d;
+}
+
+[data-theme="dark"] .export-dialog-message-success {
+  background: #1e4620;
+  color: #a3d9a5;
+}
+
+[data-theme="dark"] .export-dialog-message-error {
+  background: #5c1f1f;
+  color: #f5a3a3;
+}

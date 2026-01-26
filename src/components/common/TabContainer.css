@@ -1,0 +1,192 @@
+/**
+ * TabContainer Styles
+ */
+
+.tab-container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top position */
+.tab-container-top {
+  flex-direction: column;
+}
+
+.tab-container-top .tab-list {
+  display: flex;
+  flex-direction: row;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+/* Bottom position */
+.tab-container-bottom {
+  flex-direction: column;
+}
+
+.tab-container-bottom .tab-list {
+  display: flex;
+  flex-direction: row;
+  border-top: 1px solid var(--border-secondary);
+  order: 2;
+}
+
+.tab-container-bottom .tab-content {
+  order: 1;
+}
+
+/* Left position */
+.tab-container-left {
+  flex-direction: row;
+}
+
+.tab-container-left .tab-list {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-secondary);
+}
+
+/* Right position */
+.tab-container-right {
+  flex-direction: row-reverse;
+}
+
+.tab-container-right .tab-list {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-secondary);
+}
+
+/* Tab buttons */
+.tab-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tab-button:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.tab-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.tab-button.tab-active {
+  color: var(--accent-primary);
+}
+
+.tab-container-top .tab-button.tab-active {
+  border-bottom-color: var(--accent-primary);
+}
+
+.tab-container-bottom .tab-button.tab-active {
+  border-top-color: var(--accent-primary);
+  border-bottom-color: transparent;
+}
+
+.tab-container-left .tab-button.tab-active {
+  border-right-color: var(--accent-primary);
+  border-bottom-color: transparent;
+}
+
+.tab-container-right .tab-button.tab-active {
+  border-left-color: var(--accent-primary);
+  border-bottom-color: transparent;
+}
+
+.tab-button.tab-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Tab icon */
+.tab-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* Tab label */
+.tab-label {
+  flex-shrink: 0;
+}
+
+/* Tab badge */
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--bg-quaternary);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tab-button.tab-active .tab-badge {
+  background: var(--accent-primary);
+  color: var(--text-primary-inverse);
+}
+
+/* Compact variant */
+.tab-container-compact .tab-button {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.tab-container-compact .tab-icon {
+  font-size: 14px;
+}
+
+/* Pills variant */
+.tab-container-pills .tab-list {
+  border: none;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.tab-container-pills .tab-button {
+  border-radius: var(--radius-sm);
+  border-bottom: none;
+}
+
+.tab-container-pills .tab-button.tab-active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
+}
+
+/* Tab content */
+.tab-content {
+  flex: 1;
+  overflow: auto;
+}
+
+/* Tabs with content container */
+.tabs-with-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tabs-with-content > .tab-container {
+  flex-shrink: 0;
+}

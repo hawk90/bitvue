@@ -1,0 +1,281 @@
+/**
+ * Filmstrip Styles - VQAnalyzer 2019.4.0 Parity
+ *
+ * Based on reference images from V14_PARITY_HARNESS_ZIP/vq-analyzer-images/
+ * Matches egui implementation in crates/ui/src/panels/filmstrip/
+ */
+
+/* Import shared styles */
+@import url('./shared/filmstrip-shared.css');
+
+/* Import view-specific styles */
+@import url('./views/ThumbnailsView.css');
+@import url('./views/FrameSizesView.css');
+@import url('./views/BPyramidView.css');
+@import url('./views/EnhancedView.css');
+
+/* Main Filmstrip Container */
+.filmstrip {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 140px;
+  max-height: var(--filmstrip-height, 180px);
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border);
+  overflow: visible;
+  transition: min-height var(--transition-normal) var(--ease-default);
+}
+
+/* Timeline view is shorter */
+.filmstrip.timeline-view-mode {
+  min-height: 60px;
+  max-height: 80px;
+}
+
+/* Expand filmstrip when showing reference lines */
+.filmstrip.showing-references {
+  min-height: 280px;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Filmstrip Header
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.filmstrip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  height: 24px;
+  min-height: 24px;
+  background: transparent;
+  border-bottom: none;
+}
+
+.filmstrip-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filmstrip-title .codicon {
+  font-size: 12px;
+}
+
+.filmstrip-count {
+  color: var(--text-secondary);
+  font-weight: 400;
+  margin-left: 3px;
+}
+
+.filmstrip-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ripple effect container */
+.filmstrip-view-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 20%);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s ease, height 0.4s ease;
+}
+
+.filmstrip-view-btn:active::before {
+  width: 60px;
+  height: 60px;
+}
+
+.filmstrip-view-btn:hover {
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-xs);
+}
+
+.filmstrip-view-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.filmstrip-view-btn.active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.filmstrip-view-btn .codicon {
+  font-size: 14px;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Filmstrip Dropdown
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.filmstrip-dropdown {
+  position: relative;
+  display: inline-block;
+  align-self: center;
+}
+
+.filmstrip-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filmstrip-dropdown-trigger:hover {
+  background: rgb(255 255 255 / 10%);
+  border-color: rgb(255 255 255 / 18%);
+}
+
+.filmstrip-dropdown-trigger .codicon {
+  font-size: 12px;
+}
+
+.filmstrip-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: rgb(30 30 35 / 98%);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 50%);
+  padding: 4px;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all 0.2s ease;
+}
+
+.filmstrip-dropdown.open .filmstrip-dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.filmstrip-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.filmstrip-dropdown-item:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.filmstrip-dropdown-item.active {
+  background: rgb(0 122 204 / 20%);
+  color: #75beff;
+}
+
+.filmstrip-dropdown-item .codicon {
+  font-size: 14px;
+}
+
+.filmstrip-dropdown-item-text {
+  flex: 1;
+}
+
+.filmstrip-dropdown-item-shortcut {
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Filmstrip Content
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.filmstrip-content {
+  position: relative;
+  flex: 1;
+  overflow: auto hidden;
+  background: var(--bg-app);
+
+  /* Show scroll indicators */
+  scroll-padding: 0 24px;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Empty State
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.filmstrip-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  animation: fadeIn var(--transition-slow) var(--ease-out);
+}
+
+.filmstrip-empty .codicon {
+  font-size: 48px;
+  opacity: 0.4;
+}
+
+.filmstrip-empty-text {
+  font-size: 13px;
+  line-height: var(--line-height-normal);
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Reference Lines Overlay
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.reference-lines-overlay {
+  overflow: visible;
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Allow reference arrows to extend beyond filmstrip content */
+.filmstrip-content.showing-reference-lines {
+  overflow-y: visible;
+}
+
+.reference-lines-overlay path {
+  animation: drawLine 0.5s ease-out forwards;
+}

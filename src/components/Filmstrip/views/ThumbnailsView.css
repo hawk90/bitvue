@@ -1,0 +1,416 @@
+/**
+ * Thumbnails View Styles
+ *
+ * VQAnalyzer-style thumbnails view with reference arrows
+ */
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Thumbnails View - VQAnalyzer Style
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Container for thumbnails and arrows overlay */
+.filmstrip-thumbnails-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.filmstrip-thumbnails {
+  position: relative;
+  display: flex;
+  gap: var(--thumb-spacing);
+  padding: 8px;
+  min-height: 100%;
+  align-items: flex-start;
+  overflow: auto hidden;
+}
+
+/* Arrow SVG overlay - scrolls with thumbnails */
+.thumbnail-arrows-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+
+  /* Force rendering of all arrows even when off-screen */
+  contain: layout style;
+  transform: translateZ(0);
+  will-change: auto;
+}
+
+.thumbnail-arrows-overlay path {
+  /* Ensure arrows are always rendered, just hidden with opacity/visibility */
+  contain: layout style;
+  transform: translateZ(0);
+}
+
+/* Frame container - matches VQAnalyzer layout */
+.filmstrip-frame {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+
+  /* Space for reference lines on sides */
+  margin: 0 8px;
+}
+
+.filmstrip-frame:hover {
+  transform: scale(1.02);
+}
+
+/* Frame thumbnail with type-colored border (VQAnalyzer parity) */
+.frame-thumbnail-wrapper {
+  position: relative;
+  width: var(--thumb-width);
+  height: var(--thumb-height);
+  border-radius: 3px;
+  overflow: visible; /* Allow info labels to extend */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Frame header inside thumbnail (top overlay) */
+.frame-header-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  font-size: 7px;
+  font-weight: 600;
+  text-align: center;
+  padding: 1px 2px;
+  background: rgb(0 0 0 / 40%);
+  border-radius: 2px 2px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Type-colored border (I=red, P=green, B=blue) */
+.filmstrip-frame.frame-i .frame-thumbnail-wrapper {
+  border: 2px solid var(--frame-i);
+}
+
+.filmstrip-frame.frame-p .frame-thumbnail-wrapper {
+  border: 2px solid var(--frame-p);
+}
+
+.filmstrip-frame.frame-b .frame-thumbnail-wrapper {
+  border: 2px solid var(--frame-b);
+}
+
+.filmstrip-frame.frame-key .frame-thumbnail-wrapper {
+  border: 2px solid var(--frame-key);
+}
+
+.filmstrip-frame.frame-inter .frame-thumbnail-wrapper {
+  border: 2px solid var(--frame-inter);
+}
+
+.filmstrip-frame.frame-intra .frame-thumbnail-wrapper {
+  border: 2px solid var(--frame-intra);
+}
+
+/* Thumbnail background */
+.frame-thumbnail {
+  width: 100%;
+  height: 100%;
+  background: var(--thumb-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Selected frame background */
+.filmstrip-frame.selected .frame-thumbnail {
+  background: var(--thumb-selected);
+}
+
+/* Thumbnail image */
+.frame-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Placeholder */
+.frame-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--thumb-bg) 0%, var(--bg-tertiary) 100%);
+  position: relative;
+  overflow: hidden;
+  transition: all var(--transition-normal) var(--ease-default);
+}
+
+/* Animated pattern overlay */
+.frame-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 2px,
+    rgb(255 255 255 / 3%) 2px,
+    rgb(255 255 255 / 3%) 4px
+  );
+  opacity: 0.5;
+}
+
+/* Frame type background pattern */
+.frame-placeholder::after {
+  content: attr(data-frame-type);
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--text-muted);
+  opacity: 0.4;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+.frame-placeholder .codicon {
+  font-size: 18px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  z-index: 1;
+  transition: all var(--transition-normal) var(--ease-default);
+}
+
+/* Hover effect for placeholders */
+.filmstrip-frame:hover .frame-placeholder {
+  background: linear-gradient(135deg, var(--bg-hover) 0%, var(--bg-tertiary) 100%);
+}
+
+.filmstrip-frame:hover .frame-placeholder .codicon {
+  opacity: 0.8;
+  transform: scale(1.1);
+}
+
+.frame-placeholder.loading .codicon {
+  animation: spin 1s linear infinite;
+  color: var(--accent);
+  opacity: 1;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Selection highlight - white outer glow (VQAnalyzer parity) */
+.filmstrip-frame.selected .frame-thumbnail-wrapper {
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 8px rgb(255 255 255 / 40%);
+}
+
+/* Referenced frame highlight - subtle glow */
+.filmstrip-frame.is-referenced .frame-thumbnail-wrapper {
+  box-shadow:
+    0 0 0 2px rgb(255 165 0 / 60%),
+    0 0 12px rgb(255 165 0 / 40%);
+  animation: referencedPulse 2s ease-in-out infinite;
+}
+
+@keyframes referencedPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgb(255 165 0 / 60%),
+      0 0 12px rgb(255 165 0 / 40%);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 2px rgb(255 165 0 / 80%),
+      0 0 16px rgb(255 165 0 / 60%);
+  }
+}
+
+/* NAL type label inside thumbnail (bottom overlay) */
+.frame-nal-type-inner {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  font-size: 6px;
+  font-weight: 600;
+  text-align: center;
+  padding: 1px 2px;
+  background: rgb(0 0 0 / 30%);
+  color: rgb(255 255 255 / 90%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Display Order / Coding Order info inside thumbnail (bottom overlay) */
+.frame-order-info-inner {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 1px 2px;
+  background: rgb(0 0 0 / 50%);
+  border-radius: 0 0 2px 2px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.frame-order-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.frame-display-order,
+.frame-coding-order {
+  font-size: 7px;
+  font-weight: 600;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  line-height: 1;
+}
+
+.frame-display-order {
+  color: var(--status-info);
+  background: rgb(117 190 255 / 20%);
+  border: 1px solid rgb(117 190 255 / 40%);
+}
+
+.frame-coding-order {
+  color: var(--status-warning);
+  background: rgb(204 167 0 / 20%);
+  border: 1px solid rgb(204 167 0 / 40%);
+}
+
+/* Order info in inner thumbnail has tighter spacing */
+.frame-order-info-inner .frame-display-order,
+.frame-order-info-inner .frame-coding-order {
+  font-size: 6px;
+  padding: 1px 2px;
+}
+
+/* Error count badge (Bitvue exclusive) */
+.frame-error-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 12px;
+  padding: 0 4px;
+  background: var(--status-error);
+  border: 1px solid rgb(0 0 0 / 30%);
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame-error-badge.warning {
+  background: var(--status-warning);
+}
+
+.frame-error-badge.info {
+  background: var(--status-info);
+}
+
+/* Reference frames badge (Bitvue exclusive) - collapsed state */
+.frame-ref-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  background: rgb(255 165 0 / 90%);
+  border: 1px solid rgb(0 0 0 / 30%);
+  border-radius: 50%;
+  z-index: 3;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame-ref-badge:hover {
+  width: auto;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 7px;
+  font-weight: 600;
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.frame-ref-badge.expanded {
+  background: rgb(255 100 0 / 100%);
+  min-width: auto;
+  width: auto;
+  height: auto;
+  min-height: 14px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  box-shadow: 0 0 8px rgb(255 165 0 / 60%);
+  animation: pulse 1.5s ease-in-out infinite;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 6px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.frame-ref-badge.expanded .ref-indices {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.frame-ref-badge.expanded .ref-index {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  padding: 1px 2px;
+  background: rgb(0 0 0 / 30%);
+  border-radius: 2px;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgb(255 165 0 / 60%);
+  }
+
+  50% {
+    box-shadow: 0 0 16px rgb(255 165 0 / 90%);
+  }
+}

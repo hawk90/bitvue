@@ -1,0 +1,109 @@
+/**
+ * Stream Player Styles
+ */
+
+.stream-player {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+/* Viewport */
+.player-viewport {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.player-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Alignment indicator */
+.alignment-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.alignment-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Frame overlay */
+.frame-overlay {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-overlay);
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.frame-number {
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.frame-type {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.frame-i {
+  background: var(--frame-i);
+  color: white;
+}
+
+.frame-p {
+  background: var(--frame-p);
+  color: white;
+}
+
+.frame-b {
+  background: var(--frame-b);
+  color: white;
+}
+
+.frame-size {
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+/* Controls */
+.player-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}

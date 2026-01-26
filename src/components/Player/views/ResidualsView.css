@@ -1,0 +1,173 @@
+/* Residuals View Styles */
+
+.residuals-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bitvue-bg-secondary);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.residuals-view-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--bitvue-fg-tertiary);
+}
+
+.residuals-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--bitvue-border);
+}
+
+.residuals-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--bitvue-fg-primary);
+}
+
+.residuals-frame-info {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--bitvue-fg-secondary);
+}
+
+.residuals-frame-info .i {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.residuals-frame-info .p {
+  color: #51cf66;
+  font-weight: 600;
+}
+
+.residuals-frame-info .b {
+  color: #4dabf7;
+  font-weight: 600;
+}
+
+/* Statistics Panel */
+.residuals-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px;
+  background: var(--bitvue-bg-primary);
+  border-radius: 8px;
+}
+
+.residuals-stat-item {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.residuals-stat-label {
+  color: var(--bitvue-fg-secondary);
+}
+
+.residuals-stat-value {
+  color: var(--bitvue-fg-primary);
+  font-weight: 600;
+}
+
+/* Content Layout */
+.residuals-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Heatmap Section */
+.residuals-heatmap-section h4,
+.residuals-histogram-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bitvue-fg-primary);
+}
+
+.residuals-heatmap-container {
+  background: var(--bitvue-bg-primary);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.residuals-heatmap {
+  max-width: 100%;
+  height: auto;
+}
+
+.residuals-heatmap rect:hover {
+  opacity: 1;
+  stroke: white;
+  stroke-width: 1;
+}
+
+/* Heatmap Legend */
+.residuals-heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--bitvue-fg-secondary);
+}
+
+.residuals-heatmap-scale {
+  flex: 1;
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.residuals-heatmap-scale-step {
+  flex: 1;
+  height: 100%;
+}
+
+/* Histogram Section */
+.residuals-histogram-container {
+  background: var(--bitvue-bg-primary);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.residuals-histogram rect:hover {
+  opacity: 1;
+  stroke: white;
+  stroke-width: 1;
+}
+
+.residuals-histogram-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--bitvue-fg-tertiary);
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .residuals-view {
+  background: #1e1e1e;
+}
+
+[data-theme="dark"] .residuals-stats,
+[data-theme="dark"] .residuals-heatmap-container,
+[data-theme="dark"] .residuals-histogram-container {
+  background: #2d2d2d;
+}

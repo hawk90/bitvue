@@ -1,0 +1,180 @@
+/**
+ * Dropdown & Menu Styles
+ *
+ * Dropdown menus, menu items, separators
+ */
+
+/* ═════════════════════════════════════════════════════════════════════════
+   DROPDOWNS & MENUS - Unified Design System
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-default);
+  min-width: 120px;
+  justify-content: space-between;
+  height: var(--btn-height-md);
+}
+
+.dropdown-trigger:hover {
+  background: var(--bg-input-hover);
+  border-color: var(--border-light);
+  color: var(--text-bright);
+}
+
+.dropdown-trigger:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-primary-bg);
+}
+
+.dropdown-trigger[aria-expanded="true"] {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-bottom-color: transparent;
+  background: var(--bg-panel-secondary);
+}
+
+.dropdown-trigger .dropdown-arrow {
+  transition: transform var(--duration-slow) var(--ease-default);
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.dropdown-trigger[aria-expanded="true"] .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu */
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 100%;
+  max-height: 280px;
+  background: var(--bg-dropdown);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-default);
+  border-top: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-dropdown);
+  padding: var(--space-1);
+  list-style: none;
+  margin: 0;
+  z-index: var(--z-dropdown);
+  animation: dropdownFadeIn var(--duration-normal) var(--ease-out);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+
+/* Floating dropdown (not attached to trigger) */
+.dropdown-menu.floating {
+  border-radius: var(--radius-lg);
+  border-top: 1px solid var(--border-default);
+  box-shadow: var(--shadow-2xl);
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dropdown Separator */
+.dropdown-separator {
+  height: 1px;
+  background: var(--border-divider);
+  margin: var(--space-1) 0;
+  padding: 0;
+}
+
+/* Dropdown Item */
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  min-height: var(--btn-height-md);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-normal);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-default);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-dropdown-hover);
+  color: var(--text-bright);
+  transform: translateX(2px);
+}
+
+.dropdown-item.active {
+  background: var(--accent-primary-bg);
+  color: var(--accent-primary-light);
+  font-weight: var(--font-weight-medium);
+}
+
+.dropdown-item:disabled,
+.dropdown-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.dropdown-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: var(--space-1);
+}
+
+/* Dropdown Item with Icon */
+.dropdown-item-icon {
+  font-size: 13px;
+  opacity: 0.8;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.dropdown-item:hover .dropdown-item-icon,
+.dropdown-item.active .dropdown-item-icon {
+  opacity: 1;
+}
+
+/* Dropdown Item Shortcut */
+.dropdown-item-shortcut {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  color: var(--text-tertiary);
+}
+
+.dropdown-item:hover .dropdown-item-shortcut {
+  color: var(--text-secondary);
+}

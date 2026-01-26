@@ -1,0 +1,39 @@
+/**
+ * Layout Toolbar Styles
+ */
+
+.layout-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-panel-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.layout-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-button);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease-default);
+}
+
+.layout-toolbar-btn:hover {
+  background: var(--bg-button-hover);
+}
+
+.layout-toolbar-btn:active {
+  background: var(--bg-button-active);
+}
+
+.layout-toolbar-btn .codicon {
+  font-size: 14px;
+}

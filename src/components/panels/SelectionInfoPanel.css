@@ -1,0 +1,203 @@
+/**
+ * Selection Info Panel Styles
+ */
+
+.selection-info-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-app);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.selection-info-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.selection-info-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.selection-info-content::-webkit-scrollbar-track {
+  background: var(--bg-app);
+}
+
+.selection-info-content::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.selection-info-content::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Info Sections */
+.info-section {
+  margin-bottom: 12px;
+}
+
+.info-section:last-child {
+  margin-bottom: 0;
+}
+
+.info-section-title {
+  padding: 4px 8px;
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 2px;
+  font-size: 10px;
+  transition: background var(--transition-fast) var(--ease-default);
+}
+
+.info-row:hover {
+  background: var(--bg-hover);
+}
+
+.info-row.highlight {
+  background: rgb(0 122 204 / 15%);
+}
+
+.info-row.highlight:hover {
+  background: rgb(0 122 204 / 20%);
+}
+
+.info-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.info-value {
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Frame Type Badge */
+.frame-type-badge {
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.frame-type-i,
+.frame-type-key {
+  background: rgb(208 64 64 / 20%);
+  color: var(--frame-i);
+  border: 1px solid rgb(208 64 64 / 30%);
+}
+
+.frame-type-p {
+  background: rgb(80 192 80 / 20%);
+  color: var(--frame-p);
+  border: 1px solid rgb(80 192 80 / 30%);
+}
+
+.frame-type-b {
+  background: rgb(80 144 208 / 20%);
+  color: var(--frame-b);
+  border: 1px solid rgb(80 144 208 / 30%);
+}
+
+/* Frame Type Count */
+.frame-type-count {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.frame-count {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.frame-percent {
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+
+/* Selection Empty State */
+.selection-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.selection-empty .codicon {
+  font-size: 24px;
+  opacity: 0.5;
+}
+
+.selection-empty span:last-child {
+  font-size: 10px;
+}
+
+/* Codec Info */
+.codec-info {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
+
+.codec-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}

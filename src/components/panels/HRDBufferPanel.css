@@ -1,0 +1,164 @@
+/**
+ * HRD Buffer Panel Styles
+ */
+
+.hrd-buffer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 12px;
+}
+
+.hrd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.hrd-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hrd-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.hrd-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hrd-stat.overflow {
+  color: var(--color-error);
+}
+
+.hrd-stat.underflow {
+  color: var(--color-warning);
+}
+
+.stat-label {
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.hrd-canvas-container {
+  flex: 1;
+  position: relative;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hrd-canvas-container canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hrd-tooltip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tooltip-row:not(:last-child) {
+  margin-bottom: 4px;
+}
+
+.tooltip-label {
+  color: var(--text-secondary);
+}
+
+.tooltip-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.tooltip-row.overflow {
+  color: var(--color-error);
+}
+
+.tooltip-row.underflow {
+  color: var(--color-warning);
+}
+
+.hrd-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-color {
+  width: 24px;
+  height: 3px;
+}
+
+.legend-color.line-buffer {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    #ff6b6b 2px,
+    #ff6b6b 4px
+  );
+}
+
+.legend-color.line-target {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    #51cf66 2px,
+    #51cf66 4px
+  );
+}
+
+.legend-color.dot-overflow {
+  height: 8px;
+  width: 8px;
+  border-radius: 50%;
+  background: rgb(255 107 107 / 80%);
+}
+
+.legend-color.dot-underflow {
+  height: 8px;
+  width: 8px;
+  border-radius: 50%;
+  background: rgb(255 212 59 / 80%);
+}

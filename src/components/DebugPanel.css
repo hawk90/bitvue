@@ -1,0 +1,228 @@
+/**
+ * Debug Panel Styles
+ *
+ * Shows frame data state for debugging
+ */
+
+.debug-panel {
+  position: fixed;
+  top: 60px;
+  right: 0;
+  width: 320px;
+  max-height: calc(100vh - 60px);
+  background: rgb(30 30 30 / 98%);
+  border-left: 1px solid rgb(255 255 255 / 10%);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+.debug-panel.collapsed {
+  transform: translateX(100%);
+}
+
+.debug-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgb(20 20 20 / 95%);
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+}
+
+.debug-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.debug-panel-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.debug-panel-close:hover {
+  background: rgb(255 255 255 / 10%);
+  color: var(--text-primary);
+}
+
+.debug-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 10px;
+}
+
+.debug-panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.debug-panel-content::-webkit-scrollbar-track {
+  background: rgb(0 0 0 / 20%);
+}
+
+.debug-panel-content::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 20%);
+  border-radius: 3px;
+}
+
+.debug-section {
+  margin-bottom: 16px;
+}
+
+.debug-section:last-child {
+  margin-bottom: 0;
+}
+
+.debug-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.debug-info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 5%);
+}
+
+.debug-info-label {
+  color: var(--text-secondary);
+}
+
+.debug-info-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.debug-info-value.number {
+  color: #75beff;
+}
+
+.debug-info-value.string {
+  color: #ffa657;
+}
+
+.debug-info-value.boolean {
+  color: #7ee787;
+}
+
+.debug-info-value.null {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.debug-frame-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 4px;
+}
+
+.debug-frame-item {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgb(255 255 255 / 5%);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.debug-frame-item:hover {
+  background: rgb(255 255 255 / 5%);
+}
+
+.debug-frame-item.selected {
+  background: rgb(117 190 255 / 15%);
+  border-left: 2px solid var(--accent);
+}
+
+.debug-frame-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.debug-frame-index {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.debug-frame-type {
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.debug-frame-type.KEY,
+.debug-frame-type.I {
+  background: rgb(224 49 49 / 30%);
+  color: #ff6b6b;
+}
+
+.debug-frame-type.P,
+.debug-frame-type.INTER {
+  background: rgb(45 164 78 / 30%);
+  color: #7ee787;
+}
+
+.debug-frame-type.B {
+  background: rgb(31 119 180 / 30%);
+  color: #74c0fc;
+}
+
+.debug-frame-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 8px;
+  font-size: 9px;
+}
+
+.debug-frame-detail-label {
+  color: var(--text-secondary);
+}
+
+.debug-frame-detail-value {
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* Toggle button */
+.debug-toggle {
+  position: fixed;
+  top: 60px;
+  right: 0;
+  width: 24px;
+  height: 80px;
+  background: rgb(30 30 30 / 95%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-left: none;
+  border-radius: 8px 0 0 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  transition: all 0.2s ease;
+}
+
+.debug-toggle:hover {
+  background: rgb(40 40 40 / 98%);
+  color: var(--text-primary);
+}
+
+.debug-toggle.open {
+  right: 320px;
+}

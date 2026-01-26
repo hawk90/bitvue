@@ -1,0 +1,132 @@
+/**
+ * Error Boundary Styles
+ */
+
+.error-boundary-fallback {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 2rem;
+}
+
+.error-boundary-content {
+  max-width: 600px;
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 30%);
+}
+
+.error-boundary-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  background: var(--error-bg);
+  border-radius: 50%;
+  color: var(--error-fg);
+  font-size: 32px;
+}
+
+.error-boundary-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--fg-primary);
+}
+
+.error-boundary-message {
+  margin: 0 0 1.5rem;
+  text-align: center;
+  color: var(--fg-secondary);
+  line-height: 1.5;
+}
+
+.error-boundary-details {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.error-boundary-details summary {
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--fg-primary);
+  user-select: none;
+}
+
+.error-boundary-details summary:hover {
+  background: var(--bg-hover);
+}
+
+.error-boundary-details-content {
+  padding: 1rem;
+  max-height: 300px;
+  overflow: auto;
+  background: var(--bg-primary);
+}
+
+.error-boundary-error-name {
+  font-weight: 600;
+  color: var(--error-fg);
+  margin-bottom: 0.5rem;
+}
+
+.error-boundary-stack {
+  margin: 0.5rem 0 0;
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  color: var(--fg-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.error-boundary-button {
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.error-boundary-button-primary {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.error-boundary-button-primary:hover {
+  background: var(--accent-primary-hover);
+}
+
+.error-boundary-button-secondary {
+  background: var(--bg-tertiary);
+  color: var(--fg-primary);
+}
+
+.error-boundary-button-secondary:hover {
+  background: var(--bg-hover);
+}

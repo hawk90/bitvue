@@ -1,0 +1,440 @@
+/**
+ * Dockable Panel Layout Styles
+ * VQAnalyzer-style resizable panel layout
+ */
+
+/**
+ * Resize handle size constants
+ */
+:root {
+  --resize-handle-width: 4px;
+  --resize-handle-height: 4px;
+  --resize-handle-hit-area: 8px;
+}
+
+.dockable-layout {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Panel Groups */
+.layout-horizontal,
+.layout-vertical {
+  height: 100%;
+  width: 100%;
+}
+
+/* Left Sidebar Panel */
+.left-sidebar-panel {
+  min-width: 200px !important;
+  background: var(--bitvue-panel-bg, #1e1e1e);
+  border-right: 1px solid var(--bitvue-border, #3c3c3c);
+}
+
+.left-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Sidebar Tabs - Polished */
+.sidebar-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: rgb(37 37 38 / 95%);
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  overflow: auto hidden;
+}
+
+.sidebar-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: rgb(255 255 255 / 65%);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  position: relative;
+}
+
+.sidebar-tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--bitvue-accent, #007acc);
+  border-radius: 2px 0 0 2px;
+  opacity: 0;
+  transform: scaleY(0);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-tab:hover {
+  background: rgb(255 255 255 / 6%);
+  color: rgb(255 255 255 / 90%);
+  transform: translateX(2px);
+}
+
+.sidebar-tab.active {
+  background: rgb(0 122 204 / 20%);
+  border-color: rgb(0 122 204 / 30%);
+  color: #fff;
+}
+
+.sidebar-tab.active::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.sidebar-tab .codicon {
+  font-size: 14px;
+  flex-shrink: 0;
+  opacity: 0.8;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-tab:hover .codicon,
+.sidebar-tab.active .codicon {
+  opacity: 1;
+}
+
+/* Sidebar Content */
+.sidebar-content {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+/* Main Content Panel */
+.main-content-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* YUV Viewer Panel */
+.yuv-viewer-panel {
+  flex: 1;
+  min-height: 200px !important;
+  background: var(--bitvue-bg, #1e1e1e);
+  overflow: hidden;
+}
+
+/* Top Panel (now at top - filmstrip/timeline) */
+.top-panel {
+  min-height: 280px !important;
+  max-height: 600px !important;
+  background: var(--bitvue-panel-bg, #1e1e1e);
+  border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
+  overflow: visible;
+}
+
+.bottom-panel-bar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Bottom Panel Tabs - Polished */
+.bottom-panel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  background: rgb(37 37 38 / 95%);
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  overflow-x: auto;
+}
+
+.bottom-panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: rgb(255 255 255 / 65%);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  position: relative;
+}
+
+.bottom-panel-tab::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--bitvue-accent, #007acc);
+  border-radius: 1px 1px 0 0;
+  opacity: 0;
+  transform: scaleX(0);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bottom-panel-tab:hover {
+  background: rgb(255 255 255 / 6%);
+  color: rgb(255 255 255 / 90%);
+}
+
+.bottom-panel-tab.active {
+  background: rgb(0 122 204 / 20%);
+  border-color: rgb(0 122 204 / 30%);
+  color: #fff;
+}
+
+.bottom-panel-tab.active::before {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.bottom-panel-tab .codicon {
+  font-size: 14px;
+  flex-shrink: 0;
+  opacity: 0.8;
+  transition: opacity 0.15s ease;
+}
+
+.bottom-panel-tab:hover .codicon,
+.bottom-panel-tab.active .codicon {
+  opacity: 1;
+}
+
+/* Bottom Panel Content */
+.bottom-panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+/* Bottom Row Panel (3 panels below main view) */
+.bottom-row-panel {
+  min-height: 150px !important;
+  max-height: 350px !important;
+  background: var(--bitvue-panel-bg, #1e1e1e);
+  border-top: 1px solid var(--bitvue-border, #3c3c3c);
+}
+
+.bottom-row-panel-bar {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.bottom-row-layout {
+  width: 100%;
+  height: 100%;
+}
+
+.bottom-row-item {
+  min-width: 150px !important;
+  background: var(--bitvue-bg, #1e1e1e);
+}
+
+.bottom-row-item-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bottom-row-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgb(37 37 38 / 95%);
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(255 255 255 / 90%);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.bottom-row-item-header .codicon {
+  font-size: 14px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.bottom-row-item-body {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+/* Resize Handles */
+.resize-handle-horizontal,
+.resize-handle-vertical {
+  position: relative;
+  background: transparent;
+  transition: background 0.15s;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.resize-handle-horizontal {
+  width: var(--resize-handle-width);
+  cursor: col-resize;
+}
+
+.resize-handle-vertical {
+  height: var(--resize-handle-height);
+  cursor: row-resize;
+}
+
+/* Visual indicator for resize handles */
+.resize-handle-horizontal::before,
+.resize-handle-vertical::before {
+  content: '';
+  position: absolute;
+  background: var(--bitvue-border, #3c3c3c);
+  border-radius: 1px;
+  transition: background 0.15s;
+}
+
+.resize-handle-horizontal::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.resize-handle-vertical::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+/* Hover and active states for resize handles */
+.resize-handle-horizontal:hover::before,
+.resize-handle-vertical::before,
+.resize-handle-horizontal[data-resize-handle-active]::before,
+.resize-handle-vertical[data-resize-handle-active]::before {
+  background: var(--bitvue-accent, #007acc);
+}
+
+.resize-handle-horizontal:hover,
+.resize-handle-vertical:hover {
+  background: transparent;
+}
+
+/* Resize handle hit area expansion */
+.resize-handle-horizontal::after,
+.resize-handle-vertical::after {
+  content: '';
+  position: absolute;
+}
+
+.resize-handle-horizontal::after {
+  inset: 0 calc(var(--resize-handle-hit-area) * -1);
+}
+
+.resize-handle-vertical::after {
+  inset: calc(var(--resize-handle-hit-area) * -1) 0;
+}
+
+/* Collapsed Panel State */
+[data-panel-collapsed] .sidebar-tabs,
+[data-panel-collapsed] .bottom-panel-tabs {
+  opacity: 0.5;
+}
+
+/* Mouse wheel scrolling for panels */
+.sidebar-content,
+.bottom-panel-content {
+  scroll-behavior: smooth;
+}
+
+.sidebar-content::-webkit-scrollbar,
+.bottom-panel-content::-webkit-scrollbar,
+.sidebar-tabs::-webkit-scrollbar,
+.bottom-panel-tabs::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.sidebar-content::-webkit-scrollbar-track,
+.bottom-panel-content::-webkit-scrollbar-track,
+.sidebar-tabs::-webkit-scrollbar-track,
+.bottom-panel-tabs::-webkit-scrollbar-track {
+  background: var(--bitvue-bg, #1e1e1e);
+}
+
+.sidebar-content::-webkit-scrollbar-thumb,
+.bottom-panel-content::-webkit-scrollbar-thumb,
+.sidebar-tabs::-webkit-scrollbar-thumb,
+.bottom-panel-tabs::-webkit-scrollbar-thumb {
+  background: var(--bitvue-scrollbar, #424242);
+  border-radius: 4px;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:hover,
+.bottom-panel-content::-webkit-scrollbar-thumb:hover,
+.sidebar-tabs::-webkit-scrollbar-thumb:hover,
+.bottom-panel-tabs::-webkit-scrollbar-thumb:hover {
+  background: var(--bitvue-scrollbar-hover, #4f4f4f);
+}
+
+/* Bottom panel grid layouts */
+.bottom-panel-content {
+  padding: 12px;
+  font-size: 11px;
+}
+
+.info-grid,
+.details-grid,
+.stats-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  align-items: center;
+}
+
+.info-label,
+.details-label,
+.stats-label {
+  color: var(--bitvue-fg-dim, #858585);
+  padding: 2px 0;
+}
+
+.info-value,
+.details-value,
+.stats-value {
+  color: var(--bitvue-fg, #ccc);
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  padding: 2px 0;
+}
+
+/* File path truncation */
+.info-value:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 400px;
+}

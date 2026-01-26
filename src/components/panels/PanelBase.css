@@ -1,0 +1,340 @@
+/**
+ * Panel Base Styles
+ *
+ * Shared styles for all panel components
+ * Provides consistent structure and appearance across all panels
+ */
+
+/* Panel Container */
+.panel-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bitvue-panel-bg, var(--bg-secondary));
+  border: 1px solid var(--bitvue-border, var(--border-default));
+  overflow: hidden;
+}
+
+/* Panel Header */
+.panel-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bitvue-panel-header-bg, var(--bg-tertiary));
+  border-bottom: 1px solid var(--bitvue-border, var(--border-default));
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bitvue-fg, var(--fg-primary));
+  flex: 1;
+}
+
+/* Panel Content */
+.panel-content {
+  flex: 1;
+  overflow: hidden auto;
+  padding: 8px;
+}
+
+/* Panel Footer */
+.panel-footer {
+  padding: 8px 12px;
+  background: var(--bitvue-panel-header-bg, var(--bg-tertiary));
+  border-top: 1px solid var(--bitvue-border, var(--border-default));
+  flex-shrink: 0;
+}
+
+/* Panel Divider */
+.panel-divider {
+  height: 1px;
+  background: var(--bitvue-border, var(--border-default));
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+
+/* Panel Size Variants */
+.panel--sm {
+  max-width: 200px;
+}
+
+.panel--md {
+  max-width: 400px;
+}
+
+.panel--lg {
+  max-width: 600px;
+}
+
+.panel--xl {
+  max-width: 800px;
+}
+
+/* Panel Section */
+.panel-section {
+  margin-bottom: 12px;
+}
+
+.panel-section:last-child {
+  margin-bottom: 0;
+}
+
+.panel-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bitvue-fg-dim, var(--fg-secondary));
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+/* Panel Info Row */
+.panel-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.panel-info-row:hover {
+  background: rgb(255 255 255 / 5%);
+}
+
+.panel-info-label {
+  color: var(--bitvue-fg-dim, var(--fg-secondary));
+  font-weight: 500;
+}
+
+.panel-info-value {
+  color: var(--bitvue-fg, var(--fg-primary));
+  font-weight: 600;
+}
+
+/* Panel Button */
+.panel-button {
+  padding: 6px 12px;
+  background: var(--bitvue-button-bg, rgb(255 255 255 / 10%));
+  border: 1px solid var(--bitvue-border, var(--border-default));
+  border-radius: 4px;
+  color: var(--bitvue-fg, var(--fg-primary));
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.panel-button:hover {
+  background: var(--bitvue-button-hover-bg, rgb(255 255 255 / 15%));
+  border-color: var(--bitvue-button-hover-border, rgb(255 255 255 / 20%));
+}
+
+.panel-button:active {
+  background: var(--bitvue-button-active-bg, rgb(255 255 255 / 5%));
+}
+
+.panel-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Panel Input */
+.panel-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bitvue-input-bg, rgb(30 30 35 / 80%));
+  border: 1px solid var(--bitvue-input-border, rgb(255 255 255 / 12%));
+  border-radius: 4px;
+  color: var(--bitvue-fg, var(--fg-primary));
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.panel-input:hover {
+  border-color: rgb(255 255 255 / 20%);
+  background: var(--bitvue-input-hover-bg, rgb(35 35 40 / 90%));
+}
+
+.panel-input:focus {
+  outline: none;
+  border-color: var(--bitvue-accent, #007acc);
+  box-shadow: 0 0 0 3px rgb(0 122 204 / 15%);
+}
+
+/* Panel Select */
+.panel-select {
+  padding: 6px 8px;
+  background: var(--bitvue-input-bg, rgb(30 30 35 / 80%));
+  border: 1px solid var(--bitvue-input-border, rgb(255 255 255 / 12%));
+  border-radius: 4px;
+  color: var(--bitvue-fg, var(--fg-primary));
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.panel-select:hover {
+  border-color: rgb(255 255 255 / 20%);
+  background: var(--bitvue-input-hover-bg, rgb(35 35 40 / 90%));
+}
+
+.panel-select:focus {
+  outline: none;
+  border-color: var(--bitvue-accent, #007acc);
+  box-shadow: 0 0 0 3px rgb(0 122 204 / 15%);
+}
+
+/* Panel Empty State */
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 16px;
+  color: var(--bitvue-fg-dim, var(--fg-secondary));
+  text-align: center;
+}
+
+.panel-empty .codicon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+/* Panel Loading State */
+.panel-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 16px;
+  color: var(--bitvue-fg-dim, var(--fg-secondary));
+}
+
+.panel-loading .codicon {
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Panel Badge */
+.panel-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  background: var(--bitvue-badge-bg, rgb(0 122 204 / 20%));
+  border-radius: 3px;
+  color: var(--bitvue-badge-fg, #75beff);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Panel Tabs */
+.panel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bitvue-panel-header-bg, var(--bg-tertiary));
+  border-bottom: 1px solid var(--bitvue-border, var(--border-default));
+}
+
+.panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  color: var(--bitvue-fg-dim, var(--fg-secondary));
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.panel-tab:hover {
+  color: var(--bitvue-fg, var(--fg-primary));
+  background: rgb(255 255 255 / 5%);
+}
+
+.panel-tab.active {
+  color: var(--bitvue-accent, #007acc);
+  background: rgb(0 122 204 / 10%);
+}
+
+.panel-tab .codicon {
+  font-size: 14px;
+}
+
+/* Panel Toolbar */
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bitvue-panel-header-bg, var(--bg-tertiary));
+  border-bottom: 1px solid var(--bitvue-border, var(--border-default));
+}
+
+.panel-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panel-toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--bitvue-border, var(--border-default));
+  margin: 0 4px;
+}
+
+/* Panel Close Button */
+.panel-close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--bitvue-fg-dim, var(--fg-secondary));
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.panel-close-button:hover {
+  background: rgb(255 255 255 / 10%);
+  color: var(--bitvue-fg, var(--fg-primary));
+}
+
+.panel-close-button:active {
+  background: rgb(255 255 255 / 5%);
+}
+
+.panel-close-button .codicon {
+  font-size: 14px;
+}

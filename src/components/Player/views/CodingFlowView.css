@@ -1,0 +1,249 @@
+/* Coding Flow View Styles */
+
+.coding-flow-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bitvue-bg-secondary);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.coding-flow-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--bitvue-border);
+}
+
+.coding-flow-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--bitvue-fg-primary);
+}
+
+.coding-flow-frame-info {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--bitvue-fg-secondary);
+}
+
+.coding-flow-frame-info .i {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.coding-flow-frame-info .p {
+  color: #51cf66;
+  font-weight: 600;
+}
+
+.coding-flow-frame-info .b {
+  color: #4dabf7;
+  font-weight: 600;
+}
+
+/* Pipeline Visualization */
+.coding-flow-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coding-flow-path-label {
+  font-size: 11px;
+  color: var(--bitvue-fg-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+.coding-flow-stages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 8px;
+  background: var(--bitvue-bg-primary);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.coding-flow-stage-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.coding-flow-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 80px;
+  padding: 12px 8px;
+  background: var(--bitvue-bg-secondary);
+  border: 2px solid var(--bitvue-border);
+  border-radius: 8px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.coding-flow-stage-encoder {
+  border-color: #ffd43b;
+}
+
+.coding-flow-stage-decoder {
+  border-color: #74c0fc;
+}
+
+.coding-flow-stage-active {
+  background: var(--bitvue-accent);
+  border-color: var(--bitvue-accent);
+  box-shadow: 0 0 12px var(--bitvue-accent-dim);
+  transform: scale(1.05);
+}
+
+.coding-flow-stage-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bitvue-fg-primary);
+}
+
+.coding-flow-stage-desc {
+  font-size: 10px;
+  color: var(--bitvue-fg-secondary);
+  text-align: center;
+  max-width: 100px;
+}
+
+.coding-flow-stage-badge {
+  font-size: 8px;
+  padding: 2px 4px;
+  background: var(--bitvue-bg-tertiary);
+  border-radius: 4px;
+  color: var(--bitvue-fg-tertiary);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Connectors */
+.coding-flow-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 32px;
+  color: var(--bitvue-border);
+}
+
+.coding-flow-arrow {
+  font-size: 16px;
+  transition: color 0.2s ease;
+}
+
+.coding-flow-connector-active {
+  color: var(--bitvue-accent);
+}
+
+.coding-flow-connector-active .coding-flow-arrow {
+  animation: pulse-arrow 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-arrow {
+  0%, 100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translateX(2px);
+  }
+}
+
+/* Codec Features */
+.coding-flow-features {
+  padding: 12px;
+  background: var(--bitvue-bg-primary);
+  border-radius: 8px;
+}
+
+.coding-flow-features h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bitvue-fg-primary);
+}
+
+.coding-flow-features-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.coding-flow-feature-item {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--bitvue-fg-secondary);
+}
+
+.coding-flow-feature-bullet {
+  color: var(--bitvue-accent);
+}
+
+/* Legend */
+.coding-flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px;
+  background: var(--bitvue-bg-primary);
+  border-radius: 8px;
+}
+
+.coding-flow-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--bitvue-fg-secondary);
+}
+
+.coding-flow-legend-box {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 2px solid;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .coding-flow-view {
+  background: #1e1e1e;
+}
+
+[data-theme="dark"] .coding-flow-stage {
+  background: #2d2d2d;
+  border-color: #404040;
+}
+
+[data-theme="dark"] .coding-flow-stage-encoder {
+  border-color: #ffd43b;
+}
+
+[data-theme="dark"] .coding-flow-stage-decoder {
+  border-color: #74c0fc;
+}
+
+[data-theme="dark"] .coding-flow-stage-active {
+  background: #1e6f4a;
+  border-color: #1e6f4a;
+}
+
+[data-theme="dark"] .coding-flow-features,
+[data-theme="dark"] .coding-flow-legend {
+  background: #2d2d2d;
+}

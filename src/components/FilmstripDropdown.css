@@ -1,0 +1,109 @@
+/**
+ * Filmstrip Dropdown Component Styles
+ */
+
+.filmstrip-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.filmstrip-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.filmstrip-dropdown-trigger:hover {
+  background: rgb(255 255 255 / 10%);
+  border-color: rgb(255 255 255 / 18%);
+}
+
+.filmstrip-dropdown-trigger:active,
+.filmstrip-dropdown-trigger[aria-expanded="true"] {
+  background: rgb(255 255 255 / 8%);
+}
+
+.filmstrip-dropdown-label {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.filmstrip-dropdown-trigger .codicon {
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.filmstrip-dropdown-trigger[aria-expanded="true"] .codicon {
+  transform: rotate(180deg);
+}
+
+.filmstrip-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: rgb(30 30 35 / 98%);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 50%);
+  padding: 6px;
+  z-index: 1000;
+  list-style: none;
+  margin: 0;
+  animation: dropdownFadeIn 0.2s ease;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filmstrip-dropdown-menu li {
+  margin: 0;
+  padding: 0;
+}
+
+.filmstrip-dropdown-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filmstrip-dropdown-menu button:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.filmstrip-dropdown-menu button.active {
+  background: rgb(117 190 255 / 15%);
+  color: #75beff;
+}
+
+.filmstrip-dropdown-menu button span {
+  pointer-events: none;
+}

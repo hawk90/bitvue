@@ -1,0 +1,77 @@
+/* VQAnalyzer Style - Base Reset */
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+    'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
+  line-height: 1.4;
+  font-weight: 400;
+  color-scheme: dark;
+  color: var(--text-primary);
+  background-color: var(--bg-app);
+  font-synthesis: none;
+  text-rendering: optimizelegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* Polished Scrollbar styling - VQAnalyzer style consistency */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(30 30 35 / 50%);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(100 100 110 / 40%);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background var(--transition-fast) var(--ease-default);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(120 120 130 / 50%);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: rgb(140 140 150 / 60%);
+}
+
+::-webkit-scrollbar-corner {
+  background: rgb(30 30 35 / 50%);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(100 100 110 / 40%) rgb(30 30 35 / 50%);
+}

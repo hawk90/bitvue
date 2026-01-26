@@ -1,0 +1,102 @@
+/**
+ * Tab Styles
+ *
+ * Horizontal and vertical tabs, active indicators
+ */
+
+/* ═════════════════════════════════════════════════════════════════════════
+   TABS - Unified Design System
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.tabs.vertical {
+  flex-direction: column;
+  border-bottom: none;
+  border-right: 1px solid var(--border-light);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--duration-normal) var(--ease-default);
+  white-space: nowrap;
+  position: relative;
+}
+
+/* Tab Active Indicator */
+.tab::before {
+  content: '';
+  position: absolute;
+  background: var(--accent-primary);
+  opacity: 0;
+  transition: all var(--duration-slow) var(--ease-default);
+}
+
+.tabs:not(.vertical) .tab::before {
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  transform: scaleX(0);
+}
+
+.tabs.vertical .tab::before {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  transform: scaleY(0);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tabs:not(.vertical) .tab:hover {
+  transform: none;
+}
+
+.tabs.vertical .tab:hover {
+  transform: translateX(2px);
+}
+
+.tab.active {
+  background: var(--accent-primary-bg);
+  border-color: var(--accent-primary-border);
+  color: var(--text-bright);
+}
+
+.tab.active::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.tab .tab-icon {
+  font-size: 14px;
+  opacity: 0.8;
+  transition: opacity 0.15s ease;
+}
+
+.tab:hover .tab-icon,
+.tab.active .tab-icon {
+  opacity: 1;
+}

@@ -1,0 +1,321 @@
+/**
+ * YUV Viewer Panel Styles
+ * Main video display with navigation controls
+ */
+
+/* Spin animation for loading indicator */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.codicon-spin {
+  animation: spin 1s linear infinite;
+}
+
+.yuv-viewer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bitvue-bg, #1e1e1e);
+  overflow: hidden;
+}
+
+/* Toolbar */
+.yuv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bitvue-panel-header-bg, #252526);
+  border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
+  flex-shrink: 0;
+}
+
+.yuv-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.yuv-toolbar-spacer {
+  flex: 1;
+}
+
+/* Toolbar buttons - Polished */
+.yuv-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--bitvue-fg, #fff);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ripple effect for buttons */
+.yuv-toolbar button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 15%);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s ease, height 0.4s ease;
+}
+
+.yuv-toolbar button:active::before {
+  width: 40px;
+  height: 40px;
+}
+
+.yuv-toolbar button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 12%);
+  transform: translateY(-1px);
+}
+
+.yuv-toolbar button:active:not(:disabled) {
+  background: var(--bitvue-active-bg, #094771);
+  transform: translateY(0);
+}
+
+.yuv-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.yuv-toolbar button .codicon {
+  font-size: 14px;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.yuv-toolbar button .codicon + .codicon {
+  margin-left: -4px;
+}
+
+/* Frame input - Polished */
+.yuv-frame-input {
+  width: 60px;
+  padding: 3px 8px;
+  background: rgb(30 30 35 / 80%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 4px;
+  color: var(--bitvue-fg, #fff);
+  font-size: 12px;
+  text-align: center;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.yuv-frame-input:hover {
+  border-color: rgb(255 255 255 / 20%);
+  background: rgb(35 35 40 / 90%);
+}
+
+.yuv-frame-input:focus {
+  outline: none;
+  border-color: var(--bitvue-accent, #007acc);
+  background: rgb(35 35 40 / 95%);
+  box-shadow: 0 0 0 3px rgb(0 122 204 / 15%);
+}
+
+/* Speed selector - Polished */
+.yuv-speed-select {
+  padding: 3px 8px;
+  background: rgb(30 30 35 / 80%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 4px;
+  color: var(--bitvue-fg, #fff);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.yuv-speed-select:hover {
+  border-color: rgb(255 255 255 / 20%);
+  background: rgb(35 35 40 / 90%);
+}
+
+.yuv-speed-select:focus {
+  outline: none;
+  border-color: var(--bitvue-accent, #007acc);
+  box-shadow: 0 0 0 3px rgb(0 122 204 / 15%);
+}
+
+.yuv-speed-select option {
+  background: var(--bitvue-bg, #1e1e1e);
+  color: var(--bitvue-fg, #fff);
+}
+
+/* Mode selector - Polished */
+.yuv-mode-label {
+  font-size: 11px;
+  color: var(--bitvue-fg-dim, #858585);
+  font-weight: 500;
+}
+
+.yuv-mode-select {
+  padding: 3px 8px;
+  background: rgb(30 30 35 / 80%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 4px;
+  color: var(--bitvue-fg, #fff);
+  font-size: 11px;
+  cursor: pointer;
+  min-width: 120px;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.yuv-mode-select:hover {
+  border-color: rgb(255 255 255 / 20%);
+  background: rgb(35 35 40 / 90%);
+}
+
+.yuv-mode-select:focus {
+  outline: none;
+  border-color: var(--bitvue-accent, #007acc);
+  box-shadow: 0 0 0 3px rgb(0 122 204 / 15%);
+}
+
+.yuv-mode-select option {
+  background: var(--bitvue-bg, #1e1e1e);
+  color: var(--bitvue-fg, #fff);
+}
+
+/* Active button state (e.g., playing) - Polished */
+.yuv-toolbar button.active {
+  background: rgb(0 122 204 / 25%);
+  border-color: rgb(0 122 204 / 40%);
+  color: var(--bitvue-accent, #75beff);
+  box-shadow: 0 0 8px rgb(0 122 204 / 30%);
+}
+
+.yuv-frame-divider {
+  color: var(--bitvue-fg-dim, #858585);
+  margin: 0 4px;
+}
+
+.yuv-frame-total {
+  color: var(--bitvue-fg-dim, #858585);
+  font-size: 12px;
+  min-width: 30px;
+  font-weight: 500;
+}
+
+/* Zoom label */
+.yuv-zoom-label {
+  min-width: 40px;
+  text-align: center;
+  color: var(--bitvue-fg, #fff);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Canvas container - Polished */
+.yuv-canvas-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+  position: relative;
+}
+
+.yuv-canvas {
+  display: block;
+  background: #000;
+  image-rendering: pixelated;
+  max-width: 100%;
+  max-height: 100%;
+  transition: opacity 0.2s ease;
+}
+
+/* Loading indicator - Polished */
+.yuv-loading {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--bitvue-fg-dim, #ccc);
+  font-size: 12px;
+  padding: 20px;
+  background: rgb(30 30 35 / 90%);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.yuv-loading .codicon {
+  font-size: 28px;
+  color: var(--bitvue-accent, #007acc);
+}
+
+/* Placeholder when no frame is loaded - Polished */
+.yuv-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--bitvue-fg-dim, #ccc);
+  font-size: 13px;
+}
+
+.yuv-placeholder .codicon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+/* Status bar - Polished */
+.yuv-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgb(37 37 38 / 95%);
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  font-size: 11px;
+  color: var(--bitvue-fg-dim, #ccc);
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.yuv-playing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--bitvue-accent, #007acc);
+  font-weight: 600;
+}
+
+.yuv-mode-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--bitvue-fg, #ccc);
+  font-size: 11px;
+  padding: 3px 8px;
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 3px;
+  font-weight: 500;
+}

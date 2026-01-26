@@ -1,0 +1,43 @@
+/**
+ * Combined Timeline + Filmstrip Component
+ * Timeline on top (36px), Filmstrip below (140px)
+ */
+
+.timeline-filmstrip {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app);
+  overflow: hidden;
+  height: 100%;
+  min-height: 120px;
+}
+
+/* Collapsed state - show only timeline */
+.timeline-filmstrip.collapsed {
+  height: auto;
+  min-height: 36px;
+}
+
+.timeline-filmstrip.collapsed .filmstrip {
+  display: none;
+}
+
+/* Timeline section - top */
+.timeline-filmstrip .timeline {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+/* Filmstrip section - bottom */
+.timeline-filmstrip .filmstrip {
+  flex: 1;
+  min-height: 80px;
+  border-bottom: none;
+}
+
+/* Smooth synchronization between timeline and filmstrip */
+.timeline-filmstrip .timeline-bar.selected,
+.timeline-filmstrip .filmstrip-frame.selected {
+  transition: all var(--transition-normal) var(--ease-default);
+}

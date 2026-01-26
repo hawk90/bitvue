@@ -1,0 +1,46 @@
+.placeholder-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bitvue-panel-bg);
+  border: 1px solid var(--bitvue-border);
+  border-radius: 4px;
+  overflow: hidden;
+  height: 100%;
+}
+
+.placeholder-panel-header {
+  padding: 8px 12px;
+  background: var(--bitvue-panel-header-bg);
+  border-bottom: 1px solid var(--bitvue-border);
+}
+
+.placeholder-panel-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bitvue-fg);
+}
+
+.placeholder-panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  min-height: 120px;
+}
+
+.placeholder-panel-icon {
+  font-size: 48px;
+  opacity: 0.3;
+  margin-bottom: 12px;
+  color: var(--bitvue-fg);
+}
+
+.placeholder-panel-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bitvue-fg-dim);
+  font-style: italic;
+}

@@ -1,0 +1,195 @@
+/**
+ * Button Styles
+ *
+ * All button variants: primary, secondary, ghost, icon
+ * Size variants: sm, lg
+ * States: disabled, active, hover, focus
+ */
+
+/* ═════════════════════════════════════════════════════════════════════════
+   BUTTONS - Unified Design System
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Base Button Style */
+.btn,
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-normal);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: all var(--duration-normal) var(--ease-default);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Button Ripple Effect */
+.btn::before,
+button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 15%);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s ease, height 0.4s ease;
+  pointer-events: none;
+}
+
+.btn:active::before,
+button:active::before {
+  width: 40px;
+  height: 40px;
+}
+
+/* Primary Button */
+.btn-primary {
+  background: var(--gradient-primary);
+  color: var(--text-bright);
+  border-color: transparent;
+  box-shadow: var(--shadow-md), var(--shadow-glow-sm);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--gradient-primary-hover);
+  box-shadow: var(--shadow-lg), var(--shadow-glow-md);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm), var(--shadow-glow-sm);
+}
+
+/* Secondary Button */
+.btn-secondary {
+  background: var(--bg-button);
+  color: var(--text-bright);
+  border-color: var(--border-default);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-button-hover);
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Ghost Button */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: transparent;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-button);
+  color: var(--text-bright);
+}
+
+.btn-ghost:active:not(:disabled) {
+  background: var(--bg-button-active);
+}
+
+/* Icon Button */
+.btn-icon {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  gap: 0;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--bg-button);
+  transform: scale(1.05);
+}
+
+.btn-icon:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Small Button */
+.btn-sm {
+  padding: 4px 8px;
+  font-size: var(--font-size-sm);
+  min-height: var(--btn-height-sm);
+}
+
+.btn-icon.btn-sm {
+  width: var(--btn-height-sm);
+  height: var(--btn-height-sm);
+  min-width: var(--btn-height-sm);
+}
+
+/* Large Button */
+.btn-lg {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-lg);
+  min-height: var(--btn-height-lg);
+}
+
+.btn-icon.btn-lg {
+  width: var(--btn-height-lg);
+  height: var(--btn-height-lg);
+  min-width: var(--btn-height-lg);
+}
+
+/* Disabled State */
+.btn:disabled,
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Active State */
+.btn.active,
+button.active {
+  background: var(--accent-primary-bg-hover) !important;
+  border-color: var(--accent-primary-border) !important;
+  color: var(--accent-primary-light) !important;
+  box-shadow: var(--shadow-glow-sm);
+}
+
+/* Focus State */
+.btn:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: var(--space-1);
+  border-radius: var(--radius-md);
+}
+
+/* Remove focus outline for mouse users */
+.btn:focus:not(:focus-visible),
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Button with Icon */
+.btn-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-icon-text .codicon {
+  font-size: 14px;
+}

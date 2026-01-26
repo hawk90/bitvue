@@ -1,0 +1,97 @@
+/**
+ * Virtualized Filmstrip Styles
+ */
+
+.virtualized-filmstrip {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.virtualized-filmstrip-viewport {
+  flex: 1;
+  overflow: auto hidden;
+  cursor: grab;
+  user-select: none;
+}
+
+.virtualized-filmstrip-viewport:active {
+  cursor: grabbing;
+}
+
+.virtualized-filmstrip-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.virtualized-filmstrip-content {
+  display: flex;
+  height: 100%;
+  will-change: transform;
+}
+
+.virtualized-frame {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 2px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all var(--transition-fast) var(--ease-default);
+  position: relative;
+}
+
+.virtualized-frame:hover {
+  background: var(--bg-hover);
+}
+
+.virtualized-frame.current {
+  background: rgb(0 122 204 / 30%);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.virtualized-frame-indicator {
+  width: 24px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.virtualized-frame-number {
+  font-size: 10px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  color: var(--text-primary);
+}
+
+.virtualized-frame-type {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* Custom scrollbar */
+.virtualized-filmstrip-scrollbar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: var(--bg-panel-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.virtualized-filmstrip-scrollbar-thumb {
+  position: absolute;
+  height: 100%;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast) var(--ease-default);
+}
+
+.virtualized-filmstrip-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}

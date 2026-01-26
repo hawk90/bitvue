@@ -1,0 +1,442 @@
+/**
+ * Bitvue Color Palette & Design System
+ * Comprehensive color scheme with semantic naming and opacity scales
+ */
+
+:root {
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design Tokens - Spacing (8px base unit)
+     ═════════════════════════════════════════════════════════════════════════ */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design Tokens - Typography
+     ═════════════════════════════════════════════════════════════════════════ */
+  --font-size-xs: 9px;
+  --font-size-sm: 10px;
+  --font-size-base: 11px;
+  --font-size-md: 12px;
+  --font-size-lg: 13px;
+  --font-size-xl: 14px;
+  --font-size-2xl: 16px;
+  --font-size-3xl: 18px;
+  --font-size-4xl: 20px;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.4;
+  --line-height-relaxed: 1.5;
+  --line-height-loose: 1.8;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-family-base: -apple-system, blinkmacsystemfont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  --font-family-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design Tokens - Border Radius
+     ═════════════════════════════════════════════════════════════════════════ */
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 12px;
+  --radius-full: 9999px;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design Tokens - Transitions & Animations
+     ═════════════════════════════════════════════════════════════════════════ */
+  --duration-instant: 50ms;
+  --duration-fast: 100ms;
+  --duration-normal: 150ms;
+  --duration-slow: 250ms;
+  --duration-slower: 350ms;
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.6, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-elastic: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design Tokens - Shadows
+     ═════════════════════════════════════════════════════════════════════════ */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 20%);
+  --shadow-sm: 0 2px 4px rgb(0 0 0 / 25%);
+  --shadow-md: 0 4px 8px rgb(0 0 0 / 30%);
+  --shadow-lg: 0 8px 16px rgb(0 0 0 / 35%);
+  --shadow-xl: 0 12px 24px rgb(0 0 0 / 40%);
+  --shadow-2xl: 0 20px 40px rgb(0 0 0 / 50%);
+  --shadow-inner: inset 0 2px 4px rgb(0 0 0 / 15%);
+  --shadow-glow-sm: 0 0 4px rgb(0 122 204 / 40%);
+  --shadow-glow-md: 0 0 8px rgb(0 122 204 / 50%);
+  --shadow-glow-lg: 0 0 16px rgb(0 122 204 / 60%);
+
+  /* Dialog shadow with outline effect */
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
+  --shadow-dropdown: 0 8px 32px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design Tokens - Z-Index Scale
+     ═════════════════════════════════════════════════════════════════════════ */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 1000;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Color Base - Dark Theme (Default)
+     ═════════════════════════════════════════════════════════════════════════ */
+
+  /* Neutral grays (base colors) */
+  --gray-50: #f5f5f5;
+  --gray-100: #e0e0e0;
+  --gray-200: #b0b0b0;
+  --gray-300: #858585;
+  --gray-400: #6a6a6a;
+  --gray-500: #555;
+  --gray-600: #3e3e42;
+  --gray-700: #2d2d2d;
+  --gray-800: #252526;
+  --gray-900: #1e1e1e;
+  --gray-950: #141414;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Background Colors - Semantic
+     ═════════════════════════════════════════════════════════════════════════ */
+  --bg-app: var(--gray-900);
+  --bg-panel: var(--gray-800);
+  --bg-panel-secondary: #2d2d30;
+  --bg-elevated: #2a2d2e;
+  --bg-overlay: rgb(0 0 0 / 60%);
+  --backdrop-blur: blur(8px);
+
+  /* Interactive backgrounds */
+  --bg-hover: rgb(255 255 255 / 5%);
+  --bg-active: rgb(255 255 255 / 8%);
+  --bg-selected: #094771;
+  --bg-selected-hover: #0d5a8f;
+  --bg-focused: rgb(0 122 204 / 15%);
+
+  /* Input backgrounds */
+  --bg-input: #3c3c3c;
+  --bg-input-hover: #454545;
+  --bg-input-focus: #404040;
+
+  /* Button backgrounds */
+  --bg-button: rgb(255 255 255 / 8%);
+  --bg-button-hover: rgb(255 255 255 / 12%);
+  --bg-button-active: rgb(255 255 255 / 15%);
+  --bg-button-disabled: rgb(255 255 255 / 3%);
+
+  /* Dropdown backgrounds */
+  --bg-dropdown: rgb(25 25 30 / 98%);
+  --bg-dropdown-hover: rgb(255 255 255 / 8%);
+
+  /* Dialog backgrounds */
+  --bg-dialog: rgb(30 30 35 / 98%);
+  --bg-dialog-header: rgb(35 35 40 / 98%);
+
+  /* Tooltip backgrounds */
+  --bg-tooltip: rgb(25 25 30 / 98%);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Text Colors - Semantic
+     ═════════════════════════════════════════════════════════════════════════ */
+  --text-primary: rgb(255 255 255 / 90%);
+  --text-secondary: rgb(255 255 255 / 70%);
+  --text-tertiary: rgb(255 255 255 / 50%);
+  --text-muted: rgb(255 255 255 / 40%);
+  --text-disabled: rgb(255 255 255 / 30%);
+  --text-bright: #fff;
+  --text-inverse: #000;
+
+  /* Link colors */
+  --text-link: #75beff;
+  --text-link-hover: #9dcdff;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Border Colors - Semantic
+     ═════════════════════════════════════════════════════════════════════════ */
+  --border-default: rgb(255 255 255 / 12%);
+  --border-light: rgb(255 255 255 / 8%);
+  --border-lighter: rgb(255 255 255 / 5%);
+  --border-dark: rgb(0 0 0 / 20%);
+  --border-focus: #007acc;
+  --border-error: #f14c4c;
+  --border-warning: #cca700;
+  --border-success: #89d185;
+
+  /* Divider */
+  --border-divider: rgb(255 255 255 / 10%);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Accent Colors - Blue Primary
+     ═════════════════════════════════════════════════════════════════════════ */
+  --accent-primary: #007acc;
+  --accent-primary-hover: #1a8cdb;
+  --accent-primary-light: #4a9eff;
+  --accent-primary-bg: rgb(0 122 204 / 15%);
+  --accent-primary-bg-hover: rgb(0 122 204 / 25%);
+  --accent-primary-border: rgb(0 122 204 / 40%);
+
+  /* Gradient for primary buttons */
+  --gradient-primary: linear-gradient(135deg, #007acc 0%, #4a9eff 100%);
+  --gradient-primary-hover: linear-gradient(135deg, #1a8cdb 0%, #5aadff 100%);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Semantic Status Colors
+     ═════════════════════════════════════════════════════════════════════════ */
+
+  /* Error / Red */
+  --color-error: #f14c4c;
+  --color-error-bg: rgb(241 76 76 / 15%);
+  --color-error-bg-subtle: rgb(241 76 76 / 10%);
+  --color-error-border: rgb(241 76 76 / 30%);
+  --color-error-text: #ff6b6b;
+
+  /* Warning / Yellow */
+  --color-warning: #ffb86c;
+  --color-warning-bg: rgb(255 184 108 / 15%);
+  --color-warning-bg-subtle: rgb(255 184 108 / 10%);
+  --color-warning-border: rgb(255 184 108 / 30%);
+  --color-warning-text: #fbbf24;
+
+  /* Info / Blue */
+  --color-info: #75beff;
+  --color-info-bg: rgb(117 190 255 / 15%);
+  --color-info-bg-subtle: rgb(117 190 255 / 10%);
+  --color-info-border: rgb(117 190 255 / 30%);
+
+  /* Success / Green */
+  --color-success: #89d185;
+  --color-success-bg: rgb(137 209 133 / 15%);
+  --color-success-bg-subtle: rgb(137 209 133 / 10%);
+  --color-success-border: rgb(137 209 133 / 30%);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Frame Type Colors (for video stream visualization)
+     ═════════════════════════════════════════════════════════════════════════ */
+
+  /* I-Frame / Keyframe - Red */
+  --frame-i: #e03131;
+  --frame-i-bg: rgb(224 49 49 / 25%);
+  --frame-i-border: rgb(224 49 49 / 40%);
+
+  /* P-Frame - Green */
+  --frame-p: #2da44e;
+  --frame-p-bg: rgb(45 164 78 / 25%);
+  --frame-p-border: rgb(45 164 78 / 40%);
+
+  /* B-Frame - Blue */
+  --frame-b: #1f7ad9;
+  --frame-b-bg: rgb(31 119 180 / 25%);
+  --frame-b-border: rgb(31 119 180 / 40%);
+
+  /* Other frame types */
+  --frame-key: #e03131;
+  --frame-inter: #2da44e;
+  --frame-intra: #1f7ad9;
+  --frame-switch: #d4a717;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Scrollbar Colors
+     ═════════════════════════════════════════════════════════════════════════ */
+  --scrollbar-bg: transparent;
+  --scrollbar-thumb: rgb(100 100 110 / 40%);
+  --scrollbar-thumb-hover: rgb(120 120 130 / 50%);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Component Specific Dimensions
+     ═════════════════════════════════════════════════════════════════════════ */
+
+  /* Title bar */
+  --titlebar-height: 24px;
+
+  /* Status bar */
+  --statusbar-height: 24px;
+
+  /* Panel header */
+  --header-height: 28px;
+
+  /* Timeline */
+  --timeline-height: 36px;
+  --timeline-track-height: 18px;
+
+  /* Filmstrip */
+  --filmstrip-height: 140px;
+
+  /* Thumbnail */
+  --thumb-width: 120px;
+  --thumb-height: 72px;
+  --thumb-spacing: 12px;
+  --thumb-bg: #1e2328;
+  --thumb-selected: #3c3c50;
+
+  /* Button sizes */
+  --btn-height-sm: 24px;
+  --btn-height-md: 32px;
+  --btn-height-lg: 40px;
+
+  /* Input sizes */
+  --input-height-sm: 24px;
+  --input-height-md: 28px;
+  --input-height-lg: 32px;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Light Theme
+   ═════════════════════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  /* Neutral grays (base colors) */
+  --gray-50: #fafafa;
+  --gray-100: #f5f5f5;
+  --gray-200: #e5e5e5;
+  --gray-300: #d4d4d4;
+  --gray-400: #b3b3b3;
+  --gray-500: #8c8c8c;
+  --gray-600: #666;
+  --gray-700: #4d4d4d;
+  --gray-800: #333;
+  --gray-900: #1a1a1a;
+  --gray-950: #0a0a0a;
+
+  /* Background Colors - Semantic */
+  --bg-app: #fff;
+  --bg-panel: #f3f3f3;
+  --bg-panel-secondary: #e8e8e8;
+  --bg-elevated: #fff;
+  --bg-overlay: rgb(0 0 0 / 30%);
+  --backdrop-blur: blur(8px);
+
+  /* Interactive backgrounds */
+  --bg-hover: rgb(0 0 0 / 4%);
+  --bg-active: rgb(0 0 0 / 8%);
+  --bg-selected: #0066b8;
+  --bg-selected-hover: #0078cc;
+  --bg-focused: rgb(0 122 204 / 10%);
+
+  /* Input backgrounds */
+  --bg-input: #fff;
+  --bg-input-hover: #fafafa;
+  --bg-input-focus: #fff;
+
+  /* Button backgrounds */
+  --bg-button: rgb(0 0 0 / 5%);
+  --bg-button-hover: rgb(0 0 0 / 8%);
+  --bg-button-active: rgb(0 0 0 / 12%);
+  --bg-button-disabled: rgb(0 0 0 / 2%);
+
+  /* Dropdown backgrounds */
+  --bg-dropdown: rgb(255 255 255 / 98%);
+  --bg-dropdown-hover: rgb(0 0 0 / 4%);
+
+  /* Dialog backgrounds */
+  --bg-dialog: rgb(255 255 255 / 98%);
+  --bg-dialog-header: rgb(250 250 250 / 98%);
+
+  /* Tooltip backgrounds */
+  --bg-tooltip: rgb(30 30 35 / 95%);
+
+  /* Text Colors - Semantic */
+  --text-primary: rgb(0 0 0 / 85%);
+  --text-secondary: rgb(0 0 0 / 65%);
+  --text-tertiary: rgb(0 0 0 / 45%);
+  --text-muted: rgb(0 0 0 / 35%);
+  --text-disabled: rgb(0 0 0 / 25%);
+  --text-bright: #000;
+  --text-inverse: #fff;
+
+  /* Link colors */
+  --text-link: #0066b8;
+  --text-link-hover: #0078cc;
+
+  /* Border Colors - Semantic */
+  --border-default: rgb(0 0 0 / 12%);
+  --border-light: rgb(0 0 0 / 8%);
+  --border-lighter: rgb(0 0 0 / 5%);
+  --border-dark: rgb(0 0 0 / 20%);
+  --border-focus: #0066b8;
+  --border-error: #d13438;
+  --border-warning: #ca5010;
+  --border-success: #107c10;
+
+  /* Divider */
+  --border-divider: rgb(0 0 0 / 8%);
+
+  /* Accent Colors - Blue Primary */
+  --accent-primary: #0066b8;
+  --accent-primary-hover: #0078cc;
+  --accent-primary-light: #39f;
+  --accent-primary-bg: rgb(0 102 184 / 10%);
+  --accent-primary-bg-hover: rgb(0 102 184 / 15%);
+  --accent-primary-border: rgb(0 102 184 / 30%);
+
+  /* Gradient for primary buttons */
+  --gradient-primary: linear-gradient(135deg, #0066b8 0%, #39f 100%);
+  --gradient-primary-hover: linear-gradient(135deg, #0078cc 0%, #4aa9ff 100%);
+
+  /* Semantic Status Colors */
+  --color-error: #d13438;
+  --color-error-bg: rgb(209 52 56 / 10%);
+  --color-error-bg-subtle: rgb(209 52 56 / 5%);
+  --color-error-border: rgb(209 52 56 / 30%);
+  --color-error-text: #d13438;
+  --color-warning: #ca5010;
+  --color-warning-bg: rgb(202 80 16 / 10%);
+  --color-warning-bg-subtle: rgb(202 80 16 / 5%);
+  --color-warning-border: rgb(202 80 16 / 30%);
+  --color-warning-text: #ca5010;
+  --color-info: #0078d4;
+  --color-info-bg: rgb(0 120 212 / 10%);
+  --color-info-bg-subtle: rgb(0 120 212 / 5%);
+  --color-info-border: rgb(0 120 212 / 30%);
+  --color-success: #107c10;
+  --color-success-bg: rgb(16 124 16 / 10%);
+  --color-success-bg-subtle: rgb(16 124 16 / 5%);
+  --color-success-border: rgb(16 124 16 / 30%);
+
+  /* Frame Type Colors (adjusted for light theme) */
+  --frame-i: #d13438;
+  --frame-i-bg: rgb(209 52 56 / 15%);
+  --frame-i-border: rgb(209 52 56 / 30%);
+  --frame-p: #107c10;
+  --frame-p-bg: rgb(16 124 16 / 15%);
+  --frame-p-border: rgb(16 124 16 / 30%);
+  --frame-b: #0078d4;
+  --frame-b-bg: rgb(0 120 212 / 15%);
+  --frame-b-border: rgb(0 120 212 / 30%);
+  --frame-key: #d13438;
+  --frame-inter: #107c10;
+  --frame-intra: #0078d4;
+  --frame-switch: #ca5010;
+
+  /* Scrollbar Colors */
+  --scrollbar-bg: #f0f0f0;
+  --scrollbar-thumb: rgb(0 0 0 / 20%);
+  --scrollbar-thumb-hover: rgb(0 0 0 / 30%);
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 8%);
+  --shadow-sm: 0 2px 4px rgb(0 0 0 / 10%);
+  --shadow-md: 0 4px 8px rgb(0 0 0 / 12%);
+  --shadow-lg: 0 8px 16px rgb(0 0 0 / 15%);
+  --shadow-xl: 0 12px 24px rgb(0 0 0 / 18%);
+  --shadow-2xl: 0 20px 40px rgb(0 0 0 / 20%);
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 15%), 0 0 0 1px rgb(0 0 0 / 5%);
+  --shadow-dropdown: 0 8px 32px rgb(0 0 0 / 12%), 0 0 0 1px rgb(0 0 0 / 5%);
+}
