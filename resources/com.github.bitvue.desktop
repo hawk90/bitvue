@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=bitvue
+GenericName=AV1 Bitstream Analyzer
+Comment=Professional AV1 bitstream analyzer with GUI
+Exec=bitvue-gui %f
+Icon=com.github.bitvue
+Terminal=false
+Categories=AudioVideo;Video;Development;
+MimeType=video/mp4;video/x-matroska;video/webm;
+Keywords=AV1;video;codec;analyzer;bitstream;
+StartupNotify=true

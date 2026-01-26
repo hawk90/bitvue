@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="128" height="128" rx="16" fill="#2d3748"/>
+
+  <!-- Grid pattern representing bitstream -->
+  <g opacity="0.3">
+    <line x1="32" y1="0" x2="32" y2="128" stroke="#4a5568" stroke-width="1"/>
+    <line x1="64" y1="0" x2="64" y2="128" stroke="#4a5568" stroke-width="1"/>
+    <line x1="96" y1="0" x2="96" y2="128" stroke="#4a5568" stroke-width="1"/>
+    <line x1="0" y1="32" x2="128" y2="32" stroke="#4a5568" stroke-width="1"/>
+    <line x1="0" y1="64" x2="128" y2="64" stroke="#4a5568" stroke-width="1"/>
+    <line x1="0" y1="96" x2="128" y2="96" stroke="#4a5568" stroke-width="1"/>
+  </g>
+
+  <!-- AV1 representation - stylized blocks -->
+  <rect x="20" y="40" width="24" height="24" rx="2" fill="#48bb78"/>
+  <rect x="52" y="40" width="24" height="24" rx="2" fill="#4299e1"/>
+  <rect x="84" y="40" width="24" height="24" rx="2" fill="#ed8936"/>
+
+  <rect x="20" y="72" width="24" height="24" rx="2" fill="#ed8936"/>
+  <rect x="52" y="72" width="24" height="24" rx="2" fill="#48bb78"/>
+  <rect x="84" y="72" width="24" height="24" rx="2" fill="#4299e1"/>
+
+  <!-- Magnifying glass overlay -->
+  <circle cx="88" cy="88" r="20" fill="none" stroke="#f7fafc" stroke-width="4"/>
+  <line x1="103" y1="103" x2="118" y2="118" stroke="#f7fafc" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Binary code hint -->
+  <text x="24" y="28" font-family="monospace" font-size="12" fill="#a0aec0">101</text>
+</svg>

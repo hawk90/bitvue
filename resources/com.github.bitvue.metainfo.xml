@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.bitvue</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <name>bitvue</name>
+  <summary>Professional AV1 Bitstream Analyzer</summary>
+
+  <description>
+    <p>
+      bitvue is a professional AV1 bitstream analyzer that provides both CLI and GUI interfaces
+      for analyzing video bitstreams at the syntax element level.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>OBU Tree Panel - Hierarchical view of all Open Bitstream Units</li>
+      <li>Syntax Detail Panel - Detailed syntax element information</li>
+      <li>Bit View Panel - Hex/binary dump with bit-level navigation</li>
+      <li>Timeline Panel - Frame sequence visualization with bitrate graphs</li>
+      <li>Frame Viewer Panel - Decoded frame display with zoom and pan</li>
+      <li>Split View modes for frame comparison</li>
+      <li>Overlay system: Block Grid, Motion Vectors, QP Heatmap, Partition Structure</li>
+      <li>Statistics Panel - Comprehensive bitstream analysis</li>
+      <li>Command Palette for quick actions</li>
+      <li>JSON export for scripting and automation</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.github.bitvue.desktop</launchable>
+
+  <url type="homepage">https://github.com/user/bitvue</url>
+  <url type="bugtracker">https://github.com/user/bitvue/issues</url>
+
+  <developer_name>bitvue contributors</developer_name>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.0" date="2024-01-01">
+      <description>
+        <p>Initial release</p>
+        <ul>
+          <li>AV1 bitstream parsing and analysis</li>
+          <li>GUI with frame viewer and overlay system</li>
+          <li>CLI for scripting and automation</li>
+          <li>Support for IVF, MP4, MKV, WebM, and TS containers</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main interface showing OBU tree, frame viewer, and statistics</caption>
+    </screenshot>
+  </screenshots>
+
+  <provides>
+    <binary>bitvue-gui</binary>
+    <binary>bitvue-cli</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">800</display_length>
+  </requires>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+</component>
