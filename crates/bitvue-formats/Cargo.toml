@@ -1,0 +1,10 @@
+[package]
+name = "bitvue-formats"
+description = "Container format parsers (MP4, MKV) for bitvue - zero external dependencies"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bitvue-core = { workspace = true }
+thiserror = { workspace = true }

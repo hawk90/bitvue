@@ -1,0 +1,17 @@
+[package]
+name = "bitvue-codecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Internal crates (will integrate bitvue-av1 later)
+bitvue-av1 = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }

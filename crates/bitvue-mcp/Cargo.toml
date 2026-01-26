@@ -1,0 +1,20 @@
+[package]
+name = "bitvue-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "bitvue-mcp-server"
+path = "src/main.rs"
+
+[dependencies]
+bitvue-core = { path = "../bitvue-core" }
+bitvue-av1 = { path = "../bitvue-av1" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"

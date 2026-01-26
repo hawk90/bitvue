@@ -1,0 +1,37 @@
+[package]
+name = "bitvue-metrics"
+description = "Video quality metrics for bitvue (PSNR, SSIM, VMAF with optional GPU acceleration)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bitvue-core = { workspace = true }
+
+# Optional: VMAF support (CPU)
+libvmaf-rs = { version = "0.4", optional = true }
+
+# Optional: GPU-accelerated metrics (NVIDIA CUDA)
+# turbo-metrics = { version = "0.3", optional = true }
+
+# Multi-threading support (Rust alternative to OpenMP)
+rayon = { version = "1.10", optional = true }
+
+# SIMD support (AVX, AVX2, AVX-512 on x86_64, NEON on ARM)
+# Using standard library SIMD (requires nightly) or fallback to scalar
+# wide = { version = "0.7", optional = true }  # Portable SIMD abstractions
+
+[features]
+default = []
+
+# Enable VMAF support (CPU-only)
+vmaf = ["dep:libvmaf-rs"]
+
+# Enable VMAF with CUDA acceleration (requires libvmaf built with CUDA)
+vmaf-cuda = ["vmaf", "dep:libvmaf-rs"]
+
+# Enable GPU-accelerated PSNR/SSIM via turbo-metrics (requires NVIDIA GPU)
+# gpu-metrics = ["dep:turbo-metrics"]
+
+# Enable multi-threaded CPU metrics
+parallel = ["dep:rayon"]

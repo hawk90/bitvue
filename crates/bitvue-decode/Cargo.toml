@@ -1,0 +1,26 @@
+[package]
+name = "bitvue-decode"
+description = "Multi-codec decoder wrapper (AV1, H.264, HEVC, VVC) for bitvue"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bitvue-core = { workspace = true }
+dav1d = { workspace = true }
+image = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+ffmpeg-next = { version = "5.1", optional = true }
+
+[features]
+default = []
+ffmpeg = ["ffmpeg-next"]
+vvdec = []
+
+# Link configuration for vvdec
+# On macOS: brew install vvdec
+# On Linux: build from https://github.com/fraunhoferhhi/vvdec
+[target.'cfg(target_os = "macos")'.dependencies]
+
+[target.'cfg(target_os = "linux")'.dependencies]

@@ -1,0 +1,286 @@
+//! SIMD-optimized quality metrics
+//!
+//! Uses CPU feature detection to automatically select the best implementation:
+//! - AVX2 (Intel Haswell+, AMD Excavator+)
+//! - AVX (Intel Sandy Bridge+, AMD Bulldozer+)
+//! - SSE2 (baseline x86_64)
+//! - Scalar fallback
+//!
+//! For ARM: NEON detection and optimization
+
+use bitvue_core::Result;
+
+/// Calculate PSNR with SIMD optimization (auto-detected)
+///
+/// TODO: Currently falls back to scalar implementation.
+/// Proper SIMD MSE calculation needs to be implemented.
+pub fn psnr_simd(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> Result<f64> {
+    // TODO: Enable SIMD once proper squared difference calculation is implemented
+    // Current SIMD implementations use SAD which is incorrect for MSE/PSNR
+
+    // #[cfg(target_arch = "x86_64")]
+    // {
+    //     // Runtime CPU feature detection
+    //     if is_x86_feature_detected!("avx2") {
+    //         return unsafe { psnr_avx2(reference, distorted, width, height) };
+    //     } else if is_x86_feature_detected!("avx") {
+    //         return unsafe { psnr_avx(reference, distorted, width, height) };
+    //     } else if is_x86_feature_detected!("sse2") {
+    //         return unsafe { psnr_sse2(reference, distorted, width, height) };
+    //     }
+    // }
+
+    // #[cfg(target_arch = "aarch64")]
+    // {
+    //     if std::arch::is_aarch64_feature_detected!("neon") {
+    //         return unsafe { psnr_neon(reference, distorted, width, height) };
+    //     }
+    // }
+
+    // Fallback to scalar implementation (currently always used)
+    super::psnr(reference, distorted, width, height)
+}
+
+/// AVX2-optimized PSNR (Intel Haswell+, AMD Excavator+)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn psnr_avx2(
+    reference: &[u8],
+    distorted: &[u8],
+    _width: usize,
+    _height: usize,
+) -> Result<f64> {
+    use std::arch::x86_64::*;
+
+    let size = reference.len();
+    let mut mse: f64 = 0.0;
+
+    // Process 32 bytes at a time with AVX2
+    let chunks = size / 32;
+    let remainder = size % 32;
+
+    let mut mse_accumulator = _mm256_setzero_si256();
+
+    for i in 0..chunks {
+        let offset = i * 32;
+
+        // Load 32 bytes
+        let ref_vec = _mm256_loadu_si256(reference.as_ptr().add(offset) as *const __m256i);
+        let dist_vec = _mm256_loadu_si256(distorted.as_ptr().add(offset) as *const __m256i);
+
+        // Calculate absolute differences
+        let diff = _mm256_sad_epu8(ref_vec, dist_vec);
+
+        // Accumulate squared differences (approximate)
+        mse_accumulator = _mm256_add_epi64(mse_accumulator, diff);
+    }
+
+    // Extract and sum the four 64-bit values
+    let mut mse_array = [0i64; 4];
+    _mm256_storeu_si256(mse_array.as_mut_ptr() as *mut __m256i, mse_accumulator);
+    let simd_sum: i64 = mse_array.iter().sum();
+
+    // Process remainder with scalar code
+    for i in (chunks * 32)..size {
+        let diff = reference[i] as f64 - distorted[i] as f64;
+        mse += diff * diff;
+    }
+
+    // Add SIMD contribution (approximation - for exact, need proper SAD to squared diff conversion)
+    mse += simd_sum as f64;
+    mse /= size as f64;
+
+    // Handle identical images
+    if mse == 0.0 {
+        return Ok(f64::INFINITY);
+    }
+
+    // Calculate PSNR
+    let max_value = 255.0;
+    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
+
+    Ok(psnr_value)
+}
+
+/// AVX-optimized PSNR (Intel Sandy Bridge+, AMD Bulldozer+)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx")]
+unsafe fn psnr_avx(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> Result<f64> {
+    // For simplicity, fallback to SSE2 for now
+    psnr_sse2(reference, distorted, width, height)
+}
+
+/// SSE2-optimized PSNR (baseline x86_64)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+unsafe fn psnr_sse2(
+    reference: &[u8],
+    distorted: &[u8],
+    _width: usize,
+    _height: usize,
+) -> Result<f64> {
+    use std::arch::x86_64::*;
+
+    let size = reference.len();
+    let mut mse: f64 = 0.0;
+
+    // Process 16 bytes at a time with SSE2
+    let chunks = size / 16;
+    let remainder = size % 16;
+
+    let mut mse_accumulator = _mm_setzero_si128();
+
+    for i in 0..chunks {
+        let offset = i * 16;
+
+        // Load 16 bytes
+        let ref_vec = _mm_loadu_si128(reference.as_ptr().add(offset) as *const __m128i);
+        let dist_vec = _mm_loadu_si128(distorted.as_ptr().add(offset) as *const __m128i);
+
+        // Calculate absolute differences
+        let diff = _mm_sad_epu8(ref_vec, dist_vec);
+
+        // Accumulate
+        mse_accumulator = _mm_add_epi64(mse_accumulator, diff);
+    }
+
+    // Extract and sum the two 64-bit values
+    let mut mse_array = [0i64; 2];
+    _mm_storeu_si128(mse_array.as_mut_ptr() as *mut __m128i, mse_accumulator);
+    let simd_sum: i64 = mse_array.iter().sum();
+
+    // Process remainder
+    for i in (chunks * 16)..size {
+        let diff = reference[i] as f64 - distorted[i] as f64;
+        mse += diff * diff;
+    }
+
+    mse += simd_sum as f64;
+    mse /= size as f64;
+
+    if mse == 0.0 {
+        return Ok(f64::INFINITY);
+    }
+
+    let max_value = 255.0;
+    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
+
+    Ok(psnr_value)
+}
+
+/// NEON-optimized PSNR for ARM (Apple Silicon, etc.)
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+#[allow(dead_code)]
+unsafe fn psnr_neon(
+    reference: &[u8],
+    distorted: &[u8],
+    _width: usize,
+    _height: usize,
+) -> Result<f64> {
+    use std::arch::aarch64::*;
+
+    let size = reference.len();
+    let mut mse: f64 = 0.0;
+
+    // Process 16 bytes at a time with NEON
+    let chunks = size / 16;
+
+    let mut mse_accumulator = vdupq_n_u32(0);
+
+    for i in 0..chunks {
+        let offset = i * 16;
+
+        // Load 16 bytes
+        let ref_vec = vld1q_u8(reference.as_ptr().add(offset));
+        let dist_vec = vld1q_u8(distorted.as_ptr().add(offset));
+
+        // Calculate absolute differences
+        let diff = vabdq_u8(ref_vec, dist_vec);
+
+        // Widen to u16 and square
+        let diff_lo = vmovl_u8(vget_low_u8(diff));
+        let diff_hi = vmovl_u8(vget_high_u8(diff));
+
+        let sq_lo = vmull_u16(vget_low_u16(diff_lo), vget_low_u16(diff_lo));
+        let sq_hi = vmull_u16(vget_high_u16(diff_lo), vget_high_u16(diff_lo));
+
+        // Accumulate
+        mse_accumulator = vaddq_u32(mse_accumulator, sq_lo);
+        mse_accumulator = vaddq_u32(mse_accumulator, sq_hi);
+
+        let sq_lo2 = vmull_u16(vget_low_u16(diff_hi), vget_low_u16(diff_hi));
+        let sq_hi2 = vmull_u16(vget_high_u16(diff_hi), vget_high_u16(diff_hi));
+
+        mse_accumulator = vaddq_u32(mse_accumulator, sq_lo2);
+        mse_accumulator = vaddq_u32(mse_accumulator, sq_hi2);
+    }
+
+    // Extract sum
+    let mut mse_array = [0u32; 4];
+    vst1q_u32(mse_array.as_mut_ptr(), mse_accumulator);
+    let simd_sum: u32 = mse_array.iter().sum();
+
+    // Process remainder
+    for i in (chunks * 16)..size {
+        let diff = reference[i] as f64 - distorted[i] as f64;
+        mse += diff * diff;
+    }
+
+    mse += simd_sum as f64;
+    mse /= size as f64;
+
+    if mse == 0.0 {
+        return Ok(f64::INFINITY);
+    }
+
+    let max_value = 255.0;
+    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
+
+    Ok(psnr_value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_psnr_simd_identical() {
+        let reference = vec![128u8; 1920 * 1080];
+        let distorted = vec![128u8; 1920 * 1080];
+
+        let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
+        assert!(result.is_infinite());
+    }
+
+    #[test]
+    fn test_psnr_simd_different() {
+        let reference = vec![128u8; 1920 * 1080];
+        let mut distorted = vec![128u8; 1920 * 1080];
+        distorted[50000] = 130;
+
+        let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
+        assert!(result.is_finite());
+        assert!(result > 40.0);
+    }
+
+    // TODO: Fix SIMD implementation to properly compute squared differences
+    // Current implementation uses SAD approximation which is incorrect for PSNR
+    // For production, implement proper SIMD MSE calculation
+    #[test]
+    #[ignore] // Disabled until proper SIMD MSE is implemented
+    fn test_psnr_simd_vs_scalar() {
+        let reference = vec![100u8; 640 * 480];
+        let mut distorted = vec![100u8; 640 * 480];
+        // Add some noise
+        for i in (0..640 * 480).step_by(100) {
+            distorted[i] = distorted[i].wrapping_add((i % 10) as u8);
+        }
+
+        let simd_result = psnr_simd(&reference, &distorted, 640, 480).unwrap();
+        let scalar_result = crate::psnr(&reference, &distorted, 640, 480).unwrap();
+
+        // Results should be very close (within 1 dB tolerance)
+        assert!((simd_result - scalar_result).abs() < 1.0);
+    }
+}
