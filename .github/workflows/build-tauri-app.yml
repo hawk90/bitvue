@@ -21,11 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS
-          - os: macos-13
-            target: x86_64-apple-darwin
-            artifact_name: bitvue-x86_64-apple-darwin
-            artifact_ext: .app.tar.gz
+          # macOS (Apple Silicon only)
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: bitvue-aarch64-apple-darwin
@@ -101,7 +97,7 @@ jobs:
         run: npm run build
 
       - name: Build Tauri app (macOS)
-        if: matrix.os == 'macos-latest' || matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: npm run tauri build -- --target ${{ matrix.target }}
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -109,7 +105,7 @@ jobs:
           PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig
 
       - name: Build Tauri app (Windows/Linux)
-        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-24.04'
+        if: matrix.os != 'macos-latest'
         run: npm run tauri build -- --target ${{ matrix.target }}
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -140,6 +136,23 @@ jobs:
             chmod +x bitvue-${{ matrix.target }}.AppImage
           fi
 
+      - name: Prepare artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release/bundle/msi
+          if (Test-Path "*.msi") {
+            Compress-Archive -Path *.msi -DestinationPath bitvue-${{ matrix.target }}.zip
+          }
+
+      - name: Prepare artifacts (Linux)
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          cd target/${{ matrix.target }}/release/bundle
+          if [ -f "bitvue_${{ matrix.target }}.AppImage" ]; then
+            mv bitvue_${{ matrix.target }}.AppImage bitvue-${{ matrix.target }}.AppImage
+            chmod +x bitvue-${{ matrix.target }}.AppImage
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -150,40 +163,40 @@ jobs:
             !target/**/*.rlib
           if-no-files-found: warn
 
-  # Create universal macOS binary (optional)
-  build-macos-universal:
-    name: Build macOS Universal
-    runs-on: macos-latest
-    needs: build
-    if: success()
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download ARM64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: bitvue-aarch64-apple-darwin
-          path: artifacts/arm64
-
-      - name: Download x86_64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: bitvue-x86_64-apple-darwin
-          path: artifacts/x86_64
-
-      - name: Create universal binary
-        run: |
-          tar -xzf artifacts/arm64/*.tar.gz
-          tar -xzf artifacts/x86_64/*.tar.gz
-          # Merge into universal app
-          # (requires additional tooling)
-
-      - name: Upload universal artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bitvue-macos-universal
-          path: bitvue.app
+  # Create universal macOS binary (requires x86_64 build)
+  # build-macos-universal:
+  #   name: Build macOS Universal
+  #   runs-on: macos-latest
+  #   needs: build
+  #   if: success()
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Download ARM64 artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: bitvue-aarch64-apple-darwin
+  #         path: artifacts/arm64
+  #
+  #     - name: Download x86_64 artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: bitvue-x86_64-apple-darwin
+  #         path: artifacts/x86_64
+  #
+  #     - name: Create universal binary
+  #       run: |
+  #         tar -xzf artifacts/arm64/*.tar.gz
+  #         tar -xzf artifacts/x86_64/*.tar.gz
+  #         # Merge into universal app
+  #         # (requires additional tooling)
+  #
+  #     - name: Upload universal artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: bitvue-macos-universal
+  #         path: bitvue.app
 
   # Create GitHub Release on tag push
   release:
