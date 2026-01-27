@@ -21,6 +21,7 @@ run = "parallel"
 [action.check_rust_formatting]
 command = "cargo fmt --all -- --check"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 # Auto-fix (if quick checks pass)
@@ -28,12 +29,14 @@ files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 [action.format_rust_code]
 command = "cargo fmt --all"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 [action.format_typescript_css]
 skip = ["not exist - src/node_modules"]
 command = "cd src && npm run format --silent || true"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
 
 # Linting
@@ -41,18 +44,21 @@ files = ["src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
 [action.lint_rust]
 command = "cargo clippy --workspace -- -D warnings"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 [action.lint_typescript]
 skip = ["not exist - src/node_modules"]
 command = "cd src && npm run lint --silent || true"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["src/**/*.{ts,tsx,js,jsx}"]
 
 [action.lint_css]
 skip = ["not exist - src/node_modules"]
 command = "cd src && npm run lint:css --silent || true"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["src/**/*.{css,scss}"]
 
 # Tests
@@ -60,12 +66,14 @@ files = ["src/**/*.{css,scss}"]
 [action.test_rust]
 command = "cargo test --workspace --no-fail-fast"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 [action.test_typescript]
 skip = ["not exist - src/node_modules"]
 command = "cd src && npm run test:run --silent || true"
 run = "workspace"
+stage = ["pre-commit"]
 files = ["src/**/*.{ts,tsx,js,jsx}"]
 
 # ================================
@@ -78,10 +86,12 @@ branch = ["main", "develop"]
 [action.full_test_suite]
 command = "cargo test --workspace --all-features"
 run = "workspace"
+stage = ["pre-push"]
 
 [action.full_clippy]
 command = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 run = "workspace"
+stage = ["pre-push"]
 
 # ================================
 # Commit-msg: Conventional commits
