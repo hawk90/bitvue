@@ -8,10 +8,9 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { StreamDataProvider, useStreamData } from '../StreamDataContext';
 import type { FrameInfo } from '@/types/video';
 
-// Mock Tauri invoke
-const mockInvoke = vi.fn();
+// Mock Tauri invoke - must be done this way for Vitest hoisting
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: mockInvoke,
+  invoke: vi.fn(),
 }));
 
 // Mock logger
