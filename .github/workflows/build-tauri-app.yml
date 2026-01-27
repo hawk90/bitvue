@@ -60,7 +60,7 @@ jobs:
       - name: Install system dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install webkit2gtk dav1d pkg-config libayatana-appindicator
+          brew install webkitgtk dav1d pkg-config libayatana-appindicator
 
       - name: Install system dependencies (Windows) - vcpkg + dav1d
         if: matrix.os == 'windows-latest'
