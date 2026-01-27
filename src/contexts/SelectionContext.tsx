@@ -149,7 +149,8 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   // Apply Tri-Sync propagation rules
   const applyTriSyncRules = useCallback((sel: SelectionState): SelectionState => {
     // Rule 1: Temporal selection → Frame selection
-    if (sel.temporal && !sel.frame) {
+    // If temporal is set and frame is not set, or if frame index doesn't match temporal
+    if (sel.temporal && (!sel.frame || sel.frame.frameIndex !== sel.temporal.frameIndex)) {
       return {
         ...sel,
         frame: {
