@@ -162,22 +162,19 @@ bitvue/
 ## Technology Stack
 
 ### Frontend
-
-[![React](https://img.shields.io/badge/React-18-20232A?style=flat-square&logo=react)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite)](https://vitejs.dev/)
+- **React 18** - UI framework
+- **TypeScript 5** - Type safety
+- **Vite 6** - Build tool
 
 ### Backend
-
-[![Rust](https://img.shields.io/badge/Rust-1.93-000000?style=flat-square&logo=rust)](https://www.rust-lang.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-2.0-FFC131?style=flat-square&logo=tauri)](https://tauri.app/)
-[![dav1d](https://img.shields.io/badge/dav1d-AV1-1.4.0?style=flat-square)](https://code.videolan.org/videolan/dav1d)
+- **Rust 1.93+** - Systems programming
+- **Tauri 2.0** - Desktop framework
+- **dav1d 1.4.0** - AV1 decoder
 
 ### Infrastructure
-
-[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?style=flat-square&logo=github-actions)](https://github.com/hawk90/bitvue/actions)
-[![codecov](https://img.shields.io/badge/codecov-coverage-F01F7A?style=flat-square&logo=codecov)](https://codecov.io/gh/hawk90/bitvue)
-[![Lefthook](https://img.shields.io/badge/Lefthook-git_hooks-2.0.15?style=flat-square)](https://github.com/evilmartians/lefthook)
+- **GitHub Actions** - CI/CD
+- **codecov** - Code coverage
+- **Lefthook 2.0.15** - Git hooks
 
 ---
 
