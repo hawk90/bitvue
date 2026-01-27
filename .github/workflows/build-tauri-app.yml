@@ -21,21 +21,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS (Apple Silicon only)
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: bitvue-aarch64-apple-darwin
-            artifact_ext: .app.tar.gz
-          # Windows
+            artifact_name: bitvue.app.tar.gz
+            bundle_dir: bundle/macos
+            ext: .app.tar.gz
+
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: bitvue-x86_64-pc-windows-msvc
-            artifact_ext: .exe.zip
-          # Linux
+            artifact_name: bitvue-x64-installer.msi.zip
+            bundle_dir: bundle/msi
+            ext: .msi.zip   # 실제로는 .msi를 zip으로 압축
+
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            artifact_name: bitvue-x86_64-unknown-linux-gnu
-            artifact_ext: .AppImage
+            artifact_name: bitvue-x86_64.AppImage
+            bundle_dir: bundle/appimage
+            ext: .AppImage
 
     steps:
       - name: Checkout repository
@@ -46,158 +48,87 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install system dependencies (Ubuntu)
+      - name: Install system dependencies (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libdav1d-dev \
-            pkg-config
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            libdav1d-dev pkg-config libgtk-3-dev
 
       - name: Install system dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install dav1d pkg-config
-          echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig:/opt/homebrew/share/pkgconfig" >> $GITHUB_ENV
+          brew install webkit2gtk dav1d pkg-config libayatana-appindicator
 
-      - name: Install system dependencies (Windows)
+      - name: Install system dependencies (Windows) - vcpkg + dav1d
         if: matrix.os == 'windows-latest'
         run: |
-          # Bootstrap vcpkg if not exists
           if (-not (Test-Path "D:\vcpkg\vcpkg.exe")) {
-            git clone https://github.com/Microsoft/vcpkg D:\vcpkg
+            git clone https://github.com/microsoft/vcpkg D:\vcpkg
             D:\vcpkg\bootstrap-vcpkg.bat
           }
-          # Install dav1d and pkgconf (pkg-config implementation)
-          D:\vcpkg\vcpkg install dav1d pkgconf:x64-windows --triplet x64-windows-static
-          # Add pkgconf to PATH
-          "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          # Set PKG_CONFIG_PATH for dav1d
-          "PKG_CONFIG_PATH=D:\vcpkg\installed\x64-windows-static\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          D:\vcpkg\vcpkg install dav1d:x64-windows-static pkgconf:x64-windows-static --clean-after-build
+          echo "PKG_CONFIG_PATH=D:\vcpkg\installed\x64-windows-static\lib\pkgconfig" >> $env:GITHUB_ENV
+          echo "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" >> $env:GITHUB_PATH
 
-      - name: Setup Rust cache
+      - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: '. -> target'
-          cache-all-crates: true
+          workspaces: src-tauri -> target
 
-      - name: Install Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
           cache: 'npm'
 
-      - name: Install frontend dependencies
+      - name: Install frontend deps
         run: npm ci
 
       - name: Build frontend
         run: npm run build
 
-      - name: Build Tauri app (macOS)
-        if: matrix.os == 'macos-latest'
+      - name: Build Tauri app
         run: npm run tauri build -- --target ${{ matrix.target }}
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig:/opt/homebrew/share/pkgconfig
 
-      - name: Build Tauri app (Windows)
-        if: matrix.os == 'windows-latest'
-        run: npm run tauri build -- --target ${{ matrix.target }}
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          PKG_CONFIG_PATH: D:\vcpkg\installed\x64-windows-static\lib\pkgconfig
-
-      - name: Build Tauri app (Linux)
-        if: matrix.os == 'ubuntu-24.04'
-        run: npm run tauri build -- --target ${{ matrix.target }}
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
-
-      - name: Prepare artifacts (macOS)
+      # ───────────────────────────────────────────────
+      # Artifact 준비 (Tauri 기본 출력물 이름 사용)
+      # ───────────────────────────────────────────────
+      - name: Prepare artifact (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          cd src-tauri/target/${{ matrix.target }}/release
-          if [ -d "bundle/macos/bitvue.app" ]; then
-            tar -czf bundle/bitvue-${{ matrix.target }}.app.tar.gz -C bundle/macos bitvue.app
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/macos
+          ls -la
+          # 보통 bitvue.app → bitvue.app.tar.gz 로 압축됨
+          if [ -d "bitvue.app" ]; then
+            tar -czf ../../../bitvue-${{ matrix.target }}.app.tar.gz bitvue.app
           fi
 
-      - name: Prepare artifacts (Windows)
+      - name: Prepare artifact (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           cd src-tauri/target/${{ matrix.target }}/release/bundle/msi
-          if (Test-Path "*.msi") {
-            Compress-Archive -Path *.msi -DestinationPath ../../bitvue-${{ matrix.target }}.exe.zip
-          }
+          Compress-Archive -Path *.msi -DestinationPath "../../../bitvue-${{ matrix.target }}.msi.zip"
 
-      - name: Prepare artifacts (Linux)
+      - name: Prepare artifact (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle
-          if [ -f "bitvue_${{ matrix.target }}.AppImage" ]; then
-            mv bitvue_${{ matrix.target }}.AppImage bitvue-${{ matrix.target }}.AppImage
-            chmod +x bitvue-${{ matrix.target }}.AppImage
-          fi
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/appimage
+          cp *.AppImage "../../../bitvue-${{ matrix.target }}.AppImage"
+          chmod +x "../../../bitvue-${{ matrix.target }}.AppImage"
 
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bitvue-${{ matrix.target }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/*${{ matrix.artifact_ext }}
-            !src-tauri/target/**/*.d
-            !src-tauri/target/**/*.rlib
+          name: ${{ matrix.artifact_name }}
+          path: src-tauri/target/${{ matrix.target }}/release/**/${{ matrix.artifact_name }}
           if-no-files-found: warn
 
-  # Create universal macOS binary (requires x86_64 build)
-  # build-macos-universal:
-  #   name: Build macOS Universal
-  #   runs-on: macos-latest
-  #   needs: build
-  #   if: success()
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Download ARM64 artifact
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: bitvue-aarch64-apple-darwin
-  #         path: artifacts/arm64
-  #
-  #     - name: Download x86_64 artifact
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: bitvue-x86_64-apple-darwin
-  #         path: artifacts/x86_64
-  #
-  #     - name: Create universal binary
-  #       run: |
-  #         tar -xzf artifacts/arm64/*.tar.gz
-  #         tar -xzf artifacts/x86_64/*.tar.gz
-  #         # Merge into universal app
-  #         # (requires additional tooling)
-  #
-  #     - name: Upload universal artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: bitvue-macos-universal
-  #         path: bitvue.app
-
-  # Create GitHub Release on tag push
   release:
     name: Create Release
     runs-on: ubuntu-latest
@@ -205,53 +136,47 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Extract version from tag
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
         id: get_version
         run: |
-          # Extract version from tag (e.g., v0.3.0-sha -> 0.3.0-sha)
-          VERSION=${GITHUB_REF#refs/tags/v}
-          # Remove -sha suffix for clean version number
-          CLEAN_VERSION=${VERSION%-*}
+          VERSION=${GITHUB_REF#refs/tags/}
+          CLEAN_VERSION=${VERSION#v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
 
       - name: Generate changelog
-        id: changelog
         run: |
-          # Generate changelog from commits since last tag
           git fetch --tags --unshallow
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             echo "## Changes since $PREV_TAG" > changelog.md
-            echo "" >> changelog.md
             git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD >> changelog.md
           else
             echo "## Initial Release" > changelog.md
-            echo "" >> changelog.md
-            git log --pretty=format:"- %s (%h)" HEAD >> changelog.md
+            git log --pretty=format:"- %s (%h)" >> changelog.md
           fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-artifacts
+          path: artifacts
+          pattern: bitvue.*
+          merge-multiple: true
 
-      - name: Display artifacts
-        run: ls -R release-artifacts
+      - name: Show downloaded files
+        run: ls -R artifacts
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: bitvue ${{ steps.get_version.outputs.clean_version }}
           body_path: changelog.md
           draft: false
-          prerelease: false  # All SHA releases are official releases
+          prerelease: false
           generate_release_notes: false
-          files: release-artifacts/**/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: artifacts/**/*
