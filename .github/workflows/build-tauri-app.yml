@@ -100,12 +100,20 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Build Tauri app
+      - name: Build Tauri app (macOS)
+        if: matrix.os == 'macos-latest' || matrix.os == 'macos-13'
         run: npm run tauri build -- --target ${{ matrix.target }}
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig
+
+      - name: Build Tauri app (Windows/Linux)
+        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-24.04'
+        run: npm run tauri build -- --target ${{ matrix.target }}
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
       - name: Prepare artifacts (macOS)
         if: matrix.os == 'macos-latest'
