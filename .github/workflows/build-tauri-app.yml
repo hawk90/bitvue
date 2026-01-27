@@ -78,10 +78,10 @@ jobs:
             git clone https://github.com/Microsoft/vcpkg D:\vcpkg
             D:\vcpkg\bootstrap-vcpkg.bat
           }
-          # Install dav1d and pkg-config
-          D:\vcpkg\vcpkg install dav1d pkg-config:x64-windows --triplet x64-windows-static
-          # Add pkg-config to PATH
-          "D:\vcpkg\installed\x64-windows-static\tools\pkg-config" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # Install dav1d and pkgconf (pkg-config implementation)
+          D:\vcpkg\vcpkg install dav1d pkgconf:x64-windows --triplet x64-windows-static
+          # Add pkgconf to PATH
+          "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           # Set PKG_CONFIG_PATH for dav1d
           "PKG_CONFIG_PATH=D:\vcpkg\installed\x64-windows-static\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
