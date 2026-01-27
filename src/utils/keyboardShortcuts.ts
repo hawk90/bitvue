@@ -210,9 +210,11 @@ export class KeyboardShortcutHandler {
     // Don't handle if in input field
     const target = event.target as HTMLElement;
     if (
-      target.tagName === 'INPUT' ||
+      target &&
+      (target.tagName === 'INPUT' ||
       target.tagName === 'TEXTAREA' ||
-      target.isContentEditable
+      target.isContentEditable ||
+      target.getAttribute('contenteditable')?.toLowerCase() === 'true')
     ) {
       return false;
     }

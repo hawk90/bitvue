@@ -16,7 +16,7 @@
  * ```
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
@@ -153,14 +153,26 @@ export function useFileOperations(): UseFileOperationsResult {
     setError(null);
   }, []);
 
+  // Use refs to store stable references to the callback functions
+  // This prevents the event listeners from being re-registered on every render
+  const openBitstreamRef = useRef(openBitstream);
+  const closeBitstreamRef = useRef(closeBitstream);
+
+  // Update the refs whenever the callbacks change
+  useEffect(() => {
+    openBitstreamRef.current = openBitstream;
+    closeBitstreamRef.current = closeBitstream;
+  });
+
   // Set up menu event listeners for file operations
+  // Empty dependency array ensures this only runs once
   useEffect(() => {
     const handleOpenBitstream = () => {
-      openBitstream();
+      openBitstreamRef.current();
     };
 
     const handleCloseFile = () => {
-      closeBitstream();
+      closeBitstreamRef.current();
     };
 
     window.addEventListener('menu-open-bitstream', handleOpenBitstream);
@@ -170,7 +182,7 @@ export function useFileOperations(): UseFileOperationsResult {
       window.removeEventListener('menu-open-bitstream', handleOpenBitstream);
       window.removeEventListener('menu-close-file', handleCloseFile);
     };
-  }, [openBitstream, closeBitstream]);
+  }, []); // Empty deps - listeners are set up once and use refs for callbacks
 
   // Listen for file-opened events from Tauri
   useEffect(() => {

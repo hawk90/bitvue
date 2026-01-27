@@ -35,7 +35,13 @@ function Timeline({ frames, className = '' }: TimelineProps) {
 
   // Calculate cursor position based on actual DOM element position (memoized)
   const cursorPosition = useMemo(() => {
-    if (timelineRef.current && frameRefs.current[highlightedFrameIndex]) {
+    // Add bounds check to prevent array index out of bounds
+    if (
+      timelineRef.current &&
+      highlightedFrameIndex >= 0 &&
+      highlightedFrameIndex < frameRefs.current.length &&
+      frameRefs.current[highlightedFrameIndex]
+    ) {
       const frameEl = frameRefs.current[highlightedFrameIndex];
       const containerEl = timelineRef.current;
       if (frameEl && containerEl) {

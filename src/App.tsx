@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, memo } from "react";
+import { useState, useCallback, useEffect, memo, lazy, Suspense } from "react";
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from "@tauri-apps/api/event";
 import { open } from '@tauri-apps/plugin-dialog';
@@ -6,10 +6,7 @@ import "./App.css";
 import "./components/TimelineFilmstrip.css";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { TitleBar } from "./components/TitleBar";
-import { KeyboardShortcutsDialog } from "./components/KeyboardShortcutsDialog";
-import { ErrorDialog } from "./components/ErrorDialog";
 import { StatusBar } from "./components/StatusBar";
-import { ExportDialog } from "./components/ExportDialog";
 import { globalShortcutHandler, type ShortcutConfig } from "./utils/keyboardShortcuts";
 import { SelectionProvider } from "./contexts/SelectionContext";
 import { ModeProvider } from "./contexts/ModeContext";
@@ -31,6 +28,25 @@ import {
   InfoPanel,
   DetailsPanel,
 } from "./components/panels";
+
+// Lazy load dialog components - only loaded when needed
+// In test environment, use regular imports to avoid async loading issues
+const KeyboardShortcutsDialog = process.env.NODE_ENV === 'test'
+  ? require("./components/KeyboardShortcutsDialog").KeyboardShortcutsDialog
+  : lazy(() => import("./components/KeyboardShortcutsDialog").then(m => ({ default: m.KeyboardShortcutsDialog })));
+
+const ErrorDialog = process.env.NODE_ENV === 'test'
+  ? require("./components/ErrorDialog").ErrorDialog
+  : lazy(() => import("./components/ErrorDialog").then(m => ({ default: m.ErrorDialog })));
+
+const ExportDialog = process.env.NODE_ENV === 'test'
+  ? require("./components/ExportDialog").ExportDialog
+  : lazy(() => import("./components/ExportDialog").then(m => ({ default: m.ExportDialog })));
+
+// Loading fallback for lazy-loaded components
+function DialogLoadingFallback() {
+  return <div className="dialog-loading">Loading...</div>;
+}
 
 const logger = createLogger('App');
 
@@ -383,30 +399,65 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
       </div>
 
       {/* Keyboard Shortcuts Dialog */}
-      <KeyboardShortcutsDialog
-        isOpen={showShortcuts}
-        onClose={() => setShowShortcuts(false)}
-      />
+      {process.env.NODE_ENV === 'test' ? (
+        <KeyboardShortcutsDialog
+          isOpen={showShortcuts}
+          onClose={() => setShowShortcuts(false)}
+        />
+      ) : (
+        <Suspense fallback={<DialogLoadingFallback />}>
+          <KeyboardShortcutsDialog
+            isOpen={showShortcuts}
+            onClose={() => setShowShortcuts(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Error Dialog */}
-      <ErrorDialog
-        isOpen={errorDialog.isOpen}
-        title={errorDialog.title}
-        message={errorDialog.message}
-        details={errorDialog.details}
-        errorCode={errorDialog.errorCode}
-        onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
-      />
+      {process.env.NODE_ENV === 'test' ? (
+        <ErrorDialog
+          isOpen={errorDialog.isOpen}
+          title={errorDialog.title}
+          message={errorDialog.message}
+          details={errorDialog.details}
+          errorCode={errorDialog.errorCode}
+          onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
+        />
+      ) : (
+        <Suspense fallback={<DialogLoadingFallback />}>
+          <ErrorDialog
+            isOpen={errorDialog.isOpen}
+            title={errorDialog.title}
+            message={errorDialog.message}
+            details={errorDialog.details}
+            errorCode={errorDialog.errorCode}
+            onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
+          />
+        </Suspense>
+      )}
 
       {/* Export Dialog */}
-      <ExportDialog
-        isOpen={showExportDialog}
-        onClose={() => setShowExportDialog(false)}
-        frames={frames}
-        codec={fileInfo?.codec}
-        width={fileInfo?.width}
-        height={fileInfo?.height}
-      />
+      {process.env.NODE_ENV === 'test' ? (
+        <ExportDialog
+          isOpen={showExportDialog}
+          onClose={() => setShowExportDialog(false)}
+          frames={frames}
+          codec={fileInfo?.codec}
+          width={fileInfo?.width}
+          height={fileInfo?.height}
+        />
+      ) : (
+        <Suspense fallback={<DialogLoadingFallback />}>
+          <ExportDialog
+            isOpen={showExportDialog}
+            onClose={() => setShowExportDialog(false)}
+            frames={frames}
+            codec={fileInfo?.codec}
+            width={fileInfo?.width}
+            height={fileInfo?.height}
+          />
+        </Suspense>
+      )}
     </SelectionProvider>
     </ModeProvider>
   );

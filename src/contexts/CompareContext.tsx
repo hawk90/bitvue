@@ -2,7 +2,7 @@
  * Compare Context - Manages A/B compare workspace state
  */
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type {
   CompareWorkspace,
@@ -132,7 +132,8 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value: CompareContextType = {
+  // Memoize context value to prevent unnecessary re-renders in consumers
+  const value = useMemo<CompareContextType>(() => ({
     workspace,
     isLoading,
     error,
@@ -148,7 +149,23 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     setManualOffset,
     resetOffset,
     getAlignedFrame,
-  };
+  }), [
+    workspace,
+    isLoading,
+    error,
+    pathA,
+    pathB,
+    currentFrameA,
+    currentFrameB,
+    createWorkspace,
+    closeWorkspace,
+    setFrameA,
+    setFrameB,
+    setSyncMode,
+    setManualOffset,
+    resetOffset,
+    getAlignedFrame,
+  ]);
 
   return <CompareContext.Provider value={value}>{children}</CompareContext.Provider>;
 }

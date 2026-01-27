@@ -7,6 +7,7 @@
 
 import { useRef, useState, useCallback, useEffect, useMemo, memo } from 'react';
 import type { FrameInfo } from '../types/video';
+import { getFrameTypeColor } from '../types/video';
 import './VirtualizedFilmstrip.css';
 
 interface VirtualizedFilmstripProps {
@@ -46,30 +47,53 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
   // Calculate offset for first visible item
   const offset = visibleRange.start * itemWidth;
 
-  // Get frame type color
-  const getFrameTypeColor = useCallback((frameType: string) => {
-    switch (frameType) {
-      case 'I':
-      case 'KEY':
-        return 'var(--frame-i)';
-      case 'P':
-        return 'var(--frame-p)';
-      case 'B':
-        return 'var(--frame-b)';
-      default:
-        return 'var(--text-secondary)';
+  // Handle scroll with requestAnimationFrame for smooth updates
+  const rafRef = useRef<number>();
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    // Cancel any pending animation frame
+    if (rafRef.current !== undefined) {
+      cancelAnimationFrame(rafRef.current);
     }
+
+    // Schedule state update for next animation frame
+    rafRef.current = requestAnimationFrame(() => {
+      setScrollLeft(e.currentTarget.scrollLeft);
+      rafRef.current = undefined;
+    });
   }, []);
 
-  // Handle scroll
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollLeft(e.currentTarget.scrollLeft);
+  // Cleanup animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== undefined) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
   }, []);
 
   // Handle click on frame
   const handleFrameClick = useCallback((frameIndex: number) => {
     onFrameChange(frameIndex);
   }, [onFrameChange]);
+
+  // Track event listeners for cleanup
+  const eventListenersRef = useRef<{
+    handleMouseMove?: (e: MouseEvent) => void;
+    handleMouseUp?: () => void;
+  }>({});
+
+  // Cleanup event listeners on unmount
+  useEffect(() => {
+    return () => {
+      // Clean up any lingering event listeners
+      if (eventListenersRef.current.handleMouseMove) {
+        window.removeEventListener('mousemove', eventListenersRef.current.handleMouseMove);
+      }
+      if (eventListenersRef.current.handleMouseUp) {
+        window.removeEventListener('mouseup', eventListenersRef.current.handleMouseUp);
+      }
+    };
+  }, []);
 
   // Handle scrubbing
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -85,9 +109,15 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      // Remove event listeners
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      // Clear refs
+      eventListenersRef.current = {};
     };
+
+    // Store refs for cleanup
+    eventListenersRef.current = { handleMouseMove, handleMouseUp };
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -130,7 +160,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
       );
     }
     return result;
-  }, [visibleRange, frames, currentFrameIndex, itemWidth, getFrameTypeColor, handleFrameClick]);
+  }, [visibleRange, frames, currentFrameIndex, itemWidth, handleFrameClick]);
 
   return (
     <div className="virtualized-filmstrip">

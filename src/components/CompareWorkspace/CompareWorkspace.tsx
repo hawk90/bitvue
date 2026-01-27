@@ -99,7 +99,7 @@ function CompareWorkspace({
         <div className="compare-title">
           <h2>A/B Compare</h2>
           <span className="compare-subtitle">
-            {workspace.alignment.method} • {workspace.alignment.confidence} confidence
+            {workspace.alignment?.method ?? 'Unknown'} • {workspace.alignment?.confidence ?? 0} confidence
           </span>
         </div>
 
@@ -109,10 +109,11 @@ function CompareWorkspace({
           onSyncModeChange={handleSyncModeChange}
           onOffsetChange={handleOffsetChange}
           alignmentInfo={{
-            method: workspace.alignment.method,
-            confidence: workspace.alignment.confidence,
-            gapPercentage: (workspace.alignment.gap_count /
-              Math.max(workspace.alignment.frame_pairs.length, 1)) * 100,
+            method: workspace.alignment?.method ?? 'Unknown',
+            confidence: workspace.alignment?.confidence ?? 0,
+            gapPercentage: workspace.alignment?.frame_pairs
+              ? (workspace.alignment.gap_count / Math.max(workspace.alignment.frame_pairs.length, 1)) * 100
+              : 0,
           }}
         />
 

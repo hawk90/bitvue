@@ -5,7 +5,7 @@
  * Includes line graph overlay for bitrate curve
  */
 
-import { useMemo, memo } from 'react';
+import { useMemo, memo, useCallback } from 'react';
 import type { FrameInfo } from '../../../types/video';
 import { getFrameTypeColor } from '../../../types/video';
 
@@ -104,11 +104,14 @@ function FrameSizesView({
     return Math.max(...bitrates);
   }, [frameBitrates]);
 
-  const isFrameTypeVisible = (frameType: string): boolean => {
+  const isFrameTypeVisible = useCallback((frameType: string): boolean => {
     return visibleFrameTypes.has(frameType);
-  };
+  }, [visibleFrameTypes]);
 
-  const filteredFrames = frames.filter(f => isFrameTypeVisible(f.frame_type));
+  // Memoize filtered frames to avoid recalculation on every render
+  const filteredFrames = useMemo(() => {
+    return frames.filter(f => isFrameTypeVisible(f.frame_type));
+  }, [frames, isFrameTypeVisible]);
 
   // Calculate QP range for right Y-axis
   const minQP = 0;

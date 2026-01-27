@@ -11,6 +11,27 @@ import { BarChart } from '../charts/BarChart';
 import { getCssVar } from '../../utils/css';
 import './StatisticsPanel.css';
 
+/**
+ * Frame size range categories for statistics
+ */
+const FRAME_SIZE_RANGES = {
+  SMALL: '< 10KB',
+  MEDIUM_SMALL: '10-50KB',
+  MEDIUM: '50-100KB',
+  MEDIUM_LARGE: '100-500KB',
+  LARGE: '> 500KB',
+} as const;
+
+/**
+ * Size thresholds in KB for categorizing frames
+ */
+const SIZE_THRESHOLDS = {
+  SMALL: 10,
+  MEDIUM_SMALL: 50,
+  MEDIUM: 100,
+  MEDIUM_LARGE: 500,
+} as const;
+
 export const StatisticsPanel = memo(function StatisticsPanel() {
   const { frames, getFrameStats } = useStreamData();
 
@@ -21,21 +42,21 @@ export const StatisticsPanel = memo(function StatisticsPanel() {
     if (frames.length === 0) return {};
 
     // Group by size ranges
-    const ranges = {
-      '< 10KB': 0,
-      '10-50KB': 0,
-      '50-100KB': 0,
-      '100-500KB': 0,
-      '> 500KB': 0,
+    const ranges: Record<string, number> = {
+      [FRAME_SIZE_RANGES.SMALL]: 0,
+      [FRAME_SIZE_RANGES.MEDIUM_SMALL]: 0,
+      [FRAME_SIZE_RANGES.MEDIUM]: 0,
+      [FRAME_SIZE_RANGES.MEDIUM_LARGE]: 0,
+      [FRAME_SIZE_RANGES.LARGE]: 0,
     };
 
     frames.forEach(frame => {
       const sizeKB = frame.size / 1024;
-      if (sizeKB < 10) ranges['< 10KB']++;
-      else if (sizeKB < 50) ranges['10-50KB']++;
-      else if (sizeKB < 100) ranges['50-100KB']++;
-      else if (sizeKB < 500) ranges['100-500KB']++;
-      else ranges['> 500KB']++;
+      if (sizeKB < SIZE_THRESHOLDS.SMALL) ranges[FRAME_SIZE_RANGES.SMALL]++;
+      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM_SMALL) ranges[FRAME_SIZE_RANGES.MEDIUM_SMALL]++;
+      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM) ranges[FRAME_SIZE_RANGES.MEDIUM]++;
+      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM_LARGE) ranges[FRAME_SIZE_RANGES.MEDIUM_LARGE]++;
+      else ranges[FRAME_SIZE_RANGES.LARGE]++;
     });
 
     return ranges;

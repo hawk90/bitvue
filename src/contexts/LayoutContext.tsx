@@ -7,8 +7,58 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { createLogger } from '../utils/logger';
+import { TIMING } from '../constants/ui';
 
 const logger = createLogger('LayoutContext');
+
+/**
+ * Storage error types for better error handling
+ */
+enum StorageErrorType {
+  QUOTA_EXCEEDED = 'QUOTA_EXCEEDED',
+  ACCESS_DENIED = 'ACCESS_DENIED',
+  PARSE_ERROR = 'PARSE_ERROR',
+  UNKNOWN = 'UNKNOWN',
+}
+
+/**
+ * Identify the type of storage error
+ */
+function getStorageErrorType(error: unknown): StorageErrorType {
+  if (error instanceof DOMException) {
+    if (error.name === 'QuotaExceededError') {
+      return StorageErrorType.QUOTA_EXCEEDED;
+    }
+    if (error.name === 'SecurityError') {
+      return StorageErrorType.ACCESS_DENIED;
+    }
+  }
+  if (error instanceof SyntaxError) {
+    return StorageErrorType.PARSE_ERROR;
+  }
+  return StorageErrorType.UNKNOWN;
+}
+
+/**
+ * Handle storage errors with appropriate logging and user feedback
+ */
+function handleStorageError(error: unknown, operation: string): void {
+  const errorType = getStorageErrorType(error);
+
+  switch (errorType) {
+    case StorageErrorType.QUOTA_EXCEEDED:
+      logger.warn(`Storage quota exceeded while ${operation}. Layout will not persist.`);
+      break;
+    case StorageErrorType.ACCESS_DENIED:
+      logger.warn(`Storage access denied while ${operation}. Using default layout.`);
+      break;
+    case StorageErrorType.PARSE_ERROR:
+      logger.warn(`Failed to parse stored layout while ${operation}. Using defaults.`);
+      break;
+    default:
+      logger.debug(`Storage error during ${operation}:`, error);
+  }
+}
 
 export interface LayoutState {
   leftPanelSize: number;
@@ -55,7 +105,11 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
 
   const updateBottomPanel = useCallback((index: number, size: number) => {
     setLayoutState(prev => {
-      const newSizes = [...prev.bottomPanelSizes];
+      // Create new array only when necessary
+      if (prev.bottomPanelSizes[index] === size) {
+        return prev; // No change needed
+      }
+      const newSizes = prev.bottomPanelSizes.slice(); // More efficient than spread for arrays
       newSizes[index] = size;
       return { ...prev, bottomPanelSizes: newSizes };
     });
@@ -67,7 +121,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.removeItem('bitvue-layout');
     } catch (e) {
-      // Ignore storage errors
+      handleStorageError(e, 'clearing layout');
     }
   }, []);
 
@@ -75,7 +129,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem('bitvue-layout', JSON.stringify(layoutState));
     } catch (e) {
-      // Ignore storage errors
+      handleStorageError(e, 'saving layout');
     }
   }, [layoutState]);
 
@@ -84,11 +138,22 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem('bitvue-layout');
       if (saved) {
         const parsed = JSON.parse(saved);
-        setLayoutState(parsed);
+        // Validate the parsed layout structure
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          'leftPanelSize' in parsed &&
+          'topPanelSize' in parsed &&
+          'bottomPanelSizes' in parsed &&
+          Array.isArray(parsed.bottomPanelSizes)
+        ) {
+          setLayoutState(parsed);
+        } else {
+          logger.warn('Invalid layout structure in storage, using defaults');
+        }
       }
     } catch (e) {
-      // Use defaults on error
-      logger.warn('Failed to load layout:', e);
+      handleStorageError(e, 'loading layout');
     }
   }, []);
 
@@ -97,7 +162,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     if (process.env.NODE_ENV !== 'test') {
       const timeout = setTimeout(() => {
         saveLayout();
-      }, 500); // Debounce saves
+      }, TIMING.STORAGE_DEBOUNCE_DELAY); // Debounce saves
       return () => clearTimeout(timeout);
     }
   }, [layoutState, saveLayout]);

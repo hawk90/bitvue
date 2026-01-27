@@ -9,7 +9,7 @@ import { ForwardedRef, forwardRef, useRef, useEffect, useCallback } from 'react'
 import type { FrameInfo } from '../../../types/video';
 import { TemporalLevel, FrameWithLevel, TemporalAnalysis } from './BPyramidTypes';
 import { usePreRenderedArrows, ArrowPosition, PathCalculator, FrameInfoBase } from '../../usePreRenderedArrows';
-import { getFrameTypeColor } from '../../../types/video';
+import { getFrameTypeColor, isKeyframe } from '../../../types/video';
 
 /**
  * Analyze all frames and use temporal_id from AV1 bitstream
@@ -22,7 +22,7 @@ export function analyzeTemporalLevels(frames: FrameInfo[]): TemporalAnalysis {
 
   // Find all keyframes to identify GOP boundaries
   const keyframes = [0, ...frames
-    .filter((f, i) => i > 0 && (f.key_frame || f.frame_type === 'I' || f.frame_type === 'KEY'))
+    .filter((f, i) => i > 0 && isKeyframe(f.frame_type, f.key_frame))
     .map(f => f.frame_index)
   ];
 
@@ -33,7 +33,7 @@ export function analyzeTemporalLevels(frames: FrameInfo[]): TemporalAnalysis {
   frames.forEach((frame) => {
     // Use real temporal_id from AV1 OBU header
     const level = frame.temporal_id ?? 0;
-    const isKeyframe = frame.key_frame || frame.frame_type === 'I' || frame.frame_type === 'KEY';
+    const isKey = isKeyframe(frame.frame_type, frame.key_frame);
 
     const frameWithLevel: FrameWithLevel = {
       index: frame.frame_index,
@@ -41,7 +41,7 @@ export function analyzeTemporalLevels(frames: FrameInfo[]): TemporalAnalysis {
       frameType: frame.frame_type,
       refFrames: frame.ref_frames || [],
       level,
-      isKeyframe,
+      isKeyframe: isKey,
     };
 
     frameMap.set(frame.frame_index, frameWithLevel);

@@ -4,12 +4,64 @@
  * Provides stream/frame data to all panels
  */
 
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { FrameInfo } from '../types/video';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('StreamDataContext');
+
+/**
+ * Count frame types in the frame array
+ */
+function countFrameTypes(frames: FrameInfo[]): Record<string, number> {
+  const frameTypes: Record<string, number> = {};
+  for (const frame of frames) {
+    frameTypes[frame.frame_type] = (frameTypes[frame.frame_type] || 0) + 1;
+  }
+  return frameTypes;
+}
+
+/**
+ * Calculate total size of all frames
+ */
+function calculateTotalSize(frames: FrameInfo[]): number {
+  let totalSize = 0;
+  for (const frame of frames) {
+    totalSize += frame.size;
+  }
+  return totalSize;
+}
+
+/**
+ * Count keyframes in the frame array
+ */
+function countKeyframes(frames: FrameInfo[]): number {
+  let keyFrames = 0;
+  for (const frame of frames) {
+    if (frame.key_frame) {
+      keyFrames++;
+    }
+  }
+  return keyFrames;
+}
+
+/**
+ * Calculate frame statistics from an array of frames
+ */
+function calculateFrameStats(frames: FrameInfo[]): FrameStats {
+  const totalFrames = frames.length;
+  const totalSize = calculateTotalSize(frames);
+  const avgSize = totalFrames > 0 ? totalSize / totalFrames : 0;
+
+  return {
+    totalFrames,
+    frameTypes: countFrameTypes(frames),
+    totalSize,
+    avgSize,
+    keyFrames: countKeyframes(frames),
+  };
+}
 
 interface StreamDataContextType {
   frames: FrameInfo[];
@@ -85,43 +137,26 @@ export function StreamDataProvider({ children }: { children: ReactNode }) {
 
   // Get frame statistics
   const getFrameStats = useCallback((): FrameStats => {
-    const stats: FrameStats = {
-      totalFrames: frames.length,
-      frameTypes: {},
-      totalSize: 0,
-      avgSize: 0,
-      keyFrames: 0,
-    };
-
-    frames.forEach(frame => {
-      stats.frameTypes[frame.frame_type] = (stats.frameTypes[frame.frame_type] || 0) + 1;
-      stats.totalSize += frame.size;
-      if (frame.key_frame) {
-        stats.keyFrames++;
-      }
-    });
-
-    stats.avgSize = stats.totalFrames > 0 ? stats.totalSize / stats.totalFrames : 0;
-
-    return stats;
+    return calculateFrameStats(frames);
   }, [frames]);
 
+  // Memoize context value to prevent unnecessary re-renders in consumers
+  const contextValue = useMemo<StreamDataContextType>(() => ({
+    frames,
+    filePath,
+    loading,
+    error,
+    currentFrameIndex,
+    setCurrentFrameIndex,
+    refreshFrames,
+    clearData,
+    getFrameStats,
+    setFilePath: handleSetFilePath,
+    setFrames,
+  }), [frames, filePath, loading, error, currentFrameIndex, refreshFrames, clearData, getFrameStats, handleSetFilePath]);
+
   return (
-    <StreamDataContext.Provider
-      value={{
-        frames,
-        filePath,
-        loading,
-        error,
-        currentFrameIndex,
-        setCurrentFrameIndex,
-        refreshFrames,
-        clearData,
-        getFrameStats,
-        setFilePath: handleSetFilePath,
-        setFrames,
-      }}
-    >
+    <StreamDataContext.Provider value={contextValue}>
       {children}
     </StreamDataContext.Provider>
   );

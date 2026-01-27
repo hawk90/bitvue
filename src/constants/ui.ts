@@ -71,10 +71,11 @@ export const MOVING_AVERAGE_WINDOW = 21; // frames
 // ==================== Timings ====================
 
 export const TIMING = {
-  THUMBNAIL_LOAD_DELAY: 100, // ms before loading next batch
-  DEBOUNCE_DELAY: 150,        // ms for debounce operations
-  TOOLTIP_DELAY: 300,         // ms before showing tooltip
-  AUTO_PLAY_INTERVAL: 1000,    // ms between frames at 1fps
+  THUMBNAIL_LOAD_DELAY: 100,    // ms before loading next batch
+  DEBOUNCE_DELAY: 150,          // ms for debounce operations
+  TOOLTIP_DELAY: 300,           // ms before showing tooltip
+  AUTO_PLAY_INTERVAL: 1000,     // ms between frames at 1fps
+  STORAGE_DEBOUNCE_DELAY: 500,  // ms for auto-saving to localStorage
 } as const;
 
 // ==================== Dimensions ====================

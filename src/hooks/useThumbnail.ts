@@ -26,6 +26,11 @@ import { createLogger } from '../utils/logger';
 const logger = createLogger('useThumbnail');
 
 /**
+ * Cleanup function for pending async operations
+ */
+type CleanupFunction = () => void;
+
+/**
  * Result from the get_thumbnails Tauri command
  */
 export interface ThumbnailResult {
@@ -45,6 +50,8 @@ export interface UseThumbnailResult {
   thumbnails: Map<number, string>;
   /** Set of frame indices currently being loaded */
   loading: Set<number>;
+  /** Set of frame indices that failed to load */
+  errors: Set<number>;
   /**
    * Load thumbnails for the specified frame indices
    * Only loads thumbnails that aren't already cached or currently loading
@@ -56,6 +63,8 @@ export interface UseThumbnailResult {
   has: (frameIndex: number) => boolean;
   /** Get a thumbnail data URL */
   get: (frameIndex: number) => string | undefined;
+  /** Check if a thumbnail failed to load */
+  hasError: (frameIndex: number) => boolean;
 }
 
 /**
@@ -76,10 +85,15 @@ function getDataUrl(base64Data: string): string {
 export function useThumbnail(): UseThumbnailResult {
   const [thumbnails, setThumbnails] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState<Set<number>>(new Set());
+  const [errors, setErrors] = useState<Set<number>>(new Set());
+
+  // Track if component is mounted to prevent state updates after unmount
+  const mountedRef = useRef(true);
 
   // Use refs to avoid stale closures in callbacks
   const thumbnailsRef = useRef(thumbnails);
   const loadingRef = useRef(loading);
+  const errorsRef = useRef(errors);
 
   useEffect(() => {
     thumbnailsRef.current = thumbnails;
@@ -88,6 +102,18 @@ export function useThumbnail(): UseThumbnailResult {
   useEffect(() => {
     loadingRef.current = loading;
   }, [loading]);
+
+  useEffect(() => {
+    errorsRef.current = errors;
+  }, [errors]);
+
+  // Set mounted to false on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   /**
    * Load thumbnails for the specified frame indices
@@ -102,10 +128,16 @@ export function useThumbnail(): UseThumbnailResult {
 
     if (indicesToLoad.length === 0) return;
 
-    // Mark indices as loading
+    // Mark indices as loading and clear previous errors for these indices
     setLoading((prev) => {
       const newSet = new Set(prev);
       indicesToLoad.forEach((i) => newSet.add(i));
+      return newSet;
+    });
+
+    setErrors((prev) => {
+      const newSet = new Set(prev);
+      indicesToLoad.forEach((i) => newSet.delete(i));
       return newSet;
     });
 
@@ -114,25 +146,55 @@ export function useThumbnail(): UseThumbnailResult {
         frameIndices: indicesToLoad
       });
 
-      setThumbnails((prev) => {
-        const newMap = new Map(prev);
-        results.forEach((result) => {
-          if (result.success && result.thumbnail_data) {
-            const dataUrl = getDataUrl(result.thumbnail_data);
-            newMap.set(result.frame_index, dataUrl);
-          }
+      // Only update state if component is still mounted
+      if (mountedRef.current) {
+        const failedIndices: number[] = [];
+
+        setThumbnails((prev) => {
+          const newMap = new Map(prev);
+          results.forEach((result) => {
+            if (result.success && result.thumbnail_data) {
+              const dataUrl = getDataUrl(result.thumbnail_data);
+              newMap.set(result.frame_index, dataUrl);
+            } else {
+              // Track failed thumbnails
+              failedIndices.push(result.frame_index);
+              logger.warn(`Failed to load thumbnail for frame ${result.frame_index}: ${result.error || 'Unknown error'}`);
+            }
+          });
+          return newMap;
         });
-        return newMap;
-      });
+
+        // Update error state for failed thumbnails
+        if (failedIndices.length > 0) {
+          setErrors((prev) => {
+            const newSet = new Set(prev);
+            failedIndices.forEach((i) => newSet.add(i));
+            return newSet;
+          });
+        }
+      }
     } catch (err) {
-      logger.error('Failed to load thumbnails:', err);
+      // Log the error and mark all requested indices as failed
+      logger.error('Failed to load thumbnails batch:', err);
+
+      if (mountedRef.current) {
+        setErrors((prev) => {
+          const newSet = new Set(prev);
+          indicesToLoad.forEach((i) => newSet.add(i));
+          return newSet;
+        });
+      }
     } finally {
-      // Remove indices from loading state
-      setLoading((prev) => {
-        const newSet = new Set(prev);
-        indicesToLoad.forEach((i) => newSet.delete(i));
-        return newSet;
-      });
+      // Only update state if component is still mounted
+      if (mountedRef.current) {
+        // Remove indices from loading state
+        setLoading((prev) => {
+          const newSet = new Set(prev);
+          indicesToLoad.forEach((i) => newSet.delete(i));
+          return newSet;
+        });
+      }
     }
   }, []);
 
@@ -141,6 +203,7 @@ export function useThumbnail(): UseThumbnailResult {
    */
   const clearCache = useCallback(() => {
     setThumbnails(new Map());
+    setErrors(new Set());
   }, []);
 
   /**
@@ -157,13 +220,22 @@ export function useThumbnail(): UseThumbnailResult {
     return thumbnailsRef.current.get(frameIndex);
   }, []);
 
+  /**
+   * Check if a thumbnail failed to load
+   */
+  const hasError = useCallback((frameIndex: number): boolean => {
+    return errorsRef.current.has(frameIndex);
+  }, []);
+
   return {
     thumbnails,
     loading,
+    errors,
     loadThumbnails,
     clearCache,
     has,
     get,
+    hasError,
   };
 }
 

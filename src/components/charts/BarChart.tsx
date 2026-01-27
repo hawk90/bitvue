@@ -5,7 +5,7 @@
  * Supports custom colors and dynamic max value calculation
  */
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { getCssVar } from '../../utils/css';
 
 export interface BarChartProps {
@@ -55,11 +55,16 @@ export const BarChart = memo(function BarChart({
   minBarHeight = 1,
   className = 'bar-chart',
 }: BarChartProps) {
-  // Sort entries by value (descending) for better visual comparison
-  const entries = Object.entries(data).sort(([, a], [, b]) => b - a);
+  // Memoize expensive operations: sorting and max calculation
+  const { entries, maxVal } = useMemo(() => {
+    // Sort entries by value (descending) for better visual comparison
+    const sortedEntries = Object.entries(data).sort(([, a], [, b]) => b - a);
 
-  // Calculate max value if not provided
-  const maxVal = maxValue ?? Math.max(...entries.map(([, v]) => v), 1);
+    // Calculate max value if not provided
+    const calculatedMax = maxValue ?? Math.max(...sortedEntries.map(([, v]) => v), 1);
+
+    return { entries: sortedEntries, maxVal: calculatedMax };
+  }, [data, maxValue]);
 
   if (entries.length === 0) {
     return null;

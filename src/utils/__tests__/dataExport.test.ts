@@ -117,17 +117,22 @@ describe('dataExport utilities', () => {
         href: '',
         download: '',
         click: vi.fn(),
+        style: {},
       };
 
-      vi.spyOn(document, 'createElement').mockReturnValue(mockLink);
-      vi.spyOn(document, 'appendChild').mockReturnValue(mockLink);
-      vi.spyOn(document, 'removeChild').mockReturnValue(mockLink);
+      const createElementSpy = vi.spyOn(document, 'createElement').mockReturnValue(mockLink as any);
+      const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockLink as any);
+      const removeChildSpy = vi.spyOn(document.body, 'removeChild').mockImplementation(() => mockLink as any);
 
-      dataExport.downloadCSV('test.csv', 'frame_index,size\n0,100');
+      dataExport.downloadCSV('frame_index,size\n0,100', 'test.csv');
 
       expect(mockLink.href).toBe('blob:mock-url');
       expect(mockLink.download).toBe('test.csv');
       expect(mockLink.click).toHaveBeenCalled();
+
+      createElementSpy.mockRestore();
+      appendChildSpy.mockRestore();
+      removeChildSpy.mockRestore();
     });
 
     it('should revoke object URL after download', () => {

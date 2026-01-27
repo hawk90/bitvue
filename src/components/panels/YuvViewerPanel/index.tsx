@@ -130,6 +130,11 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             setFrameImage(img);
             setIsLoading(false);
           };
+          img.onerror = () => {
+            logger.error('Failed to decode frame image for frame:', frameIndex);
+            setIsLoading(false);
+            setFrameImage(null);
+          };
           img.src = `data:image/png;base64,${result.frame_data}`;
         } else {
           logger.error('Failed to load frame:', result.error);

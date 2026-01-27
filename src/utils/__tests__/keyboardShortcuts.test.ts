@@ -29,18 +29,18 @@ describe('KEYBOARD_SHORTCUTS', () => {
   it('should have navigation shortcuts', () => {
     const nav = KEYBOARD_SHORTCUTS.find(c => c.name === 'Navigation');
     expect(nav).toBeDefined();
-    expect(nav?.shortcuts).toHaveLength(6);
+    expect(nav?.shortcuts).toHaveLength(12);
   });
 
   it('should have playback shortcuts', () => {
     const playback = KEYBOARD_SHORTCUTS.find(c => c.name === 'Playback');
     expect(playback).toBeDefined();
-    expect(playback?.shortcuts).toHaveLength(4);
+    expect(playback?.shortcuts).toHaveLength(8);
   });
 
-  it('should have F1-F7 mode shortcuts', () => {
+  it('should have F1-F10 mode shortcuts', () => {
     const modes = KEYBOARD_SHORTCUTS.find(c => c.name === 'Visualization Modes');
-    expect(modes?.shortcuts).toHaveLength(7);
+    expect(modes?.shortcuts).toHaveLength(10);
   });
 });
 
@@ -397,13 +397,18 @@ describe('KeyboardShortcutHandler edge cases', () => {
     });
 
     const div = document.createElement('div');
-    div.contentEditable = 'true';
+    div.setAttribute('contenteditable', 'true');
     document.body.appendChild(div);
 
-    const event = new KeyboardEvent('keydown', { key: 'a' });
-    Object.defineProperty(event, 'target', { value: div, writable: true });
+    let handled = false;
+    const eventCallback = (e: Event) => {
+      handled = handler.handle(e as KeyboardEvent);
+      e.stopImmediatePropagation();
+    };
 
-    const handled = handler.handle(event);
+    div.addEventListener('keydown', eventCallback);
+    div.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    div.removeEventListener('keydown', eventCallback);
 
     expect(handled).toBe(false);
 

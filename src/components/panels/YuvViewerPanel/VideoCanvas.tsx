@@ -6,7 +6,7 @@
  * Supports both image-based and YUV-based rendering
  */
 
-import { useRef, useEffect, memo } from 'react';
+import { useRef, useEffect, memo, useMemo } from 'react';
 import { renderModeOverlay } from '../OverlayRenderer';
 import type { VisualizationMode } from '../../../contexts/ModeContext';
 import type { FrameInfo } from '../../../types/video';
@@ -44,6 +44,12 @@ export const VideoCanvas = memo(function VideoCanvas({
 }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<YUVRenderer | null>(null);
+
+  // Memoize canvas style to avoid creating new object on every render
+  const canvasStyle = useMemo(() => ({
+    transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+    transformOrigin: 'top left' as const,
+  }), [zoom, pan.x, pan.y]);
 
   // Initialize YUV renderer
   useEffect(() => {
@@ -112,10 +118,7 @@ export const VideoCanvas = memo(function VideoCanvas({
         width={yuvData?.width ?? frameImage?.width ?? 640}
         height={yuvData?.height ?? frameImage?.height ?? 360}
         className="yuv-canvas"
-        style={{
-          transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-          transformOrigin: 'top left',
-        }}
+        style={canvasStyle}
       />
     </div>
   );
