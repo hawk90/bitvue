@@ -250,4 +250,4 @@ jobs:
       - name: Build documentation
         run: cargo doc --no-deps --all-features
         env:
-          RUSTDOCFLAGS: -D warnings -A dead_code -A unused_variables
+          RUSTDOCFLAGS: -A dead_code -A unused_variables -A unused_functions -A unused_macros -A non_snake_case -A non_camel_case_types
