@@ -465,7 +465,7 @@ mod command_export_tests {
     #[test]
     fn test_command_export_csv() {
         // Arrange
-        let path = create_test_path();
+        let _path = create_test_path();
 
         // Act
         let cmd = Command::ExportCsv {

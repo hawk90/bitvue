@@ -23,8 +23,8 @@ fn create_test_mv_grid() -> MVGrid {
     for row in 0..grid_h {
         for col in 0..grid_w {
             // Create varying MVs
-            let dx = ((col as i32 - 15) * 4) as i32; // -60 to +56 qpel
-            let dy = ((row as i32 - 8) * 4) as i32;  // -32 to +28 qpel
+            let dx = ((col - 15) * 4); // -60 to +56 qpel
+            let dy = ((row - 8) * 4);  // -32 to +28 qpel
             mv_l0.push(create_test_mv(dx, dy));
             mv_l1.push(create_test_mv(-dx, -dy)); // Opposite direction for L1
 
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(grid.block_h, 64);
         assert_eq!(grid.grid_w, grid_w);
         assert_eq!(grid.grid_h, grid_h);
-        assert_eq!(grid.block_count(), total as usize);
+        assert_eq!(grid.block_count(), total);
     }
 
     #[test]

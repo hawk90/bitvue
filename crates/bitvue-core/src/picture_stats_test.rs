@@ -1,5 +1,4 @@
 // Picture Stats module tests
-use super::*;
 
 // ============================================================================
 // Fixtures
@@ -291,7 +290,7 @@ mod sequence_stats_tests {
     fn test_from_rows_handles_no_bpp() {
         let mut row = create_test_row(0);
         row.bpp = None;
-        let stats = SequenceStats::from_rows(&vec![row]);
+        let stats = SequenceStats::from_rows(&[row]);
         assert!(stats.avg_bpp.is_none());
     }
 
@@ -299,7 +298,7 @@ mod sequence_stats_tests {
     fn test_from_rows_calculates_reorder_depth() {
         let mut row = create_test_row(0);
         row.pts_dts_delta = Some(5);
-        let stats = SequenceStats::from_rows(&vec![row]);
+        let stats = SequenceStats::from_rows(&[row]);
         assert_eq!(stats.max_reorder_depth, Some(5));
     }
 
@@ -387,7 +386,7 @@ mod table_tests {
     #[test]
     fn test_update_replaces_rows() {
         let mut table = create_test_table(5);
-        table.update(&vec![create_test_frame(0, "P", 40000, crate::timeline::FrameMarker::Bookmark)]);
+        table.update(&[create_test_frame(0, "P", 40000, crate::timeline::FrameMarker::Bookmark)]);
         assert_eq!(table.total_count(), 1);
     }
 

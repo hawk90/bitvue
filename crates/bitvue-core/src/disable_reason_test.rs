@@ -1,5 +1,4 @@
 // Disable Reason Matrix module tests
-use super::*;
 
 // ============================================================================
 // Fixtures
@@ -121,7 +120,7 @@ mod matrix_tests {
 
     #[test]
     fn test_enabled_count() {
-        let mut matrix = create_test_matrix();
+        let matrix = create_test_matrix();
         assert_eq!(matrix.enabled_count(), 0); // No features registered
     }
 }

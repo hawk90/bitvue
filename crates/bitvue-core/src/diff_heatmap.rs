@@ -922,7 +922,7 @@ mod diff_compare_context_tests {
         assert!(ctx.frame_a_idx.is_none());
         assert!(ctx.frame_b_idx.is_none());
         assert!(!ctx.has_gap);
-        assert!(ctx.is_diff_available() == false); // No frames set
+        assert!(!ctx.is_diff_available()); // No frames set
     }
 
     #[test]
@@ -1058,7 +1058,7 @@ mod edge_case_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     #[test]
     fn test_diff_heatmap_module_compiles() {

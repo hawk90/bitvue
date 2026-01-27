@@ -256,6 +256,7 @@ impl UnitHeader {
 /// Contains information specific to frame units (PTS/DTS, frame type, etc.)
 /// Separated from analysis data to avoid mixing concerns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct FrameInfo {
     /// Frame index (if this unit is a frame)
     pub frame_index: Option<usize>,
@@ -273,23 +274,13 @@ pub struct FrameInfo {
     pub temporal_id: Option<u8>,
 }
 
-impl Default for FrameInfo {
-    fn default() -> Self {
-        Self {
-            frame_index: None,
-            frame_type: None,
-            pts: None,
-            dts: None,
-            temporal_id: None,
-        }
-    }
-}
 
 /// Frame analysis - QP, motion vectors, reference data
 ///
 /// Contains analysis data extracted from the frame.
 /// Separated from basic frame info for clearer separation of concerns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct FrameAnalysis {
     /// Average QP for this frame (if available)
     /// AV1: base_q_idx (0-255), H.264/HEVC: avg QP (0-51)
@@ -308,16 +299,6 @@ pub struct FrameAnalysis {
     pub ref_slots: Option<Vec<u8>>,
 }
 
-impl Default for FrameAnalysis {
-    fn default() -> Self {
-        Self {
-            qp_avg: None,
-            mv_grid: None,
-            ref_frames: None,
-            ref_slots: None,
-        }
-    }
-}
 
 impl UnitNode {
     /// Create a new unit node
@@ -810,6 +791,7 @@ impl FrameRgbData {
 /// Contains YUV color data with chroma subsampling information,
 /// separated from metadata and RGB data.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct FrameYuvData {
     /// Y plane data (luma)
     pub y_plane: Option<Vec<u8>>,
@@ -827,17 +809,6 @@ pub struct FrameYuvData {
     pub chroma_height: Option<u32>,
 }
 
-impl Default for FrameYuvData {
-    fn default() -> Self {
-        Self {
-            y_plane: None,
-            u_plane: None,
-            v_plane: None,
-            chroma_width: None,
-            chroma_height: None,
-        }
-    }
-}
 
 impl FrameYuvData {
     /// Check if YUV data is present

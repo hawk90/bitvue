@@ -3,7 +3,6 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
-use super::*;
 
 // ============================================================================
 // Fixtures
@@ -17,7 +16,7 @@ fn create_test_overlay() -> CacheDebugOverlay {
 /// Create a test cache entry
 fn create_test_cached_entry(
     frame_idx: usize,
-    cache_type: CacheType,
+    _cache_type: CacheType,
     size_bytes: usize,
 ) -> CacheEntry {
     CacheEntry::cached(frame_idx as u64, "test_source".to_string(), size_bytes)
@@ -835,7 +834,7 @@ mod cache_stats_tests {
     #[test]
     fn test_memory_usage_percent_with_limit() {
         // Arrange
-        let mut stats = CacheStats {
+        let stats = CacheStats {
             total_entries: 0,
             cached_count: 0,
             computed_count: 0,

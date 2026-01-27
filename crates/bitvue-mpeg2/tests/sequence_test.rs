@@ -52,7 +52,6 @@ fn test_frame_rate_method() {
         horizontal_size_value: 0,
         vertical_size_value: 0,
         aspect_ratio_information: 1,
-        frame_rate_code: 1,
         bit_rate_value: 0,
         vbv_buffer_size_value: 0,
         constrained_parameters_flag: false,
@@ -72,7 +71,6 @@ fn test_aspect_ratio_string() {
         aspect_ratio_information: 3, // 16:9
         horizontal_size_value: 0,
         vertical_size_value: 0,
-        aspect_ratio_information: 1,
         frame_rate_code: 1,
         bit_rate_value: 0,
         vbv_buffer_size_value: 0,
@@ -103,17 +101,15 @@ fn test_various_resolutions() {
         let seq = sequence::SequenceHeader {
             horizontal_size_value: width,
             vertical_size_value: height,
-            horizontal_size_value: 0,
-        vertical_size_value: 0,
-        aspect_ratio_information: 1,
-        frame_rate_code: 1,
-        bit_rate_value: 0,
-        vbv_buffer_size_value: 0,
-        constrained_parameters_flag: false,
-        load_intra_quantiser_matrix: false,
-        load_non_intra_quantiser_matrix: false,
-        intra_quantiser_matrix: None,
-        non_intra_quantiser_matrix: None,
+            aspect_ratio_information: 1,
+            frame_rate_code: 1,
+            bit_rate_value: 0,
+            vbv_buffer_size_value: 0,
+            constrained_parameters_flag: false,
+            load_intra_quantiser_matrix: false,
+            load_non_intra_quantiser_matrix: false,
+            intra_quantiser_matrix: None,
+            non_intra_quantiser_matrix: None,
         };
         assert_eq!(seq.horizontal_size_value, width);
         assert_eq!(seq.vertical_size_value, height);
@@ -130,7 +126,6 @@ fn test_constrained_parameters_flag() {
         frame_rate_code: 1,
         bit_rate_value: 0,
         vbv_buffer_size_value: 0,
-        constrained_parameters_flag: false,
         load_intra_quantiser_matrix: false,
         load_non_intra_quantiser_matrix: false,
         intra_quantiser_matrix: None,
@@ -146,7 +141,6 @@ fn test_constrained_parameters_flag() {
         frame_rate_code: 1,
         bit_rate_value: 0,
         vbv_buffer_size_value: 0,
-        constrained_parameters_flag: false,
         load_intra_quantiser_matrix: false,
         load_non_intra_quantiser_matrix: false,
         intra_quantiser_matrix: None,
@@ -172,10 +166,6 @@ fn test_quantiser_matrix_flags() {
         bit_rate_value: 0,
         vbv_buffer_size_value: 0,
         constrained_parameters_flag: false,
-        load_intra_quantiser_matrix: false,
-        load_non_intra_quantiser_matrix: false,
-        intra_quantiser_matrix: None,
-        non_intra_quantiser_matrix: None,
     };
 
     assert!(with_matrices.load_intra_quantiser_matrix);
@@ -191,16 +181,15 @@ fn test_all_field_codes() {
         let seq = sequence::SequenceHeader {
             frame_rate_code: code,
             horizontal_size_value: 0,
-        vertical_size_value: 0,
-        aspect_ratio_information: 1,
-        frame_rate_code: 1,
-        bit_rate_value: 0,
-        vbv_buffer_size_value: 0,
-        constrained_parameters_flag: false,
-        load_intra_quantiser_matrix: false,
-        load_non_intra_quantiser_matrix: false,
-        intra_quantiser_matrix: None,
-        non_intra_quantiser_matrix: None,
+            vertical_size_value: 0,
+            aspect_ratio_information: 1,
+            bit_rate_value: 0,
+            vbv_buffer_size_value: 0,
+            constrained_parameters_flag: false,
+            load_intra_quantiser_matrix: false,
+            load_non_intra_quantiser_matrix: false,
+            intra_quantiser_matrix: None,
+            non_intra_quantiser_matrix: None,
         };
         assert_eq!(seq.frame_rate_code, code);
         assert!(seq.frame_rate() > 0.0);
@@ -224,16 +213,15 @@ fn test_bit_rate_values() {
         let seq = sequence::SequenceHeader {
             bit_rate_value: bit_rate,
             horizontal_size_value: 0,
-        vertical_size_value: 0,
-        aspect_ratio_information: 1,
-        frame_rate_code: 1,
-        bit_rate_value: 0,
-        vbv_buffer_size_value: 0,
-        constrained_parameters_flag: false,
-        load_intra_quantiser_matrix: false,
-        load_non_intra_quantiser_matrix: false,
-        intra_quantiser_matrix: None,
-        non_intra_quantiser_matrix: None,
+            vertical_size_value: 0,
+            aspect_ratio_information: 1,
+            frame_rate_code: 1,
+            vbv_buffer_size_value: 0,
+            constrained_parameters_flag: false,
+            load_intra_quantiser_matrix: false,
+            load_non_intra_quantiser_matrix: false,
+            intra_quantiser_matrix: None,
+            non_intra_quantiser_matrix: None,
         };
         assert_eq!(seq.bit_rate_value, bit_rate);
     }
@@ -247,16 +235,15 @@ fn test_vbv_buffer_values() {
         let seq = sequence::SequenceHeader {
             vbv_buffer_size_value: size,
             horizontal_size_value: 0,
-        vertical_size_value: 0,
-        aspect_ratio_information: 1,
-        frame_rate_code: 1,
-        bit_rate_value: 0,
-        vbv_buffer_size_value: 0,
-        constrained_parameters_flag: false,
-        load_intra_quantiser_matrix: false,
-        load_non_intra_quantiser_matrix: false,
-        intra_quantiser_matrix: None,
-        non_intra_quantiser_matrix: None,
+            vertical_size_value: 0,
+            aspect_ratio_information: 1,
+            frame_rate_code: 1,
+            bit_rate_value: 0,
+            constrained_parameters_flag: false,
+            load_intra_quantiser_matrix: false,
+            load_non_intra_quantiser_matrix: false,
+            intra_quantiser_matrix: None,
+            non_intra_quantiser_matrix: None,
         };
         assert_eq!(seq.vbv_buffer_size_value, size);
     }
@@ -275,16 +262,15 @@ fn test_aspect_ratio_codes() {
         let seq = sequence::SequenceHeader {
             aspect_ratio_information: code,
             horizontal_size_value: 0,
-        vertical_size_value: 0,
-        aspect_ratio_information: 1,
-        frame_rate_code: 1,
-        bit_rate_value: 0,
-        vbv_buffer_size_value: 0,
-        constrained_parameters_flag: false,
-        load_intra_quantiser_matrix: false,
-        load_non_intra_quantiser_matrix: false,
-        intra_quantiser_matrix: None,
-        non_intra_quantiser_matrix: None,
+            vertical_size_value: 0,
+            frame_rate_code: 1,
+            bit_rate_value: 0,
+            vbv_buffer_size_value: 0,
+            constrained_parameters_flag: false,
+            load_intra_quantiser_matrix: false,
+            load_non_intra_quantiser_matrix: false,
+            intra_quantiser_matrix: None,
+            non_intra_quantiser_matrix: None,
         };
         assert_eq!(seq.aspect_ratio_string(), expected);
     }
@@ -302,8 +288,6 @@ fn test_matrix_default_none() {
         bit_rate_value: 0,
         vbv_buffer_size_value: 0,
         constrained_parameters_flag: false,
-        load_intra_quantiser_matrix: false,
-        load_non_intra_quantiser_matrix: false,
         intra_quantiser_matrix: None,
         non_intra_quantiser_matrix: None,
     };

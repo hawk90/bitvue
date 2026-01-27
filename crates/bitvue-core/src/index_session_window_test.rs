@@ -34,10 +34,10 @@ fn create_test_frame_metadata(display_idx: usize, byte_offset: u64, size: u64) -
         decode_idx: display_idx,
         byte_offset,
         size,
-        is_keyframe: display_idx % 3 == 0,
+        is_keyframe: display_idx.is_multiple_of(3),
         pts: Some(display_idx as u64 * 100),
         dts: Some(display_idx as u64 * 100),
-        frame_type: Some(if display_idx % 3 == 0 {
+        frame_type: Some(if display_idx.is_multiple_of(3) {
             "I".to_string()
         } else {
             "P".to_string()
@@ -937,7 +937,7 @@ mod should_move_window_tests {
     #[test]
     fn test_should_move_window_after_end() {
         // Arrange
-        let mut window = create_test_window(10000);
+        let window = create_test_window(10000);
         let window_end = window.window_start + window.window_size;
 
         // Act

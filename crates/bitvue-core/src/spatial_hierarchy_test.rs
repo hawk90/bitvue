@@ -1,5 +1,4 @@
 // Spatial Hierarchy module tests
-use super::*;
 
 // ============================================================================
 // Fixtures

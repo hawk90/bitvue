@@ -462,7 +462,7 @@ mod format_text_tests {
     #[test]
     fn test_format_text_includes_update_count() {
         // Arrange
-        let mut hud = create_test_hud();
+        let hud = create_test_hud();
 
         // Act
         let text = hud.format_text();

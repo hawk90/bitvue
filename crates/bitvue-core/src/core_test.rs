@@ -4,8 +4,8 @@
 // and edge case coverage.
 
 use crate::{
-    BitRange, Command, Core, Event, FrameKey, JobManager, SpatialBlock, StreamId, SyntaxNodeId,
-    UnitKey, UnitNode,
+    BitRange, Command, Core, Event, SyntaxNodeId,
+    UnitKey,
 };
 use std::path::PathBuf;
 

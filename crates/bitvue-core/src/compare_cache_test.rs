@@ -4,7 +4,7 @@
 // and edge case coverage.
 
 use super::*;
-use crate::cache_provenance::{CacheKey, InvalidationTrigger};
+use crate::cache_provenance::CacheKey;
 
 // ============================================================================
 // Fixtures
@@ -607,7 +607,7 @@ mod statistics_tests {
         let stats = manager.stats_combined();
 
         // Assert - 2 hits, 1 miss = 66.7%
-        assert_eq!(stats.combined_hit_rate > 0.6 && stats.combined_hit_rate < 0.7, true);
+        assert!(stats.combined_hit_rate > 0.6 && stats.combined_hit_rate < 0.7);
     }
 
     #[test]

@@ -253,6 +253,12 @@ pub struct RateLimitState {
     last_log_ms: AtomicU64,
 }
 
+impl Default for RateLimitState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RateLimitState {
     pub const fn new() -> Self {
         Self {
@@ -267,7 +273,7 @@ impl RateLimitState {
 
     pub fn should_log_every_n(&self, n: u64) -> bool {
         let count = self.increment();
-        count % n == 0
+        count.is_multiple_of(n)
     }
 
     pub fn should_log_first_n(&self, n: u64) -> bool {

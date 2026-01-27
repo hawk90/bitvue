@@ -431,7 +431,7 @@ mod cpb_state_tests {
         };
 
         // Act
-        let cloned = state.clone();
+        let cloned = state;
 
         // Assert
         assert_eq!(state.fullness_bits, cloned.fullness_bits);

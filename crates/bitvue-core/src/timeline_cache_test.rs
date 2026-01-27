@@ -541,7 +541,7 @@ mod hash_function_tests {
 
         // Assert
         // Empty string should hash to some value
-        assert!(hash > 0 || hash == 0); // Just verify it doesn't panic
+        assert!(hash >= 0); // Just verify it doesn't panic
     }
 }
 

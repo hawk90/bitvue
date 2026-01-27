@@ -16,10 +16,10 @@ fn create_test_frame(display_idx: usize) -> TimelineFrame {
     TimelineFrame {
         display_idx,
         size_bytes: 1000 + display_idx as u64 * 100,
-        frame_type: if display_idx % 3 == 0 { "I".to_string() } else { "P".to_string() },
-        marker: if display_idx % 3 == 0 {
+        frame_type: if display_idx.is_multiple_of(3) { "I".to_string() } else { "P".to_string() },
+        marker: if display_idx.is_multiple_of(3) {
             FrameMarker::Key
-        } else if display_idx % 7 == 0 {
+        } else if display_idx.is_multiple_of(7) {
             FrameMarker::Error
         } else {
             FrameMarker::None
@@ -283,7 +283,7 @@ mod get_frame_evidence_tests {
         let mut manager = create_test_manager();
         let frame = create_test_frame(10);
         let bit_range = BitRange::new(80000, 96000);  // 80000 + 16000 = 96000
-        manager.create_frame_evidence(&frame, bit_range.clone(), 2000);
+        manager.create_frame_evidence(&frame, bit_range, 2000);
 
         // Act
         let result = manager.get_frame_bit_range(10);
@@ -527,7 +527,7 @@ mod trace_navigation_tests {
         let mut manager = create_test_manager();
         let frame = create_test_frame(5);
         let bit_range = BitRange::new(40000_u64, 48000);
-        manager.create_frame_evidence(&frame, bit_range.clone(), 1000);
+        manager.create_frame_evidence(&frame, bit_range, 1000);
 
         // Act
         let result = manager.trace_to_bit_offset(5);

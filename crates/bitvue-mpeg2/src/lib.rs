@@ -136,12 +136,12 @@ impl Mpeg2Stream {
 
     /// Get bit rate in bits per second.
     pub fn bit_rate(&self) -> Option<u32> {
-        self.sequence_headers.first().and_then(|seq| {
-            let base = (seq.header.bit_rate_value as u32) * 400;
+        self.sequence_headers.first().map(|seq| {
+            let base = seq.header.bit_rate_value * 400;
             if let Some(ref ext) = seq.extension {
-                Some(base | ((ext.bit_rate_extension as u32) << 18))
+                base | ((ext.bit_rate_extension as u32) << 18)
             } else {
-                Some(base)
+                base
             }
         })
     }
@@ -355,7 +355,7 @@ pub fn parse_mpeg2_quick(data: &[u8]) -> Result<Mpeg2QuickInfo> {
                     info.width = Some(header.horizontal_size_value as u32);
                     info.height = Some(header.vertical_size_value as u32);
                     info.frame_rate = Some(header.frame_rate());
-                    info.bit_rate = Some((header.bit_rate_value as u32) * 400);
+                    info.bit_rate = Some(header.bit_rate_value * 400);
                     found_sequence = true;
                 }
             }

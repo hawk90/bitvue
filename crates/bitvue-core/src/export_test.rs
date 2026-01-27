@@ -296,7 +296,7 @@ mod csv_export_tests {
         diag.message = "Test, with \"quotes\"".to_string();
 
         let mut output = Vec::new();
-        let result = export_diagnostics_csv(&[diag], &mut output, None).unwrap();
+        let _result = export_diagnostics_csv(&[diag], &mut output, None).unwrap();
 
         let csv_str = String::from_utf8(output).unwrap();
         // Message should be quoted and escaped

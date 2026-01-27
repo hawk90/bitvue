@@ -3,7 +3,6 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
-use super::*;
 
 // ============================================================================
 // Fixtures

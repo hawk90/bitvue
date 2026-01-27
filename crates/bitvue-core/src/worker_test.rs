@@ -240,7 +240,7 @@ mod job_state_tests {
 
 #[cfg(test)]
 mod stream_queue_tests {
-    use super::*;
+    
 
     // Note: StreamQueue is private to worker module
     // We test it indirectly through AsyncJobManager
@@ -645,7 +645,7 @@ mod edge_case_tests {
         let manager = AsyncJobManager::new();
 
         // Act - Rapid submit/complete cycles
-        for i in 0..10 {
+        for _i in 0..10 {
             let job = create_test_parse_job(StreamId::A, 0); // Always use request_id 0
             manager.submit(job.clone());
             manager.complete_job(&job);

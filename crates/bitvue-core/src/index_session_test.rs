@@ -4,7 +4,7 @@
 // and edge case coverage.
 
 use super::*;
-use crate::index_extractor::{Av1IndexExtractor, IndexExtractor};
+use crate::index_extractor::Av1IndexExtractor;
 use std::io::Cursor;
 
 // ============================================================================
@@ -207,7 +207,7 @@ mod quick_index_tests {
         // Assert
         let quick_idx = session.quick_index();
         assert!(quick_idx.is_some());
-        assert!(quick_idx.unwrap().seek_points.len() >= 1);
+        assert!(!quick_idx.unwrap().seek_points.is_empty());
     }
 
     #[test]

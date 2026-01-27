@@ -898,8 +898,7 @@ mod selection_state_tests {
             y: 10,
             w: 32,
             h: 32,
-        }
-        .clone();
+        };
         state.select_block(5, block);
 
         // Act

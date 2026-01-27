@@ -4,7 +4,6 @@
 // and edge case coverage.
 
 use super::*;
-use std::collections::HashMap;
 
 // ============================================================================
 // Fixtures

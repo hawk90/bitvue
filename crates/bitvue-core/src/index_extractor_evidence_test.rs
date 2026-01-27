@@ -32,10 +32,10 @@ fn create_test_frame_metadata(display_idx: usize, byte_offset: u64, size: u64) -
         decode_idx: display_idx,
         byte_offset,
         size,
-        is_keyframe: display_idx % 3 == 0,
+        is_keyframe: display_idx.is_multiple_of(3),
         pts: Some(display_idx as u64 * 100),
         dts: Some(display_idx as u64 * 100),
-        frame_type: Some(if display_idx % 3 == 0 { "I".to_string() } else { "P".to_string() }),
+        frame_type: Some(if display_idx.is_multiple_of(3) { "I".to_string() } else { "P".to_string() }),
     }
 }
 
@@ -139,7 +139,7 @@ mod create_seekpoint_evidence_tests {
         let seek_point = create_test_seek_point(0, 1000);
 
         // Act
-        let evidence = manager.create_seekpoint_evidence(&seek_point);
+        let _evidence = manager.create_seekpoint_evidence(&seek_point);
         let bit_range = manager.trace_to_bit_offset(0).unwrap();
 
         // Assert - Estimated size is 1024 bytes = 8192 bits
@@ -698,7 +698,7 @@ mod edge_case_tests {
 
         // Assert
         assert_eq!(bit_range.start_bit, byte_offset * 8);
-        assert_eq!(bit_range.end_bit, (byte_offset + size as u64) * 8);
+        assert_eq!(bit_range.end_bit, (byte_offset + size) * 8);
     }
 
     #[test]
@@ -713,7 +713,7 @@ mod edge_case_tests {
         manager.create_frame_metadata_evidence(&frame);
 
         // Assert - Frame metadata should override seekpoint evidence
-        let evidence = manager.get_frame_evidence(0).unwrap();
+        let _evidence = manager.get_frame_evidence(0).unwrap();
         let bit_range = manager.trace_to_bit_offset(0).unwrap();
         assert_eq!(bit_range.end_bit - bit_range.start_bit, 500 * 8);
     }

@@ -9,8 +9,9 @@ import { StreamDataProvider, useStreamData } from '../StreamDataContext';
 import type { FrameInfo } from '@/types/video';
 
 // Mock Tauri invoke
+const mockInvoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
+  invoke: mockInvoke,
 }));
 
 // Mock logger
@@ -22,8 +23,6 @@ vi.mock('@/utils/logger', () => ({
     debug: vi.fn(),
   }),
 }));
-
-const mockInvoke = vi.mocked(require('@tauri-apps/api/core').invoke);
 
 const mockFrames: FrameInfo[] = [
   { frame_index: 0, frame_type: 'I', size: 50000, poc: 0, key_frame: true },
@@ -126,8 +125,9 @@ describe('StreamDataContext', () => {
   });
 
   it('should clear error on successful load', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('First load failed'));
-    mockInvoke.mockResolvedValueOnce(mockFrames);
+    mockInvoke
+      .mockRejectedValueOnce(new Error('First load failed'))
+      .mockResolvedValueOnce(mockFrames);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 

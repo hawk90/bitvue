@@ -5,8 +5,8 @@
 
 use super::*;
 use crate::{
-    BitOffsetEvidence, BitRange, DecodeArtifactType, DecodeEvidence, EvidenceChain,
-    FramePair, SyntaxEvidence, SyntaxNodeType, VizElementType, VizEvidence,
+    BitRange, DecodeArtifactType, EvidenceChain,
+    FramePair, SyntaxNodeType, VizElementType,
 };
 
 // ============================================================================

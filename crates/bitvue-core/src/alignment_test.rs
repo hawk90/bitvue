@@ -4,7 +4,7 @@
 // and edge case coverage.
 
 use super::*;
-use crate::frame_identity::{FrameIndexMap, FrameMetadata, PtsQuality};
+use crate::frame_identity::{FrameIndexMap, FrameMetadata};
 
 // ============================================================================
 // Fixtures

@@ -15,12 +15,12 @@ fn create_test_frame(display_idx: usize) -> TimelineFrame {
     TimelineFrame {
         display_idx,
         size_bytes: 1000 + display_idx as u64 * 100,
-        frame_type: if display_idx % 3 == 0 { "I".to_string() } else { "P".to_string() },
-        marker: if display_idx % 3 == 0 {
+        frame_type: if display_idx.is_multiple_of(3) { "I".to_string() } else { "P".to_string() },
+        marker: if display_idx.is_multiple_of(3) {
             FrameMarker::Key
-        } else if display_idx % 7 == 0 {
+        } else if display_idx.is_multiple_of(7) {
             FrameMarker::Error
-        } else if display_idx % 5 == 0 {
+        } else if display_idx.is_multiple_of(5) {
             FrameMarker::Bookmark
         } else {
             FrameMarker::None
@@ -292,7 +292,7 @@ mod sparse_index_tests {
     fn test_build_sparse_index_from_frames() {
         // Arrange
         let mut window = create_test_window(100);
-        let frames: Vec<TimelineFrame> = (0..10).map(|i| create_test_frame(i)).collect();
+        let frames: Vec<TimelineFrame> = (0..10).map(create_test_frame).collect();
 
         // Act
         window.build_sparse_index_from_frames(&frames);
@@ -316,7 +316,7 @@ mod sparse_index_tests {
         });
         assert_eq!(window.sparse_index.len(), 1);
 
-        let frames: Vec<TimelineFrame> = (0..5).map(|i| create_test_frame(i)).collect();
+        let frames: Vec<TimelineFrame> = (0..5).map(create_test_frame).collect();
 
         // Act
         window.build_sparse_index_from_frames(&frames);

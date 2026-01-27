@@ -1,5 +1,4 @@
 // Tooltip module tests
-use super::*;
 
 // ============================================================================
 // Fixtures
@@ -113,8 +112,8 @@ fn create_test_diagnostics_tooltip() -> DiagnosticsTooltip {
 }
 
 fn create_test_manager() -> TooltipManager {
-    let mut manager = TooltipManager::new(create_test_config());
-    manager
+    
+    TooltipManager::new(create_test_config())
 }
 
 // ============================================================================

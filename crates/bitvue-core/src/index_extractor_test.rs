@@ -81,7 +81,7 @@ mod av1_index_extractor_tests {
     #[test]
     fn test_av1_extractor_default() {
         // Arrange & Act
-        let extractor = Av1IndexExtractor::default();
+        let extractor = Av1IndexExtractor;
 
         // Assert
         assert_eq!(extractor.codec_name(), "AV1");
@@ -138,7 +138,7 @@ mod av1_index_extractor_tests {
         // Arrange
         let extractor = Av1IndexExtractor::new();
         // Create more than 8 bytes with continuation bits
-        let mut data = vec![0x80u8; 10]; // 10 continuation bytes
+        let data = vec![0x80u8; 10]; // 10 continuation bytes
 
         // Act
         let mut cursor = create_test_cursor(data);
@@ -190,7 +190,7 @@ mod av1_index_extractor_tests {
         data.extend_from_slice(&create_av1_frame_obu(false, 80));
 
         let progress_fn = |p: f64, _msg: &str| {
-            assert!(p >= 0.0 && p <= 1.0);
+            assert!((0.0..=1.0).contains(&p));
         };
         let cancel_fn = || false;
 
@@ -250,7 +250,7 @@ mod h264_index_extractor_tests {
     #[test]
     fn test_h264_extractor_default() {
         // Arrange & Act
-        let extractor = H264IndexExtractor::default();
+        let extractor = H264IndexExtractor;
 
         // Assert
         assert_eq!(extractor.codec_name(), "H.264");
@@ -330,8 +330,8 @@ mod h264_index_extractor_tests {
         data.extend_from_slice(&create_h264_nal_unit(5)); // IDR
         data.extend_from_slice(&create_h264_nal_unit(1)); // Non-IDR
 
-        let progress_fn = |p: f64, msg: &str| {
-            assert!(p >= 0.0 && p <= 1.0);
+        let progress_fn = |p: f64, _msg: &str| {
+            assert!((0.0..=1.0).contains(&p));
         };
         let cancel_fn = || false;
 

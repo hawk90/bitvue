@@ -1,5 +1,4 @@
 // Metadata Inspector module tests
-use super::*;
 
 // ============================================================================
 // Fixtures

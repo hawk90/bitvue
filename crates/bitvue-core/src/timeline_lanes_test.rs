@@ -354,7 +354,7 @@ mod marker_clustering_tests {
         let mut system = TimelineLaneSystem::new(100);
         let markers = create_test_markers();
         system.update_marker_clusters(&markers);
-        let initial_count = system.marker_clusters.len();
+        let _initial_count = system.marker_clusters.len();
 
         // Act
         system.set_zoom_level(2.0, &markers);
@@ -370,7 +370,7 @@ mod marker_clustering_tests {
         let mut system = TimelineLaneSystem::new(100);
         let markers = create_test_markers();
         system.set_zoom_level(1.0, &markers);
-        let initial_count = system.marker_clusters.len();
+        let _initial_count = system.marker_clusters.len();
 
         // Act - Set same value
         system.set_zoom_level(1.0, &markers);

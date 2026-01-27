@@ -3,7 +3,6 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
-use super::*;
 
 // ============================================================================
 // Fixtures
@@ -599,10 +598,10 @@ mod diagnostics_bands_error_tests {
     fn test_detect_error_bursts_replaces_existing() {
         // Arrange
         let mut bands = create_test_diagnostics_bands();
-        bands.detect_error_bursts(&vec![100, 101], 5);
+        bands.detect_error_bursts(&[100, 101], 5);
 
         // Act
-        bands.detect_error_bursts(&vec![200, 201], 5);
+        bands.detect_error_bursts(&[200, 201], 5);
 
         // Assert
         assert_eq!(bands.error_bursts.len(), 1); // Replaced
@@ -622,7 +621,7 @@ mod diagnostics_bands_selection_tests {
     fn test_auto_select_worst_burst() {
         // Arrange
         let mut bands = create_test_diagnostics_bands();
-        bands.detect_error_bursts(&vec![0, 1, 2, 100, 101], 5);
+        bands.detect_error_bursts(&[0, 1, 2, 100, 101], 5);
 
         // Act
         bands.auto_select_worst_burst();
@@ -647,7 +646,7 @@ mod diagnostics_bands_selection_tests {
     fn test_select_burst_valid() {
         // Arrange
         let mut bands = create_test_diagnostics_bands();
-        bands.detect_error_bursts(&vec![100, 101, 200], 5);
+        bands.detect_error_bursts(&[100, 101, 200], 5);
 
         // Act
         bands.select_burst(1);
@@ -660,7 +659,7 @@ mod diagnostics_bands_selection_tests {
     fn test_select_burst_invalid() {
         // Arrange
         let mut bands = create_test_diagnostics_bands();
-        bands.detect_error_bursts(&vec![100], 5);
+        bands.detect_error_bursts(&[100], 5);
 
         // Act
         bands.select_burst(999); // Out of range
@@ -673,7 +672,7 @@ mod diagnostics_bands_selection_tests {
     fn test_clear_burst_selection() {
         // Arrange
         let mut bands = create_test_diagnostics_bands();
-        bands.detect_error_bursts(&vec![100], 5);
+        bands.detect_error_bursts(&[100], 5);
         bands.auto_select_worst_burst();
 
         // Act
@@ -687,7 +686,7 @@ mod diagnostics_bands_selection_tests {
     fn test_get_selected_burst() {
         // Arrange
         let mut bands = create_test_diagnostics_bands();
-        bands.detect_error_bursts(&vec![100, 101], 5);
+        bands.detect_error_bursts(&[100, 101], 5);
         bands.select_burst(0);
 
         // Act
@@ -838,7 +837,7 @@ mod diagnostics_bands_query_tests {
     fn test_total_error_count() {
         // Arrange
         let mut bands = create_test_diagnostics_bands();
-        bands.detect_error_bursts(&vec![100, 101, 102, 200, 201], 5);
+        bands.detect_error_bursts(&[100, 101, 102, 200, 201], 5);
 
         // Act
         let total = bands.total_error_count();

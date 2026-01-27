@@ -1012,7 +1012,7 @@ mod metric_comparison_summary_tests {
         // Assert
         assert_eq!(summary.metric_type, MetricType::PsnrY);
         assert_eq!(summary.avg_a, 35.0);
-        assert_eq!(summary.avg_b, 35.6666667); // (38+37+32)/3
+        assert_eq!(summary.avg_b, 35.666_668); // (38+37+32)/3
         assert_eq!(summary.total_frames, 3);
     }
 

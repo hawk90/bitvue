@@ -36,8 +36,10 @@ pub mod budget {
 /// Degradation level for adaptive LOD
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(u8)]
+#[derive(Default)]
 pub enum DegradeLevel {
     /// Full quality - all features enabled
+    #[default]
     Full = 0,
     /// Medium quality - reduce overlay detail
     Medium = 1,
@@ -47,11 +49,6 @@ pub enum DegradeLevel {
     Minimal = 3,
 }
 
-impl Default for DegradeLevel {
-    fn default() -> Self {
-        Self::Full
-    }
-}
 
 impl DegradeLevel {
     /// Get human-readable name
