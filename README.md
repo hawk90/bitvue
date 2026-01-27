@@ -1,6 +1,7 @@
 <div align="center">
 
   <!-- Logo/Icon -->
+  <a name="readme-top"></a>
   <img src="resources/com.github.bitvue.svg" alt="Bitvue" width="120" height="120">
 
   # Bitvue
@@ -10,18 +11,11 @@
   *[Multi-codec analysis tool for inspecting compressed video bitstreams]*
 
   <!-- Badges -->
-  [![CI](https://img.shields.io/github/actions/workflow/status/hawk90/bitvue/ci.yml?branch=main&style=for-the-badge&logo=github)](https://github.com/hawk90/bitvue/actions/workflows/ci.yml)
-  [![codecov](https://img.shields.io/codecov/c/github/hawk90/bitvue?style=for-the-badge&logo=codecov)](https://codecov.io/gh/hawk90/bitvue)
-  [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge)](LICENSE)
-  [![Rust](https://img.shields.io/badge/rust-1.93%2B-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org)
-  [![Tauri](https://img.shields.io/badge/Tauri-2.0-FFC131?style=for-the-badge&logo=tauri)](https://tauri.app/)
-  [![React](https://img.shields.io/badge/React-18-20232A?style=for-the-badge&logo=react)](https://react.dev/)
-  [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-  [![stars](https://img.shields.io/github/stars/hawk90/bitvue?style=for-the-badge&logo=github)](https://github.com/hawk90/bitvue)
-
-  <!-- Version -->
-  [![Latest Release](https://img.shields.io/github/v/release/hawk90/bitvue?style=for-the-badge&logo=github)](https://github.com/hawk90/bitvue/releases)
-  [![Downloads](https://img.shields.io/github/downloads/hawk90/bitvue/total?style=for-the-badge)](https://github.com/hawk90/bitvue/releases)
+  [![CI](https://img.shields.io/github/actions/workflow/status/hawk90/bitvue/ci.yml?branch=main&logo=github&label=build)](https://github.com/hawk90/bitvue/actions/workflows/ci.yml)
+  [![codecov](https://img.shields.io/codecov/c/github/hawk90/bitvue?logo=codecov&token=XXXXX)](https://codecov.io/gh/hawk90/bitvue)
+  [![Release](https://img.shields.io/github/v/release/hawk90/bitvue?logo=github)](https://github.com/hawk90/bitvue/releases)
+  [![Downloads](https://img.shields.io/github/downloads/hawk90/bitvue/total)](https://github.com/hawk90/bitvue/releases)
+  [![Stars](https://img.shields.io/github/stars/hawk90/bitvue?logo=github)](https://github.com/hawk90/bitvue)
 
 </div>
 
@@ -341,5 +335,9 @@ This project is licensed under **GNU Affero General Public License v3.0** — se
   **Built with ❤️ for the video codec community**
 
   [![ hawk90/bitvue ](https://img.shields.io/badge/GitHub-hawk90%2Fbitvue-blue?style=flat-square&logo=github)](https://github.com/hawk90/bitvue)
+
+  ---
+
+  [![Back to Top](https://img.shields.io/badge/⬆%20Back%20to%20Top-lightgrey?style=flat-square)](#readme-top)
 
 </div>
