@@ -32,6 +32,8 @@ base64 = "0.22"
 image = "0.24"
 
 # Bitvue core crates (existing Rust parsers/decoders)
+# Note: hevc-indexer, vp9-indexer, vvc-indexer features are disabled due to cyclic dependency
+# Use the individual codec crates directly for HEVC/VP9/VVC parsing
 bitvue-core = { path = "../crates/bitvue-core" }
 bitvue-av1 = { path = "../crates/bitvue-av1" }
 bitvue-avc = { path = "../crates/bitvue-avc" }

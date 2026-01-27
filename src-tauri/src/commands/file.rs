@@ -1,6 +1,7 @@
 //! File operations commands
 //!
 //! Commands for opening, closing, and querying file/stream information.
+#![allow(clippy::unnecessary_filter_map)]
 
 use std::path::PathBuf;
 use serde::Serialize;
@@ -545,6 +546,7 @@ fn mkv_samples_to_units(samples: Vec<Vec<u8>>, codec: &str) -> Vec<bitvue_core::
 }
 
 /// Convert VP9 video samples to UnitNode list
+#[allow(dead_code)]
 fn vp9_samples_to_units(samples: Vec<Vec<u8>>) -> Vec<bitvue_core::UnitNode> {
     // For VP9, concatenate samples and parse as VP9 stream
     // VP9 frames are directly concatenated (or in superframes)

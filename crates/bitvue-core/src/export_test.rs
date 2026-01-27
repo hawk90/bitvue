@@ -5,6 +5,8 @@ use super::*;
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[cfg(test)]
+#[cfg(test)]
 fn create_test_frames() -> Vec<crate::timeline::TimelineFrame> {
     vec![
         crate::timeline::TimelineFrame {
@@ -37,6 +39,7 @@ fn create_test_frames() -> Vec<crate::timeline::TimelineFrame> {
     ]
 }
 
+#[cfg(test)]
 fn create_test_metrics() -> (Vec<crate::metrics_distribution::MetricPoint>, Vec<crate::metrics_distribution::MetricPoint>, Vec<crate::metrics_distribution::MetricPoint>) {
     let psnr = vec![
         crate::metrics_distribution::MetricPoint { idx: 0, value: 40.5 },
@@ -51,6 +54,7 @@ fn create_test_metrics() -> (Vec<crate::metrics_distribution::MetricPoint>, Vec<
     (psnr, ssim, vmaf)
 }
 
+#[cfg(test)]
 fn create_test_diagnostic(id: u64, severity: DiagnosticSeverity) -> Diagnostic {
     Diagnostic {
         id,
@@ -68,6 +72,7 @@ fn create_test_diagnostic(id: u64, severity: DiagnosticSeverity) -> Diagnostic {
     }
 }
 
+#[cfg(test)]
 fn create_test_diagnostics() -> Vec<Diagnostic> {
     vec![
         create_test_diagnostic(1, DiagnosticSeverity::Error),
@@ -76,6 +81,7 @@ fn create_test_diagnostics() -> Vec<Diagnostic> {
     ]
 }
 
+#[cfg(test)]
 fn create_test_export_request() -> EvidenceBundleExportRequest {
     EvidenceBundleExportRequest {
         output_dir: std::path::PathBuf::from("/tmp/test"),
@@ -95,6 +101,7 @@ fn create_test_export_request() -> EvidenceBundleExportRequest {
     }
 }
 
+#[cfg(test)]
 fn create_test_overlay_data() -> OverlayExportData {
     let mut data = OverlayExportData::new(100, 100, "Test Overlay", 0);
     data.set_pixel(0, 0, 255, 0, 0, 255);
@@ -102,6 +109,7 @@ fn create_test_overlay_data() -> OverlayExportData {
     data
 }
 
+#[cfg(test)]
 fn create_test_context() -> GuardEvalContext {
     GuardEvalContext {
         has_selection: true,

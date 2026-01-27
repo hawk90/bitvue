@@ -5,7 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 use crate::commands::AppState;
-use bitvue_core::StreamId;
 
 /// Quality metrics for a single frame or frame pair
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +56,7 @@ pub struct BDRateResult {
 
 /// Quality calculation request
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct QualityCalculationRequest {
     pub reference_path: String,
     pub distorted_path: String,
@@ -69,13 +69,13 @@ pub struct QualityCalculationRequest {
 /// Calculate quality metrics between two video files
 #[tauri::command]
 pub async fn calculate_quality_metrics(
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
     reference_path: String,
     distorted_path: String,
     frame_indices: Option<Vec<usize>>,
     calculate_psnr: bool,
     calculate_ssim: bool,
-    calculate_vmaf: bool,
+    _calculate_vmaf: bool,
 ) -> Result<BatchQualityMetrics, String> {
     log::info!("calculate_quality_metrics: Comparing {} vs {}",
         reference_path, distorted_path);
@@ -98,7 +98,7 @@ pub async fn calculate_quality_metrics(
     let mut metrics = Vec::new();
     let mut psnr_sum = 0.0;
     let mut ssim_sum = 0.0;
-    let mut vmaf_sum = 0.0;
+    let vmaf_sum: f64 = 0.0;
     let mut valid_count = 0;
 
     for &idx in &frames_to_process {
@@ -204,8 +204,8 @@ pub async fn calculate_quality_metrics(
         }
 
         // VMAF calculation (if feature enabled)
-        #[cfg(feature = "vmaf")]
-        if calculate_vmaf {
+        // TODO: Add vmaf feature when libvmaf integration is ready
+        if _calculate_vmaf {
             // VMAF requires both frames to be passed
             // This is a placeholder - actual VMAF calculation requires libvmaf
             frame_metrics.vmaf = None;  // TODO: Implement VMAF

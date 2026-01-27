@@ -49,17 +49,17 @@ pub async fn get_frame_syntax(
 
     // Build syntax tree based on codec
     let syntax_tree = match ext {
-        "ivf" | "av1" => build_av1_syntax_tree(frame_index, &frame, &path),
+        "ivf" | "av1" => build_av1_syntax_tree(frame_index, frame, &path),
         "webm" | "mkv" => {
             // Could be AV1, VP9, etc.
-            build_av1_syntax_tree(frame_index, &frame, &path)
+            build_av1_syntax_tree(frame_index, frame, &path)
         }
         "mp4" | "mov" => {
             // Could be AV1, H.264, H.265 - try AV1 first
-            build_av1_syntax_tree(frame_index, &frame, &path)
+            build_av1_syntax_tree(frame_index, frame, &path)
         }
-        "h264" | "264" => build_avc_syntax_tree(frame_index, &frame),
-        "h265" | "265" | "hevc" => build_hevc_syntax_tree(frame_index, &frame),
+        "h264" | "264" => build_avc_syntax_tree(frame_index, frame),
+        "h265" | "265" | "hevc" => build_hevc_syntax_tree(frame_index, frame),
         _ => build_generic_syntax_tree(frame),
     };
 

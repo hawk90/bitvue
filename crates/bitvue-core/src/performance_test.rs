@@ -5,26 +5,32 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[cfg(test)]
 fn create_test_budget() -> PerfBudget {
     PerfBudget::new()
 }
 
+#[cfg(test)]
 fn create_test_tracker() -> PerfTracker {
     PerfTracker::new()
 }
 
+#[cfg(test)]
 fn create_test_cache_stats(name: &str) -> CacheStats {
     CacheStats::new(name)
 }
 
+#[cfg(test)]
 fn create_test_event() -> PerfEvent {
     PerfEvent::new(PerfMetric::Parse, Duration::from_millis(100))
 }
 
+#[cfg(test)]
 fn create_test_timer(metric: PerfMetric) -> PerfTimer {
     PerfTimer::new(metric)
 }
 
+#[cfg(test)]
 fn create_test_timer_with_tracker(metric: PerfMetric) -> PerfTimer {
     let tracker = std::sync::Arc::new(std::sync::Mutex::new(create_test_tracker()));
     PerfTimer::with_tracker(metric, tracker)

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::commands::{FrameAnalysisData, QPGridData, MVGridData, PartitionGridData, PredictionModeGridData, TransformGridData, AppState, MotionVectorData};
 
 /// Supported video codecs for analysis
+#[allow(clippy::upper_case_acronyms)]
 enum VideoCodec {
     AV1,
     AVC,
@@ -35,6 +36,7 @@ impl VideoCodec {
     }
 
     /// Get codec name as string
+    #[allow(dead_code)]
     fn as_str(&self) -> &'static str {
         match self {
             VideoCodec::AV1 => "av1",
@@ -177,7 +179,7 @@ fn detect_codec_from_content(path: &str) -> String {
                     }
                 }
                 return "av1".to_string(); // Default IVF to AV1
-            } else if magic == &[0x1A, 0x45, 0xDF, 0xA3] {
+            } else if magic == [0x1A, 0x45, 0xDF, 0xA3] {
                 // EBML header - MKV/WebM
                 // Could be AV1, VP9, HEVC, VVC, or AVC
                 // For WebM, default to VP9
@@ -961,8 +963,8 @@ pub async fn get_residual_analysis(
 
     // Generate simple mock residual data
     let block_size = 16u32;
-    let grid_w = (width + block_size - 1) / block_size;
-    let grid_h = (height + block_size - 1) / block_size;
+    let grid_w = width.div_ceil(block_size);
+    let grid_h = height.div_ceil(block_size);
 
     let block_residuals: Vec<BlockResidualData> = (0..grid_h)
         .flat_map(|y| {
@@ -1095,7 +1097,7 @@ pub async fn get_deblocking_analysis(
     // Vertical edges (limited for performance)
     for y in (0..height).step_by(block_size as usize).take(20) {
         for x in (block_size..width).step_by(block_size as usize).take(30) {
-            let bs = (bs_idx % 5) as u8;
+            let bs = bs_idx % 5;
             bs_idx = bs_idx.wrapping_add(1);
             boundaries.push(BoundaryEdgeData {
                 x,
@@ -1112,7 +1114,7 @@ pub async fn get_deblocking_analysis(
     // Horizontal edges (limited for performance)
     for y in (block_size..height).step_by(block_size as usize).take(20) {
         for x in (0..width).step_by(block_size as usize).take(30) {
-            let bs = (bs_idx % 5) as u8;
+            let bs = bs_idx % 5;
             bs_idx = bs_idx.wrapping_add(1);
             boundaries.push(BoundaryEdgeData {
                 x,

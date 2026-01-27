@@ -34,6 +34,7 @@ pub struct FramePosition {
     pub temporal_id: Option<u8>,
 }
 
+#[allow(dead_code)]
 impl FramePosition {
     /// Create from individual components
     pub fn new(
@@ -101,6 +102,7 @@ pub struct FrameMetadata {
     pub size: usize,
 }
 
+#[allow(dead_code)]
 impl FrameMetadata {
     /// Create from individual components
     pub fn new(frame_type: String, nal_type: String, layer: String, offset: u64, size: usize) -> Self {
@@ -170,6 +172,7 @@ pub struct ReferenceInfo {
     pub ref_slot_info: Option<Vec<ReferenceSlotInfo>>,
 }
 
+#[allow(dead_code)]
 impl ReferenceInfo {
     /// Create from individual components
     pub fn new(
@@ -219,7 +222,7 @@ impl ReferenceInfo {
 
     /// Check if this frame has references
     pub fn has_references(&self) -> bool {
-        self.ref_frames.as_ref().map_or(false, |v| !v.is_empty())
+        self.ref_frames.as_ref().is_some_and(|v| !v.is_empty())
     }
 
     /// Get the number of reference frames
@@ -243,6 +246,7 @@ pub struct FrameDisplayData {
     pub references: ReferenceInfo,
 }
 
+#[allow(dead_code)]
 impl FrameDisplayData {
     /// Create from individual components
     pub fn new(
@@ -276,6 +280,7 @@ impl FrameDisplayData {
     }
 
     /// Create from individual fields (legacy API compatibility)
+    #[allow(clippy::too_many_arguments)]
     pub fn from_fields(
         frame_index: usize,
         frame_type: String,
