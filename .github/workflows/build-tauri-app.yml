@@ -30,7 +30,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: bitvue-x86_64-pc-windows-msvc
-            artifact_ext: .exe
+            artifact_ext: .exe.zip
           # Linux
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
@@ -131,23 +131,23 @@ jobs:
       - name: Prepare artifacts (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          cd target/${{ matrix.target }}/release/bundle
-          if [ -d "bitvue.app" ]; then
-            tar -czf bitvue-${{ matrix.target }}.tar.gz bitvue.app
+          cd src-tauri/target/${{ matrix.target }}/release
+          if [ -d "bundle/macos/bitvue.app" ]; then
+            tar -czf bundle/bitvue-${{ matrix.target }}.app.tar.gz -C bundle/macos bitvue.app
           fi
 
       - name: Prepare artifacts (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          cd target/${{ matrix.target }}/release/bundle/msi
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/msi
           if (Test-Path "*.msi") {
-            Compress-Archive -Path *.msi -DestinationPath bitvue-${{ matrix.target }}.zip
+            Compress-Archive -Path *.msi -DestinationPath ../../bitvue-${{ matrix.target }}.exe.zip
           }
 
       - name: Prepare artifacts (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
-          cd target/${{ matrix.target }}/release/bundle
+          cd src-tauri/target/${{ matrix.target }}/release/bundle
           if [ -f "bitvue_${{ matrix.target }}.AppImage" ]; then
             mv bitvue_${{ matrix.target }}.AppImage bitvue-${{ matrix.target }}.AppImage
             chmod +x bitvue-${{ matrix.target }}.AppImage
@@ -158,9 +158,9 @@ jobs:
         with:
           name: bitvue-${{ matrix.target }}
           path: |
-            target/${{ matrix.target }}/release/bundle/*${{ matrix.artifact_ext }}
-            !target/**/*.d
-            !target/**/*.rlib
+            src-tauri/target/${{ matrix.target }}/release/bundle/*${{ matrix.artifact_ext }}
+            !src-tauri/target/**/*.d
+            !src-tauri/target/**/*.rlib
           if-no-files-found: warn
 
   # Create universal macOS binary (requires x86_64 build)
