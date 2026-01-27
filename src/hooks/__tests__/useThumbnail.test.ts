@@ -83,10 +83,15 @@ describe('useThumbnail', () => {
 
     const { result } = renderHook(() => useThumbnail());
 
-    // Start the loading process
-    const loadPromise = result.current.loadThumbnails([0, 1]);
+    // Start the loading process inside act
+    let loadPromise: Promise<void>;
+    await act(async () => {
+      loadPromise = result.current.loadThumbnails([0, 1]);
+      // Wait a tick for state to update
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
-    // Check loading state synchronously
+    // Check loading state
     expect(result.current.loading.has(0)).toBe(true);
     expect(result.current.loading.has(1)).toBe(true);
 
@@ -96,7 +101,7 @@ describe('useThumbnail', () => {
         { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
         { frame_index: 1, thumbnail_data: 'data', width: 320, height: 180, success: true },
       ]);
-      await loadPromise;
+      await loadPromise!;
     });
 
     // Should not be loading anymore
@@ -166,18 +171,25 @@ describe('useThumbnail', () => {
     const { result } = renderHook(() => useThumbnail());
 
     // Start first load
-    const loadPromise1 = result.current.loadThumbnails([0]);
+    let loadPromise1: Promise<void>;
+    await act(async () => {
+      loadPromise1 = result.current.loadThumbnails([0]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
     // Try to load again while first is still loading
-    const loadPromise2 = result.current.loadThumbnails([0]);
+    let loadPromise2: Promise<void>;
+    await act(async () => {
+      loadPromise2 = result.current.loadThumbnails([0]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
-    // Should only invoke once
+    // Should only invoke once (the second call should be filtered out)
     expect(mockInvoke).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveInvoke!([{ frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true }]);
-      await loadPromise1;
-      await loadPromise2;
+      await Promise.all([loadPromise1!, loadPromise2!]);
     });
   });
 
@@ -439,19 +451,28 @@ describe('useThumbnail cache behavior', () => {
 
     const { result } = renderHook(() => useThumbnail());
 
-    // Start multiple concurrent loads for the same frame
-    const promises = [
-      result.current.loadThumbnails([0]),
-      result.current.loadThumbnails([0]),
-      result.current.loadThumbnails([0]),
-    ];
+    // Start first load
+    let loadPromise1: Promise<void>;
+    await act(async () => {
+      loadPromise1 = result.current.loadThumbnails([0]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
-    // Should only invoke once
+    // Start second and third loads while first is still loading
+    let loadPromise2: Promise<void>;
+    let loadPromise3: Promise<void>;
+    await act(async () => {
+      loadPromise2 = result.current.loadThumbnails([0]);
+      loadPromise3 = result.current.loadThumbnails([0]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    // Should only invoke once (the first call, subsequent ones are filtered out)
     expect(mockInvoke).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveInvoke!([{ frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true }]);
-      await Promise.all(promises);
+      await Promise.all([loadPromise1!, loadPromise2!, loadPromise3!]);
     });
 
     // Should have exactly one thumbnail
@@ -581,7 +602,12 @@ describe('useThumbnail loading state management', () => {
     expect(result.current.loading.size).toBe(0);
 
     // Start loading
-    const loadPromise = result.current.loadThumbnails([0, 1, 2]);
+    let loadPromise: Promise<void>;
+    await act(async () => {
+      loadPromise = result.current.loadThumbnails([0, 1, 2]);
+      // Wait for state to update
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
     // During loading
     expect(result.current.loading.has(0)).toBe(true);
@@ -596,7 +622,7 @@ describe('useThumbnail loading state management', () => {
         { frame_index: 1, thumbnail_data: 'data1', width: 320, height: 180, success: true },
         { frame_index: 2, thumbnail_data: 'data2', width: 320, height: 180, success: true },
       ]);
-      await loadPromise;
+      await loadPromise!;
     });
 
     // After loading

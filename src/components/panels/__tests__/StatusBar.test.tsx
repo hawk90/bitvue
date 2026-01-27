@@ -26,22 +26,25 @@ describe('StatusBar', () => {
   });
 
   it('should display frame count', () => {
-    render(<StatusBar {...defaultProps} />);
+    const { container } = render(<StatusBar {...defaultProps} />);
 
-    expect(screen.getByText('42')).toBeInTheDocument();
-    expect(screen.getByText('/1000')).toBeInTheDocument();
+    const frameSection = container.querySelector('.status-section');
+    expect(frameSection?.textContent).toContain('42');
+    expect(frameSection?.textContent).toContain('1000');
   });
 
   it('should display current mode', () => {
     render(<StatusBar {...defaultProps} />);
 
-    expect(screen.getByText('overview')).toBeInTheDocument();
+    expect(screen.getByText(/overview/i)).toBeInTheDocument();
   });
 
   it('should display zoom level', () => {
-    render(<StatusBar {...defaultProps} />);
+    const { container } = render(<StatusBar {...defaultProps} />);
 
-    expect(screen.getByText('150%')).toBeInTheDocument();
+    const sections = container.querySelectorAll('.status-section');
+    const zoomSection = Array.from(sections).find(s => s.textContent?.includes('Zoom'));
+    expect(zoomSection?.textContent).toContain('150%');
   });
 
   it('should display playback status', () => {
@@ -51,9 +54,10 @@ describe('StatusBar', () => {
   });
 
   it('should display playback speed', () => {
-    render(<StatusBar {...defaultProps} />);
+    const { container } = render(<StatusBar {...defaultProps} />);
 
-    expect(screen.getByText('2x')).toBeInTheDocument();
+    const playingIndicator = container.querySelector('.yuv-playing-indicator');
+    expect(playingIndicator?.textContent).toContain('2x');
   });
 
   it('should use React.memo for performance', () => {
@@ -71,78 +75,92 @@ describe('StatusBar', () => {
   });
 
   it('should handle single frame', () => {
-    render(<StatusBar {...defaultProps} totalFrames={1} currentFrameIndex={0} />);
+    const { container } = render(<StatusBar {...defaultProps} totalFrames={1} currentFrameIndex={0} />);
 
-    expect(screen.getByText('0/1')).toBeInTheDocument();
+    const frameSection = container.querySelector('.status-section');
+    expect(frameSection?.textContent).toContain('0 / 1');
   });
 
   it('should handle zero zoom', () => {
-    render(<StatusBar {...defaultProps} zoom={0} />);
+    const { container } = render(<StatusBar {...defaultProps} zoom={0} />);
 
-    expect(screen.getByText('0%')).toBeInTheDocument();
+    const sections = container.querySelectorAll('.status-section');
+    const zoomSection = Array.from(sections).find(s => s.textContent?.includes('Zoom'));
+    expect(zoomSection?.textContent).toContain('0%');
   });
 
   it('should handle fractional zoom', () => {
-    render(<StatusBar {...defaultProps} zoom={0.5} />);
+    const { container } = render(<StatusBar {...defaultProps} zoom={0.5} />);
 
-    expect(screen.getByText('50%')).toBeInTheDocument();
+    const sections = container.querySelectorAll('.status-section');
+    const zoomSection = Array.from(sections).find(s => s.textContent?.includes('Zoom'));
+    expect(zoomSection?.textContent).toContain('50%');
   });
 });
 
 describe('StatusBar formatting', () => {
   it('should format large frame numbers', () => {
-    render(<StatusBar {...defaultProps} totalFrames={100000} currentFrameIndex={50000} />);
+    const { container } = render(<StatusBar {...defaultProps} totalFrames={100000} currentFrameIndex={50000} />);
 
-    expect(screen.getByText('50000')).toBeInTheDocument();
-    expect(screen.getByText('100000')).toBeInTheDocument();
+    const frameSection = container.querySelector('.status-section');
+    expect(frameSection?.textContent).toContain('50000');
+    expect(frameSection?.textContent).toContain('100000');
   });
 
   it('should handle 0-indexed frame', () => {
-    render(<StatusBar {...defaultProps} currentFrameIndex={0} />);
+    const { container } = render(<StatusBar {...defaultProps} currentFrameIndex={0} />);
 
-    expect(screen.getByText('0/')).toBeInTheDocument();
+    const frameSection = container.querySelector('.status-section');
+    expect(frameSection?.textContent).toContain('0 /');
   });
 
   it('should display different mode names', () => {
     const { rerender } = render(<StatusBar {...defaultProps} currentMode="prediction" />);
 
-    expect(screen.getByText('prediction')).toBeInTheDocument();
+    expect(screen.getByText(/prediction/i)).toBeInTheDocument();
 
     rerender(<StatusBar {...defaultProps} currentMode="transform" />);
 
-    expect(screen.getByText('transform')).toBeInTheDocument();
+    expect(screen.getByText(/transform/i)).toBeInTheDocument();
   });
 
   it('should display decimal zoom levels', () => {
-    render(<StatusBar {...defaultProps} zoom={1.25} />);
+    const { container } = render(<StatusBar {...defaultProps} zoom={1.25} />);
 
-    expect(screen.getByText('125%')).toBeInTheDocument();
+    const sections = container.querySelectorAll('.status-section');
+    const zoomSection = Array.from(sections).find(s => s.textContent?.includes('Zoom'));
+    expect(zoomSection?.textContent).toContain('125%');
   });
 });
 
 describe('StatusBar edge cases', () => {
   it('should handle zero total frames', () => {
-    render(<StatusBar {...defaultProps} totalFrames={0} currentFrameIndex={0} />);
+    const { container } = render(<StatusBar {...defaultProps} totalFrames={0} currentFrameIndex={0} />);
 
-    expect(screen.getByText('0/0')).toBeInTheDocument();
+    const frameSection = container.querySelector('.status-section');
+    expect(frameSection?.textContent).toContain('0 / 0');
   });
 
   it('should handle very fast playback speed', () => {
-    render(<StatusBar {...defaultProps} playbackSpeed={16} />);
+    const { container } = render(<StatusBar {...defaultProps} playbackSpeed={16} />);
 
-    expect(screen.getByText('16x')).toBeInTheDocument();
+    const playingIndicator = container.querySelector('.yuv-playing-indicator');
+    expect(playingIndicator?.textContent).toContain('16x');
   });
 
   it('should handle slow playback speed', () => {
-    render(<StatusBar {...defaultProps} playbackSpeed={0.25} />);
+    const { container } = render(<StatusBar {...defaultProps} playbackSpeed={0.25} />);
 
-    expect(screen.getByText('0.25x')).toBeInTheDocument();
+    const playingIndicator = container.querySelector('.yuv-playing-indicator');
+    expect(playingIndicator?.textContent).toContain('0.25x');
   });
 
   it('should handle very high zoom', () => {
-    render(<StatusBar {...defaultProps} zoom={4} />);
+    const { container } = render(<StatusBar {...defaultProps} zoom={4} />);
 
-    expect(screen.getByText('400%')).toBeInTheDocument();
+    const sections = container.querySelectorAll('.status-section');
+    const zoomSection = Array.from(sections).find(s => s.textContent?.includes('Zoom'));
+    expect(zoomSection?.textContent).toContain('400%');
   });
 });
 

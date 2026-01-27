@@ -3,20 +3,47 @@
  * Tests layout context provider for panel management
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { LayoutProvider, useLayout } from '@/contexts/LayoutContext';
+import { LayoutProvider, useLayout, DEFAULT_LAYOUT } from '@/contexts/LayoutContext';
+
+// Mock localStorage
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => {
+      store[key] = value.toString();
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+  };
+})();
+
+Object.defineProperty(global, 'localStorage', {
+  value: localStorageMock,
+});
 
 describe('LayoutContext', () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <LayoutProvider>{children}</LayoutProvider>
   );
 
+  beforeEach(() => {
+    localStorageMock.clear();
+  });
+
   it('should provide default layout state', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(result.current.panels).toBeDefined();
-    expect(Array.isArray(result.current.panels)).toBe(true);
+    expect(result.current.layoutState).toBeDefined();
+    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
+    expect(result.current.layoutState.topPanelSize).toBe(DEFAULT_LAYOUT.topPanelSize);
+    expect(result.current.layoutState.bottomPanelSizes).toEqual(DEFAULT_LAYOUT.bottomPanelSizes);
   });
 
   it('should have resetLayout function', () => {
@@ -25,128 +52,197 @@ describe('LayoutContext', () => {
     expect(typeof result.current.resetLayout).toBe('function');
   });
 
-  it('should have addPanel function', () => {
+  it('should have saveLayout function', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.addPanel).toBe('function');
+    expect(typeof result.current.saveLayout).toBe('function');
   });
 
-  it('should have removePanel function', () => {
+  it('should have loadLayout function', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.removePanel).toBe('function');
+    expect(typeof result.current.loadLayout).toBe('function');
   });
 
-  it('should have togglePanel function', () => {
+  it('should have updateLeftPanel function', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.togglePanel).toBe('function');
+    expect(typeof result.current.updateLeftPanel).toBe('function');
+  });
+
+  it('should have updateTopPanel function', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    expect(typeof result.current.updateTopPanel).toBe('function');
+  });
+
+  it('should have updateBottomPanel function', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    expect(typeof result.current.updateBottomPanel).toBe('function');
   });
 });
 
 describe('LayoutContext panel management', () => {
-  it('should add panel to layout', () => {
-    const { result } = renderHook(() => useLayout(), { wrapper });
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <LayoutProvider>{children}</LayoutProvider>
+  );
 
-    act(() => {
-      result.current.addPanel({
-        id: 'test-panel',
-        title: 'Test Panel',
-        component: () => null,
-      });
-    });
-
-    expect(result.current.panels.length).toBeGreaterThan(0);
+  beforeEach(() => {
+    localStorageMock.clear();
   });
 
-  it('should remove panel from layout', () => {
+  it('should update left panel size', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
-      const panelId = result.current.addPanel({
-        id: 'test-panel',
-        title: 'Test Panel',
-        component: () => null,
-      });
-      result.current.removePanel('test-panel');
+      result.current.updateLeftPanel(50);
     });
 
-    const panel = result.current.panels.find(p => p.id === 'test-panel');
-    expect(panel).toBeUndefined();
+    expect(result.current.layoutState.leftPanelSize).toBe(50);
   });
 
-  it('should toggle panel visibility', () => {
+  it('should update top panel size', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
-      result.current.addPanel({
-        id: 'test-panel',
-        title: 'Test Panel',
-        component: () => null,
-      });
+      result.current.updateTopPanel(30);
     });
 
-    const initialVisible = result.current.panels[0].visible;
+    expect(result.current.layoutState.topPanelSize).toBe(30);
+  });
+
+  it('should update bottom panel size at specific index', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
-      result.current.togglePanel('test-panel');
+      result.current.updateBottomPanel(0, 50);
     });
 
-    expect(result.current.panels[0].visible).toBe(!initialVisible);
+    expect(result.current.layoutState.bottomPanelSizes[0]).toBe(50);
+  });
+
+  it('should update multiple bottom panel sizes', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    act(() => {
+      result.current.updateBottomPanel(0, 40);
+      result.current.updateBottomPanel(1, 30);
+      result.current.updateBottomPanel(2, 30);
+    });
+
+    expect(result.current.layoutState.bottomPanelSizes).toEqual([40, 30, 30]);
   });
 });
 
 describe('LayoutContext resetLayout', () => {
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <LayoutProvider>{children}</LayoutProvider>
+  );
+
+  beforeEach(() => {
+    localStorageMock.clear();
+  });
+
   it('should reset to default layout', () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
-      result.current.addPanel({
-        id: 'custom-panel',
-        title: 'Custom',
-        component: () => null,
-      });
+      result.current.updateLeftPanel(60);
+      result.current.updateTopPanel(40);
     });
 
-    expect(result.current.panels.length).toBeGreaterThan(0);
+    expect(result.current.layoutState.leftPanelSize).toBe(60);
+    expect(result.current.layoutState.topPanelSize).toBe(40);
 
     act(() => {
       result.current.resetLayout();
     });
 
-    // Should return to default panels
-    expect(result.current.panels).toBeDefined();
+    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
+    expect(result.current.layoutState.topPanelSize).toBe(DEFAULT_LAYOUT.topPanelSize);
+    expect(result.current.layoutState.bottomPanelSizes).toEqual(DEFAULT_LAYOUT.bottomPanelSizes);
+  });
+
+  it('should clear localStorage on reset', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    act(() => {
+      result.current.updateLeftPanel(60);
+      result.current.saveLayout();
+    });
+
+    expect(localStorageMock.getItem('bitvue-layout')).toBeDefined();
+
+    act(() => {
+      result.current.resetLayout();
+    });
+
+    expect(localStorageMock.getItem('bitvue-layout')).toBeNull();
   });
 });
 
 describe('LayoutContext persistence', () => {
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <LayoutProvider>{children}</LayoutProvider>
+  );
+
+  beforeEach(() => {
+    localStorageMock.clear();
+  });
+
   it('should save layout to localStorage', () => {
-    const localStorageSpy = vi.spyOn(Storage.prototype, 'setItem');
-    localStorageSpy.mockImplementation(() => {});
+    const setItemSpy = vi.spyOn(localStorageMock, 'setItem');
 
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
-      result.current.addPanel({
-        id: 'test-panel',
-        title: 'Test',
-        component: () => null,
-      });
+      result.current.updateLeftPanel(55);
     });
 
-    expect(localStorageSpy).toHaveBeenCalled();
+    // State update should be complete
+    expect(result.current.layoutState.leftPanelSize).toBe(55);
+
+    act(() => {
+      result.current.saveLayout();
+    });
+
+    expect(setItemSpy).toHaveBeenCalled();
+
+    const saved = localStorageMock.getItem('bitvue-layout');
+    expect(saved).toBeDefined();
+
+    const parsed = JSON.parse(saved!);
+    expect(parsed.leftPanelSize).toBe(55);
+
+    setItemSpy.mockRestore();
   });
 
-  it('should load layout from localStorage on mount', () => {
-    const localStorageSpy = vi.spyOn(Storage.prototype, 'getItem');
-    localStorageSpy.mockReturnValue(JSON.stringify([
-      { id: 'saved-panel', title: 'Saved', position: 'left' }
-    ]));
+  it('should load layout from localStorage', () => {
+    const savedLayout = {
+      leftPanelSize: 70,
+      topPanelSize: 25,
+      bottomPanelSizes: [20, 30, 50],
+    };
+
+    localStorageMock.setItem('bitvue-layout', JSON.stringify(savedLayout));
 
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    // Should load saved panels
-    expect(result.current.panels).toBeDefined();
+    act(() => {
+      result.current.loadLayout();
+    });
+
+    expect(result.current.layoutState.leftPanelSize).toBe(70);
+    expect(result.current.layoutState.topPanelSize).toBe(25);
+    expect(result.current.layoutState.bottomPanelSizes).toEqual([20, 30, 50]);
+  });
+
+  it('should not load layout in test environment on mount', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    // Should have defaults, not anything from localStorage
+    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
   });
 });
 
@@ -156,57 +252,111 @@ describe('LayoutContext error handling', () => {
 
     expect(() => {
       renderHook(() => useLayout());
-    }).toThrow();
+    }).toThrow('useLayout must be used within LayoutProvider');
 
     consoleSpy.mockRestore();
   });
 
-  it('should handle corrupted localStorage data', () => {
-    const localStorageSpy = vi.spyOn(Storage.prototype, 'getItem');
-    localStorageSpy.mockReturnValue('invalid json');
-
+  it('should handle corrupted localStorage data gracefully', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <LayoutProvider>{children}</LayoutProvider>
     );
+
+    localStorageMock.setItem('bitvue-layout', 'invalid json');
 
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    // Should fall back to default layout
-    expect(result.current.panels).toBeDefined();
-  });
-});
+    // Should have default layout after failed load
+    expect(result.current.layoutState).toBeDefined();
 
-describe('LayoutContext panel positions', () => {
-  it('should support different panel positions', () => {
+    act(() => {
+      result.current.loadLayout();
+    });
+
+    // Should still have valid layout state
+    expect(result.current.layoutState).toBeDefined();
+    expect(typeof result.current.layoutState.leftPanelSize).toBe('number');
+  });
+
+  it('should handle missing localStorage gracefully', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <LayoutProvider>{children}</LayoutProvider>
     );
 
+    // localStorage is empty
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
-      result.current.addPanel({
-        id: 'left-panel',
-        title: 'Left Panel',
-        component: () => null,
-        position: 'left',
-      });
-
-      result.current.addPanel({
-        id: 'right-panel',
-        title: 'Right Panel',
-        component: () => null,
-        position: 'right',
-      });
-
-      result.current.addPanel({
-        id: 'bottom-panel',
-        title: 'Bottom Panel',
-        component: () => null,
-        position: 'bottom',
-      });
+      result.current.loadLayout();
     });
 
-    expect(result.current.panels.length).toBeGreaterThanOrEqual(3);
+    // Should have default layout
+    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
+  });
+});
+
+describe('LayoutContext edge cases', () => {
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <LayoutProvider>{children}</LayoutProvider>
+  );
+
+  beforeEach(() => {
+    localStorageMock.clear();
+  });
+
+  it('should handle zero panel sizes', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    act(() => {
+      result.current.updateLeftPanel(0);
+      result.current.updateTopPanel(0);
+      result.current.updateBottomPanel(0, 0);
+    });
+
+    expect(result.current.layoutState.leftPanelSize).toBe(0);
+    expect(result.current.layoutState.topPanelSize).toBe(0);
+    expect(result.current.layoutState.bottomPanelSizes[0]).toBe(0);
+  });
+
+  it('should handle large panel sizes', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    act(() => {
+      result.current.updateLeftPanel(100);
+      result.current.updateTopPanel(100);
+      result.current.updateBottomPanel(0, 100);
+    });
+
+    expect(result.current.layoutState.leftPanelSize).toBe(100);
+    expect(result.current.layoutState.topPanelSize).toBe(100);
+    expect(result.current.layoutState.bottomPanelSizes[0]).toBe(100);
+  });
+
+  it('should handle rapid updates to same panel', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    act(() => {
+      result.current.updateLeftPanel(10);
+      result.current.updateLeftPanel(20);
+      result.current.updateLeftPanel(30);
+      result.current.updateLeftPanel(40);
+    });
+
+    expect(result.current.layoutState.leftPanelSize).toBe(40);
+  });
+
+  it('should preserve other panel sizes when updating one', () => {
+    const { result } = renderHook(() => useLayout(), { wrapper });
+
+    const originalTop = result.current.layoutState.topPanelSize;
+    const originalBottom = [...result.current.layoutState.bottomPanelSizes];
+
+    act(() => {
+      result.current.updateLeftPanel(80);
+    });
+
+    expect(result.current.layoutState.topPanelSize).toBe(originalTop);
+    expect(result.current.layoutState.bottomPanelSizes).toEqual(originalBottom);
+    expect(result.current.layoutState.leftPanelSize).toBe(80);
   });
 });

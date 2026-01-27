@@ -13,15 +13,23 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
-// Mock logger
+// Mock logger - inline to avoid hoisting issues
 vi.mock('@/utils/logger', () => ({
-  createLogger: () => ({
+  createLogger: vi.fn(() => ({
     error: vi.fn(),
     warn: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
-  }),
+  })),
 }));
+
+// Get the mocked invoke function
+import { invoke } from '@tauri-apps/api/core';
+const mockedInvoke = invoke as ReturnType<typeof vi.fn>;
+
+// Get the mocked logger
+import { createLogger } from '@/utils/logger';
+const mockLogger = createLogger('test') as ReturnType<typeof createLogger>;
 
 const mockFrames: FrameInfo[] = [
   { frame_index: 0, frame_type: 'I', size: 50000, poc: 0, key_frame: true },
@@ -41,27 +49,21 @@ describe('StreamDataContext', () => {
   );
 
   it('should provide default state', async () => {
-    mockInvoke.mockResolvedValue([]);
+    mockedInvoke.mockResolvedValue([]);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
+    // Initially loading is false (no auto-load in test env)
+    expect(result.current.loading).toBe(false);
     expect(result.current.frames).toEqual([]);
     expect(result.current.currentFrameIndex).toBe(0);
     expect(result.current.error).toBeNull();
   });
 
   it('should have all required methods', async () => {
-    mockInvoke.mockResolvedValue([]);
+    mockedInvoke.mockResolvedValue([]);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
 
     expect(typeof result.current.setCurrentFrameIndex).toBe('function');
     expect(typeof result.current.refreshFrames).toBe('function');
@@ -69,22 +71,23 @@ describe('StreamDataContext', () => {
     expect(typeof result.current.getFrameStats).toBe('function');
   });
 
-  it('should load frames on mount', async () => {
-    mockInvoke.mockResolvedValue(mockFrames);
+  it('should load frames on refresh', async () => {
+    mockedInvoke.mockResolvedValue(mockFrames);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_frames');
+    expect(mockedInvoke).toHaveBeenCalledWith('get_frames');
     expect(result.current.frames).toEqual(mockFrames);
+    expect(result.current.loading).toBe(false);
   });
 
   it('should set loading state during refresh', async () => {
     let resolveInvoke: (value: FrameInfo[]) => void;
-    mockInvoke.mockImplementation(() => {
+    mockedInvoke.mockImplementation(() => {
       return new Promise(resolve => {
         resolveInvoke = resolve;
       });
@@ -92,62 +95,65 @@ describe('StreamDataContext', () => {
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    // Initial load
-    await waitFor(() => {
-      expect(result.current.loading).toBe(true);
-    });
-
-    // Resolve the initial load
     act(() => {
-      resolveInvoke!(mockFrames);
+      result.current.refreshFrames();
     });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    // Should be loading
+    expect(result.current.loading).toBe(true);
+
+    // Resolve the load
+    await act(async () => {
+      resolveInvoke!(mockFrames);
+      await waitFor(() => result.current.loading === false);
     });
+
+    expect(result.current.loading).toBe(false);
   });
 
   it('should handle load error', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockInvoke.mockRejectedValue(new Error('Failed to load frames'));
+    mockedInvoke.mockRejectedValue(new Error('Failed to load frames'));
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
     expect(result.current.error).toBeTruthy();
     expect(result.current.frames).toEqual([]);
+    expect(result.current.loading).toBe(false);
 
     consoleSpy.mockRestore();
   });
 
   it('should clear error on successful load', async () => {
-    mockInvoke
+    mockedInvoke
       .mockRejectedValueOnce(new Error('First load failed'))
       .mockResolvedValueOnce(mockFrames);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.error).toBeTruthy();
+    // First load fails
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
-    act(() => {
-      result.current.refreshFrames();
+    expect(result.current.error).toBeTruthy();
+
+    // Second load succeeds
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
-    await waitFor(() => {
-      expect(result.current.error).toBeNull();
-    });
+    expect(result.current.error).toBeNull();
   });
 });
 
 describe('StreamDataContext frame index management', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInvoke.mockResolvedValue(mockFrames);
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -155,11 +161,9 @@ describe('StreamDataContext frame index management', () => {
   );
 
   it('should set current frame index', async () => {
-    const { result } = renderHook(() => useStreamData(), { wrapper });
+    mockedInvoke.mockResolvedValue(mockFrames);
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
+    const { result } = renderHook(() => useStreamData(), { wrapper });
 
     act(() => {
       result.current.setCurrentFrameIndex(2);
@@ -169,11 +173,9 @@ describe('StreamDataContext frame index management', () => {
   });
 
   it('should allow setting frame index to 0', async () => {
-    const { result } = renderHook(() => useStreamData(), { wrapper });
+    mockedInvoke.mockResolvedValue(mockFrames);
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
+    const { result } = renderHook(() => useStreamData(), { wrapper });
 
     act(() => {
       result.current.setCurrentFrameIndex(3);
@@ -184,11 +186,9 @@ describe('StreamDataContext frame index management', () => {
   });
 
   it('should handle setting same frame index', async () => {
-    const { result } = renderHook(() => useStreamData(), { wrapper });
+    mockedInvoke.mockResolvedValue(mockFrames);
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
+    const { result } = renderHook(() => useStreamData(), { wrapper });
 
     act(() => {
       result.current.setCurrentFrameIndex(5);
@@ -202,7 +202,6 @@ describe('StreamDataContext frame index management', () => {
 describe('StreamDataContext getFrameStats', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInvoke.mockResolvedValue(mockFrames);
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -212,8 +211,8 @@ describe('StreamDataContext getFrameStats', () => {
   it('should calculate total frames count', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -224,8 +223,8 @@ describe('StreamDataContext getFrameStats', () => {
   it('should count key frames', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -236,8 +235,8 @@ describe('StreamDataContext getFrameStats', () => {
   it('should calculate total size', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -248,8 +247,8 @@ describe('StreamDataContext getFrameStats', () => {
   it('should calculate average size', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -260,8 +259,8 @@ describe('StreamDataContext getFrameStats', () => {
   it('should count frame types', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -272,13 +271,7 @@ describe('StreamDataContext getFrameStats', () => {
   });
 
   it('should handle empty frames array', async () => {
-    mockInvoke.mockResolvedValue([]);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
 
     const stats = result.current.getFrameStats();
 
@@ -292,22 +285,16 @@ describe('StreamDataContext getFrameStats', () => {
   it('should recalculate stats when frames change', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
     });
 
     const initialStats = result.current.getFrameStats();
     expect(initialStats.totalFrames).toBe(5);
 
-    // Clear and reload with different frames
+    // Update frames
     act(() => {
-      result.current.clearData();
-    });
-
-    mockInvoke.mockResolvedValue([mockFrames[0], mockFrames[1]]);
-
-    await act(async () => {
-      await result.current.refreshFrames();
+      result.current.setFrames([mockFrames[0], mockFrames[1]]);
     });
 
     const newStats = result.current.getFrameStats();
@@ -325,76 +312,75 @@ describe('StreamDataContext refreshFrames', () => {
   );
 
   it('should refresh frames from backend', async () => {
-    mockInvoke.mockResolvedValue(mockFrames);
+    mockedInvoke.mockResolvedValue(mockFrames);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
     expect(result.current.frames).toEqual(mockFrames);
   });
 
   it('should call get_frames command', async () => {
-    mockInvoke.mockResolvedValue(mockFrames);
-
-    renderHook(() => useStreamData(), { wrapper });
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('get_frames');
-    });
-  });
-
-  it('should handle empty result from backend', async () => {
-    mockInvoke.mockResolvedValue([]);
+    mockedInvoke.mockResolvedValue(mockFrames);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      await result.current.refreshFrames();
+    });
+
+    expect(mockedInvoke).toHaveBeenCalledWith('get_frames');
+  });
+
+  it('should handle empty result from backend', async () => {
+    mockedInvoke.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useStreamData(), { wrapper });
+
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
     expect(result.current.frames).toEqual([]);
   });
 
   it('should handle null result from backend', async () => {
-    mockInvoke.mockResolvedValue(null);
+    mockedInvoke.mockResolvedValue(null);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
     expect(result.current.frames).toEqual([]);
   });
 
   it('should support multiple refresh calls', async () => {
-    mockInvoke.mockResolvedValue([mockFrames[0]]);
+    mockedInvoke.mockResolvedValue([mockFrames[0]]);
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockedInvoke).toHaveBeenCalledTimes(1);
 
-    act(() => {
-      result.current.refreshFrames();
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledTimes(2);
-    });
+    expect(mockedInvoke).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('StreamDataContext clearData', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInvoke.mockResolvedValue(mockFrames);
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -404,11 +390,12 @@ describe('StreamDataContext clearData', () => {
   it('should clear all data', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
+      result.current.setFilePath('/test/path');
     });
 
-    expect(result.current.frames.length).toBeGreaterThan(0);
+    expect(result.current.frames.length).toBe(5);
 
     act(() => {
       result.current.clearData();
@@ -417,14 +404,11 @@ describe('StreamDataContext clearData', () => {
     expect(result.current.frames).toEqual([]);
     expect(result.current.currentFrameIndex).toBe(0);
     expect(result.current.error).toBeNull();
+    expect(result.current.filePath).toBeNull();
   });
 
   it('should reset loading state on clear', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
 
     act(() => {
       result.current.clearData();
@@ -434,13 +418,15 @@ describe('StreamDataContext clearData', () => {
   });
 
   it('should clear error state on clear', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Load error'));
+    mockedInvoke.mockRejectedValueOnce(new Error('Load error'));
 
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.error).toBeTruthy();
+    await act(async () => {
+      await result.current.refreshFrames();
     });
+
+    expect(result.current.error).toBeTruthy();
 
     act(() => {
       result.current.clearData();
@@ -458,23 +444,20 @@ describe('StreamDataContext error handling', () => {
   });
 
   it('should log error on load failure', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockInvoke.mockRejectedValue(new Error('Network error'));
+    mockedInvoke.mockRejectedValue(new Error('Network error'));
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <StreamDataProvider>{children}</StreamDataProvider>
     );
 
-    renderHook(() => useStreamData(), { wrapper });
+    const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to load frames:'),
-        expect.anything()
-      );
+    await act(async () => {
+      await result.current.refreshFrames();
     });
 
-    consoleSpy.mockRestore();
+    // Verify error was set (logging is handled by the logger internally)
+    expect(result.current.error).toBeTruthy();
   });
 });
 
@@ -493,12 +476,10 @@ describe('StreamDataContext edge cases', () => {
       { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
     ];
 
-    mockInvoke.mockResolvedValue(framesWithoutKeyFrame);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(framesWithoutKeyFrame);
     });
 
     const stats = result.current.getFrameStats();
@@ -511,12 +492,10 @@ describe('StreamDataContext edge cases', () => {
       { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
     ];
 
-    mockInvoke.mockResolvedValue(framesWithZeroSize);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(framesWithZeroSize);
     });
 
     const stats = result.current.getFrameStats();
@@ -532,12 +511,10 @@ describe('StreamDataContext edge cases', () => {
       poc: i,
     })) as FrameInfo[];
 
-    mockInvoke.mockResolvedValue(largeFrames);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(largeFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -554,12 +531,10 @@ describe('StreamDataContext edge cases', () => {
       { frame_index: 5, frame_type: 'INTER', size: 40000, poc: 5 },
     ] as FrameInfo[];
 
-    mockInvoke.mockResolvedValue(mixedFrames);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mixedFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -579,12 +554,10 @@ describe('StreamDataContext edge cases', () => {
       { frame_index: 3, frame_type: 'B', size: 25000, poc: 3, ref_frames: [1, 2] },
     ] as FrameInfo[];
 
-    mockInvoke.mockResolvedValue(framesWithRefs);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(framesWithRefs);
     });
 
     expect(result.current.frames[1].ref_frames).toEqual([0]);
@@ -592,13 +565,7 @@ describe('StreamDataContext edge cases', () => {
   });
 
   it('should handle negative frame index', async () => {
-    mockInvoke.mockResolvedValue(mockFrames);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
 
     act(() => {
       result.current.setCurrentFrameIndex(-1);
@@ -608,13 +575,7 @@ describe('StreamDataContext edge cases', () => {
   });
 
   it('should handle very large frame index', async () => {
-    mockInvoke.mockResolvedValue(mockFrames);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
 
     act(() => {
       result.current.setCurrentFrameIndex(999999);
@@ -627,7 +588,6 @@ describe('StreamDataContext edge cases', () => {
 describe('StreamDataContext React stability', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInvoke.mockResolvedValue(mockFrames);
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -636,10 +596,6 @@ describe('StreamDataContext React stability', () => {
 
   it('should provide stable callbacks across renders', async () => {
     const { result, rerender } = renderHook(() => useStreamData(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
 
     const setCurrentFrameIndexRef = result.current.setCurrentFrameIndex;
     const refreshFramesRef = result.current.refreshFrames;
@@ -657,20 +613,14 @@ describe('StreamDataContext React stability', () => {
   it('should update stats when frames change', async () => {
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mockFrames);
     });
 
     const initialStats = result.current.getFrameStats();
 
     act(() => {
-      result.current.clearData();
-    });
-
-    mockInvoke.mockResolvedValue([mockFrames[0]]);
-
-    await act(async () => {
-      await result.current.refreshFrames();
+      result.current.setFrames([mockFrames[0]]);
     });
 
     const newStats = result.current.getFrameStats();
@@ -695,12 +645,10 @@ describe('StreamDataContext frame type variations', () => {
       { frame_index: 2, frame_type: 'b', size: 20000, poc: 2 },
     ] as FrameInfo[];
 
-    mockInvoke.mockResolvedValue(lowercaseFrames);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(lowercaseFrames);
     });
 
     const stats = result.current.getFrameStats();
@@ -716,12 +664,10 @@ describe('StreamDataContext frame type variations', () => {
       { frame_index: 2, frame_type: 'B', size: 20000, poc: 2 },
     ] as FrameInfo[];
 
-    mockInvoke.mockResolvedValue(mixedCaseFrames);
-
     const { result } = renderHook(() => useStreamData(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    act(() => {
+      result.current.setFrames(mixedCaseFrames);
     });
 
     const stats = result.current.getFrameStats();

@@ -90,6 +90,10 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   exists: vi.fn(),
 }));
 
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+}));
+
 // Mock react-resizable-panels to avoid DOM issues in jsdom
 vi.mock('react-resizable-panels', () => ({
   Group: ({ children, ...props }: any) => React.createElement('div', { 'data-testid': 'resizable-group', ...props }, children),
