@@ -1,4 +1,5 @@
 // Performance module tests
+#[cfg(test)]
 // use super::*; // Not needed - types are already in scope from parent module
 
 // ============================================================================

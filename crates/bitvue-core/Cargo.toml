@@ -23,5 +23,7 @@ tempfile = "3.8"
 
 [features]
 # Codec-specific indexer features (optional, for faster compilation)
-# Currently disabled due to circular dependency issues
 default = []
+hevc-indexer = []
+vp9-indexer = []
+vvc-indexer = []
