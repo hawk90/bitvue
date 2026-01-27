@@ -11,11 +11,15 @@
   *[Multi-codec analysis tool for inspecting compressed video bitstreams]*
 
   <!-- Badges -->
-  [![CI](https://img.shields.io/github/actions/workflow/status/hawk90/bitvue/ci.yml?branch=main&logo=github&label=build)](https://github.com/hawk90/bitvue/actions/workflows/ci.yml)
-  [![codecov](https://img.shields.io/codecov/c/github/hawk90/bitvue?logo=codecov&token=XXXXX)](https://codecov.io/gh/hawk90/bitvue)
-  [![Release](https://img.shields.io/github/v/release/hawk90/bitvue?logo=github)](https://github.com/hawk90/bitvue/releases)
-  [![Downloads](https://img.shields.io/github/downloads/hawk90/bitvue/total)](https://github.com/hawk90/bitvue/releases)
-  [![Stars](https://img.shields.io/github/stars/hawk90/bitvue?logo=github)](https://github.com/hawk90/bitvue)
+  [![CI](https://img.shields.io/github/actions/workflow/status/hawk90/bitvue/ci.yml?branch=main&logo=github-actions&logoColor=white&label=build)](https://github.com/hawk90/bitvue/actions/workflows/ci.yml)
+  [![codecov](https://img.shields.io/codecov/c/github/hawk90/bitvue?logo=codecov&logoColor=F01F7A&token=XXXXX)](https://codecov.io/gh/hawk90/bitvue)
+  [![License](https://img.shields.io/github/license/hawk90/bitvue?logo=gnu&logoColor=white)](LICENSE)
+
+  <!-- Stats -->
+  [![Release](https://img.shields.io/github/v/release/hawk90/bitvue?logo=github&color=blue&label=latest)](https://github.com/hawk90/bitvue/releases)
+  [![Downloads](https://img.shields.io/github/downloads/hawk90/bitvue/total?logo=github&color=success)](https://github.com/hawk90/bitvue/releases)
+  [![Stars](https://img.shields.io/github/stars/hawk90/bitvue?logo=github&color=yellow)](https://github.com/hawk90/bitvue)
+  [![Issues](https://img.shields.io/github/issues-raw/hawk90/bitvue?logo=github&color=important)](https://github.com/hawk90/bitvue/issues)
 
 </div>
 
