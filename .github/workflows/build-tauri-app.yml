@@ -12,8 +12,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  PKG_CONFIG_ALL_STATIC: 1  # Force static linking for all pkg-config libraries
-  PKG_CONFIG_PATH: /nonexistent  # Prevent pkg-config from finding system dav1d
+  DAV1D_NO_PKG_CONFIG: 1  # Force dav1d-sys to build dav1d from source
 
 jobs:
   build:
