@@ -50,7 +50,7 @@ impl FilmstripPanel {
 
         // Calculate statistics (VQAnalyzer parity)
         // AV1 frame types: KEY, INTER, INTRA_ONLY, SWITCH
-        let total_size: usize = frames.iter().map(|f| f.size).sum();
+        let _total_size: usize = frames.iter().map(|f| f.size).sum();
         let i_frames: Vec<_> = frames.iter().filter(|f| f.frame_type == "KEY" || f.frame_type == "INTRA_ONLY" || f.frame_type == "SWITCH").collect();
         let p_frames: Vec<_> = frames.iter().filter(|f| f.frame_type == "INTER").collect();
         let b_frames: Vec<&FrameInfo> = Vec::new(); // AV1 doesn't have B-frames
@@ -59,9 +59,9 @@ impl FilmstripPanel {
         let p_total: usize = p_frames.iter().map(|f| f.size).sum();
         let b_total: usize = b_frames.iter().map(|f| f.size).sum();
 
-        let i_avg = if !i_frames.is_empty() { i_total / i_frames.len() } else { 0 };
-        let p_avg = if !p_frames.is_empty() { p_total / p_frames.len() } else { 0 };
-        let b_avg = if !b_frames.is_empty() { b_total / b_frames.len() } else { 0 };
+        let _i_avg = if !i_frames.is_empty() { i_total / i_frames.len() } else { 0 };
+        let _p_avg = if !p_frames.is_empty() { p_total / p_frames.len() } else { 0 };
+        let _b_avg = if !b_frames.is_empty() { b_total / b_frames.len() } else { 0 };
 
         // Calculate moving average (in kbps - VQAnalyzer units)
         // Convert bytes to kbps: bytes * 8 / 1000
@@ -84,7 +84,7 @@ impl FilmstripPanel {
 
         // Main layout: Full-width graph with floating legend (VQAnalyzer style)
         let available_rect = ui.available_rect_before_wrap(); // For legend positioning
-        let graph_response = egui::ScrollArea::horizontal()
+        let _graph_response = egui::ScrollArea::horizontal()
             .auto_shrink([false, false])
             .id_salt("frame_sizes_graph")
             .show(ui, |ui| {

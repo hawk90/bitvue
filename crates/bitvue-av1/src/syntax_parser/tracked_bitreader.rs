@@ -3,7 +3,7 @@
 //! Wraps the standard `BitReader` to track absolute bit positions from the
 //! file start, enabling precise bit range tracking for syntax tree generation.
 
-use bitvue_core::{types::BitRange, BitReader as CoreBitReader, Result};
+use bitvue_core::{types::BitRange, Result};
 use crate::bitreader::BitReader as Av1BitReader;
 
 /// A bit reader that tracks absolute bit positions from file start

@@ -22,7 +22,7 @@ mod thumbnails;
 use helpers::collect_frame_info;
 
 use bitvue_core::{Command, SelectionState, StreamId, ThumbnailCache, UnitNode};
-use egui::{self, Color32, ColorImage, Rect, Rounding, Sense, Stroke, TextureHandle, Vec2};
+use egui::{self, Color32, ColorImage, TextureHandle};
 use std::collections::HashMap;
 
 /// Filmstrip visualization mode (VQAnalyzer parity + Bitvue enhancements)

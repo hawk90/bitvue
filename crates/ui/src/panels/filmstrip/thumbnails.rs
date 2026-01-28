@@ -1,8 +1,8 @@
 //! Thumbnail rendering - Frame thumbnail display with reference arrows
 
 use super::{FilmstripPanel, FrameInfo};
-use bitvue_core::{Command, StreamId, ThumbnailCache};
-use egui::{self, Color32, ColorImage, Rect, Rounding, Sense, Stroke, TextureHandle, Vec2};
+use bitvue_core::{Command, StreamId};
+use egui::{self, Color32, Rect, Rounding, Sense, Stroke, Vec2};
 
 impl FilmstripPanel {
     pub(super) fn render_reference_arrows(

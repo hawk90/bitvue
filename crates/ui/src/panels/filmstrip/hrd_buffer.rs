@@ -1,8 +1,8 @@
 //! HRD Buffer view - Buffer fullness visualization
 
 use super::{FilmstripPanel, FrameInfo};
-use bitvue_core::{Command, StreamId, ThumbnailCache};
-use egui::{self, Color32, ColorImage, Rect, Rounding, Sense, Stroke, Vec2};
+use bitvue_core::{Command, StreamId};
+use egui::{self, Color32, Rect, Rounding, Sense, Stroke, Vec2};
 
 impl FilmstripPanel {
     pub(super) fn render_hrd_buffer_view(

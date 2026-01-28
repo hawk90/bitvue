@@ -6,7 +6,7 @@
 //! - Transform & Reconstruction stages
 //! - VVC-specific tools: ALF, LMCS, GDR
 
-use bitvue_core::{Command, SelectionState, StreamId};
+use bitvue_core::{Command, SelectionState};
 use egui::{self, Color32, Vec2};
 
 /// Professional color palette for VVC visualization
