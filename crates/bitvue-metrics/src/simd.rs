@@ -7,6 +7,25 @@
 //! - Scalar fallback
 //!
 //! For ARM: NEON detection and optimization
+//!
+//! # ⚠️ PSNR Implementation Issue
+//!
+//! The AVX2 and SSE2 implementations below use **SAD (Sum of Absolute Differences)**
+//! instead of **MSE (Mean Squared Error)**. This is **INCORRECT** for PSNR calculation.
+//!
+//! - **SAD**: `sum(|a - b|)` - used for motion estimation, block matching
+//! - **MSE**: `sum((a - b)²)` - required for PSNR
+//!
+//! The NEON implementation correctly computes squared differences.
+//!
+//! Current behavior:
+//! - SIMD functions are DISABLED (fallback to scalar)
+//! - This prevents incorrect PSNR values from being used
+//!
+//! To properly fix:
+//! 1. Implement SIMD MSE calculation (use `_mm256_mullo_epi16` for squaring)
+//! 2. Add proper 16-bit → 32-bit widening to avoid overflow
+//! 3. Test against scalar implementation
 
 use bitvue_core::Result;
 

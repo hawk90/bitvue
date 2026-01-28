@@ -53,6 +53,12 @@ impl ByteCache {
     /// Default memory budget: 256 MB
     pub const DEFAULT_MAX_MEMORY: usize = 256 * 1024 * 1024;
 
+    /// Maximum file size for memory mapping (2GB)
+    ///
+    /// Large files can cause memory issues and are better handled
+    /// with streaming rather than memory mapping.
+    pub const MAX_FILE_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2GB
+
     /// Create a new ByteCache from a file path
     ///
     /// # Arguments
@@ -65,11 +71,26 @@ impl ByteCache {
     /// - File cannot be opened
     /// - Memory mapping fails
     /// - File is empty
+    /// - File size exceeds MAX_FILE_SIZE (2GB)
     pub fn new(file_path: &Path, segment_size: usize, max_memory: usize) -> Result<Self> {
         let file = File::open(file_path).map_err(|e| BitvueError::IoError {
             path: file_path.to_path_buf(),
             source: e,
         })?;
+
+        // Check file size before mapping to prevent memory issues
+        let metadata = file.metadata().map_err(|e| BitvueError::IoError {
+            path: file_path.to_path_buf(),
+            source: e,
+        })?;
+        let file_size = metadata.len();
+
+        if file_size > Self::MAX_FILE_SIZE {
+            return Err(BitvueError::InvalidFile(format!(
+                "File too large for memory mapping: {} bytes (max: {} bytes)",
+                file_size, Self::MAX_FILE_SIZE
+            )));
+        }
 
         let mmap = unsafe {
             Mmap::map(&file).map_err(|e| BitvueError::IoError {

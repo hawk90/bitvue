@@ -159,14 +159,19 @@ mod ffi {
 }
 
 /// VVC/H.266 decoder using vvdec library
+///
+/// # Thread Safety
+///
+/// **NOT thread-safe!** The underlying vvdec library uses internal state that is not
+/// protected by mutexes. Each thread should create its own VvcDecoder instance.
+///
+/// The `Send` impl is deliberately omitted because vvdec may have race conditions
+/// when used concurrently. See: https://github.com/fraunhoferhhi/vvdec/issues
 pub struct VvcDecoder {
     decoder: *mut c_void,
     access_unit: *mut ffi::VvdecAccessUnit,
     flushing: bool,
 }
-
-// Safety: VvcDecoder manages its own memory and can be sent between threads
-unsafe impl Send for VvcDecoder {}
 
 impl VvcDecoder {
     /// Create a new VVC decoder
