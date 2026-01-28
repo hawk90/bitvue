@@ -40,6 +40,14 @@ use bitvue_core::{
     BitvueError,
 };
 
+/// Helper macro to safely lock mutexes with proper error handling
+/// Prevents panic on mutex poisoning by returning an error instead
+macro_rules! lock_mutex {
+    ($mutex:expr) => {
+        $mutex.lock().map_err(|e| BitvueError::Decode(format!("Mutex poisoned: {}", e)))?
+    };
+}
+
 /// Per optimize-code skill: Thread-safe LRU cache for parsed coding units
 ///
 /// Caches parsed coding units per frame to avoid re-parsing
@@ -87,7 +95,7 @@ where
 {
     // Per optimize-code skill: Check cache first with read lock
     {
-        let cache = CODING_UNIT_CACHE.lock().unwrap();
+        let cache = lock_mutex!(CODING_UNIT_CACHE);
         if let Some(cached) = cache.get(&cache_key) {
             tracing::debug!("Cache HIT for coding units: {} units", cached.len());
             return Ok(cached.clone());
@@ -100,7 +108,7 @@ where
 
     // Per optimize-code skill: Single lock acquisition for insert
     {
-        let mut cache = CODING_UNIT_CACHE.lock().unwrap();
+        let mut cache = lock_mutex!(CODING_UNIT_CACHE);
         cache.insert(cache_key, units.clone());
     }
 

@@ -219,7 +219,10 @@ impl<'a> BitReader<'a> {
 
     /// Skips n bits.
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
-        let new_pos = self.position() + n;
+        // Use checked arithmetic to prevent overflow on very large skip values
+        let new_pos = self.position().checked_add(n)
+            .ok_or_else(|| BitvueError::Decode("Skip would cause position overflow".to_string()))?;
+
         let new_byte = (new_pos / 8) as usize;
         let new_bit = (new_pos % 8) as u8;
 
@@ -365,7 +368,10 @@ impl<'a> LsbBitReader<'a> {
 
     /// Skips n bits.
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
-        let new_pos = self.position() + n;
+        // Use checked arithmetic to prevent overflow on very large skip values
+        let new_pos = self.position().checked_add(n)
+            .ok_or_else(|| BitvueError::Decode("Skip would cause position overflow".to_string()))?;
+
         let total_bits = (self.data.len() as u64) * 8;
         if new_pos > total_bits {
             return Err(BitvueError::UnexpectedEof(self.position()));

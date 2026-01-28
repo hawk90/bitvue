@@ -16,13 +16,11 @@ use bitvue_formats::{detect_container_format, ContainerFormat};
 
 /// Validate file path to prevent path traversal and access to sensitive directories
 /// This is a public function so other modules (like decode_service) can use it
+///
+/// SECURITY: Always canonicalize paths to fully resolve symlinks and path traversal attempts
+/// This ensures that paths like `/safe/../../../etc/passwd` are properly validated
 pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(path);
-
-    // Check for path traversal attempts (.. components)
-    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return Err("Invalid path: path traversal (..) not allowed".to_string());
-    }
 
     // Check if path exists and is a file (not a directory)
     if !path.exists() {
@@ -33,70 +31,38 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
         return Err(format!("Path is not a file: {:?}", path));
     }
 
-    // SECURITY: Detect and validate symlinks to prevent symlink-based attacks
-    // Symlinks could be used to bypass directory restrictions
-    if path.is_symlink() {
-        let canonical = path.canonicalize()
-            .map_err(|e| format!("Cannot resolve symlink: {}", e))?;
+    // SECURITY: Always canonicalize to fully resolve the path
+    // This handles:
+    // - All `..` components (path traversal)
+    // - Symlinks (including nested symlinks)
+    // - Relative path resolution
+    let canonical = path.canonicalize()
+        .map_err(|e| format!("Cannot resolve path: {}", e))?;
 
-        // Check if the symlink target contains path traversal
-        if canonical.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-            return Err("Invalid path: symlink target contains path traversal".to_string());
-        }
-
-        // Validate the symlink target against system directory restrictions
-        let canonical_str = canonical.to_string_lossy();
-        #[cfg(unix)]
-        {
-            let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
-                "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
-            for blocked in &blocked_paths {
-                if canonical_str.starts_with(blocked) {
-                    return Err(format!("Cannot access system directory via symlink ({})", blocked));
-                }
-            }
-        }
-        #[cfg(windows)]
-        {
-            let path_lower = canonical_str.to_lowercase();
-            if path_lower.starts_with("c:\\windows")
-                || path_lower.starts_with("c:\\program files")
-                || path_lower.starts_with("c:\\program files (x86)")
-                || path_lower.starts_with("c:\\programdata") {
-                return Err("Cannot access system directories via symlink".to_string());
-            }
-        }
-
-        // Use the canonical (resolved) path for further operations
-        return Ok(canonical);
-    }
-
-    // Additional check: reject absolute paths to system directories
-    if path.is_absolute() {
-        let path_str = path.to_string_lossy();
-        #[cfg(unix)]
-        {
-            let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
-                "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
-            for blocked in &blocked_paths {
-                if path_str.starts_with(blocked) {
-                    return Err(format!("Cannot access system directory ({})", blocked));
-                }
-            }
-        }
-        #[cfg(windows)]
-        {
-            let path_lower = path_str.to_lowercase();
-            if path_lower.starts_with("c:\\windows")
-                || path_lower.starts_with("c:\\program files")
-                || path_lower.starts_with("c:\\program files (x86)")
-                || path_lower.starts_with("c:\\programdata") {
-                return Err("Cannot access system directories".to_string());
+    // Validate the canonical path against system directory restrictions
+    let canonical_str = canonical.to_string_lossy();
+    #[cfg(unix)]
+    {
+        let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
+            "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
+        for blocked in &blocked_paths {
+            if canonical_str.starts_with(blocked) {
+                return Err(format!("Cannot access system directory ({})", blocked));
             }
         }
     }
+    #[cfg(windows)]
+    {
+        let path_lower = canonical_str.to_lowercase();
+        if path_lower.starts_with("c:\\windows")
+            || path_lower.starts_with("c:\\program files")
+            || path_lower.starts_with("c:\\program files (x86)")
+            || path_lower.starts_with("c:\\programdata") {
+            return Err("Cannot access system directories".to_string());
+        }
+    }
 
-    Ok(path)
+    Ok(canonical)
 }
 
 /// Open a video file and parse its structure
@@ -136,7 +102,7 @@ pub async fn open_file(
     if size > MAX_FILE_SIZE {
         log::error!("open_file: File too large: {} bytes (max: {} bytes)", size, MAX_FILE_SIZE);
         // SAFETY: Use u64 literals to prevent integer overflow in size calculation
-        const BYTES_PER_MB: u64 = 1024 * 1024;
+        const BYTES_PER_MB: u64 = 1024_u64 * 1024_u64;
         return Ok(FileInfo {
             path: path.clone(),
             size,
