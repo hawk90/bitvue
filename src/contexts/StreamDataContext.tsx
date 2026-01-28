@@ -118,10 +118,15 @@ export function StreamDataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Get frame statistics
-  const getFrameStats = useCallback((): FrameStats => {
+  // Memoize frame statistics to avoid recalculating on every access
+  const frameStats = useMemo<FrameStats>(() => {
     return calculateFrameStats(frames);
   }, [frames]);
+
+  // Get frame statistics (returns memoized value)
+  const getFrameStats = useCallback((): FrameStats => {
+    return frameStats;
+  }, [frameStats]);
 
   // Memoize context value to prevent unnecessary re-renders in consumers
   const contextValue = useMemo<StreamDataContextType>(() => ({
