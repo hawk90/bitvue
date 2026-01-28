@@ -28,9 +28,10 @@ interface MenuConfig {
 interface TitleBarProps {
   fileName: string;
   onOpenFile: () => void;
+  onOpenDependentFile?: () => void;
 }
 
-export const TitleBar = memo(function TitleBar({ onOpenFile }: TitleBarProps) {
+export const TitleBar = memo(function TitleBar({ onOpenFile, onOpenDependentFile }: TitleBarProps) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 
@@ -52,7 +53,7 @@ export const TitleBar = memo(function TitleBar({ onOpenFile }: TitleBarProps) {
             { id: 'open-mpeg2', label: 'MPEG-2', action: () => {} },
           ]
         },
-        { id: 'open-dependent', label: 'Open dependent bitstream...', action: () => {} },
+        { id: 'open-dependent', label: 'Open dependent bitstream...', action: onOpenDependentFile || (() => {}) },
         { id: 'sep1', label: '', separator: true, action: () => {} },
         { id: 'close', label: 'Close bitstream', shortcut: 'Ctrl+W', action: () => {} },
         { id: 'sep2', label: '', separator: true, action: () => {} },

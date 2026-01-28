@@ -1,124 +1,100 @@
 //! Bit-level reader with Exp-Golomb support for HEVC parsing.
+//!
+//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! with HEVC-specific error mapping and Exp-Golomb support.
+
+use bitvue_core::{BitReader as CoreBitReader, ExpGolombReader};
 
 use crate::error::{HevcError, Result};
 
-/// Bit reader for HEVC bitstream parsing.
-/// Reads bits MSB-first (big-endian bit order).
-#[derive(Debug)]
+/// HEVC-specific bit reader wrapper
+///
+/// This wraps the core BitReader and provides HEVC-specific error mapping.
 pub struct BitReader<'a> {
-    data: &'a [u8],
-    byte_offset: usize,
-    bit_offset: u8, // 0-7, MSB first
+    inner: CoreBitReader<'a>,
 }
 
 impl<'a> BitReader<'a> {
     /// Create a new bit reader from a byte slice.
     pub fn new(data: &'a [u8]) -> Self {
         Self {
-            data,
-            byte_offset: 0,
-            bit_offset: 0,
+            inner: CoreBitReader::new(data),
         }
+    }
+
+    /// Get the inner reader
+    pub fn inner(&self) -> &CoreBitReader<'a> {
+        &self.inner
+    }
+
+    /// Get mutable access to the inner reader
+    pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> {
+        &mut self.inner
     }
 
     /// Get current bit position.
     pub fn position(&self) -> u64 {
-        (self.byte_offset as u64) * 8 + (self.bit_offset as u64)
+        self.inner.position()
     }
 
     /// Get remaining bits.
     pub fn remaining_bits(&self) -> u64 {
-        let total_bits = (self.data.len() as u64) * 8;
-        total_bits.saturating_sub(self.position())
+        self.inner.remaining_bits()
     }
 
     /// Check if more data is available.
     pub fn has_more_data(&self) -> bool {
-        self.byte_offset < self.data.len()
+        self.inner.has_more()
     }
 
     /// Read a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
-        if self.byte_offset >= self.data.len() {
-            return Err(HevcError::UnexpectedEof(self.position()));
-        }
-
-        let byte = self.data[self.byte_offset];
-        let bit = (byte >> (7 - self.bit_offset)) & 1;
-
-        self.bit_offset += 1;
-        if self.bit_offset == 8 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
-
-        Ok(bit == 1)
+        self.inner.read_bit().map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 
     /// Read up to 32 bits.
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
-        if n == 0 {
-            return Ok(0);
-        }
-        if n > 32 {
-            return Err(HevcError::InvalidData(
-                "Cannot read more than 32 bits at once".to_string(),
-            ));
-        }
-
-        let mut result: u32 = 0;
-        for _ in 0..n {
-            result = (result << 1) | (self.read_bit()? as u32);
-        }
-        Ok(result)
+        self.inner.read_bits(n).map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 
     /// Read up to 64 bits.
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
-        if n == 0 {
-            return Ok(0);
-        }
-        if n > 64 {
-            return Err(HevcError::InvalidData(
-                "Cannot read more than 64 bits at once".to_string(),
-            ));
-        }
-
-        let mut result: u64 = 0;
-        for _ in 0..n {
-            result = (result << 1) | (self.read_bit()? as u64);
-        }
-        Ok(result)
+        self.inner.read_bits_u64(n).map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 
     /// Read a single byte (must be byte-aligned).
     pub fn read_byte(&mut self) -> Result<u8> {
-        self.read_bits(8).map(|v| v as u8)
+        self.inner.read_byte().map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 
     /// Skip n bits.
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
-        let new_pos = self.position() + n;
-        let total_bits = (self.data.len() as u64) * 8;
-        if new_pos > total_bits {
-            return Err(HevcError::UnexpectedEof(self.position()));
-        }
-        self.byte_offset = (new_pos / 8) as usize;
-        self.bit_offset = (new_pos % 8) as u8;
-        Ok(())
+        self.inner.skip_bits(n).map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 
     /// Align to byte boundary.
     pub fn byte_align(&mut self) {
-        if self.bit_offset != 0 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
+        self.inner.byte_align();
     }
 
     /// Check if currently byte-aligned.
     pub fn is_byte_aligned(&self) -> bool {
-        self.bit_offset == 0
+        self.inner.is_byte_aligned()
     }
 
     // =========================================================================
@@ -128,31 +104,24 @@ impl<'a> BitReader<'a> {
     /// Read unsigned Exp-Golomb coded value (ue(v)).
     /// Format: [M zeros][1][INFO]
     /// Value = 2^M + INFO - 1
+    ///
+    /// This uses the ExpGolombReader trait from bitvue_core.
     pub fn read_ue(&mut self) -> Result<u32> {
-        let mut leading_zeros: u32 = 0;
-        while !self.read_bit()? {
-            leading_zeros += 1;
-            if leading_zeros > 32 {
-                return Err(HevcError::InvalidData(
-                    "Exp-Golomb leading zeros exceed 32".to_string(),
-                ));
-            }
-        }
-
-        if leading_zeros == 0 {
-            return Ok(0);
-        }
-
-        let info = self.read_bits(leading_zeros as u8)?;
-        Ok((1 << leading_zeros) - 1 + info)
+        ExpGolombReader::read_ue(&mut self.inner).map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 
     /// Read signed Exp-Golomb coded value (se(v)).
     /// Derived from ue(v): se = (-1)^(k+1) * ceil(k/2)
+    ///
+    /// This uses the ExpGolombReader trait from bitvue_core.
     pub fn read_se(&mut self) -> Result<i32> {
-        let ue = self.read_ue()?;
-        let sign = if ue & 1 == 0 { -1 } else { 1 };
-        Ok(sign * ((ue + 1) / 2) as i32)
+        ExpGolombReader::read_se(&mut self.inner).map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 
     /// Read u(n) - fixed-length unsigned integer.
@@ -202,12 +171,10 @@ impl<'a> BitReader<'a> {
 
     /// Peek at next n bits without consuming them.
     pub fn peek_bits(&self, n: u8) -> Result<u32> {
-        let mut temp = Self {
-            data: self.data,
-            byte_offset: self.byte_offset,
-            bit_offset: self.bit_offset,
-        };
-        temp.read_bits(n)
+        self.inner.peek_bits(n).map_err(|e| match e {
+            bitvue_core::BitvueError::UnexpectedEof(pos) => HevcError::UnexpectedEof(pos),
+            _ => HevcError::InvalidData(e.to_string()),
+        })
     }
 }
 

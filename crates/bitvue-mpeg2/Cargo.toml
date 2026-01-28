@@ -7,6 +7,7 @@ authors.workspace = true
 description = "MPEG-2 Video bitstream parser for bitvue"
 
 [dependencies]
+bitvue-core = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

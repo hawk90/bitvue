@@ -12,7 +12,7 @@ import { globalShortcutHandler, type ShortcutConfig } from "./utils/keyboardShor
 import { SelectionProvider } from "./contexts/SelectionContext";
 import { ModeProvider } from "./contexts/ModeContext";
 import { StreamDataProvider, useStreamData } from "./contexts/StreamDataContext";
-import { CompareProvider } from "./contexts/CompareContext";
+import { CompareProvider, useCompare } from "./contexts/CompareContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { shouldShowTitleBar } from "./utils/platform";
 import { createLogger } from "./utils/logger";
@@ -94,6 +94,7 @@ function App() {
 
 function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setFileInfo: (info: FileInfo | null) => void }) {
   const { frames, loading, error, currentFrameIndex, setCurrentFrameIndex, refreshFrames, clearData, setFilePath } = useStreamData();
+  const { createWorkspace } = useCompare();
   const [openError, setOpenError] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -181,6 +182,42 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
       showErrorDialog('Failed to Open File', err as string);
     }
   }, [refreshFrames, setFileInfo, setFilePath, showErrorDialog]);
+
+  // Handle opening dependent bitstream for comparison
+  const handleOpenDependentFile = useCallback(async () => {
+    try {
+      setOpenError(null);
+
+      if (!fileInfo?.success) {
+        setOpenError('Please open a primary bitstream first before opening a dependent bitstream for comparison.');
+        return;
+      }
+
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Video Files',
+          extensions: ['ivf', 'av1', 'hevc', 'h265', 'vvc', 'h266', 'mp4', 'mkv', 'webm', 'ts']
+        }]
+      });
+
+      if (selected === null) {
+        return; // User cancelled
+      }
+
+      const pathB = typeof selected === 'string' ? selected : selected.path;
+
+      logger.info(`Opening dependent bitstream: ${pathB}`);
+
+      // Create compare workspace with current file as Stream A and selected file as Stream B
+      await createWorkspace(fileInfo.path, pathB);
+
+      logger.info(`Compare workspace created successfully: ${fileInfo.path} vs ${pathB}`);
+    } catch (err) {
+      logger.error('Failed to open dependent bitstream:', err);
+      setOpenError(err as string);
+    }
+  }, [fileInfo, createWorkspace, setOpenError]);
 
   // File menu events
   useEffect(() => {
@@ -406,6 +443,7 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
               <TitleBar
                 fileName={fileInfo?.path || 'Bitvue'}
                 onOpenFile={handleOpenFile}
+                onOpenDependentFile={handleOpenDependentFile}
               />
             )}
 

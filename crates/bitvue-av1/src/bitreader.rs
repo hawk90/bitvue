@@ -2,145 +2,85 @@
 //!
 //! Provides bit-accurate reading operations required for parsing AV1 OBU headers
 //! and syntax elements.
+//!
+//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! with AV1-specific extensions.
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_core::{BitReader as CoreBitReader, Result, UvlcReader};
 
-/// A bit-level reader for parsing bitstreams
-#[derive(Debug)]
+/// AV1-specific bit reader wrapper
+///
+/// This wraps the core BitReader and provides AV1-specific extensions.
 pub struct BitReader<'a> {
-    /// Source data
-    data: &'a [u8],
-    /// Current byte offset
-    byte_offset: usize,
-    /// Current bit offset within the byte (0-7, MSB first)
-    bit_offset: u8,
+    inner: CoreBitReader<'a>,
 }
 
 impl<'a> BitReader<'a> {
     /// Creates a new BitReader from a byte slice
     pub fn new(data: &'a [u8]) -> Self {
         Self {
-            data,
-            byte_offset: 0,
-            bit_offset: 0,
+            inner: CoreBitReader::new(data),
         }
+    }
+
+    /// Get the inner reader
+    pub fn inner(&self) -> &CoreBitReader<'a> {
+        &self.inner
+    }
+
+    /// Get mutable access to the inner reader
+    pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> {
+        &mut self.inner
     }
 
     /// Returns the current position in bits from the start
     #[inline]
     pub fn position(&self) -> u64 {
-        (self.byte_offset as u64) * 8 + (self.bit_offset as u64)
+        self.inner.position()
     }
 
     /// Returns the current byte offset
     #[inline]
     pub fn byte_position(&self) -> usize {
-        self.byte_offset
+        self.inner.byte_position()
     }
 
     /// Returns the number of remaining bytes (partial byte counts as 1)
     #[inline]
     pub fn remaining_bytes(&self) -> usize {
-        if self.byte_offset >= self.data.len() {
-            0
-        } else {
-            self.data.len() - self.byte_offset
-        }
+        self.inner.remaining_bytes()
     }
 
     /// Returns the number of remaining bits
     #[inline]
     pub fn remaining_bits(&self) -> u64 {
-        if self.byte_offset >= self.data.len() {
-            return 0;
-        }
-        let full_bytes = self.data.len() - self.byte_offset - 1;
-        let bits_in_current = 8 - self.bit_offset as u64;
-        bits_in_current + (full_bytes as u64) * 8
+        self.inner.remaining_bits()
     }
 
     /// Returns true if there's more data to read
     #[inline]
     pub fn has_more(&self) -> bool {
-        self.byte_offset < self.data.len()
+        self.inner.has_more()
     }
 
     /// Reads a single bit (returns true for 1, false for 0)
     pub fn read_bit(&mut self) -> Result<bool> {
-        if self.byte_offset >= self.data.len() {
-            return Err(BitvueError::UnexpectedEof(self.position()));
-        }
-
-        let byte = self.data[self.byte_offset];
-        let bit = (byte >> (7 - self.bit_offset)) & 1;
-
-        self.bit_offset += 1;
-        if self.bit_offset == 8 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
-
-        Ok(bit == 1)
+        self.inner.read_bit()
     }
 
     /// Reads n bits and returns them as a u32 (MSB first)
-    ///
-    /// # Arguments
-    /// * `n` - Number of bits to read (1-32)
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
-        if n == 0 {
-            return Ok(0);
-        }
-        if n > 32 {
-            return Err(BitvueError::Parse {
-                offset: self.position(),
-                message: format!("Cannot read more than 32 bits at once, requested {}", n),
-            });
-        }
-
-        let mut result: u32 = 0;
-        for _ in 0..n {
-            result = (result << 1) | (self.read_bit()? as u32);
-        }
-        Ok(result)
+        self.inner.read_bits(n)
     }
 
     /// Reads n bits and returns them as a u64 (MSB first)
-    ///
-    /// # Arguments
-    /// * `n` - Number of bits to read (1-64)
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
-        if n == 0 {
-            return Ok(0);
-        }
-        if n > 64 {
-            return Err(BitvueError::Parse {
-                offset: self.position(),
-                message: format!("Cannot read more than 64 bits at once, requested {}", n),
-            });
-        }
-
-        let mut result: u64 = 0;
-        for _ in 0..n {
-            result = (result << 1) | (self.read_bit()? as u64);
-        }
-        Ok(result)
+        self.inner.read_bits_u64(n)
     }
 
     /// Reads a single byte
     pub fn read_byte(&mut self) -> Result<u8> {
-        if self.bit_offset == 0 {
-            // Byte-aligned, fast path
-            if self.byte_offset >= self.data.len() {
-                return Err(BitvueError::UnexpectedEof(self.position()));
-            }
-            let byte = self.data[self.byte_offset];
-            self.byte_offset += 1;
-            Ok(byte)
-        } else {
-            // Not byte-aligned, read 8 bits
-            self.read_bits(8).map(|v| v as u8)
-        }
+        self.inner.read_byte()
     }
 
     /// Reads multiple bytes into a slice
@@ -153,59 +93,26 @@ impl<'a> BitReader<'a> {
 
     /// Skips n bits
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
-        let new_pos = self.position() + n;
-        let new_byte = (new_pos / 8) as usize;
-        let new_bit = (new_pos % 8) as u8;
-
-        if new_byte > self.data.len() || (new_byte == self.data.len() && new_bit > 0) {
-            return Err(BitvueError::UnexpectedEof(self.position()));
-        }
-
-        self.byte_offset = new_byte;
-        self.bit_offset = new_bit;
-        Ok(())
+        self.inner.skip_bits(n)
     }
 
     /// Aligns to the next byte boundary
     pub fn byte_align(&mut self) {
-        if self.bit_offset != 0 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
+        self.inner.byte_align();
     }
 
     /// Returns a slice of the remaining data (byte-aligned)
-    ///
-    /// Note: If not byte-aligned, this returns from the current byte position
-    pub fn remaining_data(&self) -> &'a [u8] {
-        if self.byte_offset >= self.data.len() {
-            &[]
-        } else {
-            &self.data[self.byte_offset..]
-        }
+    pub fn remaining_data(&self) -> &[u8] {
+        self.inner.remaining_data()
     }
 
     /// Reads an unsigned variable length code (uvlc)
     ///
     /// AV1 spec: uvlc() reads leadingZeros, then value
+    ///
+    /// This uses the UvlcReader trait from bitvue_core.
     pub fn read_uvlc(&mut self) -> Result<u32> {
-        let mut leading_zeros = 0u32;
-        while !self.read_bit()? {
-            leading_zeros += 1;
-            if leading_zeros > 32 {
-                return Err(BitvueError::Parse {
-                    offset: self.position(),
-                    message: "uvlc leading zeros exceeded 32".to_string(),
-                });
-            }
-        }
-
-        if leading_zeros == 0 {
-            return Ok(0);
-        }
-
-        let value = self.read_bits(leading_zeros as u8)?;
-        Ok((1 << leading_zeros) - 1 + value)
+        UvlcReader::read_uvlc(&mut self.inner)
     }
 
     /// Reads a signed value using su(n) syntax

@@ -1,129 +1,87 @@
 //! Bit-level reader for H.264/AVC parsing.
+//!
+//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! with AVC-specific error mapping and Exp-Golomb support.
+
+use bitvue_core::{BitReader as CoreBitReader, ExpGolombReader};
 
 use crate::error::{AvcError, Result};
 
-/// Bit-level reader for parsing NAL unit payloads.
+/// AVC-specific bit reader wrapper
+///
+/// This wraps the core BitReader and provides AVC-specific error mapping.
 pub struct BitReader<'a> {
-    data: &'a [u8],
-    byte_offset: usize,
-    bit_offset: u8,
+    inner: CoreBitReader<'a>,
 }
 
 impl<'a> BitReader<'a> {
     /// Create a new bit reader.
     pub fn new(data: &'a [u8]) -> Self {
         Self {
-            data,
-            byte_offset: 0,
-            bit_offset: 0,
+            inner: CoreBitReader::new(data),
         }
+    }
+
+    /// Get the inner reader
+    pub fn inner(&self) -> &CoreBitReader<'a> {
+        &self.inner
+    }
+
+    /// Get mutable access to the inner reader
+    pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> {
+        &mut self.inner
     }
 
     /// Check if more data is available.
     pub fn has_more_data(&self) -> bool {
-        self.byte_offset < self.data.len() ||
-            (self.byte_offset == self.data.len() && self.bit_offset == 0)
+        self.inner.has_more()
     }
 
     /// Get remaining bits.
     pub fn remaining_bits(&self) -> usize {
-        if self.byte_offset >= self.data.len() {
-            return 0;
-        }
-        (self.data.len() - self.byte_offset) * 8 - self.bit_offset as usize
+        self.inner.remaining_bits() as usize
     }
 
     /// Get current bit position.
     pub fn bit_position(&self) -> usize {
-        self.byte_offset * 8 + self.bit_offset as usize
+        self.inner.position() as usize
     }
 
     /// Read a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
-        if self.byte_offset >= self.data.len() {
-            return Err(AvcError::NotEnoughData {
-                expected: 1,
-                got: 0,
-            });
-        }
-
-        let bit = (self.data[self.byte_offset] >> (7 - self.bit_offset)) & 1;
-        self.bit_offset += 1;
-        if self.bit_offset == 8 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
-
-        Ok(bit == 1)
+        self.inner.read_bit().map_err(|_| AvcError::NotEnoughData { expected: 1, got: 0 })
     }
 
     /// Read n bits as u32.
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
-        if n == 0 {
-            return Ok(0);
-        }
-        if n > 32 {
-            return Err(AvcError::BitstreamError(format!(
-                "cannot read {} bits into u32",
-                n
-            )));
-        }
-
-        let mut value: u32 = 0;
-        for _ in 0..n {
-            value = (value << 1) | (self.read_bit()? as u32);
-        }
-        Ok(value)
+        self.inner.read_bits(n).map_err(|_| AvcError::NotEnoughData {
+            expected: n as usize,
+            got: 0,
+        })
     }
 
     /// Read n bits as u64.
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
-        if n == 0 {
-            return Ok(0);
-        }
-        if n > 64 {
-            return Err(AvcError::BitstreamError(format!(
-                "cannot read {} bits into u64",
-                n
-            )));
-        }
-
-        let mut value: u64 = 0;
-        for _ in 0..n {
-            value = (value << 1) | (self.read_bit()? as u64);
-        }
-        Ok(value)
+        self.inner.read_bits_u64(n).map_err(|_| AvcError::NotEnoughData {
+            expected: n as usize,
+            got: 0,
+        })
     }
 
     /// Read unsigned Exp-Golomb coded value.
+    ///
+    /// This uses the ExpGolombReader trait from bitvue_core.
     pub fn read_ue(&mut self) -> Result<u32> {
-        let mut leading_zeros = 0u32;
-        while !self.read_bit()? {
-            leading_zeros += 1;
-            if leading_zeros > 32 {
-                return Err(AvcError::BitstreamError(
-                    "Exp-Golomb overflow".to_string(),
-                ));
-            }
-        }
-
-        if leading_zeros == 0 {
-            return Ok(0);
-        }
-
-        let value = self.read_bits(leading_zeros as u8)?;
-        Ok((1 << leading_zeros) - 1 + value)
+        ExpGolombReader::read_ue(&mut self.inner)
+            .map_err(|_| AvcError::NotEnoughData { expected: 1, got: 0 })
     }
 
     /// Read signed Exp-Golomb coded value.
+    ///
+    /// This uses the ExpGolombReader trait from bitvue_core.
     pub fn read_se(&mut self) -> Result<i32> {
-        let ue = self.read_ue()?;
-        let value = ((ue + 1) / 2) as i32;
-        if ue % 2 == 0 {
-            Ok(-value)
-        } else {
-            Ok(value)
-        }
+        ExpGolombReader::read_se(&mut self.inner)
+            .map_err(|_| AvcError::NotEnoughData { expected: 1, got: 0 })
     }
 
     /// Read a flag (single bit as bool).
@@ -133,49 +91,51 @@ impl<'a> BitReader<'a> {
 
     /// Skip n bits.
     pub fn skip_bits(&mut self, n: usize) -> Result<()> {
-        for _ in 0..n {
-            self.read_bit()?;
-        }
-        Ok(())
+        self.inner
+            .skip_bits(n as u64)
+            .map_err(|_| AvcError::NotEnoughData { expected: n, got: 0 })
     }
 
     /// Align to byte boundary.
     pub fn byte_align(&mut self) {
-        if self.bit_offset != 0 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
+        self.inner.byte_align();
     }
 
     /// Check if byte aligned.
     pub fn is_byte_aligned(&self) -> bool {
-        self.bit_offset == 0
+        self.inner.is_byte_aligned()
     }
 
     /// Read more_rbsp_data() check - true if there's more data before trailing bits.
     pub fn more_rbsp_data(&self) -> bool {
-        if self.byte_offset >= self.data.len() {
+        let pos = self.inner.position() as usize;
+        let data = self.inner.remaining_data();
+
+        if pos / 8 >= data.len() {
             return false;
         }
 
         // Find the last byte with data
-        let mut last_byte_idx = self.data.len() - 1;
-        while last_byte_idx > self.byte_offset && self.data[last_byte_idx] == 0 {
+        let mut last_byte_idx = data.len() - 1;
+        while last_byte_idx > 0 && data[last_byte_idx] == 0 {
             last_byte_idx -= 1;
         }
 
         // Check if we're past the stop bit
-        if self.byte_offset > last_byte_idx {
+        let current_bit_in_byte = pos % 8;
+        let current_byte = pos / 8;
+
+        if current_byte > last_byte_idx {
             return false;
         }
-        if self.byte_offset < last_byte_idx {
+        if current_byte < last_byte_idx {
             return true;
         }
 
         // Same byte - check for stop bit
-        let remaining = 8 - self.bit_offset;
+        let remaining = 8 - current_bit_in_byte;
         let mask = (1u8 << remaining) - 1;
-        let trailing = self.data[last_byte_idx] & mask;
+        let trailing = data[last_byte_idx] & mask;
 
         // If there's only the stop bit (10...0), no more data
         // Otherwise, there's more data

@@ -1567,7 +1567,7 @@ impl SemanticProbeRunner {
     }
 
     /// Export probe results as JSON
-    pub fn export_results(&self) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn export_results(&self) -> std::result::Result<String, Box<dyn std::error::Error>> {
         serde_json::to_string_pretty(&self.results).map_err(|e| crate::BitvueError::Decode(format!("Failed to serialize probe results: {}", e)).into())
     }
 

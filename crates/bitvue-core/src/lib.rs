@@ -8,6 +8,7 @@
 
 #![allow(ambiguous_glob_reexports)]
 
+pub mod bitreader;
 pub mod error;
 pub mod types;
 
@@ -109,6 +110,7 @@ pub mod performance; // T9-1: Performance Instrumentation // T9-3: Product Lock 
 // Monster Pack v14: Phase 10 - Parity Harness
 pub mod parity_harness; // T10-1: Competitor Parity Harness (schema validation, probes, gates)
 
+pub use self::bitreader::*;
 pub use self::core::*;
 pub use alignment::*;
 pub use block_metrics::*;

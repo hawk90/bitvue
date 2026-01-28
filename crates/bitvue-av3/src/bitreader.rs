@@ -1,156 +1,54 @@
 //! Bit reader for AV3 OBU parsing.
+//!
+//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! with AV3-specific error mapping and LEB128 support.
+
+use bitvue_core::{BitReader as CoreBitReader, Leb128Reader};
 
 use crate::error::{Av3Error, Result};
 
-/// Bit reader for reading from byte slices.
-#[derive(Debug, Clone)]
+/// AV3-specific bit reader wrapper
 pub struct BitReader<'a> {
-    data: &'a [u8],
-    byte_pos: usize,
-    bit_offset: u8,
+    inner: CoreBitReader<'a>,
 }
 
 impl<'a> BitReader<'a> {
-    /// Create a new bit reader from byte slice.
     pub fn new(data: &'a [u8]) -> Self {
         Self {
-            data,
-            byte_pos: 0,
-            bit_offset: 0,
+            inner: CoreBitReader::new(data),
         }
     }
 
-    /// Check if we have more bits to read.
-    pub fn has_more(&self) -> bool {
-        self.byte_pos < self.data.len()
-            || (self.byte_pos == self.data.len() && self.bit_offset < 8)
-    }
+    pub fn inner(&self) -> &CoreBitReader<'a> { &self.inner }
+    pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> { &mut self.inner }
 
-    /// Read a single bit.
+    pub fn has_more(&self) -> bool { self.inner.has_more() }
+
     pub fn read_bit(&mut self) -> Result<bool> {
-        if self.byte_pos >= self.data.len() {
-            return Err(Av3Error::InsufficientData {
-                expected: 1,
-                actual: 0,
-            });
-        }
-
-        let byte = self.data[self.byte_pos];
-        let bit = (byte >> (7 - self.bit_offset)) & 1;
-
-        self.bit_offset += 1;
-        if self.bit_offset >= 8 {
-            self.bit_offset = 0;
-            self.byte_pos += 1;
-        }
-
-        Ok(bit != 0)
+        self.inner.read_bit().map_err(|_| Av3Error::InsufficientData { expected: 1, actual: 0 })
     }
 
-    /// Read n bits.
     pub fn read_bits(&mut self, n: u8) -> Result<u64> {
-        if n > 64 {
-            return Err(Av3Error::InvalidData(format!(
-                "Cannot read {} bits at once (max 64)",
-                n
-            )));
-        }
-
-        let mut result: u64 = 0;
-        for _ in 0..n {
-            result = (result << 1) | (self.read_bit()? as u64);
-        }
-        Ok(result)
+        self.inner.read_bits_u64(n).map_err(|_| Av3Error::InsufficientData { expected: n as usize, actual: 0 })
     }
 
-    /// Read n bits as usize.
     pub fn read_bits_usize(&mut self, n: u8) -> Result<usize> {
         self.read_bits(n).map(|v| v as usize)
     }
 
-    /// Read unsigned integer with leb128 encoding.
     pub fn read_leb128(&mut self) -> Result<u64> {
-        let mut value: u64 = 0;
-        let mut shift = 0;
-
-        loop {
-            let byte = self.read_bits(8)?;
-            value |= ((byte & 0x7F) as u64) << shift;
-
-            if (byte & 0x80) == 0 {
-                break;
-            }
-
-            shift += 7;
-            if shift >= 64 {
-                return Err(Av3Error::InvalidData("LEB128 overflow".to_string()));
-            }
-        }
-
-        Ok(value)
+        Leb128Reader::read_leb128(&mut self.inner).map_err(|_| Av3Error::InsufficientData { expected: 1, actual: 0 })
     }
 
-    /// Read signed integer with leb128 encoding.
     pub fn read_leb128_i64(&mut self) -> Result<i64> {
-        let mut value: i64 = 0;
-        let mut shift = 0;
-        let mut byte: u64;
-
-        loop {
-            byte = self.read_bits(8)?;
-            value |= ((byte & 0x7F) as i64) << shift;
-
-            if (byte & 0x80) == 0 {
-                break;
-            }
-
-            shift += 7;
-            if shift >= 64 {
-                return Err(Av3Error::InvalidData("LEB128 overflow".to_string()));
-            }
-        }
-
-        // Sign extend
-        if shift < 64 && (byte & 0x40) != 0 {
-            value |= -1i64 << (shift + 7);
-        }
-
-        Ok(value)
+        Leb128Reader::read_leb128_i64(&mut self.inner).map_err(|_| Av3Error::InsufficientData { expected: 1, actual: 0 })
     }
 
-    /// Get current byte position.
-    pub fn byte_pos(&self) -> usize {
-        self.byte_pos
-    }
-
-    /// Get current bit offset.
-    pub fn bit_offset(&self) -> u8 {
-        self.bit_offset
-    }
-
-    /// Align to next byte boundary.
-    pub fn byte_align(&mut self) {
-        if self.bit_offset > 0 {
-            self.bit_offset = 0;
-            self.byte_pos += 1;
-        }
-    }
-
-    /// Get remaining bytes.
-    pub fn remaining(&self) -> usize {
-        if self.byte_pos >= self.data.len() {
-            return 0;
-        }
-        self.data.len() - self.byte_pos - (if self.bit_offset > 0 { 1 } else { 0 })
-    }
-
-    /// Get slice of remaining data.
-    pub fn as_slice(&self) -> &'a [u8] {
-        if self.byte_pos >= self.data.len() {
-            return &[];
-        }
-        &self.data[self.byte_pos..]
-    }
+    pub fn byte_pos(&self) -> usize { self.inner.byte_position() }
+    pub fn bit_offset(&self) -> u8 { (self.inner.position() % 8) as u8 }
+    pub fn byte_align(&mut self) { self.inner.byte_align(); }
+    pub fn remaining(&self) -> usize { self.inner.remaining_bytes() }
+    pub fn as_slice(&self) -> &[u8] { self.inner.remaining_data() }
 }
 
 #[cfg(test)]

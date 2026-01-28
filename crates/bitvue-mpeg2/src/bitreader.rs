@@ -1,78 +1,71 @@
 //! Bit-level reader for MPEG-2 parsing.
+//!
+//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! with MPEG-2-specific error mapping.
+
+use bitvue_core::BitReader as CoreBitReader;
 
 use crate::error::{Mpeg2Error, Result};
 
-/// Bit-level reader for parsing MPEG-2 syntax elements.
+/// MPEG-2-specific bit reader wrapper
+///
+/// This wraps the core BitReader and provides MPEG-2-specific error mapping.
 pub struct BitReader<'a> {
-    data: &'a [u8],
-    byte_offset: usize,
-    bit_offset: u8,
+    inner: CoreBitReader<'a>,
 }
 
 impl<'a> BitReader<'a> {
     /// Create a new bit reader.
     pub fn new(data: &'a [u8]) -> Self {
         Self {
-            data,
-            byte_offset: 0,
-            bit_offset: 0,
+            inner: CoreBitReader::new(data),
         }
+    }
+
+    /// Get the inner reader
+    pub fn inner(&self) -> &CoreBitReader<'a> {
+        &self.inner
+    }
+
+    /// Get mutable access to the inner reader
+    pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> {
+        &mut self.inner
     }
 
     /// Check if more data is available.
     pub fn has_more_data(&self) -> bool {
-        self.byte_offset < self.data.len()
+        self.inner.has_more()
     }
 
     /// Get remaining bits.
     pub fn remaining_bits(&self) -> usize {
-        if self.byte_offset >= self.data.len() {
-            return 0;
-        }
-        (self.data.len() - self.byte_offset) * 8 - self.bit_offset as usize
+        self.inner.remaining_bits() as usize
     }
 
     /// Get current bit position.
     pub fn bit_position(&self) -> usize {
-        self.byte_offset * 8 + self.bit_offset as usize
+        self.inner.position() as usize
     }
 
     /// Read a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
-        if self.byte_offset >= self.data.len() {
-            return Err(Mpeg2Error::NotEnoughData {
-                expected: 1,
-                got: 0,
-            });
-        }
-
-        let bit = (self.data[self.byte_offset] >> (7 - self.bit_offset)) & 1;
-        self.bit_offset += 1;
-        if self.bit_offset == 8 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
-
-        Ok(bit == 1)
+        self.inner.read_bit().map_err(|_| Mpeg2Error::NotEnoughData { expected: 1, got: 0 })
     }
 
     /// Read n bits as u32.
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
-        if n == 0 {
-            return Ok(0);
-        }
-        if n > 32 {
-            return Err(Mpeg2Error::BitstreamError(format!(
-                "cannot read {} bits into u32",
-                n
-            )));
-        }
+        self.inner.read_bits(n).map_err(|_| Mpeg2Error::NotEnoughData {
+            expected: n as usize,
+            got: 0,
+        })
+    }
 
-        let mut value: u32 = 0;
-        for _ in 0..n {
-            value = (value << 1) | (self.read_bit()? as u32);
-        }
-        Ok(value)
+    /// Read n bits as u64.
+    pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
+        self.inner.read_bits_u64(n).map_err(|_| Mpeg2Error::NotEnoughData {
+            expected: n as usize,
+            got: 0,
+        })
     }
 
     /// Read a flag (single bit as bool).
@@ -82,30 +75,24 @@ impl<'a> BitReader<'a> {
 
     /// Skip n bits.
     pub fn skip_bits(&mut self, n: usize) -> Result<()> {
-        for _ in 0..n {
-            self.read_bit()?;
-        }
-        Ok(())
+        self.inner
+            .skip_bits(n as u64)
+            .map_err(|_| Mpeg2Error::NotEnoughData { expected: n, got: 0 })
     }
 
     /// Align to byte boundary.
     pub fn byte_align(&mut self) {
-        if self.bit_offset != 0 {
-            self.bit_offset = 0;
-            self.byte_offset += 1;
-        }
+        self.inner.byte_align();
     }
 
     /// Check if byte aligned.
     pub fn is_byte_aligned(&self) -> bool {
-        self.bit_offset == 0
+        self.inner.is_byte_aligned()
     }
 
     /// Peek at next n bits without consuming.
     pub fn peek_bits(&self, n: u8) -> Result<u32> {
-        let mut temp = BitReader::new(&self.data[self.byte_offset..]);
-        temp.bit_offset = self.bit_offset;
-        temp.read_bits(n)
+        self.inner.peek_bits(n).map_err(|e| Mpeg2Error::BitstreamError(e.to_string()))
     }
 }
 

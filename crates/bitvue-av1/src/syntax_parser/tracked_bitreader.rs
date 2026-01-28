@@ -3,8 +3,8 @@
 //! Wraps the standard `BitReader` to track absolute bit positions from the
 //! file start, enabling precise bit range tracking for syntax tree generation.
 
-use crate::bitreader::BitReader;
-use bitvue_core::{types::BitRange, Result};
+use bitvue_core::{types::BitRange, BitReader as CoreBitReader, Result};
+use crate::bitreader::BitReader as Av1BitReader;
 
 /// A bit reader that tracks absolute bit positions from file start
 ///
@@ -12,7 +12,7 @@ use bitvue_core::{types::BitRange, Result};
 /// us to track exact bit positions for syntax tree generation.
 pub struct TrackedBitReader<'a> {
     /// Underlying bit reader (relative positioning)
-    pub reader: BitReader<'a>,
+    pub reader: Av1BitReader<'a>,
 
     /// Absolute bit offset from file start
     global_offset: u64,
@@ -27,7 +27,7 @@ impl<'a> TrackedBitReader<'a> {
     /// * `global_offset` - Absolute bit offset of this data from file start
     pub fn new(data: &'a [u8], global_offset: u64) -> Self {
         Self {
-            reader: BitReader::new(data),
+            reader: Av1BitReader::new(data),
             global_offset,
         }
     }
@@ -109,7 +109,7 @@ impl<'a> TrackedBitReader<'a> {
     /// Get remaining data slice
     #[inline]
     pub fn remaining_data(&self) -> &'a [u8] {
-        self.reader.remaining_data()
+        self.reader.inner().remaining_data()
     }
 
     /// Get remaining bits count
