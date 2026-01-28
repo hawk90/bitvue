@@ -12,54 +12,37 @@ import { createLogger } from '../utils/logger';
 const logger = createLogger('StreamDataContext');
 
 /**
- * Count frame types in the frame array
- */
-function countFrameTypes(frames: FrameInfo[]): Record<string, number> {
-  const frameTypes: Record<string, number> = {};
-  for (const frame of frames) {
-    frameTypes[frame.frame_type] = (frameTypes[frame.frame_type] || 0) + 1;
-  }
-  return frameTypes;
-}
-
-/**
- * Calculate total size of all frames
- */
-function calculateTotalSize(frames: FrameInfo[]): number {
-  let totalSize = 0;
-  for (const frame of frames) {
-    totalSize += frame.size;
-  }
-  return totalSize;
-}
-
-/**
- * Count keyframes in the frame array
- */
-function countKeyframes(frames: FrameInfo[]): number {
-  let keyFrames = 0;
-  for (const frame of frames) {
-    if (frame.key_frame) {
-      keyFrames++;
-    }
-  }
-  return keyFrames;
-}
-
-/**
  * Calculate frame statistics from an array of frames
+ * Optimized to use a single iteration instead of multiple passes
  */
 function calculateFrameStats(frames: FrameInfo[]): FrameStats {
   const totalFrames = frames.length;
-  const totalSize = calculateTotalSize(frames);
+  let totalSize = 0;
+  let keyFrames = 0;
+  const frameTypes: Record<string, number> = {};
+
+  // Single pass through frames to calculate all statistics
+  for (const frame of frames) {
+    // Accumulate total size
+    totalSize += frame.size;
+
+    // Count keyframes
+    if (frame.key_frame) {
+      keyFrames++;
+    }
+
+    // Count frame types
+    frameTypes[frame.frame_type] = (frameTypes[frame.frame_type] || 0) + 1;
+  }
+
   const avgSize = totalFrames > 0 ? totalSize / totalFrames : 0;
 
   return {
     totalFrames,
-    frameTypes: countFrameTypes(frames),
+    frameTypes,
     totalSize,
     avgSize,
-    keyFrames: countKeyframes(frames),
+    keyFrames,
   };
 }
 

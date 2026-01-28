@@ -4,6 +4,7 @@
  * Core tooltip management class
  */
 
+import { TIMING, DIMENSIONS, Z_INDEX } from '../../constants/ui';
 import type { TooltipConfig, TooltipContext } from './types';
 
 /**
@@ -16,6 +17,7 @@ export class TooltipManager {
   private currentTooltip: HTMLElement | null = null;
   private hideTimeout: number | null = null;
   private clickOutsideHandler: (() => void) | null = null;
+  private saveTimeout: number | null = null;
 
   constructor() {
     this.tooltips = new Map();
@@ -72,7 +74,7 @@ export class TooltipManager {
     if (config.delay !== false) {
       this.hideTimeout = window.setTimeout(() => {
         this.hide();
-      }, config.delay ?? 5000);
+      }, config.delay ?? TIMING.TOOLTIP_AUTO_HIDE_DELAY);
     }
 
     // Save state
@@ -260,23 +262,23 @@ export class TooltipManager {
 
     // Apply positioning
     tooltip.style.position = 'absolute';
-    tooltip.style.zIndex = '10000';
+    tooltip.style.zIndex = String(Z_INDEX.TOOLTIP);
 
     switch (finalPosition) {
       case 'top':
-        tooltip.style.bottom = `${viewport.height - targetRect.top + 8}px`;
+        tooltip.style.bottom = `${viewport.height - targetRect.top + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.left = `${targetRect.left + (targetRect.width - tooltipRect.width) / 2}px`;
         break;
       case 'bottom':
-        tooltip.style.top = `${targetRect.bottom + 8}px`;
+        tooltip.style.top = `${targetRect.bottom + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.left = `${targetRect.left + (targetRect.width - tooltipRect.width) / 2}px`;
         break;
       case 'left':
-        tooltip.style.right = `${viewport.width - targetRect.left + 8}px`;
+        tooltip.style.right = `${viewport.width - targetRect.left + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.top = `${targetRect.top + (targetRect.height - tooltipRect.height) / 2}px`;
         break;
       case 'right':
-        tooltip.style.left = `${targetRect.right + 8}px`;
+        tooltip.style.left = `${targetRect.right + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.top = `${targetRect.top + (targetRect.height - tooltipRect.height) / 2}px`;
         break;
     }
@@ -285,17 +287,17 @@ export class TooltipManager {
     requestAnimationFrame(() => {
       const rect = tooltip.getBoundingClientRect();
 
-      if (rect.left < 8) {
-        tooltip.style.left = '8px';
+      if (rect.left < DIMENSIONS.TOOLTIP_OFFSET) {
+        tooltip.style.left = `${DIMENSIONS.TOOLTIP_OFFSET}px`;
       }
-      if (rect.right > viewport.width - 8) {
-        tooltip.style.left = `${viewport.width - rect.width - 8}px`;
+      if (rect.right > viewport.width - DIMENSIONS.TOOLTIP_OFFSET) {
+        tooltip.style.left = `${viewport.width - rect.width - DIMENSIONS.TOOLTIP_OFFSET}px`;
       }
-      if (rect.top < 8) {
-        tooltip.style.top = '8px';
+      if (rect.top < DIMENSIONS.TOOLTIP_OFFSET) {
+        tooltip.style.top = `${DIMENSIONS.TOOLTIP_OFFSET}px`;
       }
-      if (rect.bottom > viewport.height - 8) {
-        tooltip.style.top = `${viewport.height - rect.height - 8}px`;
+      if (rect.bottom > viewport.height - DIMENSIONS.TOOLTIP_OFFSET) {
+        tooltip.style.top = `${viewport.height - rect.height - DIMENSIONS.TOOLTIP_OFFSET}px`;
       }
     });
   }
@@ -317,24 +319,39 @@ export class TooltipManager {
   }
 
   /**
-   * Save state to localStorage
+   * Save state to localStorage (debounced)
+   * Saves after a delay to reduce write frequency
    */
   private saveState(): void {
-    try {
-      const data = {
-        dismissed: Array.from(this.dismissedTips),
-        shown: Object.fromEntries(this.shownTips),
-      };
-      localStorage.setItem('bitvue-tooltips', JSON.stringify(data));
-    } catch {
-      // Ignore errors
+    // Clear any pending save
+    if (this.saveTimeout !== null) {
+      clearTimeout(this.saveTimeout);
     }
+
+    // Debounce the save operation
+    this.saveTimeout = window.setTimeout(() => {
+      try {
+        const data = {
+          dismissed: Array.from(this.dismissedTips),
+          shown: Object.fromEntries(this.shownTips),
+        };
+        localStorage.setItem('bitvue-tooltips', JSON.stringify(data));
+      } catch {
+        // Ignore errors
+      }
+      this.saveTimeout = null;
+    }, TIMING.STORAGE_DEBOUNCE_DELAY);
   }
 
   /**
    * Reset all tooltips (for testing/debug)
    */
   reset(): void {
+    // Clear any pending save
+    if (this.saveTimeout !== null) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
     this.dismissedTips.clear();
     this.shownTips.clear();
     localStorage.removeItem('bitvue-tooltips');

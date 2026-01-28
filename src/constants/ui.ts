@@ -77,6 +77,7 @@ export const TIMING = {
   TOOLTIP_DELAY: 300,           // ms before showing tooltip
   AUTO_PLAY_INTERVAL: 1000,     // ms between frames at 1fps
   STORAGE_DEBOUNCE_DELAY: 500,  // ms for auto-saving to localStorage
+  TOOLTIP_AUTO_HIDE_DELAY: 5000,// ms before auto-hiding tooltips
 } as const;
 
 // ==================== Dimensions ====================
@@ -85,6 +86,16 @@ export const DIMENSIONS = {
   CIRCLE_SIZE: 12,             // B-Pyramid frame circle diameter
   CIRCLE_GAP: 8,               // Gap between circles in B-Pyramid
   MINIMAP_CELL_SIZE: 12,       // Size of minimap cells
+  TOOLTIP_OFFSET: 8,           // Pixel offset for tooltip positioning
+} as const;
+
+// ==================== Z-Index Layers ====================
+
+export const Z_INDEX = {
+  TOOLTIP: 10000,              // Interactive tooltips
+  MODAL: 1000,                 // Modal dialogs
+  DROPDOWN: 600,               // Dropdown menus
+  POPOVER: 500,                // Popovers
 } as const;
 
 // ==================== Zoom Levels ====================

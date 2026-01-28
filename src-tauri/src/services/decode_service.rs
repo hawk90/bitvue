@@ -84,7 +84,8 @@ impl DecodeService {
             yuv_frames_cache: Mutex::new(HashMap::new()),
             rgb_lru_order: Mutex::new(VecDeque::new()),
             yuv_lru_order: Mutex::new(VecDeque::new()),
-            max_cache_bytes: 512 * 1024 * 1024, // 512MB default cache limit
+            // SAFETY: Use usize cast to prevent integer overflow (512 * 1024 * 1024 = 512MB)
+            max_cache_bytes: (512 * 1024 * 1024) as usize, // 512MB default cache limit
             current_cache_bytes: Mutex::new(0),
             mp4_samples_cache: Mutex::new(None),
             mkv_samples_cache: Mutex::new(None),

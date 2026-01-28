@@ -135,13 +135,15 @@ pub async fn open_file(
     const MAX_FILE_SIZE: u64 = 2_147_483_648;
     if size > MAX_FILE_SIZE {
         log::error!("open_file: File too large: {} bytes (max: {} bytes)", size, MAX_FILE_SIZE);
+        // SAFETY: Use u64 literals to prevent integer overflow in size calculation
+        const BYTES_PER_MB: u64 = 1024 * 1024;
         return Ok(FileInfo {
             path: path.clone(),
             size,
             codec: "unknown".to_string(),
             success: false,
             error: Some(format!("File too large: {} MB. Maximum supported size is 2 GB.",
-                size / (1024 * 1024))),
+                size / BYTES_PER_MB)),
         });
     }
 

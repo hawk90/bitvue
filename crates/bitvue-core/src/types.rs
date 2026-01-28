@@ -71,6 +71,91 @@ pub enum FrameType {
     Switch,
 }
 
+impl FrameType {
+    /// Returns true if this is a key frame (I-frame)
+    pub fn is_key(self) -> bool {
+        matches!(self, FrameType::Key)
+    }
+
+    /// Returns true if this is an inter frame (P-frame)
+    pub fn is_inter(self) -> bool {
+        matches!(self, FrameType::Inter)
+    }
+
+    /// Returns true if this is a bidirectional frame (B-frame)
+    pub fn is_b_frame(self) -> bool {
+        matches!(self, FrameType::BFrame)
+    }
+
+    /// Returns true if this is an intra-only frame
+    pub fn is_intra_only(self) -> bool {
+        matches!(self, FrameType::IntraOnly)
+    }
+
+    /// Returns true if this is a switch frame
+    pub fn is_switch(self) -> bool {
+        matches!(self, FrameType::Switch)
+    }
+
+    /// Returns true if this is any intra frame (Key or IntraOnly)
+    pub fn is_intra(self) -> bool {
+        matches!(self, FrameType::Key | FrameType::IntraOnly)
+    }
+
+    /// Returns true if this frame can be used as a reference
+    pub fn is_reference(self) -> bool {
+        // Key frames are always reference frames
+        // Inter frames may be reference frames (not strictly determined by type)
+        // B-frames are typically not reference frames
+        !matches!(self, FrameType::BFrame)
+    }
+
+    /// Returns the short name (single character)
+    pub fn short_name(self) -> &'static str {
+        match self {
+            FrameType::Key => "I",
+            FrameType::Inter => "P",
+            FrameType::BFrame => "B",
+            FrameType::IntraOnly => "I",
+            FrameType::Switch => "S",
+        }
+    }
+
+    /// Parses a frame type from a string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_uppercase().as_str() {
+            "KEY" | "I" | "I-FRAME" => Some(FrameType::Key),
+            "INTER" | "P" | "P-FRAME" => Some(FrameType::Inter),
+            "B" | "B-FRAME" => Some(FrameType::BFrame),
+            "INTRA_ONLY" | "INTRAONLY" => Some(FrameType::IntraOnly),
+            "SWITCH" | "S" => Some(FrameType::Switch),
+            _ => None,
+        }
+    }
+
+    /// Returns all frame type variants
+    pub fn all() -> &'static [FrameType] {
+        &[
+            FrameType::Key,
+            FrameType::Inter,
+            FrameType::BFrame,
+            FrameType::IntraOnly,
+            FrameType::Switch,
+        ]
+    }
+
+    /// Returns a description of the frame type
+    pub fn description(self) -> &'static str {
+        match self {
+            FrameType::Key => "Key frame (I-frame) - can be decoded without reference to other frames",
+            FrameType::Inter => "Inter frame (P-frame) - uses references to previous frames",
+            FrameType::BFrame => "Bidirectional frame (B-frame) - uses references to both past and future frames",
+            FrameType::IntraOnly => "Intra-only frame - all blocks use intra prediction",
+            FrameType::Switch => "Switch frame - used for transitioning between different streams",
+        }
+    }
+}
+
 impl std::fmt::Display for FrameType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

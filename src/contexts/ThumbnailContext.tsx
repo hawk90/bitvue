@@ -9,6 +9,7 @@ import { createContext, useContext, useState, useCallback, ReactNode, useRef } f
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '../utils/logger';
 import { processThumbnailResults } from '../utils/thumbnailUtils';
+import { TIMING } from '../constants/ui';
 
 const logger = createLogger('ThumbnailContext');
 
@@ -24,11 +25,11 @@ export interface ThumbnailResult {
 interface ThumbnailContextType {
   thumbnails: Map<number, string>;
   loading: Set<number>;
-  loadThumbnails: (indices: number[]) => Promise<void>;
+  loadThumbnails: (indices: number[]) => void;
   getThumbnail: (frameIndex: number) => string | undefined;
   isLoading: (frameIndex: number) => boolean;
   clearCache: () => void;
-  preloadRange: (startIndex: number, count: number) => Promise<void>;
+  preloadRange: (startIndex: number, count: number) => void;
 }
 
 const ThumbnailContext = createContext<ThumbnailContextType | undefined>(undefined);
@@ -41,6 +42,10 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
   const thumbnailsRef = useRef(thumbnails);
   const loadingRef = useRef(loading);
 
+  // Refs for debouncing thumbnail loads
+  const debounceTimeoutRef = useRef<number | null>(null);
+  const pendingLoadRef = useRef<Set<number>>(new Set());
+
   // Keep refs in sync with state
   const updateThumbnailsRef = useCallback((newThumbnails: Map<number, string>) => {
     thumbnailsRef.current = newThumbnails;
@@ -50,13 +55,8 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
     loadingRef.current = newLoading;
   }, []);
 
-  // Load thumbnails for the given frame indices
-  const loadThumbnails = useCallback(async (indices: number[]): Promise<void> => {
-    // Filter out already loaded or currently loading thumbnails
-    const indicesToLoad = indices.filter(
-      (i) => !thumbnailsRef.current.has(i) && !loadingRef.current.has(i)
-    );
-
+  // Internal function to perform the actual thumbnail loading
+  const performLoad = useCallback(async (indicesToLoad: number[]): Promise<void> => {
     if (indicesToLoad.length === 0) {
       return;
     }
@@ -94,6 +94,36 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
     }
   }, [updateLoadingRef, updateThumbnailsRef]);
 
+  // Load thumbnails for the given frame indices (debounced)
+  const loadThumbnails = useCallback((indices: number[]): void => {
+    // Filter out already loaded or currently loading thumbnails
+    const indicesToLoad = indices.filter(
+      (i) => !thumbnailsRef.current.has(i) && !loadingRef.current.has(i)
+    );
+
+    if (indicesToLoad.length === 0) {
+      return;
+    }
+
+    // Add to pending load set
+    indicesToLoad.forEach((i) => pendingLoadRef.current.add(i));
+
+    // Clear any pending load timeout
+    if (debounceTimeoutRef.current !== null) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced load
+    debounceTimeoutRef.current = window.setTimeout(() => {
+      // Get all pending indices and clear the set
+      const pendingIndices = Array.from(pendingLoadRef.current);
+      pendingLoadRef.current.clear();
+
+      // Perform the actual load
+      performLoad(pendingIndices);
+    }, TIMING.THUMBNAIL_LOAD_DELAY);
+  }, [performLoad]);
+
   // Get thumbnail for a specific frame
   const getThumbnail = useCallback((frameIndex: number): string | undefined => {
     return thumbnailsRef.current.get(frameIndex);
@@ -106,14 +136,22 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
 
   // Clear all cached thumbnails
   const clearCache = useCallback(() => {
+    // Clear any pending load timeout
+    if (debounceTimeoutRef.current !== null) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    // Clear pending load set
+    pendingLoadRef.current.clear();
+    // Clear thumbnails map
     setThumbnails(new Map());
     updateThumbnailsRef(new Map());
   }, [updateThumbnailsRef]);
 
   // Preload thumbnails for a range of frames
-  const preloadRange = useCallback(async (startIndex: number, count: number): Promise<void> => {
+  const preloadRange = useCallback((startIndex: number, count: number): void => {
     const indices = Array.from({ length: count }, (_, i) => startIndex + i);
-    await loadThumbnails(indices);
+    loadThumbnails(indices);
   }, [loadThumbnails]);
 
   return (

@@ -32,6 +32,9 @@ function Timeline({ frames, className = '' }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
   // Refs to each frame element
   const frameRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // Cache for timeline bounding rect to avoid repeated getBoundingClientRect calls
+  const timelineRectCache = useRef<DOMRect | null>(null);
+  const [isRectCacheValid, setIsRectCacheValid] = useState(false);
 
   // Calculate cursor position based on actual DOM element position (memoized)
   const cursorPosition = useMemo(() => {
@@ -62,6 +65,31 @@ function Timeline({ frames, className = '' }: TimelineProps) {
     }
   }, [selection?.frame?.frameIndex]);
 
+  // Helper function to get cached timeline rect
+  const getTimelineRect = useCallback((): DOMRect | null => {
+    if (!timelineRef.current) return null;
+
+    // Return cached rect if valid
+    if (isRectCacheValid && timelineRectCache.current) {
+      return timelineRectCache.current;
+    }
+
+    // Calculate and cache new rect
+    const rect = timelineRef.current.getBoundingClientRect();
+    timelineRectCache.current = rect;
+    setIsRectCacheValid(true);
+    return rect;
+  }, [isRectCacheValid]);
+
+  // Invalidate rect cache on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setIsRectCacheValid(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const getFrameIndexFromEvent = useCallback((e: React.MouseEvent<HTMLDivElement>): number => {
     // First check if we clicked directly on a frame element
     const target = e.target as HTMLElement;
@@ -71,17 +99,19 @@ function Timeline({ frames, className = '' }: TimelineProps) {
       return frameIndex;
     }
 
-    // Otherwise calculate from position
-    const rect = e.currentTarget.getBoundingClientRect();
+    // Otherwise calculate from position (use cached rect)
+    const rect = getTimelineRect();
+    if (!rect) return 0;
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     return Math.min(Math.floor(percent * frames.length), frames.length - 1);
-  }, [frames.length]);
+  }, [frames.length, getTimelineRect]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = getTimelineRect();
+    if (!rect) return;
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setHoverPosition(percent);
-  }, []);
+  }, [getTimelineRect]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const frameIndex = getFrameIndexFromEvent(e);
@@ -93,13 +123,15 @@ function Timeline({ frames, className = '' }: TimelineProps) {
     const timelineEl = timelineRef.current;
     if (!timelineEl) return;
 
+    // OPTIMIZATION: Cache rect once at drag start to avoid repeated getBoundingClientRect calls
+    const timelineRect = timelineEl.getBoundingClientRect();
+
     // Throttle frame updates for smoother drag
     let lastUpdateFrame = -1;
 
     // Set up drag handlers
     const handleDragMove = (moveEvent: MouseEvent) => {
-      const rect = timelineEl.getBoundingClientRect();
-      const dragPercent = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
+      const dragPercent = Math.max(0, Math.min(1, (moveEvent.clientX - timelineRect.left) / timelineRect.width));
       const dragFrameIndex = Math.min(Math.floor(dragPercent * frames.length), frames.length - 1);
 
       // Only update if frame actually changed
@@ -117,12 +149,7 @@ function Timeline({ frames, className = '' }: TimelineProps) {
       setFrameSelection({ stream: 'A', frameIndex: dragIndexRef.current }, 'timeline');
       window.removeEventListener('mousemove', handleDragMove);
       window.removeEventListener('mouseup', handleDragUp);
-      // Clear refs after cleanup
-      eventListenersRef.current = {};
     };
-
-    // Store refs for cleanup in case component unmounts during drag
-    eventListenersRef.current = { handleMouseMove: handleDragMove, handleMouseUp: handleDragUp };
 
     window.addEventListener('mousemove', handleDragMove, { passive: true });
     window.addEventListener('mouseup', handleDragUp);

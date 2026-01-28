@@ -4,10 +4,11 @@
  * VQAnalyzer-style bookmarks for quick frame navigation
  */
 
-import { useState, useCallback, useEffect, memo } from 'react';
+import { useState, useCallback, useEffect, memo, useRef } from 'react';
 import { useSelection } from '../contexts/SelectionContext';
 import { useStreamData } from '../contexts/StreamDataContext';
 import { createLogger } from '../utils/logger';
+import { TIMING } from '../constants/ui';
 import './BookmarksPanel.css';
 
 const logger = createLogger('BookmarksPanel');
@@ -103,6 +104,8 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
+  // Ref to store timeout for debounced saves
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load bookmarks from localStorage
   useEffect(() => {
@@ -125,14 +128,41 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
     }
   }, []);
 
-  // Save bookmarks to localStorage
+  // Debounced save to localStorage
+  // Saves bookmarks after a delay, reducing write frequency
+  useEffect(() => {
+    // Skip saving in test environment or if no bookmarks
+    if (process.env.NODE_ENV === 'test' || bookmarks.length === 0) {
+      return;
+    }
+
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce the save operation
+    saveTimeoutRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks));
+        logger.debug(`Saved ${bookmarks.length} bookmarks to storage`);
+      } catch (error) {
+        logger.error('Failed to save bookmarks:', error);
+      }
+      saveTimeoutRef.current = null;
+    }, TIMING.STORAGE_DEBOUNCE_DELAY);
+
+    // Cleanup: cancel pending save on unmount
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [bookmarks]);
+
+  // Update bookmarks state (save is debounced via useEffect)
   const saveBookmarks = useCallback((updatedBookmarks: Bookmark[]) => {
     setBookmarks(updatedBookmarks);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedBookmarks));
-    } catch (error) {
-      logger.error('Failed to save bookmarks:', error);
-    }
   }, []);
 
   // Add current frame as bookmark
