@@ -953,8 +953,14 @@ mod tests {
         assert_eq!(StackedMetric::TotalSize.label(), "total_size");
         assert_eq!(StackedMetric::SplitCuFlag.label(), "split_cu_flag");
         assert_eq!(StackedMetric::SplitQtFlag.label(), "split_qt_flag");
-        assert_eq!(StackedMetric::MttSplitCu.label(), "mtt_split_cu_vertical_flag");
-        assert_eq!(StackedMetric::SmttSplitCu.label(), "smtt_split_cu_binary_flag");
+        assert_eq!(
+            StackedMetric::MttSplitCu.label(),
+            "mtt_split_cu_vertical_flag"
+        );
+        assert_eq!(
+            StackedMetric::SmttSplitCu.label(),
+            "smtt_split_cu_binary_flag"
+        );
         assert_eq!(StackedMetric::NonInterFlag.label(), "non_inter_flag");
         assert_eq!(StackedMetric::CuSkipFlag.label(), "cu_skip_flag");
     }

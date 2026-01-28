@@ -28,23 +28,25 @@
 //! 3. **Tile Data** → parse_partition_tree → partition structure
 //! 4. **Superblock** → CodingUnit → actual prediction mode, MV, QP, TxSize
 
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::collections::HashMap;
-use crate::{parse_frame_header_basic, ObuType, parse_all_obus};
-use crate::tile::{PredictionMode, TxSize, CodingUnit};
+use crate::tile::{CodingUnit, PredictionMode, TxSize};
+use crate::{parse_all_obus, parse_frame_header_basic, ObuType};
 use bitvue_core::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,
     BitvueError,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Helper macro to safely lock mutexes with proper error handling
 /// Prevents panic on mutex poisoning by returning an error instead
 macro_rules! lock_mutex {
     ($mutex:expr) => {
-        $mutex.lock().map_err(|e| BitvueError::Decode(format!("Mutex poisoned: {}", e)))?
+        $mutex
+            .lock()
+            .map_err(|e| BitvueError::Decode(format!("Mutex poisoned: {}", e)))?
     };
 }
 
@@ -65,9 +67,8 @@ type CodingUnitCache = HashMap<u64, Vec<crate::tile::CodingUnit>>;
 /// Per optimize-code skill § "Batch Operations":
 /// "Single lock acquisition" pattern - lock once for the entire operation
 use std::sync::LazyLock;
-static CODING_UNIT_CACHE: LazyLock<Mutex<CodingUnitCache>> = LazyLock::new(|| {
-    Mutex::new(HashMap::with_capacity(16))
-});
+static CODING_UNIT_CACHE: LazyLock<Mutex<CodingUnitCache>> =
+    LazyLock::new(|| Mutex::new(HashMap::with_capacity(16)));
 
 /// Compute cache key from tile data
 ///
@@ -222,7 +223,11 @@ impl ParsedFrame {
                         dimensions = FrameDimensions {
                             width: seq_hdr.max_frame_width,
                             height: seq_hdr.max_frame_height,
-                            sb_size: if seq_hdr.use_128x128_superblock { 128 } else { 64 },
+                            sb_size: if seq_hdr.use_128x128_superblock {
+                                128
+                            } else {
+                                64
+                            },
                             sb_cols: 0,
                             sb_rows: 0,
                         };
@@ -458,8 +463,10 @@ fn find_overlapping_cu_qp(
     coding_units
         .iter()
         .find(|cu| {
-            cu.x < block_x + block_w && cu.x + cu.width > block_x
-                && cu.y < block_y + block_w && cu.y + cu.height > block_y
+            cu.x < block_x + block_w
+                && cu.x + cu.width > block_x
+                && cu.y < block_y + block_w
+                && cu.y + cu.height > block_y
         })
         .map(|cu| cu.effective_qp(base_qp))
 }
@@ -516,8 +523,18 @@ pub fn extract_qp_grid_from_parsed(
     if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
-                tracing::debug!("Extracting QP values from {} coding units", coding_units.len());
-                let qp = build_qp_grid_from_cus(&coding_units, grid_w, grid_h, block_w, block_h, base_qp);
+                tracing::debug!(
+                    "Extracting QP values from {} coding units",
+                    coding_units.len()
+                );
+                let qp = build_qp_grid_from_cus(
+                    &coding_units,
+                    grid_w,
+                    grid_h,
+                    block_w,
+                    block_h,
+                    base_qp,
+                );
                 return Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp));
             }
             Err(e) => {
@@ -541,10 +558,7 @@ pub fn extract_qp_grid_from_parsed(
 /// # Performance
 ///
 /// - O(n) where n = number of blocks
-pub fn extract_mv_grid(
-    obu_data: &[u8],
-    _frame_index: usize,
-) -> Result<MVGrid, BitvueError> {
+pub fn extract_mv_grid(obu_data: &[u8], _frame_index: usize) -> Result<MVGrid, BitvueError> {
     let parsed = ParsedFrame::parse(obu_data)?;
 
     extract_mv_grid_from_parsed(&parsed)
@@ -556,9 +570,7 @@ pub fn extract_mv_grid(
 /// - Parses tile data to extract actual motion vectors from coding units
 /// - Falls back to scaffold if tile data unavailable or parsing fails
 /// - Uses quarter-pel precision motion vectors from AV1 bitstream
-pub fn extract_mv_grid_from_parsed(
-    parsed: &ParsedFrame,
-) -> Result<MVGrid, BitvueError> {
+pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, BitvueError> {
     let block_w = 64u32;
     let block_h = 64u32;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
@@ -584,8 +596,10 @@ pub fn extract_mv_grid_from_parsed(
                         // Find coding units that overlap with this block
                         let mut found_mv = false;
                         for cu in &coding_units {
-                            if cu.x < block_x + block_w && cu.x + cu.width > block_x
-                                && cu.y < block_y + block_h && cu.y + cu.height > block_y
+                            if cu.x < block_x + block_w
+                                && cu.x + cu.width > block_x
+                                && cu.y < block_y + block_h
+                                && cu.y + cu.height > block_y
                             {
                                 // This CU overlaps our block - use its MV
                                 if cu.is_inter() {
@@ -700,12 +714,17 @@ pub fn extract_partition_grid_from_parsed(
         // Try to parse actual partition trees using SymbolDecoder
         match parse_partition_trees_from_tile_data(parsed) {
             Ok(grid) => {
-                tracing::debug!("Successfully parsed {} actual partition blocks",
-                    grid.blocks.len());
+                tracing::debug!(
+                    "Successfully parsed {} actual partition blocks",
+                    grid.blocks.len()
+                );
                 return Ok(grid);
             }
             Err(e) => {
-                tracing::warn!("Failed to parse partitions: {}, falling back to scaffold", e);
+                tracing::warn!(
+                    "Failed to parse partitions: {}, falling back to scaffold",
+                    e
+                );
                 // Fall through to scaffold
             }
         }
@@ -723,9 +742,13 @@ pub fn extract_partition_grid_from_parsed(
             let sb_pixel_x = sb_x * parsed.dimensions.sb_size;
             let sb_pixel_y = sb_y * parsed.dimensions.sb_size;
 
-            let remaining_w = parsed.dimensions.sb_size
+            let remaining_w = parsed
+                .dimensions
+                .sb_size
                 .saturating_sub(parsed.dimensions.width.saturating_sub(sb_pixel_x));
-            let remaining_h = parsed.dimensions.sb_size
+            let remaining_h = parsed
+                .dimensions
+                .sb_size
                 .saturating_sub(parsed.dimensions.height.saturating_sub(sb_pixel_y));
 
             grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
@@ -779,19 +802,20 @@ fn parse_partition_trees_from_tile_data(
             let remaining_h = sb_size.min(parsed.dimensions.height.saturating_sub(sb_pixel_y));
 
             // Adjust for edge superblocks
-            let actual_block_size = if remaining_w < block_size.width() || remaining_h < block_size.height() {
-                // Adjust to smaller block size at edges
-                let w = remaining_w.max(block_size.width() / 2);
-                let h = remaining_h.max(block_size.height() / 2);
-                match (w, h) {
-                    (w, h) if w <= 32 && h <= 32 => BlockSize::Block32x32,
-                    (w, h) if w <= 16 && h <= 16 => BlockSize::Block16x16,
-                    (w, h) if w <= 8 && h <= 8 => BlockSize::Block8x8,
-                    _ => BlockSize::Block4x4,
-                }
-            } else {
-                block_size
-            };
+            let actual_block_size =
+                if remaining_w < block_size.width() || remaining_h < block_size.height() {
+                    // Adjust to smaller block size at edges
+                    let w = remaining_w.max(block_size.width() / 2);
+                    let h = remaining_h.max(block_size.height() / 2);
+                    match (w, h) {
+                        (w, h) if w <= 32 && h <= 32 => BlockSize::Block32x32,
+                        (w, h) if w <= 16 && h <= 16 => BlockSize::Block16x16,
+                        (w, h) if w <= 8 && h <= 8 => BlockSize::Block8x8,
+                        _ => BlockSize::Block4x4,
+                    }
+                } else {
+                    block_size
+                };
 
             // Try to parse the superblock
             // Note: For MVP, we use default QP=128 and delta_q_enabled=false
@@ -830,8 +854,12 @@ fn parse_partition_trees_from_tile_data(
                 }
                 Err(e) => {
                     // On parse error, add scaffold block
-                    tracing::warn!("Failed to parse superblock ({}, {}): {}, using scaffold",
-                        sb_pixel_x, sb_pixel_y, e);
+                    tracing::warn!(
+                        "Failed to parse superblock ({}, {}): {}, using scaffold",
+                        sb_pixel_x,
+                        sb_pixel_y,
+                        e
+                    );
                     grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
                         sb_pixel_x,
                         sb_pixel_y,
@@ -919,15 +947,23 @@ fn parse_all_coding_units(
                         current_qp = new_qp;
                     }
                     Err(e) => {
-                        tracing::debug!("Failed to parse superblock ({}, {}): {}, skipping",
-                            sb_pixel_x, sb_pixel_y, e);
+                        tracing::debug!(
+                            "Failed to parse superblock ({}, {}): {}, skipping",
+                            sb_pixel_x,
+                            sb_pixel_y,
+                            e
+                        );
                         // Continue parsing other superblocks
                     }
                 }
             }
         }
 
-        tracing::debug!("Parsed {} coding units from tile data (final QP: {})", all_cus.len(), current_qp);
+        tracing::debug!(
+            "Parsed {} coding units from tile data (final QP: {})",
+            all_cus.len(),
+            current_qp
+        );
         Ok(all_cus)
     })
 }
@@ -968,7 +1004,8 @@ impl PredictionModeGrid {
             modes.len(),
             expected_len,
             "PredictionModeGrid: modes length mismatch: expected {}, got {}",
-            expected_len, modes.len()
+            expected_len,
+            modes.len()
         );
 
         Self {
@@ -1026,7 +1063,10 @@ pub fn extract_prediction_mode_grid_from_parsed(
     if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
-                tracing::debug!("Extracting prediction modes from {} coding units", coding_units.len());
+                tracing::debug!(
+                    "Extracting prediction modes from {} coding units",
+                    coding_units.len()
+                );
 
                 // Build a grid of prediction modes from coding units
                 for grid_y in 0..grid_h {
@@ -1037,8 +1077,10 @@ pub fn extract_prediction_mode_grid_from_parsed(
                         // Find coding units that overlap with this block
                         let mut found_mode = false;
                         for cu in &coding_units {
-                            if cu.x < block_x + block_w && cu.x + cu.width > block_x
-                                && cu.y < block_y + block_h && cu.y + cu.height > block_y
+                            if cu.x < block_x + block_w
+                                && cu.x + cu.width > block_x
+                                && cu.y < block_y + block_h
+                                && cu.y + cu.height > block_y
                             {
                                 // This CU overlaps our block - use its mode
                                 modes.push(Some(cu.mode));
@@ -1068,7 +1110,10 @@ pub fn extract_prediction_mode_grid_from_parsed(
                 ));
             }
             Err(e) => {
-                tracing::warn!("Failed to parse coding units for prediction modes: {}, using scaffold", e);
+                tracing::warn!(
+                    "Failed to parse coding units for prediction modes: {}, using scaffold",
+                    e
+                );
                 // Fall through to scaffold
             }
         }
@@ -1165,7 +1210,8 @@ impl TransformGrid {
             tx_sizes.len(),
             expected_len,
             "TransformGrid: tx_sizes length mismatch: expected {}, got {}",
-            expected_len, tx_sizes.len()
+            expected_len,
+            tx_sizes.len()
         );
 
         Self {
@@ -1225,7 +1271,10 @@ pub fn extract_transform_grid_from_parsed(
     if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
-                tracing::debug!("Extracting transform sizes from {} coding units", coding_units.len());
+                tracing::debug!(
+                    "Extracting transform sizes from {} coding units",
+                    coding_units.len()
+                );
 
                 // Build a grid of transform sizes from coding units
                 for grid_y in 0..grid_h {
@@ -1236,8 +1285,10 @@ pub fn extract_transform_grid_from_parsed(
                         // Find coding units that overlap with this block
                         let mut found_tx = false;
                         for cu in &coding_units {
-                            if cu.x < block_x + block_w && cu.x + cu.width > block_x
-                                && cu.y < block_y + block_h && cu.y + cu.height > block_y
+                            if cu.x < block_x + block_w
+                                && cu.x + cu.width > block_x
+                                && cu.y < block_y + block_h
+                                && cu.y + cu.height > block_y
                             {
                                 // This CU overlaps our block - use its transform size
                                 tx_sizes.push(Some(cu.tx_size));
@@ -1262,7 +1313,10 @@ pub fn extract_transform_grid_from_parsed(
                 ));
             }
             Err(e) => {
-                tracing::warn!("Failed to parse coding units for transform sizes: {}, using scaffold", e);
+                tracing::warn!(
+                    "Failed to parse coding units for transform sizes: {}, using scaffold",
+                    e
+                );
                 // Fall through to scaffold
             }
         }
@@ -1495,7 +1549,10 @@ mod tests {
         let result = extract_partition_grid(&obu_data, 0);
 
         // Assert: Should create scaffold grid
-        assert!(result.is_ok(), "Partition grid extraction should succeed with fallback");
+        assert!(
+            result.is_ok(),
+            "Partition grid extraction should succeed with fallback"
+        );
         let grid = result.unwrap();
         assert!(grid.blocks.len() > 0, "Grid should have scaffold blocks");
     }
@@ -1512,8 +1569,16 @@ mod tests {
         assert_eq!(grid.get(3, 2), Some(32));
 
         // Act & Assert: Out of bounds
-        assert_eq!(grid.get(4, 0), None, "Should return None for out of bounds (x)");
-        assert_eq!(grid.get(0, 3), None, "Should return None for out of bounds (y)");
+        assert_eq!(
+            grid.get(4, 0),
+            None,
+            "Should return None for out of bounds (x)"
+        );
+        assert_eq!(
+            grid.get(0, 3),
+            None,
+            "Should return None for out of bounds (y)"
+        );
     }
 
     #[test]
@@ -1530,8 +1595,14 @@ mod tests {
         assert!(grid.get_l0(3, 2).is_some());
 
         // Act & Assert: Out of bounds
-        assert!(grid.get_l0(30, 0).is_none(), "Should return None for out of bounds (x)");
-        assert!(grid.get_l0(0, 17).is_none(), "Should return None for out of bounds (y)");
+        assert!(
+            grid.get_l0(30, 0).is_none(),
+            "Should return None for out of bounds (x)"
+        );
+        assert!(
+            grid.get_l0(0, 17).is_none(),
+            "Should return None for out of bounds (y)"
+        );
     }
 
     // Per generate-tests skill: Test error recovery
@@ -1544,7 +1615,10 @@ mod tests {
         let result = extract_pixel_info(&obu_data, 0, 100, 200);
 
         // Assert: Should still return PixelInfo with defaults
-        assert!(result.is_ok(), "Pixel info extraction should handle empty data");
+        assert!(
+            result.is_ok(),
+            "Pixel info extraction should handle empty data"
+        );
         let info = result.unwrap();
         assert_eq!(info.frame_index, 0);
         assert_eq!(info.pixel_x, 100);

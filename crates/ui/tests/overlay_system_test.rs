@@ -80,15 +80,19 @@ fn test_mv_overlay_vector_scaling() {
 fn test_mv_overlay_color_by_direction() {
     // Test MV coloring by direction
     let directions = vec![
-        (10, 0, "Right"),    // Horizontal right
-        (-10, 0, "Left"),    // Horizontal left
-        (0, 10, "Down"),     // Vertical down
-        (0, -10, "Up"),      // Vertical up
+        (10, 0, "Right"), // Horizontal right
+        (-10, 0, "Left"), // Horizontal left
+        (0, 10, "Down"),  // Vertical down
+        (0, -10, "Up"),   // Vertical up
     ];
 
     for (mx, my, direction) in directions {
         let angle = (my as f32).atan2(mx as f32);
-        assert!(angle.is_finite(), "Angle should be finite for {}", direction);
+        assert!(
+            angle.is_finite(),
+            "Angle should be finite for {}",
+            direction
+        );
     }
 }
 
@@ -107,10 +111,10 @@ fn test_partition_overlay_tree_depth() {
 fn test_partition_overlay_colors() {
     // Test partition depth to color mapping
     let depth_colors = vec![
-        (0, Color32::from_rgb(59, 130, 246)),   // Depth 0: Blue
-        (1, Color32::from_rgb(34, 197, 94)),    // Depth 1: Green
-        (2, Color32::from_rgb(251, 191, 36)),   // Depth 2: Amber
-        (3, Color32::from_rgb(239, 68, 68)),    // Depth 3: Red
+        (0, Color32::from_rgb(59, 130, 246)), // Depth 0: Blue
+        (1, Color32::from_rgb(34, 197, 94)),  // Depth 1: Green
+        (2, Color32::from_rgb(251, 191, 36)), // Depth 2: Amber
+        (3, Color32::from_rgb(239, 68, 68)),  // Depth 3: Red
     ];
 
     for (depth, color) in depth_colors {
@@ -153,10 +157,10 @@ fn test_bit_allocation_overlay_heatmap() {
 fn test_mv_magnitude_overlay() {
     // Test MV magnitude calculation and visualization
     let motion_vectors = vec![
-        (0, 0, 0.0),       // Zero motion
-        (3, 4, 5.0),       // 3-4-5 triangle
-        (10, 0, 10.0),     // Horizontal
-        (0, 10, 10.0),     // Vertical
+        (0, 0, 0.0),   // Zero motion
+        (3, 4, 5.0),   // 3-4-5 triangle
+        (10, 0, 10.0), // Horizontal
+        (0, 10, 10.0), // Vertical
     ];
 
     for (mx, my, expected_mag) in motion_vectors {
@@ -169,9 +173,7 @@ fn test_mv_magnitude_overlay() {
 fn test_mode_labels_overlay_text() {
     // Test prediction mode label rendering
     let mode_labels = vec![
-        "DC",
-        "PLANAR",
-        "H",    // Horizontal
+        "DC", "PLANAR", "H",    // Horizontal
         "V",    // Vertical
         "D_45", // Diagonal 45
     ];
@@ -244,7 +246,7 @@ fn test_overlay_performance() {
     let ctb_size = 64;
 
     let total_ctbs = ((frame_width / ctb_size) * (frame_height / ctb_size)) as usize;
-    
+
     // Should be able to render reasonable number of CTBs
     assert!(total_ctbs < 1000, "CTB count should be reasonable");
 }

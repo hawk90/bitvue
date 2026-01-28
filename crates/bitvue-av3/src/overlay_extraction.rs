@@ -22,7 +22,7 @@
 use crate::frame_header::FrameHeader;
 use bitvue_core::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
-    partition_grid::{PartitionGrid, PartitionBlock, PartitionType},
+    partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,
     BitvueError,
 };
@@ -109,9 +109,7 @@ pub enum PredMode {
 /// Extract QP Grid from AV3 bitstream
 ///
 /// Parses super blocks from frame data and extracts QP values.
-pub fn extract_qp_grid(
-    frame_header: &FrameHeader,
-) -> Result<QPGrid, BitvueError> {
+pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError> {
     // AV3 uses configurable SB size (64 or 128)
     let sb_size = frame_header.sb_size as u32;
     let width = frame_header.width;
@@ -144,9 +142,7 @@ pub fn extract_qp_grid(
 /// Extract MV Grid from AV3 bitstream
 ///
 /// Parses super blocks from frame data and extracts motion vectors.
-pub fn extract_mv_grid(
-    frame_header: &FrameHeader,
-) -> Result<MVGrid, BitvueError> {
+pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError> {
     let width = frame_header.width;
     let height = frame_header.height;
 
@@ -179,7 +175,11 @@ pub fn extract_mv_grid(
                         mv_l0.push(CoreMV::ZERO);
                     }
                     mv_l1.push(CoreMV::MISSING);
-                    modes.push(if sb.mode == BlockMode::None { BlockMode::Inter } else { sb.mode });
+                    modes.push(if sb.mode == BlockMode::None {
+                        BlockMode::Inter
+                    } else {
+                        sb.mode
+                    });
                 }
             }
         }
@@ -206,9 +206,7 @@ pub fn extract_mv_grid(
 /// Extract Partition Grid from AV3 bitstream
 ///
 /// Parses super blocks from frame data and creates a partition grid.
-pub fn extract_partition_grid(
-    frame_header: &FrameHeader,
-) -> Result<PartitionGrid, BitvueError> {
+pub fn extract_partition_grid(frame_header: &FrameHeader) -> Result<PartitionGrid, BitvueError> {
     let width = frame_header.width;
     let height = frame_header.height;
 

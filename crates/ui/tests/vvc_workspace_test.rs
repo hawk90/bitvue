@@ -66,11 +66,11 @@ fn test_vvc_partition_modes() {
     // Test VVC partitioning modes
     #[derive(Debug, PartialEq)]
     enum PartitionMode {
-        QtSplit,       // Quad-tree split
-        BtHorz,        // Binary tree horizontal
-        BtVert,        // Binary tree vertical
-        TtHorz,        // Ternary tree horizontal
-        TtVert,        // Ternary tree vertical
+        QtSplit, // Quad-tree split
+        BtHorz,  // Binary tree horizontal
+        BtVert,  // Binary tree vertical
+        TtHorz,  // Ternary tree horizontal
+        TtVert,  // Ternary tree vertical
     }
 
     let modes = vec![
@@ -172,7 +172,7 @@ fn test_vvc_dmvr() {
 
     let dmvr = DmvrConfig {
         enabled: true,
-        search_range: 1,  // Typically +/-1 pel
+        search_range: 1, // Typically +/-1 pel
     };
 
     assert!(dmvr.search_range.abs() <= 2);
@@ -185,9 +185,7 @@ fn test_vvc_bdof() {
         enabled: bool,
     }
 
-    let bdof = BdofConfig {
-        enabled: true,
-    };
+    let bdof = BdofConfig { enabled: true };
 
     assert!(bdof.enabled || !bdof.enabled); // Just test the field exists
 }

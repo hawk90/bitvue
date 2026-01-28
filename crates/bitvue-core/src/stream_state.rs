@@ -255,8 +255,7 @@ impl UnitHeader {
 ///
 /// Contains information specific to frame units (PTS/DTS, frame type, etc.)
 /// Separated from analysis data to avoid mixing concerns.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FrameInfo {
     /// Frame index (if this unit is a frame)
     pub frame_index: Option<usize>,
@@ -274,13 +273,11 @@ pub struct FrameInfo {
     pub temporal_id: Option<u8>,
 }
 
-
 /// Frame analysis - QP, motion vectors, reference data
 ///
 /// Contains analysis data extracted from the frame.
 /// Separated from basic frame info for clearer separation of concerns.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FrameAnalysis {
     /// Average QP for this frame (if available)
     /// AV1: base_q_idx (0-255), H.264/HEVC: avg QP (0-51)
@@ -298,7 +295,6 @@ pub struct FrameAnalysis {
     /// e.g., [2, 4, 7] for AV1 means slots LAST(2), GOLDEN(4), ALTREF(7)
     pub ref_slots: Option<Vec<u8>>,
 }
-
 
 impl UnitNode {
     /// Create a new unit node
@@ -627,11 +623,7 @@ impl CachedFrame {
     /// Create CachedFrame from focused components
     ///
     /// This is the preferred way to construct CachedFrame after refactoring.
-    pub fn from_components(
-        metadata: FrameMetadata,
-        rgb: FrameRgbData,
-        yuv: FrameYuvData,
-    ) -> Self {
+    pub fn from_components(metadata: FrameMetadata, rgb: FrameRgbData, yuv: FrameYuvData) -> Self {
         Self {
             index: metadata.index,
             width: metadata.width,
@@ -688,9 +680,7 @@ impl CachedFrame {
 
     /// Check if frame has YUV data
     pub fn has_yuv(&self) -> bool {
-        self.y_plane.is_some()
-            && self.u_plane.is_some()
-            && self.v_plane.is_some()
+        self.y_plane.is_some() && self.u_plane.is_some() && self.v_plane.is_some()
     }
 
     /// Get frame size in bytes for RGB data
@@ -790,8 +780,7 @@ impl FrameRgbData {
 ///
 /// Contains YUV color data with chroma subsampling information,
 /// separated from metadata and RGB data.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct FrameYuvData {
     /// Y plane data (luma)
     pub y_plane: Option<Vec<u8>>,
@@ -808,7 +797,6 @@ pub struct FrameYuvData {
     /// Chroma height (may differ from height for 4:2:0)
     pub chroma_height: Option<u32>,
 }
-
 
 impl FrameYuvData {
     /// Check if YUV data is present
@@ -844,4 +832,3 @@ pub struct MetricsModel {
 mod tests {
     include!("stream_state_test.rs");
 }
-

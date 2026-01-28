@@ -4,7 +4,7 @@
 //! It is defined in ITU-T H.265 Section 7.3.2.1.
 
 use crate::bitreader::BitReader;
-use crate::error::{Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
 /// Timing information for VPS/SPS.
@@ -210,7 +210,8 @@ pub fn parse_vps(data: &[u8]) -> Result<Vps> {
     }
 
     // profile_tier_level
-    vps.profile_tier_level = parse_profile_tier_level(&mut reader, true, vps.vps_max_sub_layers_minus1)?;
+    vps.profile_tier_level =
+        parse_profile_tier_level(&mut reader, true, vps.vps_max_sub_layers_minus1)?;
 
     // vps_sub_layer_ordering_info_present_flag (1 bit)
     vps.vps_sub_layer_ordering_info_present_flag = reader.read_bit()?;

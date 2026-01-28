@@ -66,11 +66,7 @@ fn test_extract_transform_grid_basic() {
 #[test]
 fn test_block_mode_variants() {
     // Test all block mode variants
-    let modes = vec![
-        BlockMode::Intra,
-        BlockMode::Inter,
-        BlockMode::Skip,
-    ];
+    let modes = vec![BlockMode::Intra, BlockMode::Inter, BlockMode::Skip];
 
     for mode in modes {
         let _ = format!("{:?}", mode);
@@ -105,7 +101,7 @@ fn test_mv_grid_basic() {
 
 #[test]
 fn test_partition_grid_basic() {
-    use bitvue_core::partition_grid::{PartitionGrid, PartitionBlock, PartitionType};
+    use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
 
     let mut grid = PartitionGrid::new(1920, 1080, 64);
 
@@ -241,7 +237,7 @@ fn test_mv_grid_with_motion_vectors() {
 
 #[test]
 fn test_partition_grid_with_partitions() {
-    use bitvue_core::partition_grid::{PartitionGrid, PartitionBlock, PartitionType};
+    use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
 
     let mut grid = PartitionGrid::new(128, 128, 64);
 
@@ -296,8 +292,8 @@ fn test_overlay_extraction_with_obus() {
 
 #[test]
 fn test_grid_dimensions() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_core::qp_heatmap::QPGrid;
 
     // Test various dimensions
     let dimensions = vec![(64, 64), (128, 128), (1920, 1080)];
@@ -305,7 +301,14 @@ fn test_grid_dimensions() {
     for (width, height) in dimensions {
         let grid_w = width / 64;
         let grid_h = height / 64;
-        let qp_grid = QPGrid::new(grid_w, grid_h, 64, 64, vec![26; (grid_w * grid_h) as usize], 26);
+        let qp_grid = QPGrid::new(
+            grid_w,
+            grid_h,
+            64,
+            64,
+            vec![26; (grid_w * grid_h) as usize],
+            26,
+        );
         assert_eq!(qp_grid.grid_w * 64, width);
 
         let mv_l0 = vec![MotionVector::ZERO; (grid_w * grid_h) as usize];
@@ -350,13 +353,7 @@ fn test_mv_range() {
     use bitvue_core::mv_overlay::{MVGrid, MotionVector};
 
     // Test various MV values including large values
-    let mv_values = vec![
-        (0, 0),
-        (10, -5),
-        (-10, 5),
-        (100, -100),
-        (-127, 127),
-    ];
+    let mv_values = vec![(0, 0), (10, -5), (-10, 5), (100, -100), (-127, 127)];
 
     let mut mv_l0 = vec![MotionVector::ZERO; 1];
     let mv_l1 = vec![MotionVector::MISSING; 1];
@@ -374,7 +371,7 @@ fn test_mv_range() {
 
 #[test]
 fn test_partition_various_sizes() {
-    use bitvue_core::partition_grid::{PartitionGrid, PartitionBlock, PartitionType};
+    use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
 
     let sizes = vec![4, 8, 16, 32, 64, 128];
 
@@ -476,11 +473,7 @@ fn test_mv_grid_consistency() {
 #[test]
 fn test_block_mode_properties() {
     // Test block mode properties
-    let modes = vec![
-        BlockMode::Intra,
-        BlockMode::Inter,
-        BlockMode::Skip,
-    ];
+    let modes = vec![BlockMode::Intra, BlockMode::Inter, BlockMode::Skip];
 
     for mode in modes {
         // Each mode should have a unique debug representation
@@ -491,8 +484,8 @@ fn test_block_mode_properties() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_core::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 64, 64, vec![], -1);
@@ -507,7 +500,7 @@ fn test_large_grid() {
     use bitvue_core::qp_heatmap::QPGrid;
 
     // Test 4K resolution
-    let width: u32 = 3840 / 64;  // 60 SBs
+    let width: u32 = 3840 / 64; // 60 SBs
     let height: u32 = 2160 / 64; // 33 SBs
     let qp_values = vec![26i16; (width * height) as usize];
 

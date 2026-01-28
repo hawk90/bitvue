@@ -91,10 +91,7 @@ fn test_image_export_formats() {
         Bmp,
     }
 
-    let formats = vec![
-        ImageFormat::Png,
-        ImageFormat::Jpeg,
-    ];
+    let formats = vec![ImageFormat::Png, ImageFormat::Jpeg];
 
     assert_eq!(formats.len(), 2);
 }

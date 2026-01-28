@@ -33,8 +33,8 @@ fn test_syntax_node_add_child() {
 
 #[test]
 fn test_syntax_node_with_position() {
-    let node = syntax::SyntaxNode::new("test", syntax::SyntaxNodeType::Field)
-        .with_position(100, 16);
+    let node =
+        syntax::SyntaxNode::new("test", syntax::SyntaxNodeType::Field).with_position(100, 16);
 
     assert_eq!(node.bit_offset, Some(100));
     assert_eq!(node.bit_length, Some(16));
@@ -97,9 +97,18 @@ fn test_empty_syntax_node() {
 fn test_syntax_node_multiple_children() {
     let mut parent = syntax::SyntaxNode::new("parent", syntax::SyntaxNodeType::Array);
 
-    parent.add_child(syntax::SyntaxNode::new("child1", syntax::SyntaxNodeType::Field));
-    parent.add_child(syntax::SyntaxNode::new("child2", syntax::SyntaxNodeType::Field));
-    parent.add_child(syntax::SyntaxNode::new("child3", syntax::SyntaxNodeType::Field));
+    parent.add_child(syntax::SyntaxNode::new(
+        "child1",
+        syntax::SyntaxNodeType::Field,
+    ));
+    parent.add_child(syntax::SyntaxNode::new(
+        "child2",
+        syntax::SyntaxNodeType::Field,
+    ));
+    parent.add_child(syntax::SyntaxNode::new(
+        "child3",
+        syntax::SyntaxNodeType::Field,
+    ));
 
     assert_eq!(parent.children.len(), 3);
 }
@@ -138,8 +147,7 @@ fn test_syntax_node_field_variants() {
 
 #[test]
 fn test_syntax_node_with_all_fields() {
-    let node = syntax::SyntaxNode::new("test", syntax::SyntaxNodeType::Field)
-        .with_position(0, 32);
+    let node = syntax::SyntaxNode::new("test", syntax::SyntaxNodeType::Field).with_position(0, 32);
 
     assert_eq!(node.name, "test");
     assert_eq!(node.node_type, syntax::SyntaxNodeType::Field);

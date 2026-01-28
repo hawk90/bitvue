@@ -55,7 +55,9 @@ impl StartCodeType {
         match self {
             StartCodeType::Picture => "Picture",
             StartCodeType::Slice(_) => "Slice",
-            StartCodeType::Reserved0 | StartCodeType::Reserved1 | StartCodeType::Reserved6 => "Reserved",
+            StartCodeType::Reserved0 | StartCodeType::Reserved1 | StartCodeType::Reserved6 => {
+                "Reserved"
+            }
             StartCodeType::UserData => "User Data",
             StartCodeType::SequenceHeader => "Sequence Header",
             StartCodeType::SequenceError => "Sequence Error",
@@ -116,7 +118,9 @@ mod tests {
 
     #[test]
     fn test_find_start_codes() {
-        let data = [0x00, 0x00, 0x01, 0xB3, 0x00, 0x00, 0x01, 0xB8, 0x00, 0x00, 0x01, 0x00];
+        let data = [
+            0x00, 0x00, 0x01, 0xB3, 0x00, 0x00, 0x01, 0xB8, 0x00, 0x00, 0x01, 0x00,
+        ];
         let codes = find_start_codes(&data);
 
         assert_eq!(codes.len(), 3);

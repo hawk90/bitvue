@@ -7,17 +7,17 @@ use bitvue_core::StreamId;
 fn test_11_column_table_structure() {
     // Test that all 11 columns are defined
     let columns = vec![
-        "Severity",     // 1
-        "Frame #",      // 2
-        "Timestamp",    // 3
-        "Pos",          // 4
-        "NAL idx",      // 5
-        "Field",        // 6
-        "CTB idx",      // 7
-        "Type",         // 8
-        "Count",        // 9
-        "Impact",       // 10
-        "Message",      // 11
+        "Severity",  // 1
+        "Frame #",   // 2
+        "Timestamp", // 3
+        "Pos",       // 4
+        "NAL idx",   // 5
+        "Field",     // 6
+        "CTB idx",   // 7
+        "Type",      // 8
+        "Count",     // 9
+        "Impact",    // 10
+        "Message",   // 11
     ];
 
     assert_eq!(columns.len(), 11, "Should have 11 columns");
@@ -69,7 +69,11 @@ fn test_frame_number_column_rendering() {
             None => "N/A".to_string(),
         };
 
-        assert_eq!(rendered, expected, "Frame index {:?} should render as {}", frame_index, expected);
+        assert_eq!(
+            rendered, expected,
+            "Frame index {:?} should render as {}",
+            frame_index, expected
+        );
     }
 }
 
@@ -90,7 +94,11 @@ fn test_timestamp_column_formatting() {
         let seconds = timestamp_ms as f64 / 1000.0;
         let formatted = format!("{:.2}s", seconds);
 
-        assert_eq!(formatted, expected, "Timestamp {}ms should format as {}", timestamp_ms, expected);
+        assert_eq!(
+            formatted, expected,
+            "Timestamp {}ms should format as {}",
+            timestamp_ms, expected
+        );
     }
 }
 
@@ -107,7 +115,11 @@ fn test_count_column_formatting() {
 
     for (count, expected) in test_cases {
         let formatted = format!("{}x", count);
-        assert_eq!(formatted, expected, "Count {} should format as {}", count, expected);
+        assert_eq!(
+            formatted, expected,
+            "Count {} should format as {}",
+            count, expected
+        );
     }
 }
 
@@ -147,12 +159,7 @@ fn test_impact_icon_rendering() {
 #[test]
 fn test_impact_column_full_rendering() {
     // Test full impact column rendering (icon + score)
-    let test_cases = vec![
-        (100, "● 100"),
-        (85, "● 85"),
-        (65, "▲ 65"),
-        (25, "○ 25"),
-    ];
+    let test_cases = vec![(100, "● 100"), (85, "● 85"), (65, "▲ 65"), (25, "○ 25")];
 
     for (impact_score, expected) in test_cases {
         let icon = if impact_score >= 80 {
@@ -164,7 +171,11 @@ fn test_impact_column_full_rendering() {
         };
 
         let formatted = format!("{} {}", icon, impact_score);
-        assert_eq!(formatted, expected, "Impact {} should render as {}", impact_score, expected);
+        assert_eq!(
+            formatted, expected,
+            "Impact {} should render as {}",
+            impact_score, expected
+        );
     }
 }
 
@@ -190,7 +201,11 @@ fn test_category_to_field_abbreviation() {
             Category::Worker => "SYS",
         };
 
-        assert_eq!(abbr, expected_abbr, "Category {:?} should abbreviate to {}", category, expected_abbr);
+        assert_eq!(
+            abbr, expected_abbr,
+            "Category {:?} should abbreviate to {}",
+            category, expected_abbr
+        );
     }
 }
 
@@ -216,7 +231,11 @@ fn test_category_to_type_full_name() {
             Category::Worker => "Worker",
         };
 
-        assert_eq!(name, expected_name, "Category {:?} should display as {}", category, expected_name);
+        assert_eq!(
+            name, expected_name,
+            "Category {:?} should display as {}",
+            category, expected_name
+        );
     }
 }
 
@@ -233,7 +252,11 @@ fn test_offset_bytes_formatting() {
 
     for (offset, expected) in test_cases {
         let formatted = format!("{}", offset);
-        assert_eq!(formatted, expected, "Offset {} should format as {}", offset, expected);
+        assert_eq!(
+            formatted, expected,
+            "Offset {} should format as {}",
+            offset, expected
+        );
     }
 }
 
@@ -243,8 +266,14 @@ fn test_message_column_truncation() {
     let short_message = "Short error message";
     let long_message = "This is a very long error message that might need to be truncated or wrapped in the UI to prevent the table from becoming too wide and breaking the layout. It contains detailed information about what went wrong.";
 
-    assert!(short_message.len() < 50, "Short message should be < 50 chars");
-    assert!(long_message.len() > 200, "Long message should be > 200 chars");
+    assert!(
+        short_message.len() < 50,
+        "Short message should be < 50 chars"
+    );
+    assert!(
+        long_message.len() > 200,
+        "Long message should be > 200 chars"
+    );
 
     // Test truncation at 100 chars with ellipsis
     let truncated = if long_message.len() > 100 {
@@ -253,8 +282,15 @@ fn test_message_column_truncation() {
         long_message.to_string()
     };
 
-    assert_eq!(truncated.len(), 103, "Truncated message should be 100 + 3 (ellipsis)");
-    assert!(truncated.ends_with("..."), "Truncated message should end with ...");
+    assert_eq!(
+        truncated.len(),
+        103,
+        "Truncated message should be 100 + 3 (ellipsis)"
+    );
+    assert!(
+        truncated.ends_with("..."),
+        "Truncated message should end with ..."
+    );
 }
 
 #[test]

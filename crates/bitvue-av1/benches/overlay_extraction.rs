@@ -5,9 +5,11 @@
 //! cargo bench -p bitvue-av1
 //! ```
 
+use bitvue_av1::{
+    extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_qp_grid,
+    extract_transform_grid, ParsedFrame,
+};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use bitvue_av1::{ParsedFrame, extract_qp_grid, extract_mv_grid, extract_partition_grid,
-                  extract_prediction_mode_grid, extract_transform_grid};
 
 /// Create test OBU data (simplified AV1 sequence)
 fn create_test_obu_data() -> Vec<u8> {
@@ -110,5 +112,10 @@ fn bench_cached_vs_uncached(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_parse_frame, bench_extract_grids, bench_cached_vs_uncached);
+criterion_group!(
+    benches,
+    bench_parse_frame,
+    bench_extract_grids,
+    bench_cached_vs_uncached
+);
 criterion_main!(benches);

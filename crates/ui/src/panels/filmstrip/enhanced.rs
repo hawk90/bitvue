@@ -20,7 +20,7 @@ impl FilmstripPanel {
 
             ui.label(
                 egui::RichText::new("Bitvue Exclusive Multi-Metric Visualization")
-                    .color(Color32::from_rgb(200, 200, 200))
+                    .color(Color32::from_rgb(200, 200, 200)),
             );
 
             ui.add_space(20.0);
@@ -62,7 +62,7 @@ impl FilmstripPanel {
             ui.label(
                 egui::RichText::new("🚧 Coming Soon! 🚧")
                     .size(14.0)
-                    .color(Color32::from_rgb(255, 200, 100))
+                    .color(Color32::from_rgb(255, 200, 100)),
             );
 
             ui.add_space(10.0);
@@ -71,7 +71,7 @@ impl FilmstripPanel {
             ui.label(
                 egui::RichText::new(format!("Loaded {} frames", frames.len()))
                     .small()
-                    .color(Color32::GRAY)
+                    .color(Color32::GRAY),
             );
 
             // TODO: Implement actual visualization
@@ -84,7 +84,7 @@ impl FilmstripPanel {
                 ui.label(
                     egui::RichText::new("Preview (will be replaced with actual view):")
                         .small()
-                        .color(Color32::GRAY)
+                        .color(Color32::GRAY),
                 );
 
                 // Temporary: Just render as Frame Sizes for now

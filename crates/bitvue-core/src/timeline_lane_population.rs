@@ -235,7 +235,9 @@ pub fn populate_slice_lane(slice_data: &[FrameSliceStats]) -> Lane {
 }
 
 /// Calculate QP statistics from a lane
-pub fn calculate_qp_statistics(lane: &Lane) -> Option<super::timeline_lane_types::QpLaneStatistics> {
+pub fn calculate_qp_statistics(
+    lane: &Lane,
+) -> Option<super::timeline_lane_types::QpLaneStatistics> {
     if lane.data.is_empty() {
         return None;
     }

@@ -8,7 +8,7 @@
 //! - nuh_temporal_id_plus1: 3 bits
 
 use crate::bitreader::{remove_emulation_prevention_bytes, BitReader};
-use crate::error::{VvcError, Result};
+use crate::error::{Result, VvcError};
 use serde::{Deserialize, Serialize};
 
 /// VVC NAL unit types (ITU-T H.266 Table 5).
@@ -121,7 +121,10 @@ impl NalUnitType {
 
     /// Check if this is an IRAP (Intra Random Access Point).
     pub fn is_irap(&self) -> bool {
-        matches!(self, Self::IdrWRadl | Self::IdrNLp | Self::CraNut | Self::GdrNut)
+        matches!(
+            self,
+            Self::IdrWRadl | Self::IdrNLp | Self::CraNut | Self::GdrNut
+        )
     }
 
     /// Check if this is an IDR picture.
@@ -285,17 +288,15 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
 
     while i < data.len() {
         if i + 2 < data.len() && data[i] == 0x00 && data[i + 1] == 0x00 {
-            let (start_code_len, nal_start) = if i + 3 < data.len()
-                && data[i + 2] == 0x00
-                && data[i + 3] == 0x01
-            {
-                (4, i + 4)
-            } else if data[i + 2] == 0x01 {
-                (3, i + 3)
-            } else {
-                i += 1;
-                continue;
-            };
+            let (start_code_len, nal_start) =
+                if i + 3 < data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
+                    (4, i + 4)
+                } else if data[i + 2] == 0x01 {
+                    (3, i + 3)
+                } else {
+                    i += 1;
+                    continue;
+                };
 
             let mut nal_end = data.len();
             let mut j = nal_start;
@@ -371,11 +372,8 @@ mod tests {
     #[test]
     fn test_find_nal_units() {
         let data = [
-            0x00, 0x00, 0x00, 0x01,
-            0x00, 0x01, // VPS header
-            0xAA, 0xBB,
-            0x00, 0x00, 0x01,
-            0x00, 0x81, // SPS header
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x01, // VPS header
+            0xAA, 0xBB, 0x00, 0x00, 0x01, 0x00, 0x81, // SPS header
             0xCC, 0xDD,
         ];
 

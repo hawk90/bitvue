@@ -4,7 +4,7 @@
 fn test_ivf_header_parsing() {
     // Test IVF (AV1/VP9) container header
     struct IvfHeader {
-        signature: [u8; 4],  // "DKIF"
+        signature: [u8; 4], // "DKIF"
         version: u16,
         header_size: u16,
         fourcc: [u8; 4],
@@ -64,11 +64,7 @@ fn test_mp4_box_types() {
         Stbl,
     }
 
-    let boxes = vec![
-        Mp4BoxType::Ftyp,
-        Mp4BoxType::Moov,
-        Mp4BoxType::Mdat,
-    ];
+    let boxes = vec![Mp4BoxType::Ftyp, Mp4BoxType::Moov, Mp4BoxType::Mdat];
 
     assert_eq!(boxes.len(), 3);
 }
@@ -164,7 +160,7 @@ fn test_mkv_element_ids() {
 fn test_ts_packet_structure() {
     // Test MPEG-TS packet structure
     struct TsPacket {
-        sync_byte: u8,         // 0x47
+        sync_byte: u8, // 0x47
         transport_error: bool,
         payload_unit_start: bool,
         priority: bool,
@@ -220,11 +216,7 @@ fn test_ts_stream_types() {
     const STREAM_TYPE_HEVC: u8 = 0x24;
     const STREAM_TYPE_VVC: u8 = 0x33;
 
-    let stream_types = vec![
-        STREAM_TYPE_H264,
-        STREAM_TYPE_HEVC,
-        STREAM_TYPE_VVC,
-    ];
+    let stream_types = vec![STREAM_TYPE_H264, STREAM_TYPE_HEVC, STREAM_TYPE_VVC];
 
     assert_eq!(stream_types.len(), 3);
 }
@@ -233,7 +225,7 @@ fn test_ts_stream_types() {
 fn test_annexb_nal_parsing() {
     // Test Annex B NAL unit parsing (used in TS, some MP4)
     struct AnnexBNal {
-        start_code_prefix: [u8; 3],  // 0x000001
+        start_code_prefix: [u8; 3], // 0x000001
         nal_data: Vec<u8>,
     }
 
@@ -275,9 +267,18 @@ fn test_container_seeking() {
     }
 
     let capabilities = vec![
-        SeekCapability { mode: SeekMode::Byte, supported: true },
-        SeekCapability { mode: SeekMode::Time, supported: true },
-        SeekCapability { mode: SeekMode::Frame, supported: false },
+        SeekCapability {
+            mode: SeekMode::Byte,
+            supported: true,
+        },
+        SeekCapability {
+            mode: SeekMode::Time,
+            supported: true,
+        },
+        SeekCapability {
+            mode: SeekMode::Frame,
+            supported: false,
+        },
     ];
 
     assert_eq!(capabilities.len(), 3);

@@ -147,9 +147,13 @@ impl FrameType {
     /// Returns a description of the frame type
     pub fn description(self) -> &'static str {
         match self {
-            FrameType::Key => "Key frame (I-frame) - can be decoded without reference to other frames",
+            FrameType::Key => {
+                "Key frame (I-frame) - can be decoded without reference to other frames"
+            }
             FrameType::Inter => "Inter frame (P-frame) - uses references to previous frames",
-            FrameType::BFrame => "Bidirectional frame (B-frame) - uses references to both past and future frames",
+            FrameType::BFrame => {
+                "Bidirectional frame (B-frame) - uses references to both past and future frames"
+            }
             FrameType::IntraOnly => "Intra-only frame - all blocks use intra prediction",
             FrameType::Switch => "Switch frame - used for transitioning between different streams",
         }

@@ -16,8 +16,8 @@ pub trait BitvueAppConfig {
 impl BitvueAppConfig for BitvueApp {
     /// Get config directory path (~/.bitvue/)
     fn get_config_dir() -> Result<std::path::PathBuf, String> {
-        let home_dir = dirs::home_dir()
-            .ok_or_else(|| "Could not determine home directory".to_string())?;
+        let home_dir =
+            dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
 
         let config_dir = home_dir.join(".bitvue");
 
@@ -107,7 +107,11 @@ impl BitvueAppConfig for BitvueApp {
             .map_err(|e| format!("Failed to deserialize recent files: {}", e))?;
 
         self.recent_files = recent_files;
-        tracing::info!("Loaded {} recent files from {:?}", self.recent_files.len(), recent_path);
+        tracing::info!(
+            "Loaded {} recent files from {:?}",
+            self.recent_files.len(),
+            recent_path
+        );
         Ok(())
     }
 }

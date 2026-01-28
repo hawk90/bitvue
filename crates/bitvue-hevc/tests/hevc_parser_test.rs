@@ -114,7 +114,7 @@ fn test_hevc_slice_header() {
 fn test_hevc_temporal_layer() {
     // Test temporal layer identification
     let temporal_layers = vec![0, 1, 2, 3, 4, 5, 6];
-    
+
     for tid in temporal_layers {
         assert!(tid <= 6, "Temporal ID should be 0-6");
     }
@@ -129,9 +129,18 @@ fn test_hevc_idr_detection() {
     }
 
     let frames = vec![
-        Frame { nal_type: 19, is_idr: true },  // IDR_W_RADL
-        Frame { nal_type: 20, is_idr: true },  // IDR_N_LP
-        Frame { nal_type: 1, is_idr: false },  // TRAIL_R
+        Frame {
+            nal_type: 19,
+            is_idr: true,
+        }, // IDR_W_RADL
+        Frame {
+            nal_type: 20,
+            is_idr: true,
+        }, // IDR_N_LP
+        Frame {
+            nal_type: 1,
+            is_idr: false,
+        }, // TRAIL_R
     ];
 
     assert_eq!(frames.iter().filter(|f| f.is_idr).count(), 2);

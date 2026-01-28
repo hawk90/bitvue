@@ -35,12 +35,11 @@ pub use bitreader::BitReader;
 pub use error::{Av3Error, Result};
 pub use frame_header::{FrameHeader, FrameType, PrimaryRefFrame, ReferenceFrame};
 pub use metadata::{MetadataObu, MetadataType};
-pub use obu::{ObuHeader, ObuType, parse_obu_units, ObuUnit};
+pub use obu::{parse_obu_units, ObuHeader, ObuType, ObuUnit};
 pub use overlay_extraction::{
-    extract_mv_grid, extract_partition_grid, extract_qp_grid,
-    CodingUnit, MotionVector, SuperBlock,
+    extract_mv_grid, extract_partition_grid, extract_qp_grid, CodingUnit, MotionVector, SuperBlock,
 };
-pub use sequence_header::{SequenceHeader, OperatingPoint, OperatingParametersInfo};
+pub use sequence_header::{OperatingParametersInfo, OperatingPoint, SequenceHeader};
 
 use std::collections::HashMap;
 
@@ -58,9 +57,10 @@ pub struct Av3Stream {
 impl Av3Stream {
     /// Get video dimensions from first sequence header.
     pub fn dimensions(&self) -> Option<(u32, u32)> {
-        self.seq_headers.values().next().map(|seq| {
-            (seq.max_frame_width, seq.max_frame_height)
-        })
+        self.seq_headers
+            .values()
+            .next()
+            .map(|seq| (seq.max_frame_width, seq.max_frame_height))
     }
 
     /// Get bit depth from sequence header.

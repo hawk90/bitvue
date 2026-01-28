@@ -19,17 +19,33 @@ impl<'a> BitReader<'a> {
         }
     }
 
-    pub fn inner(&self) -> &CoreBitReader<'a> { &self.inner }
-    pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> { &mut self.inner }
+    pub fn inner(&self) -> &CoreBitReader<'a> {
+        &self.inner
+    }
+    pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> {
+        &mut self.inner
+    }
 
-    pub fn has_more(&self) -> bool { self.inner.has_more() }
+    pub fn has_more(&self) -> bool {
+        self.inner.has_more()
+    }
 
     pub fn read_bit(&mut self) -> Result<bool> {
-        self.inner.read_bit().map_err(|_| Av3Error::InsufficientData { expected: 1, actual: 0 })
+        self.inner
+            .read_bit()
+            .map_err(|_| Av3Error::InsufficientData {
+                expected: 1,
+                actual: 0,
+            })
     }
 
     pub fn read_bits(&mut self, n: u8) -> Result<u64> {
-        self.inner.read_bits_u64(n).map_err(|_| Av3Error::InsufficientData { expected: n as usize, actual: 0 })
+        self.inner
+            .read_bits_u64(n)
+            .map_err(|_| Av3Error::InsufficientData {
+                expected: n as usize,
+                actual: 0,
+            })
     }
 
     pub fn read_bits_usize(&mut self, n: u8) -> Result<usize> {
@@ -37,18 +53,34 @@ impl<'a> BitReader<'a> {
     }
 
     pub fn read_leb128(&mut self) -> Result<u64> {
-        Leb128Reader::read_leb128(&mut self.inner).map_err(|_| Av3Error::InsufficientData { expected: 1, actual: 0 })
+        Leb128Reader::read_leb128(&mut self.inner).map_err(|_| Av3Error::InsufficientData {
+            expected: 1,
+            actual: 0,
+        })
     }
 
     pub fn read_leb128_i64(&mut self) -> Result<i64> {
-        Leb128Reader::read_leb128_i64(&mut self.inner).map_err(|_| Av3Error::InsufficientData { expected: 1, actual: 0 })
+        Leb128Reader::read_leb128_i64(&mut self.inner).map_err(|_| Av3Error::InsufficientData {
+            expected: 1,
+            actual: 0,
+        })
     }
 
-    pub fn byte_pos(&self) -> usize { self.inner.byte_position() }
-    pub fn bit_offset(&self) -> u8 { (self.inner.position() % 8) as u8 }
-    pub fn byte_align(&mut self) { self.inner.byte_align(); }
-    pub fn remaining(&self) -> usize { self.inner.remaining_bytes() }
-    pub fn as_slice(&self) -> &[u8] { self.inner.remaining_data() }
+    pub fn byte_pos(&self) -> usize {
+        self.inner.byte_position()
+    }
+    pub fn bit_offset(&self) -> u8 {
+        (self.inner.position() % 8) as u8
+    }
+    pub fn byte_align(&mut self) {
+        self.inner.byte_align();
+    }
+    pub fn remaining(&self) -> usize {
+        self.inner.remaining_bytes()
+    }
+    pub fn as_slice(&self) -> &[u8] {
+        self.inner.remaining_data()
+    }
 }
 
 #[cfg(test)]

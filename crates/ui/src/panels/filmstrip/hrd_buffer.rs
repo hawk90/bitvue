@@ -111,7 +111,8 @@ impl FilmstripPanel {
                     let y = rect.bottom() - buffer_levels[idx] * available_height;
                     let click_rect = Rect::from_center_size(egui::pos2(x, y), Vec2::splat(10.0));
 
-                    let point_response = ui.interact(click_rect, ui.id().with(("hrd_point", idx)), Sense::click());
+                    let point_response =
+                        ui.interact(click_rect, ui.id().with(("hrd_point", idx)), Sense::click());
                     if point_response.clicked() {
                         result_command = Some(Command::SelectUnit {
                             stream: StreamId::A,
@@ -119,7 +120,10 @@ impl FilmstripPanel {
                         });
                     }
                     point_response.on_hover_ui(|ui| {
-                        ui.label(format!("Frame {} ({})", frame.frame_index, frame.frame_type));
+                        ui.label(format!(
+                            "Frame {} ({})",
+                            frame.frame_index, frame.frame_type
+                        ));
                         ui.label(format!("Buffer: {:.1}%", buffer_levels[idx] * 100.0));
                     });
                 }

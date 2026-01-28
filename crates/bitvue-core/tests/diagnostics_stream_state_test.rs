@@ -9,7 +9,12 @@
 use bitvue_core::event::{Category, Diagnostic, Severity};
 use bitvue_core::{StreamId, StreamState};
 
-fn create_test_diagnostic(id: u64, severity: Severity, frame_idx: Option<usize>, impact: u8) -> Diagnostic {
+fn create_test_diagnostic(
+    id: u64,
+    severity: Severity,
+    frame_idx: Option<usize>,
+    impact: u8,
+) -> Diagnostic {
     Diagnostic {
         id,
         severity,
@@ -41,11 +46,21 @@ fn test_add_multiple_diagnostics() {
 
     // Add 3 errors and 2 warnings
     for i in 1..=3 {
-        state.add_diagnostic(create_test_diagnostic(i, Severity::Error, Some(i as usize * 10), 85 + i as u8));
+        state.add_diagnostic(create_test_diagnostic(
+            i,
+            Severity::Error,
+            Some(i as usize * 10),
+            85 + i as u8,
+        ));
     }
 
     for i in 4..=5 {
-        state.add_diagnostic(create_test_diagnostic(i, Severity::Warn, Some(i as usize * 10), 40 + i as u8));
+        state.add_diagnostic(create_test_diagnostic(
+            i,
+            Severity::Warn,
+            Some(i as usize * 10),
+            40 + i as u8,
+        ));
     }
 
     assert_eq!(state.diagnostics.len(), 5);
@@ -81,7 +96,12 @@ fn test_clear_diagnostics() {
 
     // Add diagnostics
     for i in 1..=10 {
-        state.add_diagnostic(create_test_diagnostic(i, Severity::Error, Some(i as usize), 80));
+        state.add_diagnostic(create_test_diagnostic(
+            i,
+            Severity::Error,
+            Some(i as usize),
+            80,
+        ));
     }
 
     assert_eq!(state.diagnostics.len(), 10);
@@ -98,17 +118,32 @@ fn test_count_errors_and_warnings() {
 
     // Add 5 errors
     for i in 1..=5 {
-        state.add_diagnostic(create_test_diagnostic(i, Severity::Error, Some(i as usize * 10), 85));
+        state.add_diagnostic(create_test_diagnostic(
+            i,
+            Severity::Error,
+            Some(i as usize * 10),
+            85,
+        ));
     }
 
     // Add 3 warnings
     for i in 6..=8 {
-        state.add_diagnostic(create_test_diagnostic(i, Severity::Warn, Some(i as usize * 10), 50));
+        state.add_diagnostic(create_test_diagnostic(
+            i,
+            Severity::Warn,
+            Some(i as usize * 10),
+            50,
+        ));
     }
 
     // Add 2 info
     for i in 9..=10 {
-        state.add_diagnostic(create_test_diagnostic(i, Severity::Info, Some(i as usize * 10), 20));
+        state.add_diagnostic(create_test_diagnostic(
+            i,
+            Severity::Info,
+            Some(i as usize * 10),
+            20,
+        ));
     }
 
     let error_count = state.diagnostics_by_severity(Severity::Error).len();
@@ -127,7 +162,12 @@ fn test_diagnostic_ordering_preserved() {
 
     // Add diagnostics in specific order
     for i in 1..=5 {
-        state.add_diagnostic(create_test_diagnostic(i, Severity::Error, Some(i as usize), 80 + i as u8));
+        state.add_diagnostic(create_test_diagnostic(
+            i,
+            Severity::Error,
+            Some(i as usize),
+            80 + i as u8,
+        ));
     }
 
     // Verify order is preserved
@@ -169,7 +209,8 @@ fn test_high_impact_errors_filtering() {
     state.add_diagnostic(create_test_diagnostic(5, Severity::Error, Some(50), 88)); // Critical
 
     // Find critical errors (impact >= 80)
-    let critical: Vec<_> = state.diagnostics
+    let critical: Vec<_> = state
+        .diagnostics
         .iter()
         .filter(|d| d.impact_score >= 80)
         .collect();
@@ -187,7 +228,8 @@ fn test_frame_specific_errors() {
     state.add_diagnostic(create_test_diagnostic(3, Severity::Error, Some(20), 85));
 
     // Find errors for frame 10
-    let frame_10_errors: Vec<_> = state.diagnostics
+    let frame_10_errors: Vec<_> = state
+        .diagnostics
         .iter()
         .filter(|d| d.frame_index == Some(10))
         .collect();

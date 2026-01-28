@@ -44,9 +44,18 @@ fn test_overlay_z_order() {
     }
 
     let mut layers = vec![
-        OverlayLayer { name: "grid".to_string(), z_index: 10 },
-        OverlayLayer { name: "mv".to_string(), z_index: 30 },
-        OverlayLayer { name: "qp".to_string(), z_index: 20 },
+        OverlayLayer {
+            name: "grid".to_string(),
+            z_index: 10,
+        },
+        OverlayLayer {
+            name: "mv".to_string(),
+            z_index: 30,
+        },
+        OverlayLayer {
+            name: "qp".to_string(),
+            z_index: 20,
+        },
     ];
 
     sort_by_z_order(&mut layers);
@@ -210,11 +219,7 @@ fn test_overlay_presets() {
 
     let preset = OverlayPreset {
         name: "Analysis".to_string(),
-        enabled_overlays: vec![
-            "grid".to_string(),
-            "qp".to_string(),
-            "mv".to_string(),
-        ],
+        enabled_overlays: vec!["grid".to_string(), "qp".to_string(), "mv".to_string()],
     };
 
     let active = apply_preset(&preset);

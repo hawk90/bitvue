@@ -20,12 +20,12 @@ mod colors {
     pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(100, 100, 100);
 
     // Dual Tree colors
-    pub const LUMA_TREE: Color32 = Color32::from_rgb(30, 144, 255);     // Dodger blue
-    pub const CHROMA_TREE: Color32 = Color32::from_rgb(255, 140, 0);   // Orange
-    pub const JOINT_TREE: Color32 = Color32::from_rgb(50, 205, 50);    // Lime green
+    pub const LUMA_TREE: Color32 = Color32::from_rgb(30, 144, 255); // Dodger blue
+    pub const CHROMA_TREE: Color32 = Color32::from_rgb(255, 140, 0); // Orange
+    pub const JOINT_TREE: Color32 = Color32::from_rgb(50, 205, 50); // Lime green
 
     // Partition colors (VVC QTMT)
-    pub const QUAD_SPLIT: Color32 = Color32::from_rgb(100, 149, 237);  // Cornflower blue
+    pub const QUAD_SPLIT: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
     pub const BINARY_VERT: Color32 = Color32::from_rgb(144, 238, 144); // Light green
     pub const BINARY_HORZ: Color32 = Color32::from_rgb(255, 182, 193); // Light pink
     pub const TERNARY_VERT: Color32 = Color32::from_rgb(255, 218, 185); // Peach
@@ -33,14 +33,14 @@ mod colors {
     pub const NO_SPLIT: Color32 = Color32::from_rgb(200, 200, 200);
 
     // Prediction mode colors
-    pub const INTRA_DC: Color32 = Color32::from_rgb(255, 99, 71);      // Tomato
-    pub const INTRA_PLANAR: Color32 = Color32::from_rgb(255, 165, 0);  // Orange
+    pub const INTRA_DC: Color32 = Color32::from_rgb(255, 99, 71); // Tomato
+    pub const INTRA_PLANAR: Color32 = Color32::from_rgb(255, 165, 0); // Orange
     pub const INTRA_ANGULAR: Color32 = Color32::from_rgb(255, 215, 0); // Gold
     pub const INTER_MERGE: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
-    pub const INTER_AMVP: Color32 = Color32::from_rgb(30, 144, 255);   // Dodger blue
+    pub const INTER_AMVP: Color32 = Color32::from_rgb(30, 144, 255); // Dodger blue
     pub const INTER_AFFINE: Color32 = Color32::from_rgb(138, 43, 226); // Blue violet
-    pub const INTER_GPM: Color32 = Color32::from_rgb(186, 85, 211);    // Medium orchid
-    pub const SKIP: Color32 = Color32::from_rgb(128, 128, 128);        // Gray
+    pub const INTER_GPM: Color32 = Color32::from_rgb(186, 85, 211); // Medium orchid
+    pub const SKIP: Color32 = Color32::from_rgb(128, 128, 128); // Gray
 
     // Feature status colors
     pub const FEATURE_ENABLED: Color32 = Color32::from_rgb(50, 205, 50);
@@ -441,15 +441,27 @@ impl VvcWorkspace {
                 ui.add_space(10.0);
 
                 self.render_feature_badge(ui, "Dual Tree (QTBTT)", self.features.dual_tree_enabled);
-                self.render_feature_badge(ui, "ALF (Adaptive Loop Filter)", self.features.alf_enabled);
+                self.render_feature_badge(
+                    ui,
+                    "ALF (Adaptive Loop Filter)",
+                    self.features.alf_enabled,
+                );
                 self.render_feature_badge(ui, "LMCS (Luma Mapping)", self.features.lmcs_enabled);
                 self.render_feature_badge(ui, "GDR (Gradual Decoding)", self.features.gdr_enabled);
                 self.render_feature_badge(ui, "Affine Motion", self.features.affine_enabled);
                 self.render_feature_badge(ui, "GPM (Geo Partition)", self.features.gpm_enabled);
                 self.render_feature_badge(ui, "IBC (Intra Block Copy)", self.features.ibc_enabled);
-                self.render_feature_badge(ui, "MTS (Multiple Transforms)", self.features.mts_enabled);
+                self.render_feature_badge(
+                    ui,
+                    "MTS (Multiple Transforms)",
+                    self.features.mts_enabled,
+                );
                 self.render_feature_badge(ui, "LFNST", self.features.lfnst_enabled);
-                self.render_feature_badge(ui, "SBT (Sub-Block Transform)", self.features.sbt_enabled);
+                self.render_feature_badge(
+                    ui,
+                    "SBT (Sub-Block Transform)",
+                    self.features.sbt_enabled,
+                );
             });
 
             ui.separator();
@@ -508,7 +520,8 @@ impl VvcWorkspace {
         let grid_size = 512.0 * self.zoom;
         let scale = grid_size / 512.0; // 4x128 CTUs = 512 pixels
 
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(grid_size, grid_size), egui::Sense::hover());
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(grid_size, grid_size), egui::Sense::hover());
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter();
@@ -579,7 +592,10 @@ impl VvcWorkspace {
 
             // Find partition at this position
             if let Some(partition) = self.mock_partitions.iter().find(|p| {
-                local_x >= p.x && local_x < p.x + p.width && local_y >= p.y && local_y < p.y + p.height
+                local_x >= p.x
+                    && local_x < p.x + p.width
+                    && local_y >= p.y
+                    && local_y < p.y + p.height
             }) {
                 response.on_hover_ui(|ui| {
                     ui.label(format!("Position: ({}, {})", partition.x, partition.y));
@@ -599,10 +615,26 @@ impl VvcWorkspace {
             egui::ComboBox::from_id_salt("dual_tree_mode")
                 .selected_text(self.dual_tree_mode.label())
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.dual_tree_mode, DualTreeMode::Joint, "Joint Tree");
-                    ui.selectable_value(&mut self.dual_tree_mode, DualTreeMode::LumaOnly, "Luma Only");
-                    ui.selectable_value(&mut self.dual_tree_mode, DualTreeMode::ChromaOnly, "Chroma Only");
-                    ui.selectable_value(&mut self.dual_tree_mode, DualTreeMode::SeparateTrees, "Side by Side");
+                    ui.selectable_value(
+                        &mut self.dual_tree_mode,
+                        DualTreeMode::Joint,
+                        "Joint Tree",
+                    );
+                    ui.selectable_value(
+                        &mut self.dual_tree_mode,
+                        DualTreeMode::LumaOnly,
+                        "Luma Only",
+                    );
+                    ui.selectable_value(
+                        &mut self.dual_tree_mode,
+                        DualTreeMode::ChromaOnly,
+                        "Chroma Only",
+                    );
+                    ui.selectable_value(
+                        &mut self.dual_tree_mode,
+                        DualTreeMode::SeparateTrees,
+                        "Side by Side",
+                    );
                 });
         });
 
@@ -613,12 +645,20 @@ impl VvcWorkspace {
                 // Side by side view
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Luma Tree").color(colors::LUMA_TREE).strong());
+                        ui.label(
+                            egui::RichText::new("Luma Tree")
+                                .color(colors::LUMA_TREE)
+                                .strong(),
+                        );
                         self.render_partition_grid(ui);
                     });
                     ui.separator();
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Chroma Tree").color(colors::CHROMA_TREE).strong());
+                        ui.label(
+                            egui::RichText::new("Chroma Tree")
+                                .color(colors::CHROMA_TREE)
+                                .strong(),
+                        );
                         self.render_partition_grid(ui);
                     });
                 });
@@ -666,7 +706,7 @@ impl VvcWorkspace {
                      - Intra prediction modes (DC, Planar, Angular 2-66)\n\
                      - Inter prediction modes (Merge, AMVP, Affine, GPM)\n\
                      - Motion vectors and reference frames\n\
-                     - Skip/direct mode indicators"
+                     - Skip/direct mode indicators",
                 )
                 .color(Color32::GRAY),
             );
@@ -712,7 +752,7 @@ impl VvcWorkspace {
                      - Transform type per block (DCT-2, DST-7, DCT-8)\n\
                      - LFNST application regions\n\
                      - SBT half-transform regions\n\
-                     - Coefficient magnitude heatmap"
+                     - Coefficient magnitude heatmap",
                 )
                 .color(Color32::GRAY),
             );

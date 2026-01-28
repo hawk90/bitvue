@@ -45,7 +45,8 @@ impl ContainerFormat {
 
 /// Detect container format from file extension
 pub fn detect_from_extension(path: &Path) -> ContainerFormat {
-    match path.extension()
+    match path
+        .extension()
         .and_then(|ext| ext.to_str())
         .map(|s| s.to_lowercase())
         .as_deref()
@@ -136,7 +137,10 @@ pub fn detect_container_format(path: &Path) -> Result<ContainerFormat, std::io::
 pub fn is_supported_format(path: &Path) -> Result<bool, std::io::Error> {
     Ok(matches!(
         detect_container_format(path)?,
-        ContainerFormat::MP4 | ContainerFormat::Matroska | ContainerFormat::IVF | ContainerFormat::AnnexB
+        ContainerFormat::MP4
+            | ContainerFormat::Matroska
+            | ContainerFormat::IVF
+            | ContainerFormat::AnnexB
     ))
 }
 
@@ -146,13 +150,34 @@ mod tests {
 
     #[test]
     fn test_detect_from_extension() {
-        assert_eq!(detect_from_extension(Path::new("test.mp4")), ContainerFormat::MP4);
-        assert_eq!(detect_from_extension(Path::new("test.mkv")), ContainerFormat::Matroska);
-        assert_eq!(detect_from_extension(Path::new("test.webm")), ContainerFormat::Matroska);
-        assert_eq!(detect_from_extension(Path::new("test.avi")), ContainerFormat::AVI);
-        assert_eq!(detect_from_extension(Path::new("test.ivf")), ContainerFormat::IVF);
-        assert_eq!(detect_from_extension(Path::new("test.h264")), ContainerFormat::AnnexB);
-        assert_eq!(detect_from_extension(Path::new("test.xyz")), ContainerFormat::Unknown);
+        assert_eq!(
+            detect_from_extension(Path::new("test.mp4")),
+            ContainerFormat::MP4
+        );
+        assert_eq!(
+            detect_from_extension(Path::new("test.mkv")),
+            ContainerFormat::Matroska
+        );
+        assert_eq!(
+            detect_from_extension(Path::new("test.webm")),
+            ContainerFormat::Matroska
+        );
+        assert_eq!(
+            detect_from_extension(Path::new("test.avi")),
+            ContainerFormat::AVI
+        );
+        assert_eq!(
+            detect_from_extension(Path::new("test.ivf")),
+            ContainerFormat::IVF
+        );
+        assert_eq!(
+            detect_from_extension(Path::new("test.h264")),
+            ContainerFormat::AnnexB
+        );
+        assert_eq!(
+            detect_from_extension(Path::new("test.xyz")),
+            ContainerFormat::Unknown
+        );
     }
 
     #[test]

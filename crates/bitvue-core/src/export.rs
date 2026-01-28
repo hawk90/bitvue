@@ -1568,7 +1568,9 @@ impl SemanticProbeRunner {
 
     /// Export probe results as JSON
     pub fn export_results(&self) -> std::result::Result<String, Box<dyn std::error::Error>> {
-        serde_json::to_string_pretty(&self.results).map_err(|e| crate::BitvueError::Decode(format!("Failed to serialize probe results: {}", e)).into())
+        serde_json::to_string_pretty(&self.results).map_err(|e| {
+            crate::BitvueError::Decode(format!("Failed to serialize probe results: {}", e)).into()
+        })
     }
 
     /// Clear recorded results
@@ -1640,7 +1642,12 @@ mod tests {
     use super::*;
     use crate::timeline::{FrameMarker, TimelineFrame};
 
-    fn create_test_frame(display_idx: usize, frame_type: &str, size: u64, marker: FrameMarker) -> TimelineFrame {
+    fn create_test_frame(
+        display_idx: usize,
+        frame_type: &str,
+        size: u64,
+        marker: FrameMarker,
+    ) -> TimelineFrame {
         TimelineFrame {
             display_idx,
             frame_type: frame_type.to_string(),
@@ -1773,12 +1780,24 @@ mod tests {
     #[test]
     fn test_export_metrics_csv_basic() {
         let psnr = vec![
-            MetricPoint { idx: 0, value: 40.5 },
-            MetricPoint { idx: 1, value: 38.2 },
+            MetricPoint {
+                idx: 0,
+                value: 40.5,
+            },
+            MetricPoint {
+                idx: 1,
+                value: 38.2,
+            },
         ];
         let ssim = vec![
-            MetricPoint { idx: 0, value: 0.98 },
-            MetricPoint { idx: 1, value: 0.95 },
+            MetricPoint {
+                idx: 0,
+                value: 0.98,
+            },
+            MetricPoint {
+                idx: 1,
+                value: 0.95,
+            },
         ];
         let vmaf: Vec<MetricPoint> = vec![];
 

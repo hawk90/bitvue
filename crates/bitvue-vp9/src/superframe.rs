@@ -11,7 +11,7 @@
 //! - [marker byte][frame_sizes...][marker byte]
 //! - Marker: 110XXXXX where XXX = size_bytes-1, XXXXX[4:3] = frame_count-1
 
-use crate::error::{Vp9Error, Result};
+use crate::error::{Result, Vp9Error};
 use serde::{Deserialize, Serialize};
 
 /// VP9 Superframe index.
@@ -133,7 +133,9 @@ pub fn extract_frames(data: &[u8]) -> Result<Vec<&[u8]>> {
         if end > data.len() {
             return Err(Vp9Error::InvalidData(format!(
                 "Frame {} extends beyond data: end={}, len={}",
-                i, end, data.len()
+                i,
+                end,
+                data.len()
             )));
         }
 

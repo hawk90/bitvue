@@ -126,7 +126,10 @@ fn test_tab_reordering() {
     };
 
     assert!(tabs.move_tab(0, 2));
-    assert_eq!(tabs.tabs, vec!["b".to_string(), "c".to_string(), "a".to_string()]);
+    assert_eq!(
+        tabs.tabs,
+        vec!["b".to_string(), "c".to_string(), "a".to_string()]
+    );
 }
 
 #[test]

@@ -282,8 +282,8 @@ impl Sps {
 
     /// Get picture height in luma samples.
     pub fn pic_height(&self) -> u32 {
-        let frame_height_in_mbs = (2 - self.frame_mbs_only_flag as u32)
-            * (self.pic_height_in_map_units_minus1 + 1);
+        let frame_height_in_mbs =
+            (2 - self.frame_mbs_only_flag as u32) * (self.pic_height_in_map_units_minus1 + 1);
         frame_height_in_mbs * 16
     }
 
@@ -364,7 +364,11 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
         seq_scaling_matrix_present_flag = reader.read_flag()?;
 
         if seq_scaling_matrix_present_flag {
-            let num_scaling_lists = if chroma_format_idc != ChromaFormat::Yuv444 { 8 } else { 12 };
+            let num_scaling_lists = if chroma_format_idc != ChromaFormat::Yuv444 {
+                8
+            } else {
+                12
+            };
             for _ in 0..num_scaling_lists {
                 let scaling_list_present_flag = reader.read_flag()?;
                 if scaling_list_present_flag {
@@ -486,7 +490,11 @@ fn skip_scaling_list(reader: &mut BitReader, size: usize) -> Result<()> {
             let delta_scale = reader.read_se()?;
             next_scale = (last_scale + delta_scale + 256) % 256;
         }
-        last_scale = if next_scale == 0 { last_scale } else { next_scale };
+        last_scale = if next_scale == 0 {
+            last_scale
+        } else {
+            next_scale
+        };
     }
 
     Ok(())

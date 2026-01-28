@@ -3,8 +3,8 @@
 //! Functions for extracting individual frames from HEVC bitstreams
 
 use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
-use crate::slice::SliceHeader;
 use crate::parse_hevc;
+use crate::slice::SliceHeader;
 use serde::{Deserialize, Serialize};
 
 /// HEVC frame data extracted from the bitstream
@@ -103,13 +103,14 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, String> {
 
     for (nal_start, nal_end) in nal_ranges {
         // Find the first byte after start code (actual NAL data)
-        let nal_data_start = if nal_end - nal_start >= 4 && data[nal_start..nal_start+4] == [0,0,0,1] {
-            nal_start + 4
-        } else if nal_end - nal_start >= 3 && data[nal_start..nal_start+3] == [0,0,1] {
-            nal_start + 3
-        } else {
-            nal_start
-        };
+        let nal_data_start =
+            if nal_end - nal_start >= 4 && data[nal_start..nal_start + 4] == [0, 0, 0, 1] {
+                nal_start + 4
+            } else if nal_end - nal_start >= 3 && data[nal_start..nal_start + 3] == [0, 0, 1] {
+                nal_start + 3
+            } else {
+                nal_start
+            };
 
         if nal_data_start >= nal_end {
             continue;
@@ -148,8 +149,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, String> {
                     nal_type,
                 ) {
                     // New frame if first_slice_segment_in_pic_flag is set
-                    new_slice.first_slice_segment_in_pic_flag ||
-                    new_slice.slice_pic_parameter_set_id != slice.slice_pic_parameter_set_id
+                    new_slice.first_slice_segment_in_pic_flag
+                        || new_slice.slice_pic_parameter_set_id != slice.slice_pic_parameter_set_id
                 } else {
                     false
                 }
@@ -229,7 +230,11 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, String> {
     // Don't forget the last frame
     if !current_frame_nals.is_empty() {
         // Find POC from parsed slices
-        let poc = stream.slices.get(current_frame_index).map(|s| s.poc).unwrap_or(0);
+        let poc = stream
+            .slices
+            .get(current_frame_index)
+            .map(|s| s.poc)
+            .unwrap_or(0);
 
         if let Some(frame) = build_frame_from_nals(
             current_frame_index,
@@ -316,9 +321,13 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
         frame_type: Some(frame.frame_type.as_str().to_string()),
         pts: Some(frame.poc as u64),
         dts: None,
-        display_name: format!("Frame {} ({})", frame.frame_index, frame.frame_type.as_str()),
+        display_name: format!(
+            "Frame {} ({})",
+            frame.frame_index,
+            frame.frame_type.as_str()
+        ),
         children: Vec::new(),
-        qp_avg: None, // TODO: Extract from slice data
+        qp_avg: None,  // TODO: Extract from slice data
         mv_grid: None, // TODO: Extract from slice data
         temporal_id: frame.temporal_id,
         ref_frames: None, // TODO: Calculate from slice header

@@ -169,7 +169,11 @@ fn skip_scaling_list(reader: &mut BitReader, size: usize) -> Result<()> {
             let delta_scale = reader.read_se()?;
             next_scale = (last_scale + delta_scale + 256) % 256;
         }
-        last_scale = if next_scale == 0 { last_scale } else { next_scale };
+        last_scale = if next_scale == 0 {
+            last_scale
+        } else {
+            next_scale
+        };
     }
 
     Ok(())

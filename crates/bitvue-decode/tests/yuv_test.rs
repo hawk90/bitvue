@@ -78,8 +78,8 @@ fn test_yuv_to_rgb_conversion() {
         let v = v as i32 - 128;
 
         let r = (y + (1.370705 * v as f32) as i32).clamp(0, 255) as u8;
-        let g = (y - (0.337633 * u as f32) as i32 - (0.698001 * v as f32) as i32)
-            .clamp(0, 255) as u8;
+        let g =
+            (y - (0.337633 * u as f32) as i32 - (0.698001 * v as f32) as i32).clamp(0, 255) as u8;
         let b = (y + (1.732446 * u as f32) as i32).clamp(0, 255) as u8;
 
         (r, g, b)
@@ -288,11 +288,19 @@ fn test_yuv_bit_depth() {
 
 #[test]
 fn test_yuv_copy_plane() {
-    fn copy_plane(src: &[u8], dst: &mut [u8], width: usize, height: usize, src_stride: usize, dst_stride: usize) {
+    fn copy_plane(
+        src: &[u8],
+        dst: &mut [u8],
+        width: usize,
+        height: usize,
+        src_stride: usize,
+        dst_stride: usize,
+    ) {
         for y in 0..height {
             let src_offset = y * src_stride;
             let dst_offset = y * dst_stride;
-            dst[dst_offset..dst_offset + width].copy_from_slice(&src[src_offset..src_offset + width]);
+            dst[dst_offset..dst_offset + width]
+                .copy_from_slice(&src[src_offset..src_offset + width]);
         }
     }
 

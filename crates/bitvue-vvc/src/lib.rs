@@ -31,15 +31,19 @@ pub mod pps;
 pub mod sps;
 pub mod syntax;
 
-pub use error::{VvcError, Result};
 pub use bitreader::{remove_emulation_prevention_bytes, BitReader};
-pub use nal::{find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType};
+pub use error::{Result, VvcError};
+pub use nal::{
+    find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType,
+};
 pub use overlay_extraction::{
-    extract_mv_grid, extract_partition_grid, extract_qp_grid,
-    CodingTreeUnit, CodingUnit, MotionVector, PredMode, SplitMode,
+    extract_mv_grid, extract_partition_grid, extract_qp_grid, CodingTreeUnit, CodingUnit,
+    MotionVector, PredMode, SplitMode,
 };
 pub use pps::Pps;
-pub use sps::{AlfConfig, ChromaFormat, DualTreeConfig, LmcsConfig, Profile, ProfileTierLevel, Sps};
+pub use sps::{
+    AlfConfig, ChromaFormat, DualTreeConfig, LmcsConfig, Profile, ProfileTierLevel, Sps,
+};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -68,9 +72,10 @@ impl VvcStream {
 
     /// Get video dimensions from SPS.
     pub fn dimensions(&self) -> Option<(u32, u32)> {
-        self.sps_map.values().next().map(|sps| {
-            (sps.display_width(), sps.display_height())
-        })
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| (sps.display_width(), sps.display_height()))
     }
 
     /// Get bit depth from SPS.
@@ -80,7 +85,10 @@ impl VvcStream {
 
     /// Get chroma format from SPS.
     pub fn chroma_format(&self) -> Option<ChromaFormat> {
-        self.sps_map.values().next().map(|sps| sps.sps_chroma_format_idc)
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| sps.sps_chroma_format_idc)
     }
 
     /// Count frames (VCL NAL units).

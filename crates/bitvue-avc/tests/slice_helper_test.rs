@@ -2,9 +2,7 @@
 //!
 //! Tests for slice.rs internal helper functions.
 
-use bitvue_avc::slice::{
-    DecRefPicMarking, RefPicListModification, SliceHeader, SliceType,
-};
+use bitvue_avc::slice::{DecRefPicMarking, RefPicListModification, SliceHeader, SliceType};
 use std::collections::HashMap;
 
 use bitvue_avc::pps::Pps;
@@ -138,8 +136,12 @@ fn test_slice_header_qp_calc() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -185,8 +187,12 @@ fn test_slice_header_qp_with_delta() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -230,8 +236,12 @@ fn test_slice_header_is_first_slice() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -272,8 +282,12 @@ fn test_slice_header_is_not_first_slice() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -314,8 +328,12 @@ fn test_slice_header_first_mb_field() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -371,7 +389,7 @@ fn test_sps_dimensions() {
 
     // pic_width = (pic_width_in_mbs_minus1 + 1) * 16
     assert_eq!(sps.pic_width(), 1920); // (119 + 1) * 16
-    // pic_height = (pic_height_in_map_units_minus1 + 1) * 16
+                                       // pic_height = (pic_height_in_map_units_minus1 + 1) * 16
     assert_eq!(sps.pic_height(), 1088); // (67 + 1) * 16
 }
 

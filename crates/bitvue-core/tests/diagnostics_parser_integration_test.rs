@@ -109,8 +109,16 @@ fn test_multiple_streams_diagnostic_isolation() {
         let state_a = stream_a.read();
         let state_b = stream_b.read();
 
-        assert_eq!(state_a.diagnostics.len(), 1, "Stream A should have 1 diagnostic");
-        assert_eq!(state_b.diagnostics.len(), 1, "Stream B should have 1 diagnostic");
+        assert_eq!(
+            state_a.diagnostics.len(),
+            1,
+            "Stream A should have 1 diagnostic"
+        );
+        assert_eq!(
+            state_b.diagnostics.len(),
+            1,
+            "Stream B should have 1 diagnostic"
+        );
 
         assert_eq!(state_a.diagnostics[0].stream_id, StreamId::A);
         assert_eq!(state_b.diagnostics[0].stream_id, StreamId::B);
@@ -238,7 +246,11 @@ fn test_diagnostic_high_impact_filtering() {
             .filter(|d| d.impact_score >= 80)
             .collect();
 
-        assert_eq!(high_impact.len(), 3, "Should have 3 high impact diagnostics");
+        assert_eq!(
+            high_impact.len(),
+            3,
+            "Should have 3 high impact diagnostics"
+        );
 
         for diag in high_impact {
             assert!(

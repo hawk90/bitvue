@@ -3,7 +3,7 @@
 //! VVC PPS contains picture-level parameters.
 
 use crate::bitreader::BitReader;
-use crate::error::{Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
 /// VVC Picture Parameter Set.

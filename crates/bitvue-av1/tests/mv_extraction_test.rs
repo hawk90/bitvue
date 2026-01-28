@@ -4,8 +4,8 @@
 // correctly decode motion vectors from real AV1 bitstreams.
 
 use bitvue_av1::{
-    parse_all_obus, parse_frame_header_basic, parse_superblock, FrameType, SymbolDecoder,
-    tile::MvPredictorContext,
+    parse_all_obus, parse_frame_header_basic, parse_superblock, tile::MvPredictorContext,
+    FrameType, SymbolDecoder,
 };
 
 #[test]
@@ -120,7 +120,8 @@ fn test_mv_extraction_with_spec_cdfs() {
 
                 // Per generate-tests skill: Access public interface only
                 // The motion_vectors() method may not exist, so we extract MVs from CUs
-                let mvs: Vec<_> = superblock.coding_units
+                let mvs: Vec<_> = superblock
+                    .coding_units
                     .iter()
                     .filter(|cu| cu.is_inter())
                     .map(|cu| (cu.x, cu.y, cu.width, cu.height, cu.mv[0]))

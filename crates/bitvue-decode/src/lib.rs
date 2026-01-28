@@ -20,10 +20,8 @@ pub mod yuv_loader;
 pub use decoder::{Av1Decoder, DecodedFrame, FrameType};
 #[cfg(feature = "ffmpeg")]
 pub use ffmpeg::{H264Decoder, HevcDecoder, Vp9Decoder};
+pub use traits::{CodecType, Decoder, DecoderCapabilities, DecoderFactory};
 #[cfg(feature = "vvdec")]
 pub use vvdec::VvcDecoder;
-pub use traits::{CodecType, Decoder, DecoderCapabilities, DecoderFactory};
 pub use yuv::yuv_to_rgb;
-pub use yuv_loader::{
-    BitDepth, ChromaSubsampling, YuvFileParams, YuvLoader, YuvLoaderError,
-};
+pub use yuv_loader::{BitDepth, ChromaSubsampling, YuvFileParams, YuvLoader, YuvLoaderError};

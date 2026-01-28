@@ -220,7 +220,9 @@ impl<'a> BitReader<'a> {
     /// Skips n bits.
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
         // Use checked arithmetic to prevent overflow on very large skip values
-        let new_pos = self.position().checked_add(n)
+        let new_pos = self
+            .position()
+            .checked_add(n)
             .ok_or_else(|| BitvueError::Decode("Skip would cause position overflow".to_string()))?;
 
         let new_byte = (new_pos / 8) as usize;
@@ -369,7 +371,9 @@ impl<'a> LsbBitReader<'a> {
     /// Skips n bits.
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
         // Use checked arithmetic to prevent overflow on very large skip values
-        let new_pos = self.position().checked_add(n)
+        let new_pos = self
+            .position()
+            .checked_add(n)
             .ok_or_else(|| BitvueError::Decode("Skip would cause position overflow".to_string()))?;
 
         let total_bits = (self.data.len() as u64) * 8;
@@ -713,12 +717,12 @@ mod tests {
 
         assert!(!reader.read_bit().unwrap()); // bit 0
         assert!(!reader.read_bit().unwrap()); // bit 1
-        assert!(reader.read_bit().unwrap());  // bit 2
+        assert!(reader.read_bit().unwrap()); // bit 2
         assert!(!reader.read_bit().unwrap()); // bit 3
-        assert!(reader.read_bit().unwrap());  // bit 4
-        assert!(reader.read_bit().unwrap());  // bit 5
+        assert!(reader.read_bit().unwrap()); // bit 4
+        assert!(reader.read_bit().unwrap()); // bit 5
         assert!(!reader.read_bit().unwrap()); // bit 6
-        assert!(reader.read_bit().unwrap());  // bit 7
+        assert!(reader.read_bit().unwrap()); // bit 7
     }
 
     #[test]

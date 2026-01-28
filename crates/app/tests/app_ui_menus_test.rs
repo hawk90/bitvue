@@ -272,7 +272,11 @@ fn test_radio_menu_group() {
     }
 
     let mut group = RadioMenuGroup {
-        items: vec!["Small".to_string(), "Medium".to_string(), "Large".to_string()],
+        items: vec![
+            "Small".to_string(),
+            "Medium".to_string(),
+            "Large".to_string(),
+        ],
         selected_index: 1,
     };
 

@@ -87,15 +87,21 @@ impl BitvueAppAsync for BitvueApp {
                     if self.parser.submit(parse_request).is_some() {
                         self.notifications.set_success(format!(
                             "Parsing {}...",
-                            result.path.file_name().unwrap_or_default().to_string_lossy()
+                            result
+                                .path
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
                         ));
                     } else {
-                        self.notifications.set_error("Failed to submit parse request (queue full)");
+                        self.notifications
+                            .set_error("Failed to submit parse request (queue full)");
                     }
                 }
                 Err(e) => {
                     tracing::error!("ByteCache load failed: {:?} - {}", result.path, e);
-                    self.notifications.set_error(format!("Failed to load file: {}", e));
+                    self.notifications
+                        .set_error(format!("Failed to load file: {}", e));
                 }
             }
         }
@@ -110,7 +116,10 @@ impl BitvueAppAsync for BitvueApp {
         let results = self.parser.poll_results();
 
         if !results.is_empty() {
-            tracing::info!("📥 poll_parse_results: Processing {} result(s)", results.len());
+            tracing::info!(
+                "📥 poll_parse_results: Processing {} result(s)",
+                results.len()
+            );
         }
 
         for result in results {
@@ -142,27 +151,44 @@ impl BitvueAppAsync for BitvueApp {
 
                     self.notifications.set_success(format!(
                         "Loaded {}",
-                        result.path.file_name().unwrap_or_default().to_string_lossy()
+                        result
+                            .path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
                     ));
 
                     // Clear pending state
-                    self.parser.clear_pending_if_matches(result.stream_id, &result.path);
+                    self.parser
+                        .clear_pending_if_matches(result.stream_id, &result.path);
 
                     // Auto-decode first N frames for thumbnails (VQAnalyzer parity)
                     // IMPORTANT: Do this BEFORE auto-select to avoid decode conflicts
                     tracing::info!("🎬 AUTO-DECODE: Starting thumbnail pre-generation...");
                     let byte_cache = stream.read().byte_cache.clone();
                     if let Some(byte_cache) = byte_cache {
-                        tracing::info!("🎬 AUTO-DECODE: ByteCache available, size={} bytes", byte_cache.len());
+                        tracing::info!(
+                            "🎬 AUTO-DECODE: ByteCache available, size={} bytes",
+                            byte_cache.len()
+                        );
                         let all_data = byte_cache.read_range(0, byte_cache.len() as usize).ok();
                         if let Some(file_data) = all_data {
                             let file_data = std::sync::Arc::new(file_data.to_vec());
 
                             // Decode first 20 frames for filmstrip thumbnails
-                            let frame_count = stream.read().units.as_ref().map(|u| crate::helpers::count_frames(&u.units)).unwrap_or(0);
+                            let frame_count = stream
+                                .read()
+                                .units
+                                .as_ref()
+                                .map(|u| crate::helpers::count_frames(&u.units))
+                                .unwrap_or(0);
                             let decode_count = frame_count.min(20);
 
-                            tracing::info!("🎬 AUTO-DECODE: Requesting first {} of {} frames", decode_count, frame_count);
+                            tracing::info!(
+                                "🎬 AUTO-DECODE: Requesting first {} of {} frames",
+                                decode_count,
+                                frame_count
+                            );
 
                             // Log frame indices from UnitNodes for debugging
                             if let Some(units) = &stream.read().units {
@@ -172,14 +198,27 @@ impl BitvueAppAsync for BitvueApp {
                                         frame_indices.push(idx);
                                     }
                                 }
-                                tracing::warn!("🎬 AUTO-DECODE: Unit frame_indices = {:?}", frame_indices);
+                                tracing::warn!(
+                                    "🎬 AUTO-DECODE: Unit frame_indices = {:?}",
+                                    frame_indices
+                                );
                             }
 
                             for decode_index in 0..decode_count {
-                                tracing::info!("🎬 AUTO-DECODE: Submitting decode for frame array index {}", decode_index);
-                                self.submit_decode_request(result.stream_id, decode_index, file_data.clone());
+                                tracing::info!(
+                                    "🎬 AUTO-DECODE: Submitting decode for frame array index {}",
+                                    decode_index
+                                );
+                                self.submit_decode_request(
+                                    result.stream_id,
+                                    decode_index,
+                                    file_data.clone(),
+                                );
                             }
-                            tracing::info!("🎬 AUTO-DECODE: ✅ Submitted {} decode requests successfully!", decode_count);
+                            tracing::info!(
+                                "🎬 AUTO-DECODE: ✅ Submitted {} decode requests successfully!",
+                                decode_count
+                            );
                         } else {
                             tracing::error!("🎬 AUTO-DECODE: ❌ Failed to read byte_cache data");
                         }
@@ -198,7 +237,9 @@ impl BitvueAppAsync for BitvueApp {
                     if !has_temporal_selection {
                         tracing::info!("🎯 Auto-selecting first frame...");
                         // Find first frame and select it
-                        if let Some(first_frame_node) = crate::helpers::find_first_frame(&stream.read().units.as_ref().unwrap().units) {
+                        if let Some(first_frame_node) = crate::helpers::find_first_frame(
+                            &stream.read().units.as_ref().unwrap().units,
+                        ) {
                             let _events = self.core.handle_command(Command::SelectUnit {
                                 stream: result.stream_id,
                                 unit_key: first_frame_node.key.clone(),
@@ -212,7 +253,8 @@ impl BitvueAppAsync for BitvueApp {
                     self.notifications.set_error(format!("Parse failed: {}", e));
 
                     // Clear pending state even on error
-                    self.parser.clear_pending_if_matches(result.stream_id, &result.path);
+                    self.parser
+                        .clear_pending_if_matches(result.stream_id, &result.path);
                 }
             }
         }
@@ -229,7 +271,8 @@ impl BitvueAppAsync for BitvueApp {
         for progress in progress_updates {
             // Update progress notification
             if let Some(prog_value) = progress.progress {
-                self.notifications.set_progress(progress.message, prog_value);
+                self.notifications
+                    .set_progress(progress.message, prog_value);
             } else {
                 self.notifications.set_success(progress.message);
             }
@@ -249,11 +292,16 @@ impl BitvueAppAsync for BitvueApp {
                 Ok(()) => {
                     self.notifications.set_success(format!(
                         "Exported to {}",
-                        result.path.file_name().unwrap_or_default().to_string_lossy()
+                        result
+                            .path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
                     ));
                 }
                 Err(e) => {
-                    self.notifications.set_error(format!("Export failed: {}", e));
+                    self.notifications
+                        .set_error(format!("Export failed: {}", e));
                 }
             }
         }

@@ -67,7 +67,10 @@ mod tests {
     fn test_default_values() {
         let state = QpOverlayState::new();
         assert!((state.opacity - 0.45).abs() < f32::EPSILON);
-        assert!(matches!(state.resolution, bitvue_core::HeatmapResolution::Half));
+        assert!(matches!(
+            state.resolution,
+            bitvue_core::HeatmapResolution::Half
+        ));
         assert!(matches!(state.scale_mode, bitvue_core::QPScaleMode::Auto));
         assert!(state.texture.is_none());
     }

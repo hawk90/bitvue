@@ -108,12 +108,7 @@ fn test_combined_filters() {
         min_size: Some(40000),
     };
 
-    fn matches_all(
-        frame_type: &str,
-        qp: u8,
-        size: u64,
-        filter: &CombinedFilter,
-    ) -> bool {
+    fn matches_all(frame_type: &str, qp: u8, size: u64, filter: &CombinedFilter) -> bool {
         let type_match = filter.frame_type.as_ref().map_or(true, |t| t == frame_type);
         let qp_match = filter.min_qp.map_or(true, |min| qp >= min);
         let size_match = filter.min_size.map_or(true, |min| size >= min);

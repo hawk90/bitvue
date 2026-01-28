@@ -157,8 +157,12 @@ impl BitvueApp {
         frame_index: usize,
         file_data: Arc<Vec<u8>>,
     ) {
-        tracing::debug!("🎬 Submitting decode request: stream={:?}, frame={}, data_size={} bytes",
-            stream_id, frame_index, file_data.len());
+        tracing::debug!(
+            "🎬 Submitting decode request: stream={:?}, frame={}, data_size={} bytes",
+            stream_id,
+            frame_index,
+            file_data.len()
+        );
         self.decoder.submit(stream_id, frame_index, file_data);
     }
 

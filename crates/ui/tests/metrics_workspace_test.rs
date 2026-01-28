@@ -213,13 +213,25 @@ fn test_bd_rate_calculation() {
     }
 
     let curve_a = vec![
-        RdPoint { bitrate: 1000.0, quality: 40.0 },
-        RdPoint { bitrate: 2000.0, quality: 45.0 },
+        RdPoint {
+            bitrate: 1000.0,
+            quality: 40.0,
+        },
+        RdPoint {
+            bitrate: 2000.0,
+            quality: 45.0,
+        },
     ];
 
     let curve_b = vec![
-        RdPoint { bitrate: 800.0, quality: 40.0 },
-        RdPoint { bitrate: 1600.0, quality: 45.0 },
+        RdPoint {
+            bitrate: 800.0,
+            quality: 40.0,
+        },
+        RdPoint {
+            bitrate: 1600.0,
+            quality: 45.0,
+        },
     ];
 
     let bd_rate = bd_rate_simple(&curve_a, &curve_b);

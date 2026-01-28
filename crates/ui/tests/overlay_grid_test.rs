@@ -5,19 +5,15 @@ fn test_grid_types() {
     // Test different grid types
     #[derive(Debug, PartialEq)]
     enum GridType {
-        Ctb,      // Coding Tree Block
-        Cu,       // Coding Unit
-        Pu,       // Prediction Unit
-        Tu,       // Transform Unit
+        Ctb,        // Coding Tree Block
+        Cu,         // Coding Unit
+        Pu,         // Prediction Unit
+        Tu,         // Transform Unit
         Superblock, // AV1 superblock
         Macroblock, // H.264 macroblock
     }
 
-    let grids = vec![
-        GridType::Ctb,
-        GridType::Superblock,
-        GridType::Macroblock,
-    ];
+    let grids = vec![GridType::Ctb, GridType::Superblock, GridType::Macroblock];
 
     assert_eq!(grids.len(), 3);
 }
@@ -66,7 +62,11 @@ fn test_grid_line_rendering() {
 #[test]
 fn test_grid_calculation() {
     // Test grid line calculation for frame
-    fn calculate_grid_lines(width: usize, height: usize, block_size: usize) -> (Vec<usize>, Vec<usize>) {
+    fn calculate_grid_lines(
+        width: usize,
+        height: usize,
+        block_size: usize,
+    ) -> (Vec<usize>, Vec<usize>) {
         let horizontal = (0..=height).step_by(block_size).collect();
         let vertical = (0..=width).step_by(block_size).collect();
         (horizontal, vertical)

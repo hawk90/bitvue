@@ -60,7 +60,10 @@ pub fn build_syntax_tree(stream: &VvcStream) -> SyntaxNode {
 
     // Add stream info
     if let Some((width, height)) = stream.dimensions() {
-        root.add_child(SyntaxNode::field("Resolution", format!("{}x{}", width, height)));
+        root.add_child(SyntaxNode::field(
+            "Resolution",
+            format!("{}x{}", width, height),
+        ));
     }
     if let Some(depth) = stream.bit_depth() {
         root.add_child(SyntaxNode::field("Bit Depth", depth.to_string()));
@@ -83,7 +86,10 @@ pub fn build_syntax_tree(stream: &VvcStream) -> SyntaxNode {
         let mut header_node = SyntaxNode::new("NAL Header", SyntaxNodeType::Structure);
         header_node.add_child(SyntaxNode::field(
             "nal_unit_type",
-            format!("{:?} ({})", nal.header.nal_unit_type, nal.header.nal_unit_type as u8),
+            format!(
+                "{:?} ({})",
+                nal.header.nal_unit_type, nal.header.nal_unit_type as u8
+            ),
         ));
         header_node.add_child(SyntaxNode::field(
             "nuh_layer_id",
@@ -125,39 +131,48 @@ fn build_sps_tree(sps: &crate::Sps) -> SyntaxNode {
         "sps_seq_parameter_set_id",
         sps.sps_seq_parameter_set_id.to_string(),
     ));
-    node.add_child(SyntaxNode::field(
-        "profile",
-        sps.profile_name().to_string(),
-    ));
-    node.add_child(SyntaxNode::field(
-        "level",
-        format!("{:.1}", sps.level()),
-    ));
+    node.add_child(SyntaxNode::field("profile", sps.profile_name().to_string()));
+    node.add_child(SyntaxNode::field("level", format!("{:.1}", sps.level())));
     node.add_child(SyntaxNode::field(
         "chroma_format",
         format!("{:?}", sps.sps_chroma_format_idc),
     ));
-    node.add_child(SyntaxNode::field(
-        "bit_depth",
-        sps.bit_depth().to_string(),
-    ));
-    node.add_child(SyntaxNode::field(
-        "ctu_size",
-        sps.ctu_size().to_string(),
-    ));
+    node.add_child(SyntaxNode::field("bit_depth", sps.bit_depth().to_string()));
+    node.add_child(SyntaxNode::field("ctu_size", sps.ctu_size().to_string()));
     node.add_child(SyntaxNode::field(
         "resolution",
-        format!("{}x{}", sps.sps_pic_width_max_in_luma_samples, sps.sps_pic_height_max_in_luma_samples),
+        format!(
+            "{}x{}",
+            sps.sps_pic_width_max_in_luma_samples, sps.sps_pic_height_max_in_luma_samples
+        ),
     ));
 
     // VVC-specific features
     let mut features_node = SyntaxNode::new("VVC Features", SyntaxNodeType::Structure);
-    features_node.add_child(SyntaxNode::field("gdr_enabled", sps.sps_gdr_enabled_flag.to_string()));
-    features_node.add_child(SyntaxNode::field("dual_tree_intra", sps.has_dual_tree_intra().to_string()));
-    features_node.add_child(SyntaxNode::field("alf_enabled", sps.alf.alf_enabled_flag.to_string()));
-    features_node.add_child(SyntaxNode::field("lmcs_enabled", sps.lmcs.lmcs_enabled_flag.to_string()));
-    features_node.add_child(SyntaxNode::field("ibc_enabled", sps.sps_ibc_enabled_flag.to_string()));
-    features_node.add_child(SyntaxNode::field("affine_enabled", sps.sps_affine_enabled_flag.to_string()));
+    features_node.add_child(SyntaxNode::field(
+        "gdr_enabled",
+        sps.sps_gdr_enabled_flag.to_string(),
+    ));
+    features_node.add_child(SyntaxNode::field(
+        "dual_tree_intra",
+        sps.has_dual_tree_intra().to_string(),
+    ));
+    features_node.add_child(SyntaxNode::field(
+        "alf_enabled",
+        sps.alf.alf_enabled_flag.to_string(),
+    ));
+    features_node.add_child(SyntaxNode::field(
+        "lmcs_enabled",
+        sps.lmcs.lmcs_enabled_flag.to_string(),
+    ));
+    features_node.add_child(SyntaxNode::field(
+        "ibc_enabled",
+        sps.sps_ibc_enabled_flag.to_string(),
+    ));
+    features_node.add_child(SyntaxNode::field(
+        "affine_enabled",
+        sps.sps_affine_enabled_flag.to_string(),
+    ));
     node.add_child(features_node);
 
     node

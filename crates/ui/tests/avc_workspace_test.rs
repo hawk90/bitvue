@@ -39,11 +39,7 @@ fn test_avc_profiles() {
         High444 = 244,
     }
 
-    let profiles = vec![
-        AvcProfile::Baseline,
-        AvcProfile::Main,
-        AvcProfile::High,
-    ];
+    let profiles = vec![AvcProfile::Baseline, AvcProfile::Main, AvcProfile::High];
 
     assert_eq!(profiles.len(), 3);
 }
@@ -52,9 +48,9 @@ fn test_avc_profiles() {
 fn test_avc_levels() {
     // Test AVC level constraints
     struct AvcLevel {
-        level_idc: u8,  // 10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51
-        max_mbps: u32,   // Max macroblocks per second
-        max_fs: u32,     // Max frame size in macroblocks
+        level_idc: u8, // 10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51
+        max_mbps: u32, // Max macroblocks per second
+        max_fs: u32,   // Max frame size in macroblocks
     }
 
     let level_40 = AvcLevel {
@@ -81,11 +77,7 @@ fn test_avc_macroblock_types() {
         B16x16,
     }
 
-    let mb_types = vec![
-        MbType::I4x4,
-        MbType::P16x16,
-        MbType::B16x16,
-    ];
+    let mb_types = vec![MbType::I4x4, MbType::P16x16, MbType::B16x16];
 
     assert_eq!(mb_types.len(), 3);
 }
@@ -146,10 +138,7 @@ fn test_avc_sub_mb_types() {
         P4x4,
     }
 
-    let sub_types = vec![
-        SubMbType::P8x8,
-        SubMbType::P4x4,
-    ];
+    let sub_types = vec![SubMbType::P8x8, SubMbType::P4x4];
 
     assert_eq!(sub_types.len(), 2);
 }
@@ -158,13 +147,13 @@ fn test_avc_sub_mb_types() {
 fn test_avc_reference_indices() {
     // Test reference frame indexing
     struct RefIdx {
-        ref_idx_l0: i8,  // Reference index for List 0
-        ref_idx_l1: i8,  // Reference index for List 1
+        ref_idx_l0: i8, // Reference index for List 0
+        ref_idx_l1: i8, // Reference index for List 1
     }
 
     let ref_idx = RefIdx {
         ref_idx_l0: 0,
-        ref_idx_l1: -1,  // Not used
+        ref_idx_l1: -1, // Not used
     };
 
     assert!(ref_idx.ref_idx_l0 >= 0);
@@ -186,7 +175,7 @@ fn test_avc_cabac_context() {
     struct CabacContext {
         ctx_idx: usize,
         state: u8,
-        mps: bool,  // Most Probable Symbol
+        mps: bool, // Most Probable Symbol
     }
 
     let ctx = CabacContext {
@@ -203,8 +192,8 @@ fn test_avc_cabac_context() {
 fn test_avc_transform_sizes() {
     // Test transform block sizes
     let transform_sizes = vec![
-        (4usize, 4usize),   // 4x4 DCT
-        (8usize, 8usize),   // 8x8 DCT (High Profile)
+        (4usize, 4usize), // 4x4 DCT
+        (8usize, 8usize), // 8x8 DCT (High Profile)
     ];
 
     for (w, h) in &transform_sizes {
@@ -255,7 +244,7 @@ fn test_avc_slice_groups() {
     }
 
     let fmo = SliceGroups {
-        num_slice_groups: 1,  // Typically 1 (no FMO)
+        num_slice_groups: 1, // Typically 1 (no FMO)
         slice_group_map_type: 0,
     };
 
@@ -266,13 +255,13 @@ fn test_avc_slice_groups() {
 fn test_avc_motion_vector_precision() {
     // Test motion vector precision (quarter-pel)
     struct MotionVector {
-        mvx: i16,  // In quarter-pel units
+        mvx: i16, // In quarter-pel units
         mvy: i16,
     }
 
     let mv = MotionVector {
-        mvx: 16,  // 4 pixels in quarter-pel
-        mvy: -8,  // 2 pixels in quarter-pel
+        mvx: 16, // 4 pixels in quarter-pel
+        mvy: -8, // 2 pixels in quarter-pel
     };
 
     // Convert to full-pel for validation

@@ -49,23 +49,32 @@ impl<'a> BitReader<'a> {
 
     /// Read a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
-        self.inner.read_bit().map_err(|_| Mpeg2Error::NotEnoughData { expected: 1, got: 0 })
+        self.inner
+            .read_bit()
+            .map_err(|_| Mpeg2Error::NotEnoughData {
+                expected: 1,
+                got: 0,
+            })
     }
 
     /// Read n bits as u32.
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
-        self.inner.read_bits(n).map_err(|_| Mpeg2Error::NotEnoughData {
-            expected: n as usize,
-            got: 0,
-        })
+        self.inner
+            .read_bits(n)
+            .map_err(|_| Mpeg2Error::NotEnoughData {
+                expected: n as usize,
+                got: 0,
+            })
     }
 
     /// Read n bits as u64.
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
-        self.inner.read_bits_u64(n).map_err(|_| Mpeg2Error::NotEnoughData {
-            expected: n as usize,
-            got: 0,
-        })
+        self.inner
+            .read_bits_u64(n)
+            .map_err(|_| Mpeg2Error::NotEnoughData {
+                expected: n as usize,
+                got: 0,
+            })
     }
 
     /// Read a flag (single bit as bool).
@@ -77,7 +86,10 @@ impl<'a> BitReader<'a> {
     pub fn skip_bits(&mut self, n: usize) -> Result<()> {
         self.inner
             .skip_bits(n as u64)
-            .map_err(|_| Mpeg2Error::NotEnoughData { expected: n, got: 0 })
+            .map_err(|_| Mpeg2Error::NotEnoughData {
+                expected: n,
+                got: 0,
+            })
     }
 
     /// Align to byte boundary.
@@ -92,7 +104,9 @@ impl<'a> BitReader<'a> {
 
     /// Peek at next n bits without consuming.
     pub fn peek_bits(&self, n: u8) -> Result<u32> {
-        self.inner.peek_bits(n).map_err(|e| Mpeg2Error::BitstreamError(e.to_string()))
+        self.inner
+            .peek_bits(n)
+            .map_err(|e| Mpeg2Error::BitstreamError(e.to_string()))
     }
 }
 

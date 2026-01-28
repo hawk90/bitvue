@@ -76,7 +76,8 @@ impl DecodeCoordinator {
     ///
     /// Returns empty vector if worker hasn't been initialized yet.
     pub fn poll_results(&self) -> Vec<DecodeResult> {
-        self.worker.as_ref()
+        self.worker
+            .as_ref()
             .map(|w| w.poll_results())
             .unwrap_or_else(Vec::new)
     }
@@ -105,7 +106,8 @@ impl DecodeCoordinator {
     ///
     /// Returns false if worker hasn't been initialized (no work can be pending).
     pub fn has_pending_work(&self) -> bool {
-        self.worker.as_ref()
+        self.worker
+            .as_ref()
             .map(|w| w.has_pending_work())
             .unwrap_or(false)
             || !self.pending.is_empty()

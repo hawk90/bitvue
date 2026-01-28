@@ -38,9 +38,21 @@ fn test_graph_data_points() {
     }
 
     let points = vec![
-        GraphPoint { frame_index: 0, bitrate_kbps: 8000.0, frame_type: "I".to_string() },
-        GraphPoint { frame_index: 1, bitrate_kbps: 3000.0, frame_type: "P".to_string() },
-        GraphPoint { frame_index: 2, bitrate_kbps: 2000.0, frame_type: "B".to_string() },
+        GraphPoint {
+            frame_index: 0,
+            bitrate_kbps: 8000.0,
+            frame_type: "I".to_string(),
+        },
+        GraphPoint {
+            frame_index: 1,
+            bitrate_kbps: 3000.0,
+            frame_type: "P".to_string(),
+        },
+        GraphPoint {
+            frame_index: 2,
+            bitrate_kbps: 2000.0,
+            frame_type: "B".to_string(),
+        },
     ];
 
     assert_eq!(points.len(), 3);
@@ -195,10 +207,7 @@ fn test_graph_export() {
         Image,
     }
 
-    let formats = vec![
-        ExportFormat::Csv,
-        ExportFormat::Json,
-    ];
+    let formats = vec![ExportFormat::Csv, ExportFormat::Json];
 
     assert_eq!(formats.len(), 2);
 }

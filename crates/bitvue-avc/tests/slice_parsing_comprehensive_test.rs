@@ -2,11 +2,11 @@
 //!
 //! Tests for slice.rs parsing functions with better coverage.
 
+use bitvue_avc::nal::{NalUnitHeader, NalUnitType};
+use bitvue_avc::pps::Pps;
 use bitvue_avc::slice::{
     parse_slice_header, DecRefPicMarking, RefPicListModification, SliceHeader, SliceType,
 };
-use bitvue_avc::nal::{NalUnitHeader, NalUnitType};
-use bitvue_avc::pps::Pps;
 use bitvue_avc::sps::{ChromaFormat, ProfileIdc, Sps};
 use std::collections::HashMap;
 
@@ -142,8 +142,12 @@ fn test_slice_header_i_slice() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -186,8 +190,12 @@ fn test_slice_header_p_slice() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -232,8 +240,12 @@ fn test_slice_header_b_slice() {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -278,8 +290,12 @@ fn test_slice_header_deblocking_filter() {
         slice_beta_offset_div2: 3,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -360,10 +376,10 @@ fn test_ref_pic_list_modification_defaults() {
 fn test_ref_pic_list_modification_with_entries() {
     let mod_list = RefPicListModification {
         modifications: vec![
-            (0, 5),   // abs_diff_pic_num_minus1
-            (1, 10),  // abs_diff_pic_num_minus1
-            (2, 3),   // long_term_pic_num
-            (0, 7),   // abs_diff_pic_num_minus1
+            (0, 5),  // abs_diff_pic_num_minus1
+            (1, 10), // abs_diff_pic_num_minus1
+            (2, 3),  // long_term_pic_num
+            (0, 7),  // abs_diff_pic_num_minus1
         ],
     };
 
@@ -522,8 +538,12 @@ fn create_test_slice_header() -> SliceHeader {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -562,8 +582,12 @@ fn create_test_slice_header_base() -> SliceHeader {
         slice_beta_offset_div2: 0,
         num_ref_idx_l0_active_minus1: 0,
         num_ref_idx_l1_active_minus1: 0,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -736,11 +760,11 @@ fn test_parse_slice_header_basic_i_slice() {
     // Minimal I slice: first_mb=0, type=I, pps_id=0
     // UE(0) = 1 bit, UE(2) = 010 bits = 0x40
     let data = [
-        0x80,  // first_mb_in_slice = 0 (UE: "1")
-        0x40,  // slice_type = 2 (I slice, UE: "010")
-        0x80,  // pic_parameter_set_id = 0 (UE: "1")
-        0x80,  // frame_num = 0 (4 bits: "0000" + padding)
-        0x80,  // cabac_init_idc not needed (intra), slice_qp_delta = 0 (SE: "1")
+        0x80, // first_mb_in_slice = 0 (UE: "1")
+        0x40, // slice_type = 2 (I slice, UE: "010")
+        0x80, // pic_parameter_set_id = 0 (UE: "1")
+        0x80, // frame_num = 0 (4 bits: "0000" + padding)
+        0x80, // cabac_init_idc not needed (intra), slice_qp_delta = 0 (SE: "1")
     ];
 
     let mut sps_map = HashMap::new();
@@ -758,11 +782,11 @@ fn test_parse_slice_header_basic_i_slice() {
 fn test_parse_slice_header_p_slice() {
     // P slice: first_mb=0, type=P, pps_id=0
     let data = [
-        0x80,  // first_mb_in_slice = 0 (UE: "1")
-        0x00,  // slice_type = 0 (P slice, UE: "1")
-        0x80,  // pic_parameter_set_id = 0 (UE: "1")
-        0x80,  // frame_num = 0 (4 bits)
-        0x80,  // slice_qp_delta = 0 (SE: "1")
+        0x80, // first_mb_in_slice = 0 (UE: "1")
+        0x00, // slice_type = 0 (P slice, UE: "1")
+        0x80, // pic_parameter_set_id = 0 (UE: "1")
+        0x80, // frame_num = 0 (4 bits)
+        0x80, // slice_qp_delta = 0 (SE: "1")
     ];
 
     let mut sps_map = HashMap::new();
@@ -780,12 +804,12 @@ fn test_parse_slice_header_p_slice() {
 fn test_parse_slice_header_b_slice() {
     // B slice with direct_spatial_mv_pred_flag
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 1 (B slice, UE: "01")
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x40,  // direct_spatial_mv_pred_flag = 0 (1 bit: "0" + padding)
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 1 (B slice, UE: "01")
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x40, // direct_spatial_mv_pred_flag = 0 (1 bit: "0" + padding)
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -802,13 +826,13 @@ fn test_parse_slice_header_b_slice() {
 fn test_parse_slice_header_idr_slice() {
     // IDR slice with idr_pic_id
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0 (UE: "1")
-        0x80,  // pic_order_cnt_lsb = 0 (8 bits)
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0 (UE: "1")
+        0x80, // pic_order_cnt_lsb = 0 (8 bits)
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -857,13 +881,13 @@ fn test_parse_slice_header_pic_order_cnt_type_0() {
     sps.log2_max_pic_order_cnt_lsb_minus4 = 4; // 8 bits for POC lsb
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0xAA,  // pic_order_cnt_lsb = 0xAA (8 bits)
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0xAA, // pic_order_cnt_lsb = 0xAA (8 bits)
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -884,13 +908,13 @@ fn test_parse_slice_header_pic_order_cnt_type_1() {
     sps.delta_pic_order_always_zero_flag = false;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x40,  // delta_pic_order_cnt[0] = -1 (SE: "010")
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x40, // delta_pic_order_cnt[0] = -1 (SE: "010")
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -910,12 +934,12 @@ fn test_parse_slice_header_pic_order_cnt_type_2() {
     sps.pic_order_cnt_type = 2;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -935,16 +959,16 @@ fn test_parse_slice_header_with_deblocking_filter() {
     pps.deblocking_filter_control_present_flag = true;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x80,  // pic_order_cnt_lsb = 0
-        0x80,  // slice_qp_delta = 0
-        0x80,  // disable_deblocking_filter_idc = 0 (UE: "1")
-        0x40,  // slice_alpha_c0_offset_div2 = -1 (SE: "010")
-        0x60,  // slice_beta_offset_div2 = -2 (SE: "0110")
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x80, // pic_order_cnt_lsb = 0
+        0x80, // slice_qp_delta = 0
+        0x80, // disable_deblocking_filter_idc = 0 (UE: "1")
+        0x40, // slice_alpha_c0_offset_div2 = -1 (SE: "010")
+        0x60, // slice_beta_offset_div2 = -2 (SE: "0110")
     ];
 
     let mut sps_map = HashMap::new();
@@ -964,14 +988,14 @@ fn test_parse_slice_header_deblocking_disabled() {
     pps.deblocking_filter_control_present_flag = true;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x80,  // pic_order_cnt_lsb = 0
-        0x80,  // slice_qp_delta = 0
-        0x40,  // disable_deblocking_filter_idc = 1 (UE: "010")
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x80, // pic_order_cnt_lsb = 0
+        0x80, // slice_qp_delta = 0
+        0x40, // disable_deblocking_filter_idc = 1 (UE: "010")
     ];
 
     let mut sps_map = HashMap::new();
@@ -991,14 +1015,14 @@ fn test_parse_slice_header_redundant_pic_cnt() {
     pps.redundant_pic_cnt_present_flag = true;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x80,  // pic_order_cnt_lsb = 0
-        0x40,  // redundant_pic_cnt = 1 (UE: "010")
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x80, // pic_order_cnt_lsb = 0
+        0x40, // redundant_pic_cnt = 1 (UE: "010")
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1015,15 +1039,15 @@ fn test_parse_slice_header_redundant_pic_cnt() {
 fn test_parse_slice_header_ref_pic_list_modification_l0() {
     // Test P slice with reference picture list modification L0
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x00,  // slice_type = 0 (P slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x40,  // ref_pic_list_modification_flag_l0 = 1
-        0x00,  // modification_of_pic_nums_idc = 0 (UE: "1")
-        0x40,  // abs_diff_pic_num_minus1 = 1 (UE: "010")
-        0xC0,  // modification_of_pic_nums_idc = 3 (UE: "11") - end of list
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x00, // slice_type = 0 (P slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x40, // ref_pic_list_modification_flag_l0 = 1
+        0x00, // modification_of_pic_nums_idc = 0 (UE: "1")
+        0x40, // abs_diff_pic_num_minus1 = 1 (UE: "010")
+        0xC0, // modification_of_pic_nums_idc = 3 (UE: "11") - end of list
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1040,18 +1064,18 @@ fn test_parse_slice_header_ref_pic_list_modification_l0() {
 fn test_parse_slice_header_ref_pic_list_modification_l1() {
     // Test B slice with reference picture list modification L1
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 1 (B slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x40,  // direct_spatial_mv_pred_flag = 0
-        0x40,  // ref_pic_list_modification_flag_l0 = 1
-        0xC0,  // modification_of_pic_nums_idc = 3 (end)
-        0x40,  // ref_pic_list_modification_flag_l1 = 1
-        0x00,  // modification_of_pic_nums_idc = 0
-        0x40,  // abs_diff_pic_num_minus1 = 1
-        0xC0,  // modification_of_pic_nums_idc = 3 (end)
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 1 (B slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x40, // direct_spatial_mv_pred_flag = 0
+        0x40, // ref_pic_list_modification_flag_l0 = 1
+        0xC0, // modification_of_pic_nums_idc = 3 (end)
+        0x40, // ref_pic_list_modification_flag_l1 = 1
+        0x00, // modification_of_pic_nums_idc = 0
+        0x40, // abs_diff_pic_num_minus1 = 1
+        0xC0, // modification_of_pic_nums_idc = 3 (end)
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1068,15 +1092,15 @@ fn test_parse_slice_header_ref_pic_list_modification_l1() {
 fn test_parse_slice_header_dec_ref_pic_marking_idr() {
     // Test IDR slice with decoded reference picture marking
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x80,  // pic_order_cnt_lsb = 0
-        0x80,  // slice_qp_delta = 0
-        0x40,  // no_output_of_prior_pics_flag = 1
-        0x40,  // long_term_reference_flag = 1
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x80, // pic_order_cnt_lsb = 0
+        0x80, // slice_qp_delta = 0
+        0x40, // no_output_of_prior_pics_flag = 1
+        0x40, // long_term_reference_flag = 1
     ];
 
     let mut sps_map = HashMap::new();
@@ -1093,15 +1117,15 @@ fn test_parse_slice_header_dec_ref_pic_marking_idr() {
 fn test_parse_slice_header_dec_ref_pic_marking_adaptive() {
     // Test non-IDR slice with adaptive reference picture marking
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x00,  // slice_type = 0 (P slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // slice_qp_delta = 0
-        0x40,  // adaptive_ref_pic_marking_mode_flag = 1
-        0x00,  // mmco operation 1 (mark short term as unused)
-        0x40,  // diff_of_pic_nums_minus1 = 1
-        0x80,  // mmco operation 0 (end)
+        0x80, // first_mb_in_slice = 0
+        0x00, // slice_type = 0 (P slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // slice_qp_delta = 0
+        0x40, // adaptive_ref_pic_marking_mode_flag = 1
+        0x00, // mmco operation 1 (mark short term as unused)
+        0x40, // diff_of_pic_nums_minus1 = 1
+        0x80, // mmco operation 0 (end)
     ];
 
     let mut sps_map = HashMap::new();
@@ -1118,13 +1142,13 @@ fn test_parse_slice_header_dec_ref_pic_marking_adaptive() {
 fn test_parse_slice_header_sp_slice() {
     // Test SP slice with sp_for_switch_flag and slice_qs_delta
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0xC0,  // slice_type = 3 (SP slice, UE: "11")
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // slice_qp_delta = 0
-        0x40,  // sp_for_switch_flag = 1
-        0x00,  // slice_qs_delta = 0 (SE: "1")
+        0x80, // first_mb_in_slice = 0
+        0xC0, // slice_type = 3 (SP slice, UE: "11")
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // slice_qp_delta = 0
+        0x40, // sp_for_switch_flag = 1
+        0x00, // slice_qs_delta = 0 (SE: "1")
     ];
 
     let mut sps_map = HashMap::new();
@@ -1141,12 +1165,12 @@ fn test_parse_slice_header_sp_slice() {
 fn test_parse_slice_header_si_slice() {
     // Test SI slice with slice_qs_delta
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x80,  // slice_type = 4 (SI slice, UE: "100")
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // slice_qp_delta = 0
-        0x00,  // slice_qs_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x80, // slice_type = 4 (SI slice, UE: "100")
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // slice_qp_delta = 0
+        0x00, // slice_qs_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1164,9 +1188,9 @@ fn test_parse_slice_header_frame_num_variations() {
     // Test different frame_num values
     for frame_num in [0u32, 1, 5, 15] {
         let mut data = vec![
-            0x80,  // first_mb_in_slice = 0
-            0x40,  // slice_type = 2 (I slice)
-            0x80,  // pic_parameter_set_id = 0
+            0x80, // first_mb_in_slice = 0
+            0x40, // slice_type = 2 (I slice)
+            0x80, // pic_parameter_set_id = 0
         ];
 
         // Encode frame_num (4 bits)
@@ -1174,9 +1198,9 @@ fn test_parse_slice_header_frame_num_variations() {
         data.push(frame_byte << 4);
 
         data.extend_from_slice(&[
-            0x80,  // idr_pic_id = 0
-            0x80,  // pic_order_cnt_lsb = 0
-            0x80,  // slice_qp_delta = 0
+            0x80, // idr_pic_id = 0
+            0x80, // pic_order_cnt_lsb = 0
+            0x80, // slice_qp_delta = 0
         ]);
 
         let mut sps_map = HashMap::new();
@@ -1198,12 +1222,12 @@ fn test_parse_slice_header_qp_delta_variations() {
 
     for qp_delta in qp_deltas {
         let data = [
-            0x80,  // first_mb_in_slice = 0
-            0x40,  // slice_type = 2 (I slice)
-            0x80,  // pic_parameter_set_id = 0
-            0x80,  // frame_num = 0
-            0x80,  // idr_pic_id = 0
-            0x80,  // pic_order_cnt_lsb = 0
+            0x80, // first_mb_in_slice = 0
+            0x40, // slice_type = 2 (I slice)
+            0x80, // pic_parameter_set_id = 0
+            0x80, // frame_num = 0
+            0x80, // idr_pic_id = 0
+            0x80, // pic_order_cnt_lsb = 0
         ];
 
         // Encode slice_qp_delta as signed Exp-Golomb
@@ -1218,7 +1242,7 @@ fn test_parse_slice_header_qp_delta_variations() {
             -10..=-5 => 0x20, // negative
             -4..=-1 => 0x40,
             0 => 0x80,
-            1..=5 => 0x00,   // positive
+            1..=5 => 0x00, // positive
             6..=10 => 0x60,
             _ => 0x80,
         };
@@ -1245,14 +1269,14 @@ fn test_parse_slice_header_field_pic_flag() {
     sps.frame_mbs_only_flag = false; // Enable field coding
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x40,  // field_pic_flag = 1
-        0x40,  // bottom_field_flag = 1
-        0x80,  // idr_pic_id = 0
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x40, // field_pic_flag = 1
+        0x40, // bottom_field_flag = 1
+        0x80, // idr_pic_id = 0
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1269,13 +1293,13 @@ fn test_parse_slice_header_field_pic_flag() {
 fn test_parse_slice_header_num_ref_idx_override() {
     // Test with num_ref_idx_active_override_flag
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x00,  // slice_type = 0 (P slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x40,  // num_ref_idx_active_override_flag = 1
-        0x40,  // num_ref_idx_l0_active_minus1 = 1
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x00, // slice_type = 0 (P slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x40, // num_ref_idx_active_override_flag = 1
+        0x40, // num_ref_idx_l0_active_minus1 = 1
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1295,12 +1319,12 @@ fn test_parse_slice_header_cabac_init_idc() {
     pps.entropy_coding_mode_flag = true;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x00,  // slice_type = 0 (P slice, not intra)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x40,  // cabac_init_idc = 1 (UE: "010")
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x00, // slice_type = 0 (P slice, not intra)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x40, // cabac_init_idc = 1 (UE: "010")
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1320,14 +1344,14 @@ fn test_parse_slice_header_with_bottom_field_pic_order() {
     pps.bottom_field_pic_order_in_frame_present_flag = true;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x80,  // pic_order_cnt_lsb = 0
-        0x40,  // delta_pic_order_cnt_bottom = -1 (SE: "010")
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x80, // pic_order_cnt_lsb = 0
+        0x40, // delta_pic_order_cnt_bottom = -1 (SE: "010")
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1351,14 +1375,14 @@ fn test_parse_slice_header_delta_pic_order_cnt_array() {
     pps.bottom_field_pic_order_in_frame_present_flag = true;
 
     let data = [
-        0x80,  // first_mb_in_slice = 0
-        0x40,  // slice_type = 2 (I slice)
-        0x80,  // pic_parameter_set_id = 0
-        0x80,  // frame_num = 0
-        0x80,  // idr_pic_id = 0
-        0x40,  // delta_pic_order_cnt[0] = -1
-        0x60,  // delta_pic_order_cnt[1] = -2
-        0x80,  // slice_qp_delta = 0
+        0x80, // first_mb_in_slice = 0
+        0x40, // slice_type = 2 (I slice)
+        0x80, // pic_parameter_set_id = 0
+        0x80, // frame_num = 0
+        0x80, // idr_pic_id = 0
+        0x40, // delta_pic_order_cnt[0] = -1
+        0x60, // delta_pic_order_cnt[1] = -2
+        0x80, // slice_qp_delta = 0
     ];
 
     let mut sps_map = HashMap::new();
@@ -1379,9 +1403,7 @@ fn test_parse_slice_header_with_slice_group_map() {
     pps.num_slice_groups_minus1 = 1;
     pps.slice_group_map_type = 0;
 
-    let data = [
-        0x80, 0x40, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-    ];
+    let data = [0x80, 0x40, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80];
 
     let mut sps_map = HashMap::new();
     sps_map.insert(0, create_minimal_sps_for_parsing());
@@ -1413,7 +1435,8 @@ fn test_parse_slice_header_various_cabac_init() {
         let mut pps_map = HashMap::new();
         pps_map.insert(0, pps);
 
-        let result = parse_slice_header(&full_data, &sps_map, &pps_map, NalUnitType::NonIdrSlice, 3);
+        let result =
+            parse_slice_header(&full_data, &sps_map, &pps_map, NalUnitType::NonIdrSlice, 3);
         let _ = result;
     }
 }
@@ -1423,7 +1446,11 @@ fn test_parse_slice_header_all_qp_deltas() {
     for qp_delta in -51..=50 {
         let data = [0x80, 0x40, 0x80, 0x80, 0x80, 0x80, 0x80];
         let mut full_data = data.to_vec();
-        let se_val = if qp_delta <= 0 { (-qp_delta * 2) as u8 } else { (qp_delta * 2 - 1) as u8 };
+        let se_val = if qp_delta <= 0 {
+            (-qp_delta * 2) as u8
+        } else {
+            (qp_delta * 2 - 1) as u8
+        };
         full_data.push(se_val);
 
         let mut sps_map = HashMap::new();
@@ -1527,8 +1554,16 @@ fn test_parse_slice_header_delta_pic_order_variations() {
     for delta_0 in -5..=5i32 {
         for delta_1 in -3..=3i32 {
             let mut data = vec![0x80, 0x40, 0x80, 0x80, 0x80, 0x80];
-            let se0 = if delta_0 <= 0 { (-delta_0 * 2) as u8 } else { ((delta_0 * 2 - 1) as u8) };
-            let se1 = if delta_1 <= 0 { (-delta_1 * 2) as u8 } else { ((delta_1 * 2 - 1) as u8) };
+            let se0 = if delta_0 <= 0 {
+                (-delta_0 * 2) as u8
+            } else {
+                ((delta_0 * 2 - 1) as u8)
+            };
+            let se1 = if delta_1 <= 0 {
+                (-delta_1 * 2) as u8
+            } else {
+                ((delta_1 * 2 - 1) as u8)
+            };
             data.push(se0);
             data.push(se1);
             data.push(0x80);
@@ -2230,7 +2265,6 @@ fn test_parse_slice_with_ref_idx_l1_override() {
     let _ = result;
 }
 
-
 #[test]
 fn test_parse_slice_header_various_log2_max_frame_num() {
     // Test various log2_max_frame_num_minus4 values
@@ -2261,14 +2295,14 @@ fn test_parse_slice_header_with_all_dbf_idc() {
     // Test disable_deblocking_filter_idc values: 0-6
     for dbf_idc in 0u8..=6u8 {
         let data = [
-            0x80, // first_mb_in_slice = 0
-            0x40, // slice_type = 2 (I slice)
-            0x80, // pic_parameter_set_id = 0
-            0x80, // frame_num = 0
-            0x80, // slice_qp_delta = 0
+            0x80,                  // first_mb_in_slice = 0
+            0x40,                  // slice_type = 2 (I slice)
+            0x80,                  // pic_parameter_set_id = 0
+            0x80,                  // frame_num = 0
+            0x80,                  // slice_qp_delta = 0
             (dbf_idc << 1) | 0x80, // disable_deblocking_filter_idc
-            0x80, // slice_alpha_c0_offset_div2 = 0
-            0x80, // slice_beta_offset_div2 = 0
+            0x80,                  // slice_alpha_c0_offset_div2 = 0
+            0x80,                  // slice_beta_offset_div2 = 0
         ];
 
         let mut sps_map = HashMap::new();
@@ -2315,8 +2349,7 @@ fn test_parse_slice_header_with_more_rbsp_data() {
         0x80, // frame_num = 0
         0x80, // slice_qp_delta = 0
         0x00, // Additional data
-        0x00,
-        0x00,
+        0x00, 0x00,
     ];
 
     let mut sps_map = HashMap::new();
@@ -2483,12 +2516,12 @@ fn test_parse_slice_header_various_idr_pic_id() {
     // Test various idr_pic_id values for IDR slices
     for idr_pic_id in 0u8..=5u8 {
         let data = [
-            0x80, // first_mb_in_slice = 0
-            0x40, // slice_type = 2 (I slice)
-            0x80, // pic_parameter_set_id = 0
-            0x80, // frame_num = 0
+            0x80,                      // first_mb_in_slice = 0
+            0x40,                      // slice_type = 2 (I slice)
+            0x80,                      // pic_parameter_set_id = 0
+            0x80,                      // frame_num = 0
             ((idr_pic_id * 2) | 0x80), // idr_pic_id
-            0x80, // slice_qp_delta = 0
+            0x80,                      // slice_qp_delta = 0
         ];
 
         let mut sps_map = HashMap::new();
@@ -2533,7 +2566,10 @@ fn test_parse_slice_header_with_valid_chroma_formats() {
 #[test]
 fn test_parse_slice_header_with_all_level_idc() {
     // Test with different level_idc values (common levels)
-    for level_idc in [10u8, 11u8, 12u8, 13u8, 20u8, 21u8, 22u8, 30u8, 31u8, 32u8, 40u8, 41u8, 42u8, 50u8, 51u8, 52u8] {
+    for level_idc in [
+        10u8, 11u8, 12u8, 13u8, 20u8, 21u8, 22u8, 30u8, 31u8, 32u8, 40u8, 41u8, 42u8, 50u8, 51u8,
+        52u8,
+    ] {
         let mut sps = create_minimal_sps_for_parsing();
         sps.level_idc = level_idc;
 
@@ -2564,13 +2600,13 @@ fn test_parse_slice_header_various_poc_values() {
 
     for poc_lsb in [0u32, 1u32, 255u32, 256u32, 511u32, 512u32] {
         let data = [
-            0x80, // first_mb_in_slice = 0
-            0x80, // slice_type = 0 (P slice)
-            0x80, // pic_parameter_set_id = 0
-            0x80, // frame_num = 0
+            0x80,                              // first_mb_in_slice = 0
+            0x80,                              // slice_type = 0 (P slice)
+            0x80,                              // pic_parameter_set_id = 0
+            0x80,                              // frame_num = 0
             (((poc_lsb & 0xFF) as u8) | 0x80), // pic_order_cnt_lsb
-            0x80, // delta_pic_order_cnt_bottom = 0
-            0x80, // slice_qp_delta = 0
+            0x80,                              // delta_pic_order_cnt_bottom = 0
+            0x80,                              // slice_qp_delta = 0
         ];
 
         let mut sps_map = HashMap::new();

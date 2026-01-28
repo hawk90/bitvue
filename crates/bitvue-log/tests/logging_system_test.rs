@@ -10,10 +10,7 @@ fn test_vlog_levels() {
 
     let config = VlogConfig {
         global_level: 2,
-        module_levels: vec![
-            ("parser".to_string(), 3),
-            ("decoder".to_string(), 1),
-        ],
+        module_levels: vec![("parser".to_string(), 3), ("decoder".to_string(), 1)],
     };
 
     assert_eq!(config.global_level, 2);
@@ -46,11 +43,7 @@ fn test_check_macro_types() {
         CheckGe,
     }
 
-    let checks = vec![
-        CheckType::Check,
-        CheckType::CheckEq,
-        CheckType::CheckNe,
-    ];
+    let checks = vec![CheckType::Check, CheckType::CheckEq, CheckType::CheckNe];
 
     assert_eq!(checks.len(), 3);
 }

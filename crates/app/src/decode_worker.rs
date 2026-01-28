@@ -97,8 +97,15 @@ impl DecodeWorker {
             };
 
             match &cached_frame {
-                Ok(_) => tracing::info!("🎥 DECODE_WORKER: Sending OK result for frame {}", request.frame_index),
-                Err(e) => tracing::error!("🎥 DECODE_WORKER: Sending ERROR result for frame {}: {}", request.frame_index, e),
+                Ok(_) => tracing::info!(
+                    "🎥 DECODE_WORKER: Sending OK result for frame {}",
+                    request.frame_index
+                ),
+                Err(e) => tracing::error!(
+                    "🎥 DECODE_WORKER: Sending ERROR result for frame {}: {}",
+                    request.frame_index,
+                    e
+                ),
             }
 
             if result_tx.send(result).is_err() {
@@ -106,7 +113,10 @@ impl DecodeWorker {
                 break;
             }
 
-            tracing::info!("🎥 DECODE_WORKER: Result sent for frame {}", request.frame_index);
+            tracing::info!(
+                "🎥 DECODE_WORKER: Result sent for frame {}",
+                request.frame_index
+            );
         }
 
         tracing::info!("Decode worker stopped");
@@ -122,16 +132,24 @@ impl DecodeWorker {
             .decode_all(&request.file_data)
             .map_err(|e| format!("Decode failed: {:?}", e))?;
 
-        tracing::info!("🎥 DECODE_WORKER: decode_all() returned {} frames, requesting index {}",
-            decoded_frames.len(), request.frame_index);
+        tracing::info!(
+            "🎥 DECODE_WORKER: decode_all() returned {} frames, requesting index {}",
+            decoded_frames.len(),
+            request.frame_index
+        );
 
-        let decoded = decoded_frames
-            .get(request.frame_index)
-            .ok_or_else(|| {
-                tracing::error!("🎥 DECODE_WORKER: ❌ Frame {} not found in decoded_frames (len={})",
-                    request.frame_index, decoded_frames.len());
-                format!("Frame {} not found (decoded {} frames)", request.frame_index, decoded_frames.len())
-            })?;
+        let decoded = decoded_frames.get(request.frame_index).ok_or_else(|| {
+            tracing::error!(
+                "🎥 DECODE_WORKER: ❌ Frame {} not found in decoded_frames (len={})",
+                request.frame_index,
+                decoded_frames.len()
+            );
+            format!(
+                "Frame {} not found (decoded {} frames)",
+                request.frame_index,
+                decoded_frames.len()
+            )
+        })?;
 
         let rgb_data = yuv_to_rgb(decoded);
         let chroma_width = decoded.width / 2;
@@ -180,7 +198,10 @@ impl DecodeWorker {
         let mut results = Vec::new();
         while let Ok(result) = self.result_rx.try_recv() {
             // NOTE: Removed stale result check to allow multiple concurrent frame decodes
-            tracing::debug!("Decode worker: Received result for frame {}", result.frame_index);
+            tracing::debug!(
+                "Decode worker: Received result for frame {}",
+                result.frame_index
+            );
             results.push(result);
         }
         results

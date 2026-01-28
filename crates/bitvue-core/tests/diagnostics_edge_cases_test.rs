@@ -259,7 +259,7 @@ fn test_timestamp_boundary_values() {
         message: "At 10 hours".to_string(),
         category: Category::Bitstream,
         offset_bytes: 0,
-        timestamp_ms: 36_000_000, // 10 hours in ms
+        timestamp_ms: 36_000_000,   // 10 hours in ms
         frame_index: Some(1080000), // 10 hours @ 30fps
         count: 1,
         impact_score: 85,
@@ -520,8 +520,16 @@ fn test_mixed_frame_index_some_none() {
     assert_eq!(state.diagnostics.len(), 3);
 
     // Count diagnostics with and without frames
-    let with_frames = state.diagnostics.iter().filter(|d| d.frame_index.is_some()).count();
-    let without_frames = state.diagnostics.iter().filter(|d| d.frame_index.is_none()).count();
+    let with_frames = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.frame_index.is_some())
+        .count();
+    let without_frames = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.frame_index.is_none())
+        .count();
 
     assert_eq!(with_frames, 1);
     assert_eq!(without_frames, 2);

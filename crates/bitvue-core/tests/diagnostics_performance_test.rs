@@ -43,7 +43,10 @@ fn test_performance_add_10k_diagnostics() {
     assert_eq!(stream.read().diagnostics.len(), 10_000);
 
     // Should complete in reasonable time (< 1 second)
-    assert!(duration.as_secs() < 1, "Adding 10k diagnostics should take < 1s");
+    assert!(
+        duration.as_secs() < 1,
+        "Adding 10k diagnostics should take < 1s"
+    );
 }
 
 #[test]
@@ -57,7 +60,11 @@ fn test_performance_filter_10k_diagnostics() {
         for i in 0..10_000 {
             state.add_diagnostic(Diagnostic {
                 id: i,
-                severity: if i % 10 == 0 { Severity::Error } else { Severity::Info },
+                severity: if i % 10 == 0 {
+                    Severity::Error
+                } else {
+                    Severity::Info
+                },
                 stream_id: StreamId::A,
                 message: format!("Diagnostic {}", i),
                 category: Category::Bitstream,
@@ -74,7 +81,9 @@ fn test_performance_filter_10k_diagnostics() {
 
     let errors: Vec<_> = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| d.severity == Severity::Error)
             .cloned()
             .collect()
@@ -172,7 +181,10 @@ fn test_performance_concurrent_read_access() {
     println!("100 concurrent reads in {:?}", duration);
 
     // Should be very fast (< 10ms)
-    assert!(duration.as_millis() < 10, "Concurrent reads should take < 10ms");
+    assert!(
+        duration.as_millis() < 10,
+        "Concurrent reads should take < 10ms"
+    );
 }
 
 #[test]
@@ -205,7 +217,10 @@ fn test_performance_memory_usage_estimate() {
     // Rough estimate: ~100 bytes per diagnostic
     // 10k diagnostics = ~1MB
     let estimated_bytes = count * 100;
-    println!("Estimated memory usage: {} MB", estimated_bytes / 1_024 / 1_024);
+    println!(
+        "Estimated memory usage: {} MB",
+        estimated_bytes / 1_024 / 1_024
+    );
 
     // Should be reasonable (< 2MB)
     assert!(estimated_bytes < 2 * 1_024 * 1_024);
@@ -239,7 +254,9 @@ fn test_performance_burst_detection_10k() {
 
     let bursts: Vec<_> = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| d.count > 1)
             .cloned()
             .collect()
@@ -252,7 +269,10 @@ fn test_performance_burst_detection_10k() {
     assert_eq!(bursts.len(), 100);
 
     // Should be fast (< 50ms)
-    assert!(duration.as_millis() < 50, "Burst detection should take < 50ms");
+    assert!(
+        duration.as_millis() < 50,
+        "Burst detection should take < 50ms"
+    );
 }
 
 #[test]
@@ -286,7 +306,9 @@ fn test_performance_timestamp_search() {
 
     let closest = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .min_by_key(|d| {
                 if d.timestamp_ms > target_time {
                     d.timestamp_ms - target_time
@@ -304,7 +326,10 @@ fn test_performance_timestamp_search() {
     assert!(closest.is_some());
 
     // Should be fast (< 50ms)
-    assert!(duration.as_millis() < 50, "Timestamp search should take < 50ms");
+    assert!(
+        duration.as_millis() < 50,
+        "Timestamp search should take < 50ms"
+    );
 }
 
 #[test]
@@ -336,7 +361,9 @@ fn test_performance_frame_range_query() {
     // Query frames 4000-6000
     let in_range: Vec<_> = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| {
                 if let Some(frame) = d.frame_index {
                     frame >= 4000 && frame <= 6000
@@ -355,7 +382,10 @@ fn test_performance_frame_range_query() {
     assert_eq!(in_range.len(), 2001); // 4000-6000 inclusive
 
     // Should be fast (< 50ms)
-    assert!(duration.as_millis() < 50, "Frame range query should take < 50ms");
+    assert!(
+        duration.as_millis() < 50,
+        "Frame range query should take < 50ms"
+    );
 }
 
 #[test]
@@ -404,7 +434,10 @@ fn test_performance_impact_histogram() {
     assert_eq!(total, 10_000);
 
     // Should be fast (< 50ms)
-    assert!(duration.as_millis() < 50, "Histogram building should take < 50ms");
+    assert!(
+        duration.as_millis() < 50,
+        "Histogram building should take < 50ms"
+    );
 }
 
 #[test]
@@ -444,22 +477,50 @@ fn test_performance_category_distribution() {
 
     // Count by category
     let state = stream.read();
-    let container_count = state.diagnostics.iter().filter(|d| d.category == Category::Container).count();
-    let bitstream_count = state.diagnostics.iter().filter(|d| d.category == Category::Bitstream).count();
-    let decode_count = state.diagnostics.iter().filter(|d| d.category == Category::Decode).count();
-    let metric_count = state.diagnostics.iter().filter(|d| d.category == Category::Metric).count();
-    let io_count = state.diagnostics.iter().filter(|d| d.category == Category::IO).count();
-    let worker_count = state.diagnostics.iter().filter(|d| d.category == Category::Worker).count();
+    let container_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.category == Category::Container)
+        .count();
+    let bitstream_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.category == Category::Bitstream)
+        .count();
+    let decode_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.category == Category::Decode)
+        .count();
+    let metric_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.category == Category::Metric)
+        .count();
+    let io_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.category == Category::IO)
+        .count();
+    let worker_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.category == Category::Worker)
+        .count();
 
     let duration = start.elapsed();
 
     println!("Computed category distribution in {:?}", duration);
 
-    let total = container_count + bitstream_count + decode_count + metric_count + io_count + worker_count;
+    let total =
+        container_count + bitstream_count + decode_count + metric_count + io_count + worker_count;
     assert_eq!(total, 10_000);
 
     // Should be fast (< 100ms)
-    assert!(duration.as_millis() < 100, "Category distribution should take < 100ms");
+    assert!(
+        duration.as_millis() < 100,
+        "Category distribution should take < 100ms"
+    );
 }
 
 #[test]
@@ -537,10 +598,26 @@ fn test_performance_severity_count_aggregation() {
     let start = Instant::now();
 
     let state = stream.read();
-    let fatal_count = state.diagnostics.iter().filter(|d| d.severity == Severity::Fatal).count();
-    let error_count = state.diagnostics.iter().filter(|d| d.severity == Severity::Error).count();
-    let warn_count = state.diagnostics.iter().filter(|d| d.severity == Severity::Warn).count();
-    let info_count = state.diagnostics.iter().filter(|d| d.severity == Severity::Info).count();
+    let fatal_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Fatal)
+        .count();
+    let error_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+    let warn_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warn)
+        .count();
+    let info_count = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Info)
+        .count();
 
     let duration = start.elapsed();
 
@@ -549,5 +626,8 @@ fn test_performance_severity_count_aggregation() {
     assert_eq!(fatal_count + error_count + warn_count + info_count, 10_000);
 
     // Should be fast (< 100ms)
-    assert!(duration.as_millis() < 100, "Severity counting should take < 100ms");
+    assert!(
+        duration.as_millis() < 100,
+        "Severity counting should take < 100ms"
+    );
 }

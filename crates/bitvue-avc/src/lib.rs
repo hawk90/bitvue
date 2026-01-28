@@ -37,9 +37,16 @@ pub mod sps;
 
 pub use bitreader::{remove_emulation_prevention_bytes, BitReader};
 pub use error::{AvcError, Result};
-pub use frames::{avc_frame_to_unit_node, avc_frames_to_unit_nodes, extract_annex_b_frames, extract_frame_at_index, AvcFrame, AvcFrameType};
-pub use nal::{find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType};
-pub use overlay_extraction::{extract_mv_grid, extract_partition_grid, extract_qp_grid, Macroblock, MbType, MotionVector};
+pub use frames::{
+    avc_frame_to_unit_node, avc_frames_to_unit_nodes, extract_annex_b_frames,
+    extract_frame_at_index, AvcFrame, AvcFrameType,
+};
+pub use nal::{
+    find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType,
+};
+pub use overlay_extraction::{
+    extract_mv_grid, extract_partition_grid, extract_qp_grid, Macroblock, MbType, MotionVector,
+};
 pub use pps::Pps;
 pub use sei::{parse_sei, SeiMessage, SeiPayloadType};
 pub use slice::{SliceHeader, SliceType};
@@ -89,9 +96,10 @@ impl AvcStream {
 
     /// Get video dimensions from SPS.
     pub fn dimensions(&self) -> Option<(u32, u32)> {
-        self.sps_map.values().next().map(|sps| {
-            (sps.display_width(), sps.display_height())
-        })
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| (sps.display_width(), sps.display_height()))
     }
 
     /// Get frame rate from SPS timing info.
@@ -118,17 +126,26 @@ impl AvcStream {
 
     /// Get bit depth for chroma.
     pub fn bit_depth_chroma(&self) -> Option<u8> {
-        self.sps_map.values().next().map(|sps| sps.bit_depth_chroma())
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| sps.bit_depth_chroma())
     }
 
     /// Get chroma format.
     pub fn chroma_format(&self) -> Option<ChromaFormat> {
-        self.sps_map.values().next().map(|sps| sps.chroma_format_idc)
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| sps.chroma_format_idc)
     }
 
     /// Count frames (slices that start a new picture).
     pub fn frame_count(&self) -> usize {
-        self.slices.iter().filter(|s| s.header.first_mb_in_slice == 0).count()
+        self.slices
+            .iter()
+            .filter(|s| s.header.first_mb_in_slice == 0)
+            .count()
     }
 
     /// Get all IDR frames.
@@ -144,7 +161,10 @@ impl AvcStream {
 
     /// Get profile string.
     pub fn profile_string(&self) -> Option<String> {
-        self.sps_map.values().next().map(|sps| sps.profile_idc.to_string())
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| sps.profile_idc.to_string())
     }
 
     /// Get level string (e.g., "4.1").
@@ -260,13 +280,14 @@ fn calculate_poc(
             let max_poc_lsb = 1i32 << (sps.log2_max_pic_order_cnt_lsb_minus4 + 4);
             let poc_lsb = header.pic_order_cnt_lsb as i32;
 
-            let poc_msb = if poc_lsb < *prev_poc_lsb && (*prev_poc_lsb - poc_lsb) >= (max_poc_lsb / 2) {
-                *prev_poc_msb + max_poc_lsb
-            } else if poc_lsb > *prev_poc_lsb && (poc_lsb - *prev_poc_lsb) > (max_poc_lsb / 2) {
-                *prev_poc_msb - max_poc_lsb
-            } else {
-                *prev_poc_msb
-            };
+            let poc_msb =
+                if poc_lsb < *prev_poc_lsb && (*prev_poc_lsb - poc_lsb) >= (max_poc_lsb / 2) {
+                    *prev_poc_msb + max_poc_lsb
+                } else if poc_lsb > *prev_poc_lsb && (poc_lsb - *prev_poc_lsb) > (max_poc_lsb / 2) {
+                    *prev_poc_msb - max_poc_lsb
+                } else {
+                    *prev_poc_msb
+                };
 
             *prev_poc_msb = poc_msb;
             *prev_poc_lsb = poc_lsb;
@@ -510,7 +531,15 @@ mod tests {
         let mut prev_frame_num = 0;
         let mut prev_frame_num_offset = 0;
 
-        let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+        let _ = test_calculate_poc(
+            &sps,
+            &header,
+            false,
+            &mut prev_poc_msb,
+            &mut prev_poc_lsb,
+            &mut prev_frame_num,
+            &mut prev_frame_num_offset,
+        );
     }
 
     #[test]
@@ -600,7 +629,15 @@ mod tests {
         let mut prev_frame_num = 0;
         let mut prev_frame_num_offset = 0;
 
-        let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+        let _ = test_calculate_poc(
+            &sps,
+            &header,
+            false,
+            &mut prev_poc_msb,
+            &mut prev_poc_lsb,
+            &mut prev_frame_num,
+            &mut prev_frame_num_offset,
+        );
     }
 
     #[test]
@@ -690,7 +727,15 @@ mod tests {
         let mut prev_frame_num = 0;
         let mut prev_frame_num_offset = 0;
 
-        let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+        let _ = test_calculate_poc(
+            &sps,
+            &header,
+            false,
+            &mut prev_poc_msb,
+            &mut prev_poc_lsb,
+            &mut prev_frame_num,
+            &mut prev_frame_num_offset,
+        );
     }
 
     #[test]
@@ -780,7 +825,15 @@ mod tests {
         let mut prev_frame_num = 0;
         let mut prev_frame_num_offset = 0;
 
-        let poc = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+        let poc = test_calculate_poc(
+            &sps,
+            &header,
+            false,
+            &mut prev_poc_msb,
+            &mut prev_poc_lsb,
+            &mut prev_frame_num,
+            &mut prev_frame_num_offset,
+        );
         assert_eq!(poc, 0);
     }
 
@@ -874,7 +927,15 @@ mod tests {
         for i in 0..10 {
             header.frame_num = i;
             header.pic_order_cnt_lsb = i * 2;
-            let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+            let _ = test_calculate_poc(
+                &sps,
+                &header,
+                false,
+                &mut prev_poc_msb,
+                &mut prev_poc_lsb,
+                &mut prev_frame_num,
+                &mut prev_frame_num_offset,
+            );
         }
     }
 
@@ -969,7 +1030,15 @@ mod tests {
         // Test POC wrapping at max value
         for lsb in [0u32, 8, 15, 16, 255, 256, 511, 512, 32767, 32768, 65535] {
             header.pic_order_cnt_lsb = lsb;
-            let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+            let _ = test_calculate_poc(
+                &sps,
+                &header,
+                false,
+                &mut prev_poc_msb,
+                &mut prev_poc_lsb,
+                &mut prev_frame_num,
+                &mut prev_frame_num_offset,
+            );
         }
     }
 
@@ -1061,7 +1130,15 @@ mod tests {
         let mut prev_frame_num = 0;
         let mut prev_frame_num_offset = 0;
 
-        let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+        let _ = test_calculate_poc(
+            &sps,
+            &header,
+            false,
+            &mut prev_poc_msb,
+            &mut prev_poc_lsb,
+            &mut prev_frame_num,
+            &mut prev_frame_num_offset,
+        );
     }
 
     // POC type 2 with field pictures
@@ -1154,11 +1231,27 @@ mod tests {
 
         // Top field
         header.bottom_field_flag = false;
-        let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+        let _ = test_calculate_poc(
+            &sps,
+            &header,
+            false,
+            &mut prev_poc_msb,
+            &mut prev_poc_lsb,
+            &mut prev_frame_num,
+            &mut prev_frame_num_offset,
+        );
 
         // Bottom field
         header.bottom_field_flag = true;
-        let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+        let _ = test_calculate_poc(
+            &sps,
+            &header,
+            false,
+            &mut prev_poc_msb,
+            &mut prev_poc_lsb,
+            &mut prev_frame_num,
+            &mut prev_frame_num_offset,
+        );
     }
 
     // Various slice types with calculate_poc
@@ -1250,7 +1343,15 @@ mod tests {
             let mut prev_frame_num = 0;
             let mut prev_frame_num_offset = 0;
 
-            let _ = test_calculate_poc(&sps, &header, false, &mut prev_poc_msb, &mut prev_poc_lsb, &mut prev_frame_num, &mut prev_frame_num_offset);
+            let _ = test_calculate_poc(
+                &sps,
+                &header,
+                false,
+                &mut prev_poc_msb,
+                &mut prev_poc_lsb,
+                &mut prev_frame_num,
+                &mut prev_frame_num_offset,
+            );
         }
     }
 }

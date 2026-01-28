@@ -5,9 +5,9 @@
 //! - 32-byte header
 //! - Frame entries: 4-byte size + 8-byte timestamp + frame data
 
-use bitvue_core::BitvueError;
 use crate::bitreader::BitReader;
 use crate::obu::parse_obu_header;
+use bitvue_core::BitvueError;
 
 /// IVF file header (32 bytes)
 #[derive(Debug, Clone)]
@@ -153,10 +153,7 @@ fn extract_temporal_id_from_frame(frame_data: &[u8]) -> Option<u8> {
             if pos + 2 > frame_data.len() {
                 break;
             }
-            let obu_size = u16::from_le_bytes([
-                frame_data[pos],
-                frame_data[pos + 1],
-            ]) as usize;
+            let obu_size = u16::from_le_bytes([frame_data[pos], frame_data[pos + 1]]) as usize;
             pos += 2 + obu_size;
         } else {
             // No size field, skip to end or find next OBU

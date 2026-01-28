@@ -4,8 +4,8 @@
 
 use bitvue_avc::overlay_extraction;
 use bitvue_avc::sps::{ChromaFormat, ProfileIdc, Sps};
-use bitvue_core::BlockMode;
 use bitvue_core::partition_grid::PartitionType;
+use bitvue_core::BlockMode;
 
 fn create_minimal_sps() -> Sps {
     Sps {
@@ -297,13 +297,7 @@ fn test_macroblock_bipred() {
 
 #[test]
 fn test_macroblock_positions() {
-    let positions = vec![
-        (0u32, 0u32),
-        (16, 0),
-        (0, 16),
-        (16, 16),
-        (32, 32),
-    ];
+    let positions = vec![(0u32, 0u32), (16, 0), (0, 16), (16, 16), (32, 32)];
 
     for (x, y) in positions {
         let mb = overlay_extraction::Macroblock {
@@ -434,20 +428,28 @@ fn test_motion_vector_range() {
 
 #[test]
 fn test_grid_dimensions() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::MVGrid;
     use bitvue_core::partition_grid::PartitionGrid;
+    use bitvue_core::qp_heatmap::QPGrid;
 
     let mb_width: u32 = 120;
     let mb_height: u32 = 68;
     let pic_width = mb_width * 16;
     let pic_height = mb_height * 16;
 
-    let qp_grid = QPGrid::new(mb_width, mb_height, 16, 16, vec![26; (mb_width * mb_height) as usize], -1);
+    let qp_grid = QPGrid::new(
+        mb_width,
+        mb_height,
+        16,
+        16,
+        vec![26; (mb_width * mb_height) as usize],
+        -1,
+    );
     assert_eq!(qp_grid.grid_w, mb_width);
 
     let mv_l0 = vec![bitvue_core::mv_overlay::MotionVector::ZERO; (mb_width * mb_height) as usize];
-    let mv_l1 = vec![bitvue_core::mv_overlay::MotionVector::MISSING; (mb_width * mb_height) as usize];
+    let mv_l1 =
+        vec![bitvue_core::mv_overlay::MotionVector::MISSING; (mb_width * mb_height) as usize];
     let mv_grid = MVGrid::new(pic_width, pic_height, 16, 16, mv_l0, mv_l1, None);
     assert_eq!(mv_grid.grid_w, mb_width);
 
@@ -457,9 +459,9 @@ fn test_grid_dimensions() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::MVGrid;
     use bitvue_core::partition_grid::PartitionGrid;
+    use bitvue_core::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 16, 16, vec![], -1);

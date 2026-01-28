@@ -9,7 +9,7 @@
 
 use bitvue_core::{BitReader as CoreBitReader, ExpGolombReader};
 
-use crate::error::{VvcError, Result};
+use crate::error::{Result, VvcError};
 
 /// VVC-specific bit reader wrapper
 ///

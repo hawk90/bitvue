@@ -2,7 +2,7 @@
 //!
 //! Tests for SPS parsing functionality.
 
-use bitvue_hevc::sps::{Sps, parse_sps, ChromaFormat, Profile, ProfileTierLevel};
+use bitvue_hevc::sps::{parse_sps, ChromaFormat, Profile, ProfileTierLevel, Sps};
 
 #[test]
 fn test_parse_sps_minimal() {
@@ -76,11 +76,7 @@ fn test_sps_chroma_format_variants() {
 
 #[test]
 fn test_sps_profile_variants() {
-    let profiles = vec![
-        Profile::Main,
-        Profile::Main10,
-        Profile::MainStillPicture,
-    ];
+    let profiles = vec![Profile::Main, Profile::Main10, Profile::MainStillPicture];
 
     for profile in profiles {
         let _ = format!("Profile: {:?}", profile);
@@ -113,12 +109,7 @@ fn test_sps_4k_resolution() {
 
 #[test]
 fn test_sps_various_resolutions() {
-    let resolutions = vec![
-        (640, 480),
-        (1280, 720),
-        (1920, 1080),
-        (3840, 2160),
-    ];
+    let resolutions = vec![(640, 480), (1280, 720), (1920, 1080), (3840, 2160)];
 
     for (width, height) in resolutions {
         let sps = Sps {

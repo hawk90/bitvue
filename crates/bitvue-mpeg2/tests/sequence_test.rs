@@ -198,11 +198,26 @@ fn test_all_field_codes() {
 
 #[test]
 fn test_chroma_format_from_u8() {
-    assert_eq!(sequence::ChromaFormat::from_u8(1), sequence::ChromaFormat::Yuv420);
-    assert_eq!(sequence::ChromaFormat::from_u8(2), sequence::ChromaFormat::Yuv422);
-    assert_eq!(sequence::ChromaFormat::from_u8(3), sequence::ChromaFormat::Yuv444);
-    assert_eq!(sequence::ChromaFormat::from_u8(0), sequence::ChromaFormat::Reserved);
-    assert_eq!(sequence::ChromaFormat::from_u8(99), sequence::ChromaFormat::Yuv420); // Invalid defaults to 420
+    assert_eq!(
+        sequence::ChromaFormat::from_u8(1),
+        sequence::ChromaFormat::Yuv420
+    );
+    assert_eq!(
+        sequence::ChromaFormat::from_u8(2),
+        sequence::ChromaFormat::Yuv422
+    );
+    assert_eq!(
+        sequence::ChromaFormat::from_u8(3),
+        sequence::ChromaFormat::Yuv444
+    );
+    assert_eq!(
+        sequence::ChromaFormat::from_u8(0),
+        sequence::ChromaFormat::Reserved
+    );
+    assert_eq!(
+        sequence::ChromaFormat::from_u8(99),
+        sequence::ChromaFormat::Yuv420
+    ); // Invalid defaults to 420
 }
 
 #[test]
@@ -251,12 +266,7 @@ fn test_vbv_buffer_values() {
 
 #[test]
 fn test_aspect_ratio_codes() {
-    let ratios = vec![
-        (1, "1:1 (Square)"),
-        (2, "4:3"),
-        (3, "16:9"),
-        (4, "2.21:1"),
-    ];
+    let ratios = vec![(1, "1:1 (Square)"), (2, "4:3"), (3, "16:9"), (4, "2.21:1")];
 
     for (code, expected) in ratios {
         let seq = sequence::SequenceHeader {

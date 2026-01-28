@@ -60,8 +60,10 @@ impl MvPredictorContext {
             .filter_map(|(nx, ny, _weight)| {
                 self.parsed_cus.iter().find(|cu| {
                     // Check if this CU overlaps with the neighbor position
-                    cu.x < nx + 8 && cu.x + cu.width > *nx
-                        && cu.y < ny + 8 && cu.y + cu.height > *ny
+                    cu.x < nx + 8
+                        && cu.x + cu.width > *nx
+                        && cu.y < ny + 8
+                        && cu.y + cu.height > *ny
                         && cu.is_inter()
                 })
             })
@@ -162,10 +164,7 @@ impl MvPredictorContext {
 ///
 /// For NEWMV mode, the predictor is added to the explicitly coded MV
 pub fn apply_mv_predictor(mv: MotionVector, predictor: MotionVector) -> MotionVector {
-    MotionVector::new(
-        mv.x + predictor.x,
-        mv.y + predictor.y,
-    )
+    MotionVector::new(mv.x + predictor.x, mv.y + predictor.y)
 }
 
 /// Parse MV with predictor

@@ -30,18 +30,22 @@ pub mod overlay_extraction;
 pub mod superframe;
 pub mod syntax;
 
-pub use error::{Vp9Error, Result};
 pub use bitreader::BitReader;
+pub use error::{Result, Vp9Error};
 pub use frame_header::{
-    ColorSpace, FrameHeader, FrameType, InterpolationFilter, LoopFilter, Quantization,
-    RefFrame, Segmentation, SegmentFeature,
+    ColorSpace, FrameHeader, FrameType, InterpolationFilter, LoopFilter, Quantization, RefFrame,
+    SegmentFeature, Segmentation,
 };
-pub use frames::{extract_vp9_frames, extract_frame_at_index, vp9_frame_to_unit_node, vp9_frames_to_unit_nodes, Vp9Frame, Vp9FrameType};
+pub use frames::{
+    extract_frame_at_index, extract_vp9_frames, vp9_frame_to_unit_node, vp9_frames_to_unit_nodes,
+    Vp9Frame, Vp9FrameType,
+};
 pub use overlay_extraction::{
-    extract_mv_grid, extract_partition_grid, extract_qp_grid,
-    MotionVector, SuperBlock,
+    extract_mv_grid, extract_partition_grid, extract_qp_grid, MotionVector, SuperBlock,
 };
-pub use superframe::{extract_frames, has_superframe_index, parse_superframe_index, SuperframeIndex};
+pub use superframe::{
+    extract_frames, has_superframe_index, parse_superframe_index, SuperframeIndex,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +66,9 @@ impl Vp9Stream {
 
     /// Get render dimensions from first frame.
     pub fn render_dimensions(&self) -> Option<(u32, u32)> {
-        self.frames.first().map(|f| (f.render_width, f.render_height))
+        self.frames
+            .first()
+            .map(|f| (f.render_width, f.render_height))
     }
 
     /// Get bit depth from first frame.

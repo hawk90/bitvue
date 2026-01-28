@@ -303,7 +303,8 @@ impl YuvViewerPanel {
         };
 
         let diff_image = ColorImage::from_rgb([width as usize, height as usize], &diff_rgb);
-        self.diff_texture = Some(ctx.load_texture("yuv_diff", diff_image, egui::TextureOptions::LINEAR));
+        self.diff_texture =
+            Some(ctx.load_texture("yuv_diff", diff_image, egui::TextureOptions::LINEAR));
     }
 
     /// Check if Stream B data is available for comparison
@@ -320,7 +321,10 @@ impl YuvViewerPanel {
     fn get_block_at(&self, pixel_x: u32, pixel_y: u32) -> Option<&BlockInfo> {
         self.block_info.as_ref().and_then(|blocks| {
             blocks.iter().find(|b| {
-                pixel_x >= b.x && pixel_x < b.x + b.width && pixel_y >= b.y && pixel_y < b.y + b.height
+                pixel_x >= b.x
+                    && pixel_x < b.x + b.width
+                    && pixel_y >= b.y
+                    && pixel_y < b.y + b.height
             })
         })
     }
@@ -672,7 +676,10 @@ impl YuvViewerPanel {
                                 painter.rect_stroke(
                                     block_rect,
                                     0.0,
-                                    egui::Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 0, 128)),
+                                    egui::Stroke::new(
+                                        1.0,
+                                        Color32::from_rgba_unmultiplied(255, 255, 0, 128),
+                                    ),
                                 );
                             }
                         }

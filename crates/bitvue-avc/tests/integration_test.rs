@@ -5,9 +5,7 @@
 //! - Frame extraction
 //! - Basic overlay data extraction
 
-use bitvue_avc::{
-    extract_annex_b_frames, parse_avc, parse_nal_units,
-};
+use bitvue_avc::{extract_annex_b_frames, parse_avc, parse_nal_units};
 
 #[test]
 fn test_parse_empty_stream() {
@@ -31,9 +29,9 @@ fn test_extract_frames_empty() {
 fn test_nal_unit_detection() {
     // Test NAL unit start code detection
     let data = [
-        0x00, 0x00, 0x00, 0x01, 0x67,  // SPS
-        0x00, 0x00, 0x00, 0x01, 0x68,  // PPS
-        0x00, 0x00, 0x00, 0x01, 0x65,  // IDR
+        0x00, 0x00, 0x00, 0x01, 0x67, // SPS
+        0x00, 0x00, 0x00, 0x01, 0x68, // PPS
+        0x00, 0x00, 0x00, 0x01, 0x65, // IDR
     ];
 
     let nal_units = parse_nal_units(&data);
@@ -43,16 +41,25 @@ fn test_nal_unit_detection() {
     assert_eq!(nal_units.len(), 3);
 
     // Verify NAL unit types
-    assert_eq!(nal_units[0].header.nal_unit_type, bitvue_avc::NalUnitType::Sps);
-    assert_eq!(nal_units[1].header.nal_unit_type, bitvue_avc::NalUnitType::Pps);
-    assert_eq!(nal_units[2].header.nal_unit_type, bitvue_avc::NalUnitType::IdrSlice);
+    assert_eq!(
+        nal_units[0].header.nal_unit_type,
+        bitvue_avc::NalUnitType::Sps
+    );
+    assert_eq!(
+        nal_units[1].header.nal_unit_type,
+        bitvue_avc::NalUnitType::Pps
+    );
+    assert_eq!(
+        nal_units[2].header.nal_unit_type,
+        bitvue_avc::NalUnitType::IdrSlice
+    );
 }
 
 #[test]
 fn test_three_byte_start_code() {
     // Test 3-byte start code (0x00 0x00 0x01)
     let data = [
-        0x00, 0x00, 0x01, 0x67,  // SPS with 3-byte start code
+        0x00, 0x00, 0x01, 0x67, // SPS with 3-byte start code
         0x42, 0x80,
     ];
 
@@ -61,7 +68,10 @@ fn test_three_byte_start_code() {
 
     let nal_units = nal_units.unwrap();
     assert_eq!(nal_units.len(), 1);
-    assert_eq!(nal_units[0].header.nal_unit_type, bitvue_avc::NalUnitType::Sps);
+    assert_eq!(
+        nal_units[0].header.nal_unit_type,
+        bitvue_avc::NalUnitType::Sps
+    );
 }
 
 #[test]
@@ -69,17 +79,20 @@ fn test_nal_ref_idc() {
     // Test NAL reference indication flag
     // nal_ref_idc is in bits 5-6 (value >> 5)
     let tests = vec![
-        (0x67, 3),   // SPS: 0x67 = 01100111 -> nal_ref_idc = 11 = 3
-        (0x68, 3),   // PPS: 0x68 = 01101000 -> nal_ref_idc = 11 = 3
-        (0x65, 3),   // IDR: 0x65 = 01100101 -> nal_ref_idc = 11 = 3
-        (0x61, 3),   // Non-IDR: 0x61 = 01100001 -> nal_ref_idc = 11 = 3
-        (0x21, 1),   // Non-ref: 0x21 = 00100001 -> nal_ref_idc = 01 = 1
+        (0x67, 3), // SPS: 0x67 = 01100111 -> nal_ref_idc = 11 = 3
+        (0x68, 3), // PPS: 0x68 = 01101000 -> nal_ref_idc = 11 = 3
+        (0x65, 3), // IDR: 0x65 = 01100101 -> nal_ref_idc = 11 = 3
+        (0x61, 3), // Non-IDR: 0x61 = 01100001 -> nal_ref_idc = 11 = 3
+        (0x21, 1), // Non-ref: 0x21 = 00100001 -> nal_ref_idc = 01 = 1
     ];
 
     for (nal_header_byte, expected_ref_idc) in tests {
         let header = bitvue_avc::parse_nal_header(nal_header_byte).unwrap();
-        assert_eq!(header.nal_ref_idc, expected_ref_idc,
-            "NAL header 0x{:02x} should have nal_ref_idc={}", nal_header_byte, expected_ref_idc);
+        assert_eq!(
+            header.nal_ref_idc, expected_ref_idc,
+            "NAL header 0x{:02x} should have nal_ref_idc={}",
+            nal_header_byte, expected_ref_idc
+        );
     }
 }
 
@@ -90,7 +103,8 @@ fn test_overlay_extraction_api() {
 
     if let Ok(nal_units) = parse_nal_units(&data) {
         // Find SPS
-        let sps_option = nal_units.iter()
+        let sps_option = nal_units
+            .iter()
             .find(|nal| nal.header.nal_unit_type == bitvue_avc::NalUnitType::Sps);
 
         if let Some(nal_with_sps) = sps_option {
@@ -105,7 +119,10 @@ fn test_overlay_extraction_api() {
 
                 // Test partition grid extraction
                 let part_result = bitvue_avc::extract_partition_grid(&nal_units, &sps);
-                assert!(part_result.is_ok(), "Partition grid extraction should not crash");
+                assert!(
+                    part_result.is_ok(),
+                    "Partition grid extraction should not crash"
+                );
             }
         }
     }
@@ -123,25 +140,28 @@ fn test_v0_4_avc_support_completeness() {
     assert!(!nal_units.is_empty(), "Should have NAL units");
 
     // 2. SPS type detection
-    let has_sps = nal_units.iter()
+    let has_sps = nal_units
+        .iter()
         .any(|nal| nal.header.nal_unit_type == bitvue_avc::NalUnitType::Sps);
     assert!(has_sps, "Should detect SPS NAL unit type");
 
     // 3. PPS type detection
-    let has_pps = nal_units.iter()
+    let has_pps = nal_units
+        .iter()
         .any(|nal| nal.header.nal_unit_type == bitvue_avc::NalUnitType::Pps);
     assert!(has_pps, "Should detect PPS NAL unit type");
 
     // 4. VCL (Video Coding Layer) detection
-    let has_vcl = nal_units.iter()
+    let has_vcl = nal_units
+        .iter()
         .any(|nal| nal.header.nal_unit_type.is_vcl());
     assert!(has_vcl, "Should detect VCL NAL unit type");
 
     // 5. VCL vs non-VCL classification
     for nal in &nal_units {
         let is_vcl = nal.header.nal_unit_type.is_vcl();
-        let is_sps_or_pps = nal.header.nal_unit_type == bitvue_avc::NalUnitType::Sps ||
-                           nal.header.nal_unit_type == bitvue_avc::NalUnitType::Pps;
+        let is_sps_or_pps = nal.header.nal_unit_type == bitvue_avc::NalUnitType::Sps
+            || nal.header.nal_unit_type == bitvue_avc::NalUnitType::Pps;
 
         if is_sps_or_pps {
             assert!(!is_vcl, "SPS/PPS should not be VCL");
@@ -150,12 +170,18 @@ fn test_v0_4_avc_support_completeness() {
 
     // 6. Overlay extraction functions exist
     let sps = create_test_sps();
-    assert!(bitvue_avc::extract_qp_grid(&nal_units, &sps, 26).is_ok(),
-        "extract_qp_grid should be callable");
-    assert!(bitvue_avc::extract_mv_grid(&nal_units, &sps).is_ok(),
-        "extract_mv_grid should be callable");
-    assert!(bitvue_avc::extract_partition_grid(&nal_units, &sps).is_ok(),
-        "extract_partition_grid should be callable");
+    assert!(
+        bitvue_avc::extract_qp_grid(&nal_units, &sps, 26).is_ok(),
+        "extract_qp_grid should be callable"
+    );
+    assert!(
+        bitvue_avc::extract_mv_grid(&nal_units, &sps).is_ok(),
+        "extract_mv_grid should be callable"
+    );
+    assert!(
+        bitvue_avc::extract_partition_grid(&nal_units, &sps).is_ok(),
+        "extract_partition_grid should be callable"
+    );
 }
 
 /// Create a minimal H.264 byte stream for testing
@@ -164,17 +190,17 @@ fn create_minimal_h264_stream() -> Vec<u8> {
 
     // SPS (Sequence Parameter Set)
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.push(0x67);  // NAL type: SPS
+    data.push(0x67); // NAL type: SPS
     data.extend_from_slice(&[0x42, 0x80, 0x1e, 0x90, 0x00]);
 
     // PPS (Picture Parameter Set)
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.push(0x68);  // NAL type: PPS
+    data.push(0x68); // NAL type: PPS
     data.extend_from_slice(&[0xce, 0x06]);
 
     // IDR frame
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.push(0x65);  // NAL type: IDR
+    data.push(0x65); // NAL type: IDR
     data.extend_from_slice(&[0x01, 0x00]);
 
     data
@@ -237,7 +263,10 @@ fn test_frame_extraction_count() {
 
     // All extracted frames should have valid offsets
     for frame in &frames {
-        assert!(frame.offset as usize <= data.len(), "Frame offset should be within data");
+        assert!(
+            frame.offset as usize <= data.len(),
+            "Frame offset should be within data"
+        );
         assert!(frame.size > 0, "Frame should have non-zero size");
     }
 }
@@ -247,20 +276,26 @@ fn test_nal_header_parsing() {
     // Test various NAL header values
     // Format: (byte, expected_type, expected_ref_idc)
     let test_cases = vec![
-        (0x67, bitvue_avc::NalUnitType::Sps, 3),      // SPS, ref
-        (0x68, bitvue_avc::NalUnitType::Pps, 3),      // PPS, ref
-        (0x65, bitvue_avc::NalUnitType::IdrSlice, 3), // IDR, ref
-        (0x61, bitvue_avc::NalUnitType::NonIdrSlice, 3),    // Non-IDR, ref
-        (0x21, bitvue_avc::NalUnitType::NonIdrSlice, 1),    // Non-ref slice
-        (0x06, bitvue_avc::NalUnitType::Sei, 0),      // SEI, non-ref
-        (0x07, bitvue_avc::NalUnitType::Sps, 0),      // SPS (alt, non-ref)
+        (0x67, bitvue_avc::NalUnitType::Sps, 3),         // SPS, ref
+        (0x68, bitvue_avc::NalUnitType::Pps, 3),         // PPS, ref
+        (0x65, bitvue_avc::NalUnitType::IdrSlice, 3),    // IDR, ref
+        (0x61, bitvue_avc::NalUnitType::NonIdrSlice, 3), // Non-IDR, ref
+        (0x21, bitvue_avc::NalUnitType::NonIdrSlice, 1), // Non-ref slice
+        (0x06, bitvue_avc::NalUnitType::Sei, 0),         // SEI, non-ref
+        (0x07, bitvue_avc::NalUnitType::Sps, 0),         // SPS (alt, non-ref)
     ];
 
     for (byte, expected_type, expected_ref_idc) in test_cases {
         let header = bitvue_avc::parse_nal_header(byte).unwrap();
-        assert_eq!(header.nal_unit_type, expected_type,
-            "Byte 0x{:02x} should produce type {:?}", byte, expected_type);
-        assert_eq!(header.nal_ref_idc, expected_ref_idc,
-            "Byte 0x{:02x} should have ref_idc {}", byte, expected_ref_idc);
+        assert_eq!(
+            header.nal_unit_type, expected_type,
+            "Byte 0x{:02x} should produce type {:?}",
+            byte, expected_type
+        );
+        assert_eq!(
+            header.nal_ref_idc, expected_ref_idc,
+            "Byte 0x{:02x} should have ref_idc {}",
+            byte, expected_ref_idc
+        );
     }
 }

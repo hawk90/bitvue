@@ -77,7 +77,10 @@ fn test_path_normalization() {
         path.replace('\\', "/")
     }
 
-    assert_eq!(normalize_path("C:\\path\\to\\file.ivf"), "C:/path/to/file.ivf");
+    assert_eq!(
+        normalize_path("C:\\path\\to\\file.ivf"),
+        "C:/path/to/file.ivf"
+    );
 }
 
 #[test]

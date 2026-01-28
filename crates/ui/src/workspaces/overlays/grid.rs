@@ -18,8 +18,8 @@ impl GridOverlayState {
     pub fn new() -> Self {
         Self {
             size: 64,
-            show_ctb_labels: true,  // VQAnalyzer parity
-            show_headers: true,     // VQAnalyzer parity
+            show_ctb_labels: true, // VQAnalyzer parity
+            show_headers: true,    // VQAnalyzer parity
         }
     }
 

@@ -30,14 +30,10 @@ fn test_mpeg2_picture_types() {
         I = 1,
         P = 2,
         B = 3,
-        D = 4,  // DC-coded pictures (rare)
+        D = 4, // DC-coded pictures (rare)
     }
 
-    let types = vec![
-        PictureType::I,
-        PictureType::P,
-        PictureType::B,
-    ];
+    let types = vec![PictureType::I, PictureType::P, PictureType::B];
 
     assert_eq!(types.len(), 3);
 }
@@ -54,11 +50,7 @@ fn test_mpeg2_profiles() {
         High = 1,
     }
 
-    let profiles = vec![
-        Mpeg2Profile::Simple,
-        Mpeg2Profile::Main,
-        Mpeg2Profile::High,
-    ];
+    let profiles = vec![Mpeg2Profile::Simple, Mpeg2Profile::Main, Mpeg2Profile::High];
 
     assert_eq!(profiles.len(), 3);
 }
@@ -74,11 +66,7 @@ fn test_mpeg2_levels() {
         High = 4,
     }
 
-    let levels = vec![
-        Mpeg2Level::Low,
-        Mpeg2Level::Main,
-        Mpeg2Level::High,
-    ];
+    let levels = vec![Mpeg2Level::Low, Mpeg2Level::Main, Mpeg2Level::High];
 
     assert_eq!(levels.len(), 3);
 }
@@ -170,8 +158,8 @@ fn test_mpeg2_sequence_header() {
     let seq = SequenceHeader {
         horizontal_size: 720,
         vertical_size: 576,
-        aspect_ratio_info: 3,  // 16:9
-        frame_rate_code: 3,    // 25 fps
+        aspect_ratio_info: 3, // 16:9
+        frame_rate_code: 3,   // 25 fps
         bit_rate_value: 5000000,
         vbv_buffer_size: 224,
     };
@@ -213,12 +201,10 @@ fn test_mpeg2_picture_structure() {
 fn test_mpeg2_dct_type() {
     // Test DCT type flag
     struct DctType {
-        frame_dct: bool,  // true=frame DCT, false=field DCT
+        frame_dct: bool, // true=frame DCT, false=field DCT
     }
 
-    let dct = DctType {
-        frame_dct: true,
-    };
+    let dct = DctType { frame_dct: true };
 
     assert!(dct.frame_dct);
 }
@@ -226,7 +212,7 @@ fn test_mpeg2_dct_type() {
 #[test]
 fn test_mpeg2_coded_block_pattern() {
     // Test coded block pattern
-    let cbp = 0b111111u8;  // All 6 blocks coded
+    let cbp = 0b111111u8; // All 6 blocks coded
 
     let y_blocks = (cbp >> 2) & 0x0F;
     let cb_coded = (cbp >> 1) & 0x01;

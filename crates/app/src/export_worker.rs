@@ -77,8 +77,12 @@ impl ExportWorker {
     ) {
         while let Ok(request) = request_rx.recv() {
             let (path, req_id) = match &request {
-                ExportRequest::Csv { path, request_id, .. } => (path.clone(), *request_id),
-                ExportRequest::Json { path, request_id, .. } => (path.clone(), *request_id),
+                ExportRequest::Csv {
+                    path, request_id, ..
+                } => (path.clone(), *request_id),
+                ExportRequest::Json {
+                    path, request_id, ..
+                } => (path.clone(), *request_id),
             };
 
             // Note: No staleness checking for exports - each export is independent
@@ -86,12 +90,8 @@ impl ExportWorker {
 
             // Perform export (blocking I/O, but in background thread)
             let result = match request {
-                ExportRequest::Csv { data, path, .. } => {
-                    Self::export_csv(&data, &path)
-                }
-                ExportRequest::Json { data, path, .. } => {
-                    Self::export_json(&data, &path)
-                }
+                ExportRequest::Csv { data, path, .. } => Self::export_csv(&data, &path),
+                ExportRequest::Json { data, path, .. } => Self::export_json(&data, &path),
             };
 
             // Send result (ignore if channel closed)
@@ -348,7 +348,11 @@ mod tests {
         }
 
         // Verify we got both results
-        assert!(all_results.len() >= 2, "Expected 2 results, got {}", all_results.len());
+        assert!(
+            all_results.len() >= 2,
+            "Expected 2 results, got {}",
+            all_results.len()
+        );
         for result in &all_results {
             assert!(result.result.is_ok());
         }

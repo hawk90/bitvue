@@ -211,7 +211,9 @@ fn test_frame_dependency() {
 
     impl FrameDependency {
         fn can_decode(&self, available_frames: &[usize]) -> bool {
-            self.depends_on.iter().all(|dep| available_frames.contains(dep))
+            self.depends_on
+                .iter()
+                .all(|dep| available_frames.contains(dep))
         }
     }
 
@@ -285,7 +287,9 @@ fn test_color_conversion() {
         let v = v as i32 - 128;
 
         let r = (y + (1.370705 * v as f32) as i32).max(0).min(255) as u8;
-        let g = (y - (0.337633 * u as f32) as i32 - (0.698001 * v as f32) as i32).max(0).min(255) as u8;
+        let g = (y - (0.337633 * u as f32) as i32 - (0.698001 * v as f32) as i32)
+            .max(0)
+            .min(255) as u8;
         let b = (y + (1.732446 * u as f32) as i32).max(0).min(255) as u8;
 
         (r, g, b)

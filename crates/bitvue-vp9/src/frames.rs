@@ -68,13 +68,15 @@ pub fn extract_vp9_frames(data: &[u8]) -> Result<Vec<Vp9Frame>, String> {
     let stream = parse_vp9(data).map_err(|e| format!("Failed to parse VP9 stream: {:?}", e))?;
 
     // Extract frame data using superframe parser
-    let frame_data_list = crate::extract_frames(data)
-        .map_err(|e| format!("Failed to extract frames: {:?}", e))?;
+    let frame_data_list =
+        crate::extract_frames(data).map_err(|e| format!("Failed to extract frames: {:?}", e))?;
 
     let mut frames = Vec::new();
 
     let mut current_offset = 0;
-    for (idx, (frame_data, frame_header)) in frame_data_list.iter().zip(stream.frames.iter()).enumerate() {
+    for (idx, (frame_data, frame_header)) in
+        frame_data_list.iter().zip(stream.frames.iter()).enumerate()
+    {
         let frame_type = Vp9FrameType::from_frame_type(frame_header.frame_type);
 
         let frame = Vp9Frame {
@@ -118,9 +120,16 @@ pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
         frame_type: Some(frame.frame_type.as_str().to_string()),
         pts: Some(frame.frame_index as u64),
         dts: None,
-        display_name: format!("Frame {} ({})", frame.frame_index, frame.frame_type.as_str()),
+        display_name: format!(
+            "Frame {} ({})",
+            frame.frame_index,
+            frame.frame_type.as_str()
+        ),
         children: Vec::new(),
-        qp_avg: frame.frame_header.as_ref().map(|h| h.quantization.base_q_idx),
+        qp_avg: frame
+            .frame_header
+            .as_ref()
+            .map(|h| h.quantization.base_q_idx),
         mv_grid: None,
         temporal_id: None,
         ref_frames: None,
@@ -130,10 +139,7 @@ pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
 
 /// Convert multiple Vp9Frames to UnitNode format
 pub fn vp9_frames_to_unit_nodes(frames: &[Vp9Frame]) -> Vec<bitvue_core::UnitNode> {
-    frames
-        .iter()
-        .map(vp9_frame_to_unit_node)
-        .collect()
+    frames.iter().map(vp9_frame_to_unit_node).collect()
 }
 
 #[cfg(test)]
@@ -157,7 +163,13 @@ mod tests {
 
     #[test]
     fn test_frame_type_from_frame_type() {
-        assert_eq!(Vp9FrameType::from_frame_type(FrameType::KeyFrame), Vp9FrameType::Key);
-        assert_eq!(Vp9FrameType::from_frame_type(FrameType::InterFrame), Vp9FrameType::Inter);
+        assert_eq!(
+            Vp9FrameType::from_frame_type(FrameType::KeyFrame),
+            Vp9FrameType::Key
+        );
+        assert_eq!(
+            Vp9FrameType::from_frame_type(FrameType::InterFrame),
+            Vp9FrameType::Inter
+        );
     }
 }

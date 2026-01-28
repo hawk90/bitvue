@@ -4,7 +4,7 @@
 //! It is defined in ITU-T H.265 Section 7.3.2.3.
 
 use crate::bitreader::BitReader;
-use crate::error::{Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
 /// HEVC Picture Parameter Set.
@@ -278,7 +278,9 @@ pub fn parse_pps(data: &[u8]) -> Result<Pps> {
         if !tile_config.uniform_spacing_flag {
             // column_width_minus1
             for _ in 0..tile_config.num_tile_columns_minus1 {
-                tile_config.column_width_minus1.push(reader.read_ue()? as u16);
+                tile_config
+                    .column_width_minus1
+                    .push(reader.read_ue()? as u16);
             }
             // row_height_minus1
             for _ in 0..tile_config.num_tile_rows_minus1 {

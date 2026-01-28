@@ -64,7 +64,10 @@ impl MarkerClustering {
     /// Cluster markers based on zoom level
     ///
     /// Per PERFORMANCE_DEGRADATION_RULES: Cluster threshold grows as zoom-out
-    pub fn cluster(markers: &[(usize, FrameMarker)], cluster_threshold: usize) -> Vec<MarkerCluster> {
+    pub fn cluster(
+        markers: &[(usize, FrameMarker)],
+        cluster_threshold: usize,
+    ) -> Vec<MarkerCluster> {
         if markers.is_empty() {
             return Vec::new();
         }

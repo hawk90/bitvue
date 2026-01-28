@@ -1060,7 +1060,7 @@ fn test_pps_with_all_ref_indices() {
                 pic_scaling_matrix_present_flag: false,
                 second_chroma_qp_index_offset: 0,
             };
-            
+
             let qp = pps.initial_qp();
             assert!(qp >= 0 && qp <= 51);
         }
@@ -1070,7 +1070,7 @@ fn test_pps_with_all_ref_indices() {
 #[test]
 fn test_pps_various_transform_8x8_flags() {
     let flags = [false, true];
-    
+
     for transform_8x8_flag in flags {
         let pps = Pps {
             pic_parameter_set_id: 0,
@@ -1093,7 +1093,7 @@ fn test_pps_various_transform_8x8_flags() {
             pic_scaling_matrix_present_flag: false,
             second_chroma_qp_index_offset: 0,
         };
-        
+
         let _ = pps;
     }
 }
@@ -1122,7 +1122,7 @@ fn test_pps_various_pic_init_qs() {
             pic_scaling_matrix_present_flag: false,
             second_chroma_qp_index_offset: 0,
         };
-        
+
         let _ = pps;
     }
 }
@@ -1130,7 +1130,7 @@ fn test_pps_various_pic_init_qs() {
 #[test]
 fn test_pps_various_constraint_flags() {
     let flags = [false, true];
-    
+
     for constrained_flag in flags {
         let pps = Pps {
             pic_parameter_set_id: 0,
@@ -1153,7 +1153,7 @@ fn test_pps_various_constraint_flags() {
             pic_scaling_matrix_present_flag: false,
             second_chroma_qp_index_offset: 0,
         };
-        
+
         let _ = pps;
     }
 }
@@ -1182,7 +1182,7 @@ fn test_pps_various_weighted_bipred() {
             pic_scaling_matrix_present_flag: false,
             second_chroma_qp_index_offset: 0,
         };
-        
+
         let _ = pps;
     }
 }

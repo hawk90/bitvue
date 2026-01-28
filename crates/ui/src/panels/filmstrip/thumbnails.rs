@@ -23,13 +23,18 @@ impl FilmstripPanel {
         // Draw baseline
         let baseline_y = rect.center().y;
         painter.line_segment(
-            [egui::pos2(rect.left(), baseline_y), egui::pos2(rect.right(), baseline_y)],
+            [
+                egui::pos2(rect.left(), baseline_y),
+                egui::pos2(rect.right(), baseline_y),
+            ],
             Stroke::new(1.0, Color32::from_rgb(100, 100, 100)),
         );
 
         // Draw reference arrows (simplified: show arrows from B/P frames to previous I/P frames)
         for (idx, frame) in frames.iter().enumerate() {
-            if idx == 0 { continue; } // First frame has no reference
+            if idx == 0 {
+                continue;
+            } // First frame has no reference
 
             // Skip intra frames (they don't reference other frames)
             if frame.frame_type == "KEY" || frame.nal_type == "IDR" || frame.nal_type == "KEY" {
@@ -47,19 +52,28 @@ impl FilmstripPanel {
             }
 
             // Calculate arrow positions
-            let from_x = rect.left() + idx as f32 * thumb_total_width + thumb_total_width / 2.0 - scroll_offset;
-            let to_x = rect.left() + ref_idx as f32 * thumb_total_width + thumb_total_width / 2.0 - scroll_offset;
+            let from_x = rect.left() + idx as f32 * thumb_total_width + thumb_total_width / 2.0
+                - scroll_offset;
+            let to_x = rect.left() + ref_idx as f32 * thumb_total_width + thumb_total_width / 2.0
+                - scroll_offset;
 
             // Only draw if visible
-            if from_x < rect.left() || from_x > rect.right() { continue; }
-            if to_x < rect.left() || to_x > rect.right() { continue; }
+            if from_x < rect.left() || from_x > rect.right() {
+                continue;
+            }
+            if to_x < rect.left() || to_x > rect.right() {
+                continue;
+            }
 
             // Arrow color: orange for forward refs (L0)
             let arrow_color = Color32::from_rgb(255, 180, 80);
 
             // Draw arrow line
             painter.line_segment(
-                [egui::pos2(from_x, baseline_y - 3.0), egui::pos2(to_x, baseline_y - 3.0)],
+                [
+                    egui::pos2(from_x, baseline_y - 3.0),
+                    egui::pos2(to_x, baseline_y - 3.0),
+                ],
                 Stroke::new(1.5, arrow_color),
             );
 
@@ -83,7 +97,10 @@ impl FilmstripPanel {
 
             // Draw vertical tick at source frame
             painter.line_segment(
-                [egui::pos2(from_x, baseline_y), egui::pos2(from_x, baseline_y - 6.0)],
+                [
+                    egui::pos2(from_x, baseline_y),
+                    egui::pos2(from_x, baseline_y - 6.0),
+                ],
                 Stroke::new(1.0, arrow_color),
             );
         }
@@ -106,12 +123,7 @@ impl FilmstripPanel {
             // VQAnalyzer parity: Show "FRAME_TYPE-LAYER FRAME_NUM" format at top
             // e.g., "INTER-A 5" means Inter frame, layer A, frame number 5
             let layer = "A"; // TODO: Extract from actual layer info
-            let header_text = format!(
-                "{}-{} {}",
-                frame.frame_type,
-                layer,
-                frame.frame_index
-            );
+            let header_text = format!("{}-{} {}", frame.frame_type, layer, frame.frame_index);
             ui.label(
                 egui::RichText::new(header_text)
                     .small()
@@ -134,11 +146,8 @@ impl FilmstripPanel {
             // VQAnalyzer-style: Full colored border around thumbnail based on frame type
             if self.show_type_borders {
                 // Draw frame type border (I=red, P=green, B=blue)
-                ui.painter().rect_filled(
-                    outer_rect,
-                    Rounding::same(3.0),
-                    type_color,
-                );
+                ui.painter()
+                    .rect_filled(outer_rect, Rounding::same(3.0), type_color);
             }
 
             // Inner thumbnail rect (inside the border)
@@ -200,7 +209,8 @@ impl FilmstripPanel {
                 };
 
                 // Draw badge background
-                ui.painter().rect_filled(badge_rect, Rounding::same(3.0), badge_bg);
+                ui.painter()
+                    .rect_filled(badge_rect, Rounding::same(3.0), badge_bg);
 
                 // Draw border
                 ui.painter().rect_stroke(
@@ -268,7 +278,7 @@ impl FilmstripPanel {
                     ui.separator();
                     ui.colored_label(
                         Color32::from_rgb(255, 180, 80),
-                        format!("⚠ {} diagnostic(s)", frame.diagnostic_count)
+                        format!("⚠ {} diagnostic(s)", frame.diagnostic_count),
                     );
                     ui.label(format!("Max impact: {}", frame.max_impact));
                     ui.label("Click to view details");

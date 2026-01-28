@@ -3,8 +3,8 @@
 //! Tests for extracting frames from AVC Annex B byte streams.
 
 use bitvue_avc::frames::{
-    avc_frame_to_unit_node, avc_frames_to_unit_nodes,
-    extract_annex_b_frames, extract_frame_at_index, AvcFrame, AvcFrameType,
+    avc_frame_to_unit_node, avc_frames_to_unit_nodes, extract_annex_b_frames,
+    extract_frame_at_index, AvcFrame, AvcFrameType,
 };
 use bitvue_core::{StreamId, UnitNode};
 
@@ -90,7 +90,7 @@ fn test_extract_mixed_start_codes() {
     let mut data = Vec::new();
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // 4-byte
     data.extend_from_slice(&[0x67]);
-    data.extend_from_slice(&[0x00, 0x00, 0x01]);        // 3-byte
+    data.extend_from_slice(&[0x00, 0x00, 0x01]); // 3-byte
     data.extend_from_slice(&[0x68]);
 
     let result = extract_annex_b_frames(&data);
@@ -453,7 +453,9 @@ fn test_extract_frames_with_multiple_consecutive_start_codes() {
 
 #[test]
 fn test_extract_frames_with_only_start_codes() {
-    let data = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01];
+    let data = [
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ];
 
     let result = extract_annex_b_frames(&data);
     assert!(result.is_ok());
@@ -788,8 +790,14 @@ fn test_frame_type_display() {
 fn test_frame_from_slice_type() {
     use bitvue_avc::slice::SliceType;
 
-    assert_eq!(AvcFrameType::from_slice_type(SliceType::Si), AvcFrameType::SI);
-    assert_eq!(AvcFrameType::from_slice_type(SliceType::Sp), AvcFrameType::SP);
+    assert_eq!(
+        AvcFrameType::from_slice_type(SliceType::Si),
+        AvcFrameType::SI
+    );
+    assert_eq!(
+        AvcFrameType::from_slice_type(SliceType::Sp),
+        AvcFrameType::SP
+    );
 }
 
 // ============================================================================
@@ -958,7 +966,6 @@ fn test_extract_with_invalid_nal_header() {
     // Should find frames despite invalid NAL header
     let _frames = frames;
 }
-
 
 #[test]
 fn test_extract_with_aud_nal_unit() {
@@ -1179,7 +1186,6 @@ fn test_extract_with_minimal_b_frame() {
     }
 }
 
-
 #[test]
 fn test_extract_frame_at_index_with_valid_data() {
     // Create test data with known frames
@@ -1243,10 +1249,10 @@ fn test_extract_with_extreme_start_code_positions() {
 fn test_extract_with_three_byte_start_codes_only() {
     // Test stream with only 3-byte start codes
     let data = [
-        0x00, 0x00, 0x01,  // 3-byte start code
-        0x67,              // SPS
-        0x00, 0x00, 0x01,  // Another 3-byte
-        0x68,              // PPS
+        0x00, 0x00, 0x01, // 3-byte start code
+        0x67, // SPS
+        0x00, 0x00, 0x01, // Another 3-byte
+        0x68, // PPS
     ];
 
     let result = extract_annex_b_frames(&data);

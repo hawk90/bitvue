@@ -49,7 +49,6 @@ pub enum DegradeLevel {
     Minimal = 3,
 }
 
-
 impl DegradeLevel {
     /// Get human-readable name
     pub fn name(&self) -> &'static str {
@@ -181,7 +180,8 @@ impl PerfBudget {
 
     /// Check if tooltips should be deferred
     pub fn should_defer_tooltips(&self) -> bool {
-        self.degrade_level >= DegradeLevel::Low || self.last_tooltip_ms > budget::TOOLTIP_BUILD_MAX_MS
+        self.degrade_level >= DegradeLevel::Low
+            || self.last_tooltip_ms > budget::TOOLTIP_BUILD_MAX_MS
     }
 
     /// Get recommended overlay LOD (0.0 = minimal, 1.0 = full)
@@ -759,16 +759,16 @@ mod tests {
         let mut budget = PerfBudget::new();
 
         assert!(!budget.record_hit_test(1.0)); // Under budget
-        assert!(budget.record_hit_test(2.0));  // Over budget
+        assert!(budget.record_hit_test(2.0)); // Over budget
 
         assert!(!budget.record_overlay(5.0)); // Under budget
-        assert!(budget.record_overlay(7.0));  // Over budget
+        assert!(budget.record_overlay(7.0)); // Over budget
 
         assert!(!budget.record_tooltip(0.5)); // Under budget
-        assert!(budget.record_tooltip(1.0));  // Over budget
+        assert!(budget.record_tooltip(1.0)); // Over budget
 
         assert!(!budget.record_selection(1.5)); // Under budget
-        assert!(budget.record_selection(3.0));  // Over budget
+        assert!(budget.record_selection(3.0)); // Over budget
     }
 
     #[test]
@@ -836,8 +836,14 @@ mod tests {
         assert_eq!(PerfMetric::TooltipBuild.display_name(), "Tooltip Build");
         assert_eq!(PerfMetric::TooltipBuild.metric_key(), "tooltip_build_ms");
 
-        assert_eq!(PerfMetric::SelectionPropagation.display_name(), "Selection Propagation");
-        assert_eq!(PerfMetric::SelectionPropagation.metric_key(), "selection_propagation_ms");
+        assert_eq!(
+            PerfMetric::SelectionPropagation.display_name(),
+            "Selection Propagation"
+        );
+        assert_eq!(
+            PerfMetric::SelectionPropagation.metric_key(),
+            "selection_propagation_ms"
+        );
 
         assert_eq!(PerfMetric::UiFrame.display_name(), "UI Frame");
         assert_eq!(PerfMetric::UiFrame.metric_key(), "ui_frame_ms");

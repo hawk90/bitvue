@@ -2,7 +2,11 @@
 //!
 //! Tests for actual AVC parameter set and slice parsing functionality.
 
-use bitvue_avc::{sps::{Sps, ProfileIdc, ChromaFormat}, pps::Pps, slice::{SliceHeader, SliceType}};
+use bitvue_avc::{
+    pps::Pps,
+    slice::{SliceHeader, SliceType},
+    sps::{ChromaFormat, ProfileIdc, Sps},
+};
 use std::fmt::Write;
 
 /// Create minimal SPS structure for testing
@@ -33,7 +37,7 @@ fn create_minimal_sps() -> Sps {
         offset_for_ref_frame: vec![],
         max_num_ref_frames: 0,
         gaps_in_frame_num_value_allowed_flag: false,
-        pic_width_in_mbs_minus1: 119, // 1920 / 16 - 1
+        pic_width_in_mbs_minus1: 119,       // 1920 / 16 - 1
         pic_height_in_map_units_minus1: 67, // 1080 / 16 - 1
         frame_mbs_only_flag: true,
         mb_adaptive_frame_field_flag: false,
@@ -134,11 +138,7 @@ fn test_sps_resolution_calculation() {
 
 #[test]
 fn test_sps_various_profiles() {
-    let profiles = vec![
-        ProfileIdc::Baseline,
-        ProfileIdc::Main,
-        ProfileIdc::High,
-    ];
+    let profiles = vec![ProfileIdc::Baseline, ProfileIdc::Main, ProfileIdc::High];
 
     for profile in profiles {
         let mut sps = create_minimal_sps();
@@ -437,12 +437,7 @@ fn test_slice_header_pic_order_count() {
 
 #[test]
 fn test_sps_various_resolutions() {
-    let resolutions = vec![
-        (640, 480),
-        (1280, 720),
-        (1920, 1080),
-        (3840, 2160),
-    ];
+    let resolutions = vec![(640, 480), (1280, 720), (1920, 1080), (3840, 2160)];
 
     for (width, height) in resolutions {
         let mut sps = create_minimal_sps();
@@ -962,7 +957,10 @@ fn test_sps_offset_for_ref_frame_vec() {
     sps.offset_for_ref_frame = offsets.clone();
 
     assert_eq!(sps.offset_for_ref_frame, offsets);
-    assert_eq!(sps.num_ref_frames_in_pic_order_cnt_cycle, offsets.len() as u8);
+    assert_eq!(
+        sps.num_ref_frames_in_pic_order_cnt_cycle,
+        offsets.len() as u8
+    );
 }
 
 #[test]

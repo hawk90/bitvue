@@ -15,22 +15,22 @@ mod colors {
     use egui::Color32;
 
     // Picture type colors
-    pub const PICTURE_I: Color32 = Color32::from_rgb(255, 0, 0);          // Red
-    pub const PICTURE_P: Color32 = Color32::from_rgb(0, 255, 0);          // Green
-    pub const PICTURE_B: Color32 = Color32::from_rgb(0, 0, 255);          // Blue
-    pub const PICTURE_D: Color32 = Color32::from_rgb(255, 165, 0);        // Orange
+    pub const PICTURE_I: Color32 = Color32::from_rgb(255, 0, 0); // Red
+    pub const PICTURE_P: Color32 = Color32::from_rgb(0, 255, 0); // Green
+    pub const PICTURE_B: Color32 = Color32::from_rgb(0, 0, 255); // Blue
+    pub const PICTURE_D: Color32 = Color32::from_rgb(255, 165, 0); // Orange
 
     // MB type colors
-    pub const MB_INTRA: Color32 = Color32::from_rgb(255, 215, 0);         // Gold
-    pub const MB_FORWARD: Color32 = Color32::from_rgb(50, 205, 50);       // Lime green
-    pub const MB_BACKWARD: Color32 = Color32::from_rgb(30, 144, 255);     // Dodger blue
-    pub const MB_INTERPOLATED: Color32 = Color32::from_rgb(147, 112, 219);// Medium purple
-    pub const MB_SKIPPED: Color32 = Color32::from_rgb(128, 128, 128);     // Gray
+    pub const MB_INTRA: Color32 = Color32::from_rgb(255, 215, 0); // Gold
+    pub const MB_FORWARD: Color32 = Color32::from_rgb(50, 205, 50); // Lime green
+    pub const MB_BACKWARD: Color32 = Color32::from_rgb(30, 144, 255); // Dodger blue
+    pub const MB_INTERPOLATED: Color32 = Color32::from_rgb(147, 112, 219); // Medium purple
+    pub const MB_SKIPPED: Color32 = Color32::from_rgb(128, 128, 128); // Gray
 
     // Structure colors
-    pub const MB_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0);      // Orange
-    pub const SLICE_BOUNDARY: Color32 = Color32::from_rgb(255, 255, 0);   // Yellow
-    pub const DCT_BLOCK: Color32 = Color32::from_rgb(144, 238, 144);      // Light green
+    pub const MB_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0); // Orange
+    pub const SLICE_BOUNDARY: Color32 = Color32::from_rgb(255, 255, 0); // Yellow
+    pub const DCT_BLOCK: Color32 = Color32::from_rgb(144, 238, 144); // Light green
 }
 
 /// MPEG-2 view modes
@@ -290,12 +290,12 @@ impl Default for SequenceInfo {
         Self {
             width: 720,
             height: 480,
-            aspect_ratio: 2, // 4:3
-            frame_rate_code: 4, // 29.97 fps
+            aspect_ratio: 2,     // 4:3
+            frame_rate_code: 4,  // 29.97 fps
             bit_rate: 8_000_000, // 8 Mbps
             vbv_buffer_size: 1835008,
             profile: 4, // Main
-            level: 8, // Main
+            level: 8,   // Main
             progressive: true,
             chroma_format: Mpeg2ChromaFormat::Yuv420,
         }
@@ -423,17 +423,27 @@ impl Mpeg2Workspace {
                     y: row * 16,
                     mb_type,
                     qscale: 8 + (mb_idx as u8 % 16),
-                    mv_forward: if matches!(mb_type, Mpeg2MbType::ForwardPred | Mpeg2MbType::Interpolated) {
+                    mv_forward: if matches!(
+                        mb_type,
+                        Mpeg2MbType::ForwardPred | Mpeg2MbType::Interpolated
+                    ) {
                         Some(((col as i16 - 2) * 4, (row as i16 - 2) * 2))
                     } else {
                         None
                     },
-                    mv_backward: if matches!(mb_type, Mpeg2MbType::BackwardPred | Mpeg2MbType::Interpolated) {
+                    mv_backward: if matches!(
+                        mb_type,
+                        Mpeg2MbType::BackwardPred | Mpeg2MbType::Interpolated
+                    ) {
                         Some((-(col as i16 - 2) * 3, -(row as i16 - 2) * 2))
                     } else {
                         None
                     },
-                    cbp: if mb_type == Mpeg2MbType::Skipped { 0 } else { 0x3F },
+                    cbp: if mb_type == Mpeg2MbType::Skipped {
+                        0
+                    } else {
+                        0x3F
+                    },
                     pattern_code: 0x3F,
                 };
                 self.mock_mbs.push(mb);
@@ -523,10 +533,7 @@ impl Mpeg2Workspace {
                     "Bit Rate: {:.2} Mbps",
                     self.sequence.bit_rate as f64 / 1_000_000.0
                 ));
-                ui.label(format!(
-                    "Chroma: {}",
-                    self.sequence.chroma_format.label()
-                ));
+                ui.label(format!("Chroma: {}", self.sequence.chroma_format.label()));
 
                 ui.add_space(8.0);
 
@@ -534,10 +541,7 @@ impl Mpeg2Workspace {
                     "Profile: {}",
                     Self::profile_name(self.sequence.profile)
                 ));
-                ui.label(format!(
-                    "Level: {}",
-                    Self::level_name(self.sequence.level)
-                ));
+                ui.label(format!("Level: {}", Self::level_name(self.sequence.level)));
 
                 ui.horizontal(|ui| {
                     ui.label("Progressive:");
@@ -571,7 +575,10 @@ impl Mpeg2Workspace {
                 ui.add_space(4.0);
 
                 ui.heading("GOP Info");
-                ui.label(format!("Time Code: {}", self.current_gop.time_code_string()));
+                ui.label(format!(
+                    "Time Code: {}",
+                    self.current_gop.time_code_string()
+                ));
                 ui.horizontal(|ui| {
                     ui.label("Closed GOP:");
                     if self.current_gop.closed_gop {
@@ -609,10 +616,8 @@ impl Mpeg2Workspace {
                     };
                     let border = if is_current { 2.0 } else { 0.0 };
 
-                    let (rect, response) = ui.allocate_exact_size(
-                        Vec2::new(24.0, 32.0),
-                        egui::Sense::click(),
-                    );
+                    let (rect, response) =
+                        ui.allocate_exact_size(Vec2::new(24.0, 32.0), egui::Sense::click());
 
                     if response.clicked() {
                         self.current_frame = idx;
@@ -620,12 +625,7 @@ impl Mpeg2Workspace {
                     }
 
                     let painter = ui.painter();
-                    painter.rect(
-                        rect,
-                        4.0,
-                        bg_color,
-                        Stroke::new(border, Color32::WHITE),
-                    );
+                    painter.rect(rect, 4.0, bg_color, Stroke::new(border, Color32::WHITE));
                     painter.text(
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -695,10 +695,7 @@ impl Mpeg2Workspace {
         ui.group(|ui| {
             ui.heading("Reference Structure");
 
-            let (_, painter) = ui.allocate_painter(
-                Vec2::new(400.0, 100.0),
-                egui::Sense::hover(),
-            );
+            let (_, painter) = ui.allocate_painter(Vec2::new(400.0, 100.0), egui::Sense::hover());
 
             let rect = painter.clip_rect();
             let box_width = 30.0;
@@ -735,16 +732,32 @@ impl Mpeg2Workspace {
 
             // Draw reference arrows
             // I -> P (index 0 -> 3)
-            Self::draw_arrow(&painter,
-                egui::pos2(positions[0].0 + box_width/2.0, y_center - box_height/2.0 - 5.0),
-                egui::pos2(positions[3].0 - box_width/2.0, y_center - box_height/2.0 - 5.0),
-                Color32::GREEN);
+            Self::draw_arrow(
+                &painter,
+                egui::pos2(
+                    positions[0].0 + box_width / 2.0,
+                    y_center - box_height / 2.0 - 5.0,
+                ),
+                egui::pos2(
+                    positions[3].0 - box_width / 2.0,
+                    y_center - box_height / 2.0 - 5.0,
+                ),
+                Color32::GREEN,
+            );
 
             // P -> P (index 3 -> 6)
-            Self::draw_arrow(&painter,
-                egui::pos2(positions[3].0 + box_width/2.0, y_center - box_height/2.0 - 5.0),
-                egui::pos2(positions[6].0 - box_width/2.0, y_center - box_height/2.0 - 5.0),
-                Color32::GREEN);
+            Self::draw_arrow(
+                &painter,
+                egui::pos2(
+                    positions[3].0 + box_width / 2.0,
+                    y_center - box_height / 2.0 - 5.0,
+                ),
+                egui::pos2(
+                    positions[6].0 - box_width / 2.0,
+                    y_center - box_height / 2.0 - 5.0,
+                ),
+                Color32::GREEN,
+            );
         });
     }
 
@@ -933,10 +946,8 @@ impl Mpeg2Workspace {
                 ui.heading("MV Visualization");
 
                 if self.show_motion {
-                    let (_, painter) = ui.allocate_painter(
-                        Vec2::new(200.0, 200.0),
-                        egui::Sense::hover(),
-                    );
+                    let (_, painter) =
+                        ui.allocate_painter(Vec2::new(200.0, 200.0), egui::Sense::hover());
 
                     let rect = painter.clip_rect();
                     let scale = rect.width() / 64.0;
@@ -952,13 +963,23 @@ impl Mpeg2Workspace {
                         );
 
                         if let Some((mvx, mvy)) = mb.mv_forward {
-                            let end = center + Vec2::new(mvx as f32 * scale * 0.5, mvy as f32 * scale * 0.5);
-                            painter.arrow(center, end - center, Stroke::new(1.5, colors::MB_FORWARD));
+                            let end = center
+                                + Vec2::new(mvx as f32 * scale * 0.5, mvy as f32 * scale * 0.5);
+                            painter.arrow(
+                                center,
+                                end - center,
+                                Stroke::new(1.5, colors::MB_FORWARD),
+                            );
                         }
 
                         if let Some((mvx, mvy)) = mb.mv_backward {
-                            let end = center + Vec2::new(mvx as f32 * scale * 0.5, mvy as f32 * scale * 0.5);
-                            painter.arrow(center, end - center, Stroke::new(1.5, colors::MB_BACKWARD));
+                            let end = center
+                                + Vec2::new(mvx as f32 * scale * 0.5, mvy as f32 * scale * 0.5);
+                            painter.arrow(
+                                center,
+                                end - center,
+                                Stroke::new(1.5, colors::MB_BACKWARD),
+                            );
                         }
                     }
                 } else {
@@ -994,10 +1015,7 @@ impl Mpeg2Workspace {
         ui.group(|ui| {
             ui.heading("QScale Distribution");
 
-            let (_, painter) = ui.allocate_painter(
-                Vec2::new(300.0, 100.0),
-                egui::Sense::hover(),
-            );
+            let (_, painter) = ui.allocate_painter(Vec2::new(300.0, 100.0), egui::Sense::hover());
 
             let rect = painter.clip_rect();
 

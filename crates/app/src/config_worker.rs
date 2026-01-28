@@ -27,7 +27,10 @@ pub enum ConfigRequest {
     /// Load layout state
     LoadLayout { request_id: u64 },
     /// Save layout state
-    SaveLayout { layout_json: String, request_id: u64 },
+    SaveLayout {
+        layout_json: String,
+        request_id: u64,
+    },
     /// Load application settings
     LoadSettings { request_id: u64 },
     /// Save application settings
@@ -160,8 +163,7 @@ impl ConfigWorker {
         let content = std::fs::read_to_string(&recent_path)
             .map_err(|e| format!("Failed to read recent files: {}", e))?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse recent files: {}", e))
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse recent files: {}", e))
     }
 
     /// Save recent files list with retry logic
@@ -171,8 +173,8 @@ impl ConfigWorker {
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
 
         let recent_path = config_dir.join("recent.json");
-        let content =
-            serde_json::to_string_pretty(files).map_err(|e| format!("Failed to serialize: {}", e))?;
+        let content = serde_json::to_string_pretty(files)
+            .map_err(|e| format!("Failed to serialize: {}", e))?;
 
         let retry_policy = RetryPolicy::standard();
         let path_clone = recent_path.clone();
@@ -193,8 +195,7 @@ impl ConfigWorker {
             return Err("No saved layout".to_string());
         }
 
-        std::fs::read_to_string(&layout_path)
-            .map_err(|e| format!("Failed to read layout: {}", e))
+        std::fs::read_to_string(&layout_path).map_err(|e| format!("Failed to read layout: {}", e))
     }
 
     /// Save layout state with retry logic
@@ -462,9 +463,7 @@ mod tests {
 
         // Submit request with old ID
         let old_id = worker.next_request_id();
-        let request = ConfigRequest::LoadRecentFiles {
-            request_id: old_id,
-        };
+        let request = ConfigRequest::LoadRecentFiles { request_id: old_id };
 
         // Call cancel (increments request ID, but doesn't discard config operations)
         worker.cancel();
@@ -520,6 +519,10 @@ mod tests {
             }
         }
 
-        assert!(all_results.len() >= 2, "Expected 2 results, got {}", all_results.len());
+        assert!(
+            all_results.len() >= 2,
+            "Expected 2 results, got {}",
+            all_results.len()
+        );
     }
 }

@@ -2,9 +2,7 @@
 //!
 //! Tests for SEI (Supplemental Enhancement Information) parsing with real data.
 
-use bitvue_avc::sei::{
-    parse_sei, SeiMessage, SeiParsedData, SeiPayloadType,
-};
+use bitvue_avc::sei::{parse_sei, SeiMessage, SeiParsedData, SeiPayloadType};
 
 /// Create SEI payload byte encoding
 fn encode_sei_payload_type(payload_type: u32) -> Vec<u8> {
@@ -96,7 +94,10 @@ fn test_parse_sei_payload_type_large() {
         if pt >= 255 {
             let ff_count = pt / 255;
             let remainder = pt % 255;
-            assert_eq!(data.iter().filter(|&&b| b == 0xFF).count(), ff_count as usize);
+            assert_eq!(
+                data.iter().filter(|&&b| b == 0xFF).count(),
+                ff_count as usize
+            );
             assert_eq!(*data.last().unwrap() as u32, remainder);
         }
     }
@@ -113,7 +114,10 @@ fn test_parse_sei_payload_size_encoding() {
         if ps >= 255 {
             let ff_count = ps / 255;
             let remainder = ps % 255;
-            assert_eq!(data.iter().filter(|&&b| b == 0xFF).count(), ff_count as usize);
+            assert_eq!(
+                data.iter().filter(|&&b| b == 0xFF).count(),
+                ff_count as usize
+            );
             assert_eq!(*data.last().unwrap() as u32, remainder);
         } else {
             assert_eq!(data[0] as u32, ps);
@@ -135,9 +139,10 @@ fn test_parse_sei_multiple_messages() {
     data.extend_from_slice(&encode_sei_payload_type(5));
     data.extend_from_slice(&encode_sei_payload_size(20));
     // UUID (16 bytes) + 4 bytes data
-    data.extend_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                             0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-                             0x11, 0x12, 0x13, 0x14]);
+    data.extend_from_slice(&[
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14,
+    ]);
 
     let result = parse_sei(&data);
     assert!(result.is_ok());
@@ -145,7 +150,10 @@ fn test_parse_sei_multiple_messages() {
     let messages = result.unwrap();
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].payload_type, SeiPayloadType::RecoveryPoint);
-    assert_eq!(messages[1].payload_type, SeiPayloadType::UserDataUnregistered);
+    assert_eq!(
+        messages[1].payload_type,
+        SeiPayloadType::UserDataUnregistered
+    );
 }
 
 #[test]
@@ -197,7 +205,10 @@ fn test_sei_payload_type_name() {
     assert_eq!(SeiPayloadType::BufferingPeriod.name(), "Buffering Period");
     assert_eq!(SeiPayloadType::PicTiming.name(), "Picture Timing");
     assert_eq!(SeiPayloadType::RecoveryPoint.name(), "Recovery Point");
-    assert_eq!(SeiPayloadType::UserDataUnregistered.name(), "User Data (Unregistered)");
+    assert_eq!(
+        SeiPayloadType::UserDataUnregistered.name(),
+        "User Data (Unregistered)"
+    );
     assert_eq!(SeiPayloadType::Unknown.name(), "Unknown");
 }
 
@@ -212,8 +223,10 @@ fn test_parse_sei_user_data_unregistered() {
     data.extend_from_slice(&encode_sei_payload_size(20));
 
     // UUID
-    data.extend_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                             0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10]);
+    data.extend_from_slice(&[
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10,
+    ]);
 
     // User data
     data.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
@@ -245,8 +258,7 @@ fn test_parse_sei_user_data_unregistered_too_short() {
     data.extend_from_slice(&encode_sei_payload_size(10));
 
     // Incomplete UUID
-    data.extend_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                             0x09, 0x0A]);
+    data.extend_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A]);
 
     let result = parse_sei(&data);
     assert!(result.is_ok());
@@ -268,9 +280,11 @@ fn test_parse_sei_mastering_display_colour_volume() {
     data.extend_from_slice(&encode_sei_payload_size(24));
 
     // Display primaries (RGB - 6 values, 2 bytes each = 12 bytes)
-    data.extend_from_slice(&[0x00, 0x20, 0x00, 0x30, 0x00, 0x40,  // R
-                             0x00, 0x21, 0x00, 0x31, 0x00, 0x41,  // G
-                             0x00, 0x22, 0x00, 0x32, 0x00, 0x42]); // B
+    data.extend_from_slice(&[
+        0x00, 0x20, 0x00, 0x30, 0x00, 0x40, // R
+        0x00, 0x21, 0x00, 0x31, 0x00, 0x41, // G
+        0x00, 0x22, 0x00, 0x32, 0x00, 0x42,
+    ]); // B
 
     // White point (2 bytes each = 4 bytes)
     data.extend_from_slice(&[0x00, 0x25, 0x00, 0x35]);
@@ -316,8 +330,9 @@ fn test_parse_sei_content_light_level() {
 
     if let Some(SeiParsedData::ContentLightLevelInfo {
         max_content_light_level,
-        max_pic_average_light_level
-    }) = &messages[0].parsed {
+        max_pic_average_light_level,
+    }) = &messages[0].parsed
+    {
         assert_eq!(*max_content_light_level, 4096);
         assert_eq!(*max_pic_average_light_level, 1280);
     } else {
@@ -480,8 +495,9 @@ fn test_sei_parsed_data_recovery_point() {
         recovery_frame_cnt,
         exact_match_flag,
         broken_link_flag,
-        changing_slice_group_idc
-    } = recovery_data {
+        changing_slice_group_idc,
+    } = recovery_data
+    {
         assert_eq!(recovery_frame_cnt, 10);
         assert!(exact_match_flag);
         assert!(!broken_link_flag);

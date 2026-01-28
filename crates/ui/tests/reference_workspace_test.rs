@@ -119,11 +119,7 @@ fn test_reference_dependency_chain() {
         chain
     }
 
-    let refs = vec![
-        (5, vec![4, 0]),
-        (4, vec![0]),
-        (0, vec![]),
-    ];
+    let refs = vec![(5, vec![4, 0]), (4, vec![0]), (0, vec![])];
 
     let chain = get_dependency_chain(5, &refs);
     assert!(chain.contains(&0));
@@ -147,11 +143,7 @@ fn test_reference_visualization_layout() {
     }
 
     let layout = GraphLayout {
-        node_positions: vec![
-            (0, 100.0, 100.0),
-            (1, 200.0, 100.0),
-            (2, 300.0, 100.0),
-        ],
+        node_positions: vec![(0, 100.0, 100.0), (1, 200.0, 100.0), (2, 300.0, 100.0)],
     };
 
     assert_eq!(layout.get_position(1), Some((200.0, 100.0)));
@@ -222,8 +214,14 @@ fn test_reference_frame_marking() {
     }
 
     let frames = vec![
-        MarkedFrame { frame_id: 0, marking: FrameMarking::LongTerm },
-        MarkedFrame { frame_id: 1, marking: FrameMarking::ShortTerm },
+        MarkedFrame {
+            frame_id: 0,
+            marking: FrameMarking::LongTerm,
+        },
+        MarkedFrame {
+            frame_id: 1,
+            marking: FrameMarking::ShortTerm,
+        },
     ];
 
     assert_eq!(frames[0].marking, FrameMarking::LongTerm);

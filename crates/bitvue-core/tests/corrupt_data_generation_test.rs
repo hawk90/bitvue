@@ -16,7 +16,9 @@ fn test_corrupt_samples_exist() {
     let samples_dir = PathBuf::from(TEST_DATA_DIR);
 
     if !samples_dir.exists() {
-        eprintln!("⚠️  Corrupt samples not generated. Run: python3 create_corrupt_from_existing.py");
+        eprintln!(
+            "⚠️  Corrupt samples not generated. Run: python3 create_corrupt_from_existing.py"
+        );
         return;
     }
 
@@ -252,7 +254,10 @@ fn test_generate_corrupt_samples() {
 
     // Verify files were created
     let samples_dir = PathBuf::from(TEST_DATA_DIR);
-    assert!(samples_dir.exists(), "Corrupt samples directory not created");
+    assert!(
+        samples_dir.exists(),
+        "Corrupt samples directory not created"
+    );
 
     let files: Vec<_> = fs::read_dir(&samples_dir)
         .unwrap()

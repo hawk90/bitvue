@@ -49,39 +49,50 @@ impl<'a> BitReader<'a> {
 
     /// Read a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
-        self.inner.read_bit().map_err(|_| AvcError::NotEnoughData { expected: 1, got: 0 })
+        self.inner.read_bit().map_err(|_| AvcError::NotEnoughData {
+            expected: 1,
+            got: 0,
+        })
     }
 
     /// Read n bits as u32.
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
-        self.inner.read_bits(n).map_err(|_| AvcError::NotEnoughData {
-            expected: n as usize,
-            got: 0,
-        })
+        self.inner
+            .read_bits(n)
+            .map_err(|_| AvcError::NotEnoughData {
+                expected: n as usize,
+                got: 0,
+            })
     }
 
     /// Read n bits as u64.
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
-        self.inner.read_bits_u64(n).map_err(|_| AvcError::NotEnoughData {
-            expected: n as usize,
-            got: 0,
-        })
+        self.inner
+            .read_bits_u64(n)
+            .map_err(|_| AvcError::NotEnoughData {
+                expected: n as usize,
+                got: 0,
+            })
     }
 
     /// Read unsigned Exp-Golomb coded value.
     ///
     /// This uses the ExpGolombReader trait from bitvue_core.
     pub fn read_ue(&mut self) -> Result<u32> {
-        ExpGolombReader::read_ue(&mut self.inner)
-            .map_err(|_| AvcError::NotEnoughData { expected: 1, got: 0 })
+        ExpGolombReader::read_ue(&mut self.inner).map_err(|_| AvcError::NotEnoughData {
+            expected: 1,
+            got: 0,
+        })
     }
 
     /// Read signed Exp-Golomb coded value.
     ///
     /// This uses the ExpGolombReader trait from bitvue_core.
     pub fn read_se(&mut self) -> Result<i32> {
-        ExpGolombReader::read_se(&mut self.inner)
-            .map_err(|_| AvcError::NotEnoughData { expected: 1, got: 0 })
+        ExpGolombReader::read_se(&mut self.inner).map_err(|_| AvcError::NotEnoughData {
+            expected: 1,
+            got: 0,
+        })
     }
 
     /// Read a flag (single bit as bool).
@@ -93,7 +104,10 @@ impl<'a> BitReader<'a> {
     pub fn skip_bits(&mut self, n: usize) -> Result<()> {
         self.inner
             .skip_bits(n as u64)
-            .map_err(|_| AvcError::NotEnoughData { expected: n, got: 0 })
+            .map_err(|_| AvcError::NotEnoughData {
+                expected: n,
+                got: 0,
+            })
     }
 
     /// Align to byte boundary.

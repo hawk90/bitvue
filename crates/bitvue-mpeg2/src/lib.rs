@@ -122,16 +122,16 @@ impl Mpeg2Stream {
 
     /// Get frame rate.
     pub fn frame_rate(&self) -> Option<f64> {
-        self.sequence_headers.first().map(|seq| {
-            seq.header.frame_rate()
-        })
+        self.sequence_headers
+            .first()
+            .map(|seq| seq.header.frame_rate())
     }
 
     /// Get aspect ratio string.
     pub fn aspect_ratio(&self) -> Option<&'static str> {
-        self.sequence_headers.first().map(|seq| {
-            seq.header.aspect_ratio_string()
-        })
+        self.sequence_headers
+            .first()
+            .map(|seq| seq.header.aspect_ratio_string())
     }
 
     /// Get bit rate in bits per second.
@@ -148,16 +148,23 @@ impl Mpeg2Stream {
 
     /// Check if this is MPEG-2 (has extension) or MPEG-1.
     pub fn is_mpeg2(&self) -> bool {
-        self.sequence_headers.first()
+        self.sequence_headers
+            .first()
             .map(|seq| seq.extension.is_some())
             .unwrap_or(false)
     }
 
     /// Get profile and level (MPEG-2 only).
     pub fn profile_level(&self) -> Option<(u8, u8)> {
-        self.sequence_headers.first()
+        self.sequence_headers
+            .first()
             .and_then(|seq| seq.extension.as_ref())
-            .map(|ext| (ext.profile_and_level_indication >> 4, ext.profile_and_level_indication & 0x0F))
+            .map(|ext| {
+                (
+                    ext.profile_and_level_indication >> 4,
+                    ext.profile_and_level_indication & 0x0F,
+                )
+            })
     }
 
     /// Count I, P, B frames.

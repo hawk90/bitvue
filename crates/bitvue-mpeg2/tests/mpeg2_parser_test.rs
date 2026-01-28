@@ -28,7 +28,7 @@ fn test_mpeg2_sequence_header() {
     let seq = SequenceHeader {
         width: 720,
         height: 576,
-        aspect_ratio: 3, // 16:9
+        aspect_ratio: 3,    // 16:9
         frame_rate_code: 3, // 25 fps
         bit_rate: 5000000,
     };
@@ -148,10 +148,7 @@ fn test_mpeg2_motion_vectors() {
         y: i16,
     }
 
-    let mv = MotionVector {
-        x: 16,
-        y: -8,
-    };
+    let mv = MotionVector { x: 16, y: -8 };
 
     assert!(mv.x.abs() <= 2048);
     assert!(mv.y.abs() <= 2048);

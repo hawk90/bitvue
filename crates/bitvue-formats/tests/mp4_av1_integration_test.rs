@@ -21,7 +21,10 @@ fn test_extract_av1_from_mp4_theater_square() {
 
     match result {
         Ok(samples) => {
-            println!("Successfully extracted {} AV1 samples from MP4", samples.len());
+            println!(
+                "Successfully extracted {} AV1 samples from MP4",
+                samples.len()
+            );
 
             // Verify we got some samples
             assert!(!samples.is_empty(), "Should have at least one sample");
@@ -32,7 +35,11 @@ fn test_extract_av1_from_mp4_theater_square() {
 
                 // Verify sample has reasonable size
                 assert!(sample.len() > 0, "Sample should not be empty");
-                assert!(sample.len() < 10_000_000, "Sample size too large: {}", sample.len());
+                assert!(
+                    sample.len() < 10_000_000,
+                    "Sample size too large: {}",
+                    sample.len()
+                );
             }
 
             if samples.len() > 5 {
@@ -78,8 +85,8 @@ fn test_extract_av1_from_mp4_tsu() {
 
             // If codec is AV1, extract samples
             if info.codec.as_ref().map(|s| s.as_str()) == Some("av01") {
-                let samples = mp4::extract_av1_samples(&data)
-                    .expect("Failed to extract AV1 samples");
+                let samples =
+                    mp4::extract_av1_samples(&data).expect("Failed to extract AV1 samples");
 
                 println!("Extracted {} AV1 samples", samples.len());
                 assert!(!samples.is_empty(), "Should have samples");
@@ -120,8 +127,10 @@ fn test_detect_mp4_container_format() {
     use std::path::Path;
 
     // Test MP4 detection
-    let format = detect_container_format(Path::new("/Users/hawk/Workspaces/bitvue/test_data/TheaterSquare_640x360.mp4"))
-        .expect("Failed to detect format");
+    let format = detect_container_format(Path::new(
+        "/Users/hawk/Workspaces/bitvue/test_data/TheaterSquare_640x360.mp4",
+    ))
+    .expect("Failed to detect format");
 
     println!("Detected format: {:?}", format);
     assert_eq!(format, bitvue_formats::ContainerFormat::MP4);

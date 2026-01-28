@@ -3,7 +3,9 @@
 //! Handles rendering of all panel tabs in the dock area
 
 use crate::decode_coordinator::DecodeCoordinator;
-use crate::helpers::{count_frames, find_unit_by_key_with_index, find_unit_containing_offset_helper, format_bytes};
+use crate::helpers::{
+    count_frames, find_unit_by_key_with_index, find_unit_containing_offset_helper, format_bytes,
+};
 use crate::panel_registry::PanelRegistry;
 use crate::panel_tab::PanelTab;
 use crate::syntax_builder;
@@ -19,7 +21,6 @@ pub struct PanelTabViewer<'a> {
     pub panels: &'a mut PanelRegistry,
     pub workspaces: &'a mut WorkspaceRegistry,
 }
-
 
 impl<'a> TabViewer for PanelTabViewer<'a> {
     type Tab = PanelTab;
@@ -280,7 +281,6 @@ impl<'a> TabViewer for PanelTabViewer<'a> {
                 }
             }
             */ // End of Timeline removal
-
             PanelTab::Player => {
                 let stream_a = self.core.get_stream(StreamId::A);
                 let state = stream_a.read();
@@ -331,10 +331,10 @@ impl<'a> TabViewer for PanelTabViewer<'a> {
                 let selection = self.core.get_selection();
                 let sel_guard = selection.read();
 
-                if let Some(command) = self
-                    .panels
-                    .syntax_detail_mut()
-                    .show(ui, state.syntax.as_ref(), &sel_guard)
+                if let Some(command) =
+                    self.panels
+                        .syntax_detail_mut()
+                        .show(ui, state.syntax.as_ref(), &sel_guard)
                 {
                     // Tri-sync: Syntax node clicked → update selection
                     drop(sel_guard);
@@ -463,7 +463,8 @@ impl<'a> TabViewer for PanelTabViewer<'a> {
                 let selection = self.core.get_selection();
                 let sel_guard = selection.read();
 
-                self.panels.selection_info
+                self.panels
+                    .selection_info
                     .show(ui, &sel_guard, state.container.as_ref());
             }
 
@@ -473,14 +474,20 @@ impl<'a> TabViewer for PanelTabViewer<'a> {
                 let state = stream_a.read();
                 let diagnostics = &state.diagnostics;
 
-                if let Some(clicked_diagnostic) = self.workspaces.diagnostics.show(ui, diagnostics) {
+                if let Some(clicked_diagnostic) = self.workspaces.diagnostics.show(ui, diagnostics)
+                {
                     // TC06: Diagnostics→All sync (enhanced with frame_index)
-                    tracing::info!("Diagnostic clicked: {:?} at frame {:?}",
-                        clicked_diagnostic.message, clicked_diagnostic.frame_index);
+                    tracing::info!(
+                        "Diagnostic clicked: {:?} at frame {:?}",
+                        clicked_diagnostic.message,
+                        clicked_diagnostic.frame_index
+                    );
 
                     // Try frame-based navigation first (more accurate)
                     let mut navigated = false;
-                    if let (Some(frame_idx), Some(units)) = (clicked_diagnostic.frame_index, &state.units) {
+                    if let (Some(frame_idx), Some(units)) =
+                        (clicked_diagnostic.frame_index, &state.units)
+                    {
                         // Find frame by index
                         use crate::helpers::find_frame_by_index;
                         if let Some(frame_unit) = find_frame_by_index(&units.units, frame_idx) {
@@ -612,7 +619,8 @@ impl<'a> TabViewer for PanelTabViewer<'a> {
                     let state_b = stream_b.read();
 
                     if let (Some(units_a), Some(units_b)) = (&state_a.units, &state_b.units) {
-                        self.workspaces.compare_mut()
+                        self.workspaces
+                            .compare_mut()
                             .update_from_streams(&units_a.units, &units_b.units);
                     }
                 }

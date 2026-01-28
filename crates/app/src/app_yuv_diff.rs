@@ -8,7 +8,11 @@ use crate::yuv_diff::{BitDepth, ChromaSubsampling};
 pub trait BitvueAppYuvDiff {
     fn load_reference_yuv_frame(&mut self, frame_index: usize, width: u32, height: u32) -> bool;
     fn calculate_diff_metrics(&mut self, current_frame: &bitvue_decode::DecodedFrame);
-    fn export_diff_metrics_csv(&mut self, csv_path: &std::path::Path, export_all_frames: bool) -> Result<(), String>;
+    fn export_diff_metrics_csv(
+        &mut self,
+        csv_path: &std::path::Path,
+        export_all_frames: bool,
+    ) -> Result<(), String>;
 }
 
 impl BitvueAppYuvDiff for BitvueApp {
@@ -101,7 +105,7 @@ impl BitvueAppYuvDiff for BitvueApp {
 
         // Use BlockMetricsCalculator for PSNR/SSIM
         let calculator = bitvue_core::BlockMetricsCalculator::new(
-            current_frame.width,  // Use full frame as one block
+            current_frame.width, // Use full frame as one block
             current_frame.bit_depth,
         );
 
@@ -112,22 +116,24 @@ impl BitvueAppYuvDiff for BitvueApp {
         self.yuv_diff_settings.ssim_value = Some(ssim_y);
 
         // Calculate U-plane metrics (if available)
-        let (psnr_u, ssim_u) = if let (Some(current_u), Some(ref_u)) = (&current_frame.u_plane, &ref_frame.u_plane) {
-            let psnr = calculator.calculate_psnr_block(current_u, ref_u);
-            let ssim = calculator.calculate_ssim_block(current_u, ref_u);
-            (psnr, ssim)
-        } else {
-            (0.0, 0.0)
-        };
+        let (psnr_u, ssim_u) =
+            if let (Some(current_u), Some(ref_u)) = (&current_frame.u_plane, &ref_frame.u_plane) {
+                let psnr = calculator.calculate_psnr_block(current_u, ref_u);
+                let ssim = calculator.calculate_ssim_block(current_u, ref_u);
+                (psnr, ssim)
+            } else {
+                (0.0, 0.0)
+            };
 
         // Calculate V-plane metrics (if available)
-        let (psnr_v, ssim_v) = if let (Some(current_v), Some(ref_v)) = (&current_frame.v_plane, &ref_frame.v_plane) {
-            let psnr = calculator.calculate_psnr_block(current_v, ref_v);
-            let ssim = calculator.calculate_ssim_block(current_v, ref_v);
-            (psnr, ssim)
-        } else {
-            (0.0, 0.0)
-        };
+        let (psnr_v, ssim_v) =
+            if let (Some(current_v), Some(ref_v)) = (&current_frame.v_plane, &ref_frame.v_plane) {
+                let psnr = calculator.calculate_psnr_block(current_v, ref_v);
+                let ssim = calculator.calculate_ssim_block(current_v, ref_v);
+                (psnr, ssim)
+            } else {
+                (0.0, 0.0)
+            };
 
         // Calculate YUV-PSNR (weighted average: 6:1:1 for Y:U:V per ITU-T)
         let psnr_yuv = if psnr_u > 0.0 && psnr_v > 0.0 {
@@ -145,13 +151,22 @@ impl BitvueAppYuvDiff for BitvueApp {
         };
         self.yuv_diff_settings.ssim_yuv_value = Some(ssim_yuv);
 
-        tracing::debug!("Diff metrics: PSNR-Y={:.2} dB, PSNR-YUV={:.2} dB, SSIM-Y={:.4}, SSIM-YUV={:.4}",
-            psnr_y, psnr_yuv, ssim_y, ssim_yuv);
+        tracing::debug!(
+            "Diff metrics: PSNR-Y={:.2} dB, PSNR-YUV={:.2} dB, SSIM-Y={:.4}, SSIM-YUV={:.4}",
+            psnr_y,
+            psnr_yuv,
+            ssim_y,
+            ssim_yuv
+        );
     }
 
     /// Export diff metrics (PSNR/SSIM) to CSV file
     /// Supports both single-frame and multi-frame export
-    fn export_diff_metrics_csv(&mut self, csv_path: &std::path::Path, export_all_frames: bool) -> Result<(), String> {
+    fn export_diff_metrics_csv(
+        &mut self,
+        csv_path: &std::path::Path,
+        export_all_frames: bool,
+    ) -> Result<(), String> {
         use std::io::Write;
 
         // Get current frame from stream
@@ -198,8 +213,11 @@ impl BitvueAppYuvDiff for BitvueApp {
             .map_err(|e| format!("Failed to create CSV file: {}", e))?;
 
         // Write CSV header with all plane metrics
-        writeln!(file, "Frame,PSNR-Y(dB),PSNR-U(dB),PSNR-V(dB),PSNR-YUV(dB),SSIM-Y,SSIM-U,SSIM-V,SSIM-YUV")
-            .map_err(|e| format!("Failed to write CSV header: {}", e))?;
+        writeln!(
+            file,
+            "Frame,PSNR-Y(dB),PSNR-U(dB),PSNR-V(dB),PSNR-YUV(dB),SSIM-Y,SSIM-U,SSIM-V,SSIM-YUV"
+        )
+        .map_err(|e| format!("Failed to write CSV header: {}", e))?;
 
         let mut exported_count = 0;
         let mut skipped_count = 0;
@@ -208,7 +226,11 @@ impl BitvueAppYuvDiff for BitvueApp {
         drop(state);
 
         // Iterate through frames
-        let end_frame = if export_all_frames { frame_count } else { start_frame + 1 };
+        let end_frame = if export_all_frames {
+            frame_count
+        } else {
+            start_frame + 1
+        };
 
         for frame_idx in start_frame..end_frame {
             // Try to load reference frame
@@ -231,24 +253,25 @@ impl BitvueAppYuvDiff for BitvueApp {
             let stream_a = self.core.get_stream(bitvue_core::StreamId::A);
             let mut state = stream_a.write();
 
-            let (decoded_y_plane, decoded_u_plane, decoded_v_plane) = if let Some(frames) = &mut state.frames {
-                if let Some(cached_frame) = frames.get(frame_idx) {
-                    if cached_frame.decoded {
-                        // Clone YUV plane data from cached frame
-                        (
-                            cached_frame.y_plane.clone(),
-                            cached_frame.u_plane.clone(),
-                            cached_frame.v_plane.clone(),
-                        )
+            let (decoded_y_plane, decoded_u_plane, decoded_v_plane) =
+                if let Some(frames) = &mut state.frames {
+                    if let Some(cached_frame) = frames.get(frame_idx) {
+                        if cached_frame.decoded {
+                            // Clone YUV plane data from cached frame
+                            (
+                                cached_frame.y_plane.clone(),
+                                cached_frame.u_plane.clone(),
+                                cached_frame.v_plane.clone(),
+                            )
+                        } else {
+                            (None, None, None)
+                        }
                     } else {
                         (None, None, None)
                     }
                 } else {
                     (None, None, None)
-                }
-            } else {
-                (None, None, None)
-            };
+                };
 
             // Drop lock before calculation
             drop(state);
@@ -256,17 +279,17 @@ impl BitvueAppYuvDiff for BitvueApp {
             // Calculate metrics for all planes if we have both decoded and reference YUV data
             let (psnr_y, psnr_u, psnr_v, psnr_yuv, ssim_y, ssim_u, ssim_v, ssim_yuv) =
                 if let Some(decoded_y) = decoded_y_plane {
-                    let calculator = bitvue_core::BlockMetricsCalculator::new(
-                        width,
-                        ref_frame.bit_depth,
-                    );
+                    let calculator =
+                        bitvue_core::BlockMetricsCalculator::new(width, ref_frame.bit_depth);
 
                     // Calculate Y-plane metrics
                     let psnr_y = calculator.calculate_psnr_block(&decoded_y, &ref_frame.y_plane);
                     let ssim_y = calculator.calculate_ssim_block(&decoded_y, &ref_frame.y_plane);
 
                     // Calculate U-plane metrics (if available)
-                    let (psnr_u, ssim_u) = if let (Some(decoded_u), Some(ref_u)) = (&decoded_u_plane, &ref_frame.u_plane) {
+                    let (psnr_u, ssim_u) = if let (Some(decoded_u), Some(ref_u)) =
+                        (&decoded_u_plane, &ref_frame.u_plane)
+                    {
                         let psnr = calculator.calculate_psnr_block(decoded_u, ref_u);
                         let ssim = calculator.calculate_ssim_block(decoded_u, ref_u);
                         (psnr, ssim)
@@ -275,7 +298,9 @@ impl BitvueAppYuvDiff for BitvueApp {
                     };
 
                     // Calculate V-plane metrics (if available)
-                    let (psnr_v, ssim_v) = if let (Some(decoded_v), Some(ref_v)) = (&decoded_v_plane, &ref_frame.v_plane) {
+                    let (psnr_v, ssim_v) = if let (Some(decoded_v), Some(ref_v)) =
+                        (&decoded_v_plane, &ref_frame.v_plane)
+                    {
                         let psnr = calculator.calculate_psnr_block(decoded_v, ref_v);
                         let ssim = calculator.calculate_ssim_block(decoded_v, ref_v);
                         (psnr, ssim)
@@ -297,10 +322,15 @@ impl BitvueAppYuvDiff for BitvueApp {
                         ssim_y // Monochrome - only Y-plane
                     };
 
-                    (psnr_y, psnr_u, psnr_v, psnr_yuv, ssim_y, ssim_u, ssim_v, ssim_yuv)
+                    (
+                        psnr_y, psnr_u, psnr_v, psnr_yuv, ssim_y, ssim_u, ssim_v, ssim_yuv,
+                    )
                 } else {
                     // Frame not in cache - skip it
-                    tracing::warn!("Skipping frame {}: not decoded (navigate to frame first)", frame_idx);
+                    tracing::warn!(
+                        "Skipping frame {}: not decoded (navigate to frame first)",
+                        frame_idx
+                    );
                     skipped_count += 1;
                     continue;
                 };
@@ -317,7 +347,11 @@ impl BitvueAppYuvDiff for BitvueApp {
 
             // Show progress every 10 frames
             if export_all_frames && frame_idx % 10 == 0 {
-                tracing::info!("Exporting progress: {}/{} frames", frame_idx + 1, frame_count);
+                tracing::info!(
+                    "Exporting progress: {}/{} frames",
+                    frame_idx + 1,
+                    frame_count
+                );
             }
         }
 

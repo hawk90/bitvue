@@ -6,9 +6,9 @@
 /// YUV format settings for diff/comparison (VQAnalyzer parity)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromaSubsampling {
-    Yuv420,  // 4:2:0
-    Yuv422,  // 4:2:2
-    Yuv444,  // 4:4:4
+    Yuv420, // 4:2:0
+    Yuv422, // 4:2:2
+    Yuv444, // 4:4:4
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

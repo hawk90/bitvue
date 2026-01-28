@@ -136,15 +136,15 @@ impl FilmstripPanel {
         Self {
             textures: HashMap::new(),
             thumbnail_cache: ThumbnailCache::new(100, 100), // 100px wide, cache 100 thumbnails
-            thumb_width: 100.0,  // VQAnalyzer parity: compact thumbnails
-            thumb_height: 56.0,  // VQAnalyzer parity: ~16:9 aspect
-            spacing: 2.0,        // VQAnalyzer parity: tight spacing
-            show_type_borders: true,  // VQAnalyzer parity
-            show_poc: false,          // VQAnalyzer parity: NAL type shown instead
-            show_timestamps: false,   // Off by default to reduce clutter
-            show_ref_arrows: false,   // VQAnalyzer parity: off by default
-            border_thickness: 2.0,    // VQAnalyzer parity: thinner border
-            ref_arrow_height: 20.0,   // Height of reference arrow area
+            thumb_width: 100.0,                             // VQAnalyzer parity: compact thumbnails
+            thumb_height: 56.0,                             // VQAnalyzer parity: ~16:9 aspect
+            spacing: 2.0,                                   // VQAnalyzer parity: tight spacing
+            show_type_borders: true,                        // VQAnalyzer parity
+            show_poc: false,        // VQAnalyzer parity: NAL type shown instead
+            show_timestamps: false, // Off by default to reduce clutter
+            show_ref_arrows: false, // VQAnalyzer parity: off by default
+            border_thickness: 2.0,  // VQAnalyzer parity: thinner border
+            ref_arrow_height: 20.0, // Height of reference arrow area
             view_mode: FilmstripViewMode::Thumbnails, // Default to thumbnails
             cached_frames: Vec::new(),
             cache_key: 0,
@@ -184,8 +184,10 @@ impl FilmstripPanel {
                     let avg_size = total_size / collected.len();
                     let max_size = collected.iter().map(|f| f.size).max().unwrap_or(0);
                     let min_size = collected.iter().map(|f| f.size).min().unwrap_or(0);
-                    let frames_with_diagnostics = collected.iter().filter(|f| f.diagnostic_count > 0).count();
-                    let total_diagnostics: usize = collected.iter().map(|f| f.diagnostic_count).sum();
+                    let frames_with_diagnostics =
+                        collected.iter().filter(|f| f.diagnostic_count > 0).count();
+                    let total_diagnostics: usize =
+                        collected.iter().map(|f| f.diagnostic_count).sum();
 
                     tracing::info!(
                         "🎞️ Filmstrip: Collected {} frames from {} units | total={} bytes, avg={}, min={}, max={}",
@@ -193,19 +195,29 @@ impl FilmstripPanel {
                     );
                     tracing::info!(
                         "🎞️ Filmstrip: 🏷️ {} frames have diagnostics ({} total errors/warnings)",
-                        frames_with_diagnostics, total_diagnostics
+                        frames_with_diagnostics,
+                        total_diagnostics
                     );
 
                     // Log first 3 frames only
                     for frame in collected.iter().take(3) {
                         let badge_info = if frame.diagnostic_count > 0 {
-                            format!(" [🏷️ {} diagnostics, impact={}]", frame.diagnostic_count, frame.max_impact)
+                            format!(
+                                " [🏷️ {} diagnostics, impact={}]",
+                                frame.diagnostic_count, frame.max_impact
+                            )
                         } else {
                             String::new()
                         };
                         tracing::debug!(
                             "  Frame #{}: type={:6} size={:6} bytes, offset={}, poc={}, nal={}{}",
-                            frame.frame_index, frame.frame_type, frame.size, frame.offset, frame.poc, frame.nal_type, badge_info
+                            frame.frame_index,
+                            frame.frame_type,
+                            frame.size,
+                            frame.offset,
+                            frame.poc,
+                            frame.nal_type,
+                            badge_info
                         );
                     }
                     if collected.len() > 3 {
@@ -231,7 +243,11 @@ impl FilmstripPanel {
             return None;
         }
 
-        tracing::debug!("Filmstrip: Rendering {} frames in {:?} mode", self.cached_frames.len(), self.view_mode);
+        tracing::debug!(
+            "Filmstrip: Rendering {} frames in {:?} mode",
+            self.cached_frames.len(),
+            self.view_mode
+        );
 
         // Clone frames to avoid borrow conflicts (cached_frames is already optimized, clone is cheap)
         let frames = self.cached_frames.clone();
@@ -247,7 +263,11 @@ impl FilmstripPanel {
         ui.horizontal(|ui| {
             // Playback controls (VQAnalyzer parity - integrated into Filmstrip)
             ui.label(egui::RichText::new("Play:").small());
-            if ui.small_button("⏮").on_hover_text("First frame (Home)").clicked() {
+            if ui
+                .small_button("⏮")
+                .on_hover_text("First frame (Home)")
+                .clicked()
+            {
                 if let Some(first_frame) = frames.first() {
                     result_command = Some(Command::SelectUnit {
                         stream: StreamId::A,
@@ -255,7 +275,11 @@ impl FilmstripPanel {
                     });
                 }
             }
-            if ui.small_button("←").on_hover_text("Previous frame (Left)").clicked() {
+            if ui
+                .small_button("←")
+                .on_hover_text("Previous frame (Left)")
+                .clicked()
+            {
                 if let Some(idx) = selected_frame_index {
                     if idx > 0 {
                         result_command = Some(Command::SelectUnit {
@@ -265,7 +289,11 @@ impl FilmstripPanel {
                     }
                 }
             }
-            if ui.small_button("→").on_hover_text("Next frame (Right)").clicked() {
+            if ui
+                .small_button("→")
+                .on_hover_text("Next frame (Right)")
+                .clicked()
+            {
                 if let Some(idx) = selected_frame_index {
                     if idx + 1 < frames.len() {
                         result_command = Some(Command::SelectUnit {
@@ -275,7 +303,11 @@ impl FilmstripPanel {
                     }
                 }
             }
-            if ui.small_button("⏭").on_hover_text("Last frame (End)").clicked() {
+            if ui
+                .small_button("⏭")
+                .on_hover_text("Last frame (End)")
+                .clicked()
+            {
                 if let Some(last_frame) = frames.last() {
                     result_command = Some(Command::SelectUnit {
                         stream: StreamId::A,
@@ -308,12 +340,32 @@ impl FilmstripPanel {
                 .selected_text(format!("{}", self.view_mode))
                 .width(120.0)
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.view_mode, FilmstripViewMode::Thumbnails, "Thumbnails");
-                    ui.selectable_value(&mut self.view_mode, FilmstripViewMode::FrameSizes, "Frame Sizes");
-                    ui.selectable_value(&mut self.view_mode, FilmstripViewMode::BPyramid, "B-Pyramid");
-                    ui.selectable_value(&mut self.view_mode, FilmstripViewMode::HrdBuffer, "HRD Buffer");
+                    ui.selectable_value(
+                        &mut self.view_mode,
+                        FilmstripViewMode::Thumbnails,
+                        "Thumbnails",
+                    );
+                    ui.selectable_value(
+                        &mut self.view_mode,
+                        FilmstripViewMode::FrameSizes,
+                        "Frame Sizes",
+                    );
+                    ui.selectable_value(
+                        &mut self.view_mode,
+                        FilmstripViewMode::BPyramid,
+                        "B-Pyramid",
+                    );
+                    ui.selectable_value(
+                        &mut self.view_mode,
+                        FilmstripViewMode::HrdBuffer,
+                        "HRD Buffer",
+                    );
                     ui.separator();
-                    ui.selectable_value(&mut self.view_mode, FilmstripViewMode::Enhanced, "✨ Enhanced");
+                    ui.selectable_value(
+                        &mut self.view_mode,
+                        FilmstripViewMode::Enhanced,
+                        "✨ Enhanced",
+                    );
                 });
 
             // Display options (right-aligned) - only for thumbnails view
@@ -343,10 +395,12 @@ impl FilmstripPanel {
 
                                 // Generate/load thumbnail and get texture ID
                                 self.ensure_thumbnail(ctx, frame.frame_index, frames_cache);
-                                let texture_id = self.textures.get(&frame.frame_index).map(|t| t.id());
+                                let texture_id =
+                                    self.textures.get(&frame.frame_index).map(|t| t.id());
 
                                 // Render thumbnail with click handling
-                                if let Some(cmd) = self.render_thumbnail(ui, frame, texture_id, is_selected)
+                                if let Some(cmd) =
+                                    self.render_thumbnail(ui, frame, texture_id, is_selected)
                                 {
                                     result_command = Some(cmd);
                                 }
@@ -356,7 +410,12 @@ impl FilmstripPanel {
 
                 // VQAnalyzer parity: Draw reference arrows below filmstrip
                 if self.show_ref_arrows && frames.len() > 1 {
-                    self.render_reference_arrows(ui, &frames, thumb_total_width, scroll_output.state.offset.x);
+                    self.render_reference_arrows(
+                        ui,
+                        &frames,
+                        thumb_total_width,
+                        scroll_output.state.offset.x,
+                    );
                 }
             }
             FilmstripViewMode::FrameSizes => {
@@ -393,8 +452,12 @@ impl FilmstripPanel {
         if let Some(frames) = frames_cache {
             if let Some(cached_frame) = frames.peek(frame_index) {
                 if cached_frame.decoded {
-                    tracing::info!("📸 Filmstrip: Generating thumbnail for frame {} ({}x{})",
-                        frame_index, cached_frame.width, cached_frame.height);
+                    tracing::info!(
+                        "📸 Filmstrip: Generating thumbnail for frame {} ({}x{})",
+                        frame_index,
+                        cached_frame.width,
+                        cached_frame.height
+                    );
                     // Generate thumbnail
                     let thumbnail = ThumbnailCache::generate_thumbnail(
                         cached_frame,
@@ -417,7 +480,10 @@ impl FilmstripPanel {
                     self.thumbnail_cache.insert(thumbnail);
                     tracing::info!("📸 Filmstrip: ✅ Thumbnail {} uploaded to GPU", frame_index);
                 } else {
-                    tracing::warn!("📸 Filmstrip: Frame {} in cache but not decoded (decoded=false)", frame_index);
+                    tracing::warn!(
+                        "📸 Filmstrip: Frame {} in cache but not decoded (decoded=false)",
+                        frame_index
+                    );
                 }
             } else {
                 tracing::debug!("📸 Filmstrip: Frame {} not in cache yet", frame_index);

@@ -22,7 +22,7 @@ use crate::nal::NalUnit;
 use crate::sps::Sps;
 use bitvue_core::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
-    partition_grid::{PartitionGrid, PartitionBlock, PartitionType},
+    partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,
     BitvueError,
 };
@@ -167,10 +167,7 @@ pub fn extract_qp_grid(
 /// Extract MV Grid from H.264 bitstream
 ///
 /// Parses macroblocks from slice data and extracts motion vectors.
-pub fn extract_mv_grid(
-    nal_units: &[NalUnit],
-    sps: &Sps,
-) -> Result<MVGrid, BitvueError> {
+pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, BitvueError> {
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
 
@@ -269,7 +266,10 @@ pub fn extract_partition_grid(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to parse macroblocks for partition: {}, using scaffold", e);
+                    tracing::warn!(
+                        "Failed to parse macroblocks for partition: {}, using scaffold",
+                        e
+                    );
                     // Add scaffold blocks
                 }
             }

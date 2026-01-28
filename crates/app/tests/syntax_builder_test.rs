@@ -197,7 +197,14 @@ fn test_array_handling() {
         }
 
         fn format(&self) -> String {
-            format!("[{}]", self.items.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+            format!(
+                "[{}]",
+                self.items
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         }
     }
 

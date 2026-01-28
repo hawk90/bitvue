@@ -84,18 +84,12 @@ impl SyntaxDetailPanel {
             for tab in SyntaxTab::all() {
                 let is_selected = self.current_tab == *tab;
                 let label = if is_selected {
-                    RichText::new(tab.label())
-                        .strong()
-                        .color(Color32::WHITE)
+                    RichText::new(tab.label()).strong().color(Color32::WHITE)
                 } else {
-                    RichText::new(tab.label())
-                        .color(Color32::GRAY)
+                    RichText::new(tab.label()).color(Color32::GRAY)
                 };
 
-                if ui
-                    .selectable_label(is_selected, label)
-                    .clicked()
-                {
+                if ui.selectable_label(is_selected, label).clicked() {
                     self.current_tab = *tab;
                 }
             }
@@ -277,7 +271,10 @@ impl SyntaxDetailPanel {
         ui.separator();
 
         if syntax.is_some() {
-            ui.colored_label(Color32::GRAY, "Select a block in the player to see CU details");
+            ui.colored_label(
+                Color32::GRAY,
+                "Select a block in the player to see CU details",
+            );
             ui.separator();
 
             // Show selected block info if available
@@ -355,7 +352,11 @@ impl SyntaxDetailPanel {
 
         // QP Distribution
         ui.collapsing("QP Distribution", |ui| {
-            ui.label(RichText::new("Frame QP statistics").small().color(Color32::GRAY));
+            ui.label(
+                RichText::new("Frame QP statistics")
+                    .small()
+                    .color(Color32::GRAY),
+            );
             egui::Grid::new("qp_stats")
                 .num_columns(2)
                 .spacing([8.0, 4.0])
@@ -378,7 +379,11 @@ impl SyntaxDetailPanel {
 
         // Prediction Mode Distribution
         ui.collapsing("Prediction Modes", |ui| {
-            ui.label(RichText::new("Mode usage statistics").small().color(Color32::GRAY));
+            ui.label(
+                RichText::new("Mode usage statistics")
+                    .small()
+                    .color(Color32::GRAY),
+            );
             egui::Grid::new("mode_stats")
                 .num_columns(2)
                 .spacing([8.0, 4.0])
@@ -425,7 +430,11 @@ impl SyntaxDetailPanel {
         if selection.temporal.is_some() {
             ui.add_space(4.0);
             ui.collapsing("Frame Statistics", |ui| {
-                ui.label(RichText::new("Frame-level analysis").small().color(Color32::GRAY));
+                ui.label(
+                    RichText::new("Frame-level analysis")
+                        .small()
+                        .color(Color32::GRAY),
+                );
                 // Would show frame size, bit count, etc.
                 ui.label("Select block for detailed stats");
             });

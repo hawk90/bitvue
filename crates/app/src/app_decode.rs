@@ -16,7 +16,10 @@ impl BitvueAppDecode for BitvueApp {
         let results = self.decoder.poll_results();
 
         if !results.is_empty() {
-            tracing::info!("🎥 poll_decode_results: Processing {} decode result(s)", results.len());
+            tracing::info!(
+                "🎥 poll_decode_results: Processing {} decode result(s)",
+                results.len()
+            );
         }
 
         for result in results {

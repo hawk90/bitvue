@@ -22,7 +22,7 @@ use crate::nal::NalUnit;
 use crate::sps::Sps;
 use bitvue_core::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
-    partition_grid::{PartitionGrid, PartitionBlock, PartitionType},
+    partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,
     BitvueError,
 };
@@ -177,10 +177,7 @@ pub fn extract_qp_grid(
                     // Collect QP values from CTUs
                     for ctu in &ctus {
                         // Use average QP from CTU or first CU QP
-                        let ctu_qp = ctu.coding_units
-                            .first()
-                            .map(|cu| cu.qp)
-                            .unwrap_or(base_qp);
+                        let ctu_qp = ctu.coding_units.first().map(|cu| cu.qp).unwrap_or(base_qp);
                         qp.push(ctu_qp);
                     }
                 }
@@ -203,10 +200,7 @@ pub fn extract_qp_grid(
 /// Extract MV Grid from HEVC bitstream
 ///
 /// Parses CTUs from slice data and extracts motion vectors.
-pub fn extract_mv_grid(
-    nal_units: &[NalUnit],
-    sps: &Sps,
-) -> Result<MVGrid, BitvueError> {
+pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, BitvueError> {
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
 
@@ -421,7 +415,11 @@ fn parse_slice_ctus(
             size: ctu_size as u8,
             pred_mode,
             part_mode: PartMode::Part2Nx2N,
-            intra_mode: if is_intra { Some(IntraMode::Planar) } else { None },
+            intra_mode: if is_intra {
+                Some(IntraMode::Planar)
+            } else {
+                None
+            },
             qp: base_qp,
             mv_l0: None,
             mv_l1: None,

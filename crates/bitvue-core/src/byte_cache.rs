@@ -92,7 +92,8 @@ impl ByteCache {
         if file_size > Self::MAX_FILE_SIZE {
             return Err(BitvueError::InvalidFile(format!(
                 "File too large for memory mapping: {} bytes (max: {} bytes)",
-                file_size, Self::MAX_FILE_SIZE
+                file_size,
+                Self::MAX_FILE_SIZE
             )));
         }
 

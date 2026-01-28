@@ -125,8 +125,14 @@ fn test_notification_actions() {
     }
 
     let actions = vec![
-        NotificationAction { label: "Retry".to_string(), action_id: "retry".to_string() },
-        NotificationAction { label: "Dismiss".to_string(), action_id: "dismiss".to_string() },
+        NotificationAction {
+            label: "Retry".to_string(),
+            action_id: "retry".to_string(),
+        },
+        NotificationAction {
+            label: "Dismiss".to_string(),
+            action_id: "dismiss".to_string(),
+        },
     ];
 
     assert_eq!(actions.len(), 2);
@@ -144,7 +150,11 @@ fn test_notification_grouping() {
         types.len()
     }
 
-    let notifs = vec!["Error".to_string(), "Error".to_string(), "Warning".to_string()];
+    let notifs = vec![
+        "Error".to_string(),
+        "Error".to_string(),
+        "Warning".to_string(),
+    ];
     let unique_types = group_by_type(notifs);
 
     assert_eq!(unique_types, 2);

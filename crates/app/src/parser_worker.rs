@@ -21,7 +21,11 @@ pub fn parse_file(
     path: &Path,
     stream_id: StreamId,
     byte_cache: Arc<ByteCache>,
-) -> Result<(ContainerModel, UnitModel, Vec<bitvue_core::event::Diagnostic>)> {
+) -> Result<(
+    ContainerModel,
+    UnitModel,
+    Vec<bitvue_core::event::Diagnostic>,
+)> {
     tracing::info!("Parsing file: {:?}", path);
 
     // Detect format (read first 1MB for format detection)
@@ -360,11 +364,7 @@ fn extract_reference_slots(payload: &[u8]) -> Option<(Vec<u8>, Vec<usize>)> {
             // ref_frame_idx is [LAST, GOLDEN, ALTREF] slot indices (3 bits each)
             if let Some(ref_idx) = header.ref_frame_idx {
                 // Convert to vec, filtering out invalid values (7 is reserved/unused)
-                let slots: Vec<u8> = ref_idx
-                    .iter()
-                    .filter(|&&x| x < 7)
-                    .copied()
-                    .collect();
+                let slots: Vec<u8> = ref_idx.iter().filter(|&&x| x < 7).copied().collect();
 
                 if slots.is_empty() {
                     return None;
@@ -454,7 +454,16 @@ fn extract_mv_from_frame(payload: &[u8], width: u32, height: u32) -> Option<bitv
 
                 // Default QP and delta_q_enabled for MVP
                 let base_qp = 128_i16;
-                match parse_superblock(&mut decoder, sb_x, sb_y, sb_size, false, base_qp, false, &mut mv_ctx) {
+                match parse_superblock(
+                    &mut decoder,
+                    sb_x,
+                    sb_y,
+                    sb_size,
+                    false,
+                    base_qp,
+                    false,
+                    &mut mv_ctx,
+                ) {
                     Ok((superblock, _final_qp)) => {
                         let mvs = superblock.motion_vectors();
                         if !mvs.is_empty() {

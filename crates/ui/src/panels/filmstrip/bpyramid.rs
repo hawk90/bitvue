@@ -57,15 +57,16 @@ impl FilmstripPanel {
                     // Determine temporal layer based on frame type
                     // I-frame / P-frame: layer 0 (bottom)
                     // B-frame: layer 1+ (based on GOP structure)
-                    let temporal_layer = if frame.frame_type == "KEY" || frame.frame_type == "INTRA_ONLY" {
-                        0
-                    } else if frame.frame_type == "INTER" {
-                        0 // P-frames at bottom
-                    } else {
-                        // B-frames: estimate layer based on position in GOP
-                        // Simple heuristic: alternate layers
-                        (idx % 3).min(max_temporal_layer)
-                    };
+                    let temporal_layer =
+                        if frame.frame_type == "KEY" || frame.frame_type == "INTRA_ONLY" {
+                            0
+                        } else if frame.frame_type == "INTER" {
+                            0 // P-frames at bottom
+                        } else {
+                            // B-frames: estimate layer based on position in GOP
+                            // Simple heuristic: alternate layers
+                            (idx % 3).min(max_temporal_layer)
+                        };
 
                     let x = rect.left() + 50.0 + idx as f32 * horizontal_spacing;
                     let y = base_y - temporal_layer as f32 * vertical_spacing;
@@ -110,11 +111,17 @@ impl FilmstripPanel {
                     let perp = Vec2::new(-arrow_dir.y, arrow_dir.x);
 
                     painter.line_segment(
-                        [arrow_base, arrow_base - arrow_dir * arrow_size + perp * arrow_size * 0.5],
+                        [
+                            arrow_base,
+                            arrow_base - arrow_dir * arrow_size + perp * arrow_size * 0.5,
+                        ],
                         Stroke::new(1.5, Color32::from_rgb(100, 150, 200)),
                     );
                     painter.line_segment(
-                        [arrow_base, arrow_base - arrow_dir * arrow_size - perp * arrow_size * 0.5],
+                        [
+                            arrow_base,
+                            arrow_base - arrow_dir * arrow_size - perp * arrow_size * 0.5,
+                        ],
                         Stroke::new(1.5, Color32::from_rgb(100, 150, 200)),
                     );
                 }
@@ -128,7 +135,7 @@ impl FilmstripPanel {
                     let node_color = match frame.frame_type.as_str() {
                         "KEY" | "INTRA_ONLY" => Color32::from_rgb(220, 100, 100), // Red for I-frames
                         "INTER" => Color32::from_rgb(100, 200, 100), // Green for P-frames
-                        _ => Color32::from_rgb(150, 150, 220), // Blue for B-frames
+                        _ => Color32::from_rgb(150, 150, 220),       // Blue for B-frames
                     };
 
                     // Draw circle

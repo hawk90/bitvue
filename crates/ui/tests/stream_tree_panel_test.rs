@@ -10,9 +10,21 @@ fn test_stream_hierarchy() {
     }
 
     let levels = vec![
-        TreeLevel { level_name: "File".to_string(), depth: 0, children_count: 1 },
-        TreeLevel { level_name: "Frame".to_string(), depth: 1, children_count: 5 },
-        TreeLevel { level_name: "Slice".to_string(), depth: 2, children_count: 100 },
+        TreeLevel {
+            level_name: "File".to_string(),
+            depth: 0,
+            children_count: 1,
+        },
+        TreeLevel {
+            level_name: "Frame".to_string(),
+            depth: 1,
+            children_count: 5,
+        },
+        TreeLevel {
+            level_name: "Slice".to_string(),
+            depth: 2,
+            children_count: 100,
+        },
     ];
 
     assert_eq!(levels.len(), 3);
@@ -35,7 +47,10 @@ fn test_frame_node_display() {
         size_bytes: 50000,
     };
 
-    let display = format!("Frame {} [{}] POC:{}", frame.frame_index, frame.frame_type, frame.poc);
+    let display = format!(
+        "Frame {} [{}] POC:{}",
+        frame.frame_index, frame.frame_type, frame.poc
+    );
     assert!(display.contains("Frame 10"));
 }
 
@@ -71,11 +86,7 @@ fn test_obu_tree_structure() {
         Frame = 6,
     }
 
-    let obus = vec![
-        ObuType::SequenceHeader,
-        ObuType::Frame,
-        ObuType::Frame,
-    ];
+    let obus = vec![ObuType::SequenceHeader, ObuType::Frame, ObuType::Frame];
 
     assert_eq!(obus.len(), 3);
 }
@@ -140,7 +151,8 @@ fn test_tree_navigation() {
 fn test_tree_search() {
     // Test tree search functionality
     fn search_tree(nodes: &[String], query: &str) -> Vec<usize> {
-        nodes.iter()
+        nodes
+            .iter()
             .enumerate()
             .filter(|(_, node)| node.contains(query))
             .map(|(idx, _)| idx)
@@ -168,10 +180,7 @@ fn test_tree_context_menu() {
         CopyInfo,
     }
 
-    let actions = vec![
-        TreeContextAction::JumpToFrame,
-        TreeContextAction::JumpToHex,
-    ];
+    let actions = vec![TreeContextAction::JumpToFrame, TreeContextAction::JumpToHex];
 
     assert_eq!(actions.len(), 2);
 }
@@ -209,7 +218,10 @@ fn test_tree_statistics() {
         b_frames: 60,
     };
 
-    assert_eq!(stats.i_frames + stats.p_frames + stats.b_frames, stats.total_frames);
+    assert_eq!(
+        stats.i_frames + stats.p_frames + stats.b_frames,
+        stats.total_frames
+    );
 }
 
 #[test]

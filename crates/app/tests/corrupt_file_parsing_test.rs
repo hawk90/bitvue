@@ -142,7 +142,10 @@ fn test_parse_heavy_corruption() {
 
             // Print first and last diagnostics
             if !diagnostics.is_empty() {
-                println!("  First: {:?} - {}", diagnostics[0].severity, diagnostics[0].message);
+                println!(
+                    "  First: {:?} - {}",
+                    diagnostics[0].severity, diagnostics[0].message
+                );
                 let last = &diagnostics[diagnostics.len() - 1];
                 println!("  Last: {:?} - {}", last.severity, last.message);
             }
@@ -178,7 +181,10 @@ fn test_parse_truncated_66pct() {
             println!("  Diagnostics: {}", diagnostics.len());
 
             // Truncated file should parse partial data
-            assert!(units.unit_count > 0, "Should parse some units before truncation");
+            assert!(
+                units.unit_count > 0,
+                "Should parse some units before truncation"
+            );
 
             // Should have diagnostics about truncation/EOF
             let has_eof_error = diagnostics
@@ -228,7 +234,10 @@ fn test_parse_truncated_33pct() {
 
             // Note: Clean truncation might not generate diagnostics
             // (diagnostics only for malformed OBUs, not for missing frames)
-            println!("  Note: {} diagnostics (severe truncation parsed cleanly)", diagnostics.len());
+            println!(
+                "  Note: {} diagnostics (severe truncation parsed cleanly)",
+                diagnostics.len()
+            );
         }
         Err(e) => {
             panic!("Failed to parse severely truncated file: {:?}", e);
@@ -362,7 +371,10 @@ fn test_all_corrupt_samples_parseable() {
     }
 
     println!("\n✅ All samples parsed successfully!");
-    println!("   Total diagnostics across all files: {}", total_diagnostics);
+    println!(
+        "   Total diagnostics across all files: {}",
+        total_diagnostics
+    );
 
     // Note: Corrupt samples might not generate diagnostics if the corruption
     // doesn't result in malformed OBUs (e.g., clean truncation, or if the

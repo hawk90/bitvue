@@ -24,7 +24,12 @@ fn test_retry_config() {
 #[test]
 fn test_exponential_backoff() {
     // Test exponential backoff calculation
-    fn calculate_backoff(attempt: usize, initial_delay: u64, multiplier: f64, max_delay: u64) -> u64 {
+    fn calculate_backoff(
+        attempt: usize,
+        initial_delay: u64,
+        multiplier: f64,
+        max_delay: u64,
+    ) -> u64 {
         let delay = initial_delay as f64 * multiplier.powi(attempt as i32);
         delay.min(max_delay as f64) as u64
     }

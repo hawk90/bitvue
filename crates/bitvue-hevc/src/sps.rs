@@ -3,7 +3,7 @@
 //! The SPS contains sequence-level coding parameters.
 
 use crate::bitreader::BitReader;
-use crate::error::{Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
 /// HEVC Profile.

@@ -4,10 +4,10 @@
 //! It is defined in ITU-T H.265 Section 7.3.6.
 
 use crate::bitreader::BitReader;
+use crate::error::{HevcError, Result};
 use crate::nal::NalUnitType;
 use crate::pps::Pps;
 use crate::sps::Sps;
-use crate::error::{HevcError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -277,18 +277,17 @@ pub fn parse_slice_header(
     header.slice_pic_parameter_set_id = reader.read_ue()? as u8;
 
     // Get PPS and SPS
-    let pps = pps_map.get(&header.slice_pic_parameter_set_id).ok_or_else(|| {
-        HevcError::InvalidData(format!(
-            "PPS {} not found",
-            header.slice_pic_parameter_set_id
-        ))
-    })?;
+    let pps = pps_map
+        .get(&header.slice_pic_parameter_set_id)
+        .ok_or_else(|| {
+            HevcError::InvalidData(format!(
+                "PPS {} not found",
+                header.slice_pic_parameter_set_id
+            ))
+        })?;
 
     let sps = sps_map.get(&pps.pps_seq_parameter_set_id).ok_or_else(|| {
-        HevcError::InvalidData(format!(
-            "SPS {} not found",
-            pps.pps_seq_parameter_set_id
-        ))
+        HevcError::InvalidData(format!("SPS {} not found", pps.pps_seq_parameter_set_id))
     })?;
 
     // dependent_slice_segment_flag
@@ -480,7 +479,9 @@ pub fn parse_slice_header(
             let offset_bits = (offset_len_minus1 + 1) as u8;
 
             for _ in 0..header.num_entry_point_offsets {
-                header.entry_point_offset_minus1.push(reader.read_bits(offset_bits)?);
+                header
+                    .entry_point_offset_minus1
+                    .push(reader.read_bits(offset_bits)?);
             }
         }
     }

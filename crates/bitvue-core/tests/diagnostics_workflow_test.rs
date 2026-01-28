@@ -109,7 +109,13 @@ fn test_workflow_filter_sort_navigate() {
         for i in 0..10 {
             state.add_diagnostic(Diagnostic {
                 id: i,
-                severity: if i % 3 == 0 { Severity::Error } else if i % 3 == 1 { Severity::Warn } else { Severity::Info },
+                severity: if i % 3 == 0 {
+                    Severity::Error
+                } else if i % 3 == 1 {
+                    Severity::Warn
+                } else {
+                    Severity::Info
+                },
                 stream_id: StreamId::A,
                 message: format!("Diagnostic {}", i),
                 category: Category::Bitstream,
@@ -125,7 +131,9 @@ fn test_workflow_filter_sort_navigate() {
     // Step 1: Filter to only errors
     let filtered = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| d.severity == Severity::Error)
             .cloned()
             .collect::<Vec<_>>()
@@ -201,10 +209,18 @@ fn test_workflow_multistream_comparison() {
     assert!(count_a > count_b, "Stream A has more diagnostics");
 
     // Compare severity distribution
-    let errors_a = stream_a.read().diagnostics.iter()
-        .filter(|d| d.severity == Severity::Error).count();
-    let errors_b = stream_b.read().diagnostics.iter()
-        .filter(|d| d.severity == Severity::Error).count();
+    let errors_a = stream_a
+        .read()
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+    let errors_b = stream_b
+        .read()
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
 
     assert_eq!(errors_a, 5);
     assert_eq!(errors_b, 0);
@@ -264,7 +280,9 @@ fn test_workflow_burst_error_detection() {
     // Find all burst errors (count > 1)
     let bursts = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| d.count > 1)
             .cloned()
             .collect::<Vec<_>>()
@@ -350,18 +368,24 @@ fn test_workflow_severity_filter_toggle() {
 
     let filtered = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| {
-                (show_fatal && d.severity == Severity::Fatal) ||
-                (show_error && d.severity == Severity::Error) ||
-                (show_warn && d.severity == Severity::Warn) ||
-                (show_info && d.severity == Severity::Info)
+                (show_fatal && d.severity == Severity::Fatal)
+                    || (show_error && d.severity == Severity::Error)
+                    || (show_warn && d.severity == Severity::Warn)
+                    || (show_info && d.severity == Severity::Info)
             })
             .cloned()
             .collect::<Vec<_>>()
     };
 
-    assert_eq!(filtered.len(), 2, "Should show 2 diagnostics (fatal + error)");
+    assert_eq!(
+        filtered.len(),
+        2,
+        "Should show 2 diagnostics (fatal + error)"
+    );
     assert_eq!(filtered[0].severity, Severity::Fatal);
     assert_eq!(filtered[1].severity, Severity::Error);
 }
@@ -438,7 +462,11 @@ fn test_workflow_jump_to_first_last_error() {
         for i in 0..10 {
             state.add_diagnostic(Diagnostic {
                 id: i,
-                severity: if i == 2 || i == 5 || i == 8 { Severity::Error } else { Severity::Info },
+                severity: if i == 2 || i == 5 || i == 8 {
+                    Severity::Error
+                } else {
+                    Severity::Info
+                },
                 stream_id: StreamId::A,
                 message: format!("Diagnostic {}", i),
                 category: Category::Bitstream,
@@ -454,7 +482,9 @@ fn test_workflow_jump_to_first_last_error() {
     // Jump to first error
     let first_error = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .find(|d| d.severity == Severity::Error)
             .cloned()
     };
@@ -465,7 +495,9 @@ fn test_workflow_jump_to_first_last_error() {
     // Jump to last error
     let last_error = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| d.severity == Severity::Error)
             .last()
             .cloned()
@@ -505,7 +537,9 @@ fn test_workflow_frame_range_filtering() {
 
     let filtered = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| {
                 if let Some(frame) = d.frame_index {
                     frame >= min_frame && frame <= max_frame
@@ -517,7 +551,11 @@ fn test_workflow_frame_range_filtering() {
             .collect::<Vec<_>>()
     };
 
-    assert_eq!(filtered.len(), 11, "Should have 11 diagnostics (10-20 inclusive)");
+    assert_eq!(
+        filtered.len(),
+        11,
+        "Should have 11 diagnostics (10-20 inclusive)"
+    );
     assert_eq!(filtered.first().unwrap().frame_index, Some(10));
     assert_eq!(filtered.last().unwrap().frame_index, Some(20));
 }
@@ -551,13 +589,19 @@ fn test_workflow_impact_threshold_filtering() {
 
     let high_impact = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| d.impact_score >= min_impact)
             .cloned()
             .collect::<Vec<_>>()
     };
 
-    assert_eq!(high_impact.len(), 4, "Should have 4 high-impact diagnostics (80, 85, 90, 95)");
+    assert_eq!(
+        high_impact.len(),
+        4,
+        "Should have 4 high-impact diagnostics (80, 85, 90, 95)"
+    );
 
     for diag in &high_impact {
         assert!(diag.impact_score >= min_impact);
@@ -616,7 +660,9 @@ fn test_workflow_category_filtering() {
     // Filter to only Bitstream category
     let bitstream_only = {
         let state = stream.read();
-        state.diagnostics.iter()
+        state
+            .diagnostics
+            .iter()
             .filter(|d| d.category == Category::Bitstream)
             .cloned()
             .collect::<Vec<_>>()
@@ -724,8 +770,14 @@ fn test_workflow_search_in_messages() {
     let search_query = "OBU";
     let search_results = {
         let state = stream.read();
-        state.diagnostics.iter()
-            .filter(|d| d.message.to_lowercase().contains(&search_query.to_lowercase()))
+        state
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                d.message
+                    .to_lowercase()
+                    .contains(&search_query.to_lowercase())
+            })
             .cloned()
             .collect::<Vec<_>>()
     };
@@ -737,8 +789,14 @@ fn test_workflow_search_in_messages() {
     let search_query = "frame";
     let search_results = {
         let state = stream.read();
-        state.diagnostics.iter()
-            .filter(|d| d.message.to_lowercase().contains(&search_query.to_lowercase()))
+        state
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                d.message
+                    .to_lowercase()
+                    .contains(&search_query.to_lowercase())
+            })
             .cloned()
             .collect::<Vec<_>>()
     };

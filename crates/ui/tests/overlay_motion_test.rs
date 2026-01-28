@@ -276,8 +276,8 @@ fn test_mv_subpixel_refinement() {
     let mv = SubpixelMv {
         integer_x: 3,
         integer_y: -2,
-        frac_x: 8,  // 0.5 pixel
-        frac_y: 4,  // 0.25 pixel
+        frac_x: 8, // 0.5 pixel
+        frac_y: 4, // 0.25 pixel
     };
 
     assert_eq!(mv.to_full_pixels(), (3.5, -1.75));

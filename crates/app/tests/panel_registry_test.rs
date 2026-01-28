@@ -7,9 +7,7 @@ fn test_panel_registration() {
         panels: Vec<String>,
     }
 
-    let mut registry = PanelRegistry {
-        panels: Vec::new(),
-    };
+    let mut registry = PanelRegistry { panels: Vec::new() };
 
     registry.panels.push("filmstrip".to_string());
     registry.panels.push("syntax_tree".to_string());
@@ -40,8 +38,14 @@ fn test_panel_visibility() {
     }
 
     let mut states = vec![
-        PanelState { panel_id: "filmstrip".to_string(), visible: true },
-        PanelState { panel_id: "hex_view".to_string(), visible: false },
+        PanelState {
+            panel_id: "filmstrip".to_string(),
+            visible: true,
+        },
+        PanelState {
+            panel_id: "hex_view".to_string(),
+            visible: false,
+        },
     ];
 
     states[1].visible = true;
@@ -57,8 +61,14 @@ fn test_panel_ordering() {
     }
 
     let mut panels = vec![
-        PanelOrder { panel_id: "filmstrip".to_string(), order: 0 },
-        PanelOrder { panel_id: "syntax_tree".to_string(), order: 1 },
+        PanelOrder {
+            panel_id: "filmstrip".to_string(),
+            order: 0,
+        },
+        PanelOrder {
+            panel_id: "syntax_tree".to_string(),
+            order: 1,
+        },
     ];
 
     // Swap order
@@ -83,8 +93,14 @@ fn test_panel_categories() {
     }
 
     let panels = vec![
-        Panel { id: "filmstrip".to_string(), category: PanelCategory::Navigation },
-        Panel { id: "yuv_viewer".to_string(), category: PanelCategory::Visualization },
+        Panel {
+            id: "filmstrip".to_string(),
+            category: PanelCategory::Navigation,
+        },
+        Panel {
+            id: "yuv_viewer".to_string(),
+            category: PanelCategory::Visualization,
+        },
     ];
 
     assert_eq!(panels[0].category, PanelCategory::Navigation);
@@ -159,8 +175,14 @@ fn test_panel_shortcuts() {
     }
 
     let shortcuts = vec![
-        PanelShortcut { panel_id: "filmstrip".to_string(), shortcut: "F1".to_string() },
-        PanelShortcut { panel_id: "syntax_tree".to_string(), shortcut: "F2".to_string() },
+        PanelShortcut {
+            panel_id: "filmstrip".to_string(),
+            shortcut: "F1".to_string(),
+        },
+        PanelShortcut {
+            panel_id: "syntax_tree".to_string(),
+            shortcut: "F2".to_string(),
+        },
     ];
 
     assert_eq!(shortcuts.len(), 2);

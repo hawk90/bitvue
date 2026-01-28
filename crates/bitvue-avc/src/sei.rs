@@ -166,7 +166,9 @@ impl SeiPayloadType {
             SeiPayloadType::DisplayOrientation => "Display Orientation",
             SeiPayloadType::MasteringDisplayColourVolume => "Mastering Display Colour Volume",
             SeiPayloadType::ContentLightLevelInfo => "Content Light Level Info",
-            SeiPayloadType::AlternativeTransferCharacteristics => "Alternative Transfer Characteristics",
+            SeiPayloadType::AlternativeTransferCharacteristics => {
+                "Alternative Transfer Characteristics"
+            }
             _ => "Unknown",
         }
     }
@@ -198,10 +200,7 @@ pub enum SeiParsedData {
         changing_slice_group_idc: u8,
     },
     /// User data unregistered.
-    UserDataUnregistered {
-        uuid: [u8; 16],
-        data: Vec<u8>,
-    },
+    UserDataUnregistered { uuid: [u8; 16], data: Vec<u8> },
     /// Mastering display colour volume.
     MasteringDisplayColourVolume {
         display_primaries_x: [u16; 3],
@@ -334,8 +333,10 @@ fn parse_mastering_display(data: &[u8]) -> Option<SeiParsedData> {
 
     let white_point_x = u16::from_be_bytes([data[12], data[13]]);
     let white_point_y = u16::from_be_bytes([data[14], data[15]]);
-    let max_display_mastering_luminance = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-    let min_display_mastering_luminance = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+    let max_display_mastering_luminance =
+        u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
+    let min_display_mastering_luminance =
+        u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
 
     Some(SeiParsedData::MasteringDisplayColourVolume {
         display_primaries_x,
@@ -370,6 +371,9 @@ mod tests {
     fn test_sei_payload_type() {
         assert_eq!(SeiPayloadType::from_u32(0), SeiPayloadType::BufferingPeriod);
         assert_eq!(SeiPayloadType::from_u32(6), SeiPayloadType::RecoveryPoint);
-        assert_eq!(SeiPayloadType::from_u32(137), SeiPayloadType::MasteringDisplayColourVolume);
+        assert_eq!(
+            SeiPayloadType::from_u32(137),
+            SeiPayloadType::MasteringDisplayColourVolume
+        );
     }
 }

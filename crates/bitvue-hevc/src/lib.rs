@@ -38,18 +38,23 @@ pub mod vps;
 
 pub use bitreader::{remove_emulation_prevention_bytes, BitReader};
 pub use error::{HevcError, Result};
-pub use frames::{hevc_frame_to_unit_node, hevc_frames_to_unit_nodes, extract_annex_b_frames, extract_frame_at_index, HevcFrame, HevcFrameType};
-pub use nal::{find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType};
+pub use frames::{
+    extract_annex_b_frames, extract_frame_at_index, hevc_frame_to_unit_node,
+    hevc_frames_to_unit_nodes, HevcFrame, HevcFrameType,
+};
+pub use nal::{
+    find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType,
+};
 pub use overlay_extraction::{
-    extract_mv_grid, extract_partition_grid, extract_qp_grid,
-    CodingTreeUnit, CodingUnit, IntraMode, MotionVector, PartMode, PredMode,
+    extract_mv_grid, extract_partition_grid, extract_qp_grid, CodingTreeUnit, CodingUnit,
+    IntraMode, MotionVector, PartMode, PredMode,
 };
 pub use pps::Pps;
+use serde::{Deserialize, Serialize};
 pub use slice::{SliceHeader, SliceType};
 pub use sps::{ChromaFormat, ProfileTierLevel, Sps};
-pub use vps::Vps;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+pub use vps::Vps;
 
 /// Parsed HEVC bitstream.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,9 +100,10 @@ impl HevcStream {
 
     /// Get video dimensions from SPS.
     pub fn dimensions(&self) -> Option<(u32, u32)> {
-        self.sps_map.values().next().map(|sps| {
-            (sps.display_width(), sps.display_height())
-        })
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| (sps.display_width(), sps.display_height()))
     }
 
     /// Get frame rate from VPS/SPS timing info.
@@ -114,7 +120,9 @@ impl HevcStream {
         for sps in self.sps_map.values() {
             if let Some(ref vui) = sps.vui_parameters {
                 if vui.timing_info_present_flag {
-                    if let (Some(time_scale), Some(num_units)) = (vui.time_scale, vui.num_units_in_tick) {
+                    if let (Some(time_scale), Some(num_units)) =
+                        (vui.time_scale, vui.num_units_in_tick)
+                    {
                         if time_scale > 0 && num_units > 0 {
                             return Some(time_scale as f64 / num_units as f64);
                         }
@@ -132,17 +140,26 @@ impl HevcStream {
 
     /// Get bit depth for chroma.
     pub fn bit_depth_chroma(&self) -> Option<u8> {
-        self.sps_map.values().next().map(|sps| sps.bit_depth_chroma())
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| sps.bit_depth_chroma())
     }
 
     /// Get chroma format.
     pub fn chroma_format(&self) -> Option<ChromaFormat> {
-        self.sps_map.values().next().map(|sps| sps.chroma_format_idc)
+        self.sps_map
+            .values()
+            .next()
+            .map(|sps| sps.chroma_format_idc)
     }
 
     /// Count frames (VCL NAL units that start a new picture).
     pub fn frame_count(&self) -> usize {
-        self.slices.iter().filter(|s| s.header.first_slice_segment_in_pic_flag).count()
+        self.slices
+            .iter()
+            .filter(|s| s.header.first_slice_segment_in_pic_flag)
+            .count()
     }
 
     /// Get all IDR frames.
@@ -200,7 +217,9 @@ pub fn parse_hevc(data: &[u8]) -> Result<HevcStream> {
             }
             nal_type if nal_type.is_vcl() => {
                 // Parse slice header
-                if let Ok(header) = slice::parse_slice_header(&nal.payload, &sps_map, &pps_map, nal_type) {
+                if let Ok(header) =
+                    slice::parse_slice_header(&nal.payload, &sps_map, &pps_map, nal_type)
+                {
                     // Calculate POC
                     let poc = if nal_type.is_idr() {
                         prev_poc_msb = 0;
@@ -213,12 +232,17 @@ pub fn parse_hevc(data: &[u8]) -> Result<HevcStream> {
                             .and_then(|pps| sps_map.get(&pps.pps_seq_parameter_set_id));
 
                         if let Some(sps) = sps {
-                            let max_poc_lsb = 1 << sps.log2_max_pic_order_cnt_lsb_minus4.saturating_add(4);
+                            let max_poc_lsb =
+                                1 << sps.log2_max_pic_order_cnt_lsb_minus4.saturating_add(4);
                             let poc_lsb = header.slice_pic_order_cnt_lsb as i32;
 
-                            let poc_msb = if poc_lsb < prev_poc_lsb && (prev_poc_lsb - poc_lsb) >= (max_poc_lsb / 2) {
+                            let poc_msb = if poc_lsb < prev_poc_lsb
+                                && (prev_poc_lsb - poc_lsb) >= (max_poc_lsb / 2)
+                            {
                                 prev_poc_msb + max_poc_lsb
-                            } else if poc_lsb > prev_poc_lsb && (poc_lsb - prev_poc_lsb) > (max_poc_lsb / 2) {
+                            } else if poc_lsb > prev_poc_lsb
+                                && (poc_lsb - prev_poc_lsb) > (max_poc_lsb / 2)
+                            {
                                 prev_poc_msb - max_poc_lsb
                             } else {
                                 prev_poc_msb

@@ -68,7 +68,10 @@ fn test_hex_selection() {
         length: 16,
     };
 
-    assert_eq!(selection.length, (selection.end_offset - selection.start_offset) as usize);
+    assert_eq!(
+        selection.length,
+        (selection.end_offset - selection.start_offset) as usize
+    );
 }
 
 #[test]
@@ -188,10 +191,7 @@ fn test_hex_copy_functionality() {
         Binary,
     }
 
-    let formats = vec![
-        CopyFormat::HexString,
-        CopyFormat::CArray,
-    ];
+    let formats = vec![CopyFormat::HexString, CopyFormat::CArray];
 
     assert_eq!(formats.len(), 2);
 }

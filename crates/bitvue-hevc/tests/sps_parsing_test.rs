@@ -2,7 +2,7 @@
 //!
 //! Tests for actual SPS parsing functionality with real bitstream data.
 
-use bitvue_hevc::sps::{parse_sps, Sps, ChromaFormat, Profile, ProfileTierLevel};
+use bitvue_hevc::sps::{parse_sps, ChromaFormat, Profile, ProfileTierLevel, Sps};
 
 // Helper function to create minimal ProfileTierLevel
 fn create_minimal_profile_tier_level() -> ProfileTierLevel {
@@ -190,12 +190,7 @@ fn test_sps_bit_depth_helpers() {
 
 #[test]
 fn test_sps_resolution_variants() {
-    let resolutions = vec![
-        (640, 480),
-        (1280, 720),
-        (1920, 1080),
-        (3840, 2160),
-    ];
+    let resolutions = vec![(640, 480), (1280, 720), (1920, 1080), (3840, 2160)];
 
     for (width, height) in resolutions {
         let sps = Sps {
@@ -227,7 +222,7 @@ fn test_sps_ctb_size_variants() {
 #[test]
 fn test_sps_ctb_size_calculation() {
     let sps = Sps {
-        log2_min_luma_coding_block_size_minus3: 0, // Min CB = 8
+        log2_min_luma_coding_block_size_minus3: 0,   // Min CB = 8
         log2_diff_max_min_luma_coding_block_size: 3, // CTB = 64
         ..create_minimal_sps()
     };

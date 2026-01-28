@@ -316,9 +316,7 @@ pub fn parse_all_obus_resilient(
             Err(e) => {
                 // Convert parse error to diagnostic
                 let (message, severity, impact_score) = match &e {
-                    BitvueError::Parse { message, .. } => {
-                        (message.clone(), Severity::Error, 85)
-                    }
+                    BitvueError::Parse { message, .. } => (message.clone(), Severity::Error, 85),
                     BitvueError::UnexpectedEof(_) => {
                         ("Unexpected end of file".to_string(), Severity::Fatal, 100)
                     }

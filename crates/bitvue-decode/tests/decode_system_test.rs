@@ -59,8 +59,8 @@ fn test_decode_frame_buffer() {
 fn test_decode_pts_dts() {
     // Test PTS/DTS handling
     struct Timestamp {
-        pts: i64,  // Presentation timestamp
-        dts: i64,  // Decode timestamp
+        pts: i64, // Presentation timestamp
+        dts: i64, // Decode timestamp
     }
 
     let timestamps = vec![
@@ -88,10 +88,7 @@ fn test_decode_pixel_formats() {
         YUV422P10LE,
     }
 
-    let formats = vec![
-        PixelFormat::YUV420P,
-        PixelFormat::YUV420P10LE,
-    ];
+    let formats = vec![PixelFormat::YUV420P, PixelFormat::YUV420P10LE];
 
     assert_eq!(formats.len(), 2);
 }
@@ -187,7 +184,7 @@ fn test_vvdec_nal_parsing() {
     }
 
     let nal = VvcNal {
-        nal_unit_type: 7,  // IDR_W_RADL
+        nal_unit_type: 7, // IDR_W_RADL
         temporal_id: 0,
         layer_id: 0,
     };
@@ -208,11 +205,7 @@ fn test_ffmpeg_codec_selection() {
         MPEG2,
     }
 
-    let codecs = vec![
-        FfmpegCodec::H264,
-        FfmpegCodec::HEVC,
-        FfmpegCodec::VP9,
-    ];
+    let codecs = vec![FfmpegCodec::H264, FfmpegCodec::HEVC, FfmpegCodec::VP9];
 
     assert_eq!(codecs.len(), 3);
 }

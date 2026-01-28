@@ -361,19 +361,17 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
     while i < data.len() {
         // Look for start code: 0x000001 or 0x00000001
         if i + 2 < data.len() && data[i] == 0x00 && data[i + 1] == 0x00 {
-            let (start_code_len, nal_start) = if i + 3 < data.len()
-                && data[i + 2] == 0x00
-                && data[i + 3] == 0x01
-            {
-                // 4-byte start code
-                (4, i + 4)
-            } else if data[i + 2] == 0x01 {
-                // 3-byte start code
-                (3, i + 3)
-            } else {
-                i += 1;
-                continue;
-            };
+            let (start_code_len, nal_start) =
+                if i + 3 < data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
+                    // 4-byte start code
+                    (4, i + 4)
+                } else if data[i + 2] == 0x01 {
+                    // 3-byte start code
+                    (3, i + 3)
+                } else {
+                    i += 1;
+                    continue;
+                };
 
             // Find the end of this NAL unit (next start code or end of data)
             let mut nal_end = data.len();

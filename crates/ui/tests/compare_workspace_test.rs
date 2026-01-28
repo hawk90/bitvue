@@ -159,9 +159,7 @@ fn test_difference_threshold() {
     let threshold = 10;
     let differences = vec![5, 15, 3, 25];
 
-    let visible_count = differences.iter()
-        .filter(|&&d| d >= threshold)
-        .count();
+    let visible_count = differences.iter().filter(|&&d| d >= threshold).count();
 
     assert_eq!(visible_count, 2); // 15 and 25
 }

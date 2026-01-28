@@ -93,9 +93,18 @@ fn test_empty_syntax_node() {
 fn test_syntax_node_multiple_children() {
     let mut parent = syntax::SyntaxNode::new("parent", syntax::SyntaxNodeType::Array);
 
-    parent.add_child(syntax::SyntaxNode::new("child1", syntax::SyntaxNodeType::Field));
-    parent.add_child(syntax::SyntaxNode::new("child2", syntax::SyntaxNodeType::Field));
-    parent.add_child(syntax::SyntaxNode::new("child3", syntax::SyntaxNodeType::Field));
+    parent.add_child(syntax::SyntaxNode::new(
+        "child1",
+        syntax::SyntaxNodeType::Field,
+    ));
+    parent.add_child(syntax::SyntaxNode::new(
+        "child2",
+        syntax::SyntaxNodeType::Field,
+    ));
+    parent.add_child(syntax::SyntaxNode::new(
+        "child3",
+        syntax::SyntaxNodeType::Field,
+    ));
 
     assert_eq!(parent.children.len(), 3);
 }

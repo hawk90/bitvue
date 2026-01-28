@@ -82,11 +82,7 @@ fn test_yuv_diff_threshold_filtering() {
     let diffs = vec![2u8, 15, 5, 25, 3, 30];
     let threshold = 10u8;
 
-    let significant_diffs: Vec<u8> = diffs
-        .iter()
-        .filter(|&&d| d >= threshold)
-        .copied()
-        .collect();
+    let significant_diffs: Vec<u8> = diffs.iter().filter(|&&d| d >= threshold).copied().collect();
 
     assert_eq!(significant_diffs.len(), 3); // 15, 25, 30
 }

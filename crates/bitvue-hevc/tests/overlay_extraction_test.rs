@@ -2,9 +2,9 @@
 //!
 //! Comprehensive tests for HEVC overlay data extraction.
 
+use bitvue_core::{partition_grid::PartitionType, BlockMode};
 use bitvue_hevc::overlay_extraction;
 use bitvue_hevc::sps::{ChromaFormat, Profile, ProfileTierLevel, Sps};
-use bitvue_core::{BlockMode, partition_grid::PartitionType};
 
 fn create_minimal_sps() -> Sps {
     Sps {
@@ -144,11 +144,7 @@ fn test_motion_vector_zero() {
 
 #[test]
 fn test_block_mode_variants() {
-    let modes = vec![
-        BlockMode::Intra,
-        BlockMode::Inter,
-        BlockMode::Skip,
-    ];
+    let modes = vec![BlockMode::Intra, BlockMode::Inter, BlockMode::Skip];
 
     for mode in modes {
         let _ = format!("{:?}", mode);
@@ -242,13 +238,7 @@ fn test_ctu_with_motion_vector() {
 
 #[test]
 fn test_ctu_positions() {
-    let positions = vec![
-        (0u32, 0u32),
-        (64, 0),
-        (0, 64),
-        (64, 64),
-        (128, 128),
-    ];
+    let positions = vec![(0u32, 0u32), (64, 0), (0, 64), (64, 64), (128, 128)];
 
     for (x, y) in positions {
         let ctu = bitvue_hevc::overlay_extraction::CodingTreeUnit {
@@ -279,11 +269,7 @@ fn test_partition_variants() {
 
 #[test]
 fn test_super_block_modes() {
-    let modes = vec![
-        BlockMode::Intra,
-        BlockMode::Inter,
-        BlockMode::Skip,
-    ];
+    let modes = vec![BlockMode::Intra, BlockMode::Inter, BlockMode::Skip];
 
     for mode in modes {
         let _ = format!("{:?}", mode);
@@ -292,8 +278,8 @@ fn test_super_block_modes() {
 
 #[test]
 fn test_grid_dimensions() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_core::qp_heatmap::QPGrid;
 
     // Test various dimensions
     let dimensions = vec![(640, 480), (1280, 720), (1920, 1080)];
@@ -303,7 +289,14 @@ fn test_grid_dimensions() {
         let grid_w = (width + ctu_size - 1) / ctu_size;
         let grid_h = (height + ctu_size - 1) / ctu_size;
 
-        let qp_grid = QPGrid::new(grid_w, grid_h, ctu_size, ctu_size, vec![26; (grid_w * grid_h) as usize], -1);
+        let qp_grid = QPGrid::new(
+            grid_w,
+            grid_h,
+            ctu_size,
+            ctu_size,
+            vec![26; (grid_w * grid_h) as usize],
+            -1,
+        );
         assert_eq!(qp_grid.grid_w, grid_w);
 
         let mv_l0 = vec![MotionVector::ZERO; (grid_w * grid_h) as usize];
@@ -315,8 +308,8 @@ fn test_grid_dimensions() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_core::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 64, 64, vec![], -1);
@@ -331,7 +324,7 @@ fn test_large_grid() {
     use bitvue_core::qp_heatmap::QPGrid;
 
     // Test 4K resolution
-    let width: u32 = 3840 / 64;  // 60 CTUs
+    let width: u32 = 3840 / 64; // 60 CTUs
     let height: u32 = 2160 / 64; // 33 CTUs
     let qp_values = vec![26i16; (width * height) as usize];
 
@@ -357,7 +350,15 @@ fn test_mv_grid_large() {
     let mv_l0 = vec![MotionVector::ZERO; (grid_w * grid_h) as usize];
     let mv_l1 = vec![MotionVector::MISSING; (grid_w * grid_h) as usize];
 
-    let grid = MVGrid::new(coded_width, coded_height, block_w, block_h, mv_l0, mv_l1, None);
+    let grid = MVGrid::new(
+        coded_width,
+        coded_height,
+        block_w,
+        block_h,
+        mv_l0,
+        mv_l1,
+        None,
+    );
     assert_eq!(grid.grid_w, grid_w);
     assert_eq!(grid.grid_h, grid_h);
 }
@@ -425,9 +426,9 @@ fn test_ctu_coverage_128() {
 
 #[test]
 fn test_grid_dimensions_consistency() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::{MVGrid, MotionVector};
     use bitvue_core::partition_grid::PartitionGrid;
+    use bitvue_core::qp_heatmap::QPGrid;
 
     let width = 1920;
     let height = 1080;
@@ -510,13 +511,7 @@ fn test_cu_depth_values() {
 
 #[test]
 fn test_cu_positions() {
-    let positions = vec![
-        (0u32, 0u32),
-        (64, 0),
-        (0, 64),
-        (64, 64),
-        (128, 128),
-    ];
+    let positions = vec![(0u32, 0u32), (64, 0), (0, 64), (64, 64), (128, 128)];
 
     for (x, y) in positions {
         let cu = bitvue_hevc::overlay_extraction::CodingUnit {

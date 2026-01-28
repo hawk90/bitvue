@@ -8,10 +8,10 @@ use egui::Color32;
 fn test_severity_color_mapping() {
     // Test that each severity level has a distinct color
     let severity_colors = vec![
-        (Severity::Fatal, Color32::from_rgb(220, 38, 38)),    // Red-600
-        (Severity::Error, Color32::from_rgb(239, 68, 68)),    // Red-500
-        (Severity::Warn, Color32::from_rgb(251, 191, 36)),    // Amber-400
-        (Severity::Info, Color32::from_rgb(96, 165, 250)),    // Blue-400
+        (Severity::Fatal, Color32::from_rgb(220, 38, 38)), // Red-600
+        (Severity::Error, Color32::from_rgb(239, 68, 68)), // Red-500
+        (Severity::Warn, Color32::from_rgb(251, 191, 36)), // Amber-400
+        (Severity::Info, Color32::from_rgb(96, 165, 250)), // Blue-400
     ];
 
     for (severity, expected_color) in severity_colors {
@@ -22,7 +22,11 @@ fn test_severity_color_mapping() {
             Severity::Info => Color32::from_rgb(96, 165, 250),
         };
 
-        assert_eq!(color, expected_color, "Severity {:?} should map to color {:?}", severity, expected_color);
+        assert_eq!(
+            color, expected_color,
+            "Severity {:?} should map to color {:?}",
+            severity, expected_color
+        );
     }
 }
 
@@ -30,13 +34,13 @@ fn test_severity_color_mapping() {
 fn test_impact_icon_color_mapping() {
     // Test that impact icons have appropriate colors
     let test_cases = vec![
-        (100, '●', Color32::from_rgb(220, 38, 38)),  // Critical: red
+        (100, '●', Color32::from_rgb(220, 38, 38)), // Critical: red
         (85, '●', Color32::from_rgb(220, 38, 38)),
         (80, '●', Color32::from_rgb(220, 38, 38)),
-        (79, '▲', Color32::from_rgb(251, 191, 36)),  // Warning: amber
+        (79, '▲', Color32::from_rgb(251, 191, 36)), // Warning: amber
         (65, '▲', Color32::from_rgb(251, 191, 36)),
         (50, '▲', Color32::from_rgb(251, 191, 36)),
-        (49, '○', Color32::from_rgb(34, 197, 94)),   // OK: green
+        (49, '○', Color32::from_rgb(34, 197, 94)), // OK: green
         (25, '○', Color32::from_rgb(34, 197, 94)),
         (0, '○', Color32::from_rgb(34, 197, 94)),
     ];
@@ -50,8 +54,16 @@ fn test_impact_icon_color_mapping() {
             ('○', Color32::from_rgb(34, 197, 94))
         };
 
-        assert_eq!(icon, expected_icon, "Impact {} should use icon {}", impact_score, expected_icon);
-        assert_eq!(color, expected_color, "Impact {} should use color {:?}", impact_score, expected_color);
+        assert_eq!(
+            icon, expected_icon,
+            "Impact {} should use icon {}",
+            impact_score, expected_icon
+        );
+        assert_eq!(
+            color, expected_color,
+            "Impact {} should use color {:?}",
+            impact_score, expected_color
+        );
     }
 }
 
@@ -59,8 +71,8 @@ fn test_impact_icon_color_mapping() {
 fn test_row_background_alternating() {
     // Test that alternating row backgrounds are used for readability
     let row_colors = vec![
-        (0, Color32::from_rgb(250, 250, 250)),  // Even: light gray
-        (1, Color32::from_rgb(255, 255, 255)),  // Odd: white
+        (0, Color32::from_rgb(250, 250, 250)), // Even: light gray
+        (1, Color32::from_rgb(255, 255, 255)), // Odd: white
         (2, Color32::from_rgb(250, 250, 250)),
         (3, Color32::from_rgb(255, 255, 255)),
     ];
@@ -72,7 +84,11 @@ fn test_row_background_alternating() {
             Color32::from_rgb(255, 255, 255)
         };
 
-        assert_eq!(bg_color, expected_color, "Row {} should have background {:?}", row_index, expected_color);
+        assert_eq!(
+            bg_color, expected_color,
+            "Row {} should have background {:?}",
+            row_index, expected_color
+        );
     }
 }
 
@@ -81,11 +97,17 @@ fn test_selected_row_highlight() {
     // Test that selected row has distinct highlight color
     let normal_bg = Color32::from_rgb(255, 255, 255);
     let selected_bg = Color32::from_rgb(219, 234, 254); // Blue-100
-    let hover_bg = Color32::from_rgb(243, 244, 246);    // Gray-100
+    let hover_bg = Color32::from_rgb(243, 244, 246); // Gray-100
 
-    assert_ne!(normal_bg, selected_bg, "Selected row should have different color");
+    assert_ne!(
+        normal_bg, selected_bg,
+        "Selected row should have different color"
+    );
     assert_ne!(normal_bg, hover_bg, "Hover row should have different color");
-    assert_ne!(selected_bg, hover_bg, "Selected and hover should be distinct");
+    assert_ne!(
+        selected_bg, hover_bg,
+        "Selected and hover should be distinct"
+    );
 }
 
 #[test]
@@ -94,28 +116,39 @@ fn test_column_width_distribution() {
     // Total width: 100% = 1000px (example)
 
     let column_widths = vec![
-        ("Severity", 80),    // 8%  - Fixed width for icon + text
-        ("Frame #", 60),     // 6%  - Fixed width for numbers
-        ("Timestamp", 80),   // 8%  - Fixed width for time
-        ("Pos", 80),         // 8%  - Fixed width for offset
-        ("NAL idx", 60),     // 6%  - Fixed width for index
-        ("Field", 60),       // 6%  - Fixed width for abbreviation
-        ("CTB idx", 60),     // 6%  - Fixed width for index
-        ("Type", 90),        // 9%  - Fixed width for type name
-        ("Count", 50),       // 5%  - Fixed width for "999x"
-        ("Impact", 80),      // 8%  - Fixed width for icon + score
-        ("Message", 400),    // 40% - Flexible, takes remaining space
+        ("Severity", 80),  // 8%  - Fixed width for icon + text
+        ("Frame #", 60),   // 6%  - Fixed width for numbers
+        ("Timestamp", 80), // 8%  - Fixed width for time
+        ("Pos", 80),       // 8%  - Fixed width for offset
+        ("NAL idx", 60),   // 6%  - Fixed width for index
+        ("Field", 60),     // 6%  - Fixed width for abbreviation
+        ("CTB idx", 60),   // 6%  - Fixed width for index
+        ("Type", 90),      // 9%  - Fixed width for type name
+        ("Count", 50),     // 5%  - Fixed width for "999x"
+        ("Impact", 80),    // 8%  - Fixed width for icon + score
+        ("Message", 400),  // 40% - Flexible, takes remaining space
     ];
 
     let total_width: u32 = column_widths.iter().map(|(_, w)| w).sum();
 
-    assert_eq!(total_width, 1100, "Column widths should sum to reasonable total");
+    assert_eq!(
+        total_width, 1100,
+        "Column widths should sum to reasonable total"
+    );
 
     // Message column should be the widest
-    let message_width = column_widths.iter().find(|(name, _)| *name == "Message").unwrap().1;
+    let message_width = column_widths
+        .iter()
+        .find(|(name, _)| *name == "Message")
+        .unwrap()
+        .1;
     for (name, width) in &column_widths {
         if *name != "Message" {
-            assert!(message_width > *width, "Message column should be wider than {}", name);
+            assert!(
+                message_width > *width,
+                "Message column should be wider than {}",
+                name
+            );
         }
     }
 }
@@ -140,9 +173,19 @@ fn test_text_overflow_ellipsis() {
         long_text.to_string()
     };
 
-    assert_eq!(truncated_short, short_text, "Short text should not be truncated");
-    assert!(truncated_long.ends_with("..."), "Long text should end with ellipsis");
-    assert_eq!(truncated_long.len(), 103, "Truncated text should be max_width + 3");
+    assert_eq!(
+        truncated_short, short_text,
+        "Short text should not be truncated"
+    );
+    assert!(
+        truncated_long.ends_with("..."),
+        "Long text should end with ellipsis"
+    );
+    assert_eq!(
+        truncated_long.len(),
+        103,
+        "Truncated text should be max_width + 3"
+    );
 }
 
 #[test]
@@ -159,16 +202,21 @@ fn test_unicode_icon_rendering() {
     for (icon, unicode_code, description) in icons {
         // Verify character code
         let code = icon as u32;
-        assert!(code > 0x25A0 && code < 0x26FF || code == 0x2713,
+        assert!(
+            code > 0x25A0 && code < 0x26FF || code == 0x2713,
             "Icon {} ({}) should be in Unicode symbol range",
-            icon, description
+            icon,
+            description
         );
 
         // Verify single character
         let as_string = icon.to_string();
-        assert_eq!(as_string.chars().count(), 1,
+        assert_eq!(
+            as_string.chars().count(),
+            1,
             "Icon {} ({}) should be single character",
-            icon, description
+            icon,
+            description
         );
     }
 }
@@ -182,10 +230,16 @@ fn test_monospace_font_for_hex() {
     // In actual implementation, these would use TextStyle::Monospace
     // Here we just verify the data is suitable for monospace
 
-    assert!(hex_text.chars().all(|c| c.is_ascii_alphanumeric() || c == 'x'),
-        "Hex text should be alphanumeric");
-    assert!(offset_text.chars().all(|c| c.is_ascii_digit()),
-        "Offset should be numeric");
+    assert!(
+        hex_text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == 'x'),
+        "Hex text should be alphanumeric"
+    );
+    assert!(
+        offset_text.chars().all(|c| c.is_ascii_digit()),
+        "Offset should be numeric"
+    );
 }
 
 #[test]
@@ -200,13 +254,17 @@ fn test_severity_icon_rendering() {
 
     for (severity, expected_icon) in severity_icons {
         let icon = match severity {
-            Severity::Fatal => '⚠',  // U+26A0
-            Severity::Error => '✗',  // U+2717
-            Severity::Warn => '⚠',   // U+26A0
-            Severity::Info => 'ⓘ',   // U+24D8
+            Severity::Fatal => '⚠', // U+26A0
+            Severity::Error => '✗', // U+2717
+            Severity::Warn => '⚠',  // U+26A0
+            Severity::Info => 'ⓘ',  // U+24D8
         };
 
-        assert_eq!(icon, expected_icon, "Severity {:?} should use icon {}", severity, expected_icon);
+        assert_eq!(
+            icon, expected_icon,
+            "Severity {:?} should use icon {}",
+            severity, expected_icon
+        );
     }
 }
 
@@ -217,16 +275,22 @@ fn test_hover_state_styling() {
     let hover_opacity = 0.9; // Slightly dimmed
     let disabled_opacity = 0.5;
 
-    assert!(hover_opacity < normal_opacity, "Hover should be slightly dimmed");
-    assert!(disabled_opacity < hover_opacity, "Disabled should be most dimmed");
+    assert!(
+        hover_opacity < normal_opacity,
+        "Hover should be slightly dimmed"
+    );
+    assert!(
+        disabled_opacity < hover_opacity,
+        "Disabled should be most dimmed"
+    );
 }
 
 #[test]
 fn test_sort_indicator_rendering() {
     // Test sort direction indicators
     let sort_indicators = vec![
-        ("ascending", '▲'),   // U+25B2
-        ("descending", '▼'),  // U+25BC
+        ("ascending", '▲'),  // U+25B2
+        ("descending", '▼'), // U+25BC
         ("none", ' '),
     ];
 
@@ -237,7 +301,11 @@ fn test_sort_indicator_rendering() {
             _ => ' ',
         };
 
-        assert_eq!(icon, expected_icon, "Sort direction {} should use icon {}", direction, expected_icon);
+        assert_eq!(
+            icon, expected_icon,
+            "Sort direction {} should use icon {}",
+            direction, expected_icon
+        );
     }
 }
 
@@ -247,12 +315,18 @@ fn test_filter_ui_visibility() {
     let diagnostic_count = 100;
     let show_filters = diagnostic_count > 0;
 
-    assert!(show_filters, "Filters should be shown when diagnostics exist");
+    assert!(
+        show_filters,
+        "Filters should be shown when diagnostics exist"
+    );
 
     let diagnostic_count_zero = 0;
     let show_filters_zero = diagnostic_count_zero > 0;
 
-    assert!(!show_filters_zero, "Filters should be hidden when no diagnostics");
+    assert!(
+        !show_filters_zero,
+        "Filters should be hidden when no diagnostics"
+    );
 }
 
 #[test]
@@ -264,26 +338,35 @@ fn test_count_badge_styling() {
     let single_is_burst = single_count > 1;
     let burst_is_burst = burst_count > 1;
 
-    assert!(!single_is_burst, "Single occurrence should not be styled as burst");
-    assert!(burst_is_burst, "Multiple occurrences should be styled as burst");
+    assert!(
+        !single_is_burst,
+        "Single occurrence should not be styled as burst"
+    );
+    assert!(
+        burst_is_burst,
+        "Multiple occurrences should be styled as burst"
+    );
 
     // Burst badge should use warning color
     let normal_badge_color = Color32::from_rgb(229, 231, 235); // Gray-200
-    let burst_badge_color = Color32::from_rgb(254, 215, 170);  // Orange-200
+    let burst_badge_color = Color32::from_rgb(254, 215, 170); // Orange-200
 
-    assert_ne!(normal_badge_color, burst_badge_color, "Burst badges should have distinct color");
+    assert_ne!(
+        normal_badge_color, burst_badge_color,
+        "Burst badges should have distinct color"
+    );
 }
 
 #[test]
 fn test_impact_score_gradient() {
     // Test that impact scores use color gradient
     let impact_ranges = vec![
-        (95, Color32::from_rgb(220, 38, 38)),   // Very high: red-600
-        (85, Color32::from_rgb(239, 68, 68)),   // High: red-500
-        (75, Color32::from_rgb(251, 191, 36)),  // Medium-high: amber-400
-        (60, Color32::from_rgb(251, 191, 36)),  // Medium: amber-400
-        (40, Color32::from_rgb(34, 197, 94)),   // Low: green-500
-        (10, Color32::from_rgb(34, 197, 94)),   // Very low: green-500
+        (95, Color32::from_rgb(220, 38, 38)),  // Very high: red-600
+        (85, Color32::from_rgb(239, 68, 68)),  // High: red-500
+        (75, Color32::from_rgb(251, 191, 36)), // Medium-high: amber-400
+        (60, Color32::from_rgb(251, 191, 36)), // Medium: amber-400
+        (40, Color32::from_rgb(34, 197, 94)),  // Low: green-500
+        (10, Color32::from_rgb(34, 197, 94)),  // Very low: green-500
     ];
 
     for (impact_score, expected_color) in impact_ranges {
@@ -297,20 +380,30 @@ fn test_impact_score_gradient() {
             Color32::from_rgb(34, 197, 94)
         };
 
-        assert_eq!(color, expected_color, "Impact {} should map to {:?}", impact_score, expected_color);
+        assert_eq!(
+            color, expected_color,
+            "Impact {} should map to {:?}",
+            impact_score, expected_color
+        );
     }
 }
 
 #[test]
 fn test_table_header_styling() {
     // Test that table headers have distinct styling
-    let header_bg = Color32::from_rgb(243, 244, 246);    // Gray-100
-    let header_text = Color32::from_rgb(17, 24, 39);     // Gray-900
-    let body_bg = Color32::from_rgb(255, 255, 255);      // White
-    let body_text = Color32::from_rgb(75, 85, 99);       // Gray-600
+    let header_bg = Color32::from_rgb(243, 244, 246); // Gray-100
+    let header_text = Color32::from_rgb(17, 24, 39); // Gray-900
+    let body_bg = Color32::from_rgb(255, 255, 255); // White
+    let body_text = Color32::from_rgb(75, 85, 99); // Gray-600
 
-    assert_ne!(header_bg, body_bg, "Header background should differ from body");
-    assert_ne!(header_text, body_text, "Header text should differ from body");
+    assert_ne!(
+        header_bg, body_bg,
+        "Header background should differ from body"
+    );
+    assert_ne!(
+        header_text, body_text,
+        "Header text should differ from body"
+    );
 }
 
 #[test]
@@ -326,12 +419,21 @@ fn test_message_text_wrapping() {
         message.to_string()
     };
 
-    assert!(truncated.len() <= truncate_width + 3, "Truncated message should fit width");
-    assert!(truncated.ends_with("..."), "Truncated message should have ellipsis");
+    assert!(
+        truncated.len() <= truncate_width + 3,
+        "Truncated message should fit width"
+    );
+    assert!(
+        truncated.ends_with("..."),
+        "Truncated message should have ellipsis"
+    );
 
     // Wrap mode (check that message can be split)
     let words: Vec<&str> = message.split_whitespace().collect();
-    assert!(words.len() > 1, "Message should have multiple words for wrapping");
+    assert!(
+        words.len() > 1,
+        "Message should have multiple words for wrapping"
+    );
 }
 
 #[test]
@@ -342,8 +444,14 @@ fn test_timestamp_alignment() {
     let count_display = "5x";
 
     // Verify all are fixed-width friendly (no variable characters)
-    assert!(!timestamp_display.contains(','), "Timestamp should not have thousands separator");
-    assert!(offset_display.chars().all(|c| c.is_ascii_digit()), "Offset should be numeric");
+    assert!(
+        !timestamp_display.contains(','),
+        "Timestamp should not have thousands separator"
+    );
+    assert!(
+        offset_display.chars().all(|c| c.is_ascii_digit()),
+        "Offset should be numeric"
+    );
     assert!(count_display.ends_with('x'), "Count should have 'x' suffix");
 }
 
@@ -371,7 +479,10 @@ fn test_responsive_column_hiding() {
     let narrow_width = 600; // pixels
     let show_optional = narrow_width > 800;
 
-    assert!(!show_optional, "Optional columns should hide on narrow displays");
+    assert!(
+        !show_optional,
+        "Optional columns should hide on narrow displays"
+    );
 
     // Essential columns always shown
     for col in essential_columns {
@@ -394,12 +505,12 @@ fn test_keyboard_navigation_highlight() {
 fn test_category_color_coding() {
     // Test that different diagnostic categories have color coding
     let category_colors = vec![
-        (Category::Container, Color32::from_rgb(147, 51, 234)),   // Purple-600
-        (Category::Bitstream, Color32::from_rgb(239, 68, 68)),    // Red-500
-        (Category::Decode, Color32::from_rgb(251, 191, 36)),      // Amber-400
-        (Category::Metric, Color32::from_rgb(34, 197, 94)),       // Green-500
-        (Category::IO, Color32::from_rgb(96, 165, 250)),          // Blue-400
-        (Category::Worker, Color32::from_rgb(168, 85, 247)),      // Purple-400
+        (Category::Container, Color32::from_rgb(147, 51, 234)), // Purple-600
+        (Category::Bitstream, Color32::from_rgb(239, 68, 68)),  // Red-500
+        (Category::Decode, Color32::from_rgb(251, 191, 36)),    // Amber-400
+        (Category::Metric, Color32::from_rgb(34, 197, 94)),     // Green-500
+        (Category::IO, Color32::from_rgb(96, 165, 250)),        // Blue-400
+        (Category::Worker, Color32::from_rgb(168, 85, 247)),    // Purple-400
     ];
 
     for (category, expected_color) in category_colors {
@@ -412,27 +523,37 @@ fn test_category_color_coding() {
             Category::Worker => Color32::from_rgb(168, 85, 247),
         };
 
-        assert_eq!(color, expected_color, "Category {:?} should map to color {:?}", category, expected_color);
+        assert_eq!(
+            color, expected_color,
+            "Category {:?} should map to color {:?}",
+            category, expected_color
+        );
     }
 }
 
 #[test]
 fn test_dark_mode_color_scheme() {
     // Test that dark mode uses appropriate colors
-    let dark_bg = Color32::from_rgb(17, 24, 39);        // Gray-900
-    let dark_text = Color32::from_rgb(243, 244, 246);   // Gray-100
-    let light_bg = Color32::from_rgb(255, 255, 255);    // White
-    let light_text = Color32::from_rgb(17, 24, 39);     // Gray-900
+    let dark_bg = Color32::from_rgb(17, 24, 39); // Gray-900
+    let dark_text = Color32::from_rgb(243, 244, 246); // Gray-100
+    let light_bg = Color32::from_rgb(255, 255, 255); // White
+    let light_text = Color32::from_rgb(17, 24, 39); // Gray-900
 
     // Dark colors should be inverted from light
-    assert_ne!(dark_bg, light_bg, "Dark background should differ from light");
+    assert_ne!(
+        dark_bg, light_bg,
+        "Dark background should differ from light"
+    );
     assert_ne!(dark_text, light_text, "Dark text should differ from light");
 
     // Verify luminance differences
     let dark_bg_luminance = dark_bg.r() as u32 + dark_bg.g() as u32 + dark_bg.b() as u32;
     let light_bg_luminance = light_bg.r() as u32 + light_bg.g() as u32 + light_bg.b() as u32;
 
-    assert!(dark_bg_luminance < light_bg_luminance, "Dark mode should have lower luminance");
+    assert!(
+        dark_bg_luminance < light_bg_luminance,
+        "Dark mode should have lower luminance"
+    );
 }
 
 #[test]
@@ -457,5 +578,8 @@ fn test_scroll_shadow_rendering() {
     assert!(has_overflow, "Content should overflow viewport");
 
     let shadow_color = Color32::from_rgba_premultiplied(0, 0, 0, 20);
-    assert!(shadow_color.a() > 0, "Scroll shadow should have transparency");
+    assert!(
+        shadow_color.a() > 0,
+        "Scroll shadow should have transparency"
+    );
 }

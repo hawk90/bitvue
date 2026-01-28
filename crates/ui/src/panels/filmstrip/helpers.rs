@@ -9,23 +9,26 @@ impl FilmstripPanel {
     pub(super) fn frame_type_color(frame_type: &str) -> Color32 {
         match frame_type {
             // AV1 frame types
-            "KEY" | "INTRA_ONLY" => Color32::from_rgb(220, 80, 80),   // Red for I-frames (KEY, INTRA_ONLY)
-            "INTER" => Color32::from_rgb(80, 180, 80),                 // Green for P-frames (INTER)
-            "SWITCH" => Color32::from_rgb(180, 100, 180),              // Purple for switch frames
+            "KEY" | "INTRA_ONLY" => Color32::from_rgb(220, 80, 80), // Red for I-frames (KEY, INTRA_ONLY)
+            "INTER" => Color32::from_rgb(80, 180, 80),              // Green for P-frames (INTER)
+            "SWITCH" => Color32::from_rgb(180, 100, 180),           // Purple for switch frames
             // Legacy codec support (H.264/HEVC)
-            "I" | "IDR" | "INTRA" => Color32::from_rgb(220, 80, 80),  // Red for I-frames
-            "P" | "PRED" => Color32::from_rgb(80, 180, 80),           // Green for P-frames
+            "I" | "IDR" | "INTRA" => Color32::from_rgb(220, 80, 80), // Red for I-frames
+            "P" | "PRED" => Color32::from_rgb(80, 180, 80),          // Green for P-frames
             "B" | "BFRAME" | "BPRED" => Color32::from_rgb(80, 140, 220), // Blue for B-frames
             // Unknown
-            "FRAME" => Color32::from_rgb(120, 120, 120),               // Gray for unknown
-            "UNKNOWN" => Color32::from_rgb(120, 120, 120),             // Gray for unknown
-            _ => Color32::from_rgb(100, 100, 100),                     // Dark gray default
+            "FRAME" => Color32::from_rgb(120, 120, 120), // Gray for unknown
+            "UNKNOWN" => Color32::from_rgb(120, 120, 120), // Gray for unknown
+            _ => Color32::from_rgb(100, 100, 100),       // Dark gray default
         }
     }
 }
 
 /// Collect frame information from unit tree
-pub(super) fn collect_frame_info(units: &[UnitNode], diagnostics: &[bitvue_core::event::Diagnostic]) -> Vec<FrameInfo> {
+pub(super) fn collect_frame_info(
+    units: &[UnitNode],
+    diagnostics: &[bitvue_core::event::Diagnostic],
+) -> Vec<FrameInfo> {
     let mut frames = Vec::new();
     collect_frame_info_recursive(units, &mut frames, diagnostics);
     // Sort by frame index
@@ -33,37 +36,50 @@ pub(super) fn collect_frame_info(units: &[UnitNode], diagnostics: &[bitvue_core:
     frames
 }
 
-fn collect_frame_info_recursive(units: &[UnitNode], frames: &mut Vec<FrameInfo>, diagnostics: &[bitvue_core::event::Diagnostic]) {
+fn collect_frame_info_recursive(
+    units: &[UnitNode],
+    frames: &mut Vec<FrameInfo>,
+    diagnostics: &[bitvue_core::event::Diagnostic],
+) {
     for unit in units {
         if let Some(frame_index) = unit.frame_index {
             // VQAnalyzer parity: Extract NAL type from unit_type
             let nal_type = extract_nal_type(&unit.unit_type);
 
             // Determine reference list (L0 for forward ref, L1 for backward)
-            let ref_list = if unit.unit_type.contains("IDR") || unit.unit_type.contains("KEY") || unit.unit_type.contains("INTRA") {
+            let ref_list = if unit.unit_type.contains("IDR")
+                || unit.unit_type.contains("KEY")
+                || unit.unit_type.contains("INTRA")
+            {
                 None // Intra frames have no references
             } else {
                 Some("L0".to_string()) // Default to L0 for inter frames
             };
 
             // Bitvue unique feature: Count diagnostics for this frame
-            let frame_diagnostics: Vec<_> = diagnostics.iter()
+            let frame_diagnostics: Vec<_> = diagnostics
+                .iter()
                 .filter(|d| {
                     // Match by frame_index or offset range
-                    d.frame_index == Some(frame_index) ||
-                    (d.offset_bytes >= unit.offset && d.offset_bytes < unit.offset + unit.size as u64)
+                    d.frame_index == Some(frame_index)
+                        || (d.offset_bytes >= unit.offset
+                            && d.offset_bytes < unit.offset + unit.size as u64)
                 })
                 .collect();
 
             let diagnostic_count = frame_diagnostics.len();
-            let max_impact = frame_diagnostics.iter()
+            let max_impact = frame_diagnostics
+                .iter()
                 .map(|d| d.impact_score)
                 .max()
                 .unwrap_or(0);
 
             frames.push(FrameInfo {
                 frame_index,
-                frame_type: unit.frame_type.clone().unwrap_or_else(|| "UNKNOWN".to_string()),
+                frame_type: unit
+                    .frame_type
+                    .clone()
+                    .unwrap_or_else(|| "UNKNOWN".to_string()),
                 unit_key: unit.key.clone(),
                 offset: unit.offset,
                 size: unit.size, // Actual unit size in bytes
@@ -71,7 +87,7 @@ fn collect_frame_info_recursive(units: &[UnitNode], frames: &mut Vec<FrameInfo>,
                 poc: frame_index as i32,
                 // VQAnalyzer parity: decode_order vs display_order
                 // In real impl, these come from PTS/DTS or POC
-                decode_order: frame_index, // Decode order = stream order
+                decode_order: frame_index,  // Decode order = stream order
                 display_order: frame_index, // Display order = POC order (simplified)
                 nal_type,
                 pts: unit.pts,
@@ -103,7 +119,10 @@ fn extract_nal_type(unit_type: &str) -> String {
     } else {
         // Return abbreviated version of unit_type
         let parts: Vec<&str> = unit_type.split(&['_', ' ', '-'][..]).collect();
-        parts.first().map(|s| s.to_string()).unwrap_or_else(|| "FRAME".to_string())
+        parts
+            .first()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "FRAME".to_string())
     }
 }
 

@@ -4,7 +4,7 @@
 //! new VVC features like dual tree, ALF, LMCS, and extended partitioning.
 
 use crate::bitreader::BitReader;
-use crate::error::{Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
 /// VVC Profile.
@@ -362,7 +362,8 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
 
     if ptl_present {
         // Parse profile_tier_level (simplified)
-        sps.profile_tier_level = parse_profile_tier_level(&mut reader, sps.sps_max_sublayers_minus1)?;
+        sps.profile_tier_level =
+            parse_profile_tier_level(&mut reader, sps.sps_max_sublayers_minus1)?;
     }
 
     // sps_gdr_enabled_flag (1 bit)
@@ -410,7 +411,10 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
     Ok(sps)
 }
 
-fn parse_profile_tier_level(reader: &mut BitReader, #[allow(unused_variables)] max_sublayers_minus1: u8) -> Result<ProfileTierLevel> {
+fn parse_profile_tier_level(
+    reader: &mut BitReader,
+    #[allow(unused_variables)] max_sublayers_minus1: u8,
+) -> Result<ProfileTierLevel> {
     let mut ptl = ProfileTierLevel::default();
 
     // general_profile_idc (7 bits)
@@ -464,6 +468,6 @@ mod tests {
 
         // CTU size = 128
         assert_eq!(sps.pic_width_in_ctus(), 15); // ceil(1920/128)
-        assert_eq!(sps.pic_height_in_ctus(), 9);  // ceil(1080/128)
+        assert_eq!(sps.pic_height_in_ctus(), 9); // ceil(1080/128)
     }
 }

@@ -4,14 +4,14 @@
 //! Exposes video analysis capabilities to AI assistants like Claude.
 
 use anyhow::Result;
+use bitvue_av1::frame_header::{parse_frame_header_basic, FrameType};
+use bitvue_core::{Core, StreamId, UnitModel, UnitNode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use bitvue_av1::frame_header::{parse_frame_header_basic, FrameType};
-use bitvue_core::{Core, StreamId, UnitModel, UnitNode};
 
 /// Shared application state
 struct AppState {
@@ -319,16 +319,18 @@ fn handle_tools_list(id: Value) -> McpResponse {
 fn handle_tool_call(id: Value, params: Option<Value>, state: &AppState) -> McpResponse {
     let params = match params {
         Some(p) => p,
-        None => return McpResponse {
-            jsonrpc: String::from("2.0"),
-            id,
-            result: None,
-            error: Some(McpError {
-                code: -32602,
-                message: "Invalid params".to_string(),
-                data: None,
-            }),
-        },
+        None => {
+            return McpResponse {
+                jsonrpc: String::from("2.0"),
+                id,
+                result: None,
+                error: Some(McpError {
+                    code: -32602,
+                    message: "Invalid params".to_string(),
+                    data: None,
+                }),
+            }
+        }
     };
 
     let tool_name = params["name"].as_str().unwrap_or("");
@@ -408,16 +410,22 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
 
     // Read IVF header (32 bytes)
     let mut header = [0u8; 32];
-    reader.read_exact(&mut header).map_err(|e| format!("Failed to read header: {}", e))?;
+    reader
+        .read_exact(&mut header)
+        .map_err(|e| format!("Failed to read header: {}", e))?;
 
     // Verify IVF signature
     if &header[0..4] != b"DKIF" {
-        return Err(format!("Not a valid IVF file: signature = {:?}, expected DKIF", &header[0..4]));
+        return Err(format!(
+            "Not a valid IVF file: signature = {:?}, expected DKIF",
+            &header[0..4]
+        ));
     }
 
     // Parse IVF header
     let timebase_den = u32::from_le_bytes([header[16], header[17], header[18], header[19]]);
-    let _frame_count = u32::from_le_bytes([header[24], header[25], header[26], header[27]]) as usize;
+    let _frame_count =
+        u32::from_le_bytes([header[24], header[25], header[26], header[27]]) as usize;
 
     tracing::info!("IVF header: timebase_den={}", timebase_den);
 
@@ -433,14 +441,27 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
         let mut frame_header = [0u8; 12];
         match reader.read_exact(&mut frame_header) {
             Ok(_) => {}
-            Err(_) if frame_index == 0 => return Err("Failed to read first frame header".to_string()),
+            Err(_) if frame_index == 0 => {
+                return Err("Failed to read first frame header".to_string())
+            }
             Err(_) => break,
         }
 
-        let frame_size = u32::from_le_bytes([frame_header[0], frame_header[1], frame_header[2], frame_header[3]]) as usize;
+        let frame_size = u32::from_le_bytes([
+            frame_header[0],
+            frame_header[1],
+            frame_header[2],
+            frame_header[3],
+        ]) as usize;
         let pts = u64::from_le_bytes([
-            frame_header[4], frame_header[5], frame_header[6], frame_header[7],
-            frame_header[8], frame_header[9], frame_header[10], frame_header[11],
+            frame_header[4],
+            frame_header[5],
+            frame_header[6],
+            frame_header[7],
+            frame_header[8],
+            frame_header[9],
+            frame_header[10],
+            frame_header[11],
         ]);
 
         // Calculate timestamp in nanoseconds
@@ -453,11 +474,15 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
         // Read frame data to determine frame type
         let header_read_size = frame_size.min(100);
         let mut frame_data = vec![0u8; header_read_size];
-        reader.read_exact(&mut frame_data).map_err(|e| format!("Failed to read frame data: {}", e))?;
+        reader
+            .read_exact(&mut frame_data)
+            .map_err(|e| format!("Failed to read frame data: {}", e))?;
 
         // Skip remaining frame data
         if frame_size > header_read_size {
-            reader.seek(SeekFrom::Current((frame_size - header_read_size) as i64)).ok();
+            reader
+                .seek(SeekFrom::Current((frame_size - header_read_size) as i64))
+                .ok();
         }
 
         // Parse OBU header to determine frame type
@@ -486,7 +511,7 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
             Err(_) => match obu_type {
                 6 => "I".to_string(),
                 _ => "P".to_string(),
-            }
+            },
         };
 
         // Create unit for this frame
@@ -494,7 +519,10 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
         unit.frame_index = Some(frame_index);
         unit.frame_type = Some(frame_type_str.clone());
         unit.pts = Some(timestamp_ns);
-        unit.display_name = format!("Frame {} @ 0x{:08X} ({} bytes)", frame_index, frame_start, frame_size);
+        unit.display_name = format!(
+            "Frame {} @ 0x{:08X} ({} bytes)",
+            frame_index, frame_start, frame_size
+        );
 
         // Store reference frame indices and QP if available
         if let Ok(fh) = &frame_header {
@@ -536,16 +564,16 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
         return Ok(json!({
             "success": false,
             "error": format!("File not found: {}", path)
-        }).to_string());
+        })
+        .to_string());
     }
 
     // Get file size
-    let file_size = path_buf.metadata()
-        .and_then(|m| Ok(m.len()))
-        .unwrap_or(0);
+    let file_size = path_buf.metadata().and_then(|m| Ok(m.len())).unwrap_or(0);
 
     // Get file extension
-    let ext = path_buf.extension()
+    let ext = path_buf
+        .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("unknown");
 
@@ -560,14 +588,17 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
             return Ok(json!({
                 "success": false,
                 "error": format!("Unsupported format: {}. Only IVF is currently supported.", ext)
-            }).to_string());
+            })
+            .to_string());
         }
     };
 
     match units_result {
         Ok(units) => {
             // Populate the stream state
-            let core = state.core.lock()
+            let core = state
+                .core
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
             let stream = core.get_stream(stream_id);
@@ -583,7 +614,9 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
             });
 
             // Update loaded file state
-            let mut loaded = state.loaded_file.lock()
+            let mut loaded = state
+                .loaded_file
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             *loaded = Some(path_buf.clone());
 
@@ -595,31 +628,38 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
                 "format": ext,
                 "frame_count": frame_count,
                 "message": format!("Successfully loaded {} frames from {}", frame_count, path)
-            }).to_string())
+            })
+            .to_string())
         }
-        Err(e) => {
-            Ok(json!({
-                "success": false,
-                "error": e
-            }).to_string())
-        }
+        Err(e) => Ok(json!({
+            "success": false,
+            "error": e
+        })
+        .to_string()),
     }
 }
 
 fn get_stream_model(state: &AppState, stream_id: StreamId) -> Result<(UnitModel, PathBuf)> {
-    let core = state.core.lock()
+    let core = state
+        .core
+        .lock()
         .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
     let stream = core.get_stream(stream_id);
     let stream = stream.read();
 
-    let units = stream.units.as_ref()
+    let units = stream
+        .units
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No data loaded for stream. Use load_file first."))?;
 
-    let loaded = state.loaded_file.lock()
+    let loaded = state
+        .loaded_file
+        .lock()
         .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
-    let path = loaded.as_ref()
+    let path = loaded
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No file loaded"))?
         .clone();
 
@@ -637,7 +677,9 @@ fn analyze_frame(args: Value, state: &AppState) -> Result<String> {
     let (units, path) = get_stream_model(state, stream_id)?;
 
     // Find the frame
-    let frame = units.units.iter()
+    let frame = units
+        .units
+        .iter()
         .find(|u| u.frame_index == Some(frame_index))
         .ok_or_else(|| anyhow::anyhow!("Frame {} not found", frame_index))?;
 
@@ -654,7 +696,8 @@ fn analyze_frame(args: Value, state: &AppState) -> Result<String> {
         "qp_avg": frame.qp_avg,
         "ref_frames": frame.ref_frames.clone(),
         "display_name": frame.display_name.clone()
-    }).to_string())
+    })
+    .to_string())
 }
 
 fn get_qp_map(args: Value, state: &AppState) -> Result<String> {
@@ -668,16 +711,16 @@ fn get_qp_map(args: Value, state: &AppState) -> Result<String> {
     let (units, _path) = get_stream_model(state, stream_id)?;
 
     // Find the frame
-    let frame = units.units.iter()
+    let frame = units
+        .units
+        .iter()
         .find(|u| u.frame_index == Some(frame_index))
         .ok_or_else(|| anyhow::anyhow!("Frame {} not found", frame_index))?;
 
     let qp = frame.qp_avg.unwrap_or(0);
 
     // Collect QP statistics across all frames
-    let qp_values: Vec<u8> = units.units.iter()
-        .filter_map(|u| u.qp_avg)
-        .collect();
+    let qp_values: Vec<u8> = units.units.iter().filter_map(|u| u.qp_avg).collect();
 
     let qp_min = qp_values.iter().copied().min().unwrap_or(0);
     let qp_max = qp_values.iter().copied().max().unwrap_or(0);
@@ -696,7 +739,8 @@ fn get_qp_map(args: Value, state: &AppState) -> Result<String> {
             "avg": qp_avg
         },
         "note": "QP data is per-frame average. Block-level QP requires bitstream parsing."
-    }).to_string())
+    })
+    .to_string())
 }
 
 fn get_motion_vectors(args: Value, state: &AppState) -> Result<String> {
@@ -710,7 +754,9 @@ fn get_motion_vectors(args: Value, state: &AppState) -> Result<String> {
     let (units, _path) = get_stream_model(state, stream_id)?;
 
     // Find the frame
-    let frame = units.units.iter()
+    let frame = units
+        .units
+        .iter()
         .find(|u| u.frame_index == Some(frame_index))
         .ok_or_else(|| anyhow::anyhow!("Frame {} not found", frame_index))?;
 
@@ -732,26 +778,36 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
     // Get both streams
     let (units_a, path_a) = match get_stream_model(state, StreamId::A) {
         Ok(u) => u,
-        Err(e) => return Ok(json!({
-            "message": format!("Stream A error: {}", e),
-            "note": "Load a file first using load_file"
-        }).to_string())
+        Err(e) => {
+            return Ok(json!({
+                "message": format!("Stream A error: {}", e),
+                "note": "Load a file first using load_file"
+            })
+            .to_string())
+        }
     };
     let (units_b, path_b) = match get_stream_model(state, StreamId::B) {
         Ok(u) => u,
-        Err(_) => return Ok(json!({
-            "message": "Stream B not loaded. Load a second file with load_file to compare.",
-            "stream_a": {
-                "file": path_a.to_string_lossy(),
-                "frame_count": units_a.frame_count
-            }
-        }).to_string())
+        Err(_) => {
+            return Ok(json!({
+                "message": "Stream B not loaded. Load a second file with load_file to compare.",
+                "stream_a": {
+                    "file": path_a.to_string_lossy(),
+                    "frame_count": units_a.frame_count
+                }
+            })
+            .to_string())
+        }
     };
 
-    let frame_a = units_a.units.iter()
+    let frame_a = units_a
+        .units
+        .iter()
         .find(|u| u.frame_index == Some(frame_index));
 
-    let frame_b = units_b.units.iter()
+    let frame_b = units_b
+        .units
+        .iter()
         .find(|u| u.frame_index == Some(frame_index));
 
     match (frame_a, frame_b) {
@@ -801,17 +857,20 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
                 "type": fa.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
                 "size": fa.size
             }
-        }).to_string()),
+        })
+        .to_string()),
         (None, Some(fb)) => Ok(json!({
             "message": format!("Frame {} exists in Stream B but not in Stream A", frame_index),
             "stream_b": {
                 "type": fb.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
                 "size": fb.size
             }
-        }).to_string()),
+        })
+        .to_string()),
         (None, None) => Ok(json!({
             "message": format!("Frame {} not found in either stream", frame_index)
-        }).to_string())
+        })
+        .to_string()),
     }
 }
 
@@ -819,13 +878,13 @@ fn get_gop_structure(args: Value, state: &AppState) -> Result<String> {
     let stream_str = args["stream"].as_str();
     let stream_id = parse_stream_id(stream_str);
 
-    let max_frames = args["max_frames"]
-        .as_u64()
-        .unwrap_or(100) as usize;
+    let max_frames = args["max_frames"].as_u64().unwrap_or(100) as usize;
 
     let (units, path) = get_stream_model(state, stream_id)?;
 
-    let frames: Vec<Value> = units.units.iter()
+    let frames: Vec<Value> = units
+        .units
+        .iter()
         .filter(|u| u.frame_index.is_some())
         .take(max_frames)
         .map(|u| {
@@ -855,7 +914,8 @@ fn get_gop_structure(args: Value, state: &AppState) -> Result<String> {
             "B": b_count
         },
         "frames": frames
-    }).to_string())
+    })
+    .to_string())
 }
 
 fn find_decoding_issues(args: Value, state: &AppState) -> Result<String> {
@@ -875,16 +935,24 @@ fn find_decoding_issues(args: Value, state: &AppState) -> Result<String> {
         let min_size = *sizes.iter().min().unwrap();
 
         if max_size > avg_size * 10 {
-            warnings.push(format!("Found unusually large frame ({} bytes vs avg {} bytes)", max_size, avg_size));
+            warnings.push(format!(
+                "Found unusually large frame ({} bytes vs avg {} bytes)",
+                max_size, avg_size
+            ));
         }
 
         if min_size < avg_size / 10 && min_size > 0 {
-            warnings.push(format!("Found unusually small frame ({} bytes vs avg {} bytes)", min_size, avg_size));
+            warnings.push(format!(
+                "Found unusually small frame ({} bytes vs avg {} bytes)",
+                min_size, avg_size
+            ));
         }
     }
 
     // Check for missing QP data
-    let qp_missing = units.units.iter()
+    let qp_missing = units
+        .units
+        .iter()
         .filter(|u| u.frame_index.is_some() && u.qp_avg.is_none())
         .count();
 
@@ -904,7 +972,8 @@ fn find_decoding_issues(args: Value, state: &AppState) -> Result<String> {
         "issues": issues,
         "warnings": warnings,
         "status": if issues.is_empty() { "No critical issues found" } else { "Issues detected" }
-    }).to_string())
+    })
+    .to_string())
 }
 
 fn get_stream_info(args: Value, state: &AppState) -> Result<String> {
@@ -917,7 +986,8 @@ fn get_stream_info(args: Value, state: &AppState) -> Result<String> {
     let total_size: u64 = units.units.iter().map(|u| u.size as u64).sum();
 
     // Get file extension
-    let ext = path.extension()
+    let ext = path
+        .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("unknown");
 
@@ -933,7 +1003,8 @@ fn get_stream_info(args: Value, state: &AppState) -> Result<String> {
         } else {
             0
         }
-    }).to_string())
+    })
+    .to_string())
 }
 
 fn search_syntax(args: Value, state: &AppState) -> Result<String> {
@@ -999,14 +1070,19 @@ fn search_syntax(args: Value, state: &AppState) -> Result<String> {
         },
         "results_count": results.len(),
         "results": results
-    }).to_string())
+    })
+    .to_string())
 }
 
 fn list_files(state: &AppState) -> Result<String> {
-    let loaded = state.loaded_file.lock()
+    let loaded = state
+        .loaded_file
+        .lock()
         .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
-    let core = state.core.lock()
+    let core = state
+        .core
+        .lock()
         .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
 
     let mut files = Vec::new();
@@ -1038,7 +1114,8 @@ fn list_files(state: &AppState) -> Result<String> {
     Ok(json!({
         "loaded_file": loaded.as_ref().map(|p| p.to_string_lossy().to_string()),
         "streams": files
-    }).to_string())
+    })
+    .to_string())
 }
 
 // ============================================================================

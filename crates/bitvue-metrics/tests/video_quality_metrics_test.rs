@@ -202,11 +202,17 @@ fn test_batch_metrics_aggregation() {
         }
 
         fn min(&self) -> f64 {
-            self.frame_scores.iter().cloned().fold(f64::INFINITY, f64::min)
+            self.frame_scores
+                .iter()
+                .cloned()
+                .fold(f64::INFINITY, f64::min)
         }
 
         fn max(&self) -> f64 {
-            self.frame_scores.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+            self.frame_scores
+                .iter()
+                .cloned()
+                .fold(f64::NEG_INFINITY, f64::max)
         }
     }
 
@@ -290,8 +296,16 @@ fn test_metric_caching() {
             }
         }
 
-        fn get_or_compute(&mut self, ref_idx: usize, dist_idx: usize, compute_fn: impl FnOnce() -> f64) -> f64 {
-            *self.cache.entry((ref_idx, dist_idx)).or_insert_with(compute_fn)
+        fn get_or_compute(
+            &mut self,
+            ref_idx: usize,
+            dist_idx: usize,
+            compute_fn: impl FnOnce() -> f64,
+        ) -> f64 {
+            *self
+                .cache
+                .entry((ref_idx, dist_idx))
+                .or_insert_with(compute_fn)
         }
     }
 

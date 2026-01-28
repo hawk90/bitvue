@@ -11,11 +11,7 @@ fn test_timeline_units() {
         Timecode,
     }
 
-    let units = vec![
-        TimeUnit::Frames,
-        TimeUnit::Milliseconds,
-        TimeUnit::Seconds,
-    ];
+    let units = vec![TimeUnit::Frames, TimeUnit::Milliseconds, TimeUnit::Seconds];
 
     assert_eq!(units.len(), 3);
 }
@@ -29,9 +25,18 @@ fn test_timeline_zoom_levels() {
     }
 
     let zoom_levels = vec![
-        ZoomLevel { scale: 1.0, pixels_per_frame: 10.0 },
-        ZoomLevel { scale: 2.0, pixels_per_frame: 20.0 },
-        ZoomLevel { scale: 4.0, pixels_per_frame: 40.0 },
+        ZoomLevel {
+            scale: 1.0,
+            pixels_per_frame: 10.0,
+        },
+        ZoomLevel {
+            scale: 2.0,
+            pixels_per_frame: 20.0,
+        },
+        ZoomLevel {
+            scale: 4.0,
+            pixels_per_frame: 40.0,
+        },
     ];
 
     assert_eq!(zoom_levels.len(), 3);
@@ -80,8 +85,16 @@ fn test_timeline_lanes() {
     }
 
     let lanes = vec![
-        Lane { lane_type: LaneType::Video, height: 100.0, visible: true },
-        Lane { lane_type: LaneType::Audio, height: 50.0, visible: true },
+        Lane {
+            lane_type: LaneType::Video,
+            height: 100.0,
+            visible: true,
+        },
+        Lane {
+            lane_type: LaneType::Audio,
+            height: 50.0,
+            visible: true,
+        },
     ];
 
     assert_eq!(lanes.len(), 2);
@@ -183,9 +196,21 @@ fn test_timeline_frame_types_display() {
     }
 
     let frames = vec![
-        FrameOnTimeline { frame_number: 0, frame_type: "I".to_string(), keyframe: true },
-        FrameOnTimeline { frame_number: 1, frame_type: "P".to_string(), keyframe: false },
-        FrameOnTimeline { frame_number: 2, frame_type: "B".to_string(), keyframe: false },
+        FrameOnTimeline {
+            frame_number: 0,
+            frame_type: "I".to_string(),
+            keyframe: true,
+        },
+        FrameOnTimeline {
+            frame_number: 1,
+            frame_type: "P".to_string(),
+            keyframe: false,
+        },
+        FrameOnTimeline {
+            frame_number: 2,
+            frame_type: "B".to_string(),
+            keyframe: false,
+        },
     ];
 
     assert_eq!(frames.iter().filter(|f| f.keyframe).count(), 1);

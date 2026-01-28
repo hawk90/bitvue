@@ -160,7 +160,10 @@ mod tests {
     #[test]
     fn test_success_timeout() {
         let mut mgr = NotificationManager::new();
-        mgr.success_message = Some(("Old success".to_string(), Instant::now() - Duration::from_secs(4)));
+        mgr.success_message = Some((
+            "Old success".to_string(),
+            Instant::now() - Duration::from_secs(4),
+        ));
 
         mgr.check_timeouts();
         assert!(mgr.success().is_none());
@@ -169,7 +172,10 @@ mod tests {
     #[test]
     fn test_error_timeout() {
         let mut mgr = NotificationManager::new();
-        mgr.error_message = Some(("Old error".to_string(), Instant::now() - Duration::from_secs(6)));
+        mgr.error_message = Some((
+            "Old error".to_string(),
+            Instant::now() - Duration::from_secs(6),
+        ));
 
         mgr.check_timeouts();
         assert!(mgr.error().is_none());

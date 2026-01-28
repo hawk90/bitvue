@@ -244,4 +244,3 @@ impl Default for Core {
 mod tests {
     include!("core_test.rs");
 }
-

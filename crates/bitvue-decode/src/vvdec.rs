@@ -138,14 +138,8 @@ mod ffi {
             access_unit: *mut VvdecAccessUnit,
             frame: *mut *mut VvdecFrame,
         ) -> c_int;
-        pub fn vvdec_flush(
-            decoder: *mut VvdecDecoder,
-            frame: *mut *mut VvdecFrame,
-        ) -> c_int;
-        pub fn vvdec_frame_unref(
-            decoder: *mut VvdecDecoder,
-            frame: *mut VvdecFrame,
-        ) -> c_int;
+        pub fn vvdec_flush(decoder: *mut VvdecDecoder, frame: *mut *mut VvdecFrame) -> c_int;
+        pub fn vvdec_frame_unref(decoder: *mut VvdecDecoder, frame: *mut VvdecFrame) -> c_int;
         pub fn vvdec_accessUnit_alloc() -> *mut VvdecAccessUnit;
         pub fn vvdec_accessUnit_free(access_unit: *mut VvdecAccessUnit);
         pub fn vvdec_accessUnit_alloc_payload(
@@ -310,9 +304,7 @@ impl VvcDecoder {
             if msg.is_null() {
                 format!("Unknown error ({})", code)
             } else {
-                std::ffi::CStr::from_ptr(msg)
-                    .to_string_lossy()
-                    .into_owned()
+                std::ffi::CStr::from_ptr(msg).to_string_lossy().into_owned()
             }
         }
     }

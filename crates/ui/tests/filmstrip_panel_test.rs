@@ -6,17 +6,19 @@ use egui::Vec2;
 fn test_filmstrip_thumbnail_dimensions() {
     // Test thumbnail size calculations
     let thumbnail_sizes = vec![
-        (128, 72),   // 16:9 aspect ratio
-        (64, 36),    // Smaller
-        (256, 144),  // Larger
+        (128, 72),  // 16:9 aspect ratio
+        (64, 36),   // Smaller
+        (256, 144), // Larger
     ];
 
     for (width, height) in thumbnail_sizes {
         let _size = Vec2::new(width as f32, height as f32);
         let aspect_ratio = width as f32 / height as f32;
-        
-        assert!((aspect_ratio - 16.0/9.0).abs() < 0.01, 
-            "Thumbnail should maintain 16:9 aspect ratio");
+
+        assert!(
+            (aspect_ratio - 16.0 / 9.0).abs() < 0.01,
+            "Thumbnail should maintain 16:9 aspect ratio"
+        );
         assert!(width >= 64 && height >= 36, "Minimum thumbnail size");
     }
 }
@@ -41,7 +43,7 @@ fn test_filmstrip_scroll_position() {
     for scroll_pos in 0..=(total_frames - visible_frames) {
         let start_frame = scroll_pos;
         let end_frame = scroll_pos + visible_frames;
-        
+
         assert!(start_frame < total_frames);
         assert!(end_frame <= total_frames);
     }
@@ -85,9 +87,9 @@ fn test_filmstrip_frame_type_colors() {
     use egui::Color32;
 
     let frame_type_colors = vec![
-        ("I", Color32::from_rgb(59, 130, 246)),   // Blue for I-frames
-        ("P", Color32::from_rgb(34, 197, 94)),    // Green for P-frames
-        ("B", Color32::from_rgb(251, 191, 36)),   // Amber for B-frames
+        ("I", Color32::from_rgb(59, 130, 246)), // Blue for I-frames
+        ("P", Color32::from_rgb(34, 197, 94)),  // Green for P-frames
+        ("B", Color32::from_rgb(251, 191, 36)), // Amber for B-frames
     ];
 
     for (frame_type, color) in frame_type_colors {

@@ -100,19 +100,25 @@ impl SelectionInfoPanel {
         container: Option<&bitvue_core::ContainerModel>,
     ) {
         // Get frame info from container if available
-        let (width, height, frame_count, codec, bitrate, max_ctb): (u32, u32, usize, String, u64, u32) =
-            if let Some(c) = container {
-                (
-                    c.width.unwrap_or(0),
-                    c.height.unwrap_or(0),
-                    c.track_count,
-                    c.codec.clone(),
-                    c.bitrate_bps.unwrap_or(0),
-                    128, // Default CTB size
-                )
-            } else {
-                (0, 0, 0, String::new(), 0, 128)
-            };
+        let (width, height, frame_count, codec, bitrate, max_ctb): (
+            u32,
+            u32,
+            usize,
+            String,
+            u64,
+            u32,
+        ) = if let Some(c) = container {
+            (
+                c.width.unwrap_or(0),
+                c.height.unwrap_or(0),
+                c.track_count,
+                c.codec.clone(),
+                c.bitrate_bps.unwrap_or(0),
+                128, // Default CTB size
+            )
+        } else {
+            (0, 0, 0, String::new(), 0, 128)
+        };
 
         // Current frame index from selection
         let current_frame = selection
@@ -153,9 +159,14 @@ impl SelectionInfoPanel {
                         self.label(ui, "Width:");
                         self.value(ui, &format!("{}", width));
                         self.label(ui, "CTB col, row:");
-                        self.value(ui, &format!("{},{}",
-                            info.map(|i| i.sb_col).unwrap_or(0),
-                            info.map(|i| i.sb_row).unwrap_or(0)));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{},{}",
+                                info.map(|i| i.sb_col).unwrap_or(0),
+                                info.map(|i| i.sb_row).unwrap_or(0)
+                            ),
+                        );
                         self.label(ui, "TU size:");
                         self.value(ui, info.map(|i| i.tx_size.as_str()).unwrap_or("N/A"));
                         ui.end_row();
@@ -164,9 +175,14 @@ impl SelectionInfoPanel {
                         self.label(ui, "Height:");
                         self.value(ui, &format!("{}", height));
                         self.label(ui, "Block X,Y:");
-                        self.value(ui, &format!("{},{}",
-                            info.map(|i| i.block_x).unwrap_or(0),
-                            info.map(|i| i.block_y).unwrap_or(0)));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{},{}",
+                                info.map(|i| i.block_x).unwrap_or(0),
+                                info.map(|i| i.block_y).unwrap_or(0)
+                            ),
+                        );
                         self.label(ui, "TU depth:");
                         self.value(ui, &format!("{}", info.map(|i| i.tu_depth).unwrap_or(0)));
                         ui.end_row();
@@ -175,9 +191,14 @@ impl SelectionInfoPanel {
                         self.label(ui, "Pictures:");
                         self.value(ui, &format!("{}", frame_count));
                         self.label(ui, "Block size, depth:");
-                        self.value(ui, &format!("{}, {}",
-                            info.map(|i| i.block_size.as_str()).unwrap_or("N/A"),
-                            info.map(|i| i.cu_depth).unwrap_or(0)));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{}, {}",
+                                info.map(|i| i.block_size.as_str()).unwrap_or("N/A"),
+                                info.map(|i| i.cu_depth).unwrap_or(0)
+                            ),
+                        );
                         self.label(ui, "TU type Y H/V:");
                         self.value(ui, info.map(|i| i.tx_type.as_str()).unwrap_or("N/A"));
                         ui.end_row();
@@ -193,9 +214,14 @@ impl SelectionInfoPanel {
 
                         // Row 5
                         self.label(ui, "Bitdepth Y,C:");
-                        self.value(ui, &format!("{}, {}",
-                            info.map(|i| i.bit_depth).unwrap_or(8),
-                            info.map(|i| i.bit_depth).unwrap_or(8)));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{}, {}",
+                                info.map(|i| i.bit_depth).unwrap_or(8),
+                                info.map(|i| i.bit_depth).unwrap_or(8)
+                            ),
+                        );
                         self.label(ui, "CU tree type:");
                         self.value(ui, "Single");
                         self.label(ui, "TU type Cr H/V:");
@@ -213,13 +239,23 @@ impl SelectionInfoPanel {
 
                         // Row 7
                         self.label(ui, "Tile col, row:");
-                        self.value(ui, &format!("{},{}",
-                            info.map(|i| i.tile_col).unwrap_or(0),
-                            info.map(|i| i.tile_row).unwrap_or(0)));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{},{}",
+                                info.map(|i| i.tile_col).unwrap_or(0),
+                                info.map(|i| i.tile_row).unwrap_or(0)
+                            ),
+                        );
                         self.label(ui, "Pixel X,Y:");
-                        self.value(ui, &format!("{},{}",
-                            info.map(|i| i.pixel_col).unwrap_or(0),
-                            info.map(|i| i.pixel_row).unwrap_or(0)));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{},{}",
+                                info.map(|i| i.pixel_col).unwrap_or(0),
+                                info.map(|i| i.pixel_row).unwrap_or(0)
+                            ),
+                        );
                         self.label(ui, "MV L0:");
                         if let Some(i) = info {
                             if let Some((dx, dy, poc)) = i.mv_l0 {
@@ -234,14 +270,29 @@ impl SelectionInfoPanel {
 
                         // Row 8
                         self.label(ui, "Slice #:");
-                        self.value(ui, &format!("{} - {}", current_frame,
-                            if info.map(|i| i.pred_mode.contains("Intra")).unwrap_or(false) { "I" }
-                            else if info.map(|i| i.mv_l1.is_some()).unwrap_or(false) { "B" }
-                            else { "P" }));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{} - {}",
+                                current_frame,
+                                if info.map(|i| i.pred_mode.contains("Intra")).unwrap_or(false) {
+                                    "I"
+                                } else if info.map(|i| i.mv_l1.is_some()).unwrap_or(false) {
+                                    "B"
+                                } else {
+                                    "P"
+                                }
+                            ),
+                        );
                         self.label(ui, "4x4 X,Y:");
-                        self.value(ui, &format!("{},{}",
-                            info.map(|i| i.pixel_col / 4).unwrap_or(0),
-                            info.map(|i| i.pixel_row / 4).unwrap_or(0)));
+                        self.value(
+                            ui,
+                            &format!(
+                                "{},{}",
+                                info.map(|i| i.pixel_col / 4).unwrap_or(0),
+                                info.map(|i| i.pixel_row / 4).unwrap_or(0)
+                            ),
+                        );
                         self.label(ui, "MV L1:");
                         if let Some(i) = info {
                             if let Some((dx, dy, poc)) = i.mv_l1 {
@@ -279,9 +330,21 @@ impl SelectionInfoPanel {
                     ui.separator();
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Unit:").small().color(Color32::GRAY));
-                        ui.label(RichText::new(&unit_key.unit_type).small().color(Color32::from_rgb(100, 180, 255)));
-                        ui.label(RichText::new(format!("@ 0x{:X}", unit_key.offset)).small().color(Color32::GRAY));
-                        ui.label(RichText::new(format!("({} bytes)", unit_key.size)).small().color(Color32::GRAY));
+                        ui.label(
+                            RichText::new(&unit_key.unit_type)
+                                .small()
+                                .color(Color32::from_rgb(100, 180, 255)),
+                        );
+                        ui.label(
+                            RichText::new(format!("@ 0x{:X}", unit_key.offset))
+                                .small()
+                                .color(Color32::GRAY),
+                        );
+                        ui.label(
+                            RichText::new(format!("({} bytes)", unit_key.size))
+                                .small()
+                                .color(Color32::GRAY),
+                        );
                     });
                 }
 
@@ -289,12 +352,19 @@ impl SelectionInfoPanel {
                 if let Some(bit_range) = &selection.bit_range {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Bits:").small().color(Color32::GRAY));
-                        ui.label(RichText::new(format!("{}-{}", bit_range.start_bit, bit_range.end_bit))
+                        ui.label(
+                            RichText::new(format!("{}-{}", bit_range.start_bit, bit_range.end_bit))
+                                .small()
+                                .color(Color32::from_rgb(255, 180, 80)),
+                        );
+                        ui.label(
+                            RichText::new(format!(
+                                "({} bits)",
+                                bit_range.end_bit - bit_range.start_bit
+                            ))
                             .small()
-                            .color(Color32::from_rgb(255, 180, 80)));
-                        ui.label(RichText::new(format!("({} bits)", bit_range.end_bit - bit_range.start_bit))
-                            .small()
-                            .color(Color32::GRAY));
+                            .color(Color32::GRAY),
+                        );
                     });
                 }
 
@@ -302,14 +372,18 @@ impl SelectionInfoPanel {
                 if !codec.is_empty() {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(&codec)
-                            .small()
-                            .strong()
-                            .color(Color32::from_rgb(100, 200, 100)));
-                        if bitrate > 0 {
-                            ui.label(RichText::new(format!("@ {} kbps", bitrate / 1000))
+                        ui.label(
+                            RichText::new(&codec)
                                 .small()
-                                .color(Color32::GRAY));
+                                .strong()
+                                .color(Color32::from_rgb(100, 200, 100)),
+                        );
+                        if bitrate > 0 {
+                            ui.label(
+                                RichText::new(format!("@ {} kbps", bitrate / 1000))
+                                    .small()
+                                    .color(Color32::GRAY),
+                            );
                         }
                     });
                 }

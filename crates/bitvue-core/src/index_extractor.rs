@@ -889,7 +889,12 @@ impl Vp9IndexExtractor {
                 continue;
             }
 
-            let byte_offset = stream.superframe_index.frame_offsets.get(i).copied().unwrap_or(0) as u64;
+            let byte_offset = stream
+                .superframe_index
+                .frame_offsets
+                .get(i)
+                .copied()
+                .unwrap_or(0) as u64;
 
             seek_points.push(SeekPoint {
                 display_idx,
@@ -996,8 +1001,18 @@ impl IndexExtractor for Vp9IndexExtractor {
 
             let frame_type = if is_keyframe { "I" } else { "P" };
 
-            let byte_offset = stream.superframe_index.frame_offsets.get(i).copied().unwrap_or(0) as u64;
-            let size = stream.superframe_index.frame_sizes.get(i).copied().unwrap_or(0) as u64;
+            let byte_offset = stream
+                .superframe_index
+                .frame_offsets
+                .get(i)
+                .copied()
+                .unwrap_or(0) as u64;
+            let size = stream
+                .superframe_index
+                .frame_sizes
+                .get(i)
+                .copied()
+                .unwrap_or(0) as u64;
 
             frames.push(FrameMetadata {
                 display_idx,

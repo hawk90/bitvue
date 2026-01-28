@@ -275,7 +275,13 @@ pub fn parse_slice_header(
     if (pps.weighted_pred_flag && (slice_type.is_p() || matches!(slice_type, SliceType::Sp)))
         || (pps.weighted_bipred_idc == 1 && slice_type.is_b())
     {
-        skip_pred_weight_table(&mut reader, slice_type, num_ref_idx_l0_active_minus1, num_ref_idx_l1_active_minus1, sps)?;
+        skip_pred_weight_table(
+            &mut reader,
+            slice_type,
+            num_ref_idx_l0_active_minus1,
+            num_ref_idx_l1_active_minus1,
+            sps,
+        )?;
     }
 
     // Dec ref pic marking
@@ -313,10 +319,13 @@ pub fn parse_slice_header(
     }
 
     let mut slice_group_change_cycle = 0;
-    if pps.num_slice_groups_minus1 > 0 && pps.slice_group_map_type >= 3 && pps.slice_group_map_type <= 5 {
+    if pps.num_slice_groups_minus1 > 0
+        && pps.slice_group_map_type >= 3
+        && pps.slice_group_map_type <= 5
+    {
         // Calculate number of bits needed
-        let pic_size_in_map_units = (sps.pic_width_in_mbs_minus1 + 1)
-            * (sps.pic_height_in_map_units_minus1 + 1);
+        let pic_size_in_map_units =
+            (sps.pic_width_in_mbs_minus1 + 1) * (sps.pic_height_in_map_units_minus1 + 1);
         let bits = ((pic_size_in_map_units as f64).log2().ceil() + 1.0) as u8;
         slice_group_change_cycle = reader.read_bits(bits)?;
     }
@@ -366,7 +375,7 @@ fn parse_ref_pic_list_modification(reader: &mut BitReader) -> Result<RefPicListM
 
         let value = match modification_of_pic_nums_idc {
             0 | 1 => reader.read_ue()?, // abs_diff_pic_num_minus1
-            2 => reader.read_ue()?,      // long_term_pic_num
+            2 => reader.read_ue()?,     // long_term_pic_num
             _ => break,
         };
 
@@ -377,7 +386,10 @@ fn parse_ref_pic_list_modification(reader: &mut BitReader) -> Result<RefPicListM
 }
 
 /// Parse decoded reference picture marking.
-fn parse_dec_ref_pic_marking(reader: &mut BitReader, nal_type: NalUnitType) -> Result<DecRefPicMarking> {
+fn parse_dec_ref_pic_marking(
+    reader: &mut BitReader,
+    nal_type: NalUnitType,
+) -> Result<DecRefPicMarking> {
     let mut marking = DecRefPicMarking::default();
 
     if nal_type == NalUnitType::IdrSlice {

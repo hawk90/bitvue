@@ -15,32 +15,32 @@ mod colors {
     use egui::Color32;
 
     // Partition colors
-    pub const MB_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0);       // Orange
+    pub const MB_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0); // Orange
     pub const SUB_MB_BOUNDARY: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
     pub const TRANSFORM_BOUNDARY: Color32 = Color32::from_rgb(144, 238, 144); // Light green
 
     // Intra mode colors
-    pub const INTRA_4X4: Color32 = Color32::from_rgb(147, 112, 219);      // Medium purple
-    pub const INTRA_16X16: Color32 = Color32::from_rgb(255, 215, 0);      // Gold
-    pub const INTRA_PCM: Color32 = Color32::from_rgb(255, 99, 71);        // Tomato
+    pub const INTRA_4X4: Color32 = Color32::from_rgb(147, 112, 219); // Medium purple
+    pub const INTRA_16X16: Color32 = Color32::from_rgb(255, 215, 0); // Gold
+    pub const INTRA_PCM: Color32 = Color32::from_rgb(255, 99, 71); // Tomato
 
     // Inter mode colors
-    pub const INTER_SKIP: Color32 = Color32::from_rgb(50, 205, 50);       // Lime green
-    pub const INTER_P16X16: Color32 = Color32::from_rgb(30, 144, 255);    // Dodger blue
-    pub const INTER_P16X8: Color32 = Color32::from_rgb(65, 105, 225);     // Royal blue
-    pub const INTER_P8X16: Color32 = Color32::from_rgb(0, 191, 255);      // Deep sky blue
-    pub const INTER_P8X8: Color32 = Color32::from_rgb(70, 130, 180);      // Steel blue
-    pub const INTER_P8X4: Color32 = Color32::from_rgb(135, 206, 235);     // Sky blue
-    pub const INTER_P4X8: Color32 = Color32::from_rgb(176, 196, 222);     // Light steel blue
-    pub const INTER_P4X4: Color32 = Color32::from_rgb(176, 224, 230);     // Powder blue
+    pub const INTER_SKIP: Color32 = Color32::from_rgb(50, 205, 50); // Lime green
+    pub const INTER_P16X16: Color32 = Color32::from_rgb(30, 144, 255); // Dodger blue
+    pub const INTER_P16X8: Color32 = Color32::from_rgb(65, 105, 225); // Royal blue
+    pub const INTER_P8X16: Color32 = Color32::from_rgb(0, 191, 255); // Deep sky blue
+    pub const INTER_P8X8: Color32 = Color32::from_rgb(70, 130, 180); // Steel blue
+    pub const INTER_P8X4: Color32 = Color32::from_rgb(135, 206, 235); // Sky blue
+    pub const INTER_P4X8: Color32 = Color32::from_rgb(176, 196, 222); // Light steel blue
+    pub const INTER_P4X4: Color32 = Color32::from_rgb(176, 224, 230); // Powder blue
 
-    pub const INTER_B_DIRECT: Color32 = Color32::from_rgb(220, 20, 60);   // Crimson
-    pub const INTER_B16X16: Color32 = Color32::from_rgb(255, 69, 0);      // Orange red
+    pub const INTER_B_DIRECT: Color32 = Color32::from_rgb(220, 20, 60); // Crimson
+    pub const INTER_B16X16: Color32 = Color32::from_rgb(255, 69, 0); // Orange red
 
     // Slice type colors
-    pub const SLICE_I: Color32 = Color32::from_rgb(255, 0, 0);            // Red
-    pub const SLICE_P: Color32 = Color32::from_rgb(0, 255, 0);            // Green
-    pub const SLICE_B: Color32 = Color32::from_rgb(0, 0, 255);            // Blue
+    pub const SLICE_I: Color32 = Color32::from_rgb(255, 0, 0); // Red
+    pub const SLICE_P: Color32 = Color32::from_rgb(0, 255, 0); // Green
+    pub const SLICE_B: Color32 = Color32::from_rgb(0, 0, 255); // Blue
 }
 
 /// AVC view modes
@@ -171,15 +171,15 @@ impl AvcMbType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Intra4x4Mode {
     #[default]
-    Vertical,       // 0
-    Horizontal,     // 1
-    DC,             // 2
-    DiagDownLeft,   // 3
-    DiagDownRight,  // 4
-    VertRight,      // 5
-    HorzDown,       // 6
-    VertLeft,       // 7
-    HorzUp,         // 8
+    Vertical, // 0
+    Horizontal,    // 1
+    DC,            // 2
+    DiagDownLeft,  // 3
+    DiagDownRight, // 4
+    VertRight,     // 5
+    HorzDown,      // 6
+    VertLeft,      // 7
+    HorzUp,        // 8
 }
 
 impl Intra4x4Mode {
@@ -219,7 +219,7 @@ pub enum Intra16x16Mode {
     Vertical,   // 0
     Horizontal, // 1
     #[default]
-    DC,         // 2
+    DC, // 2
     Plane,      // 3
 }
 
@@ -276,15 +276,15 @@ impl Default for AvcMacroblock {
 #[derive(Debug, Clone, Default)]
 pub struct AvcFeatureStatus {
     pub transform_8x8: bool,
-    pub cabac_enabled: bool,        // vs CAVLC
+    pub cabac_enabled: bool, // vs CAVLC
     pub deblocking_enabled: bool,
     pub weighted_pred: bool,
     pub weighted_bipred: bool,
     pub direct_8x8_inference: bool,
     pub frame_mbs_only: bool,
-    pub mbaff: bool,                // MB-adaptive frame-field
-    pub fmo: bool,                  // Flexible MB ordering
-    pub aso: bool,                  // Arbitrary slice ordering
+    pub mbaff: bool, // MB-adaptive frame-field
+    pub fmo: bool,   // Flexible MB ordering
+    pub aso: bool,   // Arbitrary slice ordering
 }
 
 /// AVC Visualization Workspace
@@ -495,7 +495,11 @@ impl AvcWorkspace {
                     Self::profile_name(self.profile_idc),
                     self.profile_idc
                 ));
-                ui.label(format!("Level: {}.{}", self.level_idc / 10, self.level_idc % 10));
+                ui.label(format!(
+                    "Level: {}.{}",
+                    self.level_idc / 10,
+                    self.level_idc % 10
+                ));
                 ui.add_space(8.0);
 
                 Self::feature_badge(ui, "8x8 Transform", self.features.transform_8x8);
@@ -515,7 +519,10 @@ impl AvcWorkspace {
                 ui.heading("Frame Statistics");
                 ui.add_space(8.0);
 
-                ui.label(format!("Frame size: {}x{}", self.frame_width, self.frame_height));
+                ui.label(format!(
+                    "Frame size: {}x{}",
+                    self.frame_width, self.frame_height
+                ));
                 ui.label(format!(
                     "MBs: {} x {} = {}",
                     (self.frame_width + 15) / 16,
@@ -645,11 +652,7 @@ impl AvcWorkspace {
             if self.show_pred_modes {
                 let label = mb.mb_type.label();
                 // Truncate label if needed
-                let display_label = if label.len() > 6 {
-                    &label[..6]
-                } else {
-                    label
-                };
+                let display_label = if label.len() > 6 { &label[..6] } else { label };
                 painter.text(
                     mb_rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -962,10 +965,8 @@ impl AvcWorkspace {
                 ui.heading("Edge Visualization");
 
                 if self.show_deblocking {
-                    let (_, painter) = ui.allocate_painter(
-                        Vec2::new(150.0, 150.0),
-                        egui::Sense::hover(),
-                    );
+                    let (_, painter) =
+                        ui.allocate_painter(Vec2::new(150.0, 150.0), egui::Sense::hover());
 
                     let rect = painter.clip_rect();
 

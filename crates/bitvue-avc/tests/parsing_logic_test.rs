@@ -3,10 +3,10 @@
 //! Tests for actual AVC parsing functions with real bitstream data.
 
 use bitvue_avc::{
-    nal::{parse_nal_header, parse_nal_units, find_nal_units, NalUnitHeader, NalUnitType},
-    sps::parse_sps,
-    pps::parse_pps,
     bitreader::BitReader,
+    nal::{find_nal_units, parse_nal_header, parse_nal_units, NalUnitHeader, NalUnitType},
+    pps::parse_pps,
+    sps::parse_sps,
 };
 
 #[test]
@@ -247,11 +247,11 @@ fn test_parse_nal_header_various_ref_idc() {
 fn test_parse_nal_header_various_types() {
     // Test various NAL unit types
     let test_cases = vec![
-        (0x61, NalUnitType::NonIdrSlice),  // Type 1
-        (0x65, NalUnitType::IdrSlice),      // Type 5
-        (0x67, NalUnitType::Sps),           // Type 7
-        (0x68, NalUnitType::Pps),           // Type 8
-        (0x06, NalUnitType::Sei),           // Type 6
+        (0x61, NalUnitType::NonIdrSlice), // Type 1
+        (0x65, NalUnitType::IdrSlice),    // Type 5
+        (0x67, NalUnitType::Sps),         // Type 7
+        (0x68, NalUnitType::Pps),         // Type 8
+        (0x06, NalUnitType::Sei),         // Type 6
     ];
 
     for (byte, expected_type) in test_cases {
@@ -265,8 +265,7 @@ fn test_find_nal_units_with_corruption() {
     // Test finding NAL units with data that might have false positives
     let data = [
         0x00, 0x00, 0x01, // Valid start code (3-byte) at position 0-2
-        0x67, 0x42, 0x80,
-        0x00, 0x00, 0x00, // Not a start code (missing 0x01)
+        0x67, 0x42, 0x80, 0x00, 0x00, 0x00, // Not a start code (missing 0x01)
         0x00, 0x00, 0x01, // Valid start code (3-byte) at position 9-11
         0x68, 0xCE, 0x3C,
     ];
@@ -286,7 +285,7 @@ fn test_parse_nal_units_payload_extraction() {
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // 4-byte start code
     data.extend_from_slice(&[0x67, 0x42]); // SPS header + some data
     data.extend_from_slice(&[0x80, 0x0A]); // More payload data
-    // Add another start code to mark end of first NAL
+                                           // Add another start code to mark end of first NAL
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
 
     let result = parse_nal_units(&data);
@@ -356,13 +355,13 @@ fn test_parse_pps_various_qp_deltas() {
 
     for qp_delta in qp_deltas {
         let data = [
-            0x80,    // pic_parameter_set_id
-            0x80,    // seq_parameter_set_id
-            0x80,    // entropy_coding_mode_flag
-            0x80,    // num_slice_groups_minus1
-            0x80,    // num_ref_idx_l0_default_active_minus1
-            0x80,    // num_ref_idx_l1_default_active_minus1
-            0x80,    // weighted_pred_flag, weighted_bipred_idc
+            0x80, // pic_parameter_set_id
+            0x80, // seq_parameter_set_id
+            0x80, // entropy_coding_mode_flag
+            0x80, // num_slice_groups_minus1
+            0x80, // num_ref_idx_l0_default_active_minus1
+            0x80, // num_ref_idx_l1_default_active_minus1
+            0x80, // weighted_pred_flag, weighted_bipred_idc
             // Encode SE for qp_delta
             (qp_delta as u16).to_le_bytes()[0],
             (qp_delta as u16).to_le_bytes()[1],

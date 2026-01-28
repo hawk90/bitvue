@@ -2,14 +2,11 @@
 //!
 //! Utility functions for finding units, frames, and formatting data.
 
-use bitvue_core::{UnitKey, UnitNode};
 use bitvue_core::selection::SelectionState;
+use bitvue_core::{UnitKey, UnitNode};
 
 /// Find a unit by its key (recursive search)
-pub fn find_unit_by_key<'a>(
-    units: &'a [UnitNode],
-    key: &UnitKey,
-) -> Option<&'a UnitNode> {
+pub fn find_unit_by_key<'a>(units: &'a [UnitNode], key: &UnitKey) -> Option<&'a UnitNode> {
     for unit in units {
         if unit.key == *key {
             return Some(unit);
@@ -54,10 +51,7 @@ pub fn find_unit_by_key_with_index<'a>(
 }
 
 /// Find unit containing the given byte offset (TC06 helper)
-pub fn find_unit_containing_offset_helper(
-    units: &[UnitNode],
-    offset: u64,
-) -> Option<UnitNode> {
+pub fn find_unit_containing_offset_helper(units: &[UnitNode], offset: u64) -> Option<UnitNode> {
     for unit in units {
         if offset >= unit.offset && offset < unit.offset + unit.size as u64 {
             return Some(unit.clone());

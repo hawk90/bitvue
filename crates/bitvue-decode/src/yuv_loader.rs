@@ -124,10 +124,7 @@ pub struct YuvLoader {
 
 impl YuvLoader {
     /// Open a YUV file (detects .y4m or raw .yuv)
-    pub fn open<P: AsRef<Path>>(
-        path: P,
-        params: Option<YuvFileParams>,
-    ) -> Result<Self> {
+    pub fn open<P: AsRef<Path>>(path: P, params: Option<YuvFileParams>) -> Result<Self> {
         let path_ref = path.as_ref();
         let file = File::open(path_ref)?;
         let mut reader = BufReader::new(file);
@@ -280,13 +277,17 @@ impl YuvLoader {
             y_stride: self.params.width as usize,
             u_plane,
             u_stride: match self.params.chroma_subsampling {
-                ChromaSubsampling::Yuv420 | ChromaSubsampling::Yuv422 => (self.params.width / 2) as usize,
+                ChromaSubsampling::Yuv420 | ChromaSubsampling::Yuv422 => {
+                    (self.params.width / 2) as usize
+                }
                 ChromaSubsampling::Yuv444 => self.params.width as usize,
                 ChromaSubsampling::Mono => 0,
             },
             v_plane,
             v_stride: match self.params.chroma_subsampling {
-                ChromaSubsampling::Yuv420 | ChromaSubsampling::Yuv422 => (self.params.width / 2) as usize,
+                ChromaSubsampling::Yuv420 | ChromaSubsampling::Yuv422 => {
+                    (self.params.width / 2) as usize
+                }
                 ChromaSubsampling::Yuv444 => self.params.width as usize,
                 ChromaSubsampling::Mono => 0,
             },

@@ -16,13 +16,13 @@ pub enum OverlayType {
     None,
     Grid,
     MotionVectors,
-    QpHeatmap,        // Per QP_HEATMAP_IMPLEMENTATION_SPEC.md
+    QpHeatmap, // Per QP_HEATMAP_IMPLEMENTATION_SPEC.md
     Partition,
     ReferenceFrames,
-    ModeLabels,       // VQAnalyzer parity: AMVP/Merge/Skip/Intra labels
-    BitAllocation,    // VQAnalyzer parity: bits per CTB heatmap
-    MvMagnitude,      // VQAnalyzer parity: MV magnitude heatmap
-    PuType,           // VQAnalyzer parity: PU type categorical overlay
+    ModeLabels,    // VQAnalyzer parity: AMVP/Merge/Skip/Intra labels
+    BitAllocation, // VQAnalyzer parity: bits per CTB heatmap
+    MvMagnitude,   // VQAnalyzer parity: MV magnitude heatmap
+    PuType,        // VQAnalyzer parity: PU type categorical overlay
 }
 
 impl OverlayType {
@@ -140,13 +140,14 @@ impl PlayerWorkspace {
                                     })
                                     .collect();
 
-                                self.overlays.partition.data = Some(bitvue_core::PartitionData::new(
-                                    json_data.coded_width,
-                                    json_data.coded_height,
-                                    json_data.leaf_block_w,
-                                    json_data.leaf_block_h,
-                                    part_kind,
-                                ));
+                                self.overlays.partition.data =
+                                    Some(bitvue_core::PartitionData::new(
+                                        json_data.coded_width,
+                                        json_data.coded_height,
+                                        json_data.leaf_block_w,
+                                        json_data.leaf_block_h,
+                                        part_kind,
+                                    ));
                                 tracing::info!("Loaded partition data from JSON: {}x{}", w, h);
                             } else {
                                 tracing::warn!(
@@ -157,12 +158,14 @@ impl PlayerWorkspace {
                                     h
                                 );
                                 // Fall back to procedural mock
-                                self.overlays.partition.data = Some(Self::create_mock_partition_data(w, h));
+                                self.overlays.partition.data =
+                                    Some(Self::create_mock_partition_data(w, h));
                             }
                         }
                         Err(e) => {
                             tracing::warn!("Failed to parse partition JSON: {}", e);
-                            self.overlays.partition.data = Some(Self::create_mock_partition_data(w, h));
+                            self.overlays.partition.data =
+                                Some(Self::create_mock_partition_data(w, h));
                         }
                     }
                 }
@@ -222,7 +225,9 @@ impl PlayerWorkspace {
                 }
 
                 // Right arrow: Next frame
-                if i.key_pressed(egui::Key::ArrowRight) && current_frame < total_frames.saturating_sub(1) {
+                if i.key_pressed(egui::Key::ArrowRight)
+                    && current_frame < total_frames.saturating_sub(1)
+                {
                     if let Some(frame_unit) = Self::find_frame_by_index(units, current_frame + 1) {
                         result_command = Some(bitvue_core::Command::SelectUnit {
                             stream: bitvue_core::StreamId::A,
@@ -243,7 +248,9 @@ impl PlayerWorkspace {
 
                 // End: Last frame
                 if i.key_pressed(egui::Key::End) && total_frames > 0 {
-                    if let Some(frame_unit) = Self::find_frame_by_index(units, total_frames.saturating_sub(1)) {
+                    if let Some(frame_unit) =
+                        Self::find_frame_by_index(units, total_frames.saturating_sub(1))
+                    {
                         result_command = Some(bitvue_core::Command::SelectUnit {
                             stream: bitvue_core::StreamId::A,
                             unit_key: frame_unit.key.clone(),
@@ -253,7 +260,8 @@ impl PlayerWorkspace {
 
                 // Space: Toggle play/pause (future: when playback is implemented)
                 // For now, step forward as a simple action
-                if i.key_pressed(egui::Key::Space) && current_frame < total_frames.saturating_sub(1) {
+                if i.key_pressed(egui::Key::Space) && current_frame < total_frames.saturating_sub(1)
+                {
                     if let Some(frame_unit) = Self::find_frame_by_index(units, current_frame + 1) {
                         result_command = Some(bitvue_core::Command::SelectUnit {
                             stream: bitvue_core::StreamId::A,
@@ -293,9 +301,7 @@ impl PlayerWorkspace {
 
                     // Get frame type from units
                     if let Some(u) = units {
-                        if let Some(unit) =
-                            Self::find_frame_by_index(Some(u), frame_index)
-                        {
+                        if let Some(unit) = Self::find_frame_by_index(Some(u), frame_index) {
                             let frame_type = Self::extract_frame_type(&unit.unit_type);
                             let type_color = match frame_type.as_str() {
                                 "KEY" | "I" => egui::Color32::from_rgb(100, 200, 100),
@@ -361,11 +367,13 @@ impl PlayerWorkspace {
             // Frame number display with input
             ui.label("Frame:");
             let mut frame_text = current_frame.to_string();
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut frame_text)
-                    .desired_width(50.0)
-                    .horizontal_align(egui::Align::Center),
-            ).on_hover_text("Enter frame number, press Enter to jump");
+            let response = ui
+                .add(
+                    egui::TextEdit::singleline(&mut frame_text)
+                        .desired_width(50.0)
+                        .horizontal_align(egui::Align::Center),
+                )
+                .on_hover_text("Enter frame number, press Enter to jump");
             if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 if let Ok(new_frame) = frame_text.parse::<usize>() {
                     if new_frame < total_frames {
@@ -458,13 +466,22 @@ impl PlayerWorkspace {
         if self.overlays.active.contains(&OverlayType::Grid) {
             ui.horizontal(|ui| {
                 ui.label("Grid Size:");
-                if ui.selectable_label(self.overlays.grid.size == 32, "32").clicked() {
+                if ui
+                    .selectable_label(self.overlays.grid.size == 32, "32")
+                    .clicked()
+                {
                     self.overlays.grid.size = 32;
                 }
-                if ui.selectable_label(self.overlays.grid.size == 64, "64").clicked() {
+                if ui
+                    .selectable_label(self.overlays.grid.size == 64, "64")
+                    .clicked()
+                {
                     self.overlays.grid.size = 64;
                 }
-                if ui.selectable_label(self.overlays.grid.size == 128, "128").clicked() {
+                if ui
+                    .selectable_label(self.overlays.grid.size == 128, "128")
+                    .clicked()
+                {
                     self.overlays.grid.size = 128;
                 }
 
@@ -490,7 +507,10 @@ impl PlayerWorkspace {
                 ui.label("Resolution:");
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.qp.resolution, bitvue_core::HeatmapResolution::Quarter),
+                        matches!(
+                            self.overlays.qp.resolution,
+                            bitvue_core::HeatmapResolution::Quarter
+                        ),
                         "Quarter",
                     )
                     .clicked()
@@ -500,7 +520,10 @@ impl PlayerWorkspace {
                 }
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.qp.resolution, bitvue_core::HeatmapResolution::Half),
+                        matches!(
+                            self.overlays.qp.resolution,
+                            bitvue_core::HeatmapResolution::Half
+                        ),
                         "Half",
                     )
                     .clicked()
@@ -510,7 +533,10 @@ impl PlayerWorkspace {
                 }
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.qp.resolution, bitvue_core::HeatmapResolution::Full),
+                        matches!(
+                            self.overlays.qp.resolution,
+                            bitvue_core::HeatmapResolution::Full
+                        ),
                         "Full",
                     )
                     .clicked()
@@ -551,7 +577,10 @@ impl PlayerWorkspace {
                 ui.label("Partition Mode:");
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.partition.mode, bitvue_core::GridMode::Scaffold),
+                        matches!(
+                            self.overlays.partition.mode,
+                            bitvue_core::GridMode::Scaffold
+                        ),
                         "Scaffold",
                     )
                     .clicked()
@@ -560,7 +589,10 @@ impl PlayerWorkspace {
                 }
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.partition.mode, bitvue_core::GridMode::Partition),
+                        matches!(
+                            self.overlays.partition.mode,
+                            bitvue_core::GridMode::Partition
+                        ),
                         "Partition",
                     )
                     .clicked()
@@ -570,7 +602,10 @@ impl PlayerWorkspace {
 
                 ui.separator();
                 ui.label("Tint Opacity:");
-                ui.add(egui::Slider::new(&mut self.overlays.partition.opacity, 0.0..=0.25).step_by(0.05));
+                ui.add(
+                    egui::Slider::new(&mut self.overlays.partition.opacity, 0.0..=0.25)
+                        .step_by(0.05),
+                );
             });
         }
 
@@ -580,19 +615,28 @@ impl PlayerWorkspace {
             ui.horizontal(|ui| {
                 ui.label("MV Layer:");
                 if ui
-                    .selectable_label(matches!(self.overlays.mv.layer, bitvue_core::MVLayer::L0Only), "L0")
+                    .selectable_label(
+                        matches!(self.overlays.mv.layer, bitvue_core::MVLayer::L0Only),
+                        "L0",
+                    )
                     .clicked()
                 {
                     self.overlays.mv.layer = bitvue_core::MVLayer::L0Only;
                 }
                 if ui
-                    .selectable_label(matches!(self.overlays.mv.layer, bitvue_core::MVLayer::L1Only), "L1")
+                    .selectable_label(
+                        matches!(self.overlays.mv.layer, bitvue_core::MVLayer::L1Only),
+                        "L1",
+                    )
                     .clicked()
                 {
                     self.overlays.mv.layer = bitvue_core::MVLayer::L1Only;
                 }
                 if ui
-                    .selectable_label(matches!(self.overlays.mv.layer, bitvue_core::MVLayer::Both), "Both")
+                    .selectable_label(
+                        matches!(self.overlays.mv.layer, bitvue_core::MVLayer::Both),
+                        "Both",
+                    )
                     .clicked()
                 {
                     self.overlays.mv.layer = bitvue_core::MVLayer::Both;
@@ -640,7 +684,10 @@ impl PlayerWorkspace {
             ui.horizontal(|ui| {
                 ui.label("Bit Alloc Opacity:");
                 if ui
-                    .add(egui::Slider::new(&mut self.overlays.bit_allocation.opacity, 0.0..=1.0).step_by(0.05))
+                    .add(
+                        egui::Slider::new(&mut self.overlays.bit_allocation.opacity, 0.0..=1.0)
+                            .step_by(0.05),
+                    )
                     .changed()
                 {
                     self.overlays.bit_allocation.invalidate_texture();
@@ -650,17 +697,24 @@ impl PlayerWorkspace {
                 ui.label("Resolution:");
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.bit_allocation.resolution, bitvue_core::HeatmapResolution::Quarter),
+                        matches!(
+                            self.overlays.bit_allocation.resolution,
+                            bitvue_core::HeatmapResolution::Quarter
+                        ),
                         "Quarter",
                     )
                     .clicked()
                 {
-                    self.overlays.bit_allocation.resolution = bitvue_core::HeatmapResolution::Quarter;
+                    self.overlays.bit_allocation.resolution =
+                        bitvue_core::HeatmapResolution::Quarter;
                     self.overlays.bit_allocation.invalidate_texture();
                 }
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.bit_allocation.resolution, bitvue_core::HeatmapResolution::Half),
+                        matches!(
+                            self.overlays.bit_allocation.resolution,
+                            bitvue_core::HeatmapResolution::Half
+                        ),
                         "Half",
                     )
                     .clicked()
@@ -670,7 +724,10 @@ impl PlayerWorkspace {
                 }
                 if ui
                     .selectable_label(
-                        matches!(self.overlays.bit_allocation.resolution, bitvue_core::HeatmapResolution::Full),
+                        matches!(
+                            self.overlays.bit_allocation.resolution,
+                            bitvue_core::HeatmapResolution::Full
+                        ),
                         "Full",
                     )
                     .clicked()
@@ -689,7 +746,10 @@ impl PlayerWorkspace {
             ui.horizontal(|ui| {
                 ui.label("MV Mag Opacity:");
                 if ui
-                    .add(egui::Slider::new(&mut self.overlays.mv_magnitude.opacity, 0.0..=1.0).step_by(0.05))
+                    .add(
+                        egui::Slider::new(&mut self.overlays.mv_magnitude.opacity, 0.0..=1.0)
+                            .step_by(0.05),
+                    )
                     .changed()
                 {
                     self.overlays.mv_magnitude.invalidate_texture();
@@ -698,21 +758,36 @@ impl PlayerWorkspace {
                 ui.separator();
                 ui.label("Layer:");
                 if ui
-                    .selectable_label(matches!(self.overlays.mv_magnitude.layer, bitvue_core::MVLayer::L0Only), "L0")
+                    .selectable_label(
+                        matches!(
+                            self.overlays.mv_magnitude.layer,
+                            bitvue_core::MVLayer::L0Only
+                        ),
+                        "L0",
+                    )
                     .clicked()
                 {
                     self.overlays.mv_magnitude.layer = bitvue_core::MVLayer::L0Only;
                     self.overlays.mv_magnitude.invalidate_texture();
                 }
                 if ui
-                    .selectable_label(matches!(self.overlays.mv_magnitude.layer, bitvue_core::MVLayer::L1Only), "L1")
+                    .selectable_label(
+                        matches!(
+                            self.overlays.mv_magnitude.layer,
+                            bitvue_core::MVLayer::L1Only
+                        ),
+                        "L1",
+                    )
                     .clicked()
                 {
                     self.overlays.mv_magnitude.layer = bitvue_core::MVLayer::L1Only;
                     self.overlays.mv_magnitude.invalidate_texture();
                 }
                 if ui
-                    .selectable_label(matches!(self.overlays.mv_magnitude.layer, bitvue_core::MVLayer::Both), "Both")
+                    .selectable_label(
+                        matches!(self.overlays.mv_magnitude.layer, bitvue_core::MVLayer::Both),
+                        "Both",
+                    )
                     .clicked()
                 {
                     self.overlays.mv_magnitude.layer = bitvue_core::MVLayer::Both;
@@ -729,7 +804,10 @@ impl PlayerWorkspace {
             ui.horizontal(|ui| {
                 ui.label("PU Opacity:");
                 if ui
-                    .add(egui::Slider::new(&mut self.overlays.pu_type.opacity, 0.0..=1.0).step_by(0.05))
+                    .add(
+                        egui::Slider::new(&mut self.overlays.pu_type.opacity, 0.0..=1.0)
+                            .step_by(0.05),
+                    )
                     .changed()
                 {
                     self.overlays.pu_type.invalidate_texture();
@@ -737,16 +815,28 @@ impl PlayerWorkspace {
 
                 ui.separator();
                 ui.label("Show:");
-                if ui.checkbox(&mut self.overlays.pu_type.show_intra, "Intra").changed() {
+                if ui
+                    .checkbox(&mut self.overlays.pu_type.show_intra, "Intra")
+                    .changed()
+                {
                     self.overlays.pu_type.invalidate_texture();
                 }
-                if ui.checkbox(&mut self.overlays.pu_type.show_skip, "Skip").changed() {
+                if ui
+                    .checkbox(&mut self.overlays.pu_type.show_skip, "Skip")
+                    .changed()
+                {
                     self.overlays.pu_type.invalidate_texture();
                 }
-                if ui.checkbox(&mut self.overlays.pu_type.show_merge, "Merge").changed() {
+                if ui
+                    .checkbox(&mut self.overlays.pu_type.show_merge, "Merge")
+                    .changed()
+                {
                     self.overlays.pu_type.invalidate_texture();
                 }
-                if ui.checkbox(&mut self.overlays.pu_type.show_amvp, "AMVP").changed() {
+                if ui
+                    .checkbox(&mut self.overlays.pu_type.show_amvp, "AMVP")
+                    .changed()
+                {
                     self.overlays.pu_type.invalidate_texture();
                 }
 
@@ -1068,7 +1158,11 @@ impl PlayerWorkspace {
         let rows = ((rect.height() / grid_size_scaled).ceil() as u32).max(1);
 
         // Header offset for row/col headers
-        let header_offset = if self.overlays.grid.show_headers { 20.0 } else { 0.0 };
+        let header_offset = if self.overlays.grid.show_headers {
+            20.0
+        } else {
+            0.0
+        };
 
         // Draw row headers (left side)
         if self.overlays.grid.show_headers {
@@ -1271,7 +1365,9 @@ impl PlayerWorkspace {
     /// Per QP_HEATMAP_IMPLEMENTATION_SPEC.md
     /// Draw QP heatmap overlay with actual QP values per CU (VQAnalyzer parity)
     fn draw_qp_heatmap_overlay(&mut self, ui: &mut egui::Ui, rect: egui::Rect, qp_avg: Option<u8>) {
-        let Some((w, h)) = self.frame_size else { return };
+        let Some((w, h)) = self.frame_size else {
+            return;
+        };
 
         // VQAnalyzer parity: Use CU-sized blocks (typically 64x64 for HEVC CTB)
         let block_w = 64u32;
@@ -1296,7 +1392,10 @@ impl PlayerWorkspace {
             );
 
             let color_image = ColorImage::from_rgba_unmultiplied(
-                [heatmap_texture.width as usize, heatmap_texture.height as usize],
+                [
+                    heatmap_texture.width as usize,
+                    heatmap_texture.height as usize,
+                ],
                 &heatmap_texture.pixels,
             );
 
@@ -1354,7 +1453,10 @@ impl PlayerWorkspace {
 
                 // Draw grid lines (VQAnalyzer shows block boundaries)
                 let block_rect = egui::Rect::from_min_size(
-                    egui::pos2(rect.min.x + col as f32 * screen_block_w, rect.min.y + row as f32 * screen_block_h),
+                    egui::pos2(
+                        rect.min.x + col as f32 * screen_block_w,
+                        rect.min.y + row as f32 * screen_block_h,
+                    ),
                     egui::vec2(screen_block_w, screen_block_h),
                 );
                 painter.rect_stroke(
@@ -1818,7 +1920,8 @@ impl PlayerWorkspace {
         color: egui::Color32,
     ) {
         // Scale vector
-        let (dx, dy) = bitvue_core::MVScaling::scale_vector(mv, self.overlays.mv.user_scale, zoom_scale);
+        let (dx, dy) =
+            bitvue_core::MVScaling::scale_vector(mv, self.overlays.mv.user_scale, zoom_scale);
 
         // Clamp to max arrow length
         let (dx_clamped, dy_clamped) =
@@ -1868,7 +1971,12 @@ impl PlayerWorkspace {
 
     /// Draw mode labels overlay
     /// VQAnalyzer parity: shows AMVP/Merge/Skip/Intra labels on blocks
-    fn draw_mode_labels_overlay(&self, ui: &mut egui::Ui, rect: egui::Rect, frame_size: (u32, u32)) {
+    fn draw_mode_labels_overlay(
+        &self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        frame_size: (u32, u32),
+    ) {
         use super::overlays::BlockModeLabel;
 
         let painter = ui.painter();
@@ -1882,9 +1990,12 @@ impl PlayerWorkspace {
         let block_size = if let Some(ref grid) = self.overlays.partition.grid {
             // Use average block size from partition grid
             if !grid.blocks.is_empty() {
-                let avg_size: f32 = grid.blocks.iter()
+                let avg_size: f32 = grid
+                    .blocks
+                    .iter()
                     .map(|b| (b.width + b.height) as f32 / 2.0)
-                    .sum::<f32>() / grid.blocks.len() as f32;
+                    .sum::<f32>()
+                    / grid.blocks.len() as f32;
                 avg_size as u32
             } else {
                 32 // Default
@@ -2063,8 +2174,16 @@ impl PlayerWorkspace {
             egui::Align2::LEFT_TOP,
             format!(
                 "Mode Labels ({}×{})",
-                if self.overlays.mode_labels.show_intra_modes { "I" } else { "-" },
-                if self.overlays.mode_labels.show_inter_modes { "P" } else { "-" }
+                if self.overlays.mode_labels.show_intra_modes {
+                    "I"
+                } else {
+                    "-"
+                },
+                if self.overlays.mode_labels.show_inter_modes {
+                    "P"
+                } else {
+                    "-"
+                }
             ),
             egui::FontId::proportional(12.0),
             egui::Color32::from_rgba_unmultiplied(255, 200, 50, 200),
@@ -2073,7 +2192,12 @@ impl PlayerWorkspace {
 
     /// Draw bit allocation heatmap overlay
     /// VQAnalyzer parity: shows bits per CTB as a heatmap
-    fn draw_bit_allocation_overlay(&mut self, ui: &mut egui::Ui, rect: egui::Rect, frame_size: (u32, u32)) {
+    fn draw_bit_allocation_overlay(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        frame_size: (u32, u32),
+    ) {
         use super::overlays::BitAllocationOverlayState;
 
         // Generate texture if not cached
@@ -2133,10 +2257,8 @@ impl PlayerWorkspace {
             }
 
             // Create texture
-            let color_image = ColorImage::from_rgba_unmultiplied(
-                [tex_w as usize, tex_h as usize],
-                &pixels,
-            );
+            let color_image =
+                ColorImage::from_rgba_unmultiplied([tex_w as usize, tex_h as usize], &pixels);
             self.overlays.bit_allocation.texture = Some(ui.ctx().load_texture(
                 "bit_alloc_heatmap",
                 color_image,
@@ -2239,7 +2361,12 @@ impl PlayerWorkspace {
             let alpha = (self.overlays.mv_magnitude.opacity * 255.0) as u8;
 
             // Get max magnitude for scaling
-            let max_magnitude = self.overlays.mv_magnitude.scale_mode.max_value().unwrap_or(64.0);
+            let max_magnitude = self
+                .overlays
+                .mv_magnitude
+                .scale_mode
+                .max_value()
+                .unwrap_or(64.0);
 
             if let Some(mv_grid) = mv_grid_data {
                 // Use real MV data
@@ -2261,7 +2388,8 @@ impl PlayerWorkspace {
                         ) {
                             if let Some(mv) = mv_grid.get_l0(bx, by) {
                                 if !mv.is_missing() {
-                                    mag += MvMagnitudeOverlayState::magnitude(mv.dx_qpel, mv.dy_qpel);
+                                    mag +=
+                                        MvMagnitudeOverlayState::magnitude(mv.dx_qpel, mv.dy_qpel);
                                     count += 1;
                                 }
                             }
@@ -2274,7 +2402,8 @@ impl PlayerWorkspace {
                         ) {
                             if let Some(mv) = mv_grid.get_l1(bx, by) {
                                 if !mv.is_missing() {
-                                    mag += MvMagnitudeOverlayState::magnitude(mv.dx_qpel, mv.dy_qpel);
+                                    mag +=
+                                        MvMagnitudeOverlayState::magnitude(mv.dx_qpel, mv.dy_qpel);
                                     count += 1;
                                 }
                             }
@@ -2308,10 +2437,8 @@ impl PlayerWorkspace {
             }
 
             // Create texture
-            let color_image = ColorImage::from_rgba_unmultiplied(
-                [tex_w as usize, tex_h as usize],
-                &pixels,
-            );
+            let color_image =
+                ColorImage::from_rgba_unmultiplied([tex_w as usize, tex_h as usize], &pixels);
             self.overlays.mv_magnitude.texture = Some(ui.ctx().load_texture(
                 "mv_magnitude_heatmap",
                 color_image,
@@ -2334,7 +2461,12 @@ impl PlayerWorkspace {
             let painter = ui.painter();
             let legend_x = rect.max.x - 80.0;
             let legend_y = rect.min.y + 10.0;
-            let max_mag = self.overlays.mv_magnitude.scale_mode.max_value().unwrap_or(64.0);
+            let max_mag = self
+                .overlays
+                .mv_magnitude
+                .scale_mode
+                .max_value()
+                .unwrap_or(64.0);
 
             // Legend background
             painter.rect_filled(
@@ -2387,7 +2519,12 @@ impl PlayerWorkspace {
 
     /// Draw PU type overlay
     /// VQAnalyzer parity: shows prediction unit types as colored blocks
-    fn draw_pu_type_overlay(&mut self, ui: &mut egui::Ui, rect: egui::Rect, frame_size: (u32, u32)) {
+    fn draw_pu_type_overlay(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        frame_size: (u32, u32),
+    ) {
         use super::overlays::PuType;
 
         // Generate texture if not cached
@@ -2444,10 +2581,8 @@ impl PlayerWorkspace {
             }
 
             // Create texture
-            let color_image = ColorImage::from_rgba_unmultiplied(
-                [tex_w as usize, tex_h as usize],
-                &pixels,
-            );
+            let color_image =
+                ColorImage::from_rgba_unmultiplied([tex_w as usize, tex_h as usize], &pixels);
             self.overlays.pu_type.texture = Some(ui.ctx().load_texture(
                 "pu_type_overlay",
                 color_image,
@@ -2681,7 +2816,8 @@ mod tests {
         ws.set_overlay(OverlayType::Grid, true);
         assert!(ws.is_overlay_active(OverlayType::Grid));
         assert_eq!(
-            ws.overlays.active
+            ws.overlays
+                .active
                 .iter()
                 .filter(|&&o| o == OverlayType::Grid)
                 .count(),

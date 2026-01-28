@@ -17,16 +17,16 @@ pub enum BlockModeLabel {
     AMVP,
 
     // Advanced modes (VVC/AV1)
-    GPM,     // Geometric Partition Mode
-    SbTMVP,  // Subblock Temporal MV Prediction
-    DMVR,    // Decoder-side Motion Vector Refinement
-    Affine,  // Affine motion
+    GPM,    // Geometric Partition Mode
+    SbTMVP, // Subblock Temporal MV Prediction
+    DMVR,   // Decoder-side Motion Vector Refinement
+    Affine, // Affine motion
 
     // AV1 specific
-    Intra,   // Generic intra (DC/V/H/etc in AV1)
-    Inter,   // Generic inter
-    NewMV,   // New motion vector
-    NearMV,  // Near motion vector
+    Intra,     // Generic intra (DC/V/H/etc in AV1)
+    Inter,     // Generic inter
+    NewMV,     // New motion vector
+    NearMV,    // Near motion vector
     NearestMV, // Nearest motion vector
     GlobalMV,  // Global motion vector
 
@@ -41,7 +41,7 @@ impl BlockModeLabel {
             Self::IntraDC => "DC",
             Self::IntraPlanar => "P",
             Self::IntraAngular(n) => match n {
-                2..=17 => "A", // Angular left/top-left
+                2..=17 => "A",  // Angular left/top-left
                 18..=49 => "A", // Angular vertical-ish
                 50..=66 => "A", // Angular right/top-right
                 _ => "A",

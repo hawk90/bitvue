@@ -372,8 +372,8 @@ fn test_nal_start_code_4_byte() {
 #[test]
 fn test_hevc_nal_unit_type_values() {
     // Test HEVC NAL unit type values
-    assert_eq!(0u8, 0);   // TRAIL_N
-    assert_eq!(1u8, 1);   // TRAIL_R
+    assert_eq!(0u8, 0); // TRAIL_N
+    assert_eq!(1u8, 1); // TRAIL_R
     assert_eq!(19u8, 19); // IDR_W_RADL
     assert_eq!(20u8, 20); // IDR_N_LP
     assert_eq!(32u8, 32); // VPS
@@ -556,9 +556,9 @@ fn test_exp_golomb_coding() {
         bits
     }
 
-    assert_eq!(ue_v(0).len(), 1);  // "1"
-    assert_eq!(ue_v(1).len(), 3);  // "010"
-    assert_eq!(ue_v(2).len(), 3);  // "011"
+    assert_eq!(ue_v(0).len(), 1); // "1"
+    assert_eq!(ue_v(1).len(), 3); // "010"
+    assert_eq!(ue_v(2).len(), 3); // "011"
 }
 
 #[test]
@@ -605,10 +605,22 @@ fn test_common_resolutions() {
     }
 
     let resolutions = vec![
-        Resolution { width: 640, height: 480 },   // VGA
-        Resolution { width: 1280, height: 720 },  // HD
-        Resolution { width: 1920, height: 1080 }, // Full HD
-        Resolution { width: 3840, height: 2160 }, // 4K
+        Resolution {
+            width: 640,
+            height: 480,
+        }, // VGA
+        Resolution {
+            width: 1280,
+            height: 720,
+        }, // HD
+        Resolution {
+            width: 1920,
+            height: 1080,
+        }, // Full HD
+        Resolution {
+            width: 3840,
+            height: 2160,
+        }, // 4K
     ];
 
     for res in resolutions {

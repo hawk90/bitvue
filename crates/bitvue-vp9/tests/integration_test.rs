@@ -5,7 +5,7 @@
 //! - Superframe detection
 //! - Overlay data extraction
 
-use bitvue_vp9::{parse_vp9, parse_frames};
+use bitvue_vp9::{parse_frames, parse_vp9};
 
 #[test]
 fn test_parse_empty_vp9_stream() {
@@ -22,15 +22,15 @@ fn test_vp9_frame_detection() {
     // Test VP9 frame detection
     let data = [
         // IVF header (minimal)
-        0x44, 0x4B, 0x49, 0x46, 0x20,              // "DKIF "
-        0x00,                                           // version
-        0x00, 00, 00,                                     // width
-        0x00, 00, 00,                                     // height
-        0x30, 0x38, 0x00, 00,                            // frame rate (60fps)
-        0x01, 00, 00, 00,                                // num_frames
+        0x44, 0x4B, 0x49, 0x46, 0x20, // "DKIF "
+        0x00, // version
+        0x00, 00, 00, // width
+        0x00, 00, 00, // height
+        0x30, 0x38, 0x00, 00, // frame rate (60fps)
+        0x01, 00, 00, 00, // num_frames
         // Frame 1 (keyframe, 8x8)
-        0x82, 0x49, 0x83, 0x42, 0x09, 00,            // frame header + size
-        0x00, 00, 00, 00, 00,                         // compressed data
+        0x82, 0x49, 0x83, 0x42, 0x09, 00, // frame header + size
+        0x00, 00, 00, 00, 00, // compressed data
     ];
 
     let result = parse_vp9(&data);
@@ -48,15 +48,15 @@ fn test_vp9_superframe_detection() {
 
     // Minimal VP9 stream without superframe
     let data_without_sf = [
-        0x44, 0x4B, 0x49, 0x46, 0x20,              // "DKIF "
-        0x00,                                           // version
-        0x00, 00, 00,                                     // width
-        0x00, 00, 00,                                     // height
-        0x0F, 0x00, 0x00, 00,                            // frame rate (15fps)
-        0x01, 00, 00, 00,                                // num_frames
+        0x44, 0x4B, 0x49, 0x46, 0x20, // "DKIF "
+        0x00, // version
+        0x00, 00, 00, // width
+        0x00, 00, 00, // height
+        0x0F, 0x00, 0x00, 00, // frame rate (15fps)
+        0x01, 00, 00, 00, // num_frames
         // Frame
-        0x82, 0x49, 83, 0x42, 0x09, 00,             // frame header
-        0x00, 00, 00, 00, 00,                          // data
+        0x82, 0x49, 83, 0x42, 0x09, 00, // frame header
+        0x00, 00, 00, 00, 00, // data
     ];
 
     let result = parse_vp9(&data_without_sf);
@@ -112,15 +112,15 @@ fn create_minimal_vp9_stream() -> Vec<u8> {
     let mut data = Vec::new();
 
     // IVF header
-    data.extend_from_slice(b"DKIF ");              // Signature
-    data.extend_from_slice(&[0x00]);                // Version
-    data.extend_from_slice(&[0x00, 0x00]);            // Width (16-bit)
-    data.extend_from_slice(&[0x00, 0x00]);            // Height (16-bit)
+    data.extend_from_slice(b"DKIF "); // Signature
+    data.extend_from_slice(&[0x00]); // Version
+    data.extend_from_slice(&[0x00, 0x00]); // Width (16-bit)
+    data.extend_from_slice(&[0x00, 0x00]); // Height (16-bit)
     data.extend_from_slice(&[0x30, 0x38, 0x00, 0x00]); // Frame rate (60fps as rational)
     data.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]); // Num frames (1)
 
     // Keyframe (minimal)
-    data.extend_from_slice(&[0x82]);                // Frame header (keyframe, uncompressed)
+    data.extend_from_slice(&[0x82]); // Frame header (keyframe, uncompressed)
     data.extend_from_slice(&[0x49, 0x83, 0x42, 0x09, 0x00]); // Header marker + size
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00]); // Minimal payload
 

@@ -85,11 +85,7 @@ fn test_hevc_pu_partition_modes() {
         PartnRx2N,
     }
 
-    let modes = vec![
-        PartMode::Part2Nx2N,
-        PartMode::PartNxN,
-        PartMode::Part2NxnU,
-    ];
+    let modes = vec![PartMode::Part2Nx2N, PartMode::PartNxN, PartMode::Part2NxnU];
 
     assert_eq!(modes.len(), 3);
 }
@@ -171,7 +167,7 @@ fn test_hevc_reference_picture_sets() {
 fn test_hevc_scaling_list() {
     // Test scaling list data
     struct ScalingList {
-        size_id: u8,  // 0=4x4, 1=8x8, 2=16x16, 3=32x32
+        size_id: u8, // 0=4x4, 1=8x8, 2=16x16, 3=32x32
         matrix_id: u8,
     }
 
@@ -224,10 +220,7 @@ fn test_hevc_motion_vector_range() {
         mvy: i16,
     }
 
-    let mv = MotionVector {
-        mvx: 128,
-        mvy: -64,
-    };
+    let mv = MotionVector { mvx: 128, mvy: -64 };
 
     // HEVC MV range is typically +/- 2048 in quarter-pel units
     assert!(mv.mvx.abs() <= 2048);
@@ -239,5 +232,8 @@ fn test_hevc_merge_candidates() {
     // Test merge mode candidate list
     let max_merge_cand = 5usize;
 
-    assert!(max_merge_cand <= 5, "HEVC supports up to 5 merge candidates");
+    assert!(
+        max_merge_cand <= 5,
+        "HEVC supports up to 5 merge candidates"
+    );
 }

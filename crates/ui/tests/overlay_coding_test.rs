@@ -138,11 +138,7 @@ fn test_pu_type_classification() {
         Merge,
     }
 
-    let types = vec![
-        PuType::Intra,
-        PuType::Inter,
-        PuType::Skip,
-    ];
+    let types = vec![PuType::Intra, PuType::Inter, PuType::Skip];
 
     assert_eq!(types.len(), 3);
 }
@@ -152,11 +148,11 @@ fn test_pu_type_coloring() {
     // Test coloring by PU type
     fn pu_type_to_color(pu_type: &str) -> (u8, u8, u8) {
         match pu_type {
-            "Intra" => (255, 0, 0),     // Red
-            "Inter" => (0, 255, 0),     // Green
-            "Skip" => (0, 0, 255),      // Blue
-            "Merge" => (255, 255, 0),   // Yellow
-            _ => (128, 128, 128),       // Gray
+            "Intra" => (255, 0, 0),   // Red
+            "Inter" => (0, 255, 0),   // Green
+            "Skip" => (0, 0, 255),    // Blue
+            "Merge" => (255, 255, 0), // Yellow
+            _ => (128, 128, 128),     // Gray
         }
     }
 
@@ -198,10 +194,10 @@ fn test_mode_direction_arrows() {
     impl DirectionArrow {
         fn from_mode(mode: u8) -> Option<f32> {
             match mode {
-                1 => Some(90.0),   // Vertical
-                2 => Some(0.0),    // Horizontal
-                3 => Some(45.0),   // D45
-                4 => Some(135.0),  // D135
+                1 => Some(90.0),  // Vertical
+                2 => Some(0.0),   // Horizontal
+                3 => Some(45.0),  // D45
+                4 => Some(135.0), // D135
                 _ => None,
             }
         }
@@ -257,9 +253,18 @@ fn test_overlay_priority() {
     }
 
     let mut layers = vec![
-        OverlayLayer { name: "grid".to_string(), priority: 10 },
-        OverlayLayer { name: "qp".to_string(), priority: 20 },
-        OverlayLayer { name: "mv".to_string(), priority: 30 },
+        OverlayLayer {
+            name: "grid".to_string(),
+            priority: 10,
+        },
+        OverlayLayer {
+            name: "qp".to_string(),
+            priority: 20,
+        },
+        OverlayLayer {
+            name: "mv".to_string(),
+            priority: 30,
+        },
     ];
 
     layers.sort_by(|a, b| a.compare_priority(b));

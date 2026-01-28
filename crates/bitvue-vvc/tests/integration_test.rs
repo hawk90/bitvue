@@ -5,7 +5,7 @@
 //! - SPS with advanced features (Dual Tree, ALF, LMCS)
 //! - Overlay data extraction
 
-use bitvue_vvc::{parse_vvc, parse_nal_units, NalUnitType};
+use bitvue_vvc::{parse_nal_units, parse_vvc, NalUnitType};
 
 #[test]
 fn test_parse_empty_vvc_stream() {
@@ -27,26 +27,29 @@ fn test_vvc_nal_unit_types() {
     // byte1: [nal_unit_type (5) | nuh_temporal_id_plus1 (3)]
     // NAL unit type is in upper 5 bits of byte 1 (type << 3)
     let test_cases = vec![
-        (0x00, 0x00, NalUnitType::TrailNut),     // TRAIL_NUT (type 0 << 3 = 0x00)
-        (0x00, 0x08, NalUnitType::StapNut),      // STSA_NUT (type 1 << 3 = 0x08)
-        (0x00, 0x38, NalUnitType::IdrWRadl),    // IDR_W_RADL (type 7 << 3 = 0x38)
-        (0x00, 0x40, NalUnitType::IdrNLp),      // IDR_N_LP (type 8 << 3 = 0x40)
-        (0x00, 0x78, NalUnitType::VpsNut),      // VPS_NUT (type 15 << 3 = 0x78)
-        (0x00, 0x80, NalUnitType::SpsNut),      // SPS_NUT (type 16 << 3 = 0x80)
-        (0x00, 0x88, NalUnitType::PpsNut),      // PPS_NUT (type 17 << 3 = 0x88)
+        (0x00, 0x00, NalUnitType::TrailNut), // TRAIL_NUT (type 0 << 3 = 0x00)
+        (0x00, 0x08, NalUnitType::StapNut),  // STSA_NUT (type 1 << 3 = 0x08)
+        (0x00, 0x38, NalUnitType::IdrWRadl), // IDR_W_RADL (type 7 << 3 = 0x38)
+        (0x00, 0x40, NalUnitType::IdrNLp),   // IDR_N_LP (type 8 << 3 = 0x40)
+        (0x00, 0x78, NalUnitType::VpsNut),   // VPS_NUT (type 15 << 3 = 0x78)
+        (0x00, 0x80, NalUnitType::SpsNut),   // SPS_NUT (type 16 << 3 = 0x80)
+        (0x00, 0x88, NalUnitType::PpsNut),   // PPS_NUT (type 17 << 3 = 0x88)
     ];
 
     for (byte0, byte1, expected_type) in test_cases {
         // Minimal NAL unit with start code and 2-byte NAL header
         let mut data = vec![0x00, 0x00, 0x00, 0x01]; // Start code
-        data.push(byte0);  // NAL header byte 0
-        data.push(byte1);  // NAL header byte 1 (type in upper 5 bits)
-        data.push(0x00);  // Payload
+        data.push(byte0); // NAL header byte 0
+        data.push(byte1); // NAL header byte 1 (type in upper 5 bits)
+        data.push(0x00); // Payload
 
         let nal_units = parse_nal_units(&data).unwrap();
         if !nal_units.is_empty() {
-            assert_eq!(nal_units[0].header.nal_unit_type, expected_type,
-                "NAL header 0x{:02x}{:02x} should produce type {:?}", byte0, byte1, expected_type);
+            assert_eq!(
+                nal_units[0].header.nal_unit_type, expected_type,
+                "NAL header 0x{:02x}{:02x} should produce type {:?}",
+                byte0, byte1, expected_type
+            );
         }
     }
 }
@@ -56,11 +59,11 @@ fn test_vvc_parameter_sets() {
     // Test VPS, SPS, PPS NAL unit detection (not parsing)
     let data = [
         // VPS (Video Parameter Set) - simplified
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x78, 0x00,  // type 15 << 3 = 0x78
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x78, 0x00, // type 15 << 3 = 0x78
         // SPS (Sequence Parameter Set) - simplified
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x80, 0x00,  // type 16 << 3 = 0x80
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x80, 0x00, // type 16 << 3 = 0x80
         // PPS (Picture Parameter Set) - simplified
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x88, 0x00,  // type 17 << 3 = 0x88
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x88, 0x00, // type 17 << 3 = 0x88
     ];
 
     let result = parse_vvc(&data);
@@ -71,9 +74,18 @@ fn test_vvc_parameter_sets() {
     assert!(!stream.nal_units.is_empty());
 
     // Check that NAL unit types are correctly identified
-    assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::VpsNut);
-    assert_eq!(stream.nal_units[1].header.nal_unit_type, NalUnitType::SpsNut);
-    assert_eq!(stream.nal_units[2].header.nal_unit_type, NalUnitType::PpsNut);
+    assert_eq!(
+        stream.nal_units[0].header.nal_unit_type,
+        NalUnitType::VpsNut
+    );
+    assert_eq!(
+        stream.nal_units[1].header.nal_unit_type,
+        NalUnitType::SpsNut
+    );
+    assert_eq!(
+        stream.nal_units[2].header.nal_unit_type,
+        NalUnitType::PpsNut
+    );
 }
 
 #[test]
@@ -102,9 +114,10 @@ fn test_vvc_overlay_extraction() {
 
     if let Ok(nal_units) = parse_nal_units(&data) {
         // Find SPS for overlay extraction
-        if let Some(nal_with_sps) = nal_units.iter()
-            .find(|nal| nal.header.nal_unit_type == NalUnitType::SpsNut) {
-
+        if let Some(nal_with_sps) = nal_units
+            .iter()
+            .find(|nal| nal.header.nal_unit_type == NalUnitType::SpsNut)
+        {
             if let Ok(sps) = bitvue_vvc::sps::parse_sps(&nal_with_sps.payload) {
                 // Test QP grid extraction
                 let qp_result = bitvue_vvc::extract_qp_grid(&nal_units, &sps, 26);
@@ -116,7 +129,10 @@ fn test_vvc_overlay_extraction() {
 
                 // Test partition grid extraction
                 let part_result = bitvue_vvc::extract_partition_grid(&nal_units, &sps);
-                assert!(part_result.is_ok(), "Partition grid extraction should not crash");
+                assert!(
+                    part_result.is_ok(),
+                    "Partition grid extraction should not crash"
+                );
             }
         }
     }
@@ -127,19 +143,19 @@ fn create_minimal_vvc_stream() -> Vec<u8> {
     let mut data = Vec::new();
 
     // SPS (Sequence Parameter Set)
-    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);  // Start code
-    data.extend_from_slice(&[0x00, 0x80]);  // NAL type: SPS (16 << 3 = 0x80)
-    data.extend_from_slice(&[0x01]);  // Minimal payload
+    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Start code
+    data.extend_from_slice(&[0x00, 0x80]); // NAL type: SPS (16 << 3 = 0x80)
+    data.extend_from_slice(&[0x01]); // Minimal payload
 
     // PPS (Picture Parameter Set)
-    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);  // Start code
-    data.extend_from_slice(&[0x00, 0x88]);  // NAL type: PPS (17 << 3 = 0x88)
-    data.extend_from_slice(&[0x01]);  // Minimal payload
+    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Start code
+    data.extend_from_slice(&[0x00, 0x88]); // NAL type: PPS (17 << 3 = 0x88)
+    data.extend_from_slice(&[0x01]); // Minimal payload
 
     // Trail NAL (frame data)
-    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);  // Start code
-    data.extend_from_slice(&[0x00, 0x00]);  // NAL type: TRAIL_R (0 << 3 = 0x00)
-    data.extend_from_slice(&[0x01]);  // Payload
+    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // Start code
+    data.extend_from_slice(&[0x00, 0x00]); // NAL type: TRAIL_R (0 << 3 = 0x00)
+    data.extend_from_slice(&[0x01]); // Payload
 
     data
 }
@@ -158,11 +174,13 @@ fn test_v0_6_completeness() {
     assert!(!nal_units.is_empty(), "Should have NAL units");
 
     // 2. Parameter set detection
-    let has_sps = nal_units.iter()
+    let has_sps = nal_units
+        .iter()
         .any(|nal| nal.header.nal_unit_type == NalUnitType::SpsNut);
     assert!(has_sps, "Should detect SPS NAL unit type");
 
-    let has_pps = nal_units.iter()
+    let has_pps = nal_units
+        .iter()
         .any(|nal| nal.header.nal_unit_type == NalUnitType::PpsNut);
     assert!(has_pps, "Should detect PPS NAL unit type");
 
@@ -187,23 +205,23 @@ fn create_minimal_vtc_stream() -> Vec<u8> {
 
     // VPS (Video Parameter Set)
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.extend_from_slice(&[0x00, 0x78]);  // NAL type: VPS (15 << 3 = 0x78)
-    data.extend_from_slice(&[0xFF]);  // Placeholder
+    data.extend_from_slice(&[0x00, 0x78]); // NAL type: VPS (15 << 3 = 0x78)
+    data.extend_from_slice(&[0xFF]); // Placeholder
 
     // SPS with basic structure
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.extend_from_slice(&[0x00, 0x80]);  // NAL type: SPS (16 << 3 = 0x80)
-    data.extend_from_slice(&[0x01]);  // Minimal sps_id
+    data.extend_from_slice(&[0x00, 0x80]); // NAL type: SPS (16 << 3 = 0x80)
+    data.extend_from_slice(&[0x01]); // Minimal sps_id
 
     // PPS
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.extend_from_slice(&[0x00, 0x88]);  // NAL type: PPS (17 << 3 = 0x88)
-    data.extend_from_slice(&[0x01]);  // Minimal pps_id
+    data.extend_from_slice(&[0x00, 0x88]); // NAL type: PPS (17 << 3 = 0x88)
+    data.extend_from_slice(&[0x01]); // Minimal pps_id
 
     // Trail NAL (coding data)
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.extend_from_slice(&[0x00, 0x00]);  // NAL type: TRAIL_R (0 << 3 = 0x00)
-    data.extend_from_slice(&[0x80, 0x00]);  // Frame data
+    data.extend_from_slice(&[0x00, 0x00]); // NAL type: TRAIL_R (0 << 3 = 0x00)
+    data.extend_from_slice(&[0x80, 0x00]); // Frame data
 
     data
 }

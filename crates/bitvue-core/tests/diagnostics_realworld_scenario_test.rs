@@ -67,12 +67,18 @@ fn test_scenario_corrupted_streaming_video() {
     let total_diagnostics = state.diagnostics.len();
     assert_eq!(total_diagnostics, 8); // 1 + 6 + 1
 
-    let fatal_errors = state.diagnostics.iter().filter(|d| d.severity == Severity::Fatal).count();
+    let fatal_errors = state
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Fatal)
+        .count();
     assert_eq!(fatal_errors, 1);
 
     let burst_start_frame = 20;
     let burst_end_frame = 25;
-    let burst_diagnostics = state.diagnostics.iter()
+    let burst_diagnostics = state
+        .diagnostics
+        .iter()
         .filter(|d| {
             if let Some(frame) = d.frame_index {
                 frame >= burst_start_frame && frame <= burst_end_frame
@@ -84,7 +90,9 @@ fn test_scenario_corrupted_streaming_video() {
     assert_eq!(burst_diagnostics, 6);
 
     // Find critical issues
-    let critical_issues: Vec<_> = state.diagnostics.iter()
+    let critical_issues: Vec<_> = state
+        .diagnostics
+        .iter()
         .filter(|d| d.impact_score >= 90)
         .collect();
     assert_eq!(critical_issues.len(), 1); // The fatal error
@@ -149,18 +157,24 @@ fn test_scenario_broadcast_quality_monitoring() {
     // Monitor quality metrics
     let state = stream.read();
 
-    let quality_warnings = state.diagnostics.iter()
+    let quality_warnings = state
+        .diagnostics
+        .iter()
         .filter(|d| d.category == Category::Metric && d.severity == Severity::Warn)
         .count();
     assert_eq!(quality_warnings, 6); // 5 periodic + 1 bitrate
 
-    let quality_errors = state.diagnostics.iter()
+    let quality_errors = state
+        .diagnostics
+        .iter()
         .filter(|d| d.category == Category::Metric && d.severity == Severity::Error)
         .count();
     assert_eq!(quality_errors, 1); // QP spike
 
     // Alert threshold: impact >= 65
-    let critical_quality_issues: Vec<_> = state.diagnostics.iter()
+    let critical_quality_issues: Vec<_> = state
+        .diagnostics
+        .iter()
         .filter(|d| d.category == Category::Metric && d.impact_score >= 65)
         .collect();
     assert_eq!(critical_quality_issues.len(), 1);
@@ -227,7 +241,9 @@ fn test_scenario_forensic_analysis_evidence_collection() {
     let state = stream.read();
 
     // Timeline of events
-    let timeline: Vec<_> = state.diagnostics.iter()
+    let timeline: Vec<_> = state
+        .diagnostics
+        .iter()
         .map(|d| (d.timestamp_ms, d.severity, &d.message))
         .collect();
 
@@ -279,7 +295,11 @@ fn test_scenario_multi_codec_comparison() {
         for i in 0..15 {
             state.add_diagnostic(Diagnostic {
                 id: i,
-                severity: if i < 3 { Severity::Warn } else { Severity::Info },
+                severity: if i < 3 {
+                    Severity::Warn
+                } else {
+                    Severity::Info
+                },
                 stream_id: StreamId::B,
                 message: format!("Quality/complexity tradeoff at frame {}", i * 20),
                 category: Category::Metric,
@@ -300,10 +320,18 @@ fn test_scenario_multi_codec_comparison() {
     assert_eq!(hevc_diagnostics, 15);
 
     // Compare severity distribution
-    let av1_warnings = av1_stream.read().diagnostics.iter()
-        .filter(|d| d.severity == Severity::Warn).count();
-    let hevc_warnings = hevc_stream.read().diagnostics.iter()
-        .filter(|d| d.severity == Severity::Warn).count();
+    let av1_warnings = av1_stream
+        .read()
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warn)
+        .count();
+    let hevc_warnings = hevc_stream
+        .read()
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warn)
+        .count();
 
     assert_eq!(av1_warnings, 0);
     assert_eq!(hevc_warnings, 3);
@@ -437,13 +465,17 @@ fn test_scenario_compliance_verification() {
     // Compliance report
     let state = stream.read();
 
-    let compliance_issues = state.diagnostics.iter()
+    let compliance_issues = state
+        .diagnostics
+        .iter()
         .filter(|d| d.severity != Severity::Info)
         .count();
 
     assert_eq!(compliance_issues, 1); // Bitrate warning
 
-    let passed_checks = state.diagnostics.iter()
+    let passed_checks = state
+        .diagnostics
+        .iter()
         .filter(|d| d.severity == Severity::Info)
         .count();
 
@@ -505,13 +537,17 @@ fn test_scenario_archive_validation() {
     // Archive readiness score
     let state = stream.read();
 
-    let critical_issues = state.diagnostics.iter()
+    let critical_issues = state
+        .diagnostics
+        .iter()
         .filter(|d| matches!(d.severity, Severity::Error | Severity::Fatal))
         .count();
 
     assert_eq!(critical_issues, 0); // Ready for archive
 
-    let minor_issues = state.diagnostics.iter()
+    let minor_issues = state
+        .diagnostics
+        .iter()
         .filter(|d| d.severity == Severity::Warn)
         .count();
 
@@ -576,13 +612,17 @@ fn test_scenario_automated_qa_pipeline() {
     // QA pipeline verdict
     let state = stream.read();
 
-    let gate_failures = state.diagnostics.iter()
+    let gate_failures = state
+        .diagnostics
+        .iter()
         .filter(|d| matches!(d.severity, Severity::Error | Severity::Fatal))
         .count();
 
     assert_eq!(gate_failures, 0); // All gates passed
 
-    let warnings = state.diagnostics.iter()
+    let warnings = state
+        .diagnostics
+        .iter()
         .filter(|d| d.severity == Severity::Warn)
         .count();
 

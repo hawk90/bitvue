@@ -45,13 +45,7 @@ const FRAME_RATES: [(f64, &str); 9] = [
 ];
 
 /// Aspect ratio code to string mapping.
-const ASPECT_RATIOS: [&str; 5] = [
-    "forbidden",
-    "1:1 (Square)",
-    "4:3",
-    "16:9",
-    "2.21:1",
-];
+const ASPECT_RATIOS: [&str; 5] = ["forbidden", "1:1 (Square)", "4:3", "16:9", "2.21:1"];
 
 /// Sequence header.
 #[derive(Debug, Clone, Serialize, Deserialize)]

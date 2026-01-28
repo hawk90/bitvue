@@ -110,10 +110,7 @@ fn test_parse_priority() {
         priority: 10,
     };
 
-    assert_eq!(
-        task1.compare_priority(&task2),
-        std::cmp::Ordering::Greater
-    );
+    assert_eq!(task1.compare_priority(&task2), std::cmp::Ordering::Greater);
 }
 
 #[test]
@@ -251,7 +248,7 @@ fn test_codec_detection() {
         // Simplified detection
         match &data[0..4] {
             [0, 0, 0, 1] => CodecType::Hevc, // NAL start code
-            b"DKIF" => CodecType::Av1,        // IVF signature
+            b"DKIF" => CodecType::Av1,       // IVF signature
             _ => CodecType::Unknown,
         }
     }

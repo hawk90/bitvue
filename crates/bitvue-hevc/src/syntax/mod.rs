@@ -86,7 +86,10 @@ pub fn build_syntax_tree(stream: &HevcStream) -> SyntaxNode {
 
     // Add stream info
     if let Some((width, height)) = stream.dimensions() {
-        root.add_child(SyntaxNode::field("Resolution", format!("{}x{}", width, height)));
+        root.add_child(SyntaxNode::field(
+            "Resolution",
+            format!("{}x{}", width, height),
+        ));
     }
     if let Some(fps) = stream.frame_rate() {
         root.add_child(SyntaxNode::field("Frame Rate", format!("{:.2} fps", fps)));
@@ -109,7 +112,10 @@ pub fn build_syntax_tree(stream: &HevcStream) -> SyntaxNode {
         let mut header_node = SyntaxNode::new("NAL Header", SyntaxNodeType::Structure);
         header_node.add_child(SyntaxNode::field(
             "nal_unit_type",
-            format!("{:?} ({})", nal.header.nal_unit_type, nal.header.nal_unit_type as u8),
+            format!(
+                "{:?} ({})",
+                nal.header.nal_unit_type, nal.header.nal_unit_type as u8
+            ),
         ));
         header_node.add_child(SyntaxNode::field(
             "nuh_layer_id",
@@ -224,15 +230,27 @@ fn build_vps_tree(vps: &crate::Vps) -> SyntaxNode {
     let mut ptl_node = SyntaxNode::new("profile_tier_level", SyntaxNodeType::Structure);
     ptl_node.add_child(SyntaxNode::field(
         "general_profile_idc",
-        format!("{} ({})", vps.profile_tier_level.general_profile_idc, vps.profile_name()),
+        format!(
+            "{} ({})",
+            vps.profile_tier_level.general_profile_idc,
+            vps.profile_name()
+        ),
     ));
     ptl_node.add_child(SyntaxNode::field(
         "general_tier_flag",
-        format!("{} ({})", vps.profile_tier_level.general_tier_flag, vps.tier_name()),
+        format!(
+            "{} ({})",
+            vps.profile_tier_level.general_tier_flag,
+            vps.tier_name()
+        ),
     ));
     ptl_node.add_child(SyntaxNode::field(
         "general_level_idc",
-        format!("{} (Level {:.1})", vps.profile_tier_level.general_level_idc, vps.level()),
+        format!(
+            "{} (Level {:.1})",
+            vps.profile_tier_level.general_level_idc,
+            vps.level()
+        ),
     ));
     node.add_child(ptl_node);
 
@@ -243,7 +261,10 @@ fn build_vps_tree(vps: &crate::Vps) -> SyntaxNode {
             "num_units_in_tick",
             timing.num_units_in_tick.to_string(),
         ));
-        timing_node.add_child(SyntaxNode::field("time_scale", timing.time_scale.to_string()));
+        timing_node.add_child(SyntaxNode::field(
+            "time_scale",
+            timing.time_scale.to_string(),
+        ));
         if timing.time_scale > 0 && timing.num_units_in_tick > 0 {
             let fps = timing.time_scale as f64 / timing.num_units_in_tick as f64;
             timing_node.add_child(SyntaxNode::field("frame_rate", format!("{:.2} fps", fps)));

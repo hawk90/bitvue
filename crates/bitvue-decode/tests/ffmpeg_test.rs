@@ -102,11 +102,7 @@ fn test_frame_allocation() {
             Self {
                 width,
                 height,
-                data: vec![
-                    vec![0u8; y_size],
-                    vec![0u8; uv_size],
-                    vec![0u8; uv_size],
-                ],
+                data: vec![vec![0u8; y_size], vec![0u8; uv_size], vec![0u8; uv_size]],
                 linesize: vec![width, width / 2, width / 2],
             }
         }

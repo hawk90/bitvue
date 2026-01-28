@@ -110,10 +110,7 @@ fn test_settings_categories() {
         }
 
         fn get_setting(&self, key: &str) -> Option<&String> {
-            self.settings
-                .iter()
-                .find(|(k, _)| k == key)
-                .map(|(_, v)| v)
+            self.settings.iter().find(|(k, _)| k == key).map(|(_, v)| v)
         }
     }
 
@@ -123,7 +120,10 @@ fn test_settings_categories() {
     };
 
     category.add_setting("resolution".to_string(), "1920x1080".to_string());
-    assert_eq!(category.get_setting("resolution"), Some(&"1920x1080".to_string()));
+    assert_eq!(
+        category.get_setting("resolution"),
+        Some(&"1920x1080".to_string())
+    );
 }
 
 #[test]

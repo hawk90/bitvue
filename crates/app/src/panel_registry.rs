@@ -106,7 +106,8 @@ impl PanelRegistry {
 
     /// Get mutable reference to quality metrics panel (initializes on first call)
     pub fn quality_metrics_mut(&mut self) -> &mut QualityMetricsPanel {
-        self.quality_metrics.get_or_init(|| QualityMetricsPanel::new())
+        self.quality_metrics
+            .get_or_init(|| QualityMetricsPanel::new())
     }
 
     /// Get mutable reference to block info panel (initializes on first call)

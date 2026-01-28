@@ -7,7 +7,7 @@
 //! This module parses the uncompressed header.
 
 use crate::bitreader::BitReader;
-use crate::error::{Vp9Error, Result};
+use crate::error::{Result, Vp9Error};
 use serde::{Deserialize, Serialize};
 
 /// VP9 color space.
@@ -415,7 +415,8 @@ pub fn parse_frame_header(data: &[u8]) -> Result<FrameHeader> {
             if is_filter_switchable {
                 header.interpolation_filter = InterpolationFilter::Switchable;
             } else {
-                header.interpolation_filter = InterpolationFilter::from(reader.read_literal(2)? as u8);
+                header.interpolation_filter =
+                    InterpolationFilter::from(reader.read_literal(2)? as u8);
             }
         }
     }
@@ -640,7 +641,8 @@ fn parse_segmentation(reader: &mut BitReader, header: &mut FrameHeader) -> Resul
                 if enabled {
                     let bits = [8, 6, 2, 0][j]; // Feature bit counts
                     if bits > 0 {
-                        header.segmentation.feature_data[i][j] = read_signed_literal(reader, bits)? as i16;
+                        header.segmentation.feature_data[i][j] =
+                            read_signed_literal(reader, bits)? as i16;
                     }
                 }
             }

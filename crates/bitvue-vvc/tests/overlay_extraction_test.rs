@@ -2,9 +2,9 @@
 //!
 //! Comprehensive tests for VVC overlay data extraction.
 
-use bitvue_vvc::overlay_extraction;
-use bitvue_core::BlockMode;
 use bitvue_core::partition_grid::PartitionType;
+use bitvue_core::BlockMode;
+use bitvue_vvc::overlay_extraction;
 
 #[test]
 fn test_extract_qp_grid_basic() {
@@ -510,13 +510,7 @@ fn test_ctu_sizes() {
 
 #[test]
 fn test_cu_positions() {
-    let positions = vec![
-        (0u32, 0u32),
-        (64, 0),
-        (0, 64),
-        (128, 128),
-        (256, 256),
-    ];
+    let positions = vec![(0u32, 0u32), (64, 0), (0, 64), (128, 128), (256, 256)];
 
     for (x, y) in positions {
         let cu = overlay_extraction::CodingUnit {
@@ -546,7 +540,10 @@ fn test_cu_positions() {
 fn test_partition_type_mapping() {
     let mappings = vec![
         (overlay_extraction::SplitMode::None, PartitionType::None),
-        (overlay_extraction::SplitMode::QuadTree, PartitionType::Split),
+        (
+            overlay_extraction::SplitMode::QuadTree,
+            PartitionType::Split,
+        ),
         (overlay_extraction::SplitMode::HorzB, PartitionType::Horz),
         (overlay_extraction::SplitMode::VertB, PartitionType::Vert),
     ];
@@ -620,9 +617,9 @@ fn test_ctu_coverage() {
 
 #[test]
 fn test_grid_dimensions_consistency() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::MVGrid;
     use bitvue_core::partition_grid::PartitionGrid;
+    use bitvue_core::qp_heatmap::QPGrid;
 
     let width = 1920;
     let height = 1080;
@@ -688,9 +685,9 @@ fn test_cu_with_bipred() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::qp_heatmap::QPGrid;
     use bitvue_core::mv_overlay::MVGrid;
     use bitvue_core::partition_grid::PartitionGrid;
+    use bitvue_core::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 128, 128, vec![], -1);

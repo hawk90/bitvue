@@ -30,7 +30,11 @@ pub fn save_recent_files(recent_files: &[PathBuf]) -> Result<(), String> {
     std::fs::write(&recent_path, json)
         .map_err(|e| format!("Failed to write recent files: {}", e))?;
 
-    tracing::info!("Saved {} recent files to {:?}", recent_files.len(), recent_path);
+    tracing::info!(
+        "Saved {} recent files to {:?}",
+        recent_files.len(),
+        recent_path
+    );
     Ok(())
 }
 
@@ -49,6 +53,10 @@ pub fn load_recent_files() -> Result<Vec<PathBuf>, String> {
     let recent_files: Vec<PathBuf> = serde_json::from_str(&json)
         .map_err(|e| format!("Failed to deserialize recent files: {}", e))?;
 
-    tracing::info!("Loaded {} recent files from {:?}", recent_files.len(), recent_path);
+    tracing::info!(
+        "Loaded {} recent files from {:?}",
+        recent_files.len(),
+        recent_path
+    );
     Ok(recent_files)
 }

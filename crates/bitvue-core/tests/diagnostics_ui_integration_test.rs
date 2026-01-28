@@ -258,11 +258,11 @@ fn test_large_diagnostic_dataset() {
 fn test_timestamp_formatting_all_ranges() {
     // Test timestamp display for various time ranges
     let test_cases = vec![
-        (0, "0.00s"),           // 0ms
-        (33, "0.03s"),          // 1 frame @ 30fps
-        (1000, "1.00s"),        // 1 second
-        (60000, "60.00s"),      // 1 minute
-        (3600000, "3600.00s"),  // 1 hour
+        (0, "0.00s"),          // 0ms
+        (33, "0.03s"),         // 1 frame @ 30fps
+        (1000, "1.00s"),       // 1 second
+        (60000, "60.00s"),     // 1 minute
+        (3600000, "3600.00s"), // 1 hour
     ];
 
     for (timestamp_ms, expected) in test_cases {
@@ -482,13 +482,19 @@ fn test_mixed_stream_diagnostics() {
         let stream_a = core.get_stream(StreamId::A);
         let state_a = stream_a.read();
         assert_eq!(state_a.diagnostics.len(), 5);
-        assert!(state_a.diagnostics.iter().all(|d| d.stream_id == StreamId::A));
+        assert!(state_a
+            .diagnostics
+            .iter()
+            .all(|d| d.stream_id == StreamId::A));
     }
 
     {
         let stream_b = core.get_stream(StreamId::B);
         let state_b = stream_b.read();
         assert_eq!(state_b.diagnostics.len(), 3);
-        assert!(state_b.diagnostics.iter().all(|d| d.stream_id == StreamId::B));
+        assert!(state_b
+            .diagnostics
+            .iter()
+            .all(|d| d.stream_id == StreamId::B));
     }
 }

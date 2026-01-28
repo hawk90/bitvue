@@ -129,10 +129,10 @@ fn test_nal_header_all_slice_types() {
     // Test all slice types (1-5)
     let slice_types = vec![
         (0x21, NalUnitType::NonIdrSlice), // Non-IDR
-        (0x22, NalUnitType::SliceDataA), // Data partition A
-        (0x23, NalUnitType::SliceDataB), // Data partition B
-        (0x24, NalUnitType::SliceDataC), // Data partition C
-        (0x65, NalUnitType::IdrSlice), // IDR
+        (0x22, NalUnitType::SliceDataA),  // Data partition A
+        (0x23, NalUnitType::SliceDataB),  // Data partition B
+        (0x24, NalUnitType::SliceDataC),  // Data partition C
+        (0x65, NalUnitType::IdrSlice),    // IDR
     ];
 
     for (byte, expected_type) in slice_types {
@@ -512,7 +512,10 @@ fn test_parse_nal_units_end_of_stream() {
     let result = parse_nal_units(&data);
     assert!(result.is_ok());
     let nal_units = result.unwrap();
-    assert_eq!(nal_units.last().unwrap().header.nal_unit_type, NalUnitType::EndOfStream);
+    assert_eq!(
+        nal_units.last().unwrap().header.nal_unit_type,
+        NalUnitType::EndOfStream
+    );
 }
 
 // ============================================================================
@@ -579,7 +582,7 @@ fn test_parse_avc_stream_with_aud() {
     data.extend_from_slice(&[0x00, 0x00, 0x01]);
     data.push(0x09);
     data.push(0xF0); // primary_pic_type = 7 (I, P, B frames)
-    // IDR frame
+                     // IDR frame
     data.extend_from_slice(&[0x00, 0x00, 0x01]);
     data.push(0x65);
     data.extend_from_slice(&[0xFF, 0xFF]);
@@ -676,11 +679,7 @@ fn test_nal_type_is_vcl_all_vcl_types() {
     ];
 
     for nal_type in vcl_types {
-        assert!(
-            nal_type.is_vcl(),
-            "{:?} should be VCL",
-            nal_type
-        );
+        assert!(nal_type.is_vcl(), "{:?} should be VCL", nal_type);
     }
 }
 
@@ -707,11 +706,7 @@ fn test_nal_type_is_vcl_non_vcl_types() {
     ];
 
     for nal_type in non_vcl_types {
-        assert!(
-            !nal_type.is_vcl(),
-            "{:?} should not be VCL",
-            nal_type
-        );
+        assert!(!nal_type.is_vcl(), "{:?} should not be VCL", nal_type);
     }
 }
 
@@ -859,9 +854,7 @@ fn test_find_nal_units_only_3byte_start_codes() {
 
 #[test]
 fn test_find_nal_units_only_4byte_start_codes() {
-    let data = [
-        0x00, 0x00, 0x00, 0x01, 0x67, 0x00, 0x00, 0x00, 0x01, 0x68,
-    ];
+    let data = [0x00, 0x00, 0x00, 0x01, 0x67, 0x00, 0x00, 0x00, 0x01, 0x68];
     let positions = find_nal_units(&data);
     assert_eq!(positions, vec![4, 9]);
 }
@@ -940,8 +933,7 @@ fn test_nal_unit_is_reference_all_ref_idc() {
 #[test]
 fn test_nal_unit_roundtrip() {
     let data = [
-        0x00, 0x00, 0x01, 0x67, 0x42, 0x80, 0x0A,
-        0x00, 0x00, 0x01, 0x68, 0xDE, 0x3C, 0x80,
+        0x00, 0x00, 0x01, 0x67, 0x42, 0x80, 0x0A, 0x00, 0x00, 0x01, 0x68, 0xDE, 0x3C, 0x80,
     ];
     let result = parse_nal_units(&data).unwrap();
 

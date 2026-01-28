@@ -2,10 +2,10 @@
 //!
 //! Tests for overlay extraction functions with real bitstream data.
 
+use bitvue_avc::nal::{find_nal_units, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType};
 use bitvue_avc::overlay_extraction::{
     extract_mv_grid, extract_partition_grid, extract_qp_grid, Macroblock, MbType, MotionVector,
 };
-use bitvue_avc::nal::{find_nal_units, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType};
 use bitvue_avc::sps::{ChromaFormat, ProfileIdc, Sps};
 use bitvue_core::partition_grid::PartitionType;
 
@@ -37,7 +37,7 @@ fn create_test_sps() -> Sps {
         offset_for_ref_frame: vec![],
         max_num_ref_frames: 1,
         gaps_in_frame_num_value_allowed_flag: false,
-        pic_width_in_mbs_minus1: 119, // 1920 / 16 - 1
+        pic_width_in_mbs_minus1: 119,       // 1920 / 16 - 1
         pic_height_in_map_units_minus1: 67, // 1080 / 16 - 1
         frame_mbs_only_flag: true,
         mb_adaptive_frame_field_flag: false,
@@ -104,7 +104,8 @@ fn test_extract_qp_grid_with_idr_slice() {
     assert_eq!(grid.block_w, 16);
     assert_eq!(grid.block_h, 16);
     // Grid dimensions should match MB dimensions
-    let expected_mb_count = (sps.pic_width_in_mbs_minus1 + 1) * (sps.pic_height_in_map_units_minus1 + 1);
+    let expected_mb_count =
+        (sps.pic_width_in_mbs_minus1 + 1) * (sps.pic_height_in_map_units_minus1 + 1);
     assert!(!grid.qp.is_empty());
 }
 
@@ -364,7 +365,8 @@ fn test_extract_qp_grid_small_resolution() {
     assert!(result.is_ok());
 
     let grid = result.unwrap();
-    let expected_mb_count = (sps.pic_width_in_mbs_minus1 + 1) * (sps.pic_height_in_map_units_minus1 + 1);
+    let expected_mb_count =
+        (sps.pic_width_in_mbs_minus1 + 1) * (sps.pic_height_in_map_units_minus1 + 1);
     assert!(!grid.qp.is_empty());
 }
 

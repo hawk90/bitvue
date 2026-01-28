@@ -192,9 +192,24 @@ fn test_table_output_formatting() {
     }
 
     let rows = vec![
-        TableRow { index: 0, obu_type: "Sequence Header".to_string(), offset: 0, size: 100 },
-        TableRow { index: 1, obu_type: "Frame".to_string(), offset: 100, size: 5000 },
-        TableRow { index: 2, obu_type: "Frame".to_string(), offset: 5100, size: 3000 },
+        TableRow {
+            index: 0,
+            obu_type: "Sequence Header".to_string(),
+            offset: 0,
+            size: 100,
+        },
+        TableRow {
+            index: 1,
+            obu_type: "Frame".to_string(),
+            offset: 100,
+            size: 5000,
+        },
+        TableRow {
+            index: 2,
+            obu_type: "Frame".to_string(),
+            offset: 5100,
+            size: 3000,
+        },
     ];
 
     assert_eq!(rows.len(), 3);

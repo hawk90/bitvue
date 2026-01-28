@@ -185,7 +185,10 @@ impl PluginRegistry {
 
         // Check if already registered
         if self.plugins.contains_key(&id) {
-            return Err(crate::BitvueError::Decode(format!("Plugin '{}' is already registered", id)));
+            return Err(crate::BitvueError::Decode(format!(
+                "Plugin '{}' is already registered",
+                id
+            )));
         }
 
         // Create entry
@@ -233,40 +236,36 @@ impl PluginRegistry {
 
     /// Mark plugin as loaded
     pub fn mark_loaded(&mut self, plugin_id: &str) -> crate::Result<()> {
-        let entry = self
-            .plugins
-            .get_mut(plugin_id)
-            .ok_or_else(|| crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id)))?;
+        let entry = self.plugins.get_mut(plugin_id).ok_or_else(|| {
+            crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id))
+        })?;
         entry.mark_loaded();
         Ok(())
     }
 
     /// Mark plugin as active
     pub fn mark_active(&mut self, plugin_id: &str) -> crate::Result<()> {
-        let entry = self
-            .plugins
-            .get_mut(plugin_id)
-            .ok_or_else(|| crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id)))?;
+        let entry = self.plugins.get_mut(plugin_id).ok_or_else(|| {
+            crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id))
+        })?;
         entry.mark_active();
         Ok(())
     }
 
     /// Mark plugin as failed
     pub fn mark_failed(&mut self, plugin_id: &str, error: String) -> crate::Result<()> {
-        let entry = self
-            .plugins
-            .get_mut(plugin_id)
-            .ok_or_else(|| crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id)))?;
+        let entry = self.plugins.get_mut(plugin_id).ok_or_else(|| {
+            crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id))
+        })?;
         entry.mark_failed(error);
         Ok(())
     }
 
     /// Mark plugin as disabled
     pub fn mark_disabled(&mut self, plugin_id: &str) -> crate::Result<()> {
-        let entry = self
-            .plugins
-            .get_mut(plugin_id)
-            .ok_or_else(|| crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id)))?;
+        let entry = self.plugins.get_mut(plugin_id).ok_or_else(|| {
+            crate::BitvueError::Decode(format!("Plugin '{}' not found", plugin_id))
+        })?;
         entry.mark_disabled();
         Ok(())
     }

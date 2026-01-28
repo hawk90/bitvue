@@ -2,12 +2,12 @@
 //!
 //! Tests for AvcStream public API methods and edge cases.
 
-use bitvue_avc::{
-    parse_avc, parse_avc_quick, AvcStream, ChromaFormat, ProfileIdc, Sps, Pps,
-    NalUnit, NalUnitHeader, NalUnitType, SliceHeader, SliceType, ParsedSlice,
-};
-use bitvue_avc::sps::VuiParameters;
 use bitvue_avc::slice::{DecRefPicMarking, RefPicListModification};
+use bitvue_avc::sps::VuiParameters;
+use bitvue_avc::{
+    parse_avc, parse_avc_quick, AvcStream, ChromaFormat, NalUnit, NalUnitHeader, NalUnitType,
+    ParsedSlice, Pps, ProfileIdc, SliceHeader, SliceType, Sps,
+};
 use std::collections::HashMap;
 
 /// Create a minimal SPS for testing API methods
@@ -38,7 +38,7 @@ fn create_test_sps() -> Sps {
         offset_for_ref_frame: vec![],
         max_num_ref_frames: 1,
         gaps_in_frame_num_value_allowed_flag: false,
-        pic_width_in_mbs_minus1: 119, // 1920 / 16 - 1
+        pic_width_in_mbs_minus1: 119,       // 1920 / 16 - 1
         pic_height_in_map_units_minus1: 67, // 1080 / 16 - 1
         frame_mbs_only_flag: true,
         mb_adaptive_frame_field_flag: false,
@@ -208,7 +208,7 @@ fn test_invalid_nal_data() {
 #[test]
 fn test_partial_start_code() {
     // Incomplete start code
-    let data = vec![0x00, 0x00, 0x01];  // Only 3-byte start code, no payload
+    let data = vec![0x00, 0x00, 0x01]; // Only 3-byte start code, no payload
     let result = parse_avc(&data);
     assert!(result.is_ok());
 }
@@ -647,8 +647,8 @@ fn test_stream_with_multiple_pps() {
 fn test_dimensions_qcif() {
     let mut sps = create_test_sps();
     // QCIF: 176x144 = 11x9 macroblocks (16x16 each)
-    sps.pic_width_in_mbs_minus1 = 10;  // 11 - 1
-    sps.pic_height_in_map_units_minus1 = 8;  // 9 - 1
+    sps.pic_width_in_mbs_minus1 = 10; // 11 - 1
+    sps.pic_height_in_map_units_minus1 = 8; // 9 - 1
 
     let stream = create_test_stream(Some(sps), None, vec![]);
     let dims = stream.dimensions();
@@ -660,8 +660,8 @@ fn test_dimensions_qcif() {
 fn test_dimensions_cif() {
     let mut sps = create_test_sps();
     // CIF: 352x288 = 22x18 macroblocks
-    sps.pic_width_in_mbs_minus1 = 21;  // 22 - 1
-    sps.pic_height_in_map_units_minus1 = 17;  // 18 - 1
+    sps.pic_width_in_mbs_minus1 = 21; // 22 - 1
+    sps.pic_height_in_map_units_minus1 = 17; // 18 - 1
 
     let stream = create_test_stream(Some(sps), None, vec![]);
     let dims = stream.dimensions();
@@ -673,8 +673,8 @@ fn test_dimensions_cif() {
 fn test_dimensions_vga() {
     let mut sps = create_test_sps();
     // VGA: 640x480 = 40x30 macroblocks
-    sps.pic_width_in_mbs_minus1 = 39;  // 40 - 1
-    sps.pic_height_in_map_units_minus1 = 29;  // 30 - 1
+    sps.pic_width_in_mbs_minus1 = 39; // 40 - 1
+    sps.pic_height_in_map_units_minus1 = 29; // 30 - 1
 
     let stream = create_test_stream(Some(sps), None, vec![]);
     let dims = stream.dimensions();
@@ -686,8 +686,8 @@ fn test_dimensions_vga() {
 fn test_dimensions_hd_720p() {
     let mut sps = create_test_sps();
     // 720p: 1280x720 = 80x45 macroblocks
-    sps.pic_width_in_mbs_minus1 = 79;  // 80 - 1
-    sps.pic_height_in_map_units_minus1 = 44;  // 45 - 1
+    sps.pic_width_in_mbs_minus1 = 79; // 80 - 1
+    sps.pic_height_in_map_units_minus1 = 44; // 45 - 1
 
     let stream = create_test_stream(Some(sps), None, vec![]);
     let dims = stream.dimensions();
@@ -715,7 +715,7 @@ fn test_all_profile_idc_variants() {
         (ProfileIdc::Baseline, "Baseline"),
         (ProfileIdc::Main, "Main"),
         (ProfileIdc::High, "High"),
-        (ProfileIdc::High10, "High 10"),  // Note: has a space
+        (ProfileIdc::High10, "High 10"), // Note: has a space
         (ProfileIdc::High422, "High 4:2:2"),
         (ProfileIdc::High444, "High 4:4:4"),
     ];
@@ -768,8 +768,8 @@ fn test_frame_rate_none_by_default() {
 #[test]
 fn test_dimensions_from_sps_map() {
     let mut sps = create_test_sps();
-    sps.pic_width_in_mbs_minus1 = 39;  // 640 / 16 - 1
-    sps.pic_height_in_map_units_minus1 = 29;  // 480 / 16 - 1
+    sps.pic_width_in_mbs_minus1 = 39; // 640 / 16 - 1
+    sps.pic_height_in_map_units_minus1 = 29; // 480 / 16 - 1
 
     let stream = create_test_stream(Some(sps), None, vec![]);
     let dims = stream.dimensions();
@@ -1070,14 +1070,18 @@ fn test_idr_frames_with_mixed_slices() {
 
 #[test]
 fn test_idr_frames_all_non_idr() {
-    let slices: Vec<ParsedSlice> = (0..5).map(|i| ParsedSlice {
-        nal_index: i,
-        header: create_test_slice_header(i as u32),
-        poc: (i * 2) as i32,
-        frame_num: i as u32,
-    }).collect();
+    let slices: Vec<ParsedSlice> = (0..5)
+        .map(|i| ParsedSlice {
+            nal_index: i,
+            header: create_test_slice_header(i as u32),
+            poc: (i * 2) as i32,
+            frame_num: i as u32,
+        })
+        .collect();
 
-    let nals: Vec<NalUnit> = (0..5).map(|_| create_test_nal_unit(NalUnitType::NonIdrSlice)).collect();
+    let nals: Vec<NalUnit> = (0..5)
+        .map(|_| create_test_nal_unit(NalUnitType::NonIdrSlice))
+        .collect();
 
     let stream = AvcStream {
         nal_units: nals,
@@ -1092,14 +1096,18 @@ fn test_idr_frames_all_non_idr() {
 
 #[test]
 fn test_idr_frames_all_idr() {
-    let slices: Vec<ParsedSlice> = (0..3).map(|i| ParsedSlice {
-        nal_index: i,
-        header: create_test_slice_header(i as u32),
-        poc: (i * 2) as i32,
-        frame_num: i as u32,
-    }).collect();
+    let slices: Vec<ParsedSlice> = (0..3)
+        .map(|i| ParsedSlice {
+            nal_index: i,
+            header: create_test_slice_header(i as u32),
+            poc: (i * 2) as i32,
+            frame_num: i as u32,
+        })
+        .collect();
 
-    let nals: Vec<NalUnit> = (0..3).map(|_| create_test_nal_unit(NalUnitType::IdrSlice)).collect();
+    let nals: Vec<NalUnit> = (0..3)
+        .map(|_| create_test_nal_unit(NalUnitType::IdrSlice))
+        .collect();
 
     let stream = AvcStream {
         nal_units: nals,
@@ -1149,10 +1157,10 @@ fn test_parse_avc_with_multiple_nal_units() {
     // SPS
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data.extend_from_slice(&[0x67, 0x42, 0x80]); // Partial SPS
-    // PPS
+                                                 // PPS
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data.extend_from_slice(&[0x68, 0xCE, 0x38]); // Partial PPS
-    // IDR slice
+                                                 // IDR slice
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data.extend_from_slice(&[0x65, 0x00, 0x00]); // Partial IDR slice
 
@@ -1514,7 +1522,7 @@ fn test_parse_avc_with_various_sps_ids() {
         let mut data = Vec::new();
         data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
         data.extend_from_slice(&[0x67]); // SPS
-        // Add some minimal SPS data with different ID
+                                         // Add some minimal SPS data with different ID
         data.extend_from_slice(&[0x42, 0x80, 0x0A, 0xFF]);
         data.extend_from_slice(&[sps_id & 0xFF]);
 
@@ -1603,7 +1611,7 @@ fn test_parse_avc_with_corrupted_data() {
     let test_cases = vec![
         vec![0x00, 0x00, 0x01, 0xFF, 0xFF], // Short start code
         vec![0x00, 0x00, 0x00, 0x01, 0x00], // Only NAL header
-        vec![0xFF, 0xFF, 0xFF, 0xFF], // No start code
+        vec![0xFF, 0xFF, 0xFF, 0xFF],       // No start code
         vec![0x00, 0x00, 0x00, 0x01, 0x67], // Incomplete SPS
     ];
 
@@ -1669,7 +1677,7 @@ fn test_parse_avc_with_zero_length_nals() {
     let mut data = Vec::new();
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data.push(0x09); // AUD (may have zero length)
-    // Add just the pic_type byte
+                     // Add just the pic_type byte
 
     let result = parse_avc(&data);
     let _ = result;
@@ -1709,9 +1717,7 @@ fn test_parse_avc_empty_stream() {
 #[test]
 fn test_parse_avc_only_start_codes() {
     let data = vec![
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
     ];
     let result = parse_avc(&data);
     let _ = result;
@@ -1875,7 +1881,7 @@ fn test_parse_avc_mixed_ref_idc() {
             data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
             data.push((ref_idc << 5) | nal_type);
             data.extend_from_slice(&[0x00, 0x00]);
-            
+
             let result = parse_avc(&data);
             let _ = result;
         }
@@ -1939,7 +1945,7 @@ fn test_parse_avc_very_long_nal_unit() {
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01, 0x67]); // SPS
     data.extend_from_slice(&[0x42, 0x80]);
     data.extend_from_slice(&[0x00; 1000]); // Very long NAL unit
-    
+
     let result = parse_avc(&data);
     let _ = result;
 }
@@ -1973,12 +1979,16 @@ fn test_parse_avc_all_nal_unit_types() {
     let nal_types = [
         1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
     ];
-    
+
     for nal_type in nal_types {
         let data = vec![
-            0x00, 0x00, 0x00, 0x01,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
             (3u8 << 5) | nal_type, // ref_idc=3
-            0x00, 0x00,
+            0x00,
+            0x00,
         ];
         let result = parse_avc(&data);
         let _ = result;
@@ -2068,7 +2078,7 @@ fn test_parse_avc_quick_with_valid_sps() {
         0x00, // flags
         0x00, 0x00, 0x00, 0x00, // rest of SPS
     ];
-    
+
     let result = parse_avc_quick(&data);
     // Should parse successfully
     let _ = result;
@@ -2079,24 +2089,16 @@ fn test_parse_avc_quick_multiple_nal_units() {
     // Test with multiple NAL units before finding valid SPS
     let data = [
         // First NAL: filler data
-        0x00, 0x00, 0x00, 0x01,
-        0x0C, // Filler data
-        0xFF, 0xFF, 0xFF,
-        // Second NAL: SEI
-        0x00, 0x00, 0x00, 0x01,
-        0x06, // SEI
-        0x01, 0xFF,
-        // Third NAL: SPS with dimensions
-        0x00, 0x00, 0x00, 0x01,
-        0x67, // SPS
-        0x42, 0x00, 0x1E,
-        0x8B,
-        0x04,
-        0x04, // width
+        0x00, 0x00, 0x00, 0x01, 0x0C, // Filler data
+        0xFF, 0xFF, 0xFF, // Second NAL: SEI
+        0x00, 0x00, 0x00, 0x01, 0x06, // SEI
+        0x01, 0xFF, // Third NAL: SPS with dimensions
+        0x00, 0x00, 0x00, 0x01, 0x67, // SPS
+        0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, // width
         0x04, // height
         0x00, 0x00, 0x00, 0x00,
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2106,18 +2108,16 @@ fn test_parse_avc_quick_with_pps() {
     // Test with PPS after SPS
     let data = [
         // SPS
-        0x00, 0x00, 0x00, 0x01,
-        0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
-        // PPS
-        0x00, 0x00, 0x00, 0x01,
-        0x68, // PPS
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00,
+        0x00, // PPS
+        0x00, 0x00, 0x00, 0x01, 0x68, // PPS
         0x04, // pps id
         0x04, // sps id
         0x00, // entropy coding mode
         0x00, // bottom field present
         0x00, 0x00, 0x00, // other params
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2127,14 +2127,11 @@ fn test_parse_avc_quick_idr_slice() {
     // Test with IDR slice after SPS/PPS
     let data = [
         // SPS
-        0x00, 0x00, 0x00, 0x01,
-        0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
-        // PPS
-        0x00, 0x00, 0x00, 0x01,
-        0x68, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00,
+        0x00, // PPS
+        0x00, 0x00, 0x00, 0x01, 0x68, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
         // IDR slice
-        0x00, 0x00, 0x00, 0x01,
-        0x65, // IDR slice
+        0x00, 0x00, 0x00, 0x01, 0x65, // IDR slice
         0x80, // first_mb_in_slice
         0x40, // slice_type
         0x04, // pps_id
@@ -2142,7 +2139,7 @@ fn test_parse_avc_quick_idr_slice() {
         0x00, // idr_pic_id
         0x00, // slice_qp_delta
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2152,21 +2149,18 @@ fn test_parse_avc_quick_non_idr_slice() {
     // Test with non-IDR (P) slice
     let data = [
         // SPS
-        0x00, 0x00, 0x00, 0x01,
-        0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
-        // PPS
-        0x00, 0x00, 0x00, 0x01,
-        0x68, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00,
+        0x00, // PPS
+        0x00, 0x00, 0x00, 0x01, 0x68, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
         // P slice
-        0x00, 0x00, 0x00, 0x01,
-        0x41, // P slice
+        0x00, 0x00, 0x00, 0x01, 0x41, // P slice
         0x80, // first_mb_in_slice
         0x00, // slice_type = P
         0x04, // pps_id
         0x00, // frame_num
         0x00, // slice_qp_delta
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2176,21 +2170,18 @@ fn test_parse_avc_quick_b_slice() {
     // Test with B slice
     let data = [
         // SPS
-        0x00, 0x00, 0x00, 0x01,
-        0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
-        // PPS
-        0x00, 0x00, 0x00, 0x01,
-        0x68, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00,
+        0x00, // PPS
+        0x00, 0x00, 0x00, 0x01, 0x68, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
         // B slice
-        0x00, 0x00, 0x00, 0x01,
-        0x21, // B slice (slice_type 4 in data)
+        0x00, 0x00, 0x00, 0x01, 0x21, // B slice (slice_type 4 in data)
         0x80, // first_mb_in_slice
         0x80, // slice_type = B (4)
         0x04, // pps_id
         0x00, // frame_num
         0x00, // slice_qp_delta
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2200,17 +2191,15 @@ fn test_parse_avc_quick_with_sei() {
     // Test with SEI message
     let data = [
         // SPS
-        0x00, 0x00, 0x00, 0x01,
-        0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
-        // SEI with timing info
-        0x00, 0x00, 0x00, 0x01,
-        0x06, // SEI
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00,
+        0x00, // SEI with timing info
+        0x00, 0x00, 0x00, 0x01, 0x06, // SEI
         0x01, // payload type = buffering period
         0x01, // payload size
         0xFF, // payload data
         0x80, // rbsp trailing bits
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2220,16 +2209,24 @@ fn test_parse_avc_quick_various_sps_ids() {
     // Test with different SPS IDs
     for sps_id in 0u8..5u8 {
         let data = [
-            0x00, 0x00, 0x00, 0x01,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
             0x67, // SPS
-            0x42, 0x00, 0x1E,
+            0x42,
+            0x00,
+            0x1E,
             (sps_id << 1) | 0x80, // sps_id
             0x04,
             0x04, // width
             0x04, // height
-            0x00, 0x00, 0x00, 0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
         ];
-        
+
         let result = parse_avc_quick(&data);
         let _ = result;
     }
@@ -2240,13 +2237,24 @@ fn test_parse_avc_quick_various_dimensions() {
     // Test with various picture dimensions
     for (width_mbs, height_mbs) in [(0u8, 0u8), (1, 1), (3, 3), (10, 10), (44, 44)] {
         let data = [
-            0x00, 0x00, 0x00, 0x01,
-            0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04,
-            (width_mbs << 1) | 0x80, // pic_width_in_mbs_minus1
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x67,
+            0x42,
+            0x00,
+            0x1E,
+            0x8B,
+            0x04,
+            (width_mbs << 1) | 0x80,  // pic_width_in_mbs_minus1
             (height_mbs << 1) | 0x80, // pic_height_in_map_units_minus1
-            0x00, 0x00, 0x00, 0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
         ];
-        
+
         let result = parse_avc_quick(&data);
         let _ = result;
     }
@@ -2257,19 +2265,13 @@ fn test_parse_avc_quick_with_multiple_sps() {
     // Test with multiple SPS with different IDs
     let data = [
         // First SPS
-        0x00, 0x00, 0x00, 0x01,
-        0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04,
-        0x04, // sps_id = 0
-        0x04, 0x04,
-        0x00, 0x00, 0x00, 0x00,
-        // Second SPS
-        0x00, 0x00, 0x00, 0x01,
-        0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04,
-        0x06, // sps_id = 1
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, // sps_id = 0
+        0x04, 0x04, 0x00, 0x00, 0x00, 0x00, // Second SPS
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x06, // sps_id = 1
         0x08, 0x08, // larger dimensions
         0x00, 0x00, 0x00, 0x00,
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2279,21 +2281,16 @@ fn test_parse_avc_quick_profile_level_variants() {
     // Test with various profile/level combinations
     let profiles = [66u8, 77u8, 100u8, 110u8, 122u8];
     let levels = [10u8, 20u8, 30u8, 40u8, 50u8, 51u8];
-    
+
     for profile in profiles {
         for level in levels {
             let data = [
-                0x00, 0x00, 0x00, 0x01,
-                0x67, // SPS
-                profile,
-                0x00, // constraint flags
-                level,
-                0x8B, // sps_id
-                0x04,
-                0x04, 0x04,
-                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x01, 0x67, // SPS
+                profile, 0x00, // constraint flags
+                level, 0x8B, // sps_id
+                0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
             ];
-            
+
             let result = parse_avc_quick(&data);
             let _ = result;
         }
@@ -2307,7 +2304,7 @@ fn test_parse_avc_quick_short_start_code() {
         0x00, 0x00, 0x01, // 3-byte start code
         0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }
@@ -2319,7 +2316,7 @@ fn test_parse_avc_quick_four_byte_start_code() {
         0x00, 0x00, 0x00, 0x01, // 4-byte start code
         0x67, 0x42, 0x00, 0x1E, 0x8B, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
     ];
-    
+
     let result = parse_avc_quick(&data);
     let _ = result;
 }

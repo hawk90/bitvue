@@ -59,7 +59,11 @@ impl HexViewPanel {
 
         // Tab bar (VQAnalyzer parity)
         ui.horizontal(|ui| {
-            for tab in [HexViewTab::UnitInfo, HexViewTab::HexDump, HexViewTab::DpbInfo] {
+            for tab in [
+                HexViewTab::UnitInfo,
+                HexViewTab::HexDump,
+                HexViewTab::DpbInfo,
+            ] {
                 if ui
                     .selectable_label(self.current_tab == tab, tab.label())
                     .clicked()
@@ -99,11 +103,16 @@ impl HexViewPanel {
             .show(ui, |ui| {
                 if let Some(unit_key) = &selection.unit {
                     // Find the selected unit
-                    if let Some(unit) = units.and_then(|u| Self::find_unit_by_offset(u, unit_key.offset)) {
+                    if let Some(unit) =
+                        units.and_then(|u| Self::find_unit_by_offset(u, unit_key.offset))
+                    {
                         // Unit type header
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new("Unit Type:").strong());
-                            ui.label(egui::RichText::new(&unit.unit_type).color(egui::Color32::from_rgb(100, 180, 255)));
+                            ui.label(
+                                egui::RichText::new(&unit.unit_type)
+                                    .color(egui::Color32::from_rgb(100, 180, 255)),
+                            );
                         });
 
                         ui.add_space(4.0);
@@ -138,14 +147,22 @@ impl HexViewPanel {
                         if !unit.children.is_empty() {
                             ui.add_space(8.0);
                             ui.separator();
-                            ui.label(egui::RichText::new(format!("Children: {}", unit.children.len())).small());
+                            ui.label(
+                                egui::RichText::new(format!("Children: {}", unit.children.len()))
+                                    .small(),
+                            );
                         }
                     } else {
                         ui.label(egui::RichText::new("Unit not found").color(egui::Color32::GRAY));
                     }
                 } else {
                     ui.centered_and_justified(|ui| {
-                        ui.label(egui::RichText::new("No unit selected\nSelect a unit from the stream tree").color(egui::Color32::GRAY));
+                        ui.label(
+                            egui::RichText::new(
+                                "No unit selected\nSelect a unit from the stream tree",
+                            )
+                            .color(egui::Color32::GRAY),
+                        );
                     });
                 }
             });
@@ -202,11 +219,22 @@ impl HexViewPanel {
                             };
 
                             ui.label(format!("{}", slot));
-                            ui.label(if is_ref { format!("{}", poc) } else { "-".to_string() });
-                            ui.label(if is_ref { frame_type } else { "-" });
-                            ui.label(if is_ref && slot < 2 { "L0" } else if is_ref { "L1" } else { "-" });
                             ui.label(if is_ref {
-                                egui::RichText::new("Used").color(egui::Color32::from_rgb(100, 200, 100))
+                                format!("{}", poc)
+                            } else {
+                                "-".to_string()
+                            });
+                            ui.label(if is_ref { frame_type } else { "-" });
+                            ui.label(if is_ref && slot < 2 {
+                                "L0"
+                            } else if is_ref {
+                                "L1"
+                            } else {
+                                "-"
+                            });
+                            ui.label(if is_ref {
+                                egui::RichText::new("Used")
+                                    .color(egui::Color32::from_rgb(100, 200, 100))
                             } else {
                                 egui::RichText::new("Empty").color(egui::Color32::GRAY)
                             });
@@ -216,7 +244,11 @@ impl HexViewPanel {
 
                 ui.add_space(8.0);
                 ui.separator();
-                ui.label(egui::RichText::new("Note: DPB state from parser (mock data shown)").small().color(egui::Color32::GRAY));
+                ui.label(
+                    egui::RichText::new("Note: DPB state from parser (mock data shown)")
+                        .small()
+                        .color(egui::Color32::GRAY),
+                );
 
                 // Suppress unused warning
                 let _ = units;
@@ -489,7 +521,10 @@ impl HexViewPanel {
     }
 
     /// Helper to find a unit by offset
-    fn find_unit_by_offset(units: &[bitvue_core::UnitNode], offset: u64) -> Option<&bitvue_core::UnitNode> {
+    fn find_unit_by_offset(
+        units: &[bitvue_core::UnitNode],
+        offset: u64,
+    ) -> Option<&bitvue_core::UnitNode> {
         for unit in units {
             if unit.offset == offset {
                 return Some(unit);

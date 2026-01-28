@@ -270,10 +270,10 @@ fn test_av1_color_config() {
     let color = ColorConfig {
         bit_depth: 10,
         mono_chrome: false,
-        color_primaries: 1,  // BT.709
+        color_primaries: 1, // BT.709
         transfer_characteristics: 1,
         matrix_coefficients: 1,
-        color_range: false,  // Studio range
+        color_range: false, // Studio range
     };
 
     assert!(color.bit_depth == 8 || color.bit_depth == 10 || color.bit_depth == 12);

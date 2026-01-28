@@ -266,7 +266,10 @@ impl ParseWorker {
         };
         // Increment by a large number to invalidate all pending requests
         self.request_ids[idx].fetch_add(1000, Ordering::SeqCst);
-        tracing::info!("Parse worker: Cancelled all requests for stream {:?}", stream_id);
+        tracing::info!(
+            "Parse worker: Cancelled all requests for stream {:?}",
+            stream_id
+        );
     }
 
     /// Check if there's pending work (requests in queue)

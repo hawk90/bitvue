@@ -7,28 +7,31 @@ fn test_parse_vvc_nal_types() {
     // Test VVC NAL unit type identification
     // NAL unit type is in upper 5 bits of byte 1 (type << 3)
     let nal_types = vec![
-        (0b00000000, NalUnitType::TrailNut),     // 0 << 3: TRAIL_NUT
-        (0b00001000, NalUnitType::StapNut),      // 1 << 3: STSA_NUT
-        (0b00111000, NalUnitType::IdrWRadl),    // 7 << 3: IDR_W_RADL
-        (0b01000000, NalUnitType::IdrNLp),      // 8 << 3: IDR_N_LP
-        (0b01111000, NalUnitType::VpsNut),      // 15 << 3: VPS_NUT
-        (0b10000000, NalUnitType::SpsNut),      // 16 << 3: SPS_NUT
-        (0b10001000, NalUnitType::PpsNut),      // 17 << 3: PPS_NUT
+        (0b00000000, NalUnitType::TrailNut), // 0 << 3: TRAIL_NUT
+        (0b00001000, NalUnitType::StapNut),  // 1 << 3: STSA_NUT
+        (0b00111000, NalUnitType::IdrWRadl), // 7 << 3: IDR_W_RADL
+        (0b01000000, NalUnitType::IdrNLp),   // 8 << 3: IDR_N_LP
+        (0b01111000, NalUnitType::VpsNut),   // 15 << 3: VPS_NUT
+        (0b10000000, NalUnitType::SpsNut),   // 16 << 3: SPS_NUT
+        (0b10001000, NalUnitType::PpsNut),   // 17 << 3: PPS_NUT
     ];
 
     for (header_byte, expected_type) in nal_types {
         let mut data = vec![0x00, 0x00, 0x00, 0x01]; // Start code
-        data.push(0x00);  // NAL header byte 0
-        data.push(header_byte);  // NAL header byte 1 (type in upper 5 bits)
-        data.push(0x00);  // Payload
+        data.push(0x00); // NAL header byte 0
+        data.push(header_byte); // NAL header byte 1 (type in upper 5 bits)
+        data.push(0x00); // Payload
 
         let result = parse_nal_units(&data);
 
         if let Ok(nal_units) = result {
             if !nal_units.is_empty() {
                 let nal = &nal_units[0];
-                assert_eq!(nal.header.nal_unit_type, expected_type,
-                    "NAL type mismatch for header {:08b}", header_byte);
+                assert_eq!(
+                    nal.header.nal_unit_type, expected_type,
+                    "NAL type mismatch for header {:08b}",
+                    header_byte
+                );
             }
         }
     }
@@ -40,14 +43,17 @@ fn test_parse_vvc_empty_data() {
     let data: Vec<u8> = vec![];
     let result = parse_nal_units(&data);
     assert!(result.is_ok(), "Empty data should parse successfully");
-    assert!(result.unwrap().is_empty(), "Empty data should return empty vector");
+    assert!(
+        result.unwrap().is_empty(),
+        "Empty data should return empty vector"
+    );
 }
 
 #[test]
 fn test_vvc_idr_frame_detection() {
     // Test IDR frame detection
     let idr_with_radl = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0b00111000, 0x00]; // IDR_W_RADL (7 << 3)
-    let idr_no_lp = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0b01000000, 0x00];     // IDR_N_LP (8 << 3)
+    let idr_no_lp = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0b01000000, 0x00]; // IDR_N_LP (8 << 3)
 
     let result1 = parse_nal_units(&idr_with_radl);
     assert!(result1.is_ok());

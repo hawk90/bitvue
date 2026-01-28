@@ -216,17 +216,21 @@ impl IndexSession {
                     callback(IndexingProgress {
                         phase: IndexingPhase::Quick,
                         progress: 1.0,
-                        message: format!(
-                            "Quick index complete: {} keyframes",
-                            seek_points_count
-                        ),
+                        message: format!("Quick index complete: {} keyframes", seek_points_count),
                         frames_indexed: seek_points_count,
                     });
                 }
 
                 // Return by cloning since we moved it into the mutex
                 // This is necessary for the API but less efficient
-                self.quick_index.lock().unwrap().as_ref().cloned().ok_or(BitvueError::InvalidData("Quick index not found".to_string()))
+                self.quick_index
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .cloned()
+                    .ok_or(BitvueError::InvalidData(
+                        "Quick index not found".to_string(),
+                    ))
             }
             Err(e) => {
                 *self.state.lock().unwrap() = IndexingState::Error;
@@ -321,12 +325,15 @@ impl IndexSession {
                         // Update seek point sizes with accurate data
                         if let Some(quick) = self.quick_index.lock().unwrap().as_ref() {
                             for seek_point in &quick.seek_points {
-                                if let Some(frame) = idx.frames
+                                if let Some(frame) = idx
+                                    .frames
                                     .iter()
                                     .find(|f| f.display_idx == seek_point.display_idx)
                                 {
-                                    evidence_mgr
-                                        .update_seekpoint_size(frame.display_idx, frame.size as usize);
+                                    evidence_mgr.update_seekpoint_size(
+                                        frame.display_idx,
+                                        frame.size as usize,
+                                    );
                                 }
                             }
                         }
@@ -347,7 +354,12 @@ impl IndexSession {
                 }
 
                 // Return by cloning since we moved it into the mutex
-                self.full_index.lock().unwrap().as_ref().cloned().ok_or(BitvueError::InvalidData("Full index not found".to_string()))
+                self.full_index
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .cloned()
+                    .ok_or(BitvueError::InvalidData("Full index not found".to_string()))
             }
             Err(e) => {
                 if self.is_cancelled() {

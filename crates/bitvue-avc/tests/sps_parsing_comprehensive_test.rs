@@ -133,7 +133,9 @@ fn test_parse_sps_constraint_flags() {
         data.push(40);
 
         // Minimal rest
-        data.extend_from_slice(&[0x80, 0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40]);
+        data.extend_from_slice(&[
+            0x80, 0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40,
+        ]);
 
         let result = parse_sps(&data);
         let _ = result;
@@ -165,12 +167,15 @@ fn test_parse_sps_pic_order_cnt_type_1() {
     // For each cycle: offset_for_ref_frame (SE)
 
     // Insert after pic_order_cnt_type (at index 6)
-    data.splice(6..6, vec![
-        0x40,  // delta_pic_order_always_zero_flag = 1
-        0x80,  // offset_for_non_ref_pic = 0 (SE: "1")
-        0x80,  // offset_for_top_to_bottom_field = 0 (SE: "1")
-        0x80,  // num_ref_frames_in_pic_order_cnt_cycle = 0 (UE: "1")
-    ]);
+    data.splice(
+        6..6,
+        vec![
+            0x40, // delta_pic_order_always_zero_flag = 1
+            0x80, // offset_for_non_ref_pic = 0 (SE: "1")
+            0x80, // offset_for_top_to_bottom_field = 0 (SE: "1")
+            0x80, // num_ref_frames_in_pic_order_cnt_cycle = 0 (UE: "1")
+        ],
+    );
 
     let result = parse_sps(&data);
     let _ = result;
@@ -197,10 +202,10 @@ fn test_parse_sps_frame_cropping() {
 
     // Add crop offsets (4 UE values)
     data.extend_from_slice(&[
-        0x80,  // frame_crop_left_offset = 0
-        0x80,  // frame_crop_right_offset = 0
-        0x80,  // frame_crop_top_offset = 0
-        0x80,  // frame_crop_bottom_offset = 0
+        0x80, // frame_crop_left_offset = 0
+        0x80, // frame_crop_right_offset = 0
+        0x80, // frame_crop_top_offset = 0
+        0x80, // frame_crop_bottom_offset = 0
     ]);
 
     let result = parse_sps(&data);
@@ -241,16 +246,16 @@ fn test_parse_sps_vui_with_aspect_ratio() {
 
     // Add VUI with aspect ratio
     data.extend_from_slice(&[
-        0x80,  // aspect_ratio_info_present_flag = 1
-        0x01,  // aspect_ratio_idc = 1 (square)
-        0x40,  // overscan_info_present_flag = 0
-        0x40,  // video_signal_type_present_flag = 0
-        0x40,  // chroma_loc_info_present_flag = 0
-        0x40,  // timing_info_present_flag = 0
-        0x40,  // nal_hrd_parameters_present_flag = 0
-        0x40,  // vcl_hrd_parameters_present_flag = 0
-        0x40,  // pic_struct_present_flag = 0
-        0x40,  // bitstream_restriction_flag = 0
+        0x80, // aspect_ratio_info_present_flag = 1
+        0x01, // aspect_ratio_idc = 1 (square)
+        0x40, // overscan_info_present_flag = 0
+        0x40, // video_signal_type_present_flag = 0
+        0x40, // chroma_loc_info_present_flag = 0
+        0x40, // timing_info_present_flag = 0
+        0x40, // nal_hrd_parameters_present_flag = 0
+        0x40, // vcl_hrd_parameters_present_flag = 0
+        0x40, // pic_struct_present_flag = 0
+        0x40, // bitstream_restriction_flag = 0
     ]);
 
     let result = parse_sps(&data);
@@ -267,24 +272,24 @@ fn test_parse_sps_vui_with_timing_info() {
 
     // Add VUI with timing info (30fps)
     data.extend_from_slice(&[
-        0x40,  // aspect_ratio_info_present_flag = 0
-        0x40,  // overscan_info_present_flag = 0
-        0x40,  // video_signal_type_present_flag = 0
-        0x40,  // chroma_loc_info_present_flag = 0
-        0x80,  // timing_info_present_flag = 1
+        0x40, // aspect_ratio_info_present_flag = 0
+        0x40, // overscan_info_present_flag = 0
+        0x40, // video_signal_type_present_flag = 0
+        0x40, // chroma_loc_info_present_flag = 0
+        0x80, // timing_info_present_flag = 1
     ]);
 
     // Add timing info: num_units_in_tick (UE), time_scale (UE), fixed_frame_rate_flag (1 bit)
     // For 30fps: time_scale=60000, num_units_in_tick=1000
     // Simplified: use small values
     data.extend_from_slice(&[
-        0x80,  // num_units_in_tick = 0
-        0x80,  // time_scale = 0
-        0x40,  // fixed_frame_rate_flag = 0
-        0x40,  // nal_hrd_parameters_present_flag = 0
-        0x40,  // vcl_hrd_parameters_present_flag = 0
-        0x40,  // pic_struct_present_flag = 0
-        0x40,  // bitstream_restriction_flag = 0
+        0x80, // num_units_in_tick = 0
+        0x80, // time_scale = 0
+        0x40, // fixed_frame_rate_flag = 0
+        0x40, // nal_hrd_parameters_present_flag = 0
+        0x40, // vcl_hrd_parameters_present_flag = 0
+        0x40, // pic_struct_present_flag = 0
+        0x40, // bitstream_restriction_flag = 0
     ]);
 
     let result = parse_sps(&data);
@@ -330,7 +335,9 @@ fn test_parse_sps_high_profile_with_chroma_yuv420() {
     data.push(0x40); // "00" + padding
 
     // Rest of minimal SPS
-    data.extend_from_slice(&[0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40]);
+    data.extend_from_slice(&[
+        0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40,
+    ]);
 
     let result = parse_sps(&data);
     let _ = result;
@@ -357,7 +364,9 @@ fn test_parse_sps_high_profile_with_chroma_yuv422() {
     data.push(0x40);
 
     // Rest of SPS
-    data.extend_from_slice(&[0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40]);
+    data.extend_from_slice(&[
+        0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40,
+    ]);
 
     let result = parse_sps(&data);
     let _ = result;
@@ -387,7 +396,9 @@ fn test_parse_sps_high_profile_with_chroma_yuv444() {
     data.push(0x40);
 
     // Rest of SPS
-    data.extend_from_slice(&[0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40]);
+    data.extend_from_slice(&[
+        0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40,
+    ]);
 
     let result = parse_sps(&data);
     let _ = result;
@@ -421,7 +432,9 @@ fn test_parse_sps_with_scaling_matrix() {
     }
 
     // Rest of SPS
-    data.extend_from_slice(&[0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40]);
+    data.extend_from_slice(&[
+        0x80, 0x80, 0x80, 0x40, 0x40, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40,
+    ]);
 
     let result = parse_sps(&data);
     let _ = result;
@@ -646,4 +659,3 @@ fn test_sps_display_dimensions_no_crop() {
 }
 
 // Additional SPS tests for coverage
-

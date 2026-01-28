@@ -2,9 +2,7 @@
 
 use crate::app_ui_menus::BitvueAppMenus;
 use crate::bitvue_app::BitvueApp;
-use crate::helpers::{
-    count_frames, get_current_frame_index, get_memory_usage_mb,
-};
+use crate::helpers::{count_frames, get_current_frame_index, get_memory_usage_mb};
 use crate::panel_tab::FrameNavRequest;
 use bitvue_core::{Command, StreamId};
 use eframe::egui;

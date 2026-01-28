@@ -39,16 +39,28 @@ fn test_resilient_parser_invalid_obu_type() {
     let (obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should parse first OBU successfully (might parse more due to recovery)
-    assert!(obus.len() >= 1, "Should parse at least 1 valid OBU before error");
+    assert!(
+        obus.len() >= 1,
+        "Should parse at least 1 valid OBU before error"
+    );
 
     // Should generate diagnostic for invalid OBU type
-    assert!(diagnostics.len() >= 1, "Should have at least 1 diagnostic for invalid type");
+    assert!(
+        diagnostics.len() >= 1,
+        "Should have at least 1 diagnostic for invalid type"
+    );
 
     // Check first diagnostic (might have different message depending on recovery)
     if !diagnostics.is_empty() {
         assert_eq!(diagnostics[0].severity, Severity::Error);
-        assert!(!diagnostics[0].message.is_empty(), "Message should not be empty");
-        assert!(diagnostics[0].impact_score >= 80, "Should have high impact score");
+        assert!(
+            !diagnostics[0].message.is_empty(),
+            "Message should not be empty"
+        );
+        assert!(
+            diagnostics[0].impact_score >= 80,
+            "Should have high impact score"
+        );
         assert_eq!(diagnostics[0].category, Category::Bitstream);
     }
 }
@@ -70,9 +82,9 @@ fn test_resilient_parser_unexpected_eof() {
     assert!(diagnostics.len() > 0, "Should have diagnostic for EOF");
 
     // Check for EOF diagnostic
-    let has_eof = diagnostics.iter().any(|d| {
-        d.severity == Severity::Fatal && d.message.contains("end of file")
-    });
+    let has_eof = diagnostics
+        .iter()
+        .any(|d| d.severity == Severity::Fatal && d.message.contains("end of file"));
     assert!(has_eof, "Should have fatal EOF diagnostic");
 }
 
@@ -88,11 +100,14 @@ fn test_resilient_parser_forbidden_bit_set() {
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should generate diagnostic for forbidden bit
-    assert!(diagnostics.len() > 0, "Should have diagnostic for forbidden bit");
+    assert!(
+        diagnostics.len() > 0,
+        "Should have diagnostic for forbidden bit"
+    );
 
-    let has_forbidden = diagnostics.iter().any(|d| {
-        d.message.contains("forbidden") || d.message.contains("not 0")
-    });
+    let has_forbidden = diagnostics
+        .iter()
+        .any(|d| d.message.contains("forbidden") || d.message.contains("not 0"));
     assert!(has_forbidden, "Should have diagnostic about forbidden bit");
 }
 
@@ -112,18 +127,24 @@ fn test_resilient_parser_multiple_errors() {
     // Error 3: Truncated
     data.push(0x0A); // Valid header
     data.push(0x64); // Claims 100 bytes
-    // Missing payload
+                     // Missing payload
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should generate diagnostics (might be fewer due to recovery finding valid data)
-    assert!(diagnostics.len() >= 1, "Should have at least 1 diagnostic for errors");
+    assert!(
+        diagnostics.len() >= 1,
+        "Should have at least 1 diagnostic for errors"
+    );
 
     // Check that all diagnostics have required fields
     for diagnostic in &diagnostics {
         assert!(diagnostic.id < 1000, "Diagnostic ID should be reasonable");
         assert_eq!(diagnostic.stream_id, StreamId::A);
-        assert!(!diagnostic.message.is_empty(), "Message should not be empty");
+        assert!(
+            !diagnostic.message.is_empty(),
+            "Message should not be empty"
+        );
         assert_eq!(diagnostic.category, Category::Bitstream);
         assert!(diagnostic.impact_score > 0, "Impact score should be > 0");
         assert!(diagnostic.count >= 1, "Count should be >= 1");
@@ -143,7 +164,10 @@ fn test_resilient_parser_error_limit() {
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should stop after 10 errors and add a fatal diagnostic
-    assert!(diagnostics.len() <= 11, "Should stop after 10 errors + 1 fatal");
+    assert!(
+        diagnostics.len() <= 11,
+        "Should stop after 10 errors + 1 fatal"
+    );
 
     // Last diagnostic should be fatal "too many errors"
     if diagnostics.len() > 0 {
@@ -180,7 +204,10 @@ fn test_resilient_parser_frame_index_approximation() {
 
     // Recovery might parse more OBUs (valid data might be found after errors)
     assert!(obus.len() >= 3, "Should parse at least 3 valid OBUs");
-    assert!(diagnostics.len() >= 1, "Should have at least 1 error diagnostic");
+    assert!(
+        diagnostics.len() >= 1,
+        "Should have at least 1 error diagnostic"
+    );
 
     // Frame index should be approximated based on parsed OBUs
     if !diagnostics.is_empty() {
@@ -238,7 +265,7 @@ fn test_resilient_parser_all_severity_levels() {
     // Unexpected EOF (Severity::Fatal)
     data.push(0x0A);
     data.push(0xFF); // Claims 255 bytes
-    // Missing payload triggers EOF
+                     // Missing payload triggers EOF
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
@@ -246,7 +273,10 @@ fn test_resilient_parser_all_severity_levels() {
     let has_error = diagnostics.iter().any(|d| d.severity == Severity::Error);
     let has_fatal = diagnostics.iter().any(|d| d.severity == Severity::Fatal);
 
-    assert!(has_error || has_fatal, "Should have Error or Fatal diagnostics");
+    assert!(
+        has_error || has_fatal,
+        "Should have Error or Fatal diagnostics"
+    );
 }
 
 #[test]
@@ -324,5 +354,8 @@ fn test_resilient_parser_diagnostic_count_field() {
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     assert_eq!(diagnostics.len(), 1);
-    assert_eq!(diagnostics[0].count, 1, "Individual error should have count=1");
+    assert_eq!(
+        diagnostics[0].count, 1,
+        "Individual error should have count=1"
+    );
 }

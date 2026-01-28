@@ -232,7 +232,11 @@ fn test_panel_z_order() {
     }
 
     let mut zorder = PanelZOrder {
-        panels: vec!["panel1".to_string(), "panel2".to_string(), "panel3".to_string()],
+        panels: vec![
+            "panel1".to_string(),
+            "panel2".to_string(),
+            "panel3".to_string(),
+        ],
     };
 
     assert_eq!(zorder.top_panel(), Some(&"panel3".to_string()));

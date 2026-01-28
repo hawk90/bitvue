@@ -199,9 +199,10 @@ impl McpSelectionState {
         let frame_idx = selection.temporal.as_ref().map(|t| t.frame_index());
 
         // Get spatial block from temporal selection
-        let spatial_block = selection.temporal.as_ref().and_then(|t| {
-            t.spatial_block().map(|sb| (sb.x, sb.y, sb.w, sb.h))
-        });
+        let spatial_block = selection
+            .temporal
+            .as_ref()
+            .and_then(|t| t.spatial_block().map(|sb| (sb.x, sb.y, sb.w, sb.h)));
 
         Self {
             stream: format!("{:?}", selection.stream_id),

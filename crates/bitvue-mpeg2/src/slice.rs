@@ -40,8 +40,8 @@ impl SliceHeader {
 
 /// Non-linear quantiser scale lookup table.
 const NON_LINEAR_QSCALE: [u8; 32] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 22,
-    24, 28, 32, 36, 40, 44, 48, 52, 56, 64, 72, 80, 88, 96, 104, 112,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 44, 48, 52, 56, 64,
+    72, 80, 88, 96, 104, 112,
 ];
 
 /// Parse slice header from data after slice start code.

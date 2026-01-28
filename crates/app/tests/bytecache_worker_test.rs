@@ -53,7 +53,8 @@ fn test_cache_eviction_policy() {
                 return None;
             }
 
-            let (oldest_idx, _) = self.entries
+            let (oldest_idx, _) = self
+                .entries
                 .iter()
                 .enumerate()
                 .min_by_key(|(_, (_, time))| time)?;
@@ -135,12 +136,13 @@ fn test_cache_size_limits() {
         }
 
         fn available_bytes(&self) -> usize {
-            self.max_memory_bytes.saturating_sub(self.current_memory_bytes)
+            self.max_memory_bytes
+                .saturating_sub(self.current_memory_bytes)
         }
     }
 
     let limits = CacheLimits {
-        max_memory_bytes: 1024 * 1024, // 1 MB
+        max_memory_bytes: 1024 * 1024,    // 1 MB
         current_memory_bytes: 512 * 1024, // 512 KB
     };
 
@@ -172,7 +174,10 @@ fn test_cache_invalidation() {
         }
 
         fn is_valid(&self, offset: u64) -> bool {
-            !self.dirty_ranges.iter().any(|(start, end)| offset >= *start && offset < *end)
+            !self
+                .dirty_ranges
+                .iter()
+                .any(|(start, end)| offset >= *start && offset < *end)
         }
     }
 

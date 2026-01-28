@@ -2,7 +2,7 @@
 //!
 //! Comprehensive tests for HEVC slice header parsing functionality.
 
-use bitvue_hevc::slice::{SliceHeader, SliceType, RefPicListModification, PredWeightTable};
+use bitvue_hevc::slice::{PredWeightTable, RefPicListModification, SliceHeader, SliceType};
 use bitvue_hevc::sps::{ChromaFormat, Profile, ProfileTierLevel, Sps};
 
 fn create_minimal_sps() -> Sps {

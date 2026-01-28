@@ -146,7 +146,8 @@ fn test_block_residual_info() {
             if self.total_coeffs == 0 {
                 0.0
             } else {
-                ((self.total_coeffs - self.non_zero_count) as f64 / self.total_coeffs as f64) * 100.0
+                ((self.total_coeffs - self.non_zero_count) as f64 / self.total_coeffs as f64)
+                    * 100.0
             }
         }
     }

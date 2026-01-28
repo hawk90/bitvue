@@ -127,10 +127,12 @@ fn test_mse_calculation() {
     let original = vec![100, 150, 200];
     let distorted = vec![105, 145, 195];
 
-    let mse: f64 = original.iter()
+    let mse: f64 = original
+        .iter()
         .zip(distorted.iter())
         .map(|(o, d)| ((*o as i32 - *d as i32) as f64).powi(2))
-        .sum::<f64>() / original.len() as f64;
+        .sum::<f64>()
+        / original.len() as f64;
 
     assert!(mse >= 0.0);
 }
@@ -144,9 +146,18 @@ fn test_bitrate_quality_correlation() {
     }
 
     let results = vec![
-        EncodingResult { bitrate_kbps: 1000, psnr: 38.0 },
-        EncodingResult { bitrate_kbps: 2000, psnr: 42.0 },
-        EncodingResult { bitrate_kbps: 5000, psnr: 46.0 },
+        EncodingResult {
+            bitrate_kbps: 1000,
+            psnr: 38.0,
+        },
+        EncodingResult {
+            bitrate_kbps: 2000,
+            psnr: 42.0,
+        },
+        EncodingResult {
+            bitrate_kbps: 5000,
+            psnr: 46.0,
+        },
     ];
 
     // Higher bitrate should generally mean higher PSNR

@@ -15,29 +15,29 @@ mod colors {
     use egui::Color32;
 
     // Reference frame colors
-    pub const REF_LAST: Color32 = Color32::from_rgb(65, 105, 225);       // Royal blue
-    pub const REF_LAST2: Color32 = Color32::from_rgb(30, 144, 255);      // Dodger blue
-    pub const REF_LAST3: Color32 = Color32::from_rgb(135, 206, 250);     // Light sky blue
-    pub const REF_GOLDEN: Color32 = Color32::from_rgb(255, 215, 0);      // Gold
-    pub const REF_BWDREF: Color32 = Color32::from_rgb(255, 165, 0);      // Orange
-    pub const REF_ALTREF2: Color32 = Color32::from_rgb(255, 99, 71);     // Tomato
-    pub const REF_ALTREF: Color32 = Color32::from_rgb(220, 20, 60);      // Crimson
+    pub const REF_LAST: Color32 = Color32::from_rgb(65, 105, 225); // Royal blue
+    pub const REF_LAST2: Color32 = Color32::from_rgb(30, 144, 255); // Dodger blue
+    pub const REF_LAST3: Color32 = Color32::from_rgb(135, 206, 250); // Light sky blue
+    pub const REF_GOLDEN: Color32 = Color32::from_rgb(255, 215, 0); // Gold
+    pub const REF_BWDREF: Color32 = Color32::from_rgb(255, 165, 0); // Orange
+    pub const REF_ALTREF2: Color32 = Color32::from_rgb(255, 99, 71); // Tomato
+    pub const REF_ALTREF: Color32 = Color32::from_rgb(220, 20, 60); // Crimson
 
     // Prediction mode colors
-    pub const INTRA: Color32 = Color32::from_rgb(147, 112, 219);         // Medium purple
-    pub const SINGLE_REF: Color32 = Color32::from_rgb(50, 205, 50);      // Lime green
-    pub const COMPOUND: Color32 = Color32::from_rgb(255, 20, 147);       // Deep pink
+    pub const INTRA: Color32 = Color32::from_rgb(147, 112, 219); // Medium purple
+    pub const SINGLE_REF: Color32 = Color32::from_rgb(50, 205, 50); // Lime green
+    pub const COMPOUND: Color32 = Color32::from_rgb(255, 20, 147); // Deep pink
 
     // Block boundary colors
-    pub const SB_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0);     // Orange
-    pub const BLOCK_BOUNDARY: Color32 = Color32::from_rgb(100, 149, 237);// Cornflower blue
+    pub const SB_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0); // Orange
+    pub const BLOCK_BOUNDARY: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
 
     // CDEF colors
-    pub const CDEF_PRIMARY: Color32 = Color32::from_rgb(64, 224, 208);   // Turquoise
-    pub const CDEF_SECONDARY: Color32 = Color32::from_rgb(255, 182, 193);// Light pink
+    pub const CDEF_PRIMARY: Color32 = Color32::from_rgb(64, 224, 208); // Turquoise
+    pub const CDEF_SECONDARY: Color32 = Color32::from_rgb(255, 182, 193); // Light pink
 
     // Film grain
-    pub const FILM_GRAIN: Color32 = Color32::from_rgb(210, 180, 140);    // Tan
+    pub const FILM_GRAIN: Color32 = Color32::from_rgb(210, 180, 140); // Tan
 }
 
 /// AV1 view modes
@@ -110,16 +110,16 @@ impl Av1RefFrame {
 /// AV1 block partition type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Av1Partition {
-    None,           // No further split
-    Horz,           // Split horizontally
-    Vert,           // Split vertically
-    Split,          // Split into 4
-    HorzA,          // Top half split, bottom full
-    HorzB,          // Top full, bottom split
-    VertA,          // Left half split, right full
-    VertB,          // Left full, right split
-    Horz4,          // 4 horizontal strips
-    Vert4,          // 4 vertical strips
+    None,  // No further split
+    Horz,  // Split horizontally
+    Vert,  // Split vertically
+    Split, // Split into 4
+    HorzA, // Top half split, bottom full
+    HorzB, // Top full, bottom split
+    VertA, // Left half split, right full
+    VertB, // Left full, right split
+    Horz4, // 4 horizontal strips
+    Vert4, // 4 vertical strips
 }
 
 impl Av1Partition {
@@ -154,11 +154,11 @@ pub struct Av1Block {
 /// CDEF parameters for a 64x64 unit
 #[derive(Debug, Clone, Default)]
 pub struct CdefParams {
-    pub y_pri_strength: u8,   // 0-15
-    pub y_sec_strength: u8,   // 0-4
+    pub y_pri_strength: u8, // 0-15
+    pub y_sec_strength: u8, // 0-4
     pub uv_pri_strength: u8,
     pub uv_sec_strength: u8,
-    pub damping: u8,          // 3-6
+    pub damping: u8, // 3-6
     pub skip: bool,
 }
 
@@ -181,7 +181,7 @@ pub struct FilmGrainParams {
 #[derive(Debug, Clone, Default)]
 pub struct SuperResParams {
     pub use_superres: bool,
-    pub coded_denom: u8,      // 9-16, denominator for scaling
+    pub coded_denom: u8, // 9-16, denominator for scaling
     pub superres_scale_denominator: u8,
     pub upscaled_width: u32,
 }
@@ -523,8 +523,14 @@ impl Av1Workspace {
                 ui.heading("Frame Statistics");
                 ui.add_space(8.0);
 
-                ui.label(format!("Frame size: {}x{}", self.frame_width, self.frame_height));
-                ui.label(format!("Superblock size: {}x{}", self.sb_size, self.sb_size));
+                ui.label(format!(
+                    "Frame size: {}x{}",
+                    self.frame_width, self.frame_height
+                ));
+                ui.label(format!(
+                    "Superblock size: {}x{}",
+                    self.sb_size, self.sb_size
+                ));
                 ui.label(format!("Total blocks: {}", self.mock_blocks.len()));
 
                 ui.add_space(8.0);
@@ -581,20 +587,22 @@ impl Av1Workspace {
 
         // Draw superblock boundary
         if self.show_sb_grid {
-            painter.rect_stroke(
-                rect,
-                0.0,
-                Stroke::new(3.0, colors::SB_BOUNDARY),
-            );
+            painter.rect_stroke(rect, 0.0, Stroke::new(3.0, colors::SB_BOUNDARY));
 
             // 64x64 quadrant lines
             let mid = grid_size / 2.0;
             painter.line_segment(
-                [egui::pos2(rect.min.x + mid, rect.min.y), egui::pos2(rect.min.x + mid, rect.max.y)],
+                [
+                    egui::pos2(rect.min.x + mid, rect.min.y),
+                    egui::pos2(rect.min.x + mid, rect.max.y),
+                ],
                 Stroke::new(1.5, colors::SB_BOUNDARY.gamma_multiply(0.5)),
             );
             painter.line_segment(
-                [egui::pos2(rect.min.x, rect.min.y + mid), egui::pos2(rect.max.x, rect.min.y + mid)],
+                [
+                    egui::pos2(rect.min.x, rect.min.y + mid),
+                    egui::pos2(rect.max.x, rect.min.y + mid),
+                ],
                 Stroke::new(1.5, colors::SB_BOUNDARY.gamma_multiply(0.5)),
             );
         }
@@ -622,14 +630,26 @@ impl Av1Workspace {
 
             // Draw block boundary
             if self.show_block_grid {
-                let stroke_width = if Some(idx) == self.selected_block { 2.5 } else { 1.0 };
-                painter.rect_stroke(block_rect, 0.0, Stroke::new(stroke_width, colors::BLOCK_BOUNDARY));
+                let stroke_width = if Some(idx) == self.selected_block {
+                    2.5
+                } else {
+                    1.0
+                };
+                painter.rect_stroke(
+                    block_rect,
+                    0.0,
+                    Stroke::new(stroke_width, colors::BLOCK_BOUNDARY),
+                );
             }
 
             // Label for larger blocks
             if block.width >= 32 && block.height >= 32 {
                 let label = if block.ref_frame2.is_some() {
-                    format!("{}+{}", block.ref_frame.label(), block.ref_frame2.unwrap().label())
+                    format!(
+                        "{}+{}",
+                        block.ref_frame.label(),
+                        block.ref_frame2.unwrap().label()
+                    )
                 } else {
                     block.ref_frame.label().to_string()
                 };
@@ -745,10 +765,8 @@ impl Av1Workspace {
             cols[0].group(|ui| {
                 ui.heading("CDEF Strength Map");
 
-                let (_, painter) = ui.allocate_painter(
-                    Vec2::new(200.0, 200.0),
-                    egui::Sense::hover(),
-                );
+                let (_, painter) =
+                    ui.allocate_painter(Vec2::new(200.0, 200.0), egui::Sense::hover());
 
                 let rect = painter.clip_rect();
                 let cell_size = rect.width() / 2.0;
@@ -853,18 +871,19 @@ impl Av1Workspace {
                 ui.add_space(8.0);
 
                 // Visual representation
-                let coded_width = (self.super_res.upscaled_width as f32 * self.super_res.scale_factor()) as u32;
+                let coded_width =
+                    (self.super_res.upscaled_width as f32 * self.super_res.scale_factor()) as u32;
                 ui.label(format!(
                     "Coded at: {}x{} -> Upscaled to: {}x{}",
-                    coded_width, self.frame_height,
-                    self.super_res.upscaled_width, self.frame_height
+                    coded_width,
+                    self.frame_height,
+                    self.super_res.upscaled_width,
+                    self.frame_height
                 ));
 
                 // Draw visual
-                let (_, painter) = ui.allocate_painter(
-                    Vec2::new(300.0, 100.0),
-                    egui::Sense::hover(),
-                );
+                let (_, painter) =
+                    ui.allocate_painter(Vec2::new(300.0, 100.0), egui::Sense::hover());
 
                 let rect = painter.clip_rect();
 
@@ -890,10 +909,8 @@ impl Av1Workspace {
                 );
 
                 // Upscaled frame
-                let upscaled_rect = Rect::from_min_size(
-                    rect.min + Vec2::new(180.0, 20.0),
-                    Vec2::new(100.0, 70.0),
-                );
+                let upscaled_rect =
+                    Rect::from_min_size(rect.min + Vec2::new(180.0, 20.0), Vec2::new(100.0, 70.0));
                 painter.rect_filled(upscaled_rect, 4.0, Color32::from_rgb(100, 200, 100));
                 painter.text(
                     upscaled_rect.center(),
@@ -948,10 +965,8 @@ impl Av1Workspace {
                     ui.add_space(8.0);
 
                     // Visual grain preview
-                    let (_, painter) = ui.allocate_painter(
-                        Vec2::new(100.0, 100.0),
-                        egui::Sense::hover(),
-                    );
+                    let (_, painter) =
+                        ui.allocate_painter(Vec2::new(100.0, 100.0), egui::Sense::hover());
 
                     let rect = painter.clip_rect();
                     painter.rect_filled(rect, 4.0, colors::FILM_GRAIN);

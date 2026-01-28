@@ -77,9 +77,18 @@ fn test_decode_priority() {
     }
 
     let mut requests = vec![
-        PrioritizedRequest { frame_index: 0, priority: 5 },
-        PrioritizedRequest { frame_index: 1, priority: 10 },
-        PrioritizedRequest { frame_index: 2, priority: 1 },
+        PrioritizedRequest {
+            frame_index: 0,
+            priority: 5,
+        },
+        PrioritizedRequest {
+            frame_index: 1,
+            priority: 10,
+        },
+        PrioritizedRequest {
+            frame_index: 2,
+            priority: 1,
+        },
     ];
 
     sort_by_priority(&mut requests);

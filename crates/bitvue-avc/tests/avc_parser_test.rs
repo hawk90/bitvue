@@ -53,7 +53,9 @@ fn test_avc_profiles() {
 #[test]
 fn test_avc_levels() {
     // Test AVC levels (1.0 to 5.2)
-    let levels = vec![10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52];
+    let levels = vec![
+        10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52,
+    ];
 
     for level in levels {
         assert!(level >= 10 && level <= 52);

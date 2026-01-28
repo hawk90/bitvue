@@ -326,10 +326,7 @@ pub fn parse_coding_unit(
 
             // Get MV predictor and add to explicit MV
             let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
-            cu.mv[0] = MotionVector::new(
-                explicit_mv.x + predictor.x,
-                explicit_mv.y + predictor.y,
-            );
+            cu.mv[0] = MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
 
             // TODO: If compound prediction (2 references), read L1 MV
             // For MVP, single reference only
@@ -337,7 +334,11 @@ pub fn parse_coding_unit(
 
             tracing::debug!(
                 "NEWMV at ({}, {}): explicit=({:?}), predictor=({:?}), final=({:?})",
-                x, y, explicit_mv, predictor, cu.mv[0]
+                x,
+                y,
+                explicit_mv,
+                predictor,
+                cu.mv[0]
             );
         } else {
             // For NEARESTMV, NEARMV, GLOBALMV: use predictor directly
@@ -346,7 +347,10 @@ pub fn parse_coding_unit(
 
             tracing::debug!(
                 "Mode {:?} at ({}, {}): using predictor {:?}",
-                cu.mode, x, y, cu.mv[0]
+                cu.mode,
+                x,
+                y,
+                cu.mv[0]
             );
         }
     }
@@ -374,7 +378,12 @@ pub fn parse_coding_unit(
                 qp
             }
             Err(e) => {
-                tracing::warn!("Failed to read delta Q at ({}, {}): {}, using current QP", x, y, e);
+                tracing::warn!(
+                    "Failed to read delta Q at ({}, {}): {}, using current QP",
+                    x,
+                    y,
+                    e
+                );
                 cu.qp = Some(current_qp);
                 current_qp
             }

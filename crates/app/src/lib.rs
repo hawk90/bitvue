@@ -3,7 +3,6 @@
 //! Exposes parser_worker and other modules for testing
 
 // BitvueApp modules
-pub mod bitvue_app;
 pub mod app_async;
 pub mod app_config;
 pub mod app_decode;
@@ -11,8 +10,9 @@ pub mod app_input;
 pub mod app_ui_menus;
 pub mod app_ui_panels;
 pub mod app_ui_toolbar;
-pub mod app_yuv_diff;
 pub mod app_update;
+pub mod app_yuv_diff;
+pub mod bitvue_app;
 
 // Other app modules
 pub mod app_ui;

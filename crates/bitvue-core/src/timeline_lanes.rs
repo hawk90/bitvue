@@ -84,7 +84,11 @@ impl TimelineLaneSystem {
     }
 
     /// Set zoom level and recompute marker clusters
-    pub fn set_zoom_level(&mut self, zoom_level: f32, markers: &[(usize, crate::timeline::FrameMarker)]) {
+    pub fn set_zoom_level(
+        &mut self,
+        zoom_level: f32,
+        markers: &[(usize, crate::timeline::FrameMarker)],
+    ) {
         self.zoom_level = zoom_level;
         self.update_marker_clusters(markers);
     }
@@ -114,8 +118,14 @@ impl TimelineLaneSystem {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /// Populate BPP lane from timeline frames
-    pub fn populate_bpp_lane(&mut self, frames: &[TimelineFrame], frame_width: u32, frame_height: u32) {
-        let lane = crate::timeline_lane_population::populate_bpp_lane(frames, frame_width, frame_height);
+    pub fn populate_bpp_lane(
+        &mut self,
+        frames: &[TimelineFrame],
+        frame_width: u32,
+        frame_height: u32,
+    ) {
+        let lane =
+            crate::timeline_lane_population::populate_bpp_lane(frames, frame_width, frame_height);
         crate::timeline_lane_population::replace_lane(&mut self.lanes, lane);
     }
 

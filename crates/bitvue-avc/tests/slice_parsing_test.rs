@@ -2,7 +2,7 @@
 //!
 //! Comprehensive tests for AVC slice header parsing functionality.
 
-use bitvue_avc::slice::{SliceHeader, SliceType, RefPicListModification, DecRefPicMarking};
+use bitvue_avc::slice::{DecRefPicMarking, RefPicListModification, SliceHeader, SliceType};
 
 // SliceType tests
 
@@ -77,8 +77,12 @@ fn default_slice_header() -> SliceHeader {
         num_ref_idx_l1_active_minus1: 0,
         ref_pic_list_modification_flag_l0: false,
         ref_pic_list_modification_flag_l1: false,
-        ref_pic_list_modification_l0: RefPicListModification { modifications: vec![] },
-        ref_pic_list_modification_l1: RefPicListModification { modifications: vec![] },
+        ref_pic_list_modification_l0: RefPicListModification {
+            modifications: vec![],
+        },
+        ref_pic_list_modification_l1: RefPicListModification {
+            modifications: vec![],
+        },
         dec_ref_pic_marking: DecRefPicMarking {
             no_output_of_prior_pics_flag: false,
             long_term_reference_flag: false,
@@ -293,7 +297,9 @@ fn test_slice_header_slice_group_change_cycle() {
 
 #[test]
 fn test_ref_pic_list_modification_default() {
-    let ref_mod = RefPicListModification { modifications: vec![] };
+    let ref_mod = RefPicListModification {
+        modifications: vec![],
+    };
 
     assert!(ref_mod.modifications.is_empty());
 }

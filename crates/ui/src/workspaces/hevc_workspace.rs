@@ -15,23 +15,23 @@ mod colors {
     use egui::Color32;
 
     // Partition colors
-    pub const CTU_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0);     // Orange
-    pub const CU_BOUNDARY: Color32 = Color32::from_rgb(100, 149, 237);    // Cornflower blue
-    pub const TU_BOUNDARY: Color32 = Color32::from_rgb(144, 238, 144);    // Light green
-    pub const PU_BOUNDARY: Color32 = Color32::from_rgb(255, 182, 193);    // Light pink
+    pub const CTU_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0); // Orange
+    pub const CU_BOUNDARY: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
+    pub const TU_BOUNDARY: Color32 = Color32::from_rgb(144, 238, 144); // Light green
+    pub const PU_BOUNDARY: Color32 = Color32::from_rgb(255, 182, 193); // Light pink
 
     // Prediction mode colors
-    pub const INTRA_PLANAR: Color32 = Color32::from_rgb(255, 215, 0);     // Gold
-    pub const INTRA_DC: Color32 = Color32::from_rgb(255, 165, 0);         // Orange
-    pub const INTRA_ANGULAR: Color32 = Color32::from_rgb(147, 112, 219);  // Medium purple
-    pub const INTER_SKIP: Color32 = Color32::from_rgb(50, 205, 50);       // Lime green
-    pub const INTER_MERGE: Color32 = Color32::from_rgb(30, 144, 255);     // Dodger blue
-    pub const INTER_AMVP: Color32 = Color32::from_rgb(220, 20, 60);       // Crimson
+    pub const INTRA_PLANAR: Color32 = Color32::from_rgb(255, 215, 0); // Gold
+    pub const INTRA_DC: Color32 = Color32::from_rgb(255, 165, 0); // Orange
+    pub const INTRA_ANGULAR: Color32 = Color32::from_rgb(147, 112, 219); // Medium purple
+    pub const INTER_SKIP: Color32 = Color32::from_rgb(50, 205, 50); // Lime green
+    pub const INTER_MERGE: Color32 = Color32::from_rgb(30, 144, 255); // Dodger blue
+    pub const INTER_AMVP: Color32 = Color32::from_rgb(220, 20, 60); // Crimson
 
     // SAO colors
-    pub const SAO_OFF: Color32 = Color32::from_rgb(128, 128, 128);        // Gray
-    pub const SAO_BAND: Color32 = Color32::from_rgb(255, 99, 71);         // Tomato
-    pub const SAO_EDGE: Color32 = Color32::from_rgb(64, 224, 208);        // Turquoise
+    pub const SAO_OFF: Color32 = Color32::from_rgb(128, 128, 128); // Gray
+    pub const SAO_BAND: Color32 = Color32::from_rgb(255, 99, 71); // Tomato
+    pub const SAO_EDGE: Color32 = Color32::from_rgb(64, 224, 208); // Turquoise
 }
 
 /// HEVC view modes
@@ -163,13 +163,13 @@ impl Default for SaoParams {
 pub struct HevcFeatureStatus {
     pub sao_enabled: bool,
     pub deblocking_enabled: bool,
-    pub amp_enabled: bool,       // Asymmetric Motion Partitions
-    pub pcm_enabled: bool,       // PCM mode
+    pub amp_enabled: bool, // Asymmetric Motion Partitions
+    pub pcm_enabled: bool, // PCM mode
     pub transform_skip: bool,
     pub sign_hiding: bool,
     pub strong_intra_smoothing: bool,
     pub tiles_enabled: bool,
-    pub wpp_enabled: bool,       // Wavefront Parallel Processing
+    pub wpp_enabled: bool, // Wavefront Parallel Processing
 }
 
 /// HEVC Visualization Workspace
@@ -495,7 +495,11 @@ impl HevcWorkspace {
                 Self::feature_badge(ui, "PCM", self.features.pcm_enabled);
                 Self::feature_badge(ui, "Transform Skip", self.features.transform_skip);
                 Self::feature_badge(ui, "Sign Hiding", self.features.sign_hiding);
-                Self::feature_badge(ui, "Strong Intra Smooth", self.features.strong_intra_smoothing);
+                Self::feature_badge(
+                    ui,
+                    "Strong Intra Smooth",
+                    self.features.strong_intra_smoothing,
+                );
                 Self::feature_badge(ui, "Tiles", self.features.tiles_enabled);
                 Self::feature_badge(ui, "WPP", self.features.wpp_enabled);
             });
@@ -505,7 +509,10 @@ impl HevcWorkspace {
                 ui.heading("Frame Statistics");
                 ui.add_space(8.0);
 
-                ui.label(format!("Frame size: {}x{}", self.frame_width, self.frame_height));
+                ui.label(format!(
+                    "Frame size: {}x{}",
+                    self.frame_width, self.frame_height
+                ));
                 ui.label(format!("CTU size: {}x{}", self.ctu_size, self.ctu_size));
                 ui.label(format!("Total CUs: {}", self.mock_cus.len()));
 
@@ -599,7 +606,11 @@ impl HevcWorkspace {
 
             // Draw CU boundary
             if self.show_cu_grid {
-                let stroke_width = if Some(idx) == self.selected_cu { 2.0 } else { 1.0 };
+                let stroke_width = if Some(idx) == self.selected_cu {
+                    2.0
+                } else {
+                    1.0
+                };
                 painter.rect_stroke(cu_rect, 0.0, Stroke::new(stroke_width, colors::CU_BOUNDARY));
             }
 
@@ -646,10 +657,7 @@ impl HevcWorkspace {
                 ui.add_space(8.0);
 
                 // Angular mode diagram (simplified)
-                let (_, painter) = ui.allocate_painter(
-                    Vec2::splat(150.0),
-                    egui::Sense::hover(),
-                );
+                let (_, painter) = ui.allocate_painter(Vec2::splat(150.0), egui::Sense::hover());
 
                 let center = painter.clip_rect().center();
                 let radius = 60.0;
@@ -659,7 +667,11 @@ impl HevcWorkspace {
                     let angle_rad = std::f32::consts::PI * (angle_idx as f32 - 2.0) / 32.0
                         - std::f32::consts::FRAC_PI_2;
                     let end = center + Vec2::new(angle_rad.cos(), angle_rad.sin()) * radius;
-                    painter.arrow(center, end - center, Stroke::new(1.5, colors::INTRA_ANGULAR));
+                    painter.arrow(
+                        center,
+                        end - center,
+                        Stroke::new(1.5, colors::INTRA_ANGULAR),
+                    );
                     painter.text(
                         end + Vec2::new(angle_rad.cos(), angle_rad.sin()) * 10.0,
                         egui::Align2::CENTER_CENTER,
@@ -737,10 +749,7 @@ impl HevcWorkspace {
         ui.group(|ui| {
             ui.heading("TU Depth Visualization");
 
-            let (_, painter) = ui.allocate_painter(
-                Vec2::new(200.0, 200.0),
-                egui::Sense::hover(),
-            );
+            let (_, painter) = ui.allocate_painter(Vec2::new(200.0, 200.0), egui::Sense::hover());
 
             let rect = painter.clip_rect();
 
@@ -764,7 +773,8 @@ impl HevcWorkspace {
                         for sy in 0..2 {
                             for sx in 0..2 {
                                 let sub_rect = Rect::from_min_size(
-                                    tu_rect.min + Vec2::new(sx as f32 * quarter, sy as f32 * quarter),
+                                    tu_rect.min
+                                        + Vec2::new(sx as f32 * quarter, sy as f32 * quarter),
                                     Vec2::splat(quarter),
                                 );
                                 painter.rect_stroke(
@@ -832,10 +842,8 @@ impl HevcWorkspace {
                 ui.heading("CTB SAO Map");
 
                 if self.show_sao {
-                    let (_, painter) = ui.allocate_painter(
-                        Vec2::new(200.0, 200.0),
-                        egui::Sense::hover(),
-                    );
+                    let (_, painter) =
+                        ui.allocate_painter(Vec2::new(200.0, 200.0), egui::Sense::hover());
 
                     let rect = painter.clip_rect();
                     let cell_size = rect.width() / 2.0;

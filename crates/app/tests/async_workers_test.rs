@@ -36,7 +36,10 @@ fn test_worker_progress() {
         percentage: 75.0,
     };
 
-    assert_eq!(progress.percentage, (progress.current as f64 / progress.total as f64) * 100.0);
+    assert_eq!(
+        progress.percentage,
+        (progress.current as f64 / progress.total as f64) * 100.0
+    );
 }
 
 #[test]
@@ -179,9 +182,18 @@ fn test_worker_priority_queue() {
     }
 
     let tasks = vec![
-        PriorityTask { task_id: "low".to_string(), priority: 10 },
-        PriorityTask { task_id: "high".to_string(), priority: 200 },
-        PriorityTask { task_id: "med".to_string(), priority: 100 },
+        PriorityTask {
+            task_id: "low".to_string(),
+            priority: 10,
+        },
+        PriorityTask {
+            task_id: "high".to_string(),
+            priority: 200,
+        },
+        PriorityTask {
+            task_id: "med".to_string(),
+            priority: 100,
+        },
     ];
 
     assert!(tasks[1].priority > tasks[0].priority);

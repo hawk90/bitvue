@@ -125,7 +125,12 @@ impl QualityMetricsPanel {
     fn value_to_color(&self, value: f64, min_val: f64, max_val: f64) -> Color32 {
         let range = max_val - min_val;
         if range <= 0.0 {
-            return Color32::from_rgba_unmultiplied(128, 128, 128, (self.heatmap_opacity * 255.0) as u8);
+            return Color32::from_rgba_unmultiplied(
+                128,
+                128,
+                128,
+                (self.heatmap_opacity * 255.0) as u8,
+            );
         }
 
         let normalized = ((value - min_val) / range).clamp(0.0, 1.0);
@@ -230,14 +235,22 @@ impl QualityMetricsPanel {
         let (label_top, label_bottom, unit) = match self.active_metric {
             MetricType::Psnr => {
                 if let Some(h) = &self.heatmap {
-                    (format!("{:.1}", h.psnr_max), format!("{:.1}", h.psnr_min), "dB")
+                    (
+                        format!("{:.1}", h.psnr_max),
+                        format!("{:.1}", h.psnr_min),
+                        "dB",
+                    )
                 } else {
                     ("50".to_string(), "20".to_string(), "dB")
                 }
             }
             MetricType::Ssim => {
                 if let Some(h) = &self.heatmap {
-                    (format!("{:.3}", h.ssim_max), format!("{:.3}", h.ssim_min), "")
+                    (
+                        format!("{:.3}", h.ssim_max),
+                        format!("{:.3}", h.ssim_min),
+                        "",
+                    )
                 } else {
                     ("1.0".to_string(), "0.8".to_string(), "")
                 }

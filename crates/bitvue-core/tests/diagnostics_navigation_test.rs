@@ -50,7 +50,9 @@ fn test_navigate_to_diagnostic_by_frame_index() {
 
     // Simulate clicking on diagnostic -> navigate to frame 1
     let diagnostic_frame = 1;
-    let target_unit = units.iter().find(|u| u.frame_index == Some(diagnostic_frame));
+    let target_unit = units
+        .iter()
+        .find(|u| u.frame_index == Some(diagnostic_frame));
 
     assert!(target_unit.is_some(), "Should find target frame");
     assert_eq!(target_unit.unwrap().frame_index, Some(1));
@@ -99,9 +101,9 @@ fn test_navigate_to_diagnostic_by_offset() {
 
     // Find unit containing this offset
     let diagnostic_offset = 2600;
-    let containing_unit = units.iter().find(|u| {
-        diagnostic_offset >= u.offset && diagnostic_offset < u.offset + u.size as u64
-    });
+    let containing_unit = units
+        .iter()
+        .find(|u| diagnostic_offset >= u.offset && diagnostic_offset < u.offset + u.size as u64);
 
     assert!(containing_unit.is_some(), "Should find containing unit");
     assert_eq!(containing_unit.unwrap().offset, 2500);
@@ -153,7 +155,11 @@ fn test_navigate_to_first_error() {
         for i in 0..10 {
             state.add_diagnostic(Diagnostic {
                 id: i,
-                severity: if i < 3 { Severity::Error } else { Severity::Warn },
+                severity: if i < 3 {
+                    Severity::Error
+                } else {
+                    Severity::Warn
+                },
                 stream_id: StreamId::A,
                 message: format!("Diagnostic {}", i),
                 category: Category::Bitstream,
@@ -303,10 +309,7 @@ fn test_navigate_to_highest_impact_diagnostic() {
     // Find highest impact diagnostic
     {
         let state = stream.read();
-        let highest_impact = state
-            .diagnostics
-            .iter()
-            .max_by_key(|d| d.impact_score);
+        let highest_impact = state.diagnostics.iter().max_by_key(|d| d.impact_score);
 
         assert!(highest_impact.is_some());
         assert_eq!(highest_impact.unwrap().impact_score, 95);
@@ -454,17 +457,14 @@ fn test_navigate_by_timestamp() {
         let state = stream.read();
         let target_time = 2500;
 
-        let closest = state
-            .diagnostics
-            .iter()
-            .min_by_key(|d| {
-                let diff = if d.timestamp_ms > target_time {
-                    d.timestamp_ms - target_time
-                } else {
-                    target_time - d.timestamp_ms
-                };
-                diff
-            });
+        let closest = state.diagnostics.iter().min_by_key(|d| {
+            let diff = if d.timestamp_ms > target_time {
+                d.timestamp_ms - target_time
+            } else {
+                target_time - d.timestamp_ms
+            };
+            diff
+        });
 
         assert!(closest.is_some());
         // Closest should be either 2000ms or 3000ms

@@ -154,7 +154,13 @@ mod tests {
         mgr.set_active(OverlayType::Grid, true);
         mgr.set_active(OverlayType::Grid, true);
         // Should only have one entry
-        assert_eq!(mgr.active.iter().filter(|&&o| o == OverlayType::Grid).count(), 1);
+        assert_eq!(
+            mgr.active
+                .iter()
+                .filter(|&&o| o == OverlayType::Grid)
+                .count(),
+            1
+        );
     }
 
     #[test]

@@ -19,12 +19,7 @@ fn test_mp4_box_types() {
         Av01,
     }
 
-    let boxes = vec![
-        BoxType::Ftyp,
-        BoxType::Moov,
-        BoxType::Mdat,
-        BoxType::Av01,
-    ];
+    let boxes = vec![BoxType::Ftyp, BoxType::Moov, BoxType::Mdat, BoxType::Av01];
 
     assert_eq!(boxes.len(), 4);
 }
@@ -78,9 +73,24 @@ fn test_mp4_sample_extraction() {
     }
 
     let samples = vec![
-        Sample { offset: 1000, size: 5000, timestamp: 0, is_sync: true },
-        Sample { offset: 6000, size: 3000, timestamp: 33, is_sync: false },
-        Sample { offset: 9000, size: 2000, timestamp: 66, is_sync: false },
+        Sample {
+            offset: 1000,
+            size: 5000,
+            timestamp: 0,
+            is_sync: true,
+        },
+        Sample {
+            offset: 6000,
+            size: 3000,
+            timestamp: 33,
+            is_sync: false,
+        },
+        Sample {
+            offset: 9000,
+            size: 2000,
+            timestamp: 66,
+            is_sync: false,
+        },
     ];
 
     assert_eq!(samples.len(), 3);
@@ -236,9 +246,18 @@ fn test_ts_pmt_parsing() {
     }
 
     let entries = vec![
-        PmtEntry { stream_type: 0x1B, elementary_pid: 256 },  // H.264
-        PmtEntry { stream_type: 0x24, elementary_pid: 257 },  // HEVC
-        PmtEntry { stream_type: 0x06, elementary_pid: 258 },  // AV1
+        PmtEntry {
+            stream_type: 0x1B,
+            elementary_pid: 256,
+        }, // H.264
+        PmtEntry {
+            stream_type: 0x24,
+            elementary_pid: 257,
+        }, // HEVC
+        PmtEntry {
+            stream_type: 0x06,
+            elementary_pid: 258,
+        }, // AV1
     ];
 
     assert_eq!(entries.len(), 3);
@@ -308,9 +327,18 @@ fn test_ivf_frame_header() {
     }
 
     let frames = vec![
-        IvfFrameHeader { frame_size: 5000, timestamp: 0 },
-        IvfFrameHeader { frame_size: 3000, timestamp: 33333 },
-        IvfFrameHeader { frame_size: 2000, timestamp: 66666 },
+        IvfFrameHeader {
+            frame_size: 5000,
+            timestamp: 0,
+        },
+        IvfFrameHeader {
+            frame_size: 3000,
+            timestamp: 33333,
+        },
+        IvfFrameHeader {
+            frame_size: 2000,
+            timestamp: 66666,
+        },
     ];
 
     assert_eq!(frames.len(), 3);
@@ -343,8 +371,14 @@ fn test_container_detection() {
         }
     }
 
-    assert_eq!(detect_format(b"DKIF\x00\x00\x00\x00\x00\x00\x00\x00"), ContainerFormat::Ivf);
-    assert_eq!(detect_format(b"\x00\x00\x00\x20ftypisom"), ContainerFormat::Mp4);
+    assert_eq!(
+        detect_format(b"DKIF\x00\x00\x00\x00\x00\x00\x00\x00"),
+        ContainerFormat::Ivf
+    );
+    assert_eq!(
+        detect_format(b"\x00\x00\x00\x20ftypisom"),
+        ContainerFormat::Mp4
+    );
 }
 
 #[test]

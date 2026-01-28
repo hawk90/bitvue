@@ -1058,7 +1058,6 @@ mod edge_case_tests {
 
 #[cfg(test)]
 mod tests {
-    
 
     #[test]
     fn test_diff_heatmap_module_compiles() {

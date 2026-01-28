@@ -152,16 +152,25 @@ fn test_decode_coordinator_job_queue() {
     }
 
     let mut jobs = vec![
-        DecodeJob { frame_index: 5, priority: 1 },
-        DecodeJob { frame_index: 10, priority: 3 },
-        DecodeJob { frame_index: 2, priority: 2 },
+        DecodeJob {
+            frame_index: 5,
+            priority: 1,
+        },
+        DecodeJob {
+            frame_index: 10,
+            priority: 3,
+        },
+        DecodeJob {
+            frame_index: 2,
+            priority: 2,
+        },
     ];
 
     // Sort by priority (higher first)
     jobs.sort_by(|a, b| b.priority.cmp(&a.priority));
 
     assert_eq!(jobs[0].frame_index, 10); // Highest priority
-    assert_eq!(jobs[2].frame_index, 5);  // Lowest priority
+    assert_eq!(jobs[2].frame_index, 5); // Lowest priority
 }
 
 #[test]
@@ -187,8 +196,14 @@ fn test_lazy_workspace_loading() {
     }
 
     let mut workspaces = vec![
-        Workspace { name: "AV1".to_string(), loaded: false },
-        Workspace { name: "HEVC".to_string(), loaded: false },
+        Workspace {
+            name: "AV1".to_string(),
+            loaded: false,
+        },
+        Workspace {
+            name: "HEVC".to_string(),
+            loaded: false,
+        },
     ];
 
     // Load workspace on demand

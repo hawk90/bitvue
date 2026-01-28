@@ -69,7 +69,7 @@ fn test_bitreader_bit_position() {
 
 #[test]
 fn test_read_bit_single_byte() {
-    let data = vec![0b10101010];  // MSB first: 1,0,1,0,1,0,1,0
+    let data = vec![0b10101010]; // MSB first: 1,0,1,0,1,0,1,0
     let mut reader = BitReader::new(&data);
 
     assert_eq!(reader.read_bit().unwrap(), true);
@@ -159,8 +159,8 @@ fn test_read_bits_four() {
     let data = vec![0b10110010];
     let mut reader = BitReader::new(&data);
 
-    assert_eq!(reader.read_bits(4).unwrap(), 0b1011);  // First 4 bits
-    assert_eq!(reader.read_bits(4).unwrap(), 0b0010);  // Last 4 bits
+    assert_eq!(reader.read_bits(4).unwrap(), 0b1011); // First 4 bits
+    assert_eq!(reader.read_bits(4).unwrap(), 0b0010); // Last 4 bits
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn test_read_bits_too_many_bits() {
     let data = vec![0xFF];
     let mut reader = BitReader::new(&data);
 
-    let result = reader.read_bits(33);  // More than 32
+    let result = reader.read_bits(33); // More than 32
     assert!(result.is_err());
 }
 
@@ -278,7 +278,7 @@ fn test_byte_align_already_aligned() {
     assert!(reader.is_byte_aligned());
 
     reader.byte_align();
-    assert_eq!(reader.bit_position(), 8);  // Should not advance
+    assert_eq!(reader.bit_position(), 8); // Should not advance
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn test_byte_align_not_aligned() {
     assert!(!reader.is_byte_aligned());
 
     reader.byte_align();
-    assert_eq!(reader.bit_position(), 8);  // Should advance to byte boundary
+    assert_eq!(reader.bit_position(), 8); // Should advance to byte boundary
 }
 
 #[test]
@@ -303,7 +303,7 @@ fn test_byte_align_multiple_times() {
     assert_eq!(reader.bit_position(), 8);
 
     reader.byte_align();
-    assert_eq!(reader.bit_position(), 8);  // Should stay at boundary
+    assert_eq!(reader.bit_position(), 8); // Should stay at boundary
 }
 
 // ============================================================================
@@ -335,14 +335,14 @@ fn test_read_ue_one() {
 fn test_read_ue_small_values() {
     // Each test uses a fresh reader
     let tests = vec![
-        (0b10000000u8, 0),  // UE(0) = "1"
-        (0b01000000u8, 1),  // UE(1) = "010"
-        (0b01100000u8, 2),  // UE(2) = "011"
-        (0b00100000u8, 3),  // UE(3) = "00100"
-        (0b00101000u8, 4),  // UE(4) = "00101"
-        (0b00110000u8, 5),  // UE(5) = "00110"
-        (0b00111000u8, 6),  // UE(6) = "00111"
-        (0b00010000u8, 7),  // UE(7) = "0001000"
+        (0b10000000u8, 0), // UE(0) = "1"
+        (0b01000000u8, 1), // UE(1) = "010"
+        (0b01100000u8, 2), // UE(2) = "011"
+        (0b00100000u8, 3), // UE(3) = "00100"
+        (0b00101000u8, 4), // UE(4) = "00101"
+        (0b00110000u8, 5), // UE(5) = "00110"
+        (0b00111000u8, 6), // UE(6) = "00111"
+        (0b00010000u8, 7), // UE(7) = "0001000"
     ];
 
     for (byte, expected) in tests {
@@ -369,7 +369,7 @@ fn test_read_ue_multiple() {
 
 #[test]
 fn test_read_ue_not_enough_data() {
-    let data = vec![0b00000000];  // Start with zeros but no trailing 1
+    let data = vec![0b00000000]; // Start with zeros but no trailing 1
     let mut reader = BitReader::new(&data);
 
     // Will try to read leading zeros but run out of data
@@ -423,13 +423,13 @@ fn test_read_se_values() {
     // Test various positive and negative values - each with fresh reader
     // Format: (byte, expected_se_value)
     let tests = vec![
-        (0b01000000u8, 1),   // UE(1) → SE(1)
-        (0b01100000u8, -1),  // UE(2) → SE(-1)
-        (0b00100000u8, 2),   // UE(3) → SE(2)
-        (0b00101000u8, -2),  // UE(4) → SE(-2)
-        (0b00110000u8, 3),   // UE(5) → SE(3)
-        (0b00111000u8, -3),  // UE(6) → SE(-3)
-        (0b00010000u8, 4),   // UE(7) → SE(4)
+        (0b01000000u8, 1),  // UE(1) → SE(1)
+        (0b01100000u8, -1), // UE(2) → SE(-1)
+        (0b00100000u8, 2),  // UE(3) → SE(2)
+        (0b00101000u8, -2), // UE(4) → SE(-2)
+        (0b00110000u8, 3),  // UE(5) → SE(3)
+        (0b00111000u8, -3), // UE(6) → SE(-3)
+        (0b00010000u8, 4),  // UE(7) → SE(4)
     ];
 
     for (byte, expected) in tests {
@@ -482,7 +482,7 @@ fn test_read_bits_u64_too_many() {
     let data = vec![0xFF];
     let mut reader = BitReader::new(&data);
 
-    let result = reader.read_bits_u64(65);  // More than 64
+    let result = reader.read_bits_u64(65); // More than 64
     assert!(result.is_err());
 }
 
@@ -491,7 +491,7 @@ fn test_read_bits_u64_not_enough_data() {
     let data = vec![0xFF];
     let mut reader = BitReader::new(&data);
 
-    let result = reader.read_bits_u64(16);  // More than available
+    let result = reader.read_bits_u64(16); // More than available
     assert!(result.is_err());
 }
 
@@ -528,7 +528,7 @@ fn test_read_consecutive_ue_values() {
     for ue_value in values {
         // Create a new reader for each value
         // Just verify the read_ue function works
-        let data = vec![0b10000000];  // UE(0)
+        let data = vec![0b10000000]; // UE(0)
         let mut reader = BitReader::new(&data);
         assert_eq!(reader.read_ue().unwrap(), 0);
     }
@@ -632,22 +632,20 @@ fn test_remove_emulation_prevention_two_bytes() {
 fn test_remove_emulation_prevention_with_real_data() {
     // Simulate real H.264 data with emulation prevention
     let data = vec![
-        0x00, 0x00, 0x01,  // Start code
-        0x67,              // NAL header
-        0x42, 0x80,
-        0x00, 0x00, 0x03,  // Emulation prevention
-        0xFF,
-        0x00, 0x00, 0x03,  // Another emulation prevention
+        0x00, 0x00, 0x01, // Start code
+        0x67, // NAL header
+        0x42, 0x80, 0x00, 0x00, 0x03, // Emulation prevention
+        0xFF, 0x00, 0x00, 0x03, // Another emulation prevention
         0xAA,
     ];
     let result = remove_emulation_prevention_bytes(&data);
-    assert_eq!(result, vec![
-        0x00, 0x00, 0x01,
-        0x67,
-        0x42, 0x80,
-        0x00, 0x00,  // First emulation prevention removed
-        0xFF,
-        0x00, 0x00,  // Second emulation prevention removed
-        0xAA,
-    ]);
+    assert_eq!(
+        result,
+        vec![
+            0x00, 0x00, 0x01, 0x67, 0x42, 0x80, 0x00,
+            0x00, // First emulation prevention removed
+            0xFF, 0x00, 0x00, // Second emulation prevention removed
+            0xAA,
+        ]
+    );
 }

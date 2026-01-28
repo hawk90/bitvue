@@ -18,43 +18,64 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // IA_MAIN_PANEL_CODING_FLOW - partition_grid.rs exists with 409 lines
     status.insert(
         "IA_MAIN_PANEL_CODING_FLOW".to_string(),
-        (ParityResult::Pass, "partition_grid.rs implements CTB/CU hierarchy rendering"),
+        (
+            ParityResult::Pass,
+            "partition_grid.rs implements CTB/CU hierarchy rendering",
+        ),
     );
 
     // IA_STREAM_VIEW_TIMELINE - timeline.rs + timeline_lanes.rs exist
     status.insert(
         "IA_STREAM_VIEW_TIMELINE".to_string(),
-        (ParityResult::Pass, "timeline.rs + timeline_lanes.rs implement timeline view with lanes"),
+        (
+            ParityResult::Pass,
+            "timeline.rs + timeline_lanes.rs implement timeline view with lanes",
+        ),
     );
 
     // IA_SYNTAX_TREE_PER_CODEC - types.rs has SyntaxNodeId
     status.insert(
         "IA_SYNTAX_TREE_PER_CODEC".to_string(),
-        (ParityResult::Pass, "types.rs defines SyntaxNodeId; tree structures present"),
+        (
+            ParityResult::Pass,
+            "types.rs defines SyntaxNodeId; tree structures present",
+        ),
     );
 
     // IA_SELECTION_INFO_BLOCK_DETAILS - selection.rs exists with 607 lines
     status.insert(
         "IA_SELECTION_INFO_BLOCK_DETAILS".to_string(),
-        (ParityResult::Pass, "selection.rs implements block selection with BlockInfo"),
+        (
+            ParityResult::Pass,
+            "selection.rs implements block selection with BlockInfo",
+        ),
     );
 
     // IA_HEX_VIEW_RAW_BYTES - byte_cache.rs exists
     status.insert(
         "IA_HEX_VIEW_RAW_BYTES".to_string(),
-        (ParityResult::Pass, "byte_cache.rs provides raw byte access for hex view"),
+        (
+            ParityResult::Pass,
+            "byte_cache.rs provides raw byte access for hex view",
+        ),
     );
 
     // IA_STATUS_PANEL_ERRORS - diagnostics.rs exists
     status.insert(
         "IA_STATUS_PANEL_ERRORS".to_string(),
-        (ParityResult::Pass, "diagnostics.rs implements error/warning handling"),
+        (
+            ParityResult::Pass,
+            "diagnostics.rs implements error/warning handling",
+        ),
     );
 
     // METRICS_PSNR_SSIM_GRAPH - metrics_distribution.rs exists
     status.insert(
         "METRICS_PSNR_SSIM_GRAPH".to_string(),
-        (ParityResult::Pass, "metrics_distribution.rs implements PSNR/SSIM metrics"),
+        (
+            ParityResult::Pass,
+            "metrics_distribution.rs implements PSNR/SSIM metrics",
+        ),
     );
 
     // METRICS_HRD_BUFFER_GRAPH - hrd.rs exists
@@ -66,31 +87,46 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // GLOBAL_REFERENCE_POOL - reference_graph.rs exists
     status.insert(
         "GLOBAL_REFERENCE_POOL".to_string(),
-        (ParityResult::Pass, "reference_graph.rs implements DPB/reference pool visualization"),
+        (
+            ParityResult::Pass,
+            "reference_graph.rs implements DPB/reference pool visualization",
+        ),
     );
 
     // CODEC_AV1_OBU_TREE - bitvue-av1 crate exists
     status.insert(
         "CODEC_AV1_OBU_TREE".to_string(),
-        (ParityResult::Pass, "bitvue-av1 crate implements OBU parsing"),
+        (
+            ParityResult::Pass,
+            "bitvue-av1 crate implements OBU parsing",
+        ),
     );
 
     // CODEC_HEVC_NAL_CTU - bitvue-hevc crate implemented
     status.insert(
         "CODEC_HEVC_NAL_CTU".to_string(),
-        (ParityResult::Pass, "bitvue-hevc crate implements NAL/VPS/SPS/PPS/slice parsing"),
+        (
+            ParityResult::Pass,
+            "bitvue-hevc crate implements NAL/VPS/SPS/PPS/slice parsing",
+        ),
     );
 
     // CODEC_VVC_DUAL_TREE - bitvue-vvc crate implemented
     status.insert(
         "CODEC_VVC_DUAL_TREE".to_string(),
-        (ParityResult::Pass, "bitvue-vvc crate implements NAL/SPS/PPS with dual tree, ALF, LMCS"),
+        (
+            ParityResult::Pass,
+            "bitvue-vvc crate implements NAL/SPS/PPS with dual tree, ALF, LMCS",
+        ),
     );
 
     // CODEC_VP9_SUPERFRAME - bitvue-vp9 crate implemented
     status.insert(
         "CODEC_VP9_SUPERFRAME".to_string(),
-        (ParityResult::Pass, "bitvue-vp9 crate implements superframe/frame header parsing"),
+        (
+            ParityResult::Pass,
+            "bitvue-vp9 crate implements superframe/frame header parsing",
+        ),
     );
 
     // ========== Interaction Items ==========
@@ -98,37 +134,55 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // OVERLAY_QP_HEATMAP - qp_heatmap.rs exists with 542 lines
     status.insert(
         "OVERLAY_QP_HEATMAP".to_string(),
-        (ParityResult::Pass, "qp_heatmap.rs implements QP heatmap overlay"),
+        (
+            ParityResult::Pass,
+            "qp_heatmap.rs implements QP heatmap overlay",
+        ),
     );
 
     // OVERLAY_MV_VECTORS - mv_overlay.rs exists with 634 lines
     status.insert(
         "OVERLAY_MV_VECTORS".to_string(),
-        (ParityResult::Pass, "mv_overlay.rs implements motion vector overlay"),
+        (
+            ParityResult::Pass,
+            "mv_overlay.rs implements motion vector overlay",
+        ),
     );
 
     // OVERLAY_PSNR_SSIM_HEATMAP - diff_heatmap.rs exists
     status.insert(
         "OVERLAY_PSNR_SSIM_HEATMAP".to_string(),
-        (ParityResult::Pass, "diff_heatmap.rs implements per-block quality heatmap"),
+        (
+            ParityResult::Pass,
+            "diff_heatmap.rs implements per-block quality heatmap",
+        ),
     );
 
     // OVERLAY_PU_TYPES - partition_grid.rs has type coloring
     status.insert(
         "OVERLAY_PU_TYPES".to_string(),
-        (ParityResult::Pass, "partition_grid.rs implements PU type color coding"),
+        (
+            ParityResult::Pass,
+            "partition_grid.rs implements PU type color coding",
+        ),
     );
 
     // OVERLAY_EFFICIENCY_MAP - block_metrics.rs exists
     status.insert(
         "OVERLAY_EFFICIENCY_MAP".to_string(),
-        (ParityResult::Pass, "block_metrics.rs implements efficiency metrics"),
+        (
+            ParityResult::Pass,
+            "block_metrics.rs implements efficiency metrics",
+        ),
     );
 
     // OVERLAY_REFERENCE_INDICES - reference_graph.rs exists
     status.insert(
         "OVERLAY_REFERENCE_INDICES".to_string(),
-        (ParityResult::Pass, "reference_graph.rs implements reference index tracking"),
+        (
+            ParityResult::Pass,
+            "reference_graph.rs implements reference index tracking",
+        ),
     );
 
     // GLOBAL_YUV_DEBUG - player/mod.rs exists
@@ -140,7 +194,10 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // INTERACTION_CONTEXT_MENUS - export.rs has context menu code
     status.insert(
         "INTERACTION_CONTEXT_MENUS".to_string(),
-        (ParityResult::Pass, "export.rs implements context menus with guards"),
+        (
+            ParityResult::Pass,
+            "export.rs implements context menus with guards",
+        ),
     );
 
     // ========== Contract Items ==========
@@ -148,25 +205,37 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // GLOBAL_DUAL_VIEW_COMPARE - compare.rs exists
     status.insert(
         "GLOBAL_DUAL_VIEW_COMPARE".to_string(),
-        (ParityResult::Pass, "compare.rs implements dual view comparison"),
+        (
+            ParityResult::Pass,
+            "compare.rs implements dual view comparison",
+        ),
     );
 
     // GLOBAL_FIND_FIRST_DIFF - compare.rs + diff_heatmap.rs
     status.insert(
         "GLOBAL_FIND_FIRST_DIFF".to_string(),
-        (ParityResult::Pass, "compare.rs + diff_heatmap.rs implement difference detection"),
+        (
+            ParityResult::Pass,
+            "compare.rs + diff_heatmap.rs implement difference detection",
+        ),
     );
 
     // CONTRACT_TRISYNC_PROPAGATION - selection.rs + event.rs
     status.insert(
         "CONTRACT_TRISYNC_PROPAGATION".to_string(),
-        (ParityResult::Pass, "selection.rs + event.rs implement tri-sync propagation"),
+        (
+            ParityResult::Pass,
+            "selection.rs + event.rs implement tri-sync propagation",
+        ),
     );
 
     // CONTRACT_DISPLAY_DECODE_ORDER - frame_identity.rs exists
     status.insert(
         "CONTRACT_DISPLAY_DECODE_ORDER".to_string(),
-        (ParityResult::Pass, "frame_identity.rs enforces display/decode order separation"),
+        (
+            ParityResult::Pass,
+            "frame_identity.rs enforces display/decode order separation",
+        ),
     );
 
     // ========== Evidence Items ==========
@@ -174,7 +243,10 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // EVIDENCE_BUNDLE_EXPORT - export.rs has EvidenceBundleManifest
     status.insert(
         "EVIDENCE_BUNDLE_EXPORT".to_string(),
-        (ParityResult::Pass, "export.rs implements evidence bundle export"),
+        (
+            ParityResult::Pass,
+            "export.rs implements evidence bundle export",
+        ),
     );
 
     // ========== Performance Items ==========
@@ -182,13 +254,19 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // PERF_FRAME_TIME_BUDGET - performance.rs exists
     status.insert(
         "PERF_FRAME_TIME_BUDGET".to_string(),
-        (ParityResult::Pass, "performance.rs implements frame budget tracking"),
+        (
+            ParityResult::Pass,
+            "performance.rs implements frame budget tracking",
+        ),
     );
 
     // PERF_HIT_TEST_LATENCY - performance.rs exists
     status.insert(
         "PERF_HIT_TEST_LATENCY".to_string(),
-        (ParityResult::Pass, "performance.rs implements latency monitoring"),
+        (
+            ParityResult::Pass,
+            "performance.rs implements latency monitoring",
+        ),
     );
 
     // ========== FailureUX Items ==========
@@ -196,13 +274,19 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // FAILURE_GRACEFUL_DEGRADE - diagnostics.rs exists
     status.insert(
         "FAILURE_GRACEFUL_DEGRADE".to_string(),
-        (ParityResult::Pass, "diagnostics.rs implements graceful degradation"),
+        (
+            ParityResult::Pass,
+            "diagnostics.rs implements graceful degradation",
+        ),
     );
 
     // FAILURE_ERROR_RECOVERY - error.rs + diagnostics.rs
     status.insert(
         "FAILURE_ERROR_RECOVERY".to_string(),
-        (ParityResult::Pass, "error.rs + diagnostics.rs implement error recovery"),
+        (
+            ParityResult::Pass,
+            "error.rs + diagnostics.rs implement error recovery",
+        ),
     );
 
     // ========== Accessibility Items ==========
@@ -210,7 +294,10 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
     // ACCESSIBILITY_KEYBOARD_NAV - command.rs exists
     status.insert(
         "ACCESSIBILITY_KEYBOARD_NAV".to_string(),
-        (ParityResult::Pass, "command.rs implements keyboard command handling"),
+        (
+            ParityResult::Pass,
+            "command.rs implements keyboard command handling",
+        ),
     );
 
     status
@@ -219,7 +306,11 @@ fn assess_implementation_status() -> HashMap<String, (ParityResult, &'static str
 #[test]
 fn test_baseline_parity_evaluation() {
     let (matrix, validation) = get_full_parity_matrix().unwrap();
-    assert!(validation.valid, "Matrix validation failed: {:?}", validation.errors);
+    assert!(
+        validation.valid,
+        "Matrix validation failed: {:?}",
+        validation.errors
+    );
 
     let config = ParityHarnessConfig {
         matrix,
@@ -246,16 +337,39 @@ fn test_baseline_parity_evaluation() {
     println!("╔══════════════════════════════════════════════════════════════════╗");
     println!("║               BITVUE PARITY BASELINE EVALUATION                  ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
-    println!("║  Generated: {}                           ║", chrono::Utc::now().format("%Y-%m-%d %H:%M UTC"));
+    println!(
+        "║  Generated: {}                           ║",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M UTC")
+    );
     println!("║  Matrix Version: v14                                             ║");
     println!("║  Total Items: 31                                                 ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
     println!("║                         SUMMARY                                  ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
-    println!("║  Overall Score:     {:>5.1}%                                      ║", score.percentage);
-    println!("║  Parity Ready:      {}                                         ║", if score.parity_ready { "✅ Yes" } else { "❌ No " });
-    println!("║  Gates Passed:      {}                                         ║", if gates.overall_passed { "✅ Yes" } else { "❌ No " });
-    println!("║  Hard Fails:        {:>3}                                          ║", score.hard_fails.len());
+    println!(
+        "║  Overall Score:     {:>5.1}%                                      ║",
+        score.percentage
+    );
+    println!(
+        "║  Parity Ready:      {}                                         ║",
+        if score.parity_ready {
+            "✅ Yes"
+        } else {
+            "❌ No "
+        }
+    );
+    println!(
+        "║  Gates Passed:      {}                                         ║",
+        if gates.overall_passed {
+            "✅ Yes"
+        } else {
+            "❌ No "
+        }
+    );
+    println!(
+        "║  Hard Fails:        {:>3}                                          ║",
+        score.hard_fails.len()
+    );
     println!("╠══════════════════════════════════════════════════════════════════╣");
 
     // Count results
@@ -271,9 +385,18 @@ fn test_baseline_parity_evaluation() {
         }
     }
 
-    println!("║  Pass:              {:>3}                                          ║", pass_count);
-    println!("║  Fail:              {:>3}                                          ║", fail_count);
-    println!("║  Not Tested:        {:>3}                                          ║", not_tested);
+    println!(
+        "║  Pass:              {:>3}                                          ║",
+        pass_count
+    );
+    println!(
+        "║  Fail:              {:>3}                                          ║",
+        fail_count
+    );
+    println!(
+        "║  Not Tested:        {:>3}                                          ║",
+        not_tested
+    );
     println!("╠══════════════════════════════════════════════════════════════════╣");
     println!("║                    CATEGORY BREAKDOWN                            ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
@@ -307,7 +430,10 @@ fn test_baseline_parity_evaluation() {
             ParityResult::NotTested => "⬜",
             _ => "❓",
         };
-        println!("║  {} {}                                              ║", icon, item_id);
+        println!(
+            "║  {} {}                                              ║",
+            icon, item_id
+        );
         println!("║     └─ {}  ║", reason);
     }
 
@@ -316,7 +442,10 @@ fn test_baseline_parity_evaluation() {
         println!("║                     HARD FAILS (P0)                              ║");
         println!("╠══════════════════════════════════════════════════════════════════╣");
         for fail in &score.hard_fails {
-            println!("║  ❌ {}                                              ║", fail);
+            println!(
+                "║  ❌ {}                                              ║",
+                fail
+            );
         }
     }
 

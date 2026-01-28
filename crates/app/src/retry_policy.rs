@@ -77,10 +77,7 @@ impl RetryPolicy {
                 Err(err) => {
                     attempts += 1;
                     if attempts > self.max_attempts {
-                        tracing::warn!(
-                            "Operation failed after {} attempts",
-                            self.max_attempts
-                        );
+                        tracing::warn!("Operation failed after {} attempts", self.max_attempts);
                         return Err(err);
                     }
 
@@ -121,10 +118,7 @@ impl RetryPolicy {
                 Err(err) => {
                     attempts += 1;
                     if attempts > self.max_attempts {
-                        tracing::warn!(
-                            "Operation failed after {} attempts",
-                            self.max_attempts
-                        );
+                        tracing::warn!("Operation failed after {} attempts", self.max_attempts);
                         return Err(err);
                     }
 

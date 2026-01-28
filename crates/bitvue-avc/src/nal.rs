@@ -109,7 +109,10 @@ impl NalUnitType {
     pub fn is_parameter_set(&self) -> bool {
         matches!(
             self,
-            NalUnitType::Sps | NalUnitType::Pps | NalUnitType::SpsExtension | NalUnitType::SubsetSps
+            NalUnitType::Sps
+                | NalUnitType::Pps
+                | NalUnitType::SpsExtension
+                | NalUnitType::SubsetSps
         )
     }
 
