@@ -7,7 +7,7 @@
  * - Synchronizes: Syntax Tree ↔ Hex View ↔ Main Panel ↔ Timeline
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Selection Types
@@ -118,6 +118,17 @@ interface SelectionProviderProps {
 export function SelectionProvider({ children }: SelectionProviderProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [listeners] = useState<Set<(event: SelectionChangeEvent) => void>>(new Set());
+  // Keep track of all listener subscriptions for cleanup on unmount
+  const unsubscribeFunctionsRef = useRef<Array<() => void>>([]);
+
+  // Cleanup all listeners when provider unmounts
+  useEffect(() => {
+    return () => {
+      // Call all unsubscribe functions to prevent memory leaks
+      unsubscribeFunctionsRef.current.forEach(unsubscribe => unsubscribe());
+      unsubscribeFunctionsRef.current = [];
+    };
+  }, []);
 
   const notifyListeners = useCallback((newSelection: SelectionState) => {
     const event: SelectionChangeEvent = {
@@ -235,9 +246,12 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
 
   const subscribe = useCallback((callback: (event: SelectionChangeEvent) => void) => {
     listeners.add(callback);
-    return () => {
+    const unsubscribe = () => {
       listeners.delete(callback);
     };
+    // Track unsubscribe function for cleanup on unmount
+    unsubscribeFunctionsRef.current.push(unsubscribe);
+    return unsubscribe;
   }, [listeners]);
 
   const value: SelectionContextType = {

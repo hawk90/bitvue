@@ -11,6 +11,9 @@ import { renderModeOverlay } from '../OverlayRenderer';
 import type { VisualizationMode } from '../../../contexts/ModeContext';
 import type { FrameInfo } from '../../../types/video';
 import { YUVRenderer, type YUVFrame, Colorspace } from '../../../utils/yuvRenderer';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('VideoCanvas');
 
 interface VideoCanvasProps {
   frameImage: HTMLImageElement | null;
@@ -51,6 +54,11 @@ export const VideoCanvas = memo(function VideoCanvas({
     transformOrigin: 'top left' as const,
   }), [zoom, pan.x, pan.y]);
 
+  // Memoize container cursor style
+  const containerStyle = useMemo(() => ({
+    cursor: isDragging ? 'grabbing' : 'grab',
+  }), [isDragging]);
+
   // Initialize YUV renderer
   useEffect(() => {
     if (canvasRef.current) {
@@ -64,7 +72,10 @@ export const VideoCanvas = memo(function VideoCanvas({
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      logger.warn('Failed to get 2D context from canvas element');
+      return;
+    }
 
     // Determine render mode: YUV or Image
     const useYUV = yuvData && yuvData.y.length > 0;
@@ -111,7 +122,7 @@ export const VideoCanvas = memo(function VideoCanvas({
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
-      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      style={containerStyle}
     >
       <canvas
         ref={canvasRef}

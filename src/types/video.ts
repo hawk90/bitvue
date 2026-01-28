@@ -23,6 +23,7 @@ export interface FileInfo {
   level?: string;
   bitDepth?: number;
   chromaFormat?: string;
+  fileSize?: number;
 }
 
 /**
@@ -39,6 +40,52 @@ export interface FileOpenedEvent {
   success: boolean;
   path?: string;
   error?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Stream information returned by get_stream_info command
+ */
+export interface StreamInfo {
+  frameCount: number;
+  fileSize: number;
+  codec?: string;
+  width?: number;
+  height?: number;
+  fps?: number;
+  duration?: number;
+}
+
+/**
+ * Thumbnail result returned by get_thumbnails command
+ */
+export interface ThumbnailResult {
+  success: boolean;
+  frame_index: number;
+  thumbnail_data?: string;
+  error?: string;
+}
+
+/**
+ * Unit tree node for export
+ * Represents a single unit in the bitstream syntax tree
+ */
+export interface UnitTreeNode {
+  key: string;
+  unit_type: string;
+  offset: number;
+  size: number;
+  children: UnitTreeNode[];
+}
+
+/**
+ * Syntax tree node for export
+ * Represents a node in the syntax tree hierarchy
+ */
+export interface SyntaxNode {
+  type: string;
+  name?: string;
+  children?: SyntaxNode[];
   [key: string]: unknown;
 }
 

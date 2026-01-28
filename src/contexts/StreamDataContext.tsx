@@ -105,7 +105,7 @@ export function StreamDataProvider({ children }: { children: ReactNode }) {
       logger.info('refreshFrames: Result length:', result?.length || 0);
       setFrames(result || []);
     } catch (err) {
-      const errorMsg = err as string;
+      const errorMsg = err instanceof Error ? err.message : String(err);
       setError(errorMsg);
       logger.error('Failed to load frames:', errorMsg);
     } finally {

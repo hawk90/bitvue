@@ -8,6 +8,7 @@
 import { createContext, useContext, useState, useCallback, ReactNode, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '../utils/logger';
+import { processThumbnailResults } from '../utils/thumbnailUtils';
 
 const logger = createLogger('ThumbnailContext');
 
@@ -71,16 +72,13 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
         frameIndices: indicesToLoad
       });
 
-      // Process results
+      // Process results using shared utility
+      const processed = processThumbnailResults(results);
+
+      // Update thumbnails map
       const newThumbnails = new Map(thumbnailsRef.current);
-      results.forEach((result) => {
-        if (result.success && result.thumbnail_data) {
-          const isSvg = result.thumbnail_data.startsWith('<svg');
-          const dataUrl = isSvg
-            ? `data:image/svg+xml;base64,${result.thumbnail_data}`
-            : `data:image/png;base64,${result.thumbnail_data}`;
-          newThumbnails.set(result.frame_index, dataUrl);
-        }
+      processed.forEach((dataUrl, frameIndex) => {
+        newThumbnails.set(frameIndex, dataUrl);
       });
 
       setThumbnails(newThumbnails);

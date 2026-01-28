@@ -7,6 +7,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from './logger';
+import { processThumbnailResults } from './thumbnailUtils';
+import type { FrameInfo, StreamInfo, ThumbnailResult } from '../types/video';
 
 const logger = createLogger('progressiveLoader');
 
@@ -74,14 +76,14 @@ export class ProgressiveFileLoader {
   async loadFrames(
     filePath: string,
     options?: ProgressiveLoadOptions
-  ): Promise<any[]> {
+  ): Promise<FrameInfo[]> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
     const onProgress = options?.onProgress;
 
     try {
       // First, get file info to determine total size
-      const fileInfo = await invoke<any>('get_stream_info', { path: filePath });
+      const fileInfo = await invoke<StreamInfo>('get_stream_info', { path: filePath });
       const totalFrames = fileInfo.frameCount || 0;
       const totalBytes = fileInfo.fileSize || 0;
 
@@ -104,7 +106,7 @@ export class ProgressiveFileLoader {
       });
 
       // Load frames in chunks
-      const frames: any[] = [];
+      const frames: FrameInfo[] = [];
       let loadedFrames = 0;
 
       while (loadedFrames < totalFrames) {
@@ -119,11 +121,16 @@ export class ProgressiveFileLoader {
         const chunkStart = loadedFrames;
         const chunkEnd = loadedFrames + framesToLoad;
 
-        const chunkFrames = await invoke<any[]>('get_frames', {
+        const chunkFrames = await invoke<FrameInfo[]>('get_frames', {
           path: filePath,
           startIndex: chunkStart,
           endIndex: chunkEnd,
         });
+
+        // Check for cancellation after async operation
+        if (signal.aborted) {
+          throw new Error('Load cancelled');
+        }
 
         frames.push(...chunkFrames);
         loadedFrames += chunkFrames.length;
@@ -185,18 +192,19 @@ export class ProgressiveFileLoader {
 
       const chunk = frameIndices.slice(i, i + chunkSize);
 
-      const results = await invoke<any[]>('get_thumbnails', {
+      const results = await invoke<ThumbnailResult[]>('get_thumbnails', {
         path: filePath,
         frameIndices: chunk,
       });
 
-      for (const result of results) {
-        if (result.success && result.thumbnail_data) {
-          const dataUrl = `data:image/png;base64,${result.thumbnail_data}`;
-          thumbnails.set(result.frame_index, dataUrl);
-        }
-        loadedFrames++;
-      }
+      // Process thumbnail results using shared utility
+      const processed = processThumbnailResults(results);
+      processed.forEach((dataUrl, frameIndex) => {
+        thumbnails.set(frameIndex, dataUrl);
+      });
+
+      // Count successful loads
+      loadedFrames += results.filter(r => r.success).length;
 
       // Report progress
       onProgress?.({
@@ -255,7 +263,7 @@ export function createProgressiveLoader(options?: ProgressiveLoadOptions): Progr
 export async function loadFramesProgressive(
   filePath: string,
   onProgress?: ProgressCallback
-): Promise<any[]> {
+): Promise<FrameInfo[]> {
   const loader = new ProgressiveFileLoader({ onProgress });
   return loader.loadFrames(filePath);
 }

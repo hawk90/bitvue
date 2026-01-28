@@ -4,7 +4,7 @@
  * Export frame data to CSV or JSON format
  */
 
-import type { FrameInfo } from '../types/video';
+import type { FrameInfo, UnitTreeNode, SyntaxNode } from '../types/video';
 
 /**
  * Convert frames to CSV format
@@ -194,14 +194,14 @@ export function exportFrameSizes(frames: FrameInfo[]): string {
 /**
  * Export unit tree as JSON
  */
-export function exportUnitTree(tree: any[]): string {
+export function exportUnitTree(tree: UnitTreeNode[]): string {
   return JSON.stringify(tree, null, 2);
 }
 
 /**
  * Export syntax tree as JSON
  */
-export function exportSyntaxTree(tree: any): string {
+export function exportSyntaxTree(tree: SyntaxNode): string {
   return JSON.stringify(tree, null, 2);
 }
 

@@ -9,6 +9,68 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+/// Validate output path to prevent path traversal and ensure safe file operations
+fn validate_output_path(path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path);
+
+    // Check for path traversal attempts (.. components)
+    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("Invalid path: path traversal (..) not allowed".to_string());
+    }
+
+    // Check if the path has a valid extension (prevents writing to system files)
+    let extension = path.extension()
+        .and_then(|e| e.to_str())
+        .ok_or("Invalid path: missing file extension")?;
+
+    // Only allow specific file extensions
+    let allowed_extensions = ["csv", "json", "txt", "md"];
+    if !allowed_extensions.contains(&extension.to_lowercase().as_str()) {
+        return Err(format!("Invalid path: extension '{}' not allowed. Allowed: {:?}", extension, allowed_extensions));
+    }
+
+    // Block system directories on different platforms
+    if cfg!(target_os = "windows") {
+        // Windows: Block C:\Windows, C:\Program Files, etc.
+        if let Some(component) = path.components().next() {
+            if let std::path::Component::Prefix(prefix) = component {
+                if let Some(path_str) = path.as_os_str().to_str() {
+                    let path_lower = path_str.to_lowercase();
+                    if path_lower.starts_with("c:\\windows")
+                        || path_lower.starts_with("c:\\program files")
+                        || path_lower.starts_with("c:\\program files (x86)")
+                        || path_lower.starts_with("c:\\programdata") {
+                        return Err("Invalid path: cannot write to system directories".to_string());
+                    }
+                }
+            }
+        }
+    } else {
+        // Unix-like: Block /System, /usr, /bin, /sbin, /etc, /var, /boot, /lib, /root
+        if path.is_absolute() {
+            let path_str = path.to_string_lossy();
+            let blocked_paths = [
+                "/System", "/usr", "/bin", "/sbin", "/etc", "/var",
+                "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"
+            ];
+            for blocked in &blocked_paths {
+                if path_str.starts_with(blocked) {
+                    return Err(format!("Invalid path: cannot write to system directory ({})", blocked));
+                }
+            }
+        }
+    }
+
+    // Check if the parent directory exists
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            return Err(format!("Invalid path: parent directory does not exist: {:?}", parent));
+        }
+    }
+
+    Ok(path)
+}
+
 /// Export frame data to CSV format
 #[tauri::command]
 pub async fn export_frames_csv(
@@ -17,13 +79,14 @@ pub async fn export_frames_csv(
 ) -> Result<String, String> {
     log::info!("export_frames_csv: Exporting to {}", output_path);
 
+    // Validate output path for security
+    let path = validate_output_path(&output_path)?;
+
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a = core.get_stream(StreamId::A);
     let stream_a = stream_a.read();
 
     let units = stream_a.units.as_ref().ok_or("No data loaded")?;
-
-    let path = PathBuf::from(&output_path);
     let mut file = File::create(&path)
         .map_err(|e| format!("Failed to create file: {}", e))?;
 
@@ -74,6 +137,9 @@ pub async fn export_frames_json(
 ) -> Result<String, String> {
     log::info!("export_frames_json: Exporting to {}", output_path);
 
+    // Validate output path for security
+    let path = validate_output_path(&output_path)?;
+
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a = core.get_stream(StreamId::A);
     let stream_a = stream_a.read();
@@ -101,7 +167,6 @@ pub async fn export_frames_json(
         "file_path": stream_a.file_path,
     });
 
-    let path = PathBuf::from(&output_path);
     let mut file = File::create(&path)
         .map_err(|e| format!("Failed to create file: {}", e))?;
 
@@ -122,13 +187,15 @@ pub async fn export_analysis_report(
 ) -> Result<String, String> {
     log::info!("export_analysis_report: Exporting to {}", output_path);
 
+    // Validate output path for security
+    let path = validate_output_path(&output_path)?;
+
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a = core.get_stream(StreamId::A);
     let stream_a = stream_a.read();
 
     let units = stream_a.units.as_ref().ok_or("No data loaded")?;
 
-    let path = PathBuf::from(&output_path);
     let mut file = File::create(&path)
         .map_err(|e| format!("Failed to create file: {}", e))?;
 

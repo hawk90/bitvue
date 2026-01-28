@@ -29,6 +29,7 @@ export const FILMSTRIP = {
   DEFAULT_HEIGHT: 140,
   SCROLL_THRESHOLD: 0.8,
   INTERSECTION_ROOT_MARGIN: '200px',
+  VIRTUAL_DEFAULT_OVERSCAN: 5,  // Number of extra items to render outside viewport
 } as const;
 
 export const FILMSTRIP_EMPTY_HEIGHT = 140;

@@ -19,6 +19,7 @@ import { useMode } from '../../../contexts/ModeContext';
 import { useStreamData } from '../../../contexts/StreamDataContext';
 import { createLogger } from '../../../utils/logger';
 import { useCanvasInteraction } from '../../../hooks/useCanvasInteraction';
+import { ZOOM, TIMING } from '../../../constants/ui';
 import { VideoCanvas } from './VideoCanvas';
 import { YUVFrame } from '../../../utils/yuvRenderer';
 import { FrameNavigationControls } from './FrameNavigationControls';
@@ -86,9 +87,9 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
   // Canvas interaction (zoom, pan, drag)
   const { zoom, pan, isDragging, zoomIn, zoomOut, resetZoom, handlers: canvasHandlers } = useCanvasInteraction({
-    minZoom: 0.25,
-    maxZoom: 4,
-    zoomStep: 0.25,
+    minZoom: ZOOM.MIN,
+    maxZoom: ZOOM.MAX,
+    zoomStep: ZOOM.STEP,
     requireModifierKey: true,
   });
 
@@ -214,7 +215,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       return;
     }
 
-    const interval = 1000 / playbackSpeed;
+    const interval = TIMING.AUTO_PLAY_INTERVAL / playbackSpeed;
     playbackTimerRef.current = setTimeout(() => {
       if (currentFrameIndex < totalFrames - 1) {
         onFrameChange(currentFrameIndex + 1);

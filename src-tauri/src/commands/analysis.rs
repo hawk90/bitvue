@@ -59,6 +59,107 @@ impl VideoCodec {
 /// - VP9: Uses bitvue-vp9 overlay extraction
 /// - VVC: Uses bitvue-vvc overlay extraction
 /// - AV3: Uses bitvue-av3 overlay extraction
+
+/// Helper: Load file data and detect codec
+///
+/// Extracts file path, loads cached file data, and detects codec type.
+/// Reduces nesting in get_frame_analysis.
+async fn load_file_data_and_codec(
+    state: &tauri::State<'_, AppState>,
+) -> Result<(Vec<u8>, String), String> {
+    let core = state.core.lock().map_err(|e| {
+        log::error!("get_frame_analysis: Failed to lock core: {}", e);
+        e.to_string()
+    })?;
+
+    let stream_a_lock = core.get_stream(StreamId::A);
+    let stream_a = stream_a_lock.read();
+    let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
+    let file_path_str = file_path.to_str().ok_or("Invalid file path")?;
+
+    log::info!("get_frame_analysis: File path: {}", file_path_str);
+    log::info!("get_frame_analysis: Stream A loaded: {} units",
+        stream_a.units.as_ref().map_or(0, |u| u.units.len()));
+
+    // Use cached file data from decode_service to avoid repeated disk reads
+    let file_data = state.decode_service.lock()
+        .map_err(|e| e.to_string())?
+        .get_file_data()?;
+
+    log::info!("get_frame_analysis: File data size: {} bytes (from cache)", file_data.len());
+
+    // Detect codec from file extension or stream metadata
+    let codec = detect_codec_from_path(file_path_str);
+    log::info!("get_frame_analysis: Detected codec: {}", codec);
+
+    Ok((file_data, codec))
+}
+
+/// Helper: Extract frame analysis based on codec type
+///
+/// Matches codec type and calls appropriate extraction function.
+/// Falls back to trying multiple codecs for unknown types.
+fn extract_analysis_by_codec(
+    file_data: &[u8],
+    frame_index: usize,
+    core: &bitvue_core::Core,
+    codec: &str,
+) -> Result<FrameAnalysisData, String> {
+    let video_codec = VideoCodec::from_str(codec);
+
+    match video_codec {
+        VideoCodec::AV1 => extract_av1_analysis(file_data, frame_index, core),
+        VideoCodec::AVC => extract_avc_analysis(file_data, frame_index, core),
+        VideoCodec::HEVC => extract_hevc_analysis(file_data, frame_index, core),
+        VideoCodec::VP9 => extract_vp9_analysis(file_data, frame_index, core),
+        VideoCodec::VVC => extract_vvc_analysis(file_data, frame_index, core),
+        VideoCodec::AV3 => extract_av3_analysis(file_data, frame_index, core),
+        VideoCodec::Unknown => {
+            // Try codecs in order of likelihood
+            log::warn!("get_frame_analysis: Unknown codec, trying AV1");
+            extract_av1_analysis(file_data, frame_index, core)
+                .or_else(|_| {
+                    log::warn!("get_frame_analysis: AV1 failed, trying AVC");
+                    extract_avc_analysis(file_data, frame_index, core)
+                })
+                .or_else(|_| {
+                    log::warn!("get_frame_analysis: AVC failed, trying HEVC");
+                    extract_hevc_analysis(file_data, frame_index, core)
+                })
+                .or_else(|_| {
+                    log::warn!("get_frame_analysis: HEVC failed, trying VP9");
+                    extract_vp9_analysis(file_data, frame_index, core)
+                })
+                .or_else(|_| {
+                    log::warn!("get_frame_analysis: VP9 failed, trying VVC");
+                    extract_vvc_analysis(file_data, frame_index, core)
+                })
+        }
+    }
+}
+
+/// Helper: Log analysis result
+///
+/// Logs analysis success/failure and extracted grid data.
+/// Separates logging concerns from main function logic.
+fn log_analysis_result(result: &Result<FrameAnalysisData, String>) {
+    match result {
+        Ok(analysis) => {
+            log::info!("get_frame_analysis: === Analysis successful ===");
+            log::info!("get_frame_analysis: Frame size: {}x{}", analysis.width, analysis.height);
+            log::info!("get_frame_analysis: QP grid: {}",
+                if analysis.qp_grid.is_some() { "present" } else { "none" });
+            log::info!("get_frame_analysis: MV grid: {}",
+                if analysis.mv_grid.is_some() { "present" } else { "none" });
+            log::info!("get_frame_analysis: Partition grid: {}",
+                if analysis.partition_grid.is_some() { "present" } else { "none" });
+        }
+        Err(e) => {
+            log::error!("get_frame_analysis: === Analysis failed: {} ===", e);
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn get_frame_analysis(
     state: tauri::State<'_, AppState>,
@@ -67,71 +168,16 @@ pub async fn get_frame_analysis(
     log::info!("get_frame_analysis: === Starting frame analysis request ===");
     log::info!("get_frame_analysis: Frame index: {}", frame_index);
 
-    // Get file path and frame data
-    let core = state.core.lock().map_err(|e| {
-        log::error!("get_frame_analysis: Failed to lock core: {}", e);
-        e.to_string()
-    })?;
-    let stream_a_lock = core.get_stream(StreamId::A);
-    let stream_a = stream_a_lock.read();
-    let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
-    let file_path_str = file_path.to_str().ok_or("Invalid file path")?;
+    // Load file data and detect codec
+    let (file_data, codec) = load_file_data_and_codec(&state).await?;
 
-    log::info!("get_frame_analysis: File path: {}", file_path_str);
-    log::info!("get_frame_analysis: Stream A loaded: {} units", stream_a.units.as_ref().map_or(0, |u| u.units.len()));
-
-    // Detect codec from file extension or stream metadata
-    let codec = detect_codec_from_path(file_path_str);
-    log::info!("get_frame_analysis: Detected codec: {}", codec);
-    log::info!("get_frame_analysis: Codec type: {}", codec);
-
-    // Get frame data based on codec type
+    // Extract analysis based on codec type
     log::info!("get_frame_analysis: Selecting extraction function for codec: {}", codec);
-    let result = match VideoCodec::from_str(&codec) {
-        VideoCodec::AV1 => extract_av1_analysis(file_path_str, frame_index, &core),
-        VideoCodec::AVC => extract_avc_analysis(file_path_str, frame_index, &core),
-        VideoCodec::HEVC => extract_hevc_analysis(file_path_str, frame_index, &core),
-        VideoCodec::VP9 => extract_vp9_analysis(file_path_str, frame_index, &core),
-        VideoCodec::VVC => extract_vvc_analysis(file_path_str, frame_index, &core),
-        VideoCodec::AV3 => extract_av3_analysis(file_path_str, frame_index, &core),
-        VideoCodec::Unknown => {
-            // Try codecs in order of likelihood
-            log::warn!("get_frame_analysis: Unknown codec, trying AV1");
-            extract_av1_analysis(file_path_str, frame_index, &core)
-                .or_else(|_| {
-                    log::warn!("get_frame_analysis: AV1 failed, trying AVC");
-                    extract_avc_analysis(file_path_str, frame_index, &core)
-                })
-                .or_else(|_| {
-                    log::warn!("get_frame_analysis: AVC failed, trying HEVC");
-                    extract_hevc_analysis(file_path_str, frame_index, &core)
-                })
-                .or_else(|_| {
-                    log::warn!("get_frame_analysis: HEVC failed, trying VP9");
-                    extract_vp9_analysis(file_path_str, frame_index, &core)
-                })
-                .or_else(|_| {
-                    log::warn!("get_frame_analysis: VP9 failed, trying VVC");
-                    extract_vvc_analysis(file_path_str, frame_index, &core)
-                })
-        }
-    };
+    let core = state.core.lock().map_err(|e| e.to_string())?;
+    let result = extract_analysis_by_codec(&file_data, frame_index, &core, &codec);
 
-    drop(stream_a);
-    drop(core);
-
-    match &result {
-        Ok(analysis) => {
-            log::info!("get_frame_analysis: === Analysis successful ===");
-            log::info!("get_frame_analysis: Frame size: {}x{}", analysis.width, analysis.height);
-            log::info!("get_frame_analysis: QP grid: {}", if analysis.qp_grid.is_some() { "present" } else { "none" });
-            log::info!("get_frame_analysis: MV grid: {}", if analysis.mv_grid.is_some() { "present" } else { "none" });
-            log::info!("get_frame_analysis: Partition grid: {}", if analysis.partition_grid.is_some() { "present" } else { "none" });
-        }
-        Err(e) => {
-            log::error!("get_frame_analysis: === Analysis failed: {} ===", e);
-        }
-    }
+    // Log analysis result
+    log_analysis_result(&result);
 
     result
 }
@@ -144,8 +190,8 @@ fn detect_codec_from_path(path: &str) -> String {
         .and_then(|ext| match ext.to_lowercase().as_str() {
             "ivf" => Some("av1".to_string()),
             "webm" => Some("vp9".to_string()),
-            "mkv" => Some("hevc".to_string()), // Could be AV1, VP9, HEVC, VVC
-            "mp4" | "mov" => Some("vvc".to_string()), // Could be AVC, HEVC, VVC, AV1, AV3
+            "mkv" => None, // Could be AV1, VP9, HEVC, VVC - detect from content
+            "mp4" | "mov" => None, // Could be AVC, HEVC, VVC, AV1, AV3 - detect from content
             "h264" | "264" | "avc" => Some("avc".to_string()),
             "h265" | "265" | "hevc" => Some("hevc".to_string()),
             "h266" | "266" | "vvc" => Some("vvc".to_string()),
@@ -161,49 +207,59 @@ fn detect_codec_from_path(path: &str) -> String {
 }
 
 /// Detect codec from file content (magic bytes)
+/// SECURITY: Validates path before reading to prevent path traversal
 fn detect_codec_from_content(path: &str) -> String {
-    if let Ok(data) = std::fs::read(path) {
-        // Check magic bytes
-        if data.len() >= 4 {
-            let magic = &data[0..4];
-            if magic == b"DKIF" {
-                // IVF container - check codec tag
-                if data.len() >= 32 {
-                    let codec_tag = &data[4..8];
-                    if codec_tag == b"AV01" {
-                        return "av1".to_string();
-                    } else if codec_tag == b"VP90" {
-                        return "vp9".to_string();
-                    } else if codec_tag == b"AV03" {
-                        return "av3".to_string(); // AV3 in IVF
-                    }
+    // Validate path before reading to prevent security issues
+    if let Ok(validated_path) = super::file::validate_file_path(path) {
+        if let Ok(data) = std::fs::read(&validated_path) {
+            return detect_codec_from_data(&data);
+        }
+    }
+    "unknown".to_string()
+}
+
+/// Detect codec from byte data (magic bytes)
+fn detect_codec_from_data(data: &[u8]) -> String {
+    // Check magic bytes
+    if data.len() >= 4 {
+        let magic = &data[0..4];
+        if magic == b"DKIF" {
+            // IVF container - check codec tag
+            if data.len() >= 32 {
+                let codec_tag = &data[4..8];
+                if codec_tag == b"AV01" {
+                    return "av1".to_string();
+                } else if codec_tag == b"VP90" {
+                    return "vp9".to_string();
+                } else if codec_tag == b"AV03" {
+                    return "av3".to_string(); // AV3 in IVF
                 }
-                return "av1".to_string(); // Default IVF to AV1
-            } else if magic == [0x1A, 0x45, 0xDF, 0xA3] {
-                // EBML header - MKV/WebM
-                // Could be AV1, VP9, HEVC, VVC, or AVC
-                // For WebM, default to VP9
-                // For MKV, try to detect by scanning for codec signatures
-                return "vp9".to_string(); // Default to VP9 for WebM
-            } else if data.len() >= 8 {
-                let box_type = &data[4..8];
-                if box_type == b"ftyp" {
-                    // MP4/MOV - could be AVC, HEVC, VVC, AV1, or AV3
-                    // Try to detect by scanning for codec fourcc
-                    let data_str = String::from_utf8_lossy(&data);
-                    if data_str.contains("vvc1") || data_str.contains("vvi1") {
-                        return "vvc".to_string();
-                    } else if data_str.contains("hvc1") || data_str.contains("hev1") {
-                        return "hevc".to_string();
-                    } else if data_str.contains("avc1") || data_str.contains("avc3") {
-                        return "avc".to_string();
-                    } else if data_str.contains("av01") {
-                        return "av1".to_string();
-                    } else if data_str.contains("av03") {
-                        return "av3".to_string();
-                    }
-                    return "vvc".to_string(); // Default to VVC for modern MP4
+            }
+            return "av1".to_string(); // Default IVF to AV1
+        } else if magic == [0x1A, 0x45, 0xDF, 0xA3] {
+            // EBML header - MKV/WebM
+            // Could be AV1, VP9, HEVC, VVC, or AVC
+            // For WebM, default to VP9
+            // For MKV, try to detect by scanning for codec signatures
+            return "vp9".to_string(); // Default to VP9 for WebM
+        } else if data.len() >= 8 {
+            let box_type = &data[4..8];
+            if box_type == b"ftyp" {
+                // MP4/MOV - could be AVC, HEVC, VVC, AV1, or AV3
+                // Use byte matching instead of string conversion for efficiency
+                let search_range = &data[..data.len().min(8192)];
+                if search_range.windows(4).any(|w| w == b"vvc1" || w == b"vvi1") {
+                    return "vvc".to_string();
+                } else if search_range.windows(4).any(|w| w == b"hvc1" || w == b"hev1") {
+                    return "hevc".to_string();
+                } else if search_range.windows(4).any(|w| w == b"avc1" || w == b"avc3") {
+                    return "avc".to_string();
+                } else if search_range.windows(4).any(|w| w == b"av01") {
+                    return "av1".to_string();
+                } else if search_range.windows(4).any(|w| w == b"av03") {
+                    return "av3".to_string();
                 }
+                return "vvc".to_string(); // Default to VVC for modern MP4
             }
         }
     }
@@ -212,13 +268,13 @@ fn detect_codec_from_content(path: &str) -> String {
 
 /// Extract frame analysis for AV1 codec
 fn extract_av1_analysis(
-    file_path: &str,
+    file_data: &[u8],
     frame_index: usize,
     core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_av1_analysis: === Starting AV1 analysis extraction ===");
     log::info!("extract_av1_analysis: Frame index: {}", frame_index);
-    log::info!("extract_av1_analysis: File path: {}", file_path);
+    log::info!("extract_av1_analysis: File data size: {} bytes", file_data.len());
 
     // Get frame OBU data from unit model
     log::info!("extract_av1_analysis: Reading stream A units...");
@@ -231,22 +287,18 @@ fn extract_av1_analysis(
             log::info!("extract_av1_analysis: Unit model found with {} units", unit_model.units.len());
             unit_model.units.get(frame_index)
                 .and_then(|_unit| {
-                    // Read OBU data from file for this frame
-                    log::info!("extract_av1_analysis: Reading file data...");
-                    std::fs::read(file_path).ok().and_then(|file_data| {
-                        log::info!("extract_av1_analysis: File data read: {} bytes", file_data.len());
-                        // Extract frame data from IVF
-                        if let Ok((_, ivf_frames)) = bitvue_av1::parse_ivf_frames(&file_data) {
-                            log::info!("extract_av1_analysis: IVF parsing successful, {} frames", ivf_frames.len());
-                            ivf_frames.get(frame_index).map(|f| {
-                                log::info!("extract_av1_analysis: Frame {} data size: {} bytes", frame_index, f.data.len());
-                                f.data.clone()
-                            })
-                        } else {
-                            log::warn!("extract_av1_analysis: IVF parsing failed");
-                            None
-                        }
-                    })
+                    // Extract frame data from IVF using provided file data
+                    log::info!("extract_av1_analysis: Parsing IVF frames...");
+                    if let Ok((_, ivf_frames)) = bitvue_av1::parse_ivf_frames(file_data) {
+                        log::info!("extract_av1_analysis: IVF parsing successful, {} frames", ivf_frames.len());
+                        ivf_frames.get(frame_index).map(|f| {
+                            log::info!("extract_av1_analysis: Frame {} data size: {} bytes", frame_index, f.data.len());
+                            f.data.clone()
+                        })
+                    } else {
+                        log::warn!("extract_av1_analysis: IVF parsing failed");
+                        None
+                    }
                 })
         } else {
             log::warn!("extract_av1_analysis: No unit model found");
@@ -366,15 +418,12 @@ fn extract_av1_analysis(
 
 /// Extract frame analysis for H.264/AVC codec
 fn extract_avc_analysis(
-    file_path: &str,
+    file_data: &[u8],
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_avc_analysis: Extracting AVC analysis for frame {}", frame_index);
-
-    // Read file data
-    let file_data = std::fs::read(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    log::info!("extract_avc_analysis: File data size: {} bytes", file_data.len());
 
     // Parse H.264 NAL units
     let nal_units = bitvue_avc::parse_nal_units(&file_data)
@@ -461,15 +510,12 @@ fn extract_avc_analysis(
 
 /// Extract frame analysis for HEVC/H.265 codec
 fn extract_hevc_analysis(
-    file_path: &str,
+    file_data: &[u8],
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_hevc_analysis: Extracting HEVC analysis for frame {}", frame_index);
-
-    // Read file data
-    let file_data = std::fs::read(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    log::info!("extract_hevc_analysis: File data size: {} bytes", file_data.len());
 
     // Parse HEVC NAL units
     let nal_units = bitvue_hevc::parse_nal_units(&file_data)
@@ -556,15 +602,12 @@ fn extract_hevc_analysis(
 
 /// Extract frame analysis for VP9 codec
 fn extract_vp9_analysis(
-    file_path: &str,
+    file_data: &[u8],
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_vp9_analysis: Extracting VP9 analysis for frame {}", frame_index);
-
-    // Read file data
-    let file_data = std::fs::read(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    log::info!("extract_vp9_analysis: File data size: {} bytes", file_data.len());
 
     // Parse VP9 stream
     let stream = bitvue_vp9::parse_vp9(&file_data)
@@ -644,15 +687,12 @@ fn extract_vp9_analysis(
 
 /// Extract frame analysis for VVC/H.266 codec
 fn extract_vvc_analysis(
-    file_path: &str,
+    file_data: &[u8],
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_vvc_analysis: Extracting VVC analysis for frame {}", frame_index);
-
-    // Read file data
-    let file_data = std::fs::read(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    log::info!("extract_vvc_analysis: File data size: {} bytes", file_data.len());
 
     // Parse VVC NAL units
     let nal_units = bitvue_vvc::parse_nal_units(&file_data)
@@ -739,15 +779,12 @@ fn extract_vvc_analysis(
 
 /// Extract frame analysis for AV3 codec
 fn extract_av3_analysis(
-    file_path: &str,
+    file_data: &[u8],
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_av3_analysis: Extracting AV3 analysis for frame {}", frame_index);
-
-    // Read file data
-    let file_data = std::fs::read(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    log::info!("extract_av3_analysis: File data size: {} bytes", file_data.len());
 
     // Parse AV3 stream
     let stream = bitvue_av3::parse_av3(&file_data)

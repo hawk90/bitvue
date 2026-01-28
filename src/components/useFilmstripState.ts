@@ -55,13 +55,6 @@ export function useFilmstripState({
     loadingThumbnailsRef.current = loadingThumbnails;
   }, [loadingThumbnails]);
 
-  const getDataUrl = useCallback((base64Data: string): string => {
-    if (base64Data.startsWith('iVBORw0KGgo')) {
-      return `data:image/png;base64,${base64Data}`;
-    }
-    return `data:image/svg+xml;base64,${base64Data}`;
-  }, []);
-
   const loadThumbnails = useCallback(async (indices: number[]) => {
     if (indices.length === 0) return;
 
@@ -83,8 +76,8 @@ export function useFilmstripState({
         const newMap = new Map(prev);
         results.forEach((result: ThumbnailResult) => {
           if (result.success && result.thumbnail_data) {
-            const dataUrl = getDataUrl(result.thumbnail_data);
-            newMap.set(result.frame_index, dataUrl);
+            // Backend already returns data URLs (e.g., "data:image/png;base64,...")
+            newMap.set(result.frame_index, result.thumbnail_data);
           }
         });
         return newMap;
@@ -98,18 +91,25 @@ export function useFilmstripState({
         return newSet;
       });
     }
-  }, [getDataUrl]);
+  }, []);
 
   // Load initial thumbnails
   useEffect(() => {
     if (displayView !== 'thumbnails' || frames.length === 0) return;
 
-    const initialFrames = frames.slice(0, Math.min(THUMBNAIL_BATCH_SIZE, frames.length));
-    const framesWithoutThumbnails = initialFrames.filter((f) => !thumbnails.has(f.frame_index));
+    // Optimize: combine slice and filter into single pass
+    const batchSize = Math.min(THUMBNAIL_BATCH_SIZE, frames.length);
+    const indicesToLoad: number[] = [];
+    for (let i = 0; i < batchSize; i++) {
+      const frameIndex = frames[i].frame_index;
+      if (!thumbnails.has(frameIndex)) {
+        indicesToLoad.push(frameIndex);
+      }
+    }
 
-    if (framesWithoutThumbnails.length === 0) return;
+    if (indicesToLoad.length === 0) return;
 
-    loadThumbnails(framesWithoutThumbnails.map((f) => f.frame_index));
+    loadThumbnails(indicesToLoad);
   }, [displayView, frames, thumbnails, loadThumbnails]);
 
   const handleToggleExpansion = useCallback((frameIndex: number, e: React.MouseEvent) => {
@@ -127,7 +127,17 @@ export function useFilmstripState({
     }
   }, []);
 
-  const maxSize = useMemo(() => Math.max(...frames.map((f) => f.size), 1), [frames]);
+  // Optimize: avoid intermediate array from map()
+  const maxSize = useMemo(() => {
+    if (frames.length === 0) return 1;
+    let max = frames[0].size;
+    for (let i = 1; i < frames.length; i++) {
+      if (frames[i].size > max) {
+        max = frames[i].size;
+      }
+    }
+    return max > 0 ? max : 1;
+  }, [frames]);
 
   return {
     thumbnails,

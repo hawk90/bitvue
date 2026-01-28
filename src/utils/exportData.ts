@@ -7,6 +7,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from './logger';
+import type { FrameInfo } from '../types/video';
 
 const logger = createLogger('export');
 
@@ -258,7 +259,7 @@ export async function exportData(
     logger.info('Exporting data for:', filePath, 'options:', options);
 
     // Get frames from backend
-    const frames = await invoke<any[]>('get_frames', { path: filePath });
+    const frames = await invoke<FrameInfo[]>('get_frames', { path: filePath });
 
     // Collect frame data for export
     const exportData: ExportData = {
@@ -274,8 +275,8 @@ export async function exportData(
       })),
       statistics: {
         totalFrames: frames.length,
-        keyFrames: frames.filter((f: any) => f.key_frame || f.frame_type === 'I').length,
-        totalSize: frames.reduce((sum: number, f: any) => sum + f.size, 0),
+        keyFrames: frames.filter((f) => f.key_frame || f.frame_type === 'I').length,
+        totalSize: frames.reduce((sum, f) => sum + (f.size || 0), 0),
         avgSize: 0,
         minSize: 0,
         maxSize: 0,
@@ -290,15 +291,17 @@ export async function exportData(
     };
 
     // Calculate statistics
-    const sizes = frames.map((f: any) => f.size);
+    const sizes = frames.map((f) => f.size || 0);
     exportData.statistics.avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
     exportData.statistics.minSize = Math.min(...sizes);
     exportData.statistics.maxSize = Math.max(...sizes);
 
     // Count frame types
-    frames.forEach((f: any) => {
+    frames.forEach((f) => {
       const type = f.frame_type;
-      exportData.statistics.frameTypeCounts[type] = (exportData.statistics.frameTypeCounts[type] || 0) + 1;
+      if (type) {
+        exportData.statistics.frameTypeCounts[type] = (exportData.statistics.frameTypeCounts[type] || 0) + 1;
+      }
     });
 
     // Convert to requested format
@@ -353,9 +356,39 @@ export async function exportFrameAnalysis(
 }
 
 /**
+ * Analysis data types for export
+ */
+interface MVData {
+  dx_qpel: number;
+  dy_qpel: number;
+}
+
+interface PartitionBlock {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  partition: string;
+  depth: number;
+}
+
+interface FrameAnalysisData {
+  qp_grid?: {
+    qp: number[];
+  };
+  mv_grid?: {
+    mv_l0: MVData[];
+    mv_l1?: MVData[];
+  };
+  partition_grid?: {
+    blocks: PartitionBlock[];
+  };
+}
+
+/**
  * Export analysis data to CSV
  */
-function exportAnalysisToCSV(analysis: any, frameIndex: number): string {
+function exportAnalysisToCSV(analysis: FrameAnalysisData, frameIndex: number): string {
   const lines: string[] = [];
   lines.push('# Frame Analysis');
   lines.push(`# Frame: ${frameIndex}`);
@@ -376,8 +409,8 @@ function exportAnalysisToCSV(analysis: any, frameIndex: number): string {
     lines.push('# MV Grid L0');
     lines.push('block_index,mv_x,mv_y');
 
-    mv_l0.forEach((mv: any, i: number) => {
-      lines.push(`${i},${mv.dx_qpel},${mv.dy_qpel}`);
+    mv_l0.forEach((mv) => {
+      lines.push(`${mv_l0.indexOf(mv)},${mv.dx_qpel},${mv.dy_qpel}`);
     });
     lines.push('');
   }
@@ -387,8 +420,8 @@ function exportAnalysisToCSV(analysis: any, frameIndex: number): string {
     lines.push('# Partition Grid');
     lines.push('block_index,x,y,width,height,partition,depth');
 
-    blocks.forEach((block: any, i: number) => {
-      lines.push(`${i},${block.x},${block.y},${block.width},${block.height},${block.partition},${block.depth}`);
+    blocks.forEach((block) => {
+      lines.push(`${blocks.indexOf(block)},${block.x},${block.y},${block.width},${block.height},${block.partition},${block.depth}`);
     });
     lines.push('');
   }
@@ -407,10 +440,10 @@ export async function exportBatchAnalysis(
   try {
     logger.info('Batch export:', filePath, 'frames:', frameIndices.length);
 
-    const allAnalysis: any[] = [];
+    const allAnalysis: Array<{ frame_index: number } & FrameAnalysisData> = [];
 
     for (const frameIndex of frameIndices) {
-      const analysis = await invoke('get_frame_analysis', {
+      const analysis = await invoke<FrameAnalysisData>('get_frame_analysis', {
         path: filePath,
         frame_index: frameIndex,
       });

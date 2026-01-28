@@ -187,7 +187,9 @@ pub fn create_svg_thumbnail(frame_type: &str) -> String {
         color, frame_type
     );
 
-    base64::engine::general_purpose::STANDARD.encode(svg)
+    // Return as proper data URL with base64 encoding
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(svg);
+    format!("data:image/svg+xml;base64,{}", base64_data)
 }
 
 /// Decode AV1 frames and generate thumbnails (optimized version)

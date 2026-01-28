@@ -22,6 +22,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '../utils/logger';
+import { processThumbnailResults } from '../utils/thumbnailUtils';
 
 const logger = createLogger('useThumbnail');
 
@@ -65,18 +66,6 @@ export interface UseThumbnailResult {
   get: (frameIndex: number) => string | undefined;
   /** Check if a thumbnail failed to load */
   hasError: (frameIndex: number) => boolean;
-}
-
-/**
- * Convert base64 thumbnail data to data URL
- * Detects PNG vs SVG format
- */
-function getDataUrl(base64Data: string): string {
-  if (base64Data.startsWith('iVBORw0KGgo') || base64Data.startsWith('<svg')) {
-    // PNG data (starts with magic bytes) or SVG
-    return `data:image/${base64Data.startsWith('<svg') ? 'svg+xml' : 'png'};base64,${base64Data}`;
-  }
-  return `data:image/png;base64,${base64Data}`;
 }
 
 /**
@@ -150,18 +139,23 @@ export function useThumbnail(): UseThumbnailResult {
       if (mountedRef.current) {
         const failedIndices: number[] = [];
 
+        // Process thumbnail results using shared utility
+        const processed = processThumbnailResults(results);
+
         setThumbnails((prev) => {
           const newMap = new Map(prev);
+          processed.forEach((dataUrl, frameIndex) => {
+            newMap.set(frameIndex, dataUrl);
+          });
+
+          // Track failed thumbnails
           results.forEach((result) => {
-            if (result.success && result.thumbnail_data) {
-              const dataUrl = getDataUrl(result.thumbnail_data);
-              newMap.set(result.frame_index, dataUrl);
-            } else {
-              // Track failed thumbnails
+            if (!result.success) {
               failedIndices.push(result.frame_index);
               logger.warn(`Failed to load thumbnail for frame ${result.frame_index}: ${result.error || 'Unknown error'}`);
             }
           });
+
           return newMap;
         });
 

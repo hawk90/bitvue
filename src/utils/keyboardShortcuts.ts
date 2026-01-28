@@ -14,13 +14,34 @@ export interface ShortcutConfig {
   action: () => void;
 }
 
+/**
+ * Variant of ShortcutConfig for documentation purposes.
+ * Action is optional since this type is used for showing
+ * available shortcuts without requiring implementation.
+ */
+export interface ShortcutDocumentation {
+  key: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  description: string;
+  action?: () => void;
+}
+
 export interface ShortcutCategory {
   name: string;
-  shortcuts: ShortcutConfig[];
+  shortcuts: ShortcutDocumentation[];
 }
 
 /**
  * All keyboard shortcuts organized by category - v0.8.x
+ *
+ * NOTE: The `action` functions are empty placeholders. This constant serves as a
+ * registry/documentation of all available shortcuts. Actual implementations are
+ * registered dynamically through globalShortcutHandler.register() with real actions.
+ * This design allows shortcuts to be documented without requiring implementation
+ * details at definition time.
  */
 export const KEYBOARD_SHORTCUTS: ShortcutCategory[] = [
   {
@@ -125,7 +146,7 @@ export const KEYBOARD_SHORTCUTS: ShortcutCategory[] = [
 /**
  * Check if event matches shortcut configuration
  */
-export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutConfig): boolean {
+export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutConfig | ShortcutDocumentation): boolean {
   return (
     event.key === shortcut.key &&
     !!event.ctrlKey === !!shortcut.ctrl &&
@@ -138,7 +159,7 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutConfig):
 /**
  * Get display string for shortcut
  */
-export function getShortcutDisplay(shortcut: ShortcutConfig): string {
+export function getShortcutDisplay(shortcut: ShortcutConfig | ShortcutDocumentation): string {
   const parts: string[] = [];
 
   if (shortcut.ctrl) parts.push(isMac() ? '⌘' : 'Ctrl');
@@ -183,11 +204,14 @@ export class KeyboardShortcutHandler {
   register(shortcut: ShortcutConfig): () => void {
     const key = this.getShortcutKey(shortcut);
 
-    if (!this.shortcuts.has(key)) {
-      this.shortcuts.set(key, []);
+    // Get or create the shortcuts array for this key
+    let shortcuts = this.shortcuts.get(key);
+    if (!shortcuts) {
+      shortcuts = [];
+      this.shortcuts.set(key, shortcuts);
     }
 
-    this.shortcuts.get(key)!.push(shortcut);
+    shortcuts.push(shortcut);
 
     // Return unregister function
     return () => {

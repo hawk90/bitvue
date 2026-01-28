@@ -13,6 +13,12 @@ import type { FrameInfo } from '../../types/video';
 import ThumbnailsView from './ThumbnailsView';
 import { getFrameTypeColorClass } from '../../types/video';
 
+// Constants for diagnostic thresholds
+const DIAGNOSTIC_THRESHOLDS = {
+  HIGH_QP: 45,           // QP value above which frame is considered high quality
+  LARGE_FRAME: 100000,   // Frame size in bytes above which frame is considered large
+} as const;
+
 interface EnhancedViewProps {
   frames: FrameInfo[];
   currentFrameIndex: number;
@@ -88,18 +94,17 @@ export const EnhancedView = memo(function EnhancedView({
     }
 
     const changes: SceneChange[] = [];
-    const windowSize = 10;
 
-    for (let i = windowSize; i < frames.length - windowSize; i++) {
-      const beforeWindow = frames.slice(i - windowSize, i);
-      const afterWindow = frames.slice(i, i + windowSize);
+    for (let i = SCENE_CHANGE_WINDOW_SIZE; i < frames.length - SCENE_CHANGE_WINDOW_SIZE; i++) {
+      const beforeWindow = frames.slice(i - SCENE_CHANGE_WINDOW_SIZE, i);
+      const afterWindow = frames.slice(i, i + SCENE_CHANGE_WINDOW_SIZE);
 
-      const avgBefore = beforeWindow.reduce((sum, f) => sum + (f.size || 0), 0) / windowSize;
-      const avgAfter = afterWindow.reduce((sum, f) => sum + (f.size || 0), 0) / windowSize;
+      const avgBefore = beforeWindow.reduce((sum, f) => sum + (f.size || 0), 0) / SCENE_CHANGE_WINDOW_SIZE;
+      const avgAfter = afterWindow.reduce((sum, f) => sum + (f.size || 0), 0) / SCENE_CHANGE_WINDOW_SIZE;
 
       const variance = Math.abs(avgAfter - avgBefore) / Math.max(avgBefore, avgAfter);
 
-      if (variance > 0.5) {
+      if (variance > SCENE_CHANGE_VARIANCE_THRESHOLD) {
         changes.push({
           frameIndex: i,
           severity: Math.min(variance, 1),
@@ -150,8 +155,8 @@ export const EnhancedView = memo(function EnhancedView({
     // Check for various diagnostic conditions
     const issues = [];
 
-    if (frame.qp && frame.qp > 45) issues.push('high-qp');
-    if (frame.size && frame.size > 100000) issues.push('large-frame');
+    if (frame.qp && frame.qp > DIAGNOSTIC_THRESHOLDS.HIGH_QP) issues.push('high-qp');
+    if (frame.size && frame.size > DIAGNOSTIC_THRESHOLDS.LARGE_FRAME) issues.push('large-frame');
     if (frame.frameType === 'B' && !frame.refFrames?.length) issues.push('no-reference');
 
     if (issues.length === 0) return '';
@@ -321,14 +326,14 @@ export const EnhancedView = memo(function EnhancedView({
           </div>
           <div className="enhanced-hover-section">
             <span className="enhanced-hover-label">Type:</span>
-            <span className={`enhanced-hover-value ${getFrameTypeColorClass(frames[hoveredFrame].frameType)}`}>
-              {frames[hoveredFrame].frameType}
+            <span className={`enhanced-hover-value ${getFrameTypeColorClass(frames[hoveredFrame]?.frameType ?? 'UNKNOWN')}`}>
+              {frames[hoveredFrame]?.frameType ?? 'UNKNOWN'}
             </span>
           </div>
-          {frames[hoveredFrame].size && (
+          {frames[hoveredFrame]?.size && (
             <div className="enhanced-hover-section">
               <span className="enhanced-hover-label">Size:</span>
-              <span className="enhanced-hover-value">{frames[hoveredFrame].size?.toLocaleString()} bytes</span>
+              <span className="enhanced-hover-value">{frames[hoveredFrame].size.toLocaleString()} bytes</span>
             </div>
           )}
           {currentGOP && hoveredFrame >= currentGOP.frameIndex && (

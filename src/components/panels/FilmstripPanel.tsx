@@ -12,9 +12,17 @@ export interface FilmstripPanelProps {
   frames: FrameInfo[];
 }
 
+// Memoize container style to avoid creating new object on every render
+const FILMSTRIP_PANEL_CONTAINER_STYLE = {
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column' as const,
+} as const;
+
 export const FilmstripPanel = memo(function FilmstripPanel({ frames }: FilmstripPanelProps) {
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={FILMSTRIP_PANEL_CONTAINER_STYLE}>
       <TimelineFilmstrip frames={frames} />
     </div>
   );

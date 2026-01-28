@@ -216,7 +216,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
       </div>
       {hasChildren && isExpanded && (
         <div className="syntax-children">
-          {node.children!.map(child => (
+          {node.children?.map(child => (
             <SyntaxTreeNode
               key={`${currentPath}/${child.name}`}
               node={child}

@@ -3,7 +3,7 @@
 //! Commands for opening, closing, and querying file/stream information.
 #![allow(clippy::unnecessary_filter_map)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::commands::{AppState, FileInfo};
@@ -14,29 +14,92 @@ use bitvue_hevc::{hevc_frames_to_unit_nodes, extract_annex_b_frames as extract_h
 use bitvue_vp9::{vp9_frames_to_unit_nodes, extract_vp9_frames};
 use bitvue_formats::{detect_container_format, ContainerFormat};
 
+/// Validate file path to prevent path traversal and access to sensitive directories
+/// This is a public function so other modules (like decode_service) can use it
+pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path);
+
+    // Check for path traversal attempts (.. components)
+    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("Invalid path: path traversal (..) not allowed".to_string());
+    }
+
+    // Check if path exists and is a file (not a directory)
+    if !path.exists() {
+        return Err(format!("File not found: {:?}", path));
+    }
+
+    if !path.is_file() {
+        return Err(format!("Path is not a file: {:?}", path));
+    }
+
+    // Additional check: reject absolute paths to system directories
+    if path.is_absolute() {
+        let path_str = path.to_string_lossy();
+        #[cfg(unix)]
+        {
+            let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
+                "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
+            for blocked in &blocked_paths {
+                if path_str.starts_with(blocked) {
+                    return Err(format!("Cannot access system directory ({})", blocked));
+                }
+            }
+        }
+        #[cfg(windows)]
+        {
+            let path_lower = path_str.to_lowercase();
+            if path_lower.starts_with("c:\\windows")
+                || path_lower.starts_with("c:\\program files")
+                || path_lower.starts_with("c:\\program files (x86)")
+                || path_lower.starts_with("c:\\programdata") {
+                return Err("Cannot access system directories".to_string());
+            }
+        }
+    }
+
+    Ok(path)
+}
+
 /// Open a video file and parse its structure
 #[tauri::command]
 pub async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Result<FileInfo, String> {
     log::info!("open_file: Opening file at path: {}", path);
 
-    let path_buf = PathBuf::from(&path);
-
-    // Check if file exists
-    if !path_buf.exists() {
-        log::error!("open_file: File not found: {}", path);
-        return Ok(FileInfo {
-            path: path.clone(),
-            size: 0,
-            codec: "unknown".to_string(),
-            success: false,
-            error: Some("File not found".to_string()),
-        });
-    }
+    // Validate file path for security
+    let path_buf = match validate_file_path(&path) {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("open_file: Path validation failed: {}", e);
+            return Ok(FileInfo {
+                path: path.clone(),
+                size: 0,
+                codec: "unknown".to_string(),
+                success: false,
+                error: Some(e),
+            });
+        }
+    };
 
     // Get file size and detect codec from extension
     let size = std::fs::metadata(&path_buf)
         .map(|m| m.len())
         .unwrap_or(0);
+
+    // SECURITY: Validate file size to prevent memory issues with extremely large files
+    // Maximum file size: 2GB (2 * 1024 * 1024 * 1024 bytes)
+    const MAX_FILE_SIZE: u64 = 2_147_483_648;
+    if size > MAX_FILE_SIZE {
+        log::error!("open_file: File too large: {} bytes (max: {} bytes)", size, MAX_FILE_SIZE);
+        return Ok(FileInfo {
+            path: path.clone(),
+            size,
+            codec: "unknown".to_string(),
+            success: false,
+            error: Some(format!("File too large: {} MB. Maximum supported size is 2 GB.",
+                size / (1024 * 1024))),
+        });
+    }
 
     let ext = path_buf.extension()
         .and_then(|e| e.to_str())
@@ -234,6 +297,16 @@ pub async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Resul
             });
 
             log::info!("open_file: Created UnitModel with {} units", unit_count);
+
+            // Cache file data in decode_service for faster access
+            // Use already-read data to avoid re-reading from disk (optimizes core lock duration)
+            if let Err(e) = state.decode_service.lock().unwrap().set_file_with_data(
+                path_buf.clone(),
+                codec.clone(),
+                file_data.clone()
+            ) {
+                log::warn!("open_file: Failed to cache file data in decode_service: {}", e);
+            }
         }
     }
 
@@ -258,6 +331,9 @@ pub async fn close_file(state: tauri::State<'_, AppState>) -> Result<(), String>
 
     // Clear thumbnail cache
     state.thumbnail_service.lock().unwrap().set_file(PathBuf::new());
+
+    // Clear decode service cache
+    state.decode_service.lock().unwrap().clear_cache();
 
     log::info!("close_file: File closed");
     Ok(())

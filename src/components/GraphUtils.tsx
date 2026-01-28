@@ -60,14 +60,15 @@ export function calculateScales(
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  const xDomain = config.xDomain || [
+  // Handle empty data array to avoid Math.min/Math.max on empty arrays
+  const xDomain = config.xDomain || (data.length > 0 ? [
     Math.min(...data.map((d) => d.x)),
     Math.max(...data.map((d) => d.x)),
-  ];
-  const yDomain = config.yDomain || [
+  ] : [0, 1]);
+  const yDomain = config.yDomain || (data.length > 0 ? [
     Math.min(...data.map((d) => d.value)),
     Math.max(...data.map((d) => d.value)),
-  ];
+  ] : [0, 1]);
 
   const xRange = xDomain[1] - xDomain[0] || 1;
   const yRange = yDomain[1] - yDomain[0] || 1;

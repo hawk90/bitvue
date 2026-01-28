@@ -8,6 +8,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo, memo } from 'react';
 import type { FrameInfo } from '../types/video';
 import { getFrameTypeColor } from '../types/video';
+import { FILMSTRIP } from '../constants/ui';
 import './VirtualizedFilmstrip.css';
 
 interface VirtualizedFilmstripProps {
@@ -25,7 +26,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
   onFrameChange,
   itemWidth,
   containerWidth,
-  overscan = 5,
+  overscan = FILMSTRIP.VIRTUAL_DEFAULT_OVERSCAN,
 }: VirtualizedFilmstripProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);

@@ -66,296 +66,263 @@ pub async fn get_frame_syntax(
     Ok(syntax_tree)
 }
 
+/// Helper: Create a simple leaf node
+///
+/// Creates a SyntaxNode with name, optional value, and description.
+/// Used for terminal nodes in the syntax tree.
+fn create_leaf_node(
+    name: &str,
+    value: Option<SyntaxValue>,
+    description: Option<&str>,
+) -> SyntaxNode {
+    SyntaxNode {
+        name: name.to_string(),
+        description: description.map(|s| s.to_string()),
+        value,
+        children: vec![],
+    }
+}
+
+/// Helper: Build sequence header OBU node
+///
+/// Creates the sequence_header OBU syntax tree with global decoder config.
+fn build_sequence_header_node() -> SyntaxNode {
+    SyntaxNode {
+        name: "sequence_header".to_string(),
+        description: Some("Sequence Header OBU - global decoder configuration".to_string()),
+        value: None,
+        children: vec![
+            create_leaf_node("seq_profile", Some(SyntaxValue::Number(0)), Some("AV1 profile (0=main, 1=high, 2=professional)")),
+            create_leaf_node("still_picture", Some(SyntaxValue::Boolean(false)), Some("Whether this is a still picture")),
+            create_leaf_node("max_frame_width", Some(SyntaxValue::Number(1920)), Some("Maximum frame width in pixels")),
+            create_leaf_node("max_frame_height", Some(SyntaxValue::Number(1080)), Some("Maximum frame height in pixels")),
+        ],
+    }
+}
+
+/// Helper: Build quantization params node
+///
+/// Creates the quantization_params syntax tree with QP configuration.
+fn build_quantization_params_node() -> SyntaxNode {
+    SyntaxNode {
+        name: "quantization_params".to_string(),
+        description: Some("Quantization parameter configuration".to_string()),
+        value: None,
+        children: vec![
+            create_leaf_node("base_q_idx", Some(SyntaxValue::Number(128)), Some("Base QP for luma (Y) plane")),
+            create_leaf_node("delta_q_present", Some(SyntaxValue::Boolean(false)), Some("Whether delta Q is enabled")),
+            create_leaf_node("y_dc_delta_q", Some(SyntaxValue::Number(0)), Some("DC quantization offset for Y")),
+            create_leaf_node("uv_dc_delta_q", Some(SyntaxValue::Number(0)), Some("DC quantization offset for chroma")),
+        ],
+    }
+}
+
+/// Helper: Build loop filter params node
+///
+/// Creates the loop_filter_params syntax tree with deblocking configuration.
+fn build_loop_filter_params_node() -> SyntaxNode {
+    SyntaxNode {
+        name: "loop_filter_params".to_string(),
+        description: Some("Loop filter configuration".to_string()),
+        value: None,
+        children: vec![
+            create_leaf_node("filter_level", Some(SyntaxValue::Number(10)), Some("Loop filter strength (0-63)")),
+            create_leaf_node("sharpness", Some(SyntaxValue::Number(4)), Some("Loop filter sharpness (0-7)")),
+        ],
+    }
+}
+
+/// Helper: Build CDEF params node
+///
+/// Creates the coding_loop_filter_params syntax tree with CDEF configuration.
+fn build_cdef_params_node() -> SyntaxNode {
+    SyntaxNode {
+        name: "coding_loop_filter_params".to_string(),
+        description: Some("Coded loop filter (CDEF) configuration".to_string()),
+        value: None,
+        children: vec![
+            create_leaf_node("cdef_damping", Some(SyntaxValue::Number(3)), Some("CDEF damping factor (0-7)")),
+            create_leaf_node("cdef_bits", Some(SyntaxValue::Number(7)), Some("CDEF bit depth (0-7)")),
+        ],
+    }
+}
+
+/// Helper: Build frame header OBU node
+///
+/// Creates the frame_header OBU syntax tree with per-frame configuration.
+fn build_frame_header_node(frame_type: &str) -> SyntaxNode {
+    SyntaxNode {
+        name: "frame_header".to_string(),
+        description: Some("Frame Header OBU - per-frame configuration".to_string()),
+        value: None,
+        children: vec![
+            create_leaf_node("show_frame", Some(SyntaxValue::Boolean(true)), Some("Whether this frame should be displayed")),
+            create_leaf_node("frame_type_override", Some(SyntaxValue::String(frame_type.to_string())), Some("Frame type override flag")),
+            create_leaf_node("base_q_idx", Some(SyntaxValue::Number(128)), Some("Base quantization index (0-255)")),
+            build_quantization_params_node(),
+            build_loop_filter_params_node(),
+            build_cdef_params_node(),
+            create_leaf_node("superblock_count", Some(SyntaxValue::Number(30)), Some("Number of superblocks in frame")),
+        ],
+    }
+}
+
+/// Helper: Build superblock structure node
+///
+/// Creates the superblock_structure syntax tree with partitioning info.
+fn build_superblock_structure_node() -> SyntaxNode {
+    SyntaxNode {
+        name: "superblock_structure".to_string(),
+        description: Some("Superblock (coding tree unit) partitioning".to_string()),
+        value: None,
+        children: vec![
+            create_leaf_node("sb_size", Some(SyntaxValue::Number(64)), Some("Superblock size (64 or 128 pixels)")),
+            SyntaxNode {
+                name: "partition_tree".to_string(),
+                description: Some("Block partitioning structure".to_string()),
+                value: None,
+                children: vec![
+                    SyntaxNode {
+                        name: "block_partition_modes".to_string(),
+                        value: None,
+                        description: Some("Partition types (NONE, HORZ, VERT, etc.)".to_string()),
+                        children: vec![
+                            create_leaf_node("root_partition", Some(SyntaxValue::String("PARTITION_SPLIT".to_string())), Some("Root partition type")),
+                        ],
+                    },
+                    SyntaxNode {
+                        name: "coding_units".to_string(),
+                        value: None,
+                        description: Some("Coding unit information".to_string()),
+                        children: vec![
+                            create_leaf_node("cu_count", Some(SyntaxValue::Number(240)), Some("Number of coding units")),
+                            build_prediction_modes_node(),
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+}
+
+/// Helper: Build prediction modes node
+///
+/// Creates the prediction_modes syntax tree with mode distribution.
+fn build_prediction_modes_node() -> SyntaxNode {
+    SyntaxNode {
+        name: "prediction_modes".to_string(),
+        value: None,
+        description: Some("Prediction mode distribution".to_string()),
+        children: vec![
+            create_leaf_node("intra_blocks", Some(SyntaxValue::String("INTRA".to_string())), None),
+            create_leaf_node("inter_blocks", Some(SyntaxValue::String("INTER".to_string())), None),
+        ],
+    }
+}
+
+/// Helper: Build tile node
+///
+/// Creates a tile syntax tree with tile size and superblock structure.
+fn build_tile_node(tile_index: usize, frame_size: &str) -> SyntaxNode {
+    SyntaxNode {
+        name: format!("tile_{}", tile_index),
+        description: Some(format!("Tile {}", tile_index + 1)),
+        value: None,
+        children: vec![
+            create_leaf_node("tile_size", Some(SyntaxValue::String(frame_size.to_string())), Some("Tile dimensions in pixels")),
+            build_superblock_structure_node(),
+        ],
+    }
+}
+
+/// Helper: Build tile group OBU node
+///
+/// Creates the tile_group OBU syntax tree with tile information.
+fn build_tile_group_node(frame_size: &str) -> SyntaxNode {
+    SyntaxNode {
+        name: "tile_group".to_string(),
+        description: Some("Tile Group OBU - contains tile data".to_string()),
+        value: None,
+        children: vec![
+            create_leaf_node("tile_count", Some(SyntaxValue::Number(1)), Some("Number of tiles in frame")),
+            SyntaxNode {
+                name: "tiles".to_string(),
+                description: Some("Tile information".to_string()),
+                value: None,
+                children: vec![
+                    build_tile_node(0, frame_size),
+                ],
+            },
+        ],
+    }
+}
+
+/// Helper: Build OBU sequence node
+///
+/// Creates the obu_sequence syntax tree with OBU hierarchy.
+fn build_obu_sequence_node(frame_type: &str, frame_size: &str) -> SyntaxNode {
+    SyntaxNode {
+        name: "obu_sequence".to_string(),
+        description: Some("OBU (Open Bitstream Unit) sequence in this frame".to_string()),
+        value: None,
+        children: vec![
+            build_sequence_header_node(),
+            build_frame_header_node(frame_type),
+            build_tile_group_node(frame_size),
+        ],
+    }
+}
+
+/// Helper: Build size node
+///
+/// Creates the size syntax tree with compressed and raw size information.
+fn build_size_node(frame_size: usize) -> SyntaxNode {
+    SyntaxNode {
+        name: "size".to_string(),
+        value: Some(SyntaxValue::Number(frame_size as i64)),
+        description: Some("Frame size in bytes".to_string()),
+        children: vec![
+            create_leaf_node("compressed_size", Some(SyntaxValue::Number(frame_size as i64)), Some("Compressed frame size")),
+            create_leaf_node("raw_size", Some(SyntaxValue::Number((frame_size * 3 / 2) as i64)), Some("Estimated raw YUV size")),
+        ],
+    }
+}
+
 /// Build syntax tree for AV1 frames
 fn build_av1_syntax_tree(
     frame_index: usize,
     frame: &FrameData,
     _path: &str,
 ) -> SyntaxNode {
+    let frame_size = "1920x1080"; // Default frame size for syntax tree display
+
     SyntaxNode {
         name: format!("Frame {}", frame_index),
         description: Some("AV1 Frame".to_string()),
         value: None,
         children: vec![
-            SyntaxNode {
-                name: "frame_type".to_string(),
-                value: Some(SyntaxValue::String(frame.frame_type.clone())),
-                description: Some("AV1 frame type: KEY, INTER, INTRA_ONLY, SWITCH".to_string()),
-                children: vec![],
-            },
-            SyntaxNode {
-                name: "show_existing_frame".to_string(),
-                value: Some(SyntaxValue::Boolean(frame.frame_type == "INTRA_ONLY" || frame.frame_type == "SWITCH")),
-                description: Some("Whether this frame shows a previously decoded frame".to_string()),
-                children: vec![],
-            },
-            SyntaxNode {
-                name: "size".to_string(),
-                value: Some(SyntaxValue::Number(frame.size as i64)),
-                description: Some("Frame size in bytes".to_string()),
-                children: vec![
-                    SyntaxNode {
-                        name: "compressed_size".to_string(),
-                        value: Some(SyntaxValue::Number(frame.size as i64)),
-                        description: Some("Compressed frame size".to_string()),
-                        children: vec![],
-                    },
-                    SyntaxNode {
-                        name: "raw_size".to_string(),
-                        value: Some(SyntaxValue::Number((frame.size * 3 / 2) as i64)), // Approximate
-                        description: Some("Estimated raw YUV size".to_string()),
-                        children: vec![],
-                    },
-                ],
-            },
-            SyntaxNode {
-                name: "presentation_timestamp".to_string(),
-                value: frame.pts.map(|v| SyntaxValue::Number(v as i64)),
-                description: Some("Presentation timestamp in timebase units".to_string()),
-                children: vec![],
-            },
-            SyntaxNode {
-                name: "key_frame".to_string(),
-                value: Some(SyntaxValue::Boolean(frame.key_frame.unwrap_or(false))),
-                description: Some("Whether this is a key frame (random access point)".to_string()),
-                children: vec![],
-            },
-            SyntaxNode {
-                name: "obu_sequence".to_string(),
-                description: Some("OBU (Open Bitstream Unit) sequence in this frame".to_string()),
-                value: None,
-                children: vec![
-                    SyntaxNode {
-                        name: "sequence_header".to_string(),
-                        description: Some("Sequence Header OBU - global decoder configuration".to_string()),
-                        value: None,
-                        children: vec![
-                            SyntaxNode {
-                                name: "seq_profile".to_string(),
-                                value: Some(SyntaxValue::Number(0)), // AV1 main profile
-                                description: Some("AV1 profile (0=main, 1=high, 2=professional)".to_string()),
-                                children: vec![],
-                            },
-                            SyntaxNode {
-                                name: "still_picture".to_string(),
-                                value: Some(SyntaxValue::Boolean(false)),
-                                description: Some("Whether this is a still picture".to_string()),
-                                children: vec![],
-                            },
-                            SyntaxNode {
-                                name: "max_frame_width".to_string(),
-                                value: Some(SyntaxValue::Number(1920)), // Default, should be parsed
-                                description: Some("Maximum frame width in pixels".to_string()),
-                                children: vec![],
-                            },
-                            SyntaxNode {
-                                name: "max_frame_height".to_string(),
-                                value: Some(SyntaxValue::Number(1080)), // Default
-                                description: Some("Maximum frame height in pixels".to_string()),
-                                children: vec![],
-                            },
-                        ],
-                    },
-                    SyntaxNode {
-                        name: "frame_header".to_string(),
-                        description: Some("Frame Header OBU - per-frame configuration".to_string()),
-                        value: None,
-                        children: vec![
-                            SyntaxNode {
-                                name: "show_frame".to_string(),
-                                value: Some(SyntaxValue::Boolean(true)),
-                                description: Some("Whether this frame should be displayed".to_string()),
-                                children: vec![],
-                            },
-                            SyntaxNode {
-                                name: "frame_type_override".to_string(),
-                                value: Some(SyntaxValue::String(frame.frame_type.clone())),
-                                description: Some("Frame type override flag".to_string()),
-                                children: vec![],
-                            },
-                            SyntaxNode {
-                                name: "base_q_idx".to_string(),
-                                value: Some(SyntaxValue::Number(128)), // Default
-                                description: Some("Base quantization index (0-255)".to_string()),
-                                children: vec![],
-                            },
-                            SyntaxNode {
-                                name: "quantization_params".to_string(),
-                                description: Some("Quantization parameter configuration".to_string()),
-                                value: None,
-                                children: vec![
-                                    SyntaxNode {
-                                        name: "base_q_idx".to_string(),
-                                        value: Some(SyntaxValue::Number(128)),
-                                        description: Some("Base QP for luma (Y) plane".to_string()),
-                                        children: vec![],
-                                    },
-                                    SyntaxNode {
-                                        name: "delta_q_present".to_string(),
-                                        value: Some(SyntaxValue::Boolean(false)),
-                                        description: Some("Whether delta Q is enabled".to_string()),
-                                        children: vec![],
-                                    },
-                                    SyntaxNode {
-                                        name: "y_dc_delta_q".to_string(),
-                                        value: Some(SyntaxValue::Number(0)),
-                                        description: Some("DC quantization offset for Y".to_string()),
-                                        children: vec![],
-                                    },
-                                    SyntaxNode {
-                                        name: "uv_dc_delta_q".to_string(),
-                                        value: Some(SyntaxValue::Number(0)),
-                                        description: Some("DC quantization offset for chroma".to_string()),
-                                        children: vec![],
-                                    },
-                                ],
-                            },
-                            SyntaxNode {
-                                name: "loop_filter_params".to_string(),
-                                description: Some("Loop filter configuration".to_string()),
-                                value: None,
-                                children: vec![
-                                    SyntaxNode {
-                                        name: "filter_level".to_string(),
-                                        value: Some(SyntaxValue::Number(10)),
-                                        description: Some("Loop filter strength (0-63)".to_string()),
-                                        children: vec![],
-                                    },
-                                    SyntaxNode {
-                                        name: "sharpness".to_string(),
-                                        value: Some(SyntaxValue::Number(4)),
-                                        description: Some("Loop filter sharpness (0-7)".to_string()),
-                                        children: vec![],
-                                    },
-                                ],
-                            },
-                            SyntaxNode {
-                                name: "coding_loop_filter_params".to_string(),
-                                description: Some("Coded loop filter (CDEF) configuration".to_string()),
-                                value: None,
-                                children: vec![
-                                    SyntaxNode {
-                                        name: "cdef_damping".to_string(),
-                                        value: Some(SyntaxValue::Number(3)),
-                                        description: Some("CDEF damping factor (0-7)".to_string()),
-                                        children: vec![],
-                                    },
-                                    SyntaxNode {
-                                        name: "cdef_bits".to_string(),
-                                        value: Some(SyntaxValue::Number(7)),
-                                        description: Some("CDEF bit depth (0-7)".to_string()),
-                                        children: vec![],
-                                    },
-                                ],
-                            },
-                            SyntaxNode {
-                                name: "superblock_count".to_string(),
-                                value: Some(SyntaxValue::Number(30)), // Example
-                                description: Some("Number of superblocks in frame".to_string()),
-                                children: vec![],
-                            },
-                        ],
-                    },
-                    SyntaxNode {
-                        name: "tile_group".to_string(),
-                        description: Some("Tile Group OBU - contains tile data".to_string()),
-                        value: None,
-                        children: vec![
-                            SyntaxNode {
-                                name: "tile_count".to_string(),
-                                value: Some(SyntaxValue::Number(1)), // Single tile for MVP
-                                description: Some("Number of tiles in frame".to_string()),
-                                children: vec![],
-                            },
-                            SyntaxNode {
-                                name: "tiles".to_string(),
-                                description: Some("Tile information".to_string()),
-                                value: None,
-                                children: vec![
-                                    SyntaxNode {
-                                        name: "tile_0".to_string(),
-                                        description: Some("First (and only) tile".to_string()),
-                                        value: None,
-                                        children: vec![
-                                            SyntaxNode {
-                                                name: "tile_size".to_string(),
-                                                value: Some(SyntaxValue::String("1920x1080".to_string())), // Frame size
-                                                description: Some("Tile dimensions in pixels".to_string()),
-                                                children: vec![],
-                                            },
-                                            SyntaxNode {
-                                                name: "superblock_structure".to_string(),
-                                                description: Some("Superblock (coding tree unit) partitioning".to_string()),
-                                                value: None,
-                                                children: vec![
-                                                    SyntaxNode {
-                                                        name: "sb_size".to_string(),
-                                                        value: Some(SyntaxValue::Number(64)),
-                                                        description: Some("Superblock size (64 or 128 pixels)".to_string()),
-                                                        children: vec![],
-                                                    },
-                                                    SyntaxNode {
-                                                        name: "partition_tree".to_string(),
-                                                        description: Some("Block partitioning structure".to_string()),
-                                                        value: None,
-                                                        children: vec![
-                                                            SyntaxNode {
-                                                                name: "block_partition_modes".to_string(),
-                                                                value: None,
-                                                                description: Some("Partition types (NONE, HORZ, VERT, etc.)".to_string()),
-                                                                children: vec![
-                                                                    SyntaxNode {
-                                                                        name: "root_partition".to_string(),
-                                                                        value: Some(SyntaxValue::String("PARTITION_SPLIT".to_string())),
-                                                                        description: Some("Root partition type".to_string()),
-                                                                        children: vec![],
-                                                                    },
-                                                                ],
-                                                            },
-                                                            SyntaxNode {
-                                                                name: "coding_units".to_string(),
-                                                                value: None,
-                                                                description: Some("Coding unit information".to_string()),
-                                                                children: vec![
-                                                                    SyntaxNode {
-                                                                        name: "cu_count".to_string(),
-                                                                        value: Some(SyntaxValue::Number(240)), // Example
-                                                                        description: Some("Number of coding units".to_string()),
-                                                                        children: vec![],
-                                                                    },
-                                                                    SyntaxNode {
-                                                                        name: "prediction_modes".to_string(),
-                                                                        value: None,
-                                                                        description: Some("Prediction mode distribution".to_string()),
-                                                                        children: vec![
-                                                                            SyntaxNode {
-                                                                                name: "intra_blocks".to_string(),
-                                                                                value: Some(SyntaxValue::String("INTRA".to_string())),
-                                                                                description: None,
-                                                                                children: vec![],
-                                                                            },
-                                                                            SyntaxNode {
-                                                                                name: "inter_blocks".to_string(),
-                                                                                value: Some(SyntaxValue::String("INTER".to_string())),
-                                                                                description: None,
-                                                                                children: vec![],
-                                                                            },
-                                                                        ],
-                                                                    },
-                                                                ],
-                                                            },
-                                                        ],
-                                                    },
-                                                ],
-                                            },
-                                        ],
-                                    },
-                                ],
-                            },
-                        ],
-                    },
-                ],
-            },
+            create_leaf_node(
+                "frame_type",
+                Some(SyntaxValue::String(frame.frame_type.clone())),
+                Some("AV1 frame type: KEY, INTER, INTRA_ONLY, SWITCH"),
+            ),
+            create_leaf_node(
+                "show_existing_frame",
+                Some(SyntaxValue::Boolean(frame.frame_type == "INTRA_ONLY" || frame.frame_type == "SWITCH")),
+                Some("Whether this frame shows a previously decoded frame"),
+            ),
+            build_size_node(frame.size),
+            create_leaf_node(
+                "presentation_timestamp",
+                frame.pts.map(|v| SyntaxValue::Number(v as i64)),
+                Some("Presentation timestamp in timebase units"),
+            ),
+            create_leaf_node(
+                "key_frame",
+                Some(SyntaxValue::Boolean(frame.key_frame.unwrap_or(false))),
+                Some("Whether this is a key frame (random access point)"),
+            ),
+            build_obu_sequence_node(&frame.frame_type, &frame_size),
         ],
     }
 }

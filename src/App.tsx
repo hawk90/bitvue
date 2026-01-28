@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, memo, lazy, Suspense } from "react";
+import { useState, useCallback, useEffect, useRef, memo, lazy, Suspense } from "react";
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from "@tauri-apps/api/event";
 import { open } from '@tauri-apps/plugin-dialog';
@@ -7,6 +7,7 @@ import "./components/TimelineFilmstrip.css";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { TitleBar } from "./components/TitleBar";
 import { StatusBar } from "./components/StatusBar";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { globalShortcutHandler, type ShortcutConfig } from "./utils/keyboardShortcuts";
 import { SelectionProvider } from "./contexts/SelectionContext";
 import { ModeProvider } from "./contexts/ModeContext";
@@ -46,6 +47,20 @@ const ExportDialog = process.env.NODE_ENV === 'test'
 // Loading fallback for lazy-loaded components
 function DialogLoadingFallback() {
   return <div className="dialog-loading">Loading...</div>;
+}
+
+/**
+ * Wrapper component for lazy-loaded dialogs with error boundary
+ * Catches errors during component loading and rendering
+ */
+function LazyDialogWrapper({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
+  return (
+    <ErrorBoundary fallback={() => <div className="dialog-error">Failed to load dialog</div>}>
+      <Suspense fallback={fallback}>
+        {children}
+      </Suspense>
+    </ErrorBoundary>
+  );
 }
 
 const logger = createLogger('App');
@@ -150,7 +165,13 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
         if (result.success) {
           logger.info('File opened successfully');
           // Refresh frames after opening file
-          await refreshFrames();
+          try {
+            await refreshFrames();
+          } catch (refreshErr) {
+            logger.error('Failed to refresh frames after opening file:', refreshErr);
+            // Non-blocking: file opened successfully but frames failed to load
+            showErrorDialog('Frame Load Warning', 'File opened but failed to load frame data. Please try refreshing.', refreshErr as string);
+          }
         } else {
           showErrorDialog('Failed to Open File', result.error || 'Unknown error', selected);
         }
@@ -192,13 +213,26 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
       }
     });
     return () => {
-      unlisten.then((fn) => fn());
+      // Proper cleanup: handle potential errors during unlisten
+      unlisten.then((fn) => fn()).catch((err) => {
+        logger.warn('Failed to unlisten from file-opened event:', err);
+      });
     };
   }, [refreshFrames, setFileInfo, setFilePath, showErrorDialog]);
 
   // Keyboard shortcuts
+  // Use refs to avoid re-registering shortcuts on every render
+  const currentIndexRef = useRef(currentFrameIndex);
+  const framesLengthRef = useRef(frames.length);
+  const shortcutsRef = useRef<(() => void)[]>([]);
+
+  currentIndexRef.current = currentFrameIndex;
+  framesLengthRef.current = frames.length;
+
   useEffect(() => {
-    const unregister: (() => void)[] = [];
+    // Cleanup previous shortcuts
+    shortcutsRef.current.forEach(fn => fn());
+    shortcutsRef.current = [];
 
     // Register shortcuts
     const shortcuts: ShortcutConfig[] = [
@@ -213,15 +247,15 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
         key: 'ArrowLeft',
         description: 'Previous frame',
         action: () => {
-          if (currentFrameIndex > 0) setCurrentFrameIndex(currentFrameIndex - 1);
+          if (currentIndexRef.current > 0) setCurrentFrameIndex(currentIndexRef.current - 1);
         },
       },
       {
         key: 'ArrowRight',
         description: 'Next frame',
         action: () => {
-          if (frames.length > 0 && currentFrameIndex < frames.length - 1) {
-            setCurrentFrameIndex(currentFrameIndex + 1);
+          if (framesLengthRef.current > 0 && currentIndexRef.current < framesLengthRef.current - 1) {
+            setCurrentFrameIndex(currentIndexRef.current + 1);
           }
         },
       },
@@ -234,13 +268,13 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
         key: 'End',
         description: 'Last frame',
         action: () => {
-          if (frames.length > 0) setCurrentFrameIndex(frames.length - 1);
+          if (framesLengthRef.current > 0) setCurrentFrameIndex(framesLengthRef.current - 1);
         },
       },
     ];
 
     shortcuts.forEach(shortcut => {
-      unregister.push(globalShortcutHandler.register(shortcut));
+      shortcutsRef.current.push(globalShortcutHandler.register(shortcut));
     });
 
     // Handle keyboard events
@@ -252,9 +286,9 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      unregister.forEach(fn => fn());
+      shortcutsRef.current.forEach(fn => fn());
     };
-  }, [currentFrameIndex, frames.length, setCurrentFrameIndex]);
+  }, [setShowShortcuts, setCurrentFrameIndex]);
 
   const welcomeScreen = (
     <WelcomeScreen
@@ -365,38 +399,40 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
   return (
     <ModeProvider>
       <SelectionProvider>
-        <div className="app">
-        {/* Custom TitleBar for Windows/Linux only */}
-        {shouldShowTitleBar() && (
-          <TitleBar
-            fileName={fileInfo?.path || 'Bitvue'}
-            onOpenFile={handleOpenFile}
-          />
-        )}
+        <ErrorBoundary>
+          <div className="app">
+            {/* Custom TitleBar for Windows/Linux only */}
+            {shouldShowTitleBar() && (
+              <TitleBar
+                fileName={fileInfo?.path || 'Bitvue'}
+                onOpenFile={handleOpenFile}
+              />
+            )}
 
-        <div className="app-container">
-          {(() => {
-            // File opened successfully with frames
-            if (fileInfo?.success && frames.length > 0) {
-              return mainContent;
-            }
-            // File opened but no frames (error state)
-            if (fileInfo?.success && frames.length === 0) {
-              return noFramesError;
-            }
-            // No file opened (welcome screen)
-            return welcomeScreen;
-          })()}
-        </div>
+            <div className="app-container">
+              {(() => {
+                // File opened successfully with frames
+                if (fileInfo?.success && frames.length > 0) {
+                  return mainContent;
+                }
+                // File opened but no frames (error state)
+                if (fileInfo?.success && frames.length === 0) {
+                  return noFramesError;
+                }
+                // No file opened (welcome screen)
+                return welcomeScreen;
+              })()}
+            </div>
 
-        {/* Status Bar */}
-        <StatusBar
-          fileInfo={fileInfo}
-          frameCount={frames.length}
-          branch="main"
-          onShowShortcuts={() => setShowShortcuts(true)}
-        />
-      </div>
+            {/* Status Bar */}
+            <StatusBar
+              fileInfo={fileInfo}
+              frameCount={frames.length}
+              branch="main"
+              onShowShortcuts={() => setShowShortcuts(true)}
+            />
+          </div>
+        </ErrorBoundary>
 
       {/* Keyboard Shortcuts Dialog */}
       {process.env.NODE_ENV === 'test' ? (
@@ -405,12 +441,12 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
           onClose={() => setShowShortcuts(false)}
         />
       ) : (
-        <Suspense fallback={<DialogLoadingFallback />}>
+        <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
           <KeyboardShortcutsDialog
             isOpen={showShortcuts}
             onClose={() => setShowShortcuts(false)}
           />
-        </Suspense>
+        </LazyDialogWrapper>
       )}
 
       {/* Error Dialog */}
@@ -424,7 +460,7 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
           onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
         />
       ) : (
-        <Suspense fallback={<DialogLoadingFallback />}>
+        <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
           <ErrorDialog
             isOpen={errorDialog.isOpen}
             title={errorDialog.title}
@@ -433,7 +469,7 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
             errorCode={errorDialog.errorCode}
             onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
           />
-        </Suspense>
+        </LazyDialogWrapper>
       )}
 
       {/* Export Dialog */}
@@ -447,7 +483,7 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
           height={fileInfo?.height}
         />
       ) : (
-        <Suspense fallback={<DialogLoadingFallback />}>
+        <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
           <ExportDialog
             isOpen={showExportDialog}
             onClose={() => setShowExportDialog(false)}
@@ -456,7 +492,7 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
             width={fileInfo?.width}
             height={fileInfo?.height}
           />
-        </Suspense>
+        </LazyDialogWrapper>
       )}
     </SelectionProvider>
     </ModeProvider>

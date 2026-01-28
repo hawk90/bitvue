@@ -32,7 +32,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::collections::HashMap;
 use crate::{parse_frame_header_basic, ObuType, parse_all_obus};
-use crate::tile::{PredictionMode, TxSize};
+use crate::tile::{PredictionMode, TxSize, CodingUnit};
 use bitvue_core::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionGrid, PartitionType},
@@ -436,6 +436,54 @@ pub fn extract_qp_grid(
     Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp))
 }
 
+/// Helper: Find QP value for a block from coding units
+///
+/// Searches through coding units to find one that overlaps with the given block
+/// and returns its effective QP value. Returns None if no overlapping CU found.
+fn find_overlapping_cu_qp(
+    coding_units: &[CodingUnit],
+    block_x: u32,
+    block_y: u32,
+    block_w: u32,
+    base_qp: i16,
+) -> Option<i16> {
+    coding_units
+        .iter()
+        .find(|cu| {
+            cu.x < block_x + block_w && cu.x + cu.width > block_x
+                && cu.y < block_y + block_w && cu.y + cu.height > block_y
+        })
+        .map(|cu| cu.effective_qp(base_qp))
+}
+
+/// Helper: Build QP grid from coding units
+///
+/// Creates a QP grid by finding overlapping coding units for each block.
+/// Reduces nesting depth in extract_qp_grid_from_parsed.
+fn build_qp_grid_from_cus(
+    coding_units: &[CodingUnit],
+    grid_w: u32,
+    grid_h: u32,
+    block_w: u32,
+    block_h: u32,
+    base_qp: i16,
+) -> Vec<i16> {
+    let total_blocks = (grid_w * grid_h) as usize;
+    let mut qp = Vec::with_capacity(total_blocks);
+
+    for grid_y in 0..grid_h {
+        for grid_x in 0..grid_w {
+            let block_x = grid_x * block_w;
+            let block_y = grid_y * block_h;
+
+            let cu_qp = find_overlapping_cu_qp(coding_units, block_x, block_y, block_w, base_qp);
+            qp.push(cu_qp.unwrap_or(base_qp));
+        }
+    }
+
+    qp
+}
+
 /// Extract QP Grid from cached frame data
 ///
 /// **Current Implementation**:
@@ -456,41 +504,12 @@ pub fn extract_qp_grid_from_parsed(
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
     let total_blocks = (grid_w * grid_h) as usize;
 
-    let mut qp = Vec::with_capacity(total_blocks);
-
     // If we have tile data, try to parse actual QP values
     if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
                 tracing::debug!("Extracting QP values from {} coding units", coding_units.len());
-
-                // Build a grid of QP values from coding units
-                for grid_y in 0..grid_h {
-                    for grid_x in 0..grid_w {
-                        let block_x = grid_x * block_w;
-                        let block_y = grid_y * block_h;
-
-                        // Find coding units that overlap with this block
-                        let mut found_qp = false;
-                        for cu in &coding_units {
-                            if cu.x < block_x + block_w && cu.x + cu.width > block_x
-                                && cu.y < block_y + block_h && cu.y + cu.height > block_y
-                            {
-                                // This CU overlaps our block - use its QP
-                                let cu_qp = cu.effective_qp(base_qp);
-                                qp.push(cu_qp);
-                                found_qp = true;
-                                break;
-                            }
-                        }
-
-                        if !found_qp {
-                            // No CU found - use base QP
-                            qp.push(base_qp);
-                        }
-                    }
-                }
-
+                let qp = build_qp_grid_from_cus(&coding_units, grid_w, grid_h, block_w, block_h, base_qp);
                 return Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp));
             }
             Err(e) => {

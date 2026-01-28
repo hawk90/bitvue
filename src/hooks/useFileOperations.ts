@@ -197,7 +197,10 @@ export function useFileOperations(): UseFileOperationsResult {
     });
 
     return () => {
-      unlisten.then((fn) => fn());
+      // Proper cleanup: handle potential errors during unlisten
+      unlisten.then((fn) => fn()).catch((err) => {
+        logger.warn('Failed to unlisten from file-opened event:', err);
+      });
     };
   }, []);
 

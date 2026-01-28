@@ -117,7 +117,12 @@ function Timeline({ frames, className = '' }: TimelineProps) {
       setFrameSelection({ stream: 'A', frameIndex: dragIndexRef.current }, 'timeline');
       window.removeEventListener('mousemove', handleDragMove);
       window.removeEventListener('mouseup', handleDragUp);
+      // Clear refs after cleanup
+      eventListenersRef.current = {};
     };
+
+    // Store refs for cleanup in case component unmounts during drag
+    eventListenersRef.current = { handleMouseMove: handleDragMove, handleMouseUp: handleDragUp };
 
     window.addEventListener('mousemove', handleDragMove, { passive: true });
     window.addEventListener('mouseup', handleDragUp);

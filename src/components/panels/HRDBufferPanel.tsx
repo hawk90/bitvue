@@ -7,7 +7,7 @@
  * Per VQAnalyzer parity: HRD buffer plot with occupancy graph
  */
 
-import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
+import { useMemo, useRef, useEffect, useState, useCallback, memo } from 'react';
 import type { FrameInfo } from '../types/video';
 import './HRDBufferPanel.css';
 
@@ -25,7 +25,7 @@ interface HRDState {
   maxOccupancy: number;
 }
 
-export function HRDBufferPanel({
+const HRDBufferPanelInternal = function HRDBufferPanel({
   frames,
   currentFrameIndex,
   frameRate,
@@ -344,6 +344,7 @@ export function HRDBufferPanel({
       </div>
     </div>
   );
-}
+});
 
+export const HRDBufferPanel = memo(HRDBufferPanelInternal);
 export default HRDBufferPanel;

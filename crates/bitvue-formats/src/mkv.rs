@@ -209,6 +209,12 @@ pub fn parse_mkv(data: &[u8]) -> Result<MkvInfo, BitvueError> {
     let mut cursor = Cursor::new(data);
     let mut info = MkvInfo::default();
 
+    // Pre-allocate capacity for samples - most videos have at least a few hundred frames
+    // This reduces reallocations during parsing
+    info.samples.reserve(1000);
+    info.timestamps.reserve(1000);
+    info.key_frames.reserve(100); // Keyframes are typically less frequent
+
     // Parse EBML header
     let id = read_element_id(&mut cursor)?;
     if id != element_id::EBML {

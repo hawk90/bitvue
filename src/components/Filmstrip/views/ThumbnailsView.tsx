@@ -55,7 +55,10 @@ function ThumbnailsView({
     const spacingPerSlot = 12;
     const verticalOffset = baseOffset + (slotIndex * spacingPerSlot);
     // ㄷ-shaped path: down from source, then horizontal, then up to target
-    return `M ${sourcePos.centerX} ${sourcePos.bottom} L ${sourcePos.centerX} ${sourcePos.bottom! + verticalOffset} L ${targetPos.centerX} ${sourcePos.bottom! + verticalOffset} L ${targetPos.centerX} ${targetPos.bottom}`;
+    // Use default values for bottom position in case DOM elements are not rendered
+    const sourceBottom = sourcePos.bottom ?? 0;
+    const targetBottom = targetPos.bottom ?? 0;
+    return `M ${sourcePos.centerX} ${sourceBottom} L ${sourcePos.centerX} ${sourceBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom}`;
   }, []);
 
   // Use shared hook for pre-rendered arrows

@@ -165,7 +165,8 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
         }
     }
 
-    let mut samples = Vec::new();
+    // Pre-allocate with exact capacity since we know the sample count
+    let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
     for (offset, size) in info.sample_offsets.iter().zip(info.sample_sizes.iter()) {
         let offset = *offset as usize;
@@ -211,7 +212,8 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
         }
     }
 
-    let mut samples = Vec::new();
+    // Pre-allocate with exact capacity since we know the sample count
+    let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
     for (offset, size) in info.sample_offsets.iter().zip(info.sample_sizes.iter()) {
         let offset = *offset as usize;
@@ -257,7 +259,8 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
         }
     }
 
-    let mut samples = Vec::new();
+    // Pre-allocate with exact capacity since we know the sample count
+    let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
     for (offset, size) in info.sample_offsets.iter().zip(info.sample_sizes.iter()) {
         let offset = *offset as usize;

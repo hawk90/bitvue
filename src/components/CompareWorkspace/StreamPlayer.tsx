@@ -4,7 +4,7 @@
  * Displays a single video stream with frame navigation.
  */
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { type FrameInfo, AlignmentQuality } from '../../types/video';
 import { VideoCanvas } from '../panels/YuvViewerPanel/VideoCanvas';
 import { FrameNavigationControls } from '../panels/YuvViewerPanel/FrameNavigationControls';
@@ -29,7 +29,8 @@ function StreamPlayer({
 }: StreamPlayerProps) {
   const currentFrameData = frames[currentFrame] || null;
 
-  const getAlignmentColor = (quality?: AlignmentQuality): string => {
+  // Memoize alignment color function - it's recreated on every render otherwise
+  const getAlignmentColor = useMemo(() => (quality?: AlignmentQuality): string => {
     switch (quality) {
       case AlignmentQuality.Exact:
         return 'var(--color-success)';
@@ -38,9 +39,9 @@ function StreamPlayer({
       case AlignmentQuality.Gap:
         return 'var(--color-error)';
       default:
-        return 'var(--text-secondary)';
+        return 'var(--color-text-secondary)';
     }
-  };
+  }, []);
 
   return (
     <div className={`stream-player stream-${streamLabel.toLowerCase()}`}>

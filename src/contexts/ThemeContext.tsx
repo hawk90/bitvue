@@ -4,7 +4,7 @@
  * Manages theme (light/dark) for the application
  */
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
 
 export type Theme = 'dark' | 'light';
 
@@ -37,8 +37,14 @@ export function ThemeProvider({ children, defaultTheme = 'dark' }: ThemeProvider
     });
   }, []);
 
+  // Memoize context value to prevent unnecessary re-renders in consumers
+  const contextValue = useMemo<ThemeContextType>(
+    () => ({ theme, setTheme, toggleTheme }),
+    [theme, setTheme, toggleTheme]
+  );
+
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={contextValue}>
       {children}
     </ThemeContext.Provider>
   );

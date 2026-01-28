@@ -75,7 +75,7 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
   useEffect(() => {
     if (shouldShowReferences) {
       setShowingReferences(true);
-      const timer = setTimeout(() => setShowingReferences(true), 50);
+      const timer = setTimeout(() => setShowingReferences(false), 50);
       return () => clearTimeout(timer);
     } else {
       setShowingReferences(false);
