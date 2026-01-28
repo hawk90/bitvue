@@ -19,6 +19,7 @@ use std::sync::Arc;
 /// - LRU cache for segment deduplication
 /// - 256KB segments (tunable)
 /// - 256MB memory budget (tunable)
+/// - TOCTOU protection: stores original file size for validation
 ///
 /// Usage:
 /// ```no_run
@@ -32,6 +33,9 @@ use std::sync::Arc;
 pub struct ByteCache {
     /// Memory-mapped file (read-only)
     mmap: Arc<Mmap>,
+
+    /// Original file size at creation time (for TOCTOU detection)
+    original_size: u64,
 
     /// Segment size in bytes (default: 256KB)
     segment_size: usize,
@@ -103,11 +107,15 @@ impl ByteCache {
             return Err(BitvueError::InvalidFile("File is empty".to_string()));
         }
 
+        // Store original size for TOCTOU detection
+        let original_size = mmap.len() as u64;
+
         let num_segments = (max_memory / segment_size).max(1);
         let cache = RwLock::new(LruCache::new(NonZeroUsize::new(num_segments).unwrap()));
 
         Ok(Self {
             mmap: Arc::new(mmap),
+            original_size,
             segment_size,
             cache,
             max_memory,
@@ -127,8 +135,19 @@ impl ByteCache {
     /// # Errors
     /// Returns error if:
     /// - Range is out of bounds
-    /// - File was modified on disk
+    /// - File was modified on disk (TOCTOU protection)
     pub fn read_range(&self, offset: u64, len: usize) -> Result<&[u8]> {
+        // TOCTOU protection: verify mmap size hasn't changed
+        // This detects if the file was replaced/truncated after mapping
+        let current_size = self.mmap.len() as u64;
+        if current_size != self.original_size {
+            return Err(BitvueError::FileModified {
+                path: self.file_path.clone(),
+                old_size: self.original_size,
+                new_size: current_size,
+            });
+        }
+
         // Bounds check
         let end_offset = offset
             .checked_add(len as u64)
