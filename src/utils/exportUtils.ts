@@ -52,6 +52,22 @@ export interface AnalysisReportData {
 }
 
 /**
+ * Escape HTML special characters to prevent XSS attacks
+ *
+ * This is critical when generating HTML reports that include user data
+ * or file-derived data that could contain malicious content.
+ */
+function escapeHtml(unsafe: string | number): string {
+  const str = String(unsafe);
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
  * Export frames to CSV format
  */
 export async function exportFramesToCsv(frames: FrameExportData[]): Promise<string> {
@@ -199,8 +215,38 @@ export async function exportToPdf(reportData: AnalysisReportData): Promise<void>
 
 /**
  * Generate HTML report for PDF export
+ *
+ * SECURITY: All user-provided data is HTML-escaped to prevent XSS attacks.
+ * This includes codec name, dimensions, and all statistics.
  */
 function generateHtmlReport(data: AnalysisReportData): string {
+  // Escape all user data to prevent XSS
+  const safeCodec = escapeHtml(data.codec);
+  const safeWidth = escapeHtml(data.width);
+  const safeHeight = escapeHtml(data.height);
+  const safeTotalFrames = escapeHtml(data.total_frames);
+  const safeIFrames = escapeHtml(data.frame_type_distribution.i_frames);
+  const safePFrames = escapeHtml(data.frame_type_distribution.p_frames);
+  const safeBFrames = escapeHtml(data.frame_type_distribution.b_frames);
+  const safeTotal = escapeHtml(data.size_statistics.total.toLocaleString());
+  const safeAverage = escapeHtml(data.size_statistics.average.toLocaleString());
+  const safeMax = escapeHtml(data.size_statistics.max.toLocaleString());
+  const safeMin = escapeHtml(data.size_statistics.min.toLocaleString());
+  const safeGopCount = escapeHtml(data.gop_structure.count);
+  const safeAvgGopSize = escapeHtml(data.gop_structure.average_size);
+
+  // Calculate percentages safely
+  const iPct = data.total_frames > 0
+    ? ((data.frame_type_distribution.i_frames / data.total_frames) * 100).toFixed(1)
+    : '0.0';
+  const pPct = data.total_frames > 0
+    ? ((data.frame_type_distribution.p_frames / data.total_frames) * 100).toFixed(1)
+    : '0.0';
+  const bPct = data.total_frames > 0
+    ? ((data.frame_type_distribution.b_frames / data.total_frames) * 100).toFixed(1)
+    : '0.0';
+  const safeMb = escapeHtml((data.size_statistics.total / 1024 / 1024).toFixed(2));
+
   return `
 <!DOCTYPE html>
 <html>
@@ -221,33 +267,33 @@ function generateHtmlReport(data: AnalysisReportData): string {
 
   <div class="section">
     <h2>Stream Information</h2>
-    <div class="stat">Codec: ${data.codec}</div>
-    <div class="stat">Resolution: ${data.width}x${data.height}</div>
-    <div class="stat">Total Frames: ${data.total_frames}</div>
+    <div class="stat">Codec: ${safeCodec}</div>
+    <div class="stat">Resolution: ${safeWidth}x${safeHeight}</div>
+    <div class="stat">Total Frames: ${safeTotalFrames}</div>
   </div>
 
   <div class="section">
     <h2>Frame Type Distribution</h2>
     <table>
       <tr><th>Type</th><th>Count</th><th>Percentage</th></tr>
-      <tr><td>I-Frames</td><td>${data.frame_type_distribution.i_frames}</td><td>${((data.frame_type_distribution.i_frames / data.total_frames) * 100).toFixed(1)}%</td></tr>
-      <tr><td>P-Frames</td><td>${data.frame_type_distribution.p_frames}</td><td>${((data.frame_type_distribution.p_frames / data.total_frames) * 100).toFixed(1)}%</td></tr>
-      <tr><td>B-Frames</td><td>${data.frame_type_distribution.b_frames}</td><td>${((data.frame_type_distribution.b_frames / data.total_frames) * 100).toFixed(1)}%</td></tr>
+      <tr><td>I-Frames</td><td>${safeIFrames}</td><td>${escapeHtml(iPct)}%</td></tr>
+      <tr><td>P-Frames</td><td>${safePFrames}</td><td>${escapeHtml(pPct)}%</td></tr>
+      <tr><td>B-Frames</td><td>${safeBFrames}</td><td>${escapeHtml(bPct)}%</td></tr>
     </table>
   </div>
 
   <div class="section">
     <h2>Size Statistics</h2>
-    <div class="stat">Total: ${data.size_statistics.total.toLocaleString()} bytes (${(data.size_statistics.total / 1024 / 1024).toFixed(2)} MB)</div>
-    <div class="stat">Average: ${data.size_statistics.average.toLocaleString()} bytes</div>
-    <div class="stat">Max: ${data.size_statistics.max.toLocaleString()} bytes</div>
-    <div class="stat">Min: ${data.size_statistics.min.toLocaleString()} bytes</div>
+    <div class="stat">Total: ${safeTotal} bytes (${safeMb} MB)</div>
+    <div class="stat">Average: ${safeAverage} bytes</div>
+    <div class="stat">Max: ${safeMax} bytes</div>
+    <div class="stat">Min: ${safeMin} bytes</div>
   </div>
 
   <div class="section">
     <h2>GOP Structure</h2>
-    <div class="stat">Number of GOPs: ${data.gop_structure.count}</div>
-    <div class="stat">Average GOP size: ${data.gop_structure.average_size}</div>
+    <div class="stat">Number of GOPs: ${safeGopCount}</div>
+    <div class="stat">Average GOP size: ${safeAvgGopSize}</div>
   </div>
 
   <div class="section">
