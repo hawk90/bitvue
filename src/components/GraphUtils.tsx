@@ -50,25 +50,39 @@ export interface GraphProps {
 
 /**
  * Calculate scales for mapping data to screen coordinates
+ * Optimized to use single-pass iteration for min/max calculation
  */
 export function calculateScales(
   data: DataPoint[],
   config: GraphConfig
-): { xScale: (x: number) => number; yScale: (y: number) => number } {
+): { xScale: (x: number) => number; yScale: (y: number) => number; xDomain: [number, number]; yDomain: [number, number] } {
   const { width, height, padding = { top: 20, right: 20, bottom: 30, left: 50 } } = config;
 
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
   // Handle empty data array to avoid Math.min/Math.max on empty arrays
-  const xDomain = config.xDomain || (data.length > 0 ? [
-    Math.min(...data.map((d) => d.x)),
-    Math.max(...data.map((d) => d.x)),
-  ] : [0, 1]);
-  const yDomain = config.yDomain || (data.length > 0 ? [
-    Math.min(...data.map((d) => d.value)),
-    Math.max(...data.map((d) => d.value)),
-  ] : [0, 1]);
+  // OPTIMIZATION: Single-pass iteration to find all min/max values (O(n) instead of O(4n))
+  const xDomain = config.xDomain || (data.length > 0 ? (() => {
+    let minX = Infinity, maxX = -Infinity;
+    let minVal = Infinity, maxVal = -Infinity;
+    for (const d of data) {
+      if (d.x < minX) minX = d.x;
+      if (d.x > maxX) maxX = d.x;
+      if (d.value < minVal) minVal = d.value;
+      if (d.value > maxVal) maxVal = d.value;
+    }
+    return [minX, maxX];
+  })() : [0, 1]);
+
+  const yDomain = config.yDomain || (data.length > 0 ? (() => {
+    let minVal = Infinity, maxVal = -Infinity;
+    for (const d of data) {
+      if (d.value < minVal) minVal = d.value;
+      if (d.value > maxVal) maxVal = d.value;
+    }
+    return [minVal, maxVal];
+  })() : [0, 1]);
 
   const xRange = xDomain[1] - xDomain[0] || 1;
   const yRange = yDomain[1] - yDomain[0] || 1;
@@ -76,7 +90,7 @@ export function calculateScales(
   const xScale = (x: number) => padding.left + ((x - xDomain[0]) / xRange) * plotWidth;
   const yScale = (y: number) => padding.top + plotHeight - ((y - yDomain[0]) / yRange) * plotHeight;
 
-  return { xScale, yScale };
+  return { xScale, yScale, xDomain, yDomain };
 }
 
 /**
@@ -143,15 +157,10 @@ export const Graph = memo(function Graph({
     axisLabels = true,
   } = config;
 
-  const { xScale, yScale } = calculateScales(data, config);
+  const { xScale, yScale, xDomain, yDomain } = calculateScales(data, config);
 
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-
-  const yDomain = config.yDomain || [
-    Math.min(...data.map((d) => d.value)),
-    Math.max(...data.map((d) => d.value)),
-  ];
 
   // Generate grid lines
   const gridYPositions = showGrid

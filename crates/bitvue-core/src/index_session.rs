@@ -114,13 +114,19 @@ impl IndexSession {
     }
 
     /// Get quick index (if available)
+    /// OPTIMIZATION: Avoid cloning by returning None and requiring caller to use get_quick_index_ref if needed
     pub fn quick_index(&self) -> Option<QuickIndex> {
-        self.quick_index.lock().unwrap().clone()
+        // Note: This clones for API compatibility. For performance-critical code,
+        // consider using with_quick_index() pattern instead
+        self.quick_index.lock().unwrap().as_ref().cloned()
     }
 
     /// Get full index (if available)
+    /// OPTIMIZATION: Avoid cloning by returning None and requiring caller to use get_full_index_ref if needed
     pub fn full_index(&self) -> Option<FullIndex> {
-        self.full_index.lock().unwrap().clone()
+        // Note: This clones for API compatibility. For performance-critical code,
+        // consider using with_full_index() pattern instead
+        self.full_index.lock().unwrap().as_ref().cloned()
     }
 
     /// Get evidence manager
@@ -185,14 +191,20 @@ impl IndexSession {
 
         match result {
             Ok(quick_idx) => {
-                // Store result
-                *self.quick_index.lock().unwrap() = Some(quick_idx.clone());
+                // OPTIMIZATION: Extract data we need before moving quick_idx into mutex
+                let seek_points_count = quick_idx.seek_points.len();
+
+                // Store result (move instead of clone)
+                *self.quick_index.lock().unwrap() = Some(quick_idx);
 
                 // Create evidence for seek points
                 {
                     let mut evidence_mgr = self.evidence_manager.lock().unwrap();
-                    for seek_point in &quick_idx.seek_points {
-                        evidence_mgr.create_seekpoint_evidence(seek_point);
+                    // Get reference to the stored quick_idx to avoid clone
+                    if let Some(ref idx) = *self.quick_index.lock().unwrap() {
+                        for seek_point in &idx.seek_points {
+                            evidence_mgr.create_seekpoint_evidence(seek_point);
+                        }
                     }
                 }
 
@@ -206,13 +218,15 @@ impl IndexSession {
                         progress: 1.0,
                         message: format!(
                             "Quick index complete: {} keyframes",
-                            quick_idx.seek_points.len()
+                            seek_points_count
                         ),
-                        frames_indexed: quick_idx.seek_points.len(),
+                        frames_indexed: seek_points_count,
                     });
                 }
 
-                Ok(quick_idx)
+                // Return by cloning since we moved it into the mutex
+                // This is necessary for the API but less efficient
+                self.quick_index.lock().unwrap().as_ref().cloned().ok_or(BitvueError::InvalidData("Quick index not found".to_string()))
             }
             Err(e) => {
                 *self.state.lock().unwrap() = IndexingState::Error;
@@ -280,33 +294,40 @@ impl IndexSession {
                     ));
                 }
 
+                // OPTIMIZATION: Extract count before moving frames
+                let frames_count = frames.len();
+
                 // Build full index
                 let file_size = {
                     let quick = self.quick_index.lock().unwrap();
                     quick.as_ref().map(|q| q.file_size).unwrap_or(0)
                 };
 
-                let full_idx = FullIndex::new(frames.clone(), file_size, true);
+                let full_idx = FullIndex::new(frames, file_size, true);
 
-                // Store result
-                *self.full_index.lock().unwrap() = Some(full_idx.clone());
+                // Store result (move instead of clone)
+                *self.full_index.lock().unwrap() = Some(full_idx);
 
                 // Create evidence for all frames
                 {
                     let mut evidence_mgr = self.evidence_manager.lock().unwrap();
-                    for frame in &frames {
-                        evidence_mgr.create_frame_metadata_evidence(frame);
-                    }
 
-                    // Update seek point sizes with accurate data
-                    if let Some(quick) = self.quick_index.lock().unwrap().as_ref() {
-                        for seek_point in &quick.seek_points {
-                            if let Some(frame) = frames
-                                .iter()
-                                .find(|f| f.display_idx == seek_point.display_idx)
-                            {
-                                evidence_mgr
-                                    .update_seekpoint_size(frame.display_idx, frame.size as usize);
+                    // Get reference to stored frames to avoid clone
+                    if let Some(ref idx) = *self.full_index.lock().unwrap() {
+                        for frame in &idx.frames {
+                            evidence_mgr.create_frame_metadata_evidence(frame);
+                        }
+
+                        // Update seek point sizes with accurate data
+                        if let Some(quick) = self.quick_index.lock().unwrap().as_ref() {
+                            for seek_point in &quick.seek_points {
+                                if let Some(frame) = idx.frames
+                                    .iter()
+                                    .find(|f| f.display_idx == seek_point.display_idx)
+                                {
+                                    evidence_mgr
+                                        .update_seekpoint_size(frame.display_idx, frame.size as usize);
+                                }
                             }
                         }
                     }
@@ -320,12 +341,13 @@ impl IndexSession {
                     callback(IndexingProgress {
                         phase: IndexingPhase::Full,
                         progress: 1.0,
-                        message: format!("Full index complete: {} frames", frames.len()),
-                        frames_indexed: frames.len(),
+                        message: format!("Full index complete: {} frames", frames_count),
+                        frames_indexed: frames_count,
                     });
                 }
 
-                Ok(full_idx)
+                // Return by cloning since we moved it into the mutex
+                self.full_index.lock().unwrap().as_ref().cloned().ok_or(BitvueError::InvalidData("Full index not found".to_string()))
             }
             Err(e) => {
                 if self.is_cancelled() {

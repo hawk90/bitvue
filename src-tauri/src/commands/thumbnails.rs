@@ -76,7 +76,7 @@ pub async fn get_thumbnails(
 
     for &frame_idx in &frame_indices {
         // Check cache first
-        if let Some(cached) = state.thumbnail_service.lock()
+        if let Ok(Some(cached)) = state.thumbnail_service.lock()
             .map_err(|e| e.to_string())?
             .get_cached(frame_idx)
         {
@@ -126,9 +126,12 @@ pub async fn get_thumbnails(
                                 .unwrap_or("UNKNOWN".to_string());
 
                             // Cache the thumbnail
-                            state.thumbnail_service.lock()
+                            let _ = state.thumbnail_service.lock()
                                 .map_err(|e| e.to_string())?
-                                .cache_thumbnail(frame_idx, thumbnail_data.clone(), frame_type.clone());
+                                .cache_thumbnail(frame_idx, thumbnail_data.clone(), frame_type.clone())
+                                .map_err(|e| {
+                                    log::warn!("get_thumbnails: Failed to cache thumbnail for frame {}: {}", frame_idx, e);
+                                });
 
                             thumbnails.push(ThumbnailData {
                                 frame_index: frame_idx,
@@ -190,9 +193,12 @@ pub async fn get_thumbnails(
             };
 
             // Cache the thumbnail
-            state.thumbnail_service.lock()
+            let _ = state.thumbnail_service.lock()
                 .map_err(|e| e.to_string())?
-                .cache_thumbnail(frame_idx, thumbnail_data.clone(), frame_type.clone());
+                .cache_thumbnail(frame_idx, thumbnail_data.clone(), frame_type.clone())
+                .map_err(|e| {
+                    log::warn!("get_thumbnails: Failed to cache thumbnail for frame {}: {}", frame_idx, e);
+                });
 
             thumbnails.push(ThumbnailData {
                 frame_index: frame_idx,

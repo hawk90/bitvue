@@ -248,7 +248,10 @@ export class KeyboardShortcutHandler {
 
     if (shortcuts && shortcuts.length > 0) {
       event.preventDefault();
-      shortcuts.forEach(shortcut => shortcut.action());
+      // Use for...of instead of forEach to allow early exit if needed
+      for (const shortcut of shortcuts) {
+        shortcut.action();
+      }
       return true;
     }
 

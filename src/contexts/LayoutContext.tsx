@@ -40,6 +40,71 @@ function getStorageErrorType(error: unknown): StorageErrorType {
 }
 
 /**
+ * Type guard to validate LayoutState structure
+ * Prevents prototype pollution and invalid data from being used
+ */
+function isValidLayoutState(data: unknown): data is LayoutState {
+  // Check if data is a plain object (not null, not array, not null prototype)
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return false;
+  }
+
+  // Prevent prototype pollution
+  if (Object.prototype.isPrototypeOf(data)) {
+    return false;
+  }
+
+  // Validate required fields exist and have correct types
+  const layoutState = data as Record<string, unknown>;
+
+  // Check leftPanelSize
+  if (typeof layoutState.leftPanelSize !== 'number' ||
+      !Number.isFinite(layoutState.leftPanelSize) ||
+      layoutState.leftPanelSize < 0 ||
+      layoutState.leftPanelSize > 100) {
+    return false;
+  }
+
+  // Check topPanelSize
+  if (typeof layoutState.topPanelSize !== 'number' ||
+      !Number.isFinite(layoutState.topPanelSize) ||
+      layoutState.topPanelSize < 0 ||
+      layoutState.topPanelSize > 100) {
+    return false;
+  }
+
+  // Check bottomPanelSizes
+  if (!Array.isArray(layoutState.bottomPanelSizes)) {
+    return false;
+  }
+
+  if (layoutState.bottomPanelSizes.length !== 3) {
+    return false;
+  }
+
+  // Validate each bottom panel size
+  for (const size of layoutState.bottomPanelSizes) {
+    if (typeof size !== 'number' ||
+        !Number.isFinite(size) ||
+        size < 0 ||
+        size > 100) {
+      return false;
+    }
+  }
+
+  // Check for unexpected properties (fail closed for security)
+  const allowedKeys = ['leftPanelSize', 'topPanelSize', 'bottomPanelSizes'];
+  const actualKeys = Object.keys(layoutState);
+  for (const key of actualKeys) {
+    if (!allowedKeys.includes(key)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Handle storage errors with appropriate logging and user feedback
  */
 function handleStorageError(error: unknown, operation: string): void {
@@ -138,16 +203,10 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem('bitvue-layout');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Validate the parsed layout structure
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          'leftPanelSize' in parsed &&
-          'topPanelSize' in parsed &&
-          'bottomPanelSizes' in parsed &&
-          Array.isArray(parsed.bottomPanelSizes)
-        ) {
+        // Use type guard for comprehensive validation
+        if (isValidLayoutState(parsed)) {
           setLayoutState(parsed);
+          logger.info('Successfully loaded layout from storage');
         } else {
           logger.warn('Invalid layout structure in storage, using defaults');
         }

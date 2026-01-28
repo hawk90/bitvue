@@ -9,6 +9,14 @@ use std::collections::{HashMap, VecDeque};
 // Import path validation from commands module
 use crate::commands::file::validate_file_path;
 
+/// Helper macro to safely lock mutexes with proper error handling
+/// Prevents panic on mutex poisoning by returning an error instead
+macro_rules! lock_mutex {
+    ($mutex:expr) => {
+        $mutex.lock().map_err(|e| format!("Mutex poisoned: {}", e))?
+    };
+}
+
 /// Cached decoded RGB frame data
 #[derive(Debug, Clone)]
 struct CachedDecodedFrame {
@@ -87,15 +95,15 @@ impl DecodeService {
     /// Set the file for decoding and cache its data
     pub fn set_file(&mut self, path: PathBuf, codec: String) -> Result<(), String> {
         // Clear previous cache and reset byte counter
-        *self.cached_data.lock().unwrap() = None;
-        self.decoded_frames_cache.lock().unwrap().clear();
-        self.yuv_frames_cache.lock().unwrap().clear();
-        self.rgb_lru_order.lock().unwrap().clear();
-        self.yuv_lru_order.lock().unwrap().clear();
-        *self.current_cache_bytes.lock().unwrap() = 0;
-        *self.mp4_samples_cache.lock().unwrap() = None;
-        *self.mkv_samples_cache.lock().unwrap() = None;
-        *self.ivf_frames_cache.lock().unwrap() = None;
+        *lock_mutex!(self.cached_data) = None;
+        lock_mutex!(self.decoded_frames_cache).clear();
+        lock_mutex!(self.yuv_frames_cache).clear();
+        lock_mutex!(self.rgb_lru_order).clear();
+        lock_mutex!(self.yuv_lru_order).clear();
+        *lock_mutex!(self.current_cache_bytes) = 0;
+        *lock_mutex!(self.mp4_samples_cache) = None;
+        *lock_mutex!(self.mkv_samples_cache) = None;
+        *lock_mutex!(self.ivf_frames_cache) = None;
 
         self.file_path = Some(path.clone());
         self.codec = codec;
@@ -104,7 +112,7 @@ impl DecodeService {
         let file_data = std::fs::read(&path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
-        *self.cached_data.lock().unwrap() = Some(Arc::new(file_data));
+        *lock_mutex!(self.cached_data) = Some(Arc::new(file_data));
 
         Ok(())
     }
@@ -112,21 +120,21 @@ impl DecodeService {
     /// Set the file for decoding with already-read data (avoids re-reading from disk)
     pub fn set_file_with_data(&mut self, path: PathBuf, codec: String, file_data: Vec<u8>) -> Result<(), String> {
         // Clear previous cache and reset byte counter
-        *self.cached_data.lock().unwrap() = None;
-        self.decoded_frames_cache.lock().unwrap().clear();
-        self.yuv_frames_cache.lock().unwrap().clear();
-        self.rgb_lru_order.lock().unwrap().clear();
-        self.yuv_lru_order.lock().unwrap().clear();
-        *self.current_cache_bytes.lock().unwrap() = 0;
-        *self.mp4_samples_cache.lock().unwrap() = None;
-        *self.mkv_samples_cache.lock().unwrap() = None;
-        *self.ivf_frames_cache.lock().unwrap() = None;
+        *lock_mutex!(self.cached_data) = None;
+        lock_mutex!(self.decoded_frames_cache).clear();
+        lock_mutex!(self.yuv_frames_cache).clear();
+        lock_mutex!(self.rgb_lru_order).clear();
+        lock_mutex!(self.yuv_lru_order).clear();
+        *lock_mutex!(self.current_cache_bytes) = 0;
+        *lock_mutex!(self.mp4_samples_cache) = None;
+        *lock_mutex!(self.mkv_samples_cache) = None;
+        *lock_mutex!(self.ivf_frames_cache) = None;
 
         self.file_path = Some(path);
         self.codec = codec;
 
         // Use provided data instead of reading from disk
-        *self.cached_data.lock().unwrap() = Some(Arc::new(file_data));
+        *lock_mutex!(self.cached_data) = Some(Arc::new(file_data));
 
         Ok(())
     }
@@ -135,7 +143,7 @@ impl DecodeService {
     /// Returns Arc<Vec<u8>> which can be cheaply cloned and dereferenced to &[u8]
     pub fn get_file_data_arc(&self) -> Result<Arc<Vec<u8>>, String> {
         // Check cache first
-        if let Some(data) = self.cached_data.lock().unwrap().as_ref() {
+        if let Some(data) = lock_mutex!(self.cached_data).as_ref() {
             return Ok(data.clone());
         }
 
@@ -163,9 +171,9 @@ impl DecodeService {
     /// Returns Arc<Vec<u8>> for cheap cloning - caller can deref to &[u8] for most use cases
     pub fn get_or_decode_frame(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>) -> Result<(u32, u32, Arc<Vec<u8>>), String> {
         // Check frame cache first
-        if let Some(cached) = self.decoded_frames_cache.lock().unwrap().get(&frame_index) {
+        if let Some(cached) = lock_mutex!(self.decoded_frames_cache).get(&frame_index) {
             // Update LRU position (move to back = most recently used)
-            let mut lru_order = self.rgb_lru_order.lock().unwrap();
+            let mut lru_order = lock_mutex!(self.rgb_lru_order);
             if let Some(pos) = lru_order.iter().position(|&k| k == frame_index) {
                 lru_order.remove(pos);
             }
@@ -182,9 +190,9 @@ impl DecodeService {
         let frame_size = rgb_data.len();
 
         // Cache the decoded frame with O(1) LRU eviction
-        let mut cache = self.decoded_frames_cache.lock().unwrap();
-        let mut lru_order = self.rgb_lru_order.lock().unwrap();
-        let mut current_bytes = self.current_cache_bytes.lock().unwrap();
+        let mut cache = lock_mutex!(self.decoded_frames_cache);
+        let mut lru_order = lock_mutex!(self.rgb_lru_order);
+        let mut current_bytes = lock_mutex!(self.current_cache_bytes);
 
         // Evict oldest frames until there's space for the new frame (O(1) per eviction)
         while *current_bytes + frame_size > self.max_cache_bytes && !lru_order.is_empty() {
@@ -215,9 +223,9 @@ impl DecodeService {
     /// Get a cached decoded YUV frame, or decode it if not cached
     pub fn get_or_decode_frame_yuv(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<bitvue_decode::DecodedFrame, String>) -> Result<bitvue_decode::DecodedFrame, String> {
         // Check YUV frame cache first
-        if let Some(cached) = self.yuv_frames_cache.lock().unwrap().get(&frame_index) {
+        if let Some(cached) = lock_mutex!(self.yuv_frames_cache).get(&frame_index) {
             // Update LRU position (move to back = most recently used)
-            let mut lru_order = self.yuv_lru_order.lock().unwrap();
+            let mut lru_order = lock_mutex!(self.yuv_lru_order);
             if let Some(pos) = lru_order.iter().position(|&k| k == frame_index) {
                 lru_order.remove(pos);
             }
@@ -249,9 +257,9 @@ impl DecodeService {
         let frame_size = y_size + u_size + v_size;
 
         // Cache the decoded YUV frame with O(1) LRU eviction
-        let mut cache = self.yuv_frames_cache.lock().unwrap();
-        let mut lru_order = self.yuv_lru_order.lock().unwrap();
-        let mut current_bytes = self.current_cache_bytes.lock().unwrap();
+        let mut cache = lock_mutex!(self.yuv_frames_cache);
+        let mut lru_order = lock_mutex!(self.yuv_lru_order);
+        let mut current_bytes = lock_mutex!(self.current_cache_bytes);
 
         // Evict oldest frames until there's space for the new frame (O(1) per eviction)
         while *current_bytes + frame_size > self.max_cache_bytes && !lru_order.is_empty() {
@@ -292,7 +300,7 @@ impl DecodeService {
     /// Get cached MP4 samples, or extract them if not cached
     pub fn get_or_extract_mp4_samples(&self) -> Result<Option<Vec<Vec<u8>>>, String> {
         // Check cache first
-        if let Some(samples) = self.mp4_samples_cache.lock().unwrap().as_ref() {
+        if let Some(samples) = lock_mutex!(self.mp4_samples_cache).as_ref() {
             return Ok(Some(samples.clone()));
         }
 
@@ -300,7 +308,7 @@ impl DecodeService {
         let file_data = self.get_file_data_arc()?;
         match bitvue_formats::mp4::extract_av1_samples(&file_data) {
             Ok(samples) => {
-                *self.mp4_samples_cache.lock().unwrap() = Some(samples.clone());
+                *lock_mutex!(self.mp4_samples_cache) = Some(samples.clone());
                 Ok(Some(samples))
             }
             Err(_) => Ok(None), // Not an MP4 file or extraction failed
@@ -310,7 +318,7 @@ impl DecodeService {
     /// Get cached MKV samples, or extract them if not cached
     pub fn get_or_extract_mkv_samples(&self) -> Result<Option<Vec<Vec<u8>>>, String> {
         // Check cache first
-        if let Some(samples) = self.mkv_samples_cache.lock().unwrap().as_ref() {
+        if let Some(samples) = lock_mutex!(self.mkv_samples_cache).as_ref() {
             return Ok(Some(samples.clone()));
         }
 
@@ -318,7 +326,7 @@ impl DecodeService {
         let file_data = self.get_file_data_arc()?;
         match bitvue_formats::mkv::extract_av1_samples(&file_data) {
             Ok(samples) => {
-                *self.mkv_samples_cache.lock().unwrap() = Some(samples.clone());
+                *lock_mutex!(self.mkv_samples_cache) = Some(samples.clone());
                 Ok(Some(samples))
             }
             Err(_) => Ok(None), // Not an MKV file or extraction failed
@@ -329,7 +337,7 @@ impl DecodeService {
     /// Returns the parsed IVF header and frame information
     pub fn get_or_parse_ivf_frames(&self) -> Result<Option<(bitvue_av1::IvfHeader, Vec<bitvue_av1::IvfFrame>)>, String> {
         // Check cache first
-        if let Some(frames) = self.ivf_frames_cache.lock().unwrap().as_ref() {
+        if let Some(frames) = lock_mutex!(self.ivf_frames_cache).as_ref() {
             return Ok(Some(frames.clone()));
         }
 
@@ -337,7 +345,7 @@ impl DecodeService {
         let file_data = self.get_file_data_arc()?;
         match bitvue_av1::parse_ivf_frames(&file_data) {
             Ok(parsed) => {
-                *self.ivf_frames_cache.lock().unwrap() = Some(parsed.clone());
+                *lock_mutex!(self.ivf_frames_cache) = Some(parsed.clone());
                 Ok(Some(parsed))
             }
             Err(_) => Ok(None), // Not an IVF file or parsing failed
@@ -345,16 +353,17 @@ impl DecodeService {
     }
 
     /// Clear all cached data
-    pub fn clear_cache(&self) {
-        *self.cached_data.lock().unwrap() = None;
-        self.decoded_frames_cache.lock().unwrap().clear();
-        self.yuv_frames_cache.lock().unwrap().clear();
-        self.rgb_lru_order.lock().unwrap().clear();
-        self.yuv_lru_order.lock().unwrap().clear();
-        *self.current_cache_bytes.lock().unwrap() = 0;
-        *self.mp4_samples_cache.lock().unwrap() = None;
-        *self.mkv_samples_cache.lock().unwrap() = None;
-        *self.ivf_frames_cache.lock().unwrap() = None;
+    pub fn clear_cache(&self) -> Result<(), String> {
+        *lock_mutex!(self.cached_data) = None;
+        lock_mutex!(self.decoded_frames_cache).clear();
+        lock_mutex!(self.yuv_frames_cache).clear();
+        lock_mutex!(self.rgb_lru_order).clear();
+        lock_mutex!(self.yuv_lru_order).clear();
+        *lock_mutex!(self.current_cache_bytes) = 0;
+        *lock_mutex!(self.mp4_samples_cache) = None;
+        *lock_mutex!(self.mkv_samples_cache) = None;
+        *lock_mutex!(self.ivf_frames_cache) = None;
+        Ok(())
     }
 }
 

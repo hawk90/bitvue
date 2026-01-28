@@ -33,6 +33,44 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
         return Err(format!("Path is not a file: {:?}", path));
     }
 
+    // SECURITY: Detect and validate symlinks to prevent symlink-based attacks
+    // Symlinks could be used to bypass directory restrictions
+    if path.is_symlink() {
+        let canonical = path.canonicalize()
+            .map_err(|e| format!("Cannot resolve symlink: {}", e))?;
+
+        // Check if the symlink target contains path traversal
+        if canonical.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return Err("Invalid path: symlink target contains path traversal".to_string());
+        }
+
+        // Validate the symlink target against system directory restrictions
+        let canonical_str = canonical.to_string_lossy();
+        #[cfg(unix)]
+        {
+            let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
+                "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
+            for blocked in &blocked_paths {
+                if canonical_str.starts_with(blocked) {
+                    return Err(format!("Cannot access system directory via symlink ({})", blocked));
+                }
+            }
+        }
+        #[cfg(windows)]
+        {
+            let path_lower = canonical_str.to_lowercase();
+            if path_lower.starts_with("c:\\windows")
+                || path_lower.starts_with("c:\\program files")
+                || path_lower.starts_with("c:\\program files (x86)")
+                || path_lower.starts_with("c:\\programdata") {
+                return Err("Cannot access system directories via symlink".to_string());
+            }
+        }
+
+        // Use the canonical (resolved) path for further operations
+        return Ok(canonical);
+    }
+
     // Additional check: reject absolute paths to system directories
     if path.is_absolute() {
         let path_str = path.to_string_lossy();
@@ -151,7 +189,14 @@ pub async fn open_file(
         log::info!("open_file: Detected container format: {:?}", container_format);
 
         // Update thumbnail service with new file (clears cache)
-        state.thumbnail_service.lock().unwrap().set_file(path_buf.clone());
+        {
+            let thumbnail_service = state.thumbnail_service.lock()
+                .map_err(|e| format!("Failed to lock thumbnail service: {}", e))?;
+            let _ = thumbnail_service.set_file(path_buf.clone())
+                .map_err(|e| {
+                    log::warn!("open_file: Failed to update thumbnail service: {}", e);
+                });
+        } // Lock is dropped here
 
         // Read file data
         let file_data = std::fs::read(&path_buf)
@@ -312,11 +357,14 @@ pub async fn open_file(
 
             // Cache file data in decode_service for faster access
             // Use already-read data to avoid re-reading from disk (optimizes core lock duration)
-            if let Err(e) = state.decode_service.lock().unwrap().set_file_with_data(
-                path_buf.clone(),
-                codec.clone(),
-                file_data.clone()
-            ) {
+            if let Err(e) = state.decode_service.lock()
+                .map_err(|e| format!("Failed to lock decode service: {}", e))?
+                .set_file_with_data(
+                    path_buf.clone(),
+                    codec.clone(),
+                    file_data.clone()
+                )
+            {
                 log::warn!("open_file: Failed to cache file data in decode_service: {}", e);
             }
 
@@ -347,10 +395,20 @@ pub async fn close_file(state: tauri::State<'_, AppState>) -> Result<(), String>
     });
 
     // Clear thumbnail cache
-    state.thumbnail_service.lock().unwrap().set_file(PathBuf::new());
+    let thumbnail_service = state.thumbnail_service.lock()
+        .map_err(|e| format!("Failed to lock thumbnail service: {}", e))?;
+    let _ = thumbnail_service.set_file(PathBuf::new())
+        .map_err(|e| {
+            log::warn!("close_file: Failed to update thumbnail service: {}", e);
+        });
 
     // Clear decode service cache
-    state.decode_service.lock().unwrap().clear_cache();
+    let decode_service = state.decode_service.lock()
+        .map_err(|e| format!("Failed to lock decode service: {}", e))?;
+    let _ = decode_service.clear_cache()
+        .map_err(|e| {
+            log::warn!("close_file: Failed to clear decode service cache: {}", e);
+        });
 
     log::info!("close_file: File closed");
     Ok(())

@@ -9,6 +9,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::{FrameAnalysisData, QPGridData, MVGridData, PartitionGridData, PredictionModeGridData, TransformGridData, AppState, MotionVectorData};
 
+/// Validate frame_index against the loaded stream's frame count
+/// Returns an error if frame_index is out of bounds
+fn validate_frame_index(state: &tauri::State<'_, AppState>, frame_index: usize) -> Result<(), String> {
+    let core = state.core.lock().map_err(|e| e.to_string())?;
+    let stream_a_lock = core.get_stream(StreamId::A);
+    let stream_a = stream_a_lock.read();
+
+    if let Some(units) = &stream_a.units {
+        let frame_count = units.frame_count;
+        if frame_index >= frame_count {
+            return Err(format!(
+                "Frame index {} out of bounds (total frames: {})",
+                frame_index, frame_count
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Supported video codecs for analysis
 #[allow(clippy::upper_case_acronyms)]
 enum VideoCodec {
@@ -167,6 +186,9 @@ pub async fn get_frame_analysis(
 ) -> Result<FrameAnalysisData, String> {
     log::info!("get_frame_analysis: === Starting frame analysis request ===");
     log::info!("get_frame_analysis: Frame index: {}", frame_index);
+
+    // SECURITY: Validate frame_index bounds early to prevent out-of-bounds access
+    validate_frame_index(&state, frame_index)?;
 
     // Load file data and detect codec
     let (file_data, codec) = load_file_data_and_codec(&state).await?;
@@ -891,6 +913,9 @@ pub async fn get_coding_flow_analysis(
 ) -> Result<CodingFlowData, String> {
     log::info!("get_coding_flow_analysis: Frame {}", frame_index);
 
+    // SECURITY: Validate frame_index bounds early
+    validate_frame_index(&state, frame_index)?;
+
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a = core.get_stream(StreamId::A);
     let stream_a = stream_a.read();
@@ -985,6 +1010,9 @@ pub async fn get_residual_analysis(
     frame_index: usize,
 ) -> Result<ResidualAnalysisData, String> {
     log::info!("get_residual_analysis: Frame {}", frame_index);
+
+    // SECURITY: Validate frame_index bounds early
+    validate_frame_index(&state, frame_index)?;
 
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a = core.get_stream(StreamId::A);
@@ -1114,6 +1142,9 @@ pub async fn get_deblocking_analysis(
     frame_index: usize,
 ) -> Result<DeblockingAnalysisData, String> {
     log::info!("get_deblocking_analysis: Frame {}", frame_index);
+
+    // SECURITY: Validate frame_index bounds early
+    validate_frame_index(&state, frame_index)?;
 
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a = core.get_stream(StreamId::A);

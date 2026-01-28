@@ -27,6 +27,76 @@ interface BookmarksPanelProps {
 
 const STORAGE_KEY = 'bitvue-bookmarks';
 
+/**
+ * Type guard to validate Bookmark structure
+ * Prevents prototype pollution and invalid data from being used
+ */
+function isValidBookmark(data: unknown): data is Bookmark {
+  // Check if data is a plain object
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return false;
+  }
+
+  // Prevent prototype pollution
+  if (Object.prototype.isPrototypeOf(data)) {
+    return false;
+  }
+
+  const bookmark = data as Record<string, unknown>;
+
+  // Validate required fields
+  if (typeof bookmark.id !== 'string' || bookmark.id.trim() === '') {
+    return false;
+  }
+
+  if (typeof bookmark.frameIndex !== 'number' ||
+      !Number.isFinite(bookmark.frameIndex) ||
+      bookmark.frameIndex < 0) {
+    return false;
+  }
+
+  if (typeof bookmark.frameType !== 'string' || bookmark.frameType.trim() === '') {
+    return false;
+  }
+
+  if (typeof bookmark.poc !== 'number' || !Number.isFinite(bookmark.poc)) {
+    return false;
+  }
+
+  if (typeof bookmark.description !== 'string') {
+    return false;
+  }
+
+  if (typeof bookmark.timestamp !== 'number' ||
+      !Number.isFinite(bookmark.timestamp) ||
+      bookmark.timestamp < 0) {
+    return false;
+  }
+
+  // Check for unexpected properties
+  const allowedKeys = ['id', 'frameIndex', 'frameType', 'poc', 'description', 'timestamp'];
+  const actualKeys = Object.keys(bookmark);
+  for (const key of actualKeys) {
+    if (!allowedKeys.includes(key)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Validate and sanitize an array of bookmarks
+ */
+function isValidBookmarkArray(data: unknown): data is Bookmark[] {
+  if (!Array.isArray(data)) {
+    return false;
+  }
+
+  // Check each bookmark
+  return data.every(isValidBookmark);
+}
+
 export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: BookmarksPanelProps) {
   const { selection, setFrameSelection } = useSelection();
   const { frames } = useStreamData();
@@ -40,10 +110,18 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        setBookmarks(parsed);
+        // Use type guard for comprehensive validation
+        if (isValidBookmarkArray(parsed)) {
+          setBookmarks(parsed);
+          logger.info(`Successfully loaded ${parsed.length} bookmarks from storage`);
+        } else {
+          logger.warn('Invalid bookmarks structure in storage, using empty array');
+          setBookmarks([]);
+        }
       }
     } catch (error) {
       logger.error('Failed to load bookmarks:', error);
+      setBookmarks([]);
     }
   }, []);
 

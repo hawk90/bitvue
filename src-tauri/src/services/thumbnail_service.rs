@@ -10,6 +10,14 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use base64::Engine;
 
+/// Helper macro to safely lock mutexes with proper error handling
+/// Prevents panic on mutex poisoning by returning an error instead
+macro_rules! lock_mutex {
+    ($mutex:expr) => {
+        $mutex.lock().map_err(|e| format!("Mutex poisoned: {}", e))?
+    };
+}
+
 /// Maximum number of cached thumbnails (LRU)
 const MAX_CACHE_SIZE: usize = 200;
 
@@ -67,29 +75,29 @@ impl ThumbnailService {
 
     /// Set thumbnail dimensions
     #[allow(dead_code)]
-    pub fn set_dimensions(&mut self, width: u32, height: u32) {
+    pub fn set_dimensions(&mut self, width: u32, height: u32) -> Result<(), String> {
         self.thumb_width = width;
         self.thumb_height = height;
         // Clear cache when dimensions change
-        self.clear_cache();
+        self.clear_cache()
     }
 
     /// Set the current file (invalidates cache if file changed)
-    pub fn set_file(&self, path: PathBuf) -> bool {
-        let mut current = self.current_file.lock().unwrap();
+    pub fn set_file(&self, path: PathBuf) -> Result<bool, String> {
+        let mut current = lock_mutex!(self.current_file);
         if current.as_ref() != Some(&path) {
             *current = Some(path);
             drop(current);
-            self.clear_cache();
-            return true;
+            self.clear_cache()?;
+            return Ok(true);
         }
-        false
+        Ok(false)
     }
 
     /// Get cached thumbnail if available
-    pub fn get_cached(&self, frame_index: usize) -> Option<String> {
-        let mut cache = self.cache.lock().unwrap();
-        let mut lru = self.lru_queue.lock().unwrap();
+    pub fn get_cached(&self, frame_index: usize) -> Result<Option<String>, String> {
+        let mut cache = lock_mutex!(self.cache);
+        let mut lru = lock_mutex!(self.lru_queue);
 
         if let Some(entry) = cache.get_mut(&frame_index) {
             entry.last_accessed = std::time::Instant::now();
@@ -98,16 +106,16 @@ impl ThumbnailService {
             lru.retain(|x| *x != frame_index);
             lru.push_back(frame_index);
 
-            Some(entry.thumbnail.data.clone())
+            Ok(Some(entry.thumbnail.data.clone()))
         } else {
-            None
+            Ok(None)
         }
     }
 
     /// Cache a thumbnail
-    pub fn cache_thumbnail(&self, frame_index: usize, data: String, frame_type: String) {
-        let mut cache = self.cache.lock().unwrap();
-        let mut lru = self.lru_queue.lock().unwrap();
+    pub fn cache_thumbnail(&self, frame_index: usize, data: String, frame_type: String) -> Result<(), String> {
+        let mut cache = lock_mutex!(self.cache);
+        let mut lru = lock_mutex!(self.lru_queue);
 
         let now = std::time::Instant::now();
 
@@ -134,33 +142,35 @@ impl ThumbnailService {
         // Update LRU queue
         lru.retain(|x| *x != frame_index);
         lru.push_back(frame_index);
+        Ok(())
     }
 
     /// Get multiple cached thumbnails at once
     #[allow(dead_code)]
-    pub fn get_cached_batch(&self, indices: &[usize]) -> Vec<Option<String>> {
+    pub fn get_cached_batch(&self, indices: &[usize]) -> Result<Vec<Option<String>>, String> {
         indices.iter().map(|&idx| self.get_cached(idx)).collect()
     }
 
     /// Clear all cached thumbnails
-    pub fn clear_cache(&self) {
-        self.cache.lock().unwrap().clear();
-        self.lru_queue.lock().unwrap().clear();
+    pub fn clear_cache(&self) -> Result<(), String> {
+        lock_mutex!(self.cache).clear();
+        lock_mutex!(self.lru_queue).clear();
+        Ok(())
     }
 
     /// Get cache statistics
     #[allow(dead_code)]
-    pub fn cache_stats(&self) -> (usize, usize) {
-        let cache = self.cache.lock().unwrap();
-        (cache.len(), MAX_CACHE_SIZE)
+    pub fn cache_stats(&self) -> Result<(usize, usize), String> {
+        let cache = lock_mutex!(self.cache);
+        Ok((cache.len(), MAX_CACHE_SIZE))
     }
 
     /// Preload thumbnails for a range of frames
     /// Returns indices that need to be generated
     #[allow(dead_code)]
-    pub fn get_missing_indices(&self, indices: &[usize]) -> Vec<usize> {
-        let cache = self.cache.lock().unwrap();
-        indices.iter().filter(|&&idx| !cache.contains_key(&idx)).copied().collect()
+    pub fn get_missing_indices(&self, indices: &[usize]) -> Result<Vec<usize>, String> {
+        let cache = lock_mutex!(self.cache);
+        Ok(indices.iter().filter(|&&idx| !cache.contains_key(&idx)).copied().collect())
     }
 }
 
