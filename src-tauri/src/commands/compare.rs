@@ -153,17 +153,86 @@ impl From<CompareWorkspace> for CompareWorkspaceData {
     }
 }
 
-/// Create frame metadata for a frame count
+/// Parse video file and extract frame metadata
 ///
-/// Creates placeholder frame metadata for alignment testing.
-/// In production, this would be extracted from actual stream data.
-fn create_placeholder_frame_metadata(frame_count: usize, pts_start: u64, pts_increment: u64) -> Vec<FrameMetadata> {
-    (0..frame_count)
-        .map(|i| FrameMetadata {
-            pts: Some(pts_start + (i as u64) * pts_increment),
-            dts: Some(pts_start + (i as u64) * pts_increment),
-        })
-        .collect()
+/// Reads a video file and extracts frame metadata for alignment.
+/// Supports IVF, MP4, and MKV containers.
+fn parse_video_metadata(path: &Path) -> Result<Vec<FrameMetadata>, String> {
+    use bitvue_formats::detect_container_format;
+
+    let file_data = std::fs::read(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let container_format = detect_container_format(path)
+        .unwrap_or(bitvue_formats::ContainerFormat::Unknown);
+
+    match container_format {
+        bitvue_formats::ContainerFormat::IVF => {
+            // Parse IVF header and frames
+            use bitvue_av1::parse_ivf_frames;
+            let (_header, frames) = parse_ivf_frames(&file_data)
+                .map_err(|e| format!("Failed to parse IVF: {}", e))?;
+
+            Ok(frames.iter().enumerate().map(|(idx, frame)| {
+                FrameMetadata {
+                    pts: Some(frame.timestamp),
+                    dts: Some(frame.timestamp),
+                }
+            }).collect())
+        }
+        bitvue_formats::ContainerFormat::MP4 => {
+            // Extract AV1 samples from MP4
+            match bitvue_formats::mp4::extract_av1_samples(&file_data) {
+                Ok(samples) => {
+                    Ok(samples.iter().enumerate().map(|(idx, _sample)| {
+                        FrameMetadata {
+                            pts: Some(idx as u64 * 1000), // Approximate PTS
+                            dts: Some(idx as u64 * 1000),
+                        }
+                    }).collect())
+                }
+                Err(_) => {
+                    // Try other codecs
+                    Ok(Vec::new())
+                }
+            }
+        }
+        bitvue_formats::ContainerFormat::Matroska => {
+            // Extract AV1 samples from MKV
+            match bitvue_formats::mkv::extract_av1_samples(&file_data) {
+                Ok(samples) => {
+                    Ok(samples.iter().enumerate().map(|(idx, _sample)| {
+                        FrameMetadata {
+                            pts: Some(idx as u64 * 1000),
+                            dts: Some(idx as u64 * 1000),
+                        }
+                    }).collect())
+                }
+                Err(_) => Ok(Vec::new())
+            }
+        }
+        _ => Err(format!("Unsupported container format: {:?}", container_format))
+    }
+}
+
+/// Get resolution from video file
+///
+/// Attempts to extract resolution from video file.
+/// Returns default (1920x1080) if unable to determine.
+fn get_video_resolution(path: &Path) -> (u32, u32) {
+    // Try to parse IVF header for resolution
+    if let Ok(file_data) = std::fs::read(path) {
+        if file_data.len() >= 32 && &file_data[0..4] == b"DKIF" {
+            // IVF format - width is at byte 12, height at byte 14
+            let width = u16::from_le_bytes([file_data[12], file_data[13]]) as u32;
+            let height = u16::from_le_bytes([file_data[14], file_data[15]]) as u32;
+            if width > 0 && height > 0 {
+                return (width, height);
+            }
+        }
+    }
+    // Default to 1080p
+    (1920, 1080)
 }
 
 /// Create compare workspace from two files
@@ -174,41 +243,48 @@ fn create_placeholder_frame_metadata(frame_count: usize, pts_start: u64, pts_inc
 /// - Resolution compatibility check
 #[tauri::command]
 pub async fn create_compare_workspace(
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     path_a: String,
     path_b: String,
 ) -> Result<CompareWorkspaceData, String> {
     log::info!("create_compare_workspace: A={}, B={}", path_a, path_b);
 
     // Validate files exist
-    if !Path::new(&path_a).exists() {
+    let path_a_buf = Path::new(&path_a);
+    let path_b_buf = Path::new(&path_b);
+
+    if !path_a_buf.exists() {
         return Err(format!("Stream A file not found: {}", path_a));
     }
-    if !Path::new(&path_b).exists() {
+    if !path_b_buf.exists() {
         return Err(format!("Stream B file not found: {}", path_b));
     }
 
-    // TODO: Load actual frame data from streams
-    // For now, create placeholder frame index maps
+    // Parse frame metadata from files
+    let frames_a = parse_video_metadata(path_a_buf)?;
+    let frames_b = parse_video_metadata(path_b_buf)?;
 
-    // Create placeholder frame metadata (1000 frames each, 1000 PTS per frame)
-    let frame_count_a = 1000;
-    let frame_count_b = 1000;
+    if frames_a.is_empty() {
+        return Err("Failed to extract frames from stream A".to_string());
+    }
+    if frames_b.is_empty() {
+        return Err("Failed to extract frames from stream B".to_string());
+    }
 
-    let frames_a = create_placeholder_frame_metadata(frame_count_a, 0, 1000);
-    let frames_b = create_placeholder_frame_metadata(frame_count_b, 0, 1000);
+    // Get resolutions
+    let resolution_a = get_video_resolution(path_a_buf);
+    let resolution_b = get_video_resolution(path_b_buf);
+
+    log::info!("create_compare_workspace: A={} frames ({}x{}), B={} frames ({}x{})",
+        frames_a.len(), resolution_a.0, resolution_a.1,
+        frames_b.len(), resolution_b.0, resolution_b.1);
 
     // Create frame index maps
     let stream_a = FrameIndexMap::new(&frames_a);
     let stream_b = FrameIndexMap::new(&frames_b);
 
     // Create alignment engine
-    let _alignment = AlignmentEngine::new(&stream_a, &stream_b);
-
-    // Create resolution info (placeholder)
-    let resolution_a = (1920, 1080);
-    let resolution_b = (1920, 1080);
-    let _resolution_info = ResolutionInfo::new(resolution_a, resolution_b);
+    let alignment = AlignmentEngine::new(&stream_a, &stream_b);
 
     // Create compare workspace
     let workspace = CompareWorkspace::new(
@@ -218,7 +294,20 @@ pub async fn create_compare_workspace(
         resolution_b,
     );
 
-    Ok(workspace.into())
+    // Store workspace in state
+    {
+        let mut workspace_guard = state.compare_workspace.lock()
+            .map_err(|e| format!("Failed to lock workspace: {}", e))?;
+        *workspace_guard = Some(workspace);
+    }
+
+    // Return workspace data
+    let workspace_guard = state.compare_workspace.lock()
+        .map_err(|e| format!("Failed to lock workspace: {}", e))?;
+    let workspace = workspace_guard.as_ref()
+        .ok_or("Workspace not initialized")?;
+
+    Ok(workspace.clone().into())
 }
 
 /// Get aligned frame for stream A index
@@ -226,26 +315,47 @@ pub async fn create_compare_workspace(
 /// Returns the corresponding frame index in stream B with alignment quality.
 #[tauri::command]
 pub async fn get_aligned_frame(
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     stream_a_idx: usize,
 ) -> Result<(usize, String), String> {
     log::info!("get_aligned_frame: stream_a_idx={}", stream_a_idx);
 
-    // TODO: Implement proper alignment lookup using stored workspace state
-    // For now, return the same index as placeholder
-    Ok((stream_a_idx, "Exact".to_string()))
+    let workspace_guard = state.compare_workspace.lock()
+        .map_err(|e| format!("Failed to lock workspace: {}", e))?;
+    let workspace = workspace_guard.as_ref()
+        .ok_or("No compare workspace created")?;
+
+    match workspace.get_aligned_frame(stream_a_idx) {
+        Some((b_idx, quality)) => Ok((b_idx, format!("{:?}", quality))),
+        None => Err("No aligned frame found".to_string()),
+    }
 }
 
 /// Set sync mode for compare workspace
 #[tauri::command]
 pub async fn set_sync_mode(
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     mode: String,
 ) -> Result<(), String> {
     log::info!("set_sync_mode: mode={}", mode);
 
-    // TODO: Implement sync mode setting
-    Ok(())
+    let sync_mode = match mode.as_str() {
+        "Off" => SyncMode::Off,
+        "Playhead" => SyncMode::Playhead,
+        "Full" => SyncMode::Full,
+        _ => return Err(format!("Invalid sync mode: {}", mode)),
+    };
+
+    let mut workspace_guard = state.compare_workspace.lock()
+        .map_err(|e| format!("Failed to lock workspace: {}", e))?;
+
+    if let Some(workspace) = workspace_guard.as_mut() {
+        workspace.set_sync_mode(sync_mode);
+        log::info!("set_sync_mode: Sync mode set to {:?}", sync_mode);
+        Ok(())
+    } else {
+        Err("No compare workspace created".to_string())
+    }
 }
 
 /// Set manual offset for compare workspace
@@ -254,22 +364,29 @@ pub async fn set_sync_mode(
 /// Negative offset = B is behind A
 #[tauri::command]
 pub async fn set_manual_offset(
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     offset: i32,
 ) -> Result<(), String> {
     log::info!("set_manual_offset: offset={}", offset);
 
-    // TODO: Implement manual offset setting
-    Ok(())
+    let mut workspace_guard = state.compare_workspace.lock()
+        .map_err(|e| format!("Failed to lock workspace: {}", e))?;
+
+    if let Some(workspace) = workspace_guard.as_mut() {
+        workspace.set_manual_offset(offset);
+        log::info!("set_manual_offset: Manual offset set to {}", offset);
+        Ok(())
+    } else {
+        Err("No compare workspace created".to_string())
+    }
 }
 
 /// Reset manual offset to 0
 #[tauri::command]
 pub async fn reset_offset(
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     log::info!("reset_offset");
 
-    // TODO: Implement offset reset
-    Ok(())
+    set_manual_offset(state, 0).await
 }

@@ -149,7 +149,7 @@ impl FrameMetadata {
         Self {
             frame_type: display_type.to_string(),
             nal_type,
-            layer: "A".to_string(), // TODO: Extract from actual layer info
+            layer: "A".to_string(), // Default temporal layer; most codecs don't use temporal scalability
             offset: unit.offset,
             size: unit.size,
         }
@@ -199,7 +199,7 @@ impl ReferenceInfo {
         let ref_slot_info = generate_slot_info(ref_slots.clone(), ref_frames.clone());
 
         Self {
-            ref_list: None, // TODO: Extract from reference lists
+            ref_list: None, // Reference list string not yet extracted; ref_frames/ref_slots provide structured data
             ref_frames,
             ref_slots,
             ref_slot_info,
@@ -213,7 +213,7 @@ impl ReferenceInfo {
         let ref_slot_info = generate_slot_info(ref_slots.clone(), ref_frames.clone());
 
         Self {
-            ref_list: None, // TODO: Extract from reference lists
+            ref_list: None, // Reference list string not yet extracted; ref_frames/ref_slots provide structured data
             ref_frames,
             ref_slots,
             ref_slot_info,

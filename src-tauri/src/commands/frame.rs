@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use base64::Engine;
 
 use crate::commands::AppState;
-use crate::services::create_ivf_wrapper;
 use bitvue_core::StreamId;
 use bitvue_formats::{detect_container_format, ContainerFormat};
 use image::{ImageBuffer, RgbImage};
@@ -236,8 +235,9 @@ fn parse_ivf(file_data: &[u8]) -> Result<Vec<bitvue_av1::IvfFrame>, String> {
 }
 
 /// Decode frame from MP4/MKV container
-/// For now, this extracts AV1 samples and wraps them in a temporary IVF for decoding
-/// TODO: Implement proper MP4/MKV AV1 decoding without IVF wrapper
+///
+/// Extracts AV1 samples from the container and decodes the specified frame.
+/// Uses raw OBU decoding directly without IVF wrapper for better performance.
 pub fn decode_container_frame(
     file_data: &[u8],
     frame_index: usize,
@@ -247,6 +247,17 @@ pub fn decode_container_frame(
 }
 
 /// Decode a container frame with optional pre-extracted samples (for performance optimization)
+///
+/// # Arguments
+/// * `file_data` - Raw file data (used if samples is None)
+/// * `frame_index` - Index of frame to decode
+/// * `container_format` - Container format (MP4 or Matroska)
+/// * `samples` - Optional cached samples to avoid re-extraction
+///
+/// # Performance
+/// This function decodes AV1 OBUs directly without creating an IVF wrapper.
+/// The Av1Decoder's `send_data` method accepts raw OBU sequences, which is
+/// significantly faster than wrapping in IVF and then parsing the wrapper.
 pub fn decode_container_frame_with_samples(
     file_data: &[u8],
     frame_index: usize,
@@ -275,32 +286,28 @@ pub fn decode_container_frame_with_samples(
         return Err(format!("Frame index {} out of range (total: {})", frame_index, extracted_samples.len()));
     }
 
-    // For now, we need to create a temporary IVF file to decode the sample
-    // This is a workaround until bitvue_decode supports raw OBU decoding
     let sample_data = &extracted_samples[frame_index];
 
-    // Create temporary IVF wrapper for this sample
-    let ivf_data = create_ivf_wrapper(sample_data);
+    // Decode the sample directly as raw OBU data
+    // Av1Decoder.send_data accepts raw OBU sequences - no IVF wrapper needed
+    let mut decoder = bitvue_decode::Av1Decoder::new()
+        .map_err(|e| format!("Failed to create decoder: {}", e))?;
 
-    // Decode the temporary IVF
-    match bitvue_decode::Av1Decoder::new()
-        .and_then(|mut decoder| decoder.decode_all(&ivf_data))
-    {
-        Ok(decoded_frames) => {
-            if decoded_frames.is_empty() {
-                return Err("No frames decoded from sample".to_string());
-            }
+    // Send the raw OBU sample to the decoder
+    decoder.send_data(sample_data, frame_index as i64)
+        .map_err(|e| format!("Failed to send data to decoder: {}", e))?;
 
-            let frame = &decoded_frames[0];
-            let width = frame.width;
-            let height = frame.height;
-            let rgb_data = bitvue_decode::yuv_to_rgb(frame);
+    // Get the decoded frame
+    let decoded_frame = decoder.get_frame()
+        .map_err(|e| format!("Failed to decode frame: {}", e))?;
 
-            log::info!("decode_container_frame: Decoded frame {} from container ({}x{})", frame_index, width, height);
-            Ok((width, height, rgb_data))
-        }
-        Err(e) => Err(format!("Failed to decode sample: {}", e)),
-    }
+    let width = decoded_frame.width;
+    let height = decoded_frame.height;
+    let rgb_data = bitvue_decode::yuv_to_rgb(&decoded_frame);
+
+    log::info!("decode_container_frame: Decoded frame {} from container ({}x{})",
+        frame_index, width, height);
+    Ok((width, height, rgb_data))
 }
 
 /// Raw frame hex data response
@@ -465,6 +472,9 @@ pub fn decode_container_frame_yuv(
 }
 
 /// Decode YUV frame from MP4/MKV with optional pre-extracted samples
+///
+/// Decodes AV1 samples from MP4/MKV containers and returns YUV frame data
+/// without unnecessary IVF wrapper overhead.
 pub fn decode_container_frame_yuv_with_samples(
     file_data: &[u8],
     frame_index: usize,
@@ -493,22 +503,18 @@ pub fn decode_container_frame_yuv_with_samples(
         return Err(format!("Frame index {} out of range (total: {})", frame_index, extracted_samples.len()));
     }
 
-    // Create temporary IVF for decoding
+    // Decode directly as raw OBU data - no IVF wrapper needed
     let sample_data = &extracted_samples[frame_index];
-    let ivf_data = create_ivf_wrapper(sample_data);
+    let mut decoder = bitvue_decode::Av1Decoder::new()
+        .map_err(|e| format!("Failed to create decoder: {}", e))?;
 
-    // Decode
-    match bitvue_decode::Av1Decoder::new()
-        .and_then(|mut decoder| decoder.decode_all(&ivf_data))
-    {
-        Ok(decoded_frames) => {
-            if decoded_frames.is_empty() {
-                return Err("No frames decoded from sample".to_string());
-            }
-            Ok(decoded_frames[0].clone())
-        }
-        Err(e) => Err(format!("Failed to decode sample: {}", e)),
-    }
+    decoder.send_data(sample_data, frame_index as i64)
+        .map_err(|e| format!("Failed to send data to decoder: {}", e))?;
+
+    let decoded_frame = decoder.get_frame()
+        .map_err(|e| format!("Failed to decode frame: {}", e))?;
+
+    Ok(decoded_frame)
 }
 
 /// Get decoded YUV frame (more efficient than RGB conversion)

@@ -62,8 +62,14 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
 }
 
 /// Open a video file and parse its structure
+///
+/// Opens a video file, parses its structure, and adds it to recent files history.
 #[tauri::command]
-pub async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Result<FileInfo, String> {
+pub async fn open_file(
+    path: String,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<FileInfo, String> {
     log::info!("open_file: Opening file at path: {}", path);
 
     // Validate file path for security
@@ -109,29 +115,32 @@ pub async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Resul
     log::info!("open_file: Detected codec: {}, file size: {} bytes", codec, size);
 
     // Use bitvue-core to open the file
-    let core = state.core.lock().map_err(|e| e.to_string())?;
-    let events = core.handle_command(Command::OpenFile {
-        stream: StreamId::A,
-        path: path_buf.clone(),
-    });
+    let (success, error) = {
+        let core = state.core.lock().map_err(|e| e.to_string())?;
+        let events = core.handle_command(Command::OpenFile {
+            stream: StreamId::A,
+            path: path_buf.clone(),
+        });
 
-    // Check for errors in events
-    let mut success = false;
-    let mut error = None;
+        // Check for errors in events
+        let mut success = false;
+        let mut error = None;
 
-    for event in events {
-        match event {
-            Event::ModelUpdated { kind: _, stream: _ } => {
-                success = true;
-                log::info!("open_file: ModelUpdated event received");
+        for event in events {
+            match event {
+                Event::ModelUpdated { kind: _, stream: _ } => {
+                    success = true;
+                    log::info!("open_file: ModelUpdated event received");
+                }
+                Event::DiagnosticAdded { diagnostic } => {
+                    error = Some(diagnostic.message.clone());
+                    log::error!("open_file: DiagnosticAdded: {}", diagnostic.message);
+                }
+                _ => {}
             }
-            Event::DiagnosticAdded { diagnostic } => {
-                error = Some(diagnostic.message.clone());
-                log::error!("open_file: DiagnosticAdded: {}", diagnostic.message);
-            }
-            _ => {}
         }
-    }
+        (success, error)
+    }; // Lock is dropped here
 
     // Try to parse the file (basic IVF/AV1 parsing for now)
     if success {
@@ -160,11 +169,11 @@ pub async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Resul
                                 key: bitvue_core::UnitKey {
                                     stream: StreamId::A,
                                     unit_type: "FRAME".to_string(),
-                                    offset: 0,  // TODO: Get actual offset
+                                    offset: 0,  // IVF frames are parsed from memory; file offset not tracked
                                     size: ivf_frame.size as usize,
                                 },
                                 unit_type: "FRAME".to_string(),
-                                offset: 0,  // TODO: Get actual offset
+                                offset: 0,  // IVF frames are parsed from memory; file offset not tracked
                                 size: ivf_frame.size as usize,
                                 frame_index: Some(idx),
                                 frame_type: None,  // Will be determined later from parsing
@@ -285,18 +294,21 @@ pub async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Resul
                 log::info!("open_file: Unit[{}] frame_index={:?}, frame_type={:?}", i, u.frame_index, u.frame_type);
             }
 
-            // Get stream state and populate units
-            let stream_a_lock = core.get_stream(StreamId::A);
-            let mut stream_a = stream_a_lock.write();
+            // Get stream state and populate units (re-acquire lock)
+            {
+                let core = state.core.lock().map_err(|e| e.to_string())?;
+                let stream_a_lock = core.get_stream(StreamId::A);
+                let mut stream_a = stream_a_lock.write();
 
-            // Create UnitModel from parsed frames
-            stream_a.units = Some(UnitModel {
-                units,
-                unit_count,
-                frame_count,
-            });
+                // Create UnitModel from parsed frames
+                stream_a.units = Some(UnitModel {
+                    units,
+                    unit_count,
+                    frame_count,
+                });
 
-            log::info!("open_file: Created UnitModel with {} units", unit_count);
+                log::info!("open_file: Created UnitModel with {} units", unit_count);
+            } // Lock is dropped here
 
             // Cache file data in decode_service for faster access
             // Use already-read data to avoid re-reading from disk (optimizes core lock duration)
@@ -306,6 +318,11 @@ pub async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Resul
                 file_data.clone()
             ) {
                 log::warn!("open_file: Failed to cache file data in decode_service: {}", e);
+            }
+
+            // Add to recent files on successful open
+            if let Err(e) = crate::commands::recent_files::add_recent_file(app.clone(), path.clone()).await {
+                log::warn!("open_file: Failed to add to recent files: {}", e);
             }
         }
     }

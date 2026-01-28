@@ -5,8 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 use crate::commands::AppState;
-use crate::services::create_ivf_wrapper;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use bitvue_decode::decoder::DecodeError;
 
 /// Validate file path to prevent path traversal and access to sensitive directories
 fn validate_file_path(path: &str) -> Result<PathBuf, String> {
@@ -605,6 +605,9 @@ fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec
 }
 
 /// Decode subset of samples (used by MP4/MKV subset decoding)
+///
+/// Decodes a range of samples from an MP4/MKV container using raw OBU decoding.
+/// The decoder maintains state across samples for efficient batch decoding.
 fn decode_samples_subset(
     samples: &[Vec<u8>],
     frame_indices: &[usize],
@@ -622,10 +625,8 @@ fn decode_samples_subset(
     for idx in 0..=max_idx {
         let sample_data = &samples[idx];
 
-        // Create IVF wrapper for this sample
-        let ivf_data = create_ivf_wrapper(sample_data);
-
-        decoder.send_data(&ivf_data, 0)
+        // Send raw OBU data directly - no IVF wrapper needed
+        decoder.send_data(sample_data, idx as i64)
             .map_err(|e| format!("Failed to send sample data: {}", e))?;
 
         // Try to get frame, handling EAGAIN properly
@@ -663,6 +664,9 @@ fn decode_samples_subset(
 }
 
 /// Decode all frames from video data (IVF, MP4, MKV)
+///
+/// Decodes all frames from a video file. For MP4/MKV containers, uses raw OBU
+/// decoding without IVF wrapper for better performance.
 fn decode_all_frames(file_data: &[u8]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
     // Check if IVF file
     if file_data.len() >= 4 && &file_data[0..4] == b"DKIF" {
@@ -673,31 +677,55 @@ fn decode_all_frames(file_data: &[u8]) -> Result<Vec<bitvue_decode::DecodedFrame
 
     // Try MP4
     if let Ok(samples) = bitvue_formats::mp4::extract_av1_samples(file_data) {
-        let mut frames = Vec::new();
-        for sample in samples {
-            let ivf_data = create_ivf_wrapper(&sample);
-            if let Ok(mut decoder) = bitvue_decode::Av1Decoder::new() {
-                if let Ok(mut decoded) = decoder.decode_all(&ivf_data) {
-                    frames.append(&mut decoded);
-                }
-            }
-        }
-        return Ok(frames);
+        return decode_samples(&samples);
     }
 
     // Try MKV
     if let Ok(samples) = bitvue_formats::mkv::extract_av1_samples(file_data) {
-        let mut frames = Vec::new();
-        for sample in samples {
-            let ivf_data = create_ivf_wrapper(&sample);
-            if let Ok(mut decoder) = bitvue_decode::Av1Decoder::new() {
-                if let Ok(mut decoded) = decoder.decode_all(&ivf_data) {
-                    frames.append(&mut decoded);
-                }
-            }
-        }
-        return Ok(frames);
+        return decode_samples(&samples);
     }
 
     Err("Unsupported video format".to_string())
+}
+
+/// Decode all samples using raw OBU decoding
+///
+/// Uses a single decoder instance to efficiently decode all samples.
+/// This is faster than creating a new decoder for each sample.
+fn decode_samples(samples: &[Vec<u8>]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+    let mut decoder = bitvue_decode::Av1Decoder::new()
+        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+
+    let mut all_frames = Vec::new();
+
+    for (idx, sample) in samples.iter().enumerate() {
+        // Send raw OBU data directly - no IVF wrapper needed
+        decoder.send_data(sample, idx as i64)
+            .map_err(|e| format!("Failed to send sample {}: {}", idx, e))?;
+
+        // Collect all frames from this sample
+        loop {
+            match decoder.get_frame() {
+                Ok(frame) => all_frames.push(frame),
+                Err(DecodeError::NoFrame) => break,
+                Err(e) => return Err(format!("Failed to decode sample {}: {}", idx, e)),
+            }
+        }
+    }
+
+    // Flush remaining frames
+    decoder.flush();
+    loop {
+        match decoder.get_frame() {
+            Ok(frame) => all_frames.push(frame),
+            Err(DecodeError::NoFrame) => break,
+            Err(_) => break,
+        }
+    }
+
+    if all_frames.is_empty() {
+        return Err("No frames decoded from samples".to_string());
+    }
+
+    Ok(all_frames)
 }

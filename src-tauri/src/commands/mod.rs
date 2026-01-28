@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-use bitvue_core::Core;
+use bitvue_core::{Core, CompareWorkspace};
 use crate::services::{DecodeService, ThumbnailService};
 
 // Re-export module contents
@@ -25,7 +25,7 @@ pub mod frame;
 pub mod quality;
 pub mod syntax;
 pub mod thumbnails;
-pub mod recent;
+pub mod recent_files;
 pub mod window;
 
 // Re-export commonly used types and commands
@@ -39,7 +39,7 @@ pub use frame::{get_decoded_frame, get_decoded_frame_yuv, get_frame_hex_data, De
 #[allow(unused_imports)]
 pub use thumbnails::get_thumbnails;
 #[allow(unused_imports)]
-pub use recent::{get_recent_files, add_recent_file, clear_recent_files};
+pub use recent_files::{get_recent_files, add_recent_file, clear_recent_files};
 #[allow(unused_imports)]
 pub use window::close_window;
 #[allow(unused_imports)]
@@ -96,6 +96,8 @@ pub struct AppState {
     #[allow(dead_code)]
     pub decode_service: Arc<Mutex<DecodeService>>,
     pub thumbnail_service: Arc<Mutex<ThumbnailService>>,
+    /// Compare workspace for A/B comparison
+    pub compare_workspace: Arc<Mutex<Option<CompareWorkspace>>>,
 }
 
 impl AppState {
@@ -104,6 +106,7 @@ impl AppState {
             core: Arc::new(Mutex::new(Core::new())),
             decode_service: Arc::new(Mutex::new(DecodeService::new())),
             thumbnail_service: Arc::new(Mutex::new(ThumbnailService::new())),
+            compare_workspace: Arc::new(Mutex::new(None)),
         }
     }
 }

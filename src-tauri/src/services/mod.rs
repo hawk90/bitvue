@@ -11,7 +11,6 @@ pub mod decode_service;
 pub mod frame_service;
 pub mod thumbnail_service;
 
-pub use codec_utils::create_ivf_wrapper;
 pub use decode_service::DecodeService;
 pub use thumbnail_service::ThumbnailService;
 pub use thumbnail_service::create_svg_thumbnail;
