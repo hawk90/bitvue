@@ -193,7 +193,6 @@ export class ProgressiveFileLoader {
       const chunk = frameIndices.slice(i, i + chunkSize);
 
       const results = await invoke<ThumbnailResult[]>('get_thumbnails', {
-        path: filePath,
         frameIndices: chunk,
       });
 

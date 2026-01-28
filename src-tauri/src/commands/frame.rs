@@ -348,7 +348,7 @@ pub async fn get_frame_hex_data(
     // Use cached file data from decode_service to avoid repeated disk reads
     let file_data = state.decode_service.lock()
         .map_err(|e| e.to_string())?
-        .get_file_data()?;
+        .get_file_data_arc()?;
 
     // Check if AV1 IVF file
     if file_data.len() < 4 || &file_data[0..4] != b"DKIF" {
