@@ -43,6 +43,7 @@ use bitvue_core::{
     Result,
 };
 use obu::{parse_leb128_size_syntax, parse_obu_header_syntax};
+use crate::obu::{ObuIterator, ObuWithOffset};
 
 /// Builder for constructing SyntaxModel trees during parsing
 ///
@@ -274,14 +275,14 @@ pub fn parse_obu_syntax(data: &[u8], obu_index: usize, global_offset: u64) -> Re
 /// A vector of `SyntaxModel`, one for each OBU.
 pub fn parse_bitstream_syntax(data: &[u8]) -> Result<Vec<SyntaxModel>> {
     let mut models = Vec::new();
-    let mut offset = 0usize;
     let mut obu_index = 0;
+    let mut iter = ObuIterator::new(data);
 
-    while offset < data.len() {
-        // Parse OBU to get size (using existing parser)
-        let (_obu, consumed) = crate::obu::parse_obu(&data[offset..], 0)?;
+    while let Some(result) = iter.next_obu_with_offset() {
+        let obu_with_offset = result?;
+        let ObuWithOffset { obu: _, offset, consumed } = obu_with_offset;
 
-        // Parse syntax
+        // Parse syntax for this OBU
         let model = parse_obu_syntax(
             &data[offset..offset + consumed],
             obu_index,
@@ -289,7 +290,6 @@ pub fn parse_bitstream_syntax(data: &[u8]) -> Result<Vec<SyntaxModel>> {
         )?;
 
         models.push(model);
-        offset += consumed;
         obu_index += 1;
     }
 

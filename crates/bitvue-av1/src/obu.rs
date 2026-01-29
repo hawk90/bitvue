@@ -274,17 +274,9 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
 /// Parses all OBUs from a byte slice
 ///
 /// Returns a vector of all parsed OBUs.
+/// Uses the ObuIterator for efficient iteration.
 pub fn parse_all_obus(data: &[u8]) -> Result<Vec<Obu>> {
-    let mut obus = Vec::new();
-    let mut offset = 0usize;
-
-    while offset < data.len() {
-        let (obu, consumed) = parse_obu(data, offset)?;
-        obus.push(obu);
-        offset += consumed;
-    }
-
-    Ok(obus)
+    ObuIterator::new(data).collect()
 }
 
 /// Parses all OBUs from a byte slice with error resilience
@@ -370,15 +362,60 @@ pub fn parse_all_obus_resilient(
     (obus, diagnostics)
 }
 
+/// Result of parsing a single OBU, including position information
+#[derive(Debug)]
+pub struct ObuWithOffset {
+    /// The parsed OBU
+    pub obu: Obu,
+    /// Byte offset of this OBU in the original data
+    pub offset: usize,
+    /// Number of bytes consumed by this OBU
+    pub consumed: usize,
+}
+
 /// Iterator over OBUs in a byte slice
+///
+/// Provides efficient iteration over OBUs with error handling.
+/// Use `collect()` to get all OBUs or `for_each()` for processing.
+///
+/// # Example
+/// ```ignore
+/// let iter = ObuIterator::new(data);
+/// let obus: Result<Vec<_>> = iter.collect();
+/// ```
 pub struct ObuIterator<'a> {
     data: &'a [u8],
     offset: usize,
 }
 
 impl<'a> ObuIterator<'a> {
+    /// Creates a new OBU iterator for the given data
     pub fn new(data: &'a [u8]) -> Self {
         Self { data, offset: 0 }
+    }
+
+    /// Returns the current offset in the data
+    pub fn current_offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Parses the next OBU with offset information
+    ///
+    /// Returns `None` when at end of data, `Some(Ok(...))` on success,
+    /// or `Some(Err(...))` on parse failure.
+    pub fn next_obu_with_offset(&mut self) -> Option<Result<ObuWithOffset>> {
+        if self.offset >= self.data.len() {
+            return None;
+        }
+
+        match parse_obu(self.data, self.offset) {
+            Ok((obu, consumed)) => {
+                let current_offset = self.offset;
+                self.offset += consumed;
+                Some(Ok(ObuWithOffset { obu, offset: current_offset, consumed }))
+            }
+            Err(e) => Some(Err(e)),
+        }
     }
 }
 
