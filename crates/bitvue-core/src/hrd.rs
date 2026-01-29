@@ -396,7 +396,12 @@ impl HrdStatistics {
                 .max()
                 .unwrap_or(0);
             let sum: u64 = removal_states.iter().map(|s| s.fullness_bits).sum();
-            (min, max, sum as f64 / removal_states.len() as f64)
+            let avg = if removal_states.is_empty() {
+                0.0
+            } else {
+                sum as f64 / removal_states.len() as f64
+            };
+            (min, max, avg)
         };
 
         Self {
