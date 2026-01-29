@@ -3,7 +3,7 @@
 use crate::decoder::{DecodeError, DecodedFrame, Result};
 
 /// Codec type enumeration for decoder selection
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CodecType {
     /// AV1 codec
     AV1,
@@ -28,6 +28,91 @@ impl std::fmt::Display for CodecType {
         }
     }
 }
+
+/// Codec registry for decoder factory functions
+///
+/// This registry implements the Open/Closed principle by allowing
+/// new codecs to be registered without modifying the factory code.
+///
+/// # Example
+///
+/// ```
+/// use bitvue_decode::traits::{CodecRegistry, CodecType};
+/// use std::sync::Mutex;
+///
+/// // Register a custom decoder
+/// CodecRegistry::register(CodecType::Custom, Box::new(||
+///     Ok(Box::new(MyCustomDecoder::new()) as Box<dyn Decoder>)
+/// ));
+/// ```
+pub struct CodecRegistry {
+    factories: std::collections::HashMap<CodecType, Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>>,
+}
+
+impl CodecRegistry {
+    /// Get the global codec registry instance
+    pub fn global() -> &'static std::sync::Mutex<Self> {
+        use std::sync::OnceLock;
+        static REGISTRY: OnceLock<std::sync::Mutex<CodecRegistry>> = OnceLock::new();
+        REGISTRY.get_or_init(|| {
+            std::sync::Mutex::new(Self::default())
+        })
+    }
+
+    /// Register a decoder factory function for a codec type
+    ///
+    /// # Arguments
+    ///
+    /// * `codec` - The codec type to register
+    /// * `factory` - A function that creates a new decoder instance
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if registration succeeded, or an error if a codec
+    /// was already registered.
+    pub fn register(
+        &mut self,
+        codec: CodecType,
+        factory: Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>,
+    ) -> std::result::Result<(), String> {
+        if self.factories.contains_key(&codec) {
+            return Err(format!("Codec {:?} is already registered", codec));
+        }
+        self.factories.insert(codec, factory);
+        Ok(())
+    }
+
+    /// Create a decoder using a registered factory function
+    pub fn create(&self, codec: CodecType) -> Result<Box<dyn Decoder>> {
+        self.factories
+            .get(&codec)
+            .ok_or_else(|| {
+                DecodeError::Init(format!("No decoder registered for codec {:?}", codec))
+            })?
+            ()
+    }
+
+    /// Check if a codec is registered
+    pub fn is_registered(&self, codec: CodecType) -> bool {
+        self.factories.contains_key(&codec)
+    }
+
+    /// Get all registered codec types
+    pub fn registered_codecs(&self) -> Vec<CodecType> {
+        self.factories.keys().copied().collect()
+    }
+}
+
+impl Default for CodecRegistry {
+    fn default() -> Self {
+        Self {
+            factories: std::collections::HashMap::new(),
+        }
+    }
+}
+
+/// Decoder factory function type alias for convenience
+pub type DecoderFactoryFn = Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>;
 
 /// Decoder capabilities information
 #[derive(Debug, Clone)]
@@ -113,6 +198,93 @@ pub trait Decoder: Send {
 pub struct DecoderFactory;
 
 impl DecoderFactory {
+    /// Initialize the codec registry with built-in codecs
+    ///
+    /// This is called automatically on first use, but can be called explicitly
+    /// to ensure all built-in codecs are registered.
+    fn init_registry() {
+        let registry = CodecRegistry::global();
+        let mut guard = registry.lock().unwrap();
+
+        // Check if already initialized by checking for AV1
+        if guard.is_registered(CodecType::AV1) {
+            return;
+        }
+
+        // Register built-in codecs
+        // AV1 is always available
+        let _ = guard.register(CodecType::AV1, Box::new(|| {
+            let decoder = crate::decoder::Av1Decoder::new()?;
+            Ok(Box::new(decoder))
+        }));
+
+        // H.264 (requires ffmpeg feature)
+        #[cfg(feature = "ffmpeg")]
+        {
+            let _ = guard.register(CodecType::H264, Box::new(|| {
+                let decoder = crate::ffmpeg::H264Decoder::new()?;
+                Ok(Box::new(decoder))
+            }));
+        }
+
+        // H.265 (requires ffmpeg feature)
+        #[cfg(feature = "ffmpeg")]
+        {
+            let _ = guard.register(CodecType::H265, Box::new(|| {
+                let decoder = crate::ffmpeg::HevcDecoder::new()?;
+                Ok(Box::new(decoder))
+            }));
+        }
+
+        // VP9 (requires ffmpeg feature)
+        #[cfg(feature = "ffmpeg")]
+        {
+            let _ = guard.register(CodecType::VP9, Box::new(|| {
+                let decoder = crate::ffmpeg::Vp9Decoder::new()?;
+                Ok(Box::new(decoder))
+            }));
+        }
+
+        // H.266/VVC (requires vvdec feature)
+        #[cfg(feature = "vvdec")]
+        {
+            let _ = guard.register(CodecType::H266, Box::new(|| {
+                let decoder = crate::vvdec::VvcDecoder::new()?;
+                Ok(Box::new(decoder))
+            }));
+        }
+    }
+
+    /// Register a custom codec decoder
+    ///
+    /// This allows external code to add new codec decoders without modifying
+    /// the bitvue-decode crate, following the Open/Closed principle.
+    ///
+    /// # Arguments
+    ///
+    /// * `codec` - The codec type to register
+    /// * `factory` - A function that creates a new decoder instance
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if registration succeeded, or an error if a codec
+    /// was already registered.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bitvue_decode::traits::{DecoderFactory, CodecType, CodecRegistry};
+    ///
+    /// DecoderFactory::register_codec(CodecType::Custom, || {
+    ///     Ok(Box::new(MyCustomDecoder::new()))
+    /// });
+    /// ```
+    pub fn register_codec(codec: CodecType, factory: DecoderFactoryFn) -> std::result::Result<(), String> {
+        let registry = CodecRegistry::global();
+        let mut guard = registry.lock().unwrap();
+        guard.register(codec, factory)
+    }
+
     /// Create a decoder for the specified codec
     ///
     /// # Arguments
@@ -132,6 +304,18 @@ impl DecoderFactory {
     /// let decoder = DecoderFactory::create(CodecType::AV1).unwrap();
     /// ```
     pub fn create(codec: CodecType) -> Result<Box<dyn Decoder>> {
+        // Ensure registry is initialized with built-in codecs
+        Self::init_registry();
+
+        // Try the registry first (for dynamically registered codecs)
+        let registry = CodecRegistry::global();
+        let guard = registry.lock().unwrap();
+
+        if guard.is_registered(codec) {
+            return guard.create(codec);
+        }
+
+        // Fall back to builtin implementations
         match codec {
             CodecType::AV1 => {
                 let decoder = crate::decoder::Av1Decoder::new()?;

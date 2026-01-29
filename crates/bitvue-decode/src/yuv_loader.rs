@@ -5,8 +5,11 @@
 use crate::decoder::DecodedFrame;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
+
+/// Allowed file extensions for YUV files
+const ALLOWED_EXTENSIONS: &[&str] = &["yuv", "y4m"];
 
 #[derive(Error, Debug)]
 pub enum YuvLoaderError {
@@ -20,6 +23,12 @@ pub enum YuvLoaderError {
     FrameSizeMismatch { expected: usize, actual: usize },
     #[error("Unsupported chroma subsampling: {0}")]
     UnsupportedChromaSubsampling(String),
+    #[error("Invalid file extension: {0}. Allowed: {1:?}")]
+    InvalidExtension(String, &'static [&'static str]),
+    #[error("Path traversal detected: {0}")]
+    PathTraversal(String),
+    #[error("Path does not exist: {0}")]
+    PathNotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, YuvLoaderError>;
@@ -114,6 +123,54 @@ impl YuvFileParams {
     }
 }
 
+/// Validate and sanitize a file path to prevent path traversal attacks
+///
+/// This function ensures that:
+/// 1. The path has a valid extension (.yuv or .y4m)
+/// 2. The path doesn't contain ".." components that could escape the intended directory
+/// 3. The path exists (optional, controlled by parameter)
+fn validate_path(path: &Path, must_exist: bool) -> Result<PathBuf> {
+    // Convert to PathBuf for manipulation
+    let path_buf = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| YuvLoaderError::Io(e))?
+            .join(path)
+    };
+
+    // Check for path traversal attempts
+    let path_str = path_buf.to_string_lossy();
+    if path_str.contains("..") {
+        return Err(YuvLoaderError::PathTraversal(path_str.to_string()));
+    }
+
+    // Normalize the path
+    let canonical_path = path_buf
+        .canonicalize()
+        .map_err(|_| YuvLoaderError::PathNotFound(path_str.to_string()))?;
+
+    // Check file extension
+    let extension = canonical_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+
+    if !ALLOWED_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
+        return Err(YuvLoaderError::InvalidExtension(
+            extension.to_string(),
+            ALLOWED_EXTENSIONS,
+        ));
+    }
+
+    // Check if path exists (optional)
+    if must_exist && !canonical_path.exists() {
+        return Err(YuvLoaderError::PathNotFound(path_str.to_string()));
+    }
+
+    Ok(canonical_path)
+}
+
 /// YUV file loader
 pub struct YuvLoader {
     params: YuvFileParams,
@@ -124,13 +181,20 @@ pub struct YuvLoader {
 
 impl YuvLoader {
     /// Open a YUV file (detects .y4m or raw .yuv)
+    ///
+    /// # Security
+    ///
+    /// This function validates the file path to prevent path traversal attacks.
+    /// Only files with .yuv or .y4m extensions are allowed.
     pub fn open<P: AsRef<Path>>(path: P, params: Option<YuvFileParams>) -> Result<Self> {
-        let path_ref = path.as_ref();
-        let file = File::open(path_ref)?;
+        // Validate and sanitize the path
+        let validated_path = validate_path(path.as_ref(), true)?;
+
+        let file = File::open(&validated_path)?;
         let mut reader = BufReader::new(file);
 
         // Check if it's a Y4M file
-        let is_y4m = path_ref
+        let is_y4m = validated_path
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.eq_ignore_ascii_case("y4m"))
@@ -269,6 +333,15 @@ impl YuvLoader {
             (None, None)
         };
 
+        // Detect chroma format once at frame creation
+        let chroma_format = crate::decoder::ChromaFormat::from_frame_data(
+            self.params.width,
+            self.params.height,
+            self.params.bit_depth.bits(),
+            u_plane.as_deref(),
+            v_plane.as_deref(),
+        );
+
         let frame = DecodedFrame {
             width: self.params.width,
             height: self.params.height,
@@ -294,6 +367,7 @@ impl YuvLoader {
             timestamp: self.current_frame as i64,
             frame_type: crate::decoder::FrameType::Key, // Unknown for raw YUV
             qp_avg: None,
+            chroma_format,
         };
 
         self.current_frame += 1;

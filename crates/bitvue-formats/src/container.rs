@@ -9,8 +9,29 @@
 //! - Annex B (H.264/H.265 raw byte stream)
 
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufReader, Read};
 use std::path::Path;
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// Annex B NAL type range for common H.264/H.265 NAL units
+///
+/// Includes: slice (1), IDR (5), SPS (7), PPS (8), AUD (9)
+/// Reference: ITU-T H.264 (02/2014) Table 7-1
+pub const ANNEX_B_NAL_TYPE_MIN: u8 = 1;
+
+/// Maximum NAL type in the common range
+///
+/// Excludes reserved and higher-level NAL types
+pub const ANNEX_B_NAL_TYPE_MAX: u8 = 9;
+
+/// Special NAL type for extended NAL units
+///
+/// Used for NAL units with payload greater than 1 byte
+/// Reference: ITU-T H.264 (02/2014) Section 7.3.1
+pub const ANNEX_B_NAL_TYPE_EXTENDED: u8 = 20;
 
 /// Type-safe wrapper for magic byte patterns using const generics
 ///
@@ -132,12 +153,15 @@ pub fn detect_from_extension(path: &Path) -> ContainerFormat {
 }
 
 /// Detect container format from magic bytes
+///
+/// Uses buffered I/O (BufReader) for improved performance on large files.
 pub fn detect_from_magic_bytes(path: &Path) -> Result<ContainerFormat, std::io::Error> {
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
     let mut buffer = [0u8; 32];
 
-    // Read first 32 bytes for magic detection
-    let n = file.read(&mut buffer)?;
+    // Read first 32 bytes for magic detection (buffered for performance)
+    let n = reader.read(&mut buffer)?;
     if n < 8 {
         return Ok(ContainerFormat::Unknown);
     }
@@ -174,14 +198,18 @@ pub fn detect_from_magic_bytes(path: &Path) -> Result<ContainerFormat, std::io::
             let nal_type = buffer[4] & 0x1F;
             // Common H.264 NAL types: 1 (slice), 5 (IDR), 7 (SPS), 8 (PPS)
             // H.265 NAL types are different but similar
-            if (1..=9).contains(&nal_type) || nal_type == 20 {
+            if (ANNEX_B_NAL_TYPE_MIN..=ANNEX_B_NAL_TYPE_MAX).contains(&nal_type)
+                || nal_type == ANNEX_B_NAL_TYPE_EXTENDED
+            {
                 return Ok(ContainerFormat::AnnexB);
             }
         }
         // Check for 3-byte start code
         if MagicBytes::START_CODE_3.matches(buffer) {
             let nal_type = buffer[3] & 0x1F;
-            if (1..=9).contains(&nal_type) || nal_type == 20 {
+            if (ANNEX_B_NAL_TYPE_MIN..=ANNEX_B_NAL_TYPE_MAX).contains(&nal_type)
+                || nal_type == ANNEX_B_NAL_TYPE_EXTENDED
+            {
                 return Ok(ContainerFormat::AnnexB);
             }
         }

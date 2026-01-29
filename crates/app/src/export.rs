@@ -5,6 +5,7 @@
 //! - Syntax tree to JSON
 //! - Unit tree to JSON
 
+use bitvue_core::BitvueError;
 use bitvue_core::types::SyntaxModel;
 use bitvue_core::UnitNode;
 use std::path::Path;
@@ -24,7 +25,7 @@ pub enum ExportFormat {
 /// 0,KEY_FRAME,12345,0,28
 /// 1,INTER_FRAME,3456,12345,32
 /// ```
-pub fn export_frames_csv(units: &[UnitNode], path: &Path) -> Result<(), String> {
+pub fn export_frames_csv(units: &[UnitNode], path: &Path) -> Result<(), BitvueError> {
     let mut csv = String::from("frame_index,frame_type,size_bytes,offset,qp_avg\n");
 
     let frames = collect_frames(units);
@@ -39,23 +40,24 @@ pub fn export_frames_csv(units: &[UnitNode], path: &Path) -> Result<(), String> 
         ));
     }
 
-    std::fs::write(path, csv).map_err(|e| format!("Failed to write CSV: {}", e))
+    std::fs::write(path, csv)?;
+    Ok(())
 }
 
 /// Export unit tree to JSON
-pub fn export_units_json(units: &[UnitNode], path: &Path) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(units)
-        .map_err(|e| format!("Failed to serialize units: {}", e))?;
+pub fn export_units_json(units: &[UnitNode], path: &Path) -> Result<(), BitvueError> {
+    let json = serde_json::to_string_pretty(units)?;
 
-    std::fs::write(path, json).map_err(|e| format!("Failed to write JSON: {}", e))
+    std::fs::write(path, json)?;
+    Ok(())
 }
 
 /// Export syntax tree to JSON
-pub fn export_syntax_json(syntax: &SyntaxModel, path: &Path) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(syntax)
-        .map_err(|e| format!("Failed to serialize syntax: {}", e))?;
+pub fn export_syntax_json(syntax: &SyntaxModel, path: &Path) -> Result<(), BitvueError> {
+    let json = serde_json::to_string_pretty(syntax)?;
 
-    std::fs::write(path, json).map_err(|e| format!("Failed to write JSON: {}", e))
+    std::fs::write(path, json)?;
+    Ok(())
 }
 
 /// Frame info for CSV export

@@ -125,7 +125,15 @@ fn parse_ts_packet(data: &[u8]) -> Result<TsPacket> {
             ));
         }
         let adaptation_length = data[4] as usize;
-        payload_start += 1 + adaptation_length;
+        // Use checked arithmetic to prevent overflow
+        payload_start = match (payload_start as usize).checked_add(1).and_then(|v| v.checked_add(adaptation_length)) {
+            Some(v) => v,
+            None => {
+                return Err(BitvueError::InvalidData(
+                    "Adaptation field overflow".to_string()
+                ));
+            }
+        };
     }
 
     // Extract payload
@@ -238,7 +246,10 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
     offset += 2;
 
     // Skip program_number (2), version (1), section_number (1), last_section_number (1)
-    offset += 5;
+    offset = match (offset as usize).checked_add(5) {
+        Some(v) => v,
+        None => return Ok(Vec::new()),
+    };
 
     if offset + 2 > payload.len() {
         return Ok(Vec::new());
@@ -246,7 +257,11 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
 
     let program_info_length =
         (((payload[offset] & 0x0F) as u16) << 8) | (payload[offset + 1] as u16);
-    offset += 2 + (program_info_length as usize);
+    // Use checked arithmetic to prevent overflow
+    offset = match (offset as usize).checked_add(2).and_then(|v| v.checked_add(program_info_length as usize)) {
+        Some(v) => v,
+        None => return Ok(Vec::new()),
+    };
 
     let mut streams = Vec::new();
     let end = offset + (section_length as usize) - 9 - 4 - (program_info_length as usize);
@@ -267,7 +282,11 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
             elementary_pid,
         });
 
-        offset += 5 + (es_info_length as usize);
+        // Use checked arithmetic to prevent overflow
+        offset = match (offset as usize).checked_add(5).and_then(|v| v.checked_add(es_info_length as usize)) {
+            Some(v) => v,
+            None => break,
+        };
     }
 
     Ok(streams)
@@ -399,25 +418,25 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>> {
     ))
 }
 
-/// Parse TS file and extract AV1 video stream
-pub fn parse_ts(data: &[u8]) -> Result<TsInfo> {
+/// Extract PAT and PMT entries from TS data
+///
+/// First pass through TS packets to find Program Association Table (PAT)
+/// and Program Map Table (PMT) which contain stream mapping information.
+fn extract_pat_pmt(data: &[u8]) -> Result<(Vec<PatEntry>, Vec<PmtStream>)> {
     let mut pat_entries = Vec::new();
-    let mut pmt_streams: Vec<PmtStream> = Vec::new();
-    let mut video_pid: Option<u16> = None;
-    let mut pes_buffers: HashMap<u16, Vec<u8>> = HashMap::new();
-    let mut samples = Vec::new();
-    let mut timestamps = Vec::new();
+    let mut pmt_streams = Vec::new();
 
     let mut offset = 0;
-
-    // First pass: find PAT and PMT
     while offset + TS_PACKET_SIZE <= data.len() {
         let packet_data = &data[offset..offset + TS_PACKET_SIZE];
         let packet = parse_ts_packet(packet_data)?;
 
+        // Extract PAT (Program Association Table)
         if packet.pid == PAT_PID && !packet.payload.is_empty() {
             pat_entries = parse_pat(&packet.payload, packet.payload_unit_start)?;
-        } else if !pat_entries.is_empty() {
+        }
+        // Extract PMT (Program Map Table) using PAT entries
+        else if !pat_entries.is_empty() {
             for pat in &pat_entries {
                 if packet.pid == pat.pmt_pid && !packet.payload.is_empty() {
                     pmt_streams = parse_pmt(&packet.payload, packet.payload_unit_start)?;
@@ -429,48 +448,48 @@ pub fn parse_ts(data: &[u8]) -> Result<TsInfo> {
         offset += TS_PACKET_SIZE;
     }
 
-    // Find AV1 video stream PID
-    for stream in &pmt_streams {
-        // AV1 uses stream_type 0x06 (private data) with AV1 descriptor
-        // For now, assume first private data stream might be AV1
-        if stream.stream_type == STREAM_TYPE_AV1 {
-            video_pid = Some(stream.elementary_pid);
-            break;
-        }
-    }
+    Ok((pat_entries, pmt_streams))
+}
 
-    if video_pid.is_none() {
-        return Ok(TsInfo {
-            video_pid: None,
-            sample_count: 0,
-            samples: Vec::new(),
-            timestamps: Vec::new(),
-        });
-    }
+/// Find the video stream PID from PMT streams
+///
+/// Searches through PMT streams to find AV1 video stream.
+/// Returns None if no AV1 stream is found.
+fn find_video_pid(pmt_streams: &[PmtStream]) -> Option<u16> {
+    pmt_streams
+        .iter()
+        .find(|stream| stream.stream_type == STREAM_TYPE_AV1)
+        .map(|stream| stream.elementary_pid)
+}
 
-    let av1_pid = video_pid.unwrap();
+/// Extract PES packets from TS data for a specific PID
+///
+/// Second pass through TS packets to extract PES (Packetized Elementary Stream)
+/// packets for the specified video PID.
+fn extract_pes_packets(data: &[u8], video_pid: u16) -> Result<(Vec<Vec<u8>>, Vec<u64>)> {
+    let mut pes_buffers: HashMap<u16, Vec<u8>> = HashMap::new();
+    let mut samples = Vec::new();
+    let mut timestamps = Vec::new();
 
-    // Second pass: extract PES packets
-    offset = 0;
+    let mut offset = 0;
     while offset + TS_PACKET_SIZE <= data.len() {
         let packet_data = &data[offset..offset + TS_PACKET_SIZE];
         let packet = parse_ts_packet(packet_data)?;
 
-        if packet.pid == av1_pid {
+        if packet.pid == video_pid {
             if packet.payload_unit_start {
-                // New PES packet starts
-                if let Some(buffer) = pes_buffers.remove(&av1_pid) {
-                    // Parse previous PES packet
+                // New PES packet starts - flush previous buffer
+                if let Some(buffer) = pes_buffers.remove(&video_pid) {
                     if let Ok(pes) = parse_pes(&buffer) {
                         samples.push(pes.payload);
                         timestamps.push(pes.pts.unwrap_or(0));
                     }
                 }
-                pes_buffers.insert(av1_pid, packet.payload);
+                pes_buffers.insert(video_pid, packet.payload);
             } else {
                 // Continue current PES packet
                 pes_buffers
-                    .entry(av1_pid)
+                    .entry(video_pid)
                     .or_default()
                     .extend_from_slice(&packet.payload);
             }
@@ -480,15 +499,39 @@ pub fn parse_ts(data: &[u8]) -> Result<TsInfo> {
     }
 
     // Process remaining buffer
-    if let Some(buffer) = pes_buffers.remove(&av1_pid) {
+    if let Some(buffer) = pes_buffers.remove(&video_pid) {
         if let Ok(pes) = parse_pes(&buffer) {
             samples.push(pes.payload);
             timestamps.push(pes.pts.unwrap_or(0));
         }
     }
 
+    Ok((samples, timestamps))
+}
+
+/// Parse TS file and extract AV1 video stream
+pub fn parse_ts(data: &[u8]) -> Result<TsInfo> {
+    // First pass: extract PAT and PMT
+    let (_pat_entries, pmt_streams) = extract_pat_pmt(data)?;
+
+    // Find AV1 video stream PID
+    let video_pid = match find_video_pid(&pmt_streams) {
+        Some(pid) => pid,
+        None => {
+            return Ok(TsInfo {
+                video_pid: None,
+                sample_count: 0,
+                samples: Vec::new(),
+                timestamps: Vec::new(),
+            });
+        }
+    };
+
+    // Second pass: extract PES packets
+    let (samples, timestamps) = extract_pes_packets(data, video_pid)?;
+
     Ok(TsInfo {
-        video_pid,
+        video_pid: Some(video_pid),
         sample_count: samples.len(),
         samples,
         timestamps,

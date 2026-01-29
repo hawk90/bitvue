@@ -81,11 +81,11 @@ pub fn parse_frame_header_syntax(
 
     // frame_type (2 bits) - AV1 Spec 5.9.5
     let (frame_type_bits, range) = reader.read_bits_tracked(2)?;
-    let frame_type = FrameType::from_bits(frame_type_bits)?;
+    let frame_type = FrameType::from_av1_bits(frame_type_bits);
     builder.add_field(
         "frame_type",
         range,
-        format!("{} ({})", frame_type_bits, frame_type.name()),
+        format!("{} ({})", frame_type_bits, frame_type),
     );
 
     // show_frame (1 bit) - AV1 Spec 5.9.6

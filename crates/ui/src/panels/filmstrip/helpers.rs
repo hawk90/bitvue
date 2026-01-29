@@ -3,24 +3,61 @@
 use super::{FilmstripPanel, FrameInfo};
 use bitvue_core::UnitNode;
 use egui::Color32;
+use std::collections::HashMap;
+
+/// Precomputed frame type color lookup table (VQAnalyzer parity: I=red, P=green, B=blue)
+///
+/// Computed once at startup to avoid repeated match statements during rendering.
+/// Provides O(1) lookup instead of O(n) match evaluation.
+fn frame_type_color_map() -> &'static HashMap<&'static str, Color32> {
+    use std::sync::OnceLock;
+    static MAP: OnceLock<HashMap<&'static str, Color32>> = OnceLock::new();
+    MAP.get_or_init(|| {
+        let mut m = HashMap::with_capacity(16);
+
+        // AV1 frame types
+        m.insert("KEY", Color32::from_rgb(220, 80, 80));         // Red for I-frames
+        m.insert("INTRA_ONLY", Color32::from_rgb(220, 80, 80)); // Red for I-frames
+        m.insert("INTER", Color32::from_rgb(80, 180, 80));       // Green for P-frames
+        m.insert("SWITCH", Color32::from_rgb(180, 100, 180));    // Purple for switch frames
+
+        // Legacy codec support (H.264/HEVC)
+        m.insert("I", Color32::from_rgb(220, 80, 80));           // Red for I-frames
+        m.insert("IDR", Color32::from_rgb(220, 80, 80));          // Red for I-frames
+        m.insert("INTRA", Color32::from_rgb(220, 80, 80));        // Red for I-frames
+        m.insert("P", Color32::from_rgb(80, 180, 80));            // Green for P-frames
+        m.insert("PRED", Color32::from_rgb(80, 180, 80));         // Green for P-frames
+        m.insert("B", Color32::from_rgb(80, 140, 220));           // Blue for B-frames
+        m.insert("BFRAME", Color32::from_rgb(80, 140, 220));      // Blue for B-frames
+        m.insert("BPRED", Color32::from_rgb(80, 140, 220));       // Blue for B-frames
+
+        // Unknown
+        m.insert("FRAME", Color32::from_rgb(120, 120, 120));     // Gray for unknown
+        m.insert("UNKNOWN", Color32::from_rgb(120, 120, 120));   // Gray for unknown
+
+        m
+    })
+}
 
 impl FilmstripPanel {
     /// Get frame type color (VQAnalyzer parity: I=red, P=green, B=blue)
+    ///
+    /// Uses precomputed HashMap for O(1) lookup instead of match evaluation.
     pub(super) fn frame_type_color(frame_type: &str) -> Color32 {
-        match frame_type {
-            // AV1 frame types
-            "KEY" | "INTRA_ONLY" => Color32::from_rgb(220, 80, 80), // Red for I-frames (KEY, INTRA_ONLY)
-            "INTER" => Color32::from_rgb(80, 180, 80),              // Green for P-frames (INTER)
-            "SWITCH" => Color32::from_rgb(180, 100, 180),           // Purple for switch frames
-            // Legacy codec support (H.264/HEVC)
-            "I" | "IDR" | "INTRA" => Color32::from_rgb(220, 80, 80), // Red for I-frames
-            "P" | "PRED" => Color32::from_rgb(80, 180, 80),          // Green for P-frames
-            "B" | "BFRAME" | "BPRED" => Color32::from_rgb(80, 140, 220), // Blue for B-frames
-            // Unknown
-            "FRAME" => Color32::from_rgb(120, 120, 120), // Gray for unknown
-            "UNKNOWN" => Color32::from_rgb(120, 120, 120), // Gray for unknown
-            _ => Color32::from_rgb(100, 100, 100),       // Dark gray default
-        }
+        frame_type_color_map()
+            .get(frame_type)
+            .copied()
+            .unwrap_or_else(|| {
+                // Handle dynamic frame types that might not be in the static map
+                // (e.g., TRAIL_N, or other codec-specific types)
+                if frame_type.contains("KEY") || frame_type.contains("INTRA") {
+                    Color32::from_rgb(220, 80, 80) // Red for I-frames
+                } else if frame_type.contains("INTER") || frame_type.contains("TRAIL") {
+                    Color32::from_rgb(80, 180, 80) // Green for P-frames
+                } else {
+                    Color32::from_rgb(100, 100, 100) // Dark gray default
+                }
+            })
     }
 }
 

@@ -20,6 +20,9 @@ anyhow = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
+# Parallelization
+rayon = { workspace = true }
+
 # Serialization (for loading mock data)
 serde = { workspace = true }
 serde_json = { workspace = true }

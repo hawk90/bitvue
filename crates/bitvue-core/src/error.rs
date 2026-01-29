@@ -52,6 +52,12 @@ pub enum BitvueError {
 
     #[error("Frame not found at display_idx {0}")]
     FrameNotFound(usize),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
 }
 
 pub type Result<T> = std::result::Result<T, BitvueError>;

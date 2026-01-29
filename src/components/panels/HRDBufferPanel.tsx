@@ -25,13 +25,13 @@ interface HRDState {
   maxOccupancy: number;
 }
 
-const HRDBufferPanelInternal = function HRDBufferPanel({
+const HRDBufferPanelInternal = ({
   frames,
   currentFrameIndex,
   frameRate,
   targetBitrate,
   bufferSize = 1000000, // Default 1MB CPB
-}: HRDBufferPanelProps) {
+}: HRDBufferPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredFrame, setHoveredFrame] = useState<number | null>(null);
@@ -344,7 +344,7 @@ const HRDBufferPanelInternal = function HRDBufferPanel({
       </div>
     </div>
   );
-});
+};
 
 export const HRDBufferPanel = memo(HRDBufferPanelInternal);
 export default HRDBufferPanel;

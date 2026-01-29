@@ -9,6 +9,7 @@
 //! - Compare alignment engine
 //! - Gates: Hard Fail, Parity Gate, Perf Gate
 
+use crate::BitvueError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -269,9 +270,8 @@ pub fn validate_parity_matrix(matrix: &ParityMatrix) -> SchemaValidationResult {
 /// Parse and validate parity matrix from JSON string
 pub fn parse_and_validate_parity_matrix(
     json: &str,
-) -> Result<(ParityMatrix, SchemaValidationResult), String> {
-    let matrix: ParityMatrix =
-        serde_json::from_str(json).map_err(|e| format!("JSON parse error: {}", e))?;
+) -> Result<(ParityMatrix, SchemaValidationResult), BitvueError> {
+    let matrix: ParityMatrix = serde_json::from_str(json)?;
 
     let validation = validate_parity_matrix(&matrix);
     Ok((matrix, validation))
@@ -1990,7 +1990,7 @@ pub const FULL_PARITY_MATRIX_JSON: &str = r#"{
 }"#;
 
 /// Parse and return the full parity matrix
-pub fn get_full_parity_matrix() -> Result<(ParityMatrix, SchemaValidationResult), String> {
+pub fn get_full_parity_matrix() -> Result<(ParityMatrix, SchemaValidationResult), BitvueError> {
     parse_and_validate_parity_matrix(FULL_PARITY_MATRIX_JSON)
 }
 

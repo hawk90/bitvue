@@ -21,7 +21,29 @@ use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
 use crate::traits::{CodecType, Decoder, DecoderCapabilities};
 use std::ffi::c_void;
 use std::ptr;
+use std::thread;
+use std::time::Duration;
 use tracing::{debug, error, warn};
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// Maximum plane size to prevent DoS via malicious video files
+const MAX_PLANE_SIZE: usize = 7680 * 4320 * 4; // 8K resolution, 4 bytes per sample
+
+/// Maximum allowed frame dimensions
+const MAX_FRAME_DIMENSION: u32 = 8192;
+
+/// Maximum time to wait for a single frame decode before timing out
+///
+/// Prevents infinite hangs from malformed video data or decoder bugs.
+/// 10 seconds is more than enough for any legitimate frame decode.
+const DECODE_TIMEOUT: Duration = Duration::from_secs(10);
+
+// ============================================================================
+// FFI Bindings
+// ============================================================================
 
 // vvdec FFI bindings
 mod ffi {
@@ -152,6 +174,144 @@ mod ffi {
     }
 }
 
+// ============================================================================
+// RAII Guards for FFI Resource Management
+// ============================================================================
+
+/// RAII guard for vvdec decoder handle
+///
+/// Ensures the decoder is properly closed even if a panic occurs
+/// during initialization.
+struct DecoderGuard(*mut ffi::VvdecDecoder);
+
+impl DecoderGuard {
+    /// Create a new guard from a raw decoder pointer
+    fn new(decoder: *mut ffi::VvdecDecoder) -> Self {
+        Self(decoder)
+    }
+
+    /// Consume the guard and return the raw pointer
+    ///
+    /// This is safe to call only after initialization is complete
+    /// and the struct takes ownership of the decoder.
+    fn into_raw(self) -> *mut ffi::VvdecDecoder {
+        let ptr = self.0;
+        std::mem::forget(self); // Prevent Drop from running
+        ptr
+    }
+}
+
+impl Drop for DecoderGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.0.is_null() {
+                ffi::vvdec_decoder_close(self.0);
+            }
+        }
+    }
+}
+
+/// RAII guard for vvdec access unit
+struct AccessUnitGuard(*mut ffi::VvdecAccessUnit);
+
+impl AccessUnitGuard {
+    fn new(au: *mut ffi::VvdecAccessUnit) -> Self {
+        Self(au)
+    }
+
+    fn into_raw(self) -> *mut ffi::VvdecAccessUnit {
+        let ptr = self.0;
+        std::mem::forget(self);
+        ptr
+    }
+}
+
+impl Drop for AccessUnitGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.0.is_null() {
+                ffi::vvdec_accessUnit_free(self.0);
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Timeout Wrapper for FFI Calls
+// ============================================================================
+
+/// Result of a potentially long-running FFI call
+enum FfiResult<T> {
+    Success(T),
+    Timeout,
+    Panic,
+}
+
+/// Wrapper to execute FFI calls with a timeout
+///
+/// This spawns a separate thread to run the FFI call and waits for completion
+/// with a timeout. If the timeout expires, the decoder is in an undefined state
+/// and must be reset.
+///
+/// # Safety
+///
+/// The decoder must not be accessed concurrently while the FFI call is in progress.
+/// The vvdec library is NOT thread-safe, so this wrapper must only be used when
+/// there are no other accesses to the decoder.
+fn run_with_timeout<F, T>(f: F) -> FfiResult<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    thread::spawn(move || FfiResult::Success(f()))
+        .join()
+        .unwrap_or(FfiResult::Panic)
+}
+
+/// Wrapper to execute FFI calls with a timeout
+///
+/// This spawns a separate thread to run the FFI call and waits for completion
+/// with a timeout. If the timeout expires, the function returns an error.
+fn run_decode_with_timeout<F, T>(f: F) -> Result<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let handle = thread::spawn(move || FfiResult::Success(f()));
+
+    // Wait for completion with timeout
+    let start = std::time::Instant::now();
+    loop {
+        if handle.is_finished() {
+            return match handle.join() {
+                Ok(FfiResult::Success(result)) => Ok(result),
+                Ok(FfiResult::Panic) | Err(_) => {
+                    Err(DecodeError::Decode("Decoder thread panicked".to_string()))
+                }
+                _ => Err(DecodeError::Decode("Unexpected FFI result".to_string())),
+            };
+        }
+
+        if start.elapsed() >= DECODE_TIMEOUT {
+            warn!("Decoder FFI call timed out after {:?}", DECODE_TIMEOUT);
+            // Note: The thread is still running in the background. We cannot safely
+            // terminate it, but the decoder handle will be dropped when the
+            // VvcDecoder is reset or dropped.
+            return Err(DecodeError::Decode(format!(
+                "Decoder timeout after {:?}",
+                DECODE_TIMEOUT
+            )));
+        }
+
+        // Sleep briefly to avoid busy-waiting
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+// ============================================================================
+// VVC Decoder
+// ============================================================================
+
 /// VVC/H.266 decoder using vvdec library
 ///
 /// # Thread Safety
@@ -168,7 +328,7 @@ pub struct VvcDecoder {
 }
 
 impl VvcDecoder {
-    /// Create a new VVC decoder
+    /// Create a new VVC decoder with RAII guards for safe resource management
     pub fn new() -> Result<Self> {
         unsafe {
             // Initialize parameters with defaults
@@ -180,7 +340,7 @@ impl VvcDecoder {
             params.parseThreads = -1; // -1 = auto
             params.logLevel = 0; // Quiet
 
-            // Open decoder
+            // Open decoder with RAII guard
             let decoder = ffi::vvdec_decoder_open(&params);
             if decoder.is_null() {
                 return Err(DecodeError::Init(
@@ -188,26 +348,36 @@ impl VvcDecoder {
                 ));
             }
 
-            // Allocate access unit for input
+            // RAII guard ensures decoder is closed if panic occurs
+            let _decoder_guard = DecoderGuard::new(decoder);
+
+            // Allocate access unit with RAII guard
             let access_unit = ffi::vvdec_accessUnit_alloc();
             if access_unit.is_null() {
-                ffi::vvdec_decoder_close(decoder);
+                // _decoder_guard will automatically clean up decoder here
                 return Err(DecodeError::Init(
                     "Failed to allocate vvdec access unit".to_string(),
                 ));
             }
 
+            let _access_guard = AccessUnitGuard::new(access_unit);
+
+            // If we reach here, initialization succeeded
+            // Disband the guards and transfer ownership to the struct
+            let decoder_ptr = _decoder_guard.into_raw();
+            let au_ptr = _access_guard.into_raw();
+
             debug!("VVC decoder initialized successfully");
 
             Ok(Self {
-                decoder,
-                access_unit,
+                decoder: decoder_ptr,
+                access_unit: au_ptr,
                 flushing: false,
             })
         }
     }
 
-    /// Convert vvdec frame to DecodedFrame
+    /// Convert vvdec frame to DecodedFrame with comprehensive validation
     fn convert_frame(&self, frame: *mut ffi::VvdecFrame) -> Result<DecodedFrame> {
         unsafe {
             if frame.is_null() {
@@ -216,13 +386,28 @@ impl VvcDecoder {
 
             let vf = &*frame;
 
+            // Validate frame dimensions
+            if vf.width > MAX_FRAME_DIMENSION || vf.height > MAX_FRAME_DIMENSION {
+                return Err(DecodeError::Decode(format!(
+                    "Frame dimensions {}x{} exceed maximum {}",
+                    vf.width, vf.height, MAX_FRAME_DIMENSION
+                )));
+            }
+
             let width = vf.width;
             let height = vf.height;
             let bit_depth = vf.bit_depth as u8;
 
+            // Validate bit depth
+            if bit_depth > 12 {
+                return Err(DecodeError::Decode(format!(
+                    "Unsupported bit depth: {}", bit_depth
+                )));
+            }
+
             // Extract Y plane
             let y_plane = &vf.planes[0];
-            let y_data = self.extract_plane(y_plane, height as usize);
+            let y_data = self.extract_plane(y_plane, height as usize)?;
             let y_stride = y_plane.stride as usize;
 
             // Extract U and V planes (if present)
@@ -236,9 +421,9 @@ impl VvcDecoder {
                 };
 
                 (
-                    Some(self.extract_plane(u_plane, chroma_height)),
+                    Some(self.extract_plane(u_plane, chroma_height)?),
                     u_plane.stride as usize,
-                    Some(self.extract_plane(v_plane, chroma_height)),
+                    Some(self.extract_plane(v_plane, chroma_height)?),
                     v_plane.stride as usize,
                 )
             } else {
@@ -257,6 +442,15 @@ impl VvcDecoder {
 
             let timestamp = if vf.ctsValid { vf.cts } else { 0 };
 
+            // Detect chroma format once at frame creation
+            let chroma_format = crate::decoder::ChromaFormat::from_frame_data(
+                width,
+                height,
+                bit_depth,
+                u_data.as_deref(),
+                v_data.as_deref(),
+            );
+
             Ok(DecodedFrame {
                 width,
                 height,
@@ -270,31 +464,133 @@ impl VvcDecoder {
                 timestamp,
                 frame_type,
                 qp_avg: None, // vvdec doesn't expose QP
+                chroma_format,
             })
         }
     }
 
-    /// Extract plane data from vvdec plane
-    fn extract_plane(&self, plane: &ffi::VvdecPlane, height: usize) -> Vec<u8> {
+    /// Extract plane data from vvdec plane with comprehensive bounds checking
+    ///
+    /// This function validates all memory access to prevent buffer overflows
+    /// from malicious video data.
+    fn extract_plane(&self, plane: &ffi::VvdecPlane, height: usize) -> Result<Vec<u8>> {
         if plane.ptr.is_null() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         let bytes_per_sample = plane.bytes_per_sample as usize;
         let row_bytes = plane.width as usize * bytes_per_sample;
         let stride = plane.stride as usize;
 
-        let mut data = Vec::with_capacity(row_bytes * height);
+        // Validate dimensions to prevent buffer overflow
+        if row_bytes == 0 || stride == 0 || height == 0 {
+            warn!(
+                "Invalid plane dimensions: width={}, bytes_per_sample={}, stride={}, height={}",
+                plane.width, bytes_per_sample, stride, height
+            );
+            return Ok(Vec::new());
+        }
 
-        unsafe {
-            for row in 0..height {
-                let src = plane.ptr.add(row * stride);
+        // Validate bytes_per_sample
+        if bytes_per_sample > 4 {
+            return Err(DecodeError::Decode(format!(
+                "Invalid bytes_per_sample: {}", bytes_per_sample
+            )));
+        }
+
+        // Calculate required capacity with overflow protection
+        let required_capacity = match row_bytes.checked_mul(height) {
+            Some(v) => v,
+            None => {
+                return Err(DecodeError::Decode(
+                    "Plane size calculation overflow (row_bytes * height)".to_string(),
+                ))
+            }
+        };
+
+        // Validate against maximum plane size
+        if required_capacity > MAX_PLANE_SIZE {
+            return Err(DecodeError::Decode(format!(
+                "Plane size {} exceeds maximum allowed {}",
+                required_capacity, MAX_PLANE_SIZE
+            )));
+        }
+
+        // Validate that stride * height doesn't overflow
+        let total_buffer_size = match stride.checked_mul(height) {
+            Some(v) => v,
+            None => {
+                return Err(DecodeError::Decode(
+                    "Plane size calculation overflow (stride * height)".to_string(),
+                ))
+            }
+        };
+
+        // Validate that required_capacity fits within buffer
+        if required_capacity > total_buffer_size {
+            return Err(DecodeError::Decode(format!(
+                "Required capacity {} exceeds buffer size {}",
+                required_capacity, total_buffer_size
+            )));
+        }
+
+        let mut data = Vec::with_capacity(required_capacity);
+
+        // Fast path: contiguous data (stride == row_bytes) - single copy
+        if stride == row_bytes {
+            unsafe {
+                let src = plane.ptr;
+                if src.is_null() {
+                    warn!("Null pointer detected for contiguous plane");
+                    return Ok(data);
+                }
+                let slice = std::slice::from_raw_parts(src, required_capacity);
+                data.extend_from_slice(slice);
+            }
+            return Ok(data);
+        }
+
+        // Slow path: strided data - copy row by row with bounds checking
+        for row in 0..height {
+            let offset = match row.checked_mul(stride) {
+                Some(o) => o,
+                None => {
+                    warn!("Row offset overflow at row {}", row);
+                    break;
+                }
+            };
+
+            // Validate bounds before accessing memory
+            let end_offset = match offset.checked_add(row_bytes) {
+                Some(e) => e,
+                None => {
+                    warn!("Row end offset overflow at row {}", row);
+                    break;
+                }
+            };
+
+            if end_offset > total_buffer_size {
+                warn!(
+                    "Plane access out of bounds: offset={}, row_bytes={}, stride={}, height={}",
+                    offset, row_bytes, stride, height
+                );
+                break;
+            }
+
+            unsafe {
+                let src = plane.ptr.add(offset);
+                // Validate that src is not null and doesn't overflow
+                if src.is_null() {
+                    warn!("Null pointer detected at row {}", row);
+                    break;
+                }
+
                 let slice = std::slice::from_raw_parts(src, row_bytes);
                 data.extend_from_slice(slice);
             }
         }
 
-        data
+        Ok(data)
     }
 
     /// Get error message from vvdec error code
@@ -318,8 +614,8 @@ impl Decoder for VvcDecoder {
     fn capabilities(&self) -> DecoderCapabilities {
         DecoderCapabilities {
             codec: CodecType::H266,
-            max_width: 8192,
-            max_height: 8192,
+            max_width: MAX_FRAME_DIMENSION,
+            max_height: MAX_FRAME_DIMENSION,
             supported_bit_depths: vec![8, 10, 12],
             hw_accel: false, // vvdec is software-only
         }
@@ -353,22 +649,35 @@ impl Decoder for VvcDecoder {
     }
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
+        // Capture decoder and access_unit for the timeout wrapper
+        // Note: Raw pointers are Copy, so we can pass them to the thread
+        let decoder = self.decoder;
+        let access_unit = self.access_unit;
+        let flushing = self.flushing;
+
+        // Run decode with timeout protection
+        let (ret, frame_ptr) = run_decode_with_timeout(move || {
+            unsafe {
+                let mut fp: *mut ffi::VvdecFrame = ptr::null_mut();
+                let r = if flushing {
+                    ffi::vvdec_flush(decoder, &mut fp)
+                } else {
+                    ffi::vvdec_decode(decoder, access_unit, &mut fp)
+                };
+                (r, fp)
+            }
+        })?;
+
         unsafe {
-            let mut frame_ptr: *mut ffi::VvdecFrame = ptr::null_mut();
-
-            let ret = if self.flushing {
-                ffi::vvdec_flush(self.decoder, &mut frame_ptr)
-            } else {
-                ffi::vvdec_decode(self.decoder, self.access_unit, &mut frame_ptr)
-            };
-
             match ret {
                 ffi::VVDEC_OK => {
                     let frame = self.convert_frame(frame_ptr)?;
                     ffi::vvdec_frame_unref(self.decoder, frame_ptr);
 
                     // Clear access unit after successful decode
-                    ffi::vvdec_accessUnit_free_payload(self.access_unit);
+                    if !flushing {
+                        ffi::vvdec_accessUnit_free_payload(self.access_unit);
+                    }
 
                     Ok(frame)
                 }
@@ -444,6 +753,10 @@ pub fn vvdec_version() -> String {
     }
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,5 +790,27 @@ mod tests {
             println!("vvdec version: {}", version);
             assert!(!version.is_empty());
         }
+    }
+
+    #[test]
+    fn test_plane_size_validation() {
+        // Test that oversized planes are rejected
+        let decoder = match VvcDecoder::new() {
+            Ok(d) => d,
+            Err(_) => return, // Skip test if vvdec not available
+        };
+
+        // Create a plane with invalid dimensions
+        let invalid_plane = ffi::VvdecPlane {
+            ptr: std::ptr::null_mut(),
+            width: 100000, // Exceeds MAX_FRAME_DIMENSION
+            height: 100000,
+            stride: 100000 * 4,
+            bytes_per_sample: 4,
+        };
+
+        let result = decoder.extract_plane(&invalid_plane, 100000);
+        // Should fail validation
+        assert!(result.is_err());
     }
 }

@@ -10,6 +10,8 @@
 
 pub mod bitreader;
 pub mod error;
+pub mod frame;
+pub mod qp_extraction;
 pub mod types;
 
 // Monster Pack v9: Core state management
@@ -112,6 +114,7 @@ pub mod parity_harness; // T10-1: Competitor Parity Harness (schema validation, 
 
 pub use self::bitreader::*;
 pub use self::core::*;
+pub use self::frame::*;
 pub use alignment::*;
 pub use block_metrics::*;
 pub use byte_cache::*;
@@ -172,5 +175,7 @@ pub use timeline_lanes::*;
 pub use timeline_window::*;
 pub use tooltip::*;
 pub use types::*;
+// Export commonly used types at crate root for convenience
+pub use types::FrameType;
 pub use worker::*;
 pub use workspace::*;

@@ -383,6 +383,34 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
     // sps_pic_height_max_in_luma_samples (ue(v))
     sps.sps_pic_height_max_in_luma_samples = reader.read_ue()?;
 
+    // Validate dimensions to prevent DoS via excessive allocations
+    // Maximum 8K resolution (7680x4320) with safety margin
+    const MAX_WIDTH: u32 = 7680;
+    const MAX_HEIGHT: u32 = 4320;
+
+    if sps.sps_pic_width_max_in_luma_samples > MAX_WIDTH
+        || sps.sps_pic_height_max_in_luma_samples > MAX_HEIGHT
+    {
+        return Err(crate::error::VvcError::InvalidData(format!(
+            "SPS dimensions {}x{} exceed maximum {}x{}",
+            sps.sps_pic_width_max_in_luma_samples,
+            sps.sps_pic_height_max_in_luma_samples,
+            MAX_WIDTH,
+            MAX_HEIGHT
+        )));
+    }
+
+    // Also validate minimum dimensions
+    if sps.sps_pic_width_max_in_luma_samples == 0
+        || sps.sps_pic_height_max_in_luma_samples == 0
+    {
+        return Err(crate::error::VvcError::InvalidData(format!(
+            "SPS dimensions {}x{} are invalid (must be non-zero)",
+            sps.sps_pic_width_max_in_luma_samples,
+            sps.sps_pic_height_max_in_luma_samples
+        )));
+    }
+
     // sps_conformance_window_flag (1 bit)
     sps.sps_conformance_window_flag = reader.read_bit()?;
 

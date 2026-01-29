@@ -7,6 +7,7 @@
 //!
 //! Prevents UI freezing during config operations by processing them in a background thread.
 
+use bitvue_core::BitvueError;
 use crate::retry_policy::RetryPolicy;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::path::PathBuf;
@@ -48,12 +49,12 @@ pub struct ConfigResult {
 
 /// Data returned from config operations
 pub enum ConfigResultData {
-    RecentFilesLoaded(Result<Vec<PathBuf>, String>),
-    RecentFilesSaved(Result<(), String>),
-    LayoutLoaded(Result<String, String>),
-    LayoutSaved(Result<(), String>),
-    SettingsLoaded(Result<String, String>),
-    SettingsSaved(Result<(), String>),
+    RecentFilesLoaded(Result<Vec<PathBuf>, BitvueError>),
+    RecentFilesSaved(Result<(), BitvueError>),
+    LayoutLoaded(Result<String, BitvueError>),
+    LayoutSaved(Result<(), BitvueError>),
+    SettingsLoaded(Result<String, BitvueError>),
+    SettingsSaved(Result<(), BitvueError>),
 }
 
 /// Background worker for configuration I/O
@@ -145,14 +146,14 @@ impl ConfigWorker {
     }
 
     /// Get config directory (~/.bitvue/)
-    fn config_dir() -> Result<PathBuf, String> {
+    fn config_dir() -> Result<PathBuf, BitvueError> {
         dirs::home_dir()
-            .ok_or_else(|| "Failed to find home directory".to_string())
+            .ok_or_else(|| BitvueError::InvalidData("Failed to find home directory".to_string()))
             .map(|home| home.join(".bitvue"))
     }
 
     /// Load recent files list
-    fn load_recent_files() -> Result<Vec<PathBuf>, String> {
+    fn load_recent_files() -> Result<Vec<PathBuf>, BitvueError> {
         let config_dir = Self::config_dir()?;
         let recent_path = config_dir.join("recent.json");
 
@@ -160,49 +161,46 @@ impl ConfigWorker {
             return Ok(Vec::new());
         }
 
-        let content = std::fs::read_to_string(&recent_path)
-            .map_err(|e| format!("Failed to read recent files: {}", e))?;
-
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse recent files: {}", e))
+        let content = std::fs::read_to_string(&recent_path)?;
+        let recent_files: Vec<PathBuf> = serde_json::from_str(&content)
+            .map_err(|e| BitvueError::Serialization(e))?;
+        Ok(recent_files)
     }
 
     /// Save recent files list with retry logic
-    fn save_recent_files(files: &[PathBuf]) -> Result<(), String> {
+    fn save_recent_files(files: &[PathBuf]) -> Result<(), BitvueError> {
         let config_dir = Self::config_dir()?;
-        std::fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        std::fs::create_dir_all(&config_dir)?;
 
         let recent_path = config_dir.join("recent.json");
-        let content = serde_json::to_string_pretty(files)
-            .map_err(|e| format!("Failed to serialize: {}", e))?;
+        let content = serde_json::to_string_pretty(files)?;
 
         let retry_policy = RetryPolicy::standard();
         let path_clone = recent_path.clone();
         let content_clone = content.clone();
 
         retry_policy.execute(|| {
-            std::fs::write(&path_clone, &content_clone)
-                .map_err(|e| format!("Failed to write recent files: {}", e))
+            std::fs::write(&path_clone, &content_clone)?;
+            Ok(())
         })
     }
 
     /// Load layout state
-    fn load_layout() -> Result<String, String> {
+    fn load_layout() -> Result<String, BitvueError> {
         let config_dir = Self::config_dir()?;
         let layout_path = config_dir.join("layout.json");
 
         if !layout_path.exists() {
-            return Err("No saved layout".to_string());
+            return Err(BitvueError::NotFound("No saved layout".to_string()));
         }
 
-        std::fs::read_to_string(&layout_path).map_err(|e| format!("Failed to read layout: {}", e))
+        Ok(std::fs::read_to_string(&layout_path)?)
     }
 
     /// Save layout state with retry logic
-    fn save_layout(layout_json: &str) -> Result<(), String> {
+    fn save_layout(layout_json: &str) -> Result<(), BitvueError> {
         let config_dir = Self::config_dir()?;
-        std::fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        std::fs::create_dir_all(&config_dir)?;
 
         let layout_path = config_dir.join("layout.json");
         let retry_policy = RetryPolicy::standard();
@@ -210,29 +208,27 @@ impl ConfigWorker {
         let json_clone = layout_json.to_string();
 
         retry_policy.execute(|| {
-            std::fs::write(&path_clone, &json_clone)
-                .map_err(|e| format!("Failed to write layout: {}", e))
+            std::fs::write(&path_clone, &json_clone)?;
+            Ok(())
         })
     }
 
     /// Load application settings
-    fn load_settings() -> Result<String, String> {
+    fn load_settings() -> Result<String, BitvueError> {
         let config_dir = Self::config_dir()?;
         let settings_path = config_dir.join("settings.json");
 
         if !settings_path.exists() {
-            return Err("No saved settings".to_string());
+            return Err(BitvueError::NotFound("No saved settings".to_string()));
         }
 
-        std::fs::read_to_string(&settings_path)
-            .map_err(|e| format!("Failed to read settings: {}", e))
+        Ok(std::fs::read_to_string(&settings_path)?)
     }
 
     /// Save application settings with retry logic
-    fn save_settings(settings_json: &str) -> Result<(), String> {
+    fn save_settings(settings_json: &str) -> Result<(), BitvueError> {
         let config_dir = Self::config_dir()?;
-        std::fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        std::fs::create_dir_all(&config_dir)?;
 
         let settings_path = config_dir.join("settings.json");
         let retry_policy = RetryPolicy::standard();
@@ -240,8 +236,8 @@ impl ConfigWorker {
         let json_clone = settings_json.to_string();
 
         retry_policy.execute(|| {
-            std::fs::write(&path_clone, &json_clone)
-                .map_err(|e| format!("Failed to write settings: {}", e))
+            std::fs::write(&path_clone, &json_clone)?;
+            Ok(())
         })
     }
 

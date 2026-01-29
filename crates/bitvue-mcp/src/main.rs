@@ -505,8 +505,12 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
             Ok(fh) => match fh.frame_type {
                 FrameType::Key => "I".to_string(),
                 FrameType::Inter => "P".to_string(),
+                FrameType::BFrame => "B".to_string(),
                 FrameType::IntraOnly => "I".to_string(),
                 FrameType::Switch => "I".to_string(),
+                FrameType::SI => "I".to_string(),
+                FrameType::SP => "P".to_string(),
+                FrameType::Unknown => "?".to_string(),
             },
             Err(_) => match obu_type {
                 6 => "I".to_string(),

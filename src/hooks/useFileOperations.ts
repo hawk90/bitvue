@@ -29,6 +29,18 @@ import type { FileInfo, FileOpenedEvent } from '../types/video';
 export type CodecType = 'av1' | 'hevc' | 'avc' | 'vp9' | 'vvc' | 'mpeg2' | 'auto';
 
 /**
+ * Valid codec types for validation
+ */
+const VALID_CODECS: readonly CodecType[] = ['av1', 'hevc', 'avc', 'vp9', 'vvc', 'mpeg2', 'auto'];
+
+/**
+ * Validate codec type
+ */
+function isValidCodec(codec: string): codec is CodecType {
+  return VALID_CODECS.includes(codec as CodecType);
+}
+
+/**
  * File operation result
  */
 export interface FileOperationResult {
@@ -86,6 +98,15 @@ export function useFileOperations(): UseFileOperationsResult {
   const openBitstream = useCallback(async (codec?: CodecType): Promise<FileOperationResult> => {
     setIsLoading(true);
     setError(null);
+
+    // Validate codec parameter if provided
+    if (codec !== undefined && !isValidCodec(codec)) {
+      const errorMsg = `Invalid codec type: "${codec}". Valid types are: ${VALID_CODECS.join(', ')}`;
+      setError(errorMsg);
+      logger.error('Invalid codec type:', codec);
+      setIsLoading(false);
+      return { success: false, error: errorMsg };
+    }
 
     try {
       const selected = await open({

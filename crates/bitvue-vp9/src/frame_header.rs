@@ -8,6 +8,8 @@
 
 use crate::bitreader::BitReader;
 use crate::error::{Result, Vp9Error};
+// Re-export FrameType for other modules in this crate
+pub use bitvue_core::FrameType;
 use serde::{Deserialize, Serialize};
 
 /// VP9 color space.
@@ -36,27 +38,6 @@ impl From<u8> for ColorSpace {
             7 => Self::Srgb,
             _ => Self::Unknown,
         }
-    }
-}
-
-/// VP9 frame type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FrameType {
-    /// Key frame (intra only).
-    KeyFrame = 0,
-    /// Inter frame (can reference other frames).
-    InterFrame = 1,
-}
-
-impl FrameType {
-    /// Check if this is a key frame.
-    pub fn is_key_frame(&self) -> bool {
-        matches!(self, Self::KeyFrame)
-    }
-
-    /// Check if this is an inter frame.
-    pub fn is_inter_frame(&self) -> bool {
-        matches!(self, Self::InterFrame)
     }
 }
 
@@ -215,7 +196,7 @@ pub struct FrameHeader {
 impl Default for FrameHeader {
     fn default() -> Self {
         Self {
-            frame_type: FrameType::KeyFrame,
+            frame_type: FrameType::Key,
             show_frame: true,
             error_resilient_mode: false,
             width: 0,
@@ -250,12 +231,12 @@ impl Default for FrameHeader {
 impl FrameHeader {
     /// Check if this is a key frame.
     pub fn is_key_frame(&self) -> bool {
-        self.frame_type.is_key_frame()
+        self.frame_type.is_key()
     }
 
     /// Check if this is an intra-only frame (key frame or intra-only inter frame).
     pub fn is_intra_only(&self) -> bool {
-        self.frame_type.is_key_frame() || self.intra_only
+        self.frame_type.is_key() || self.intra_only
     }
 
     /// Get number of tile columns.
@@ -314,9 +295,9 @@ pub fn parse_frame_header(data: &[u8]) -> Result<FrameHeader> {
 
     // frame_type (1 bit)
     header.frame_type = if reader.read_literal(1)? == 0 {
-        FrameType::KeyFrame
+        FrameType::Key
     } else {
-        FrameType::InterFrame
+        FrameType::Inter
     };
 
     // show_frame (1 bit)
@@ -325,7 +306,7 @@ pub fn parse_frame_header(data: &[u8]) -> Result<FrameHeader> {
     // error_resilient_mode (1 bit)
     header.error_resilient_mode = reader.read_literal(1)? != 0;
 
-    if header.frame_type == FrameType::KeyFrame {
+    if header.frame_type == FrameType::Key {
         // frame_sync_code (24 bits, must be 0x498342)
         let sync_code = reader.read_literal(24)?;
         if sync_code != 0x498342 {
@@ -696,10 +677,10 @@ mod tests {
 
     #[test]
     fn test_frame_type() {
-        assert!(FrameType::KeyFrame.is_key_frame());
-        assert!(!FrameType::KeyFrame.is_inter_frame());
-        assert!(!FrameType::InterFrame.is_key_frame());
-        assert!(FrameType::InterFrame.is_inter_frame());
+        assert!(FrameType::Key.is_key());
+        assert!(!FrameType::Key.is_inter());
+        assert!(!FrameType::Inter.is_key());
+        assert!(FrameType::Inter.is_inter());
     }
 
     #[test]

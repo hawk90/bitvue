@@ -7,6 +7,13 @@ use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
 use crate::traits::{CodecType, Decoder, DecoderCapabilities};
 use tracing::{debug, error, warn};
 
+/// Maximum number of frames to buffer
+///
+/// Prevents unbounded memory growth from malicious video files.
+/// A typical decoder needs 2-4 frames for reordering, so 16 provides
+/// a safe margin while preventing DoS via buffer exhaustion.
+const MAX_FRAME_BUFFER_SIZE: usize = 16;
+
 #[cfg(feature = "ffmpeg")]
 use ffmpeg::codec::{decoder, Context};
 #[cfg(feature = "ffmpeg")]
@@ -93,6 +100,15 @@ impl FfmpegDecoder {
             let mut decoded = Video::empty();
             match self.decoder.receive_frame(&mut decoded) {
                 Ok(_) => {
+                    // Check buffer size to prevent unbounded growth
+                    if self.frame_buffer.len() >= MAX_FRAME_BUFFER_SIZE {
+                        warn!(
+                            "Frame buffer at capacity ({}), dropping oldest frame",
+                            MAX_FRAME_BUFFER_SIZE
+                        );
+                        self.frame_buffer.remove(0);
+                    }
+
                     // Convert FFmpeg frame to DecodedFrame
                     if let Ok(frame) = self.ffmpeg_frame_to_decoded(&decoded) {
                         self.frame_buffer.push(frame);
@@ -118,8 +134,8 @@ impl FfmpegDecoder {
         let height = frame.height();
         let pixel_format = frame.format();
 
-        // Convert to YUV420P if needed
-        let yuv_frame = if pixel_format != Pixel::YUV420P {
+        // Determine which frame to extract data from (avoid clone when already YUV420P)
+        let data_frame: &Video = if pixel_format != Pixel::YUV420P {
             // Create scaler if not exists or format changed
             if self.scaler.is_none() {
                 self.scaler = Some(
@@ -136,44 +152,42 @@ impl FfmpegDecoder {
                 );
             }
 
-            // Scale to YUV420P
-            let mut yuv = Video::empty();
-            if let Some(scaler) = &mut self.scaler {
-                scaler
-                    .run(frame, &mut yuv)
-                    .map_err(|e| DecodeError::Decode(format!("Failed to scale frame: {}", e)))?;
-            }
-            yuv
-        } else {
-            // Already YUV420P, clone it
-            frame.clone()
+            // Scale to YUV420P - need to clone the scaled frame since it's owned
+            return self.extract_converted_frame(frame);
         };
 
-        // Extract Y plane
-        let y_plane = yuv_frame.data(0).to_vec();
-        let y_stride = yuv_frame.stride(0);
+        // Already YUV420P - extract data directly without cloning
+        let y_plane = data_frame.data(0).to_vec();
+        let y_stride = data_frame.stride(0);
 
-        // Extract U plane
-        let u_plane = yuv_frame.data(1).to_vec();
-        let u_stride = yuv_frame.stride(1);
+        let u_plane = data_frame.data(1).to_vec();
+        let u_stride = data_frame.stride(1);
 
-        // Extract V plane
-        let v_plane = yuv_frame.data(2).to_vec();
-        let v_stride = yuv_frame.stride(2);
+        let v_plane = data_frame.data(2).to_vec();
+        let v_stride = data_frame.stride(2);
 
         // Detect frame type
-        let frame_type = if yuv_frame.is_key() {
+        let frame_type = if data_frame.is_key() {
             FrameType::Key
         } else {
             FrameType::Inter
         };
 
         // Get timestamp
-        let timestamp = yuv_frame.timestamp().unwrap_or(self.timestamp);
+        let timestamp = data_frame.timestamp().unwrap_or(self.timestamp);
 
         debug!(
             "Decoded {} frame: {}x{} {:?}",
             self.codec_type, width, height, frame_type
+        );
+
+        // Detect chroma format once at frame creation
+        let chroma_format = crate::decoder::ChromaFormat::from_frame_data(
+            width,
+            height,
+            8,
+            Some(&u_plane),
+            Some(&v_plane),
         );
 
         Ok(DecodedFrame {
@@ -188,6 +202,72 @@ impl FfmpegDecoder {
             v_stride: v_stride as usize,
             timestamp,
             frame_type,
+            chroma_format,
+        })
+    }
+
+    /// Helper: Extract frame data after colorspace conversion (requires owning the frame)
+    #[cfg(feature = "ffmpeg")]
+    fn extract_converted_frame(&mut self, frame: &Video) -> Result<DecodedFrame> {
+        let mut yuv = Video::empty();
+        if let Some(scaler) = &mut self.scaler {
+            scaler
+                .run(frame, &mut yuv)
+                .map_err(|e| DecodeError::Decode(format!("Failed to scale frame: {}", e)))?;
+        }
+
+        let width = yuv.width();
+        let height = yuv.height();
+
+        // Extract Y plane
+        let y_plane = yuv.data(0).to_vec();
+        let y_stride = yuv.stride(0);
+
+        // Extract U plane
+        let u_plane = yuv.data(1).to_vec();
+        let u_stride = yuv.stride(1);
+
+        // Extract V plane
+        let v_plane = yuv.data(2).to_vec();
+        let v_stride = yuv.stride(2);
+
+        // Detect frame type
+        let frame_type = if yuv.is_key() {
+            FrameType::Key
+        } else {
+            FrameType::Inter
+        };
+
+        // Get timestamp
+        let timestamp = yuv.timestamp().unwrap_or(self.timestamp);
+
+        debug!(
+            "Decoded {} frame (converted): {}x{} {:?}",
+            self.codec_type, width, height, frame_type
+        );
+
+        // Detect chroma format once at frame creation
+        let chroma_format = crate::decoder::ChromaFormat::from_frame_data(
+            width,
+            height,
+            8,
+            Some(&u_plane),
+            Some(&v_plane),
+        );
+
+        Ok(DecodedFrame {
+            width,
+            height,
+            bit_depth: 8,
+            y_plane,
+            y_stride: y_stride as usize,
+            u_plane: Some(u_plane),
+            u_stride: u_stride as usize,
+            v_plane: Some(v_plane),
+            v_stride: v_stride as usize,
+            timestamp,
+            frame_type,
+            chroma_format,
         })
     }
 }
@@ -235,6 +315,15 @@ impl Decoder for FfmpegDecoder {
             let mut frame = Video::empty();
             match self.decoder.receive_frame(&mut frame) {
                 Ok(_) => {
+                    // Check buffer size to prevent unbounded growth
+                    if self.frame_buffer.len() >= MAX_FRAME_BUFFER_SIZE {
+                        warn!(
+                            "Frame buffer at capacity ({}), dropping oldest frame",
+                            MAX_FRAME_BUFFER_SIZE
+                        );
+                        self.frame_buffer.remove(0);
+                    }
+
                     if let Ok(decoded) = self.ffmpeg_frame_to_decoded(&frame) {
                         self.frame_buffer.push(decoded);
                     }

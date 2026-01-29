@@ -2,6 +2,7 @@
 //!
 //! Functions for extracting individual frames from VP9 bitstreams
 
+use bitvue_core::BitvueError;
 use crate::frame_header::{FrameHeader, FrameType};
 use crate::parse_vp9;
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,119 @@ pub struct Vp9Frame {
     pub frame_header: Option<FrameHeader>,
 }
 
+impl Vp9Frame {
+    /// Creates a new Vp9FrameBuilder for constructing Vp9Frame instances
+    pub fn builder() -> Vp9FrameBuilder {
+        Vp9FrameBuilder::default()
+    }
+}
+
+/// Builder for constructing Vp9Frame instances
+///
+/// # Example
+///
+/// ```
+/// use bitvue_vp9::frames::{Vp9Frame, Vp9FrameType};
+///
+/// let frame = Vp9Frame::builder()
+///     .frame_index(0)
+///     .frame_type(Vp9FrameType::Key)
+///     .frame_data(vec![0x00, 0x00, 0x01])
+///     .offset(0)
+///     .size(3)
+///     .show_frame(true)
+///     .width(1920)
+///     .height(1080)
+///     .build();
+/// ```
+#[derive(Debug, Default)]
+pub struct Vp9FrameBuilder {
+    frame_index: Option<usize>,
+    frame_type: Option<Vp9FrameType>,
+    frame_data: Option<Vec<u8>>,
+    offset: Option<usize>,
+    size: Option<usize>,
+    show_frame: Option<bool>,
+    width: Option<u32>,
+    height: Option<u32>,
+    frame_header: Option<FrameHeader>,
+}
+
+impl Vp9FrameBuilder {
+    /// Set the frame index
+    pub fn frame_index(mut self, value: usize) -> Self {
+        self.frame_index = Some(value);
+        self
+    }
+
+    /// Set the frame type
+    pub fn frame_type(mut self, value: Vp9FrameType) -> Self {
+        self.frame_type = Some(value);
+        self
+    }
+
+    /// Set the frame data
+    pub fn frame_data(mut self, value: Vec<u8>) -> Self {
+        self.frame_data = Some(value);
+        self
+    }
+
+    /// Set the offset in the stream
+    pub fn offset(mut self, value: usize) -> Self {
+        self.offset = Some(value);
+        self
+    }
+
+    /// Set the frame size
+    pub fn size(mut self, value: usize) -> Self {
+        self.size = Some(value);
+        self
+    }
+
+    /// Set the show frame flag
+    pub fn show_frame(mut self, value: bool) -> Self {
+        self.show_frame = Some(value);
+        self
+    }
+
+    /// Set the frame width
+    pub fn width(mut self, value: u32) -> Self {
+        self.width = Some(value);
+        self
+    }
+
+    /// Set the frame height
+    pub fn height(mut self, value: u32) -> Self {
+        self.height = Some(value);
+        self
+    }
+
+    /// Set the frame header
+    pub fn frame_header(mut self, value: FrameHeader) -> Self {
+        self.frame_header = Some(value);
+        self
+    }
+
+    /// Build the Vp9Frame
+    ///
+    /// # Panics
+    ///
+    /// Panics if required fields (frame_index, frame_type, offset, size, show_frame, width, height) are not set.
+    pub fn build(self) -> Vp9Frame {
+        Vp9Frame {
+            frame_index: self.frame_index.expect("frame_index is required"),
+            frame_type: self.frame_type.expect("frame_type is required"),
+            frame_data: self.frame_data.unwrap_or_default(),
+            offset: self.offset.expect("offset is required"),
+            size: self.size.expect("size is required"),
+            show_frame: self.show_frame.expect("show_frame is required"),
+            width: self.width.expect("width is required"),
+            height: self.height.expect("height is required"),
+            frame_header: self.frame_header,
+        }
+    }
+}
+
 /// VP9 frame type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Vp9FrameType {
@@ -44,8 +158,9 @@ impl Vp9FrameType {
     /// Convert from FrameType
     pub fn from_frame_type(frame_type: FrameType) -> Self {
         match frame_type {
-            FrameType::KeyFrame => Vp9FrameType::Key,
-            FrameType::InterFrame => Vp9FrameType::Inter,
+            FrameType::Key => Vp9FrameType::Key,
+            FrameType::Inter => Vp9FrameType::Inter,
+            _ => Vp9FrameType::Unknown,
         }
     }
 
@@ -63,13 +178,18 @@ impl Vp9FrameType {
 ///
 /// This function parses the byte stream and extracts individual frames.
 /// For VP9, frames are either standalone or packed in superframes.
-pub fn extract_vp9_frames(data: &[u8]) -> Result<Vec<Vp9Frame>, String> {
+pub fn extract_vp9_frames(data: &[u8]) -> Result<Vec<Vp9Frame>, BitvueError> {
     // First, parse the full stream to get frame information
-    let stream = parse_vp9(data).map_err(|e| format!("Failed to parse VP9 stream: {:?}", e))?;
+    let stream = parse_vp9(data).map_err(|e| BitvueError::Parse {
+        offset: 0,
+        message: e.to_string(),
+    })?;
 
     // Extract frame data using superframe parser
-    let frame_data_list =
-        crate::extract_frames(data).map_err(|e| format!("Failed to extract frames: {:?}", e))?;
+    let frame_data_list = crate::extract_frames(data).map_err(|e| BitvueError::Parse {
+        offset: 0,
+        message: e.to_string(),
+    })?;
 
     let mut frames = Vec::new();
 
@@ -106,6 +226,14 @@ pub fn extract_frame_at_index(data: &[u8], frame_index: usize) -> Option<Vp9Fram
 
 /// Convert Vp9Frame to UnitNode format for bitvue-core
 pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
+    use bitvue_core::qp_extraction::QpData;
+
+    // Extract QP from frame header quantization index
+    let qp_avg = frame
+        .frame_header
+        .as_ref()
+        .and_then(|h| QpData::from_vp9_qindex(h.quantization.base_q_idx).qp_avg);
+
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {
             stream: bitvue_core::StreamId::A,
@@ -126,10 +254,7 @@ pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
             frame.frame_type.as_str()
         ),
         children: Vec::new(),
-        qp_avg: frame
-            .frame_header
-            .as_ref()
-            .map(|h| h.quantization.base_q_idx),
+        qp_avg,
         mv_grid: None,
         temporal_id: None,
         ref_frames: None,

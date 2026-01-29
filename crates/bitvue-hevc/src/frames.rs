@@ -2,6 +2,7 @@
 //!
 //! Functions for extracting individual frames from HEVC bitstreams
 
+use bitvue_core::BitvueError;
 use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
 use crate::parse_hevc;
 use crate::slice::SliceHeader;
@@ -34,6 +35,145 @@ pub struct HevcFrame {
     pub temporal_id: Option<u8>,
     /// Slice header (if available)
     pub slice_header: Option<SliceHeader>,
+}
+
+impl HevcFrame {
+    /// Creates a new HevcFrameBuilder for constructing HevcFrame instances
+    pub fn builder() -> HevcFrameBuilder {
+        HevcFrameBuilder::default()
+    }
+}
+
+/// Builder for constructing HevcFrame instances
+///
+/// # Example
+///
+/// ```
+/// use bitvue_hevc::frames::{HevcFrame, HevcFrameType};
+///
+/// let frame = HevcFrame::builder()
+///     .frame_index(0)
+///     .frame_type(HevcFrameType::I)
+///     .nal_data(vec![0x00, 0x00, 0x01])
+///     .offset(0)
+///     .size(3)
+///     .poc(0)
+///     .frame_num(0)
+///     .is_idr(true)
+///     .is_irap(true)
+///     .is_ref(true)
+///     .build();
+/// ```
+#[derive(Debug, Default)]
+pub struct HevcFrameBuilder {
+    frame_index: Option<usize>,
+    frame_type: Option<HevcFrameType>,
+    nal_data: Option<Vec<u8>>,
+    offset: Option<usize>,
+    size: Option<usize>,
+    poc: Option<i32>,
+    frame_num: Option<u32>,
+    is_idr: Option<bool>,
+    is_irap: Option<bool>,
+    is_ref: Option<bool>,
+    temporal_id: Option<u8>,
+    slice_header: Option<SliceHeader>,
+}
+
+impl HevcFrameBuilder {
+    /// Set the frame index
+    pub fn frame_index(mut self, value: usize) -> Self {
+        self.frame_index = Some(value);
+        self
+    }
+
+    /// Set the frame type
+    pub fn frame_type(mut self, value: HevcFrameType) -> Self {
+        self.frame_type = Some(value);
+        self
+    }
+
+    /// Set the NAL data
+    pub fn nal_data(mut self, value: Vec<u8>) -> Self {
+        self.nal_data = Some(value);
+        self
+    }
+
+    /// Set the offset in the stream
+    pub fn offset(mut self, value: usize) -> Self {
+        self.offset = Some(value);
+        self
+    }
+
+    /// Set the frame size
+    pub fn size(mut self, value: usize) -> Self {
+        self.size = Some(value);
+        self
+    }
+
+    /// Set the POC (Picture Order Count)
+    pub fn poc(mut self, value: i32) -> Self {
+        self.poc = Some(value);
+        self
+    }
+
+    /// Set the frame number
+    pub fn frame_num(mut self, value: u32) -> Self {
+        self.frame_num = Some(value);
+        self
+    }
+
+    /// Set whether this is an IDR frame
+    pub fn is_idr(mut self, value: bool) -> Self {
+        self.is_idr = Some(value);
+        self
+    }
+
+    /// Set whether this is an IRAP frame
+    pub fn is_irap(mut self, value: bool) -> Self {
+        self.is_irap = Some(value);
+        self
+    }
+
+    /// Set whether this is a reference frame
+    pub fn is_ref(mut self, value: bool) -> Self {
+        self.is_ref = Some(value);
+        self
+    }
+
+    /// Set the temporal ID
+    pub fn temporal_id(mut self, value: u8) -> Self {
+        self.temporal_id = Some(value);
+        self
+    }
+
+    /// Set the slice header
+    pub fn slice_header(mut self, value: SliceHeader) -> Self {
+        self.slice_header = Some(value);
+        self
+    }
+
+    /// Build the HevcFrame
+    ///
+    /// # Panics
+    ///
+    /// Panics if required fields (frame_index, frame_type, offset, size, poc, frame_num, is_idr, is_irap, is_ref) are not set.
+    pub fn build(self) -> HevcFrame {
+        HevcFrame {
+            frame_index: self.frame_index.expect("frame_index is required"),
+            frame_type: self.frame_type.expect("frame_type is required"),
+            nal_data: self.nal_data.unwrap_or_default(),
+            offset: self.offset.expect("offset is required"),
+            size: self.size.expect("size is required"),
+            poc: self.poc.expect("poc is required"),
+            frame_num: self.frame_num.expect("frame_num is required"),
+            is_idr: self.is_idr.expect("is_idr is required"),
+            is_irap: self.is_irap.expect("is_irap is required"),
+            is_ref: self.is_ref.expect("is_ref is required"),
+            temporal_id: self.temporal_id,
+            slice_header: self.slice_header,
+        }
+    }
 }
 
 /// HEVC frame type
@@ -75,9 +215,12 @@ impl HevcFrameType {
 ///
 /// This function parses the byte stream and groups NAL units into frames.
 /// Each frame consists of one or more VCL NAL units (slice segments).
-pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, String> {
+pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError> {
     // First, parse the full stream to get slice information
-    let stream = parse_hevc(data).map_err(|e| format!("Failed to parse HEVC stream: {:?}", e))?;
+    let stream = parse_hevc(data).map_err(|e| BitvueError::Parse {
+        offset: 0,
+        message: e.to_string(),
+    })?;
 
     // Find all NAL unit start positions
     let nal_positions = find_nal_units(data);
@@ -307,6 +450,15 @@ pub fn extract_frame_at_index(data: &[u8], frame_index: usize) -> Option<HevcFra
 
 /// Convert HevcFrame to UnitNode format for bitvue-core
 pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core::UnitNode {
+    use bitvue_core::qp_extraction::QpData;
+
+    // Extract QP from slice header if available
+    let qp_avg = frame.slice_header.as_ref().and_then(|header| {
+        // Note: This only includes slice_qp_delta, not init_qp_minus26
+        // For accurate QP, we need access to PPS data
+        Some(QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg)
+    }).flatten();
+
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {
             stream: bitvue_core::StreamId::A,
@@ -327,7 +479,7 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
             frame.frame_type.as_str()
         ),
         children: Vec::new(),
-        qp_avg: None,  // TODO: Extract from slice data
+        qp_avg,
         mv_grid: None, // TODO: Extract from slice data
         temporal_id: frame.temporal_id,
         ref_frames: None, // TODO: Calculate from slice header

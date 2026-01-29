@@ -343,8 +343,12 @@ fn extract_frame_type(payload: &[u8]) -> Option<String> {
             let type_str = match header.frame_type {
                 FrameType::Key => "KEY",
                 FrameType::Inter => "INTER",
+                FrameType::BFrame => "B",
                 FrameType::IntraOnly => "INTRA_ONLY",
                 FrameType::Switch => "SWITCH",
+                FrameType::SI => "SI",
+                FrameType::SP => "SP",
+                FrameType::Unknown => "UNKNOWN",
             };
             Some(type_str.to_string())
         }

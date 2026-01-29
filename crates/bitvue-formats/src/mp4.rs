@@ -8,7 +8,19 @@
 //! - AV1 Codec ISO Media File Format Binding
 
 use bitvue_core::BitvueError;
+use crate::resource_budget::ResourceBudget;
+use std::borrow::Cow;
 use std::io::{Cursor, Read, Seek, SeekFrom};
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// Maximum entry count to prevent DoS via massive allocations
+const MAX_ENTRY_COUNT: u32 = 10_000_000;
+
+/// Maximum total samples to prevent memory exhaustion
+const MAX_TOTAL_SAMPLES: usize = 100_000;
 
 /// Read a single byte
 fn read_u8(cursor: &mut Cursor<&[u8]>) -> Result<u8, BitvueError> {
@@ -144,7 +156,10 @@ pub struct Mp4Info {
 }
 
 /// Parse MP4 file and extract AV1 samples
-pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
+///
+/// Returns zero-copy Cow slices that borrow from the input data when possible,
+/// avoiding unnecessary memory allocation.
+pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
     let info = parse_mp4(data)?;
 
     // Verify this is an AV1 file
@@ -165,23 +180,60 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
         }
     }
 
+    // Validate sample count to prevent DoS
+    if info.sample_offsets.len() > MAX_TOTAL_SAMPLES {
+        return Err(BitvueError::InvalidData(format!(
+            "Sample count {} exceeds maximum allowed {}",
+            info.sample_offsets.len(),
+            MAX_TOTAL_SAMPLES
+        )));
+    }
+
     // Pre-allocate with exact capacity since we know the sample count
     let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
-    for (offset, size) in info.sample_offsets.iter().zip(info.sample_sizes.iter()) {
-        let offset = *offset as usize;
-        let size = *size as usize;
+    // Sort samples by offset to detect overlaps
+    let mut sorted_samples: Vec<_> = info.sample_offsets.iter()
+        .zip(info.sample_sizes.iter())
+        .enumerate()
+        .collect();
+    sorted_samples.sort_by_key(|(_, (offset, _))| *offset);
 
-        if offset + size > data.len() {
+    for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
+        let offset = **offset_ptr as usize;
+        let size = **size_ptr as usize;
+
+        // Check for overflow in offset + size
+        let end = match offset.checked_add(size) {
+            Some(e) => e,
+            None => {
+                return Err(BitvueError::InvalidData(
+                    "Sample offset + size would overflow".to_string()
+                ));
+            }
+        };
+
+        // Check against file size
+        if end > data.len() {
             return Err(BitvueError::InvalidData(format!(
                 "Sample at offset {} with size {} exceeds file size {}",
-                offset,
-                size,
-                data.len()
+                offset, size, data.len()
             )));
         }
 
-        samples.push(data[offset..offset + size].to_vec());
+        // Check for overlap with next sample
+        if i + 1 < sorted_samples.len() {
+            let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
+            let next_offset = *next_offset_ptr as usize;
+            if end > next_offset {
+                return Err(BitvueError::InvalidData(
+                    format!("Samples overlap: current sample ends at {} but next starts at {}", end, next_offset)
+                ));
+            }
+        }
+
+        // Zero-copy: return borrowed slice instead of cloning
+        samples.push(Cow::Borrowed(&data[offset..end]));
     }
 
     Ok(samples)
@@ -191,7 +243,10 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
 ///
 /// Extracts NAL units from MP4 container for H.264/AVC video streams.
 /// Supports both 'avc1' (AVC in MP4) and 'avc3' (AVC without parameter sets) codec types.
-pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
+///
+/// Returns zero-copy Cow slices that borrow from the input data when possible,
+/// avoiding unnecessary memory allocation.
+pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
     let info = parse_mp4(data)?;
 
     // Verify this is an H.264/AVC file
@@ -212,23 +267,60 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
         }
     }
 
+    // Validate sample count to prevent DoS
+    if info.sample_offsets.len() > MAX_TOTAL_SAMPLES {
+        return Err(BitvueError::InvalidData(format!(
+            "Sample count {} exceeds maximum allowed {}",
+            info.sample_offsets.len(),
+            MAX_TOTAL_SAMPLES
+        )));
+    }
+
     // Pre-allocate with exact capacity since we know the sample count
     let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
-    for (offset, size) in info.sample_offsets.iter().zip(info.sample_sizes.iter()) {
-        let offset = *offset as usize;
-        let size = *size as usize;
+    // Sort samples by offset to detect overlaps
+    let mut sorted_samples: Vec<_> = info.sample_offsets.iter()
+        .zip(info.sample_sizes.iter())
+        .enumerate()
+        .collect();
+    sorted_samples.sort_by_key(|(_, (offset, _))| *offset);
 
-        if offset + size > data.len() {
+    for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
+        let offset = **offset_ptr as usize;
+        let size = **size_ptr as usize;
+
+        // Check for overflow in offset + size
+        let end = match offset.checked_add(size) {
+            Some(e) => e,
+            None => {
+                return Err(BitvueError::InvalidData(
+                    "Sample offset + size would overflow".to_string()
+                ));
+            }
+        };
+
+        // Check against file size
+        if end > data.len() {
             return Err(BitvueError::InvalidData(format!(
                 "Sample at offset {} with size {} exceeds file size {}",
-                offset,
-                size,
-                data.len()
+                offset, size, data.len()
             )));
         }
 
-        samples.push(data[offset..offset + size].to_vec());
+        // Check for overlap with next sample
+        if i + 1 < sorted_samples.len() {
+            let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
+            let next_offset = *next_offset_ptr as usize;
+            if end > next_offset {
+                return Err(BitvueError::InvalidData(
+                    format!("Samples overlap: current sample ends at {} but next starts at {}", end, next_offset)
+                ));
+            }
+        }
+
+        // Zero-copy: return borrowed slice instead of cloning
+        samples.push(Cow::Borrowed(&data[offset..end]));
     }
 
     Ok(samples)
@@ -238,7 +330,10 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
 ///
 /// Extracts NAL units from MP4 container for H.265/HEVC video streams.
 /// Supports both 'hev1' (HEVC with parameter sets) and 'hvc1' (HEVC in-band parameter sets) codec types.
-pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
+///
+/// Returns zero-copy Cow slices that borrow from the input data when possible,
+/// avoiding unnecessary memory allocation.
+pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
     let info = parse_mp4(data)?;
 
     // Verify this is an H.265/HEVC file
@@ -259,23 +354,60 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
         }
     }
 
+    // Validate sample count to prevent DoS
+    if info.sample_offsets.len() > MAX_TOTAL_SAMPLES {
+        return Err(BitvueError::InvalidData(format!(
+            "Sample count {} exceeds maximum allowed {}",
+            info.sample_offsets.len(),
+            MAX_TOTAL_SAMPLES
+        )));
+    }
+
     // Pre-allocate with exact capacity since we know the sample count
     let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
-    for (offset, size) in info.sample_offsets.iter().zip(info.sample_sizes.iter()) {
-        let offset = *offset as usize;
-        let size = *size as usize;
+    // Sort samples by offset to detect overlaps
+    let mut sorted_samples: Vec<_> = info.sample_offsets.iter()
+        .zip(info.sample_sizes.iter())
+        .enumerate()
+        .collect();
+    sorted_samples.sort_by_key(|(_, (offset, _))| *offset);
 
-        if offset + size > data.len() {
+    for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
+        let offset = **offset_ptr as usize;
+        let size = **size_ptr as usize;
+
+        // Check for overflow in offset + size
+        let end = match offset.checked_add(size) {
+            Some(e) => e,
+            None => {
+                return Err(BitvueError::InvalidData(
+                    "Sample offset + size would overflow".to_string()
+                ));
+            }
+        };
+
+        // Check against file size
+        if end > data.len() {
             return Err(BitvueError::InvalidData(format!(
                 "Sample at offset {} with size {} exceeds file size {}",
-                offset,
-                size,
-                data.len()
+                offset, size, data.len()
             )));
         }
 
-        samples.push(data[offset..offset + size].to_vec());
+        // Check for overlap with next sample
+        if i + 1 < sorted_samples.len() {
+            let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
+            let next_offset = *next_offset_ptr as usize;
+            if end > next_offset {
+                return Err(BitvueError::InvalidData(
+                    format!("Samples overlap: current sample ends at {} but next starts at {}", end, next_offset)
+                ));
+            }
+        }
+
+        // Zero-copy: return borrowed slice instead of cloning
+        samples.push(Cow::Borrowed(&data[offset..end]));
     }
 
     Ok(samples)
@@ -285,6 +417,15 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>, BitvueError> {
 pub fn parse_mp4(data: &[u8]) -> Result<Mp4Info, BitvueError> {
     if data.is_empty() {
         return Err(BitvueError::InvalidData("Empty MP4 data".to_string()));
+    }
+
+    // Check data size against resource budget
+    let budget = ResourceBudget::new();
+    if let Err(e) = budget.check_allocation(data.len() as u64) {
+        return Err(BitvueError::InvalidData(format!(
+            "MP4 file too large: {}",
+            e
+        )));
     }
 
     let mut cursor = Cursor::new(data);
@@ -517,6 +658,14 @@ fn parse_stsd(
 
     let entry_count = read_u32(cursor)?;
 
+    // Validate entry count to prevent DoS via massive allocations
+    if entry_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Entry count {} exceeds maximum allowed {}",
+            entry_count, MAX_ENTRY_COUNT
+        )));
+    }
+
     if entry_count > 0 {
         // Parse first sample entry
         let _entry_size = read_u32(cursor)?; // Size of sample entry
@@ -542,6 +691,14 @@ fn parse_stco(
 
     let entry_count = read_u32(cursor)?;
 
+    // Validate entry count to prevent DoS via massive allocations
+    if entry_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Entry count {} exceeds maximum allowed {}",
+            entry_count, MAX_ENTRY_COUNT
+        )));
+    }
+
     for _ in 0..entry_count {
         let offset = read_u32(cursor)? as u64;
         info.sample_offsets.push(offset);
@@ -559,6 +716,14 @@ fn parse_co64(
     cursor.seek(SeekFrom::Current(4))?; // version + flags
 
     let entry_count = read_u32(cursor)?;
+
+    // Validate entry count to prevent DoS via massive allocations
+    if entry_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Entry count {} exceeds maximum allowed {}",
+            entry_count, MAX_ENTRY_COUNT
+        )));
+    }
 
     for _ in 0..entry_count {
         let offset = read_u64(cursor)?;
@@ -579,6 +744,18 @@ fn parse_stsz(
     let sample_size = read_u32(cursor)?;
     let sample_count = read_u32(cursor)?;
 
+    // Validate sample count to prevent DoS
+    if sample_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Sample count {} exceeds maximum {}",
+            sample_count, MAX_ENTRY_COUNT
+        )));
+    }
+
+    // Pre-allocate based on sample count
+    info.sample_count = sample_count as usize;
+    info.sample_sizes.reserve(sample_count as usize);
+
     if sample_size == 0 {
         // Variable sample sizes
         for _ in 0..sample_count {
@@ -586,13 +763,11 @@ fn parse_stsz(
             info.sample_sizes.push(size);
         }
     } else {
-        // Fixed sample size
+        // Fixed sample size - still need to fill the vector
         for _ in 0..sample_count {
             info.sample_sizes.push(sample_size);
         }
     }
-
-    info.sample_count = sample_count as usize;
 
     Ok(())
 }
@@ -629,6 +804,14 @@ fn parse_stts(
 
     let entry_count = read_u32(cursor)?;
 
+    // Validate entry count to prevent DoS via massive allocations
+    if entry_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Entry count {} exceeds maximum allowed {}",
+            entry_count, MAX_ENTRY_COUNT
+        )));
+    }
+
     for _ in 0..entry_count {
         let sample_count = read_u32(cursor)?;
         let sample_delta = read_u32(cursor)?;
@@ -652,6 +835,14 @@ fn parse_ctts(
     cursor.seek(SeekFrom::Current(3))?; // flags
 
     let entry_count = read_u32(cursor)?;
+
+    // Validate entry count to prevent DoS via massive allocations
+    if entry_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Entry count {} exceeds maximum allowed {}",
+            entry_count, MAX_ENTRY_COUNT
+        )));
+    }
 
     for _ in 0..entry_count {
         let sample_count = read_u32(cursor)?;
@@ -684,6 +875,14 @@ fn parse_stss(
     cursor.seek(SeekFrom::Current(4))?; // version + flags
 
     let entry_count = read_u32(cursor)?;
+
+    // Validate entry count to prevent DoS via massive allocations
+    if entry_count > MAX_ENTRY_COUNT {
+        return Err(BitvueError::InvalidData(format!(
+            "Entry count {} exceeds maximum allowed {}",
+            entry_count, MAX_ENTRY_COUNT
+        )));
+    }
 
     for _ in 0..entry_count {
         let sample_number = read_u32(cursor)?;

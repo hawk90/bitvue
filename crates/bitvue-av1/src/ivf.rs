@@ -45,6 +45,75 @@ pub struct IvfFrame {
     pub temporal_id: u8,
 }
 
+impl IvfFrame {
+    /// Creates a new IvfFrameBuilder for constructing IvfFrame instances
+    pub fn builder() -> IvfFrameBuilder {
+        IvfFrameBuilder::default()
+    }
+}
+
+/// Builder for constructing IvfFrame instances
+///
+/// # Example
+///
+/// ```
+/// use bitvue_av1::ivf::IvfFrame;
+///
+/// let frame = IvfFrame::builder()
+///     .size(1024)
+///     .timestamp(0)
+///     .data(vec![0x00, 0x00, 0x01])
+///     .temporal_id(0)
+///     .build();
+/// ```
+#[derive(Debug, Default)]
+pub struct IvfFrameBuilder {
+    size: Option<u32>,
+    timestamp: Option<u64>,
+    data: Option<Vec<u8>>,
+    temporal_id: Option<u8>,
+}
+
+impl IvfFrameBuilder {
+    /// Set the frame size
+    pub fn size(mut self, value: u32) -> Self {
+        self.size = Some(value);
+        self
+    }
+
+    /// Set the timestamp
+    pub fn timestamp(mut self, value: u64) -> Self {
+        self.timestamp = Some(value);
+        self
+    }
+
+    /// Set the frame data
+    pub fn data(mut self, value: Vec<u8>) -> Self {
+        self.data = Some(value);
+        self
+    }
+
+    /// Set the temporal ID
+    pub fn temporal_id(mut self, value: u8) -> Self {
+        self.temporal_id = Some(value);
+        self
+    }
+
+    /// Build the IvfFrame
+    ///
+    /// # Panics
+    ///
+    /// Panics if required fields (size, timestamp, temporal_id) are not set.
+    pub fn build(self) -> IvfFrame {
+        IvfFrame {
+            size: self.size.expect("size is required"),
+            timestamp: self.timestamp.expect("timestamp is required"),
+            data: self.data.unwrap_or_default(),
+            temporal_id: self.temporal_id.expect("temporal_id is required"),
+        }
+    }
+}
+
 /// Parse IVF header from data
 pub fn parse_ivf_header(data: &[u8]) -> Result<IvfHeader, BitvueError> {
     if data.len() < 32 {

@@ -56,6 +56,7 @@ pub mod container;
 pub mod ivf_writer;
 pub mod mkv;
 pub mod mp4;
+pub mod resource_budget;
 pub mod ts;
 
 // Re-export main types and functions
@@ -63,4 +64,5 @@ pub use container::{detect_container_format, is_supported_format, ContainerForma
 pub use ivf_writer::IvfWriter;
 pub use mkv::MkvInfo;
 pub use mp4::{BoxHeader, Mp4Info};
+pub use resource_budget::{AllocationError, ResourceBudget};
 pub use ts::TsInfo;

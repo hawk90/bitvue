@@ -139,6 +139,30 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
     let max_frame_width_minus_1 = reader.read_bits(16)?;
     let max_frame_height_minus_1 = reader.read_bits(16)?;
 
+    // Calculate dimensions
+    let max_frame_width = max_frame_width_minus_1 as u32 + 1;
+    let max_frame_height = max_frame_height_minus_1 as u32 + 1;
+
+    // Validate dimensions to prevent DoS via excessive allocations
+    // Maximum 8K resolution (7680x4320) with safety margin
+    const MAX_WIDTH: u32 = 7680;
+    const MAX_HEIGHT: u32 = 4320;
+
+    if max_frame_width > MAX_WIDTH || max_frame_height > MAX_HEIGHT {
+        return Err(crate::error::Av3Error::InvalidData(format!(
+            "Sequence header dimensions {}x{} exceed maximum {}x{}",
+            max_frame_width, max_frame_height, MAX_WIDTH, MAX_HEIGHT
+        )));
+    }
+
+    // Also validate minimum dimensions
+    if max_frame_width == 0 || max_frame_height == 0 {
+        return Err(crate::error::Av3Error::InvalidData(format!(
+            "Sequence header dimensions {}x{} are invalid (must be non-zero)",
+            max_frame_width, max_frame_height
+        )));
+    }
+
     // Use defaults for remaining fields (simplified)
     Ok(SequenceHeader {
         seq_profile,
@@ -150,8 +174,8 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
             1 => 10,
             _ => 12,
         },
-        max_frame_width: max_frame_width_minus_1 as u32 + 1,
-        max_frame_height: max_frame_height_minus_1 as u32 + 1,
+        max_frame_width,
+        max_frame_height,
         frame_id_numbers_present_flag: false,
         delta_frame_id_length_minus_2: 0,
         additional_frame_id_length_minus_1: 0,

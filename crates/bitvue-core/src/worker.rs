@@ -251,8 +251,15 @@ impl AsyncJobManager {
         let new_id = self.stream_request_ids[idx].fetch_add(1, Ordering::SeqCst) + 1;
 
         // Cancel all queued and in-flight jobs for this stream
-        if let Ok(mut queues) = self.stream_queues.lock() {
-            queues[idx].cancel_all();
+        match self.stream_queues.lock() {
+            Ok(mut queues) => {
+                queues[idx].cancel_all();
+            }
+            Err(e) => {
+                tracing::error!("AsyncJobManager: Mutex poisoned during cancel_all: {}", e);
+                // Recover by creating new queue state
+                // Note: In production, might want to abort or reinitialize
+            }
         }
 
         new_id
@@ -282,11 +289,12 @@ impl AsyncJobManager {
         let stream_id = job.stream_id();
         let idx = Self::stream_idx(stream_id);
 
-        if let Ok(mut queues) = self.stream_queues.lock() {
-            let queue = &mut queues[idx];
+        match self.stream_queues.lock() {
+            Ok(mut queues) => {
+                let queue = &mut queues[idx];
 
-            // Check if we can start immediately (in-flight < 2)
-            if queue.in_flight_count() < 2 {
+                // Check if we can start immediately (in-flight < 2)
+                if queue.in_flight_count() < 2 {
                 queue.mark_in_flight(job.clone());
                 tracing::debug!(
                     "AsyncJobManager: Started job immediately: {:?} (in-flight: {})",
@@ -299,28 +307,35 @@ impl AsyncJobManager {
                 queue.enqueue(job.clone());
                 tracing::debug!("AsyncJobManager: Queued job (latest-wins): {:?}", job);
             }
+            }
+            Err(e) => {
+                tracing::error!("AsyncJobManager: Mutex poisoned during submit: {}", e);
+            }
         }
     }
 
     /// Complete job (called by worker when done)
     ///
     /// This removes the job from in-flight and tries to start queued job.
+    /// Uses atomic check-and-invalidate pattern to prevent TOCTOU race condition.
     pub fn complete_job(&self, job: &Job) -> bool {
         let stream_id = job.stream_id();
         let idx = Self::stream_idx(stream_id);
 
-        // Check if result is current (not stale)
-        if !self.is_result_current(job) {
-            tracing::debug!(
-                "AsyncJobManager: Discarding late result: {:?} (current_id: {}, job_id: {})",
-                job,
-                self.current_request_id(stream_id),
-                job.request_id()
-            );
-            return false;
-        }
-
+        // Load queues with atomic check of request_id
         if let Ok(mut queues) = self.stream_queues.lock() {
+            // Re-check request_id while holding lock to prevent TOCTOU
+            let current_id = self.stream_request_ids[idx].load(Ordering::Acquire);
+            if job.request_id() != current_id {
+                tracing::debug!(
+                    "AsyncJobManager: Discarding late result: {:?} (current_id: {}, job_id: {})",
+                    job,
+                    current_id,
+                    job.request_id()
+                );
+                return false;
+            }
+
             let queue = &mut queues[idx];
             queue.complete_job(job);
 

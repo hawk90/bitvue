@@ -13,6 +13,9 @@
 
 use bitvue_core::{BlockInfo, SelectionState};
 use egui::{self, Color32, ColorImage, TextureHandle, Vec2};
+use rayon::prelude::*;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Which component(s) to display
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,24 +90,24 @@ pub struct YuvViewerPanel {
     histograms: Option<[[u32; 256]; 3]>,
     /// VQAnalyzer parity: YUV diff mode
     pub diff_mode: YuvDiffMode,
-    /// Stream B Y plane data (for diff)
-    y_data_b: Option<Vec<u8>>,
-    /// Stream B U plane data (for diff)
-    u_data_b: Option<Vec<u8>>,
-    /// Stream B V plane data (for diff)
-    v_data_b: Option<Vec<u8>>,
+    /// Stream A raw Y plane data (for diff computation) - Arc for shared ownership
+    y_data_a: Option<Arc<Vec<u8>>>,
+    /// Stream B Y plane data (for diff) - Arc for shared ownership
+    y_data_b: Option<Arc<Vec<u8>>>,
     /// Stream B frame size
     frame_size_b: Option<(u32, u32)>,
     /// Diff texture (computed difference)
     diff_texture: Option<TextureHandle>,
-    /// Stream A raw Y plane data (for diff computation)
-    y_data_a: Option<Vec<u8>>,
     /// Stream B textures for side-by-side
     y_texture_b: Option<TextureHandle>,
     /// Debug YUV overlay: show coding info on blocks
     pub show_debug_overlay: bool,
     /// Block info for current frame (for debug overlay)
     block_info: Option<Vec<BlockInfo>>,
+    /// Texture cache: hash -> TextureHandle (prevents redundant GPU uploads)
+    texture_cache: HashMap<u64, TextureHandle>,
+    /// Maximum cache size (prevents unbounded memory growth)
+    max_cache_size: usize,
 }
 
 impl Default for YuvViewerPanel {
@@ -125,16 +128,66 @@ impl YuvViewerPanel {
             frame_size: None,
             histograms: None,
             diff_mode: YuvDiffMode::None,
+            y_data_a: None,
             y_data_b: None,
-            u_data_b: None,
-            v_data_b: None,
             frame_size_b: None,
             diff_texture: None,
-            y_data_a: None,
             y_texture_b: None,
             show_debug_overlay: false,
             block_info: None,
+            texture_cache: HashMap::new(),
+            max_cache_size: 32, // Cache up to 32 textures
         }
+    }
+
+    /// Compute a hash for frame data (for cache key)
+    fn compute_frame_hash(&self, data: &[u8], width: u32, height: u32, component: char) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        // Hash component type, dimensions, and data
+        component.hash(&mut hasher);
+        width.hash(&mut hasher);
+        height.hash(&mut hasher);
+
+        // Sample data for hashing (hash full data is too expensive, sample every 256th byte)
+        let sample_rate = data.len().max(256) / 256;
+        for (i, &val) in data.iter().enumerate() {
+            if i % sample_rate == 0 {
+                val.hash(&mut hasher);
+            }
+        }
+
+        hasher.finish()
+    }
+
+    /// Get or create texture from cache
+    fn get_or_create_texture(
+        &mut self,
+        ctx: &egui::Context,
+        hash: u64,
+        image: ColorImage,
+        name: &str,
+    ) -> TextureHandle {
+        if let Some(tex) = self.texture_cache.get(&hash) {
+            return tex.clone();
+        }
+
+        // Cache miss - create new texture
+        let tex = ctx.load_texture(name, image, egui::TextureOptions::LINEAR);
+
+        // Enforce cache size limit (evict oldest entries if needed)
+        while self.texture_cache.len() >= self.max_cache_size {
+            // Remove first entry (simple FIFO - could use LRU for better hit rate)
+            if let Some(key) = self.texture_cache.keys().next().copied() {
+                self.texture_cache.remove(&key);
+            }
+        }
+
+        // Insert into cache
+        self.texture_cache.insert(hash, tex.clone());
+        tex
     }
 
     /// Update textures from YUV data (Stream A - primary)
@@ -149,17 +202,22 @@ impl YuvViewerPanel {
     ) {
         self.frame_size = Some((width, height));
 
-        // Store raw Y data for diff computation
-        self.y_data_a = Some(y_plane.to_vec());
+        // Store raw Y data for diff computation using Arc for shared ownership
+        self.y_data_a = Some(Arc::new(y_plane.to_vec()));
 
-        // Create Y plane texture (grayscale)
-        let y_rgb: Vec<u8> = y_plane.iter().flat_map(|&y| [y, y, y]).collect();
-        let y_image = ColorImage::from_rgb([width as usize, height as usize], &y_rgb);
-        self.y_texture = Some(ctx.load_texture("yuv_y", y_image, egui::TextureOptions::LINEAR));
-
-        // Create U plane texture (blue-ish for Cb)
+        // Compute hashes for cache lookup
+        let y_hash = self.compute_frame_hash(y_plane, width, height, 'Y');
         let uv_width = width / 2;
         let uv_height = height / 2;
+        let u_hash = self.compute_frame_hash(u_plane, uv_width, uv_height, 'U');
+        let v_hash = self.compute_frame_hash(v_plane, uv_width, uv_height, 'V');
+
+        // Create Y plane texture (grayscale) - use cache if available
+        let y_rgb: Vec<u8> = y_plane.iter().flat_map(|&y| [y, y, y]).collect();
+        let y_image = ColorImage::from_rgb([width as usize, height as usize], &y_rgb);
+        self.y_texture = Some(self.get_or_create_texture(ctx, y_hash, y_image, "yuv_y"));
+
+        // Create U plane texture (blue-ish for Cb) - use cache if available
         let u_rgb: Vec<u8> = u_plane
             .iter()
             .flat_map(|&u| {
@@ -170,9 +228,9 @@ impl YuvViewerPanel {
             })
             .collect();
         let u_image = ColorImage::from_rgb([uv_width as usize, uv_height as usize], &u_rgb);
-        self.u_texture = Some(ctx.load_texture("yuv_u", u_image, egui::TextureOptions::LINEAR));
+        self.u_texture = Some(self.get_or_create_texture(ctx, u_hash, u_image, "yuv_u"));
 
-        // Create V plane texture (red-ish for Cr)
+        // Create V plane texture (red-ish for Cr) - use cache if available
         let v_rgb: Vec<u8> = v_plane
             .iter()
             .flat_map(|&v| {
@@ -183,22 +241,56 @@ impl YuvViewerPanel {
             })
             .collect();
         let v_image = ColorImage::from_rgb([uv_width as usize, uv_height as usize], &v_rgb);
-        self.v_texture = Some(ctx.load_texture("yuv_v", v_image, egui::TextureOptions::LINEAR));
+        self.v_texture = Some(self.get_or_create_texture(ctx, v_hash, v_image, "yuv_v"));
 
-        // Compute histograms
-        let mut y_hist = [0u32; 256];
-        let mut u_hist = [0u32; 256];
-        let mut v_hist = [0u32; 256];
+        // Compute histograms in parallel using rayon
+        let y_hist = y_plane.par_iter().fold(
+            || [0u32; 256],
+            |mut acc, &val| {
+                acc[val as usize] += 1;
+                acc
+            },
+        ).reduce(
+            || [0u32; 256],
+            |mut a, b| {
+                for i in 0..256 {
+                    a[i] += b[i];
+                }
+                a
+            },
+        );
 
-        for &val in y_plane {
-            y_hist[val as usize] += 1;
-        }
-        for &val in u_plane {
-            u_hist[val as usize] += 1;
-        }
-        for &val in v_plane {
-            v_hist[val as usize] += 1;
-        }
+        let u_hist = u_plane.par_iter().fold(
+            || [0u32; 256],
+            |mut acc, &val| {
+                acc[val as usize] += 1;
+                acc
+            },
+        ).reduce(
+            || [0u32; 256],
+            |mut a, b| {
+                for i in 0..256 {
+                    a[i] += b[i];
+                }
+                a
+            },
+        );
+
+        let v_hist = v_plane.par_iter().fold(
+            || [0u32; 256],
+            |mut acc, &val| {
+                acc[val as usize] += 1;
+                acc
+            },
+        ).reduce(
+            || [0u32; 256],
+            |mut a, b| {
+                for i in 0..256 {
+                    a[i] += b[i];
+                }
+                a
+            },
+        );
 
         self.histograms = Some([y_hist, u_hist, v_hist]);
     }
@@ -208,22 +300,24 @@ impl YuvViewerPanel {
         &mut self,
         ctx: &egui::Context,
         y_plane: &[u8],
-        u_plane: &[u8],
-        v_plane: &[u8],
+        _u_plane: &[u8],
+        _v_plane: &[u8],
         width: u32,
         height: u32,
     ) {
         self.frame_size_b = Some((width, height));
 
-        // Store raw plane data for diff computation
-        self.y_data_b = Some(y_plane.to_vec());
-        self.u_data_b = Some(u_plane.to_vec());
-        self.v_data_b = Some(v_plane.to_vec());
+        // Store only Y plane data for diff computation using Arc for shared ownership
+        // U and V planes are not used in diff computation
+        self.y_data_b = Some(Arc::new(y_plane.to_vec()));
 
-        // Create Y texture for side-by-side mode
+        // Compute hash for cache lookup (use 'B' suffix to distinguish from stream A)
+        let y_hash = self.compute_frame_hash(y_plane, width, height, 'B');
+
+        // Create Y texture for side-by-side mode - use cache if available
         let y_rgb: Vec<u8> = y_plane.iter().flat_map(|&y| [y, y, y]).collect();
         let y_image = ColorImage::from_rgb([width as usize, height as usize], &y_rgb);
-        self.y_texture_b = Some(ctx.load_texture("yuv_y_b", y_image, egui::TextureOptions::LINEAR));
+        self.y_texture_b = Some(self.get_or_create_texture(ctx, y_hash, y_image, "yuv_y_b"));
     }
 
     /// Compute diff texture based on current diff mode
@@ -332,8 +426,6 @@ impl YuvViewerPanel {
     /// Clear Stream B data
     pub fn clear_stream_b(&mut self) {
         self.y_data_b = None;
-        self.u_data_b = None;
-        self.v_data_b = None;
         self.frame_size_b = None;
         self.y_texture_b = None;
         self.diff_texture = None;
@@ -765,5 +857,7 @@ impl YuvViewerPanel {
         self.clear_stream_b();
         // Clear block info
         self.block_info = None;
+        // Clear texture cache
+        self.texture_cache.clear();
     }
 }

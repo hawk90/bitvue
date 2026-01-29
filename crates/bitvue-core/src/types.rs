@@ -57,18 +57,41 @@ pub struct FrameInfo {
 }
 
 /// Frame type enumeration
+///
+/// Unified frame type across all codecs (AV1, H.264/AVC, H.265/HEVC, VP9).
+/// Provides codec-agnostic classification with conversion methods from codec-specific types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FrameType {
-    /// Key frame (I-frame)
+    /// Key frame (I-frame, IDR, KEY frame)
+    /// - AVC: I-frame (IDR or non-IDR intra)
+    /// - HEVC: I-frame (IDR or non-IDR intra)
+    /// - AV1: Key frame (intra-only, no dependencies)
+    /// - VP9: Key frame
     Key,
-    /// Inter frame (P-frame)
+    /// Inter frame (P-frame, predicted frame)
+    /// - AVC: P-frame
+    /// - HEVC: P-frame
+    /// - AV1: Inter frame (may use references)
+    /// - VP9: Inter frame
     Inter,
     /// Bidirectional frame (B-frame, H.264/HEVC)
+    /// - AVC: B-frame
+    /// - HEVC: B-frame
     BFrame,
-    /// Intra-only frame
+    /// Intra-only frame (not a key frame, but coded without reference to other frames)
+    /// - AV1: Intra-only frame
     IntraOnly,
-    /// Switch frame
+    /// Switch frame (allows switching between streams/sequences)
+    /// - AV1: Switch frame
+    /// - AVC: SI-frame (SP/SI switching)
+    /// - VP9: Switch frame
     Switch,
+    /// SI-frame (H.264 SP/SI switching for coded slices)
+    SI,
+    /// SP-frame (H.264 SP/SI switching for prediction slices)
+    SP,
+    /// Unknown or unrecognized frame type
+    Unknown,
 }
 
 impl FrameType {
@@ -97,9 +120,19 @@ impl FrameType {
         matches!(self, FrameType::Switch)
     }
 
-    /// Returns true if this is any intra frame (Key or IntraOnly)
+    /// Returns true if this is an SI frame
+    pub fn is_si(self) -> bool {
+        matches!(self, FrameType::SI)
+    }
+
+    /// Returns true if this is an SP frame
+    pub fn is_sp(self) -> bool {
+        matches!(self, FrameType::SP)
+    }
+
+    /// Returns true if this is any intra frame (Key, IntraOnly, SI, or SP)
     pub fn is_intra(self) -> bool {
-        matches!(self, FrameType::Key | FrameType::IntraOnly)
+        matches!(self, FrameType::Key | FrameType::IntraOnly | FrameType::SI | FrameType::SP)
     }
 
     /// Returns true if this frame can be used as a reference
@@ -107,7 +140,8 @@ impl FrameType {
         // Key frames are always reference frames
         // Inter frames may be reference frames (not strictly determined by type)
         // B-frames are typically not reference frames
-        !matches!(self, FrameType::BFrame)
+        // SI/SP frames are switching frames, typically used as reference
+        !matches!(self, FrameType::BFrame | FrameType::Unknown)
     }
 
     /// Returns the short name (single character)
@@ -118,7 +152,15 @@ impl FrameType {
             FrameType::BFrame => "B",
             FrameType::IntraOnly => "I",
             FrameType::Switch => "S",
+            FrameType::SI => "I", // SI frames are intra-coded
+            FrameType::SP => "P", // SP frames are predicted
+            FrameType::Unknown => "?",
         }
+    }
+
+    /// Returns the display string (alias for short_name)
+    pub fn as_str(self) -> &'static str {
+        self.short_name()
     }
 
     /// Parses a frame type from a string
@@ -129,6 +171,9 @@ impl FrameType {
             "B" | "B-FRAME" => Some(FrameType::BFrame),
             "INTRA_ONLY" | "INTRAONLY" => Some(FrameType::IntraOnly),
             "SWITCH" | "S" => Some(FrameType::Switch),
+            "SI" => Some(FrameType::SI),
+            "SP" => Some(FrameType::SP),
+            "UNKNOWN" => Some(FrameType::Unknown),
             _ => None,
         }
     }
@@ -141,7 +186,61 @@ impl FrameType {
             FrameType::BFrame,
             FrameType::IntraOnly,
             FrameType::Switch,
+            FrameType::SI,
+            FrameType::SP,
+            FrameType::Unknown,
         ]
+    }
+
+    /// Convert from AV1 frame type bits
+    ///
+    /// AV1 uses 2-bit values: 0=Key, 1=Inter, 2=IntraOnly, 3=Switch
+    pub fn from_av1_bits(bits: u32) -> Self {
+        match bits {
+            0 => FrameType::Key,
+            1 => FrameType::Inter,
+            2 => FrameType::IntraOnly,
+            3 => FrameType::Switch,
+            _ => FrameType::Unknown,
+        }
+    }
+
+    /// Convert from H.264/AVC slice type
+    ///
+    /// Maps AVC slice types to unified frame types
+    pub fn from_avc_slice_type(slice_type: &str) -> Self {
+        match slice_type {
+            "I" | "IDR" => FrameType::Key,
+            "SI" => FrameType::SI,
+            "SP" => FrameType::SP,
+            "P" | "P_FRAME" => FrameType::Inter,
+            "B" | "B_FRAME" => FrameType::BFrame,
+            _ => FrameType::Unknown,
+        }
+    }
+
+    /// Convert from H.265/HEVC slice type
+    ///
+    /// Maps HEVC slice types to unified frame types
+    pub fn from_hevc_slice_type(slice_type: &str) -> Self {
+        match slice_type {
+            "I" | "IDR" | "IRAP" => FrameType::Key,
+            "P" | "P_FRAME" => FrameType::Inter,
+            "B" | "B_FRAME" => FrameType::BFrame,
+            _ => FrameType::Unknown,
+        }
+    }
+
+    /// Convert from VP9 frame type
+    ///
+    /// VP9 uses: 0=Key, 1=Inter, 2=Switch
+    pub fn from_vp9_mode(mode: u32) -> Self {
+        match mode {
+            0 => FrameType::Key,
+            1 => FrameType::Inter,
+            2 => FrameType::Switch,
+            _ => FrameType::Unknown,
+        }
     }
 
     /// Returns a description of the frame type
@@ -156,6 +255,9 @@ impl FrameType {
             }
             FrameType::IntraOnly => "Intra-only frame - all blocks use intra prediction",
             FrameType::Switch => "Switch frame - used for transitioning between different streams",
+            FrameType::SI => "SI-frame (H.264) - switching frame for coded slices",
+            FrameType::SP => "SP-frame (H.264) - switching frame for prediction slices",
+            FrameType::Unknown => "Unknown frame type",
         }
     }
 }
@@ -168,6 +270,9 @@ impl std::fmt::Display for FrameType {
             FrameType::BFrame => write!(f, "B"),
             FrameType::IntraOnly => write!(f, "INTRA_ONLY"),
             FrameType::Switch => write!(f, "SWITCH"),
+            FrameType::SI => write!(f, "SI"),
+            FrameType::SP => write!(f, "SP"),
+            FrameType::Unknown => write!(f, "UNKNOWN"),
         }
     }
 }

@@ -8,7 +8,8 @@
 //! - Reference frame visualization
 
 use super::overlays::OverlayManager;
-use egui::{ColorImage, TextureHandle, TextureOptions, Vec2};
+use super::player::{NavigationManager, PartitionLoader, TextureManager, ZoomManager};
+use egui::{ColorImage, TextureOptions};
 
 /// Overlay types for player
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,16 +46,14 @@ impl OverlayType {
 /// Player workspace state
 ///
 /// After god object refactoring (Batch 2): 27 fields → 5 fields
-/// Overlay-related state moved to OverlayManager.
+/// After module decomposition: Texture, Navigation, Zoom, Partition extracted.
 pub struct PlayerWorkspace {
-    /// Current decoded frame texture
-    texture: Option<TextureHandle>,
-    /// Frame dimensions
-    frame_size: Option<(u32, u32)>,
-    /// Zoom level (1.0 = 100%)
-    zoom: f32,
-    /// Pan offset
-    offset: Vec2,
+    /// Texture manager (frame texture and dimensions)
+    texture: TextureManager,
+    /// Navigation manager (frame navigation and finding)
+    navigation: NavigationManager,
+    /// Zoom manager (zoom level and pan offset)
+    zoom: ZoomManager,
     /// Overlay manager (contains all overlay state)
     overlays: OverlayManager,
 }
@@ -62,18 +61,16 @@ pub struct PlayerWorkspace {
 impl PlayerWorkspace {
     pub fn new() -> Self {
         Self {
-            texture: None,
-            frame_size: None,
-            zoom: 1.0,
-            offset: Vec2::ZERO,
+            texture: TextureManager::new(),
+            navigation: NavigationManager::new(),
+            zoom: ZoomManager::new(),
             overlays: OverlayManager::new(),
         }
     }
 
     /// Update the displayed frame
     pub fn set_frame(&mut self, ctx: &egui::Context, image: ColorImage) {
-        self.frame_size = Some((image.width() as u32, image.height() as u32));
-        self.texture = Some(ctx.load_texture("player_frame", image, TextureOptions::LINEAR));
+        self.texture.set_frame(ctx, image);
 
         // Notify overlay manager of frame change
         self.overlays.on_frame_change();
@@ -105,76 +102,8 @@ impl PlayerWorkspace {
             return; // Already loaded
         }
 
-        if let Some((w, h)) = self.frame_size {
-            // Try to load from mock data file
-            let mock_path = "docs/bitstream_analyzer_monster_pack_v14/docs/mock_data/partition_map_frame120.json";
-            match std::fs::read_to_string(mock_path) {
-                Ok(json_str) => {
-                    #[derive(serde::Deserialize)]
-                    struct PartitionMapJson {
-                        coded_width: u32,
-                        coded_height: u32,
-                        leaf_block_w: u32,
-                        leaf_block_h: u32,
-                        #[allow(dead_code)]
-                        grid_w: u32,
-                        #[allow(dead_code)]
-                        grid_h: u32,
-                        part_kind: Vec<u8>,
-                    }
-
-                    match serde_json::from_str::<PartitionMapJson>(&json_str) {
-                        Ok(json_data) => {
-                            // Check if dimensions match
-                            if json_data.coded_width == w && json_data.coded_height == h {
-                                // Convert u8 values to PartitionKind
-                                let part_kind: Vec<bitvue_core::PartitionKind> = json_data
-                                    .part_kind
-                                    .iter()
-                                    .map(|&val| match val {
-                                        1 => bitvue_core::PartitionKind::Intra,
-                                        2 => bitvue_core::PartitionKind::Inter,
-                                        3 => bitvue_core::PartitionKind::Split,
-                                        4 => bitvue_core::PartitionKind::Skip,
-                                        _ => bitvue_core::PartitionKind::Inter, // Default
-                                    })
-                                    .collect();
-
-                                self.overlays.partition.data =
-                                    Some(bitvue_core::PartitionData::new(
-                                        json_data.coded_width,
-                                        json_data.coded_height,
-                                        json_data.leaf_block_w,
-                                        json_data.leaf_block_h,
-                                        part_kind,
-                                    ));
-                                tracing::info!("Loaded partition data from JSON: {}x{}", w, h);
-                            } else {
-                                tracing::warn!(
-                                    "Partition data dimensions mismatch: JSON {}x{}, frame {}x{}",
-                                    json_data.coded_width,
-                                    json_data.coded_height,
-                                    w,
-                                    h
-                                );
-                                // Fall back to procedural mock
-                                self.overlays.partition.data =
-                                    Some(Self::create_mock_partition_data(w, h));
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to parse partition JSON: {}", e);
-                            self.overlays.partition.data =
-                                Some(Self::create_mock_partition_data(w, h));
-                        }
-                    }
-                }
-                Err(_) => {
-                    // Mock file not found, use procedural mock
-                    tracing::debug!("Mock partition data file not found, using procedural mock");
-                    self.overlays.partition.data = Some(Self::create_mock_partition_data(w, h));
-                }
-            }
+        if let Some((w, h)) = self.texture.frame_size() {
+            self.overlays.partition.data = Some(PartitionLoader::load_partition_data(w, h));
         }
     }
 
@@ -184,11 +113,8 @@ impl PlayerWorkspace {
             return; // Already loaded
         }
 
-        if let Some((w, h)) = self.frame_size {
-            // For now, use procedural mock
-            // TODO: Load from parser data
-            self.overlays.partition.grid = Some(Self::create_mock_partition_grid(w, h));
-            tracing::info!("Created mock partition grid: {}x{}", w, h);
+        if let Some((w, h)) = self.texture.frame_size() {
+            self.overlays.partition.grid = Some(PartitionLoader::load_partition_grid(w, h));
         }
     }
 
@@ -215,58 +141,38 @@ impl PlayerWorkspace {
         if !ui.ctx().wants_keyboard_input() {
             ui.input(|i| {
                 // Left arrow: Previous frame
-                if i.key_pressed(egui::Key::ArrowLeft) && current_frame > 0 {
-                    if let Some(frame_unit) = Self::find_frame_by_index(units, current_frame - 1) {
-                        result_command = Some(bitvue_core::Command::SelectUnit {
-                            stream: bitvue_core::StreamId::A,
-                            unit_key: frame_unit.key.clone(),
-                        });
+                if i.key_pressed(egui::Key::ArrowLeft) {
+                    if let Some(cmd) = self.navigation.previous_frame_command(units, current_frame) {
+                        result_command = Some(cmd);
                     }
                 }
 
                 // Right arrow: Next frame
-                if i.key_pressed(egui::Key::ArrowRight)
-                    && current_frame < total_frames.saturating_sub(1)
-                {
-                    if let Some(frame_unit) = Self::find_frame_by_index(units, current_frame + 1) {
-                        result_command = Some(bitvue_core::Command::SelectUnit {
-                            stream: bitvue_core::StreamId::A,
-                            unit_key: frame_unit.key.clone(),
-                        });
+                if i.key_pressed(egui::Key::ArrowRight) {
+                    if let Some(cmd) = self.navigation.next_frame_command(units, current_frame, total_frames) {
+                        result_command = Some(cmd);
                     }
                 }
 
                 // Home: First frame
                 if i.key_pressed(egui::Key::Home) && total_frames > 0 {
-                    if let Some(frame_unit) = Self::find_frame_by_index(units, 0) {
-                        result_command = Some(bitvue_core::Command::SelectUnit {
-                            stream: bitvue_core::StreamId::A,
-                            unit_key: frame_unit.key.clone(),
-                        });
+                    if let Some(cmd) = self.navigation.first_frame_command(units) {
+                        result_command = Some(cmd);
                     }
                 }
 
                 // End: Last frame
                 if i.key_pressed(egui::Key::End) && total_frames > 0 {
-                    if let Some(frame_unit) =
-                        Self::find_frame_by_index(units, total_frames.saturating_sub(1))
-                    {
-                        result_command = Some(bitvue_core::Command::SelectUnit {
-                            stream: bitvue_core::StreamId::A,
-                            unit_key: frame_unit.key.clone(),
-                        });
+                    if let Some(cmd) = self.navigation.last_frame_command(units, total_frames) {
+                        result_command = Some(cmd);
                     }
                 }
 
                 // Space: Toggle play/pause (future: when playback is implemented)
                 // For now, step forward as a simple action
-                if i.key_pressed(egui::Key::Space) && current_frame < total_frames.saturating_sub(1)
-                {
-                    if let Some(frame_unit) = Self::find_frame_by_index(units, current_frame + 1) {
-                        result_command = Some(bitvue_core::Command::SelectUnit {
-                            stream: bitvue_core::StreamId::A,
-                            unit_key: frame_unit.key.clone(),
-                        });
+                if i.key_pressed(egui::Key::Space) {
+                    if let Some(cmd) = self.navigation.next_frame_command(units, current_frame, total_frames) {
+                        result_command = Some(cmd);
                     }
                 }
             });
@@ -287,7 +193,7 @@ impl PlayerWorkspace {
             }
 
             // Display frame dimensions
-            if let Some((w, h)) = self.frame_size {
+            if let Some((w, h)) = self.texture.frame_size() {
                 ui.separator();
                 ui.label(format!("{}×{}", w, h));
             }
@@ -301,8 +207,8 @@ impl PlayerWorkspace {
 
                     // Get frame type from units
                     if let Some(u) = units {
-                        if let Some(unit) = Self::find_frame_by_index(Some(u), frame_index) {
-                            let frame_type = Self::extract_frame_type(&unit.unit_type);
+                        if let Some(unit) = self.navigation.find_frame_by_index(Some(u), frame_index) {
+                            let frame_type = NavigationManager::extract_frame_type(&unit.unit_type);
                             let type_color = match frame_type.as_str() {
                                 "KEY" | "I" => egui::Color32::from_rgb(100, 200, 100),
                                 "P" | "INTER" => egui::Color32::from_rgb(100, 150, 255),
@@ -320,7 +226,7 @@ impl PlayerWorkspace {
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(format!("Zoom: {:.0}%", self.zoom * 100.0));
+                ui.label(self.zoom.zoom_percent());
 
                 // Show total frames
                 if total_frames > 0 {
@@ -341,11 +247,8 @@ impl PlayerWorkspace {
                 .on_hover_text("First frame (Home)")
                 .clicked()
             {
-                if let Some(frame_unit) = Self::find_frame_by_index(units, 0) {
-                    result_command = Some(bitvue_core::Command::SelectUnit {
-                        stream: bitvue_core::StreamId::A,
-                        unit_key: frame_unit.key.clone(),
-                    });
+                if let Some(cmd) = self.navigation.first_frame_command(units) {
+                    result_command = Some(cmd);
                 }
             }
 
@@ -354,13 +257,8 @@ impl PlayerWorkspace {
                 .on_hover_text("Previous frame (←)")
                 .clicked()
             {
-                if let Some(frame_unit) =
-                    Self::find_frame_by_index(units, current_frame.saturating_sub(1))
-                {
-                    result_command = Some(bitvue_core::Command::SelectUnit {
-                        stream: bitvue_core::StreamId::A,
-                        unit_key: frame_unit.key.clone(),
-                    });
+                if let Some(cmd) = self.navigation.previous_frame_command(units, current_frame) {
+                    result_command = Some(cmd);
                 }
             }
 
@@ -377,11 +275,8 @@ impl PlayerWorkspace {
             if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 if let Ok(new_frame) = frame_text.parse::<usize>() {
                     if new_frame < total_frames {
-                        if let Some(frame_unit) = Self::find_frame_by_index(units, new_frame) {
-                            result_command = Some(bitvue_core::Command::SelectUnit {
-                                stream: bitvue_core::StreamId::A,
-                                unit_key: frame_unit.key.clone(),
-                            });
+                        if let Some(cmd) = self.navigation.goto_frame_command(units, new_frame) {
+                            result_command = Some(cmd);
                         }
                     }
                 }
@@ -395,11 +290,8 @@ impl PlayerWorkspace {
                 .on_hover_text("Next frame (→ or Space)")
                 .clicked()
             {
-                if let Some(frame_unit) = Self::find_frame_by_index(units, current_frame + 1) {
-                    result_command = Some(bitvue_core::Command::SelectUnit {
-                        stream: bitvue_core::StreamId::A,
-                        unit_key: frame_unit.key.clone(),
-                    });
+                if let Some(cmd) = self.navigation.next_frame_command(units, current_frame, total_frames) {
+                    result_command = Some(cmd);
                 }
             }
 
@@ -408,13 +300,8 @@ impl PlayerWorkspace {
                 .on_hover_text("Last frame (End)")
                 .clicked()
             {
-                if let Some(frame_unit) =
-                    Self::find_frame_by_index(units, total_frames.saturating_sub(1))
-                {
-                    result_command = Some(bitvue_core::Command::SelectUnit {
-                        stream: bitvue_core::StreamId::A,
-                        unit_key: frame_unit.key.clone(),
-                    });
+                if let Some(cmd) = self.navigation.last_frame_command(units, total_frames) {
+                    result_command = Some(cmd);
                 }
             }
         });
@@ -448,17 +335,16 @@ impl PlayerWorkspace {
             ui.separator();
             ui.label("Zoom:");
             if ui.button("Fit").clicked() {
-                self.zoom = 1.0;
-                self.offset = Vec2::ZERO;
+                self.zoom.reset();
             }
             if ui.button("100%").clicked() {
-                self.zoom = 1.0;
+                self.zoom.set_zoom(1.0);
             }
             if ui.button("200%").clicked() {
-                self.zoom = 2.0;
+                self.zoom.set_zoom(2.0);
             }
             if ui.button("50%").clicked() {
-                self.zoom = 0.5;
+                self.zoom.set_zoom(0.5);
             }
         });
 
@@ -848,14 +734,14 @@ impl PlayerWorkspace {
         ui.separator();
 
         // Frame display area
-        if let Some(texture) = &self.texture {
+        if let Some(texture) = self.texture.texture() {
             let texture_id = texture.id();
             let show_overlays = !self.overlays.active.is_empty();
             let grid_size = self.overlays.grid.size;
-            let zoom = self.zoom;
+            let zoom = self.zoom.zoom();
 
             // Calculate display size
-            let (frame_w, frame_h) = self.frame_size.unwrap_or((640, 480));
+            let (frame_w, frame_h) = self.texture.frame_size().unwrap_or((640, 480));
             let display_w = frame_w as f32 * zoom;
             let display_h = frame_h as f32 * zoom;
 
@@ -889,7 +775,7 @@ impl PlayerWorkspace {
                                     OverlayType::MotionVectors => {
                                         // Draw motion vector overlay
                                         // Per MV_VECTORS_IMPLEMENTATION_SPEC.md
-                                        if let Some(frame_size) = self.frame_size {
+                                        if let Some(frame_size) = self.texture.frame_size() {
                                             if selection.is_none() {
                                                 tracing::warn!("MV Overlay: No selection");
                                             }
@@ -935,7 +821,7 @@ impl PlayerWorkspace {
                                     OverlayType::Partition => {
                                         // Draw partition grid overlay
                                         // Per PARTITION_GRID_IMPLEMENTATION_SPEC.md
-                                        if let Some(frame_size) = self.frame_size {
+                                        if let Some(frame_size) = self.texture.frame_size() {
                                             self.draw_partition_overlay(ui, rect, frame_size);
                                         }
                                     }
@@ -951,21 +837,21 @@ impl PlayerWorkspace {
                                     OverlayType::ModeLabels => {
                                         // Draw mode labels overlay
                                         // VQAnalyzer parity: shows AMVP/Merge/Skip/Intra on blocks
-                                        if let Some(frame_size) = self.frame_size {
+                                        if let Some(frame_size) = self.texture.frame_size() {
                                             self.draw_mode_labels_overlay(ui, rect, frame_size);
                                         }
                                     }
                                     OverlayType::BitAllocation => {
                                         // Draw bit allocation heatmap
                                         // VQAnalyzer parity: bits per CTB heatmap
-                                        if let Some(frame_size) = self.frame_size {
+                                        if let Some(frame_size) = self.texture.frame_size() {
                                             self.draw_bit_allocation_overlay(ui, rect, frame_size);
                                         }
                                     }
                                     OverlayType::MvMagnitude => {
                                         // Draw MV magnitude heatmap
                                         // VQAnalyzer parity: MV magnitude heatmap
-                                        if let Some(frame_size) = self.frame_size {
+                                        if let Some(frame_size) = self.texture.frame_size() {
                                             let mv_grid = selection
                                                 .and_then(|sel| sel.unit.as_ref())
                                                 .and_then(|uk| {
@@ -979,7 +865,7 @@ impl PlayerWorkspace {
                                     OverlayType::PuType => {
                                         // Draw PU type overlay
                                         // VQAnalyzer parity: PU type categorical overlay
-                                        if let Some(frame_size) = self.frame_size {
+                                        if let Some(frame_size) = self.texture.frame_size() {
                                             self.draw_pu_type_overlay(ui, rect, frame_size);
                                         }
                                     }
@@ -999,7 +885,7 @@ impl PlayerWorkspace {
                 let scroll_delta = ui.ctx().input(|i| i.smooth_scroll_delta.y);
                 if scroll_delta != 0.0 {
                     let zoom_factor = 1.0 + scroll_delta * 0.001;
-                    self.zoom = (self.zoom * zoom_factor).clamp(0.1, 10.0);
+                    self.zoom.adjust_zoom(zoom_factor);
                 }
             }
 
@@ -1008,8 +894,8 @@ impl PlayerWorkspace {
             if response.clicked() {
                 if let Some(click_pos) = response.interact_pointer_pos() {
                     if rect.contains(click_pos) {
-                        let pixel_x = ((click_pos.x - rect.min.x) / self.zoom) as u32;
-                        let pixel_y = ((click_pos.y - rect.min.y) / self.zoom) as u32;
+                        let pixel_x = ((click_pos.x - rect.min.x) / self.zoom.zoom()) as u32;
+                        let pixel_y = ((click_pos.y - rect.min.y) / self.zoom.zoom()) as u32;
 
                         // Select partition block if partition overlay is active
                         if self.overlays.active.contains(&OverlayType::Partition) {
@@ -1054,7 +940,7 @@ impl PlayerWorkspace {
 
             // Show pixel info on hover + partition cell info
             let hover_pos = response.hover_pos();
-            let zoom = self.zoom;
+            let zoom = self.zoom.zoom();
             let active_overlays = self.overlays.active.clone();
             let partition_grid = self.overlays.partition.grid.clone();
 
@@ -1102,7 +988,7 @@ impl PlayerWorkspace {
 
                     response.on_hover_ui(|ui| {
                         ui.label(format!("Pixel: ({}, {})", pixel_x, pixel_y));
-                        ui.label(format!("Zoom: {:.0}%", zoom * 100.0));
+                        ui.label(format!("Zoom: {:.0}%", zoom * 100.0)); // Note: zoom is already local variable
 
                         // Show partition block info if partition overlay is active
                         // Per PARTITION_GRID_IMPLEMENTATION_SPEC.md §3
@@ -1123,11 +1009,11 @@ impl PlayerWorkspace {
             // Status bar
             ui.separator();
             ui.horizontal(|ui| {
-                if let Some((w, h)) = self.frame_size {
+                if let Some((w, h)) = self.texture.frame_size() {
                     ui.label(format!("{}×{}", w, h));
                     ui.separator();
                 }
-                ui.label(format!("Zoom: {:.0}%", self.zoom * 100.0));
+                ui.label(self.zoom.zoom_percent());
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if !self.overlays.active.is_empty() {
@@ -1365,7 +1251,7 @@ impl PlayerWorkspace {
     /// Per QP_HEATMAP_IMPLEMENTATION_SPEC.md
     /// Draw QP heatmap overlay with actual QP values per CU (VQAnalyzer parity)
     fn draw_qp_heatmap_overlay(&mut self, ui: &mut egui::Ui, rect: egui::Rect, qp_avg: Option<u8>) {
-        let Some((w, h)) = self.frame_size else {
+        let Some((w, h)) = self.texture.frame_size() else {
             return;
         };
 

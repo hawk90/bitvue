@@ -30,8 +30,14 @@ impl FilmstripPanel {
             Stroke::new(1.0, Color32::from_rgb(100, 100, 100)),
         );
 
+        // Calculate visible frame index range upfront to avoid processing off-screen frames
+        let visible_start = (scroll_offset / thumb_total_width).floor() as usize;
+        let visible_end = ((scroll_offset + rect.width()) / thumb_total_width).ceil() as usize + 1;
+        let visible_end = visible_end.min(frames.len());
+
         // Draw reference arrows (simplified: show arrows from B/P frames to previous I/P frames)
-        for (idx, frame) in frames.iter().enumerate() {
+        for idx in visible_start..visible_end {
+            let frame = &frames[idx];
             if idx == 0 {
                 continue;
             } // First frame has no reference
@@ -57,7 +63,7 @@ impl FilmstripPanel {
             let to_x = rect.left() + ref_idx as f32 * thumb_total_width + thumb_total_width / 2.0
                 - scroll_offset;
 
-            // Only draw if visible
+            // Final visibility check (edge case protection)
             if from_x < rect.left() || from_x > rect.right() {
                 continue;
             }

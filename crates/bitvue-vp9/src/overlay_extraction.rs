@@ -227,7 +227,7 @@ fn parse_super_blocks(frame_header: &FrameHeader) -> Vec<SuperBlock> {
     let sb_rows = (height + sb_size - 1) / sb_size;
     let total_sbs = sb_cols * sb_rows;
 
-    let is_intra = frame_header.frame_type == FrameType::KeyFrame;
+    let is_intra = frame_header.frame_type == FrameType::Key;
     let base_qp = frame_header.quantization.base_q_idx as i16;
 
     for sb_idx in 0..total_sbs {
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn test_parse_super_blocks_keyframe() {
         let header = FrameHeader {
-            frame_type: FrameType::KeyFrame,
+            frame_type: FrameType::Key,
             width: 1920,
             height: 1080,
             quantization: crate::frame_header::Quantization {

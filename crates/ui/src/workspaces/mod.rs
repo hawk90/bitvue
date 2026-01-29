@@ -16,6 +16,7 @@ pub mod hevc_workspace;
 pub mod metrics_workspace;
 pub mod mpeg2_workspace;
 pub mod overlays;
+pub mod player;
 pub mod player_workspace;
 pub mod reference_workspace;
 pub mod timeline_workspace;

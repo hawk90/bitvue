@@ -4,54 +4,8 @@
 
 use crate::bitreader::BitReader;
 use bitvue_core::BitvueError;
-use serde::{Deserialize, Serialize};
-
-/// Frame type enumeration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FrameType {
-    /// Key frame (intra-only, no dependencies)
-    Key = 0,
-    /// Inter frame (may use references)
-    Inter = 1,
-    /// Intra-only frame (intra-only but not a key frame)
-    IntraOnly = 2,
-    /// Switch frame (intra-only, allows switching between streams)
-    Switch = 3,
-}
-
-impl FrameType {
-    /// Parse frame type from 2-bit value
-    pub fn from_bits(bits: u32) -> Result<Self, BitvueError> {
-        match bits {
-            0 => Ok(FrameType::Key),
-            1 => Ok(FrameType::Inter),
-            2 => Ok(FrameType::IntraOnly),
-            3 => Ok(FrameType::Switch),
-            _ => Err(BitvueError::InvalidData(format!(
-                "Invalid frame type: {}",
-                bits
-            ))),
-        }
-    }
-
-    /// Get human-readable name
-    pub fn name(&self) -> &'static str {
-        match self {
-            FrameType::Key => "KEY_FRAME",
-            FrameType::Inter => "INTER_FRAME",
-            FrameType::IntraOnly => "INTRA_ONLY_FRAME",
-            FrameType::Switch => "SWITCH_FRAME",
-        }
-    }
-
-    /// Check if this is an intra-only frame (Key, IntraOnly, or Switch)
-    pub fn is_intra_only(&self) -> bool {
-        matches!(
-            self,
-            FrameType::Key | FrameType::IntraOnly | FrameType::Switch
-        )
-    }
-}
+// Re-export FrameType for other modules in this crate
+pub use bitvue_core::FrameType;
 
 /// Minimal frame header information
 #[derive(Debug, Clone)]
@@ -129,7 +83,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 
     // frame_type (2 bits)
     let frame_type_bits = reader.read_bits(2)?;
-    let frame_type = FrameType::from_bits(frame_type_bits)?;
+    let frame_type = FrameType::from_av1_bits(frame_type_bits);
 
     // show_frame (1 bit)
     let show_frame = reader.read_bit()?;
@@ -255,27 +209,27 @@ mod tests {
 
     #[test]
     fn test_frame_type_from_bits() {
-        assert_eq!(FrameType::from_bits(0).unwrap(), FrameType::Key);
-        assert_eq!(FrameType::from_bits(1).unwrap(), FrameType::Inter);
-        assert_eq!(FrameType::from_bits(2).unwrap(), FrameType::IntraOnly);
-        assert_eq!(FrameType::from_bits(3).unwrap(), FrameType::Switch);
-        assert!(FrameType::from_bits(4).is_err());
+        assert_eq!(FrameType::from_av1_bits(0), FrameType::Key);
+        assert_eq!(FrameType::from_av1_bits(1), FrameType::Inter);
+        assert_eq!(FrameType::from_av1_bits(2), FrameType::IntraOnly);
+        assert_eq!(FrameType::from_av1_bits(3), FrameType::Switch);
+        assert_eq!(FrameType::from_av1_bits(4), FrameType::Unknown);
     }
 
     #[test]
     fn test_frame_type_names() {
-        assert_eq!(FrameType::Key.name(), "KEY_FRAME");
-        assert_eq!(FrameType::Inter.name(), "INTER_FRAME");
-        assert_eq!(FrameType::IntraOnly.name(), "INTRA_ONLY_FRAME");
-        assert_eq!(FrameType::Switch.name(), "SWITCH_FRAME");
+        assert!(FrameType::Key.description().contains("Key"));
+        assert!(FrameType::Inter.description().contains("Inter"));
+        assert!(FrameType::IntraOnly.description().contains("Intra"));
+        assert!(FrameType::Switch.description().contains("Switch"));
     }
 
     #[test]
     fn test_is_intra_only() {
-        assert!(FrameType::Key.is_intra_only());
-        assert!(!FrameType::Inter.is_intra_only());
-        assert!(FrameType::IntraOnly.is_intra_only());
-        assert!(FrameType::Switch.is_intra_only());
+        assert!(FrameType::Key.is_intra());
+        assert!(!FrameType::Inter.is_intra());
+        assert!(FrameType::IntraOnly.is_intra());
+        assert!(FrameType::Switch.is_intra());
     }
 
     #[test]

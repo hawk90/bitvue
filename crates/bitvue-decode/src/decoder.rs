@@ -50,6 +50,8 @@ pub struct DecodedFrame {
     /// Average QP for the frame (0-255 for AV1, 0-51 for H.264/HEVC)
     /// None if QP information is not available
     pub qp_avg: Option<u8>,
+    /// Chroma subsampling format (cached at frame creation)
+    pub chroma_format: ChromaFormat,
 }
 
 /// Frame type
@@ -58,7 +60,58 @@ pub enum FrameType {
     Key,
     Inter,
     Intra,
-    Switch,
+}
+
+/// Chroma subsampling format
+///
+/// Cached at frame creation to avoid repeated detection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChromaFormat {
+    /// 4:2:0 - U and V are 1/2 resolution in both dimensions
+    Yuv420,
+    /// 4:2:2 - U and V are 1/2 resolution horizontally only
+    Yuv422,
+    /// 4:4:4 - U and V are full resolution
+    Yuv444,
+    /// Monochrome - Y only
+    Monochrome,
+}
+
+impl ChromaFormat {
+    /// Detect chroma format from plane dimensions
+    pub fn from_frame_data(
+        width: u32,
+        height: u32,
+        bit_depth: u8,
+        u_plane: Option<&[u8]>,
+        v_plane: Option<&[u8]>,
+    ) -> Self {
+        match (u_plane, v_plane) {
+            (Some(u_plane), Some(_)) => {
+                let width = width as usize;
+                let height = height as usize;
+                let bytes_per_sample = if bit_depth > 8 { 2 } else { 1 };
+
+                let y_size = width * height * bytes_per_sample;
+                let uv_size = u_plane.len();
+
+                if uv_size == y_size {
+                    Self::Yuv444
+                } else if uv_size == (width / 2) * height * bytes_per_sample {
+                    Self::Yuv422
+                } else if uv_size == (width / 2) * (height / 2) * bytes_per_sample {
+                    Self::Yuv420
+                } else {
+                    tracing::debug!(
+                        "Unknown chroma format: Y={}, UV={}, {}bit, assuming 4:2:0",
+                        y_size, uv_size, bit_depth
+                    );
+                    Self::Yuv420
+                }
+            }
+            _ => Self::Monochrome,
+        }
+    }
 }
 
 /// AV1 decoder using dav1d
@@ -204,7 +257,22 @@ impl Av1Decoder {
             };
 
         // Frame type detection based on picture properties
-        let frame_type = FrameType::Key; // TODO: detect from picture metadata
+        // Note: dav1d Rust bindings don't directly expose frame_type from Picture.
+        // The C API (dav1d.h) has Dav1dPictureParameters.frame_type but this isn't
+        // exposed through the dav1d Rust crate.
+        // For accurate frame type detection, use the bitstream parser in bitvue-av1
+        // which parses frame headers and can determine frame type.
+        // Defaulting to Inter as a safe assumption (non-keyframe behavior)
+        let frame_type = FrameType::Inter;
+
+        // Detect chroma format once at frame creation
+        let chroma_format = ChromaFormat::from_frame_data(
+            width,
+            height,
+            bit_depth,
+            u_plane.as_deref(),
+            v_plane.as_deref(),
+        );
 
         Ok(DecodedFrame {
             width,
@@ -219,6 +287,7 @@ impl Av1Decoder {
             timestamp: picture.timestamp().unwrap_or(0),
             frame_type,
             qp_avg: None, // TODO: Extract QP from bitstream parser
+            chroma_format,
         })
     }
 
@@ -330,11 +399,15 @@ impl Av1Decoder {
 
 impl Default for Av1Decoder {
     fn default() -> Self {
-        Self::new().expect("Failed to create decoder")
+        Self::new().unwrap_or_else(|e| {
+            panic!("Failed to create default AV1 decoder: {}", e);
+        })
     }
 }
 
 /// Extracts plane data from dav1d plane reference
+///
+/// Optimized for contiguous data (stride == row_bytes) with single-copy fast path.
 fn extract_plane(
     plane: &[u8],
     width: usize,
@@ -345,8 +418,25 @@ fn extract_plane(
     // For 10/12bit, dav1d returns 16-bit samples (2 bytes per sample)
     let bytes_per_sample = if bit_depth > 8 { 2 } else { 1 };
     let row_bytes = width * bytes_per_sample;
+    let expected_size = row_bytes * height;
 
-    let mut data = Vec::with_capacity(row_bytes * height);
+    // Fast path: contiguous data (stride == row_bytes) - single copy
+    if stride == row_bytes {
+        if expected_size <= plane.len() {
+            return plane[..expected_size].to_vec();
+        } else {
+            warn!(
+                "Plane extraction: contiguous data exceeds bounds ({} > {}), bit_depth={}",
+                expected_size,
+                plane.len(),
+                bit_depth
+            );
+            return Vec::with_capacity(expected_size);
+        }
+    }
+
+    // Slow path: strided data - copy row by row
+    let mut data = Vec::with_capacity(expected_size);
     for row in 0..height {
         let start = row * stride;
         let end = start + row_bytes;

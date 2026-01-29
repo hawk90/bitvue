@@ -7,9 +7,20 @@
 import type { FrameInfo } from '../types/video';
 
 /**
+ * Validate frame index is within bounds
+ */
+function isValidIndex(frames: FrameInfo[], index: number): boolean {
+  return index >= 0 && index < frames.length;
+}
+
+/**
  * Find the next keyframe (I or KEY frame type) starting from given index
  */
 export function findNextKeyframe(frames: FrameInfo[], fromIndex: number): number | null {
+  if (!isValidIndex(frames, fromIndex)) {
+    return null;
+  }
+
   for (let i = fromIndex + 1; i < frames.length; i++) {
     const frame = frames[i];
     if (frame.frame_type === 'I' || frame.frame_type === 'KEY' || frame.key_frame) {
@@ -23,6 +34,10 @@ export function findNextKeyframe(frames: FrameInfo[], fromIndex: number): number
  * Find the previous keyframe (I or KEY frame type) starting from given index
  */
 export function findPrevKeyframe(frames: FrameInfo[], fromIndex: number): number | null {
+  if (!isValidIndex(frames, fromIndex)) {
+    return null;
+  }
+
   for (let i = fromIndex - 1; i >= 0; i--) {
     const frame = frames[i];
     if (frame.frame_type === 'I' || frame.frame_type === 'KEY' || frame.key_frame) {
@@ -40,6 +55,10 @@ export function findNextFrameByType(
   fromIndex: number,
   frameType: string
 ): number | null {
+  if (!isValidIndex(frames, fromIndex)) {
+    return null;
+  }
+
   for (let i = fromIndex + 1; i < frames.length; i++) {
     if (frames[i].frame_type === frameType) {
       return i;
@@ -56,6 +75,10 @@ export function findPrevFrameByType(
   fromIndex: number,
   frameType: string
 ): number | null {
+  if (!isValidIndex(frames, fromIndex)) {
+    return null;
+  }
+
   for (let i = fromIndex - 1; i >= 0; i--) {
     if (frames[i].frame_type === frameType) {
       return i;
@@ -68,6 +91,10 @@ export function findPrevFrameByType(
  * Find frame by frame number
  */
 export function findFrameByNumber(frames: FrameInfo[], frameNumber: number): number | null {
+  if (frames.length === 0) {
+    return null;
+  }
+
   for (let i = 0; i < frames.length; i++) {
     if (frames[i].frame_index === frameNumber) {
       return i;
