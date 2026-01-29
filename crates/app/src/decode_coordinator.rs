@@ -32,7 +32,7 @@ impl DecodeCoordinator {
     fn get_or_init_worker(&mut self) -> &mut DecodeWorker {
         if self.worker.is_none() {
             tracing::info!("Lazy spawning decode worker thread");
-            self.worker = Some(DecodeWorker::new());
+            self.worker = Some(DecodeWorker::new().expect("Failed to spawn decode worker thread"));
         }
         self.worker.as_mut().unwrap()
     }

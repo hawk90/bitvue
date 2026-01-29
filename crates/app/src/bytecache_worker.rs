@@ -78,7 +78,9 @@ pub struct ByteCacheWorker {
 
 impl ByteCacheWorker {
     /// Create new ByteCache worker with background thread
-    pub fn new() -> Self {
+    ///
+    /// Returns error if thread spawning fails (e.g., system out of resources)
+    pub fn new() -> std::result::Result<Self, std::io::Error> {
         let (request_tx, request_rx) = bounded::<ByteCacheRequest>(2);
         let (result_tx, result_rx) = bounded::<ByteCacheResult>(2);
         let request_ids = Arc::new([AtomicU64::new(0), AtomicU64::new(0)]);
@@ -90,14 +92,17 @@ impl ByteCacheWorker {
             .spawn(move || {
                 Self::worker_loop(request_rx, result_tx, worker_request_ids);
             })
-            .expect("Failed to spawn ByteCache worker thread");
+            .map_err(|e| {
+                tracing::error!("Failed to spawn ByteCache worker thread: {}", e);
+                e
+            })?;
 
-        Self {
+        Ok(Self {
             request_tx,
             result_rx,
             request_ids,
             _thread: thread,
-        }
+        })
     }
 
     /// Worker loop - processes file load requests
@@ -228,7 +233,7 @@ impl ByteCacheWorker {
 
 impl Default for ByteCacheWorker {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default ByteCacheWorker")
     }
 }
 
@@ -238,12 +243,12 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let _worker = ByteCacheWorker::new();
+        let _worker = ByteCacheWorker::new().expect("Failed to create worker");
     }
 
     #[test]
     fn test_next_request_id_increments() {
-        let worker = ByteCacheWorker::new();
+        let worker = ByteCacheWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id(StreamId::A);
         let id2 = worker.next_request_id(StreamId::A);
         assert_eq!(id2, id1 + 1);
@@ -251,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_next_request_id_per_stream() {
-        let worker = ByteCacheWorker::new();
+        let worker = ByteCacheWorker::new().expect("Failed to create worker");
         let id_a = worker.next_request_id(StreamId::A);
         let id_b = worker.next_request_id(StreamId::B);
         // Each stream has independent counters
@@ -261,14 +266,14 @@ mod tests {
 
     #[test]
     fn test_poll_results_empty_initially() {
-        let worker = ByteCacheWorker::new();
+        let worker = ByteCacheWorker::new().expect("Failed to create worker");
         let results = worker.poll_results();
         assert!(results.is_empty());
     }
 
     #[test]
     fn test_cancel_stream_increments_request_id() {
-        let worker = ByteCacheWorker::new();
+        let worker = ByteCacheWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id(StreamId::A);
         worker.cancel_stream(StreamId::A);
         let id2 = worker.next_request_id(StreamId::A);
@@ -278,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_has_pending_work_false_initially() {
-        let worker = ByteCacheWorker::new();
+        let worker = ByteCacheWorker::new().expect("Failed to create worker");
         // Initially no pending work
         assert!(!worker.has_pending_work());
     }

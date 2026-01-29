@@ -39,7 +39,7 @@ impl ParseCoordinator {
     /// Create a new parse coordinator
     pub fn new() -> Self {
         Self {
-            worker: ParseWorker::new(),
+            worker: ParseWorker::new().expect("Failed to spawn parse worker thread"),
             pending: None,
         }
     }

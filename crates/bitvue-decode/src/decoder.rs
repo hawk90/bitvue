@@ -438,13 +438,16 @@ impl Av1Decoder {
     }
 }
 
-impl Default for Av1Decoder {
-    fn default() -> Self {
-        Self::new().unwrap_or_else(|e| {
-            panic!("Failed to create default AV1 decoder: {}", e);
-        })
-    }
-}
+// Default trait removed - decoder initialization can fail and should be explicit
+// Users must call Av1Decoder::new() explicitly to handle potential errors
+//
+// impl Default for Av1Decoder {
+//     fn default() -> Self {
+//         Self::new().unwrap_or_else(|e| {
+//             panic!("Failed to create default AV1 decoder: {}", e);
+//         })
+//     }
+// }
 
 /// Extracts plane data from dav1d plane reference
 ///

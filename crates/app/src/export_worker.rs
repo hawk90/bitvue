@@ -48,7 +48,9 @@ pub struct ExportWorker {
 
 impl ExportWorker {
     /// Create a new export worker with background thread
-    pub fn new() -> Self {
+    ///
+    /// Returns error if thread spawning fails (e.g., system out of resources)
+    pub fn new() -> std::result::Result<Self, std::io::Error> {
         let (request_tx, request_rx) = bounded(2);
         let (result_tx, result_rx) = bounded(4);
         let request_id = Arc::new(AtomicU64::new(0));
@@ -59,14 +61,17 @@ impl ExportWorker {
             .spawn(move || {
                 Self::worker_loop(request_rx, result_tx, worker_request_id);
             })
-            .expect("Failed to spawn export worker thread");
+            .map_err(|e| {
+                tracing::error!("Failed to spawn export worker thread: {}", e);
+                e
+            })?;
 
-        Self {
+        Ok(Self {
             request_tx,
             result_rx,
             request_id,
             _thread: thread,
-        }
+        })
     }
 
     /// Background worker loop - processes export requests
@@ -172,7 +177,7 @@ impl ExportWorker {
 
 impl Default for ExportWorker {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default ExportWorker")
     }
 }
 
@@ -184,13 +189,13 @@ mod tests {
 
     #[test]
     fn test_new_worker() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         assert!(!worker.has_pending_work());
     }
 
     #[test]
     fn test_next_request_id_increments() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id();
         let id2 = worker.next_request_id();
         assert_eq!(id2, id1 + 1);
@@ -198,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_submit_and_poll_csv() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         let temp_dir = std::env::temp_dir();
         let path = temp_dir.join("test_export.csv");
 
@@ -225,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_submit_and_poll_json() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         let temp_dir = std::env::temp_dir();
         let path = temp_dir.join("test_export.json");
 
@@ -252,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_cancel_increments_request_id() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id();
         worker.cancel();
         let id2 = worker.next_request_id();
@@ -261,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_cancel_does_not_discard_requests() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         let temp_dir = std::env::temp_dir();
         let path = temp_dir.join("test_cancel.csv");
 
@@ -291,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_export_invalid_path() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         let path = PathBuf::from("/nonexistent/directory/file.csv");
 
         let request_id = worker.next_request_id();
@@ -313,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_multiple_exports() {
-        let worker = ExportWorker::new();
+        let worker = ExportWorker::new().expect("Failed to create worker");
         let temp_dir = std::env::temp_dir();
 
         let path1 = temp_dir.join("test_multi1.csv");

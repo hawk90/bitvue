@@ -104,7 +104,9 @@ pub struct ParseWorker {
 
 impl ParseWorker {
     /// Create new parse worker with background thread
-    pub fn new() -> Self {
+    ///
+    /// Returns error if thread spawning fails (e.g., system out of resources)
+    pub fn new() -> std::result::Result<Self, std::io::Error> {
         let (request_tx, request_rx) = bounded::<ParseRequest>(2);
         let (result_tx, result_rx) = bounded::<ParseResult>(2);
         let (progress_tx, progress_rx) = bounded::<ParseProgress>(10);
@@ -117,15 +119,18 @@ impl ParseWorker {
             .spawn(move || {
                 Self::worker_loop(request_rx, result_tx, progress_tx, worker_request_ids);
             })
-            .expect("Failed to spawn parse worker thread");
+            .map_err(|e| {
+                tracing::error!("Failed to spawn parse worker thread: {}", e);
+                e
+            })?;
 
-        Self {
+        Ok(Self {
             request_tx,
             result_rx,
             progress_rx,
             request_ids,
             _thread: thread,
-        }
+        })
     }
 
     /// Worker loop - processes parse requests
@@ -282,7 +287,7 @@ impl ParseWorker {
 
 impl Default for ParseWorker {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default ParseWorker")
     }
 }
 
@@ -292,12 +297,12 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let _worker = ParseWorker::new();
+        let _worker = ParseWorker::new().expect("Failed to create worker");
     }
 
     #[test]
     fn test_next_request_id_increments() {
-        let worker = ParseWorker::new();
+        let worker = ParseWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id(StreamId::A);
         let id2 = worker.next_request_id(StreamId::A);
         assert_eq!(id2, id1 + 1);
@@ -305,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_next_request_id_per_stream() {
-        let worker = ParseWorker::new();
+        let worker = ParseWorker::new().expect("Failed to create worker");
         let id_a = worker.next_request_id(StreamId::A);
         let id_b = worker.next_request_id(StreamId::B);
         // Each stream has independent counters
@@ -315,21 +320,21 @@ mod tests {
 
     #[test]
     fn test_poll_results_empty_initially() {
-        let worker = ParseWorker::new();
+        let worker = ParseWorker::new().expect("Failed to create worker");
         let results = worker.poll_results();
         assert!(results.is_empty());
     }
 
     #[test]
     fn test_poll_progress_empty_initially() {
-        let worker = ParseWorker::new();
+        let worker = ParseWorker::new().expect("Failed to create worker");
         let progress = worker.poll_progress();
         assert!(progress.is_empty());
     }
 
     #[test]
     fn test_cancel_stream_increments_request_id() {
-        let worker = ParseWorker::new();
+        let worker = ParseWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id(StreamId::A);
         worker.cancel_stream(StreamId::A);
         let id2 = worker.next_request_id(StreamId::A);
@@ -339,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_has_pending_work_false_initially() {
-        let worker = ParseWorker::new();
+        let worker = ParseWorker::new().expect("Failed to create worker");
         // Initially no pending work
         assert!(!worker.has_pending_work());
     }

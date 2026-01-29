@@ -44,7 +44,9 @@ pub struct DecodeWorker {
 
 impl DecodeWorker {
     /// Create new decode worker with background thread
-    pub fn new() -> Self {
+    ///
+    /// Returns error if thread spawning fails (e.g., system out of resources)
+    pub fn new() -> std::result::Result<Self, std::io::Error> {
         let (request_tx, request_rx) = bounded::<DecodeRequest>(4);
         let (result_tx, result_rx) = bounded::<DecodeResult>(4);
         let request_ids = Arc::new([AtomicU64::new(0), AtomicU64::new(0)]);
@@ -56,14 +58,17 @@ impl DecodeWorker {
             .spawn(move || {
                 Self::worker_loop(request_rx, result_tx, worker_request_ids);
             })
-            .expect("Failed to spawn decode worker thread - system may be out of resources");
+            .map_err(|e| {
+                tracing::error!("Failed to spawn decode worker thread: {}", e);
+                e
+            })?;
 
-        Self {
+        Ok(Self {
             request_tx,
             result_rx,
             request_ids,
             _thread: thread,
-        }
+        })
     }
 
     /// Worker loop - processes decode requests
@@ -236,7 +241,7 @@ impl DecodeWorker {
 
 impl Default for DecodeWorker {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default DecodeWorker")
     }
 }
 

@@ -70,7 +70,9 @@ pub struct ConfigWorker {
 
 impl ConfigWorker {
     /// Create a new config worker with background thread
-    pub fn new() -> Self {
+    ///
+    /// Returns error if thread spawning fails (e.g., system out of resources)
+    pub fn new() -> std::result::Result<Self, std::io::Error> {
         let (request_tx, request_rx) = bounded(4);
         let (result_tx, result_rx) = bounded(8);
         let request_id = Arc::new(AtomicU64::new(0));
@@ -81,14 +83,17 @@ impl ConfigWorker {
             .spawn(move || {
                 Self::worker_loop(request_rx, result_tx, worker_request_id);
             })
-            .expect("Failed to spawn config worker thread");
+            .map_err(|e| {
+                tracing::error!("Failed to spawn config worker thread: {}", e);
+                e
+            })?;
 
-        Self {
+        Ok(Self {
             request_tx,
             result_rx,
             request_id,
             _thread: thread,
-        }
+        })
     }
 
     /// Background worker loop - processes config requests
@@ -280,7 +285,7 @@ impl ConfigWorker {
 
 impl Default for ConfigWorker {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default ConfigWorker")
     }
 }
 
@@ -296,13 +301,13 @@ mod tests {
 
     #[test]
     fn test_new_worker() {
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
         assert!(!worker.has_pending_work());
     }
 
     #[test]
     fn test_next_request_id_increments() {
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id();
         let id2 = worker.next_request_id();
         assert_eq!(id2, id1 + 1);
@@ -319,7 +324,7 @@ mod tests {
         // Small delay to ensure files are fully deleted
         thread::sleep(Duration::from_millis(50));
 
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
 
         let test_files = vec![
             PathBuf::from("/test/file1.ivf"),
@@ -370,7 +375,7 @@ mod tests {
         // Small delay to ensure files are fully deleted
         thread::sleep(Duration::from_millis(50));
 
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
 
         let test_layout = r#"{"version": 2, "layout": "test_unique"}"#;
 
@@ -419,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_cancel_increments_request_id() {
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
         let id1 = worker.next_request_id();
         worker.cancel();
         let id2 = worker.next_request_id();
@@ -428,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_load_nonexistent_recent_files() {
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
 
         // First delete any existing recent files
         if let Ok(config_dir) = ConfigWorker::config_dir() {
@@ -455,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_cancel_does_not_discard_requests() {
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
 
         // Submit request with old ID
         let old_id = worker.next_request_id();
@@ -484,7 +489,7 @@ mod tests {
         // Small delay to ensure files are fully deleted
         thread::sleep(Duration::from_millis(50));
 
-        let worker = ConfigWorker::new();
+        let worker = ConfigWorker::new().expect("Failed to create worker");
 
         let files = vec![PathBuf::from("/test/file.ivf")];
         let layout = r#"{"test": "layout"}"#;
