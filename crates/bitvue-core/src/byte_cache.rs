@@ -177,6 +177,7 @@ impl ByteCache {
     #[allow(dead_code)]
     fn get_segment(&self, segment_idx: u64) -> Result<Bytes> {
         // Check cache first
+        // Note: LruCache::get requires &mut self to update LRU ordering
         {
             let mut cache = self.cache.write();
             if let Some(bytes) = cache.get(&segment_idx) {

@@ -114,26 +114,24 @@ fn parse_ivf(
     );
 
     // Concatenate all frame data into a single OBU stream
-    let mut obu_data = Vec::new();
+    // Pre-allocate to avoid reallocations (calculate total size)
+    let total_obu_size: usize = ivf_frames.iter().map(|f| f.data.len()).sum();
+    let mut obu_data = Vec::with_capacity(total_obu_size);
+
     let ivf_header_size = ivf_header.header_size as u64;
 
     // Track mapping from obu_data offset to file offset
     let mut obu_data_offset = 0u64;
-    let mut frame_offsets = Vec::new();
+    let mut frame_offsets = Vec::with_capacity(ivf_frames.len());
 
-    for (i, frame) in ivf_frames.iter().enumerate() {
-        // Each IVF frame has a 12-byte header before the OBU data
-        let file_offset = if i == 0 {
-            ivf_header_size + 12 // First frame
-        } else {
-            // Calculate offset based on previous frames
-            let prev_total: u64 = ivf_frames[..i].iter().map(|f| f.size as u64 + 12).sum();
-            ivf_header_size + prev_total + 12
-        };
+    // Maintain running offset to avoid O(n²) complexity
+    let mut running_file_offset = ivf_header_size + 12;
 
-        frame_offsets.push((obu_data_offset, file_offset));
+    for frame in ivf_frames.iter() {
+        frame_offsets.push((obu_data_offset, running_file_offset));
         obu_data.extend_from_slice(&frame.data);
         obu_data_offset += frame.data.len() as u64;
+        running_file_offset += frame.data.len() as u64 + 12;
     }
 
     // Parse OBUs with resilience to collect diagnostics
