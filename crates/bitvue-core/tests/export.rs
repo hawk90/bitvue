@@ -57,7 +57,7 @@ fn test_export_frames_csv() {
     let frames = create_test_frames();
     let mut output = Vec::new();
 
-    let result = export_frames_csv(&frames, &mut output, None).unwrap();
+    let result = export_frames_csv(&frames, &mut output, ExportConfig::default()).unwrap();
 
     assert_eq!(result.row_count, 3);
     assert!(result.bytes_written > 0);
@@ -73,7 +73,11 @@ fn test_export_frames_csv_with_range() {
     let frames = create_test_frames();
     let mut output = Vec::new();
 
-    let result = export_frames_csv(&frames, &mut output, Some((0, 1))).unwrap();
+    let config = ExportConfig {
+        range: Some((0, 1)),
+        ..Default::default()
+    };
+    let result = export_frames_csv(&frames, &mut output, config).unwrap();
 
     assert_eq!(result.row_count, 2); // Only frames 0 and 1
 }
@@ -83,7 +87,11 @@ fn test_export_frames_json() {
     let frames = create_test_frames();
     let mut output = Vec::new();
 
-    let result = export_frames_json(&frames, &mut output, None, true).unwrap();
+    let config = ExportConfig {
+        range: None,
+        pretty: true,
+    };
+    let result = export_frames_json(&frames, &mut output, config).unwrap();
 
     assert_eq!(result.row_count, 3);
 

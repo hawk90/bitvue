@@ -30,6 +30,38 @@ pub struct ExportResult {
     pub row_count: usize,
 }
 
+/// Export configuration options
+///
+/// Groups related export options to reduce function parameter count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExportConfig {
+    /// Optional frame range to export (start, end indices)
+    pub range: Option<(u64, u64)>,
+    /// Whether to format JSON output with pretty printing
+    pub pretty: bool,
+}
+
+impl Default for ExportConfig {
+    fn default() -> Self {
+        Self {
+            range: None,
+            pretty: false,
+        }
+    }
+}
+
+/// Quality metrics data
+///
+/// Groups related quality metric arrays for export.
+pub struct QualityMetrics<'a> {
+    /// PSNR values for Y component
+    pub psnr_y: &'a [MetricPoint],
+    /// SSIM values for Y component
+    pub ssim_y: &'a [MetricPoint],
+    /// VMAF values
+    pub vmaf: &'a [MetricPoint],
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Timeline Frame Export
 // ═══════════════════════════════════════════════════════════════════════════
@@ -70,7 +102,7 @@ impl FrameExportRow {
 pub fn export_frames_csv<W: Write>(
     frames: &[TimelineFrame],
     writer: &mut W,
-    range: Option<(u64, u64)>,
+    config: ExportConfig,
 ) -> std::io::Result<ExportResult> {
     // Header
     writeln!(
@@ -84,8 +116,8 @@ pub fn export_frames_csv<W: Write>(
     for (idx, frame) in frames.iter().enumerate() {
         let display_idx = idx as u64;
 
-        // Apply range filter
-        if let Some((start, end)) = range {
+        // Apply range filter from config
+        if let Some((start, end)) = config.range {
             if display_idx < start || display_idx > end {
                 continue;
             }
@@ -122,15 +154,14 @@ pub fn export_frames_csv<W: Write>(
 pub fn export_frames_json<W: Write>(
     frames: &[TimelineFrame],
     writer: &mut W,
-    range: Option<(u64, u64)>,
-    pretty: bool,
+    config: ExportConfig,
 ) -> std::io::Result<ExportResult> {
     let rows: Vec<FrameExportRow> = frames
         .iter()
         .enumerate()
         .filter_map(|(idx, frame)| {
             let display_idx = idx as u64;
-            if let Some((start, end)) = range {
+            if let Some((start, end)) = config.range {
                 if display_idx < start || display_idx > end {
                     return None;
                 }
@@ -141,7 +172,7 @@ pub fn export_frames_json<W: Write>(
 
     let row_count = rows.len();
 
-    let json_str = if pretty {
+    let json_str = if config.pretty {
         serde_json::to_string_pretty(&rows).map_err(std::io::Error::other)?
     } else {
         serde_json::to_string(&rows).map_err(std::io::Error::other)?
@@ -150,7 +181,7 @@ pub fn export_frames_json<W: Write>(
     let bytes_written = writer.write(json_str.as_bytes())?;
 
     Ok(ExportResult {
-        format: if pretty {
+        format: if config.pretty {
             ExportFormat::JsonPretty
         } else {
             ExportFormat::Json
@@ -179,18 +210,16 @@ pub struct MetricsExportRow {
 
 /// Export metrics to CSV
 pub fn export_metrics_csv<W: Write>(
-    psnr_y: &[MetricPoint],
-    ssim_y: &[MetricPoint],
-    vmaf: &[MetricPoint],
+    metrics: QualityMetrics,
     writer: &mut W,
 ) -> std::io::Result<ExportResult> {
     writeln!(writer, "display_idx,psnr_y,ssim_y,vmaf")?;
 
     // Build frame map
     let max_idx = [
-        psnr_y.iter().map(|p| p.idx).max().unwrap_or(0),
-        ssim_y.iter().map(|p| p.idx).max().unwrap_or(0),
-        vmaf.iter().map(|p| p.idx).max().unwrap_or(0),
+        metrics.psnr_y.iter().map(|p| p.idx).max().unwrap_or(0),
+        metrics.ssim_y.iter().map(|p| p.idx).max().unwrap_or(0),
+        metrics.vmaf.iter().map(|p| p.idx).max().unwrap_or(0),
     ]
     .into_iter()
     .max()
@@ -200,9 +229,9 @@ pub fn export_metrics_csv<W: Write>(
     let mut bytes_written = 0;
 
     for idx in 0..=max_idx {
-        let psnr_val = psnr_y.iter().find(|p| p.idx == idx).map(|p| p.value);
-        let ssim_val = ssim_y.iter().find(|p| p.idx == idx).map(|p| p.value);
-        let vmaf_val = vmaf.iter().find(|p| p.idx == idx).map(|p| p.value);
+        let psnr_val = metrics.psnr_y.iter().find(|p| p.idx == idx).map(|p| p.value);
+        let ssim_val = metrics.ssim_y.iter().find(|p| p.idx == idx).map(|p| p.value);
+        let vmaf_val = metrics.vmaf.iter().find(|p| p.idx == idx).map(|p| p.value);
 
         // Skip rows with no data
         if psnr_val.is_none() && ssim_val.is_none() && vmaf_val.is_none() {
@@ -1698,7 +1727,7 @@ mod tests {
         ];
 
         let mut output = Vec::new();
-        let result = export_frames_csv(&frames, &mut output, None).unwrap();
+        let result = export_frames_csv(&frames, &mut output, ExportConfig::default()).unwrap();
 
         assert_eq!(result.format, ExportFormat::Csv);
         assert_eq!(result.row_count, 3);
@@ -1719,8 +1748,12 @@ mod tests {
             create_test_frame(3, "P", 800, FrameMarker::None),
         ];
 
+        let config = ExportConfig {
+            range: Some((1, 2)),
+            ..Default::default()
+        };
         let mut output = Vec::new();
-        let result = export_frames_csv(&frames, &mut output, Some((1, 2))).unwrap();
+        let result = export_frames_csv(&frames, &mut output, config).unwrap();
 
         assert_eq!(result.row_count, 2);
 
@@ -1736,7 +1769,7 @@ mod tests {
         let frames: Vec<TimelineFrame> = vec![];
 
         let mut output = Vec::new();
-        let result = export_frames_csv(&frames, &mut output, None).unwrap();
+        let result = export_frames_csv(&frames, &mut output, ExportConfig::default()).unwrap();
 
         assert_eq!(result.row_count, 0);
 
@@ -1753,7 +1786,7 @@ mod tests {
         ];
 
         let mut output = Vec::new();
-        let result = export_frames_json(&frames, &mut output, None, false).unwrap();
+        let result = export_frames_json(&frames, &mut output, ExportConfig::default()).unwrap();
 
         assert_eq!(result.format, ExportFormat::Json);
         assert_eq!(result.row_count, 2);
@@ -1767,8 +1800,12 @@ mod tests {
     fn test_export_frames_json_pretty() {
         let frames = vec![create_test_frame(0, "KEY", 5000, FrameMarker::Key)];
 
+        let config = ExportConfig {
+            range: None,
+            pretty: true,
+        };
         let mut output = Vec::new();
-        let result = export_frames_json(&frames, &mut output, None, true).unwrap();
+        let result = export_frames_json(&frames, &mut output, config).unwrap();
 
         assert_eq!(result.format, ExportFormat::JsonPretty);
 
@@ -1801,8 +1838,13 @@ mod tests {
         ];
         let vmaf: Vec<MetricPoint> = vec![];
 
+        let metrics = QualityMetrics {
+            psnr_y: &psnr,
+            ssim_y: &ssim,
+            vmaf: &vmaf,
+        };
         let mut output = Vec::new();
-        let result = export_metrics_csv(&psnr, &ssim, &vmaf, &mut output).unwrap();
+        let result = export_metrics_csv(metrics, &mut output).unwrap();
 
         assert_eq!(result.format, ExportFormat::Csv);
         assert_eq!(result.row_count, 2);
@@ -1818,8 +1860,13 @@ mod tests {
         let ssim: Vec<MetricPoint> = vec![];
         let vmaf: Vec<MetricPoint> = vec![];
 
+        let metrics = QualityMetrics {
+            psnr_y: &psnr,
+            ssim_y: &ssim,
+            vmaf: &vmaf,
+        };
         let mut output = Vec::new();
-        let result = export_metrics_csv(&psnr, &ssim, &vmaf, &mut output).unwrap();
+        let result = export_metrics_csv(metrics, &mut output).unwrap();
 
         assert_eq!(result.row_count, 0);
     }

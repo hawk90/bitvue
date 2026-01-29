@@ -191,7 +191,7 @@ mod csv_export_tests {
     fn test_export_frames_csv_basic() {
         let frames = create_test_frames();
         let mut output = Vec::new();
-        let result = export_frames_csv(&frames, &mut output, None).unwrap();
+        let result = export_frames_csv(&frames, &mut output, ExportConfig::default()).unwrap();
 
         assert_eq!(result.format, ExportFormat::Csv);
         assert_eq!(result.row_count, 3);
@@ -207,7 +207,11 @@ mod csv_export_tests {
     fn test_export_frames_csv_with_range() {
         let frames = create_test_frames();
         let mut output = Vec::new();
-        let result = export_frames_csv(&frames, &mut output, Some((1, 2))).unwrap();
+        let config = ExportConfig {
+            range: Some((1, 2)),
+            ..Default::default()
+        };
+        let result = export_frames_csv(&frames, &mut output, config).unwrap();
 
         assert_eq!(result.row_count, 2);
 
@@ -221,7 +225,7 @@ mod csv_export_tests {
     fn test_export_frames_csv_empty() {
         let frames: Vec<crate::timeline::TimelineFrame> = vec![];
         let mut output = Vec::new();
-        let result = export_frames_csv(&frames, &mut output, None).unwrap();
+        let result = export_frames_csv(&frames, &mut output, ExportConfig::default()).unwrap();
 
         assert_eq!(result.row_count, 0);
 
@@ -233,7 +237,7 @@ mod csv_export_tests {
     fn test_export_frames_csv_bytes_written() {
         let frames = create_test_frames();
         let mut output = Vec::new();
-        let result = export_frames_csv(&frames, &mut output, None).unwrap();
+        let result = export_frames_csv(&frames, &mut output, ExportConfig::default()).unwrap();
 
         assert!(result.bytes_written > 0);
     }
@@ -242,7 +246,12 @@ mod csv_export_tests {
     fn test_export_metrics_csv_basic() {
         let (psnr, ssim, vmaf) = create_test_metrics();
         let mut output = Vec::new();
-        let result = export_metrics_csv(&psnr, &ssim, &vmaf, &mut output).unwrap();
+        let metrics = QualityMetrics {
+            psnr_y: &psnr,
+            ssim_y: &ssim,
+            vmaf: &vmaf,
+        };
+        let result = export_metrics_csv(metrics, &mut output).unwrap();
 
         assert_eq!(result.format, ExportFormat::Csv);
         assert_eq!(result.row_count, 3);
@@ -259,7 +268,12 @@ mod csv_export_tests {
         let vmaf: Vec<crate::metrics_distribution::MetricPoint> = vec![];
 
         let mut output = Vec::new();
-        let result = export_metrics_csv(&psnr, &ssim, &vmaf, &mut output).unwrap();
+        let metrics = QualityMetrics {
+            psnr_y: &psnr,
+            ssim_y: &ssim,
+            vmaf: &vmaf,
+        };
+        let result = export_metrics_csv(metrics, &mut output).unwrap();
 
         assert_eq!(result.row_count, 0);
     }
@@ -323,7 +337,7 @@ mod json_export_tests {
     fn test_export_frames_json_basic() {
         let frames = create_test_frames();
         let mut output = Vec::new();
-        let result = export_frames_json(&frames, &mut output, None, false).unwrap();
+        let result = export_frames_json(&frames, &mut output, ExportConfig::default()).unwrap();
 
         assert_eq!(result.format, ExportFormat::Json);
         assert_eq!(result.row_count, 3);  // create_test_frames creates 3 frames
@@ -337,7 +351,11 @@ mod json_export_tests {
     fn test_export_frames_json_pretty() {
         let frames = create_test_frames();
         let mut output = Vec::new();
-        let result = export_frames_json(&frames, &mut output, None, true).unwrap();
+        let config = ExportConfig {
+            range: None,
+            pretty: true,
+        };
+        let result = export_frames_json(&frames, &mut output, config).unwrap();
 
         assert_eq!(result.format, ExportFormat::JsonPretty);
 
