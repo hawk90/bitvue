@@ -12,6 +12,7 @@ pub mod bitreader;
 pub mod codec_error;
 pub mod error;
 pub mod frame;
+pub mod limits;
 pub mod qp_extraction;
 pub mod types;
 
