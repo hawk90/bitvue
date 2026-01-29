@@ -578,6 +578,9 @@ impl Clone for FrameModel {
 ///
 /// Refactored from god object to use composition.
 /// Public fields maintained for backward compatibility.
+///
+/// Plane data is wrapped in Arc for efficient cloning and sharing
+/// with DecodedFrame, avoiding expensive memory copies.
 #[derive(Debug, Clone)]
 pub struct CachedFrame {
     /// Frame index
@@ -599,14 +602,14 @@ pub struct CachedFrame {
     pub error: Option<String>,
 
     // YUV plane data (Phase 2 - for YuvViewerPanel)
-    /// Y plane data (luma)
-    pub y_plane: Option<Vec<u8>>,
+    /// Y plane data (luma) - Arc-wrapped for cheap cloning from DecodedFrame
+    pub y_plane: Option<std::sync::Arc<Vec<u8>>>,
 
-    /// U plane data (chroma Cb) - may be subsampled
-    pub u_plane: Option<Vec<u8>>,
+    /// U plane data (chroma Cb) - may be subsampled, Arc-wrapped for cheap cloning
+    pub u_plane: Option<std::sync::Arc<Vec<u8>>>,
 
-    /// V plane data (chroma Cr) - may be subsampled
-    pub v_plane: Option<Vec<u8>>,
+    /// V plane data (chroma Cr) - may be subsampled, Arc-wrapped for cheap cloning
+    pub v_plane: Option<std::sync::Arc<Vec<u8>>>,
 
     /// Chroma width (may differ from width for 4:2:0/4:2:2)
     pub chroma_width: Option<u32>,
@@ -782,14 +785,14 @@ impl FrameRgbData {
 /// separated from metadata and RGB data.
 #[derive(Debug, Clone, Default)]
 pub struct FrameYuvData {
-    /// Y plane data (luma)
-    pub y_plane: Option<Vec<u8>>,
+    /// Y plane data (luma) - Arc-wrapped for cheap cloning
+    pub y_plane: Option<std::sync::Arc<Vec<u8>>>,
 
-    /// U plane data (chroma Cb) - may be subsampled
-    pub u_plane: Option<Vec<u8>>,
+    /// U plane data (chroma Cb) - may be subsampled, Arc-wrapped for cheap cloning
+    pub u_plane: Option<std::sync::Arc<Vec<u8>>>,
 
-    /// V plane data (chroma Cr) - may be subsampled
-    pub v_plane: Option<Vec<u8>>,
+    /// V plane data (chroma Cr) - may be subsampled, Arc-wrapped for cheap cloning
+    pub v_plane: Option<std::sync::Arc<Vec<u8>>>,
 
     /// Chroma width (may differ from width for 4:2:0/4:2:2)
     pub chroma_width: Option<u32>,

@@ -6,6 +6,7 @@ use crate::decoder::DecodedFrame;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Allowed file extensions for YUV files
@@ -346,9 +347,9 @@ impl YuvLoader {
             width: self.params.width,
             height: self.params.height,
             bit_depth: self.params.bit_depth.bits(),
-            y_plane,
+            y_plane: Arc::new(y_plane),
             y_stride: self.params.width as usize,
-            u_plane,
+            u_plane: u_plane.map(Arc::new),
             u_stride: match self.params.chroma_subsampling {
                 ChromaSubsampling::Yuv420 | ChromaSubsampling::Yuv422 => {
                     (self.params.width / 2) as usize
@@ -356,7 +357,7 @@ impl YuvLoader {
                 ChromaSubsampling::Yuv444 => self.params.width as usize,
                 ChromaSubsampling::Mono => 0,
             },
-            v_plane,
+            v_plane: v_plane.map(Arc::new),
             v_stride: match self.params.chroma_subsampling {
                 ChromaSubsampling::Yuv420 | ChromaSubsampling::Yuv422 => {
                     (self.params.width / 2) as usize

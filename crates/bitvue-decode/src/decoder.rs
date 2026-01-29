@@ -1,6 +1,7 @@
 //! AV1 decoder wrapper using dav1d
 
 use dav1d::{Decoder, PlanarImageComponent};
+use std::sync::Arc;
 use thiserror::Error;
 use tracing::{debug, error, warn};
 
@@ -23,6 +24,9 @@ pub enum DecodeError {
 pub type Result<T> = std::result::Result<T, DecodeError>;
 
 /// A decoded video frame
+///
+/// Plane data is wrapped in Arc for efficient cloning.
+/// Multiple frames can share the same data without copying.
 #[derive(Debug, Clone)]
 pub struct DecodedFrame {
     /// Frame width in pixels
@@ -31,16 +35,16 @@ pub struct DecodedFrame {
     pub height: u32,
     /// Bit depth (8, 10, or 12)
     pub bit_depth: u8,
-    /// Y plane data
-    pub y_plane: Vec<u8>,
+    /// Y plane data (Arc-wrapped for cheap cloning)
+    pub y_plane: Arc<Vec<u8>>,
     /// Y plane stride
     pub y_stride: usize,
-    /// U plane data (None for monochrome)
-    pub u_plane: Option<Vec<u8>>,
+    /// U plane data (None for monochrome, Arc-wrapped for cheap cloning)
+    pub u_plane: Option<Arc<Vec<u8>>>,
     /// U plane stride
     pub u_stride: usize,
-    /// V plane data (None for monochrome)
-    pub v_plane: Option<Vec<u8>>,
+    /// V plane data (None for monochrome, Arc-wrapped for cheap cloning)
+    pub v_plane: Option<Arc<Vec<u8>>>,
     /// V plane stride
     pub v_stride: usize,
     /// Frame timestamp
@@ -278,11 +282,11 @@ impl Av1Decoder {
             width,
             height,
             bit_depth,
-            y_plane,
+            y_plane: Arc::new(y_plane),
             y_stride,
-            u_plane,
+            u_plane: u_plane.map(Arc::new),
             u_stride,
-            v_plane,
+            v_plane: v_plane.map(Arc::new),
             v_stride,
             timestamp: picture.timestamp().unwrap_or(0),
             frame_type,
