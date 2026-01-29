@@ -24,6 +24,9 @@ members = [
     # Legacy (will be migrated/removed)
     "crates/bitvue-av1",       # Will be moved into codecs/
     "crates/bitvue-cli",       # CLI (keep for now)
+
+    # Development tools
+    "crates/bitvue-benchmarks", # Criterion-based performance benchmarks
 ]
 
 [workspace.package]

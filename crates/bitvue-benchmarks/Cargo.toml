@@ -1,0 +1,24 @@
+[package]
+name = "bitvue-benchmarks"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dev-dependencies]
+criterion = "0.5"
+
+bitvue-core = { path = "../bitvue-core" }
+bitvue-av1 = { path = "../bitvue-av1" }
+bitvue-formats = { path = "../bitvue-formats" }
+
+[[bench]]
+name = "bitreader"
+harness = false
+
+[[bench]]
+name = "export"
+harness = false
+
+[[bench]]
+name = "magic_bytes"
+harness = false
