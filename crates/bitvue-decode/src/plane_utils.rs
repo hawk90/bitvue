@@ -103,6 +103,103 @@ impl PlaneConfig {
     }
 }
 
+/// Extract contiguous plane data (fast path)
+#[inline]
+fn extract_contiguous(source: &[u8], expected_size: usize, bit_depth: u8) -> Result<Vec<u8>> {
+    if expected_size <= source.len() {
+        Ok(source[..expected_size].to_vec())
+    } else {
+        Err(DecodeError::Decode(format!(
+            "Contiguous plane data exceeds bounds ({} > {}), bit_depth={}",
+            expected_size,
+            source.len(),
+            bit_depth
+        )))
+    }
+}
+
+/// Extract plane data into existing buffer (zero-allocation)
+///
+/// This is a performance optimization that reuses an existing buffer
+/// instead of allocating a new one. Useful for hot paths.
+///
+/// # Arguments
+///
+/// * `source` - Source slice containing plane data
+/// * `config` - Plane configuration
+/// * `dest` - Destination buffer (must be large enough)
+///
+/// # Returns
+///
+/// The number of bytes written to dest.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Destination buffer is too small
+/// - Source data is insufficient
+/// - Plane dimensions cause overflow
+pub fn extract_plane_into(source: &[u8], config: PlaneConfig, dest: &mut [u8]) -> Result<usize> {
+    // Validate configuration
+    config.validate_size()?;
+
+    let expected_size = config.expected_size()?;
+    let row_bytes = config.row_bytes();
+
+    // Validate destination buffer size
+    if dest.len() < expected_size {
+        return Err(DecodeError::Decode(format!(
+            "Destination buffer too small: {} < {}",
+            dest.len(),
+            expected_size
+        )));
+    }
+
+    // Fast path: contiguous data - single copy
+    if config.is_contiguous() {
+        if expected_size > source.len() {
+            return Err(DecodeError::Decode(format!(
+                "Contiguous plane data exceeds bounds ({} > {}), bit_depth={}",
+                expected_size,
+                source.len(),
+                config.bit_depth
+            )));
+        }
+        dest[..expected_size].copy_from_slice(&source[..expected_size]);
+        return Ok(expected_size);
+    }
+
+    // Slow path: strided data - copy row by row
+    let mut offset = 0;
+    for row in 0..config.height {
+        let start = row
+            .checked_mul(config.stride)
+            .ok_or_else(|| DecodeError::Decode(format!(
+                "Row offset overflow at row {}",
+                row
+            )))?;
+
+        let end = start
+            .checked_add(row_bytes)
+            .ok_or_else(|| DecodeError::Decode(format!(
+                "Row end offset overflow at row {}",
+                row
+            )))?;
+
+        if end > source.len() {
+            return Err(DecodeError::Decode(format!(
+                "Plane access out of bounds: row={}, end={}, source_len={}",
+                row, end, source.len()
+            )));
+        }
+
+        dest[offset..offset + row_bytes].copy_from_slice(&source[start..end]);
+        offset += row_bytes;
+    }
+
+    Ok(expected_size)
+}
+
 /// Extract plane data from a slice with stride handling
 ///
 /// Optimized for contiguous data (stride == row_bytes) with single-copy fast path.
@@ -132,16 +229,7 @@ pub fn extract_plane(source: &[u8], config: PlaneConfig) -> Result<Vec<u8>> {
 
     // Fast path: contiguous data (stride == row_bytes) - single copy
     if config.is_contiguous() {
-        if expected_size <= source.len() {
-            return Ok(source[..expected_size].to_vec());
-        } else {
-            return Err(DecodeError::Decode(format!(
-                "Contiguous plane data exceeds bounds ({} > {}), bit_depth={}",
-                expected_size,
-                source.len(),
-                config.bit_depth
-            )));
-        }
+        return extract_contiguous(source, expected_size, config.bit_depth);
     }
 
     // Slow path: strided data - copy row by row
@@ -331,5 +419,48 @@ mod tests {
     fn test_validate_dimensions_exceeds() {
         assert!(validate_dimensions(8000, 1080).is_err());
         assert!(validate_dimensions(1920, 8000).is_err());
+    }
+
+    #[test]
+    fn test_extract_plane_into_contiguous() {
+        let source = vec![42u8; 1920 * 1080];
+        let config = PlaneConfig::new(1920, 1080, 1920, 8).unwrap();
+        let mut dest = vec![0u8; 1920 * 1080];
+
+        let written = extract_plane_into(&source, config, &mut dest).unwrap();
+
+        assert_eq!(written, 1920 * 1080);
+        assert_eq!(dest[0], 42);
+        assert_eq!(dest[100], 42);
+    }
+
+    #[test]
+    fn test_extract_plane_into_strided() {
+        // Create strided data: 4x4 with stride 8
+        let mut source = vec![0u8; 8 * 4];
+        for row in 0..4 {
+            for col in 0..4 {
+                source[row * 8 + col] = (row * 4 + col) as u8;
+            }
+        }
+
+        let config = PlaneConfig::new(4, 4, 8, 8).unwrap();
+        let mut dest = vec![0u8; 16];
+
+        let written = extract_plane_into(&source, config, &mut dest).unwrap();
+
+        assert_eq!(written, 16);
+        assert_eq!(dest[0], 0);
+        assert_eq!(dest[4], 4);
+        assert_eq!(dest[8], 8);
+    }
+
+    #[test]
+    fn test_extract_plane_into_buffer_too_small() {
+        let source = vec![42u8; 1920 * 1080];
+        let config = PlaneConfig::new(1920, 1080, 1920, 8).unwrap();
+        let mut dest = vec![0u8; 100]; // Too small
+
+        assert!(extract_plane_into(&source, config, &mut dest).is_err());
     }
 }

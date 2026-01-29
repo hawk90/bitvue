@@ -43,22 +43,41 @@ impl YuvConversionStrategy for ScalarStrategy {
         // Validate inputs
         self.validate_yuv420_params(y_plane, u_plane, v_plane, width, height, rgb, bit_depth)?;
 
-        // Convert pixel by pixel
-        for y in 0..height {
-            for x in 0..width {
-                let y_idx = y * width + x;
-                let uv_idx = (y / 2) * (width / 2) + (x / 2);
+        // Process in 2x2 blocks for better cache locality and reduced UV lookups
+        // YUV420 has 1 UV sample per 2x2 Y samples
+        let uv_width = width / 2;
 
-                let y_val = read_sample(y_plane, y_idx, bit_depth);
+        for block_y in (0..height).step_by(2) {
+            for block_x in (0..width).step_by(2) {
+                // Read UV sample once for 2x2 block
+                let uv_idx = (block_y / 2) * uv_width + (block_x / 2);
                 let u_val = read_sample(u_plane, uv_idx, bit_depth);
                 let v_val = read_sample(v_plane, uv_idx, bit_depth);
 
-                let (r, g, b) = yuv_to_rgb_pixel_u8(y_val, u_val, v_val);
+                // Process 2x2 block of Y samples with same UV
+                for dy in 0..2 {
+                    let y = block_y + dy;
+                    if y >= height {
+                        break;
+                    }
 
-                let rgb_idx = y_idx * 3;
-                rgb[rgb_idx] = r;
-                rgb[rgb_idx + 1] = g;
-                rgb[rgb_idx + 2] = b;
+                    for dx in 0..2 {
+                        let x = block_x + dx;
+                        if x >= width {
+                            continue;
+                        }
+
+                        let y_idx = y * width + x;
+                        let y_val = read_sample(y_plane, y_idx, bit_depth);
+
+                        let (r, g, b) = yuv_to_rgb_pixel_u8(y_val, u_val, v_val);
+
+                        let rgb_idx = y_idx * 3;
+                        rgb[rgb_idx] = r;
+                        rgb[rgb_idx + 1] = g;
+                        rgb[rgb_idx + 2] = b;
+                    }
+                }
             }
         }
 
