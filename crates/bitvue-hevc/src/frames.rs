@@ -466,18 +466,18 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
             offset: frame.offset as u64,
             size: frame.size,
         },
-        unit_type: "FRAME".to_string(),
+        unit_type: std::sync::Arc::from("FRAME"),
         offset: frame.offset as u64,
         size: frame.size,
         frame_index: Some(frame.frame_index),
-        frame_type: Some(frame.frame_type.as_str().to_string()),
+        frame_type: Some(std::sync::Arc::from(frame.frame_type.as_str())),
         pts: Some(frame.poc as u64),
         dts: None,
-        display_name: format!(
+        display_name: std::sync::Arc::from(format!(
             "Frame {} ({})",
             frame.frame_index,
             frame.frame_type.as_str()
-        ),
+        )),
         children: Vec::new(),
         qp_avg,
         mv_grid: None, // TODO: Extract from slice data

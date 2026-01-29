@@ -32,10 +32,10 @@ fn create_test_unit_key() -> crate::UnitKey {
 fn create_test_unit_header() -> UnitHeader {
     UnitHeader {
         key: create_test_unit_key(),
-        unit_type: "OBU_FRAME".to_string(),
+        unit_type: std::sync::Arc::from("OBU_FRAME"),
         offset: 1000,
         size: 500,
-        display_name: "Frame OBU".to_string(),
+        display_name: std::sync::Arc::from("Frame OBU"),
     }
 }
 
@@ -43,7 +43,7 @@ fn create_test_unit_header() -> UnitHeader {
 fn create_test_frame_info() -> FrameInfo {
     FrameInfo {
         frame_index: Some(10),
-        frame_type: Some("KEY".to_string()),
+        frame_type: Some(std::sync::Arc::from("KEY")),
         pts: Some(100),
         dts: Some(90),
         temporal_id: Some(0),
@@ -92,9 +92,9 @@ fn create_test_cached_frame_yuv(index: usize, width: u32, height: u32) -> Cached
         rgb_data: vec![],
         decoded: true,
         error: None,
-        y_plane: Some(vec![0u8; y_size]),
-        u_plane: Some(vec![0u8; uv_size]),
-        v_plane: Some(vec![0u8; uv_size]),
+        y_plane: Some(std::sync::Arc::new(vec![0u8; y_size])),
+        u_plane: Some(std::sync::Arc::new(vec![0u8; uv_size])),
+        v_plane: Some(std::sync::Arc::new(vec![0u8; uv_size])),
         chroma_width: Some(chroma_width),
         chroma_height: Some(chroma_height),
     }
@@ -140,10 +140,10 @@ mod unit_node_tests {
 
         // Assert
         assert_eq!(header.key.stream, StreamId::A);
-        assert_eq!(header.unit_type, "OBU_FRAME");
+        assert_eq!(&*header.unit_type, "OBU_FRAME");
         assert_eq!(header.offset, 1000);
         assert_eq!(header.size, 500);
-        assert_eq!(header.display_name, "OBU_FRAME @ 0x000003E8");
+        assert_eq!(&*header.display_name, "OBU_FRAME @ 0x000003E8");
     }
 
     #[test]
@@ -156,7 +156,7 @@ mod unit_node_tests {
             500,
         );
         unit.frame_index = Some(10);
-        unit.frame_type = Some("KEY".to_string());
+        unit.frame_type = Some(std::sync::Arc::from("KEY"));
         unit.pts = Some(100);
         unit.dts = Some(90);
         unit.temporal_id = Some(0);
@@ -166,7 +166,8 @@ mod unit_node_tests {
 
         // Assert
         assert_eq!(frame_info.frame_index, Some(10));
-        assert_eq!(frame_info.frame_type, Some("KEY".to_string()));
+        assert_eq!(frame_info.frame_type, Some(std::sync::Arc::from("KEY")));
+    assert_eq!(&*frame_info.frame_type.unwrap(), "KEY");
         assert_eq!(frame_info.pts, Some(100));
         assert_eq!(frame_info.dts, Some(90));
         assert_eq!(frame_info.temporal_id, Some(0));
@@ -248,7 +249,8 @@ mod unit_node_tests {
         // Assert
         assert_eq!(unit.key.stream, StreamId::A);
         assert_eq!(unit.frame_index, Some(10));
-        assert_eq!(unit.frame_type, Some("KEY".to_string()));
+        assert_eq!(unit.frame_type, Some(std::sync::Arc::from("KEY")));
+        assert_eq!(&*unit.frame_type.unwrap(), "KEY");
         assert_eq!(unit.qp_avg, Some(30));
     }
 
@@ -268,7 +270,8 @@ mod unit_node_tests {
 
         // Assert
         assert_eq!(updated.frame_index, Some(10));
-        assert_eq!(updated.frame_type, Some("KEY".to_string()));
+        assert_eq!(updated.frame_type, Some(std::sync::Arc::from("KEY")));
+        assert_eq!(&*updated.frame_type.unwrap(), "KEY");
         assert_eq!(updated.pts, Some(100));
     }
 
@@ -341,17 +344,17 @@ mod unit_header_tests {
         // Arrange & Act
         let header = UnitHeader {
             key: create_test_unit_key(),
-            unit_type: "OBU_FRAME".to_string(),
+            unit_type: std::sync::Arc::from("OBU_FRAME"),
             offset: 1000,
             size: 500,
-            display_name: "Frame OBU".to_string(),
+            display_name: std::sync::Arc::from("Frame OBU"),
         };
 
         // Assert
-        assert_eq!(header.unit_type, "OBU_FRAME");
+        assert_eq!(&*header.unit_type, "OBU_FRAME");
         assert_eq!(header.offset, 1000);
         assert_eq!(header.size, 500);
-        assert_eq!(header.display_name, "Frame OBU");
+        assert_eq!(&*header.display_name, "Frame OBU");
     }
 
     #[test]
@@ -370,7 +373,7 @@ mod unit_header_tests {
         // Assert
         assert_eq!(header.offset, 2000);
         assert_eq!(header.size, 1000);
-        assert_eq!(header.display_name, "OBU_FRAME @ 0x000007D0");
+        assert_eq!(&*header.display_name, "OBU_FRAME @ 0x000007D0");
     }
 }
 
@@ -387,7 +390,7 @@ mod frame_info_tests {
         // Arrange & Act
         let frame_info = FrameInfo {
             frame_index: Some(10),
-            frame_type: Some("KEY".to_string()),
+            frame_type: Some(std::sync::Arc::from("KEY")),
             pts: Some(100),
             dts: Some(90),
             temporal_id: Some(0),
@@ -395,7 +398,8 @@ mod frame_info_tests {
 
         // Assert
         assert_eq!(frame_info.frame_index, Some(10));
-        assert_eq!(frame_info.frame_type, Some("KEY".to_string()));
+        assert_eq!(frame_info.frame_type, Some(std::sync::Arc::from("KEY")));
+    assert_eq!(&*frame_info.frame_type.unwrap(), "KEY");
         assert_eq!(frame_info.pts, Some(100));
         assert_eq!(frame_info.dts, Some(90));
         assert_eq!(frame_info.temporal_id, Some(0));
@@ -430,7 +434,7 @@ mod frame_info_tests {
             500,
         );
         unit.frame_index = Some(5);
-        unit.frame_type = Some("INTER".to_string());
+        unit.frame_type = Some(std::sync::Arc::from("INTER"));
         unit.pts = Some(50);
         unit.dts = Some(40);
         unit.temporal_id = Some(1);
@@ -440,7 +444,7 @@ mod frame_info_tests {
 
         // Assert
         assert_eq!(frame_info.frame_index, Some(5));
-        assert_eq!(frame_info.frame_type, Some("INTER".to_string()));
+        assert_eq!(frame_info.frame_type, Some(std::sync::Arc::from("INTER")));
     }
 }
 
@@ -714,9 +718,9 @@ mod frame_yuv_data_tests {
     fn test_frame_yuv_data_complete() {
         // Arrange & Act
         let yuv_data = FrameYuvData {
-            y_plane: Some(vec![0u8; 100 * 100]),
-            u_plane: Some(vec![0u8; 50 * 50]),
-            v_plane: Some(vec![0u8; 50 * 50]),
+            y_plane: Some(std::sync::Arc::new(vec![0u8; 100 * 100])),
+            u_plane: Some(std::sync::Arc::new(vec![0u8; 50 * 50])),
+            v_plane: Some(std::sync::Arc::new(vec![0u8; 50 * 50])),
             chroma_width: Some(50),
             chroma_height: Some(50),
         };
@@ -733,7 +737,7 @@ mod frame_yuv_data_tests {
     fn test_frame_yuv_data_y_only() {
         // Arrange & Act
         let yuv_data = FrameYuvData {
-            y_plane: Some(vec![0u8; 100 * 100]),
+            y_plane: Some(std::sync::Arc::new(vec![0u8; 100 * 100])),
             u_plane: None,
             v_plane: None,
             chroma_width: None,

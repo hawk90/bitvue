@@ -521,12 +521,12 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
         // Create unit for this frame
         let mut unit = UnitNode::new(stream_id, "FRAME".to_string(), frame_start, frame_size + 12);
         unit.frame_index = Some(frame_index);
-        unit.frame_type = Some(frame_type_str.clone());
+        unit.frame_type = Some(std::sync::Arc::from(frame_type_str.as_str()));
         unit.pts = Some(timestamp_ns);
-        unit.display_name = format!(
+        unit.display_name = std::sync::Arc::from(format!(
             "Frame {} @ 0x{:08X} ({} bytes)",
             frame_index, frame_start, frame_size
-        );
+        ));
 
         // Store reference frame indices and QP if available
         if let Ok(fh) = &frame_header {
@@ -692,7 +692,7 @@ fn analyze_frame(args: Value, state: &AppState) -> Result<String> {
         "stream": if stream_id == StreamId::A { "A" } else { "B" },
         "file": path.to_string_lossy(),
         "unit_type": frame.unit_type.clone(),
-        "frame_type": frame.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+        "frame_type": frame.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
         "offset": frame.offset,
         "size": frame.size,
         "pts": frame.pts,
@@ -768,7 +768,7 @@ fn get_motion_vectors(args: Value, state: &AppState) -> Result<String> {
 
     Ok(json!({
         "frame_index": frame_index,
-        "frame_type": frame.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+        "frame_type": frame.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
         "ref_frames": ref_idx,
         "note": "Motion vector extraction requires bitstream-level parsing. Currently showing reference frame indices."
     }).to_string())
@@ -829,14 +829,14 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
                 "frame_index": frame_index,
                 "stream_a": {
                     "file": path_a.to_string_lossy(),
-                    "type": fa.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+                    "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
                     "size": fa.size,
                     "qp": qp_a,
                     "offset": fa.offset
                 },
                 "stream_b": {
                     "file": path_b.to_string_lossy(),
-                    "type": fb.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+                    "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
                     "size": fb.size,
                     "qp": qp_b,
                     "offset": fb.offset
@@ -858,7 +858,7 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
         (Some(fa), None) => Ok(json!({
             "message": format!("Frame {} exists in Stream A but not in Stream B", frame_index),
             "stream_a": {
-                "type": fa.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+                "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
                 "size": fa.size
             }
         })
@@ -866,7 +866,7 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
         (None, Some(fb)) => Ok(json!({
             "message": format!("Frame {} exists in Stream B but not in Stream A", frame_index),
             "stream_b": {
-                "type": fb.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+                "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
                 "size": fb.size
             }
         })
@@ -894,7 +894,7 @@ fn get_gop_structure(args: Value, state: &AppState) -> Result<String> {
         .map(|u| {
             json!({
                 "frame_index": u.frame_index,
-                "type": u.frame_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+                "type": u.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
                 "size": u.size,
                 "qp": u.qp_avg,
                 "pts": u.pts,
@@ -1029,7 +1029,7 @@ fn search_syntax(args: Value, state: &AppState) -> Result<String> {
         }
 
         let frame_idx = unit.frame_index;
-        let ftype = unit.frame_type.as_ref().map(|s| s.as_str());
+        let ftype = unit.frame_type.as_ref().map(|s| &**s);
 
         // Apply filters
         if let Some(filter) = frame_type_filter {

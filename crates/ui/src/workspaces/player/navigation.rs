@@ -103,7 +103,7 @@ impl NavigationManager {
     /// Recursively find frame by index
     fn find_frame_recursive(units: &[UnitNode], frame_index: usize) -> Option<&UnitNode> {
         for unit in units {
-            if unit.unit_type == "FRAME" {
+            if &*unit.unit_type == "FRAME" {
                 if unit.frame_index == Some(frame_index) {
                     return Some(unit);
                 }

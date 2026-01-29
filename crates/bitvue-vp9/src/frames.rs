@@ -241,18 +241,18 @@ pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
             offset: frame.offset as u64,
             size: frame.size,
         },
-        unit_type: "FRAME".to_string(),
+        unit_type: std::sync::Arc::from("FRAME"),
         offset: frame.offset as u64,
         size: frame.size,
         frame_index: Some(frame.frame_index),
-        frame_type: Some(frame.frame_type.as_str().to_string()),
+        frame_type: Some(std::sync::Arc::from(frame.frame_type.as_str())),
         pts: Some(frame.frame_index as u64),
         dts: None,
-        display_name: format!(
+        display_name: std::sync::Arc::from(format!(
             "Frame {} ({})",
             frame.frame_index,
             frame.frame_type.as_str()
-        ),
+        )),
         children: Vec::new(),
         qp_avg,
         mv_grid: None,

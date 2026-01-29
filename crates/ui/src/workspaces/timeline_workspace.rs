@@ -911,11 +911,11 @@ fn collect_frames(units: &[UnitNode]) -> Vec<FrameInfo> {
                 let frame_type = unit.frame_type.clone().unwrap_or_else(|| {
                     // Fallback heuristic: frame 0 is usually a KEY frame, rest are INTER
                     if frame_idx == 0 {
-                        "KEY".to_string()
+                        std::sync::Arc::from("KEY")
                     } else {
-                        "INTER".to_string()
+                        std::sync::Arc::from("INTER")
                     }
-                });
+                }).to_string();
 
                 frames.push(FrameInfo {
                     frame_index: frame_idx,

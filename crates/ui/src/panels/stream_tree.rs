@@ -189,7 +189,7 @@ impl StreamTreePanel {
 
     fn render_unit_node(&self, ui: &mut egui::Ui, unit: &UnitNode, _idx: usize) -> Option<Command> {
         // Color code based on unit type
-        let color = match unit.unit_type.as_str() {
+        let color = match &*unit.unit_type {
             "SEQUENCE_HEADER" => egui::Color32::from_rgb(100, 200, 100),
             "FRAME" | "FRAME_HEADER" => egui::Color32::from_rgb(100, 150, 255),
             "TILE_GROUP" => egui::Color32::from_rgb(200, 150, 100),
@@ -201,7 +201,7 @@ impl StreamTreePanel {
         let icon = if unit.frame_index.is_some() {
             "[F]"
         } else {
-            match unit.unit_type.as_str() {
+            match &*unit.unit_type {
                 "SEQUENCE_HEADER" => "[S]",
                 "TEMPORAL_DELIMITER" => "[T]",
                 "METADATA" => "[M]",

@@ -116,7 +116,8 @@ fn collect_frame_info_recursive(
                 frame_type: unit
                     .frame_type
                     .clone()
-                    .unwrap_or_else(|| "UNKNOWN".to_string()),
+                    .unwrap_or_else(|| std::sync::Arc::from("UNKNOWN"))
+                    .to_string(),
                 unit_key: unit.key.clone(),
                 offset: unit.offset,
                 size: unit.size, // Actual unit size in bytes

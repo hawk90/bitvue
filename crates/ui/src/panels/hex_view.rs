@@ -110,7 +110,7 @@ impl HexViewPanel {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new("Unit Type:").strong());
                             ui.label(
-                                egui::RichText::new(&unit.unit_type)
+                                egui::RichText::new(&*unit.unit_type)
                                     .color(egui::Color32::from_rgb(100, 180, 255)),
                             );
                         });

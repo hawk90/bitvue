@@ -173,7 +173,7 @@ fn parse_ivf(
 
                 // Extract frame type from frame header
                 if let Some(frame_type) = extract_frame_type(&obu.payload) {
-                    node.frame_type = Some(frame_type);
+                    node.frame_type = Some(std::sync::Arc::from(frame_type));
                 }
 
                 // Extract QP from frame header
@@ -287,7 +287,7 @@ fn parse_raw_av1(
 
             // Extract frame type from frame header
             if let Some(frame_type) = extract_frame_type(&obu.payload) {
-                node.frame_type = Some(frame_type);
+                node.frame_type = Some(std::sync::Arc::from(frame_type));
             }
 
             // Extract reference slots (ref_frame_idx from frame header)
