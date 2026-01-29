@@ -428,6 +428,31 @@ pub trait ExpGolombReader {
 
 impl ExpGolombReader for BitReader<'_> {
     fn read_ue(&mut self) -> Result<u32> {
+        // Fast path: Use leading_zeros() intrinsic when we have 32+ bits available
+        if self.remaining_bits() >= 32 {
+            let bits = self.peek_bits(32)?;
+            let leading_zeros = bits.leading_zeros();
+
+            if leading_zeros >= 32 {
+                return Err(BitvueError::Parse {
+                    offset: self.position(),
+                    message: "Exp-Golomb leading zeros exceeded 32".to_string(),
+                });
+            }
+
+            // Skip the leading zeros and the stop bit
+            self.skip_bits(leading_zeros as u64 + 1)?;
+
+            if leading_zeros == 0 {
+                return Ok(0);
+            }
+
+            // Read the remaining bits
+            let value = self.read_bits(leading_zeros as u8)?;
+            return Ok((1 << leading_zeros) - 1 + value);
+        }
+
+        // Fallback: Original bit-by-bit implementation for short reads
         let mut leading_zeros = 0u32;
         while !self.read_bit()? {
             leading_zeros += 1;
