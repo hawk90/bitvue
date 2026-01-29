@@ -226,11 +226,12 @@ mod tests {
     }
 
     #[test]
-    fn test_is_intra_only() {
+    fn test_is_intra() {
+        // Test is_intra() method - Key, IntraOnly, SI, SP are intra frames
         assert!(FrameType::Key.is_intra());
         assert!(!FrameType::Inter.is_intra());
         assert!(FrameType::IntraOnly.is_intra());
-        assert!(FrameType::Switch.is_intra());
+        assert!(!FrameType::Switch.is_intra()); // Switch frames are inter frames, not intra
     }
 
     #[test]

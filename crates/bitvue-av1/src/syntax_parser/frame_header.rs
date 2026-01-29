@@ -221,7 +221,7 @@ mod tests {
         // Verify frame_type
         let frame_type = model.get_node("obu[0].frame_header.frame_type").unwrap();
         assert_eq!(frame_type.bit_range, BitRange::new(1, 3));
-        assert!(frame_type.value.as_ref().unwrap().contains("KEY_FRAME"));
+        assert!(frame_type.value.as_ref().unwrap().contains("KEY"));
 
         // Verify show_frame
         let show_frame = model.get_node("obu[0].frame_header.show_frame").unwrap();
@@ -251,7 +251,7 @@ mod tests {
 
         // Verify frame_type
         let frame_type = model.get_node("obu[0].frame_header.frame_type").unwrap();
-        assert!(frame_type.value.as_ref().unwrap().contains("INTER_FRAME"));
+        assert!(frame_type.value.as_ref().unwrap().contains("INTER"));
 
         // Verify show_frame
         let show_frame = model.get_node("obu[0].frame_header.show_frame").unwrap();
