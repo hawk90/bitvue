@@ -1,5 +1,6 @@
 //! AV1 decoder wrapper using dav1d
 
+use crate::plane_utils;
 use dav1d::{Decoder, PlanarImageComponent};
 use std::sync::Arc;
 use thiserror::Error;
@@ -229,7 +230,7 @@ impl Av1Decoder {
         }
 
         let y_stride = picture.stride(PlanarImageComponent::Y) as usize;
-        let y_plane = extract_plane(
+        let y_plane = plane_utils::extract_y_plane(
             &y_plane_ref,
             width as usize,
             height as usize,
@@ -238,7 +239,7 @@ impl Av1Decoder {
         )?;
 
         // Extract U and V planes (if not monochrome)
-        let (u_plane, u_stride, v_plane, v_stride) =
+        let (u_plane, u_stride, v_plane, v_stride): (Option<Vec<u8>>, usize, Option<Vec<u8>>, usize) =
             if picture.pixel_layout() != dav1d::PixelLayout::I400 {
                 let chroma_width = match picture.pixel_layout() {
                     dav1d::PixelLayout::I420 | dav1d::PixelLayout::I422 => width as usize / 2,
@@ -261,12 +262,9 @@ impl Av1Decoder {
                 }
 
                 let u_stride = picture.stride(PlanarImageComponent::U) as usize;
-                let u_plane = extract_plane(
+                let u_plane = plane_utils::extract_plane(
                     &u_plane_ref,
-                    chroma_width,
-                    chroma_height,
-                    u_stride,
-                    bit_depth,
+                    plane_utils::PlaneConfig::new(chroma_width, chroma_height, u_stride, bit_depth)?
                 )?;
 
                 let v_plane_ref = picture.plane(PlanarImageComponent::V);
@@ -279,12 +277,9 @@ impl Av1Decoder {
                 }
 
                 let v_stride = picture.stride(PlanarImageComponent::V) as usize;
-                let v_plane = extract_plane(
+                let v_plane = plane_utils::extract_plane(
                     &v_plane_ref,
-                    chroma_width,
-                    chroma_height,
-                    v_stride,
-                    bit_depth,
+                    plane_utils::PlaneConfig::new(chroma_width, chroma_height, v_stride, bit_depth)?
                 )?;
 
                 (Some(u_plane), u_stride, Some(v_plane), v_stride)
@@ -502,60 +497,6 @@ impl Av1Decoder {
 //         })
 //     }
 // }
-
-/// Extracts plane data from dav1d plane reference
-///
-/// Optimized for contiguous data (stride == row_bytes) with single-copy fast path.
-///
-/// # Errors
-///
-/// Returns an error if the plane data is insufficient for the requested dimensions.
-fn extract_plane(
-    plane: &[u8],
-    width: usize,
-    height: usize,
-    stride: usize,
-    bit_depth: u8,
-) -> Result<Vec<u8>> {
-    // For 10/12bit, dav1d returns 16-bit samples (2 bytes per sample)
-    let bytes_per_sample = if bit_depth > 8 { 2 } else { 1 };
-    let row_bytes = width * bytes_per_sample;
-    let expected_size = row_bytes * height;
-
-    // Fast path: contiguous data (stride == row_bytes) - single copy
-    if stride == row_bytes {
-        if expected_size <= plane.len() {
-            return Ok(plane[..expected_size].to_vec());
-        } else {
-            return Err(DecodeError::Decode(format!(
-                "Plane extraction: contiguous data exceeds bounds ({} > {}), bit_depth={}",
-                expected_size,
-                plane.len(),
-                bit_depth
-            )));
-        }
-    }
-
-    // Slow path: strided data - copy row by row
-    let mut data = Vec::with_capacity(expected_size);
-    for row in 0..height {
-        let start = row * stride;
-        let end = start + row_bytes;
-        if end <= plane.len() {
-            data.extend_from_slice(&plane[start..end]);
-        } else {
-            return Err(DecodeError::Decode(format!(
-                "Plane extraction: row {} exceeds bounds ({}..{} > {}), bit_depth={}",
-                row,
-                start,
-                end,
-                plane.len(),
-                bit_depth
-            )));
-        }
-    }
-    Ok(data)
-}
 
 /// Validates a decoded frame for correctness
 pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {

@@ -18,6 +18,7 @@
 //! - Multi-threaded decoding
 
 use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
+use crate::plane_utils;
 use crate::traits::{CodecType, Decoder, DecoderCapabilities};
 use std::ffi::c_void;
 use std::ptr;
@@ -494,126 +495,44 @@ impl VvcDecoder {
         }
 
         let bytes_per_sample = plane.bytes_per_sample as usize;
-        let row_bytes = plane.width as usize * bytes_per_sample;
         let stride = plane.stride as usize;
+        let width = plane.width as usize;
 
         // Validate dimensions to prevent buffer overflow
-        if row_bytes == 0 || stride == 0 || height == 0 {
+        if width == 0 || stride == 0 || height == 0 {
             warn!(
                 "Invalid plane dimensions: width={}, bytes_per_sample={}, stride={}, height={}",
-                plane.width, bytes_per_sample, stride, height
+                width, bytes_per_sample, stride, height
             );
             return Ok(Vec::new());
         }
 
-        // Validate bytes_per_sample
+        // Validate bytes_per_sample (1=8bit, 2=10/12bit)
         if bytes_per_sample > 4 {
             return Err(DecodeError::Decode(format!(
                 "Invalid bytes_per_sample: {}", bytes_per_sample
             )));
         }
 
-        // Calculate required capacity with overflow protection
-        let required_capacity = match row_bytes.checked_mul(height) {
-            Some(v) => v,
-            None => {
-                return Err(DecodeError::Decode(
-                    "Plane size calculation overflow (row_bytes * height)".to_string(),
-                ))
-            }
-        };
+        // Calculate bit depth from bytes_per_sample
+        let bit_depth = if bytes_per_sample == 1 { 8 } else { 10 };
 
-        // Validate against maximum plane size
-        if required_capacity > MAX_PLANE_SIZE {
-            return Err(DecodeError::Decode(format!(
-                "Plane size {} exceeds maximum allowed {}",
-                required_capacity, MAX_PLANE_SIZE
-            )));
-        }
+        // Calculate total buffer size with overflow protection
+        let total_buffer_size = stride
+            .checked_mul(height)
+            .ok_or_else(|| DecodeError::Decode(
+                "Plane size calculation overflow (stride * height)".to_string()
+            ))?;
 
-        // Validate that stride * height doesn't overflow
-        let total_buffer_size = match stride.checked_mul(height) {
-            Some(v) => v,
-            None => {
-                return Err(DecodeError::Decode(
-                    "Plane size calculation overflow (stride * height)".to_string(),
-                ))
-            }
-        };
-
-        // Validate that required_capacity fits within buffer
-        if required_capacity > total_buffer_size {
-            return Err(DecodeError::Decode(format!(
-                "Required capacity {} exceeds buffer size {}",
-                required_capacity, total_buffer_size
-            )));
-        }
-
-        let mut data = Vec::with_capacity(required_capacity);
-
-        // Fast path: contiguous data (stride == row_bytes) - single copy
-        if stride == row_bytes {
-            unsafe {
-                let src = plane.ptr;
-                if src.is_null() {
-                    warn!("Null pointer detected for contiguous plane");
-                    return Ok(data);
-                }
-                let slice = std::slice::from_raw_parts(src, required_capacity);
-                data.extend_from_slice(slice);
-            }
-            return Ok(data);
-        }
-
-        // Slow path: strided data - copy row by row with bounds checking
-
-        // SAFETY: Validate pointer before any arithmetic
-        if plane.ptr.is_null() {
-            return Err(DecodeError::Decode(
-                "Null plane pointer detected".to_string()
-            ));
-        }
-
-        // Create a safe slice from the entire plane buffer once
+        // Create safe slice from raw pointer
         // SAFETY: We've verified ptr is non-null, and total_buffer_size was validated above
         let plane_slice = unsafe {
             std::slice::from_raw_parts(plane.ptr, total_buffer_size)
         };
 
-        for row in 0..height {
-            let offset = match row.checked_mul(stride) {
-                Some(o) => o,
-                None => {
-                    return Err(DecodeError::Decode(format!(
-                        "Row offset overflow at row {}: {} * {}",
-                        row, row, stride
-                    )));
-                }
-            };
-
-            // Validate bounds before accessing memory
-            let end_offset = match offset.checked_add(row_bytes) {
-                Some(e) => e,
-                None => {
-                    return Err(DecodeError::Decode(format!(
-                        "Row end offset overflow at row {}: {} + {}",
-                        row, offset, row_bytes
-                    )));
-                }
-            };
-
-            if end_offset > total_buffer_size {
-                return Err(DecodeError::Decode(format!(
-                    "Plane access out of bounds: row={}, offset={}, end={}, buffer_size={}",
-                    row, offset, end_offset, total_buffer_size
-                )));
-            }
-
-            // Safe slice access - no pointer arithmetic needed
-            data.extend_from_slice(&plane_slice[offset..end_offset]);
-        }
-
-        Ok(data)
+        // Use shared utility to extract plane data with stride handling
+        let config = plane_utils::PlaneConfig::new(width, height, stride, bit_depth)?;
+        plane_utils::extract_plane(plane_slice, config)
     }
 
     /// Get error message from vvdec error code
