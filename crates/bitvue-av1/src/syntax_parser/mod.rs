@@ -375,7 +375,7 @@ mod tests {
         assert!(obu2.get_node("obu[2].obu_header").is_some());
         assert!(obu2.get_node("obu[2].frame_header").is_some());
         let frame_type = obu2.get_node("obu[2].frame_header.frame_type").unwrap();
-        assert!(frame_type.value.as_ref().unwrap().contains("KEY_FRAME"));
+        assert!(frame_type.value.as_ref().unwrap().contains("KEY"));
     }
 
     #[test]

@@ -343,8 +343,9 @@ mod tests {
         use FrameType::*;
         assert_eq!(Key as u8, 0);
         assert_eq!(Inter as u8, 1);
-        assert_eq!(IntraOnly as u8, 2);
-        assert_eq!(Switch as u8, 3);
+        assert_eq!(BFrame as u8, 2);
+        assert_eq!(IntraOnly as u8, 3);
+        assert_eq!(Switch as u8, 4);
     }
 
     #[test]
