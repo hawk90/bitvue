@@ -2,6 +2,8 @@
 //!
 //! Provides functions to extract QP heatmap data from AV1 bitstreams.
 
+use std::sync::Arc;
+
 use bitvue_core::qp_heatmap::QPGrid;
 use bitvue_core::BitvueError;
 
@@ -149,8 +151,8 @@ fn parse_all_coding_units(
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
 
-    // Clone data needed for parsing (move into closure)
-    let tile_data = parsed.tile_data.clone();
+    // Arc-clone is cheap (just reference count increment, no data copy)
+    let tile_data = Arc::clone(&parsed.tile_data);
     let sb_size = parsed.dimensions.sb_size;
     let sb_cols = parsed.dimensions.sb_cols;
     let sb_rows = parsed.dimensions.sb_rows;

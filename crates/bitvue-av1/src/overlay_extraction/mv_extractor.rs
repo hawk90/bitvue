@@ -2,6 +2,8 @@
 //!
 //! Provides functions to extract motion vector data from AV1 bitstreams.
 
+use std::sync::Arc;
+
 use bitvue_core::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     BitvueError,
@@ -154,7 +156,7 @@ fn parse_all_coding_units(
     let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
 
     // Clone data needed for parsing (move into closure)
-    let tile_data = parsed.tile_data.clone();
+    let tile_data = Arc::clone(&parsed.tile_data);
     let sb_size = parsed.dimensions.sb_size;
     let sb_cols = parsed.dimensions.sb_cols;
     let sb_rows = parsed.dimensions.sb_rows;

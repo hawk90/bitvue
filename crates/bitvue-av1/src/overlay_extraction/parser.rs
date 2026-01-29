@@ -21,8 +21,8 @@ pub struct ParsedFrame {
     pub dimensions: FrameDimensions,
     /// Frame type information
     pub frame_type: FrameTypeInfo,
-    /// Tile group data (concatenated)
-    pub tile_data: Vec<u8>,
+    /// Tile group data (shared reference to avoid copies in QP/MV extraction)
+    pub tile_data: Arc<[u8]>,
     /// Whether delta Q is enabled for this frame
     pub delta_q_enabled: bool,
 }
@@ -171,7 +171,7 @@ impl ParsedFrame {
             obus,
             dimensions,
             frame_type,
-            tile_data,
+            tile_data: Arc::from(tile_data),
             delta_q_enabled,
         })
     }
