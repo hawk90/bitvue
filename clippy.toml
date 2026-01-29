@@ -1,0 +1,26 @@
+# Clippy configuration for Bitvue
+# Enforces strict linting for security and code quality
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Disallow TODO comments in production
+# disallowed-macros = ["todo", "unimplemented"]
+
+# Enforce documentation for public items
+missing-docs-in-crate-items = false
+
+# Type complexity threshold
+type-complexity-threshold = 250
+
+# Single character binding names threshold
+single-char-binding-names-threshold = 4
+
+# Too many arguments threshold
+too-many-arguments-threshold = 7
+
+# Too many lines threshold
+too-many-lines-threshold = 200
+
+# Enforce explicit field initialization
+# avoid-breaking-exported-api = true
