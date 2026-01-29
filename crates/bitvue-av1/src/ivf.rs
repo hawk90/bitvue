@@ -9,6 +9,18 @@ use crate::bitreader::BitReader;
 use crate::obu::parse_obu_header;
 use bitvue_core::BitvueError;
 
+/// IVF file header size in bytes
+pub const IVF_HEADER_SIZE: usize = 32;
+
+/// IVF frame header size in bytes (size + timestamp)
+pub const IVF_FRAME_HEADER_SIZE: usize = 12;
+
+/// Maximum valid IVF frame size (100 MB)
+pub const IVF_MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
+
+/// Default block size for QP/MV overlay grids
+pub const OVERLAY_BLOCK_SIZE: u32 = 64;
+
 /// IVF file header (32 bytes)
 #[derive(Debug, Clone)]
 pub struct IvfHeader {

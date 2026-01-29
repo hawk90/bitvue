@@ -7,6 +7,7 @@ use bitvue_core::BitvueError;
 
 use super::cu_parser::{CuSpatialIndex, parse_all_coding_units};
 use super::parser::ParsedFrame;
+use crate::ivf::OVERLAY_BLOCK_SIZE;
 
 /// Extract QP Grid from AV1 bitstream data
 ///
@@ -25,8 +26,8 @@ pub fn extract_qp_grid(
 ) -> Result<QPGrid, BitvueError> {
     let parsed = ParsedFrame::parse(obu_data)?;
 
-    let block_w = 64u32;
-    let block_h = 64u32;
+    let block_w = OVERLAY_BLOCK_SIZE;
+    let block_h = OVERLAY_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
@@ -49,8 +50,8 @@ pub fn extract_qp_grid_from_parsed(
     _frame_index: usize,
     base_qp: i16,
 ) -> Result<QPGrid, BitvueError> {
-    let block_w = 64u32;
-    let block_h = 64u32;
+    let block_w = OVERLAY_BLOCK_SIZE;
+    let block_h = OVERLAY_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
     let total_blocks = (grid_w * grid_h) as usize;

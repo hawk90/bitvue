@@ -9,6 +9,7 @@ use bitvue_core::{
 
 use super::cu_parser::{CuSpatialIndex, parse_all_coding_units};
 use super::parser::ParsedFrame;
+use crate::ivf::OVERLAY_BLOCK_SIZE;
 
 /// Extract MV Grid from AV1 bitstream data
 ///
@@ -31,8 +32,8 @@ pub fn extract_mv_grid(obu_data: &[u8], _frame_index: usize) -> Result<MVGrid, B
 /// - Falls back to scaffold if tile data unavailable or parsing fails
 /// - Uses quarter-pel precision motion vectors from AV1 bitstream
 pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, BitvueError> {
-    let block_w = 64u32;
-    let block_h = 64u32;
+    let block_w = OVERLAY_BLOCK_SIZE;
+    let block_h = OVERLAY_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
     let total_blocks = (grid_w * grid_h) as usize;
