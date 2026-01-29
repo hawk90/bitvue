@@ -662,33 +662,35 @@ impl Decoder for VvcDecoder {
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
         // Lock BOTH decoder and access_unit mutexes for the entire decode operation
-        // This prevents concurrent FFI calls which would cause undefined behavior
+        // This prevents concurrent FFI calls which would cause undefined behavior.
+        // The guards are held throughout the decode operation to ensure exclusive access.
         let mut decoder_guard = self.decoder.lock().map_err(|_| {
             DecodeError::Decode("Poisoned mutex: decoder lock failed".to_string())
         })?;
         let mut access_unit_guard = self.access_unit.lock().map_err(|_| {
-            DecodeError::Decode("Poisoned mutex: access_unit lock failed".to_string())
+            DecodeError::Decode("Poisoned mutex: access unit lock failed".to_string())
         })?;
 
-        // Capture decoder and access_unit for the timeout wrapper
-        // Note: Raw pointers are Copy, so we can pass them to the thread
-        let decoder = *decoder_guard;
-        let access_unit = *access_unit_guard;
         let flushing = self.flushing;
+        let decoder_ptr = *decoder_guard;
+        let access_unit_ptr = *access_unit_guard;
 
         // Run decode with timeout protection
+        // SAFETY: decoder_ptr and access_unit_ptr are valid because guards are held
         let (ret, frame_ptr) = run_decode_with_timeout(move || {
             unsafe {
                 let mut fp: *mut ffi::VvdecFrame = ptr::null_mut();
                 let r = if flushing {
-                    ffi::vvdec_flush(decoder, &mut fp)
+                    ffi::vvdec_flush(decoder_ptr, &mut fp)
                 } else {
-                    ffi::vvdec_decode(decoder, access_unit, &mut fp)
+                    ffi::vvdec_decode(decoder_ptr, access_unit_ptr, &mut fp)
                 };
                 (r, fp)
             }
         })?;
 
+        // SAFETY: decoder_guard and access_unit_guard are still held here,
+        // ensuring the pointers remain valid and no concurrent access occurs
         unsafe {
             match ret {
                 ffi::VVDEC_OK => {

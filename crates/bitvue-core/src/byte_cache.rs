@@ -176,8 +176,10 @@ impl ByteCache {
     /// For most use cases, use `read_range()` instead.
     #[allow(dead_code)]
     fn get_segment(&self, segment_idx: u64) -> Result<Bytes> {
-        // Check cache first
-        // Note: LruCache::get requires &mut self to update LRU ordering
+        // Check cache first (requires write lock for LRU updates)
+        // Note: LruCache::get() requires &mut self to update the LRU ordering,
+        // which is why we need a write lock even for a "read" operation.
+        // This is not a bug - it's required for LRU semantics.
         {
             let mut cache = self.cache.write();
             if let Some(bytes) = cache.get(&segment_idx) {

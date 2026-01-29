@@ -219,7 +219,7 @@ impl Av1Decoder {
             height as usize,
             y_stride,
             bit_depth,
-        );
+        )?;
 
         // Extract U and V planes (if not monochrome)
         let (u_plane, u_stride, v_plane, v_stride) =
@@ -243,7 +243,7 @@ impl Av1Decoder {
                     chroma_height,
                     u_stride,
                     bit_depth,
-                );
+                )?;
 
                 let v_plane_ref = picture.plane(PlanarImageComponent::V);
                 let v_stride = picture.stride(PlanarImageComponent::V) as usize;
@@ -253,7 +253,7 @@ impl Av1Decoder {
                     chroma_height,
                     v_stride,
                     bit_depth,
-                );
+                )?;
 
                 (Some(u_plane), u_stride, Some(v_plane), v_stride)
             } else {
@@ -412,13 +412,17 @@ impl Default for Av1Decoder {
 /// Extracts plane data from dav1d plane reference
 ///
 /// Optimized for contiguous data (stride == row_bytes) with single-copy fast path.
+///
+/// # Errors
+///
+/// Returns an error if the plane data is insufficient for the requested dimensions.
 fn extract_plane(
     plane: &[u8],
     width: usize,
     height: usize,
     stride: usize,
     bit_depth: u8,
-) -> Vec<u8> {
+) -> Result<Vec<u8>> {
     // For 10/12bit, dav1d returns 16-bit samples (2 bytes per sample)
     let bytes_per_sample = if bit_depth > 8 { 2 } else { 1 };
     let row_bytes = width * bytes_per_sample;
@@ -427,15 +431,14 @@ fn extract_plane(
     // Fast path: contiguous data (stride == row_bytes) - single copy
     if stride == row_bytes {
         if expected_size <= plane.len() {
-            return plane[..expected_size].to_vec();
+            return Ok(plane[..expected_size].to_vec());
         } else {
-            warn!(
+            return Err(DecodeError::Decode(format!(
                 "Plane extraction: contiguous data exceeds bounds ({} > {}), bit_depth={}",
                 expected_size,
                 plane.len(),
                 bit_depth
-            );
-            return Vec::with_capacity(expected_size);
+            )));
         }
     }
 
@@ -447,17 +450,17 @@ fn extract_plane(
         if end <= plane.len() {
             data.extend_from_slice(&plane[start..end]);
         } else {
-            warn!(
+            return Err(DecodeError::Decode(format!(
                 "Plane extraction: row {} exceeds bounds ({}..{} > {}), bit_depth={}",
                 row,
                 start,
                 end,
                 plane.len(),
                 bit_depth
-            );
+            )));
         }
     }
-    data
+    Ok(data)
 }
 
 /// Validates a decoded frame for correctness

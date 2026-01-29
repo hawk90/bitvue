@@ -11,6 +11,7 @@
 pub mod decoder;
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
+pub mod strategy;
 pub mod traits;
 #[cfg(feature = "vvdec")]
 pub mod vvdec;

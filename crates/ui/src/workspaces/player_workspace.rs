@@ -2613,7 +2613,7 @@ mod tests {
         let ws = PlayerWorkspace::new();
 
         // Verify zoom starts at 1.0
-        assert!((ws.zoom - 1.0).abs() < f32::EPSILON);
+        assert!((ws.zoom.zoom() - 1.0).abs() < f32::EPSILON);
 
         // Verify no active overlays initially
         assert!(ws.overlays.active.is_empty());
@@ -2704,7 +2704,7 @@ mod tests {
     fn test_player_workspace_default() {
         // Verify Default trait implementation
         let ws: PlayerWorkspace = Default::default();
-        assert!((ws.zoom - 1.0).abs() < f32::EPSILON);
+        assert!((ws.zoom.zoom() - 1.0).abs() < f32::EPSILON);
         assert!(ws.overlays.active.is_empty());
     }
 }

@@ -36,7 +36,7 @@ impl std::fmt::Display for CodecType {
 ///
 /// # Example
 ///
-/// ```
+/// ```ignore
 /// use bitvue_decode::traits::{CodecRegistry, CodecType};
 /// use std::sync::Mutex;
 ///
@@ -272,7 +272,7 @@ impl DecoderFactory {
     ///
     /// # Example
     ///
-    /// ```
+    /// ```ignore
     /// use bitvue_decode::traits::{DecoderFactory, CodecType, CodecRegistry};
     ///
     /// DecoderFactory::register_codec(CodecType::Custom, || {

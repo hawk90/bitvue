@@ -3,6 +3,7 @@
 //! Displays frame metadata, quality badges, and overlay state
 
 use super::{PipelineState, ResolutionTier};
+use crate::types::FrameType;
 use serde::{Deserialize, Serialize};
 
 /// PTS quality badge
@@ -124,34 +125,40 @@ impl KeyToggles {
     }
 }
 
-/// Frame type for HUD display
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FrameType {
-    /// Key frame (I-frame)
-    Key,
-    /// Inter frame (P-frame)
-    Inter,
-    /// Bidirectional frame (B-frame)
-    BiDir,
-    /// Unknown
-    Unknown,
+/// Frame type display extension for HUD
+///
+/// Provides display-friendly formatting for FrameType from types::FrameType.
+pub trait FrameTypeDisplay {
+    /// Get short name (single character for display)
+    fn short_name(&self) -> &'static str;
+
+    /// Get full name
+    fn full_name(&self) -> &'static str;
 }
 
-impl FrameType {
-    pub fn short_name(&self) -> &'static str {
+impl FrameTypeDisplay for FrameType {
+    fn short_name(&self) -> &'static str {
         match self {
             FrameType::Key => "I",
             FrameType::Inter => "P",
-            FrameType::BiDir => "B",
+            FrameType::BFrame => "B",
+            FrameType::IntraOnly => "I",
+            FrameType::Switch => "S",
+            FrameType::SI => "SI",
+            FrameType::SP => "SP",
             FrameType::Unknown => "?",
         }
     }
 
-    pub fn full_name(&self) -> &'static str {
+    fn full_name(&self) -> &'static str {
         match self {
             FrameType::Key => "Key",
             FrameType::Inter => "Inter",
-            FrameType::BiDir => "BiDir",
+            FrameType::BFrame => "B",
+            FrameType::IntraOnly => "Intra",
+            FrameType::Switch => "Switch",
+            FrameType::SI => "SI",
+            FrameType::SP => "SP",
             FrameType::Unknown => "Unknown",
         }
     }
@@ -583,9 +590,9 @@ mod tests {
         assert_eq!(inter.short_name(), "P");
         assert_eq!(inter.full_name(), "Inter");
 
-        let bidir = FrameType::BiDir;
-        assert_eq!(bidir.short_name(), "B");
-        assert_eq!(bidir.full_name(), "BiDir");
+        let bframe = FrameType::BFrame;
+        assert_eq!(bframe.short_name(), "B");
+        assert_eq!(bframe.full_name(), "B");
 
         let unknown = FrameType::Unknown;
         assert_eq!(unknown.short_name(), "?");
