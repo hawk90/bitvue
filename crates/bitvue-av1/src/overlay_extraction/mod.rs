@@ -30,6 +30,7 @@
 
 mod cache;
 mod parser;
+mod cu_parser;
 mod qp_extractor;
 mod mv_extractor;
 mod partition;
