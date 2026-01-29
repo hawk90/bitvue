@@ -739,8 +739,12 @@ impl Decoder for VvcDecoder {
             })?;
 
             // Extract pointers from new_decoder
-            let new_decoder_ptr = *new_decoder.decoder.lock().unwrap();
-            let new_access_unit_ptr = *new_decoder.access_unit.lock().unwrap();
+            let new_decoder_ptr = *new_decoder.decoder.lock().map_err(|_| {
+                DecodeError::Decode("Poisoned mutex: new decoder lock failed".to_string())
+            })?;
+            let new_access_unit_ptr = *new_decoder.access_unit.lock().map_err(|_| {
+                DecodeError::Decode("Poisoned mutex: new access_unit lock failed".to_string())
+            })?;
 
             // Update our mutexes with the new pointers
             *decoder_guard = new_decoder_ptr;
@@ -757,10 +761,23 @@ impl Decoder for VvcDecoder {
 impl Drop for VvcDecoder {
     fn drop(&mut self) {
         // Lock both mutexes to safely free resources
+        // Handle poisoned mutexes gracefully to avoid panic during drop
         let (decoder_ptr, access_unit_ptr) = {
-            let decoder_guard = self.decoder.lock().unwrap();
-            let access_unit_guard = self.access_unit.lock().unwrap();
-            (*decoder_guard, *access_unit_guard)
+            let decoder_guard = match self.decoder.lock() {
+                Ok(guard) => *guard,
+                Err(poisoned) => {
+                    warn!("VVC decoder mutex poisoned during drop, recovering");
+                    *poisoned.into_inner()
+                }
+            };
+            let access_unit_guard = match self.access_unit.lock() {
+                Ok(guard) => *guard,
+                Err(poisoned) => {
+                    warn!("VVC access_unit mutex poisoned during drop, recovering");
+                    *poisoned.into_inner()
+                }
+            };
+            (decoder_guard, access_unit_guard)
         };
 
         unsafe {
