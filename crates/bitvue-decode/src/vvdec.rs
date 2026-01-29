@@ -294,12 +294,16 @@ where
         }
 
         if start.elapsed() >= DECODE_TIMEOUT {
-            warn!("Decoder FFI call timed out after {:?}", DECODE_TIMEOUT);
+            error!("VVC decoder FFI call timed out after {:?}", DECODE_TIMEOUT);
+            error!("Background thread is abandoned but still running - decoder is now in POISONED state");
+            error!("The decoder MUST be reset before next use to avoid undefined behavior");
             // Note: The thread is still running in the background. We cannot safely
-            // terminate it, but the decoder handle will be dropped when the
-            // VvcDecoder is reset or dropped.
+            // terminate it in Rust. The decoder is now in an undefined state and
+            // must be reset before further use.
+            // The poisoned flag will be set in the caller (get_frame) to trigger
+            // automatic reset on next decode attempt.
             return Err(DecodeError::Decode(format!(
-                "Decoder timeout after {:?}",
+                "Decoder timeout after {:?} - decoder poisoned, reset required",
                 DECODE_TIMEOUT
             )));
         }
@@ -332,6 +336,9 @@ pub struct VvcDecoder {
     /// Protected by mutex to prevent concurrent FFI calls
     access_unit: Mutex<*mut ffi::VvdecAccessUnit>,
     flushing: bool,
+    /// Flag indicating decoder is in poisoned state after timeout
+    /// When true, decoder must be reset before next use
+    poisoned: std::sync::atomic::AtomicBool,
 }
 
 impl VvcDecoder {
@@ -380,6 +387,7 @@ impl VvcDecoder {
                 decoder: Mutex::new(decoder_ptr),
                 access_unit: Mutex::new(au_ptr),
                 flushing: false,
+                poisoned: std::sync::atomic::AtomicBool::new(false),
             })
         }
     }
@@ -558,12 +566,28 @@ impl VvcDecoder {
         }
 
         // Slow path: strided data - copy row by row with bounds checking
+
+        // SAFETY: Validate pointer before any arithmetic
+        if plane.ptr.is_null() {
+            return Err(DecodeError::Decode(
+                "Null plane pointer detected".to_string()
+            ));
+        }
+
+        // Create a safe slice from the entire plane buffer once
+        // SAFETY: We've verified ptr is non-null, and total_buffer_size was validated above
+        let plane_slice = unsafe {
+            std::slice::from_raw_parts(plane.ptr, total_buffer_size)
+        };
+
         for row in 0..height {
             let offset = match row.checked_mul(stride) {
                 Some(o) => o,
                 None => {
-                    warn!("Row offset overflow at row {}", row);
-                    break;
+                    return Err(DecodeError::Decode(format!(
+                        "Row offset overflow at row {}: {} * {}",
+                        row, row, stride
+                    )));
                 }
             };
 
@@ -571,30 +595,22 @@ impl VvcDecoder {
             let end_offset = match offset.checked_add(row_bytes) {
                 Some(e) => e,
                 None => {
-                    warn!("Row end offset overflow at row {}", row);
-                    break;
+                    return Err(DecodeError::Decode(format!(
+                        "Row end offset overflow at row {}: {} + {}",
+                        row, offset, row_bytes
+                    )));
                 }
             };
 
             if end_offset > total_buffer_size {
-                warn!(
-                    "Plane access out of bounds: offset={}, row_bytes={}, stride={}, height={}",
-                    offset, row_bytes, stride, height
-                );
-                break;
+                return Err(DecodeError::Decode(format!(
+                    "Plane access out of bounds: row={}, offset={}, end={}, buffer_size={}",
+                    row, offset, end_offset, total_buffer_size
+                )));
             }
 
-            unsafe {
-                let src = plane.ptr.add(offset);
-                // Validate that src is not null and doesn't overflow
-                if src.is_null() {
-                    warn!("Null pointer detected at row {}", row);
-                    break;
-                }
-
-                let slice = std::slice::from_raw_parts(src, row_bytes);
-                data.extend_from_slice(slice);
-            }
+            // Safe slice access - no pointer arithmetic needed
+            data.extend_from_slice(&plane_slice[offset..end_offset]);
         }
 
         Ok(data)
@@ -661,6 +677,24 @@ impl Decoder for VvcDecoder {
     }
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
+        // Check if decoder is poisoned from previous timeout
+        // If so, automatically reset it before proceeding
+        if self.poisoned.load(std::sync::atomic::Ordering::Relaxed) {
+            warn!("VVC decoder was poisoned (previous timeout), attempting automatic reset");
+            match self.reset() {
+                Ok(()) => {
+                    self.poisoned.store(false, std::sync::atomic::Ordering::Relaxed);
+                    debug!("VVC decoder reset successful after poisoned state");
+                }
+                Err(e) => {
+                    return Err(DecodeError::Decode(format!(
+                        "Failed to reset poisoned decoder: {}",
+                        e
+                    )));
+                }
+            }
+        }
+
         // Lock BOTH decoder and access_unit mutexes for the entire decode operation
         // This prevents concurrent FFI calls which would cause undefined behavior.
         // The guards are held throughout the decode operation to ensure exclusive access.
@@ -677,7 +711,7 @@ impl Decoder for VvcDecoder {
 
         // Run decode with timeout protection
         // SAFETY: decoder_ptr and access_unit_ptr are valid because guards are held
-        let (ret, frame_ptr) = run_decode_with_timeout(move || {
+        let (ret, frame_ptr) = match run_decode_with_timeout(move || {
             unsafe {
                 let mut fp: *mut ffi::VvdecFrame = ptr::null_mut();
                 let r = if flushing {
@@ -687,7 +721,19 @@ impl Decoder for VvcDecoder {
                 };
                 (r, fp)
             }
-        })?;
+        }) {
+            Ok(result) => result,
+            Err(e) => {
+                // Check if this is a timeout error
+                let err_msg = format!("{}", e);
+                if err_msg.contains("timeout") || err_msg.contains("Timeout") {
+                    // Mark decoder as poisoned
+                    self.poisoned.store(true, std::sync::atomic::Ordering::Relaxed);
+                    error!("VVC decoder marked as POISONED after timeout");
+                }
+                return Err(e);
+            }
+        };
 
         // SAFETY: decoder_guard and access_unit_guard are still held here,
         // ensuring the pointers remain valid and no concurrent access occurs

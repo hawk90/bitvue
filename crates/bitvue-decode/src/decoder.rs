@@ -320,23 +320,53 @@ impl Av1Decoder {
         let mut frame_idx = 0i64;
         let mut decoded_frames = Vec::new();
 
+        // Maximum reasonable frame size (100 MB) to prevent DoS attacks
+        const MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
+
         // Iterate through IVF frames
         while offset + 12 <= data.len() {
-            let frame_size = u32::from_le_bytes([
+            let frame_size_u32 = u32::from_le_bytes([
                 data[offset],
                 data[offset + 1],
                 data[offset + 2],
                 data[offset + 3],
-            ]) as usize;
+            ]);
 
-            offset += 12; // Skip size (4) + timestamp (8)
+            let frame_size = frame_size_u32 as usize;
 
-            if offset + frame_size > data.len() {
-                break;
+            // Validate frame size to prevent DoS attacks
+            if frame_size > MAX_FRAME_SIZE {
+                return Err(DecodeError::Decode(format!(
+                    "IVF frame {} size {} exceeds maximum allowed {} (possible DoS attack)",
+                    frame_idx, frame_size, MAX_FRAME_SIZE
+                )));
+            }
+
+            // Skip frame header with overflow protection
+            offset = offset.checked_add(12).ok_or_else(|| {
+                DecodeError::Decode(format!(
+                    "IVF frame {} offset overflow after header",
+                    frame_idx
+                ))
+            })?;
+
+            // Validate frame data bounds with overflow protection
+            let frame_end = offset.checked_add(frame_size).ok_or_else(|| {
+                DecodeError::Decode(format!(
+                    "IVF frame {} size overflow: offset={} size={}",
+                    frame_idx, offset, frame_size
+                ))
+            })?;
+
+            if frame_end > data.len() {
+                return Err(DecodeError::Decode(format!(
+                    "IVF frame {} extends beyond data: offset={}, size={}, data_len={}",
+                    frame_idx, offset, frame_size, data.len()
+                )));
             }
 
             // Send frame data to decoder
-            let frame_data = &data[offset..offset + frame_size];
+            let frame_data = &data[offset..frame_end];
             if let Err(e) = self.send_data(frame_data, frame_idx) {
                 warn!(
                     "Failed to send IVF frame {} to decoder: {}. Skipping frame.",
@@ -350,7 +380,14 @@ impl Av1Decoder {
             }
 
             frame_idx += 1;
-            offset += frame_size;
+
+            // Advance offset with overflow protection
+            offset = offset.checked_add(frame_size).ok_or_else(|| {
+                DecodeError::Decode(format!(
+                    "IVF frame {} offset overflow after frame data",
+                    frame_idx
+                ))
+            })?;
         }
 
         // Drain remaining frames from decoder

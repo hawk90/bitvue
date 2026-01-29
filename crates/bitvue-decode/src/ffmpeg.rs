@@ -160,9 +160,22 @@ impl FfmpegDecoder {
         // Validate plane sizes to prevent buffer overflow attacks
         const MAX_PLANE_SIZE: usize = 7680 * 4320; // 8K resolution
 
-        let y_stride = data_frame.stride(0);
-        let expected_y_size = width as usize * height as usize;
-        let actual_y_size = y_stride as usize * height as usize;
+        let y_stride = data_frame.stride(0) as usize;
+
+        // Use checked multiplication to prevent integer overflow
+        let expected_y_size = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or_else(|| DecodeError::Decode(format!(
+                "Y plane size calculation overflow: {}x{}",
+                width, height
+            )))?;
+
+        let actual_y_size = y_stride
+            .checked_mul(height as usize)
+            .ok_or_else(|| DecodeError::Decode(format!(
+                "Y plane stride calculation overflow: stride={} height={}",
+                y_stride, height
+            )))?;
 
         if actual_y_size > MAX_PLANE_SIZE {
             return Err(DecodeError::Decode(format!(
@@ -174,21 +187,57 @@ impl FfmpegDecoder {
         let y_plane = if actual_y_size <= expected_y_size {
             data_frame.data(0).to_vec()
         } else {
-            // Handle strided data safely
+            // Handle strided data safely with overflow protection
             let mut buf = Vec::with_capacity(expected_y_size);
+            let y_data = data_frame.data(0);
+
             for row in 0..height as usize {
-                let start = row * y_stride as usize;
-                let end = start + width as usize;
-                buf.extend_from_slice(&data_frame.data(0)[start..end.min(data_frame.data(0).len())]);
+                // Check for overflow in row offset calculation
+                let start = row
+                    .checked_mul(y_stride)
+                    .ok_or_else(|| DecodeError::Decode(format!(
+                        "Y plane row offset overflow at row {}",
+                        row
+                    )))?;
+
+                let end = start
+                    .checked_add(width as usize)
+                    .ok_or_else(|| DecodeError::Decode(format!(
+                        "Y plane row end overflow at row {}",
+                        row
+                    )))?;
+
+                // Validate bounds instead of silently truncating
+                if end > y_data.len() {
+                    return Err(DecodeError::Decode(format!(
+                        "Y plane access out of bounds: row={}, start={}, end={}, data_len={}",
+                        row, start, end, y_data.len()
+                    )));
+                }
+
+                buf.extend_from_slice(&y_data[start..end]);
             }
             buf
         };
 
-        let u_stride = data_frame.stride(1);
+        let u_stride = data_frame.stride(1) as usize;
         let uv_width = width / 2;
         let uv_height = height / 2;
-        let expected_uv_size = uv_width as usize * uv_height as usize;
-        let actual_uv_size = u_stride as usize * uv_height as usize;
+
+        // Use checked multiplication to prevent integer overflow
+        let expected_uv_size = (uv_width as usize)
+            .checked_mul(uv_height as usize)
+            .ok_or_else(|| DecodeError::Decode(format!(
+                "U plane size calculation overflow: {}x{}",
+                uv_width, uv_height
+            )))?;
+
+        let actual_uv_size = u_stride
+            .checked_mul(uv_height as usize)
+            .ok_or_else(|| DecodeError::Decode(format!(
+                "U plane stride calculation overflow: stride={} height={}",
+                u_stride, uv_height
+            )))?;
 
         if actual_uv_size > MAX_PLANE_SIZE / 4 {
             return Err(DecodeError::Decode(format!(
@@ -200,26 +249,72 @@ impl FfmpegDecoder {
         let u_plane = if actual_uv_size <= expected_uv_size {
             data_frame.data(1).to_vec()
         } else {
-            // Handle strided data safely
+            // Handle strided data safely with overflow protection
             let mut buf = Vec::with_capacity(expected_uv_size);
+            let u_data = data_frame.data(1);
+
             for row in 0..uv_height as usize {
-                let start = row * u_stride as usize;
-                let end = start + uv_width as usize;
-                buf.extend_from_slice(&data_frame.data(1)[start..end.min(data_frame.data(1).len())]);
+                // Check for overflow in row offset calculation
+                let start = row
+                    .checked_mul(u_stride)
+                    .ok_or_else(|| DecodeError::Decode(format!(
+                        "U plane row offset overflow at row {}",
+                        row
+                    )))?;
+
+                let end = start
+                    .checked_add(uv_width as usize)
+                    .ok_or_else(|| DecodeError::Decode(format!(
+                        "U plane row end overflow at row {}",
+                        row
+                    )))?;
+
+                // Validate bounds instead of silently truncating
+                if end > u_data.len() {
+                    return Err(DecodeError::Decode(format!(
+                        "U plane access out of bounds: row={}, start={}, end={}, data_len={}",
+                        row, start, end, u_data.len()
+                    )));
+                }
+
+                buf.extend_from_slice(&u_data[start..end]);
             }
             buf
         };
 
-        let v_stride = data_frame.stride(2);
+        let v_stride = data_frame.stride(2) as usize;
         let v_plane = if actual_uv_size <= expected_uv_size {
             data_frame.data(2).to_vec()
         } else {
-            // Handle strided data safely
+            // Handle strided data safely with overflow protection
             let mut buf = Vec::with_capacity(expected_uv_size);
+            let v_data = data_frame.data(2);
+
             for row in 0..uv_height as usize {
-                let start = row * v_stride as usize;
-                let end = start + uv_width as usize;
-                buf.extend_from_slice(&data_frame.data(2)[start..end.min(data_frame.data(2).len())]);
+                // Check for overflow in row offset calculation
+                let start = row
+                    .checked_mul(v_stride)
+                    .ok_or_else(|| DecodeError::Decode(format!(
+                        "V plane row offset overflow at row {}",
+                        row
+                    )))?;
+
+                let end = start
+                    .checked_add(uv_width as usize)
+                    .ok_or_else(|| DecodeError::Decode(format!(
+                        "V plane row end overflow at row {}",
+                        row
+                    )))?;
+
+                // Validate bounds instead of silently truncating
+                if end > v_data.len() {
+                    return Err(DecodeError::Decode(format!(
+                        "V plane access out of bounds: row={}, start={}, end={}, data_len={}",
+                        row, start, end, v_data.len()
+                    )));
+                }
+
+                buf.extend_from_slice(&v_data[start..end]);
             }
             buf
         };
