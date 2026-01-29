@@ -579,6 +579,53 @@ impl Leb128Reader for BitReader<'_> {
 }
 
 // ============================================================================
+// Emulation Prevention
+// ============================================================================
+
+/// Removes emulation prevention bytes from H.264/AVC, H.265/HEVC, and H.266/VVC bitstreams.
+///
+/// In these codecs, the byte sequence `0x00 0x00 0x03` is used to prevent
+/// accidental emulation of start codes (`0x00 0x00 0x01`) in the bitstream.
+/// This function removes those `0x03` bytes to restore the original data.
+///
+/// # Arguments
+///
+/// * `data` - The raw bitstream data that may contain emulation prevention bytes
+///
+/// # Returns
+///
+/// A new Vec<u8> with emulation prevention bytes removed
+///
+/// # Example
+///
+/// ```
+/// use bitvue_core::remove_emulation_prevention_bytes;
+///
+/// let raw = [0x00, 0x00, 0x03, 0x01, 0xFF];
+/// let cleaned = remove_emulation_prevention_bytes(&raw);
+/// assert_eq!(cleaned, vec![0x00, 0x00, 0x01, 0xFF]);
+/// ```
+pub fn remove_emulation_prevention_bytes(data: &[u8]) -> Vec<u8> {
+    let mut result = Vec::with_capacity(data.len());
+    let mut i = 0;
+
+    while i < data.len() {
+        if i + 2 < data.len() && data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x03 {
+            // Found emulation prevention byte (0x00 0x00 0x03)
+            // Output only the two 0x00 bytes, skip the 0x03
+            result.push(0x00);
+            result.push(0x00);
+            i += 3;
+        } else {
+            result.push(data[i]);
+            i += 1;
+        }
+    }
+
+    result
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -731,6 +778,42 @@ mod tests {
         assert_eq!(reader.read_uvlc().unwrap(), 1); // 010
         assert_eq!(reader.read_uvlc().unwrap(), 2); // 011
         assert_eq!(reader.read_uvlc().unwrap(), 3); // 00100
+    }
+
+    // Emulation prevention tests
+
+    #[test]
+    fn test_remove_emulation_prevention() {
+        // Test basic removal: 0x00 0x00 0x03 -> 0x00 0x00
+        let data = [0x00, 0x00, 0x03, 0x01, 0x00, 0x00, 0x03, 0x02];
+        let result = remove_emulation_prevention_bytes(&data);
+        assert_eq!(result, vec![0x00, 0x00, 0x01, 0x00, 0x00, 0x02]);
+    }
+
+    #[test]
+    fn test_remove_emulation_prevention_no_match() {
+        // No emulation prevention bytes
+        let data = [0x00, 0x00, 0x01, 0x02, 0x03];
+        let result = remove_emulation_prevention_bytes(&data);
+        assert_eq!(result, vec![0x00, 0x00, 0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn test_remove_emulation_prevention_edge_cases() {
+        // Only 0x00 0x00 0x03 at the end
+        let data = [0xFF, 0x00, 0x00, 0x03];
+        let result = remove_emulation_prevention_bytes(&data);
+        assert_eq!(result, vec![0xFF, 0x00, 0x00]);
+
+        // Only 0x00 0x00 0x03 at the start
+        let data = [0x00, 0x00, 0x03, 0xFF];
+        let result = remove_emulation_prevention_bytes(&data);
+        assert_eq!(result, vec![0x00, 0x00, 0xFF]);
+
+        // Multiple consecutive emulation prevention bytes
+        let data = [0x00, 0x00, 0x03, 0x00, 0x00, 0x03];
+        let result = remove_emulation_prevention_bytes(&data);
+        assert_eq!(result, vec![0x00, 0x00, 0x00, 0x00]);
     }
 
     // LSB-first BitReader tests

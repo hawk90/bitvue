@@ -5,6 +5,9 @@
 
 use bitvue_core::{BitReader as CoreBitReader, ExpGolombReader};
 
+// Re-export emulation prevention function from bitvue_core for convenience
+pub use bitvue_core::remove_emulation_prevention_bytes;
+
 use crate::error::{HevcError, Result};
 
 /// HEVC-specific bit reader wrapper
@@ -176,27 +179,6 @@ impl<'a> BitReader<'a> {
             _ => HevcError::InvalidData(e.to_string()),
         })
     }
-}
-
-/// Remove emulation prevention bytes (0x03) from NAL unit payload.
-/// HEVC uses 0x000003 -> 0x0000 escaping.
-pub fn remove_emulation_prevention_bytes(data: &[u8]) -> Vec<u8> {
-    let mut result = Vec::with_capacity(data.len());
-    let mut i = 0;
-
-    while i < data.len() {
-        if i + 2 < data.len() && data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x03 {
-            // Found emulation prevention byte
-            result.push(0x00);
-            result.push(0x00);
-            i += 3; // Skip the 0x03
-        } else {
-            result.push(data[i]);
-            i += 1;
-        }
-    }
-
-    result
 }
 
 #[cfg(test)]
