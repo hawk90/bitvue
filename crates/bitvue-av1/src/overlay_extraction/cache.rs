@@ -37,6 +37,10 @@ type CodingUnitCache = HashMap<u64, Vec<crate::tile::CodingUnit>>;
 static CODING_UNIT_CACHE: LazyLock<Mutex<CodingUnitCache>> =
     LazyLock::new(|| Mutex::new(HashMap::with_capacity(16)));
 
+/// Maximum number of coding unit entries to cache
+/// Prevents unbounded memory growth from processing many different frames
+const MAX_CACHE_ENTRIES: usize = 64;
+
 /// Compute cache key from tile data
 ///
 /// Per optimize-code skill: Use hash-based cache keys for fast lookup
@@ -73,6 +77,25 @@ where
     // This prevents other threads from simultaneously parsing the same key
     tracing::debug!("Cache MISS - parsing coding units from tile data");
     let units = parse_fn()?;
+
+    // Enforce cache size limit to prevent unbounded growth
+    // If cache is full, evict 25% of entries (pseudo-random eviction)
+    if cache.len() >= MAX_CACHE_ENTRIES {
+        let remove_count = MAX_CACHE_ENTRIES / 4;
+        tracing::debug!(
+            "Cache full ({} entries), evicting {} entries",
+            cache.len(),
+            remove_count
+        );
+
+        // Pseudo-random eviction: remove first N keys from iterator
+        // HashMap doesn't preserve order, so this gives a random sampling
+        let keys_to_remove: Vec<_> = cache.keys().take(remove_count).copied().collect();
+        for key in keys_to_remove {
+            cache.remove(&key);
+        }
+    }
+
     cache.insert(cache_key, units.clone());
 
     Ok(units)
@@ -85,6 +108,8 @@ where
 pub fn clear_cu_cache() {
     let mut cache = CODING_UNIT_CACHE.lock().unwrap();
     cache.clear();
+    // Ensure the cache is actually empty
+    assert!(cache.is_empty());
 }
 
 /// Get the size of the coding unit cache (for testing)
@@ -141,5 +166,51 @@ mod tests {
         // Clear and verify empty
         clear_cu_cache();
         assert_eq!(cu_cache_size(), 0);
+    }
+
+    #[test]
+    fn test_cache_size_limit() {
+        // Note: This test uses shared static cache state.
+        // Run with --test-threads=1 if this test flakes in parallel execution.
+        clear_cu_cache();
+
+        // Add entries up to limit (use unique data with sufficient entropy)
+        let mut added = 0;
+        for i in 0..=MAX_CACHE_ENTRIES {
+            // Use a simple counter that won't wrap (each entry unique)
+            let tile_data = vec![1u8, 2u8, 3u8, 4u8, 5u8, i as u8];
+            let cache_key = compute_cache_key(&tile_data, 32);
+            let _ = get_or_parse_coding_units(cache_key, || {
+                added += 1;
+                Ok(vec![])
+            });
+            if added == MAX_CACHE_ENTRIES {
+                break;
+            }
+        }
+
+        let size_at_limit = cu_cache_size();
+        assert_eq!(size_at_limit, MAX_CACHE_ENTRIES, "Should reach cache limit");
+
+        // Add one more entry - should trigger eviction
+        let tile_data = vec![9u8, 9u8, 9u8, 9u8, 9u8, 9u8];
+        let cache_key = compute_cache_key(&tile_data, 33);
+        let _ = get_or_parse_coding_units(cache_key, || Ok(vec![]));
+
+        // Cache should be smaller due to eviction
+        let size_after = cu_cache_size();
+        assert!(
+            size_after < size_at_limit,
+            "Cache should shrink after eviction: {} < {}",
+            size_after,
+            size_at_limit
+        );
+        // Should have roughly MAX_CACHE_ENTRIES - 25% + 1 entries
+        assert!(
+            size_after >= MAX_CACHE_ENTRIES * 3 / 4,
+            "Cache should retain most entries after eviction: {} >= {}",
+            size_after,
+            MAX_CACHE_ENTRIES * 3 / 4
+        );
     }
 }
