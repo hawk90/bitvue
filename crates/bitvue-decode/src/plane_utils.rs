@@ -232,8 +232,10 @@ pub fn extract_plane(source: &[u8], config: PlaneConfig) -> Result<Vec<u8>> {
         return extract_contiguous(source, expected_size, config.bit_depth);
     }
 
-    // Slow path: strided data - copy row by row
-    let mut data = Vec::with_capacity(expected_size);
+    // Slow path: strided data - copy row by row with pre-allocated buffer
+    // Pre-allocate full buffer to avoid 1000+ reallocations (one per row)
+    let mut data = vec![0u8; expected_size];
+    let mut offset = 0;
 
     for row in 0..config.height {
         // Calculate row offset with overflow check
@@ -260,7 +262,9 @@ pub fn extract_plane(source: &[u8], config: PlaneConfig) -> Result<Vec<u8>> {
             )));
         }
 
-        data.extend_from_slice(&source[start..end]);
+        // Use copy_from_slice instead of extend_from_slice to avoid capacity checks
+        data[offset..offset + row_bytes].copy_from_slice(&source[start..end]);
+        offset += row_bytes;
     }
 
     Ok(data)
