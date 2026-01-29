@@ -52,8 +52,8 @@ pub fn compute_cache_key(tile_data: &[u8], base_qp: i16) -> u64 {
 
 /// Get cached coding units or parse and cache them
 ///
-/// Per optimize-code skill: "Single lock acquisition" pattern
-/// Gets or inserts into cache in a single lock operation
+/// Uses "single lock acquisition" pattern to prevent TOCTOU race condition.
+/// Lock is held for entire operation (check, parse, insert) ensuring thread safety.
 pub fn get_or_parse_coding_units<F>(
     cache_key: u64,
     parse_fn: F,
@@ -61,24 +61,19 @@ pub fn get_or_parse_coding_units<F>(
 where
     F: FnOnce() -> Result<Vec<crate::tile::CodingUnit>, BitvueError>,
 {
-    // Per optimize-code skill: Check cache first with read lock
-    {
-        let cache = lock_mutex!(CODING_UNIT_CACHE);
-        if let Some(cached) = cache.get(&cache_key) {
-            tracing::debug!("Cache HIT for coding units: {} units", cached.len());
-            return Ok(cached.clone());
-        }
+    let mut cache = lock_mutex!(CODING_UNIT_CACHE);
+
+    // Check if already cached (still holding lock)
+    if let Some(cached) = cache.get(&cache_key) {
+        tracing::debug!("Cache HIT for coding units: {} units", cached.len());
+        return Ok(cached.clone());
     }
 
-    // Cache miss - parse and store
+    // Cache miss - parse and insert (still holding lock)
+    // This prevents other threads from simultaneously parsing the same key
     tracing::debug!("Cache MISS - parsing coding units from tile data");
     let units = parse_fn()?;
-
-    // Per optimize-code skill: Single lock acquisition for insert
-    {
-        let mut cache = lock_mutex!(CODING_UNIT_CACHE);
-        cache.insert(cache_key, units.clone());
-    }
+    cache.insert(cache_key, units.clone());
 
     Ok(units)
 }
