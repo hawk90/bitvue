@@ -210,8 +210,24 @@ impl Av1Decoder {
         let height = picture.height();
         let bit_depth = picture.bit_depth() as u8;
 
+        // Validate dimensions first
+        if width == 0 || height == 0 {
+            return Err(DecodeError::Decode(format!(
+                "Invalid picture dimensions: {}x{}",
+                width, height
+            )));
+        }
+
         // Extract Y plane
         let y_plane_ref = picture.plane(PlanarImageComponent::Y);
+
+        // Validate that Y plane has data (catches malloc failures in dav1d C layer)
+        if y_plane_ref.is_empty() {
+            return Err(DecodeError::Decode(
+                "Y plane is empty - possible memory allocation failure".to_string()
+            ));
+        }
+
         let y_stride = picture.stride(PlanarImageComponent::Y) as usize;
         let y_plane = extract_plane(
             &y_plane_ref,
@@ -236,6 +252,14 @@ impl Av1Decoder {
                 };
 
                 let u_plane_ref = picture.plane(PlanarImageComponent::U);
+
+                // Validate U plane has data (catches malloc failures)
+                if u_plane_ref.is_empty() {
+                    return Err(DecodeError::Decode(
+                        "U plane is empty - possible memory allocation failure".to_string()
+                    ));
+                }
+
                 let u_stride = picture.stride(PlanarImageComponent::U) as usize;
                 let u_plane = extract_plane(
                     &u_plane_ref,
@@ -246,6 +270,14 @@ impl Av1Decoder {
                 )?;
 
                 let v_plane_ref = picture.plane(PlanarImageComponent::V);
+
+                // Validate V plane has data (catches malloc failures)
+                if v_plane_ref.is_empty() {
+                    return Err(DecodeError::Decode(
+                        "V plane is empty - possible memory allocation failure".to_string()
+                    ));
+                }
+
                 let v_stride = picture.stride(PlanarImageComponent::V) as usize;
                 let v_plane = extract_plane(
                     &v_plane_ref,
@@ -332,6 +364,28 @@ impl Av1Decoder {
                 data[offset + 3],
             ]);
 
+            // Extract timestamp (8 bytes following frame size)
+            let timestamp_u64 = u64::from_le_bytes([
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
+                data[offset + 8],
+                data[offset + 9],
+                data[offset + 10],
+                data[offset + 11],
+            ]);
+
+            // Validate timestamp fits in i64 (dav1d expects i64)
+            // Max i64 is 9223372036854775807
+            if timestamp_u64 > i64::MAX as u64 {
+                return Err(DecodeError::Decode(format!(
+                    "IVF frame {} timestamp {} exceeds i64::MAX",
+                    frame_idx, timestamp_u64
+                )));
+            }
+            let timestamp = timestamp_u64 as i64;
+
             let frame_size = frame_size_u32 as usize;
 
             // Validate frame size to prevent DoS attacks
@@ -365,12 +419,12 @@ impl Av1Decoder {
                 )));
             }
 
-            // Send frame data to decoder
+            // Send frame data to decoder with actual IVF timestamp
             let frame_data = &data[offset..frame_end];
-            if let Err(e) = self.send_data(frame_data, frame_idx) {
+            if let Err(e) = self.send_data(frame_data, timestamp) {
                 warn!(
-                    "Failed to send IVF frame {} to decoder: {}. Skipping frame.",
-                    frame_idx, e
+                    "Failed to send IVF frame {} (ts={}) to decoder: {}. Skipping frame.",
+                    frame_idx, timestamp, e
                 );
             } else {
                 // Try to get frames after successful send

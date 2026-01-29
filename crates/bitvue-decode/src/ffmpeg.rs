@@ -134,6 +134,22 @@ impl FfmpegDecoder {
         let height = frame.height();
         let pixel_format = frame.format();
 
+        // Validate dimensions to prevent DoS via unbounded loops
+        // Limit to 8K resolution (7680x4320) per axis
+        const MAX_DIMENSION: u32 = 7680;
+        if width > MAX_DIMENSION || height > MAX_DIMENSION {
+            return Err(DecodeError::Decode(format!(
+                "Frame dimensions {}x{} exceed maximum {}x{}",
+                width, height, MAX_DIMENSION, MAX_DIMENSION
+            )));
+        }
+        if width == 0 || height == 0 {
+            return Err(DecodeError::Decode(format!(
+                "Invalid frame dimensions: {}x{}",
+                width, height
+            )));
+        }
+
         // Determine which frame to extract data from (avoid clone when already YUV420P)
         let data_frame: &Video = if pixel_format != Pixel::YUV420P {
             // Create scaler if not exists or format changed
