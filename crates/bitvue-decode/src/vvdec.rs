@@ -21,6 +21,7 @@ use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
 use crate::traits::{CodecType, Decoder, DecoderCapabilities};
 use std::ffi::c_void;
 use std::ptr;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tracing::{debug, error, warn};
@@ -316,14 +317,20 @@ where
 ///
 /// # Thread Safety
 ///
-/// **NOT thread-safe!** The underlying vvdec library uses internal state that is not
-/// protected by mutexes. Each thread should create its own VvcDecoder instance.
+/// **Now thread-safe!** The decoder and access unit are protected by internal mutexes
+/// to prevent concurrent FFI calls, which would cause undefined behavior.
+///
+/// Note: While this struct is now safe to share across threads, the underlying
+/// vvdec library is NOT thread-safe. The mutex protection here ensures only one
+/// thread accesses the decoder at a time.
 ///
 /// The `Send` impl is deliberately omitted because vvdec may have race conditions
 /// when used concurrently. See: https://github.com/fraunhoferhhi/vvdec/issues
 pub struct VvcDecoder {
-    decoder: *mut c_void,
-    access_unit: *mut ffi::VvdecAccessUnit,
+    /// Protected by mutex to prevent concurrent FFI calls
+    decoder: Mutex<*mut ffi::VvdecDecoder>,
+    /// Protected by mutex to prevent concurrent FFI calls
+    access_unit: Mutex<*mut ffi::VvdecAccessUnit>,
     flushing: bool,
 }
 
@@ -370,8 +377,8 @@ impl VvcDecoder {
             debug!("VVC decoder initialized successfully");
 
             Ok(Self {
-                decoder: decoder_ptr,
-                access_unit: au_ptr,
+                decoder: Mutex::new(decoder_ptr),
+                access_unit: Mutex::new(au_ptr),
                 flushing: false,
             })
         }
@@ -626,9 +633,14 @@ impl Decoder for VvcDecoder {
             return Ok(());
         }
 
+        // Lock access_unit mutex for FFI call
+        let mut access_unit_guard = self.access_unit.lock().map_err(|_| {
+            DecodeError::Decode("Poisoned mutex: access_unit lock failed".to_string())
+        })?;
+
         unsafe {
             // Allocate payload buffer
-            let ret = ffi::vvdec_accessUnit_alloc_payload(self.access_unit, data.len() as i32);
+            let ret = ffi::vvdec_accessUnit_alloc_payload(*access_unit_guard, data.len() as i32);
             if ret != ffi::VVDEC_OK {
                 return Err(DecodeError::Decode(format!(
                     "Failed to allocate payload: {}",
@@ -637,7 +649,7 @@ impl Decoder for VvcDecoder {
             }
 
             // Copy data to access unit
-            let au = &mut *self.access_unit;
+            let au = &mut *(*access_unit_guard);
             ptr::copy_nonoverlapping(data.as_ptr(), au.payload, data.len());
             au.payload_used_size = data.len() as i32;
             au.cts = timestamp.unwrap_or(0);
@@ -649,10 +661,19 @@ impl Decoder for VvcDecoder {
     }
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
+        // Lock BOTH decoder and access_unit mutexes for the entire decode operation
+        // This prevents concurrent FFI calls which would cause undefined behavior
+        let mut decoder_guard = self.decoder.lock().map_err(|_| {
+            DecodeError::Decode("Poisoned mutex: decoder lock failed".to_string())
+        })?;
+        let mut access_unit_guard = self.access_unit.lock().map_err(|_| {
+            DecodeError::Decode("Poisoned mutex: access_unit lock failed".to_string())
+        })?;
+
         // Capture decoder and access_unit for the timeout wrapper
         // Note: Raw pointers are Copy, so we can pass them to the thread
-        let decoder = self.decoder;
-        let access_unit = self.access_unit;
+        let decoder = *decoder_guard;
+        let access_unit = *access_unit_guard;
         let flushing = self.flushing;
 
         // Run decode with timeout protection
@@ -672,11 +693,11 @@ impl Decoder for VvcDecoder {
             match ret {
                 ffi::VVDEC_OK => {
                     let frame = self.convert_frame(frame_ptr)?;
-                    ffi::vvdec_frame_unref(self.decoder, frame_ptr);
+                    ffi::vvdec_frame_unref(*decoder_guard, frame_ptr);
 
                     // Clear access unit after successful decode
                     if !flushing {
-                        ffi::vvdec_accessUnit_free_payload(self.access_unit);
+                        ffi::vvdec_accessUnit_free_payload(*access_unit_guard);
                     }
 
                     Ok(frame)
@@ -708,31 +729,80 @@ impl Decoder for VvcDecoder {
             }
         }
         self.flushing = false;
+
+        // Lock and clear access unit payload after flushing
+        if let Ok(mut access_unit_guard) = self.access_unit.lock() {
+            unsafe {
+                ffi::vvdec_accessUnit_free_payload(*access_unit_guard);
+            }
+        }
     }
 
     fn reset(&mut self) -> Result<()> {
         // Close and reopen decoder
-        unsafe {
-            ffi::vvdec_accessUnit_free_payload(self.access_unit);
-            ffi::vvdec_accessUnit_free(self.access_unit);
-            ffi::vvdec_decoder_close(self.decoder);
+        // Lock both mutexes to safely access the pointers
+        let decoder_ptr = {
+            let mut decoder_guard = self.decoder.lock().map_err(|_| {
+                DecodeError::Decode("Poisoned mutex: decoder lock failed".to_string())
+            })?;
+            let mut access_unit_guard = self.access_unit.lock().map_err(|_| {
+                DecodeError::Decode("Poisoned mutex: access_unit lock failed".to_string())
+            })?;
+
+            unsafe {
+                ffi::vvdec_accessUnit_free_payload(*access_unit_guard);
+                ffi::vvdec_accessUnit_free(*access_unit_guard);
+                ffi::vvdec_decoder_close(*decoder_guard);
+            }
+
+            *decoder_guard
+        };
+
+        // Create new decoder
+        let new_decoder = Self::new()?;
+
+        // Replace the decoder pointer in the existing mutex
+        // (We can't just replace self because we need to keep the mutex)
+        {
+            let mut decoder_guard = self.decoder.lock().map_err(|_| {
+                DecodeError::Decode("Poisoned mutex: decoder lock failed".to_string())
+            })?;
+            let mut access_unit_guard = self.access_unit.lock().map_err(|_| {
+                DecodeError::Decode("Poisoned mutex: access_unit lock failed".to_string())
+            })?;
+
+            // Extract pointers from new_decoder
+            let new_decoder_ptr = *new_decoder.decoder.lock().unwrap();
+            let new_access_unit_ptr = *new_decoder.access_unit.lock().unwrap();
+
+            // Update our mutexes with the new pointers
+            *decoder_guard = new_decoder_ptr;
+            *access_unit_guard = new_access_unit_ptr;
+
+            // Prevent new_decoder from freeing the resources we just took ownership of
+            std::mem::forget(new_decoder);
         }
 
-        let new_decoder = Self::new()?;
-        *self = new_decoder;
         Ok(())
     }
 }
 
 impl Drop for VvcDecoder {
     fn drop(&mut self) {
+        // Lock both mutexes to safely free resources
+        let (decoder_ptr, access_unit_ptr) = {
+            let decoder_guard = self.decoder.lock().unwrap();
+            let access_unit_guard = self.access_unit.lock().unwrap();
+            (*decoder_guard, *access_unit_guard)
+        };
+
         unsafe {
-            if !self.access_unit.is_null() {
-                ffi::vvdec_accessUnit_free_payload(self.access_unit);
-                ffi::vvdec_accessUnit_free(self.access_unit);
+            if !access_unit_ptr.is_null() {
+                ffi::vvdec_accessUnit_free_payload(access_unit_ptr);
+                ffi::vvdec_accessUnit_free(access_unit_ptr);
             }
-            if !self.decoder.is_null() {
-                ffi::vvdec_decoder_close(self.decoder);
+            if !decoder_ptr.is_null() {
+                ffi::vvdec_decoder_close(decoder_ptr);
             }
         }
         debug!("VVC decoder closed");
