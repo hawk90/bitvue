@@ -421,9 +421,15 @@ fn yuv_to_rgb_pixel_u8(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
 ///
 /// Takes ownership of the RGB data to avoid unnecessary copying.
 /// The image crate requires ownership of the pixel data.
-pub fn rgb_to_image(rgb: Vec<u8>, width: u32, height: u32) -> image::RgbImage {
+pub fn rgb_to_image(rgb: Vec<u8>, width: u32, height: u32) -> Result<image::RgbImage, String> {
+    let data_len = rgb.len();
     image::RgbImage::from_raw(width, height, rgb)
-        .expect("Failed to create image from RGB data")
+        .ok_or_else(|| {
+            format!(
+                "Failed to create image from RGB data: width={}, height={}, data_len={}",
+                width, height, data_len
+            )
+        })
 }
 
 /// Get the current conversion strategy type
