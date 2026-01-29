@@ -174,126 +174,12 @@ pub async fn open_file(
         let file_data = std::fs::read(&path_buf)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
-        // Parse based on format
+        // Parse based on format (using helper functions for better code organization)
         let parsed_frames = match container_format {
-            ContainerFormat::IVF => {
-                // For IVF files, do basic parsing to extract frame headers
-                match parse_ivf_frames(&file_data) {
-                    Ok((_header, frames)) => {
-                        log::info!("open_file: IVF parsing successful, {} frames", frames.len());
-                        Some(frames.into_iter().enumerate().map(|(idx, ivf_frame)| {
-                            bitvue_core::UnitNode {
-                                key: bitvue_core::UnitKey {
-                                    stream: StreamId::A,
-                                    unit_type: "FRAME".to_string(),
-                                    offset: 0,  // IVF frames are parsed from memory; file offset not tracked
-                                    size: ivf_frame.size as usize,
-                                },
-                                unit_type: "FRAME".to_string(),
-                                offset: 0,  // IVF frames are parsed from memory; file offset not tracked
-                                size: ivf_frame.size as usize,
-                                frame_index: Some(idx),
-                                frame_type: None,  // Will be determined later from parsing
-                                pts: Some(ivf_frame.timestamp),
-                                dts: None,
-                                display_name: format!("Frame {}", idx),
-                                children: Vec::new(),
-                                qp_avg: None,
-                                mv_grid: None,
-                                temporal_id: None,
-                                ref_frames: None,
-                                ref_slots: None,
-                            }
-                        }).collect::<Vec<_>>())
-                    }
-                    Err(e) => {
-                        log::error!("open_file: IVF parsing failed: {}", e);
-                        None
-                    }
-                }
-            }
-            ContainerFormat::AnnexB => {
-                // For H.264/H.265 Annex B raw files
-                log::info!("open_file: Parsing Annex B byte stream...");
-
-                // Try H.264 first
-                match extract_avc_annex_b_frames(&file_data) {
-                    Ok(avc_frames) if !avc_frames.is_empty() => {
-                        log::info!("open_file: Extracted {} H.264 frames from Annex B", avc_frames.len());
-                        Some(avc_frames_to_unit_nodes(&avc_frames))
-                    }
-                    _ => {
-                        // Try H.265/HEVC
-                        log::info!("open_file: Trying H.265/HEVC parsing...");
-                        match extract_hevc_annex_b_frames(&file_data) {
-                            Ok(hevc_frames) if !hevc_frames.is_empty() => {
-                                log::info!("open_file: Extracted {} H.265 frames from Annex B", hevc_frames.len());
-                                Some(hevc_frames_to_unit_nodes(&hevc_frames))
-                            }
-                            _ => {
-                                log::warn!("open_file: Failed to parse as H.264 or H.265");
-                                None
-                            }
-                        }
-                    }
-                }
-            }
-            ContainerFormat::MP4 => {
-                // For MP4, extract AV1/H.264/H.265/VP9 samples
-                log::info!("open_file: Attempting to extract video samples from MP4...");
-
-                // Try AV1 first
-                if let Ok(av1_samples) = bitvue_formats::mp4::extract_av1_samples(&file_data) {
-                    log::info!("open_file: Extracted {} AV1 samples from MP4", av1_samples.len());
-                    Some(mp4_samples_to_units(av1_samples, "av1"))
-                }
-                // Try VP9 (not yet implemented)
-                // else if let Ok(vp9_samples) = bitvue_formats::mp4::extract_vp9_samples(&file_data) {
-                //     log::info!("open_file: Extracted {} VP9 samples from MP4", vp9_samples.len());
-                //     Some(vp9_samples_to_units(vp9_samples))
-                // }
-                // Try H.265/HEVC
-                else if let Ok(hevc_samples) = bitvue_formats::mp4::extract_hevc_samples(&file_data) {
-                    log::info!("open_file: Extracted {} HEVC samples from MP4", hevc_samples.len());
-                    Some(mp4_samples_to_units(hevc_samples, "hevc"))
-                }
-                // Try H.264/AVC
-                else if let Ok(avc_samples) = bitvue_formats::mp4::extract_avc_samples(&file_data) {
-                    log::info!("open_file: Extracted {} AVC samples from MP4", avc_samples.len());
-                    Some(mp4_samples_to_units(avc_samples, "avc"))
-                } else {
-                    log::warn!("open_file: Failed to extract any video samples from MP4");
-                    None
-                }
-            }
-            ContainerFormat::Matroska => {
-                // For MKV/WebM, extract samples
-                log::info!("open_file: Attempting to extract video samples from Matroska...");
-
-                // Try AV1
-                if let Ok(av1_samples) = bitvue_formats::mkv::extract_av1_samples(&file_data) {
-                    log::info!("open_file: Extracted {} AV1 samples from MKV", av1_samples.len());
-                    Some(mkv_samples_to_units(av1_samples, "av1"))
-                }
-                // Try VP9 (common in WebM, not yet implemented)
-                // else if let Ok(vp9_samples) = bitvue_formats::mkv::extract_vp9_samples(&file_data) {
-                //     log::info!("open_file: Extracted {} VP9 samples from MKV/WebM", vp9_samples.len());
-                //     Some(vp9_samples_to_units(vp9_samples))
-                // }
-                // Try H.265/HEVC
-                else if let Ok(hevc_samples) = bitvue_formats::mkv::extract_hevc_samples(&file_data) {
-                    log::info!("open_file: Extracted {} HEVC samples from MKV", hevc_samples.len());
-                    Some(mkv_samples_to_units(hevc_samples, "hevc"))
-                }
-                // Try H.264/AVC
-                else if let Ok(avc_samples) = bitvue_formats::mkv::extract_avc_samples(&file_data) {
-                    log::info!("open_file: Extracted {} AVC samples from MKV", avc_samples.len());
-                    Some(mkv_samples_to_units(avc_samples, "avc"))
-                } else {
-                    log::warn!("open_file: Failed to extract any video samples from MKV");
-                    None
-                }
-            }
+            ContainerFormat::IVF => parse_ivf_container(&file_data),
+            ContainerFormat::AnnexB => parse_annex_b_container(&file_data),
+            ContainerFormat::MP4 => parse_mp4_container(&file_data),
+            ContainerFormat::Matroska => parse_mkv_container(&file_data),
             _ => {
                 log::info!("open_file: Format {:?} not yet supported for extraction", container_format);
                 None
@@ -681,5 +567,129 @@ fn create_placeholder_unit(idx: usize, codec: &str, sample_data: &[u8]) -> bitvu
         temporal_id: None,
         ref_frames: None,
         ref_slots: None,
+    }
+}
+
+/// Parse IVF container format (AV1)
+///
+/// Returns parsed unit nodes from IVF file, or None if parsing fails.
+fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+    log::info!("parse_ivf_container: Parsing IVF byte stream...");
+    match parse_ivf_frames(file_data) {
+        Ok((_header, frames)) => {
+            log::info!("parse_ivf_container: IVF parsing successful, {} frames", frames.len());
+            Some(frames.into_iter().enumerate().map(|(idx, ivf_frame)| {
+                bitvue_core::UnitNode {
+                    key: bitvue_core::UnitKey {
+                        stream: StreamId::A,
+                        unit_type: "FRAME".to_string(),
+                        offset: 0,  // IVF frames are parsed from memory; file offset not tracked
+                        size: ivf_frame.size as usize,
+                    },
+                    unit_type: "FRAME".to_string(),
+                    offset: 0,  // IVF frames are parsed from memory; file offset not tracked
+                    size: ivf_frame.size as usize,
+                    frame_index: Some(idx),
+                    frame_type: None,  // Will be determined later from parsing
+                    pts: Some(ivf_frame.timestamp),
+                    dts: None,
+                    display_name: format!("Frame {}", idx),
+                    children: Vec::new(),
+                    qp_avg: None,
+                    mv_grid: None,
+                    temporal_id: None,
+                    ref_frames: None,
+                    ref_slots: None,
+                }
+            }).collect::<Vec<_>>())
+        }
+        Err(e) => {
+            log::error!("parse_ivf_container: IVF parsing failed: {}", e);
+            None
+        }
+    }
+}
+
+/// Parse Annex B container format (H.264/H.265 raw files)
+///
+/// Returns parsed unit nodes from Annex B file, or None if parsing fails.
+/// Tries H.264 first, then falls back to H.265/HEVC.
+fn parse_annex_b_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+    log::info!("parse_annex_b_container: Parsing Annex B byte stream...");
+
+    // Try H.264 first
+    match extract_avc_annex_b_frames(file_data) {
+        Ok(avc_frames) if !avc_frames.is_empty() => {
+            log::info!("parse_annex_b_container: Extracted {} H.264 frames from Annex B", avc_frames.len());
+            Some(avc_frames_to_unit_nodes(&avc_frames))
+        }
+        _ => {
+            // Try H.265/HEVC
+            log::info!("parse_annex_b_container: Trying H.265/HEVC parsing...");
+            match extract_hevc_annex_b_frames(file_data) {
+                Ok(hevc_frames) if !hevc_frames.is_empty() => {
+                    log::info!("parse_annex_b_container: Extracted {} H.265 frames from Annex B", hevc_frames.len());
+                    Some(hevc_frames_to_unit_nodes(&hevc_frames))
+                }
+                _ => {
+                    log::warn!("parse_annex_b_container: Failed to parse as H.264 or H.265");
+                    None
+                }
+            }
+        }
+    }
+}
+
+/// Parse MP4 container format
+///
+/// Returns parsed unit nodes from MP4 file, or None if parsing fails.
+/// Tries AV1, HEVC, then AVC in order.
+fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+    log::info!("parse_mp4_container: Attempting to extract video samples from MP4...");
+
+    // Try AV1 first
+    if let Ok(av1_samples) = bitvue_formats::mp4::extract_av1_samples(file_data) {
+        log::info!("parse_mp4_container: Extracted {} AV1 samples from MP4", av1_samples.len());
+        Some(mp4_samples_to_units(av1_samples, "av1"))
+    }
+    // Try H.265/HEVC
+    else if let Ok(hevc_samples) = bitvue_formats::mp4::extract_hevc_samples(file_data) {
+        log::info!("parse_mp4_container: Extracted {} HEVC samples from MP4", hevc_samples.len());
+        Some(mp4_samples_to_units(hevc_samples, "hevc"))
+    }
+    // Try H.264/AVC
+    else if let Ok(avc_samples) = bitvue_formats::mp4::extract_avc_samples(file_data) {
+        log::info!("parse_mp4_container: Extracted {} AVC samples from MP4", avc_samples.len());
+        Some(mp4_samples_to_units(avc_samples, "avc"))
+    } else {
+        log::warn!("parse_mp4_container: Failed to extract any video samples from MP4");
+        None
+    }
+}
+
+/// Parse Matroska/WebM container format
+///
+/// Returns parsed unit nodes from MKV/WebM file, or None if parsing fails.
+/// Tries AV1, HEVC, then AVC in order.
+fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+    log::info!("parse_mkv_container: Attempting to extract video samples from Matroska...");
+
+    // Try AV1
+    if let Ok(av1_samples) = bitvue_formats::mkv::extract_av1_samples(file_data) {
+        log::info!("parse_mkv_container: Extracted {} AV1 samples from MKV", av1_samples.len());
+        Some(mkv_samples_to_units(av1_samples, "av1"))
+    }
+    // Try H.265/HEVC
+    else if let Ok(hevc_samples) = bitvue_formats::mkv::extract_hevc_samples(file_data) {
+        log::info!("parse_mkv_container: Extracted {} HEVC samples from MKV", hevc_samples.len());
+        Some(mkv_samples_to_units(hevc_samples, "hevc"))
+    }
+    // Try H.264/AVC
+    else if let Ok(avc_samples) = bitvue_formats::mkv::extract_avc_samples(file_data) {
+        log::info!("parse_mkv_container: Extracted {} AVC samples from MKV", avc_samples.len());
+        Some(mkv_samples_to_units(avc_samples, "avc"))
+    } else {
+        log::warn!("parse_mkv_container: Failed to extract any video samples from MKV");
+        None
     }
 }
