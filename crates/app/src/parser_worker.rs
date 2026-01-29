@@ -319,39 +319,58 @@ fn parse_raw_av1(
     Ok((container, unit_model, diagnostics))
 }
 
-/// Extract QP from frame OBU payload
-/// Returns base_q_idx (0-255 for AV1)
-fn extract_qp_from_frame(payload: &[u8]) -> Option<u8> {
-    use bitvue_av1::parse_frame_header_basic;
+/// Frame header information extracted in a single parse
+struct FrameHeaderInfo {
+    base_q_idx: Option<u8>,
+    frame_type: Option<String>,
+    ref_frame_idx: Option<Vec<u8>>, // Convert from [u8; 3] to Vec<u8>
+}
 
-    // Try to parse frame header
+/// Extract all frame header information in a single parse
+/// This avoids redundant parsing of the same OBU data
+fn extract_frame_header_info(payload: &[u8]) -> Option<FrameHeaderInfo> {
+    use bitvue_av1::{parse_frame_header_basic, FrameType};
+
+    // Try to parse frame header once
     match parse_frame_header_basic(payload) {
-        Ok(header) => header.base_q_idx,
+        Ok(header) => {
+            // Extract frame type as string
+            let frame_type = match header.frame_type {
+                FrameType::Key => Some("KEY"),
+                FrameType::Inter => Some("INTER"),
+                FrameType::BFrame => Some("B"),
+                FrameType::IntraOnly => Some("INTRA_ONLY"),
+                FrameType::Switch => Some("SWITCH"),
+                FrameType::SI => Some("SI"),
+                FrameType::SP => Some("SP"),
+                FrameType::Unknown => Some("UNKNOWN"),
+            };
+
+            // Convert ref_frame_idx from [u8; 3] to Vec<u8>
+            let ref_frame_idx = header.ref_frame_idx.map(|arr| arr.to_vec());
+
+            // Convert frame_type from Option<&str> to Option<String>
+            let frame_type = frame_type.map(|s| s.to_string());
+
+            Some(FrameHeaderInfo {
+                base_q_idx: header.base_q_idx,
+                frame_type,
+                ref_frame_idx,
+            })
+        }
         Err(_) => None,
     }
 }
 
+/// Extract QP from frame OBU payload
+/// Returns base_q_idx (0-255 for AV1)
+fn extract_qp_from_frame(payload: &[u8]) -> Option<u8> {
+    extract_frame_header_info(payload).and_then(|info| info.base_q_idx)
+}
+
 /// Extract frame type from frame OBU payload
 fn extract_frame_type(payload: &[u8]) -> Option<String> {
-    use bitvue_av1::{parse_frame_header_basic, FrameType};
-
-    // Try to parse frame header
-    match parse_frame_header_basic(payload) {
-        Ok(header) => {
-            let type_str = match header.frame_type {
-                FrameType::Key => "KEY",
-                FrameType::Inter => "INTER",
-                FrameType::BFrame => "B",
-                FrameType::IntraOnly => "INTRA_ONLY",
-                FrameType::Switch => "SWITCH",
-                FrameType::SI => "SI",
-                FrameType::SP => "SP",
-                FrameType::Unknown => "UNKNOWN",
-            };
-            Some(type_str.to_string())
-        }
-        Err(_) => None,
-    }
+    extract_frame_header_info(payload).and_then(|info| info.frame_type)
 }
 
 /// Extract reference slot indices from frame OBU payload
@@ -359,30 +378,26 @@ fn extract_frame_type(payload: &[u8]) -> Option<String> {
 /// ref_slots: Raw slot indices from bitstream (e.g., [0, 3, 6] for LAST, GOLDEN, ALTREF)
 /// ref_frames: Actual frame indices (requires tracking reference state, returns heuristic for now)
 fn extract_reference_slots(payload: &[u8]) -> Option<(Vec<u8>, Vec<usize>)> {
-    use bitvue_av1::parse_frame_header_basic;
+    // Use cached frame header info to avoid redundant parsing
+    extract_frame_header_info(payload).and_then(|info| {
+        // ref_frame_idx is [LAST, GOLDEN, ALTREF] slot indices (3 bits each)
+        if let Some(ref_idx) = info.ref_frame_idx {
+            // Convert to vec, filtering out invalid values (7 is reserved/unused)
+            let slots: Vec<u8> = ref_idx.iter().filter(|&&x| x < 7).copied().collect();
 
-    match parse_frame_header_basic(payload) {
-        Ok(header) => {
-            // ref_frame_idx is [LAST, GOLDEN, ALTREF] slot indices (3 bits each)
-            if let Some(ref_idx) = header.ref_frame_idx {
-                // Convert to vec, filtering out invalid values (7 is reserved/unused)
-                let slots: Vec<u8> = ref_idx.iter().filter(|&&x| x < 7).copied().collect();
-
-                if slots.is_empty() {
-                    return None;
-                }
-
-                // For now, return empty ref_frames since we don't track reference state
-                // TODO: Implement proper reference frame state tracking
-                let ref_frames: Vec<usize> = vec![];
-
-                Some((slots, ref_frames))
-            } else {
-                None
+            if slots.is_empty() {
+                return None;
             }
+
+            // For now, return empty ref_frames since we don't track reference state
+            // TODO: Implement proper reference frame state tracking
+            let ref_frames: Vec<usize> = vec![];
+
+            Some((slots, ref_frames))
+        } else {
+            None
         }
-        Err(_) => None,
-    }
+    })
 }
 
 /// Extract motion vectors from frame OBU payload
