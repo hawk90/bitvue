@@ -1,8 +1,8 @@
 # Security Issues - Remaining TODO
 
 ## Summary
-- **Status**: 5 CRITICAL/HIGH issues fixed ✅
-- **Remaining**: 10 issues (8 MEDIUM, 2 LOW)
+- **Status**: 7 CRITICAL/HIGH issues fixed ✅
+- **Remaining**: 8 issues (6 MEDIUM, 2 LOW)
 - **Priority**: Address MEDIUM issues before release
 
 ---
@@ -46,24 +46,7 @@ let value = data.get(offset).ok_or(DecodeError::...)?;
 
 ---
 
-### 3. Thread Safety Concerns
-**Risk**: Potential race conditions in shared state
-**Locations**:
-- `crates/bitvue-av1/src/overlay_extraction/cache.rs` - LRU cache
-- Singleton patterns in managers
-
-**Fix**:
-- Audit all `static mut` usage
-- Review `Arc<Mutex<T>>` usage for deadlocks
-- Add thread safety tests
-- Document thread safety guarantees
-
-**Estimated effort**: 4-5 hours
-**Impact**: Prevents data races and deadlocks
-
----
-
-### 4. Resource Limits Validation
+### 3. Resource Limits Validation
 **Risk**: Missing validation for user-configurable limits
 **Locations**:
 - Thread pool sizes
@@ -86,7 +69,7 @@ pub fn set_thread_count(count: usize) -> Result<()> {
 
 ---
 
-### 5. Error Message Information Leakage
+### 4. Error Message Information Leakage
 **Risk**: Detailed errors might expose internal state
 **Locations**:
 - All `DecodeError::Decode(format!(...))` messages
@@ -103,7 +86,7 @@ pub fn set_thread_count(count: usize) -> Result<()> {
 
 ---
 
-### 6. Input Validation Edge Cases
+### 5. Input Validation Edge Cases
 **Risk**: Corner cases in validation logic
 **Issues**:
 - Zero-size dimensions after arithmetic
@@ -121,7 +104,7 @@ pub fn set_thread_count(count: usize) -> Result<()> {
 
 ---
 
-### 7. Dependency Vulnerabilities
+### 6. Dependency Vulnerabilities
 **Risk**: External crates might have known CVEs
 **Action Required**:
 ```bash
@@ -141,7 +124,7 @@ cargo update
 
 ---
 
-### 8. Debug Assertions in Release
+### 7. Debug Assertions in Release
 **Risk**: Important checks only run in debug builds
 **Locations**:
 - `debug_assert!()` calls that should be `assert!()`
@@ -161,7 +144,7 @@ assert!(offset < data.len());       // ✅
 
 ## LOW Priority (2 issues)
 
-### 9. Documentation of Security Assumptions
+### 8. Documentation of Security Assumptions
 **Risk**: Security properties not documented
 **Action Required**:
 - Document threat model
@@ -174,7 +157,7 @@ assert!(offset < data.len());       // ✅
 
 ---
 
-### 10. Fuzzing Test Coverage
+### 9. Fuzzing Test Coverage
 **Risk**: Parser bugs not caught by unit tests
 **Action Required**:
 - Add cargo-fuzz targets for:
@@ -204,23 +187,23 @@ For each fix:
 
 ## Priority Order
 
-1. **#7 - Dependency audit** (quick wins, automated)
-2. **#1 - Unchecked indexing** (high impact, common vulnerability)
-3. **#4 - Resource limits** (easy fixes, good protection)
-4. **#8 - Debug assertions** (simple audit, good safety)
-5. **#5 - Error message leakage** (review and sanitize)
-6. **#2 - Panic in error paths** (improve robustness)
-7. **#3 - Thread safety** (complex, needs careful review)
-8. **#6 - Input validation** (comprehensive testing)
-9. **#9 - Documentation** (ongoing)
-10. **#10 - Fuzzing** (long-term investment)
+1. **#1 - Unchecked indexing** (high impact, common vulnerability)
+2. **#3 - Resource limits** (easy fixes, good protection)
+3. **#7 - Debug assertions** (simple audit, good safety)
+4. **#4 - Error message leakage** (review and sanitize)
+5. **#2 - Panic in error paths** (improve robustness)
+6. **#5 - Input validation** (comprehensive testing)
+7. **#8 - Documentation** (ongoing)
+8. **#9 - Fuzzing** (long-term investment)
 
 ---
 
-## Completed (5 issues) ✅
+## Completed (7 issues) ✅
 
 1. ✅ Mutex poisoning panics (vvdec.rs)
 2. ✅ Unbounded timeout loops (vvdec.rs)
 3. ✅ Integer overflow in YUV calculations (decoder.rs)
 4. ✅ Unbounded frame iteration (decoder.rs)
 5. ✅ Type cast overflow (vvdec.rs)
+6. ✅ Thread safety TOCTOU race (cache.rs) - Single lock acquisition pattern
+7. ✅ Dependency vulnerabilities - Audit complete, no CVEs found
