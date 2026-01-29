@@ -88,32 +88,69 @@ pub fn extract_qp_grid_from_parsed(
     Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp))
 }
 
-/// Helper: Find QP value for a block from coding units
+/// Spatial index for O(1) coding unit lookup by grid position
 ///
-/// Searches through coding units to find one that overlaps with the given block
-/// and returns its effective QP value. Returns None if no overlapping CU found.
-fn find_overlapping_cu_qp(
-    coding_units: &[crate::tile::CodingUnit],
-    block_x: u32,
-    block_y: u32,
-    block_w: u32,
-    base_qp: i16,
-) -> Option<i16> {
-    coding_units
-        .iter()
-        .find(|cu| {
-            cu.x < block_x + block_w
-                && cu.x + cu.width > block_x
-                && cu.y < block_y + block_w
-                && cu.y + cu.height > block_y
-        })
-        .map(|cu| cu.effective_qp(base_qp))
+/// Pre-computes which coding unit overlaps each grid cell, eliminating
+/// the need for O(n) linear search per block. For 1080p, this reduces
+/// 510×1000 = 510,000 comparisons to just 510 lookups.
+struct CuSpatialIndex {
+    /// Grid of CU indices (one per grid cell)
+    /// Vec index = grid_y * grid_w + grid_x
+    /// Value = Some(cu_index) or None if no CU covers this cell
+    grid: Vec<Option<usize>>,
+    grid_w: u32,
 }
 
-/// Helper: Build QP grid from coding units
+impl CuSpatialIndex {
+    /// Build spatial index from coding units
+    ///
+    /// Pre-processes all coding units to determine which grid cell(s) they overlap.
+    /// Complexity: O(n * k) where n=CU count, k=average cells per CU (typically ~4)
+    fn new(
+        coding_units: &[crate::tile::CodingUnit],
+        grid_w: u32,
+        grid_h: u32,
+        block_w: u32,
+        block_h: u32,
+    ) -> Self {
+        let total_cells = (grid_w * grid_h) as usize;
+        let mut grid = vec![None; total_cells];
+
+        // For each coding unit, mark all grid cells it overlaps
+        for (cu_idx, cu) in coding_units.iter().enumerate() {
+            // Calculate grid cell range covered by this CU
+            let start_grid_x = cu.x / block_w;
+            let start_grid_y = cu.y / block_h;
+            let end_grid_x = ((cu.x + cu.width - 1) / block_w).min(grid_w - 1);
+            let end_grid_y = ((cu.y + cu.height - 1) / block_h).min(grid_h - 1);
+
+            // Mark all overlapping cells
+            for grid_y in start_grid_y..=end_grid_y {
+                for grid_x in start_grid_x..=end_grid_x {
+                    let cell_idx = (grid_y * grid_w + grid_x) as usize;
+                    // First CU wins (earlier CUs take precedence)
+                    if grid[cell_idx].is_none() {
+                        grid[cell_idx] = Some(cu_idx);
+                    }
+                }
+            }
+        }
+
+        Self { grid, grid_w }
+    }
+
+    /// Get coding unit index for a grid cell (O(1) lookup)
+    #[inline]
+    fn get_cu_index(&self, grid_x: u32, grid_y: u32) -> Option<usize> {
+        let cell_idx = (grid_y * self.grid_w + grid_x) as usize;
+        self.grid.get(cell_idx).copied().flatten()
+    }
+}
+
+/// Helper: Build QP grid from coding units using spatial index
 ///
-/// Creates a QP grid by finding overlapping coding units for each block.
-/// Reduces nesting depth in extract_qp_grid_from_parsed.
+/// Creates a QP grid by using a spatial index for O(1) coding unit lookup.
+/// Eliminates O(n²) linear search bottleneck (510k→510 lookups for 1080p).
 fn build_qp_grid_from_cus(
     coding_units: &[crate::tile::CodingUnit],
     grid_w: u32,
@@ -125,13 +162,18 @@ fn build_qp_grid_from_cus(
     let total_blocks = (grid_w * grid_h) as usize;
     let mut qp = Vec::with_capacity(total_blocks);
 
+    // Build spatial index (O(n×k) where k=cells per CU, typically ~4)
+    let spatial_index = CuSpatialIndex::new(coding_units, grid_w, grid_h, block_w, block_h);
+
+    // Populate QP grid using O(1) lookups instead of O(n) searches
     for grid_y in 0..grid_h {
         for grid_x in 0..grid_w {
-            let block_x = grid_x * block_w;
-            let block_y = grid_y * block_h;
+            let cu_qp = spatial_index
+                .get_cu_index(grid_x, grid_y)
+                .map(|cu_idx| coding_units[cu_idx].effective_qp(base_qp))
+                .unwrap_or(base_qp);
 
-            let cu_qp = find_overlapping_cu_qp(coding_units, block_x, block_y, block_w, base_qp);
-            qp.push(cu_qp.unwrap_or(base_qp));
+            qp.push(cu_qp);
         }
     }
 
