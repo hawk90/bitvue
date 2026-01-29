@@ -16,6 +16,12 @@ use crate::{CacheKey, CacheProvenanceTracker, InvalidationTrigger};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Type alias for per-lane cache entries
+///
+/// Maps lane identifiers to their associated cache keys.
+/// Used to track which timeline lanes have cached overlays.
+pub type LaneCacheEntries = HashMap<String, Vec<CacheKey>>;
+
 /// Timeline cache manager
 ///
 /// Manages all timeline-specific caches with full provenance tracking.
@@ -34,7 +40,7 @@ pub struct TimelineCacheManager {
     filter_hash: u64,
 
     /// Per-lane cache entries
-    lane_cache_entries: HashMap<String, Vec<CacheKey>>,
+    lane_cache_entries: LaneCacheEntries,
 }
 
 impl TimelineCacheManager {

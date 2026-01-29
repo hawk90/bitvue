@@ -30,7 +30,25 @@ use crate::symbol::SymbolDecoder;
 use bitvue_core::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
-/// Prediction mode
+/// Prediction mode for intra and inter prediction
+///
+/// # Intra Modes (DcPred through PaethPred)
+/// Used for intra-frame prediction where pixels are predicted from previously
+/// coded samples within the same frame. Each mode uses a specific directional
+/// or DC-based prediction strategy.
+///
+/// # Inter Modes (NewMv through GlobalMv)
+/// Used for inter-frame prediction where pixels are predicted from reference frames
+/// using motion vectors. Each mode represents a different MV selection strategy.
+///
+/// # AV1 Specific Modes
+/// - **DcPred**: DC prediction (average of above/left samples)
+/// - **SmoothPred/SmoothVPred/SmoothHPred**: Smooth interpolation modes
+/// - **PaethPred**: Paeth predictor (edge detection)
+/// - **NewMv**: Create new motion vector
+/// - **NearestMv**: Use nearest MV from neighboring blocks
+/// - **NearMv**: Use near MV from neighboring blocks
+/// - **GlobalMv**: Use global motion vector
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PredictionMode {
     /// DC prediction (INTRA)

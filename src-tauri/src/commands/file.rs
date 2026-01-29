@@ -40,7 +40,13 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Cannot resolve path: {}", e))?;
 
     // Validate the canonical path against system directory restrictions
-    let canonical_str = canonical.to_string_lossy();
+    check_system_directory_access(&canonical.to_string_lossy())?;
+
+    Ok(canonical)
+}
+
+/// Check if a canonical path is in a blocked system directory
+fn check_system_directory_access(canonical_str: &str) -> Result<(), String> {
     #[cfg(unix)]
     {
         let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
@@ -61,8 +67,7 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
             return Err("Cannot access system directories".to_string());
         }
     }
-
-    Ok(canonical)
+    Ok(())
 }
 
 /// Open a video file and parse its structure
