@@ -101,9 +101,9 @@ pub fn parse_frame_header_syntax(
 
     // error_resilient_mode (1 bit) - AV1 Spec 5.9.8
     // Conditional: depends on frame_type and show_frame
-    let _error_resilient =
-        if frame_type == FrameType::Switch || (frame_type == FrameType::Key && show_frame) {
-            // Implicit: always true for these cases (no bit in bitstream)
+    let _error_resilient = match (frame_type, show_frame) {
+        // Implicit: always true for these cases (no bit in bitstream)
+        (FrameType::Switch, _) | (FrameType::Key, true) => {
             // Add virtual node for clarity
             builder.add_field(
                 "error_resilient_mode",
@@ -111,7 +111,9 @@ pub fn parse_frame_header_syntax(
                 "1 (implicit)".to_string(),
             );
             true
-        } else {
+        }
+        // Explicit bit in bitstream for other cases
+        _ => {
             let (err_resilient, range) = reader.read_bit_tracked()?;
             builder.add_field(
                 "error_resilient_mode",
@@ -119,7 +121,8 @@ pub fn parse_frame_header_syntax(
                 format!("{}", err_resilient as u8),
             );
             err_resilient
-        };
+        }
+    };
 
     // Phase 0: Stop here
     // Full frame header has 100+ more fields:

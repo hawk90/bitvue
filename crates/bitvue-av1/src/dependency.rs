@@ -3,7 +3,7 @@
 //! This module provides functionality to analyze frame dependencies
 //! and extract minimal reproducible clips from AV1 bitstreams.
 
-use crate::frame_header::FrameType;
+use bitvue_core::FrameType;
 use crate::obu::{Obu, ObuType};
 use std::collections::HashSet;
 
@@ -67,7 +67,7 @@ impl DependencyGraph {
         // Search backwards from frame_index
         for i in (0..=frame_index).rev() {
             if let Some(frame) = self.frames.get(i) {
-                if frame.frame_type == FrameType::Key {
+                if frame.frame_type.is_key() {
                     return Some(i);
                 }
             }

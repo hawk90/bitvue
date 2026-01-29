@@ -88,11 +88,11 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     // show_frame (1 bit)
     let show_frame = reader.read_bit()?;
 
-    // error_resilient_mode (1 bit) - only if not Key or IntraOnly
-    let error_resilient_mode = if show_frame && frame_type == FrameType::Key {
-        true // Key frames shown are always error resilient in this context
-    } else {
-        reader.read_bit()?
+    // error_resilient_mode (1 bit) - AV1 Spec 5.9.8
+    // Key frames shown are always error resilient (no bit in bitstream)
+    let error_resilient_mode = match (frame_type, show_frame) {
+        (FrameType::Key, true) => true,
+        _ => reader.read_bit()?,
     };
 
     // Skip to refresh_frame_flags and ref_frame_idx
@@ -115,17 +115,18 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     };
 
     // ref_frame_idx[3] (9 bits) - only for inter frames
-    let ref_frame_idx = if frame_type == FrameType::Inter {
-        let last = reader.read_bits(3).ok().map(|b| b as u8);
-        let golden = reader.read_bits(3).ok().map(|b| b as u8);
-        let altref = reader.read_bits(3).ok().map(|b| b as u8);
+    let ref_frame_idx = match frame_type {
+        FrameType::Inter => {
+            let last = reader.read_bits(3).ok().map(|b| b as u8);
+            let golden = reader.read_bits(3).ok().map(|b| b as u8);
+            let altref = reader.read_bits(3).ok().map(|b| b as u8);
 
-        match (last, golden, altref) {
-            (Some(l), Some(g), Some(a)) => Some([l, g, a]),
-            _ => None,
+            match (last, golden, altref) {
+                (Some(l), Some(g), Some(a)) => Some([l, g, a]),
+                _ => None,
+            }
         }
-    } else {
-        None
+        _ => None,
     };
 
     // TODO: Parse full uncompressed header to get exact size
