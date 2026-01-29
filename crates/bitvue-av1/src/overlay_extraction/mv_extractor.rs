@@ -104,18 +104,14 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
 
     // Fallback: Create scaffold MV grid
     let is_intra = parsed.frame_type.is_intra_only;
-    let has_tiles = parsed.has_tile_data();
 
     for _ in 0..total_blocks {
         if is_intra {
             mv_l0.push(CoreMV::MISSING);
             mv_l1.push(CoreMV::MISSING);
             mode.push(BlockMode::Intra);
-        } else if has_tiles {
-            mv_l0.push(CoreMV::ZERO);
-            mv_l1.push(CoreMV::ZERO);
-            mode.push(BlockMode::Inter);
         } else {
+            // Inter frames (with or without tiles) use default MV
             mv_l0.push(CoreMV::ZERO);
             mv_l1.push(CoreMV::ZERO);
             mode.push(BlockMode::Inter);

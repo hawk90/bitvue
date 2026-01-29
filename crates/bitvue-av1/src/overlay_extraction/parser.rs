@@ -43,7 +43,7 @@ pub struct FrameDimensions {
 }
 
 /// Frame type information
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct FrameTypeInfo {
     /// Whether this is a key/intra-only frame
     pub is_intra_only: bool,
@@ -73,15 +73,6 @@ impl Default for FrameDimensions {
             sb_size: 64,
             sb_cols: 30,
             sb_rows: 17,
-        }
-    }
-}
-
-impl Default for FrameTypeInfo {
-    fn default() -> Self {
-        Self {
-            is_intra_only: false,
-            base_qp: None,
         }
     }
 }

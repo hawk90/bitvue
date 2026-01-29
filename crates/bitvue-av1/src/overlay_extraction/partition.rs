@@ -407,7 +407,7 @@ fn get_intra_mode_for_position(col: u32, row: u32) -> PredictionMode {
         PredictionMode::PaethPred,
     ];
 
-    let idx = (((col as usize) + (row as usize) * 3) % INTRA_MODES.len()) as usize;
+    let idx = ((col as usize) + (row as usize) * 3) % INTRA_MODES.len();
     INTRA_MODES[idx]
 }
 
@@ -420,7 +420,7 @@ fn get_inter_mode_for_position(col: u32, row: u32) -> PredictionMode {
         PredictionMode::GlobalMv,
     ];
 
-    let idx = (((col as usize) + (row as usize)) % INTER_MODES.len()) as usize;
+    let idx = ((col as usize) + (row as usize)) % INTER_MODES.len();
     INTER_MODES[idx]
 }
 
