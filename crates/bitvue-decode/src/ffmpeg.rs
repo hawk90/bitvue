@@ -157,14 +157,72 @@ impl FfmpegDecoder {
         };
 
         // Already YUV420P - extract data directly without cloning
-        let y_plane = data_frame.data(0).to_vec();
+        // Validate plane sizes to prevent buffer overflow attacks
+        const MAX_PLANE_SIZE: usize = 7680 * 4320; // 8K resolution
+
         let y_stride = data_frame.stride(0);
+        let expected_y_size = width as usize * height as usize;
+        let actual_y_size = y_stride as usize * height as usize;
 
-        let u_plane = data_frame.data(1).to_vec();
+        if actual_y_size > MAX_PLANE_SIZE {
+            return Err(DecodeError::Decode(format!(
+                "Y plane size {} exceeds maximum allowed {}",
+                actual_y_size, MAX_PLANE_SIZE
+            )));
+        }
+
+        let y_plane = if actual_y_size <= expected_y_size {
+            data_frame.data(0).to_vec()
+        } else {
+            // Handle strided data safely
+            let mut buf = Vec::with_capacity(expected_y_size);
+            for row in 0..height as usize {
+                let start = row * y_stride as usize;
+                let end = start + width as usize;
+                buf.extend_from_slice(&data_frame.data(0)[start..end.min(data_frame.data(0).len())]);
+            }
+            buf
+        };
+
         let u_stride = data_frame.stride(1);
+        let uv_width = width / 2;
+        let uv_height = height / 2;
+        let expected_uv_size = uv_width as usize * uv_height as usize;
+        let actual_uv_size = u_stride as usize * uv_height as usize;
 
-        let v_plane = data_frame.data(2).to_vec();
+        if actual_uv_size > MAX_PLANE_SIZE / 4 {
+            return Err(DecodeError::Decode(format!(
+                "U plane size {} exceeds maximum allowed {}",
+                actual_uv_size, MAX_PLANE_SIZE / 4
+            )));
+        }
+
+        let u_plane = if actual_uv_size <= expected_uv_size {
+            data_frame.data(1).to_vec()
+        } else {
+            // Handle strided data safely
+            let mut buf = Vec::with_capacity(expected_uv_size);
+            for row in 0..uv_height as usize {
+                let start = row * u_stride as usize;
+                let end = start + uv_width as usize;
+                buf.extend_from_slice(&data_frame.data(1)[start..end.min(data_frame.data(1).len())]);
+            }
+            buf
+        };
+
         let v_stride = data_frame.stride(2);
+        let v_plane = if actual_uv_size <= expected_uv_size {
+            data_frame.data(2).to_vec()
+        } else {
+            // Handle strided data safely
+            let mut buf = Vec::with_capacity(expected_uv_size);
+            for row in 0..uv_height as usize {
+                let start = row * v_stride as usize;
+                let end = start + uv_width as usize;
+                buf.extend_from_slice(&data_frame.data(2)[start..end.min(data_frame.data(2).len())]);
+            }
+            buf
+        };
 
         // Detect frame type
         let frame_type = if data_frame.is_key() {

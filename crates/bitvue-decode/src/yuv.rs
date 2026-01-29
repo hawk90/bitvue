@@ -64,8 +64,12 @@ unsafe fn yuv420_to_rgb_avx2(
             let y_idx = y_row_start + x;
             let uv_idx = uv_row + (x / 2);
 
+            // Comprehensive bounds check before AVX2 operations
+            let y_safe = y_idx + 8 <= y_plane.len();
+            let uv_safe = uv_idx + 4 <= u_plane.len() && uv_idx + 4 <= v_plane.len();
+
             // Process 8 pixels at once with AVX2
-            if x + 8 <= width && uv_idx + 4 <= u_plane.len() {
+            if x + 8 <= width && y_safe && uv_safe {
                 // Load 8 Y pixels
                 let y_vec = _mm256_loadu_si256(
                     y_plane.as_ptr().add(y_idx) as *const __m256i
