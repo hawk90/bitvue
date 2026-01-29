@@ -37,6 +37,9 @@ const MAX_PLANE_SIZE: usize = 7680 * 4320 * 4; // 8K resolution, 4 bytes per sam
 /// Maximum allowed frame dimensions
 const MAX_FRAME_DIMENSION: u32 = 8192;
 
+/// Maximum number of consecutive timeout attempts before permanent failure
+const MAX_TIMEOUT_RETRIES: usize = 3;
+
 /// Maximum time to wait for a single frame decode before timing out
 ///
 /// Prevents infinite hangs from malformed video data or decoder bugs.
@@ -340,6 +343,8 @@ pub struct VvcDecoder {
     /// Flag indicating decoder is in poisoned state after timeout
     /// When true, decoder must be reset before next use
     poisoned: std::sync::atomic::AtomicBool,
+    /// Count of consecutive timeout failures
+    timeout_count: std::sync::atomic::AtomicUsize,
 }
 
 impl VvcDecoder {
@@ -389,6 +394,7 @@ impl VvcDecoder {
                 access_unit: Mutex::new(au_ptr),
                 flushing: false,
                 poisoned: std::sync::atomic::AtomicBool::new(false),
+                timeout_count: std::sync::atomic::AtomicUsize::new(0),
             })
         }
     }
@@ -596,16 +602,29 @@ impl Decoder for VvcDecoder {
     }
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
+        // Check if timeout limit exceeded
+        let timeout_count = self.timeout_count.load(std::sync::atomic::Ordering::Relaxed);
+        if timeout_count >= MAX_TIMEOUT_RETRIES {
+            return Err(DecodeError::Decode(format!(
+                "VVC decoder failed {} consecutive times - decoder permanently disabled",
+                MAX_TIMEOUT_RETRIES
+            )));
+        }
+
         // Check if decoder is poisoned from previous timeout
         // If so, automatically reset it before proceeding
         if self.poisoned.load(std::sync::atomic::Ordering::Relaxed) {
-            warn!("VVC decoder was poisoned (previous timeout), attempting automatic reset");
+            warn!("VVC decoder was poisoned (previous timeout), attempting automatic reset (attempt {}/{})",
+                  timeout_count + 1, MAX_TIMEOUT_RETRIES);
             match self.reset() {
                 Ok(()) => {
                     self.poisoned.store(false, std::sync::atomic::Ordering::Relaxed);
+                    // Don't reset timeout_count here - only reset on successful decode
                     debug!("VVC decoder reset successful after poisoned state");
                 }
                 Err(e) => {
+                    // Increment timeout count on failed reset
+                    self.timeout_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return Err(DecodeError::Decode(format!(
                         "Failed to reset poisoned decoder: {}",
                         e
@@ -646,9 +665,10 @@ impl Decoder for VvcDecoder {
                 // Check if this is a timeout error
                 let err_msg = format!("{}", e);
                 if err_msg.contains("timeout") || err_msg.contains("Timeout") {
-                    // Mark decoder as poisoned
+                    // Mark decoder as poisoned and increment timeout counter
                     self.poisoned.store(true, std::sync::atomic::Ordering::Relaxed);
-                    error!("VVC decoder marked as POISONED after timeout");
+                    let count = self.timeout_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    error!("VVC decoder marked as POISONED after timeout (attempt {}/{})", count, MAX_TIMEOUT_RETRIES);
                 }
                 return Err(e);
             }
@@ -666,6 +686,9 @@ impl Decoder for VvcDecoder {
                     if !flushing {
                         ffi::vvdec_accessUnit_free_payload(*access_unit_guard);
                     }
+
+                    // Reset timeout counter on successful decode
+                    self.timeout_count.store(0, std::sync::atomic::Ordering::Relaxed);
 
                     Ok(frame)
                 }
@@ -753,6 +776,9 @@ impl Decoder for VvcDecoder {
             // Prevent new_decoder from freeing the resources we just took ownership of
             std::mem::forget(new_decoder);
         }
+
+        // Reset timeout counter after successful reset
+        self.timeout_count.store(0, std::sync::atomic::Ordering::Relaxed);
 
         Ok(())
     }
