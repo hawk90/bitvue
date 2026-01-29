@@ -164,6 +164,13 @@ impl crate::traits::Decoder for Av1Decoder {
     }
 }
 
+/// IVF frame header with data offset for frame extraction
+#[derive(Debug, Clone)]
+struct IvfFrameHeaderWithOffset {
+    timestamp: i64,
+    offset: usize,
+}
+
 impl Av1Decoder {
     /// Creates a new AV1 decoder
     pub fn new() -> Result<Self> {
@@ -345,18 +352,8 @@ impl Av1Decoder {
 
     /// Decode IVF container data
     fn decode_ivf(&mut self, data: &[u8]) -> Result<Vec<DecodedFrame>> {
-        // Parse IVF header
-        if data.len() < 32 {
-            return Err(DecodeError::Decode("IVF data too short".to_string()));
-        }
+        let (header_size, frame_count) = self.parse_ivf_header(data)?;
 
-        let header_size = u16::from_le_bytes([data[6], data[7]]) as usize;
-
-        // Read frame_count from IVF header (bytes 24-27) for pre-allocation
-        let frame_count = u32::from_le_bytes([data[24], data[25], data[26], data[27]]) as usize;
-
-        // Pre-allocate decoded_frames with estimated capacity
-        // Use minimum of frame_count from header and MAX_FRAMES_PER_FILE
         const MAX_FRAMES_PER_FILE: usize = 100_000;
         let estimated_frames = frame_count.min(MAX_FRAMES_PER_FILE);
         let mut decoded_frames = Vec::with_capacity(estimated_frames);
@@ -364,104 +361,137 @@ impl Av1Decoder {
         let mut offset = header_size;
         let mut frame_idx = 0i64;
 
-        // Maximum reasonable frame size (100 MB) to prevent DoS attacks
-        const MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
+        while let Some((frame_header, frame_end)) = self.parse_next_ivf_frame(data, offset, frame_idx)? {
+            let frame_data = data[frame_header.offset..frame_end].to_vec();
 
-        // Iterate through IVF frames
-        while offset + 12 <= data.len() {
-            // Check frame count limit to prevent DoS via excessive frames
-            if frame_idx >= MAX_FRAMES_PER_FILE as i64 {
-                return Err(DecodeError::Decode(
-                    "IVF file contains too many frames".to_string()
-                ));
-            }
-
-            // Safely extract frame header bytes using .get() to prevent panics
-            let frame_header = data.get(offset..offset + 12).ok_or_else(|| {
-                DecodeError::Decode("IVF frame header is incomplete or corrupt".to_string())
-            })?;
-
-            let frame_size_u32 = u32::from_le_bytes([
-                frame_header[0],
-                frame_header[1],
-                frame_header[2],
-                frame_header[3],
-            ]);
-
-            // Extract timestamp (8 bytes following frame size)
-            let timestamp_u64 = u64::from_le_bytes([
-                frame_header[4],
-                frame_header[5],
-                frame_header[6],
-                frame_header[7],
-                frame_header[8],
-                frame_header[9],
-                frame_header[10],
-                frame_header[11],
-            ]);
-
-            // Validate timestamp fits in i64 (dav1d expects i64)
-            if timestamp_u64 > i64::MAX as u64 {
-                return Err(DecodeError::Decode(
-                    "IVF frame timestamp is out of valid range".to_string()
-                ));
-            }
-            let timestamp = timestamp_u64 as i64;
-
-            let frame_size = frame_size_u32 as usize;
-
-            // Validate frame size to prevent DoS attacks
-            if frame_size > MAX_FRAME_SIZE {
-                return Err(DecodeError::Decode(
-                    "IVF frame size exceeds maximum allowed".to_string()
-                ));
-            }
-
-            // Skip frame header with overflow protection
-            offset = offset.checked_add(12).ok_or_else(|| {
-                DecodeError::Decode("IVF frame offset overflow".to_string())
-            })?;
-
-            // Validate frame data bounds with overflow protection
-            let frame_end = offset.checked_add(frame_size).ok_or_else(|| {
-                DecodeError::Decode("IVF frame size overflow".to_string())
-            })?;
-
-            if frame_end > data.len() {
-                return Err(DecodeError::Decode(
-                    "IVF frame data is incomplete or corrupt".to_string()
-                ));
-            }
-
-            // Extract frame data as owned Vec to avoid clone in send_data
-            // This is more efficient than slicing + cloning (50-500 KB per frame)
-            let frame_data = data[offset..frame_end].to_vec();
-
-            // Send owned frame data to decoder (zero-copy move)
-            if let Err(e) = self.send_data_owned(frame_data, timestamp) {
+            if let Err(e) = self.send_data_owned(frame_data, frame_header.timestamp) {
                 warn!(
                     "Failed to send IVF frame {} (ts={}) to decoder: {}. Skipping frame.",
-                    frame_idx, timestamp, e
+                    frame_idx, frame_header.timestamp, e
                 );
             } else {
-                // Try to get frames after successful send
                 while let Ok(frame) = self.get_frame() {
                     decoded_frames.push(frame);
                 }
             }
 
             frame_idx += 1;
-
-            // Advance offset with overflow protection
-            offset = offset.checked_add(frame_size).ok_or_else(|| {
-                DecodeError::Decode(format!(
-                    "IVF frame {} offset overflow after frame data",
-                    frame_idx
-                ))
-            })?;
+            offset = frame_end;
         }
 
-        // Drain remaining frames from decoder
+        self.drain_decoder_frames(&mut decoded_frames)?;
+
+        if decoded_frames.is_empty() {
+            return Err(DecodeError::Decode(
+                "Failed to decode any frames from IVF file".to_string(),
+            ));
+        }
+
+        Ok(decoded_frames)
+    }
+
+    /// Parse IVF header from data, returning (header_size, frame_count)
+    fn parse_ivf_header(&self, data: &[u8]) -> Result<(usize, usize)> {
+        if data.len() < 32 {
+            return Err(DecodeError::Decode("IVF data too short".to_string()));
+        }
+
+        // Safe header bytes access using get()
+        let header_bytes = data.get(0..32).ok_or_else(|| {
+            DecodeError::Decode("IVF header data incomplete".to_string())
+        })?;
+
+        let header_size_bytes: [u8; 2] = header_bytes.get(6..8)
+            .ok_or_else(|| DecodeError::Decode("IVF header too short for header_size".to_string()))?
+            .try_into()
+            .map_err(|_| DecodeError::Decode("IVF header_size bytes invalid".to_string()))?;
+        let header_size = u16::from_le_bytes(header_size_bytes) as usize;
+
+        let frame_count_bytes: [u8; 4] = header_bytes.get(24..28)
+            .ok_or_else(|| DecodeError::Decode("IVF header too short for frame_count".to_string()))?
+            .try_into()
+            .map_err(|_| DecodeError::Decode("IVF frame_count bytes invalid".to_string()))?;
+        let frame_count = u32::from_le_bytes(frame_count_bytes) as usize;
+
+        Ok((header_size, frame_count))
+    }
+
+    /// Parse next IVF frame header from data at offset
+    ///
+    /// Returns None when end of data is reached, Some(Ok(...)) on success,
+    /// Some(Err(...)) on parse error.
+    fn parse_next_ivf_frame(
+        &self,
+        data: &[u8],
+        offset: usize,
+        frame_idx: i64,
+    ) -> Result<Option<(IvfFrameHeaderWithOffset, usize)>> {
+        const MAX_FRAMES_PER_FILE: usize = 100_000;
+        const MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
+
+        if frame_idx >= MAX_FRAMES_PER_FILE as i64 {
+            return Err(DecodeError::Decode(
+                "IVF file contains too many frames".to_string()
+            ));
+        }
+
+        // Check if we have at least 12 bytes for frame header
+        let frame_header_bytes = data.get(offset..offset + 12);
+        let frame_header_bytes = match frame_header_bytes {
+            Some(bytes) => bytes,
+            None => return Ok(None), // End of data
+        };
+
+        let size_bytes: [u8; 4] = frame_header_bytes.get(0..4)
+            .ok_or_else(|| DecodeError::Decode("IVF frame size bytes incomplete".to_string()))?
+            .try_into()
+            .map_err(|_| DecodeError::Decode("IVF frame size bytes invalid".to_string()))?;
+        let frame_size = u32::from_le_bytes(size_bytes);
+
+        if frame_size > MAX_FRAME_SIZE as u32 {
+            return Err(DecodeError::Decode(
+                "IVF frame size exceeds maximum allowed".to_string()
+            ));
+        }
+
+        let ts_bytes: [u8; 8] = frame_header_bytes.get(4..12)
+            .ok_or_else(|| DecodeError::Decode("IVF timestamp bytes incomplete".to_string()))?
+            .try_into()
+            .map_err(|_| DecodeError::Decode("IVF timestamp bytes invalid".to_string()))?;
+        let timestamp_u64 = u64::from_le_bytes(ts_bytes);
+
+        if timestamp_u64 > i64::MAX as u64 {
+            return Err(DecodeError::Decode(
+                "IVF frame timestamp is out of valid range".to_string()
+            ));
+        }
+
+        let data_offset = offset.checked_add(12).ok_or_else(|| {
+            DecodeError::Decode("IVF frame offset overflow".to_string())
+        })?;
+
+        let frame_size_usize = frame_size as usize;
+        let frame_end = data_offset.checked_add(frame_size_usize).ok_or_else(|| {
+            DecodeError::Decode("IVF frame size overflow".to_string())
+        })?;
+
+        if frame_end > data.len() {
+            return Err(DecodeError::Decode(
+                "IVF frame data is incomplete or corrupt".to_string()
+            ));
+        }
+
+        Ok(Some((
+            IvfFrameHeaderWithOffset {
+                timestamp: timestamp_u64 as i64,
+                offset: data_offset,
+            },
+            frame_end,
+        )))
+    }
+
+    /// Drain remaining frames from decoder
+    fn drain_decoder_frames(&mut self, decoded_frames: &mut Vec<DecodedFrame>) -> Result<()> {
         for _ in 0..100 {
             match self.decoder.get_picture() {
                 Ok(picture) => {
@@ -478,15 +508,7 @@ impl Av1Decoder {
                 }
             }
         }
-
-        // Ensure at least one frame was decoded
-        if decoded_frames.is_empty() {
-            return Err(DecodeError::Decode(
-                "Failed to decode any frames from IVF file".to_string(),
-            ));
-        }
-
-        Ok(decoded_frames)
+        Ok(())
     }
 
     /// Collect decoded frames from the decoder
