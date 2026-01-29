@@ -579,9 +579,17 @@ impl Decoder for VvcDecoder {
             DecodeError::Decode("Poisoned mutex: access_unit lock failed".to_string())
         })?;
 
+        // Validate data length fits in i32
+        let data_len = i32::try_from(data.len()).map_err(|_| {
+            DecodeError::Decode(format!(
+                "Frame data too large ({} bytes exceeds i32::MAX)",
+                data.len()
+            ))
+        })?;
+
         unsafe {
             // Allocate payload buffer
-            let ret = ffi::vvdec_accessUnit_alloc_payload(*access_unit_guard, data.len() as i32);
+            let ret = ffi::vvdec_accessUnit_alloc_payload(*access_unit_guard, data_len);
             if ret != ffi::VVDEC_OK {
                 return Err(DecodeError::Decode(format!(
                     "Failed to allocate payload: {}",
