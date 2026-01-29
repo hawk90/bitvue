@@ -3,7 +3,7 @@
 //! Handles frame navigation including keyboard shortcuts,
 //! navigation buttons, and frame finding utilities.
 
-use bitvue_core::{Command, StreamId, UnitNode};
+use bitvue_core::{Command, FrameType, StreamId, UnitNode};
 
 /// Navigation manager for player workspace
 ///
@@ -119,13 +119,8 @@ impl NavigationManager {
     }
 
     /// Extract frame type from unit type string
-    pub fn extract_frame_type(unit_type: &str) -> String {
-        match unit_type {
-            "I" | "KEY" => "KEY".to_string(),
-            "P" | "INTER" => "P".to_string(),
-            "B" | "B_FRAME" => "B".to_string(),
-            _ => unit_type.to_string(),
-        }
+    pub fn extract_frame_type(unit_type: &str) -> FrameType {
+        FrameType::from_str(unit_type).unwrap_or(FrameType::Unknown)
     }
 }
 
@@ -142,13 +137,13 @@ mod tests {
 
     #[test]
     fn test_extract_frame_type() {
-        assert_eq!(NavigationManager::extract_frame_type("I"), "KEY");
-        assert_eq!(NavigationManager::extract_frame_type("KEY"), "KEY");
-        assert_eq!(NavigationManager::extract_frame_type("P"), "P");
-        assert_eq!(NavigationManager::extract_frame_type("INTER"), "P");
-        assert_eq!(NavigationManager::extract_frame_type("B"), "B");
-        assert_eq!(NavigationManager::extract_frame_type("B_FRAME"), "B");
-        assert_eq!(NavigationManager::extract_frame_type("UNKNOWN"), "UNKNOWN");
+        assert_eq!(NavigationManager::extract_frame_type("I"), FrameType::Key);
+        assert_eq!(NavigationManager::extract_frame_type("KEY"), FrameType::Key);
+        assert_eq!(NavigationManager::extract_frame_type("P"), FrameType::Inter);
+        assert_eq!(NavigationManager::extract_frame_type("INTER"), FrameType::Inter);
+        assert_eq!(NavigationManager::extract_frame_type("B"), FrameType::BFrame);
+        assert_eq!(NavigationManager::extract_frame_type("B_FRAME"), FrameType::BFrame);
+        assert_eq!(NavigationManager::extract_frame_type("UNKNOWN"), FrameType::Unknown);
     }
 
     #[test]

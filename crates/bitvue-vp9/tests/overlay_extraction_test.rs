@@ -9,7 +9,7 @@ use bitvue_vp9::overlay_extraction;
 #[test]
 fn test_extract_qp_grid_basic() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_vp9::frame_header::FrameType::KeyFrame,
+        frame_type: bitvue_core::FrameType::Key,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -51,7 +51,7 @@ fn test_extract_mv_grid_basic() {
 #[test]
 fn test_extract_partition_grid_basic() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_vp9::frame_header::FrameType::KeyFrame,
+        frame_type: bitvue_core::FrameType::Key,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -131,7 +131,7 @@ fn test_partition_type_variants() {
 #[test]
 fn test_qp_grid_with_keyframe() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_vp9::frame_header::FrameType::KeyFrame,
+        frame_type: bitvue_core::FrameType::Key,
         width: 640,
         height: 480,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -181,7 +181,7 @@ fn test_various_resolutions() {
 
     for (width, height) in resolutions {
         let frame_header = bitvue_vp9::frame_header::FrameHeader {
-            frame_type: bitvue_vp9::frame_header::FrameType::KeyFrame,
+            frame_type: bitvue_core::FrameType::Key,
             width,
             height,
             quantization: bitvue_vp9::frame_header::Quantization {
@@ -208,7 +208,7 @@ fn test_qp_range() {
 
     for base_qp in qp_values {
         let frame_header = bitvue_vp9::frame_header::FrameHeader {
-            frame_type: bitvue_vp9::frame_header::FrameType::KeyFrame,
+            frame_type: bitvue_core::FrameType::Key,
             width: 640,
             height: 480,
             quantization: bitvue_vp9::frame_header::Quantization {
@@ -444,7 +444,7 @@ fn test_frame_type_keyframe() {
     use bitvue_vp9::frame_header::FrameType;
 
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: FrameType::KeyFrame,
+        frame_type: bitvue_core::FrameType::Key,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {

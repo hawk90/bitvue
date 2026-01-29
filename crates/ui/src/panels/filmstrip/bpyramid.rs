@@ -58,9 +58,11 @@ impl FilmstripPanel {
                     // I-frame / P-frame: layer 0 (bottom)
                     // B-frame: layer 1+ (based on GOP structure)
                     let temporal_layer =
-                        if frame.frame_type == "KEY" || frame.frame_type == "INTRA_ONLY" {
+                        if frame.frame_type == bitvue_core::FrameType::Key
+                            || frame.frame_type == bitvue_core::FrameType::IntraOnly
+                        {
                             0
-                        } else if frame.frame_type == "INTER" {
+                        } else if frame.frame_type == bitvue_core::FrameType::Inter {
                             0 // P-frames at bottom
                         } else {
                             // B-frames: estimate layer based on position in GOP
@@ -80,7 +82,9 @@ impl FilmstripPanel {
                     }
 
                     // Skip I-frames (they don't reference other frames)
-                    if frame.frame_type == "KEY" || frame.frame_type == "INTRA_ONLY" {
+                    if frame.frame_type == bitvue_core::FrameType::Key
+                        || frame.frame_type == bitvue_core::FrameType::IntraOnly
+                    {
                         continue;
                     }
 
@@ -88,7 +92,7 @@ impl FilmstripPanel {
                     let mut ref_idx = idx.saturating_sub(1);
                     while ref_idx > 0 {
                         let ref_frame = &frames[ref_idx];
-                        if ref_frame.frame_type != "B" {
+                        if ref_frame.frame_type != bitvue_core::FrameType::BFrame {
                             break;
                         }
                         ref_idx = ref_idx.saturating_sub(1);

@@ -6,7 +6,7 @@
 //! - Unit tree to JSON
 
 use bitvue_core::BitvueError;
-use bitvue_core::types::SyntaxModel;
+use bitvue_core::types::{FrameType, SyntaxModel};
 use bitvue_core::UnitNode;
 use std::path::Path;
 
@@ -64,7 +64,7 @@ pub fn export_syntax_json(syntax: &SyntaxModel, path: &Path) -> Result<(), Bitvu
 #[derive(Debug)]
 struct FrameInfo {
     frame_index: usize,
-    frame_type: String,
+    frame_type: FrameType,
     size: usize,
     offset: u64,
     qp_avg: Option<u8>,
@@ -78,7 +78,11 @@ fn collect_frames(units: &[UnitNode]) -> Vec<FrameInfo> {
         if let Some(frame_idx) = unit.frame_index {
             frames.push(FrameInfo {
                 frame_index: frame_idx,
-                frame_type: extract_frame_type(&unit.unit_type),
+                frame_type: unit
+                    .frame_type
+                    .as_ref()
+                    .and_then(|s| FrameType::from_str(s))
+                    .unwrap_or(FrameType::Unknown),
                 size: unit.size,
                 offset: unit.offset,
                 qp_avg: unit.qp_avg,
@@ -94,25 +98,17 @@ fn collect_frames(units: &[UnitNode]) -> Vec<FrameInfo> {
     frames
 }
 
-/// Extract frame type from unit type string
-fn extract_frame_type(unit_type: &str) -> String {
-    if unit_type.contains("KEY") || unit_type.contains("INTRA") {
-        "KEY_FRAME".to_string()
-    } else if unit_type.contains("INTER") {
-        "INTER_FRAME".to_string()
-    } else {
-        "FRAME".to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitvue_core::UnitKey;
 
     #[test]
-    fn test_extract_frame_type() {
-        assert_eq!(extract_frame_type("FRAME (KEY_FRAME)"), "KEY_FRAME");
-        assert_eq!(extract_frame_type("FRAME (INTER_FRAME)"), "INTER_FRAME");
-        assert_eq!(extract_frame_type("FRAME"), "FRAME");
+    fn test_frame_type_parsing() {
+        // Test that FrameType parses correctly
+        assert_eq!(FrameType::from_str("KEY"), Some(FrameType::Key));
+        assert_eq!(FrameType::from_str("INTER"), Some(FrameType::Inter));
+        assert_eq!(FrameType::from_str("B"), Some(FrameType::BFrame));
+        assert_eq!(FrameType::from_str("UNKNOWN"), Some(FrameType::Unknown));
     }
 }

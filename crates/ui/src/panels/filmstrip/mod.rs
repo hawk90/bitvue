@@ -21,7 +21,7 @@ mod thumbnails;
 
 use helpers::collect_frame_info;
 
-use bitvue_core::{Command, SelectionState, StreamId, ThumbnailCache, UnitNode};
+use bitvue_core::{Command, FrameType, SelectionState, StreamId, ThumbnailCache, UnitNode};
 use egui::{self, Color32, ColorImage, TextureHandle};
 use std::collections::HashMap;
 
@@ -58,7 +58,7 @@ impl std::fmt::Display for FilmstripViewMode {
 #[derive(Clone)]
 struct FrameInfo {
     frame_index: usize,
-    frame_type: String,
+    frame_type: FrameType,
     unit_key: bitvue_core::UnitKey,
     offset: u64,
     /// Frame/unit size in bytes

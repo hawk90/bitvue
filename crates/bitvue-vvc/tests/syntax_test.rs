@@ -114,7 +114,7 @@ fn test_syntax_node_deep_tree() {
     let mut root = syntax::SyntaxNode::new("video", syntax::SyntaxNodeType::Root);
     let mut seq = syntax::SyntaxNode::new("sequence", syntax::SyntaxNodeType::ParameterSet);
     let mut pic = syntax::SyntaxNode::new("picture", syntax::SyntaxNodeType::PictureHeader);
-    let slice = syntax::SyntaxNode::new("slice", syntax::SyntaxNodeType::SliceHeader);
+    let mut slice = syntax::SyntaxNode::new("slice", syntax::SyntaxNodeType::SliceHeader);
 
     slice.add_child(syntax::SyntaxNode::field("index", "0"));
     pic.add_child(slice);

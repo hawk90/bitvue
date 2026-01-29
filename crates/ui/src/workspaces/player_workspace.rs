@@ -209,10 +209,12 @@ impl PlayerWorkspace {
                     if let Some(u) = units {
                         if let Some(unit) = self.navigation.find_frame_by_index(Some(u), frame_index) {
                             let frame_type = NavigationManager::extract_frame_type(&unit.unit_type);
-                            let type_color = match frame_type.as_str() {
-                                "KEY" | "I" => egui::Color32::from_rgb(100, 200, 100),
-                                "P" | "INTER" => egui::Color32::from_rgb(100, 150, 255),
-                                "B" => egui::Color32::from_rgb(255, 180, 100),
+                            let type_color = match frame_type {
+                                bitvue_core::FrameType::Key | bitvue_core::FrameType::IntraOnly => {
+                                    egui::Color32::from_rgb(100, 200, 100)
+                                }
+                                bitvue_core::FrameType::Inter => egui::Color32::from_rgb(100, 150, 255),
+                                bitvue_core::FrameType::BFrame => egui::Color32::from_rgb(255, 180, 100),
                                 _ => egui::Color32::GRAY,
                             };
                             ui.label(
@@ -2555,19 +2557,6 @@ impl PlayerWorkspace {
             }
         }
         None
-    }
-
-    /// Extract frame type from unit type string
-    fn extract_frame_type(unit_type: &str) -> String {
-        if unit_type.contains("KEY") || unit_type.contains("INTRA") {
-            "KEY".to_string()
-        } else if unit_type.contains("INTER") {
-            "P".to_string()
-        } else if unit_type.contains("SWITCH") {
-            "S".to_string()
-        } else {
-            "?".to_string()
-        }
     }
 }
 

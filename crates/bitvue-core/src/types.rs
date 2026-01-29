@@ -60,7 +60,7 @@ pub struct FrameInfo {
 ///
 /// Unified frame type across all codecs (AV1, H.264/AVC, H.265/HEVC, VP9).
 /// Provides codec-agnostic classification with conversion methods from codec-specific types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FrameType {
     /// Key frame (I-frame, IDR, KEY frame)
     /// - AVC: I-frame (IDR or non-IDR intra)

@@ -7,7 +7,7 @@
 //! - Global cursor
 //! - Range selection (Shift+drag)
 
-use bitvue_core::{Command, ContainerModel, SelectionState, StreamId, UnitNode};
+use bitvue_core::{Command, ContainerModel, FrameType, SelectionState, StreamId, UnitNode};
 use egui;
 
 /// Professional color palette - EXACTLY matching Elecard StreamEye
@@ -881,7 +881,7 @@ impl Default for TimelineWorkspace {
 #[derive(Debug, Clone)]
 struct FrameInfo {
     frame_index: usize,
-    frame_type: String,
+    frame_type: FrameType,
     size: u64,
     offset: u64,
     unit_key: bitvue_core::UnitKey,
@@ -907,15 +907,19 @@ fn collect_frames(units: &[UnitNode]) -> Vec<FrameInfo> {
 
             // Collect frames from units that have frame_index
             if let Some(frame_idx) = unit.frame_index {
-                // Use actual frame type from parser, fallback to heuristic
-                let frame_type = unit.frame_type.clone().unwrap_or_else(|| {
-                    // Fallback heuristic: frame 0 is usually a KEY frame, rest are INTER
-                    if frame_idx == 0 {
-                        std::sync::Arc::from("KEY")
-                    } else {
-                        std::sync::Arc::from("INTER")
-                    }
-                }).to_string();
+                // Parse frame type from unit, fallback to heuristic
+                let frame_type = unit
+                    .frame_type
+                    .as_ref()
+                    .and_then(|s| FrameType::from_str(s))
+                    .unwrap_or_else(|| {
+                        // Fallback heuristic: frame 0 is usually a KEY frame, rest are INTER
+                        if frame_idx == 0 {
+                            FrameType::Key
+                        } else {
+                            FrameType::Inter
+                        }
+                    });
 
                 frames.push(FrameInfo {
                     frame_index: frame_idx,

@@ -43,7 +43,10 @@ impl FilmstripPanel {
             } // First frame has no reference
 
             // Skip intra frames (they don't reference other frames)
-            if frame.frame_type == "KEY" || frame.nal_type == "IDR" || frame.nal_type == "KEY" {
+            if frame.frame_type == bitvue_core::FrameType::Key
+                || frame.nal_type == "IDR"
+                || frame.nal_type == "KEY"
+            {
                 continue;
             }
 
@@ -51,7 +54,9 @@ impl FilmstripPanel {
             let mut ref_idx = idx.saturating_sub(1);
             while ref_idx > 0 {
                 let ref_frame = &frames[ref_idx];
-                if ref_frame.frame_type != "B" && ref_frame.nal_type != "B" {
+                if ref_frame.frame_type != bitvue_core::FrameType::BFrame
+                    && ref_frame.nal_type != "B"
+                {
                     break;
                 }
                 ref_idx = ref_idx.saturating_sub(1);
@@ -123,7 +128,7 @@ impl FilmstripPanel {
         let mut command: Option<Command> = None;
 
         let thumb_size = Vec2::new(self.thumb_width, self.thumb_height);
-        let type_color = Self::frame_type_color(&frame.frame_type);
+        let type_color = Self::frame_type_color(frame.frame_type);
 
         ui.vertical(|ui| {
             // VQAnalyzer parity: Show "FRAME_TYPE-LAYER FRAME_NUM" format at top

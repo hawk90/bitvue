@@ -1,6 +1,6 @@
 //! Bitrate Graph Panel - frame size and bitrate visualization
 
-use bitvue_core::{SelectionState, UnitNode};
+use bitvue_core::{FrameType, SelectionState, UnitNode};
 use egui;
 use egui_plot::{Bar, BarChart, Legend, Plot};
 
@@ -58,9 +58,11 @@ impl BitrateGraphPanel {
             .iter()
             .enumerate()
             .map(|(idx, frame)| {
-                let color = match frame.frame_type.as_str() {
-                    "KEY" => egui::Color32::from_rgb(100, 200, 100),
-                    "INTER" => egui::Color32::from_rgb(100, 150, 255),
+                let color = match frame.frame_type {
+                    FrameType::Key => egui::Color32::from_rgb(100, 200, 100),
+                    FrameType::Inter => egui::Color32::from_rgb(100, 150, 255),
+                    FrameType::BFrame => egui::Color32::from_rgb(100, 150, 255),
+                    FrameType::IntraOnly => egui::Color32::from_rgb(100, 200, 100),
                     _ => egui::Color32::from_rgb(150, 150, 150),
                 };
 
@@ -111,7 +113,7 @@ impl Default for BitrateGraphPanel {
 #[derive(Debug, Clone)]
 struct FrameSizeInfo {
     frame_index: usize,
-    frame_type: String,
+    frame_type: FrameType,
     size: usize,
     offset: u64,
 }
@@ -124,7 +126,7 @@ fn collect_frame_sizes(units: &[UnitNode]) -> Vec<FrameSizeInfo> {
         if let Some(frame_idx) = unit.frame_index {
             frames.push(FrameSizeInfo {
                 frame_index: frame_idx,
-                frame_type: extract_frame_type(&unit.unit_type),
+                frame_type: FrameType::from_str(&unit.unit_type).unwrap_or(FrameType::Unknown),
                 size: unit.size,
                 offset: unit.offset,
             });
@@ -137,15 +139,4 @@ fn collect_frame_sizes(units: &[UnitNode]) -> Vec<FrameSizeInfo> {
 
     frames.sort_by_key(|f| f.frame_index);
     frames
-}
-
-/// Extract frame type from unit type string
-fn extract_frame_type(unit_type: &str) -> String {
-    if unit_type.contains("KEY") || unit_type.contains("INTRA") {
-        "KEY".to_string()
-    } else if unit_type.contains("INTER") {
-        "INTER".to_string()
-    } else {
-        "FRAME".to_string()
-    }
 }

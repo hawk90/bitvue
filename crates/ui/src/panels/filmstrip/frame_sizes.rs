@@ -59,10 +59,15 @@ impl FilmstripPanel {
         let i_frames: Vec<_> = frames
             .iter()
             .filter(|f| {
-                f.frame_type == "KEY" || f.frame_type == "INTRA_ONLY" || f.frame_type == "SWITCH"
+                f.frame_type == bitvue_core::FrameType::Key
+                    || f.frame_type == bitvue_core::FrameType::IntraOnly
+                    || f.frame_type == bitvue_core::FrameType::Switch
             })
             .collect();
-        let p_frames: Vec<_> = frames.iter().filter(|f| f.frame_type == "INTER").collect();
+        let p_frames: Vec<_> = frames
+            .iter()
+            .filter(|f| f.frame_type == bitvue_core::FrameType::Inter)
+            .collect();
         let b_frames: Vec<&FrameInfo> = Vec::new(); // AV1 doesn't have B-frames
 
         let i_total: usize = i_frames.iter().map(|f| f.size).sum();
@@ -302,10 +307,10 @@ impl FilmstripPanel {
                 for (idx, frame) in frames.iter().enumerate() {
                     // Apply frame type filter (VQAnalyzer parity)
                     // AV1 frame types: KEY, INTER, INTRA_ONLY, SWITCH
-                    let is_i_frame = frame.frame_type == "KEY"
-                        || frame.frame_type == "INTRA_ONLY"
-                        || frame.frame_type == "SWITCH";
-                    let is_p_frame = frame.frame_type == "INTER";
+                    let is_i_frame = frame.frame_type == bitvue_core::FrameType::Key
+                        || frame.frame_type == bitvue_core::FrameType::IntraOnly
+                        || frame.frame_type == bitvue_core::FrameType::Switch;
+                    let is_p_frame = frame.frame_type == bitvue_core::FrameType::Inter;
                     let is_b_frame = false; // AV1 doesn't have B-frames
 
                     let visible = (is_i_frame && self.show_i_frames)
@@ -330,7 +335,7 @@ impl FilmstripPanel {
                     );
 
                     // Bar color (VQAnalyzer colors - slightly muted for bars)
-                    let mut color = Self::frame_type_color(&frame.frame_type);
+                    let mut color = Self::frame_type_color(frame.frame_type);
                     color = color.linear_multiply(0.85); // Slightly transparent for overlay effect
 
                     painter.rect_filled(bar_rect, Rounding::ZERO, color);

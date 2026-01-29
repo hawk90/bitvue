@@ -94,7 +94,7 @@ impl FilmstripPanel {
 
                     // Draw frame type indicator at each point
                     let frame = &frames[idx];
-                    let marker_color = Self::frame_type_color(&frame.frame_type);
+                    let marker_color = Self::frame_type_color(frame.frame_type);
                     if selected_frame_index == Some(frame.frame_index) {
                         painter.circle_filled(point, 5.0, Color32::WHITE);
                         painter.circle_filled(point, 3.0, marker_color);

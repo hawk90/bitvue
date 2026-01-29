@@ -1,7 +1,7 @@
 //! Helper functions for filmstrip panel
 
 use super::{FilmstripPanel, FrameInfo};
-use bitvue_core::UnitNode;
+use bitvue_core::{FrameType, UnitNode};
 use egui::Color32;
 use std::collections::HashMap;
 
@@ -9,31 +9,29 @@ use std::collections::HashMap;
 ///
 /// Computed once at startup to avoid repeated match statements during rendering.
 /// Provides O(1) lookup instead of O(n) match evaluation.
-fn frame_type_color_map() -> &'static HashMap<&'static str, Color32> {
+fn frame_type_color_map() -> &'static HashMap<FrameType, Color32> {
     use std::sync::OnceLock;
-    static MAP: OnceLock<HashMap<&'static str, Color32>> = OnceLock::new();
+    static MAP: OnceLock<HashMap<FrameType, Color32>> = OnceLock::new();
     MAP.get_or_init(|| {
         let mut m = HashMap::with_capacity(16);
 
-        // AV1 frame types
-        m.insert("KEY", Color32::from_rgb(220, 80, 80));         // Red for I-frames
-        m.insert("INTRA_ONLY", Color32::from_rgb(220, 80, 80)); // Red for I-frames
-        m.insert("INTER", Color32::from_rgb(80, 180, 80));       // Green for P-frames
-        m.insert("SWITCH", Color32::from_rgb(180, 100, 180));    // Purple for switch frames
+        // Red for I-frames (Key, IntraOnly, SI, SP)
+        m.insert(FrameType::Key, Color32::from_rgb(220, 80, 80));
+        m.insert(FrameType::IntraOnly, Color32::from_rgb(220, 80, 80));
+        m.insert(FrameType::SI, Color32::from_rgb(220, 80, 80));
+        m.insert(FrameType::SP, Color32::from_rgb(80, 180, 80)); // SP is predicted, use green
 
-        // Legacy codec support (H.264/HEVC)
-        m.insert("I", Color32::from_rgb(220, 80, 80));           // Red for I-frames
-        m.insert("IDR", Color32::from_rgb(220, 80, 80));          // Red for I-frames
-        m.insert("INTRA", Color32::from_rgb(220, 80, 80));        // Red for I-frames
-        m.insert("P", Color32::from_rgb(80, 180, 80));            // Green for P-frames
-        m.insert("PRED", Color32::from_rgb(80, 180, 80));         // Green for P-frames
-        m.insert("B", Color32::from_rgb(80, 140, 220));           // Blue for B-frames
-        m.insert("BFRAME", Color32::from_rgb(80, 140, 220));      // Blue for B-frames
-        m.insert("BPRED", Color32::from_rgb(80, 140, 220));       // Blue for B-frames
+        // Green for P-frames (Inter)
+        m.insert(FrameType::Inter, Color32::from_rgb(80, 180, 80));
 
-        // Unknown
-        m.insert("FRAME", Color32::from_rgb(120, 120, 120));     // Gray for unknown
-        m.insert("UNKNOWN", Color32::from_rgb(120, 120, 120));   // Gray for unknown
+        // Blue for B-frames
+        m.insert(FrameType::BFrame, Color32::from_rgb(80, 140, 220));
+
+        // Purple for switch frames
+        m.insert(FrameType::Switch, Color32::from_rgb(180, 100, 180));
+
+        // Gray for unknown
+        m.insert(FrameType::Unknown, Color32::from_rgb(120, 120, 120));
 
         m
     })
@@ -43,21 +41,11 @@ impl FilmstripPanel {
     /// Get frame type color (VQAnalyzer parity: I=red, P=green, B=blue)
     ///
     /// Uses precomputed HashMap for O(1) lookup instead of match evaluation.
-    pub(super) fn frame_type_color(frame_type: &str) -> Color32 {
+    pub(super) fn frame_type_color(frame_type: FrameType) -> Color32 {
         frame_type_color_map()
-            .get(frame_type)
+            .get(&frame_type)
             .copied()
-            .unwrap_or_else(|| {
-                // Handle dynamic frame types that might not be in the static map
-                // (e.g., TRAIL_N, or other codec-specific types)
-                if frame_type.contains("KEY") || frame_type.contains("INTRA") {
-                    Color32::from_rgb(220, 80, 80) // Red for I-frames
-                } else if frame_type.contains("INTER") || frame_type.contains("TRAIL") {
-                    Color32::from_rgb(80, 180, 80) // Green for P-frames
-                } else {
-                    Color32::from_rgb(100, 100, 100) // Dark gray default
-                }
-            })
+            .unwrap_or_else(|| Color32::from_rgb(120, 120, 120)) // Gray fallback
     }
 }
 
@@ -115,9 +103,9 @@ fn collect_frame_info_recursive(
                 frame_index,
                 frame_type: unit
                     .frame_type
-                    .clone()
-                    .unwrap_or_else(|| std::sync::Arc::from("UNKNOWN"))
-                    .to_string(),
+                    .as_ref()
+                    .and_then(|s| FrameType::from_str(s))
+                    .unwrap_or(FrameType::Unknown),
                 unit_key: unit.key.clone(),
                 offset: unit.offset,
                 size: unit.size, // Actual unit size in bytes
@@ -161,18 +149,5 @@ fn extract_nal_type(unit_type: &str) -> String {
             .first()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "FRAME".to_string())
-    }
-}
-
-/// Extract frame type from unit type string
-fn extract_frame_type(unit_type: &str) -> String {
-    if unit_type.contains("KEY") || unit_type.contains("INTRA") {
-        "KEY".to_string()
-    } else if unit_type.contains("INTER") {
-        "INTER".to_string()
-    } else if unit_type.contains("SWITCH") {
-        "SWITCH".to_string()
-    } else {
-        "FRAME".to_string()
     }
 }
