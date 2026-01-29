@@ -10,7 +10,24 @@ use std::path::PathBuf;
 pub fn get_config_dir() -> Result<PathBuf, BitvueError> {
     let home = dirs::home_dir()
         .ok_or_else(|| BitvueError::InvalidData("Could not determine home directory".to_string()))?;
+
+    // Canonicalize to resolve symlinks and validate path
+    let home = home
+        .canonicalize()
+        .map_err(|e| BitvueError::InvalidData(format!("Invalid home directory: {}", e)))?;
+
     let config_dir = home.join(".bitvue");
+
+    // Verify the config directory is under home directory (prevent path traversal)
+    let config_dir_canonical = config_dir
+        .canonicalize()
+        .unwrap_or_else(|_| config_dir.clone());
+
+    if !config_dir_canonical.starts_with(&home) {
+        return Err(BitvueError::InvalidData(
+            "Config directory must be under home directory (potential path traversal)".to_string(),
+        ));
+    }
 
     // Create directory if it doesn't exist
     if !config_dir.exists() {

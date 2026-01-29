@@ -812,9 +812,21 @@ fn parse_stts(
         )));
     }
 
+    // Track total samples across all entries to prevent unbounded expansion
+    let mut total_samples: usize = 0;
+
     for _ in 0..entry_count {
         let sample_count = read_u32(cursor)?;
         let sample_delta = read_u32(cursor)?;
+
+        // Check if total would exceed maximum
+        total_samples = total_samples.saturating_add(sample_count as usize);
+        if total_samples > MAX_TOTAL_SAMPLES {
+            return Err(BitvueError::InvalidData(format!(
+                "Total sample count {} exceeds maximum allowed {}",
+                total_samples, MAX_TOTAL_SAMPLES
+            )));
+        }
 
         // Expand the durations for each sample
         for _ in 0..sample_count {

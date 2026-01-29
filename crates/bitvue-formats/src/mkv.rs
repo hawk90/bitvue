@@ -46,8 +46,12 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
         }
     }
 
-    if length == 0 {
-        return Err(BitvueError::InvalidData("Invalid VINT length".to_string()));
+    // Validate VINT length is within EBML specification (1-8 bytes)
+    if length == 0 || length > 8 {
+        return Err(BitvueError::InvalidData(format!(
+            "Invalid VINT length: {} (must be 1-8)",
+            length
+        )));
     }
 
     // Extract value (remove length marker)
