@@ -524,23 +524,55 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
     // Validate U/V planes if present
     if let (Some(u_plane), Some(v_plane)) = (&frame.u_plane, &frame.v_plane) {
-        // Assume 4:2:0 chroma subsampling
-        let expected_uv_size = ((frame.width / 2) * (frame.height / 2)) as usize;
+        // Check common chroma subsampling formats
+        let size_420 = ((frame.width / 2) * (frame.height / 2)) as usize; // 4:2:0
+        let size_422 = ((frame.width / 2) * frame.height) as usize;        // 4:2:2
+        let size_444 = (frame.width * frame.height) as usize;              // 4:4:4
 
-        if u_plane.len() != expected_uv_size {
-            warn!(
-                "U plane size mismatch: expected {}, got {} (may be 4:2:2 or 4:4:4)",
-                expected_uv_size,
-                u_plane.len()
+        let valid_sizes = [size_420, size_422, size_444];
+
+        // U plane must match one of the valid chroma formats
+        if !valid_sizes.contains(&u_plane.len()) {
+            error!(
+                "U plane size invalid: got {}, expected {} (4:2:0), {} (4:2:2), or {} (4:4:4)",
+                u_plane.len(),
+                size_420,
+                size_422,
+                size_444
             );
+            return Err(DecodeError::Decode(format!(
+                "Invalid U plane size: {} (expected 4:2:0, 4:2:2, or 4:4:4)",
+                u_plane.len()
+            )));
         }
 
-        if v_plane.len() != expected_uv_size {
-            warn!(
-                "V plane size mismatch: expected {}, got {} (may be 4:2:2 or 4:4:4)",
-                expected_uv_size,
+        // V plane must match one of the valid chroma formats
+        if !valid_sizes.contains(&v_plane.len()) {
+            error!(
+                "V plane size invalid: got {}, expected {} (4:2:0), {} (4:2:2), or {} (4:4:4)",
+                v_plane.len(),
+                size_420,
+                size_422,
+                size_444
+            );
+            return Err(DecodeError::Decode(format!(
+                "Invalid V plane size: {} (expected 4:2:0, 4:2:2, or 4:4:4)",
+                v_plane.len()
+            )));
+        }
+
+        // U and V must have the same size
+        if u_plane.len() != v_plane.len() {
+            error!(
+                "U/V plane size mismatch: U={}, V={}",
+                u_plane.len(),
                 v_plane.len()
             );
+            return Err(DecodeError::Decode(format!(
+                "U/V plane size mismatch: U={}, V={}",
+                u_plane.len(),
+                v_plane.len()
+            )));
         }
     }
 
