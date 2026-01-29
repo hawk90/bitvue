@@ -1,8 +1,8 @@
 # Security Issues - Remaining TODO
 
 ## Summary
-- **Status**: 8 CRITICAL/HIGH issues fixed ✅
-- **Remaining**: 7 issues (5 MEDIUM, 2 LOW)
+- **Status**: 10 CRITICAL/HIGH issues fixed ✅
+- **Remaining**: 6 issues (4 MEDIUM, 2 LOW)
 - **Priority**: Address MEDIUM issues before release
 
 ---
@@ -32,7 +32,18 @@
 
 ---
 
-### 3. Resource Limits Validation
+### 3. Resource Limits Validation ✅
+**Status**: Addressed - added cache size limits
+
+**Implemented**:
+- Added MAX_CACHE_ENTRIES constant (64) to coding unit cache
+- Eviction logic removes 25% of entries when limit reached
+- Existing dimension limits (8K max) validated in PlaneConfig
+- No thread pool or other configurable limits found
+
+---
+
+### 4. Error Message Information Leakage
 **Risk**: Missing validation for user-configurable limits
 **Locations**:
 - Thread pool sizes
@@ -173,16 +184,15 @@ For each fix:
 
 ## Priority Order
 
-1. **#3 - Resource limits** (easy fixes, good protection)
-2. **#5 - Debug assertions** (simple audit, good safety)
-3. **#4 - Error message leakage** (review and sanitize)
-4. **#6 - Input validation** (comprehensive testing)
-5. **#7 - Documentation** (ongoing)
-6. **#8 - Fuzzing** (long-term investment)
+1. **#5 - Debug assertions** (simple audit, good safety)
+2. **#4 - Error message leakage** (review and sanitize)
+3. **#6 - Input validation** (comprehensive testing)
+4. **#7 - Documentation** (ongoing)
+5. **#8 - Fuzzing** (long-term investment)
 
 ---
 
-## Completed (9 issues) ✅
+## Completed (10 issues) ✅
 
 1. ✅ Mutex poisoning panics (vvdec.rs)
 2. ✅ Unbounded timeout loops (vvdec.rs)
@@ -193,3 +203,4 @@ For each fix:
 7. ✅ Dependency vulnerabilities - Audit complete, no CVEs found
 8. ✅ Unchecked slice indexing - Audit complete, all access bounds-checked
 9. ✅ Panic in error paths - Fixed rgb_to_image, reviewed all unwrap/expect
+10. ✅ Resource limits validation - Added cache size limit, reviewed all limits
