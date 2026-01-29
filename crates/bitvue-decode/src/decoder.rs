@@ -351,19 +351,26 @@ impl Av1Decoder {
         }
 
         let header_size = u16::from_le_bytes([data[6], data[7]]) as usize;
+
+        // Read frame_count from IVF header (bytes 24-27) for pre-allocation
+        let frame_count = u32::from_le_bytes([data[24], data[25], data[26], data[27]]) as usize;
+
+        // Pre-allocate decoded_frames with estimated capacity
+        // Use minimum of frame_count from header and MAX_FRAMES_PER_FILE
+        const MAX_FRAMES_PER_FILE: usize = 100_000;
+        let estimated_frames = frame_count.min(MAX_FRAMES_PER_FILE);
+        let mut decoded_frames = Vec::with_capacity(estimated_frames);
+
         let mut offset = header_size;
         let mut frame_idx = 0i64;
-        let mut decoded_frames = Vec::new();
 
         // Maximum reasonable frame size (100 MB) to prevent DoS attacks
         const MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
-        // Maximum frames per file to prevent memory exhaustion
-        const MAX_FRAMES_PER_FILE: i64 = 100_000;
 
         // Iterate through IVF frames
         while offset + 12 <= data.len() {
             // Check frame count limit to prevent DoS via excessive frames
-            if frame_idx >= MAX_FRAMES_PER_FILE {
+            if frame_idx >= MAX_FRAMES_PER_FILE as i64 {
                 return Err(DecodeError::Decode(format!(
                     "IVF file exceeds maximum frame count {} (possible DoS attack)",
                     MAX_FRAMES_PER_FILE
