@@ -10,6 +10,15 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Maximum CPB state history entries to prevent unbounded memory growth
+///
+/// At 2 states per frame (before/after removal), this supports:
+/// - 5000 states = 2500 frames = ~1.4 minutes @ 30fps
+/// - ~200KB memory (each CpbState is ~40 bytes)
+///
+/// Older states are removed in FIFO order to maintain a rolling window.
+const MAX_STATE_HISTORY: usize = 5000;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // HRD Parameters
 // ═══════════════════════════════════════════════════════════════════════════
@@ -201,6 +210,22 @@ impl HrdModel {
         }
     }
 
+    /// Add state to history with bounded growth (rolling window)
+    ///
+    /// Maintains a maximum of MAX_STATE_HISTORY entries to prevent
+    /// unbounded memory growth on long videos. Removes oldest states
+    /// when limit is exceeded.
+    fn push_state(&mut self, state: CpbState) {
+        self.state_history.push(state);
+
+        // Enforce maximum history size to prevent memory exhaustion
+        if self.state_history.len() > MAX_STATE_HISTORY {
+            // Remove oldest 10% of entries to avoid frequent removals
+            let remove_count = MAX_STATE_HISTORY / 10;
+            self.state_history.drain(0..remove_count);
+        }
+    }
+
     /// Reset the model to initial state
     pub fn reset(&mut self) {
         self.cpb_fullness_bits = 0;
@@ -218,7 +243,7 @@ impl HrdModel {
             * self.params.bit_rate_bps as f64;
         self.cpb_fullness_bits = initial_bits.min(self.params.cpb_size_bits as f64) as u64;
 
-        self.state_history.push(CpbState {
+        self.push_state(CpbState {
             fullness_bits: self.cpb_fullness_bits,
             time_sec: 0.0,
             frame_idx: 0,
@@ -250,7 +275,7 @@ impl HrdModel {
         }
 
         // Record state before removal
-        self.state_history.push(CpbState {
+        self.push_state(CpbState {
             fullness_bits: self.cpb_fullness_bits,
             time_sec: timing.pts_sec,
             frame_idx: timing.display_idx,
@@ -279,7 +304,7 @@ impl HrdModel {
             overflow: false,
             underflow,
         };
-        self.state_history.push(state);
+        self.push_state(state);
 
         self.current_time_sec = timing.pts_sec;
         self.frame_count += 1;
