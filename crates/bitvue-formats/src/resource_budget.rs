@@ -70,9 +70,21 @@ impl ResourceBudget {
     /// Record an allocation
     ///
     /// Should be called after a successful allocation to update the budget.
-    /// Panics if the allocation would exceed limits (use check_allocation first).
+    /// Uses overflow protection to prevent wrap-around bypass of limits.
     pub fn record_allocation(&self, size: u64) {
-        self.allocated.fetch_add(size, Ordering::Relaxed);
+        self.allocated.fetch_update(
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+            |current| {
+                let new = current.saturating_add(size);
+                // Prevent allocation if it would exceed the limit
+                if new > MAX_CUMULATIVE_ALLOCATION {
+                    None // Reject the update
+                } else {
+                    Some(new) // Accept the update
+                }
+            }
+        ).ok(); // Ignore error if allocation would exceed limit
     }
 
     /// Check and record an allocation in one operation

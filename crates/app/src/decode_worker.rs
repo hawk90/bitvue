@@ -172,16 +172,18 @@ impl DecodeWorker {
 
     /// Submit decode request (non-blocking)
     pub fn submit(&self, request: DecodeRequest) -> bool {
-        // Update request ID for this stream
-        let stream_idx = match request.stream_id {
-            StreamId::A => 0,
-            StreamId::B => 1,
-        };
-        self.request_ids[stream_idx].store(request.request_id, Ordering::SeqCst);
-
-        // Try to send (non-blocking)
-        match self.request_tx.try_send(request) {
-            Ok(_) => true,
+        // Try to send first, only update ID if successful
+        // This prevents request ID desynchronization if channel is full
+        match self.request_tx.try_send(request.clone()) {
+            Ok(_) => {
+                // Only update request ID after successful send
+                let stream_idx = match request.stream_id {
+                    StreamId::A => 0,
+                    StreamId::B => 1,
+                };
+                self.request_ids[stream_idx].store(request.request_id, Ordering::SeqCst);
+                true
+            }
             Err(crossbeam_channel::TrySendError::Full(_)) => {
                 tracing::debug!("Decode worker: Queue full, dropping request");
                 false
