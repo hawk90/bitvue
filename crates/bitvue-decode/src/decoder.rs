@@ -371,18 +371,14 @@ impl Av1Decoder {
         while offset + 12 <= data.len() {
             // Check frame count limit to prevent DoS via excessive frames
             if frame_idx >= MAX_FRAMES_PER_FILE as i64 {
-                return Err(DecodeError::Decode(format!(
-                    "IVF file exceeds maximum frame count {} (possible DoS attack)",
-                    MAX_FRAMES_PER_FILE
-                )));
+                return Err(DecodeError::Decode(
+                    "IVF file contains too many frames".to_string()
+                ));
             }
 
             // Safely extract frame header bytes using .get() to prevent panics
             let frame_header = data.get(offset..offset + 12).ok_or_else(|| {
-                DecodeError::Decode(format!(
-                    "IVF frame {} header extends beyond data",
-                    frame_idx
-                ))
+                DecodeError::Decode("IVF frame header is incomplete or corrupt".to_string())
             })?;
 
             let frame_size_u32 = u32::from_le_bytes([
@@ -405,12 +401,10 @@ impl Av1Decoder {
             ]);
 
             // Validate timestamp fits in i64 (dav1d expects i64)
-            // Max i64 is 9223372036854775807
             if timestamp_u64 > i64::MAX as u64 {
-                return Err(DecodeError::Decode(format!(
-                    "IVF frame {} timestamp {} exceeds i64::MAX",
-                    frame_idx, timestamp_u64
-                )));
+                return Err(DecodeError::Decode(
+                    "IVF frame timestamp is out of valid range".to_string()
+                ));
             }
             let timestamp = timestamp_u64 as i64;
 
@@ -418,33 +412,25 @@ impl Av1Decoder {
 
             // Validate frame size to prevent DoS attacks
             if frame_size > MAX_FRAME_SIZE {
-                return Err(DecodeError::Decode(format!(
-                    "IVF frame {} size {} exceeds maximum allowed {} (possible DoS attack)",
-                    frame_idx, frame_size, MAX_FRAME_SIZE
-                )));
+                return Err(DecodeError::Decode(
+                    "IVF frame size exceeds maximum allowed".to_string()
+                ));
             }
 
             // Skip frame header with overflow protection
             offset = offset.checked_add(12).ok_or_else(|| {
-                DecodeError::Decode(format!(
-                    "IVF frame {} offset overflow after header",
-                    frame_idx
-                ))
+                DecodeError::Decode("IVF frame offset overflow".to_string())
             })?;
 
             // Validate frame data bounds with overflow protection
             let frame_end = offset.checked_add(frame_size).ok_or_else(|| {
-                DecodeError::Decode(format!(
-                    "IVF frame {} size overflow: offset={} size={}",
-                    frame_idx, offset, frame_size
-                ))
+                DecodeError::Decode("IVF frame size overflow".to_string())
             })?;
 
             if frame_end > data.len() {
-                return Err(DecodeError::Decode(format!(
-                    "IVF frame {} extends beyond data: offset={}, size={}, data_len={}",
-                    frame_idx, offset, frame_size, data.len()
-                )));
+                return Err(DecodeError::Decode(
+                    "IVF frame data is incomplete or corrupt".to_string()
+                ));
             }
 
             // Extract frame data as owned Vec to avoid clone in send_data
