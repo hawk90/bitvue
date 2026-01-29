@@ -369,23 +369,32 @@ impl Av1Decoder {
                     MAX_FRAMES_PER_FILE
                 )));
             }
+
+            // Safely extract frame header bytes using .get() to prevent panics
+            let frame_header = data.get(offset..offset + 12).ok_or_else(|| {
+                DecodeError::Decode(format!(
+                    "IVF frame {} header extends beyond data",
+                    frame_idx
+                ))
+            })?;
+
             let frame_size_u32 = u32::from_le_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
+                frame_header[0],
+                frame_header[1],
+                frame_header[2],
+                frame_header[3],
             ]);
 
             // Extract timestamp (8 bytes following frame size)
             let timestamp_u64 = u64::from_le_bytes([
-                data[offset + 4],
-                data[offset + 5],
-                data[offset + 6],
-                data[offset + 7],
-                data[offset + 8],
-                data[offset + 9],
-                data[offset + 10],
-                data[offset + 11],
+                frame_header[4],
+                frame_header[5],
+                frame_header[6],
+                frame_header[7],
+                frame_header[8],
+                frame_header[9],
+                frame_header[10],
+                frame_header[11],
             ]);
 
             // Validate timestamp fits in i64 (dav1d expects i64)
