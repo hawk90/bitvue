@@ -9,6 +9,7 @@
 #![allow(ambiguous_glob_reexports)]
 
 pub mod bitreader;
+pub mod codec_error;
 pub mod error;
 pub mod frame;
 pub mod qp_extraction;
@@ -113,6 +114,7 @@ pub mod performance; // T9-1: Performance Instrumentation // T9-3: Product Lock 
 pub mod parity_harness; // T10-1: Competitor Parity Harness (schema validation, probes, gates)
 
 pub use self::bitreader::*;
+pub use self::codec_error::*;
 pub use self::core::*;
 pub use self::frame::*;
 pub use alignment::*;
