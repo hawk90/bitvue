@@ -104,7 +104,7 @@ pub type ConversionResult<T> = Result<T, ConversionError>;
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
     #[error("Invalid frame dimensions: {width}x{height}")]
-    InvalidDimensions { width: u32, height: u32 },
+    InvalidDimensions { width: usize, height: usize },
 
     #[error("Frame size exceeds maximum allowed: {0}x{0}")]
     FrameTooLarge(usize),
@@ -221,9 +221,15 @@ pub trait YuvConversionStrategy: Send + Sync {
         rgb: &mut [u8],
         bit_depth: u8,
     ) -> ConversionResult<()> {
-        let y_expected = width * height;
-        let uv_expected = (width / 2) * (height / 2);
-        let rgb_expected = width * height * 3;
+        // Use checked arithmetic to prevent integer overflow
+        let y_expected = width.checked_mul(height)
+            .ok_or(ConversionError::InvalidDimensions { width, height })?;
+
+        let uv_expected = (width / 2).checked_mul(height / 2)
+            .ok_or(ConversionError::InvalidDimensions { width, height })?;
+
+        let rgb_expected = y_expected.checked_mul(3)
+            .ok_or(ConversionError::InvalidDimensions { width, height })?;
 
         if y_plane.len() < y_expected {
             return Err(ConversionError::PlaneSizeMismatch {
