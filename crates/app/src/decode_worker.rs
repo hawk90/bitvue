@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_next_request_id_increments() {
-        let worker = DecodeWorker::new();
+        let worker = DecodeWorker::new().expect("Failed to create worker");
 
         let id1 = worker.next_request_id(StreamId::A);
         let id2 = worker.next_request_id(StreamId::A);
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_request_ids_per_stream_independent() {
-        let worker = DecodeWorker::new();
+        let worker = DecodeWorker::new().expect("Failed to create worker");
 
         let a1 = worker.next_request_id(StreamId::A);
         let b1 = worker.next_request_id(StreamId::B);
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_cancel_stream_increments_request_id() {
-        let worker = DecodeWorker::new();
+        let worker = DecodeWorker::new().expect("Failed to create worker");
 
         let id1 = worker.next_request_id(StreamId::A);
         worker.cancel_stream(StreamId::A);
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_cancel_stream_does_not_affect_other_stream() {
-        let worker = DecodeWorker::new();
+        let worker = DecodeWorker::new().expect("Failed to create worker");
 
         let a1 = worker.next_request_id(StreamId::A);
         let b1 = worker.next_request_id(StreamId::B);
@@ -308,14 +308,14 @@ mod tests {
 
     #[test]
     fn test_poll_results_empty_initially() {
-        let worker = DecodeWorker::new();
+        let worker = DecodeWorker::new().expect("Failed to create worker");
         let results = worker.poll_results();
         assert!(results.is_empty());
     }
 
     #[test]
     fn test_has_pending_work_false_initially() {
-        let worker = DecodeWorker::new();
+        let worker = DecodeWorker::new().expect("Failed to create worker");
         assert!(!worker.has_pending_work());
     }
 
