@@ -91,6 +91,9 @@ fn detect_format(data: &[u8]) -> Result<ContainerFormat> {
 }
 
 /// Parse IVF container
+///
+/// Uses streaming approach to avoid loading entire file into memory.
+/// Processes each frame incrementally, keeping only metadata.
 fn parse_ivf(
     data: &[u8],
     stream_id: StreamId,
@@ -113,37 +116,90 @@ fn parse_ivf(
         ivf_frames.len()
     );
 
-    // Concatenate all frame data into a single OBU stream
-    // Pre-allocate to avoid reallocations (calculate total size)
-    let total_obu_size: usize = ivf_frames.iter().map(|f| f.data.len()).sum();
-    let mut obu_data = Vec::with_capacity(total_obu_size);
-
     let ivf_header_size = ivf_header.header_size as u64;
 
-    // Track mapping from obu_data offset to file offset
-    let mut obu_data_offset = 0u64;
+    // Calculate file offsets for each frame
     let mut frame_offsets = Vec::with_capacity(ivf_frames.len());
-
-    // Maintain running offset to avoid O(n²) complexity
     let mut running_file_offset = ivf_header_size + 12;
 
     for frame in ivf_frames.iter() {
-        frame_offsets.push((obu_data_offset, running_file_offset));
-        obu_data.extend_from_slice(&frame.data);
-        obu_data_offset += frame.data.len() as u64;
+        frame_offsets.push(running_file_offset);
         running_file_offset += frame.data.len() as u64 + 12;
     }
 
-    // Parse OBUs with resilience to collect diagnostics
-    let (parsed_obus, mut diagnostics) = parse_all_obus_resilient(&obu_data, stream_id);
-    tracing::info!(
-        "Parsed {} OBUs with {} diagnostics",
-        parsed_obus.len(),
-        diagnostics.len()
-    );
+    // Process frames incrementally to avoid memory spike
+    // Each frame is parsed, extracted, then discarded
+    let mut all_units = Vec::new();
+    let mut all_diagnostics = Vec::new();
+    let mut frame_count = 0;
+    let mut width = None;
+    let mut height = None;
+    let mut bit_depth = None;
 
-    // Parse sequence header to get dimensions
-    let (width, height, bit_depth) = extract_sequence_info(&obu_data, &parsed_obus);
+    for (frame_idx, frame) in ivf_frames.iter().enumerate() {
+        // Parse OBUs from this frame only (streaming - one frame at a time)
+        let (parsed_obus, mut diagnostics) = parse_all_obus_resilient(&frame.data, stream_id);
+
+        // Extract sequence header from first frame
+        if frame_idx == 0 {
+            let (w, h, bd) = extract_sequence_info(&frame.data, &parsed_obus);
+            width = w;
+            height = h;
+            bit_depth = bd;
+        }
+
+        // Convert diagnostic offsets from frame-relative to file-absolute
+        let frame_file_offset = frame_offsets[frame_idx];
+        for diagnostic in &mut diagnostics {
+            diagnostic.offset_bytes = frame_file_offset + diagnostic.offset_bytes;
+        }
+        all_diagnostics.extend(diagnostics);
+
+        // Create units for OBUs in this frame
+        for obu in parsed_obus {
+            let file_offset = frame_file_offset + obu.offset;
+
+            let mut node = UnitNode::new(
+                stream_id,
+                obu.header.obu_type.name().to_string(),
+                file_offset,
+                obu.total_size as usize,
+            );
+
+            // Check if this is a frame
+            if obu.header.obu_type.has_frame_data() {
+                node.frame_index = Some(frame_count);
+                frame_count += 1;
+
+                // Extract frame type from frame header
+                if let Some(frame_type) = extract_frame_type(&obu.payload) {
+                    node.frame_type = Some(frame_type);
+                }
+
+                // Extract QP from frame header
+                if let Some(qp) = extract_qp_from_frame(&obu.payload) {
+                    node.qp_avg = Some(qp);
+                }
+
+                // Extract reference slots (ref_frame_idx from frame header)
+                if let Some((ref_slots, ref_frames)) = extract_reference_slots(&obu.payload) {
+                    node.ref_slots = Some(ref_slots);
+                    if !ref_frames.is_empty() {
+                        node.ref_frames = Some(ref_frames);
+                    }
+                }
+
+                // Extract motion vectors from tile data
+                if let (Some(w), Some(h)) = (width, height) {
+                    if let Some(mv_grid) = extract_mv_from_frame(&obu.payload, w, h) {
+                        node.mv_grid = Some(mv_grid);
+                    }
+                }
+            }
+
+            all_units.push(node);
+        }
+    }
 
     // Build container model
     let container = ContainerModel {
@@ -160,84 +216,21 @@ fn parse_ivf(
         bit_depth,
     };
 
-    // Build unit model
-    let mut units = Vec::new();
-    let mut frame_count = 0;
-
-    for obu in parsed_obus {
-        // Convert obu_data offset to file offset
-        let mut file_offset = ivf_header_size;
-        for (obu_off, frame_off) in &frame_offsets {
-            if obu.offset >= *obu_off {
-                file_offset = frame_off + (obu.offset - obu_off);
-            } else {
-                break;
-            }
-        }
-
-        let mut node = UnitNode::new(
-            stream_id,
-            obu.header.obu_type.name().to_string(),
-            file_offset, // Use file offset, not obu_data offset
-            obu.total_size as usize,
-        );
-
-        // Check if this is a frame
-        if obu.header.obu_type.has_frame_data() {
-            node.frame_index = Some(frame_count);
-            frame_count += 1;
-
-            // Extract frame type from frame header
-            if let Some(frame_type) = extract_frame_type(&obu.payload) {
-                node.frame_type = Some(frame_type);
-            }
-
-            // Extract QP from frame header
-            // Per QP_HEATMAP_IMPLEMENTATION_SPEC.md: Extract base_q_idx from bitstream
-            if let Some(qp) = extract_qp_from_frame(&obu.payload) {
-                node.qp_avg = Some(qp);
-            }
-
-            // Extract reference slots (ref_frame_idx from frame header)
-            if let Some((ref_slots, ref_frames)) = extract_reference_slots(&obu.payload) {
-                node.ref_slots = Some(ref_slots);
-                // Only set ref_frames if we have actual frame indices
-                if !ref_frames.is_empty() {
-                    node.ref_frames = Some(ref_frames);
-                }
-            }
-
-            // Extract motion vectors from tile data
-            if let (Some(w), Some(h)) = (width, height) {
-                if let Some(mv_grid) = extract_mv_from_frame(&obu.payload, w, h) {
-                    node.mv_grid = Some(mv_grid);
-                }
-            }
-        }
-
-        units.push(node);
-    }
-
-    let unit_count = units.len();
+    let unit_count = all_units.len();
     let unit_model = UnitModel {
-        units,
+        units: all_units,
         unit_count,
         frame_count,
     };
 
-    // Convert diagnostic offsets from obu_data to file offsets
-    for diagnostic in &mut diagnostics {
-        let obu_offset = diagnostic.offset_bytes;
-        for (obu_off, frame_off) in &frame_offsets {
-            if obu_offset >= *obu_off {
-                diagnostic.offset_bytes = frame_off + (obu_offset - obu_off);
-            } else {
-                break;
-            }
-        }
-    }
+    tracing::info!(
+        "Parsed {} units from {} frames with {} diagnostics",
+        unit_count,
+        frame_count,
+        all_diagnostics.len()
+    );
 
-    Ok((container, unit_model, diagnostics))
+    Ok((container, unit_model, all_diagnostics))
 }
 
 /// Parse raw AV1 OBU stream
