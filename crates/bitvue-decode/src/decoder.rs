@@ -519,10 +519,22 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
     // Validate U/V planes if present
     if let (Some(u_plane), Some(v_plane)) = (&frame.u_plane, &frame.v_plane) {
-        // Check common chroma subsampling formats
-        let size_420 = ((frame.width / 2) * (frame.height / 2)) as usize; // 4:2:0
-        let size_422 = ((frame.width / 2) * frame.height) as usize;        // 4:2:2
-        let size_444 = (frame.width * frame.height) as usize;              // 4:4:4
+        // Check common chroma subsampling formats with overflow protection
+        let size_420 = (frame.width as usize / 2)
+            .checked_mul(frame.height as usize / 2)
+            .ok_or_else(|| DecodeError::Decode(
+                "YUV 4:2:0 size calculation overflow".to_string()
+            ))?;
+        let size_422 = (frame.width as usize / 2)
+            .checked_mul(frame.height as usize)
+            .ok_or_else(|| DecodeError::Decode(
+                "YUV 4:2:2 size calculation overflow".to_string()
+            ))?;
+        let size_444 = (frame.width as usize)
+            .checked_mul(frame.height as usize)
+            .ok_or_else(|| DecodeError::Decode(
+                "YUV 4:4:4 size calculation overflow".to_string()
+            ))?;
 
         let valid_sizes = [size_420, size_422, size_444];
 
