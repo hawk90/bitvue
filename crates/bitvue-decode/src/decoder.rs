@@ -349,9 +349,18 @@ impl Av1Decoder {
 
         // Maximum reasonable frame size (100 MB) to prevent DoS attacks
         const MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
+        // Maximum frames per file to prevent memory exhaustion
+        const MAX_FRAMES_PER_FILE: i64 = 100_000;
 
         // Iterate through IVF frames
         while offset + 12 <= data.len() {
+            // Check frame count limit to prevent DoS via excessive frames
+            if frame_idx >= MAX_FRAMES_PER_FILE {
+                return Err(DecodeError::Decode(format!(
+                    "IVF file exceeds maximum frame count {} (possible DoS attack)",
+                    MAX_FRAMES_PER_FILE
+                )));
+            }
             let frame_size_u32 = u32::from_le_bytes([
                 data[offset],
                 data[offset + 1],
