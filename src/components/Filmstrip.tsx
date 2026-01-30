@@ -13,7 +13,7 @@ import { FrameSizesLegend } from './FrameSizesLegend';
 import ThumbnailsView from './Filmstrip/views/ThumbnailsView';
 import VirtualizedThumbnailsView from './Filmstrip/views/VirtualizedThumbnailsView';
 import FrameSizesView from './Filmstrip/views/FrameSizesView';
-import { BPyramidView } from './Filmstrip/views/BPyramidView';
+import BPyramidView from './Filmstrip/views/BPyramidView';
 import { TimelineView } from './Filmstrip/views/TimelineView';
 import { MinimapView } from './MinimapView';
 import { FilmstripTooltip } from './FilmstripTooltip';

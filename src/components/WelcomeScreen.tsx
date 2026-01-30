@@ -2,7 +2,7 @@
  * Simple Welcome Screen
  */
 
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import './WelcomeScreen.css';
 
 interface WelcomeScreenProps {
@@ -12,6 +12,13 @@ interface WelcomeScreenProps {
 }
 
 export const WelcomeScreen = memo(function WelcomeScreen({ onOpenFile, loading, error }: WelcomeScreenProps) {
+  console.log('[WelcomeScreen] Rendering', { loading, error, onOpenFile: typeof onOpenFile });
+
+  useEffect(() => {
+    console.log('[WelcomeScreen] Mounted');
+    return () => console.log('[WelcomeScreen] Unmounted');
+  }, []);
+
   return (
     <div className="welcome-screen" data-testid="welcome-screen">
       <div className="welcome-content">

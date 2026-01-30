@@ -34,4 +34,6 @@ function PlaceholderPanel({
 }
 
 // Memoize PlaceholderPanel to prevent unnecessary re-renders
-export default memo(PlaceholderPanel);
+const MemoizedPlaceholderPanel = memo(PlaceholderPanel);
+export default MemoizedPlaceholderPanel;
+export { MemoizedPlaceholderPanel as PlaceholderPanel };

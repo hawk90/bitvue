@@ -477,23 +477,24 @@ export function mergeContexts(
  * });
  * ```
  */
-export function withContext<T, P extends Record<string, T>>(
-  context: Context<T>,
-  propName: keyof P
-): <PWithoutContext extends Omit<P, keyof P>>(
-  Component: React.FC<PWithoutContext & P>
-) => React.FC<PWithoutContext> {
-  return function WithContextComponent(Component: React.FC<any>) {
-    const WrappedComponent: React.FC<any> = (props) => {
-      const contextValue = useContext(context);
-      return <Component {...props} {...{ [propName]: contextValue }} />;
-    };
-
-    WrappedComponent.displayName = `withContext(${Component.displayName || Component.name})`;
-
-    return WrappedComponent;
-  };
-}
+// DISABLED: TypeScript Record type causing runtime compilation issue
+// export function withContext<T, P extends Record<string, T>>(
+//   context: Context<T>,
+//   propName: keyof P
+// ): <PWithoutContext extends Omit<P, keyof P>>(
+//   Component: React.FC<PWithoutContext & P>
+// ) => React.FC<PWithoutContext> {
+//   return function WithContextComponent(Component: React.FC<any>) {
+//     const WrappedComponent: React.FC<any> = (props) => {
+//       const contextValue = useContext(context);
+//       return <Component {...props} {...{ [propName]: contextValue }} />;
+//     };
+//
+//     WrappedComponent.displayName = `withContext(${Component.displayName || Component.name})`;
+//
+//     return WrappedComponent;
+//   };
+// }
 
 // =============================================================================
 // Pre-built Context Instances (Example)

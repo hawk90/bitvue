@@ -4,7 +4,7 @@
  * Manages theme (light/dark) for the application
  */
 
-import { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useMemo } from 'react';
 
 export type Theme = 'dark' | 'light';
 
@@ -22,11 +22,21 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children, defaultTheme = 'dark' }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(defaultTheme);
+  console.log('[ThemeProvider] Initializing with defaultTheme:', defaultTheme);
+
+  const [theme, setThemeState] = useState<Theme>(() => {
+    // Set initial theme attribute immediately during state initialization
+    console.log('[ThemeProvider] Setting initial theme to:', defaultTheme);
+    document.documentElement.setAttribute('data-theme', defaultTheme);
+    console.log('[ThemeProvider] data-theme attribute set to:', document.documentElement.getAttribute('data-theme'));
+    return defaultTheme;
+  });
 
   const setTheme = useCallback((newTheme: Theme) => {
+    console.log('[ThemeProvider] setTheme called:', newTheme);
     setThemeState(newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
+    console.log('[ThemeProvider] data-theme attribute now:', document.documentElement.getAttribute('data-theme'));
   }, []);
 
   const toggleTheme = useCallback(() => {
