@@ -229,11 +229,11 @@ function convertToUserFriendly(error: BitvueError): UserFriendlyError {
 /**
  * Wrap an async function with error handling
  */
-export function withErrorHandling<T extends (...args: any[]) => Promise<any>>(
+export function withErrorHandling<T extends (...args: unknown[]) => Promise<unknown>>(
   fn: T,
   context: ErrorContext
 ): T {
-  return (async (...args: any[]) => {
+  return (async (...args: unknown[]) => {
     try {
       return await fn(...args);
     } catch (error) {

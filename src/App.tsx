@@ -1,14 +1,11 @@
-import { useState, useCallback, useEffect, useRef, memo, lazy, Suspense } from "react";
-import { invoke } from '@tauri-apps/api/core';
+import { useEffect, memo, lazy, Suspense } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { open } from '@tauri-apps/plugin-dialog';
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { TitleBar } from "./components/TitleBar";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { globalShortcutHandler, type ShortcutConfig } from "./utils/keyboardShortcuts";
 import { SelectionProvider } from "./contexts/SelectionContext";
 import { ModeProvider } from "./contexts/ModeContext";
 import {
@@ -16,14 +13,12 @@ import {
   FileStateProvider,
   CurrentFrameProvider,
   useFrameData,
-  useFileState,
   useCurrentFrame,
 } from "./contexts/StreamDataContext";
-import { CompareProvider, useCompare } from "./contexts/CompareContext";
+import { CompareProvider } from "./contexts/CompareContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { shouldShowTitleBar } from "./utils/platform";
-import { createLogger } from "./utils/logger";
-import type { FileInfo, ThemeChangeEvent, FileOpenedEvent } from "./types/video";
+import type { ThemeChangeEvent, FileOpenedEvent } from "./types/video";
 import {
   DockableLayout,
   FilmstripPanel,
@@ -36,6 +31,11 @@ import {
   InfoPanel,
   DetailsPanel,
 } from "./components/panels";
+
+// Custom hooks for App logic
+import { useAppFileOperations } from "./hooks/useAppFileOperations";
+import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
+import { useAppDialogs } from "./hooks/useAppDialogs";
 
 // Lazy load dialog components - only loaded when needed
 // In test environment, use regular imports to avoid async loading issues
@@ -70,11 +70,8 @@ function LazyDialogWrapper({ children, fallback }: { children: React.ReactNode; 
   );
 }
 
-const logger = createLogger('App');
-
 function App() {
   const { setTheme } = useTheme();
-  const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
 
   // Theme changes
   useEffect(() => {
@@ -94,7 +91,7 @@ function App() {
         <FileStateProvider>
           <CurrentFrameProvider>
             <CompareProvider>
-              <AppContent fileInfo={fileInfo} setFileInfo={setFileInfo} />
+              <AppContent />
             </CompareProvider>
           </CurrentFrameProvider>
         </FileStateProvider>
@@ -103,152 +100,59 @@ function App() {
   );
 }
 
-function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setFileInfo: (info: FileInfo | null) => void }) {
+/**
+ * Main App Content component
+ * Manages file operations, keyboard navigation, and UI state
+ */
+function AppContent() {
   const { frames, setFrames } = useFrameData();
-  const { loading, error, setFilePath, refreshFrames, clearData } = useFileState();
+  const { loading, error, setFilePath, refreshFrames } = useFileState();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
-  const { createWorkspace } = useCompare();
-  const [openError, setOpenError] = useState<string | null>(null);
-  const [showShortcuts, setShowShortcuts] = useState(false);
-  const [showExportDialog, setShowExportDialog] = useState(false);
 
-  // Error dialog state
-  const [errorDialog, setErrorDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    details?: string;
-    errorCode?: string;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
+  // Get error dialog first
+  const {
+    showShortcuts,
+    setShowShortcuts,
+    showExportDialog,
+    setShowExportDialog,
+    errorDialog,
+    showErrorDialog,
+    closeErrorDialog,
+  } = useAppDialogs();
+
+  // Use custom hooks for app logic
+  const {
+    fileInfo,
+    setFileInfo,
+    openError,
+    setOpenError,
+    handleOpenFile,
+    handleCloseFile,
+    handleOpenDependentFile,
+  } = useAppFileOperations({
+    onError: showErrorDialog,
   });
 
-  // Show error dialog
-  const showErrorDialog = useCallback((title: string, message: string, details?: string, errorCode?: string) => {
-    setErrorDialog({
-      isOpen: true,
-      title,
-      message,
-      details,
-      errorCode,
-    });
-  }, []);
-
-  // Handle closing the current file
-  const handleCloseFile = useCallback(async () => {
-    try {
-      await invoke('close_file');
-      setFileInfo(null);
-      setFilePath(null);
-      clearData();
-    } catch (err) {
-      logger.error('Failed to close file:', err);
-      showErrorDialog('Failed to Close File', err as string);
-    }
-  }, [setFileInfo, setFilePath, clearData, showErrorDialog]);
-
-  const handleOpenFile = useCallback(async () => {
-    try {
-      setOpenError(null);
-
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: 'Video Files',
-            extensions: ['ivf', 'av1', 'hevc', 'h265', 'vvc', 'h266', 'mp4', 'mkv', 'webm', 'ts']
-          },
-          {
-            name: 'All Files',
-            extensions: ['*']
-          }
-        ]
-      });
-
-      if (selected && typeof selected === 'string') {
-        logger.debug('Opening file:', selected);
-
-        // Call the Tauri command to open the file
-        const result = await invoke<FileInfo>('open_file', { path: selected });
-
-        setFileInfo(result);
-        setFilePath(result.success ? selected : null);
-
-        if (result.success) {
-          logger.info('File opened successfully');
-          // Refresh frames after opening file
-          try {
-            const loadedFrames = await refreshFrames();
-            setFrames(loadedFrames);
-          } catch (refreshErr) {
-            logger.error('Failed to refresh frames after opening file:', refreshErr);
-            // Non-blocking: file opened successfully but frames failed to load
-            showErrorDialog('Frame Load Warning', 'File opened but failed to load frame data. Please try refreshing.', refreshErr as string);
-          }
-        } else {
-          showErrorDialog('Failed to Open File', result.error || 'Unknown error', selected);
+  // Keyboard navigation
+  useKeyboardNavigation({
+    currentIndex: currentFrameIndex,
+    totalFrames: frames.length,
+    callbacks: {
+      onPreviousFrame: () => {
+        if (currentFrameIndex > 0) setCurrentFrameIndex(currentFrameIndex - 1);
+      },
+      onNextFrame: () => {
+        if (frames.length > 0 && currentFrameIndex < frames.length - 1) {
+          setCurrentFrameIndex(currentFrameIndex + 1);
         }
-      }
-    } catch (err) {
-      logger.error('Failed to open file:', err);
-      showErrorDialog('Failed to Open File', err as string);
-    }
-  }, [refreshFrames, setFileInfo, setFilePath, showErrorDialog]);
-
-  // Handle opening dependent bitstream for comparison
-  const handleOpenDependentFile = useCallback(async () => {
-    try {
-      setOpenError(null);
-
-      if (!fileInfo?.success) {
-        setOpenError('Please open a primary bitstream first before opening a dependent bitstream for comparison.');
-        return;
-      }
-
-      const selected = await open({
-        multiple: false,
-        filters: [{
-          name: 'Video Files',
-          extensions: ['ivf', 'av1', 'hevc', 'h265', 'vvc', 'h266', 'mp4', 'mkv', 'webm', 'ts']
-        }]
-      });
-
-      if (selected === null) {
-        return; // User cancelled
-      }
-
-      const pathB = typeof selected === 'string' ? selected : selected.path;
-
-      logger.info(`Opening dependent bitstream: ${pathB}`);
-
-      // Create compare workspace with current file as Stream A and selected file as Stream B
-      await createWorkspace(fileInfo.path, pathB);
-
-      logger.info(`Compare workspace created successfully: ${fileInfo.path} vs ${pathB}`);
-    } catch (err) {
-      logger.error('Failed to open dependent bitstream:', err);
-      setOpenError(err as string);
-    }
-  }, [fileInfo, createWorkspace, setOpenError]);
-
-  // File menu events
-  useEffect(() => {
-    const handleOpenBitstreamListener = handleOpenFile;
-    const handleCloseFileListener = handleCloseFile;
-    const handleExportListener = () => setShowExportDialog(true);
-
-    window.addEventListener('menu-open-bitstream', handleOpenBitstreamListener);
-    window.addEventListener('menu-close-file', handleCloseFileListener);
-    window.addEventListener('menu-export', handleExportListener);
-
-    return () => {
-      window.removeEventListener('menu-open-bitstream', handleOpenBitstreamListener);
-      window.removeEventListener('menu-close-file', handleCloseFileListener);
-      window.removeEventListener('menu-export', handleExportListener);
-    };
-  }, [handleOpenFile, handleCloseFile]);
+      },
+      onFirstFrame: () => setCurrentFrameIndex(0),
+      onLastFrame: () => {
+        if (frames.length > 0) setCurrentFrameIndex(frames.length - 1);
+      },
+    },
+    onShowShortcuts: () => setShowShortcuts(true),
+  });
 
   // Tauri event listeners
   useEffect(() => {
@@ -256,7 +160,6 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
       setFileInfo(event.payload);
       setFilePath(event.payload.success ? event.payload.path : null);
       if (event.payload.success) {
-        logger.info(`Opened: ${event.payload.path}`);
         // Refresh frames after opening file
         const loadedFrames = await refreshFrames();
         setFrames(loadedFrames);
@@ -267,81 +170,21 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
     return () => {
       // Proper cleanup: handle potential errors during unlisten
       unlisten.then((fn) => fn()).catch((err) => {
-        logger.warn('Failed to unlisten from file-opened event:', err);
+        // logger.warn('Failed to unlisten from file-opened event:', err);
       });
     };
-  }, [refreshFrames, setFileInfo, setFilePath, showErrorDialog]);
+  }, [refreshFrames, setFileInfo, setFilePath, showErrorDialog, setFrames]);
 
-  // Keyboard shortcuts
-  // Use refs to avoid re-registering shortcuts on every render
-  const currentIndexRef = useRef(currentFrameIndex);
-  const framesLengthRef = useRef(frames.length);
-  const shortcutsRef = useRef<(() => void)[]>([]);
-
-  currentIndexRef.current = currentFrameIndex;
-  framesLengthRef.current = frames.length;
-
+  // File menu events
   useEffect(() => {
-    // Cleanup previous shortcuts
-    shortcutsRef.current.forEach(fn => fn());
-    shortcutsRef.current = [];
-
-    // Register shortcuts
-    const shortcuts: ShortcutConfig[] = [
-      {
-        key: '?',
-        ctrl: true,
-        meta: true,
-        description: 'Show shortcuts',
-        action: () => setShowShortcuts(true),
-      },
-      {
-        key: 'ArrowLeft',
-        description: 'Previous frame',
-        action: () => {
-          if (currentIndexRef.current > 0) setCurrentFrameIndex(currentIndexRef.current - 1);
-        },
-      },
-      {
-        key: 'ArrowRight',
-        description: 'Next frame',
-        action: () => {
-          if (framesLengthRef.current > 0 && currentIndexRef.current < framesLengthRef.current - 1) {
-            setCurrentFrameIndex(currentIndexRef.current + 1);
-          }
-        },
-      },
-      {
-        key: 'Home',
-        description: 'First frame',
-        action: () => setCurrentFrameIndex(0),
-      },
-      {
-        key: 'End',
-        description: 'Last frame',
-        action: () => {
-          if (framesLengthRef.current > 0) setCurrentFrameIndex(framesLengthRef.current - 1);
-        },
-      },
-    ];
-
-    shortcuts.forEach(shortcut => {
-      shortcutsRef.current.push(globalShortcutHandler.register(shortcut));
-    });
-
-    // Handle keyboard events
-    const handleKeyDown = (e: KeyboardEvent) => {
-      globalShortcutHandler.handle(e);
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
+    const handleExportListener = () => setShowExportDialog(true);
+    window.addEventListener('menu-export', handleExportListener);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      shortcutsRef.current.forEach(fn => fn());
+      window.removeEventListener('menu-export', handleExportListener);
     };
-  }, [setShowShortcuts, setCurrentFrameIndex]);
+  }, [setShowExportDialog]);
 
+  // Welcome screen
   const welcomeScreen = (
     <WelcomeScreen
       onOpenFile={handleOpenFile}
@@ -509,7 +352,7 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
           message={errorDialog.message}
           details={errorDialog.details}
           errorCode={errorDialog.errorCode}
-          onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
+          onClose={closeErrorDialog}
         />
       ) : (
         <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
@@ -519,7 +362,7 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
             message={errorDialog.message}
             details={errorDialog.details}
             errorCode={errorDialog.errorCode}
-            onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
+            onClose={closeErrorDialog}
           />
         </LazyDialogWrapper>
       )}

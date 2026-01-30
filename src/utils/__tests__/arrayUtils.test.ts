@@ -74,7 +74,7 @@ describe('groupBy', () => {
   });
 
   it('should handle empty array', () => {
-    expect(groupBy([], (x: any) => x)).toEqual({});
+    expect(groupBy([], (_x: unknown) => 'key')).toEqual({});
   });
 });
 

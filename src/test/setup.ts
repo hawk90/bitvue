@@ -40,7 +40,7 @@ function generateMockHexData(frameIndex: number, maxBytes: number, frameSize: nu
 // Mock Tauri APIs - must be hoisted before module imports
 const { mockInvoke } = vi.hoisted(() => {
   return {
-    mockInvoke: vi.fn().mockImplementation((cmd: string, args: any) => {
+    mockInvoke: vi.fn().mockImplementation((cmd: string, args: Record<string, unknown> = {}) => {
       if (cmd === 'get_frame_hex_data') {
         const frameIndex = args?.frameIndex ?? 0;
         const maxBytes = args?.maxBytes ?? 512;
@@ -96,10 +96,10 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 // Mock react-resizable-panels to avoid DOM issues in jsdom
 vi.mock('react-resizable-panels', () => ({
-  Group: ({ children, ...props }: any) => React.createElement('div', { 'data-testid': 'resizable-group', ...props }, children),
-  Panel: ({ children, ...props }: any) => React.createElement('div', { 'data-testid': 'resizable-panel', ...props }, children),
-  PanelResizeHandle: ({ children, ...props }: any) => React.createElement('div', { 'data-testid': 'resize-handle', ...props }, children),
-  Separator: ({ children, ...props }: any) => React.createElement('div', { 'data-testid': 'resizable-separator', ...props }, children),
+  Group: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => React.createElement('div', { 'data-testid': 'resizable-group', ...props }, children),
+  Panel: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => React.createElement('div', { 'data-testid': 'resizable-panel', ...props }, children),
+  PanelResizeHandle: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => React.createElement('div', { 'data-testid': 'resize-handle', ...props }, children),
+  Separator: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => React.createElement('div', { 'data-testid': 'resizable-separator', ...props }, children),
 }));
 
 // Mock window.matchMedia for responsive tests

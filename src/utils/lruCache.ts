@@ -356,8 +356,57 @@ export interface FrameDataEntry {
   decodedFrame?: string; // Data URL
   thumbnailData?: string;
   thumbnailUrl?: string;
-  analysisData?: any;
+  analysisData?: AnalysisData;
   size: number; // Estimated size in bytes
+}
+
+/**
+ * Analysis data interface
+ */
+export interface AnalysisData {
+  qpGrid?: QPGrid;
+  mvGrid?: MVGrid;
+  partitionGrid?: PartitionGrid;
+  [key: string]: unknown; // Allow other analysis types
+}
+
+/**
+ * QP Grid data
+ */
+export interface QPGrid {
+  width: number;
+  height: number;
+  qpValues: number[];
+}
+
+/**
+ * MV Grid data
+ */
+export interface MVGrid {
+  width: number;
+  height: number;
+  mvX: number[][];
+  mvY: number[][];
+}
+
+/**
+ * Partition Grid data
+ */
+export interface PartitionGrid {
+  width: number;
+  height: number;
+  partitions: Partition[];
+}
+
+/**
+ * Partition data
+ */
+export interface Partition {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: string;
 }
 
 /**
