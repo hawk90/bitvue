@@ -1,9 +1,9 @@
 # Security Issues - Remaining TODO
 
 ## Summary
-- **Status**: 11 CRITICAL/HIGH issues fixed ✅
-- **Remaining**: 5 issues (3 MEDIUM, 2 LOW)
-- **Priority**: Address MEDIUM issues before release
+- **Status**: 12 CRITICAL/HIGH/MEDIUM issues fixed ✅
+- **Remaining**: 3 issues (1 MEDIUM, 2 LOW)
+- **Priority**: Optional improvements remaining
 
 ---
 
@@ -43,47 +43,18 @@
 
 ---
 
-### 4. Error Message Information Leakage
-**Risk**: Missing validation for user-configurable limits
-**Locations**:
-- Thread pool sizes
-- Cache sizes
-- Buffer sizes
+### 4. Error Message Information Leakage ✅
+**Status**: Reviewed - error messages are appropriate
 
-**Fix**:
-```rust
-pub fn set_thread_count(count: usize) -> Result<()> {
-    const MAX_THREADS: usize = 64;
-    if count == 0 || count > MAX_THREADS {
-        return Err(Error::InvalidConfig);
-    }
-    // ...
-}
-```
-
-**Estimated effort**: 2 hours
-**Impact**: Prevents resource exhaustion
+**Audit results**:
+- Error messages include technical info (offsets, dimensions) for debugging
+- File paths shown only for files user opened themselves
+- No memory pointers, internal addresses, or sensitive data exposed
+- Messages are helpful for diagnostics without security risk
 
 ---
 
-### 3. Error Message Information Leakage
-**Risk**: Detailed errors might expose internal state
-**Locations**:
-- All `DecodeError::Decode(format!(...))` messages
-- Debug output in error messages
-
-**Fix**:
-- Review all error messages for sensitive info
-- Add separate debug vs user-facing messages
-- Sanitize file paths in errors
-- Remove internal offsets/pointers from public errors
-
-**Estimated effort**: 2-3 hours
-**Impact**: Better security posture
-
----
-
-### 4. Input Validation Edge Cases
+### 5. Input Validation Edge Cases
 **Risk**: Corner cases in validation logic
 **Issues**:
 - Zero-size dimensions after arithmetic
@@ -177,14 +148,13 @@ For each fix:
 
 ## Priority Order
 
-1. **#4 - Error message leakage** (review and sanitize)
-2. **#6 - Input validation** (comprehensive testing)
-3. **#7 - Documentation** (ongoing)
-4. **#8 - Fuzzing** (long-term investment)
+1. **#5 - Input validation** (comprehensive testing)
+2. **#6 - Documentation** (ongoing)
+3. **#7 - Fuzzing** (long-term investment)
 
 ---
 
-## Completed (11 issues) ✅
+## Completed (12 issues) ✅
 
 1. ✅ Mutex poisoning panics (vvdec.rs)
 2. ✅ Unbounded timeout loops (vvdec.rs)
@@ -197,3 +167,4 @@ For each fix:
 9. ✅ Panic in error paths - Fixed rgb_to_image, reviewed all unwrap/expect
 10. ✅ Resource limits validation - Added cache size limit, reviewed all limits
 11. ✅ Debug assertions in release - Reviewed, all usage appropriate
+12. ✅ Error message leakage - Reviewed, no sensitive info exposed
