@@ -278,7 +278,8 @@ pub fn extract_pixel_info(
     let sb_x = pixel_x / 64;
     let sb_y = pixel_y / 64;
     let block_id = format!("sb[{}][{}]", sb_y, sb_x);
-    let partition_info = "TX_64X64".to_string();
+    // Use static string for partition_info to avoid repeated allocation
+    let partition_info: &'static str = "TX_64X64";
 
     let est_frame_size = 25000;
     let bit_offset = Some((frame_index as u64) * 200000 + (pixel_y as u64) * 1920 + pixel_x as u64);
