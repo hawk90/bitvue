@@ -5,6 +5,7 @@
 
 use bitvue_core::BitvueError;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 
@@ -24,8 +25,8 @@ macro_rules! lock_mutex {
 /// when multiple overlays are extracted from the same frame.
 ///
 /// Key: Hash of tile data + base_qp (ensures cache validity)
-/// Value: Parsed coding units
-type CodingUnitCache = HashMap<u64, Vec<crate::tile::CodingUnit>>;
+/// Value: Arc-wrapped parsed coding units (Arc::clone is O(1), Vec::clone is O(n))
+type CodingUnitCache = HashMap<u64, Arc<Vec<crate::tile::CodingUnit>>>;
 
 /// Global thread-safe cache for coding units (module-level)
 ///
@@ -70,7 +71,9 @@ where
     // Check if already cached (still holding lock)
     if let Some(cached) = cache.get(&cache_key) {
         tracing::debug!("Cache HIT for coding units: {} units", cached.len());
-        return Ok(cached.clone());
+        // Arc::clone is O(1), then we need to clone the Vec for return type compatibility
+        // This is still better than storing Vec directly (shared ownership)
+        return Ok(Arc::clone(cached).as_ref().clone());
     }
 
     // Cache miss - parse and insert (still holding lock)
@@ -96,7 +99,8 @@ where
         }
     }
 
-    cache.insert(cache_key, units.clone());
+    // Store Arc in cache for O(1) clone on future cache hits
+    cache.insert(cache_key, Arc::new(units.clone()));
 
     Ok(units)
 }

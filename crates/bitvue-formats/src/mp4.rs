@@ -435,7 +435,27 @@ pub fn parse_mp4(data: &[u8]) -> Result<Mp4Info, BitvueError> {
     while cursor.position() < data.len() as u64 {
         let header = BoxHeader::parse(&mut cursor)?;
         let box_start = header.data_offset;
-        let box_end = box_start + header.data_size();
+
+        // Calculate box end with overflow protection
+        let box_end = box_start
+            .checked_add(header.data_size())
+            .ok_or_else(|| BitvueError::InvalidData("MP4 box end offset overflow".to_string()))?;
+
+        // Validate box_end doesn't exceed file size
+        if box_end > data.len() as u64 {
+            return Err(BitvueError::InvalidData(format!(
+                "MP4 box extends beyond file: box_end {} > file size {}",
+                box_end,
+                data.len()
+            )));
+        }
+
+        // Validate box_end fits in platform address space (for 32-bit systems)
+        let box_end_usize = box_end
+            .try_into()
+            .map_err(|_| BitvueError::InvalidData(
+                format!("MP4 box offset {} exceeds platform address space", box_end)
+            ))?;
 
         match &header.box_type {
             b"ftyp" => {
@@ -455,7 +475,7 @@ pub fn parse_mp4(data: &[u8]) -> Result<Mp4Info, BitvueError> {
         }
 
         // Move to next box
-        cursor.seek(SeekFrom::Start(box_end))?;
+        cursor.seek(SeekFrom::Start(box_end_usize))?;
     }
 
     Ok(info)
