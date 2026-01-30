@@ -12,39 +12,59 @@ use std::path::PathBuf;
 
 /// Validate output path to prevent path traversal and ensure safe file operations
 ///
-/// SECURITY: First canonicalize to fully resolve all path traversal attempts,
-/// then validate the canonical path against system directory restrictions.
-/// This ensures that paths like `/safe/../../../etc/passwd` are properly validated.
+/// SECURITY: Canonicalize FIRST before any validation to fully resolve all path
+/// traversal attempts. This ensures that paths like `/safe/../../../etc/passwd`
+/// are properly caught before any extension or other validation occurs.
+///
+/// Validation order (critical for security):
+/// 1. Canonicalize (resolves all .., symlinks, relative paths)
+/// 2. Check system directory access
+/// 3. Check extension (on canonicalized path)
+/// 4. Check parent directory exists
 fn validate_output_path(path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(path);
 
-    // Check if the path has a valid extension (prevents writing to system files)
-    let extension = path.extension()
-        .and_then(|e| e.to_str())
-        .ok_or("Invalid path: missing file extension")?;
-
-    // Only allow specific file extensions
-    let allowed_extensions = ["csv", "json", "txt", "md"];
-    if !allowed_extensions.contains(&extension.to_lowercase().as_str()) {
-        return Err(format!("Invalid path: extension '{}' not allowed. Allowed: {:?}", extension, allowed_extensions));
-    }
-
-    // SECURITY: Always canonicalize to fully resolve the path
+    // SECURITY CRITICAL: Canonicalize FIRST before any validation
     // This handles:
     // - All `..` components (path traversal)
     // - Symlinks (including nested symlinks)
     // - Relative path resolution
+    // - Path separator normalization
     let canonical = path.canonicalize()
-        .map_err(|e| format!("Invalid path: cannot resolve path: {}", e))?;
+        .map_err(|e| format!("Invalid path: cannot resolve path '{}': {}", path.display(), e))?;
 
     // Validate the canonical path against system directory restrictions
-    // This uses the same validation logic as file opening for consistency
-    check_system_directory_access(&canonical.to_string_lossy())?;
+    // This must happen on the canonicalized path to catch traversal attempts
+    check_system_directory_access(&canonical.to_string_lossy())
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    // Check if the canonical path has a valid extension (prevents writing to system files)
+    // Check extension AFTER canonicalization to ensure we validate the actual destination
+    let extension = canonical.extension()
+        .and_then(|e| e.to_str())
+        .ok_or_else(|| {
+            format!("Invalid path: canonical path '{}' has no file extension", canonical.display())
+        })?;
+
+    // Only allow specific file extensions
+    let allowed_extensions = ["csv", "json", "txt", "md"];
+    if !allowed_extensions.contains(&extension.to_lowercase().as_str()) {
+        return Err(format!(
+            "Invalid path: extension '{}' not allowed for '{}'. Allowed extensions: {:?}",
+            extension,
+            canonical.display(),
+            allowed_extensions
+        ));
+    }
 
     // Check if the parent directory exists
     if let Some(parent) = canonical.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
-            return Err(format!("Invalid path: parent directory does not exist: {:?}", parent));
+            return Err(format!(
+                "Invalid path: parent directory does not exist for '{}': {:?}",
+                canonical.display(),
+                parent
+            ));
         }
     }
 

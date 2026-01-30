@@ -16,30 +16,40 @@ use bitvue_formats::{detect_container_format, ContainerFormat};
 /// Validate file path to prevent path traversal and access to sensitive directories
 /// This is a public function so other modules (like decode_service) can use it
 ///
-/// SECURITY: Always canonicalize paths to fully resolve symlinks and path traversal attempts
-/// This ensures that paths like `/safe/../../../etc/passwd` are properly validated
+/// SECURITY: Canonicalize FIRST before any validation to fully resolve symlinks
+/// and path traversal attempts. This ensures that paths like `/safe/../../../etc/passwd`
+/// are properly caught before any existence or type checking occurs.
+///
+/// Validation order (critical for security):
+/// 1. Canonicalize (resolves all .., symlinks, relative paths)
+/// 2. Check system directory access
+/// 3. Check if path exists and is a file
 pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(path);
 
-    // Check if path exists and is a file (not a directory)
-    if !path.exists() {
-        return Err(format!("File not found: {:?}", path));
-    }
-
-    if !path.is_file() {
-        return Err(format!("Path is not a file: {:?}", path));
-    }
-
-    // SECURITY: Always canonicalize to fully resolve the path
+    // SECURITY CRITICAL: Canonicalize FIRST before any validation
     // This handles:
     // - All `..` components (path traversal)
     // - Symlinks (including nested symlinks)
     // - Relative path resolution
+    // - Path separator normalization
     let canonical = path.canonicalize()
-        .map_err(|e| format!("Cannot resolve path: {}", e))?;
+        .map_err(|e| format!("Invalid path: cannot resolve path '{}': {}", path.display(), e))?;
 
     // Validate the canonical path against system directory restrictions
-    check_system_directory_access(&canonical.to_string_lossy())?;
+    // This must happen on the canonicalized path to catch traversal attempts
+    check_system_directory_access(&canonical.to_string_lossy())
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    // Check if canonical path exists and is a file (not a directory)
+    // Check existence AFTER canonicalization to ensure we check the actual destination
+    if !canonical.exists() {
+        return Err(format!("File not found: {}", canonical.display()));
+    }
+
+    if !canonical.is_file() {
+        return Err(format!("Path is not a file: {}", canonical.display()));
+    }
 
     Ok(canonical)
 }
