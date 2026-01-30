@@ -8,6 +8,7 @@ use bitvue_core::BitvueError;
 use super::cu_parser::{CuSpatialIndex, parse_all_coding_units};
 use super::parser::ParsedFrame;
 use crate::ivf::OVERLAY_BLOCK_SIZE;
+use crate::Qp;
 
 /// Extract QP Grid from AV1 bitstream data
 ///
@@ -24,6 +25,21 @@ pub fn extract_qp_grid(
     _frame_index: usize,
     base_qp: i16,
 ) -> Result<QPGrid, BitvueError> {
+    // Validate QP range for type safety
+    let qp = Qp::new(base_qp)?;
+
+    extract_qp_grid_typed(obu_data, _frame_index, qp)
+}
+
+/// Extract QP Grid with type-safe Qp parameter
+///
+/// Internal function that uses the Qp newtype for type safety.
+/// This validates that base_qp is in the valid range [0, 255].
+fn extract_qp_grid_typed(
+    obu_data: &[u8],
+    _frame_index: usize,
+    base_qp: Qp,
+) -> Result<QPGrid, BitvueError> {
     let parsed = ParsedFrame::parse(obu_data)?;
 
     let block_w = OVERLAY_BLOCK_SIZE;
@@ -31,9 +47,10 @@ pub fn extract_qp_grid(
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
-    let qp = vec![base_qp; (grid_w * grid_h) as usize];
+    let qp_value = base_qp.value();
+    let qp = vec![qp_value; (grid_w * grid_h) as usize];
 
-    Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp))
+    Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, qp_value))
 }
 
 /// Extract QP Grid from cached frame data
@@ -50,11 +67,26 @@ pub fn extract_qp_grid_from_parsed(
     _frame_index: usize,
     base_qp: i16,
 ) -> Result<QPGrid, BitvueError> {
+    // Validate QP range for type safety
+    let qp = Qp::new(base_qp)?;
+
+    extract_qp_grid_from_parsed_typed(parsed, _frame_index, qp)
+}
+
+/// Extract QP Grid from cached frame data with type-safe Qp parameter
+///
+/// Internal function that uses the Qp newtype for type safety.
+fn extract_qp_grid_from_parsed_typed(
+    parsed: &ParsedFrame,
+    _frame_index: usize,
+    base_qp: Qp,
+) -> Result<QPGrid, BitvueError> {
     let block_w = OVERLAY_BLOCK_SIZE;
     let block_h = OVERLAY_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
     let total_blocks = (grid_w * grid_h) as usize;
+    let base_qp_value = base_qp.value();
 
     // If we have tile data, try to parse actual QP values
     if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
@@ -70,9 +102,9 @@ pub fn extract_qp_grid_from_parsed(
                     grid_h,
                     block_w,
                     block_h,
-                    base_qp,
+                    base_qp_value,
                 );
-                return Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp));
+                return Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp_value));
             }
             Err(e) => {
                 tracing::warn!("Failed to parse coding units for QP: {}, using base_qp", e);
@@ -82,9 +114,9 @@ pub fn extract_qp_grid_from_parsed(
     }
 
     // Fallback: Use base_q_idx for all blocks
-    let qp = vec![base_qp; total_blocks];
+    let qp = vec![base_qp_value; total_blocks];
 
-    Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp))
+    Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp_value))
 }
 
 /// Helper: Build QP grid from coding units using spatial index
@@ -158,6 +190,13 @@ mod tests {
         assert_eq!(grid.block_h, 64);
         assert!(grid.qp.len() > 0, "QP grid should have values");
         assert_eq!(grid.qp[0], base_qp, "First block should have base QP");
+
+        // Also test with invalid QP to ensure validation works
+        let invalid_result = extract_qp_grid(&obu_data, 0, 256); // Invalid: > 255
+        assert!(invalid_result.is_err(), "Should reject QP > 255");
+
+        let invalid_result2 = extract_qp_grid(&obu_data, 0, -1); // Invalid: < 0
+        assert!(invalid_result2.is_err(), "Should reject QP < 0");
     }
 
     #[test]
