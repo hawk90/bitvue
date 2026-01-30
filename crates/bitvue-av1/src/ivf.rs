@@ -62,6 +62,16 @@ impl IvfFrame {
     pub fn builder() -> IvfFrameBuilder {
         IvfFrameBuilder::default()
     }
+
+    /// Get timestamp as TimestampPts for type-safe access
+    ///
+    /// Provides validation and type safety for timestamp operations.
+    /// Returns an error if timestamp is negative (shouldn't happen with u64).
+    #[inline]
+    pub fn timestamp_pts(&self) -> Result<crate::TimestampPts, BitvueError> {
+        // u64 should always be non-negative, but we validate anyway
+        crate::TimestampPts::new(self.timestamp as i64)
+    }
 }
 
 /// Builder for constructing IvfFrame instances
@@ -94,8 +104,20 @@ impl IvfFrameBuilder {
     }
 
     /// Set the timestamp
+    ///
+    /// Note: Timestamps must be non-negative per media specification.
+    /// For type-safe timestamp handling, consider using timestamp_pts() instead.
     pub fn timestamp(mut self, value: u64) -> Self {
         self.timestamp = Some(value);
+        self
+    }
+
+    /// Set the timestamp from TimestampPts for type safety
+    ///
+    /// Provides validation that timestamp is non-negative.
+    /// This is the preferred method for setting timestamps.
+    pub fn timestamp_pts(mut self, pts: crate::TimestampPts) -> Self {
+        self.timestamp = Some(pts.value() as u64);
         self
     }
 
