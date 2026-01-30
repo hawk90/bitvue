@@ -374,7 +374,8 @@ pub fn parse_coding_unit(
     }
 
     // Add this CU to the MV predictor context for future blocks
-    mv_ctx.add_cu(cu.clone());
+    // Now uses zero-copy reference instead of cloning the entire CU
+    mv_ctx.add_cu(&cu);
 
     // Read delta Q if enabled
     // Per AV1 Spec Section 5.11.38 (Quantization Parameter Delta)

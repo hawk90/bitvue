@@ -10,13 +10,55 @@
 
 use crate::tile::coding_unit::{CodingUnit, MotionVector, PredictionMode, RefFrame};
 
+/// Lightweight MV context entry
+///
+/// Stores only the fields needed for MV prediction, avoiding the need to clone
+/// the entire CodingUnit struct (~40-50 bytes).
+#[derive(Debug, Clone)]
+struct MvCuEntry {
+    /// Block position (top-left corner) in pixels
+    x: u32,
+    /// Block position (top-left corner) in pixels
+    y: u32,
+    /// Block width in pixels
+    width: u32,
+    /// Block height in pixels
+    height: u32,
+    /// Prediction mode
+    mode: PredictionMode,
+    /// Reference frames (for INTER)
+    ref_frames: [RefFrame; 2],
+    /// Motion vectors (for INTER)
+    mv: [MotionVector; 2],
+}
+
+impl MvCuEntry {
+    /// Create from a CodingUnit reference (no clone needed)
+    fn from_cu(cu: &CodingUnit) -> Self {
+        Self {
+            x: cu.x,
+            y: cu.y,
+            width: cu.width,
+            height: cu.height,
+            mode: cu.mode,
+            ref_frames: cu.ref_frames,
+            mv: cu.mv,
+        }
+    }
+
+    /// Check if this is an INTER block
+    fn is_inter(&self) -> bool {
+        self.mode.is_inter()
+    }
+}
+
 /// MV predictor context
 ///
 /// Tracks previously parsed coding units for MV prediction.
 pub struct MvPredictorContext {
     /// Previously parsed coding units, indexed by position
     /// For MVP, we use a simplified neighbor tracking
-    parsed_cus: Vec<CodingUnit>,
+    parsed_cus: Vec<MvCuEntry>,
     /// Frame width in superblocks
     _sb_cols: u32,
     /// Frame height in superblocks
@@ -34,14 +76,16 @@ impl MvPredictorContext {
     }
 
     /// Add a parsed coding unit to the context
-    pub fn add_cu(&mut self, cu: CodingUnit) {
-        self.parsed_cus.push(cu);
+    ///
+    /// This is now zero-copy - we extract only the fields needed for MV prediction.
+    pub fn add_cu(&mut self, cu: &CodingUnit) {
+        self.parsed_cus.push(MvCuEntry::from_cu(cu));
     }
 
     /// Find the nearest neighbor CU
     ///
     /// Searches in order: left, above, above-right, above-left
-    fn find_nearest_neighbor(&self, x: u32, y: u32) -> Option<&CodingUnit> {
+    fn find_nearest_neighbor(&self, x: u32, y: u32) -> Option<&MvCuEntry> {
         // Define search order with weights
         // Lower weight = higher priority
         let neighbors = [
@@ -207,12 +251,12 @@ mod tests {
     fn test_nearest_mv_with_left_neighbor() {
         let mut ctx = MvPredictorContext::new(10, 10);
 
-        // Add left neighbor
+        // Add left neighbor (using reference, no clone)
         let mut neighbor = CodingUnit::new(0, 64, 64, 64);
         neighbor.mode = PredictionMode::NewMv;
         neighbor.ref_frames = [RefFrame::Last, RefFrame::Intra];
         neighbor.mv[0] = MotionVector::new(10, -5);
-        ctx.add_cu(neighbor);
+        ctx.add_cu(&neighbor);  // Now takes reference instead of ownership
 
         let mv = ctx.predict_nearest_mv(64, 64, RefFrame::Last);
         assert_eq!(mv.x, 10);
