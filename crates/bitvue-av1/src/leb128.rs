@@ -8,6 +8,13 @@ use bitvue_core::{BitvueError, Result};
 /// Maximum bytes for a valid LEB128 in AV1 (8 bytes = 56 bits max)
 pub const MAX_LEB128_BYTES: usize = 8;
 
+/// Maximum bits for a valid LEB128 value (8 bytes * 7 bits per byte = 56 bits)
+/// LEB128 is limited to 56 bits per the AV1 specification
+const MAX_LEB128_BITS: u32 = MAX_LEB128_BYTES as u32 * 7; // 56 bits
+
+// Compile-time assertion to ensure MAX_LEB128_BITS doesn't exceed 64
+const _: () = assert!(MAX_LEB128_BITS <= 64, "LEB128 max bits must not exceed 64");
+
 /// Decodes an unsigned LEB128 value from a byte slice
 ///
 /// Returns the decoded value and the number of bytes consumed.
@@ -42,8 +49,10 @@ pub fn decode_uleb128(data: &[u8]) -> Result<(u64, usize)> {
         // Extract 7 data bits
         let data_bits = (byte & 0x7F) as u64;
 
-        // Check for overflow before shifting
-        if shift >= 64 || (shift > 0 && data_bits > (u64::MAX >> shift)) {
+        // Check for overflow before shifting.
+        // Per LEB128 spec, we have MAX_LEB128_BITS (56) maximum, not 64.
+        // This check ensures we don't exceed the spec's limits.
+        if shift >= MAX_LEB128_BITS || (shift > 0 && data_bits > (u64::MAX >> shift)) {
             return Err(BitvueError::Parse {
                 offset: bytes_read as u64,
                 message: "LEB128 value overflow".to_string(),
@@ -189,5 +198,44 @@ mod tests {
         let (value, len) = decode_uleb128(&[0x7F, 0xFF, 0xFF]).unwrap();
         assert_eq!(value, 127);
         assert_eq!(len, 1);
+    }
+
+    #[test]
+    fn test_leb128_overflow_at_boundary() {
+        // Test values near the 56-bit boundary (LEB128 spec limit)
+        // MAX_LEB128_BITS = 56, so maximum value is 2^56 - 1
+
+        // Valid 56-bit value: 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0x7F (8 bytes)
+        let max_valid_leb128 = [
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F
+        ];
+        let result = decode_uleb128(&max_valid_leb128);
+        assert!(result.is_ok(), "Should decode valid 56-bit LEB128");
+        let (value, len) = result.unwrap();
+        assert_eq!(len, 8);
+        assert_eq!(value, (1u64 << 56) - 1);
+
+        // Invalid: value would require 57 bits (exceeds MAX_LEB128_BITS)
+        // This should be rejected by the overflow check
+        let overflow_leb128 = [
+            0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
+        ];
+        assert!(decode_uleb128(&overflow_leb128).is_err(),
+            "Should reject LEB128 exceeding 56 bits");
+    }
+
+    #[test]
+    fn test_leb128_max_bytes_limit() {
+        // Test that we correctly limit to MAX_LEB128_BYTES
+        // 9 bytes with continuation bit set on all should fail
+        let too_long = [0x80u8; 9];
+        let result = decode_uleb128(&too_long);
+        assert!(result.is_err());
+        match result {
+            Err(BitvueError::Parse { message, .. }) => {
+                assert!(message.contains("exceeded maximum"));
+            }
+            _ => panic!("Expected Parse error for exceeded maximum bytes"),
+        }
     }
 }

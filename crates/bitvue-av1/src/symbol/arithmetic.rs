@@ -118,6 +118,17 @@ impl<'a> ArithmeticDecoder<'a> {
 
         let n_symbols = (cdf.len() - 1) as u8;
 
+        // Validate CDF structure per AV1 spec:
+        // 1. The last value must equal CDF_SCALE (32768)
+        // 2. This ensures the probability distribution is properly normalized
+        let last_value = *cdf.last().unwrap();
+        if last_value != CDF_SCALE as u16 {
+            return Err(BitvueError::InvalidData(format!(
+                "CDF last value must be {}: got {}",
+                CDF_SCALE, last_value
+            )));
+        }
+
         // Extract value and range for comparison
         let c = (self.value >> (EC_WIN_SIZE - 16)) as u32;
         let r = self.range;
@@ -128,9 +139,10 @@ impl<'a> ArithmeticDecoder<'a> {
         let mut symbol = 0u8;
         while (symbol as usize) < n_symbols as usize {
             let next_idx = (symbol + 1) as usize;
-            if next_idx >= cdf.len() {
-                break; // Safety: don't go past end of CDF
-            }
+            // next_idx is guaranteed to be valid because:
+            // - n_symbols = cdf.len() - 1
+            // - symbol < n_symbols, so symbol + 1 <= n_symbols = cdf.len() - 1
+            // - Therefore next_idx <= cdf.len() - 1, which is always valid
             // Calculate threshold: (cdf[next] * range) >> 15
             let threshold = ((cdf[next_idx] as u32) * r) >> 15;
             if c < threshold {
@@ -304,5 +316,46 @@ mod tests {
         // 50/50 probability
         let result = decoder.read_bool(16384);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cdf_validation_correct_value() {
+        // Valid CDF: last value equals CDF_SCALE
+        let cdf = vec![0u16, 8192, 16384, 24576, 32768];
+        let data = vec![0x80, 0x00, 0x00, 0x00];
+        let mut decoder = ArithmeticDecoder::new(&data).unwrap();
+
+        let result = decoder.read_symbol(&cdf);
+        assert!(result.is_ok(), "Should accept valid CDF with correct last value");
+    }
+
+    #[test]
+    fn test_cdf_validation_incorrect_last_value() {
+        // Invalid CDF: last value does not equal CDF_SCALE
+        let cdf = vec![0u16, 8192, 16384, 24576, 30000]; // Should be 32768
+        let data = vec![0x80, 0x00, 0x00, 0x00];
+        let mut decoder = ArithmeticDecoder::new(&data).unwrap();
+
+        let result = decoder.read_symbol(&cdf);
+        assert!(result.is_err(), "Should reject CDF with incorrect last value");
+
+        match result {
+            Err(BitvueError::InvalidData(message)) => {
+                assert!(message.contains("32768"), "Error should mention expected value");
+                assert!(message.contains("30000"), "Error should mention actual value");
+            }
+            _ => panic!("Expected InvalidData error"),
+        }
+    }
+
+    #[test]
+    fn test_cdf_validation_too_short() {
+        // CDF with only 1 entry (minimum is 2)
+        let cdf = vec![0u16];
+        let data = vec![0x80, 0x00, 0x00, 0x00];
+        let mut decoder = ArithmeticDecoder::new(&data).unwrap();
+
+        let result = decoder.read_symbol(&cdf);
+        assert!(result.is_err(), "Should reject CDF that's too short");
     }
 }

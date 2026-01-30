@@ -18,7 +18,11 @@ fuzz_target!(|data: &[u8]| {
             bytes[..data.len()].copy_from_slice(data);
             bytes
         }
-        _ => &data[0..8],
+        _ => {
+            let mut bytes = [0u8; 8];
+            bytes.copy_from_slice(&data[0..8]);
+            bytes
+        }
     });
 
     // Encode the value

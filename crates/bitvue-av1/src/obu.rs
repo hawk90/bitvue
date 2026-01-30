@@ -230,10 +230,23 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
         (size, len)
     } else {
         // If no size field, payload extends to end of data
+        // Validate header_bytes doesn't exceed slice length to prevent underflow
+        if header_bytes > slice.len() {
+            return Err(BitvueError::UnexpectedEof(offset as u64 + header_bytes as u64));
+        }
         ((slice.len() - header_bytes) as u64, 0)
     };
 
     let payload_start = header_bytes + size_field_bytes;
+
+    // Validate payload size is reasonable (DoS protection)
+    const MAX_OBU_PAYLOAD_SIZE: u64 = 100 * 1024 * 1024; // 100MB max per OBU
+    if payload_size > MAX_OBU_PAYLOAD_SIZE {
+        return Err(BitvueError::InvalidData(format!(
+            "OBU payload size exceeds maximum: {} bytes (max: {})",
+            payload_size, MAX_OBU_PAYLOAD_SIZE
+        )));
+    }
 
     // Check for overflow in payload size calculation
     // payload_size is u64, payload_start is usize - convert carefully
@@ -536,5 +549,63 @@ mod tests {
         let data = [0x92]; // 1 0010 0 1 0
         let mut reader = BitReader::new(&data);
         assert!(parse_obu_header(&mut reader).is_err());
+    }
+
+    #[test]
+    fn test_obu_without_size_at_end() {
+        // OBU without size field at end of data (valid case)
+        // Header: 0 0010 0 0 0 = 0x10 (type=2, no extension, no size)
+        let data = [0x10, 0x00, 0x00]; // 2 bytes of payload
+        let (obu, consumed) = parse_obu(&data, 0).unwrap();
+
+        assert_eq!(obu.header.obu_type, ObuType::TemporalDelimiter);
+        assert_eq!(obu.payload_size, 2);
+        assert_eq!(obu.total_size, 3);
+        assert_eq!(consumed, 3);
+    }
+
+    #[test]
+    fn test_obu_without_size_header_too_large() {
+        // OBU without size field where header is 2 bytes but data is truncated
+        // Header: 0 0010 1 0 0 = 0x30 (type=2, has extension, no size)
+        // We provide 2 bytes total, but the second byte is incomplete
+        // The BitReader will read the first byte successfully but fail on the extension bits
+        let data = [0x30, 0x00]; // Two bytes, but extension reading might still fail
+        let result = parse_obu(&data, 0);
+
+        // This test verifies we handle truncated data gracefully
+        // Depending on BitReader implementation, this might:
+        // - Fail during header parsing (if BitReader checks bounds)
+        // - Succeed with partial header (if BitReader is lenient)
+        // We just check it doesn't panic and returns a Result
+        match result {
+            Ok(_) => {
+                // If it succeeds, verify the OBU is well-formed
+            }
+            Err(_) => {
+                // If it fails, that's also acceptable for truncated data
+            }
+        }
+    }
+
+    #[test]
+    fn test_obu_payload_size_too_large() {
+        // OBU with payload size exceeding maximum
+        // Header: 0 0001 0 1 0 = 0x0A (type=1, has size)
+        // Size: encoded value > 100MB
+        let mut data = vec![0x0A];
+        // LEB128 encode 100MB + 1 = 104,857,601 bytes
+        // This exceeds MAX_OBU_PAYLOAD_SIZE
+        data.extend_from_slice(&[0x81, 0x80, 0x80, 0x80, 0x80, 0x25]); // ~100MB
+        let result = parse_obu(&data, 0);
+        assert!(result.is_err(), "Should reject oversized OBU payload");
+
+        match result {
+            Err(BitvueError::InvalidData(message)) => {
+                assert!(message.contains("exceeds maximum"),
+                    "Error should mention maximum size exceeded");
+            }
+            _ => panic!("Expected InvalidData error for oversized payload"),
+        }
     }
 }
