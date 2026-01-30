@@ -102,11 +102,31 @@ impl ChromaFormat {
 
                 if uv_size == y_size {
                     Self::Yuv444
-                } else if uv_size == (width / 2) * height * bytes_per_sample {
-                    Self::Yuv422
-                } else if uv_size == (width / 2) * (height / 2) * bytes_per_sample {
-                    Self::Yuv420
                 } else {
+                    // Use checked arithmetic to prevent overflow on large dimensions
+                    // For 4:2:2: UV plane is (width/2) * height * bytes_per_sample
+                    // For 4:2:0: UV plane is (width/2) * (height/2) * bytes_per_sample
+                    let expected_422 = (width / 2)
+                        .checked_mul(height)
+                        .and_then(|v| v.checked_mul(bytes_per_sample));
+
+                    let expected_420 = (width / 2)
+                        .checked_mul(height / 2)
+                        .and_then(|v| v.checked_mul(bytes_per_sample));
+
+                    if let Some(expected) = expected_422 {
+                        if uv_size == expected {
+                            return Self::Yuv422;
+                        }
+                    }
+
+                    if let Some(expected) = expected_420 {
+                        if uv_size == expected {
+                            return Self::Yuv420;
+                        }
+                    }
+
+                    // Unknown chroma format - log and default to 4:2:0
                     tracing::debug!(
                         "Unknown chroma format: Y={}, UV={}, {}bit, assuming 4:2:0",
                         y_size, uv_size, bit_depth

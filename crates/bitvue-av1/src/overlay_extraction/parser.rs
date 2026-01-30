@@ -98,7 +98,13 @@ impl ParsedFrame {
     /// ```
     pub fn parse(obu_data: &[u8]) -> Result<Self, BitvueError> {
         let obu_data: Arc<[u8]> = Arc::from(obu_data);
-        let obus_vec = parse_all_obus(&obu_data).unwrap_or_default();
+
+        // Parse OBUs, propagating errors instead of silently defaulting
+        // The original code used unwrap_or_default() which masked parse errors
+        let obus_vec = parse_all_obus(&obu_data).map_err(|e| {
+            tracing::warn!("Failed to parse OBUs in ParsedFrame::parse: {}", e);
+            e
+        })?;
 
         // Build lightweight OBU references
         let mut offset = 0;
