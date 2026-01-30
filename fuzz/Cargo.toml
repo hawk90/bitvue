@@ -1,0 +1,40 @@
+[package]
+name = "bitvue-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+# Add bitvue crates as dependencies
+[dependencies.bitvue-av1]
+path = "../crates/bitvue-av1"
+
+[dependencies.bitvue-core]
+path = "../crates/bitvue-core"
+
+# Fuzz targets for AV1 parsing
+[[bin]]
+name = "obu_parser"
+path = "fuzz_targets/obu_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ivf_parser"
+path = "fuzz_targets/ivf_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "leb128"
+path = "fuzz_targets/leb128.rs"
+test = false
+doc = false
+bench = false

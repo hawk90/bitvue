@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["src-tauri"]  # Tauri app has its own Cargo.toml
+exclude = ["src-tauri", "fuzz"]  # Tauri app and fuzz targets have their own Cargo.toml
 members = [
     # Monster Pack v9 architecture
     "crates/app",              # eframe/egui shell, docking, menu/commands
