@@ -234,15 +234,24 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
     };
 
     let payload_start = header_bytes + size_field_bytes;
-    let total_size = payload_start as u64 + payload_size;
+
+    // Check for overflow in payload size calculation
+    // payload_size is u64, payload_start is usize - convert carefully
+    let payload_size_usize = payload_size
+        .try_into()
+        .map_err(|_| BitvueError::InvalidData("OBU payload size overflow".to_string()))?;
+
+    let total_size = payload_start
+        .checked_add(payload_size_usize)
+        .ok_or_else(|| BitvueError::InvalidData("OBU payload size overflow".to_string()))?;
 
     // Validate we have enough data
-    if payload_start as u64 + payload_size > slice.len() as u64 {
-        return Err(BitvueError::UnexpectedEof(offset as u64 + total_size));
+    if total_size > slice.len() {
+        return Err(BitvueError::UnexpectedEof(offset as u64 + total_size as u64));
     }
 
-    // Extract payload
-    let payload = slice[payload_start..payload_start + payload_size as usize].to_vec();
+    // Extract payload (safe because we validated total_size above)
+    let payload = slice[payload_start..total_size].to_vec();
 
     // Try to extract frame header for Frame/FrameHeader OBUs
     let (frame_type, frame_header) =
@@ -261,7 +270,7 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
     let obu = Obu {
         header,
         payload_size,
-        total_size,
+        total_size: total_size as u64,
         offset: offset as u64,
         payload,
         frame_type,

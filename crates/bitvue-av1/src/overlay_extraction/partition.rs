@@ -248,7 +248,17 @@ impl PredictionModeGrid {
     ) -> Self {
         let grid_w = coded_width.div_ceil(block_w);
         let grid_h = coded_height.div_ceil(block_h);
-        let expected_len = (grid_w * grid_h) as usize;
+
+        // Check for overflow in grid size calculation
+        // Max reasonable grid is 8Kx8K with 16x16 blocks = 512x512 = 262144 blocks
+        const MAX_GRID_SIZE: u32 = 512 * 512;
+        let expected_len = if grid_w > MAX_GRID_SIZE || grid_h > MAX_GRID_SIZE {
+            // Grid is too large, use modes length as-is
+            modes.len()
+        } else {
+            // Safe to multiply (both values checked above)
+            (grid_w * grid_h) as usize
+        };
 
         debug_assert_eq!(
             modes.len(),
@@ -303,9 +313,24 @@ pub fn extract_prediction_mode_grid_from_parsed(
 ) -> Result<PredictionModeGrid, BitvueError> {
     let block_w = 16u32;
     let block_h = 16u32;
-    let grid_w = parsed.dimensions.width.div_ceil(block_w);
+    let grid_w = parsed.dimensions.width.div_ceil(block_h);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
-    let total_blocks = (grid_w * grid_h) as usize;
+
+    // Check for overflow and validate grid dimensions
+    const MAX_BLOCKS: usize = 512 * 512; // Max 8Kx8K with 16x16 blocks
+    let total_blocks = match grid_w.checked_mul(grid_h) {
+        Some(product) => product as usize,
+        None => return Err(BitvueError::Decode(
+            format!("Grid dimensions too large: {}x{}", grid_w, grid_h)
+        )),
+    };
+
+    if total_blocks > MAX_BLOCKS {
+        return Err(BitvueError::Decode(
+            format!("Grid exceeds maximum size: {}x{} = {} blocks",
+                grid_w, grid_h, total_blocks)
+        ));
+    }
 
     let mut modes = Vec::with_capacity(total_blocks);
 
@@ -454,7 +479,14 @@ impl TransformGrid {
     ) -> Self {
         let grid_w = coded_width.div_ceil(block_w);
         let grid_h = coded_height.div_ceil(block_h);
-        let expected_len = (grid_w * grid_h) as usize;
+
+        // Check for overflow in grid size calculation
+        const MAX_GRID_SIZE: u32 = 512 * 512;
+        let expected_len = if grid_w > MAX_GRID_SIZE || grid_h > MAX_GRID_SIZE {
+            tx_sizes.len()
+        } else {
+            (grid_w * grid_h) as usize
+        };
 
         debug_assert_eq!(
             tx_sizes.len(),
@@ -513,7 +545,22 @@ pub fn extract_transform_grid_from_parsed(
     let block_h = 16u32;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
-    let total_blocks = (grid_w * grid_h) as usize;
+
+    // Check for overflow and validate grid dimensions
+    const MAX_BLOCKS: usize = 512 * 512; // Max 8Kx8K with 16x16 blocks
+    let total_blocks = match grid_w.checked_mul(grid_h) {
+        Some(product) => product as usize,
+        None => return Err(BitvueError::Decode(
+            format!("Grid dimensions too large: {}x{}", grid_w, grid_h)
+        )),
+    };
+
+    if total_blocks > MAX_BLOCKS {
+        return Err(BitvueError::Decode(
+            format!("Grid exceeds maximum size: {}x{} = {} blocks",
+                grid_w, grid_h, total_blocks)
+        ));
+    }
 
     let mut tx_sizes = Vec::with_capacity(total_blocks);
 
