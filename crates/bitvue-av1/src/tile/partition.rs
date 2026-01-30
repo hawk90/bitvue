@@ -268,10 +268,26 @@ impl PartitionNode {
 }
 
 /// Calculate block size as log2 (for CDF lookup)
+///
+/// # Safety
+///
+/// This function is safe for all BlockSize variants because:
+/// - All BlockSize variants have positive dimensions (4x4 and up)
+/// - width() and height() always return values >= 4
+/// - ilog2() will never panic on these values
+///
+/// # Returns
+///
+/// Log2 of the larger dimension, clamped to [2, 7]
 fn block_size_log2(block_size: BlockSize) -> u8 {
     // For square blocks, use width
     // For non-square, use larger dimension
     let size = block_size.width().max(block_size.height());
+
+    // Safety: All BlockSize variants have dimensions >= 4, so size >= 4
+    // ilog2() is safe for values >= 1
+    debug_assert!(size >= 4, "BlockSize dimensions must be >= 4");
+
     (size.ilog2() as u8).clamp(2, 7)
 }
 
