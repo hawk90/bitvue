@@ -162,8 +162,8 @@ mod tests {
         // Assert: Should create a grid with default dimensions
         assert!(result.is_ok(), "MV grid extraction should succeed");
         let grid = result.unwrap();
-        assert_eq!(grid.block_w, 64);
-        assert_eq!(grid.block_h, 64);
+        assert_eq!(grid.block_w, OVERLAY_BLOCK_SIZE);
+        assert_eq!(grid.block_h, OVERLAY_BLOCK_SIZE);
         assert!(grid.mv_l0.len() > 0, "MV grid should have L0 vectors");
         assert!(grid.mv_l1.len() > 0, "MV grid should have L1 vectors");
     }
@@ -173,8 +173,8 @@ mod tests {
         // Arrange: Create grid with mixed modes
         let coded_width = 1920;
         let coded_height = 1080;
-        let block_w = 64;
-        let block_h = 64;
+        let block_w = OVERLAY_BLOCK_SIZE;
+        let block_h = OVERLAY_BLOCK_SIZE;
         let grid_w = 30;
         let grid_h = 17;
 
