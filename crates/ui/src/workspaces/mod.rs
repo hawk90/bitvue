@@ -7,6 +7,14 @@
 //! - WS_METRICS_QUALITY: Metrics series + histogram + summary
 //! - WS_REFERENCE_DPB: Reference graph + DPB inspector
 //! - WS_COMPARE_AB: A/B compare with delta lane + violations
+//!
+//! # Strategy Pattern
+//!
+//! The workspace_strategy module provides trait-based abstractions:
+//! - ColorScheme: Codec-specific color palettes
+//! - ViewRenderer: Pluggable view rendering strategies
+//! - PartitionRenderer: Custom partition visualization
+//! - CodecWorkspace: Common workspace interface
 
 pub mod av1_workspace;
 pub mod avc_workspace;
@@ -21,6 +29,22 @@ pub mod player_workspace;
 pub mod reference_workspace;
 pub mod timeline_workspace;
 pub mod vvc_workspace;
+pub mod workspace_strategy;
+
+// Re-export strategy pattern traits and implementations
+pub use workspace_strategy::{
+    // Core traits
+    ColorScheme, ViewRenderer, PartitionRenderer, CodecWorkspace,
+
+    // Concrete types
+    ViewContext, ViewRenderResult, PartitionData, StrategyBuilder, StrategySet,
+
+    // Generic workspace
+    GenericCodecWorkspace,
+
+    // Default color schemes
+    Av1ColorScheme, AvcColorScheme, HevcColorScheme, VvcColorScheme, Mpeg2ColorScheme,
+};
 
 pub use av1_workspace::Av1Workspace;
 pub use avc_workspace::AvcWorkspace;

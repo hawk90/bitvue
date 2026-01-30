@@ -6,7 +6,9 @@
  */
 
 import { useState, useMemo, memo, useCallback } from 'react';
-import { useStreamData } from '../../contexts/StreamDataContext';
+import { useFrameData } from '../../contexts/FrameDataContext';
+import { useCurrentFrame } from '../../contexts/CurrentFrameContext';
+import { useFileState } from '../../contexts/FileStateContext';
 import './DiagnosticsPanel.css';
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info' | 'hint';
@@ -30,7 +32,9 @@ interface DiagnosticsPanelProps {
 }
 
 export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: propDiagnostics }: DiagnosticsPanelProps) {
-  const { frames, currentFrameIndex, error } = useStreamData();
+  const { frames } = useFrameData();
+  const { currentFrameIndex } = useCurrentFrame();
+  const { error } = useFileState();
   const [filterSeverity, setFilterSeverity] = useState<DiagnosticSeverity | 'all'>('all');
   const [selectedDiagnostic, setSelectedDiagnostic] = useState<Diagnostic | null>(null);
 

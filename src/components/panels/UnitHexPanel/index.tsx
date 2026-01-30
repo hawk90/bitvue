@@ -9,7 +9,8 @@
  */
 
 import { useState, memo, useCallback } from 'react';
-import { useStreamData } from '../../../contexts/StreamDataContext';
+import { useFrameData } from '../../../contexts/FrameDataContext';
+import { useCurrentFrame } from '../../../contexts/CurrentFrameContext';
 import { FrameViewTab } from './FrameViewTab';
 import { HexViewTab } from './HexViewTab';
 import { DpbViewTab } from './DpbViewTab';
@@ -24,7 +25,8 @@ const HEX_VIEW_TABS: { value: HexViewTab; label: string; icon: string }[] = [
 ];
 
 export const UnitHexPanel = memo(function UnitHexPanel() {
-  const { frames, currentFrameIndex } = useStreamData();
+  const { frames } = useFrameData();
+  const { currentFrameIndex } = useCurrentFrame();
   const [currentTab, setCurrentTab] = useState<HexViewTab>('Frame');
 
   const currentFrame = frames[currentFrameIndex] || null;

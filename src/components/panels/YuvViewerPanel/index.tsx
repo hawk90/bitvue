@@ -16,7 +16,7 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useMode } from '../../../contexts/ModeContext';
-import { useStreamData } from '../../../contexts/StreamDataContext';
+import { useFrameData } from '../../../contexts/FrameDataContext';
 import { createLogger } from '../../../utils/logger';
 import { useCanvasInteraction } from '../../../hooks/useCanvasInteraction';
 import { ZOOM, TIMING } from '../../../constants/ui';
@@ -73,7 +73,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   onFrameChange,
 }: YuvViewerPanelProps) {
   const { currentMode, setMode } = useMode();
-  const { frames, setFrames } = useStreamData();
+  const { frames, setFrames } = useFrameData();
 
   // Image and loading state
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);

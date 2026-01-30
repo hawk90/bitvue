@@ -6,7 +6,7 @@
  */
 
 import { useMemo, memo } from 'react';
-import { useStreamData } from '../../contexts/StreamDataContext';
+import { useFrameData } from '../../contexts/FrameDataContext';
 import { BarChart } from '../charts/BarChart';
 import { getCssVar } from '../../utils/css';
 import './StatisticsPanel.css';
@@ -33,7 +33,7 @@ const SIZE_THRESHOLDS = {
 } as const;
 
 export const StatisticsPanel = memo(function StatisticsPanel() {
-  const { frames, getFrameStats } = useStreamData();
+  const { frames, getFrameStats } = useFrameData();
 
   const stats = useMemo(() => getFrameStats(), [frames, getFrameStats]);
 

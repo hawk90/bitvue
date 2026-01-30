@@ -22,6 +22,9 @@ pub struct ThumbnailData {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Indicates whether this thumbnail was served from cache
+    /// Useful for tracking cache hit rates and performance
+    pub cached: bool,
 }
 
 /// Get thumbnails for specified frames
@@ -87,6 +90,7 @@ pub async fn get_thumbnails(
                 height: 90,
                 success: true,
                 error: None,
+                cached: true,  // Cache hit
             });
         } else if !units_map.contains_key(&frame_idx) {
             // Frame index out of bounds
@@ -97,6 +101,7 @@ pub async fn get_thumbnails(
                 height: 0,
                 success: false,
                 error: Some(format!("Frame index {} out of bounds (total units: {})", frame_idx, unit_count)),
+                cached: false,
             });
         } else {
             // Frame exists but not cached - collect for batch processing
@@ -140,6 +145,7 @@ pub async fn get_thumbnails(
                                 height: 90,
                                 success: true,
                                 error: None,
+                                cached: false,  // Freshly generated
                             });
                         }
                         Err(e) => {
@@ -159,6 +165,7 @@ pub async fn get_thumbnails(
                                 height: 90,
                                 success: true,
                                 error: None,
+                                cached: false,  // Freshly generated SVG
                             });
                         }
                     }
@@ -207,6 +214,7 @@ pub async fn get_thumbnails(
                 height: 90,
                 success: true,
                 error: None,
+                cached: false,  // Freshly generated
             });
         }
     }

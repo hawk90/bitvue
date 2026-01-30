@@ -10,7 +10,8 @@
  */
 
 import { useReducer, useCallback, memo, useEffect } from 'react';
-import { useStreamData } from '../contexts/StreamDataContext';
+import { useFrameData } from '../contexts/FrameDataContext';
+import { useCurrentFrame } from '../contexts/CurrentFrameContext';
 import {
   findNextKeyframe,
   findPrevKeyframe,
@@ -73,7 +74,8 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
 }
 
 export const FrameNavigationToolbar = memo(function FrameNavigationToolbar({ onNavigate }: FrameNavigationToolbarProps) {
-  const { frames, currentFrameIndex } = useStreamData();
+  const { frames } = useFrameData();
+  const { currentFrameIndex } = useCurrentFrame();
   const [searchState, dispatch] = useReducer(searchReducer, initialSearchState);
 
   const navigateToFrame = useCallback((index: number) => {

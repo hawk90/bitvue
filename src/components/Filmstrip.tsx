@@ -11,6 +11,7 @@ import { useSelection } from '../contexts/SelectionContext';
 import { FilmstripDropdown, DisplayView } from './FilmstripDropdown';
 import { FrameSizesLegend } from './FrameSizesLegend';
 import ThumbnailsView from './Filmstrip/views/ThumbnailsView';
+import VirtualizedThumbnailsView from './Filmstrip/views/VirtualizedThumbnailsView';
 import FrameSizesView from './Filmstrip/views/FrameSizesView';
 import { BPyramidView } from './Filmstrip/views/BPyramidView';
 import { TimelineView } from './Filmstrip/views/TimelineView';
@@ -32,6 +33,10 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
   const [displayView, setDisplayView] = useState<DisplayView>('thumbnails');
   const [scrollRef, setScrollRef] = useState<HTMLDivElement | null>(null);
   const [showingReferences, setShowingReferences] = useState(false);
+
+  // Threshold for using virtualized view (200 frames = ~30KB DOM)
+  const VIRTUALIZATION_THRESHOLD = 200;
+  const useVirtualizedView = frames.length >= VIRTUALIZATION_THRESHOLD;
 
   const visibleFrameTypes = useMemo(() => new Set(['I', 'P', 'B']), []);
 
@@ -84,9 +89,10 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
 
   const effectiveExpandedIndex = shouldShowReferences ? currentFrameIndex : expandedFrameIndex;
 
-  // Setup IntersectionObserver for lazy loading thumbnails
+  // Setup IntersectionObserver for lazy loading thumbnails (only for non-virtualized view)
   useEffect(() => {
-    if (displayView !== 'thumbnails' || frames.length === 0 || !scrollRef) return;
+    // Virtualized view handles its own visibility-based loading
+    if (useVirtualizedView || displayView !== 'thumbnails' || frames.length === 0 || !scrollRef) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -176,18 +182,33 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
             <p className="hint">Open a video file to see the filmstrip</p>
           </div>
         ) : displayView === 'thumbnails' ? (
-          <ThumbnailsView
-            frames={frames}
-            currentFrameIndex={currentFrameIndex}
-            thumbnails={thumbnails}
-            loadingThumbnails={loadingThumbnails}
-            referencedFrameIndices={referencedFrameIndices}
-            expandedFrameIndex={expandedFrameIndex}
-            onFrameClick={handleFrameClick}
-            onToggleReferenceExpansion={handleToggleExpansion}
-            onHoverFrame={handleHoverFrame}
-            getFrameTypeColorClass={getFrameTypeColorClass}
-          />
+          useVirtualizedView ? (
+            <VirtualizedThumbnailsView
+              frames={frames}
+              currentFrameIndex={currentFrameIndex}
+              thumbnails={thumbnails}
+              loadingThumbnails={loadingThumbnails}
+              referencedFrameIndices={referencedFrameIndices}
+              expandedFrameIndex={expandedFrameIndex}
+              onFrameClick={handleFrameClick}
+              onToggleReferenceExpansion={handleToggleExpansion}
+              onHoverFrame={handleHoverFrame}
+              getFrameTypeColorClass={getFrameTypeColorClass}
+            />
+          ) : (
+            <ThumbnailsView
+              frames={frames}
+              currentFrameIndex={currentFrameIndex}
+              thumbnails={thumbnails}
+              loadingThumbnails={loadingThumbnails}
+              referencedFrameIndices={referencedFrameIndices}
+              expandedFrameIndex={expandedFrameIndex}
+              onFrameClick={handleFrameClick}
+              onToggleReferenceExpansion={handleToggleExpansion}
+              onHoverFrame={handleHoverFrame}
+              getFrameTypeColorClass={getFrameTypeColorClass}
+            />
+          )
         ) : displayView === 'sizes' ? (
           <>
             <FrameSizesView

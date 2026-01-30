@@ -10,6 +10,10 @@
 
 use egui::{self, Color32, Rect, RichText, Stroke, Vec2};
 
+use super::workspace_strategy::{
+    ColorScheme, PartitionRenderer, PartitionData, ViewRenderer, ViewContext, ViewRenderResult,
+};
+
 /// AVC-specific color palette
 mod colors {
     use egui::Color32;
@@ -1077,5 +1081,455 @@ impl AvcWorkspace {
             ui.painter().rect_filled(rect, 2.0, color);
             ui.label(label);
         });
+    }
+}
+
+// =============================================================================
+// STRATEGY PATTERN IMPLEMENTATION
+// =============================================================================
+
+/// AVC color scheme strategy
+pub struct AvcWorkspaceColorScheme;
+
+impl ColorScheme for AvcWorkspaceColorScheme {
+    fn block_boundary(&self) -> Color32 {
+        colors::SUB_MB_BOUNDARY
+    }
+
+    fn superblock_boundary(&self) -> Color32 {
+        colors::MB_BOUNDARY
+    }
+
+    fn intra_prediction(&self) -> Color32 {
+        colors::INTRA_16X16
+    }
+
+    fn inter_prediction(&self) -> Color32 {
+        colors::INTER_P16X16
+    }
+
+    fn skip_mode(&self) -> Color32 {
+        colors::INTER_SKIP
+    }
+
+    fn iframe(&self) -> Color32 {
+        colors::SLICE_I
+    }
+
+    fn pframe(&self) -> Color32 {
+        colors::SLICE_P
+    }
+
+    fn bframe(&self) -> Color32 {
+        colors::SLICE_B
+    }
+
+    fn transform_boundary(&self) -> Option<Color32> {
+        Some(colors::TRANSFORM_BOUNDARY)
+    }
+
+    fn deblocking_boundary(&self) -> Option<Color32> {
+        Some(colors::MB_BOUNDARY.gamma_multiply(0.5))
+    }
+}
+
+/// AVC partition renderer strategy
+pub struct AvcPartitionRendererStrategy;
+
+impl PartitionRenderer for AvcPartitionRendererStrategy {
+    fn render_partitions(
+        &self,
+        frame_width: u32,
+        frame_height: u32,
+        _zoom: f32,
+    ) -> Vec<PartitionData> {
+        let mut partitions = Vec::new();
+        let mb_size = 16; // H.264 uses 16x16 macroblocks
+        let mb_count_x = (frame_width + mb_size - 1) / mb_size;
+        let mb_count_y = (frame_height + mb_size - 1) / mb_size;
+
+        for y in 0..mb_count_y {
+            for x in 0..mb_count_x {
+                partitions.push(PartitionData {
+                    x: x * mb_size,
+                    y: y * mb_size,
+                    width: mb_size,
+                    height: mb_size,
+                    partition_type: "MB".to_string(),
+                    reference_frame: Some("L0".to_string()),
+                    prediction_mode: Some("P".to_string()),
+                    color: colors::MB_BOUNDARY,
+                    is_selected: false,
+                });
+            }
+        }
+
+        partitions
+    }
+
+    fn max_depth(&self) -> usize {
+        3 // H.264 supports up to 3 levels of sub-partitioning
+    }
+
+    fn base_block_size(&self) -> u32 {
+        16 // H.264 macroblock size
+    }
+}
+
+/// View renderer for AVC Overview
+pub struct AvcOverviewRenderer {
+    pub features: AvcFeatureStatus,
+    pub profile_idc: u8,
+    pub level_idc: u8,
+}
+
+impl ViewRenderer for AvcOverviewRenderer {
+    fn label(&self) -> &str {
+        "Overview"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        ui.columns(2, |cols| {
+            // Left: Features
+            cols[0].group(|ui| {
+                ui.heading("AVC Features");
+                ui.add_space(8.0);
+
+                ui.label(format!(
+                    "Profile: {} ({})",
+                    AvcWorkspace::profile_name(self.profile_idc),
+                    self.profile_idc
+                ));
+                ui.label(format!(
+                    "Level: {}.{}",
+                    self.level_idc / 10,
+                    self.level_idc % 10
+                ));
+                ui.add_space(8.0);
+
+                AvcWorkspace::feature_badge(ui, "Transform 8x8", self.features.transform_8x8);
+                AvcWorkspace::feature_badge(ui, "CABAC", self.features.cabac_enabled);
+                AvcWorkspace::feature_badge(ui, "Deblocking", self.features.deblocking_enabled);
+                AvcWorkspace::feature_badge(ui, "Weighted Pred", self.features.weighted_pred);
+                AvcWorkspace::feature_badge(ui, "Weighted Bipred", self.features.weighted_bipred);
+                AvcWorkspace::feature_badge(
+                    "Direct 8x8",
+                    self.features.direct_8x8_inference,
+                );
+                AvcWorkspace::feature_badge(ui, "MBAFF", self.features.mbaff);
+                AvcWorkspace::feature_badge(ui, "FMO", self.features.fmo);
+                AvcWorkspace::feature_badge(ui, "ASO", self.features.aso);
+            });
+
+            // Right: Entropy mode
+            cols[1].group(|ui| {
+                ui.heading("Entropy Encoding");
+                ui.add_space(8.0);
+
+                ui.label("CAVLC: Context-Adaptive Variable Length Coding");
+                ui.label("CABAC: Context-Adaptive Binary Arithmetic Coding");
+                ui.add_space(8.0);
+
+                if self.features.cabac_enabled {
+                    ui.label(RichText::new("CABAC Enabled").color(Color32::GREEN));
+                } else {
+                    ui.label(RichText::new("CAVLC Mode").color(Color32::GRAY));
+                }
+
+                ui.add_space(8.0);
+
+                ui.group(|ui| {
+                    ui.heading("Slice Types");
+                    for slice_type in [
+                        AvcSliceType::I,
+                        AvcSliceType::P,
+                        AvcSliceType::B,
+                    ] {
+                        AvcWorkspace::mode_badge(ui, slice_type.color(), slice_type.label());
+                    }
+                });
+            });
+        });
+
+        None
+    }
+}
+
+/// View renderer for AVC Partitions
+pub struct AvcPartitionsRenderer {
+    pub show_mb_grid: bool,
+    pub show_sub_mb_grid: bool,
+    pub show_transform: bool,
+    pub show_refs: bool,
+    pub mock_mbs: Vec<AvcMacroblock>,
+    pub selected_mb: Option<usize>,
+}
+
+impl ViewRenderer for AvcPartitionsRenderer {
+    fn label(&self) -> &str {
+        "Partitions"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        // Toolbar
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("MB Grid")
+                    .color(if self.show_mb_grid {
+                        Color32::WHITE
+                    } else {
+                        Color32::GRAY
+                    }),
+            );
+            ui.label(
+                RichText::new("Sub-MB")
+                    .color(if self.show_sub_mb_grid {
+                        Color32::WHITE
+                    } else {
+                        Color32::GRAY
+                    }),
+            );
+            ui.label(
+                RichText::new("Transform")
+                    .color(if self.show_transform {
+                        Color32::WHITE
+                    } else {
+                        Color32::GRAY
+                    }),
+            );
+        });
+
+        ui.separator();
+
+        // Partition visualization
+        let available = ui.available_size();
+        let grid_size = available.x.min(available.y - 120.0).min(400.0);
+
+        let (response, painter) = ui.allocate_painter(
+            Vec2::new(grid_size, grid_size),
+            egui::Sense::click_and_drag(),
+        );
+
+        let rect = response.rect;
+
+        // Background
+        painter.rect_filled(rect, 4.0, Color32::from_rgb(30, 30, 35));
+
+        // Scale: show up to 20x20 macroblocks (320x320 pixels)
+        let mb_count = (self.mock_mbs.len() as f32).sqrt().ceil() as u32;
+        let scale = grid_size / (mb_count * 16) as f32;
+
+        // Draw macroblocks
+        for (idx, mb) in self.mock_mbs.iter().enumerate() {
+            let mb_rect = Rect::from_min_size(
+                egui::pos2(
+                    rect.min.x + mb.x as f32 * scale,
+                    rect.min.y + mb.y as f32 * scale,
+                ),
+                Vec2::new(16.0 * scale, 16.0 * scale),
+            );
+
+            // Fill with MB type color
+            painter.rect_filled(mb_rect, 0.0, mb.mb_type.color().gamma_multiply(0.4));
+
+            // Draw MB boundary
+            let stroke_width = if Some(idx) == self.selected_mb {
+                2.5
+            } else {
+                1.0
+            };
+            painter.rect_stroke(
+                mb_rect,
+                0.0,
+                Stroke::new(stroke_width, colors::MB_BOUNDARY),
+            );
+
+            // Label for MBs
+            if mb.mb_type.is_intra() {
+                painter.text(
+                    mb_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    mb.mb_type.label(),
+                    egui::FontId::proportional(9.0),
+                    Color32::WHITE,
+                );
+            } else if mb.mb_type.is_inter() {
+                painter.text(
+                    mb_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    mb.mb_type.label(),
+                    egui::FontId::proportional(8.0),
+                    Color32::from_rgb(200, 255, 200),
+                );
+            }
+
+            // Draw transform boundary if enabled and 8x8 transform
+            if self.show_transform && mb.transform_8x8 {
+                let mid_x = mb_rect.center().x;
+                let mid_y = mb_rect.center().y;
+
+                painter.line_segment(
+                    [
+                        egui::pos2(mb_rect.min.x, mid_y),
+                        egui::pos2(mb_rect.max.x, mid_y),
+                    ],
+                    Stroke::new(0.5, colors::TRANSFORM_BOUNDARY.gamma_multiply(0.5)),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(mid_x, mb_rect.min.y),
+                        egui::pos2(mid_x, mb_rect.max.y),
+                    ],
+                    Stroke::new(0.5, colors::TRANSFORM_BOUNDARY.gamma_multiply(0.5)),
+                );
+            }
+        }
+
+        None
+    }
+}
+
+/// View renderer for AVC Predictions
+pub struct AvcPredictionsRenderer;
+
+impl ViewRenderer for AvcPredictionsRenderer {
+    fn label(&self) -> &str {
+        "Predictions"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        ui.group(|ui| {
+            ui.heading("H.264 Prediction Modes");
+            ui.add_space(8.0);
+
+            ui.columns(2, |cols| {
+                cols[0].group(|ui| {
+                    ui.heading("Intra Prediction");
+                    ui.label("I_4x4: 9 modes (vertical, horizontal, DC, plane)");
+                    ui.label("I_16x16: 4 modes (vertical, horizontal, DC, plane)");
+                    ui.label("I_PCM: Raw sample encoding");
+                });
+
+                cols[1].group(|ui| {
+                    ui.heading("Inter Prediction");
+                    ui.label("P_Skip: No motion vectors, copy from ref");
+                    ui.label("P_L0/L1: Direct mode");
+                    ui.label("B_Skip: Direct mode, no MV data");
+                    ui.label("B_Direct: L0 and L1 refs same");
+                });
+            });
+
+            ui.add_space(8.0);
+
+            // Prediction mode legend
+            ui.group(|ui| {
+                ui.heading("P Slice Partition Sizes");
+                ui.horizontal_wrapped(|ui| {
+                    AvcWorkspace::mode_badge(ui, colors::INTER_P16X16, "16x16");
+                    AvcWorkspace::mode_badge(ui, colors::INTER_P16X8, "16x8");
+                    AvcWorkspace::mode_badge(ui, colors::INTER_P8X16, "8x16");
+                    AvcWorkspace::mode_badge(ui, colors::INTER_P8X8, "8x8");
+                    AvcWorkspace::mode_badge(ui, colors::INTER_P8X4, "8x4");
+                    AvcWorkspace::mode_badge(ui, colors::INTER_P4X8, "4x8");
+                    AvcWorkspace::mode_badge(ui, colors::INTER_P4X4, "4x4");
+                });
+            });
+        });
+
+        None
+    }
+}
+
+/// View renderer for AVC Transform
+pub struct AvcTransformRenderer;
+
+impl ViewRenderer for AvcTransformRenderer {
+    fn label(&self) -> &str {
+        "Transform"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        ui.group(|ui| {
+            ui.heading("Transform Size Selection");
+            ui.add_space(8.0);
+
+            ui.label("H.264 supports two transform sizes:");
+            ui.add_space(4.0);
+
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    AvcWorkspace::mode_badge(ui, Color32::from_rgb(100, 100, 200), "4x4 DCT");
+                });
+                ui.label("Used for residual coding in most blocks");
+            });
+
+            ui.add_space(4.0);
+
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    AvcWorkspace::mode_badge(ui, Color32::from_rgb(100, 200, 100), "8x8 DCT");
+                });
+                ui.label("High profile feature, optional for some blocks");
+            });
+
+            ui.add_space(8.0);
+
+            ui.label("Transform choice is signaled per block and depends on:");
+            ui.label("• Prediction mode (intra uses 4x4, inter can use 8x8)");
+            ui.label("• Residual energy (8x8 for more uniform residuals)");
+            ui.label("• Picture profile (High profile enables 8x8)");
+        });
+
+        None
+    }
+}
+
+/// View renderer for AVC Deblocking
+pub struct AvcDeblockingRenderer;
+
+impl ViewRenderer for AvcDeblockingRenderer {
+    fn label(&self) -> &str {
+        "Deblocking"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        ui.group(|ui| {
+            ui.heading("Deblocking Filter");
+            ui.add_space(8.0);
+
+            ui.label("H.264 includes an in-loop deblocking filter that reduces");
+            ui.label("blocking artifacts at block boundaries.");
+
+            ui.add_space(8.0);
+
+            ui.columns(2, |cols| {
+                cols[0].group(|ui| {
+                    ui.heading("Filter Parameters");
+                    ui.label("Strength: 0-2 (derived from QP)");
+                    ui.label("Boundary: 4x4 and 8x8 edges");
+                    ui.label("Beta offset: -6 to 6");
+                    ui.label("Alpha C0: Chroma default offset");
+                    ui.label("Alpha C1: Chroma offset slope");
+                });
+
+                cols[1].group(|ui| {
+                    ui.heading("Deblocking Process");
+                    ui.label("1. Filter vertical edges");
+                    ui.label("2. Filter horizontal edges");
+                    ui.label("3. Chroma filtering");
+                    ui.label("Strength based on slice QP");
+                });
+            });
+
+            ui.add_space(8.0);
+
+            ui.group(|ui| {
+                ui.heading("Boundary Strength");
+                ui.label("Strong: QP > 36 (bslice threshold)");
+                ui.label("Weak:   QP ≤ 36");
+            });
+        });
+
+        None
     }
 }

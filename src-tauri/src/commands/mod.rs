@@ -33,7 +33,7 @@ pub mod window;
 #[allow(unused_imports)]
 pub use analysis::get_frame_analysis;
 #[allow(unused_imports)]
-pub use file::{open_file, close_file, get_stream_info, get_frames};
+pub use file::{open_file, close_file, get_stream_info, get_frames, get_frames_chunk, ChunkedFramesResponse};
 #[allow(unused_imports)]
 pub use frame::{get_decoded_frame, get_decoded_frame_yuv, get_frame_hex_data, DecodedFrameData, FrameHexData, YUVFrameData};
 #[allow(unused_imports)]

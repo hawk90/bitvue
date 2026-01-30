@@ -8,7 +8,8 @@
  * - Current selection analysis
  */
 
-import { useStreamData } from '../../contexts/StreamDataContext';
+import { useFrameData } from '../../contexts/FrameDataContext';
+import { useCurrentFrame } from '../../contexts/CurrentFrameContext';
 import { memo } from 'react';
 import './SelectionInfoPanel.css';
 
@@ -52,7 +53,8 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
   height = 1080,
   codec = 'AV1',
 }: SelectionInfoPanelProps) {
-  const { frames, currentFrameIndex, getFrameStats } = useStreamData();
+  const { frames, getFrameStats } = useFrameData();
+  const { currentFrameIndex } = useCurrentFrame();
   const stats = getFrameStats();
   const currentFrame = frames[currentFrameIndex] || null;
 

@@ -4,6 +4,7 @@
  * Temporary placeholder for panels under development
  */
 
+import { memo } from 'react';
 import './PlaceholderPanel.css';
 
 export interface PlaceholderPanelProps {
@@ -12,7 +13,7 @@ export interface PlaceholderPanelProps {
   icon?: string;
 }
 
-export function PlaceholderPanel({
+function PlaceholderPanel({
   title,
   description = 'Coming soon...',
   icon = 'clock',
@@ -31,3 +32,6 @@ export function PlaceholderPanel({
     </div>
   );
 }
+
+// Memoize PlaceholderPanel to prevent unnecessary re-renders
+export default memo(PlaceholderPanel);

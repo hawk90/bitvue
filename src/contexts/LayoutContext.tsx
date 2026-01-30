@@ -202,6 +202,15 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     try {
       const saved = localStorage.getItem('bitvue-layout');
       if (saved) {
+        // SECURITY: Add size limit check to prevent quota exhaustion attacks
+        // Layout data should be small (just 4 numbers). 10KB is more than enough.
+        const MAX_LAYOUT_SIZE = 10240; // 10KB
+        if (saved.length > MAX_LAYOUT_SIZE) {
+          logger.warn('Layout data exceeds size limit ({} bytes), clearing', saved.length);
+          localStorage.removeItem('bitvue-layout');
+          return;
+        }
+
         const parsed = JSON.parse(saved);
         // Use type guard for comprehensive validation
         if (isValidLayoutState(parsed)) {

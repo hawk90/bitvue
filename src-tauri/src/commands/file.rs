@@ -45,7 +45,10 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
 }
 
 /// Check if a canonical path is in a blocked system directory
-fn check_system_directory_access(canonical_str: &str) -> Result<(), String> {
+///
+/// This function is public so other modules (like export.rs) can reuse
+/// the same system directory validation logic for consistency.
+pub fn check_system_directory_access(canonical_str: &str) -> Result<(), String> {
     #[cfg(unix)]
     {
         let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
@@ -340,6 +343,85 @@ pub async fn get_frames(state: tauri::State<'_, AppState>) -> Result<Vec<crate::
 
     log::info!("get_frames: Returning {} frames", frames.len());
     Ok(frames)
+}
+
+/// Get frame list in chunks for progressive loading
+/// Returns frames from offset to offset + limit (inclusive)
+#[tauri::command]
+pub async fn get_frames_chunk(
+    state: tauri::State<'_, AppState>,
+    offset: usize,
+    limit: usize,
+) -> Result<ChunkedFramesResponse, String> {
+    use bitvue_core::StreamId;
+
+    log::info!("get_frames_chunk: offset={}, limit={}", offset, limit);
+
+    let core = state.core.lock().map_err(|e| e.to_string())?;
+    let stream_a_lock = core.get_stream(StreamId::A);
+    let stream_a = stream_a_lock.read();
+
+    let units = stream_a.units.as_ref()
+        .ok_or("No units available")?;
+
+    // Convert UnitNode to FrameData
+    let all_frames: Vec<crate::commands::FrameData> = units.units.iter()
+        .filter(|u| u.frame_index.is_some())
+        .map(|u| crate::commands::FrameData {
+            frame_index: u.frame_index.unwrap_or(0),
+            frame_type: u.frame_type.clone().unwrap_or("UNKNOWN".to_string()),
+            size: u.size,
+            poc: None,
+            pts: u.pts,
+            key_frame: Some(u.frame_type.as_deref() == Some("KEY") || u.frame_type.as_deref() == Some("INTRA_ONLY")),
+            display_order: u.frame_index,
+            coding_order: u.frame_index.unwrap_or(0),
+            temporal_id: None,
+            spatial_id: None,
+            ref_frames: None,
+            ref_slots: None,
+            duration: None,
+        })
+        .collect();
+
+    let total_frames = all_frames.len();
+
+    // Calculate the actual range to return
+    let start = offset.min(total_frames);
+    let end = (offset + limit).min(total_frames);
+
+    let frames_chunk: Vec<crate::commands::FrameData> = if start < end {
+        all_frames[start..end].to_vec()
+    } else {
+        Vec::new()
+    };
+
+    let has_more = end < total_frames;
+
+    log::info!(
+        "get_frames_chunk: returning {}/{} frames (start={}, end={}, has_more={})",
+        frames_chunk.len(),
+        total_frames,
+        start,
+        end,
+        has_more
+    );
+
+    Ok(ChunkedFramesResponse {
+        frames: frames_chunk,
+        total_frames,
+        has_more,
+        offset: start,
+    })
+}
+
+/// Response structure for chunked frame loading
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkedFramesResponse {
+    pub frames: Vec<crate::commands::FrameData>,
+    pub total_frames: usize,
+    pub has_more: bool,
+    pub offset: usize,
 }
 
 fn detect_codec_from_extension(ext: &str) -> String {

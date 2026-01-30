@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect, memo, useRef } from 'react';
 import { useSelection } from '../contexts/SelectionContext';
-import { useStreamData } from '../contexts/StreamDataContext';
+import { useFrameData } from '../contexts/FrameDataContext';
 import { createLogger } from '../utils/logger';
 import { TIMING } from '../constants/ui';
 import './BookmarksPanel.css';
@@ -100,7 +100,7 @@ function isValidBookmarkArray(data: unknown): data is Bookmark[] {
 
 export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: BookmarksPanelProps) {
   const { selection, setFrameSelection } = useSelection();
-  const { frames } = useStreamData();
+  const { frames } = useFrameData();
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');

@@ -11,7 +11,14 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { globalShortcutHandler, type ShortcutConfig } from "./utils/keyboardShortcuts";
 import { SelectionProvider } from "./contexts/SelectionContext";
 import { ModeProvider } from "./contexts/ModeContext";
-import { StreamDataProvider, useStreamData } from "./contexts/StreamDataContext";
+import {
+  FrameDataProvider,
+  FileStateProvider,
+  CurrentFrameProvider,
+  useFrameData,
+  useFileState,
+  useCurrentFrame,
+} from "./contexts/StreamDataContext";
 import { CompareProvider, useCompare } from "./contexts/CompareContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { shouldShowTitleBar } from "./utils/platform";
@@ -83,17 +90,23 @@ function App() {
 
   return (
     <ModeProvider>
-      <StreamDataProvider>
-        <CompareProvider>
-          <AppContent fileInfo={fileInfo} setFileInfo={setFileInfo} />
-        </CompareProvider>
-      </StreamDataProvider>
+      <FrameDataProvider>
+        <FileStateProvider>
+          <CurrentFrameProvider>
+            <CompareProvider>
+              <AppContent fileInfo={fileInfo} setFileInfo={setFileInfo} />
+            </CompareProvider>
+          </CurrentFrameProvider>
+        </FileStateProvider>
+      </FrameDataProvider>
     </ModeProvider>
   );
 }
 
 function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setFileInfo: (info: FileInfo | null) => void }) {
-  const { frames, loading, error, currentFrameIndex, setCurrentFrameIndex, refreshFrames, clearData, setFilePath } = useStreamData();
+  const { frames, setFrames } = useFrameData();
+  const { loading, error, setFilePath, refreshFrames, clearData } = useFileState();
+  const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
   const { createWorkspace } = useCompare();
   const [openError, setOpenError] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -167,7 +180,8 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
           logger.info('File opened successfully');
           // Refresh frames after opening file
           try {
-            await refreshFrames();
+            const loadedFrames = await refreshFrames();
+            setFrames(loadedFrames);
           } catch (refreshErr) {
             logger.error('Failed to refresh frames after opening file:', refreshErr);
             // Non-blocking: file opened successfully but frames failed to load
@@ -244,7 +258,8 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
       if (event.payload.success) {
         logger.info(`Opened: ${event.payload.path}`);
         // Refresh frames after opening file
-        await refreshFrames();
+        const loadedFrames = await refreshFrames();
+        setFrames(loadedFrames);
       } else {
         showErrorDialog('Failed to Open File', event.payload.error || 'Unknown error', event.payload.path);
       }
@@ -434,10 +449,9 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
   ) : null;
 
   return (
-    <ModeProvider>
-      <SelectionProvider>
-        <ErrorBoundary>
-          <div className="app">
+    <SelectionProvider>
+      <ErrorBoundary>
+        <div className="app">
             {/* Custom TitleBar for Windows/Linux only */}
             {shouldShowTitleBar() && (
               <TitleBar
@@ -533,7 +547,6 @@ function AppContent({ fileInfo, setFileInfo }: { fileInfo: FileInfo | null; setF
         </LazyDialogWrapper>
       )}
     </SelectionProvider>
-    </ModeProvider>
   );
 }
 

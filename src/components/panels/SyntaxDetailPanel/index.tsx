@@ -10,7 +10,9 @@
  */
 
 import { useState, useCallback, memo } from 'react';
-import { useStreamData } from '../../../contexts/StreamDataContext';
+import { useFrameData } from '../../../contexts/FrameDataContext';
+import { useCurrentFrame } from '../../../contexts/CurrentFrameContext';
+import { useFileState } from '../../../contexts/FileStateContext';
 import { FrameSyntaxTab } from './FrameSyntaxTab';
 import { ReferencesTab } from './ReferencesTab';
 import { StatisticsTab } from './StatisticsTab';
@@ -27,7 +29,9 @@ const SYNTAX_TABS: { value: SyntaxTab; label: string; icon: string }[] = [
 ];
 
 export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
-  const { frames, currentFrameIndex, filePath } = useStreamData();
+  const { frames } = useFrameData();
+  const { currentFrameIndex } = useCurrentFrame();
+  const { filePath } = useFileState();
   const [currentTab, setCurrentTab] = useState<SyntaxTab>('Frame');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');

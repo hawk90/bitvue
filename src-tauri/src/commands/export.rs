@@ -3,6 +3,7 @@
 //! Commands for exporting frame data, analysis results, and reports.
 
 use crate::commands::AppState;
+use crate::commands::file::check_system_directory_access;
 use bitvue_core::StreamId;
 use serde_json::json;
 use std::fs::File;
@@ -10,13 +11,12 @@ use std::io::Write;
 use std::path::PathBuf;
 
 /// Validate output path to prevent path traversal and ensure safe file operations
+///
+/// SECURITY: First canonicalize to fully resolve all path traversal attempts,
+/// then validate the canonical path against system directory restrictions.
+/// This ensures that paths like `/safe/../../../etc/passwd` are properly validated.
 fn validate_output_path(path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(path);
-
-    // Check for path traversal attempts (.. components)
-    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return Err("Invalid path: path traversal (..) not allowed".to_string());
-    }
 
     // Check if the path has a valid extension (prevents writing to system files)
     let extension = path.extension()
@@ -29,46 +29,26 @@ fn validate_output_path(path: &str) -> Result<PathBuf, String> {
         return Err(format!("Invalid path: extension '{}' not allowed. Allowed: {:?}", extension, allowed_extensions));
     }
 
-    // Block system directories on different platforms
-    if cfg!(target_os = "windows") {
-        // Windows: Block C:\Windows, C:\Program Files, etc.
-        if let Some(component) = path.components().next() {
-            if let std::path::Component::Prefix(prefix) = component {
-                if let Some(path_str) = path.as_os_str().to_str() {
-                    let path_lower = path_str.to_lowercase();
-                    if path_lower.starts_with("c:\\windows")
-                        || path_lower.starts_with("c:\\program files")
-                        || path_lower.starts_with("c:\\program files (x86)")
-                        || path_lower.starts_with("c:\\programdata") {
-                        return Err("Invalid path: cannot write to system directories".to_string());
-                    }
-                }
-            }
-        }
-    } else {
-        // Unix-like: Block /System, /usr, /bin, /sbin, /etc, /var, /boot, /lib, /root
-        if path.is_absolute() {
-            let path_str = path.to_string_lossy();
-            let blocked_paths = [
-                "/System", "/usr", "/bin", "/sbin", "/etc", "/var",
-                "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"
-            ];
-            for blocked in &blocked_paths {
-                if path_str.starts_with(blocked) {
-                    return Err(format!("Invalid path: cannot write to system directory ({})", blocked));
-                }
-            }
-        }
-    }
+    // SECURITY: Always canonicalize to fully resolve the path
+    // This handles:
+    // - All `..` components (path traversal)
+    // - Symlinks (including nested symlinks)
+    // - Relative path resolution
+    let canonical = path.canonicalize()
+        .map_err(|e| format!("Invalid path: cannot resolve path: {}", e))?;
+
+    // Validate the canonical path against system directory restrictions
+    // This uses the same validation logic as file opening for consistency
+    check_system_directory_access(&canonical.to_string_lossy())?;
 
     // Check if the parent directory exists
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = canonical.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
             return Err(format!("Invalid path: parent directory does not exist: {:?}", parent));
         }
     }
 
-    Ok(path)
+    Ok(canonical)
 }
 
 /// Export frame data to CSV format

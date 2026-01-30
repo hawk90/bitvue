@@ -10,6 +10,10 @@
 
 use egui::{self, Color32, Rect, RichText, Stroke, Vec2};
 
+use super::workspace_strategy::{
+    ColorScheme, PartitionRenderer, PartitionData, ViewRenderer, ViewContext, ViewRenderResult,
+};
+
 /// AV1-specific color palette
 mod colors {
     use egui::Color32;
@@ -1034,5 +1038,378 @@ impl Av1Workspace {
             ui.painter().rect_filled(rect, 2.0, color);
             ui.label(label);
         });
+    }
+}
+
+// =============================================================================
+// STRATEGY PATTERN IMPLEMENTATION
+// =============================================================================
+
+/// AV1 color scheme strategy
+pub struct Av1WorkspaceColorScheme;
+
+impl ColorScheme for Av1WorkspaceColorScheme {
+    fn block_boundary(&self) -> Color32 {
+        colors::BLOCK_BOUNDARY
+    }
+
+    fn superblock_boundary(&self) -> Color32 {
+        colors::SB_BOUNDARY
+    }
+
+    fn intra_prediction(&self) -> Color32 {
+        colors::INTRA
+    }
+
+    fn inter_prediction(&self) -> Color32 {
+        colors::SINGLE_REF
+    }
+
+    fn skip_mode(&self) -> Color32 {
+        Color32::from_rgb(200, 200, 200)
+    }
+
+    fn iframe(&self) -> Color32 {
+        Color32::from_rgb(255, 0, 0)
+    }
+
+    fn pframe(&self) -> Color32 {
+        Color32::from_rgb(0, 255, 0)
+    }
+
+    fn bframe(&self) -> Color32 {
+        Color32::from_rgb(0, 0, 255)
+    }
+}
+
+/// AV1 partition renderer strategy
+pub struct Av1PartitionRendererStrategy {
+    pub sb_size: u32,
+}
+
+impl PartitionRenderer for Av1PartitionRendererStrategy {
+    fn render_partitions(
+        &self,
+        frame_width: u32,
+        frame_height: u32,
+        _zoom: f32,
+    ) -> Vec<PartitionData> {
+        // For demonstration, return a grid of superblocks
+        let mut partitions = Vec::new();
+        let sb_count_x = (frame_width + self.sb_size - 1) / self.sb_size;
+        let sb_count_y = (frame_height + self.sb_size - 1) / self.sb_size;
+
+        for y in 0..sb_count_y {
+            for x in 0..sb_count_x {
+                partitions.push(PartitionData {
+                    x: x * self.sb_size,
+                    y: y * self.sb_size,
+                    width: self.sb_size,
+                    height: self.sb_size,
+                    partition_type: "SB".to_string(),
+                    reference_frame: Some("LAST".to_string()),
+                    prediction_mode: Some("INTER".to_string()),
+                    color: colors::SB_BOUNDARY,
+                    is_selected: false,
+                });
+            }
+        }
+
+        partitions
+    }
+
+    fn max_depth(&self) -> usize {
+        4 // AV1 supports up to 4 levels of partitioning
+    }
+
+    fn base_block_size(&self) -> u32 {
+        self.sb_size
+    }
+}
+
+/// View renderer for AV1 Overview
+pub struct Av1OverviewRenderer {
+    pub features: Av1FeatureStatus,
+    pub frame_width: u32,
+    pub frame_height: u32,
+    pub sb_size: u32,
+    pub mock_blocks: Vec<Av1Block>,
+}
+
+impl ViewRenderer for Av1OverviewRenderer {
+    fn label(&self) -> &str {
+        "Overview"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        ui.columns(2, |cols| {
+            // Left: Feature status
+            cols[0].group(|ui| {
+                ui.heading("AV1 Features");
+                ui.add_space(8.0);
+
+                Av1Workspace::feature_badge(ui, "CDEF", self.features.cdef_enabled);
+                Av1Workspace::feature_badge(ui, "Super-Resolution", self.features.superres_enabled);
+                Av1Workspace::feature_badge(ui, "Film Grain", self.features.film_grain_enabled);
+                Av1Workspace::feature_badge(ui, "Loop Restoration", self.features.loop_restoration);
+                Av1Workspace::feature_badge(ui, "Segmentation", self.features.segmentation);
+                Av1Workspace::feature_badge(ui, "Delta Q", self.features.delta_q);
+                Av1Workspace::feature_badge(ui, "Delta LF", self.features.delta_lf);
+                Av1Workspace::feature_badge(ui, "Compound Ref", self.features.reference_mode);
+                Av1Workspace::feature_badge(ui, "Skip Mode", self.features.skip_mode);
+                Av1Workspace::feature_badge(ui, "Warped Motion", self.features.warped_motion);
+            });
+
+            // Right: Quick stats
+            cols[1].group(|ui| {
+                ui.heading("Frame Statistics");
+                ui.add_space(8.0);
+
+                ui.label(format!("Frame size: {}x{}", self.frame_width, self.frame_height));
+                ui.label(format!("Superblock size: {}x{}", self.sb_size, self.sb_size));
+                ui.label(format!("Total blocks: {}", self.mock_blocks.len()));
+
+                ui.add_space(8.0);
+
+                // Reference usage
+                let mut intra_count = 0;
+                let mut single_count = 0;
+                let mut compound_count = 0;
+
+                for block in &self.mock_blocks {
+                    if matches!(block.ref_frame, Av1RefFrame::Intra) {
+                        intra_count += 1;
+                    } else if block.ref_frame2.is_some() {
+                        compound_count += 1;
+                    } else {
+                        single_count += 1;
+                    }
+                }
+
+                ui.label(format!("Intra blocks: {}", intra_count));
+                ui.label(format!("Single ref: {}", single_count));
+                ui.label(format!("Compound ref: {}", compound_count));
+            });
+        });
+
+        None
+    }
+}
+
+/// View renderer for AV1 Partitions
+pub struct Av1PartitionsRenderer {
+    pub show_sb_grid: bool,
+    pub show_block_grid: bool,
+    pub show_refs: bool,
+    pub sb_size: u32,
+    pub mock_blocks: Vec<Av1Block>,
+    pub selected_block: Option<usize>,
+}
+
+impl ViewRenderer for Av1PartitionsRenderer {
+    fn label(&self) -> &str {
+        "Partitions"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        // Toolbar
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("SB Grid")
+                    .color(if self.show_sb_grid { Color32::WHITE } else { Color32::GRAY }),
+            );
+            ui.label(
+                RichText::new("Block Grid")
+                    .color(if self.show_block_grid { Color32::WHITE } else { Color32::GRAY }),
+            );
+            ui.label(
+                RichText::new("Show Refs")
+                    .color(if self.show_refs { Color32::WHITE } else { Color32::GRAY }),
+            );
+        });
+
+        ui.separator();
+
+        // Partition visualization
+        let available = ui.available_size();
+        let grid_size = available.x.min(available.y - 120.0).min(400.0);
+
+        let (response, painter) = ui.allocate_painter(
+            Vec2::new(grid_size, grid_size),
+            egui::Sense::click_and_drag(),
+        );
+
+        let rect = response.rect;
+
+        // Background
+        painter.rect_filled(rect, 4.0, Color32::from_rgb(30, 30, 35));
+
+        // Scale: show 128x128 superblock
+        let scale = grid_size / self.sb_size as f32;
+
+        // Draw superblock boundary
+        if self.show_sb_grid {
+            painter.rect_stroke(rect, 0.0, Stroke::new(3.0, colors::SB_BOUNDARY));
+
+            // 64x64 quadrant lines
+            let mid = grid_size / 2.0;
+            painter.line_segment(
+                [
+                    egui::pos2(rect.min.x + mid, rect.min.y),
+                    egui::pos2(rect.min.x + mid, rect.max.y),
+                ],
+                Stroke::new(1.5, colors::SB_BOUNDARY.gamma_multiply(0.5)),
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(rect.min.x, rect.min.y + mid),
+                    egui::pos2(rect.max.x, rect.min.y + mid),
+                ],
+                Stroke::new(1.5, colors::SB_BOUNDARY.gamma_multiply(0.5)),
+            );
+        }
+
+        // Draw blocks
+        for (idx, block) in self.mock_blocks.iter().enumerate() {
+            let block_rect = Rect::from_min_size(
+                egui::pos2(
+                    rect.min.x + block.x as f32 * scale,
+                    rect.min.y + block.y as f32 * scale,
+                ),
+                Vec2::new(block.width as f32 * scale, block.height as f32 * scale),
+            );
+
+            // Fill with reference color
+            if self.show_refs {
+                let color = if block.ref_frame2.is_some() {
+                    colors::COMPOUND.gamma_multiply(0.4)
+                } else {
+                    block.ref_frame.color().gamma_multiply(0.4)
+                };
+                painter.rect_filled(block_rect, 0.0, color);
+            }
+
+            // Draw block boundary
+            if self.show_block_grid {
+                let stroke_width = if Some(idx) == self.selected_block {
+                    2.5
+                } else {
+                    1.0
+                };
+                painter.rect_stroke(
+                    block_rect,
+                    0.0,
+                    Stroke::new(stroke_width, colors::BLOCK_BOUNDARY),
+                );
+            }
+
+            // Label for larger blocks
+            if block.width >= 32 && block.height >= 32 {
+                let label = if block.ref_frame2.is_some() {
+                    format!(
+                        "{}+{}",
+                        block.ref_frame.label(),
+                        block.ref_frame2.unwrap().label()
+                    )
+                } else {
+                    block.ref_frame.label().to_string()
+                };
+                painter.text(
+                    block_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    egui::FontId::proportional(9.0),
+                    Color32::WHITE,
+                );
+            }
+        }
+
+        None
+    }
+}
+
+/// View renderer for AV1 References
+pub struct Av1ReferencesRenderer;
+
+impl ViewRenderer for Av1ReferencesRenderer {
+    fn label(&self) -> &str {
+        "References"
+    }
+
+    fn render(&self, ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        ui.group(|ui| {
+            ui.heading("AV1 Reference Frame Types");
+            ui.add_space(8.0);
+
+            // Reference frame legend with colors
+            for ref_type in [
+                Av1RefFrame::Last,
+                Av1RefFrame::Last2,
+                Av1RefFrame::Last3,
+                Av1RefFrame::Golden,
+                Av1RefFrame::BwdRef,
+                Av1RefFrame::AltRef2,
+                Av1RefFrame::AltRef,
+            ] {
+                Av1Workspace::ref_badge(ui, ref_type);
+            }
+        });
+
+        ui.add_space(8.0);
+
+        ui.columns(2, |cols| {
+            cols[0].group(|ui| {
+                ui.heading("Forward References");
+                ui.label("LAST: Most recent decoded frame");
+                ui.label("LAST2: 2nd most recent");
+                ui.label("LAST3: 3rd most recent");
+                ui.label("GOLDEN: Key reference (scene anchor)");
+            });
+
+            cols[1].group(|ui| {
+                ui.heading("Backward References");
+                ui.label("BWDREF: Backward reference");
+                ui.label("ALTREF2: Secondary alt reference");
+                ui.label("ALTREF: Alternate reference (future)");
+            });
+        });
+
+        None
+    }
+}
+
+// Remaining view renderers (CDEF, SuperRes, FilmGrain) would follow similar pattern
+// For brevity, using placeholder implementations
+
+pub struct Av1CdefRenderer;
+impl ViewRenderer for Av1CdefRenderer {
+    fn label(&self) -> &str {
+        "CDEF"
+    }
+
+    fn render(&self, _ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        None
+    }
+}
+
+pub struct Av1SuperResRenderer;
+impl ViewRenderer for Av1SuperResRenderer {
+    fn label(&self) -> &str {
+        "Super-Res"
+    }
+
+    fn render(&self, _ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        None
+    }
+}
+
+pub struct Av1FilmGrainRenderer;
+impl ViewRenderer for Av1FilmGrainRenderer {
+    fn label(&self) -> &str {
+        "Film Grain"
+    }
+
+    fn render(&self, _ui: &mut egui::Ui, _ctx: &ViewContext) -> Option<ViewRenderResult> {
+        None
     }
 }

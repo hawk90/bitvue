@@ -414,3 +414,36 @@
     box-shadow: 0 0 16px rgb(255 165 0 / 90%);
   }
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Virtualized Thumbnails View - react-window styles
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Virtual list container */
+.virtualized-filmstrip-list {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto hidden;
+}
+
+/* Virtual list inner element */
+.virtualized-filmstrip-list > div {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 0;
+}
+
+/* Wrapper for virtualized frame items */
+.filmstrip-frame-virtual-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Ensure virtualized frames maintain proper positioning */
+.filmstrip-frame-virtual-wrapper .filmstrip-frame {
+  /* Remove the margin from individual frames since virtual list handles spacing */
+  margin: 0 4px;
+}

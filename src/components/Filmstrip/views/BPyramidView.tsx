@@ -5,11 +5,11 @@
  * Frames displayed as small circles with reference arrows
  */
 
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { BPyramidViewProps } from './BPyramidTypes';
 import { BPyramidTimeline, analyzeTemporalLevels } from './BPyramidTimeline';
 
-export function BPyramidView({
+function BPyramidView({
   frames,
   currentFrameIndex,
   onFrameClick,
@@ -46,3 +46,11 @@ export function BPyramidView({
     </div>
   );
 }
+
+// Memoize BPyramidView to prevent unnecessary re-renders
+export default memo(BPyramidView, (prevProps, nextProps) => {
+  return (
+    prevProps.frames === nextProps.frames &&
+    prevProps.currentFrameIndex === nextProps.currentFrameIndex
+  );
+});

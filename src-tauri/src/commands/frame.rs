@@ -53,13 +53,27 @@ pub async fn get_decoded_frame(
 ) -> Result<DecodedFrameData, String> {
     log::info!("get_decoded_frame: Requesting frame {}", frame_index);
 
-    // Get file path and container format
+    // SECURITY: Validate frame index early at command boundary (defense in depth)
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
+    let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
     drop(stream_a);
     drop(core);
+
+    // Early validation to avoid unnecessary work for out-of-range indices
+    if frame_index >= total_frames {
+        log::warn!("get_decoded_frame: Frame index {} out of range (total: {})", frame_index, total_frames);
+        return Ok(DecodedFrameData {
+            frame_index,
+            width: 0,
+            height: 0,
+            frame_data: String::new(),
+            success: false,
+            error: Some(format!("Frame index {} out of range (total: {})", frame_index, total_frames)),
+        });
+    }
 
     // Detect container format
     let container_format = detect_container_format(&file_path)
@@ -525,13 +539,33 @@ pub async fn get_decoded_frame_yuv(
 ) -> Result<YUVFrameData, String> {
     log::info!("get_decoded_frame_yuv: Requesting YUV frame {}", frame_index);
 
-    // Get file path
+    // SECURITY: Validate frame index early at command boundary (defense in depth)
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
+    let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
     drop(stream_a);
     drop(core);
+
+    // Early validation to avoid unnecessary work for out-of-range indices
+    if frame_index >= total_frames {
+        log::warn!("get_decoded_frame_yuv: Frame index {} out of range (total: {})", frame_index, total_frames);
+        return Ok(YUVFrameData {
+            frame_index,
+            width: 0,
+            height: 0,
+            bit_depth: 8,
+            y_plane: String::new(),
+            u_plane: None,
+            v_plane: None,
+            y_stride: 0,
+            u_stride: 0,
+            v_stride: 0,
+            success: false,
+            error: Some(format!("Frame index {} out of range (total: {})", frame_index, total_frames)),
+        });
+    }
 
     // Detect container format
     let container_format = detect_container_format(&file_path)

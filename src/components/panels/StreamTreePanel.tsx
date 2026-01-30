@@ -11,7 +11,7 @@
  */
 
 import { useState, useCallback, useMemo, memo, Fragment } from 'react';
-import { useStreamData } from '../../contexts/StreamDataContext';
+import { useFrameData } from '../../contexts/FrameDataContext';
 import './StreamTreePanel.css';
 
 export interface UnitNode {
@@ -46,7 +46,7 @@ export const StreamTreePanel = memo(function StreamTreePanel({
   selectedUnitKey,
   onUnitSelect,
 }: StreamTreePanelProps) {
-  const { frames } = useStreamData();
+  const { frames } = useFrameData();
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [frameFilter, setFrameFilter] = useState<FrameFilter>('All');
   const [search, setSearch] = useState('');
