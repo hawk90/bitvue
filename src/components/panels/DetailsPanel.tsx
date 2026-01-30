@@ -19,6 +19,27 @@ interface DetailsPanelProps {
   frame: FrameDetails | null;
 }
 
+/**
+ * Custom comparison for DetailsPanel props
+ * Performs deep comparison for frame object to prevent unnecessary re-renders
+ */
+function arePropsEqual(prevProps: DetailsPanelProps, nextProps: DetailsPanelProps): boolean {
+  // Quick null checks
+  if (prevProps.frame === nextProps.frame) return true;
+  if (!prevProps.frame || !nextProps.frame) return false;
+
+  // Compare individual properties
+  return (
+    prevProps.frame.temporal_id === nextProps.frame.temporal_id &&
+    prevProps.frame.display_order === nextProps.frame.display_order &&
+    prevProps.frame.coding_order === nextProps.frame.coding_order &&
+    // Deep compare ref_frames arrays
+    (prevProps.frame.ref_frames?.length === nextProps.frame.ref_frames?.length) &&
+    (prevProps.frame.ref_frames === nextProps.frame.ref_frames ||
+      JSON.stringify(prevProps.frame.ref_frames) === JSON.stringify(nextProps.frame.ref_frames))
+  );
+}
+
 export const DetailsPanel = memo(function DetailsPanel({ frame }: DetailsPanelProps) {
   return (
     <div className="bottom-panel-content">
@@ -39,6 +60,6 @@ export const DetailsPanel = memo(function DetailsPanel({ frame }: DetailsPanelPr
       </div>
     </div>
   );
-});
+}, arePropsEqual);
 
 export default DetailsPanel;

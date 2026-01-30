@@ -75,9 +75,17 @@ impl<'a> BitReader<'a> {
     }
 
     /// Returns the current position in bits from the start.
+    ///
+    /// Uses checked arithmetic to prevent overflow on malicious inputs
+    /// (e.g., extremely large byte offsets).
     #[inline]
     pub fn position(&self) -> u64 {
-        (self.byte_offset as u64) * 8 + (self.bit_offset as u64)
+        let byte_bits = (self.byte_offset as u64)
+            .checked_mul(8)
+            .unwrap_or(u64::MAX);
+        byte_bits
+            .checked_add(self.bit_offset as u64)
+            .unwrap_or(u64::MAX)
     }
 
     /// Returns the current byte offset.
@@ -311,9 +319,17 @@ impl<'a> LsbBitReader<'a> {
     }
 
     /// Returns the current position in bits from the start.
+    ///
+    /// Uses checked arithmetic to prevent overflow on malicious inputs
+    /// (e.g., extremely large byte offsets).
     #[inline]
     pub fn position(&self) -> u64 {
-        (self.byte_offset as u64) * 8 + (self.bit_offset as u64)
+        let byte_bits = (self.byte_offset as u64)
+            .checked_mul(8)
+            .unwrap_or(u64::MAX);
+        byte_bits
+            .checked_add(self.bit_offset as u64)
+            .unwrap_or(u64::MAX)
     }
 
     /// Returns the number of remaining bits.

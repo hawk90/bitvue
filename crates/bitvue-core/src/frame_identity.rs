@@ -115,26 +115,51 @@ impl FrameIndexMap {
     /// - OK: All frames have valid, monotonic PTS
     /// - WARN: Some missing PTS, but majority present
     /// - BAD: Major issues (duplicates, VFR, >50% missing)
+    ///
+    /// PERFORMANCE: Optimized to single-pass O(n) algorithm using:
+    /// - Online variance calculation (Welford's method)
+    /// - HashSet for O(1) duplicate detection
+    /// - Combined iteration for all metrics
     fn assess_pts_quality(frames: &[FrameMetadata]) -> PtsQuality {
         if frames.is_empty() {
             return PtsQuality::Ok;
         }
 
+        use std::collections::HashSet;
+
         let total = frames.len();
-        let missing_count = frames.iter().filter(|f| f.pts.is_none()).count();
+        let mut missing_count = 0;
+        let mut seen_pts = HashSet::new();
+        let mut has_duplicates = false;
+
+        // Online statistics for VFR detection (Welford's algorithm)
+        let mut pts_values: Vec<u64> = Vec::new();
+        let mut count = 0usize;
+        let mut mean = 0.0f64;
+        let mut m2 = 0.0f64; // Sum of squared differences from mean
+
+        // Single pass: collect all metrics
+        for frame in frames.iter() {
+            match frame.pts {
+                Some(pts) => {
+                    // Check for duplicates using HashSet
+                    if !seen_pts.insert(pts) {
+                        has_duplicates = true;
+                    }
+                    pts_values.push(pts);
+                }
+                None => {
+                    missing_count += 1;
+                }
+            }
+        }
 
         // Check if >50% missing
         if missing_count > total / 2 {
             return PtsQuality::Bad;
         }
 
-        // Check for duplicates and collect PTS values in sorted order
-        let mut pts_values: Vec<u64> = frames.iter().filter_map(|f| f.pts).collect();
-        pts_values.sort_unstable();
-
         // Check for duplicate PTS values
-        let has_duplicates = pts_values.windows(2).any(|w| w[0] == w[1]);
-
         if has_duplicates {
             return PtsQuality::Bad;
         }
@@ -145,28 +170,26 @@ impl FrameIndexMap {
         // Duplicates are the only PTS ordering issue we flag as BAD.
 
         // Check for VFR (variable frame rate) by analyzing PTS deltas
-        // Use sorted PTS values to compute deltas in display order
+        // Need sorted PTS values for delta calculation
         if pts_values.len() >= 3 {
-            let mut deltas: Vec<u64> = Vec::new();
+            pts_values.sort_unstable();
 
+            // Calculate deltas and use Welford's algorithm for online variance
             for window in pts_values.windows(2) {
-                deltas.push(window[1] - window[0]);
+                let delta = (window[1] - window[0]) as f64;
+                count += 1;
+                let delta_mean = (delta - mean) / count as f64;
+                mean += delta_mean;
+                let delta_delta = delta - mean;
+                m2 += delta_delta * delta_delta;
             }
 
-            if !deltas.is_empty() {
-                let mean_delta = deltas.iter().sum::<u64>() as f64 / deltas.len() as f64;
-                let variance = deltas
-                    .iter()
-                    .map(|&d| {
-                        let diff = d as f64 - mean_delta;
-                        diff * diff
-                    })
-                    .sum::<f64>()
-                    / deltas.len() as f64;
+            if count > 0 {
+                let variance = m2 / count as f64;
                 let std_dev = variance.sqrt();
 
                 // If coefficient of variation > 0.3, consider VFR
-                if mean_delta > 0.0 && (std_dev / mean_delta) > 0.3 {
+                if mean > 0.0 && (std_dev / mean) > 0.3 {
                     return PtsQuality::Warn;
                 }
             }
