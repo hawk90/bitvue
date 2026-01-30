@@ -60,6 +60,10 @@ pub fn extract_partition_grid_from_parsed(
                     "Failed to parse partitions: {}, falling back to scaffold",
                     e
                 );
+                // In strict mode, propagate the error instead of silent fallback
+                if super::strict_mode_enabled() {
+                    return Err(e);
+                }
                 // Fall through to scaffold
             }
         }
@@ -374,6 +378,10 @@ pub fn extract_prediction_mode_grid_from_parsed(
                     "Failed to parse coding units for prediction modes: {}, using scaffold",
                     e
                 );
+                // In strict mode, propagate the error instead of silent fallback
+                if super::strict_mode_enabled() {
+                    return Err(e);
+                }
                 // Fall through to scaffold
             }
         }
@@ -585,6 +593,10 @@ pub fn extract_transform_grid_from_parsed(
                     "Failed to parse coding units for transform sizes: {}, using scaffold",
                     e
                 );
+                // In strict mode, propagate the error instead of silent fallback
+                if super::strict_mode_enabled() {
+                    return Err(e);
+                }
                 // Fall through to scaffold
             }
         }
