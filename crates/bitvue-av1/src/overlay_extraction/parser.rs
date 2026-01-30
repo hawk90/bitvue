@@ -287,9 +287,11 @@ pub fn extract_pixel_info(
     // Use static string for partition_info to avoid repeated allocation
     let partition_info: &'static str = "TX_64X64";
 
-    let est_frame_size = 25000;
-    let bit_offset = Some((frame_index as u64) * 200000 + (pixel_y as u64) * 1920 + pixel_x as u64);
-    let byte_offset = Some((frame_index as u64) * est_frame_size);
+    // Note: bit_offset and byte_offset are not calculated from actual stream metadata
+    // Returning None instead of fake estimates to avoid misleading data
+    // Future enhancement: track actual byte offsets during OBU parsing
+    let bit_offset = None;
+    let byte_offset = None;
 
     let syntax_path = format!("OBU_FRAME.tile[0].sb[{}][{}]", sb_y, sb_x);
 
