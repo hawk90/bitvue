@@ -510,7 +510,45 @@ impl VvcDecoder {
             ))?;
 
         // Create safe slice from raw pointer
-        // SAFETY: We've verified ptr is non-null, and total_buffer_size was validated above
+        //
+        // # Safety
+        //
+        // This creates a slice from vvdec decoder plane data. The following invariants must hold:
+        //
+        // ## Pointer Validity
+        // 1. `plane.ptr` must be non-null (validated above at line 478)
+        // 2. `plane.ptr` must be valid for reading `total_buffer_size` bytes
+        // 3. `plane.ptr` must point to memory owned by the vvdec decoder
+        // 4. The memory must not be freed while the slice is in use
+        //
+        // ## Thread Safety
+        // 1. The decoder mutex (`self.decoder`) must be held for the entire lifetime of the slice
+        // 2. The access_unit mutex (`self.access_unit`) must also be held
+        // 3. No concurrent FFI calls to vvdec may occur while the slice is alive
+        // 4. The slice must not outlive the mutex guards
+        //
+        // ## Lifetime Requirements
+        // 1. The slice borrows from decoder-internal memory
+        // 2. The decoder must not be reset while the slice is in use
+        // 3. The frame must not be unreffed (vvdec_frame_unref) while the slice is alive
+        // 4. No concurrent decode operations must occur
+        //
+        // ## Call Site Guarantees
+        // This function is called from `get_frame()` which:
+        // - Locks both `decoder` and `access_unit` mutexes (lines 626-631)
+        // - Holds the locks for the entire unsafe block (lines 665-696)
+        // - Calls `convert_frame()` within the locked region (line 669)
+        // - Only returns after converting slice to owned Vec<u8>
+        //
+        // ## Memory Ownership
+        // The slice is immediately converted to `Vec<u8>` via `plane_utils::extract_plane()`,
+        // which creates an owned copy. The raw slice never escapes this function.
+        //
+        // # Why This Is Safe
+        // - The mutex guards ensure no concurrent access
+        // - The slice is converted to owned data before returning
+        // - The guards outlive the slice (same scope in get_frame)
+        // - The decoder state is stable during plane extraction
         let plane_slice = unsafe {
             std::slice::from_raw_parts(plane.ptr, total_buffer_size)
         };
