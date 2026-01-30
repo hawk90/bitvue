@@ -227,7 +227,15 @@ impl CdfContext {
             cumulative += count;
             mv_joint_cdf.push(cumulative);
         }
-        assert_eq!(*mv_joint_cdf.last().unwrap(), CDF_SCALE);
+        // Runtime check that works in all builds (not just debug)
+        // These are hardcoded constants that should sum to CDF_SCALE
+        if *mv_joint_cdf.last().unwrap_or(&0) != CDF_SCALE {
+            panic!(
+                "MV joint CDF counts sum to {}, expected {} (CDF_SCALE) - counts may be miscalculated",
+                mv_joint_cdf.last().unwrap_or(&0),
+                CDF_SCALE
+            );
+        }
 
         // MV sign CDF: 50/50 positive/negative (uniform)
         let mv_sign_cdf = vec![
@@ -261,7 +269,15 @@ impl CdfContext {
             cumulative += count;
             mv_class_cdf.push(cumulative);
         }
-        assert_eq!(*mv_class_cdf.last().unwrap(), CDF_SCALE);
+        // Runtime check that works in all builds (not just debug)
+        // These are hardcoded constants that should sum to CDF_SCALE
+        if *mv_class_cdf.last().unwrap_or(&0) != CDF_SCALE {
+            panic!(
+                "MV class CDF counts sum to {}, expected {} (CDF_SCALE) - counts may be miscalculated",
+                mv_class_cdf.last().unwrap_or(&0),
+                CDF_SCALE
+            );
+        }
 
         // MV bit CDF: 50/50 for each bit (uniform)
         let mv_bit_cdf = vec![

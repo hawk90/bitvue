@@ -255,27 +255,6 @@ enum FfiResult<T> {
 /// Wrapper to execute FFI calls with a timeout
 ///
 /// This spawns a separate thread to run the FFI call and waits for completion
-/// with a timeout. If the timeout expires, the decoder is in an undefined state
-/// and must be reset.
-///
-/// # Safety
-///
-/// The decoder must not be accessed concurrently while the FFI call is in progress.
-/// The vvdec library is NOT thread-safe, so this wrapper must only be used when
-/// there are no other accesses to the decoder.
-fn run_with_timeout<F, T>(f: F) -> FfiResult<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    thread::spawn(move || FfiResult::Success(f()))
-        .join()
-        .unwrap_or(FfiResult::Panic)
-}
-
-/// Wrapper to execute FFI calls with a timeout
-///
-/// This spawns a separate thread to run the FFI call and waits for completion
 /// with a timeout. If the timeout expires, the function returns an error.
 fn run_decode_with_timeout<F, T>(f: F) -> Result<T>
 where
