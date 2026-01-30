@@ -35,6 +35,13 @@ pub async fn get_thumbnails(
 ) -> Result<Vec<ThumbnailData>, String> {
     log::info!("get_thumbnails: Requesting {} thumbnails", frame_indices.len());
 
+    // Rate limiting check (thumbnail generation is CPU-intensive)
+    state.rate_limiter.check_rate_limit()
+        .map_err(|wait_time| {
+            format!("Rate limited: too many requests. Please try again in {:.1}s",
+                wait_time.as_secs_f64())
+        })?;
+
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
@@ -52,7 +59,7 @@ pub async fn get_thumbnails(
         .filter_map(|u| {
             // Both frame_index and frame_type need to be Some
             match (&u.frame_index, &u.frame_type) {
-                (Some(idx), Some(ft)) => Some((*idx, ft.clone())),
+                (Some(idx), Some(ft)) => Some((*idx, ft.to_string())),
                 _ => None,
             }
         })
@@ -183,6 +190,7 @@ pub async fn get_thumbnails(
                         height: 90,
                         success: true,
                         error: None,
+                        cached: false,
                     });
                 }
             }

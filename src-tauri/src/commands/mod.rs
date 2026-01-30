@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 use bitvue_core::{Core, CompareWorkspace};
-use crate::services::{DecodeService, ThumbnailService};
+use crate::services::{DecodeService, ThumbnailService, RateLimiter};
 
 // Re-export module contents
 pub mod analysis;
@@ -22,6 +22,7 @@ pub mod compare;
 pub mod export;
 pub mod file;
 pub mod frame;
+pub mod log;
 pub mod quality;
 pub mod syntax;
 pub mod thumbnails;
@@ -96,6 +97,8 @@ pub struct AppState {
     #[allow(dead_code)]
     pub decode_service: Arc<Mutex<DecodeService>>,
     pub thumbnail_service: Arc<Mutex<ThumbnailService>>,
+    /// Rate limiter for expensive operations (prevents DoS)
+    pub rate_limiter: Arc<RateLimiter>,
     /// Compare workspace for A/B comparison
     pub compare_workspace: Arc<Mutex<Option<CompareWorkspace>>>,
 }
@@ -106,9 +109,42 @@ impl AppState {
             core: Arc::new(Mutex::new(Core::new())),
             decode_service: Arc::new(Mutex::new(DecodeService::new())),
             thumbnail_service: Arc::new(Mutex::new(ThumbnailService::new())),
+            rate_limiter: Arc::new(RateLimiter::new()),
             compare_workspace: Arc::new(Mutex::new(None)),
         }
     }
+}
+
+// =============================================================================
+// Shared Validation Utilities
+// =============================================================================
+
+/// Validate frame index bounds
+///
+/// This is a shared utility for consistent frame index validation across all commands.
+/// Use this after retrieving the total frame count from the stream/units.
+///
+/// # Arguments
+/// * `frame_index` - The frame index to validate
+/// * `total_frames` - The total number of frames available
+///
+/// # Returns
+/// * `Ok(())` if the frame index is valid
+/// * `Err(String)` with descriptive error message if out of bounds
+///
+/// # Example
+/// ```ignore
+/// let total_frames = units.units.len();
+/// validate_frame_index_bounds(frame_index, total_frames)?;
+/// ```
+pub fn validate_frame_index_bounds(frame_index: usize, total_frames: usize) -> Result<(), String> {
+    if frame_index >= total_frames {
+        return Err(format!(
+            "Frame index {} out of bounds (total: {})",
+            frame_index, total_frames
+        ));
+    }
+    Ok(())
 }
 
 // =============================================================================

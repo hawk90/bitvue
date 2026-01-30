@@ -119,7 +119,7 @@ impl FrameMetadata {
     pub fn from_unit_model(unit: &bitvue_core::UnitModel, display_type: &str) -> Self {
         // Get data from first frame unit
         let first_unit = unit.units.first();
-        let unit_type = first_unit.map(|u| u.unit_type.as_str()).unwrap_or("FRAME");
+        let unit_type = first_unit.map(|u| &*u.unit_type).unwrap_or("FRAME");
         let offset = first_unit.map(|u| u.offset).unwrap_or(0);
         let size = first_unit.map(|u| u.size).unwrap_or(0);
 
@@ -140,10 +140,10 @@ impl FrameMetadata {
 
     /// Create from UnitNode
     pub fn from_unit_node(unit: &bitvue_core::UnitNode, display_type: &str) -> Self {
-        let nal_type = if unit.unit_type == "FRAME" {
+        let nal_type = if &*unit.unit_type == "FRAME" {
             display_type.to_string()
         } else {
-            unit.unit_type.clone()
+            unit.unit_type.to_string()
         };
 
         Self {
@@ -376,7 +376,7 @@ impl FrameService {
 
         for unit in &unit_model.units {
             if unit.frame_index.is_some() {
-                let frame_type = unit.frame_type.clone().unwrap_or("UNKNOWN".to_string());
+                let frame_type = unit.frame_type.as_deref().unwrap_or("UNKNOWN").to_string();
 
                 // Map frame types to I/P/B for display
                 let display_type = Self::normalize_frame_type(&frame_type);

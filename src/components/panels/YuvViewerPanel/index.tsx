@@ -47,17 +47,39 @@ function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
     return bytes;
   };
 
-  return {
+  // Extract chroma subsampling from data (default to '420' if not provided)
+  const chromaSubsampling: '420' | '422' | '444' = (data as any).chroma_subsampling || '420';
+
+  // Handle null U/V planes - create empty arrays instead of null
+  const uPlane = data.u_plane ? base64ToUint8(data.u_plane) : new Uint8Array(0);
+  const vPlane = data.v_plane ? base64ToUint8(data.v_plane) : new Uint8Array(0);
+
+  const frame: YUVFrame = {
     width: data.width,
     height: data.height,
-    bitDepth: data.bit_depth,
-    yPlane: base64ToUint8(data.y_plane),
-    uPlane: data.u_plane ? base64ToUint8(data.u_plane) : null,
-    vPlane: data.v_plane ? base64ToUint8(data.v_plane) : null,
+    y: base64ToUint8(data.y_plane),
+    u: uPlane,
+    v: vPlane,
     yStride: data.y_stride,
     uStride: data.u_stride,
     vStride: data.v_stride,
+    chromaSubsampling,
   };
+
+  logger.debug('convertYUVDataToYUVFrame:', {
+    width: frame.width,
+    height: frame.height,
+    yLength: frame.y.length,
+    uLength: frame.u.length,
+    vLength: frame.v.length,
+    yStride: frame.yStride,
+    uStride: frame.uStride,
+    vStride: frame.vStride,
+    chromaSubsampling: frame.chromaSubsampling,
+    bitDepth: data.bit_depth,
+  });
+
+  return frame;
 }
 
 

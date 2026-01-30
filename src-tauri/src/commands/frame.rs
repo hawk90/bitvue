@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use base64::Engine;
 
-use crate::commands::AppState;
+use crate::commands::{AppState, validate_frame_index_bounds};
 use bitvue_core::StreamId;
 use bitvue_formats::{detect_container_format, ContainerFormat};
 use image::{ImageBuffer, RgbImage};
@@ -53,6 +53,13 @@ pub async fn get_decoded_frame(
 ) -> Result<DecodedFrameData, String> {
     log::info!("get_decoded_frame: Requesting frame {}", frame_index);
 
+    // Rate limiting check (frame decoding is CPU-intensive)
+    state.rate_limiter.check_rate_limit()
+        .map_err(|wait_time| {
+            format!("Rate limited: too many frame decode requests. Please try again in {:.1}s",
+                wait_time.as_secs_f64())
+        })?;
+
     // SECURITY: Validate frame index early at command boundary (defense in depth)
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
@@ -63,15 +70,15 @@ pub async fn get_decoded_frame(
     drop(core);
 
     // Early validation to avoid unnecessary work for out-of-range indices
-    if frame_index >= total_frames {
-        log::warn!("get_decoded_frame: Frame index {} out of range (total: {})", frame_index, total_frames);
+    if let Err(e) = validate_frame_index_bounds(frame_index, total_frames) {
+        log::warn!("get_decoded_frame: {}", e);
         return Ok(DecodedFrameData {
             frame_index,
             width: 0,
             height: 0,
             frame_data: String::new(),
             success: false,
-            error: Some(format!("Frame index {} out of range (total: {})", frame_index, total_frames)),
+            error: Some(e),
         });
     }
 
@@ -228,9 +235,7 @@ pub fn decode_ivf_frame(file_data: &[u8], frame_index: usize) -> Result<(u32, u3
 /// Parse IVF file and validate frame index (shared helper)
 fn parse_ivf_and_validate(file_data: &[u8], frame_index: usize) -> Result<Vec<bitvue_av1::IvfFrame>, String> {
     let frames = parse_ivf(file_data)?;
-    if frame_index >= frames.len() {
-        return Err(format!("Frame index {} out of range (total: {})", frame_index, frames.len()));
-    }
+    validate_frame_index_bounds(frame_index, frames.len())?;
     Ok(frames)
 }
 
@@ -279,26 +284,25 @@ pub fn decode_container_frame_with_samples(
     samples: Option<&[Vec<u8>]>,
 ) -> Result<(u32, u32, Vec<u8>), String> {
     // Extract AV1 samples from container (use cached samples if provided)
-    let extracted_samples = if let Some(cached_samples) = samples {
+    let extracted_samples: Vec<Vec<u8>> = if let Some(cached_samples) = samples {
         log::debug!("decode_container_frame_with_samples: Using {} cached samples", cached_samples.len());
-        cached_samples
+        cached_samples.to_vec()
     } else {
         match container_format {
             ContainerFormat::MP4 => {
-                &bitvue_formats::mp4::extract_av1_samples(file_data)
+                bitvue_formats::mp4::extract_av1_samples(file_data)
                     .map_err(|e| format!("Failed to extract AV1 from MP4: {}", e))?
+                    .into_iter().map(|cow| cow.to_vec()).collect()
             }
             ContainerFormat::Matroska => {
-                &bitvue_formats::mkv::extract_av1_samples(file_data)
+                bitvue_formats::mkv::extract_av1_samples(file_data)
                     .map_err(|e| format!("Failed to extract AV1 from MKV: {}", e))?
             }
             _ => return Err("Unsupported container format".to_string()),
         }
     };
 
-    if frame_index >= extracted_samples.len() {
-        return Err(format!("Frame index {} out of range (total: {})", frame_index, extracted_samples.len()));
-    }
+    validate_frame_index_bounds(frame_index, extracted_samples.len())?;
 
     let sample_data = &extracted_samples[frame_index];
 
@@ -398,7 +402,7 @@ pub async fn get_frame_hex_data(
         }
     };
 
-    if frame_index >= frames.len() {
+    if validate_frame_index_bounds(frame_index, frames.len()).is_err() {
         return Ok(FrameHexData {
             frame_index,
             data: Vec::new(),
@@ -435,8 +439,35 @@ pub async fn get_frame_hex_data(
 
 /// Create PNG base64 (without data: URL prefix)
 pub fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<String, String> {
+    // Validate inputs
+    if width == 0 || height == 0 {
+        return Err(format!("Invalid dimensions: {}x{}", width, height));
+    }
+
+    if rgb_data.is_empty() {
+        return Err("RGB data is empty".to_string());
+    }
+
+    // Validate RGB data size matches dimensions (3 bytes per pixel)
+    let expected_size = (width as usize) * (height as usize) * 3;
+    if rgb_data.len() != expected_size {
+        return Err(format!(
+            "RGB data size mismatch: expected {} bytes for {}x{}, got {}",
+            expected_size, width, height, rgb_data.len()
+        ));
+    }
+
+    // Check for reasonable dimensions (prevent DoS with extremely large images)
+    const MAX_DIMENSION: u32 = 16384; // 16K max
+    if width > MAX_DIMENSION || height > MAX_DIMENSION {
+        return Err(format!(
+            "Dimensions too large (max {}x{}, got {}x{})",
+            MAX_DIMENSION, MAX_DIMENSION, width, height
+        ));
+    }
+
     let img: RgbImage = ImageBuffer::from_raw(width, height, rgb_data.to_vec())
-        .ok_or("Failed to create image buffer")?;
+        .ok_or("Failed to create image buffer from raw data")?;
 
     let mut png_bytes = Vec::new();
     img.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
@@ -456,9 +487,7 @@ pub fn decode_ivf_frame_yuv(file_data: &[u8], frame_index: usize) -> Result<bitv
     let (_header, frames) = bitvue_av1::parse_ivf_frames(file_data)
         .map_err(|e| format!("Failed to parse IVF: {}", e))?;
 
-    if frame_index >= frames.len() {
-        return Err(format!("Frame index {} out of range (total: {})", frame_index, frames.len()));
-    }
+    validate_frame_index_bounds(frame_index, frames.len())?;
 
     // Decode only the requested frame
     let frame_data = &frames[frame_index].data;
@@ -477,6 +506,7 @@ pub fn decode_ivf_frame_yuv(file_data: &[u8], frame_index: usize) -> Result<bitv
 }
 
 /// Decode YUV frame from MP4/MKV container
+#[allow(dead_code)]
 pub fn decode_container_frame_yuv(
     file_data: &[u8],
     frame_index: usize,
@@ -496,26 +526,25 @@ pub fn decode_container_frame_yuv_with_samples(
     samples: Option<&[Vec<u8>]>,
 ) -> Result<bitvue_decode::DecodedFrame, String> {
     // Extract AV1 samples from container (use cached samples if provided)
-    let extracted_samples = if let Some(cached_samples) = samples {
+    let extracted_samples: Vec<Vec<u8>> = if let Some(cached_samples) = samples {
         log::debug!("decode_container_frame_yuv_with_samples: Using {} cached samples", cached_samples.len());
-        cached_samples
+        cached_samples.to_vec()
     } else {
         match container_format {
             ContainerFormat::MP4 => {
-                &bitvue_formats::mp4::extract_av1_samples(file_data)
+                bitvue_formats::mp4::extract_av1_samples(file_data)
                     .map_err(|e| format!("Failed to extract AV1 from MP4: {}", e))?
+                    .into_iter().map(|cow| cow.to_vec()).collect()
             }
             ContainerFormat::Matroska => {
-                &bitvue_formats::mkv::extract_av1_samples(file_data)
+                bitvue_formats::mkv::extract_av1_samples(file_data)
                     .map_err(|e| format!("Failed to extract AV1 from MKV: {}", e))?
             }
             _ => return Err("Unsupported container format".to_string()),
         }
     };
 
-    if frame_index >= extracted_samples.len() {
-        return Err(format!("Frame index {} out of range (total: {})", frame_index, extracted_samples.len()));
-    }
+    validate_frame_index_bounds(frame_index, extracted_samples.len())?;
 
     // Decode directly as raw OBU data - no IVF wrapper needed
     let sample_data = &extracted_samples[frame_index];
@@ -549,8 +578,8 @@ pub async fn get_decoded_frame_yuv(
     drop(core);
 
     // Early validation to avoid unnecessary work for out-of-range indices
-    if frame_index >= total_frames {
-        log::warn!("get_decoded_frame_yuv: Frame index {} out of range (total: {})", frame_index, total_frames);
+    if let Err(e) = validate_frame_index_bounds(frame_index, total_frames) {
+        log::warn!("get_decoded_frame_yuv: {}", e);
         return Ok(YUVFrameData {
             frame_index,
             width: 0,
@@ -563,7 +592,7 @@ pub async fn get_decoded_frame_yuv(
             u_stride: 0,
             v_stride: 0,
             success: false,
-            error: Some(format!("Frame index {} out of range (total: {})", frame_index, total_frames)),
+            error: Some(e),
         });
     }
 
@@ -605,12 +634,71 @@ pub async fn get_decoded_frame_yuv(
 
     match decode_result {
         Ok(frame) => {
+            // Validate frame data before encoding
+            if frame.y_plane.is_empty() {
+                log::warn!("get_decoded_frame_yuv: Frame {} has empty Y plane", frame_index);
+                return Ok(YUVFrameData {
+                    frame_index,
+                    width: frame.width,
+                    height: frame.height,
+                    bit_depth: frame.bit_depth,
+                    y_plane: String::new(),
+                    u_plane: None,
+                    v_plane: None,
+                    y_stride: frame.y_stride,
+                    u_stride: frame.u_stride,
+                    v_stride: frame.v_stride,
+                    success: false,
+                    error: Some("Frame data is empty (Y plane)".to_string()),
+                });
+            }
+
+            // Validate dimensions are reasonable
+            if frame.width == 0 || frame.height == 0 {
+                log::warn!("get_decoded_frame_yuv: Frame {} has invalid dimensions: {}x{}",
+                    frame_index, frame.width, frame.height);
+                return Ok(YUVFrameData {
+                    frame_index,
+                    width: frame.width,
+                    height: frame.height,
+                    bit_depth: frame.bit_depth,
+                    y_plane: String::new(),
+                    u_plane: None,
+                    v_plane: None,
+                    y_stride: frame.y_stride,
+                    u_stride: frame.u_stride,
+                    v_stride: frame.v_stride,
+                    success: false,
+                    error: Some(format!("Invalid frame dimensions: {}x{}", frame.width, frame.height)),
+                });
+            }
+
+            // Validate strides are reasonable
+            if frame.y_stride == 0 || frame.y_stride < frame.width as usize {
+                log::warn!("get_decoded_frame_yuv: Frame {} has invalid Y stride: {}",
+                    frame_index, frame.y_stride);
+                return Ok(YUVFrameData {
+                    frame_index,
+                    width: frame.width,
+                    height: frame.height,
+                    bit_depth: frame.bit_depth,
+                    y_plane: String::new(),
+                    u_plane: None,
+                    v_plane: None,
+                    y_stride: frame.y_stride,
+                    u_stride: frame.u_stride,
+                    v_stride: frame.v_stride,
+                    success: false,
+                    error: Some(format!("Invalid Y stride: {}", frame.y_stride)),
+                });
+            }
+
             // Encode YUV planes as base64
             use base64::Engine;
 
-            let y_plane = base64::engine::general_purpose::STANDARD.encode(&frame.y_plane);
-            let u_plane = frame.u_plane.as_ref().map(|p| base64::engine::general_purpose::STANDARD.encode(p));
-            let v_plane = frame.v_plane.as_ref().map(|p| base64::engine::general_purpose::STANDARD.encode(p));
+            let y_plane = base64::engine::general_purpose::STANDARD.encode(&*frame.y_plane);
+            let u_plane = frame.u_plane.as_ref().map(|p| base64::engine::general_purpose::STANDARD.encode(&**p));
+            let v_plane = frame.v_plane.as_ref().map(|p| base64::engine::general_purpose::STANDARD.encode(&**p));
 
             log::info!("get_decoded_frame_yuv: Successfully decoded YUV frame {} ({}x{}, {}bit)",
                 frame_index, frame.width, frame.height, frame.bit_depth);

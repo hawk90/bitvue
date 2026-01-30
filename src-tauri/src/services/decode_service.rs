@@ -9,6 +9,9 @@ use std::collections::{HashMap, VecDeque};
 // Import path validation from commands module
 use crate::commands::file::validate_file_path;
 
+// Import ChromaFormat from bitvue_decode
+use bitvue_decode::decoder::ChromaFormat;
+
 /// Helper macro to safely lock mutexes with proper error handling
 /// Prevents panic on mutex poisoning by returning an error instead
 macro_rules! lock_mutex {
@@ -23,6 +26,7 @@ struct CachedDecodedFrame {
     width: u32,
     height: u32,
     rgb_data: Arc<Vec<u8>>,  // Arc to avoid expensive clones
+    #[allow(dead_code)]
     cached_at: std::time::Instant,  // When this frame was cached (for LRU eviction)
 }
 
@@ -41,6 +45,7 @@ struct CachedYUVFrame {
     timestamp: i64,  // Frame timestamp from video
     frame_type: bitvue_decode::FrameType,
     qp_avg: Option<u8>,
+    #[allow(dead_code)]
     cached_at: std::time::Instant,  // When this frame was cached (for LRU eviction)
 }
 
@@ -94,6 +99,7 @@ impl DecodeService {
     }
 
     /// Set the file for decoding and cache its data
+    #[allow(dead_code)]
     pub fn set_file(&mut self, path: PathBuf, codec: String) -> Result<(), String> {
         // Clear previous cache and reset byte counter
         *lock_mutex!(self.cached_data) = None;
@@ -235,15 +241,22 @@ impl DecodeService {
                 width: cached.width,
                 height: cached.height,
                 bit_depth: cached.bit_depth,
-                y_plane: cached.y_plane.clone(),
-                u_plane: cached.u_plane.clone(),
-                v_plane: cached.v_plane.clone(),
+                y_plane: std::sync::Arc::new(cached.y_plane.clone()),
+                u_plane: cached.u_plane.clone().map(std::sync::Arc::new),
+                v_plane: cached.v_plane.clone().map(std::sync::Arc::new),
                 y_stride: cached.y_stride,
                 u_stride: cached.u_stride,
                 v_stride: cached.v_stride,
                 timestamp: cached.timestamp,
                 frame_type: cached.frame_type,
                 qp_avg: cached.qp_avg,
+                chroma_format: ChromaFormat::from_frame_data(
+                    cached.width,
+                    cached.height,
+                    cached.bit_depth,
+                    cached.u_plane.as_deref(),
+                    cached.v_plane.as_deref(),
+                ),
             });
         }
 
@@ -281,9 +294,9 @@ impl DecodeService {
             width: frame.width,
             height: frame.height,
             bit_depth: frame.bit_depth,
-            y_plane: frame.y_plane.clone(),
-            u_plane: frame.u_plane.clone(),
-            v_plane: frame.v_plane.clone(),
+            y_plane: (*frame.y_plane).clone(),
+            u_plane: frame.u_plane.as_ref().map(|p| (**p).clone()),
+            v_plane: frame.v_plane.as_ref().map(|p| (**p).clone()),
             y_stride: frame.y_stride,
             u_stride: frame.u_stride,
             v_stride: frame.v_stride,
@@ -309,8 +322,9 @@ impl DecodeService {
         let file_data = self.get_file_data_arc()?;
         match bitvue_formats::mp4::extract_av1_samples(&file_data) {
             Ok(samples) => {
-                *lock_mutex!(self.mp4_samples_cache) = Some(samples.clone());
-                Ok(Some(samples))
+                let owned_samples: Vec<Vec<u8>> = samples.into_iter().map(|cow| cow.to_vec()).collect();
+                *lock_mutex!(self.mp4_samples_cache) = Some(owned_samples.clone());
+                Ok(Some(owned_samples))
             }
             Err(_) => Ok(None), // Not an MP4 file or extraction failed
         }
@@ -336,6 +350,7 @@ impl DecodeService {
 
     /// Get cached IVF frames, or parse them if not cached
     /// Returns the parsed IVF header and frame information
+    #[allow(dead_code)]
     pub fn get_or_parse_ivf_frames(&self) -> Result<Option<(bitvue_av1::IvfHeader, Vec<bitvue_av1::IvfFrame>)>, String> {
         // Check cache first
         if let Some(frames) = lock_mutex!(self.ivf_frames_cache).as_ref() {

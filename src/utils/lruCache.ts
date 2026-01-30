@@ -324,14 +324,27 @@ export class FrameDataCache {
 
   /**
    * Estimate size of frame data entry
+   * Uses safe math to prevent integer overflow with large resolutions
    */
   private estimateEntrySize(data: Omit<FrameDataEntry, 'size'>): number {
     let size = 1000; // Base overhead
 
     if (data.decodedFrame) {
       // Estimate decoded frame size (width * height * 4 bytes for RGBA)
+      // Use safe math to prevent overflow for very large resolutions (8K+)
       const { width, height } = data;
-      size += width * height * 4;
+      // Validate inputs are non-negative numbers
+      const safeWidth = Math.max(0, Math.min(width, Number.MAX_SAFE_INTEGER));
+      const safeHeight = Math.max(0, Math.min(height, Number.MAX_SAFE_INTEGER));
+
+      // Calculate frame size with overflow protection
+      // Max reasonable frame size: 16K (15360) × 16K (15360) × 4 = ~943MB
+      const MAX_FRAME_SIZE = 1_000_000_000; // 1GB max per frame
+      const frameSize = Math.min(
+        safeWidth * safeHeight * 4,
+        MAX_FRAME_SIZE
+      );
+      size += frameSize;
     }
 
     if (data.thumbnailData) {

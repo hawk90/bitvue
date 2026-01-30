@@ -14,6 +14,7 @@ import {
   CurrentFrameProvider,
   useFrameData,
   useCurrentFrame,
+  useFileState,
 } from "./contexts/StreamDataContext";
 import { CompareProvider } from "./contexts/CompareContext";
 import { useTheme } from "./contexts/ThemeContext";
@@ -73,18 +74,24 @@ function LazyDialogWrapper({ children, fallback }: { children: React.ReactNode; 
 function App() {
   const { setTheme } = useTheme();
 
+  console.log('[App] Component mounted, theme:', typeof setTheme);
+
   // Theme changes
   useEffect(() => {
+    console.log('[App] Setting up theme change listener');
     const handleThemeChange = (e: Event) => {
       const themeEvent = e as ThemeChangeEvent;
+      console.log('[App] Theme change event:', themeEvent.detail);
       setTheme(themeEvent.detail);
     };
     window.addEventListener('menu-theme-change', handleThemeChange);
     return () => {
+      console.log('[App] Cleaning up theme change listener');
       window.removeEventListener('menu-theme-change', handleThemeChange);
     };
   }, [setTheme]);
 
+  console.log('[App] Rendering providers');
   return (
     <ModeProvider>
       <FrameDataProvider>
@@ -132,6 +139,8 @@ function AppContent() {
   } = useAppFileOperations({
     onError: showErrorDialog,
   });
+
+  console.log('[AppContent] Render:', { fileInfo, framesLength: frames.length, loading, error });
 
   // Keyboard navigation
   useKeyboardNavigation({
@@ -322,13 +331,16 @@ function AppContent() {
               {(() => {
                 // File opened successfully with frames
                 if (fileInfo?.success && frames.length > 0) {
+                  console.log('[AppContent] Showing mainContent (file loaded with frames)');
                   return mainContent;
                 }
                 // File opened but no frames (error state)
                 if (fileInfo?.success && frames.length === 0) {
+                  console.log('[AppContent] Showing noFramesError');
                   return noFramesError;
                 }
                 // No file opened (welcome screen)
+                console.log('[AppContent] Showing welcomeScreen');
                 return welcomeScreen;
               })()}
             </div>

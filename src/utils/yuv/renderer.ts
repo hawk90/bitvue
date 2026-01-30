@@ -28,51 +28,83 @@ const YUV_LOGGER = {
  * @returns ImageData object ready for canvas
  */
 export function yuvToImageData(frame: YUVFrame, colorspace: Colorspace = Colorspace.BT709): ImageData {
-  // Check cache first
-  const cached = YUVCache.get(frame, colorspace);
-  if (cached) {
-    return cached;
-  }
+  try {
+    YUV_LOGGER.debug('yuvToImageData called with frame:', {
+      width: frame.width,
+      height: frame.height,
+      yLength: frame.y?.length,
+      uLength: frame.u?.length,
+      vLength: frame.v?.length,
+      yStride: frame.yStride,
+      uStride: frame.uStride,
+      vStride: frame.vStride,
+      chromaSubsampling: frame.chromaSubsampling,
+      colorspace,
+    });
 
-  const { width, height, y, u, v, yStride, uStride } = frame;
-
-  // Create ImageData buffer
-  const imageData = new ImageData(width, height);
-  const data = imageData.data;
-
-  // Get chroma index strategy for this frame's subsampling
-  const chromaStrategy = ChromaStrategyFactory.getStrategyForFrame(frame);
-
-  // Convert each pixel
-  let outIndex = 0;
-  for (let py = 0; py < height; py++) {
-    for (let px = 0; px < width; px++) {
-      const yIndex = getYIndex(px, py, yStride);
-      const chromaIndex = chromaStrategy.getIndex(px, py, uStride);
-
-      // Validate indices before accessing arrays
-      if (yIndex >= y.length || chromaIndex >= u.length || chromaIndex >= v.length) {
-        YUV_LOGGER.warn(`Index out of bounds: yIndex=${yIndex}, chromaIndex=${chromaIndex}`);
-        // Set to black and continue
-        setPixelBlack(data, outIndex);
-        outIndex += 4;
-        continue;
-      }
-
-      const yVal = y[yIndex];
-      const uVal = u[chromaIndex];
-      const vVal = v[chromaIndex];
-
-      yuvToRgbaArray(yVal, uVal, vVal, colorspace, data, outIndex);
-
-      outIndex += 4;
+    // Validate frame has required properties
+    if (!frame.y || !frame.u || !frame.v) {
+      throw new Error('Invalid frame: missing Y, U, or V plane data');
     }
+    if (!frame.chromaSubsampling) {
+      throw new Error('Invalid frame: missing chromaSubsampling property');
+    }
+
+    // Check cache first
+    const cached = YUVCache.get(frame, colorspace);
+    if (cached) {
+      YUV_LOGGER.debug('Returning cached ImageData');
+      return cached;
+    }
+
+    const { width, height, y, u, v, yStride, uStride } = frame;
+
+    // Create ImageData buffer
+    const imageData = new ImageData(width, height);
+    const data = imageData.data;
+
+    // Get chroma index strategy for this frame's subsampling
+    const chromaStrategy = ChromaStrategyFactory.getStrategyForFrame(frame);
+    YUV_LOGGER.debug('Chroma strategy:', chromaStrategy.subsampling);
+
+      // Convert each pixel
+    let outIndex = 0;
+    for (let py = 0; py < height; py++) {
+      for (let px = 0; px < width; px++) {
+        const yIndex = getYIndex(px, py, yStride);
+        const chromaIndex = chromaStrategy.getIndex(px, py, uStride);
+
+        // Validate indices before accessing arrays
+        if (yIndex >= y.length || chromaIndex >= u.length || chromaIndex >= v.length) {
+          YUV_LOGGER.warn(`Index out of bounds: yIndex=${yIndex}, chromaIndex=${chromaIndex}`);
+          // Set to black and continue
+          setPixelBlack(data, outIndex);
+          outIndex += 4;
+          continue;
+        }
+
+        const yVal = y[yIndex];
+        const uVal = u[chromaIndex];
+        const vVal = v[chromaIndex];
+
+        yuvToRgbaArray(yVal, uVal, vVal, colorspace, data, outIndex);
+
+        outIndex += 4;
+      }
+    }
+
+    // Store in cache for future use
+    YUVCache.set(frame, colorspace, imageData);
+
+    YUV_LOGGER.debug('yuvToImageData completed successfully');
+    return imageData;
+  } catch (error) {
+    YUV_LOGGER.error('Error in yuvToImageData:', error);
+    // Return a black ImageData as fallback
+    const fallback = new ImageData(frame.width || 1, frame.height || 1);
+    fallback.data.fill(0);
+    return fallback;
   }
-
-  // Store in cache for future use
-  YUVCache.set(frame, colorspace, imageData);
-
-  return imageData;
 }
 
 /**
@@ -87,23 +119,31 @@ export function renderYUVToCanvas(
   frame: YUVFrame,
   colorspace: Colorspace = Colorspace.BT709
 ): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    YUV_LOGGER.error('Failed to get 2D context from canvas. Canvas may not be properly initialized.');
-    return;
+  try {
+    YUV_LOGGER.debug('renderYUVToCanvas called');
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      YUV_LOGGER.error('Failed to get 2D context from canvas. Canvas may not be properly initialized.');
+      return;
+    }
+
+    // Ensure canvas size matches frame
+    if (canvas.width !== frame.width || canvas.height !== frame.height) {
+      YUV_LOGGER.debug(`Resizing canvas from ${canvas.width}x${canvas.height} to ${frame.width}x${frame.height}`);
+      canvas.width = frame.width;
+      canvas.height = frame.height;
+    }
+
+    // Convert YUV to ImageData
+    const imageData = yuvToImageData(frame, colorspace);
+
+    // Render to canvas
+    ctx.putImageData(imageData, 0, 0);
+    YUV_LOGGER.debug('renderYUVToCanvas completed');
+  } catch (error) {
+    YUV_LOGGER.error('Error in renderYUVToCanvas:', error);
   }
-
-  // Ensure canvas size matches frame
-  if (canvas.width !== frame.width || canvas.height !== frame.height) {
-    canvas.width = frame.width;
-    canvas.height = frame.height;
-  }
-
-  // Convert YUV to ImageData
-  const imageData = yuvToImageData(frame, colorspace);
-
-  // Render to canvas
-  ctx.putImageData(imageData, 0, 0);
 }
 
 /**

@@ -216,18 +216,32 @@ pub async fn export_analysis_report(
     let p_frames = units.units.iter().filter(|u| u.frame_type.as_deref() == Some("P") || u.frame_type.as_deref() == Some("INTER")).count();
     let b_frames = units.units.iter().filter(|u| u.frame_type.as_deref() == Some("B")).count();
 
+    // Get total frame count once for reuse
+    let total_frames = units.units.len();
+
     writeln!(file, "Frame Type Distribution:").map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  I-Frames: {} ({:.1}%)", i_frames, (i_frames as f64 / units.units.len() as f64) * 100.0)
-        .map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  P-Frames: {} ({:.1}%)", p_frames, (p_frames as f64 / units.units.len() as f64) * 100.0)
-        .map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  B-Frames: {} ({:.1}%)", b_frames, (b_frames as f64 / units.units.len() as f64) * 100.0)
-        .map_err(|e| format!("Failed to write: {}", e))?;
+    // Guard against division by zero
+    if total_frames > 0 {
+        writeln!(file, "  I-Frames: {} ({:.1}%)", i_frames, (i_frames as f64 / total_frames as f64) * 100.0)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+        writeln!(file, "  P-Frames: {} ({:.1}%)", p_frames, (p_frames as f64 / total_frames as f64) * 100.0)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+        writeln!(file, "  B-Frames: {} ({:.1}%)", b_frames, (b_frames as f64 / total_frames as f64) * 100.0)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+    } else {
+        writeln!(file, "  I-Frames: {} (0.0%)", i_frames)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+        writeln!(file, "  P-Frames: {} (0.0%)", p_frames)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+        writeln!(file, "  B-Frames: {} (0.0%)", b_frames)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+    }
     writeln!(file).map_err(|e| format!("Failed to write: {}", e))?;
 
     // Size statistics
     let total_size: usize = units.units.iter().map(|u| u.size).sum();
-    let avg_size = total_size / units.units.len();
+    // Guard against division by zero
+    let avg_size = if total_frames > 0 { total_size / total_frames } else { 0 };
     let max_size = units.units.iter().map(|u| u.size).max().unwrap_or(0);
     let min_size = units.units.iter().map(|u| u.size).min().unwrap_or(0);
 
@@ -255,7 +269,12 @@ pub async fn export_analysis_report(
 
     if gop_starts.len() > 1 {
         let gop_sizes: Vec<usize> = gop_starts.windows(2).map(|w| w[1] - w[0]).collect();
-        let avg_gop = gop_sizes.iter().sum::<usize>() / gop_sizes.len();
+        // Guard against division by zero
+        let avg_gop = if !gop_sizes.is_empty() {
+            gop_sizes.iter().sum::<usize>() / gop_sizes.len()
+        } else {
+            0
+        };
         writeln!(file, "  Average GOP size: {}", avg_gop)
             .map_err(|e| format!("Failed to write: {}", e))?;
     }

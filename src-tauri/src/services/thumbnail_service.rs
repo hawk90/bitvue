@@ -236,7 +236,6 @@ pub fn decode_av1_thumbnails(
                 FrameType::Key => "KEY",
                 FrameType::Inter => "P",
                 FrameType::Intra => "I",
-                FrameType::Switch => "S",
             }.to_string();
 
             results.push((idx, png_base64, frame_type_str));

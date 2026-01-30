@@ -16,6 +16,7 @@
 /// # Note
 /// The resolution values in the IVF header are placeholders (1920x1080).
 /// The decoder will detect the actual resolution from the AV1 sequence header.
+#[allow(dead_code)]
 pub fn create_ivf_wrapper(sample_data: &[u8]) -> Vec<u8> {
     let mut ivf = Vec::with_capacity(32 + 12 + sample_data.len());
 

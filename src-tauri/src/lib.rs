@@ -15,18 +15,23 @@ pub fn run() {
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_store::Builder::new().build())
     .setup(|app| {
+      println!("[TAURI] Setup starting...");
       if cfg!(debug_assertions) {
+        println!("[TAURI] Initializing log plugin (debug builds only)...");
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+        println!("[TAURI] Log plugin initialized");
       }
 
+      println!("[TAURI] Setup complete, window ready");
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
       commands::greet,
+      commands::log::frontend_log,
       commands::file::open_file,
       commands::file::close_file,
       commands::file::get_stream_info,

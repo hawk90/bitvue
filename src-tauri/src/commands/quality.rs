@@ -5,54 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 use crate::commands::AppState;
-use std::path::PathBuf;
+use crate::commands::file::validate_file_path;
 use bitvue_decode::decoder::DecodeError;
-
-/// Validate file path to prevent path traversal and access to sensitive directories
-fn validate_file_path(path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(path);
-
-    // Check for path traversal attempts (.. components)
-    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return Err("Invalid path: path traversal (..) not allowed".to_string());
-    }
-
-    // Check if path exists and is a file (not a directory)
-    if !path.exists() {
-        return Err(format!("File not found: {:?}", path));
-    }
-
-    if !path.is_file() {
-        return Err(format!("Path is not a file: {:?}", path));
-    }
-
-    // Additional check: reject absolute paths to system directories
-    if path.is_absolute() {
-        let path_str = path.to_string_lossy();
-        #[cfg(unix)]
-        {
-            let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
-                "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
-            for blocked in &blocked_paths {
-                if path_str.starts_with(blocked) {
-                    return Err(format!("Cannot access system directory ({})", blocked));
-                }
-            }
-        }
-        #[cfg(windows)]
-        {
-            let path_lower = path_str.to_lowercase();
-            if path_lower.starts_with("c:\\windows")
-                || path_lower.starts_with("c:\\program files")
-                || path_lower.starts_with("c:\\program files (x86)")
-                || path_lower.starts_with("c:\\programdata") {
-                return Err("Cannot access system directories".to_string());
-            }
-        }
-    }
-
-    Ok(path)
-}
 
 /// Quality metrics for a single frame or frame pair
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +93,7 @@ fn get_cached_file_data(
 /// Helper: Decode frames for quality comparison
 ///
 /// Decodes either a subset of frames or all frames based on provided indices.
+#[allow(dead_code)]
 fn decode_frames_for_comparison(
     file_data: &[u8],
     frame_indices: &Option<Vec<usize>>,
@@ -297,6 +252,13 @@ pub async fn calculate_quality_metrics(
 ) -> Result<BatchQualityMetrics, String> {
     log::info!("calculate_quality_metrics: Comparing {} vs {}",
         reference_path, distorted_path);
+
+    // Rate limiting check (quality metrics are CPU-intensive)
+    state.rate_limiter.check_rate_limit()
+        .map_err(|wait_time| {
+            format!("Rate limited: too many requests. Please try again in {:.1}s",
+                wait_time.as_secs_f64())
+        })?;
 
     // Validate file paths for security
     let _ref_path = validate_file_path(&reference_path)?;
@@ -596,7 +558,8 @@ fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec
     }
     // Check if MKV
     else if let Ok(samples) = bitvue_formats::mkv::extract_av1_samples(file_data) {
-        decode_samples_subset(&samples, frame_indices, max_idx)
+        let cow_samples: Vec<std::borrow::Cow<'_, [u8]>> = samples.iter().map(|s| std::borrow::Cow::Borrowed(s.as_slice())).collect();
+        decode_samples_subset(&cow_samples, frame_indices, max_idx)
     }
     else {
         // Unknown format, fall back to decode_all
@@ -609,7 +572,7 @@ fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec
 /// Decodes a range of samples from an MP4/MKV container using raw OBU decoding.
 /// The decoder maintains state across samples for efficient batch decoding.
 fn decode_samples_subset(
-    samples: &[Vec<u8>],
+    samples: &[std::borrow::Cow<'_, [u8]>],
     frame_indices: &[usize],
     max_idx: usize,
 ) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
@@ -682,7 +645,8 @@ fn decode_all_frames(file_data: &[u8]) -> Result<Vec<bitvue_decode::DecodedFrame
 
     // Try MKV
     if let Ok(samples) = bitvue_formats::mkv::extract_av1_samples(file_data) {
-        return decode_samples(&samples);
+        let cow_samples: Vec<std::borrow::Cow<'_, [u8]>> = samples.iter().map(|s| std::borrow::Cow::Borrowed(s.as_slice())).collect();
+        return decode_samples(&cow_samples);
     }
 
     Err("Unsupported video format".to_string())
@@ -692,7 +656,7 @@ fn decode_all_frames(file_data: &[u8]) -> Result<Vec<bitvue_decode::DecodedFrame
 ///
 /// Uses a single decoder instance to efficiently decode all samples.
 /// This is faster than creating a new decoder for each sample.
-fn decode_samples(samples: &[Vec<u8>]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+fn decode_samples(samples: &[std::borrow::Cow<'_, [u8]>]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
     let mut decoder = bitvue_decode::Av1Decoder::new()
         .map_err(|e| format!("Failed to create decoder: {}", e))?;
 

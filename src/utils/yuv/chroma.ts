@@ -59,7 +59,7 @@ class Chroma444Strategy implements ChromaIndexStrategy {
  */
 export const ChromaStrategyFactory = {
   /** Map of subsampling types to strategy instances */
-  strategies: Record<ChromaSubsampling, ChromaIndexStrategy> = {
+  strategies: {
     '420': new Chroma420Strategy(),
     '422': new Chroma422Strategy(),
     '444': new Chroma444Strategy(),
@@ -67,14 +67,25 @@ export const ChromaStrategyFactory = {
 
   /** Get a strategy for the given subsampling type */
   getStrategy(subsampling: ChromaSubsampling): ChromaIndexStrategy {
-    return this.strategies[subsampling];
+    const strategy = this.strategies[subsampling];
+    if (!strategy) {
+      console.error('[ChromaStrategyFactory] Unknown subsampling type:', subsampling, ', defaulting to 420');
+      return this.strategies['420'];
+    }
+    console.debug('[ChromaStrategyFactory] Returning strategy for subsampling:', subsampling);
+    return strategy;
   },
 
   /** Get a strategy from a YUVFrame */
   getStrategyForFrame(frame: YUVFrame): ChromaIndexStrategy {
-    return this.getStrategy(frame.chromaSubsampling);
+    const subsampling = frame.chromaSubsampling || '420';
+    console.debug('[ChromaStrategyFactory] getStrategyForFrame:', {
+      chromaSubsampling: frame.chromaSubsampling,
+      usingSubsampling: subsampling,
+    });
+    return this.getStrategy(subsampling);
   },
-} as const;
+};
 
 /**
  * Get pixel index in Y plane

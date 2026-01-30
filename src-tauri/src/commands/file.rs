@@ -3,7 +3,7 @@
 //! Commands for opening, closing, and querying file/stream information.
 
 use std::path::PathBuf;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::commands::{AppState, FileInfo};
 use bitvue_core::{Command, Event, StreamId, UnitModel};
@@ -336,7 +336,7 @@ pub async fn get_frames(state: tauri::State<'_, AppState>) -> Result<Vec<crate::
         .filter(|u| u.frame_index.is_some())
         .map(|u| crate::commands::FrameData {
             frame_index: u.frame_index.unwrap_or(0),
-            frame_type: u.frame_type.clone().unwrap_or("UNKNOWN".to_string()),
+            frame_type: u.frame_type.as_deref().unwrap_or("UNKNOWN").to_string(),
             size: u.size,
             poc: None,
             pts: u.pts,
@@ -379,7 +379,7 @@ pub async fn get_frames_chunk(
         .filter(|u| u.frame_index.is_some())
         .map(|u| crate::commands::FrameData {
             frame_index: u.frame_index.unwrap_or(0),
-            frame_type: u.frame_type.clone().unwrap_or("UNKNOWN".to_string()),
+            frame_type: u.frame_type.as_deref().unwrap_or("UNKNOWN").to_string(),
             size: u.size,
             poc: None,
             pts: u.pts,
@@ -449,7 +449,7 @@ fn detect_codec_from_extension(ext: &str) -> String {
 }
 
 /// Convert MP4 video samples to UnitNode list
-fn mp4_samples_to_units(samples: Vec<Vec<u8>>, codec: &str) -> Vec<bitvue_core::UnitNode> {
+fn mp4_samples_to_units(samples: Vec<std::borrow::Cow<'_, [u8]>>, codec: &str) -> Vec<bitvue_core::UnitNode> {
     match codec {
         "avc" => {
             // For H.264, parse each sample to get frame type
@@ -521,18 +521,18 @@ fn vp9_samples_to_units(samples: Vec<Vec<u8>>) -> Vec<bitvue_core::UnitNode> {
                 bitvue_core::UnitNode {
                     key: bitvue_core::UnitKey {
                         stream: StreamId::A,
-                        unit_type: "FRAME".to_string(),
+                        unit_type: "FRAME".into(),
                         offset: 0,
                         size: sample_data.len(),
                     },
-                    unit_type: "FRAME".to_string(),
+                    unit_type: "FRAME".into(),
                     offset: 0,
                     size: sample_data.len(),
                     frame_index: Some(idx),
                     frame_type: None,
                     pts: None,
                     dts: None,
-                    display_name: format!("Frame {} (vp9)", idx),
+                    display_name: format!("Frame {} (vp9)", idx).into(),
                     children: Vec::new(),
                     qp_avg: None,
                     mv_grid: None,
@@ -641,18 +641,18 @@ fn create_placeholder_unit(idx: usize, codec: &str, sample_data: &[u8]) -> bitvu
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {
             stream: StreamId::A,
-            unit_type: "FRAME".to_string(),
+            unit_type: "FRAME".into(),
             offset: 0,
             size: sample_data.len(),
         },
-        unit_type: "FRAME".to_string(),
+        unit_type: "FRAME".into(),
         offset: 0,
         size: sample_data.len(),
         frame_index: Some(idx),
         frame_type: None,
         pts: None,
         dts: None,
-        display_name: format!("Frame {} ({})", idx, codec),
+        display_name: format!("Frame {} ({})", idx, codec).into(),
         children: Vec::new(),
         qp_avg: None,
         mv_grid: None,
@@ -674,18 +674,18 @@ fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
                 bitvue_core::UnitNode {
                     key: bitvue_core::UnitKey {
                         stream: StreamId::A,
-                        unit_type: "FRAME".to_string(),
+                        unit_type: "FRAME".into(),
                         offset: 0,  // IVF frames are parsed from memory; file offset not tracked
                         size: ivf_frame.size as usize,
                     },
-                    unit_type: "FRAME".to_string(),
+                    unit_type: "FRAME".into(),
                     offset: 0,  // IVF frames are parsed from memory; file offset not tracked
                     size: ivf_frame.size as usize,
                     frame_index: Some(idx),
                     frame_type: None,  // Will be determined later from parsing
                     pts: Some(ivf_frame.timestamp),
                     dts: None,
-                    display_name: format!("Frame {}", idx),
+                    display_name: format!("Frame {}", idx).into(),
                     children: Vec::new(),
                     qp_avg: None,
                     mv_grid: None,

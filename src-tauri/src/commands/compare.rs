@@ -173,7 +173,7 @@ fn parse_video_metadata(path: &Path) -> Result<Vec<FrameMetadata>, String> {
             let (_header, frames) = parse_ivf_frames(&file_data)
                 .map_err(|e| format!("Failed to parse IVF: {}", e))?;
 
-            Ok(frames.iter().enumerate().map(|(idx, frame)| {
+            Ok(frames.iter().enumerate().map(|(_idx, frame)| {
                 FrameMetadata {
                     pts: Some(frame.timestamp),
                     dts: Some(frame.timestamp),
@@ -284,7 +284,7 @@ pub async fn create_compare_workspace(
     let stream_b = FrameIndexMap::new(&frames_b);
 
     // Create alignment engine
-    let alignment = AlignmentEngine::new(&stream_a, &stream_b);
+    let _alignment = AlignmentEngine::new(&stream_a, &stream_b);
 
     // Create compare workspace
     let workspace = CompareWorkspace::new(

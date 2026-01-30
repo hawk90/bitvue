@@ -20,4 +20,4 @@
  */
 
 // Re-export everything from the new modular structure
-export * from './utils/yuv';
+export * from './yuv';
