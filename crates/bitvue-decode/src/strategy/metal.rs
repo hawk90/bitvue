@@ -19,6 +19,12 @@ use bitvue_core::limits::YUV_CHROMA_OFFSET;
 pub struct MetalStrategy;
 
 impl MetalStrategy {
+    /// Create a new Metal strategy instance
+    ///
+    /// NOTE: Public API for explicit strategy construction.
+    /// Currently unused in codebase but part of the public interface
+    /// for users who prefer explicit construction over Default::default().
+    #[allow(dead_code)]
     pub const fn new() -> Self {
         Self
     }

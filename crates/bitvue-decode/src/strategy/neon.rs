@@ -1084,6 +1084,10 @@ fn yuv_to_rgb_pixel(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
 }
 
 /// Read a 16-bit sample and normalize to 8-bit
+///
+/// NOTE: Kept for future high bit-depth support (10-bit, 12-bit video).
+/// Currently unused but will be needed when processing >8-bit content.
+#[allow(dead_code)]
 #[inline]
 fn read_sample_16bit(plane: &[u8], idx: usize, bit_depth: u8) -> i32 {
     let byte_idx = idx * 2;
@@ -1097,6 +1101,10 @@ fn read_sample_16bit(plane: &[u8], idx: usize, bit_depth: u8) -> i32 {
 }
 
 /// Read a 16-bit sample and normalize to 8-bit with given shift amount
+///
+/// NOTE: Kept for future high bit-depth support with custom shift amounts.
+/// Currently unused but provides flexibility for different bit-depth formats.
+#[allow(dead_code)]
 #[inline]
 fn read_sample_16bit_shifted(plane: &[u8], idx: usize, shift: i32) -> i32 {
     let byte_idx = idx * 2;

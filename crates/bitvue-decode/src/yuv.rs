@@ -387,6 +387,12 @@ fn read_sample(plane: &[u8], idx: usize, bit_depth: u8) -> u8 {
 /// - R = Y + 181/128 * V
 /// - G = Y - 44/128 * U - 91/128 * V
 /// - B = Y + 227/128 * U
+///
+/// NOTE: Kept for potential future use in:
+/// - Per-pixel conversion (not bulk conversion)
+/// - SIMD fallback implementation
+/// - Alternative conversion strategies
+#[allow(dead_code)]
 #[inline]
 fn yuv_to_rgb_pixel(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
     // BT.601 conversion with integer arithmetic
@@ -409,6 +415,12 @@ fn yuv_to_rgb_pixel(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
 ///
 /// This is a convenience wrapper that takes u8 values directly,
 /// subtracting 128 from U and V as needed.
+///
+/// NOTE: Kept for potential future use in:
+/// - Per-pixel conversion for non-bulk operations
+/// - Testing and verification
+/// - Alternative conversion paths
+#[allow(dead_code)]
 #[inline]
 fn yuv_to_rgb_pixel_u8(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
     let y_i = y as i32;
