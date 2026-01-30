@@ -48,11 +48,12 @@ struct CacheEntry {
 }
 
 /// Thumbnail service with LRU caching
+///
+/// THREAD SAFETY: cache and lru_queue are protected by a single mutex
+/// to prevent race conditions. Access through lock_internal() helper.
 pub struct ThumbnailService {
-    /// Cache: frame_index -> cached thumbnail
-    cache: Mutex<HashMap<usize, CacheEntry>>,
-    /// LRU tracking: frame indices in access order
-    lru_queue: Mutex<VecDeque<usize>>,
+    /// Internal state protected by mutex (cache + LRU queue)
+    state: Mutex<ThumbnailState>,
     /// Current file path (to invalidate cache on file change)
     current_file: Mutex<Option<PathBuf>>,
     /// Thumbnail width
@@ -61,12 +62,22 @@ pub struct ThumbnailService {
     pub thumb_height: u32,
 }
 
+/// Internal state protected by a single mutex for thread safety
+struct ThumbnailState {
+    /// Cache: frame_index -> cached thumbnail
+    cache: HashMap<usize, CacheEntry>,
+    /// LRU tracking: frame indices in access order
+    lru_queue: VecDeque<usize>,
+}
+
 impl ThumbnailService {
     /// Create a new thumbnail service
     pub fn new() -> Self {
         Self {
-            cache: Mutex::new(HashMap::new()),
-            lru_queue: Mutex::new(VecDeque::new()),
+            state: Mutex::new(ThumbnailState {
+                cache: HashMap::new(),
+                lru_queue: VecDeque::new(),
+            }),
             current_file: Mutex::new(None),
             thumb_width: 80,
             thumb_height: 45,
@@ -96,39 +107,41 @@ impl ThumbnailService {
 
     /// Get cached thumbnail if available
     pub fn get_cached(&self, frame_index: usize) -> Result<Option<String>, String> {
-        let mut cache = lock_mutex!(self.cache);
-        let mut lru = lock_mutex!(self.lru_queue);
+        let mut state = lock_mutex!(self.state);
 
-        if let Some(entry) = cache.get_mut(&frame_index) {
+        // Clone the data first to avoid borrow conflicts
+        let data = if let Some(entry) = state.cache.get_mut(&frame_index) {
             entry.last_accessed = std::time::Instant::now();
-
-            // Move to end of LRU queue (most recently used)
-            lru.retain(|x| *x != frame_index);
-            lru.push_back(frame_index);
-
-            Ok(Some(entry.thumbnail.data.clone()))
+            Some(entry.thumbnail.data.clone())
         } else {
-            Ok(None)
+            None
+        };
+
+        // Update LRU queue outside of the if-let
+        if data.is_some() {
+            state.lru_queue.retain(|x| *x != frame_index);
+            state.lru_queue.push_back(frame_index);
         }
+
+        Ok(data)
     }
 
     /// Cache a thumbnail
     pub fn cache_thumbnail(&self, frame_index: usize, data: String, frame_type: String) -> Result<(), String> {
-        let mut cache = lock_mutex!(self.cache);
-        let mut lru = lock_mutex!(self.lru_queue);
+        let mut state = lock_mutex!(self.state);
 
         let now = std::time::Instant::now();
 
         // Check if we need to evict
-        if cache.len() >= MAX_CACHE_SIZE && !cache.contains_key(&frame_index) {
+        if state.cache.len() >= MAX_CACHE_SIZE && !state.cache.contains_key(&frame_index) {
             // Evict least recently used
-            if let Some(lru_idx) = lru.pop_front() {
-                cache.remove(&lru_idx);
+            if let Some(lru_idx) = state.lru_queue.pop_front() {
+                state.cache.remove(&lru_idx);
             }
         }
 
         // Add/update entry
-        cache.insert(frame_index, CacheEntry {
+        state.cache.insert(frame_index, CacheEntry {
             thumbnail: CachedThumbnail {
                 data,
                 width: self.thumb_width,
@@ -140,8 +153,8 @@ impl ThumbnailService {
         });
 
         // Update LRU queue
-        lru.retain(|x| *x != frame_index);
-        lru.push_back(frame_index);
+        state.lru_queue.retain(|x| *x != frame_index);
+        state.lru_queue.push_back(frame_index);
         Ok(())
     }
 
@@ -153,24 +166,25 @@ impl ThumbnailService {
 
     /// Clear all cached thumbnails
     pub fn clear_cache(&self) -> Result<(), String> {
-        lock_mutex!(self.cache).clear();
-        lock_mutex!(self.lru_queue).clear();
+        let mut state = lock_mutex!(self.state);
+        state.cache.clear();
+        state.lru_queue.clear();
         Ok(())
     }
 
     /// Get cache statistics
     #[allow(dead_code)]
     pub fn cache_stats(&self) -> Result<(usize, usize), String> {
-        let cache = lock_mutex!(self.cache);
-        Ok((cache.len(), MAX_CACHE_SIZE))
+        let state = lock_mutex!(self.state);
+        Ok((state.cache.len(), MAX_CACHE_SIZE))
     }
 
     /// Preload thumbnails for a range of frames
     /// Returns indices that need to be generated
     #[allow(dead_code)]
     pub fn get_missing_indices(&self, indices: &[usize]) -> Result<Vec<usize>, String> {
-        let cache = lock_mutex!(self.cache);
-        Ok(indices.iter().filter(|&&idx| !cache.contains_key(&idx)).copied().collect())
+        let state = lock_mutex!(self.state);
+        Ok(indices.iter().filter(|&&idx| !state.cache.contains_key(&idx)).copied().collect())
     }
 }
 
@@ -226,10 +240,12 @@ pub fn decode_av1_thumbnails(
             let rgb_data = bitvue_decode::yuv_to_rgb(frame);
 
             // Resize to thumbnail size
-            let resized_rgb = resize_rgb(&rgb_data, frame.width, frame.height, width, height);
+            let resized_rgb = resize_rgb(&rgb_data, frame.width, frame.height, width, height)
+                .map_err(|e| format!("Failed to resize frame {}: {}", idx, e))?;
 
             // Create PNG base64 (without data: URL prefix)
-            let png_base64 = create_png_base64(&resized_rgb, width, height)?;
+            let png_base64 = create_png_base64(&resized_rgb, width, height)
+                .map_err(|e| format!("Failed to encode PNG for frame {}: {}", idx, e))?;
 
             // Convert FrameType to String
             let frame_type_str = match &frame.frame_type {
@@ -253,8 +269,41 @@ fn resize_rgb(
     src_height: u32,
     dst_width: u32,
     dst_height: u32,
-) -> Vec<u8> {
-    let mut resized = vec![0u8; (dst_width * dst_height * 3) as usize];
+) -> Result<Vec<u8>, String> {
+    // Validate dimensions are not zero
+    if dst_width == 0 || dst_height == 0 {
+        return Err("Invalid dimensions: width and height must be non-zero".to_string());
+    }
+
+    // Check for overflow in buffer size calculation
+    let output_size = dst_width
+        .checked_mul(dst_height)
+        .and_then(|v| v.checked_mul(3))
+        .ok_or_else(|| {
+            format!("Invalid dimensions: {}x{} causes integer overflow", dst_width, dst_height)
+        })?;
+
+    // Limit maximum output size to prevent DoS (100MB = ~31K x 31K image)
+    const MAX_OUTPUT_SIZE: u32 = 100 * 1024 * 1024;
+    if output_size > MAX_OUTPUT_SIZE {
+        return Err(format!(
+            "Output image too large: {}x{} ({} bytes). Maximum is 100MB.",
+            dst_width, dst_height, output_size
+        ));
+    }
+
+    let output_size = output_size as usize;
+
+    // Limit maximum reasonable dimensions
+    const MAX_DIMENSION: u32 = 32768; // 32K should be more than enough
+    if dst_width > MAX_DIMENSION || dst_height > MAX_DIMENSION {
+        return Err(format!(
+            "Dimensions too large: {}x{}. Maximum is {}x{}.",
+            dst_width, dst_height, MAX_DIMENSION, MAX_DIMENSION
+        ));
+    }
+
+    let mut resized = vec![0u8; output_size];
 
     for dy in 0..dst_height {
         for dx in 0..dst_width {
@@ -271,7 +320,7 @@ fn resize_rgb(
         }
     }
 
-    resized
+    Ok(resized)
 }
 
 /// Create PNG base64 (without data: URL prefix)

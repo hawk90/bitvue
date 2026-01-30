@@ -312,7 +312,7 @@ pub async fn create_compare_workspace(
 
 /// Get aligned frame for stream A index
 ///
-/// Returns the corresponding frame index in stream B with alignment quality.
+/// Returns the corresponding frame index in stream B with alignment.
 #[tauri::command]
 pub async fn get_aligned_frame(
     state: tauri::State<'_, AppState>,
@@ -325,9 +325,20 @@ pub async fn get_aligned_frame(
     let workspace = workspace_guard.as_ref()
         .ok_or("No compare workspace created")?;
 
+    // SECURITY: Validate frame index bounds before accessing workspace data
+    if stream_a_idx >= workspace.stream_a.frame_count {
+        return Err(format!(
+            "Frame index {} out of bounds (stream A has {} frames)",
+            stream_a_idx, workspace.stream_a.frame_count
+        ));
+    }
+
     match workspace.get_aligned_frame(stream_a_idx) {
         Some((b_idx, quality)) => Ok((b_idx, format!("{:?}", quality))),
-        None => Err("No aligned frame found".to_string()),
+        None => Err(format!(
+            "No aligned frame found for index {} (stream A has {} frames)",
+            stream_a_idx, workspace.stream_a.frame_count
+        )),
     }
 }
 

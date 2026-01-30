@@ -115,7 +115,7 @@ fn decode_frames_for_comparison(
 /// Helper: Calculate PSNR metrics for a single frame
 ///
 /// Computes PSNR for Y, U, V planes and average.
-/// Returns None if planes are not available.
+/// Returns None if planes are not available or if dimensions are invalid.
 fn calculate_frame_psnr(
     ref_frame: &bitvue_decode::DecodedFrame,
     dist_frame: &bitvue_decode::DecodedFrame,
@@ -127,6 +127,29 @@ fn calculate_frame_psnr(
         dist_frame.v_plane.as_deref()?,
     );
 
+    // Validate dimensions to prevent division by zero
+    if ref_frame.width == 0 || dist_frame.width == 0 {
+        log::warn!("calculate_frame_psnr: Invalid dimensions (width=0), returning None");
+        return None;
+    }
+
+    // Calculate chroma height with overflow protection
+    let chroma_height_ref = ref_frame.u_stride * (ref_frame.height as usize)
+        .checked_div(ref_frame.width as usize)
+        .unwrap_or_else(|| {
+            log::warn!("calculate_frame_psnr: Chroma height calculation overflow, using default");
+            ref_frame.height as usize
+        })
+        / 2;
+
+    let chroma_height_dist = dist_frame.u_stride * (dist_frame.height as usize)
+        .checked_div(dist_frame.width as usize)
+        .unwrap_or_else(|| {
+            log::warn!("calculate_frame_psnr: Chroma height calculation overflow, using default");
+            dist_frame.height as usize
+        })
+        / 2;
+
     let yuv_ref = bitvue_metrics::YuvFrame {
         y: &ref_frame.y_plane,
         u: ref_u,
@@ -134,7 +157,7 @@ fn calculate_frame_psnr(
         width: ref_frame.width as usize,
         height: ref_frame.height as usize,
         chroma_width: ref_frame.u_stride,
-        chroma_height: ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize / 2,
+        chroma_height: chroma_height_ref,
     };
 
     let yuv_dist = bitvue_metrics::YuvFrame {
@@ -144,7 +167,7 @@ fn calculate_frame_psnr(
         width: dist_frame.width as usize,
         height: dist_frame.height as usize,
         chroma_width: dist_frame.u_stride,
-        chroma_height: dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize / 2,
+        chroma_height: chroma_height_dist,
     };
 
     let (psnr_y, psnr_u, psnr_v) = bitvue_metrics::psnr_yuv(&yuv_ref, &yuv_dist).ok()?;
@@ -155,7 +178,7 @@ fn calculate_frame_psnr(
 /// Helper: Calculate SSIM metrics for a single frame
 ///
 /// Computes SSIM for Y, U, V planes and average.
-/// Returns None if planes are not available.
+/// Returns None if planes are not available or if dimensions are invalid.
 fn calculate_frame_ssim(
     ref_frame: &bitvue_decode::DecodedFrame,
     dist_frame: &bitvue_decode::DecodedFrame,
@@ -167,6 +190,29 @@ fn calculate_frame_ssim(
         dist_frame.v_plane.as_deref()?,
     );
 
+    // Validate dimensions to prevent division by zero
+    if ref_frame.width == 0 || dist_frame.width == 0 {
+        log::warn!("calculate_frame_ssim: Invalid dimensions (width=0), returning None");
+        return None;
+    }
+
+    // Calculate chroma height with overflow protection
+    let chroma_height_ref = ref_frame.u_stride * (ref_frame.height as usize)
+        .checked_div(ref_frame.width as usize)
+        .unwrap_or_else(|| {
+            log::warn!("calculate_frame_ssim: Chroma height calculation overflow, using default");
+            ref_frame.height as usize
+        })
+        / 2;
+
+    let chroma_height_dist = dist_frame.u_stride * (dist_frame.height as usize)
+        .checked_div(dist_frame.width as usize)
+        .unwrap_or_else(|| {
+            log::warn!("calculate_frame_ssim: Chroma height calculation overflow, using default");
+            dist_frame.height as usize
+        })
+        / 2;
+
     let yuv_ref = bitvue_metrics::YuvFrame {
         y: &ref_frame.y_plane,
         u: ref_u,
@@ -174,7 +220,7 @@ fn calculate_frame_ssim(
         width: ref_frame.width as usize,
         height: ref_frame.height as usize,
         chroma_width: ref_frame.u_stride,
-        chroma_height: ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize / 2,
+        chroma_height: chroma_height_ref,
     };
 
     let yuv_dist = bitvue_metrics::YuvFrame {
@@ -184,7 +230,7 @@ fn calculate_frame_ssim(
         width: dist_frame.width as usize,
         height: dist_frame.height as usize,
         chroma_width: dist_frame.u_stride,
-        chroma_height: dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize / 2,
+        chroma_height: chroma_height_dist,
     };
 
     let (ssim_y, ssim_u, ssim_v) = bitvue_metrics::ssim_yuv(&yuv_ref, &yuv_dist).ok()?;
