@@ -4,6 +4,7 @@
 //! When implemented, it will provide 8-10x speedup using the GPU.
 
 use super::{ConversionError, ConversionResult, StrategyCapabilities, YuvConversionStrategy};
+use bitvue_core::limits::YUV_CHROMA_OFFSET;
 
 /// Metal strategy - macOS GPU implementation (placeholder)
 ///
@@ -157,8 +158,8 @@ FUTURE IMPLEMENTATION PLAN:
                    uint uv_idx = (y / 2) * (width / 2) + (x / 2);
 
                    float Y = y_plane[y_idx];
-                   float U = u_plane[uv_idx] - 128.0;
-                   float V = v_plane[uv_idx] - 128.0;
+                   float U = u_plane[uv_idx] - {YUV_CHROMA_OFFSET};
+                   float V = v_plane[uv_idx] - {YUV_CHROMA_OFFSET};
 
                    float R = Y + 1.402 * V;
                    float G = Y - 0.344136 * U - 0.714136 * V;

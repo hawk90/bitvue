@@ -44,6 +44,47 @@ pub const MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
 /// AV1/OBU nesting is typically <10 levels deep.
 pub const MAX_RECURSION_DEPTH: usize = 100;
 
+/// Maximum number of grid blocks for overlay extraction
+///
+/// Prevents excessive memory allocation for grid-based overlays.
+/// For 8K (7680x4320) with 16x16 blocks: 480x270 = 129,600 blocks.
+/// Set to 512x512 = 262,144 to handle even larger resolutions.
+pub const MAX_GRID_BLOCKS: usize = 512 * 512;
+
+/// Maximum grid dimension (width or height) in blocks
+///
+/// Prevents excessive grid dimensions. For 16x16 blocks, this allows
+/// frames up to 8192x8192 pixels.
+pub const MAX_GRID_DIMENSION: u32 = 512;
+
+// ============================================================================
+// Video Processing Constants
+// ============================================================================
+
+/// Chroma (U/V) offset for YUV to RGB conversion
+///
+/// YUV uses offset range for chroma components:
+/// - U and V values are stored as 0-255
+/// - The neutral (zero) point is 128
+/// - Formula: `u_centered = u - 128`, `v_centered = v - 128`
+///
+/// This is used in BT.601, BT.709, and other color standards.
+pub const YUV_CHROMA_OFFSET: f32 = 128.0;
+
+/// Default block size for AV1 partition grid extraction
+///
+/// AV1 uses various block sizes (4x4 to 128x128), but 16x16 is commonly
+/// used for overlay visualization as it provides good balance between
+/// detail and performance.
+pub const AV1_BLOCK_SIZE: u32 = 16;
+
+/// Size of AV1 superblock in pixels
+///
+/// AV1 organizes frames into superblocks (128x128 or 64x64 depending on
+/// seq_force_screen_content_tools). This constant is used for spatial
+/// indexing optimizations.
+pub const AV1_SUPERBLOCK_SIZE: u32 = 128;
+
 /// Validate thread count is within acceptable range
 ///
 /// # Arguments

@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use bitvue_core::{
+    limits::{AV1_BLOCK_SIZE, MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     partition_grid::{PartitionGrid, PartitionType},
     BitvueError,
 };
@@ -250,9 +251,8 @@ impl PredictionModeGrid {
         let grid_h = coded_height.div_ceil(block_h);
 
         // Check for overflow in grid size calculation
-        // Max reasonable grid is 8Kx8K with 16x16 blocks = 512x512 = 262144 blocks
-        const MAX_GRID_SIZE: u32 = 512 * 512;
-        let expected_len = if grid_w > MAX_GRID_SIZE || grid_h > MAX_GRID_SIZE {
+        // Max reasonable grid is 8Kx8K with 16x16 blocks = 512x512 blocks
+        let expected_len = if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
             // Grid is too large, use modes length as-is
             modes.len()
         } else {
@@ -311,13 +311,12 @@ pub fn extract_prediction_mode_grid(
 pub fn extract_prediction_mode_grid_from_parsed(
     parsed: &ParsedFrame,
 ) -> Result<PredictionModeGrid, BitvueError> {
-    let block_w = 16u32;
-    let block_h = 16u32;
+    let block_w = AV1_BLOCK_SIZE;
+    let block_h = AV1_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_h);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
     // Check for overflow and validate grid dimensions
-    const MAX_BLOCKS: usize = 512 * 512; // Max 8Kx8K with 16x16 blocks
     let total_blocks = match grid_w.checked_mul(grid_h) {
         Some(product) => product as usize,
         None => return Err(BitvueError::Decode(
@@ -325,7 +324,7 @@ pub fn extract_prediction_mode_grid_from_parsed(
         )),
     };
 
-    if total_blocks > MAX_BLOCKS {
+    if total_blocks > MAX_GRID_BLOCKS {
         return Err(BitvueError::Decode(
             format!("Grid exceeds maximum size: {}x{} = {} blocks",
                 grid_w, grid_h, total_blocks)
@@ -527,13 +526,12 @@ pub fn extract_transform_grid(
 pub fn extract_transform_grid_from_parsed(
     parsed: &ParsedFrame,
 ) -> Result<TransformGrid, BitvueError> {
-    let block_w = 16u32;
-    let block_h = 16u32;
+    let block_w = AV1_BLOCK_SIZE;
+    let block_h = AV1_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
     // Check for overflow and validate grid dimensions
-    const MAX_BLOCKS: usize = 512 * 512; // Max 8Kx8K with 16x16 blocks
     let total_blocks = match grid_w.checked_mul(grid_h) {
         Some(product) => product as usize,
         None => return Err(BitvueError::Decode(
@@ -541,7 +539,7 @@ pub fn extract_transform_grid_from_parsed(
         )),
     };
 
-    if total_blocks > MAX_BLOCKS {
+    if total_blocks > MAX_GRID_BLOCKS {
         return Err(BitvueError::Decode(
             format!("Grid exceeds maximum size: {}x{} = {} blocks",
                 grid_w, grid_h, total_blocks)

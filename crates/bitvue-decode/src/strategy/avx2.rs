@@ -4,6 +4,7 @@
 //! compared to the scalar baseline.
 
 use super::{ConversionError, ConversionResult, StrategyCapabilities, YuvConversionStrategy};
+use bitvue_core::limits::YUV_CHROMA_OFFSET;
 use std::arch::x86_64::*;
 
 /// AVX2 strategy - x86_64 SIMD implementation
@@ -262,8 +263,8 @@ unsafe fn yuv420_to_rgb_avx2_impl(
                     let uv_i = uv_idx + (i / 2);
 
                     let y_val = y_plane[idx] as f32;
-                    let u_val = u_plane[uv_i] as f32 - 128.0;
-                    let v_val = v_plane[uv_i] as f32 - 128.0;
+                    let u_val = u_plane[uv_i] as f32 - YUV_CHROMA_OFFSET;
+                    let v_val = v_plane[uv_i] as f32 - YUV_CHROMA_OFFSET;
 
                     let (r, g, b) = yuv_to_rgb_pixel(y_val, u_val, v_val);
                     rgb[idx * 3] = r;
@@ -498,8 +499,8 @@ unsafe fn yuv422_to_rgb_avx2_impl(
                     let uv_i = uv_idx + (i / 2);
 
                     let y_val = y_plane[idx] as f32;
-                    let u_val = u_plane[uv_i] as f32 - 128.0;
-                    let v_val = v_plane[uv_i] as f32 - 128.0;
+                    let u_val = u_plane[uv_i] as f32 - YUV_CHROMA_OFFSET;
+                    let v_val = v_plane[uv_i] as f32 - YUV_CHROMA_OFFSET;
 
                     let (r, g, b) = yuv_to_rgb_pixel(y_val, u_val, v_val);
                     rgb[idx * 3] = r;
@@ -579,8 +580,8 @@ unsafe fn yuv444_to_rgb_avx2_impl(
                     let idx = y_row_start + x + i;
 
                     let y_val = y_plane[idx] as f32;
-                    let u_val = u_plane[idx] as f32 - 128.0;
-                    let v_val = v_plane[idx] as f32 - 128.0;
+                    let u_val = u_plane[idx] as f32 - YUV_CHROMA_OFFSET;
+                    let v_val = v_plane[idx] as f32 - YUV_CHROMA_OFFSET;
 
                     let (r, g, b) = yuv_to_rgb_pixel(y_val, u_val, v_val);
                     rgb[idx * 3] = r;

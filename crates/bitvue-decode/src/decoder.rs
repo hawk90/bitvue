@@ -1,6 +1,7 @@
 //! AV1 decoder wrapper using dav1d
 
 use crate::plane_utils;
+use bitvue_core::limits::{MAX_FRAME_SIZE, MAX_FRAMES_PER_FILE};
 use dav1d::{Decoder, PlanarImageComponent};
 use std::sync::Arc;
 use thiserror::Error;
@@ -374,8 +375,7 @@ impl Av1Decoder {
     fn decode_ivf(&mut self, data: &[u8]) -> Result<Vec<DecodedFrame>> {
         let (header_size, frame_count) = self.parse_ivf_header(data)?;
 
-        const MAX_FRAMES_PER_FILE: usize = 100_000;
-        let estimated_frames = frame_count.min(MAX_FRAMES_PER_FILE);
+        let estimated_frames = (frame_count as usize).min(MAX_FRAMES_PER_FILE);
         let mut decoded_frames = Vec::with_capacity(estimated_frames);
 
         let mut offset = header_size;
@@ -446,9 +446,6 @@ impl Av1Decoder {
         offset: usize,
         frame_idx: i64,
     ) -> Result<Option<(IvfFrameHeaderWithOffset, usize)>> {
-        const MAX_FRAMES_PER_FILE: usize = 100_000;
-        const MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
-
         if frame_idx >= MAX_FRAMES_PER_FILE as i64 {
             return Err(DecodeError::Decode(
                 "IVF file contains too many frames".to_string()
