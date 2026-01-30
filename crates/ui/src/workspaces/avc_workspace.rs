@@ -126,6 +126,25 @@ pub enum AvcMbType {
 }
 
 impl AvcMbType {
+    /// Returns true if this is an inter (P or B) macroblock
+    fn is_inter(&self) -> bool {
+        matches!(
+            self,
+            Self::PSkip
+                | Self::P16x16
+                | Self::P16x8
+                | Self::P8x16
+                | Self::P8x8
+                | Self::P8x8ref0
+                | Self::BDirect16x16
+                | Self::B16x16
+                | Self::B16x8
+                | Self::B8x16
+                | Self::B8x8
+                | Self::BSkip
+        )
+    }
+
     fn color(&self) -> Color32 {
         match self {
             AvcMbType::I4x4 => colors::INTRA_4X4,
@@ -1213,6 +1232,7 @@ impl ViewRenderer for AvcOverviewRenderer {
                 AvcWorkspace::feature_badge(ui, "Weighted Pred", self.features.weighted_pred);
                 AvcWorkspace::feature_badge(ui, "Weighted Bipred", self.features.weighted_bipred);
                 AvcWorkspace::feature_badge(
+                    ui,
                     "Direct 8x8",
                     self.features.direct_8x8_inference,
                 );
