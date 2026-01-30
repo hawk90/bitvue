@@ -249,20 +249,30 @@ impl FilmstripPanel {
             self.view_mode
         );
 
-        // Clone frames to avoid borrow conflicts (cached_frames is already optimized, clone is cheap)
-        let frames = self.cached_frames.clone();
+        // PERFORMANCE OPTIMIZATION: Pre-generate thumbnails before rendering
+        // This avoids holding both mutable and immutable borrows simultaneously.
+        // We collect frame indices that need thumbnails, generate them all at once,
+        // then use immutable references during rendering.
+        let frame_indices: Vec<usize> = self.cached_frames.iter().map(|f| f.frame_index).collect();
+        for &frame_index in &frame_indices {
+            self.ensure_thumbnail(ctx, frame_index, frames_cache);
+        }
 
-        // Get selected frame index
+        // Get selected frame index (before creating frames reference)
         let selected_frame_index = selection
             .unit
             .as_ref()
-            .and_then(|uk| frames.iter().find(|f| f.offset == uk.offset))
+            .and_then(|uk| self.cached_frames.iter().find(|f| f.offset == uk.offset))
             .map(|f| f.frame_index);
 
         // Header with playback controls, frame count, view mode toggles (VQAnalyzer parity)
         ui.horizontal(|ui| {
             // Playback controls (VQAnalyzer parity - integrated into Filmstrip)
             ui.label(egui::RichText::new("Play:").small());
+
+            // Local scope for frames reference (dropped after this block)
+            let frames = &self.cached_frames;
+
             if ui
                 .small_button("⏮")
                 .on_hover_text("First frame (Home)")
@@ -385,6 +395,9 @@ impl FilmstripPanel {
         // Dispatch based on view mode (VQAnalyzer parity)
         match self.view_mode {
             FilmstripViewMode::Thumbnails => {
+                // Local scope for frames reference (dropped after this block)
+                let frames = &self.cached_frames;
+
                 // Horizontal scroll area for thumbnails
                 let scroll_output = egui::ScrollArea::horizontal()
                     .auto_shrink([false, false])
@@ -393,8 +406,7 @@ impl FilmstripPanel {
                             for frame in frames.iter() {
                                 let is_selected = selected_frame_index == Some(frame.frame_index);
 
-                                // Generate/load thumbnail and get texture ID
-                                self.ensure_thumbnail(ctx, frame.frame_index, frames_cache);
+                                // Get texture ID (thumbnails were pre-generated above)
                                 let texture_id =
                                     self.textures.get(&frame.frame_index).map(|t| t.id());
 
@@ -412,22 +424,30 @@ impl FilmstripPanel {
                 if self.show_ref_arrows && frames.len() > 1 {
                     self.render_reference_arrows(
                         ui,
-                        &frames,
+                        frames,
                         thumb_total_width,
                         scroll_output.state.offset.x,
                     );
                 }
             }
             FilmstripViewMode::FrameSizes => {
+                // Clone needed here because render_frame_sizes_view needs &mut self
+                let frames = self.cached_frames.clone();
                 result_command = self.render_frame_sizes_view(ui, &frames, selected_frame_index);
             }
             FilmstripViewMode::BPyramid => {
+                // Clone needed here because render_bpyramid_view needs &mut self
+                let frames = self.cached_frames.clone();
                 result_command = self.render_bpyramid_view(ui, &frames, selected_frame_index);
             }
             FilmstripViewMode::HrdBuffer => {
+                // Clone needed here because render_hrd_buffer_view needs &mut self
+                let frames = self.cached_frames.clone();
                 result_command = self.render_hrd_buffer_view(ui, &frames, selected_frame_index);
             }
             FilmstripViewMode::Enhanced => {
+                // Clone needed here because render_enhanced_view needs &mut self
+                let frames = self.cached_frames.clone();
                 result_command = self.render_enhanced_view(ui, &frames, selected_frame_index);
             }
         }
