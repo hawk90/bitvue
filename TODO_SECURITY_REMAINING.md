@@ -1,8 +1,8 @@
 # Security Issues - Remaining TODO
 
 ## Summary
-- **Status**: 10 CRITICAL/HIGH issues fixed ✅
-- **Remaining**: 6 issues (4 MEDIUM, 2 LOW)
+- **Status**: 11 CRITICAL/HIGH issues fixed ✅
+- **Remaining**: 5 issues (3 MEDIUM, 2 LOW)
 - **Priority**: Address MEDIUM issues before release
 
 ---
@@ -121,21 +121,14 @@ cargo update
 
 ---
 
-### 7. Debug Assertions in Release
-**Risk**: Important checks only run in debug builds
-**Locations**:
-- `debug_assert!()` calls that should be `assert!()`
-- Validation skipped in release mode
+### 7. Debug Assertions in Release ✅
+**Status**: Reviewed - all debug_assert! calls are appropriate
 
-**Fix**:
-```rust
-// Change critical debug_assert! to assert!
-debug_assert!(offset < data.len()); // ❌
-assert!(offset < data.len());       // ✅
-```
-
-**Estimated effort**: 1-2 hours
-**Impact**: Better release build safety
+**Audit results**:
+- partition.rs: 2 debug_assert_eq! in constructors validate invariants
+- Getters use safe .get() bounds checking, no panic risk in release
+- bitvue-log: cfg!(debug_assertions) used correctly for compile-time checks
+- No critical validation skipped in release mode
 
 ---
 
@@ -154,7 +147,7 @@ assert!(offset < data.len());       // ✅
 
 ---
 
-### 7. Fuzzing Test Coverage
+### 6. Documentation of Security Assumptions
 **Risk**: Parser bugs not caught by unit tests
 **Action Required**:
 - Add cargo-fuzz targets for:
@@ -184,15 +177,14 @@ For each fix:
 
 ## Priority Order
 
-1. **#5 - Debug assertions** (simple audit, good safety)
-2. **#4 - Error message leakage** (review and sanitize)
-3. **#6 - Input validation** (comprehensive testing)
-4. **#7 - Documentation** (ongoing)
-5. **#8 - Fuzzing** (long-term investment)
+1. **#4 - Error message leakage** (review and sanitize)
+2. **#6 - Input validation** (comprehensive testing)
+3. **#7 - Documentation** (ongoing)
+4. **#8 - Fuzzing** (long-term investment)
 
 ---
 
-## Completed (10 issues) ✅
+## Completed (11 issues) ✅
 
 1. ✅ Mutex poisoning panics (vvdec.rs)
 2. ✅ Unbounded timeout loops (vvdec.rs)
@@ -204,3 +196,4 @@ For each fix:
 8. ✅ Unchecked slice indexing - Audit complete, all access bounds-checked
 9. ✅ Panic in error paths - Fixed rgb_to_image, reviewed all unwrap/expect
 10. ✅ Resource limits validation - Added cache size limit, reviewed all limits
+11. ✅ Debug assertions in release - Reviewed, all usage appropriate
