@@ -36,6 +36,14 @@ const EC_WIN_SIZE: usize = std::mem::size_of::<usize>() * 8;
 /// Initial range value
 const INITIAL_RANGE: u32 = 0x8000;
 
+/// Arithmetic decoder invariants
+/// Per AV1 spec and rav1d implementation:
+/// - cnt must stay in range [-31, 16] (allows room for refill and renormalize)
+/// - value must be in range [0, EC_WIN_SIZE)
+/// - range must be in range [256, 65536] (2^8 to 2^16)
+const MIN_CNT: i32 = -31;
+const MAX_CNT: i32 = EC_WIN_SIZE as i32; // Maximum when fully refilled
+
 /// Arithmetic decoder state
 ///
 /// Implements daala entropy coder for AV1.
@@ -203,7 +211,18 @@ impl<'a> ArithmeticDecoder<'a> {
         // This brings the MSB of range to bit position 15
         let d = (self.range.leading_zeros() as i32) - 16;
 
+        // Validate cnt invariant before decrement
+        debug_assert!(self.cnt >= MIN_CNT, "cnt below minimum before renormalize");
+
         if d > 0 {
+            // Validate decrement won't underflow cnt
+            if self.cnt - d < MIN_CNT {
+                return Err(BitvueError::InvalidData(format!(
+                    "Arithmetic decoder cnt underflow: {} - {} < {} (MIN_CNT)",
+                    self.cnt, d, MIN_CNT
+                )));
+            }
+
             // Shift range and value left by d bits
             self.range <<= d;
             self.value <<= d;
@@ -215,6 +234,9 @@ impl<'a> ArithmeticDecoder<'a> {
             }
         }
 
+        // Validate cnt invariant after renormalize
+        debug_assert!(self.cnt <= MAX_CNT, "cnt above maximum after renormalize");
+
         Ok(())
     }
 
@@ -222,10 +244,29 @@ impl<'a> ArithmeticDecoder<'a> {
     ///
     /// Following rav1d/dav1d refill logic.
     /// Reads bytes from bitstream and shifts them into value window.
+    ///
+    /// # Invariants
+    ///
+    /// - cnt must be in range [MIN_CNT, MAX_CNT] before calling
+    /// - c calculation must not underflow (validated below)
+    /// - value must stay in range [0, EC_WIN_SIZE]
     fn refill(&mut self) -> Result<()> {
+        // Validate cnt invariant before refill
+        debug_assert!(self.cnt >= MIN_CNT, "cnt below minimum before refill");
+
         // Calculate bit position to insert next byte
         // c = EC_WIN_SIZE - cnt - 24
         let mut c = (EC_WIN_SIZE as i32) - self.cnt - 24;
+
+        // Validate c is non-negative (no underflow in calculation)
+        // If cnt becomes very negative, this could underflow
+        if c < 0 {
+            return Err(BitvueError::InvalidData(format!(
+                "Arithmetic decoder cnt underflow detected during refill: cnt={}, would require c={}",
+                self.cnt, c
+            )));
+        }
+
         let mut value = self.value;
 
         loop {
@@ -252,6 +293,10 @@ impl<'a> ArithmeticDecoder<'a> {
 
         self.value = value;
         self.cnt = (EC_WIN_SIZE as i32) - c - 24;
+
+        // Validate cnt invariant after refill
+        debug_assert!(self.cnt <= MAX_CNT, "cnt above maximum after refill");
+
         Ok(())
     }
 
