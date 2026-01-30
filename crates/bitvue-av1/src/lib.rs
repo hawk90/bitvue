@@ -32,6 +32,7 @@ pub mod sequence;
 pub mod symbol;
 pub mod syntax_parser;
 pub mod tile;
+pub mod types;
 
 // Re-export main types
 pub use bitreader::BitReader;
@@ -64,6 +65,7 @@ pub use tile::{
     partition_tree_to_grid, BlockSize, CodingUnit, MotionVector, PartitionNode, PartitionType,
     PredictionMode, RefFrame, Superblock, SuperblockSize, Tile, TileGroup, TileInfo,
 };
+pub use types::Qp;
 
 /// Parses an AV1 bitstream and returns basic information
 ///
