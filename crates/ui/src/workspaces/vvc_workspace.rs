@@ -14,7 +14,8 @@ mod colors {
     use egui::Color32;
 
     pub const BACKGROUND: Color32 = Color32::from_rgb(250, 250, 250);
-    pub const PANEL_BG: Color32 = Color32::from_rgb(245, 245, 248);
+    #[allow(dead_code)]
+    pub const _PANEL_BG: Color32 = Color32::from_rgb(245, 245, 248);
     pub const GRID: Color32 = Color32::from_rgb(220, 220, 220);
     pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(40, 40, 40);
     pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(100, 100, 100);
@@ -22,7 +23,8 @@ mod colors {
     // Dual Tree colors
     pub const LUMA_TREE: Color32 = Color32::from_rgb(30, 144, 255); // Dodger blue
     pub const CHROMA_TREE: Color32 = Color32::from_rgb(255, 140, 0); // Orange
-    pub const JOINT_TREE: Color32 = Color32::from_rgb(50, 205, 50); // Lime green
+    #[allow(dead_code)]
+    pub const _JOINT_TREE: Color32 = Color32::from_rgb(50, 205, 50); // Lime green
 
     // Partition colors (VVC QTMT)
     pub const QUAD_SPLIT: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
@@ -139,10 +141,10 @@ pub struct VvcWorkspace {
     dual_tree_mode: DualTreeMode,
 
     /// Show partition boundaries
-    show_partitions: bool,
+    _show_partitions: bool,
 
     /// Show prediction modes
-    show_predictions: bool,
+    _show_predictions: bool,
 
     /// VVC feature status
     features: VvcFeatureStatus,
@@ -151,7 +153,7 @@ pub struct VvcWorkspace {
     mock_partitions: Vec<PartitionNode>,
 
     /// Selected block index
-    selected_block: Option<usize>,
+    _selected_block: Option<usize>,
 
     /// Zoom level
     zoom: f32,
@@ -186,8 +188,8 @@ impl VvcWorkspace {
         Self {
             active_view: VvcView::Overview,
             dual_tree_mode: DualTreeMode::Joint,
-            show_partitions: true,
-            show_predictions: true,
+            _show_partitions: true,
+            _show_predictions: true,
             features: VvcFeatureStatus {
                 dual_tree_enabled: true,
                 alf_enabled: true,
@@ -201,7 +203,7 @@ impl VvcWorkspace {
                 sbt_enabled: true,
             },
             mock_partitions: Vec::new(),
-            selected_block: None,
+            _selected_block: None,
             zoom: 1.0,
             mock_data_initialized: false,
         }

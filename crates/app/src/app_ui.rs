@@ -10,7 +10,7 @@ use eframe::egui;
 ///
 /// Success/info messages are shown in status bar only (non-intrusive)
 pub fn render_toasts(ctx: &egui::Context, notifications: &mut NotificationManager) -> (bool, bool) {
-    let mut dismiss_success = false;
+    let dismiss_success = false;
     let mut dismiss_error = false;
 
     // Success messages now shown only in status bar (non-intrusive)

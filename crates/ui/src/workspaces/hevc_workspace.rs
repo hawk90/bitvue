@@ -18,7 +18,8 @@ mod colors {
     pub const CTU_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0); // Orange
     pub const CU_BOUNDARY: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
     pub const TU_BOUNDARY: Color32 = Color32::from_rgb(144, 238, 144); // Light green
-    pub const PU_BOUNDARY: Color32 = Color32::from_rgb(255, 182, 193); // Light pink
+    #[allow(dead_code)]
+    pub const _PU_BOUNDARY: Color32 = Color32::from_rgb(255, 182, 193); // Light pink
 
     // Prediction mode colors
     pub const INTRA_PLANAR: Color32 = Color32::from_rgb(255, 215, 0); // Gold

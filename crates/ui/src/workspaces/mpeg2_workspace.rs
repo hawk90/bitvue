@@ -29,7 +29,8 @@ mod colors {
 
     // Structure colors
     pub const MB_BOUNDARY: Color32 = Color32::from_rgb(255, 128, 0); // Orange
-    pub const SLICE_BOUNDARY: Color32 = Color32::from_rgb(255, 255, 0); // Yellow
+    #[allow(dead_code)]
+    pub const _SLICE_BOUNDARY: Color32 = Color32::from_rgb(255, 255, 0); // Yellow
     pub const DCT_BLOCK: Color32 = Color32::from_rgb(144, 238, 144); // Light green
 }
 
@@ -67,7 +68,8 @@ pub enum Mpeg2PictureType {
 }
 
 impl Mpeg2PictureType {
-    fn from_u8(value: u8) -> Self {
+    #[allow(dead_code)]
+    fn _from_u8(value: u8) -> Self {
         match value {
             1 => Mpeg2PictureType::I,
             2 => Mpeg2PictureType::P,

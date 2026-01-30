@@ -75,7 +75,7 @@ impl DecodeWorker {
     fn worker_loop(
         request_rx: Receiver<DecodeRequest>,
         result_tx: Sender<DecodeResult>,
-        request_ids: Arc<[AtomicU64; 2]>,
+        _request_ids: Arc<[AtomicU64; 2]>,
     ) {
         tracing::info!("Decode worker started");
 

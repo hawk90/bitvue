@@ -65,10 +65,10 @@ struct FrameInfo {
     size: usize,
     /// POC (Picture Order Count) - uses frame_index if not available
     poc: i32,
-    /// Display order index
-    display_order: usize,
-    /// Decode order index
-    decode_order: usize,
+    /// Display order index (for future use)
+    _display_order: usize,
+    /// Decode order index (for future use)
+    _decode_order: usize,
     /// NAL unit type name (e.g., "TRAIL_N", "IDR_W_RADL")
     nal_type: String,
     /// PTS (Presentation Timestamp) if available

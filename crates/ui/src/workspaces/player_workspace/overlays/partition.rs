@@ -6,7 +6,8 @@
 /// Implementation of partition overlay drawing
 impl super::super::PlayerWorkspace {
     /// Recursively partition a block into smaller blocks
-    fn recursively_partition(
+    #[allow(dead_code)]
+    fn _recursively_partition(
         grid: &mut bitvue_core::PartitionGrid,
         x: u32,
         y: u32,
@@ -32,10 +33,10 @@ impl super::super::PlayerWorkspace {
             let half_w = w / 2;
             let half_h = h / 2;
 
-            Self::recursively_partition(grid, x, y, half_w, half_h, depth + 1);
-            Self::recursively_partition(grid, x + half_w, y, w - half_w, half_h, depth + 1);
-            Self::recursively_partition(grid, x, y + half_h, half_w, h - half_h, depth + 1);
-            Self::recursively_partition(
+            Self::_recursively_partition(grid, x, y, half_w, half_h, depth + 1);
+            Self::_recursively_partition(grid, x + half_w, y, w - half_w, half_h, depth + 1);
+            Self::_recursively_partition(grid, x, y + half_h, half_w, h - half_h, depth + 1);
+            Self::_recursively_partition(
                 grid,
                 x + half_w,
                 y + half_h,
@@ -48,7 +49,8 @@ impl super::super::PlayerWorkspace {
 
     /// Create mock partition grid with hierarchical/nested blocks
     /// Per PARTITION_GRID_IMPLEMENTATION_SPEC.md §1
-    fn create_mock_partition_grid(width: u32, height: u32) -> bitvue_core::PartitionGrid {
+    #[allow(dead_code)]
+    fn _create_mock_partition_grid(width: u32, height: u32) -> bitvue_core::PartitionGrid {
         use bitvue_core::partition_grid::PartitionGrid;
 
         let sb_size = 64;
@@ -59,7 +61,7 @@ impl super::super::PlayerWorkspace {
         for sb_y in (0..height).step_by(sb_size as usize) {
             for sb_x in (0..width).step_by(sb_size as usize) {
                 // Each superblock gets recursively partitioned
-                Self::recursively_partition(
+                Self::_recursively_partition(
                     &mut grid,
                     sb_x,
                     sb_y,
@@ -79,7 +81,8 @@ impl super::super::PlayerWorkspace {
 
     /// Create mock partition data for testing (uniform grid)
     /// Per PARTITION_GRID_IMPLEMENTATION_SPEC.md §1
-    fn create_mock_partition_data(width: u32, height: u32) -> bitvue_core::PartitionData {
+    #[allow(dead_code)]
+    fn _create_mock_partition_data(width: u32, height: u32) -> bitvue_core::PartitionData {
         // Use 8x8 leaf blocks for AV1
         let leaf_block_w = 8;
         let leaf_block_h = 8;

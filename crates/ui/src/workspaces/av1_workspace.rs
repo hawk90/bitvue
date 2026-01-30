@@ -37,8 +37,10 @@ mod colors {
     pub const BLOCK_BOUNDARY: Color32 = Color32::from_rgb(100, 149, 237); // Cornflower blue
 
     // CDEF colors
-    pub const CDEF_PRIMARY: Color32 = Color32::from_rgb(64, 224, 208); // Turquoise
-    pub const CDEF_SECONDARY: Color32 = Color32::from_rgb(255, 182, 193); // Light pink
+    #[allow(dead_code)]
+    pub const _CDEF_PRIMARY: Color32 = Color32::from_rgb(64, 224, 208); // Turquoise
+    #[allow(dead_code)]
+    pub const _CDEF_SECONDARY: Color32 = Color32::from_rgb(255, 182, 193); // Light pink
 
     // Film grain
     pub const FILM_GRAIN: Color32 = Color32::from_rgb(210, 180, 140); // Tan

@@ -1,16 +1,10 @@
 //! UI panel and component handlers for BitvueApp
 
-use crate::app_ui_menus::BitvueAppMenus;
 use crate::bitvue_app::BitvueApp;
-use crate::helpers::{
-    count_frames, find_first_frame, find_frame_by_index, find_unit_by_key,
-    find_unit_by_key_with_index, get_current_frame_index, get_memory_usage_mb,
-};
-use crate::panel_tab::FrameNavRequest;
+use crate::helpers::find_unit_by_key_with_index;
 use bitvue_core::{Command, StreamId};
 use eframe::egui;
 use std::sync::Arc;
-use ui::OverlayType;
 
 /// UI panel/component methods
 pub trait BitvueAppPanels {

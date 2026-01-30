@@ -3,7 +3,6 @@
 //! Handles layout persistence, recent files tracking, and configuration directory management.
 
 use bitvue_core::BitvueError;
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Get the configuration directory (~/.bitvue)

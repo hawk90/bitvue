@@ -113,8 +113,8 @@ fn collect_frame_info_recursive(
                 poc: frame_index as i32,
                 // VQAnalyzer parity: decode_order vs display_order
                 // In real impl, these come from PTS/DTS or POC
-                decode_order: frame_index,  // Decode order = stream order
-                display_order: frame_index, // Display order = POC order (simplified)
+                _decode_order: frame_index,  // Decode order = stream order
+                _display_order: frame_index, // Display order = POC order (simplified)
                 nal_type,
                 pts: unit.pts,
                 dts: unit.dts,

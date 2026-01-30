@@ -247,7 +247,8 @@ pub enum Intra16x16Mode {
 }
 
 impl Intra16x16Mode {
-    fn label(&self) -> &'static str {
+    #[allow(dead_code)]
+    fn _label(&self) -> &'static str {
         match self {
             Intra16x16Mode::Vertical => "Vertical",
             Intra16x16Mode::Horizontal => "Horizontal",
@@ -322,7 +323,7 @@ pub struct AvcWorkspace {
     show_sub_mb: bool,
 
     /// Show transform blocks
-    show_transform: bool,
+    _show_transform: bool,
 
     /// Show prediction modes
     show_pred_modes: bool,
@@ -366,7 +367,7 @@ impl AvcWorkspace {
             active_view: AvcView::default(),
             show_mb_grid: true,
             show_sub_mb: false,
-            show_transform: false,
+            _show_transform: false,
             show_pred_modes: true,
             show_deblocking: false,
             features: AvcFeatureStatus::default(),

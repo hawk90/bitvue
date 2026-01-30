@@ -699,10 +699,10 @@ impl BitvueAppMenus for BitvueApp {
 
                 if ui.button("Syntax Tree (JSON)").clicked() {
                     tracing::info!("Export menu: Syntax Tree (JSON) clicked");
-                    let stream_a = self.core.get_stream(StreamId::A);
+                    let stream_a = self.core.get_stream(bitvue_core::StreamId::A);
                     let state = stream_a.read();
 
-                    if let Some(ref syntax) = state.syntax {
+                    if state.syntax.is_some() {
                         if let Some(path) = rfd::FileDialog::new()
                             .set_file_name("syntax.json")
                             .add_filter("JSON Files", &["json"])

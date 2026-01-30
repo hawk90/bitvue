@@ -432,8 +432,8 @@ impl From<&Command> for Option<CacheKey> {
 pub struct CachingHandler {
     /// Cache storage
     cache: Arc<std::sync::Mutex<lru::LruCache<CacheKey, Command>>>,
-    /// Maximum cache size
-    max_cache_size: usize,
+    /// Maximum cache size (stored for potential future use)
+    _max_cache_size: usize,
 }
 
 impl CachingHandler {
@@ -443,7 +443,7 @@ impl CachingHandler {
             cache: Arc::new(std::sync::Mutex::new(lru::LruCache::new(
                 std::num::NonZeroUsize::new(max_cache_size).unwrap(),
             ))),
-            max_cache_size,
+            _max_cache_size: max_cache_size,
         }
     }
 
@@ -546,30 +546,32 @@ impl CommandHandler for ThrottlingHandler {
 /// Retries failed commands with exponential backoff
 #[derive(Debug, Clone)]
 pub struct RetryHandler {
-    /// Maximum number of retries
-    max_retries: usize,
-    /// Base delay for retries (in ms)
-    base_delay_ms: u64,
+    /// Maximum number of retries (for future use)
+    _max_retries: usize,
+    /// Base delay for retries (in ms) (for future use)
+    _base_delay_ms: u64,
 }
 
 impl RetryHandler {
     /// Create a new retry handler
     pub fn new(max_retries: usize, base_delay_ms: u64) -> Self {
         Self {
-            max_retries,
-            base_delay_ms,
+            _max_retries: max_retries,
+            _base_delay_ms: base_delay_ms,
         }
     }
 
-    /// Calculate retry delay with exponential backoff
-    fn retry_delay(&self, attempt: usize) -> std::time::Duration {
-        let delay_ms = self.base_delay_ms * 2_u64.pow(attempt as u32);
+    /// Calculate retry delay with exponential backoff (for future use)
+    #[allow(dead_code)]
+    fn _retry_delay(&self, attempt: usize) -> std::time::Duration {
+        let delay_ms = self._base_delay_ms * 2_u64.pow(attempt as u32);
         std::time::Duration::from_millis(delay_ms)
     }
 
-    /// Check if command should be retried
-    fn should_retry(&self, command: &Command, attempt: usize) -> bool {
-        if attempt >= self.max_retries {
+    /// Check if command should be retried (for future use)
+    #[allow(dead_code)]
+    fn _should_retry(&self, command: &Command, attempt: usize) -> bool {
+        if attempt >= self._max_retries {
             return false;
         }
 
@@ -813,6 +815,7 @@ mod lru {
             self.map.get(key)
         }
 
+        #[allow(dead_code)]
         pub fn put(&mut self, key: K, value: V) {
             if self.map.len() >= self.capacity.get() {
                 if let Some(old_key) = self.order.first() {

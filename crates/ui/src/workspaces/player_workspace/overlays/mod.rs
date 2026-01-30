@@ -16,6 +16,7 @@ mod partition;
 pub use labels::find_unit_by_offset;
 
 /// Overlay rendering context - holds shared references needed by all overlay functions
+#[allow(dead_code)]
 pub struct OverlayRenderContext<'a> {
     pub overlays: &'a crate::workspaces::overlays::OverlayManager,
     pub frame_size: Option<(u32, u32)>,

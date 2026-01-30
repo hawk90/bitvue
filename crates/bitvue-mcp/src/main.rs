@@ -31,7 +31,8 @@ impl AppState {
 /// MCP Request
 #[derive(Debug, Deserialize)]
 struct McpRequest {
-    jsonrpc: String,
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
     id: Value,
     method: String,
     params: Option<Value>,
