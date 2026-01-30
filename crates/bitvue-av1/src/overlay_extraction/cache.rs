@@ -95,7 +95,11 @@ where
 
         // Pseudo-random eviction: remove first N keys from iterator
         // HashMap doesn't preserve order, so this gives a random sampling
-        let keys_to_remove: Vec<_> = cache.keys().take(remove_count).copied().collect();
+        // Pre-allocate Vec to avoid reallocation ( eviction count is known)
+        let mut keys_to_remove = Vec::with_capacity(remove_count);
+        for key in cache.keys().take(remove_count) {
+            keys_to_remove.push(*key);
+        }
         for key in keys_to_remove {
             cache.remove(&key);
         }

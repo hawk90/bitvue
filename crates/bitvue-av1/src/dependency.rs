@@ -187,7 +187,9 @@ pub fn extract_required_obus(
     }
 
     // Convert to sorted vector
-    let mut obu_indices: Vec<usize> = required_obu_indices.into_iter().collect();
+    // Pre-allocate with known capacity to avoid reallocation
+    let mut obu_indices = Vec::with_capacity(required_obu_indices.len());
+    obu_indices.extend(required_obu_indices);
     obu_indices.sort_unstable();
 
     // Count frames and estimate size
