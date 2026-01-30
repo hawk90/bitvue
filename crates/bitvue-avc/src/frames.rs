@@ -216,18 +216,16 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
     }
 
     // Build NAL unit ranges (start, end) by pairing positions
-    let mut nal_ranges: Vec<(usize, usize)> = Vec::new();
-    for i in 0..nal_positions.len() {
-        let start = nal_positions[i];
-        let end = if i + 1 < nal_positions.len() {
-            nal_positions[i + 1]
-        } else {
-            data.len()
-        };
-        // Adjust for start code (include start code in range)
-        let adjusted_start = if start >= 4 { start - 4 } else { 0 };
-        nal_ranges.push((adjusted_start, end));
-    }
+    // OPTIMIZATION: Use iterator chain instead of manual indexing for better performance
+    let nal_ranges: Vec<(usize, usize)> = nal_positions
+        .iter()
+        .zip(nal_positions.iter().skip(1).chain(std::iter::once(&data.len())))
+        .map(|(&start, &end)| {
+            // Adjust for start code (include start code in range)
+            let adjusted_start = if start >= 4 { start - 4 } else { 0 };
+            (adjusted_start, end)
+        })
+        .collect();
 
     let mut frames = Vec::new();
     let mut current_frame_nals: Vec<(usize, usize)> = Vec::new();
@@ -293,6 +291,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
 
             if new_frame && !current_frame_nals.is_empty() {
                 // Finalize previous frame
+                // OPTIMIZATION: Use take() to move the Option instead of cloning
+                let slice_header = current_slice_header.take();
                 if let Some(frame) = build_frame_from_nals(
                     current_frame_index,
                     &current_frame_nals,
@@ -302,7 +302,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_is_idr,
                     current_is_ref,
                     current_frame_type,
-                    current_slice_header.clone(),
+                    slice_header,
                 ) {
                     frames.push(frame);
                 }
@@ -324,11 +324,12 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
             ) {
                 if current_frame_nals.is_empty() {
                     current_frame_num = Some(slice.frame_num);
-                    current_slice_header = Some(slice.clone());
+                    // OPTIMIZATION: Move the slice instead of cloning since we own it
+                    current_slice_header = Some(slice);
+                } else {
+                    // Determine frame type from slice type without storing the header
+                    current_frame_type = AvcFrameType::from_slice_type(slice.slice_type);
                 }
-
-                // Determine frame type from slice type
-                current_frame_type = AvcFrameType::from_slice_type(slice.slice_type);
             }
 
             current_frame_nals.push((nal_start, nal_end));
@@ -336,6 +337,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
             // Non-VCL NAL after some VCL NALs
             if nal_type == NalUnitType::Aud {
                 // AUD definitely ends the current frame
+                // OPTIMIZATION: Use take() to move the Option instead of cloning
+                let slice_header = current_slice_header.take();
                 if let Some(frame) = build_frame_from_nals(
                     current_frame_index,
                     &current_frame_nals,
@@ -345,7 +348,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_is_idr,
                     current_is_ref,
                     current_frame_type,
-                    current_slice_header.clone(),
+                    slice_header,
                 ) {
                     frames.push(frame);
                 }
@@ -364,6 +367,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
             .map(|s| s.poc)
             .unwrap_or(0);
 
+        // OPTIMIZATION: Use take() to move the Option instead of cloning
+        let slice_header = current_slice_header.take();
         if let Some(frame) = build_frame_from_nals(
             current_frame_index,
             &current_frame_nals,
@@ -373,7 +378,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
             current_is_idr,
             current_is_ref,
             current_frame_type,
-            current_slice_header.clone(),
+            slice_header,
         ) {
             frames.push(frame);
         }

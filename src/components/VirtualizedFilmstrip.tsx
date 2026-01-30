@@ -135,6 +135,19 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
     }
   }, [currentFrameIndex, itemWidth, containerWidth, totalWidth, isDragging]);
 
+  // OPTIMIZATION: Create a memoized lookup table for frame type colors
+  // This avoids calling getFrameTypeColor() for every frame on every render
+  const frameTypeColorMap = useMemo(() => {
+    const colorMap = new Map<string, string>();
+    for (let i = visibleRange.start; i < visibleRange.end; i++) {
+      const frame = frames[i];
+      if (frame && !colorMap.has(frame.frame_type)) {
+        colorMap.set(frame.frame_type, getFrameTypeColor(frame.frame_type));
+      }
+    }
+    return colorMap;
+  }, [visibleRange, frames]);
+
   // Render visible frames
   const visibleFrames = useMemo(() => {
     const result: JSX.Element[] = [];
@@ -153,7 +166,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
         >
           <div
             className="virtualized-frame-indicator"
-            style={{ backgroundColor: getFrameTypeColor(frame.frame_type) }}
+            style={{ backgroundColor: frameTypeColorMap.get(frame.frame_type) }}
           />
           <div className="virtualized-frame-number">{frame.frame_index}</div>
           <div className="virtualized-frame-type">{frame.frame_type}</div>
@@ -161,7 +174,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
       );
     }
     return result;
-  }, [visibleRange, frames, currentFrameIndex, itemWidth, handleFrameClick]);
+  }, [visibleRange, frames, currentFrameIndex, itemWidth, handleFrameClick, frameTypeColorMap]);
 
   return (
     <div className="virtualized-filmstrip">
