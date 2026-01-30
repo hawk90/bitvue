@@ -151,7 +151,7 @@ mod parse_payload {
         let data = [0x7A, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
         let (obu, _) = parse_obu(&data, 0).unwrap();
 
-        assert_eq!(obu.payload, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        assert_eq!(&*obu.payload, &[0xDE, 0xAD, 0xBE, 0xEF][..]);
     }
 
     #[test]

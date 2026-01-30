@@ -6,6 +6,7 @@
 use bitvue_core::FrameType;
 use crate::obu::{Obu, ObuType};
 use std::collections::HashSet;
+use std::sync::Arc;
 
 /// Frame dependency information
 #[derive(Debug, Clone)]
@@ -226,7 +227,7 @@ mod tests {
                 spatial_id: 0,
                 header_size: 1,
             },
-            payload: vec![0; size],
+            payload: Arc::from(vec![0; size]),
             payload_size: size as u64,
             total_size: (size + 2) as u64, // header + payload
             offset: 0,
