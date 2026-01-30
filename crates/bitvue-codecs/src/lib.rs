@@ -5,6 +5,9 @@
 //! - Produces UnitModel + SyntaxModel + bit ranges
 //! - Implements CodecParser, CodecIndexBuilder, CodecStatsBuilder traits
 
+// Parser Strategy Pattern
+pub mod parser_strategy;
+
 // Re-export bitvue-av1 for now (will integrate directly in Phase 0)
 pub use bitvue_av1::*;
 

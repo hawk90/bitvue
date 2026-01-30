@@ -18,7 +18,13 @@ pub mod types;
 
 // Monster Pack v9: Core state management
 pub mod command;
+pub mod command_builder; // Builder pattern for Command construction
+pub mod command_chain; // Chain of Responsibility pattern for command processing
 pub mod event;
+pub mod state_machine; // State Machine pattern for unified state management
+pub mod validation_strategy; // Strategy pattern for validation logic
+pub mod workspace_template; // Template Method pattern for workspace rendering
+pub mod event_observer; // Observer pattern for event handling
 pub mod selection;
 pub mod worker;
 pub mod workspace;
@@ -65,6 +71,7 @@ pub mod player; // T2-1: Player Frame Pipeline
 pub mod block_metrics; // Feature Parity: Per-block metric map (PSNR/SSIM)
 pub mod diff_heatmap;
 pub mod mv_overlay; // T3-2: MV Vector Overlay
+pub mod overlay_factory; // Factory pattern for creating overlays
 pub mod partition_grid; // T3-3: Partition / Block Grid Overlay
 pub mod qp_heatmap; // T3-1: QP Heatmap Overlay // T3-4: Diff Heatmap Overlay (Compare)
 
@@ -92,6 +99,7 @@ pub mod alignment; // T6-1: Compare Alignment Engine
 pub mod compare; // T6-2: A/B Compare View
 pub mod compare_cache;
 pub mod compare_evidence; // T6-2: Compare Evidence Chain Integration // T0-2: Compare Cache Provenance
+pub mod compare_strategy; // Strategy pattern for quality comparison
 
 // Monster Pack v14: Phase 7 - Insight & MCP
 pub mod insight_feed; // T7-1: Insight Feed Generator
@@ -125,9 +133,15 @@ pub use cache_debug_overlay::*;
 pub use cache_provenance::*;
 pub use cache_validation::*;
 pub use command::*;
+pub use command_builder::*;
+pub use command_chain::*;
+pub use state_machine::*;
+pub use workspace_template::*;
+pub use validation_strategy::*;
 pub use compare::*;
 pub use compare_cache::*;
 pub use compare_evidence::*;
+pub use compare_strategy::*;
 pub use coordinate_transform::*;
 pub use diagnostics::*;
 pub use diagnostics_bands::*;
@@ -136,6 +150,7 @@ pub use disable_reason::*;
 pub use discoverability::*;
 pub use error::*;
 pub use event::*;
+pub use event_observer::*;
 pub use evidence::*;
 pub use export::*;
 pub use filmstrip::*;
@@ -157,6 +172,7 @@ pub use metadata::*;
 pub use metrics_distribution::*;
 pub use mv_overlay::*;
 pub use occlusion_budget::*;
+pub use overlay_factory::*;
 pub use parity_harness::*;
 pub use partition_grid::*;
 pub use performance::*;
