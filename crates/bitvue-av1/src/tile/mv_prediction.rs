@@ -206,9 +206,18 @@ impl MvPredictorContext {
 
 /// Apply MV predictor to explicit MV
 ///
-/// For NEWMV mode, the predictor is added to the explicitly coded MV
+/// For NEWMV mode, the predictor is added to the explicitly coded MV.
+///
+/// # Arguments
+///
+/// * `mv` - Explicitly coded motion vector from bitstream (quarter-pel units)
+/// * `predictor` - Predicted motion vector (quarter-pel units)
+///
+/// # Returns
+///
+/// The final motion vector (explicit + predictor, both in quarter-pel units)
 pub fn apply_mv_predictor(mv: MotionVector, predictor: MotionVector) -> MotionVector {
-    MotionVector::new(mv.x + predictor.x, mv.y + predictor.y)
+    mv.add(predictor)
 }
 
 /// Parse MV with predictor
@@ -270,5 +279,41 @@ mod tests {
         let result = apply_mv_predictor(explicit, predictor);
         assert_eq!(result.x, 15);
         assert_eq!(result.y, -2);
+    }
+
+    #[test]
+    fn test_apply_mv_predictor_with_quarter_pel() {
+        use crate::QuarterPel;
+
+        // Demonstrate quarter-pel precision awareness
+        let explicit_mv = MotionVector::from_quarter_pel(
+            QuarterPel::from_pel(2),  // 8 quarter-pels
+            QuarterPel::from_pel(1),  // 4 quarter-pels
+        );
+        let predictor_mv = MotionVector::from_quarter_pel(
+            QuarterPel::from_pel(1),  // 4 quarter-pels
+            QuarterPel::from_qpel(-4), // -4 quarter-pels
+        );
+
+        let result = apply_mv_predictor(explicit_mv, predictor_mv);
+
+        // Result: 8+4=12 qpel X, 4-4=0 qpel Y
+        assert_eq!(result.x_quarter_pel().qpel(), 12);
+        assert_eq!(result.y_quarter_pel().qpel(), 0);
+
+        // In pixels: 12/4=3 pel X, 0/4=0 pel Y
+        assert_eq!(result.x_pel(), 3);
+        assert_eq!(result.y_pel(), 0);
+    }
+
+    #[test]
+    fn test_mv_magnitude_in_pixels() {
+        let mv = MotionVector::new(16, -8);
+
+        // Quarter-pel magnitude
+        assert_eq!(mv.magnitude_qpel(), 24);
+
+        // Pixel magnitude (rounded)
+        assert_eq!(mv.magnitude_pel(), 6);
     }
 }
