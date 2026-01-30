@@ -31,6 +31,7 @@ pub fn run() {
       commands::file::close_file,
       commands::file::get_stream_info,
       commands::file::get_frames,
+      commands::file::get_frames_chunk,
       commands::thumbnails::get_thumbnails,
       commands::window::close_window,
       commands::recent_files::get_recent_files,

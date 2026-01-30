@@ -153,6 +153,10 @@ pub struct Obu {
 
 impl Obu {
     /// Returns a summary string for display
+    ///
+    /// Note: This is a potentially expensive operation due to string allocation.
+    /// Consider using tracing macros directly for logging in hot paths.
+    #[cfg(feature = "debug-strings")]
     pub fn summary(&self) -> String {
         format!(
             "{}  offset={}  size={}",
@@ -160,6 +164,13 @@ impl Obu {
             self.offset,
             self.total_size
         )
+    }
+
+    /// Returns a static placeholder when debug-strings feature is disabled
+    /// This avoids allocations in release builds while still providing the API
+    #[cfg(not(feature = "debug-strings"))]
+    pub fn summary(&self) -> &'static str {
+        "OBU"
     }
 }
 

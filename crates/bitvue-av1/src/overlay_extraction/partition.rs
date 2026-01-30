@@ -44,7 +44,7 @@ pub fn extract_partition_grid(
 pub fn extract_partition_grid_from_parsed(
     parsed: &ParsedFrame,
 ) -> Result<PartitionGrid, BitvueError> {
-    // If we have tile data, try to parse actual partitions
+    // If we have tile data, try to parse actual partitions first
     if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
         // Try to parse actual partition trees using SymbolDecoder
         match parse_partition_trees_from_tile_data(parsed) {
@@ -64,12 +64,13 @@ pub fn extract_partition_grid_from_parsed(
                 if super::strict_mode_enabled() {
                     return Err(e);
                 }
-                // Fall through to scaffold
+                // Fall through to scaffold below
             }
         }
     }
 
     // Fallback: Create scaffold partition grid based on superblock layout
+    // Only allocated if parsing fails or no tile data available
     let mut grid = PartitionGrid::new(
         parsed.dimensions.width,
         parsed.dimensions.height,

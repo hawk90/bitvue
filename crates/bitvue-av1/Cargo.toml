@@ -5,6 +5,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+debug-strings = ["summary_allocates"]
+
+# Optional feature to enable expensive string allocations in debug/summary methods
+summary_allocates = []
+
 [[bench]]
 name = "overlay_extraction"
 harness = false
