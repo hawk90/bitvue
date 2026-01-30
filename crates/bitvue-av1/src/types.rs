@@ -195,3 +195,376 @@ mod tests {
         assert_eq!(Qp::DEFAULT, 32);
     }
 }
+
+/// Quarter-Pel Motion Vector Component
+///
+/// AV1 motion vectors are specified in quarter-pel (quarter-pixel) precision.
+/// Each unit represents 1/4 of a pixel sample.
+///
+/// # Type Safety
+///
+/// This newtype prevents:
+/// - Accidentally mixing motion vectors with other i32 values
+/// - Using integer-pel values where quarter-pel is expected
+/// - Confusion about motion vector precision
+///
+/// # Examples
+///
+/// ```
+/// use bitvue_av1::types::QuarterPel;
+///
+/// // Create from quarter-pel value
+/// let mv = QuarterPel::from_qpel(8);  // 2 pixels
+/// assert_eq!(mv.qpel(), 8);
+/// assert_eq!(mv.pel(), 2);
+///
+/// // Create from pixel value
+/// let mv = QuarterPel::from_pel(3);  // 12 quarter-pels
+/// assert_eq!(mv.qpel(), 12);
+/// ```
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct QuarterPel(i32);
+
+impl QuarterPel {
+    /// Zero motion vector (no motion)
+    pub const ZERO: QuarterPel = QuarterPel(0);
+
+    /// Create from quarter-pel value
+    ///
+    /// # Arguments
+    ///
+    /// * `qpel` - Motion in quarter-pel units (1/4 pixel)
+    #[inline]
+    #[must_use]
+    pub const fn from_qpel(qpel: i32) -> Self {
+        Self(qpel)
+    }
+
+    /// Create from pixel (integer-pel) value
+    ///
+    /// # Arguments
+    ///
+    /// * `pel` - Motion in pixel units
+    #[inline]
+    #[must_use]
+    pub const fn from_pel(pel: i32) -> Self {
+        Self(pel * 4)
+    }
+
+    /// Get value in quarter-pel units
+    #[inline]
+    #[must_use]
+    pub const fn qpel(self) -> i32 {
+        self.0
+    }
+
+    /// Get value in pixel (integer-pel) units
+    ///
+    /// # Note
+    ///
+    /// This truncates towards zero. For exact pixel values,
+    /// ensure the quarter-pel value is a multiple of 4.
+    #[inline]
+    #[must_use]
+    pub const fn pel(self) -> i32 {
+        self.0 / 4
+    }
+
+    /// Get value in half-pel units
+    #[inline]
+    #[must_use]
+    pub const fn hpel(self) -> i32 {
+        self.0 / 2
+    }
+
+    /// Add two quarter-pel values
+    #[inline]
+    #[must_use]
+    pub const fn add(self, other: QuarterPel) -> QuarterPel {
+        QuarterPel(self.0 + other.0)
+    }
+
+    /// Subtract two quarter-pel values
+    #[inline]
+    #[must_use]
+    pub const fn sub(self, other: QuarterPel) -> QuarterPel {
+        QuarterPel(self.0 - other.0)
+    }
+
+    /// Absolute value of motion vector
+    #[inline]
+    #[must_use]
+    pub fn abs(self) -> QuarterPel {
+        QuarterPel(self.0.abs())
+    }
+}
+
+impl From<i32> for QuarterPel {
+    #[inline]
+    fn from(value: i32) -> Self {
+        // Assume i32 values in context are quarter-pel
+        Self::from_qpel(value)
+    }
+}
+
+impl From<QuarterPel> for i32 {
+    #[inline]
+    fn from(qp: QuarterPel) -> Self {
+        qp.0
+    }
+}
+
+impl std::ops::Add for QuarterPel {
+    type Output = QuarterPel;
+
+    #[inline]
+    fn add(self, other: Self) -> Self::Output {
+        self.add(other)
+    }
+}
+
+impl std::ops::Sub for QuarterPel {
+    type Output = QuarterPel;
+
+    #[inline]
+    fn sub(self, other: Self) -> Self::Output {
+        self.sub(other)
+    }
+}
+
+impl std::ops::Neg for QuarterPel {
+    type Output = QuarterPel;
+
+    #[inline]
+    fn neg(self) -> Self::Output {
+        QuarterPel(-self.0)
+    }
+}
+
+/// Presentation Timestamp (PTS)
+///
+/// Represents the presentation timestamp of a frame in media.
+/// PTS values must be non-negative as they represent time offsets.
+///
+/// # Type Safety
+///
+/// This newtype prevents:
+/// - Accidentally mixing timestamps with other i64 values
+/// - Negative timestamp values (invalid per media specifications)
+/// - Confusion between PTS and DTS (Decode Timestamp)
+///
+/// # Examples
+///
+/// ```
+/// use bitvue_av1::types::TimestampPts;
+///
+/// // Create from valid value
+/// let pts = TimestampPts::new(1000)?;
+/// assert_eq!(pts.value(), 1000);
+///
+/// // Reject negative values
+/// assert!(TimestampPts::new(-1).is_err());
+/// ```
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TimestampPts(i64);
+
+impl TimestampPts {
+    /// Zero timestamp (first frame)
+    pub const ZERO: TimestampPts = TimestampPts(0);
+
+    /// Create a new timestamp, validating it's non-negative
+    ///
+    /// # Errors
+    ///
+    /// Returns `BitvueError::InvalidData` if the value is negative
+    #[inline]
+    pub fn new(value: i64) -> Result<Self, BitvueError> {
+        if value >= 0 {
+            Ok(Self(value))
+        } else {
+            Err(BitvueError::InvalidData(format!(
+                "Invalid PTS: {} (must be >= 0)",
+                value
+            )))
+        }
+    }
+
+    /// Create a new timestamp without validation
+    ///
+    /// # Safety
+    ///
+    /// Callers must ensure the value is non-negative
+    #[inline]
+    #[must_use]
+    pub const unsafe fn new_unchecked(value: i64) -> Self {
+        Self(value)
+    }
+
+    /// Get the underlying i64 value
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> i64 {
+        self.0
+    }
+
+    /// Check if this is the first frame (zero timestamp)
+    #[inline]
+    #[must_use]
+    pub const fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl From<TimestampPts> for i64 {
+    #[inline]
+    fn from(pts: TimestampPts) -> Self {
+        pts.0
+    }
+}
+
+#[cfg(test)]
+mod quarter_pel_tests {
+    use super::*;
+
+    #[test]
+    fn test_quarter_pel_from_qpel() {
+        let mv = QuarterPel::from_qpel(8);
+        assert_eq!(mv.qpel(), 8);
+        assert_eq!(mv.pel(), 2);
+        assert_eq!(mv.hpel(), 4);
+    }
+
+    #[test]
+    fn test_quarter_pel_from_pel() {
+        let mv = QuarterPel::from_pel(3);
+        assert_eq!(mv.pel(), 3);
+        assert_eq!(mv.qpel(), 12);
+        assert_eq!(mv.hpel(), 6);
+    }
+
+    #[test]
+    fn test_quarter_pel_zero() {
+        assert_eq!(QuarterPel::ZERO.qpel(), 0);
+        assert_eq!(QuarterPel::ZERO.pel(), 0);
+    }
+
+    #[test]
+    fn test_quarter_pel_arithmetic() {
+        let mv1 = QuarterPel::from_qpel(8);
+        let mv2 = QuarterPel::from_qpel(4);
+
+        let sum = mv1.add(mv2);
+        assert_eq!(sum.qpel(), 12);
+
+        let diff = mv1.sub(mv2);
+        assert_eq!(diff.qpel(), 4);
+    }
+
+    #[test]
+    fn test_quarter_pel_abs() {
+        let mv = QuarterPel::from_qpel(-8);
+        assert_eq!(mv.abs().qpel(), 8);
+    }
+
+    #[test]
+    fn test_quarter_pel_neg() {
+        let mv = QuarterPel::from_qpel(8);
+        let neg = -mv;
+        assert_eq!(neg.qpel(), -8);
+    }
+
+    #[test]
+    fn test_quarter_pel_add_operator() {
+        let mv1 = QuarterPel::from_qpel(5);
+        let mv2 = QuarterPel::from_qpel(3);
+        assert_eq!((mv1 + mv2).qpel(), 8);
+    }
+
+    #[test]
+    fn test_quarter_pel_sub_operator() {
+        let mv1 = QuarterPel::from_qpel(10);
+        let mv2 = QuarterPel::from_qpel(3);
+        assert_eq!((mv1 - mv2).qpel(), 7);
+    }
+
+    #[test]
+    fn test_quarter_pel_conversions() {
+        let mv = QuarterPel::from_qpel(16);
+        assert_eq!(i32::from(mv), 16);
+    }
+
+    #[test]
+    fn test_quarter_pel_default() {
+        let mv: QuarterPel = QuarterPel::default();
+        assert_eq!(mv.qpel(), 0);
+    }
+
+    #[test]
+    fn test_quarter_pel_copy_clone() {
+        let mv = QuarterPel::from_qpel(20);
+        let mv_copy = mv;
+        assert_eq!(mv, mv_copy);
+        let mv_clone = mv_copy.clone();
+        assert_eq!(mv, mv_clone);
+    }
+}
+
+#[cfg(test)]
+mod timestamp_pts_tests {
+    use super::*;
+
+    #[test]
+    fn test_timestamp_pts_valid() {
+        assert!(TimestampPts::new(0).is_ok());
+        assert!(TimestampPts::new(1000).is_ok());
+        assert!(TimestampPts::new(i64::MAX).is_ok());
+    }
+
+    #[test]
+    fn test_timestamp_pts_invalid() {
+        assert!(TimestampPts::new(-1).is_err());
+        assert!(TimestampPts::new(-1000).is_err());
+    }
+
+    #[test]
+    fn test_timestamp_pts_value() {
+        let pts = TimestampPts::new(5000).unwrap();
+        assert_eq!(pts.value(), 5000);
+        assert!(!pts.is_zero());
+    }
+
+    #[test]
+    fn test_timestamp_pts_zero() {
+        assert!(TimestampPts::ZERO.is_zero());
+        assert_eq!(TimestampPts::ZERO.value(), 0);
+    }
+
+    #[test]
+    fn test_timestamp_pts_unchecked() {
+        // Safe because 100 is non-negative
+        let pts = unsafe { TimestampPts::new_unchecked(100) };
+        assert_eq!(pts.value(), 100);
+    }
+
+    #[test]
+    fn test_timestamp_pts_conversion() {
+        let pts = TimestampPts::new(2500).unwrap();
+        assert_eq!(i64::from(pts), 2500);
+    }
+
+    #[test]
+    fn test_timestamp_pts_copy_clone() {
+        let pts = TimestampPts::new(1000).unwrap();
+        let pts_copy = pts;
+        assert_eq!(pts, pts_copy);
+        let pts_clone = pts_copy.clone();
+        assert_eq!(pts, pts_clone);
+    }
+
+    #[test]
+    fn test_timestamp_pts_ord() {
+        let pts1 = TimestampPts::new(100).unwrap();
+        let pts2 = TimestampPts::new(200).unwrap();
+        assert!(pts1 < pts2);
+    }
+}

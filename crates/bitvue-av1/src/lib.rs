@@ -65,7 +65,7 @@ pub use tile::{
     partition_tree_to_grid, BlockSize, CodingUnit, MotionVector, PartitionNode, PartitionType,
     PredictionMode, RefFrame, Superblock, SuperblockSize, Tile, TileGroup, TileInfo,
 };
-pub use types::Qp;
+pub use types::{Qp, QuarterPel, TimestampPts};
 
 /// Parses an AV1 bitstream and returns basic information
 ///
