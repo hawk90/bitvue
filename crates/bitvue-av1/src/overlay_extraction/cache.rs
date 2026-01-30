@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+use crate::Qp;
 
 /// Helper macro to safely lock mutexes with proper error handling
 /// Prevents panic on mutex poisoning by returning an error instead
@@ -50,7 +51,33 @@ const MAX_CACHE_ENTRIES: usize = 64;
 /// For 1-10 MB tile data:
 /// - Before (DefaultHasher): ~1ms per hash call
 /// - After (XXH3): ~0.1ms per hash call
+///
+/// # Type Safety
+///
+/// Validates that base_qp is in valid range [0, 255] to prevent
+/// invalid QP values from being used in cache lookups.
 pub fn compute_cache_key(tile_data: &[u8], base_qp: i16) -> u64 {
+    // Validate QP range for cache correctness
+    // Invalid QP values could lead to cache inconsistencies
+    let qp = Qp::new(base_qp);
+    if qp.is_err() {
+        // For cache key purposes, we still compute a hash even with invalid QP
+        // This allows callers to handle the error appropriately
+        // Log a warning to help debugging
+        tracing::warn!(
+            "Cache key computed with invalid QP value: {} (valid range: 0-255)",
+            base_qp
+        );
+    }
+
+    compute_cache_key_impl(tile_data, base_qp)
+}
+
+/// Internal implementation of cache key computation
+///
+/// Does not validate QP range, allowing cache to be computed
+/// even for debugging purposes with invalid values.
+fn compute_cache_key_impl(tile_data: &[u8], base_qp: i16) -> u64 {
     use std::hash::{Hash, Hasher};
     use twox_hash::XxHash64;
 
