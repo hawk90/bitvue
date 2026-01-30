@@ -1,6 +1,52 @@
 //! Frame header parsing for AV1
 //!
 //! Parses frame header OBUs to extract frame type and other metadata.
+//!
+//! # Limitations
+//!
+//! This is a **minimal parser** that extracts only the most basic frame information.
+//! It does NOT implement the full AV1 uncompressed header parsing per spec.
+//!
+//! ## Known Limitations
+//!
+//! 1. **Approximate Bit Skipping**: The parser uses heuristic bit skips to reach
+//!    certain fields (refresh_frame_flags, quantization_params). This is NOT
+//!    spec-compliant and may misinterpret data for non-standard bitstreams.
+//!
+//! 2. **Missing Conditional Fields**: Many conditional fields in the uncompressed
+//!    header are not parsed:
+//!    - Frame size override
+//!    - Screen content tools
+//!    - Tile information
+//!    - Loop filter parameters
+//!    - CDEF parameters
+//!    - Loop restoration parameters
+//!
+//! 3. **Estimated Header Size**: The `header_size_bytes` field is an estimate,
+//!    not the actual uncompressed header size. This may cause incorrect tile
+//!    data positioning in some cases.
+//!
+//! ## When to Use
+//!
+//! This parser is suitable for:
+//! - Basic frame type detection
+//! - Simple metadata extraction
+//! - Prototyping and testing
+//!
+//! This parser is NOT suitable for:
+//! - Bitstream validation
+//! - Precise tile data extraction
+//! - Decoding implementation
+//!
+//! ## Future Work
+//!
+//! A full implementation would require:
+//! - Sequence header context
+//! - Complete uncompressed_header() parsing per AV1 spec Section 5.9.2
+//! - Proper handling of all conditional fields
+//! - Accurate header size calculation
+//!
+//! Estimated effort: 3-4 hours of development + testing.
 
 use crate::bitreader::BitReader;
 use bitvue_core::BitvueError;
@@ -96,15 +142,35 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     };
 
     // Skip to refresh_frame_flags and ref_frame_idx
-    // The uncompressed header has many conditional fields between here and there
-    // For simplicity, we'll use a heuristic approach
+    // The uncompressed header has many conditional fields between here and there.
+    //
+    // PER AV1 SPEC SECTION 5.9.2 (uncompressed_header):
+    // The fields between error_resilient_mode and refresh_frame_flags include:
+    // - disable_cdf_update (1 bit, conditional)
+    // - disable_frame_end_update_cdf (1 bit, conditional)
+    // - tile_cols, tile_rows (variable, depending on sequence header)
+    // - render_and_frame_size_different (1 bit)
+    // - allow_screen_content_tools (1 bit, conditional)
+    // - And many more conditional fields...
+    //
+    // This implementation uses a heuristic skip which is NOT spec-compliant.
+    // TODO: Implement full uncompressed header parsing per AV1 spec (3-4 hours of work)
+    //
+    // The 20-bit skip is an approximation based on typical bitstream patterns.
+    // This may misinterpret data for non-standard bitstreams.
 
-    // Skip some fields to reach refresh_frame_flags
-    // This is approximate - in a full implementation we'd parse all conditional fields
-    let bits_to_skip = 20; // Approximate bits to skip to reach refresh_frame_flags
-    for _ in 0..bits_to_skip {
-        if reader.read_bit().is_err() {
-            break;
+    // Maximum bits to skip before giving up (prevents infinite loops on malformed data)
+    let max_skip_bits: u32 = 20;
+    let mut bits_skipped = 0;
+
+    while bits_skipped < max_skip_bits {
+        match reader.read_bit() {
+            Ok(_) => bits_skipped += 1,
+            Err(_) => {
+                // Reached end of data before finding refresh_frame_flags
+                // This is acceptable for truncated bitstreams
+                break;
+            }
         }
     }
 
@@ -147,7 +213,22 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 
     // Estimate header size: base parsed fields + typical remaining fields
     // Conservatively add 40 bytes for unparsed fields (ref frames, MV params, quantization, loop filter, etc.)
-    let header_size_bytes = base_header_bytes + 40;
+    //
+    // Per AV1 spec, maximum uncompressed header size is bounded by:
+    // - Frame dimensions (width/height fields)
+    // - Tile information (tile_cols * tile_rows)
+    // - Reference frame lists (8 slots * 7 bytes each)
+    // - Loop filter params
+    // - Quantization params
+    // - CDEF params
+    // - LR params
+    //
+    // In practice, headers rarely exceed 200 bytes even for complex frames.
+    const MAX_HEADER_SIZE_ESTIMATE: usize = 200;
+    const CONSERVATIVE_PADDING: usize = 40;
+
+    let header_size_bytes = (base_header_bytes + CONSERVATIVE_PADDING)
+        .min(MAX_HEADER_SIZE_ESTIMATE);
 
     Ok(FrameHeader {
         frame_type,
@@ -170,25 +251,38 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 ///
 /// This attempts to skip to and parse quantization parameters.
 /// Note: This is a heuristic approach and may not work for all bitstreams.
+///
+/// # AV1 Spec Context
+///
+/// Per AV1 Spec Section 5.9.17 (Quantization Params Syntax):
+/// quantization_params() comes AFTER many conditional fields in the uncompressed header:
+/// - loop_filter_params()
+/// - cdef_params()
+/// - lr_params()
+/// - And potentially more...
+///
+/// The exact bit position depends on:
+/// - Sequence header configuration (reduced_tx_set, etc.)
+/// - Frame header flags (mode_ref_delta_enabled, etc.)
+/// - Frame type (key vs inter)
+///
+/// This implementation uses a heuristic skip which is NOT spec-compliant.
+/// TODO: Implement full uncompressed header parsing for accurate quantization params.
 fn parse_quantization_params_simple(
     reader: &mut BitReader,
 ) -> (Option<u8>, Option<i8>, Option<i8>) {
-    // Skip many conditional fields in frame header to reach quantization_params
-    // This is highly simplified and will only work for specific bitstream patterns
+    // Maximum bits to skip (prevents infinite loops on malformed data)
+    // This is a rough estimate - actual position varies significantly
+    let max_skip_bits: u32 = 20;
+    let mut bits_skipped = 0;
 
-    // For a more robust implementation, we would need:
-    // - Sequence header context
-    // - Full uncompressed_header() parsing
-    // - Conditional field handling
-
-    // For now, attempt to read at a heuristic position
-    // In practice, quantization_params comes after many conditional fields
-
-    // Try to skip ahead (this is a rough estimate)
-    // Actual position varies based on frame type and flags
-    for _ in 0..20 {
-        if reader.read_bit().is_err() {
-            return (None, None, None);
+    while bits_skipped < max_skip_bits {
+        match reader.read_bit() {
+            Ok(_) => bits_skipped += 1,
+            Err(_) => {
+                // Reached end of data before finding quantization params
+                return (None, None, None);
+            }
         }
     }
 

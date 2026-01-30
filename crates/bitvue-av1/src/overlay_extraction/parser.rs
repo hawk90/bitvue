@@ -297,7 +297,7 @@ pub fn extract_pixel_info(
         block_id,
         qp,
         mv,
-        partition_info,
+        partition_info: partition_info.to_string(),
         syntax_path,
         bit_offset,
         byte_offset,
