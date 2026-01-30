@@ -337,6 +337,11 @@ fn child_position(
     }
 }
 
+/// Maximum partition recursion depth to prevent infinite loops
+/// AV1 maximum recursion is: 128x128 → 64x64 → 32x32 → 16x16 → 8x8 → 4x4 (6 levels)
+/// Set to 10 to provide safety margin while allowing valid deep recursion
+const MAX_PARTITION_DEPTH: u8 = 10;
+
 /// Recursively parse partition tree using symbol decoder
 fn parse_partition_recursive(
     decoder: &mut SymbolDecoder,
@@ -345,7 +350,16 @@ fn parse_partition_recursive(
     block_size: BlockSize,
     has_rows: bool,
     has_cols: bool,
+    depth: u8,
 ) -> Result<PartitionNode> {
+    // Prevent infinite recursion from malformed bitstreams
+    if depth >= MAX_PARTITION_DEPTH {
+        return Err(BitvueError::InvalidData(format!(
+            "Partition recursion depth exceeded maximum ({}), possible infinite loop in bitstream",
+            MAX_PARTITION_DEPTH
+        )));
+    }
+
     // Get block size log2 for CDF lookup
     let bsize_log2 = block_size_log2(block_size);
 
@@ -365,6 +379,21 @@ fn parse_partition_recursive(
         )));
     }
 
+    // Validate sub_block_size doesn't return same size (prevents infinite recursion)
+    let sub_sizes = block_size.sub_block_size(partition);
+    if partition != PartitionType::None {
+        // Check that at least one sub-block is smaller than parent
+        let has_smaller = sub_sizes.iter().any(|&s| {
+            s.width() < block_size.width() || s.height() < block_size.height()
+        });
+        if !has_smaller {
+            return Err(BitvueError::InvalidData(format!(
+                "Partition {:?} on block size {:?} produces sub-blocks of same size - not supported",
+                partition, block_size
+            )));
+        }
+    }
+
     // Create node
     let mut node = PartitionNode::new(x, y, block_size, partition);
 
@@ -380,7 +409,7 @@ fn parse_partition_recursive(
             let child_has_rows = has_rows;
             let child_has_cols = has_cols;
 
-            // Recursively parse child
+            // Recursively parse child with incremented depth
             let child = parse_partition_recursive(
                 decoder,
                 child_x,
@@ -388,6 +417,7 @@ fn parse_partition_recursive(
                 *sub_size,
                 child_has_rows,
                 child_has_cols,
+                depth + 1,
             )?;
 
             node.children.push(child);
@@ -421,9 +451,9 @@ pub fn parse_partition_tree(
     // Create symbol decoder for tile data
     let mut decoder = SymbolDecoder::new(tile_data)?;
 
-    // Recursively parse partition tree
+    // Recursively parse partition tree starting at depth 0
     // For MVP, assume all blocks are within frame boundaries
-    parse_partition_recursive(&mut decoder, x, y, block_size, true, true)
+    parse_partition_recursive(&mut decoder, x, y, block_size, true, true, 0)
 }
 
 /// Flatten partition tree to list of leaf blocks
