@@ -59,10 +59,13 @@ pub fn compute_cache_key(tile_data: &[u8], base_qp: i16) -> u64 {
 ///
 /// Uses "single lock acquisition" pattern to prevent TOCTOU race condition.
 /// Lock is held for entire operation (check, parse, insert) ensuring thread safety.
+///
+/// Returns `Arc<Vec<CodingUnit>>` for O(1) cloning on cache hits.
+/// Use `&*result` or `result.as_ref()` to access the slice of coding units.
 pub fn get_or_parse_coding_units<F>(
     cache_key: u64,
     parse_fn: F,
-) -> Result<Vec<crate::tile::CodingUnit>, BitvueError>
+) -> Result<std::sync::Arc<Vec<crate::tile::CodingUnit>>, BitvueError>
 where
     F: FnOnce() -> Result<Vec<crate::tile::CodingUnit>, BitvueError>,
 {
@@ -71,9 +74,8 @@ where
     // Check if already cached (still holding lock)
     if let Some(cached) = cache.get(&cache_key) {
         tracing::debug!("Cache HIT for coding units: {} units", cached.len());
-        // Arc::clone is O(1), then we need to clone the Vec for return type compatibility
-        // This is still better than storing Vec directly (shared ownership)
-        return Ok(Arc::clone(cached).as_ref().clone());
+        // Arc::clone is O(1) - this is the key optimization
+        return Ok(Arc::clone(cached));
     }
 
     // Cache miss - parse and insert (still holding lock)
@@ -100,9 +102,10 @@ where
     }
 
     // Store Arc in cache for O(1) clone on future cache hits
-    cache.insert(cache_key, Arc::new(units.clone()));
+    let units_arc = Arc::new(units);
+    cache.insert(cache_key, Arc::clone(&units_arc));
 
-    Ok(units)
+    Ok(units_arc)
 }
 
 /// Clear the coding unit cache (useful for testing)

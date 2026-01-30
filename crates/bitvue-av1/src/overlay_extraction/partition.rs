@@ -348,7 +348,7 @@ pub fn extract_prediction_mode_grid_from_parsed(
                 // Before: O(grid_h × grid_w × num_coding_units) - millions of iterations
                 // After: O(num_grid_blocks + num_coding_units) - linear scan
                 build_grid_from_coding_units_spatial(
-                    &coding_units,
+                    &*coding_units,
                     parsed,
                     block_w,
                     block_h,
@@ -563,7 +563,7 @@ pub fn extract_transform_grid_from_parsed(
                 // Before: O(grid_h × grid_w × num_coding_units) - millions of iterations
                 // After: O(num_grid_blocks + num_coding_units) - linear scan
                 build_grid_from_coding_units_spatial(
-                    &coding_units,
+                    &*coding_units,
                     parsed,
                     block_w,
                     block_h,
@@ -716,11 +716,12 @@ where
 /// Per optimize-code skill: Uses thread-safe LRU cache to avoid re-parsing
 /// the same tile data when extracting multiple overlays.
 ///
-/// Returns a vector of all coding units parsed from the tile group data.
+/// Returns `Arc<Vec<CodingUnit>>` for O(1) cloning on cache hits.
+/// Use `&*result` or `result.as_ref()` to access the slice of coding units.
 /// This is used by prediction mode and transform grid extraction.
 fn parse_all_coding_units(
     parsed: &ParsedFrame,
-) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
+) -> Result<std::sync::Arc<Vec<crate::tile::CodingUnit>>, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
 

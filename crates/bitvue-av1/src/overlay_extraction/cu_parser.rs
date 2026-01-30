@@ -15,11 +15,12 @@ use super::parser::ParsedFrame;
 /// Uses thread-safe LRU cache to avoid re-parsing the same tile data
 /// when extracting multiple overlays.
 ///
-/// Returns a vector of all coding units parsed from the tile group data.
+/// Returns `Arc<Vec<CodingUnit>>` for O(1) cloning on cache hits.
+/// Use `&*result` or `result.as_ref()` to access the slice of coding units.
 /// This is used by QP, MV, and prediction mode grid extraction.
 pub fn parse_all_coding_units(
     parsed: &ParsedFrame,
-) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
+) -> Result<Arc<Vec<crate::tile::CodingUnit>>, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
 
