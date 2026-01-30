@@ -37,7 +37,7 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
 
     let first = first_byte[0];
 
-    // Find the length marker (first 1 bit)
+    // Find the length marker (first 1 bit from MSB)
     let mut length = 0;
     for i in 0..8 {
         if (first & (0x80 >> i)) != 0 {
@@ -47,11 +47,10 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
     }
 
     // Validate VINT length is within EBML specification (1-8 bytes)
-    if length == 0 || length > 8 {
-        return Err(BitvueError::InvalidData(format!(
-            "Invalid VINT length: {} (must be 1-8)",
-            length
-        )));
+    if length == 0 {
+        return Err(BitvueError::InvalidData(
+            "Invalid VINT: no marker bit found (all zeros)".to_string()
+        ));
     }
 
     // Extract value (remove length marker)
@@ -535,6 +534,22 @@ mod tests {
         let data: &[u8] = &[];
         let mut cursor = Cursor::new(data);
         assert!(read_vint(&mut cursor).is_err());
+
+        // Valid VINT markers with complete data for each length (1-8 bytes)
+        // 1-byte VINT: 0x81 = marker + value 1
+        let data = [0x81];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+
+        // 2-byte VINT: 0x40 0x01 = marker + value 1
+        let data = [0x40, 0x01];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+
+        // 3-byte VINT: 0x20 0x00 0x01 = marker + value 1
+        let data = [0x20, 0x00, 0x01];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
     }
 
     #[test]

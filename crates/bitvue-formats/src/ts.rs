@@ -115,7 +115,7 @@ fn parse_ts_packet(data: &[u8]) -> Result<TsPacket> {
     let continuity_counter = byte3 & 0x0F;
 
     // Extract payload
-    let mut payload_start = 4;
+    let mut payload_start: usize = 4;
 
     // Handle adaptation field
     if adaptation_field_control == 0x02 || adaptation_field_control == 0x03 {
@@ -125,12 +125,22 @@ fn parse_ts_packet(data: &[u8]) -> Result<TsPacket> {
             ));
         }
         let adaptation_length = data[4] as usize;
+
+        // Validate adaptation_length doesn't exceed remaining data
+        let remaining_data = data.len().saturating_sub(5);
+        if adaptation_length > remaining_data {
+            return Err(BitvueError::InvalidData(format!(
+                "Adaptation field length {} exceeds remaining data {}",
+                adaptation_length, remaining_data
+            )));
+        }
+
         // Use checked arithmetic to prevent overflow
-        payload_start = match (payload_start as usize).checked_add(1).and_then(|v| v.checked_add(adaptation_length)) {
+        payload_start = match payload_start.checked_add(1).and_then(|v| v.checked_add(adaptation_length)) {
             Some(v) => v,
             None => {
                 return Err(BitvueError::InvalidData(
-                    "Adaptation field overflow".to_string()
+                    "Payload start offset overflow".to_string()
                 ));
             }
         };
