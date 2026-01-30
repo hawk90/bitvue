@@ -242,61 +242,6 @@ impl Drop for AccessUnitGuard {
 }
 
 // ============================================================================
-// Timeout Wrapper for FFI Calls
-// ============================================================================
-
-/// Result of a potentially long-running FFI call
-enum FfiResult<T> {
-    Success(T),
-    Timeout,
-    Panic,
-}
-
-/// Wrapper to execute FFI calls with a timeout
-///
-/// This spawns a separate thread to run the FFI call and waits for completion
-/// with a timeout. If the timeout expires, the function returns an error.
-fn run_decode_with_timeout<F, T>(f: F) -> Result<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    let handle = thread::spawn(move || FfiResult::Success(f()));
-
-    // Wait for completion with timeout
-    let start = std::time::Instant::now();
-    loop {
-        if handle.is_finished() {
-            return match handle.join() {
-                Ok(FfiResult::Success(result)) => Ok(result),
-                Ok(FfiResult::Panic) | Err(_) => {
-                    Err(DecodeError::Decode("Decoder thread panicked".to_string()))
-                }
-                _ => Err(DecodeError::Decode("Unexpected FFI result".to_string())),
-            };
-        }
-
-        if start.elapsed() >= DECODE_TIMEOUT {
-            error!("VVC decoder FFI call timed out after {:?}", DECODE_TIMEOUT);
-            error!("Background thread is abandoned but still running - decoder is now in POISONED state");
-            error!("The decoder MUST be reset before next use to avoid undefined behavior");
-            // Note: The thread is still running in the background. We cannot safely
-            // terminate it in Rust. The decoder is now in an undefined state and
-            // must be reset before further use.
-            // The poisoned flag will be set in the caller (get_frame) to trigger
-            // automatic reset on next decode attempt.
-            return Err(DecodeError::Decode(format!(
-                "Decoder timeout after {:?} - decoder poisoned, reset required",
-                DECODE_TIMEOUT
-            )));
-        }
-
-        // Sleep briefly to avoid busy-waiting
-        thread::sleep(Duration::from_millis(10));
-    }
-}
-
-// ============================================================================
 // VVC Decoder
 // ============================================================================
 

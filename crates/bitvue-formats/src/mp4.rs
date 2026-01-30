@@ -510,12 +510,16 @@ fn parse_moov(
     info: &mut Mp4Info,
     data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset + header.data_size();
+    let box_end = header.data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     // Parse child boxes
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset + child_header.data_size();
+        let child_end = child_header.data_offset
+            .checked_add(child_header.data_size())
+            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
         match &child_header.box_type {
             b"trak" => {
@@ -540,11 +544,15 @@ fn parse_trak(
     info: &mut Mp4Info,
     data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset + header.data_size();
+    let box_end = header.data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset + child_header.data_size();
+        let child_end = child_header.data_offset
+            .checked_add(child_header.data_size())
+            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
         if &child_header.box_type == b"mdia" {
             // Media box
@@ -564,11 +572,15 @@ fn parse_mdia(
     info: &mut Mp4Info,
     data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset + header.data_size();
+    let box_end = header.data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset + child_header.data_size();
+        let child_end = child_header.data_offset
+            .checked_add(child_header.data_size())
+            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
         match &child_header.box_type {
             b"mdhd" => {
@@ -595,11 +607,15 @@ fn parse_minf(
     info: &mut Mp4Info,
     _data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset + header.data_size();
+    let box_end = header.data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset + child_header.data_size();
+        let child_end = child_header.data_offset
+            .checked_add(child_header.data_size())
+            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
         if &child_header.box_type == b"stbl" {
             // Sample table box
@@ -618,11 +634,15 @@ fn parse_stbl(
     header: &BoxHeader,
     info: &mut Mp4Info,
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset + header.data_size();
+    let box_end = header.data_offset
+        .checked_add(header.data_size())
+        .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset + child_header.data_size();
+        let child_end = child_header.data_offset
+            .checked_add(child_header.data_size())
+            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
         match &child_header.box_type {
             b"stsd" => {
