@@ -29,6 +29,19 @@ mod element_id {
 }
 
 /// Read EBML variable-length integer (VINT)
+///
+/// Per EBML specification (https://github.com/matroska-org/ebml-specification):
+/// - VINT format: [marker] [data bits]
+/// - Marker: single '1' bit followed by zero or more '0' bits
+/// - Valid marker patterns: 0x80 (1 byte), 0x40 (2 bytes), 0x20 (3 bytes), 0x10 (4 bytes),
+///                        0x08 (5 bytes), 0x04 (6 bytes), 0x02 (7 bytes), 0x01 (8 bytes)
+/// - Invalid: 0x00 (no marker bit)
+/// - Data bits below the marker position can be any value
+///
+/// Examples:
+/// - 0x81 = marker at bit 7, data = 0x01 → 1-byte VINT with value 1
+/// - 0x40 = marker at bit 6, data = 0x00 → 2-byte VINT
+/// - 0x01 = marker at bit 0, data = 0x00 → 8-byte VINT (valid per EBML spec)
 fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
     let mut first_byte = [0u8; 1];
     cursor
@@ -47,6 +60,8 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
     }
 
     // Validate VINT length is within EBML specification (1-8 bytes)
+    // The only invalid case is 0x00 (no marker bit found)
+    // Note: 0x01 is VALID (8-byte VINT with marker at bit position 0)
     if length == 0 {
         return Err(BitvueError::InvalidData(
             "Invalid VINT: no marker bit found (all zeros)".to_string()
@@ -54,7 +69,13 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
     }
 
     // Extract value (remove length marker)
-    let mut value = (first & (0xFF >> length)) as u64;
+    // For length = 8, the first byte is all marker (0x01), so data bits = 0
+    let mut value = if length < 8 {
+        (first & (0xFF >> length)) as u64
+    } else {
+        // length = 8: marker is at bit 0, first byte has no data bits
+        0
+    };
 
     // Read remaining bytes
     for _ in 1..length {
@@ -548,6 +569,32 @@ mod tests {
 
         // 3-byte VINT: 0x20 0x00 0x01 = marker + value 1
         let data = [0x20, 0x00, 0x01];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+
+        // 4-byte VINT: 0x10 0x00 0x00 0x01 = marker + value 1
+        let data = [0x10, 0x00, 0x00, 0x01];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+
+        // 5-byte VINT: 0x08 0x00 0x00 0x00 0x01 = marker + value 1
+        let data = [0x08, 0x00, 0x00, 0x00, 0x01];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+
+        // 6-byte VINT: 0x04 0x00 0x00 0x00 0x00 0x01 = marker + value 1
+        let data = [0x04, 0x00, 0x00, 0x00, 0x00, 0x01];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+
+        // 7-byte VINT: 0x02 0x00 0x00 0x00 0x00 0x00 0x01 = marker + value 1
+        let data = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
+        let mut cursor = Cursor::new(&data[..]);
+        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+
+        // 8-byte VINT: 0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x01 = marker + value 1
+        // This is VALID per EBML spec - marker at bit position 0
+        let data = [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
         assert_eq!(read_vint(&mut cursor).unwrap(), 1);
     }
