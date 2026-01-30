@@ -417,11 +417,11 @@ impl ParserStrategy for Av1ParserStrategy {
         // IVF signature
         if &data[0..4] == b"DKIF" {
             // Parse IVF header
-            let width = u16::from_le_bytes([data[12], data[13]]) as u32;
-            let height = u16::from_le_bytes([data[14], data[15]]) as u32;
-            let timebase_den = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);
-            let timebase_num = u32::from_le_bytes([data[20], data[21], data[22], data[23]]);
-            let num_frames = u32::from_le_bytes([data[24], data[25], data[26], data[27]]);
+            let _width = u16::from_le_bytes([data[12], data[13]]) as u32;
+            let _height = u16::from_le_bytes([data[14], data[15]]) as u32;
+            let _timebase_den = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);
+            let _timebase_num = u32::from_le_bytes([data[20], data[21], data[22], data[23]]);
+            let _num_frames = u32::from_le_bytes([data[24], data[25], data[26], data[27]]);
 
             Ok(ParseResult::new(32).with_metadata(ParseMetadata {
                 display_order: Some(0),
@@ -449,8 +449,8 @@ impl ParserStrategy for Av1ParserStrategy {
         }
 
         let obu_type = (data[0] & 0x78) >> 3;
-        let obu_extension = (data[0] & 0x04) != 0;
-        let obu_has_size_field = (data[0] & 0x02) != 0;
+        let _obu_extension = (data[0] & 0x04) != 0;
+        let _obu_has_size_field = (data[0] & 0x02) != 0;
 
         // Check for sequence header
         if obu_type == 1 {
@@ -526,7 +526,7 @@ impl ParserStrategy for AvcParserStrategy {
         self.base.reset();
     }
 
-    fn parse_header(&mut self, data: &[u8]) -> ParseResultType<ParseResult> {
+    fn parse_header(&mut self, _data: &[u8]) -> ParseResultType<ParseResult> {
         // Look for SPS (Sequence Parameter Set)
         // SPS NAL unit type is 7
         // For now, just return success
@@ -623,7 +623,7 @@ impl ParserStrategy for HevcParserStrategy {
         self.base.reset();
     }
 
-    fn parse_header(&mut self, data: &[u8]) -> ParseResultType<ParseResult> {
+    fn parse_header(&mut self, _data: &[u8]) -> ParseResultType<ParseResult> {
         Ok(ParseResult::new(0))
     }
 
@@ -691,7 +691,7 @@ impl ParserStrategy for VvcParserStrategy {
         self.base.reset();
     }
 
-    fn parse_header(&mut self, data: &[u8]) -> ParseResultType<ParseResult> {
+    fn parse_header(&mut self, _data: &[u8]) -> ParseResultType<ParseResult> {
         Ok(ParseResult::new(0))
     }
 
@@ -757,7 +757,7 @@ impl ParserStrategy for Vp9ParserStrategy {
         self.base.reset();
     }
 
-    fn parse_header(&mut self, data: &[u8]) -> ParseResultType<ParseResult> {
+    fn parse_header(&mut self, _data: &[u8]) -> ParseResultType<ParseResult> {
         Ok(ParseResult::new(0))
     }
 

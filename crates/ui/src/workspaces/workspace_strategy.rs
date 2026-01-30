@@ -13,7 +13,7 @@
 //! - **Runtime Flexibility**: Rendering strategies can be swapped at runtime
 //! - **Testability**: Each strategy can be tested in isolation
 
-use egui::{Color32, Ui, Vec2};
+use egui::{Color32, Ui};
 
 // =============================================================================
 // COLOR SCHEME STRATEGY

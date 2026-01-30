@@ -703,11 +703,11 @@ unsafe fn yuv420_to_rgb_neon_impl_nbit(
     let uv_width = width / 2;
 
     // Coefficients for BT.601 color space (fixed-point arithmetic with /128)
-    let v_coeff: int16x8_t = vdupq_n_s16(181);
-    let u_g_coeff: int16x8_t = vdupq_n_s16(44);
-    let v_g_coeff: int16x8_t = vdupq_n_s16(91);
-    let u_b_coeff: int16x8_t = vdupq_n_s16(227);
-    let const_128: int16x8_t = vdupq_n_s16(128);
+    let _v_coeff: int16x8_t = vdupq_n_s16(181);
+    let _u_g_coeff: int16x8_t = vdupq_n_s16(44);
+    let _v_g_coeff: int16x8_t = vdupq_n_s16(91);
+    let _u_b_coeff: int16x8_t = vdupq_n_s16(227);
+    let _const_128: int16x8_t = vdupq_n_s16(128);
 
     for y in 0..height {
         let y_row_start = y * width;

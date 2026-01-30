@@ -716,7 +716,7 @@ impl EventObserver for AnalyticsObserver {
         // No-op (selections are not tracked in basic metrics)
     }
 
-    fn on_frame_decoded(&self, event: &FrameDecodedEvent) {
+    fn on_frame_decoded(&self, _event: &FrameDecodedEvent) {
         let mut metrics = self.metrics.lock().unwrap();
         metrics.total_frames_decoded += 1;
     }
@@ -855,7 +855,7 @@ pub fn global_event_bus() -> &'static Mutex<EventBus> {
     use std::sync::OnceLock;
     static BUS: OnceLock<Mutex<EventBus>> = OnceLock::new();
     BUS.get_or_init(|| {
-        let mut bus = EventBus::new();
+        let bus = EventBus::new();
         // Add default observers
         bus.subscribe(Box::new(LoggingObserver::new()));
         bus.subscribe(Box::new(HistoryObserver::new()));

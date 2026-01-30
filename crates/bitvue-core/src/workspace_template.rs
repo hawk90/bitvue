@@ -294,7 +294,7 @@ impl WorkspaceRenderer for SingleStreamRenderer {
         Ok(())
     }
 
-    fn post_render(&self, ctx: &RenderContext) -> Result<(), String> {
+    fn post_render(&self, _ctx: &RenderContext) -> Result<(), String> {
         // Render overlays
         if self.show_grid {
             tracing::debug!("Rendering grid overlay");

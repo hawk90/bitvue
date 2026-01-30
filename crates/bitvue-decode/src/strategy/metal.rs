@@ -4,7 +4,6 @@
 //! When implemented, it will provide 8-10x speedup using the GPU.
 
 use super::{ConversionError, ConversionResult, StrategyCapabilities, YuvConversionStrategy};
-use bitvue_core::limits::YUV_CHROMA_OFFSET;
 
 /// Metal strategy - macOS GPU implementation (placeholder)
 ///

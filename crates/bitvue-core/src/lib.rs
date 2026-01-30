@@ -150,7 +150,6 @@ pub use diagnostics_bands::*;
 pub use diff_heatmap::*;
 pub use disable_reason::*;
 pub use discoverability::*;
-pub use error::*;
 pub use event::*;
 pub use event_observer::*;
 pub use evidence::*;

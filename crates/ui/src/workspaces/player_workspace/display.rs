@@ -16,7 +16,7 @@ impl super::PlayerWorkspace {
         if let Some(texture) = self.texture.texture() {
             let texture_id = texture.id();
             let show_overlays = !self.overlays.active.is_empty();
-            let grid_size = self.overlays.grid.size;
+            let _grid_size = self.overlays.grid.size;
             let zoom = self.zoom.zoom();
 
             // Calculate display size
@@ -82,8 +82,8 @@ impl super::PlayerWorkspace {
         active_overlays: &[OverlayType],
         selection: Option<&bitvue_core::SelectionState>,
         units: Option<&[bitvue_core::UnitNode]>,
-        frame_w: u32,
-        frame_h: u32,
+        _frame_w: u32,
+        _frame_h: u32,
     ) {
         use super::overlays::find_unit_by_offset;
 
@@ -184,7 +184,7 @@ impl super::PlayerWorkspace {
         response: &egui::Response,
         rect: egui::Rect,
         selection: Option<&bitvue_core::SelectionState>,
-        units: Option<&[bitvue_core::UnitNode]>,
+        _units: Option<&[bitvue_core::UnitNode]>,
     ) -> Option<bitvue_core::Command> {
         let mut result_command = None;
 
@@ -262,7 +262,7 @@ impl super::PlayerWorkspace {
     /// Show context menu (right-click)
     fn show_context_menu(
         &mut self,
-        ui: &mut egui::Ui,
+        _ui: &mut egui::Ui,
         response: &egui::Response,
         selection: Option<&bitvue_core::SelectionState>,
         mut result_command: Option<bitvue_core::Command>,
