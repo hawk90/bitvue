@@ -6,7 +6,6 @@
 use bitvue_core::FrameType;
 use crate::obu::{Obu, ObuType};
 use std::collections::HashSet;
-use std::sync::Arc;
 
 /// Frame dependency information
 #[derive(Debug, Clone)]
@@ -216,6 +215,7 @@ pub fn extract_required_obus(
 mod tests {
     use super::*;
     use crate::obu::{ObuHeader, ObuType};
+    use std::sync::Arc;
 
     fn create_test_obu(obu_type: ObuType, frame_type: Option<FrameType>, size: usize) -> Obu {
         Obu {
