@@ -15,6 +15,7 @@ bitvue-formats = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+twox-hash = "1"
 
 [dev-dependencies]
 criterion = "0.5"
