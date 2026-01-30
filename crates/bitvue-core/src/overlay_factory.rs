@@ -866,7 +866,7 @@ mod tests {
 
     #[test]
     fn test_base_overlay_renderer() {
-        let renderer = BaseOverlayRenderer::new(OverlayType::Grid);
+        let mut renderer = BaseOverlayRenderer::new(OverlayType::Grid);
 
         assert_eq!(renderer.overlay_type(), OverlayType::Grid);
         assert_eq!(renderer.opacity(), 1.0);
