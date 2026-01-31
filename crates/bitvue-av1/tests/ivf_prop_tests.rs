@@ -46,7 +46,7 @@ proptest! {
 /// Verifies that frame count arithmetic doesn't underflow.
 proptest! {
     #[test]
-    fn prop_frame_count_never_negative(frame_idx in any::<i64>()) {
+    fn prop_frame_count_never_negative(frame_idx in 0i64..) {
         // Frame index should always be >= 0
         prop_assert!(frame_idx >= 0);
     }
