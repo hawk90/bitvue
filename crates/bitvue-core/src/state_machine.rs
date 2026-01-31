@@ -553,14 +553,14 @@ mod tests {
 
     #[test]
     fn test_state_machine_creation() {
-        let sm = StateMachine::new("idle", "idle");
+        let sm: StateMachine<&str, String> = StateMachine::new("idle", "idle");
         assert_eq!(sm.current(), &"idle");
         assert_eq!(sm.current_id(), "idle");
     }
 
     #[test]
     fn test_state_machine_add_state() {
-        let mut sm = StateMachine::new("idle", "idle");
+        let mut sm: StateMachine<&str, String> = StateMachine::new("idle", "idle");
         sm.add_state(State::new("idle"));
         sm.add_state(State::new("loading"));
 
@@ -650,7 +650,7 @@ mod tests {
 
     #[test]
     fn test_state_machine_debug() {
-        let sm = StateMachine::new("test", "test");
+        let sm: StateMachine<&str, String> = StateMachine::new("test", "test");
         let debug_str = format!("{:?}", sm);
         assert!(debug_str.contains("StateMachine"));
         assert!(debug_str.contains("test"));
@@ -658,7 +658,7 @@ mod tests {
 
     #[test]
     fn test_builder_pattern() {
-        let sm = StateMachineBuilder::new("initial", "initial")
+        let sm: StateMachine<&str, String> = StateMachineBuilder::new("initial", "initial")
             .state(State::new("initial"))
             .state(State::new("next"))
             .transition("initial", "Go", "next")

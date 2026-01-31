@@ -870,7 +870,7 @@ mod tests {
 
     #[test]
     fn test_command_ext_stream_id() {
-        let stream = StreamId(0);
+        let stream = StreamId::A;
         let cmd = Command::OpenFile {
             stream,
             path: "/path/to/file".into(),
@@ -1044,7 +1044,7 @@ mod tests {
         assert!(cmd.is_idempotent());
 
         let cmd = Command::OpenFile {
-            stream: StreamId(0),
+            stream: StreamId::A,
             path: "/path".into(),
         };
         assert!(!cmd.is_idempotent());
@@ -1052,10 +1052,14 @@ mod tests {
 
     #[test]
     fn test_command_requires_stream() {
-        let stream = StreamId(0);
+        let stream = StreamId::A;
         let cmd = Command::SelectFrame {
             stream,
-            frame_key: crate::FrameKey(0),
+            frame_key: crate::FrameKey {
+                stream: StreamId::A,
+                frame_index: 0,
+                pts: None,
+            },
         };
         assert!(cmd.requires_stream());
 

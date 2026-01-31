@@ -1,5 +1,9 @@
 // Export module tests
 #[cfg(test)]
+use crate::export::overlay::OverlayType;
+#[cfg(test)]
+use crate::export::types::{ContextMenuScope, ExportFormat};
+#[cfg(test)]
 use super::*;
 
 // ============================================================================
@@ -55,8 +59,8 @@ fn create_test_metrics() -> (Vec<crate::metrics_distribution::MetricPoint>, Vec<
 }
 
 #[cfg(test)]
-fn create_test_diagnostic(id: u64, severity: DiagnosticSeverity) -> Diagnostic {
-    Diagnostic {
+fn create_test_diagnostic(id: u64, severity: crate::diagnostics::DiagnosticSeverity) -> crate::diagnostics::Diagnostic {
+    crate::diagnostics::Diagnostic {
         id,
         severity,
         category: crate::diagnostics::DiagnosticCategory::Bitstream,
@@ -73,11 +77,11 @@ fn create_test_diagnostic(id: u64, severity: DiagnosticSeverity) -> Diagnostic {
 }
 
 #[cfg(test)]
-fn create_test_diagnostics() -> Vec<Diagnostic> {
+fn create_test_diagnostics() -> Vec<crate::diagnostics::Diagnostic> {
     vec![
-        create_test_diagnostic(1, DiagnosticSeverity::Error),
-        create_test_diagnostic(2, DiagnosticSeverity::Warn),
-        create_test_diagnostic(3, DiagnosticSeverity::Info),
+        create_test_diagnostic(1, crate::diagnostics::DiagnosticSeverity::Error),
+        create_test_diagnostic(2, crate::diagnostics::DiagnosticSeverity::Warn),
+        create_test_diagnostic(3, crate::diagnostics::DiagnosticSeverity::Info),
     ]
 }
 
@@ -155,13 +159,13 @@ mod frame_row_tests {
 
     #[test]
     fn test_frame_export_row_error_marker() {
-        let frame = TimelineFrame {
+        let frame = crate::timeline::TimelineFrame {
             display_idx: 5,
             frame_type: "P".to_string(),
             size_bytes: 1000,
             pts: Some(2000),
             dts: Some(1900),
-            marker: FrameMarker::Error,
+            marker: crate::timeline::FrameMarker::Error,
             is_selected: false,
         };
         let row = FrameExportRow::from_timeline_frame(&frame, 5);
@@ -296,7 +300,7 @@ mod csv_export_tests {
     fn test_export_diagnostics_csv_with_severity_filter() {
         let diagnostics = create_test_diagnostics();
         let mut output = Vec::new();
-        let result = export_diagnostics_csv(&diagnostics, &mut output, Some(DiagnosticSeverity::Warn)).unwrap();
+        let result = export_diagnostics_csv(&diagnostics, &mut output, Some(crate::diagnostics::DiagnosticSeverity::Warn)).unwrap();
 
         // Only Warn and Error should be included (Info is below Warn)
         assert_eq!(result.row_count, 2);
@@ -306,7 +310,7 @@ mod csv_export_tests {
     fn test_export_diagnostics_csv_with_error_filter() {
         let diagnostics = create_test_diagnostics();
         let mut output = Vec::new();
-        let result = export_diagnostics_csv(&diagnostics, &mut output, Some(DiagnosticSeverity::Error)).unwrap();
+        let result = export_diagnostics_csv(&diagnostics, &mut output, Some(crate::diagnostics::DiagnosticSeverity::Error)).unwrap();
 
         // Only Error should be included
         assert_eq!(result.row_count, 1);
@@ -314,7 +318,7 @@ mod csv_export_tests {
 
     #[test]
     fn test_export_diagnostics_csv_message_escaping() {
-        let mut diag = create_test_diagnostic(1, DiagnosticSeverity::Warn);
+        let mut diag = create_test_diagnostic(1, crate::diagnostics::DiagnosticSeverity::Warn);
         diag.message = "Test, with \"quotes\"".to_string();
 
         let mut output = Vec::new();
@@ -403,7 +407,7 @@ mod summary_tests {
 
     #[test]
     fn test_export_summary_empty_frames() {
-        let frames: Vec<TimelineFrame> = vec![];
+        let frames: Vec<crate::timeline::TimelineFrame> = vec![];
         let summary = ExportSummary::from_frames(&frames);
 
         assert_eq!(summary.total_frames, 0);
@@ -648,7 +652,7 @@ mod diagnostics_row_tests {
 
     #[test]
     fn test_diagnostics_export_row_from_diagnostic() {
-        let diag = create_test_diagnostic(42, DiagnosticSeverity::Warn);
+        let diag = create_test_diagnostic(42, crate::diagnostics::DiagnosticSeverity::Warn);
         let row = DiagnosticsExportRow::from_diagnostic(&diag);
 
         assert_eq!(row.id, 42);

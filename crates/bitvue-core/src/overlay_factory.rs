@@ -973,11 +973,11 @@ mod tests {
         let result = factory.create_overlay(OverlayType::Sao, &config);
         assert!(result.is_err());
 
-        match result.unwrap_err() {
-            OverlayFactoryError::UnsupportedOverlayType { overlay_type } => {
-                assert_eq!(overlay_type, OverlayType::Sao);
-            }
-            _ => panic!("Expected UnsupportedOverlayType error"),
+        // Use if let instead of unwrap_err to avoid requiring Debug on Box<dyn OverlayRenderer>
+        if let Err(OverlayFactoryError::UnsupportedOverlayType { overlay_type }) = result {
+            assert_eq!(overlay_type, OverlayType::Sao);
+        } else {
+            panic!("Expected UnsupportedOverlayType error");
         }
     }
 

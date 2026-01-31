@@ -29,6 +29,7 @@ pub use types::*;
 
 #[cfg(test)]
 mod tests {
+    use super::types::ExportFormat;
     use super::*;
     use crate::timeline::{FrameMarker, TimelineFrame};
 

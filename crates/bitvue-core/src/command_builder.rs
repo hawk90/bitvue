@@ -656,14 +656,18 @@ mod tests {
     #[test]
     fn test_select_frame_command() {
         let command = CommandBuilder::new()
-            .select_frame(StreamId::A, FrameKey::new(42))
+            .select_frame(StreamId::A, FrameKey {
+                stream: StreamId::A,
+                frame_index: 42,
+                pts: None,
+            })
             .build()
             .unwrap();
 
         match command {
             Command::SelectFrame { stream, frame_key } => {
                 assert_eq!(stream, StreamId::A);
-                assert_eq!(frame_key.index, 42);
+                assert_eq!(frame_key.frame_index, 42);
             }
             _ => panic!("Expected SelectFrame command"),
         }
@@ -672,7 +676,12 @@ mod tests {
     #[test]
     fn test_select_unit_command() {
         let command = CommandBuilder::new()
-            .select_unit(StreamId::B, UnitKey::new(10))
+            .select_unit(StreamId::B, UnitKey {
+                stream: StreamId::B,
+                unit_type: "TEST_UNIT".to_string(),
+                offset: 10,
+                size: 100,
+            })
             .build()
             .unwrap();
 
@@ -771,7 +780,10 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(command, Command::ToggleDetailMode);
+        match command {
+            Command::ToggleDetailMode => {}
+            _ => panic!("Expected ToggleDetailMode command"),
+        }
     }
 
     #[test]
@@ -781,7 +793,10 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(command, Command::CopySelection);
+        match command {
+            Command::CopySelection => {}
+            _ => panic!("Expected CopySelection command"),
+        }
     }
 
     #[test]
@@ -802,14 +817,18 @@ mod tests {
     #[test]
     fn test_add_bookmark_command() {
         let command = CommandBuilder::new()
-            .add_bookmark(StreamId::A, FrameKey::new(42))
+            .add_bookmark(StreamId::A, FrameKey {
+                stream: StreamId::A,
+                frame_index: 42,
+                pts: None,
+            })
             .build()
             .unwrap();
 
         match command {
             Command::AddBookmark { stream, frame_key } => {
                 assert_eq!(stream, StreamId::A);
-                assert_eq!(frame_key.index, 42);
+                assert_eq!(frame_key.frame_index, 42);
             }
             _ => panic!("Expected AddBookmark command"),
         }
@@ -860,9 +879,8 @@ mod tests {
 
         match command {
             Command::Export {
-                frame_range, order_type, ..
+                frame_range, ..
             } => {
-                // Note: order_type isn't part of Export command, this tests the builder accepts it
                 assert_eq!(frame_range, Some((10, 100)));
             }
             _ => panic!("Expected Export command"),
