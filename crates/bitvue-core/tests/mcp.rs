@@ -3,15 +3,12 @@
 use bitvue_core::diagnostics_bands::DiagnosticsBands;
 use bitvue_core::frame_identity::FrameMetadata;
 use bitvue_core::mcp::McpIntegration;
-use bitvue_core::{FrameIndexMap, FrameKey, InsightFeed, SelectionState, StreamId};
+use bitvue_core::selection::TemporalSelection;
+use bitvue_core::{FrameIndexMap, InsightFeed, SelectionState, StreamId};
 
 fn create_test_selection() -> SelectionState {
     let mut selection = SelectionState::new(StreamId::A);
-    selection.frame_key = Some(FrameKey {
-        stream: StreamId::A,
-        frame_index: 42,
-        pts: Some(42000),
-    });
+    selection.temporal = Some(TemporalSelection::Point { frame_index: 42 });
     selection
 }
 
