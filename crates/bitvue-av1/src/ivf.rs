@@ -18,6 +18,9 @@ pub const IVF_FRAME_HEADER_SIZE: usize = 12;
 /// Maximum valid IVF frame size (100 MB)
 pub const IVF_MAX_FRAME_SIZE: usize = 100 * 1024 * 1024;
 
+/// Maximum number of frames to prevent DoS through millions of tiny frames
+pub const IVF_MAX_FRAME_COUNT: usize = 1_000_000;
+
 /// Default block size for QP/MV overlay grids
 pub const OVERLAY_BLOCK_SIZE: u32 = 64;
 
@@ -232,7 +235,17 @@ pub fn parse_ivf_frames(data: &[u8]) -> Result<(IvfHeader, Vec<IvfFrame>), Bitvu
     let mut frames = Vec::new();
     let mut offset = header.header_size as usize;
 
-    while let Some(frame_header) = data.get(offset..offset + 12) {
+    while frames.len() < IVF_MAX_FRAME_COUNT {
+        // Check for overflow in offset + 12 calculation
+        let offset_end = offset.checked_add(12)
+            .ok_or_else(|| BitvueError::InvalidData(
+                "IVF offset would cause integer overflow".to_string()
+            ))?;
+
+        let frame_header = match data.get(offset..offset_end) {
+            Some(h) => h,
+            None => break,  // End of data
+        };
         let frame_size_bytes: [u8; 4] = frame_header.get(0..4)
             .ok_or_else(|| BitvueError::InvalidData("IVF frame header incomplete".to_string()))?
             .try_into()
@@ -247,8 +260,22 @@ pub fn parse_ivf_frames(data: &[u8]) -> Result<(IvfHeader, Vec<IvfFrame>), Bitvu
 
         offset += 12;
 
+        // SECURITY: Validate frame size to prevent integer overflow and DoS
+        // Maximum frame size is 100MB (IVF_MAX_FRAME_SIZE)
+        if frame_size as usize > IVF_MAX_FRAME_SIZE {
+            return Err(BitvueError::InvalidData(format!(
+                "IVF frame size {} exceeds maximum allowed size of {}",
+                frame_size, IVF_MAX_FRAME_SIZE
+            )));
+        }
+
+        // Check for integer overflow in offset calculation
+        let frame_end = offset.checked_add(frame_size as usize)
+            .ok_or_else(|| BitvueError::InvalidData(
+                "IVF frame size would cause integer overflow".to_string()
+            ))?;
+
         // Check if frame data is available
-        let frame_end = offset + frame_size as usize;
         if frame_end > data.len() {
             break;
         }
@@ -267,7 +294,8 @@ pub fn parse_ivf_frames(data: &[u8]) -> Result<(IvfHeader, Vec<IvfFrame>), Bitvu
             temporal_id,
         });
 
-        offset += frame_size as usize;
+        // Move offset to end of this frame (we already validated frame_end is valid)
+        offset = frame_end;
     }
 
     Ok((header, frames))

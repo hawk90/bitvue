@@ -5,6 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 use crate::commands::AppState;
+
+/// Maximum number of samples to prevent DoS through millions of tiny samples
+const MAX_SAMPLES: usize = 100_000;
 use crate::commands::file::validate_file_path;
 use bitvue_decode::decoder::DecodeError;
 
@@ -622,6 +625,15 @@ fn decode_samples_subset(
     frame_indices: &[usize],
     max_idx: usize,
 ) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+    // SECURITY: Validate total samples to prevent DoS
+    if samples.len() > MAX_SAMPLES {
+        return Err(format!(
+            "Too many samples: {} (maximum allowed: {})",
+            samples.len(),
+            MAX_SAMPLES
+        ));
+    }
+
     if max_idx >= samples.len() {
         return Err(format!("Frame index {} out of range (total: {})", max_idx, samples.len()));
     }
@@ -703,6 +715,15 @@ fn decode_all_frames(file_data: &[u8]) -> Result<Vec<bitvue_decode::DecodedFrame
 /// Uses a single decoder instance to efficiently decode all samples.
 /// This is faster than creating a new decoder for each sample.
 fn decode_samples(samples: &[std::borrow::Cow<'_, [u8]>]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+    // SECURITY: Validate total samples to prevent DoS
+    if samples.len() > MAX_SAMPLES {
+        return Err(format!(
+            "Too many samples: {} (maximum allowed: {})",
+            samples.len(),
+            MAX_SAMPLES
+        ));
+    }
+
     let mut decoder = bitvue_decode::Av1Decoder::new()
         .map_err(|e| format!("Failed to create decoder: {}", e))?;
 
