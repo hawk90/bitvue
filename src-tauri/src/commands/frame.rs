@@ -417,7 +417,9 @@ pub async fn get_frame_hex_data(
     let total_size = frame_data.len();
 
     // Limit bytes for display (default 2048 bytes)
-    let limit = max_bytes.unwrap_or(2048);
+    // SECURITY: Validate max_bytes to prevent DoS through extremely large values
+    const MAX_HEX_BYTES: usize = 1_048_576; // 1MB max for hex display
+    let limit = max_bytes.unwrap_or(2048).min(MAX_HEX_BYTES);
     let (return_data, truncated) = if frame_data.len() > limit {
         (frame_data[..limit].to_vec(), true)
     } else {

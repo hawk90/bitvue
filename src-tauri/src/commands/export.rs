@@ -162,7 +162,7 @@ pub async fn export_frames_json(
     let output = json!({
         "frames": frames_json,
         "total_frames": units.units.len(),
-        "file_path": stream_a.file_path,
+        // SECURITY: Don't include file_path in export to prevent information disclosure
     });
 
     let mut file = File::create(&path)

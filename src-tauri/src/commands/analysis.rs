@@ -1031,9 +1031,20 @@ pub async fn get_residual_analysis(
     let grid_w = width.div_ceil(block_size);
     let grid_h = height.div_ceil(block_size);
 
+    // SECURITY: Limit grid size to prevent DoS through extremely large grids
+    const MAX_GRID_SIZE: u32 = 256; // 256x256 blocks max = 4096x4096 pixels
+    if grid_w > MAX_GRID_SIZE || grid_h > MAX_GRID_SIZE {
+        return Err("Grid dimensions too large".to_string());
+    }
+
+    // SECURITY: Check for overflow in index calculation
+    let total_blocks = grid_w.checked_mul(grid_h)
+        .ok_or("Grid size would cause overflow")?;
+
     let block_residuals: Vec<BlockResidualData> = (0..grid_h)
         .flat_map(|y| {
             (0..grid_w).map(move |x| {
+                // SAFETY: Index calculation is safe because we validated grid_w and grid_h
                 let base_idx = (y * grid_w + x) as f32;
                 BlockResidualData {
                     x: x * block_size,

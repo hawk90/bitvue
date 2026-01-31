@@ -9,6 +9,28 @@ use std::path::Path;
 /// Maximum number of recent files to track
 const MAX_RECENT_FILES: usize = 10;
 
+/// Maximum path length to prevent DoS through extremely long paths
+const MAX_PATH_LENGTH: usize = 4096;
+
+/// Characters to sanitize from paths
+const SANITIZE_CHARS: &[char] = &['\r', '\n', '\t', '\x00'];
+
+/// Sanitize a file path by removing dangerous characters
+fn sanitize_path(path: &str) -> String {
+    // Limit length first
+    let truncated = if path.len() > MAX_PATH_LENGTH {
+        &path[..MAX_PATH_LENGTH]
+    } else {
+        path
+    };
+
+    // Remove dangerous characters
+    truncated
+        .chars()
+        .map(|ch| if SANITIZE_CHARS.contains(&ch) { ' ' } else { ch })
+        .collect()
+}
+
 /// Store key for recent files
 const RECENT_FILES_KEY: &str = "recent_files";
 
@@ -51,7 +73,8 @@ pub async fn get_recent_files(
     let mut valid_files = Vec::new();
     for entry in entries {
         if Path::new(&entry.path).exists() {
-            valid_files.push(entry.path);
+            // SECURITY: Sanitize paths before returning them
+            valid_files.push(sanitize_path(&entry.path));
         }
     }
 
@@ -68,6 +91,9 @@ pub async fn add_recent_file(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<(), String> {
+    // SECURITY: Sanitize path before storing to prevent injection attacks
+    let sanitized_path = sanitize_path(&path);
+
     let store = app.store("recent_files.json").map_err(|e| e.to_string())?;
 
     // Load existing entries
@@ -79,10 +105,10 @@ pub async fn add_recent_file(
     };
 
     // Remove if already exists (to move to front)
-    entries.retain(|e| e.path != path);
+    entries.retain(|e| e.path != sanitized_path);
 
     // Add new entry at front
-    entries.insert(0, RecentFileEntry::new(path));
+    entries.insert(0, RecentFileEntry::new(sanitized_path));
 
     // Limit to max entries
     entries.truncate(MAX_RECENT_FILES);

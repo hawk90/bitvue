@@ -249,6 +249,13 @@ pub async fn create_compare_workspace(
 ) -> Result<CompareWorkspaceData, String> {
     log::info!("create_compare_workspace: A={}, B={}", path_a, path_b);
 
+    // Rate limiting check (workspace creation involves file parsing)
+    state.rate_limiter.check_rate_limit()
+        .map_err(|wait_time| {
+            format!("Rate limited: too many requests. Please try again in {:.1}s",
+                wait_time.as_secs_f64())
+        })?;
+
     // Validate files exist
     let path_a_buf = Path::new(&path_a);
     let path_b_buf = Path::new(&path_b);
