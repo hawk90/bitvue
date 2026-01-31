@@ -160,8 +160,20 @@ pub fn decode_ivf_frames_batch(file_data: &[u8], frame_indices: &[usize]) -> Res
 
     // Find the maximum frame index needed
     let max_idx = *frame_indices.iter().max().unwrap_or(&0);
+
+    // SECURITY: Validate number of frame indices to prevent DoS
+    const MAX_BATCH_SIZE: usize = 1000;
+    if frame_indices.len() > MAX_BATCH_SIZE {
+        return Err(format!(
+            "Too many frame indices requested: {} (maximum {})",
+            frame_indices.len(),
+            MAX_BATCH_SIZE
+        ));
+    }
+
     if max_idx >= frames.len() {
-        return Err(format!("Frame index {} out of range (total: {})", max_idx, frames.len()));
+        // SECURITY: Don't reveal total frame count
+        return Err("Frame index out of range".to_string());
     }
 
     // Create a single decoder for all frames (more efficient than creating new decoder per frame)

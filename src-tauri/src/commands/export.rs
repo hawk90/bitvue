@@ -173,7 +173,8 @@ pub async fn export_frames_json(
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
     log::info!("export_frames_json: Successfully exported {} frames", units.units.len());
-    Ok(format!("Exported {} frames to {}", units.units.len(), output_path))
+    // SECURITY: Don't reveal output path in response to prevent information disclosure
+    Ok(format!("Exported {} frames", units.units.len()))
 }
 
 /// Export analysis report (text format)

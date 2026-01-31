@@ -87,16 +87,16 @@ async fn load_file_data_and_codec(
     state: &tauri::State<'_, AppState>,
 ) -> Result<(Vec<u8>, String), String> {
     let core = state.core.lock().map_err(|e| {
-        log::error!("get_frame_analysis: Failed to lock core: {}", e);
+        // SECURITY: Don't include potentially sensitive error details in logs
+        log::error!("get_frame_analysis: Failed to lock core");
         e.to_string()
     })?;
 
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
-    let file_path_str = file_path.to_str().ok_or("Invalid file path")?;
 
-    log::info!("get_frame_analysis: File path: {}", file_path_str);
+    // SECURITY: Don't log file path to prevent information disclosure
     log::info!("get_frame_analysis: Stream A loaded: {} units",
         stream_a.units.as_ref().map_or(0, |u| u.units.len()));
 
@@ -105,10 +105,10 @@ async fn load_file_data_and_codec(
         .map_err(|e| e.to_string())?
         .get_file_data()?;
 
-    log::info!("get_frame_analysis: File data size: {} bytes (from cache)", file_data.len());
+    // SECURITY: Don't log file data size to prevent information leakage
 
     // Detect codec from file extension or stream metadata
-    let codec = detect_codec_from_path(file_path_str);
+    let codec = detect_codec_from_path(&file_path.to_string_lossy());
     log::info!("get_frame_analysis: Detected codec: {}", codec);
 
     Ok((file_data, codec))

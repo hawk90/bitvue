@@ -35,6 +35,16 @@ pub async fn get_thumbnails(
 ) -> Result<Vec<ThumbnailData>, String> {
     log::info!("get_thumbnails: Requesting {} thumbnails", frame_indices.len());
 
+    // SECURITY: Validate number of frame indices to prevent DoS
+    const MAX_THUMBNAIL_REQUEST: usize = 500;
+    if frame_indices.len() > MAX_THUMBNAIL_REQUEST {
+        return Err(format!(
+            "Too many thumbnail requests: {} (maximum {})",
+            frame_indices.len(),
+            MAX_THUMBNAIL_REQUEST
+        ));
+    }
+
     // Rate limiting check (thumbnail generation is CPU-intensive)
     state.rate_limiter.check_rate_limit()
         .map_err(|wait_time| {

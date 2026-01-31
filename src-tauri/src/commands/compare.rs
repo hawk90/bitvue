@@ -344,10 +344,8 @@ pub async fn get_aligned_frame(
 
     match workspace.get_aligned_frame(stream_a_idx) {
         Some((b_idx, quality)) => Ok((b_idx, format!("{:?}", quality))),
-        None => Err(format!(
-            "No aligned frame found for index {} (stream A has {} frames)",
-            stream_a_idx, workspace.stream_a.frame_count
-        )),
+        // SECURITY: Don't reveal frame count in error message
+        None => Err("No aligned frame found for index".to_string()),
     }
 }
 

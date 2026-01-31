@@ -342,8 +342,10 @@ pub async fn calculate_quality_metrics(
     };
 
     // Determine which frames to process
+    // SECURITY: Limit maximum frames to process even when indices is None
+    const MAX_FRAMES_TO_PROCESS: usize = 10000;
     let frames_to_process = frame_indices.unwrap_or_else(|| {
-        (0..ref_frames.len().min(dist_frames.len())).collect()
+        (0..ref_frames.len().min(dist_frames.len()).min(MAX_FRAMES_TO_PROCESS)).collect()
     });
 
     let mut metrics = Vec::new();
