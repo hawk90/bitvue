@@ -11,7 +11,6 @@ use bitvue_av1::BitReader;
 /// This test generates random byte sequences and verifies that BitReader
 /// operations either succeed or return errors, but never panic.
 proptest! {
-    #[test]
     fn prop_read_bit_never_panics(data in prop::collection::vec(any::<u8>(), 0..1000)) {
         let mut reader = BitReader::new(&data);
 
@@ -29,16 +28,14 @@ proptest! {
 /// Property: Reading zero bits should return 0
 ///
 /// Edge case verification: reading 0 bits should always work.
-proptest! {
-    #[test]
-    fn prop_read_zero_bits_returns_zero() {
-        // Any data will do for this test
-        let data = vec![0u8, 1, 2, 3];
+#[test]
+fn prop_read_zero_bits_returns_zero() {
+    // Any data will do for this test
+    let data = vec![0u8, 1, 2, 3];
 
-        let mut reader = BitReader::new(&data);
+    let mut reader = BitReader::new(&data);
 
-        // Reading 0 bits should always succeed and return 0
-        let result = reader.read_bits(0);
-        assert_eq!(result, Ok(0));
-    }
+    // Reading 0 bits should always succeed and return 0
+    let result = reader.read_bits(0);
+    assert_eq!(result, Ok(0));
 }

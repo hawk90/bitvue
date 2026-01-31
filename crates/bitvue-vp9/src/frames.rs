@@ -289,11 +289,11 @@ mod tests {
     #[test]
     fn test_frame_type_from_frame_type() {
         assert_eq!(
-            Vp9FrameType::from_frame_type(FrameType::KeyFrame),
+            Vp9FrameType::from_frame_type(FrameType::Key),
             Vp9FrameType::Key
         );
         assert_eq!(
-            Vp9FrameType::from_frame_type(FrameType::InterFrame),
+            Vp9FrameType::from_frame_type(FrameType::Inter),
             Vp9FrameType::Inter
         );
     }

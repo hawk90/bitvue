@@ -30,7 +30,7 @@ fn test_extract_qp_grid_basic() {
 #[test]
 fn test_extract_mv_grid_basic() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_vp9::frame_header::FrameType::InterFrame,
+        frame_type: bitvue_core::FrameType::Inter,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -152,7 +152,7 @@ fn test_qp_grid_with_keyframe() {
 #[test]
 fn test_qp_grid_with_interframe() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_vp9::frame_header::FrameType::InterFrame,
+        frame_type: bitvue_core::FrameType::Inter,
         width: 1280,
         height: 720,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -463,7 +463,7 @@ fn test_frame_type_interframe() {
     use bitvue_vp9::frame_header::FrameType;
 
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: FrameType::InterFrame,
+        frame_type: FrameType::Inter,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {

@@ -5,7 +5,7 @@
 //! - Superframe detection
 //! - Overlay data extraction
 
-use bitvue_vp9::{parse_frames, parse_vp9};
+use bitvue_vp9::parse_vp9;
 
 #[test]
 fn test_parse_empty_vp9_stream() {
@@ -64,7 +64,7 @@ fn test_vp9_superframe_detection() {
 
     let stream = result.unwrap();
     assert_eq!(stream.frames.len(), 1, "Should have 1 frame");
-    assert!(!stream.superframes_enabled, "Should not have superframes");
+    assert_eq!(stream.superframe_index.frame_count, 0, "Should not have superframes (no superframe index)");
 }
 
 #[test]
@@ -98,8 +98,8 @@ fn test_v0_5_completeness() {
 
     // 2. Check for frame properties
     if let Some(frame) = stream.frames.first() {
-        let _ = frame.is_keyframe;
-        let _ = frame.frame_size;
+        let _ = frame.frame_type;  // Use frame_type instead of is_keyframe
+        let _ = frame.width;  // Use width/height instead of frame_size
         let _ = frame.show_frame;
     }
 

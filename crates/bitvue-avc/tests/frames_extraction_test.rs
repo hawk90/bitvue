@@ -7,6 +7,7 @@ use bitvue_avc::frames::{
     extract_frame_at_index, AvcFrame, AvcFrameType,
 };
 use bitvue_core::{StreamId, UnitNode};
+use std::sync::Arc;
 
 #[test]
 fn test_extract_empty_data() {
@@ -822,11 +823,11 @@ fn test_avc_frame_to_unit_node_i_frame() {
     let unit_node = avc_frame_to_unit_node(&frame, 0);
 
     assert_eq!(unit_node.key.stream, StreamId::A);
-    assert_eq!(unit_node.unit_type, "FRAME");
+    assert_eq!(unit_node.unit_type, "FRAME".into());
     assert_eq!(unit_node.offset, 100);
     assert_eq!(unit_node.size, 200);
     assert_eq!(unit_node.frame_index, Some(0));
-    assert_eq!(unit_node.frame_type, Some("I".to_string()));
+    assert_eq!(unit_node.frame_type, Some(Arc::from("I")));
     assert_eq!(unit_node.pts, Some(0));
     assert!(unit_node.dts.is_none());
     assert!(unit_node.children.is_empty());
@@ -853,7 +854,7 @@ fn test_avc_frame_to_unit_node_p_frame() {
     let unit_node = avc_frame_to_unit_node(&frame, 1);
 
     assert_eq!(unit_node.frame_index, Some(1));
-    assert_eq!(unit_node.frame_type, Some("P".to_string()));
+    assert_eq!(unit_node.frame_type, Some(Arc::from("P")));
     assert_eq!(unit_node.pts, Some(2));
     assert_eq!(unit_node.offset, 300);
     assert_eq!(unit_node.size, 150);
@@ -876,7 +877,7 @@ fn test_avc_frame_to_unit_node_b_frame() {
 
     let unit_node = avc_frame_to_unit_node(&frame, 2);
 
-    assert_eq!(unit_node.frame_type, Some("B".to_string()));
+    assert_eq!(unit_node.frame_type, Some(Arc::from("B")));
     assert_eq!(unit_node.pts, Some(1));
     assert!(unit_node.display_name.contains("B"));
 }
@@ -897,7 +898,7 @@ fn test_avc_frame_to_unit_node_display_name() {
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 0);
-    assert_eq!(unit_node.display_name, "Frame 5 (I)");
+    assert_eq!(unit_node.display_name, "Frame 5 (I)".into());
 }
 
 #[test]
@@ -935,7 +936,7 @@ fn test_avc_frames_to_unit_nodes() {
     assert_eq!(unit_nodes[0].frame_index, Some(0));
     assert_eq!(unit_nodes[0].frame_type, Some("I".to_string()));
     assert_eq!(unit_nodes[1].frame_index, Some(1));
-    assert_eq!(unit_nodes[1].frame_type, Some("P".to_string()));
+    assert_eq!(unit_nodes[1].frame_type, Some(Arc::from("P")));
 }
 
 #[test]

@@ -221,7 +221,7 @@ mod tests {
                 frame_offsets: vec![0],
             },
             frames: vec![FrameHeader {
-                frame_type: FrameType::KeyFrame,
+                frame_type: FrameType::Key,
                 show_frame: true,
                 width: 1920,
                 height: 1080,
