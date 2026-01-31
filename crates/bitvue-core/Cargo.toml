@@ -23,8 +23,11 @@ tempfile = "3.8"
 
 [features]
 # Codec-specific indexer features (optional, for faster compilation)
+# NOTE: hevc-indexer, vp9-indexer, vvc-indexer are disabled due to cyclic dependency
+# The codec crates (bitvue-hevc, bitvue-vp9, bitvue-vvc) depend on bitvue-core
+# Use the individual codec crates directly for HEVC/VP9/VVC parsing
 default = []
-hevc-indexer = []
-vp9-indexer = []
-vvc-indexer = []
-all-indexers = ["hevc-indexer", "vp9-indexer", "vvc-indexer"]
+# hevc-indexer = []  # Disabled due to cyclic dependency
+# vp9-indexer = []   # Disabled due to cyclic dependency
+# vvc-indexer = []   # Disabled due to cyclic dependency
+# all-indexers = ["hevc-indexer", "vp9-indexer", "vvc-indexer"]
