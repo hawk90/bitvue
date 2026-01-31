@@ -355,7 +355,8 @@ pub async fn get_frames(state: tauri::State<'_, AppState>) -> Result<Vec<crate::
         })
         .collect();
 
-    log::info!("get_frames: Returning {} frames", frames.len());
+    // SECURITY: Don't log frame count to prevent information disclosure
+    log::info!("get_frames: Frames returned");
     Ok(frames)
 }
 
@@ -673,7 +674,8 @@ fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     log::info!("parse_ivf_container: Parsing IVF byte stream...");
     match parse_ivf_frames(file_data) {
         Ok((_header, frames)) => {
-            log::info!("parse_ivf_container: IVF parsing successful, {} frames", frames.len());
+            // SECURITY: Don't log frame count to prevent information disclosure
+            log::info!("parse_ivf_container: IVF parsing successful");
             Some(frames.into_iter().enumerate().map(|(idx, ivf_frame)| {
                 bitvue_core::UnitNode {
                     key: bitvue_core::UnitKey {
@@ -716,7 +718,8 @@ fn parse_annex_b_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode
     // Try H.264 first
     match extract_avc_annex_b_frames(file_data) {
         Ok(avc_frames) if !avc_frames.is_empty() => {
-            log::info!("parse_annex_b_container: Extracted {} H.264 frames from Annex B", avc_frames.len());
+            // SECURITY: Don't log frame count to prevent information disclosure
+            log::info!("parse_annex_b_container: Extracted H.264 frames from Annex B");
             Some(avc_frames_to_unit_nodes(&avc_frames))
         }
         _ => {
@@ -724,7 +727,8 @@ fn parse_annex_b_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode
             log::info!("parse_annex_b_container: Trying H.265/HEVC parsing...");
             match extract_hevc_annex_b_frames(file_data) {
                 Ok(hevc_frames) if !hevc_frames.is_empty() => {
-                    log::info!("parse_annex_b_container: Extracted {} H.265 frames from Annex B", hevc_frames.len());
+                    // SECURITY: Don't log frame count to prevent information disclosure
+                    log::info!("parse_annex_b_container: Extracted H.265 frames from Annex B");
                     Some(hevc_frames_to_unit_nodes(&hevc_frames))
                 }
                 _ => {

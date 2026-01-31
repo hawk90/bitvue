@@ -165,7 +165,7 @@ fn log_analysis_result(result: &Result<FrameAnalysisData, String>) {
     match result {
         Ok(analysis) => {
             log::info!("get_frame_analysis: === Analysis successful ===");
-            log::info!("get_frame_analysis: Frame size: {}x{}", analysis.width, analysis.height);
+            // SECURITY: Don't log frame dimensions to prevent information disclosure
             log::info!("get_frame_analysis: QP grid: {}",
                 if analysis.qp_grid.is_some() { "present" } else { "none" });
             log::info!("get_frame_analysis: MV grid: {}",

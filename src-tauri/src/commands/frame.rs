@@ -438,8 +438,8 @@ pub async fn get_frame_hex_data(
         (frame_data, false)
     };
 
-    log::info!("get_frame_hex_data: Returning {} bytes for frame {} (total: {}, truncated: {})",
-        return_data.len(), frame_index, total_size, truncated);
+    // SECURITY: Don't log byte counts, frame index, or sizes to prevent information disclosure
+    log::info!("get_frame_hex_data: Hex data returned successfully");
 
     Ok(FrameHexData {
         frame_index,

@@ -124,8 +124,9 @@ pub async fn export_frames_csv(
         .map_err(|e| format!("Failed to write row: {}", e))?;
     }
 
-    log::info!("export_frames_csv: Successfully exported {} frames", units.units.len());
-    Ok(format!("Exported {} frames to {}", units.units.len(), output_path))
+    // SECURITY: Don't log frame count to prevent information disclosure
+    log::info!("export_frames_csv: Export successful");
+    Ok(format!("Exported {} frames", units.units.len()))
 }
 
 /// Export frame data to JSON format
@@ -174,7 +175,8 @@ pub async fn export_frames_json(
         .map_err(|e| format!("Failed to serialize JSON: {}", e))?.as_bytes())
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
-    log::info!("export_frames_json: Successfully exported {} frames", units.units.len());
+    // SECURITY: Don't log frame count to prevent information disclosure
+    log::info!("export_frames_json: Export successful");
     // SECURITY: Don't reveal output path in response to prevent information disclosure
     Ok(format!("Exported {} frames", units.units.len()))
 }

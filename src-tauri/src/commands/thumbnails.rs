@@ -132,7 +132,8 @@ pub async fn get_thumbnails(
 
     // Second pass: Batch decode uncached frames (for IVF)
     if !uncached_indices.is_empty() && matches!(container_format, ContainerFormat::IVF) {
-        log::info!("get_thumbnails: Batch decoding {} frames for IVF", uncached_indices.len());
+        // SECURITY: Don't log frame count to prevent information disclosure
+        log::info!("get_thumbnails: Batch decoding IVF frames");
 
         // Batch decode frames
         match decode_ivf_frames_batch(&file_data, &uncached_indices) {
