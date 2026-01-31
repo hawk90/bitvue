@@ -87,6 +87,24 @@ impl ThumbnailService {
     /// Set thumbnail dimensions
     #[allow(dead_code)]
     pub fn set_dimensions(&mut self, width: u32, height: u32) -> Result<(), String> {
+        // SECURITY: Validate dimensions to prevent DoS with extremely large thumbnails
+        const MAX_THUMB_DIMENSION: u32 = 4096; // 4K max for thumbnails
+        const MIN_THUMB_DIMENSION: u32 = 16;   // Minimum reasonable size
+
+        if width < MIN_THUMB_DIMENSION || height < MIN_THUMB_DIMENSION {
+            return Err(format!(
+                "Thumbnail dimensions too small (minimum {}x{}, got {}x{})",
+                MIN_THUMB_DIMENSION, MIN_THUMB_DIMENSION, width, height
+            ));
+        }
+
+        if width > MAX_THUMB_DIMENSION || height > MAX_THUMB_DIMENSION {
+            return Err(format!(
+                "Thumbnail dimensions too large (maximum {}x{}, got {}x{})",
+                MAX_THUMB_DIMENSION, MAX_THUMB_DIMENSION, width, height
+            ));
+        }
+
         self.thumb_width = width;
         self.thumb_height = height;
         // Clear cache when dimensions change

@@ -262,7 +262,26 @@ pub struct ThumbnailData {
 // Greeting Command (for testing)
 // =============================================================================
 
+/// Maximum length for the name parameter to prevent DoS
+const MAX_NAME_LENGTH: usize = 100;
+
+/// Characters to sanitize from the name parameter
+const SANITIZE_CHARS: &[char] = &['\r', '\n', '\t', '\x00', '\x1b'];
+
 #[tauri::command]
 pub fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+    // SECURITY: Sanitize input to prevent log injection and limit length
+    let sanitized = if name.len() > MAX_NAME_LENGTH {
+        &name[..MAX_NAME_LENGTH.min(name.len())]
+    } else {
+        name
+    };
+
+    let sanitized: String = sanitized
+        .chars()
+        .take(MAX_NAME_LENGTH)
+        .map(|ch| if SANITIZE_CHARS.contains(&ch) { ' ' } else { ch })
+        .collect();
+
+    format!("Hello, {}! You've been greeted from Rust!", sanitized)
 }

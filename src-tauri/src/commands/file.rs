@@ -41,14 +41,13 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
     check_system_directory_access(&canonical.to_string_lossy())
         .map_err(|e| format!("Path validation failed: {}", e))?;
 
-    // Check if canonical path exists and is a file (not a directory)
-    // Check existence AFTER canonicalization to ensure we check the actual destination
+    // SECURITY: Use generic error message to avoid revealing exact file location
     if !canonical.exists() {
-        return Err(format!("File not found: {}", canonical.display()));
+        return Err("File not found".to_string());
     }
 
     if !canonical.is_file() {
-        return Err(format!("Path is not a file: {}", canonical.display()));
+        return Err("Path is not a file".to_string());
     }
 
     Ok(canonical)
@@ -65,7 +64,8 @@ pub fn check_system_directory_access(canonical_str: &str) -> Result<(), String> 
             "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
         for blocked in &blocked_paths {
             if canonical_str.starts_with(blocked) {
-                return Err(format!("Cannot access system directory ({})", blocked));
+                // SECURITY: Use generic error to avoid revealing which directory was blocked
+                return Err("Cannot access system directory".to_string());
             }
         }
     }
@@ -76,7 +76,8 @@ pub fn check_system_directory_access(canonical_str: &str) -> Result<(), String> 
             || path_lower.starts_with("c:\\program files")
             || path_lower.starts_with("c:\\program files (x86)")
             || path_lower.starts_with("c:\\programdata") {
-            return Err("Cannot access system directories".to_string());
+            // SECURITY: Use generic error to avoid revealing which directory was blocked
+            return Err("Cannot access system directory".to_string());
         }
     }
     Ok(())

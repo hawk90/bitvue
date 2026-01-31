@@ -254,10 +254,12 @@ pub async fn create_compare_workspace(
     let path_b_buf = Path::new(&path_b);
 
     if !path_a_buf.exists() {
-        return Err(format!("Stream A file not found: {}", path_a));
+        // SECURITY: Use generic error to avoid revealing file path
+        return Err("Stream A file not found".to_string());
     }
     if !path_b_buf.exists() {
-        return Err(format!("Stream B file not found: {}", path_b));
+        // SECURITY: Use generic error to avoid revealing file path
+        return Err("Stream B file not found".to_string());
     }
 
     // Parse frame metadata from files

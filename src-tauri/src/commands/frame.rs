@@ -449,12 +449,14 @@ pub fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<Str
     }
 
     // Validate RGB data size matches dimensions (3 bytes per pixel)
-    let expected_size = (width as usize) * (height as usize) * 3;
+    // SECURITY: Use checked arithmetic to prevent integer overflow
+    let expected_size = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|v| v.checked_mul(3))
+        .ok_or_else(|| "Invalid dimensions: would cause integer overflow".to_string())?;
+
     if rgb_data.len() != expected_size {
-        return Err(format!(
-            "RGB data size mismatch: expected {} bytes for {}x{}, got {}",
-            expected_size, width, height, rgb_data.len()
-        ));
+        return Err("RGB data size mismatch".to_string());
     }
 
     // Check for reasonable dimensions (prevent DoS with extremely large images)
@@ -463,6 +465,15 @@ pub fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<Str
         return Err(format!(
             "Dimensions too large (max {}x{}, got {}x{})",
             MAX_DIMENSION, MAX_DIMENSION, width, height
+        ));
+    }
+
+    // Also limit total size to prevent memory issues
+    const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB max
+    if expected_size > MAX_IMAGE_SIZE {
+        return Err(format!(
+            "Image size too large: {} bytes (max {})",
+            expected_size, MAX_IMAGE_SIZE
         ));
     }
 

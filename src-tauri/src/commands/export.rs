@@ -43,16 +43,17 @@ fn validate_output_path(path: &str) -> Result<PathBuf, String> {
     let extension = canonical.extension()
         .and_then(|e| e.to_str())
         .ok_or_else(|| {
-            format!("Invalid path: canonical path '{}' has no file extension", canonical.display())
+            // SECURITY: Don't reveal the file path in error message
+            "Invalid path: file has no extension".to_string()
         })?;
 
     // Only allow specific file extensions
     let allowed_extensions = ["csv", "json", "txt", "md"];
     if !allowed_extensions.contains(&extension.to_lowercase().as_str()) {
+        // SECURITY: Reveal allowed extensions but not the specific file path
         return Err(format!(
-            "Invalid path: extension '{}' not allowed for '{}'. Allowed extensions: {:?}",
+            "Invalid path: extension '{}' not allowed. Allowed extensions: {:?}",
             extension,
-            canonical.display(),
             allowed_extensions
         ));
     }
@@ -60,11 +61,8 @@ fn validate_output_path(path: &str) -> Result<PathBuf, String> {
     // Check if the parent directory exists
     if let Some(parent) = canonical.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
-            return Err(format!(
-                "Invalid path: parent directory does not exist for '{}': {:?}",
-                canonical.display(),
-                parent
-            ));
+            // SECURITY: Don't reveal the parent directory path
+            return Err("Invalid path: parent directory does not exist".to_string());
         }
     }
 

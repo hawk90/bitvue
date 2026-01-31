@@ -3,7 +3,7 @@
 //! Commands for retrieving detailed bitstream syntax information for analysis
 
 use crate::commands::{AppState, FrameData};
-use crate::commands::file::get_frames;
+use crate::commands::file::{get_frames, validate_file_path};
 use serde::{Deserialize, Serialize};
 
 /// Syntax node for tree display
@@ -34,6 +34,9 @@ pub async fn get_frame_syntax(
     state: tauri::State<'_, AppState>,
 ) -> Result<SyntaxNode, String> {
     log::info!("get_frame_syntax: Getting syntax for frame {} from {}", frame_index, path);
+
+    // SECURITY: Validate file path to prevent path traversal
+    let _validated_path = validate_file_path(&path)?;
 
     // First, get basic frame info
     let frames = get_frames(state).await?;
