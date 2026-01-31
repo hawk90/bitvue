@@ -292,12 +292,17 @@ impl Default for ConfigWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
     use std::thread;
     use std::time::Duration;
 
-    // NOTE: These tests share ~/.bitvue/ config directory and must run serially.
-    // Run with: cargo test --package app --lib config_worker -- --test-threads=1
-    // This is a known limitation of the ConfigWorker design for test isolation.
+    // Static mutex to ensure config tests run serially
+    // These tests share ~/.bitvue/ config directory and can't run in parallel
+    static CONFIG_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn get_config_test_lock() -> &'static Mutex<()> {
+        CONFIG_TEST_LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn test_new_worker() {
@@ -315,6 +320,8 @@ mod tests {
 
     #[test]
     fn test_save_and_load_recent_files() {
+        let _lock = get_config_test_lock().lock().unwrap();
+
         // Clean up any existing config files from previous test runs
         if let Ok(config_dir) = ConfigWorker::config_dir() {
             let _ = std::fs::remove_file(config_dir.join("recent.json"));
@@ -366,6 +373,8 @@ mod tests {
 
     #[test]
     fn test_save_and_load_layout() {
+        let _lock = get_config_test_lock().lock().unwrap();
+
         // Clean up any existing config files from previous test runs
         if let Ok(config_dir) = ConfigWorker::config_dir() {
             let _ = std::fs::remove_file(config_dir.join("recent.json"));
@@ -433,6 +442,8 @@ mod tests {
 
     #[test]
     fn test_load_nonexistent_recent_files() {
+        let _lock = get_config_test_lock().lock().unwrap();
+
         let worker = ConfigWorker::new().expect("Failed to create worker");
 
         // First delete any existing recent files
@@ -460,6 +471,8 @@ mod tests {
 
     #[test]
     fn test_cancel_does_not_discard_requests() {
+        let _lock = get_config_test_lock().lock().unwrap();
+
         let worker = ConfigWorker::new().expect("Failed to create worker");
 
         // Submit request with old ID
@@ -480,6 +493,8 @@ mod tests {
 
     #[test]
     fn test_multiple_config_operations() {
+        let _lock = get_config_test_lock().lock().unwrap();
+
         // Clean up any existing config files from previous test runs
         if let Ok(config_dir) = ConfigWorker::config_dir() {
             let _ = std::fs::remove_file(config_dir.join("recent.json"));
