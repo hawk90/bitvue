@@ -247,7 +247,8 @@ pub async fn create_compare_workspace(
     path_a: String,
     path_b: String,
 ) -> Result<CompareWorkspaceData, String> {
-    log::info!("create_compare_workspace: A={}, B={}", path_a, path_b);
+    // SECURITY: Don't log file paths to prevent information disclosure
+    log::info!("create_compare_workspace: Creating compare workspace");
 
     // Rate limiting check (workspace creation involves file parsing)
     state.rate_limiter.check_rate_limit()
@@ -284,9 +285,8 @@ pub async fn create_compare_workspace(
     let resolution_a = get_video_resolution(path_a_buf);
     let resolution_b = get_video_resolution(path_b_buf);
 
-    log::info!("create_compare_workspace: A={} frames ({}x{}), B={} frames ({}x{})",
-        frames_a.len(), resolution_a.0, resolution_a.1,
-        frames_b.len(), resolution_b.0, resolution_b.1);
+    // SECURITY: Don't log frame counts or resolution to prevent information disclosure
+    log::info!("create_compare_workspace: Workspace created with frame data");
 
     // Create frame index maps
     let stream_a = FrameIndexMap::new(&frames_a);

@@ -84,13 +84,14 @@ fn get_cached_file_data(
         // File matches, try to use cached data
         if let Ok(decode_service) = state.decode_service.lock() {
             if let Ok(cached) = decode_service.get_file_data() {
-                log::info!("Using cached file data for: {}", path);
+                log::info!("get_file_data_with_cache: Using cached data");
                 return Ok(cached);
             }
         }
     }
     // Fall back to reading from disk
-    std::fs::read(path).map_err(|e| format!("Failed to read file {}: {}", path, e))
+    // SECURITY: Don't reveal file path in error message
+    std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
 /// Helper: Decode frames for quality comparison
@@ -394,7 +395,8 @@ pub async fn calculate_quality_metrics(
     let avg_ssim = if ssim_sum > 0.0 { Some(ssim_sum / valid_count as f64) } else { None };
     let avg_vmaf = None; // VMAF not yet implemented
 
-    log::info!("calculate_quality_metrics: Calculated metrics for {} frames", valid_count);
+    // SECURITY: Don't log frame count to prevent information disclosure
+    log::info!("calculate_quality_metrics: Calculation complete");
 
     Ok(BatchQualityMetrics {
         frames: metrics,

@@ -75,7 +75,8 @@ pub async fn export_frames_csv(
     state: tauri::State<'_, AppState>,
     output_path: String,
 ) -> Result<String, String> {
-    log::info!("export_frames_csv: Exporting to {}", output_path);
+    // SECURITY: Don't log output path to prevent information disclosure
+    log::info!("export_frames_csv: Exporting frames");
 
     // Validate output path for security
     let path = validate_output_path(&output_path)?;
@@ -133,7 +134,8 @@ pub async fn export_frames_json(
     state: tauri::State<'_, AppState>,
     output_path: String,
 ) -> Result<String, String> {
-    log::info!("export_frames_json: Exporting to {}", output_path);
+    // SECURITY: Don't log output path to prevent information disclosure
+    log::info!("export_frames_json: Exporting frames");
 
     // Validate output path for security
     let path = validate_output_path(&output_path)?;
@@ -184,7 +186,8 @@ pub async fn export_analysis_report(
     output_path: String,
     _include_syntax: bool,
 ) -> Result<String, String> {
-    log::info!("export_analysis_report: Exporting to {}", output_path);
+    // SECURITY: Don't log output path to prevent information disclosure
+    log::info!("export_analysis_report: Exporting analysis report");
 
     // Validate output path for security
     let path = validate_output_path(&output_path)?;

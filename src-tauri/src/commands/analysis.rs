@@ -295,8 +295,8 @@ fn extract_av1_analysis(
     core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_av1_analysis: === Starting AV1 analysis extraction ===");
-    log::info!("extract_av1_analysis: Frame index: {}", frame_index);
-    log::info!("extract_av1_analysis: File data size: {} bytes", file_data.len());
+    // SECURITY: Don't log frame index or file size to prevent information disclosure
+    log::info!("extract_av1_analysis: Analysis started");
 
     // Get frame OBU data from unit model
     log::info!("extract_av1_analysis: Reading stream A units...");
@@ -306,15 +306,18 @@ fn extract_av1_analysis(
         let stream_a_guard = stream_a_arc.read();
 
         if let Some(unit_model) = &stream_a_guard.units {
-            log::info!("extract_av1_analysis: Unit model found with {} units", unit_model.units.len());
+            // SECURITY: Don't log unit count to prevent information disclosure
+            log::info!("extract_av1_analysis: Unit model found");
             unit_model.units.get(frame_index)
                 .and_then(|_unit| {
                     // Extract frame data from IVF using provided file data
                     log::info!("extract_av1_analysis: Parsing IVF frames...");
                     if let Ok((_, ivf_frames)) = bitvue_av1::parse_ivf_frames(file_data) {
-                        log::info!("extract_av1_analysis: IVF parsing successful, {} frames", ivf_frames.len());
+                        // SECURITY: Don't log frame count to prevent information disclosure
+                        log::info!("extract_av1_analysis: IVF parsing successful");
                         ivf_frames.get(frame_index).map(|f| {
-                            log::info!("extract_av1_analysis: Frame {} data size: {} bytes", frame_index, f.data.len());
+                            // SECURITY: Don't log frame index or data size
+                            log::info!("extract_av1_analysis: Frame data extracted");
                             f.data.clone()
                         })
                     } else {
@@ -329,7 +332,8 @@ fn extract_av1_analysis(
     };
 
     let obu_data = obu_data.ok_or("Frame data not available")?;
-    log::info!("extract_av1_analysis: OBU data size: {} bytes", obu_data.len());
+    // SECURITY: Don't log data size to prevent information disclosure
+    log::info!("extract_av1_analysis: OBU data extracted");
 
     // Extract grids using AV1 functions
     log::info!("extract_av1_analysis: Extracting QP grid...");
@@ -444,8 +448,8 @@ fn extract_avc_analysis(
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
-    log::info!("extract_avc_analysis: Extracting AVC analysis for frame {}", frame_index);
-    log::info!("extract_avc_analysis: File data size: {} bytes", file_data.len());
+    // SECURITY: Don't log frame index or file size to prevent information disclosure
+    log::info!("extract_avc_analysis: Extracting AVC analysis");
 
     // Parse H.264 NAL units
     let nal_units = bitvue_avc::parse_nal_units(&file_data)
@@ -536,8 +540,8 @@ fn extract_hevc_analysis(
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
-    log::info!("extract_hevc_analysis: Extracting HEVC analysis for frame {}", frame_index);
-    log::info!("extract_hevc_analysis: File data size: {} bytes", file_data.len());
+    // SECURITY: Don't log frame index or file size to prevent information disclosure
+    log::info!("extract_hevc_analysis: Extracting HEVC analysis");
 
     // Parse HEVC NAL units
     let nal_units = bitvue_hevc::parse_nal_units(&file_data)
@@ -628,8 +632,8 @@ fn extract_vp9_analysis(
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
-    log::info!("extract_vp9_analysis: Extracting VP9 analysis for frame {}", frame_index);
-    log::info!("extract_vp9_analysis: File data size: {} bytes", file_data.len());
+    // SECURITY: Don't log frame index or file size to prevent information disclosure
+    log::info!("extract_vp9_analysis: Extracting VP9 analysis");
 
     // Parse VP9 stream
     let stream = bitvue_vp9::parse_vp9(&file_data)
@@ -713,8 +717,8 @@ fn extract_vvc_analysis(
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
-    log::info!("extract_vvc_analysis: Extracting VVC analysis for frame {}", frame_index);
-    log::info!("extract_vvc_analysis: File data size: {} bytes", file_data.len());
+    // SECURITY: Don't log frame index or file size to prevent information disclosure
+    log::info!("extract_vvc_analysis: Extracting VVC analysis");
 
     // Parse VVC NAL units
     let nal_units = bitvue_vvc::parse_nal_units(&file_data)
@@ -805,8 +809,8 @@ fn extract_av3_analysis(
     frame_index: usize,
     _core: &bitvue_core::Core,
 ) -> Result<FrameAnalysisData, String> {
-    log::info!("extract_av3_analysis: Extracting AV3 analysis for frame {}", frame_index);
-    log::info!("extract_av3_analysis: File data size: {} bytes", file_data.len());
+    // SECURITY: Don't log frame index or file size to prevent information disclosure
+    log::info!("extract_av3_analysis: Extracting AV3 analysis");
 
     // Parse AV3 stream
     let stream = bitvue_av3::parse_av3(&file_data)

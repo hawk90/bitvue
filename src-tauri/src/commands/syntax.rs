@@ -33,7 +33,8 @@ pub async fn get_frame_syntax(
     frame_index: usize,
     state: tauri::State<'_, AppState>,
 ) -> Result<SyntaxNode, String> {
-    log::info!("get_frame_syntax: Getting syntax for frame {} from {}", frame_index, path);
+    // SECURITY: Don't log file path to prevent information disclosure
+    log::info!("get_frame_syntax: Getting syntax for frame {}", frame_index);
 
     // SECURITY: Validate file path to prevent path traversal
     let _validated_path = validate_file_path(&path)?;

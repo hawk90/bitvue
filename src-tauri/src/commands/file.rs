@@ -92,7 +92,8 @@ pub async fn open_file(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<FileInfo, String> {
-    log::info!("open_file: Opening file at path: {}", path);
+    // SECURITY: Don't log file path to prevent information disclosure
+    log::info!("open_file: Opening file");
 
     // Validate file path for security
     let path_buf = match validate_file_path(&path) {
@@ -118,7 +119,8 @@ pub async fn open_file(
     // Maximum file size: 2GB (2 * 1024 * 1024 * 1024 bytes)
     const MAX_FILE_SIZE: u64 = 2_147_483_648;
     if size > MAX_FILE_SIZE {
-        log::error!("open_file: File too large: {} bytes (max: {} bytes)", size, MAX_FILE_SIZE);
+        // SECURITY: Don't log actual file size in error
+        log::error!("open_file: File too large");
         // SAFETY: Use u64 literals to prevent integer overflow in size calculation
         const BYTES_PER_MB: u64 = 1024_u64 * 1024_u64;
         return Ok(FileInfo {
@@ -136,7 +138,8 @@ pub async fn open_file(
         .unwrap_or("unknown");
 
     let codec = detect_codec_from_extension(ext);
-    log::info!("open_file: Detected codec: {}, file size: {} bytes", codec, size);
+    // SECURITY: Don't log file size to prevent information disclosure
+    log::info!("open_file: Detected codec: {}", codec);
 
     // Use bitvue-core to open the file
     let (success, error) = {
