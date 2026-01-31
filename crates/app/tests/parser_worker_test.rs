@@ -538,18 +538,28 @@ fn test_exp_golomb_coding() {
     // Code 4 -> 00101
 
     fn ue_v(value: u32) -> Vec<bool> {
+        // Exponential Golomb ue(v) encoding
+        // For value 0: code is "1" (1 bit)
+        // For value 1: code is "010" (3 bits)
+        // For value 2: code is "011" (3 bits)
+        // For value 3: code is "00100" (5 bits)
+        if value == 0 {
+            return vec![true]; // Just "1"
+        }
+
         let mut m = value + 1;
-        let leading_zeros = m.leading_zeros() - 1;
+        // Number of leading zeros is floor(log2(m))
+        let prefix_zeros = 32 - m.leading_zeros() - 1;
         let mut bits = Vec::new();
 
         // Write leading zeros
-        for _ in 0..leading_zeros {
+        for _ in 0..prefix_zeros {
             bits.push(false);
         }
-        // Write 1
+        // Write 1 (separator bit)
         bits.push(true);
-        // Write remaining bits
-        for i in (0..leading_zeros).rev() {
+        // Write remaining bits of m (excluding the leading 1)
+        for i in (0..prefix_zeros).rev() {
             bits.push((m & (1 << i)) != 0);
         }
 
@@ -565,7 +575,9 @@ fn test_exp_golomb_coding() {
 fn test_signed_exp_golomb_coding() {
     // Signed exponential Golomb coding
     fn se_v(value: i32) -> u32 {
-        if value > 0 {
+        if value == 0 {
+            0
+        } else if value > 0 {
             (2 * value) as u32
         } else {
             (2 * (-value) - 1) as u32

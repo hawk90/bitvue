@@ -219,17 +219,24 @@ mod tests {
 
         // Add entries up to limit (use unique data with sufficient entropy)
         let mut added = 0;
-        for i in 0..=MAX_CACHE_ENTRIES {
-            // Use a simple counter that won't wrap (each entry unique)
-            let tile_data = vec![1u8, 2u8, 3u8, 4u8, 5u8, i as u8];
-            let cache_key = compute_cache_key(&tile_data, 32);
+        let mut i = 0u32;
+        while added < MAX_CACHE_ENTRIES && i < (MAX_CACHE_ENTRIES * 10) as u32 {
+            // Use more unique data to avoid hash collisions
+            // Use different patterns for each iteration
+            let tile_data = vec![
+                (i >> 24) as u8,
+                (i >> 16) as u8,
+                (i >> 8) as u8,
+                i as u8,
+                (i.wrapping_mul(31)) as u8,
+                (i.wrapping_mul(37)) as u8,
+            ];
+            let cache_key = compute_cache_key(&tile_data, 32); // Use fixed base_qp
             let _ = get_or_parse_coding_units(cache_key, || {
                 added += 1;
                 Ok(vec![])
             });
-            if added == MAX_CACHE_ENTRIES {
-                break;
-            }
+            i += 1;
         }
 
         let size_at_limit = cu_cache_size();
