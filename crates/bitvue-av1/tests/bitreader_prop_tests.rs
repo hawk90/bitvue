@@ -37,5 +37,5 @@ fn prop_read_zero_bits_returns_zero() {
 
     // Reading 0 bits should always succeed and return 0
     let result = reader.read_bits(0);
-    assert_eq!(result, Ok(0));
+    assert_eq!(result.unwrap(), 0);
 }

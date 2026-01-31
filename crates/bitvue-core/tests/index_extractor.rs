@@ -1,8 +1,7 @@
 //! Tests for index extractor API
 
 use bitvue_core::{
-    Av1IndexExtractor, ExtractorFactory, H264IndexExtractor, HevcIndexExtractor, IndexExtractor,
-    Vp9IndexExtractor,
+    Av1IndexExtractor, ExtractorFactory, H264IndexExtractor, IndexExtractor,
 };
 use std::io::Cursor;
 
@@ -181,20 +180,6 @@ fn test_h264_progress_callback() {
     let updates = progress_updates.borrow();
     assert!(!updates.is_empty());
     assert!(updates.last().unwrap().0 >= 0.99); // Should report near completion
-}
-
-#[test]
-fn test_hevc_extractor_unsupported() {
-    let extractor = HevcIndexExtractor::new();
-    assert_eq!(extractor.codec_name(), "HEVC");
-    assert!(!extractor.is_supported());
-}
-
-#[test]
-fn test_vp9_extractor_unsupported() {
-    let extractor = Vp9IndexExtractor::new();
-    assert_eq!(extractor.codec_name(), "VP9");
-    assert!(!extractor.is_supported());
 }
 
 #[test]

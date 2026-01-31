@@ -934,7 +934,7 @@ fn test_avc_frames_to_unit_nodes() {
 
     assert_eq!(unit_nodes.len(), 2);
     assert_eq!(unit_nodes[0].frame_index, Some(0));
-    assert_eq!(unit_nodes[0].frame_type, Some("I".to_string()));
+    assert_eq!(unit_nodes[0].frame_type, Some(Arc::from("I")));
     assert_eq!(unit_nodes[1].frame_index, Some(1));
     assert_eq!(unit_nodes[1].frame_type, Some(Arc::from("P")));
 }

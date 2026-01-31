@@ -316,6 +316,7 @@ pub struct StrategySet {
 // =============================================================================
 
 /// Default AV1 color scheme
+#[derive(Default)]
 pub struct Av1ColorScheme;
 
 impl ColorScheme for Av1ColorScheme {

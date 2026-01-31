@@ -3,6 +3,7 @@
 //! Tests that Timeline workspace can correctly collect and display frame data
 
 use bitvue_core::{StreamId, UnitKey, UnitNode};
+use std::sync::Arc;
 
 /// Helper to create a test UnitNode
 fn create_unit_node(
@@ -17,18 +18,18 @@ fn create_unit_node(
     UnitNode {
         key: UnitKey {
             stream,
-            unit_type: unit_type.to_string(),
+            unit_type: unit_type.to_string().into(),
             offset,
             size,
         },
-        unit_type: unit_type.to_string(),
+        unit_type: unit_type.to_string().into(),
         offset,
         size,
         frame_index,
-        frame_type: frame_type.map(|s| s.to_string()),
+        frame_type: frame_type.map(|s| Arc::from(s)),
         pts: None,
         dts: None,
-        display_name: unit_type.to_string(),
+        display_name: unit_type.to_string().into(),
         children,
         qp_avg: None,
         mv_grid: None,
