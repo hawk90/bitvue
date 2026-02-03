@@ -59,7 +59,7 @@ pub use algorithms::{bfs, dfs, topological_sort};
 pub use shortest_path::{dijkstra, bellman_ford, floyd_warshall, shortest_path};
 pub use traversal::{DFSIterator, BFSIterator, DepthFirst, BreadthFirst};
 pub use topology::{TopologicalSort, TopologicalOrder};
-pub use matching::{MaximumMatching, bipartite_matching};
+pub use matching::{maximum_matching, bipartite_matching};
 pub use flow::{MaxFlow, min_cut, max_flow};
 pub use coloring::{GraphColoring, greedy_coloring, chromatic_number};
 pub use connectivity::{is_connected, components, strongly_connected_components};
