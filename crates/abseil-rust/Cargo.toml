@@ -1,0 +1,218 @@
+[package]
+name = "abseil"
+version = "0.1.0"
+edition = "2021"
+authors = ["abseil-rust contributors"]
+description = "Rust port of Google's Abseil Common Libraries (C++)"
+license = "Apache-2.0"
+repository = "https://github.com/hawk/abseil-rust"
+homepage = "https://abseil.io/"
+keywords = ["abseil", "logging", "synchronization", "utility"]
+categories = ["development-tools", "no-std"]
+
+[lib]
+name = "abseil"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "full"]
+
+# =============================================================================
+# Core features
+# =============================================================================
+
+# Enable std library support
+std = ["alloc"]
+
+# Enable alloc crate support (for Vec, String, etc. on no_std)
+alloc = []
+
+# =============================================================================
+# Module features (enable individual Abseil modules)
+# =============================================================================
+
+# Algorithm utilities
+algorithm = ["alloc"]
+
+# Any type erasure
+any = []
+
+# Base utilities (call_once, OnceFlag)
+base = []
+
+# Bit manipulation (popcount, bit_width, rotate, etc.)
+bits = []
+
+# Cleanup/ScopeGuard
+cleanup = []
+
+# Container utilities (InlinedVector)
+container = ["alloc"]
+
+# CRC checksums (CRC-32, CRC-64)
+crc = ["alloc"]
+
+# Debugging utilities (stacktrace, symbolize, failure handler)
+debugging = ["std"]
+
+# Flag parsing
+flags = ["std"]
+
+# Function reference (type-erased function reference)
+function_ref = []
+
+# Graph data structures and algorithms
+graph = ["alloc"]
+
+# Hash utilities
+hash = ["alloc"]
+hash-blake2 = ["hash"]
+hash-blake3 = ["hash"]
+hash-sha256 = ["hash"]
+hash-fnv = ["hash"]
+hash-murmur3 = ["hash"]
+hash-xxhash = ["hash"]
+hash-all = ["hash", "hash-blake2", "hash-blake3", "hash-sha256", "hash-fnv", "hash-murmur3", "hash-xxhash"]
+
+# Logging utilities
+log = ["std"]
+
+# Memory utilities
+memory = []
+
+# Type traits
+meta = []
+
+# Numeric utilities
+numeric = []
+numeric-int128 = ["numeric"]
+numeric-fixed-point = ["numeric"]
+numeric-rational = ["numeric"]
+numeric-all = ["numeric", "numeric-int128", "numeric-fixed-point", "numeric-rational"]
+
+# Profiling utilities
+profiling = []
+
+# Random number generation
+random = []
+
+# Sorting algorithms
+sorting = ["alloc"]
+
+# Status and error handling
+status = ["alloc"]
+
+# String utilities
+strings = ["alloc"]
+strings-cord = ["strings"]
+strings-format = ["strings"]
+strings-charset = ["strings"]
+strings-all = ["strings", "strings-cord", "strings-format", "strings-charset"]
+
+# Synchronization primitives
+synchronization = []
+synchronization-mutex = ["synchronization"]
+synchronization-notification = ["synchronization"]
+synchronization-blocking-counter = ["synchronization"]
+synchronization-all = ["synchronization", "synchronization-mutex", "synchronization-notification", "synchronization-blocking-counter"]
+
+# Time utilities
+time = ["alloc"]
+
+# Type utilities
+types = []
+types-optional = ["types"]
+types-span = ["types"]
+types-all = ["types", "types-optional", "types-span"]
+
+# Utility functions
+utility = []
+
+# Variant type (type-safe union)
+variant = ["alloc"]
+
+# =============================================================================
+# Convenience feature groups
+# =============================================================================
+
+# All features (excluding std-dependent features that require std)
+full-no-std = [
+    "algorithm",
+    "any",
+    "base",
+    "bits",
+    "cleanup",
+    "container",
+    "crc",
+    "flags",
+    "function_ref",
+    "graph",
+    "hash-all",
+    "memory",
+    "meta",
+    "numeric-all",
+    "profiling",
+    "random",
+    "sorting",
+    "status",
+    "strings-all",
+    "synchronization-all",
+    "time",
+    "types-all",
+    "utility",
+    "variant",
+]
+
+# All features including std-dependent ones
+full = ["std", "full-no-std", "debugging", "log"]
+
+# =============================================================================
+# Minimal feature sets for common use cases
+# =============================================================================
+
+# Minimal no-std footprint (core utilities only)
+minimal-no-std = ["base", "bits", "meta", "utility"]
+
+# Common web/backend use case
+web = ["std", "algorithm", "hash-all", "strings-all", "time", "types-all"]
+
+# Common embedded/no-std use case
+embedded = ["bits", "numeric-all", "synchronization-all", "time"]
+
+# Data structures focus
+data-structures = ["container", "graph", "hash-all", "sorting", "types-all", "variant"]
+
+# =============================================================================
+# Test configuration
+# =============================================================================
+
+# Test configuration - enable all features for testing
+test = ["std", "full"]
+
+[dependencies]
+
+[dev-dependencies]
+
+[[bench]]
+name = "sorting_bench"
+harness = true
+
+[[bench]]
+name = "hash_bench"
+harness = true
+
+[[bench]]
+name = "numeric_bench"
+harness = true
+
+[[bench]]
+name = "graph_bench"
+harness = true
+
+[[bench]]
+name = "bits_bench"
+harness = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -26,6 +26,9 @@ members = [
 
     # Development tools
     "crates/bitvue-benchmarks", # Criterion-based performance benchmarks
+
+    # Third-party dependencies (private/submodules)
+    "crates/abseil-rust",       # Abseil logging library (private fork)
 ]
 
 [workspace.package]
@@ -42,7 +45,7 @@ bitvue-formats = { path = "crates/bitvue-formats" }
 bitvue-codecs = { path = "crates/bitvue-codecs" }
 bitvue-decode = { path = "crates/bitvue-decode" }
 bitvue-metrics = { path = "crates/bitvue-metrics" }
-abseil = { path = "../abseil-rust", features = ["std", "base", "log"] }
+abseil = { path = "crates/abseil-rust", features = ["std", "base", "log"] }
 bitvue-mcp = { path = "crates/bitvue-mcp" }
 app = { path = "crates/app" }
 ui = { path = "crates/ui" }

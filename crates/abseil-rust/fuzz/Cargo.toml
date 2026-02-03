@@ -1,0 +1,66 @@
+[package]
+name = "abseil-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+abseil = { path = "..", features = ["std", "hash", "alloc"], default-features = false }
+libfuzzer-sys = "0.4"
+
+# Prevent this from interfering with the workspace library
+[workspace]
+members = ["."]
+resolver = "2"
+
+[[bin]]
+name = "fnv_hash"
+path = "fuzz_targets/fnv_hash.rs"
+
+[[bin]]
+name = "murmur3_64"
+path = "fuzz_targets/murmur3_64.rs"
+
+[[bin]]
+name = "xxhash_64"
+path = "fuzz_targets/xxhash_64.rs"
+
+[[bin]]
+name = "xxhash3_64"
+path = "fuzz_targets/xxhash3_64.rs"
+
+[[bin]]
+name = "highway_hash"
+path = "fuzz_targets/highway_hash.rs"
+
+[[bin]]
+name = "wyhash"
+path = "fuzz_targets/wyhash.rs"
+
+[[bin]]
+name = "djb2_hash"
+path = "fuzz_targets/djb2_hash.rs"
+
+[[bin]]
+name = "siphash_24"
+path = "fuzz_targets/siphash_24.rs"
+
+[[bin]]
+name = "hash_determinism"
+path = "fuzz_targets/hash_determinism.rs"
+
+[[bin]]
+name = "hash_empty_single"
+path = "fuzz_targets/hash_empty_single.rs"
+
+[[bin]]
+name = "hash_boundaries"
+path = "fuzz_targets/hash_boundaries.rs"
+
+[[bin]]
+name = "bloom_filter"
+path = "fuzz_targets/bloom_filter.rs"
