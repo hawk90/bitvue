@@ -15,7 +15,15 @@
 /// assert_eq!(escape_c("Quote: \""), r#"Quote: \""#);
 /// ```
 pub fn escape_c(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() * 2);
+    // First pass: count characters that need escaping to estimate capacity
+    let escape_count = s.chars()
+        .filter(|&c| matches!(c, '\n' | '\r' | '\t' | '\\' | '\'' | '"' | '\0'))
+        .count();
+
+    // Each escape sequence adds 1 character (e.g., '\n' -> '\\' + 'n')
+    let capacity = s.len() + escape_count;
+    let mut result = String::with_capacity(capacity);
+
     for c in s.chars() {
         match c {
             '\n' => result.push_str("\\n"),
@@ -127,12 +135,20 @@ pub fn unescape_c(s: &str) -> Result<String, UnescapeError> {
 /// assert_eq!(escape_url("a/b?c=d"), "a%2Fb%3Fc%3Dd");
 /// ```
 pub fn escape_url(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() * 3);
+    // First pass: count bytes that need escaping (each becomes 3 characters)
+    let escape_count = s.bytes()
+        .filter(|&b| !matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~'))
+        .count();
+
+    // Each escaped byte becomes 3 characters (%XX)
+    let capacity = s.len() + escape_count * 2;
+    let mut result = String::with_capacity(capacity);
+
     for byte in s.bytes() {
         match byte {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-            result.push(byte as char);
-        }
+                result.push(byte as char);
+            }
             _ => {
                 result.push('%');
                 result.push(hex_upper(byte >> 4));
@@ -201,7 +217,22 @@ pub fn unescape_url(s: &str) -> Result<String, UnescapeError> {
 /// assert_eq!(escape_html("a & b"), "a &amp; b");
 /// ```
 pub fn escape_html(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() * 5);
+    // First pass: count characters that need escaping
+    // &lt; = 4 chars, &gt; = 4 chars, &amp; = 5 chars, &quot; = 6 chars, &apos; = 6 chars
+    let escape_extra_chars = s.chars()
+        .filter(|&c| matches!(c, '<' | '>' | '&' | '"' | '\''))
+        .map(|c| {
+            match c {
+                '<' | '>' | '&' | '"' => 3,  // &X; -> 4 chars vs 1, diff = 3
+                '\'' => 5,  // &apos; -> 6 chars vs 1, diff = 5
+                _ => 0,
+            }
+        })
+        .sum::<usize>();
+
+    let capacity = s.len() + escape_extra_chars;
+    let mut result = String::with_capacity(capacity);
+
     for c in s.chars() {
         match c {
             '<' => result.push_str("&lt;"),
@@ -229,34 +260,37 @@ pub fn escape_html(s: &str) -> String {
 /// ```
 pub fn unescape_html(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
     let mut i = 0;
 
-    while i < s.len() {
+    while i < bytes.len() {
         // Check for entities starting with '&'
-        if s.as_bytes()[i] == b'&' {
+        if bytes[i] == b'&' {
+            // Use byte-level comparison instead of creating substrings
             // Check each entity with proper bounds checking
-            if s[i..].starts_with("&lt;") {
+            let remaining = &bytes[i..];
+            if remaining.len() >= 4 && remaining[0..4] == *b"&lt;" {
                 result.push('<');
                 i += 4;
-            } else if s[i..].starts_with("&gt;") {
+            } else if remaining.len() >= 4 && remaining[0..4] == *b"&gt;" {
                 result.push('>');
                 i += 4;
-            } else if s[i..].starts_with("&amp;") {
+            } else if remaining.len() >= 5 && remaining[0..5] == *b"&amp;" {
                 result.push('&');
                 i += 5;
-            } else if s[i..].starts_with("&quot;") {
+            } else if remaining.len() >= 6 && remaining[0..6] == *b"&quot;" {
                 result.push('"');
                 i += 6;
-            } else if s[i..].starts_with("&apos;") {
+            } else if remaining.len() >= 6 && remaining[0..6] == *b"&apos;" {
                 result.push('\'');
                 i += 6;
             } else {
                 // Not a recognized entity, copy the & as-is
-                result.push(s.as_bytes()[i] as char);
+                result.push(bytes[i] as char);
                 i += 1;
             }
         } else {
-            result.push(s.as_bytes()[i] as char);
+            result.push(bytes[i] as char);
             i += 1;
         }
     }

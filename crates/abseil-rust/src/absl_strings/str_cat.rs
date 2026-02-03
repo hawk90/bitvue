@@ -132,9 +132,11 @@ macro_rules! str_cat {
         String::new()
     };
     ($($arg:expr),+ $(,)?) => {{
+        // Use write! instead of format! to avoid temporary allocations
         let mut result = String::new();
+        use core::fmt::Write;
         $(
-            result.push_str(&format!("{}", $arg));
+            let _ = write!(result, "{}", $arg);
         )+
         result
     }};
@@ -172,11 +174,13 @@ pub fn str_join<T: core::fmt::Display>(delimiter: &str, items: &[T]) -> String {
 
     let mut result = String::with_capacity(approx_len);
 
+    // Use write! instead of format! to avoid temporary allocations
+    use core::fmt::Write;
     for (i, item) in items.iter().enumerate() {
         if i > 0 {
             result.push_str(delimiter);
         }
-        result.push_str(&format!("{}", item));
+        let _ = write!(result, "{}", item);
     }
     result
 }

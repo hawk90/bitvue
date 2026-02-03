@@ -1,4 +1,44 @@
 //! Hash algorithms - FNV, MurmurHash3, xxHash, DJB2, SipHash, xxHash3, HighwayHash implementations.
+//!
+//! # ⚠️ CRITICAL SECURITY WARNING
+//!
+//! **The hash functions in this module are NOT suitable for cryptographic use!**
+//!
+//! This module provides non-cryptographic hash functions including:
+//! - FNV-1a/FNV-1a (fast but vulnerable to collision attacks)
+//! - DJB2 (simple but NOT cryptographically secure)
+//! - MurmurHash3 (fast but has known theoretical vulnerabilities)
+//! - xxHash (fast non-cryptographic hash)
+//! - SipHash (designed for hash table DoS protection, not cryptography)
+//! - HighwayHash (fast, but not for security)
+//!
+//! ## Why These Are NOT Cryptographic:
+//!
+//! 1. **No collision resistance**: Attackers can craft inputs with the same hash
+//! 2. **No preimage resistance**: Finding an input for a given hash is computationally easy
+//! 3. **Predictable output**: The algorithms are deterministic and publicly known
+//! 4. **Fast computation**: Speed is the priority, not security
+//!
+//! ## NEVER Use These For:
+//! - Password storage or hashing
+//! - Digital signatures or MACs
+//! - Cryptographic keys or nonces
+//! - Commitment schemes or proof-of-work
+//! - Any security-critical application
+//!
+//! ## For Cryptographic Needs, Use:
+//! - **SHA-256** (NIST standard, widely supported)
+//! - **BLAKE3** (faster, modern, parallelizable)
+//! - **SHA-3** (quantum-resistant, latest standard)
+//! - **Argon2** or **bcrypt** (for password hashing)
+//!
+//! ## Appropriate Uses:
+//! - Hash table keys (non-adversarial environments)
+//! - Cache identifiers
+//! - Data deduplication
+//! - Non-security checksums
+//! - Bloom filters and probabilistic data structures
+//!
 
 /// A deterministic hash function that produces consistent results.
 ///

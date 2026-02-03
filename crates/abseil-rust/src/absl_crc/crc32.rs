@@ -3,6 +3,36 @@
 //! This module provides CRC-32 (Cyclic Redundancy Check) implementations
 //! similar to Abseil's CRC utilities, with support for multiple polynomials.
 //!
+//! # ⚠️ CRITICAL SECURITY WARNING
+//!
+//! **CRC-32 is NOT a cryptographic hash function!**
+//!
+//! CRC-32 is designed for error detection in data transmission and storage,
+//! NOT for security purposes. It has well-known vulnerabilities:
+//!
+//! - **Collision Attacks**: An attacker can craft different inputs with the same CRC-32 value
+//! - **Reverse Engineering**: CRC is reversible - given a hash, you can construct inputs
+//! - **No Preimage Resistance**: Finding an input for a given CRC is trivial
+//! - **Linear Properties**: CRC properties make it unsuitable for cryptographic use
+//!
+//! **NEVER use CRC-32 for:**
+//! - Password storage or hashing
+//! - Digital signatures or MACs (Message Authentication Codes)
+//! - Cryptographic keys or nonces
+//! - Commitment schemes or proof-of-work systems
+//! - Any security-critical application
+//!
+//! For security-critical applications, use:
+//! - SHA-256 (standard for most cryptographic purposes)
+//! - BLAKE3 (faster, modern alternative)
+//! - SHA-3 (for quantum-resistant applications)
+//!
+//! **Appropriate uses for CRC-32:**
+//! - Data integrity verification (checksums)
+//! - File corruption detection
+//! - Network error detection (Ethernet, GZIP, PNG, etc.)
+//! - Hash table non-cryptographic use
+//!
 //! # Example
 //!
 //! ```rust

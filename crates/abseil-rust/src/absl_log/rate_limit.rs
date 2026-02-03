@@ -111,7 +111,7 @@ macro_rules! log_first_n {
 #[doc(hidden)]
 macro_rules! log_first_n_impl {
     ($severity:expr, $n:expr, $($arg:tt)*) => {{
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         static DONE: AtomicBool = AtomicBool::new(false);
 

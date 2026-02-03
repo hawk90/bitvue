@@ -82,16 +82,21 @@ impl BitGen {
 
     /// Creates a new bit generator with a default seed.
     ///
-    /// # ⚠️ SECURITY WARNING
+    /// # ⚠️ CRITICAL SECURITY WARNING
     ///
-    /// **This method is NOT cryptographically secure!**
+    /// **This method is NOT cryptographically secure unless the `random-getrandom` feature is enabled!**
     ///
-    /// The implementation uses system time as a seed, which can be:
-    /// - Predictable by attackers who can estimate the system time
-    /// - Duplicated across processes started at the same time
-    /// - Replayed if the time is known
+    /// ## Without `random-getrandom` feature (default):
+    /// - Uses system time as a seed, which can be:
+    ///   - Predictable by attackers who can estimate the system time
+    ///   - Duplicated across processes started at the same time
+    ///   - Replayed if the time is known
+    /// - The XOR-shift algorithm itself is also not suitable for cryptography
     ///
-    /// The XOR-shift algorithm itself is also not suitable for cryptography.
+    /// ## With `random-getrandom` feature:
+    /// - Uses the `getrandom` crate for cryptographically secure entropy
+    /// - **Still NOT suitable for cryptography because the XOR-shift algorithm is not crypto-secure**
+    /// - Only provides better seed unpredictability
     ///
     /// **NEVER use this for:**
     /// - Cryptographic keys or nonces
@@ -103,11 +108,19 @@ impl BitGen {
     #[inline]
     #[cfg(feature = "std")]
     pub fn from_entropy() -> Self {
-        // Use system time as seed for better randomness
-        use std::time::{SystemTime, UNIX_EPOCH};
+        #[cfg(feature = "random-getrandom")]
+        {
+            // Use getrandom for better entropy when feature is enabled
+            let mut seed = [0u8; 8];
+            if getrandom::getrandom(&mut seed).is_ok() {
+                return Self::new(u64::from_le_bytes(seed));
+            }
+            // Fall back to system time if getrandom fails
+        }
 
         // SECURITY: System time is predictable and NOT suitable for security!
         // This is provided only for convenience in non-security contexts.
+        use std::time::{SystemTime, UNIX_EPOCH};
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)

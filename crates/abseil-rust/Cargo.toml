@@ -95,6 +95,7 @@ profiling = []
 
 # Random number generation
 random = []
+random-getrandom = ["random", "dep:getrandom"]
 
 # Sorting algorithms
 sorting = ["alloc"]
@@ -190,6 +191,8 @@ data-structures = ["container", "graph", "hash-all", "sorting", "types-all", "va
 test = ["std", "full"]
 
 [dependencies]
+# Optional dependency for cryptographically secure entropy in BitGen
+getrandom = { version = "0.2", optional = true }
 
 [dev-dependencies]
 

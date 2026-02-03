@@ -3,8 +3,14 @@
 
 extern crate alloc;
 
-use alloc::collections::{BTreeSet, VecDeque};
+use alloc::collections::VecDeque;
 use alloc::vec::Vec;
+
+// Use HashSet when std is available for O(1) lookups, otherwise fall back to BTreeSet
+#[cfg(feature = "std")]
+use std::collections::HashSet;
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet as HashSet;
 
 use super::{Graph, VertexId};
 
@@ -31,7 +37,7 @@ use super::{Graph, VertexId};
 /// ```
 pub fn dfs<T>(graph: &Graph<T>, start: VertexId) -> Vec<VertexId> {
     let mut visited = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut seen = HashSet::new();
     dfs_recursive(graph, start, &mut visited, &mut seen);
     visited
 }
@@ -40,7 +46,7 @@ fn dfs_recursive<T>(
     graph: &Graph<T>,
     current: VertexId,
     visited: &mut Vec<VertexId>,
-    seen: &mut BTreeSet<VertexId>,
+    seen: &mut HashSet<VertexId>,
 ) {
     if !seen.insert(current) {
         return;
@@ -55,7 +61,7 @@ fn dfs_recursive<T>(
 /// Performs iterative depth-first search.
 pub fn dfs_iterative<T>(graph: &Graph<T>, start: VertexId) -> Vec<VertexId> {
     let mut visited = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut seen = HashSet::new();
     let mut stack = vec![start];
 
     while let Some(current) = stack.pop() {
@@ -99,7 +105,7 @@ pub fn dfs_iterative<T>(graph: &Graph<T>, start: VertexId) -> Vec<VertexId> {
 /// ```
 pub fn bfs<T>(graph: &Graph<T>, start: VertexId) -> Vec<VertexId> {
     let mut visited = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut seen = HashSet::new();
     let mut queue = VecDeque::new();
     queue.push_back(start);
 

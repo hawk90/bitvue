@@ -235,7 +235,16 @@ impl Clone for Cord {
 
 impl fmt::Display for Cord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str())
+        // Fast path: if single chunk, write directly without allocation
+        if let Some(s) = self.as_str() {
+            write!(f, "{}", s)
+        } else {
+            // Fallback to writing each chunk
+            for chunk in self.chunks() {
+                write!(f, "{}", chunk)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -250,7 +259,31 @@ impl fmt::Debug for Cord {
 
 impl PartialEq for Cord {
     fn eq(&self, other: &Self) -> bool {
-        self.to_str() == other.to_str()
+        // Fast path: if sizes differ, cords are different
+        if self.size() != other.size() {
+            return false;
+        }
+
+        // Fast path: if both have single chunks, compare directly
+        if let (Some(s1), Some(s2)) = (self.as_str(), other.as_str()) {
+            return s1 == s2;
+        }
+
+        // Compare incrementally using char iterators
+        let mut left_chars = self.chars();
+        let mut right_chars = other.chars();
+        loop {
+            match (left_chars.next(), right_chars.next()) {
+                (None, None) => return true,  // Both exhausted
+                (None, _) | (_, None) => return false,  // Different lengths
+                (Some(l), Some(r)) => {
+                    if l != r {
+                        return false;  // Different chars
+                    }
+                    // Same char, continue to next
+                }
+            }
+        }
     }
 }
 
@@ -264,13 +297,34 @@ impl PartialOrd for Cord {
 
 impl Ord for Cord {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.to_str().cmp(&other.to_str())
+        // Fast path: if both have single chunks, compare directly
+        if let (Some(s1), Some(s2)) = (self.as_str(), other.as_str()) {
+            return s1.cmp(s2);
+        }
+
+        // Compare incrementally using char iterators
+        let mut left_chars = self.chars();
+        let mut right_chars = other.chars();
+        loop {
+            match (left_chars.next(), right_chars.next()) {
+                (None, None) => return core::cmp::Ordering::Equal,
+                (None, Some(_)) => return core::cmp::Ordering::Less,
+                (Some(_), None) => return core::cmp::Ordering::Greater,
+                (Some(l), Some(r)) => match l.cmp(&r) {
+                    core::cmp::Ordering::Equal => continue,
+                    other => return other,
+                },
+            }
+        }
     }
 }
 
 impl core::hash::Hash for Cord {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.to_str().hash(state);
+        // Hash chunks incrementally to avoid full string allocation
+        for chunk in self.chunks() {
+            chunk.hash(state);
+        }
     }
 }
 

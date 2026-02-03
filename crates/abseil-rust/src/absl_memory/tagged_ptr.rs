@@ -13,8 +13,8 @@ use core::marker::PhantomData;
 /// use abseil::absl_memory::TaggedPtr;
 ///
 /// let value = Box::new(42u64);
-/// let mut tagged = TaggedPtr::new(value, false);
-/// assert_eq!(*tagged.as_ptr(), 42);
+/// let mut tagged = TaggedPtr::new(value, false).unwrap();
+/// assert_eq!(unsafe { *tagged.as_ptr() }, 42);
 /// assert!(!tagged.tag());
 ///
 /// tagged.set_tag(true);
@@ -29,27 +29,33 @@ pub struct TaggedPtr<T> {
 impl<T> TaggedPtr<T> {
     /// Creates a new tagged pointer.
     ///
+    /// Returns None if the alignment of T is less than 2.
+    ///
+    /// This is the safe way to create a TaggedPtr - it validates alignment
+    /// before performing any unsafe operations.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use abseil::absl_memory::TaggedPtr;
+    ///
+    /// let value = Box::new(42u64);
+    /// let tagged = TaggedPtr::new(value, false).unwrap();
+    /// ```
+    pub fn new(ptr: Box<T>, tag: bool) -> Option<Self> {
+        Self::try_new(ptr, tag)
+    }
+
+    /// Creates a new tagged pointer without alignment checking.
+    ///
     /// # Safety
     ///
     /// The alignment of T must be at least 2 for the tagging to work correctly.
     /// If alignment is less than 2, this will cause undefined behavior.
-    pub unsafe fn new(ptr: Box<T>, tag: bool) -> Self {
-        // SAFETY CHECK: Validate alignment before using lowest bit for tagging
-        // This prevents memory corruption when T has alignment < 2
-        let align = core::mem::align_of::<T>();
-
-        // CRITICAL: Hard panic for alignment violation in both debug and release
-        // Using lowest bit for tagging with alignment < 2 causes memory corruption
-        if align < 2 {
-            panic!(
-                "TaggedPtr requires alignment >= 2, but {} has alignment {}. \
-                 This would cause memory corruption when using the tag bit. \
-                 Use try_new() for a safe alternative that returns None.",
-                core::any::type_name::<T>(),
-                align
-            );
-        }
-
+    ///
+    /// This is provided for performance-critical code where alignment is
+    /// guaranteed by other means. Prefer using `new()` or `try_new()` instead.
+    pub unsafe fn new_unchecked(ptr: Box<T>, tag: bool) -> Self {
         let addr = Box::into_raw(ptr) as usize;
         let tagged = if tag { addr | 1 } else { addr & !1 };
         Self {
@@ -71,12 +77,11 @@ impl<T> TaggedPtr<T> {
     /// let tagged = TaggedPtr::try_new(value, false).unwrap();
     /// ```
     pub fn try_new(ptr: Box<T>, tag: bool) -> Option<Self> {
-        // SAFETY: We validate alignment before calling new
         if core::mem::align_of::<T>() < 2 {
             return None;
         }
-        // SAFETY: Alignment is validated, so new is safe to call
-        unsafe { Some(Self::new(ptr, tag)) }
+        // SAFETY: Alignment is validated, so new_unchecked is safe to call
+        unsafe { Some(Self::new_unchecked(ptr, tag)) }
     }
 
     /// Recreates the box, consuming the tagged pointer.
@@ -144,7 +149,7 @@ mod tests {
     fn test_tagged_ptr_with_u64() {
         // u64 has alignment >= 2, so tagging is safe
         let value = Box::new(42u64);
-        let mut tagged = unsafe { TaggedPtr::new(value, false) };
+        let mut tagged = TaggedPtr::new(value, false).expect("u64 has alignment >= 2");
         assert_eq!(unsafe { *tagged.as_ptr() }, 42);
         assert!(!tagged.tag());
 
@@ -159,7 +164,7 @@ mod tests {
     #[test]
     fn test_tagged_ptr_set_tag_preserves_value() {
         let value = Box::new(123u64);
-        let mut tagged = unsafe { TaggedPtr::new(value, false) };
+        let mut tagged = TaggedPtr::new(value, false).expect("u64 has alignment >= 2");
 
         tagged.set_tag(true);
         assert_eq!(unsafe { *tagged.as_ptr() }, 123);
@@ -176,7 +181,7 @@ mod tests {
         let ptr_value = Box::into_raw(original) as usize;
 
         let value = Box::new(456u64);
-        let tagged = unsafe { TaggedPtr::new(value, true) };
+        let tagged = TaggedPtr::new(value, true).expect("u64 has alignment >= 2");
         let reconstructed = unsafe { tagged.into_box() };
 
         assert_eq!(*reconstructed, 456);
@@ -186,7 +191,7 @@ mod tests {
     #[test]
     fn test_tagged_ptr_addr_returns_clean_address() {
         let value = Box::new(789u64);
-        let tagged = unsafe { TaggedPtr::new(value, true) };
+        let tagged = TaggedPtr::new(value, true).expect("u64 has alignment >= 2");
 
         // addr should return the address without the tag bit
         let addr = tagged.addr();
@@ -222,6 +227,17 @@ mod tests {
         unsafe { tagged.into_box() };
     }
 
+    #[test]
+    fn test_new_unchecked_skips_validation() {
+        // new_unchecked should skip alignment validation
+        let value = Box::new(42u64);
+        let tagged = unsafe { TaggedPtr::new_unchecked(value, true) };
+        assert!(tagged.tag());
+        assert_eq!(unsafe { *tagged.as_ptr() }, 42);
+
+        unsafe { tagged.into_box() };
+    }
+
     // Edge case tests for CRITICAL security fixes
 
     #[test]
@@ -234,12 +250,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "alignment")]
-    fn test_tagged_ptr_panics_on_misalignment() {
-        // TaggedPtr should panic when created with misaligned type
+    fn test_new_rejects_u8_alignment() {
+        // new() should also reject types with alignment < 2
         let value = Box::new(42u8);
-        let _tagged = unsafe { TaggedPtr::new(value, true) };
-        // Should panic before returning
+        let tagged = TaggedPtr::new(value, false);
+        // Should return None because alignment < 2
+        assert!(tagged.is_none(), "new() should reject types with alignment < 2");
     }
 
     #[test]
@@ -252,7 +268,7 @@ mod tests {
         }
 
         let value = Box::new(AlignedStruct { a: 1, b: 2 });
-        let tagged = TaggedPtr::try_new(value, false);
+        let tagged = TaggedPtr::new(value, false);
         assert!(tagged.is_some(), "Struct with alignment >= 2 should work");
 
         let tagged = tagged.unwrap();
@@ -266,7 +282,7 @@ mod tests {
     fn test_tagged_ptr_zero_value() {
         // Test with zero value to ensure pointer tagging doesn't affect value
         let value = Box::new(0u64);
-        let tagged = unsafe { TaggedPtr::new(value, false) };
+        let tagged = TaggedPtr::new(value, false).expect("u64 has alignment >= 2");
         assert_eq!(unsafe { *tagged.as_ptr() }, 0);
 
         unsafe { tagged.into_box() };
@@ -276,7 +292,7 @@ mod tests {
     fn test_tagged_ptr_max_value() {
         // Test with max value to ensure pointer tagging doesn't affect value
         let value = Box::new(u64::MAX);
-        let tagged = unsafe { TaggedPtr::new(value, false) };
+        let tagged = TaggedPtr::new(value, false).expect("u64 has alignment >= 2");
         assert_eq!(unsafe { *tagged.as_ptr() }, u64::MAX);
 
         unsafe { tagged.into_box() };
@@ -286,7 +302,7 @@ mod tests {
     fn test_tagged_ptr_alternating_tags() {
         // Test rapid tag changes to ensure value is preserved
         let value = Box::new(111u64);
-        let mut tagged = unsafe { TaggedPtr::new(value, false) };
+        let mut tagged = TaggedPtr::new(value, false).expect("u64 has alignment >= 2");
 
         for _ in 0..10 {
             tagged.set_tag(true);
@@ -305,8 +321,8 @@ mod tests {
         let value = Box::new(222u64);
         let ptr = Box::leak(value) as *const u64;
 
-        let tagged1 = unsafe { TaggedPtr::new(Box::from_raw(ptr as *mut u64), false) };
-        let tagged2 = unsafe { TaggedPtr::new(Box::from_raw(ptr as *mut u64), true) };
+        let tagged1 = unsafe { TaggedPtr::new_unchecked(Box::from_raw(ptr as *mut u64), false) };
+        let tagged2 = unsafe { TaggedPtr::new_unchecked(Box::from_raw(ptr as *mut u64), true) };
 
         assert_eq!(unsafe { *tagged1.as_ptr() }, 222);
         assert_eq!(unsafe { *tagged2.as_ptr() }, 222);
