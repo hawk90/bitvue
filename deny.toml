@@ -17,6 +17,8 @@ allow = [
     "Unicode-DFS-2016",
     "0BSD",
     "Zlib",
+    "AGPL-3.0",
+    "AGPL-3.0-or-later",
 ]
 exceptions = []
 
