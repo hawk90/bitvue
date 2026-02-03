@@ -10,7 +10,6 @@ members = [
     "crates/bitvue-codecs",    # Codec parsers (AV1, H.264, HEVC) - integrates bitvue-av1
     "crates/bitvue-decode",    # Decoders (dav1d for AV1)
     "crates/bitvue-metrics",   # Quality metrics (PSNR, SSIM, VMAF)
-    "crates/bitvue-log",       # Abseil-style logging (CHECK, VLOG, rate-limiting)
     "crates/bitvue-mcp",       # Model Context Protocol server for AI assistant integration
 
     # Codec parsers (Pure Rust)
@@ -43,7 +42,7 @@ bitvue-formats = { path = "crates/bitvue-formats" }
 bitvue-codecs = { path = "crates/bitvue-codecs" }
 bitvue-decode = { path = "crates/bitvue-decode" }
 bitvue-metrics = { path = "crates/bitvue-metrics" }
-bitvue-log = { path = "crates/bitvue-log" }
+abseil = { path = "../abseil-rust", features = ["std", "base", "log"] }
 bitvue-mcp = { path = "crates/bitvue-mcp" }
 app = { path = "crates/app" }
 ui = { path = "crates/ui" }

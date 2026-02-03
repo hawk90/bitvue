@@ -36,7 +36,10 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
     let block_h = OVERLAY_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
-    let total_blocks = (grid_w * grid_h) as usize;
+
+    // Check for overflow in grid size calculation
+    let total_blocks = grid_w.checked_mul(grid_h)
+        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
 
     let mut mv_l0 = Vec::with_capacity(total_blocks);
     let mut mv_l1 = Vec::with_capacity(total_blocks);

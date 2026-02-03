@@ -118,6 +118,17 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
     let grid_w = (width + sb_size - 1) / sb_size;
     let grid_h = (height + sb_size - 1) / sb_size;
 
+    abseil::vlog!(
+        2,
+        "Extracting QP grid: {}x{}, sb_size={}, grid={}x{}, base_qp={}",
+        width,
+        height,
+        sb_size,
+        grid_w,
+        grid_h,
+        frame_header.base_q_idx
+    );
+
     let mut qp = Vec::with_capacity((grid_w * grid_h) as usize);
 
     // Base QP from frame header
@@ -136,7 +147,9 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
         qp = vec![base_qp; (grid_w * grid_h) as usize];
     }
 
-    Ok(QPGrid::new(grid_w, grid_h, sb_size, sb_size, qp, base_qp))
+    // Use -1 as missing value marker (standard sentinel for missing QP data)
+    // Do NOT use base_qp as missing value, or all QP values will be filtered out!
+    Ok(QPGrid::new(grid_w, grid_h, sb_size, sb_size, qp, -1))
 }
 
 /// Extract MV Grid from AV3 bitstream
@@ -145,18 +158,33 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
 pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError> {
     let width = frame_header.width;
     let height = frame_header.height;
+    let sb_size = frame_header.sb_size as u32;
 
-    // Use 16x16 blocks for MV grid
-    let block_size = 16u32;
-    let grid_w = (width + block_size - 1) / block_size;
-    let grid_h = (height + block_size - 1) / block_size;
+    abseil::vlog!(
+        2,
+        "Extracting MV grid: {}x{}, sb_size={}",
+        width,
+        height,
+        sb_size
+    );
 
-    let mut mv_l0 = Vec::with_capacity((grid_w * grid_h) as usize);
-    let mut mv_l1 = Vec::with_capacity((grid_w * grid_h) as usize);
-    let mut modes = Vec::with_capacity((grid_w * grid_h) as usize);
-
-    // Parse super blocks
+    // Parse super blocks first to determine actual MV grid dimensions
     let sbs = parse_super_blocks(frame_header);
+
+    // Each SB is sb_size x sb_size pixels, and we use 16x16 MV blocks
+    // So the MV grid dimensions are determined by the SB grid, not the frame dimensions
+    let block_size = 16u32;
+    let sb_cols = (width + sb_size - 1) / sb_size;
+    let sb_rows = (height + sb_size - 1) / sb_size;
+
+    // MV grid dimensions: each SB expands to (sb_size/block_size) x (sb_size/block_size) MV blocks
+    let blocks_per_sb_dim = sb_size / block_size; // Should be 64/16 = 4
+    let mv_grid_w = sb_cols * blocks_per_sb_dim;
+    let mv_grid_h = sb_rows * blocks_per_sb_dim;
+
+    let mut mv_l0 = Vec::with_capacity((mv_grid_w * mv_grid_h) as usize);
+    let mut mv_l1 = Vec::with_capacity((mv_grid_w * mv_grid_h) as usize);
+    let mut modes = Vec::with_capacity((mv_grid_w * mv_grid_h) as usize);
 
     // Expand SBs to block grid
     for sb in &sbs {
@@ -185,16 +213,18 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
         }
     }
 
-    // Fill remaining if needed
-    while mv_l0.len() < (grid_w * grid_h) as usize {
+    // Fill remaining if needed (should not be necessary if SBs cover the frame)
+    while mv_l0.len() < (mv_grid_w * mv_grid_h) as usize {
         mv_l0.push(CoreMV::ZERO);
         mv_l1.push(CoreMV::MISSING);
         modes.push(BlockMode::Inter);
     }
 
+    // Create MV grid with dimensions matching the SB-based MV grid
+    // Note: The coded_width/height used here are the MV grid dimensions in pixels (mv_grid_w * block_size, mv_grid_h * block_size)
     Ok(MVGrid::new(
-        width,
-        height,
+        mv_grid_w * block_size,
+        mv_grid_h * block_size,
         block_size,
         block_size,
         mv_l0,

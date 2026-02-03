@@ -136,7 +136,11 @@ pub fn extract_qp_grid(
     let grid_w = pic_width_in_mbs as u32;
     let grid_h = pic_height_in_mbs as u32;
 
-    let mut qp = Vec::with_capacity((grid_w * grid_h) as usize);
+    // Check for overflow in grid size calculation
+    let total_blocks = grid_w.checked_mul(grid_h)
+        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+
+    let mut qp = Vec::with_capacity(total_blocks);
 
     // Parse macroblocks from slice data
     for nal in nal_units {
@@ -149,7 +153,7 @@ pub fn extract_qp_grid(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to parse macroblocks: {}, using base_qp", e);
+                    abseil::vlog!(1, "Failed to parse macroblocks: {}, using base_qp", e);
                     // Use base_qp for all macroblocks in this slice
                 }
             }
@@ -158,7 +162,9 @@ pub fn extract_qp_grid(
 
     // If we didn't get any macroblocks, use base_qp
     if qp.is_empty() {
-        qp = vec![base_qp; (grid_w * grid_h) as usize];
+        let total_blocks = grid_w.checked_mul(grid_h)
+            .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+        qp = vec![base_qp; total_blocks];
     }
 
     Ok(QPGrid::new(grid_w, grid_h, 16, 16, qp, base_qp))
@@ -176,9 +182,13 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     let grid_w = pic_width_in_mbs as u32;
     let grid_h = pic_height_in_mbs as u32;
 
-    let mut mv_l0 = Vec::with_capacity((grid_w * grid_h) as usize);
-    let mut mv_l1 = Vec::with_capacity((grid_w * grid_h) as usize);
-    let mut modes = Vec::with_capacity((grid_w * grid_h) as usize);
+    // Check for overflow in grid size calculation
+    let total_blocks = grid_w.checked_mul(grid_h)
+        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+
+    let mut mv_l0 = Vec::with_capacity(total_blocks);
+    let mut mv_l1 = Vec::with_capacity(total_blocks);
+    let mut modes = Vec::with_capacity(total_blocks);
 
     // Parse macroblocks from slice data
     for nal in nal_units {
@@ -209,7 +219,7 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to parse macroblocks for MV: {}, using ZERO", e);
+                    abseil::vlog!(1, "Failed to parse macroblocks for MV: {}, using ZERO", e);
                     // Use zero MV for all macroblocks in this slice
                 }
             }
@@ -217,7 +227,9 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     }
 
     // Fill remaining if needed
-    while mv_l0.len() < (grid_w * grid_h) as usize {
+    let total_blocks = grid_w.checked_mul(grid_h)
+        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+    while mv_l0.len() < total_blocks {
         mv_l0.push(CoreMV::ZERO);
         mv_l1.push(CoreMV::MISSING);
         modes.push(BlockMode::Inter);
@@ -266,7 +278,8 @@ pub fn extract_partition_grid(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(
+                    abseil::vlog!(
+                        1,
                         "Failed to parse macroblocks for partition: {}, using scaffold",
                         e
                     );

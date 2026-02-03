@@ -544,6 +544,14 @@ impl Leb128Reader for BitReader<'_> {
         let mut shift = 0;
 
         loop {
+            // Check for overflow BEFORE shifting to prevent undefined behavior
+            if shift >= 64 {
+                return Err(BitvueError::Parse {
+                    offset: self.position(),
+                    message: "LEB128 overflow".to_string(),
+                });
+            }
+
             let byte = self.read_bits(8)?;
             value |= ((byte & 0x7F) as u64) << shift;
 
@@ -552,12 +560,6 @@ impl Leb128Reader for BitReader<'_> {
             }
 
             shift += 7;
-            if shift >= 64 {
-                return Err(BitvueError::Parse {
-                    offset: self.position(),
-                    message: "LEB128 overflow".to_string(),
-                });
-            }
         }
 
         Ok(value)
@@ -569,6 +571,14 @@ impl Leb128Reader for BitReader<'_> {
         let mut byte: u64;
 
         loop {
+            // Check for overflow BEFORE shifting to prevent undefined behavior
+            if shift >= 64 {
+                return Err(BitvueError::Parse {
+                    offset: self.position(),
+                    message: "LEB128 overflow".to_string(),
+                });
+            }
+
             byte = self.read_bits(8)? as u64;
             value |= ((byte & 0x7F) as i64) << shift;
 
@@ -577,12 +587,6 @@ impl Leb128Reader for BitReader<'_> {
             }
 
             shift += 7;
-            if shift >= 64 {
-                return Err(BitvueError::Parse {
-                    offset: self.position(),
-                    message: "LEB128 overflow".to_string(),
-                });
-            }
         }
 
         // Sign extend

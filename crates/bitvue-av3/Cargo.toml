@@ -8,6 +8,7 @@ description = "AV3 bitstream parser for bitvue"
 
 [dependencies]
 bitvue-core = { workspace = true }
+abseil = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

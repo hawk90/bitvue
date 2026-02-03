@@ -1,7 +1,6 @@
 //! Strategy registry for automatic platform detection and strategy selection
 
 use std::sync::OnceLock;
-use tracing::info;
 
 /// Strategy type identifiers for explicit selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,32 +90,32 @@ impl StrategyRegistry {
                 // Since OnceLock doesn't support take(), we just set the detected type
                 let detected = Self::detect_best_strategy_type();
                 let _ = self.current_strategy.set(detected);
-                info!("Strategy set to Auto (selected: {})", detected.name());
+                abseil::LOG!(INFO, "Strategy set to Auto (selected: {})", detected.name());
             }
             StrategyType::Scalar => {
                 self.current_strategy.set(StrategyType::Scalar).ok();
-                info!("Strategy manually set to Scalar");
+                abseil::LOG!(INFO, "Strategy manually set to Scalar");
             }
             StrategyType::Avx2 => {
                 if !StrategyType::Avx2.is_available() {
                     return Err("AVX2 not available on this CPU".to_string());
                 }
                 self.current_strategy.set(StrategyType::Avx2).ok();
-                info!("Strategy manually set to AVX2");
+                abseil::LOG!(INFO, "Strategy manually set to AVX2");
             }
             StrategyType::Neon => {
                 if !StrategyType::Neon.is_available() {
                     return Err("NEON not available on this CPU".to_string());
                 }
                 self.current_strategy.set(StrategyType::Neon).ok();
-                info!("Strategy manually set to NEON");
+                abseil::LOG!(INFO, "Strategy manually set to NEON");
             }
             StrategyType::Metal => {
                 if !StrategyType::Metal.is_available() {
                     return Err("Metal not available or not implemented yet".to_string());
                 }
                 self.current_strategy.set(StrategyType::Metal).ok();
-                info!("Strategy manually set to Metal");
+                abseil::LOG!(INFO, "Strategy manually set to Metal");
             }
         }
         Ok(())
@@ -133,7 +132,7 @@ impl StrategyRegistry {
         #[cfg(target_os = "macos")]
         {
             if StrategyType::Metal.is_available() {
-                info!("Auto-detected strategy: Metal (GPU acceleration)");
+                abseil::LOG!(INFO, "Auto-detected strategy: Metal (GPU acceleration)");
                 return StrategyType::Metal;
             }
         }
@@ -141,7 +140,7 @@ impl StrategyRegistry {
         #[cfg(target_arch = "x86_64")]
         {
             if StrategyType::Avx2.is_available() {
-                info!("Auto-detected strategy: AVX2 (x86_64 SIMD)");
+                abseil::LOG!(INFO, "Auto-detected strategy: AVX2 (x86_64 SIMD)");
                 return StrategyType::Avx2;
             }
         }
@@ -149,12 +148,12 @@ impl StrategyRegistry {
         #[cfg(target_arch = "aarch64")]
         {
             if StrategyType::Neon.is_available() {
-                info!("Auto-detected strategy: NEON (ARM SIMD)");
+                abseil::LOG!(INFO, "Auto-detected strategy: NEON (ARM SIMD)");
                 return StrategyType::Neon;
             }
         }
 
-        info!("Auto-detected strategy: Scalar (baseline)");
+        abseil::LOG!(INFO, "Auto-detected strategy: Scalar (baseline)");
         StrategyType::Scalar
     }
 

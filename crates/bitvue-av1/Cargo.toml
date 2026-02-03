@@ -19,6 +19,7 @@ harness = false
 [dependencies]
 bitvue-core = { workspace = true }
 bitvue-formats = { workspace = true }
+abseil = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

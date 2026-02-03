@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 bitvue-core = { workspace = true }
+abseil = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

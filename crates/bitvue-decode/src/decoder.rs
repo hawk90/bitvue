@@ -5,7 +5,6 @@ use bitvue_core::limits::{MAX_FRAME_SIZE, MAX_FRAMES_PER_FILE};
 use dav1d::{Decoder, PlanarImageComponent};
 use std::sync::Arc;
 use thiserror::Error;
-use tracing::{debug, error, warn};
 
 /// Decoder errors
 #[derive(Error, Debug)]
@@ -128,7 +127,8 @@ impl ChromaFormat {
                     }
 
                     // Unknown chroma format - log and default to 4:2:0
-                    tracing::debug!(
+                    abseil::vlog!(
+                        2,
                         "Unknown chroma format: Y={}, UV={}, {}bit, assuming 4:2:0",
                         y_size, uv_size, bit_depth
                     );
@@ -220,10 +220,10 @@ impl Av1Decoder {
             let err_str = e.to_string();
             // EAGAIN/"Try again" is expected when no frame is ready yet - not an error
             if err_str.contains("EAGAIN") || err_str.contains("Try again") {
-                debug!("No frame available yet (EAGAIN) - this is normal during decoding");
+                abseil::vlog!(2, "No frame available yet (EAGAIN) - this is normal during decoding");
                 DecodeError::NoFrame
             } else {
-                error!("Failed to get picture from decoder: {}", e);
+                abseil::LOG!(ERROR, "Failed to get picture from decoder: {}", e);
                 DecodeError::Decode(err_str)
             }
         })?;
@@ -233,7 +233,7 @@ impl Av1Decoder {
         // Validate frame before returning
         validate_frame(&frame)?;
 
-        debug!(
+        abseil::vlog!(2, 
             "Decoded frame: {}x{} {}bit {:?}",
             frame.width, frame.height, frame.bit_depth, frame.frame_type
         );
@@ -385,7 +385,7 @@ impl Av1Decoder {
             let frame_data = data[frame_header.offset..frame_end].to_vec();
 
             if let Err(e) = self.send_data_owned(frame_data, frame_header.timestamp) {
-                warn!(
+                abseil::LOG!(WARNING, 
                     "Failed to send IVF frame {} (ts={}) to decoder: {}. Skipping frame.",
                     frame_idx, frame_header.timestamp, e
                 );
@@ -563,14 +563,14 @@ impl Av1Decoder {
 pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
     // Validate dimensions
     if frame.width == 0 || frame.height == 0 {
-        error!("Invalid frame dimensions: {}x{}", frame.width, frame.height);
+        abseil::LOG!(ERROR, "Invalid frame dimensions: {}x{}", frame.width, frame.height);
         return Err(DecodeError::UnsupportedFormat);
     }
 
     // Validate Y plane size
     let expected_y_size = (frame.width * frame.height) as usize;
     if frame.y_plane.len() != expected_y_size {
-        error!(
+        abseil::LOG!(ERROR, 
             "Y plane size mismatch: expected {}, got {}",
             expected_y_size,
             frame.y_plane.len()
@@ -601,7 +601,7 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
         // U plane must match one of the valid chroma formats
         if !valid_sizes.contains(&u_plane.len()) {
-            error!(
+            abseil::LOG!(ERROR, 
                 "U plane size invalid: got {}, expected {} (4:2:0), {} (4:2:2), or {} (4:4:4)",
                 u_plane.len(),
                 size_420,
@@ -616,7 +616,7 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
         // V plane must match one of the valid chroma formats
         if !valid_sizes.contains(&v_plane.len()) {
-            error!(
+            abseil::LOG!(ERROR, 
                 "V plane size invalid: got {}, expected {} (4:2:0), {} (4:2:2), or {} (4:4:4)",
                 v_plane.len(),
                 size_420,
@@ -631,7 +631,7 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
         // U and V must have the same size
         if u_plane.len() != v_plane.len() {
-            error!(
+            abseil::LOG!(ERROR, 
                 "U/V plane size mismatch: U={}, V={}",
                 u_plane.len(),
                 v_plane.len()
@@ -646,10 +646,10 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
     // Validate bit depth
     if frame.bit_depth != 8 && frame.bit_depth != 10 && frame.bit_depth != 12 {
-        warn!("Unusual bit depth: {}", frame.bit_depth);
+        abseil::LOG!(WARNING, "Unusual bit depth: {}", frame.bit_depth);
     }
 
-    debug!(
+    abseil::vlog!(2, 
         "Frame validation passed: {}x{} {}bit",
         frame.width, frame.height, frame.bit_depth
     );

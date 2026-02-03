@@ -6,7 +6,7 @@ use ffmpeg_next as ffmpeg;
 use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
 use crate::plane_utils;
 use crate::traits::{CodecType, Decoder, DecoderCapabilities};
-use tracing::{debug, error, warn};
+use abseil::prelude::*;
 
 /// Maximum number of frames to buffer
 ///

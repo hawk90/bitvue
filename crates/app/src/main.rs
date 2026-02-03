@@ -8,7 +8,7 @@ use eframe::egui;
 fn main() -> eframe::Result<()> {
     // Initialize logging
     tracing_subscriber::fmt::init();
-    bitvue_log::init_from_env(); // Initialize VLOG from VLOG_LEVEL and VLOG_MODULE env vars
+    abseil::init_from_env(); // Initialize VLOG from VLOG_LEVEL and VLOG_MODULE env vars
     tracing::info!("bitvue starting (Monster Pack v9 architecture)");
 
     let options = eframe::NativeOptions {

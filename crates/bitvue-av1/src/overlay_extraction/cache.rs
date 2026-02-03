@@ -64,7 +64,8 @@ pub fn compute_cache_key(tile_data: &[u8], base_qp: i16) -> u64 {
         // For cache key purposes, we still compute a hash even with invalid QP
         // This allows callers to handle the error appropriately
         // Log a warning to help debugging
-        tracing::warn!(
+        abseil::vlog!(
+            1,
             "Cache key computed with invalid QP value: {} (valid range: 0-255)",
             base_qp
         );
@@ -105,21 +106,22 @@ where
 
     // Check if already cached (still holding lock)
     if let Some(cached) = cache.get(&cache_key) {
-        tracing::debug!("Cache HIT for coding units: {} units", cached.len());
+        abseil::vlog!(2, "Cache HIT for coding units: {} units", cached.len());
         // Arc::clone is O(1) - this is the key optimization
         return Ok(Arc::clone(cached));
     }
 
     // Cache miss - parse and insert (still holding lock)
     // This prevents other threads from simultaneously parsing the same key
-    tracing::debug!("Cache MISS - parsing coding units from tile data");
+    abseil::vlog!(2, "Cache MISS - parsing coding units from tile data");
     let units = parse_fn()?;
 
     // Enforce cache size limit to prevent unbounded growth
     // If cache is full, evict 25% of entries (pseudo-random eviction)
     if cache.len() >= MAX_CACHE_ENTRIES {
         let remove_count = MAX_CACHE_ENTRIES / 4;
-        tracing::debug!(
+        abseil::vlog!(
+            2,
             "Cache full ({} entries), evicting {} entries",
             cache.len(),
             remove_count

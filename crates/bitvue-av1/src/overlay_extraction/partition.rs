@@ -289,7 +289,9 @@ impl PredictionModeGrid {
         if col >= self.grid_w || row >= self.grid_h {
             return None;
         }
-        let idx = (row * self.grid_w + col) as usize;
+        // Check for overflow in index calculation before casting
+        let idx = (row as usize).checked_mul(self.grid_w as usize)
+            .and_then(|v| v.checked_add(col as usize))?;
         self.modes.get(idx).copied().flatten()
     }
 }
@@ -506,7 +508,9 @@ impl TransformGrid {
         if col >= self.grid_w || row >= self.grid_h {
             return None;
         }
-        let idx = (row * self.grid_w + col) as usize;
+        // Check for overflow in index calculation before casting
+        let idx = (row as usize).checked_mul(self.grid_w as usize)
+            .and_then(|v| v.checked_add(col as usize))?;
         self.tx_sizes.get(idx).copied().flatten()
     }
 }

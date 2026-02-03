@@ -47,8 +47,12 @@ fn extract_qp_grid_typed(
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
+    // Check for overflow in grid size calculation
+    let total_blocks = grid_w.checked_mul(grid_h)
+        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+
     let qp_value = base_qp.value();
-    let qp = vec![qp_value; (grid_w * grid_h) as usize];
+    let qp = vec![qp_value; total_blocks];
 
     Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, qp_value))
 }
@@ -85,7 +89,11 @@ fn extract_qp_grid_from_parsed_typed(
     let block_h = OVERLAY_BLOCK_SIZE;
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
-    let total_blocks = (grid_w * grid_h) as usize;
+
+    // Check for overflow in grid size calculation
+    let total_blocks = grid_w.checked_mul(grid_h)
+        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+
     let base_qp_value = base_qp.value();
 
     // If we have tile data, try to parse actual QP values
@@ -123,6 +131,11 @@ fn extract_qp_grid_from_parsed_typed(
 ///
 /// Creates a QP grid by using a spatial index for O(1) coding unit lookup.
 /// Eliminates O(n²) linear search bottleneck (510k→510 lookups for 1080p).
+///
+/// # Safety
+///
+/// Grid dimensions are expected to be validated by the caller before this function is invoked.
+/// This function uses saturating arithmetic for capacity allocation to prevent panic on overflow.
 fn build_qp_grid_from_cus(
     coding_units: &[crate::tile::CodingUnit],
     grid_w: u32,
@@ -131,7 +144,10 @@ fn build_qp_grid_from_cus(
     block_h: u32,
     base_qp: i16,
 ) -> Vec<i16> {
-    let total_blocks = (grid_w * grid_h) as usize;
+    // Use saturating multiplication for capacity to prevent overflow panic
+    // If overflow occurs, use a reasonable maximum capacity (8K video with 4x4 blocks)
+    const MAX_REASONABLE_CAPACITY: u32 = 512 * 512; // ~262K blocks
+    let total_blocks = grid_w.saturating_mul(grid_h).min(MAX_REASONABLE_CAPACITY) as usize;
     let mut qp = Vec::with_capacity(total_blocks);
 
     // Build spatial index (O(n×k) where k=cells per CU, typically ~4)

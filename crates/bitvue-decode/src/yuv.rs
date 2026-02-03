@@ -9,14 +9,13 @@ use crate::strategy::{
     best_strategy_type, ConversionError as StrategyConversionError,
     ScalarStrategy, StrategyType, YuvConversionStrategy,
 };
+// Debug logging now uses abseil::vlog!
 
 #[cfg(target_arch = "x86_64")]
 use crate::strategy::Avx2Strategy;
 
 #[cfg(target_arch = "aarch64")]
 use crate::strategy::NeonStrategy;
-
-use tracing::debug;
 
 // Re-export the strategy module for advanced users who want to
 // manually select strategies
@@ -58,7 +57,7 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
     let required_size = match width.checked_mul(height) {
         Some(v) => v,
         None => {
-            tracing::error!("Frame dimensions overflow: {}x{}", width, height);
+            abseil::vlog!(1, "Frame dimensions overflow: {}x{}", width, height);
             return vec![0; MAX_FRAME_SIZE.min(1920 * 1080 * 3)];
         }
     };
@@ -66,13 +65,14 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
     let required_size = match required_size.checked_mul(3) {
         Some(v) => v,
         None => {
-            tracing::error!("Frame size overflow: {}x{}x3", width, height);
+            abseil::vlog!(1, "Frame size overflow: {}x{}x3", width, height);
             return vec![0; MAX_FRAME_SIZE.min(1920 * 1080 * 3)];
         }
     };
 
     if required_size > MAX_FRAME_SIZE {
-        tracing::error!(
+        abseil::vlog!(
+            1,
             "Frame size {}x{} exceeds maximum allowed {}",
             width,
             height,
@@ -85,7 +85,8 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
     let chroma_format = frame.chroma_format;
     let bit_depth = frame.bit_depth;
 
-    debug!(
+    abseil::vlog!(
+        2,
         "Converting {:?} frame to RGB ({}x{}, {}bit, {} bytes)",
         chroma_format, width, height, bit_depth, required_size
     );
@@ -98,7 +99,7 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
             let u_plane = match frame.u_plane.as_ref() {
                 Some(plane) => plane,
                 None => {
-                    tracing::error!("Yuv420 frame missing U plane, falling back to grayscale");
+                    abseil::vlog!(1, "Yuv420 frame missing U plane, falling back to grayscale");
                     convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
                     return rgb;
                 }
@@ -106,7 +107,7 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
             let v_plane = match frame.v_plane.as_ref() {
                 Some(plane) => plane,
                 None => {
-                    tracing::error!("Yuv420 frame missing V plane, falling back to grayscale");
+                    abseil::vlog!(1, "Yuv420 frame missing V plane, falling back to grayscale");
                     convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
                     return rgb;
                 }
@@ -121,7 +122,7 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
                 &mut rgb,
                 bit_depth,
             ) {
-                tracing::error!("YUV420 conversion failed: {}, falling back to grayscale", e);
+                abseil::vlog!(1, "YUV420 conversion failed: {}, falling back to grayscale", e);
                 convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
             }
         }
@@ -135,7 +136,7 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
                 &mut rgb,
                 bit_depth,
             ) {
-                tracing::error!("YUV422 conversion failed: {}, falling back to grayscale", e);
+                abseil::vlog!(1, "YUV422 conversion failed: {}, falling back to grayscale", e);
                 convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
             }
         }
@@ -149,7 +150,7 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
                 &mut rgb,
                 bit_depth,
             ) {
-                tracing::error!("YUV444 conversion failed: {}, falling back to grayscale", e);
+                abseil::vlog!(1, "YUV444 conversion failed: {}, falling back to grayscale", e);
                 convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
             }
         }
@@ -189,7 +190,8 @@ fn convert_yuv420(
 
     // Log which strategy is being used
     let strategy_name = strategy_type.name();
-    debug!(
+    abseil::vlog!(
+        2,
         "Using {} strategy for YUV420 conversion ({}x{}, {}bit)",
         strategy_name, width, height, bit_depth
     );
@@ -252,7 +254,8 @@ fn convert_yuv422(
 
     // Log which strategy is being used
     let strategy_name = strategy_type.name();
-    debug!(
+    abseil::vlog!(
+        2,
         "Using {} strategy for YUV422 conversion ({}x{}, {}bit)",
         strategy_name, width, height, bit_depth
     );
@@ -315,7 +318,8 @@ fn convert_yuv444(
 
     // Log which strategy is being used
     let strategy_name = strategy_type.name();
-    debug!(
+    abseil::vlog!(
+        2,
         "Using {} strategy for YUV444 conversion ({}x{}, {}bit)",
         strategy_name, width, height, bit_depth
     );

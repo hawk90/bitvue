@@ -127,7 +127,7 @@ pub fn parse_vp9(data: &[u8]) -> Result<Vp9Stream> {
         match frame_header::parse_frame_header(frame_bytes) {
             Ok(header) => frames.push(header),
             Err(e) => {
-                tracing::warn!("Failed to parse frame {}: {}", i, e);
+                abseil::vlog!(1, "Failed to parse frame {}: {}", i, e);
                 // Continue with other frames
             }
         }
