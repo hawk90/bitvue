@@ -132,7 +132,6 @@ where
         // Wait for the flag to be set with exponential backoff to prevent DoS
         let mut spins = 0;
         const MAX_SPINS: u32 = 100;
-        const MAX_WAIT_NS: u64 = 10_000_000; // 10ms
 
         while !flag.0.load(Ordering::Acquire) {
             if spins < MAX_SPINS {

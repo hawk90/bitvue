@@ -29,6 +29,7 @@ use core::fmt;
 /// This struct provides methods for building formatted strings.
 #[derive(Debug, Clone, Default)]
 pub struct Spec {
+    #[allow(dead_code)]
     args: Vec<FormatArg>,
 }
 

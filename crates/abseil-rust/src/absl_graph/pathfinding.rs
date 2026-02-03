@@ -30,6 +30,7 @@ where
     #[derive(Clone, Copy)]
     struct Node {
         vertex: VertexId,
+        #[allow(dead_code)]
         g_score: f64,
         f_score: f64,
     }

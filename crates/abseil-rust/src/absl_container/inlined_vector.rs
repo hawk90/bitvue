@@ -236,6 +236,7 @@ impl<T, const N: usize> InlinedVector<T, N> {
 
     /// Allocates heap storage and moves inline elements.
     #[cold]
+    #[allow(dead_code)]
     fn allocate_heap(&mut self) {
         // Silently fail on overflow - stay inline
         let _ = self.allocate_heap_checked();
@@ -277,6 +278,7 @@ impl<T, const N: usize> InlinedVector<T, N> {
 
     /// Grows heap storage.
     #[cold]
+    #[allow(dead_code)]
     fn grow_heap(&mut self) {
         // Silently fail on overflow - don't grow
         let _ = self.grow_heap_checked();

@@ -168,6 +168,7 @@ where
     store_idx
 }
 
+#[allow(dead_code)]
 fn partition_by<T, F>(slice: &mut [T], compare: &mut F) -> usize
 where
     F: FnMut(&T, &T) -> Ordering,

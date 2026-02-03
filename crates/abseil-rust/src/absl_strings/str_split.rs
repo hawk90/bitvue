@@ -29,7 +29,7 @@
 use core::iter::FusedIterator;
 
 /// Delimiter types for string splitting.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Delimiter<'a> {
     /// Split by a single character.
     Char(char),
@@ -42,6 +42,23 @@ pub enum Delimiter<'a> {
     /// Split by a predicate function.
     Pred(fn(char) -> bool),
 }
+
+// Manual PartialEq implementation to avoid function pointer comparisons
+impl PartialEq for Delimiter<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Delimiter::Char(a), Delimiter::Char(b)) => a == b,
+            (Delimiter::Str(a), Delimiter::Str(b)) => a == b,
+            (Delimiter::AnyOf(a), Delimiter::AnyOf(b)) => a == b,
+            (Delimiter::Whitespace, Delimiter::Whitespace) => true,
+            // Function pointers cannot be reliably compared
+            (Delimiter::Pred(_), Delimiter::Pred(_)) => false,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Delimiter<'_> {}
 
 impl Delimiter<'_> {
     /// Returns true if the character matches this delimiter.
@@ -56,6 +73,7 @@ impl Delimiter<'_> {
     }
 
     /// Returns the length of this delimiter (for string delimiters).
+    #[allow(dead_code)]
     fn len(&self) -> usize {
         match self {
             Delimiter::Char(_) => 1,

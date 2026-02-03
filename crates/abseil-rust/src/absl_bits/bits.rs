@@ -365,7 +365,7 @@ macro_rules! impl_unsigned {
                     if self == 0 {
                         0
                     } else {
-                        1 << (self.bit_width() - 1)
+                        1 << (BitWidth::bit_width(self) - 1)
                     }
                 }
             }
@@ -401,7 +401,7 @@ macro_rules! impl_unsigned {
                     if self == 0 {
                         0
                     } else {
-                        1 << (self.bit_width() - 1)
+                        1 << (BitWidth::bit_width(self) - 1)
                     }
                 }
             }
@@ -466,7 +466,7 @@ macro_rules! impl_signed {
             impl BitWidth for $ity {
                 #[inline]
                 fn bit_width(self) -> u32 {
-                    (self as $uty).bit_width()
+                    BitWidth::bit_width(self as $uty)
                 }
             }
 
