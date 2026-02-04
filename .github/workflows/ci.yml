@@ -243,6 +243,7 @@ jobs:
             libavfilter-dev \
             libswscale-dev \
             libswresample-dev \
+            libavdevice-dev \
             pkg-config
       - name: Build documentation
         run: cargo doc --no-deps --all-features
