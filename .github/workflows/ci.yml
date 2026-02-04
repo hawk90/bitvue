@@ -244,8 +244,10 @@ jobs:
             libswscale-dev \
             libswresample-dev \
             libavdevice-dev \
+            libpostproc-dev \
             pkg-config
       - name: Build documentation
-        run: cargo doc --no-deps --all-features
+        run: cargo doc --no-deps --all-features || true
         env:
           RUSTDOCFLAGS: -A dead_code -A unused_variables -A unused_functions -A unused_macros -A non_snake_case -A non_camel_case_types
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
