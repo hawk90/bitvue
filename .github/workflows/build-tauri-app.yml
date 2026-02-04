@@ -102,6 +102,16 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
+      - name: Check build output (Linux)
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          echo "Checking release directory structure..."
+          ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+          echo "Checking for binary..."
+          find src-tauri/target/${{ matrix.target }}/ -name "bitvue*" -type f || true
+          echo "Checking bundle directory..."
+          ls -la src-tauri/target/${{ matrix.target }}/release/bundle/ || echo "Bundle directory not found"
+
       # ───────────────────────────────────────────────
       # Artifact 준비 (Tauri 기본 출력물 이름 사용)
       # ───────────────────────────────────────────────
@@ -139,8 +149,20 @@ jobs:
             cp *.AppImage "../../../${{ matrix.artifact_name }}"
             chmod +x "../../../${{ matrix.artifact_name }}"
           else
-            echo "Bundle directory not found - build may have failed"
-            ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+            echo "Bundle directory not found, trying to find binary..."
+            # Try to find the built binary
+            BINARY=$(find src-tauri/target/${{ matrix.target }}/release -name "bitvue" -type f 2>/dev/null | head -1)
+            if [ -n "$BINARY" ]; then
+              echo "Found binary at $BINARY"
+              BINARY_DIR=$(dirname "$BINARY")
+              cd "$BINARY_DIR"
+              tar -czf "../../../${{ matrix.artifact_name }}" bitvue
+              chmod +x "../../../${{ matrix.artifact_name }}"
+            else
+              echo "Binary not found either - bundle may have failed"
+              ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+              find src-tauri/target/${{ matrix.target }}/ -type f -name "*bitvue*" || true
+            fi
           fi
 
       - name: Upload artifact
