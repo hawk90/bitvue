@@ -22,7 +22,7 @@ run = "parallel"
 command = "cargo fmt --all -- --check"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+files = ["Cargo.toml", "frontend/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 # Auto-fix (if quick checks pass)
 
@@ -30,14 +30,14 @@ files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 command = "cargo fmt --all"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+files = ["Cargo.toml", "frontend/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 [action.format_typescript_css]
-skip = ["not exist - src/node_modules"]
-command = "cd src && npm run format --silent || true"
+skip = ["not exist - frontend/node_modules"]
+command = "cd frontend && npm run format --silent || true"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
+files = ["frontend/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
 
 # Linting
 
@@ -45,21 +45,21 @@ files = ["src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
 command = "cargo clippy --workspace -- -D warnings"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+files = ["Cargo.toml", "frontend/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 [action.lint_typescript]
-skip = ["not exist - src/node_modules"]
-command = "cd src && npm run lint --silent || true"
+skip = ["not exist - frontend/node_modules"]
+command = "cd frontend && npm run lint --silent || true"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["src/**/*.{ts,tsx,js,jsx}"]
+files = ["frontend/**/*.{ts,tsx,js,jsx}"]
 
 [action.lint_css]
-skip = ["not exist - src/node_modules"]
-command = "cd src && npm run lint:css --silent || true"
+skip = ["not exist - frontend/node_modules"]
+command = "cd frontend && npm run lint:css --silent || true"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["src/**/*.{css,scss}"]
+files = ["frontend/**/*.{css,scss}"]
 
 # Tests
 
@@ -67,14 +67,14 @@ files = ["src/**/*.{css,scss}"]
 command = "cargo test --workspace --no-fail-fast"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["Cargo.toml", "src/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
+files = ["Cargo.toml", "frontend/**/*.rs", "crates/**/*.rs", "tests/**/*.rs"]
 
 [action.test_typescript]
-skip = ["not exist - src/node_modules"]
-command = "cd src && npm run test:run --silent || true"
+skip = ["not exist - frontend/node_modules"]
+command = "cd frontend && npm run test:run --silent || true"
 run = "workspace"
 stage = ["pre-commit"]
-files = ["src/**/*.{ts,tsx,js,jsx}"]
+files = ["frontend/**/*.{ts,tsx,js,jsx}"]
 
 # ================================
 # Pre-push: Full checks before pushing to main

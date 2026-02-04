@@ -53,7 +53,13 @@ build/
 
 # Tauri build artifacts
 src-tauri/target/
+crates/*/target/
 src-tauri/WixTools/
 docs/
 archive/
 .claude/
+
+# Backup files
+*.old
+*.bak
+*_bak/

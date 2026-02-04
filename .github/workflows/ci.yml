@@ -36,7 +36,7 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
             frontend:
-              - 'src/**'
+              - 'frontend/**'
               - 'package.json'
               - 'vite.config.ts'
               - 'vitest.config.ts'
@@ -163,10 +163,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend && npm ci
       - name: Check formatting
-        run: npm run format:check
+        run: cd frontend && npm run format:check
 
   frontend-lint:
     name: Lint (Frontend)
@@ -183,13 +184,13 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: 'package-lock.json'
+          cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend && npm ci
       - name: Lint TypeScript
-        run: npm run lint
+        run: cd frontend && npm run lint
       - name: Lint CSS
-        run: npm run lint:css
+        run: cd frontend && npm run lint:css
 
   frontend-test:
     name: Test (Frontend)
@@ -208,11 +209,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: 'package-lock.json'
+          cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend && npm ci
       - name: Run tests
-        run: npm run test:run
+        run: cd frontend && npm run test:run
 
   frontend-typecheck:
     name: Type Check (Frontend)
@@ -226,11 +227,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: 'package-lock.json'
+          cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
-        run: npm ci
+        run: cd frontend && npm ci
       - name: Type check
-        run: npm run typecheck
+        run: cd frontend && npm run typecheck
 
   # ================================
   # 4. Documentation

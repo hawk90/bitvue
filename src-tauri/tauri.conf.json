@@ -4,10 +4,10 @@
   "version": "0.10.0",
   "identifier": "com.github.bitvue",
   "build": {
-    "frontendDist": "../dist",
+    "frontendDist": "../frontend/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeDevCommand": "cd frontend && npm run dev",
+    "beforeBuildCommand": "cd frontend && npm run build"
   },
   "app": {
     "withGlobalTauri": true,
