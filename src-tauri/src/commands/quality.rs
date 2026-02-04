@@ -417,8 +417,20 @@ pub async fn calculate_quality_metrics(
     // Determine which frames to process
     // SECURITY: Limit maximum frames to process even when indices is None
     const MAX_FRAMES_TO_PROCESS: usize = 10000;
+    const MAX_REASONABLE_FRAMES: usize = 1_000_000;
+
+    // Validate frame counts are reasonable before creating range
+    let ref_count = ref_frames.len().min(MAX_REASONABLE_FRAMES);
+    let dist_count = dist_frames.len().min(MAX_REASONABLE_FRAMES);
+
+    // Additional check: ensure total frames isn't absurd
+    if ref_frames.len() > MAX_REASONABLE_FRAMES || dist_frames.len() > MAX_REASONABLE_FRAMES {
+        return Err("File has too many frames for quality comparison".to_string());
+    }
+
     let frames_to_process = frame_indices.unwrap_or_else(|| {
-        (0..ref_frames.len().min(dist_frames.len()).min(MAX_FRAMES_TO_PROCESS)).collect()
+        let max_frames = ref_count.min(dist_count).min(MAX_FRAMES_TO_PROCESS);
+        (0..max_frames).collect()
     });
 
     let mut metrics = Vec::new();
@@ -676,7 +688,7 @@ fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec
             .map_err(|e| format!("Failed to parse IVF: {}", e))?;
 
         if max_idx >= frames.len() {
-            return Err(format!("Frame index {} out of range (total: {})", max_idx, frames.len()));
+            return Err(crate::constants::error_msgs::FRAME_INDEX_OUT_OF_RANGE.to_string());
         }
 
         let mut decoded_frames = Vec::new();
@@ -748,7 +760,7 @@ fn decode_samples_subset(
     }
 
     if max_idx >= samples.len() {
-        return Err(format!("Frame index {} out of range (total: {})", max_idx, samples.len()));
+        return Err(crate::constants::error_msgs::FRAME_INDEX_OUT_OF_RANGE.to_string());
     }
 
     let mut decoded_frames: Vec<Option<bitvue_decode::DecodedFrame>> = Vec::new();

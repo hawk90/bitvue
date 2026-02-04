@@ -244,8 +244,9 @@ pub async fn get_thumbnails(
 
 /// Create thumbnail from decoded RGB data
 fn create_thumbnail_from_rgb(width: u32, height: u32, rgb_data: &[u8]) -> Result<String, String> {
-    const THUMBNAIL_WIDTH: u32 = 160;
-    const THUMBNAIL_HEIGHT: u32 = 90;
+    use crate::constants::thumbnails;
+    const THUMBNAIL_WIDTH: u32 = thumbnails::DEFAULT_WIDTH;
+    const THUMBNAIL_HEIGHT: u32 = thumbnails::DEFAULT_HEIGHT;
 
     // Create image from RGB data (need owned data)
     let img: RgbImage = ImageBuffer::from_raw(width, height, rgb_data.to_vec())
@@ -275,8 +276,9 @@ fn generate_real_thumbnail(
     frame_index: usize,
     container_format: ContainerFormat,
 ) -> Result<String, String> {
-    const THUMBNAIL_WIDTH: u32 = 160;
-    const THUMBNAIL_HEIGHT: u32 = 90;
+    use crate::constants::thumbnails;
+    const THUMBNAIL_WIDTH: u32 = thumbnails::DEFAULT_WIDTH;
+    const THUMBNAIL_HEIGHT: u32 = thumbnails::DEFAULT_HEIGHT;
 
     // Decode the frame
     let (_width, _height, rgb_data) = match container_format {

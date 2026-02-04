@@ -40,21 +40,22 @@ fn validate_output_path(path: &str) -> Result<PathBuf, String> {
 
     // Check if the canonical path has a valid extension (prevents writing to system files)
     // Check extension AFTER canonicalization to ensure we validate the actual destination
-    let extension = canonical.extension()
+    // Convert to lowercase first for consistent case-insensitive validation
+    let extension_lower = canonical.extension()
         .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
         .ok_or_else(|| {
             // SECURITY: Don't reveal the file path in error message
             "Invalid path: file has no extension".to_string()
         })?;
 
-    // Only allow specific file extensions
-    let allowed_extensions = ["csv", "json", "txt", "md"];
-    if !allowed_extensions.contains(&extension.to_lowercase().as_str()) {
-        // SECURITY: Reveal allowed extensions but not the specific file path
+    // Only allow specific file extensions (case-insensitive)
+    const ALLOWED_EXTENSIONS: &[&str] = &["csv", "json", "txt", "md"];
+    if !ALLOWED_EXTENSIONS.contains(&extension_lower.as_str()) {
+        // SECURITY: Use consistent case in error message (lowercase)
         return Err(format!(
-            "Invalid path: extension '{}' not allowed. Allowed extensions: {:?}",
-            extension,
-            allowed_extensions
+            "Invalid path: extension '{}' not allowed. Allowed extensions: csv, json, txt, md",
+            extension_lower
         ));
     }
 
@@ -147,6 +148,15 @@ pub async fn export_frames_json(
 
     let units = stream_a.units.as_ref().ok_or("No data loaded")?;
 
+    // SECURITY: Limit export to prevent memory exhaustion on files with millions of frames
+    const MAX_EXPORT_FRAMES: usize = 10_000;
+    if units.units.len() > MAX_EXPORT_FRAMES {
+        return Err(format!(
+            "Cannot export more than {} frames. File has {} frames.",
+            MAX_EXPORT_FRAMES, units.units.len()
+        ));
+    }
+
     let frames_json: Vec<serde_json::Value> = units.units.iter().enumerate().map(|(idx, unit)| {
         json!({
             "frame_index": idx,
@@ -224,22 +234,18 @@ pub async fn export_analysis_report(
     let total_frames = units.units.len();
 
     writeln!(file, "Frame Type Distribution:").map_err(|e| format!("Failed to write: {}", e))?;
-    // Guard against division by zero
-    if total_frames > 0 {
-        writeln!(file, "  I-Frames: {} ({:.1}%)", i_frames, (i_frames as f64 / total_frames as f64) * 100.0)
-            .map_err(|e| format!("Failed to write: {}", e))?;
-        writeln!(file, "  P-Frames: {} ({:.1}%)", p_frames, (p_frames as f64 / total_frames as f64) * 100.0)
-            .map_err(|e| format!("Failed to write: {}", e))?;
-        writeln!(file, "  B-Frames: {} ({:.1}%)", b_frames, (b_frames as f64 / total_frames as f64) * 100.0)
-            .map_err(|e| format!("Failed to write: {}", e))?;
-    } else {
-        writeln!(file, "  I-Frames: {} (0.0%)", i_frames)
-            .map_err(|e| format!("Failed to write: {}", e))?;
-        writeln!(file, "  P-Frames: {} (0.0%)", p_frames)
-            .map_err(|e| format!("Failed to write: {}", e))?;
-        writeln!(file, "  B-Frames: {} (0.0%)", b_frames)
-            .map_err(|e| format!("Failed to write: {}", e))?;
+
+    // Helper function for safe percentage calculation
+    fn safe_percentage(count: usize, total: usize) -> f64 {
+        if total == 0 { 0.0 } else { (count as f64 / total as f64) * 100.0 }
     }
+
+    writeln!(file, "  I-Frames: {} ({:.1}%)", i_frames, safe_percentage(i_frames, total_frames))
+        .map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(file, "  P-Frames: {} ({:.1}%)", p_frames, safe_percentage(p_frames, total_frames))
+        .map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(file, "  B-Frames: {} ({:.1}%)", b_frames, safe_percentage(b_frames, total_frames))
+        .map_err(|e| format!("Failed to write: {}", e))?;
     writeln!(file).map_err(|e| format!("Failed to write: {}", e))?;
 
     // Size statistics

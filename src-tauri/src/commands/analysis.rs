@@ -185,6 +185,14 @@ pub async fn get_frame_analysis(
     frame_index: usize,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("get_frame_analysis: === Starting frame analysis request ===");
+
+    // SECURITY: Apply rate limiting to prevent CPU exhaustion attacks
+    state.rate_limiter.check_rate_limit()
+        .map_err(|wait_time| {
+            format!("Rate limited: too many analysis requests. Please try again in {:.1}s",
+                wait_time.as_secs_f64())
+        })?;
+
     log::info!("get_frame_analysis: Frame index: {}", frame_index);
 
     // SECURITY: Validate frame_index bounds early to prevent out-of-bounds access
@@ -1029,6 +1037,24 @@ pub async fn get_residual_analysis(
     // Use default dimensions for now - this is mock data
     let width = 1920u32;
     let height = 1080u32;
+
+    // SECURITY: Validate dimensions BEFORE any calculations to prevent overflow
+    const MIN_DIMENSION: u32 = 16;
+    const MAX_DIMENSION: u32 = 16384; // 16K max
+
+    if width < MIN_DIMENSION || height < MIN_DIMENSION {
+        return Err(format!(
+            "Frame dimensions too small: {}x{} (minimum {}x{})",
+            width, height, MIN_DIMENSION, MIN_DIMENSION
+        ));
+    }
+
+    if width > MAX_DIMENSION || height > MAX_DIMENSION {
+        return Err(format!(
+            "Frame dimensions too large: {}x{} (maximum {}x{})",
+            width, height, MAX_DIMENSION, MAX_DIMENSION
+        ));
+    }
 
     // Generate simple mock residual data
     let block_size = 16u32;

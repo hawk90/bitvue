@@ -87,6 +87,27 @@ pub mod cache {
     pub const PREFETCH_COUNT: usize = 3;
 }
 
+/// Thumbnail dimensions
+pub mod thumbnails {
+    /// Default thumbnail width
+    pub const DEFAULT_WIDTH: u32 = 160;
+
+    /// Default thumbnail height
+    pub const DEFAULT_HEIGHT: u32 = 90;
+
+    /// Minimum thumbnail width
+    pub const MIN_WIDTH: u32 = 16;
+
+    /// Minimum thumbnail height
+    pub const MIN_HEIGHT: u32 = 16;
+
+    /// Maximum thumbnail width
+    pub const MAX_WIDTH: u32 = 512;
+
+    /// Maximum thumbnail height
+    pub const MAX_HEIGHT: u32 = 512;
+}
+
 /// Format detection
 pub mod format {
     /// File signatures (magic bytes)

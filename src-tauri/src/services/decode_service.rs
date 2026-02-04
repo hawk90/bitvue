@@ -3,7 +3,7 @@
 //! Caches file data and decoded frames to avoid repeated operations.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
 use std::collections::{HashMap, VecDeque};
 
 // Import path validation from commands module
@@ -21,6 +21,7 @@ struct CachedDecodedFrame {
     width: u32,
     height: u32,
     rgb_data: Arc<Vec<u8>>,  // Arc to avoid expensive clones
+    generation: u64,  // Cache generation to prevent stale data
     #[allow(dead_code)]
     cached_at: std::time::Instant,  // When this frame was cached (for LRU eviction)
 }
@@ -79,6 +80,8 @@ pub struct DecodeService {
     yuv_cache_state: Mutex<YUVCacheState>,
     /// Maximum cache size in bytes (prevents memory issues with 4K/8K frames)
     max_cache_bytes: usize,
+    /// Cache generation counter - increments on file change to prevent stale cache data
+    cache_generation: AtomicU64,
     /// Cached MP4 samples (extracted AV1 samples from MP4 container)
     mp4_samples_cache: Mutex<Option<Vec<Vec<u8>>>>,
     /// Cached MKV samples (extracted AV1 samples from MKV container)
@@ -109,6 +112,7 @@ impl DecodeService {
             mp4_samples_cache: Mutex::new(None),
             mkv_samples_cache: Mutex::new(None),
             ivf_frames_cache: Mutex::new(None),
+            cache_generation: AtomicU64::new(0),
         }
     }
 
@@ -167,6 +171,9 @@ impl DecodeService {
         // Use provided data instead of reading from disk
         *lock_mutex!(self.cached_data) = Some(Arc::new(file_data));
 
+        // Increment cache generation to invalidate stale cache entries
+        self.cache_generation.fetch_add(1, Ordering::SeqCst);
+
         Ok(())
     }
 
@@ -203,16 +210,25 @@ impl DecodeService {
     ///
     /// Uses combined cache state with single mutex to prevent race conditions
     pub fn get_or_decode_frame(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>) -> Result<(u32, u32, Arc<Vec<u8>>), String> {
+        // Get current cache generation
+        let current_generation = self.cache_generation.load(Ordering::SeqCst);
+
         // Single lock acquisition for cache state (prevents race conditions)
         let mut state = lock_mutex!(self.rgb_cache_state);
 
         // Check frame cache first
         if let Some(cached) = state.cache.get(&frame_index) {
-            // Update LRU position (move to back = most recently used)
-            state.lru_order.retain(|&k| k != frame_index);
-            state.lru_order.push_back(frame_index);
-            // Return Arc clone (cheap - just increments reference count)
-            return Ok((cached.width, cached.height, cached.rgb_data.clone()));
+            // SECURITY: Check generation matches to prevent stale cache data
+            if cached.generation == current_generation {
+                // Update LRU position (move to back = most recently used)
+                state.lru_order.retain(|&k| k != frame_index);
+                state.lru_order.push_back(frame_index);
+                // Return Arc clone (cheap - just increments reference count)
+                return Ok((cached.width, cached.height, cached.rgb_data.clone()));
+            }
+            // Stale cache entry, remove it
+            log::debug!("Removing stale cache entry for frame {}", frame_index);
+            state.cache.remove(&frame_index);
         }
 
         // Not in cache - need to decode
@@ -230,10 +246,19 @@ impl DecodeService {
         let mut state = lock_mutex!(self.rgb_cache_state);
 
         // Evict oldest frames until there's space for the new frame (O(1) per eviction)
+        // SECURITY: Use saturating_sub to prevent underflow
         while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty() {
             if let Some(oldest_key) = state.lru_order.pop_front() {
                 if let Some(removed_frame) = state.cache.remove(&oldest_key) {
-                    state.current_bytes -= removed_frame.rgb_data.len();
+                    let removed_size = removed_frame.rgb_data.len();
+                    // SECURITY: Prevent underflow with saturating_sub
+                    state.current_bytes = state.current_bytes.saturating_sub(removed_size);
+
+                    // Sanity check: log if state is inconsistent
+                    if removed_size > state.current_bytes + frame_size {
+                        log::warn!("Cache state inconsistency: removed {} bytes but only had {} tracked",
+                            removed_size, state.current_bytes);
+                    }
                 }
             } else {
                 break;
@@ -247,6 +272,7 @@ impl DecodeService {
             width,
             height,
             rgb_data: rgb_arc.clone(),
+            generation: current_generation,
             cached_at: std::time::Instant::now(),
         });
         state.lru_order.push_back(frame_index);

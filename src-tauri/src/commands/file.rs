@@ -3,6 +3,7 @@
 //! Commands for opening, closing, and querying file/stream information.
 
 use std::path::PathBuf;
+use std::io::Read;
 use serde::{Serialize, Deserialize};
 
 use crate::commands::{AppState, FileInfo};
@@ -130,11 +131,12 @@ pub async fn open_file(
     // SECURITY: Don't log file path to prevent information disclosure
     log::info!("open_file: Opening file");
 
-    // Validate file path for security
-    let path_buf = match validate_file_path(&path) {
-        Ok(p) => p,
+    // SECURITY: Use validate_and_open_file to minimize TOCTOU window
+    // This combines path validation and file opening in one atomic operation
+    let (path_buf, file_handle) = match validate_and_open_file(&path) {
+        Ok((p, f)) => (p, f),
         Err(e) => {
-            log::error!("open_file: Path validation failed: {}", e);
+            log::error!("open_file: Path validation or file opening failed: {}", e);
             return Ok(FileInfo {
                 path: path.clone(),
                 size: 0,
@@ -145,8 +147,8 @@ pub async fn open_file(
         }
     };
 
-    // Get file size and detect codec from extension
-    let size = std::fs::metadata(&path_buf)
+    // Get file size from the already-open file handle (no TOCTOU window)
+    let size = file_handle.metadata()
         .map(|m| m.len())
         .unwrap_or(0);
 
@@ -222,8 +224,11 @@ pub async fn open_file(
                 });
         } // Lock is dropped here
 
-        // Read file data
-        let file_data = std::fs::read(&path_buf)
+        // Read file data using the already-open file handle
+        let mut file_data = Vec::new();
+        let mut file_handle_reopened = std::fs::File::open(&path_buf)
+            .map_err(|e| format!("Failed to re-open file for reading: {}", e))?;
+        file_handle_reopened.read_to_end(&mut file_data)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
         // Parse based on format (using helper functions for better code organization)
@@ -593,8 +598,10 @@ fn vp9_samples_to_units(samples: Vec<Vec<u8>>) -> Vec<bitvue_core::UnitNode> {
 fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
     let mut with_start_codes = Vec::new();
     let mut pos = 0;
+    const HEADER_SIZE: usize = 4;
 
-    while pos + 4 <= sample_data.len() {
+    // SECURITY: Use checked arithmetic to prevent integer overflow
+    while pos.checked_add(HEADER_SIZE).map_or(false, |end| end <= sample_data.len()) {
         // Read NAL unit length (big-endian)
         let len = u32::from_be_bytes([
             sample_data[pos],
@@ -603,18 +610,24 @@ fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
             sample_data[pos + 3],
         ]) as usize;
 
-        pos += 4;
+        // Safe increment using checked arithmetic
+        pos = pos.checked_add(HEADER_SIZE).unwrap_or_else(|| {
+            // If we somehow overflow, stop processing
+            log::warn!("NAL unit position overflow detected, stopping conversion");
+            return with_start_codes;
+        });
 
-        // Check if we have enough data
-        if pos + len <= sample_data.len() {
-            // Add start code
-            with_start_codes.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-            // Add NAL unit data
-            with_start_codes.extend_from_slice(&sample_data[pos..pos + len]);
-            pos += len;
-        } else {
-            break;
-        }
+        // Safe length check using checked arithmetic
+        let end_pos = match pos.checked_add(len) {
+            Some(end) if end <= sample_data.len() => end,
+            _ => break, // Overflow or not enough data
+        };
+
+        // Add start code
+        with_start_codes.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        // Add NAL unit data
+        with_start_codes.extend_from_slice(&sample_data[pos..end_pos]);
+        pos = end_pos;
     }
 
     with_start_codes
