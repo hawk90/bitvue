@@ -612,7 +612,9 @@ unsafe fn yuv444_to_rgb_avx2_impl(
 /// - AVX2 is available on the CPU
 /// - All buffers are valid and properly sized
 #[target_feature(enable = "avx2")]
-unsafe fn yuv420_to_rgb_avx2_impl_16bit(
+/// Helper function that processes YUV420 to RGB with a specific shift amount
+#[inline(always)]
+unsafe fn yuv420_to_rgb_avx2_inner(
     y_plane: &[u8],
     u_plane: &[u8],
     v_plane: &[u8],
@@ -622,7 +624,6 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
     bit_depth: u8,
 ) {
     let uv_width = width / 2;
-    let shift = (bit_depth - 8) as i32;
 
     // Coefficients for BT.601 color space
     let v_coeff: __m256i = _mm256_set1_epi32(181);
@@ -676,11 +677,23 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
                 let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
 
                 // Normalize 10/12-bit to 8-bit range by right-shifting
-                let y_i32 = _mm256_srai_epi32(y_i32, shift);
+                let y_i32 = match bit_depth {
+                    10 => _mm256_srai_epi32(y_i32, 2),
+                    12 => _mm256_srai_epi32(y_i32, 4),
+                    _ => y_i32, // 8-bit or unsupported: no shift
+                };
 
                 // Convert U/V from 16-bit to 32-bit and normalize
-                let u_32 = _mm256_srai_epi32(u_vec, shift);
-                let v_32 = _mm256_srai_epi32(v_vec, shift);
+                let u_32 = match bit_depth {
+                    10 => _mm256_srai_epi32(u_vec, 2),
+                    12 => _mm256_srai_epi32(u_vec, 4),
+                    _ => u_vec,
+                };
+                let v_32 = match bit_depth {
+                    10 => _mm256_srai_epi32(v_vec, 2),
+                    12 => _mm256_srai_epi32(v_vec, 4),
+                    _ => v_vec,
+                };
 
                 // Subtract 128 (center chroma)
                 let u_i32 = _mm256_sub_epi32(u_32, const_128);
@@ -730,14 +743,27 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
     }
 }
 
+unsafe fn yuv420_to_rgb_avx2_impl_16bit(
+    y_plane: &[u8],
+    u_plane: &[u8],
+    v_plane: &[u8],
+    width: usize,
+    height: usize,
+    rgb: &mut [u8],
+    bit_depth: u8,
+) {
+    yuv420_to_rgb_avx2_inner(y_plane, u_plane, v_plane, width, height, rgb, bit_depth);
+}
+
 /// AVX2 implementation of YUV422 to RGB conversion for 10/12-bit video
 ///
 /// # Safety
 /// Caller must ensure:
 /// - AVX2 is available on the CPU
 /// - All buffers are valid and properly sized
-#[target_feature(enable = "avx2")]
-unsafe fn yuv422_to_rgb_avx2_impl_16bit(
+/// Helper function that processes YUV422 to RGB with a specific shift amount
+#[inline(always)]
+unsafe fn yuv422_to_rgb_avx2_inner(
     y_plane: &[u8],
     u_plane: &[u8],
     v_plane: &[u8],
@@ -747,7 +773,6 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
     bit_depth: u8,
 ) {
     let uv_width = width / 2;
-    let shift = (bit_depth - 8) as i32;
 
     // Coefficients for BT.601 color space
     let v_coeff: __m256i = _mm256_set1_epi32(181);
@@ -795,11 +820,23 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
                 let y_low_i32 = _mm256_cvtepu16_epi32(y_low_lane);
                 let y_high_i32 = _mm256_cvtepu16_epi32(y_high_lane);
                 let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
-                let y_i32 = _mm256_srai_epi32(y_i32, shift);
+                let y_i32 = match bit_depth {
+                    10 => _mm256_srai_epi32(y_i32, 2),
+                    12 => _mm256_srai_epi32(y_i32, 4),
+                    _ => y_i32,
+                };
 
                 // Normalize U/V
-                let u_32 = _mm256_srai_epi32(u_vec, shift);
-                let v_32 = _mm256_srai_epi32(v_vec, shift);
+                let u_32 = match bit_depth {
+                    10 => _mm256_srai_epi32(u_vec, 2),
+                    12 => _mm256_srai_epi32(u_vec, 4),
+                    _ => u_vec,
+                };
+                let v_32 = match bit_depth {
+                    10 => _mm256_srai_epi32(v_vec, 2),
+                    12 => _mm256_srai_epi32(v_vec, 4),
+                    _ => v_vec,
+                };
                 let u_i32 = _mm256_sub_epi32(u_32, const_128);
                 let v_i32 = _mm256_sub_epi32(v_32, const_128);
 
@@ -844,14 +881,8 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
     }
 }
 
-/// AVX2 implementation of YUV444 to RGB conversion for 10/12-bit video
-///
-/// # Safety
-/// Caller must ensure:
-/// - AVX2 is available on the CPU
-/// - All buffers are valid and properly sized
 #[target_feature(enable = "avx2")]
-unsafe fn yuv444_to_rgb_avx2_impl_16bit(
+unsafe fn yuv422_to_rgb_avx2_impl_16bit(
     y_plane: &[u8],
     u_plane: &[u8],
     v_plane: &[u8],
@@ -860,8 +891,26 @@ unsafe fn yuv444_to_rgb_avx2_impl_16bit(
     rgb: &mut [u8],
     bit_depth: u8,
 ) {
-    let shift = (bit_depth - 8) as i32;
+    yuv422_to_rgb_avx2_inner(y_plane, u_plane, v_plane, width, height, rgb, bit_depth);
+}
 
+/// AVX2 implementation of YUV444 to RGB conversion for 10/12-bit video
+///
+/// # Safety
+/// Caller must ensure:
+/// - AVX2 is available on the CPU
+/// - All buffers are valid and properly sized
+/// Helper function that processes YUV444 to RGB with a specific shift amount
+#[inline(always)]
+unsafe fn yuv444_to_rgb_avx2_inner(
+    y_plane: &[u8],
+    u_plane: &[u8],
+    v_plane: &[u8],
+    width: usize,
+    height: usize,
+    rgb: &mut [u8],
+    bit_depth: u8,
+) {
     // Coefficients for BT.601 color space
     let v_coeff: __m256i = _mm256_set1_epi32(181);
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
@@ -906,9 +955,21 @@ unsafe fn yuv444_to_rgb_avx2_impl_16bit(
                 let v_i32 = _mm256_or_si256(v_low_i32, v_high_i32);
 
                 // Normalize and center chroma
-                let y_i32 = _mm256_srai_epi32(y_i32, shift);
-                let u_i32 = _mm256_sub_epi32(_mm256_srai_epi32(u_i32, shift), const_128);
-                let v_i32 = _mm256_sub_epi32(_mm256_srai_epi32(v_i32, shift), const_128);
+                let y_i32 = match bit_depth {
+                    10 => _mm256_srai_epi32(y_i32, 2),
+                    12 => _mm256_srai_epi32(y_i32, 4),
+                    _ => y_i32,
+                };
+                let u_i32 = match bit_depth {
+                    10 => _mm256_sub_epi32(_mm256_srai_epi32(u_i32, 2), const_128),
+                    12 => _mm256_sub_epi32(_mm256_srai_epi32(u_i32, 4), const_128),
+                    _ => _mm256_sub_epi32(u_i32, const_128),
+                };
+                let v_i32 = match bit_depth {
+                    10 => _mm256_sub_epi32(_mm256_srai_epi32(v_i32, 2), const_128),
+                    12 => _mm256_sub_epi32(_mm256_srai_epi32(v_i32, 4), const_128),
+                    _ => _mm256_sub_epi32(v_i32, const_128),
+                };
 
                 // BT.601 conversion
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
@@ -948,6 +1009,19 @@ unsafe fn yuv444_to_rgb_avx2_impl_16bit(
             }
         }
     }
+}
+
+#[target_feature(enable = "avx2")]
+unsafe fn yuv444_to_rgb_avx2_impl_16bit(
+    y_plane: &[u8],
+    u_plane: &[u8],
+    v_plane: &[u8],
+    width: usize,
+    height: usize,
+    rgb: &mut [u8],
+    bit_depth: u8,
+) {
+    yuv444_to_rgb_avx2_inner(y_plane, u_plane, v_plane, width, height, rgb, bit_depth);
 }
 
 /// Read a 16-bit sample from plane data and normalize to 8-bit range
