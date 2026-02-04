@@ -97,16 +97,37 @@ fn get_cached_file_data(
 /// Helper: Decode frames for quality comparison
 ///
 /// Decodes either a subset of frames or all frames based on provided indices.
+/// OPTIMIZATION: Pre-validates maximum index and decodes once instead of twice.
 #[allow(dead_code)]
 fn decode_frames_for_comparison(
     file_data: &[u8],
     frame_indices: &Option<Vec<usize>>,
 ) -> Result<(Vec<bitvue_decode::DecodedFrame>, Vec<bitvue_decode::DecodedFrame>), String> {
-    if let Some(indices) = frame_indices {
-        // Decode only requested frames
-        let ref_frames = decode_frames_subset(file_data, indices)?;
-        // Note: This would need both files, simplified for now
-        let dist_frames = decode_frames_subset(file_data, indices)?;
+    if let Some(indices) = &frame_indices {
+        // OPTIMIZATION: Validate all indices once and get max
+        if indices.is_empty() {
+            return Err("No frame indices provided".to_string());
+        }
+
+        let max_idx = *indices.iter()
+            .max()
+            .ok_or("Frame indices is empty (should not happen)".to_string())?;
+
+        // OPTIMIZATION: Decode all frames up to max_idx once, then split into reference/dist
+        // This is more efficient than calling decode_frames_subset twice
+        let all_frames = decode_frames_up_to(file_data, max_idx)?;
+
+        // Extract requested frames for both reference and distorted
+        // Note: For real quality comparison, these would come from different files
+        // This is a simplified version that duplicates the same frames
+        let ref_frames: Vec<_> = indices.iter()
+            .filter_map(|&idx| all_frames.get(idx).cloned())
+            .collect();
+
+        let dist_frames: Vec<_> = indices.iter()
+            .filter_map(|&idx| all_frames.get(idx).cloned())
+            .collect();
+
         Ok((ref_frames, dist_frames))
     } else {
         // Decode all frames (full comparison)
@@ -114,6 +135,61 @@ fn decode_frames_for_comparison(
         let dist_frames = decode_all_frames(file_data)?;
         Ok((ref_frames, dist_frames))
     }
+}
+
+/// Decode frames up to a specified index (optimized helper)
+///
+/// Decodes all frames from 0 to max_idx inclusive, which is more efficient
+/// than decoding arbitrary indices when they form a contiguous range.
+fn decode_frames_up_to(
+    file_data: &[u8],
+    max_idx: usize,
+) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+    let frames = parse_ivf_and_validate(file_data, max_idx)?;
+
+    let mut decoder = bitvue_decode::Av1Decoder::new()
+        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+
+    let mut decoded_frames = Vec::with_capacity(max_idx + 1);
+
+    // Decode frames sequentially up to max_idx
+    for idx in 0..=max_idx {
+        let frame_data = &frames[idx].data;
+
+        decoder.send_data(frame_data, frames[idx].timestamp as i64)
+            .map_err(|e| format!("Failed to send frame data for index {}: {}", idx, e))?;
+
+        match decoder.get_frame() {
+            Ok(frame) => {
+                decoded_frames.push(frame);
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                // EAGAIN is expected when decoder needs more data
+                if !err_str.contains("EAGAIN") && !err_str.contains("Try again") {
+                    return Err(format!("Failed to decode frame {}: {}", idx, e));
+                }
+                // Add placeholder frame to maintain index alignment
+                decoded_frames.push(bitvue_decode::DecodedFrame {
+                    width: 1920,
+                    height: 1080,
+                    bit_depth: 8,
+                    y_plane: std::sync::Arc::new(vec![0; 1920 * 1080]),
+                    u_plane: Some(std::sync::Arc::new(vec![0; 960 * 540])),
+                    v_plane: Some(std::sync::Arc::new(vec![0; 960 * 540])),
+                    y_stride: 1920,
+                    u_stride: 960,
+                    v_stride: 960,
+                    timestamp: 0,
+                    frame_type: bitvue_decode::FrameType::Key,
+                    qp_avg: None,
+                    chroma_format: bitvue_decode::ChromaFormat::Yuv420,
+                });
+            }
+        }
+    }
+
+    Ok(decoded_frames)
 }
 
 /// Helper: Calculate PSNR metrics for a single frame
@@ -131,28 +207,26 @@ fn calculate_frame_psnr(
         dist_frame.v_plane.as_deref()?,
     );
 
-    // Validate dimensions to prevent division by zero
-    if ref_frame.width == 0 || dist_frame.width == 0 {
-        log::warn!("calculate_frame_psnr: Invalid dimensions (width=0), returning None");
+    // Validate dimensions to prevent division by zero and overflow
+    if ref_frame.width == 0 || ref_frame.height == 0 ||
+       dist_frame.width == 0 || dist_frame.height == 0 {
+        log::warn!("calculate_frame_psnr: Invalid dimensions (width=0 or height=0), returning None");
         return None;
     }
 
     // Calculate chroma height with overflow protection
-    let chroma_height_ref = ref_frame.u_stride * (ref_frame.height as usize)
-        .checked_div(ref_frame.width as usize)
-        .unwrap_or_else(|| {
-            log::warn!("calculate_frame_psnr: Chroma height calculation overflow, using default");
-            ref_frame.height as usize
-        })
-        / 2;
+    // For chroma planes in 4:2:0 subsampling, height is half of luma height
+    let chroma_height_ref = if ref_frame.width > 0 {
+        (ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize).saturating_div(2)
+    } else {
+        ref_frame.height as usize / 2
+    };
 
-    let chroma_height_dist = dist_frame.u_stride * (dist_frame.height as usize)
-        .checked_div(dist_frame.width as usize)
-        .unwrap_or_else(|| {
-            log::warn!("calculate_frame_psnr: Chroma height calculation overflow, using default");
-            dist_frame.height as usize
-        })
-        / 2;
+    let chroma_height_dist = if dist_frame.width > 0 {
+        (dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize).saturating_div(2)
+    } else {
+        dist_frame.height as usize / 2
+    };
 
     let yuv_ref = bitvue_metrics::YuvFrame {
         y: &ref_frame.y_plane,
@@ -194,28 +268,26 @@ fn calculate_frame_ssim(
         dist_frame.v_plane.as_deref()?,
     );
 
-    // Validate dimensions to prevent division by zero
-    if ref_frame.width == 0 || dist_frame.width == 0 {
-        log::warn!("calculate_frame_ssim: Invalid dimensions (width=0), returning None");
+    // Validate dimensions to prevent division by zero and overflow
+    if ref_frame.width == 0 || ref_frame.height == 0 ||
+       dist_frame.width == 0 || dist_frame.height == 0 {
+        log::warn!("calculate_frame_ssim: Invalid dimensions (width=0 or height=0), returning None");
         return None;
     }
 
     // Calculate chroma height with overflow protection
-    let chroma_height_ref = ref_frame.u_stride * (ref_frame.height as usize)
-        .checked_div(ref_frame.width as usize)
-        .unwrap_or_else(|| {
-            log::warn!("calculate_frame_ssim: Chroma height calculation overflow, using default");
-            ref_frame.height as usize
-        })
-        / 2;
+    // For chroma planes in 4:2:0 subsampling, height is half of luma height
+    let chroma_height_ref = if ref_frame.width > 0 {
+        (ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize).saturating_div(2)
+    } else {
+        ref_frame.height as usize / 2
+    };
 
-    let chroma_height_dist = dist_frame.u_stride * (dist_frame.height as usize)
-        .checked_div(dist_frame.width as usize)
-        .unwrap_or_else(|| {
-            log::warn!("calculate_frame_ssim: Chroma height calculation overflow, using default");
-            dist_frame.height as usize
-        })
-        / 2;
+    let chroma_height_dist = if dist_frame.width > 0 {
+        (dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize).saturating_div(2)
+    } else {
+        dist_frame.height as usize / 2
+    };
 
     let yuv_ref = bitvue_metrics::YuvFrame {
         y: &ref_frame.y_plane,
@@ -421,14 +493,44 @@ pub async fn calculate_bd_rate(
         return Err("Need at least 4 points on each curve for BD-Rate calculation".to_string());
     }
 
-    // Sort points by bitrate (handle NaN values)
-    let mut anchor_sorted = anchor_curve.points.clone();
+    // Filter out NaN and Inf values before processing
+    let anchor_sorted: Vec<_> = anchor_curve.points
+        .clone()
+        .into_iter()
+        .filter(|p| p.bitrate.is_finite() && p.quality.is_finite())
+        .collect();
+
+    let test_sorted: Vec<_> = test_curve.points
+        .clone()
+        .into_iter()
+        .filter(|p| p.bitrate.is_finite() && p.quality.is_finite())
+        .collect();
+
+    if anchor_sorted.len() < 4 {
+        return Err(format!(
+            "Anchor curve has only {} valid points after filtering (need at least 4)",
+            anchor_sorted.len()
+        ));
+    }
+
+    if test_sorted.len() < 4 {
+        return Err(format!(
+            "Test curve has only {} valid points after filtering (need at least 4)",
+            test_sorted.len()
+        ));
+    }
+
+    // Sort points by bitrate (safe now - no NaN values)
+    let mut anchor_sorted = anchor_sorted;
     anchor_sorted.sort_by(|a, b| {
-        a.bitrate.partial_cmp(&b.bitrate).unwrap_or(std::cmp::Ordering::Equal)
+        a.bitrate.partial_cmp(&b.bitrate)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
-    let mut test_sorted = test_curve.points.clone();
+
+    let mut test_sorted = test_sorted;
     test_sorted.sort_by(|a, b| {
-        a.bitrate.partial_cmp(&b.bitrate).unwrap_or(std::cmp::Ordering::Equal)
+        a.bitrate.partial_cmp(&b.bitrate)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     // Calculate BD-Rate using the integral method
@@ -557,8 +659,15 @@ fn interpolate_quality(points: &[RDPoint], bitrate: f64) -> Option<f64> {
 /// Decode specific frames from video data (IVF, MP4, MKV)
 /// This is more efficient than decode_all_frames when only a subset is needed
 fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+    // Validate frame_indices is not empty
+    if frame_indices.is_empty() {
+        return Err("No frame indices provided".to_string());
+    }
+
     // Find max frame index needed
-    let max_idx = *frame_indices.iter().max().unwrap_or(&0);
+    let max_idx = *frame_indices.iter()
+        .max()
+        .ok_or("Frame indices is empty (should not happen)".to_string())?;
 
     // Check if IVF file
     if file_data.len() >= 4 && &file_data[0..4] == b"DKIF" {

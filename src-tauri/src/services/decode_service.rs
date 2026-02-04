@@ -9,16 +9,11 @@ use std::collections::{HashMap, VecDeque};
 // Import path validation from commands module
 use crate::commands::file::validate_file_path;
 
+// Import shared utilities
+use crate::services::utils::lock_mutex;
+
 // Import ChromaFormat from bitvue_decode
 use bitvue_decode::decoder::ChromaFormat;
-
-/// Helper macro to safely lock mutexes with proper error handling
-/// Prevents panic on mutex poisoning by returning an error instead
-macro_rules! lock_mutex {
-    ($mutex:expr) => {
-        $mutex.lock().map_err(|e| format!("Mutex poisoned: {}", e))?
-    };
-}
 
 /// Cached decoded RGB frame data
 #[derive(Debug, Clone)]
@@ -49,6 +44,26 @@ struct CachedYUVFrame {
     cached_at: std::time::Instant,  // When this frame was cached (for LRU eviction)
 }
 
+/// Combined RGB cache state protected by single mutex
+///
+/// This structure groups the RGB cache data, LRU order, and byte counter
+/// together to prevent race conditions when accessing the cache.
+struct RGBCacheState {
+    cache: HashMap<usize, CachedDecodedFrame>,
+    lru_order: VecDeque<usize>,
+    current_bytes: usize,
+}
+
+/// Combined YUV cache state protected by single mutex
+///
+/// This structure groups the YUV cache data, LRU order, and byte counter
+/// together to prevent race conditions when accessing the cache.
+struct YUVCacheState {
+    cache: HashMap<usize, CachedYUVFrame>,
+    lru_order: VecDeque<usize>,
+    current_bytes: usize,
+}
+
 /// Decode service for handling frame operations with file and frame caching
 pub struct DecodeService {
     /// Current file path
@@ -58,18 +73,12 @@ pub struct DecodeService {
     /// Cached file data (to avoid repeated disk reads)
     /// Using Arc to avoid expensive Vec clones
     cached_data: Mutex<Option<Arc<Vec<u8>>>>,
-    /// Cached decoded RGB frames (frame_index -> decoded frame)
-    decoded_frames_cache: Mutex<HashMap<usize, CachedDecodedFrame>>,
-    /// Cached decoded YUV frames (separate cache for YUV requests)
-    yuv_frames_cache: Mutex<HashMap<usize, CachedYUVFrame>>,
-    /// LRU tracking for RGB frames (front = oldest, back = newest)
-    rgb_lru_order: Mutex<VecDeque<usize>>,
-    /// LRU tracking for YUV frames (front = oldest, back = newest)
-    yuv_lru_order: Mutex<VecDeque<usize>>,
+    /// Combined RGB cache state (single mutex prevents race conditions)
+    rgb_cache_state: Mutex<RGBCacheState>,
+    /// Combined YUV cache state (single mutex prevents race conditions)
+    yuv_cache_state: Mutex<YUVCacheState>,
     /// Maximum cache size in bytes (prevents memory issues with 4K/8K frames)
     max_cache_bytes: usize,
-    /// Current cache size in bytes
-    current_cache_bytes: Mutex<usize>,
     /// Cached MP4 samples (extracted AV1 samples from MP4 container)
     mp4_samples_cache: Mutex<Option<Vec<Vec<u8>>>>,
     /// Cached MKV samples (extracted AV1 samples from MKV container)
@@ -85,13 +94,18 @@ impl DecodeService {
             file_path: None,
             codec: String::new(),
             cached_data: Mutex::new(None),
-            decoded_frames_cache: Mutex::new(HashMap::new()),
-            yuv_frames_cache: Mutex::new(HashMap::new()),
-            rgb_lru_order: Mutex::new(VecDeque::new()),
-            yuv_lru_order: Mutex::new(VecDeque::new()),
+            rgb_cache_state: Mutex::new(RGBCacheState {
+                cache: HashMap::new(),
+                lru_order: VecDeque::new(),
+                current_bytes: 0,
+            }),
+            yuv_cache_state: Mutex::new(YUVCacheState {
+                cache: HashMap::new(),
+                lru_order: VecDeque::new(),
+                current_bytes: 0,
+            }),
             // SAFETY: Use usize cast to prevent integer overflow (512 * 1024 * 1024 = 512MB)
             max_cache_bytes: (512 * 1024 * 1024) as usize, // 512MB default cache limit
-            current_cache_bytes: Mutex::new(0),
             mp4_samples_cache: Mutex::new(None),
             mkv_samples_cache: Mutex::new(None),
             ivf_frames_cache: Mutex::new(None),
@@ -103,11 +117,16 @@ impl DecodeService {
     pub fn set_file(&mut self, path: PathBuf, codec: String) -> Result<(), String> {
         // Clear previous cache and reset byte counter
         *lock_mutex!(self.cached_data) = None;
-        lock_mutex!(self.decoded_frames_cache).clear();
-        lock_mutex!(self.yuv_frames_cache).clear();
-        lock_mutex!(self.rgb_lru_order).clear();
-        lock_mutex!(self.yuv_lru_order).clear();
-        *lock_mutex!(self.current_cache_bytes) = 0;
+        *lock_mutex!(self.rgb_cache_state) = RGBCacheState {
+            cache: HashMap::new(),
+            lru_order: VecDeque::new(),
+            current_bytes: 0,
+        };
+        *lock_mutex!(self.yuv_cache_state) = YUVCacheState {
+            cache: HashMap::new(),
+            lru_order: VecDeque::new(),
+            current_bytes: 0,
+        };
         *lock_mutex!(self.mp4_samples_cache) = None;
         *lock_mutex!(self.mkv_samples_cache) = None;
         *lock_mutex!(self.ivf_frames_cache) = None;
@@ -128,11 +147,16 @@ impl DecodeService {
     pub fn set_file_with_data(&mut self, path: PathBuf, codec: String, file_data: Vec<u8>) -> Result<(), String> {
         // Clear previous cache and reset byte counter
         *lock_mutex!(self.cached_data) = None;
-        lock_mutex!(self.decoded_frames_cache).clear();
-        lock_mutex!(self.yuv_frames_cache).clear();
-        lock_mutex!(self.rgb_lru_order).clear();
-        lock_mutex!(self.yuv_lru_order).clear();
-        *lock_mutex!(self.current_cache_bytes) = 0;
+        *lock_mutex!(self.rgb_cache_state) = RGBCacheState {
+            cache: HashMap::new(),
+            lru_order: VecDeque::new(),
+            current_bytes: 0,
+        };
+        *lock_mutex!(self.yuv_cache_state) = YUVCacheState {
+            cache: HashMap::new(),
+            lru_order: VecDeque::new(),
+            current_bytes: 0,
+        };
         *lock_mutex!(self.mp4_samples_cache) = None;
         *lock_mutex!(self.mkv_samples_cache) = None;
         *lock_mutex!(self.ivf_frames_cache) = None;
@@ -176,18 +200,24 @@ impl DecodeService {
 
     /// Get a cached decoded RGB frame, or decode it if not cached
     /// Returns Arc<Vec<u8>> for cheap cloning - caller can deref to &[u8] for most use cases
+    ///
+    /// Uses combined cache state with single mutex to prevent race conditions
     pub fn get_or_decode_frame(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>) -> Result<(u32, u32, Arc<Vec<u8>>), String> {
+        // Single lock acquisition for cache state (prevents race conditions)
+        let mut state = lock_mutex!(self.rgb_cache_state);
+
         // Check frame cache first
-        if let Some(cached) = lock_mutex!(self.decoded_frames_cache).get(&frame_index) {
+        if let Some(cached) = state.cache.get(&frame_index) {
             // Update LRU position (move to back = most recently used)
-            let mut lru_order = lock_mutex!(self.rgb_lru_order);
-            if let Some(pos) = lru_order.iter().position(|&k| k == frame_index) {
-                lru_order.remove(pos);
-            }
-            lru_order.push_back(frame_index);
+            state.lru_order.retain(|&k| k != frame_index);
+            state.lru_order.push_back(frame_index);
             // Return Arc clone (cheap - just increments reference count)
             return Ok((cached.width, cached.height, cached.rgb_data.clone()));
         }
+
+        // Not in cache - need to decode
+        // Release lock during decode (expensive operation)
+        drop(state);
 
         // Not in cache, decode the frame
         let file_data = self.get_file_data_arc()?;
@@ -196,16 +226,14 @@ impl DecodeService {
         // Calculate frame size in bytes (using actual data size)
         let frame_size = rgb_data.len();
 
-        // Cache the decoded frame with O(1) LRU eviction
-        let mut cache = lock_mutex!(self.decoded_frames_cache);
-        let mut lru_order = lock_mutex!(self.rgb_lru_order);
-        let mut current_bytes = lock_mutex!(self.current_cache_bytes);
+        // Re-acquire lock to update cache
+        let mut state = lock_mutex!(self.rgb_cache_state);
 
         // Evict oldest frames until there's space for the new frame (O(1) per eviction)
-        while *current_bytes + frame_size > self.max_cache_bytes && !lru_order.is_empty() {
-            if let Some(oldest_key) = lru_order.pop_front() {
-                if let Some(removed_frame) = cache.remove(&oldest_key) {
-                    *current_bytes -= removed_frame.rgb_data.len();
+        while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty() {
+            if let Some(oldest_key) = state.lru_order.pop_front() {
+                if let Some(removed_frame) = state.cache.remove(&oldest_key) {
+                    state.current_bytes -= removed_frame.rgb_data.len();
                 }
             } else {
                 break;
@@ -215,28 +243,119 @@ impl DecodeService {
         // Add new frame to cache and LRU order (back = most recently used)
         // Wrap RGB data in Arc for cheap cloning
         let rgb_arc = Arc::new(rgb_data);
-        cache.insert(frame_index, CachedDecodedFrame {
+        state.cache.insert(frame_index, CachedDecodedFrame {
             width,
             height,
             rgb_data: rgb_arc.clone(),
             cached_at: std::time::Instant::now(),
         });
-        lru_order.push_back(frame_index);
-        *current_bytes += frame_size;
+        state.lru_order.push_back(frame_index);
+        state.current_bytes += frame_size;
 
         Ok((width, height, rgb_arc))
     }
 
-    /// Get a cached decoded YUV frame, or decode it if not cached
-    pub fn get_or_decode_frame_yuv(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<bitvue_decode::DecodedFrame, String>) -> Result<bitvue_decode::DecodedFrame, String> {
-        // Check YUV frame cache first
-        if let Some(cached) = lock_mutex!(self.yuv_frames_cache).get(&frame_index) {
-            // Update LRU position (move to back = most recently used)
-            let mut lru_order = lock_mutex!(self.yuv_lru_order);
-            if let Some(pos) = lru_order.iter().position(|&k| k == frame_index) {
-                lru_order.remove(pos);
+    /// Get a cached decoded RGB frame, or decode it if not cached, with prefetching
+    ///
+    /// Similar to get_or_decode_frame, but also prefetches subsequent frames
+    /// to improve performance for sequential access patterns (e.g., video playback).
+    ///
+    /// # Arguments
+    /// * `frame_index` - The frame to retrieve
+    /// * `decode_fn` - Function to decode the frame if not cached
+    /// * `prefetch_count` - Number of subsequent frames to prefetch (default: 3)
+    ///
+    /// # Performance
+    /// This is beneficial for video playback where frames are typically accessed
+    /// sequentially. By prefetching, the next frames will be ready when needed,
+    /// reducing latency.
+    pub fn get_or_decode_frame_with_prefetch(
+        &self,
+        frame_index: usize,
+        decode_fn: impl FnOnce(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>,
+        prefetch_count: usize,
+    ) -> Result<(u32, u32, Arc<Vec<u8>>), String> {
+        use crate::constants::cache;
+
+        // First, get the requested frame (this may or may not require decoding)
+        let result = self.get_or_decode_frame(frame_index, &decode_fn)?;
+
+        // Prefetch subsequent frames in background if enabled
+        if prefetch_count > 0 {
+            let file_data = self.get_file_data_arc()?;
+
+            // Prefetch up to the specified number of frames
+            for idx in (frame_index + 1)..=(frame_index + prefetch_count) {
+                // Check if frame is already cached
+                let mut state = lock_mutex!(self.rgb_cache_state);
+
+                if state.cache.contains_key(&idx) {
+                    // Already cached, skip
+                    continue;
+                }
+
+                // Frame not cached - need to decode
+                // Release lock before expensive decode operation
+                drop(state);
+
+                // Attempt to decode this frame (fire-and-forget, ignore errors)
+                if let Ok((width, height, rgb_data)) = decode_fn(&file_data, idx) {
+                    let frame_size = rgb_data.len();
+
+                    // Re-acquire lock to cache the prefetched frame
+                    let mut state = lock_mutex!(self.rgb_cache_state);
+
+                    // Check if we have space for this frame
+                    // Evict if necessary, but be more conservative with prefetching
+                    while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty() {
+                        if let Some(oldest_key) = state.lru_order.pop_front() {
+                            if let Some(removed_frame) = state.cache.remove(&oldest_key) {
+                                state.current_bytes -= removed_frame.rgb_data.len();
+                            }
+                        } else {
+                            // Cache is full, stop prefetching
+                            break;
+                        }
+                    }
+
+                    // Only cache if we have enough space (prefer eviction of old frames over eviction of prefetches)
+                    if state.current_bytes + frame_size <= self.max_cache_bytes {
+                        let rgb_arc = Arc::new(rgb_data);
+                        state.cache.insert(idx, CachedDecodedFrame {
+                            width,
+                            height,
+                            rgb_data: rgb_arc.clone(),
+                            cached_at: std::time::Instant::now(),
+                        });
+                        state.lru_order.push_back(idx);
+                        state.current_bytes += frame_size;
+                    }
+
+                    // Log prefetch activity (debug level only)
+                    log::debug!("Prefetched frame {} ({}x{}, {} bytes)", idx, width, height, frame_size);
+                } else {
+                    // Decode failed, stop prefetching
+                    log::debug!("Failed to prefetch frame {}, stopping prefetch", idx);
+                    break;
+                }
             }
-            lru_order.push_back(frame_index);
+        }
+
+        Ok(result)
+    }
+
+    /// Get a cached decoded YUV frame, or decode it if not cached
+    ///
+    /// Uses combined cache state with single mutex to prevent race conditions
+    pub fn get_or_decode_frame_yuv(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<bitvue_decode::DecodedFrame, String>) -> Result<bitvue_decode::DecodedFrame, String> {
+        // Single lock acquisition for cache state (prevents race conditions)
+        let mut state = lock_mutex!(self.yuv_cache_state);
+
+        // Check YUV frame cache first
+        if let Some(cached) = state.cache.get(&frame_index) {
+            // Update LRU position (move to back = most recently used)
+            state.lru_order.retain(|&k| k != frame_index);
+            state.lru_order.push_back(frame_index);
             return Ok(bitvue_decode::DecodedFrame {
                 width: cached.width,
                 height: cached.height,
@@ -260,6 +379,10 @@ impl DecodeService {
             });
         }
 
+        // Not in cache - need to decode
+        // Release lock during decode (expensive operation)
+        drop(state);
+
         // Not in cache, decode the frame
         let file_data = self.get_file_data_arc()?;
         let frame = decode_fn(&file_data, frame_index)?;
@@ -270,19 +393,17 @@ impl DecodeService {
         let v_size = frame.v_plane.as_ref().map_or(0, |p| p.len());
         let frame_size = y_size + u_size + v_size;
 
-        // Cache the decoded YUV frame with O(1) LRU eviction
-        let mut cache = lock_mutex!(self.yuv_frames_cache);
-        let mut lru_order = lock_mutex!(self.yuv_lru_order);
-        let mut current_bytes = lock_mutex!(self.current_cache_bytes);
+        // Re-acquire lock to update cache
+        let mut state = lock_mutex!(self.yuv_cache_state);
 
         // Evict oldest frames until there's space for the new frame (O(1) per eviction)
-        while *current_bytes + frame_size > self.max_cache_bytes && !lru_order.is_empty() {
-            if let Some(oldest_key) = lru_order.pop_front() {
-                if let Some(removed_frame) = cache.remove(&oldest_key) {
+        while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty() {
+            if let Some(oldest_key) = state.lru_order.pop_front() {
+                if let Some(removed_frame) = state.cache.remove(&oldest_key) {
                     let removed_size = removed_frame.y_plane.len()
                         + removed_frame.u_plane.as_ref().map_or(0, |p| p.len())
                         + removed_frame.v_plane.as_ref().map_or(0, |p| p.len());
-                    *current_bytes -= removed_size;
+                    state.current_bytes -= removed_size;
                 }
             } else {
                 break;
@@ -290,7 +411,7 @@ impl DecodeService {
         }
 
         // Add new frame to cache and LRU order (back = most recently used)
-        cache.insert(frame_index, CachedYUVFrame {
+        state.cache.insert(frame_index, CachedYUVFrame {
             width: frame.width,
             height: frame.height,
             bit_depth: frame.bit_depth,
@@ -305,8 +426,8 @@ impl DecodeService {
             qp_avg: frame.qp_avg,
             cached_at: std::time::Instant::now(),
         });
-        lru_order.push_back(frame_index);
-        *current_bytes += frame_size;
+        state.lru_order.push_back(frame_index);
+        state.current_bytes += frame_size;
 
         Ok(frame)
     }
@@ -371,11 +492,16 @@ impl DecodeService {
     /// Clear all cached data
     pub fn clear_cache(&self) -> Result<(), String> {
         *lock_mutex!(self.cached_data) = None;
-        lock_mutex!(self.decoded_frames_cache).clear();
-        lock_mutex!(self.yuv_frames_cache).clear();
-        lock_mutex!(self.rgb_lru_order).clear();
-        lock_mutex!(self.yuv_lru_order).clear();
-        *lock_mutex!(self.current_cache_bytes) = 0;
+        *lock_mutex!(self.rgb_cache_state) = RGBCacheState {
+            cache: HashMap::new(),
+            lru_order: VecDeque::new(),
+            current_bytes: 0,
+        };
+        *lock_mutex!(self.yuv_cache_state) = YUVCacheState {
+            cache: HashMap::new(),
+            lru_order: VecDeque::new(),
+            current_bytes: 0,
+        };
         *lock_mutex!(self.mp4_samples_cache) = None;
         *lock_mutex!(self.mkv_samples_cache) = None;
         *lock_mutex!(self.ivf_frames_cache) = None;

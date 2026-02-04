@@ -10,13 +10,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use base64::Engine;
 
-/// Helper macro to safely lock mutexes with proper error handling
-/// Prevents panic on mutex poisoning by returning an error instead
-macro_rules! lock_mutex {
-    ($mutex:expr) => {
-        $mutex.lock().map_err(|e| format!("Mutex poisoned: {}", e))?
-    };
-}
+// Import shared utilities
+use crate::services::utils::lock_mutex;
 
 /// Maximum number of cached thumbnails (LRU)
 const MAX_CACHE_SIZE: usize = 200;

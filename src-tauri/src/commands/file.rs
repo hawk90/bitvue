@@ -53,6 +53,41 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
+/// Validate and open a file in one operation to minimize TOCTOU window
+///
+/// This function combines path validation with file opening to reduce the
+/// time-of-check-to-time-of-use (TOCTOU) vulnerability window where an attacker
+/// could swap the file after validation but before it's opened.
+///
+/// # Returns
+/// * `Ok((PathBuf, File))` - Validated canonical path and open file handle
+/// * `Err(String)` - Validation or opening error
+pub fn validate_and_open_file(path: &str) -> Result<(PathBuf, std::fs::File), String> {
+    let path = PathBuf::from(path);
+
+    // SECURITY CRITICAL: Canonicalize FIRST before any validation
+    let canonical = path.canonicalize()
+        .map_err(|e| format!("Invalid path: cannot resolve path '{}': {}", path.display(), e))?;
+
+    // Validate the canonical path against system directory restrictions
+    check_system_directory_access(&canonical.to_string_lossy())
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    // Open file IMMEDIATELY after validation to minimize TOCTOU window
+    let file = std::fs::File::open(&canonical)
+        .map_err(|e| format!("Cannot open file: {}", e))?;
+
+    // Verify it's actually a file (not a directory/device)
+    let metadata = file.metadata()
+        .map_err(|e| format!("Cannot get file metadata: {}", e))?;
+
+    if !metadata.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+
+    Ok((canonical, file))
+}
+
 /// Check if a canonical path is in a blocked system directory
 ///
 /// This function is public so other modules (like export.rs) can reuse
@@ -744,52 +779,163 @@ fn parse_annex_b_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode
 ///
 /// Returns parsed unit nodes from MP4 file, or None if parsing fails.
 /// Tries AV1, HEVC, then AVC in order.
+/// Provides detailed error messages for debugging malformed files.
 fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     log::info!("parse_mp4_container: Attempting to extract video samples from MP4...");
 
-    // Try AV1 first
-    if let Ok(av1_samples) = bitvue_formats::mp4::extract_av1_samples(file_data) {
-        log::info!("parse_mp4_container: Extracted {} AV1 samples from MP4", av1_samples.len());
-        Some(mp4_samples_to_units(av1_samples, "av1"))
+    // SECURITY: Validate minimum file size for MP4 format
+    const MIN_MP4_SIZE: usize = 8; // At least need ftyp box header
+    if file_data.len() < MIN_MP4_SIZE {
+        log::warn!("parse_mp4_container: File too small to be valid MP4 ({} bytes)", file_data.len());
+        return None;
     }
-    // Try H.265/HEVC
-    else if let Ok(hevc_samples) = bitvue_formats::mp4::extract_hevc_samples(file_data) {
-        log::info!("parse_mp4_container: Extracted {} HEVC samples from MP4", hevc_samples.len());
-        Some(mp4_samples_to_units(hevc_samples, "hevc"))
-    }
-    // Try H.264/AVC
-    else if let Ok(avc_samples) = bitvue_formats::mp4::extract_avc_samples(file_data) {
-        log::info!("parse_mp4_container: Extracted {} AVC samples from MP4", avc_samples.len());
-        Some(mp4_samples_to_units(avc_samples, "avc"))
+
+    // Check for valid MP4 signature (ftyp box)
+    // MP4 files should have "ftyp" at offset 4 (after box size)
+    let is_valid_mp4 = if file_data.len() >= 8 {
+        &file_data[4..8] == b"ftyp"
     } else {
-        log::warn!("parse_mp4_container: Failed to extract any video samples from MP4");
-        None
+        false
+    };
+
+    if !is_valid_mp4 {
+        log::warn!("parse_mp4_container: File does not appear to be MP4 format (missing ftyp box)");
+        return None;
     }
+
+    // Try each codec and log specific failures
+    let mut last_error = None;
+
+    // Try AV1 first
+    match bitvue_formats::mp4::extract_av1_samples(file_data) {
+        Ok(av1_samples) if !av1_samples.is_empty() => {
+            log::info!("parse_mp4_container: Extracted {} AV1 samples from MP4", av1_samples.len());
+            return Some(mp4_samples_to_units(av1_samples, "av1"));
+        }
+        Ok(_) => {
+            log::warn!("parse_mp4_container: AV1 track exists but contains no samples");
+            last_error = Some("AV1 track exists but contains no samples");
+        }
+        Err(e) => {
+            log::debug!("parse_mp4_container: AV1 extraction failed: {}", e);
+            last_error = Some(&e);
+        }
+    }
+
+    // Try H.265/HEVC
+    match bitvue_formats::mp4::extract_hevc_samples(file_data) {
+        Ok(hevc_samples) if !hevc_samples.is_empty() => {
+            log::info!("parse_mp4_container: Extracted {} HEVC samples from MP4", hevc_samples.len());
+            return Some(mp4_samples_to_units(hevc_samples, "hevc"));
+        }
+        Ok(_) => {
+            log::warn!("parse_mp4_container: HEVC track exists but contains no samples");
+            if last_error.is_none() { last_error = Some("HEVC track exists but contains no samples"); }
+        }
+        Err(e) => {
+            log::debug!("parse_mp4_container: HEVC extraction failed: {}", e);
+            if last_error.is_none() { last_error = Some(&e); }
+        }
+    }
+
+    // Try H.264/AVC
+    match bitvue_formats::mp4::extract_avc_samples(file_data) {
+        Ok(avc_samples) if !avc_samples.is_empty() => {
+            log::info!("parse_mp4_container: Extracted {} AVC samples from MP4", avc_samples.len());
+            return Some(mp4_samples_to_units(avc_samples, "avc"));
+        }
+        Ok(_) => {
+            log::warn!("parse_mp4_container: AVC track exists but contains no samples");
+            if last_error.is_none() { last_error = Some("AVC track exists but contains no samples"); }
+        }
+        Err(e) => {
+            log::debug!("parse_mp4_container: AVC extraction failed: {}", e);
+            if last_error.is_none() { last_error = Some(&e); }
+        }
+    }
+
+    // All codecs failed
+    log::warn!("parse_mp4_container: Failed to extract any video samples from MP4. Last error: {:?}",
+        last_error.unwrap_or(&"No valid video track found"));
+    None
 }
 
 /// Parse Matroska/WebM container format
 ///
 /// Returns parsed unit nodes from MKV/WebM file, or None if parsing fails.
 /// Tries AV1, HEVC, then AVC in order.
+/// Provides detailed error messages for debugging malformed files.
 fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     log::info!("parse_mkv_container: Attempting to extract video samples from Matroska...");
 
+    // SECURITY: Validate minimum file size for MKV format
+    const MIN_MKV_SIZE: usize = 4; // At least need EBML header
+    if file_data.len() < MIN_MKV_SIZE {
+        log::warn!("parse_mkv_container: File too small to be valid MKV/WebM ({} bytes)", file_data.len());
+        return None;
+    }
+
+    // Check for valid Matroska signature (EBML header)
+    let is_valid_mkv = file_data.len() >= 4 && &file_data[0..4] == b"\x1a\x45\xdf\xa3";
+
+    if !is_valid_mkv {
+        log::warn!("parse_mkv_container: File does not appear to be Matroska/WebM format (missing EBML header)");
+        return None;
+    }
+
+    // Try each codec and log specific failures
+    let mut last_error = None;
+
     // Try AV1
-    if let Ok(av1_samples) = bitvue_formats::mkv::extract_av1_samples(file_data) {
-        log::info!("parse_mkv_container: Extracted {} AV1 samples from MKV", av1_samples.len());
-        Some(mkv_samples_to_units(av1_samples, "av1"))
+    match bitvue_formats::mkv::extract_av1_samples(file_data) {
+        Ok(av1_samples) if !av1_samples.is_empty() => {
+            log::info!("parse_mkv_container: Extracted {} AV1 samples from MKV", av1_samples.len());
+            return Some(mkv_samples_to_units(av1_samples, "av1"));
+        }
+        Ok(_) => {
+            log::warn!("parse_mkv_container: AV1 track exists but contains no samples");
+            last_error = Some("AV1 track exists but contains no samples");
+        }
+        Err(e) => {
+            log::debug!("parse_mkv_container: AV1 extraction failed: {}", e);
+            last_error = Some(&e);
+        }
     }
+
     // Try H.265/HEVC
-    else if let Ok(hevc_samples) = bitvue_formats::mkv::extract_hevc_samples(file_data) {
-        log::info!("parse_mkv_container: Extracted {} HEVC samples from MKV", hevc_samples.len());
-        Some(mkv_samples_to_units(hevc_samples, "hevc"))
+    match bitvue_formats::mkv::extract_hevc_samples(file_data) {
+        Ok(hevc_samples) if !hevc_samples.is_empty() => {
+            log::info!("parse_mkv_container: Extracted {} HEVC samples from MKV", hevc_samples.len());
+            return Some(mkv_samples_to_units(hevc_samples, "hevc"));
+        }
+        Ok(_) => {
+            log::warn!("parse_mkv_container: HEVC track exists but contains no samples");
+            if last_error.is_none() { last_error = Some("HEVC track exists but contains no samples"); }
+        }
+        Err(e) => {
+            log::debug!("parse_mkv_container: HEVC extraction failed: {}", e);
+            if last_error.is_none() { last_error = Some(&e); }
+        }
     }
+
     // Try H.264/AVC
-    else if let Ok(avc_samples) = bitvue_formats::mkv::extract_avc_samples(file_data) {
-        log::info!("parse_mkv_container: Extracted {} AVC samples from MKV", avc_samples.len());
-        Some(mkv_samples_to_units(avc_samples, "avc"))
-    } else {
-        log::warn!("parse_mkv_container: Failed to extract any video samples from MKV");
-        None
+    match bitvue_formats::mkv::extract_avc_samples(file_data) {
+        Ok(avc_samples) if !avc_samples.is_empty() => {
+            log::info!("parse_mkv_container: Extracted {} AVC samples from MKV", avc_samples.len());
+            return Some(mkv_samples_to_units(avc_samples, "avc"));
+        }
+        Ok(_) => {
+            log::warn!("parse_mkv_container: AVC track exists but contains no samples");
+            if last_error.is_none() { last_error = Some("AVC track exists but contains no samples"); }
+        }
+        Err(e) => {
+            log::debug!("parse_mkv_container: AVC extraction failed: {}", e);
+            if last_error.is_none() { last_error = Some(&e); }
+        }
     }
+
+    // All codecs failed
+    log::warn!("parse_mkv_container: Failed to extract any video samples from MKV. Last error: {:?}",
+        last_error.unwrap_or(&"No valid video track found"));
+    None
 }

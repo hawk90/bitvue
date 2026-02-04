@@ -6,12 +6,14 @@
 //! - FrameService: Aggregates frame information
 //! - RateLimiter: Prevents DoS through rate limiting
 //! - CodecUtils: Shared codec utility functions
+//! - Utils: Shared utility macros and functions
 
 pub mod codec_utils;
 pub mod decode_service;
 pub mod frame_service;
 pub mod thumbnail_service;
 pub mod rate_limiter;
+pub mod utils;
 
 pub use decode_service::DecodeService;
 pub use thumbnail_service::ThumbnailService;

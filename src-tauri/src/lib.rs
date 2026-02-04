@@ -1,6 +1,14 @@
 // Tauri commands
 mod commands;
 mod services;
+mod error;
+mod constants;
+
+// Re-export common error types for convenience
+pub use error::{BitvueError, Result as BitvueResult};
+
+// Re-export constants for convenience
+pub use constants::{video, limits, batch, analysis, cache, format};
 
 use commands::AppState;
 

@@ -645,9 +645,9 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
 
                 // Duplicate U/V: [u0,u1,u2,u3] -> [u0,u0,u1,u1,u2,u2,u3,u3]
                 let u_4x = _mm_mullo_epi16(u_4, _mm_set1_epi16(0x0101));
-                let u_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(_mm_unpacklo_epi8(u_4x, u_4x), _mm256_castsi128_si256(_mm_unpackhi_epi8(u_4x, u_4x)));
+                let u_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(u_4x));
                 let v_4x = _mm_mullo_epi16(v_4, _mm_set1_epi16(0x0101));
-                let v_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(_mm_unpacklo_epi8(v_4x, v_4x), _mm256_castsi128_si256(_mm_unpackhi_epi8(v_4x, v_4x)));
+                let v_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(v_4x));
 
                 // Convert Y from 16-bit to 32-bit, then normalize to 8-bit range
                 let y_16 = _mm256_castsi256_si256(y_vec, _mm256_castsi128_si256(y_vec, 1));
@@ -754,9 +754,9 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
                 let v_4 = _mm_loadu_si128(v_plane.as_ptr().add(uv_idx * 2) as *const __m128i);
 
                 let u_4x = _mm_mullo_epi16(u_4, _mm_set1_epi16(0x0101));
-                let u_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(_mm_unpacklo_epi8(u_4x, u_4x), _mm256_castsi128_si256(_mm_unpackhi_epi8(u_4x, u_4x)));
+                let u_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(u_4x));
                 let v_4x = _mm_mullo_epi16(v_4, _mm_set1_epi16(0x0101));
-                let v_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(_mm_unpacklo_epi8(v_4x, v_4x), _mm256_castsi128_si256(_mm_unpackhi_epi8(v_4x, v_4x)));
+                let v_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(v_4x));
 
                 // Normalize Y
                 let y_16 = _mm256_castsi256_si256(y_vec, _mm256_castsi128_si256(y_vec, 1));

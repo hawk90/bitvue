@@ -58,7 +58,8 @@ impl RateLimiter {
 
         // Check minimum interval
         {
-            let mut last_request = self.last_request.lock().unwrap();
+            let mut last_request = self.last_request.lock()
+                .map_err(|_| Duration::from_secs(1))?;
             let elapsed = now.duration_since(*last_request);
 
             if elapsed < self.config.min_interval {
@@ -71,8 +72,10 @@ impl RateLimiter {
 
         // Check burst limit
         if self.config.burst_limit > 0 {
-            let mut burst_count = self.burst_count.lock().unwrap();
-            let mut burst_window_start = self.burst_window_start.lock().unwrap();
+            let mut burst_count = self.burst_count.lock()
+                .map_err(|_| Duration::from_secs(1))?;
+            let mut burst_window_start = self.burst_window_start.lock()
+                .map_err(|_| Duration::from_secs(1))?;
 
             // Reset burst counter if window has expired (1 second)
             let window_duration = Duration::from_secs(1);
@@ -95,10 +98,13 @@ impl RateLimiter {
     /// Reset the burst counter (useful after a long idle period)
     #[allow(dead_code)]
     pub fn reset(&self) {
-        let mut burst_count = self.burst_count.lock().unwrap();
-        let mut burst_window_start = self.burst_window_start.lock().unwrap();
-        *burst_count = 0;
-        *burst_window_start = Instant::now();
+        // Mutex poisoning is unlikely here but handle gracefully
+        if let Ok(mut burst_count) = self.burst_count.lock() {
+            *burst_count = 0;
+        }
+        if let Ok(mut burst_window_start) = self.burst_window_start.lock() {
+            *burst_window_start = Instant::now();
+        }
     }
 
     /// Get current configuration

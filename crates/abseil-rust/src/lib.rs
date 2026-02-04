@@ -201,10 +201,7 @@ pub mod absl_types {
 
 /// absl_algorithm - Algorithm utilities from Abseil's absl/algorithm directory
 #[cfg(feature = "algorithm")]
-pub mod absl_algorithm {
-    /// search - Search algorithms (binary search, etc.)
-    pub mod search;
-}
+pub mod absl_algorithm;
 
 /// absl_synchronization - Synchronization utilities from Abseil's absl/synchronization directory
 #[cfg(feature = "synchronization")]
@@ -354,7 +351,9 @@ pub use absl_base::call_once::{call_once, is_done, OnceFlag};
 
 // absl_strings re-exports
 #[cfg(feature = "strings")]
-pub use absl_strings::escaping::{escape_c, escape_html, escape_url, unescape_c, unescape_html, unescape_url, UnescapeError};
+pub use absl_strings::escaping::{escape_c, escape_html, escape_url, unescape_c, unescape_html, unescape_url};
+#[cfg(feature = "strings")]
+pub use absl_strings::escaping::UnescapeError;
 
 #[cfg(all(feature = "strings", feature = "strings-cord"))]
 pub use absl_strings::cord::Cord;
