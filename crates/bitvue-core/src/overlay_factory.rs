@@ -271,25 +271,44 @@ pub trait OverlayFactory: Send + Sync {
     fn capabilities(&self) -> &OverlayCapabilities;
 
     /// Create a grid overlay renderer
-    fn create_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
+    fn create_grid(&self, config: &OverlayConfig)
+        -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
 
     /// Create a motion vector overlay renderer
-    fn create_mv_overlay(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
+    fn create_mv_overlay(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
 
     /// Create a QP heatmap overlay renderer
-    fn create_qp_heatmap(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
+    fn create_qp_heatmap(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
 
     /// Create a partition grid overlay renderer
-    fn create_partition_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
+    fn create_partition_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
 
     /// Create a reference frame overlay renderer
-    fn create_reference_frames(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
+    fn create_reference_frames(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
 
     /// Create a mode labels overlay renderer
-    fn create_mode_labels(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
+    fn create_mode_labels(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
 
     /// Create a bit allocation overlay renderer
-    fn create_bit_allocation(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
+    fn create_bit_allocation(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>>;
 
     /// Create an overlay renderer by type
     fn create_overlay(
@@ -470,31 +489,52 @@ impl OverlayFactory for Av1OverlayFactory {
         &self.capabilities
     }
 
-    fn create_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mv_overlay(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mv_overlay(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_qp_heatmap(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_qp_heatmap(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_partition_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_partition_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_reference_frames(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_reference_frames(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mode_labels(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mode_labels(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_bit_allocation(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_bit_allocation(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
@@ -564,31 +604,52 @@ impl OverlayFactory for AvcOverlayFactory {
         &self.capabilities
     }
 
-    fn create_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mv_overlay(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mv_overlay(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_qp_heatmap(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_qp_heatmap(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_partition_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_partition_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_reference_frames(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_reference_frames(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mode_labels(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mode_labels(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_bit_allocation(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_bit_allocation(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 }
@@ -644,31 +705,52 @@ impl OverlayFactory for HevcOverlayFactory {
         &self.capabilities
     }
 
-    fn create_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mv_overlay(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mv_overlay(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_qp_heatmap(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_qp_heatmap(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_partition_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_partition_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_reference_frames(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_reference_frames(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mode_labels(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mode_labels(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_bit_allocation(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_bit_allocation(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 }
@@ -724,31 +806,52 @@ impl OverlayFactory for VvcOverlayFactory {
         &self.capabilities
     }
 
-    fn create_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mv_overlay(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mv_overlay(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_qp_heatmap(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_qp_heatmap(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_partition_grid(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_partition_grid(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_reference_frames(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_reference_frames(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_mode_labels(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_mode_labels(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 
-    fn create_bit_allocation(&self, config: &OverlayConfig) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
+    fn create_bit_allocation(
+        &self,
+        config: &OverlayConfig,
+    ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
         Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
     }
 }
@@ -991,6 +1094,9 @@ mod tests {
         let error = OverlayFactoryError::MissingConfiguration {
             field: "grid_size".to_string(),
         };
-        assert_eq!(error.to_string(), "Missing required configuration: grid_size");
+        assert_eq!(
+            error.to_string(),
+            "Missing required configuration: grid_size"
+        );
     }
 }

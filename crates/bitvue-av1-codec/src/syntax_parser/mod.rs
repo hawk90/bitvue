@@ -38,12 +38,12 @@ pub use frame_header::parse_frame_header_syntax;
 pub use sequence::parse_sequence_header_syntax;
 pub use tracked_bitreader::TrackedBitReader;
 
+use crate::obu::{ObuIterator, ObuWithOffset};
 use bitvue_core::{
     types::{BitRange, SyntaxModel, SyntaxNode, SyntaxNodeId},
     Result,
 };
 use obu::{parse_leb128_size_syntax, parse_obu_header_syntax};
-use crate::obu::{ObuIterator, ObuWithOffset};
 
 /// Builder for constructing SyntaxModel trees during parsing
 ///
@@ -280,7 +280,11 @@ pub fn parse_bitstream_syntax(data: &[u8]) -> Result<Vec<SyntaxModel>> {
 
     while let Some(result) = iter.next_obu_with_offset() {
         let obu_with_offset = result?;
-        let ObuWithOffset { obu: _, offset, consumed } = obu_with_offset;
+        let ObuWithOffset {
+            obu: _,
+            offset,
+            consumed,
+        } = obu_with_offset;
 
         // Parse syntax for this OBU
         let model = parse_obu_syntax(

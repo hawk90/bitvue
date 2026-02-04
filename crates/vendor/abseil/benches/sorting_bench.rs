@@ -1,7 +1,9 @@
 #![feature(test)]
 extern crate test;
 
-use abseil::absl_sorting::{mergesort, quicksort, heapsort, radix_sort, bubble_sort, insertion_sort, introsort, timsort};
+use abseil::absl_sorting::{
+    bubble_sort, heapsort, insertion_sort, introsort, mergesort, quicksort, radix_sort, timsort,
+};
 use test::{black_box, Bencher};
 
 // Small data (10 elements)

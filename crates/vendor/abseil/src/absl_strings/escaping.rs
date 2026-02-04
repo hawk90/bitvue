@@ -16,7 +16,8 @@
 /// ```
 pub fn escape_c(s: &str) -> String {
     // First pass: count characters that need escaping to estimate capacity
-    let escape_count = s.chars()
+    let escape_count = s
+        .chars()
         .filter(|&c| matches!(c, '\n' | '\r' | '\t' | '\\' | '\'' | '"' | '\0'))
         .count();
 
@@ -142,8 +143,11 @@ pub fn unescape_c(s: &str) -> Result<String, UnescapeError> {
 /// ```
 pub fn escape_url(s: &str) -> String {
     // First pass: count bytes that need escaping (each becomes 3 characters)
-    let escape_count = s.bytes()
-        .filter(|&b| !matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~'))
+    let escape_count = s
+        .bytes()
+        .filter(
+            |&b| !matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~'),
+        )
         .count();
 
     // Each escaped byte becomes 3 characters (%XX)
@@ -225,12 +229,13 @@ pub fn unescape_url(s: &str) -> Result<String, UnescapeError> {
 pub fn escape_html(s: &str) -> String {
     // First pass: count characters that need escaping
     // &lt; = 4 chars, &gt; = 4 chars, &amp; = 5 chars, &quot; = 6 chars, &apos; = 6 chars
-    let escape_extra_chars = s.chars()
+    let escape_extra_chars = s
+        .chars()
         .filter(|&c| matches!(c, '<' | '>' | '&' | '"' | '\''))
         .map(|c| {
             match c {
-                '<' | '>' | '&' | '"' => 3,  // &X; -> 4 chars vs 1, diff = 3
-                '\'' => 5,  // &apos; -> 6 chars vs 1, diff = 5
+                '<' | '>' | '&' | '"' => 3, // &X; -> 4 chars vs 1, diff = 3
+                '\'' => 5,                  // &apos; -> 6 chars vs 1, diff = 5
                 _ => 0,
             }
         })

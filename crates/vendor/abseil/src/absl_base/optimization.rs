@@ -43,7 +43,10 @@ macro_rules! likely {
                 ));
                 // The compiler will treat true as the likely case
                 true
-            } => true,
+            } =>
+            {
+                true
+            }
             e => e,
         }
     };
@@ -174,10 +177,22 @@ pub unsafe fn prefetch<T>(addr: *const T, locality: u32) {
         #[cfg(target_feature = "sse")]
         {
             match locality {
-                0 => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_NTA),
-                1 => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_T0),
-                2 => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_T1),
-                _ => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_T2),
+                0 => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_NTA,
+                ),
+                1 => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_T0,
+                ),
+                2 => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_T1,
+                ),
+                _ => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_T2,
+                ),
             }
         }
     }
@@ -187,7 +202,9 @@ pub unsafe fn prefetch<T>(addr: *const T, locality: u32) {
         #[cfg(target_feature = "sse")]
         {
             match locality {
-                0 => core::arch::x86::_mm_prefetch(addr as *const i8, core::arch::x86::_MM_HINT_NTA),
+                0 => {
+                    core::arch::x86::_mm_prefetch(addr as *const i8, core::arch::x86::_MM_HINT_NTA)
+                }
                 1 => core::arch::x86::_mm_prefetch(addr as *const i8, core::arch::x86::_MM_HINT_T0),
                 2 => core::arch::x86::_mm_prefetch(addr as *const i8, core::arch::x86::_MM_HINT_T1),
                 _ => core::arch::x86::_mm_prefetch(addr as *const i8, core::arch::x86::_MM_HINT_T2),
@@ -262,10 +279,22 @@ pub unsafe fn prefetch_write<T>(addr: *mut T, locality: u32) {
             // For write prefetch, we use the same hints but the CPU
             // may mark the cache line for write access
             match locality {
-                0 => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_T0),
-                1 => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_T0),
-                2 => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_T0),
-                _ => core::arch::x86_64::_mm_prefetch(addr as *const i8, core::arch::x86_64::_MM_HINT_T0),
+                0 => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_T0,
+                ),
+                1 => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_T0,
+                ),
+                2 => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_T0,
+                ),
+                _ => core::arch::x86_64::_mm_prefetch(
+                    addr as *const i8,
+                    core::arch::x86_64::_MM_HINT_T0,
+                ),
             }
         }
     }
@@ -338,7 +367,12 @@ pub fn spin_pause() {
         unsafe { asm!("yield", options(nostack)) };
     }
 
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64", target_arch = "arm")))]
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "x86",
+        target_arch = "aarch64",
+        target_arch = "arm"
+    )))]
     {
         // Generic fallback - hint to the compiler that we're spinning
         core::hint::spin_loop();

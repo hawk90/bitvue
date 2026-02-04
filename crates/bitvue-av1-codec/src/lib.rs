@@ -155,16 +155,16 @@ impl Av1Info {
 pub fn is_mp4(data: &[u8]) -> bool {
     // MP4 files start with a box (typically ftyp)
     // First 4 bytes are size, next 4 bytes are type
-    data.get(4..8).is_some_and(|box_type| {
-        matches!(box_type, b"ftyp" | b"moov" | b"mdat" | b"free" | b"skip")
-    })
+    data.get(4..8)
+        .is_some_and(|box_type| matches!(box_type, b"ftyp" | b"moov" | b"mdat" | b"free" | b"skip"))
 }
 
 /// Check if data is an MKV file
 pub fn is_mkv(data: &[u8]) -> bool {
     // MKV files start with EBML header
     // First byte is typically 0x1A, and EBML element ID is 0x1A45DFA3
-    data.get(0..4).is_some_and(|sig| sig == [0x1A, 0x45, 0xDF, 0xA3])
+    data.get(0..4)
+        .is_some_and(|sig| sig == [0x1A, 0x45, 0xDF, 0xA3])
 }
 
 /// Check if data is a WebM file
@@ -180,9 +180,8 @@ pub fn is_webm(data: &[u8]) -> bool {
 pub fn is_mov(data: &[u8]) -> bool {
     // MOV files use the same box structure as MP4
     // Check for 'qt  ' or 'moov' box type
-    data.get(4..8).is_some_and(|box_type| {
-        matches!(box_type, b"ftyp" | b"moov" | b"mdat" | b"wide" | b"free")
-    })
+    data.get(4..8)
+        .is_some_and(|box_type| matches!(box_type, b"ftyp" | b"moov" | b"mdat" | b"wide" | b"free"))
 }
 
 /// Check if data is a TS (MPEG-2 Transport Stream) file

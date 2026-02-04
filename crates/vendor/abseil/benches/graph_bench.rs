@@ -2,7 +2,7 @@
 #![feature(test)]
 extern crate test;
 
-use abseil::absl_graph::{Graph, bfs, dfs, dijkstra, topological_sort};
+use abseil::absl_graph::{bfs, dfs, dijkstra, topological_sort, Graph};
 use test::{black_box, Bencher};
 
 // Create a small graph (10 vertices, 15 edges)

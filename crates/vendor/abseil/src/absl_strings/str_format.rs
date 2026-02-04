@@ -89,8 +89,11 @@ impl Spec {
 
         // Validate argument count
         if placeholder_count != args.len() {
-            return format!("<format error: {} placeholders, {} args>",
-                placeholder_count, args.len());
+            return format!(
+                "<format error: {} placeholders, {} args>",
+                placeholder_count,
+                args.len()
+            );
         }
 
         // Second pass: actual formatting
@@ -438,20 +441,14 @@ mod tests {
         let args: &[&dyn fmt::Display] = &[&"world"];
         assert_eq!(spec.format("Hello, {}!", args), "Hello, world!");
         let args: &[&dyn fmt::Display] = &[&"1", &"2", &"3"];
-        assert_eq!(
-            spec.format("{} + {} = {}", args),
-            "1 + 2 = 3"
-        );
+        assert_eq!(spec.format("{} + {} = {}", args), "1 + 2 = 3");
     }
 
     #[test]
     fn test_spec_format_numbers() {
         let spec = Spec::new();
         let args: &[&dyn fmt::Display] = &[&"42"];
-        assert_eq!(
-            spec.format("Value: {}", args),
-            "Value: 42"
-        );
+        assert_eq!(spec.format("Value: {}", args), "Value: 42");
     }
 
     #[test]
@@ -498,8 +495,14 @@ mod tests {
 
     #[test]
     fn test_format_delimited() {
-        assert_eq!(format_delimited("[", "]", ", ", &[1, 2, 3] as &[i32]), "[1, 2, 3]");
-        assert_eq!(format_delimited("(", ")", " & ", &["a", "b"] as &[&str]), "(a & b)");
+        assert_eq!(
+            format_delimited("[", "]", ", ", &[1, 2, 3] as &[i32]),
+            "[1, 2, 3]"
+        );
+        assert_eq!(
+            format_delimited("(", ")", " & ", &["a", "b"] as &[&str]),
+            "(a & b)"
+        );
     }
 
     #[test]
@@ -509,10 +512,7 @@ mod tests {
 
     #[test]
     fn test_stream() {
-        let stream = Stream::new()
-            .append("Hello")
-            .append(", ")
-            .append("world!");
+        let stream = Stream::new().append("Hello").append(", ").append("world!");
 
         assert_eq!(stream.to_string(), "Hello, world!");
         assert_eq!(stream.len(), 13);

@@ -71,7 +71,8 @@ impl StrategyRegistry {
 
     /// Get or initialize the current strategy type
     pub fn get_type(&self) -> StrategyType {
-        *self.current_strategy
+        *self
+            .current_strategy
             .get_or_init(|| Self::detect_best_strategy_type())
     }
 
@@ -168,21 +169,42 @@ impl StrategyRegistry {
         #[cfg(target_arch = "x86_64")]
         {
             let available = StrategyType::Avx2.is_available();
-            strategies.push((StrategyType::Avx2, available, format!("~4.5x speedup{}", if available { "" } else { " (not available)" })));
+            strategies.push((
+                StrategyType::Avx2,
+                available,
+                format!(
+                    "~4.5x speedup{}",
+                    if available { "" } else { " (not available)" }
+                ),
+            ));
         }
 
         // NEON
         #[cfg(target_arch = "aarch64")]
         {
             let available = StrategyType::Neon.is_available();
-            strategies.push((StrategyType::Neon, available, format!("~3.5x speedup{}", if available { "" } else { " (not available)" })));
+            strategies.push((
+                StrategyType::Neon,
+                available,
+                format!(
+                    "~3.5x speedup{}",
+                    if available { "" } else { " (not available)" }
+                ),
+            ));
         }
 
         // Metal
         #[cfg(target_os = "macos")]
         {
             let available = StrategyType::Metal.is_available();
-            strategies.push((StrategyType::Metal, available, format!("~9.0x speedup (GPU){}", if available { "" } else { " (not implemented)" })));
+            strategies.push((
+                StrategyType::Metal,
+                available,
+                format!(
+                    "~9.0x speedup (GPU){}",
+                    if available { "" } else { " (not implemented)" }
+                ),
+            ));
         }
 
         strategies
@@ -232,7 +254,10 @@ mod tests {
         let strategy_type = registry.get_type();
         // Should return a valid strategy type
         match strategy_type {
-            StrategyType::Scalar | StrategyType::Avx2 | StrategyType::Neon | StrategyType::Metal => {
+            StrategyType::Scalar
+            | StrategyType::Avx2
+            | StrategyType::Neon
+            | StrategyType::Metal => {
                 // Valid
             }
             StrategyType::Auto => {
@@ -246,7 +271,10 @@ mod tests {
         let strategy_type = best_strategy_type();
         // Should return a valid strategy type
         match strategy_type {
-            StrategyType::Scalar | StrategyType::Avx2 | StrategyType::Neon | StrategyType::Metal => {
+            StrategyType::Scalar
+            | StrategyType::Avx2
+            | StrategyType::Neon
+            | StrategyType::Metal => {
                 // Valid
             }
             StrategyType::Auto => {
@@ -260,7 +288,10 @@ mod tests {
         let strategy_type = current_strategy_type();
         // Should return a valid strategy type
         match strategy_type {
-            StrategyType::Scalar | StrategyType::Avx2 | StrategyType::Neon | StrategyType::Metal => {
+            StrategyType::Scalar
+            | StrategyType::Avx2
+            | StrategyType::Neon
+            | StrategyType::Metal => {
                 // Valid
             }
             StrategyType::Auto => {
@@ -282,7 +313,10 @@ mod tests {
         // OnceLock doesn't allow overwriting, so the strategy won't change if already set
         // The result will be Ok() only if the strategy was successfully set to Scalar
         // On platforms with better strategies (NEON/AVX2), the strategy remains unchanged
-        assert!(matches!(current_strategy_type(), StrategyType::Neon | StrategyType::Avx2 | StrategyType::Scalar));
+        assert!(matches!(
+            current_strategy_type(),
+            StrategyType::Neon | StrategyType::Avx2 | StrategyType::Scalar
+        ));
 
         // Reset to auto
         let _ = set_strategy(StrategyType::Auto);
@@ -296,7 +330,9 @@ mod tests {
         let strategies = available_strategies();
         // Should always have at least Scalar
         assert!(!strategies.is_empty());
-        assert!(strategies.iter().any(|(t, _, _)| *t == StrategyType::Scalar));
+        assert!(strategies
+            .iter()
+            .any(|(t, _, _)| *t == StrategyType::Scalar));
     }
 
     #[test]

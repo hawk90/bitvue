@@ -312,12 +312,12 @@ pub mod absl_any {
 /// absl_debugging - Debugging utilities from Abseil's absl/debugging directory
 #[cfg(feature = "debugging")]
 pub mod absl_debugging {
+    /// failure_signal_handler - Failure signal handling
+    pub mod failure_signal_handler;
     /// stacktrace - Stack trace utilities
     pub mod stacktrace;
     /// symbolize - Symbol/address lookup utilities
     pub mod symbolize;
-    /// failure_signal_handler - Failure signal handling
-    pub mod failure_signal_handler;
 }
 
 /// absl_crc - CRC checksum utilities from Abseil's absl/crc directory
@@ -351,18 +351,23 @@ pub use absl_base::call_once::{call_once, is_done, OnceFlag};
 
 // absl_strings re-exports
 #[cfg(feature = "strings")]
-pub use absl_strings::escaping::{escape_c, escape_html, escape_url, unescape_c, unescape_html, unescape_url};
-#[cfg(feature = "strings")]
 pub use absl_strings::escaping::UnescapeError;
+#[cfg(feature = "strings")]
+pub use absl_strings::escaping::{
+    escape_c, escape_html, escape_url, unescape_c, unescape_html, unescape_url,
+};
 
 #[cfg(all(feature = "strings", feature = "strings-cord"))]
 pub use absl_strings::cord::Cord;
 
 #[cfg(feature = "strings")]
-pub use absl_strings::str_cat::{AlphaNum, StrCat, str_join};
+pub use absl_strings::str_cat::{str_join, AlphaNum, StrCat};
 
 #[cfg(all(feature = "strings", feature = "strings-format"))]
-pub use absl_strings::str_format::{append, appendv, format_delimited, format_with, formatted_len, human_readable_duration, human_readable_size, Spec, Stream};
+pub use absl_strings::str_format::{
+    append, appendv, format_delimited, format_with, formatted_len, human_readable_duration,
+    human_readable_size, Spec, Stream,
+};
 
 // absl_numeric re-exports
 #[cfg(all(feature = "numeric", feature = "numeric-int128"))]
@@ -374,7 +379,9 @@ pub use absl_container::inlined_vector::InlinedVector;
 
 // absl_time re-exports
 #[cfg(feature = "time")]
-pub use absl_time::civil_time::{CivilDay, CivilHour, CivilMinute, CivilMonth, CivilSecond, CivilYear};
+pub use absl_time::civil_time::{
+    CivilDay, CivilHour, CivilMinute, CivilMonth, CivilSecond, CivilYear,
+};
 #[cfg(feature = "time")]
 pub use absl_time::duration::Duration;
 
@@ -389,12 +396,15 @@ pub use absl_types::span::{Span, SpanMut};
 pub use absl_algorithm::search::{binary_search, binary_search_by, lower_bound, upper_bound};
 
 // absl_synchronization re-exports
+#[cfg(all(
+    feature = "synchronization",
+    feature = "synchronization-blocking-counter"
+))]
+pub use absl_synchronization::blocking_counter::BlockingCounter;
 #[cfg(all(feature = "synchronization", feature = "synchronization-mutex"))]
 pub use absl_synchronization::mutex::{Mutex, MutexGuard};
 #[cfg(all(feature = "synchronization", feature = "synchronization-notification"))]
 pub use absl_synchronization::notification::Notification;
-#[cfg(all(feature = "synchronization", feature = "synchronization-blocking-counter"))]
-pub use absl_synchronization::blocking_counter::BlockingCounter;
 
 // absl_status re-exports
 #[cfg(feature = "status")]
@@ -418,11 +428,13 @@ pub use absl_random::distributions::{Bernoulli, Uniform};
 
 // absl_flags re-exports
 #[cfg(feature = "flags")]
-pub use absl_flags::flags::{BoolFlag, StringFlag, IntFlag, USAGE, VERBOSE};
+pub use absl_flags::flags::{BoolFlag, IntFlag, StringFlag, USAGE, VERBOSE};
 
 // absl_function_ref re-exports
 #[cfg(feature = "function_ref")]
-pub use absl_function_ref::function_ref::{Callback, CallbackRegistry, FunctionCallback, FunctionRef};
+pub use absl_function_ref::function_ref::{
+    Callback, CallbackRegistry, FunctionCallback, FunctionRef,
+};
 
 // absl_cleanup re-exports
 #[cfg(feature = "cleanup")]
@@ -431,9 +443,9 @@ pub use absl_cleanup::cleanup::{cleanup, failure_cleanup, Cleanup, FailureCleanu
 // absl_bits re-exports
 #[cfg(feature = "bits")]
 pub use absl_bits::bits::{
-    bit_width, count_leading_zeros, count_trailing_zeros, highest_bit, is_power_of_two,
-    lowest_bit, next_power_of_two, popcount, prev_power_of_two, reverse_bits, reverse_bytes,
-    rotate_left, rotate_right,
+    bit_width, count_leading_zeros, count_trailing_zeros, highest_bit, is_power_of_two, lowest_bit,
+    next_power_of_two, popcount, prev_power_of_two, reverse_bits, reverse_bytes, rotate_left,
+    rotate_right,
 };
 
 // absl_variant re-exports
@@ -466,21 +478,21 @@ pub use absl_crc::crc64::crc64;
 
 // absl_graph re-exports
 #[cfg(feature = "graph")]
-pub use absl_graph::{Graph, UndirectedGraph, WeightedGraph, VertexId, EdgeId};
+pub use absl_graph::{astar, bellman_ford, bfs, dfs, dijkstra, topological_sort};
 #[cfg(feature = "graph")]
-pub use absl_graph::{bfs, dfs, topological_sort, dijkstra, bellman_ford, astar};
+pub use absl_graph::{EdgeId, Graph, UndirectedGraph, VertexId, WeightedGraph};
 
 // absl_profiling re-exports
 #[cfg(feature = "profiling")]
-pub use absl_profiling::{Timer, TimerGuard, Profiler, ProfileStats};
-#[cfg(feature = "profiling")]
 pub use absl_profiling::{Counter, CounterGuard, Histogram, SampleRecorder};
+#[cfg(feature = "profiling")]
+pub use absl_profiling::{ProfileStats, Profiler, Timer, TimerGuard};
 
 // absl_sorting re-exports
 #[cfg(feature = "sorting")]
-pub use absl_sorting::{sort, sort_by, is_sorted, is_sorted_by, min, max, min_max};
+pub use absl_sorting::{heapsort, introsort, mergesort, quicksort, radix_sort, timsort};
 #[cfg(feature = "sorting")]
-pub use absl_sorting::{mergesort, quicksort, heapsort, radix_sort, introsort, timsort};
+pub use absl_sorting::{is_sorted, is_sorted_by, max, min, min_max, sort, sort_by};
 #[cfg(feature = "sorting")]
 pub use absl_sorting::{stable_sort, unstable_sort};
 

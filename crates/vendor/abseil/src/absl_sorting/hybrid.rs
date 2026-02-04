@@ -1,6 +1,5 @@
 //! Hybrid sorting algorithms that combine multiple approaches.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -105,7 +104,10 @@ pub fn timsort<T: Ord>(slice: &mut [T]) {
         // Merge runs
         while runs.len() > 1 {
             let n = runs.len();
-            if n >= 3 && runs[n - 3].1 - runs[n - 3].0 <= runs[n - 2].1 - runs[n - 2].0 + runs[n - 1].1 - runs[n - 1].0 {
+            if n >= 3
+                && runs[n - 3].1 - runs[n - 3].0
+                    <= runs[n - 2].1 - runs[n - 2].0 + runs[n - 1].1 - runs[n - 1].0
+            {
                 merge_at(slice, n - 3);
             } else if runs[n - 2].1 - runs[n - 2].0 <= runs[n - 1].1 - runs[n - 1].0 {
                 merge_at(slice, n - 2);

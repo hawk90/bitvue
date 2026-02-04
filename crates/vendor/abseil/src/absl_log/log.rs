@@ -7,8 +7,8 @@
 
 use crate::absl_log::severity::LogSeverity;
 use std::fmt;
-use std::io::{self, Write};
 use std::fmt::Write as FmtWrite;
+use std::io::{self, Write};
 
 /// Logs a message at the specified severity level.
 ///
@@ -176,7 +176,14 @@ macro_rules! QLOG {
 pub fn do_log(severity: LogSeverity, file: &str, line: u32, args: fmt::Arguments<'_>) {
     // Format: [SEVERITY] file:line: message
     let mut output = String::new();
-    let _ = write!(output, "[{}] {}:{}: {}", severity.as_str(), file, line, args);
+    let _ = write!(
+        output,
+        "[{}] {}:{}: {}",
+        severity.as_str(),
+        file,
+        line,
+        args
+    );
 
     // Write to stderr (thread-safe in Rust)
     let stderr = io::stderr();

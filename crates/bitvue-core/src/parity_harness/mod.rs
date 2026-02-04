@@ -14,22 +14,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // Re-export submodule items
-mod provenance;
-mod gates;
 mod context;
 mod full_matrix;
+mod gates;
+mod provenance;
 
-pub use provenance::Provenance;
-pub use gates::{
-    HardFailGate, HardFailViolation, HardFailKind, ParityGate, ParityGateResult,
-    PerfGate, PerfGateResult, PerfBudgets, DegradeStep, PerfTelemetryEvent, PerfEventType,
-    HarnessGateResults, HardFailGateResult,
-};
 pub use context::{
-    ContextMenuScope, ContextMenuItem, GuardDefinition, GuardContext,
-    evaluate_guard, GuardResult,
+    evaluate_guard, ContextMenuItem, ContextMenuScope, GuardContext, GuardDefinition, GuardResult,
 };
-pub use full_matrix::{FULL_PARITY_MATRIX_JSON, get_full_parity_matrix, get_full_parity_item_count};
+pub use full_matrix::{
+    get_full_parity_item_count, get_full_parity_matrix, FULL_PARITY_MATRIX_JSON,
+};
+pub use gates::{
+    DegradeStep, HardFailGate, HardFailGateResult, HardFailKind, HardFailViolation,
+    HarnessGateResults, ParityGate, ParityGateResult, PerfBudgets, PerfEventType, PerfGate,
+    PerfGateResult, PerfTelemetryEvent,
+};
+pub use provenance::Provenance;
 
 // =============================================================================
 // PARITY MATRIX SCHEMA (per parity_matrix.schema.json)

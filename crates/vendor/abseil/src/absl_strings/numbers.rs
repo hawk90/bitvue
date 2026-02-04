@@ -31,7 +31,9 @@ impl fmt::Display for ParseError {
             ParseError::Invalid => write!(f, "invalid character"),
             ParseError::OutOfRange => write!(f, "out of range"),
             ParseError::InvalidFormat => write!(f, "invalid format"),
-            ParseError::TooLong => write!(f, "string too long (max {} characters)", MAX_PARSE_LENGTH),
+            ParseError::TooLong => {
+                write!(f, "string too long (max {} characters)", MAX_PARSE_LENGTH)
+            }
         }
     }
 }
@@ -232,7 +234,9 @@ pub fn from_hex<T: TryFrom<u64>>(s: &str) -> Result<T, ParseError> {
     }
 
     let bytes = s.as_bytes();
-    let start = if bytes.get(0).map_or(false, |&b| b == b'0' && bytes.get(1).map_or(false, |&b| b == b'x' || b == b'X')) {
+    let start = if bytes.get(0).map_or(false, |&b| {
+        b == b'0' && bytes.get(1).map_or(false, |&b| b == b'x' || b == b'X')
+    }) {
         2
     } else {
         0
@@ -470,12 +474,12 @@ mod tests {
     fn test_parse_within_length_limit() {
         // Normal-length strings should work fine
         let normal_string = "1234567890".repeat(10); // 100 characters, well under limit
-        // The string "1234567890" repeated 10 times overflows i64, so it should error
+                                                     // The string "1234567890" repeated 10 times overflows i64, so it should error
         assert!(parse_i64(&normal_string).is_err());
         // But a smaller number should work
         let small_string = "1".repeat(100); // 100 ones
         assert!(parse_u64(&small_string).is_err()); // Overflows u64
-        // A 20-digit number that fits in u64 should work
+                                                    // A 20-digit number that fits in u64 should work
         let valid_string = "12345678901234567890"; // 20 digits, fits in u64
         assert_eq!(parse_u64(valid_string), Ok(12345678901234567890u64));
     }

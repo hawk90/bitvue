@@ -293,7 +293,8 @@ pub const FULL_PARITY_MATRIX_JSON: &str = r#"{
 }"#;
 
 /// Parse and return the full parity matrix
-pub fn get_full_parity_matrix() -> Result<(super::ParityMatrix, super::SchemaValidationResult), crate::BitvueError> {
+pub fn get_full_parity_matrix(
+) -> Result<(super::ParityMatrix, super::SchemaValidationResult), crate::BitvueError> {
     super::parse_and_validate_parity_matrix(FULL_PARITY_MATRIX_JSON)
 }
 

@@ -459,7 +459,7 @@ fn test_mv_grid_consistency() {
     let block_h = 64u32;
 
     // 256x256 with 64x64 blocks = 4x4 = 16 elements
-    let grid_w = width / block_w;   // 4
+    let grid_w = width / block_w; // 4
     let grid_h = height / block_h; // 4
     let mut mv_l0 = Vec::with_capacity((grid_w * grid_h) as usize);
     let mv_l1 = vec![MotionVector::MISSING; (grid_w * grid_h) as usize];
@@ -530,8 +530,8 @@ fn test_mv_grid_large() {
 
     // Test 4K resolution
     // MVGrid uses ceiling division for height
-    let width: u32 = 3840 / 64;  // 60
-    let height: u32 = (2160 + 64 - 1) / 64;  // 34 (ceiling division)
+    let width: u32 = 3840 / 64; // 60
+    let height: u32 = (2160 + 64 - 1) / 64; // 34 (ceiling division)
     let mv_l0 = vec![MotionVector::ZERO; (width * height) as usize];
     let mv_l1 = vec![MotionVector::MISSING; (width * height) as usize];
 

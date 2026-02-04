@@ -188,7 +188,12 @@ pub unsafe fn check_mut_ref_not_null<'a, T>(opt: Option<&'a mut T>, expr: &str) 
     match opt {
         Some(r) => r,
         None => {
-            die_null(expr, file!(), line!(), format_args!("Mutable reference is None"));
+            die_null(
+                expr,
+                file!(),
+                line!(),
+                format_args!("Mutable reference is None"),
+            );
         }
     }
 }
@@ -234,7 +239,12 @@ pub fn unwrap_result_or_die<T, E: std::fmt::Debug>(value: Result<T, E>, expr: &s
     match value {
         Ok(v) => v,
         Err(e) => {
-            die_null(expr, file!(), line!(), format_args!("Result was Err: {:?}", e));
+            die_null(
+                expr,
+                file!(),
+                line!(),
+                format_args!("Result was Err: {:?}", e),
+            );
         }
     }
 }

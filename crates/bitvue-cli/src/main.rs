@@ -2,9 +2,9 @@
 //!
 //! Professional command-line tool for analyzing AV1, H.264, H.265, VP9, and VVC bitstreams.
 
-use std::path::PathBuf;
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 mod commands;
 
@@ -156,19 +156,42 @@ fn main() -> Result<()> {
         Commands::Info { file } => {
             commands::info::run(file)?;
         }
-        Commands::Frames { file, limit, format } => {
+        Commands::Frames {
+            file,
+            limit,
+            format,
+        } => {
             commands::frames::run(file, limit, &format)?;
         }
-        Commands::Analyze { file, frame, syntax, residual, coding_flow } => {
+        Commands::Analyze {
+            file,
+            frame,
+            syntax,
+            residual,
+            coding_flow,
+        } => {
             commands::analyze::run(file, frame, syntax, residual, coding_flow)?;
         }
-        Commands::Quality { reference, distorted, frames, metrics } => {
+        Commands::Quality {
+            reference,
+            distorted,
+            frames,
+            metrics,
+        } => {
             commands::quality::run(reference, distorted, &frames, &metrics)?;
         }
-        Commands::Export { file, output, format } => {
+        Commands::Export {
+            file,
+            output,
+            format,
+        } => {
             commands::export::run(file, output, &format)?;
         }
-        Commands::Batch { directory, pattern, output } => {
+        Commands::Batch {
+            directory,
+            pattern,
+            output,
+        } => {
             commands::batch::run(directory, &pattern, output)?;
         }
         Commands::Validate { file, strict } => {

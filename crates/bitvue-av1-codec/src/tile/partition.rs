@@ -383,9 +383,9 @@ fn parse_partition_recursive(
     let sub_sizes = block_size.sub_block_size(partition);
     if partition != PartitionType::None {
         // Check that at least one sub-block is smaller than parent
-        let has_smaller = sub_sizes.iter().any(|&s| {
-            s.width() < block_size.width() || s.height() < block_size.height()
-        });
+        let has_smaller = sub_sizes
+            .iter()
+            .any(|&s| s.width() < block_size.width() || s.height() < block_size.height());
         if !has_smaller {
             return Err(BitvueError::InvalidData(format!(
                 "Partition {:?} on block size {:?} produces sub-blocks of same size - not supported",

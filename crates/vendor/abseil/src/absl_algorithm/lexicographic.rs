@@ -37,8 +37,17 @@ mod tests {
     #[test]
     fn test_lexicographical_compare() {
         use core::cmp::Ordering;
-        assert_eq!(lexicographical_compare(&[1, 2, 3], &[1, 2, 4]), Ordering::Less);
-        assert_eq!(lexicographical_compare(&[1, 2, 3], &[1, 2, 3]), Ordering::Equal);
-        assert_eq!(lexicographical_compare(&[1, 2, 4], &[1, 2, 3]), Ordering::Greater);
+        assert_eq!(
+            lexicographical_compare(&[1, 2, 3], &[1, 2, 4]),
+            Ordering::Less
+        );
+        assert_eq!(
+            lexicographical_compare(&[1, 2, 3], &[1, 2, 3]),
+            Ordering::Equal
+        );
+        assert_eq!(
+            lexicographical_compare(&[1, 2, 4], &[1, 2, 3]),
+            Ordering::Greater
+        );
     }
 }

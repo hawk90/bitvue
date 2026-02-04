@@ -1,6 +1,5 @@
 //! Quick sort implementation.
 
-
 extern crate alloc;
 
 use core::cmp::Ordering;

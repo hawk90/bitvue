@@ -143,7 +143,10 @@ pub const fn slice_align_of<T>(len: usize) -> usize {
 /// Panics if `alignment` is not a power of two.
 #[inline]
 pub const fn align_up(ptr: usize, alignment: usize) -> usize {
-    assert!(alignment.is_power_of_two(), "alignment must be a power of two");
+    assert!(
+        alignment.is_power_of_two(),
+        "alignment must be a power of two"
+    );
     (ptr + alignment - 1) & !(alignment - 1)
 }
 
@@ -163,7 +166,10 @@ pub const fn align_up(ptr: usize, alignment: usize) -> usize {
 /// Panics if `alignment` is not a power of two.
 #[inline]
 pub const fn is_aligned(ptr: usize, alignment: usize) -> bool {
-    assert!(alignment.is_power_of_two(), "alignment must be a power of two");
+    assert!(
+        alignment.is_power_of_two(),
+        "alignment must be a power of two"
+    );
     (ptr & (alignment - 1)) == 0
 }
 
@@ -183,7 +189,10 @@ pub const fn is_aligned(ptr: usize, alignment: usize) -> bool {
 /// Panics if `alignment` is not a power of two.
 #[inline]
 pub const fn align_down(ptr: usize, alignment: usize) -> usize {
-    assert!(alignment.is_power_of_two(), "alignment must be a power of two");
+    assert!(
+        alignment.is_power_of_two(),
+        "alignment must be a power of two"
+    );
     ptr & !(alignment - 1)
 }
 
@@ -203,7 +212,10 @@ pub const fn align_down(ptr: usize, alignment: usize) -> usize {
 /// Panics if `alignment` is not a power of two.
 #[inline]
 pub const fn alignment_offset(ptr: usize, alignment: usize) -> usize {
-    assert!(alignment.is_power_of_two(), "alignment must be a power of two");
+    assert!(
+        alignment.is_power_of_two(),
+        "alignment must be a power of two"
+    );
     align_up(ptr, alignment) - ptr
 }
 
@@ -377,7 +389,10 @@ pub unsafe fn pointer_advance<T>(ptr: *const T, count: usize) -> *const T {
     #[cfg(debug_assertions)]
     {
         // Prevent overflow in pointer arithmetic
-        assert!(count <= isize::MAX as usize, "count too large for pointer arithmetic");
+        assert!(
+            count <= isize::MAX as usize,
+            "count too large for pointer arithmetic"
+        );
     }
     ptr.add(count)
 }
@@ -396,7 +411,10 @@ pub unsafe fn pointer_advance<T>(ptr: *const T, count: usize) -> *const T {
 pub unsafe fn pointer_advance_mut<T>(ptr: *mut T, count: usize) -> *mut T {
     #[cfg(debug_assertions)]
     {
-        assert!(count <= isize::MAX as usize, "count too large for pointer arithmetic");
+        assert!(
+            count <= isize::MAX as usize,
+            "count too large for pointer arithmetic"
+        );
     }
     ptr.add(count)
 }
@@ -457,7 +475,10 @@ pub fn ptr_eq<T>(a: *const T, b: *const T) -> bool {
 /// Panics if `alignment` is not a power of two.
 #[inline]
 pub const fn alignment_mask(alignment: usize) -> usize {
-    assert!(alignment.is_power_of_two(), "alignment must be a power of two");
+    assert!(
+        alignment.is_power_of_two(),
+        "alignment must be a power of two"
+    );
     alignment - 1
 }
 
@@ -581,7 +602,7 @@ pub const fn checked_allocation_size<T>(count: usize) -> Option<usize> {
     match count.checked_mul(size_of::<T>()) {
         Some(size) if is_valid_allocation_size(size) => Some(size),
         Some(_) => None, // Too large for safe allocation
-        None => None,   // Overflow
+        None => None,    // Overflow
     }
 }
 
@@ -607,7 +628,10 @@ pub fn with_aligned_stack<F, R>(alignment: usize, f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    assert!(alignment.is_power_of_two(), "alignment must be a power of two");
+    assert!(
+        alignment.is_power_of_two(),
+        "alignment must be a power of two"
+    );
     // Note: In practice, Rust's stack alignment is platform-dependent.
     // This function is a marker for intent; actual alignment would require
     // platform-specific assembly or compiler intrinsics.
@@ -780,9 +804,7 @@ mod tests {
 
     #[test]
     fn test_with_aligned_stack() {
-        let result = with_aligned_stack(16, || {
-            42
-        });
+        let result = with_aligned_stack(16, || 42);
         assert_eq!(result, 42);
     }
 

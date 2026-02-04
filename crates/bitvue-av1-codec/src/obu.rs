@@ -249,7 +249,9 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
         // If no size field, payload extends to end of data
         // Validate header_bytes doesn't exceed slice length to prevent underflow
         if header_bytes > slice.len() {
-            return Err(BitvueError::UnexpectedEof(offset as u64 + header_bytes as u64));
+            return Err(BitvueError::UnexpectedEof(
+                offset as u64 + header_bytes as u64,
+            ));
         }
         ((slice.len() - header_bytes) as u64, 0)
     };
@@ -277,7 +279,9 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
 
     // Validate we have enough data
     if total_size > slice.len() {
-        return Err(BitvueError::UnexpectedEof(offset as u64 + total_size as u64));
+        return Err(BitvueError::UnexpectedEof(
+            offset as u64 + total_size as u64,
+        ));
     }
 
     // Extract payload as Arc-wrapped slice for efficient sharing
@@ -453,7 +457,11 @@ impl<'a> ObuIterator<'a> {
             Ok((obu, consumed)) => {
                 let current_offset = self.offset;
                 self.offset += consumed;
-                Some(Ok(ObuWithOffset { obu, offset: current_offset, consumed }))
+                Some(Ok(ObuWithOffset {
+                    obu,
+                    offset: current_offset,
+                    consumed,
+                }))
             }
             Err(e) => Some(Err(e)),
         }
@@ -621,8 +629,10 @@ mod tests {
 
         match result {
             Err(BitvueError::InvalidData(message)) => {
-                assert!(message.contains("exceeds maximum"),
-                    "Error should mention maximum size exceeded");
+                assert!(
+                    message.contains("exceeds maximum"),
+                    "Error should mention maximum size exceeded"
+                );
             }
             _ => panic!("Expected InvalidData error for oversized payload"),
         }

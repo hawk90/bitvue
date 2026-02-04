@@ -1,6 +1,5 @@
 //! Graph matching algorithms.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -12,10 +11,12 @@ pub fn maximum_matching<T>(_graph: &Graph<T>) -> Vec<(VertexId, VertexId)> {
     Vec::new()
 }
 
-
-
 /// Bipartite matching using augmenting paths.
-pub fn bipartite_matching(_left: &[VertexId], _right: &[VertexId], _edges: &[(VertexId, VertexId)]) -> Vec<(VertexId, VertexId)> {
+pub fn bipartite_matching(
+    _left: &[VertexId],
+    _right: &[VertexId],
+    _edges: &[(VertexId, VertexId)],
+) -> Vec<(VertexId, VertexId)> {
     Vec::new()
 }
 

@@ -451,7 +451,11 @@ impl WorkspaceRenderer for CompareRenderer {
 
         match self.compare_mode {
             CompareMode::SideBySide => {
-                tracing::debug!("Setting up side-by-side comparison at {}x{}", ctx.width, ctx.height);
+                tracing::debug!(
+                    "Setting up side-by-side comparison at {}x{}",
+                    ctx.width,
+                    ctx.height
+                );
             }
             CompareMode::Difference => {
                 tracing::debug!("Setting up difference visualization");
@@ -491,7 +495,10 @@ impl WorkspaceRenderer for CompareRenderer {
             CompareMode::Toggle => {
                 // Toggle based on time
                 let show_ref = (ctx.time_ms / 1000) % 2 == 0;
-                tracing::debug!("Rendering toggle mode: showing {}", if show_ref { "reference" } else { "distorted" });
+                tracing::debug!(
+                    "Rendering toggle mode: showing {}",
+                    if show_ref { "reference" } else { "distorted" }
+                );
             }
             CompareMode::Slider => {
                 tracing::debug!("Rendering slider comparison");
@@ -527,12 +534,18 @@ impl RendererFactory {
     }
 
     /// Create a dual stream renderer
-    pub fn create_dual_stream(left: impl Into<String>, right: impl Into<String>) -> DualStreamRenderer {
+    pub fn create_dual_stream(
+        left: impl Into<String>,
+        right: impl Into<String>,
+    ) -> DualStreamRenderer {
         DualStreamRenderer::new(left, right)
     }
 
     /// Create a compare renderer
-    pub fn create_compare(reference: impl Into<String>, distorted: impl Into<String>) -> CompareRenderer {
+    pub fn create_compare(
+        reference: impl Into<String>,
+        distorted: impl Into<String>,
+    ) -> CompareRenderer {
         CompareRenderer::new(reference, distorted)
     }
 }
@@ -645,8 +658,8 @@ mod tests {
 
     #[test]
     fn test_dual_stream_renderer() {
-        let renderer = DualStreamRenderer::new("stream_a", "stream_b")
-            .with_sync_mode(RendererSyncMode::Full);
+        let renderer =
+            DualStreamRenderer::new("stream_a", "stream_b").with_sync_mode(RendererSyncMode::Full);
 
         let ctx = RenderContext::default();
         let result = renderer.render(&ctx);

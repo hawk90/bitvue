@@ -265,7 +265,7 @@ mod tests {
         neighbor.mode = PredictionMode::NewMv;
         neighbor.ref_frames = [RefFrame::Last, RefFrame::Intra];
         neighbor.mv[0] = MotionVector::new(10, -5);
-        ctx.add_cu(&neighbor);  // Now takes reference instead of ownership
+        ctx.add_cu(&neighbor); // Now takes reference instead of ownership
 
         let mv = ctx.predict_nearest_mv(64, 64, RefFrame::Last);
         assert_eq!(mv.x, 10);
@@ -287,11 +287,11 @@ mod tests {
 
         // Demonstrate quarter-pel precision awareness
         let explicit_mv = MotionVector::from_quarter_pel(
-            QuarterPel::from_pel(2),  // 8 quarter-pels
-            QuarterPel::from_pel(1),  // 4 quarter-pels
+            QuarterPel::from_pel(2), // 8 quarter-pels
+            QuarterPel::from_pel(1), // 4 quarter-pels
         );
         let predictor_mv = MotionVector::from_quarter_pel(
-            QuarterPel::from_pel(1),  // 4 quarter-pels
+            QuarterPel::from_pel(1),   // 4 quarter-pels
             QuarterPel::from_qpel(-4), // -4 quarter-pels
         );
 

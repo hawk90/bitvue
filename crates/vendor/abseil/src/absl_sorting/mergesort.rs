@@ -1,6 +1,5 @@
 //! Merge sort implementation.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;

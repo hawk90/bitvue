@@ -1,6 +1,5 @@
 //! Statistical sampling utilities.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;

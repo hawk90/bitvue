@@ -1,7 +1,7 @@
 //! AV1 decoder wrapper using dav1d
 
 use crate::plane_utils;
-use bitvue_core::limits::{MAX_FRAME_SIZE, MAX_FRAMES_PER_FILE};
+use bitvue_core::limits::{MAX_FRAMES_PER_FILE, MAX_FRAME_SIZE};
 use dav1d::{Decoder, PlanarImageComponent};
 use std::sync::Arc;
 use thiserror::Error;
@@ -130,7 +130,9 @@ impl ChromaFormat {
                     abseil::vlog!(
                         2,
                         "Unknown chroma format: Y={}, UV={}, {}bit, assuming 4:2:0",
-                        y_size, uv_size, bit_depth
+                        y_size,
+                        uv_size,
+                        bit_depth
                     );
                     Self::Yuv420
                 }
@@ -220,7 +222,10 @@ impl Av1Decoder {
             let err_str = e.to_string();
             // EAGAIN/"Try again" is expected when no frame is ready yet - not an error
             if err_str.contains("EAGAIN") || err_str.contains("Try again") {
-                abseil::vlog!(2, "No frame available yet (EAGAIN) - this is normal during decoding");
+                abseil::vlog!(
+                    2,
+                    "No frame available yet (EAGAIN) - this is normal during decoding"
+                );
                 DecodeError::NoFrame
             } else {
                 abseil::LOG!(ERROR, "Failed to get picture from decoder: {}", e);
@@ -233,9 +238,13 @@ impl Av1Decoder {
         // Validate frame before returning
         validate_frame(&frame)?;
 
-        abseil::vlog!(2, 
+        abseil::vlog!(
+            2,
             "Decoded frame: {}x{} {}bit {:?}",
-            frame.width, frame.height, frame.bit_depth, frame.frame_type
+            frame.width,
+            frame.height,
+            frame.bit_depth,
+            frame.frame_type
         );
 
         Ok(frame)
@@ -261,7 +270,7 @@ impl Av1Decoder {
         // Validate that Y plane has data (catches malloc failures in dav1d C layer)
         if y_plane_ref.is_empty() {
             return Err(DecodeError::Decode(
-                "Y plane is empty - possible memory allocation failure".to_string()
+                "Y plane is empty - possible memory allocation failure".to_string(),
             ));
         }
 
@@ -275,53 +284,57 @@ impl Av1Decoder {
         )?;
 
         // Extract U and V planes (if not monochrome)
-        let (u_plane, u_stride, v_plane, v_stride): (Option<Vec<u8>>, usize, Option<Vec<u8>>, usize) =
-            if picture.pixel_layout() != dav1d::PixelLayout::I400 {
-                let chroma_width = match picture.pixel_layout() {
-                    dav1d::PixelLayout::I420 | dav1d::PixelLayout::I422 => width as usize / 2,
-                    dav1d::PixelLayout::I444 => width as usize,
-                    dav1d::PixelLayout::I400 => 0,
-                };
-                let chroma_height = match picture.pixel_layout() {
-                    dav1d::PixelLayout::I420 => height as usize / 2,
-                    dav1d::PixelLayout::I422 | dav1d::PixelLayout::I444 => height as usize,
-                    dav1d::PixelLayout::I400 => 0,
-                };
-
-                let u_plane_ref = picture.plane(PlanarImageComponent::U);
-
-                // Validate U plane has data (catches malloc failures)
-                if u_plane_ref.is_empty() {
-                    return Err(DecodeError::Decode(
-                        "U plane is empty - possible memory allocation failure".to_string()
-                    ));
-                }
-
-                let u_stride = picture.stride(PlanarImageComponent::U) as usize;
-                let u_plane = plane_utils::extract_plane(
-                    &u_plane_ref,
-                    plane_utils::PlaneConfig::new(chroma_width, chroma_height, u_stride, bit_depth)?
-                )?;
-
-                let v_plane_ref = picture.plane(PlanarImageComponent::V);
-
-                // Validate V plane has data (catches malloc failures)
-                if v_plane_ref.is_empty() {
-                    return Err(DecodeError::Decode(
-                        "V plane is empty - possible memory allocation failure".to_string()
-                    ));
-                }
-
-                let v_stride = picture.stride(PlanarImageComponent::V) as usize;
-                let v_plane = plane_utils::extract_plane(
-                    &v_plane_ref,
-                    plane_utils::PlaneConfig::new(chroma_width, chroma_height, v_stride, bit_depth)?
-                )?;
-
-                (Some(u_plane), u_stride, Some(v_plane), v_stride)
-            } else {
-                (None, 0, None, 0)
+        let (u_plane, u_stride, v_plane, v_stride): (
+            Option<Vec<u8>>,
+            usize,
+            Option<Vec<u8>>,
+            usize,
+        ) = if picture.pixel_layout() != dav1d::PixelLayout::I400 {
+            let chroma_width = match picture.pixel_layout() {
+                dav1d::PixelLayout::I420 | dav1d::PixelLayout::I422 => width as usize / 2,
+                dav1d::PixelLayout::I444 => width as usize,
+                dav1d::PixelLayout::I400 => 0,
             };
+            let chroma_height = match picture.pixel_layout() {
+                dav1d::PixelLayout::I420 => height as usize / 2,
+                dav1d::PixelLayout::I422 | dav1d::PixelLayout::I444 => height as usize,
+                dav1d::PixelLayout::I400 => 0,
+            };
+
+            let u_plane_ref = picture.plane(PlanarImageComponent::U);
+
+            // Validate U plane has data (catches malloc failures)
+            if u_plane_ref.is_empty() {
+                return Err(DecodeError::Decode(
+                    "U plane is empty - possible memory allocation failure".to_string(),
+                ));
+            }
+
+            let u_stride = picture.stride(PlanarImageComponent::U) as usize;
+            let u_plane = plane_utils::extract_plane(
+                &u_plane_ref,
+                plane_utils::PlaneConfig::new(chroma_width, chroma_height, u_stride, bit_depth)?,
+            )?;
+
+            let v_plane_ref = picture.plane(PlanarImageComponent::V);
+
+            // Validate V plane has data (catches malloc failures)
+            if v_plane_ref.is_empty() {
+                return Err(DecodeError::Decode(
+                    "V plane is empty - possible memory allocation failure".to_string(),
+                ));
+            }
+
+            let v_stride = picture.stride(PlanarImageComponent::V) as usize;
+            let v_plane = plane_utils::extract_plane(
+                &v_plane_ref,
+                plane_utils::PlaneConfig::new(chroma_width, chroma_height, v_stride, bit_depth)?,
+            )?;
+
+            (Some(u_plane), u_stride, Some(v_plane), v_stride)
+        } else {
+            (None, 0, None, 0)
+        };
 
         // Frame type detection based on picture properties
         // Note: dav1d Rust bindings don't directly expose frame_type from Picture.
@@ -381,13 +394,18 @@ impl Av1Decoder {
         let mut offset = header_size;
         let mut frame_idx = 0i64;
 
-        while let Some((frame_header, frame_end)) = self.parse_next_ivf_frame(data, offset, frame_idx)? {
+        while let Some((frame_header, frame_end)) =
+            self.parse_next_ivf_frame(data, offset, frame_idx)?
+        {
             let frame_data = data[frame_header.offset..frame_end].to_vec();
 
             if let Err(e) = self.send_data_owned(frame_data, frame_header.timestamp) {
-                abseil::LOG!(WARNING, 
+                abseil::LOG!(
+                    WARNING,
                     "Failed to send IVF frame {} (ts={}) to decoder: {}. Skipping frame.",
-                    frame_idx, frame_header.timestamp, e
+                    frame_idx,
+                    frame_header.timestamp,
+                    e
                 );
             } else {
                 while let Ok(frame) = self.get_frame() {
@@ -417,17 +435,19 @@ impl Av1Decoder {
         }
 
         // Safe header bytes access using get()
-        let header_bytes = data.get(0..32).ok_or_else(|| {
-            DecodeError::Decode("IVF header data incomplete".to_string())
-        })?;
+        let header_bytes = data
+            .get(0..32)
+            .ok_or_else(|| DecodeError::Decode("IVF header data incomplete".to_string()))?;
 
-        let header_size_bytes: [u8; 2] = header_bytes.get(6..8)
+        let header_size_bytes: [u8; 2] = header_bytes
+            .get(6..8)
             .ok_or_else(|| DecodeError::Decode("IVF header too short for header_size".to_string()))?
             .try_into()
             .map_err(|_| DecodeError::Decode("IVF header_size bytes invalid".to_string()))?;
         let header_size = u16::from_le_bytes(header_size_bytes) as usize;
 
-        let frame_count_bytes: [u8; 4] = header_bytes.get(24..28)
+        let frame_count_bytes: [u8; 4] = header_bytes
+            .get(24..28)
             .ok_or_else(|| DecodeError::Decode("IVF header too short for frame_count".to_string()))?
             .try_into()
             .map_err(|_| DecodeError::Decode("IVF frame_count bytes invalid".to_string()))?;
@@ -448,7 +468,7 @@ impl Av1Decoder {
     ) -> Result<Option<(IvfFrameHeaderWithOffset, usize)>> {
         if frame_idx >= MAX_FRAMES_PER_FILE as i64 {
             return Err(DecodeError::Decode(
-                "IVF file contains too many frames".to_string()
+                "IVF file contains too many frames".to_string(),
             ));
         }
 
@@ -459,7 +479,8 @@ impl Av1Decoder {
             None => return Ok(None), // End of data
         };
 
-        let size_bytes: [u8; 4] = frame_header_bytes.get(0..4)
+        let size_bytes: [u8; 4] = frame_header_bytes
+            .get(0..4)
             .ok_or_else(|| DecodeError::Decode("IVF frame size bytes incomplete".to_string()))?
             .try_into()
             .map_err(|_| DecodeError::Decode("IVF frame size bytes invalid".to_string()))?;
@@ -467,11 +488,12 @@ impl Av1Decoder {
 
         if frame_size > MAX_FRAME_SIZE as u32 {
             return Err(DecodeError::Decode(
-                "IVF frame size exceeds maximum allowed".to_string()
+                "IVF frame size exceeds maximum allowed".to_string(),
             ));
         }
 
-        let ts_bytes: [u8; 8] = frame_header_bytes.get(4..12)
+        let ts_bytes: [u8; 8] = frame_header_bytes
+            .get(4..12)
             .ok_or_else(|| DecodeError::Decode("IVF timestamp bytes incomplete".to_string()))?
             .try_into()
             .map_err(|_| DecodeError::Decode("IVF timestamp bytes invalid".to_string()))?;
@@ -479,22 +501,22 @@ impl Av1Decoder {
 
         if timestamp_u64 > i64::MAX as u64 {
             return Err(DecodeError::Decode(
-                "IVF frame timestamp is out of valid range".to_string()
+                "IVF frame timestamp is out of valid range".to_string(),
             ));
         }
 
-        let data_offset = offset.checked_add(12).ok_or_else(|| {
-            DecodeError::Decode("IVF frame offset overflow".to_string())
-        })?;
+        let data_offset = offset
+            .checked_add(12)
+            .ok_or_else(|| DecodeError::Decode("IVF frame offset overflow".to_string()))?;
 
         let frame_size_usize = frame_size as usize;
-        let frame_end = data_offset.checked_add(frame_size_usize).ok_or_else(|| {
-            DecodeError::Decode("IVF frame size overflow".to_string())
-        })?;
+        let frame_end = data_offset
+            .checked_add(frame_size_usize)
+            .ok_or_else(|| DecodeError::Decode("IVF frame size overflow".to_string()))?;
 
         if frame_end > data.len() {
             return Err(DecodeError::Decode(
-                "IVF frame data is incomplete or corrupt".to_string()
+                "IVF frame data is incomplete or corrupt".to_string(),
             ));
         }
 
@@ -563,14 +585,20 @@ impl Av1Decoder {
 pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
     // Validate dimensions
     if frame.width == 0 || frame.height == 0 {
-        abseil::LOG!(ERROR, "Invalid frame dimensions: {}x{}", frame.width, frame.height);
+        abseil::LOG!(
+            ERROR,
+            "Invalid frame dimensions: {}x{}",
+            frame.width,
+            frame.height
+        );
         return Err(DecodeError::UnsupportedFormat);
     }
 
     // Validate Y plane size
     let expected_y_size = (frame.width * frame.height) as usize;
     if frame.y_plane.len() != expected_y_size {
-        abseil::LOG!(ERROR, 
+        abseil::LOG!(
+            ERROR,
             "Y plane size mismatch: expected {}, got {}",
             expected_y_size,
             frame.y_plane.len()
@@ -583,25 +611,26 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
         // Check common chroma subsampling formats with overflow protection
         let size_420 = (frame.width as usize / 2)
             .checked_mul(frame.height as usize / 2)
-            .ok_or_else(|| DecodeError::Decode(
-                "YUV 4:2:0 size calculation overflow".to_string()
-            ))?;
+            .ok_or_else(|| {
+                DecodeError::Decode("YUV 4:2:0 size calculation overflow".to_string())
+            })?;
         let size_422 = (frame.width as usize / 2)
             .checked_mul(frame.height as usize)
-            .ok_or_else(|| DecodeError::Decode(
-                "YUV 4:2:2 size calculation overflow".to_string()
-            ))?;
+            .ok_or_else(|| {
+                DecodeError::Decode("YUV 4:2:2 size calculation overflow".to_string())
+            })?;
         let size_444 = (frame.width as usize)
             .checked_mul(frame.height as usize)
-            .ok_or_else(|| DecodeError::Decode(
-                "YUV 4:4:4 size calculation overflow".to_string()
-            ))?;
+            .ok_or_else(|| {
+                DecodeError::Decode("YUV 4:4:4 size calculation overflow".to_string())
+            })?;
 
         let valid_sizes = [size_420, size_422, size_444];
 
         // U plane must match one of the valid chroma formats
         if !valid_sizes.contains(&u_plane.len()) {
-            abseil::LOG!(ERROR, 
+            abseil::LOG!(
+                ERROR,
                 "U plane size invalid: got {}, expected {} (4:2:0), {} (4:2:2), or {} (4:4:4)",
                 u_plane.len(),
                 size_420,
@@ -616,7 +645,8 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
         // V plane must match one of the valid chroma formats
         if !valid_sizes.contains(&v_plane.len()) {
-            abseil::LOG!(ERROR, 
+            abseil::LOG!(
+                ERROR,
                 "V plane size invalid: got {}, expected {} (4:2:0), {} (4:2:2), or {} (4:4:4)",
                 v_plane.len(),
                 size_420,
@@ -631,7 +661,8 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
 
         // U and V must have the same size
         if u_plane.len() != v_plane.len() {
-            abseil::LOG!(ERROR, 
+            abseil::LOG!(
+                ERROR,
                 "U/V plane size mismatch: U={}, V={}",
                 u_plane.len(),
                 v_plane.len()
@@ -649,9 +680,12 @@ pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
         abseil::LOG!(WARNING, "Unusual bit depth: {}", frame.bit_depth);
     }
 
-    abseil::vlog!(2, 
+    abseil::vlog!(
+        2,
         "Frame validation passed: {}x{} {}bit",
-        frame.width, frame.height, frame.bit_depth
+        frame.width,
+        frame.height,
+        frame.bit_depth
     );
     Ok(())
 }

@@ -574,8 +574,8 @@ mod tests {
     fn test_motion_vector_from_quarter_pel() {
         use crate::QuarterPel;
 
-        let x = QuarterPel::from_pel(2);  // 8 quarter-pels
-        let y = QuarterPel::from_pel(3);  // 12 quarter-pels
+        let x = QuarterPel::from_pel(2); // 8 quarter-pels
+        let y = QuarterPel::from_pel(3); // 12 quarter-pels
         let mv = MotionVector::from_quarter_pel(x, y);
 
         assert_eq!(mv.x, 8);
@@ -585,8 +585,8 @@ mod tests {
     #[test]
     fn test_motion_vector_pel_accessors() {
         let mv = MotionVector::new(16, -8);
-        assert_eq!(mv.x_pel(), 4);   // 16/4 = 4 pixels
-        assert_eq!(mv.y_pel(), -2);  // -8/4 = -2 pixels
+        assert_eq!(mv.x_pel(), 4); // 16/4 = 4 pixels
+        assert_eq!(mv.y_pel(), -2); // -8/4 = -2 pixels
     }
 
     #[test]
@@ -606,15 +606,15 @@ mod tests {
     #[test]
     fn test_motion_vector_magnitude() {
         let mv = MotionVector::new(8, 4);
-        assert_eq!(mv.magnitude_qpel(), 12);  // |8| + |4|
-        assert_eq!(mv.magnitude_pel(), 3);    // 12/4 = 3
+        assert_eq!(mv.magnitude_qpel(), 12); // |8| + |4|
+        assert_eq!(mv.magnitude_pel(), 3); // 12/4 = 3
     }
 
     #[test]
     fn test_motion_vector_magnitude_rounding() {
         let mv = MotionVector::new(7, 7);
-        assert_eq!(mv.magnitude_qpel(), 14);  // |7| + |7|
-        assert_eq!(mv.magnitude_pel(), 3);    // 14/4 = 3.5 -> 3 (rounded down)
+        assert_eq!(mv.magnitude_qpel(), 14); // |7| + |7|
+        assert_eq!(mv.magnitude_pel(), 3); // 14/4 = 3.5 -> 3 (rounded down)
     }
 
     #[test]

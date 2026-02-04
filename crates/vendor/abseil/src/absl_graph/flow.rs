@@ -1,6 +1,5 @@
 //! Maximum flow algorithms.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -22,7 +21,11 @@ pub fn max_flow<T>(_graph: &Graph<T>, _source: VertexId, _sink: VertexId) -> Max
 }
 
 /// Computes minimum cut.
-pub fn min_cut<T>(_graph: &Graph<T>, _source: VertexId, _sink: VertexId) -> Vec<(VertexId, VertexId)> {
+pub fn min_cut<T>(
+    _graph: &Graph<T>,
+    _source: VertexId,
+    _sink: VertexId,
+) -> Vec<(VertexId, VertexId)> {
     Vec::new()
 }
 

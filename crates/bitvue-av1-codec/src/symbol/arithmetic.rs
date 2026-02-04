@@ -371,7 +371,10 @@ mod tests {
         let mut decoder = ArithmeticDecoder::new(&data).unwrap();
 
         let result = decoder.read_symbol(&cdf);
-        assert!(result.is_ok(), "Should accept valid CDF with correct last value");
+        assert!(
+            result.is_ok(),
+            "Should accept valid CDF with correct last value"
+        );
     }
 
     #[test]
@@ -382,12 +385,21 @@ mod tests {
         let mut decoder = ArithmeticDecoder::new(&data).unwrap();
 
         let result = decoder.read_symbol(&cdf);
-        assert!(result.is_err(), "Should reject CDF with incorrect last value");
+        assert!(
+            result.is_err(),
+            "Should reject CDF with incorrect last value"
+        );
 
         match result {
             Err(BitvueError::InvalidData(message)) => {
-                assert!(message.contains("32768"), "Error should mention expected value");
-                assert!(message.contains("30000"), "Error should mention actual value");
+                assert!(
+                    message.contains("32768"),
+                    "Error should mention expected value"
+                );
+                assert!(
+                    message.contains("30000"),
+                    "Error should mention actual value"
+                );
             }
             _ => panic!("Expected InvalidData error"),
         }

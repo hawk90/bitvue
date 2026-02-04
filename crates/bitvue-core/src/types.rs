@@ -132,7 +132,10 @@ impl FrameType {
 
     /// Returns true if this is any intra frame (Key, IntraOnly, SI, or SP)
     pub fn is_intra(self) -> bool {
-        matches!(self, FrameType::Key | FrameType::IntraOnly | FrameType::SI | FrameType::SP)
+        matches!(
+            self,
+            FrameType::Key | FrameType::IntraOnly | FrameType::SI | FrameType::SP
+        )
     }
 
     /// Returns true if this frame can be used as a reference

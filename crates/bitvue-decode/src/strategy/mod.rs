@@ -15,7 +15,10 @@ mod neon;
 #[cfg(target_os = "macos")]
 mod metal;
 
-pub use registry::{StrategyRegistry, best_strategy_type, current_strategy_type, set_strategy, available_strategies, StrategyType};
+pub use registry::{
+    available_strategies, best_strategy_type, current_strategy_type, set_strategy,
+    StrategyRegistry, StrategyType,
+};
 pub use scalar::ScalarStrategy;
 
 #[cfg(target_arch = "x86_64")]
@@ -222,13 +225,16 @@ pub trait YuvConversionStrategy: Send + Sync {
         bit_depth: u8,
     ) -> ConversionResult<()> {
         // Use checked arithmetic to prevent integer overflow
-        let y_expected = width.checked_mul(height)
+        let y_expected = width
+            .checked_mul(height)
             .ok_or(ConversionError::InvalidDimensions { width, height })?;
 
-        let uv_expected = (width / 2).checked_mul(height / 2)
+        let uv_expected = (width / 2)
+            .checked_mul(height / 2)
             .ok_or(ConversionError::InvalidDimensions { width, height })?;
 
-        let rgb_expected = y_expected.checked_mul(3)
+        let rgb_expected = y_expected
+            .checked_mul(3)
             .ok_or(ConversionError::InvalidDimensions { width, height })?;
 
         if y_plane.len() < y_expected {
@@ -287,8 +293,8 @@ mod tests {
     fn test_avx2_capabilities() {
         let avx2_caps = StrategyCapabilities::avx2();
         assert_eq!(avx2_caps.speedup_factor, 4.5);
-        assert!(avx2_caps.supports_10bit);   // 10-bit support added
-        assert!(avx2_caps.supports_12bit);   // 12-bit support added
+        assert!(avx2_caps.supports_10bit); // 10-bit support added
+        assert!(avx2_caps.supports_12bit); // 12-bit support added
         assert!(!avx2_caps.is_hardware_accelerated);
     }
 
@@ -296,8 +302,8 @@ mod tests {
     fn test_neon_capabilities() {
         let neon_caps = StrategyCapabilities::neon();
         assert_eq!(neon_caps.speedup_factor, 3.5);
-        assert!(neon_caps.supports_10bit);   // 10-bit support added
-        assert!(neon_caps.supports_12bit);   // 12-bit support added
+        assert!(neon_caps.supports_10bit); // 10-bit support added
+        assert!(neon_caps.supports_12bit); // 12-bit support added
     }
 
     #[test]

@@ -11,47 +11,33 @@ ignored_extensions = ["svg", "patch"]
 skip = ["local"]
 
 # ================================
-# Pre-commit: Fast checks only (< 5 sec)
+# Pre-commit: Fast format checks only
 # ================================
 
 [hooks.pre-commit]
 run = "parallel"
 
 [actions]
-# Format checks (instant, can auto-fix)
+# Format checks (instant)
 
-[action.check_rust_formatting]
+[action.rust_format_check]
 command = "cargo fmt --all -- --check"
 run = "workspace"
 stage = ["pre-commit"]
 files = ["Cargo.toml", "crates/**/*.rs", "src-tauri/**/*.rs"]
 
-[action.format_rust_code]
-command = "cargo fmt --all"
-run = "workspace"
-stage = ["pre-commit"]
-files = ["Cargo.toml", "crates/**/*.rs", "src-tauri/**/*.rs"]
-
-[action.check_frontend_formatting]
+[action.frontend_format_check]
 skip = ["not exist - frontend/node_modules"]
 command = "cd frontend && npm run format:check --silent || true"
 run = "workspace"
 stage = ["pre-commit"]
 files = ["frontend/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
 
-[action.format_frontend_code]
-skip = ["not exist - frontend/node_modules"]
-command = "cd frontend && npm run format --silent || true"
-run = "workspace"
-stage = ["pre-commit"]
-files = ["frontend/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
-
 # ================================
-# Pre-push: Full validation (30-60 sec)
+# Pre-push: Full validation
 # ================================
 
 [hooks.pre-push]
-branch = ["main", "develop"]
 
 # Rust validation
 
@@ -59,11 +45,13 @@ branch = ["main", "develop"]
 command = "cargo clippy --workspace -- -D warnings"
 run = "workspace"
 stage = ["pre-push"]
+files = ["Cargo.toml", "crates/**/*.rs", "src-tauri/**/*.rs"]
 
 [action.rust_tests]
 command = "cargo test --workspace --no-fail-fast"
 run = "workspace"
 stage = ["pre-push"]
+files = ["Cargo.toml", "crates/**/*.rs", "src-tauri/**/*.rs"]
 
 # Frontend validation
 

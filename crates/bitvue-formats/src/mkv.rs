@@ -64,7 +64,7 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
     // Note: 0x01 is VALID (8-byte VINT with marker at bit position 0)
     if length == 0 {
         return Err(BitvueError::InvalidData(
-            "Invalid VINT: no marker bit found (all zeros)".to_string()
+            "Invalid VINT: no marker bit found (all zeros)".to_string(),
         ));
     }
 

@@ -1,16 +1,15 @@
 //! Core graph algorithms.
 
-
 extern crate alloc;
 
 use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 
 // Use HashSet when std is available for O(1) lookups, otherwise fall back to BTreeSet
-#[cfg(feature = "std")]
-use std::collections::HashSet;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet as HashSet;
+#[cfg(feature = "std")]
+use std::collections::HashSet;
 
 use super::{Graph, VertexId};
 

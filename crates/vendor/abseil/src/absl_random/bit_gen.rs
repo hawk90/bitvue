@@ -445,4 +445,3 @@ mod tests {
         assert_eq!(gen1.gen_u32(), gen2.gen_u32());
     }
 }
-

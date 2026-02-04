@@ -93,22 +93,37 @@ impl ComparisonResult {
     pub fn quality_tier(&self) -> &'static str {
         match self.comparison_type {
             ComparisonType::PSNR => {
-                if self.score >= 40.0 { "Excellent" }
-                else if self.score >= 30.0 { "Good" }
-                else if self.score >= 20.0 { "Fair" }
-                else { "Poor" }
+                if self.score >= 40.0 {
+                    "Excellent"
+                } else if self.score >= 30.0 {
+                    "Good"
+                } else if self.score >= 20.0 {
+                    "Fair"
+                } else {
+                    "Poor"
+                }
             }
             ComparisonType::SSIM => {
-                if self.score >= 0.95 { "Excellent" }
-                else if self.score >= 0.85 { "Good" }
-                else if self.score >= 0.70 { "Fair" }
-                else { "Poor" }
+                if self.score >= 0.95 {
+                    "Excellent"
+                } else if self.score >= 0.85 {
+                    "Good"
+                } else if self.score >= 0.70 {
+                    "Fair"
+                } else {
+                    "Poor"
+                }
             }
             ComparisonType::VMAF => {
-                if self.score >= 90.0 { "Excellent" }
-                else if self.score >= 75.0 { "Good" }
-                else if self.score >= 60.0 { "Fair" }
-                else { "Poor" }
+                if self.score >= 90.0 {
+                    "Excellent"
+                } else if self.score >= 75.0 {
+                    "Good"
+                } else if self.score >= 60.0 {
+                    "Fair"
+                } else {
+                    "Poor"
+                }
             }
             _ => "Unknown",
         }
@@ -731,7 +746,9 @@ pub struct ComparisonStrategyFactory;
 
 impl ComparisonStrategyFactory {
     /// Create a strategy for the given comparison type
-    pub fn create(comparison_type: ComparisonType) -> ComparisonResultType<Box<dyn ComparisonStrategy>> {
+    pub fn create(
+        comparison_type: ComparisonType,
+    ) -> ComparisonResultType<Box<dyn ComparisonStrategy>> {
         match comparison_type {
             ComparisonType::PSNR => Ok(Box::new(PsnrComparisonStrategy::new())),
             ComparisonType::SSIM => Ok(Box::new(SsimComparisonStrategy::new())),
@@ -755,7 +772,10 @@ impl ComparisonStrategyFactory {
 
     /// Check if a comparison type is supported
     pub fn is_supported(comparison_type: ComparisonType) -> bool {
-        !matches!(comparison_type, ComparisonType::VMAF | ComparisonType::Custom)
+        !matches!(
+            comparison_type,
+            ComparisonType::VMAF | ComparisonType::Custom
+        )
     }
 }
 
@@ -781,7 +801,9 @@ mod tests {
         let reference = vec![128u8; 100];
         let distorted = vec![128u8; 100];
 
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert_eq!(result.comparison_type, ComparisonType::PSNR);
         assert!(result.score.is_infinite());
         assert!(result.is_excellent());
@@ -794,7 +816,9 @@ mod tests {
         let mut distorted = vec![128u8; 100];
         distorted[50] = 130; // Small difference
 
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert!(result.score.is_finite());
         assert!(result.score > 40.0); // Should be high PSNR
         assert!(result.is_excellent());
@@ -806,7 +830,9 @@ mod tests {
         let reference = vec![128u8; 64]; // 8x8
         let distorted = vec![128u8; 64];
 
-        let result = strategy.compare_frames(&reference, &distorted, 8, 8).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 8, 8)
+            .unwrap();
         assert_eq!(result.comparison_type, ComparisonType::SSIM);
         assert!((result.score - 1.0).abs() < 0.01); // Should be ~1.0
         assert!(result.is_excellent());
@@ -819,7 +845,9 @@ mod tests {
         let mut distorted = vec![128u8; 64];
         distorted[30] = 130; // Small difference
 
-        let result = strategy.compare_frames(&reference, &distorted, 8, 8).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 8, 8)
+            .unwrap();
         assert!(result.score > 0.95); // Should be high SSIM
         assert!(result.score < 1.0);
         assert!(result.is_excellent());
@@ -831,7 +859,9 @@ mod tests {
         let reference = vec![128u8; 100];
         let distorted = vec![128u8; 100];
 
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert_eq!(result.comparison_type, ComparisonType::MSE);
         assert_eq!(result.score, 0.0);
         assert!(result.is_excellent()); // MSE of 0 is excellent
@@ -843,7 +873,9 @@ mod tests {
         let reference = vec![128u8; 100];
         let distorted = vec![128u8; 100];
 
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert_eq!(result.comparison_type, ComparisonType::MAE);
         assert_eq!(result.score, 0.0);
         assert!(result.is_excellent()); // MAE of 0 is excellent
@@ -855,7 +887,9 @@ mod tests {
         let reference = vec![128u8; 100];
         let distorted = vec![128u8; 100];
 
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert_eq!(result.comparison_type, ComparisonType::Bitwise);
         assert_eq!(result.score, 100.0); // 100% identical
         assert!(result.is_excellent());
@@ -868,7 +902,9 @@ mod tests {
         let mut distorted = vec![128u8; 100];
         distorted[0] = 129; // One bit different
 
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert!(result.score < 100.0);
         assert!(result.score > 99.0); // Should still be very close
         assert!(result.is_excellent());
@@ -881,12 +917,16 @@ mod tests {
         let strategy = PsnrComparisonStrategy::new();
 
         // Excellent (identical)
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert_eq!(result.quality_tier(), "Excellent");
 
         // Good (small difference)
         distorted[50] = 130;
-        let result = strategy.compare_frames(&reference, &distorted, 10, 10).unwrap();
+        let result = strategy
+            .compare_frames(&reference, &distorted, 10, 10)
+            .unwrap();
         assert_eq!(result.quality_tier(), "Excellent");
     }
 

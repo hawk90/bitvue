@@ -17,8 +17,8 @@
 //! assert!(custom.matches('x'));
 //! ```
 
-use std::collections::HashSet;
 use core::fmt;
+use std::collections::HashSet;
 
 /// A set of characters for efficient matching.
 ///
@@ -422,7 +422,9 @@ pub struct CharSetBuilder {
 impl CharSetBuilder {
     /// Creates a new CharSetBuilder.
     pub fn new() -> Self {
-        Self { chars: HashSet::new() }
+        Self {
+            chars: HashSet::new(),
+        }
     }
 
     /// Adds a range of characters to the set.
@@ -698,9 +700,9 @@ mod tests {
         let lower = CharSet::lower();
         let vowels = CharSetBuilder::new().add_chars("aeiouAEIOU").build();
         let lower_xor_vowels = lower.xor(&vowels);
-        assert!(!lower_xor_vowels.matches('a'));  // in both lower and vowels
-        assert!(lower_xor_vowels.matches('E'));   // in vowels only (not lower)
-        assert!(lower_xor_vowels.matches('b'));   // in lower only (not vowels)
+        assert!(!lower_xor_vowels.matches('a')); // in both lower and vowels
+        assert!(lower_xor_vowels.matches('E')); // in vowels only (not lower)
+        assert!(lower_xor_vowels.matches('b')); // in lower only (not vowels)
     }
 
     #[test]

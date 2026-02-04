@@ -4,9 +4,9 @@
 //! VLOG level settings, minimum log levels, and environment variable support.
 
 use crate::absl_log::severity::LogSeverity;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::RwLock;
-use std::collections::HashMap;
 
 /// Global log configuration.
 ///
@@ -102,7 +102,8 @@ impl LogConfig {
     /// Sets the default VLOG level for all files.
     #[inline]
     pub fn set_default_vlog_level(&self, level: i32) {
-        self.default_vlog_level.store(level.max(0), Ordering::Release);
+        self.default_vlog_level
+            .store(level.max(0), Ordering::Release);
     }
 
     /// Gets the default VLOG level.

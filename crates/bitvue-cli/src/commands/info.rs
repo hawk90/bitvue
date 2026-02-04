@@ -1,7 +1,7 @@
 //! Display stream information about a video file
 
-use std::path::PathBuf;
 use anyhow::Result;
+use std::path::PathBuf;
 
 pub fn run(file_path: PathBuf) -> Result<()> {
     println!("Bitvue CLI - Video File Analyzer");
@@ -13,8 +13,8 @@ pub fn run(file_path: PathBuf) -> Result<()> {
     }
 
     // Read file data
-    let file_data = std::fs::read(&file_path)
-        .map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))?;
+    let file_data =
+        std::fs::read(&file_path).map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))?;
 
     // Detect format
     let format = detect_format(&file_data);

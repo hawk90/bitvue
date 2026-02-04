@@ -7,8 +7,8 @@
 //! - ISO/IEC 14496-12 (ISO Base Media File Format)
 //! - AV1 Codec ISO Media File Format Binding
 
-use bitvue_core::BitvueError;
 use crate::resource_budget::ResourceBudget;
+use bitvue_core::BitvueError;
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
@@ -193,7 +193,9 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
     let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
     // Sort samples by offset to detect overlaps
-    let mut sorted_samples: Vec<_> = info.sample_offsets.iter()
+    let mut sorted_samples: Vec<_> = info
+        .sample_offsets
+        .iter()
         .zip(info.sample_sizes.iter())
         .enumerate()
         .collect();
@@ -208,7 +210,7 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
             Some(e) => e,
             None => {
                 return Err(BitvueError::InvalidData(
-                    "Sample offset + size would overflow".to_string()
+                    "Sample offset + size would overflow".to_string(),
                 ));
             }
         };
@@ -217,7 +219,9 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
         if end > data.len() {
             return Err(BitvueError::InvalidData(format!(
                 "Sample at offset {} with size {} exceeds file size {}",
-                offset, size, data.len()
+                offset,
+                size,
+                data.len()
             )));
         }
 
@@ -226,9 +230,10 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
             let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
             let next_offset = *next_offset_ptr as usize;
             if end > next_offset {
-                return Err(BitvueError::InvalidData(
-                    format!("Samples overlap: current sample ends at {} but next starts at {}", end, next_offset)
-                ));
+                return Err(BitvueError::InvalidData(format!(
+                    "Samples overlap: current sample ends at {} but next starts at {}",
+                    end, next_offset
+                )));
             }
         }
 
@@ -280,7 +285,9 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
     let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
     // Sort samples by offset to detect overlaps
-    let mut sorted_samples: Vec<_> = info.sample_offsets.iter()
+    let mut sorted_samples: Vec<_> = info
+        .sample_offsets
+        .iter()
         .zip(info.sample_sizes.iter())
         .enumerate()
         .collect();
@@ -295,7 +302,7 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
             Some(e) => e,
             None => {
                 return Err(BitvueError::InvalidData(
-                    "Sample offset + size would overflow".to_string()
+                    "Sample offset + size would overflow".to_string(),
                 ));
             }
         };
@@ -304,7 +311,9 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
         if end > data.len() {
             return Err(BitvueError::InvalidData(format!(
                 "Sample at offset {} with size {} exceeds file size {}",
-                offset, size, data.len()
+                offset,
+                size,
+                data.len()
             )));
         }
 
@@ -313,9 +322,10 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
             let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
             let next_offset = *next_offset_ptr as usize;
             if end > next_offset {
-                return Err(BitvueError::InvalidData(
-                    format!("Samples overlap: current sample ends at {} but next starts at {}", end, next_offset)
-                ));
+                return Err(BitvueError::InvalidData(format!(
+                    "Samples overlap: current sample ends at {} but next starts at {}",
+                    end, next_offset
+                )));
             }
         }
 
@@ -367,7 +377,9 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErr
     let mut samples = Vec::with_capacity(info.sample_offsets.len());
 
     // Sort samples by offset to detect overlaps
-    let mut sorted_samples: Vec<_> = info.sample_offsets.iter()
+    let mut sorted_samples: Vec<_> = info
+        .sample_offsets
+        .iter()
         .zip(info.sample_sizes.iter())
         .enumerate()
         .collect();
@@ -382,7 +394,7 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErr
             Some(e) => e,
             None => {
                 return Err(BitvueError::InvalidData(
-                    "Sample offset + size would overflow".to_string()
+                    "Sample offset + size would overflow".to_string(),
                 ));
             }
         };
@@ -391,7 +403,9 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErr
         if end > data.len() {
             return Err(BitvueError::InvalidData(format!(
                 "Sample at offset {} with size {} exceeds file size {}",
-                offset, size, data.len()
+                offset,
+                size,
+                data.len()
             )));
         }
 
@@ -400,9 +414,10 @@ pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErr
             let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
             let next_offset = *next_offset_ptr as usize;
             if end > next_offset {
-                return Err(BitvueError::InvalidData(
-                    format!("Samples overlap: current sample ends at {} but next starts at {}", end, next_offset)
-                ));
+                return Err(BitvueError::InvalidData(format!(
+                    "Samples overlap: current sample ends at {} but next starts at {}",
+                    end, next_offset
+                )));
             }
         }
 
@@ -451,11 +466,12 @@ pub fn parse_mp4(data: &[u8]) -> Result<Mp4Info, BitvueError> {
         }
 
         // Validate box_end fits in platform address space (for 32-bit systems)
-        let box_end_usize = box_end
-            .try_into()
-            .map_err(|_| BitvueError::InvalidData(
-                format!("MP4 box offset {} exceeds platform address space", box_end)
-            ))?;
+        let box_end_usize = box_end.try_into().map_err(|_| {
+            BitvueError::InvalidData(format!(
+                "MP4 box offset {} exceeds platform address space",
+                box_end
+            ))
+        })?;
 
         match &header.box_type {
             b"ftyp" => {
@@ -510,16 +526,20 @@ fn parse_moov(
     info: &mut Mp4Info,
     data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset
+    let box_end = header
+        .data_offset
         .checked_add(header.data_size())
         .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     // Parse child boxes
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset
+        let child_end = child_header
+            .data_offset
             .checked_add(child_header.data_size())
-            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
 
         match &child_header.box_type {
             b"trak" => {
@@ -544,15 +564,19 @@ fn parse_trak(
     info: &mut Mp4Info,
     data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset
+    let box_end = header
+        .data_offset
         .checked_add(header.data_size())
         .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset
+        let child_end = child_header
+            .data_offset
             .checked_add(child_header.data_size())
-            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
 
         if &child_header.box_type == b"mdia" {
             // Media box
@@ -572,15 +596,19 @@ fn parse_mdia(
     info: &mut Mp4Info,
     data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset
+    let box_end = header
+        .data_offset
         .checked_add(header.data_size())
         .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset
+        let child_end = child_header
+            .data_offset
             .checked_add(child_header.data_size())
-            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
 
         match &child_header.box_type {
             b"mdhd" => {
@@ -607,15 +635,19 @@ fn parse_minf(
     info: &mut Mp4Info,
     _data: &[u8],
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset
+    let box_end = header
+        .data_offset
         .checked_add(header.data_size())
         .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset
+        let child_end = child_header
+            .data_offset
             .checked_add(child_header.data_size())
-            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
 
         if &child_header.box_type == b"stbl" {
             // Sample table box
@@ -634,15 +666,19 @@ fn parse_stbl(
     header: &BoxHeader,
     info: &mut Mp4Info,
 ) -> Result<(), BitvueError> {
-    let box_end = header.data_offset
+    let box_end = header
+        .data_offset
         .checked_add(header.data_size())
         .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
 
     while cursor.position() < box_end {
         let child_header = BoxHeader::parse(cursor)?;
-        let child_end = child_header.data_offset
+        let child_end = child_header
+            .data_offset
             .checked_add(child_header.data_size())
-            .ok_or_else(|| BitvueError::InvalidData("MP4 child box end offset overflow".to_string()))?;
+            .ok_or_else(|| {
+                BitvueError::InvalidData("MP4 child box end offset overflow".to_string())
+            })?;
 
         match &child_header.box_type {
             b"stsd" => {

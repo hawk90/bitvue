@@ -8,9 +8,7 @@
 //! - Gnome sort
 //! - Cocktail sort (shaker sort)
 
-
 extern crate alloc;
-
 
 /// Selection sort - O(n²) simple sorting algorithm.
 ///
@@ -277,16 +275,10 @@ pub fn stooge_sort<T: Ord>(slice: &mut [T]) {
     fn stooge<T: Ord>(slice: &mut [T], start: usize, end: usize) {
         // SAFETY: Validate range to prevent integer underflow
         if start > end {
-            panic!(
-                "stooge_sort: invalid range start={} > end={}",
-                start, end
-            );
+            panic!("stooge_sort: invalid range start={} > end={}", start, end);
         }
         if end >= slice.len() {
-            panic!(
-                "stooge_sort: end={} >= slice.len()={}",
-                end, slice.len()
-            );
+            panic!("stooge_sort: end={} >= slice.len()={}", end, slice.len());
         }
 
         if slice[start] > slice[end] {

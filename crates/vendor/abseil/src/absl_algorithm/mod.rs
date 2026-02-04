@@ -140,7 +140,9 @@ pub use bounds::{equal_range, lower_bound, upper_bound};
 pub use lexicographic::lexicographical_compare;
 
 // Re-exports from set_ops module
-pub use set_ops::{merge, merge_in_place, set_difference, set_intersection, set_symmetric_difference, set_union};
+pub use set_ops::{
+    merge, merge_in_place, set_difference, set_intersection, set_symmetric_difference, set_union,
+};
 
 // Re-exports from sample module
 pub use sample::{sample, shuffle};

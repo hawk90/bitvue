@@ -4,8 +4,8 @@ extern crate test;
 
 // Use functions re-exported at crate level from absl_bits
 use abseil::{
-    count_leading_zeros, count_trailing_zeros, popcount, rotate_left, rotate_right,
-    reverse_bits, reverse_bytes, is_power_of_two, next_power_of_two, prev_power_of_two,
+    count_leading_zeros, count_trailing_zeros, is_power_of_two, next_power_of_two, popcount,
+    prev_power_of_two, reverse_bits, reverse_bytes, rotate_left, rotate_right,
 };
 use test::{black_box, Bencher};
 
@@ -188,7 +188,10 @@ fn bench_rotate_right_u32_small(b: &mut Bencher) {
 #[bench]
 fn bench_rotate_right_u64_small(b: &mut Bencher) {
     b.iter(|| {
-        black_box(rotate_right(black_box(0x1234567890ABCDEFu64), black_box(16)));
+        black_box(rotate_right(
+            black_box(0x1234567890ABCDEFu64),
+            black_box(16),
+        ));
     });
 }
 

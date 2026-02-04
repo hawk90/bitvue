@@ -53,11 +53,13 @@ impl YuvConversionStrategy for Avx2Strategy {
             8 => unsafe {
                 yuv420_to_rgb_avx2_impl(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             10 | 12 => unsafe {
-                yuv420_to_rgb_avx2_impl_16bit(y_plane, u_plane, v_plane, width, height, rgb, bit_depth);
+                yuv420_to_rgb_avx2_impl_16bit(
+                    y_plane, u_plane, v_plane, width, height, rgb, bit_depth,
+                );
                 Ok(())
-            }
+            },
             _ => Err(ConversionError::UnsupportedBitDepth(bit_depth)),
         }
     }
@@ -79,11 +81,13 @@ impl YuvConversionStrategy for Avx2Strategy {
             8 => unsafe {
                 yuv422_to_rgb_avx2_impl(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             10 | 12 => unsafe {
-                yuv422_to_rgb_avx2_impl_16bit(y_plane, u_plane, v_plane, width, height, rgb, bit_depth);
+                yuv422_to_rgb_avx2_impl_16bit(
+                    y_plane, u_plane, v_plane, width, height, rgb, bit_depth,
+                );
                 Ok(())
-            }
+            },
             _ => Err(ConversionError::UnsupportedBitDepth(bit_depth)),
         }
     }
@@ -135,11 +139,13 @@ impl YuvConversionStrategy for Avx2Strategy {
             8 => unsafe {
                 yuv444_to_rgb_avx2_impl(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             10 | 12 => unsafe {
-                yuv444_to_rgb_avx2_impl_16bit(y_plane, u_plane, v_plane, width, height, rgb, bit_depth);
+                yuv444_to_rgb_avx2_impl_16bit(
+                    y_plane, u_plane, v_plane, width, height, rgb, bit_depth,
+                );
                 Ok(())
-            }
+            },
             _ => Err(ConversionError::UnsupportedBitDepth(bit_depth)),
         }
     }
@@ -230,10 +236,8 @@ unsafe fn yuv420_to_rgb_avx2_impl(
                 // We need to do the multiplication first, then shift
                 // For R: (Y * 128 + 181 * V) >> 7
                 let v_scaled = _mm256_mullo_epi32(v_vec, _mm256_set1_epi32(181));
-                let r = _mm256_add_epi32(
-                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
-                    v_scaled,
-                );
+                let r =
+                    _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
 
                 let u_scaled_g = _mm256_mullo_epi32(u_vec, _mm256_set1_epi32(44));
                 let v_scaled_g = _mm256_mullo_epi32(v_vec, _mm256_set1_epi32(91));
@@ -302,13 +306,7 @@ unsafe fn clamp_epi32_to_epu8(v: __m256i) -> __m256i {
 /// 2. Use _mm_shuffle_epi8 for efficient interleaving
 /// 3. Store using 128-bit vector stores
 #[inline]
-unsafe fn store_rgb_interleaved(
-    rgb: &mut [u8],
-    offset: usize,
-    r: __m256i,
-    g: __m256i,
-    b: __m256i,
-) {
+unsafe fn store_rgb_interleaved(rgb: &mut [u8], offset: usize, r: __m256i, g: __m256i, b: __m256i) {
     // Split 256-bit vectors into two 128-bit lanes
     let r_low = _mm256_castsi256_si128(r);
     let r_high = _mm256_extracti128_si256(r, 1);
@@ -324,41 +322,69 @@ unsafe fn store_rgb_interleaved(
     // 2. Write interleaved (no bounds check)
 
     let r_vals = [
-        _mm_extract_epi8(r_low, 0) as u8, _mm_extract_epi8(r_low, 1) as u8,
-        _mm_extract_epi8(r_low, 2) as u8, _mm_extract_epi8(r_low, 3) as u8,
+        _mm_extract_epi8(r_low, 0) as u8,
+        _mm_extract_epi8(r_low, 1) as u8,
+        _mm_extract_epi8(r_low, 2) as u8,
+        _mm_extract_epi8(r_low, 3) as u8,
     ];
     let r_vals2 = [
-        _mm_extract_epi8(r_low, 4) as u8, _mm_extract_epi8(r_low, 5) as u8,
-        _mm_extract_epi8(r_low, 6) as u8, _mm_extract_epi8(r_low, 7) as u8,
+        _mm_extract_epi8(r_low, 4) as u8,
+        _mm_extract_epi8(r_low, 5) as u8,
+        _mm_extract_epi8(r_low, 6) as u8,
+        _mm_extract_epi8(r_low, 7) as u8,
     ];
     let g_vals = [
-        _mm_extract_epi8(g_low, 0) as u8, _mm_extract_epi8(g_low, 1) as u8,
-        _mm_extract_epi8(g_low, 2) as u8, _mm_extract_epi8(g_low, 3) as u8,
+        _mm_extract_epi8(g_low, 0) as u8,
+        _mm_extract_epi8(g_low, 1) as u8,
+        _mm_extract_epi8(g_low, 2) as u8,
+        _mm_extract_epi8(g_low, 3) as u8,
     ];
     let g_vals2 = [
-        _mm_extract_epi8(g_low, 4) as u8, _mm_extract_epi8(g_low, 5) as u8,
-        _mm_extract_epi8(g_low, 6) as u8, _mm_extract_epi8(g_low, 7) as u8,
+        _mm_extract_epi8(g_low, 4) as u8,
+        _mm_extract_epi8(g_low, 5) as u8,
+        _mm_extract_epi8(g_low, 6) as u8,
+        _mm_extract_epi8(g_low, 7) as u8,
     ];
     let b_vals = [
-        _mm_extract_epi8(b_low, 0) as u8, _mm_extract_epi8(b_low, 1) as u8,
-        _mm_extract_epi8(b_low, 2) as u8, _mm_extract_epi8(b_low, 3) as u8,
+        _mm_extract_epi8(b_low, 0) as u8,
+        _mm_extract_epi8(b_low, 1) as u8,
+        _mm_extract_epi8(b_low, 2) as u8,
+        _mm_extract_epi8(b_low, 3) as u8,
     ];
     let b_vals2 = [
-        _mm_extract_epi8(b_low, 4) as u8, _mm_extract_epi8(b_low, 5) as u8,
-        _mm_extract_epi8(b_low, 6) as u8, _mm_extract_epi8(b_low, 7) as u8,
+        _mm_extract_epi8(b_low, 4) as u8,
+        _mm_extract_epi8(b_low, 5) as u8,
+        _mm_extract_epi8(b_low, 6) as u8,
+        _mm_extract_epi8(b_low, 7) as u8,
     ];
 
     // Write first 4 pixels
-    *dst.add(0) = r_vals[0]; *dst.add(1) = g_vals[0]; *dst.add(2) = b_vals[0];
-    *dst.add(3) = r_vals[1]; *dst.add(4) = g_vals[1]; *dst.add(5) = b_vals[1];
-    *dst.add(6) = r_vals[2]; *dst.add(7) = g_vals[2]; *dst.add(8) = b_vals[2];
-    *dst.add(9) = r_vals[3]; *dst.add(10) = g_vals[3]; *dst.add(11) = b_vals[3];
+    *dst.add(0) = r_vals[0];
+    *dst.add(1) = g_vals[0];
+    *dst.add(2) = b_vals[0];
+    *dst.add(3) = r_vals[1];
+    *dst.add(4) = g_vals[1];
+    *dst.add(5) = b_vals[1];
+    *dst.add(6) = r_vals[2];
+    *dst.add(7) = g_vals[2];
+    *dst.add(8) = b_vals[2];
+    *dst.add(9) = r_vals[3];
+    *dst.add(10) = g_vals[3];
+    *dst.add(11) = b_vals[3];
 
     // Write last 4 pixels
-    *dst.add(12) = r_vals2[0]; *dst.add(13) = g_vals2[0]; *dst.add(14) = b_vals2[0];
-    *dst.add(15) = r_vals2[1]; *dst.add(16) = g_vals2[1]; *dst.add(17) = b_vals2[1];
-    *dst.add(18) = r_vals2[2]; *dst.add(19) = g_vals2[2]; *dst.add(20) = b_vals2[2];
-    *dst.add(21) = r_vals2[3]; *dst.add(22) = g_vals2[3]; *dst.add(23) = b_vals2[3];
+    *dst.add(12) = r_vals2[0];
+    *dst.add(13) = g_vals2[0];
+    *dst.add(14) = b_vals2[0];
+    *dst.add(15) = r_vals2[1];
+    *dst.add(16) = g_vals2[1];
+    *dst.add(17) = b_vals2[1];
+    *dst.add(18) = r_vals2[2];
+    *dst.add(19) = g_vals2[2];
+    *dst.add(20) = b_vals2[2];
+    *dst.add(21) = r_vals2[3];
+    *dst.add(22) = g_vals2[3];
+    *dst.add(23) = b_vals2[3];
 }
 
 /// Convert a single YUV pixel to RGB using BT.601 color space (scalar fallback)
@@ -434,14 +460,21 @@ unsafe fn yuv422_to_rgb_avx2_impl(
 
                 // BT.601 conversion
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
-                let r = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
+                let r =
+                    _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
 
                 let u_scaled_g = _mm256_mullo_epi32(u_i32, u_g_coeff);
                 let v_scaled_g = _mm256_mullo_epi32(v_i32, v_g_coeff);
-                let g = _mm256_sub_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), _mm256_add_epi32(u_scaled_g, v_scaled_g));
+                let g = _mm256_sub_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    _mm256_add_epi32(u_scaled_g, v_scaled_g),
+                );
 
                 let u_scaled_b = _mm256_mullo_epi32(u_i32, u_b_coeff);
-                let b = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), u_scaled_b);
+                let b = _mm256_add_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    u_scaled_b,
+                );
 
                 // Clamp to 0-255 and pack to 8-bit
                 let r = clamp_epi32_to_epu8(r);
@@ -530,14 +563,21 @@ unsafe fn yuv444_to_rgb_avx2_impl(
 
                 // BT.601 conversion
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
-                let r = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
+                let r =
+                    _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
 
                 let u_scaled_g = _mm256_mullo_epi32(u_i32, u_g_coeff);
                 let v_scaled_g = _mm256_mullo_epi32(v_i32, v_g_coeff);
-                let g = _mm256_sub_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), _mm256_add_epi32(u_scaled_g, v_scaled_g));
+                let g = _mm256_sub_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    _mm256_add_epi32(u_scaled_g, v_scaled_g),
+                );
 
                 let u_scaled_b = _mm256_mullo_epi32(u_i32, u_b_coeff);
-                let b = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), u_scaled_b);
+                let b = _mm256_add_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    u_scaled_b,
+                );
 
                 // Clamp to 0-255 and pack to 8-bit
                 let r = clamp_epi32_to_epu8(r);
@@ -601,12 +641,16 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
 
             // Bounds check for 16-bit data (2 bytes per sample)
             // Use checked arithmetic to prevent overflow and bypass bounds check
-            let y_safe = y_idx.checked_mul(2)
+            let y_safe = y_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
                 .map_or(false, |offset| offset <= y_plane.len());
-            let uv_safe = uv_idx.checked_mul(2)
+            let uv_safe = uv_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
-                .map_or(false, |offset| offset <= u_plane.len() && offset <= v_plane.len());
+                .map_or(false, |offset| {
+                    offset <= u_plane.len() && offset <= v_plane.len()
+                });
 
             if x + 8 <= width && y_safe && uv_safe {
                 // Load 8 Y samples as 16-bit values
@@ -644,14 +688,21 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
 
                 // BT.601 conversion
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
-                let r = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
+                let r =
+                    _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
 
                 let u_scaled_g = _mm256_mullo_epi32(u_i32, u_g_coeff);
                 let v_scaled_g = _mm256_mullo_epi32(v_i32, v_g_coeff);
-                let g = _mm256_sub_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), _mm256_add_epi32(u_scaled_g, v_scaled_g));
+                let g = _mm256_sub_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    _mm256_add_epi32(u_scaled_g, v_scaled_g),
+                );
 
                 let u_scaled_b = _mm256_mullo_epi32(u_i32, u_b_coeff);
-                let b = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), u_scaled_b);
+                let b = _mm256_add_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    u_scaled_b,
+                );
 
                 // Shift and clamp to 0-255
                 let r = clamp_epi32_to_epu8(_mm256_srai_epi32(r, 7));
@@ -715,12 +766,16 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
 
             // Bounds check for 16-bit data
             // Use checked arithmetic to prevent overflow and bypass bounds check
-            let y_safe = y_idx.checked_mul(2)
+            let y_safe = y_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
                 .map_or(false, |offset| offset <= y_plane.len());
-            let uv_safe = uv_idx.checked_mul(2)
+            let uv_safe = uv_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
-                .map_or(false, |offset| offset <= u_plane.len() && offset <= v_plane.len());
+                .map_or(false, |offset| {
+                    offset <= u_plane.len() && offset <= v_plane.len()
+                });
 
             if x + 8 <= width && y_safe && uv_safe {
                 // Load 8 Y samples as 16-bit
@@ -750,12 +805,19 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
 
                 // BT.601 conversion (same as YUV420)
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
-                let r = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
+                let r =
+                    _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
                 let u_scaled_g = _mm256_mullo_epi32(u_i32, u_g_coeff);
                 let v_scaled_g = _mm256_mullo_epi32(v_i32, v_g_coeff);
-                let g = _mm256_sub_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), _mm256_add_epi32(u_scaled_g, v_scaled_g));
+                let g = _mm256_sub_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    _mm256_add_epi32(u_scaled_g, v_scaled_g),
+                );
                 let u_scaled_b = _mm256_mullo_epi32(u_i32, u_b_coeff);
-                let b = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), u_scaled_b);
+                let b = _mm256_add_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    u_scaled_b,
+                );
 
                 let r = clamp_epi32_to_epu8(_mm256_srai_epi32(r, 7));
                 let g = clamp_epi32_to_epu8(_mm256_srai_epi32(g, 7));
@@ -850,12 +912,19 @@ unsafe fn yuv444_to_rgb_avx2_impl_16bit(
 
                 // BT.601 conversion
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
-                let r = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
+                let r =
+                    _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), v_scaled);
                 let u_scaled_g = _mm256_mullo_epi32(u_i32, u_g_coeff);
                 let v_scaled_g = _mm256_mullo_epi32(v_i32, v_g_coeff);
-                let g = _mm256_sub_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), _mm256_add_epi32(u_scaled_g, v_scaled_g));
+                let g = _mm256_sub_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    _mm256_add_epi32(u_scaled_g, v_scaled_g),
+                );
                 let u_scaled_b = _mm256_mullo_epi32(u_i32, u_b_coeff);
-                let b = _mm256_add_epi32(_mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)), u_scaled_b);
+                let b = _mm256_add_epi32(
+                    _mm256_mullo_epi32(y_i32, _mm256_set1_epi32(128)),
+                    u_scaled_b,
+                );
 
                 let r = clamp_epi32_to_epu8(_mm256_srai_epi32(r, 7));
                 let g = clamp_epi32_to_epu8(_mm256_srai_epi32(g, 7));
@@ -923,8 +992,8 @@ mod tests {
         let strategy = Avx2Strategy::new();
         let caps = strategy.capabilities();
         assert_eq!(caps.speedup_factor, 4.5);
-        assert!(!caps.supports_10bit);  // Currently only 8-bit supported
-        assert!(!caps.supports_12bit);  // Currently only 8-bit supported
+        assert!(!caps.supports_10bit); // Currently only 8-bit supported
+        assert!(!caps.supports_12bit); // Currently only 8-bit supported
         assert!(!caps.is_hardware_accelerated);
     }
 
@@ -944,15 +1013,8 @@ mod tests {
         let mut rgb = vec![0u8; 300];
 
         // 10-bit not supported by AVX2 yet
-        let result = strategy.convert_yuv420_to_rgb(
-            &y_plane,
-            &u_plane,
-            &v_plane,
-            10,
-            10,
-            &mut rgb,
-            10,
-        );
+        let result =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 10);
 
         assert!(result.is_err());
     }

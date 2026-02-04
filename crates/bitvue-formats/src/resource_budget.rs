@@ -72,10 +72,8 @@ impl ResourceBudget {
     /// Should be called after a successful allocation to update the budget.
     /// Uses overflow protection to prevent wrap-around bypass of limits.
     pub fn record_allocation(&self, size: u64) {
-        self.allocated.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |current| {
+        self.allocated
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 let new = current.saturating_add(size);
                 // Prevent allocation if it would exceed the limit
                 if new > MAX_CUMULATIVE_ALLOCATION {
@@ -83,8 +81,8 @@ impl ResourceBudget {
                 } else {
                     Some(new) // Accept the update
                 }
-            }
-        ).ok(); // Ignore error if allocation would exceed limit
+            })
+            .ok(); // Ignore error if allocation would exceed limit
     }
 
     /// Check and record an allocation in one operation
@@ -151,10 +149,7 @@ impl Default for ResourceBudget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationError {
     /// Single allocation exceeds the maximum allowed size
-    SingleAllocationTooLarge {
-        requested: u64,
-        max_allowed: u64,
-    },
+    SingleAllocationTooLarge { requested: u64, max_allowed: u64 },
 
     /// Cumulative allocation would exceed the maximum allowed
     CumulativeAllocationExceeded {
@@ -202,9 +197,7 @@ mod tests {
         assert!(budget.check_allocation(MAX_SINGLE_ALLOCATION).is_ok());
 
         // Exceeds limit
-        assert!(budget
-            .check_allocation(MAX_SINGLE_ALLOCATION + 1)
-            .is_err());
+        assert!(budget.check_allocation(MAX_SINGLE_ALLOCATION + 1).is_err());
     }
 
     #[test]
@@ -234,14 +227,10 @@ mod tests {
         assert!(budget.check_vec_allocation::<u8>(1000).is_ok());
 
         // Large vec allocation
-        assert!(budget
-            .allocate_vec::<u8>(10 * 1024 * 1024)
-            .is_ok());
+        assert!(budget.allocate_vec::<u8>(10 * 1024 * 1024).is_ok());
 
         // Very large vec should fail
-        assert!(budget
-            .allocate_vec::<u8>(100 * 1024 * 1024)
-            .is_err());
+        assert!(budget.allocate_vec::<u8>(100 * 1024 * 1024).is_err());
     }
 
     #[test]

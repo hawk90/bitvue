@@ -17,18 +17,18 @@ pub mod qp_extraction;
 pub mod types;
 
 // Monster Pack v9: Core state management
+pub mod app_error;
 pub mod command;
 pub mod command_builder; // Builder pattern for Command construction
 pub mod command_chain; // Chain of Responsibility pattern for command processing
-pub mod app_error;
 pub mod event;
-pub mod state_machine; // State Machine pattern for unified state management
-pub mod validation_strategy; // Strategy pattern for validation logic
-pub mod workspace_template; // Template Method pattern for workspace rendering
 pub mod event_observer; // Observer pattern for event handling
 pub mod selection;
+pub mod state_machine; // State Machine pattern for unified state management
+pub mod validation_strategy; // Strategy pattern for validation logic
 pub mod worker;
 pub mod workspace;
+pub mod workspace_template; // Template Method pattern for workspace rendering
 
 // Monster Pack v9: File I/O
 pub mod byte_cache;
@@ -135,11 +135,7 @@ pub use cache_provenance::*;
 pub use cache_validation::*;
 pub use command::*;
 pub use command_builder::*;
-pub use error::*;
 pub use command_chain::*;
-pub use state_machine::*;
-pub use workspace_template::*;
-pub use validation_strategy::*;
 pub use compare::*;
 pub use compare_cache::*;
 pub use compare_evidence::*;
@@ -150,6 +146,7 @@ pub use diagnostics_bands::*;
 pub use diff_heatmap::*;
 pub use disable_reason::*;
 pub use discoverability::*;
+pub use error::*;
 pub use event::*;
 pub use event_observer::*;
 pub use evidence::*;
@@ -186,6 +183,7 @@ pub use reference_graph_evidence::*;
 pub use selection::*;
 pub use semantic_evidence::*;
 pub use spatial_hierarchy::*;
+pub use state_machine::*;
 pub use stream_state::*;
 pub use temporal_state::*;
 pub use timeline::*;
@@ -195,7 +193,11 @@ pub use timeline_lanes::*;
 pub use timeline_window::*;
 pub use tooltip::*;
 pub use types::*;
+pub use validation_strategy::*;
+pub use workspace_template::*;
 // Export commonly used types at crate root for convenience
 pub use types::FrameType;
 pub use worker::*;
 pub use workspace::*;
+
+// test formatting

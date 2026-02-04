@@ -1,6 +1,5 @@
 //! Profile data recording utilities.
 
-
 extern crate alloc;
 
 use alloc::collections::BTreeMap;

@@ -290,7 +290,8 @@ impl PredictionModeGrid {
             return None;
         }
         // Check for overflow in index calculation before casting
-        let idx = (row as usize).checked_mul(self.grid_w as usize)
+        let idx = (row as usize)
+            .checked_mul(self.grid_w as usize)
             .and_then(|v| v.checked_add(col as usize))?;
         self.modes.get(idx).copied().flatten()
     }
@@ -326,16 +327,19 @@ pub fn extract_prediction_mode_grid_from_parsed(
     // Check for overflow and validate grid dimensions
     let total_blocks = match grid_w.checked_mul(grid_h) {
         Some(product) => product as usize,
-        None => return Err(BitvueError::Decode(
-            format!("Grid dimensions too large: {}x{}", grid_w, grid_h)
-        )),
+        None => {
+            return Err(BitvueError::Decode(format!(
+                "Grid dimensions too large: {}x{}",
+                grid_w, grid_h
+            )))
+        }
     };
 
     if total_blocks > MAX_GRID_BLOCKS {
-        return Err(BitvueError::Decode(
-            format!("Grid exceeds maximum size: {}x{} = {} blocks",
-                grid_w, grid_h, total_blocks)
-        ));
+        return Err(BitvueError::Decode(format!(
+            "Grid exceeds maximum size: {}x{} = {} blocks",
+            grid_w, grid_h, total_blocks
+        )));
     }
 
     let mut modes = Vec::with_capacity(total_blocks);
@@ -361,10 +365,12 @@ pub fn extract_prediction_mode_grid_from_parsed(
                     block_h,
                     &mut modes,
                     |cu| cu.mode,
-                    |grid_x, grid_y| if parsed.frame_type.is_intra_only {
-                        get_intra_mode_for_position(grid_x, grid_y)
-                    } else {
-                        get_inter_mode_for_position(grid_x, grid_y)
+                    |grid_x, grid_y| {
+                        if parsed.frame_type.is_intra_only {
+                            get_intra_mode_for_position(grid_x, grid_y)
+                        } else {
+                            get_inter_mode_for_position(grid_x, grid_y)
+                        }
                     },
                 )?;
 
@@ -509,7 +515,8 @@ impl TransformGrid {
             return None;
         }
         // Check for overflow in index calculation before casting
-        let idx = (row as usize).checked_mul(self.grid_w as usize)
+        let idx = (row as usize)
+            .checked_mul(self.grid_w as usize)
             .and_then(|v| v.checked_add(col as usize))?;
         self.tx_sizes.get(idx).copied().flatten()
     }
@@ -547,16 +554,19 @@ pub fn extract_transform_grid_from_parsed(
     // Check for overflow and validate grid dimensions
     let total_blocks = match grid_w.checked_mul(grid_h) {
         Some(product) => product as usize,
-        None => return Err(BitvueError::Decode(
-            format!("Grid dimensions too large: {}x{}", grid_w, grid_h)
-        )),
+        None => {
+            return Err(BitvueError::Decode(format!(
+                "Grid dimensions too large: {}x{}",
+                grid_w, grid_h
+            )))
+        }
     };
 
     if total_blocks > MAX_GRID_BLOCKS {
-        return Err(BitvueError::Decode(
-            format!("Grid exceeds maximum size: {}x{} = {} blocks",
-                grid_w, grid_h, total_blocks)
-        ));
+        return Err(BitvueError::Decode(format!(
+            "Grid exceeds maximum size: {}x{} = {} blocks",
+            grid_w, grid_h, total_blocks
+        )));
     }
 
     let mut tx_sizes = Vec::with_capacity(total_blocks);
@@ -678,7 +688,8 @@ where
         // Calculate which superblock this CU belongs to
         let sb_x = cu.x / parsed.dimensions.sb_size;
         let sb_y = cu.y / parsed.dimensions.sb_size;
-        sb_index.entry((sb_x, sb_y))
+        sb_index
+            .entry((sb_x, sb_y))
             .or_insert_with(Vec::new)
             .push(cu_idx);
     }

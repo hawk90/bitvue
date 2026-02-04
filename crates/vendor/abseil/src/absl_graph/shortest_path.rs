@@ -1,6 +1,5 @@
 //! Shortest path algorithms.
 
-
 extern crate alloc;
 
 use alloc::collections::BTreeSet;
@@ -21,12 +20,10 @@ pub fn dijkstra<T>(graph: &Graph<T>, start: VertexId, goal: VertexId) -> Option<
     distances[start] = 0.0;
 
     while !unvisited.is_empty() {
-        let current = *unvisited
-            .iter()
-            .min_by_key(|&&v| {
-                // Sort by distance, with f64 comparison trick
-                distances[v].to_bits() as i64
-            })?;
+        let current = *unvisited.iter().min_by_key(|&&v| {
+            // Sort by distance, with f64 comparison trick
+            distances[v].to_bits() as i64
+        })?;
 
         if current == goal {
             break;
@@ -125,7 +122,11 @@ pub fn floyd_warshall<T>(graph: &Graph<T>) -> Vec<Vec<f64>> {
 }
 
 /// Generic shortest path function that uses Dijkstra by default.
-pub fn shortest_path<T>(graph: &Graph<T>, start: VertexId, goal: VertexId) -> Option<Vec<VertexId>> {
+pub fn shortest_path<T>(
+    graph: &Graph<T>,
+    start: VertexId,
+    goal: VertexId,
+) -> Option<Vec<VertexId>> {
     dijkstra(graph, start, goal)
 }
 

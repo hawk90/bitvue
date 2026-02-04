@@ -33,7 +33,6 @@
 //! let path = dijkstra(&graph, v1, v3);
 //! ```
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -41,32 +40,32 @@ use core::ops::Index;
 
 pub mod adjacency;
 pub mod algorithms;
-pub mod shortest_path;
-pub mod traversal;
-pub mod topology;
-pub mod matching;
-pub mod flow;
+pub mod astar;
 pub mod coloring;
 pub mod connectivity;
+pub mod flow;
+pub mod matching;
+pub mod maxflow;
 pub mod min_spanning_tree;
 pub mod pathfinding;
-pub mod astar;
-pub mod maxflow;
+pub mod shortest_path;
+pub mod topology;
+pub mod traversal;
 
 // Re-exports
 pub use adjacency::{AdjacencyList, AdjacencyMatrix};
 pub use algorithms::{bfs, dfs, topological_sort};
-pub use shortest_path::{dijkstra, bellman_ford, floyd_warshall, shortest_path};
-pub use traversal::{DFSIterator, BFSIterator, DepthFirst, BreadthFirst};
-pub use topology::{TopologicalSort, TopologicalOrder};
-pub use matching::{maximum_matching, bipartite_matching};
-pub use flow::{MaxFlow, min_cut, max_flow};
-pub use coloring::{GraphColoring, greedy_coloring, chromatic_number};
-pub use connectivity::{is_connected, components, strongly_connected_components};
-pub use min_spanning_tree::{MinimumSpanningTree, kruskal, prim};
-pub use pathfinding::{astar, PathFinder};
 pub use astar::{astar_search, chebyshev_distance, euclidean_distance, manhattan_distance};
+pub use coloring::{chromatic_number, greedy_coloring, GraphColoring};
+pub use connectivity::{components, is_connected, strongly_connected_components};
+pub use flow::{max_flow, min_cut, MaxFlow};
+pub use matching::{bipartite_matching, maximum_matching};
 pub use maxflow::{dinic, edmonds_karp, ford_fulkerson, min_st_cut, FlowNetwork};
+pub use min_spanning_tree::{kruskal, prim, MinimumSpanningTree};
+pub use pathfinding::{astar, PathFinder};
+pub use shortest_path::{bellman_ford, dijkstra, floyd_warshall, shortest_path};
+pub use topology::{TopologicalOrder, TopologicalSort};
+pub use traversal::{BFSIterator, BreadthFirst, DFSIterator, DepthFirst};
 
 /// A vertex identifier in a graph.
 pub type VertexId = usize;
@@ -168,7 +167,12 @@ impl<T> Graph<T> {
         }
 
         let id = self.edges.len();
-        self.edges.push(Edge { id, from, to, weight });
+        self.edges.push(Edge {
+            id,
+            from,
+            to,
+            weight,
+        });
         self.adjacency[from].push(id);
         id
     }

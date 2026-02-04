@@ -3,12 +3,12 @@
 //! Provides thread-safe LRU caching for parsed coding units to avoid
 //! re-parsing when extracting multiple overlays from the same frame.
 
+use crate::Qp;
 use bitvue_core::BitvueError;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
-use crate::Qp;
 
 /// Helper macro to safely lock mutexes with proper error handling
 /// Prevents panic on mutex poisoning by returning an error instead
@@ -196,7 +196,11 @@ mod tests {
         });
 
         assert!(result.is_ok());
-        assert_eq!(parse_count.load(std::sync::atomic::Ordering::SeqCst), 1, "Should not re-parse on cache hit");
+        assert_eq!(
+            parse_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "Should not re-parse on cache hit"
+        );
     }
 
     #[test]

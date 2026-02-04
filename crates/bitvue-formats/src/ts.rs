@@ -136,11 +136,14 @@ fn parse_ts_packet(data: &[u8]) -> Result<TsPacket> {
         }
 
         // Use checked arithmetic to prevent overflow
-        payload_start = match payload_start.checked_add(1).and_then(|v| v.checked_add(adaptation_length)) {
+        payload_start = match payload_start
+            .checked_add(1)
+            .and_then(|v| v.checked_add(adaptation_length))
+        {
             Some(v) => v,
             None => {
                 return Err(BitvueError::InvalidData(
-                    "Payload start offset overflow".to_string()
+                    "Payload start offset overflow".to_string(),
                 ));
             }
         };
@@ -268,7 +271,10 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
     let program_info_length =
         (((payload[offset] & 0x0F) as u16) << 8) | (payload[offset + 1] as u16);
     // Use checked arithmetic to prevent overflow
-    offset = match (offset as usize).checked_add(2).and_then(|v| v.checked_add(program_info_length as usize)) {
+    offset = match (offset as usize)
+        .checked_add(2)
+        .and_then(|v| v.checked_add(program_info_length as usize))
+    {
         Some(v) => v,
         None => return Ok(Vec::new()),
     };
@@ -293,7 +299,10 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
         });
 
         // Use checked arithmetic to prevent overflow
-        offset = match (offset as usize).checked_add(5).and_then(|v| v.checked_add(es_info_length as usize)) {
+        offset = match (offset as usize)
+            .checked_add(5)
+            .and_then(|v| v.checked_add(es_info_length as usize))
+        {
             Some(v) => v,
             None => break,
         };

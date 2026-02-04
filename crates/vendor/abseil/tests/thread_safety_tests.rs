@@ -169,9 +169,7 @@ fn test_once_flag_no_deadlock() {
 
         // Add a timeout to detect deadlocks
         for handle in handles {
-            let result = thread::spawn(move || {
-                handle.join().unwrap()
-            }).join();
+            let result = thread::spawn(move || handle.join().unwrap()).join();
 
             if result.is_err() {
                 panic!("Potential deadlock in iteration {}", iteration);
@@ -206,9 +204,12 @@ fn test_bloom_filter_concurrent_inserts() {
     let bloom = bloom.lock().unwrap();
     for thread_id in 0..10 {
         for i in 0..1000 {
-            assert!(bloom.contains(&(thread_id * 1000 + i)),
+            assert!(
+                bloom.contains(&(thread_id * 1000 + i)),
                 "Should contain value {} from thread {}",
-                thread_id * 1000 + i, thread_id);
+                thread_id * 1000 + i,
+                thread_id
+            );
         }
     }
 }

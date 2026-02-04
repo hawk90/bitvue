@@ -227,8 +227,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     const MAX_HEADER_SIZE_ESTIMATE: usize = 200;
     const CONSERVATIVE_PADDING: usize = 40;
 
-    let header_size_bytes = (base_header_bytes + CONSERVATIVE_PADDING)
-        .min(MAX_HEADER_SIZE_ESTIMATE);
+    let header_size_bytes =
+        (base_header_bytes + CONSERVATIVE_PADDING).min(MAX_HEADER_SIZE_ESTIMATE);
 
     Ok(FrameHeader {
         frame_type,

@@ -454,6 +454,9 @@ mod tests {
     #[test]
     fn test_mixed_ascii_operations() {
         let s = "  Hello World 123  ";
-        assert_eq!(to_upper_ascii(&strip_ascii_whitespace(s)), "HELLO WORLD 123");
+        assert_eq!(
+            to_upper_ascii(&strip_ascii_whitespace(s)),
+            "HELLO WORLD 123"
+        );
     }
 }

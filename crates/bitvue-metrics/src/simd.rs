@@ -348,9 +348,13 @@ mod tests {
             // Both are identical images (infinite PSNR)
             assert_eq!(simd_result.is_infinite(), scalar_result.is_infinite());
         } else {
-            assert!((simd_result - scalar_result).abs() < 0.5,
+            assert!(
+                (simd_result - scalar_result).abs() < 0.5,
                 "SIMD={} vs Scalar={} diff={}",
-                simd_result, scalar_result, (simd_result - scalar_result).abs());
+                simd_result,
+                scalar_result,
+                (simd_result - scalar_result).abs()
+            );
         }
     }
 }

@@ -137,8 +137,9 @@ pub fn extract_qp_grid(
     let grid_h = pic_height_in_mbs as u32;
 
     // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h)
-        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     let mut qp = Vec::with_capacity(total_blocks);
 
@@ -162,8 +163,9 @@ pub fn extract_qp_grid(
 
     // If we didn't get any macroblocks, use base_qp
     if qp.is_empty() {
-        let total_blocks = grid_w.checked_mul(grid_h)
-            .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+        let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+            BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+        })? as usize;
         qp = vec![base_qp; total_blocks];
     }
 
@@ -183,8 +185,9 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     let grid_h = pic_height_in_mbs as u32;
 
     // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h)
-        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     let mut mv_l0 = Vec::with_capacity(total_blocks);
     let mut mv_l1 = Vec::with_capacity(total_blocks);
@@ -227,8 +230,9 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     }
 
     // Fill remaining if needed
-    let total_blocks = grid_w.checked_mul(grid_h)
-        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
     while mv_l0.len() < total_blocks {
         mv_l0.push(CoreMV::ZERO);
         mv_l1.push(CoreMV::MISSING);

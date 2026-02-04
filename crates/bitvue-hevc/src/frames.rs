@@ -2,10 +2,10 @@
 //!
 //! Functions for extracting individual frames from HEVC bitstreams
 
-use bitvue_core::BitvueError;
 use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
 use crate::parse_hevc;
 use crate::slice::SliceHeader;
+use bitvue_core::BitvueError;
 use serde::{Deserialize, Serialize};
 
 /// HEVC frame data extracted from the bitstream
@@ -453,11 +453,15 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
     use bitvue_core::qp_extraction::QpData;
 
     // Extract QP from slice header if available
-    let qp_avg = frame.slice_header.as_ref().and_then(|header| {
-        // Note: This only includes slice_qp_delta, not init_qp_minus26
-        // For accurate QP, we need access to PPS data
-        Some(QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg)
-    }).flatten();
+    let qp_avg = frame
+        .slice_header
+        .as_ref()
+        .and_then(|header| {
+            // Note: This only includes slice_qp_delta, not init_qp_minus26
+            // For accurate QP, we need access to PPS data
+            Some(QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg)
+        })
+        .flatten();
 
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {

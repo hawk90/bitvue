@@ -2,7 +2,6 @@
 //!
 //! Provides general-purpose helper functions.
 
-
 /// Returns the address of a reference as a `usize`.
 ///
 /// This is similar to C++'s `std::addressof` or Rust's raw pointer casting.

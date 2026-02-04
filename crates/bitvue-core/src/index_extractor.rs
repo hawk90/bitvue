@@ -665,9 +665,11 @@ impl ExtractorFactory {
             "h264" | "h.264" | "avc" => Box::new(H264IndexExtractor::new()),
             // HEVC/VP9/VVC indexers are disabled due to cyclic dependency
             // Use the individual codec crates directly for parsing
-            "hevc" | "h265" | "h.265" | "vvc" | "h266" | "h.266" | "vp9" => Box::new(UnsupportedExtractor {
-                codec: codec.to_string(),
-            }),
+            "hevc" | "h265" | "h.265" | "vvc" | "h266" | "h.266" | "vp9" => {
+                Box::new(UnsupportedExtractor {
+                    codec: codec.to_string(),
+                })
+            }
             _ => Box::new(UnsupportedExtractor {
                 codec: codec.to_string(),
             }),
@@ -681,9 +683,11 @@ impl ExtractorFactory {
             "264" | "h264" => Box::new(H264IndexExtractor::new()),
             // HEVC/VP9/VVC indexers are disabled due to cyclic dependency
             // Use the individual codec crates directly for parsing
-            "265" | "h265" | "hevc" | "266" | "h266" | "vvc" | "vp9" => Box::new(UnsupportedExtractor {
-                codec: ext.to_string(),
-            }),
+            "265" | "h265" | "hevc" | "266" | "h266" | "vvc" | "vp9" => {
+                Box::new(UnsupportedExtractor {
+                    codec: ext.to_string(),
+                })
+            }
             _ => Box::new(UnsupportedExtractor {
                 codec: ext.to_string(),
             }),

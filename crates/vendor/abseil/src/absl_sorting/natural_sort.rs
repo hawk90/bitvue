@@ -13,7 +13,6 @@
 //! assert_eq!(files, vec!["file1.txt", "file2.txt", "file10.txt"]);
 //! ```
 
-
 extern crate alloc;
 
 use alloc::string::String;
@@ -44,9 +43,7 @@ impl Ord for Segment {
             // Compare numbers numerically
             (Segment::Number(a), Segment::Number(b)) => a.cmp(b),
             // Compare text lexicographically (case-insensitive)
-            (Segment::Text(a), Segment::Text(b)) => {
-                a.to_lowercase().cmp(&b.to_lowercase())
-            }
+            (Segment::Text(a), Segment::Text(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
         }
     }
 }
@@ -197,11 +194,7 @@ mod tests {
 
     #[test]
     fn test_natural_sort_by() {
-        let mut files = [
-            ("a", "file10.txt"),
-            ("b", "file2.txt"),
-            ("c", "file1.txt"),
-        ];
+        let mut files = [("a", "file10.txt"), ("b", "file2.txt"), ("c", "file1.txt")];
         natural_sort_by(&mut files, |(_, name)| *name);
         assert_eq!(files[0].1, "file1.txt");
         assert_eq!(files[1].1, "file2.txt");
@@ -217,14 +210,7 @@ mod tests {
 
     #[test]
     fn test_natural_sort_complex() {
-        let mut items = [
-            "item1a",
-            "item10",
-            "item1",
-            "item2",
-            "item20a",
-            "item2a",
-        ];
+        let mut items = ["item1a", "item10", "item1", "item2", "item20a", "item2a"];
         natural_sort(&mut items);
         assert_eq!(
             items,

@@ -295,18 +295,18 @@ impl AsyncJobManager {
 
                 // Check if we can start immediately (in-flight < 2)
                 if queue.in_flight_count() < 2 {
-                queue.mark_in_flight(job.clone());
-                tracing::debug!(
-                    "AsyncJobManager: Started job immediately: {:?} (in-flight: {})",
-                    job,
-                    queue.in_flight_count()
-                );
-                // TODO Phase 2: Actually spawn worker thread/task here
-            } else {
-                // Queue replaces previous (latest-wins)
-                queue.enqueue(job.clone());
-                tracing::debug!("AsyncJobManager: Queued job (latest-wins): {:?}", job);
-            }
+                    queue.mark_in_flight(job.clone());
+                    tracing::debug!(
+                        "AsyncJobManager: Started job immediately: {:?} (in-flight: {})",
+                        job,
+                        queue.in_flight_count()
+                    );
+                    // TODO Phase 2: Actually spawn worker thread/task here
+                } else {
+                    // Queue replaces previous (latest-wins)
+                    queue.enqueue(job.clone());
+                    tracing::debug!("AsyncJobManager: Queued job (latest-wins): {:?}", job);
+                }
             }
             Err(e) => {
                 tracing::error!("AsyncJobManager: Mutex poisoned during submit: {}", e);

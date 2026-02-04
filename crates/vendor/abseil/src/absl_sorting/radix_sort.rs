@@ -1,8 +1,6 @@
 //! Radix sort implementation for integers.
 
-
 extern crate alloc;
-
 
 /// LSD radix sort for unsigned integers.
 pub fn radix_sort(slice: &mut [u32]) {

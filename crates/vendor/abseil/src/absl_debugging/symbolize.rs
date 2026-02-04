@@ -271,7 +271,10 @@ pub fn symbolize_extended(addr: usize) -> Option<SymbolInfo> {
 /// }
 /// ```
 pub fn symbolize_batch(addresses: &[usize]) -> Vec<Option<SymbolInfo>> {
-    addresses.iter().map(|&addr| symbolize_with_info(addr)).collect()
+    addresses
+        .iter()
+        .map(|&addr| symbolize_with_info(addr))
+        .collect()
 }
 
 /// A cache for symbol information to avoid repeated lookups.
@@ -315,7 +318,15 @@ impl SymbolCache {
     /// Attempts to look up an address in the cache.
     ///
     /// Returns `Err` if the mutex is poisoned.
-    pub fn try_lookup(&self, addr: usize) -> Result<Option<SymbolInfo>, std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>>> {
+    pub fn try_lookup(
+        &self,
+        addr: usize,
+    ) -> Result<
+        Option<SymbolInfo>,
+        std::sync::PoisonError<
+            std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>,
+        >,
+    > {
         let cache = self.cache.lock()?;
         // Check for exact match or nearby cached symbol
         if let Some(info) = cache.get(&addr) {
@@ -350,7 +361,16 @@ impl SymbolCache {
     /// Attempts to insert symbol information into the cache.
     ///
     /// Returns `Err` if the mutex is poisoned.
-    pub fn try_insert(&self, addr: usize, info: SymbolInfo) -> Result<(), std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>>> {
+    pub fn try_insert(
+        &self,
+        addr: usize,
+        info: SymbolInfo,
+    ) -> Result<
+        (),
+        std::sync::PoisonError<
+            std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>,
+        >,
+    > {
         self.cache.lock()?.insert(addr, info);
         Ok(())
     }
@@ -361,15 +381,21 @@ impl SymbolCache {
     ///
     /// Panics if the mutex is poisoned.
     pub fn clear(&self) {
-        self.try_clear().unwrap_or_else(|_| {
-            panic!("SymbolCache mutex is poisoned while clearing cache")
-        });
+        self.try_clear()
+            .unwrap_or_else(|_| panic!("SymbolCache mutex is poisoned while clearing cache"));
     }
 
     /// Attempts to clear the cache.
     ///
     /// Returns `Err` if the mutex is poisoned.
-    pub fn try_clear(&self) -> Result<(), std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>>> {
+    pub fn try_clear(
+        &self,
+    ) -> Result<
+        (),
+        std::sync::PoisonError<
+            std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>,
+        >,
+    > {
         self.cache.lock()?.clear();
         Ok(())
     }
@@ -380,15 +406,21 @@ impl SymbolCache {
     ///
     /// Panics if the mutex is poisoned.
     pub fn len(&self) -> usize {
-        self.try_len().unwrap_or_else(|_| {
-            panic!("SymbolCache mutex is poisoned while getting length")
-        })
+        self.try_len()
+            .unwrap_or_else(|_| panic!("SymbolCache mutex is poisoned while getting length"))
     }
 
     /// Attempts to get the number of cached entries.
     ///
     /// Returns `Err` if the mutex is poisoned.
-    pub fn try_len(&self) -> Result<usize, std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>>> {
+    pub fn try_len(
+        &self,
+    ) -> Result<
+        usize,
+        std::sync::PoisonError<
+            std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>,
+        >,
+    > {
         Ok(self.cache.lock()?.len())
     }
 
@@ -398,15 +430,21 @@ impl SymbolCache {
     ///
     /// Panics if the mutex is poisoned.
     pub fn is_empty(&self) -> bool {
-        self.try_is_empty().unwrap_or_else(|_| {
-            panic!("SymbolCache mutex is poisoned while checking if empty")
-        })
+        self.try_is_empty()
+            .unwrap_or_else(|_| panic!("SymbolCache mutex is poisoned while checking if empty"))
     }
 
     /// Attempts to check if the cache is empty.
     ///
     /// Returns `Err` if the mutex is poisoned.
-    pub fn try_is_empty(&self) -> Result<bool, std::sync::PoisonError<std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>>> {
+    pub fn try_is_empty(
+        &self,
+    ) -> Result<
+        bool,
+        std::sync::PoisonError<
+            std::sync::MutexGuard<'_, std::collections::HashMap<usize, SymbolInfo>>,
+        >,
+    > {
         Ok(self.cache.lock()?.is_empty())
     }
 
@@ -468,9 +506,7 @@ pub unsafe fn get_symbol_for_function(func_ptr: usize) -> Option<String> {
 /// });
 /// ```
 #[cfg(feature = "std")]
-pub fn register_symbolizer<F: Fn(usize) -> Option<SymbolInfo> + Send + Sync + 'static>(
-    _func: F,
-) {
+pub fn register_symbolizer<F: Fn(usize) -> Option<SymbolInfo> + Send + Sync + 'static>(_func: F) {
     // In a real implementation, we would store this in a global registry
     // For now, this is a placeholder
 }
@@ -508,8 +544,15 @@ pub fn symbolize_stack_trace(addresses: &[usize]) -> Vec<Option<String>> {
 pub fn print_stack_trace(addresses: &[usize]) {
     let symbols = symbolize_stack_trace(addresses);
     for (i, addr) in addresses.iter().enumerate() {
-        println!("  #{} - {:#x}: {}", i, addr,
-            symbols[i].as_ref().map(|s| s.as_str()).unwrap_or("<unknown>"));
+        println!(
+            "  #{} - {:#x}: {}",
+            i,
+            addr,
+            symbols[i]
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("<unknown>")
+        );
     }
 }
 
@@ -803,8 +846,7 @@ mod tests {
 
     #[test]
     fn test_code_location_with_column() {
-        let loc = CodeLocation::new("test.rs".to_string(), 42)
-            .with_column(10);
+        let loc = CodeLocation::new("test.rs".to_string(), 42).with_column(10);
         assert_eq!(loc.column, Some(10));
     }
 
@@ -813,8 +855,7 @@ mod tests {
         let loc = CodeLocation::new("test.rs".to_string(), 42);
         assert_eq!(format!("{}", loc), "test.rs:42");
 
-        let loc2 = CodeLocation::new("test.rs".to_string(), 42)
-            .with_column(10);
+        let loc2 = CodeLocation::new("test.rs".to_string(), 42).with_column(10);
         assert_eq!(format!("{}", loc2), "test.rs:42:10");
     }
 
@@ -842,9 +883,18 @@ mod tests {
 
     #[test]
     fn test_symbolize_error_display() {
-        assert_eq!(format!("{}", SymbolizeError::Unsupported), "Symbolization not supported");
-        assert_eq!(format!("{}", SymbolizeError::AddressNotFound), "Address not found");
-        assert_eq!(format!("{}", SymbolizeError::Internal("test".to_string())), "Internal error: test");
+        assert_eq!(
+            format!("{}", SymbolizeError::Unsupported),
+            "Symbolization not supported"
+        );
+        assert_eq!(
+            format!("{}", SymbolizeError::AddressNotFound),
+            "Address not found"
+        );
+        assert_eq!(
+            format!("{}", SymbolizeError::Internal("test".to_string())),
+            "Internal error: test"
+        );
     }
 
     #[cfg(feature = "std")]
@@ -897,7 +947,9 @@ mod tests {
         let cache = SymbolCache::new();
 
         // Test try_insert
-        assert!(cache.try_insert(0x1000, SymbolInfo::new("test".to_string(), 0x1000)).is_ok());
+        assert!(cache
+            .try_insert(0x1000, SymbolInfo::new("test".to_string(), 0x1000))
+            .is_ok());
 
         // Test try_lookup
         let result = cache.try_lookup(0x1000);

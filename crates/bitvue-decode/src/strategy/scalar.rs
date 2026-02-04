@@ -272,8 +272,8 @@ fn yuv_to_rgb_pixel(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
 #[inline]
 fn yuv_to_rgb_pixel_u8(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
     let y_i = y as i32;
-    let u_i = (u as i32) - 128;  // Center U around 0
-    let v_i = (v as i32) - 128;  // Center V around 0
+    let u_i = (u as i32) - 128; // Center U around 0
+    let v_i = (v as i32) - 128; // Center V around 0
     yuv_to_rgb_pixel(y_i, u_i, v_i)
 }
 
@@ -360,15 +360,8 @@ mod tests {
 
         let mut rgb = vec![0u8; 2 * 2 * 3];
 
-        let result = strategy.convert_yuv420_to_rgb(
-            &y_plane,
-            &u_plane,
-            &v_plane,
-            2,
-            2,
-            &mut rgb,
-            8,
-        );
+        let result =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 2, 2, &mut rgb, 8);
 
         assert!(result.is_ok());
 
@@ -389,13 +382,8 @@ mod tests {
 
         // Wrong dimensions for the data provided
         let result = strategy.convert_yuv420_to_rgb(
-            &y_plane,
-            &u_plane,
-            &v_plane,
-            20, // Too large for y_plane
-            20,
-            &mut rgb,
-            8,
+            &y_plane, &u_plane, &v_plane, 20, // Too large for y_plane
+            20, &mut rgb, 8,
         );
 
         assert!(result.is_err());
@@ -410,15 +398,8 @@ mod tests {
         let v_plane = vec![128; 25];
         let mut rgb = vec![0u8; 100]; // Too small (need 300)
 
-        let result = strategy.convert_yuv420_to_rgb(
-            &y_plane,
-            &u_plane,
-            &v_plane,
-            10,
-            10,
-            &mut rgb,
-            8,
-        );
+        let result =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 8);
 
         assert!(result.is_err());
     }
@@ -433,13 +414,7 @@ mod tests {
         let mut rgb = vec![0u8; 300];
 
         let result = strategy.convert_yuv420_to_rgb(
-            &y_plane,
-            &u_plane,
-            &v_plane,
-            10,
-            10,
-            &mut rgb,
-            16, // Unsupported bit depth
+            &y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 16, // Unsupported bit depth
         );
 
         assert!(result.is_err());

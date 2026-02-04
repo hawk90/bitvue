@@ -2,9 +2,9 @@
 //!
 //! Functions for extracting individual frames from VP9 bitstreams
 
-use bitvue_core::BitvueError;
 use crate::frame_header::{FrameHeader, FrameType};
 use crate::parse_vp9;
+use bitvue_core::BitvueError;
 use serde::{Deserialize, Serialize};
 
 /// VP9 frame data extracted from the bitstream

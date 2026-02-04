@@ -401,13 +401,10 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
     }
 
     // Also validate minimum dimensions
-    if sps.sps_pic_width_max_in_luma_samples == 0
-        || sps.sps_pic_height_max_in_luma_samples == 0
-    {
+    if sps.sps_pic_width_max_in_luma_samples == 0 || sps.sps_pic_height_max_in_luma_samples == 0 {
         return Err(crate::error::VvcError::InvalidData(format!(
             "SPS dimensions {}x{} are invalid (must be non-zero)",
-            sps.sps_pic_width_max_in_luma_samples,
-            sps.sps_pic_height_max_in_luma_samples
+            sps.sps_pic_width_max_in_luma_samples, sps.sps_pic_height_max_in_luma_samples
         )));
     }
 

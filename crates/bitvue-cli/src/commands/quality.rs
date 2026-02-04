@@ -1,7 +1,7 @@
 //! Calculate quality metrics between two files
 
-use std::path::PathBuf;
 use anyhow::Result;
+use std::path::PathBuf;
 
 pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) -> Result<()> {
     println!("Quality command:");

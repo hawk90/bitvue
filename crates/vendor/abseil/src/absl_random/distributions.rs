@@ -466,7 +466,13 @@ impl Geometric {
         // Inverse transform sampling
         let u = rng.gen_f64();
         // Handle edge case where u is 0 or 1
-        let u = if u <= 0.0 { f64::MIN_POSITIVE } else if u >= 1.0 { 1.0 - f64::MIN_POSITIVE } else { u };
+        let u = if u <= 0.0 {
+            f64::MIN_POSITIVE
+        } else if u >= 1.0 {
+            1.0 - f64::MIN_POSITIVE
+        } else {
+            u
+        };
         1 + (-u.ln() / (-self.p).ln()).floor() as u64
     }
 }
@@ -528,7 +534,10 @@ mod tests {
 
     impl BitGen for TestRng {
         fn gen_u64(&mut self) -> u64 {
-            self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.state = self
+                .state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             self.state
         }
     }
@@ -787,7 +796,11 @@ mod tests {
         // the expected count is ~333 per value with a std dev of ~18.8
         // Even with 3 std devs (99.7% confidence), we should have >277 samples per value
         for count in &counts {
-            assert!(*count > 100, "Value not sufficiently represented: {}", count);
+            assert!(
+                *count > 100,
+                "Value not sufficiently represented: {}",
+                count
+            );
         }
     }
 

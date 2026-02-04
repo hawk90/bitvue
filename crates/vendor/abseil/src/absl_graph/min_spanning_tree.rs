@@ -1,6 +1,5 @@
 //! Minimum spanning tree algorithms.
 
-
 extern crate alloc;
 
 use alloc::collections::BTreeSet;
@@ -30,7 +29,8 @@ pub fn kruskal<T>(graph: &UndirectedGraph<T>) -> Option<MinimumSpanningTree> {
     // Collect all edges
     for v in 0..graph.as_graph().vertex_count() {
         for edge in graph.as_graph().outgoing_edges(v) {
-            if edge.from < edge.to { // Avoid duplicates
+            if edge.from < edge.to {
+                // Avoid duplicates
                 edges.push(MSTEdge {
                     from: edge.from,
                     to: edge.to,
@@ -94,9 +94,19 @@ pub fn prim<T>(graph: &UndirectedGraph<T>) -> Option<MinimumSpanningTree> {
                 if !in_mst.contains(&edge.to) {
                     let weight = edge.weight.unwrap_or(1.0);
                     match &min_edge {
-                        None => min_edge = Some(MSTEdge { from: edge.from, to: edge.to, weight }),
+                        None => {
+                            min_edge = Some(MSTEdge {
+                                from: edge.from,
+                                to: edge.to,
+                                weight,
+                            })
+                        }
                         Some(min) if weight < min.weight => {
-                            min_edge = Some(MSTEdge { from: edge.from, to: edge.to, weight });
+                            min_edge = Some(MSTEdge {
+                                from: edge.from,
+                                to: edge.to,
+                                weight,
+                            });
                         }
                         _ => {}
                     }

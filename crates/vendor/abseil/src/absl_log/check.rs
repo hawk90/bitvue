@@ -99,7 +99,13 @@ macro_rules! check_ne {
         let r = &$right;
         $crate::check_impl!(
             l != r,
-            format_args!("Check failed: {} != {}\n  left: {:?}\n right: {:?}", stringify!($left), stringify!($right), l, r)
+            format_args!(
+                "Check failed: {} != {}\n  left: {:?}\n right: {:?}",
+                stringify!($left),
+                stringify!($right),
+                l,
+                r
+            )
         );
     }};
 }
@@ -123,7 +129,13 @@ macro_rules! check_lt {
         let r = &$right;
         $crate::check_impl!(
             l < r,
-            format_args!("Check failed: {} < {}\n  left: {:?}\n right: {:?}", stringify!($left), stringify!($right), l, r)
+            format_args!(
+                "Check failed: {} < {}\n  left: {:?}\n right: {:?}",
+                stringify!($left),
+                stringify!($right),
+                l,
+                r
+            )
         );
     }};
 }
@@ -147,7 +159,13 @@ macro_rules! check_le {
         let r = &$right;
         $crate::check_impl!(
             l <= r,
-            format_args!("Check failed: {} <= {}\n  left: {:?}\n right: {:?}", stringify!($left), stringify!($right), l, r)
+            format_args!(
+                "Check failed: {} <= {}\n  left: {:?}\n right: {:?}",
+                stringify!($left),
+                stringify!($right),
+                l,
+                r
+            )
         );
     }};
 }
@@ -171,7 +189,13 @@ macro_rules! check_gt {
         let r = &$right;
         $crate::check_impl!(
             l > r,
-            format_args!("Check failed: {} > {}\n  left: {:?}\n right: {:?}", stringify!($left), stringify!($right), l, r)
+            format_args!(
+                "Check failed: {} > {}\n  left: {:?}\n right: {:?}",
+                stringify!($left),
+                stringify!($right),
+                l,
+                r
+            )
         );
     }};
 }
@@ -195,7 +219,13 @@ macro_rules! check_ge {
         let r = &$right;
         $crate::check_impl!(
             l >= r,
-            format_args!("Check failed: {} >= {}\n  left: {:?}\n right: {:?}", stringify!($left), stringify!($right), l, r)
+            format_args!(
+                "Check failed: {} >= {}\n  left: {:?}\n right: {:?}",
+                stringify!($left),
+                stringify!($right),
+                l,
+                r
+            )
         );
     }};
 }

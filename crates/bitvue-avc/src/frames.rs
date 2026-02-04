@@ -2,10 +2,10 @@
 //!
 //! Functions for extracting individual frames from H.264 bitstreams
 
-use bitvue_core::BitvueError;
 use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
 use crate::parse_avc;
 use crate::slice::{SliceHeader, SliceType};
+use bitvue_core::BitvueError;
 use serde::{Deserialize, Serialize};
 
 /// H.264 frame data extracted from the bitstream
@@ -219,7 +219,12 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
     // OPTIMIZATION: Use iterator chain instead of manual indexing for better performance
     let nal_ranges: Vec<(usize, usize)> = nal_positions
         .iter()
-        .zip(nal_positions.iter().skip(1).chain(std::iter::once(&data.len())))
+        .zip(
+            nal_positions
+                .iter()
+                .skip(1)
+                .chain(std::iter::once(&data.len())),
+        )
         .map(|(&start, &end)| {
             // Adjust for start code (include start code in range)
             let adjusted_start = if start >= 4 { start - 4 } else { 0 };
@@ -437,11 +442,15 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
     use bitvue_core::qp_extraction::QpData;
 
     // Extract QP from slice header if available
-    let qp_avg = frame.slice_header.as_ref().and_then(|header| {
-        // Note: This only includes slice_qp_delta, not pic_init_qp_minus26
-        // For accurate QP, we need access to PPS data
-        Some(QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg)
-    }).flatten();
+    let qp_avg = frame
+        .slice_header
+        .as_ref()
+        .and_then(|header| {
+            // Note: This only includes slice_qp_delta, not pic_init_qp_minus26
+            // For accurate QP, we need access to PPS data
+            Some(QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg)
+        })
+        .flatten();
 
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {

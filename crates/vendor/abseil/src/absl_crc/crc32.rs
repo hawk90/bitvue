@@ -88,7 +88,9 @@ impl Crc32Polynomial {
     #[inline]
     pub const fn init(self) -> u32 {
         match self {
-            Crc32Polynomial::Ieee | Crc32Polynomial::Castagnoli | Crc32Polynomial::Koopman => 0xFFFFFFFF,
+            Crc32Polynomial::Ieee | Crc32Polynomial::Castagnoli | Crc32Polynomial::Koopman => {
+                0xFFFFFFFF
+            }
             Crc32Polynomial::Jamcrc => 0x00000000,
         }
     }
@@ -97,7 +99,9 @@ impl Crc32Polynomial {
     #[inline]
     pub const fn final_xor(self) -> u32 {
         match self {
-            Crc32Polynomial::Ieee | Crc32Polynomial::Castagnoli | Crc32Polynomial::Koopman => 0xFFFFFFFF,
+            Crc32Polynomial::Ieee | Crc32Polynomial::Castagnoli | Crc32Polynomial::Koopman => {
+                0xFFFFFFFF
+            }
             Crc32Polynomial::Jamcrc => 0x00000000,
         }
     }
@@ -497,10 +501,11 @@ pub fn crc32_table_with(data: &[u8], polynomial: Crc32Polynomial) -> u32 {
 pub fn crc32_combine(crc1: u32, crc2: u32, len2: u64) -> u32 {
     // Even powers of the CRC-32 polynomial
     const EVEN_POWERS: [u32; 32] = [
-        0x00000000, 0x5680f8c2, 0x1d6497ba, 0x2be45064, 0x57e5d38c, 0x2bc93782, 0x35bad5ea, 0x0a0cd914,
-        0x4c7f5dd4, 0x38569914, 0x230dfb52, 0x1d251740, 0x2b59e6a5, 0x1e9ecd9b, 0x4065de13, 0x6c529d03,
-        0x0f6f5e43, 0x3a0e54d5, 0x4d0f3e84, 0x06c8d97f, 0x5a39e8d1, 0x53ad12b5, 0x1f6e5e38, 0x6bc58d27,
-        0x5ec0fe7a, 0x76cc0c28, 0x3f75045e, 0x20d50bdb, 0x6074766a, 0x7882f7f2, 0x4c8c4b87, 0x1f7a874d,
+        0x00000000, 0x5680f8c2, 0x1d6497ba, 0x2be45064, 0x57e5d38c, 0x2bc93782, 0x35bad5ea,
+        0x0a0cd914, 0x4c7f5dd4, 0x38569914, 0x230dfb52, 0x1d251740, 0x2b59e6a5, 0x1e9ecd9b,
+        0x4065de13, 0x6c529d03, 0x0f6f5e43, 0x3a0e54d5, 0x4d0f3e84, 0x06c8d97f, 0x5a39e8d1,
+        0x53ad12b5, 0x1f6e5e38, 0x6bc58d27, 0x5ec0fe7a, 0x76cc0c28, 0x3f75045e, 0x20d50bdb,
+        0x6074766a, 0x7882f7f2, 0x4c8c4b87, 0x1f7a874d,
     ];
 
     let mut crc = crc1;
@@ -515,7 +520,11 @@ pub fn crc32_combine(crc1: u32, crc2: u32, len2: u64) -> u32 {
             // When shift is 0, (shift - 1) underflows in debug but wraps in release
             let tz = len.trailing_zeros();
             // Avoid underflow by clamping to at least 1
-            if tz == 0 { 1 } else { tz as u32 }
+            if tz == 0 {
+                1
+            } else {
+                tz as u32
+            }
         };
         let idx = ((shift - 1) % 32) as usize;
         crc ^= EVEN_POWERS[idx];
@@ -662,7 +671,12 @@ mod tests {
         // Verify it differs from IEEE
         assert_ne!(result, 0xCBF43926);
         // Consistency check
-        assert_eq!(result, Crc32::with_polynomial(Crc32Polynomial::Castagnoli).update(b"123456789").value());
+        assert_eq!(
+            result,
+            Crc32::with_polynomial(Crc32Polynomial::Castagnoli)
+                .update(b"123456789")
+                .value()
+        );
     }
 
     #[test]
@@ -799,10 +813,7 @@ mod tests {
 
     #[test]
     fn test_crc32_method_chaining() {
-        let result = Crc32::new()
-            .update(b"123")
-            .update(b"456789")
-            .value();
+        let result = Crc32::new().update(b"123").update(b"456789").value();
         assert_eq!(result, 0xCBF43926);
     }
 

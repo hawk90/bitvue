@@ -3,8 +3,8 @@
 //! This module provides functionality to analyze frame dependencies
 //! and extract minimal reproducible clips from AV1 bitstreams.
 
-use bitvue_core::FrameType;
 use crate::obu::{Obu, ObuType};
+use bitvue_core::FrameType;
 use std::collections::HashSet;
 
 /// Frame dependency information

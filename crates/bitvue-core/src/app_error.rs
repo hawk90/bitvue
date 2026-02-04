@@ -89,11 +89,7 @@ pub struct AppError {
 
 impl AppError {
     /// Create a new error
-    pub fn new(
-        category: ErrorCategory,
-        code: &'static str,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn new(category: ErrorCategory, code: &'static str, message: impl Into<String>) -> Self {
         Self {
             category,
             code,
@@ -180,7 +176,13 @@ impl AppError {
 
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}:{}] {}", self.category.display_name(), self.code, self.message)
+        write!(
+            f,
+            "[{}:{}] {}",
+            self.category.display_name(),
+            self.code,
+            self.message
+        )
     }
 }
 
@@ -256,10 +258,7 @@ impl IntoAppError for io::Error {
                 codes::validation::INVALID_TYPE,
                 format!("Invalid input: {}", self),
             ),
-            _ => (
-                codes::io::READ_FAILED,
-                format!("I/O error: {}", self),
-            ),
+            _ => (codes::io::READ_FAILED, format!("I/O error: {}", self)),
         };
 
         AppError::new(ErrorCategory::Io, code, message).with_details(self.to_string())
@@ -268,11 +267,8 @@ impl IntoAppError for io::Error {
 
 impl IntoAppError for serde_json::Error {
     fn into_app_error(self) -> AppError {
-        AppError::parse(
-            codes::parse::INVALID_SYNTAX,
-            "Failed to parse JSON data",
-        )
-        .with_details(self.to_string())
+        AppError::parse(codes::parse::INVALID_SYNTAX, "Failed to parse JSON data")
+            .with_details(self.to_string())
     }
 }
 
@@ -340,8 +336,7 @@ impl ErrorBuilder {
         message: impl Into<String>,
         details: impl Into<String>,
     ) -> AppError {
-        AppError::new(self.category, self.code, message)
-            .with_details(details)
+        AppError::new(self.category, self.code, message).with_details(details)
     }
 }
 
@@ -379,7 +374,10 @@ impl AppError {
     pub fn invalid_byte_range(start: u64, end: u64, file_size: u64) -> Self {
         AppError::validation(
             codes::validation::INVALID_RANGE,
-            format!("Invalid byte range: {}-{} (file size: {})", start, end, file_size),
+            format!(
+                "Invalid byte range: {}-{} (file size: {})",
+                start, end, file_size
+            ),
         )
     }
 
@@ -488,10 +486,7 @@ mod tests {
 
     #[test]
     fn test_app_error_creation() {
-        let error = AppError::validation(
-            codes::validation::INVALID_PATH,
-            "Test validation error"
-        );
+        let error = AppError::validation(codes::validation::INVALID_PATH, "Test validation error");
 
         assert_eq!(error.category, ErrorCategory::Validation);
         assert_eq!(error.code, "VAL_001");

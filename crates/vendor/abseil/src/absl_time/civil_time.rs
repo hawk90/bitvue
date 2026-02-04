@@ -48,7 +48,13 @@ impl fmt::Display for CivilTimeError {
                 write!(f, "Day {} is invalid for month {}", day, month)
             }
             CivilTimeError::InvalidYear(y) => {
-                write!(f, "Year must be between {} and {}, got {}", CivilYear::MIN, CivilYear::MAX, y)
+                write!(
+                    f,
+                    "Year must be between {} and {}, got {}",
+                    CivilYear::MIN,
+                    CivilYear::MAX,
+                    y
+                )
             }
         }
     }
@@ -216,7 +222,11 @@ impl CivilDay {
     /// Creates a date from year, month, and day without panicking.
     ///
     /// Returns `Err` if the date is invalid.
-    pub fn try_from_ymd(year: i16, month: i8, day: i8) -> Result<(CivilYear, CivilMonth, CivilDay), CivilTimeError> {
+    pub fn try_from_ymd(
+        year: i16,
+        month: i8,
+        day: i8,
+    ) -> Result<(CivilYear, CivilMonth, CivilDay), CivilTimeError> {
         if month < 1 || month > 12 {
             return Err(CivilTimeError::InvalidMonth(month));
         }
@@ -698,7 +708,10 @@ mod tests {
             "Day must be 1-31, got 0"
         );
         assert_eq!(
-            format!("{}", CivilTimeError::InvalidDayForMonth { month: 4, day: 31 }),
+            format!(
+                "{}",
+                CivilTimeError::InvalidDayForMonth { month: 4, day: 31 }
+            ),
             "Day 31 is invalid for month 4"
         );
     }

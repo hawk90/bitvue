@@ -374,11 +374,8 @@ where
         on: impl Into<EventId>,
         to: impl Into<StateId>,
     ) -> Self {
-        self.transitions.push((
-            from.into(),
-            on.into(),
-            Transition::new(to.into()),
-        ));
+        self.transitions
+            .push((from.into(), on.into(), Transition::new(to.into())));
         self
     }
 

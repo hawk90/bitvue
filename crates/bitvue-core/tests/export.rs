@@ -9,8 +9,8 @@ use bitvue_core::export::{
     create_qp_heatmap_export, create_selection_input, create_tooltip_field, create_tooltip_input,
     evaluate_context_menu_guard, export_frames_csv, export_frames_json, export_overlay_ppm,
     export_overlay_rgba, ContextMenuScope, EvidenceBundleExportRequest, EvidenceBundleExportResult,
-    EvidenceBundleManifest, ExportConfig, ExportSummary, FrameExportRow, GuardEvalContext, OverlayExportData,
-    OverlayExportRequest, OverlayExportResult, OverlayImageFormat, OverlayType,
+    EvidenceBundleManifest, ExportConfig, ExportSummary, FrameExportRow, GuardEvalContext,
+    OverlayExportData, OverlayExportRequest, OverlayExportResult, OverlayImageFormat, OverlayType,
     SemanticProbeRunner,
 };
 

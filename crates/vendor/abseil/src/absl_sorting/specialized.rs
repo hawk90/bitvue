@@ -1,6 +1,5 @@
 //! Specialized sorting algorithms for small arrays.
 
-
 /// Optimized sort for small arrays (uses insertion sort).
 pub fn small_sort<T: Ord>(slice: &mut [T]) {
     const SMALL_SORT_THRESHOLD: usize = 16;

@@ -78,7 +78,7 @@ impl VideoFrame {
             dts: self.dts,
             display_name: std::sync::Arc::from(self.display_name()),
             children: Vec::new(),
-            qp_avg: None,  // Codec-specific metadata not included
+            qp_avg: None, // Codec-specific metadata not included
             mv_grid: None,
             temporal_id: self.temporal_id,
             ref_frames: None,

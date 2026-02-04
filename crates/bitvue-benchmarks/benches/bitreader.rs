@@ -64,14 +64,18 @@ fn bench_skip_bits(c: &mut Criterion) {
     let mut group = c.benchmark_group("skip_bits");
 
     for skip_bits in [8, 64, 512, 4096].iter() {
-        group.bench_with_input(BenchmarkId::from_parameter(skip_bits), skip_bits, |b, &skip| {
-            b.iter(|| {
-                let mut reader = BitReader::new(&data);
-                for _ in 0..(65536 * 8 / skip) {
-                    black_box(reader.skip_bits(skip).unwrap());
-                }
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(skip_bits),
+            skip_bits,
+            |b, &skip| {
+                b.iter(|| {
+                    let mut reader = BitReader::new(&data);
+                    for _ in 0..(65536 * 8 / skip) {
+                        black_box(reader.skip_bits(skip).unwrap());
+                    }
+                });
+            },
+        );
     }
 
     group.finish();
@@ -84,13 +88,17 @@ fn bench_read_bytes(c: &mut Criterion) {
 
     for buf_size in [64, 256, 1024, 4096].iter() {
         group.throughput(Throughput::Bytes(*buf_size as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(buf_size), buf_size, |b, &size| {
-            b.iter(|| {
-                let mut reader = BitReader::new(&data);
-                let mut buf = vec![0u8; size];
-                black_box(reader.read_bytes(&mut buf).unwrap());
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(buf_size),
+            buf_size,
+            |b, &size| {
+                b.iter(|| {
+                    let mut reader = BitReader::new(&data);
+                    let mut buf = vec![0u8; size];
+                    black_box(reader.read_bytes(&mut buf).unwrap());
+                });
+            },
+        );
     }
 
     group.finish();

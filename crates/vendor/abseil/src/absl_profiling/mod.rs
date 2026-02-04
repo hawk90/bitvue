@@ -32,7 +32,6 @@
 //! println!(" took {:?}", elapsed);
 //! ```
 
-
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
@@ -42,16 +41,16 @@ use core::fmt;
 use core::ops::Deref;
 use core::time::Duration;
 
-pub mod sampling;
-pub mod histogram;
 pub mod counter;
+pub mod histogram;
 pub mod recorder;
+pub mod sampling;
 
 // Re-exports
-pub use sampling::{SampleRecorder, SamplingProfiler};
-pub use histogram::{Histogram, HistogramBucket};
 pub use counter::{Counter, CounterGuard};
-pub use recorder::{ProfileRecorder, ProfileData};
+pub use histogram::{Histogram, HistogramBucket};
+pub use recorder::{ProfileData, ProfileRecorder};
+pub use sampling::{SampleRecorder, SamplingProfiler};
 
 /// High-resolution timer for measuring elapsed time.
 #[derive(Clone, Debug)]
@@ -139,10 +138,7 @@ pub struct TimerGuard<'a> {
 
 impl<'a> TimerGuard<'a> {
     pub fn new(timer: &'a mut Timer) -> Self {
-        Self {
-            timer,
-            label: None,
-        }
+        Self { timer, label: None }
     }
 
     pub fn with_label(timer: &'a mut Timer, label: impl Into<String>) -> Self {

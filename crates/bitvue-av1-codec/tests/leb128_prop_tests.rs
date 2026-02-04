@@ -3,8 +3,8 @@
 //! These tests use proptest to verify that LEB128 decoding handles all
 //! possible byte sequences without panicking.
 
-use proptest::prelude::*;
 use bitvue_av1_codec::decode_uleb128;
+use proptest::prelude::*;
 
 /// Property: LEB128 decoder should never panic on any input
 ///

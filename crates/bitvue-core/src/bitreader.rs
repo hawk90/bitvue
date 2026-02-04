@@ -80,9 +80,7 @@ impl<'a> BitReader<'a> {
     /// (e.g., extremely large byte offsets).
     #[inline]
     pub fn position(&self) -> u64 {
-        let byte_bits = (self.byte_offset as u64)
-            .checked_mul(8)
-            .unwrap_or(u64::MAX);
+        let byte_bits = (self.byte_offset as u64).checked_mul(8).unwrap_or(u64::MAX);
         byte_bits
             .checked_add(self.bit_offset as u64)
             .unwrap_or(u64::MAX)
@@ -324,9 +322,7 @@ impl<'a> LsbBitReader<'a> {
     /// (e.g., extremely large byte offsets).
     #[inline]
     pub fn position(&self) -> u64 {
-        let byte_bits = (self.byte_offset as u64)
-            .checked_mul(8)
-            .unwrap_or(u64::MAX);
+        let byte_bits = (self.byte_offset as u64).checked_mul(8).unwrap_or(u64::MAX);
         byte_bits
             .checked_add(self.bit_offset as u64)
             .unwrap_or(u64::MAX)

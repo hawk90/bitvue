@@ -51,15 +51,15 @@ impl YuvConversionStrategy for NeonStrategy {
             8 => unsafe {
                 yuv420_to_rgb_neon_impl(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             10 => unsafe {
                 yuv420_to_rgb_neon_impl_10bit(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             12 => unsafe {
                 yuv420_to_rgb_neon_impl_12bit(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             _ => Err(ConversionError::UnsupportedBitDepth(bit_depth)),
         }
     }
@@ -115,15 +115,15 @@ impl YuvConversionStrategy for NeonStrategy {
             8 => unsafe {
                 yuv422_to_rgb_neon_impl(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             10 => unsafe {
                 yuv422_to_rgb_neon_impl_10bit(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             12 => unsafe {
                 yuv422_to_rgb_neon_impl_12bit(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             _ => Err(ConversionError::UnsupportedBitDepth(bit_depth)),
         }
     }
@@ -178,15 +178,15 @@ impl YuvConversionStrategy for NeonStrategy {
             8 => unsafe {
                 yuv444_to_rgb_neon_impl(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             10 => unsafe {
                 yuv444_to_rgb_neon_impl_10bit(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             12 => unsafe {
                 yuv444_to_rgb_neon_impl_12bit(y_plane, u_plane, v_plane, width, height, rgb);
                 Ok(())
-            }
+            },
             _ => Err(ConversionError::UnsupportedBitDepth(bit_depth)),
         }
     }
@@ -719,12 +719,16 @@ unsafe fn yuv420_to_rgb_neon_impl_nbit(
 
             // Bounds check for 16-bit data (2 bytes per sample)
             // Use checked arithmetic to prevent overflow and bypass bounds check
-            let y_safe = y_idx.checked_mul(2)
+            let y_safe = y_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
                 .map_or(false, |offset| offset <= y_plane.len());
-            let uv_safe = uv_idx.checked_mul(2)
+            let uv_safe = uv_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(8))
-                .map_or(false, |offset| offset <= u_plane.len() && offset <= v_plane.len());
+                .map_or(false, |offset| {
+                    offset <= u_plane.len() && offset <= v_plane.len()
+                });
 
             // Process 8 pixels at once with NEON (or scalar fallback)
             if x + 8 <= width && y_safe && uv_safe {
@@ -831,12 +835,16 @@ unsafe fn yuv422_to_rgb_neon_impl_nbit(
 
             // Bounds check for 16-bit data
             // Use checked arithmetic to prevent overflow and bypass bounds check
-            let y_safe = y_idx.checked_mul(2)
+            let y_safe = y_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
                 .map_or(false, |offset| offset <= y_plane.len());
-            let uv_safe = uv_idx.checked_mul(2)
+            let uv_safe = uv_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(8))
-                .map_or(false, |offset| offset <= u_plane.len() && offset <= v_plane.len());
+                .map_or(false, |offset| {
+                    offset <= u_plane.len() && offset <= v_plane.len()
+                });
 
             // Process 8 pixels at once with NEON (or scalar fallback)
             if x + 8 <= width && y_safe && uv_safe {
@@ -938,12 +946,16 @@ unsafe fn yuv444_to_rgb_neon_impl_nbit(
 
             // Bounds check for 16-bit data (YUV444 has no chroma subsampling)
             // Use checked arithmetic to prevent overflow and bypass bounds check
-            let y_safe = y_idx.checked_mul(2)
+            let y_safe = y_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
                 .map_or(false, |offset| offset <= y_plane.len());
-            let uv_safe = y_idx.checked_mul(2)
+            let uv_safe = y_idx
+                .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
-                .map_or(false, |offset| offset <= u_plane.len() && offset <= v_plane.len());
+                .map_or(false, |offset| {
+                    offset <= u_plane.len() && offset <= v_plane.len()
+                });
 
             // Process 8 pixels at once with NEON (or scalar fallback)
             if x + 8 <= width && y_safe && uv_safe {
@@ -1015,18 +1027,18 @@ unsafe fn store_rgb_interleaved_neon(
     // Build RGB triplets in arrays for cache-friendly access
     // Pixels 0-3: R0,G0,B0,R1,G1,B1,R2,G2,B2,R3,G3,B3 (12 bytes)
     let rgb_part1 = [
-        r_buf[0], g_buf[0], b_buf[0],  // Pixel 0
-        r_buf[1], g_buf[1], b_buf[1],  // Pixel 1
-        r_buf[2], g_buf[2], b_buf[2],  // Pixel 2
-        r_buf[3], g_buf[3], b_buf[3],  // Pixel 3
+        r_buf[0], g_buf[0], b_buf[0], // Pixel 0
+        r_buf[1], g_buf[1], b_buf[1], // Pixel 1
+        r_buf[2], g_buf[2], b_buf[2], // Pixel 2
+        r_buf[3], g_buf[3], b_buf[3], // Pixel 3
     ];
 
     // Pixels 4-7: R4,G4,B4,R5,G5,B5,R6,G6,B6,R7,G7,B7 (12 bytes)
     let rgb_part2 = [
-        r_buf[4], g_buf[4], b_buf[4],  // Pixel 4
-        r_buf[5], g_buf[5], b_buf[5],  // Pixel 5
-        r_buf[6], g_buf[6], b_buf[6],  // Pixel 6
-        r_buf[7], g_buf[7], b_buf[7],  // Pixel 7
+        r_buf[4], g_buf[4], b_buf[4], // Pixel 4
+        r_buf[5], g_buf[5], b_buf[5], // Pixel 5
+        r_buf[6], g_buf[6], b_buf[6], // Pixel 6
+        r_buf[7], g_buf[7], b_buf[7], // Pixel 7
     ];
 
     // Copy to output using pointer arithmetic
@@ -1136,8 +1148,8 @@ mod tests {
         let strategy = NeonStrategy::new();
         let caps = strategy.capabilities();
         assert_eq!(caps.speedup_factor, 3.5);
-        assert!(caps.supports_10bit);   // 10-bit support added
-        assert!(caps.supports_12bit);   // 12-bit support added
+        assert!(caps.supports_10bit); // 10-bit support added
+        assert!(caps.supports_12bit); // 12-bit support added
         assert!(!caps.is_hardware_accelerated);
     }
 

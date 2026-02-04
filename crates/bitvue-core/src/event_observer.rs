@@ -358,9 +358,7 @@ impl LoggingObserver {
 
     /// Create with custom name
     pub fn with_name(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-        }
+        Self { name: name.into() }
     }
 
     /// Log an event
@@ -419,7 +417,10 @@ impl EventObserver for LoggingObserver {
     fn on_cache_invalidated(&self, event: &CacheInvalidatedEvent) {
         self.log_event(
             "CacheInvalidated",
-            &format!("key={}, entries={}, reason={}", event.cache_key, event.entry_count, event.reason),
+            &format!(
+                "key={}, entries={}, reason={}",
+                event.cache_key, event.entry_count, event.reason
+            ),
         );
     }
 
@@ -537,7 +538,10 @@ impl EventObserver for HistoryObserver {
         self.add_entry(
             EventType::SelectionChanged,
             event.timestamp,
-            format!("Selected {} in stream {}", event.new_selection, event.stream_id),
+            format!(
+                "Selected {} in stream {}",
+                event.new_selection, event.stream_id
+            ),
         );
     }
 

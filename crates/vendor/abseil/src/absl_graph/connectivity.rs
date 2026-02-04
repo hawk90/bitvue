@@ -1,6 +1,5 @@
 //! Graph connectivity algorithms.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -79,7 +78,12 @@ fn dfs_order<T>(graph: &Graph<T>, v: VertexId, visited: &mut [bool], order: &mut
     order.push(v);
 }
 
-fn dfs_collect<T>(graph: &Graph<T>, v: VertexId, visited: &mut [bool], component: &mut Vec<VertexId>) {
+fn dfs_collect<T>(
+    graph: &Graph<T>,
+    v: VertexId,
+    visited: &mut [bool],
+    component: &mut Vec<VertexId>,
+) {
     visited[v] = true;
     component.push(v);
     for neighbor in graph.neighbors(v) {

@@ -3,10 +3,10 @@
 //! This module provides a chain of responsibility pattern for processing commands,
 //! allowing multiple handlers to process or pass along commands in a pipeline.
 
-use std::fmt;
-use std::sync::Arc;
 use crate::command::Command;
 use crate::selection::StreamId;
+use std::fmt;
+use std::sync::Arc;
 
 /// Result of command processing
 #[derive(Debug, Clone)]
@@ -422,7 +422,9 @@ impl From<&Command> for Option<CacheKey> {
     fn from(cmd: &Command) -> Self {
         Some(CacheKey {
             command_type: cmd.type_name().to_string(),
-            stream: cmd.stream_id().map(|s| matches!(s, crate::selection::StreamId::A)),
+            stream: cmd
+                .stream_id()
+                .map(|s| matches!(s, crate::selection::StreamId::A)),
         })
     }
 }
@@ -733,13 +735,17 @@ impl ChainBuilder {
 
     /// Add throttling handler
     pub fn with_throttle(mut self, min_interval_ms: u64) -> Self {
-        self.chain = self.chain.with_handler(ThrottlingHandler::new(min_interval_ms));
+        self.chain = self
+            .chain
+            .with_handler(ThrottlingHandler::new(min_interval_ms));
         self
     }
 
     /// Add retry handler
     pub fn with_retry(mut self, max_retries: usize, base_delay_ms: u64) -> Self {
-        self.chain = self.chain.with_handler(RetryHandler::new(max_retries, base_delay_ms));
+        self.chain = self
+            .chain
+            .with_handler(RetryHandler::new(max_retries, base_delay_ms));
         self
     }
 
@@ -1026,10 +1032,7 @@ mod tests {
 
     #[test]
     fn test_command_chain_debug() {
-        let chain = ChainBuilder::new()
-            .with_validation()
-            .with_logging()
-            .build();
+        let chain = ChainBuilder::new().with_validation().with_logging().build();
 
         let debug_str = format!("{:?}", chain);
 

@@ -1,6 +1,5 @@
 //! Adjacency list and matrix representations.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;

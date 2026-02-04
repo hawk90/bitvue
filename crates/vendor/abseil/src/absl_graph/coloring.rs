@@ -1,6 +1,5 @@
 //! Graph coloring algorithms.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -40,7 +39,13 @@ pub fn greedy_coloring<T>(graph: &Graph<T>) -> GraphColoring {
 /// Computes the chromatic number of a graph.
 pub fn chromatic_number<T>(graph: &Graph<T>) -> usize {
     let coloring = greedy_coloring(graph);
-    coloring.colors.iter().filter_map(|&c| c).map(|c| c + 1).max().unwrap_or(0)
+    coloring
+        .colors
+        .iter()
+        .filter_map(|&c| c)
+        .map(|c| c + 1)
+        .max()
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

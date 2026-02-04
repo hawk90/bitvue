@@ -1,6 +1,5 @@
 //! Histogram for value distribution analysis.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -220,10 +219,10 @@ mod tests {
         let mut hist = Histogram::new(0.0, 100.0, 4);
 
         // Add values at each bucket boundary
-        hist.add(0.0);   // First bucket
-        hist.add(25.0);  // Second bucket
-        hist.add(50.0);  // Third bucket
-        hist.add(75.0);  // Fourth bucket
+        hist.add(0.0); // First bucket
+        hist.add(25.0); // Second bucket
+        hist.add(50.0); // Third bucket
+        hist.add(75.0); // Fourth bucket
         hist.add(100.0); // Fourth bucket (max inclusive)
 
         assert_eq!(hist.total_count(), 5);

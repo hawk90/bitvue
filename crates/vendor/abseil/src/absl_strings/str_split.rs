@@ -181,14 +181,13 @@ impl<'a, 'delim> Iterator for StrSplit<'a, 'delim> {
                 // SAFETY: We need both the position AND the character to correctly
                 // skip multi-byte UTF-8 characters. Using delimiter.len() would be wrong
                 // because Char delimiters can be multi-byte (e.g., '€' is 3 bytes).
-                let found = self.input.char_indices()
-                    .find_map(|(i, c)| {
-                        if self.delimiter.matches(c) {
-                            Some((i, c)) // Return both position and character
-                        } else {
-                            None
-                        }
-                    });
+                let found = self.input.char_indices().find_map(|(i, c)| {
+                    if self.delimiter.matches(c) {
+                        Some((i, c)) // Return both position and character
+                    } else {
+                        None
+                    }
+                });
 
                 if let Some((pos, delim_char)) = found {
                     let result = &self.input[..pos];
@@ -565,25 +564,23 @@ mod tests {
 
     #[test]
     fn test_splitter_builder() {
-        let parts: Vec<&str> = Splitter::new(',')
-            .skip_empty()
-            .on("a,,b,,c")
-            .collect();
+        let parts: Vec<&str> = Splitter::new(',').skip_empty().on("a,,b,,c").collect();
         assert_eq!(parts, ["a", "b", "c"]);
     }
 
     #[test]
     fn test_splitter_with_str() {
-        let parts: Vec<&str> = Splitter::new(',').with_str("::").skip_empty().on("a::::b::c").collect();
+        let parts: Vec<&str> = Splitter::new(',')
+            .with_str("::")
+            .skip_empty()
+            .on("a::::b::c")
+            .collect();
         assert_eq!(parts, ["a", "b", "c"]);
     }
 
     #[test]
     fn test_splitter_with_limit() {
-        let parts: Vec<&str> = Splitter::new(',')
-            .limit(1)
-            .on("a,b,c,d")
-            .collect();
+        let parts: Vec<&str> = Splitter::new(',').limit(1).on("a,b,c,d").collect();
         assert_eq!(parts, ["a", "b,c,d"]);
     }
 

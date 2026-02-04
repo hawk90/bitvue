@@ -123,7 +123,10 @@ impl ValidationStrategy for StrictValidationStrategy {
                 }
                 ValidationResult::valid()
             }
-            ValidationData::FrameKey { stream_id, frame_index: _ } => {
+            ValidationData::FrameKey {
+                stream_id,
+                frame_index: _,
+            } => {
                 if *stream_id > 1 {
                     return ValidationResult::invalid("Stream ID must be 0 or 1");
                 }
@@ -305,12 +308,11 @@ impl StreamDataValidator {
         Self { strategy }
     }
 
-    pub fn validate_frame_key(
-        &self,
-        stream_id: u8,
-        frame_index: u64,
-    ) -> ValidationResult {
-        let data = ValidationData::FrameKey { stream_id, frame_index };
+    pub fn validate_frame_key(&self, stream_id: u8, frame_index: u64) -> ValidationResult {
+        let data = ValidationData::FrameKey {
+            stream_id,
+            frame_index,
+        };
         self.strategy.validate(&data)
     }
 
@@ -448,7 +450,10 @@ mod tests {
     #[test]
     fn test_byte_range_invalid() {
         let strategy = StrictValidationStrategy;
-        let data = ValidationData::ByteRange { start: 100, end: 50 };
+        let data = ValidationData::ByteRange {
+            start: 100,
+            end: 50,
+        };
         let result = strategy.validate(&data);
         assert!(!result.is_valid);
     }
@@ -512,6 +517,10 @@ mod tests {
         let strategy = StrictValidationStrategy;
         assert!(strategy.validate(&ValidationData::Float(42.0)).is_valid);
         assert!(!strategy.validate(&ValidationData::Float(f64::NAN)).is_valid);
-        assert!(!strategy.validate(&ValidationData::Float(f64::INFINITY)).is_valid);
+        assert!(
+            !strategy
+                .validate(&ValidationData::Float(f64::INFINITY))
+                .is_valid
+        );
     }
 }

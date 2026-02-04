@@ -46,7 +46,10 @@ impl std::fmt::Display for CodecType {
 /// ));
 /// ```
 pub struct CodecRegistry {
-    factories: std::collections::HashMap<CodecType, Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>>,
+    factories: std::collections::HashMap<
+        CodecType,
+        Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>,
+    >,
 }
 
 impl CodecRegistry {
@@ -54,9 +57,7 @@ impl CodecRegistry {
     pub fn global() -> &'static std::sync::Mutex<Self> {
         use std::sync::OnceLock;
         static REGISTRY: OnceLock<std::sync::Mutex<CodecRegistry>> = OnceLock::new();
-        REGISTRY.get_or_init(|| {
-            std::sync::Mutex::new(Self::default())
-        })
+        REGISTRY.get_or_init(|| std::sync::Mutex::new(Self::default()))
     }
 
     /// Register a decoder factory function for a codec type
@@ -84,12 +85,9 @@ impl CodecRegistry {
 
     /// Create a decoder using a registered factory function
     pub fn create(&self, codec: CodecType) -> Result<Box<dyn Decoder>> {
-        self.factories
-            .get(&codec)
-            .ok_or_else(|| {
-                DecodeError::Init(format!("No decoder registered for codec {:?}", codec))
-            })?
-            ()
+        self.factories.get(&codec).ok_or_else(|| {
+            DecodeError::Init(format!("No decoder registered for codec {:?}", codec))
+        })?()
     }
 
     /// Check if a codec is registered
@@ -213,45 +211,60 @@ impl DecoderFactory {
 
         // Register built-in codecs
         // AV1 is always available
-        let _ = guard.register(CodecType::AV1, Box::new(|| {
-            let decoder = crate::decoder::Av1Decoder::new()?;
-            Ok(Box::new(decoder))
-        }));
+        let _ = guard.register(
+            CodecType::AV1,
+            Box::new(|| {
+                let decoder = crate::decoder::Av1Decoder::new()?;
+                Ok(Box::new(decoder))
+            }),
+        );
 
         // H.264 (requires ffmpeg feature)
         #[cfg(feature = "ffmpeg")]
         {
-            let _ = guard.register(CodecType::H264, Box::new(|| {
-                let decoder = crate::ffmpeg::H264Decoder::new()?;
-                Ok(Box::new(decoder))
-            }));
+            let _ = guard.register(
+                CodecType::H264,
+                Box::new(|| {
+                    let decoder = crate::ffmpeg::H264Decoder::new()?;
+                    Ok(Box::new(decoder))
+                }),
+            );
         }
 
         // H.265 (requires ffmpeg feature)
         #[cfg(feature = "ffmpeg")]
         {
-            let _ = guard.register(CodecType::H265, Box::new(|| {
-                let decoder = crate::ffmpeg::HevcDecoder::new()?;
-                Ok(Box::new(decoder))
-            }));
+            let _ = guard.register(
+                CodecType::H265,
+                Box::new(|| {
+                    let decoder = crate::ffmpeg::HevcDecoder::new()?;
+                    Ok(Box::new(decoder))
+                }),
+            );
         }
 
         // VP9 (requires ffmpeg feature)
         #[cfg(feature = "ffmpeg")]
         {
-            let _ = guard.register(CodecType::VP9, Box::new(|| {
-                let decoder = crate::ffmpeg::Vp9Decoder::new()?;
-                Ok(Box::new(decoder))
-            }));
+            let _ = guard.register(
+                CodecType::VP9,
+                Box::new(|| {
+                    let decoder = crate::ffmpeg::Vp9Decoder::new()?;
+                    Ok(Box::new(decoder))
+                }),
+            );
         }
 
         // H.266/VVC (requires vvdec feature)
         #[cfg(feature = "vvdec")]
         {
-            let _ = guard.register(CodecType::H266, Box::new(|| {
-                let decoder = crate::vvdec::VvcDecoder::new()?;
-                Ok(Box::new(decoder))
-            }));
+            let _ = guard.register(
+                CodecType::H266,
+                Box::new(|| {
+                    let decoder = crate::vvdec::VvcDecoder::new()?;
+                    Ok(Box::new(decoder))
+                }),
+            );
         }
     }
 
@@ -279,7 +292,10 @@ impl DecoderFactory {
     ///     Ok(Box::new(MyCustomDecoder::new()))
     /// });
     /// ```
-    pub fn register_codec(codec: CodecType, factory: DecoderFactoryFn) -> std::result::Result<(), String> {
+    pub fn register_codec(
+        codec: CodecType,
+        factory: DecoderFactoryFn,
+    ) -> std::result::Result<(), String> {
         let registry = CodecRegistry::global();
         let mut guard = registry.lock().unwrap();
         guard.register(codec, factory)

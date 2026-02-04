@@ -41,21 +41,24 @@ impl From<bitvue_core::CodecError> for Vp9Error {
             bitvue_core::CodecError::InvalidData { codec: _, message } => {
                 Vp9Error::InvalidData(message)
             }
-            bitvue_core::CodecError::InsufficientData { codec: _, expected, actual } => {
-                Vp9Error::InsufficientData { expected, actual }
-            }
-            bitvue_core::CodecError::Io { codec: _, source } => {
-                Vp9Error::Io(source)
-            }
-            bitvue_core::CodecError::Parse { codec: _, offset, message } => {
-                Vp9Error::Parse { offset, message }
-            }
+            bitvue_core::CodecError::InsufficientData {
+                codec: _,
+                expected,
+                actual,
+            } => Vp9Error::InsufficientData { expected, actual },
+            bitvue_core::CodecError::Io { codec: _, source } => Vp9Error::Io(source),
+            bitvue_core::CodecError::Parse {
+                codec: _,
+                offset,
+                message,
+            } => Vp9Error::Parse { offset, message },
             bitvue_core::CodecError::Unsupported { codec: _, feature } => {
                 Vp9Error::InvalidData(format!("Unsupported: {}", feature))
             }
-            bitvue_core::CodecError::MissingParameter { codec: _, parameter } => {
-                Vp9Error::InvalidData(format!("Missing parameter: {}", parameter))
-            }
+            bitvue_core::CodecError::MissingParameter {
+                codec: _,
+                parameter,
+            } => Vp9Error::InvalidData(format!("Missing parameter: {}", parameter)),
             bitvue_core::CodecError::CodecSpecific { codec: _, message } => {
                 Vp9Error::InvalidData(message)
             }

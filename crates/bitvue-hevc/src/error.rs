@@ -41,21 +41,24 @@ impl From<bitvue_core::CodecError> for HevcError {
             bitvue_core::CodecError::InvalidData { codec: _, message } => {
                 HevcError::InvalidData(message)
             }
-            bitvue_core::CodecError::InsufficientData { codec: _, expected, actual } => {
-                HevcError::InsufficientData { expected, actual }
-            }
-            bitvue_core::CodecError::Io { codec: _, source } => {
-                HevcError::Io(source)
-            }
-            bitvue_core::CodecError::Parse { codec: _, offset, message } => {
-                HevcError::Parse { offset, message }
-            }
+            bitvue_core::CodecError::InsufficientData {
+                codec: _,
+                expected,
+                actual,
+            } => HevcError::InsufficientData { expected, actual },
+            bitvue_core::CodecError::Io { codec: _, source } => HevcError::Io(source),
+            bitvue_core::CodecError::Parse {
+                codec: _,
+                offset,
+                message,
+            } => HevcError::Parse { offset, message },
             bitvue_core::CodecError::Unsupported { codec: _, feature } => {
                 HevcError::InvalidData(format!("Unsupported: {}", feature))
             }
-            bitvue_core::CodecError::MissingParameter { codec: _, parameter } => {
-                HevcError::InvalidData(format!("Missing parameter: {}", parameter))
-            }
+            bitvue_core::CodecError::MissingParameter {
+                codec: _,
+                parameter,
+            } => HevcError::InvalidData(format!("Missing parameter: {}", parameter)),
             bitvue_core::CodecError::CodecSpecific { codec: _, message } => {
                 HevcError::InvalidData(message)
             }

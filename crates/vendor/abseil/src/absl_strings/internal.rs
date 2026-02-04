@@ -567,10 +567,10 @@ pub mod char_class {
         // Simplified version - just returns a basic category
         // A real implementation would use Unicode data
         match c {
-            '0'..='9' => 0, // Number, Decimal Digit
-            'a'..='z' | 'A'..='Z' => 1, // Letter
+            '0'..='9' => 0,              // Number, Decimal Digit
+            'a'..='z' | 'A'..='Z' => 1,  // Letter
             _ if c.is_whitespace() => 2, // Separator
-            _ => 3, // Other
+            _ => 3,                      // Other
         }
     }
 }

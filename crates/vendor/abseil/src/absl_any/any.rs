@@ -112,10 +112,13 @@ impl Any {
     /// ```
     #[inline]
     pub fn downcast<T: 'static>(self) -> Result<T, Self> {
-        self.inner.downcast::<T>().map(|boxed| *boxed).map_err(|boxed| Any {
-            inner: boxed,
-            type_name: self.type_name,
-        })
+        self.inner
+            .downcast::<T>()
+            .map(|boxed| *boxed)
+            .map_err(|boxed| Any {
+                inner: boxed,
+                type_name: self.type_name,
+            })
     }
 
     /// Returns the `TypeId` of the contained value.
@@ -152,9 +155,7 @@ impl Any {
 
 impl core::fmt::Debug for Any {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_tuple("Any")
-            .field(&self.type_name())
-            .finish()
+        f.debug_tuple("Any").field(&self.type_name()).finish()
     }
 }
 
@@ -232,6 +233,9 @@ mod tests {
     fn test_any_with_vec() {
         let any_value = Any::new(vec![1, 2, 3]);
         assert!(any_value.is::<Vec<i32>>());
-        assert_eq!(*any_value.downcast_ref::<Vec<i32>>().unwrap(), vec![1, 2, 3]);
+        assert_eq!(
+            *any_value.downcast_ref::<Vec<i32>>().unwrap(),
+            vec![1, 2, 3]
+        );
     }
 }

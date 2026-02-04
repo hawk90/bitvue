@@ -1,6 +1,5 @@
 //! Advanced pathfinding algorithms.
 
-
 extern crate alloc;
 
 use alloc::collections::BTreeSet;

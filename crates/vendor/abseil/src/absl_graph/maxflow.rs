@@ -2,7 +2,6 @@
 //!
 //! Implements Ford-Fulkerson, Edmonds-Karp, and related algorithms.
 
-
 extern crate alloc;
 
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -331,25 +330,27 @@ fn send_blocking_flow(
     let next_level = current_level + 1;
 
     // Collect edge data to avoid borrow issues
-    let edge_data: Vec<_> = network.adj.get(&source)
-        .map(|v| v.iter().filter_map(|e| {
-            // Check if edge.to is at the next level
-            let edge_level = level.iter().position(|&v| v == e.to);
-            edge_level.map_or(false, |l| l == next_level).then_some((e.to, e.capacity, e.flow))
-        }).collect())
+    let edge_data: Vec<_> = network
+        .adj
+        .get(&source)
+        .map(|v| {
+            v.iter()
+                .filter_map(|e| {
+                    // Check if edge.to is at the next level
+                    let edge_level = level.iter().position(|&v| v == e.to);
+                    edge_level
+                        .map_or(false, |l| l == next_level)
+                        .then_some((e.to, e.capacity, e.flow))
+                })
+                .collect()
+        })
         .unwrap_or_default();
 
     for (to, capacity, flow) in edge_data {
         let remaining = capacity - flow;
 
         if remaining > 0 {
-            let flow = send_blocking_flow(
-                network,
-                level,
-                to,
-                sink,
-                min_capacity.min(remaining),
-            )?;
+            let flow = send_blocking_flow(network, level, to, sink, min_capacity.min(remaining))?;
 
             if flow > 0 {
                 // Update edge flow

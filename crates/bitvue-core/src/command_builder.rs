@@ -468,7 +468,9 @@ impl CommandBuilder {
             }
 
             CommandType::SelectSpatialBlock => {
-                let stream = self.stream.ok_or("Stream required for SelectSpatialBlock")?;
+                let stream = self
+                    .stream
+                    .ok_or("Stream required for SelectSpatialBlock")?;
                 let block = self.extract_spatial_block("SelectSpatialBlock")?;
                 Ok(Command::SelectSpatialBlock { stream, block })
             }
@@ -477,13 +479,20 @@ impl CommandBuilder {
                 let stream = self.stream.ok_or("Stream required for JumpToOffset")?;
                 Ok(Command::JumpToOffset {
                     stream,
-                    offset: self.byte_range.as_ref().map(|r| r.start).ok_or("Offset required for JumpToOffset, use with_byte_range()")?,
+                    offset: self
+                        .byte_range
+                        .as_ref()
+                        .map(|r| r.start)
+                        .ok_or("Offset required for JumpToOffset, use with_byte_range()")?,
                 })
             }
 
             CommandType::JumpToFrame => {
                 let stream = self.stream.ok_or("Stream required for JumpToFrame")?;
-                let frame_index = self.byte_range.as_ref().map(|r| r.start as usize)
+                let frame_index = self
+                    .byte_range
+                    .as_ref()
+                    .map(|r| r.start as usize)
                     .ok_or("Frame index required for JumpToFrame")?;
                 Ok(Command::JumpToFrame {
                     stream,
@@ -493,13 +502,17 @@ impl CommandBuilder {
 
             CommandType::ToggleOverlay => {
                 let stream = self.stream.ok_or("Stream required for ToggleOverlay")?;
-                let layer = self.overlay_layer.ok_or("Layer required for ToggleOverlay")?;
+                let layer = self
+                    .overlay_layer
+                    .ok_or("Layer required for ToggleOverlay")?;
                 Ok(Command::ToggleOverlay { stream, layer })
             }
 
             CommandType::SetOverlayOpacity => {
                 let stream = self.stream.ok_or("Stream required for SetOverlayOpacity")?;
-                let opacity = self.opacity.ok_or("Opacity required for SetOverlayOpacity")?;
+                let opacity = self
+                    .opacity
+                    .ok_or("Opacity required for SetOverlayOpacity")?;
                 Ok(Command::SetOverlayOpacity { stream, opacity })
             }
 
@@ -525,7 +538,9 @@ impl CommandBuilder {
             }
 
             CommandType::SetWorkspaceMode => {
-                let mode = self.workspace_mode.ok_or("Mode required for SetWorkspaceMode")?;
+                let mode = self
+                    .workspace_mode
+                    .ok_or("Mode required for SetWorkspaceMode")?;
                 Ok(Command::SetWorkspaceMode { mode })
             }
 
@@ -575,13 +590,17 @@ impl CommandBuilder {
             }
 
             CommandType::ExportEvidenceBundle => {
-                let stream = self.stream.ok_or("Stream required for ExportEvidenceBundle")?;
+                let stream = self
+                    .stream
+                    .ok_or("Stream required for ExportEvidenceBundle")?;
                 let path = self.path.ok_or("Path required for ExportEvidenceBundle")?;
                 Ok(Command::ExportEvidenceBundle { stream, path })
             }
 
             CommandType::SetOrderType => {
-                let order_type = self.order_type.ok_or("OrderType required for SetOrderType")?;
+                let order_type = self
+                    .order_type
+                    .ok_or("OrderType required for SetOrderType")?;
                 Ok(Command::SetOrderType { order_type })
             }
 
@@ -656,11 +675,14 @@ mod tests {
     #[test]
     fn test_select_frame_command() {
         let command = CommandBuilder::new()
-            .select_frame(StreamId::A, FrameKey {
-                stream: StreamId::A,
-                frame_index: 42,
-                pts: None,
-            })
+            .select_frame(
+                StreamId::A,
+                FrameKey {
+                    stream: StreamId::A,
+                    frame_index: 42,
+                    pts: None,
+                },
+            )
             .build()
             .unwrap();
 
@@ -676,12 +698,15 @@ mod tests {
     #[test]
     fn test_select_unit_command() {
         let command = CommandBuilder::new()
-            .select_unit(StreamId::B, UnitKey {
-                stream: StreamId::B,
-                unit_type: "TEST_UNIT".to_string(),
-                offset: 10,
-                size: 100,
-            })
+            .select_unit(
+                StreamId::B,
+                UnitKey {
+                    stream: StreamId::B,
+                    unit_type: "TEST_UNIT".to_string(),
+                    offset: 10,
+                    size: 100,
+                },
+            )
             .build()
             .unwrap();
 
@@ -775,10 +800,7 @@ mod tests {
 
     #[test]
     fn test_toggle_detail_mode_command() {
-        let command = CommandBuilder::new()
-            .toggle_detail_mode()
-            .build()
-            .unwrap();
+        let command = CommandBuilder::new().toggle_detail_mode().build().unwrap();
 
         match command {
             Command::ToggleDetailMode => {}
@@ -788,10 +810,7 @@ mod tests {
 
     #[test]
     fn test_copy_selection_command() {
-        let command = CommandBuilder::new()
-            .copy_selection()
-            .build()
-            .unwrap();
+        let command = CommandBuilder::new().copy_selection().build().unwrap();
 
         match command {
             Command::CopySelection => {}
@@ -817,11 +836,14 @@ mod tests {
     #[test]
     fn test_add_bookmark_command() {
         let command = CommandBuilder::new()
-            .add_bookmark(StreamId::A, FrameKey {
-                stream: StreamId::A,
-                frame_index: 42,
-                pts: None,
-            })
+            .add_bookmark(
+                StreamId::A,
+                FrameKey {
+                    stream: StreamId::A,
+                    frame_index: 42,
+                    pts: None,
+                },
+            )
             .build()
             .unwrap();
 
@@ -878,9 +900,7 @@ mod tests {
             .unwrap();
 
         match command {
-            Command::Export {
-                frame_range, ..
-            } => {
+            Command::Export { frame_range, .. } => {
                 assert_eq!(frame_range, Some((10, 100)));
             }
             _ => panic!("Expected Export command"),
@@ -889,10 +909,7 @@ mod tests {
 
     #[test]
     fn test_copy_bytes_command() {
-        let command = CommandBuilder::new()
-            .copy_bytes(100..200)
-            .build()
-            .unwrap();
+        let command = CommandBuilder::new().copy_bytes(100..200).build().unwrap();
 
         match command {
             Command::CopyBytes { byte_range } => {

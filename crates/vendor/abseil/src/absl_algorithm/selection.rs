@@ -56,15 +56,14 @@ pub(crate) fn partition_pivot<T: PartialOrd>(slice: &mut [T], left: usize, right
     slice.swap(pivot_idx, right - 1);
 
     loop {
-        while i < j && unsafe {
-            &*(slice.as_ptr().add(i) as *const T) < pivot_value
-        } {
+        while i < j && unsafe { &*(slice.as_ptr().add(i) as *const T) < pivot_value } {
             i += 1;
         }
 
-        j = match (i + 1..right).rev().find(|&k| {
-            unsafe { &*(slice.as_ptr().add(k) as *const T) >= pivot_value }
-        }) {
+        j = match (i + 1..right)
+            .rev()
+            .find(|&k| unsafe { &*(slice.as_ptr().add(k) as *const T) >= pivot_value })
+        {
             Some(k) => k,
             None => break,
         };

@@ -246,10 +246,8 @@ impl<T, const N: usize> InlinedVector<T, N> {
     #[cold]
     fn allocate_heap_checked(&mut self) -> Result<(), AllocationError> {
         unsafe {
-            let new_cap = N.checked_mul(2)
-                .ok_or(AllocationError::CapacityOverflow)?;
-            let layout = array_layout::<T>(new_cap)
-                .ok_or(AllocationError::InvalidLayout)?;
+            let new_cap = N.checked_mul(2).ok_or(AllocationError::CapacityOverflow)?;
+            let layout = array_layout::<T>(new_cap).ok_or(AllocationError::InvalidLayout)?;
             let ptr = alloc(layout) as *mut T;
 
             if ptr.is_null() {
@@ -288,7 +286,9 @@ impl<T, const N: usize> InlinedVector<T, N> {
     #[cold]
     fn grow_heap_checked(&mut self) -> Result<(), AllocationError> {
         unsafe {
-            let new_cap = self.heap_cap.checked_mul(2)
+            let new_cap = self
+                .heap_cap
+                .checked_mul(2)
                 .ok_or(AllocationError::CapacityOverflow)?;
 
             if new_cap <= self.heap_cap {
@@ -296,16 +296,12 @@ impl<T, const N: usize> InlinedVector<T, N> {
                 return Err(AllocationError::CapacityOverflow);
             }
 
-            let old_layout = array_layout::<T>(self.heap_cap)
-                .ok_or(AllocationError::InvalidLayout)?;
-            let new_layout = array_layout::<T>(new_cap)
-                .ok_or(AllocationError::InvalidLayout)?;
+            let old_layout =
+                array_layout::<T>(self.heap_cap).ok_or(AllocationError::InvalidLayout)?;
+            let new_layout = array_layout::<T>(new_cap).ok_or(AllocationError::InvalidLayout)?;
 
-            let new_ptr = realloc(
-                self.heap_ptr as *mut u8,
-                old_layout,
-                new_layout.size(),
-            ) as *mut T;
+            let new_ptr =
+                realloc(self.heap_ptr as *mut u8, old_layout, new_layout.size()) as *mut T;
 
             if new_ptr.is_null() {
                 return Err(AllocationError::AllocationFailed);
@@ -332,9 +328,7 @@ impl<T, const N: usize> InlinedVector<T, N> {
         self.len -= 1;
         // SAFETY: We just decremented len, so self.len is a valid index
         // and points to an initialized element that we can read.
-        unsafe {
-            Some(self.as_mut_ptr().add(self.len).read())
-        }
+        unsafe { Some(self.as_mut_ptr().add(self.len).read()) }
     }
 
     /// Clears the vector, removing all values.
@@ -358,7 +352,9 @@ impl<T, const N: usize> InlinedVector<T, N> {
     ///
     /// Returns `Err` if the capacity calculation would overflow.
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), AllocationError> {
-        let new_len = self.len.checked_add(additional)
+        let new_len = self
+            .len
+            .checked_add(additional)
             .ok_or(AllocationError::CapacityOverflow)?;
 
         if self.is_inline() && new_len > N {
@@ -432,13 +428,7 @@ impl<T, const N: usize> InlinedVector<T, N> {
     pub fn iter(&self) -> Iter<'_, T> {
         // SAFETY: as_ptr() returns a valid pointer within the vector's allocation
         // and as_ptr().add(len) returns the end pointer (past the last element)
-        unsafe {
-            Iter::from_raw_parts(
-                self.as_ptr(),
-                self.as_ptr().add(self.len),
-                self.len,
-            )
-        }
+        unsafe { Iter::from_raw_parts(self.as_ptr(), self.as_ptr().add(self.len), self.len) }
     }
 
     /// Returns a mutable iterator over the vector.
@@ -446,11 +436,7 @@ impl<T, const N: usize> InlinedVector<T, N> {
         // SAFETY: as_mut_ptr() returns a valid pointer within the vector's allocation
         // and as_mut_ptr().add(len) returns the end pointer (past the last element)
         unsafe {
-            IterMut::from_raw_parts(
-                self.as_mut_ptr(),
-                self.as_mut_ptr().add(self.len),
-                self.len,
-            )
+            IterMut::from_raw_parts(self.as_mut_ptr(), self.as_mut_ptr().add(self.len), self.len)
         }
     }
 }
@@ -467,9 +453,7 @@ impl<T, const N: usize> Deref for InlinedVector<T, N> {
     fn deref(&self) -> &Self::Target {
         // SAFETY: as_ptr() returns a valid pointer to the first element,
         // and self.len is the exact count of initialized elements.
-        unsafe {
-            core::slice::from_raw_parts(self.as_ptr(), self.len)
-        }
+        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len) }
     }
 }
 
@@ -477,9 +461,7 @@ impl<T, const N: usize> DerefMut for InlinedVector<T, N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // SAFETY: as_mut_ptr() returns a valid pointer to the first element,
         // and self.len is the exact count of initialized elements.
-        unsafe {
-            core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len)
-        }
+        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
     }
 }
 
@@ -610,7 +592,12 @@ impl<'a, T> Iter<'a, T> {
     /// - The lifetime `'a` must be valid for as long as the iterator exists
     #[inline]
     unsafe fn from_raw_parts(ptr: *const T, end: *const T, remaining: usize) -> Self {
-        Self { ptr, end, remaining, _phantom: core::marker::PhantomData }
+        Self {
+            ptr,
+            end,
+            remaining,
+            _phantom: core::marker::PhantomData,
+        }
     }
 }
 
@@ -668,7 +655,12 @@ impl<'a, T> IterMut<'a, T> {
     /// - The lifetime `'a` must be valid for as long as the iterator exists
     #[inline]
     unsafe fn from_raw_parts(ptr: *mut T, end: *mut T, remaining: usize) -> Self {
-        Self { ptr, end, remaining, _phantom: core::marker::PhantomData }
+        Self {
+            ptr,
+            end,
+            remaining,
+            _phantom: core::marker::PhantomData,
+        }
     }
 }
 
@@ -897,7 +889,7 @@ mod tests {
 
     #[test]
     fn test_empty_vector_operations() {
-        let mut vec: InlinedVector::<i32, 4> = InlinedVector::new();
+        let mut vec: InlinedVector<i32, 4> = InlinedVector::new();
         assert!(vec.is_empty());
         assert_eq!(vec.pop(), None);
         assert_eq!(vec.len(), 0);
@@ -1016,8 +1008,7 @@ mod tests {
         vec.push(2); // Spills to heap with capacity 2
         vec.push(3); // Grows heap
         vec.push(4); // Grows heap again
-        // Should work correctly with checked arithmetic
+                     // Should work correctly with checked arithmetic
         assert_eq!(vec.len(), 4);
     }
 }
-

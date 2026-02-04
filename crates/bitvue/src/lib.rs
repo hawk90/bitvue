@@ -57,12 +57,12 @@ pub use bitvue_codecs_parser as integration;
 /// This module re-exports the primary modules for convenient access.
 /// For specific types, import directly from the submodules.
 pub mod prelude {
-    pub use super::core;
-    pub use super::formats;
     pub use super::codecs;
+    pub use super::core;
     pub use super::decode;
-    pub use super::metrics;
+    pub use super::formats;
     pub use super::integration;
+    pub use super::metrics;
 }
 
 /// Library version

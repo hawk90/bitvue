@@ -39,8 +39,16 @@ pub fn export_metrics_csv<W: Write>(
     let mut bytes_written = 0;
 
     for idx in 0..=max_idx {
-        let psnr_val = metrics.psnr_y.iter().find(|p| p.idx == idx).map(|p| p.value);
-        let ssim_val = metrics.ssim_y.iter().find(|p| p.idx == idx).map(|p| p.value);
+        let psnr_val = metrics
+            .psnr_y
+            .iter()
+            .find(|p| p.idx == idx)
+            .map(|p| p.value);
+        let ssim_val = metrics
+            .ssim_y
+            .iter()
+            .find(|p| p.idx == idx)
+            .map(|p| p.value);
         let vmaf_val = metrics.vmaf.iter().find(|p| p.idx == idx).map(|p| p.value);
 
         // Skip rows with no data

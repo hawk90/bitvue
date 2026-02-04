@@ -3,8 +3,8 @@
 //! These tests use proptest to verify that BitReader handles all possible
 //! input combinations without panicking, returning errors for invalid inputs.
 
-use proptest::prelude::*;
 use bitvue_av1_codec::BitReader;
+use proptest::prelude::*;
 
 /// Property: BitReader should never panic on any input
 ///

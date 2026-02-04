@@ -662,7 +662,11 @@ mod tests {
         let offset_c = offset_of!(Test, c);
 
         // With #[repr(C)], a is at offset 0
-        assert_eq!(offset_a, 0, "First field should be at offset 0, got {}", offset_a);
+        assert_eq!(
+            offset_a, 0,
+            "First field should be at offset 0, got {}",
+            offset_a
+        );
         // b is after a (with padding for alignment to 4 bytes)
         assert!(offset_b >= 4, "b should be at least at offset 4");
         // c is after b

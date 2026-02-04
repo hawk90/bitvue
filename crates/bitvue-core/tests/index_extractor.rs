@@ -1,8 +1,6 @@
 //! Tests for index extractor API
 
-use bitvue_core::{
-    Av1IndexExtractor, ExtractorFactory, H264IndexExtractor, IndexExtractor,
-};
+use bitvue_core::{Av1IndexExtractor, ExtractorFactory, H264IndexExtractor, IndexExtractor};
 use std::io::Cursor;
 
 #[test]

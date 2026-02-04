@@ -8,8 +8,7 @@
 //! - Spinlock correctness
 
 use abseil::absl_synchronization::{
-    Notification, BlockingCounter, Barrier,
-    Mutex, MutexGuard, Spinlock, SpinlockGuard,
+    Barrier, BlockingCounter, Mutex, MutexGuard, Notification, Spinlock, SpinlockGuard,
 };
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -486,12 +485,13 @@ fn test_spinlock_no_deadlock() {
 
         // Add timeout detection
         for handle in handles {
-            let result = thread::spawn(move || {
-                handle.join()
-            }).join();
+            let result = thread::spawn(move || handle.join()).join();
 
             if result.is_err() {
-                panic!("Potential deadlock in spinlock test iteration {}", iteration);
+                panic!(
+                    "Potential deadlock in spinlock test iteration {}",
+                    iteration
+                );
             }
         }
     }

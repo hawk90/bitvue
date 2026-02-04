@@ -3,17 +3,22 @@
 extern crate test;
 
 use abseil::absl_hash::{
-    hash::{hash_of, hash_combine, HashState},
-    algorithms::{fnv_hash, fnv_hash_32, fnv_hash_128, murmur3_64, xxhash_64, xxhash3_64,
-                 highway_hash, wyhash, djb2_hash, siphash_24},
-    modern_hash::{blake2s_hash, blake3_hash, sha256_hash},
+    algorithms::{
+        djb2_hash, fnv_hash, fnv_hash_128, fnv_hash_32, highway_hash, murmur3_64, siphash_24,
+        wyhash, xxhash3_64, xxhash_64,
+    },
     combiner::{combine_hashes_mult, combine_hashes_xor},
+    hash::{hash_combine, hash_of, HashState},
+    modern_hash::{blake2s_hash, blake3_hash, sha256_hash},
 };
 use test::{black_box, Bencher};
 
 // Test data
 fn small_data() -> Vec<u8> {
-    vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10]
+    vec![
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10,
+    ]
 }
 
 fn medium_data() -> Vec<u8> {
@@ -29,7 +34,8 @@ fn xlarge_data() -> Vec<u8> {
 }
 
 fn string_data() -> String {
-    "The quick brown fox jumps over the lazy dog and then runs away to find more adventures".to_string()
+    "The quick brown fox jumps over the lazy dog and then runs away to find more adventures"
+        .to_string()
 }
 
 fn large_string_data() -> String {

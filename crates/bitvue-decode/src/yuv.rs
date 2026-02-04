@@ -6,8 +6,8 @@
 
 use crate::decoder::{ChromaFormat, DecodedFrame};
 use crate::strategy::{
-    best_strategy_type, ConversionError as StrategyConversionError,
-    ScalarStrategy, StrategyType, YuvConversionStrategy,
+    best_strategy_type, ConversionError as StrategyConversionError, ScalarStrategy, StrategyType,
+    YuvConversionStrategy,
 };
 // Debug logging now uses abseil::vlog!
 
@@ -88,7 +88,11 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
     abseil::vlog!(
         2,
         "Converting {:?} frame to RGB ({}x{}, {}bit, {} bytes)",
-        chroma_format, width, height, bit_depth, required_size
+        chroma_format,
+        width,
+        height,
+        bit_depth,
+        required_size
     );
 
     match chroma_format {
@@ -122,7 +126,11 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
                 &mut rgb,
                 bit_depth,
             ) {
-                abseil::vlog!(1, "YUV420 conversion failed: {}, falling back to grayscale", e);
+                abseil::vlog!(
+                    1,
+                    "YUV420 conversion failed: {}, falling back to grayscale",
+                    e
+                );
                 convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
             }
         }
@@ -136,7 +144,11 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
                 &mut rgb,
                 bit_depth,
             ) {
-                abseil::vlog!(1, "YUV422 conversion failed: {}, falling back to grayscale", e);
+                abseil::vlog!(
+                    1,
+                    "YUV422 conversion failed: {}, falling back to grayscale",
+                    e
+                );
                 convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
             }
         }
@@ -150,7 +162,11 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
                 &mut rgb,
                 bit_depth,
             ) {
-                abseil::vlog!(1, "YUV444 conversion failed: {}, falling back to grayscale", e);
+                abseil::vlog!(
+                    1,
+                    "YUV444 conversion failed: {}, falling back to grayscale",
+                    e
+                );
                 convert_monochrome(&frame.y_plane, width, height, &mut rgb, bit_depth);
             }
         }
@@ -160,13 +176,7 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
 }
 
 /// Convert monochrome (Y only) to grayscale RGB
-fn convert_monochrome(
-    y_plane: &[u8],
-    width: usize,
-    height: usize,
-    rgb: &mut [u8],
-    bit_depth: u8,
-) {
+fn convert_monochrome(y_plane: &[u8], width: usize, height: usize, rgb: &mut [u8], bit_depth: u8) {
     for i in 0..(width * height) {
         let y_val = read_sample(y_plane, i, bit_depth);
         let rgb_idx = i * 3;
@@ -193,7 +203,10 @@ fn convert_yuv420(
     abseil::vlog!(
         2,
         "Using {} strategy for YUV420 conversion ({}x{}, {}bit)",
-        strategy_name, width, height, bit_depth
+        strategy_name,
+        width,
+        height,
+        bit_depth
     );
 
     // Dispatch based on strategy type
@@ -257,7 +270,10 @@ fn convert_yuv422(
     abseil::vlog!(
         2,
         "Using {} strategy for YUV422 conversion ({}x{}, {}bit)",
-        strategy_name, width, height, bit_depth
+        strategy_name,
+        width,
+        height,
+        bit_depth
     );
 
     // Dispatch based on strategy type
@@ -321,7 +337,10 @@ fn convert_yuv444(
     abseil::vlog!(
         2,
         "Using {} strategy for YUV444 conversion ({}x{}, {}bit)",
-        strategy_name, width, height, bit_depth
+        strategy_name,
+        width,
+        height,
+        bit_depth
     );
 
     // Dispatch based on strategy type
@@ -428,8 +447,8 @@ fn yuv_to_rgb_pixel(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
 #[inline]
 fn yuv_to_rgb_pixel_u8(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
     let y_i = y as i32;
-    let u_i = (u as i32) - 128;  // Center U around 0
-    let v_i = (v as i32) - 128;  // Center V around 0
+    let u_i = (u as i32) - 128; // Center U around 0
+    let v_i = (v as i32) - 128; // Center V around 0
     yuv_to_rgb_pixel(y_i, u_i, v_i)
 }
 
@@ -439,13 +458,12 @@ fn yuv_to_rgb_pixel_u8(y: u8, u: u8, v: u8) -> (u8, u8, u8) {
 /// The image crate requires ownership of the pixel data.
 pub fn rgb_to_image(rgb: Vec<u8>, width: u32, height: u32) -> Result<image::RgbImage, String> {
     let data_len = rgb.len();
-    image::RgbImage::from_raw(width, height, rgb)
-        .ok_or_else(|| {
-            format!(
-                "Failed to create image from RGB data: width={}, height={}, data_len={}",
-                width, height, data_len
-            )
-        })
+    image::RgbImage::from_raw(width, height, rgb).ok_or_else(|| {
+        format!(
+            "Failed to create image from RGB data: width={}, height={}, data_len={}",
+            width, height, data_len
+        )
+    })
 }
 
 /// Get the current conversion strategy type
@@ -560,7 +578,10 @@ mod tests {
         let strategy = current_strategy();
         // Should return a valid strategy type
         match strategy {
-            StrategyType::Scalar | StrategyType::Avx2 | StrategyType::Neon | StrategyType::Metal => {
+            StrategyType::Scalar
+            | StrategyType::Avx2
+            | StrategyType::Neon
+            | StrategyType::Metal => {
                 // Valid
             }
             StrategyType::Auto => panic!("Auto should not be returned by current_strategy"),
@@ -572,7 +593,9 @@ mod tests {
         let strategies = available_strategies();
         // Should always have at least Scalar
         assert!(!strategies.is_empty());
-        assert!(strategies.iter().any(|(t, _, _)| *t == StrategyType::Scalar));
+        assert!(strategies
+            .iter()
+            .any(|(t, _, _)| *t == StrategyType::Scalar));
     }
 
     #[test]
@@ -588,7 +611,10 @@ mod tests {
         // OnceLock doesn't allow overwriting, so the strategy won't change if already set
         // The result will be Ok() only if the strategy was successfully set to Scalar
         // On platforms with better strategies (NEON/AVX2), the strategy remains unchanged
-        assert!(matches!(current_strategy(), StrategyType::Neon | StrategyType::Avx2 | StrategyType::Scalar));
+        assert!(matches!(
+            current_strategy(),
+            StrategyType::Neon | StrategyType::Avx2 | StrategyType::Scalar
+        ));
 
         // Reset to auto
         let _ = set_strategy(StrategyType::Auto);

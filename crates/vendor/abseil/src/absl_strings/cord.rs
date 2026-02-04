@@ -274,11 +274,11 @@ impl PartialEq for Cord {
         let mut right_chars = other.chars();
         loop {
             match (left_chars.next(), right_chars.next()) {
-                (None, None) => return true,  // Both exhausted
-                (None, _) | (_, None) => return false,  // Different lengths
+                (None, None) => return true,           // Both exhausted
+                (None, _) | (_, None) => return false, // Different lengths
                 (Some(l), Some(r)) => {
                     if l != r {
-                        return false;  // Different chars
+                        return false; // Different chars
                     }
                     // Same char, continue to next
                 }
@@ -371,7 +371,10 @@ pub struct CharsIter<'a> {
 
 impl<'a> CharsIter<'a> {
     fn new(chunks: ChunksIter<'a>) -> Self {
-        Self { chunks, current: None }
+        Self {
+            chunks,
+            current: None,
+        }
     }
 }
 
@@ -406,7 +409,10 @@ pub struct BytesIter<'a> {
 
 impl<'a> BytesIter<'a> {
     fn new(chunks: ChunksIter<'a>) -> Self {
-        Self { chunks, current: None }
+        Self {
+            chunks,
+            current: None,
+        }
     }
 }
 
@@ -630,10 +636,10 @@ mod tests {
     #[test]
     fn test_empty_operations() {
         let mut cord = Cord::new();
-        cord.append("");  // Should do nothing
+        cord.append(""); // Should do nothing
         assert!(cord.is_empty());
 
-        cord.prepend("");  // Should do nothing
+        cord.prepend(""); // Should do nothing
         assert!(cord.is_empty());
     }
 

@@ -101,9 +101,7 @@ impl StackTrace {
         }
         #[cfg(not(feature = "std"))]
         {
-            StackTrace {
-                frames: Vec::new(),
-            }
+            StackTrace { frames: Vec::new() }
         }
     }
 
@@ -129,9 +127,7 @@ impl StackTrace {
     /// ```
     #[inline]
     pub fn empty() -> Self {
-        StackTrace {
-            frames: Vec::new(),
-        }
+        StackTrace { frames: Vec::new() }
     }
 
     /// Returns true if the stack trace is empty.

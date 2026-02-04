@@ -2,7 +2,6 @@
 //!
 //! Provides compile-time type information and transformations.
 
-
 /// A type identity trait - used to pass types as values.
 ///
 /// This is useful for generic programming where you need to pass
@@ -66,89 +65,239 @@ pub trait IsArithmetic: private::Sealed {
 }
 
 // Implement IsSigned
-impl IsSigned for i8 { const IS_SIGNED: bool = true; }
-impl IsSigned for i16 { const IS_SIGNED: bool = true; }
-impl IsSigned for i32 { const IS_SIGNED: bool = true; }
-impl IsSigned for i64 { const IS_SIGNED: bool = true; }
-impl IsSigned for i128 { const IS_SIGNED: bool = true; }
-impl IsSigned for isize { const IS_SIGNED: bool = true; }
-impl IsSigned for f32 { const IS_SIGNED: bool = true; }
-impl IsSigned for f64 { const IS_SIGNED: bool = true; }
-impl IsSigned for u8 { const IS_SIGNED: bool = false; }
-impl IsSigned for u16 { const IS_SIGNED: bool = false; }
-impl IsSigned for u32 { const IS_SIGNED: bool = false; }
-impl IsSigned for u64 { const IS_SIGNED: bool = false; }
-impl IsSigned for u128 { const IS_SIGNED: bool = false; }
-impl IsSigned for usize { const IS_SIGNED: bool = false; }
-impl IsSigned for bool { const IS_SIGNED: bool = false; }
+impl IsSigned for i8 {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for i16 {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for i32 {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for i64 {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for i128 {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for isize {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for f32 {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for f64 {
+    const IS_SIGNED: bool = true;
+}
+impl IsSigned for u8 {
+    const IS_SIGNED: bool = false;
+}
+impl IsSigned for u16 {
+    const IS_SIGNED: bool = false;
+}
+impl IsSigned for u32 {
+    const IS_SIGNED: bool = false;
+}
+impl IsSigned for u64 {
+    const IS_SIGNED: bool = false;
+}
+impl IsSigned for u128 {
+    const IS_SIGNED: bool = false;
+}
+impl IsSigned for usize {
+    const IS_SIGNED: bool = false;
+}
+impl IsSigned for bool {
+    const IS_SIGNED: bool = false;
+}
 
 // Implement IsUnsigned
-impl IsUnsigned for u8 { const IS_UNSIGNED: bool = true; }
-impl IsUnsigned for u16 { const IS_UNSIGNED: bool = true; }
-impl IsUnsigned for u32 { const IS_UNSIGNED: bool = true; }
-impl IsUnsigned for u64 { const IS_UNSIGNED: bool = true; }
-impl IsUnsigned for u128 { const IS_UNSIGNED: bool = true; }
-impl IsUnsigned for usize { const IS_UNSIGNED: bool = true; }
-impl IsUnsigned for bool { const IS_UNSIGNED: bool = true; }
-impl IsUnsigned for i8 { const IS_UNSIGNED: bool = false; }
-impl IsUnsigned for i16 { const IS_UNSIGNED: bool = false; }
-impl IsUnsigned for i32 { const IS_UNSIGNED: bool = false; }
-impl IsUnsigned for i64 { const IS_UNSIGNED: bool = false; }
-impl IsUnsigned for i128 { const IS_UNSIGNED: bool = false; }
-impl IsUnsigned for isize { const IS_UNSIGNED: bool = false; }
-impl IsUnsigned for f32 { const IS_UNSIGNED: bool = false; }
-impl IsUnsigned for f64 { const IS_UNSIGNED: bool = false; }
+impl IsUnsigned for u8 {
+    const IS_UNSIGNED: bool = true;
+}
+impl IsUnsigned for u16 {
+    const IS_UNSIGNED: bool = true;
+}
+impl IsUnsigned for u32 {
+    const IS_UNSIGNED: bool = true;
+}
+impl IsUnsigned for u64 {
+    const IS_UNSIGNED: bool = true;
+}
+impl IsUnsigned for u128 {
+    const IS_UNSIGNED: bool = true;
+}
+impl IsUnsigned for usize {
+    const IS_UNSIGNED: bool = true;
+}
+impl IsUnsigned for bool {
+    const IS_UNSIGNED: bool = true;
+}
+impl IsUnsigned for i8 {
+    const IS_UNSIGNED: bool = false;
+}
+impl IsUnsigned for i16 {
+    const IS_UNSIGNED: bool = false;
+}
+impl IsUnsigned for i32 {
+    const IS_UNSIGNED: bool = false;
+}
+impl IsUnsigned for i64 {
+    const IS_UNSIGNED: bool = false;
+}
+impl IsUnsigned for i128 {
+    const IS_UNSIGNED: bool = false;
+}
+impl IsUnsigned for isize {
+    const IS_UNSIGNED: bool = false;
+}
+impl IsUnsigned for f32 {
+    const IS_UNSIGNED: bool = false;
+}
+impl IsUnsigned for f64 {
+    const IS_UNSIGNED: bool = false;
+}
 
 // Implement IsIntegral
-impl IsIntegral for i8 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for i16 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for i32 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for i64 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for i128 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for isize { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for u8 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for u16 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for u32 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for u64 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for u128 { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for usize { const IS_INTEGRAL: bool = true; }
-impl IsIntegral for f32 { const IS_INTEGRAL: bool = false; }
-impl IsIntegral for f64 { const IS_INTEGRAL: bool = false; }
-impl IsIntegral for bool { const IS_INTEGRAL: bool = false; }
+impl IsIntegral for i8 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for i16 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for i32 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for i64 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for i128 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for isize {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for u8 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for u16 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for u32 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for u64 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for u128 {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for usize {
+    const IS_INTEGRAL: bool = true;
+}
+impl IsIntegral for f32 {
+    const IS_INTEGRAL: bool = false;
+}
+impl IsIntegral for f64 {
+    const IS_INTEGRAL: bool = false;
+}
+impl IsIntegral for bool {
+    const IS_INTEGRAL: bool = false;
+}
 
 // Implement IsFloatingPoint
-impl IsFloatingPoint for f32 { const IS_FLOATING_POINT: bool = true; }
-impl IsFloatingPoint for f64 { const IS_FLOATING_POINT: bool = true; }
-impl IsFloatingPoint for i8 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for i16 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for i32 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for i64 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for i128 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for isize { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for u8 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for u16 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for u32 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for u64 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for u128 { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for usize { const IS_FLOATING_POINT: bool = false; }
-impl IsFloatingPoint for bool { const IS_FLOATING_POINT: bool = false; }
+impl IsFloatingPoint for f32 {
+    const IS_FLOATING_POINT: bool = true;
+}
+impl IsFloatingPoint for f64 {
+    const IS_FLOATING_POINT: bool = true;
+}
+impl IsFloatingPoint for i8 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for i16 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for i32 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for i64 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for i128 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for isize {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for u8 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for u16 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for u32 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for u64 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for u128 {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for usize {
+    const IS_FLOATING_POINT: bool = false;
+}
+impl IsFloatingPoint for bool {
+    const IS_FLOATING_POINT: bool = false;
+}
 
 // Implement IsArithmetic
-impl IsArithmetic for i8 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for i16 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for i32 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for i64 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for i128 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for isize { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for u8 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for u16 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for u32 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for u64 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for u128 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for usize { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for f32 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for f64 { const IS_ARITHMETIC: bool = true; }
-impl IsArithmetic for bool { const IS_ARITHMETIC: bool = false; }
+impl IsArithmetic for i8 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for i16 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for i32 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for i64 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for i128 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for isize {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for u8 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for u16 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for u32 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for u64 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for u128 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for usize {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for f32 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for f64 {
+    const IS_ARITHMETIC: bool = true;
+}
+impl IsArithmetic for bool {
+    const IS_ARITHMETIC: bool = false;
+}
 
 /// Returns true if the type is a signed integer or floating-point type.
 ///

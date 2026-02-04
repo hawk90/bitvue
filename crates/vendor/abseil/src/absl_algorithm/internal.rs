@@ -42,7 +42,9 @@ pub fn is_sorted_by<T, F>(slice: &[T], mut compare: F) -> bool
 where
     F: FnMut(&T, &T) -> core::cmp::Ordering,
 {
-    slice.windows(2).all(|w| compare(&w[0], &w[1]) != core::cmp::Ordering::Greater)
+    slice
+        .windows(2)
+        .all(|w| compare(&w[0], &w[1]) != core::cmp::Ordering::Greater)
 }
 
 /// Finds the minimum element in a slice.

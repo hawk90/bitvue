@@ -3,8 +3,8 @@
 //! These tests use proptest to verify that IVF parsing handles all possible
 //! input combinations without panicking, returning errors for invalid inputs.
 
-use proptest::prelude::*;
 use bitvue_av1_codec::parse_ivf_header;
+use proptest::prelude::*;
 
 /// Property: IVF header validation should never panic
 ///

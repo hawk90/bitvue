@@ -1,6 +1,5 @@
 //! Graph traversal iterators.
 
-
 extern crate alloc;
 
 use alloc::collections::VecDeque;

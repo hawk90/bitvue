@@ -3,7 +3,11 @@
 #![feature(test)]
 extern crate test;
 
-use abseil::{str_cat, absl_strings::str_cat::StrCat, absl_strings::escaping::{self, UnescapeError}};
+use abseil::{
+    absl_strings::escaping::{self, UnescapeError},
+    absl_strings::str_cat::StrCat,
+    str_cat,
+};
 use test::{black_box, Bencher};
 
 // ========== Test Data ==========
@@ -14,14 +18,21 @@ fn small_strings() -> Vec<&'static str> {
 
 fn medium_strings() -> Vec<&'static str> {
     vec![
-        "The quick brown fox", "jumps over the lazy", "dog and then runs",
-        "away to find more", "adventures in the", "wild and wonderful",
-        "world of programming", "and testing performance"
+        "The quick brown fox",
+        "jumps over the lazy",
+        "dog and then runs",
+        "away to find more",
+        "adventures in the",
+        "wild and wonderful",
+        "world of programming",
+        "and testing performance",
     ]
 }
 
 fn large_strings() -> Vec<String> {
-    (0..100).map(|i| format!("String number {} with some content ", i)).collect()
+    (0..100)
+        .map(|i| format!("String number {} with some content ", i))
+        .collect()
 }
 
 fn html_input_small() -> String {
@@ -47,9 +58,10 @@ fn url_input_medium() -> String {
 }
 
 fn url_input_large() -> String {
-    (0..100).map(|i| {
-        format!("path/segment {}/query?value={}&key={}", i, i, i)
-    }).collect::<Vec<_>>().join("/")
+    (0..100)
+        .map(|i| format!("path/segment {}/query?value={}&key={}", i, i, i))
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn c_string_input() -> String {

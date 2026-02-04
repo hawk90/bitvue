@@ -32,7 +32,9 @@ struct SimpleHasher {
 impl SimpleHasher {
     #[inline]
     const fn new() -> Self {
-        Self { state: 0x9e3779b97f4a7c15 }
+        Self {
+            state: 0x9e3779b97f4a7c15,
+        }
     }
 }
 

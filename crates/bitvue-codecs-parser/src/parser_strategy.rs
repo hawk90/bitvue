@@ -164,13 +164,22 @@ impl fmt::Display for ParseError {
         match self {
             Self::InvalidData { message } => write!(f, "Invalid data: {}", message),
             Self::UnsupportedFeature { feature } => write!(f, "Unsupported feature: {}", feature),
-            Self::InsufficientData { required, available } => {
-                write!(f, "Insufficient data: required {}, available {}", required, available)
+            Self::InsufficientData {
+                required,
+                available,
+            } => {
+                write!(
+                    f,
+                    "Insufficient data: required {}, available {}",
+                    required, available
+                )
             }
             Self::HeaderError { message } => write!(f, "Header error: {}", message),
             Self::FrameError { message } => write!(f, "Frame error: {}", message),
             Self::SyntaxError { message } => write!(f, "Syntax error: {}", message),
-            Self::OutOfRange { value, range } => write!(f, "Out of range: {}, range: {}", value, range),
+            Self::OutOfRange { value, range } => {
+                write!(f, "Out of range: {}, range: {}", value, range)
+            }
         }
     }
 }
@@ -498,7 +507,11 @@ impl AvcParserStrategy {
 
     /// Set NAL prefix length (3 or 4 bytes)
     pub fn with_nal_prefix_length(mut self, length: usize) -> Self {
-        self.nal_prefix_length = if length == 3 || length == 4 { length } else { 4 };
+        self.nal_prefix_length = if length == 3 || length == 4 {
+            length
+        } else {
+            4
+        };
         self
     }
 }
@@ -859,7 +872,10 @@ mod tests {
             required: 100,
             available: 50,
         };
-        assert_eq!(error.to_string(), "Insufficient data: required 100, available 50");
+        assert_eq!(
+            error.to_string(),
+            "Insufficient data: required 100, available 50"
+        );
     }
 
     #[test]

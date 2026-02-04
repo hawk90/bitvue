@@ -3,8 +3,8 @@
 //! This module provides a `Mutex` type that wraps Rust's standard library
 //! `std::sync::Mutex` with additional Abseil-style utilities.
 
-use std::sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard};
 use std::ops::{Deref, DerefMut};
+use std::sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
 /// A mutex wrapper with additional utilities.
 ///
@@ -26,9 +26,7 @@ impl<T> Mutex<T> {
     /// Acquires the mutex, blocking the current thread until it is able to do so.
     #[inline]
     pub fn lock(&self) -> MutexGuard<'_, T> {
-        MutexGuard::new(self.inner.lock().unwrap_or_else(|e| {
-            e.into_inner()
-        }))
+        MutexGuard::new(self.inner.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     /// Attempts to acquire the lock without blocking.

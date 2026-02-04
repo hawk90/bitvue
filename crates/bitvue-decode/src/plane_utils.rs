@@ -65,7 +65,11 @@ impl PlaneConfig {
     /// Get bytes per sample based on bit depth
     #[inline]
     pub fn bytes_per_sample(&self) -> usize {
-        if self.bit_depth > 8 { 2 } else { 1 }
+        if self.bit_depth > 8 {
+            2
+        } else {
+            1
+        }
     }
 
     /// Get row bytes (width * bytes_per_sample)
@@ -76,12 +80,12 @@ impl PlaneConfig {
 
     /// Get expected plane size (row_bytes * height)
     pub fn expected_size(&self) -> Result<usize> {
-        self.row_bytes()
-            .checked_mul(self.height)
-            .ok_or_else(|| DecodeError::Decode(format!(
+        self.row_bytes().checked_mul(self.height).ok_or_else(|| {
+            DecodeError::Decode(format!(
                 "Plane size calculation overflow: {}x{} bit_depth={}",
                 self.width, self.height, self.bit_depth
-            )))
+            ))
+        })
     }
 
     /// Check if data is contiguous (stride == row_bytes)
@@ -174,22 +178,18 @@ pub fn extract_plane_into(source: &[u8], config: PlaneConfig, dest: &mut [u8]) -
     for row in 0..config.height {
         let start = row
             .checked_mul(config.stride)
-            .ok_or_else(|| DecodeError::Decode(format!(
-                "Row offset overflow at row {}",
-                row
-            )))?;
+            .ok_or_else(|| DecodeError::Decode(format!("Row offset overflow at row {}", row)))?;
 
-        let end = start
-            .checked_add(row_bytes)
-            .ok_or_else(|| DecodeError::Decode(format!(
-                "Row end offset overflow at row {}",
-                row
-            )))?;
+        let end = start.checked_add(row_bytes).ok_or_else(|| {
+            DecodeError::Decode(format!("Row end offset overflow at row {}", row))
+        })?;
 
         if end > source.len() {
             return Err(DecodeError::Decode(format!(
                 "Plane access out of bounds: row={}, end={}, source_len={}",
-                row, end, source.len()
+                row,
+                end,
+                source.len()
             )));
         }
 
@@ -239,26 +239,30 @@ pub fn extract_plane(source: &[u8], config: PlaneConfig) -> Result<Vec<u8>> {
 
     for row in 0..config.height {
         // Calculate row offset with overflow check
-        let start = row
-            .checked_mul(config.stride)
-            .ok_or_else(|| DecodeError::Decode(format!(
+        let start = row.checked_mul(config.stride).ok_or_else(|| {
+            DecodeError::Decode(format!(
                 "Row offset overflow at row {}: {} * {}",
                 row, row, config.stride
-            )))?;
+            ))
+        })?;
 
         // Calculate row end with overflow check
-        let end = start
-            .checked_add(row_bytes)
-            .ok_or_else(|| DecodeError::Decode(format!(
+        let end = start.checked_add(row_bytes).ok_or_else(|| {
+            DecodeError::Decode(format!(
                 "Row end offset overflow at row {}: {} + {}",
                 row, start, row_bytes
-            )))?;
+            ))
+        })?;
 
         // Validate bounds before accessing memory
         if end > source.len() {
             return Err(DecodeError::Decode(format!(
                 "Plane access out of bounds: row={}, start={}, end={}, source_len={}, bit_depth={}",
-                row, start, end, source.len(), config.bit_depth
+                row,
+                start,
+                end,
+                source.len(),
+                config.bit_depth
             )));
         }
 
@@ -392,9 +396,9 @@ mod tests {
         let result = extract_plane(&data, config).unwrap();
 
         assert_eq!(result.len(), 16);
-        assert_eq!(result[0], 0);  // Row 0, col 0
-        assert_eq!(result[4], 4);  // Row 1, col 0
-        assert_eq!(result[8], 8);  // Row 2, col 0
+        assert_eq!(result[0], 0); // Row 0, col 0
+        assert_eq!(result[4], 4); // Row 1, col 0
+        assert_eq!(result[8], 8); // Row 2, col 0
         assert_eq!(result[12], 12); // Row 3, col 0
     }
 

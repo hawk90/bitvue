@@ -7,12 +7,11 @@
 
 use abseil::absl_base::call_once::{call_once, is_done, OnceFlag};
 use abseil::absl_hash::BloomFilter;
-use abseil::absl_memory::MemoryRegion;
 use abseil::absl_hash::{
-    fnv_hash, fnv_hash_32, fnv_hash_128,
-    murmur3_mix, murmur3_64, xxhash_64, xxhash3_64,
-    djb2_hash, deterministic_hash,
+    deterministic_hash, djb2_hash, fnv_hash, fnv_hash_128, fnv_hash_32, murmur3_64, murmur3_mix,
+    xxhash3_64, xxhash_64,
 };
+use abseil::absl_memory::MemoryRegion;
 
 #[test]
 fn test_once_flag_repeated_creation() {
@@ -92,9 +91,7 @@ fn test_memory_region_many_sub_regions() {
 #[test]
 fn test_bloom_filter_many_filters() {
     // Test creating many BloomFilters
-    let filters: Vec<BloomFilter> = (0..100)
-        .map(|_| BloomFilter::new(1000, 7))
-        .collect();
+    let filters: Vec<BloomFilter> = (0..100).map(|_| BloomFilter::new(1000, 7)).collect();
 
     for (i, bloom) in filters.iter().enumerate() {
         bloom.insert(&i);
@@ -242,8 +239,7 @@ fn test_bloom_filter_unicode_stress() {
     let mut bloom = BloomFilter::new(10_000, 7);
 
     let strings: Vec<String> = (0..1000)
-        .map(|i| format!("测试_테스트_試験_{}",
-            ["🎉", "🚀", "💻", "🌟", "🔥"][i % 5]))
+        .map(|i| format!("测试_테스트_試験_{}", ["🎉", "🚀", "💻", "🌟", "🔥"][i % 5]))
         .collect();
 
     for s in &strings {
@@ -259,9 +255,10 @@ fn test_bloom_filter_unicode_stress() {
 #[test]
 fn test_hash_sized_inputs() {
     // Test hashing with various input sizes
-    let sizes = vec![1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 32, 33,
-                     63, 64, 65, 127, 128, 129, 255, 256, 257,
-                     511, 512, 513, 1023, 1024, 2048, 4096, 8192];
+    let sizes = vec![
+        1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511,
+        512, 513, 1023, 1024, 2048, 4096, 8192,
+    ];
 
     for size in sizes {
         let data: Vec<u8> = (0..size).map(|i| i as u8).collect();
@@ -300,13 +297,18 @@ fn test_memory_region_edge_combinations() {
 fn test_bloom_filter_pattern_stress() {
     // Test BloomFilter with various bit patterns
     let patterns: Vec<Vec<u8>> = vec![
-        vec![0; 100],           // All zeros
-        vec![0xFF; 100],        // All ones
-        vec![0xAA; 100],        // Alternating bits (1)
-        vec![0x55; 100],        // Alternating bits (2)
-        (0..100).collect(),     // Incrementing
+        vec![0; 100],             // All zeros
+        vec![0xFF; 100],          // All ones
+        vec![0xAA; 100],          // Alternating bits (1)
+        vec![0x55; 100],          // Alternating bits (2)
+        (0..100).collect(),       // Incrementing
         (0..100).rev().collect(), // Decrementing
-        vec![0x00, 0xFF, 0xAA, 0x55].iter().cycle().take(100).cloned().collect(), // Pattern
+        vec![0x00, 0xFF, 0xAA, 0x55]
+            .iter()
+            .cycle()
+            .take(100)
+            .cloned()
+            .collect(), // Pattern
     ];
 
     for pattern in &patterns {

@@ -179,11 +179,11 @@ impl<T> Drop for StatusOr<T> {
             DISCRIMINANT_VALUE => unsafe {
                 // Only drop value if discriminant indicates it's initialized
                 self.value.assume_init_drop();
-            }
+            },
             DISCRIMINANT_STATUS => unsafe {
                 // Only drop status if discriminant indicates it's initialized
                 self.status.assume_init_drop();
-            }
+            },
             // Handle corrupted discriminants safely instead of unreachable!()
             // which would cause undefined behavior
             _ => {
@@ -206,10 +206,7 @@ where
         // Provide detailed panic message with the actual status error
         match self.value() {
             Some(v) => v,
-            None => panic!(
-                "Cannot deref error StatusOr: {}",
-                self.status()
-            )
+            None => panic!("Cannot deref error StatusOr: {}", self.status()),
         }
     }
 }
@@ -233,7 +230,7 @@ where
             None => panic!(
                 "Cannot deref_mut error StatusOr: {}",
                 status_msg.unwrap_or_else(|| "unknown error".to_string())
-            )
+            ),
         }
     }
 }
@@ -291,8 +288,8 @@ impl<T> From<Status> for StatusOr<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::status::StatusCode;
+    use super::*;
 
     #[test]
     fn test_statusor_ok_value() {

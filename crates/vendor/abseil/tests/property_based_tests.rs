@@ -6,12 +6,11 @@
 //! - Graph traversal properties
 //! - Numeric function properties
 
-use abseil::absl_hash::{
-    fnv_hash, fnv_hash_32, murmur3_64, xxhash_64, xxhash3_64, wyhash,
-    hash_of, hash_combine,
-};
 use abseil::absl_graph::Graph;
-use abseil::absl_numeric::{is_power_of_two, gcd, lcm};
+use abseil::absl_hash::{
+    fnv_hash, fnv_hash_32, hash_combine, hash_of, murmur3_64, wyhash, xxhash3_64, xxhash_64,
+};
+use abseil::absl_numeric::{gcd, is_power_of_two, lcm};
 
 // ============================================================================
 // Hash Function Properties
@@ -81,21 +80,18 @@ fn test_hash_different_inputs_different_hashes() {
     // Property: Different inputs should (usually) produce different hashes
     // We test this with several inputs - while collisions are possible,
     // they should be extremely rare with good hash functions
-    let inputs = vec![
-        b"hello",
-        b"world",
-        b"test",
-        b"data",
-        b"different",
-    ];
+    let inputs = vec![b"hello", b"world", b"test", b"data", b"different"];
 
     let hashes: Vec<u64> = inputs.iter().map(|&s| fnv_hash(s)).collect();
 
     // All hashes should be different (for these simple inputs)
     for i in 0..hashes.len() {
-        for j in (i+1)..hashes.len() {
-            assert_ne!(hashes[i], hashes[j],
-                "Inputs {:?} and {:?} produced same hash", inputs[i], inputs[j]);
+        for j in (i + 1)..hashes.len() {
+            assert_ne!(
+                hashes[i], hashes[j],
+                "Inputs {:?} and {:?} produced same hash",
+                inputs[i], inputs[j]
+            );
         }
     }
 }
@@ -114,8 +110,11 @@ fn test_hash_avalanche_effect() {
     let differing_bits = xor.count_ones();
 
     // At least half the bits should differ (good avalanche)
-    assert!(differing_bits >= 32,
-        "Avalanche effect weak: only {} bits differ", differing_bits);
+    assert!(
+        differing_bits >= 32,
+        "Avalanche effect weak: only {} bits differ",
+        differing_bits
+    );
 }
 
 #[test]
@@ -193,20 +192,31 @@ fn test_hash_combine_order_sensitive() {
 fn test_is_power_of_two_boundary_values() {
     // Property: Powers of two should be identified correctly
     let powers_of_two: Vec<u32> = vec![
-        1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024,
-        1 << 10, 1 << 15, 1 << 20, 1 << 31,
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024,
+        1 << 10,
+        1 << 15,
+        1 << 20,
+        1 << 31,
     ];
 
     for &value in &powers_of_two {
-        assert!(is_power_of_two(value),
-            "{} should be a power of two", value);
+        assert!(is_power_of_two(value), "{} should be a power of two", value);
     }
 
     // Test that values between powers of two are not powers of two
     for i in 1..10000 {
         if !powers_of_two.contains(&i) {
-            assert!(!is_power_of_two(i),
-                "{} should not be a power of two", i);
+            assert!(!is_power_of_two(i), "{} should not be a power of two", i);
         }
     }
 }
@@ -238,8 +248,15 @@ fn test_gcd_properties() {
     // Property 2: gcd should be symmetric
     for a in 1u32..100 {
         for b in 1u32..100 {
-            assert_eq!(gcd(a, b), gcd(b, a),
-                "gcd should be symmetric: gcd({}, {}) == gcd({}, {})", a, b, b, a);
+            assert_eq!(
+                gcd(a, b),
+                gcd(b, a),
+                "gcd should be symmetric: gcd({}, {}) == gcd({}, {})",
+                a,
+                b,
+                b,
+                a
+            );
         }
     }
 
@@ -260,16 +277,29 @@ fn test_lcm_properties() {
     for a in 1u32..50 {
         for b in 1u32..50 {
             let l = lcm(a, b);
-            assert!(l % a == 0, "lcm({}, {}) = {} should be multiple of {}", a, b, l, a);
-            assert!(l % b == 0, "lcm({}, {}) = {} should be multiple of {}", a, b, l, b);
+            assert!(
+                l % a == 0,
+                "lcm({}, {}) = {} should be multiple of {}",
+                a,
+                b,
+                l,
+                a
+            );
+            assert!(
+                l % b == 0,
+                "lcm({}, {}) = {} should be multiple of {}",
+                a,
+                b,
+                l,
+                b
+            );
         }
     }
 
     // Property 2: lcm should be symmetric
     for a in 1u32..50 {
         for b in 1u32..50 {
-            assert_eq!(lcm(a, b), lcm(b, a),
-                "lcm should be symmetric");
+            assert_eq!(lcm(a, b), lcm(b, a), "lcm should be symmetric");
         }
     }
 
@@ -287,8 +317,14 @@ fn test_gcd_lcm_relationship() {
             let g = gcd(a, b) as u64;
             let l = lcm(a, b) as u64;
             let product = (a as u64) * (b as u64);
-            assert_eq!(g * l, product,
-                "gcd * lcm should equal product: {} * {} == {}", g, l, product);
+            assert_eq!(
+                g * l,
+                product,
+                "gcd * lcm should equal product: {} * {} == {}",
+                g,
+                l,
+                product
+            );
         }
     }
 }
@@ -395,8 +431,11 @@ fn test_hash_unicode_strings() {
     for s in &unicode_strings {
         let hash1 = fnv_hash(s.as_bytes());
         let hash2 = fnv_hash(s.as_bytes());
-        assert_eq!(hash1, hash2,
-            "Unicode string {:?} should hash consistently", s);
+        assert_eq!(
+            hash1, hash2,
+            "Unicode string {:?} should hash consistently",
+            s
+        );
     }
 }
 
@@ -475,18 +514,31 @@ fn test_hash_distribution_quality() {
     let mut count4 = 0;
 
     for hash in &hashes {
-        if *hash < q1 { count1 += 1; }
-        else if *hash < q2 { count2 += 1; }
-        else if *hash < q3 { count3 += 1; }
-        else { count4 += 1; }
+        if *hash < q1 {
+            count1 += 1;
+        } else if *hash < q2 {
+            count2 += 1;
+        } else if *hash < q3 {
+            count3 += 1;
+        } else {
+            count4 += 1;
+        }
     }
 
     // Each quartile should have roughly 25% of the values
     let expected = hashes.len() / 4;
     let tolerance = expected / 4; // Allow 25% deviation
 
-    assert!(count1 >= expected - tolerance && count1 <= expected + tolerance,
-        "Q1 has {} values, expected around {}", count1, expected);
-    assert!(count4 >= expected - tolerance && count4 <= expected + tolerance,
-        "Q4 has {} values, expected around {}", count4, expected);
+    assert!(
+        count1 >= expected - tolerance && count1 <= expected + tolerance,
+        "Q1 has {} values, expected around {}",
+        count1,
+        expected
+    );
+    assert!(
+        count4 >= expected - tolerance && count4 <= expected + tolerance,
+        "Q4 has {} values, expected around {}",
+        count4,
+        expected
+    );
 }

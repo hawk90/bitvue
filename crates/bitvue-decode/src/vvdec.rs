@@ -346,7 +346,8 @@ impl VvcDecoder {
             // Validate bit depth
             if bit_depth > 12 {
                 return Err(DecodeError::Decode(format!(
-                    "Unsupported bit depth: {}", bit_depth
+                    "Unsupported bit depth: {}",
+                    bit_depth
                 )));
             }
 
@@ -429,9 +430,13 @@ impl VvcDecoder {
 
         // Validate dimensions to prevent buffer overflow
         if width == 0 || stride == 0 || height == 0 {
-            abseil::LOG!(WARNING, 
+            abseil::LOG!(
+                WARNING,
                 "Invalid plane dimensions: width={}, bytes_per_sample={}, stride={}, height={}",
-                width, bytes_per_sample, stride, height
+                width,
+                bytes_per_sample,
+                stride,
+                height
             );
             return Ok(Vec::new());
         }
@@ -439,7 +444,8 @@ impl VvcDecoder {
         // Validate bytes_per_sample (1=8bit, 2=10/12bit)
         if bytes_per_sample > 4 {
             return Err(DecodeError::Decode(format!(
-                "Invalid bytes_per_sample: {}", bytes_per_sample
+                "Invalid bytes_per_sample: {}",
+                bytes_per_sample
             )));
         }
 
@@ -447,11 +453,9 @@ impl VvcDecoder {
         let bit_depth = if bytes_per_sample == 1 { 8 } else { 10 };
 
         // Calculate total buffer size with overflow protection
-        let total_buffer_size = stride
-            .checked_mul(height)
-            .ok_or_else(|| DecodeError::Decode(
-                "Plane size calculation overflow (stride * height)".to_string()
-            ))?;
+        let total_buffer_size = stride.checked_mul(height).ok_or_else(|| {
+            DecodeError::Decode("Plane size calculation overflow (stride * height)".to_string())
+        })?;
 
         // Create safe slice from raw pointer
         //
@@ -493,9 +497,7 @@ impl VvcDecoder {
         // - The slice is converted to owned data before returning
         // - The guards outlive the slice (same scope in get_frame)
         // - The decoder state is stable during plane extraction
-        let plane_slice = unsafe {
-            std::slice::from_raw_parts(plane.ptr, total_buffer_size)
-        };
+        let plane_slice = unsafe { std::slice::from_raw_parts(plane.ptr, total_buffer_size) };
 
         // Use shared utility to extract plane data with stride handling
         let config = plane_utils::PlaneConfig::new(width, height, stride, bit_depth)?;
@@ -572,7 +574,9 @@ impl Decoder for VvcDecoder {
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
         // Check if timeout limit exceeded
-        let timeout_count = self.timeout_count.load(std::sync::atomic::Ordering::Relaxed);
+        let timeout_count = self
+            .timeout_count
+            .load(std::sync::atomic::Ordering::Relaxed);
         if timeout_count >= MAX_TIMEOUT_RETRIES {
             return Err(DecodeError::Decode(format!(
                 "VVC decoder failed {} consecutive times - decoder permanently disabled",
@@ -587,13 +591,15 @@ impl Decoder for VvcDecoder {
                   timeout_count + 1, MAX_TIMEOUT_RETRIES);
             match self.reset() {
                 Ok(()) => {
-                    self.poisoned.store(false, std::sync::atomic::Ordering::Relaxed);
+                    self.poisoned
+                        .store(false, std::sync::atomic::Ordering::Relaxed);
                     // Don't reset timeout_count here - only reset on successful decode
                     abseil::vlog!(2, "VVC decoder reset successful after poisoned state");
                 }
                 Err(e) => {
                     // Increment timeout count on failed reset
-                    self.timeout_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    self.timeout_count
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return Err(DecodeError::Decode(format!(
                         "Failed to reset poisoned decoder: {}",
                         e
@@ -605,9 +611,10 @@ impl Decoder for VvcDecoder {
         // Lock BOTH decoder and access_unit mutexes for the entire decode operation
         // This prevents concurrent FFI calls which would cause undefined behavior.
         // The guards are held throughout the decode operation to ensure exclusive access.
-        let mut decoder_guard = self.decoder.lock().map_err(|_| {
-            DecodeError::Decode("Poisoned mutex: decoder lock failed".to_string())
-        })?;
+        let mut decoder_guard = self
+            .decoder
+            .lock()
+            .map_err(|_| DecodeError::Decode("Poisoned mutex: decoder lock failed".to_string()))?;
         let mut access_unit_guard = self.access_unit.lock().map_err(|_| {
             DecodeError::Decode("Poisoned mutex: access unit lock failed".to_string())
         })?;
@@ -618,16 +625,14 @@ impl Decoder for VvcDecoder {
 
         // Run decode with timeout protection
         // SAFETY: decoder_ptr and access_unit_ptr are valid because guards are held
-        let (ret, frame_ptr) = match run_decode_with_timeout(move || {
-            unsafe {
-                let mut fp: *mut ffi::VvdecFrame = ptr::null_mut();
-                let r = if flushing {
-                    ffi::vvdec_flush(decoder_ptr, &mut fp)
-                } else {
-                    ffi::vvdec_decode(decoder_ptr, access_unit_ptr, &mut fp)
-                };
-                (r, fp)
-            }
+        let (ret, frame_ptr) = match run_decode_with_timeout(move || unsafe {
+            let mut fp: *mut ffi::VvdecFrame = ptr::null_mut();
+            let r = if flushing {
+                ffi::vvdec_flush(decoder_ptr, &mut fp)
+            } else {
+                ffi::vvdec_decode(decoder_ptr, access_unit_ptr, &mut fp)
+            };
+            (r, fp)
         }) {
             Ok(result) => result,
             Err(e) => {
@@ -635,9 +640,18 @@ impl Decoder for VvcDecoder {
                 let err_msg = format!("{}", e);
                 if err_msg.contains("timeout") || err_msg.contains("Timeout") {
                     // Mark decoder as poisoned and increment timeout counter
-                    self.poisoned.store(true, std::sync::atomic::Ordering::Relaxed);
-                    let count = self.timeout_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                    abseil::LOG!(ERROR, "VVC decoder marked as POISONED after timeout (attempt {}/{})", count, MAX_TIMEOUT_RETRIES);
+                    self.poisoned
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    let count = self
+                        .timeout_count
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                        + 1;
+                    abseil::LOG!(
+                        ERROR,
+                        "VVC decoder marked as POISONED after timeout (attempt {}/{})",
+                        count,
+                        MAX_TIMEOUT_RETRIES
+                    );
                 }
                 return Err(e);
             }
@@ -665,13 +679,16 @@ impl Decoder for VvcDecoder {
             match ret {
                 ffi::VVDEC_OK => {
                     // Reset timeout counter on successful decode
-                    self.timeout_count.store(0, std::sync::atomic::Ordering::Relaxed);
+                    self.timeout_count
+                        .store(0, std::sync::atomic::Ordering::Relaxed);
 
                     // convert_frame was called, so unwrap the result
                     match frame_result {
                         Some(Ok(frame)) => Ok(frame),
                         Some(Err(e)) => Err(e),
-                        None => Err(DecodeError::Decode("Frame conversion failed unexpectedly".to_string())),
+                        None => Err(DecodeError::Decode(
+                            "Frame conversion failed unexpectedly".to_string(),
+                        )),
                     }
                 }
                 ffi::VVDEC_TRY_AGAIN => {
@@ -760,7 +777,8 @@ impl Decoder for VvcDecoder {
         }
 
         // Reset timeout counter after successful reset
-        self.timeout_count.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.timeout_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
 
         Ok(())
     }
@@ -774,14 +792,20 @@ impl Drop for VvcDecoder {
             let decoder_guard = match self.decoder.lock() {
                 Ok(guard) => *guard,
                 Err(poisoned) => {
-                    abseil::LOG!(WARNING, "VVC decoder mutex poisoned during drop, recovering");
+                    abseil::LOG!(
+                        WARNING,
+                        "VVC decoder mutex poisoned during drop, recovering"
+                    );
                     *poisoned.into_inner()
                 }
             };
             let access_unit_guard = match self.access_unit.lock() {
                 Ok(guard) => *guard,
                 Err(poisoned) => {
-                    abseil::LOG!(WARNING, "VVC access_unit mutex poisoned during drop, recovering");
+                    abseil::LOG!(
+                        WARNING,
+                        "VVC access_unit mutex poisoned during drop, recovering"
+                    );
                     *poisoned.into_inner()
                 }
             };

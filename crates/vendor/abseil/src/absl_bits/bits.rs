@@ -574,7 +574,7 @@ mod tests {
     fn test_bit_width() {
         assert_eq!(bit_width(0u32), 0);
         assert_eq!(bit_width(1u32), 1);
-        assert_eq!(bit_width(5u32), 3);  // 5 = 0b101
+        assert_eq!(bit_width(5u32), 3); // 5 = 0b101
         assert_eq!(bit_width(0xFFu32), 8);
         assert_eq!(bit_width(0xFFFFu32), 16);
         assert_eq!(bit_width(0xFFFFFFFFu32), 32);
@@ -586,7 +586,7 @@ mod tests {
     fn test_highest_bit() {
         assert_eq!(highest_bit(0u32), 0);
         assert_eq!(highest_bit(1u32), 1);
-        assert_eq!(highest_bit(5u32), 4);  // 5 = 0b101
+        assert_eq!(highest_bit(5u32), 4); // 5 = 0b101
         assert_eq!(highest_bit(0xFFu32), 128);
         assert_eq!(highest_bit(0x8000_0000u32), 0x8000_0000);
     }

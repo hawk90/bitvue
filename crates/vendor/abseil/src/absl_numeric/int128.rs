@@ -12,9 +12,9 @@
 //! let b = uint128::from(42u64);
 //! ```
 
-use core::fmt;
-use core::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign, Rem, RemAssign};
 use core::cmp::Ordering;
+use core::fmt;
+use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 
 /// Error type for division operations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -829,9 +829,18 @@ mod tests {
 
     #[test]
     fn test_int128_checked_div_by_zero() {
-        assert_eq!(int128(100).checked_div(int128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(int128(0).checked_div(int128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(int128(i128::MIN).checked_div(int128(0)), Err(DivisionError::DivisionByZero));
+        assert_eq!(
+            int128(100).checked_div(int128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            int128(0).checked_div(int128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            int128(i128::MIN).checked_div(int128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
     }
 
     #[test]
@@ -843,9 +852,18 @@ mod tests {
 
     #[test]
     fn test_int128_checked_rem_by_zero() {
-        assert_eq!(int128(100).checked_rem(int128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(int128(0).checked_rem(int128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(int128(i128::MIN).checked_rem(int128(0)), Err(DivisionError::DivisionByZero));
+        assert_eq!(
+            int128(100).checked_rem(int128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            int128(0).checked_rem(int128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            int128(i128::MIN).checked_rem(int128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
     }
 
     #[test]
@@ -856,9 +874,18 @@ mod tests {
 
     #[test]
     fn test_uint128_checked_div_by_zero() {
-        assert_eq!(uint128(100).checked_div(uint128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(uint128(0).checked_div(uint128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(uint128(u128::MAX).checked_div(uint128(0)), Err(DivisionError::DivisionByZero));
+        assert_eq!(
+            uint128(100).checked_div(uint128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            uint128(0).checked_div(uint128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            uint128(u128::MAX).checked_div(uint128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
     }
 
     #[test]
@@ -869,9 +896,18 @@ mod tests {
 
     #[test]
     fn test_uint128_checked_rem_by_zero() {
-        assert_eq!(uint128(100).checked_rem(uint128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(uint128(0).checked_rem(uint128(0)), Err(DivisionError::DivisionByZero));
-        assert_eq!(uint128(u128::MAX).checked_rem(uint128(0)), Err(DivisionError::DivisionByZero));
+        assert_eq!(
+            uint128(100).checked_rem(uint128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            uint128(0).checked_rem(uint128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
+        assert_eq!(
+            uint128(u128::MAX).checked_rem(uint128(0)),
+            Err(DivisionError::DivisionByZero)
+        );
     }
 
     #[test]

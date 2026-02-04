@@ -6,10 +6,8 @@
 //! - Malformed data structures
 
 use abseil::absl_hash::{
-    fnv_hash, fnv_hash_32, fnv_hash_128,
-    murmur3_mix, murmur3_64, xxhash_64, xxhash3_64,
-    highway_hash, wyhash, djb2_hash, siphash_24,
-    deterministic_hash, hash_of, BloomFilter,
+    deterministic_hash, djb2_hash, fnv_hash, fnv_hash_128, fnv_hash_32, hash_of, highway_hash,
+    murmur3_64, murmur3_mix, siphash_24, wyhash, xxhash3_64, xxhash_64, BloomFilter,
 };
 use abseil::absl_memory::MemoryRegion;
 
@@ -89,7 +87,9 @@ fn test_hash_with_all_ones() {
 #[test]
 fn test_hash_with_alternating_pattern() {
     // Test with alternating bit pattern
-    let pattern_1k: Vec<u8> = (0..1024).map(|i| if i % 2 == 0 { 0xAA } else { 0x55 }).collect();
+    let pattern_1k: Vec<u8> = (0..1024)
+        .map(|i| if i % 2 == 0 { 0xAA } else { 0x55 })
+        .collect();
 
     let h1 = fnv_hash(&pattern_1k);
     let h2 = murmur3_64(&pattern_1k);
@@ -347,7 +347,10 @@ fn test_hash_of_special_types() {
 
     // Result
     assert_eq!(hash_of(&Ok::<u32, &str>(42)), hash_of(&Ok::<u32, &str>(42)));
-    assert_ne!(hash_of(&Ok::<u32, &str>(42)), hash_of(&Err::<&str, u32>("error")));
+    assert_ne!(
+        hash_of(&Ok::<u32, &str>(42)),
+        hash_of(&Err::<&str, u32>("error"))
+    );
 
     // Array
     assert_eq!(hash_of(&[1, 2, 3]), hash_of(&[1, 2, 3]));

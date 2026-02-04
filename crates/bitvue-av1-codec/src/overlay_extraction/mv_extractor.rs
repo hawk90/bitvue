@@ -7,7 +7,7 @@ use bitvue_core::{
     BitvueError,
 };
 
-use super::cu_parser::{CuSpatialIndex, parse_all_coding_units};
+use super::cu_parser::{parse_all_coding_units, CuSpatialIndex};
 use super::parser::ParsedFrame;
 use crate::ivf::OVERLAY_BLOCK_SIZE;
 
@@ -38,8 +38,9 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
     // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h)
-        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     let mut mv_l0 = Vec::with_capacity(total_blocks);
     let mut mv_l1 = Vec::with_capacity(total_blocks);

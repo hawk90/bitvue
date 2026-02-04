@@ -39,10 +39,7 @@ where
 }
 
 /// Serialize Option<Arc<str>> as Option<String> (for JSON compatibility)
-fn serialize_option_arc_str<S>(
-    value: &Option<Arc<str>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_option_arc_str<S>(value: &Option<Arc<str>>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {

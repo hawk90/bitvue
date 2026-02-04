@@ -5,7 +5,7 @@
 use bitvue_core::qp_heatmap::QPGrid;
 use bitvue_core::BitvueError;
 
-use super::cu_parser::{CuSpatialIndex, parse_all_coding_units};
+use super::cu_parser::{parse_all_coding_units, CuSpatialIndex};
 use super::parser::ParsedFrame;
 use crate::ivf::OVERLAY_BLOCK_SIZE;
 use crate::Qp;
@@ -48,8 +48,9 @@ fn extract_qp_grid_typed(
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
     // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h)
-        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     let qp_value = base_qp.value();
     let qp = vec![qp_value; total_blocks];
@@ -91,8 +92,9 @@ fn extract_qp_grid_from_parsed_typed(
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
     // Check for overflow in grid size calculation
-    let total_blocks = grid_w.checked_mul(grid_h)
-        .ok_or_else(|| BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h)))? as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     let base_qp_value = base_qp.value();
 
@@ -112,7 +114,14 @@ fn extract_qp_grid_from_parsed_typed(
                     block_h,
                     base_qp_value,
                 );
-                return Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp_value));
+                return Ok(QPGrid::new(
+                    grid_w,
+                    grid_h,
+                    block_w,
+                    block_h,
+                    qp,
+                    base_qp_value,
+                ));
             }
             Err(e) => {
                 tracing::warn!("Failed to parse coding units for QP: {}, using base_qp", e);
@@ -124,7 +133,14 @@ fn extract_qp_grid_from_parsed_typed(
     // Fallback: Use base_q_idx for all blocks
     let qp = vec![base_qp_value; total_blocks];
 
-    Ok(QPGrid::new(grid_w, grid_h, block_w, block_h, qp, base_qp_value))
+    Ok(QPGrid::new(
+        grid_w,
+        grid_h,
+        block_w,
+        block_h,
+        qp,
+        base_qp_value,
+    ))
 }
 
 /// Helper: Build QP grid from coding units using spatial index

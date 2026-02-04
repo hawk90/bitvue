@@ -1,7 +1,7 @@
 //! Common export types and configurations
 
-use serde::{Deserialize, Serialize};
 use crate::metrics_distribution::MetricPoint;
+use serde::{Deserialize, Serialize};
 
 /// Export format options
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

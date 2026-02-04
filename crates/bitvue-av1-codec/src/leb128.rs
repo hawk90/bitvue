@@ -206,9 +206,7 @@ mod tests {
         // MAX_LEB128_BITS = 56, so maximum value is 2^56 - 1
 
         // Valid 56-bit value: 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0x7F (8 bytes)
-        let max_valid_leb128 = [
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F
-        ];
+        let max_valid_leb128 = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F];
         let result = decode_uleb128(&max_valid_leb128);
         assert!(result.is_ok(), "Should decode valid 56-bit LEB128");
         let (value, len) = result.unwrap();
@@ -217,11 +215,11 @@ mod tests {
 
         // Invalid: value would require 57 bits (exceeds MAX_LEB128_BITS)
         // This should be rejected by the overflow check
-        let overflow_leb128 = [
-            0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
-        ];
-        assert!(decode_uleb128(&overflow_leb128).is_err(),
-            "Should reject LEB128 exceeding 56 bits");
+        let overflow_leb128 = [0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80];
+        assert!(
+            decode_uleb128(&overflow_leb128).is_err(),
+            "Should reject LEB128 exceeding 56 bits"
+        );
     }
 
     #[test]

@@ -3,8 +3,8 @@
 //! This module provides `OnceFlag` and `call_once` similar to Abseil's `absl::base_once`
 //! and Rust's `std::sync::Once`, but with API compatibility closer to Abseil's C++ version.
 
-use core::sync::atomic::{AtomicBool, Ordering};
 use core::cell::Cell;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// A flag that can be used to perform a one-time initialization.
 ///
@@ -124,7 +124,11 @@ where
     F: FnOnce(),
 {
     // Try to acquire the right to run initialization
-    if !flag.0.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
+    if !flag
+        .0
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
         // We won the race, run the initialization
         f();
     } else {
@@ -312,12 +316,12 @@ mod tests {
         static FLAG: OnceFlag = OnceFlag::new();
         static mut COUNTER: i32 = 0;
 
-        call_once(&FLAG, || {
-            unsafe { COUNTER += 10; }
+        call_once(&FLAG, || unsafe {
+            COUNTER += 10;
         });
 
-        call_once(&FLAG, || {
-            unsafe { COUNTER += 20; }
+        call_once(&FLAG, || unsafe {
+            COUNTER += 20;
         });
 
         assert_eq!(unsafe { COUNTER }, 10); // Only first call executed
@@ -325,8 +329,8 @@ mod tests {
 
     #[test]
     fn test_concurrent_call_once() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicI32, Ordering};
+        use std::sync::Arc;
 
         let flag = Arc::new(OnceFlag::new());
         let counter = Arc::new(AtomicI32::new(0));

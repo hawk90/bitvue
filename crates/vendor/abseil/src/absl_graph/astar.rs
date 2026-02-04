@@ -3,7 +3,6 @@
 //! A* is a graph traversal and path search algorithm that uses heuristics
 //! to find the shortest path between nodes.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;

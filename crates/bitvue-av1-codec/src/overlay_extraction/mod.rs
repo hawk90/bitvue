@@ -35,11 +35,11 @@
 //! ```
 
 mod cache;
-mod parser;
 mod cu_parser;
-mod qp_extractor;
 mod mv_extractor;
+mod parser;
 mod partition;
+mod qp_extractor;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -73,15 +73,16 @@ pub fn strict_mode_enabled() -> bool {
 }
 
 // Re-export public API
-pub use parser::{extract_pixel_info, FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame, PixelInfo};
-pub use qp_extractor::{extract_qp_grid, extract_qp_grid_from_parsed};
 pub use mv_extractor::{extract_mv_grid, extract_mv_grid_from_parsed};
-pub use partition::{
-    extract_partition_grid, extract_partition_grid_from_parsed,
-    extract_prediction_mode_grid, extract_prediction_mode_grid_from_parsed,
-    extract_transform_grid, extract_transform_grid_from_parsed,
-    PredictionModeGrid, TransformGrid,
+pub use parser::{
+    extract_pixel_info, FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame, PixelInfo,
 };
+pub use partition::{
+    extract_partition_grid, extract_partition_grid_from_parsed, extract_prediction_mode_grid,
+    extract_prediction_mode_grid_from_parsed, extract_transform_grid,
+    extract_transform_grid_from_parsed, PredictionModeGrid, TransformGrid,
+};
+pub use qp_extractor::{extract_qp_grid, extract_qp_grid_from_parsed};
 
 // Test utilities (only available in tests)
 #[cfg(test)]

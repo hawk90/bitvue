@@ -34,33 +34,32 @@
 //! assert_eq!(data, vec![1, 2, 5, 8, 9]);
 //! ```
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
-pub mod mergesort;
-pub mod quicksort;
+pub mod additional_sorts;
 pub mod heapsort;
+pub mod hybrid;
+pub mod mergesort;
+pub mod natural_sort;
+pub mod quicksort;
 pub mod radix_sort;
 pub mod specialized;
-pub mod hybrid;
-pub mod natural_sort;
-pub mod additional_sorts;
 
 // Re-exports
-pub use mergesort::{mergesort, mergesort_by, stable_sort};
-pub use quicksort::{quicksort, quicksort_by, unstable_sort};
-pub use heapsort::heapsort;
-pub use radix_sort::{radix_sort, radix_sort_u8, radix_sort_u16, radix_sort_u32};
-pub use specialized::{small_sort, insertion_sort, bubble_sort};
-pub use hybrid::{introsort, timsort};
-pub use natural_sort::{natural_cmp, natural_sort, natural_sort_string, natural_sort_by};
 pub use additional_sorts::{
-    selection_sort, selection_sort_by, shell_sort, cycle_sort, comb_sort, gnome_sort,
-    cocktail_sort, odd_even_sort, stooge_sort,
+    cocktail_sort, comb_sort, cycle_sort, gnome_sort, odd_even_sort, selection_sort,
+    selection_sort_by, shell_sort, stooge_sort,
 };
+pub use heapsort::heapsort;
+pub use hybrid::{introsort, timsort};
+pub use mergesort::{mergesort, mergesort_by, stable_sort};
+pub use natural_sort::{natural_cmp, natural_sort, natural_sort_by, natural_sort_string};
+pub use quicksort::{quicksort, quicksort_by, unstable_sort};
+pub use radix_sort::{radix_sort, radix_sort_u16, radix_sort_u32, radix_sort_u8};
+pub use specialized::{bubble_sort, insertion_sort, small_sort};
 
 // Re-export shared utilities from absl_algorithm
 // Note: We use absl_algorithm's internal module to avoid duplication
@@ -117,13 +116,16 @@ fn partition<T: Ord>(slice: &mut [T], left: usize, right: usize) -> usize {
     if left >= right {
         panic!(
             "partition: invalid range left={} >= right={}, slice.len()={}",
-            left, right, slice.len()
+            left,
+            right,
+            slice.len()
         );
     }
     if right > slice.len() {
         panic!(
             "partition: right={} exceeds slice.len()={}",
-            right, slice.len()
+            right,
+            slice.len()
         );
     }
 
@@ -165,7 +167,8 @@ fn partition_pivot<T: Ord>(slice: &mut [T], left: usize, right: usize, pivot_idx
     if right > slice.len() {
         panic!(
             "partition_pivot: right={} exceeds slice.len()={}",
-            right, slice.len()
+            right,
+            slice.len()
         );
     }
     if pivot_idx >= right {

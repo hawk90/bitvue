@@ -1,6 +1,5 @@
 //! Counter utilities for tracking operations.
 
-
 extern crate alloc;
 
 use alloc::sync::Arc;

@@ -3,7 +3,7 @@
 //! Export functions can be slow when dealing with large datasets (100K+ frames).
 
 use bitvue_core::export::{
-    ExportConfig, ExportFormat, FrameExportRow, QualityMetrics, MetricPoint,
+    ExportConfig, ExportFormat, FrameExportRow, MetricPoint, QualityMetrics,
 };
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
@@ -35,8 +35,12 @@ fn bench_export_frames_csv(c: &mut Criterion) {
                 b.iter(|| {
                     let mut output = Vec::new();
                     black_box(
-                        bitvue_core::export::export_frames_csv(&frames, &mut output, ExportConfig::default())
-                            .unwrap(),
+                        bitvue_core::export::export_frames_csv(
+                            &frames,
+                            &mut output,
+                            ExportConfig::default(),
+                        )
+                        .unwrap(),
                     );
                 });
             },
@@ -60,8 +64,12 @@ fn bench_export_frames_json(c: &mut Criterion) {
                 b.iter(|| {
                     let mut output = Vec::new();
                     black_box(
-                        bitvue_core::export::export_frames_json(&frames, &mut output, ExportConfig::default())
-                            .unwrap(),
+                        bitvue_core::export::export_frames_json(
+                            &frames,
+                            &mut output,
+                            ExportConfig::default(),
+                        )
+                        .unwrap(),
                     );
                 });
             },
@@ -89,7 +97,8 @@ fn bench_export_frames_json_pretty(c: &mut Criterion) {
                 b.iter(|| {
                     let mut output = Vec::new();
                     black_box(
-                        bitvue_core::export::export_frames_json(&frames, &mut output, config).unwrap(),
+                        bitvue_core::export::export_frames_json(&frames, &mut output, config)
+                            .unwrap(),
                     );
                 });
             },
@@ -142,7 +151,9 @@ fn bench_export_metrics_csv(c: &mut Criterion) {
                 };
                 b.iter(|| {
                     let mut output = Vec::new();
-                    black_box(bitvue_core::export::export_metrics_csv(metrics, &mut output).unwrap());
+                    black_box(
+                        bitvue_core::export::export_metrics_csv(metrics, &mut output).unwrap(),
+                    );
                 });
             },
         );

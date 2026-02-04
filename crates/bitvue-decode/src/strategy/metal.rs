@@ -260,15 +260,8 @@ mod tests {
         let v_plane = vec![128; 25];
         let mut rgb = vec![0u8; 300];
 
-        let result = strategy.convert_yuv420_to_rgb(
-            &y_plane,
-            &u_plane,
-            &v_plane,
-            10,
-            10,
-            &mut rgb,
-            8,
-        );
+        let result =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 8);
 
         // Should return an error since it's not implemented
         assert!(result.is_err());

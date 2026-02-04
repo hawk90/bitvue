@@ -47,10 +47,7 @@ impl QpData {
     /// # Returns
     ///
     /// Average QP value (0-51)
-    pub fn calculate_average_qp(
-        pic_init_qp_minus26: i32,
-        slice_qp_deltas: &[i32],
-    ) -> Option<u8> {
+    pub fn calculate_average_qp(pic_init_qp_minus26: i32, slice_qp_deltas: &[i32]) -> Option<u8> {
         if slice_qp_deltas.is_empty() {
             return None;
         }
@@ -77,12 +74,15 @@ impl QpData {
     ///
     /// QP data with calculated average QP
     pub fn from_avc_slice(pic_init_qp_minus26: i32, slice_qp_delta: i32) -> Self {
-        let qp_avg = Some(Self::calculate_qp_from_delta(pic_init_qp_minus26, slice_qp_delta));
+        let qp_avg = Some(Self::calculate_qp_from_delta(
+            pic_init_qp_minus26,
+            slice_qp_delta,
+        ));
         Self {
             qp_avg,
-            qp_range: None,  // TODO: Calculate min/max from all slices
+            qp_range: None, // TODO: Calculate min/max from all slices
             qp_delta: Some(slice_qp_delta),
-            chroma_qp_delta: None,  // AVC uses separate chroma QP with slice_qs_delta
+            chroma_qp_delta: None, // AVC uses separate chroma QP with slice_qs_delta
         }
     }
 
@@ -97,12 +97,15 @@ impl QpData {
     ///
     /// QP data with calculated average QP
     pub fn from_hevc_slice(pic_init_qp_minus26: i32, slice_qp_delta: i32) -> Self {
-        let qp_avg = Some(Self::calculate_qp_from_delta(pic_init_qp_minus26, slice_qp_delta));
+        let qp_avg = Some(Self::calculate_qp_from_delta(
+            pic_init_qp_minus26,
+            slice_qp_delta,
+        ));
         Self {
             qp_avg,
-            qp_range: None,  // TODO: Calculate min/max from all CTUs
+            qp_range: None, // TODO: Calculate min/max from all CTUs
             qp_delta: Some(slice_qp_delta),
-            chroma_qp_delta: None,  // HEVC has separate chroma QP handling
+            chroma_qp_delta: None, // HEVC has separate chroma QP handling
         }
     }
 

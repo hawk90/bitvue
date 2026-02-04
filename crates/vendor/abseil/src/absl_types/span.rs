@@ -259,15 +259,15 @@ impl<'a, T> SpanMut<'a, T> {
     /// Returns a mutable subslice spanning the given range.
     #[inline]
     pub fn slice_mut(&mut self, range: core::ops::Range<usize>) -> Option<SpanMut<'_, T>> {
-        self.data.get_mut(range.clone()).map(|data| SpanMut { data })
+        self.data
+            .get_mut(range.clone())
+            .map(|data| SpanMut { data })
     }
 
     /// Returns an immutable span over this data.
     #[inline]
     pub fn as_span(&self) -> Span<'_, T> {
-        Span {
-            data: self.data,
-        }
+        Span { data: self.data }
     }
 
     /// Fills the span with the given value.
@@ -321,7 +321,9 @@ impl<'a, T> From<&'a mut [T]> for SpanMut<'a, T> {
 impl<'a, T, const N: usize> From<&'a mut [T; N]> for SpanMut<'a, T> {
     #[inline]
     fn from(data: &'a mut [T; N]) -> Self {
-        SpanMut { data: &mut data[..] }
+        SpanMut {
+            data: &mut data[..],
+        }
     }
 }
 

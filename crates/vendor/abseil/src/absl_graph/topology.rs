@@ -1,6 +1,5 @@
 //! Graph topology and structural analysis.
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;

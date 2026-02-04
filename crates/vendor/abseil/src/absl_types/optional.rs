@@ -124,7 +124,9 @@ impl<T> Optional<T> {
     /// Panics if the value is `None`.
     #[inline]
     pub fn unwrap(&self) -> &T {
-        self.value.as_ref().expect("Optional::unwrap() called on None")
+        self.value
+            .as_ref()
+            .expect("Optional::unwrap() called on None")
     }
 
     /// Unwraps the value mutably.

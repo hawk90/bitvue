@@ -57,7 +57,11 @@ impl<'a> Default for FunctionRef<'a> {
 
 impl<'a> fmt::Debug for FunctionRef<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "FunctionRef({})", if self.valid { "valid" } else { "invalid" })
+        write!(
+            f,
+            "FunctionRef({})",
+            if self.valid { "valid" } else { "invalid" }
+        )
     }
 }
 

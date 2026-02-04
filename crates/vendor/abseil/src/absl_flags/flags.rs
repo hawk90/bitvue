@@ -14,11 +14,7 @@ pub struct BoolFlag {
 
 impl BoolFlag {
     /// Creates a new boolean flag.
-    pub const fn new(
-        name: &'static str,
-        default: bool,
-        help: &'static str,
-    ) -> Self {
+    pub const fn new(name: &'static str, default: bool, help: &'static str) -> Self {
         Self {
             name,
             default,
@@ -61,8 +57,12 @@ impl BoolFlag {
     /// Panics with a descriptive message if the mutex is poisoned.
     pub fn set(&self, value: bool) {
         // SAFETY: Lock the mutex once and use expect for better error message
-        let mut guard = self.current.lock()
-            .unwrap_or_else(|_| panic!("Failed to set boolean flag '{}': mutex is poisoned", self.name));
+        let mut guard = self.current.lock().unwrap_or_else(|_| {
+            panic!(
+                "Failed to set boolean flag '{}': mutex is poisoned",
+                self.name
+            )
+        });
         *guard = value;
     }
 
@@ -86,11 +86,7 @@ pub struct StringFlag {
 
 impl StringFlag {
     /// Creates a new string flag.
-    pub fn new(
-        name: &'static str,
-        default: &'static str,
-        help: &'static str,
-    ) -> Self {
+    pub fn new(name: &'static str, default: &'static str, help: &'static str) -> Self {
         Self {
             name,
             default,
@@ -133,8 +129,12 @@ impl StringFlag {
     /// Panics with a descriptive message if the mutex is poisoned.
     pub fn set(&self, value: &str) {
         // SAFETY: Lock the mutex once and use expect for better error message
-        let mut guard = self.current.lock()
-            .unwrap_or_else(|_| panic!("Failed to set string flag '{}': mutex is poisoned", self.name));
+        let mut guard = self.current.lock().unwrap_or_else(|_| {
+            panic!(
+                "Failed to set string flag '{}': mutex is poisoned",
+                self.name
+            )
+        });
         *guard = value.to_string();
     }
 
@@ -158,11 +158,7 @@ pub struct IntFlag {
 
 impl IntFlag {
     /// Creates a new integer flag.
-    pub const fn new(
-        name: &'static str,
-        default: i64,
-        help: &'static str,
-    ) -> Self {
+    pub const fn new(name: &'static str, default: i64, help: &'static str) -> Self {
         Self {
             name,
             default,
@@ -205,8 +201,12 @@ impl IntFlag {
     /// Panics with a descriptive message if the mutex is poisoned.
     pub fn set(&self, value: i64) {
         // SAFETY: Lock the mutex once and use expect for better error message
-        let mut guard = self.current.lock()
-            .unwrap_or_else(|_| panic!("Failed to set integer flag '{}': mutex is poisoned", self.name));
+        let mut guard = self.current.lock().unwrap_or_else(|_| {
+            panic!(
+                "Failed to set integer flag '{}': mutex is poisoned",
+                self.name
+            )
+        });
         *guard = value;
     }
 

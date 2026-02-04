@@ -1,6 +1,5 @@
 //! Heap sort implementation.
 
-
 /// Heap sort (unstable, in-place, O(n log n)).
 pub fn heapsort<T: Ord>(slice: &mut [T]) {
     if slice.len() <= 1 {
