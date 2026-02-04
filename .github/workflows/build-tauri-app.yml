@@ -106,41 +106,41 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           echo "=== Build output directory structure ==="
-          ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+          ls -la target/${{ matrix.target }}/release/ || true
           echo ""
           echo "=== Looking for bitvue binary ==="
-          find src-tauri/target/${{ matrix.target }}/ -name "bitvue" -o -name "bitvue.exe" | head -5 || true
+          find target/${{ matrix.target }}/ -name "bitvue" -o -name "bitvue.exe" | head -5 || true
           echo ""
           echo "=== Looking for bundle directories ==="
-          find src-tauri/target/${{ matrix.target }}/release -type d || true
+          find target/${{ matrix.target }}/release -type d || true
           echo ""
           echo "=== All files in release directory ==="
-          find src-tauri/target/${{ matrix.target }}/release/ -type f || true
+          find target/${{ matrix.target }}/release/ -type f || true
 
       - name: Diagnose build output (Windows)
         if: runner.os == 'Windows'
         run: |
           Write-Host "=== Build output directory structure ==="
-          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
           Write-Host ""
           Write-Host "=== Looking for bitvue binary ==="
-          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/" -Recurse -Filter "bitvue.exe" -ErrorAction SilentlyContinue | Select-Object -First 5
+          Get-ChildItem -Path "target/${{ matrix.target }}/" -Recurse -Filter "bitvue.exe" -ErrorAction SilentlyContinue | Select-Object -First 5
           Write-Host ""
           Write-Host "=== Looking for bundle directories ==="
-          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -Directory -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "target/${{ matrix.target }}/release/" -Directory -ErrorAction SilentlyContinue
           Write-Host ""
           Write-Host "=== All files in release directory ==="
-          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -File -Recurse -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "target/${{ matrix.target }}/release/" -File -Recurse -ErrorAction SilentlyContinue
 
       - name: Check build output (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
           echo "Checking release directory structure..."
-          ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+          ls -la target/${{ matrix.target }}/release/ || true
           echo "Checking for binary..."
-          find src-tauri/target/${{ matrix.target }}/ -name "bitvue*" -type f || true
+          find target/${{ matrix.target }}/ -name "bitvue*" -type f || true
           echo "Checking bundle directory..."
-          ls -la src-tauri/target/${{ matrix.target }}/release/bundle/ || echo "Bundle directory not found"
+          ls -la target/${{ matrix.target }}/release/bundle/ || echo "Bundle directory not found"
 
       # ───────────────────────────────────────────────
       # Artifact 준비 (Tauri 기본 출력물 이름 사용)
@@ -149,27 +149,27 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           # Try to find the actual bundle or binary
-          if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/macos" ]; then
-            cd src-tauri/target/${{ matrix.target }}/release/bundle/macos
+          if [ -d "target/${{ matrix.target }}/release/bundle/macos" ]; then
+            cd target/${{ matrix.target }}/release/bundle/macos
             ls -la
             # macOS: bitvue.app → bitvue.app.tar.gz
             if [ -d "bitvue.app" ]; then
               tar -czf ../../../${{ matrix.artifact_name }} bitvue.app
-              echo "Created AppImage bundle"
+              echo "Created macOS app bundle"
             fi
           else
             # Fall back to binary if bundle doesn't exist
             echo "Bundle not found, checking for binary..."
-            BINARY_PATH="src-tauri/target/${{ matrix.target }}/release/bitvue"
+            BINARY_PATH="target/${{ matrix.target }}/release/bitvue"
             if [ -f "$BINARY_PATH" ]; then
               echo "Found binary, creating tarball..."
-              tar -czf src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }} -C src-tauri/target/${{ matrix.target }}/release bitvue
-              chmod +x src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
+              tar -czf target/${{ matrix.target }}/${{ matrix.artifact_name }} -C target/${{ matrix.target }}/release bitvue
+              chmod +x target/${{ matrix.target }}/${{ matrix.artifact_name }}
               echo "Created binary tarball as fallback"
             else
               echo "Neither bundle nor binary found!"
-              ls -la src-tauri/target/${{ matrix.target }}/release/ || true
-              find src-tauri/target/${{ matrix.target }}/ -name "*bitvue*" || true
+              ls -la target/${{ matrix.target }}/release/ || true
+              find target/${{ matrix.target }}/ -name "*bitvue*" || true
             fi
           fi
 
@@ -177,20 +177,20 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           # Try to find the actual MSI or binary
-          if (Test-Path "src-tauri/target/${{ matrix.target }}/release/bundle/msi") {
-            cd src-tauri/target/${{ matrix.target }}/release/bundle/msi
+          if (Test-Path "target/${{ matrix.target }}/release/bundle/msi") {
+            cd target/${{ matrix.target }}/release/bundle/msi
             Compress-Archive -Path *.msi -DestinationPath "../../../${{ matrix.artifact_name }}"
             echo "Created MSI bundle"
           } else {
             Write-Host "Bundle not found, checking for binary..."
-            $binaryPath = "src-tauri/target/${{ matrix.target }}/release/bitvue.exe"
+            $binaryPath = "target/${{ matrix.target }}/release/bitvue.exe"
             if (Test-Path $binaryPath) {
               Write-Host "Found binary, creating zip archive..."
-              Compress-Archive -Path $binaryPath -DestinationPath "src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}"
+              Compress-Archive -Path $binaryPath -DestinationPath "target/${{ matrix.target }}/${{ matrix.artifact_name }}"
               echo "Created binary zip as fallback"
             } else {
               Write-Host "Neither bundle nor binary found!"
-              Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
+              Get-ChildItem -Path "target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
             }
           }
 
@@ -198,26 +198,26 @@ jobs:
         if: matrix.os == 'ubuntu-24.04'
         run: |
           # Tauri on Linux creates a plain binary, not an AppImage by default
-          BINARY_PATH="src-tauri/target/${{ matrix.target }}/release/bitvue"
+          BINARY_PATH="target/${{ matrix.target }}/release/bitvue"
 
           if [ -f "$BINARY_PATH" ]; then
             echo "Found binary at $BINARY_PATH, creating tarball..."
-            tar -czf src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }} -C src-tauri/target/${{ matrix.target }}/release bitvue
-            chmod +x src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
+            tar -czf target/${{ matrix.target }}/${{ matrix.artifact_name }} -C target/${{ matrix.target }}/release bitvue
+            chmod +x target/${{ matrix.target }}/${{ matrix.artifact_name }}
             echo "Created binary tarball successfully"
           else
             echo "Binary not found at $BINARY_PATH"
             echo "Searching for any bitvue-related files..."
-            find src-tauri/target/${{ matrix.target }}/ -type f -name "*bitvue*" || true
-            ls -la src-tauri/target/${{ matrix.target }}/release/ || true
-            ls -la src-tauri/target/${{ matrix.target }}/ || true
+            find target/${{ matrix.target }}/ -type f -name "*bitvue*" || true
+            ls -la target/${{ matrix.target }}/release/ || true
+            ls -la target/${{ matrix.target }}/ || true
           fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
+          path: target/${{ matrix.target }}/${{ matrix.artifact_name }}
           if-no-files-found: warn
 
   release:
