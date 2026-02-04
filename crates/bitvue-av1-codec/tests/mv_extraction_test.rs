@@ -30,12 +30,12 @@ fn test_mv_extraction_with_spec_cdfs() {
     let data = std::fs::read(&test_file).expect("Failed to read test file");
 
     // Extract OBUs from container (MP4/IVF/WebM)
-    let obu_data = if bitvue_av1::is_mp4(&data) {
-        bitvue_av1::extract_obu_data_from_mp4(&data).expect("Failed to extract from MP4")
-    } else if bitvue_av1::is_ivf(&data) {
-        bitvue_av1::extract_obu_data(&data).expect("Failed to extract from IVF")
-    } else if bitvue_av1::is_mkv(&data) {
-        bitvue_av1::extract_obu_data_from_mkv(&data).expect("Failed to extract from MKV/WebM")
+    let obu_data = if bitvue_av1_codec::is_mp4(&data) {
+        bitvue_av1_codec::extract_obu_data_from_mp4(&data).expect("Failed to extract from MP4")
+    } else if bitvue_av1_codec::is_ivf(&data) {
+        bitvue_av1_codec::extract_obu_data(&data).expect("Failed to extract from IVF")
+    } else if bitvue_av1_codec::is_mkv(&data) {
+        bitvue_av1_codec::extract_obu_data_from_mkv(&data).expect("Failed to extract from MKV/WebM")
     } else {
         panic!("Unknown container format");
     };
@@ -51,7 +51,7 @@ fn test_mv_extraction_with_spec_cdfs() {
 
     // Process all frame OBUs
     for (idx, obu) in obus.iter().enumerate() {
-        if obu.header.obu_type != bitvue_av1::ObuType::Frame {
+        if obu.header.obu_type != bitvue_av1_codec::ObuType::Frame {
             continue;
         }
 

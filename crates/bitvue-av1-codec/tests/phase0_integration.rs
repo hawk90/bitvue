@@ -22,11 +22,11 @@ fn test_phase0_real_file_parsing() {
     let data = fs::read(test_file).expect("Failed to read test file");
 
     // Extract OBU data from IVF
-    let obu_data = bitvue_av1::extract_obu_data(&data).expect("Failed to extract OBU data");
+    let obu_data = bitvue_av1_codec::extract_obu_data(&data).expect("Failed to extract OBU data");
 
     // Parse bitstream with syntax parser
     let models =
-        bitvue_av1::parse_bitstream_syntax(&obu_data).expect("Failed to parse bitstream syntax");
+        bitvue_av1_codec::parse_bitstream_syntax(&obu_data).expect("Failed to parse bitstream syntax");
 
     // Verify we got multiple OBUs
     assert!(
@@ -198,7 +198,7 @@ fn test_phase0_bit_range_accuracy() {
         0x12, 0x00, // Temporal Delimiter OBU
     ];
 
-    let models = bitvue_av1::parse_bitstream_syntax(&data).expect("Failed to parse test data");
+    let models = bitvue_av1_codec::parse_bitstream_syntax(&data).expect("Failed to parse test data");
 
     assert_eq!(models.len(), 1, "Expected 1 OBU");
 
@@ -277,7 +277,7 @@ fn test_phase0_bidirectional_trisync() {
         0b00001001, 0x00, 0x00, 0x00, 0x00, // Sequence header payload
     ];
 
-    let models = bitvue_av1::parse_bitstream_syntax(&data).expect("Failed to parse test data");
+    let models = bitvue_av1_codec::parse_bitstream_syntax(&data).expect("Failed to parse test data");
 
     assert_eq!(models.len(), 1, "Expected 1 OBU");
     let model = &models[0];

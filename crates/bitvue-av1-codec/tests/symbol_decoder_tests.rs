@@ -134,17 +134,17 @@ fn test_symbol_decoder_with_real_file() {
     let data = fs::read(test_file).expect("Failed to read test file");
 
     // Extract OBU data from IVF
-    let obu_data = bitvue_av1::extract_obu_data(&data).expect("Failed to extract OBU data");
+    let obu_data = bitvue_av1_codec::extract_obu_data(&data).expect("Failed to extract OBU data");
 
     // Parse OBUs
-    let obus = bitvue_av1::parse_all_obus(&obu_data).expect("Failed to parse OBUs");
+    let obus = bitvue_av1_codec::parse_all_obus(&obu_data).expect("Failed to parse OBUs");
 
     println!("Found {} OBUs in test file", obus.len());
 
     // Find FRAME OBU (type 6)
     let frame_obu = obus
         .iter()
-        .find(|obu| obu.header.obu_type == bitvue_av1::ObuType::Frame);
+        .find(|obu| obu.header.obu_type == bitvue_av1_codec::ObuType::Frame);
 
     if let Some(obu) = frame_obu {
         println!(

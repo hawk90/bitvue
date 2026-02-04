@@ -215,8 +215,12 @@ unsafe fn yuv420_to_rgb_avx2_impl(
                     (v_vals[3] as i32 - 128),
                 );
 
-                // Convert Y to i32
-                let y_i32 = _mm256_cvtepu8_epi32(y_vec);
+                // Convert Y to i32 (extract low 128-bit lane first)
+                let y_low = _mm256_castsi256_si128(y_vec);
+                let y_high = _mm256_extracti128_si256(y_vec, 1);
+                let y_low_i32 = _mm256_cvtepu8_epi32(y_low);
+                let y_high_i32 = _mm256_cvtepu8_epi32(y_high);
+                let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
 
                 // BT.601 conversion with integer arithmetic
                 // R = Y + 1.402 * V  (approx 181/128 * V)
@@ -306,64 +310,14 @@ unsafe fn store_rgb_interleaved(
     b: __m256i,
 ) {
     // Split 256-bit vectors into two 128-bit lanes
-    let r_low = _mm256_castsi256_si128(r, 0);   // First 128 bits
-    let r_high = _mm256_extracti128_si256(r, 1); // Second 128 bits
-    let g_low = _mm256_castsi256_si128(g, 0);
+    let r_low = _mm256_castsi256_si128(r);
+    let r_high = _mm256_extracti128_si256(r, 1);
+    let g_low = _mm256_castsi256_si128(g);
     let g_high = _mm256_extracti128_si256(g, 1);
-    let b_low = _mm256_castsi256_si128(b, 0);
+    let b_low = _mm256_castsi256_si128(b);
     let b_high = _mm256_extracti128_si256(b, 1);
 
-    // Interleave RGB values for first 4 pixels (R0,G0,B0,R1,G1,B1,R2,G2,B2,R3,G3,B3)
-    // Use unpack to interleave R,G and R,G, then interleave with B
-    let rg_low_1 = _mm_unpacklo_epi8(r_low, g_low);  // R0,G0,R1,G1,R2,G2,R3,G3
-    let rg_low_2 = _mm_unpackhi_epi8(r_low, g_low);  // R4,G4,R5,G5,R6,G6,R7,G7
-    let rg_high_1 = _mm_unpacklo_epi8(r_high, g_high);
-    let rg_high_2 = _mm_unpackhi_epi8(r_high, g_high);
-
-    // Now interleave with B: we need R0,G0,B0,R1,G1,B1,...
-    // Strategy: create two vectors and shuffle
-    let rgb_1 = _mm_unpacklo_epi8(rg_low_1, b_low);   // R0,G0,R1,G1,R2,G2,R3,G3,B0,B0,B1,B1,B2,B2,B3,B3 (wrong)
-    // Alternative approach: use shuffle for precise control
-
-    // Create shuffle mask for RGB interleaving: 0,3,6,9,12,15, 1,4,7,10,13, 2,5,8,11,14
-    // This gives us: R0,G0,B0,R1,G1,B1,R2,G2,B2,R3,G3,B3,R4,G4,B4 (with wrap)
-    // For simplicity and correctness, use the direct approach with 128-bit stores
-
-    // Pack RGB triplets into 128-bit vectors for first 4 pixels
-    // R0,G0,B0,R1,G1,B1,R2,G2,B2,R3,G3,B3,xx,xx,xx,xx
-    let mut buf1 = [0u8; 16];
-    let mut buf2 = [0u8; 16];
-
-    _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, _mm_unpacklo_epi8(
-        _mm_unpacklo_epi8(r_low, g_low),
-        _mm_unpacklo_epi8(b_low, _mm_setzero_si128())
-    ));
-    _mm_storeu_si128(buf2.as_mut_ptr() as *mut __m128i, _mm_unpackhi_epi8(
-        _mm_unpacklo_epi8(r_low, g_low),
-        _mm_unpacklo_epi8(b_low, _mm_setzero_si128())
-    ));
-
-    // For RGB24, the cleanest approach is direct stores with shuffle
-    // Use shuffle_epi8 with carefully crafted masks
-
-    // Shuffle mask for: R0,G0,B0,R1,G1,B1,R2,G2,B2,R3,G3,B3,R4,G4,B4 (16 bytes)
-    // This creates a repeating RGB pattern
-    let shuffle_mask = _mm_setr_epi8(0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15);
-
-    // Combine R and G first
-    let rg_combined = _mm_unpacklo_epi8(r_low, g_low);  // R0,G0,R1,G1,...
-    let rg_combined2 = _mm_unpackhi_epi8(r_low, g_low); // R4,G4,R5,G5,...
-
-    // Now need to interleave B: this is complex for RGB24
-    // Use the proven approach with direct stores for correctness
-
     let dst = rgb.as_mut_ptr().add(offset);
-
-    // Store first 4 pixels using 128-bit operations where possible
-    // RGB pattern: R0,G0,B0,R1,G1,B1,R2,G2,B2,R3,G3,B3 (12 bytes)
-    let r_low_bytes = _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, r_low);
-    let g_low_bytes = _mm_storeu_si128(buf2.as_mut_ptr() as *mut __m128i, g_low);
-    let b_low_bytes = _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, b_low);
 
     // For maximum performance with RGB24, use hybrid approach:
     // 1. Extract to temp arrays (fast, in L1 cache)
@@ -467,12 +421,16 @@ unsafe fn yuv422_to_rgb_avx2_impl(
                 let u_8 = _mm_unpacklo_epi8(u_dup, u_dup);
                 let v_8 = _mm_unpacklo_epi8(v_dup, v_dup);
 
-                // Expand to 32-bit
-                let u_i32 = _mm256_cvtepu8_epi32(_mm256_castsi128_si256(u_8));
-                let v_i32 = _mm256_cvtepu8_epi32(_mm256_castsi128_si256(v_8));
+                // Expand to 32-bit (u_8 and v_8 are already 128-bit)
+                let u_i32 = _mm256_cvtepu8_epi32(u_8);
+                let v_i32 = _mm256_cvtepu8_epi32(v_8);
 
-                // Convert Y to i32
-                let y_i32 = _mm256_cvtepu8_epi32(y_vec);
+                // Convert Y to i32 (extract low 128-bit lane first)
+                let y_low = _mm256_castsi256_si128(y_vec);
+                let y_high = _mm256_extracti128_si256(y_vec, 1);
+                let y_low_i32 = _mm256_cvtepu8_epi32(y_low);
+                let y_high_i32 = _mm256_cvtepu8_epi32(y_high);
+                let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
 
                 // BT.601 conversion
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
@@ -552,9 +510,23 @@ unsafe fn yuv444_to_rgb_avx2_impl(
                 let v_vec = _mm256_loadu_si256(v_plane.as_ptr().add(idx) as *const __m256i);
 
                 // Convert to i32 and subtract 128
-                let y_i32 = _mm256_cvtepu8_epi32(y_vec);
-                let u_i32 = _mm256_sub_epi32(_mm256_cvtepu8_epi32(u_vec), const_128);
-                let v_i32 = _mm256_sub_epi32(_mm256_cvtepu8_epi32(v_vec), const_128);
+                let y_low = _mm256_castsi256_si128(y_vec);
+                let y_high = _mm256_extracti128_si256(y_vec, 1);
+                let y_low_i32 = _mm256_cvtepu8_epi32(y_low);
+                let y_high_i32 = _mm256_cvtepu8_epi32(y_high);
+                let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
+
+                let u_low = _mm256_castsi256_si128(u_vec);
+                let u_high = _mm256_extracti128_si256(u_vec, 1);
+                let u_low_i32 = _mm256_cvtepu8_epi32(u_low);
+                let u_high_i32 = _mm256_cvtepu8_epi32(u_high);
+                let u_i32 = _mm256_sub_epi32(_mm256_or_si256(u_low_i32, u_high_i32), const_128);
+
+                let v_low = _mm256_castsi256_si128(v_vec);
+                let v_high = _mm256_extracti128_si256(v_vec, 1);
+                let v_low_i32 = _mm256_cvtepu8_epi32(v_low);
+                let v_high_i32 = _mm256_cvtepu8_epi32(v_high);
+                let v_i32 = _mm256_sub_epi32(_mm256_or_si256(v_low_i32, v_high_i32), const_128);
 
                 // BT.601 conversion
                 let v_scaled = _mm256_mullo_epi32(v_i32, v_coeff);
@@ -610,7 +582,7 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
     bit_depth: u8,
 ) {
     let uv_width = width / 2;
-    let shift = (bit_depth - 8) as i32;  // 10-bit: 2, 12-bit: 4
+    let shift = (bit_depth - 8) as i32;
 
     // Coefficients for BT.601 color space
     let v_coeff: __m256i = _mm256_set1_epi32(181);
@@ -645,15 +617,19 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
 
                 // Duplicate U/V: [u0,u1,u2,u3] -> [u0,u0,u1,u1,u2,u2,u3,u3]
                 let u_4x = _mm_mullo_epi16(u_4, _mm_set1_epi16(0x0101));
-                let u_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(u_4x));
+                let u_vec = _mm256_cvtepu16_epi32(u_4x);
                 let v_4x = _mm_mullo_epi16(v_4, _mm_set1_epi16(0x0101));
-                let v_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(v_4x));
+                let v_vec = _mm256_cvtepu16_epi32(v_4x);
 
                 // Convert Y from 16-bit to 32-bit, then normalize to 8-bit range
-                let y_16 = _mm256_castsi256_si256(y_vec, _mm256_castsi128_si256(y_vec, 1));
-                let y_16_low = _mm256_castsi128_si256(y_16, 0);
-                let y_16_high = _mm256_castsi256_si256(y_16, 1);
-                let y_i32 = _mm256_unpacklo_epi16(y_16_low, y_16_high);
+                // Extract 128-bit lanes from the 256-bit Y vector
+                let y_low_lane = _mm256_castsi256_si128(y_vec);
+                let y_high_lane = _mm256_extracti128_si256(y_vec, 1);
+                // Convert each 128-bit lane of 16-bit values to 32-bit
+                let y_low_i32 = _mm256_cvtepu16_epi32(y_low_lane);
+                let y_high_i32 = _mm256_cvtepu16_epi32(y_high_lane);
+                // Combine the two 256-bit results
+                let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
 
                 // Normalize 10/12-bit to 8-bit range by right-shifting
                 let y_i32 = _mm256_srai_epi32(y_i32, shift);
@@ -754,15 +730,16 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
                 let v_4 = _mm_loadu_si128(v_plane.as_ptr().add(uv_idx * 2) as *const __m128i);
 
                 let u_4x = _mm_mullo_epi16(u_4, _mm_set1_epi16(0x0101));
-                let u_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(u_4x));
+                let u_vec = _mm256_cvtepu16_epi32(u_4x);
                 let v_4x = _mm_mullo_epi16(v_4, _mm_set1_epi16(0x0101));
-                let v_vec = _mm256_cvtepu16_epi32(_mm256_castsi128_si256(v_4x));
+                let v_vec = _mm256_cvtepu16_epi32(v_4x);
 
-                // Normalize Y
-                let y_16 = _mm256_castsi256_si256(y_vec, _mm256_castsi128_si256(y_vec, 1));
-                let y_16_low = _mm256_castsi128_si256(y_16, 0);
-                let y_16_high = _mm256_castsi128_si256(y_16, 1);
-                let y_i32 = _mm256_unpacklo_epi16(y_16_low, y_16_high);
+                // Normalize Y (extract 128-bit lanes and convert to 32-bit)
+                let y_low_lane = _mm256_castsi256_si128(y_vec);
+                let y_high_lane = _mm256_extracti128_si256(y_vec, 1);
+                let y_low_i32 = _mm256_cvtepu16_epi32(y_low_lane);
+                let y_high_i32 = _mm256_cvtepu16_epi32(y_high_lane);
+                let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
                 let y_i32 = _mm256_srai_epi32(y_i32, shift);
 
                 // Normalize U/V
@@ -847,20 +824,24 @@ unsafe fn yuv444_to_rgb_avx2_impl_16bit(
                 let v_vec = _mm256_loadu_si256(v_plane.as_ptr().add(idx * 2) as *const __m256i);
 
                 // Convert 16-bit to 32-bit and normalize
-                let y_16 = _mm256_castsi256_si256(y_vec, _mm256_castsi128_si256(y_vec, 1));
-                let y_16_low = _mm256_castsi128_si256(y_16, 0);
-                let y_16_high = _mm256_castsi128_si256(y_16, 1);
-                let y_i32 = _mm256_unpacklo_epi16(y_16_low, y_16_high);
+                // Extract 128-bit lanes and convert each
+                let y_low_lane = _mm256_castsi256_si128(y_vec);
+                let y_high_lane = _mm256_extracti128_si256(y_vec, 1);
+                let y_low_i32 = _mm256_cvtepu16_epi32(y_low_lane);
+                let y_high_i32 = _mm256_cvtepu16_epi32(y_high_lane);
+                let y_i32 = _mm256_or_si256(y_low_i32, y_high_i32);
 
-                let u_16 = _mm256_castsi256_si256(u_vec, _mm256_castsi128_si256(u_vec, 1));
-                let u_16_low = _mm256_castsi128_si256(u_16, 0);
-                let u_16_high = _mm256_castsi128_si256(u_16, 1);
-                let u_i32 = _mm256_unpacklo_epi16(u_16_low, u_16_high);
+                let u_low_lane = _mm256_castsi256_si128(u_vec);
+                let u_high_lane = _mm256_extracti128_si256(u_vec, 1);
+                let u_low_i32 = _mm256_cvtepu16_epi32(u_low_lane);
+                let u_high_i32 = _mm256_cvtepu16_epi32(u_high_lane);
+                let u_i32 = _mm256_or_si256(u_low_i32, u_high_i32);
 
-                let v_16 = _mm256_castsi256_si256(v_vec, _mm256_castsi128_si256(v_vec, 1));
-                let v_16_low = _mm256_castsi128_si256(v_16, 0);
-                let v_16_high = _mm256_castsi128_si256(v_16, 1);
-                let v_i32 = _mm256_unpacklo_epi16(v_16_low, v_16_high);
+                let v_low_lane = _mm256_castsi256_si128(v_vec);
+                let v_high_lane = _mm256_extracti128_si256(v_vec, 1);
+                let v_low_i32 = _mm256_cvtepu16_epi32(v_low_lane);
+                let v_high_i32 = _mm256_cvtepu16_epi32(v_high_lane);
+                let v_i32 = _mm256_or_si256(v_low_i32, v_high_i32);
 
                 // Normalize and center chroma
                 let y_i32 = _mm256_srai_epi32(y_i32, shift);

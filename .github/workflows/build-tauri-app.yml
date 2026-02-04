@@ -108,25 +108,40 @@ jobs:
       - name: Prepare artifact (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle/macos
-          ls -la
-          # 보통 bitvue.app → bitvue.app.tar.gz 로 압축됨
-          if [ -d "bitvue.app" ]; then
-            tar -czf ../../../${{ matrix.artifact_name }} bitvue.app
+          if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/macos" ]; then
+            cd src-tauri/target/${{ matrix.target }}/release/bundle/macos
+            ls -la
+            # 보통 bitvue.app → bitvue.app.tar.gz 로 압축됨
+            if [ -d "bitvue.app" ]; then
+              tar -czf ../../../${{ matrix.artifact_name }} bitvue.app
+            fi
+          else
+            echo "Bundle directory not found - build may have failed"
+            ls -la src-tauri/target/${{ matrix.target }}/release/ || true
           fi
 
       - name: Prepare artifact (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle/msi
-          Compress-Archive -Path *.msi -DestinationPath "../../../${{ matrix.artifact_name }}"
+          if (Test-Path "src-tauri/target/${{ matrix.target }}/release/bundle/msi") {
+            cd src-tauri/target/${{ matrix.target }}/release/bundle/msi
+            Compress-Archive -Path *.msi -DestinationPath "../../../${{ matrix.artifact_name }}"
+          } else {
+            Write-Host "Bundle directory not found - build may have failed"
+            Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
+          }
 
       - name: Prepare artifact (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle/appimage
-          cp *.AppImage "../../../${{ matrix.artifact_name }}"
-          chmod +x "../../../${{ matrix.artifact_name }}"
+          if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/appimage" ]; then
+            cd src-tauri/target/${{ matrix.target }}/release/bundle/appimage
+            cp *.AppImage "../../../${{ matrix.artifact_name }}"
+            chmod +x "../../../${{ matrix.artifact_name }}"
+          else
+            echo "Bundle directory not found - build may have failed"
+            ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

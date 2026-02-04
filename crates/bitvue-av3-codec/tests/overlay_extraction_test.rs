@@ -2,14 +2,14 @@
 //!
 //! Comprehensive tests for AV3 overlay data extraction.
 
-use bitvue_av3_codec::frame_header::FrameType;
-use bitvue_av3_codec::overlay_extraction;
+use bitvue_av3_codec_codec::frame_header::FrameType;
+use bitvue_av3_codec_codec::overlay_extraction;
 use bitvue_core::partition_grid::PartitionType;
 use bitvue_core::BlockMode;
 
 #[test]
 fn test_extract_qp_grid_basic() {
-    let frame_header = bitvue_av3::frame_header::FrameHeader {
+    let frame_header = bitvue_av3_codec::frame_header::FrameHeader {
         width: 1920,
         height: 1080,
         sb_size: 64,
@@ -28,7 +28,7 @@ fn test_extract_qp_grid_basic() {
 
 #[test]
 fn test_extract_mv_grid_basic() {
-    let frame_header = bitvue_av3::frame_header::FrameHeader {
+    let frame_header = bitvue_av3_codec::frame_header::FrameHeader {
         width: 1920,
         height: 1080,
         sb_size: 64,
@@ -47,7 +47,7 @@ fn test_extract_mv_grid_basic() {
 
 #[test]
 fn test_extract_partition_grid_basic() {
-    let frame_header = bitvue_av3::frame_header::FrameHeader {
+    let frame_header = bitvue_av3_codec::frame_header::FrameHeader {
         width: 1920,
         height: 1080,
         sb_size: 64,
@@ -136,7 +136,7 @@ fn test_pred_mode_variants() {
 
 #[test]
 fn test_qp_grid_with_keyframe() {
-    let frame_header = bitvue_av3::frame_header::FrameHeader {
+    let frame_header = bitvue_av3_codec::frame_header::FrameHeader {
         width: 640,
         height: 480,
         sb_size: 64,
@@ -155,7 +155,7 @@ fn test_qp_grid_with_keyframe() {
 
 #[test]
 fn test_qp_grid_with_interframe() {
-    let frame_header = bitvue_av3::frame_header::FrameHeader {
+    let frame_header = bitvue_av3_codec::frame_header::FrameHeader {
         width: 1280,
         height: 720,
         sb_size: 64,
@@ -182,7 +182,7 @@ fn test_various_resolutions() {
     ];
 
     for (width, height) in resolutions {
-        let frame_header = bitvue_av3::frame_header::FrameHeader {
+        let frame_header = bitvue_av3_codec::frame_header::FrameHeader {
             width,
             height,
             sb_size: 64,
@@ -207,7 +207,7 @@ fn test_qp_range() {
     let qp_values = vec![0i16, 50, 100, 150, 200, 255];
 
     for base_qp in qp_values {
-        let frame_header = bitvue_av3::frame_header::FrameHeader {
+        let frame_header = bitvue_av3_codec::frame_header::FrameHeader {
             width: 640,
             height: 480,
             sb_size: 64,
