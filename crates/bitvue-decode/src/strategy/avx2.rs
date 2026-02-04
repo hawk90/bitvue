@@ -200,25 +200,25 @@ unsafe fn yuv420_to_rgb_avx2_impl(
                 ];
 
                 let u_vec = _mm256_setr_epi32(
-                    (u_vals[0] as i32 - 128),
-                    (u_vals[0] as i32 - 128),
-                    (u_vals[1] as i32 - 128),
-                    (u_vals[1] as i32 - 128),
-                    (u_vals[2] as i32 - 128),
-                    (u_vals[2] as i32 - 128),
-                    (u_vals[3] as i32 - 128),
-                    (u_vals[3] as i32 - 128),
+                    u_vals[0] as i32 - 128,
+                    u_vals[0] as i32 - 128,
+                    u_vals[1] as i32 - 128,
+                    u_vals[1] as i32 - 128,
+                    u_vals[2] as i32 - 128,
+                    u_vals[2] as i32 - 128,
+                    u_vals[3] as i32 - 128,
+                    u_vals[3] as i32 - 128,
                 );
 
                 let v_vec = _mm256_setr_epi32(
-                    (v_vals[0] as i32 - 128),
-                    (v_vals[0] as i32 - 128),
-                    (v_vals[1] as i32 - 128),
-                    (v_vals[1] as i32 - 128),
-                    (v_vals[2] as i32 - 128),
-                    (v_vals[2] as i32 - 128),
-                    (v_vals[3] as i32 - 128),
-                    (v_vals[3] as i32 - 128),
+                    v_vals[0] as i32 - 128,
+                    v_vals[0] as i32 - 128,
+                    v_vals[1] as i32 - 128,
+                    v_vals[1] as i32 - 128,
+                    v_vals[2] as i32 - 128,
+                    v_vals[2] as i32 - 128,
+                    v_vals[3] as i32 - 128,
+                    v_vals[3] as i32 - 128,
                 );
 
                 // Convert Y to i32 (extract low 128-bit lane first)
@@ -309,11 +309,11 @@ unsafe fn clamp_epi32_to_epu8(v: __m256i) -> __m256i {
 unsafe fn store_rgb_interleaved(rgb: &mut [u8], offset: usize, r: __m256i, g: __m256i, b: __m256i) {
     // Split 256-bit vectors into two 128-bit lanes
     let r_low = _mm256_castsi256_si128(r);
-    let r_high = _mm256_extracti128_si256(r, 1);
+    let _r_high = _mm256_extracti128_si256(r, 1);
     let g_low = _mm256_castsi256_si128(g);
-    let g_high = _mm256_extracti128_si256(g, 1);
+    let _g_high = _mm256_extracti128_si256(g, 1);
     let b_low = _mm256_castsi256_si128(b);
-    let b_high = _mm256_extracti128_si256(b, 1);
+    let _b_high = _mm256_extracti128_si256(b, 1);
 
     let dst = rgb.as_mut_ptr().add(offset);
 
@@ -418,7 +418,7 @@ unsafe fn yuv422_to_rgb_avx2_impl(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let const_128: __m256i = _mm256_set1_epi32(128);
+    let _const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -523,7 +523,7 @@ unsafe fn yuv444_to_rgb_avx2_impl(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let const_128: __m256i = _mm256_set1_epi32(128);
+    let _const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -613,7 +613,6 @@ unsafe fn yuv444_to_rgb_avx2_impl(
 /// - All buffers are valid and properly sized
 #[target_feature(enable = "avx2")]
 /// Helper function that processes YUV420 to RGB with a specific shift amount
-#[inline(always)]
 unsafe fn yuv420_to_rgb_avx2_inner(
     y_plane: &[u8],
     u_plane: &[u8],
@@ -630,7 +629,7 @@ unsafe fn yuv420_to_rgb_avx2_inner(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let const_128: __m256i = _mm256_set1_epi32(128);
+    let _const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -762,7 +761,7 @@ unsafe fn yuv420_to_rgb_avx2_impl_16bit(
 /// - AVX2 is available on the CPU
 /// - All buffers are valid and properly sized
 /// Helper function that processes YUV422 to RGB with a specific shift amount
-#[inline(always)]
+#[target_feature(enable = "avx2")]
 unsafe fn yuv422_to_rgb_avx2_inner(
     y_plane: &[u8],
     u_plane: &[u8],
@@ -779,7 +778,7 @@ unsafe fn yuv422_to_rgb_avx2_inner(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let const_128: __m256i = _mm256_set1_epi32(128);
+    let _const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -901,7 +900,7 @@ unsafe fn yuv422_to_rgb_avx2_impl_16bit(
 /// - AVX2 is available on the CPU
 /// - All buffers are valid and properly sized
 /// Helper function that processes YUV444 to RGB with a specific shift amount
-#[inline(always)]
+#[target_feature(enable = "avx2")]
 unsafe fn yuv444_to_rgb_avx2_inner(
     y_plane: &[u8],
     u_plane: &[u8],
@@ -916,7 +915,7 @@ unsafe fn yuv444_to_rgb_avx2_inner(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let const_128: __m256i = _mm256_set1_epi32(128);
+    let _const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
