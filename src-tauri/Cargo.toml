@@ -15,13 +15,13 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.3", features = [] }
+tauri-build = { version = "2.5", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.9.5", features = [] }  # Features come from plugins
+tauri = { version = "2.10", features = [] }  # Features come from plugins
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -29,7 +29,7 @@ tauri-plugin-store = "2"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 base64 = "0.22"
-image = "0.24"
+image = "0.25"  # Updated to match workspace
 chrono = "0.4"
 
 # Bitvue core crates (existing Rust parsers/decoders)
