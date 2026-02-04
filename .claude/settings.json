@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(rustc:*)",
+      "Bash(rustfmt:*)",
+      "Bash(clippy:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(fd:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(diff:*)",
+      "Bash(make:*)",
+      "Bash(cmake:*)",
+      "Read",
+      "Write",
+      "Edit"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(sudo:*)",
+      "Bash(curl|wget):*credentials*",
+      "Read(**/.env*)",
+      "Read(**/*secret*)",
+      "Read(**/*credential*)",
+      "Write(**/.env*)",
+      "Write(**/*secret*)"
+    ]
+  },
+  "model": "sonnet"
+}
