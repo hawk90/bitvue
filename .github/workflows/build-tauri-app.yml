@@ -102,6 +102,20 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
+      - name: Diagnose build output
+        run: |
+          echo "=== Build output directory structure ==="
+          ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+          echo ""
+          echo "=== Looking for bitvue binary ==="
+          find src-tauri/target/${{ matrix.target }}/ -name "bitvue" -o -name "bitvue.exe" | head -5 || true
+          echo ""
+          echo "=== Looking for bundle directories ==="
+          find src-tauri/target/${{ matrix.target }}/release -type d || true
+          echo ""
+          echo "=== All files in release directory ==="
+          find src-tauri/target/${{ matrix.target }}/release/ -type f || true
+
       - name: Check build output (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
@@ -118,27 +132,50 @@ jobs:
       - name: Prepare artifact (macOS)
         if: matrix.os == 'macos-latest'
         run: |
+          # Try to find the actual bundle or binary
           if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/macos" ]; then
             cd src-tauri/target/${{ matrix.target }}/release/bundle/macos
             ls -la
-            # 보통 bitvue.app → bitvue.app.tar.gz 로 압축됨
+            # macOS: bitvue.app → bitvue.app.tar.gz
             if [ -d "bitvue.app" ]; then
               tar -czf ../../../${{ matrix.artifact_name }} bitvue.app
+              echo "Created AppImage bundle"
             fi
           else
-            echo "Bundle directory not found - build may have failed"
-            ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+            # Fall back to binary if bundle doesn't exist
+            echo "Bundle not found, checking for binary..."
+            BINARY_PATH="src-tauri/target/${{ matrix.target }}/release/bitvue"
+            if [ -f "$BINARY_PATH" ]; then
+              echo "Found binary, creating tarball..."
+              tar -czf src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }} -C src-tauri/target/${{ matrix.target }}/release bitvue
+              chmod +x src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
+              echo "Created binary tarball as fallback"
+            else
+              echo "Neither bundle nor binary found!"
+              ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+              find src-tauri/target/${{ matrix.target }}/ -name "*bitvue*" || true
+            fi
           fi
 
       - name: Prepare artifact (Windows)
         if: matrix.os == 'windows-latest'
         run: |
+          # Try to find the actual MSI or binary
           if (Test-Path "src-tauri/target/${{ matrix.target }}/release/bundle/msi") {
             cd src-tauri/target/${{ matrix.target }}/release/bundle/msi
             Compress-Archive -Path *.msi -DestinationPath "../../../${{ matrix.artifact_name }}"
+            echo "Created MSI bundle"
           } else {
-            Write-Host "Bundle directory not found - build may have failed"
-            Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
+            Write-Host "Bundle not found, checking for binary..."
+            $binaryPath = "src-tauri/target/${{ matrix.target }}/release/bitvue.exe"
+            if (Test-Path $binaryPath) {
+              Write-Host "Found binary, creating zip archive..."
+              Compress-Archive -Path $binaryPath -DestinationPath "src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}"
+              echo "Created binary zip as fallback"
+            } else {
+              Write-Host "Neither bundle nor binary found!"
+              Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
+            }
           }
 
       - name: Prepare artifact (Linux)
@@ -148,13 +185,10 @@ jobs:
           BINARY_PATH="src-tauri/target/${{ matrix.target }}/release/bitvue"
 
           if [ -f "$BINARY_PATH" ]; then
-            echo "Found binary at $BINARY_PATH"
-            # Create a tar.gz archive of the binary
-            tar -czf src-tauri/target/${{ matrix.target }}/bitvous-x86_64.tar.gz -C src-tauri/target/${{ matrix.target }}/release bitvue
-            # Also try to make it executable and create the expected artifact name
-            cp src-tauri/target/${{ matrix.target }}/bitvue src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
+            echo "Found binary at $BINARY_PATH, creating tarball..."
+            tar -czf src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }} -C src-tauri/target/${{ matrix.target }}/release bitvue
             chmod +x src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
-            echo "Artifact created successfully"
+            echo "Created binary tarball successfully"
           else
             echo "Binary not found at $BINARY_PATH"
             echo "Searching for any bitvue-related files..."
