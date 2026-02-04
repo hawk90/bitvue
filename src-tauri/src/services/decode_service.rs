@@ -357,8 +357,8 @@ impl DecodeService {
                         state.current_bytes += frame_size;
                     }
 
-                    // Log prefetch activity (debug level only)
-                    log::debug!("Prefetched frame {} ({}x{}, {} bytes)", idx, width, height, frame_size);
+                    // Log prefetch activity (debug level only, no sensitive info)
+                    log::debug!("Prefetched frame {}", idx);
                 } else {
                     // Decode failed, stop prefetching
                     log::debug!("Failed to prefetch frame {}, stopping prefetch", idx);

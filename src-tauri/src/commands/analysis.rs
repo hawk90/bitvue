@@ -96,9 +96,8 @@ async fn load_file_data_and_codec(
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
 
-    // SECURITY: Don't log file path to prevent information disclosure
-    log::info!("get_frame_analysis: Stream A loaded: {} units",
-        stream_a.units.as_ref().map_or(0, |u| u.units.len()));
+    // SECURITY: Don't log unit count to prevent information disclosure
+    log::info!("get_frame_analysis: Stream A loaded");
 
     // Use cached file data from decode_service to avoid repeated disk reads
     let file_data = state.decode_service.lock()
