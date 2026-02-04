@@ -418,7 +418,7 @@ unsafe fn yuv422_to_rgb_avx2_impl(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let _const_128: __m256i = _mm256_set1_epi32(128);
+    let const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -523,7 +523,7 @@ unsafe fn yuv444_to_rgb_avx2_impl(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let _const_128: __m256i = _mm256_set1_epi32(128);
+    let const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -629,7 +629,7 @@ unsafe fn yuv420_to_rgb_avx2_inner(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let _const_128: __m256i = _mm256_set1_epi32(128);
+    let const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -778,7 +778,7 @@ unsafe fn yuv422_to_rgb_avx2_inner(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let _const_128: __m256i = _mm256_set1_epi32(128);
+    let const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
@@ -915,7 +915,7 @@ unsafe fn yuv444_to_rgb_avx2_inner(
     let u_g_coeff: __m256i = _mm256_set1_epi32(44);
     let v_g_coeff: __m256i = _mm256_set1_epi32(91);
     let u_b_coeff: __m256i = _mm256_set1_epi32(227);
-    let _const_128: __m256i = _mm256_set1_epi32(128);
+    let const_128: __m256i = _mm256_set1_epi32(128);
 
     for y in 0..height {
         let y_row_start = y * width;
