@@ -13,7 +13,7 @@
   <!-- Badges -->
   [![CI](https://img.shields.io/github/actions/workflow/status/hawk90/bitvue/ci.yml?branch=main&logo=github-actions&logoColor=white&label=build)](https://github.com/hawk90/bitvue/actions/workflows/ci.yml)
   [![codecov](https://img.shields.io/codecov/c/github/hawk90/bitvue?logo=codecov&logoColor=F01F7A&token=XXXXX)](https://codecov.io/gh/hawk90/bitvue)
-  [![License](https://img.shields.io/github/license/hawk90/bitvue?logo=gnu&logoColor=white)](LICENSE)
+  [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
   <!-- Stats -->
   [![Release](https://img.shields.io/github/v/release/hawk90/bitvue?logo=github&color=blue&label=latest)](https://github.com/hawk90/bitvue/releases)
@@ -47,14 +47,14 @@
 git clone https://github.com/hawk90/bitvue.git
 cd bitvue
 
-# Install dependencies
-npm install
+# Install frontend dependencies
+cd frontend && npm install
 
 # Run in development mode
-npm run tauri dev
+npm run tauri:dev
 
 # Build for production
-npm run tauri build
+npm run tauri:build
 ```
 
 ### Prerequisites
@@ -62,13 +62,13 @@ npm run tauri build
 | Platform | Dependencies |
 |----------|--------------|
 | **macOS** | `brew install dav1d` |
-| **Ubuntu/Debian** | `sudo apt install libdav1d-dev libwebkit2gtk-4.0-dev build-essential` |
-| **Fedora** | `sudo dnf install dav1d-devel webkit2gtk4.0-devel` |
+| **Ubuntu/Debian** | `sudo apt install libdav1d-dev libwebkit2gtk-4.1-dev build-essential` |
+| **Fedora** | `sudo dnf install dav1d-devel webkit2gtk4.1-devel` |
 | **Windows** | [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
 
 ### Basic Usage
 
-1. **Launch Bitvue** — Double-click the application or run `npm run tauri dev`
+1. **Launch Bitvue** — Double-click the application or run `npm run tauri:dev`
 2. **Open a video** — Click "Open Bitstream" or press `Ctrl/Cmd+O`
 3. **Navigate frames** — Use arrow keys or click on filmstrip thumbnails
 4. **Switch modes** — Press F1-F7 for different analysis views
@@ -140,25 +140,42 @@ Usage:
 ```
 bitvue/
 ├── crates/
-│   ├── bitvue-core/       # Core types and business logic
-│   ├── bitvue-codecs/     # Codec abstractions and traits
-│   ├── bitvue-formats/    # Container parsers (IVF, MP4, MKV, TS)
-│   ├── bitvue-decode/     # Decoder bindings (dav1d for AV1)
-│   ├── bitvue-metrics/    # Quality metrics (PSNR, SSIM, VMAF)
-│   ├── bitvue-av1/        # AV1 OBU parser
-│   ├── bitvue-avc/        # AVC/H.264 parser
-│   ├── bitvue-hevc/       # HEVC/H.265 parser
-│   ├── bitvue-vp9/        # VP9 parser
-│   ├── bitvue-vvc/        # VVC/H.266 parser
-│   ├── bitvue-av3/        # AV3 parser
-│   └── app/               # eframe/egui shell (reference UI)
-├── src/                   # Tauri + React frontend
-│   ├── components/        # React components
-│   ├── contexts/          # React contexts
-│   └── utils/             # TypeScript utilities
-└── src-tauri/             # Rust backend
-    ├── src/commands/      # Tauri IPC commands
-    └── src/services/      # Backend services
+│   ├── bitvue/               # Main library facade (re-exports all)
+│   ├── bitvue-codecs/        # Unified codec interface
+│   ├── bitvue-core/         # Core types, state, caching
+│   ├── bitvue-formats/      # Container parsers (IVF, MP4, MKV, TS)
+│   ├── bitvue-decode/       # Decoder bindings (dav1d for AV1)
+│   ├── bitvue-metrics/      # Quality metrics (PSNR, SSIM, VMAF)
+│   ├── bitvue-cli/          # CLI tool
+│   ├── bitvue-codecs-parser/ # Codec integration layer
+│   ├── bitvue-mcp/          # Model Context Protocol server
+│   ├── bitvue-benchmarks/   # Performance benchmarks
+│   │   # Codec parsers
+│   ├── bitvue-av1-codec/    # AV1 OBU parser
+│   ├── bitvue-avc/          # AVC/H.264 parser
+│   ├── bitvue-hevc/         # HEVC/H.265 parser
+│   ├── bitvue-vp9/          # VP9 parser
+│   ├── bitvue-vvc/          # VVC/H.266 parser
+│   ├── bitvue-av3-codec/    # AV3 parser
+│   ├── bitvue-mpeg2-codec/  # MPEG-2 parser
+│   └── vendor/              # Third-party dependencies
+│       └── abseil/          # Abseil logging library (private fork)
+├── frontend/                # React application
+│   ├── src/                 # Application source
+│   ├── tests/               # Consolidated test files
+│   ├── public/              # Static assets
+│   └── index.html
+├── src-tauri/               # Tauri backend (Rust)
+│   ├── src/commands/        # Tauri IPC commands
+│   └── src/services/        # Backend services
+├── scripts/                 # Development scripts
+│   ├── setup.sh
+│   ├── dev.sh
+│   └── clean.sh
+└── config/                  # Tool configurations
+    ├── clippy.toml
+    ├── deny.toml
+    └── codecov.yml
 ```
 
 ---
@@ -168,17 +185,17 @@ bitvue/
 ### Frontend
 - **React 18** - UI framework
 - **TypeScript 5** - Type safety
-- **Vite 6** - Build tool
+- **Vite 5** - Build tool
 
 ### Backend
-- **Rust 1.93+** - Systems programming
+- **Rust 1.70+** - Systems programming
 - **Tauri 2.0** - Desktop framework
 - **dav1d 1.4.0** - AV1 decoder
 
 ### Infrastructure
 - **GitHub Actions** - CI/CD
 - **codecov** - Code coverage
-- **Lefthook 2.0.15** - Git hooks
+- **Lefthook 2.0** - Git hooks
 
 ---
 
@@ -187,14 +204,9 @@ bitvue/
 ### Running Tests
 
 ```bash
-# Run all tests
-npm test
-
-# Run tests with UI
-npm run test:ui
-
-# Run tests with coverage
-npm run test:coverage
+# From workspace root
+npm run test              # Run frontend tests
+npm run test:coverage     # Run with coverage
 
 # Run Rust tests
 cargo test --workspace
@@ -203,13 +215,13 @@ cargo test --workspace
 ### Code Quality
 
 ```bash
-# Run linters
-npm run lint
-cargo clippy --workspace
-
-# Format code
-npm run format
+# Format all code
 cargo fmt --all
+npm run format
+
+# Run linters
+cargo clippy --workspace
+npm run lint
 
 # Check license compliance
 cargo deny check
@@ -218,7 +230,7 @@ cargo deny check
 ### Git Hooks
 
 ```bash
-# Install lefthook
+# Install lefthook (already configured in lefthook.toml)
 cargo install lefthook
 lefthook install
 ```
@@ -283,7 +295,7 @@ Get the latest release for your platform:
 | **Linux (Debian)** | `bitvue-x.x.x_amd64.deb` |
 | **Linux (AppImage)** | `Bitvue-x.x.x-x86_64.AppImage` |
 
-→ [Releases Page](https://github.com/hawk90/bitvue/releases)
+[Releases Page](https://github.com/hawk90/bitvue/releases)
 
 ---
 
@@ -321,7 +333,7 @@ We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before 
 - [Getting Started Guide](#quick-start)
 - [Analysis Modes](#analysis-modes-f1-f7)
 - [Architecture](#architecture)
-- [API Reference](crates/bitvue-core/)
+- [API Reference](crates/bitvue/)
 - [Contributing Guidelines](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 

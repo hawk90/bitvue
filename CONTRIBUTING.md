@@ -1,6 +1,6 @@
-# Contributing to bitvue
+# Contributing to Bitvue
 
-Thank you for your interest in contributing to bitvue! This document provides guidelines for contributing.
+Thank you for your interest in contributing to Bitvue! This document provides guidelines for contributing.
 
 ## Code of Conduct
 
@@ -11,6 +11,7 @@ Please be respectful and constructive in all interactions. See [CODE_OF_CONDUCT.
 ### Prerequisites
 
 - Rust 1.70+ (install via [rustup](https://rustup.rs/))
+- Node.js 20+ (for frontend development)
 - System dependencies:
   - **macOS**: `brew install dav1d`
   - **Ubuntu/Debian**: `sudo apt install libdav1d-dev`
@@ -32,25 +33,32 @@ Please be respectful and constructive in all interactions. See [CODE_OF_CONDUCT.
    # Hooks are configured in lefthook.toml
    ```
 
-3. **Create a feature branch**
+3. **Install frontend dependencies**
+   ```bash
+   cd frontend && npm install
+   ```
+
+4. **Create a feature branch**
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
-4. **Make your changes**
-   - Run tests: `cargo test --workspace`
+5. **Make your changes**
+   - Rust tests: `cargo test --workspace`
+   - Frontend tests: `cd frontend && npm test`
    - Check formatting: `cargo fmt --all`
    - Run clippy: `cargo clippy --workspace -- -D warnings`
-   - Build: `cargo build --all-targets`
+   - Frontend lint: `cd frontend && npm run lint`
+   - Build: `cargo build --workspace`
    - Git hooks will auto-run these on commit
 
-5. **Commit your changes**
+6. **Commit your changes**
    ```bash
    git add .
    git commit -m "feat: add amazing feature"
    ```
 
-6. **Push and create PR**
+7. **Push and create PR**
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -90,9 +98,16 @@ Closes #123
 - Add tests for new functionality (aim for >80% coverage)
 - Document public APIs with rustdoc comments
 
-### Test Coverage
+### TypeScript/React Code
 
-We use `cargo llvm-cov` for coverage reporting:
+- Follow ESLint rules
+- Use Prettier for formatting
+- Add tests for new components
+- Use TypeScript types strictly
+
+## Test Coverage
+
+We use `cargo llvm-cov` for Rust coverage reporting:
 
 ```bash
 # Install cargo-llvm-cov
@@ -102,8 +117,15 @@ cargo install cargo-llvm-cov
 cargo llvm-cov --html --output-dir cov-html
 ```
 
+We use Vitest for frontend coverage:
+
+```bash
+cd frontend
+npm run test:coverage
+```
+
 Target coverage:
-- Core parsers (bitvue-av1, bitvue-avc, etc.): **>90%**
+- Core parsers: **>90%**
 - UI code: **>80%**
 - Overall: **>85%**
 
@@ -111,9 +133,10 @@ Target coverage:
 
 ### Before Submitting
 
-- [ ] All tests pass (`cargo test --workspace`)
+- [ ] All tests pass (`cargo test --workspace` && `cd frontend && npm test`)
 - [ ] Code is formatted (`cargo fmt --all`)
 - [ ] No clippy warnings (`cargo clippy --workspace -- -D warnings`)
+- [ ] Frontend linting passes (`cd frontend && npm run lint`)
 - [ ] Documentation updated if needed
 - [ ] Commit messages follow convention
 
@@ -143,16 +166,34 @@ Brief description of changes
 ```
 bitvue/
 ├── crates/
-│   ├── app/              # Tauri application
-│   ├── bitvue-av1/       # AV1 codec parser
-│   ├── bitvue-avc/       # H.264/AVC codec parser
-│   ├── bitvue-hevc/      # H.265/HEVC codec parser
-│   ├── bitvue-vp9/       # VP9 codec parser
-│   ├── bitvue-vvc/       # H.266/VVC codec parser
-│   ├── bitvue-core/      # Core types and utilities
-│   └── ...
-├── src/                  # Tauri frontend (React)
-└── docs/                 # Documentation
+│   ├── bitvue/               # Main library facade
+│   ├── bitvue-codecs/        # Unified codec interface
+│   ├── bitvue-core/         # Core types, state, caching
+│   ├── bitvue-formats/      # Container parsers (IVF, MP4, MKV, TS)
+│   ├── bitvue-decode/       # Decoder bindings (dav1d for AV1)
+│   ├── bitvue-metrics/      # Quality metrics (PSNR, SSIM, VMAF)
+│   ├── bitvue-cli/          # CLI tool
+│   ├── bitvue-codecs-parser/ # Codec integration layer
+│   ├── bitvue-mcp/          # Model Context Protocol server
+│   ├── bitvue-benchmarks/   # Performance benchmarks
+│   │   # Individual codec parsers
+│   ├── bitvue-av1-codec/    # AV1 OBU parser
+│   ├── bitvue-avc/          # AVC/H.264 parser
+│   ├── bitvue-hevc/         # HEVC/H.265 parser
+│   ├── bitvue-vp9/          # VP9 parser
+│   ├── bitvue-vvc/          # VVC/H.266 parser
+│   ├── bitvue-av3-codec/    # AV3 parser
+│   ├── bitvue-mpeg2-codec/  # MPEG-2 parser
+│   └── vendor/              # Third-party dependencies
+│       └── abseil/          # Abseil logging library
+├── frontend/                # React application
+│   ├── src/                 # Application source
+│   ├── tests/               # Consolidated test files
+│   ├── public/              # Static assets
+│   └── index.html
+├── src-tauri/               # Tauri backend (Rust)
+├── scripts/                 # Development scripts
+└── config/                  # Tool configurations
 ```
 
 ## Adding Codec Support
@@ -163,7 +204,26 @@ To add a new codec (e.g., VP8):
 2. Implement parser traits from `bitvue-core`
 3. Add overlay extraction functions
 4. Add tests (>80% coverage)
-5. Update README with format support
+5. Add to `bitvue-codecs` crate
+6. Update README with format support
+
+## Using the Main Library
+
+The `bitvue` crate provides a unified interface:
+
+```rust
+// Use the main library facade
+use bitvue::prelude::*;
+
+// Access core functionality
+let state = core::SelectionState::new();
+
+// Parse formats
+let parser = formats::ivf::IvfParser::new();
+
+// Access codecs
+use bitvue::codecs::av1;
+```
 
 ## Questions?
 
