@@ -253,21 +253,21 @@ pub fn decode_ivf_frame(file_data: &[u8], frame_index: usize) -> Result<(u32, u3
 }
 
 /// Parse IVF file and validate frame index (shared helper)
-fn parse_ivf_and_validate(file_data: &[u8], frame_index: usize) -> Result<Vec<bitvue_av1::IvfFrame>, String> {
+pub fn parse_ivf_and_validate(file_data: &[u8], frame_index: usize) -> Result<Vec<bitvue_av1_codec::IvfFrame>, String> {
     let frames = parse_ivf(file_data)?;
     validate_frame_index_bounds(frame_index, frames.len())?;
     Ok(frames)
 }
 
 /// Parse IVF file (shared helper without validation)
-fn parse_ivf(file_data: &[u8]) -> Result<Vec<bitvue_av1::IvfFrame>, String> {
+pub fn parse_ivf(file_data: &[u8]) -> Result<Vec<bitvue_av1_codec::IvfFrame>, String> {
     // Check if AV1 file
     if file_data.len() < 4 || &file_data[0..4] != b"DKIF" {
         return Err("Not an AV1 IVF file".to_string());
     }
 
     // Parse IVF to get frame data without decoding all frames
-    let (_header, frames) = bitvue_av1::parse_ivf_frames(file_data)
+    let (_header, frames) = bitvue_av1_codec::parse_ivf_frames(file_data)
         .map_err(|e| format!("Failed to parse IVF: {}", e))?;
 
     Ok(frames)
@@ -466,7 +466,7 @@ pub async fn get_frame_hex_data(
     }
 
     // Parse IVF to get frame data
-    let frames = match bitvue_av1::parse_ivf_frames(&file_data) {
+    let frames = match bitvue_av1_codec::parse_ivf_frames(&file_data) {
         Ok((_, ivf_frames)) => ivf_frames,
         Err(e) => {
             return Ok(FrameHexData {

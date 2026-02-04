@@ -597,7 +597,7 @@ fn vp9_samples_to_units(samples: Vec<Vec<u8>>) -> Vec<bitvue_core::UnitNode> {
 /// This function converts between the two formats.
 fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
     let mut with_start_codes = Vec::new();
-    let mut pos = 0;
+    let mut pos: usize = 0;
     const HEADER_SIZE: usize = 4;
 
     // SECURITY: Use checked arithmetic to prevent integer overflow
@@ -611,11 +611,15 @@ fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
         ]) as usize;
 
         // Safe increment using checked arithmetic
-        pos = pos.checked_add(HEADER_SIZE).unwrap_or_else(|| {
-            // If we somehow overflow, stop processing
-            log::warn!("NAL unit position overflow detected, stopping conversion");
-            return with_start_codes;
-        });
+        let new_pos = match pos.checked_add(HEADER_SIZE) {
+            Some(p) => p,
+            None => {
+                // If we somehow overflow, stop processing
+                log::warn!("NAL unit position overflow detected, stopping conversion");
+                break;
+            }
+        };
+        pos = new_pos;
 
         // Safe length check using checked arithmetic
         let end_pos = match pos.checked_add(len) {
@@ -831,7 +835,7 @@ fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
         }
         Err(e) => {
             log::debug!("parse_mp4_container: AV1 extraction failed: {}", e);
-            last_error = Some(&e);
+            last_error = Some("extraction failed");
         }
     }
 
@@ -847,7 +851,7 @@ fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
         }
         Err(e) => {
             log::debug!("parse_mp4_container: HEVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some(&e); }
+            if last_error.is_none() { last_error = Some("extraction failed"); }
         }
     }
 
@@ -863,7 +867,7 @@ fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
         }
         Err(e) => {
             log::debug!("parse_mp4_container: AVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some(&e); }
+            if last_error.is_none() { last_error = Some("extraction failed"); }
         }
     }
 
@@ -911,7 +915,7 @@ fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
         }
         Err(e) => {
             log::debug!("parse_mkv_container: AV1 extraction failed: {}", e);
-            last_error = Some(&e);
+            last_error = Some("extraction failed");
         }
     }
 
@@ -927,7 +931,7 @@ fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
         }
         Err(e) => {
             log::debug!("parse_mkv_container: HEVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some(&e); }
+            if last_error.is_none() { last_error = Some("extraction failed"); }
         }
     }
 
@@ -943,7 +947,7 @@ fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
         }
         Err(e) => {
             log::debug!("parse_mkv_container: AVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some(&e); }
+            if last_error.is_none() { last_error = Some("extraction failed"); }
         }
     }
 

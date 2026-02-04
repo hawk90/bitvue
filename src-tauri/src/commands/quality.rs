@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::commands::AppState;
+use crate::commands::frame::parse_ivf_and_validate;
 
 /// Maximum number of samples to prevent DoS through millions of tiny samples
 const MAX_SAMPLES: usize = 100_000;
@@ -183,7 +184,7 @@ fn decode_frames_up_to(
                     timestamp: 0,
                     frame_type: bitvue_decode::FrameType::Key,
                     qp_avg: None,
-                    chroma_format: bitvue_decode::ChromaFormat::Yuv420,
+                    chroma_format: bitvue_decode::decoder::ChromaFormat::Yuv420,
                 });
             }
         }
@@ -684,7 +685,7 @@ fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec
     // Check if IVF file
     if file_data.len() >= 4 && &file_data[0..4] == b"DKIF" {
         // Parse IVF to get frame data without decoding all
-        let (_header, frames) = bitvue_av1::parse_ivf_frames(file_data)
+        let (_header, frames) = bitvue_av1_codec::parse_ivf_frames(file_data)
             .map_err(|e| format!("Failed to parse IVF: {}", e))?;
 
         if max_idx >= frames.len() {

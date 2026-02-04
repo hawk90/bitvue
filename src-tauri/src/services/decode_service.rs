@@ -87,7 +87,7 @@ pub struct DecodeService {
     /// Cached MKV samples (extracted AV1 samples from MKV container)
     mkv_samples_cache: Mutex<Option<Vec<Vec<u8>>>>,
     /// Cached parsed IVF frames (header + frame offsets)
-    ivf_frames_cache: Mutex<Option<(bitvue_av1::IvfHeader, Vec<bitvue_av1::IvfFrame>)>>,
+    ivf_frames_cache: Mutex<Option<(bitvue_av1_codec::IvfHeader, Vec<bitvue_av1_codec::IvfFrame>)>>,
 }
 
 impl DecodeService {
@@ -220,11 +220,17 @@ impl DecodeService {
         if let Some(cached) = state.cache.get(&frame_index) {
             // SECURITY: Check generation matches to prevent stale cache data
             if cached.generation == current_generation {
+                // Clone values before mutable borrow
+                let width = cached.width;
+                let height = cached.height;
+                let rgb_data = cached.rgb_data.clone();
+
                 // Update LRU position (move to back = most recently used)
                 state.lru_order.retain(|&k| k != frame_index);
                 state.lru_order.push_back(frame_index);
+
                 // Return Arc clone (cheap - just increments reference count)
-                return Ok((cached.width, cached.height, cached.rgb_data.clone()));
+                return Ok((width, height, rgb_data));
             }
             // Stale cache entry, remove it
             log::debug!("Removing stale cache entry for frame {}", frame_index);
@@ -288,20 +294,26 @@ impl DecodeService {
     ///
     /// # Arguments
     /// * `frame_index` - The frame to retrieve
-    /// * `decode_fn` - Function to decode the frame if not cached
+    /// * `decode_fn` - Function to decode the frame if not cached (must be Fn for multiple calls)
     /// * `prefetch_count` - Number of subsequent frames to prefetch (default: 3)
     ///
     /// # Performance
     /// This is beneficial for video playback where frames are typically accessed
     /// sequentially. By prefetching, the next frames will be ready when needed,
     /// reducing latency.
-    pub fn get_or_decode_frame_with_prefetch(
+    pub fn get_or_decode_frame_with_prefetch<F>(
         &self,
         frame_index: usize,
-        decode_fn: impl FnOnce(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>,
+        decode_fn: F,
         prefetch_count: usize,
-    ) -> Result<(u32, u32, Arc<Vec<u8>>), String> {
+    ) -> Result<(u32, u32, Arc<Vec<u8>>), String>
+    where
+        F: Fn(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>,
+    {
         use crate::constants::cache;
+
+        // Get current cache generation
+        let current_generation = self.cache_generation.load(Ordering::SeqCst);
 
         // First, get the requested frame (this may or may not require decoding)
         let result = self.get_or_decode_frame(frame_index, &decode_fn)?;
@@ -351,6 +363,7 @@ impl DecodeService {
                             width,
                             height,
                             rgb_data: rgb_arc.clone(),
+                            generation: current_generation,
                             cached_at: std::time::Instant::now(),
                         });
                         state.lru_order.push_back(idx);
@@ -379,28 +392,43 @@ impl DecodeService {
 
         // Check YUV frame cache first
         if let Some(cached) = state.cache.get(&frame_index) {
+            // Clone values before mutable borrow
+            let width = cached.width;
+            let height = cached.height;
+            let bit_depth = cached.bit_depth;
+            let y_plane = cached.y_plane.clone();
+            let u_plane = cached.u_plane.clone();
+            let v_plane = cached.v_plane.clone();
+            let y_stride = cached.y_stride;
+            let u_stride = cached.u_stride;
+            let v_stride = cached.v_stride;
+            let timestamp = cached.timestamp;
+            let frame_type = cached.frame_type;
+            let qp_avg = cached.qp_avg;
+
             // Update LRU position (move to back = most recently used)
             state.lru_order.retain(|&k| k != frame_index);
             state.lru_order.push_back(frame_index);
+
             return Ok(bitvue_decode::DecodedFrame {
-                width: cached.width,
-                height: cached.height,
-                bit_depth: cached.bit_depth,
-                y_plane: std::sync::Arc::new(cached.y_plane.clone()),
-                u_plane: cached.u_plane.clone().map(std::sync::Arc::new),
-                v_plane: cached.v_plane.clone().map(std::sync::Arc::new),
-                y_stride: cached.y_stride,
-                u_stride: cached.u_stride,
-                v_stride: cached.v_stride,
-                timestamp: cached.timestamp,
-                frame_type: cached.frame_type,
-                qp_avg: cached.qp_avg,
+                width,
+                height,
+                bit_depth,
+                y_plane: std::sync::Arc::new(y_plane),
+                u_plane: u_plane.clone().map(std::sync::Arc::new),
+                v_plane: v_plane.clone().map(std::sync::Arc::new),
+                y_stride,
+                u_stride,
+                v_stride,
+                timestamp,
+                frame_type,
+                qp_avg,
                 chroma_format: ChromaFormat::from_frame_data(
-                    cached.width,
-                    cached.height,
-                    cached.bit_depth,
-                    cached.u_plane.as_deref(),
-                    cached.v_plane.as_deref(),
+                    width,
+                    height,
+                    bit_depth,
+                    u_plane.as_deref(),
+                    v_plane.as_deref(),
                 ),
             });
         }
@@ -498,7 +526,7 @@ impl DecodeService {
     /// Get cached IVF frames, or parse them if not cached
     /// Returns the parsed IVF header and frame information
     #[allow(dead_code)]
-    pub fn get_or_parse_ivf_frames(&self) -> Result<Option<(bitvue_av1::IvfHeader, Vec<bitvue_av1::IvfFrame>)>, String> {
+    pub fn get_or_parse_ivf_frames(&self) -> Result<Option<(bitvue_av1_codec::IvfHeader, Vec<bitvue_av1_codec::IvfFrame>)>, String> {
         // Check cache first
         if let Some(frames) = lock_mutex!(self.ivf_frames_cache).as_ref() {
             return Ok(Some(frames.clone()));
@@ -506,7 +534,7 @@ impl DecodeService {
 
         // Not cached, try to parse
         let file_data = self.get_file_data_arc()?;
-        match bitvue_av1::parse_ivf_frames(&file_data) {
+        match bitvue_av1_codec::parse_ivf_frames(&file_data) {
             Ok(parsed) => {
                 *lock_mutex!(self.ivf_frames_cache) = Some(parsed.clone());
                 Ok(Some(parsed))

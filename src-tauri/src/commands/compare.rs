@@ -169,7 +169,7 @@ fn parse_video_metadata(path: &Path) -> Result<Vec<FrameMetadata>, String> {
     match container_format {
         bitvue_formats::ContainerFormat::IVF => {
             // Parse IVF header and frames
-            use bitvue_av1::parse_ivf_frames;
+            use bitvue_av1_codec::parse_ivf_frames;
             let (_header, frames) = parse_ivf_frames(&file_data)
                 .map_err(|e| format!("Failed to parse IVF: {}", e))?;
 

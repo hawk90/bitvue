@@ -319,7 +319,7 @@ fn extract_av1_analysis(
                 .and_then(|_unit| {
                     // Extract frame data from IVF using provided file data
                     log::info!("extract_av1_analysis: Parsing IVF frames...");
-                    if let Ok((_, ivf_frames)) = bitvue_av1::parse_ivf_frames(file_data) {
+                    if let Ok((_, ivf_frames)) = bitvue_av1_codec::parse_ivf_frames(file_data) {
                         // SECURITY: Don't log frame count to prevent information disclosure
                         log::info!("extract_av1_analysis: IVF parsing successful");
                         ivf_frames.get(frame_index).map(|f| {
@@ -820,7 +820,7 @@ fn extract_av3_analysis(
     log::info!("extract_av3_analysis: Extracting AV3 analysis");
 
     // Parse AV3 stream
-    let stream = bitvue_av3::parse_av3(&file_data)
+    let stream = bitvue_av3_codec::parse_av3(&file_data)
         .map_err(|e| format!("Failed to parse AV3 stream: {}", e))?;
 
     // Get frame header for this frame
@@ -828,7 +828,7 @@ fn extract_av3_analysis(
         .ok_or("Frame index out of bounds")?;
 
     // Extract grids using AV3 functions
-    let qp_grid = bitvue_av3::extract_qp_grid(frame_header)
+    let qp_grid = bitvue_av3_codec::extract_qp_grid(frame_header)
         .ok()
         .map(|grid| QPGridData {
             grid_w: grid.grid_w,
@@ -840,7 +840,7 @@ fn extract_av3_analysis(
             qp_max: grid.qp_max,
         });
 
-    let mv_grid = bitvue_av3::extract_mv_grid(frame_header)
+    let mv_grid = bitvue_av3_codec::extract_mv_grid(frame_header)
         .ok()
         .map(|grid| MVGridData {
             coded_width: grid.coded_width,
@@ -860,7 +860,7 @@ fn extract_av3_analysis(
             mode: grid.mode.map(|modes: Vec<bitvue_core::mv_overlay::BlockMode>| modes.into_iter().map(|m| m as u8).collect()),
         });
 
-    let partition_grid = bitvue_av3::extract_partition_grid(frame_header)
+    let partition_grid = bitvue_av3_codec::extract_partition_grid(frame_header)
         .ok()
         .map(|grid| PartitionGridData {
             coded_width: grid.coded_width,
