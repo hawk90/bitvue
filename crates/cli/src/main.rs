@@ -103,7 +103,7 @@ enum Commands {
         output: PathBuf,
 
         /// Export format (json, csv, markdown)
-        #[arg(short = long, default_value = "json")]
+        #[arg(long, default_value = "json")]
         format: String,
     },
 
@@ -118,7 +118,7 @@ enum Commands {
         pattern: String,
 
         /// Output directory for results
-        #[arg(short = long)]
+        #[arg(short, long)]
         output: PathBuf,
     },
 
