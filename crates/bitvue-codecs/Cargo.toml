@@ -1,0 +1,17 @@
+[package]
+name = "bitvue-codecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Re-export individual codec parsers
+bitvue-av1-codec = { path = "../bitvue-av1-codec" }
+bitvue-av3-codec = { path = "../bitvue-av3-codec" }
+bitvue-avc = { path = "../bitvue-avc" }
+bitvue-hevc = { path = "../bitvue-hevc" }
+bitvue-vp9 = { path = "../bitvue-vp9" }
+bitvue-vvc = { path = "../bitvue-vvc" }
+bitvue-mpeg2-codec = { path = "../bitvue-mpeg2-codec" }

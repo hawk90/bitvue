@@ -2,29 +2,33 @@
 resolver = "2"
 exclude = ["src-tauri", "fuzz"]  # Tauri app and fuzz targets have their own Cargo.toml
 members = [
-    # Monster Pack v9 architecture
-    "crates/cli",              # CLI tool (terminal interface)
-    "crates/bitvue-core",      # SelectionState, Command/Event bus, Worker runtime, Caches
-    "crates/bitvue-formats",   # Container parsers (IVF, MP4, MKV, TS)
-    "crates/bitvue-codecs-parser",  # Codec parsers integration (AV1, H.264, HEVC) - integrates bitvue-av1-codec
-    "crates/bitvue-decode",    # Decoders (dav1d for AV1)
-    "crates/bitvue-metrics",   # Quality metrics (PSNR, SSIM, VMAF)
-    "crates/bitvue-mcp",       # Model Context Protocol server for AI assistant integration
+    # Main library
+    "crates/bitvue",            # Unified library interface (re-exports all)
 
-    # Codec parsers (Pure Rust)
-    "crates/bitvue-avc",       # AVC/H.264 parser
-    "crates/bitvue-hevc",      # HEVC/H.265 parser
-    "crates/bitvue-vp9",       # VP9 parser
-    "crates/bitvue-vvc",       # VVC/H.266 parser
-    "crates/bitvue-av1-codec", # AV1 OBU parser
-    "crates/bitvue-av3-codec", # AV3 parser
-    "crates/bitvue-mpeg2-codec", # MPEG-2 Video parser
+    # Core architecture
+    "crates/bitvue-core",       # SelectionState, Command/Event bus, Worker runtime, Caches
+    "crates/bitvue-formats",    # Container parsers (IVF, MP4, MKV, TS)
+    "crates/bitvue-codecs",     # Unified codec interface (re-exports all codec parsers)
+    "crates/bitvue-codecs-parser",  # Codec parsers integration layer
+    "crates/bitvue-decode",     # Decoders (dav1d for AV1)
+    "crates/bitvue-metrics",    # Quality metrics (PSNR, SSIM, VMAF)
 
-    # Development tools
+    # CLI and tools
+    "crates/bitvue-cli",        # CLI tool (terminal interface)
+    "crates/bitvue-mcp",        # Model Context Protocol server
     "crates/bitvue-benchmarks", # Criterion-based performance benchmarks
 
-    # Third-party dependencies (private/submodules)
-    "crates/abseil-rust",       # Abseil logging library (private fork)
+    # Individual codec parsers (Pure Rust)
+    "crates/bitvue-avc",        # AVC/H.264 parser
+    "crates/bitvue-hevc",       # HEVC/H.265 parser
+    "crates/bitvue-vp9",        # VP9 parser
+    "crates/bitvue-vvc",        # VVC/H.266 parser
+    "crates/bitvue-av1-codec",  # AV1 OBU parser
+    "crates/bitvue-av3-codec",  # AV3 parser
+    "crates/bitvue-mpeg2-codec", # MPEG-2 Video parser
+
+    # Third-party dependencies (vendor/private)
+    "crates/vendor/abseil",     # Abseil logging library (private fork)
 ]
 
 [workspace.package]
@@ -35,17 +39,25 @@ repository = "https://github.com/user/bitvue"
 authors = ["bitvue contributors"]
 
 [workspace.dependencies]
-# Internal crates (Monster Pack v9 architecture)
+# Main library
+bitvue = { path = "crates/bitvue" }
+
+# Core architecture
 bitvue-core = { path = "crates/bitvue-core" }
 bitvue-formats = { path = "crates/bitvue-formats" }
+bitvue-codecs = { path = "crates/bitvue-codecs" }
 bitvue-codecs-parser = { path = "crates/bitvue-codecs-parser" }
 bitvue-decode = { path = "crates/bitvue-decode" }
 bitvue-metrics = { path = "crates/bitvue-metrics" }
-abseil = { path = "crates/abseil-rust", features = ["std", "base", "log"] }
-bitvue-mcp = { path = "crates/bitvue-mcp" }
-bitvue-cli = { path = "crates/cli" }
 
-# Codec parsers
+# CLI and tools
+bitvue-cli = { path = "crates/bitvue-cli" }
+bitvue-mcp = { path = "crates/bitvue-mcp" }
+
+# Vendor dependencies
+abseil = { path = "crates/vendor/abseil", features = ["std", "base", "log"] }
+
+# Codec parsers (direct access when needed)
 bitvue-avc = { path = "crates/bitvue-avc" }
 bitvue-hevc = { path = "crates/bitvue-hevc" }
 bitvue-vp9 = { path = "crates/bitvue-vp9" }
@@ -76,7 +88,7 @@ twox-hash = "1.0"
 tracing-subscriber = "0.3"
 once_cell = "1.19"
 
-# Async/Threading (Monster Pack v3: Worker runtime)
+# Async/Threading
 tokio = { version = "1.0", features = ["rt-multi-thread", "sync", "time"] }
 parking_lot = "0.12"
 rayon = "1.10"
@@ -93,7 +105,7 @@ rfd = "0.17"
 # Testing
 tempfile = "3.10"
 
-# File I/O (Monster Pack v3: ByteCache)
+# File I/O
 memmap2 = "0.9"
 bytes = "1.11"  # 1.11.1+ fixes GHSA-434x-w66g-qw3r
 lru = "0.16"
@@ -112,8 +124,7 @@ inherits = "release"
 strip = false
 debug = true
 
-# Development tools
-# These are not part of the workspace but used for development
+# Development tools metadata
 [workspace.metadata.lefthook]
 # Install with: cargo install lefthook
 # Run: lefthook install

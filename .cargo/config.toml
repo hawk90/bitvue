@@ -1,0 +1,12 @@
+# Cargo configuration
+
+[build]
+# Use workspace target directory to avoid scattered build artifacts
+target-dir = "target"
+
+[doc]
+# Document all features
+document-private-items = false
+
+# Reference external config files
+# Note: clippy.toml, deny.toml paths are relative to workspace root

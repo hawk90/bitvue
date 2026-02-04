@@ -1,0 +1,27 @@
+[package]
+name = "bitvue"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Video bitstream analyzer - unified library interface"
+
+[dependencies]
+# Core functionality
+bitvue-core = { path = "../bitvue-core" }
+
+# Format parsers
+bitvue-formats = { path = "../bitvue-formats" }
+
+# Codec parsers (unified)
+bitvue-codecs = { path = "../bitvue-codecs" }
+
+# Decoders
+bitvue-decode = { path = "../bitvue-decode" }
+
+# Quality metrics
+bitvue-metrics = { path = "../bitvue-metrics" }
+
+# Integration
+bitvue-codecs-parser = { path = "../bitvue-codecs-parser" }
