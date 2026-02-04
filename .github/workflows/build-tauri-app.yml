@@ -144,25 +144,23 @@ jobs:
       - name: Prepare artifact (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
-          if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/appimage" ]; then
-            cd src-tauri/target/${{ matrix.target }}/release/bundle/appimage
-            cp *.AppImage "../../../${{ matrix.artifact_name }}"
-            chmod +x "../../../${{ matrix.artifact_name }}"
+          # Tauri on Linux creates a plain binary, not an AppImage by default
+          BINARY_PATH="src-tauri/target/${{ matrix.target }}/release/bitvue"
+
+          if [ -f "$BINARY_PATH" ]; then
+            echo "Found binary at $BINARY_PATH"
+            # Create a tar.gz archive of the binary
+            tar -czf src-tauri/target/${{ matrix.target }}/bitvous-x86_64.tar.gz -C src-tauri/target/${{ matrix.target }}/release bitvue
+            # Also try to make it executable and create the expected artifact name
+            cp src-tauri/target/${{ matrix.target }}/bitvue src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
+            chmod +x src-tauri/target/${{ matrix.target }}/${{ matrix.artifact_name }}
+            echo "Artifact created successfully"
           else
-            echo "Bundle directory not found, trying to find binary..."
-            # Try to find the built binary
-            BINARY=$(find src-tauri/target/${{ matrix.target }}/release -name "bitvue" -type f 2>/dev/null | head -1)
-            if [ -n "$BINARY" ]; then
-              echo "Found binary at $BINARY"
-              BINARY_DIR=$(dirname "$BINARY")
-              cd "$BINARY_DIR"
-              tar -czf "../../../${{ matrix.artifact_name }}" bitvue
-              chmod +x "../../../${{ matrix.artifact_name }}"
-            else
-              echo "Binary not found either - bundle may have failed"
-              ls -la src-tauri/target/${{ matrix.target }}/release/ || true
-              find src-tauri/target/${{ matrix.target }}/ -type f -name "*bitvue*" || true
-            fi
+            echo "Binary not found at $BINARY_PATH"
+            echo "Searching for any bitvue-related files..."
+            find src-tauri/target/${{ matrix.target }}/ -type f -name "*bitvue*" || true
+            ls -la src-tauri/target/${{ matrix.target }}/release/ || true
+            ls -la src-tauri/target/${{ matrix.target }}/ || true
           fi
 
       - name: Upload artifact
