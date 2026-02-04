@@ -16,9 +16,9 @@
     "lint:css": "cd frontend && npm run lint:css",
     "format": "cd frontend && npm run format",
     "format:check": "cd frontend && npm run format:check",
-    "tauri": "cd frontend && npm run tauri",
-    "tauri:dev": "cd frontend && npm run tauri:dev",
-    "tauri:build": "cd frontend && npm run tauri:build",
+    "tauri": "cd src-tauri && cargo tauri",
+    "tauri:dev": "cd src-tauri && cargo tauri dev",
+    "tauri:build": "cd src-tauri && cargo tauri build",
     "clean": "npm run clean:rust && npm run clean:frontend",
     "clean:rust": "cargo clean",
     "clean:frontend": "cd frontend && rm -rf node_modules dist"
