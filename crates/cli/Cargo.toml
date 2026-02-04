@@ -1,0 +1,37 @@
+[package]
+name = "bitvue-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Bitvue CLI - AV1 Bitstream Analyzer Command Line Interface"
+
+[[bin]]
+name = "bitvue"
+path = "src/main.rs"
+
+[dependencies]
+# Core business logic
+bitvue-core = { path = "../bitvue-core" }
+bitvue-formats = { path = "../bitvue-formats" }
+bitvue-decode = { path = "../bitvue-decode" }
+bitvue-av1-codec = { path = "../bitvue-av1-codec" }
+
+# CLI
+clap = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+abseil = { workspace = true }
+
+# File I/O
+memmap2 = { workspace = true }
+
+# Serialization (for output formats)
+serde = { workspace = true }
+serde_json = { workspace = true }

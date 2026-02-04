@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use bitvue_av1::{decode_uleb128, encode_uleb128};
+use bitvue_av1_codec::{decode_uleb128, encode_uleb128};
 
 /// Fuzz target for LEB128 decoder
 ///

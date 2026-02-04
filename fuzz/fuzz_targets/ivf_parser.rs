@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use bitvue_av1::{is_ivf, parse_ivf_header, parse_ivf_frames};
+use bitvue_av1_codec::{is_ivf, parse_ivf_header, parse_ivf_frames};
 
 /// Fuzz target for IVF parser
 ///

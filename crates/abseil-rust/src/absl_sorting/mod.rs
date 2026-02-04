@@ -62,63 +62,25 @@ pub use additional_sorts::{
     cocktail_sort, odd_even_sort, stooge_sort,
 };
 
+// Re-export shared utilities from absl_algorithm
+// Note: We use absl_algorithm's internal module to avoid duplication
+pub use crate::absl_algorithm::internal::{is_sorted, is_sorted_by, max, min, min_max};
+
 /// Sorts a slice using the default sorting algorithm.
 ///
 /// This is currently merge sort for stability.
+#[inline]
 pub fn sort<T: Ord>(slice: &mut [T]) {
     mergesort(slice);
 }
 
 /// Sorts a slice with a custom comparison function.
+#[inline]
 pub fn sort_by<T, F>(slice: &mut [T], compare: F)
 where
     F: FnMut(&T, &T) -> core::cmp::Ordering,
 {
     mergesort_by(slice, compare);
-}
-
-/// Checks if a slice is sorted.
-pub fn is_sorted<T: Ord>(slice: &[T]) -> bool {
-    slice.windows(2).all(|w| w[0] <= w[1])
-}
-
-/// Checks if a slice is sorted with a custom comparison function.
-pub fn is_sorted_by<T, F>(slice: &[T], mut compare: F) -> bool
-where
-    F: FnMut(&T, &T) -> core::cmp::Ordering,
-{
-    slice.windows(2).all(|w| compare(&w[0], &w[1]) != core::cmp::Ordering::Greater)
-}
-
-/// Finds the minimum element in a slice.
-pub fn min<T: Ord>(slice: &[T]) -> Option<&T> {
-    slice.iter().min()
-}
-
-/// Finds the maximum element in a slice.
-pub fn max<T: Ord>(slice: &[T]) -> Option<&T> {
-    slice.iter().max()
-}
-
-/// Finds the minimum and maximum elements in a slice.
-pub fn min_max<T: Ord>(slice: &[T]) -> Option<(&T, &T)> {
-    if slice.is_empty() {
-        return None;
-    }
-
-    let mut min = &slice[0];
-    let mut max = &slice[0];
-
-    for item in &slice[1..] {
-        if item < min {
-            min = item;
-        }
-        if item > max {
-            max = item;
-        }
-    }
-
-    Some((min, max))
 }
 
 /// Selects the k-th smallest element (quickselect).

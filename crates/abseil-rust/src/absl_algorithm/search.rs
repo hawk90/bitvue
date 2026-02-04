@@ -13,9 +13,13 @@
 //! assert_eq!(binary_search(&vec, &4), None);
 //! ```
 
+// Re-export shared utilities
+pub use crate::absl_algorithm::internal::{is_sorted, max, min, min_max};
+
 /// Binary search on a sorted slice.
 ///
 /// Returns `Some(index)` if found, `None` otherwise.
+#[inline]
 pub fn binary_search<T: Ord>(slice: &[T], value: &T) -> Option<usize> {
     slice.binary_search(value).ok()
 }
@@ -31,6 +35,7 @@ pub fn binary_search<T: Ord>(slice: &[T], value: &T) -> Option<usize> {
 /// assert_eq!(binary_search_by(&vec, |&(k, _)| k, &2), Some(1));
 /// assert_eq!(binary_search_by(&vec, |&(k, _)| k, &4), None);
 /// ```
+#[inline]
 pub fn binary_search_by<T, F, K>(slice: &[T], mut f: F, key: &K) -> Option<usize>
 where
     F: FnMut(&T) -> K,
@@ -42,6 +47,7 @@ where
 /// Returns the index of the first element that is `>= value`.
 ///
 /// If all elements are < value, returns `slice.len()`.
+#[inline]
 pub fn lower_bound<T: Ord>(slice: &[T], value: &T) -> usize {
     slice.partition_point(|x| x < value)
 }
@@ -49,11 +55,13 @@ pub fn lower_bound<T: Ord>(slice: &[T], value: &T) -> usize {
 /// Returns the index of the first element that is `> value`.
 ///
 /// If all elements are <= value, returns `slice.len()`.
+#[inline]
 pub fn upper_bound<T: Ord>(slice: &[T], value: &T) -> usize {
     slice.partition_point(|x| x <= value)
 }
 
 /// Returns `true` if the slice contains the value.
+#[inline]
 pub fn contains<T: PartialEq>(slice: &[T], value: &T) -> bool {
     slice.iter().any(|x| x == value)
 }
@@ -73,6 +81,7 @@ pub fn contains<T: PartialEq>(slice: &[T], value: &T) -> bool {
 /// rotate_left(&mut vec, 2);
 /// assert_eq!(vec, [3, 4, 5, 1, 2]);
 /// ```
+#[inline]
 pub fn rotate_left<T>(slice: &mut [T], mid: usize) {
     slice.rotate_left(mid);
 }
@@ -92,52 +101,15 @@ pub fn rotate_left<T>(slice: &mut [T], mid: usize) {
 /// rotate_right(&mut vec, 2);
 /// assert_eq!(vec, [4, 5, 1, 2, 3]);
 /// ```
+#[inline]
 pub fn rotate_right<T>(slice: &mut [T], mid: usize) {
     slice.rotate_right(mid);
 }
 
 /// Reverses the elements in place.
+#[inline]
 pub fn reverse<T>(slice: &mut [T]) {
     slice.reverse()
-}
-
-/// Checks if a slice is sorted in ascending order.
-pub fn is_sorted<T: Ord>(slice: &[T]) -> bool {
-    slice.windows(2).all(|w| w[0] <= w[1])
-}
-
-/// Finds the minimum element in a slice.
-///
-/// Returns `None` if the slice is empty.
-pub fn min<T: Ord>(slice: &[T]) -> Option<&T> {
-    slice.iter().min()
-}
-
-/// Finds the maximum element in a slice.
-///
-/// Returns `None` if the slice is empty.
-pub fn max<T: Ord>(slice: &[T]) -> Option<&T> {
-    slice.iter().max()
-}
-
-/// Finds the minimum and maximum elements in a slice.
-///
-/// Returns `None` if the slice is empty.
-pub fn min_max<T: Ord>(slice: &[T]) -> Option<(&T, &T)> {
-    if slice.is_empty() {
-        return None;
-    }
-    let mut min = &slice[0];
-    let mut max = &slice[0];
-    for item in &slice[1..] {
-        if item < min {
-            min = item;
-        }
-        if item > max {
-            max = item;
-        }
-    }
-    Some((min, max))
 }
 
 /// Returns the index of the first element matching the predicate.

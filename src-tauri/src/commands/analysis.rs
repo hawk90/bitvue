@@ -3,7 +3,7 @@
 //! Commands for getting frame analysis data (QP, MV, partition, etc.).
 //! Supports multiple codecs: AV1, H.264/AVC, HEVC, VP9, VVC/H.266, AV3.
 
-use bitvue_av1::overlay_extraction::{extract_qp_grid, extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_transform_grid};
+use bitvue_av1_codec::overlay_extraction::{extract_qp_grid, extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_transform_grid};
 use bitvue_core::StreamId;
 use serde::{Deserialize, Serialize};
 

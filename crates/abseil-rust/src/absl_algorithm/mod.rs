@@ -35,6 +35,9 @@
 //! assert_eq!(clamp(-5, 0, 10), 0);
 //! ```
 
+// Internal utilities shared across modules
+pub(crate) mod internal;
+
 pub mod search;
 
 // Sorting utilities

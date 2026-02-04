@@ -46,6 +46,10 @@ pub enum UnescapeError {
     IncompleteEscape,
     /// Invalid hex digit.
     InvalidHex,
+    /// Invalid HTML entity.
+    InvalidEntity,
+    /// Malformed HTML entity.
+    MalformedEntity,
 }
 
 impl core::fmt::Display for UnescapeError {
@@ -53,6 +57,8 @@ impl core::fmt::Display for UnescapeError {
         match self {
             UnescapeError::IncompleteEscape => write!(f, "incomplete escape sequence"),
             UnescapeError::InvalidHex => write!(f, "invalid hex digit"),
+            UnescapeError::InvalidEntity => write!(f, "invalid HTML entity"),
+            UnescapeError::MalformedEntity => write!(f, "malformed HTML entity"),
         }
     }
 }
@@ -250,15 +256,19 @@ pub fn escape_html(s: &str) -> String {
 ///
 /// Converts HTML entities like `&lt;`, `&gt;`, etc. back to their characters.
 ///
+/// # Errors
+///
+/// Returns `UnescapeError` if an HTML entity is malformed or incomplete.
+///
 /// # Examples
 ///
 /// ```rust
 /// use abseil::absl_strings::escaping::unescape_html;
 ///
-/// assert_eq!(unescape_html("&lt;div&gt;"), "<div>");
-/// assert_eq!(unescape_html("a &amp; b"), "a & b");
+/// assert_eq!(unescape_html("&lt;div&gt;").unwrap(), "<div>");
+/// assert_eq!(unescape_html("a &amp; b").unwrap(), "a & b");
 /// ```
-pub fn unescape_html(s: &str) -> String {
+pub fn unescape_html(s: &str) -> Result<String, UnescapeError> {
     let mut result = String::with_capacity(s.len());
     let bytes = s.as_bytes();
     let mut i = 0;
@@ -266,28 +276,37 @@ pub fn unescape_html(s: &str) -> String {
     while i < bytes.len() {
         // Check for entities starting with '&'
         if bytes[i] == b'&' {
+            // Check for malformed entity (no semicolon at end of string)
+            let semicolon_pos = bytes[i..].iter().position(|&b| b == b';');
+            if semicolon_pos.is_none() {
+                // Entity without closing semicolon is malformed
+                return Err(UnescapeError::MalformedEntity);
+            }
+
             // Use byte-level comparison instead of creating substrings
             // Check each entity with proper bounds checking
             let remaining = &bytes[i..];
-            if remaining.len() >= 4 && remaining[0..4] == *b"&lt;" {
+            if remaining.len() >= 4 && &remaining[0..4] == b"&lt;" {
                 result.push('<');
                 i += 4;
-            } else if remaining.len() >= 4 && remaining[0..4] == *b"&gt;" {
+            } else if remaining.len() >= 4 && &remaining[0..4] == b"&gt;" {
                 result.push('>');
                 i += 4;
-            } else if remaining.len() >= 5 && remaining[0..5] == *b"&amp;" {
+            } else if remaining.len() >= 5 && &remaining[0..5] == b"&amp;" {
                 result.push('&');
                 i += 5;
-            } else if remaining.len() >= 6 && remaining[0..6] == *b"&quot;" {
+            } else if remaining.len() >= 6 && &remaining[0..6] == b"&quot;" {
                 result.push('"');
                 i += 6;
-            } else if remaining.len() >= 6 && remaining[0..6] == *b"&apos;" {
+            } else if remaining.len() >= 6 && &remaining[0..6] == b"&apos;" {
                 result.push('\'');
                 i += 6;
+            } else if remaining.len() >= 2 && &remaining[0..2] == b"&#" {
+                // Numeric entity - we don't support it for simplicity
+                return Err(UnescapeError::InvalidEntity);
             } else {
-                // Not a recognized entity, copy the & as-is
-                result.push(bytes[i] as char);
-                i += 1;
+                // Not a recognized entity
+                return Err(UnescapeError::InvalidEntity);
             }
         } else {
             result.push(bytes[i] as char);
@@ -295,18 +314,14 @@ pub fn unescape_html(s: &str) -> String {
         }
     }
 
-    result
+    Ok(result)
 }
 
 /// Converts a byte to uppercase hex character.
 #[inline]
 fn hex_upper(byte: u8) -> char {
-    let nibble = byte & 0x0F;
-    if nibble < 10 {
-        (b'0' + nibble) as char
-    } else {
-        (b'A' + nibble - 10) as char
-    }
+    const HEX_CHARS: &[u8; 16] = b"0123456789ABCDEF";
+    HEX_CHARS[(byte & 0x0F) as usize] as char
 }
 
 /// Converts a hex character to its value.
@@ -363,9 +378,14 @@ mod tests {
 
     #[test]
     fn test_unescape_html() {
-        assert_eq!(unescape_html("&lt;div&gt;"), "<div>");
-        assert_eq!(unescape_html("a &amp; b"), "a & b");
-        assert_eq!(unescape_html("&quot;quoted&quot;"), r#""quoted""#);
+        assert_eq!(unescape_html("&lt;div&gt;").unwrap(), "<div>");
+        assert_eq!(unescape_html("a &amp; b").unwrap(), "a & b");
+        assert_eq!(unescape_html("&quot;quoted&quot;").unwrap(), r#""quoted""#);
+
+        // Test error cases
+        assert!(unescape_html("&invalid;").is_err());
+        assert!(unescape_html("&lt").is_err()); // Missing semicolon
+        assert!(unescape_html("&#123;").is_err()); // Numeric entities not supported
     }
 
     #[test]

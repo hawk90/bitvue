@@ -2,7 +2,13 @@
 #![feature(test)]
 extern crate test;
 
-use abseil::absl_hash::hash::{hash_of, hash_combine, HashState};
+use abseil::absl_hash::{
+    hash::{hash_of, hash_combine, HashState},
+    algorithms::{fnv_hash, fnv_hash_32, fnv_hash_128, murmur3_64, xxhash_64, xxhash3_64,
+                 highway_hash, wyhash, djb2_hash, siphash_24},
+    modern_hash::{blake2s_hash, blake3_hash, sha256_hash},
+    combiner::{combine_hashes_mult, combine_hashes_xor},
+};
 use test::{black_box, Bencher};
 
 // Test data
@@ -20,6 +26,14 @@ fn large_data() -> Vec<u8> {
 
 fn xlarge_data() -> Vec<u8> {
     (0..16384).map(|i| i as u8).collect()
+}
+
+fn string_data() -> String {
+    "The quick brown fox jumps over the lazy dog and then runs away to find more adventures".to_string()
+}
+
+fn large_string_data() -> String {
+    "Hello world ".repeat(1000)
 }
 
 // ========== hash_of ==========

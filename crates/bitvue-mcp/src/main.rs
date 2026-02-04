@@ -4,7 +4,7 @@
 //! Exposes video analysis capabilities to AI assistants like Claude.
 
 use anyhow::Result;
-use bitvue_av1::frame_header::{parse_frame_header_basic, FrameType};
+use bitvue_av1_codec::frame_header::{parse_frame_header_basic, FrameType};
 use bitvue_core::{Core, StreamId, UnitModel, UnitNode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

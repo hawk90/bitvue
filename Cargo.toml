@@ -3,11 +3,10 @@ resolver = "2"
 exclude = ["src-tauri", "fuzz"]  # Tauri app and fuzz targets have their own Cargo.toml
 members = [
     # Monster Pack v9 architecture
-    "crates/app",              # eframe/egui shell, docking, menu/commands
-    "crates/ui",               # Pure UI panels (no business logic)
+    "crates/cli",              # CLI tool (terminal interface)
     "crates/bitvue-core",      # SelectionState, Command/Event bus, Worker runtime, Caches
     "crates/bitvue-formats",   # Container parsers (IVF, MP4, MKV, TS)
-    "crates/bitvue-codecs",    # Codec parsers (AV1, H.264, HEVC) - integrates bitvue-av1
+    "crates/bitvue-codecs-parser",  # Codec parsers integration (AV1, H.264, HEVC) - integrates bitvue-av1-codec
     "crates/bitvue-decode",    # Decoders (dav1d for AV1)
     "crates/bitvue-metrics",   # Quality metrics (PSNR, SSIM, VMAF)
     "crates/bitvue-mcp",       # Model Context Protocol server for AI assistant integration
@@ -15,14 +14,11 @@ members = [
     # Codec parsers (Pure Rust)
     "crates/bitvue-avc",       # AVC/H.264 parser
     "crates/bitvue-hevc",      # HEVC/H.265 parser
-    "crates/bitvue-mpeg2",     # MPEG-2 Video parser
     "crates/bitvue-vp9",       # VP9 parser
     "crates/bitvue-vvc",       # VVC/H.266 parser
-    "crates/bitvue-av3",       # AV3 parser
-
-    # Legacy (will be migrated/removed)
-    "crates/bitvue-av1",       # Will be moved into codecs/
-    "crates/bitvue-cli",       # CLI (keep for now)
+    "crates/bitvue-av1-codec", # AV1 OBU parser
+    "crates/bitvue-av3-codec", # AV3 parser
+    "crates/bitvue-mpeg2-codec", # MPEG-2 Video parser
 
     # Development tools
     "crates/bitvue-benchmarks", # Criterion-based performance benchmarks
@@ -42,23 +38,21 @@ authors = ["bitvue contributors"]
 # Internal crates (Monster Pack v9 architecture)
 bitvue-core = { path = "crates/bitvue-core" }
 bitvue-formats = { path = "crates/bitvue-formats" }
-bitvue-codecs = { path = "crates/bitvue-codecs" }
+bitvue-codecs-parser = { path = "crates/bitvue-codecs-parser" }
 bitvue-decode = { path = "crates/bitvue-decode" }
 bitvue-metrics = { path = "crates/bitvue-metrics" }
 abseil = { path = "crates/abseil-rust", features = ["std", "base", "log"] }
 bitvue-mcp = { path = "crates/bitvue-mcp" }
-app = { path = "crates/app" }
-ui = { path = "crates/ui" }
+bitvue-cli = { path = "crates/cli" }
 
 # Codec parsers
 bitvue-avc = { path = "crates/bitvue-avc" }
 bitvue-hevc = { path = "crates/bitvue-hevc" }
-bitvue-mpeg2 = { path = "crates/bitvue-mpeg2" }
 bitvue-vp9 = { path = "crates/bitvue-vp9" }
 bitvue-vvc = { path = "crates/bitvue-vvc" }
-
-# Legacy internal crates
-bitvue-av1 = { path = "crates/bitvue-av1" }
+bitvue-av1-codec = { path = "crates/bitvue-av1-codec" }
+bitvue-av3-codec = { path = "crates/bitvue-av3-codec" }
+bitvue-mpeg2-codec = { path = "crates/bitvue-mpeg2-codec" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -69,13 +63,6 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # CLI
 clap = { version = "4.4", features = ["derive"] }
-
-# GUI (egui)
-eframe = "0.33"
-egui = "0.33"
-egui_extras = { version = "0.33", features = ["image"] }
-egui_plot = "0.33"
-egui_dock = { version = "0.14", features = ["serde"] }
 
 # Error handling
 thiserror = "2.0"
@@ -91,7 +78,6 @@ once_cell = "1.19"
 
 # Async/Threading (Monster Pack v3: Worker runtime)
 tokio = { version = "1.0", features = ["rt-multi-thread", "sync", "time"] }
-crossbeam-channel = "0.5"
 parking_lot = "0.12"
 rayon = "1.10"
 

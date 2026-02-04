@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::commands::{AppState, FileInfo};
 use bitvue_core::{Command, Event, StreamId, UnitModel};
-use bitvue_av1::parse_ivf_frames;
+use bitvue_av1_codec::parse_ivf_frames;
 use bitvue_avc::{avc_frames_to_unit_nodes, extract_annex_b_frames as extract_avc_annex_b_frames};
 use bitvue_hevc::{hevc_frames_to_unit_nodes, extract_annex_b_frames as extract_hevc_annex_b_frames};
 use bitvue_vp9::{vp9_frames_to_unit_nodes, extract_vp9_frames};

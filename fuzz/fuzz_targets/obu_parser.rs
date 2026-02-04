@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use bitvue_av1::parse_obu;
+use bitvue_av1_codec::parse_obu;
 
 /// Fuzz target for AV1 OBU parser
 ///

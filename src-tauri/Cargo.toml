@@ -36,12 +36,12 @@ chrono = "0.4"
 # Note: hevc-indexer, vp9-indexer, vvc-indexer features are disabled due to cyclic dependency
 # Use the individual codec crates directly for HEVC/VP9/VVC parsing
 bitvue-core = { path = "../crates/bitvue-core" }
-bitvue-av1 = { path = "../crates/bitvue-av1" }
+bitvue-av1-codec = { path = "../crates/bitvue-av1-codec" }
 bitvue-avc = { path = "../crates/bitvue-avc" }
 bitvue-hevc = { path = "../crates/bitvue-hevc" }
 bitvue-vp9 = { path = "../crates/bitvue-vp9" }
 bitvue-vvc = { path = "../crates/bitvue-vvc" }
-bitvue-av3 = { path = "../crates/bitvue-av3" }
+bitvue-av3-codec = { path = "../crates/bitvue-av3-codec" }
 bitvue-decode = { path = "../crates/bitvue-decode" }
 bitvue-formats = { path = "../crates/bitvue-formats" }
 bitvue-metrics = { path = "../crates/bitvue-metrics", features = ["parallel"] }
