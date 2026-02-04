@@ -13,7 +13,7 @@
 /// assert_eq!(linear_search(&[1, 2, 3, 4, 5], &6), None);
 /// ```
 #[inline]
-pub const fn linear_search<T: Copy + PartialEq>(slice: &[T], value: &T) -> Option<usize> {
+pub fn linear_search<T: Copy + PartialEq>(slice: &[T], value: &T) -> Option<usize> {
     let mut i = 0;
     while i < slice.len() {
         if slice[i] == *value {

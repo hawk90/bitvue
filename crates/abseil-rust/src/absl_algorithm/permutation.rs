@@ -15,7 +15,7 @@
 /// assert!(!is_permutation(&[1, 2, 3], &[1, 2, 4]));
 /// ```
 #[inline]
-pub fn is_permutation<T: PartialEq>(a: &[T], b: &[T]) -> bool {
+pub fn is_permutation<T: PartialEq + Clone>(a: &[T], b: &[T]) -> bool {
     if a.len() != b.len() {
         return false;
     }

@@ -61,7 +61,7 @@ pub fn find_last<T: PartialEq>(slice: &[T], value: &T) -> Option<usize> {
 pub fn find_all<T: PartialEq>(slice: &[T], value: &T) -> Vec<usize> {
     slice.iter()
         .enumerate()
-        .filter(|(_, x)| x == value)
+        .filter(|(_, x)| **x == *value)
         .map(|(i, _)| i)
         .collect()
 }
@@ -80,7 +80,7 @@ pub fn find_all<T: PartialEq>(slice: &[T], value: &T) -> Vec<usize> {
 #[inline]
 pub fn count<T: PartialEq>(slice: &[T], value: &T) -> usize {
     slice.iter()
-        .filter(|x| x == value)
+        .filter(|x| **x == *value)
         .count()
 }
 

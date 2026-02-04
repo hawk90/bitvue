@@ -13,7 +13,7 @@
 /// assert!(is_sorted(&[42]));
 /// ```
 #[inline]
-pub const fn is_sorted<T: Copy + PartialOrd>(slice: &[T]) -> bool {
+pub fn is_sorted<T: Copy + PartialOrd>(slice: &[T]) -> bool {
     if slice.len() <= 1 {
         return true;
     }
@@ -67,7 +67,7 @@ where
 /// assert!(!is_sorted_descending(&[1, 2, 3, 4, 5]));
 /// ```
 #[inline]
-pub const fn is_sorted_descending<T: Copy + PartialOrd>(slice: &[T]) -> bool {
+pub fn is_sorted_descending<T: Copy + PartialOrd>(slice: &[T]) -> bool {
     if slice.len() <= 1 {
         return true;
     }

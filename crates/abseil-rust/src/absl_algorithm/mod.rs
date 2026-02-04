@@ -131,7 +131,7 @@ pub use swap::{reverse_range, swap_elements};
 pub use heap::{is_heap, is_heap_by};
 
 // Re-exports from selection module
-pub use selection::{nth_element, partition_pivot};
+pub use selection::nth_element;
 
 // Re-exports from bounds module
 pub use bounds::{equal_range, lower_bound, upper_bound};

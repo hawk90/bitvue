@@ -1,7 +1,5 @@
 //! Merge and set operations - merge, merge_in_place, set_union, set_intersection, set_difference, set_symmetric_difference
 
-use alloc::vec::Vec;
-
 /// Merges two sorted slices into a new sorted vector.
 ///
 /// Both input slices must be sorted in ascending order.

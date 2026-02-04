@@ -42,7 +42,7 @@ where
 /// assert_eq!(reduce::<i32, _>(&[], |a, b| a + b), None);
 /// ```
 #[inline]
-pub fn reduce<T, F>(slice: &[T], mut op: F) -> Option<T>
+pub fn reduce<T, F>(slice: &[T], op: F) -> Option<T>
 where
     T: Clone,
     F: FnMut(T, T) -> T,

@@ -15,7 +15,7 @@
 /// assert_eq!(&data[..len], [1, 2, 3, 4, 5]);
 /// ```
 #[inline]
-pub fn unique<T: PartialEq>(slice: &mut [T]) -> usize {
+pub fn unique<T: PartialEq + Clone>(slice: &mut [T]) -> usize {
     if slice.is_empty() {
         return 0;
     }
@@ -24,7 +24,7 @@ pub fn unique<T: PartialEq>(slice: &mut [T]) -> usize {
     for read in 1..slice.len() {
         if slice[read] != slice[write - 1] {
             if read != write {
-                slice[write] = slice[read];
+                slice[write] = slice[read].clone();
             }
             write += 1;
         }

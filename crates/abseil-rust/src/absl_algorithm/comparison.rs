@@ -14,7 +14,7 @@
 /// assert_eq!(clamp(15, 0, 10), 10);
 /// ```
 #[inline]
-pub const fn clamp<T: Copy + PartialOrd>(value: T, min: T, max: T) -> T {
+pub fn clamp<T: Copy + PartialOrd + Ord>(value: T, min: T, max: T) -> T {
     if value < min {
         min
     } else if value > max {
@@ -37,7 +37,7 @@ pub const fn clamp<T: Copy + PartialOrd>(value: T, min: T, max: T) -> T {
 /// assert_eq!(min_element(&[] as &[i32]), None);
 /// ```
 #[inline]
-pub fn min_element<T: Copy + PartialOrd>(slice: &[T]) -> Option<&T> {
+pub fn min_element<T: Copy + PartialOrd + Ord>(slice: &[T]) -> Option<&T> {
     slice.iter().min()
 }
 
@@ -54,7 +54,7 @@ pub fn min_element<T: Copy + PartialOrd>(slice: &[T]) -> Option<&T> {
 /// assert_eq!(max_element(&[] as &[i32]), None);
 /// ```
 #[inline]
-pub fn max_element<T: Copy + PartialOrd>(slice: &[T]) -> Option<&T> {
+pub fn max_element<T: Copy + PartialOrd + Ord>(slice: &[T]) -> Option<&T> {
     slice.iter().max()
 }
 
