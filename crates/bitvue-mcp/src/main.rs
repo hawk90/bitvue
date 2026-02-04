@@ -692,15 +692,15 @@ fn analyze_frame(args: Value, state: &AppState) -> Result<String> {
         "frame_index": frame_index,
         "stream": if stream_id == StreamId::A { "A" } else { "B" },
         "file": path.to_string_lossy(),
-        "unit_type": frame.unit_type.clone(),
-        "frame_type": frame.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
+        "unit_type": frame.unit_type.to_string(),
+        "frame_type": frame.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
         "offset": frame.offset,
         "size": frame.size,
         "pts": frame.pts,
         "dts": frame.dts,
         "qp_avg": frame.qp_avg,
         "ref_frames": frame.ref_frames.clone(),
-        "display_name": frame.display_name.clone()
+        "display_name": frame.display_name.to_string()
     })
     .to_string())
 }
@@ -769,7 +769,7 @@ fn get_motion_vectors(args: Value, state: &AppState) -> Result<String> {
 
     Ok(json!({
         "frame_index": frame_index,
-        "frame_type": frame.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
+        "frame_type": frame.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
         "ref_frames": ref_idx,
         "note": "Motion vector extraction requires bitstream-level parsing. Currently showing reference frame indices."
     }).to_string())
@@ -830,14 +830,14 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
                 "frame_index": frame_index,
                 "stream_a": {
                     "file": path_a.to_string_lossy(),
-                    "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
+                    "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
                     "size": fa.size,
                     "qp": qp_a,
                     "offset": fa.offset
                 },
                 "stream_b": {
                     "file": path_b.to_string_lossy(),
-                    "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
+                    "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
                     "size": fb.size,
                     "qp": qp_b,
                     "offset": fb.offset
@@ -859,7 +859,7 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
         (Some(fa), None) => Ok(json!({
             "message": format!("Frame {} exists in Stream A but not in Stream B", frame_index),
             "stream_a": {
-                "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
+                "type": fa.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
                 "size": fa.size
             }
         })
@@ -867,7 +867,7 @@ fn compare_streams(args: Value, state: &AppState) -> Result<String> {
         (None, Some(fb)) => Ok(json!({
             "message": format!("Frame {} exists in Stream B but not in Stream A", frame_index),
             "stream_b": {
-                "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
+                "type": fb.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
                 "size": fb.size
             }
         })
@@ -895,7 +895,7 @@ fn get_gop_structure(args: Value, state: &AppState) -> Result<String> {
         .map(|u| {
             json!({
                 "frame_index": u.frame_index,
-                "type": u.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")),
+                "type": u.frame_type.clone().unwrap_or_else(|| std::sync::Arc::from("Unknown")).to_string(),
                 "size": u.size,
                 "qp": u.qp_avg,
                 "pts": u.pts,
