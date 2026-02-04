@@ -102,7 +102,8 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
-      - name: Diagnose build output
+      - name: Diagnose build output (macOS/Linux)
+        if: runner.os != 'Windows'
         run: |
           echo "=== Build output directory structure ==="
           ls -la src-tauri/target/${{ matrix.target }}/release/ || true
@@ -115,6 +116,21 @@ jobs:
           echo ""
           echo "=== All files in release directory ==="
           find src-tauri/target/${{ matrix.target }}/release/ -type f || true
+
+      - name: Diagnose build output (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Write-Host "=== Build output directory structure ==="
+          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -ErrorAction SilentlyContinue
+          Write-Host ""
+          Write-Host "=== Looking for bitvue binary ==="
+          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/" -Recurse -Filter "bitvue.exe" -ErrorAction SilentlyContinue | Select-Object -First 5
+          Write-Host ""
+          Write-Host "=== Looking for bundle directories ==="
+          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -Directory -ErrorAction SilentlyContinue
+          Write-Host ""
+          Write-Host "=== All files in release directory ==="
+          Get-ChildItem -Path "src-tauri/target/${{ matrix.target }}/release/" -File -Recurse -ErrorAction SilentlyContinue
 
       - name: Check build output (Linux)
         if: matrix.os == 'ubuntu-24.04'
