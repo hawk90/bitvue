@@ -17,13 +17,56 @@ use std::sync::{Arc, Mutex};
 struct AppState {
     core: Arc<Mutex<Core>>,
     loaded_file: Arc<Mutex<Option<PathBuf>>>,
+    /// Allowed base directories for file access (for security)
+    allowed_paths: Vec<PathBuf>,
+}
+
+/// Validate that a path is within allowed directories
+///
+/// This prevents path traversal attacks by ensuring the canonical
+/// path starts with one of the allowed base directories.
+///
+/// # Arguments
+/// * `path` - User-provided path to validate
+/// * `allowed_paths` - List of allowed base directories
+///
+/// # Returns
+/// * `Ok(PathBuf)` - Canonicalized path if valid
+/// * `Err(anyhow::Error)` - Error if path is outside allowed directories
+fn validate_path(path: &str, allowed_paths: &[PathBuf]) -> Result<PathBuf> {
+    let path_buf = PathBuf::from(path);
+
+    // Resolve to absolute path, following symlinks
+    let canonical = path_buf
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("Invalid path: {}", e))?;
+
+    // Check if path is within any allowed directory
+    let is_allowed = allowed_paths.iter().any(|allowed| {
+        canonical.starts_with(allowed)
+    });
+
+    if !is_allowed {
+        return Err(anyhow::anyhow!(
+            "Path outside allowed directories: {}",
+            path
+        ));
+    }
+
+    Ok(canonical)
 }
 
 impl AppState {
     fn new() -> Self {
+        // Initialize with current directory as the only allowed path
+        // This prevents access to sensitive files outside the project
+        let current_dir = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
+
         Self {
             core: Arc::new(Mutex::new(Core::new())),
             loaded_file: Arc::new(Mutex::new(None)),
+            allowed_paths: vec![current_dir],
         }
     }
 }
@@ -562,10 +605,20 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
     let stream_str = args["stream"].as_str();
     let stream_id = parse_stream_id(stream_str);
 
-    let path_buf = PathBuf::from(path);
+    // SECURITY: Validate path is within allowed directories
+    let validated_path = match validate_path(path, &state.allowed_paths) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(json!({
+                "success": false,
+                "error": format!("Access denied: {}", e)
+            })
+            .to_string());
+        }
+    };
 
-    // Check if file exists
-    if !path_buf.exists() {
+    // Check if file exists (now safe from path traversal)
+    if !validated_path.exists() {
         return Ok(json!({
             "success": false,
             "error": format!("File not found: {}", path)
@@ -573,11 +626,11 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
         .to_string());
     }
 
-    // Get file size
-    let file_size = path_buf.metadata().and_then(|m| Ok(m.len())).unwrap_or(0);
+    // Get file size using validated path
+    let file_size = validated_path.metadata().and_then(|m| Ok(m.len())).unwrap_or(0);
 
     // Get file extension
-    let ext = path_buf
+    let ext = validated_path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("unknown");
@@ -585,8 +638,8 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
     // Parse the file based on extension
     let units_result: Result<Vec<UnitNode>, String> = match ext {
         "ivf" | "av1" => {
-            tracing::info!("Parsing IVF file: {}", path);
-            parse_ivf_file(&path_buf, stream_id)
+            tracing::info!("Parsing IVF file: {}", validated_path.display());
+            parse_ivf_file(&validated_path, stream_id)
         }
         _ => {
             // For now, only IVF is supported
@@ -623,7 +676,7 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
                 .loaded_file
                 .lock()
                 .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
-            *loaded = Some(path_buf.clone());
+            *loaded = Some(validated_path.clone());
 
             Ok(json!({
                 "success": true,

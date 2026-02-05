@@ -270,6 +270,52 @@ pub struct VvcDecoder {
     timeout_count: std::sync::atomic::AtomicUsize,
 }
 
+/// Run a closure with a timeout to prevent decoder hangs
+///
+/// Uses a spawned thread that is joined with a timeout.
+/// If the timeout expires, returns an error. The spawned thread will
+/// eventually complete or be terminated by the OS.
+///
+/// # Arguments
+/// * `f` - Closure to execute (must be Send and have 'static lifetime)
+///
+/// # Returns
+/// * `Ok(T)` - Result of the closure if completed in time
+/// * `Err(DecodeError)` - Timeout error if closure took too long
+fn run_decode_with_timeout<F, T>(f: F) -> Result<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let handle = thread::spawn(f);
+
+    // Poll for completion with timeout
+    let start = Instant::now();
+    const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+    loop {
+        if handle.is_finished() {
+            return handle.join().map_err(|e| {
+                DecodeError::Decode(format!("Decoder thread panicked: {:?}", e))
+            });
+        }
+
+        if start.elapsed() >= DECODE_TIMEOUT {
+            // Thread is still running after timeout
+            // We cannot forcefully kill it in Rust, but we can return an error
+            // The detached thread will eventually complete or be terminated by OS
+            return Err(DecodeError::Decode(
+                "Decoder timeout - frame took longer than 10 seconds".to_string()
+            ));
+        }
+
+        thread::sleep(POLL_INTERVAL);
+    }
+}
+
 impl VvcDecoder {
     /// Create a new VVC decoder with RAII guards for safe resource management
     pub fn new() -> Result<Self> {
@@ -739,12 +785,24 @@ impl Decoder for VvcDecoder {
             })?;
 
             unsafe {
-                ffi::vvdec_accessUnit_free_payload(*access_unit_guard);
-                ffi::vvdec_accessUnit_free(*access_unit_guard);
-                ffi::vvdec_decoder_close(*decoder_guard);
+                // Free access unit payload and access unit
+                if !(*access_unit_guard).is_null() {
+                    ffi::vvdec_accessUnit_free_payload(*access_unit_guard);
+                    ffi::vvdec_accessUnit_free(*access_unit_guard);
+                    // Set to null to prevent use-after-free
+                    *access_unit_guard = ptr::null_mut();
+                }
+                // Close decoder
+                if !(*decoder_guard).is_null() {
+                    ffi::vvdec_decoder_close(*decoder_guard);
+                    // Set to null to prevent use-after-free
+                    *decoder_guard = ptr::null_mut();
+                }
             }
 
-            *decoder_guard
+            // Note: decoder_ptr is now null and intentionally unused
+            // We keep the variable for clarity about what was freed
+            let _ = decoder_ptr;
         };
 
         // Create new decoder
