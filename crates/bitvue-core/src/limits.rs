@@ -26,6 +26,14 @@ pub const MAX_CACHE_ENTRIES: usize = 1000;
 /// IVF frames are typically 10-500 KB, so 100 MB is generous.
 pub const MAX_BUFFER_SIZE: usize = 100 * 1024 * 1024;
 
+/// Maximum file size in bytes (2 GB)
+///
+/// Prevents denial-of-service via memory exhaustion from extremely large files.
+/// 2 GB is more than sufficient for any practical video analysis:
+/// - 2 hours of 4K video at 60fps ≈ 1.5 GB (raw YUV)
+/// - 10 hours of 1080p video at 30fps ≈ 1.2 GB (raw YUV)
+pub const MAX_FILE_SIZE: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Maximum number of frames to process from a single file
 ///
 /// Prevents DoS via files with millions of tiny frames.

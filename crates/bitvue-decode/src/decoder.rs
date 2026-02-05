@@ -1,8 +1,9 @@
 //! AV1 decoder wrapper using dav1d
 
 use crate::plane_utils;
-use bitvue_core::limits::{MAX_FRAMES_PER_FILE, MAX_FRAME_SIZE};
+use bitvue_core::limits::{MAX_FILE_SIZE, MAX_FRAMES_PER_FILE, MAX_FRAME_SIZE};
 use dav1d::{Decoder, PlanarImageComponent};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -140,6 +141,79 @@ impl ChromaFormat {
             _ => Self::Monochrome,
         }
     }
+}
+
+/// Video container format detected from file magic number
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoFormat {
+    /// IVF container (VP9, AV1)
+    Ivf,
+    /// MP4 container (ISO BMFF)
+    Mp4,
+    /// MKV container (Matroska)
+    Mkv,
+    /// MPEG-TS container
+    Ts,
+    /// Raw Annex B bitstream (H.264, HEVC, VVC)
+    AnnexB,
+    /// Unknown format
+    Unknown,
+}
+
+/// Detect video format from file header using magic number validation
+///
+/// This function validates the file format by checking the magic number
+/// (file signature) at the beginning of the data. This prevents processing
+/// malicious files with incorrect format headers.
+///
+/// # Arguments
+///
+/// * `data` - First bytes of the file (at least 12 bytes recommended)
+///
+/// # Returns
+///
+/// `VideoFormat` enum indicating the detected format
+pub fn detect_format(data: &[u8]) -> VideoFormat {
+    if data.len() < 4 {
+        return VideoFormat::Unknown;
+    }
+
+    // Check for IVF magic number "DKIF"
+    if &data[0..4] == b"DKIF" {
+        return VideoFormat::Ivf;
+    }
+
+    // Check for MP4 ftyp box (ISO BMFF)
+    // MP4 files start with a 4-byte size followed by "ftyp"
+    if data.len() >= 8 && &data[4..8] == b"ftyp" {
+        return VideoFormat::Mp4;
+    }
+
+    // Check for MKV/EBML header
+    // EBML starts with: 0x1A 0x45 0xDF 0xA3
+    if &data[0..4] == b"\x1a\x45\xdf\xa3" {
+        return VideoFormat::Mkv;
+    }
+
+    // Check for MPEG-TS sync byte
+    // TS packets start with 0x47 (sync byte)
+    if data[0] == 0x47 {
+        // Verify it's not a false positive by checking TS packet structure
+        // TS packets are 188 bytes, check if second sync byte aligns
+        if data.len() >= 189 && data[188] == 0x47 {
+            return VideoFormat::Ts;
+        }
+    }
+
+    // Check for Annex B start codes (H.264, HEVC, VVC)
+    // Annex B starts with 0x00 0x00 0x00 0x01 or 0x00 0x00 0x01
+    if data.len() >= 4 {
+        if &data[0..4] == b"\x00\x00\x00\x01" || &data[0..3] == b"\x00\x00\x01" {
+            return VideoFormat::AnnexB;
+        }
+    }
+
+    VideoFormat::Unknown
 }
 
 /// AV1 decoder using dav1d
@@ -412,23 +486,73 @@ impl Av1Decoder {
     /// # Returns
     ///
     /// Vector of decoded frames
-    pub fn decode_from_file<P: AsRef<std::path::Path>>(&mut self, path: P) -> Result<Vec<DecodedFrame>> {
+    pub fn decode_from_file<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<DecodedFrame>> {
         use std::fs::File;
         use std::io::{BufReader, Read};
 
+        let path_buf = path.as_ref();
+
+        // Security: Validate path doesn't escape working directory
+        let canonical = path_buf
+            .canonicalize()
+            .map_err(|e| DecodeError::Decode(format!("Invalid path: {}", e)))?;
+
+        let current_dir = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
+
+        if !canonical.starts_with(&current_dir) {
+            return Err(DecodeError::Decode(
+                "Path outside working directory not allowed".to_string()
+            ));
+        }
+
         // Open file and wrap in BufReader for buffered I/O
-        let file = File::open(path).map_err(|e| {
+        let file = File::open(&canonical).map_err(|e| {
             DecodeError::Decode(format!("Failed to open file: {}", e))
         })?;
+
+        // Security: Validate file size before reading to prevent DoS via memory exhaustion
+        let metadata = file.metadata().map_err(|e| {
+            DecodeError::Decode(format!("Failed to get file metadata: {}", e))
+        })?;
+        let file_size = metadata.len();
+
+        if file_size > MAX_FILE_SIZE {
+            return Err(DecodeError::Decode(format!(
+                "File size {} bytes exceeds maximum {} bytes",
+                file_size, MAX_FILE_SIZE
+            )));
+        }
+
+        // Pre-allocate with capacity check
+        let mut data = Vec::with_capacity(file_size as usize);
 
         let mut reader = BufReader::with_capacity(4 * 1024 * 1024, file); // 4MB buffer
 
         // Read entire file into memory (could be optimized further with true streaming)
         // TODO: Implement true streaming that decodes frame by frame without loading all data
-        let mut data = Vec::new();
         reader.read_to_end(&mut data).map_err(|e| {
             DecodeError::Decode(format!("Failed to read file: {}", e))
         })?;
+
+        // Security: Validate file format using magic number detection
+        let format = detect_format(&data);
+        match format {
+            VideoFormat::Ivf | VideoFormat::AnnexB => {
+                // Supported formats - proceed
+            }
+            VideoFormat::Unknown => {
+                return Err(DecodeError::Decode(format!(
+                    "Unknown video format - could not detect from magic number"
+                )));
+            }
+            _ => {
+                return Err(DecodeError::Decode(format!(
+                    "Unsupported video format: {:?}. This decoder only supports IVF and raw Annex B bitstreams.",
+                    format
+                )));
+            }
+        }
 
         self.decode_all(&data)
     }

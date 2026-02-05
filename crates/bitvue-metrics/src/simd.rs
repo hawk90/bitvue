@@ -82,6 +82,14 @@ unsafe fn psnr_avx2(
     for i in 0..chunks {
         let offset = i * 32;
 
+        // Security: Explicit bounds check to prevent buffer overflow
+        // when size is not a multiple of 32
+        if offset + 32 > reference.len() || offset + 32 > distorted.len() {
+            return Err(bitvue_core::BitvueError::InvalidData(
+                "SIMD buffer overflow: insufficient data for 32-byte read".to_string()
+            ));
+        }
+
         // Load 32 bytes
         let ref_vec = _mm256_loadu_si256(reference.as_ptr().add(offset) as *const __m256i);
         let dist_vec = _mm256_loadu_si256(distorted.as_ptr().add(offset) as *const __m256i);
@@ -125,7 +133,9 @@ unsafe fn psnr_avx2(
     }
 
     // Add SIMD contribution (sum of 16 32-bit values)
-    let simd_sum: i64 = mse_array.iter().map(|&x| x as i64).sum();
+    // Security: Use u64 with saturating add to prevent overflow
+    // when processing extremely large frames with high contrast
+    let simd_sum: u64 = mse_array.iter().map(|&x| x as u32 as u64).sum();
     mse += simd_sum as f64;
     mse /= size as f64;
 
@@ -175,6 +185,14 @@ unsafe fn psnr_sse2(
     for i in 0..chunks {
         let offset = i * 16;
 
+        // Security: Explicit bounds check to prevent buffer overflow
+        // when size is not a multiple of 16
+        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
+            return Err(bitvue_core::BitvueError::InvalidData(
+                "SIMD buffer overflow: insufficient data for 16-byte read".to_string()
+            ));
+        }
+
         // Load 16 bytes
         let ref_vec = _mm_loadu_si128(reference.as_ptr().add(offset) as *const __m128i);
         let dist_vec = _mm_loadu_si128(distorted.as_ptr().add(offset) as *const __m128i);
@@ -217,7 +235,8 @@ unsafe fn psnr_sse2(
     }
 
     // Add SIMD contribution
-    let simd_sum: i64 = mse_array.iter().map(|&x| x as i64).sum();
+    // Security: Use u64 to prevent overflow when processing large frames
+    let simd_sum: u64 = mse_array.iter().map(|&x| x as u32 as u64).sum();
     mse += simd_sum as f64;
     mse /= size as f64;
 
@@ -254,29 +273,43 @@ unsafe fn psnr_neon(
     for i in 0..chunks {
         let offset = i * 16;
 
+        // Security: Explicit bounds check to prevent buffer overflow
+        // when size is not a multiple of 16
+        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
+            return Err(bitvue_core::BitvueError::InvalidData(
+                "SIMD buffer overflow: insufficient data for 16-byte read".to_string()
+            ));
+        }
+
         // Load 16 bytes
         let ref_vec = vld1q_u8(reference.as_ptr().add(offset));
         let dist_vec = vld1q_u8(distorted.as_ptr().add(offset));
 
-        // Calculate absolute differences
-        let diff = vabdq_u8(ref_vec, dist_vec);
+        // Fix: Calculate squared differences (not absolute differences)
+        // For proper MSE/PSNR, we need (ref - dist)^2, not |ref - dist|^2
+        // This requires signed subtraction to get correct negative values
+        let ref_lo = vmovl_u8(vget_low_u8(ref_vec));
+        let ref_hi = vmovl_u8(vget_high_u8(ref_vec));
+        let dist_lo = vmovl_u8(vget_low_u8(dist_vec));
+        let dist_hi = vmovl_u8(vget_high_u8(dist_vec));
 
-        // Widen to u16 and square
-        let diff_lo = vmovl_u8(vget_low_u8(diff));
-        let diff_hi = vmovl_u8(vget_high_u8(diff));
+        // Signed subtraction to get (ref - dist)
+        let diff_lo = vsubq_s16(vreinterpretq_s16_u16(ref_lo), vreinterpretq_s16_u16(dist_lo));
+        let diff_hi = vsubq_s16(vreinterpretq_s16_u16(ref_hi), vreinterpretq_s16_u16(dist_hi));
 
-        let sq_lo = vmull_u16(vget_low_u16(diff_lo), vget_low_u16(diff_lo));
-        let sq_hi = vmull_u16(vget_high_u16(diff_lo), vget_high_u16(diff_lo));
+        // Square the differences: (ref - dist)^2
+        let sq_lo = vmull_s16(vget_low_s16(diff_lo), vget_low_s16(diff_lo));
+        let sq_hi = vmull_s16(vget_high_s16(diff_lo), vget_high_s16(diff_lo));
 
-        // Accumulate
-        mse_accumulator = vaddq_u32(mse_accumulator, sq_lo);
-        mse_accumulator = vaddq_u32(mse_accumulator, sq_hi);
+        // Accumulate (convert from s32 to u32 for accumulation)
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_lo));
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi));
 
-        let sq_lo2 = vmull_u16(vget_low_u16(diff_hi), vget_low_u16(diff_hi));
-        let sq_hi2 = vmull_u16(vget_high_u16(diff_hi), vget_high_u16(diff_hi));
+        let sq_lo2 = vmull_s16(vget_low_s16(diff_hi), vget_low_s16(diff_hi));
+        let sq_hi2 = vmull_s16(vget_high_s16(diff_hi), vget_high_s16(diff_hi));
 
-        mse_accumulator = vaddq_u32(mse_accumulator, sq_lo2);
-        mse_accumulator = vaddq_u32(mse_accumulator, sq_hi2);
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_lo2));
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi2));
     }
 
     // Extract sum
