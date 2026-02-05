@@ -87,24 +87,9 @@ pub fn psnr(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> 
         )));
     }
 
-    // Calculate Mean Squared Error (MSE)
-    let mut mse: f64 = 0.0;
-    for i in 0..size {
-        let diff = reference[i] as f64 - distorted[i] as f64;
-        mse += diff * diff;
-    }
-    mse /= size as f64;
-
-    // Handle identical images
-    if mse == 0.0 {
-        return Ok(f64::INFINITY);
-    }
-
-    // Calculate PSNR
-    let max_value = 255.0;
-    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
-
-    Ok(psnr_value)
+    // Use SIMD-optimized PSNR by default with runtime CPU feature detection
+    // Falls back to scalar implementation automatically if SIMD not available
+    simd::psnr_simd(reference, distorted, width, height)
 }
 
 /// Calculate Structural Similarity Index (SSIM) between two images

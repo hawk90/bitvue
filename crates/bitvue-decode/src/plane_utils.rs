@@ -233,8 +233,12 @@ pub fn extract_plane(source: &[u8], config: PlaneConfig) -> Result<Vec<u8>> {
     }
 
     // Slow path: strided data - copy row by row with pre-allocated buffer
-    // Pre-allocate full buffer to avoid 1000+ reallocations (one per row)
-    let mut data = vec![0u8; expected_size];
+    // Pre-allocate full buffer without zero-initialization for better performance
+    // Safe because we immediately overwrite all positions in the loop below
+    let mut data = Vec::with_capacity(expected_size);
+    unsafe {
+        data.set_len(expected_size);
+    }
     let mut offset = 0;
 
     for row in 0..config.height {
