@@ -2,8 +2,8 @@
 //!
 //! Comprehensive tests for AV3 overlay data extraction.
 
-use bitvue_av3_codec_codec::frame_header::FrameType;
-use bitvue_av3_codec_codec::overlay_extraction;
+use bitvue_av3_codec::frame_header::FrameType;
+use bitvue_av3_codec::overlay_extraction;
 use bitvue_core::partition_grid::PartitionType;
 use bitvue_core::BlockMode;
 

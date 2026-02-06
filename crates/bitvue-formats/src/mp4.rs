@@ -155,22 +155,35 @@ pub struct Mp4Info {
     pub key_frames: Vec<u32>,
 }
 
-/// Parse MP4 file and extract AV1 samples
+/// Codec validator for sample extraction
+type CodecValidator = fn(&str) -> bool;
+
+/// Parse MP4 file and extract samples with codec validation
 ///
-/// Returns zero-copy Cow slices that borrow from the input data when possible,
-/// avoiding unnecessary memory allocation.
-pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
+/// Generic sample extraction that validates the codec and returns zero-copy
+/// Cow slices that borrow from the input data when possible.
+///
+/// # Arguments
+///
+/// * `data` - MP4 file data
+/// * `codec_name` - Human-readable codec name for error messages
+/// * `validator` - Function that returns true if codec string is valid
+fn extract_samples_with_validator<'a>(
+    data: &'a [u8],
+    codec_name: &str,
+    validator: CodecValidator,
+) -> Result<Vec<Cow<'a, [u8]>>, BitvueError> {
     let info = parse_mp4(data)?;
 
-    // Verify this is an AV1 file
+    // Verify codec using the provided validator
     match &info.codec {
-        Some(codec) if codec == "av01" => {
-            // AV1 codec confirmed
+        Some(codec) if validator(codec) => {
+            // Codec confirmed
         }
         Some(codec) => {
             return Err(BitvueError::InvalidData(format!(
-                "Not an AV1 file: found codec '{}'",
-                codec
+                "Not an {} file: found codec '{}'",
+                codec_name, codec
             )));
         }
         None => {
@@ -242,6 +255,14 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
     }
 
     Ok(samples)
+}
+
+/// Parse MP4 file and extract AV1 samples
+///
+/// Returns zero-copy Cow slices that borrow from the input data when possible,
+/// avoiding unnecessary memory allocation.
+pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
+    extract_samples_with_validator(data, "AV1", |codec| codec == "av01")
 }
 
 /// Parse MP4 file and extract H.264/AVC samples
@@ -252,88 +273,7 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
 /// Returns zero-copy Cow slices that borrow from the input data when possible,
 /// avoiding unnecessary memory allocation.
 pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
-    let info = parse_mp4(data)?;
-
-    // Verify this is an H.264/AVC file
-    match &info.codec {
-        Some(codec) if codec == "avc1" || codec == "avc3" => {
-            // H.264/AVC codec confirmed
-        }
-        Some(codec) => {
-            return Err(BitvueError::InvalidData(format!(
-                "Not an H.264/AVC file: found codec '{}'",
-                codec
-            )));
-        }
-        None => {
-            return Err(BitvueError::InvalidData(
-                "No codec information found in MP4".to_string(),
-            ));
-        }
-    }
-
-    // Validate sample count to prevent DoS
-    if info.sample_offsets.len() > MAX_TOTAL_SAMPLES {
-        return Err(BitvueError::InvalidData(format!(
-            "Sample count {} exceeds maximum allowed {}",
-            info.sample_offsets.len(),
-            MAX_TOTAL_SAMPLES
-        )));
-    }
-
-    // Pre-allocate with exact capacity since we know the sample count
-    let mut samples = Vec::with_capacity(info.sample_offsets.len());
-
-    // Sort samples by offset to detect overlaps
-    let mut sorted_samples: Vec<_> = info
-        .sample_offsets
-        .iter()
-        .zip(info.sample_sizes.iter())
-        .enumerate()
-        .collect();
-    sorted_samples.sort_by_key(|(_, (offset, _))| *offset);
-
-    for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
-        let offset = **offset_ptr as usize;
-        let size = **size_ptr as usize;
-
-        // Check for overflow in offset + size
-        let end = match offset.checked_add(size) {
-            Some(e) => e,
-            None => {
-                return Err(BitvueError::InvalidData(
-                    "Sample offset + size would overflow".to_string(),
-                ));
-            }
-        };
-
-        // Check against file size
-        if end > data.len() {
-            return Err(BitvueError::InvalidData(format!(
-                "Sample at offset {} with size {} exceeds file size {}",
-                offset,
-                size,
-                data.len()
-            )));
-        }
-
-        // Check for overlap with next sample
-        if i + 1 < sorted_samples.len() {
-            let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
-            let next_offset = *next_offset_ptr as usize;
-            if end > next_offset {
-                return Err(BitvueError::InvalidData(format!(
-                    "Samples overlap: current sample ends at {} but next starts at {}",
-                    end, next_offset
-                )));
-            }
-        }
-
-        // Zero-copy: return borrowed slice instead of cloning
-        samples.push(Cow::Borrowed(&data[offset..end]));
-    }
-
-    Ok(samples)
+    extract_samples_with_validator(data, "H.264/AVC", |codec| codec == "avc1" || codec == "avc3")
 }
 
 /// Parse MP4 file and extract H.265/HEVC samples
@@ -344,88 +284,7 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
 /// Returns zero-copy Cow slices that borrow from the input data when possible,
 /// avoiding unnecessary memory allocation.
 pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
-    let info = parse_mp4(data)?;
-
-    // Verify this is an H.265/HEVC file
-    match &info.codec {
-        Some(codec) if codec == "hev1" || codec == "hvc1" => {
-            // H.265/HEVC codec confirmed
-        }
-        Some(codec) => {
-            return Err(BitvueError::InvalidData(format!(
-                "Not an H.265/HEVC file: found codec '{}'",
-                codec
-            )));
-        }
-        None => {
-            return Err(BitvueError::InvalidData(
-                "No codec information found in MP4".to_string(),
-            ));
-        }
-    }
-
-    // Validate sample count to prevent DoS
-    if info.sample_offsets.len() > MAX_TOTAL_SAMPLES {
-        return Err(BitvueError::InvalidData(format!(
-            "Sample count {} exceeds maximum allowed {}",
-            info.sample_offsets.len(),
-            MAX_TOTAL_SAMPLES
-        )));
-    }
-
-    // Pre-allocate with exact capacity since we know the sample count
-    let mut samples = Vec::with_capacity(info.sample_offsets.len());
-
-    // Sort samples by offset to detect overlaps
-    let mut sorted_samples: Vec<_> = info
-        .sample_offsets
-        .iter()
-        .zip(info.sample_sizes.iter())
-        .enumerate()
-        .collect();
-    sorted_samples.sort_by_key(|(_, (offset, _))| *offset);
-
-    for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
-        let offset = **offset_ptr as usize;
-        let size = **size_ptr as usize;
-
-        // Check for overflow in offset + size
-        let end = match offset.checked_add(size) {
-            Some(e) => e,
-            None => {
-                return Err(BitvueError::InvalidData(
-                    "Sample offset + size would overflow".to_string(),
-                ));
-            }
-        };
-
-        // Check against file size
-        if end > data.len() {
-            return Err(BitvueError::InvalidData(format!(
-                "Sample at offset {} with size {} exceeds file size {}",
-                offset,
-                size,
-                data.len()
-            )));
-        }
-
-        // Check for overlap with next sample
-        if i + 1 < sorted_samples.len() {
-            let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
-            let next_offset = *next_offset_ptr as usize;
-            if end > next_offset {
-                return Err(BitvueError::InvalidData(format!(
-                    "Samples overlap: current sample ends at {} but next starts at {}",
-                    end, next_offset
-                )));
-            }
-        }
-
-        // Zero-copy: return borrowed slice instead of cloning
-        samples.push(Cow::Borrowed(&data[offset..end]));
-    }
-
-    Ok(samples)
+    extract_samples_with_validator(data, "H.265/HEVC", |codec| codec == "hev1" || codec == "hvc1")
 }
 
 /// Parse MP4 file structure

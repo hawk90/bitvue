@@ -71,16 +71,26 @@ impl VmafFrame {
             .write_plane(0, &self.y)
             .map_err(|e| BitvueError::InvalidData(format!("Failed to write Y plane: {}", e)))?;
 
-        // Copy U plane
-        let u_data: Vec<u8> = self.u[..(chroma_width * chroma_height)].to_vec();
+        // Copy U plane - pass slice directly without cloning
+        let u_end = chroma_width * chroma_height;
+        let u_slice = if u_end <= self.u.len() {
+            &self.u[..u_end]
+        } else {
+            &self.u
+        };
         picture
-            .write_plane(1, &u_data)
+            .write_plane(1, u_slice)
             .map_err(|e| BitvueError::InvalidData(format!("Failed to write U plane: {}", e)))?;
 
-        // Copy V plane
-        let v_data: Vec<u8> = self.v[..(chroma_width * chroma_height)].to_vec();
+        // Copy V plane - pass slice directly without cloning
+        let v_end = chroma_width * chroma_height;
+        let v_slice = if v_end <= self.v.len() {
+            &self.v[..v_end]
+        } else {
+            &self.v
+        };
         picture
-            .write_plane(2, &v_data)
+            .write_plane(2, v_slice)
             .map_err(|e| BitvueError::InvalidData(format!("Failed to write V plane: {}", e)))?;
 
         Ok(picture)
