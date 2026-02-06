@@ -12,8 +12,8 @@
 //! - Encoding Issues: Invalid UTF-8, surrogate pairs, BOM handling
 //! - Platform Differences: Windows vs Unix paths, line endings
 
-use bitvue_decode::decoder::{Av1Decoder, DecodedFrame, DecodeError, VideoFormat, detect_format};
 use bitvue_core::limits::*;
+use bitvue_decode::decoder::{detect_format, Av1Decoder, DecodeError, DecodedFrame, VideoFormat};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -39,14 +39,20 @@ fn test_empty_file() {
 
     match result {
         Err(DecodeError::Decode(msg)) => {
-            assert!(msg.contains("too short") || msg.contains("empty") || msg.contains("incomplete"),
-                "Error should mention file is empty or too short, got: {}", msg);
+            assert!(
+                msg.contains("too short") || msg.contains("empty") || msg.contains("incomplete"),
+                "Error should mention file is empty or too short, got: {}",
+                msg
+            );
         }
         Err(DecodeError::NoFrame) => {
             // NoFrame is acceptable for empty file
         }
         _ => {
-            panic!("Expected DecodeError or NoFrame error for empty file, got: {:?}", result);
+            panic!(
+                "Expected DecodeError or NoFrame error for empty file, got: {:?}",
+                result
+            );
         }
     }
 }
@@ -58,12 +64,15 @@ fn test_empty_ivf_header() {
     let mut incomplete_ivf = Vec::new();
     incomplete_ivf.extend_from_slice(b"DKIF"); // Magic number
     incomplete_ivf.extend_from_slice(&0u16.to_le_bytes()); // Version
-    // Missing rest of header (should be at least 32 bytes)
+                                                           // Missing rest of header (should be at least 32 bytes)
 
     let mut decoder = Av1Decoder::new().unwrap();
     let result = decoder.decode_all(&incomplete_ivf);
 
-    assert!(result.is_err(), "Should fail to decode incomplete IVF header");
+    assert!(
+        result.is_err(),
+        "Should fail to decode incomplete IVF header"
+    );
 }
 
 #[test]
@@ -74,7 +83,7 @@ fn test_zero_length_frame_data() {
     // Add frame header with zero size
     ivf_data.extend_from_slice(&0u32.to_le_bytes()); // Frame size: 0
     ivf_data.extend_from_slice(&0u64.to_le_bytes()); // Timestamp
-    // No frame data
+                                                     // No frame data
 
     let mut decoder = Av1Decoder::new().unwrap();
     let result = decoder.decode_all(&ivf_data);
@@ -154,7 +163,10 @@ fn test_max_file_size_boundary() {
     // Test one byte over limit
     let file_size_too_large = MAX_FILE_SIZE + 1;
     let metadata_too_large = file_size_too_large > MAX_FILE_SIZE;
-    assert!(metadata_too_large, "File over MAX_FILE_SIZE should be rejected");
+    assert!(
+        metadata_too_large,
+        "File over MAX_FILE_SIZE should be rejected"
+    );
 }
 
 #[test]
@@ -165,12 +177,18 @@ fn test_max_frames_per_file_boundary() {
 
     // Test the frame count validation logic
     let count_ok = frame_count <= MAX_FRAMES_PER_FILE;
-    assert!(count_ok, "Frame count at MAX_FRAMES_PER_FILE should be accepted");
+    assert!(
+        count_ok,
+        "Frame count at MAX_FRAMES_PER_FILE should be accepted"
+    );
 
     // Test one frame over limit
     let frame_count_too_many = MAX_FRAMES_PER_FILE + 1;
     let count_too_many = frame_count_too_many > MAX_FRAMES_PER_FILE;
-    assert!(count_too_many, "Frame count over MAX_FRAMES_PER_FILE should be rejected");
+    assert!(
+        count_too_many,
+        "Frame count over MAX_FRAMES_PER_FILE should be rejected"
+    );
 }
 
 #[test]
@@ -186,7 +204,10 @@ fn test_max_frame_size_boundary() {
     // Test one byte over limit
     let frame_size_too_large = MAX_FRAME_SIZE + 1;
     let size_too_large = frame_size_too_large > MAX_FRAME_SIZE;
-    assert!(size_too_large, "Frame over MAX_FRAME_SIZE should be rejected");
+    assert!(
+        size_too_large,
+        "Frame over MAX_FRAME_SIZE should be rejected"
+    );
 }
 
 #[test]
@@ -201,7 +222,7 @@ fn test_negative_values_wrapping() {
     ivf_data.extend_from_slice(&timestamp.to_le_bytes()); // Max timestamp
 
     // Parse should handle this safely
-    let ts_bytes: [u8; 8] = ivf_data[32+4..32+12].try_into().unwrap();
+    let ts_bytes: [u8; 8] = ivf_data[32 + 4..32 + 12].try_into().unwrap();
     let parsed_ts = u64::from_le_bytes(ts_bytes);
 
     // Should handle max timestamp safely (convert to i64)
@@ -221,7 +242,11 @@ fn test_invalid_magic_number() {
     let invalid_data = b"INVALID_MAGIC_NUMBER";
 
     let format = detect_format(invalid_data);
-    assert_eq!(format, VideoFormat::Unknown, "Should detect invalid magic number as unknown format");
+    assert_eq!(
+        format,
+        VideoFormat::Unknown,
+        "Should detect invalid magic number as unknown format"
+    );
 }
 
 #[test]
@@ -232,7 +257,7 @@ fn test_corrupt_ivf_header() {
     corrupt_ivf.extend_from_slice(b"DKIF"); // Valid magic
     corrupt_ivf.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]); // Invalid version
     corrupt_ivf.extend_from_slice(&[0xFF, 0xFF]); // Invalid header size
-    // Rest is garbage
+                                                  // Rest is garbage
 
     let mut decoder = Av1Decoder::new().unwrap();
     let result = decoder.decode_all(&corrupt_ivf);
@@ -327,9 +352,10 @@ fn test_memory_allocation_limits() {
     let mut file = fs::File::create(&file_path).unwrap();
 
     file.write_all(&create_minimal_ivf_header()).unwrap();
-    file.write_all(&(MAX_FRAME_SIZE as u32).to_le_bytes()).unwrap(); // Frame size at max
+    file.write_all(&(MAX_FRAME_SIZE as u32).to_le_bytes())
+        .unwrap(); // Frame size at max
     file.write_all(&0u64.to_le_bytes()).unwrap(); // Timestamp
-    // Note: We don't actually write MAX_FRAME_SIZE bytes (would be too slow)
+                                                  // Note: We don't actually write MAX_FRAME_SIZE bytes (would be too slow)
 
     let mut decoder = Av1Decoder::new().unwrap();
     let result = decoder.decode_from_file(&file_path);
@@ -380,7 +406,10 @@ fn test_path_traversal_absolute() {
     let mut decoder = Av1Decoder::new().unwrap();
     let result = decoder.decode_from_file(system_path);
 
-    assert!(result.is_err(), "Should reject absolute path outside working directory");
+    assert!(
+        result.is_err(),
+        "Should reject absolute path outside working directory"
+    );
 }
 
 #[test]
@@ -401,7 +430,10 @@ fn test_symlink_restriction() {
         let result = decoder.decode_from_file(&link_path);
 
         // Should reject symlink to outside directory
-        assert!(result.is_err(), "Should reject symlink to outside directory");
+        assert!(
+            result.is_err(),
+            "Should reject symlink to outside directory"
+        );
     }
 }
 
@@ -422,7 +454,10 @@ fn test_deep_nesting_structure() {
     // Test over limit
     let depth_too_deep = max_depth + 1;
     let depth_over_limit = depth_too_deep > MAX_RECURSION_DEPTH;
-    assert!(depth_over_limit, "Should reject structures over MAX_RECURSION_DEPTH");
+    assert!(
+        depth_over_limit,
+        "Should reject structures over MAX_RECURSION_DEPTH"
+    );
 }
 
 #[test]
@@ -454,7 +489,10 @@ fn test_grid_dimension_limits() {
     // Test over limit
     let dim_too_large = max_dim + 1;
     let dim_over_limit = dim_too_large > MAX_GRID_DIMENSION as usize;
-    assert!(dim_over_limit, "Should reject dimension over MAX_GRID_DIMENSION");
+    assert!(
+        dim_over_limit,
+        "Should reject dimension over MAX_GRID_DIMENSION"
+    );
 }
 
 // ============================================================================
@@ -563,7 +601,10 @@ fn test_directory_as_file() {
     let mut decoder = Av1Decoder::new().unwrap();
     let result = decoder.decode_from_file(temp_dir.path());
 
-    assert!(result.is_err(), "Should return error when path is directory");
+    assert!(
+        result.is_err(),
+        "Should return error when path is directory"
+    );
 }
 
 // ============================================================================
@@ -578,9 +619,11 @@ fn test_invalid_utf8_in_paths() {
 
     // Create file with invalid UTF-8 sequence
     let invalid_name = [0xFF, 0xFE, 0xFD, 0xFC];
-    let file_path = temp_dir.path().join(PathBuf::from(std::ffi::OsString::from_vec(
-        invalid_name.to_vec(),
-    )));
+    let file_path = temp_dir
+        .path()
+        .join(PathBuf::from(std::ffi::OsString::from_vec(
+            invalid_name.to_vec(),
+        )));
 
     // If file creation succeeds, decoder should handle it
     if fs::File::create(&file_path).is_ok() {
@@ -620,7 +663,11 @@ fn test_bom_handling() {
 
     let format = detect_format(&data_with_bom);
     // BOM should not interfere with format detection
-    assert_ne!(format, VideoFormat::Ivf, "Should not detect IVF with BOM prefix");
+    assert_ne!(
+        format,
+        VideoFormat::Ivf,
+        "Should not detect IVF with BOM prefix"
+    );
 }
 
 // ============================================================================
@@ -647,7 +694,10 @@ fn test_windows_path_handling() {
         // Should treat as relative path or fail appropriately
         let mut decoder = Av1Decoder::new().unwrap();
         let result = decoder.decode_from_file(windows_path);
-        assert!(result.is_err(), "Should fail on Unix with Windows-style absolute path");
+        assert!(
+            result.is_err(),
+            "Should fail on Unix with Windows-style absolute path"
+        );
     }
 }
 
@@ -660,13 +710,13 @@ fn test_mixed_path_separators() {
     #[cfg(unix)]
     {
         let mixed_path = temp_dir.path().join("subdir\\file.ivf"); // Backslash on Unix
-        // Backslash is valid character, should not be treated as separator
+                                                                   // Backslash is valid character, should not be treated as separator
     }
 
     #[cfg(windows)]
     {
         let mixed_path = temp_dir.path().join("subdir/file.ivf"); // Forward slash on Windows
-        // Windows accepts forward slashes
+                                                                  // Windows accepts forward slashes
     }
 }
 
@@ -681,7 +731,10 @@ fn test_line_endings_in_metadata() {
     let format1 = detect_format(crlf_data);
     let format2 = detect_format(lf_data);
 
-    assert_eq!(format1, format2, "Line endings should not affect format detection");
+    assert_eq!(
+        format1, format2,
+        "Line endings should not affect format detection"
+    );
 }
 
 // ============================================================================

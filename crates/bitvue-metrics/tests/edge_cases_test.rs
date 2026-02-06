@@ -12,9 +12,9 @@
 //! - Concurrent Access: Thread-safety of SIMD operations
 //! - Performance Edge Cases: Very small/large inputs
 
-use bitvue_metrics::simd::psnr_simd;
-use bitvue_metrics::psnr;
 use bitvue_core::BitvueError;
+use bitvue_metrics::psnr;
+use bitvue_metrics::simd::psnr_simd;
 
 // ============================================================================
 // Category 1: Empty/Null Inputs
@@ -30,7 +30,10 @@ fn test_empty_buffers() {
     let result = psnr_simd(&reference, &distorted, 0, 0);
 
     // Empty buffers might cause division by zero, should handle
-    assert!(result.is_err() || result.is_ok(), "Should handle empty buffers");
+    assert!(
+        result.is_err() || result.is_ok(),
+        "Should handle empty buffers"
+    );
 }
 
 #[test]
@@ -63,7 +66,10 @@ fn test_single_pixel() {
 
     // MSE = (128-130)^2 = 4
     // PSNR = 10 * log10(255^2 / 4) ≈ 48.13 dB
-    assert!((psnr_value - 48.13).abs() < 0.5, "PSNR should be approximately 48.13 dB");
+    assert!(
+        (psnr_value - 48.13).abs() < 0.5,
+        "PSNR should be approximately 48.13 dB"
+    );
 }
 
 // ============================================================================
@@ -82,7 +88,10 @@ fn test_minimum_psnr_values() {
 
     // MSE = 255^2 = 65025
     // PSNR = 10 * log10(255^2 / 65025) = 10 * log10(1) = 0 dB
-    assert!(result >= 0.0 && result < 10.0, "PSNR should be near 0 dB for max distortion");
+    assert!(
+        result >= 0.0 && result < 10.0,
+        "PSNR should be near 0 dB for max distortion"
+    );
 }
 
 #[test]
@@ -94,7 +103,10 @@ fn test_maximum_psnr_values() {
 
     let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
 
-    assert!(result.is_infinite(), "PSNR should be infinite for identical images");
+    assert!(
+        result.is_infinite(),
+        "PSNR should be infinite for identical images"
+    );
 }
 
 #[test]
@@ -105,17 +117,29 @@ fn test_boundary_pixel_values() {
     let reference_zeros = vec![0u8; 1000];
     let distorted_zeros = vec![0u8; 1000];
     let result_zeros = psnr_simd(&reference_zeros, &distorted_zeros, 10, 100).unwrap();
-    assert!(result_zeros.is_infinite(), "All zeros should give infinite PSNR");
+    assert!(
+        result_zeros.is_infinite(),
+        "All zeros should give infinite PSNR"
+    );
 
     // All 255s
     let reference_max = vec![255u8; 1000];
     let distorted_max = vec![255u8; 1000];
     let result_max = psnr_simd(&reference_max, &distorted_max, 10, 100).unwrap();
-    assert!(result_max.is_infinite(), "All 255s should give infinite PSNR");
+    assert!(
+        result_max.is_infinite(),
+        "All 255s should give infinite PSNR"
+    );
 
     // Mixed extremes
-    let reference = vec![0u8; 500].into_iter().chain(vec![255u8; 500]).collect::<Vec<_>>();
-    let distorted = vec![255u8; 500].into_iter().chain(vec![0u8; 500]).collect::<Vec<_>>();
+    let reference = vec![0u8; 500]
+        .into_iter()
+        .chain(vec![255u8; 500])
+        .collect::<Vec<_>>();
+    let distorted = vec![255u8; 500]
+        .into_iter()
+        .chain(vec![0u8; 500])
+        .collect::<Vec<_>>();
     let result = psnr_simd(&reference, &distorted, 10, 100);
     assert!(result.is_ok(), "Should handle mixed extreme values");
 }
@@ -130,14 +154,17 @@ fn test_odd_dimensions() {
     let result = psnr_simd(&reference, &distorted, 1919, 1079);
 
     assert!(result.is_ok(), "Should handle odd dimensions");
-    assert!(result.unwrap().is_infinite(), "Odd dimensions with identical data should give infinite PSNR");
+    assert!(
+        result.unwrap().is_infinite(),
+        "Odd dimensions with identical data should give infinite PSNR"
+    );
 }
 
 #[test]
 fn test_prime_dimensions() {
     /// Test PSNR with prime number dimensions (worst case for alignment)
     /// Expected: Should handle prime dimensions correctly
-    let width = 997;  // Prime number
+    let width = 997; // Prime number
     let height = 991; // Different prime number
     let reference = vec![128u8; width * height];
     let distorted = vec![128u8; width * height];
@@ -160,12 +187,13 @@ fn test_buffer_size_mismatch() {
 
     // This is a programming error, but SIMD should not crash
     // The implementation should use the minimum size or error
-    let result = std::panic::catch_unwind(|| {
-        psnr_simd(&reference, &distorted, 10, 100)
-    });
+    let result = std::panic::catch_unwind(|| psnr_simd(&reference, &distorted, 10, 100));
 
     // Should either error or handle gracefully (not crash)
-    assert!(result.is_ok() || result.is_err(), "Should not crash on size mismatch");
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Should not crash on size mismatch"
+    );
 }
 
 #[test]
@@ -179,7 +207,10 @@ fn test_dimension_vs_buffer_mismatch() {
     let result = psnr_simd(&reference, &distorted, 1920, 1079);
 
     // May produce incorrect results or error, but should not crash
-    assert!(result.is_ok() || result.is_err(), "Should handle dimension mismatch");
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Should handle dimension mismatch"
+    );
 }
 
 #[test]
@@ -189,7 +220,6 @@ fn test_simd_alignment_edge_cases() {
     // AVX2: 32-byte alignment
     // SSE2: 16-byte alignment
     // NEON: 16-byte alignment
-
     let sizes_to_test = vec![1, 15, 16, 17, 31, 32, 33, 63, 64, 65];
 
     for size in sizes_to_test {
@@ -198,7 +228,11 @@ fn test_simd_alignment_edge_cases() {
 
         let result = psnr_simd(&reference, &distorted, size, 1);
 
-        assert!(result.is_ok(), "Should handle size {} (alignment boundary)", size);
+        assert!(
+            result.is_ok(),
+            "Should handle size {} (alignment boundary)",
+            size
+        );
         let psnr = result.unwrap();
         if psnr.is_finite() {
             // If finite, should be reasonable value
@@ -219,15 +253,20 @@ fn test_accumulator_overflow() {
     // Maximum squared difference: 255^2 = 65025
     // For 4K frame (3840x2160 = 8,294,400 pixels)
     // Maximum sum: 8,294,400 * 65025 ≈ 539 billion (fits in u64 but not u32)
-
     let reference: Vec<u8> = (0..255).cycle().take(1920 * 1080).collect();
     let distorted: Vec<u8> = reference.iter().map(|&v| v.wrapping_add(1)).collect();
 
     let result = psnr_simd(&reference, &distorted, 1920, 1080);
 
-    assert!(result.is_ok(), "Should handle large accumulations without overflow");
+    assert!(
+        result.is_ok(),
+        "Should handle large accumulations without overflow"
+    );
     let psnr = result.unwrap();
-    assert!(psnr.is_finite() && psnr > 0.0, "PSNR should be finite and positive");
+    assert!(
+        psnr.is_finite() && psnr > 0.0,
+        "PSNR should be finite and positive"
+    );
 }
 
 #[test]
@@ -301,7 +340,10 @@ fn test_stack_vs_heap_allocation() {
     let distorted_stack = [130u8; 100];
 
     let result_stack = psnr_simd(&reference_stack[..], &distorted_stack[..], 10, 10);
-    assert!(result_stack.is_ok(), "Should work with stack-allocated data");
+    assert!(
+        result_stack.is_ok(),
+        "Should work with stack-allocated data"
+    );
 
     // Heap allocated (vectors)
     let reference_heap = vec![128u8; 1920 * 1080];
@@ -335,14 +377,20 @@ fn test_floating_point_edge_cases() {
     let distorted = vec![128u8; 1000];
 
     let result = psnr_simd(&reference, &distorted, 10, 100).unwrap();
-    assert!(result.is_infinite(), "Identical images should give infinite PSNR");
+    assert!(
+        result.is_infinite(),
+        "Identical images should give infinite PSNR"
+    );
 
     // Very small differences -> high PSNR
     let mut distorted = vec![128u8; 1000];
     distorted[0] = 129; // Single pixel difference
 
     let result = psnr_simd(&reference, &distorted, 10, 100).unwrap();
-    assert!(result.is_finite() && result > 60.0, "Single pixel difference should give very high PSNR");
+    assert!(
+        result.is_finite() && result > 60.0,
+        "Single pixel difference should give very high PSNR"
+    );
 }
 
 #[test]
@@ -355,8 +403,10 @@ fn test_mse_zero_division() {
     let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
 
     // Should be infinity, not NaN
-    assert!(result.is_infinite() && result.is_sign_positive(),
-        "MSE=0 should give positive infinity, not NaN");
+    assert!(
+        result.is_infinite() && result.is_sign_positive(),
+        "MSE=0 should give positive infinity, not NaN"
+    );
 }
 
 #[test]
@@ -364,10 +414,10 @@ fn test_simd_scalar_consistency() {
     /// Test that SIMD and scalar implementations agree
     /// Expected: Results should match within floating point tolerance
     let test_cases = vec![
-        (vec![0u8; 1000], vec![255u8; 1000]),      // Max difference
-        (vec![128u8; 1000], vec![128u8; 1000]),    // Identical
-        (vec![100u8; 1000], vec![150u8; 1000]),    // Medium difference
-        (vec![50u8; 1000], vec![51u8; 1000]),      // Small difference
+        (vec![0u8; 1000], vec![255u8; 1000]),   // Max difference
+        (vec![128u8; 1000], vec![128u8; 1000]), // Identical
+        (vec![100u8; 1000], vec![150u8; 1000]), // Medium difference
+        (vec![50u8; 1000], vec![51u8; 1000]),   // Small difference
     ];
 
     for (reference, distorted) in test_cases {
@@ -381,13 +431,20 @@ fn test_simd_scalar_consistency() {
         let scalar_psnr = scalar_result.unwrap();
 
         // Both should be infinite or both finite
-        assert_eq!(simd_psnr.is_infinite(), scalar_psnr.is_infinite(),
-            "SIMD and scalar should agree on infinity");
+        assert_eq!(
+            simd_psnr.is_infinite(),
+            scalar_psnr.is_infinite(),
+            "SIMD and scalar should agree on infinity"
+        );
 
         // If both finite, should be close
         if simd_psnr.is_finite() && scalar_psnr.is_finite() {
-            assert!((simd_psnr - scalar_psnr).abs() < 0.5,
-                "SIMD={} and Scalar={} should match within 0.5 dB", simd_psnr, scalar_psnr);
+            assert!(
+                (simd_psnr - scalar_psnr).abs() < 0.5,
+                "SIMD={} and Scalar={} should match within 0.5 dB",
+                simd_psnr,
+                scalar_psnr
+            );
         }
     }
 }
@@ -417,7 +474,10 @@ fn test_checkerboard_pattern() {
 
     assert!(result.is_ok(), "Should handle checkerboard pattern");
     let psnr = result.unwrap();
-    assert!(psnr.is_finite() && psnr > 0.0, "Checkerboard should give finite PSNR");
+    assert!(
+        psnr.is_finite() && psnr > 0.0,
+        "Checkerboard should give finite PSNR"
+    );
 }
 
 #[test]
@@ -431,7 +491,10 @@ fn test_gradient_pattern() {
 
     assert!(result.is_ok(), "Should handle gradient pattern");
     let psnr = result.unwrap();
-    assert!(psnr.is_finite() && psnr > 20.0, "Gradient shift should give reasonable PSNR");
+    assert!(
+        psnr.is_finite() && psnr > 20.0,
+        "Gradient shift should give reasonable PSNR"
+    );
 }
 
 #[test]
@@ -446,7 +509,10 @@ fn test_single_bit_difference() {
 
     // MSE = 1 / 1000 = 0.001
     // PSNR = 10 * log10(255^2 / 0.001) ≈ 87 dB
-    assert!(result > 80.0, "Single-bit difference should give very high PSNR (>80 dB)");
+    assert!(
+        result > 80.0,
+        "Single-bit difference should give very high PSNR (>80 dB)"
+    );
 }
 
 #[test]
@@ -458,8 +524,11 @@ fn test_all_same_value() {
         let distorted = vec![value; 1000];
 
         let result = psnr_simd(&reference, &distorted, 10, 100).unwrap();
-        assert!(result.is_infinite(),
-            "Flat field (value={}) should give infinite PSNR", value);
+        assert!(
+            result.is_infinite(),
+            "Flat field (value={}) should give infinite PSNR",
+            value
+        );
     }
 }
 
@@ -512,8 +581,10 @@ fn test_cross_platform_consistency() {
     let scalar_psnr = scalar_result.unwrap();
 
     // Results should match
-    assert!((simd_psnr - scalar_psnr).abs() < 0.5,
-        "Cross-platform results should match");
+    assert!(
+        (simd_psnr - scalar_psnr).abs() < 0.5,
+        "Cross-platform results should match"
+    );
 }
 
 #[test]
@@ -527,7 +598,10 @@ fn test_endianness_handling() {
     let result = psnr_simd(&reference, &distorted, 8, 1);
 
     assert!(result.is_ok(), "Should handle specific byte patterns");
-    assert!(result.unwrap().is_infinite(), "Identical patterns should give infinite PSNR");
+    assert!(
+        result.unwrap().is_infinite(),
+        "Identical patterns should give infinite PSNR"
+    );
 }
 
 // ============================================================================
@@ -547,16 +621,17 @@ fn test_concurrent_psnr_calculations() {
         .map(|_| {
             let ref_clone = reference.clone();
             let dist_clone = distorted.clone();
-            thread::spawn(move || {
-                psnr_simd(&ref_clone, &dist_clone, 1920, 1080)
-            })
+            thread::spawn(move || psnr_simd(&ref_clone, &dist_clone, 1920, 1080))
         })
         .collect();
 
     // All threads should complete successfully
     for handle in handles {
         let result = handle.join().unwrap();
-        assert!(result.is_ok(), "Concurrent PSNR calculations should succeed");
+        assert!(
+            result.is_ok(),
+            "Concurrent PSNR calculations should succeed"
+        );
     }
 }
 
@@ -596,7 +671,10 @@ fn test_simd_thread_safety() {
     for result in results.iter() {
         match (result, first_result) {
             (Ok(r1), Ok(r2)) => {
-                assert!((r1 - r2).abs() < 0.001, "All concurrent results should be identical");
+                assert!(
+                    (r1 - r2).abs() < 0.001,
+                    "All concurrent results should be identical"
+                );
             }
             (Err(e1), Err(e2)) => {
                 // Different error types, but both are errors
@@ -631,14 +709,17 @@ fn test_non_simd_multiple_size() {
     /// Expected: Remainder handling should work correctly
     // AVX2 processes 32 bytes at a time
     // Test sizes just below/above multiples of 32
-
     for size in [31, 32, 33, 63, 64, 65, 127, 128, 129] {
         let reference = vec![128u8; size];
         let distorted = vec![130u8; size];
 
         let result = psnr_simd(&reference, &distorted, size, 1);
 
-        assert!(result.is_ok(), "Should handle size {} (remainder case)", size);
+        assert!(
+            result.is_ok(),
+            "Should handle size {} (remainder case)",
+            size
+        );
 
         // Compare with scalar for correctness
         let scalar_result = psnr(&reference, &distorted, size, 1);
@@ -646,8 +727,13 @@ fn test_non_simd_multiple_size() {
         let simd_psnr = result.unwrap();
         let scalar_psnr = scalar_result.unwrap();
 
-        assert!((simd_psnr - scalar_psnr).abs() < 0.5,
-            "Size {}: SIMD={} should match scalar={}", size, simd_psnr, scalar_psnr);
+        assert!(
+            (simd_psnr - scalar_psnr).abs() < 0.5,
+            "Size {}: SIMD={} should match scalar={}",
+            size,
+            simd_psnr,
+            scalar_psnr
+        );
     }
 }
 
@@ -663,7 +749,12 @@ fn test_power_of_two_sizes() {
 
         let result = psnr_simd(&reference, &distorted, size, size);
 
-        assert!(result.is_ok(), "Should handle power-of-two size {}x{}", size, size);
+        assert!(
+            result.is_ok(),
+            "Should handle power-of-two size {}x{}",
+            size,
+            size
+        );
     }
 }
 
@@ -672,13 +763,13 @@ fn test_widescreen_dimensions() {
     /// Test PSNR with extreme aspect ratios
     /// Expected: Should handle any valid aspect ratio
     let test_cases = [
-        (3840, 2160),  // 16:9 4K
-        (1920, 1080),  // 16:9 FHD
-        (1280, 720),   // 16:9 HD
-        (4096, 2160),  // 1.90:1 4K DCI
-        (1920, 800),   // 2.40:1 Cinematic
-        (1080, 1920),  // 9:16 Portrait
-        (1080, 1080),  // 1:1 Square
+        (3840, 2160), // 16:9 4K
+        (1920, 1080), // 16:9 FHD
+        (1280, 720),  // 16:9 HD
+        (4096, 2160), // 1.90:1 4K DCI
+        (1920, 800),  // 2.40:1 Cinematic
+        (1080, 1920), // 9:16 Portrait
+        (1080, 1080), // 1:1 Square
     ];
 
     for (width, height) in test_cases {
@@ -687,7 +778,12 @@ fn test_widescreen_dimensions() {
 
         let result = psnr_simd(&reference, &distorted, width, height);
 
-        assert!(result.is_ok(), "Should handle {}x{} aspect ratio", width, height);
+        assert!(
+            result.is_ok(),
+            "Should handle {}x{} aspect ratio",
+            width,
+            height
+        );
     }
 }
 
@@ -707,6 +803,9 @@ fn test_repeated_calculations() {
 
     // All results should be identical
     for result in &results[1..] {
-        assert_eq!(result, &results[0], "Repeated calculations should give identical results");
+        assert_eq!(
+            result, &results[0],
+            "Repeated calculations should give identical results"
+        );
     }
 }

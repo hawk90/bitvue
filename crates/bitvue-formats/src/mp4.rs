@@ -273,7 +273,9 @@ pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
 /// Returns zero-copy Cow slices that borrow from the input data when possible,
 /// avoiding unnecessary memory allocation.
 pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
-    extract_samples_with_validator(data, "H.264/AVC", |codec| codec == "avc1" || codec == "avc3")
+    extract_samples_with_validator(data, "H.264/AVC", |codec| {
+        codec == "avc1" || codec == "avc3"
+    })
 }
 
 /// Parse MP4 file and extract H.265/HEVC samples
@@ -284,7 +286,9 @@ pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueErro
 /// Returns zero-copy Cow slices that borrow from the input data when possible,
 /// avoiding unnecessary memory allocation.
 pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Cow<'_, [u8]>>, BitvueError> {
-    extract_samples_with_validator(data, "H.265/HEVC", |codec| codec == "hev1" || codec == "hvc1")
+    extract_samples_with_validator(data, "H.265/HEVC", |codec| {
+        codec == "hev1" || codec == "hvc1"
+    })
 }
 
 /// Parse MP4 file structure
