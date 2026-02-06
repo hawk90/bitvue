@@ -632,13 +632,12 @@ impl Decoder for VvcDecoder {
 
         // Check if decoder is poisoned from previous timeout
         // If so, automatically reset it before proceeding
-        if self.poisoned.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.poisoned.load(std::sync::atomic::Ordering::Acquire) {
             abseil::LOG!(WARNING, "VVC decoder was poisoned (previous timeout), attempting automatic reset (attempt {}/{})",
                   timeout_count + 1, MAX_TIMEOUT_RETRIES);
             match self.reset() {
                 Ok(()) => {
-                    self.poisoned
-                        .store(false, std::sync::atomic::Ordering::Relaxed);
+                    // Note: poisoned flag is now reset inside reset() itself
                     // Don't reset timeout_count here - only reset on successful decode
                     abseil::vlog!(2, "VVC decoder reset successful after poisoned state");
                 }
@@ -807,6 +806,17 @@ impl Decoder for VvcDecoder {
 
         // Create new decoder
         let new_decoder = Self::new()?;
+
+        // CRITICAL: Reset poisoned flag BEFORE updating decoder pointers.
+        // This prevents race condition where another thread could:
+        // 1. Check poisoned flag (still false)
+        // 2. Attempt decode before pointers are updated
+        // 3. See stale/inconsistent decoder state
+        //
+        // Using Release ordering ensures the poisoned flag write happens
+        // before the pointer updates below.
+        self.poisoned
+            .store(false, std::sync::atomic::Ordering::Release);
 
         // Replace the decoder pointer in the existing mutex
         // (We can't just replace self because we need to keep the mutex)
