@@ -298,9 +298,9 @@ where
 
     loop {
         if handle.is_finished() {
-            return handle.join().map_err(|e| {
-                DecodeError::Decode(format!("Decoder thread panicked: {:?}", e))
-            });
+            return handle
+                .join()
+                .map_err(|e| DecodeError::Decode(format!("Decoder thread panicked: {:?}", e)));
         }
 
         if start.elapsed() >= DECODE_TIMEOUT {
@@ -308,7 +308,7 @@ where
             // We cannot forcefully kill it in Rust, but we can return an error
             // The detached thread will eventually complete or be terminated by OS
             return Err(DecodeError::Decode(
-                "Decoder timeout - frame took longer than 10 seconds".to_string()
+                "Decoder timeout - frame took longer than 10 seconds".to_string(),
             ));
         }
 

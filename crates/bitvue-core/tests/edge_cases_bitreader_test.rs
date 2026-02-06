@@ -7,8 +7,11 @@
 //! - Boundary conditions for skip operations
 //! - Emulation prevention edge cases
 
-use bitvue_core::{BitReader, LsbBitReader, ExpGolombReader, Leb128Reader, UvlcReader, remove_emulation_prevention_bytes};
 use bitvue_core::BitvueError;
+use bitvue_core::{
+    remove_emulation_prevention_bytes, BitReader, ExpGolombReader, Leb128Reader, LsbBitReader,
+    UvlcReader,
+};
 
 // ============================================================================
 // Input Validation Tests
@@ -20,9 +23,18 @@ fn test_empty_slice() {
     let mut reader = BitReader::new(&data);
 
     // All read operations should fail gracefully
-    assert!(matches!(reader.read_bit(), Err(BitvueError::UnexpectedEof(_))));
-    assert!(matches!(reader.read_bits(8), Err(BitvueError::UnexpectedEof(_))));
-    assert!(matches!(reader.read_byte(), Err(BitvueError::UnexpectedEof(_))));
+    assert!(matches!(
+        reader.read_bit(),
+        Err(BitvueError::UnexpectedEof(_))
+    ));
+    assert!(matches!(
+        reader.read_bits(8),
+        Err(BitvueError::UnexpectedEof(_))
+    ));
+    assert!(matches!(
+        reader.read_byte(),
+        Err(BitvueError::UnexpectedEof(_))
+    ));
 }
 
 #[test]
@@ -34,7 +46,10 @@ fn test_single_bit_read() {
     assert!(reader.read_bit().unwrap());
 
     // Next read should fail
-    assert!(matches!(reader.read_bit(), Err(BitvueError::UnexpectedEof(_))));
+    assert!(matches!(
+        reader.read_bit(),
+        Err(BitvueError::UnexpectedEof(_))
+    ));
 }
 
 #[test]
@@ -196,10 +211,7 @@ fn test_exp_golomb_exceeds_32_leading_zeros() {
     let mut reader = BitReader::new(&data);
 
     // This should fail (more than 32 leading zeros)
-    assert!(matches!(
-        reader.read_ue(),
-        Err(BitvueError::Parse { .. })
-    ));
+    assert!(matches!(reader.read_ue(), Err(BitvueError::Parse { .. })));
 }
 
 #[test]
@@ -322,10 +334,7 @@ fn test_uvlc_exceeds_max_leading_zeros() {
     let mut reader = BitReader::new(&data);
 
     // Should fail
-    assert!(matches!(
-        reader.read_uvlc(),
-        Err(BitvueError::Parse { .. })
-    ));
+    assert!(matches!(reader.read_uvlc(), Err(BitvueError::Parse { .. })));
 }
 
 // ============================================================================
@@ -466,8 +475,14 @@ fn test_lsb_empty_slice() {
     let data = [];
     let mut reader = LsbBitReader::new(&data);
 
-    assert!(matches!(reader.read_bit(), Err(BitvueError::UnexpectedEof(_))));
-    assert!(matches!(reader.read_bits(8), Err(BitvueError::UnexpectedEof(_))));
+    assert!(matches!(
+        reader.read_bit(),
+        Err(BitvueError::UnexpectedEof(_))
+    ));
+    assert!(matches!(
+        reader.read_bits(8),
+        Err(BitvueError::UnexpectedEof(_))
+    ));
 }
 
 #[test]

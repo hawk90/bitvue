@@ -86,7 +86,7 @@ unsafe fn psnr_avx2(
         // when size is not a multiple of 32
         if offset + 32 > reference.len() || offset + 32 > distorted.len() {
             return Err(bitvue_core::BitvueError::InvalidData(
-                "SIMD buffer overflow: insufficient data for 32-byte read".to_string()
+                "SIMD buffer overflow: insufficient data for 32-byte read".to_string(),
             ));
         }
 
@@ -189,7 +189,7 @@ unsafe fn psnr_sse2(
         // when size is not a multiple of 16
         if offset + 16 > reference.len() || offset + 16 > distorted.len() {
             return Err(bitvue_core::BitvueError::InvalidData(
-                "SIMD buffer overflow: insufficient data for 16-byte read".to_string()
+                "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
             ));
         }
 
@@ -277,7 +277,7 @@ unsafe fn psnr_neon(
         // when size is not a multiple of 16
         if offset + 16 > reference.len() || offset + 16 > distorted.len() {
             return Err(bitvue_core::BitvueError::InvalidData(
-                "SIMD buffer overflow: insufficient data for 16-byte read".to_string()
+                "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
             ));
         }
 
@@ -294,8 +294,14 @@ unsafe fn psnr_neon(
         let dist_hi = vmovl_u8(vget_high_u8(dist_vec));
 
         // Signed subtraction to get (ref - dist)
-        let diff_lo = vsubq_s16(vreinterpretq_s16_u16(ref_lo), vreinterpretq_s16_u16(dist_lo));
-        let diff_hi = vsubq_s16(vreinterpretq_s16_u16(ref_hi), vreinterpretq_s16_u16(dist_hi));
+        let diff_lo = vsubq_s16(
+            vreinterpretq_s16_u16(ref_lo),
+            vreinterpretq_s16_u16(dist_lo),
+        );
+        let diff_hi = vsubq_s16(
+            vreinterpretq_s16_u16(ref_hi),
+            vreinterpretq_s16_u16(dist_hi),
+        );
 
         // Square the differences: (ref - dist)^2
         let sq_lo = vmull_s16(vget_low_s16(diff_lo), vget_low_s16(diff_lo));

@@ -42,9 +42,9 @@ fn validate_path(path: &str, allowed_paths: &[PathBuf]) -> Result<PathBuf> {
         .map_err(|e| anyhow::anyhow!("Invalid path: {}", e))?;
 
     // Check if path is within any allowed directory
-    let is_allowed = allowed_paths.iter().any(|allowed| {
-        canonical.starts_with(allowed)
-    });
+    let is_allowed = allowed_paths
+        .iter()
+        .any(|allowed| canonical.starts_with(allowed));
 
     if !is_allowed {
         return Err(anyhow::anyhow!(
@@ -60,8 +60,7 @@ impl AppState {
     fn new() -> Self {
         // Initialize with current directory as the only allowed path
         // This prevents access to sensitive files outside the project
-        let current_dir = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
         Self {
             core: Arc::new(Mutex::new(Core::new())),
@@ -627,7 +626,10 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
     }
 
     // Get file size using validated path
-    let file_size = validated_path.metadata().and_then(|m| Ok(m.len())).unwrap_or(0);
+    let file_size = validated_path
+        .metadata()
+        .and_then(|m| Ok(m.len()))
+        .unwrap_or(0);
 
     // Get file extension
     let ext = validated_path

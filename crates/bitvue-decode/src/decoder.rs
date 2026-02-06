@@ -401,11 +401,21 @@ impl Av1Decoder {
             // This is safe because U and V planes are independent
             let (u_result, v_result) = rayon::join(
                 || {
-                    let u_config = plane_utils::PlaneConfig::new(chroma_width, chroma_height, u_stride, bit_depth)?;
+                    let u_config = plane_utils::PlaneConfig::new(
+                        chroma_width,
+                        chroma_height,
+                        u_stride,
+                        bit_depth,
+                    )?;
                     plane_utils::extract_plane(&u_plane_ref, u_config)
                 },
                 || {
-                    let v_config = plane_utils::PlaneConfig::new(chroma_width, chroma_height, v_stride, bit_depth)?;
+                    let v_config = plane_utils::PlaneConfig::new(
+                        chroma_width,
+                        chroma_height,
+                        v_stride,
+                        bit_depth,
+                    )?;
                     plane_utils::extract_plane(&v_plane_ref, v_config)
                 },
             );
@@ -497,24 +507,22 @@ impl Av1Decoder {
             .canonicalize()
             .map_err(|e| DecodeError::Decode(format!("Invalid path: {}", e)))?;
 
-        let current_dir = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
         if !canonical.starts_with(&current_dir) {
             return Err(DecodeError::Decode(
-                "Path outside working directory not allowed".to_string()
+                "Path outside working directory not allowed".to_string(),
             ));
         }
 
         // Open file and wrap in BufReader for buffered I/O
-        let file = File::open(&canonical).map_err(|e| {
-            DecodeError::Decode(format!("Failed to open file: {}", e))
-        })?;
+        let file = File::open(&canonical)
+            .map_err(|e| DecodeError::Decode(format!("Failed to open file: {}", e)))?;
 
         // Security: Validate file size before reading to prevent DoS via memory exhaustion
-        let metadata = file.metadata().map_err(|e| {
-            DecodeError::Decode(format!("Failed to get file metadata: {}", e))
-        })?;
+        let metadata = file
+            .metadata()
+            .map_err(|e| DecodeError::Decode(format!("Failed to get file metadata: {}", e)))?;
         let file_size = metadata.len();
 
         if file_size > MAX_FILE_SIZE {
@@ -531,9 +539,9 @@ impl Av1Decoder {
 
         // Read entire file into memory (could be optimized further with true streaming)
         // TODO: Implement true streaming that decodes frame by frame without loading all data
-        reader.read_to_end(&mut data).map_err(|e| {
-            DecodeError::Decode(format!("Failed to read file: {}", e))
-        })?;
+        reader
+            .read_to_end(&mut data)
+            .map_err(|e| DecodeError::Decode(format!("Failed to read file: {}", e)))?;
 
         // Security: Validate file format using magic number detection
         let format = detect_format(&data);
@@ -900,8 +908,14 @@ mod tests {
 
         // Check first frame has valid dimensions (320x288 and 352x288 are common test resolutions)
         let first = &frames[0];
-        assert!(first.width > 0 && first.width <= 4096, "Width should be positive and reasonable");
-        assert!(first.height > 0 && first.height <= 4096, "Height should be positive and reasonable");
+        assert!(
+            first.width > 0 && first.width <= 4096,
+            "Width should be positive and reasonable"
+        );
+        assert!(
+            first.height > 0 && first.height <= 4096,
+            "Height should be positive and reasonable"
+        );
         assert_eq!(first.bit_depth, 8, "Bit depth should be 8");
     }
 }
