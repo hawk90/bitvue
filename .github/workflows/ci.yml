@@ -174,7 +174,9 @@ jobs:
         run: sudo apt-get install -y libdav1d-dev
 
       - name: Generate coverage report
-        run: cargo llvm-cov --workspace --all-features --html --output-dir coverage --codecov
+        run: |
+          cargo llvm-cov --workspace --all-features --output-dir coverage --codecov
+          cargo llvm-cov --workspace --all-features --html --output-dir coverage
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
