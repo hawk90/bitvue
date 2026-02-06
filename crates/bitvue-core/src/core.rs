@@ -176,8 +176,8 @@ impl Core {
                     offset_bytes: 0,
                     timestamp_ms: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as u64,
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0),
                     // Bitvue extensions
                     frame_index: None,
                     count: 1,

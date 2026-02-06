@@ -136,22 +136,36 @@ impl AvcFrameBuilder {
 
     /// Build the AvcFrame
     ///
-    /// # Panics
-    ///
-    /// Panics if required fields (frame_index, frame_type, offset, size, poc, frame_num, is_idr, is_ref) are not set.
-    pub fn build(self) -> AvcFrame {
-        AvcFrame {
-            frame_index: self.frame_index.expect("frame_index is required"),
-            frame_type: self.frame_type.expect("frame_type is required"),
+    /// Returns an error if required fields are not set.
+    pub fn build(self) -> Result<AvcFrame, String> {
+        Ok(AvcFrame {
+            frame_index: self.frame_index.ok_or_else(||
+                "frame_index is required".to_string()
+            )?,
+            frame_type: self.frame_type.ok_or_else(||
+                "frame_type is required".to_string()
+            )?,
             nal_data: self.nal_data.unwrap_or_default(),
-            offset: self.offset.expect("offset is required"),
-            size: self.size.expect("size is required"),
-            poc: self.poc.expect("poc is required"),
-            frame_num: self.frame_num.expect("frame_num is required"),
-            is_idr: self.is_idr.expect("is_idr is required"),
-            is_ref: self.is_ref.expect("is_ref is required"),
+            offset: self.offset.ok_or_else(||
+                "offset is required".to_string()
+            )?,
+            size: self.size.ok_or_else(||
+                "size is required".to_string()
+            )?,
+            poc: self.poc.ok_or_else(||
+                "poc is required".to_string()
+            )?,
+            frame_num: self.frame_num.ok_or_else(||
+                "frame_num is required".to_string()
+            )?,
+            is_idr: self.is_idr.ok_or_else(||
+                "is_idr is required".to_string()
+            )?,
+            is_ref: self.is_ref.ok_or_else(||
+                "is_ref is required".to_string()
+            )?,
             slice_header: self.slice_header,
-        }
+        })
     }
 }
 

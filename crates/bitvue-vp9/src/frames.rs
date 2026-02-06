@@ -125,21 +125,33 @@ impl Vp9FrameBuilder {
 
     /// Build the Vp9Frame
     ///
-    /// # Panics
-    ///
-    /// Panics if required fields (frame_index, frame_type, offset, size, show_frame, width, height) are not set.
-    pub fn build(self) -> Vp9Frame {
-        Vp9Frame {
-            frame_index: self.frame_index.expect("frame_index is required"),
-            frame_type: self.frame_type.expect("frame_type is required"),
+    /// Returns an error if required fields are not set.
+    pub fn build(self) -> Result<Vp9Frame, String> {
+        Ok(Vp9Frame {
+            frame_index: self.frame_index.ok_or_else(||
+                "frame_index is required".to_string()
+            )?,
+            frame_type: self.frame_type.ok_or_else(||
+                "frame_type is required".to_string()
+            )?,
             frame_data: self.frame_data.unwrap_or_default(),
-            offset: self.offset.expect("offset is required"),
-            size: self.size.expect("size is required"),
-            show_frame: self.show_frame.expect("show_frame is required"),
-            width: self.width.expect("width is required"),
-            height: self.height.expect("height is required"),
+            offset: self.offset.ok_or_else(||
+                "offset is required".to_string()
+            )?,
+            size: self.size.ok_or_else(||
+                "size is required".to_string()
+            )?,
+            show_frame: self.show_frame.ok_or_else(||
+                "show_frame is required".to_string()
+            )?,
+            width: self.width.ok_or_else(||
+                "width is required".to_string()
+            )?,
+            height: self.height.ok_or_else(||
+                "height is required".to_string()
+            )?,
             frame_header: self.frame_header,
-        }
+        })
     }
 }
 

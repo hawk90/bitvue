@@ -89,7 +89,8 @@ impl IvfFrame {
 ///     .timestamp(0)
 ///     .data(vec![0x00, 0x00, 0x01])
 ///     .temporal_id(0)
-///     .build();
+///     .build()
+///     .expect("required fields not set");
 /// ```
 #[derive(Debug, Default)]
 pub struct IvfFrameBuilder {
@@ -138,16 +139,20 @@ impl IvfFrameBuilder {
 
     /// Build the IvfFrame
     ///
-    /// # Panics
-    ///
-    /// Panics if required fields (size, timestamp, temporal_id) are not set.
-    pub fn build(self) -> IvfFrame {
-        IvfFrame {
-            size: self.size.expect("size is required"),
-            timestamp: self.timestamp.expect("timestamp is required"),
+    /// Returns an error if required fields (size, timestamp, temporal_id) are not set.
+    pub fn build(self) -> Result<IvfFrame, BitvueError> {
+        Ok(IvfFrame {
+            size: self.size.ok_or_else(|| BitvueError::InvalidData(
+                "IvfFrame: size is required".to_string()
+            ))?,
+            timestamp: self.timestamp.ok_or_else(|| BitvueError::InvalidData(
+                "IvfFrame: timestamp is required".to_string()
+            ))?,
             data: self.data.unwrap_or_default(),
-            temporal_id: self.temporal_id.expect("temporal_id is required"),
-        }
+            temporal_id: self.temporal_id.ok_or_else(|| BitvueError::InvalidData(
+                "IvfFrame: temporal_id is required".to_string()
+            ))?,
+        })
     }
 }
 

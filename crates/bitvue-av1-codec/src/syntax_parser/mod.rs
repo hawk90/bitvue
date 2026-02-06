@@ -118,7 +118,8 @@ impl SyntaxBuilder {
         bit_range: BitRange,
         value: String,
     ) -> SyntaxNodeId {
-        let parent = self.current_parent();
+        let parent = self.current_parent()
+            .unwrap_or(&self.model.root_id);
         let node_id = format!("{}.{}", parent, field_name);
         let depth = self.parent_stack.len();
 
@@ -148,7 +149,8 @@ impl SyntaxBuilder {
     ///
     /// The node ID of the container
     pub fn push_container(&mut self, name: &str, start_bit: u64) -> SyntaxNodeId {
-        let parent = self.current_parent();
+        let parent = self.current_parent()
+            .unwrap_or(&self.model.root_id);
         let node_id = format!("{}.{}", parent, name);
         let depth = self.parent_stack.len();
 
@@ -180,10 +182,10 @@ impl SyntaxBuilder {
     }
 
     /// Get the current parent node ID
-    fn current_parent(&self) -> &SyntaxNodeId {
-        self.parent_stack
-            .last()
-            .expect("Parent stack should never be empty")
+    ///
+    /// Returns None if parent stack is empty (should never happen in normal operation)
+    fn current_parent(&self) -> Option<&SyntaxNodeId> {
+        self.parent_stack.last()
     }
 
     /// Finalize and return the built syntax model
