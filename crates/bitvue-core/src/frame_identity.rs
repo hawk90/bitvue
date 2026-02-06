@@ -884,16 +884,55 @@ pub trait TimelineExtractor {
     /// # Returns
     ///
     /// TimelineBase with frames in display order
+    ///
+    /// Default implementation provides common extraction logic for all codecs.
+    /// Codecs can override if they need custom behavior.
     fn extract_timeline(
         &self,
         stream_id: String,
         index_map: &FrameIndexMap,
         frame_sizes: &[u64],
         frame_types: &[String],
-    ) -> TimelineBase;
+    ) -> TimelineBase {
+        let mut timeline = TimelineBase::new(stream_id);
+
+        for display_idx in 0..index_map.frame_count() {
+            let size = frame_sizes.get(display_idx).copied().unwrap_or(0);
+            let frame_type = frame_types
+                .get(display_idx)
+                .cloned()
+                .unwrap_or_else(|| self.default_frame_type().to_string());
+
+            let marker = self.determine_marker(&frame_type);
+            let mut frame = TimelineFrame::new(display_idx, size, frame_type).with_marker(marker);
+
+            // Add PTS/DTS if available
+            if let Some(pts) = index_map.get_pts(display_idx) {
+                frame = frame.with_pts(pts);
+            }
+            if let Some(dts) = index_map.get_dts(display_idx) {
+                frame = frame.with_dts(dts);
+            }
+
+            timeline.add_frame(frame);
+        }
+
+        timeline
+    }
 
     /// Get codec name
     fn codec_name(&self) -> &'static str;
+
+    /// Get default frame type string for unknown frames
+    ///
+    /// Different codecs use different conventions:
+    /// - AV1: "UNKNOWN"
+    /// - H.264, HEVC, VP9, VVC: "P" (Predicted)
+    ///
+    /// Codecs can override this method to use their convention.
+    fn default_frame_type(&self) -> &'static str {
+        "P"
+    }
 
     /// Determine frame marker from frame type string
     ///
@@ -919,42 +958,13 @@ pub trait TimelineExtractor {
 pub struct Av1TimelineExtractor;
 
 impl TimelineExtractor for Av1TimelineExtractor {
-    fn extract_timeline(
-        &self,
-        stream_id: String,
-        index_map: &FrameIndexMap,
-        frame_sizes: &[u64],
-        frame_types: &[String],
-    ) -> TimelineBase {
-        let mut timeline = TimelineBase::new(stream_id);
-
-        for display_idx in 0..index_map.frame_count() {
-            let size = frame_sizes.get(display_idx).copied().unwrap_or(0);
-            let frame_type = frame_types
-                .get(display_idx)
-                .cloned()
-                .unwrap_or_else(|| "UNKNOWN".to_string());
-
-            let marker = self.determine_marker(&frame_type);
-
-            let mut frame = TimelineFrame::new(display_idx, size, frame_type).with_marker(marker);
-
-            // Add PTS/DTS if available
-            if let Some(pts) = index_map.get_pts(display_idx) {
-                frame = frame.with_pts(pts);
-            }
-            if let Some(dts) = index_map.get_dts(display_idx) {
-                frame = frame.with_dts(dts);
-            }
-
-            timeline.add_frame(frame);
-        }
-
-        timeline
-    }
-
     fn codec_name(&self) -> &'static str {
         "AV1"
+    }
+
+    fn default_frame_type(&self) -> &'static str {
+        // AV1 uses "UNKNOWN" as the default frame type
+        "UNKNOWN"
     }
 
     fn determine_marker(&self, frame_type: &str) -> FrameMarker {
@@ -968,45 +978,13 @@ impl TimelineExtractor for Av1TimelineExtractor {
 }
 
 // ============================================================================
-// Codec Timeline Extractor Stubs
+// Codec Timeline Extractor Implementations
 // ============================================================================
 
-/// H.264 timeline extractor (stub)
+/// H.264 timeline extractor
 pub struct H264TimelineExtractor;
 
 impl TimelineExtractor for H264TimelineExtractor {
-    fn extract_timeline(
-        &self,
-        stream_id: String,
-        index_map: &FrameIndexMap,
-        frame_sizes: &[u64],
-        frame_types: &[String],
-    ) -> TimelineBase {
-        // Stub: Use default extraction logic with PTS/DTS support
-        let mut timeline = TimelineBase::new(stream_id);
-        for display_idx in 0..index_map.frame_count() {
-            let size = frame_sizes.get(display_idx).copied().unwrap_or(0);
-            let frame_type = frame_types
-                .get(display_idx)
-                .cloned()
-                .unwrap_or_else(|| "P".to_string());
-            let marker = self.determine_marker(&frame_type);
-
-            let mut frame = TimelineFrame::new(display_idx, size, frame_type).with_marker(marker);
-
-            // Add PTS/DTS if available
-            if let Some(pts) = index_map.get_pts(display_idx) {
-                frame = frame.with_pts(pts);
-            }
-            if let Some(dts) = index_map.get_dts(display_idx) {
-                frame = frame.with_dts(dts);
-            }
-
-            timeline.add_frame(frame);
-        }
-        timeline
-    }
-
     fn codec_name(&self) -> &'static str {
         "H.264"
     }
@@ -1021,135 +999,37 @@ impl TimelineExtractor for H264TimelineExtractor {
     }
 }
 
-/// HEVC timeline extractor (stub)
+/// HEVC timeline extractor
 pub struct HevcTimelineExtractor;
 
 impl TimelineExtractor for HevcTimelineExtractor {
-    fn extract_timeline(
-        &self,
-        stream_id: String,
-        index_map: &FrameIndexMap,
-        frame_sizes: &[u64],
-        frame_types: &[String],
-    ) -> TimelineBase {
-        // Stub: Use default extraction logic
-        let mut timeline = TimelineBase::new(stream_id);
-        for display_idx in 0..index_map.frame_count() {
-            let size = frame_sizes.get(display_idx).copied().unwrap_or(0);
-            let frame_type = frame_types
-                .get(display_idx)
-                .cloned()
-                .unwrap_or_else(|| "P".to_string());
-            let marker = self.determine_marker(&frame_type);
-            let frame = TimelineFrame::new(display_idx, size, frame_type).with_marker(marker);
-            timeline.add_frame(frame);
-        }
-        timeline
-    }
-
     fn codec_name(&self) -> &'static str {
         "HEVC"
     }
 }
 
-/// VP9 timeline extractor (stub)
+/// VP9 timeline extractor
 pub struct Vp9TimelineExtractor;
 
 impl TimelineExtractor for Vp9TimelineExtractor {
-    fn extract_timeline(
-        &self,
-        stream_id: String,
-        index_map: &FrameIndexMap,
-        frame_sizes: &[u64],
-        frame_types: &[String],
-    ) -> TimelineBase {
-        // Stub: Use default extraction logic
-        let mut timeline = TimelineBase::new(stream_id);
-        for display_idx in 0..index_map.frame_count() {
-            let size = frame_sizes.get(display_idx).copied().unwrap_or(0);
-            let frame_type = frame_types
-                .get(display_idx)
-                .cloned()
-                .unwrap_or_else(|| "P".to_string());
-            let marker = self.determine_marker(&frame_type);
-            let frame = TimelineFrame::new(display_idx, size, frame_type).with_marker(marker);
-            timeline.add_frame(frame);
-        }
-        timeline
-    }
-
     fn codec_name(&self) -> &'static str {
         "VP9"
     }
 }
 
-/// VVC timeline extractor (stub)
+/// VVC timeline extractor
 pub struct VvcTimelineExtractor;
 
 impl TimelineExtractor for VvcTimelineExtractor {
-    fn extract_timeline(
-        &self,
-        stream_id: String,
-        index_map: &FrameIndexMap,
-        frame_sizes: &[u64],
-        frame_types: &[String],
-    ) -> TimelineBase {
-        // Stub: Use default extraction logic with PTS/DTS support
-        let mut timeline = TimelineBase::new(stream_id);
-        for display_idx in 0..index_map.frame_count() {
-            let size = frame_sizes.get(display_idx).copied().unwrap_or(0);
-            let frame_type = frame_types
-                .get(display_idx)
-                .cloned()
-                .unwrap_or_else(|| "P".to_string());
-            let marker = self.determine_marker(&frame_type);
-
-            let mut frame = TimelineFrame::new(display_idx, size, frame_type).with_marker(marker);
-
-            // Add PTS/DTS if available
-            if let Some(pts) = index_map.get_pts(display_idx) {
-                frame = frame.with_pts(pts);
-            }
-            if let Some(dts) = index_map.get_dts(display_idx) {
-                frame = frame.with_dts(dts);
-            }
-
-            timeline.add_frame(frame);
-        }
-        timeline
-    }
-
     fn codec_name(&self) -> &'static str {
         "VVC"
     }
 }
 
-/// AVS3 timeline extractor (stub)
+/// AVS3 timeline extractor
 pub struct Avs3TimelineExtractor;
 
 impl TimelineExtractor for Avs3TimelineExtractor {
-    fn extract_timeline(
-        &self,
-        stream_id: String,
-        index_map: &FrameIndexMap,
-        frame_sizes: &[u64],
-        frame_types: &[String],
-    ) -> TimelineBase {
-        // Stub: Use default extraction logic
-        let mut timeline = TimelineBase::new(stream_id);
-        for display_idx in 0..index_map.frame_count() {
-            let size = frame_sizes.get(display_idx).copied().unwrap_or(0);
-            let frame_type = frame_types
-                .get(display_idx)
-                .cloned()
-                .unwrap_or_else(|| "P".to_string());
-            let marker = self.determine_marker(&frame_type);
-            let frame = TimelineFrame::new(display_idx, size, frame_type).with_marker(marker);
-            timeline.add_frame(frame);
-        }
-        timeline
-    }
-
     fn codec_name(&self) -> &'static str {
         "AVS3"
     }
