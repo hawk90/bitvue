@@ -1,0 +1,295 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+permissions:
+  contents: write
+
+jobs:
+  # Extract version from tag
+  version:
+    name: Extract Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${{ github.ref_name }}
+          VERSION=${TAG#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Check if this is a pre-release (contains alpha, beta, rc, etc.)
+          if [[ $VERSION =~ -(alpha|beta|rc|pre|dev) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Generate changelog
+  changelog:
+    name: Generate Changelog
+    needs: version
+    runs-on: ubuntu-latest
+    outputs:
+      changelog_path: ${{ steps.changelog.outputs.path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          CHANGELOG_FILE="CHANGELOG_${VERSION}.md"
+
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release, get all commits
+            COMMITS="Initial release"
+          else
+            # Get commits since previous tag
+            COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" | head -100)
+          fi
+
+          # Write changelog
+          cat > $CHANGELOG_FILE << EOF
+          # Bitvue $VERSION
+
+          ## 📦 Download
+
+          Choose your platform below:
+          - **Windows**: \`bitvue-${VERSION}-x64-setup.exe\` or \`bitvue-${VERSION}-x64-portable.zip\`
+          - **macOS (Apple Silicon)**: \`bitvue-${VERSION}-aarch64.dmg\`
+          - **macOS (Intel)**: \`bitvue-${VERSION}-x64.dmg\`
+          - **Linux**: \`bitvue-${VERSION}-x86_64.AppImage\`
+
+          ## 📝 What's Changed
+
+          $COMMITS
+
+          ## 🔗 Links
+
+          - [Full Changelog](https://github.com/hawk90/bitvue/compare/${PREV_TAG}...v${VERSION})
+          - [Documentation](https://github.com/hawk90/bitvue#readme-top)
+          - [Report Issues](https://github.com/hawk90/bitvue/issues)
+          EOF
+
+          echo "path=$CHANGELOG_FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: ${{ steps.changelog.outputs.path }}
+
+  # Build Tauri app for all platforms
+  build-tauri:
+    name: Build Tauri (${{ matrix.platform }})
+    needs: [version, changelog]
+    strategy:
+      matrix:
+        include:
+          - platform: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-x64-setup.exe
+            artifact_portable: bitvue-${{ needs.version.outputs.version }}-x64-portable.zip
+          - platform: macos-aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-aarch64.dmg
+          - platform: macos-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-x64.dmg
+          - platform: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-x86_64.AppImage
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install frontend dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build Tauri app
+        run: |
+          cd src-tauri
+          cargo tauri build --target ${{ matrix.target }}
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      - name: Prepare artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release
+          # Bundle setup exe
+          7z a -tzip ../../../../bitvue-portable.zip *.exe
+          cd bundle/windows
+          7z a -tzip ../../../../../bitvue-setup.exe *
+
+      - name: Upload Tauri artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/*.*
+            bitvue-setup.exe
+            bitvue-portable.zip
+
+  # Build Rust CLI binary
+  build-cli:
+    name: Build CLI (${{ matrix.target }})
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: bitvue-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross
+
+      - name: Build CLI binary
+        run: |
+          cargo build --release --target ${{ matrix.target }} --bin bitvue
+        env:
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Strip binary (non-Windows)
+        if: matrix.os != 'windows-latest'
+        run: |
+          strip target/${{ matrix.target }}/release/bitvue || true
+
+      - name: Bundle binary
+        run: |
+          cd target/${{ matrix.target }}/release
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a -tzip ../../../../../${{ matrix.artifact_name }}.zip bitvue.exe
+          else
+            7z a -tzip ../../../../../${{ matrix.artifact_name }}.zip bitvue
+          fi
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: ${{ matrix.artifact_name }}.zip
+
+  # Create GitHub release
+  release:
+    name: Create Release
+    needs: [version, changelog, build-tauri, build-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: .
+
+      - name: List artifacts
+        run: ls -laR artifacts/
+
+      - name: Create release
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          CHANGELOG_FILE="${{ needs.changelog.outputs.changelog_path }}"
+
+          gh release create v$VERSION \
+            --title "Bitvue $VERSION" \
+            --notes-file "$CHANGELOG_FILE" \
+            --prerelease=${{ needs.version.outputs.is_prerelease }} \
+            artifacts/tauri-*/*.* \
+            artifacts/cli-*/*.zip
+
+      - name: Update latest tag
+        if: needs.version.outputs.is_prerelease == 'false'
+        run: |
+          # Delete existing latest tag (if any)
+          git tag -d latest 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+
+          # Create new latest tag
+          git tag latest ${{ github.ref_name }}
+          git push origin latest

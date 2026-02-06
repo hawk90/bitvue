@@ -150,7 +150,55 @@ jobs:
       - run: cargo test --workspace --all-features --no-fail-fast
 
   # ================================
-  # 4. Frontend Full Checks (PR only)
+  # 4. Code Coverage (PR + main)
+  # ================================
+
+  coverage:
+    name: Code Coverage
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install dav1d
+        run: sudo apt-get install -y libdav1d-dev
+
+      - name: Generate coverage report
+        run: cargo llvm-cov --workspace --all-features --html --output-dir coverage --codecov
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/llvm-cov.json
+          flags: rust
+          name: rust-coverage
+          fail_ci_if_error: false
+
+      - name: Upload coverage HTML (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Coverage summary
+        run: |
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "📊 Coverage report generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov --workspace --all-features --summary 2>&1 || true
+
+  # ================================
+  # 5. Frontend Full Checks (PR only)
   # ================================
 
   frontend-fmt:
@@ -220,7 +268,7 @@ jobs:
         run: cd frontend && npm run test:run
 
   # ================================
-  # 5. Documentation (always runs if Rust changes)
+  # 6. Documentation (always runs if Rust changes)
   # ================================
 
   docs:

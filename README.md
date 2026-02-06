@@ -12,7 +12,7 @@
 
   <!-- Badges -->
   [![CI](https://img.shields.io/github/actions/workflow/status/hawk90/bitvue/ci.yml?branch=main&logo=github-actions&logoColor=white&label=build)](https://github.com/hawk90/bitvue/actions/workflows/ci.yml)
-  [![codecov](https://img.shields.io/codecov/c/github/hawk90/bitvue?logo=codecov&logoColor=F01F7A&token=XXXXX)](https://codecov.io/gh/hawk90/bitvue)
+  [![codecov](https://img.shields.io/codecov/c/github/hawk90/bitvue?logo=codecov&logoColor=F01F7A)](https://codecov.io/gh/hawk90/bitvue)
   [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
   <!-- Stats -->
