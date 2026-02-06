@@ -144,6 +144,20 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      - name: Install dav1d (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdav1d-dev \
+            pkg-config
+        env:
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+
+      - name: Install dav1d (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install dav1d pkg-config 2>/dev/null || true
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -171,6 +185,7 @@ jobs:
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
 
       - name: Prepare artifacts (Windows)
         if: matrix.os == 'windows-latest'
