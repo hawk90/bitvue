@@ -156,8 +156,13 @@ jobs:
           cd frontend
           npm ci
 
-      - name: Install cargo-tauri-cli
-        run: cargo install cargo-tauri-cli --version "^2.0"
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
 
       - name: Build Tauri app
         run: |
@@ -233,7 +238,10 @@ jobs:
 
       - name: Install dav1d (macOS)
         if: matrix.os == 'macos-latest'
-        run: brew install dav1d
+        run: brew install dav1d pkg-config 2>/dev/null || true
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Build CLI binary
         run: |
