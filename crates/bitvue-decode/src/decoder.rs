@@ -532,19 +532,18 @@ impl Av1Decoder {
             )));
         }
 
-        // Pre-allocate with capacity check
-        let mut data = Vec::with_capacity(file_size as usize);
+        // Use smaller buffer for streaming reads (16KB instead of loading entire file)
+        // This reduces memory usage and allows faster startup
+        let mut reader = BufReader::with_capacity(16 * 1024, file);
 
-        let mut reader = BufReader::with_capacity(4 * 1024 * 1024, file); // 4MB buffer
-
-        // Read entire file into memory (could be optimized further with true streaming)
-        // TODO: Implement true streaming that decodes frame by frame without loading all data
+        // Read just enough for format detection (first 32 bytes)
+        let mut header = [0u8; 32];
         reader
-            .read_to_end(&mut data)
-            .map_err(|e| DecodeError::Decode(format!("Failed to read file: {}", e)))?;
+            .read_exact(&mut header)
+            .map_err(|e| DecodeError::Decode(format!("Failed to read file header: {}", e)))?;
 
         // Security: Validate file format using magic number detection
-        let format = detect_format(&data);
+        let format = detect_format(&header);
         match format {
             VideoFormat::Ivf | VideoFormat::AnnexB => {
                 // Supported formats - proceed
@@ -562,7 +561,142 @@ impl Av1Decoder {
             }
         }
 
-        self.decode_all(&data)
+        // Decode frames in streaming fashion - read and process frame by frame
+        match format {
+            VideoFormat::Ivf => self.decode_ivf_streaming(&mut reader, file_size as usize),
+            VideoFormat::AnnexB => {
+                // For Annex B, we need to load all data (no frame boundaries)
+                // Fall back to original behavior for now
+                let mut data = Vec::with_capacity(file_size as usize);
+                data.extend_from_slice(&header);
+                reader
+                    .read_to_end(&mut data)
+                    .map_err(|e| DecodeError::Decode(format!("Failed to read file: {}", e)))?;
+                self.decode_all(&data)
+            }
+            _ => unreachable!(), // Already handled above
+        }
+    }
+
+    /// Decode IVF file using streaming I/O (reads frame-by-frame)
+    ///
+    /// This significantly reduces memory usage by keeping only one frame
+    /// in memory at a time instead of loading the entire file.
+    fn decode_ivf_streaming<R: std::io::Read + std::io::Seek>(
+        &mut self,
+        reader: &mut std::io::BufReader<R>,
+        file_size: usize,
+    ) -> Result<Vec<DecodedFrame>> {
+        use std::io::Read;
+        use std::io::{Seek, SeekFrom};
+
+        // Parse IVF header first (32 bytes)
+        let mut header_buf = [0u8; 32];
+
+        // Seek back to start to read header
+        let mut reader_ref = reader.get_mut();
+        reader_ref
+            .seek(SeekFrom::Start(0))
+            .map_err(|e| DecodeError::Decode(format!("Failed to seek: {}", e)))?;
+        reader_ref
+            .read_exact(&mut header_buf)
+            .map_err(|e| DecodeError::Decode(format!("Failed to read IVF header: {}", e)))?;
+
+        let (header_size, frame_count) = self.parse_ivf_header(&header_buf)?;
+        let estimated_frames = (frame_count as usize).min(MAX_FRAMES_PER_FILE);
+        let mut decoded_frames = Vec::with_capacity(estimated_frames);
+
+        let mut offset = header_size;
+        let mut frame_idx = 0i64;
+        let mut remaining = file_size.saturating_sub(header_size);
+
+        // Read and decode frames one at a time
+        while remaining > 0 && frame_idx < MAX_FRAMES_PER_FILE as i64 {
+            // Read frame header (12 bytes: size + timestamp)
+            let mut frame_header_buf = [0u8; 12];
+            let bytes_read = reader
+                .read(&mut frame_header_buf)
+                .map_err(|e| DecodeError::Decode(format!("Failed to read frame header: {}", e)))?;
+
+            if bytes_read < 12 {
+                // End of file or incomplete frame header
+                break;
+            }
+
+            let frame_size = u32::from_le_bytes([
+                frame_header_buf[0],
+                frame_header_buf[1],
+                frame_header_buf[2],
+                frame_header_buf[3],
+            ]) as usize;
+
+            if frame_size == 0 || frame_size > MAX_FRAME_SIZE {
+                break;
+            }
+
+            let timestamp = i64::from_le_bytes([
+                frame_header_buf[4],
+                frame_header_buf[5],
+                frame_header_buf[6],
+                frame_header_buf[7],
+                frame_header_buf[8],
+                frame_header_buf[9],
+                frame_header_buf[10],
+                frame_header_buf[11],
+            ]);
+
+            // Read frame data
+            let mut frame_data = vec![0u8; frame_size];
+            let mut bytes_read_total = 0;
+            while bytes_read_total < frame_size {
+                let n = reader
+                    .read(&mut frame_data[bytes_read_total..])
+                    .map_err(|e| DecodeError::Decode(format!("Failed to read frame data: {}", e)))?;
+                if n == 0 {
+                    break;
+                }
+                bytes_read_total += n;
+            }
+
+            if bytes_read_total < frame_size {
+                abseil::LOG!(
+                    WARNING,
+                    "Incomplete frame data at frame {}: expected {} bytes, got {}",
+                    frame_idx,
+                    frame_size,
+                    bytes_read_total
+                );
+                break;
+            }
+
+            // Decode this frame
+            if let Err(e) = self.send_data_owned(frame_data, timestamp) {
+                abseil::LOG!(
+                    WARNING,
+                    "Failed to send IVF frame {} (ts={}) to decoder: {}. Skipping frame.",
+                    frame_idx,
+                    timestamp,
+                    e
+                );
+            } else {
+                while let Ok(frame) = self.get_frame() {
+                    decoded_frames.push(frame);
+                }
+            }
+
+            remaining = remaining.saturating_sub(12 + frame_size);
+            frame_idx += 1;
+        }
+
+        self.drain_decoder_frames(&mut decoded_frames)?;
+
+        if decoded_frames.is_empty() {
+            return Err(DecodeError::Decode(
+                "Failed to decode any frames from IVF file".to_string(),
+            ));
+        }
+
+        Ok(decoded_frames)
     }
 
     /// Decode IVF container data
