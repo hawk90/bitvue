@@ -36,8 +36,17 @@ impl<'a> BitReader<'a> {
     }
 
     /// Check if more data is available.
+    ///
+    /// For RBSP (Raw Byte Sequence Payload) purposes, returns true when at a
+    /// byte boundary after reading all data (byte_offset == len && bit_offset == 0)
+    /// to allow checking for trailing bits.
     pub fn has_more_data(&self) -> bool {
-        self.inner.has_more()
+        let pos = self.inner.position() as usize;
+        let byte_offset = pos / 8;
+        let bit_offset = (pos % 8) as u8;
+
+        byte_offset < self.inner.remaining_data().len()
+            || (byte_offset == self.inner.remaining_data().len() && bit_offset == 0)
     }
 
     /// Get remaining bits.
