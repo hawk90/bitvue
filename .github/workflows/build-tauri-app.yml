@@ -256,7 +256,7 @@ jobs:
         with:
           path: artifacts
           pattern: bitvue.*
-          merge-multiple: false
+          merge-multiple: true
 
       - name: Show downloaded files
         run: ls -R artifacts
@@ -270,7 +270,4 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: false
-          files: |
-            artifacts/bitvue.app.tar.gz/*
-            artifacts/bitvue-x86_64.AppImage/*
-            artifacts/bitvue-x64-installer.msi.zip/*
+          files: artifacts/*
