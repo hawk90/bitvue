@@ -493,49 +493,63 @@ impl OverlayFactory for Av1OverlayFactory {
         &self,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+        let mut config = config.clone();
+        config.overlay_type = OverlayType::Grid;
+        Ok(Box::new(BaseOverlayRenderer::with_config(config)))
     }
 
     fn create_mv_overlay(
         &self,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+        let mut config = config.clone();
+        config.overlay_type = OverlayType::MotionVectors;
+        Ok(Box::new(BaseOverlayRenderer::with_config(config)))
     }
 
     fn create_qp_heatmap(
         &self,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+        let mut config = config.clone();
+        config.overlay_type = OverlayType::QpHeatmap;
+        Ok(Box::new(BaseOverlayRenderer::with_config(config)))
     }
 
     fn create_partition_grid(
         &self,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+        let mut config = config.clone();
+        config.overlay_type = OverlayType::Partition;
+        Ok(Box::new(BaseOverlayRenderer::with_config(config)))
     }
 
     fn create_reference_frames(
         &self,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+        let mut config = config.clone();
+        config.overlay_type = OverlayType::ReferenceFrames;
+        Ok(Box::new(BaseOverlayRenderer::with_config(config)))
     }
 
     fn create_mode_labels(
         &self,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+        let mut config = config.clone();
+        config.overlay_type = OverlayType::ModeLabels;
+        Ok(Box::new(BaseOverlayRenderer::with_config(config)))
     }
 
     fn create_bit_allocation(
         &self,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+        let mut config = config.clone();
+        config.overlay_type = OverlayType::BitAllocation;
+        Ok(Box::new(BaseOverlayRenderer::with_config(config)))
     }
 
     fn create_overlay(
@@ -543,12 +557,41 @@ impl OverlayFactory for Av1OverlayFactory {
         overlay_type: OverlayType,
         config: &OverlayConfig,
     ) -> OverlayFactoryResult<Box<dyn OverlayRenderer>> {
-        // Handle AV1-specific overlays
+        // Check if overlay type is supported
+        if !self.capabilities().supports(overlay_type) {
+            return Err(OverlayFactoryError::UnsupportedOverlayType { overlay_type });
+        }
+
+        // Route to appropriate creation method
         match overlay_type {
-            OverlayType::Cdef | OverlayType::SuperRes | OverlayType::FilmGrain => {
-                Ok(Box::new(BaseOverlayRenderer::with_config(config.clone())))
+            OverlayType::Grid => self.create_grid(config),
+            OverlayType::MotionVectors => self.create_mv_overlay(config),
+            OverlayType::QpHeatmap => self.create_qp_heatmap(config),
+            OverlayType::Partition => self.create_partition_grid(config),
+            OverlayType::ReferenceFrames => self.create_reference_frames(config),
+            OverlayType::ModeLabels => self.create_mode_labels(config),
+            OverlayType::BitAllocation => self.create_bit_allocation(config),
+            OverlayType::MvMagnitude => {
+                let mut config = config.clone();
+                config.overlay_type = OverlayType::MvMagnitude;
+                Ok(Box::new(BaseOverlayRenderer::with_config(config)))
             }
-            _ => self.create_overlay(overlay_type, config), // Use default implementation
+            OverlayType::Cdef => {
+                let mut config = config.clone();
+                config.overlay_type = OverlayType::Cdef;
+                Ok(Box::new(BaseOverlayRenderer::with_config(config)))
+            }
+            OverlayType::SuperRes => {
+                let mut config = config.clone();
+                config.overlay_type = OverlayType::SuperRes;
+                Ok(Box::new(BaseOverlayRenderer::with_config(config)))
+            }
+            OverlayType::FilmGrain => {
+                let mut config = config.clone();
+                config.overlay_type = OverlayType::FilmGrain;
+                Ok(Box::new(BaseOverlayRenderer::with_config(config)))
+            }
+            _ => Err(OverlayFactoryError::UnsupportedOverlayType { overlay_type }),
         }
     }
 }
