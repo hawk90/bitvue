@@ -124,6 +124,7 @@ jobs:
             artifact_name: bitvue-${{ needs.version.outputs.version }}-x86_64.AppImage
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -154,6 +155,9 @@ jobs:
         run: |
           cd frontend
           npm ci
+
+      - name: Install cargo-tauri-cli
+        run: cargo install cargo-tauri-cli --version "^2.0"
 
       - name: Build Tauri app
         run: |
@@ -205,6 +209,7 @@ jobs:
             artifact_name: bitvue-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.exe
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -221,6 +226,14 @@ jobs:
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
             libc6-dev-arm64-cross
+
+      - name: Install dav1d (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y libdav1d-dev
+
+      - name: Install dav1d (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install dav1d
 
       - name: Build CLI binary
         run: |
