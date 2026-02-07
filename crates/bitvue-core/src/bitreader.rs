@@ -549,8 +549,11 @@ pub trait Leb128Reader {
 
 impl Leb128Reader for BitReader<'_> {
     fn read_leb128(&mut self) -> Result<u64> {
+        const MAX_LEB128_BYTES: u8 = 10; // LEB128 should not exceed 10 bytes per spec
+
         let mut value: u64 = 0;
         let mut shift = 0;
+        let mut bytes_read = 0u8;
 
         loop {
             // Check for overflow BEFORE shifting to prevent undefined behavior
@@ -558,6 +561,14 @@ impl Leb128Reader for BitReader<'_> {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
                     message: "LEB128 overflow".to_string(),
+                });
+            }
+
+            // Check for CPU exhaustion attack - limit total bytes read
+            if bytes_read >= MAX_LEB128_BYTES {
+                return Err(BitvueError::Parse {
+                    offset: self.position(),
+                    message: format!("LEB128 exceeds {} bytes", MAX_LEB128_BYTES),
                 });
             }
 
@@ -569,15 +580,19 @@ impl Leb128Reader for BitReader<'_> {
             }
 
             shift += 7;
+            bytes_read += 1;
         }
 
         Ok(value)
     }
 
     fn read_leb128_i64(&mut self) -> Result<i64> {
+        const MAX_LEB128_BYTES: u8 = 10; // LEB128 should not exceed 10 bytes per spec
+
         let mut value: i64 = 0;
         let mut shift = 0;
         let mut byte: u64;
+        let mut bytes_read = 0u8;
 
         loop {
             // Check for overflow BEFORE shifting to prevent undefined behavior
@@ -585,6 +600,14 @@ impl Leb128Reader for BitReader<'_> {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
                     message: "LEB128 overflow".to_string(),
+                });
+            }
+
+            // Check for CPU exhaustion attack - limit total bytes read
+            if bytes_read >= MAX_LEB128_BYTES {
+                return Err(BitvueError::Parse {
+                    offset: self.position(),
+                    message: format!("LEB128 exceeds {} bytes", MAX_LEB128_BYTES),
                 });
             }
 
@@ -596,6 +619,7 @@ impl Leb128Reader for BitReader<'_> {
             }
 
             shift += 7;
+            bytes_read += 1;
         }
 
         // Sign extend

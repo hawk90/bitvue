@@ -101,6 +101,15 @@ fn read_element_size(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
 
 /// Read a string element
 fn read_string(cursor: &mut Cursor<&[u8]>, size: usize) -> Result<String, BitvueError> {
+    const MAX_STRING_SIZE: usize = 1_000_000; // 1MB max string to prevent DoS
+
+    if size > MAX_STRING_SIZE {
+        return Err(BitvueError::InvalidData(format!(
+            "String size {} exceeds maximum allowed {}",
+            size, MAX_STRING_SIZE
+        )));
+    }
+
     let mut buf = vec![0u8; size];
     cursor
         .read_exact(&mut buf)

@@ -215,8 +215,13 @@ fn extract_samples_with_validator<'a>(
     sorted_samples.sort_by_key(|(_, (offset, _))| *offset);
 
     for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
-        let offset = **offset_ptr as usize;
-        let size = **size_ptr as usize;
+        // Validate u64 to usize conversion to prevent truncation on 32-bit
+        let offset = usize::try_from(**offset_ptr).map_err(|_| BitvueError::InvalidData(
+            format!("Sample offset {} exceeds platform address space", **offset_ptr)
+        ))?;
+        let size = usize::try_from(**size_ptr).map_err(|_| BitvueError::InvalidData(
+            format!("Sample size {} exceeds platform address space", **size_ptr)
+        ))?;
 
         // Check for overflow in offset + size
         let end = match offset.checked_add(size) {
