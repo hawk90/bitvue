@@ -109,13 +109,16 @@ unsafe fn compute_window_stats_avx2(
     let mut sum_yy_acc = _mm256_setzero_si256();
     let mut sum_xy_acc = _mm256_setzero_si256();
 
-    for i in 0..chunks {
-        let offset = start + i * 32;
+    // OPTIMIZATION: Calculate safe iteration count once to avoid bounds checks in loop
+    let safe_len = reference.len().min(distorted.len());
+    let safe_chunks = if start >= safe_len {
+        0
+    } else {
+        ((safe_len - start) / 32).min(chunks)
+    };
 
-        // Bounds check
-        if offset + 32 > reference.len() || offset + 32 > distorted.len() {
-            break;
-        }
+    for i in 0..safe_chunks {
+        let offset = start + i * 32;
 
         // Load 32 bytes
         let x_vec = _mm256_loadu_si256(reference.as_ptr().add(offset) as *const __m256i);
@@ -245,13 +248,16 @@ unsafe fn compute_window_stats_sse2(
     let mut sum_yy_acc = _mm_setzero_si128();
     let mut sum_xy_acc = _mm_setzero_si128();
 
-    for i in 0..chunks {
-        let offset = start + i * 16;
+    // OPTIMIZATION: Calculate safe iteration count once to avoid bounds checks in loop
+    let safe_len = reference.len().min(distorted.len());
+    let safe_chunks = if start >= safe_len {
+        0
+    } else {
+        ((safe_len - start) / 16).min(chunks)
+    };
 
-        // Bounds check
-        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
-            break;
-        }
+    for i in 0..safe_chunks {
+        let offset = start + i * 16;
 
         // Load 16 bytes
         let x_vec = _mm_loadu_si128(reference.as_ptr().add(offset) as *const __m128i);
@@ -381,13 +387,16 @@ unsafe fn compute_window_stats_neon(
     let mut sum_yy_acc: uint32x4_t = std::mem::zeroed();
     let mut sum_xy_acc: uint32x4_t = std::mem::zeroed();
 
-    for i in 0..chunks {
-        let offset = start + i * 16;
+    // OPTIMIZATION: Calculate safe iteration count once to avoid bounds checks in loop
+    let safe_len = reference.len().min(distorted.len());
+    let safe_chunks = if start >= safe_len {
+        0
+    } else {
+        ((safe_len - start) / 16).min(chunks)
+    };
 
-        // Bounds check
-        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
-            break;
-        }
+    for i in 0..safe_chunks {
+        let offset = start + i * 16;
 
         // Load 16 bytes
         let x_vec = vld1q_u8(reference.as_ptr().add(offset));

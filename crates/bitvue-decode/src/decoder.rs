@@ -865,7 +865,10 @@ impl Av1Decoder {
 
     /// Collect decoded frames from the decoder
     fn collect_frames(&mut self) -> Result<Vec<DecodedFrame>> {
-        let mut frames = Vec::new();
+        // Pre-allocate with reasonable capacity to avoid initial reallocations
+        // Most videos have at least a few hundred frames, and Vec will grow if needed
+        const DEFAULT_FRAME_CAPACITY: usize = 1000;
+        let mut frames = Vec::with_capacity(DEFAULT_FRAME_CAPACITY);
         loop {
             match self.get_frame() {
                 Ok(frame) => frames.push(frame),
