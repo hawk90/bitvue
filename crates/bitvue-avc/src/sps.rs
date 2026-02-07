@@ -352,14 +352,40 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
     let mut seq_scaling_matrix_present_flag = false;
 
     if profile_idc.is_high_profile() || profile_idc == ProfileIdc::ScalableBaseline {
-        chroma_format_idc = ChromaFormat::from_u8(reader.read_ue()? as u8);
+        // SECURITY: Validate chroma format ID to prevent invalid enum value
+        let raw_chroma_format = reader.read_ue()?;
+        if raw_chroma_format > 3 {
+            return Err(AvcError::InvalidSliceHeader(format!(
+                "chroma_format_idc {} exceeds maximum 3",
+                raw_chroma_format
+            )));
+        }
+        chroma_format_idc = ChromaFormat::from_u8(raw_chroma_format as u8);
 
         if chroma_format_idc == ChromaFormat::Yuv444 {
             separate_colour_plane_flag = reader.read_flag()?;
         }
 
-        bit_depth_luma_minus8 = reader.read_ue()? as u8;
-        bit_depth_chroma_minus8 = reader.read_ue()? as u8;
+        // SECURITY: Validate bit depth to prevent unreasonable values
+        const MAX_BIT_DEPTH_MINUS8: u32 = 6; // Max 14-bit (8+6)
+        let raw_bit_depth_luma = reader.read_ue()?;
+        if raw_bit_depth_luma > MAX_BIT_DEPTH_MINUS8 {
+            return Err(AvcError::InvalidSliceHeader(format!(
+                "bit_depth_luma_minus8 {} exceeds maximum {}",
+                raw_bit_depth_luma, MAX_BIT_DEPTH_MINUS8
+            )));
+        }
+        bit_depth_luma_minus8 = raw_bit_depth_luma as u8;
+
+        let raw_bit_depth_chroma = reader.read_ue()?;
+        if raw_bit_depth_chroma > MAX_BIT_DEPTH_MINUS8 {
+            return Err(AvcError::InvalidSliceHeader(format!(
+                "bit_depth_chroma_minus8 {} exceeds maximum {}",
+                raw_bit_depth_chroma, MAX_BIT_DEPTH_MINUS8
+            )));
+        }
+        bit_depth_chroma_minus8 = raw_bit_depth_chroma as u8;
+
         qpprime_y_zero_transform_bypass_flag = reader.read_flag()?;
         seq_scaling_matrix_present_flag = reader.read_flag()?;
 
@@ -397,7 +423,17 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
             delta_pic_order_always_zero_flag = reader.read_flag()?;
             offset_for_non_ref_pic = reader.read_se()?;
             offset_for_top_to_bottom_field = reader.read_se()?;
-            num_ref_frames_in_pic_order_cnt_cycle = reader.read_ue()? as u8;
+
+            // SECURITY: Validate ref frame cycle count to prevent unbounded loop
+            const MAX_REF_FRAMES_IN_CYCLE: u32 = 255;
+            let raw_ref_cycle_count = reader.read_ue()?;
+            if raw_ref_cycle_count > MAX_REF_FRAMES_IN_CYCLE {
+                return Err(AvcError::InvalidSliceHeader(format!(
+                    "num_ref_frames_in_pic_order_cnt_cycle {} exceeds maximum {}",
+                    raw_ref_cycle_count, MAX_REF_FRAMES_IN_CYCLE
+                )));
+            }
+            num_ref_frames_in_pic_order_cnt_cycle = raw_ref_cycle_count as u8;
 
             for _ in 0..num_ref_frames_in_pic_order_cnt_cycle {
                 offset_for_ref_frame.push(reader.read_se()?);
@@ -406,10 +442,35 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
         _ => {}
     }
 
+    // SECURITY: Validate max_num_ref_frames to prevent excessive allocation
+    const MAX_NUM_REF_FRAMES: u32 = 32;
     let max_num_ref_frames = reader.read_ue()?;
+    if max_num_ref_frames > MAX_NUM_REF_FRAMES {
+        return Err(AvcError::InvalidSliceHeader(format!(
+            "max_num_ref_frames {} exceeds maximum {}",
+            max_num_ref_frames, MAX_NUM_REF_FRAMES
+        )));
+    }
+
     let gaps_in_frame_num_value_allowed_flag = reader.read_flag()?;
+
+    // SECURITY: Validate picture dimensions to prevent excessive allocation
+    const MAX_PIC_DIMENSION_IN_MBS: u32 = 16384; // Max 16K in macroblocks
     let pic_width_in_mbs_minus1 = reader.read_ue()?;
+    if pic_width_in_mbs_minus1 >= MAX_PIC_DIMENSION_IN_MBS {
+        return Err(AvcError::InvalidSliceHeader(format!(
+            "pic_width_in_mbs_minus1 {} exceeds maximum {}",
+            pic_width_in_mbs_minus1, MAX_PIC_DIMENSION_IN_MBS
+        )));
+    }
     let pic_height_in_map_units_minus1 = reader.read_ue()?;
+    if pic_height_in_map_units_minus1 >= MAX_PIC_DIMENSION_IN_MBS {
+        return Err(AvcError::InvalidSliceHeader(format!(
+            "pic_height_in_map_units_minus1 {} exceeds maximum {}",
+            pic_height_in_map_units_minus1, MAX_PIC_DIMENSION_IN_MBS
+        )));
+    }
+
     let frame_mbs_only_flag = reader.read_flag()?;
 
     let mut mb_adaptive_frame_field_flag = false;

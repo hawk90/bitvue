@@ -188,8 +188,14 @@ pub fn parse_picture_header(data: &[u8]) -> Result<PictureHeader> {
     }
 
     // Skip extra_bit_picture data
+    // SECURITY: Limit iterations to prevent DoS via malicious files
+    const MAX_EXTRA_INFORMATION_COUNT: u32 = 1000;
     let mut extra_information_count = 0;
-    while reader.has_more_data() && reader.read_flag()? {
+
+    while extra_information_count < MAX_EXTRA_INFORMATION_COUNT
+        && reader.has_more_data()
+        && reader.read_flag()?
+    {
         let _extra_information_picture = reader.read_bits(8)?;
         extra_information_count += 1;
     }

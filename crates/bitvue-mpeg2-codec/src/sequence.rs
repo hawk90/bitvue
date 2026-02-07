@@ -1,7 +1,7 @@
 //! MPEG-2 Video sequence header and extension parsing.
 
+use crate::error::{Mpeg2Error, Result};
 use crate::bitreader::BitReader;
-use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
 /// Chroma format.
@@ -148,8 +148,27 @@ impl SequenceExtension {
 pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
     let mut reader = BitReader::new(data);
 
+    // SECURITY: Validate dimensions to prevent excessive allocation
+    // MPEG-2 spec uses 12-bit fields for dimensions (max 4095)
+    const MAX_MPEG2_DIMENSION: u16 = 4095;
+    const MIN_MPEG2_DIMENSION: u16 = 1;
+
     let horizontal_size_value = reader.read_bits(12)? as u16;
+    if horizontal_size_value < MIN_MPEG2_DIMENSION || horizontal_size_value > MAX_MPEG2_DIMENSION {
+        return Err(Mpeg2Error::InvalidSequenceHeader(format!(
+            "horizontal_size_value {} must be between {} and {}",
+            horizontal_size_value, MIN_MPEG2_DIMENSION, MAX_MPEG2_DIMENSION
+        )));
+    }
+
     let vertical_size_value = reader.read_bits(12)? as u16;
+    if vertical_size_value < MIN_MPEG2_DIMENSION || vertical_size_value > MAX_MPEG2_DIMENSION {
+        return Err(Mpeg2Error::InvalidSequenceHeader(format!(
+            "vertical_size_value {} must be between {} and {}",
+            vertical_size_value, MIN_MPEG2_DIMENSION, MAX_MPEG2_DIMENSION
+        )));
+    }
+
     let aspect_ratio_information = reader.read_bits(4)? as u8;
     let frame_rate_code = reader.read_bits(4)? as u8;
     let bit_rate_value = reader.read_bits(18)?;

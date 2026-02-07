@@ -69,8 +69,11 @@ pub fn parse_slice_header(data: &[u8]) -> Result<SliceHeader> {
     }
 
     // Skip extra_bit_slice data
+    // SECURITY: Limit iterations to prevent DoS via malicious files
+    const MAX_SLICE_EXTRA_COUNT: u32 = 1000;
     let mut extra_information_count = 0;
-    while reader.has_more_data() {
+
+    while extra_information_count < MAX_SLICE_EXTRA_COUNT && reader.has_more_data() {
         if let Ok(extra_bit) = reader.read_flag() {
             if extra_bit {
                 let _ = reader.read_bits(8)?;
