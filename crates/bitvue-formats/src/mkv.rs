@@ -600,25 +600,28 @@ mod tests {
         assert_eq!(read_vint(&mut cursor).unwrap(), 1);
 
         // 5-byte VINT: 0x08 0x00 0x00 0x00 0x01 = marker + value 1
+        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x08, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+        assert!(read_vint(&mut cursor).is_err());
 
         // 6-byte VINT: 0x04 0x00 0x00 0x00 0x00 0x01 = marker + value 1
+        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x04, 0x00, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+        assert!(read_vint(&mut cursor).is_err());
 
         // 7-byte VINT: 0x02 0x00 0x00 0x00 0x00 0x00 0x01 = marker + value 1
+        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+        assert!(read_vint(&mut cursor).is_err());
 
         // 8-byte VINT: 0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x01 = marker + value 1
-        // This is VALID per EBML spec - marker at bit position 0
+        // SECURITY: VINTs longer than 4 bytes are rejected (DoS prevention)
         let data = [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
         let mut cursor = Cursor::new(&data[..]);
-        assert_eq!(read_vint(&mut cursor).unwrap(), 1);
+        assert!(read_vint(&mut cursor).is_err());
     }
 
     #[test]
