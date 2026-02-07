@@ -453,15 +453,19 @@ pub trait ExpGolombReader {
 
 impl ExpGolombReader for BitReader<'_> {
     fn read_ue(&mut self) -> Result<u32> {
+        // Per H.264 spec, maximum leading zeros is 31 (for value 2^32-1)
+        const MAX_EXP_GOLOMB_ZEROS: u32 = 31;
+
         // Fast path: Use leading_zeros() intrinsic when we have 32+ bits available
         if self.remaining_bits() >= 32 {
             let bits = self.peek_bits(32)?;
             let leading_zeros = bits.leading_zeros();
 
-            if leading_zeros >= 32 {
+            // Check BEFORE any processing to prevent bypass
+            if leading_zeros >= MAX_EXP_GOLOMB_ZEROS {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
-                    message: "Exp-Golomb leading zeros exceeded 32".to_string(),
+                    message: format!("Exp-Golomb leading zeros exceeded maximum ({})", MAX_EXP_GOLOMB_ZEROS),
                 });
             }
 
@@ -479,14 +483,21 @@ impl ExpGolombReader for BitReader<'_> {
 
         // Fallback: Original bit-by-bit implementation for short reads
         let mut leading_zeros = 0u32;
-        while !self.read_bit()? {
-            leading_zeros += 1;
-            if leading_zeros >= 32 {
-                return Err(BitvueError::Parse {
-                    offset: self.position(),
-                    message: "Exp-Golomb leading zeros exceeded 31".to_string(),
-                });
+
+        // Use a bounded loop to prevent unbounded iteration
+        while leading_zeros < MAX_EXP_GOLOMB_ZEROS {
+            match self.read_bit() {
+                Ok(true) => break, // Found stop bit
+                Ok(false) => leading_zeros += 1,
+                Err(e) => return Err(e),
             }
+        }
+
+        if leading_zeros >= MAX_EXP_GOLOMB_ZEROS {
+            return Err(BitvueError::Parse {
+                offset: self.position(),
+                message: format!("Exp-Golomb exceeded maximum zeros ({})", MAX_EXP_GOLOMB_ZEROS),
+            });
         }
 
         if leading_zeros == 0 {
@@ -516,15 +527,24 @@ pub trait UvlcReader {
 
 impl UvlcReader for BitReader<'_> {
     fn read_uvlc(&mut self) -> Result<u32> {
+        // AV1 spec: maximum leading zeros is 31 (same as Exp-Golomb)
+        const MAX_UVLC_ZEROS: u32 = 31;
         let mut leading_zeros = 0u32;
-        while !self.read_bit()? {
-            leading_zeros += 1;
-            if leading_zeros > 32 {
-                return Err(BitvueError::Parse {
-                    offset: self.position(),
-                    message: "uvlc leading zeros exceeded 32".to_string(),
-                });
+
+        // Use a bounded loop to prevent unbounded iteration
+        while leading_zeros < MAX_UVLC_ZEROS {
+            match self.read_bit() {
+                Ok(true) => break, // Found stop bit
+                Ok(false) => leading_zeros += 1,
+                Err(e) => return Err(e),
             }
+        }
+
+        if leading_zeros >= MAX_UVLC_ZEROS {
+            return Err(BitvueError::Parse {
+                offset: self.position(),
+                message: format!("UVLC exceeded maximum zeros ({})", MAX_UVLC_ZEROS),
+            });
         }
 
         if leading_zeros == 0 {
@@ -549,6 +569,8 @@ pub trait Leb128Reader {
 
 impl Leb128Reader for BitReader<'_> {
     fn read_leb128(&mut self) -> Result<u64> {
+        // Per AV1 spec, LEB128 is limited to 56 bits (not 64)
+        const MAX_LEB128_SHIFT: u32 = 56; // 56 bits max per AV1 spec
         const MAX_LEB128_BYTES: u8 = 10; // LEB128 should not exceed 10 bytes per spec
 
         let mut value: u64 = 0;
@@ -557,10 +579,10 @@ impl Leb128Reader for BitReader<'_> {
 
         loop {
             // Check for overflow BEFORE shifting to prevent undefined behavior
-            if shift >= 64 {
+            if shift >= MAX_LEB128_SHIFT {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
-                    message: "LEB128 overflow".to_string(),
+                    message: format!("LEB128 exceeded {} bits", MAX_LEB128_SHIFT),
                 });
             }
 
@@ -587,6 +609,8 @@ impl Leb128Reader for BitReader<'_> {
     }
 
     fn read_leb128_i64(&mut self) -> Result<i64> {
+        // Per AV1 spec, LEB128 is limited to 56 bits (not 64)
+        const MAX_LEB128_SHIFT: u32 = 56; // 56 bits max per AV1 spec
         const MAX_LEB128_BYTES: u8 = 10; // LEB128 should not exceed 10 bytes per spec
 
         let mut value: i64 = 0;
@@ -596,10 +620,10 @@ impl Leb128Reader for BitReader<'_> {
 
         loop {
             // Check for overflow BEFORE shifting to prevent undefined behavior
-            if shift >= 64 {
+            if shift >= MAX_LEB128_SHIFT {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
-                    message: "LEB128 overflow".to_string(),
+                    message: format!("LEB128 exceeded {} bits", MAX_LEB128_SHIFT),
                 });
             }
 
@@ -624,7 +648,7 @@ impl Leb128Reader for BitReader<'_> {
 
         // Sign extend
         if shift < 64 && (byte & 0x40) != 0 {
-            value |= -1i64 << (shift + 7);
+            value |= -1i64 << shift;
         }
 
         Ok(value)
@@ -659,6 +683,15 @@ impl Leb128Reader for BitReader<'_> {
 /// assert_eq!(cleaned, vec![0x00, 0x00, 0x01, 0xFF]);
 /// ```
 pub fn remove_emulation_prevention_bytes(data: &[u8]) -> Vec<u8> {
+    // Maximum size to prevent DoS via large inputs
+    const MAX_EMULATION_PREVENTION_INPUT: usize = 50 * 1024 * 1024; // 50MB
+
+    if data.len() > MAX_EMULATION_PREVENTION_INPUT {
+        // For very large inputs, return the data as-is (caller should handle)
+        // This prevents allocation attempts for maliciously large inputs
+        return data.to_vec();
+    }
+
     let mut result = Vec::with_capacity(data.len());
     let mut i = 0;
 

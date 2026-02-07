@@ -42,7 +42,12 @@ mod element_id {
 /// - 0x81 = marker at bit 7, data = 0x01 → 1-byte VINT with value 1
 /// - 0x40 = marker at bit 6, data = 0x00 → 2-byte VINT
 /// - 0x01 = marker at bit 0, data = 0x00 → 8-byte VINT (valid per EBML spec)
+///
+/// Security: Most MKV elements use 1-4 byte VINTs; we limit to 4 bytes to prevent DoS
 fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
+    // Most MKV elements use 1-4 byte VINTs; limit to prevent DoS attacks
+    const MAX_VINT_LENGTH: usize = 4;
+
     let mut first_byte = [0u8; 1];
     cursor
         .read_exact(&mut first_byte)
@@ -66,6 +71,14 @@ fn read_vint(cursor: &mut Cursor<&[u8]>) -> Result<u64, BitvueError> {
         return Err(BitvueError::InvalidData(
             "Invalid VINT: no marker bit found (all zeros)".to_string(),
         ));
+    }
+
+    // Enforce reasonable maximum to prevent DoS via malicious 8-byte VINTs
+    if length > MAX_VINT_LENGTH {
+        return Err(BitvueError::InvalidData(format!(
+            "VINT length {} exceeds maximum allowed {}",
+            length, MAX_VINT_LENGTH
+        )));
     }
 
     // Extract value (remove length marker)

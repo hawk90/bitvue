@@ -763,8 +763,13 @@ fn parse_stts(
         let sample_count = read_u32(cursor)?;
         let sample_delta = read_u32(cursor)?;
 
-        // Check if total would exceed maximum
-        total_samples = total_samples.saturating_add(sample_count as usize);
+        // Use checked arithmetic to prevent overflow/wraparound bypass
+        total_samples = total_samples
+            .checked_add(sample_count as usize)
+            .ok_or_else(|| BitvueError::InvalidData(
+                "Sample count overflow - malicious MP4 file".to_string(),
+            ))?;
+
         if total_samples > MAX_TOTAL_SAMPLES {
             return Err(BitvueError::InvalidData(format!(
                 "Total sample count {} exceeds maximum allowed {}",
