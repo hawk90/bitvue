@@ -342,29 +342,48 @@ fn expand_cu_to_blocks(
     mv_l1: &mut Vec<CoreMV>,
     modes: &mut Vec<BlockMode>,
 ) {
-    let blocks_per_ctu = (ctu.size as u32 / block_size) * (ctu.size as u32 / block_size);
+    // Validate inputs to prevent division by zero and overflow
+    if block_size == 0 {
+        abseil::vlog!(1, "Block size cannot be zero, skipping CTU");
+        return;
+    }
+    if ctu.size == 0 {
+        abseil::vlog!(1, "CTU size cannot be zero, skipping CTU");
+        return;
+    }
+
+    // Calculate blocks per CTU with overflow protection
+    let blocks_per_dimension = (ctu.size as u32) / block_size;
+    let blocks_per_ctu = blocks_per_dimension
+        .checked_mul(blocks_per_dimension)
+        .unwrap_or(u32::MAX);
 
     // Pre-calculate total blocks needed to avoid reallocations
-    // Sum up blocks from all coding units in this CTU
+    // Sum up blocks from all coding units in this CTU with overflow protection
     let total_blocks: usize = ctu
         .coding_units
         .iter()
         .map(|cu| {
             let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
-            (blocks_in_cu * blocks_in_cu) as usize
+            // Use checked_mul to prevent overflow
+            blocks_in_cu
+                .checked_mul(blocks_in_cu)
+                .unwrap_or(u32::MAX) as usize
         })
         .sum();
 
-    // Pre-allocate exact capacity needed (avoid multiple reallocations)
-    let current_len = mv_l0.len();
-    let additional_capacity = total_blocks;
-    mv_l0.reserve(additional_capacity.saturating_sub(mv_l0.len() - current_len));
-    mv_l1.reserve(additional_capacity.saturating_sub(mv_l1.len() - current_len));
-    modes.reserve(additional_capacity.saturating_sub(modes.len() - current_len));
+    // Pre-allocate capacity needed
+    // Vec's reserve() already tracks internal capacity and only allocates more if needed
+    mv_l0.reserve(total_blocks);
+    mv_l1.reserve(total_blocks);
+    modes.reserve(total_blocks);
 
     for cu in &ctu.coding_units {
         let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
-        let cu_blocks = blocks_in_cu * blocks_in_cu;
+        // Use checked_mul to prevent overflow
+        let cu_blocks = blocks_in_cu
+            .checked_mul(blocks_in_cu)
+            .unwrap_or(u32::MAX) as usize;
 
         for _ in 0..cu_blocks {
             match cu.pred_mode {

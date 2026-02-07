@@ -397,6 +397,18 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
                 j += 1;
             }
 
+            // Validate NAL unit range before adding
+            // Defense in depth: nal_start should be < nal_end <= data.len()
+            if nal_start >= data.len() || nal_end > data.len() || nal_end <= nal_start {
+                abseil::vlog!(
+                    1,
+                    "Invalid NAL unit range: start={}, end={}, data_len={}",
+                    nal_start, nal_end, data.len()
+                );
+                i += 1;
+                continue;
+            }
+
             units.push((nal_start, nal_end));
             i = nal_start + start_code_len;
         } else {
