@@ -588,13 +588,13 @@ impl Av1Decoder {
         file_size: usize,
     ) -> Result<Vec<DecodedFrame>> {
         use std::io::Read;
-        use std::io::{Seek, SeekFrom};
+        use std::io::SeekFrom;
 
         // Parse IVF header first (32 bytes)
         let mut header_buf = [0u8; 32];
 
         // Seek back to start to read header
-        let mut reader_ref = reader.get_mut();
+        let reader_ref = reader.get_mut();
         reader_ref
             .seek(SeekFrom::Start(0))
             .map_err(|e| DecodeError::Decode(format!("Failed to seek: {}", e)))?;
@@ -605,8 +605,6 @@ impl Av1Decoder {
         let (header_size, frame_count) = self.parse_ivf_header(&header_buf)?;
         let estimated_frames = (frame_count as usize).min(MAX_FRAMES_PER_FILE);
         let mut decoded_frames = Vec::with_capacity(estimated_frames);
-
-        let mut offset = header_size;
         let mut frame_idx = 0i64;
         let mut remaining = file_size.saturating_sub(header_size);
 
