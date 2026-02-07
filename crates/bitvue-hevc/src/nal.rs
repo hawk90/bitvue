@@ -354,7 +354,13 @@ pub fn parse_nal_header(data: &[u8]) -> Result<NalUnitHeader> {
 
 /// Find NAL unit start codes in data.
 /// Returns offsets of each NAL unit (after the start code).
+///
+/// Security: Limits scan distance to prevent DoS via malformed files.
 pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
+    // Maximum scan distance to prevent O(n²) DoS attacks
+    // Most video files have NAL units every few KB to few MB
+    const MAX_SCAN_DISTANCE: usize = 100 * 1024 * 1024; // 100MB
+
     let mut units = Vec::new();
     let mut i = 0;
 
@@ -374,12 +380,15 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
                 };
 
             // Find the end of this NAL unit (next start code or end of data)
-            let mut nal_end = data.len();
+            // Limit scan to prevent DoS via files with no subsequent start codes
+            let max_scan = (nal_start + MAX_SCAN_DISTANCE).min(data.len());
+            let mut nal_end = max_scan; // Default to max scan distance if no next NAL found
             let mut j = nal_start;
-            while j + 2 < data.len() {
+
+            while j + 2 < max_scan {
                 if data[j] == 0x00 && data[j + 1] == 0x00 {
-                    if (j + 2 < data.len() && data[j + 2] == 0x01)
-                        || (j + 3 < data.len() && data[j + 2] == 0x00 && data[j + 3] == 0x01)
+                    if (j + 2 < max_scan && data[j + 2] == 0x01)
+                        || (j + 3 < max_scan && data[j + 2] == 0x00 && data[j + 3] == 0x01)
                     {
                         nal_end = j;
                         break;

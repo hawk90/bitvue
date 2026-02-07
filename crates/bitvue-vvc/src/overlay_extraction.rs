@@ -344,6 +344,24 @@ fn expand_cu_to_blocks(
 ) {
     let blocks_per_ctu = (ctu.size as u32 / block_size) * (ctu.size as u32 / block_size);
 
+    // Pre-calculate total blocks needed to avoid reallocations
+    // Sum up blocks from all coding units in this CTU
+    let total_blocks: usize = ctu
+        .coding_units
+        .iter()
+        .map(|cu| {
+            let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
+            (blocks_in_cu * blocks_in_cu) as usize
+        })
+        .sum();
+
+    // Pre-allocate exact capacity needed (avoid multiple reallocations)
+    let current_len = mv_l0.len();
+    let additional_capacity = total_blocks;
+    mv_l0.reserve(additional_capacity.saturating_sub(mv_l0.len() - current_len));
+    mv_l1.reserve(additional_capacity.saturating_sub(mv_l1.len() - current_len));
+    modes.reserve(additional_capacity.saturating_sub(modes.len() - current_len));
+
     for cu in &ctu.coding_units {
         let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
         let cu_blocks = blocks_in_cu * blocks_in_cu;

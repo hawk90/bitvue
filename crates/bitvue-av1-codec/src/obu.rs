@@ -205,12 +205,35 @@ pub fn parse_obu_header(reader: &mut BitReader) -> Result<ObuHeader> {
     let mut header_size = 1usize;
 
     if has_extension {
-        // temporal_id (3 bits)
+        // temporal_id (3 bits) - valid range is 0-7 per AV1 spec
         temporal_id = reader.read_bits(3)? as u8;
-        // spatial_id (2 bits)
+        // Validate temporal_id is within 3-bit range
+        if temporal_id > 7 {
+            return Err(BitvueError::Parse {
+                offset: reader.position(),
+                message: format!("Invalid temporal_id: {} (must be 0-7)", temporal_id),
+            });
+        }
+
+        // spatial_id (2 bits) - valid range is 0-3 per AV1 spec
         spatial_id = reader.read_bits(2)? as u8;
-        // extension_header_reserved_3bits (3 bits)
-        let _ext_reserved = reader.read_bits(3)?;
+        // Validate spatial_id is within 2-bit range
+        if spatial_id > 3 {
+            return Err(BitvueError::Parse {
+                offset: reader.position(),
+                message: format!("Invalid spatial_id: {} (must be 0-3)", spatial_id),
+            });
+        }
+
+        // extension_header_reserved_3bits (3 bits) - should be 0 per spec
+        let ext_reserved = reader.read_bits(3)?;
+        if ext_reserved != 0 {
+            return Err(BitvueError::Parse {
+                offset: reader.position(),
+                message: format!("Invalid extension_header_reserved_3bits: {} (must be 0)", ext_reserved),
+            });
+        }
+
         header_size = 2;
     }
 
