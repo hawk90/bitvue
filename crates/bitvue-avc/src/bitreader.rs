@@ -156,6 +156,12 @@ impl<'a> BitReader<'a> {
 
         // Same byte - check for stop bit
         let remaining = 8 - current_bit_in_byte;
+
+        // If remaining is 0, we're at byte boundary with no bits left
+        if remaining == 0 {
+            return false;
+        }
+
         let mask = (1u8 << remaining) - 1;
         let trailing = data[last_byte_idx] & mask;
 

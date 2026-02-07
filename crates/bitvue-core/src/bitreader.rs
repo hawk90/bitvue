@@ -270,6 +270,19 @@ impl<'a> BitReader<'a> {
 
     /// Peeks at the next n bits without consuming them.
     pub fn peek_bits(&self, n: u8) -> Result<u32> {
+        // Validate n is within valid range
+        if n == 0 || n > 32 {
+            return Err(BitvueError::Parse {
+                offset: self.position(),
+                message: format!("Cannot peek {} bits (must be 1-32)", n),
+            });
+        }
+
+        // Check we have enough data
+        if self.remaining_bits() < n as u64 {
+            return Err(BitvueError::UnexpectedEof(self.position()));
+        }
+
         let mut temp = Self {
             data: self.data,
             byte_offset: self.byte_offset,
@@ -468,10 +481,10 @@ impl ExpGolombReader for BitReader<'_> {
         let mut leading_zeros = 0u32;
         while !self.read_bit()? {
             leading_zeros += 1;
-            if leading_zeros > 32 {
+            if leading_zeros >= 32 {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
-                    message: "Exp-Golomb leading zeros exceeded 32".to_string(),
+                    message: "Exp-Golomb leading zeros exceeded 31".to_string(),
                 });
             }
         }

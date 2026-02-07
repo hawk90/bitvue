@@ -46,12 +46,17 @@ impl PartitionCdf {
         cdf.push(0);
 
         // Divide probability space equally
+        // Handle remainder to ensure last value is exactly CDF_SCALE (32768)
         let step = CDF_SCALE / num_symbols as u16;
+        let remainder = CDF_SCALE % num_symbols as u16;
         for i in 1..=num_symbols {
             let value = if i == num_symbols {
                 CDF_SCALE // Last entry must be exactly 32768
             } else {
-                step * i as u16
+                // Distribute remainder across early entries
+                let base = step * i as u16;
+                let extra = remainder.min(i as u16 - 1);
+                base + extra
             };
             cdf.push(value);
         }
