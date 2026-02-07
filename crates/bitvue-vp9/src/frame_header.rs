@@ -545,19 +545,25 @@ fn parse_loop_filter(reader: &mut BitReader, header: &mut FrameHeader) -> Result
         header.loop_filter.mode_ref_delta_update = reader.read_literal(1)? != 0;
 
         if header.loop_filter.mode_ref_delta_update {
-            // Reference deltas
+            // Reference deltas (6-bit signed: range [-64, +63])
+            // The 6-bit signed read already ensures valid range per VP9 spec
             for i in 0..4 {
                 let update = reader.read_literal(1)? != 0;
                 if update {
-                    header.loop_filter.ref_deltas[i] = read_signed_literal(reader, 6)?;
+                    let delta = read_signed_literal(reader, 6)?;
+                    // Valid range is already enforced by 6-bit read
+                    header.loop_filter.ref_deltas[i] = delta;
                 }
             }
 
-            // Mode deltas
+            // Mode deltas (6-bit signed: range [-64, +63])
+            // The 6-bit signed read already ensures valid range per VP9 spec
             for i in 0..2 {
                 let update = reader.read_literal(1)? != 0;
                 if update {
-                    header.loop_filter.mode_deltas[i] = read_signed_literal(reader, 6)?;
+                    let delta = read_signed_literal(reader, 6)?;
+                    // Valid range is already enforced by 6-bit read
+                    header.loop_filter.mode_deltas[i] = delta;
                 }
             }
         }
@@ -653,8 +659,30 @@ fn parse_segmentation(reader: &mut BitReader, header: &mut FrameHeader) -> Resul
                 if enabled {
                     let bits = [8, 6, 2, 0][j]; // Feature bit counts
                     if bits > 0 {
-                        header.segmentation.feature_data[i][j] =
-                            read_signed_literal(reader, bits)? as i16;
+                        let value = read_signed_literal(reader, bits)? as i16;
+
+                        // SECURITY: Validate feature values are in reasonable ranges
+                        // Feature 0 (AltQ): 8-bit signed, but QP deltas should be reasonable
+                        // Feature 1 (Alt loop filter level): 6-bit signed, range already limited
+                        // Feature 2 (Alt reference frame): 2-bit signed, range already limited
+                        match j {
+                            0 => {
+                                // AltQ - QP delta should be in reasonable range
+                                // QP values are 0-255, so deltas should be constrained
+                                if value < -63 || value > 63 {
+                                    return Err(Vp9Error::InvalidData(format!(
+                                        "Segmentation AltQ delta {} out of valid range [-63, 63]", value
+                                    )));
+                                }
+                                header.segmentation.feature_data[i][j] = value;
+                            }
+                            1 | 2 => {
+                                // Alt loop filter level and Alt reference frame
+                                // Range already limited by bit width
+                                header.segmentation.feature_data[i][j] = value;
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }

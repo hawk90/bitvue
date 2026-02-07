@@ -472,11 +472,29 @@ pub fn parse_slice_header(
 
     // Entry points for tiles or WPP
     if pps.tiles_enabled_flag || pps.entropy_coding_sync_enabled_flag {
+        // SECURITY: Limit entry point offsets to prevent DoS via memory exhaustion
+        const MAX_ENTRY_POINT_OFFSETS: u32 = 1000; // Reasonable limit
+        const MAX_OFFSET_BITS: u8 = 32; // Maximum bits for offset values
+
         header.num_entry_point_offsets = reader.read_ue()?;
+
+        if header.num_entry_point_offsets > MAX_ENTRY_POINT_OFFSETS {
+            return Err(HevcError::InvalidData(format!(
+                "Entry point offsets {} exceeds maximum {}",
+                header.num_entry_point_offsets, MAX_ENTRY_POINT_OFFSETS
+            )));
+        }
 
         if header.num_entry_point_offsets > 0 {
             let offset_len_minus1 = reader.read_ue()?;
             let offset_bits = (offset_len_minus1 + 1) as u8;
+
+            if offset_bits > MAX_OFFSET_BITS {
+                return Err(HevcError::InvalidData(format!(
+                    "Entry point offset bits {} exceeds maximum {}",
+                    offset_bits, MAX_OFFSET_BITS
+                )));
+            }
 
             for _ in 0..header.num_entry_point_offsets {
                 header
