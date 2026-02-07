@@ -80,11 +80,24 @@ pub struct StartCode {
 
 /// Find all start codes in MPEG-2 bitstream.
 /// Returns tuples of (byte offset, StartCode).
+///
+/// SECURITY: Limits scan distance to prevent DoS via malicious files with
+/// long sequences of non-start-code bytes.
 pub fn find_start_codes(data: &[u8]) -> Vec<(usize, StartCode)> {
+    // SECURITY: Limit scan distance to prevent DoS via unbounded loops
+    // Similar to other NAL parsers - max 100MB scan per start code
+    const MAX_START_CODE_SCAN_DISTANCE: usize = 100 * 1024 * 1024;
+
     let mut codes = Vec::new();
     let mut i = 0;
+    let mut last_code_pos = 0;
 
     while i + 3 < data.len() {
+        // Limit scan distance to prevent DoS
+        if i > last_code_pos && i - last_code_pos > MAX_START_CODE_SCAN_DISTANCE {
+            break; // Give up after scanning 100MB without finding start code
+        }
+
         // Look for start code prefix: 0x000001
         if data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 {
             let code_value = data[i + 3];
@@ -95,6 +108,7 @@ pub fn find_start_codes(data: &[u8]) -> Vec<(usize, StartCode)> {
                     code_value,
                 },
             ));
+            last_code_pos = i;
             i += 4;
         } else {
             i += 1;

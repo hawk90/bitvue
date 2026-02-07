@@ -764,8 +764,20 @@ fn parse_stts(
     // Track total samples across all entries to prevent unbounded expansion
     let mut total_samples: usize = 0;
 
+    // SECURITY: Limit samples per entry to prevent malicious inner loops
+    const MAX_SAMPLES_PER_ENTRY: u32 = 10_000;
+
     for _ in 0..entry_count {
         let sample_count = read_u32(cursor)?;
+
+        // Validate individual sample_count to prevent excessive loops
+        if sample_count > MAX_SAMPLES_PER_ENTRY {
+            return Err(BitvueError::InvalidData(format!(
+                "Sample count per entry {} exceeds maximum {}",
+                sample_count, MAX_SAMPLES_PER_ENTRY
+            )));
+        }
+
         let sample_delta = read_u32(cursor)?;
 
         // Use checked arithmetic to prevent overflow/wraparound bypass

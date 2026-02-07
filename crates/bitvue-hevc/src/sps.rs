@@ -3,7 +3,7 @@
 //! The SPS contains sequence-level coding parameters.
 
 use crate::bitreader::BitReader;
-use crate::error::Result;
+use crate::error::{HevcError, Result};
 use serde::{Deserialize, Serialize};
 
 /// HEVC Profile.
@@ -325,6 +325,16 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<Sps> {
 
     let sps_video_parameter_set_id = reader.read_bits(4)? as u8;
     let sps_max_sub_layers_minus1 = reader.read_bits(3)? as u8;
+
+    // SECURITY: Validate sub layers to prevent excessive allocation
+    const MAX_SUB_LAYERS: u8 = 7; // Maximum per HEVC spec (3 bits)
+    if sps_max_sub_layers_minus1 > MAX_SUB_LAYERS {
+        return Err(HevcError::InvalidData(format!(
+            "sps_max_sub_layers_minus1 {} exceeds maximum {}",
+            sps_max_sub_layers_minus1, MAX_SUB_LAYERS
+        )));
+    }
+
     let sps_temporal_id_nesting_flag = reader.read_bit()?;
 
     let profile_tier_level =
@@ -339,8 +349,22 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<Sps> {
         false
     };
 
+    // SECURITY: Validate picture dimensions to prevent excessive allocation
+    const MAX_PIC_DIMENSION: u32 = 16384; // 16K maximum per HEVC spec
     let pic_width_in_luma_samples = reader.read_ue()?;
+    if pic_width_in_luma_samples > MAX_PIC_DIMENSION {
+        return Err(HevcError::InvalidData(format!(
+            "pic_width_in_luma_samples {} exceeds maximum {}",
+            pic_width_in_luma_samples, MAX_PIC_DIMENSION
+        )));
+    }
     let pic_height_in_luma_samples = reader.read_ue()?;
+    if pic_height_in_luma_samples > MAX_PIC_DIMENSION {
+        return Err(HevcError::InvalidData(format!(
+            "pic_height_in_luma_samples {} exceeds maximum {}",
+            pic_height_in_luma_samples, MAX_PIC_DIMENSION
+        )));
+    }
 
     let conformance_window_flag = reader.read_bit()?;
     let (conf_win_left_offset, conf_win_right_offset, conf_win_top_offset, conf_win_bottom_offset) =

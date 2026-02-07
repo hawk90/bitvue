@@ -1,7 +1,7 @@
 //! H.264/AVC Sequence Parameter Set (SPS) parsing.
 
 use crate::bitreader::BitReader;
-use crate::error::Result;
+use crate::error::{AvcError, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -533,8 +533,22 @@ fn parse_vui(reader: &mut BitReader) -> Result<VuiParameters> {
 
     vui.chroma_loc_info_present_flag = reader.read_flag()?;
     if vui.chroma_loc_info_present_flag {
+        // SECURITY: Validate chroma location types to prevent unreasonable values
+        const MAX_CHROMA_LOC_TYPE: u32 = 64;
         vui.chroma_sample_loc_type_top_field = reader.read_ue()?;
+        if vui.chroma_sample_loc_type_top_field > MAX_CHROMA_LOC_TYPE {
+            return Err(AvcError::InvalidSliceHeader(format!(
+                "chroma_sample_loc_type_top_field {} exceeds maximum {}",
+                vui.chroma_sample_loc_type_top_field, MAX_CHROMA_LOC_TYPE
+            )));
+        }
         vui.chroma_sample_loc_type_bottom_field = reader.read_ue()?;
+        if vui.chroma_sample_loc_type_bottom_field > MAX_CHROMA_LOC_TYPE {
+            return Err(AvcError::InvalidSliceHeader(format!(
+                "chroma_sample_loc_type_bottom_field {} exceeds maximum {}",
+                vui.chroma_sample_loc_type_bottom_field, MAX_CHROMA_LOC_TYPE
+            )));
+        }
     }
 
     vui.timing_info_present_flag = reader.read_flag()?;
@@ -567,8 +581,24 @@ fn parse_vui(reader: &mut BitReader) -> Result<VuiParameters> {
         let _max_bits_per_mb_denom = reader.read_ue()?;
         let _log2_max_mv_length_horizontal = reader.read_ue()?;
         let _log2_max_mv_length_vertical = reader.read_ue()?;
+
+        // SECURITY: Validate frame buffer parameters to prevent excessive allocation
+        const MAX_NUM_REORDER_FRAMES: u32 = 16;
+        const MAX_DEC_FRAME_BUFFERING: u32 = 32;
         vui.max_num_reorder_frames = reader.read_ue()?;
+        if vui.max_num_reorder_frames > MAX_NUM_REORDER_FRAMES {
+            return Err(AvcError::InvalidSliceHeader(format!(
+                "max_num_reorder_frames {} exceeds maximum {}",
+                vui.max_num_reorder_frames, MAX_NUM_REORDER_FRAMES
+            )));
+        }
         vui.max_dec_frame_buffering = reader.read_ue()?;
+        if vui.max_dec_frame_buffering > MAX_DEC_FRAME_BUFFERING {
+            return Err(AvcError::InvalidSliceHeader(format!(
+                "max_dec_frame_buffering {} exceeds maximum {}",
+                vui.max_dec_frame_buffering, MAX_DEC_FRAME_BUFFERING
+            )));
+        }
     }
 
     Ok(vui)
@@ -576,7 +606,17 @@ fn parse_vui(reader: &mut BitReader) -> Result<VuiParameters> {
 
 /// Skip HRD parameters.
 fn skip_hrd_parameters(reader: &mut BitReader) -> Result<()> {
+    // SECURITY: Validate cpb_cnt_minus1 to prevent unbounded loop
+    const MAX_CPB_COUNT: u32 = 32;
     let cpb_cnt_minus1 = reader.read_ue()?;
+
+    if cpb_cnt_minus1 > MAX_CPB_COUNT {
+        return Err(AvcError::InvalidSliceHeader(format!(
+            "cpb_cnt_minus1 {} exceeds maximum {}",
+            cpb_cnt_minus1, MAX_CPB_COUNT
+        )));
+    }
+
     let _bit_rate_scale = reader.read_bits(4)?;
     let _cpb_size_scale = reader.read_bits(4)?;
 
