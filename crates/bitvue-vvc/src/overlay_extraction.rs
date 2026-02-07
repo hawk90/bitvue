@@ -449,15 +449,18 @@ fn parse_slice_ctus(
     sps: &Sps,
     base_qp: i16,
 ) -> Result<Vec<CodingTreeUnit>, BitvueError> {
-    let mut ctus = Vec::new();
-
     let width = sps.sps_pic_width_max_in_luma_samples;
     let height = sps.sps_pic_height_max_in_luma_samples;
     let ctu_size = 1u32 << (sps.sps_log2_ctu_size_minus5 + 5);
 
     let ctu_cols = (width + ctu_size - 1) / ctu_size;
     let ctu_rows = (height + ctu_size - 1) / ctu_size;
-    let total_ctus = ctu_cols * ctu_rows;
+    let total_ctus = ctu_cols.checked_mul(ctu_rows).ok_or_else(|| {
+        BitvueError::Decode(format!("CTU grid dimensions too large: {}x{}", ctu_cols, ctu_rows))
+    })?;
+
+    // Pre-allocate CTU vector with known size
+    let mut ctus = Vec::with_capacity(total_ctus as usize);
 
     let is_intra = nal.header.nal_unit_type.is_idr() || nal.header.nal_unit_type.is_cra();
 

@@ -78,6 +78,10 @@ impl<'a> BitReader<'a> {
     ///
     /// Uses checked arithmetic to prevent overflow on malicious inputs
     /// (e.g., extremely large byte offsets).
+    ///
+    /// Returns u64::MAX if the position would overflow (saturation semantics).
+    /// This is acceptable for a position getter as overflow indicates an invalid
+    /// state that should be caught elsewhere in the parsing pipeline.
     #[inline]
     pub fn position(&self) -> u64 {
         let byte_bits = (self.byte_offset as u64).checked_mul(8).unwrap_or(u64::MAX);
@@ -333,6 +337,10 @@ impl<'a> LsbBitReader<'a> {
     ///
     /// Uses checked arithmetic to prevent overflow on malicious inputs
     /// (e.g., extremely large byte offsets).
+    ///
+    /// Returns u64::MAX if the position would overflow (saturation semantics).
+    /// This is acceptable for a position getter as overflow indicates an invalid
+    /// state that should be caught elsewhere in the parsing pipeline.
     #[inline]
     pub fn position(&self) -> u64 {
         let byte_bits = (self.byte_offset as u64).checked_mul(8).unwrap_or(u64::MAX);

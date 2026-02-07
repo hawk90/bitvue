@@ -283,7 +283,11 @@ pub fn parse_nal_header(data: &[u8]) -> Result<NalUnitHeader> {
 
 /// Find NAL unit start codes in data.
 pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
-    let mut units = Vec::new();
+    // Estimate NAL unit count based on minimum expected NAL unit size
+    // Typical NAL units are at least 100 bytes (headers + some payload)
+    const MIN_NAL_SIZE: usize = 100;
+    let estimated_count = data.len() / MIN_NAL_SIZE;
+    let mut units = Vec::with_capacity(estimated_count);
     let mut i = 0;
 
     while i < data.len() {

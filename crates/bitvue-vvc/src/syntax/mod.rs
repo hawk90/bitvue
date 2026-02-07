@@ -2,11 +2,12 @@
 
 use crate::{NalUnitType, VvcStream};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 /// A node in the VVC syntax tree.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntaxNode {
-    pub name: String,
+    pub name: Cow<'static, str>,
     pub value: Option<String>,
     pub bit_offset: Option<u64>,
     pub bit_length: Option<u64>,
@@ -27,24 +28,24 @@ pub enum SyntaxNodeType {
 }
 
 impl SyntaxNode {
-    pub fn new(name: impl Into<String>, node_type: SyntaxNodeType) -> Self {
+    pub fn new(name: impl Into<Cow<'static, str>>, node_type: SyntaxNodeType) -> Self {
         Self {
             name: name.into(),
             value: None,
             bit_offset: None,
             bit_length: None,
-            children: Vec::new(),
+            children: Vec::with_capacity(8), // Pre-allocate for typical children count
             node_type,
         }
     }
 
-    pub fn field(name: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn field(name: impl Into<Cow<'static, str>>, value: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             value: Some(value.into()),
             bit_offset: None,
             bit_length: None,
-            children: Vec::new(),
+            children: Vec::with_capacity(4), // Fields typically have fewer children
             node_type: SyntaxNodeType::Field,
         }
     }

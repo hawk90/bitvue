@@ -7,6 +7,7 @@ use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
 use crate::plane_utils;
 use crate::traits::{CodecType, Decoder, DecoderCapabilities};
 use abseil::prelude::*;
+use std::collections::VecDeque;
 
 /// Maximum number of frames to buffer
 ///
@@ -38,7 +39,7 @@ pub struct FfmpegDecoder {
     /// Scaler context for converting to YUV420P
     scaler: Option<SwsContext>,
     /// Frame buffer for receiving decoded frames
-    frame_buffer: Vec<DecodedFrame>,
+    frame_buffer: VecDeque<DecodedFrame>,
     /// Current timestamp
     timestamp: i64,
 }
@@ -84,7 +85,7 @@ impl FfmpegDecoder {
             codec_type,
             decoder,
             scaler: None,
-            frame_buffer: Vec::new(),
+            frame_buffer: VecDeque::with_capacity(MAX_FRAME_BUFFER_SIZE),
             timestamp: 0,
         })
     }
@@ -107,7 +108,7 @@ impl FfmpegDecoder {
                             "Frame buffer at capacity ({}), dropping oldest frame",
                             MAX_FRAME_BUFFER_SIZE
                         );
-                        self.frame_buffer.remove(0);
+                        self.frame_buffer.pop_front(); // O(1) instead of O(n)
                     }
 
                     // Convert FFmpeg frame to DecodedFrame
@@ -222,15 +223,8 @@ impl FfmpegDecoder {
             self.codec_type, width, height, frame_type
         );
 
-        // Detect chroma format once at frame creation
-        let chroma_format = crate::decoder::ChromaFormat::from_frame_data(
-            width,
-            height,
-            8,
-            Some(&u_plane),
-            Some(&v_plane),
-        );
-
+        // For YUV420P frames, chroma format is known (no calculation needed)
+        // This avoids recalculating for every frame in the video
         Ok(DecodedFrame {
             width,
             height,
@@ -243,7 +237,7 @@ impl FfmpegDecoder {
             v_stride: v_stride as usize,
             timestamp,
             frame_type,
-            chroma_format,
+            chroma_format: crate::decoder::ChromaFormat::Yuv420,
         })
     }
 
@@ -308,7 +302,7 @@ impl FfmpegDecoder {
             v_stride: v_stride as usize,
             timestamp,
             frame_type,
-            chroma_format,
+            chroma_format: crate::decoder::ChromaFormat::Yuv420,
         })
     }
 }
@@ -362,7 +356,7 @@ impl Decoder for FfmpegDecoder {
                             "Frame buffer at capacity ({}), dropping oldest frame",
                             MAX_FRAME_BUFFER_SIZE
                         );
-                        self.frame_buffer.remove(0);
+                        self.frame_buffer.pop_front(); // O(1) instead of O(n)
                     }
 
                     if let Ok(decoded) = self.ffmpeg_frame_to_decoded(&frame) {

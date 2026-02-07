@@ -578,6 +578,80 @@ impl Av1Decoder {
         }
     }
 
+    /// Read IVF frame header (12 bytes)
+    ///
+    /// Returns (frame_size, timestamp) or None if EOF/incomplete
+    fn read_ivf_frame_header<R: std::io::Read>(
+        reader: &mut R,
+    ) -> Result<Option<(usize, i64)>> {
+        let mut frame_header_buf = [0u8; 12];
+        let bytes_read = reader
+            .read(&mut frame_header_buf)
+            .map_err(|e| DecodeError::Decode(format!("Failed to read frame header: {}", e)))?;
+
+        if bytes_read < 12 {
+            // End of file or incomplete frame header
+            return Ok(None);
+        }
+
+        let frame_size = u32::from_le_bytes([
+            frame_header_buf[0],
+            frame_header_buf[1],
+            frame_header_buf[2],
+            frame_header_buf[3],
+        ]) as usize;
+
+        if frame_size == 0 || frame_size > MAX_FRAME_SIZE {
+            return Ok(None);
+        }
+
+        let timestamp = i64::from_le_bytes([
+            frame_header_buf[4],
+            frame_header_buf[5],
+            frame_header_buf[6],
+            frame_header_buf[7],
+            frame_header_buf[8],
+            frame_header_buf[9],
+            frame_header_buf[10],
+            frame_header_buf[11],
+        ]);
+
+        Ok(Some((frame_size, timestamp)))
+    }
+
+    /// Read exact frame data with retry logic
+    fn read_exact_frame_data<R: std::io::Read>(
+        reader: &mut R,
+        frame_size: usize,
+        frame_idx: i64,
+    ) -> Result<Vec<u8>> {
+        let mut frame_data = vec![0u8; frame_size];
+        let mut bytes_read_total = 0;
+
+        while bytes_read_total < frame_size {
+            let n = reader
+                .read(&mut frame_data[bytes_read_total..])
+                .map_err(|e| DecodeError::Decode(format!("Failed to read frame data: {}", e)))?;
+            if n == 0 {
+                break;
+            }
+            bytes_read_total += n;
+        }
+
+        if bytes_read_total < frame_size {
+            abseil::LOG!(
+                WARNING,
+                "Incomplete frame data at frame {}: expected {} bytes, got {}",
+                frame_idx,
+                frame_size,
+                bytes_read_total
+            );
+            return Err(DecodeError::Decode("Incomplete frame data".to_string()));
+        }
+
+        Ok(frame_data)
+    }
+
     /// Decode IVF file using streaming I/O (reads frame-by-frame)
     ///
     /// This significantly reduces memory usage by keeping only one frame
@@ -587,7 +661,6 @@ impl Av1Decoder {
         reader: &mut std::io::BufReader<R>,
         file_size: usize,
     ) -> Result<Vec<DecodedFrame>> {
-        use std::io::Read;
         use std::io::SeekFrom;
 
         // Parse IVF header first (32 bytes)
@@ -610,62 +683,16 @@ impl Av1Decoder {
 
         // Read and decode frames one at a time
         while remaining > 0 && frame_idx < MAX_FRAMES_PER_FILE as i64 {
-            // Read frame header (12 bytes: size + timestamp)
-            let mut frame_header_buf = [0u8; 12];
-            let bytes_read = reader
-                .read(&mut frame_header_buf)
-                .map_err(|e| DecodeError::Decode(format!("Failed to read frame header: {}", e)))?;
-
-            if bytes_read < 12 {
-                // End of file or incomplete frame header
+            // Read frame header
+            let Some((frame_size, timestamp)) = Self::read_ivf_frame_header(reader)? else {
                 break;
-            }
-
-            let frame_size = u32::from_le_bytes([
-                frame_header_buf[0],
-                frame_header_buf[1],
-                frame_header_buf[2],
-                frame_header_buf[3],
-            ]) as usize;
-
-            if frame_size == 0 || frame_size > MAX_FRAME_SIZE {
-                break;
-            }
-
-            let timestamp = i64::from_le_bytes([
-                frame_header_buf[4],
-                frame_header_buf[5],
-                frame_header_buf[6],
-                frame_header_buf[7],
-                frame_header_buf[8],
-                frame_header_buf[9],
-                frame_header_buf[10],
-                frame_header_buf[11],
-            ]);
+            };
 
             // Read frame data
-            let mut frame_data = vec![0u8; frame_size];
-            let mut bytes_read_total = 0;
-            while bytes_read_total < frame_size {
-                let n = reader
-                    .read(&mut frame_data[bytes_read_total..])
-                    .map_err(|e| DecodeError::Decode(format!("Failed to read frame data: {}", e)))?;
-                if n == 0 {
-                    break;
-                }
-                bytes_read_total += n;
-            }
-
-            if bytes_read_total < frame_size {
-                abseil::LOG!(
-                    WARNING,
-                    "Incomplete frame data at frame {}: expected {} bytes, got {}",
-                    frame_idx,
-                    frame_size,
-                    bytes_read_total
-                );
-                break;
-            }
+            let frame_data = match Self::read_exact_frame_data(reader, frame_size, frame_idx) {
+                Ok(data) => data,
+                Err(_) => break,
+            };
 
             // Decode this frame
             if let Err(e) = self.send_data_owned(frame_data, timestamp) {
@@ -885,17 +912,6 @@ impl Av1Decoder {
         self.decoder.flush();
     }
 }
-
-// Default trait removed - decoder initialization can fail and should be explicit
-// Users must call Av1Decoder::new() explicitly to handle potential errors
-//
-// impl Default for Av1Decoder {
-//     fn default() -> Self {
-//         Self::new().unwrap_or_else(|e| {
-//             panic!("Failed to create default AV1 decoder: {}", e);
-//         })
-//     }
-// }
 
 /// Validates a decoded frame for correctness
 pub fn validate_frame(frame: &DecodedFrame) -> Result<()> {
