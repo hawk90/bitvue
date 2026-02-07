@@ -114,10 +114,28 @@ pub fn find_obu_units(data: &[u8]) -> Vec<(usize, usize)> {
 
                 if obu_has_size_field {
                     // Parse leb128 size
+                    // SECURITY: Limit OBU payload size to prevent memory exhaustion
+                    const MAX_OBU_PAYLOAD_SIZE: u64 = 100 * 1024 * 1024; // 100MB
                     let mut reader = BitReader::new(&data[i + 1..]);
                     if let Ok(size) = reader.read_leb128() {
+                        // Validate size is within reasonable bounds
+                        if size > MAX_OBU_PAYLOAD_SIZE {
+                            // Skip oversized OBU to prevent DoS
+                            i += 1;
+                            continue;
+                        }
+
+                        // Safe conversion to usize (handles 32-bit systems)
+                        let size_usize = if size > usize::MAX as u64 {
+                            // On 32-bit systems, skip values that don't fit
+                            i += 1;
+                            continue;
+                        } else {
+                            size as usize
+                        };
+
                         let payload_start = 1 + reader.byte_pos();
-                        obu_end = obu_start + payload_start + size as usize;
+                        obu_end = obu_start + payload_start + size_usize;
 
                         // Make sure we don't go past the end
                         if obu_end > data.len() {
@@ -204,7 +222,15 @@ pub fn parse_obu_header(data: &[u8]) -> Result<ObuHeader> {
 
     if obu_extension_flag && data.len() >= 2 {
         let byte1 = data[1];
-        temporal_id = byte1 & 0x07;
+        // SECURITY: Validate temporal_id_plus1 is in valid range [1, 8] per AV1/AV3 spec
+        // The lower 3 bits contain temporal_id_plus1 (not temporal_id directly)
+        let temporal_id_plus1 = byte1 & 0x07;
+        if temporal_id_plus1 == 0 {
+            return Err(Av3Error::InvalidData(
+                "OBU extension temporal_id_plus1 must be >= 1".to_string()
+            ));
+        }
+        temporal_id = temporal_id_plus1 - 1; // Convert to temporal_id
         spatial_id = (byte1 >> 3) & 0x03;
     }
 

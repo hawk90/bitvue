@@ -475,10 +475,26 @@ fn parse_color_config(reader: &mut BitReader, header: &mut FrameHeader, profile:
 }
 
 fn parse_frame_size(reader: &mut BitReader, header: &mut FrameHeader) -> Result<()> {
+    // SECURITY: Validate frame dimensions to prevent memory exhaustion
+    // VP9 spec allows up to 16K resolution, but we limit to prevent DoS
+    const MAX_FRAME_WIDTH: u32 = 16384;  // 16K
+    const MAX_FRAME_HEIGHT: u32 = 16384;
+
     // frame_width_minus_1 (16 bits)
     header.width = reader.read_literal(16)? + 1;
     // frame_height_minus_1 (16 bits)
     header.height = reader.read_literal(16)? + 1;
+
+    if header.width > MAX_FRAME_WIDTH {
+        return Err(Vp9Error::InvalidData(format!(
+            "Frame width {} exceeds maximum {}", header.width, MAX_FRAME_WIDTH
+        )));
+    }
+    if header.height > MAX_FRAME_HEIGHT {
+        return Err(Vp9Error::InvalidData(format!(
+            "Frame height {} exceeds maximum {}", header.height, MAX_FRAME_HEIGHT
+        )));
+    }
 
     // Default render size to frame size
     header.render_width = header.width;
@@ -488,12 +504,27 @@ fn parse_frame_size(reader: &mut BitReader, header: &mut FrameHeader) -> Result<
 }
 
 fn parse_render_size(reader: &mut BitReader, header: &mut FrameHeader) -> Result<()> {
+    // SECURITY: Validate render dimensions to prevent memory exhaustion
+    const MAX_FRAME_WIDTH: u32 = 16384;  // 16K
+    const MAX_FRAME_HEIGHT: u32 = 16384;
+
     // render_and_frame_size_different (1 bit)
     let different = reader.read_literal(1)? != 0;
 
     if different {
         header.render_width = reader.read_literal(16)? + 1;
         header.render_height = reader.read_literal(16)? + 1;
+
+        if header.render_width > MAX_FRAME_WIDTH {
+            return Err(Vp9Error::InvalidData(format!(
+                "Render width {} exceeds maximum {}", header.render_width, MAX_FRAME_WIDTH
+            )));
+        }
+        if header.render_height > MAX_FRAME_HEIGHT {
+            return Err(Vp9Error::InvalidData(format!(
+                "Render height {} exceeds maximum {}", header.render_height, MAX_FRAME_HEIGHT
+            )));
+        }
     }
 
     Ok(())
@@ -634,19 +665,30 @@ fn parse_segmentation(reader: &mut BitReader, header: &mut FrameHeader) -> Resul
 }
 
 fn parse_tile_info(reader: &mut BitReader, header: &mut FrameHeader) -> Result<()> {
+    // SECURITY: Limit tile count to prevent DoS via excessive tile allocation
+    const MAX_TILE_LOG2: u8 = 6;  // Max 64 tiles in either dimension
+
     // Calculate max tile cols log2 based on frame width
     let sb64_cols = (header.width + 63) / 64;
     let mut max_log2 = 0u8;
-    while (sb64_cols >> (max_log2 + 1)) >= 1 {
+
+    // Safely calculate max log2 with overflow protection
+    while max_log2 < 32 && (sb64_cols >> max_log2) > 1 {
         max_log2 += 1;
     }
+
+    // Apply absolute maximum to prevent excessive tiles
+    max_log2 = max_log2.min(MAX_TILE_LOG2);
 
     // tile_cols_log2
     header.tile_cols_log2 = 0;
     while header.tile_cols_log2 < max_log2 {
         let increment = reader.read_literal(1)? != 0;
         if increment {
-            header.tile_cols_log2 += 1;
+            header.tile_cols_log2 = header.tile_cols_log2.saturating_add(1);
+            if header.tile_cols_log2 >= MAX_TILE_LOG2 {
+                break; // Prevent excessive tiles
+            }
         } else {
             break;
         }
@@ -655,7 +697,13 @@ fn parse_tile_info(reader: &mut BitReader, header: &mut FrameHeader) -> Result<(
     // tile_rows_log2
     let tile_rows_increment = reader.read_literal(1)? != 0;
     header.tile_rows_log2 = if tile_rows_increment {
-        reader.read_literal(1)? as u8 + 1
+        let rows_log2 = reader.read_literal(1)? as u8 + 1;
+        if rows_log2 > MAX_TILE_LOG2 {
+            return Err(Vp9Error::InvalidData(format!(
+                "Tile rows log2 {} exceeds maximum {}", rows_log2, MAX_TILE_LOG2
+            )));
+        }
+        rows_log2
     } else {
         0
     };

@@ -300,16 +300,24 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
 
             let mut nal_end = data.len();
             let mut j = nal_start;
-            while j + 2 < data.len() {
+
+            // SECURITY: Limit scan distance to prevent DoS via unbounded loops
+            // Similar to HEVC NAL finding - max 100MB scan per NAL unit
+            const MAX_NAL_SCAN_DISTANCE: usize = 100 * 1024 * 1024;
+            let max_scan = (nal_start + MAX_NAL_SCAN_DISTANCE).min(data.len());
+            let mut scanned = 0;
+
+            while j + 2 < max_scan && scanned < MAX_NAL_SCAN_DISTANCE {
                 if data[j] == 0x00 && data[j + 1] == 0x00 {
-                    if (j + 2 < data.len() && data[j + 2] == 0x01)
-                        || (j + 3 < data.len() && data[j + 2] == 0x00 && data[j + 3] == 0x01)
+                    if (j + 2 < max_scan && data[j + 2] == 0x01)
+                        || (j + 3 < max_scan && data[j + 2] == 0x00 && data[j + 3] == 0x01)
                     {
                         nal_end = j;
                         break;
                     }
                 }
                 j += 1;
+                scanned += 1;
             }
 
             units.push((nal_start, nal_end));

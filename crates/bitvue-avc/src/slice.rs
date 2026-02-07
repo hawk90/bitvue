@@ -365,9 +365,17 @@ pub fn parse_slice_header(
 
 /// Parse reference picture list modification.
 fn parse_ref_pic_list_modification(reader: &mut BitReader) -> Result<RefPicListModification> {
-    let mut modifications = Vec::new();
+    // SECURITY: Limit number of modifications to prevent DoS via unbounded loops
+    const MAX_MODIFICATIONS: usize = 1000; // Reasonable limit for ref pic list modifications
+    let mut modifications = Vec::with_capacity(MAX_MODIFICATIONS.min(16));
 
     loop {
+        if modifications.len() >= MAX_MODIFICATIONS {
+            return Err(AvcError::InvalidSliceHeader(
+                "Reference picture list modifications exceeded maximum".to_string()
+            ));
+        }
+
         let modification_of_pic_nums_idc = reader.read_ue()?;
         if modification_of_pic_nums_idc == 3 {
             break;
@@ -399,7 +407,18 @@ fn parse_dec_ref_pic_marking(
         marking.adaptive_ref_pic_marking_mode_flag = reader.read_flag()?;
 
         if marking.adaptive_ref_pic_marking_mode_flag {
+            // SECURITY: Limit number of MMCO operations to prevent DoS via unbounded loops
+            const MAX_MMCO_OPERATIONS: usize = 1000; // Reasonable limit for MMCO operations
+            let mut mmco_count = 0;
+
             loop {
+                if mmco_count >= MAX_MMCO_OPERATIONS {
+                    return Err(AvcError::InvalidSliceHeader(
+                        "MMCO operations exceeded maximum".to_string()
+                    ));
+                }
+                mmco_count += 1;
+
                 let memory_management_control_operation = reader.read_ue()?;
                 if memory_management_control_operation == 0 {
                     break;
