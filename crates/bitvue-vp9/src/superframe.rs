@@ -89,14 +89,41 @@ pub fn parse_superframe_index(data: &[u8]) -> Result<SuperframeIndex> {
     let index_size = 2 + (frame_count as usize * size_bytes as usize);
 
     // Parse frame sizes
+    const MAX_FRAME_SIZE: u32 = 100 * 1024 * 1024; // 100MB per frame
     let mut frame_sizes = Vec::with_capacity(frame_count as usize);
     let index_start = data.len() - index_size + 1; // Skip first marker
 
     for i in 0..frame_count as usize {
         let mut size: u32 = 0;
+
         for j in 0..size_bytes as usize {
-            size |= (data[index_start + i * size_bytes as usize + j] as u32) << (j * 8);
+            // Check array index doesn't overflow
+            let byte_index = index_start
+                .checked_add(i.checked_mul(size_bytes as usize).ok_or_else(|| {
+                    Vp9Error::InvalidData("Frame count * size_bytes overflow".to_string())
+                })?)
+                .and_then(|idx| idx.checked_add(j))
+                .ok_or_else(|| Vp9Error::InvalidData("Superframe index overflow".to_string()))?;
+
+            if byte_index >= data.len() {
+                return Err(Vp9Error::InvalidData(format!(
+                    "Superframe index extends beyond data ({} >= {})",
+                    byte_index,
+                    data.len()
+                )));
+            }
+
+            size |= (data[byte_index] as u32) << (j * 8);
         }
+
+        // Validate frame size
+        if size > MAX_FRAME_SIZE {
+            return Err(Vp9Error::InvalidData(format!(
+                "Frame size {} exceeds maximum {}",
+                size, MAX_FRAME_SIZE
+            )));
+        }
+
         frame_sizes.push(size);
     }
 
@@ -105,7 +132,9 @@ pub fn parse_superframe_index(data: &[u8]) -> Result<SuperframeIndex> {
     let mut offset: u32 = 0;
     for size in &frame_sizes {
         frame_offsets.push(offset);
-        offset += size;
+        offset = offset.checked_add(*size).ok_or_else(|| {
+            Vp9Error::InvalidData("Frame offset calculation overflow".to_string())
+        })?;
     }
 
     Ok(SuperframeIndex {
@@ -124,22 +153,44 @@ pub fn extract_frames(data: &[u8]) -> Result<Vec<&[u8]>> {
         return Ok(vec![data]);
     }
 
+    const MAX_FRAMES: usize = 1000; // Max frames per superframe
+    if index.frame_count as usize > MAX_FRAMES {
+        return Err(Vp9Error::InvalidData(format!(
+            "Superframe has {} frames, exceeds maximum {}",
+            index.frame_count, MAX_FRAMES
+        )));
+    }
+
     let mut frames = Vec::with_capacity(index.frame_count as usize);
+    let mut last_end = 0usize;
 
     for i in 0..index.frame_count as usize {
         let start = index.frame_offsets[i] as usize;
-        let end = start + index.frame_sizes[i] as usize;
+        let size = index.frame_sizes[i] as usize;
 
+        // Check for negative offset or overflow
+        let end = start.checked_add(size).ok_or_else(|| {
+            Vp9Error::InvalidData(format!("Frame {} offset + size overflow", i))
+        })?;
+
+        // Check for overlap with previous frame
+        if i > 0 && start < last_end {
+            return Err(Vp9Error::InvalidData(format!(
+                "Frame {} overlaps with previous frame (start={}, prev_end={})",
+                i, start, last_end
+            )));
+        }
+
+        // Check bounds
         if end > data.len() {
             return Err(Vp9Error::InvalidData(format!(
-                "Frame {} extends beyond data: end={}, len={}",
-                i,
-                end,
-                data.len()
+                "Frame {} extends beyond data: {} > {}",
+                i, end, data.len()
             )));
         }
 
         frames.push(&data[start..end]);
+        last_end = end;
     }
 
     Ok(frames)

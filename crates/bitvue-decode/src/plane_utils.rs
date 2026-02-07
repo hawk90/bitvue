@@ -234,7 +234,14 @@ pub fn extract_plane(source: &[u8], config: PlaneConfig) -> Result<Vec<u8>> {
 
     // Slow path: strided data - copy row by row with pre-allocated buffer
     // Pre-allocate full buffer without zero-initialization for better performance
-    // Safe because we immediately overwrite all positions in the loop below
+    //
+    // SAFETY: The loop below writes to every position in `data` before returning:
+    // - We iterate over exactly `config.height` rows
+    // - Each row writes exactly `row_bytes` bytes at `data[offset..offset + row_bytes]`
+    // - Total bytes written: config.height * row_bytes = expected_size
+    // - The final `offset` equals `expected_size`, confirming all bytes were written
+    // - We validate source bounds before each copy (lines 262-271)
+    // - We return early on any error, so partial writes never reach the caller
     let mut data = Vec::with_capacity(expected_size);
     unsafe {
         data.set_len(expected_size);

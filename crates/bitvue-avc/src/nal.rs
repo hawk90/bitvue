@@ -205,21 +205,36 @@ pub fn parse_nal_header(byte: u8) -> Result<NalUnitHeader> {
 
 /// Find NAL unit start codes in Annex B byte stream.
 /// Returns offsets pointing to the first byte after the start code.
+///
+/// SECURITY: Limits scan distance to prevent DoS via malicious files with
+/// long sequences of non-start-code bytes.
 pub fn find_nal_units(data: &[u8]) -> Vec<usize> {
+    // SECURITY: Limit scan distance to prevent DoS via unbounded loops
+    // Similar to VVC/HEVC NAL finding - max 100MB scan per NAL unit
+    const MAX_NAL_SCAN_DISTANCE: usize = 100 * 1024 * 1024;
+
     let mut positions = Vec::new();
     let mut i = 0;
+    let mut last_nal_pos = 0;
 
     while i < data.len() {
+        // Limit scan distance to prevent DoS
+        if i > last_nal_pos && i - last_nal_pos > MAX_NAL_SCAN_DISTANCE {
+            break; // Give up after scanning 100MB without finding NAL
+        }
+
         // Look for start code: 0x000001 or 0x00000001
         if i + 2 < data.len() && data[i] == 0 && data[i + 1] == 0 {
             if data[i + 2] == 1 {
                 // 3-byte start code
                 positions.push(i + 3);
+                last_nal_pos = i;
                 i += 3;
                 continue;
             } else if i + 3 < data.len() && data[i + 2] == 0 && data[i + 3] == 1 {
                 // 4-byte start code
                 positions.push(i + 4);
+                last_nal_pos = i;
                 i += 4;
                 continue;
             }

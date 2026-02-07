@@ -246,7 +246,12 @@ fn extract_samples_with_validator<'a>(
         // Check for overlap with next sample
         if i + 1 < sorted_samples.len() {
             let (_, (next_offset_ptr, _)) = sorted_samples[i + 1];
-            let next_offset = *next_offset_ptr as usize;
+            let next_offset = usize::try_from(*next_offset_ptr).map_err(|_| {
+                BitvueError::InvalidData(format!(
+                    "Next sample offset {} exceeds platform address space",
+                    *next_offset_ptr
+                ))
+            })?;
             if end > next_offset {
                 return Err(BitvueError::InvalidData(format!(
                     "Samples overlap: current sample ends at {} but next starts at {}",

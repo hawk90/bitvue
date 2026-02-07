@@ -76,7 +76,21 @@ use rayon::prelude::*;
 /// where MAX = 255 for 8-bit images
 /// and MSE = Mean Squared Error
 pub fn psnr(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> Result<f64> {
-    let size = width * height;
+    // Validate dimensions are reasonable (max 16K to prevent overflow)
+    const MAX_DIMENSION: usize = 15360;
+    if width > MAX_DIMENSION || height > MAX_DIMENSION {
+        return Err(BitvueError::InvalidData(format!(
+            "Dimensions exceed maximum: {}x{} (max {}x{})",
+            width, height, MAX_DIMENSION, MAX_DIMENSION
+        )));
+    }
+
+    // Prevent overflow in width * height calculation
+    let size = width.checked_mul(height).ok_or_else(|| {
+        BitvueError::InvalidData(format!(
+            "Width * height overflow: {} * {}", width, height
+        ))
+    })?;
 
     if reference.len() != size || distorted.len() != size {
         return Err(BitvueError::InvalidData(format!(
@@ -120,7 +134,21 @@ pub fn psnr(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> 
 /// - σxy = covariance of x and y
 /// - C1, C2 = stabilization constants
 pub fn ssim(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> Result<f64> {
-    let size = width * height;
+    // Validate dimensions are reasonable (max 16K to prevent overflow)
+    const MAX_DIMENSION: usize = 15360;
+    if width > MAX_DIMENSION || height > MAX_DIMENSION {
+        return Err(BitvueError::InvalidData(format!(
+            "Dimensions exceed maximum: {}x{} (max {}x{})",
+            width, height, MAX_DIMENSION, MAX_DIMENSION
+        )));
+    }
+
+    // Prevent overflow in width * height calculation
+    let size = width.checked_mul(height).ok_or_else(|| {
+        BitvueError::InvalidData(format!(
+            "Width * height overflow: {} * {}", width, height
+        ))
+    })?;
 
     if reference.len() != size || distorted.len() != size {
         return Err(BitvueError::InvalidData(format!(
@@ -154,9 +182,25 @@ pub fn ssim(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> 
                 continue;
             }
 
-            // Calculate start and end indices for this window
-            let start = y * width + x;
-            let end = start + win_size;
+            // Calculate start and end indices for this window with overflow protection
+            let start = y.checked_mul(width)
+                .and_then(|s| s.checked_add(x))
+                .ok_or_else(|| BitvueError::InvalidData(
+                    "SSIM window start calculation overflow".to_string()
+                ))?;
+
+            let end = start.checked_add(win_size)
+                .ok_or_else(|| BitvueError::InvalidData(
+                    "SSIM window end calculation overflow".to_string()
+                ))?;
+
+            // Validate end doesn't exceed data bounds
+            if end > reference.len() || end > distorted.len() {
+                return Err(BitvueError::InvalidData(
+                    format!("SSIM window end {} exceeds data length (ref: {}, dist: {})",
+                            end, reference.len(), distorted.len())
+                ));
+            }
 
             // Use SIMD-optimized window statistics computation
             let stats = simd::compute_window_stats_simd(reference, distorted, start, end);

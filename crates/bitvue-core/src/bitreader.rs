@@ -681,6 +681,12 @@ impl Leb128Reader for BitReader<'_> {
 ///
 /// A new Vec<u8> with emulation prevention bytes removed
 ///
+/// # Limits
+///
+/// For inputs > 50MB, returns a copy of the input as-is (no processing).
+/// This prevents excessive memory allocation for maliciously large inputs.
+/// Callers should process large inputs in chunks or use streaming parsers.
+///
 /// # Example
 ///
 /// ```
@@ -695,8 +701,10 @@ pub fn remove_emulation_prevention_bytes(data: &[u8]) -> Vec<u8> {
     const MAX_EMULATION_PREVENTION_INPUT: usize = 50 * 1024 * 1024; // 50MB
 
     if data.len() > MAX_EMULATION_PREVENTION_INPUT {
-        // For very large inputs, return the data as-is (caller should handle)
-        // This prevents allocation attempts for maliciously large inputs
+        // For very large inputs, return a copy as-is (caller should handle differently)
+        // NOTE: This still allocates. For large inputs, callers should use streaming
+        // parsers or process in chunks. Future version may return Result to allow
+        // proper error handling.
         return data.to_vec();
     }
 
