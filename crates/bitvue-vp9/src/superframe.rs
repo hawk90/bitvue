@@ -56,8 +56,15 @@ pub fn has_superframe_index(data: &[u8]) -> bool {
     let size_bytes = ((marker >> 3) & 0x03) + 1;
     let frame_count = (marker & 0x07) + 1;
 
+    // SECURITY: Use checked arithmetic for index_size calculation
     // Index size: marker + (frame_count * size_bytes) + marker
-    let index_size = 2 + (frame_count as usize * size_bytes as usize);
+    let index_size = match (frame_count as usize)
+        .checked_mul(size_bytes as usize)
+        .and_then(|v| v.checked_add(2))
+    {
+        Some(size) => size,
+        None => return false, // Overflow in index_size calculation
+    };
 
     if data.len() < index_size {
         return false;
@@ -85,8 +92,19 @@ pub fn parse_superframe_index(data: &[u8]) -> Result<SuperframeIndex> {
     let size_bytes = ((marker >> 3) & 0x03) + 1;
     let frame_count = (marker & 0x07) + 1;
 
+    // SECURITY: Use checked arithmetic for index_size calculation
     // Index size: marker + (frame_count * size_bytes) + marker
-    let index_size = 2 + (frame_count as usize * size_bytes as usize);
+    let index_size = match (frame_count as usize)
+        .checked_mul(size_bytes as usize)
+        .and_then(|v| v.checked_add(2))
+    {
+        Some(size) => size,
+        None => {
+            return Err(Vp9Error::InvalidData(
+                "Superframe index size calculation overflow".to_string(),
+            ))
+        }
+    };
 
     // Parse frame sizes
     const MAX_FRAME_SIZE: u32 = 100 * 1024 * 1024; // 100MB per frame

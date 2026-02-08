@@ -109,12 +109,19 @@ pub enum ChromaFormat {
 
 impl ChromaFormat {
     /// Create from raw value.
+    ///
+    /// Note: This function uses Yuv420 as a fallback for invalid values.
+    /// The caller should validate the input value is in range 0-3 before calling.
+    /// For SPS parsing, validation is done at the call site.
     pub fn from_u8(value: u8) -> Self {
         match value {
             0 => ChromaFormat::Monochrome,
             1 => ChromaFormat::Yuv420,
             2 => ChromaFormat::Yuv422,
             3 => ChromaFormat::Yuv444,
+            // SAFETY: Default to Yuv420 for invalid values.
+            // This should never be reached if validation is done at call site.
+            // Using a default prevents undefined behavior from invalid enum values.
             _ => ChromaFormat::Yuv420,
         }
     }
@@ -355,7 +362,7 @@ pub fn parse_sps(data: &[u8]) -> Result<Sps> {
         // SECURITY: Validate chroma format ID to prevent invalid enum value
         let raw_chroma_format = reader.read_ue()?;
         if raw_chroma_format > 3 {
-            return Err(AvcError::InvalidSliceHeader(format!(
+            return Err(AvcError::InvalidSps(format!(
                 "chroma_format_idc {} exceeds maximum 3",
                 raw_chroma_format
             )));

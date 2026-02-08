@@ -1,7 +1,7 @@
 //! H.264/AVC Picture Parameter Set (PPS) parsing.
 
 use crate::bitreader::BitReader;
-use crate::error::Result;
+use crate::error::{AvcError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Picture Parameter Set.
@@ -69,6 +69,17 @@ pub fn parse_pps(data: &[u8]) -> Result<Pps> {
     let bottom_field_pic_order_in_frame_present_flag = reader.read_flag()?;
 
     let num_slice_groups_minus1 = reader.read_ue()?;
+
+    // SECURITY: Validate num_slice_groups_minus1 to prevent excessive loops
+    // H.264 spec allows 0-7 (1-8 slice groups), but we limit to prevent DoS
+    const MAX_NUM_SLICE_GROUPS_MINUS1: u32 = 7; // Maximum per H.264 spec
+    if num_slice_groups_minus1 > MAX_NUM_SLICE_GROUPS_MINUS1 {
+        return Err(AvcError::InvalidPps(format!(
+            "num_slice_groups_minus1 {} exceeds maximum {}",
+            num_slice_groups_minus1, MAX_NUM_SLICE_GROUPS_MINUS1
+        )));
+    }
+
     let mut slice_group_map_type = 0;
 
     if num_slice_groups_minus1 > 0 {
@@ -92,6 +103,17 @@ pub fn parse_pps(data: &[u8]) -> Result<Pps> {
             }
             6 => {
                 let pic_size_in_map_units_minus1 = reader.read_ue()?;
+
+                // SECURITY: Validate pic_size_in_map_units_minus1 to prevent excessive loops
+                // This should be bounded by picture dimensions, but we add a safety limit
+                const MAX_PIC_SIZE_IN_MAP_UNITS_MINUS1: u32 = 1_000_000; // ~1M entries max
+                if pic_size_in_map_units_minus1 > MAX_PIC_SIZE_IN_MAP_UNITS_MINUS1 {
+                    return Err(AvcError::InvalidPps(format!(
+                        "pic_size_in_map_units_minus1 {} exceeds maximum {}",
+                        pic_size_in_map_units_minus1, MAX_PIC_SIZE_IN_MAP_UNITS_MINUS1
+                    )));
+                }
+
                 let bits = ((num_slice_groups_minus1 + 1) as f64).log2().ceil() as u8;
                 for _ in 0..=pic_size_in_map_units_minus1 {
                     let _slice_group_id = reader.read_bits(bits)?;
