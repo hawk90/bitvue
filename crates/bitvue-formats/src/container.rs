@@ -378,4 +378,254 @@ mod tests {
         assert_eq!(ContainerFormat::AnnexB.get_likely_codec(), Some("h264"));
         assert_eq!(ContainerFormat::Unknown.get_likely_codec(), None);
     }
+
+    // ==========================================================================
+    // Comprehensive tests for public API: detect_container_format()
+    // ==========================================================================
+
+    #[test]
+    fn test_detect_container_format_mp4() {
+        // Test with real MP4 magic bytes
+        let mut mp4_data = vec![0u8; 32];
+        mp4_data[4..8].copy_from_slice(b"ftyp");
+        mp4_data[8..12].copy_from_slice(b"avc1");
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_detect.mp4");
+        std::fs::write(&test_file, &mp4_data).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ContainerFormat::MP4);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_detect_container_format_mkv() {
+        // Test with MKV magic bytes
+        let mut mkv_data = vec![0u8; 32];
+        mkv_data[0..4].copy_from_slice(b"\x1a\x45\xdf\xa3");
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_detect.mkv");
+        std::fs::write(&test_file, &mkv_data).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ContainerFormat::Matroska);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_detect_container_format_ivf() {
+        // Test with IVF magic bytes
+        let mut ivf_data = vec![0u8; 32];
+        ivf_data[0..4].copy_from_slice(b"DKIF");
+        ivf_data[4..8].copy_from_slice(&0u32.to_le_bytes());
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_detect.ivf");
+        std::fs::write(&test_file, &ivf_data).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ContainerFormat::IVF);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_detect_container_format_annex_b() {
+        // Test with Annex B magic bytes (NAL start code)
+        let mut annex_b_data = vec![0u8; 32];
+        annex_b_data[0..4].copy_from_slice(b"\x00\x00\x00\x01");
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_detect.h264");
+        std::fs::write(&test_file, &annex_b_data).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ContainerFormat::AnnexB);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_detect_container_format_extension_fallback() {
+        // Test extension fallback when magic bytes don't match
+        let test_data = vec![0xFFu8; 32]; // No recognizable magic bytes
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_detect.webm");
+        std::fs::write(&test_file, &test_data).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        // Should fallback to extension detection (Matroska for .webm)
+        assert_eq!(result.unwrap(), ContainerFormat::Matroska);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_detect_container_format_unknown() {
+        // Test with unknown format
+        let test_data = vec![0xFFu8; 32];
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_detect.xyz");
+        std::fs::write(&test_file, &test_data).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ContainerFormat::Unknown);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_detect_container_format_file_not_found() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("nonexistent_file.mp4");
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().kind() == std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn test_detect_container_format_empty_file() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("empty.mp4");
+        std::fs::write(&test_file, &[]).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        // Empty file falls back to extension detection (.mp4 -> MP4)
+        assert_eq!(result.unwrap(), ContainerFormat::MP4);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_detect_container_format_partial_header() {
+        // Test with partial header (smaller than magic bytes size)
+        let test_data = vec![0x66u8; 2]; // "ft" but incomplete
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("partial.mp4");
+        std::fs::write(&test_file, &test_data).unwrap();
+
+        let result = detect_container_format(&test_file);
+        assert!(result.is_ok());
+        // Should fall back to extension detection
+        assert_eq!(result.unwrap(), ContainerFormat::MP4);
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    // ==========================================================================
+    // Tests for public API: is_supported_format()
+    // ==========================================================================
+
+    #[test]
+    fn test_is_supported_format_mp4() {
+        let mut mp4_data = vec![0u8; 32];
+        mp4_data[4..8].copy_from_slice(b"ftyp");
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_supported.mp4");
+        std::fs::write(&test_file, &mp4_data).unwrap();
+
+        let result = is_supported_format(&test_file);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_is_supported_format_mkv() {
+        let mut mkv_data = vec![0u8; 32];
+        mkv_data[0..4].copy_from_slice(b"\x1a\x45\xdf\xa3");
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_supported.mkv");
+        std::fs::write(&test_file, &mkv_data).unwrap();
+
+        let result = is_supported_format(&test_file);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_is_supported_format_ivf() {
+        let mut ivf_data = vec![0u8; 32];
+        ivf_data[0..4].copy_from_slice(b"DKIF");
+        ivf_data[4..8].copy_from_slice(&0u32.to_le_bytes());
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_supported.ivf");
+        std::fs::write(&test_file, &ivf_data).unwrap();
+
+        let result = is_supported_format(&test_file);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_is_supported_format_annex_b() {
+        let mut annex_b_data = vec![0u8; 32];
+        annex_b_data[0..4].copy_from_slice(b"\x00\x00\x00\x01");
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_supported.h264");
+        std::fs::write(&test_file, &annex_b_data).unwrap();
+
+        let result = is_supported_format(&test_file);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_is_supported_format_unsupported() {
+        // Test with unsupported format (AVI)
+        let mut test_data = vec![0u8; 32];
+        test_data[0..4].copy_from_slice(b"RIFF");
+        test_data[8..12].copy_from_slice(b"AVI ");
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("unsupported.avi");
+        std::fs::write(&test_file, &test_data).unwrap();
+
+        let result = is_supported_format(&test_file);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_is_supported_format_unknown() {
+        let test_data = vec![0xFFu8; 32];
+
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("unknown.xyz");
+        std::fs::write(&test_file, &test_data).unwrap();
+
+        let result = is_supported_format(&test_file);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+
+        std::fs::remove_file(&test_file).ok();
+    }
 }
