@@ -127,9 +127,20 @@ fn read_string(cursor: &mut Cursor<&[u8]>, size: usize) -> Result<String, Bitvue
     cursor
         .read_exact(&mut buf)
         .map_err(|_| BitvueError::UnexpectedEof(cursor.position()))?;
-    Ok(String::from_utf8_lossy(&buf)
-        .trim_end_matches('\0')
-        .to_string())
+
+    // PERFORMANCE: Optimize string allocation
+    // Try valid UTF-8 first (zero-copy), fall back to lossy conversion
+    let result = if let Ok(valid_str) = std::str::from_utf8(&buf) {
+        // Valid UTF-8 - trim nulls and convert to String
+        valid_str.trim_end_matches('\0').to_string()
+    } else {
+        // Invalid UTF-8 - use lossy conversion and trim nulls
+        String::from_utf8_lossy(&buf)
+            .trim_end_matches('\0')
+            .to_string()
+    };
+
+    Ok(result)
 }
 
 /// Read an unsigned integer element

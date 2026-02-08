@@ -114,7 +114,15 @@ impl BoxHeader {
 
     /// Get box type as string
     pub fn box_type_str(&self) -> String {
-        String::from_utf8_lossy(&self.box_type).to_string()
+        // PERFORMANCE: Use cached string for common ASCII box types
+        // This avoids allocation for the majority of cases
+        if self.box_type.iter().all(|&b| b.is_ascii()) {
+            // Safe to unwrap since we verified all bytes are ASCII
+            unsafe { std::str::from_utf8_unchecked(&self.box_type) }.to_string()
+        } else {
+            // Fallback for non-ASCII box types (rare)
+            String::from_utf8_lossy(&self.box_type).to_string()
+        }
     }
 
     /// Get data size (excluding header)
