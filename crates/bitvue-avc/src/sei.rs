@@ -344,16 +344,38 @@ fn parse_mastering_display(data: &[u8]) -> Option<SeiParsedData> {
     let mut display_primaries_y = [0u16; 3];
 
     for i in 0..3 {
-        display_primaries_x[i] = u16::from_be_bytes([data[i * 4], data[i * 4 + 1]]);
-        display_primaries_y[i] = u16::from_be_bytes([data[i * 4 + 2], data[i * 4 + 3]]);
+        // SECURITY: Use get() for bounds-checked access
+        let base = i * 4;
+        display_primaries_x[i] = u16::from_be_bytes([
+            data.get(base).copied().unwrap_or(0),
+            data.get(base + 1).copied().unwrap_or(0),
+        ]);
+        display_primaries_y[i] = u16::from_be_bytes([
+            data.get(base + 2).copied().unwrap_or(0),
+            data.get(base + 3).copied().unwrap_or(0),
+        ]);
     }
 
-    let white_point_x = u16::from_be_bytes([data[12], data[13]]);
-    let white_point_y = u16::from_be_bytes([data[14], data[15]]);
-    let max_display_mastering_luminance =
-        u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-    let min_display_mastering_luminance =
-        u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+    let white_point_x = u16::from_be_bytes([
+        data.get(12).copied().unwrap_or(0),
+        data.get(13).copied().unwrap_or(0),
+    ]);
+    let white_point_y = u16::from_be_bytes([
+        data.get(14).copied().unwrap_or(0),
+        data.get(15).copied().unwrap_or(0),
+    ]);
+    let max_display_mastering_luminance = u32::from_be_bytes([
+        data.get(16).copied().unwrap_or(0),
+        data.get(17).copied().unwrap_or(0),
+        data.get(18).copied().unwrap_or(0),
+        data.get(19).copied().unwrap_or(0),
+    ]);
+    let min_display_mastering_luminance = u32::from_be_bytes([
+        data.get(20).copied().unwrap_or(0),
+        data.get(21).copied().unwrap_or(0),
+        data.get(22).copied().unwrap_or(0),
+        data.get(23).copied().unwrap_or(0),
+    ]);
 
     Some(SeiParsedData::MasteringDisplayColourVolume {
         display_primaries_x,

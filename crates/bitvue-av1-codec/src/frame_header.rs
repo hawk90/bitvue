@@ -160,10 +160,21 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     // This may misinterpret data for non-standard bitstreams.
 
     // Maximum bits to skip before giving up (prevents infinite loops on malformed data)
-    let max_skip_bits: u32 = 20;
-    let mut bits_skipped = 0;
+    const MAX_SKIP_BITS: u32 = 20;
+    const MAX_SKIP_ITERATIONS: u32 = MAX_SKIP_BITS + 10; // Safety margin
 
-    while bits_skipped < max_skip_bits {
+    let mut bits_skipped = 0;
+    let mut iterations = 0;
+
+    while bits_skipped < MAX_SKIP_BITS {
+        if iterations >= MAX_SKIP_ITERATIONS {
+            return Err(BitvueError::Parse {
+                offset: reader.position(),
+                message: "Exceeded maximum skip iterations in frame header parsing".to_string(),
+            });
+        }
+        iterations += 1;
+
         match reader.read_bit() {
             Ok(_) => bits_skipped += 1,
             Err(_) => {
@@ -272,11 +283,18 @@ fn parse_quantization_params_simple(
     reader: &mut BitReader,
 ) -> (Option<u8>, Option<i8>, Option<i8>) {
     // Maximum bits to skip (prevents infinite loops on malformed data)
-    // This is a rough estimate - actual position varies significantly
-    let max_skip_bits: u32 = 20;
-    let mut bits_skipped = 0;
+    const MAX_SKIP_BITS: u32 = 20;
+    const MAX_SKIP_ITERATIONS: u32 = MAX_SKIP_BITS + 10; // Safety margin
 
-    while bits_skipped < max_skip_bits {
+    let mut bits_skipped = 0;
+    let mut iterations = 0;
+
+    while bits_skipped < MAX_SKIP_BITS {
+        if iterations >= MAX_SKIP_ITERATIONS {
+            return (None, None, None);
+        }
+        iterations += 1;
+
         match reader.read_bit() {
             Ok(_) => bits_skipped += 1,
             Err(_) => {

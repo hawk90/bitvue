@@ -248,10 +248,12 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
         BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
     })? as usize;
-    while mv_l0.len() < total_blocks {
-        mv_l0.push(CoreMV::ZERO);
-        mv_l1.push(CoreMV::MISSING);
-        modes.push(BlockMode::Inter);
+
+    // Use resize instead of loop for efficiency and clarity
+    if mv_l0.len() < total_blocks {
+        mv_l0.resize(total_blocks, CoreMV::ZERO);
+        mv_l1.resize(total_blocks, CoreMV::MISSING);
+        modes.resize(total_blocks, BlockMode::Inter);
     }
 
     Ok(MVGrid::new(

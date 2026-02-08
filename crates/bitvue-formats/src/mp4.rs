@@ -25,6 +25,9 @@ const MAX_TOTAL_SAMPLES: usize = 100_000;
 /// Maximum nesting depth for MP4 boxes to prevent stack overflow
 const MAX_BOX_DEPTH: u8 = 16;
 
+/// Maximum sample size to prevent memory exhaustion (100MB)
+const MAX_SAMPLE_SIZE: usize = 100 * 1024 * 1024;
+
 /// Read a single byte
 fn read_u8(cursor: &mut Cursor<&[u8]>) -> Result<u8, BitvueError> {
     let mut buf = [0u8; 1];
@@ -225,6 +228,14 @@ fn extract_samples_with_validator<'a>(
         let size = usize::try_from(**size_ptr).map_err(|_| BitvueError::InvalidData(
             format!("Sample size {} exceeds platform address space", **size_ptr)
         ))?;
+
+        // SECURITY: Validate sample size to prevent memory exhaustion
+        if size > MAX_SAMPLE_SIZE {
+            return Err(BitvueError::InvalidData(format!(
+                "Sample size {} exceeds maximum allowed {}",
+                size, MAX_SAMPLE_SIZE
+            )));
+        }
 
         // Check for overflow in offset + size
         let end = match offset.checked_add(size) {

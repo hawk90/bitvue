@@ -134,6 +134,17 @@ fn read_string(cursor: &mut Cursor<&[u8]>, size: usize) -> Result<String, Bitvue
 
 /// Read an unsigned integer element
 fn read_uint(cursor: &mut Cursor<&[u8]>, size: usize) -> Result<u64, BitvueError> {
+    // SECURITY: Validate size to prevent memory exhaustion
+    // Unsigned integers in MKV are typically 1-8 bytes
+    const MAX_UINT_SIZE: usize = 16; // Allow some margin for edge cases
+
+    if size > MAX_UINT_SIZE {
+        return Err(BitvueError::InvalidData(format!(
+            "Uint size {} exceeds maximum allowed {}",
+            size, MAX_UINT_SIZE
+        )));
+    }
+
     let mut buf = vec![0u8; size];
     cursor
         .read_exact(&mut buf)
