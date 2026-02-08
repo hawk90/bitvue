@@ -20,6 +20,7 @@
 
 use crate::frame_header::{FrameHeader, FrameType};
 use bitvue_core::{
+    limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,
@@ -82,7 +83,32 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
     let grid_w = (width + sb_size - 1) / sb_size;
     let grid_h = (height + sb_size - 1) / sb_size;
 
-    let mut qp = Vec::with_capacity((grid_w * grid_h) as usize);
+    // SECURITY: Validate grid dimensions to prevent excessive allocation
+    if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
+        return Err(BitvueError::Decode(format!(
+            "Grid dimensions {}x{} exceed maximum {}",
+            grid_w, grid_h, MAX_GRID_DIMENSION
+        )));
+    }
+
+    let total_blocks = grid_w
+        .checked_mul(grid_h)
+        .ok_or_else(|| {
+            BitvueError::Decode(format!(
+                "Grid block count overflow: {}x{}",
+                grid_w, grid_h
+            ))
+        })?
+        as usize;
+
+    if total_blocks > MAX_GRID_BLOCKS {
+        return Err(BitvueError::Decode(format!(
+            "Grid block count {} exceeds maximum {}",
+            total_blocks, MAX_GRID_BLOCKS
+        )));
+    }
+
+    let mut qp = Vec::with_capacity(total_blocks);
 
     // Base QP from frame header
     let base_qp = frame_header.quantization.base_q_idx as i16;
@@ -115,9 +141,34 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
     let grid_w = (width + block_size - 1) / block_size;
     let grid_h = (height + block_size - 1) / block_size;
 
-    let mut mv_l0 = Vec::with_capacity((grid_w * grid_h) as usize);
-    let mut mv_l1 = Vec::with_capacity((grid_w * grid_h) as usize);
-    let mut modes = Vec::with_capacity((grid_w * grid_h) as usize);
+    // SECURITY: Validate grid dimensions to prevent excessive allocation
+    if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
+        return Err(BitvueError::Decode(format!(
+            "Grid dimensions {}x{} exceed maximum {}",
+            grid_w, grid_h, MAX_GRID_DIMENSION
+        )));
+    }
+
+    let total_blocks = grid_w
+        .checked_mul(grid_h)
+        .ok_or_else(|| {
+            BitvueError::Decode(format!(
+                "Grid block count overflow: {}x{}",
+                grid_w, grid_h
+            ))
+        })?
+        as usize;
+
+    if total_blocks > MAX_GRID_BLOCKS {
+        return Err(BitvueError::Decode(format!(
+            "Grid block count {} exceeds maximum {}",
+            total_blocks, MAX_GRID_BLOCKS
+        )));
+    }
+
+    let mut mv_l0 = Vec::with_capacity(total_blocks);
+    let mut mv_l1 = Vec::with_capacity(total_blocks);
+    let mut modes = Vec::with_capacity(total_blocks);
 
     // Parse super blocks
     let sbs = parse_super_blocks(frame_header);
@@ -150,7 +201,7 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
     }
 
     // Fill remaining if needed
-    while mv_l0.len() < (grid_w * grid_h) as usize {
+    while mv_l0.len() < total_blocks {
         mv_l0.push(CoreMV::ZERO);
         mv_l1.push(CoreMV::MISSING);
         modes.push(BlockMode::Inter);

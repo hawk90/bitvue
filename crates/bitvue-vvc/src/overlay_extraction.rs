@@ -25,6 +25,7 @@
 use crate::nal::NalUnit;
 use crate::sps::Sps;
 use bitvue_core::{
+    limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,
@@ -164,10 +165,25 @@ pub fn extract_qp_grid(
     let grid_w = (width + ctu_size - 1) / ctu_size;
     let grid_h = (height + ctu_size - 1) / ctu_size;
 
+    // SECURITY: Validate grid dimensions to prevent excessive allocation
+    if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
+        return Err(BitvueError::Decode(format!(
+            "Grid dimensions {}x{} exceed maximum {}",
+            grid_w, grid_h, MAX_GRID_DIMENSION
+        )));
+    }
+
     // Check for overflow in grid size calculation
     let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
         BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
     })? as usize;
+
+    if total_blocks > MAX_GRID_BLOCKS {
+        return Err(BitvueError::Decode(format!(
+            "Grid block count {} exceeds maximum {}",
+            total_blocks, MAX_GRID_BLOCKS
+        )));
+    }
 
     let mut qp = Vec::with_capacity(total_blocks);
 
@@ -214,10 +230,25 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     let grid_w = (width + block_size - 1) / block_size;
     let grid_h = (height + block_size - 1) / block_size;
 
+    // SECURITY: Validate grid dimensions to prevent excessive allocation
+    if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
+        return Err(BitvueError::Decode(format!(
+            "Grid dimensions {}x{} exceed maximum {}",
+            grid_w, grid_h, MAX_GRID_DIMENSION
+        )));
+    }
+
     // Check for overflow in grid size calculation
     let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
         BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
     })? as usize;
+
+    if total_blocks > MAX_GRID_BLOCKS {
+        return Err(BitvueError::Decode(format!(
+            "Grid block count {} exceeds maximum {}",
+            total_blocks, MAX_GRID_BLOCKS
+        )));
+    }
 
     let mut mv_l0 = Vec::with_capacity(total_blocks);
     let mut mv_l1 = Vec::with_capacity(total_blocks);

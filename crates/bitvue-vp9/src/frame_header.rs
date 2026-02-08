@@ -700,8 +700,19 @@ fn parse_tile_info(reader: &mut BitReader, header: &mut FrameHeader) -> Result<(
     let sb64_cols = (header.width + 63) / 64;
     let mut max_log2 = 0u8;
 
+    // SECURITY: Add explicit iteration limit for defense in depth
+    // Loop naturally bounded by max_log2 < 32 (max 32 iterations)
+    const MAX_LOG2_ITERATIONS: u8 = 32;
+    let mut log2_iterations = 0;
+
     // Safely calculate max log2 with overflow protection
     while max_log2 < 32 && (sb64_cols >> max_log2) > 1 {
+        if log2_iterations >= MAX_LOG2_ITERATIONS {
+            return Err(Vp9Error::InvalidData(
+                "Max log2 calculation exceeded iteration limit".to_string()
+            ));
+        }
+        log2_iterations += 1;
         max_log2 += 1;
     }
 
@@ -710,7 +721,20 @@ fn parse_tile_info(reader: &mut BitReader, header: &mut FrameHeader) -> Result<(
 
     // tile_cols_log2
     header.tile_cols_log2 = 0;
+
+    // SECURITY: Add explicit iteration limit for defense in depth
+    // Loop naturally bounded by max_log2 <= MAX_TILE_LOG2 (max 6 iterations)
+    const MAX_TILE_LOOP_ITERATIONS: u8 = 10;
+    let mut tile_loop_iterations = 0;
+
     while header.tile_cols_log2 < max_log2 {
+        if tile_loop_iterations >= MAX_TILE_LOOP_ITERATIONS {
+            return Err(Vp9Error::InvalidData(
+                "Tile columns loop exceeded iteration limit".to_string()
+            ));
+        }
+        tile_loop_iterations += 1;
+
         let increment = reader.read_literal(1)? != 0;
         if increment {
             header.tile_cols_log2 = header.tile_cols_log2.saturating_add(1);
