@@ -285,8 +285,19 @@ pub fn parse_mkv(data: &[u8]) -> Result<MkvInfo, BitvueError> {
     let segment_size = read_element_size(&mut cursor)?;
     let segment_end = cursor.position() + segment_size;
 
+    // SECURITY: Limit number of elements to prevent DoS via crafted files
+    // with many small elements. Maximum 10K elements per level for defense in depth.
+    const MAX_ELEMENTS_PER_LEVEL: usize = 10_000;
+    let mut element_count = 0;
+
     // Parse segment children
     while cursor.position() < segment_end && cursor.position() < data.len() as u64 {
+        if element_count >= MAX_ELEMENTS_PER_LEVEL {
+            return Err(BitvueError::InvalidData(
+                "Segment element count exceeded maximum".to_string()
+            ));
+        }
+        element_count += 1;
         let element_id = read_element_id(&mut cursor)?;
         let element_size = read_element_size(&mut cursor)?;
         let element_end = cursor.position() + element_size;
@@ -314,7 +325,16 @@ fn parse_tracks(
     tracks_end: u64,
     info: &mut MkvInfo,
 ) -> Result<(), BitvueError> {
+    const MAX_ELEMENTS_PER_LEVEL: usize = 10_000;
+    let mut element_count = 0;
+
     while cursor.position() < tracks_end {
+        if element_count >= MAX_ELEMENTS_PER_LEVEL {
+            return Err(BitvueError::InvalidData(
+                "Tracks element count exceeded maximum".to_string()
+            ));
+        }
+        element_count += 1;
         let id = read_element_id(cursor)?;
         let size = read_element_size(cursor)?;
         let element_end = cursor.position() + size;
@@ -339,7 +359,16 @@ fn parse_track_entry(
     let mut track_type = None;
     let mut codec_id = None;
 
+    const MAX_ELEMENTS_PER_LEVEL: usize = 10_000;
+    let mut element_count = 0;
+
     while cursor.position() < entry_end {
+        if element_count >= MAX_ELEMENTS_PER_LEVEL {
+            return Err(BitvueError::InvalidData(
+                "TrackEntry element count exceeded maximum".to_string()
+            ));
+        }
+        element_count += 1;
         let id = read_element_id(cursor)?;
         let size = read_element_size(cursor)?;
         let element_end = cursor.position() + size;
@@ -377,7 +406,16 @@ fn parse_cluster(
 ) -> Result<(), BitvueError> {
     let mut cluster_timecode = 0u64;
 
+    const MAX_ELEMENTS_PER_LEVEL: usize = 10_000;
+    let mut element_count = 0;
+
     while cursor.position() < cluster_end {
+        if element_count >= MAX_ELEMENTS_PER_LEVEL {
+            return Err(BitvueError::InvalidData(
+                "Cluster element count exceeded maximum".to_string()
+            ));
+        }
+        element_count += 1;
         let id = read_element_id(cursor)?;
         let size = read_element_size(cursor)?;
         let element_end = cursor.position() + size;
@@ -467,7 +505,16 @@ fn parse_block_group(
     cluster_timecode: u64,
     info: &mut MkvInfo,
 ) -> Result<(), BitvueError> {
+    const MAX_ELEMENTS_PER_LEVEL: usize = 10_000;
+    let mut element_count = 0;
+
     while cursor.position() < group_end {
+        if element_count >= MAX_ELEMENTS_PER_LEVEL {
+            return Err(BitvueError::InvalidData(
+                "BlockGroup element count exceeded maximum".to_string()
+            ));
+        }
+        element_count += 1;
         let id = read_element_id(cursor)?;
         let size = read_element_size(cursor)?;
 
