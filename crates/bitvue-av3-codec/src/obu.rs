@@ -97,7 +97,16 @@ pub fn find_obu_units(data: &[u8]) -> Vec<(usize, usize)> {
     let mut units = Vec::new();
     let mut i = 0;
 
+    // SECURITY: Limit scan distance to prevent DoS via crafted files
+    // with no valid OBU headers. Maximum 100MB scan distance.
+    const MAX_OBU_SCAN_DISTANCE: usize = 100 * 1024 * 1024;
+    let mut last_valid_obu_pos = 0;
+
     while i < data.len() {
+        // Prevent unbounded scanning through invalid data
+        if i > last_valid_obu_pos && i - last_valid_obu_pos > MAX_OBU_SCAN_DISTANCE {
+            break;
+        }
         // Look for valid OBU header
         if i + 1 < data.len() {
             let byte0 = data[i];
@@ -149,6 +158,7 @@ pub fn find_obu_units(data: &[u8]) -> Vec<(usize, usize)> {
 
                 units.push((obu_start, obu_end));
                 i = obu_end;
+                last_valid_obu_pos = obu_end;
                 continue;
             }
         }
