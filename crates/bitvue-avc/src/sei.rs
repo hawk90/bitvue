@@ -1,7 +1,7 @@
 //! H.264/AVC Supplemental Enhancement Information (SEI) parsing.
 
 use crate::bitreader::BitReader;
-use crate::error::Result;
+use crate::error::{AvcError, Result};
 use serde::{Deserialize, Serialize};
 
 /// SEI payload types.
@@ -219,15 +219,25 @@ pub enum SeiParsedData {
 
 /// Parse SEI messages from NAL unit payload.
 pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
+    const MAX_SEI_TYPE_ITERATIONS: u8 = 4;
+    const MAX_SEI_SIZE_ITERATIONS: u8 = 16;
+
     let mut messages = Vec::new();
     let mut offset = 0;
 
     while offset < data.len() {
         // Read payload type
         let mut payload_type: u32 = 0;
+        let mut type_iterations = 0;
         while offset < data.len() && data[offset] == 0xFF {
+            if type_iterations >= MAX_SEI_TYPE_ITERATIONS {
+                return Err(AvcError::InvalidSei(
+                    "SEI payload type extension exceeds maximum iterations".to_string()
+                ));
+            }
             payload_type += 255;
             offset += 1;
+            type_iterations += 1;
         }
         if offset >= data.len() {
             break;
@@ -237,9 +247,16 @@ pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
 
         // Read payload size
         let mut payload_size: u32 = 0;
+        let mut size_iterations = 0;
         while offset < data.len() && data[offset] == 0xFF {
+            if size_iterations >= MAX_SEI_SIZE_ITERATIONS {
+                return Err(AvcError::InvalidSei(
+                    "SEI payload size extension exceeds maximum iterations".to_string()
+                ));
+            }
             payload_size += 255;
             offset += 1;
+            size_iterations += 1;
         }
         if offset >= data.len() {
             break;

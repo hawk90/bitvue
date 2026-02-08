@@ -22,6 +22,9 @@ const MAX_ENTRY_COUNT: u32 = 10_000_000;
 /// Maximum total samples to prevent memory exhaustion
 const MAX_TOTAL_SAMPLES: usize = 100_000;
 
+/// Maximum nesting depth for MP4 boxes to prevent stack overflow
+const MAX_BOX_DEPTH: u8 = 16;
+
 /// Read a single byte
 fn read_u8(cursor: &mut Cursor<&[u8]>) -> Result<u8, BitvueError> {
     let mut buf = [0u8; 1];
@@ -352,8 +355,8 @@ pub fn parse_mp4(data: &[u8]) -> Result<Mp4Info, BitvueError> {
                 parse_ftyp(&mut cursor, &header, &mut info)?;
             }
             b"moov" => {
-                // Movie box - contains metadata
-                parse_moov(&mut cursor, &header, &mut info, data)?;
+                // Movie box - contains metadata (start at depth 0)
+                parse_moov(&mut cursor, &header, &mut info, data, 0)?;
             }
             b"mdat" => {
                 // Media data box - skip for now
@@ -398,7 +401,16 @@ fn parse_moov(
     header: &BoxHeader,
     info: &mut Mp4Info,
     data: &[u8],
+    depth: u8,
 ) -> Result<(), BitvueError> {
+    // SECURITY: Check box nesting depth to prevent stack overflow
+    if depth >= MAX_BOX_DEPTH {
+        return Err(BitvueError::InvalidData(format!(
+            "MP4 box depth {} exceeds maximum {}",
+            depth, MAX_BOX_DEPTH
+        )));
+    }
+    let child_depth = depth + 1;
     let box_end = header
         .data_offset
         .checked_add(header.data_size())
@@ -417,7 +429,7 @@ fn parse_moov(
         match &child_header.box_type {
             b"trak" => {
                 // Track box
-                parse_trak(cursor, &child_header, info, data)?;
+                parse_trak(cursor, &child_header, info, data, child_depth)?;
             }
             _ => {
                 // Skip other boxes
@@ -436,7 +448,16 @@ fn parse_trak(
     header: &BoxHeader,
     info: &mut Mp4Info,
     data: &[u8],
+    depth: u8,
 ) -> Result<(), BitvueError> {
+    // SECURITY: Check box nesting depth to prevent stack overflow
+    if depth >= MAX_BOX_DEPTH {
+        return Err(BitvueError::InvalidData(format!(
+            "MP4 box depth {} exceeds maximum {}",
+            depth, MAX_BOX_DEPTH
+        )));
+    }
+    let child_depth = depth + 1;
     let box_end = header
         .data_offset
         .checked_add(header.data_size())
@@ -453,7 +474,7 @@ fn parse_trak(
 
         if &child_header.box_type == b"mdia" {
             // Media box
-            parse_mdia(cursor, &child_header, info, data)?;
+            parse_mdia(cursor, &child_header, info, data, child_depth)?;
         }
 
         cursor.seek(SeekFrom::Start(child_end))?;
@@ -468,7 +489,16 @@ fn parse_mdia(
     header: &BoxHeader,
     info: &mut Mp4Info,
     data: &[u8],
+    depth: u8,
 ) -> Result<(), BitvueError> {
+    // SECURITY: Check box nesting depth to prevent stack overflow
+    if depth >= MAX_BOX_DEPTH {
+        return Err(BitvueError::InvalidData(format!(
+            "MP4 box depth {} exceeds maximum {}",
+            depth, MAX_BOX_DEPTH
+        )));
+    }
+    let child_depth = depth + 1;
     let box_end = header
         .data_offset
         .checked_add(header.data_size())
@@ -490,7 +520,7 @@ fn parse_mdia(
             }
             b"minf" => {
                 // Media information box
-                parse_minf(cursor, &child_header, info, data)?;
+                parse_minf(cursor, &child_header, info, data, child_depth)?;
             }
             _ => {}
         }
@@ -507,7 +537,16 @@ fn parse_minf(
     header: &BoxHeader,
     info: &mut Mp4Info,
     _data: &[u8],
+    depth: u8,
 ) -> Result<(), BitvueError> {
+    // SECURITY: Check box nesting depth to prevent stack overflow
+    if depth >= MAX_BOX_DEPTH {
+        return Err(BitvueError::InvalidData(format!(
+            "MP4 box depth {} exceeds maximum {}",
+            depth, MAX_BOX_DEPTH
+        )));
+    }
+    let child_depth = depth + 1;
     let box_end = header
         .data_offset
         .checked_add(header.data_size())
@@ -524,7 +563,7 @@ fn parse_minf(
 
         if &child_header.box_type == b"stbl" {
             // Sample table box
-            parse_stbl(cursor, &child_header, info)?;
+            parse_stbl(cursor, &child_header, info, child_depth)?;
         }
 
         cursor.seek(SeekFrom::Start(child_end))?;
@@ -538,7 +577,16 @@ fn parse_stbl(
     cursor: &mut Cursor<&[u8]>,
     header: &BoxHeader,
     info: &mut Mp4Info,
+    depth: u8,
 ) -> Result<(), BitvueError> {
+    // SECURITY: Check box nesting depth to prevent stack overflow
+    if depth >= MAX_BOX_DEPTH {
+        return Err(BitvueError::InvalidData(format!(
+            "MP4 box depth {} exceeds maximum {}",
+            depth, MAX_BOX_DEPTH
+        )));
+    }
+    let child_depth = depth + 1;
     let box_end = header
         .data_offset
         .checked_add(header.data_size())
@@ -555,31 +603,31 @@ fn parse_stbl(
 
         match &child_header.box_type {
             b"stsd" => {
-                // Sample description (codec information)
-                parse_stsd(cursor, &child_header, info)?;
+                // Sample description (codec information) - may have nested boxes
+                parse_stsd(cursor, &child_header, info, child_depth)?;
             }
             b"stts" => {
-                // Sample time to sample (durations)
+                // Sample time to sample (durations) - leaf parser
                 parse_stts(cursor, &child_header, info)?;
             }
             b"stco" => {
-                // Sample chunk offsets (32-bit)
+                // Sample chunk offsets (32-bit) - leaf parser
                 parse_stco(cursor, &child_header, info)?;
             }
             b"co64" => {
-                // Sample chunk offsets (64-bit)
+                // Sample chunk offsets (64-bit) - leaf parser
                 parse_co64(cursor, &child_header, info)?;
             }
             b"stsz" => {
-                // Sample sizes
+                // Sample sizes - leaf parser
                 parse_stsz(cursor, &child_header, info)?;
             }
             b"ctts" => {
-                // Composition time to sample (for PTS)
+                // Composition time to sample (for PTS) - leaf parser
                 parse_ctts(cursor, &child_header, info)?;
             }
             b"stss" => {
-                // Sync sample table (key frames)
+                // Sync sample table (key frames) - leaf parser
                 parse_stss(cursor, &child_header, info)?;
             }
             _ => {}
@@ -602,6 +650,7 @@ fn parse_stsd(
     cursor: &mut Cursor<&[u8]>,
     _header: &BoxHeader,
     info: &mut Mp4Info,
+    _depth: u8, // Depth parameter for future nesting support
 ) -> Result<(), BitvueError> {
     cursor.seek(SeekFrom::Current(4))?; // version + flags
 

@@ -21,6 +21,7 @@
 
 use crate::frame_header::FrameHeader;
 use bitvue_core::{
+    limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,
@@ -118,6 +119,26 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
     let grid_w = (width + sb_size - 1) / sb_size;
     let grid_h = (height + sb_size - 1) / sb_size;
 
+    // SECURITY: Validate grid dimensions to prevent excessive allocation
+    if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
+        return Err(BitvueError::Decode(format!(
+            "Grid dimensions {}x{} exceed maximum {}",
+            grid_w, grid_h, MAX_GRID_DIMENSION
+        )));
+    }
+
+    // Check for overflow in grid size calculation
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
+
+    if total_blocks > MAX_GRID_BLOCKS {
+        return Err(BitvueError::Decode(format!(
+            "Grid block count {} exceeds maximum {}",
+            total_blocks, MAX_GRID_BLOCKS
+        )));
+    }
+
     abseil::vlog!(
         2,
         "Extracting QP grid: {}x{}, sb_size={}, grid={}x{}, base_qp={}",
@@ -129,7 +150,7 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
         frame_header.base_q_idx
     );
 
-    let mut qp = Vec::with_capacity((grid_w * grid_h) as usize);
+    let mut qp = Vec::with_capacity(total_blocks);
 
     // Base QP from frame header
     let base_qp = frame_header.base_q_idx as i16;
@@ -144,7 +165,7 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
 
     // If we didn't get any SBs, use base_qp
     if qp.is_empty() {
-        qp = vec![base_qp; (grid_w * grid_h) as usize];
+        qp = vec![base_qp; total_blocks];
     }
 
     // Use -1 as missing value marker (standard sentinel for missing QP data)
@@ -182,13 +203,36 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
     let mv_grid_w = sb_cols * blocks_per_sb_dim;
     let mv_grid_h = sb_rows * blocks_per_sb_dim;
 
-    let mut mv_l0 = Vec::with_capacity((mv_grid_w * mv_grid_h) as usize);
-    let mut mv_l1 = Vec::with_capacity((mv_grid_w * mv_grid_h) as usize);
-    let mut modes = Vec::with_capacity((mv_grid_w * mv_grid_h) as usize);
+    // SECURITY: Validate grid dimensions to prevent excessive allocation
+    if mv_grid_w > MAX_GRID_DIMENSION || mv_grid_h > MAX_GRID_DIMENSION {
+        return Err(BitvueError::Decode(format!(
+            "MV grid dimensions {}x{} exceed maximum {}",
+            mv_grid_w, mv_grid_h, MAX_GRID_DIMENSION
+        )));
+    }
+
+    // Check for overflow in grid size calculation
+    let total_blocks = mv_grid_w.checked_mul(mv_grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("MV grid dimensions too large: {}x{}", mv_grid_w, mv_grid_h))
+    })? as usize;
+
+    if total_blocks > MAX_GRID_BLOCKS {
+        return Err(BitvueError::Decode(format!(
+            "MV grid block count {} exceeds maximum {}",
+            total_blocks, MAX_GRID_BLOCKS
+        )));
+    }
+
+    let mut mv_l0 = Vec::with_capacity(total_blocks);
+    let mut mv_l1 = Vec::with_capacity(total_blocks);
+    let mut modes = Vec::with_capacity(total_blocks);
 
     // Expand SBs to block grid
     for sb in &sbs {
-        let blocks_per_sb = ((sb.size as u32) / block_size) * ((sb.size as u32) / block_size);
+        let size_dim = (sb.size as u32) / block_size;
+        let blocks_per_sb = size_dim
+            .checked_mul(size_dim)
+            .unwrap_or(u32::MAX) as usize;
         for _ in 0..blocks_per_sb {
             match sb.mode {
                 BlockMode::Intra => {
@@ -214,7 +258,7 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
     }
 
     // Fill remaining if needed (should not be necessary if SBs cover the frame)
-    while mv_l0.len() < (mv_grid_w * mv_grid_h) as usize {
+    while mv_l0.len() < total_blocks {
         mv_l0.push(CoreMV::ZERO);
         mv_l1.push(CoreMV::MISSING);
         modes.push(BlockMode::Inter);
