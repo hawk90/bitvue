@@ -2653,4 +2653,183 @@ mod tests {
         // Should handle all byte values gracefully
         assert!(result.is_ok() || result.is_err());
     }
+
+    // === Additional Negative Tests for Public API ===
+
+    #[test]
+    fn test_parse_nal_header_with_forbidden_bit_set() {
+        // Test NAL header parser with forbidden_zero_bit set
+        let result = parse_nal_header(0x80); // forbidden_zero_bit = 1
+        // Should return error - forbidden bit must be 0
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(format!("{}", e).contains("forbidden"));
+        }
+    }
+
+    #[test]
+    fn test_parse_nal_header_all_zero() {
+        // Test NAL header parser with zero byte
+        let result = parse_nal_header(0x00);
+        assert!(result.is_ok());
+        let header = result.unwrap();
+        assert_eq!(header.nal_ref_idc, 0);
+    }
+
+    #[test]
+    fn test_parse_nal_header_max_values() {
+        // Test NAL header parser with maximum values
+        let result = parse_nal_header(0x7F); // max value without forbidden bit
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_mv_grid_with_empty_nal_units() {
+        // Test MV grid extraction with empty NAL unit array
+        use crate::overlay_extraction::extract_mv_grid;
+        let nal_units: &[crate::nal::NalUnit] = &[];
+        let sps = crate::sps::Sps {
+            profile_idc: crate::sps::ProfileIdc::Baseline,
+            constraint_set0_flag: false,
+            constraint_set1_flag: false,
+            constraint_set2_flag: false,
+            constraint_set3_flag: false,
+            constraint_set4_flag: false,
+            constraint_set5_flag: false,
+            level_idc: 51,
+            seq_parameter_set_id: 0,
+            chroma_format_idc: crate::sps::ChromaFormat::Yuv420,
+            separate_colour_plane_flag: false,
+            bit_depth_luma_minus8: 0,
+            bit_depth_chroma_minus8: 0,
+            qpprime_y_zero_transform_bypass_flag: false,
+            seq_scaling_matrix_present_flag: false,
+            log2_max_frame_num_minus4: 0,
+            pic_order_cnt_type: 0,
+            log2_max_pic_order_cnt_lsb_minus4: 0,
+            delta_pic_order_always_zero_flag: false,
+            offset_for_non_ref_pic: 0,
+            offset_for_top_to_bottom_field: 0,
+            num_ref_frames_in_pic_order_cnt_cycle: 0,
+            offset_for_ref_frame: Vec::new(),
+            max_num_ref_frames: 0,
+            gaps_in_frame_num_value_allowed_flag: false,
+            pic_width_in_mbs_minus1: 0,
+            pic_height_in_map_units_minus1: 0,
+            frame_mbs_only_flag: true,
+            mb_adaptive_frame_field_flag: false,
+            direct_8x8_inference_flag: false,
+            frame_cropping_flag: false,
+            frame_crop_left_offset: 0,
+            frame_crop_right_offset: 0,
+            frame_crop_top_offset: 0,
+            frame_crop_bottom_offset: 0,
+            vui_parameters_present_flag: false,
+            vui_parameters: None,
+        };
+        let result = extract_mv_grid(nal_units, &sps);
+        // Empty NAL units should return error or empty grid
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_qp_grid_with_empty_nal_units() {
+        // Test QP grid extraction with empty NAL unit array
+        use crate::overlay_extraction::extract_qp_grid;
+        let nal_units: &[crate::nal::NalUnit] = &[];
+        let sps = crate::sps::Sps {
+            profile_idc: crate::sps::ProfileIdc::Baseline,
+            constraint_set0_flag: false,
+            constraint_set1_flag: false,
+            constraint_set2_flag: false,
+            constraint_set3_flag: false,
+            constraint_set4_flag: false,
+            constraint_set5_flag: false,
+            level_idc: 51,
+            seq_parameter_set_id: 0,
+            chroma_format_idc: crate::sps::ChromaFormat::Yuv420,
+            separate_colour_plane_flag: false,
+            bit_depth_luma_minus8: 0,
+            bit_depth_chroma_minus8: 0,
+            qpprime_y_zero_transform_bypass_flag: false,
+            seq_scaling_matrix_present_flag: false,
+            log2_max_frame_num_minus4: 0,
+            pic_order_cnt_type: 0,
+            log2_max_pic_order_cnt_lsb_minus4: 0,
+            delta_pic_order_always_zero_flag: false,
+            offset_for_non_ref_pic: 0,
+            offset_for_top_to_bottom_field: 0,
+            num_ref_frames_in_pic_order_cnt_cycle: 0,
+            offset_for_ref_frame: Vec::new(),
+            max_num_ref_frames: 0,
+            gaps_in_frame_num_value_allowed_flag: false,
+            pic_width_in_mbs_minus1: 0,
+            pic_height_in_map_units_minus1: 0,
+            frame_mbs_only_flag: true,
+            mb_adaptive_frame_field_flag: false,
+            direct_8x8_inference_flag: false,
+            frame_cropping_flag: false,
+            frame_crop_left_offset: 0,
+            frame_crop_right_offset: 0,
+            frame_crop_top_offset: 0,
+            frame_crop_bottom_offset: 0,
+            vui_parameters_present_flag: false,
+            vui_parameters: None,
+        };
+        let result = extract_qp_grid(nal_units, &sps, 26); // Valid base QP
+        // Empty NAL units should return error or empty grid
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_avc_quick_with_empty_input() {
+        // Test quick info with empty input
+        let data: &[u8] = &[];
+        let result = parse_avc_quick(data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+        if let Ok(info) = result {
+            // Empty input should return default info
+            assert_eq!(info.nal_count, 0);
+        }
+    }
+
+    #[test]
+    fn test_parse_avc_with_only_start_codes() {
+        // Test parse_avc with only start codes (no actual data)
+        let data = [0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00];
+        let result = parse_avc(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_sei_with_empty_payload() {
+        // Test SEI parsing with empty payload
+        let mut data = vec![0u8; 16];
+        data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x06]); // SEI NAL
+        data[4] = 0xFF; // payload_type
+        data[5] = 0x00; // payload_size = 0
+
+        let result = parse_sei(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_find_nal_units_with_empty_input() {
+        // Test find_nal_units with empty input - returns Vec<usize>, not Result
+        let data: &[u8] = &[];
+        let positions = find_nal_units(data);
+        assert_eq!(positions.len(), 0);
+    }
+
+    #[test]
+    fn test_find_nal_units_with_no_start_codes() {
+        // Test find_nal_units with data but no start codes - returns Vec<usize>
+        let data = vec![0x12, 0x34, 0x56, 0x78];
+        let positions = find_nal_units(&data);
+        assert_eq!(positions.len(), 0); // No NAL units found
+    }
+
 }

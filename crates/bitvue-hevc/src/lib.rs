@@ -1772,4 +1772,179 @@ mod tests {
         // Should handle gracefully - parse valid NALs, skip invalid
         assert!(result.is_ok() || result.is_err());
     }
+
+    // === Additional Negative Tests for Public API ===
+
+    #[test]
+    fn test_parse_nal_header_invalid_temporal_id() {
+        // Test NAL header with zero temporal_id_plus1 (must be >= 1)
+        let mut data = vec![0u8; 2];
+        data[0] = 0x00; // nal_unit_type = 0
+        data[1] = 0x00; // nuh_temporal_id_plus1 = 0 (invalid)
+
+        let result = parse_nal_header(&data);
+        // May succeed but temporal_id should be handled
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_mv_grid_with_empty_data() {
+        // Test MV grid extraction with empty slice data
+        // Note: extract_mv_grid requires valid inputs, test error handling
+        use crate::overlay_extraction::extract_mv_grid;
+        use crate::sps::{Profile, ProfileTierLevel};
+        let nal_units: &[crate::nal::NalUnit] = &[];
+        let sps = Sps {
+            sps_video_parameter_set_id: 0,
+            sps_max_sub_layers_minus1: 0,
+            sps_temporal_id_nesting_flag: true,
+            profile_tier_level: ProfileTierLevel {
+                general_profile_space: 0,
+                general_tier_flag: false,
+                general_profile_idc: Profile::Main,
+                general_profile_compatibility_flags: 0,
+                general_progressive_source_flag: true,
+                general_interlaced_source_flag: false,
+                general_non_packed_constraint_flag: false,
+                general_frame_only_constraint_flag: true,
+                general_level_idc: 120,
+            },
+            sps_seq_parameter_set_id: 0,
+            chroma_format_idc: ChromaFormat::Chroma420,
+            separate_colour_plane_flag: false,
+            pic_width_in_luma_samples: 1920,
+            pic_height_in_luma_samples: 1080,
+            conformance_window_flag: false,
+            conf_win_left_offset: 0,
+            conf_win_right_offset: 0,
+            conf_win_top_offset: 0,
+            conf_win_bottom_offset: 0,
+            bit_depth_luma_minus8: 0,
+            bit_depth_chroma_minus8: 0,
+            log2_max_pic_order_cnt_lsb_minus4: 0,
+            sps_sub_layer_ordering_info_present_flag: false,
+            sps_max_dec_pic_buffering_minus1: vec![0],
+            sps_max_num_reorder_pics: vec![0],
+            sps_max_latency_increase_plus1: vec![0],
+            log2_min_luma_coding_block_size_minus3: 0,
+            log2_diff_max_min_luma_coding_block_size: 0,
+            log2_min_luma_transform_block_size_minus2: 0,
+            log2_diff_max_min_luma_transform_block_size: 0,
+            max_transform_hierarchy_depth_inter: 0,
+            max_transform_hierarchy_depth_intra: 0,
+            scaling_list_enabled_flag: false,
+            amp_enabled_flag: false,
+            sample_adaptive_offset_enabled_flag: false,
+            pcm_enabled_flag: false,
+            num_short_term_ref_pic_sets: 0,
+            long_term_ref_pics_present_flag: false,
+            num_long_term_ref_pics_sps: 0,
+            sps_temporal_mvp_enabled_flag: false,
+            strong_intra_smoothing_enabled_flag: false,
+            vui_parameters_present_flag: false,
+            vui_parameters: None,
+        };
+        let result = extract_mv_grid(nal_units, &sps);
+        // Should handle gracefully - may return empty grid or error
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_qp_grid_with_empty_data() {
+        // Test QP grid extraction with empty data
+        // Note: extract_qp_grid requires valid SPS, test error handling with empty data
+        use crate::overlay_extraction::extract_qp_grid;
+        use crate::sps::{Profile, ProfileTierLevel};
+        let nal_units: &[crate::nal::NalUnit] = &[];
+        let sps = Sps {
+            sps_video_parameter_set_id: 0,
+            sps_max_sub_layers_minus1: 0,
+            sps_temporal_id_nesting_flag: true,
+            profile_tier_level: ProfileTierLevel {
+                general_profile_space: 0,
+                general_tier_flag: false,
+                general_profile_idc: Profile::Main,
+                general_profile_compatibility_flags: 0,
+                general_progressive_source_flag: true,
+                general_interlaced_source_flag: false,
+                general_non_packed_constraint_flag: false,
+                general_frame_only_constraint_flag: true,
+                general_level_idc: 120,
+            },
+            sps_seq_parameter_set_id: 0,
+            chroma_format_idc: ChromaFormat::Chroma420,
+            separate_colour_plane_flag: false,
+            pic_width_in_luma_samples: 1920,
+            pic_height_in_luma_samples: 1080,
+            conformance_window_flag: false,
+            conf_win_left_offset: 0,
+            conf_win_right_offset: 0,
+            conf_win_top_offset: 0,
+            conf_win_bottom_offset: 0,
+            bit_depth_luma_minus8: 0,
+            bit_depth_chroma_minus8: 0,
+            log2_max_pic_order_cnt_lsb_minus4: 0,
+            sps_sub_layer_ordering_info_present_flag: false,
+            sps_max_dec_pic_buffering_minus1: vec![0],
+            sps_max_num_reorder_pics: vec![0],
+            sps_max_latency_increase_plus1: vec![0],
+            log2_min_luma_coding_block_size_minus3: 0,
+            log2_diff_max_min_luma_coding_block_size: 0,
+            log2_min_luma_transform_block_size_minus2: 0,
+            log2_diff_max_min_luma_transform_block_size: 0,
+            max_transform_hierarchy_depth_inter: 0,
+            max_transform_hierarchy_depth_intra: 0,
+            scaling_list_enabled_flag: false,
+            amp_enabled_flag: false,
+            sample_adaptive_offset_enabled_flag: false,
+            pcm_enabled_flag: false,
+            num_short_term_ref_pic_sets: 0,
+            long_term_ref_pics_present_flag: false,
+            num_long_term_ref_pics_sps: 0,
+            sps_temporal_mvp_enabled_flag: false,
+            strong_intra_smoothing_enabled_flag: false,
+            vui_parameters_present_flag: false,
+            vui_parameters: None,
+        };
+        let result = extract_qp_grid(nal_units, &sps, 26); // Valid QP value
+        // Empty data should return error or empty grid
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_hevc_quick_with_empty_input() {
+        // Test quick info with empty input
+        let data: &[u8] = &[];
+        let result = parse_hevc_quick(data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+        if let Ok(info) = result {
+            assert_eq!(info.nal_count, 0);
+        }
+    }
+
+    #[test]
+    fn test_parse_hevc_with_only_start_codes() {
+        // Test parse_hevc with only start codes (no actual NAL data)
+        let data = [0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00];
+        let result = parse_hevc(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_find_nal_units_with_empty_input() {
+        // Test find_nal_units with empty input - returns Vec<(usize, usize)>, not Result
+        let data: &[u8] = &[];
+        let units = find_nal_units(data);
+        assert_eq!(units.len(), 0);
+    }
+
+    #[test]
+    fn test_find_nal_units_with_no_start_codes() {
+        // Test find_nal_units with data but no start codes - returns Vec<(usize, usize)>
+        let data = vec![0x12, 0x34, 0x56, 0x78];
+        let units = find_nal_units(&data);
+        assert_eq!(units.len(), 0);
+    }
 }

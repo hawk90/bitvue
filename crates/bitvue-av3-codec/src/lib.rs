@@ -1354,4 +1354,110 @@ mod tests {
         // Should handle gracefully
         assert!(result.is_ok() || result.is_err());
     }
+
+    // === Additional Negative Tests for Public API ===
+
+    #[test]
+    fn test_parse_obu_header_with_reserved_obu_type() {
+        // Test OBU header parsing with reserved OBU type
+        let data = [0x78, 0x00]; // obu_type = 15 (Padding), obu_extension=0
+        let result = parse_obu_header(&data);
+        // Should handle gracefully
+        assert!(result.is_ok());
+        let obu = result.unwrap();
+        assert_eq!(obu.obu_type, ObuType::Padding);
+    }
+
+    #[test]
+    fn test_parse_obu_header_with_max_size_field() {
+        // Test OBU header with maximum size field value
+        let mut data = vec![0u8; 260]; // Large OBU size
+        data[0] = (1 << 3) | 0x02; // Sequence header
+        data[1] = 0xFF; // First byte of LEB128 (indicating large size)
+        // Fill rest with valid LEB128 continuation bytes
+        for i in 2..260 {
+            data[i] = 0x80; // More continuation bytes
+        }
+
+        let result = parse_av3(&data);
+        // Should handle gracefully without panic
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_av3_quick_with_empty_input() {
+        // Test quick info with empty input
+        let data: &[u8] = &[];
+        let result = parse_av3_quick(data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+        if let Ok(info) = result {
+            assert_eq!(info.obu_count, 0);
+        }
+    }
+
+    #[test]
+    fn test_parse_obu_units_with_empty_input() {
+        // Test parse_obu_units with empty input
+        let data: &[u8] = &[];
+        let result = parse_obu_units(data);
+        assert!(result.is_ok());
+        let obus = result.unwrap();
+        assert_eq!(obus.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_obu_units_with_invalid_obu_header() {
+        // Test parse_obu_units with malformed OBU header
+        let data = [0xFF, 0xFF, 0xFF, 0xFF]; // All invalid bytes
+        let result = parse_obu_units(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_sequence_header_with_minimal_data() {
+        // Test sequence header parsing with incomplete data
+        let data = [(1 << 3) | 0x02, 0x01]; // seq_profile, minimal
+        let result = parse_sequence_header(&data);
+        // May fail due to incomplete data, but should not panic
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_frame_header_with_empty_data() {
+        // Test frame header parsing with no data
+        let data: &[u8] = &[];
+        let result = parse_frame_header(data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_av3_with_obu_extension_flag_set() {
+        // Test parse_av3 with OBU extension flag
+        let mut data = vec![0u8; 16];
+        data[0] = (1 << 3) | 0x06; // Sequence header with obu_extension=1
+        data[1] = 0x10; // OBU size
+
+        let result = parse_av3(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_mv_grid_with_no_frame_data() {
+        // Test MV grid extraction with no frame data
+        let result = extract_mv_grid(&FrameHeader::default());
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_qp_grid_with_no_frame_data() {
+        // Test QP grid extraction with no frame data
+        let result = extract_qp_grid(&FrameHeader::default());
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
 }

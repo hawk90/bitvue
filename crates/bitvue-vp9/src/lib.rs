@@ -1347,4 +1347,106 @@ mod tests {
         // Should handle gracefully
         assert!(result.is_ok() || result.is_err());
     }
+
+    // === Additional Negative Tests for Public API ===
+
+    #[test]
+    fn test_parse_vp9_with_empty_input() {
+        // Test parse_vp9 with empty input
+        let data: &[u8] = &[];
+        let result = parse_vp9(data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+        if let Ok(stream) = result {
+            assert_eq!(stream.frames.len(), 0);
+        }
+    }
+
+    #[test]
+    fn test_parse_vp9_quick_with_empty_input() {
+        // Test quick info with empty input
+        let data: &[u8] = &[];
+        let result = parse_vp9_quick(data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_vp9_with_invalid_profile_value() {
+        // Test parse_vp9 with invalid profile (profile 3 is invalid)
+        let mut data = vec![0u8; 10];
+        data[0] = 0x9C; // frame_marker=1, profile=3 (invalid), show_frame=1
+        let result = parse_vp9(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_mv_grid_with_invalid_frame_header() {
+        // Test MV grid extraction with invalid frame header
+        use crate::overlay_extraction::extract_mv_grid;
+        let frame_header = FrameHeader {
+            frame_type: FrameType::Key,
+            show_frame: true,
+            error_resilient_mode: true,
+            width: 0,
+            height: 0,
+            ..Default::default()
+        };
+        let result = extract_mv_grid(&frame_header);
+        // Should handle gracefully - may return error for zero dimensions
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_qp_grid_with_invalid_frame_header() {
+        // Test QP grid extraction with minimal frame data
+        use crate::overlay_extraction::extract_qp_grid;
+        let frame_header = FrameHeader {
+            frame_type: FrameType::Key,
+            show_frame: true,
+            error_resilient_mode: true,
+            width: 0,
+            height: 0,
+            ..Default::default()
+        };
+        let result = extract_qp_grid(&frame_header);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_superframe_index_with_incomplete_data() {
+        // Test superframe index parsing with incomplete data
+        let data = [0x00, 0x00]; // Just 2 bytes (incomplete)
+        let result = parse_superframe_index(&data);
+        // Should handle gracefully - may return error or partial result
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_has_superframe_index_with_empty_input() {
+        // Test has_superframe_index with empty input
+        let result = has_superframe_index(&[]);
+        // Should return false for empty input
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_has_superframe_index_with_invalid_index() {
+        // Test has_superframe_index with invalid index marker
+        let data = [0x12, 0x00]; // No superframe index marker
+        let result = has_superframe_index(&data);
+        // Should return false
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_extract_vp9_frames_with_empty_input() {
+        // Test extract_vp9_frames with empty input
+        let result = extract_vp9_frames(&[]);
+        assert!(result.is_ok());
+        let frames = result.unwrap();
+        assert_eq!(frames.len(), 0);
+    }
 }

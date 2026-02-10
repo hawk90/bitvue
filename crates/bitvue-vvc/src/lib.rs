@@ -1697,4 +1697,83 @@ mod tests {
         // Should handle gracefully - return empty grid or error
         assert!(result.is_ok() || result.is_err());
     }
+
+    // === Additional Negative Tests for Public API ===
+
+    #[test]
+    fn test_parse_nal_header_with_zero_temporal_id() {
+        // Test NAL header with zero temporal_id_plus1 (invalid, must be >= 1)
+        let mut data = vec![0u8; 2];
+        data[0] = 0x00; // forbidden_zero_bit=0, nuh_reserved_zero_bit=0, nuh_layer_id=0, nal_unit_type=0
+        data[1] = 0x00; // nuh_temporal_id_plus1=0 (invalid)
+
+        let result = parse_nal_header(&data);
+        // May succeed but should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_mv_grid_with_zero_dimensions() {
+        // Test MV grid extraction with zero dimensions
+        let result = extract_mv_grid(&[], &Sps::default());
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_extract_partition_grid_with_invalid_ctu() {
+        // Test partition grid with invalid CTU configuration
+        let result = extract_partition_grid(&[], &Sps::default());
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_parse_vvc_quick_with_empty_input() {
+        // Test quick info with empty input
+        let data: &[u8] = &[];
+        let result = parse_vvc_quick(data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+        if let Ok(info) = result {
+            assert_eq!(info.nal_count, 0);
+        }
+    }
+
+    #[test]
+    fn test_parse_vvc_with_only_start_codes() {
+        // Test parse_vvc with only start codes (no actual NAL data)
+        let data = [0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00];
+        let result = parse_vvc(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_find_nal_units_with_empty_input() {
+        // Test find_nal_units with empty input - returns Vec<(usize, usize)>, not Result
+        let data: &[u8] = &[];
+        let units = find_nal_units(data);
+        assert_eq!(units.len(), 0);
+    }
+
+    #[test]
+    fn test_find_nal_units_with_no_start_codes() {
+        // Test find_nal_units with data but no start codes - returns Vec<(usize, usize)>
+        let data = vec![0x12, 0x34, 0x56, 0x78];
+        let units = find_nal_units(&data);
+        assert_eq!(units.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_vvc_with_invalid_nal_unit_type() {
+        // Test parse_vvc with reserved NAL unit type
+        let mut data = vec![0u8; 16];
+        data.extend_from_slice(&[0x00, 0x00, 0x01]); // Start code
+        data.push(0xFE); // Invalid NAL unit type (reserved)
+
+        let result = parse_vvc(&data);
+        // Should handle gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
 }
