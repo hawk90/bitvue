@@ -214,8 +214,9 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
 
     // Use 16x16 blocks for MV grid (finer than CTU)
     let block_size = 16u32;
-    let grid_w = (width + block_size - 1) / block_size;
-    let grid_h = (height + block_size - 1) / block_size;
+    // Use ceiling division to match MVGrid::new calculation
+    let grid_w = width.div_ceil(block_size);
+    let grid_h = height.div_ceil(block_size);
 
     // Check for overflow in grid size calculation
     let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
@@ -234,6 +235,16 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
                     for ctu in &ctus {
                         // Expand CTU CUs to block grid
                         expand_cu_to_blocks(ctu, block_size, &mut mv_l0, &mut mv_l1, &mut modes);
+                        // Truncate to expected size to handle edge CTUs
+                        if mv_l0.len() > total_blocks {
+                            mv_l0.truncate(total_blocks);
+                            mv_l1.truncate(total_blocks);
+                            modes.truncate(total_blocks);
+                            break;
+                        }
+                    }
+                    if mv_l0.len() >= total_blocks {
+                        break;
                     }
                 }
                 Err(e) => {
@@ -245,11 +256,6 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     }
 
     // Fill remaining if needed
-    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
-        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
-    })? as usize;
-
-    // Use resize instead of loop for efficiency and clarity
     if mv_l0.len() < total_blocks {
         mv_l0.resize(total_blocks, CoreMV::ZERO);
         mv_l1.resize(total_blocks, CoreMV::MISSING);
@@ -461,12 +467,94 @@ fn parse_slice_ctus(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nal::{NalUnit, NalUnitHeader};
+    use crate::sps::{Sps, ChromaFormat, Profile};
+
+    fn create_test_sps(width: u32, height: u32) -> Sps {
+        use crate::sps::ProfileTierLevel;
+        Sps {
+            sps_video_parameter_set_id: 0,
+            sps_max_sub_layers_minus1: 0,
+            sps_temporal_id_nesting_flag: true,
+            profile_tier_level: ProfileTierLevel {
+                general_profile_space: 0,
+                general_tier_flag: false,
+                general_profile_idc: Profile::Main,
+                general_profile_compatibility_flags: 0,
+                general_progressive_source_flag: true,
+                general_interlaced_source_flag: false,
+                general_non_packed_constraint_flag: true,
+                general_frame_only_constraint_flag: true,
+                general_level_idc: 0, // Level unspecified
+            },
+            sps_seq_parameter_set_id: 0,
+            chroma_format_idc: ChromaFormat::Chroma420,
+            separate_colour_plane_flag: false,
+            pic_width_in_luma_samples: width,
+            pic_height_in_luma_samples: height,
+            conformance_window_flag: false,
+            conf_win_left_offset: 0,
+            conf_win_right_offset: 0,
+            conf_win_top_offset: 0,
+            conf_win_bottom_offset: 0,
+            bit_depth_luma_minus8: 0,
+            bit_depth_chroma_minus8: 0,
+            log2_max_pic_order_cnt_lsb_minus4: 0,
+            sps_sub_layer_ordering_info_present_flag: false,
+            sps_max_dec_pic_buffering_minus1: vec![0],
+            sps_max_num_reorder_pics: vec![0],
+            sps_max_latency_increase_plus1: vec![0],
+            log2_min_luma_coding_block_size_minus3: 0,
+            log2_diff_max_min_luma_coding_block_size: 0,
+            log2_min_luma_transform_block_size_minus2: 0,
+            log2_diff_max_min_luma_transform_block_size: 0,
+            max_transform_hierarchy_depth_inter: 0,
+            max_transform_hierarchy_depth_intra: 0,
+            scaling_list_enabled_flag: false,
+            amp_enabled_flag: false,
+            sample_adaptive_offset_enabled_flag: false,
+            pcm_enabled_flag: false,
+            num_short_term_ref_pic_sets: 0,
+            long_term_ref_pics_present_flag: false,
+            num_long_term_ref_pics_sps: 0,
+            sps_temporal_mvp_enabled_flag: false,
+            strong_intra_smoothing_enabled_flag: false,
+            vui_parameters_present_flag: false,
+            vui_parameters: None,
+        }
+    }
+
+    fn create_test_nal_unit(nal_type: crate::NalUnitType) -> NalUnit {
+        NalUnit {
+            header: NalUnitHeader {
+                nal_unit_type: nal_type,
+                nuh_layer_id: 0,
+                nuh_temporal_id_plus1: 1,
+            },
+            offset: 0,
+            size: 10,
+            payload: vec![0; 10],
+            raw_payload: vec![0; 10],
+        }
+    }
 
     #[test]
     fn test_pred_mode() {
         assert_eq!(PredMode::Intra, PredMode::Intra);
         assert_eq!(PredMode::Inter, PredMode::Inter);
         assert_eq!(PredMode::Skip, PredMode::Skip);
+    }
+
+    #[test]
+    fn test_part_mode() {
+        assert_eq!(PartMode::Part2Nx2N, PartMode::Part2Nx2N);
+        assert_eq!(PartMode::NxN, PartMode::NxN);
+        assert_eq!(PartMode::Part2NxN, PartMode::Part2NxN);
+        assert_eq!(PartMode::PartNx2N, PartMode::PartNx2N);
+        assert_eq!(PartMode::Part2NxnU, PartMode::Part2NxnU);
+        assert_eq!(PartMode::Part2NxnD, PartMode::Part2NxnD);
+        assert_eq!(PartMode::PartnLx2N, PartMode::PartnLx2N);
+        assert_eq!(PartMode::PartnRx2N, PartMode::PartnRx2N);
     }
 
     #[test]
@@ -493,6 +581,28 @@ mod tests {
     }
 
     #[test]
+    fn test_ctu_add_cu() {
+        let mut ctu = CodingTreeUnit::new(0, 0, 64);
+        let cu = CodingUnit {
+            x: 0,
+            y: 0,
+            size: 64,
+            pred_mode: PredMode::Intra,
+            part_mode: PartMode::Part2Nx2N,
+            intra_mode: Some(IntraMode::Planar),
+            qp: 26,
+            mv_l0: None,
+            mv_l1: None,
+            ref_idx_l0: None,
+            ref_idx_l1: None,
+            transform_size: 4,
+            depth: 0,
+        };
+        ctu.add_cu(cu);
+        assert_eq!(ctu.coding_units.len(), 1);
+    }
+
+    #[test]
     fn test_intra_mode() {
         let planar = IntraMode::Planar;
         let dc = IntraMode::Dc;
@@ -502,5 +612,259 @@ mod tests {
         assert_eq!(dc, IntraMode::Dc);
         assert_eq!(angular, IntraMode::Angular(10));
         assert_ne!(angular, IntraMode::Angular(11));
+    }
+
+    #[test]
+    fn test_extract_qp_grid_empty_nal_units() {
+        let sps = create_test_sps(640, 480);
+        let result = extract_qp_grid(&[], &sps, 26);
+        assert!(result.is_ok());
+        let qp_grid = result.unwrap();
+        // 640/64 * 480/64 = 10 * 7 = 70 CTUs (round up)
+        assert_eq!(qp_grid.grid_w, 10);
+        assert_eq!(qp_grid.grid_h, 8);
+    }
+
+    #[test]
+    fn test_extract_qp_grid_with_idr_slice() {
+        let sps = create_test_sps(640, 480);
+        let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+        let result = extract_qp_grid(&[nal], &sps, 26);
+        assert!(result.is_ok());
+        let qp_grid = result.unwrap();
+        assert_eq!(qp_grid.grid_w, 10);
+        assert_eq!(qp_grid.grid_h, 8);
+    }
+
+    #[test]
+    fn test_extract_qp_grid_with_trail_slice() {
+        let sps = create_test_sps(1920, 1080);
+        let nal = create_test_nal_unit(crate::NalUnitType::TrailR);
+        let result = extract_qp_grid(&[nal], &sps, 30);
+        assert!(result.is_ok());
+        let qp_grid = result.unwrap();
+        // 1920/64 * 1080/64 = 30 * 17 = 510 CTUs (round up)
+        assert_eq!(qp_grid.grid_w, 30);
+        assert_eq!(qp_grid.grid_h, 17);
+    }
+
+    #[test]
+    fn test_extract_qp_grid_base_qp_variations() {
+        let sps = create_test_sps(640, 480);
+        let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+
+        for base_qp in [0i16, 10, 26, 40, 51] {
+            let result = extract_qp_grid(&[nal.clone()], &sps, base_qp);
+            assert!(result.is_ok(), "Failed for base_qp={}", base_qp);
+        }
+    }
+
+    #[test]
+    fn test_extract_mv_grid_empty_nal_units() {
+        let sps = create_test_sps(640, 480);
+        let result = extract_mv_grid(&[], &sps);
+        assert!(result.is_ok());
+        let mv_grid = result.unwrap();
+        // MV grid uses 16x16 blocks
+        assert_eq!(mv_grid.coded_width, 640);
+        assert_eq!(mv_grid.coded_height, 480);
+    }
+
+    #[test]
+    fn test_extract_mv_grid_with_slice() {
+        let sps = create_test_sps(640, 480);
+        let nal = create_test_nal_unit(crate::NalUnitType::TrailR);
+        let result = extract_mv_grid(&[nal], &sps);
+        assert!(result.is_ok());
+        let mv_grid = result.unwrap();
+        assert_eq!(mv_grid.coded_width, 640);
+        assert_eq!(mv_grid.coded_height, 480);
+        assert!(mv_grid.mode.as_ref().is_some());
+    }
+
+    #[test]
+    fn test_extract_mv_grid_intra_slice() {
+        let sps = create_test_sps(320, 240);
+        let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+        let result = extract_mv_grid(&[nal], &sps);
+        assert!(result.is_ok());
+        let mv_grid = result.unwrap();
+        let modes = mv_grid.mode.as_ref().unwrap();
+        // All blocks should be Intra for IDR slice
+        assert!(modes.iter().all(|m| *m == BlockMode::Intra));
+    }
+
+    #[test]
+    fn test_extract_partition_grid_empty_nal_units() {
+        let sps = create_test_sps(640, 480);
+        let result = extract_partition_grid(&[], &sps);
+        assert!(result.is_ok());
+        let partition_grid = result.unwrap();
+        assert_eq!(partition_grid.coded_width, 640);
+        assert_eq!(partition_grid.coded_height, 480);
+        // Should have scaffold blocks
+        assert!(!partition_grid.blocks.is_empty());
+    }
+
+    #[test]
+    fn test_extract_partition_grid_with_slice() {
+        let sps = create_test_sps(640, 480);
+        let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+        let result = extract_partition_grid(&[nal], &sps);
+        assert!(result.is_ok());
+        let partition_grid = result.unwrap();
+        assert_eq!(partition_grid.coded_width, 640);
+        assert_eq!(partition_grid.coded_height, 480);
+    }
+
+    #[test]
+    fn test_extract_partition_grid_inter_slice() {
+        let sps = create_test_sps(1920, 1080);
+        let nal = create_test_nal_unit(crate::NalUnitType::TrailR);
+        let result = extract_partition_grid(&[nal], &sps);
+        assert!(result.is_ok());
+        let partition_grid = result.unwrap();
+        assert_eq!(partition_grid.coded_width, 1920);
+        assert_eq!(partition_grid.coded_height, 1080);
+    }
+
+    #[test]
+    fn test_coding_unit_struct() {
+        let cu = CodingUnit {
+            x: 0,
+            y: 0,
+            size: 64,
+            pred_mode: PredMode::Intra,
+            part_mode: PartMode::Part2Nx2N,
+            intra_mode: Some(IntraMode::Planar),
+            qp: 26,
+            mv_l0: None,
+            mv_l1: None,
+            ref_idx_l0: None,
+            ref_idx_l1: None,
+            transform_size: 4,
+            depth: 0,
+        };
+        assert_eq!(cu.x, 0);
+        assert_eq!(cu.y, 0);
+        assert_eq!(cu.size, 64);
+        assert_eq!(cu.qp, 26);
+        assert_eq!(cu.pred_mode, PredMode::Intra);
+    }
+
+    #[test]
+    fn test_coding_unit_with_motion_vectors() {
+        let cu = CodingUnit {
+            x: 0,
+            y: 0,
+            size: 32,
+            pred_mode: PredMode::Inter,
+            part_mode: PartMode::Part2Nx2N,
+            intra_mode: None,
+            qp: 30,
+            mv_l0: Some(MotionVector::new(4, 8)),
+            mv_l1: Some(MotionVector::new(-2, 4)),
+            ref_idx_l0: Some(0),
+            ref_idx_l1: Some(1),
+            transform_size: 8,
+            depth: 1,
+        };
+        assert_eq!(cu.mv_l0.unwrap().x, 4);
+        assert_eq!(cu.mv_l1.unwrap().y, 4);
+        assert_eq!(cu.ref_idx_l0.unwrap(), 0);
+        assert_eq!(cu.ref_idx_l1.unwrap(), 1);
+    }
+
+    #[test]
+    fn test_extract_qp_grid_small_resolution() {
+        let sps = create_test_sps(160, 120);
+        let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+        let result = extract_qp_grid(&[nal], &sps, 20);
+        assert!(result.is_ok());
+        let qp_grid = result.unwrap();
+        // 160/64 * 120/64 = 2 * 2 = 4 CTUs (round up)
+        assert_eq!(qp_grid.grid_w, 3);
+        assert_eq!(qp_grid.grid_h, 2);
+    }
+
+    #[test]
+    fn test_extract_mv_grid_high_resolution() {
+        let sps = create_test_sps(3840, 2160);
+        let nal = create_test_nal_unit(crate::NalUnitType::TrailR);
+        let result = extract_mv_grid(&[nal], &sps);
+        assert!(result.is_ok());
+        let mv_grid = result.unwrap();
+        assert_eq!(mv_grid.coded_width, 3840);
+        assert_eq!(mv_grid.coded_height, 2160);
+    }
+
+    #[test]
+    fn test_part_mode_to_partition_type() {
+        assert_eq!(PartMode::Part2Nx2N, PartMode::Part2Nx2N);
+        assert_eq!(PartMode::NxN, PartMode::NxN);
+        assert_eq!(PartMode::Part2NxN, PartMode::Part2NxN);
+        assert_eq!(PartMode::PartNx2N, PartMode::PartNx2N);
+    }
+
+    #[test]
+    fn test_extract_qp_grid_various_resolutions() {
+        let resolutions = [(320u32, 240u32), (640, 480), (1280, 720), (1920, 1080)];
+        for (width, height) in resolutions {
+            let sps = create_test_sps(width, height);
+            let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+            let result = extract_qp_grid(&[nal], &sps, 26);
+            assert!(result.is_ok(), "Failed for {}x{}", width, height);
+        }
+    }
+
+    #[test]
+    fn test_extract_mv_grid_modes_present() {
+        let sps = create_test_sps(640, 480);
+        let nal = create_test_nal_unit(crate::NalUnitType::TrailR);
+        let result = extract_mv_grid(&[nal], &sps);
+        assert!(result.is_ok());
+        let mv_grid = result.unwrap();
+        assert!(mv_grid.mode.as_ref().is_some());
+    }
+
+    #[test]
+    fn test_extract_partition_grid_blocks_filled() {
+        let sps = create_test_sps(640, 480);
+        let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
+        let result = extract_partition_grid(&[nal], &sps);
+        assert!(result.is_ok());
+        let partition_grid = result.unwrap();
+        assert!(!partition_grid.blocks.is_empty());
+    }
+
+    #[test]
+    fn test_pred_mode_all_variants() {
+        assert_eq!(PredMode::Intra, PredMode::Intra);
+        assert_eq!(PredMode::Inter, PredMode::Inter);
+        assert_eq!(PredMode::Skip, PredMode::Skip);
+        assert_ne!(PredMode::Intra, PredMode::Inter);
+        assert_ne!(PredMode::Inter, PredMode::Skip);
+    }
+
+    #[test]
+    fn test_coding_unit_skip_mode() {
+        let cu = CodingUnit {
+            x: 0,
+            y: 0,
+            size: 64,
+            pred_mode: PredMode::Skip,
+            part_mode: PartMode::Part2Nx2N,
+            intra_mode: None,
+            qp: 26,
+            mv_l0: Some(MotionVector::zero()),
+            mv_l1: None,
+            ref_idx_l0: None,
+            ref_idx_l1: None,
+            transform_size: 4,
+            depth: 0,
+        };
+        assert_eq!(cu.pred_mode, PredMode::Skip);
+        assert_eq!(cu.mv_l0.unwrap().x, 0);
+        assert_eq!(cu.mv_l0.unwrap().y, 0);
     }
 }

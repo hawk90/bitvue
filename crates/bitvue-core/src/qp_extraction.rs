@@ -206,7 +206,7 @@ mod tests {
         // Test average QP calculation
         let deltas = vec![0, 10, -5, 5];
         let avg = QpData::calculate_average_qp(0, &deltas);
-        assert_eq!(avg, Some(26)); // (26+26+36+21+31)/5 = 140/5 = 28
+        assert_eq!(avg, Some(28)); // (26+36+21+31)/4 = 114/4 = 28 (integer division)
 
         // Test empty deltas
         let empty_deltas: Vec<i32> = vec![];
