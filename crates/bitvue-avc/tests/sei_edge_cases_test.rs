@@ -27,7 +27,7 @@ fn test_parse_sei_only_start_code() {
 #[test]
 fn test_parse_sei_zero_payload_size() {
     let mut data = vec![0u8; 16];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0xFF;
     data[6] = 0x00;
@@ -39,7 +39,7 @@ fn test_parse_sei_zero_payload_size() {
 #[test]
 fn test_parse_sei_max_payload_type() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0xFF;
     data[6] = 0xFF;
@@ -52,7 +52,7 @@ fn test_parse_sei_max_payload_type() {
 #[test]
 fn test_parse_sei_large_payload_size() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0x01;
     data[6] = 0x80;
@@ -129,7 +129,7 @@ fn test_parse_sei_very_short_data() {
 #[test]
 fn test_parse_sei_with_rbsp_trailing_bits() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0x00;
     data[6] = 0x00;
@@ -142,7 +142,7 @@ fn test_parse_sei_with_rbsp_trailing_bits() {
 #[test]
 fn test_parse_sei_multiple_rbsp_trailing() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0x00;
     data[6] = 0x00;
@@ -157,7 +157,7 @@ fn test_parse_sei_multiple_rbsp_trailing() {
 #[test]
 fn test_parse_sei_consecutive_ff_payload_type() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0xFF;
     data[6] = 0xFF;
@@ -173,7 +173,7 @@ fn test_parse_sei_reserved_payload_types() {
     // Test some reserved payload types
     for payload_type in [37u8, 38, 40, 45, 50, 100, 200, 255] {
         let mut data = vec![0u8; 16];
-        data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+        data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
         data[4] = 0x06;
         data[5] = payload_type;
         data[6] = 0x00;
@@ -187,7 +187,7 @@ fn test_parse_sei_reserved_payload_types() {
 #[test]
 fn test_parse_sei_very_long_payload() {
     let mut data = vec![0u8; 128];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0x05;
     data[6] = 0x7F;
@@ -212,7 +212,7 @@ fn test_parse_sei_zero_length_nal() {
 #[test]
 fn test_parse_sei_truncated_payload() {
     let mut data = vec![0u8; 16];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x06;
     data[5] = 0x01;
     data[6] = 0x80; // Large payload_size but no actual payload
