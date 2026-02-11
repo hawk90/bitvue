@@ -27,7 +27,7 @@ fn test_parse_hevc_only_start_codes() {
 #[test]
 fn test_parse_hevc_malformed_nal() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0xFF; // Invalid NAL type
 
     let result = parse_hevc(&data);
@@ -37,7 +37,7 @@ fn test_parse_hevc_malformed_nal() {
 #[test]
 fn test_parse_hevc_very_long_nal() {
     let mut data = vec![0u8; 10000];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x40; // VPS NAL type
     for i in 5..data.len() {
         data[i] = (i % 256) as u8;
