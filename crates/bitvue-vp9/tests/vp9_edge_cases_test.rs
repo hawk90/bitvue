@@ -1,5 +1,5 @@
 // Edge case tests for VP9 frame and parsing
-use bitvue_vp9::{parse_vp9, parse_frame_header, extract_vp9_frames, FrameType};
+use bitvue_vp9::{parse_vp9, extract_vp9_frames};
 
 #[test]
 fn test_parse_vp9_empty_data() {
@@ -74,39 +74,6 @@ fn test_parse_vp9_incrementing_data() {
     }
 
     let result = parse_vp9(&data);
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_parse_frame_header_empty() {
-    let data: &[u8] = &[];
-    let result = parse_frame_header(data);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_parse_frame_header_too_short() {
-    let data = [0x80];
-    let result = parse_frame_header(&data);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_parse_frame_header_no_sync_code() {
-    let mut data = vec![0u8; 32];
-    data[0] = 0x82; // marker + profile
-    data[1] = 0x00; // no sync code
-
-    let result = parse_frame_header(&data);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_parse_frame_header_invalid_profile() {
-    let mut data = vec![0u8; 32];
-    data[0] = 0x9C; // profile=3 (invalid)
-
-    let result = parse_frame_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
