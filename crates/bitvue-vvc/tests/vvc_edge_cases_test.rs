@@ -105,7 +105,7 @@ fn test_parse_vvc_only_start_codes() {
 #[test]
 fn test_parse_vvc_malformed_nal() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0xFF; // Invalid NAL type
 
     let result = parse_vvc(&data);
@@ -115,7 +115,7 @@ fn test_parse_vvc_malformed_nal() {
 #[test]
 fn test_parse_vvc_very_long_nal() {
     let mut data = vec![0u8; 10000];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x20; // Slice NAL type
     for i in 5..data.len() {
         data[i] = (i % 256) as u8;
@@ -165,7 +165,7 @@ fn test_parse_vvc_mixed_start_code_lengths() {
 #[test]
 fn test_parse_vvc_zero_temporal_id() {
     let mut data = vec![0u8; 32];
-    data[0..4].copy_from_slice(&[0x00, 0x00, 0x01]);
+    data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     // NAL header with zero temporal_id_plus1 (invalid)
     data[4] = 0x00; // nal_unit_type
     data[5] = 0x00; // nuh_layer_id
