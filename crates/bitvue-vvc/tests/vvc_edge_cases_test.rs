@@ -1,81 +1,81 @@
 // Edge case tests for VVC slice and frame parsing
-use bitvue_vvc::{parse_slice_header, parse_vvc, NalUnitType};
+use bitvue_vvc::{parse_vvc, parse_nal_header};
 
 #[test]
-fn test_parse_slice_header_empty_data() {
+fn test_parse_nal_header_empty_data() {
     let data: &[u8] = &[];
-    let result = parse_slice_header(data);
+    let result = parse_nal_header(data);
     assert!(result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_all_zeros() {
+fn test_parse_nal_header_all_zeros() {
     let data = [0x00; 32];
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_all_ones() {
+fn test_parse_nal_header_all_ones() {
     let data = [0xFF; 32];
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_single_byte() {
+fn test_parse_nal_header_single_byte() {
     let data = [0x80];
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_two_bytes() {
+fn test_parse_nal_header_two_bytes() {
     let data = [0x80, 0x00];
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_with_trailing_zeros() {
+fn test_parse_nal_header_with_trailing_zeros() {
     let mut data = vec![0u8; 64];
     data[0] = 0x80; // First slice segment flag
 
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_with_trailing_ones() {
+fn test_parse_nal_header_with_trailing_ones() {
     let mut data = vec![0u8; 64];
     data[0] = 0x80;
     for i in 1..64 {
         data[i] = 0xFF;
     }
 
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_alternating_pattern() {
+fn test_parse_nal_header_alternating_pattern() {
     let mut data = vec![0u8; 64];
     for i in 0..64 {
         data[i] = if i % 2 == 0 { 0xAA } else { 0x55 };
     }
 
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
 #[test]
-fn test_parse_slice_header_incrementing_data() {
+fn test_parse_nal_header_incrementing_data() {
     let mut data = vec![0u8; 64];
     for i in 0..64 {
         data[i] = i as u8;
     }
 
-    let result = parse_slice_header(&data);
+    let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
 }
 
