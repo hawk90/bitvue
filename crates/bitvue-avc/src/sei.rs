@@ -227,23 +227,6 @@ pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
     let mut messages = Vec::new();
     let mut offset = 0;
 
-    // SECURITY: Reject obviously malicious inputs early to prevent DoS.
-    // Consecutive 0xFF bytes indicate state machine confusion attack.
-    // Check for runs of 5+ consecutive 0xFF bytes (emulation prevention pattern).
-    let mut consecutive_ff = 0;
-    for byte in data.iter().take(200) {
-        if *byte == 0xFF {
-            consecutive_ff += 1;
-            if consecutive_ff > 5 {
-                return Err(AvcError::InvalidSei(
-                    "SEI payload contains suspicious consecutive emulation prevention bytes".to_string(),
-                ));
-            }
-        } else {
-            consecutive_ff = 0;
-        }
-    }
-
     while offset < data.len() {
         // Read payload type
         let mut payload_type: u32 = 0;
