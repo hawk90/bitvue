@@ -159,7 +159,7 @@ fn test_vp9_stream_render_dimensions() {
             show_frame: true,
             width: 1920,
             height: 1080,
-            render_width: 1280,  // Different render size
+            render_width: 1280, // Different render size
             render_height: 720,
             bit_depth: 8,
             ..FrameHeader::default()
@@ -928,7 +928,7 @@ fn test_parse_vp9_with_embedded_nulls() {
     // Test parse_vp9 handles embedded null bytes
     let mut data = vec![0u8; 100];
     data[0] = 0x82; // Frame marker
-    // Rest is nulls
+                    // Rest is nulls
     for i in 1..100 {
         data[i] = 0x00;
     }
@@ -1031,7 +1031,7 @@ fn test_parse_vp9_quick_info() {
     let mut data = vec![0u8; 20];
     data[0] = 0x49; // frame marker + profile 0
     data[1] = 0x83; // keyframe
-    // Add minimal width/height
+                    // Add minimal width/height
     data.extend_from_slice(&[0x4D, 0x00, 0x4C, 0x00]);
 
     let result = parse_vp9_quick(&data);

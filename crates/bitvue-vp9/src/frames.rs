@@ -128,28 +128,24 @@ impl Vp9FrameBuilder {
     /// Returns an error if required fields are not set.
     pub fn build(self) -> Result<Vp9Frame, String> {
         Ok(Vp9Frame {
-            frame_index: self.frame_index.ok_or_else(||
-                "frame_index is required".to_string()
-            )?,
-            frame_type: self.frame_type.ok_or_else(||
-                "frame_type is required".to_string()
-            )?,
+            frame_index: self
+                .frame_index
+                .ok_or_else(|| "frame_index is required".to_string())?,
+            frame_type: self
+                .frame_type
+                .ok_or_else(|| "frame_type is required".to_string())?,
             frame_data: self.frame_data.unwrap_or_default(),
-            offset: self.offset.ok_or_else(||
-                "offset is required".to_string()
-            )?,
-            size: self.size.ok_or_else(||
-                "size is required".to_string()
-            )?,
-            show_frame: self.show_frame.ok_or_else(||
-                "show_frame is required".to_string()
-            )?,
-            width: self.width.ok_or_else(||
-                "width is required".to_string()
-            )?,
-            height: self.height.ok_or_else(||
-                "height is required".to_string()
-            )?,
+            offset: self
+                .offset
+                .ok_or_else(|| "offset is required".to_string())?,
+            size: self.size.ok_or_else(|| "size is required".to_string())?,
+            show_frame: self
+                .show_frame
+                .ok_or_else(|| "show_frame is required".to_string())?,
+            width: self.width.ok_or_else(|| "width is required".to_string())?,
+            height: self
+                .height
+                .ok_or_else(|| "height is required".to_string())?,
             frame_header: self.frame_header,
         })
     }

@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 
 // SECURITY: Maximum tile counts to prevent DoS via excessive tiles
 // AV1 spec allows up to 64 tile columns/rows, but we use conservative limits
-const MAX_TILE_COLS: u32 = 64;  // Per AV1 spec
-const MAX_TILE_ROWS: u32 = 64;  // Per AV1 spec
+const MAX_TILE_COLS: u32 = 64; // Per AV1 spec
+const MAX_TILE_ROWS: u32 = 64; // Per AV1 spec
 const MAX_TOTAL_TILES: u32 = 1024; // Conservative limit: 64x64 = 4096 max, we use 1024
 
 /// Tile configuration information
@@ -67,14 +67,12 @@ impl TileInfo {
         }
 
         // Check total tile count
-        let total_tiles = tile_cols
-            .checked_mul(tile_rows)
-            .ok_or_else(|| {
-                BitvueError::Decode(format!(
-                    "Tile columns {} * rows {} would overflow",
-                    tile_cols, tile_rows
-                ))
-            })?;
+        let total_tiles = tile_cols.checked_mul(tile_rows).ok_or_else(|| {
+            BitvueError::Decode(format!(
+                "Tile columns {} * rows {} would overflow",
+                tile_cols, tile_rows
+            ))
+        })?;
 
         if total_tiles > MAX_TOTAL_TILES {
             return Err(BitvueError::Decode(format!(

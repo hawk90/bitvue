@@ -1,7 +1,7 @@
 //! MPEG-2 Video sequence header and extension parsing.
 
-use crate::error::{Mpeg2Error, Result};
 use crate::bitreader::BitReader;
+use crate::error::{Mpeg2Error, Result};
 use serde::{Deserialize, Serialize};
 
 /// Chroma format.

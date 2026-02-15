@@ -372,7 +372,7 @@ fn parse_ref_pic_list_modification(reader: &mut BitReader) -> Result<RefPicListM
     loop {
         if modifications.len() >= MAX_MODIFICATIONS {
             return Err(AvcError::InvalidSliceHeader(
-                "Reference picture list modifications exceeded maximum".to_string()
+                "Reference picture list modifications exceeded maximum".to_string(),
             ));
         }
 
@@ -414,7 +414,7 @@ fn parse_dec_ref_pic_marking(
             loop {
                 if mmco_count >= MAX_MMCO_OPERATIONS {
                     return Err(AvcError::InvalidSliceHeader(
-                        "MMCO operations exceeded maximum".to_string()
+                        "MMCO operations exceeded maximum".to_string(),
                     ));
                 }
                 mmco_count += 1;

@@ -27,7 +27,7 @@ where
     D: Deserializer<'de>,
 {
     let opt = Option::<String>::deserialize(deserializer)?;
-    Ok(opt.map(|s| Arc::from(s)))
+    Ok(opt.map(Arc::from))
 }
 
 /// Serialize Arc<str> as String (for JSON compatibility)

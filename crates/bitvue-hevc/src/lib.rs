@@ -52,7 +52,7 @@ pub use overlay_extraction::{
 pub use pps::{parse_pps, Pps};
 use serde::{Deserialize, Serialize};
 pub use slice::{SliceHeader, SliceType};
-pub use sps::{ChromaFormat, parse_sps, ProfileTierLevel, Sps};
+pub use sps::{parse_sps, ChromaFormat, ProfileTierLevel, Sps};
 use std::collections::HashMap;
 pub use vps::Vps;
 
@@ -351,7 +351,5 @@ pub struct HevcQuickInfo {
     pub level: Option<u8>,
 }
 
-
 #[cfg(test)]
 mod tests;
-

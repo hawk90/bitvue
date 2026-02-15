@@ -581,9 +581,7 @@ impl Av1Decoder {
     /// Read IVF frame header (12 bytes)
     ///
     /// Returns (frame_size, timestamp) or None if EOF/incomplete
-    fn read_ivf_frame_header<R: std::io::Read>(
-        reader: &mut R,
-    ) -> Result<Option<(usize, i64)>> {
+    fn read_ivf_frame_header<R: std::io::Read>(reader: &mut R) -> Result<Option<(usize, i64)>> {
         let mut frame_header_buf = [0u8; 12];
         let bytes_read = reader
             .read(&mut frame_header_buf)

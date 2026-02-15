@@ -197,7 +197,5 @@ pub struct Vp9QuickInfo {
     pub show_frame_count: usize,
 }
 
-
 #[cfg(test)]
 mod tests;
-

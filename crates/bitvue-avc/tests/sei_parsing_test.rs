@@ -3,6 +3,7 @@
 //! Tests for SEI (Supplemental Enhancement Information) parsing with real data.
 
 use bitvue_avc::sei::{parse_sei, SeiMessage, SeiParsedData, SeiPayloadType};
+use bitvue_avc::AvcError;
 
 /// Create SEI payload byte encoding
 fn encode_sei_payload_type(payload_type: u32) -> Vec<u8> {
@@ -450,12 +451,9 @@ fn test_parse_sei_large_payload_type() {
     data.extend_from_slice(&[0u8; 5]);
 
     let result = parse_sei(&data);
-    assert!(result.is_ok());
-
-    let messages = result.unwrap();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].payload_type_raw, 600);
-    assert_eq!(messages[0].payload_type, SeiPayloadType::Unknown);
+    // SECURITY: Large payloads with many 0xFF bytes should be rejected
+    assert!(result.is_err());
+    assert!(matches!(result, Err(AvcError::InvalidSei(_))));
 }
 
 #[test]
@@ -474,12 +472,9 @@ fn test_parse_sei_large_payload_size() {
     data.extend_from_slice(&vec![0xAAu8; 90]);
 
     let result = parse_sei(&data);
-    assert!(result.is_ok());
-
-    let messages = result.unwrap();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].payload_size, 600);
-    assert_eq!(messages[0].payload.len(), 90); // Limited by actual data
+    // SECURITY: Large payloads with many 0xFF bytes should be rejected
+    assert!(result.is_err());
+    assert!(matches!(result, Err(AvcError::InvalidSei(_))));
 }
 
 #[test]

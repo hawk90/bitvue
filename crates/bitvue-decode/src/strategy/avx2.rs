@@ -410,7 +410,9 @@ unsafe fn interleave_rgb4(rg: __m128i, b: __m128i) -> __m128i {
 
     // Shuffle pattern for low half: 0,1,16,2,3,17
     // Indices 0-7 reference rg, 8-15 reference b0_3 (8 is added)
-    let shuffle_mask_low = _mm_setr_epi8(0, 1, 16, 2, 3, 17, 4, 5, 18, 6, 7, 19, -128, -128, -128, -128);
+    let shuffle_mask_low = _mm_setr_epi8(
+        0, 1, 16, 2, 3, 17, 4, 5, 18, 6, 7, 19, -128, -128, -128, -128,
+    );
     let shuffled_low = _mm_shuffle_epi8(_mm_unpacklo_epi8(rg, b0_3), shuffle_mask_low);
 
     shuffled_low

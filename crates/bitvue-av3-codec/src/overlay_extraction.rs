@@ -213,7 +213,10 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
 
     // Check for overflow in grid size calculation
     let total_blocks = mv_grid_w.checked_mul(mv_grid_h).ok_or_else(|| {
-        BitvueError::Decode(format!("MV grid dimensions too large: {}x{}", mv_grid_w, mv_grid_h))
+        BitvueError::Decode(format!(
+            "MV grid dimensions too large: {}x{}",
+            mv_grid_w, mv_grid_h
+        ))
     })? as usize;
 
     if total_blocks > MAX_GRID_BLOCKS {
@@ -230,9 +233,7 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
     // Expand SBs to block grid
     for sb in &sbs {
         let size_dim = (sb.size as u32) / block_size;
-        let blocks_per_sb = size_dim
-            .checked_mul(size_dim)
-            .unwrap_or(u32::MAX) as usize;
+        let blocks_per_sb = size_dim.checked_mul(size_dim).unwrap_or(u32::MAX) as usize;
         for _ in 0..blocks_per_sb {
             match sb.mode {
                 BlockMode::Intra => {

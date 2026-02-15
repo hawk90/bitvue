@@ -87,9 +87,7 @@ pub fn psnr(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> 
 
     // Prevent overflow in width * height calculation
     let size = width.checked_mul(height).ok_or_else(|| {
-        BitvueError::InvalidData(format!(
-            "Width * height overflow: {} * {}", width, height
-        ))
+        BitvueError::InvalidData(format!("Width * height overflow: {} * {}", width, height))
     })?;
 
     if reference.len() != size || distorted.len() != size {
@@ -145,9 +143,7 @@ pub fn ssim(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> 
 
     // Prevent overflow in width * height calculation
     let size = width.checked_mul(height).ok_or_else(|| {
-        BitvueError::InvalidData(format!(
-            "Width * height overflow: {} * {}", width, height
-        ))
+        BitvueError::InvalidData(format!("Width * height overflow: {} * {}", width, height))
     })?;
 
     if reference.len() != size || distorted.len() != size {
@@ -183,23 +179,25 @@ pub fn ssim(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> 
             }
 
             // Calculate start and end indices for this window with overflow protection
-            let start = y.checked_mul(width)
+            let start = y
+                .checked_mul(width)
                 .and_then(|s| s.checked_add(x))
-                .ok_or_else(|| BitvueError::InvalidData(
-                    "SSIM window start calculation overflow".to_string()
-                ))?;
+                .ok_or_else(|| {
+                    BitvueError::InvalidData("SSIM window start calculation overflow".to_string())
+                })?;
 
-            let end = start.checked_add(win_size)
-                .ok_or_else(|| BitvueError::InvalidData(
-                    "SSIM window end calculation overflow".to_string()
-                ))?;
+            let end = start.checked_add(win_size).ok_or_else(|| {
+                BitvueError::InvalidData("SSIM window end calculation overflow".to_string())
+            })?;
 
             // Validate end doesn't exceed data bounds
             if end > reference.len() || end > distorted.len() {
-                return Err(BitvueError::InvalidData(
-                    format!("SSIM window end {} exceeds data length (ref: {}, dist: {})",
-                            end, reference.len(), distorted.len())
-                ));
+                return Err(BitvueError::InvalidData(format!(
+                    "SSIM window end {} exceeds data length (ref: {}, dist: {})",
+                    end,
+                    reference.len(),
+                    distorted.len()
+                )));
             }
 
             // Use SIMD-optimized window statistics computation

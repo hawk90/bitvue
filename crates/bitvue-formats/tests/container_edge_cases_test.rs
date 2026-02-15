@@ -424,16 +424,16 @@ mod platform_specific_tests {
         {
             // On Unix, backslash is valid filename character
             let _path = "test\\file.ivf"; // Not a directory separator
-            // let result = open_file(path);
-            // Should treat as single filename
+                                          // let result = open_file(path);
+                                          // Should treat as single filename
         }
 
         #[cfg(windows)]
         {
             // On Windows, forward slash is accepted as separator
             let path = "test/file.ivf"; // Forward slash
-            // let result = open_file(path);
-            // Should normalize and work
+                                        // let result = open_file(path);
+                                        // Should normalize and work
         }
     }
 

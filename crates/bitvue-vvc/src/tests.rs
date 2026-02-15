@@ -79,7 +79,10 @@ fn test_parse_vvc_sps_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::SpsNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::SpsNut
+        );
     }
 }
 
@@ -97,7 +100,10 @@ fn test_parse_vvc_pps_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::PpsNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::PpsNut
+        );
     }
 }
 
@@ -171,7 +177,10 @@ fn test_parse_vvc_aud_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::AudNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::AudNut
+        );
     }
 }
 
@@ -189,7 +198,10 @@ fn test_parse_vvc_eos_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::EosNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::EosNut
+        );
     }
 }
 
@@ -207,7 +219,10 @@ fn test_parse_vvc_eob_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::EobNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::EobNut
+        );
     }
 }
 
@@ -245,7 +260,10 @@ fn test_parse_vvc_prefix_sei_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::PrefixSeiNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::PrefixSeiNut
+        );
     }
 }
 
@@ -262,7 +280,10 @@ fn test_parse_vvc_suffix_sei_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::SuffixSeiNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::SuffixSeiNut
+        );
     }
 }
 
@@ -273,28 +294,46 @@ fn test_parse_vvc_multiple_nal_units() {
     let mut pos = 0;
 
     // SPS (5 bytes: 3 start code + 2 header) + some payload
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1; // layer_id=0
-    data[pos] = 0x81; pos += 1; // nal_unit_type=16 << 3 | 1
-    data[pos] = 0x00; pos += 1; // payload byte
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1; // layer_id=0
+    data[pos] = 0x81;
+    pos += 1; // nal_unit_type=16 << 3 | 1
+    data[pos] = 0x00;
+    pos += 1; // payload byte
 
     // PPS
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1; // layer_id=0
-    data[pos] = 0x89; pos += 1; // nal_unit_type=17 << 3 | 1
-    data[pos] = 0x00; pos += 1; // payload byte
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1; // layer_id=0
+    data[pos] = 0x89;
+    pos += 1; // nal_unit_type=17 << 3 | 1
+    data[pos] = 0x00;
+    pos += 1; // payload byte
 
     // IDR
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1; // layer_id=0
-    data[pos] = 0x3D; pos += 1; // nal_unit_type=7 << 3 | 1
-    data[pos] = 0x00; pos += 1; // payload byte
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1; // layer_id=0
+    data[pos] = 0x3D;
+    pos += 1; // nal_unit_type=7 << 3 | 1
+    data[pos] = 0x00;
+    pos += 1; // payload byte
 
     let result = parse_vvc(&data[..pos]);
     assert!(result.is_ok());
@@ -1196,7 +1235,7 @@ fn test_parse_vvc_with_embedded_nulls() {
     data[1] = 0x00;
     data[2] = 0x01; // Start code
     data[3] = 0x00; // Embedded null in NAL header position
-    // Rest is nulls
+                    // Rest is nulls
     for i in 4..100 {
         data[i] = 0x00;
     }
@@ -1286,7 +1325,8 @@ fn test_parse_sps_profile_tier_level() {
 #[test]
 fn test_parse_sps_chroma_format() {
     // Test SPS parsing with different chroma formats
-    for _chroma_id in &[1u8, 2, 3] { // YUV420, YUV422, YUV444
+    for _chroma_id in &[1u8, 2, 3] {
+        // YUV420, YUV422, YUV444
         let mut data = vec![0u8; 32];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x42]); // NAL header
         data[4] = 0x01; // sps_video_parameter_set_id
@@ -1328,7 +1368,8 @@ fn test_parse_nal_header_vcl_nal() {
 #[test]
 fn test_parse_nal_header_non_vcl() {
     // Test NAL header parsing for non-VCL NAL units (type 13-31)
-    for _nal_type in [15u8, 16, 17, 21] { // VPS, SPS, PPS, AUD
+    for _nal_type in [15u8, 16, 17, 21] {
+        // VPS, SPS, PPS, AUD
         let mut data = vec![0u8; 2];
         data[0] = 0x00; // forbidden_zero_bit=0, nuh_reserved_zero_bit=0, nuh_layer_id=0
         data[1] = 0x01; // nal_unit_type=0, nuh_temporal_id_plus1=1
@@ -1380,7 +1421,13 @@ fn test_parse_vvc_quick_info_extraction() {
     assert!(result.is_ok());
     let info = result.unwrap();
     // width/height are Option<u32>, profile/level are Option<u8>
-    assert!(info.width.is_some() || info.height.is_some() || info.profile.is_some() || info.level.is_some() || info.nal_count > 0);
+    assert!(
+        info.width.is_some()
+            || info.height.is_some()
+            || info.profile.is_some()
+            || info.level.is_some()
+            || info.nal_count > 0
+    );
 }
 
 #[test]

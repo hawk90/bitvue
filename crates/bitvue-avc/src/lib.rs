@@ -50,7 +50,7 @@ pub use overlay_extraction::{
 pub use pps::{parse_pps, Pps};
 pub use sei::{parse_sei, SeiMessage, SeiPayloadType};
 pub use slice::{parse_slice_header, SliceHeader, SliceType};
-pub use sps::{ChromaFormat, parse_sps, ProfileIdc, Sps};
+pub use sps::{parse_sps, ChromaFormat, ProfileIdc, Sps};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -433,4 +433,3 @@ pub mod test_exports {
 
 #[cfg(test)]
 mod tests;
-

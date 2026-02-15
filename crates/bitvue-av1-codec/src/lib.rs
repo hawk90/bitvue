@@ -500,10 +500,10 @@ mod tests {
         // First OBU: Temporal delimiter
         data[0] = (2 << 1) | 0x01; // type=2, has_size
         data[1] = 0; // size=0
-        // Second OBU: Padding
+                     // Second OBU: Padding
         data[2] = (15 << 1) | 0x01; // type=15, has_size
         data[3] = 5; // size=5
-        // Fill padding with zeros
+                     // Fill padding with zeros
         for i in 4..10 {
             data[i] = 0;
         }
@@ -524,10 +524,10 @@ mod tests {
         let mut data = vec![0u8; 16];
         data[0] = (1 << 1) | 0x01; // obu_type=1 (SequenceHeader), has_size=1
         data[1] = 14; // size=14
-        // seq_profile (2 bits) = 0
-        // still_picture (1 bit) = 0
-        // reduced_still_picture_header (1 bit) = 0
-        // ... rest of sequence header would be more complex
+                      // seq_profile (2 bits) = 0
+                      // still_picture (1 bit) = 0
+                      // reduced_still_picture_header (1 bit) = 0
+                      // ... rest of sequence header would be more complex
         data[2] = 0; // flags field
 
         let result = parse_av1(&data);
@@ -541,7 +541,7 @@ mod tests {
         let mut data = vec![0u8; 16];
         data[0] = (3 << 1) | 0x01; // obu_type=3 (FrameHeader), has_size=1
         data[1] = 14; // size=14
-        // Fill with zeros (invalid but won't panic)
+                      // Fill with zeros (invalid but won't panic)
         for i in 2..16 {
             data[i] = 0;
         }
@@ -765,7 +765,7 @@ mod tests {
         let mut data = vec![0u8; 200];
         data[0] = 0x47; // sync byte
         data[188] = 0x47; // sync byte at position 188
-        // Add some OBU-like data in the middle
+                          // Add some OBU-like data in the middle
         data[100] = (1 << 3) | 0x02;
         data[101] = 5;
 
@@ -834,21 +834,29 @@ mod tests {
         let mut pos = 0;
 
         // OBU 1: Temporal delimiter
-        data[pos] = (1 << 3) | 0x02; pos += 1;
-        data[pos] = 0; pos += 1;
+        data[pos] = (1 << 3) | 0x02;
+        pos += 1;
+        data[pos] = 0;
+        pos += 1;
 
         // OBU 2: Sequence header (type 1 for AV1, but we use value directly)
-        data[pos] = (1 << 3) | 0x02; pos += 1;
-        data[pos] = 10; pos += 1;
+        data[pos] = (1 << 3) | 0x02;
+        pos += 1;
+        data[pos] = 10;
+        pos += 1;
         for _ in 0..10 {
-            data[pos] = 0; pos += 1;
+            data[pos] = 0;
+            pos += 1;
         }
 
         // OBU 3: Frame header
-        data[pos] = (3 << 3) | 0x02; pos += 1;
-        data[pos] = 10; pos += 1;
+        data[pos] = (3 << 3) | 0x02;
+        pos += 1;
+        data[pos] = 10;
+        pos += 1;
         for _ in 0..10 {
-            data[pos] = 0; pos += 1;
+            data[pos] = 0;
+            pos += 1;
         }
 
         let result = parse_av1(&data[..pos]);
@@ -952,7 +960,7 @@ mod tests {
         data[20..24].copy_from_slice(&60u32.to_le_bytes()); // framerate num
         data[24..28].copy_from_slice(&0u32.to_le_bytes()); // num_frames
         data[28..32].copy_from_slice(&0u32.to_le_bytes()); // reserved
-        // Add sequence header OBU after IVF header
+                                                           // Add sequence header OBU after IVF header
         data[32] = (1 << 3) | 0x02; // sequence header OBU
         data[33] = 10; // size
         data[34] = 0x00; // seq_profile = 0
@@ -992,13 +1000,19 @@ mod tests {
     #[test]
     fn test_is_mp4_with_various_brands() {
         // Test is_mp4 with different brand identifiers
-        let brands = [b"av01", b"av03", b"mp41", b"mp42", b"isom", b"3gp4", b"3gp5", b"3gp6"];
+        let brands = [
+            b"av01", b"av03", b"mp41", b"mp42", b"isom", b"3gp4", b"3gp5", b"3gp6",
+        ];
 
         for brand in brands {
             let mut data = vec![0u8; 20];
             data[4..8].copy_from_slice(b"ftyp");
             data[8..12].copy_from_slice(brand);
-            assert!(is_mp4(&data), "Should detect MP4 with brand: {:?}", String::from_utf8_lossy(brand));
+            assert!(
+                is_mp4(&data),
+                "Should detect MP4 with brand: {:?}",
+                String::from_utf8_lossy(brand)
+            );
         }
     }
 
@@ -1241,7 +1255,7 @@ mod tests {
         let mut data = vec![0u8; 256];
         data[0] = 0x47; // sync byte
         data[188] = 0x47; // sync byte at position 188
-        // Add OBU data somewhere in the middle
+                          // Add OBU data somewhere in the middle
         data[100] = (2 << 3) | 0x02; // sequence header
         data[101] = 10;
         for i in 102..112 {
@@ -1283,8 +1297,8 @@ mod tests {
         // Test parse_av1 handles zero-length OBUs
         let data = [
             (1 << 3) | 0x02, // OBU header
-            0x00, // zero size
-            0x00, // size extension
+            0x00,            // zero size
+            0x00,            // size extension
         ];
 
         let result = parse_av1(&data);
@@ -1375,7 +1389,11 @@ mod tests {
             }
 
             let result = parse_av1(&data);
-            assert!(result.is_ok() || result.is_err(), "Failed for size {}", size);
+            assert!(
+                result.is_ok() || result.is_err(),
+                "Failed for size {}",
+                size
+            );
         }
     }
 
@@ -1414,21 +1432,35 @@ mod tests {
         let mut pos = 0;
 
         // IVF header
-        data[pos] = b'D'; pos += 1;
-        data[pos] = b'K'; pos += 1;
-        data[pos] = b'I'; pos += 1;
-        data[pos] = b'F'; pos += 1;
+        data[pos] = b'D';
+        pos += 1;
+        data[pos] = b'K';
+        pos += 1;
+        data[pos] = b'I';
+        pos += 1;
+        data[pos] = b'F';
+        pos += 1;
         pos += 28; // Skip rest of IVF header
 
         // Frame 1
-        data[pos] = (3 << 3) | 0x02; pos += 1; // frame header
-        data[pos] = 10; pos += 1;
-        for _ in 0..10 { data[pos] = 0; pos += 1; }
+        data[pos] = (3 << 3) | 0x02;
+        pos += 1; // frame header
+        data[pos] = 10;
+        pos += 1;
+        for _ in 0..10 {
+            data[pos] = 0;
+            pos += 1;
+        }
 
         // Frame 2
-        data[pos] = (3 << 3) | 0x02; pos += 1; // frame header
-        data[pos] = 15; pos += 1;
-        for _ in 0..15 { data[pos] = 0; pos += 1; }
+        data[pos] = (3 << 3) | 0x02;
+        pos += 1; // frame header
+        data[pos] = 15;
+        pos += 1;
+        for _ in 0..15 {
+            data[pos] = 0;
+            pos += 1;
+        }
 
         let result = parse_av1(&data[..pos]);
         // May fail on partial data - just check it doesn't panic
@@ -1502,7 +1534,11 @@ mod tests {
         assert!(is_mp4(&large_data));
         let duration = start.elapsed();
         // Should complete quickly even with large input
-        assert!(duration.as_millis() < 100, "Detection took too long: {:?}", duration);
+        assert!(
+            duration.as_millis() < 100,
+            "Detection took too long: {:?}",
+            duration
+        );
     }
 
     // === Error Handling Tests ===
@@ -1528,7 +1564,9 @@ mod tests {
     #[test]
     fn test_parse_av1_with_repeated_pattern() {
         // Test parse_av1 with repeated pattern that might confuse parser
-        let data: Vec<u8> = (0..100).map(|i| if i % 2 == 0 { 0xAA } else { 0x55 }).collect();
+        let data: Vec<u8> = (0..100)
+            .map(|i| if i % 2 == 0 { 0xAA } else { 0x55 })
+            .collect();
         let result = parse_av1(&data);
         // Should handle gracefully
         assert!(result.is_ok() || result.is_err());
@@ -1607,8 +1645,14 @@ mod tests {
         let ts_result = is_ts(&data);
 
         // At most one should be true (or none)
-        let true_count = [mp4_result, mkv_result, ts_result].iter().filter(|&&x| x).count();
-        assert!(true_count <= 3, "Too many containers detected simultaneously");
+        let true_count = [mp4_result, mkv_result, ts_result]
+            .iter()
+            .filter(|&&x| x)
+            .count();
+        assert!(
+            true_count <= 3,
+            "Too many containers detected simultaneously"
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 // Stress tests for AVC codec - large inputs, random patterns, boundary conditions
-use bitvue_avc::{parse_avc, parse_nal_header, parse_avc_quick, extract_annex_b_frames};
+use bitvue_avc::{extract_annex_b_frames, parse_avc, parse_avc_quick, parse_nal_header};
 
 #[test]
 fn test_parse_avc_large_input_10kb() {
@@ -22,8 +22,8 @@ fn test_parse_avc_large_input_100kb() {
     // Add periodic NAL units
     for i in 0..10 {
         let offset = i * 10_240;
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x67 + (i as u8) % 3;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x67 + (i as u8) % 3;
     }
 
     let result = parse_avc(&data);
@@ -47,7 +47,7 @@ fn test_parse_avc_repeated_start_codes() {
     let mut data = vec![0u8; 256];
     // Add many consecutive start codes
     for i in 0..32 {
-        data[i*8..i*8+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[i * 8..i * 8 + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     }
 
     let result = parse_avc(&data);
@@ -57,14 +57,14 @@ fn test_parse_avc_repeated_start_codes() {
 #[test]
 fn test_parse_avc_max_nal_count() {
     let mut data = vec![0u8; 8192]; // 8KB
-    // Add as many NAL units as possible
+                                    // Add as many NAL units as possible
     let mut offset = 0;
     for i in 0..128 {
         if offset + 8 > data.len() {
             break;
         }
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x67; // SPS
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x67; // SPS
         offset += 8;
     }
 
@@ -105,15 +105,15 @@ fn test_parse_avc_quick_no_nals() {
 #[test]
 fn test_extract_annex_b_frames_stress_1mb() {
     let mut data = vec![0u8; 1_048_576]; // 1MB
-    // Add NAL units periodically
+                                         // Add NAL units periodically
     for i in 0..256 {
         let offset = i * 4096;
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x65;
-        data[offset+5] = 0x80;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x65;
+        data[offset + 5] = 0x80;
         // Add some payload
         for j in 6..128 {
-            data[offset+j] = ((j + i) % 256) as u8;
+            data[offset + j] = ((j + i) % 256) as u8;
         }
     }
 
@@ -124,7 +124,9 @@ fn test_extract_annex_b_frames_stress_1mb() {
 #[test]
 fn test_parse_avc_boundary_sizes() {
     // Test various input sizes around power of 2
-    let sizes = [1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512];
+    let sizes = [
+        1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512,
+    ];
 
     for size in sizes {
         let mut data = vec![0u8; size];
@@ -147,15 +149,15 @@ fn test_parse_avc_spspps_cycle() {
     // Add 5 SPS/PPS pairs
     for i in 0..5 {
         // SPS
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x67;
-        data[offset+5] = 0x42;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x67;
+        data[offset + 5] = 0x42;
         offset += 16;
 
         // PPS
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x68;
-        data[offset+5] = 0xC4;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x68;
+        data[offset + 5] = 0xC4;
         offset += 16;
     }
 
@@ -170,28 +172,28 @@ fn test_parse_avc_interleaved_spspps() {
     let mut offset = 0;
 
     // SPS 1
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x67;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x67;
     offset += 32;
 
     // PPS 1
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x68;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x68;
     offset += 32;
 
     // Slice
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x25;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x25;
     offset += 32;
 
     // SPS 2
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x67;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x67;
     offset += 32;
 
     // PPS 2
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x68;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x68;
 
     let result = parse_avc(&data);
     assert!(result.is_ok());
@@ -234,18 +236,18 @@ fn test_parse_avc_multiple_idr_frames() {
         if offset + 64 > data.len() {
             break;
         }
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x67;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x67;
         offset += 32;
 
         // PPS
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x68;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x68;
         offset += 32;
 
         // IDR slice
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x25;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x25;
         offset += 64;
     }
 
@@ -384,7 +386,11 @@ fn test_parse_avc_all_nal_types() {
         data[5] = 0x80;
 
         let result = parse_avc(&data);
-        assert!(result.is_ok() || result.is_err(), "Failed for NAL type {}", nal_type);
+        assert!(
+            result.is_ok() || result.is_err(),
+            "Failed for NAL type {}",
+            nal_type
+        );
     }
 }
 
@@ -445,7 +451,7 @@ fn test_parse_avc_level_variations() {
         let mut data = vec![0u8; 64];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
         data[4] = 0x67; // SPS
-        data[5] = 66;  // Baseline profile
+        data[5] = 66; // Baseline profile
         data[6] = level; // level_idc
 
         let result = parse_avc(&data);
@@ -460,8 +466,8 @@ fn test_parse_avc_constraint_sets() {
         let mut data = vec![0u8; 64];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
         data[4] = 0x67; // SPS
-        data[5] = 66;  // Baseline
-        data[6] = 31;  // level
+        data[5] = 66; // Baseline
+        data[6] = 31; // level
         data[7] = constraint_flags; // constraint_set flags
 
         let result = parse_avc(&data);

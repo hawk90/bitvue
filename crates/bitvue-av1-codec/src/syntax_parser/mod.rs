@@ -118,8 +118,7 @@ impl SyntaxBuilder {
         bit_range: BitRange,
         value: String,
     ) -> SyntaxNodeId {
-        let parent = self.current_parent()
-            .unwrap_or(&self.model.root_id);
+        let parent = self.current_parent().unwrap_or(&self.model.root_id);
         let node_id = format!("{}.{}", parent, field_name);
         let depth = self.parent_stack.len();
 
@@ -149,8 +148,7 @@ impl SyntaxBuilder {
     ///
     /// The node ID of the container
     pub fn push_container(&mut self, name: &str, start_bit: u64) -> SyntaxNodeId {
-        let parent = self.current_parent()
-            .unwrap_or(&self.model.root_id);
+        let parent = self.current_parent().unwrap_or(&self.model.root_id);
         let node_id = format!("{}.{}", parent, name);
         let depth = self.parent_stack.len();
 

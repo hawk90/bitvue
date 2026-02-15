@@ -33,13 +33,17 @@ pub mod sequence_header;
 
 pub use bitreader::BitReader;
 pub use error::{Av3Error, Result};
-pub use frame_header::{parse_frame_header, FrameHeader, FrameType, PrimaryRefFrame, ReferenceFrame};
+pub use frame_header::{
+    parse_frame_header, FrameHeader, FrameType, PrimaryRefFrame, ReferenceFrame,
+};
 pub use metadata::{MetadataObu, MetadataType};
 pub use obu::{parse_obu_header, parse_obu_units, ObuHeader, ObuType, ObuUnit};
 pub use overlay_extraction::{
     extract_mv_grid, extract_partition_grid, extract_qp_grid, CodingUnit, MotionVector, SuperBlock,
 };
-pub use sequence_header::{OperatingParametersInfo, OperatingPoint, parse_sequence_header, SequenceHeader};
+pub use sequence_header::{
+    parse_sequence_header, OperatingParametersInfo, OperatingPoint, SequenceHeader,
+};
 
 use std::collections::HashMap;
 
@@ -208,7 +212,5 @@ pub struct Av3QuickInfo {
     pub bit_depth: Option<u8>,
 }
 
-
 #[cfg(test)]
 mod tests;
-

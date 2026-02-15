@@ -160,7 +160,7 @@ impl CommandBuilder {
         self.command_type = Some(CommandType::SelectSyntax);
         self.stream = Some(stream);
         self.target = Some(Target::Syntax(node_id));
-        self.byte_range = Some((bit_range.start_bit as u64)..(bit_range.end_bit as u64));
+        self.byte_range = Some(bit_range.start_bit..bit_range.end_bit);
         self
     }
 
@@ -649,7 +649,7 @@ impl CommandBuilder {
 
     fn extract_spatial_block(&self, context: &str) -> Result<SpatialBlock, String> {
         match &self.target {
-            Some(Target::SpatialBlock(block)) => Ok(block.clone()),
+            Some(Target::SpatialBlock(block)) => Ok(*block),
             _ => Err(format!("SpatialBlock required for {}", context)),
         }
     }

@@ -1,5 +1,5 @@
 // Edge case tests for VVC slice and frame parsing
-use bitvue_vvc::{parse_vvc, parse_nal_header};
+use bitvue_vvc::{parse_nal_header, parse_vvc};
 
 #[test]
 fn test_parse_nal_header_empty_data() {
@@ -142,10 +142,7 @@ fn test_parse_vvc_all_ones() {
 #[test]
 fn test_parse_vvc_consecutive_start_codes() {
     let data = [
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01,
     ];
     let result = parse_vvc(&data);
     assert!(result.is_ok());
@@ -154,9 +151,9 @@ fn test_parse_vvc_consecutive_start_codes() {
 #[test]
 fn test_parse_vvc_mixed_start_code_lengths() {
     let data = [
-        0x00, 0x00, 0x01,     // 3-byte
+        0x00, 0x00, 0x01, // 3-byte
         0x00, 0x00, 0x00, 0x01, // 4-byte
-        0x00, 0x00, 0x01,     // 3-byte
+        0x00, 0x00, 0x01, // 3-byte
     ];
     let result = parse_vvc(&data);
     assert!(result.is_ok());

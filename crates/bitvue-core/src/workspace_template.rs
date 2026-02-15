@@ -494,7 +494,7 @@ impl WorkspaceRenderer for CompareRenderer {
             }
             CompareMode::Toggle => {
                 // Toggle based on time
-                let show_ref = (ctx.time_ms / 1000) % 2 == 0;
+                let show_ref = (ctx.time_ms / 1000).is_multiple_of(2);
                 tracing::debug!(
                     "Rendering toggle mode: showing {}",
                     if show_ref { "reference" } else { "distorted" }

@@ -64,24 +64,27 @@ fn test_cross_platform_consistency() {
     // Verify that conversions give consistent results across platforms
 
     let test_values: Vec<u32> = vec![
-        0x00000000,
-        0xFFFFFFFF,
-        0x12345678,
-        0x80000000,
-        0x00000001,
-        0xDEADBEEF,
+        0x00000000, 0xFFFFFFFF, 0x12345678, 0x80000000, 0x00000001, 0xDEADBEEF,
     ];
 
     for value in test_values {
         // LE round-trip
         let le_bytes = value.to_le_bytes();
         let le_restored = u32::from_le_bytes(le_bytes);
-        assert_eq!(le_restored, value, "LE conversion failed for 0x{:08X}", value);
+        assert_eq!(
+            le_restored, value,
+            "LE conversion failed for 0x{:08X}",
+            value
+        );
 
         // BE round-trip
         let be_bytes = value.to_be_bytes();
         let be_restored = u32::from_be_bytes(be_bytes);
-        assert_eq!(be_restored, value, "BE conversion failed for 0x{:08X}", value);
+        assert_eq!(
+            be_restored, value,
+            "BE conversion failed for 0x{:08X}",
+            value
+        );
     }
 }
 
@@ -246,8 +249,8 @@ fn test_exp_golomb_decode_boundary() {
 
     // Code 0 -> value 0
     let _bits_0 = [0b1000_0000u8]; // Single 1 bit
-    // let value_0 = read_ue(&mut BitReader::new(&_bits_0));
-    // assert_eq!(value_0, 0);
+                                   // let value_0 = read_ue(&mut BitReader::new(&_bits_0));
+                                   // assert_eq!(value_0, 0);
 
     // Code 00100 -> value 4
     let _bits_4 = [0b0010_0000u8];
@@ -515,7 +518,7 @@ fn test_rgb888_endian() {
 
     assert_eq!(pixel[0], 255); // R
     assert_eq!(pixel[1], 128); // G
-    assert_eq!(pixel[2], 64);  // B
+    assert_eq!(pixel[2], 64); // B
 }
 
 #[test]
@@ -583,11 +586,18 @@ fn test_struct_memory_layout() {
         c: u8,
     }
 
-    let s = TestStruct { a: 0x12345678, b: 0x9ABC, c: 0xDE };
+    let s = TestStruct {
+        a: 0x12345678,
+        b: 0x9ABC,
+        c: 0xDE,
+    };
 
     // Verify byte layout
     let bytes = unsafe {
-        std::slice::from_raw_parts(&s as *const TestStruct as *const u8, std::mem::size_of::<TestStruct>())
+        std::slice::from_raw_parts(
+            &s as *const TestStruct as *const u8,
+            std::mem::size_of::<TestStruct>(),
+        )
     };
 
     #[cfg(target_endian = "little")]
