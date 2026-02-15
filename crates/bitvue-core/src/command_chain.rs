@@ -257,18 +257,15 @@ impl CommandHandler for ValidationHandler {
 
 /// Log level for logging handler
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum LogLevel {
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
 }
 
-impl Default for LogLevel {
-    fn default() -> Self {
-        Self::Info
-    }
-}
 
 /// Logs command processing for debugging
 #[derive(Debug, Clone, Default)]

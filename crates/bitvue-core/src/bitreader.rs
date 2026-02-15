@@ -84,10 +84,8 @@ impl<'a> BitReader<'a> {
     /// state that should be caught elsewhere in the parsing pipeline.
     #[inline]
     pub fn position(&self) -> u64 {
-        let byte_bits = (self.byte_offset as u64).checked_mul(8).unwrap_or(u64::MAX);
-        byte_bits
-            .checked_add(self.bit_offset as u64)
-            .unwrap_or(u64::MAX)
+        let byte_bits = (self.byte_offset as u64).saturating_mul(8);
+        byte_bits.saturating_add(self.bit_offset as u64)
     }
 
     /// Returns the current byte offset.
@@ -343,10 +341,8 @@ impl<'a> LsbBitReader<'a> {
     /// state that should be caught elsewhere in the parsing pipeline.
     #[inline]
     pub fn position(&self) -> u64 {
-        let byte_bits = (self.byte_offset as u64).checked_mul(8).unwrap_or(u64::MAX);
-        byte_bits
-            .checked_add(self.bit_offset as u64)
-            .unwrap_or(u64::MAX)
+        let byte_bits = (self.byte_offset as u64).saturating_mul(8);
+        byte_bits.saturating_add(self.bit_offset as u64)
     }
 
     /// Returns the number of remaining bits.
@@ -525,7 +521,7 @@ impl ExpGolombReader for BitReader<'_> {
     fn read_se(&mut self) -> Result<i32> {
         let ue = self.read_ue()?;
         let sign = if ue & 1 == 0 { -1 } else { 1 };
-        Ok(sign * ((ue + 1) / 2) as i32)
+        Ok(sign * ue.div_ceil(2) as i32)
     }
 }
 

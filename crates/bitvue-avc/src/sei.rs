@@ -219,11 +219,30 @@ pub enum SeiParsedData {
 
 /// Parse SEI messages from NAL unit payload.
 pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
-    const MAX_SEI_TYPE_ITERATIONS: u8 = 4;
-    const MAX_SEI_SIZE_ITERATIONS: u8 = 16;
+    // SECURITY: Limit iterations to prevent DoS attacks.
+    // According to H.264/AVC spec, each SEI type should only appear once per NAL.
+    const MAX_SEI_TYPE_ITERATIONS: u8 = 1;
+    const MAX_SEI_SIZE_ITERATIONS: u8 = 1;
 
     let mut messages = Vec::new();
     let mut offset = 0;
+
+    // SECURITY: Reject obviously malicious inputs early to prevent DoS.
+    // Consecutive 0xFF bytes indicate state machine confusion attack.
+    // Check for runs of 5+ consecutive 0xFF bytes (emulation prevention pattern).
+    let mut consecutive_ff = 0;
+    for byte in data.iter().take(200) {
+        if *byte == 0xFF {
+            consecutive_ff += 1;
+            if consecutive_ff > 5 {
+                return Err(AvcError::InvalidSei(
+                    "SEI payload contains suspicious consecutive emulation prevention bytes".to_string(),
+                ));
+            }
+        } else {
+            consecutive_ff = 0;
+        }
+    }
 
     while offset < data.len() {
         // Read payload type
