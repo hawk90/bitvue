@@ -11,7 +11,10 @@ use bitvue_core::codec_error::{Codec, CodecError};
 
 #[test]
 fn test_error_not_enough_data_display() {
-    let err = AvcError::NotEnoughData { expected: 100, got: 50 };
+    let err = AvcError::NotEnoughData {
+        expected: 100,
+        got: 50,
+    };
     let msg = format!("{err}");
     assert!(msg.contains("not enough data"));
     assert!(msg.contains("100"));
@@ -20,7 +23,10 @@ fn test_error_not_enough_data_display() {
 
 #[test]
 fn test_error_not_enough_data_fields() {
-    let err = AvcError::NotEnoughData { expected: 100, got: 50 };
+    let err = AvcError::NotEnoughData {
+        expected: 100,
+        got: 50,
+    };
     match err {
         AvcError::NotEnoughData { expected, got } => {
             assert_eq!(expected, 100);
@@ -117,7 +123,10 @@ fn test_error_debug_trait() {
 #[test]
 fn test_error_clone_via_debug() {
     // We can't directly test Clone if not implemented, but Debug works
-    let err = AvcError::NotEnoughData { expected: 10, got: 5 };
+    let err = AvcError::NotEnoughData {
+        expected: 10,
+        got: 5,
+    };
     let _ = format!("{err:?}");
 }
 

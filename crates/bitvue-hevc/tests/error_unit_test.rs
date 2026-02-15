@@ -26,7 +26,10 @@ fn test_hevc_error_invalid_data() {
 
 #[test]
 fn test_hevc_error_insufficient_data() {
-    let err = HevcError::InsufficientData { expected: 50, actual: 25 };
+    let err = HevcError::InsufficientData {
+        expected: 50,
+        actual: 25,
+    };
     assert!(matches!(err, HevcError::InsufficientData { .. }));
 }
 
@@ -39,7 +42,10 @@ fn test_hevc_error_io() {
 
 #[test]
 fn test_hevc_error_parse() {
-    let err = HevcError::Parse { offset: 42, message: "parse error".to_string() };
+    let err = HevcError::Parse {
+        offset: 42,
+        message: "parse error".to_string(),
+    };
     assert!(matches!(err, HevcError::Parse { .. }));
     if let HevcError::Parse { offset, message } = err {
         assert_eq!(offset, 42);
@@ -67,7 +73,10 @@ fn test_hevc_error_display_invalid_data() {
 
 #[test]
 fn test_hevc_error_display_insufficient_data() {
-    let err = HevcError::InsufficientData { expected: 10, actual: 5 };
+    let err = HevcError::InsufficientData {
+        expected: 10,
+        actual: 5,
+    };
     let display = format!("{}", err);
     assert!(display.contains("Insufficient") || display.contains("data"));
     assert!(display.contains("10") || display.contains("expected"));
@@ -83,7 +92,10 @@ fn test_hevc_error_display_io() {
 
 #[test]
 fn test_hevc_error_display_parse() {
-    let err = HevcError::Parse { offset: 100, message: "syntax error".to_string() };
+    let err = HevcError::Parse {
+        offset: 100,
+        message: "syntax error".to_string(),
+    };
     let display = format!("{}", err);
     assert!(display.contains("syntax error") || display.contains("offset"));
 }
@@ -108,7 +120,10 @@ fn test_hevc_error_debug_invalid_data() {
 
 #[test]
 fn test_hevc_error_debug_insufficient_data() {
-    let err = HevcError::InsufficientData { expected: 25, actual: 10 };
+    let err = HevcError::InsufficientData {
+        expected: 25,
+        actual: 10,
+    };
     let debug = format!("{:?}", err);
     assert!(debug.contains("InsufficientData"));
 }
@@ -123,7 +138,10 @@ fn test_hevc_error_debug_io() {
 
 #[test]
 fn test_hevc_error_debug_parse() {
-    let err = HevcError::Parse { offset: 50, message: "debug parse".to_string() };
+    let err = HevcError::Parse {
+        offset: 50,
+        message: "debug parse".to_string(),
+    };
     let debug = format!("{:?}", err);
     assert!(debug.contains("Parse"));
 }
@@ -153,12 +171,18 @@ fn test_hevc_error_source_invalid_data() {
 
 #[test]
 fn test_hevc_error_source_insufficient_data() {
-    let err = HevcError::InsufficientData { expected: 10, actual: 5 };
+    let err = HevcError::InsufficientData {
+        expected: 10,
+        actual: 5,
+    };
     assert!(err.source().is_none());
 }
 
 #[test]
 fn test_hevc_error_source_parse() {
-    let err = HevcError::Parse { offset: 0, message: "test".to_string() };
+    let err = HevcError::Parse {
+        offset: 0,
+        message: "test".to_string(),
+    };
     assert!(err.source().is_none());
 }

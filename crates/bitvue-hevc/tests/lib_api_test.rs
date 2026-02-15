@@ -1,7 +1,7 @@
 //! Tests for HEVC lib.rs public API.
 //! Targeting 95%+ line coverage for HevcStream methods.
 
-use bitvue_hevc::{HevcStream, parse_hevc, Result};
+use bitvue_hevc::{parse_hevc, HevcStream, Result};
 
 // ============================================================================
 // Helper Functions
@@ -10,9 +10,9 @@ use bitvue_hevc::{HevcStream, parse_hevc, Result};
 /// Create minimal valid HEVC bitstream data
 fn create_minimal_bitstream() -> Vec<u8> {
     vec![
-        0x00, 0x00, 0x01,  // Start code
-        0x40, 0x01,         // VPS NAL header (type 32)
-        0x42, 0x01,         // SPS NAL header (type 33)
+        0x00, 0x00, 0x01, // Start code
+        0x40, 0x01, // VPS NAL header (type 32)
+        0x42, 0x01, // SPS NAL header (type 33)
     ]
 }
 

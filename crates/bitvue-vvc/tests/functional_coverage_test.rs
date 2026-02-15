@@ -1,8 +1,8 @@
 // Functional tests for VVC codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_vvc::{
-    parse_vvc, parse_nal_units,
-    ChromaFormat, NalUnitHeader, NalUnitType, Pps, Profile, Sps, VvcError, VvcStream,
+    parse_nal_units, parse_vvc, ChromaFormat, NalUnitHeader, NalUnitType, Pps, Profile, Sps,
+    VvcError, VvcStream,
 };
 
 #[test]

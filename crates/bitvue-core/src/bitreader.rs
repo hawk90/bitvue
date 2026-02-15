@@ -473,7 +473,10 @@ impl ExpGolombReader for BitReader<'_> {
             if leading_zeros >= MAX_EXP_GOLOMB_ZEROS {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
-                    message: format!("Exp-Golomb leading zeros exceeded maximum ({})", MAX_EXP_GOLOMB_ZEROS),
+                    message: format!(
+                        "Exp-Golomb leading zeros exceeded maximum ({})",
+                        MAX_EXP_GOLOMB_ZEROS
+                    ),
                 });
             }
 
@@ -504,7 +507,10 @@ impl ExpGolombReader for BitReader<'_> {
         if leading_zeros >= MAX_EXP_GOLOMB_ZEROS {
             return Err(BitvueError::Parse {
                 offset: self.position(),
-                message: format!("Exp-Golomb exceeded maximum zeros ({})", MAX_EXP_GOLOMB_ZEROS),
+                message: format!(
+                    "Exp-Golomb exceeded maximum zeros ({})",
+                    MAX_EXP_GOLOMB_ZEROS
+                ),
             });
         }
 

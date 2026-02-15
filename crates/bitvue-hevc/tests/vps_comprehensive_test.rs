@@ -1,7 +1,7 @@
 //! Comprehensive tests for HEVC VPS parsing module.
 //! Targeting 95%+ line coverage for VPS functionality.
 
-use bitvue_hevc::vps::{parse_vps, Vps, TimingInfo, VpsProfileTierLevel};
+use bitvue_hevc::vps::{parse_vps, TimingInfo, Vps, VpsProfileTierLevel};
 
 // ============================================================================
 // Helper Functions
@@ -10,8 +10,8 @@ use bitvue_hevc::vps::{parse_vps, Vps, TimingInfo, VpsProfileTierLevel};
 /// Create minimal VPS NAL unit for testing
 fn create_minimal_vps_nal() -> Vec<u8> {
     vec![
-        0x00, 0x00, 0x01,  // Start code
-        0x40, 0x01,         // VPS NAL header (type 32)
+        0x00, 0x00, 0x01, // Start code
+        0x40, 0x01, // VPS NAL header (type 32)
         0xFF, 0xFF, 0xFF, 0xFF, // reserved 0xFFFF
         0xFF, 0xFF, 0xFF, 0xFF, // profile_tier_level markers
         0x80, 0x00, 0x00, 0x00, // vps_max_sub_layers_minus1 = 0

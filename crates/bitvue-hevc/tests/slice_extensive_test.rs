@@ -3,9 +3,7 @@
 //! Comprehensive tests covering SliceType, RefPicListModification,
 //! PredWeightTable, SliceHeader, and parse_slice_header function
 
-use bitvue_hevc::slice::{
-    SliceType, RefPicListModification, PredWeightTable, SliceHeader,
-};
+use bitvue_hevc::slice::{PredWeightTable, RefPicListModification, SliceHeader, SliceType};
 use bitvue_hevc::{Pps, Sps};
 use std::collections::HashMap;
 
@@ -112,7 +110,10 @@ fn test_ref_pic_list_modification_clone() {
         ..Default::default()
     };
     let cloned = mod_ref.clone();
-    assert_eq!(cloned.ref_pic_list_modification_flag_l0, mod_ref.ref_pic_list_modification_flag_l0);
+    assert_eq!(
+        cloned.ref_pic_list_modification_flag_l0,
+        mod_ref.ref_pic_list_modification_flag_l0
+    );
     assert_eq!(cloned.list_entry_l0, mod_ref.list_entry_l0);
 }
 

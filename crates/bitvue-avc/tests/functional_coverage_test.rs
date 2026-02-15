@@ -1,8 +1,8 @@
 // Functional tests for AVC codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_avc::{
-    extract_annex_b_frames, parse_avc, parse_nal_header, parse_nal_units, parse_pps,
-    parse_sei, parse_sps, AvcStream, ChromaFormat,
+    extract_annex_b_frames, parse_avc, parse_nal_header, parse_nal_units, parse_pps, parse_sei,
+    parse_sps, AvcStream, ChromaFormat,
 };
 use std::collections::HashMap;
 
@@ -140,18 +140,18 @@ fn test_extract_annex_b_multiple_nals() {
     let mut offset = 0;
 
     // SPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x67; // SPS
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x67; // SPS
     offset += 16;
 
     // PPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x68; // PPS
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x68; // PPS
     offset += 16;
 
     // IDR
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x65; // IDR
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x65; // IDR
 
     let result = extract_annex_b_frames(&data);
     assert!(result.is_ok());
@@ -187,13 +187,13 @@ fn test_parse_nal_units_multiple() {
     let mut offset = 0;
 
     // SPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x67;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x67;
     offset += 16;
 
     // PPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x68;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x68;
 
     let result = parse_nal_units(&data);
     assert!(result.is_ok());

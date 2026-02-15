@@ -624,7 +624,7 @@ fn test_extract_qp_grid_public_api() {
     data[5] = 0x00;
     data[6] = 0x1E; // level_idc = 30
     data[7] = 0xFF; // reserved
-    // Add pic width/height info
+                    // Add pic width/height info
     data[8] = 0x01; // seq_parameter_set_id
     data[9] = 0x00; // profile_idc
     data[10] = 0x0A; // level_idc = 10
@@ -682,36 +682,55 @@ fn test_extract_partition_grid_public_api() {
 #[test]
 fn test_overlay_extraction_with_idr_frame() {
     // Test overlay extraction with IDR frame
-    use bitvue_avc::{extract_mv_grid, extract_qp_grid, extract_partition_grid};
+    use bitvue_avc::{extract_mv_grid, extract_partition_grid, extract_qp_grid};
 
     // Create a minimal AVC stream with IDR slice
     let mut data = vec![0u8; 128];
     let mut pos = 0;
 
     // SPS (simplified)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x67; pos += 1; // SPS
-    data[pos] = 0x42; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x1E; pos += 1;
-    data[pos] = 0xFF; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x67;
+    pos += 1; // SPS
+    data[pos] = 0x42;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x1E;
+    pos += 1;
+    data[pos] = 0xFF;
+    pos += 1;
 
     // PPS
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x68; pos += 1; // PPS
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0xFF; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x68;
+    pos += 1; // PPS
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0xFF;
+    pos += 1;
 
     // IDR slice
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x65; pos += 1; // IDR
-    data[pos] = 0x11; pos += 1; // slice_type=1, first_mb=0
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x65;
+    pos += 1; // IDR
+    data[pos] = 0x11;
+    pos += 1; // slice_type=1, first_mb=0
 
     // These should not panic, even if they don't extract real data
     // because the test data is minimal
@@ -728,29 +747,48 @@ fn test_overlay_extraction_with_inter_frame() {
     let mut pos = 0;
 
     // SPS
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x67; pos += 1;
-    data[pos] = 0x42; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x1E; pos += 1;
-    data[pos] = 0xFF; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x67;
+    pos += 1;
+    data[pos] = 0x42;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x1E;
+    pos += 1;
+    data[pos] = 0xFF;
+    pos += 1;
 
     // PPS
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x68; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0xFF; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x68;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0xFF;
+    pos += 1;
 
     // P slice (inter frame)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x21; pos += 1; // Non-IDR, slice_type=0 (P)
-    data[pos] = 0x01; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x21;
+    pos += 1; // Non-IDR, slice_type=0 (P)
+    data[pos] = 0x01;
+    pos += 1;
 
     let result = parse_avc(&data[..pos]);
     assert!(result.is_ok());
@@ -776,4 +814,3 @@ fn test_overlay_extraction_dimensions() {
         assert!(result.is_ok(), "Should handle {}x{}", width, height);
     }
 }
-

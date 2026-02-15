@@ -136,14 +136,7 @@ fn test_checked_u64_to_usize() {
 fn test_file_offset_32bit() {
     // Test file offsets that fit in u32
 
-    let offsets: Vec<u64> = vec![
-        0,
-        1,
-        1000,
-        1_000_000,
-        100_000_000,
-        u32::MAX as u64,
-    ];
+    let offsets: Vec<u64> = vec![0, 1, 1000, 1_000_000, 100_000_000, u32::MAX as u64];
 
     for offset in offsets {
         // Should always be safe to convert to usize if value fits
@@ -422,14 +415,7 @@ fn test_8k_frame_size() {
 fn test_timestamp_in_i64() {
     // Test timestamp values that fit in i64
 
-    let timestamps: Vec<i64> = vec![
-        0,
-        1,
-        1000,
-        1_000_000,
-        i32::MAX as i64,
-        i64::MAX - 1,
-    ];
+    let timestamps: Vec<i64> = vec![0, 1, 1000, 1_000_000, i32::MAX as i64, i64::MAX - 1];
 
     for ts in timestamps {
         // Convert to u64 (if non-negative)
@@ -485,9 +471,7 @@ fn test_max_allocation() {
         let max_safe = isize::MAX as usize / 2;
 
         // Try to allocate a large buffer
-        let result = std::panic::catch_unwind(|| {
-            Vec::<u8>::with_capacity(max_safe)
-        });
+        let result = std::panic::catch_unwind(|| Vec::<u8>::with_capacity(max_safe));
 
         // Will likely fail due to memory limits, not overflow
         // But the calculation itself should not overflow
@@ -499,9 +483,7 @@ fn test_max_allocation() {
         let max_safe = isize::MAX as usize / 2;
 
         // Still limited by actual RAM
-        let result = std::panic::catch_unwind(|| {
-            Vec::<u8>::with_capacity(max_safe)
-        });
+        let result = std::panic::catch_unwind(|| Vec::<u8>::with_capacity(max_safe));
 
         // Will fail due to memory limits
     }
@@ -515,15 +497,7 @@ fn test_max_allocation() {
 fn test_bit_offset_32bit() {
     // Test bit offsets that fit in platform limits
 
-    let offsets: Vec<u64> = vec![
-        0,
-        1,
-        8,
-        32,
-        1000,
-        1_000_000,
-        u32::MAX as u64,
-    ];
+    let offsets: Vec<u64> = vec![0, 1, 8, 32, 1000, 1_000_000, u32::MAX as u64];
 
     for offset in offsets {
         // Should be able to convert to usize

@@ -1,8 +1,8 @@
 // Functional tests for AV3 codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_av3_codec::{
-    parse_av3, parse_obu_header, parse_sequence_header, Av3Error, Av3Stream, FrameType,
-    ObuHeader, ObuType,
+    parse_av3, parse_obu_header, parse_sequence_header, Av3Error, Av3Stream, FrameType, ObuHeader,
+    ObuType,
 };
 use std::collections::HashMap;
 

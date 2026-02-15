@@ -468,7 +468,7 @@ fn parse_slice_ctus(
 mod tests {
     use super::*;
     use crate::nal::{NalUnit, NalUnitHeader};
-    use crate::sps::{Sps, ChromaFormat, Profile};
+    use crate::sps::{ChromaFormat, Profile, Sps};
 
     fn create_test_sps(width: u32, height: u32) -> Sps {
         use crate::sps::ProfileTierLevel;

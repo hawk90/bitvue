@@ -1,7 +1,7 @@
 //! Comprehensive tests for HEVC NAL unit parsing.
 //! Targeting 95%+ line coverage for nal.rs module.
 
-use bitvue_hevc::nal::{NalUnitType, parse_nal_header, find_nal_units, parse_nal_units};
+use bitvue_hevc::nal::{find_nal_units, parse_nal_header, parse_nal_units, NalUnitType};
 
 // ============================================================================
 // find_nal_units Tests

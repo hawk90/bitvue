@@ -2,8 +2,8 @@
 //!
 //! Comprehensive tests for syntax/mod.rs to reach 95% coverage target.
 
-use bitvue_hevc::syntax::{SyntaxNode, SyntaxNodeType, build_syntax_tree};
-use bitvue_hevc::{HevcStream, parse_hevc};
+use bitvue_hevc::syntax::{build_syntax_tree, SyntaxNode, SyntaxNodeType};
+use bitvue_hevc::{parse_hevc, HevcStream};
 
 // ============================================================================
 // SyntaxNode Creation Tests
@@ -185,9 +185,9 @@ fn test_build_syntax_tree_empty() {
 fn test_build_syntax_tree_with_nal() {
     // Minimal HEVC bitstream with VPS NAL unit
     let data = &[
-        0x00, 0x00, 0x01,  // Start code
-        0x40, 0x01,         // VPS NAL header (type 32)
-        0x01,                 // nuh_layer_id + 1
+        0x00, 0x00, 0x01, // Start code
+        0x40, 0x01, // VPS NAL header (type 32)
+        0x01, // nuh_layer_id + 1
     ];
 
     let result = parse_hevc(data);
@@ -199,8 +199,7 @@ fn test_build_syntax_tree_with_nal() {
     assert!(tree.children.len() > 0);
 
     // Should have "NAL Units" child node
-    let nal_units_node = tree.children.iter()
-        .find(|n| n.name == "NAL Units");
+    let nal_units_node = tree.children.iter().find(|n| n.name == "NAL Units");
 
     assert!(nal_units_node.is_some());
 }
@@ -208,10 +207,10 @@ fn test_build_syntax_tree_with_nal() {
 #[test]
 fn test_build_syntax_tree_with_dimensions() {
     let data = &[
-        0x00, 0x00, 0x01,  // Start code
-        0x40, 0x01,         // VPS NAL header
-        0x01,                 // nuh_layer_id + 1
-        // Followed by valid VPS data
+        0x00, 0x00, 0x01, // Start code
+        0x40, 0x01, // VPS NAL header
+        0x01, // nuh_layer_id + 1
+              // Followed by valid VPS data
     ];
 
     let result = parse_hevc(data);
@@ -221,8 +220,7 @@ fn test_build_syntax_tree_with_dimensions() {
     let tree = build_syntax_tree(&stream);
 
     // Check if resolution node exists
-    let resolution_node = tree.children.iter()
-        .find(|n| n.name == "Resolution");
+    let resolution_node = tree.children.iter().find(|n| n.name == "Resolution");
 
     assert!(resolution_node.is_some());
 }
@@ -230,10 +228,10 @@ fn test_build_syntax_tree_with_dimensions() {
 #[test]
 fn test_build_syntax_tree_with_frame_rate() {
     let data = &[
-        0x00, 0x00, 0x01,  // Start code
-        0x40, 0x01,         // VPS NAL header
-        0x01,                 // nuh_layer_id + 1
-        // VPS data with timing info would go here
+        0x00, 0x00, 0x01, // Start code
+        0x40, 0x01, // VPS NAL header
+        0x01, // nuh_layer_id + 1
+              // VPS data with timing info would go here
     ];
 
     let result = parse_hevc(data);
@@ -243,7 +241,7 @@ fn test_build_syntax_tree_with_frame_rate() {
     let tree = build_syntax_tree(&stream);
 
     // Frame rate node may or may not exist depending on data
-    let _tree = tree;  // Just verify it builds without error
+    let _tree = tree; // Just verify it builds without error
 }
 
 // ============================================================================
@@ -283,9 +281,7 @@ fn test_mixed_node_types() {
 
     assert_eq!(root.children.len(), 3);
 
-    let types: Vec<_> = root.children.iter()
-        .map(|n| n.node_type)
-        .collect();
+    let types: Vec<_> = root.children.iter().map(|n| n.node_type).collect();
 
     assert!(types.contains(&SyntaxNodeType::Field));
     assert!(types.contains(&SyntaxNodeType::Structure));

@@ -2,12 +2,12 @@
 //!
 //! Tests SliceType, SliceHeader, RefPicListModification, DecRefPicMarking
 
+use bitvue_avc::nal::NalUnitType;
 use bitvue_avc::pps::Pps;
 use bitvue_avc::slice::{
     parse_slice_header, DecRefPicMarking, RefPicListModification, SliceHeader, SliceType,
 };
 use bitvue_avc::sps::{ChromaFormat, ProfileIdc, Sps};
-use bitvue_avc::nal::NalUnitType;
 use std::collections::HashMap;
 
 // ============================================================================

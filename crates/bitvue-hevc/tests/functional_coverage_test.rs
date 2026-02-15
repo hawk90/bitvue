@@ -1,8 +1,7 @@
 // Functional tests for HEVC codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_hevc::{
-    parse_hevc, parse_nal_header, parse_nal_units, parse_pps, parse_sps, HevcStream,
-    Pps, Vps,
+    parse_hevc, parse_nal_header, parse_nal_units, parse_pps, parse_sps, HevcStream, Pps, Vps,
 };
 
 #[test]
@@ -38,7 +37,11 @@ fn test_sps_chroma_formats() {
         data[8] = (chroma << 6) | 0x80; // chroma_format_idc + other flags
 
         let result = parse_sps(&data);
-        assert!(result.is_ok() || result.is_err(), "Failed for chroma {}", chroma);
+        assert!(
+            result.is_ok() || result.is_err(),
+            "Failed for chroma {}",
+            chroma
+        );
     }
 }
 
@@ -119,21 +122,21 @@ fn test_pps_tile() {
 fn test_nal_header_all_types() {
     // Test various NAL unit types
     let nal_types = [
-        0u8,  // TRAIL_R
-        1,    // TRAIL_N
-        2,    // TSA_R
-        3,    // TSA_N
-        4,    // STSA_R
-        5,    // STSA_N
-        6,    // RADL_R
-        7,    // RADL_N
-        8,    // RASL_R
-        9,    // RASL_N
-        16,   // BLA_W_LP
-        17,   // BLA_W_RADL
-        18,   // BLA_N_LP
-        19,   // IDR_W_RADL
-        20,   // IDR_N_LP
+        0u8, // TRAIL_R
+        1,   // TRAIL_N
+        2,   // TSA_R
+        3,   // TSA_N
+        4,   // STSA_R
+        5,   // STSA_N
+        6,   // RADL_R
+        7,   // RADL_N
+        8,   // RASL_R
+        9,   // RASL_N
+        16,  // BLA_W_LP
+        17,  // BLA_W_RADL
+        18,  // BLA_N_LP
+        19,  // IDR_W_RADL
+        20,  // IDR_N_LP
     ];
 
     for nal_type in nal_types {
@@ -150,10 +153,10 @@ fn test_nal_header_all_types() {
 fn test_nal_header_vcl_types() {
     // Test VCL NAL types
     let vcl_types = [
-        (0u8, true),   // TRAIL_R, VCL
-        (1u8, true),   // TRAIL_N, VCL
-        (19u8, true),  // IDR_W_RADL, VCL
-        (20u8, true),  // IDR_N_LP, VCL
+        (0u8, true),  // TRAIL_R, VCL
+        (1u8, true),  // TRAIL_N, VCL
+        (19u8, true), // IDR_W_RADL, VCL
+        (20u8, true), // IDR_N_LP, VCL
     ];
 
     for (nal_type, _expected_vcl) in vcl_types {
@@ -240,21 +243,21 @@ fn test_parse_nal_units_multiple_nals() {
     let mut offset = 0;
 
     // VPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20;
-    data[offset+5] = 0x00;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20;
+    data[offset + 5] = 0x00;
     offset += 8;
 
     // SPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x21;
-    data[offset+5] = 0x00;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x21;
+    data[offset + 5] = 0x00;
     offset += 8;
 
     // PPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x22;
-    data[offset+5] = 0x00;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x22;
+    data[offset + 5] = 0x00;
 
     let result = parse_nal_units(&data);
     assert!(result.is_ok());

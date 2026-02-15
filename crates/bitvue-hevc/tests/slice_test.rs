@@ -2,10 +2,10 @@
 //!
 //! Tests for slice.rs module functionality.
 
-use bitvue_hevc::slice::{SliceType, SliceHeader, parse_slice_header};
-use bitvue_hevc::sps::{Sps, ChromaFormat, Profile, ProfileTierLevel};
-use bitvue_hevc::pps::Pps;
 use bitvue_hevc::nal::NalUnitType;
+use bitvue_hevc::pps::Pps;
+use bitvue_hevc::slice::{parse_slice_header, SliceHeader, SliceType};
+use bitvue_hevc::sps::{ChromaFormat, Profile, ProfileTierLevel, Sps};
 use std::collections::HashMap;
 
 // ============================================================================

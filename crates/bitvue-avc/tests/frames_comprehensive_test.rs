@@ -28,8 +28,14 @@ fn test_frame_type_from_all_slice_types() {
     assert_eq!(AvcFrameType::from_slice_type(SliceType::I), AvcFrameType::I);
     assert_eq!(AvcFrameType::from_slice_type(SliceType::P), AvcFrameType::P);
     assert_eq!(AvcFrameType::from_slice_type(SliceType::B), AvcFrameType::B);
-    assert_eq!(AvcFrameType::from_slice_type(SliceType::Si), AvcFrameType::SI);
-    assert_eq!(AvcFrameType::from_slice_type(SliceType::Sp), AvcFrameType::SP);
+    assert_eq!(
+        AvcFrameType::from_slice_type(SliceType::Si),
+        AvcFrameType::SI
+    );
+    assert_eq!(
+        AvcFrameType::from_slice_type(SliceType::Sp),
+        AvcFrameType::SP
+    );
 }
 
 #[test]

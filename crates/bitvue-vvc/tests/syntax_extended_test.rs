@@ -3,8 +3,8 @@
 //! Comprehensive tests covering SyntaxNode, SyntaxNodeType,
 //! and build_syntax_tree function
 
-use bitvue_vvc::syntax::{SyntaxNode, SyntaxNodeType, build_syntax_tree};
-use bitvue_vvc::{VvcStream, NalUnit, NalUnitHeader, NalUnitType, Sps, Pps};
+use bitvue_vvc::syntax::{build_syntax_tree, SyntaxNode, SyntaxNodeType};
+use bitvue_vvc::{NalUnit, NalUnitHeader, NalUnitType, Pps, Sps, VvcStream};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -198,7 +198,9 @@ fn test_build_syntax_tree_with_nal_units() {
     };
 
     let tree = build_syntax_tree(&stream);
-    let nal_units_node = tree.children.iter()
+    let nal_units_node = tree
+        .children
+        .iter()
         .find(|n| n.name == "NAL Units")
         .expect("Should have NAL Units child");
 

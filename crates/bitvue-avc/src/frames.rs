@@ -139,31 +139,27 @@ impl AvcFrameBuilder {
     /// Returns an error if required fields are not set.
     pub fn build(self) -> Result<AvcFrame, String> {
         Ok(AvcFrame {
-            frame_index: self.frame_index.ok_or_else(||
-                "frame_index is required".to_string()
-            )?,
-            frame_type: self.frame_type.ok_or_else(||
-                "frame_type is required".to_string()
-            )?,
+            frame_index: self
+                .frame_index
+                .ok_or_else(|| "frame_index is required".to_string())?,
+            frame_type: self
+                .frame_type
+                .ok_or_else(|| "frame_type is required".to_string())?,
             nal_data: self.nal_data.unwrap_or_default(),
-            offset: self.offset.ok_or_else(||
-                "offset is required".to_string()
-            )?,
-            size: self.size.ok_or_else(||
-                "size is required".to_string()
-            )?,
-            poc: self.poc.ok_or_else(||
-                "poc is required".to_string()
-            )?,
-            frame_num: self.frame_num.ok_or_else(||
-                "frame_num is required".to_string()
-            )?,
-            is_idr: self.is_idr.ok_or_else(||
-                "is_idr is required".to_string()
-            )?,
-            is_ref: self.is_ref.ok_or_else(||
-                "is_ref is required".to_string()
-            )?,
+            offset: self
+                .offset
+                .ok_or_else(|| "offset is required".to_string())?,
+            size: self.size.ok_or_else(|| "size is required".to_string())?,
+            poc: self.poc.ok_or_else(|| "poc is required".to_string())?,
+            frame_num: self
+                .frame_num
+                .ok_or_else(|| "frame_num is required".to_string())?,
+            is_idr: self
+                .is_idr
+                .ok_or_else(|| "is_idr is required".to_string())?,
+            is_ref: self
+                .is_ref
+                .ok_or_else(|| "is_ref is required".to_string())?,
             slice_header: self.slice_header,
         })
     }

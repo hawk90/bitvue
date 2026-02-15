@@ -1,7 +1,9 @@
 //! Comprehensive tests for HEVC frames extraction functions.
 //! Targeting 95%+ line coverage for extract_annex_b_frames and extract_frame_at_index.
 
-use bitvue_hevc::frames::{extract_annex_b_frames, extract_frame_at_index, HevcFrame, HevcFrameType};
+use bitvue_hevc::frames::{
+    extract_annex_b_frames, extract_frame_at_index, HevcFrame, HevcFrameType,
+};
 
 // ============================================================================
 // Helper Functions
@@ -10,10 +12,10 @@ use bitvue_hevc::frames::{extract_annex_b_frames, extract_frame_at_index, HevcFr
 /// Create minimal valid HEVC bitstream data
 fn create_minimal_bitstream() -> Vec<u8> {
     vec![
-        0x00, 0x00, 0x01,  // Start code (3 bytes)
+        0x00, 0x00, 0x01, // Start code (3 bytes)
         0xFF, 0xFF, 0x01, // VPS NAL (2 bytes)
         0x00, 0x01, 0x02, // Extra data
-        ]
+    ]
 }
 
 /// Create a simple frame for testing
@@ -36,7 +38,7 @@ fn create_test_frame() -> HevcFrame {
 fn test_extract_annex_b_frames_empty_stream() {
     let data = &[];
     let result = extract_annex_b_frames(data);
-    
+
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
 }
@@ -62,8 +64,7 @@ fn test_extract_annex_b_frames_single_vcl_nal() {
 fn test_extract_annex_b_frames_two_nals() {
     // Two VCL NAL units without SPS/PPS data
     let data = &[
-        0x00, 0x00, 0x01, 0x4C, 0x01, 0xFF, 0xFF,
-        0x00, 0x00, 0x01, 0x4C, 0x01, 0xAA, 0xBB,
+        0x00, 0x00, 0x01, 0x4C, 0x01, 0xFF, 0xFF, 0x00, 0x00, 0x01, 0x4C, 0x01, 0xAA, 0xBB,
     ];
 
     let result = extract_annex_b_frames(data);
@@ -88,9 +89,8 @@ fn test_extract_frame_at_index_empty_stream() {
 fn test_extract_frame_at_index_single_frame() {
     // Single VCL NAL frame without SPS/PPS data
     let data = &[
-        0x00, 0x00, 0x01, 0x4C, 0x01, 0x02,
-        0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
-        0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x00, 0x00, 0x01, 0x4C, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
+        0x0C, 0x0D, 0x0E, 0x0F,
     ];
 
     let result = extract_frame_at_index(data, 0);
@@ -103,10 +103,8 @@ fn test_extract_frame_at_index_single_frame() {
 fn test_extract_frame_at_index_second_frame() {
     // Two VCL NAL frames without SPS/PPS
     let data = &[
-        0x00, 0x00, 0x01, 0x4C, 0x01, 0xFF, 0xFF,
-        0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
-        0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-        0x00, 0x00, 0x01, 0x4C, 0x01, 0xAA, 0xBB,
+        0x00, 0x00, 0x01, 0x4C, 0x01, 0xFF, 0xFF, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09,
+        0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x00, 0x00, 0x01, 0x4C, 0x01, 0xAA, 0xBB,
     ];
 
     // Request second frame (index 1)

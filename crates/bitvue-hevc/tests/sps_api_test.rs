@@ -2,7 +2,7 @@
 //!
 //! Tests for SPS public API and methods.
 
-use bitvue_hevc::sps::{Sps, ChromaFormat, Profile, ProfileTierLevel, parse_sps};
+use bitvue_hevc::sps::{parse_sps, ChromaFormat, Profile, ProfileTierLevel, Sps};
 
 // ============================================================================
 // Profile Enum Tests

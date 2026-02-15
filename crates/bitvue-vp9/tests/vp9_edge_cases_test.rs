@@ -1,5 +1,5 @@
 // Edge case tests for VP9 frame and parsing
-use bitvue_vp9::{parse_vp9, extract_vp9_frames};
+use bitvue_vp9::{extract_vp9_frames, parse_vp9};
 
 #[test]
 fn test_parse_vp9_empty_data() {

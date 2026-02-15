@@ -2,8 +2,8 @@
 //!
 //! Tests for pps.rs module to improve coverage from 72.48% to 95%.
 
-use bitvue_hevc::pps::{Pps, TileConfig};
 use bitvue_hevc::bitreader::BitReader;
+use bitvue_hevc::pps::{Pps, TileConfig};
 
 // ============================================================================
 // Pps Struct Creation Tests

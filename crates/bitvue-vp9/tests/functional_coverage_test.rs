@@ -1,8 +1,8 @@
 // Functional tests for VP9 codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_vp9::{
-    extract_vp9_frames, parse_vp9, parse_superframe_index, LoopFilter, Quantization,
-    Vp9FrameType, Vp9Stream,
+    extract_vp9_frames, parse_superframe_index, parse_vp9, LoopFilter, Quantization, Vp9FrameType,
+    Vp9Stream,
 };
 
 #[test]

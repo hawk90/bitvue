@@ -91,15 +91,9 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
         )));
     }
 
-    let total_blocks = grid_w
-        .checked_mul(grid_h)
-        .ok_or_else(|| {
-            BitvueError::Decode(format!(
-                "Grid block count overflow: {}x{}",
-                grid_w, grid_h
-            ))
-        })?
-        as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid block count overflow: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     if total_blocks > MAX_GRID_BLOCKS {
         return Err(BitvueError::Decode(format!(
@@ -149,15 +143,9 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
         )));
     }
 
-    let total_blocks = grid_w
-        .checked_mul(grid_h)
-        .ok_or_else(|| {
-            BitvueError::Decode(format!(
-                "Grid block count overflow: {}x{}",
-                grid_w, grid_h
-            ))
-        })?
-        as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid block count overflow: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     if total_blocks > MAX_GRID_BLOCKS {
         return Err(BitvueError::Decode(format!(
@@ -324,7 +312,12 @@ mod tests {
     use super::*;
     use crate::frame_header::{FrameHeader, FrameType, Quantization};
 
-    fn create_test_frame_header(width: u32, height: u32, frame_type: FrameType, base_q_idx: u8) -> FrameHeader {
+    fn create_test_frame_header(
+        width: u32,
+        height: u32,
+        frame_type: FrameType,
+        base_q_idx: u8,
+    ) -> FrameHeader {
         FrameHeader {
             frame_type,
             width,

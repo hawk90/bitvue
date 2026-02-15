@@ -142,16 +142,16 @@ impl IvfFrameBuilder {
     /// Returns an error if required fields (size, timestamp, temporal_id) are not set.
     pub fn build(self) -> Result<IvfFrame, BitvueError> {
         Ok(IvfFrame {
-            size: self.size.ok_or_else(|| BitvueError::InvalidData(
-                "IvfFrame: size is required".to_string()
-            ))?,
-            timestamp: self.timestamp.ok_or_else(|| BitvueError::InvalidData(
-                "IvfFrame: timestamp is required".to_string()
-            ))?,
+            size: self.size.ok_or_else(|| {
+                BitvueError::InvalidData("IvfFrame: size is required".to_string())
+            })?,
+            timestamp: self.timestamp.ok_or_else(|| {
+                BitvueError::InvalidData("IvfFrame: timestamp is required".to_string())
+            })?,
             data: self.data.unwrap_or_default(),
-            temporal_id: self.temporal_id.ok_or_else(|| BitvueError::InvalidData(
-                "IvfFrame: temporal_id is required".to_string()
-            ))?,
+            temporal_id: self.temporal_id.ok_or_else(|| {
+                BitvueError::InvalidData("IvfFrame: temporal_id is required".to_string())
+            })?,
         })
     }
 }

@@ -232,7 +232,7 @@ pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
         while offset < data.len() && data[offset] == 0xFF {
             if type_iterations >= MAX_SEI_TYPE_ITERATIONS {
                 return Err(AvcError::InvalidSei(
-                    "SEI payload type extension exceeds maximum iterations".to_string()
+                    "SEI payload type extension exceeds maximum iterations".to_string(),
                 ));
             }
             payload_type += 255;
@@ -251,7 +251,7 @@ pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
         while offset < data.len() && data[offset] == 0xFF {
             if size_iterations >= MAX_SEI_SIZE_ITERATIONS {
                 return Err(AvcError::InvalidSei(
-                    "SEI payload size extension exceeds maximum iterations".to_string()
+                    "SEI payload size extension exceeds maximum iterations".to_string(),
                 ));
             }
             payload_size += 255;

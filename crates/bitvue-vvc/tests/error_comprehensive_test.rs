@@ -2,8 +2,8 @@
 //!
 //! Tests VvcError enum variants and From<CodecError> implementation
 
-use bitvue_vvc::error::{VvcError, Result};
 use bitvue_core::codec_error::{Codec, CodecError};
+use bitvue_vvc::error::{Result, VvcError};
 use std::io;
 
 // ============================================================================

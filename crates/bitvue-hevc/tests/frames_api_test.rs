@@ -1,7 +1,9 @@
 //! Tests for HEVC frames.rs public API.
 //! Targeting 95%+ line coverage for frame extraction methods.
 
-use bitvue_hevc::frames::{HevcFrame, HevcFrameType, extract_annex_b_frames, extract_frame_at_index};
+use bitvue_hevc::frames::{
+    extract_annex_b_frames, extract_frame_at_index, HevcFrame, HevcFrameType,
+};
 
 // ============================================================================
 // HevcFrame Struct Tests

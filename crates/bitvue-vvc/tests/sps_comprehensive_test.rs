@@ -4,8 +4,7 @@
 //! AlfConfig, LmcsConfig, and Sps
 
 use bitvue_vvc::sps::{
-    Profile, ChromaFormat, ProfileTierLevel, DualTreeConfig,
-    AlfConfig, LmcsConfig, Sps,
+    AlfConfig, ChromaFormat, DualTreeConfig, LmcsConfig, Profile, ProfileTierLevel, Sps,
 };
 
 // ============================================================================
@@ -186,7 +185,10 @@ fn test_dual_tree_config_clone() {
         ..Default::default()
     };
     let cloned = config.clone();
-    assert_eq!(cloned.qtbtt_dual_tree_intra_flag, config.qtbtt_dual_tree_intra_flag);
+    assert_eq!(
+        cloned.qtbtt_dual_tree_intra_flag,
+        config.qtbtt_dual_tree_intra_flag
+    );
 }
 
 // ============================================================================

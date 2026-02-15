@@ -103,8 +103,7 @@ fn test_syntax_node_clone() {
 
 #[test]
 fn test_syntax_node_with_position() {
-    let node = SyntaxNode::new("Positioned", SyntaxNodeType::Field)
-        .with_position(100, 32);
+    let node = SyntaxNode::new("Positioned", SyntaxNodeType::Field).with_position(100, 32);
 
     assert_eq!(node.bit_offset, Some(100));
     assert_eq!(node.bit_length, Some(32));

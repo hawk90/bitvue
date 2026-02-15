@@ -2,9 +2,7 @@
 //!
 //! Tests Profile, ChromaFormat, ProfileTierLevel, VuiParameters, Sps
 
-use bitvue_hevc::sps::{
-    parse_sps, ChromaFormat, Profile, ProfileTierLevel, Sps, VuiParameters,
-};
+use bitvue_hevc::sps::{parse_sps, ChromaFormat, Profile, ProfileTierLevel, Sps, VuiParameters};
 
 // ============================================================================
 // Profile Tests

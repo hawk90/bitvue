@@ -22,8 +22,17 @@ fn test_hevc_error_invalid_data() {
 
 #[test]
 fn test_hevc_error_insufficient_data() {
-    let err = HevcError::InsufficientData { expected: 100, actual: 50 };
-    assert!(matches!(err, HevcError::InsufficientData { expected: 100, actual: 50 }));
+    let err = HevcError::InsufficientData {
+        expected: 100,
+        actual: 50,
+    };
+    assert!(matches!(
+        err,
+        HevcError::InsufficientData {
+            expected: 100,
+            actual: 50
+        }
+    ));
 }
 
 #[test]
@@ -35,15 +44,27 @@ fn test_hevc_error_io_error() {
 
 #[test]
 fn test_hevc_error_parse_error() {
-    let err = HevcError::Parse { offset: 50, message: "test message".to_string() };
-    assert!(matches!(err, HevcError::Parse { offset: 50, message: _ }));
+    let err = HevcError::Parse {
+        offset: 50,
+        message: "test message".to_string(),
+    };
+    assert!(matches!(
+        err,
+        HevcError::Parse {
+            offset: 50,
+            message: _
+        }
+    ));
 }
 
 #[test]
 fn test_hevc_error_display() {
     let err1 = HevcError::UnexpectedEof(100);
     let err2 = HevcError::InvalidData("test data".to_string());
-    let err3 = HevcError::InsufficientData { expected: 100, actual: 50 };
+    let err3 = HevcError::InsufficientData {
+        expected: 100,
+        actual: 50,
+    };
 
     // Verify errors can be formatted for display
     let debug1 = format!("{:?}", err1);
@@ -97,14 +118,20 @@ fn test_error_display_invalid_data() {
 
 #[test]
 fn test_error_display_insufficient_data() {
-    let err = HevcError::InsufficientData { expected: 100, actual: 50 };
+    let err = HevcError::InsufficientData {
+        expected: 100,
+        actual: 50,
+    };
     let display = format!("{:?}", err);
     assert!(display.contains("100") || display.contains("50"));
 }
 
 #[test]
 fn test_error_display_parse_error() {
-    let err = HevcError::Parse { offset: 50, message: "test".to_string() };
+    let err = HevcError::Parse {
+        offset: 50,
+        message: "test".to_string(),
+    };
     let display = format!("{:?}", err);
     assert!(display.contains("50") || display.contains("test"));
 }

@@ -2,7 +2,10 @@
 //!
 //! Tests SyntaxNode, SyntaxNodeType, and build_syntax_tree function
 
-use bitvue_vvc::{syntax::{build_syntax_tree, SyntaxNode, SyntaxNodeType}, VvcStream, NalUnit, NalUnitHeader, NalUnitType};
+use bitvue_vvc::{
+    syntax::{build_syntax_tree, SyntaxNode, SyntaxNodeType},
+    NalUnit, NalUnitHeader, NalUnitType, VvcStream,
+};
 
 // ============================================================================
 // SyntaxNodeType Tests
@@ -159,7 +162,13 @@ fn test_syntax_node_add_child_single() {
 fn test_syntax_node_add_child_multiple() {
     let mut parent = SyntaxNode::new("Parent", SyntaxNodeType::Array);
 
-    let items = [("item0", "0"), ("item1", "1"), ("item2", "2"), ("item3", "3"), ("item4", "4")];
+    let items = [
+        ("item0", "0"),
+        ("item1", "1"),
+        ("item2", "2"),
+        ("item3", "3"),
+        ("item4", "4"),
+    ];
     for (name, value) in items {
         parent.add_child(SyntaxNode::field(name, value));
     }
@@ -227,19 +236,17 @@ fn test_build_syntax_tree_with_nal_unit() {
     use std::collections::HashMap;
 
     let stream = VvcStream {
-        nal_units: vec![
-            NalUnit {
-                header: NalUnitHeader {
-                    nal_unit_type: NalUnitType::SpsNut,
-                    nuh_layer_id: 0,
-                    nuh_temporal_id_plus1: 1,
-                },
-                offset: 0,
-                size: 100,
-                payload: vec![],
-                raw_payload: vec![],
+        nal_units: vec![NalUnit {
+            header: NalUnitHeader {
+                nal_unit_type: NalUnitType::SpsNut,
+                nuh_layer_id: 0,
+                nuh_temporal_id_plus1: 1,
             },
-        ],
+            offset: 0,
+            size: 100,
+            payload: vec![],
+            raw_payload: vec![],
+        }],
         sps_map: HashMap::new(),
         pps_map: HashMap::new(),
     };
@@ -321,8 +328,16 @@ fn test_syntax_node_many_children() {
 
     // Test with a smaller set for compilation
     let items = [
-        ("child0", "0"), ("child1", "1"), ("child2", "2"), ("child3", "3"), ("child4", "4"),
-        ("child5", "5"), ("child6", "6"), ("child7", "7"), ("child8", "8"), ("child9", "9"),
+        ("child0", "0"),
+        ("child1", "1"),
+        ("child2", "2"),
+        ("child3", "3"),
+        ("child4", "4"),
+        ("child5", "5"),
+        ("child6", "6"),
+        ("child7", "7"),
+        ("child8", "8"),
+        ("child9", "9"),
     ];
     for (name, value) in items {
         parent.add_child(SyntaxNode::field(name, value));
@@ -365,8 +380,16 @@ fn test_syntax_node_capacity_growth() {
 
     let initial_capacity = node.children.capacity();
 
-    let items = [("item0", "0"), ("item1", "1"), ("item2", "2"), ("item3", "3"),
-                 ("item4", "4"), ("item5", "5"), ("item6", "6"), ("item7", "7")];
+    let items = [
+        ("item0", "0"),
+        ("item1", "1"),
+        ("item2", "2"),
+        ("item3", "3"),
+        ("item4", "4"),
+        ("item5", "5"),
+        ("item6", "6"),
+        ("item7", "7"),
+    ];
     for (name, value) in items {
         node.add_child(SyntaxNode::field(name, value));
     }

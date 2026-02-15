@@ -403,7 +403,9 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
                 abseil::vlog!(
                     1,
                     "Invalid NAL unit range: start={}, end={}, data_len={}",
-                    nal_start, nal_end, data.len()
+                    nal_start,
+                    nal_end,
+                    data.len()
                 );
                 i += 1;
                 continue;

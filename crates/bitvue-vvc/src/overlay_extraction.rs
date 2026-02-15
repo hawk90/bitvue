@@ -404,9 +404,7 @@ fn expand_cu_to_blocks(
         .map(|cu| {
             let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
             // Use checked_mul to prevent overflow
-            blocks_in_cu
-                .checked_mul(blocks_in_cu)
-                .unwrap_or(u32::MAX) as usize
+            blocks_in_cu.checked_mul(blocks_in_cu).unwrap_or(u32::MAX) as usize
         })
         .sum();
 
@@ -419,9 +417,7 @@ fn expand_cu_to_blocks(
     for cu in &ctu.coding_units {
         let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
         // Use checked_mul to prevent overflow
-        let cu_blocks = blocks_in_cu
-            .checked_mul(blocks_in_cu)
-            .unwrap_or(u32::MAX) as usize;
+        let cu_blocks = blocks_in_cu.checked_mul(blocks_in_cu).unwrap_or(u32::MAX) as usize;
 
         for _ in 0..cu_blocks {
             match cu.pred_mode {
@@ -494,7 +490,10 @@ fn parse_slice_ctus(
     let ctu_cols = (width + ctu_size - 1) / ctu_size;
     let ctu_rows = (height + ctu_size - 1) / ctu_size;
     let total_ctus = ctu_cols.checked_mul(ctu_rows).ok_or_else(|| {
-        BitvueError::Decode(format!("CTU grid dimensions too large: {}x{}", ctu_cols, ctu_rows))
+        BitvueError::Decode(format!(
+            "CTU grid dimensions too large: {}x{}",
+            ctu_cols, ctu_rows
+        ))
     })?;
 
     // Pre-allocate CTU vector with known size
@@ -900,7 +899,11 @@ mod tests {
             let sps = create_test_sps(640, 480, log2_ctu_size);
             let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
             let result = extract_qp_grid(&[nal], &sps, 26);
-            assert!(result.is_ok(), "Failed for CTU size={}", 1u32 << (log2_ctu_size));
+            assert!(
+                result.is_ok(),
+                "Failed for CTU size={}",
+                1u32 << (log2_ctu_size)
+            );
         }
     }
 

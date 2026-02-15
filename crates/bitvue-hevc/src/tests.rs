@@ -56,7 +56,10 @@ fn test_parse_hevc_vps_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::VpsNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::VpsNut
+        );
     }
 }
 
@@ -73,7 +76,10 @@ fn test_parse_hevc_sps_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::SpsNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::SpsNut
+        );
     }
 }
 
@@ -90,7 +96,10 @@ fn test_parse_hevc_pps_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::PpsNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::PpsNut
+        );
     }
 }
 
@@ -142,7 +151,10 @@ fn test_parse_hevc_aud_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::AudNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::AudNut
+        );
     }
 }
 
@@ -159,7 +171,10 @@ fn test_parse_hevc_eos_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::EosNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::EosNut
+        );
     }
 }
 
@@ -176,7 +191,10 @@ fn test_parse_hevc_eob_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::EobNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::EobNut
+        );
     }
 }
 
@@ -213,7 +231,10 @@ fn test_parse_hevc_prefix_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::PrefixSeiNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::PrefixSeiNut
+        );
     }
 }
 
@@ -230,7 +251,10 @@ fn test_parse_hevc_suffix_nal() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::SuffixSeiNut);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::SuffixSeiNut
+        );
     }
 }
 
@@ -241,28 +265,46 @@ fn test_parse_hevc_multiple_nal_units() {
     let mut pos = 0;
 
     // VPS (nal_unit_type=32)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x40; pos += 1; // forbidden=0, nal_type=32
-    data[pos] = 0x01; pos += 1; // layer_id=0, temporal_id+1=1
-    data[pos] = 0x00; pos += 1; // payload byte
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x40;
+    pos += 1; // forbidden=0, nal_type=32
+    data[pos] = 0x01;
+    pos += 1; // layer_id=0, temporal_id+1=1
+    data[pos] = 0x00;
+    pos += 1; // payload byte
 
     // SPS (nal_unit_type=33)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x42; pos += 1; // forbidden=0, nal_type=33
-    data[pos] = 0x01; pos += 1; // layer_id=0, temporal_id+1=1
-    data[pos] = 0x00; pos += 1; // payload byte
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x42;
+    pos += 1; // forbidden=0, nal_type=33
+    data[pos] = 0x01;
+    pos += 1; // layer_id=0, temporal_id+1=1
+    data[pos] = 0x00;
+    pos += 1; // payload byte
 
     // PPS (nal_unit_type=34)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x44; pos += 1; // forbidden=0, nal_type=34
-    data[pos] = 0x01; pos += 1; // layer_id=0, temporal_id+1=1
-    data[pos] = 0x00; pos += 1; // payload byte
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x44;
+    pos += 1; // forbidden=0, nal_type=34
+    data[pos] = 0x01;
+    pos += 1; // layer_id=0, temporal_id+1=1
+    data[pos] = 0x00;
+    pos += 1; // payload byte
 
     let result = parse_hevc(&data[..pos]);
     assert!(result.is_ok());
@@ -323,56 +365,59 @@ fn test_hevc_stream_methods() {
 fn test_hevc_stream_with_sps() {
     // Test HevcStream with SPS data
     let mut sps_map = std::collections::HashMap::new();
-    sps_map.insert(0, Sps {
-        sps_video_parameter_set_id: 0,
-        sps_max_sub_layers_minus1: 0,
-        sps_temporal_id_nesting_flag: true,
-        profile_tier_level: ProfileTierLevel {
-            general_profile_space: 0,
-            general_tier_flag: false,
-            general_profile_idc: crate::sps::Profile::Main,
-            general_profile_compatibility_flags: 0,
-            general_progressive_source_flag: true,
-            general_interlaced_source_flag: false,
-            general_non_packed_constraint_flag: true,
-            general_frame_only_constraint_flag: true,
-            general_level_idc: 51,
+    sps_map.insert(
+        0,
+        Sps {
+            sps_video_parameter_set_id: 0,
+            sps_max_sub_layers_minus1: 0,
+            sps_temporal_id_nesting_flag: true,
+            profile_tier_level: ProfileTierLevel {
+                general_profile_space: 0,
+                general_tier_flag: false,
+                general_profile_idc: crate::sps::Profile::Main,
+                general_profile_compatibility_flags: 0,
+                general_progressive_source_flag: true,
+                general_interlaced_source_flag: false,
+                general_non_packed_constraint_flag: true,
+                general_frame_only_constraint_flag: true,
+                general_level_idc: 51,
+            },
+            sps_seq_parameter_set_id: 0,
+            chroma_format_idc: ChromaFormat::Chroma420,
+            separate_colour_plane_flag: false,
+            pic_width_in_luma_samples: 1920,
+            pic_height_in_luma_samples: 1080,
+            conformance_window_flag: false,
+            conf_win_left_offset: 0,
+            conf_win_right_offset: 0,
+            conf_win_top_offset: 0,
+            conf_win_bottom_offset: 0,
+            bit_depth_luma_minus8: 0,
+            bit_depth_chroma_minus8: 0,
+            log2_max_pic_order_cnt_lsb_minus4: 0,
+            sps_sub_layer_ordering_info_present_flag: false,
+            sps_max_dec_pic_buffering_minus1: vec![],
+            sps_max_num_reorder_pics: vec![],
+            sps_max_latency_increase_plus1: vec![],
+            log2_min_luma_coding_block_size_minus3: 0,
+            log2_diff_max_min_luma_coding_block_size: 0,
+            log2_min_luma_transform_block_size_minus2: 0,
+            log2_diff_max_min_luma_transform_block_size: 0,
+            max_transform_hierarchy_depth_inter: 0,
+            max_transform_hierarchy_depth_intra: 0,
+            scaling_list_enabled_flag: false,
+            amp_enabled_flag: false,
+            sample_adaptive_offset_enabled_flag: false,
+            pcm_enabled_flag: false,
+            num_short_term_ref_pic_sets: 0,
+            long_term_ref_pics_present_flag: false,
+            num_long_term_ref_pics_sps: 0,
+            sps_temporal_mvp_enabled_flag: false,
+            strong_intra_smoothing_enabled_flag: false,
+            vui_parameters_present_flag: false,
+            vui_parameters: None,
         },
-        sps_seq_parameter_set_id: 0,
-        chroma_format_idc: ChromaFormat::Chroma420,
-        separate_colour_plane_flag: false,
-        pic_width_in_luma_samples: 1920,
-        pic_height_in_luma_samples: 1080,
-        conformance_window_flag: false,
-        conf_win_left_offset: 0,
-        conf_win_right_offset: 0,
-        conf_win_top_offset: 0,
-        conf_win_bottom_offset: 0,
-        bit_depth_luma_minus8: 0,
-        bit_depth_chroma_minus8: 0,
-        log2_max_pic_order_cnt_lsb_minus4: 0,
-        sps_sub_layer_ordering_info_present_flag: false,
-        sps_max_dec_pic_buffering_minus1: vec![],
-        sps_max_num_reorder_pics: vec![],
-        sps_max_latency_increase_plus1: vec![],
-        log2_min_luma_coding_block_size_minus3: 0,
-        log2_diff_max_min_luma_coding_block_size: 0,
-        log2_min_luma_transform_block_size_minus2: 0,
-        log2_diff_max_min_luma_transform_block_size: 0,
-        max_transform_hierarchy_depth_inter: 0,
-        max_transform_hierarchy_depth_intra: 0,
-        scaling_list_enabled_flag: false,
-        amp_enabled_flag: false,
-        sample_adaptive_offset_enabled_flag: false,
-        pcm_enabled_flag: false,
-        num_short_term_ref_pic_sets: 0,
-        long_term_ref_pics_present_flag: false,
-        num_long_term_ref_pics_sps: 0,
-        sps_temporal_mvp_enabled_flag: false,
-        strong_intra_smoothing_enabled_flag: false,
-        vui_parameters_present_flag: false,
-        vui_parameters: None,
-    });
+    );
 
     let stream = HevcStream {
         nal_units: vec![],
@@ -475,32 +520,54 @@ fn test_extract_annex_b_frames() {
     let mut pos = 0;
 
     // First frame: AUD + IDR slice
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x46; pos += 1; // AUD
-    data[pos] = 0x01; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x46;
+    pos += 1; // AUD
+    data[pos] = 0x01;
+    pos += 1;
 
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x26; pos += 1; // IDR_W_RADL
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x26;
+    pos += 1; // IDR_W_RADL
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // Second frame: AUD + TRAIL slice
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x46; pos += 1; // AUD
-    data[pos] = 0x01; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x46;
+    pos += 1; // AUD
+    data[pos] = 0x01;
+    pos += 1;
 
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x02; pos += 1; // TRAIL_R
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x02;
+    pos += 1; // TRAIL_R
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // Add more padding to make the frames valid
     for _ in 0..32 {
@@ -521,32 +588,56 @@ fn test_extract_frame_at_index() {
     let mut pos = 0;
 
     // First frame (IDR)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x46; pos += 1; // AUD
-    data[pos] = 0x00; pos += 1; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x46;
+    pos += 1; // AUD
+    data[pos] = 0x00;
+    pos += 1;
+    pos += 1;
 
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x26; pos += 1; // IDR
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x26;
+    pos += 1; // IDR
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // Second frame (TRAIL)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x46; pos += 1; // AUD
-    data[pos] = 0x00; pos += 1; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x46;
+    pos += 1; // AUD
+    data[pos] = 0x00;
+    pos += 1;
+    pos += 1;
 
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x02; pos += 1; // TRAIL_R
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x02;
+    pos += 1; // TRAIL_R
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     let result = extract_frame_at_index(&data[..pos], 0);
     assert!(result.is_some());
@@ -808,20 +899,32 @@ fn test_hevc_stream_frame_count() {
     let mut pos = 0;
 
     // First frame (IDR)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x26; pos += 1; // IDR_W_RADL
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x26;
+    pos += 1; // IDR_W_RADL
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // Second frame (TRAIL)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x02; pos += 1; // TRAIL_R
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x02;
+    pos += 1; // TRAIL_R
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     let result = parse_hevc(&data[..pos]);
     assert!(result.is_ok());
@@ -862,20 +965,32 @@ fn test_parse_hevc_quick_with_multiple_sps() {
     let mut pos = 0;
 
     // First SPS
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x42; pos += 1; // SPS
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x42;
+    pos += 1; // SPS
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // Second SPS (should not override dimensions)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x42; pos += 1; // SPS
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x42;
+    pos += 1; // SPS
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     let result = parse_hevc_quick(&data[..pos]);
     assert!(result.is_ok());
@@ -891,28 +1006,46 @@ fn test_parse_hevc_quick_frame_counts() {
     let mut pos = 0;
 
     // IDR (counts as frame)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x26; pos += 1; // IDR_W_RADL
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x26;
+    pos += 1; // IDR_W_RADL
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // TRAIL_R (counts as frame)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x02; pos += 1; // TRAIL_R
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x02;
+    pos += 1; // TRAIL_R
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // VPS (non-VCL)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x40; pos += 1; // VPS
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x40;
+    pos += 1; // VPS
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     let result = parse_hevc_quick(&data[..pos]);
     assert!(result.is_ok());
@@ -995,20 +1128,32 @@ fn test_hevc_stream_idr_frames() {
     let mut pos = 0;
 
     // IDR frame
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x26; pos += 1; // IDR_W_RADL
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x26;
+    pos += 1; // IDR_W_RADL
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     // Non-IDR frame (TRAIL)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x02; pos += 1; // TRAIL_R
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x02;
+    pos += 1; // TRAIL_R
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     let result = parse_hevc(&data[..pos]);
     assert!(result.is_ok());
@@ -1021,12 +1166,18 @@ fn test_hevc_stream_irap_frames() {
     let mut pos = 0;
 
     // CRA frame (IRAP)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x2A; pos += 1; // CRA_NUT
-    data[pos] = 0x01; pos += 1;
-    data[pos] = 0x00; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x2A;
+    pos += 1; // CRA_NUT
+    data[pos] = 0x01;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
 
     let result = parse_hevc(&data[..pos]);
     assert!(result.is_ok());
@@ -1090,7 +1241,8 @@ fn test_parse_sps_tier_and_level() {
 #[test]
 fn test_parse_sps_chroma_format() {
     // Test SPS parsing with different chroma formats
-    for chroma_id in &[1u8, 2, 3] { // YUV420, YUV422, YUV444
+    for chroma_id in &[1u8, 2, 3] {
+        // YUV420, YUV422, YUV444
         let mut data = vec![0u8; 32];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x42]); // NAL header
         data[4] = 0x01; // sps_video_parameter_set_id
@@ -1118,12 +1270,17 @@ fn test_parse_pps_pic_parameter_set_id() {
 #[test]
 fn test_parse_nal_header_vcl_nal() {
     // Test NAL header parsing for VCL NAL units
-    for nal_type in [1u8, 20, 32] { // various VCL types
+    for nal_type in [1u8, 20, 32] {
+        // various VCL types
         let mut data = vec![0u8; 2];
         data[0] = (nal_type << 1) & 0xFE; // nal_unit_type
         data[1] = 0x01; // nuh_temporal_id_plus1
         let header = parse_nal_header(&data);
-        assert!(header.is_ok(), "Should parse NAL header for type {}", nal_type);
+        assert!(
+            header.is_ok(),
+            "Should parse NAL header for type {}",
+            nal_type
+        );
         let _header = header.unwrap();
         // Verify parsing succeeded
     }
@@ -1132,7 +1289,8 @@ fn test_parse_nal_header_vcl_nal() {
 #[test]
 fn test_parse_nal_header_non_vcl() {
     // Test NAL header parsing for non-VCL NAL units
-    for nal_type in [32u8, 33, 34, 39] { // various non-VCL types
+    for nal_type in [32u8, 33, 34, 39] {
+        // various non-VCL types
         let mut data = vec![0u8; 2];
         data[0] = (nal_type << 1) & 0xFE; // nal_unit_type
         data[1] = 0x01; // nuh_temporal_id_plus1
@@ -1186,7 +1344,13 @@ fn test_parse_hevc_quick_info_extraction() {
     assert!(result.is_ok());
     let info = result.unwrap();
     // width/height are Option<u32>, profile/level are Option<u8>
-    assert!(info.width.is_some() || info.height.is_some() || info.profile.is_some() || info.level.is_some() || info.nal_count > 0);
+    assert!(
+        info.width.is_some()
+            || info.height.is_some()
+            || info.profile.is_some()
+            || info.level.is_some()
+            || info.nal_count > 0
+    );
 }
 
 #[test]
@@ -1213,7 +1377,7 @@ fn test_slice_header_with_pic_order_cnt() {
     data[4] = 0x01; // first_slice_segment_in_pic_flag
     data[5] = 0x01; // no_output_of_prior_pics_flag
     data[6] = 0x01; // slice_pic_parameter_set_id
-    // Add pic_order_cnt_lsb
+                    // Add pic_order_cnt_lsb
     let result = parse_hevc(&data);
     // Should handle gracefully
     assert!(result.is_ok() || result.is_err());
@@ -1348,7 +1512,7 @@ fn test_parse_hevc_with_embedded_nulls() {
     data[1] = 0x00;
     data[2] = 0x01; // Start code
     data[3] = 0x00; // Embedded null in NAL header position
-    // Rest is nulls
+                    // Rest is nulls
     for i in 4..100 {
         data[i] = 0x00;
     }
@@ -1552,7 +1716,7 @@ fn test_extract_qp_grid_with_empty_data() {
         vui_parameters: None,
     };
     let result = extract_qp_grid(nal_units, &sps, 26); // Valid QP value
-    // Empty data should return error or empty grid
+                                                       // Empty data should return error or empty grid
     assert!(result.is_ok() || result.is_err());
 }
 
