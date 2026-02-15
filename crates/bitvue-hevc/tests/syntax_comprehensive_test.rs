@@ -2,8 +2,8 @@
 //!
 //! Comprehensive tests for syntax/mod.rs to reach 95% coverage target.
 
-use bitvue_hevc::syntax::{build_syntax_tree, SyntaxNode, SyntaxNodeType};
 use bitvue_hevc::parse_hevc;
+use bitvue_hevc::syntax::{build_syntax_tree, SyntaxNode, SyntaxNodeType};
 
 // ============================================================================
 // SyntaxNode Creation Tests
