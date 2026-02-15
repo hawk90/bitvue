@@ -256,8 +256,7 @@ impl CommandHandler for ValidationHandler {
 // =============================================================================
 
 /// Log level for logging handler
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LogLevel {
     Debug,
     #[default]
@@ -265,7 +264,6 @@ pub enum LogLevel {
     Warn,
     Error,
 }
-
 
 /// Logs command processing for debugging
 #[derive(Debug, Clone, Default)]

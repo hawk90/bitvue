@@ -7,8 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Extracted QP information for a frame
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct QpData {
     /// Average QP value for the frame (0-51)
     pub qp_avg: Option<u8>,
@@ -32,7 +31,6 @@ impl QpData {
     ///
     /// Calculated QP value (0-51)
     pub fn calculate_qp_from_delta(pic_init_qp_minus26: i32, slice_qp_delta: i32) -> u8 {
-        
         (pic_init_qp_minus26 + 26 + slice_qp_delta).clamp(0, 51) as u8
     }
 
@@ -176,7 +174,6 @@ impl QpData {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
