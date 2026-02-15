@@ -83,14 +83,14 @@ fn test_syntax_node_field_string_value() {
 
 #[test]
 fn test_syntax_node_field_integer_value() {
-    let node = SyntaxNode::field("count", 42);
+    let node = SyntaxNode::field("count", "42");
     assert_eq!(node.name, "count");
     assert_eq!(node.value, Some("42".to_string()));
 }
 
 #[test]
 fn test_syntax_node_field_float_value() {
-    let node = SyntaxNode::field("fps", 29.97);
+    let node = SyntaxNode::field("fps", "29.97");
     assert_eq!(node.name, "fps");
     assert_eq!(node.value, Some("29.97".to_string()));
 }
@@ -113,7 +113,7 @@ fn test_syntax_node_add_child() {
 fn test_syntax_node_add_multiple_children() {
     let mut node = SyntaxNode::new("Root", SyntaxNodeType::Array);
     for i in 0..10 {
-        node.add_child(SyntaxNode::field(&format!("item_{}", i), i.to_string()));
+        node.add_child(SyntaxNode::field(format!("item_{}", i), i.to_string()));
     }
 
     assert_eq!(node.children.len(), 10);
@@ -151,7 +151,7 @@ fn test_syntax_node_empty_children() {
     let node = SyntaxNode::new("Empty Children", SyntaxNodeType::Array);
     assert!(node.children.is_empty());
     assert_eq!(node.children.len(), 0);
-    assert_eq!(node.children.first(), None);
+    assert!(node.children.first().is_none());
 }
 
 #[test]
@@ -189,6 +189,7 @@ fn test_build_syntax_tree_with_nal_units() {
         offset: 0,
         size: 100,
         payload: vec![],
+        raw_payload: vec![],
     };
 
     let stream = VvcStream {
