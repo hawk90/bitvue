@@ -1,8 +1,9 @@
 // Comprehensive benchmarks for graph algorithms
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
+#[cfg(test)]
 use abseil::absl_graph::{bfs, dfs, dijkstra, topological_sort, Graph};
+#[cfg(test)]
 use test::{black_box, Bencher};
 
 // Create a small graph (10 vertices, 15 edges)

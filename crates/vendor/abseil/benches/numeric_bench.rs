@@ -1,7 +1,7 @@
 // Minimal benchmarks for numeric operations
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
+#[cfg(test)]
 use test::{black_box, Bencher};
 
 // Use functions that are actually exported from the library

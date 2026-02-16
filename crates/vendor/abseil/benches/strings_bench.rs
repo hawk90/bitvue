@@ -1,13 +1,14 @@
 // Comprehensive benchmarks for string operations
 // Tests performance of str_cat, str_join, escape/unescape optimizations
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
 use abseil::{
-    absl_strings::escaping::{self, UnescapeError},
-    absl_strings::str_cat::StrCat,
+    absl_strings::cord::Cord,
     str_cat,
 };
+
+// Import test crate conditionally for benches
+#[cfg(test)]
 use test::{black_box, Bencher};
 
 // ========== Test Data ==========
@@ -193,7 +194,7 @@ fn bench_strcat_builder_large(b: &mut Bencher) {
 fn bench_str_join_empty(b: &mut Bencher) {
     let empty: Vec<&str> = vec![];
     b.iter(|| {
-        let result = absl_strings::str_cat::str_join(", ", black_box(&empty));
+        let result = str_cat::str_join(", ", black_box(&empty));
         black_box(result);
     });
 }
@@ -202,7 +203,7 @@ fn bench_str_join_empty(b: &mut Bencher) {
 fn bench_str_join_small_3_items(b: &mut Bencher) {
     let items = vec!["a", "b", "c"];
     b.iter(|| {
-        let result = absl_strings::str_cat::str_join(", ", black_box(&items));
+        let result = str_cat::str_join(", ", black_box(&items));
         black_box(result);
     });
 }
@@ -211,7 +212,7 @@ fn bench_str_join_small_3_items(b: &mut Bencher) {
 fn bench_str_join_small_10_items(b: &mut Bencher) {
     let items = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
     b.iter(|| {
-        let result = absl_strings::str_cat::str_join(", ", black_box(&items));
+        let result = str_cat::str_join(", ", black_box(&items));
         black_box(result);
     });
 }
@@ -220,7 +221,7 @@ fn bench_str_join_small_10_items(b: &mut Bencher) {
 fn bench_str_join_medium_50_items(b: &mut Bencher) {
     let items = (0..50).map(|i| i.to_string()).collect::<Vec<_>>();
     b.iter(|| {
-        let result = absl_strings::str_cat::str_join(", ", black_box(&items));
+        let result = str_cat::str_join(", ", black_box(&items));
         black_box(result);
     });
 }
@@ -229,7 +230,7 @@ fn bench_str_join_medium_50_items(b: &mut Bencher) {
 fn bench_str_join_large_100_items(b: &mut Bencher) {
     let items = (0..100).map(|i| i.to_string()).collect::<Vec<_>>();
     b.iter(|| {
-        let result = absl_strings::str_cat::str_join(", ", black_box(&items));
+        let result = str_cat::str_join(", ", black_box(&items));
         black_box(result);
     });
 }
@@ -238,7 +239,7 @@ fn bench_str_join_large_100_items(b: &mut Bencher) {
 fn bench_str_join_empty_delimiter(b: &mut Bencher) {
     let items = vec!["a", "b", "c", "d", "e"];
     b.iter(|| {
-        let result = absl_strings::str_cat::str_join("", black_box(&items));
+        let result = str_cat::str_join("", black_box(&items));
         black_box(result);
     });
 }
@@ -247,7 +248,7 @@ fn bench_str_join_empty_delimiter(b: &mut Bencher) {
 fn bench_str_join_long_delimiter(b: &mut Bencher) {
     let items = vec!["a", "b", "c"];
     b.iter(|| {
-        let result = absl_strings::str_cat::str_join(" | ", black_box(&items));
+        let result = str_cat::str_join(" | ", black_box(&items));
         black_box(result);
     });
 }

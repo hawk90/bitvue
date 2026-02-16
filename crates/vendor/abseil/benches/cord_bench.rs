@@ -1,7 +1,6 @@
 // Comprehensive benchmarks for Cord operations
 // Tests performance of incremental comparison, hashing, and fast paths
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
 use abseil::absl_strings::cord::Cord;
 use std::collections::hash_map::DefaultHasher;

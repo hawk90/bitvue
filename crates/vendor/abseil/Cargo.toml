@@ -13,6 +13,7 @@ categories = ["development-tools", "no-std"]
 [lib]
 name = "abseil"
 path = "src/lib.rs"
+bench = false
 
 [features]
 default = ["std", "full"]

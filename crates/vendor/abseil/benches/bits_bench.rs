@@ -1,6 +1,5 @@
 // Comprehensive benchmarks for bit manipulation operations
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
 // Use functions re-exported at crate level from absl_bits
 use abseil::{
