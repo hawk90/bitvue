@@ -207,10 +207,9 @@ pub fn detect_format(data: &[u8]) -> VideoFormat {
 
     // Check for Annex B start codes (H.264, HEVC, VVC)
     // Annex B starts with 0x00 0x00 0x00 0x01 or 0x00 0x00 0x01
-    if data.len() >= 4
-        && (&data[0..4] == b"\x00\x00\x00\x01" || &data[0..3] == b"\x00\x00\x01") {
-            return VideoFormat::AnnexB;
-        }
+    if data.len() >= 4 && (&data[0..4] == b"\x00\x00\x00\x01" || &data[0..3] == b"\x00\x00\x01") {
+        return VideoFormat::AnnexB;
+    }
 
     VideoFormat::Unknown
 }
@@ -548,7 +547,9 @@ impl Av1Decoder {
                 // Supported formats - proceed
             }
             VideoFormat::Unknown => {
-                return Err(DecodeError::Decode("Unknown video format - could not detect from magic number".to_string()));
+                return Err(DecodeError::Decode(
+                    "Unknown video format - could not detect from magic number".to_string(),
+                ));
             }
             _ => {
                 return Err(DecodeError::Decode(format!(

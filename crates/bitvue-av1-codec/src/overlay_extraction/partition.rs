@@ -688,10 +688,7 @@ where
         // Calculate which superblock this CU belongs to
         let sb_x = cu.x / parsed.dimensions.sb_size;
         let sb_y = cu.y / parsed.dimensions.sb_size;
-        sb_index
-            .entry((sb_x, sb_y))
-            .or_default()
-            .push(cu_idx);
+        sb_index.entry((sb_x, sb_y)).or_default().push(cu_idx);
     }
 
     // Now iterate through grid blocks, only checking CUs from relevant superblocks

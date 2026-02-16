@@ -102,7 +102,6 @@ impl CodecRegistry {
     }
 }
 
-
 /// Decoder factory function type alias for convenience
 pub type DecoderFactoryFn = Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>;
 

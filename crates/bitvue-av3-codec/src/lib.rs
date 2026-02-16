@@ -76,9 +76,11 @@ impl Av3Stream {
     pub fn frame_rate(&self) -> Option<f64> {
         self.seq_headers.values().next().and_then(|seq| {
             if seq.timing_info_present_flag
-                && seq.time_scale > 0 && seq.num_units_in_display_tick > 0 {
-                    return Some(seq.time_scale as f64 / seq.num_units_in_display_tick as f64);
-                }
+                && seq.time_scale > 0
+                && seq.num_units_in_display_tick > 0
+            {
+                return Some(seq.time_scale as f64 / seq.num_units_in_display_tick as f64);
+            }
             None
         })
     }
