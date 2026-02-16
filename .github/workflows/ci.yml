@@ -116,7 +116,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev libavcodec-dev libavformat-dev libavutil-dev
+        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev ffmpeg libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
@@ -171,7 +171,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev libavcodec-dev libavformat-dev libavutil-dev
+        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev ffmpeg libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
 
       - name: Generate coverage report
         run: |
