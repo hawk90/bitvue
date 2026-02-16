@@ -115,8 +115,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install dav1d
-        run: sudo apt-get install -y libdav1d-dev
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev libavcodec-dev libavformat-dev libavutil-dev
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
@@ -170,8 +170,8 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Install dav1d
-        run: sudo apt-get install -y libdav1d-dev
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev libavcodec-dev libavformat-dev libavutil-dev
 
       - name: Generate coverage report
         run: |

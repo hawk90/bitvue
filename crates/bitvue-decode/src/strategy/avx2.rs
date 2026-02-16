@@ -328,13 +328,7 @@ unsafe fn store_rgb_interleaved(rgb: &mut [u8], offset: usize, r: __m256i, g: __
     let rg_low = _mm_unpacklo_epi8(r_low, g_low); // R0,G0,R1,G1,R2,G2,R3,G3
     let rg_high = _mm_unpackhi_epi8(r_low, g_low); // R4,G4,R5,G5,R6,G6,R7,G7
 
-    // Step 2: Create B pairs for low and high halves
-    // b_low: B0,B1,B2,B3,B4,B5,B6,B7
-    // We need to duplicate each B value: B0,B0,B1,B1,B2,B2,B3,B3
-    let b_low_pairs = _mm_unpacklo_epi8(b_low, b_low); // B0,B0,B1,B1,B2,B2,B3,B3
-    let b_high_pairs = _mm_unpackhi_epi8(b_low, b_low); // B4,B4,B5,B5,B6,B6,B7,B7
-
-    // Step 3: Now we have:
+    // Step 2: Now we have:
     // rg_low:    R0,G0,R1,G1,R2,G2,R3,G3
     // b_low:     B0,B1,B2,B3,B4,B5,B6,B7
     //
