@@ -174,9 +174,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libdav1d-dev ffmpeg libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
 
       - name: Generate coverage report
+        working-directory: crates/bitvue-hevc
         run: |
-          cargo llvm-cov -p bitvue-hevc --codecov --output-path coverage/llvm-cov.json
-          cargo llvm-cov -p bitvue-hevc --html --output-dir coverage/html
+          cargo llvm-cov --codecov --output-path ../../coverage/llvm-cov.json
+          cargo llvm-cov --html --output-dir ../../coverage/html
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
@@ -193,12 +194,13 @@ jobs:
           path: coverage/
 
       - name: Coverage summary
+        working-directory: crates/bitvue-hevc
         run: |
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "📊 Coverage report generated (bitvue-hevc only)" >> $GITHUB_STEP_SUMMARY
           echo "✅ This PR adds 145 tests to HEVC codec for 95%+ coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          cargo llvm-cov -p bitvue-hevc --summary 2>&1 || true
+          cargo llvm-cov --summary 2>&1 || true
 
   # ================================
   # 5. Frontend Full Checks (PR only)
