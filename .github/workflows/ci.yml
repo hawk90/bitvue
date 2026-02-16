@@ -175,7 +175,7 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          cargo llvm-cov --workspace --all-features --codecov --output-dir coverage/codecov
+          cargo llvm-cov --workspace --all-features --codecov --output-path coverage/llvm-cov.json
           cargo llvm-cov --workspace --all-features --html --output-dir coverage/html
 
       - name: Upload to Codecov
