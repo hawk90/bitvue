@@ -270,13 +270,13 @@ impl Sps {
     /// Get picture width in CTUs.
     pub fn pic_width_in_ctus(&self) -> u32 {
         let ctu_size = self.ctu_size();
-        (self.sps_pic_width_max_in_luma_samples + ctu_size - 1) / ctu_size
+        self.sps_pic_width_max_in_luma_samples.div_ceil(ctu_size)
     }
 
     /// Get picture height in CTUs.
     pub fn pic_height_in_ctus(&self) -> u32 {
         let ctu_size = self.ctu_size();
-        (self.sps_pic_height_max_in_luma_samples + ctu_size - 1) / ctu_size
+        self.sps_pic_height_max_in_luma_samples.div_ceil(ctu_size)
     }
 
     /// Get display width (accounting for conformance window).

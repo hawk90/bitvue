@@ -93,9 +93,7 @@ impl TileInfo {
     /// Get total number of tiles
     pub fn tile_count(&self) -> usize {
         // SECURITY: Use checked multiplication to prevent overflow
-        self.tile_cols
-            .checked_mul(self.tile_rows)
-            .unwrap_or(u32::MAX) as usize
+        self.tile_cols.saturating_mul(self.tile_rows) as usize
     }
 
     /// Get tile dimensions in superblocks

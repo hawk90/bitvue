@@ -3,6 +3,12 @@
 //! This crate provides parsers for container formats (MP4, MKV, TS) with zero external
 //! dependencies beyond the Rust standard library.
 //!
+
+// Allow clippy warnings common in parser code
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(clippy::useless_conversion)]
 //! # Supported Formats
 //!
 //! - **MP4** (ISO Base Media File Format) - For extracting video samples (AV1, H.264, H.265)

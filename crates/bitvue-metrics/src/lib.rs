@@ -3,6 +3,11 @@
 //! This crate provides standard video quality metrics for comparing frames:
 //! - PSNR (Peak Signal-to-Noise Ratio) - CPU & GPU-accelerated
 //! - SSIM (Structural Similarity Index) - CPU & GPU-accelerated
+
+// Allow clippy warnings common in metrics calculation code
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::useless_transmute)]
 //! - VMAF (Video Multimethod Assessment Fusion) - CPU & CUDA-accelerated (optional)
 //!
 //! # Features

@@ -107,7 +107,7 @@ fn extract_qp_grid_from_parsed_typed(
                     coding_units.len()
                 );
                 let qp = build_qp_grid_from_cus(
-                    &*coding_units,
+                    &coding_units,
                     grid_w,
                     grid_h,
                     block_w,

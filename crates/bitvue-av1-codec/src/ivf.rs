@@ -161,7 +161,7 @@ pub fn parse_ivf_header(data: &[u8]) -> Result<IvfHeader, BitvueError> {
     // Validate header size upfront
     let header_bytes = data
         .get(0..32)
-        .ok_or_else(|| BitvueError::InsufficientData {
+        .ok_or(BitvueError::InsufficientData {
             needed: 32,
             available: data.len(),
         })?;

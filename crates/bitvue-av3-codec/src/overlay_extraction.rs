@@ -116,8 +116,8 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
     let width = frame_header.width;
     let height = frame_header.height;
 
-    let grid_w = (width + sb_size - 1) / sb_size;
-    let grid_h = (height + sb_size - 1) / sb_size;
+    let grid_w = width.div_ceil(sb_size);
+    let grid_h = height.div_ceil(sb_size);
 
     // SECURITY: Validate grid dimensions to prevent excessive allocation
     if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
@@ -195,8 +195,8 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
     // Each SB is sb_size x sb_size pixels, and we use 16x16 MV blocks
     // So the MV grid dimensions are determined by the SB grid, not the frame dimensions
     let block_size = 16u32;
-    let sb_cols = (width + sb_size - 1) / sb_size;
-    let sb_rows = (height + sb_size - 1) / sb_size;
+    let sb_cols = width.div_ceil(sb_size);
+    let sb_rows = height.div_ceil(sb_size);
 
     // MV grid dimensions: each SB expands to (sb_size/block_size) x (sb_size/block_size) MV blocks
     let blocks_per_sb_dim = sb_size / block_size; // Should be 64/16 = 4
@@ -233,7 +233,7 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
     // Expand SBs to block grid
     for sb in &sbs {
         let size_dim = (sb.size as u32) / block_size;
-        let blocks_per_sb = size_dim.checked_mul(size_dim).unwrap_or(u32::MAX) as usize;
+        let blocks_per_sb = size_dim.saturating_mul(size_dim) as usize;
         for _ in 0..blocks_per_sb {
             match sb.mode {
                 BlockMode::Intra => {
@@ -304,8 +304,8 @@ pub fn extract_partition_grid(frame_header: &FrameHeader) -> Result<PartitionGri
 
     // Fill with scaffold blocks if empty
     if grid.blocks.is_empty() {
-        let grid_w = (width + sb_size - 1) / sb_size;
-        let grid_h = (height + sb_size - 1) / sb_size;
+        let grid_w = width.div_ceil(sb_size);
+        let grid_h = height.div_ceil(sb_size);
         for sb_y in 0..grid_h {
             for sb_x in 0..grid_w {
                 grid.add_block(PartitionBlock::new(
@@ -334,8 +334,8 @@ fn parse_super_blocks(frame_header: &FrameHeader) -> Vec<SuperBlock> {
     let height = frame_header.height;
     let sb_size = frame_header.sb_size as u32;
 
-    let sb_cols = (width + sb_size - 1) / sb_size;
-    let sb_rows = (height + sb_size - 1) / sb_size;
+    let sb_cols = width.div_ceil(sb_size);
+    let sb_rows = height.div_ceil(sb_size);
     let total_sbs = sb_cols * sb_rows;
 
     let is_intra = frame_header.frame_type.is_intra();

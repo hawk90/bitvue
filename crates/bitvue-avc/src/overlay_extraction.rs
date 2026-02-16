@@ -355,7 +355,7 @@ fn parse_slice_macroblocks(
         let qp = base_qp;
 
         mbs.push(Macroblock {
-            mb_addr: mb_addr,
+            mb_addr,
             x: mb_x,
             y: mb_y,
             mb_type,

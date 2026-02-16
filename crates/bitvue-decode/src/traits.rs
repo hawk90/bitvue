@@ -45,6 +45,7 @@ impl std::fmt::Display for CodecType {
 ///     Ok(Box::new(MyCustomDecoder::new()) as Box<dyn Decoder>)
 /// ));
 /// ```
+#[derive(Default)]
 pub struct CodecRegistry {
     factories: std::collections::HashMap<
         CodecType,
@@ -101,13 +102,6 @@ impl CodecRegistry {
     }
 }
 
-impl Default for CodecRegistry {
-    fn default() -> Self {
-        Self {
-            factories: std::collections::HashMap::new(),
-        }
-    }
-}
 
 /// Decoder factory function type alias for convenience
 pub type DecoderFactoryFn = Box<dyn Fn() -> Result<Box<dyn Decoder>> + Send + Sync>;

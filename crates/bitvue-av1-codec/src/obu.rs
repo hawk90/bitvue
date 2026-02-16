@@ -339,7 +339,7 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
         frame_header,
     };
 
-    Ok((obu, total_size as usize))
+    Ok((obu, total_size))
 }
 
 /// Parses all OBUs from a byte slice

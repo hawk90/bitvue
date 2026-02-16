@@ -673,7 +673,7 @@ fn parse_segmentation(reader: &mut BitReader, header: &mut FrameHeader) -> Resul
                             0 => {
                                 // AltQ - QP delta should be in reasonable range
                                 // QP values are 0-255, so deltas should be constrained
-                                if value < -63 || value > 63 {
+                                if !(-63..=63).contains(&value) {
                                     return Err(Vp9Error::InvalidData(format!(
                                         "Segmentation AltQ delta {} out of valid range [-63, 63]",
                                         value
@@ -702,7 +702,7 @@ fn parse_tile_info(reader: &mut BitReader, header: &mut FrameHeader) -> Result<(
     const MAX_TILE_LOG2: u8 = 6; // Max 64 tiles in either dimension
 
     // Calculate max tile cols log2 based on frame width
-    let sb64_cols = (header.width + 63) / 64;
+    let sb64_cols = header.width.div_ceil(64);
     let mut max_log2 = 0u8;
 
     // SECURITY: Add explicit iteration limit for defense in depth

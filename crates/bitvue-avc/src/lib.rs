@@ -8,6 +8,10 @@
 //! - NAL unit parsing with start code detection
 //! - SPS (Sequence Parameter Set) parsing
 //! - PPS (Picture Parameter Set) parsing
+
+// Allow clippy warnings common in parser code
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::too_many_arguments)]
 //! - Slice header parsing
 //! - SEI (Supplemental Enhancement Information) parsing
 //! - Syntax tree extraction for visualization

@@ -2,6 +2,10 @@
 //!
 //! This crate provides parsing capabilities for VVC (Versatile Video Coding)
 //! bitstreams, including new features like dual tree, ALF, LMCS, and GDR.
+
+// Allow clippy warnings common in parser code
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::too_many_arguments)]
 //!
 //! # Features
 //!

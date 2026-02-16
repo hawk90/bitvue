@@ -207,11 +207,10 @@ pub fn detect_format(data: &[u8]) -> VideoFormat {
 
     // Check for Annex B start codes (H.264, HEVC, VVC)
     // Annex B starts with 0x00 0x00 0x00 0x01 or 0x00 0x00 0x01
-    if data.len() >= 4 {
-        if &data[0..4] == b"\x00\x00\x00\x01" || &data[0..3] == b"\x00\x00\x01" {
+    if data.len() >= 4
+        && (&data[0..4] == b"\x00\x00\x00\x01" || &data[0..3] == b"\x00\x00\x01") {
             return VideoFormat::AnnexB;
         }
-    }
 
     VideoFormat::Unknown
 }
@@ -549,9 +548,7 @@ impl Av1Decoder {
                 // Supported formats - proceed
             }
             VideoFormat::Unknown => {
-                return Err(DecodeError::Decode(format!(
-                    "Unknown video format - could not detect from magic number"
-                )));
+                return Err(DecodeError::Decode("Unknown video format - could not detect from magic number".to_string()));
             }
             _ => {
                 return Err(DecodeError::Decode(format!(
@@ -674,7 +671,7 @@ impl Av1Decoder {
             .map_err(|e| DecodeError::Decode(format!("Failed to read IVF header: {}", e)))?;
 
         let (header_size, frame_count) = self.parse_ivf_header(&header_buf)?;
-        let estimated_frames = (frame_count as usize).min(MAX_FRAMES_PER_FILE);
+        let estimated_frames = frame_count.min(MAX_FRAMES_PER_FILE);
         let mut decoded_frames = Vec::with_capacity(estimated_frames);
         let mut frame_idx = 0i64;
         let mut remaining = file_size.saturating_sub(header_size);
@@ -726,7 +723,7 @@ impl Av1Decoder {
     fn decode_ivf(&mut self, data: &[u8]) -> Result<Vec<DecodedFrame>> {
         let (header_size, frame_count) = self.parse_ivf_header(data)?;
 
-        let estimated_frames = (frame_count as usize).min(MAX_FRAMES_PER_FILE);
+        let estimated_frames = frame_count.min(MAX_FRAMES_PER_FILE);
         let mut decoded_frames = Vec::with_capacity(estimated_frames);
 
         let mut offset = header_size;

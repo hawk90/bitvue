@@ -73,7 +73,7 @@ impl StrategyRegistry {
     pub fn get_type(&self) -> StrategyType {
         *self
             .current_strategy
-            .get_or_init(|| Self::detect_best_strategy_type())
+            .get_or_init(Self::detect_best_strategy_type)
     }
 
     /// Get the current strategy type

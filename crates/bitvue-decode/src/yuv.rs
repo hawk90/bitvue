@@ -137,8 +137,8 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
         ChromaFormat::Yuv422 => {
             if let Err(e) = convert_yuv422(
                 &frame.y_plane,
-                frame.u_plane.as_ref().map(|v| &**v),
-                frame.v_plane.as_ref().map(|v| &**v),
+                frame.u_plane.as_deref(),
+                frame.v_plane.as_deref(),
                 width,
                 height,
                 &mut rgb,
@@ -155,8 +155,8 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
         ChromaFormat::Yuv444 => {
             if let Err(e) = convert_yuv444(
                 &frame.y_plane,
-                frame.u_plane.as_ref().map(|v| &**v),
-                frame.v_plane.as_ref().map(|v| &**v),
+                frame.u_plane.as_deref(),
+                frame.v_plane.as_deref(),
                 width,
                 height,
                 &mut rgb,

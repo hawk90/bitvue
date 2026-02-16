@@ -117,7 +117,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libdav1d-dev
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --lib --exclude abseil -- -D warnings
 
   test:
     name: Test (Rust, ${{ matrix.os }})

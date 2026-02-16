@@ -162,8 +162,8 @@ pub fn extract_qp_grid(
     let width = sps.sps_pic_width_max_in_luma_samples;
     let height = sps.sps_pic_height_max_in_luma_samples;
 
-    let grid_w = (width + ctu_size - 1) / ctu_size;
-    let grid_h = (height + ctu_size - 1) / ctu_size;
+    let grid_w = width.div_ceil(ctu_size);
+    let grid_h = height.div_ceil(ctu_size);
 
     // SECURITY: Validate grid dimensions to prevent excessive allocation
     if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
@@ -227,8 +227,8 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
 
     // Use 16x16 blocks for MV grid
     let block_size = 16u32;
-    let grid_w = (width + block_size - 1) / block_size;
-    let grid_h = (height + block_size - 1) / block_size;
+    let grid_w = width.div_ceil(block_size);
+    let grid_h = height.div_ceil(block_size);
 
     // SECURITY: Validate grid dimensions to prevent excessive allocation
     if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
@@ -334,7 +334,7 @@ pub fn extract_partition_grid(
                                 cu.size as u32,
                                 cu.size as u32,
                                 partition_type,
-                                cu.depth as u8,
+                                cu.depth,
                             ));
                         }
                     }
@@ -353,8 +353,8 @@ pub fn extract_partition_grid(
 
     // Fill with scaffold blocks if empty
     if grid.blocks.is_empty() {
-        let grid_w = (width + ctu_size - 1) / ctu_size;
-        let grid_h = (height + ctu_size - 1) / ctu_size;
+        let grid_w = width.div_ceil(ctu_size);
+        let grid_h = height.div_ceil(ctu_size);
         for ctu_y in 0..grid_h {
             for ctu_x in 0..grid_w {
                 grid.add_block(PartitionBlock::new(
@@ -392,9 +392,7 @@ fn expand_cu_to_blocks(
 
     // Calculate blocks per CTU with overflow protection
     let blocks_per_dimension = (ctu.size as u32) / block_size;
-    let blocks_per_ctu = blocks_per_dimension
-        .checked_mul(blocks_per_dimension)
-        .unwrap_or(u32::MAX);
+    let blocks_per_ctu = blocks_per_dimension.saturating_mul(blocks_per_dimension);
 
     // Pre-calculate total blocks needed to avoid reallocations
     // Sum up blocks from all coding units in this CTU with overflow protection
@@ -404,7 +402,7 @@ fn expand_cu_to_blocks(
         .map(|cu| {
             let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
             // Use checked_mul to prevent overflow
-            blocks_in_cu.checked_mul(blocks_in_cu).unwrap_or(u32::MAX) as usize
+            blocks_in_cu.saturating_mul(blocks_in_cu) as usize
         })
         .sum();
 
@@ -417,7 +415,7 @@ fn expand_cu_to_blocks(
     for cu in &ctu.coding_units {
         let blocks_in_cu = ((cu.size as u32) / block_size).max(1);
         // Use checked_mul to prevent overflow
-        let cu_blocks = blocks_in_cu.checked_mul(blocks_in_cu).unwrap_or(u32::MAX) as usize;
+        let cu_blocks = blocks_in_cu.saturating_mul(blocks_in_cu) as usize;
 
         for _ in 0..cu_blocks {
             match cu.pred_mode {
@@ -487,8 +485,8 @@ fn parse_slice_ctus(
     let height = sps.sps_pic_height_max_in_luma_samples;
     let ctu_size = 1u32 << (sps.sps_log2_ctu_size_minus5 + 5);
 
-    let ctu_cols = (width + ctu_size - 1) / ctu_size;
-    let ctu_rows = (height + ctu_size - 1) / ctu_size;
+    let ctu_cols = width.div_ceil(ctu_size);
+    let ctu_rows = height.div_ceil(ctu_size);
     let total_ctus = ctu_cols.checked_mul(ctu_rows).ok_or_else(|| {
         BitvueError::Decode(format!(
             "CTU grid dimensions too large: {}x{}",

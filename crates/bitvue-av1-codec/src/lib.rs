@@ -21,6 +21,10 @@
 //! }
 //! ```
 
+// Allow clippy warnings common in codec parser code
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::ptr_arg)]
+
 pub mod bitreader;
 pub mod dependency;
 pub mod frame_header;

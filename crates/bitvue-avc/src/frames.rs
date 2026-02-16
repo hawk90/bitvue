@@ -245,7 +245,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
     let mut frames = Vec::new();
     let mut current_frame_nals: Vec<(usize, usize)> = Vec::new();
     let mut current_frame_index = 0;
-    let current_poc: Option<i32> = None;
+    let _current_poc: Option<i32> = None;
     let mut current_frame_num: Option<u32> = None;
     let mut current_is_idr = false;
     let mut current_is_ref = false;
@@ -282,10 +282,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
             let is_ref = nal_header.nal_ref_idc != 0;
 
             // Check if this starts a new frame
-            let new_frame = if current_frame_nals.is_empty() {
-                true
-            } else if is_idr != current_is_idr {
-                true // IDR boundary
+            let new_frame = if current_frame_nals.is_empty() || is_idr != current_is_idr {
+                true // First NAL or IDR boundary
             } else if let Some(slice) = &current_slice_header {
                 // Try to parse the current slice header
                 if let Ok(new_slice) = crate::slice::parse_slice_header(
@@ -312,7 +310,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    current_poc.unwrap_or(0),
+                    0,
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_ref,
@@ -358,7 +356,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    current_poc.unwrap_or(0),
+                    0,
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_ref,
@@ -455,8 +453,7 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
     let qp_avg = frame
         .slice_header
         .as_ref()
-        .map(|header| QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg)
-        .flatten();
+        .and_then(|header| QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg);
 
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {

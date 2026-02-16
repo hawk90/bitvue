@@ -722,11 +722,11 @@ unsafe fn yuv420_to_rgb_neon_impl_nbit(
             let y_safe = y_idx
                 .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
-                .map_or(false, |offset| offset <= y_plane.len());
+                .is_some_and(|offset| offset <= y_plane.len());
             let uv_safe = uv_idx
                 .checked_mul(2)
                 .and_then(|v| v.checked_add(8))
-                .map_or(false, |offset| {
+                .is_some_and(|offset| {
                     offset <= u_plane.len() && offset <= v_plane.len()
                 });
 
@@ -838,11 +838,11 @@ unsafe fn yuv422_to_rgb_neon_impl_nbit(
             let y_safe = y_idx
                 .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
-                .map_or(false, |offset| offset <= y_plane.len());
+                .is_some_and(|offset| offset <= y_plane.len());
             let uv_safe = uv_idx
                 .checked_mul(2)
                 .and_then(|v| v.checked_add(8))
-                .map_or(false, |offset| {
+                .is_some_and(|offset| {
                     offset <= u_plane.len() && offset <= v_plane.len()
                 });
 
@@ -949,11 +949,11 @@ unsafe fn yuv444_to_rgb_neon_impl_nbit(
             let y_safe = y_idx
                 .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
-                .map_or(false, |offset| offset <= y_plane.len());
+                .is_some_and(|offset| offset <= y_plane.len());
             let uv_safe = y_idx
                 .checked_mul(2)
                 .and_then(|v| v.checked_add(16))
-                .map_or(false, |offset| {
+                .is_some_and(|offset| {
                     offset <= u_plane.len() && offset <= v_plane.len()
                 });
 
