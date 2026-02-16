@@ -156,7 +156,10 @@ jobs:
   coverage:
     name: Code Coverage
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    # Temporarily disabled due to "Argument list too long" error (ARG_MAX limitation)
+    # cargo-llvm-cov cannot work with long absolute paths in GitHub Actions CI
+    # TODO: Investigate alternative coverage tools (tarpaulin) or per-crate coverage
+    if: false && needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
