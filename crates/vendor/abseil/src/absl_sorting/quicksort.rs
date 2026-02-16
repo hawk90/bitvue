@@ -1,3 +1,6 @@
+// Vendored code from Abseil C++ library - suppress Clippy warnings
+#![allow(clippy::collapsible_else_if)]
+
 //! Quick sort implementation.
 
 extern crate alloc;

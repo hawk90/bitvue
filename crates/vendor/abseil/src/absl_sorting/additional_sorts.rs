@@ -1,3 +1,6 @@
+// Vendored code from Abseil C++ library - suppress Clippy warnings
+#![allow(clippy::needless_range_loop)]
+
 //! Additional sorting algorithms.
 //!
 //! This module provides additional sorting algorithms including:

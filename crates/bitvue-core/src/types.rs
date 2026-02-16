@@ -167,6 +167,7 @@ impl FrameType {
     }
 
     /// Parses a frame type from a string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "KEY" | "I" | "I-FRAME" => Some(FrameType::Key),

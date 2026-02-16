@@ -1,3 +1,8 @@
+// Vendored code from Abseil C++ library - suppress Clippy warnings
+#![allow(clippy::new_without_default)]
+#![allow(clippy::unnecessary_map_or)]
+#![allow(clippy::needless_range_loop)]
+
 //! Graph data structures and algorithms.
 //!
 //! This module provides graph data structures and algorithms similar to

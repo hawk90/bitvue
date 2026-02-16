@@ -525,6 +525,11 @@ impl HistoryObserver {
         let history = self.history.lock().unwrap();
         history.len()
     }
+
+    /// Check if history is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl Default for HistoryObserver {

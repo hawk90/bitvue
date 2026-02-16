@@ -145,7 +145,7 @@ impl QpData {
     /// QP data with calculated QP value
     pub fn from_av1_qindex(base_q_idx: u8, delta_q: i32) -> Self {
         // AV1 QP calculation (simplified)
-        let q = (base_q_idx as i32 + delta_q).max(0).min(255) as u8;
+        let q = (base_q_idx as i32 + delta_q).clamp(0, 255) as u8;
         // Map to QP range (rough approximation)
         let qp_avg = Some((q / 4).min(51));
         Self {
