@@ -454,7 +454,8 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
     // Extract QP from slice header if available
     let qp_avg = frame
         .slice_header
-        .as_ref().and_then(|header| QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg);
+        .as_ref()
+        .and_then(|header| QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg);
 
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {
