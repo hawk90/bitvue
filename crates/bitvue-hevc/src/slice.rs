@@ -256,6 +256,7 @@ impl SliceHeader {
 }
 
 /// Parse slice header from RBSP data.
+#[allow(clippy::field_reassign_with_default)]
 pub fn parse_slice_header(
     data: &[u8],
     sps_map: &HashMap<u8, Sps>,
@@ -297,7 +298,7 @@ pub fn parse_slice_header(
         }
 
         // slice_segment_address - need to calculate number of CTBs
-        let pic_size_in_ctbs = sps.pic_width_in_ctbs() as u32 * sps.pic_height_in_ctbs() as u32;
+        let pic_size_in_ctbs = sps.pic_width_in_ctbs() * sps.pic_height_in_ctbs();
         let bits_needed = (32 - pic_size_in_ctbs.leading_zeros()) as u8;
         header.slice_segment_address = reader.read_bits(bits_needed)?;
     }

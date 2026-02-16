@@ -386,14 +386,13 @@ pub fn find_nal_units(data: &[u8]) -> Vec<(usize, usize)> {
             let mut j = nal_start;
 
             while j + 2 < max_scan {
-                if data[j] == 0x00 && data[j + 1] == 0x00 {
-                    if (j + 2 < max_scan && data[j + 2] == 0x01)
-                        || (j + 3 < max_scan && data[j + 2] == 0x00 && data[j + 3] == 0x01)
+                if data[j] == 0x00 && data[j + 1] == 0x00
+                    && ((j + 2 < max_scan && data[j + 2] == 0x01)
+                        || (j + 3 < max_scan && data[j + 2] == 0x00 && data[j + 3] == 0x01))
                     {
                         nal_end = j;
                         break;
                     }
-                }
                 j += 1;
             }
 
