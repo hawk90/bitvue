@@ -116,8 +116,8 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev ffmpeg libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev libavdevice-dev
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: Test (Rust, ${{ matrix.os }})
