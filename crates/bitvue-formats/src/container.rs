@@ -58,7 +58,7 @@ impl<const N: usize> MagicBytes<N> {
     /// Returns `false` if the buffer is smaller than N bytes
     #[inline]
     pub fn matches(&self, buffer: &[u8]) -> bool {
-        buffer.len() >= N && &buffer[..N] == &self.0
+        buffer.len() >= N && buffer[..N] == self.0
     }
 
     /// Get the byte slice
@@ -70,7 +70,7 @@ impl<const N: usize> MagicBytes<N> {
     /// Check if this magic bytes matches at a specific offset in buffer
     #[inline]
     pub fn matches_at(&self, buffer: &[u8], offset: usize) -> bool {
-        buffer.len() >= offset + N && &buffer[offset..offset + N] == &self.0
+        buffer.len() >= offset + N && buffer[offset..offset + N] == self.0
     }
 }
 

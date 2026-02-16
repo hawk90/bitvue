@@ -914,7 +914,7 @@ mod tests {
     #[test]
     fn test_event_bus_publish() {
         let bus = EventBus::new();
-        let history = HistoryObserver::new();
+        let _history = HistoryObserver::new();
 
         // Subscribe a second observer that we can inspect
         bus.subscribe(Box::new(LoggingObserver::new()));

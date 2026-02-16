@@ -237,7 +237,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
         )
         .map(|(&start, &end)| {
             // Adjust for start code (include start code in range)
-            let adjusted_start = if start >= 4 { start - 4 } else { 0 };
+            let adjusted_start = start.saturating_sub(4);
             (adjusted_start, end)
         })
         .collect();
@@ -455,11 +455,7 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
     let qp_avg = frame
         .slice_header
         .as_ref()
-        .and_then(|header| {
-            // Note: This only includes slice_qp_delta, not pic_init_qp_minus26
-            // For accurate QP, we need access to PPS data
-            Some(QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg)
-        })
+        .map(|header| QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg)
         .flatten();
 
     bitvue_core::UnitNode {

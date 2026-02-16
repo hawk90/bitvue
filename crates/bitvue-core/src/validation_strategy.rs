@@ -391,7 +391,7 @@ mod tests {
         let data = ValidationData::String("a".repeat(1_000_001));
         let result = strategy.validate(&data);
         assert!(!result.is_valid);
-        assert!(result.warnings.len() > 0);
+        assert!(!result.warnings.is_empty());
     }
 
     #[test]

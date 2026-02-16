@@ -23,8 +23,8 @@ fn create_test_mv_grid() -> MVGrid {
     for row in 0..grid_h {
         for col in 0..grid_w {
             // Create varying MVs
-            let dx = ((col - 15) * 4); // -60 to +56 qpel
-            let dy = ((row - 8) * 4);  // -32 to +28 qpel
+            let dx = (col - 15) * 4; // -60 to +56 qpel
+            let dy = (row - 8) * 4;  // -32 to +28 qpel
             mv_l0.push(create_test_mv(dx, dy));
             mv_l1.push(create_test_mv(-dx, -dy)); // Opposite direction for L1
 

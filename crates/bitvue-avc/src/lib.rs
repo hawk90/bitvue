@@ -106,13 +106,11 @@ impl AvcStream {
     pub fn frame_rate(&self) -> Option<f64> {
         for sps in self.sps_map.values() {
             if let Some(ref vui) = sps.vui_parameters {
-                if vui.timing_info_present_flag {
-                    if vui.time_scale > 0 && vui.num_units_in_tick > 0 {
-                        // H.264 frame rate = time_scale / (2 * num_units_in_tick) for interlaced
-                        // or time_scale / num_units_in_tick for progressive
-                        let fps = vui.time_scale as f64 / (2.0 * vui.num_units_in_tick as f64);
-                        return Some(fps);
-                    }
+                if vui.timing_info_present_flag && vui.time_scale > 0 && vui.num_units_in_tick > 0 {
+                    // H.264 frame rate = time_scale / (2 * num_units_in_tick) for interlaced
+                    // or time_scale / num_units_in_tick for progressive
+                    let fps = vui.time_scale as f64 / (2.0 * vui.num_units_in_tick as f64);
+                    return Some(fps);
                 }
             }
         }

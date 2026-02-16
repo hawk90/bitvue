@@ -97,7 +97,7 @@ pub fn parse_pps(data: &[u8]) -> Result<Pps> {
                     let _bottom_right = reader.read_ue()?;
                 }
             }
-            3 | 4 | 5 => {
+            3..=5 => {
                 let _slice_group_change_direction_flag = reader.read_flag()?;
                 let _slice_group_change_rate_minus1 = reader.read_ue()?;
             }
