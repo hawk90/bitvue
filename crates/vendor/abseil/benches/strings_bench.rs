@@ -2,10 +2,7 @@
 // Tests performance of str_cat, str_join, escape/unescape optimizations
 #![cfg(bench)]
 
-use abseil::{
-    absl_strings::cord::Cord,
-    str_cat,
-};
+use abseil::{absl_strings::cord::Cord, str_cat};
 
 // Import test crate conditionally for benches
 #[cfg(test)]
