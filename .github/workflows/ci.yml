@@ -175,6 +175,8 @@ jobs:
 
       - name: Generate coverage report
         working-directory: crates/bitvue-hevc
+        env:
+          CARGO_TARGET_DIR: /tmp/t
         run: |
           cargo llvm-cov --codecov --output-path ../../coverage/llvm-cov.json
           cargo llvm-cov --html --output-dir ../../coverage/html
@@ -195,6 +197,8 @@ jobs:
 
       - name: Coverage summary
         working-directory: crates/bitvue-hevc
+        env:
+          CARGO_TARGET_DIR: /tmp/t
         run: |
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "📊 Coverage report generated (bitvue-hevc only)" >> $GITHUB_STEP_SUMMARY
