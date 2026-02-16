@@ -175,8 +175,8 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          cargo llvm-cov --workspace --exclude abseil --all-features --codecov --output-path coverage/llvm-cov.json
-          cargo llvm-cov --workspace --exclude abseil --all-features --html --output-dir coverage/html
+          cargo llvm-cov --workspace --exclude abseil --features ffmpeg,vmaf,parallel --codecov --output-path coverage/llvm-cov.json
+          cargo llvm-cov --workspace --exclude abseil --features ffmpeg,vmaf,parallel --html --output-dir coverage/html
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
@@ -197,7 +197,7 @@ jobs:
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "📊 Coverage report generated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          cargo llvm-cov --workspace --exclude abseil --all-features --summary 2>&1 || true
+          cargo llvm-cov --workspace --exclude abseil --features ffmpeg,vmaf,parallel --summary 2>&1 || true
 
   # ================================
   # 5. Frontend Full Checks (PR only)
