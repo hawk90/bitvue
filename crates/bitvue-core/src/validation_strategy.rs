@@ -338,6 +338,7 @@ impl ValidationChain {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, validator: Box<dyn ValidationStrategy>) -> Self {
         self.validators.push(validator);
         self

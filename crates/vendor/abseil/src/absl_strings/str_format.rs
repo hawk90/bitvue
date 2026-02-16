@@ -15,7 +15,7 @@
 //!
 //! // Using Stream for building strings incrementally
 //! let stream = Stream::new().append("Hello").append(", ").append("world!");
-//! assert_eq!(stream.to_string(), "Hello, world!");
+//! assert_eq!(stream.to_string_value(), "Hello, world!");
 //!
 //! // Using the macro (import from crate root)
 //! // use abseil::str_format;
@@ -298,13 +298,14 @@ pub fn format_delimited<T: fmt::Display>(
 ///     .append("Hello")
 ///     .append(", ")
 ///     .append("world!");
-/// assert_eq!(stream.to_string(), "Hello, world!");
+/// assert_eq!(stream.to_string_value(), "Hello, world!");
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct Stream {
     buffer: String,
 }
 
+#[allow(clippy::to_string_trait_impl)]
 impl Stream {
     /// Creates a new empty Stream.
     pub fn new() -> Self {
@@ -341,7 +342,7 @@ impl Stream {
     }
 
     /// Converts the stream to a String.
-    pub fn to_string(&self) -> String {
+    pub fn to_string_value(&self) -> String {
         self.buffer.clone()
     }
 }
@@ -514,7 +515,7 @@ mod tests {
     fn test_stream() {
         let stream = Stream::new().append("Hello").append(", ").append("world!");
 
-        assert_eq!(stream.to_string(), "Hello, world!");
+        assert_eq!(stream.to_string_value(), "Hello, world!");
         assert_eq!(stream.len(), 13);
         assert!(!stream.is_empty());
     }
@@ -522,7 +523,7 @@ mod tests {
     #[test]
     fn test_stream_empty() {
         let stream = Stream::new();
-        assert_eq!(stream.to_string(), "");
+        assert_eq!(stream.to_string_value(), "");
         assert_eq!(stream.len(), 0);
         assert!(stream.is_empty());
     }

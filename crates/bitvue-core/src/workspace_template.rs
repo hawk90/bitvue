@@ -569,6 +569,7 @@ impl CompositeRenderer {
     }
 
     /// Add a child renderer
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, renderer: Arc<dyn WorkspaceRenderer>) -> Self {
         self.renderers.push(renderer);
         self

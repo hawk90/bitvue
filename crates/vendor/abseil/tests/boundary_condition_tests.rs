@@ -8,8 +8,8 @@
 //! - Maximum capacity scenarios
 
 use abseil::absl_base::call_once::{call_once, is_done, OnceFlag};
-use abseil::absl_hash::BloomFilter;
-use abseil::absl_memory::MemoryRegion;
+// use abseil::absl_hash::BloomFilter;  // Not implemented
+// use abseil::absl_memory::MemoryRegion;  // Not implemented
 
 #[test]
 fn test_once_flag_default() {
