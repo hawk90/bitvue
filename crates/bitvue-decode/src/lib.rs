@@ -13,6 +13,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::uninit_vec)]
 #![allow(clippy::unnecessary_cast)]
+#![allow(clippy::unnecessary_map_or)]
 #![allow(clippy::doc_lazy_continuation)]
 #![allow(unfulfilled_lint_expectations)]
 
