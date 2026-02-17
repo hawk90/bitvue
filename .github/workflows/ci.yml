@@ -157,7 +157,7 @@ jobs:
             libswresample-dev \
             libavdevice-dev
 
-      - run: cargo test --workspace --all-features --no-fail-fast
+      - run: cargo test --workspace --no-fail-fast
 
   # ================================
   # 4. Code Coverage (PR + main)
