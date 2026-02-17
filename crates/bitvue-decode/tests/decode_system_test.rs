@@ -1,5 +1,7 @@
 //! Tests for Decode System (FFmpeg, VVDec, etc.)
 
+#![allow(dead_code)]
+
 #[test]
 fn test_yuv_frame_dimensions() {
     // Test YUV frame dimension calculations

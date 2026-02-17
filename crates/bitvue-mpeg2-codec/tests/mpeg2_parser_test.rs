@@ -1,5 +1,7 @@
 //! Tests for MPEG-2 parser
 
+#![allow(dead_code)]
+
 #[test]
 fn test_mpeg2_picture_types() {
     // Test MPEG-2 picture types
