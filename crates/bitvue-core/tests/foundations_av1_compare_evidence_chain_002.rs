@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AV1 Compare Evidence Chain #002: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.Compare.impl.evidence_chain.002
 

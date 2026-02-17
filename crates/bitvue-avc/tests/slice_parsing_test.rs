@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC Slice Header Parsing Tests
 //!
 //! Comprehensive tests for AVC slice header parsing functionality.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for HEVC (H.265) parser
 
 #[test]

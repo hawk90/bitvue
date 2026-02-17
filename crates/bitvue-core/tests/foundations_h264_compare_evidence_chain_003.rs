@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations H264 Compare Evidence Chain #003: Frame Identity Contract
 //! Subtask: S.T0-2.H264.Foundations.Compare.impl.evidence_chain.003
 

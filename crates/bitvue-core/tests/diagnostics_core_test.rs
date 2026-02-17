@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Unit tests for Enhanced Diagnostics core functionality
 //!
 //! Tests for:

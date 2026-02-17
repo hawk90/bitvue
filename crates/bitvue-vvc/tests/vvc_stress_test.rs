@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Stress tests for VVC codec - large inputs, random patterns, boundary conditions
 use bitvue_vvc::{parse_nal_header, parse_pps, parse_sps, parse_vvc, NalUnitType};
 

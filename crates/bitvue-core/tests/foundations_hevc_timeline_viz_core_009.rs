@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations HEVC Timeline Viz Core #009: Frame Identity Contract
 //! Subtask: S.T0-2.HEVC.Foundations.Timeline.impl.viz_core.009
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! End-to-end tests for diagnostics parser integration with StreamState
 
 use bitvue_core::event::{Category, Diagnostic, Severity};

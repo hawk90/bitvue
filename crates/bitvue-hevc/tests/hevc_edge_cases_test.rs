@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Edge case tests for HEVC stream parsing
 use bitvue_hevc::parse_hevc;
 

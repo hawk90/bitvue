@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for cache_debug_overlay module
 
 use bitvue_core::cache_debug_overlay::{

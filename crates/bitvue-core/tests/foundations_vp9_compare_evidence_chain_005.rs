@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VP9 Compare Evidence Chain #005: Frame Identity Contract
 //! Subtask: S.T0-2.VP9.Foundations.Compare.impl.evidence_chain.005
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for VVC error module
 //!
 //! Tests VvcError enum variants and From<CodecError> implementation

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC Parsing Logic Tests
 //!
 //! Tests for actual AVC parsing functions with real bitstream data.

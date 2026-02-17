@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Extensive tests for HEVC slice module
 //!
 //! Comprehensive tests covering SliceType, RefPicListModification,

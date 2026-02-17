@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for hrd module
 
 use bitvue_core::{

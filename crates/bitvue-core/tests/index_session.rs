@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for index session management
 
 use bitvue_core::{

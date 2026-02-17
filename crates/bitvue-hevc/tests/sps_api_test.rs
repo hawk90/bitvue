@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC SPS API Tests
 //!
 //! Tests for SPS public API and methods.

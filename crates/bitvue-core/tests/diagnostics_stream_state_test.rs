@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Integration tests for Diagnostics in StreamState
 //!
 //! Tests for:

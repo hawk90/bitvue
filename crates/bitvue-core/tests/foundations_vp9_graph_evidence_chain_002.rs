@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VP9 Graph Evidence Chain #002: Frame Identity Contract
 //! Subtask: S.T0-2.VP9.Foundations.Graph.impl.evidence_chain.002
 

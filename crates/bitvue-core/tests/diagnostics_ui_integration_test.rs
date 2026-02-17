@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! UI Integration tests for Enhanced Diagnostics
 //!
 //! Tests for:

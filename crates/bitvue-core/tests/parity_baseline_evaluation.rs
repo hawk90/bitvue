@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Parity Baseline Evaluation
 //!
 //! This test runs a baseline evaluation of bitvue against the VQ Analyzer parity matrix.

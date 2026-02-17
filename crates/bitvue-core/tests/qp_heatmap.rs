@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for QP heatmap overlay
 
 use bitvue_core::qp_heatmap::{

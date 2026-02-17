@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations H264 Timeline Evidence Chain #001: Frame Identity Contract
 //! Subtask: S.T0-2.H264.Foundations.Timeline.impl.evidence_chain.001
 

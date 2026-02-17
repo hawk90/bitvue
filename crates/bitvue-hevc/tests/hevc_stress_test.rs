@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Stress tests for HEVC codec - large inputs, random patterns, boundary conditions
 use bitvue_hevc::{parse_hevc, parse_hevc_quick, parse_nal_header};
 

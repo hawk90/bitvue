@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for byte_cache module
 
 use bitvue_core::byte_cache::ByteCache;

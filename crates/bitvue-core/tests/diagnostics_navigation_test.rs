@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for diagnostic navigation and tri-sync functionality
 
 use bitvue_core::event::{Category, Diagnostic, Severity};

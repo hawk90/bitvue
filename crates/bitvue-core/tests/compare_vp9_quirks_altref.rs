@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Compare Surface VP9 Quirks Test: ALTREF Frame Display Timing
 //!
 //! Tests VP9-specific quirk: ALTREF (alternate reference) frames and their display timing behavior

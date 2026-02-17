@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for VVC SPS module
 //!
 //! Tests Profile, ChromaFormat, ProfileTierLevel, DualTreeConfig,

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Functional tests for VVC codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_vvc::{

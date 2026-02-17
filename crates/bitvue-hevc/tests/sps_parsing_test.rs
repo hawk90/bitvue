@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC SPS Parsing Tests
 //!
 //! Tests for actual SPS parsing functionality with real bitstream data.

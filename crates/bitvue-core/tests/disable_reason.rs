@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for disable_reason module
 
 use bitvue_core::{DisableReason, DisableReasonMatrix, FeatureId};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC SPS/PPS/Slice Parsing Tests
 //!
 //! Tests for actual AVC parameter set and slice parsing functionality.

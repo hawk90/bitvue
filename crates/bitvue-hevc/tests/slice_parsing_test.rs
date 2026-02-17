@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC Slice Header Parsing Tests
 //!
 //! Comprehensive tests for HEVC slice header parsing functionality.

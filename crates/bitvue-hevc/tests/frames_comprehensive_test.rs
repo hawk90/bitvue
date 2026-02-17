@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC frames module.
 //! Targeting 95%+ line coverage for the frames module.
 

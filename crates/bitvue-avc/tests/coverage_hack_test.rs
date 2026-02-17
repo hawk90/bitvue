@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Test private functions by exposing them with #[cfg(test)]
 // This module tests internal functions that are not normally accessible
 

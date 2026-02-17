@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Unit tests for VVC syntax module
 //!
 //! Tests for SyntaxNode and SyntaxNodeType

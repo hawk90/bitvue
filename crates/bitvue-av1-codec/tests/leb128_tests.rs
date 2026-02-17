@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Unit tests for LEB128 encoding/decoding
 //!
 //! TDD: Test cases for unsigned LEB128 operations

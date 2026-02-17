@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations H264 PlayerOverlay Viz Core #039: Frame Identity Contract
 //! Subtask: S.T0-2.H264.Foundations.PlayerOverlay.impl.viz_core.039
 

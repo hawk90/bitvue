@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AVS3 Timeline Out of Core #001: Frame Identity Contract
 //! Subtask: S.T0-2.AVS3.Foundations.Timeline.impl.out_of_core.001
 

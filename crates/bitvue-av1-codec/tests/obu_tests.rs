@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Unit tests for OBU parsing
 //!
 //! TDD: Test cases for AV1 OBU header and payload parsing

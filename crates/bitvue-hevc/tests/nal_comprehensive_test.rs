@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC NAL unit parsing.
 //! Targeting 95%+ line coverage for nal.rs module.
 

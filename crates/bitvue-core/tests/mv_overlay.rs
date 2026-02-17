@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for motion vector overlay
 
 use bitvue_core::mv_overlay::{

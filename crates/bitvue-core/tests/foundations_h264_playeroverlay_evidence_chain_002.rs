@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations H264 PlayerOverlay Evidence Chain #002: Frame Identity Contract
 //! Subtask: S.T0-2.H264.Foundations.PlayerOverlay.impl.evidence_chain.002
 

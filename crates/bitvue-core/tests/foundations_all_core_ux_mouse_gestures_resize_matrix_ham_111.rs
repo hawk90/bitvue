@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Frame Identity Contract Test
 
 use bitvue_core::frame_identity::{FrameIndexMap, FrameMetadata, PtsQuality};

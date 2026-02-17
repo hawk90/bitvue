@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC Slice Helper Function Tests
 //!
 //! Tests for slice.rs internal helper functions.

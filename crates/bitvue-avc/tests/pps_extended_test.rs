@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Extended tests for PPS parsing
 use bitvue_avc::pps::{parse_pps, Pps};
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC Frames Extraction Tests
 //!
 //! Tests for extracting frames from AVC Annex B byte streams.

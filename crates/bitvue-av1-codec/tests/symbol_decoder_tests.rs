@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Symbol Decoder Integration Tests
 //!
 //! Tests the arithmetic decoder and CDF-based symbol reading

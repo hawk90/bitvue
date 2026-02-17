@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for player evidence manager
 
 use bitvue_core::coordinate_transform::{BlockIdx, ScreenPx};

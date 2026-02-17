@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC Syntax Module Comprehensive Tests
 //!
 //! Comprehensive tests for syntax/mod.rs to reach 95% coverage target.

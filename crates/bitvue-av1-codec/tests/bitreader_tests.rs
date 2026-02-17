@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Unit tests for BitReader
 //!
 //! TDD: Test cases for bit-level stream reading operations

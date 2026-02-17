@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for metadata module
 
 use bitvue_core::{

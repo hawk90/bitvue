@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for tooltip module
 
 use bitvue_core::tooltip::{

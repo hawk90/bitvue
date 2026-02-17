@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for compare_evidence module
 
 use bitvue_core::alignment::FramePair;

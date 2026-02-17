@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for AVC PPS module
 //!
 //! Tests Pps struct, is_cabac(), initial_qp(), and parse_pps()

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for discoverability module
 
 use bitvue_core::{

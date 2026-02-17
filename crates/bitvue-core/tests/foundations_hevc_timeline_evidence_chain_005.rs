@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations HEVC Timeline Evidence Chain #005: Frame Identity Contract
 //! Subtask: S.T0-2.HEVC.Foundations.Timeline.impl.evidence_chain.005
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! 32-bit vs 64-bit compatibility tests
 //!
 //! CRITICAL: These tests verify that code works correctly on both 32-bit and 64-bit platforms.

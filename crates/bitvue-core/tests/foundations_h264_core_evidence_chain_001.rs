@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations H264 Core Evidence Chain #001: Frame Identity Contract
 //! Subtask: S.T0-2.H264.Foundations.Core.impl.evidence_chain.001
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for block_metrics module
 
 use bitvue_core::{

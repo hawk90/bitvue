@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AV1 Graph Evidence Chain #001: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.Graph.impl.evidence_chain.001
 

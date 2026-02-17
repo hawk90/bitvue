@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AV3 Overlay Extraction Tests
 //!
 //! Comprehensive tests for AV3 overlay data extraction.

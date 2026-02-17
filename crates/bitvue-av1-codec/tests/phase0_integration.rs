@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Phase 0 Integration Test - End-to-End Validation
 //!
 //! Tests the complete pipeline:

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for worker module
 
 use bitvue_core::worker::{AsyncJobManager, Job};

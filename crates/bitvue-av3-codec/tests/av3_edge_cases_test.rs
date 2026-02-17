@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Edge case tests for AV3 OBU and frame parsing
 use bitvue_av3_codec::{
     parse_av3, parse_frame_header, parse_obu_header, parse_sequence_header, ObuType,

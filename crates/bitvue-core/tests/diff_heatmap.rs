@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for diff_heatmap module
 
 use bitvue_core::{

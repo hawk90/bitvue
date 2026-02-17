@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for insight feed generation
 
 use bitvue_core::diagnostics_bands::{DiagnosticsBands, ErrorBurst, ReorderEntry, SceneChange};

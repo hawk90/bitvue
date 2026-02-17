@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC lib.rs API Tests
 //!
 //! Tests for AvcStream public API methods and edge cases.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC Error Unit Tests
 //!
 //! Tests for error.rs module to improve coverage.

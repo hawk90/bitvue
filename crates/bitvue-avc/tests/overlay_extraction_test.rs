@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC Overlay Extraction Tests
 //!
 //! Comprehensive tests for AVC overlay data extraction.

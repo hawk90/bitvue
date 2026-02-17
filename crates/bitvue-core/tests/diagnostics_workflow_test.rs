@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! User workflow tests for Enhanced Diagnostics end-to-end scenarios
 
 use bitvue_core::event::{Category, Diagnostic, Severity};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for AVC frames module
 //!
 //! Tests frame extraction, AvcFrameBuilder, AvcFrameType, and conversion functions

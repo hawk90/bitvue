@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC NAL Unit Parsing Tests
 //!
 //! Comprehensive tests for AVC (H.264) NAL unit parsing functionality.

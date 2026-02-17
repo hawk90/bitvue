@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for index session out-of-core windowing
 
 use bitvue_core::{

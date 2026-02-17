@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for compare module
 
 use bitvue_core::frame_identity::FrameMetadata;

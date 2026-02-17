@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC SPS module
 //!
 //! Tests Profile, ChromaFormat, ProfileTierLevel, VuiParameters, Sps

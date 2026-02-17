@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Extended tests for HEVC bitreader module
 //!
 //! Comprehensive tests covering BitReader methods not in existing tests

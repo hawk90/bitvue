@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VVC/H.266 Integration Tests
 //!
 //! Tests for end-to-end VVC parsing functionality including:

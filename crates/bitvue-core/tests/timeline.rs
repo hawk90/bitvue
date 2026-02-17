@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for timeline module
 
 use bitvue_core::timeline::{

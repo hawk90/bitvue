@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Tests for lib.rs parsing functions
 use bitvue_avc::{parse_avc, parse_avc_quick, AvcQuickInfo};
 

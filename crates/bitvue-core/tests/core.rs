@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for core module
 
 use bitvue_core::{Command, Core, Event, FrameKey, StreamId};

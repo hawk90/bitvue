@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for temporal state management
 
 use bitvue_core::semantic_evidence::Codec;

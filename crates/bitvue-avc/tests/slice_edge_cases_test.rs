@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Edge case tests for slice header parsing - simplified version
 use bitvue_avc::{parse_slice_header, NalUnitType};
 use std::collections::HashMap;

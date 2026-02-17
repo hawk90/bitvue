@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations HEVC Timeline Out of Core #001: Frame Identity Contract
 //! Subtask: S.T0-2.HEVC.Foundations.Timeline.impl.out_of_core.001
 

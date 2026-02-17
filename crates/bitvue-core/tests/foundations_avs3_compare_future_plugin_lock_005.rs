@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AVS3 Compare Future Plugin Lock #005: Frame Identity Contract
 //! Subtask: S.T0-2.AVS3.Foundations.Compare.impl.future_plugin_lock.005
 

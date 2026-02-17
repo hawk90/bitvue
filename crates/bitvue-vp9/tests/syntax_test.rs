@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VP9 Syntax Tests
 //!
 //! Tests for VP9 syntax structures to improve coverage.

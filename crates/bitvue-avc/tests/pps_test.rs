@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! H.264/AVC PPS (Picture Parameter Set) Tests
 //!
 //! Tests for PPS parsing to improve coverage.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for selection state management
 
 use bitvue_core::selection::{

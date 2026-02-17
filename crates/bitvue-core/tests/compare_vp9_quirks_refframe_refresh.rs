@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Compare Surface VP9 Quirks Test: Reference Frame Refresh Patterns
 //!
 //! Tests VP9-specific quirk: Reference frame refresh patterns and their impact

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VP9 Integration Tests
 //!
 //! Tests for end-to-end VP9 parsing functionality including:

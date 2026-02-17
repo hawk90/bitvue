@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC Overlay Extraction Tests with Actual Parsing
 //!
 //! Tests for overlay extraction functions with real bitstream data.

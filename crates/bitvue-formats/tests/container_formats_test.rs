@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for Container Format Parsers (MP4, MKV, TS, IVF)
 
 #[test]

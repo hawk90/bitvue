@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Compare Surface VP9 Quirks Test: Segmentation State Timing
 //!
 //! Tests VP9-specific quirk: Segmentation state and its timing behavior

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Endianness and cross-platform compatibility tests
 //!
 //! CRITICAL: These tests verify correct handling of byte order across platforms.

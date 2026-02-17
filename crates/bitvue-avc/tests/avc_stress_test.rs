@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Stress tests for AVC codec - large inputs, random patterns, boundary conditions
 use bitvue_avc::{extract_annex_b_frames, parse_avc, parse_avc_quick, parse_nal_header};
 

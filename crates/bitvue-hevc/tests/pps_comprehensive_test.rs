@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC PPS module
 //!
 //! Tests Pps, TileConfig, and associated methods

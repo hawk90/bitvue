@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! H.264/AVC Integration Tests
 //!
 //! Tests for end-to-end H.264 parsing functionality including:

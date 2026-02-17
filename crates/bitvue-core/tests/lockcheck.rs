@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for product lock check system (v14)
 
 use bitvue_core::lockcheck::{

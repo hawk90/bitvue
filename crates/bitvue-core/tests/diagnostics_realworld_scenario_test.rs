@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Real-world scenario tests for Enhanced Diagnostics
 
 use bitvue_core::event::{Category, Diagnostic, Severity};

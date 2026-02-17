@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC error.rs module.
 //! Targeting 95%+ line coverage for error handling.
 

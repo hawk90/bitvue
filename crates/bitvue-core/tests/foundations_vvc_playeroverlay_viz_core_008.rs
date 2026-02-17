@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VVC PlayerOverlay Viz Core #008: Frame Identity Contract
 //! Subtask: S.T0-2.VVC.Foundations.PlayerOverlay.impl.viz_core.008
 

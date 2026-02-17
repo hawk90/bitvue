@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Overlay Extraction Integration Tests
 //!
 //! Tests overlay extraction with real AV1 bitstream data to verify

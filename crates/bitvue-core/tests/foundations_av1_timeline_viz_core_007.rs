@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AV1 Timeline Viz Core #007: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.Timeline.impl.viz_core.007
 

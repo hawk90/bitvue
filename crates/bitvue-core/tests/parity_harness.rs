@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for the Parity Harness system
 //!
 //! These tests validate the parity matrix parsing, scoring, gates, and report generation.

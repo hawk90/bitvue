@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for Video Quality Metrics (PSNR, SSIM, VMAF)
 
 #[test]

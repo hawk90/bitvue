@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Edge case tests for frame extraction - simplified version
 use bitvue_avc::{extract_annex_b_frames, extract_frame_at_index};
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for partition tree data and visualization
 
 use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionKind, PartitionType};

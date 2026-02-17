@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC/H.265 Integration Tests
 //!
 //! Tests for end-to-end HEVC parsing functionality including:

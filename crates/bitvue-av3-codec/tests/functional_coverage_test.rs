@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Functional tests for AV3 codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_av3_codec::{

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for picture statistics table
 
 use bitvue_core::picture_stats::{

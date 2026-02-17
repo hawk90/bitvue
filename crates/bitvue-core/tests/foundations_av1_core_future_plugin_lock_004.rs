@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AV1 Core Future Plugin Lock #004: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.Core.impl.future_plugin_lock.004
 

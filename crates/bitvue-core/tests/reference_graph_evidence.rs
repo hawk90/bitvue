@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for reference graph evidence manager
 
 use bitvue_core::evidence::{DecodeArtifactType, SyntaxNodeType, VizElementType};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for VVC (H.266) parser
 
 use bitvue_vvc::{parse_nal_units, NalUnitType};

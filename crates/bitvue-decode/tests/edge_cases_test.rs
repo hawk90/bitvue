@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Edge case and boundary condition tests for the decoder module
 //!
 //! This test suite covers:

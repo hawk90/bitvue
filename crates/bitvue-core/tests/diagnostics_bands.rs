@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for diagnostics_bands module
 
 use bitvue_core::{

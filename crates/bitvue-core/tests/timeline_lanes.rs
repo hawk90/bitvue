@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for timeline_lanes module
 
 use bitvue_core::timeline::{FrameMarker, TimelineFrame};

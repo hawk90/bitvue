@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! MP4 AV1 Extraction Integration Tests
 //!
 //! Tests MP4 container format support for AV1 codec extraction.

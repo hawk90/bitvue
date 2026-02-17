@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations HEVC Compare Cache Provenance #003: Frame Identity Contract
 //! Subtask: S.T0-2.HEVC.Foundations.Compare.impl.cache_provenance.003
 

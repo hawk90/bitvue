@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations H264 Timeline Out Of Core #003: Frame Identity Contract
 //! Subtask: S.T0-2.H264.Foundations.Timeline.impl.out_of_core.003
 

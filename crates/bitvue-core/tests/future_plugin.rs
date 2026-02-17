@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for future_plugin module
 
 use bitvue_core::{PluginCapability, PluginEntry, PluginMetadata, PluginRegistry, PluginState};

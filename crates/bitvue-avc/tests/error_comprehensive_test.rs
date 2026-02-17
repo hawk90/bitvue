@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for AVC error module
 //!
 //! Tests AvcError enum variants and From<CodecError> implementation

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! H.264/AVC SEI (Supplemental Enhancement Information) Tests
 //!
 //! Tests for SEI message parsing to improve coverage.

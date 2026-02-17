@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations HEVC Graph Evidence Chain #003: Frame Identity Contract
 //! Subtask: S.T0-2.HEVC.Foundations.Graph.impl.evidence_chain.003
 

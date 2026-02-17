@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Edge case tests for VVC slice and frame parsing
 use bitvue_vvc::{parse_nal_header, parse_vvc};
 

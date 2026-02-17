@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for alignment module
 
 use bitvue_core::frame_identity::FrameMetadata;

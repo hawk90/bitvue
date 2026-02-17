@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC frames extraction functions.
 //! Targeting 95%+ line coverage for extract_annex_b_frames and extract_frame_at_index.
 

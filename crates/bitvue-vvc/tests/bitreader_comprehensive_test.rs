@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for VVC bitreader module
 //!
 //! Tests BitReader, Exp-Golomb coding, emulation prevention

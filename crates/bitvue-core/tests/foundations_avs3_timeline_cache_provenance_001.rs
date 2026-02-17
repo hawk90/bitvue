@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AVS3 Timeline Cache Provenance #001: Frame Identity Contract
 //! Subtask: S.T0-2.AVS3.Foundations.Timeline.impl.cache_provenance.001
 

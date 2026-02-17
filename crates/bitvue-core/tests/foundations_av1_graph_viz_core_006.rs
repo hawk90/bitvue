@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AV1 Graph Viz Core #006: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.Graph.impl.viz_core.006
 

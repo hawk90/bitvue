@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VVC Core Evidence Chain #002: Frame Identity Contract
 //! Subtask: S.T0-2.VVC.Foundations.Core.impl.evidence_chain.002
 

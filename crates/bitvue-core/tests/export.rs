@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for the Export module
 //!
 //! Tests for CSV/JSON export, overlay image export, evidence bundle export,

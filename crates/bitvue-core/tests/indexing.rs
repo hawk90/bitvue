@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use bitvue_core::indexing::*;
 use bitvue_core::types::*;
 

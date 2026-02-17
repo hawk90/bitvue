@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for YUV Loader
 
 #[test]

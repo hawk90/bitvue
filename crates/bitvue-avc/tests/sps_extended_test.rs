@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Extended tests for SPS parsing
 use bitvue_avc::sps::{parse_sps, ChromaFormat, ProfileIdc, Sps};
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VP9 Core Cache Provenance #002: Frame Identity Contract
 //! Subtask: S.T0-2.VP9.Foundations.Core.impl.cache_provenance.002
 

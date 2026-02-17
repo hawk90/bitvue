@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Compare Surface VP9 Quirks Test: Integration Tests
 //!
 //! Tests VP9-specific quirks in combination, simulating real-world encode scenarios

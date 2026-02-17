@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for reference graph visualization
 
 use bitvue_core::reference_graph::{

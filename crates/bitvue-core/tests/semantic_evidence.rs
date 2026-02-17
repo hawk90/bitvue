@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for semantic evidence
 
 use bitvue_core::semantic_evidence::{

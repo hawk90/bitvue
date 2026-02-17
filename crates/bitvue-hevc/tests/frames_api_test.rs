@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for HEVC frames.rs public API.
 //! Targeting 95%+ line coverage for frame extraction methods.
 

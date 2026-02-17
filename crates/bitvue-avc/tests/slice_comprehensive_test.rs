@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for AVC slice module
 //!
 //! Tests SliceType, SliceHeader, RefPicListModification, DecRefPicMarking

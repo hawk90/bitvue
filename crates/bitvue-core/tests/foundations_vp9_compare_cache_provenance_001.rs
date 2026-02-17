@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VP9 Compare Cache Provenance #001: Frame Identity Contract
 //! Subtask: S.T0-2.VP9.Foundations.Compare.impl.cache_provenance.001
 

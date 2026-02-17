@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC SPS Parsing Comprehensive Tests
 //!
 //! Tests for sps.rs parsing functions with better coverage.

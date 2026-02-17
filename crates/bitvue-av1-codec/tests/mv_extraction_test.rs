@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Integration test for MV extraction with spec-compliant CDFs
 //
 // This test verifies that the updated CDF values (from rav1d/AV1 spec)

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for MCP Integration Layer
 
 use bitvue_core::diagnostics_bands::DiagnosticsBands;

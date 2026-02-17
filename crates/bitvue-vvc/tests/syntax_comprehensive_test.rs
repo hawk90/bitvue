@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for VVC syntax module
 //!
 //! Tests SyntaxNode, SyntaxNodeType, and build_syntax_tree function

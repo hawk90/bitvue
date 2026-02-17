@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Property-based tests for IVF parsing
 //!
 //! These tests use proptest to verify that IVF parsing handles all possible

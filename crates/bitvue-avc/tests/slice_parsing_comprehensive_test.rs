@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC Slice Parsing Comprehensive Tests
 //!
 //! Tests for slice.rs parsing functions with better coverage.

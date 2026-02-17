@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC PPS Parsing Tests
 //!
 //! Tests for Picture Parameter Set (PPS) parsing functionality.

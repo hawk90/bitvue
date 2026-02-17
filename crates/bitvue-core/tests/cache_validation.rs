@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for cache_validation module
 
 use bitvue_core::cache_validation::{

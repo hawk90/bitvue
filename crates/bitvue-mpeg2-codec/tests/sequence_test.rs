@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! MPEG-2 Sequence Tests
 //!
 //! Tests for MPEG-2 sequence header parsing to improve coverage.

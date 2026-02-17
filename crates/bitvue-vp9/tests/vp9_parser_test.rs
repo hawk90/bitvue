@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for VP9 parser
 
 #[test]

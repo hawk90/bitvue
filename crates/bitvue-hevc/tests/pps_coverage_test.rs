@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC PPS Module Coverage Tests
 //!
 //! Tests for pps.rs module to improve coverage from 72.48% to 95%.

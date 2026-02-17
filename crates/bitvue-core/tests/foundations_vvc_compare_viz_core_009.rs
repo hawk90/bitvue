@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VVC Compare Viz Core #009: Frame Identity Contract
 //! Subtask: S.T0-2.VVC.Foundations.Compare.impl.viz_core.009
 

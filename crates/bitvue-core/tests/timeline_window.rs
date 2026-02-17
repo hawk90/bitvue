@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for timeline_window module
 
 use bitvue_core::timeline::{FrameMarker, TimelineFrame};

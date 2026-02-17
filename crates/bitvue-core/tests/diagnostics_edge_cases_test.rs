@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Edge case tests for Enhanced Diagnostics
 //!
 //! Tests for:

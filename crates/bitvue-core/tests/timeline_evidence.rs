@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for timeline evidence manager
 
 use bitvue_core::evidence::{DecodeArtifactType, VizElementType};

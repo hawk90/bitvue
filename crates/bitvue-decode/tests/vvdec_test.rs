@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for VVdec (VVC decoder) integration
 
 #[test]

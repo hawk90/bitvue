@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use bitvue_core::evidence::*;
 use bitvue_core::frame_identity::*;
 

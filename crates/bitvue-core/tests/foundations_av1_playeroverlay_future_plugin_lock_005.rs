@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AV1 PlayerOverlay Future Plugin Lock #005: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.PlayerOverlay.impl.future_plugin_lock.005
 

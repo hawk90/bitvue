@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC Slice Header Tests
 //!
 //! Tests for slice.rs module functionality.

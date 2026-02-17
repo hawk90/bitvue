@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Performance and stress tests for Enhanced Diagnostics
 
 use bitvue_core::event::{Category, Diagnostic, Severity};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Property-based tests for LEB128 decoding
 //!
 //! These tests use proptest to verify that LEB128 decoding handles all

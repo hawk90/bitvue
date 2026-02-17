@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC SEI Parsing Tests
 //!
 //! Tests for SEI (Supplemental Enhancement Information) parsing with real data.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AVS3 PlayerOverlay Evidence Chain #001: Frame Identity Contract
 //! Subtask: S.T0-2.AVS3.Foundations.PlayerOverlay.impl.evidence_chain.001
 

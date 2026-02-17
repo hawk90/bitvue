@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for timeline cache management
 
 use bitvue_core::timeline_cache::TimelineCacheManager;

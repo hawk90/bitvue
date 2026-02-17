@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for ByteCache system
 
 use bitvue_core::ByteCache;

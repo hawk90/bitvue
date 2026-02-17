@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AV3 Integration Tests
 //!
 //! Tests for end-to-end AV3 parsing functionality including:

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Stress tests for VP9 codec - large inputs, random patterns, superframes
 use bitvue_vp9::{extract_vp9_frames, parse_vp9};
 

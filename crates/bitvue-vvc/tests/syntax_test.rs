@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VVC Syntax Tests
 //!
 //! Tests for VVC syntax structures to improve coverage.

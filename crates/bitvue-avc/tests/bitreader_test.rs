@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AVC BitReader Tests
 //!
 //! Tests for bitreader.rs functionality.

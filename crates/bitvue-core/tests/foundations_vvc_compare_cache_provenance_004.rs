@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations VVC Compare Cache Provenance #004: Frame Identity Contract
 //! Subtask: S.T0-2.VVC.Foundations.Compare.impl.cache_provenance.004
 

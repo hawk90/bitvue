@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Edge case tests for SEI parsing - simplified version
 use bitvue_avc::parse_sei;
 

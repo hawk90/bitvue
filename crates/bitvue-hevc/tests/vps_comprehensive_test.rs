@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC VPS parsing module.
 //! Targeting 95%+ line coverage for VPS functionality.
 

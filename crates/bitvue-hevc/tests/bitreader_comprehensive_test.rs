@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Comprehensive tests for HEVC bitreader module
 
 use bitvue_hevc::bitreader::{remove_emulation_prevention_bytes, BitReader};

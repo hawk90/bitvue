@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for overlay stacking and alpha blending rules
 
 use bitvue_core::occlusion_budget::{BlendMode, OcclusionBudget, OverlayConfig, OverlayLayer};

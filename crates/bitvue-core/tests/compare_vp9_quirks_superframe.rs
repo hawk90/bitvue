@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Compare Surface VP9 Quirks Test: Superframe Decomposition
 //!
 //! Tests VP9-specific quirk: Superframe structure and decomposition behavior

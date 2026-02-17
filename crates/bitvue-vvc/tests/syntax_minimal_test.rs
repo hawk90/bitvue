@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Minimal tests for VVC syntax module
 
 use bitvue_vvc::syntax::{SyntaxNode, SyntaxNodeType};

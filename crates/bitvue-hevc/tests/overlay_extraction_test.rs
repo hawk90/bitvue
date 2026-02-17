@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HEVC Overlay Extraction Tests
 //!
 //! Comprehensive tests for HEVC overlay data extraction.

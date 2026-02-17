@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Unit tests for HEVC syntax module
 //!
 //! Tests for SyntaxNode and SyntaxNodeType

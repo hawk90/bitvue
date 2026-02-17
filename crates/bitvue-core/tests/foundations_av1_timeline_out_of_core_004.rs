@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Foundations AV1 Timeline Out Of Core #004: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.Timeline.impl.out_of_core.004
 

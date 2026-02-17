@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Property-based tests for BitReader
 //!
 //! These tests use proptest to verify that BitReader handles all possible

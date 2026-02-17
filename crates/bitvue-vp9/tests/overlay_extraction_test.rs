@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VP9 Overlay Extraction Tests
 //!
 //! Comprehensive tests for VP9 overlay data extraction.

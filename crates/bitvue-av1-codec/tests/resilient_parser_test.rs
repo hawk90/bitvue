@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for resilient OBU parser with diagnostic generation
 
 use bitvue_av1_codec::{parse_all_obus_resilient, parse_ivf_frames};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for index_extractor_evidence module
 
 use bitvue_core::{

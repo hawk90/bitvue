@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for index_dev_hud_window module
 
 use bitvue_core::{

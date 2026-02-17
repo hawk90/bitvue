@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use bitvue_core::metrics_distribution::*;
 
 fn create_test_series() -> MetricSeries {

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Edge case tests for VP9 frame and parsing
 use bitvue_vp9::{extract_vp9_frames, parse_vp9};
 

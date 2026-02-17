@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Tests for coordinate_transform module
 
 use bitvue_core::{
