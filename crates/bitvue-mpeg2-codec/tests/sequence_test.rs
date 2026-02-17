@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! MPEG-2 Sequence Tests
 //!
 //! Tests for MPEG-2 sequence header parsing to improve coverage.

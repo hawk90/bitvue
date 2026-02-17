@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! VP9 Integration Tests
 //!
 //! Tests for end-to-end VP9 parsing functionality including:

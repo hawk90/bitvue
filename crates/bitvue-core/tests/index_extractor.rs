@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Tests for index extractor API
 
 use bitvue_core::{Av1IndexExtractor, ExtractorFactory, H264IndexExtractor, IndexExtractor};

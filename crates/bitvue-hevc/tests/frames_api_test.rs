@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Tests for HEVC frames.rs public API.
 //! Targeting 95%+ line coverage for frame extraction methods.
 

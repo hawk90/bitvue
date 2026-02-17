@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Test private functions by exposing them with #[cfg(test)]
 // This module tests internal functions that are not normally accessible
 

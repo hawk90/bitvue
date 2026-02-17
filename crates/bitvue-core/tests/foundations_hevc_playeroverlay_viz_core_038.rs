@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations HEVC PlayerOverlay Viz Core #038: Frame Identity Contract
 //! Subtask: S.T0-2.HEVC.Foundations.PlayerOverlay.impl.viz_core.038
 

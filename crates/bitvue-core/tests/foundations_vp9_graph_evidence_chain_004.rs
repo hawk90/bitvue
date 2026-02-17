@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations VP9 Graph Evidence Chain #004: Frame Identity Contract
 //! Subtask: S.T0-2.VP9.Foundations.Graph.impl.evidence_chain.004
 

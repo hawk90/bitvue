@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations AV1 Core Future Plugin Lock #003: Frame Identity Contract
 //! Subtask: S.T0-2.AV1.Foundations.Core.impl.future_plugin_lock.003
 

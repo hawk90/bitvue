@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Tests for partition tree data and visualization
 
 use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionKind, PartitionType};

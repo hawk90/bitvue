@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Functional tests for HEVC codec - targeting 100% coverage
 // These tests exercise specific code paths in low-coverage modules
 use bitvue_hevc::{

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Tests for overlay stacking and alpha blending rules
 
 use bitvue_core::occlusion_budget::{BlendMode, OcclusionBudget, OverlayConfig, OverlayLayer};

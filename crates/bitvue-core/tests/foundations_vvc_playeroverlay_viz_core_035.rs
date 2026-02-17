@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations VVC PlayerOverlay Viz Core #035: Frame Identity Contract
 //! Subtask: S.T0-2.VVC.Foundations.PlayerOverlay.impl.viz_core.035
 

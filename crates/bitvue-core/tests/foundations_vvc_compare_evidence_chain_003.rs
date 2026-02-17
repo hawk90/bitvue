@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations VVC Compare Evidence Chain #003: Frame Identity Contract
 //! Subtask: S.T0-2.VVC.Foundations.Compare.impl.evidence_chain.003
 

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations AVS3 Compare Viz Core #009: Frame Identity Contract
 //! Subtask: S.T0-2.AVS3.Foundations.Compare.impl.viz_core.009
 

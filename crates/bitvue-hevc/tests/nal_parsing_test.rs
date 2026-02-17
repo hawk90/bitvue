@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! HEVC NAL Unit Parsing Tests
 //!
 //! Comprehensive tests for HEVC NAL unit parsing functionality.

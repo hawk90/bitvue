@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Comprehensive tests for AVC frames module
 //!
 //! Tests frame extraction, AvcFrameBuilder, AvcFrameType, and conversion functions

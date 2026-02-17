@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Overlay Extraction Integration Tests
 //!
 //! Tests overlay extraction with real AV1 bitstream data to verify

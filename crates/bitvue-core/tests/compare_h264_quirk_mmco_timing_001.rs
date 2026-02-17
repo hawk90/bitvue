@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 use bitvue_core::frame_identity::*;
 use bitvue_core::{AlignmentEngine, CompareWorkspace, FrameIndexMap};
 

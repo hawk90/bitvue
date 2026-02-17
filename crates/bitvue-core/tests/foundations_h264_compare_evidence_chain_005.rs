@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations H264 Compare Evidence Chain #005: Frame Identity Contract
 //! Subtask: S.T0-2.H264.Foundations.Compare.impl.evidence_chain.005
 

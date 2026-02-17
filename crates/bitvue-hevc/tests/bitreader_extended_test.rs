@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Extended tests for HEVC bitreader module
 //!
 //! Comprehensive tests covering BitReader methods not in existing tests

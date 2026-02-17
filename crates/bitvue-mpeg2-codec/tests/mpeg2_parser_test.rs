@@ -1,6 +1,10 @@
 //! Tests for MPEG-2 parser
 
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 
 #[test]
 fn test_mpeg2_picture_types() {

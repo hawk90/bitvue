@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Comprehensive tests for HEVC frames extraction functions.
 //! Targeting 95%+ line coverage for extract_annex_b_frames and extract_frame_at_index.
 

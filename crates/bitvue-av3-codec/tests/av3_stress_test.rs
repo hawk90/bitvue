@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Stress tests for AV3 codec - large inputs, random patterns, boundary conditions
 use bitvue_av3_codec::{
     parse_av3, parse_frame_header, parse_obu_header, parse_sequence_header, ObuType,

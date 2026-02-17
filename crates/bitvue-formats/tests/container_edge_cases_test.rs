@@ -4,6 +4,10 @@
 //! that were identified as missing in the edge case analysis report.
 
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 
 // Note: This is a template file showing what tests SHOULD be added
 // Actual implementation would require the parser modules to be imported

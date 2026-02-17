@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Symbol Decoder Integration Tests
 //!
 //! Tests the arithmetic decoder and CDF-based symbol reading

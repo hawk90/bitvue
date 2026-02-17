@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Comprehensive tests for VVC syntax module
 //!
 //! Tests SyntaxNode, SyntaxNodeType, and build_syntax_tree function

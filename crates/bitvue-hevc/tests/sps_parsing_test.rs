@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! HEVC SPS Parsing Tests
 //!
 //! Tests for actual SPS parsing functionality with real bitstream data.

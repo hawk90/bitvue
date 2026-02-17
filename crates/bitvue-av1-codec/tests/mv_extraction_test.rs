@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Integration test for MV extraction with spec-compliant CDFs
 //
 // This test verifies that the updated CDF values (from rav1d/AV1 spec)

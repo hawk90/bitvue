@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! 32-bit vs 64-bit compatibility tests
 //!
 //! CRITICAL: These tests verify that code works correctly on both 32-bit and 64-bit platforms.

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Edge case tests for frame extraction - simplified version
 use bitvue_avc::{extract_annex_b_frames, extract_frame_at_index};
 

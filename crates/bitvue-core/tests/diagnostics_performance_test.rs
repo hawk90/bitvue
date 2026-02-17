@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Performance and stress tests for Enhanced Diagnostics
 
 use bitvue_core::event::{Category, Diagnostic, Severity};

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Compare Surface VP9 Quirks Test: show_existing_frame Edge Cases
 //!
 //! Tests VP9-specific quirk: show_existing_frame flag and its edge cases

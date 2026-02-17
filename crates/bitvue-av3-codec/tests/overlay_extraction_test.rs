@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! AV3 Overlay Extraction Tests
 //!
 //! Comprehensive tests for AV3 overlay data extraction.

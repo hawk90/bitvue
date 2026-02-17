@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! User workflow tests for Enhanced Diagnostics end-to-end scenarios
 
 use bitvue_core::event::{Category, Diagnostic, Severity};

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Foundations VVC Core Cache Provenance #001: Frame Identity Contract
 //! Subtask: S.T0-2.VVC.Foundations.Core.impl.cache_provenance.001
 

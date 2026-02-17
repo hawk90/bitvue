@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! AVC SPS Parsing Comprehensive Tests
 //!
 //! Tests for sps.rs parsing functions with better coverage.

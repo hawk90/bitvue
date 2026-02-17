@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Edge case tests for VP9 frame and parsing
 use bitvue_vp9::{extract_vp9_frames, parse_vp9};
 

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Minimal tests for VVC syntax module
 
 use bitvue_vvc::syntax::{SyntaxNode, SyntaxNodeType};

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! AVC Slice Header Parsing Tests
 //!
 //! Comprehensive tests for AVC slice header parsing functionality.

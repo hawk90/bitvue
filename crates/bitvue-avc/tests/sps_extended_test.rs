@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Extended tests for SPS parsing
 use bitvue_avc::sps::{parse_sps, ChromaFormat, ProfileIdc, Sps};
 

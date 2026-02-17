@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! VVC/H.266 Integration Tests
 //!
 //! Tests for end-to-end VVC parsing functionality including:

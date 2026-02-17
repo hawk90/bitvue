@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! H.264/AVC SEI (Supplemental Enhancement Information) Tests
 //!
 //! Tests for SEI message parsing to improve coverage.

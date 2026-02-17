@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Compare Surface VP9 Quirks Test: Integration Tests
 //!
 //! Tests VP9-specific quirks in combination, simulating real-world encode scenarios

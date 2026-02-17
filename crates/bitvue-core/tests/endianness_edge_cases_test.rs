@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Endianness and cross-platform compatibility tests
 //!
 //! CRITICAL: These tests verify correct handling of byte order across platforms.

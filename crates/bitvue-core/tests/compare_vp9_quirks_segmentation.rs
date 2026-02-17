@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Compare Surface VP9 Quirks Test: Segmentation State Timing
 //!
 //! Tests VP9-specific quirk: Segmentation state and its timing behavior
