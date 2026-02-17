@@ -139,13 +139,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install dav1d (macOS)
+      - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
-        run: brew install dav1d
+        run: brew install dav1d ffmpeg
 
-      - name: Install dav1d (Linux)
+      - name: Install dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get install -y libdav1d-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdav1d-dev \
+            libavutil-dev \
+            libavcodec-dev \
+            libavformat-dev \
+            libavfilter-dev \
+            libswscale-dev \
+            libswresample-dev \
+            libavdevice-dev
 
       - run: cargo test --workspace --all-features --no-fail-fast
 
