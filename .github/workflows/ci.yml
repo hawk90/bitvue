@@ -63,8 +63,8 @@ jobs:
 
   frontend-smoke:
     name: Frontend Smoke Test
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    if: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -215,10 +215,8 @@ jobs:
 
   frontend-fmt:
     name: Format (Frontend)
-    needs: changes
     if: |
       github.event_name == 'pull_request' &&
-      needs.changes.outputs.frontend == 'true' &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -235,11 +233,10 @@ jobs:
 
   frontend-lint:
     name: Lint (Frontend)
-    needs: [changes, frontend-fmt]
+    needs: [frontend-fmt]
     if: |
       always() &&
       github.event_name == 'pull_request' &&
-      needs.changes.outputs.frontend == 'true' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
@@ -258,11 +255,10 @@ jobs:
 
   frontend-test:
     name: Test (Frontend)
-    needs: [changes, frontend-fmt, frontend-lint]
+    needs: [frontend-fmt, frontend-lint]
     if: |
       always() &&
       github.event_name == 'pull_request' &&
-      needs.changes.outputs.frontend == 'true' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped') &&
       (needs.frontend-lint.result == 'success' || needs.frontend-lint.result == 'skipped')
     runs-on: ubuntu-latest
