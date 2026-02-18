@@ -140,8 +140,8 @@ mod tests {
         // Document the specific pattern this placeholder produces
         let mut data = [1, 2, 3, 4, 5];
         shuffle(&mut data);
-        // The placeholder reverses the array
-        assert_eq!(data, [5, 1, 1, 1, 1]);
+        // The placeholder rotates via successive swaps with index 0
+        assert_eq!(data, [2, 3, 4, 5, 1]);
     }
 
     #[test]

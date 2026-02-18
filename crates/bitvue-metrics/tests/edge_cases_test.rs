@@ -1,8 +1,14 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_mut)]
 #![allow(unused_comparisons)]
 #![allow(unused_doc_comments)]
+#![allow(unused_imports)]
 //! Edge case and boundary condition tests for SIMD metrics
 //!
 //! This test suite covers:
@@ -17,7 +23,6 @@
 //! - Concurrent Access: Thread-safety of SIMD operations
 //! - Performance Edge Cases: Very small/large inputs
 
-use bitvue_core::BitvueError;
 use bitvue_metrics::psnr;
 use bitvue_metrics::simd::psnr_simd;
 

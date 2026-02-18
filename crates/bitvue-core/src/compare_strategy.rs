@@ -75,7 +75,10 @@ impl ComparisonResult {
             ComparisonType::PSNR => self.score >= 40.0,
             ComparisonType::SSIM => self.score >= 0.95,
             ComparisonType::VMAF => self.score >= 90.0,
-            _ => false,
+            ComparisonType::MSE => self.score <= 5.0,
+            ComparisonType::MAE => self.score <= 2.0,
+            ComparisonType::Bitwise => self.score >= 99.0,
+            ComparisonType::Custom => false,
         }
     }
 
@@ -85,7 +88,10 @@ impl ComparisonResult {
             ComparisonType::PSNR => self.score >= 30.0,
             ComparisonType::SSIM => self.score >= 0.85,
             ComparisonType::VMAF => self.score >= 75.0,
-            _ => false,
+            ComparisonType::MSE => self.score <= 20.0,
+            ComparisonType::MAE => self.score <= 10.0,
+            ComparisonType::Bitwise => self.score >= 95.0,
+            ComparisonType::Custom => false,
         }
     }
 

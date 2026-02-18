@@ -448,7 +448,7 @@ mod tests {
         let header = create_test_frame_header(3840, 2160, FrameType::Inter, 120);
         let result = extract_mv_grid(&header);
         assert!(result.is_ok());
-        let mv_grid = result.unwrap();
+        let _mv_grid = result.unwrap();
         // coded_width check: assert_eq!(mv_grid.coded_width, 3840);
         // coded_height check: assert_eq!(mv_grid.coded_height, 2160);
     }
