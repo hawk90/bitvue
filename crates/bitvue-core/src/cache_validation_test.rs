@@ -9,11 +9,13 @@
 // ============================================================================
 
 /// Create a test cache validator
+#[allow(dead_code)]
 fn create_test_validator() -> CacheValidator {
     CacheValidator::new()
 }
 
 /// Create a test cache stats row
+#[allow(dead_code)]
 fn create_test_stats_row() -> CacheStatsRow {
     CacheStatsRow {
         cache_type: CacheType::Decode,
@@ -36,6 +38,7 @@ fn create_test_stats_row() -> CacheStatsRow {
 
 #[cfg(test)]
 mod cache_type_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -153,6 +156,7 @@ mod cache_type_tests {
 
 #[cfg(test)]
 mod cache_stats_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -388,6 +392,7 @@ mod cache_stats_tests {
 
 #[cfg(test)]
 mod eviction_reason_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -433,6 +438,7 @@ mod eviction_reason_tests {
 
 #[cfg(test)]
 mod validator_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -475,6 +481,7 @@ mod validator_construction_tests {
 
 #[cfg(test)]
 mod record_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -557,6 +564,7 @@ mod record_tests {
 
 #[cfg(test)]
 mod eviction_log_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -611,6 +619,7 @@ mod eviction_log_tests {
 
 #[cfg(test)]
 mod report_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -731,6 +740,7 @@ mod report_tests {
 
 #[cfg(test)]
 mod clear_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -771,6 +781,7 @@ mod clear_tests {
 
 #[cfg(test)]
 mod hud_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -867,6 +878,7 @@ mod hud_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

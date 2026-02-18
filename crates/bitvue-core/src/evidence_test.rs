@@ -3,6 +3,7 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
+#[allow(unused_imports)]
 use super::*;
 
 // ============================================================================
@@ -10,21 +11,25 @@ use super::*;
 // ============================================================================
 
 /// Create a test evidence ID
+#[allow(dead_code)]
 fn create_test_evidence_id() -> EvidenceId {
     EvidenceId::new()
 }
 
 /// Create a test bit range
+#[allow(dead_code)]
 fn create_test_bit_range(start: u64, end: u64) -> BitRange {
     BitRange { start, end }
 }
 
 /// Create a test bit offset evidence
+#[allow(dead_code)]
 fn create_test_bit_offset_evidence(offset: u64) -> BitOffsetEvidence {
     BitOffsetEvidence::new(offset)
 }
 
 /// Create a test syntax evidence
+#[allow(dead_code)]
 fn create_test_syntax_evidence(
     offset: u64,
     syntax_type: &str,
@@ -39,6 +44,7 @@ fn create_test_syntax_evidence(
 }
 
 /// Create a test decode evidence
+#[allow(dead_code)]
 fn create_test_decode_evidence(
     syntax_id: EvidenceId,
     decode_type: &str,
@@ -51,6 +57,7 @@ fn create_test_decode_evidence(
 }
 
 /// Create a test viz evidence
+#[allow(dead_code)]
 fn create_test_viz_evidence(
     decode_id: EvidenceId,
     viz_type: &str,
@@ -63,6 +70,7 @@ fn create_test_viz_evidence(
 }
 
 /// Create a test evidence chain
+#[allow(dead_code)]
 fn create_test_evidence_chain() -> EvidenceChain {
     EvidenceChain::new()
 }
@@ -73,6 +81,7 @@ fn create_test_evidence_chain() -> EvidenceChain {
 
 #[cfg(test)]
 mod evidence_id_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -114,6 +123,7 @@ mod evidence_id_tests {
 
 #[cfg(test)]
 mod bit_range_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -168,6 +178,7 @@ mod bit_range_tests {
 
 #[cfg(test)]
 mod bit_offset_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -211,6 +222,7 @@ mod bit_offset_evidence_tests {
 
 #[cfg(test)]
 mod syntax_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -265,6 +277,7 @@ mod syntax_evidence_tests {
 
 #[cfg(test)]
 mod decode_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -307,6 +320,7 @@ mod decode_evidence_tests {
 
 #[cfg(test)]
 mod viz_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -347,6 +361,7 @@ mod viz_evidence_tests {
 
 #[cfg(test)]
 mod bit_offset_index_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -392,6 +407,7 @@ mod bit_offset_index_tests {
 
 #[cfg(test)]
 mod syntax_index_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -444,6 +460,7 @@ mod syntax_index_tests {
 
 #[cfg(test)]
 mod decode_index_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -478,6 +495,7 @@ mod decode_index_tests {
 
 #[cfg(test)]
 mod viz_index_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -512,6 +530,7 @@ mod viz_index_tests {
 
 #[cfg(test)]
 mod evidence_chain_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -542,6 +561,7 @@ mod evidence_chain_construction_tests {
 
 #[cfg(test)]
 mod evidence_chain_add_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -593,6 +613,7 @@ mod evidence_chain_add_tests {
 
 #[cfg(test)]
 mod evidence_chain_forward_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -711,6 +732,7 @@ mod evidence_chain_forward_tests {
 
 #[cfg(test)]
 mod evidence_chain_reverse_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -780,6 +802,7 @@ mod evidence_chain_reverse_tests {
 
 #[cfg(test)]
 mod evidence_chain_query_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -847,6 +870,7 @@ mod evidence_chain_query_tests {
 
 #[cfg(test)]
 mod evidence_chain_stats_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -898,6 +922,7 @@ mod evidence_chain_stats_tests {
 
 #[cfg(test)]
 mod evidence_chain_clear_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -925,6 +950,7 @@ mod evidence_chain_clear_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

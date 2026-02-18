@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn test_parse_av1_ts_detection() {
         // TS packet with sync byte
-        let mut ts_data = vec![0x47u8; 188];
+        let ts_data = vec![0x47u8; 188];
         let result = parse_av1(&ts_data);
         // Should detect TS and try to extract AV1 samples
         assert!(result.is_ok() || result.is_err());

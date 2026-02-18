@@ -169,6 +169,19 @@ pub fn estimate_qp_avg(qp_min: i8, qp_max: i8) -> f32 {
     (qp_min as f32 + qp_max as f32) / 2.0
 }
 
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    dead_code,
+    unused_comparisons,
+    unused_must_use,
+    hidden_glob_reexports,
+    unreachable_code,
+    non_camel_case_types,
+    unused_parens,
+    unused_assignments
+)]
 #[cfg(test)]
 mod tests {
     include!("timeline_lane_types_test.rs");

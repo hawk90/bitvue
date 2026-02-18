@@ -259,7 +259,7 @@ mod tests {
         );
 
         // Cache should be smaller due to eviction (but may not shrink much if already below limit)
-        let size_after = cu_cache_size();
+        let _size_after = cu_cache_size();
         // If we were at or near capacity, eviction should have occurred
         if size_at_limit >= MAX_CACHE_ENTRIES * 3 / 4 {
             // Add another entry to trigger eviction

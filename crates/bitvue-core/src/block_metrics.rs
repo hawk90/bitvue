@@ -681,6 +681,19 @@ impl MultiFrameBlockMetrics {
 }
 
 /// Comprehensive test suite with Arrange-Act-Assert pattern
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    dead_code,
+    unused_comparisons,
+    unused_must_use,
+    hidden_glob_reexports,
+    unreachable_code,
+    non_camel_case_types,
+    unused_parens,
+    unused_assignments
+)]
 #[cfg(test)]
 mod tests {
     include!("block_metrics_test.rs");

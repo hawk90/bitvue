@@ -9,11 +9,13 @@
 // ============================================================================
 
 /// Create a test cache provenance tracker
+#[allow(dead_code)]
 fn create_test_tracker() -> CacheProvenanceTracker {
     CacheProvenanceTracker::new()
 }
 
 /// Create a test decode cache key
+#[allow(dead_code)]
 fn create_test_decode_key(frame_idx: usize) -> CacheKey {
     CacheKey::Decode {
         frame_idx,
@@ -22,6 +24,7 @@ fn create_test_decode_key(frame_idx: usize) -> CacheKey {
 }
 
 /// Create a test texture cache key
+#[allow(dead_code)]
 fn create_test_texture_key(frame_idx: usize) -> CacheKey {
     CacheKey::Texture {
         frame_idx,
@@ -31,6 +34,7 @@ fn create_test_texture_key(frame_idx: usize) -> CacheKey {
 }
 
 /// Create a test timeline cache key
+#[allow(dead_code)]
 fn create_test_timeline_key(data_revision: u64, zoom_level_x100: u32) -> CacheKey {
     CacheKey::Timeline {
         data_revision,
@@ -45,6 +49,7 @@ fn create_test_timeline_key(data_revision: u64, zoom_level_x100: u32) -> CacheKe
 
 #[cfg(test)]
 mod cache_key_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -284,6 +289,7 @@ mod cache_key_tests {
 
 #[cfg(test)]
 mod cache_provenance_struct_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -384,6 +390,7 @@ mod cache_provenance_struct_tests {
 
 #[cfg(test)]
 mod tracker_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -415,6 +422,7 @@ mod tracker_construction_tests {
 
 #[cfg(test)]
 mod entry_management_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -487,6 +495,7 @@ mod entry_management_tests {
 
 #[cfg(test)]
 mod hit_miss_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -574,6 +583,7 @@ mod hit_miss_tests {
 
 #[cfg(test)]
 mod invalidation_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -693,6 +703,7 @@ mod invalidation_tests {
 
 #[cfg(test)]
 mod eviction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -794,6 +805,7 @@ mod eviction_tests {
 
 #[cfg(test)]
 mod statistics_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -851,6 +863,7 @@ mod statistics_tests {
 
 #[cfg(test)]
 mod clear_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -876,6 +889,7 @@ mod clear_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

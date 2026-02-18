@@ -3,6 +3,7 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
+#[allow(unused_imports)]
 use super::*;
 
 // ============================================================================
@@ -10,36 +11,43 @@ use super::*;
 // ============================================================================
 
 /// Create a test screen pixel coordinate
+#[allow(dead_code)]
 fn create_test_screen_px(x: f32, y: f32) -> ScreenPx {
     ScreenPx { x, y }
 }
 
 /// Create a test video rect normalized coordinate
+#[allow(dead_code)]
 fn create_test_video_rect_norm(x: f32, y: f32) -> VideoRectNorm {
     VideoRectNorm { x, y }
 }
 
 /// Create a test coded pixel coordinate
+#[allow(dead_code)]
 fn create_test_coded_px(x: f32, y: f32) -> CodedPx {
     CodedPx { x, y }
 }
 
 /// Create a test block index coordinate
+#[allow(dead_code)]
 fn create_test_block_idx(x: usize, y: usize) -> BlockIdx {
     BlockIdx { x, y }
 }
 
 /// Create a test screen rect
+#[allow(dead_code)]
 fn create_test_screen_rect(x: f32, y: f32, width: f32, height: f32) -> ScreenRect {
     ScreenRect { x, y, width, height }
 }
 
 /// Create a test coordinate transformer
+#[allow(dead_code)]
 fn create_test_transformer() -> CoordinateTransformer {
     CoordinateTransformer::new()
 }
 
 /// Create a configured transformer with video rect
+#[allow(dead_code)]
 fn create_configured_transformer(video_x: f32, video_y: f32, video_w: f32, video_h: f32) -> CoordinateTransformer {
     let mut transformer = CoordinateTransformer::new();
     transformer.set_video_rect(create_test_screen_rect(video_x, video_y, video_w, video_h));
@@ -52,6 +60,7 @@ fn create_configured_transformer(video_x: f32, video_y: f32, video_w: f32, video
 
 #[cfg(test)]
 mod screen_px_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -81,6 +90,7 @@ mod screen_px_tests {
 
 #[cfg(test)]
 mod video_rect_norm_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -113,6 +123,7 @@ mod video_rect_norm_tests {
 
 #[cfg(test)]
 mod coded_px_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -142,6 +153,7 @@ mod coded_px_tests {
 
 #[cfg(test)]
 mod block_idx_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -171,6 +183,7 @@ mod block_idx_tests {
 
 #[cfg(test)]
 mod screen_rect_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -204,6 +217,7 @@ mod screen_rect_tests {
 
 #[cfg(test)]
 mod zoom_mode_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -222,6 +236,7 @@ mod zoom_mode_tests {
 
 #[cfg(test)]
 mod coordinate_transformer_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -319,6 +334,7 @@ mod coordinate_transformer_construction_tests {
 
 #[cfg(test)]
 mod forward_transform_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -499,6 +515,7 @@ mod forward_transform_tests {
 
 #[cfg(test)]
 mod reverse_transform_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -614,6 +631,7 @@ mod reverse_transform_tests {
 
 #[cfg(test)]
 mod utility_method_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -675,6 +693,7 @@ mod utility_method_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

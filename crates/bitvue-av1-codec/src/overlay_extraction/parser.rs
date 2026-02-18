@@ -316,6 +316,7 @@ pub fn extract_pixel_info(
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     fn create_test_obu_data() -> Vec<u8> {
         // Minimal OBU data with sequence header and frame header
         let mut data = Vec::new();

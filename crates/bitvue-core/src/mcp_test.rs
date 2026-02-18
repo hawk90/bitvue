@@ -1,10 +1,12 @@
 // MCP integration module tests
+#[allow(unused_imports)]
 use super::*;
 use std::collections::HashMap;
 
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_resources() -> McpResources {
     McpResources {
         stream_info: McpStreamInfo {
@@ -26,6 +28,7 @@ fn create_test_resources() -> McpResources {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_state() -> McpSelectionState {
     McpSelectionState {
         frame_idx: Some(42),
@@ -34,6 +37,7 @@ fn create_test_state() -> McpSelectionState {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_diagnostics() -> McpDiagnostics {
     McpDiagnostics {
         error_count: 1,
@@ -44,6 +48,7 @@ fn create_test_diagnostics() -> McpDiagnostics {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_metrics_summary() -> McpMetricsSummary {
     McpMetricsSummary {
         avg_psnr: Some(40.5),
@@ -56,6 +61,7 @@ fn create_test_metrics_summary() -> McpMetricsSummary {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_integration() -> McpIntegration {
     let mut integration = McpIntegration::new();
     integration.resources = create_test_resources();
@@ -67,6 +73,7 @@ fn create_test_integration() -> McpIntegration {
 // ============================================================================
 #[cfg(test)]
 mod stream_info_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -94,6 +101,7 @@ mod stream_info_tests {
 // ============================================================================
 #[cfg(test)]
 mod frame_data_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -133,6 +141,7 @@ mod frame_data_tests {
 // ============================================================================
 #[cfg(test)]
 mod resources_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -189,6 +198,7 @@ mod resources_tests {
 // ============================================================================
 #[cfg(test)]
 mod selection_state_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -241,6 +251,7 @@ mod selection_state_tests {
 // ============================================================================
 #[cfg(test)]
 mod diagnostics_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -339,6 +350,7 @@ mod diagnostics_tests {
 // ============================================================================
 #[cfg(test)]
 mod metrics_summary_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -406,6 +418,7 @@ mod metrics_summary_tests {
 // ============================================================================
 #[cfg(test)]
 mod integration_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

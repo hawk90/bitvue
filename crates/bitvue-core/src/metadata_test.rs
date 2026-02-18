@@ -3,10 +3,12 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_metadata() -> StreamMetadata {
     StreamMetadata::new()
 }
 
+#[allow(dead_code)]
 fn create_test_mastering_display() -> MasteringDisplayMetadata {
     MasteringDisplayMetadata {
         red_x: 34000,
@@ -22,10 +24,12 @@ fn create_test_mastering_display() -> MasteringDisplayMetadata {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_c_ll() -> ContentLightLevel {
     ContentLightLevel::new(1000, 400)
 }
 
+#[allow(dead_code)]
 fn create_test_inspector() -> MetadataInspector {
     MetadataInspector::new()
 }
@@ -35,6 +39,7 @@ fn create_test_inspector() -> MetadataInspector {
 // ============================================================================
 #[cfg(test)]
 mod mastering_display_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -64,6 +69,7 @@ mod mastering_display_tests {
 // ============================================================================
 #[cfg(test)]
 mod content_light_level_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -87,6 +93,7 @@ mod content_light_level_tests {
 // ============================================================================
 #[cfg(test)]
 mod hdr_format_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -109,6 +116,7 @@ mod hdr_format_tests {
 // ============================================================================
 #[cfg(test)]
 mod color_primaries_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -129,6 +137,7 @@ mod color_primaries_tests {
 // ============================================================================
 #[cfg(test)]
 mod transfer_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -150,6 +159,7 @@ mod transfer_tests {
 // ============================================================================
 #[cfg(test)]
 mod matrix_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -164,6 +174,7 @@ mod matrix_tests {
 // ============================================================================
 #[cfg(test)]
 mod sei_type_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -179,6 +190,7 @@ mod sei_type_tests {
 // ============================================================================
 #[cfg(test)]
 mod metadata_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -223,6 +235,7 @@ mod metadata_tests {
 // ============================================================================
 #[cfg(test)]
 mod inspector_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -253,6 +266,7 @@ mod inspector_tests {
 // ============================================================================
 #[cfg(test)]
 mod filter_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

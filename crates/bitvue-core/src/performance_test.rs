@@ -30,6 +30,7 @@ fn create_test_timer(metric: PerfMetric) -> PerfTimer {
     PerfTimer::new(metric)
 }
 
+#[allow(dead_code)]
 #[cfg(test)]
 fn create_test_timer_with_tracker(metric: PerfMetric) -> PerfTimer {
     let tracker = std::sync::Arc::new(std::sync::Mutex::new(create_test_tracker()));

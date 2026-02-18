@@ -1,3 +1,9 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
 //! Comprehensive edge case tests for container formats (MP4, MKV)
 //!
 //! This test suite covers critical edge cases for container format parsing

@@ -3,10 +3,12 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_rect() -> CodedRect {
     CodedRect::new(10, 20, 100, 80)
 }
 
+#[allow(dead_code)]
 fn create_test_block_evidence(id: &str) -> BlockEvidence {
     BlockEvidence::new(
         id.to_string(),
@@ -18,6 +20,7 @@ fn create_test_block_evidence(id: &str) -> BlockEvidence {
     )
 }
 
+#[allow(dead_code)]
 fn create_test_ctu_evidence(id: &str) -> CtuEvidence {
     CtuEvidence::new(
         id.to_string(),
@@ -28,6 +31,7 @@ fn create_test_ctu_evidence(id: &str) -> CtuEvidence {
     )
 }
 
+#[allow(dead_code)]
 fn create_test_tile_evidence(id: &str) -> TileEvidence {
     TileEvidence::new(
         id.to_string(),
@@ -40,6 +44,7 @@ fn create_test_tile_evidence(id: &str) -> TileEvidence {
     )
 }
 
+#[allow(dead_code)]
 fn create_test_frame_hierarchy(id: &str, display_idx: u64) -> FrameSpatialHierarchy {
     FrameSpatialHierarchy::new(
         id.to_string(),
@@ -51,6 +56,7 @@ fn create_test_frame_hierarchy(id: &str, display_idx: u64) -> FrameSpatialHierar
     )
 }
 
+#[allow(dead_code)]
 fn create_test_index() -> SpatialHierarchyIndex {
     SpatialHierarchyIndex::new()
 }
@@ -60,6 +66,7 @@ fn create_test_index() -> SpatialHierarchyIndex {
 // ============================================================================
 #[cfg(test)]
 mod coded_rect_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -107,6 +114,7 @@ mod coded_rect_tests {
 // ============================================================================
 #[cfg(test)]
 mod prediction_mode_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -153,6 +161,7 @@ mod prediction_mode_tests {
 // ============================================================================
 #[cfg(test)]
 mod motion_vector_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -197,6 +206,7 @@ mod motion_vector_tests {
 // ============================================================================
 #[cfg(test)]
 mod block_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -238,6 +248,7 @@ mod block_evidence_tests {
 // ============================================================================
 #[cfg(test)]
 mod ctu_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -291,6 +302,7 @@ mod ctu_evidence_tests {
 // ============================================================================
 #[cfg(test)]
 mod tile_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -347,6 +359,7 @@ mod tile_evidence_tests {
 // ============================================================================
 #[cfg(test)]
 mod frame_hierarchy_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -416,6 +429,7 @@ mod frame_hierarchy_tests {
 // ============================================================================
 #[cfg(test)]
 mod index_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

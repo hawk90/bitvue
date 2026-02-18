@@ -3,10 +3,12 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_action() -> DiscoverableAction {
     DiscoverableAction::TimelineFrameStep
 }
 
+#[allow(dead_code)]
 fn create_test_hint() -> ContextualHint {
     ContextualHint::new(
         DiscoverableAction::TimelineFrameStep,
@@ -15,6 +17,7 @@ fn create_test_hint() -> ContextualHint {
     )
 }
 
+#[allow(dead_code)]
 fn create_test_system() -> DiscoverabilitySystem {
     DiscoverabilitySystem::new()
 }
@@ -24,6 +27,7 @@ fn create_test_system() -> DiscoverabilitySystem {
 // ============================================================================
 #[cfg(test)]
 mod hint_mode_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -37,6 +41,7 @@ mod hint_mode_tests {
 // ============================================================================
 #[cfg(test)]
 mod keyboard_shortcut_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -71,6 +76,7 @@ mod keyboard_shortcut_tests {
 // ============================================================================
 #[cfg(test)]
 mod contextual_hint_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -109,6 +115,7 @@ mod contextual_hint_tests {
 // ============================================================================
 #[cfg(test)]
 mod discoverability_system_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

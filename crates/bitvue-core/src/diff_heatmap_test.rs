@@ -1,3 +1,10 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unused_must_use)]
+#![allow(unused_comparisons)]
+#![allow(unused_mut)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
 // Diff heatmap module tests
 //
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures

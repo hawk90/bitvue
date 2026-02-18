@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_mut)]
 use super::*;
 
 #[test]

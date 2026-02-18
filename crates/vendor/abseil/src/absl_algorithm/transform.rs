@@ -118,9 +118,11 @@ mod tests {
 
     #[test]
     fn test_equal_by() {
-        assert!(equal_by(&[1.0_f64, 2.0, 3.0], &[1.01, 2.01, 3.01], |a, b| {
-            (a - b).abs() < 0.1
-        }));
+        assert!(equal_by(
+            &[1.0_f64, 2.0, 3.0],
+            &[1.01, 2.01, 3.01],
+            |a, b| { (a - b).abs() < 0.1 }
+        ));
         assert!(!equal_by(&[1, 2, 3], &[1, 2, 4], |a, b| a == b));
     }
 }

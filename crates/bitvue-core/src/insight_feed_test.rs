@@ -3,6 +3,7 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
+#[allow(unused_imports)]
 use super::*;
 use crate::frame_identity::FrameMetadata;
 
@@ -11,6 +12,7 @@ use crate::frame_identity::FrameMetadata;
 // ============================================================================
 
 /// Create test frame metadata
+#[allow(dead_code)]
 fn create_test_frames() -> Vec<FrameMetadata> {
     vec![
         FrameMetadata {
@@ -38,11 +40,13 @@ fn create_test_frames() -> Vec<FrameMetadata> {
 }
 
 /// Create a test frame map
+#[allow(dead_code)]
 fn create_test_frame_map() -> FrameIndexMap {
     FrameIndexMap::new(&create_test_frames())
 }
 
 /// Create a test diagnostics bands
+#[allow(dead_code)]
 fn create_test_diagnostics() -> DiagnosticsBands {
     DiagnosticsBands {
         error_bursts: vec![
@@ -91,6 +95,7 @@ fn create_test_diagnostics() -> DiagnosticsBands {
 }
 
 /// Create a test insight feed
+#[allow(dead_code)]
 fn create_test_insight_feed() -> InsightFeed {
     InsightFeed::new()
 }
@@ -101,6 +106,7 @@ fn create_test_insight_feed() -> InsightFeed {
 
 #[cfg(test)]
 mod construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -128,6 +134,7 @@ mod construction_tests {
 
 #[cfg(test)]
 mod insight_severity_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -196,6 +203,7 @@ mod insight_severity_tests {
 
 #[cfg(test)]
 mod severity_counts_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -273,6 +281,7 @@ mod severity_counts_tests {
 
 #[cfg(test)]
 mod generation_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -516,6 +525,7 @@ mod generation_tests {
 
 #[cfg(test)]
 mod filter_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -590,6 +600,7 @@ mod filter_tests {
 
 #[cfg(test)]
 mod query_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -692,6 +703,7 @@ mod query_tests {
 
 #[cfg(test)]
 mod insight_structure_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -811,6 +823,7 @@ mod insight_structure_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

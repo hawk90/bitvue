@@ -27,6 +27,19 @@ pub use types::*;
 // Tests
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    dead_code,
+    unused_comparisons,
+    unused_must_use,
+    hidden_glob_reexports,
+    unreachable_code,
+    non_camel_case_types,
+    unused_parens,
+    unused_assignments
+)]
 #[cfg(test)]
 mod tests {
     use super::types::ExportFormat;
@@ -235,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_diagnostics_export_row_from_diagnostic() {
-        use crate::diagnostics::{Diagnostic, DiagnosticCategory};
+        use crate::diagnostics::{Diagnostic, DiagnosticCategory, DiagnosticSeverity};
         use crate::StreamId;
         use std::collections::HashMap;
 

@@ -1,3 +1,9 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
 //! Tests for MPEG-2 parser
 
 #![allow(dead_code)]

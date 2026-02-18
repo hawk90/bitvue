@@ -475,6 +475,19 @@ pub struct CombinedCacheStats {
     pub combined_hit_rate: f64,
 }
 
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    dead_code,
+    unused_comparisons,
+    unused_must_use,
+    hidden_glob_reexports,
+    unreachable_code,
+    non_camel_case_types,
+    unused_parens,
+    unused_assignments
+)]
 #[cfg(test)]
 mod tests {
     include!("compare_cache_test.rs");
