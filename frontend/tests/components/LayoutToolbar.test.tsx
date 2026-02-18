@@ -3,13 +3,15 @@
  * Tests layout toolbar with reset button
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@/test/test-utils';
-import { LayoutToolbar } from '@/components/LayoutToolbar';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@/test/test-utils";
+import { LayoutToolbar } from "@/components/LayoutToolbar";
 
 // Mock context
-vi.mock('@/contexts/LayoutContext', () => ({
-  LayoutProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock("@/contexts/LayoutContext", () => ({
+  LayoutProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   useLayout: () => ({
     resetLayout: vi.fn(),
   }),
@@ -17,40 +19,40 @@ vi.mock('@/contexts/LayoutContext', () => ({
 
 // Mock window.location.reload
 const mockReload = vi.fn();
-Object.defineProperty(window, 'location', {
+Object.defineProperty(window, "location", {
   value: { reload: mockReload },
   writable: true,
 });
 
-describe('LayoutToolbar', () => {
+describe("LayoutToolbar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should render layout toolbar', () => {
+  it("should render layout toolbar", () => {
     render(<LayoutToolbar />);
 
-    expect(screen.getByText('Reset Layout')).toBeInTheDocument();
+    expect(screen.getByText("Reset Layout")).toBeInTheDocument();
   });
 
-  it('should render reset button', () => {
+  it("should render reset button", () => {
     render(<LayoutToolbar />);
 
-    const button = screen.getByRole('button', { name: 'Reset Layout' });
+    const button = screen.getByRole("button", { name: "Reset Layout" });
     expect(button).toBeInTheDocument();
   });
 
-  it('should have reset icon', () => {
+  it("should have reset icon", () => {
     render(<LayoutToolbar />);
 
-    const icon = document.querySelector('.codicon-screen-normal');
+    const icon = document.querySelector(".codicon-screen-normal");
     expect(icon).toBeInTheDocument();
   });
 
-  it('should call resetLayout when clicked', () => {
+  it("should call resetLayout when clicked", () => {
     render(<LayoutToolbar />);
 
-    const button = screen.getByRole('button', { name: 'Reset Layout' });
+    const button = screen.getByRole("button", { name: "Reset Layout" });
     fireEvent.click(button);
 
     // Should call resetLayout and reload
@@ -58,27 +60,27 @@ describe('LayoutToolbar', () => {
     expect(mockReload).toHaveBeenCalled();
   });
 
-  it('should use stable callbacks (useCallback optimization)', () => {
+  it("should use stable callbacks (useCallback optimization)", () => {
     const { rerender } = render(<LayoutToolbar />);
 
     rerender(<LayoutToolbar />);
 
-    expect(screen.getByText('Reset Layout')).toBeInTheDocument();
+    expect(screen.getByText("Reset Layout")).toBeInTheDocument();
   });
 });
 
-describe('LayoutToolbar button', () => {
-  it('should have correct title attribute', () => {
+describe("LayoutToolbar button", () => {
+  it("should have correct title attribute", () => {
     render(<LayoutToolbar />);
 
-    const button = screen.getByRole('button', { name: 'Reset Layout' });
-    expect(button).toHaveAttribute('title', 'Reset Layout to Default');
+    const button = screen.getByRole("button", { name: "Reset Layout" });
+    expect(button).toHaveAttribute("title", "Reset Layout to Default");
   });
 
-  it('should have correct CSS class', () => {
+  it("should have correct CSS class", () => {
     const { container } = render(<LayoutToolbar />);
 
-    const button = container.querySelector('.layout-toolbar-btn');
+    const button = container.querySelector(".layout-toolbar-btn");
     expect(button).toBeInTheDocument();
   });
 });

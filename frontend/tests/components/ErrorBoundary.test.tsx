@@ -3,15 +3,26 @@
  * Tests error boundary catching, fallback UI, and recovery
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import React from 'react';
-import { renderWithoutProviders, screen, fireEvent, waitFor, cleanup } from '../../test/test-utils';
-import { act } from '@testing-library/react';
-import { ErrorBoundary, withErrorBoundary, DefaultErrorFallback, type ErrorFallbackProps } from '../ErrorBoundary';
-import { logger } from '../../utils/logger';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import React from "react";
+import {
+  renderWithoutProviders,
+  screen,
+  fireEvent,
+  waitFor,
+  cleanup,
+} from "../../test/test-utils";
+import { act } from "@testing-library/react";
+import {
+  ErrorBoundary,
+  withErrorBoundary,
+  DefaultErrorFallback,
+  type ErrorFallbackProps,
+} from "../ErrorBoundary";
+import { logger } from "../../utils/logger";
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock("../../utils/logger", () => ({
   createLogger: vi.fn(() => ({
     error: vi.fn(),
     warn: vi.fn(),
@@ -28,7 +39,7 @@ vi.mock('../../utils/logger', () => ({
 
 // Mock window.location.reload
 const mockLocationReload = vi.fn();
-Object.defineProperty(window, 'location', {
+Object.defineProperty(window, "location", {
   value: {
     reload: mockLocationReload,
   },
@@ -36,23 +47,27 @@ Object.defineProperty(window, 'location', {
 });
 
 // Component that throws an error
-const ThrowErrorComponent = ({ shouldThrow = false }: { shouldThrow?: boolean }) => {
+const ThrowErrorComponent = ({
+  shouldThrow = false,
+}: {
+  shouldThrow?: boolean;
+}) => {
   if (shouldThrow) {
-    throw new Error('Test error');
+    throw new Error("Test error");
   }
   return <div>No error</div>;
 };
 
 // Component that throws on render
 const BrokenComponent = () => {
-  throw new Error('Broken component');
+  throw new Error("Broken component");
 };
 
 // Component that throws in event handler
 const ComponentWithErrorHandler = () => {
   const handleClick = () => {
     try {
-      throw new Error('Handler error');
+      throw new Error("Handler error");
     } catch {
       // Error caught to prevent unhandled error
     }
@@ -70,7 +85,7 @@ const AsyncErrorComponent = () => {
   const triggerAsyncError = async () => {
     await Promise.resolve();
     try {
-      throw new Error('Async error');
+      throw new Error("Async error");
     } catch {
       // Error caught to prevent unhandled rejection
     }
@@ -80,16 +95,20 @@ const AsyncErrorComponent = () => {
 };
 
 // Custom fallback component
-const CustomFallback = ({ error, errorInfo, resetError }: ErrorFallbackProps) => (
+const CustomFallback = ({
+  error,
+  errorInfo,
+  resetError,
+}: ErrorFallbackProps) => (
   <div className="custom-error">
     <h1>Custom Error UI</h1>
-    <p>{error?.message || 'Unknown error'}</p>
+    <p>{error?.message || "Unknown error"}</p>
     <button onClick={resetError}>Custom Reset</button>
   </div>
 );
 
 // Working component
-const WorkingComponent = ({ message = 'Working!' }: { message?: string }) => (
+const WorkingComponent = ({ message = "Working!" }: { message?: string }) => (
   <div className="working">{message}</div>
 );
 
@@ -101,186 +120,212 @@ const NestedComponent = ({ depth = 0 }: { depth?: number }) => {
   return <div>Leaf</div>;
 };
 
-describe('ErrorBoundary', () => {
+describe("ErrorBoundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should render children when there is no error', () => {
+  it("should render children when there is no error", () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <WorkingComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Working!')).toBeInTheDocument();
+    expect(screen.getByText("Working!")).toBeInTheDocument();
   });
 
-  it('should catch errors thrown during rendering', () => {
+  it("should catch errors thrown during rendering", () => {
     // Suppress console.error for this test
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText(/An unexpected error occurred/)).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(
+      screen.getByText(/An unexpected error occurred/),
+    ).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should log errors when caught', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should log errors when caught", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(logger.error).toHaveBeenCalledWith(
-      'ErrorBoundary caught an error:',
+      "ErrorBoundary caught an error:",
       expect.any(Error),
-      expect.any(Object)
+      expect.any(Object),
     );
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should display error details', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should display error details", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Error Details')).toBeInTheDocument();
+    expect(screen.getByText("Error Details")).toBeInTheDocument();
     expect(screen.getAllByText(/Broken component/)).toHaveLength(2); // Appears in error name and stack trace
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should display stack trace when available', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should display stack trace when available", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // Stack trace should be visible (check for pre element with stack trace class)
-    const stackTrace = document.querySelector('.error-boundary-stack');
+    const stackTrace = document.querySelector(".error-boundary-stack");
     expect(stackTrace).toBeInTheDocument();
-    expect(stackTrace?.textContent).toContain('at');
+    expect(stackTrace?.textContent).toContain("at");
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should display component stack when available', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should display component stack when available", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // Component stack should be visible (check for pre element with stack trace class)
-    const stackTrace = document.querySelector('.error-boundary-stack');
+    const stackTrace = document.querySelector(".error-boundary-stack");
     expect(stackTrace).toBeInTheDocument();
-    expect(stackTrace?.textContent).toContain('at');
+    expect(stackTrace?.textContent).toContain("at");
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should render default fallback UI', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should render default fallback UI", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText(/An unexpected error occurred/)).toBeInTheDocument();
-    expect(screen.getByText('Try Again')).toBeInTheDocument();
-    expect(screen.getByText('Reload Page')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(
+      screen.getByText(/An unexpected error occurred/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Try Again")).toBeInTheDocument();
+    expect(screen.getByText("Reload Page")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should render custom fallback when provided', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should render custom fallback when provided", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary fallback={CustomFallback}>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Custom Error UI')).toBeInTheDocument();
-    expect(screen.getByText('Custom Reset')).toBeInTheDocument();
+    expect(screen.getByText("Custom Error UI")).toBeInTheDocument();
+    expect(screen.getByText("Custom Reset")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should call onError callback when error is caught', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should call onError callback when error is caught", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const onErrorMock = vi.fn();
 
     renderWithoutProviders(
       <ErrorBoundary onError={onErrorMock}>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(onErrorMock).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.any(Object)
+      expect.any(Object),
     );
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should not catch errors in event handlers', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should not catch errors in event handlers", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <ComponentWithErrorHandler />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const button = screen.getByText('Click to error');
+    const button = screen.getByText("Click to error");
     expect(() => fireEvent.click(button)).not.toThrow();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should not catch async errors', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should not catch async errors", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <AsyncErrorComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const button = screen.getByText('Async error');
+    const button = screen.getByText("Async error");
     expect(() => fireEvent.click(button)).not.toThrow();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should not catch errors in error boundary itself', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should not catch errors in error boundary itself", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     // This test verifies the error boundary doesn't crash when
     // its own methods fail
@@ -291,8 +336,10 @@ describe('ErrorBoundary', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('should catch errors from deeply nested components', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should catch errors from deeply nested components", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
@@ -301,27 +348,33 @@ describe('ErrorBoundary', () => {
             <BrokenComponent />
           </div>
         </div>
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary error recovery', () => {
+describe("ErrorBoundary error recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should reset error state when resetError is called', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should reset error state when resetError is called", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     // Test with a component that can conditionally throw
-    const ConditionalComponent = ({ shouldThrow }: { shouldThrow: boolean }) => {
+    const ConditionalComponent = ({
+      shouldThrow,
+    }: {
+      shouldThrow: boolean;
+    }) => {
       if (shouldThrow) {
-        throw new Error('Test error');
+        throw new Error("Test error");
       }
       return <div>Recovered</div>;
     };
@@ -330,13 +383,13 @@ describe('ErrorBoundary error recovery', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ConditionalComponent shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     // Get the button before clicking
-    const tryAgainButton = screen.getByText('Try Again');
+    const tryAgainButton = screen.getByText("Try Again");
 
     // Click to reset error - this will try to re-render and catch error again
     // since the child still throws
@@ -349,25 +402,27 @@ describe('ErrorBoundary error recovery', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ConditionalComponent shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // The new ErrorBoundary should render the children successfully
-    expect(screen.getByText('Recovered')).toBeInTheDocument();
+    expect(screen.getByText("Recovered")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should reload page when Reload button is clicked', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should reload page when Reload button is clicked", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const reloadButton = screen.getByText('Reload Page');
+    const reloadButton = screen.getByText("Reload Page");
     fireEvent.click(reloadButton);
 
     expect(mockLocationReload).toHaveBeenCalled();
@@ -375,26 +430,34 @@ describe('ErrorBoundary error recovery', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('should call custom reset function', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should call custom reset function", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const customResetMock = vi.fn();
 
-    const CustomFallbackWithMock: React.ComponentType<ErrorFallbackProps> = ({ resetError }) => (
+    const CustomFallbackWithMock: React.ComponentType<ErrorFallbackProps> = ({
+      resetError,
+    }) => (
       <div>
-        <button onClick={() => {
-          customResetMock();
-          resetError();
-        }}>Custom Reset</button>
+        <button
+          onClick={() => {
+            customResetMock();
+            resetError();
+          }}
+        >
+          Custom Reset
+        </button>
       </div>
     );
 
     renderWithoutProviders(
       <ErrorBoundary fallback={CustomFallbackWithMock}>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const resetButton = screen.getByText('Custom Reset');
+    const resetButton = screen.getByText("Custom Reset");
     fireEvent.click(resetButton);
 
     expect(customResetMock).toHaveBeenCalled();
@@ -402,82 +465,88 @@ describe('ErrorBoundary error recovery', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('should recover and re-render children after reset', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should recover and re-render children after reset", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const { rerender } = renderWithoutProviders(
       <ErrorBoundary>
         <WorkingComponent message="First" />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // Trigger error
     rerender(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     // Reset and recover
     rerender(
       <ErrorBoundary>
         <WorkingComponent message="Second" />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // After error boundary state resets, we need to actually click the Try Again button
-    const tryAgainButton = screen.getByText('Try Again');
+    const tryAgainButton = screen.getByText("Try Again");
     fireEvent.click(tryAgainButton);
 
-    expect(screen.getByText('Second')).toBeInTheDocument();
+    expect(screen.getByText("Second")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary conditional rendering', () => {
+describe("ErrorBoundary conditional rendering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should toggle error state based on component prop', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should toggle error state based on component prop", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const { rerender } = renderWithoutProviders(
       <ErrorBoundary>
         <ThrowErrorComponent shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('No error')).toBeInTheDocument();
+    expect(screen.getByText("No error")).toBeInTheDocument();
 
     rerender(
       <ErrorBoundary>
         <ThrowErrorComponent shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle switching between broken and working components', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle switching between broken and working components", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     // Render with throwing component
     renderWithoutProviders(
       <ErrorBoundary>
         <ThrowErrorComponent shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     // Click reset button
-    const tryAgainButton = screen.getByText('Try Again');
+    const tryAgainButton = screen.getByText("Try Again");
     await act(async () => {
       tryAgainButton.click();
     });
@@ -486,22 +555,24 @@ describe('ErrorBoundary conditional rendering', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ThrowErrorComponent shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('No error')).toBeInTheDocument();
+    expect(screen.getByText("No error")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary multiple boundaries', () => {
+describe("ErrorBoundary multiple boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should only catch errors in its own children', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should only catch errors in its own children", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <div>
@@ -509,23 +580,23 @@ describe('ErrorBoundary multiple boundaries', () => {
           <BrokenComponent />
         </ErrorBoundary>
         <WorkingComponent message="Outside boundary" />
-      </div>
+      </div>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText('Outside boundary')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("Outside boundary")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle nested error boundaries', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle nested error boundaries", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const InnerBoundary = ({ children }: { children: React.ReactNode }) => (
       <div className="inner-boundary">
-        <ErrorBoundary>
-          {children}
-        </ErrorBoundary>
+        <ErrorBoundary>{children}</ErrorBoundary>
       </div>
     );
 
@@ -534,19 +605,21 @@ describe('ErrorBoundary multiple boundaries', () => {
         <InnerBoundary>
           <BrokenComponent />
         </InnerBoundary>
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // Inner boundary should catch the error first
-    expect(screen.queryByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).toBeInTheDocument();
     // Outer boundary with custom fallback should not be triggered
-    expect(screen.queryByText('Custom Error UI')).not.toBeInTheDocument();
+    expect(screen.queryByText("Custom Error UI")).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle sibling error boundaries independently', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle sibling error boundaries independently", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <div>
@@ -559,194 +632,206 @@ describe('ErrorBoundary multiple boundaries', () => {
         <ErrorBoundary>
           <WorkingComponent message="Third" />
         </ErrorBoundary>
-      </div>
+      </div>,
     );
 
-    expect(screen.getByText('First')).toBeInTheDocument();
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText('Third')).toBeInTheDocument();
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("Third")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary error information', () => {
+describe("ErrorBoundary error information", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should display error name and message', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should display error name and message", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // Check for error name element
-    const errorName = document.querySelector('.error-boundary-error-name');
+    const errorName = document.querySelector(".error-boundary-error-name");
     expect(errorName).toBeInTheDocument();
-    expect(errorName?.textContent).toContain('Error: Broken component');
+    expect(errorName?.textContent).toContain("Error: Broken component");
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should display error icon', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should display error icon", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    const icon = document.querySelector('.codicon-error');
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    const icon = document.querySelector(".codicon-error");
     expect(icon).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should display error details in collapsible section', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should display error details in collapsible section", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const details = document.querySelector('details');
+    const details = document.querySelector("details");
     expect(details).toBeInTheDocument();
-    expect(details).toHaveTextContent('Error Details');
+    expect(details).toHaveTextContent("Error Details");
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should expand error details when clicked', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should expand error details when clicked", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const summary = screen.getByText('Error Details');
-    const details = summary.closest('details');
+    const summary = screen.getByText("Error Details");
+    const details = summary.closest("details");
 
     expect(details).toBeInTheDocument();
-    expect(details?.getAttribute('open')).toBeNull();
+    expect(details?.getAttribute("open")).toBeNull();
 
     // Click to expand
     fireEvent.click(summary);
 
-    expect(details?.getAttribute('open')).toBe('');
+    expect(details?.getAttribute("open")).toBe("");
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should collapse error details when clicked again', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should collapse error details when clicked again", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const summary = screen.getByText('Error Details');
-    const details = summary.closest('details');
+    const summary = screen.getByText("Error Details");
+    const details = summary.closest("details");
 
     // Click twice to collapse
     fireEvent.click(summary);
     fireEvent.click(summary);
 
-    expect(details?.getAttribute('open')).toBeNull();
+    expect(details?.getAttribute("open")).toBeNull();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary edge cases', () => {
+describe("ErrorBoundary edge cases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should handle null children', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle null children", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-    renderWithoutProviders(
-      <ErrorBoundary>
-        {null}
-      </ErrorBoundary>
-    );
+    renderWithoutProviders(<ErrorBoundary>{null}</ErrorBoundary>);
 
     // Should render without crashing
-    expect(document.querySelector('.error-boundary-fallback')).not.toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-fallback"),
+    ).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle undefined children', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle undefined children", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-    renderWithoutProviders(
-      <ErrorBoundary>
-        {undefined}
-      </ErrorBoundary>
-    );
+    renderWithoutProviders(<ErrorBoundary>{undefined}</ErrorBoundary>);
 
-    expect(document.querySelector('.error-boundary-fallback')).not.toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-fallback"),
+    ).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle multiple children', () => {
+  it("should handle multiple children", () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <WorkingComponent message="First" />
         <WorkingComponent message="Second" />
         <WorkingComponent message="Third" />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('First')).toBeInTheDocument();
-    expect(screen.getByText('Second')).toBeInTheDocument();
-    expect(screen.getByText('Third')).toBeInTheDocument();
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByText("Second")).toBeInTheDocument();
+    expect(screen.getByText("Third")).toBeInTheDocument();
   });
 
-  it('should handle fragments', () => {
+  it("should handle fragments", () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <>
           <WorkingComponent message="First" />
           <WorkingComponent message="Second" />
         </>
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('First')).toBeInTheDocument();
-    expect(screen.getByText('Second')).toBeInTheDocument();
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByText("Second")).toBeInTheDocument();
   });
 
-  it('should handle arrays of children', () => {
+  it("should handle arrays of children", () => {
     renderWithoutProviders(
       <ErrorBoundary>
         {[
           <WorkingComponent key="1" message="First" />,
           <WorkingComponent key="2" message="Second" />,
         ]}
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('First')).toBeInTheDocument();
-    expect(screen.getByText('Second')).toBeInTheDocument();
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByText("Second")).toBeInTheDocument();
   });
 
-  it('should handle throwing null', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle throwing null", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const ThrowNullComponent = () => {
       throw null;
@@ -755,16 +840,18 @@ describe('ErrorBoundary edge cases', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ThrowNullComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle throwing undefined', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle throwing undefined", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const ThrowUndefinedComponent = () => {
       throw undefined;
@@ -773,34 +860,38 @@ describe('ErrorBoundary edge cases', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ThrowUndefinedComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle throwing non-Error objects', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle throwing non-Error objects", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const ThrowStringComponent = () => {
-      throw 'String error';
+      throw "String error";
     };
 
     renderWithoutProviders(
       <ErrorBoundary>
         <ThrowStringComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle throwing numbers', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should handle throwing numbers", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const ThrowNumberComponent = () => {
       throw 404;
@@ -809,78 +900,90 @@ describe('ErrorBoundary edge cases', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ThrowNumberComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary state management', () => {
+describe("ErrorBoundary state management", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should initialize with no error state', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should initialize with no error state", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <WorkingComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should update hasError state when error occurs', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should update hasError state when error occurs", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should preserve error state across re-renders', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should preserve error state across re-renders", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const { rerender } = renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     // Rerender with same broken component
     rerender(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should clear error state after successful recovery', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should clear error state after successful recovery", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     // Use conditional component
-    const ConditionalComponent = ({ shouldThrow }: { shouldThrow: boolean }) => {
+    const ConditionalComponent = ({
+      shouldThrow,
+    }: {
+      shouldThrow: boolean;
+    }) => {
       if (shouldThrow) {
-        throw new Error('Test error');
+        throw new Error("Test error");
       }
       return <div>Working!</div>;
     };
@@ -889,13 +992,13 @@ describe('ErrorBoundary state management', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ConditionalComponent shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     // Click reset
-    const tryAgainButton = screen.getByText('Try Again');
+    const tryAgainButton = screen.getByText("Try Again");
     await act(async () => {
       tryAgainButton.click();
     });
@@ -905,58 +1008,64 @@ describe('ErrorBoundary state management', () => {
     renderWithoutProviders(
       <ErrorBoundary>
         <ConditionalComponent shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Working!')).toBeInTheDocument();
-    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+    expect(screen.getByText("Working!")).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('withErrorBoundary HOC', () => {
+describe("withErrorBoundary HOC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should wrap component with error boundary', () => {
+  it("should wrap component with error boundary", () => {
     const ProtectedComponent = withErrorBoundary(WorkingComponent);
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(<ProtectedComponent message="Protected" />);
 
-    expect(screen.getByText('Protected')).toBeInTheDocument();
+    expect(screen.getByText("Protected")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should catch errors from wrapped component', () => {
+  it("should catch errors from wrapped component", () => {
     const ProtectedComponent = withErrorBoundary(BrokenComponent);
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(<ProtectedComponent />);
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should pass props to wrapped component', () => {
+  it("should pass props to wrapped component", () => {
     const ProtectedComponent = withErrorBoundary(WorkingComponent);
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(<ProtectedComponent message="With props" />);
 
-    expect(screen.getByText('With props')).toBeInTheDocument();
+    expect(screen.getByText("With props")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should accept error boundary props', () => {
+  it("should accept error boundary props", () => {
     const customFallback: React.ComponentType<ErrorFallbackProps> = () => (
       <div className="hoc-error">HOC Error</div>
     );
@@ -965,75 +1074,85 @@ describe('withErrorBoundary HOC', () => {
       fallback: customFallback,
     });
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(<ProtectedComponent />);
 
-    expect(screen.getByText('HOC Error')).toBeInTheDocument();
+    expect(screen.getByText("HOC Error")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should set correct displayName', () => {
+  it("should set correct displayName", () => {
     const ProtectedComponent = withErrorBoundary(WorkingComponent);
 
-    expect(ProtectedComponent.displayName).toContain('withErrorBoundary');
-    expect(ProtectedComponent.displayName).toContain('WorkingComponent');
+    expect(ProtectedComponent.displayName).toContain("withErrorBoundary");
+    expect(ProtectedComponent.displayName).toContain("WorkingComponent");
   });
 
-  it('should handle anonymous components', () => {
+  it("should handle anonymous components", () => {
     const AnonymousComponent = () => <div>Anonymous</div>;
     const ProtectedComponent = withErrorBoundary(AnonymousComponent);
 
-    expect(ProtectedComponent.displayName).toContain('withErrorBoundary');
+    expect(ProtectedComponent.displayName).toContain("withErrorBoundary");
   });
 });
 
-describe('ErrorBoundary accessibility', () => {
+describe("ErrorBoundary accessibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should have proper ARIA attributes', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should have proper ARIA attributes", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const fallback = document.querySelector('.error-boundary-fallback');
+    const fallback = document.querySelector(".error-boundary-fallback");
     expect(fallback).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should have accessible error message', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should have accessible error message", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Something went wrong');
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
+      "Something went wrong",
+    );
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should have accessible buttons', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should have accessible buttons", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const tryAgainButton = screen.getByRole('button', { name: /try again/i });
-    const reloadButton = screen.getByRole('button', { name: /reload/i });
+    const tryAgainButton = screen.getByRole("button", { name: /try again/i });
+    const reloadButton = screen.getByRole("button", { name: /reload/i });
 
     expect(tryAgainButton).toBeInTheDocument();
     expect(reloadButton).toBeInTheDocument();
@@ -1041,16 +1160,18 @@ describe('ErrorBoundary accessibility', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('should be keyboard navigable', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should be keyboard navigable", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const tryAgainButton = screen.getByRole('button', { name: /try again/i });
+    const tryAgainButton = screen.getByRole("button", { name: /try again/i });
 
     tryAgainButton.focus();
     expect(document.activeElement).toBe(tryAgainButton);
@@ -1059,214 +1180,256 @@ describe('ErrorBoundary accessibility', () => {
   });
 });
 
-describe('ErrorBoundary styling', () => {
+describe("ErrorBoundary styling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should apply CSS classes to fallback', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should apply CSS classes to fallback", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(document.querySelector('.error-boundary-fallback')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-content')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-icon')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-title')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-message')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-actions')).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-fallback"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-content"),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".error-boundary-icon")).toBeInTheDocument();
+    expect(document.querySelector(".error-boundary-title")).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-message"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-actions"),
+    ).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should apply CSS classes to buttons', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should apply CSS classes to buttons", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(document.querySelector('.error-boundary-button')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-button-primary')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-button-secondary')).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-button"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-button-primary"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-button-secondary"),
+    ).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should apply CSS classes to error details', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should apply CSS classes to error details", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(document.querySelector('.error-boundary-details')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-details-content')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-error-name')).toBeInTheDocument();
-    expect(document.querySelector('.error-boundary-stack')).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-details"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-details-content"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".error-boundary-error-name"),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".error-boundary-stack")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary with different error types', () => {
+describe("ErrorBoundary with different error types", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should handle TypeError', () => {
+  it("should handle TypeError", () => {
     const TypeErrorComponent = () => {
-      throw new TypeError('Type error occurred');
+      throw new TypeError("Type error occurred");
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <TypeErrorComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getAllByText(/TypeError: Type error occurred/)).toHaveLength(2);
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getAllByText(/TypeError: Type error occurred/)).toHaveLength(
+      2,
+    );
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle ReferenceError', () => {
+  it("should handle ReferenceError", () => {
     const ReferenceErrorComponent = () => {
-      throw new ReferenceError('Not defined');
+      throw new ReferenceError("Not defined");
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <ReferenceErrorComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
     expect(screen.getAllByText(/ReferenceError: Not defined/)).toHaveLength(2);
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle RangeError', () => {
+  it("should handle RangeError", () => {
     const RangeErrorComponent = () => {
-      throw new RangeError('Invalid range');
+      throw new RangeError("Invalid range");
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <RangeErrorComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
     expect(screen.getAllByText(/RangeError: Invalid range/)).toHaveLength(2);
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle SyntaxError', () => {
+  it("should handle SyntaxError", () => {
     const SyntaxErrorComponent = () => {
-      throw new SyntaxError('Syntax error');
+      throw new SyntaxError("Syntax error");
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <SyntaxErrorComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
     expect(screen.getAllByText(/SyntaxError: Syntax error/)).toHaveLength(2);
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle custom errors', () => {
+  it("should handle custom errors", () => {
     class CustomError extends Error {
       constructor(message: string) {
         super(message);
-        this.name = 'CustomError';
+        this.name = "CustomError";
       }
     }
 
     const CustomErrorComponent = () => {
-      throw new CustomError('Custom error occurred');
+      throw new CustomError("Custom error occurred");
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <CustomErrorComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getAllByText(/CustomError: Custom error occurred/)).toHaveLength(2);
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/CustomError: Custom error occurred/),
+    ).toHaveLength(2);
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('ErrorBoundary integration scenarios', () => {
+describe("ErrorBoundary integration scenarios", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should handle component that renders then throws', () => {
+  it("should handle component that renders then throws", () => {
     const ThenThrowComponent = ({ shouldThrow }: { shouldThrow: boolean }) => {
       if (shouldThrow) {
-        throw new Error('Threw on second render');
+        throw new Error("Threw on second render");
       }
       return <div>First render</div>;
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     const { rerender } = renderWithoutProviders(
       <ErrorBoundary>
         <ThenThrowComponent shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('First render')).toBeInTheDocument();
+    expect(screen.getByText("First render")).toBeInTheDocument();
 
     rerender(
       <ErrorBoundary>
         <ThenThrowComponent shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle state updates that cause errors', () => {
+  it("should handle state updates that cause errors", () => {
     let shouldThrow = false;
 
     const StatefulComponent = () => {
       const [count, setCount] = React.useState(0);
 
       if (shouldThrow && count > 0) {
-        throw new Error('State update error');
+        throw new Error("State update error");
       }
 
       return (
@@ -1274,100 +1437,110 @@ describe('ErrorBoundary integration scenarios', () => {
       );
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <StatefulComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const button = screen.getByRole('button');
-    expect(button).toHaveTextContent('Count: 0');
+    const button = screen.getByRole("button");
+    expect(button).toHaveTextContent("Count: 0");
 
     // Trigger state update that doesn't throw
     fireEvent.click(button);
-    expect(button).toHaveTextContent('Count: 1');
+    expect(button).toHaveTextContent("Count: 1");
 
     // Now trigger error
     shouldThrow = true;
     fireEvent.click(button);
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should handle errors in useEffect hooks', () => {
+  it("should handle errors in useEffect hooks", () => {
     // Note: Error boundaries don't catch errors in useEffect
     // This test verifies that behavior
     const UseEffectErrorComponent = () => {
       React.useEffect(() => {
         // This won't be caught by error boundary
-        console.log('useEffect called');
+        console.log("useEffect called");
       }, []);
 
       return <div>Component with useEffect</div>;
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <UseEffectErrorComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Component with useEffect')).toBeInTheDocument();
+    expect(screen.getByText("Component with useEffect")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 });
 
-describe('DefaultErrorFallback', () => {
+describe("DefaultErrorFallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should render with null error', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should render with null error", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary fallback={DefaultErrorFallback}>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should render with null errorInfo', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should render with null errorInfo", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary fallback={DefaultErrorFallback}>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // Should still render UI even with null values
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should call reload when reload button is clicked', () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it("should call reload when reload button is clicked", () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary fallback={DefaultErrorFallback}>
         <BrokenComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    const reloadButton = screen.getByText('Reload Page');
+    const reloadButton = screen.getByText("Reload Page");
     fireEvent.click(reloadButton);
 
     expect(mockLocationReload).toHaveBeenCalled();
@@ -1376,35 +1549,37 @@ describe('DefaultErrorFallback', () => {
   });
 });
 
-describe('ErrorBoundary with React features', () => {
+describe("ErrorBoundary with React features", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should work with context providers', () => {
-    const TestContext = React.createContext({ value: 'test' });
+  it("should work with context providers", () => {
+    const TestContext = React.createContext({ value: "test" });
 
     const ContextConsumer = () => {
       const context = React.useContext(TestContext);
       return <div>Context: {context.value}</div>;
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
-        <TestContext.Provider value={{ value: 'test' }}>
+        <TestContext.Provider value={{ value: "test" }}>
           <ContextConsumer />
         </TestContext.Provider>
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Context: test')).toBeInTheDocument();
+    expect(screen.getByText("Context: test")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should work with hooks', () => {
+  it("should work with hooks", () => {
     const HooksComponent = () => {
       const [count, setCount] = React.useState(0);
       const doubled = React.useMemo(() => count * 2, [count]);
@@ -1418,58 +1593,64 @@ describe('ErrorBoundary with React features', () => {
       );
     };
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <HooksComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Count: 0')).toBeInTheDocument();
-    expect(screen.getByText('Doubled: 0')).toBeInTheDocument();
+    expect(screen.getByText("Count: 0")).toBeInTheDocument();
+    expect(screen.getByText("Doubled: 0")).toBeInTheDocument();
 
-    const button = screen.getByRole('button');
+    const button = screen.getByRole("button");
     fireEvent.click(button);
 
-    expect(screen.getByText('Count: 1')).toBeInTheDocument();
-    expect(screen.getByText('Doubled: 2')).toBeInTheDocument();
+    expect(screen.getByText("Count: 1")).toBeInTheDocument();
+    expect(screen.getByText("Doubled: 2")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should work with forwardRef', () => {
-    const ForwardRefComponent = React.forwardRef<HTMLDivElement>((props, ref) => (
-      <div ref={ref}>Forwarded</div>
-    ));
+  it("should work with forwardRef", () => {
+    const ForwardRefComponent = React.forwardRef<HTMLDivElement>(
+      (props, ref) => <div ref={ref}>Forwarded</div>,
+    );
 
-    ForwardRefComponent.displayName = 'ForwardRefComponent';
+    ForwardRefComponent.displayName = "ForwardRefComponent";
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <ForwardRefComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Forwarded')).toBeInTheDocument();
+    expect(screen.getByText("Forwarded")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it('should work with memo', () => {
+  it("should work with memo", () => {
     const MemoComponent = React.memo(() => <div>Memoized</div>);
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     renderWithoutProviders(
       <ErrorBoundary>
         <MemoComponent />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText('Memoized')).toBeInTheDocument();
+    expect(screen.getByText("Memoized")).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });

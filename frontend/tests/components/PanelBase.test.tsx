@@ -3,64 +3,64 @@
  * Tests base panel component and sub-components
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@/test/test-utils';
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@/test/test-utils";
 import {
   PanelBase,
   PanelSection,
   PanelInfoRow,
   PanelEmpty,
   PanelLoading,
-} from '../PanelBase';
+} from "../PanelBase";
 
-describe('PanelBase', () => {
-  it('should render panel with title and content', () => {
+describe("PanelBase", () => {
+  it("should render panel with title and content", () => {
     render(
       <PanelBase title="Test Panel" onClose={vi.fn()}>
         <div>Panel Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    expect(screen.getByText('Test Panel')).toBeInTheDocument();
-    expect(screen.getByText('Panel Content')).toBeInTheDocument();
+    expect(screen.getByText("Test Panel")).toBeInTheDocument();
+    expect(screen.getByText("Panel Content")).toBeInTheDocument();
   });
 
-  it('should render panel with icon', () => {
+  it("should render panel with icon", () => {
     render(
       <PanelBase title="Test Panel" icon="codicon-search" onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    const icon = document.querySelector('.codicon-search');
+    const icon = document.querySelector(".codicon-search");
     expect(icon).toBeInTheDocument();
   });
 
-  it('should render close button and trigger onClose', () => {
+  it("should render close button and trigger onClose", () => {
     const handleClose = vi.fn();
     render(
       <PanelBase title="Test Panel" onClose={handleClose}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    const closeButton = screen.getByRole('button', { name: 'Close' });
+    const closeButton = screen.getByRole("button", { name: "Close" });
     fireEvent.click(closeButton);
 
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
-  it('should not render when visible is false', () => {
+  it("should not render when visible is false", () => {
     const { container } = render(
       <PanelBase title="Test Panel" visible={false} onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
     expect(container.firstChild).toBe(null);
   });
 
-  it('should render footer when provided', () => {
+  it("should render footer when provided", () => {
     render(
       <PanelBase
         title="Test Panel"
@@ -68,40 +68,40 @@ describe('PanelBase', () => {
         footer={<div>Footer Content</div>}
       >
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    expect(screen.getByText('Footer Content')).toBeInTheDocument();
+    expect(screen.getByText("Footer Content")).toBeInTheDocument();
   });
 
-  it('should apply size variant classes', () => {
+  it("should apply size variant classes", () => {
     const { container: smContainer } = render(
       <PanelBase title="Small" size="sm" onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
     const { container: lgContainer } = render(
       <PanelBase title="Large" size="lg" onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    expect(smContainer.querySelector('.panel--sm')).toBeInTheDocument();
-    expect(lgContainer.querySelector('.panel--lg')).toBeInTheDocument();
+    expect(smContainer.querySelector(".panel--sm")).toBeInTheDocument();
+    expect(lgContainer.querySelector(".panel--lg")).toBeInTheDocument();
   });
 
-  it('should apply custom className', () => {
+  it("should apply custom className", () => {
     const { container } = render(
       <PanelBase title="Test Panel" className="custom-class" onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    const panel = container.querySelector('.panel-container');
-    expect(panel).toHaveClass('custom-class');
+    const panel = container.querySelector(".panel-container");
+    expect(panel).toHaveClass("custom-class");
   });
 
-  it('should render headerExtra content', () => {
+  it("should render headerExtra content", () => {
     render(
       <PanelBase
         title="Test Panel"
@@ -109,165 +109,163 @@ describe('PanelBase', () => {
         onClose={vi.fn()}
       >
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    expect(screen.getByTestId('extra')).toBeInTheDocument();
+    expect(screen.getByTestId("extra")).toBeInTheDocument();
   });
 
-  it('should hide close button when showCloseButton is false', () => {
+  it("should hide close button when showCloseButton is false", () => {
     render(
       <PanelBase title="Test Panel" showCloseButton={false} onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    const closeButton = screen.queryByRole('button', { name: 'Close' });
+    const closeButton = screen.queryByRole("button", { name: "Close" });
     expect(closeButton).not.toBeInTheDocument();
   });
 
-  it('should use React.memo for performance', () => {
+  it("should use React.memo for performance", () => {
     const { rerender } = render(
       <PanelBase title="Test Panel" onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
     rerender(
       <PanelBase title="Test Panel" onClose={vi.fn()}>
         <div>Content</div>
-      </PanelBase>
+      </PanelBase>,
     );
 
-    expect(screen.getByText('Test Panel')).toBeInTheDocument();
+    expect(screen.getByText("Test Panel")).toBeInTheDocument();
   });
 });
 
-describe('PanelSection', () => {
-  it('should render section with title', () => {
+describe("PanelSection", () => {
+  it("should render section with title", () => {
     render(
       <PanelSection title="Section Title">
         <div>Section Content</div>
-      </PanelSection>
+      </PanelSection>,
     );
 
-    expect(screen.getByText('Section Title')).toBeInTheDocument();
-    expect(screen.getByText('Section Content')).toBeInTheDocument();
+    expect(screen.getByText("Section Title")).toBeInTheDocument();
+    expect(screen.getByText("Section Content")).toBeInTheDocument();
   });
 
-  it('should render section without title', () => {
+  it("should render section without title", () => {
     render(
       <PanelSection>
         <div>Content</div>
-      </PanelSection>
+      </PanelSection>,
     );
 
-    expect(screen.getByText('Content')).toBeInTheDocument();
-    expect(screen.queryByText('Section Title')).not.toBeInTheDocument();
+    expect(screen.getByText("Content")).toBeInTheDocument();
+    expect(screen.queryByText("Section Title")).not.toBeInTheDocument();
   });
 
-  it('should apply custom className', () => {
+  it("should apply custom className", () => {
     const { container } = render(
       <PanelSection className="custom-section">
         <div>Content</div>
-      </PanelSection>
+      </PanelSection>,
     );
 
-    const section = container.querySelector('.panel-section');
-    expect(section).toHaveClass('custom-section');
+    const section = container.querySelector(".panel-section");
+    expect(section).toHaveClass("custom-section");
   });
 });
 
-describe('PanelInfoRow', () => {
-  it('should render label and value', () => {
+describe("PanelInfoRow", () => {
+  it("should render label and value", () => {
     render(<PanelInfoRow label="Test Label" value="Test Value" />);
 
-    expect(screen.getByText('Test Label')).toBeInTheDocument();
-    expect(screen.getByText('Test Value')).toBeInTheDocument();
+    expect(screen.getByText("Test Label")).toBeInTheDocument();
+    expect(screen.getByText("Test Value")).toBeInTheDocument();
   });
 
-  it('should render complex value as ReactNode', () => {
+  it("should render complex value as ReactNode", () => {
     render(
       <PanelInfoRow
         label="Status"
         value={<span className="badge">Active</span>}
-      />
+      />,
     );
 
-    expect(screen.getByText('Status')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
-    expect(document.querySelector('.badge')).toBeInTheDocument();
+    expect(screen.getByText("Status")).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(document.querySelector(".badge")).toBeInTheDocument();
   });
 
-  it('should apply custom className', () => {
+  it("should apply custom className", () => {
     const { container } = render(
-      <PanelInfoRow label="Test" value="Value" className="custom-row" />
+      <PanelInfoRow label="Test" value="Value" className="custom-row" />,
     );
 
-    const row = container.querySelector('.panel-info-row');
-    expect(row).toHaveClass('custom-row');
+    const row = container.querySelector(".panel-info-row");
+    expect(row).toHaveClass("custom-row");
   });
 });
 
-describe('PanelEmpty', () => {
-  it('should render empty state with message', () => {
+describe("PanelEmpty", () => {
+  it("should render empty state with message", () => {
     render(<PanelEmpty message="No data available" />);
 
-    expect(screen.getByText('No data available')).toBeInTheDocument();
+    expect(screen.getByText("No data available")).toBeInTheDocument();
   });
 
-  it('should render with default icon', () => {
+  it("should render with default icon", () => {
     const { container } = render(<PanelEmpty message="Empty" />);
 
-    const icon = container.querySelector('.codicon-circle-slash');
+    const icon = container.querySelector(".codicon-circle-slash");
     expect(icon).toBeInTheDocument();
   });
 
-  it('should render with custom icon', () => {
+  it("should render with custom icon", () => {
     const { container } = render(
-      <PanelEmpty message="Empty" icon="codicon-search" />
+      <PanelEmpty message="Empty" icon="codicon-search" />,
     );
 
-    const icon = container.querySelector('.codicon-search');
+    const icon = container.querySelector(".codicon-search");
     expect(icon).toBeInTheDocument();
   });
 
-  it('should apply custom className', () => {
+  it("should apply custom className", () => {
     const { container } = render(
-      <PanelEmpty message="Empty" className="custom-empty" />
+      <PanelEmpty message="Empty" className="custom-empty" />,
     );
 
-    const empty = container.querySelector('.panel-empty');
-    expect(empty).toHaveClass('custom-empty');
+    const empty = container.querySelector(".panel-empty");
+    expect(empty).toHaveClass("custom-empty");
   });
 });
 
-describe('PanelLoading', () => {
-  it('should render loading state with default message', () => {
+describe("PanelLoading", () => {
+  it("should render loading state with default message", () => {
     render(<PanelLoading />);
 
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
-  it('should render loading state with custom message', () => {
+  it("should render loading state with custom message", () => {
     render(<PanelLoading message="Please wait..." />);
 
-    expect(screen.getByText('Please wait...')).toBeInTheDocument();
+    expect(screen.getByText("Please wait...")).toBeInTheDocument();
   });
 
-  it('should render loading icon', () => {
+  it("should render loading icon", () => {
     const { container } = render(<PanelLoading />);
 
-    const icon = container.querySelector('.codicon-loading');
+    const icon = container.querySelector(".codicon-loading");
     expect(icon).toBeInTheDocument();
   });
 
-  it('should apply custom className', () => {
-    const { container } = render(
-      <PanelLoading className="custom-loading" />
-    );
+  it("should apply custom className", () => {
+    const { container } = render(<PanelLoading className="custom-loading" />);
 
-    const loading = container.querySelector('.panel-loading');
-    expect(loading).toHaveClass('custom-loading');
+    const loading = container.querySelector(".panel-loading");
+    expect(loading).toHaveClass("custom-loading");
   });
 });

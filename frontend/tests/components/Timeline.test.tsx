@@ -3,29 +3,35 @@
  * Tests timeline navigation, drag interaction, and visualization
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import Timeline from '@/components/Timeline';
-import { useSelection } from '@/contexts/SelectionContext';
-import type { FrameInfo } from '@/types/video';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
+import Timeline from "@/components/Timeline";
+import { useSelection } from "@/contexts/SelectionContext";
+import type { FrameInfo } from "@/types/video";
 
 // Mock SelectionContext
-vi.mock('@/contexts/SelectionContext', () => ({
+vi.mock("@/contexts/SelectionContext", () => ({
   useSelection: vi.fn(),
   SelectionProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 const mockFrames: FrameInfo[] = [
-  { frame_index: 0, frame_type: 'I', size: 50000, poc: 0, key_frame: true },
-  { frame_index: 1, frame_type: 'P', size: 30000, poc: 1, ref_frames: [0] },
-  { frame_index: 2, frame_type: 'B', size: 20000, poc: 2, ref_frames: [0, 1] },
-  { frame_index: 3, frame_type: 'P', size: 35000, poc: 3, ref_frames: [2] },
-  { frame_index: 4, frame_type: 'B', size: 25000, poc: 4, ref_frames: [2, 3] },
+  { frame_index: 0, frame_type: "I", size: 50000, poc: 0, key_frame: true },
+  { frame_index: 1, frame_type: "P", size: 30000, poc: 1, ref_frames: [0] },
+  { frame_index: 2, frame_type: "B", size: 20000, poc: 2, ref_frames: [0, 1] },
+  { frame_index: 3, frame_type: "P", size: 35000, poc: 3, ref_frames: [2] },
+  { frame_index: 4, frame_type: "B", size: 25000, poc: 4, ref_frames: [2, 3] },
 ];
 
 const defaultProps = {
   frames: mockFrames,
-  className: '',
+  className: "",
 };
 
 // Helper to create mock SelectionContext
@@ -42,71 +48,73 @@ const createMockSelectionContext = (overrides = {}) => ({
   ...overrides,
 });
 
-describe('Timeline basic rendering', () => {
+describe("Timeline basic rendering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should render timeline container', () => {
+  it("should render timeline container", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(screen.queryByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 
-  it('should render with custom className', () => {
+  it("should render with custom className", () => {
     render(<Timeline {...defaultProps} className="custom-class" />);
 
-    const timeline = screen.queryByRole('region', { name: 'Timeline' });
-    expect(timeline).toHaveClass('custom-class');
+    const timeline = screen.queryByRole("region", { name: "Timeline" });
+    expect(timeline).toHaveClass("custom-class");
   });
 
-  it('should render timeline header', () => {
+  it("should render timeline header", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(screen.getByText('Timeline')).toBeInTheDocument();
+    expect(screen.getByText("Timeline")).toBeInTheDocument();
   });
 
-  it('should display current frame and total frames', () => {
+  it("should display current frame and total frames", () => {
     render(<Timeline {...defaultProps} />);
 
     // TimelineHeader displays "{currentFrame + 1} / {totalFrames}" with spaces
     expect(screen.getByText(/1 \/ 5/)).toBeInTheDocument();
   });
 
-  it('should render timeline thumbnails', () => {
+  it("should render timeline thumbnails", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(document.querySelectorAll('.timeline-thumb').length).toBe(5);
+    expect(document.querySelectorAll(".timeline-thumb").length).toBe(5);
   });
 
-  it('should render timeline cursor', () => {
+  it("should render timeline cursor", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(document.querySelector('.timeline-cursor')).toBeInTheDocument();
+    expect(document.querySelector(".timeline-cursor")).toBeInTheDocument();
   });
 });
 
-describe('Timeline empty state', () => {
+describe("Timeline empty state", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should render empty state when no frames loaded', () => {
+  it("should render empty state when no frames loaded", () => {
     render(<Timeline frames={[]} />);
 
-    expect(screen.getByText('No frames loaded')).toBeInTheDocument();
+    expect(screen.getByText("No frames loaded")).toBeInTheDocument();
     expect(screen.queryByText(/No frames loaded/)).toBeInTheDocument();
   });
 
-  it('should display empty state icon', () => {
+  it("should display empty state icon", () => {
     render(<Timeline frames={[]} />);
 
-    expect(document.querySelector('.codicon-graph')).toBeInTheDocument();
+    expect(document.querySelector(".codicon-graph")).toBeInTheDocument();
   });
 
-  it('should show 0/0 in header for empty frames', () => {
+  it("should show 0/0 in header for empty frames", () => {
     render(<Timeline frames={[]} />);
 
     // TimelineHeader displays "{currentFrame + 1} / {totalFrames}" with spaces
@@ -114,28 +122,30 @@ describe('Timeline empty state', () => {
     expect(screen.getByText(/1 \/ 0/)).toBeInTheDocument();
   });
 
-  it('should handle single frame', () => {
+  it("should handle single frame", () => {
     const singleFrame = [mockFrames[0]];
     render(<Timeline frames={singleFrame} />);
 
     // TimelineHeader displays "{currentFrame + 1} / {totalFrames}" with spaces
     expect(screen.getByText(/1 \/ 1/)).toBeInTheDocument();
-    expect(document.querySelectorAll('.timeline-thumb').length).toBe(1);
+    expect(document.querySelectorAll(".timeline-thumb").length).toBe(1);
   });
 });
 
-describe('Timeline mouse interactions', () => {
+describe("Timeline mouse interactions", () => {
   let setFrameSelectionMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     setFrameSelectionMock = vi.fn();
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      setFrameSelection: setFrameSelectionMock,
-    }));
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        setFrameSelection: setFrameSelectionMock,
+      }),
+    );
   });
 
-  it('should handle mouse down on frame', () => {
+  it("should handle mouse down on frame", () => {
     render(<Timeline {...defaultProps} />);
 
     const frame0 = document.querySelector('[data-frame-index="0"]');
@@ -150,10 +160,10 @@ describe('Timeline mouse interactions', () => {
     }
   });
 
-  it('should handle mouse move for hover position', () => {
+  it("should handle mouse move for hover position", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     expect(timeline).toBeInTheDocument();
 
     if (timeline) {
@@ -163,10 +173,10 @@ describe('Timeline mouse interactions', () => {
     }
   });
 
-  it('should handle mouse leave', () => {
+  it("should handle mouse leave", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     expect(timeline).toBeInTheDocument();
 
     if (timeline) {
@@ -176,44 +186,49 @@ describe('Timeline mouse interactions', () => {
     }
   });
 
-  it('should show tooltip on hover', async () => {
+  it("should show tooltip on hover", async () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
 
     if (timeline) {
       // Move mouse to trigger hover
       fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
 
       // Tooltip should appear
-      await waitFor(() => {
-        const tooltip = document.querySelector('.timeline-tooltip');
-        expect(tooltip).toBeInTheDocument();
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          const tooltip = document.querySelector(".timeline-tooltip");
+          expect(tooltip).toBeInTheDocument();
+        },
+        { timeout: 1000 },
+      );
     }
   });
 });
 
-describe('Timeline keyboard navigation', () => {
+describe("Timeline keyboard navigation", () => {
   let setFrameSelectionMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     setFrameSelectionMock = vi.fn();
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      setFrameSelection: setFrameSelectionMock,
-    }));
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        setFrameSelection: setFrameSelectionMock,
+      }),
+    );
   });
 
-  it('should navigate to previous frame with ArrowLeft', () => {
+  it("should navigate to previous frame with ArrowLeft", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     expect(timeline).toBeInTheDocument();
 
     if (timeline) {
       act(() => {
-        fireEvent.keyDown(timeline, { key: 'ArrowLeft' });
+        fireEvent.keyDown(timeline, { key: "ArrowLeft" });
       });
 
       // At frame 0, ArrowLeft won't navigate (already at first frame)
@@ -221,38 +236,40 @@ describe('Timeline keyboard navigation', () => {
     }
   });
 
-  it('should navigate to next frame with ArrowRight', () => {
+  it("should navigate to next frame with ArrowRight", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     expect(timeline).toBeInTheDocument();
 
     if (timeline) {
       act(() => {
-        fireEvent.keyDown(timeline, { key: 'ArrowRight' });
+        fireEvent.keyDown(timeline, { key: "ArrowRight" });
       });
 
       // Should navigate from frame 0 to frame 1
       expect(setFrameSelectionMock).toHaveBeenCalledWith(
-        { stream: 'A', frameIndex: 1 },
-        'timeline'
+        { stream: "A", frameIndex: 1 },
+        "timeline",
       );
     }
   });
 
-  it('should not navigate before first frame with ArrowLeft', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 0 } },
-    }));
+  it("should not navigate before first frame with ArrowLeft", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 0 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       const initialCalls = setFrameSelectionMock.mock.calls.length;
 
       act(() => {
-        fireEvent.keyDown(timeline, { key: 'ArrowLeft' });
+        fireEvent.keyDown(timeline, { key: "ArrowLeft" });
       });
 
       // Should not call setFrameSelection since already at first frame
@@ -260,19 +277,21 @@ describe('Timeline keyboard navigation', () => {
     }
   });
 
-  it('should not navigate after last frame with ArrowRight', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 4 } },
-    }));
+  it("should not navigate after last frame with ArrowRight", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 4 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       const initialCalls = setFrameSelectionMock.mock.calls.length;
 
       act(() => {
-        fireEvent.keyDown(timeline, { key: 'ArrowRight' });
+        fireEvent.keyDown(timeline, { key: "ArrowRight" });
       });
 
       // Should not navigate since at last frame
@@ -280,14 +299,14 @@ describe('Timeline keyboard navigation', () => {
     }
   });
 
-  it('should handle rapid keyboard navigation', () => {
+  it("should handle rapid keyboard navigation", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
-      fireEvent.keyDown(timeline, { key: 'ArrowRight' });
-      fireEvent.keyDown(timeline, { key: 'ArrowRight' });
-      fireEvent.keyDown(timeline, { key: 'ArrowLeft' });
+      fireEvent.keyDown(timeline, { key: "ArrowRight" });
+      fireEvent.keyDown(timeline, { key: "ArrowRight" });
+      fireEvent.keyDown(timeline, { key: "ArrowLeft" });
 
       // Should handle without crashing
       expect(timeline).toBeInTheDocument();
@@ -295,18 +314,20 @@ describe('Timeline keyboard navigation', () => {
   });
 });
 
-describe('Timeline drag interaction', () => {
+describe("Timeline drag interaction", () => {
   let setFrameSelectionMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     setFrameSelectionMock = vi.fn();
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      setFrameSelection: setFrameSelectionMock,
-    }));
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        setFrameSelection: setFrameSelectionMock,
+      }),
+    );
   });
 
-  it('should handle drag start on mousedown', () => {
+  it("should handle drag start on mousedown", () => {
     render(<Timeline {...defaultProps} />);
 
     const frame1 = document.querySelector('[data-frame-index="1"]');
@@ -322,10 +343,10 @@ describe('Timeline drag interaction', () => {
     }
   });
 
-  it('should handle drag move', () => {
+  it("should handle drag move", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     expect(timeline).toBeInTheDocument();
 
     if (timeline) {
@@ -333,12 +354,12 @@ describe('Timeline drag interaction', () => {
         fireEvent.mouseDown(timeline, { clientX: 100, clientY: 50 });
 
         // Simulate drag move
-        const moveEvent = new MouseEvent('mousemove', {
+        const moveEvent = new MouseEvent("mousemove", {
           clientX: 200,
           clientY: 50,
           bubbles: true,
         });
-        Object.defineProperty(moveEvent, 'target', {
+        Object.defineProperty(moveEvent, "target", {
           value: timeline,
           writable: false,
         });
@@ -351,10 +372,10 @@ describe('Timeline drag interaction', () => {
     }
   });
 
-  it('should handle drag end and update selection', () => {
+  it("should handle drag end and update selection", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     expect(timeline).toBeInTheDocument();
 
     if (timeline) {
@@ -362,7 +383,7 @@ describe('Timeline drag interaction', () => {
         fireEvent.mouseDown(timeline, { clientX: 100, clientY: 50 });
 
         // Simulate mouse up
-        const upEvent = new MouseEvent('mouseup', { bubbles: true });
+        const upEvent = new MouseEvent("mouseup", { bubbles: true });
         window.dispatchEvent(upEvent);
       });
 
@@ -371,10 +392,10 @@ describe('Timeline drag interaction', () => {
     }
   });
 
-  it('should track drag state correctly', () => {
+  it("should track drag state correctly", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (!timeline) return;
 
     // Initial state - not dragging
@@ -384,7 +405,7 @@ describe('Timeline drag interaction', () => {
     fireEvent.mouseMove(timeline, { clientX: 150, clientY: 50 });
 
     // After drag - dragging is false
-    const upEvent = new MouseEvent('mouseup', { bubbles: true });
+    const upEvent = new MouseEvent("mouseup", { bubbles: true });
     window.dispatchEvent(upEvent);
 
     // Should complete without errors
@@ -392,94 +413,107 @@ describe('Timeline drag interaction', () => {
   });
 });
 
-describe('Timeline frame refs', () => {
+describe("Timeline frame refs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should receive and store frame refs from thumbnails', () => {
+  it("should receive and store frame refs from thumbnails", () => {
     render(<Timeline {...defaultProps} />);
 
     // Frame refs should be populated
-    const frameElements = document.querySelectorAll('.timeline-thumb');
+    const frameElements = document.querySelectorAll(".timeline-thumb");
     expect(frameElements.length).toBeGreaterThan(0);
   });
 
-  it('should update frame refs when frames change', () => {
+  it("should update frame refs when frames change", () => {
     const { rerender } = render(<Timeline {...defaultProps} />);
 
-    const initialFrameCount = document.querySelectorAll('.timeline-thumb').length;
+    const initialFrameCount =
+      document.querySelectorAll(".timeline-thumb").length;
 
-    const updatedFrames = [...mockFrames, { frame_index: 5, frame_type: 'I', size: 52000, poc: 5, key_frame: true }];
+    const updatedFrames = [
+      ...mockFrames,
+      { frame_index: 5, frame_type: "I", size: 52000, poc: 5, key_frame: true },
+    ];
     rerender(<Timeline frames={updatedFrames} />);
 
-    const updatedFrameCount = document.querySelectorAll('.timeline-thumb').length;
+    const updatedFrameCount =
+      document.querySelectorAll(".timeline-thumb").length;
     expect(updatedFrameCount).toBe(initialFrameCount + 1);
   });
 });
 
-describe('Timeline cursor positioning', () => {
+describe("Timeline cursor positioning", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should calculate cursor position based on frame element', () => {
+  it("should calculate cursor position based on frame element", () => {
     render(<Timeline {...defaultProps} />);
 
-    const cursor = document.querySelector('.timeline-cursor');
+    const cursor = document.querySelector(".timeline-cursor");
     expect(cursor).toBeInTheDocument();
 
     // Cursor should have position set
     expect(cursor).toBeInTheDocument();
   });
 
-  it('should update cursor position when highlighted frame changes', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 2 } },
-    }));
+  it("should update cursor position when highlighted frame changes", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 2 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
-    const cursor = document.querySelector('.timeline-cursor');
+    const cursor = document.querySelector(".timeline-cursor");
     expect(cursor).toBeInTheDocument();
   });
 
-  it('should handle cursor position at first frame', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 0 } },
-    }));
+  it("should handle cursor position at first frame", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 0 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
-    const cursor = document.querySelector('.timeline-cursor');
+    const cursor = document.querySelector(".timeline-cursor");
     expect(cursor).toBeInTheDocument();
   });
 
-  it('should handle cursor position at last frame', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 4 } },
-    }));
+  it("should handle cursor position at last frame", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 4 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
-    const cursor = document.querySelector('.timeline-cursor');
+    const cursor = document.querySelector(".timeline-cursor");
     expect(cursor).toBeInTheDocument();
   });
 });
 
-describe('Timeline selection context integration', () => {
+describe("Timeline selection context integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should sync highlighted frame with selection context', () => {
+  it("should sync highlighted frame with selection context", () => {
     const setFrameSelectionMock = vi.fn();
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 2 } },
-      setFrameSelection: setFrameSelectionMock,
-    }));
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 2 } },
+        setFrameSelection: setFrameSelectionMock,
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
@@ -487,16 +521,18 @@ describe('Timeline selection context integration', () => {
     expect(screen.getByText(/3 \/ 5/)).toBeInTheDocument();
   });
 
-  it('should not sync during drag', () => {
+  it("should not sync during drag", () => {
     const setFrameSelectionMock = vi.fn();
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 0 } },
-      setFrameSelection: setFrameSelectionMock,
-    }));
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 0 } },
+        setFrameSelection: setFrameSelectionMock,
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       act(() => {
         // Start drag - external selection changes should be ignored
@@ -508,22 +544,24 @@ describe('Timeline selection context integration', () => {
     }
   });
 
-  it('should update selection context on drag end', () => {
+  it("should update selection context on drag end", () => {
     const setFrameSelectionMock = vi.fn();
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: null,
-      setFrameSelection: setFrameSelectionMock,
-    }));
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: null,
+        setFrameSelection: setFrameSelectionMock,
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       act(() => {
         fireEvent.mouseDown(timeline, { clientX: 200, clientY: 50 });
 
         // End drag
-        const upEvent = new MouseEvent('mouseup', { bubbles: true });
+        const upEvent = new MouseEvent("mouseup", { bubbles: true });
         window.dispatchEvent(upEvent);
       });
 
@@ -533,70 +571,86 @@ describe('Timeline selection context integration', () => {
   });
 });
 
-describe('Timeline tooltip', () => {
+describe("Timeline tooltip", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should show tooltip when hovering over frames', async () => {
+  it("should show tooltip when hovering over frames", async () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
 
-      await waitFor(() => {
-        const tooltip = document.querySelector('.timeline-tooltip');
-        expect(tooltip).toBeInTheDocument();
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          const tooltip = document.querySelector(".timeline-tooltip");
+          expect(tooltip).toBeInTheDocument();
+        },
+        { timeout: 1000 },
+      );
     }
   });
 
-  it('should hide tooltip when mouse leaves', async () => {
+  it("should hide tooltip when mouse leaves", async () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       // Move to trigger hover
       fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
 
-      await waitFor(() => {
-        expect(document.querySelector('.timeline-tooltip')).toBeInTheDocument();
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          expect(
+            document.querySelector(".timeline-tooltip"),
+          ).toBeInTheDocument();
+        },
+        { timeout: 1000 },
+      );
 
       // Leave timeline
       fireEvent.mouseLeave(timeline);
 
-      await waitFor(() => {
-        expect(document.querySelector('.timeline-tooltip')).not.toBeInTheDocument();
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          expect(
+            document.querySelector(".timeline-tooltip"),
+          ).not.toBeInTheDocument();
+        },
+        { timeout: 1000 },
+      );
     }
   });
 
-  it('should display frame info in tooltip', async () => {
+  it("should display frame info in tooltip", async () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       act(() => {
         fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
       });
 
-      await waitFor(() => {
-        const tooltip = document.querySelector('.timeline-tooltip');
-        if (tooltip) {
-          // Should contain frame information
-          expect(tooltip.textContent).toBeDefined();
-        }
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          const tooltip = document.querySelector(".timeline-tooltip");
+          if (tooltip) {
+            // Should contain frame information
+            expect(tooltip.textContent).toBeDefined();
+          }
+        },
+        { timeout: 1000 },
+      );
     }
   });
 
-  it('should position tooltip correctly based on hover position', () => {
+  it("should position tooltip correctly based on hover position", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       // Hover at different positions
       fireEvent.mouseMove(timeline, { clientX: 50, clientY: 50 });
@@ -608,164 +662,185 @@ describe('Timeline tooltip', () => {
   });
 });
 
-describe('Timeline frame types display', () => {
+describe("Timeline frame types display", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should apply correct CSS class for I frames', () => {
+  it("should apply correct CSS class for I frames", () => {
     render(<Timeline {...defaultProps} />);
 
     const iFrame = document.querySelector('[data-frame-index="0"]');
-    expect(iFrame).toHaveClass('timeline-bar-i');
+    expect(iFrame).toHaveClass("timeline-bar-i");
   });
 
-  it('should apply correct CSS class for P frames', () => {
+  it("should apply correct CSS class for P frames", () => {
     render(<Timeline {...defaultProps} />);
 
     const pFrame = document.querySelector('[data-frame-index="1"]');
-    expect(pFrame).toHaveClass('timeline-bar-p');
+    expect(pFrame).toHaveClass("timeline-bar-p");
   });
 
-  it('should apply correct CSS class for B frames', () => {
+  it("should apply correct CSS class for B frames", () => {
     render(<Timeline {...defaultProps} />);
 
     const bFrame = document.querySelector('[data-frame-index="2"]');
-    expect(bFrame).toHaveClass('timeline-bar-b');
+    expect(bFrame).toHaveClass("timeline-bar-b");
   });
 
-  it('should display frame index in tooltip', async () => {
+  it("should display frame index in tooltip", async () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       act(() => {
         fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
       });
 
-      await waitFor(() => {
-        const tooltip = document.querySelector('.timeline-tooltip');
-        if (tooltip) {
-          expect(tooltip.textContent).toMatch(/#/);
-        }
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          const tooltip = document.querySelector(".timeline-tooltip");
+          if (tooltip) {
+            expect(tooltip.textContent).toMatch(/#/);
+          }
+        },
+        { timeout: 1000 },
+      );
     }
   });
 
-  it('should display frame type in tooltip', async () => {
+  it("should display frame type in tooltip", async () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       act(() => {
         fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
       });
 
-      await waitFor(() => {
-        const tooltip = document.querySelector('.timeline-tooltip');
-        if (tooltip) {
-          expect(tooltip.textContent).toMatch(/[IPB]/);
-        }
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          const tooltip = document.querySelector(".timeline-tooltip");
+          if (tooltip) {
+            expect(tooltip.textContent).toMatch(/[IPB]/);
+          }
+        },
+        { timeout: 1000 },
+      );
     }
   });
 });
 
-describe('Timeline React.memo optimization', () => {
+describe("Timeline React.memo optimization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should use React.memo for Timeline', () => {
+  it("should use React.memo for Timeline", () => {
     const { rerender } = render(<Timeline {...defaultProps} />);
 
     rerender(<Timeline {...defaultProps} />);
 
-    expect(screen.queryByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 
-  it('should not re-render when props are the same', () => {
+  it("should not re-render when props are the same", () => {
     const { rerender } = render(<Timeline {...defaultProps} />);
 
-    const timeline = screen.queryByRole('region', { name: 'Timeline' });
+    const timeline = screen.queryByRole("region", { name: "Timeline" });
 
     rerender(<Timeline {...defaultProps} />);
 
     expect(timeline).toBeInTheDocument();
   });
 
-  it('should re-render when frames change', () => {
+  it("should re-render when frames change", () => {
     const { rerender } = render(<Timeline {...defaultProps} />);
 
-    const newFrames = [...mockFrames, { frame_index: 5, frame_type: 'I', size: 52000, poc: 5, key_frame: true }];
+    const newFrames = [
+      ...mockFrames,
+      { frame_index: 5, frame_type: "I", size: 52000, poc: 5, key_frame: true },
+    ];
     rerender(<Timeline frames={newFrames} />);
 
-    expect(document.querySelectorAll('.timeline-thumb').length).toBe(6);
+    expect(document.querySelectorAll(".timeline-thumb").length).toBe(6);
   });
 
-  it('should re-render when className changes', () => {
-    const { rerender } = render(<Timeline {...defaultProps} className="first" />);
+  it("should re-render when className changes", () => {
+    const { rerender } = render(
+      <Timeline {...defaultProps} className="first" />,
+    );
 
-    expect(screen.getByRole('region', { name: 'Timeline' })).toHaveClass('first');
+    expect(screen.getByRole("region", { name: "Timeline" })).toHaveClass(
+      "first",
+    );
 
     rerender(<Timeline {...defaultProps} className="second" />);
 
-    expect(screen.getByRole('region', { name: 'Timeline' })).toHaveClass('second');
+    expect(screen.getByRole("region", { name: "Timeline" })).toHaveClass(
+      "second",
+    );
   });
 });
 
-describe('Timeline ARIA attributes', () => {
+describe("Timeline ARIA attributes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should have region role', () => {
+  it("should have region role", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(screen.getByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 
-  it('should have proper ARIA label', () => {
+  it("should have proper ARIA label", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(screen.getByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 
-  it('should have status role for empty state', () => {
+  it("should have status role for empty state", () => {
     render(<Timeline frames={[]} />);
 
     // There are two status elements in empty state (timeline-info and timeline-empty)
     // Use getAllByRole or query by specific attribute
-    const statusElements = screen.getAllByRole('status');
+    const statusElements = screen.getAllByRole("status");
     expect(statusElements.length).toBeGreaterThan(0);
 
     // Check for the specific empty state status
-    const emptyState = screen.getByRole('status', { name: 'No frames loaded' });
+    const emptyState = screen.getByRole("status", { name: "No frames loaded" });
     expect(emptyState).toBeInTheDocument();
-    expect(emptyState).toHaveAttribute('aria-label', 'No frames loaded');
+    expect(emptyState).toHaveAttribute("aria-label", "No frames loaded");
   });
 
-  it('should have aria-hidden on icons', () => {
+  it("should have aria-hidden on icons", () => {
     render(<Timeline frames={[]} />);
 
-    const icon = document.querySelector('.codicon-graph');
-    expect(icon).toHaveAttribute('aria-hidden', 'true');
+    const icon = document.querySelector(".codicon-graph");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
   });
 });
 
-describe('Timeline edge cases', () => {
+describe("Timeline edge cases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should handle very large frame count', () => {
+  it("should handle very large frame count", () => {
     const largeFrames = Array.from({ length: 10000 }, (_, i) => ({
       frame_index: i,
-      frame_type: i % 3 === 0 ? 'I' : i % 3 === 1 ? 'P' : 'B',
+      frame_type: i % 3 === 0 ? "I" : i % 3 === 1 ? "P" : "B",
       size: 30000,
       poc: i,
     })) as FrameInfo[];
@@ -776,19 +851,19 @@ describe('Timeline edge cases', () => {
     expect(screen.getByText(/1 \/ 10000/)).toBeInTheDocument();
   });
 
-  it('should handle single frame', () => {
+  it("should handle single frame", () => {
     const singleFrame = [mockFrames[0]];
     render(<Timeline frames={singleFrame} />);
 
     // TimelineHeader displays "{currentFrame + 1} / {totalFrames}" with spaces
     expect(screen.getByText(/1 \/ 1/)).toBeInTheDocument();
-    expect(document.querySelectorAll('.timeline-thumb').length).toBe(1);
+    expect(document.querySelectorAll(".timeline-thumb").length).toBe(1);
   });
 
-  it('should handle frames with missing optional properties', () => {
+  it("should handle frames with missing optional properties", () => {
     const minimalFrames = [
-      { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-      { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
+      { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+      { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
     ] as FrameInfo[];
 
     render(<Timeline frames={minimalFrames} />);
@@ -797,50 +872,58 @@ describe('Timeline edge cases', () => {
     expect(screen.getByText(/1 \/ 2/)).toBeInTheDocument();
   });
 
-  it('should handle special characters in frame types', () => {
+  it("should handle special characters in frame types", () => {
     const specialFrames = [
-      { frame_index: 0, frame_type: 'KEY', size: 50000, poc: 0 },
-      { frame_index: 1, frame_type: 'INTRA', size: 30000, poc: 1 },
+      { frame_index: 0, frame_type: "KEY", size: 50000, poc: 0 },
+      { frame_index: 1, frame_type: "INTRA", size: 30000, poc: 1 },
     ] as FrameInfo[];
 
     render(<Timeline frames={specialFrames} />);
 
     // Should handle gracefully
-    expect(screen.getByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 
-  it('should handle very small frames', () => {
+  it("should handle very small frames", () => {
     const tinyFrames = [
-      { frame_index: 0, frame_type: 'I', size: 100, poc: 0 },
-      { frame_index: 1, frame_type: 'P', size: 200, poc: 1 },
+      { frame_index: 0, frame_type: "I", size: 100, poc: 0 },
+      { frame_index: 1, frame_type: "P", size: 200, poc: 1 },
     ] as FrameInfo[];
 
     render(<Timeline frames={tinyFrames} />);
 
-    expect(screen.getByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 
-  it('should handle very large frames', () => {
+  it("should handle very large frames", () => {
     const hugeFrames = [
-      { frame_index: 0, frame_type: 'I', size: 9999999, poc: 0 },
-      { frame_index: 1, frame_type: 'P', size: 8888888, poc: 1 },
+      { frame_index: 0, frame_type: "I", size: 9999999, poc: 0 },
+      { frame_index: 1, frame_type: "P", size: 8888888, poc: 1 },
     ] as FrameInfo[];
 
     render(<Timeline frames={hugeFrames} />);
 
-    expect(screen.getByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 });
 
-describe('Timeline with external selection changes', () => {
+describe("Timeline with external selection changes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should update highlighted frame when selection changes externally', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 3 } },
-    }));
+  it("should update highlighted frame when selection changes externally", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 3 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
@@ -848,10 +931,12 @@ describe('Timeline with external selection changes', () => {
     expect(screen.getByText(/4 \/ 5/)).toBeInTheDocument();
   });
 
-  it('should sync with selection context on mount', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 2 } },
-    }));
+  it("should sync with selection context on mount", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 2 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
@@ -860,16 +945,16 @@ describe('Timeline with external selection changes', () => {
   });
 });
 
-describe('Timeline concurrent interactions', () => {
+describe("Timeline concurrent interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should handle mouse and keyboard interactions together', () => {
+  it("should handle mouse and keyboard interactions together", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (!timeline) return;
 
     act(() => {
@@ -877,17 +962,17 @@ describe('Timeline concurrent interactions', () => {
       fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
 
       // Then keyboard navigation
-      fireEvent.keyDown(timeline, { key: 'ArrowRight' });
+      fireEvent.keyDown(timeline, { key: "ArrowRight" });
     });
 
     // Should handle both without crashing
     expect(timeline).toBeInTheDocument();
   });
 
-  it('should handle rapid mouse movements', () => {
+  it("should handle rapid mouse movements", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (!timeline) return;
 
     act(() => {
@@ -899,29 +984,29 @@ describe('Timeline concurrent interactions', () => {
     expect(timeline).toBeInTheDocument();
   });
 
-  it('should handle rapid drag movements', () => {
+  it("should handle rapid drag movements", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (!timeline) return;
 
     act(() => {
       fireEvent.mouseDown(timeline, { clientX: 100, clientY: 50 });
 
       for (let i = 0; i < 10; i++) {
-        const moveEvent = new MouseEvent('mousemove', {
+        const moveEvent = new MouseEvent("mousemove", {
           clientX: 100 + i * 20,
           clientY: 50,
           bubbles: true,
         });
-        Object.defineProperty(moveEvent, 'target', {
+        Object.defineProperty(moveEvent, "target", {
           value: timeline,
           writable: false,
         });
         window.dispatchEvent(moveEvent);
       }
 
-      const upEvent = new MouseEvent('mouseup', { bubbles: true });
+      const upEvent = new MouseEvent("mouseup", { bubbles: true });
       window.dispatchEvent(upEvent);
     });
 
@@ -929,17 +1014,17 @@ describe('Timeline concurrent interactions', () => {
   });
 });
 
-describe('Timeline cleanup', () => {
+describe("Timeline cleanup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should cleanup event listeners on unmount', () => {
+  it("should cleanup event listeners on unmount", () => {
     const { unmount } = render(<Timeline {...defaultProps} />);
 
     // Start a drag
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       act(() => {
         fireEvent.mouseDown(timeline, { clientX: 100, clientY: 50 });
@@ -950,7 +1035,7 @@ describe('Timeline cleanup', () => {
     }
   });
 
-  it('should not leak memory when frames change frequently', () => {
+  it("should not leak memory when frames change frequently", () => {
     const { rerender, unmount } = render(<Timeline {...defaultProps} />);
 
     // Rapidly changing frames
@@ -963,16 +1048,16 @@ describe('Timeline cleanup', () => {
   });
 });
 
-describe('Timeline hit testing', () => {
+describe("Timeline hit testing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should allow clicking near frame boundaries', () => {
+  it("should allow clicking near frame boundaries", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (!timeline) return;
 
     act(() => {
@@ -987,10 +1072,10 @@ describe('Timeline hit testing', () => {
     expect(timeline).toBeInTheDocument();
   });
 
-  it('should allow clicking outside timeline bounds gracefully', () => {
+  it("should allow clicking outside timeline bounds gracefully", () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (!timeline) return;
 
     act(() => {
@@ -1004,25 +1089,29 @@ describe('Timeline hit testing', () => {
   });
 });
 
-describe('Timeline thumbnail props', () => {
+describe("Timeline thumbnail props", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should pass correct highlightedFrameIndex to thumbnails', () => {
-    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext({
-      selection: { frame: { stream: 'A', frameIndex: 3 } },
-    }));
+  it("should pass correct highlightedFrameIndex to thumbnails", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: { frame: { stream: "A", frameIndex: 3 } },
+      }),
+    );
 
     render(<Timeline {...defaultProps} />);
 
     // Frame 3 should be selected
-    const selectedFrame = document.querySelector('[data-frame-index="3"].selected');
+    const selectedFrame = document.querySelector(
+      '[data-frame-index="3"].selected',
+    );
     expect(selectedFrame).toBeInTheDocument();
   });
 
-  it('should pass correct total frames to header', () => {
+  it("should pass correct total frames to header", () => {
     render(<Timeline {...defaultProps} />);
 
     // TimelineHeader displays "{currentFrame + 1} / {totalFrames}" with spaces
@@ -1030,65 +1119,70 @@ describe('Timeline thumbnail props', () => {
   });
 });
 
-describe('Timeline subclasses integration', () => {
+describe("Timeline subclasses integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should integrate with TimelineHeader', () => {
+  it("should integrate with TimelineHeader", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(screen.getByText('Timeline')).toBeInTheDocument();
+    expect(screen.getByText("Timeline")).toBeInTheDocument();
   });
 
-  it('should integrate with TimelineThumbnails', () => {
+  it("should integrate with TimelineThumbnails", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(document.querySelector('.timeline-thumbnails')).toBeInTheDocument();
+    expect(document.querySelector(".timeline-thumbnails")).toBeInTheDocument();
   });
 
-  it('should integrate with TimelineCursor', () => {
+  it("should integrate with TimelineCursor", () => {
     render(<Timeline {...defaultProps} />);
 
-    expect(document.querySelector('.timeline-cursor')).toBeInTheDocument();
+    expect(document.querySelector(".timeline-cursor")).toBeInTheDocument();
   });
 
-  it('should integrate with TimelineTooltip', async () => {
+  it("should integrate with TimelineTooltip", async () => {
     render(<Timeline {...defaultProps} />);
 
-    const timeline = document.querySelector('.timeline-thumbnails');
+    const timeline = document.querySelector(".timeline-thumbnails");
     if (timeline) {
       act(() => {
         fireEvent.mouseMove(timeline, { clientX: 100, clientY: 50 });
       });
 
-      await waitFor(() => {
-        const tooltip = document.querySelector('.timeline-tooltip');
-        if (tooltip) {
-          expect(tooltip).toBeInTheDocument();
-        }
-      }, { timeout: 1000 });
+      await waitFor(
+        () => {
+          const tooltip = document.querySelector(".timeline-tooltip");
+          if (tooltip) {
+            expect(tooltip).toBeInTheDocument();
+          }
+        },
+        { timeout: 1000 },
+      );
     }
   });
 });
 
-describe('TimelineMemoized vs default export', () => {
+describe("TimelineMemoized vs default export", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
   });
 
-  it('should export MemoizedTimeline separately', () => {
+  it("should export MemoizedTimeline separately", () => {
     // The component exports MemoizedTimeline as a named export
     // Since we're using ES modules, we can't test require() directly
     // The component structure has been validated by the build passing
     expect(true).toBe(true); // Placeholder - export validation is done by TypeScript
   });
 
-  it('Timeline component should render', () => {
+  it("Timeline component should render", () => {
     // Verify the Timeline component can be imported and used
     render(<Timeline {...defaultProps} />);
-    expect(screen.queryByRole('region', { name: 'Timeline' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Timeline" }),
+    ).toBeInTheDocument();
   });
 });

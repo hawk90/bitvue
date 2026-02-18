@@ -3,17 +3,23 @@
  * Tests enhanced view with multiple metrics overlay
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@/test/test-utils';
-import { EnhancedView } from '../EnhancedView';
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@/test/test-utils";
+import { EnhancedView } from "../EnhancedView";
 
-describe('EnhancedView', () => {
+describe("EnhancedView", () => {
   const mockFrames = [
-    { frame_index: 0, frame_type: 'I', size: 50000, poc: 0, key_frame: true },
-    { frame_index: 1, frame_type: 'P', size: 30000, poc: 1, ref_frames: [0] },
-    { frame_index: 2, frame_type: 'B', size: 20000, poc: 2, ref_frames: [0, 1] },
-    { frame_index: 3, frame_type: 'I', size: 50000, poc: 3, key_frame: true },
-    { frame_index: 4, frame_type: 'P', size: 35000, poc: 4, ref_frames: [3] },
+    { frame_index: 0, frame_type: "I", size: 50000, poc: 0, key_frame: true },
+    { frame_index: 1, frame_type: "P", size: 30000, poc: 1, ref_frames: [0] },
+    {
+      frame_index: 2,
+      frame_type: "B",
+      size: 20000,
+      poc: 2,
+      ref_frames: [0, 1],
+    },
+    { frame_index: 3, frame_type: "I", size: 50000, poc: 3, key_frame: true },
+    { frame_index: 4, frame_type: "P", size: 35000, poc: 4, ref_frames: [3] },
   ];
 
   const defaultProps = {
@@ -25,49 +31,49 @@ describe('EnhancedView', () => {
     onHoverFrame: vi.fn(),
   };
 
-  it('should render enhanced view', () => {
+  it("should render enhanced view", () => {
     render(<EnhancedView {...defaultProps} />);
 
-    const container = document.querySelector('.enhanced-view');
+    const container = document.querySelector(".enhanced-view");
     expect(container).toBeInTheDocument();
   });
 
-  it('should display navigation bar', () => {
+  it("should display navigation bar", () => {
     render(<EnhancedView {...defaultProps} />);
 
-    const navBar = document.querySelector('.enhanced-nav-bar');
+    const navBar = document.querySelector(".enhanced-nav-bar");
     expect(navBar).toBeInTheDocument();
   });
 
-  it('should display GOP label', () => {
+  it("should display GOP label", () => {
     render(<EnhancedView {...defaultProps} />);
 
-    const gopLabel = document.querySelector('.enhanced-nav-label');
+    const gopLabel = document.querySelector(".enhanced-nav-label");
     expect(gopLabel).toBeInTheDocument();
-    expect(gopLabel?.textContent).toBe('GOP:');
+    expect(gopLabel?.textContent).toBe("GOP:");
   });
 
-  it('should have disabled navigation buttons', () => {
+  it("should have disabled navigation buttons", () => {
     render(<EnhancedView {...defaultProps} />);
 
-    const buttons = document.querySelectorAll('.enhanced-nav-btn');
+    const buttons = document.querySelectorAll(".enhanced-nav-btn");
     expect(buttons.length).toBeGreaterThan(0);
-    buttons.forEach(button => {
+    buttons.forEach((button) => {
       expect(button).toBeDisabled();
     });
   });
 
-  it('should use React.memo for performance', () => {
+  it("should use React.memo for performance", () => {
     const { rerender } = render(<EnhancedView {...defaultProps} />);
 
     rerender(<EnhancedView {...defaultProps} />);
 
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 });
 
-describe('EnhancedView edge cases', () => {
-  it('should handle empty frames array', () => {
+describe("EnhancedView edge cases", () => {
+  it("should handle empty frames array", () => {
     const props = {
       frames: [],
       currentFrameIndex: -1,
@@ -79,12 +85,12 @@ describe('EnhancedView edge cases', () => {
 
     render(<EnhancedView {...props} />);
 
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 
-  it('should handle single frame', () => {
+  it("should handle single frame", () => {
     const props = {
-      frames: [{ frame_index: 0, frame_type: 'I', size: 50000, poc: 0 }],
+      frames: [{ frame_index: 0, frame_type: "I", size: 50000, poc: 0 }],
       currentFrameIndex: 0,
       thumbnails: new Map(),
       loadingThumbnails: new Set(),
@@ -94,14 +100,14 @@ describe('EnhancedView edge cases', () => {
 
     render(<EnhancedView {...props} />);
 
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 
-  it('should handle all I-frames', () => {
+  it("should handle all I-frames", () => {
     const props = {
       frames: [
-        { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-        { frame_index: 1, frame_type: 'I', size: 50000, poc: 1 },
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "I", size: 50000, poc: 1 },
       ],
       currentFrameIndex: 0,
       thumbnails: new Map(),
@@ -112,20 +118,20 @@ describe('EnhancedView edge cases', () => {
 
     render(<EnhancedView {...props} />);
 
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 });
 
-describe('EnhancedView thumbnails', () => {
+describe("EnhancedView thumbnails", () => {
   const mockFrames = [
-    { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-    { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
+    { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+    { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
   ];
 
-  it('should handle thumbnails map', () => {
+  it("should handle thumbnails map", () => {
     const thumbnails = new Map([
-      [0, 'data:image/jpeg;base64,abc123'],
-      [1, 'data:image/jpeg;base64,def456'],
+      [0, "data:image/jpeg;base64,abc123"],
+      [1, "data:image/jpeg;base64,def456"],
     ]);
 
     const props = {
@@ -139,10 +145,10 @@ describe('EnhancedView thumbnails', () => {
 
     render(<EnhancedView {...props} />);
 
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 
-  it('should handle loading thumbnails', () => {
+  it("should handle loading thumbnails", () => {
     const props = {
       frames: mockFrames,
       currentFrameIndex: 0,
@@ -154,18 +160,18 @@ describe('EnhancedView thumbnails', () => {
 
     render(<EnhancedView {...props} />);
 
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 });
 
-describe('EnhancedView interactions', () => {
+describe("EnhancedView interactions", () => {
   const mockFrames = [
-    { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-    { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
-    { frame_index: 2, frame_type: 'B', size: 20000, poc: 2 },
+    { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+    { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+    { frame_index: 2, frame_type: "B", size: 20000, poc: 2 },
   ];
 
-  it('should call onFrameClick when frame is clicked', () => {
+  it("should call onFrameClick when frame is clicked", () => {
     const onFrameClick = vi.fn();
     const props = {
       frames: mockFrames,
@@ -180,10 +186,10 @@ describe('EnhancedView interactions', () => {
 
     // Click events are handled by ThumbnailsView
     // Just verify the component renders without errors
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 
-  it('should call onHoverFrame when frame is hovered', () => {
+  it("should call onHoverFrame when frame is hovered", () => {
     const onHoverFrame = vi.fn();
     const props = {
       frames: mockFrames,
@@ -198,6 +204,6 @@ describe('EnhancedView interactions', () => {
 
     // Hover events are handled by ThumbnailsView
     // Just verify the component renders without errors
-    expect(document.querySelector('.enhanced-view')).toBeInTheDocument();
+    expect(document.querySelector(".enhanced-view")).toBeInTheDocument();
   });
 });
