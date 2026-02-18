@@ -5,8 +5,8 @@
  * Shows frame properties in expandable tree format
  */
 
-import { memo, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { memo, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface SyntaxValue {
   String?: string;
@@ -30,7 +30,7 @@ function getDisplayValue(value?: SyntaxValue): string | number | undefined {
   if (value.Number !== undefined) return value.Number;
   if (value.Float !== undefined) return value.Float.toFixed(2);
   if (value.Boolean !== undefined) return value.Boolean;
-  if (value.Array !== undefined) return `[${value.Array.join(', ')}]`;
+  if (value.Array !== undefined) return `[${value.Array.join(", ")}]`;
   return undefined;
 }
 
@@ -71,14 +71,14 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
     setLoading(true);
     setError(null);
 
-    invoke<SyntaxNode>('get_frame_syntax', {
+    invoke<SyntaxNode>("get_frame_syntax", {
       path: filePath,
       frameIndex: frame.frame_index,
     })
       .then(setSyntaxTree)
       .catch((err) => {
-        console.error('Failed to fetch frame syntax:', err);
-        setError(err?.toString?.() || 'Failed to load syntax data');
+        console.error("Failed to fetch frame syntax:", err);
+        setError(err?.toString?.() || "Failed to load syntax data");
       })
       .finally(() => setLoading(false));
   }, [frame, filePath]);
@@ -114,33 +114,33 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
   const frameSyntax = syntaxTree || {
     name: `Frame ${frame.frame_index}`,
     children: [
-      { name: 'frame_type', value: { String: frame.frame_type } },
-      { name: 'frame_index', value: { Number: frame.frame_index } },
-      { name: 'pts', value: { Number: frame.pts ?? 0 } },
-      { name: 'size', value: { String: `${frame.size} bytes` } },
+      { name: "frame_type", value: { String: frame.frame_type } },
+      { name: "frame_index", value: { Number: frame.frame_index } },
+      { name: "pts", value: { Number: frame.pts ?? 0 } },
+      { name: "size", value: { String: `${frame.size} bytes` } },
       {
-        name: 'temporal_id',
+        name: "temporal_id",
         value: { Number: frame.temporal_id ?? -1 },
-        description: 'Temporal layer identifier'
+        description: "Temporal layer identifier",
       },
       {
-        name: 'display_order',
+        name: "display_order",
         value: { Number: frame.display_order ?? -1 },
-        description: 'Display order in sequence'
+        description: "Display order in sequence",
       },
       {
-        name: 'coding_order',
+        name: "coding_order",
         value: { Number: frame.coding_order ?? -1 },
-        description: 'Coding order in sequence'
+        description: "Coding order in sequence",
       },
       {
-        name: 'ref_frames',
+        name: "ref_frames",
         value: { Array: frame.ref_frames ?? [] },
-        description: 'Reference frame indices',
+        description: "Reference frame indices",
         children: (frame.ref_frames ?? []).map((ref, idx) => ({
           name: `ref[${idx}]`,
           value: { Number: ref },
-        }))
+        })),
       },
     ],
   };
@@ -150,8 +150,12 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
       <div className="syntax-info">
         <span className="syntax-info-label">Frame:</span>
         <span className="syntax-info-value">{frame.frame_index}</span>
-        <span className="syntax-info-label" style={{ marginLeft: 16 }}>Type:</span>
-        <span className={`syntax-value frame-type-${frame.frame_type.toLowerCase()}`}>
+        <span className="syntax-info-label" style={{ marginLeft: 16 }}>
+          Type:
+        </span>
+        <span
+          className={`syntax-value frame-type-${frame.frame_type.toLowerCase()}`}
+        >
           {frame.frame_type}
         </span>
       </div>
@@ -200,7 +204,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
       >
         {hasChildren ? (
           <span
-            className={`codicon codicon-${isExpanded ? 'chevron-down' : 'chevron-right'} expand-toggle`}
+            className={`codicon codicon-${isExpanded ? "chevron-down" : "chevron-right"} expand-toggle`}
             onClick={(e) => {
               e.stopPropagation();
               onToggle(currentPath);
@@ -208,7 +212,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
           />
         ) : (
           <span className="expand-placeholder">▪</span>
-          )}
+        )}
         <span className="syntax-label">{node.name}</span>
         {displayValue !== undefined && (
           <span className="syntax-value">= {String(displayValue)}</span>
@@ -216,7 +220,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
       </div>
       {hasChildren && isExpanded && (
         <div className="syntax-children">
-          {node.children?.map(child => (
+          {node.children?.map((child) => (
             <SyntaxTreeNode
               key={`${currentPath}/${child.name}`}
               node={child}

@@ -7,9 +7,9 @@
  * Per VQAnalyzer parity: HRD buffer plot with occupancy graph
  */
 
-import { useMemo, useRef, useEffect, useState, useCallback, memo } from 'react';
-import type { FrameInfo } from '../types/video';
-import './HRDBufferPanel.css';
+import { useMemo, useRef, useEffect, useState, useCallback, memo } from "react";
+import type { FrameInfo } from "../types/video";
+import "./HRDBufferPanel.css";
 
 export interface HRDBufferPanelProps {
   frames: FrameInfo[];
@@ -21,7 +21,12 @@ export interface HRDBufferPanelProps {
 
 interface HRDState {
   occupancy: number; // Current buffer occupancy in bytes
-  occupancyHistory: { frame: number; occupancy: number; overflow: boolean; underflow: boolean }[];
+  occupancyHistory: {
+    frame: number;
+    occupancy: number;
+    overflow: boolean;
+    underflow: boolean;
+  }[];
   maxOccupancy: number;
 }
 
@@ -35,7 +40,12 @@ const HRDBufferPanelInternal = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredFrame, setHoveredFrame] = useState<number | null>(null);
-  const [hoverData, setHoverData] = useState<{ frame: number; occupancy: number; overflow: boolean; underflow: boolean } | null>(null);
+  const [hoverData, setHoverData] = useState<{
+    frame: number;
+    occupancy: number;
+    overflow: boolean;
+    underflow: boolean;
+  } | null>(null);
 
   // Calculate HRD buffer state for each frame
   const hrdState = useMemo(() => {
@@ -87,7 +97,7 @@ const HRDBufferPanelInternal = ({
     const container = containerRef.current;
     if (!canvas || !container || hrdState.occupancyHistory.length === 0) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     // Set canvas size
@@ -106,7 +116,7 @@ const HRDBufferPanelInternal = ({
     ctx.clearRect(0, 0, width, height);
 
     // Draw background
-    ctx.fillStyle = '#1e1e1e';
+    ctx.fillStyle = "#1e1e1e";
     ctx.fillRect(0, 0, width, height);
 
     // Graph margins
@@ -116,30 +126,43 @@ const HRDBufferPanelInternal = ({
 
     // Draw buffer limit line (100%)
     const maxOccupancy = Math.max(bufferSize, hrdState.maxOccupancy * 1.1);
-    ctx.strokeStyle = '#ff6b6b';
+    ctx.strokeStyle = "#ff6b6b";
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.moveTo(margin.left, margin.top + (bufferSize / maxOccupancy) * graphHeight);
-    ctx.lineTo(margin.left + graphWidth, margin.top + (bufferSize / maxOccupancy) * graphHeight);
+    ctx.moveTo(
+      margin.left,
+      margin.top + (bufferSize / maxOccupancy) * graphHeight,
+    );
+    ctx.lineTo(
+      margin.left + graphWidth,
+      margin.top + (bufferSize / maxOccupancy) * graphHeight,
+    );
     ctx.stroke();
     ctx.setLineDash([]);
 
     // Draw underflow warning line (10%)
-    ctx.strokeStyle = '#ffd43b';
+    ctx.strokeStyle = "#ffd43b";
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(margin.left, margin.top + ((bufferSize * 0.1) / maxOccupancy) * graphHeight);
-    ctx.lineTo(margin.left + graphWidth, margin.top + ((bufferSize * 0.1) / maxOccupancy) * graphHeight);
+    ctx.moveTo(
+      margin.left,
+      margin.top + ((bufferSize * 0.1) / maxOccupancy) * graphHeight,
+    );
+    ctx.lineTo(
+      margin.left + graphWidth,
+      margin.top + ((bufferSize * 0.1) / maxOccupancy) * graphHeight,
+    );
     ctx.stroke();
     ctx.setLineDash([]);
 
     // Draw target bitrate line
     if (targetBitrate) {
       const targetBitsPerFrame = targetBitrate / frameRate;
-      const targetY = margin.top + ((targetBitsPerFrame * 5) / maxOccupancy) * graphHeight;
-      ctx.strokeStyle = '#51cf66';
+      const targetY =
+        margin.top + ((targetBitsPerFrame * 5) / maxOccupancy) * graphHeight;
+      ctx.strokeStyle = "#51cf66";
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
       ctx.beginPath();
@@ -150,7 +173,7 @@ const HRDBufferPanelInternal = ({
     }
 
     // Draw occupancy line
-    ctx.strokeStyle = '#339af0';
+    ctx.strokeStyle = "#339af0";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
 
@@ -159,7 +182,10 @@ const HRDBufferPanelInternal = ({
 
     history.forEach((point, i) => {
       const x = margin.left + i * stepX;
-      const y = margin.top + graphHeight - (point.occupancy / maxOccupancy) * graphHeight;
+      const y =
+        margin.top +
+        graphHeight -
+        (point.occupancy / maxOccupancy) * graphHeight;
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -173,17 +199,20 @@ const HRDBufferPanelInternal = ({
     // Draw overflow/underflow markers
     history.forEach((point, i) => {
       const x = margin.left + i * stepX;
-      const y = margin.top + graphHeight - (point.occupancy / maxOccupancy) * graphHeight;
+      const y =
+        margin.top +
+        graphHeight -
+        (point.occupancy / maxOccupancy) * graphHeight;
 
       if (point.overflow) {
-        ctx.fillStyle = 'rgba(255, 107, 107, 0.8)';
+        ctx.fillStyle = "rgba(255, 107, 107, 0.8)";
         ctx.beginPath();
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
       }
 
       if (point.underflow) {
-        ctx.fillStyle = 'rgba(255, 212, 59, 0.8)';
+        ctx.fillStyle = "rgba(255, 212, 59, 0.8)";
         ctx.beginPath();
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -192,9 +221,12 @@ const HRDBufferPanelInternal = ({
 
     // Draw current frame marker
     const currentX = margin.left + currentFrameIndex * stepX;
-    const currentY = margin.top + graphHeight - (hrdState.occupancy / maxOccupancy) * graphHeight;
+    const currentY =
+      margin.top +
+      graphHeight -
+      (hrdState.occupancy / maxOccupancy) * graphHeight;
 
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(currentX, margin.top);
@@ -202,21 +234,21 @@ const HRDBufferPanelInternal = ({
     ctx.stroke();
 
     // Draw Y-axis labels
-    ctx.fillStyle = '#888';
-    ctx.font = '10px monospace';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
+    ctx.fillStyle = "#888";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
 
     const yLabels = [0, 25, 50, 75, 100];
-    yLabels.forEach(percent => {
+    yLabels.forEach((percent) => {
       const y = margin.top + graphHeight - (percent / 100) * graphHeight;
-      const value = Math.round((bufferSize * percent / 100) / 1024);
+      const value = Math.round((bufferSize * percent) / 100 / 1024);
       ctx.fillText(`${value}KB`, margin.left - 8, y);
     });
 
     // Draw X-axis labels (frames)
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
 
     const xSteps = 5;
     const xStep = Math.ceil(history.length / xSteps);
@@ -224,38 +256,44 @@ const HRDBufferPanelInternal = ({
       const x = margin.left + i * stepX;
       ctx.fillText(`${history[i].frame}`, x, margin.top + graphHeight + 8);
     }
-
   }, [hrdState, currentFrameIndex, bufferSize, targetBitrate, frameRate]);
 
   // Handle mouse move for tooltip
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
 
-    const margin = { top: 20, right: 10, bottom: 30, left: 50 };
-    const graphWidth = rect.width - margin.left - margin.right;
+      const margin = { top: 20, right: 10, bottom: 30, left: 50 };
+      const graphWidth = rect.width - margin.left - margin.right;
 
-    if (x < margin.left || x > margin.left + graphWidth) {
-      setHoveredFrame(null);
-      setHoverData(null);
-      return;
-    }
+      if (x < margin.left || x > margin.left + graphWidth) {
+        setHoveredFrame(null);
+        setHoverData(null);
+        return;
+      }
 
-    const history = hrdState.occupancyHistory;
-    const stepX = graphWidth / Math.max(1, history.length - 1);
-    const frameIndex = Math.round((x - margin.left) / stepX);
+      const history = hrdState.occupancyHistory;
+      const stepX = graphWidth / Math.max(1, history.length - 1);
+      const frameIndex = Math.round((x - margin.left) / stepX);
 
-    if (frameIndex >= 0 && frameIndex < history.length) {
-      setHoveredFrame(frameIndex);
-      setHoverData(history[frameIndex]);
-    }
-  }, [hrdState]);
+      if (frameIndex >= 0 && frameIndex < history.length) {
+        setHoveredFrame(frameIndex);
+        setHoverData(history[frameIndex]);
+      }
+    },
+    [hrdState],
+  );
 
-  const overflowCount = hrdState.occupancyHistory.filter(p => p.overflow).length;
-  const underflowCount = hrdState.occupancyHistory.filter(p => p.underflow).length;
+  const overflowCount = hrdState.occupancyHistory.filter(
+    (p) => p.overflow,
+  ).length;
+  const underflowCount = hrdState.occupancyHistory.filter(
+    (p) => p.underflow,
+  ).length;
   const currentPercent = (hrdState.occupancy / bufferSize) * 100;
 
   return (
@@ -270,7 +308,9 @@ const HRDBufferPanelInternal = ({
           {targetBitrate && (
             <span className="hrd-stat">
               <span className="stat-label">Target:</span>
-              <span className="stat-value">{(targetBitrate / 1000000).toFixed(2)} Mbps</span>
+              <span className="stat-value">
+                {(targetBitrate / 1000000).toFixed(2)} Mbps
+              </span>
             </span>
           )}
           {overflowCount > 0 && (
@@ -308,7 +348,8 @@ const HRDBufferPanelInternal = ({
           <div className="tooltip-row">
             <span className="tooltip-label">Occupancy:</span>
             <span className="tooltip-value">
-              {(hoverData.occupancy / 1024).toFixed(1)} KB ({((hoverData.occupancy / bufferSize) * 100).toFixed(1)}%)
+              {(hoverData.occupancy / 1024).toFixed(1)} KB (
+              {((hoverData.occupancy / bufferSize) * 100).toFixed(1)}%)
             </span>
           </div>
           {hoverData.overflow && (

@@ -4,9 +4,13 @@
  * Shows all available keyboard shortcuts
  */
 
-import { useState, useEffect, memo } from 'react';
-import { KEYBOARD_SHORTCUTS, getShortcutDisplay, isMac } from '../utils/keyboardShortcuts';
-import './KeyboardShortcutsDialog.css';
+import { useState, useEffect, memo } from "react";
+import {
+  KEYBOARD_SHORTCUTS,
+  getShortcutDisplay,
+  isMac,
+} from "../utils/keyboardShortcuts";
+import "./KeyboardShortcutsDialog.css";
 
 interface KeyboardShortcutsDialogProps {
   isOpen: boolean;
@@ -29,13 +33,13 @@ export const KeyboardShortcutsDialog = memo(function KeyboardShortcutsDialog({
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === "Escape" && isOpen) {
         onClose();
       }
     };
 
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -43,7 +47,7 @@ export const KeyboardShortcutsDialog = memo(function KeyboardShortcutsDialog({
   return (
     <div className="shortcuts-overlay" onClick={onClose}>
       <div
-        className={`shortcuts-dialog ${isVisible ? 'visible' : ''}`}
+        className={`shortcuts-dialog ${isVisible ? "visible" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="shortcuts-header">
@@ -79,7 +83,7 @@ export const KeyboardShortcutsDialog = memo(function KeyboardShortcutsDialog({
 
         <div className="shortcuts-footer">
           <span className="shortcuts-platform">
-            {isMac() ? 'macOS' : 'Windows/Linux'}
+            {isMac() ? "macOS" : "Windows/Linux"}
           </span>
           <button className="shortcuts-btn" onClick={onClose}>
             Close

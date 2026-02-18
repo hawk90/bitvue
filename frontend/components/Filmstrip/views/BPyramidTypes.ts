@@ -4,7 +4,7 @@
  * Shared types for B-Pyramid visualization components
  */
 
-import type { FrameInfo } from '../../../types/video';
+import type { FrameInfo } from "../../../types/video";
 
 /** B-Pyramid view props */
 export interface BPyramidViewProps {

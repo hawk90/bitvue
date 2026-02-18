@@ -119,7 +119,8 @@
 
 /* Pulse animation */
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
 
@@ -152,7 +153,8 @@
 
 /* Bounce animation */
 @keyframes bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
 
@@ -217,9 +219,10 @@
 }
 
 .transition-colors {
-  transition: color var(--transition-normal) var(--ease-default),
-              background-color var(--transition-normal) var(--ease-default),
-              border-color var(--transition-normal) var(--ease-default);
+  transition:
+    color var(--transition-normal) var(--ease-default),
+    background-color var(--transition-normal) var(--ease-default),
+    border-color var(--transition-normal) var(--ease-default);
 }
 
 .transition-transform {

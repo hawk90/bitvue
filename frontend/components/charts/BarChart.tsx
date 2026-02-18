@@ -5,8 +5,8 @@
  * Supports custom colors and dynamic max value calculation
  */
 
-import { memo, useMemo } from 'react';
-import { getCssVar } from '../../utils/css';
+import { memo, useMemo } from "react";
+import { getCssVar } from "../../utils/css";
 
 export interface BarChartProps {
   /** Data mapping labels to values */
@@ -27,25 +27,28 @@ export interface BarChartProps {
  * Default colors for frame types
  */
 const DEFAULT_FRAME_COLORS: Record<string, string> = {
-  'I': getCssVar('--frame-i'),
-  'KEY': getCssVar('--frame-i'),
-  'INTRA': getCssVar('--frame-i'),
-  'P': getCssVar('--frame-p'),
-  'INTER': getCssVar('--frame-p'),
-  'B': getCssVar('--frame-b'),
+  I: getCssVar("--frame-i"),
+  KEY: getCssVar("--frame-i"),
+  INTRA: getCssVar("--frame-i"),
+  P: getCssVar("--frame-p"),
+  INTER: getCssVar("--frame-p"),
+  B: getCssVar("--frame-b"),
 };
 
 /**
  * Get color for a bar label with fallback
  */
-function getBarColor(label: string, customColors?: Record<string, string>): string {
+function getBarColor(
+  label: string,
+  customColors?: Record<string, string>,
+): string {
   if (customColors && customColors[label]) {
     return customColors[label];
   }
   if (DEFAULT_FRAME_COLORS[label]) {
     return DEFAULT_FRAME_COLORS[label];
   }
-  return getCssVar('--text-secondary');
+  return getCssVar("--text-secondary");
 }
 
 export const BarChart = memo(function BarChart({
@@ -53,7 +56,7 @@ export const BarChart = memo(function BarChart({
   maxValue,
   colors,
   minBarHeight = 1,
-  className = 'bar-chart',
+  className = "bar-chart",
 }: BarChartProps) {
   // Memoize expensive operations: sorting and max calculation
   const { entries, maxVal } = useMemo(() => {
@@ -61,7 +64,8 @@ export const BarChart = memo(function BarChart({
     const sortedEntries = Object.entries(data).sort(([, a], [, b]) => b - a);
 
     // Calculate max value if not provided
-    const calculatedMax = maxValue ?? Math.max(...sortedEntries.map(([, v]) => v), 1);
+    const calculatedMax =
+      maxValue ?? Math.max(...sortedEntries.map(([, v]) => v), 1);
 
     return { entries: sortedEntries, maxVal: calculatedMax };
   }, [data, maxValue]);
@@ -73,7 +77,8 @@ export const BarChart = memo(function BarChart({
   return (
     <div className={className}>
       {entries.map(([label, value]) => {
-        const width = maxVal > 0 ? Math.max((value / maxVal) * 100, minBarHeight) : 0;
+        const width =
+          maxVal > 0 ? Math.max((value / maxVal) * 100, minBarHeight) : 0;
         const color = getBarColor(label, colors);
 
         return (
@@ -94,4 +99,4 @@ export const BarChart = memo(function BarChart({
   );
 });
 
-BarChart.displayName = 'BarChart';
+BarChart.displayName = "BarChart";

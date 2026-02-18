@@ -4,8 +4,7 @@
  * SVG overlay showing reference frame dependencies
  */
 
-
-import { memo } from 'react';
+import { memo } from "react";
 
 interface ExpansionInfo {
   from: number;
@@ -22,22 +21,27 @@ interface ReferenceLinesOverlayProps {
   containerRef: React.RefObject<HTMLDivElement>;
 }
 
-export const ReferenceLinesOverlay = memo(function ReferenceLinesOverlay({ expansionInfo, containerRef }: ReferenceLinesOverlayProps) {
+export const ReferenceLinesOverlay = memo(function ReferenceLinesOverlay({
+  expansionInfo,
+  containerRef,
+}: ReferenceLinesOverlayProps) {
   return (
     <svg
       className="reference-lines-overlay"
       style={{
-        position: 'absolute',
+        position: "absolute",
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        pointerEvents: 'none',
+        pointerEvents: "none",
         zIndex: 100,
       }}
     >
       {expansionInfo.map((info, idx) => {
-        const targetEl = containerRef.current?.querySelector(`[data-frame-index="${info.to}"]`) as HTMLElement;
+        const targetEl = containerRef.current?.querySelector(
+          `[data-frame-index="${info.to}"]`,
+        ) as HTMLElement;
         let targetWidth = 100;
         if (targetEl) {
           targetWidth = targetEl.getBoundingClientRect().width;
@@ -47,13 +51,17 @@ export const ReferenceLinesOverlay = memo(function ReferenceLinesOverlay({ expan
         const fromY = info.fromPos.y;
 
         const segmentWidth = targetWidth / (info.arrowTotal + 1);
-        const toX = info.toPos.x - (targetWidth / 2) + (segmentWidth * (info.arrowIndex + 1));
+        const toX =
+          info.toPos.x - targetWidth / 2 + segmentWidth * (info.arrowIndex + 1);
         const toY = info.toPos.y;
 
         const arrowSize = 6;
         const arrowWidth = 6;
         const horizontalDistance = Math.abs(toX - fromX);
-        const verticalDrop = Math.min(15 + Math.floor(horizontalDistance / 10), 50);
+        const verticalDrop = Math.min(
+          15 + Math.floor(horizontalDistance / 10),
+          50,
+        );
 
         return (
           <g key={`${info.from}-${info.to}-${idx}`}>

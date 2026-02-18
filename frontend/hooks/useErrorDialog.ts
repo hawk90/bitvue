@@ -19,7 +19,12 @@ export interface UseErrorDialogReturn {
   /** Current error dialog state */
   errorDialog: ErrorDialogState;
   /** Show an error dialog with the given details */
-  showErrorDialog: (title: string, message: string, details?: string, errorCode?: string) => void;
+  showErrorDialog: (
+    title: string,
+    message: string,
+    details?: string,
+    errorCode?: string,
+  ) => void;
   /** Close the error dialog */
   closeErrorDialog: () => void;
 }
@@ -30,33 +35,31 @@ export interface UseErrorDialogReturn {
 export function useErrorDialog(): UseErrorDialogReturn {
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({
     isOpen: false,
-    title: '',
-    message: '',
+    title: "",
+    message: "",
   });
 
   /**
    * Show error dialog with the given details
    */
-  const showErrorDialog = useCallback((
-    title: string,
-    message: string,
-    details?: string,
-    errorCode?: string
-  ) => {
-    setErrorDialog({
-      isOpen: true,
-      title,
-      message,
-      details,
-      errorCode,
-    });
-  }, []);
+  const showErrorDialog = useCallback(
+    (title: string, message: string, details?: string, errorCode?: string) => {
+      setErrorDialog({
+        isOpen: true,
+        title,
+        message,
+        details,
+        errorCode,
+      });
+    },
+    [],
+  );
 
   /**
    * Close the error dialog
    */
   const closeErrorDialog = useCallback(() => {
-    setErrorDialog(prev => ({ ...prev, isOpen: false }));
+    setErrorDialog((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
   return {

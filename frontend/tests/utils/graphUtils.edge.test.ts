@@ -5,18 +5,18 @@
  * for graph rendering utilities.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 import {
   calculateScales,
   generateLinePath,
   generateAreaPath,
   calculateRollingAverage,
   type DataPoint,
-} from '../graphUtils';
+} from "../graphUtils";
 
-describe('calculateScales edge cases', () => {
-  describe('empty data', () => {
-    it('should handle empty data array', () => {
+describe("calculateScales edge cases", () => {
+  describe("empty data", () => {
+    it("should handle empty data array", () => {
       const result = calculateScales([], {
         width: 100,
         height: 100,
@@ -24,11 +24,11 @@ describe('calculateScales edge cases', () => {
 
       expect(result.xDomain).toEqual([0, 1]);
       expect(result.yDomain).toEqual([0, 1]);
-      expect(typeof result.xScale).toBe('function');
-      expect(typeof result.yScale).toBe('function');
+      expect(typeof result.xScale).toBe("function");
+      expect(typeof result.yScale).toBe("function");
     });
 
-    it('should handle empty data with custom domains', () => {
+    it("should handle empty data with custom domains", () => {
       const result = calculateScales([], {
         width: 100,
         height: 100,
@@ -41,8 +41,8 @@ describe('calculateScales edge cases', () => {
     });
   });
 
-  describe('single data point', () => {
-    it('should handle single data point', () => {
+  describe("single data point", () => {
+    it("should handle single data point", () => {
       const data: DataPoint[] = [{ x: 50, y: 50, value: 25 }];
 
       const result = calculateScales(data, {
@@ -55,7 +55,7 @@ describe('calculateScales edge cases', () => {
       expect(result.yDomain[0]).toBe(result.yDomain[1]);
     });
 
-    it('should handle single point at origin', () => {
+    it("should handle single point at origin", () => {
       const data: DataPoint[] = [{ x: 0, y: 0, value: 0 }];
 
       const result = calculateScales(data, {
@@ -67,7 +67,7 @@ describe('calculateScales edge cases', () => {
       expect(result.yDomain).toEqual([0, 0]);
     });
 
-    it('should handle single point at large values', () => {
+    it("should handle single point at large values", () => {
       const data: DataPoint[] = [{ x: 1e10, y: 1e10, value: 1e10 }];
 
       const result = calculateScales(data, {
@@ -80,8 +80,8 @@ describe('calculateScales edge cases', () => {
     });
   });
 
-  describe('extreme values', () => {
-    it('should handle all zero values', () => {
+  describe("extreme values", () => {
+    it("should handle all zero values", () => {
       const data: DataPoint[] = [
         { x: 0, y: 0, value: 0 },
         { x: 0, y: 0, value: 0 },
@@ -96,7 +96,7 @@ describe('calculateScales edge cases', () => {
       expect(result.yDomain).toEqual([0, 0]);
     });
 
-    it('should handle negative values', () => {
+    it("should handle negative values", () => {
       const data: DataPoint[] = [
         { x: -100, y: -50, value: -75 },
         { x: 100, y: 50, value: 75 },
@@ -113,9 +113,13 @@ describe('calculateScales edge cases', () => {
       expect(result.yDomain[1]).toBeGreaterThan(0);
     });
 
-    it('should handle very large values', () => {
+    it("should handle very large values", () => {
       const data: DataPoint[] = [
-        { x: Number.MAX_SAFE_INTEGER, y: Number.MAX_SAFE_INTEGER, value: Number.MAX_SAFE_INTEGER },
+        {
+          x: Number.MAX_SAFE_INTEGER,
+          y: Number.MAX_SAFE_INTEGER,
+          value: Number.MAX_SAFE_INTEGER,
+        },
         { x: 0, y: 0, value: 0 },
       ];
 
@@ -128,7 +132,7 @@ describe('calculateScales edge cases', () => {
       expect(result.yDomain[1]).toBe(Number.MAX_SAFE_INTEGER);
     });
 
-    it('should handle very small positive values', () => {
+    it("should handle very small positive values", () => {
       const data: DataPoint[] = [
         { x: Number.MIN_VALUE, y: Number.MIN_VALUE, value: Number.MIN_VALUE },
         { x: 0, y: 0, value: 0 },
@@ -143,7 +147,7 @@ describe('calculateScales edge cases', () => {
       expect(result.yDomain[0]).toBe(0);
     });
 
-    it('should handle Infinity values', () => {
+    it("should handle Infinity values", () => {
       const data: DataPoint[] = [
         { x: 0, y: 0, value: 0 },
         { x: Infinity, y: Infinity, value: Infinity },
@@ -158,7 +162,7 @@ describe('calculateScales edge cases', () => {
       expect(result.yDomain[1]).toBe(Infinity);
     });
 
-    it('should handle -Infinity values', () => {
+    it("should handle -Infinity values", () => {
       const data: DataPoint[] = [
         { x: 0, y: 0, value: 0 },
         { x: -Infinity, y: -Infinity, value: -Infinity },
@@ -174,8 +178,8 @@ describe('calculateScales edge cases', () => {
     });
   });
 
-  describe('identical values', () => {
-    it('should handle all identical x values', () => {
+  describe("identical values", () => {
+    it("should handle all identical x values", () => {
       const data: DataPoint[] = [
         { x: 50, y: 10, value: 20 },
         { x: 50, y: 30, value: 40 },
@@ -192,7 +196,7 @@ describe('calculateScales edge cases', () => {
       expect(xRange === 0 || xRange === 1).toBe(true);
     });
 
-    it('should handle all identical y values', () => {
+    it("should handle all identical y values", () => {
       const data: DataPoint[] = [
         { x: 10, y: 50, value: 50 },
         { x: 30, y: 50, value: 50 },
@@ -210,8 +214,8 @@ describe('calculateScales edge cases', () => {
     });
   });
 
-  describe('extreme dimensions', () => {
-    it('should handle zero width', () => {
+  describe("extreme dimensions", () => {
+    it("should handle zero width", () => {
       const data: DataPoint[] = [{ x: 0, y: 0, value: 0 }];
 
       const result = calculateScales(data, {
@@ -219,10 +223,10 @@ describe('calculateScales edge cases', () => {
         height: 100,
       });
 
-      expect(typeof result.xScale).toBe('function');
+      expect(typeof result.xScale).toBe("function");
     });
 
-    it('should handle zero height', () => {
+    it("should handle zero height", () => {
       const data: DataPoint[] = [{ x: 0, y: 0, value: 0 }];
 
       const result = calculateScales(data, {
@@ -230,10 +234,10 @@ describe('calculateScales edge cases', () => {
         height: 0,
       });
 
-      expect(typeof result.yScale).toBe('function');
+      expect(typeof result.yScale).toBe("function");
     });
 
-    it('should handle very large dimensions', () => {
+    it("should handle very large dimensions", () => {
       const data: DataPoint[] = [{ x: 50, y: 50, value: 25 }];
 
       const result = calculateScales(data, {
@@ -241,11 +245,11 @@ describe('calculateScales edge cases', () => {
         height: 1000000,
       });
 
-      expect(typeof result.xScale).toBe('function');
-      expect(typeof result.yScale).toBe('function');
+      expect(typeof result.xScale).toBe("function");
+      expect(typeof result.yScale).toBe("function");
     });
 
-    it('should handle negative dimensions', () => {
+    it("should handle negative dimensions", () => {
       const data: DataPoint[] = [{ x: 50, y: 50, value: 25 }];
 
       const result = calculateScales(data, {
@@ -254,12 +258,12 @@ describe('calculateScales edge cases', () => {
       });
 
       // Should still return functions, behavior undefined
-      expect(typeof result.xScale).toBe('function');
+      expect(typeof result.xScale).toBe("function");
     });
   });
 
-  describe('extreme padding', () => {
-    it('should handle zero padding', () => {
+  describe("extreme padding", () => {
+    it("should handle zero padding", () => {
       const data: DataPoint[] = [{ x: 50, y: 50, value: 25 }];
 
       const result = calculateScales(data, {
@@ -268,10 +272,10 @@ describe('calculateScales edge cases', () => {
         padding: { top: 0, right: 0, bottom: 0, left: 0 },
       });
 
-      expect(typeof result.xScale).toBe('function');
+      expect(typeof result.xScale).toBe("function");
     });
 
-    it('should handle padding larger than dimensions', () => {
+    it("should handle padding larger than dimensions", () => {
       const data: DataPoint[] = [{ x: 50, y: 50, value: 25 }];
 
       const result = calculateScales(data, {
@@ -280,10 +284,10 @@ describe('calculateScales edge cases', () => {
         padding: { top: 200, right: 200, bottom: 200, left: 200 },
       });
 
-      expect(typeof result.xScale).toBe('function');
+      expect(typeof result.xScale).toBe("function");
     });
 
-    it('should handle negative padding', () => {
+    it("should handle negative padding", () => {
       const data: DataPoint[] = [{ x: 50, y: 50, value: 25 }];
 
       const result = calculateScales(data, {
@@ -292,12 +296,12 @@ describe('calculateScales edge cases', () => {
         padding: { top: -10, right: -10, bottom: -10, left: -10 },
       });
 
-      expect(typeof result.xScale).toBe('function');
+      expect(typeof result.xScale).toBe("function");
     });
   });
 
-  describe('scale function edge cases', () => {
-    it('should map domain boundaries correctly', () => {
+  describe("scale function edge cases", () => {
+    it("should map domain boundaries correctly", () => {
       const data: DataPoint[] = [
         { x: 0, y: 0, value: 0 },
         { x: 100, y: 100, value: 100 },
@@ -318,10 +322,8 @@ describe('calculateScales edge cases', () => {
       expect(result.yScale(100)).toBe(0);
     });
 
-    it('should handle values outside domain', () => {
-      const data: DataPoint[] = [
-        { x: 50, y: 50, value: 50 },
-      ];
+    it("should handle values outside domain", () => {
+      const data: DataPoint[] = [{ x: 50, y: 50, value: 50 }];
 
       const result = calculateScales(data, {
         width: 100,
@@ -337,24 +339,24 @@ describe('calculateScales edge cases', () => {
   });
 });
 
-describe('generateLinePath edge cases', () => {
+describe("generateLinePath edge cases", () => {
   const mockXScale = (x: number) => x;
   const mockYScale = (y: number) => y;
 
-  it('should handle empty data array', () => {
+  it("should handle empty data array", () => {
     const path = generateLinePath([], mockXScale, mockYScale);
-    expect(path).toBe('');
+    expect(path).toBe("");
   });
 
-  it('should handle single data point', () => {
+  it("should handle single data point", () => {
     const data: DataPoint[] = [{ x: 50, y: 50, value: 50 }];
     const path = generateLinePath(data, mockXScale, mockYScale);
 
-    expect(path).toContain('M');
-    expect(path).toContain('50');
+    expect(path).toContain("M");
+    expect(path).toContain("50");
   });
 
-  it('should handle NaN values', () => {
+  it("should handle NaN values", () => {
     const data: DataPoint[] = [
       { x: 0, y: 0, value: 0 },
       { x: NaN, y: NaN, value: NaN },
@@ -367,7 +369,7 @@ describe('generateLinePath edge cases', () => {
     expect(path).toBeDefined();
   });
 
-  it('should handle Infinity values', () => {
+  it("should handle Infinity values", () => {
     const data: DataPoint[] = [
       { x: 0, y: 0, value: 0 },
       { x: Infinity, y: Infinity, value: Infinity },
@@ -379,7 +381,7 @@ describe('generateLinePath edge cases', () => {
     expect(path).toBeDefined();
   });
 
-  it('should handle negative values', () => {
+  it("should handle negative values", () => {
     const data: DataPoint[] = [
       { x: -50, y: -50, value: -50 },
       { x: 50, y: 50, value: 50 },
@@ -387,10 +389,10 @@ describe('generateLinePath edge cases', () => {
 
     const path = generateLinePath(data, mockXScale, mockYScale);
 
-    expect(path).toContain('-50');
+    expect(path).toContain("-50");
   });
 
-  it('should handle very large number of points', () => {
+  it("should handle very large number of points", () => {
     const data: DataPoint[] = Array.from({ length: 100000 }, (_, i) => ({
       x: i,
       y: i,
@@ -403,32 +405,32 @@ describe('generateLinePath edge cases', () => {
   });
 });
 
-describe('generateAreaPath edge cases', () => {
+describe("generateAreaPath edge cases", () => {
   const mockXScale = (x: number) => x;
   const mockYScale = (y: number) => y;
 
-  it('should handle empty data array', () => {
+  it("should handle empty data array", () => {
     const path = generateAreaPath([], mockXScale, mockYScale, 100, 0);
-    expect(path).toBe('');
+    expect(path).toBe("");
   });
 
-  it('should handle single data point', () => {
+  it("should handle single data point", () => {
     const data: DataPoint[] = [{ x: 50, y: 50, value: 50 }];
     const path = generateAreaPath(data, mockXScale, mockYScale, 100, 0);
 
-    expect(path).toContain('M');
-    expect(path).toContain('L');
-    expect(path).toContain('Z');
+    expect(path).toContain("M");
+    expect(path).toContain("L");
+    expect(path).toContain("Z");
   });
 
-  it('should handle zero height', () => {
+  it("should handle zero height", () => {
     const data: DataPoint[] = [{ x: 50, y: 50, value: 50 }];
     const path = generateAreaPath(data, mockXScale, mockYScale, 0, 0);
 
     expect(path).toBeDefined();
   });
 
-  it('should handle paddingBottom larger than height', () => {
+  it("should handle paddingBottom larger than height", () => {
     const data: DataPoint[] = [
       { x: 0, y: 0, value: 0 },
       { x: 100, y: 100, value: 100 },
@@ -438,7 +440,7 @@ describe('generateAreaPath edge cases', () => {
     expect(path).toBeDefined();
   });
 
-  it('should handle negative paddingBottom', () => {
+  it("should handle negative paddingBottom", () => {
     const data: DataPoint[] = [{ x: 50, y: 50, value: 50 }];
     const path = generateAreaPath(data, mockXScale, mockYScale, 100, -10);
 
@@ -446,25 +448,25 @@ describe('generateAreaPath edge cases', () => {
   });
 });
 
-describe('calculateRollingAverage edge cases', () => {
-  it('should handle empty array', () => {
+describe("calculateRollingAverage edge cases", () => {
+  it("should handle empty array", () => {
     const result = calculateRollingAverage([], 5);
     expect(result).toEqual([]);
   });
 
-  it('should handle single element', () => {
+  it("should handle single element", () => {
     const result = calculateRollingAverage([42], 5);
     expect(result).toEqual([42]);
   });
 
-  it('should handle window size of 1', () => {
+  it("should handle window size of 1", () => {
     const data = [1, 2, 3, 4, 5];
     const result = calculateRollingAverage(data, 1);
 
     expect(result).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it('should handle window size of 0', () => {
+  it("should handle window size of 0", () => {
     const data = [1, 2, 3, 4, 5];
     const result = calculateRollingAverage(data, 0);
 
@@ -472,7 +474,7 @@ describe('calculateRollingAverage edge cases', () => {
     expect(result).toEqual(data);
   });
 
-  it('should handle window size larger than data', () => {
+  it("should handle window size larger than data", () => {
     const data = [1, 2, 3];
     const result = calculateRollingAverage(data, 10);
 
@@ -483,7 +485,7 @@ describe('calculateRollingAverage edge cases', () => {
     expect(result[2]).toBeCloseTo(2);
   });
 
-  it('should handle negative window size', () => {
+  it("should handle negative window size", () => {
     const data = [1, 2, 3, 4, 5];
     const result = calculateRollingAverage(data, -5);
 
@@ -491,14 +493,14 @@ describe('calculateRollingAverage edge cases', () => {
     expect(result).toEqual(data);
   });
 
-  it('should handle all zeros', () => {
+  it("should handle all zeros", () => {
     const data = [0, 0, 0, 0, 0];
     const result = calculateRollingAverage(data, 3);
 
     expect(result).toEqual([0, 0, 0, 0, 0]);
   });
 
-  it('should handle very large values', () => {
+  it("should handle very large values", () => {
     const data = [Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE];
     const result = calculateRollingAverage(data, 3);
 
@@ -508,14 +510,18 @@ describe('calculateRollingAverage edge cases', () => {
     expect(result[2]).toBe(Infinity);
   });
 
-  it('should handle very small values', () => {
+  it("should handle very small values", () => {
     const data = [Number.MIN_VALUE, Number.MIN_VALUE, Number.MIN_VALUE];
     const result = calculateRollingAverage(data, 3);
 
-    expect(result).toEqual([Number.MIN_VALUE, Number.MIN_VALUE, Number.MIN_VALUE]);
+    expect(result).toEqual([
+      Number.MIN_VALUE,
+      Number.MIN_VALUE,
+      Number.MIN_VALUE,
+    ]);
   });
 
-  it('should handle mixed positive and negative', () => {
+  it("should handle mixed positive and negative", () => {
     const data = [-10, 0, 10, -5, 5];
     const result = calculateRollingAverage(data, 3);
 
@@ -532,7 +538,7 @@ describe('calculateRollingAverage edge cases', () => {
     expect(result[4]).toBe(0);
   });
 
-  it('should handle NaN values', () => {
+  it("should handle NaN values", () => {
     const data = [1, NaN, 3];
     const result = calculateRollingAverage(data, 3);
 
@@ -540,14 +546,14 @@ describe('calculateRollingAverage edge cases', () => {
     expect(result).toHaveLength(3);
   });
 
-  it('should handle Infinity values', () => {
+  it("should handle Infinity values", () => {
     const data = [1, Infinity, 3];
     const result = calculateRollingAverage(data, 3);
 
     expect(result).toHaveLength(3);
   });
 
-  it('should handle very large array', () => {
+  it("should handle very large array", () => {
     const data = Array.from({ length: 1000000 }, () => 5);
     const result = calculateRollingAverage(data, 100);
 

@@ -5,8 +5,8 @@
  * Extracted from yuvRenderer.ts for better modularity.
  */
 
-import type { ColorspaceMatrix } from '../../types/yuv';
-import { Colorspace, COLORSPACE_MATRICES } from '../../types/yuv';
+import type { ColorspaceMatrix } from "../../types/yuv";
+import { Colorspace, COLORSPACE_MATRICES } from "../../types/yuv";
 
 /** RGB components shift amounts for packing */
 const RGB_SHIFT: Readonly<{
@@ -60,7 +60,7 @@ export function yuvToRgb(
   y: number,
   u: number,
   v: number,
-  colorspace: Colorspace = Colorspace.BT709
+  colorspace: Colorspace = Colorspace.BT709,
 ): number {
   // Convert UV from [0, 255] to [-128, 127]
   const u0 = u - 128;
@@ -80,7 +80,11 @@ export function yuvToRgb(
   const bClamped = Math.max(0, Math.min(255, Math.round(b)));
 
   // Pack as RGB (0xRRGGBB)
-  return (rClamped << RGB_SHIFT.R) | (gClamped << RGB_SHIFT.G) | (bClamped << RGB_SHIFT.B);
+  return (
+    (rClamped << RGB_SHIFT.R) |
+    (gClamped << RGB_SHIFT.G) |
+    (bClamped << RGB_SHIFT.B)
+  );
 }
 
 /**
@@ -99,7 +103,7 @@ export function yuvToRgbaArray(
   v: number,
   colorspace: Colorspace,
   out: Uint8ClampedArray,
-  outIndex: number
+  outIndex: number,
 ): void {
   const rgb = yuvToRgb(y, u, v, colorspace);
 

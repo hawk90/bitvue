@@ -7,7 +7,7 @@
  * For new code, import from there: import { calculateScales } from './utils/graphUtils';
  */
 
-import { ReactNode, memo } from 'react';
+import { ReactNode, memo } from "react";
 
 // Re-export utilities from utils/graphUtils for backwards compatibility
 export {
@@ -17,7 +17,7 @@ export {
   calculateRollingAverage,
   type GraphRenderProps,
   type DataPoint,
-} from '../utils/graphUtils';
+} from "../utils/graphUtils";
 
 // Graph-specific types
 export interface GraphConfig {
@@ -49,7 +49,7 @@ export const Graph = memo(function Graph({
   data,
   config,
   children,
-  className = '',
+  className = "",
   onClick,
   onHover,
   hoveredIndex,
@@ -72,7 +72,8 @@ export const Graph = memo(function Graph({
   // Generate grid lines
   const gridYPositions = showGrid
     ? Array.from({ length: gridLines }, (_, i) => {
-        const value = yDomain[0] + (yDomain[1] - yDomain[0]) * (i / (gridLines - 1));
+        const value =
+          yDomain[0] + (yDomain[1] - yDomain[0]) * (i / (gridLines - 1));
         return { value, y: yScale(value) };
       })
     : [];
@@ -82,7 +83,7 @@ export const Graph = memo(function Graph({
       width={width}
       height={height}
       className={`graph-container ${className}`}
-      style={{ overflow: 'visible' }}
+      style={{ overflow: "visible" }}
     >
       {/* Background */}
       <rect
@@ -158,9 +159,9 @@ export const Graph = memo(function Graph({
               cx={cx}
               cy={cy}
               r={isHovered ? 8 : 5}
-              fill={point.color || 'rgba(255, 255, 255, 0.3)'}
+              fill={point.color || "rgba(255, 255, 255, 0.3)"}
               className="graph-point"
-              style={{ cursor: onClick ? 'pointer' : 'default' }}
+              style={{ cursor: onClick ? "pointer" : "default" }}
               onClick={() => onClick?.(index, point)}
               onMouseEnter={() => onHover?.(index, point)}
               onMouseLeave={() => onHover?.(index, null)}
@@ -182,8 +183,14 @@ export const Graph = memo(function Graph({
       })}
 
       {/* Custom children rendering */}
-      {typeof children === 'function'
-        ? (children as (props: GraphRenderProps) => ReactNode)({ xScale, yScale, plotWidth, plotHeight, padding })
+      {typeof children === "function"
+        ? (children as (props: GraphRenderProps) => ReactNode)({
+            xScale,
+            yScale,
+            plotWidth,
+            plotHeight,
+            padding,
+          })
         : children}
     </svg>
   );

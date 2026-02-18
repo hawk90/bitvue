@@ -4,24 +4,29 @@
  * Displays detailed frame information on hover
  */
 
-import type { FrameInfo } from '../types/video';
-import { memo } from 'react';
+import type { FrameInfo } from "../types/video";
+import { memo } from "react";
 
 interface FilmstripTooltipProps {
   frame: FrameInfo;
   x: number;
   y: number;
-  placement: 'left' | 'right';
+  placement: "left" | "right";
 }
 
-export const FilmstripTooltip = memo(function FilmstripTooltip({ frame, x, y, placement }: FilmstripTooltipProps) {
+export const FilmstripTooltip = memo(function FilmstripTooltip({
+  frame,
+  x,
+  y,
+  placement,
+}: FilmstripTooltipProps) {
   // Add offset to avoid overlapping with mouse cursor
-  const offsetX = placement === 'left' ? -40 : 40;
+  const offsetX = placement === "left" ? -40 : 40;
   const offsetY = -60; // Move tooltip up to avoid cursor
 
   return (
     <div
-      className={`filmstrip-tooltip ${placement === 'left' ? 'tooltip-left' : 'tooltip-right'}`}
+      className={`filmstrip-tooltip ${placement === "left" ? "tooltip-left" : "tooltip-right"}`}
       style={{
         left: `${x + offsetX}px`,
         top: `${y + offsetY}px`,
@@ -35,7 +40,9 @@ export const FilmstripTooltip = memo(function FilmstripTooltip({ frame, x, y, pl
       </div>
       <div className="filmstrip-tooltip-body">
         <span className="filmstrip-tooltip-label">Size</span>
-        <span className="filmstrip-tooltip-value">{(frame.size / 1024).toFixed(1)} KB</span>
+        <span className="filmstrip-tooltip-value">
+          {(frame.size / 1024).toFixed(1)} KB
+        </span>
 
         {frame.pts !== undefined && (
           <>
@@ -54,7 +61,9 @@ export const FilmstripTooltip = memo(function FilmstripTooltip({ frame, x, y, pl
         {frame.temporal_id !== undefined && (
           <>
             <span className="filmstrip-tooltip-label">Temporal</span>
-            <span className="filmstrip-tooltip-value">T{frame.temporal_id}</span>
+            <span className="filmstrip-tooltip-value">
+              T{frame.temporal_id}
+            </span>
           </>
         )}
 
@@ -62,7 +71,7 @@ export const FilmstripTooltip = memo(function FilmstripTooltip({ frame, x, y, pl
           <>
             <span className="filmstrip-tooltip-label">References</span>
             <span className="filmstrip-tooltip-value highlight">
-              [{frame.ref_frames.join(', ')}]
+              [{frame.ref_frames.join(", ")}]
             </span>
           </>
         )}

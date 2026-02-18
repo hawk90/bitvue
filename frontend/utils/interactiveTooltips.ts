@@ -23,6 +23,9 @@ export {
   registerFeatureTooltips,
   useTooltip,
   initTooltips,
-} from './interactiveTooltips';
+} from "./interactiveTooltips";
 
-export type { TooltipConfig, TooltipContext } from './interactiveTooltips/types';
+export type {
+  TooltipConfig,
+  TooltipContext,
+} from "./interactiveTooltips/types";

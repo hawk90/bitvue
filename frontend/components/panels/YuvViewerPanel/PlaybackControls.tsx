@@ -4,7 +4,7 @@
  * Play/pause button and playback speed selector
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface PlaybackControlsProps {
   isPlaying: boolean;
@@ -23,10 +23,12 @@ export const PlaybackControls = memo(function PlaybackControls({
     <div className="yuv-toolbar-group">
       <button
         onClick={onTogglePlay}
-        title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-        className={isPlaying ? 'active' : ''}
+        title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+        className={isPlaying ? "active" : ""}
       >
-        <span className={`codicon codicon-${isPlaying ? 'debug-pause' : 'play'}`}></span>
+        <span
+          className={`codicon codicon-${isPlaying ? "debug-pause" : "play"}`}
+        ></span>
       </button>
       <select
         value={playbackSpeed}

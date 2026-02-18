@@ -68,7 +68,7 @@
 
 /* Ripple effect for buttons */
 .yuv-toolbar button::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -77,7 +77,9 @@
   border-radius: 50%;
   background: rgb(255 255 255 / 15%);
   transform: translate(-50%, -50%);
-  transition: width 0.4s ease, height 0.4s ease;
+  transition:
+    width 0.4s ease,
+    height 0.4s ease;
 }
 
 .yuv-toolbar button:active::before {
@@ -122,7 +124,7 @@
   color: var(--bitvue-fg, #fff);
   font-size: 12px;
   text-align: center;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

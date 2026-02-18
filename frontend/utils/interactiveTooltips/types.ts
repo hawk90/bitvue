@@ -8,7 +8,7 @@ export interface TooltipConfig {
   id: string;
   title: string;
   description: string;
-  position: 'top' | 'bottom' | 'left' | 'right' | 'auto';
+  position: "top" | "bottom" | "left" | "right" | "auto";
   delay?: number;
   shortcut?: string;
   actionLabel?: string;

@@ -5,14 +5,14 @@
  * Supports: frames, statistics, QP data, MV data, partitions
  */
 
-import { invoke } from '@tauri-apps/api/core';
-import { createLogger } from './logger';
-import type { FrameInfo } from '../types/video';
+import { invoke } from "@tauri-apps/api/core";
+import { createLogger } from "./logger";
+import type { FrameInfo } from "../types/video";
 
-const logger = createLogger('export');
+const logger = createLogger("export");
 
 export interface ExportOptions {
-  format: 'csv' | 'json';
+  format: "csv" | "json";
   includeFrames?: boolean;
   includeStatistics?: boolean;
   includeQP?: boolean;
@@ -84,13 +84,18 @@ export interface PartitionExportData {
 /**
  * Export data to CSV format
  */
-export function exportToCSV(data: ExportData, options: ExportOptions = {}): string {
+export function exportToCSV(
+  data: ExportData,
+  options: ExportOptions = {},
+): string {
   const lines: string[] = [];
 
   // Frames CSV
   if (options.includeFrames) {
-    lines.push('# Frame Data');
-    lines.push('frame_index,frame_type,poc,pts,size,key_frame,width,height,qp,temporal_id,ref_frames');
+    lines.push("# Frame Data");
+    lines.push(
+      "frame_index,frame_type,poc,pts,size,key_frame,width,height,qp,temporal_id,ref_frames",
+    );
 
     const frames = data.frames;
     const start = options.frameRange?.start ?? 0;
@@ -98,103 +103,118 @@ export function exportToCSV(data: ExportData, options: ExportOptions = {}): stri
 
     for (let i = start; i < end && i < frames.length; i++) {
       const f = frames[i];
-      lines.push([
-        f.frame_index,
-        f.frame_type,
-        f.poc ?? '',
-        f.pts ?? '',
-        f.size,
-        f.key_frame ? 'true' : 'false',
-        f.width,
-        f.height,
-        f.qp ?? '',
-        f.temporal_id ?? '',
-        f.ref_frames ? `"${f.ref_frames.join(';')}"` : '',
-      ].join(','));
+      lines.push(
+        [
+          f.frame_index,
+          f.frame_type,
+          f.poc ?? "",
+          f.pts ?? "",
+          f.size,
+          f.key_frame ? "true" : "false",
+          f.width,
+          f.height,
+          f.qp ?? "",
+          f.temporal_id ?? "",
+          f.ref_frames ? `"${f.ref_frames.join(";")}"` : "",
+        ].join(","),
+      );
     }
 
-    lines.push('');
+    lines.push("");
   }
 
   // Statistics CSV
   if (options.includeStatistics) {
-    lines.push('# Statistics');
-    lines.push('total_frames,key_frames,total_size,avg_size,min_size,max_size,avg_qp,min_qp,max_qp');
-    lines.push([
-      data.statistics.totalFrames,
-      data.statistics.keyFrames,
-      data.statistics.totalSize,
-      data.statistics.avgSize.toFixed(2),
-      data.statistics.minSize,
-      data.statistics.maxSize,
-      data.statistics.avgQP.toFixed(2),
-      data.statistics.minQP,
-      data.statistics.maxQP,
-    ].join(','));
+    lines.push("# Statistics");
+    lines.push(
+      "total_frames,key_frames,total_size,avg_size,min_size,max_size,avg_qp,min_qp,max_qp",
+    );
+    lines.push(
+      [
+        data.statistics.totalFrames,
+        data.statistics.keyFrames,
+        data.statistics.totalSize,
+        data.statistics.avgSize.toFixed(2),
+        data.statistics.minSize,
+        data.statistics.maxSize,
+        data.statistics.avgQP.toFixed(2),
+        data.statistics.minQP,
+        data.statistics.maxQP,
+      ].join(","),
+    );
 
-    lines.push('');
+    lines.push("");
   }
 
   // QP Data CSV
   if (options.includeQP) {
-    lines.push('# QP Data');
-    lines.push('frame_index,qp_min,qp_max,qp_avg,block_count');
+    lines.push("# QP Data");
+    lines.push("frame_index,qp_min,qp_max,qp_avg,block_count");
 
     for (const qp of data.qpData) {
-      lines.push([
-        qp.frame_index,
-        qp.qp_min,
-        qp.qp_max,
-        qp.qp_avg.toFixed(2),
-        qp.block_count,
-      ].join(','));
+      lines.push(
+        [
+          qp.frame_index,
+          qp.qp_min,
+          qp.qp_max,
+          qp.qp_avg.toFixed(2),
+          qp.block_count,
+        ].join(","),
+      );
     }
 
-    lines.push('');
+    lines.push("");
   }
 
   // MV Data CSV
   if (options.includeMV) {
-    lines.push('# MV Data');
-    lines.push('frame_index,mv_count,avg_mv_x,avg_mv_y,max_mv,zero_mv_count');
+    lines.push("# MV Data");
+    lines.push("frame_index,mv_count,avg_mv_x,avg_mv_y,max_mv,zero_mv_count");
 
     for (const mv of data.mvData) {
-      lines.push([
-        mv.frame_index,
-        mv.mv_count,
-        mv.avg_mv_x.toFixed(2),
-        mv.avg_mv_y.toFixed(2),
-        mv.max_mv.toFixed(2),
-        mv.zero_mv_count,
-      ].join(','));
+      lines.push(
+        [
+          mv.frame_index,
+          mv.mv_count,
+          mv.avg_mv_x.toFixed(2),
+          mv.avg_mv_y.toFixed(2),
+          mv.max_mv.toFixed(2),
+          mv.zero_mv_count,
+        ].join(","),
+      );
     }
 
-    lines.push('');
+    lines.push("");
   }
 
   // Partition Data CSV
   if (options.includePartitions) {
-    lines.push('# Partition Data');
-    lines.push('frame_index,block_count,avg_size,max_depth,skip_count');
+    lines.push("# Partition Data");
+    lines.push("frame_index,block_count,avg_size,max_depth,skip_count");
 
     for (const part of data.partitions) {
-      lines.push([
-        part.frame_index,
-        part.block_count,
-        part.avg_size.toFixed(2),
-        part.max_depth,
-        part.skip_count,
-      ].join(','));
+      lines.push(
+        [
+          part.frame_index,
+          part.block_count,
+          part.avg_size.toFixed(2),
+          part.max_depth,
+          part.skip_count,
+        ].join(","),
+      );
     }
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /**
  * Export data to JSON format
  */
-export function exportToJSON(data: ExportData, options: ExportOptions = {}): string {
+export function exportToJSON(
+  data: ExportData,
+  options: ExportOptions = {},
+): string {
   const exportData: Record<string, unknown> = {};
 
   if (options.includeFrames) {
@@ -222,7 +242,7 @@ export function exportToJSON(data: ExportData, options: ExportOptions = {}): str
   }
 
   exportData.export_timestamp = new Date().toISOString();
-  exportData.bitvue_version = '1.0.0';
+  exportData.bitvue_version = "1.0.0";
 
   return JSON.stringify(exportData, null, 2);
 }
@@ -230,11 +250,15 @@ export function exportToJSON(data: ExportData, options: ExportOptions = {}): str
 /**
  * Trigger file download
  */
-export function downloadFile(content: string, filename: string, mimeType: string): void {
+export function downloadFile(
+  content: string,
+  filename: string,
+  mimeType: string,
+): void {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
 
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);
@@ -250,16 +274,16 @@ export function downloadFile(content: string, filename: string, mimeType: string
 export async function exportData(
   filePath: string,
   options: ExportOptions = {
-    format: 'json',
+    format: "json",
     includeFrames: true,
     includeStatistics: true,
-  }
+  },
 ): Promise<void> {
   try {
-    logger.info('Exporting data for:', filePath, 'options:', options);
+    logger.info("Exporting data for:", filePath, "options:", options);
 
     // Get frames from backend
-    const frames = await invoke<FrameInfo[]>('get_frames', { path: filePath });
+    const frames = await invoke<FrameInfo[]>("get_frames", { path: filePath });
 
     // Collect frame data for export
     const exportData: ExportData = {
@@ -275,7 +299,8 @@ export async function exportData(
       })),
       statistics: {
         totalFrames: frames.length,
-        keyFrames: frames.filter((f) => f.key_frame || f.frame_type === 'I').length,
+        keyFrames: frames.filter((f) => f.key_frame || f.frame_type === "I")
+          .length,
         totalSize: frames.reduce((sum, f) => sum + (f.size || 0), 0),
         avgSize: 0,
         minSize: 0,
@@ -292,7 +317,8 @@ export async function exportData(
 
     // Calculate statistics
     const sizes = frames.map((f) => f.size || 0);
-    exportData.statistics.avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+    exportData.statistics.avgSize =
+      sizes.reduce((a, b) => a + b, 0) / sizes.length;
     exportData.statistics.minSize = Math.min(...sizes);
     exportData.statistics.maxSize = Math.max(...sizes);
 
@@ -300,28 +326,33 @@ export async function exportData(
     frames.forEach((f) => {
       const type = f.frame_type;
       if (type) {
-        exportData.statistics.frameTypeCounts[type] = (exportData.statistics.frameTypeCounts[type] || 0) + 1;
+        exportData.statistics.frameTypeCounts[type] =
+          (exportData.statistics.frameTypeCounts[type] || 0) + 1;
       }
     });
 
     // Convert to requested format
-    const content = options.format === 'csv'
-      ? exportToCSV(exportData, options)
-      : exportToJSON(exportData, options);
+    const content =
+      options.format === "csv"
+        ? exportToCSV(exportData, options)
+        : exportToJSON(exportData, options);
 
     // Generate filename
-    const baseName = filePath.split(/[/\\]/).pop() ?? 'export';
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const extension = options.format === 'csv' ? 'csv' : 'json';
+    const baseName = filePath.split(/[/\\]/).pop() ?? "export";
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    const extension = options.format === "csv" ? "csv" : "json";
     const filename = `${baseName}_export_${timestamp}.${extension}`;
 
     // Trigger download
-    const mimeType = options.format === 'csv' ? 'text/csv' : 'application/json';
+    const mimeType = options.format === "csv" ? "text/csv" : "application/json";
     downloadFile(content, filename, mimeType);
 
-    logger.info('Export completed:', filename);
+    logger.info("Export completed:", filename);
   } catch (error) {
-    logger.error('Export failed:', error);
+    logger.error("Export failed:", error);
     throw error;
   }
 }
@@ -332,25 +363,26 @@ export async function exportData(
 export async function exportFrameAnalysis(
   filePath: string,
   frameIndex: number,
-  format: 'csv' | 'json' = 'json'
+  format: "csv" | "json" = "json",
 ): Promise<void> {
   try {
-    const analysis = await invoke('get_frame_analysis', {
+    const analysis = await invoke("get_frame_analysis", {
       path: filePath,
       frame_index: frameIndex,
     });
 
-    const filename = `frame_${frameIndex}_analysis_${format === 'csv' ? 'csv' : 'json'}`;
-    const content = format === 'csv'
-      ? exportAnalysisToCSV(analysis, frameIndex)
-      : JSON.stringify(analysis, null, 2);
+    const filename = `frame_${frameIndex}_analysis_${format === "csv" ? "csv" : "json"}`;
+    const content =
+      format === "csv"
+        ? exportAnalysisToCSV(analysis, frameIndex)
+        : JSON.stringify(analysis, null, 2);
 
-    const mimeType = format === 'csv' ? 'text/csv' : 'application/json';
+    const mimeType = format === "csv" ? "text/csv" : "application/json";
     downloadFile(content, filename, mimeType);
 
-    logger.info('Frame analysis exported:', filename);
+    logger.info("Frame analysis exported:", filename);
   } catch (error) {
-    logger.error('Frame analysis export failed:', error);
+    logger.error("Frame analysis export failed:", error);
     throw error;
   }
 }
@@ -388,45 +420,50 @@ interface FrameAnalysisData {
 /**
  * Export analysis data to CSV
  */
-function exportAnalysisToCSV(analysis: FrameAnalysisData, frameIndex: number): string {
+function exportAnalysisToCSV(
+  analysis: FrameAnalysisData,
+  frameIndex: number,
+): string {
   const lines: string[] = [];
-  lines.push('# Frame Analysis');
+  lines.push("# Frame Analysis");
   lines.push(`# Frame: ${frameIndex}`);
 
   if (analysis.qp_grid) {
     const { qp } = analysis.qp_grid;
-    lines.push('# QP Grid');
-    lines.push('block_index,qp_value');
+    lines.push("# QP Grid");
+    lines.push("block_index,qp_value");
 
     qp.forEach((value: number, i: number) => {
       lines.push(`${i},${value}`);
     });
-    lines.push('');
+    lines.push("");
   }
 
   if (analysis.mv_grid) {
     const { mv_l0, mv_l1 } = analysis.mv_grid;
-    lines.push('# MV Grid L0');
-    lines.push('block_index,mv_x,mv_y');
+    lines.push("# MV Grid L0");
+    lines.push("block_index,mv_x,mv_y");
 
     mv_l0.forEach((mv) => {
       lines.push(`${mv_l0.indexOf(mv)},${mv.dx_qpel},${mv.dy_qpel}`);
     });
-    lines.push('');
+    lines.push("");
   }
 
   if (analysis.partition_grid) {
     const { blocks } = analysis.partition_grid;
-    lines.push('# Partition Grid');
-    lines.push('block_index,x,y,width,height,partition,depth');
+    lines.push("# Partition Grid");
+    lines.push("block_index,x,y,width,height,partition,depth");
 
     blocks.forEach((block) => {
-      lines.push(`${blocks.indexOf(block)},${block.x},${block.y},${block.width},${block.height},${block.partition},${block.depth}`);
+      lines.push(
+        `${blocks.indexOf(block)},${block.x},${block.y},${block.width},${block.height},${block.partition},${block.depth}`,
+      );
     });
-    lines.push('');
+    lines.push("");
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /**
@@ -435,15 +472,15 @@ function exportAnalysisToCSV(analysis: FrameAnalysisData, frameIndex: number): s
 export async function exportBatchAnalysis(
   filePath: string,
   frameIndices: number[],
-  format: 'csv' | 'json' = 'json'
+  format: "csv" | "json" = "json",
 ): Promise<void> {
   try {
-    logger.info('Batch export:', filePath, 'frames:', frameIndices.length);
+    logger.info("Batch export:", filePath, "frames:", frameIndices.length);
 
     const allAnalysis: Array<{ frame_index: number } & FrameAnalysisData> = [];
 
     for (const frameIndex of frameIndices) {
-      const analysis = await invoke<FrameAnalysisData>('get_frame_analysis', {
+      const analysis = await invoke<FrameAnalysisData>("get_frame_analysis", {
         path: filePath,
         frame_index: frameIndex,
       });
@@ -452,11 +489,11 @@ export async function exportBatchAnalysis(
 
     const content = JSON.stringify(allAnalysis, null, 2);
     const filename = `batch_analysis_${new Date().toISOString().slice(0, 19)}.json`;
-    downloadFile(content, filename, 'application/json');
+    downloadFile(content, filename, "application/json");
 
-    logger.info('Batch export completed:', filename);
+    logger.info("Batch export completed:", filename);
   } catch (error) {
-    logger.error('Batch export failed:', error);
+    logger.error("Batch export failed:", error);
     throw error;
   }
 }
@@ -464,17 +501,15 @@ export async function exportBatchAnalysis(
 /**
  * Create export configuration from UI state
  */
-export function createExportConfig(
-  state: {
-    format: 'csv' | 'json';
-    includeFrames: boolean;
-    includeStats: boolean;
-    includeQP: boolean;
-    includeMV: boolean;
-    includePartitions: boolean;
-    frameRange?: { start: number; end: number };
-  }
-): ExportOptions {
+export function createExportConfig(state: {
+  format: "csv" | "json";
+  includeFrames: boolean;
+  includeStats: boolean;
+  includeQP: boolean;
+  includeMV: boolean;
+  includePartitions: boolean;
+  frameRange?: { start: number; end: number };
+}): ExportOptions {
   return {
     format: state.format,
     includeFrames: state.includeFrames,

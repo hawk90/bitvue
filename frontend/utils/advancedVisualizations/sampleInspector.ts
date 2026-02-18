@@ -4,7 +4,7 @@
  * F15: Sample Values (YUV pixel inspection)
  */
 
-import type { SampleInspector } from './types';
+import type { SampleInspector } from "./types";
 
 /**
  * Render sample values overlay
@@ -14,7 +14,7 @@ export function renderSampleValues(
   width: number,
   height: number,
   inspector: SampleInspector,
-  blockSize: number = 8
+  blockSize: number = 8,
 ): void {
   if (!inspector.enabled) {
     return;
@@ -24,12 +24,12 @@ export function renderSampleValues(
   const gridY = Math.floor(inspector.y / blockSize);
 
   // Highlight inspected pixel's block
-  ctx.strokeStyle = '#ffffff';
+  ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 2;
   ctx.strokeRect(gridX * blockSize, gridY * blockSize, blockSize, blockSize);
 
   // Draw crosshair at inspected pixel
-  ctx.strokeStyle = '#ff0000';
+  ctx.strokeStyle = "#ff0000";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(inspector.x, 0);
@@ -45,21 +45,25 @@ export function renderSampleValues(
   const boxX = Math.min(inspector.x + 10, width - boxWidth - 10);
   const boxY = Math.min(inspector.y + 10, height - boxHeight - 10);
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+  ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
   ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-  ctx.strokeStyle = '#ffffff';
+  ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 1;
   ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
   // Draw sample values
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '12px monospace';
-  ctx.textAlign = 'left';
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "12px monospace";
+  ctx.textAlign = "left";
 
   let lineY = boxY + 20;
   const lineHeight = 16;
 
-  ctx.fillText(`Position: (${inspector.x}, ${inspector.y})`, boxX + padding, lineY);
+  ctx.fillText(
+    `Position: (${inspector.x}, ${inspector.y})`,
+    boxX + padding,
+    lineY,
+  );
   lineY += lineHeight;
 
   ctx.fillText(`Y: ${inspector.sampleY}`, boxX + padding, lineY);
@@ -73,11 +77,11 @@ export function renderSampleValues(
 
   ctx.fillStyle = inspector.rgb;
   ctx.fillRect(boxX + padding, boxY + boxHeight - 20, 40, 12);
-  ctx.strokeStyle = '#ffffff';
+  ctx.strokeStyle = "#ffffff";
   ctx.strokeRect(boxX + padding, boxY + boxHeight - 20, 40, 12);
 
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('RGB', boxX + padding + 4, boxY + boxHeight - 12);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("RGB", boxX + padding + 4, boxY + boxHeight - 12);
 }
 
 /**
@@ -109,7 +113,7 @@ export function createSampleInspector(
   height: number,
   x: number,
   y: number,
-  enabled: boolean = true
+  enabled: boolean = true,
 ): SampleInspector {
   if (x < 0 || x >= width || y < 0 || y >= height) {
     return {
@@ -119,16 +123,17 @@ export function createSampleInspector(
       sampleY: 0,
       sampleU: 0,
       sampleV: 0,
-      rgb: '#000000',
+      rgb: "#000000",
     };
   }
 
   const yOffset = y * width + x;
-  const uvOffset = Math.floor(y / 2) * Math.floor(width / 2) + Math.floor(x / 2);
+  const uvOffset =
+    Math.floor(y / 2) * Math.floor(width / 2) + Math.floor(x / 2);
 
   const sampleY = yuvData[yOffset];
   const sampleU = yuvData[width * height + uvOffset];
-  const sampleV = yuvData[width * height * 5 / 4 + uvOffset];
+  const sampleV = yuvData[(width * height * 5) / 4 + uvOffset];
 
   const rgb = yuvToRgb(sampleY, sampleU, sampleV);
 

@@ -5,11 +5,11 @@
  * Only renders visible frames plus buffer
  */
 
-import { useRef, useState, useCallback, useEffect, useMemo, memo } from 'react';
-import type { FrameInfo } from '../types/video';
-import { getFrameTypeColor } from '../types/video';
-import { FILMSTRIP } from '../constants/ui';
-import './VirtualizedFilmstrip.css';
+import { useRef, useState, useCallback, useEffect, useMemo, memo } from "react";
+import type { FrameInfo } from "../types/video";
+import { getFrameTypeColor } from "../types/video";
+import { FILMSTRIP } from "../constants/ui";
+import "./VirtualizedFilmstrip.css";
 
 interface VirtualizedFilmstripProps {
   frames: FrameInfo[];
@@ -73,9 +73,12 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
   }, []);
 
   // Handle click on frame
-  const handleFrameClick = useCallback((frameIndex: number) => {
-    onFrameChange(frameIndex);
-  }, [onFrameChange]);
+  const handleFrameClick = useCallback(
+    (frameIndex: number) => {
+      onFrameChange(frameIndex);
+    },
+    [onFrameChange],
+  );
 
   // Track event listeners for cleanup
   const eventListenersRef = useRef<{
@@ -88,46 +91,62 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
     return () => {
       // Clean up any lingering event listeners
       if (eventListenersRef.current.handleMouseMove) {
-        window.removeEventListener('mousemove', eventListenersRef.current.handleMouseMove);
+        window.removeEventListener(
+          "mousemove",
+          eventListenersRef.current.handleMouseMove,
+        );
       }
       if (eventListenersRef.current.handleMouseUp) {
-        window.removeEventListener('mouseup', eventListenersRef.current.handleMouseUp);
+        window.removeEventListener(
+          "mouseup",
+          eventListenersRef.current.handleMouseUp,
+        );
       }
     };
   }, []);
 
   // Handle scrubbing
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    const rect = e.currentTarget.getBoundingClientRect();
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      setIsDragging(true);
+      const rect = e.currentTarget.getBoundingClientRect();
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const newX = moveEvent.clientX - rect.left;
-      const newScrollLeft = Math.max(0, Math.min(totalWidth - containerWidth, newX - containerWidth / 2));
-      const frameIndex = Math.min(Math.floor((newScrollLeft + containerWidth / 2) / itemWidth), frames.length - 1);
-      onFrameChange(frameIndex);
-    };
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const newX = moveEvent.clientX - rect.left;
+        const newScrollLeft = Math.max(
+          0,
+          Math.min(totalWidth - containerWidth, newX - containerWidth / 2),
+        );
+        const frameIndex = Math.min(
+          Math.floor((newScrollLeft + containerWidth / 2) / itemWidth),
+          frames.length - 1,
+        );
+        onFrameChange(frameIndex);
+      };
 
-    const handleMouseUp = () => {
-      setIsDragging(false);
-      // Remove event listeners
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      // Clear refs
-      eventListenersRef.current = {};
-    };
+      const handleMouseUp = () => {
+        setIsDragging(false);
+        // Remove event listeners
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+        // Clear refs
+        eventListenersRef.current = {};
+      };
 
-    // Store refs for cleanup
-    eventListenersRef.current = { handleMouseMove, handleMouseUp };
+      // Store refs for cleanup
+      eventListenersRef.current = { handleMouseMove, handleMouseUp };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [containerWidth, totalWidth, itemWidth, frames.length, onFrameChange]);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [containerWidth, totalWidth, itemWidth, frames.length, onFrameChange],
+  );
 
   // Scroll to current frame when it changes
   useEffect(() => {
     if (containerRef.current && !isDragging) {
-      const targetScroll = currentFrameIndex * itemWidth - containerWidth / 2 + itemWidth / 2;
+      const targetScroll =
+        currentFrameIndex * itemWidth - containerWidth / 2 + itemWidth / 2;
       const maxScroll = Math.max(0, totalWidth - containerWidth);
       const clampedScroll = Math.max(0, Math.min(targetScroll, maxScroll));
       containerRef.current.scrollLeft = clampedScroll;
@@ -160,7 +179,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
       result.push(
         <div
           key={frame.frame_index}
-          className={`virtualized-frame ${isCurrent ? 'current' : ''}`}
+          className={`virtualized-frame ${isCurrent ? "current" : ""}`}
           style={{ width: itemWidth }}
           onClick={() => handleFrameClick(i)}
         >
@@ -170,11 +189,18 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
           />
           <div className="virtualized-frame-number">{frame.frame_index}</div>
           <div className="virtualized-frame-type">{frame.frame_type}</div>
-        </div>
+        </div>,
       );
     }
     return result;
-  }, [visibleRange, frames, currentFrameIndex, itemWidth, handleFrameClick, frameTypeColorMap]);
+  }, [
+    visibleRange,
+    frames,
+    currentFrameIndex,
+    itemWidth,
+    handleFrameClick,
+    frameTypeColorMap,
+  ]);
 
   return (
     <div className="virtualized-filmstrip">

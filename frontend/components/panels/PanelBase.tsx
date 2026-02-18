@@ -12,8 +12,8 @@
  * - Consistent styling via PanelBase.css
  */
 
-import { memo, ReactNode } from 'react';
-import './PanelBase.css';
+import { memo, ReactNode } from "react";
+import "./PanelBase.css";
 
 export interface PanelBaseProps {
   /** Panel visibility */
@@ -31,7 +31,7 @@ export interface PanelBaseProps {
   /** Additional CSS classes */
   className?: string;
   /** Panel size variant */
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: "sm" | "md" | "lg" | "xl";
   /** Whether to show the close button */
   showCloseButton?: boolean;
   /** Additional header content */
@@ -48,7 +48,7 @@ export const PanelBase = memo(function PanelBase({
   icon,
   children,
   footer,
-  className = '',
+  className = "",
   size,
   showCloseButton = true,
   headerExtra,
@@ -57,14 +57,16 @@ export const PanelBase = memo(function PanelBase({
     return null;
   }
 
-  const sizeClass = size ? `panel--${size}` : '';
+  const sizeClass = size ? `panel--${size}` : "";
   const classes = `panel-container ${sizeClass} ${className}`.trim();
 
   return (
     <div className={classes}>
       {/* Header */}
       <div className="panel-header">
-        {icon && <span className={`codicon ${icon}`} style={{ marginRight: '8px' }} />}
+        {icon && (
+          <span className={`codicon ${icon}`} style={{ marginRight: "8px" }} />
+        )}
         <span className="panel-title">{title}</span>
         {headerExtra}
         {showCloseButton && onClose && (
@@ -79,16 +81,10 @@ export const PanelBase = memo(function PanelBase({
       </div>
 
       {/* Content */}
-      <div className="panel-content">
-        {children}
-      </div>
+      <div className="panel-content">{children}</div>
 
       {/* Footer */}
-      {footer && (
-        <div className="panel-footer">
-          {footer}
-        </div>
-      )}
+      {footer && <div className="panel-footer">{footer}</div>}
     </div>
   );
 });
@@ -105,7 +101,7 @@ export interface PanelSectionProps {
 export const PanelSection = memo(function PanelSection({
   children,
   title,
-  className = '',
+  className = "",
 }: PanelSectionProps) {
   return (
     <div className={`panel-section ${className}`.trim()}>
@@ -127,7 +123,7 @@ export interface PanelInfoRowProps {
 export const PanelInfoRow = memo(function PanelInfoRow({
   label,
   value,
-  className = '',
+  className = "",
 }: PanelInfoRowProps) {
   return (
     <div className={`panel-info-row ${className}`.trim()}>
@@ -147,9 +143,9 @@ export interface PanelEmptyProps {
 }
 
 export const PanelEmpty = memo(function PanelEmpty({
-  icon = 'codicon-circle-slash',
+  icon = "codicon-circle-slash",
   message,
-  className = '',
+  className = "",
 }: PanelEmptyProps) {
   return (
     <div className={`panel-empty ${className}`.trim()}>
@@ -168,8 +164,8 @@ export interface PanelLoadingProps {
 }
 
 export const PanelLoading = memo(function PanelLoading({
-  message = 'Loading...',
-  className = '',
+  message = "Loading...",
+  className = "",
 }: PanelLoadingProps) {
   return (
     <div className={`panel-loading ${className}`.trim()}>

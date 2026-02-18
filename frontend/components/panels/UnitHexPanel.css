@@ -161,7 +161,7 @@
 .frame-info-value {
   font-size: 11px;
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 .frame-info-note {
@@ -184,7 +184,7 @@
 /* Hex Dump Tab */
 .hex-dump-content {
   padding: 8px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   font-size: 11px;
 }
 
@@ -301,7 +301,7 @@
 
 .dpb-info-value {
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   font-weight: 500;
 }
 

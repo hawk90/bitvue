@@ -6,14 +6,18 @@
  * Supports both image-based and YUV-based rendering
  */
 
-import { useRef, useEffect, memo, useMemo } from 'react';
-import { renderModeOverlay } from '../OverlayRenderer';
-import type { VisualizationMode } from '../../../contexts/ModeContext';
-import type { FrameInfo } from '../../../types/video';
-import { YUVRenderer, type YUVFrame, Colorspace } from '../../../utils/yuvRenderer';
-import { createLogger } from '../../../utils/logger';
+import { useRef, useEffect, memo, useMemo } from "react";
+import { renderModeOverlay } from "../OverlayRenderer";
+import type { VisualizationMode } from "../../../contexts/ModeContext";
+import type { FrameInfo } from "../../../types/video";
+import {
+  YUVRenderer,
+  type YUVFrame,
+  Colorspace,
+} from "../../../utils/yuvRenderer";
+import { createLogger } from "../../../utils/logger";
 
-const logger = createLogger('VideoCanvas');
+const logger = createLogger("VideoCanvas");
 
 interface VideoCanvasProps {
   frameImage: HTMLImageElement | null;
@@ -49,15 +53,21 @@ export const VideoCanvas = memo(function VideoCanvas({
   const rendererRef = useRef<YUVRenderer | null>(null);
 
   // Memoize canvas style to avoid creating new object on every render
-  const canvasStyle = useMemo(() => ({
-    transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-    transformOrigin: 'top left' as const,
-  }), [zoom, pan.x, pan.y]);
+  const canvasStyle = useMemo(
+    () => ({
+      transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+      transformOrigin: "top left" as const,
+    }),
+    [zoom, pan.x, pan.y],
+  );
 
   // Memoize container cursor style
-  const containerStyle = useMemo(() => ({
-    cursor: isDragging ? 'grabbing' : 'grab',
-  }), [isDragging]);
+  const containerStyle = useMemo(
+    () => ({
+      cursor: isDragging ? "grabbing" : "grab",
+    }),
+    [isDragging],
+  );
 
   // Initialize YUV renderer
   useEffect(() => {
@@ -71,9 +81,9 @@ export const VideoCanvas = memo(function VideoCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) {
-      logger.warn('Failed to get 2D context from canvas element');
+      logger.warn("Failed to get 2D context from canvas element");
       return;
     }
 
@@ -93,7 +103,7 @@ export const VideoCanvas = memo(function VideoCanvas({
     }
 
     // Clear canvas
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Render source

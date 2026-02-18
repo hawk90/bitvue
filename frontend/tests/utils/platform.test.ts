@@ -3,7 +3,7 @@
  * Tests platform detection and platform-specific UI behavior
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   detectPlatform,
   isMacOS,
@@ -12,130 +12,130 @@ import {
   shouldUseNativeMenu,
   shouldShowTitleBar,
   type Platform,
-} from '../platform';
+} from "../platform";
 
 // Store original navigator values
 const originalUserAgent = navigator.userAgent;
 const originalPlatform = navigator.platform;
 
-describe('detectPlatform', () => {
+describe("detectPlatform", () => {
   afterEach(() => {
     // Restore original values
-    Object.defineProperty(navigator, 'userAgent', {
+    Object.defineProperty(navigator, "userAgent", {
       value: originalUserAgent,
       writable: true,
       configurable: true,
     });
-    Object.defineProperty(navigator, 'platform', {
+    Object.defineProperty(navigator, "platform", {
       value: originalPlatform,
       writable: true,
       configurable: true,
     });
   });
 
-  it('should detect macOS', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'MacIntel',
+  it("should detect macOS", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "MacIntel",
       writable: true,
       configurable: true,
     });
 
-    expect(detectPlatform()).toBe('macos');
+    expect(detectPlatform()).toBe("macos");
   });
 
-  it('should detect macOS by user agent', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Unknown',
+  it("should detect macOS by user agent", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Unknown",
       writable: true,
       configurable: true,
     });
-    Object.defineProperty(navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
       writable: true,
       configurable: true,
     });
 
-    expect(detectPlatform()).toBe('macos');
+    expect(detectPlatform()).toBe("macos");
   });
 
-  it('should detect Windows', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Win32',
+  it("should detect Windows", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Win32",
       writable: true,
       configurable: true,
     });
 
-    expect(detectPlatform()).toBe('windows');
+    expect(detectPlatform()).toBe("windows");
   });
 
-  it('should detect Windows by user agent', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Unknown',
+  it("should detect Windows by user agent", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Unknown",
       writable: true,
       configurable: true,
     });
-    Object.defineProperty(navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
       writable: true,
       configurable: true,
     });
 
-    expect(detectPlatform()).toBe('windows');
+    expect(detectPlatform()).toBe("windows");
   });
 
-  it('should detect Linux', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Linux x86_64',
+  it("should detect Linux", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Linux x86_64",
       writable: true,
       configurable: true,
     });
 
-    expect(detectPlatform()).toBe('linux');
+    expect(detectPlatform()).toBe("linux");
   });
 
-  it('should detect Linux by user agent', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Unknown',
+  it("should detect Linux by user agent", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Unknown",
       writable: true,
       configurable: true,
     });
-    Object.defineProperty(navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (X11; Linux x86_64)',
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (X11; Linux x86_64)",
       writable: true,
       configurable: true,
     });
 
-    expect(detectPlatform()).toBe('linux');
+    expect(detectPlatform()).toBe("linux");
   });
 
-  it('should return unknown for unrecognized platforms', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Unknown',
+  it("should return unknown for unrecognized platforms", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Unknown",
       writable: true,
       configurable: true,
     });
-    Object.defineProperty(navigator, 'userAgent', {
-      value: 'Unknown',
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Unknown",
       writable: true,
       configurable: true,
     });
 
-    expect(detectPlatform()).toBe('unknown');
+    expect(detectPlatform()).toBe("unknown");
   });
 });
 
-describe('isMacOS', () => {
+describe("isMacOS", () => {
   afterEach(() => {
-    Object.defineProperty(navigator, 'platform', {
+    Object.defineProperty(navigator, "platform", {
       value: originalPlatform,
       writable: true,
       configurable: true,
     });
   });
 
-  it('should return true on macOS', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'MacIntel',
+  it("should return true on macOS", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "MacIntel",
       writable: true,
       configurable: true,
     });
@@ -143,9 +143,9 @@ describe('isMacOS', () => {
     expect(isMacOS()).toBe(true);
   });
 
-  it('should return false on Windows', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Win32',
+  it("should return false on Windows", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Win32",
       writable: true,
       configurable: true,
     });
@@ -153,9 +153,9 @@ describe('isMacOS', () => {
     expect(isMacOS()).toBe(false);
   });
 
-  it('should return false on Linux', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Linux x86_64',
+  it("should return false on Linux", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Linux x86_64",
       writable: true,
       configurable: true,
     });
@@ -164,18 +164,18 @@ describe('isMacOS', () => {
   });
 });
 
-describe('isWindows', () => {
+describe("isWindows", () => {
   afterEach(() => {
-    Object.defineProperty(navigator, 'platform', {
+    Object.defineProperty(navigator, "platform", {
       value: originalPlatform,
       writable: true,
       configurable: true,
     });
   });
 
-  it('should return true on Windows', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Win32',
+  it("should return true on Windows", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Win32",
       writable: true,
       configurable: true,
     });
@@ -183,9 +183,9 @@ describe('isWindows', () => {
     expect(isWindows()).toBe(true);
   });
 
-  it('should return false on macOS', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'MacIntel',
+  it("should return false on macOS", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "MacIntel",
       writable: true,
       configurable: true,
     });
@@ -193,9 +193,9 @@ describe('isWindows', () => {
     expect(isWindows()).toBe(false);
   });
 
-  it('should return false on Linux', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Linux x86_64',
+  it("should return false on Linux", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Linux x86_64",
       writable: true,
       configurable: true,
     });
@@ -204,18 +204,18 @@ describe('isWindows', () => {
   });
 });
 
-describe('isLinux', () => {
+describe("isLinux", () => {
   afterEach(() => {
-    Object.defineProperty(navigator, 'platform', {
+    Object.defineProperty(navigator, "platform", {
       value: originalPlatform,
       writable: true,
       configurable: true,
     });
   });
 
-  it('should return true on Linux', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Linux x86_64',
+  it("should return true on Linux", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Linux x86_64",
       writable: true,
       configurable: true,
     });
@@ -223,9 +223,9 @@ describe('isLinux', () => {
     expect(isLinux()).toBe(true);
   });
 
-  it('should return false on macOS', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'MacIntel',
+  it("should return false on macOS", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "MacIntel",
       writable: true,
       configurable: true,
     });
@@ -233,9 +233,9 @@ describe('isLinux', () => {
     expect(isLinux()).toBe(false);
   });
 
-  it('should return false on Windows', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Win32',
+  it("should return false on Windows", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Win32",
       writable: true,
       configurable: true,
     });
@@ -244,18 +244,18 @@ describe('isLinux', () => {
   });
 });
 
-describe('shouldUseNativeMenu', () => {
+describe("shouldUseNativeMenu", () => {
   afterEach(() => {
-    Object.defineProperty(navigator, 'platform', {
+    Object.defineProperty(navigator, "platform", {
       value: originalPlatform,
       writable: true,
       configurable: true,
     });
   });
 
-  it('should return true on macOS', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'MacIntel',
+  it("should return true on macOS", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "MacIntel",
       writable: true,
       configurable: true,
     });
@@ -263,9 +263,9 @@ describe('shouldUseNativeMenu', () => {
     expect(shouldUseNativeMenu()).toBe(true);
   });
 
-  it('should return false on Windows', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Win32',
+  it("should return false on Windows", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Win32",
       writable: true,
       configurable: true,
     });
@@ -273,9 +273,9 @@ describe('shouldUseNativeMenu', () => {
     expect(shouldUseNativeMenu()).toBe(false);
   });
 
-  it('should return false on Linux', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Linux x86_64',
+  it("should return false on Linux", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Linux x86_64",
       writable: true,
       configurable: true,
     });
@@ -284,18 +284,18 @@ describe('shouldUseNativeMenu', () => {
   });
 });
 
-describe('shouldShowTitleBar', () => {
+describe("shouldShowTitleBar", () => {
   afterEach(() => {
-    Object.defineProperty(navigator, 'platform', {
+    Object.defineProperty(navigator, "platform", {
       value: originalPlatform,
       writable: true,
       configurable: true,
     });
   });
 
-  it('should return false on macOS', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'MacIntel',
+  it("should return false on macOS", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "MacIntel",
       writable: true,
       configurable: true,
     });
@@ -303,9 +303,9 @@ describe('shouldShowTitleBar', () => {
     expect(shouldShowTitleBar()).toBe(false);
   });
 
-  it('should return true on Windows', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Win32',
+  it("should return true on Windows", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Win32",
       writable: true,
       configurable: true,
     });
@@ -313,9 +313,9 @@ describe('shouldShowTitleBar', () => {
     expect(shouldShowTitleBar()).toBe(true);
   });
 
-  it('should return true on Linux', () => {
-    Object.defineProperty(navigator, 'platform', {
-      value: 'Linux x86_64',
+  it("should return true on Linux", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "Linux x86_64",
       writable: true,
       configurable: true,
     });
@@ -324,11 +324,11 @@ describe('shouldShowTitleBar', () => {
   });
 });
 
-describe('Platform type compatibility', () => {
-  it('should accept all platform types', () => {
-    const platforms: Platform[] = ['macos', 'windows', 'linux', 'unknown'];
+describe("Platform type compatibility", () => {
+  it("should accept all platform types", () => {
+    const platforms: Platform[] = ["macos", "windows", "linux", "unknown"];
 
-    platforms.forEach(platform => {
+    platforms.forEach((platform) => {
       expect(platform).toBeTruthy();
     });
   });

@@ -4,15 +4,18 @@
  * Shows frame info on hover
  */
 
-import type { FrameInfo } from '../types/video';
-import { memo } from 'react';
+import type { FrameInfo } from "../types/video";
+import { memo } from "react";
 
 interface TimelineTooltipProps {
   frame: FrameInfo;
   positionPercent: number;
 }
 
-export const TimelineTooltip = memo(function TimelineTooltip({ frame, positionPercent }: TimelineTooltipProps) {
+export const TimelineTooltip = memo(function TimelineTooltip({
+  frame,
+  positionPercent,
+}: TimelineTooltipProps) {
   return (
     <div
       className="timeline-tooltip"

@@ -5,9 +5,9 @@
  * Includes line graph overlay for bitrate curve
  */
 
-import { useMemo, memo, useCallback } from 'react';
-import type { FrameInfo } from '../../../types/video';
-import { getFrameTypeColor } from '../../../types/video';
+import { useMemo, memo, useCallback } from "react";
+import type { FrameInfo } from "../../../types/video";
+import { getFrameTypeColor } from "../../../types/video";
 
 export interface SizeMetrics {
   showBitrateBar: boolean;
@@ -31,7 +31,10 @@ interface FrameSizesViewProps {
 }
 
 // Calculate moving average (21-frame window)
-function calculateMovingAvg(frames: FrameInfo[], windowSize: number = 21): number[] {
+function calculateMovingAvg(
+  frames: FrameInfo[],
+  windowSize: number = 21,
+): number[] {
   return frames.map((_, i) => {
     const start = Math.max(0, i - Math.floor(windowSize / 2));
     const end = Math.min(frames.length, i + Math.ceil(windowSize / 2));
@@ -73,7 +76,6 @@ function FrameSizesView({
   getFrameTypeColorClass,
   sizeMetrics,
 }: FrameSizesViewProps) {
-
   // Calculate statistics
   const avgSize = useMemo(() => {
     if (frames.length === 0) return 0;
@@ -82,19 +84,19 @@ function FrameSizesView({
 
   const minSize = useMemo(() => {
     if (frames.length === 0) return 0;
-    return Math.min(...frames.map(f => f.size));
+    return Math.min(...frames.map((f) => f.size));
   }, [frames]);
 
   const maxFrameSize = useMemo(() => {
     if (frames.length === 0) return maxSize;
-    return Math.max(...frames.map(f => f.size));
+    return Math.max(...frames.map((f) => f.size));
   }, [frames, maxSize]);
 
   const movingAvg = useMemo(() => calculateMovingAvg(frames), [frames]);
 
   // Calculate bitrate for each frame (for line curve)
   const frameBitrates = useMemo(() => {
-    return frames.map(f => calculateBitrate(f));
+    return frames.map((f) => calculateBitrate(f));
   }, [frames]);
 
   // Calculate max bitrate for scaling the line curve
@@ -104,13 +106,16 @@ function FrameSizesView({
     return Math.max(...bitrates);
   }, [frameBitrates]);
 
-  const isFrameTypeVisible = useCallback((frameType: string): boolean => {
-    return visibleFrameTypes.has(frameType);
-  }, [visibleFrameTypes]);
+  const isFrameTypeVisible = useCallback(
+    (frameType: string): boolean => {
+      return visibleFrameTypes.has(frameType);
+    },
+    [visibleFrameTypes],
+  );
 
   // Memoize filtered frames to avoid recalculation on every render
   const filteredFrames = useMemo(() => {
-    return frames.filter(f => isFrameTypeVisible(f.frame_type));
+    return frames.filter((f) => isFrameTypeVisible(f.frame_type));
   }, [frames, isFrameTypeVisible]);
 
   // Calculate QP range for right Y-axis
@@ -121,8 +126,12 @@ function FrameSizesView({
     <div className="filmstrip-sizes">
       {/* Left Y-axis - Bitrate (KB) */}
       <div className="frame-sizes-axis axis-left">
-        <div className="axis-label max">{(maxFrameSize / 1024).toFixed(0)} KB</div>
-        <div className="axis-label mid">{(maxFrameSize / 2 / 1024).toFixed(0)} KB</div>
+        <div className="axis-label max">
+          {(maxFrameSize / 1024).toFixed(0)} KB
+        </div>
+        <div className="axis-label mid">
+          {(maxFrameSize / 2 / 1024).toFixed(0)} KB
+        </div>
         <div className="axis-label min">0</div>
         <div className="axis-title">Bitrate</div>
       </div>
@@ -140,7 +149,7 @@ function FrameSizesView({
                 key={frame.frame_index}
                 data-frame-index={frame.frame_index}
                 className={`frame-size-bar ${getFrameTypeColorClass(frame.frame_type)} ${
-                  frame.frame_index === currentFrameIndex ? 'selected' : ''
+                  frame.frame_index === currentFrameIndex ? "selected" : ""
                 }`}
                 onClick={() => onFrameClick(frame.frame_index)}
                 style={{
@@ -155,17 +164,22 @@ function FrameSizesView({
 
         {/* Line Chart Overlay (SVG) - Bitrate Curve */}
         {sizeMetrics.showBitrateCurve && filteredFrames.length > 1 && (
-          <svg className="frame-sizes-line-chart" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <svg
+            className="frame-sizes-line-chart"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
             <polyline
-              points={filteredFrames.map((frame, idx) => {
-                const x = (idx / (filteredFrames.length - 1)) * 100;
-                const bitrate = calculateBitrate(frame);
-                // Use bitrate for the line, scaled by maxBitrate
-                const y = bitrate !== null
-                  ? 100 - (bitrate / maxBitrate) * 100
-                  : 100;
-                return `${x},${y}`;
-              }).join(' ')}
+              points={filteredFrames
+                .map((frame, idx) => {
+                  const x = (idx / (filteredFrames.length - 1)) * 100;
+                  const bitrate = calculateBitrate(frame);
+                  // Use bitrate for the line, scaled by maxBitrate
+                  const y =
+                    bitrate !== null ? 100 - (bitrate / maxBitrate) * 100 : 100;
+                  return `${x},${y}`;
+                })
+                .join(" ")}
               fill="none"
               stroke="rgba(0, 220, 220, 1)"
               strokeWidth="1"
@@ -176,16 +190,22 @@ function FrameSizesView({
 
         {/* Moving Average Line - frame size moving average */}
         {sizeMetrics.showMovingAvg && filteredFrames.length > 1 && (
-          <svg className="frame-sizes-line-chart" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <svg
+            className="frame-sizes-line-chart"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
             <polyline
-              points={filteredFrames.map((frame, idx) => {
-                const x = (idx / (filteredFrames.length - 1)) * 100;
-                // Find the moving avg for this frame (by original index)
-                const originalIdx = frames.indexOf(frame);
-                const avgSize = originalIdx >= 0 ? movingAvg[originalIdx] : 0;
-                const y = 100 - (avgSize / maxFrameSize) * 100;
-                return `${x},${y}`;
-              }).join(' ')}
+              points={filteredFrames
+                .map((frame, idx) => {
+                  const x = (idx / (filteredFrames.length - 1)) * 100;
+                  // Find the moving avg for this frame (by original index)
+                  const originalIdx = frames.indexOf(frame);
+                  const avgSize = originalIdx >= 0 ? movingAvg[originalIdx] : 0;
+                  const y = 100 - (avgSize / maxFrameSize) * 100;
+                  return `${x},${y}`;
+                })
+                .join(" ")}
               fill="none"
               stroke="rgba(0, 150, 255, 0.8)"
               strokeWidth="0.8"

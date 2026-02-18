@@ -90,7 +90,7 @@
   background: var(--bg-tertiary);
   border-radius: 4px;
   font-size: 0.8rem;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
   color: var(--fg-secondary);
   white-space: pre-wrap;
   word-break: break-all;

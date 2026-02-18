@@ -84,7 +84,11 @@
   transform: translateX(-50%);
   width: 2px;
   height: calc(100% + 16px);
-  background: linear-gradient(to bottom, rgb(0 212 170 / 80%), rgb(0 212 170 / 30%));
+  background: linear-gradient(
+    to bottom,
+    rgb(0 212 170 / 80%),
+    rgb(0 212 170 / 30%)
+  );
   pointer-events: none;
   z-index: 5;
 }

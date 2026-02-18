@@ -4,9 +4,9 @@
  * Displays basic file and frame information in the bottom panel area
  */
 
-import { memo } from 'react';
-import type { FrameInfo } from '../../types/video';
-import './InfoPanel.css';
+import { memo } from "react";
+import type { FrameInfo } from "../../types/video";
+import "./InfoPanel.css";
 
 interface InfoPanelProps {
   /** Current file path */
@@ -23,7 +23,10 @@ interface InfoPanelProps {
  * Custom comparison for InfoPanel props
  * Performs deep comparison for currentFrame object to prevent unnecessary re-renders
  */
-function arePropsEqual(prevProps: InfoPanelProps, nextProps: InfoPanelProps): boolean {
+function arePropsEqual(
+  prevProps: InfoPanelProps,
+  nextProps: InfoPanelProps,
+): boolean {
   return (
     prevProps.filePath === nextProps.filePath &&
     prevProps.frameCount === nextProps.frameCount &&
@@ -42,7 +45,7 @@ export const InfoPanel = memo(function InfoPanel({
     <div className="bottom-panel-content">
       <div className="info-grid">
         <span className="info-label">File:</span>
-        <span className="info-value">{filePath || 'N/A'}</span>
+        <span className="info-value">{filePath || "N/A"}</span>
 
         <span className="info-label">Frames:</span>
         <span className="info-value">{frameCount}</span>
@@ -51,11 +54,13 @@ export const InfoPanel = memo(function InfoPanel({
         <span className="info-value">{currentFrameIndex}</span>
 
         <span className="info-label">Frame Type:</span>
-        <span className="info-value">{currentFrame?.frame_type || 'N/A'}</span>
+        <span className="info-value">{currentFrame?.frame_type || "N/A"}</span>
 
         <span className="info-label">Size:</span>
         <span className="info-value">
-          {currentFrame?.size ? `${(currentFrame.size / 1024).toFixed(2)} KB` : 'N/A'}
+          {currentFrame?.size
+            ? `${(currentFrame.size / 1024).toFixed(2)} KB`
+            : "N/A"}
         </span>
       </div>
     </div>

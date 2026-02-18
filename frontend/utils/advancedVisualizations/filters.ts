@@ -5,7 +5,7 @@
  * F14: SAO/ALF (Sample Adaptive Offset / Adaptive Loop Filter)
  */
 
-import type { QPGrid } from '../../../types/video';
+import type { QPGrid } from "../../../types/video";
 
 /**
  * Deblocking filter strength visualization
@@ -15,7 +15,7 @@ export function renderDeblocking(
   width: number,
   height: number,
   qpGrid: QPGrid,
-  deblockingStrength: number = 0
+  deblockingStrength: number = 0,
 ): void {
   const { grid_w, grid_h, qp } = qpGrid;
   const blockW = width / grid_w;
@@ -69,10 +69,10 @@ export function renderSAO(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  saoType: 'edge' | 'band' | 'none',
-  saoOffset: number = 0
+  saoType: "edge" | "band" | "none",
+  saoOffset: number = 0,
 ): void {
-  if (saoType === 'none') {
+  if (saoType === "none") {
     return;
   }
 
@@ -85,10 +85,10 @@ export function renderSAO(
       const bx = x * blockW;
       const by = y * blockW;
 
-      if (saoType === 'edge') {
+      if (saoType === "edge") {
         // Edge offset visualization - green tint
         ctx.fillStyle = `rgba(0, 255, 100, 0.3)`;
-      } else if (saoType === 'band') {
+      } else if (saoType === "band") {
         // Band offset visualization - blue tint
         ctx.fillStyle = `rgba(100, 100, 255, 0.3)`;
       }
@@ -96,7 +96,7 @@ export function renderSAO(
       ctx.fillRect(bx, by, blockW, blockW);
 
       // Draw SAO type indicator
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
       ctx.lineWidth = 1;
       ctx.strokeRect(bx, by, blockW, blockW);
     }
@@ -111,7 +111,7 @@ export function renderALF(
   width: number,
   height: number,
   alfEnabled: boolean[],
-  alfCoefficients?: number[][]
+  alfCoefficients?: number[][],
 ): void {
   if (!alfEnabled || alfEnabled.length === 0) {
     return;
@@ -130,7 +130,7 @@ export function renderALF(
       ctx.fillRect(bx, by, blockW, blockW);
 
       // Draw ALF indicator
-      ctx.strokeStyle = 'rgba(255, 100, 255, 0.8)';
+      ctx.strokeStyle = "rgba(255, 100, 255, 0.8)";
       ctx.lineWidth = 2;
       ctx.strokeRect(bx, by, blockW, blockW);
     }

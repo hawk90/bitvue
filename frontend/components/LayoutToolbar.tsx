@@ -5,9 +5,9 @@
  * Reset layout, toggle panels, etc.
  */
 
-import { useLayout } from '../contexts/LayoutContext';
-import { memo, useCallback } from 'react';
-import './LayoutToolbar.css';
+import { useLayout } from "../contexts/LayoutContext";
+import { memo, useCallback } from "react";
+import "./LayoutToolbar.css";
 
 export const LayoutToolbar = memo(function LayoutToolbar() {
   const { resetLayout } = useLayout();

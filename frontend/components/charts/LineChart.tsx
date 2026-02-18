@@ -5,8 +5,8 @@
  * Supports multiple series, custom colors, and interactive tooltips
  */
 
-import { memo, useRef, useState, useMemo } from 'react';
-import { getCssVar } from '../../utils/css';
+import { memo, useRef, useState, useMemo } from "react";
+import { getCssVar } from "../../utils/css";
 
 export interface DataPoint {
   x: number;
@@ -48,12 +48,12 @@ export interface LineChartProps {
  * Default colors for series
  */
 const DEFAULT_COLORS = [
-  getCssVar('--accent-primary'),
-  getCssVar('--accent-secondary'),
-  '#10b981', // green
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // purple
+  getCssVar("--accent-primary"),
+  getCssVar("--accent-secondary"),
+  "#10b981", // green
+  "#f59e0b", // amber
+  "#ef4444", // red
+  "#8b5cf6", // purple
 ];
 
 /**
@@ -75,22 +75,26 @@ function formatNumber(num: number, decimals = 2): string {
 
 export const LineChart = memo(function LineChart({
   series,
-  xAxisLabel = 'Bitrate (kbps)',
-  yAxisLabel = 'Quality (PSNR)',
+  xAxisLabel = "Bitrate (kbps)",
+  yAxisLabel = "Quality (PSNR)",
   title,
   showGrid = true,
   showLegend = true,
   width,
   height = 350,
   padding = { top: 20, right: 20, bottom: 40, left: 60 },
-  className = 'line-chart',
+  className = "line-chart",
 }: LineChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hoveredPoint, setHoveredPoint] = useState<{ seriesIndex: number; pointIndex: number } | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<{
+    seriesIndex: number;
+    pointIndex: number;
+  } | null>(null);
 
   // Calculate chart dimensions
-  const chartWidth = width ?? '100%';
-  const innerWidth = typeof width === 'number' ? width - padding.left - padding.right : 600;
+  const chartWidth = width ?? "100%";
+  const innerWidth =
+    typeof width === "number" ? width - padding.left - padding.right : 600;
   const innerHeight = height - padding.top - padding.bottom;
 
   // Find min/max values across all series
@@ -100,8 +104,8 @@ export const LineChart = memo(function LineChart({
     let yMin = Infinity;
     let yMax = -Infinity;
 
-    series.forEach(s => {
-      s.data.forEach(point => {
+    series.forEach((s) => {
+      s.data.forEach((point) => {
         xMin = Math.min(xMin, point.x);
         xMax = Math.max(xMax, point.x);
         yMin = Math.min(yMin, point.y);
@@ -129,12 +133,14 @@ export const LineChart = memo(function LineChart({
 
   const scaleY = (y: number) => {
     if (yMax === yMin) return innerHeight;
-    return innerHeight - padding.top - ((y - yMin) / (yMax - yMin)) * innerHeight;
+    return (
+      innerHeight - padding.top - ((y - yMin) / (yMax - yMin)) * innerHeight
+    );
   };
 
   // Generate path data for a series
   const generatePath = (data: DataPoint[]) => {
-    if (data.length === 0) return '';
+    if (data.length === 0) return "";
     let path = `M ${scaleX(data[0].x)} ${scaleY(data[0].y)}`;
     for (let i = 1; i < data.length; i++) {
       path += ` L ${scaleX(data[i].x)} ${scaleY(data[i].y)}`;
@@ -152,7 +158,7 @@ export const LineChart = memo(function LineChart({
     for (let i = 0; i <= 5; i++) {
       const x = padding.left + (innerWidth / 5) * i;
       const value = xMin + ((xMax - xMin) / 5) * i;
-      lines.push (
+      lines.push(
         <g key={`vgrid-${i}`}>
           <line
             x1={x}
@@ -172,7 +178,7 @@ export const LineChart = memo(function LineChart({
           >
             {formatNumber(value)}
           </text>
-        </g>
+        </g>,
       );
     }
 
@@ -200,7 +206,7 @@ export const LineChart = memo(function LineChart({
           >
             {formatNumber(value)}
           </text>
-        </g>
+        </g>,
       );
     }
 
@@ -239,7 +245,7 @@ export const LineChart = memo(function LineChart({
     );
   }, [xAxisLabel, yAxisLabel, innerWidth, innerHeight, padding, height]);
 
-  if (series.length === 0 || series.every(s => s.data.length === 0)) {
+  if (series.length === 0 || series.every((s) => s.data.length === 0)) {
     return (
       <div className={className} style={{ width: chartWidth, height }}>
         <div className="flex items-center justify-center h-full text-text-secondary">
@@ -252,13 +258,15 @@ export const LineChart = memo(function LineChart({
   return (
     <div className={className} style={{ width: chartWidth, height }}>
       {title && (
-        <h3 className="text-sm font-semibold mb-2 text-text-primary">{title}</h3>
+        <h3 className="text-sm font-semibold mb-2 text-text-primary">
+          {title}
+        </h3>
       )}
       <svg
         ref={svgRef}
         width="100%"
         height="100%"
-        viewBox={`0 0 ${typeof width === 'number' ? width : innerWidth + padding.left + padding.right} ${height}`}
+        viewBox={`0 0 ${typeof width === "number" ? width : innerWidth + padding.left + padding.right} ${height}`}
         preserveAspectRatio="xMidYMid meet"
       >
         {gridLines}
@@ -282,52 +290,57 @@ export const LineChart = memo(function LineChart({
               />
 
               {/* Data points */}
-              {s.showPoints !== false && s.data.map((point, pointIndex) => {
-                const cx = scaleX(point.x);
-                const cy = scaleY(point.y);
-                const isHovered = hoveredPoint?.seriesIndex === seriesIndex && hoveredPoint?.pointIndex === pointIndex;
+              {s.showPoints !== false &&
+                s.data.map((point, pointIndex) => {
+                  const cx = scaleX(point.x);
+                  const cy = scaleY(point.y);
+                  const isHovered =
+                    hoveredPoint?.seriesIndex === seriesIndex &&
+                    hoveredPoint?.pointIndex === pointIndex;
 
-                return (
-                  <g key={pointIndex}>
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={isHovered ? 6 : 3}
-                      fill={color}
-                      stroke="var(--bg-primary)"
-                      strokeWidth="1"
-                      style={{ cursor: 'pointer' }}
-                      onMouseEnter={() => setHoveredPoint({ seriesIndex, pointIndex })}
-                      onMouseLeave={() => setHoveredPoint(null)}
-                    />
+                  return (
+                    <g key={pointIndex}>
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={isHovered ? 6 : 3}
+                        fill={color}
+                        stroke="var(--bg-primary)"
+                        strokeWidth="1"
+                        style={{ cursor: "pointer" }}
+                        onMouseEnter={() =>
+                          setHoveredPoint({ seriesIndex, pointIndex })
+                        }
+                        onMouseLeave={() => setHoveredPoint(null)}
+                      />
 
-                    {/* Tooltip */}
-                    {isHovered && (
-                      <g>
-                        <rect
-                          x={cx + 8}
-                          y={cy - 30}
-                          width={80}
-                          height={24}
-                          fill="var(--bg-secondary)"
-                          stroke={color}
-                          strokeWidth="1"
-                          rx="3"
-                        />
-                        <text
-                          x={cx + 48}
-                          y={cy - 14}
-                          textAnchor="middle"
-                          fontSize="10"
-                          fill="var(--text-primary)"
-                        >
-                          {formatNumber(point.y)} @ {formatNumber(point.x)}
-                        </text>
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
+                      {/* Tooltip */}
+                      {isHovered && (
+                        <g>
+                          <rect
+                            x={cx + 8}
+                            y={cy - 30}
+                            width={80}
+                            height={24}
+                            fill="var(--bg-secondary)"
+                            stroke={color}
+                            strokeWidth="1"
+                            rx="3"
+                          />
+                          <text
+                            x={cx + 48}
+                            y={cy - 14}
+                            textAnchor="middle"
+                            fontSize="10"
+                            fill="var(--text-primary)"
+                          >
+                            {formatNumber(point.y)} @ {formatNumber(point.x)}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
             </g>
           );
         })}
@@ -354,4 +367,4 @@ export const LineChart = memo(function LineChart({
   );
 });
 
-LineChart.displayName = 'LineChart';
+LineChart.displayName = "LineChart";

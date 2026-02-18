@@ -11,14 +11,14 @@
  */
 
 // Re-export the split contexts for easy migration
-export { FrameDataProvider, useFrameData } from './FrameDataContext';
-export type { FrameDataContextType } from './FrameDataContext';
+export { FrameDataProvider, useFrameData } from "./FrameDataContext";
+export type { FrameDataContextType } from "./FrameDataContext";
 
-export { FileStateProvider, useFileState } from './FileStateContext';
-export type { FileStateContextType } from './FileStateContext';
+export { FileStateProvider, useFileState } from "./FileStateContext";
+export type { FileStateContextType } from "./FileStateContext";
 
-export { CurrentFrameProvider, useCurrentFrame } from './CurrentFrameContext';
-export type { CurrentFrameContextType } from './CurrentFrameContext';
+export { CurrentFrameProvider, useCurrentFrame } from "./CurrentFrameContext";
+export type { CurrentFrameContextType } from "./CurrentFrameContext";
 
 // Re-export types
-export type { FrameStats } from './FrameDataContext';
+export type { FrameStats } from "./FrameDataContext";

@@ -4,8 +4,8 @@
  * Displays a compact grid view of all frames
  */
 
-import type { FrameInfo } from '../types/video';
-import { memo } from 'react';
+import type { FrameInfo } from "../types/video";
+import { memo } from "react";
 
 interface MinimapViewProps {
   frames: FrameInfo[];
@@ -30,7 +30,7 @@ export const MinimapView = memo(function MinimapView({
             key={frame.frame_index}
             data-frame-index={frame.frame_index}
             className={`minimap-cell ${getFrameTypeColorClass(frame.frame_type)} ${
-              frame.frame_index === currentFrameIndex ? 'selected' : ''
+              frame.frame_index === currentFrameIndex ? "selected" : ""
             }`}
             onClick={() => onFrameClick(frame.frame_index)}
             style={{ backgroundColor: getFrameTypeColor(frame.frame_type) }}

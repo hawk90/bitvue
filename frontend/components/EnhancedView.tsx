@@ -8,15 +8,15 @@
  * 4. Diagnostic severity heatmap
  */
 
-import { memo, useMemo, useEffect, useState, useCallback } from 'react';
-import type { FrameInfo } from '../../types/video';
-import ThumbnailsView from './ThumbnailsView';
-import { getFrameTypeColorClass } from '../../types/video';
+import { memo, useMemo, useEffect, useState, useCallback } from "react";
+import type { FrameInfo } from "../../types/video";
+import ThumbnailsView from "./ThumbnailsView";
+import { getFrameTypeColorClass } from "../../types/video";
 
 // Constants for diagnostic thresholds
 const DIAGNOSTIC_THRESHOLDS = {
-  HIGH_QP: 45,           // QP value above which frame is considered high quality
-  LARGE_FRAME: 100000,   // Frame size in bytes above which frame is considered large
+  HIGH_QP: 45, // QP value above which frame is considered high quality
+  LARGE_FRAME: 100000, // Frame size in bytes above which frame is considered large
 } as const;
 
 interface EnhancedViewProps {
@@ -63,7 +63,7 @@ export const EnhancedView = memo(function EnhancedView({
     let gopNumber = 1;
 
     for (let i = 0; i < frames.length; i++) {
-      if (frames[i].frameType === 'I' && i > 0) {
+      if (frames[i].frameType === "I" && i > 0) {
         boundaries.push({
           frameIndex: currentGopStart,
           gopNumber,
@@ -95,14 +95,23 @@ export const EnhancedView = memo(function EnhancedView({
 
     const changes: SceneChange[] = [];
 
-    for (let i = SCENE_CHANGE_WINDOW_SIZE; i < frames.length - SCENE_CHANGE_WINDOW_SIZE; i++) {
+    for (
+      let i = SCENE_CHANGE_WINDOW_SIZE;
+      i < frames.length - SCENE_CHANGE_WINDOW_SIZE;
+      i++
+    ) {
       const beforeWindow = frames.slice(i - SCENE_CHANGE_WINDOW_SIZE, i);
       const afterWindow = frames.slice(i, i + SCENE_CHANGE_WINDOW_SIZE);
 
-      const avgBefore = beforeWindow.reduce((sum, f) => sum + (f.size || 0), 0) / SCENE_CHANGE_WINDOW_SIZE;
-      const avgAfter = afterWindow.reduce((sum, f) => sum + (f.size || 0), 0) / SCENE_CHANGE_WINDOW_SIZE;
+      const avgBefore =
+        beforeWindow.reduce((sum, f) => sum + (f.size || 0), 0) /
+        SCENE_CHANGE_WINDOW_SIZE;
+      const avgAfter =
+        afterWindow.reduce((sum, f) => sum + (f.size || 0), 0) /
+        SCENE_CHANGE_WINDOW_SIZE;
 
-      const variance = Math.abs(avgAfter - avgBefore) / Math.max(avgBefore, avgAfter);
+      const variance =
+        Math.abs(avgAfter - avgBefore) / Math.max(avgBefore, avgAfter);
 
       if (variance > SCENE_CHANGE_VARIANCE_THRESHOLD) {
         changes.push({
@@ -119,47 +128,67 @@ export const EnhancedView = memo(function EnhancedView({
     return gopBoundaries.find(
       (b, idx) =>
         b.frameIndex <= currentFrameIndex &&
-        (idx === gopBoundaries.length - 1 || gopBoundaries[idx + 1].frameIndex > currentFrameIndex)
+        (idx === gopBoundaries.length - 1 ||
+          gopBoundaries[idx + 1].frameIndex > currentFrameIndex),
     );
   }, [gopBoundaries, currentFrameIndex]);
 
-  const navigateToGOP = useCallback((direction: 'prev' | 'next') => {
-    if (!currentGOP) return;
+  const navigateToGOP = useCallback(
+    (direction: "prev" | "next") => {
+      if (!currentGOP) return;
 
-    const currentIndex = gopBoundaries.indexOf(currentGOP);
-    if (direction === 'prev' && currentIndex > 0) {
-      onFrameClick(gopBoundaries[currentIndex - 1].frameIndex);
-    } else if (direction === 'next' && currentIndex < gopBoundaries.length - 1) {
-      onFrameClick(gopBoundaries[currentIndex + 1].frameIndex);
-    }
-  }, [currentGOP, gopBoundaries, onFrameClick]);
+      const currentIndex = gopBoundaries.indexOf(currentGOP);
+      if (direction === "prev" && currentIndex > 0) {
+        onFrameClick(gopBoundaries[currentIndex - 1].frameIndex);
+      } else if (
+        direction === "next" &&
+        currentIndex < gopBoundaries.length - 1
+      ) {
+        onFrameClick(gopBoundaries[currentIndex + 1].frameIndex);
+      }
+    },
+    [currentGOP, gopBoundaries, onFrameClick],
+  );
 
-  const navigateToSceneChange = useCallback((direction: 'prev' | 'next') => {
-    if (sceneChanges.length === 0) return;
+  const navigateToSceneChange = useCallback(
+    (direction: "prev" | "next") => {
+      if (sceneChanges.length === 0) return;
 
-    const currentIndex = sceneChanges.findIndex(c => c.frameIndex >= currentFrameIndex);
-    if (direction === 'prev') {
-      const prevIndex = currentIndex <= 0 ? sceneChanges.length - 1 : currentIndex - 1;
-      onFrameClick(sceneChanges[prevIndex].frameIndex);
-    } else {
-      const nextIndex = currentIndex < 0 ? 0 :
-        currentIndex >= sceneChanges.length - 1 ? 0 : currentIndex + 1;
-      onFrameClick(sceneChanges[nextIndex].frameIndex);
-    }
-  }, [sceneChanges, currentFrameIndex, onFrameClick]);
+      const currentIndex = sceneChanges.findIndex(
+        (c) => c.frameIndex >= currentFrameIndex,
+      );
+      if (direction === "prev") {
+        const prevIndex =
+          currentIndex <= 0 ? sceneChanges.length - 1 : currentIndex - 1;
+        onFrameClick(sceneChanges[prevIndex].frameIndex);
+      } else {
+        const nextIndex =
+          currentIndex < 0
+            ? 0
+            : currentIndex >= sceneChanges.length - 1
+              ? 0
+              : currentIndex + 1;
+        onFrameClick(sceneChanges[nextIndex].frameIndex);
+      }
+    },
+    [sceneChanges, currentFrameIndex, onFrameClick],
+  );
 
   const getDiagnosticColor = (frameIndex: number) => {
     const frame = frames[frameIndex];
-    if (!frame) return '';
+    if (!frame) return "";
 
     // Check for various diagnostic conditions
     const issues = [];
 
-    if (frame.qp && frame.qp > DIAGNOSTIC_THRESHOLDS.HIGH_QP) issues.push('high-qp');
-    if (frame.size && frame.size > DIAGNOSTIC_THRESHOLDS.LARGE_FRAME) issues.push('large-frame');
-    if (frame.frameType === 'B' && !frame.refFrames?.length) issues.push('no-reference');
+    if (frame.qp && frame.qp > DIAGNOSTIC_THRESHOLDS.HIGH_QP)
+      issues.push("high-qp");
+    if (frame.size && frame.size > DIAGNOSTIC_THRESHOLDS.LARGE_FRAME)
+      issues.push("large-frame");
+    if (frame.frameType === "B" && !frame.refFrames?.length)
+      issues.push("no-reference");
 
-    if (issues.length === 0) return '';
+    if (issues.length === 0) return "";
     return `diagnostic-${issues[0]}`;
   };
 
@@ -171,24 +200,35 @@ export const EnhancedView = memo(function EnhancedView({
           <span className="enhanced-nav-label">GOP:</span>
           <button
             className="enhanced-nav-btn"
-            onClick={() => navigateToGOP('prev')}
+            onClick={() => navigateToGOP("prev")}
             disabled={!currentGOP || gopBoundaries.indexOf(currentGOP) === 0}
             title="Previous GOP"
           >
-            <span className="codicon codicon-arrow-left" aria-hidden="true"></span>
+            <span
+              className="codicon codicon-arrow-left"
+              aria-hidden="true"
+            ></span>
             <span>I</span>
           </button>
           <span className="enhanced-nav-info">
-            {currentGOP ? `GOP ${currentGOP.gopNumber}/${currentGOP.frameCount}f` : '-'}
+            {currentGOP
+              ? `GOP ${currentGOP.gopNumber}/${currentGOP.frameCount}f`
+              : "-"}
           </span>
           <button
             className="enhanced-nav-btn"
-            onClick={() => navigateToGOP('next')}
-            disabled={!currentGOP || gopBoundaries.indexOf(currentGOP) === gopBoundaries.length - 1}
+            onClick={() => navigateToGOP("next")}
+            disabled={
+              !currentGOP ||
+              gopBoundaries.indexOf(currentGOP) === gopBoundaries.length - 1
+            }
             title="Next GOP"
           >
             <span>I</span>
-            <span className="codicon codicon-arrow-right" aria-hidden="true"></span>
+            <span
+              className="codicon codicon-arrow-right"
+              aria-hidden="true"
+            ></span>
           </button>
         </div>
 
@@ -198,22 +238,30 @@ export const EnhancedView = memo(function EnhancedView({
           <span className="enhanced-nav-label">Scene:</span>
           <button
             className="enhanced-nav-btn"
-            onClick={() => navigateToSceneChange('prev')}
+            onClick={() => navigateToSceneChange("prev")}
             disabled={sceneChanges.length === 0}
             title="Previous Scene Change"
           >
-            <span className="codicon codicon-arrow-left" aria-hidden="true"></span>
+            <span
+              className="codicon codicon-arrow-left"
+              aria-hidden="true"
+            ></span>
             <span>SC</span>
           </button>
-          <span className="enhanced-nav-info">{sceneChanges.length} changes</span>
+          <span className="enhanced-nav-info">
+            {sceneChanges.length} changes
+          </span>
           <button
             className="enhanced-nav-btn"
-            onClick={() => navigateToSceneChange('next')}
+            onClick={() => navigateToSceneChange("next")}
             disabled={sceneChanges.length === 0}
             title="Next Scene Change"
           >
             <span>SC</span>
-            <span className="codicon codicon-arrow-right" aria-hidden="true"></span>
+            <span
+              className="codicon codicon-arrow-right"
+              aria-hidden="true"
+            ></span>
           </button>
         </div>
       </div>
@@ -273,20 +321,20 @@ export const EnhancedView = memo(function EnhancedView({
       <div className="enhanced-heatmap">
         {frames.map((frame, index) => {
           const diagnosticClass = getDiagnosticColor(index);
-          const sceneChange = sceneChanges.find(c => c.frameIndex === index);
-          const isGOPStart = gopBoundaries.some(b => b.frameIndex === index);
+          const sceneChange = sceneChanges.find((c) => c.frameIndex === index);
+          const isGOPStart = gopBoundaries.some((b) => b.frameIndex === index);
 
           return (
             <div
               key={`heatmap-${index}`}
               className={`enhanced-heatmap-cell ${diagnosticClass} ${
-                isGOPStart ? 'heatmap-gop-start' : ''
-              } ${sceneChange ? 'heatmap-scene-change' : ''}`}
+                isGOPStart ? "heatmap-gop-start" : ""
+              } ${sceneChange ? "heatmap-scene-change" : ""}`}
               style={{
                 width: `${100 / frames.length}%`,
               }}
-              title={`Frame ${index}${diagnosticClass ? ` (${diagnosticClass})` : ''}${
-                sceneChange ? ` - Scene change` : ''
+              title={`Frame ${index}${diagnosticClass ? ` (${diagnosticClass})` : ""}${
+                sceneChange ? ` - Scene change` : ""
               }`}
             />
           );
@@ -326,20 +374,26 @@ export const EnhancedView = memo(function EnhancedView({
           </div>
           <div className="enhanced-hover-section">
             <span className="enhanced-hover-label">Type:</span>
-            <span className={`enhanced-hover-value ${getFrameTypeColorClass(frames[hoveredFrame]?.frameType ?? 'UNKNOWN')}`}>
-              {frames[hoveredFrame]?.frameType ?? 'UNKNOWN'}
+            <span
+              className={`enhanced-hover-value ${getFrameTypeColorClass(frames[hoveredFrame]?.frameType ?? "UNKNOWN")}`}
+            >
+              {frames[hoveredFrame]?.frameType ?? "UNKNOWN"}
             </span>
           </div>
           {frames[hoveredFrame]?.size && (
             <div className="enhanced-hover-section">
               <span className="enhanced-hover-label">Size:</span>
-              <span className="enhanced-hover-value">{frames[hoveredFrame].size.toLocaleString()} bytes</span>
+              <span className="enhanced-hover-value">
+                {frames[hoveredFrame].size.toLocaleString()} bytes
+              </span>
             </div>
           )}
           {currentGOP && hoveredFrame >= currentGOP.frameIndex && (
             <div className="enhanced-hover-section">
               <span className="enhanced-hover-label">GOP:</span>
-              <span className="enhanced-hover-value">{currentGOP.gopNumber}</span>
+              <span className="enhanced-hover-value">
+                {currentGOP.gopNumber}
+              </span>
             </div>
           )}
         </div>

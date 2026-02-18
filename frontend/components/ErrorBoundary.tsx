@@ -7,8 +7,8 @@
  * Based on React error boundary pattern.
  */
 
-import { Component, ReactNode } from 'react';
-import { logger } from '../utils/logger';
+import { Component, ReactNode } from "react";
+import { logger } from "../utils/logger";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -33,7 +33,11 @@ export interface ErrorFallbackProps {
 /**
  * Default error fallback UI
  */
-function DefaultErrorFallback({ error, errorInfo, resetError }: ErrorFallbackProps) {
+function DefaultErrorFallback({
+  error,
+  errorInfo,
+  resetError,
+}: ErrorFallbackProps) {
   const handleReload = () => {
     window.location.reload();
   };
@@ -46,23 +50,24 @@ function DefaultErrorFallback({ error, errorInfo, resetError }: ErrorFallbackPro
         </div>
         <h2 className="error-boundary-title">Something went wrong</h2>
         <p className="error-boundary-message">
-          An unexpected error occurred. You can try reloading or restarting the application.
+          An unexpected error occurred. You can try reloading or restarting the
+          application.
         </p>
 
         {error && (
           <details className="error-boundary-details">
             <summary>Error Details</summary>
             <div className="error-boundary-details-content">
-              <div className="error-boundary-error-name">{error.name}: {error.message}</div>
+              <div className="error-boundary-error-name">
+                {error.name}: {error.message}
+              </div>
               {errorInfo && (
                 <pre className="error-boundary-stack">
                   {errorInfo.componentStack}
                 </pre>
               )}
               {error.stack && (
-                <pre className="error-boundary-stack">
-                  {error.stack}
-                </pre>
+                <pre className="error-boundary-stack">{error.stack}</pre>
               )}
             </div>
           </details>
@@ -104,7 +109,10 @@ function DefaultErrorFallback({ error, errorInfo, resetError }: ErrorFallbackPro
  * </ErrorBoundary>
  * ```
  */
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
@@ -123,7 +131,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     // Log error to console
-    logger.error('ErrorBoundary caught an error:', error, errorInfo);
+    logger.error("ErrorBoundary caught an error:", error, errorInfo);
 
     // Update state with error info
     this.setState({
@@ -168,7 +176,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
  */
 export function withErrorBoundary<P extends object>(
   Component: React.ComponentType<P>,
-  errorBoundaryProps?: Omit<ErrorBoundaryProps, 'children'>
+  errorBoundaryProps?: Omit<ErrorBoundaryProps, "children">,
 ): React.ComponentType<P> {
   const WrappedComponent = (props: P) => (
     <ErrorBoundary {...errorBoundaryProps}>
@@ -176,7 +184,7 @@ export function withErrorBoundary<P extends object>(
     </ErrorBoundary>
   );
 
-  WrappedComponent.displayName = `withErrorBoundary(${Component.displayName || Component.name || 'Component'})`;
+  WrappedComponent.displayName = `withErrorBoundary(${Component.displayName || Component.name || "Component"})`;
 
   return WrappedComponent;
 }

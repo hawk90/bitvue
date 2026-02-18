@@ -6,7 +6,7 @@
  * Used by both ThumbnailsView and BPyramidTimeline for optimal performance.
  */
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback } from "react";
 
 export interface ArrowData {
   sourceFrameIndex: number;
@@ -48,7 +48,7 @@ export type PathCalculator = (
   targetPos: ArrowPosition,
   sourceFrame: FrameInfoBase,
   targetFrame: FrameInfoBase,
-  slotIndex: number
+  slotIndex: number,
 ) => string;
 
 interface UsePreRenderedArrowsProps {
@@ -107,15 +107,17 @@ export function usePreRenderedArrows({
     const framePositions = new Map<number, ArrowPosition>();
 
     // Measure frame positions
-    frames.forEach(frame => {
-      const el = container.querySelector(`[data-frame-index="${frame.frame_index}"]`) as HTMLElement;
+    frames.forEach((frame) => {
+      const el = container.querySelector(
+        `[data-frame-index="${frame.frame_index}"]`,
+      ) as HTMLElement;
       if (!el) return;
 
       const rect = el.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
 
       const pos: ArrowPosition = {
-        centerX: (rect.left - containerRect.left) + rect.width / 2,
+        centerX: rect.left - containerRect.left + rect.width / 2,
         top: rect.top - containerRect.top,
         bottom: rect.bottom - containerRect.top,
       };
@@ -135,16 +137,22 @@ export function usePreRenderedArrows({
         const targetPos = framePositions.get(refIdx);
         if (!targetPos) return;
 
-        const refFrame = frames.find(f => f.frame_index === refIdx);
+        const refFrame = frames.find((f) => f.frame_index === refIdx);
         if (!refFrame) return;
 
         const label = getSlotLabel(frame, slotIdx);
-        const pathData = calculatePath(sourcePos, targetPos, frame, refFrame, slotIdx);
+        const pathData = calculatePath(
+          sourcePos,
+          targetPos,
+          frame,
+          refFrame,
+          slotIdx,
+        );
 
         // Calculate label position (at the start of the arrow, vertically centered)
         const baseOffset = 30;
         const spacingPerSlot = 12;
-        const verticalOffset = baseOffset + (slotIdx * spacingPerSlot);
+        const verticalOffset = baseOffset + slotIdx * spacingPerSlot;
         const sourceX = sourcePos.centerX;
         const sourceY = sourcePos.bottom ?? sourcePos.top;
         const labelY = sourceY + verticalOffset / 2;
@@ -202,8 +210,8 @@ export function usePreRenderedArrows({
     };
 
     updateSvgWidth();
-    window.addEventListener('resize', updateSvgWidth);
-    return () => window.removeEventListener('resize', updateSvgWidth);
+    window.addEventListener("resize", updateSvgWidth);
+    return () => window.removeEventListener("resize", updateSvgWidth);
   }, [allArrowData.length, containerRef]);
 
   return {

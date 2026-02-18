@@ -6,14 +6,14 @@
  */
 
 import { useState, useCallback } from "react";
-import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { createLogger } from "../utils/logger";
 import type { FileInfo } from "../types/video";
 import { useFileState, useFrameData } from "../contexts/StreamDataContext";
 import { useCompare } from "../contexts/CompareContext";
 
-const logger = createLogger('useAppFileOperations');
+const logger = createLogger("useAppFileOperations");
 
 export interface AppFileOperationsCallbacks {
   onError: (title: string, message: string, details?: string) => void;
@@ -33,7 +33,7 @@ export interface AppFileOperationsReturn {
  * Hook for managing App-specific file operations
  */
 export function useAppFileOperations(
-  callbacks: AppFileOperationsCallbacks
+  callbacks: AppFileOperationsCallbacks,
 ): AppFileOperationsReturn {
   const { onError } = callbacks;
   const { setFilePath, refreshFrames, clearData } = useFileState();
@@ -48,13 +48,13 @@ export function useAppFileOperations(
    */
   const handleCloseFile = useCallback(async () => {
     try {
-      await invoke('close_file');
+      await invoke("close_file");
       setFileInfo(null);
       setFilePath(null);
       clearData();
     } catch (err) {
-      logger.error('Failed to close file:', err);
-      onError('Failed to Close File', err as string);
+      logger.error("Failed to close file:", err);
+      onError("Failed to Close File", err as string);
     }
   }, [setFilePath, clearData, onError]);
 
@@ -69,47 +69,65 @@ export function useAppFileOperations(
         multiple: false,
         filters: [
           {
-            name: 'Video Files',
-            extensions: ['ivf', 'av1', 'hevc', 'h265', 'vvc', 'h266', 'mp4', 'mkv', 'webm', 'ts']
+            name: "Video Files",
+            extensions: [
+              "ivf",
+              "av1",
+              "hevc",
+              "h265",
+              "vvc",
+              "h266",
+              "mp4",
+              "mkv",
+              "webm",
+              "ts",
+            ],
           },
           {
-            name: 'All Files',
-            extensions: ['*']
-          }
-        ]
+            name: "All Files",
+            extensions: ["*"],
+          },
+        ],
       });
 
-      if (selected && typeof selected === 'string') {
-        logger.debug('Opening file:', selected);
+      if (selected && typeof selected === "string") {
+        logger.debug("Opening file:", selected);
 
         // Call the Tauri command to open the file
-        const result = await invoke<FileInfo>('open_file', { path: selected });
+        const result = await invoke<FileInfo>("open_file", { path: selected });
 
         setFileInfo(result);
         setFilePath(result.success ? selected : null);
 
         if (result.success) {
-          logger.info('File opened successfully');
+          logger.info("File opened successfully");
           // Refresh frames after opening file
           try {
             const loadedFrames = await refreshFrames();
             setFrames(loadedFrames);
           } catch (refreshErr) {
-            logger.error('Failed to refresh frames after opening file:', refreshErr);
+            logger.error(
+              "Failed to refresh frames after opening file:",
+              refreshErr,
+            );
             // Non-blocking: file opened successfully but frames failed to load
             onError(
-              'Frame Load Warning',
-              'File opened but failed to load frame data. Please try refreshing.',
-              refreshErr as string
+              "Frame Load Warning",
+              "File opened but failed to load frame data. Please try refreshing.",
+              refreshErr as string,
             );
           }
         } else {
-          onError('Failed to Open File', result.error || 'Unknown error', selected);
+          onError(
+            "Failed to Open File",
+            result.error || "Unknown error",
+            selected,
+          );
         }
       }
     } catch (err) {
-      logger.error('Failed to open file:', err);
-      onError('Failed to Open File', err as string);
+      logger.error("Failed to open file:", err);
+      onError("Failed to Open File", err as string);
     }
   }, [refreshFrames, setFilePath, onError]);
 
@@ -121,32 +139,49 @@ export function useAppFileOperations(
       setOpenError(null);
 
       if (!fileInfo?.success) {
-        setOpenError('Please open a primary bitstream first before opening a dependent bitstream for comparison.');
+        setOpenError(
+          "Please open a primary bitstream first before opening a dependent bitstream for comparison.",
+        );
         return;
       }
 
       const selected = await open({
         multiple: false,
-        filters: [{
-          name: 'Video Files',
-          extensions: ['ivf', 'av1', 'hevc', 'h265', 'vvc', 'h266', 'mp4', 'mkv', 'webm', 'ts']
-        }]
+        filters: [
+          {
+            name: "Video Files",
+            extensions: [
+              "ivf",
+              "av1",
+              "hevc",
+              "h265",
+              "vvc",
+              "h266",
+              "mp4",
+              "mkv",
+              "webm",
+              "ts",
+            ],
+          },
+        ],
       });
 
       if (selected === null) {
         return; // User cancelled
       }
 
-      const pathB = typeof selected === 'string' ? selected : selected.path;
+      const pathB = typeof selected === "string" ? selected : selected.path;
 
       logger.info(`Opening dependent bitstream: ${pathB}`);
 
       // Create compare workspace with current file as Stream A and selected file as Stream B
       await createWorkspace(fileInfo.path, pathB);
 
-      logger.info(`Compare workspace created successfully: ${fileInfo.path} vs ${pathB}`);
+      logger.info(
+        `Compare workspace created successfully: ${fileInfo.path} vs ${pathB}`,
+      );
     } catch (err) {
-      logger.error('Failed to open dependent bitstream:', err);
+      logger.error("Failed to open dependent bitstream:", err);
       setOpenError(err as string);
     }
   }, [fileInfo, createWorkspace]);

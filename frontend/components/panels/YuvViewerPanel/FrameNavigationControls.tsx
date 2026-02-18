@@ -4,7 +4,7 @@
  * First/Previous/Next/Last frame buttons and frame input
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface FrameNavigationControlsProps {
   currentFrameIndex: number;

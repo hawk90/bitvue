@@ -7,9 +7,9 @@
  * Reference: src-tauri/src/commands/quality.rs
  */
 
-import React, { useState, useCallback, memo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import React, { useState, useCallback, memo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 
 interface QualityMetrics {
   frame_index: number;
@@ -44,23 +44,23 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
         multiple: false,
         filters: [
           {
-            name: 'Video Files',
-            extensions: ['ivf', 'mp4', 'mkv', 'webm', 'yuv', 'y4m']
+            name: "Video Files",
+            extensions: ["ivf", "mp4", "mkv", "webm", "yuv", "y4m"],
           },
           {
-            name: 'All Files',
-            extensions: ['*']
-          }
-        ]
+            name: "All Files",
+            extensions: ["*"],
+          },
+        ],
       });
 
-      if (selected && typeof selected === 'string') {
+      if (selected && typeof selected === "string") {
         setReferencePath(selected);
         setError(null);
       }
     } catch (err) {
-      console.error('Failed to open file dialog:', err);
-      setError('Failed to open file dialog');
+      console.error("Failed to open file dialog:", err);
+      setError("Failed to open file dialog");
     }
   }, []);
 
@@ -70,23 +70,23 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
         multiple: false,
         filters: [
           {
-            name: 'Video Files',
-            extensions: ['ivf', 'mp4', 'mkv', 'webm', 'yuv', 'y4m']
+            name: "Video Files",
+            extensions: ["ivf", "mp4", "mkv", "webm", "yuv", "y4m"],
           },
           {
-            name: 'All Files',
-            extensions: ['*']
-          }
-        ]
+            name: "All Files",
+            extensions: ["*"],
+          },
+        ],
       });
 
-      if (selected && typeof selected === 'string') {
+      if (selected && typeof selected === "string") {
         setDistortedPath(selected);
         setError(null);
       }
     } catch (err) {
-      console.error('Failed to open file dialog:', err);
-      setError('Failed to open file dialog');
+      console.error("Failed to open file dialog:", err);
+      setError("Failed to open file dialog");
     }
   }, []);
 
@@ -99,19 +99,22 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
     setError(null);
     try {
       // Call Tauri backend command for actual quality calculation
-      const result = await invoke<BatchQualityMetrics>('calculate_quality_metrics', {
-        referencePath,
-        distortedPath,
-        frameIndices: null,  // Calculate for all frames
-        calculatePsnr: true,
-        calculateSsim: true,
-        calculateVmaf: false,  // VMAF requires libvmaf feature (not yet enabled)
-      });
+      const result = await invoke<BatchQualityMetrics>(
+        "calculate_quality_metrics",
+        {
+          referencePath,
+          distortedPath,
+          frameIndices: null, // Calculate for all frames
+          calculatePsnr: true,
+          calculateSsim: true,
+          calculateVmaf: false, // VMAF requires libvmaf feature (not yet enabled)
+        },
+      );
 
       setMetrics(result);
     } catch (err) {
       const errorMsg = err as string;
-      console.error('Failed to calculate quality metrics:', err);
+      console.error("Failed to calculate quality metrics:", err);
       setError(errorMsg);
     } finally {
       setIsCalculating(false);
@@ -129,7 +132,9 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
       {/* File Selection */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="border rounded p-4">
-          <label className="block text-sm font-medium mb-2">Reference File (Original)</label>
+          <label className="block text-sm font-medium mb-2">
+            Reference File (Original)
+          </label>
           <button
             onClick={handleSelectReference}
             className="w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded"
@@ -137,14 +142,20 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
             Select File...
           </button>
           {referencePath && (
-            <p className="text-sm text-gray-600 mt-2 truncate" title={referencePath}>
-              {referencePath.split('/').pop() || referencePath.split('\\').pop()}
+            <p
+              className="text-sm text-gray-600 mt-2 truncate"
+              title={referencePath}
+            >
+              {referencePath.split("/").pop() ||
+                referencePath.split("\\").pop()}
             </p>
           )}
         </div>
 
         <div className="border rounded p-4">
-          <label className="block text-sm font-medium mb-2">Distorted File (Encoded)</label>
+          <label className="block text-sm font-medium mb-2">
+            Distorted File (Encoded)
+          </label>
           <button
             onClick={handleSelectDistorted}
             className="w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded"
@@ -152,8 +163,12 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
             Select File...
           </button>
           {distortedPath && (
-            <p className="text-sm text-gray-600 mt-2 truncate" title={distortedPath}>
-              {distortedPath.split('/').pop() || distortedPath.split('\\').pop()}
+            <p
+              className="text-sm text-gray-600 mt-2 truncate"
+              title={distortedPath}
+            >
+              {distortedPath.split("/").pop() ||
+                distortedPath.split("\\").pop()}
             </p>
           )}
         </div>
@@ -172,7 +187,7 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
         disabled={!referencePath || !distortedPath || isCalculating}
         className="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed mb-4"
       >
-        {isCalculating ? 'Calculating...' : 'Calculate Quality Metrics'}
+        {isCalculating ? "Calculating..." : "Calculate Quality Metrics"}
       </button>
 
       {/* Results */}
@@ -185,20 +200,18 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {displayPsnr !== undefined ? displayPsnr.toFixed(2) : 'N/A'}
+                {displayPsnr !== undefined ? displayPsnr.toFixed(2) : "N/A"}
               </div>
               <div className="text-sm text-gray-600">PSNR (dB)</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {displaySsim !== undefined ? displaySsim.toFixed(4) : 'N/A'}
+                {displaySsim !== undefined ? displaySsim.toFixed(4) : "N/A"}
               </div>
               <div className="text-sm text-gray-600">SSIM</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-400">
-                N/A
-              </div>
+              <div className="text-2xl font-bold text-gray-400">N/A</div>
               <div className="text-sm text-gray-600">VMAF</div>
             </div>
           </div>
@@ -207,7 +220,10 @@ export const QualityComparisonPanel = memo(function QualityComparisonPanel() {
 
       {/* Info */}
       <div className="mt-4 text-sm text-gray-500">
-        <p>Select two video files to compare their quality using PSNR and SSIM metrics.</p>
+        <p>
+          Select two video files to compare their quality using PSNR and SSIM
+          metrics.
+        </p>
         <p className="mt-1">Supported formats: IVF, MP4, MKV, WebM, YUV, Y4M</p>
       </div>
     </div>

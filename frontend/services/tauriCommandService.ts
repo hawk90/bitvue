@@ -5,10 +5,10 @@
  * Provides centralized error handling, type safety, and logging.
  */
 
-import { invoke } from '@tauri-apps/api/core';
-import { createLogger } from '../utils/logger';
+import { invoke } from "@tauri-apps/api/core";
+import { createLogger } from "../utils/logger";
 
-const logger = createLogger('TauriCommandService');
+const logger = createLogger("TauriCommandService");
 
 /**
  * Service error for Tauri command failures
@@ -17,10 +17,10 @@ export class TauriCommandError extends Error {
   constructor(
     public command: string,
     message: string,
-    public originalError?: unknown
+    public originalError?: unknown,
   ) {
     super(`[Tauri:${command}] ${message}`);
-    this.name = 'TauriCommandError';
+    this.name = "TauriCommandError";
   }
 }
 
@@ -72,7 +72,7 @@ class TauriCommandServiceClass {
   async invoke<T>(
     command: string,
     args: Record<string, unknown> = {},
-    options: CommandInvokeOptions = {}
+    options: CommandInvokeOptions = {},
   ): Promise<T> {
     const opts = { ...DEFAULT_OPTIONS, ...options };
     const startTime = performance.now();
@@ -108,7 +108,9 @@ class TauriCommandServiceClass {
         }
 
         if (attempt < (opts.retry ?? 0)) {
-          logger.warn(`↻ ${command} failed, retrying (${attempt + 1}/${opts.retry})...`);
+          logger.warn(
+            `↻ ${command} failed, retrying (${attempt + 1}/${opts.retry})...`,
+          );
           // Exponential backoff
           await this.delay(Math.pow(2, attempt) * 1000);
         }
@@ -117,7 +119,11 @@ class TauriCommandServiceClass {
 
     // All retries exhausted
     const errorMessage = this.extractErrorMessage(lastError);
-    const commandError = new TauriCommandError(command, errorMessage, lastError);
+    const commandError = new TauriCommandError(
+      command,
+      errorMessage,
+      lastError,
+    );
 
     logger.error(`✗ ${command} failed:`, errorMessage);
     throw commandError;
@@ -130,7 +136,7 @@ class TauriCommandServiceClass {
   async safeInvoke<T>(
     command: string,
     args: Record<string, unknown> = {},
-    options: CommandInvokeOptions = {}
+    options: CommandInvokeOptions = {},
   ): Promise<CommandResult<T>> {
     try {
       const data = await this.invoke<T>(command, args, options);
@@ -141,7 +147,7 @@ class TauriCommandServiceClass {
       }
       return {
         success: false,
-        error: new TauriCommandError(command, String(error), error)
+        error: new TauriCommandError(command, String(error), error),
       };
     }
   }
@@ -153,16 +159,16 @@ class TauriCommandServiceClass {
     if (error instanceof Error) {
       // Validation errors, authentication errors, etc.
       const nonRetriablePatterns = [
-        'validation',
-        'invalid',
-        'unauthorized',
-        'forbidden',
-        'not found',
-        'permission denied',
+        "validation",
+        "invalid",
+        "unauthorized",
+        "forbidden",
+        "not found",
+        "permission denied",
       ];
 
       const message = error.message.toLowerCase();
-      return nonRetriablePatterns.some(pattern => message.includes(pattern));
+      return nonRetriablePatterns.some((pattern) => message.includes(pattern));
     }
     return false;
   }
@@ -174,10 +180,10 @@ class TauriCommandServiceClass {
     if (error instanceof Error) {
       return error.message;
     }
-    if (typeof error === 'string') {
+    if (typeof error === "string") {
       return error;
     }
-    return 'Unknown error';
+    return "Unknown error";
   }
 
   /**
@@ -200,7 +206,9 @@ class TauriCommandServiceClass {
   /**
    * Get latency statistics for a command
    */
-  getLatencyStats(command: string): { avg: number; min: number; max: number; count: number } | null {
+  getLatencyStats(
+    command: string,
+  ): { avg: number; min: number; max: number; count: number } | null {
     const latencies = this.commandLatency.get(command);
     if (!latencies || latencies.length === 0) {
       return null;
@@ -217,8 +225,14 @@ class TauriCommandServiceClass {
   /**
    * Get latency statistics for all commands
    */
-  getAllLatencyStats(): Map<string, { avg: number; min: number; max: number; count: number }> {
-    const stats = new Map<string, { avg: number; min: number; max: number; count: number }>();
+  getAllLatencyStats(): Map<
+    string,
+    { avg: number; min: number; max: number; count: number }
+  > {
+    const stats = new Map<
+      string,
+      { avg: number; min: number; max: number; count: number }
+    >();
 
     for (const [command, latencies] of this.commandLatency.entries()) {
       if (latencies.length > 0) {
@@ -245,7 +259,7 @@ class TauriCommandServiceClass {
    * Delay utility for retry backoff
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -261,7 +275,7 @@ export const TauriCommandService = new TauriCommandServiceClass();
 export function invokeCommand<T>(
   command: string,
   args?: Record<string, unknown>,
-  options?: CommandInvokeOptions
+  options?: CommandInvokeOptions,
 ): Promise<T> {
   return TauriCommandService.invoke<T>(command, args, options);
 }
@@ -273,7 +287,7 @@ export function invokeCommand<T>(
 export function safeInvokeCommand<T>(
   command: string,
   args?: Record<string, unknown>,
-  options?: CommandInvokeOptions
+  options?: CommandInvokeOptions,
 ): Promise<CommandResult<T>> {
   return TauriCommandService.safeInvoke<T>(command, args, options);
 }

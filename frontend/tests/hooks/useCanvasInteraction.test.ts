@@ -3,12 +3,12 @@
  * Tests canvas zoom, pan, and drag interactions
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useCanvasInteraction } from '../useCanvasInteraction';
+import { describe, it, expect, vi } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import { useCanvasInteraction } from "../useCanvasInteraction";
 
-describe('useCanvasInteraction', () => {
-  it('should return initial state', () => {
+describe("useCanvasInteraction", () => {
+  it("should return initial state", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     expect(result.current.zoom).toBe(1);
@@ -16,7 +16,7 @@ describe('useCanvasInteraction', () => {
     expect(result.current.isDragging).toBe(false);
   });
 
-  it('should zoom in', () => {
+  it("should zoom in", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
@@ -26,7 +26,7 @@ describe('useCanvasInteraction', () => {
     expect(result.current.zoom).toBe(1.25);
   });
 
-  it('should zoom out', () => {
+  it("should zoom out", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
@@ -36,7 +36,7 @@ describe('useCanvasInteraction', () => {
     expect(result.current.zoom).toBe(0.75);
   });
 
-  it('should respect min zoom limit', () => {
+  it("should respect min zoom limit", () => {
     const { result } = renderHook(() => useCanvasInteraction({ minZoom: 0.5 }));
 
     act(() => {
@@ -47,7 +47,7 @@ describe('useCanvasInteraction', () => {
     expect(result.current.zoom).toBe(0.5);
   });
 
-  it('should respect max zoom limit', () => {
+  it("should respect max zoom limit", () => {
     const { result } = renderHook(() => useCanvasInteraction({ maxZoom: 2 }));
 
     act(() => {
@@ -58,7 +58,7 @@ describe('useCanvasInteraction', () => {
     expect(result.current.zoom).toBe(2);
   });
 
-  it('should reset zoom', () => {
+  it("should reset zoom", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
@@ -77,7 +77,7 @@ describe('useCanvasInteraction', () => {
     expect(result.current.pan).toEqual({ x: 0, y: 0 });
   });
 
-  it('should set zoom to specific value', () => {
+  it("should set zoom to specific value", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
@@ -87,7 +87,7 @@ describe('useCanvasInteraction', () => {
     expect(result.current.zoom).toBe(1.5);
   });
 
-  it('should set pan to specific coordinates', () => {
+  it("should set pan to specific coordinates", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
@@ -97,8 +97,10 @@ describe('useCanvasInteraction', () => {
     expect(result.current.pan).toEqual({ x: 100, y: 200 });
   });
 
-  it('should use custom zoom step', () => {
-    const { result } = renderHook(() => useCanvasInteraction({ zoomStep: 0.5 }));
+  it("should use custom zoom step", () => {
+    const { result } = renderHook(() =>
+      useCanvasInteraction({ zoomStep: 0.5 }),
+    );
 
     act(() => {
       result.current.zoomIn();
@@ -107,100 +109,128 @@ describe('useCanvasInteraction', () => {
     expect(result.current.zoom).toBe(1.5);
   });
 
-  it('should use initial zoom value', () => {
-    const { result } = renderHook(() => useCanvasInteraction({ initialZoom: 2 }));
+  it("should use initial zoom value", () => {
+    const { result } = renderHook(() =>
+      useCanvasInteraction({ initialZoom: 2 }),
+    );
 
     expect(result.current.zoom).toBe(2);
   });
 
-  it('should use initial pan value', () => {
-    const { result } = renderHook(() => useCanvasInteraction({
-      initialPan: { x: 50, y: 100 }
-    }));
+  it("should use initial pan value", () => {
+    const { result } = renderHook(() =>
+      useCanvasInteraction({
+        initialPan: { x: 50, y: 100 },
+      }),
+    );
 
     expect(result.current.pan).toEqual({ x: 50, y: 100 });
   });
 });
 
-describe('useCanvasInteraction handlers', () => {
-  it('should provide onWheel handler', () => {
+describe("useCanvasInteraction handlers", () => {
+  it("should provide onWheel handler", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
-    expect(typeof result.current.handlers.onWheel).toBe('function');
+    expect(typeof result.current.handlers.onWheel).toBe("function");
   });
 
-  it('should provide onMouseDown handler', () => {
+  it("should provide onMouseDown handler", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
-    expect(typeof result.current.handlers.onMouseDown).toBe('function');
+    expect(typeof result.current.handlers.onMouseDown).toBe("function");
   });
 
-  it('should provide onMouseMove handler', () => {
+  it("should provide onMouseMove handler", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
-    expect(typeof result.current.handlers.onMouseMove).toBe('function');
+    expect(typeof result.current.handlers.onMouseMove).toBe("function");
   });
 
-  it('should provide onMouseUp handler', () => {
+  it("should provide onMouseUp handler", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
-    expect(typeof result.current.handlers.onMouseUp).toBe('function');
+    expect(typeof result.current.handlers.onMouseUp).toBe("function");
   });
 
-  it('should zoom on wheel with Ctrl key when requireModifierKey is true', () => {
-    const { result } = renderHook(() => useCanvasInteraction({ requireModifierKey: true }));
+  it("should zoom on wheel with Ctrl key when requireModifierKey is true", () => {
+    const { result } = renderHook(() =>
+      useCanvasInteraction({ requireModifierKey: true }),
+    );
 
     act(() => {
-      const wheelEvent = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true });
+      const wheelEvent = new WheelEvent("wheel", {
+        deltaY: -100,
+        ctrlKey: true,
+      });
       result.current.handlers.onWheel(wheelEvent);
     });
 
     expect(result.current.zoom).toBeGreaterThan(1);
   });
 
-  it('should not zoom on wheel without Ctrl key when requireModifierKey is true', () => {
-    const { result } = renderHook(() => useCanvasInteraction({ requireModifierKey: true }));
+  it("should not zoom on wheel without Ctrl key when requireModifierKey is true", () => {
+    const { result } = renderHook(() =>
+      useCanvasInteraction({ requireModifierKey: true }),
+    );
 
     const initialZoom = result.current.zoom;
 
     act(() => {
-      const wheelEvent = new WheelEvent('wheel', { deltaY: -100, ctrlKey: false });
+      const wheelEvent = new WheelEvent("wheel", {
+        deltaY: -100,
+        ctrlKey: false,
+      });
       result.current.handlers.onWheel(wheelEvent);
     });
 
     expect(result.current.zoom).toBe(initialZoom);
   });
 
-  it('should zoom on any wheel when requireModifierKey is false', () => {
-    const { result } = renderHook(() => useCanvasInteraction({ requireModifierKey: false }));
+  it("should zoom on any wheel when requireModifierKey is false", () => {
+    const { result } = renderHook(() =>
+      useCanvasInteraction({ requireModifierKey: false }),
+    );
 
     act(() => {
-      const wheelEvent = new WheelEvent('wheel', { deltaY: -100, ctrlKey: false });
+      const wheelEvent = new WheelEvent("wheel", {
+        deltaY: -100,
+        ctrlKey: false,
+      });
       result.current.handlers.onWheel(wheelEvent);
     });
 
     expect(result.current.zoom).not.toBe(1);
   });
 
-  it('should start drag on mouse down', () => {
+  it("should start drag on mouse down", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
-      const mouseEvent = new MouseEvent('mousedown', { clientX: 100, clientY: 100 });
+      const mouseEvent = new MouseEvent("mousedown", {
+        clientX: 100,
+        clientY: 100,
+      });
       result.current.handlers.onMouseDown(mouseEvent);
     });
 
     expect(result.current.isDragging).toBe(true);
   });
 
-  it('should update pan on mouse move while dragging', () => {
+  it("should update pan on mouse move while dragging", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
-      const downEvent = new MouseEvent('mousedown', { clientX: 100, clientY: 100 });
+      const downEvent = new MouseEvent("mousedown", {
+        clientX: 100,
+        clientY: 100,
+      });
       result.current.handlers.onMouseDown(downEvent);
 
-      const moveEvent = new MouseEvent('mousemove', { clientX: 150, clientY: 150 });
+      const moveEvent = new MouseEvent("mousemove", {
+        clientX: 150,
+        clientY: 150,
+      });
       result.current.handlers.onMouseMove(moveEvent);
     });
 
@@ -208,16 +238,19 @@ describe('useCanvasInteraction handlers', () => {
     expect(result.current.pan.y).not.toBe(0);
   });
 
-  it('should end drag on mouse up', () => {
+  it("should end drag on mouse up", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
-      const downEvent = new MouseEvent('mousedown', { clientX: 100, clientY: 100 });
+      const downEvent = new MouseEvent("mousedown", {
+        clientX: 100,
+        clientY: 100,
+      });
       result.current.handlers.onMouseDown(downEvent);
 
       expect(result.current.isDragging).toBe(true);
 
-      const upEvent = new MouseEvent('mouseup', { clientX: 150, clientY: 150 });
+      const upEvent = new MouseEvent("mouseup", { clientX: 150, clientY: 150 });
       result.current.handlers.onMouseUp(upEvent);
 
       expect(result.current.isDragging).toBe(false);
@@ -225,8 +258,8 @@ describe('useCanvasInteraction handlers', () => {
   });
 });
 
-describe('useCanvasInteraction edge cases', () => {
-  it('should handle negative pan values', () => {
+describe("useCanvasInteraction edge cases", () => {
+  it("should handle negative pan values", () => {
     const { result } = renderHook(() => useCanvasInteraction());
 
     act(() => {
@@ -236,7 +269,7 @@ describe('useCanvasInteraction edge cases', () => {
     expect(result.current.pan).toEqual({ x: -100, y: -200 });
   });
 
-  it('should handle zero zoom', () => {
+  it("should handle zero zoom", () => {
     const { result } = renderHook(() => useCanvasInteraction({ minZoom: 0 }));
 
     act(() => {
@@ -249,7 +282,7 @@ describe('useCanvasInteraction edge cases', () => {
     expect(result.current.zoom).toBe(0);
   });
 
-  it('should handle very large zoom values', () => {
+  it("should handle very large zoom values", () => {
     const { result } = renderHook(() => useCanvasInteraction({ maxZoom: 10 }));
 
     act(() => {

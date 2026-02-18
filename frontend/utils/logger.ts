@@ -5,7 +5,7 @@
  * Logs can be enabled/disabled via environment variables or runtime configuration.
  */
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none';
+export type LogLevel = "debug" | "info" | "warn" | "error" | "none";
 
 interface ImportMetaEnv {
   VITE_LOG_LEVEL?: string;
@@ -27,16 +27,17 @@ const importMetaObj = import.meta as ImportMetaWithEnv;
 // Get log level from environment or default to 'info' in development, 'error' in production
 const getDefaultLogLevel = (): LogLevel => {
   if (importMetaObj.env) {
-    const envLogLevel = importMetaObj.env.VITE_LOG_LEVEL?.toLowerCase() as LogLevel;
-    if (['debug', 'info', 'warn', 'error', 'none'].includes(envLogLevel)) {
+    const envLogLevel =
+      importMetaObj.env.VITE_LOG_LEVEL?.toLowerCase() as LogLevel;
+    if (["debug", "info", "warn", "error", "none"].includes(envLogLevel)) {
       return envLogLevel;
     }
   }
-  return importMetaObj.env?.DEV ? 'info' : 'error';
+  return importMetaObj.env?.DEV ? "info" : "error";
 };
 
 let currentLogLevel: LogLevel = getDefaultLogLevel();
-let contextPrefix: string = '';
+let contextPrefix: string = "";
 
 /**
  * Set the current log level
@@ -56,7 +57,7 @@ export function getLogLevel(): LogLevel {
  * Set a global context prefix for all log messages
  */
 export function setLogContext(prefix: string): void {
-  contextPrefix = prefix ? `[${prefix}] ` : '';
+  contextPrefix = prefix ? `[${prefix}] ` : "";
 }
 
 /**
@@ -79,7 +80,7 @@ export interface Logger {
 }
 
 function shouldLog(level: LogLevel): boolean {
-  const levels: LogLevel[] = ['debug', 'info', 'warn', 'error', 'none'];
+  const levels: LogLevel[] = ["debug", "info", "warn", "error", "none"];
   return levels.indexOf(level) >= levels.indexOf(currentLogLevel);
 }
 
@@ -88,29 +89,29 @@ function formatMessage(msg: string, context?: string): string {
   if (contextPrefix) parts.push(contextPrefix);
   if (context) parts.push(`[${context}]`);
   parts.push(msg);
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 function logDebug(msg: string, context?: string, ...args: unknown[]): void {
-  if (shouldLog('debug')) {
+  if (shouldLog("debug")) {
     console.log(formatMessage(msg, context), ...args);
   }
 }
 
 function logInfo(msg: string, context?: string, ...args: unknown[]): void {
-  if (shouldLog('info')) {
+  if (shouldLog("info")) {
     console.info(formatMessage(msg, context), ...args);
   }
 }
 
 function logWarn(msg: string, context?: string, ...args: unknown[]): void {
-  if (shouldLog('warn')) {
+  if (shouldLog("warn")) {
     console.warn(formatMessage(msg, context), ...args);
   }
 }
 
 function logError(msg: string, context?: string, ...args: unknown[]): void {
-  if (shouldLog('error')) {
+  if (shouldLog("error")) {
     console.error(formatMessage(msg, context), ...args);
   }
 }

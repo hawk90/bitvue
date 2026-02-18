@@ -4,8 +4,8 @@
  * Modal dialog for displaying critical errors with details
  */
 
-import { useEffect, memo } from 'react';
-import './ErrorDialog.css';
+import { useEffect, memo } from "react";
+import "./ErrorDialog.css";
 
 interface ErrorDialogProps {
   isOpen: boolean;
@@ -33,23 +33,20 @@ export const ErrorDialog = memo(function ErrorDialog({
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
     <div className="error-dialog-overlay" onClick={onClose}>
-      <div
-        className="error-dialog"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="error-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="error-dialog-header">
           <div className="error-dialog-icon">
             <i className="codicon codicon-error" />
@@ -102,14 +99,20 @@ export const ErrorDialog = memo(function ErrorDialog({
 interface WarningBannerProps {
   message: string;
   onDismiss?: () => void;
-  severity?: 'warning' | 'info';
+  severity?: "warning" | "info";
 }
 
-export const WarningBanner = memo(function WarningBanner({ message, onDismiss, severity = 'warning' }: WarningBannerProps) {
+export const WarningBanner = memo(function WarningBanner({
+  message,
+  onDismiss,
+  severity = "warning",
+}: WarningBannerProps) {
   return (
     <div className={`warning-banner warning-banner-${severity}`}>
       <span className="warning-banner-icon">
-        <i className={`codicon codicon-${severity === 'warning' ? 'warning' : 'info'}`} />
+        <i
+          className={`codicon codicon-${severity === "warning" ? "warning" : "info"}`}
+        />
       </span>
       <span className="warning-banner-message">{message}</span>
       {onDismiss && (
@@ -134,7 +137,11 @@ interface ErrorToastProps {
   onClose: () => void;
 }
 
-export const ErrorToast = memo(function ErrorToast({ message, duration = 5000, onClose }: ErrorToastProps) {
+export const ErrorToast = memo(function ErrorToast({
+  message,
+  duration = 5000,
+  onClose,
+}: ErrorToastProps) {
   useEffect(() => {
     const timer = setTimeout(onClose, duration);
     return () => clearTimeout(timer);

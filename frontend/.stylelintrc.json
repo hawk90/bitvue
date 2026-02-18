@@ -11,9 +11,5 @@
     "no-duplicate-selectors": null,
     "declaration-block-single-line-max-declarations": null
   },
-  "ignoreFiles": [
-    "node_modules/**",
-    "dist/**",
-    "build/**"
-  ]
+  "ignoreFiles": ["node_modules/**", "dist/**", "build/**"]
 }

@@ -5,13 +5,13 @@
  * Reference: VQAnalyzer Diagnostics
  */
 
-import { useState, useMemo, memo, useCallback } from 'react';
-import { useFrameData } from '../../contexts/FrameDataContext';
-import { useCurrentFrame } from '../../contexts/CurrentFrameContext';
-import { useFileState } from '../../contexts/FileStateContext';
-import './DiagnosticsPanel.css';
+import { useState, useMemo, memo, useCallback } from "react";
+import { useFrameData } from "../../contexts/FrameDataContext";
+import { useCurrentFrame } from "../../contexts/CurrentFrameContext";
+import { useFileState } from "../../contexts/FileStateContext";
+import "./DiagnosticsPanel.css";
 
-export type DiagnosticSeverity = 'error' | 'warning' | 'info' | 'hint';
+export type DiagnosticSeverity = "error" | "warning" | "info" | "hint";
 
 export interface Diagnostic {
   id: string;
@@ -31,12 +31,17 @@ interface DiagnosticsPanelProps {
   diagnostics?: Diagnostic[];
 }
 
-export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: propDiagnostics }: DiagnosticsPanelProps) {
+export const DiagnosticsPanel = memo(function DiagnosticsPanel({
+  diagnostics: propDiagnostics,
+}: DiagnosticsPanelProps) {
   const { frames } = useFrameData();
   const { currentFrameIndex } = useCurrentFrame();
   const { error } = useFileState();
-  const [filterSeverity, setFilterSeverity] = useState<DiagnosticSeverity | 'all'>('all');
-  const [selectedDiagnostic, setSelectedDiagnostic] = useState<Diagnostic | null>(null);
+  const [filterSeverity, setFilterSeverity] = useState<
+    DiagnosticSeverity | "all"
+  >("all");
+  const [selectedDiagnostic, setSelectedDiagnostic] =
+    useState<Diagnostic | null>(null);
 
   // Combine prop diagnostics with stream error
   const diagnostics = useMemo(() => {
@@ -45,11 +50,11 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
     // Add stream error if present
     if (error) {
       diags.push({
-        id: 'stream-error',
-        severity: 'error',
-        code: 'STREAM_ERROR',
+        id: "stream-error",
+        severity: "error",
+        code: "STREAM_ERROR",
         message: error,
-        source: 'Stream',
+        source: "Stream",
         timestamp: Date.now(),
       });
     }
@@ -63,24 +68,27 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
         if (frame.size > 100000) {
           diags.push({
             id: `frame-${frame.frame_index}-size`,
-            severity: 'warning',
-            code: 'LARGE_FRAME',
+            severity: "warning",
+            code: "LARGE_FRAME",
             message: `Frame ${frame.frame_index} is unusually large (${(frame.size / 1024).toFixed(1)} KB)`,
             frameIndex: frame.frame_index,
-            source: 'FrameAnalyzer',
+            source: "FrameAnalyzer",
             timestamp: Date.now(),
           });
         }
 
         // Check for missing references (should have refs for P/B frames)
-        if ((frame.frame_type === 'P' || frame.frame_type === 'B') && !frame.ref_frames?.length) {
+        if (
+          (frame.frame_type === "P" || frame.frame_type === "B") &&
+          !frame.ref_frames?.length
+        ) {
           diags.push({
             id: `frame-${frame.frame_index}-no-refs`,
-            severity: 'info',
-            code: 'NO_REFERENCES',
+            severity: "info",
+            code: "NO_REFERENCES",
             message: `Frame ${frame.frame_index} (${frame.frame_type}) has no reference frames`,
             frameIndex: frame.frame_index,
-            source: 'FrameAnalyzer',
+            source: "FrameAnalyzer",
             timestamp: Date.now(),
           });
         }
@@ -92,21 +100,27 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
 
   // Filter by severity
   const filteredDiagnostics = useMemo(() => {
-    if (filterSeverity === 'all') return diagnostics;
-    return diagnostics.filter(d => d.severity === filterSeverity);
+    if (filterSeverity === "all") return diagnostics;
+    return diagnostics.filter((d) => d.severity === filterSeverity);
   }, [diagnostics, filterSeverity]);
 
   // Count by severity
   const severityCounts = useMemo(() => {
-    return diagnostics.reduce((acc, d) => {
-      acc[d.severity] = (acc[d.severity] || 0) + 1;
-      return acc;
-    }, {} as Record<DiagnosticSeverity, number>);
+    return diagnostics.reduce(
+      (acc, d) => {
+        acc[d.severity] = (acc[d.severity] || 0) + 1;
+        return acc;
+      },
+      {} as Record<DiagnosticSeverity, number>,
+    );
   }, [diagnostics]);
 
-  const handleFilterSeverity = useCallback((severity: DiagnosticSeverity | 'all') => {
-    setFilterSeverity(severity);
-  }, []);
+  const handleFilterSeverity = useCallback(
+    (severity: DiagnosticSeverity | "all") => {
+      setFilterSeverity(severity);
+    },
+    [],
+  );
 
   const handleSelectDiagnostic = useCallback((diag: Diagnostic | null) => {
     setSelectedDiagnostic(diag);
@@ -114,20 +128,20 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
 
   const getSeverityIcon = (severity: DiagnosticSeverity) => {
     const icons = {
-      error: 'codicon-error',
-      warning: 'codicon-warning',
-      info: 'codicon-info',
-      hint: 'codicon-lightbulb',
+      error: "codicon-error",
+      warning: "codicon-warning",
+      info: "codicon-info",
+      hint: "codicon-lightbulb",
     };
     return icons[severity];
   };
 
   const getSeverityColor = (severity: DiagnosticSeverity) => {
     const colors = {
-      error: 'var(--error-fg)',
-      warning: 'var(--warning-fg)',
-      info: 'var(--status-info)',
-      hint: 'var(--status-success)',
+      error: "var(--error-fg)",
+      warning: "var(--warning-fg)",
+      info: "var(--status-info)",
+      hint: "var(--status-success)",
     };
     return colors[severity];
   };
@@ -143,28 +157,28 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
 
         <div className="diagnostics-filters">
           <button
-            className={`diagnostics-filter ${filterSeverity === 'all' ? 'active' : ''}`}
-            onClick={() => handleFilterSeverity('all')}
+            className={`diagnostics-filter ${filterSeverity === "all" ? "active" : ""}`}
+            onClick={() => handleFilterSeverity("all")}
           >
             All ({diagnostics.length})
           </button>
           <button
-            className={`diagnostics-filter diagnostics-filter-error ${filterSeverity === 'error' ? 'active' : ''}`}
-            onClick={() => handleFilterSeverity('error')}
+            className={`diagnostics-filter diagnostics-filter-error ${filterSeverity === "error" ? "active" : ""}`}
+            onClick={() => handleFilterSeverity("error")}
           >
             <i className="codicon codicon-error" />
             {severityCounts.error || 0}
           </button>
           <button
-            className={`diagnostics-filter diagnostics-filter-warning ${filterSeverity === 'warning' ? 'active' : ''}`}
-            onClick={() => handleFilterSeverity('warning')}
+            className={`diagnostics-filter diagnostics-filter-warning ${filterSeverity === "warning" ? "active" : ""}`}
+            onClick={() => handleFilterSeverity("warning")}
           >
             <i className="codicon codicon-warning" />
             {severityCounts.warning || 0}
           </button>
           <button
-            className={`diagnostics-filter diagnostics-filter-info ${filterSeverity === 'info' ? 'active' : ''}`}
-            onClick={() => handleFilterSeverity('info')}
+            className={`diagnostics-filter diagnostics-filter-info ${filterSeverity === "info" ? "active" : ""}`}
+            onClick={() => handleFilterSeverity("info")}
           >
             <i className="codicon codicon-info" />
             {severityCounts.info || 0}
@@ -177,7 +191,9 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
         {filteredDiagnostics.length === 0 ? (
           <div className="diagnostics-empty">
             <i className="codicon codicon-check" />
-            <p>No {filterSeverity === 'all' ? '' : filterSeverity} diagnostics</p>
+            <p>
+              No {filterSeverity === "all" ? "" : filterSeverity} diagnostics
+            </p>
           </div>
         ) : (
           <table className="diagnostics-table">
@@ -194,7 +210,7 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
                 <tr
                   key={diag.id}
                   className={`diagnostics-row diagnostics-row-${diag.severity} ${
-                    selectedDiagnostic?.id === diag.id ? 'selected' : ''
+                    selectedDiagnostic?.id === diag.id ? "selected" : ""
                   }`}
                   onClick={() => handleSelectDiagnostic(diag)}
                 >
@@ -210,12 +226,12 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
                   <td className="diagnostics-col-message">
                     {diag.message}
                     {diag.frameIndex !== undefined && (
-                      <span className="diagnostics-frame-ref">Frame {diag.frameIndex}</span>
+                      <span className="diagnostics-frame-ref">
+                        Frame {diag.frameIndex}
+                      </span>
                     )}
                   </td>
-                  <td className="diagnostics-col-source">
-                    {diag.source}
-                  </td>
+                  <td className="diagnostics-col-source">{diag.source}</td>
                 </tr>
               ))}
             </tbody>
@@ -227,7 +243,9 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
       {selectedDiagnostic && (
         <div className="diagnostics-details">
           <div className="diagnostics-details-header">
-            <span className="diagnostics-details-code">{selectedDiagnostic.code}</span>
+            <span className="diagnostics-details-code">
+              {selectedDiagnostic.code}
+            </span>
             <button
               className="diagnostics-details-close"
               onClick={() => handleSelectDiagnostic(null)}
@@ -236,28 +254,38 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({ diagnostics: pr
             </button>
           </div>
           <div className="diagnostics-details-body">
-            <p className="diagnostics-details-message">{selectedDiagnostic.message}</p>
+            <p className="diagnostics-details-message">
+              {selectedDiagnostic.message}
+            </p>
             <div className="diagnostics-details-info">
               <div className="diagnostics-info-row">
                 <span className="diagnostics-info-label">Severity:</span>
-                <span className={`diagnostics-info-value diagnostics-${selectedDiagnostic.severity}`}>
+                <span
+                  className={`diagnostics-info-value diagnostics-${selectedDiagnostic.severity}`}
+                >
                   {selectedDiagnostic.severity.toUpperCase()}
                 </span>
               </div>
               <div className="diagnostics-info-row">
                 <span className="diagnostics-info-label">Source:</span>
-                <span className="diagnostics-info-value">{selectedDiagnostic.source}</span>
+                <span className="diagnostics-info-value">
+                  {selectedDiagnostic.source}
+                </span>
               </div>
               {selectedDiagnostic.frameIndex !== undefined && (
                 <div className="diagnostics-info-row">
                   <span className="diagnostics-info-label">Frame:</span>
-                  <span className="diagnostics-info-value">{selectedDiagnostic.frameIndex}</span>
+                  <span className="diagnostics-info-value">
+                    {selectedDiagnostic.frameIndex}
+                  </span>
                 </div>
               )}
               {selectedDiagnostic.unitType && (
                 <div className="diagnostics-info-row">
                   <span className="diagnostics-info-label">Unit Type:</span>
-                  <span className="diagnostics-info-value">{selectedDiagnostic.unitType}</span>
+                  <span className="diagnostics-info-value">
+                    {selectedDiagnostic.unitType}
+                  </span>
                 </div>
               )}
             </div>

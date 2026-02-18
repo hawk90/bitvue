@@ -11,8 +11,8 @@
  * Reference: VQAnalyzer dual video comparison functionality
  */
 
-import { memo, useState, useCallback, useRef, useEffect } from 'react';
-import type { FrameInfo } from '../../../types/video';
+import { memo, useState, useCallback, useRef, useEffect } from "react";
+import type { FrameInfo } from "../../../types/video";
 
 export interface DualVideoViewProps {
   /** Left video (reference/original) frame info */
@@ -28,7 +28,7 @@ export interface DualVideoViewProps {
   /** Right video height */
   rightHeight: number;
   /** View mode for comparison */
-  viewMode?: 'side-by-side' | 'top-bottom' | 'difference' | 'slide';
+  viewMode?: "side-by-side" | "top-bottom" | "difference" | "slide";
   /** Show quality metrics overlay */
   showMetrics?: boolean;
   /** Show frame info overlay */
@@ -51,7 +51,7 @@ export const DualVideoView = memo(function DualVideoView({
   leftHeight,
   rightWidth,
   rightHeight,
-  viewMode = 'side-by-side',
+  viewMode = "side-by-side",
   showMetrics = true,
   showFrameInfo = true,
 }: DualVideoViewProps) {
@@ -66,13 +66,16 @@ export const DualVideoView = memo(function DualVideoView({
 
   const [currentViewMode, setCurrentViewMode] = useState(viewMode);
   const [sliderPosition, setSliderPosition] = useState(50); // For slide mode (0-100)
-  const [hoveredPosition, setHoveredPosition] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredPosition, setHoveredPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Handle zoom in
   const handleZoomIn = useCallback(() => {
-    setControls(prev => ({
+    setControls((prev) => ({
       ...prev,
       zoom: Math.min(prev.zoom + 0.25, 4),
     }));
@@ -80,7 +83,7 @@ export const DualVideoView = memo(function DualVideoView({
 
   // Handle zoom out
   const handleZoomOut = useCallback(() => {
-    setControls(prev => ({
+    setControls((prev) => ({
       ...prev,
       zoom: Math.max(prev.zoom - 0.25, 0.25),
     }));
@@ -107,12 +110,15 @@ export const DualVideoView = memo(function DualVideoView({
   }, []);
 
   // Handle mouse move for position display
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / controls.zoom);
-    const y = Math.floor((e.clientY - rect.top) / controls.zoom);
-    setHoveredPosition({ x, y });
-  }, [controls.zoom]);
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / controls.zoom);
+      const y = Math.floor((e.clientY - rect.top) / controls.zoom);
+      setHoveredPosition({ x, y });
+    },
+    [controls.zoom],
+  );
 
   // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
@@ -120,26 +126,39 @@ export const DualVideoView = memo(function DualVideoView({
   }, []);
 
   // Render video placeholder with frame info
-  const renderVideoPlaceholder = (side: 'left' | 'right', frame: FrameInfo | null, width: number, height: number) => {
-    const label = side === 'left' ? 'Reference (Original)' : 'Distorted (Encoded)';
-    const borderColor = side === 'left' ? 'border-blue-500' : 'border-red-500';
+  const renderVideoPlaceholder = (
+    side: "left" | "right",
+    frame: FrameInfo | null,
+    width: number,
+    height: number,
+  ) => {
+    const label =
+      side === "left" ? "Reference (Original)" : "Distorted (Encoded)";
+    const borderColor = side === "left" ? "border-blue-500" : "border-red-500";
 
     return (
       <div className="relative flex-1 min-w-0">
-        <div className={`absolute top-0 left-0 bg-black/70 text-white text-xs px-2 py-1 z-10 ${borderColor} border-t-2 border-l-2 rounded-br`}>
+        <div
+          className={`absolute top-0 left-0 bg-black/70 text-white text-xs px-2 py-1 z-10 ${borderColor} border-t-2 border-l-2 rounded-br`}
+        >
           {label}
         </div>
 
         {frame ? (
           <div
             className="w-full h-full bg-gray-900 flex items-center justify-center relative overflow-hidden cursor-crosshair"
-            style={{ transform: `scale(${controls.zoom})`, transformOrigin: 'top left' }}
+            style={{
+              transform: `scale(${controls.zoom})`,
+              transformOrigin: "top left",
+            }}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
           >
             {/* Mock frame display - in real implementation would show actual frame */}
             <div className="text-center text-white">
-              <div className="text-2xl font-bold mb-2">Frame {frame.frame_index}</div>
+              <div className="text-2xl font-bold mb-2">
+                Frame {frame.frame_index}
+              </div>
               <div className="text-sm text-gray-400">
                 {frame.frame_type} | {width}x{height}
               </div>
@@ -186,7 +205,7 @@ export const DualVideoView = memo(function DualVideoView({
         ) : (
           <div className="w-full h-full bg-gray-800 flex items-center justify-center">
             <div className="text-center text-gray-500">
-              <div className="text-4xl mb-2">{'─'}</div>
+              <div className="text-4xl mb-2">{"─"}</div>
               <div className="text-sm">No video loaded</div>
             </div>
           </div>
@@ -200,7 +219,9 @@ export const DualVideoView = memo(function DualVideoView({
     if (!leftFrame || !rightFrame) {
       return (
         <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-          <div className="text-gray-500">Load both videos to see difference</div>
+          <div className="text-gray-500">
+            Load both videos to see difference
+          </div>
         </div>
       );
     }
@@ -252,8 +273,12 @@ export const DualVideoView = memo(function DualVideoView({
           {leftFrame ? (
             <div className="w-full h-full flex items-center justify-center text-white">
               <div className="text-center">
-                <div className="text-xl font-bold">Frame {leftFrame.frame_index}</div>
-                <div className="text-sm text-gray-400">{leftFrame.frame_type} | {leftWidth}x{leftHeight}</div>
+                <div className="text-xl font-bold">
+                  Frame {leftFrame.frame_index}
+                </div>
+                <div className="text-sm text-gray-400">
+                  {leftFrame.frame_type} | {leftWidth}x{leftHeight}
+                </div>
               </div>
             </div>
           ) : (
@@ -268,8 +293,12 @@ export const DualVideoView = memo(function DualVideoView({
           {rightFrame ? (
             <div className="w-full h-full flex items-center justify-center text-white">
               <div className="text-center">
-                <div className="text-xl font-bold">Frame {rightFrame.frame_index}</div>
-                <div className="text-sm text-gray-400">{rightFrame.frame_type} | {rightWidth}x{rightHeight}</div>
+                <div className="text-xl font-bold">
+                  Frame {rightFrame.frame_index}
+                </div>
+                <div className="text-sm text-gray-400">
+                  {rightFrame.frame_type} | {rightWidth}x{rightHeight}
+                </div>
               </div>
             </div>
           ) : (
@@ -311,31 +340,36 @@ export const DualVideoView = memo(function DualVideoView({
   // Get layout style based on view mode
   const getLayoutStyle = () => {
     switch (currentViewMode) {
-      case 'side-by-side':
-        return 'flex-row';
-      case 'top-bottom':
-        return 'flex-col';
-      case 'difference':
-        return 'flex-row';
-      case 'slide':
-        return 'flex-row';
+      case "side-by-side":
+        return "flex-row";
+      case "top-bottom":
+        return "flex-col";
+      case "difference":
+        return "flex-row";
+      case "slide":
+        return "flex-row";
       default:
-        return 'flex-row';
+        return "flex-row";
     }
   };
 
   // Render main content based on view mode
   const renderContent = () => {
     switch (currentViewMode) {
-      case 'difference':
+      case "difference":
         return renderDifferenceView();
-      case 'slide':
+      case "slide":
         return renderSlideView();
       default:
         return (
           <div className={`flex ${getLayoutStyle()} w-full h-full gap-2`}>
-            {renderVideoPlaceholder('left', leftFrame, leftWidth, leftHeight)}
-            {renderVideoPlaceholder('right', rightFrame, rightWidth, rightHeight)}
+            {renderVideoPlaceholder("left", leftFrame, leftWidth, leftHeight)}
+            {renderVideoPlaceholder(
+              "right",
+              rightFrame,
+              rightWidth,
+              rightHeight,
+            )}
           </div>
         );
     }
@@ -348,7 +382,9 @@ export const DualVideoView = memo(function DualVideoView({
         <div className="flex items-center gap-4">
           {/* View mode selector */}
           <div className="flex items-center gap-2">
-            <label htmlFor="view-mode-select" className="text-sm font-medium">View:</label>
+            <label htmlFor="view-mode-select" className="text-sm font-medium">
+              View:
+            </label>
             <select
               id="view-mode-select"
               value={currentViewMode}
@@ -367,7 +403,12 @@ export const DualVideoView = memo(function DualVideoView({
             <input
               type="checkbox"
               checked={controls.syncPosition}
-              onChange={(e) => setControls(prev => ({ ...prev, syncPosition: e.target.checked }))}
+              onChange={(e) =>
+                setControls((prev) => ({
+                  ...prev,
+                  syncPosition: e.target.checked,
+                }))
+              }
             />
             Sync
           </label>
@@ -377,7 +418,9 @@ export const DualVideoView = memo(function DualVideoView({
             <input
               type="checkbox"
               checked={controls.showGrid}
-              onChange={(e) => setControls(prev => ({ ...prev, showGrid: e.target.checked }))}
+              onChange={(e) =>
+                setControls((prev) => ({ ...prev, showGrid: e.target.checked }))
+              }
             />
             Grid
           </label>
@@ -412,9 +455,7 @@ export const DualVideoView = memo(function DualVideoView({
       </div>
 
       {/* Main video display area */}
-      <div className="flex-1 min-h-0 bg-black">
-        {renderContent()}
-      </div>
+      <div className="flex-1 min-h-0 bg-black">{renderContent()}</div>
 
       {/* Footer with frame info */}
       {showFrameInfo && (leftFrame || rightFrame) && (
@@ -423,18 +464,20 @@ export const DualVideoView = memo(function DualVideoView({
             <div>
               {leftFrame && (
                 <span>
-                  <strong className="text-blue-600">L:</strong> Frame {leftFrame.frame_index} ({leftFrame.frame_type})
-                  {rightFrame && ' | '}
+                  <strong className="text-blue-600">L:</strong> Frame{" "}
+                  {leftFrame.frame_index} ({leftFrame.frame_type})
+                  {rightFrame && " | "}
                 </span>
               )}
               {rightFrame && (
                 <span>
-                  <strong className="text-red-600">R:</strong> Frame {rightFrame.frame_index} ({rightFrame.frame_type})
+                  <strong className="text-red-600">R:</strong> Frame{" "}
+                  {rightFrame.frame_index} ({rightFrame.frame_type})
                 </span>
               )}
             </div>
             <div>
-              {currentViewMode === 'side-by-side' && (
+              {currentViewMode === "side-by-side" && (
                 <span>Hold Shift to scroll videos independently</span>
               )}
             </div>

@@ -7,9 +7,13 @@
  * - Alignment info display
  */
 
-import { memo } from 'react';
-import { SyncMode, AlignmentMethod, AlignmentConfidence } from '../../types/video';
-import './CompareControls.css';
+import { memo } from "react";
+import {
+  SyncMode,
+  AlignmentMethod,
+  AlignmentConfidence,
+} from "../../types/video";
+import "./CompareControls.css";
 
 interface CompareControlsProps {
   syncMode: SyncMode;
@@ -40,22 +44,22 @@ function CompareControls({
   const getSyncModeLabel = (mode: SyncMode): string => {
     switch (mode) {
       case SyncMode.Off:
-        return 'Sync: Off';
+        return "Sync: Off";
       case SyncMode.Playhead:
-        return 'Sync: Playhead';
+        return "Sync: Playhead";
       case SyncMode.Full:
-        return 'Sync: Full';
+        return "Sync: Full";
     }
   };
 
   const getSyncModeIcon = (mode: SyncMode): string => {
     switch (mode) {
       case SyncMode.Off:
-        return 'unlink';
+        return "unlink";
       case SyncMode.Playhead:
-        return 'link';
+        return "link";
       case SyncMode.Full:
-        return 'link-2';
+        return "link-2";
     }
   };
 
@@ -81,7 +85,9 @@ function CompareControls({
         >
           −
         </button>
-        <span className="offset-value">{manualOffset > 0 ? `+${manualOffset}` : manualOffset}</span>
+        <span className="offset-value">
+          {manualOffset > 0 ? `+${manualOffset}` : manualOffset}
+        </span>
         <button
           className="offset-btn"
           onClick={() => onOffsetChange(1)}
@@ -99,11 +105,15 @@ function CompareControls({
       </div>
 
       {/* Alignment info badge */}
-      <div className={`alignment-badge confidence-${alignmentInfo.confidence.toLowerCase()}`}>
+      <div
+        className={`alignment-badge confidence-${alignmentInfo.confidence.toLowerCase()}`}
+      >
         <span className="alignment-method">{alignmentInfo.method}</span>
         <span className="alignment-confidence">{alignmentInfo.confidence}</span>
         {alignmentInfo.gapPercentage > 0 && (
-          <span className="alignment-gaps">{alignmentInfo.gapPercentage.toFixed(1)}% gaps</span>
+          <span className="alignment-gaps">
+            {alignmentInfo.gapPercentage.toFixed(1)}% gaps
+          </span>
         )}
       </div>
     </div>

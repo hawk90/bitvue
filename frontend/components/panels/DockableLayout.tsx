@@ -18,9 +18,9 @@
  * └──────────┴───────────────┴──────────────────────────────────────────────┘
  */
 
-import React, { memo, useCallback } from 'react';
-import { Group, Panel, Separator } from 'react-resizable-panels';
-import './DockableLayout.css';
+import React, { memo, useCallback } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import "./DockableLayout.css";
 
 /**
  * Panel size constants (in percentages)
@@ -104,7 +104,8 @@ export const DockableLayout = memo(function DockableLayout({
               {/* Render filmstrip without tab bar wrapper */}
               {(() => {
                 const FilmstripComponent = topPanels[0].component;
-                return topPanels.length === 1 && topPanels[0].id === 'filmstrip' ? (
+                return topPanels.length === 1 &&
+                  topPanels[0].id === "filmstrip" ? (
                   <FilmstripComponent />
                 ) : (
                   <BottomPanelBar panels={topPanels} />
@@ -116,7 +117,12 @@ export const DockableLayout = memo(function DockableLayout({
         )}
 
         {/* Main content area with left sidebar */}
-        <Panel defaultSize={PANEL_SIZES.YUV_VIEWER} minSize={PANEL_MIN_SIZES.YUV_VIEWER} id="main-area" className="main-area-panel">
+        <Panel
+          defaultSize={PANEL_SIZES.YUV_VIEWER}
+          minSize={PANEL_MIN_SIZES.YUV_VIEWER}
+          id="main-area"
+          className="main-area-panel"
+        >
           <Group orientation="horizontal" className="layout-horizontal">
             {/* Left Sidebar Panel */}
             {leftPanels && leftPanels.length > 0 && (
@@ -135,7 +141,12 @@ export const DockableLayout = memo(function DockableLayout({
             )}
 
             {/* YUV Viewer / Main View */}
-            <Panel defaultSize={PANEL_SIZES.MAIN_CONTENT} minSize={PANEL_MIN_SIZES.MAIN_CONTENT} id="yuv-viewer" className="yuv-viewer-panel">
+            <Panel
+              defaultSize={PANEL_SIZES.MAIN_CONTENT}
+              minSize={PANEL_MIN_SIZES.MAIN_CONTENT}
+              id="yuv-viewer"
+              className="yuv-viewer-panel"
+            >
               <MainView />
             </Panel>
           </Group>
@@ -165,10 +176,14 @@ export const DockableLayout = memo(function DockableLayout({
  * Left Sidebar with Tabbed Panels
  * VQAnalyzer: Stream | Syntax | Selection | Unit HEX | etc.
  */
-const LeftSidebar = memo(function LeftSidebar({ panels }: { panels: PanelConfig[] }) {
-  const [activeTab, setActiveTab] = React.useState(panels[0]?.id || '');
+const LeftSidebar = memo(function LeftSidebar({
+  panels,
+}: {
+  panels: PanelConfig[];
+}) {
+  const [activeTab, setActiveTab] = React.useState(panels[0]?.id || "");
 
-  const ActivePanel = panels.find(p => p.id === activeTab)?.component;
+  const ActivePanel = panels.find((p) => p.id === activeTab)?.component;
 
   const handleTabClick = useCallback((panelId: string) => {
     setActiveTab(panelId);
@@ -181,19 +196,19 @@ const LeftSidebar = memo(function LeftSidebar({ panels }: { panels: PanelConfig[
         {panels.map((panel) => (
           <button
             key={panel.id}
-            className={`sidebar-tab ${activeTab === panel.id ? 'active' : ''}`}
+            className={`sidebar-tab ${activeTab === panel.id ? "active" : ""}`}
             onClick={() => handleTabClick(panel.id)}
           >
-            {panel.icon && <span className={`codicon codicon-${panel.icon}`}></span>}
+            {panel.icon && (
+              <span className={`codicon codicon-${panel.icon}`}></span>
+            )}
             <span>{panel.title}</span>
           </button>
         ))}
       </div>
 
       {/* Active Panel Content */}
-      <div className="sidebar-content">
-        {ActivePanel && <ActivePanel />}
-      </div>
+      <div className="sidebar-content">{ActivePanel && <ActivePanel />}</div>
     </div>
   );
 });
@@ -202,10 +217,14 @@ const LeftSidebar = memo(function LeftSidebar({ panels }: { panels: PanelConfig[
  * Bottom Panel Bar (Filmstrip/Timeline)
  * VQAnalyzer: Filmstrip with view mode selector
  */
-const BottomPanelBar = memo(function BottomPanelBar({ panels }: { panels: PanelConfig[] }) {
-  const [activeTab, setActiveTab] = React.useState(panels[0]?.id || '');
+const BottomPanelBar = memo(function BottomPanelBar({
+  panels,
+}: {
+  panels: PanelConfig[];
+}) {
+  const [activeTab, setActiveTab] = React.useState(panels[0]?.id || "");
 
-  const ActivePanel = panels.find(p => p.id === activeTab)?.component;
+  const ActivePanel = panels.find((p) => p.id === activeTab)?.component;
 
   const handleTabClick = useCallback((panelId: string) => {
     setActiveTab(panelId);
@@ -218,10 +237,12 @@ const BottomPanelBar = memo(function BottomPanelBar({ panels }: { panels: PanelC
         {panels.map((panel) => (
           <button
             key={panel.id}
-            className={`bottom-panel-tab ${activeTab === panel.id ? 'active' : ''}`}
+            className={`bottom-panel-tab ${activeTab === panel.id ? "active" : ""}`}
             onClick={() => handleTabClick(panel.id)}
           >
-            {panel.icon && <span className={`codicon codicon-${panel.icon}`}></span>}
+            {panel.icon && (
+              <span className={`codicon codicon-${panel.icon}`}></span>
+            )}
             <span>{panel.title}</span>
           </button>
         ))}
@@ -239,7 +260,11 @@ const BottomPanelBar = memo(function BottomPanelBar({ panels }: { panels: PanelC
  * Bottom Row Panel Bar (3 panels displayed horizontally)
  * Shows all panels side by side with resize capability
  */
-const BottomRowPanelBar = memo(function BottomRowPanelBar({ panels }: { panels: PanelConfig[] }) {
+const BottomRowPanelBar = memo(function BottomRowPanelBar({
+  panels,
+}: {
+  panels: PanelConfig[];
+}) {
   return (
     <div className="bottom-row-panel-bar">
       <Group orientation="horizontal" className="bottom-row-layout">
@@ -255,7 +280,9 @@ const BottomRowPanelBar = memo(function BottomRowPanelBar({ panels }: { panels: 
             >
               <div className="bottom-row-item-content">
                 <div className="bottom-row-item-header">
-                  {panel.icon && <span className={`codicon codicon-${panel.icon}`}></span>}
+                  {panel.icon && (
+                    <span className={`codicon codicon-${panel.icon}`}></span>
+                  )}
                   <span>{panel.title}</span>
                 </div>
                 <div className="bottom-row-item-body">

@@ -4,8 +4,8 @@
  * F12: Inter Prediction Modes visualization
  */
 
-import type { MVGrid } from '../../../types/video';
-import { InterMode } from './types';
+import type { MVGrid } from "../../../types/video";
+import { InterMode } from "./types";
 
 /**
  * Get inter mode color
@@ -13,15 +13,15 @@ import { InterMode } from './types';
 export function getInterModeColor(mode: InterMode): string {
   switch (mode) {
     case InterMode.Skip:
-      return '#4caf50'; // Green
+      return "#4caf50"; // Green
     case InterMode.Merge:
-      return '#2196f3'; // Blue
+      return "#2196f3"; // Blue
     case InterMode.MotionVector:
-      return '#ff9800'; // Orange
+      return "#ff9800"; // Orange
     case InterMode.Intra:
-      return '#f44336'; // Red
+      return "#f44336"; // Red
     default:
-      return '#666666';
+      return "#666666";
   }
 }
 
@@ -33,7 +33,7 @@ export function renderInterModes(
   width: number,
   height: number,
   mvGrid: MVGrid,
-  blockSize: number = 16
+  blockSize: number = 16,
 ): void {
   const { grid_w, grid_h, mv_l0, mode } = mvGrid;
   const blockW = width / grid_w;
@@ -62,7 +62,7 @@ export function renderInterModes(
       ctx.fillRect(bx, by, bw, bh);
 
       // Draw border
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
       ctx.lineWidth = 1;
       ctx.strokeRect(bx, by, bw, bh);
     }

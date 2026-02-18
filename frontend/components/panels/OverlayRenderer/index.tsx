@@ -4,19 +4,24 @@
  * Delegates to mode-specific overlay renderers
  */
 
-import type { OverlayRenderOptions } from './types';
-import { CodingFlowOverlay } from './renderers/CodingFlowRenderer';
-import { PredictionOverlay } from './renderers/PredictionRenderer';
-import { TransformOverlay } from './renderers/TransformRenderer';
-import { QPMapOverlay } from './renderers/QPMapRenderer';
-import { MVFieldOverlay } from './renderers/MVFieldRenderer';
-import { ReferenceOverlay } from './renderers/ReferenceRenderer';
+import type { OverlayRenderOptions } from "./types";
+import { CodingFlowOverlay } from "./renderers/CodingFlowRenderer";
+import { PredictionOverlay } from "./renderers/PredictionRenderer";
+import { TransformOverlay } from "./renderers/TransformRenderer";
+import { QPMapOverlay } from "./renderers/QPMapRenderer";
+import { MVFieldOverlay } from "./renderers/MVFieldRenderer";
+import { ReferenceOverlay } from "./renderers/ReferenceRenderer";
 
 /**
  * Render mode-specific overlay on the canvas
  * Delegates to the appropriate mode-specific renderer
  */
-export function renderModeOverlay({ mode, frame, canvas, ctx }: OverlayRenderOptions): void {
+export function renderModeOverlay({
+  mode,
+  frame,
+  canvas,
+  ctx,
+}: OverlayRenderOptions): void {
   if (!frame) return;
 
   const width = canvas.width;
@@ -26,25 +31,25 @@ export function renderModeOverlay({ mode, frame, canvas, ctx }: OverlayRenderOpt
   // Note: The base frame should already be drawn by the parent component
 
   switch (mode) {
-    case 'coding-flow':
+    case "coding-flow":
       CodingFlowOverlay({ ctx, width, height, frame });
       break;
-    case 'prediction':
+    case "prediction":
       PredictionOverlay({ ctx, width, height, frame });
       break;
-    case 'transform':
+    case "transform":
       TransformOverlay({ ctx, width, height, frame });
       break;
-    case 'qp-map':
+    case "qp-map":
       QPMapOverlay({ ctx, width, height, frame });
       break;
-    case 'mv-field':
+    case "mv-field":
       MVFieldOverlay({ ctx, width, height, frame });
       break;
-    case 'reference':
+    case "reference":
       ReferenceOverlay({ ctx, width, height, frame });
       break;
-    case 'overview':
+    case "overview":
     default:
       // Overview mode - no overlay
       break;
@@ -52,4 +57,9 @@ export function renderModeOverlay({ mode, frame, canvas, ctx }: OverlayRenderOpt
 }
 
 // Re-export types for convenience
-export type { OverlayRenderOptions, OverlayRendererProps, LegendItem, ColorStop } from './types';
+export type {
+  OverlayRenderOptions,
+  OverlayRendererProps,
+  LegendItem,
+  ColorStop,
+} from "./types";

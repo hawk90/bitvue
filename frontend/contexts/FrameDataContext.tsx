@@ -6,8 +6,17 @@
  * Uses Web Worker for stats calculation to prevent UI blocking
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode, useMemo } from 'react';
-import type { FrameInfo } from '../types/video';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  ReactNode,
+  useMemo,
+} from "react";
+import type { FrameInfo } from "../types/video";
 
 interface FrameStats {
   totalFrames: number;
@@ -23,7 +32,9 @@ interface FrameDataContextType {
   getFrameStats: () => FrameStats;
 }
 
-const FrameDataContext = createContext<FrameDataContextType | undefined>(undefined);
+const FrameDataContext = createContext<FrameDataContextType | undefined>(
+  undefined,
+);
 
 // Threshold for using worker (100 frames = ~10KB data)
 const WORKER_THRESHOLD = 100;
@@ -70,8 +81,8 @@ export function FrameDataProvider({ children }: { children: ReactNode }) {
       try {
         // Create new worker
         const worker = new Worker(
-          new URL('../workers/frameStatsWorker.ts', import.meta.url),
-          { type: 'module' }
+          new URL("../workers/frameStatsWorker.ts", import.meta.url),
+          { type: "module" },
         );
 
         workerRef.current = worker;
@@ -83,7 +94,7 @@ export function FrameDataProvider({ children }: { children: ReactNode }) {
         };
 
         worker.onerror = (error) => {
-          console.error('Frame stats worker error:', error);
+          console.error("Frame stats worker error:", error);
           // Fallback to sync calculation on error
           const stats = calculateFrameStatsSync(frames);
           setFrameStats(stats);
@@ -94,7 +105,7 @@ export function FrameDataProvider({ children }: { children: ReactNode }) {
         // Send frames to worker
         worker.postMessage(frames);
       } catch (error) {
-        console.error('Failed to create frame stats worker:', error);
+        console.error("Failed to create frame stats worker:", error);
         // Fallback to sync calculation
         const stats = calculateFrameStatsSync(frames);
         setFrameStats(stats);
@@ -109,11 +120,14 @@ export function FrameDataProvider({ children }: { children: ReactNode }) {
     return frameStats;
   }, [frameStats]);
 
-  const contextValue = useMemo<FrameDataContextType>(() => ({
-    frames,
-    setFrames,
-    getFrameStats,
-  }), [frames, getFrameStats]);
+  const contextValue = useMemo<FrameDataContextType>(
+    () => ({
+      frames,
+      setFrames,
+      getFrameStats,
+    }),
+    [frames, getFrameStats],
+  );
 
   return (
     <FrameDataContext.Provider value={contextValue}>
@@ -156,7 +170,7 @@ function calculateFrameStatsSync(frames: FrameInfo[]): FrameStats {
 export function useFrameData(): FrameDataContextType {
   const context = useContext(FrameDataContext);
   if (!context) {
-    throw new Error('useFrameData must be used within a FrameDataProvider');
+    throw new Error("useFrameData must be used within a FrameDataProvider");
   }
   return context;
 }

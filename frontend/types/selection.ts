@@ -5,7 +5,7 @@
  * Extracted from SelectionContext for better modularity.
  */
 
-export type StreamId = 'A' | 'B';
+export type StreamId = "A" | "B";
 
 export interface SpatialBlock {
   x: number;
@@ -14,7 +14,7 @@ export interface SpatialBlock {
   h: number;
 }
 
-export type TemporalSelectionType = 'block' | 'point' | 'range' | 'marker';
+export type TemporalSelectionType = "block" | "point" | "range" | "marker";
 
 export interface TemporalSelection {
   type: TemporalSelectionType;
@@ -49,15 +49,15 @@ export interface BitRange {
 }
 
 export type SelectionPanel =
-  | 'syntax'
-  | 'hex'
-  | 'main'
-  | 'timeline'
-  | 'filmstrip'
-  | 'reference-lists'
-  | 'keyboard'
-  | 'minimap'
-  | 'bookmarks';
+  | "syntax"
+  | "hex"
+  | "main"
+  | "timeline"
+  | "filmstrip"
+  | "reference-lists"
+  | "keyboard"
+  | "minimap"
+  | "bookmarks";
 
 export interface SelectionSource {
   panel: SelectionPanel;
@@ -81,7 +81,10 @@ export interface SelectionChangeEvent {
 
 export interface SelectionContextType {
   selection: SelectionState | null;
-  setTemporalSelection: (selection: TemporalSelection, source: SelectionPanel) => void;
+  setTemporalSelection: (
+    selection: TemporalSelection,
+    source: SelectionPanel,
+  ) => void;
   setFrameSelection: (frame: FrameKey, source: SelectionPanel) => void;
   setUnitSelection: (unit: UnitKey, source: SelectionPanel) => void;
   setSyntaxSelection: (node: SyntaxNodeId, source: SelectionPanel) => void;
@@ -92,14 +95,14 @@ export interface SelectionContextType {
 }
 
 export const DEFAULT_SELECTION: SelectionState = {
-  streamId: 'A',
+  streamId: "A",
   temporal: null,
   frame: null,
   unit: null,
   syntaxNode: null,
   bitRange: null,
   source: {
-    panel: 'timeline',
+    panel: "timeline",
     timestamp: Date.now(),
   },
 };

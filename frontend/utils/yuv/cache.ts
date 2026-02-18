@@ -5,17 +5,17 @@
  * Extracted from yuvRenderer.ts for better modularity.
  */
 
-import { LRUCache } from '../lruCache';
-import type { YUVFrame } from '../../types/yuv';
-import { Colorspace } from '../../types/yuv';
+import { LRUCache } from "../lruCache";
+import type { YUVFrame } from "../../types/yuv";
+import { Colorspace } from "../../types/yuv";
 
 /**
  * Logger for YUV cache
  */
 const YUV_CACHE_LOGGER = {
-  error: (...args: unknown[]) => console.error('[YUVCache]', ...args),
-  warn: (...args: unknown[]) => console.warn('[YUVCache]', ...args),
-  debug: (...args: unknown[]) => console.debug('[YUVCache]', ...args),
+  error: (...args: unknown[]) => console.error("[YUVCache]", ...args),
+  warn: (...args: unknown[]) => console.warn("[YUVCache]", ...args),
+  debug: (...args: unknown[]) => console.debug("[YUVCache]", ...args),
 };
 
 /** Default maximum cache size (number of ImageData objects) */
@@ -103,7 +103,7 @@ class YUVConversionCache {
     const key = createYUVCacheKey(frame, colorspace);
     const cached = this.cache.get(key);
     if (cached) {
-      YUV_CACHE_LOGGER.debug('YUV cache hit:', key);
+      YUV_CACHE_LOGGER.debug("YUV cache hit:", key);
       return cached;
     }
     return null;
@@ -139,7 +139,7 @@ class YUVConversionCache {
    */
   setLimits(maxSize: number, maxMemory: number): void {
     // Note: This would require extending LRUCache to support resizing
-    YUV_CACHE_LOGGER.warn('Dynamic cache resizing not yet implemented');
+    YUV_CACHE_LOGGER.warn("Dynamic cache resizing not yet implemented");
   }
 }
 
@@ -155,9 +155,12 @@ export const YUVCache = {
   /** Get cache statistics */
   getStats: () => yuvCache.getStats(),
   /** Set cache size limits */
-  setLimits: (maxSize: number, maxMemory: number) => yuvCache.setLimits(maxSize, maxMemory),
+  setLimits: (maxSize: number, maxMemory: number) =>
+    yuvCache.setLimits(maxSize, maxMemory),
   /** Get cached ImageData */
-  get: (frame: YUVFrame, colorspace: Colorspace) => yuvCache.get(frame, colorspace),
+  get: (frame: YUVFrame, colorspace: Colorspace) =>
+    yuvCache.get(frame, colorspace),
   /** Store ImageData in cache */
-  set: (frame: YUVFrame, colorspace: Colorspace, imageData: ImageData) => yuvCache.set(frame, colorspace, imageData),
+  set: (frame: YUVFrame, colorspace: Colorspace, imageData: ImageData) =>
+    yuvCache.set(frame, colorspace, imageData),
 };

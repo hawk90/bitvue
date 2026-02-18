@@ -5,11 +5,11 @@
  * Re-exports all types and functionality
  */
 
-export { TooltipManager } from './TooltipManager';
-export type { TooltipConfig, TooltipContext } from './types';
+export { TooltipManager } from "./TooltipManager";
+export type { TooltipConfig, TooltipContext } from "./types";
 
-import { TooltipManager } from './TooltipManager';
-import type { TooltipConfig } from './types';
+import { TooltipManager } from "./TooltipManager";
+import type { TooltipConfig } from "./types";
 
 /**
  * Global tooltip manager instance
@@ -24,48 +24,53 @@ export function registerFeatureTooltips(): void {
 
   // Filmstrip tooltip
   manager.register({
-    id: 'filmstrip-intro',
-    title: 'Filmstrip Navigation',
-    description: 'Click on any frame thumbnail to jump to that frame. Use the view selector to see frame sizes, GOP structure, and more.',
-    position: 'bottom',
+    id: "filmstrip-intro",
+    title: "Filmstrip Navigation",
+    description:
+      "Click on any frame thumbnail to jump to that frame. Use the view selector to see frame sizes, GOP structure, and more.",
+    position: "bottom",
     showOnce: true,
   });
 
   // Visualization modes tooltip
   manager.register({
-    id: 'viz-modes-intro',
-    title: 'Visualization Modes',
-    description: 'Press F1-F10 to switch between different visualization modes. Each mode shows different aspects of the video encoding.',
-    position: 'right',
-    shortcut: 'F1-F10',
+    id: "viz-modes-intro",
+    title: "Visualization Modes",
+    description:
+      "Press F1-F10 to switch between different visualization modes. Each mode shows different aspects of the video encoding.",
+    position: "right",
+    shortcut: "F1-F10",
     showOnce: true,
   });
 
   // Keyboard shortcuts tooltip
   manager.register({
-    id: 'keyboard-shortcuts-intro',
-    title: 'Keyboard Shortcuts',
-    description: 'Use arrow keys to navigate frames. Press ? to see all available keyboard shortcuts.',
-    position: 'bottom',
-    shortcut: 'Ctrl/Cmd + ?',
+    id: "keyboard-shortcuts-intro",
+    title: "Keyboard Shortcuts",
+    description:
+      "Use arrow keys to navigate frames. Press ? to see all available keyboard shortcuts.",
+    position: "bottom",
+    shortcut: "Ctrl/Cmd + ?",
     showOnce: true,
   });
 
   // Panels tooltip
   manager.register({
-    id: 'panels-intro',
-    title: 'Analysis Panels',
-    description: 'Toggle different panels to see stream info, syntax details, frame data, and more. Use Alt+1-6 to toggle specific panels.',
-    position: 'left',
+    id: "panels-intro",
+    title: "Analysis Panels",
+    description:
+      "Toggle different panels to see stream info, syntax details, frame data, and more. Use Alt+1-6 to toggle specific panels.",
+    position: "left",
     showOnce: true,
   });
 
   // YUV Viewer tooltip
   manager.register({
-    id: 'yuv-viewer-intro',
-    title: 'YUV Viewer',
-    description: 'View the raw YUV pixel data. Toggle channels to see Y, U, V components separately.',
-    position: 'top',
+    id: "yuv-viewer-intro",
+    title: "YUV Viewer",
+    description:
+      "View the raw YUV pixel data. Toggle channels to see Y, U, V components separately.",
+    position: "top",
     showOnce: true,
   });
 }
@@ -89,15 +94,15 @@ export function useTooltip(id: string, config?: Partial<TooltipConfig>) {
  * Initialize tooltips when DOM is ready
  */
 export function initTooltips(): void {
-  if (typeof document === 'undefined') return;
+  if (typeof document === "undefined") return;
 
   // Register all feature tooltips
   registerFeatureTooltips();
 
   // Add tooltip CSS
-  if (!document.getElementById('tooltip-styles')) {
-    const style = document.createElement('style');
-    style.id = 'tooltip-styles';
+  if (!document.getElementById("tooltip-styles")) {
+    const style = document.createElement("style");
+    style.id = "tooltip-styles";
     style.textContent = `
       .interactive-tooltip {
         background: var(--bg-secondary, #1e1e1e);

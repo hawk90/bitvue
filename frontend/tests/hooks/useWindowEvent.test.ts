@@ -3,15 +3,15 @@
  * Tests window event subscription with cleanup
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
-import { useWindowEvent, useWindowEvents } from '../useWindowEvent';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { useWindowEvent, useWindowEvents } from "../useWindowEvent";
 
 // Mock window.addEventListener and removeEventListener
-const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
-const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
+const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
 
-describe('useWindowEvent', () => {
+describe("useWindowEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -21,55 +21,65 @@ describe('useWindowEvent', () => {
     removeEventListenerSpy.mockClear();
   });
 
-  it('should add event listener on mount', () => {
+  it("should add event listener on mount", () => {
     const handler = vi.fn();
 
-    renderHook(() => useWindowEvent('keydown', handler));
+    renderHook(() => useWindowEvent("keydown", handler));
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function), undefined);
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "keydown",
+      expect.any(Function),
+      undefined,
+    );
   });
 
-  it('should remove event listener on unmount', () => {
+  it("should remove event listener on unmount", () => {
     const handler = vi.fn();
-    const { unmount } = renderHook(() => useWindowEvent('keydown', handler));
+    const { unmount } = renderHook(() => useWindowEvent("keydown", handler));
 
     unmount();
 
-    expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "keydown",
+      expect.any(Function),
+    );
   });
 
-  it('should pass options to addEventListener', () => {
+  it("should pass options to addEventListener", () => {
     const handler = vi.fn();
     const options = { passive: true };
 
-    renderHook(() => useWindowEvent('scroll', handler, options));
+    renderHook(() => useWindowEvent("scroll", handler, options));
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith('scroll', expect.any(Function), options);
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "scroll",
+      expect.any(Function),
+      options,
+    );
   });
 
-  it('should call handler when event is triggered', () => {
+  it("should call handler when event is triggered", () => {
     const handler = vi.fn();
 
-    renderHook(() => useWindowEvent('keydown', handler));
+    renderHook(() => useWindowEvent("keydown", handler));
 
     // Get the registered listener
     const listener = addEventListenerSpy.mock.calls[0][1];
 
     // Simulate event
-    const mockEvent = new KeyboardEvent('keydown', { key: 'Escape' });
+    const mockEvent = new KeyboardEvent("keydown", { key: "Escape" });
     listener(mockEvent);
 
     expect(handler).toHaveBeenCalledWith(mockEvent);
   });
 
-  it('should update handler when handler function changes', () => {
+  it("should update handler when handler function changes", () => {
     const handler1 = vi.fn();
     const handler2 = vi.fn();
 
-    const { rerender } = renderHook(
-      ({ h }) => useWindowEvent('keydown', h),
-      { initialProps: { h: handler1 } }
-    );
+    const { rerender } = renderHook(({ h }) => useWindowEvent("keydown", h), {
+      initialProps: { h: handler1 },
+    });
 
     rerender({ h: handler2 });
 
@@ -78,18 +88,18 @@ describe('useWindowEvent', () => {
     expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('should support multiple event types', () => {
+  it("should support multiple event types", () => {
     renderHook(() => {
-      useWindowEvent('resize', vi.fn());
-      useWindowEvent('scroll', vi.fn());
-      useWindowEvent('keydown', vi.fn());
+      useWindowEvent("resize", vi.fn());
+      useWindowEvent("scroll", vi.fn());
+      useWindowEvent("keydown", vi.fn());
     });
 
     expect(addEventListenerSpy).toHaveBeenCalledTimes(3);
   });
 });
 
-describe('useWindowEvents', () => {
+describe("useWindowEvents", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -99,7 +109,7 @@ describe('useWindowEvents', () => {
     removeEventListenerSpy.mockClear();
   });
 
-  it('should register multiple event listeners', () => {
+  it("should register multiple event listeners", () => {
     const handlers = {
       keydown: vi.fn(),
       resize: vi.fn(),
@@ -111,7 +121,7 @@ describe('useWindowEvents', () => {
     expect(addEventListenerSpy).toHaveBeenCalledTimes(3);
   });
 
-  it('should remove all event listeners on unmount', () => {
+  it("should remove all event listeners on unmount", () => {
     const handlers = {
       keydown: vi.fn(),
       resize: vi.fn(),
@@ -124,7 +134,7 @@ describe('useWindowEvents', () => {
     expect(removeEventListenerSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('should pass options to all listeners', () => {
+  it("should pass options to all listeners", () => {
     const handlers = {
       keydown: vi.fn(),
       resize: vi.fn(),
@@ -133,11 +143,19 @@ describe('useWindowEvents', () => {
 
     renderHook(() => useWindowEvents(handlers, options));
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function), options);
-    expect(addEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function), options);
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "keydown",
+      expect.any(Function),
+      options,
+    );
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "resize",
+      expect.any(Function),
+      options,
+    );
   });
 
-  it('should call correct handler for each event', () => {
+  it("should call correct handler for each event", () => {
     const handlers = {
       keydown: vi.fn(),
       resize: vi.fn(),
@@ -146,18 +164,22 @@ describe('useWindowEvents', () => {
     renderHook(() => useWindowEvents(handlers));
 
     // Get the registered listeners
-    const keydownListener = addEventListenerSpy.mock.calls.find(c => c[0] === 'keydown')?.[1];
-    const resizeListener = addEventListenerSpy.mock.calls.find(c => c[0] === 'resize')?.[1];
+    const keydownListener = addEventListenerSpy.mock.calls.find(
+      (c) => c[0] === "keydown",
+    )?.[1];
+    const resizeListener = addEventListenerSpy.mock.calls.find(
+      (c) => c[0] === "resize",
+    )?.[1];
 
     // Trigger events
-    keydownListener(new KeyboardEvent('keydown', { key: 'Escape' }));
-    resizeListener(new Event('resize'));
+    keydownListener(new KeyboardEvent("keydown", { key: "Escape" }));
+    resizeListener(new Event("resize"));
 
     expect(handlers.keydown).toHaveBeenCalledTimes(1);
     expect(handlers.resize).toHaveBeenCalledTimes(1);
   });
 
-  it('should handle empty events object', () => {
+  it("should handle empty events object", () => {
     const { unmount } = renderHook(() => useWindowEvents({}));
 
     expect(addEventListenerSpy).not.toHaveBeenCalled();
@@ -167,14 +189,13 @@ describe('useWindowEvents', () => {
     expect(removeEventListenerSpy).not.toHaveBeenCalled();
   });
 
-  it('should update when handlers change', () => {
+  it("should update when handlers change", () => {
     const handlers1 = { keydown: vi.fn() };
     const handlers2 = { resize: vi.fn() };
 
-    const { rerender } = renderHook(
-      ({ h }) => useWindowEvents(h),
-      { initialProps: { h: handlers1 } }
-    );
+    const { rerender } = renderHook(({ h }) => useWindowEvents(h), {
+      initialProps: { h: handlers1 },
+    });
 
     rerender({ h: handlers2 });
 
@@ -183,56 +204,68 @@ describe('useWindowEvents', () => {
   });
 });
 
-describe('useWindowEvent edge cases', () => {
-  it('should handle events with no payload', () => {
+describe("useWindowEvent edge cases", () => {
+  it("should handle events with no payload", () => {
     const handler = vi.fn();
 
-    renderHook(() => useWindowEvent('focus', handler));
+    renderHook(() => useWindowEvent("focus", handler));
 
     const listener = addEventListenerSpy.mock.calls[0][1];
 
-    listener(new Event('focus'));
+    listener(new Event("focus"));
 
     expect(handler).toHaveBeenCalled();
   });
 
-  it('should handle events with complex payloads', () => {
+  it("should handle events with complex payloads", () => {
     const handler = vi.fn();
 
-    renderHook(() => useWindowEvent('resize', handler));
+    renderHook(() => useWindowEvent("resize", handler));
 
     const listener = addEventListenerSpy.mock.calls[0][1];
 
-    listener(new Event('resize'));
+    listener(new Event("resize"));
 
     expect(handler).toHaveBeenCalledWith(expect.any(Event));
   });
 
-  it('should handle once option', () => {
+  it("should handle once option", () => {
     const handler = vi.fn();
     const options = { once: true };
 
-    renderHook(() => useWindowEvent('click', handler, options));
+    renderHook(() => useWindowEvent("click", handler, options));
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith('click', expect.any(Function), options);
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "click",
+      expect.any(Function),
+      options,
+    );
   });
 
-  it('should handle capture option', () => {
+  it("should handle capture option", () => {
     const handler = vi.fn();
     const options = { capture: true };
 
-    renderHook(() => useWindowEvent('click', handler, options));
+    renderHook(() => useWindowEvent("click", handler, options));
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith('click', expect.any(Function), options);
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "click",
+      expect.any(Function),
+      options,
+    );
   });
 
-  it('should handle signal option', () => {
+  it("should handle signal option", () => {
     const handler = vi.fn();
     const abortController = new AbortController();
     const options = { signal: abortController.signal };
 
-    renderHook(() => useWindowEvent('click', handler, options));
+    renderHook(() => useWindowEvent("click", handler, options));
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith('click', expect.any(Function), options);
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "click",
+      expect.any(Function),
+      options,
+    );
   });
 });

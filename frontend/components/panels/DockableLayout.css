@@ -71,7 +71,7 @@
 }
 
 .sidebar-tab::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 0;
@@ -178,7 +178,7 @@
 }
 
 .bottom-panel-tab::before {
-  content: '';
+  content: "";
   position: absolute;
   bottom: -1px;
   left: 8px;
@@ -308,7 +308,7 @@
 /* Visual indicator for resize handles */
 .resize-handle-horizontal::before,
 .resize-handle-vertical::before {
-  content: '';
+  content: "";
   position: absolute;
   background: var(--bitvue-border, #3c3c3c);
   border-radius: 1px;
@@ -347,7 +347,7 @@
 /* Resize handle hit area expansion */
 .resize-handle-horizontal::after,
 .resize-handle-vertical::after {
-  content: '';
+  content: "";
   position: absolute;
 }
 
@@ -427,7 +427,7 @@
 .details-value,
 .stats-value {
   color: var(--bitvue-fg, #ccc);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   padding: 2px 0;
 }
 

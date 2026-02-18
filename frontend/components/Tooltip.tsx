@@ -4,14 +4,14 @@
  * Reusable tooltip for UI elements
  */
 
-import { useState, useRef, useEffect, memo } from 'react';
-import React from 'react';
-import './Tooltip.css';
+import { useState, useRef, useEffect, memo } from "react";
+import React from "react";
+import "./Tooltip.css";
 
 interface TooltipProps {
   content: string;
   children: React.ReactElement;
-  placement?: 'top' | 'bottom' | 'left' | 'right';
+  placement?: "top" | "bottom" | "left" | "right";
   delay?: number;
   disabled?: boolean;
 }
@@ -19,7 +19,7 @@ interface TooltipProps {
 export const Tooltip = memo(function Tooltip({
   content,
   children,
-  placement = 'top',
+  placement = "top",
   delay = 300,
   disabled = false,
 }: TooltipProps) {

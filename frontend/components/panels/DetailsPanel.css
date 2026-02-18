@@ -20,6 +20,6 @@
 
 .details-value {
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
   font-size: 11px;
 }

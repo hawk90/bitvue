@@ -3,16 +3,16 @@
  * Tests thumbnail caching and loading functionality
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, waitFor, act } from "@testing-library/react";
 
 // Mock Tauri invoke
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock("../../utils/logger", () => ({
   createLogger: () => ({
     error: vi.fn(),
     warn: vi.fn(),
@@ -22,12 +22,12 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import after mocking
-import { invoke } from '@tauri-apps/api/core';
-import { useThumbnail, ThumbnailResult } from '../useThumbnail';
+import { invoke } from "@tauri-apps/api/core";
+import { useThumbnail, ThumbnailResult } from "../useThumbnail";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 
-describe('useThumbnail', () => {
+describe("useThumbnail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -36,7 +36,7 @@ describe('useThumbnail', () => {
     vi.restoreAllMocks();
   });
 
-  it('should initialize with empty cache', () => {
+  it("should initialize with empty cache", () => {
     const { result } = renderHook(() => useThumbnail());
 
     expect(result.current.thumbnails).toBeInstanceOf(Map);
@@ -45,19 +45,31 @@ describe('useThumbnail', () => {
     expect(result.current.loading.size).toBe(0);
   });
 
-  it('should have all required methods', () => {
+  it("should have all required methods", () => {
     const { result } = renderHook(() => useThumbnail());
 
-    expect(typeof result.current.loadThumbnails).toBe('function');
-    expect(typeof result.current.clearCache).toBe('function');
-    expect(typeof result.current.has).toBe('function');
-    expect(typeof result.current.get).toBe('function');
+    expect(typeof result.current.loadThumbnails).toBe("function");
+    expect(typeof result.current.clearCache).toBe("function");
+    expect(typeof result.current.has).toBe("function");
+    expect(typeof result.current.get).toBe("function");
   });
 
-  it('should load thumbnails for specified indices', async () => {
+  it("should load thumbnails for specified indices", async () => {
     const mockResults: ThumbnailResult[] = [
-      { frame_index: 0, thumbnail_data: 'iVBORw0KGgo', width: 320, height: 180, success: true },
-      { frame_index: 1, thumbnail_data: 'iVBORw0KGgo', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "iVBORw0KGgo",
+        width: 320,
+        height: 180,
+        success: true,
+      },
+      {
+        frame_index: 1,
+        thumbnail_data: "iVBORw0KGgo",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ];
 
     mockInvoke.mockResolvedValue(mockResults);
@@ -68,15 +80,21 @@ describe('useThumbnail', () => {
       await result.current.loadThumbnails([0, 1]);
     });
 
-    expect(result.current.thumbnails.get(0)).toBe('data:image/png;base64,iVBORw0KGgo');
-    expect(result.current.thumbnails.get(1)).toBe('data:image/png;base64,iVBORw0KGgo');
-    expect(mockInvoke).toHaveBeenCalledWith('get_thumbnails', { frameIndices: [0, 1] });
+    expect(result.current.thumbnails.get(0)).toBe(
+      "data:image/png;base64,iVBORw0KGgo",
+    );
+    expect(result.current.thumbnails.get(1)).toBe(
+      "data:image/png;base64,iVBORw0KGgo",
+    );
+    expect(mockInvoke).toHaveBeenCalledWith("get_thumbnails", {
+      frameIndices: [0, 1],
+    });
   });
 
-  it('should mark frames as loading during fetch', async () => {
+  it("should mark frames as loading during fetch", async () => {
     let resolveInvoke: (value: ThumbnailResult[]) => void;
     mockInvoke.mockImplementation(() => {
-      return new Promise(resolve => {
+      return new Promise((resolve) => {
         resolveInvoke = resolve;
       });
     });
@@ -88,7 +106,7 @@ describe('useThumbnail', () => {
     await act(async () => {
       loadPromise = result.current.loadThumbnails([0, 1]);
       // Wait a tick for state to update
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     // Check loading state
@@ -98,8 +116,20 @@ describe('useThumbnail', () => {
     // Resolve the promise
     await act(async () => {
       resolveInvoke!([
-        { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
-        { frame_index: 1, thumbnail_data: 'data', width: 320, height: 180, success: true },
+        {
+          frame_index: 0,
+          thumbnail_data: "data",
+          width: 320,
+          height: 180,
+          success: true,
+        },
+        {
+          frame_index: 1,
+          thumbnail_data: "data",
+          width: 320,
+          height: 180,
+          success: true,
+        },
       ]);
       await loadPromise!;
     });
@@ -109,7 +139,7 @@ describe('useThumbnail', () => {
     expect(result.current.loading.has(1)).toBe(false);
   });
 
-  it('should clear cache', () => {
+  it("should clear cache", () => {
     const { result } = renderHook(() => useThumbnail());
 
     // Load some thumbnails first
@@ -120,9 +150,9 @@ describe('useThumbnail', () => {
     expect(result.current.thumbnails.size).toBe(0);
   });
 
-  it('should handle loading errors gracefully', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockInvoke.mockRejectedValue(new Error('Failed to load'));
+  it("should handle loading errors gracefully", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockInvoke.mockRejectedValue(new Error("Failed to load"));
 
     const { result } = renderHook(() => useThumbnail());
 
@@ -137,9 +167,15 @@ describe('useThumbnail', () => {
     consoleSpy.mockRestore();
   });
 
-  it('should not reload already cached thumbnails', async () => {
+  it("should not reload already cached thumbnails", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -160,10 +196,10 @@ describe('useThumbnail', () => {
     expect(mockInvoke).toHaveBeenCalledTimes(1);
   });
 
-  it('should not reload currently loading thumbnails', async () => {
+  it("should not reload currently loading thumbnails", async () => {
     let resolveInvoke: (value: ThumbnailResult[]) => void;
     mockInvoke.mockImplementation(() => {
-      return new Promise(resolve => {
+      return new Promise((resolve) => {
         resolveInvoke = resolve;
       });
     });
@@ -174,26 +210,34 @@ describe('useThumbnail', () => {
     let loadPromise1: Promise<void>;
     await act(async () => {
       loadPromise1 = result.current.loadThumbnails([0]);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     // Try to load again while first is still loading
     let loadPromise2: Promise<void>;
     await act(async () => {
       loadPromise2 = result.current.loadThumbnails([0]);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     // Should only invoke once (the second call should be filtered out)
     expect(mockInvoke).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveInvoke!([{ frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true }]);
+      resolveInvoke!([
+        {
+          frame_index: 0,
+          thumbnail_data: "data",
+          width: 320,
+          height: 180,
+          success: true,
+        },
+      ]);
       await Promise.all([loadPromise1!, loadPromise2!]);
     });
   });
 
-  it('should use stable callbacks (useCallback optimization)', () => {
+  it("should use stable callbacks (useCallback optimization)", () => {
     const { result, rerender } = renderHook(() => useThumbnail());
 
     const loadThumbnailsRef = result.current.loadThumbnails;
@@ -210,7 +254,7 @@ describe('useThumbnail', () => {
     expect(result.current.get).toBe(getRef);
   });
 
-  it('should handle empty indices array', async () => {
+  it("should handle empty indices array", async () => {
     const { result } = renderHook(() => useThumbnail());
 
     await act(async () => {
@@ -222,9 +266,9 @@ describe('useThumbnail', () => {
     expect(result.current.thumbnails.size).toBe(0);
   });
 
-  it('should handle large batch of thumbnails', async () => {
+  it("should handle large batch of thumbnails", async () => {
     const indices = Array.from({ length: 100 }, (_, i) => i);
-    const mockData: ThumbnailResult[] = indices.map(i => ({
+    const mockData: ThumbnailResult[] = indices.map((i) => ({
       frame_index: i,
       thumbnail_data: `data-${i}`,
       width: 320,
@@ -241,26 +285,32 @@ describe('useThumbnail', () => {
     });
 
     expect(result.current.thumbnails.size).toBe(100);
-    expect(result.current.thumbnails.get(0)).toContain('data-0');
-    expect(result.current.thumbnails.get(99)).toContain('data-99');
+    expect(result.current.thumbnails.get(0)).toContain("data-0");
+    expect(result.current.thumbnails.get(99)).toContain("data-99");
   });
 });
 
-describe('useThumbnail has() method', () => {
+describe("useThumbnail has() method", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should return false for non-existent thumbnail', () => {
+  it("should return false for non-existent thumbnail", () => {
     const { result } = renderHook(() => useThumbnail());
 
     expect(result.current.has(0)).toBe(false);
     expect(result.current.has(999)).toBe(false);
   });
 
-  it('should return true for cached thumbnail', async () => {
+  it("should return true for cached thumbnail", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -274,21 +324,27 @@ describe('useThumbnail has() method', () => {
   });
 });
 
-describe('useThumbnail get() method', () => {
+describe("useThumbnail get() method", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should return undefined for non-existent thumbnail', () => {
+  it("should return undefined for non-existent thumbnail", () => {
     const { result } = renderHook(() => useThumbnail());
 
     expect(result.current.get(0)).toBeUndefined();
     expect(result.current.get(999)).toBeUndefined();
   });
 
-  it('should return data URL for cached thumbnail', async () => {
+  it("should return data URL for cached thumbnail", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 5, thumbnail_data: 'iVBORw0KGgo', width: 320, height: 180, success: true },
+      {
+        frame_index: 5,
+        thumbnail_data: "iVBORw0KGgo",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -298,19 +354,25 @@ describe('useThumbnail get() method', () => {
     });
 
     const thumbnail = result.current.get(5);
-    expect(thumbnail).toBe('data:image/png;base64,iVBORw0KGgo');
+    expect(thumbnail).toBe("data:image/png;base64,iVBORw0KGgo");
     expect(thumbnail).toMatch(/^data:image\/png;base64,/);
   });
 });
 
-describe('useThumbnail data URL format', () => {
+describe("useThumbnail data URL format", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should detect PNG format from magic bytes', async () => {
+  it("should detect PNG format from magic bytes", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'iVBORw0KGgo', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "iVBORw0KGgo",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -319,12 +381,18 @@ describe('useThumbnail data URL format', () => {
       await result.current.loadThumbnails([0]);
     });
 
-    expect(result.current.get(0)).toBe('data:image/png;base64,iVBORw0KGgo');
+    expect(result.current.get(0)).toBe("data:image/png;base64,iVBORw0KGgo");
   });
 
-  it('should detect SVG format', async () => {
+  it("should detect SVG format", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: '<svg>test</svg>', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "<svg>test</svg>",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -333,12 +401,20 @@ describe('useThumbnail data URL format', () => {
       await result.current.loadThumbnails([0]);
     });
 
-    expect(result.current.get(0)).toBe('data:image/svg+xml;base64,<svg>test</svg>');
+    expect(result.current.get(0)).toBe(
+      "data:image/svg+xml;base64,<svg>test</svg>",
+    );
   });
 
-  it('should default to PNG for unknown format', async () => {
+  it("should default to PNG for unknown format", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'randomdata', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "randomdata",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -347,20 +423,39 @@ describe('useThumbnail data URL format', () => {
       await result.current.loadThumbnails([0]);
     });
 
-    expect(result.current.get(0)).toBe('data:image/png;base64,randomdata');
+    expect(result.current.get(0)).toBe("data:image/png;base64,randomdata");
   });
 });
 
-describe('useThumbnail error handling', () => {
+describe("useThumbnail error handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should handle failed thumbnail results', async () => {
+  it("should handle failed thumbnail results", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
-      { frame_index: 1, thumbnail_data: '', width: 0, height: 0, success: false, error: 'Failed to render' },
-      { frame_index: 2, thumbnail_data: 'data2', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
+      {
+        frame_index: 1,
+        thumbnail_data: "",
+        width: 0,
+        height: 0,
+        success: false,
+        error: "Failed to render",
+      },
+      {
+        frame_index: 2,
+        thumbnail_data: "data2",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -377,10 +472,22 @@ describe('useThumbnail error handling', () => {
     expect(result.current.has(1)).toBe(false);
   });
 
-  it('should handle thumbnails with missing data', async () => {
+  it("should handle thumbnails with missing data", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
-      { frame_index: 1, thumbnail_data: '', width: 320, height: 180, success: true }, // Missing data
+      {
+        frame_index: 0,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
+      {
+        frame_index: 1,
+        thumbnail_data: "",
+        width: 320,
+        height: 180,
+        success: true,
+      }, // Missing data
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -394,10 +501,17 @@ describe('useThumbnail error handling', () => {
     expect(result.current.has(1)).toBe(false);
   });
 
-  it('should handle network errors with retry', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Network error'))
+  it("should handle network errors with retry", async () => {
+    mockInvoke
+      .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValue([
-        { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
+        {
+          frame_index: 0,
+          thumbnail_data: "data",
+          width: 320,
+          height: 180,
+          success: true,
+        },
       ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -418,15 +532,27 @@ describe('useThumbnail error handling', () => {
   });
 });
 
-describe('useThumbnail cache behavior', () => {
+describe("useThumbnail cache behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should support concurrent load requests for different frames', async () => {
+  it("should support concurrent load requests for different frames", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data0', width: 320, height: 180, success: true },
-      { frame_index: 1, thumbnail_data: 'data1', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "data0",
+        width: 320,
+        height: 180,
+        success: true,
+      },
+      {
+        frame_index: 1,
+        thumbnail_data: "data1",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -441,10 +567,10 @@ describe('useThumbnail cache behavior', () => {
     expect(result.current.thumbnails.size).toBe(2);
   });
 
-  it('should handle loading same frame from multiple concurrent calls', async () => {
+  it("should handle loading same frame from multiple concurrent calls", async () => {
     let resolveInvoke: (value: ThumbnailResult[]) => void;
     mockInvoke.mockImplementation(() => {
-      return new Promise(resolve => {
+      return new Promise((resolve) => {
         resolveInvoke = resolve;
       });
     });
@@ -455,7 +581,7 @@ describe('useThumbnail cache behavior', () => {
     let loadPromise1: Promise<void>;
     await act(async () => {
       loadPromise1 = result.current.loadThumbnails([0]);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     // Start second and third loads while first is still loading
@@ -464,14 +590,22 @@ describe('useThumbnail cache behavior', () => {
     await act(async () => {
       loadPromise2 = result.current.loadThumbnails([0]);
       loadPromise3 = result.current.loadThumbnails([0]);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     // Should only invoke once (the first call, subsequent ones are filtered out)
     expect(mockInvoke).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveInvoke!([{ frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true }]);
+      resolveInvoke!([
+        {
+          frame_index: 0,
+          thumbnail_data: "data",
+          width: 320,
+          height: 180,
+          success: true,
+        },
+      ]);
       await Promise.all([loadPromise1!, loadPromise2!, loadPromise3!]);
     });
 
@@ -479,10 +613,22 @@ describe('useThumbnail cache behavior', () => {
     expect(result.current.thumbnails.size).toBe(1);
   });
 
-  it('should handle selective loading (only uncached)', async () => {
+  it("should handle selective loading (only uncached)", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data0', width: 320, height: 180, success: true },
-      { frame_index: 1, thumbnail_data: 'data1', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "data0",
+        width: 320,
+        height: 180,
+        success: true,
+      },
+      {
+        frame_index: 1,
+        thumbnail_data: "data1",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -494,7 +640,13 @@ describe('useThumbnail cache behavior', () => {
 
     mockInvoke.mockClear();
     mockInvoke.mockResolvedValue([
-      { frame_index: 2, thumbnail_data: 'data2', width: 320, height: 180, success: true },
+      {
+        frame_index: 2,
+        thumbnail_data: "data2",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     // Load mix of cached and uncached
@@ -503,18 +655,26 @@ describe('useThumbnail cache behavior', () => {
     });
 
     // Should only load the uncached one
-    expect(mockInvoke).toHaveBeenCalledWith('get_thumbnails', { frameIndices: [2] });
+    expect(mockInvoke).toHaveBeenCalledWith("get_thumbnails", {
+      frameIndices: [2],
+    });
   });
 });
 
-describe('useThumbnail edge cases', () => {
+describe("useThumbnail edge cases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should handle negative frame indices', async () => {
+  it("should handle negative frame indices", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: -1, thumbnail_data: 'data', width: 320, height: 180, success: true },
+      {
+        frame_index: -1,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -526,9 +686,15 @@ describe('useThumbnail edge cases', () => {
     expect(result.current.has(-1)).toBe(true);
   });
 
-  it('should handle very large frame indices', async () => {
+  it("should handle very large frame indices", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 999999, thumbnail_data: 'data', width: 320, height: 180, success: true },
+      {
+        frame_index: 999999,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -540,9 +706,15 @@ describe('useThumbnail edge cases', () => {
     expect(result.current.has(999999)).toBe(true);
   });
 
-  it('should handle duplicate indices in request', async () => {
+  it("should handle duplicate indices in request", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -556,9 +728,15 @@ describe('useThumbnail edge cases', () => {
     expect(mockInvoke).toHaveBeenCalledTimes(1);
   });
 
-  it('should maintain cache after clearing and reloading', async () => {
+  it("should maintain cache after clearing and reloading", async () => {
     mockInvoke.mockResolvedValue([
-      { frame_index: 0, thumbnail_data: 'data', width: 320, height: 180, success: true },
+      {
+        frame_index: 0,
+        thumbnail_data: "data",
+        width: 320,
+        height: 180,
+        success: true,
+      },
     ]);
 
     const { result } = renderHook(() => useThumbnail());
@@ -583,15 +761,15 @@ describe('useThumbnail edge cases', () => {
   });
 });
 
-describe('useThumbnail loading state management', () => {
+describe("useThumbnail loading state management", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should correctly update loading state through lifecycle', async () => {
+  it("should correctly update loading state through lifecycle", async () => {
     let resolveInvoke: (value: ThumbnailResult[]) => void;
     mockInvoke.mockImplementation(() => {
-      return new Promise(resolve => {
+      return new Promise((resolve) => {
         resolveInvoke = resolve;
       });
     });
@@ -606,7 +784,7 @@ describe('useThumbnail loading state management', () => {
     await act(async () => {
       loadPromise = result.current.loadThumbnails([0, 1, 2]);
       // Wait for state to update
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     // During loading
@@ -618,9 +796,27 @@ describe('useThumbnail loading state management', () => {
     // Finish loading
     await act(async () => {
       resolveInvoke!([
-        { frame_index: 0, thumbnail_data: 'data0', width: 320, height: 180, success: true },
-        { frame_index: 1, thumbnail_data: 'data1', width: 320, height: 180, success: true },
-        { frame_index: 2, thumbnail_data: 'data2', width: 320, height: 180, success: true },
+        {
+          frame_index: 0,
+          thumbnail_data: "data0",
+          width: 320,
+          height: 180,
+          success: true,
+        },
+        {
+          frame_index: 1,
+          thumbnail_data: "data1",
+          width: 320,
+          height: 180,
+          success: true,
+        },
+        {
+          frame_index: 2,
+          thumbnail_data: "data2",
+          width: 320,
+          height: 180,
+          success: true,
+        },
       ]);
       await loadPromise!;
     });
@@ -629,8 +825,8 @@ describe('useThumbnail loading state management', () => {
     expect(result.current.loading.size).toBe(0);
   });
 
-  it('should clear loading state even on error', async () => {
-    mockInvoke.mockRejectedValue(new Error('Load failed'));
+  it("should clear loading state even on error", async () => {
+    mockInvoke.mockRejectedValue(new Error("Load failed"));
 
     const { result } = renderHook(() => useThumbnail());
 

@@ -5,9 +5,9 @@
  * Frames displayed as small circles with reference arrows
  */
 
-import { useMemo, memo } from 'react';
-import { BPyramidViewProps } from './BPyramidTypes';
-import { BPyramidTimeline, analyzeTemporalLevels } from './BPyramidTimeline';
+import { useMemo, memo } from "react";
+import { BPyramidViewProps } from "./BPyramidTypes";
+import { BPyramidTimeline, analyzeTemporalLevels } from "./BPyramidTimeline";
 
 function BPyramidView({
   frames,
@@ -15,16 +15,19 @@ function BPyramidView({
   onFrameClick,
   getFrameTypeColorClass,
 }: BPyramidViewProps) {
-
   const { levels, gopBoundaries, frameMap } = useMemo(
     () => analyzeTemporalLevels(frames),
-    [frames]
+    [frames],
   );
 
   if (frames.length === 0) {
     return (
       <div className="bpyramid-view" role="region" aria-label="B-Pyramid">
-        <div className="bpyramid-empty" role="status" aria-label="No frames loaded">
+        <div
+          className="bpyramid-empty"
+          role="status"
+          aria-label="No frames loaded"
+        >
           <span className="codicon codicon-graph" aria-hidden="true"></span>
           <p>No frames loaded</p>
         </div>

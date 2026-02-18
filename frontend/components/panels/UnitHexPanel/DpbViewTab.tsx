@@ -4,7 +4,7 @@
  * Displays Decoded Picture Buffer state
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface FrameInfo {
   frame_index: number;
@@ -22,7 +22,10 @@ interface DpbViewTabProps {
   frames: FrameInfo[];
 }
 
-export const DpbViewTab = memo(function DpbViewTab({ currentFrame, frames }: DpbViewTabProps) {
+export const DpbViewTab = memo(function DpbViewTab({
+  currentFrame,
+  frames,
+}: DpbViewTabProps) {
   if (!currentFrame) {
     return (
       <div className="hex-empty">
@@ -43,7 +46,9 @@ export const DpbViewTab = memo(function DpbViewTab({ currentFrame, frames }: Dpb
 
       <div className="dpb-info">
         <span className="dpb-info-label">Current Frame:</span>
-        <span className="dpb-info-value">#{currentFrame.frame_index} ({currentFrame.frame_type})</span>
+        <span className="dpb-info-value">
+          #{currentFrame.frame_index} ({currentFrame.frame_type})
+        </span>
       </div>
 
       <div className="dpb-table">
@@ -59,26 +64,30 @@ export const DpbViewTab = memo(function DpbViewTab({ currentFrame, frames }: Dpb
         <div className="dpb-row dpb-current">
           <span>-</span>
           <span>{currentFrame.frame_index}</span>
-          <span className={`frame-type-${currentFrame.frame_type.toLowerCase()}`}>
+          <span
+            className={`frame-type-${currentFrame.frame_type.toLowerCase()}`}
+          >
             {currentFrame.frame_type}
           </span>
-          <span>{currentFrame.pts ?? 'N/A'}</span>
+          <span>{currentFrame.pts ?? "N/A"}</span>
           <span className="dpb-current">Current</span>
         </div>
 
         {/* Reference frames */}
         {refFrames.map((refIdx, i) => {
-          const refFrame = frames.find(f => f.frame_index === refIdx);
+          const refFrame = frames.find((f) => f.frame_index === refIdx);
           return (
             <div key={i} className="dpb-row">
               <span>{i}</span>
               <span>{refIdx}</span>
               {refFrame ? (
                 <>
-                  <span className={`frame-type-${refFrame.frame_type.toLowerCase()}`}>
+                  <span
+                    className={`frame-type-${refFrame.frame_type.toLowerCase()}`}
+                  >
                     {refFrame.frame_type}
                   </span>
-                  <span>{refFrame.pts ?? 'N/A'}</span>
+                  <span>{refFrame.pts ?? "N/A"}</span>
                 </>
               ) : (
                 <>

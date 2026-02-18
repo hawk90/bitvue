@@ -2,7 +2,7 @@
  * Tauri Logger - Sends frontend logs to the terminal
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
 
 let isTauri = false;
 
@@ -29,23 +29,27 @@ function sendLog(level: string, message: string, ...args: unknown[]): void {
   let formattedMessage = message;
   if (args.length > 0) {
     try {
-      formattedMessage += ' ' + args.map(arg => {
-        if (typeof arg === 'string') return arg;
-        try {
-          return JSON.stringify(arg);
-        } catch {
-          return String(arg);
-        }
-      }).join(' ');
+      formattedMessage +=
+        " " +
+        args
+          .map((arg) => {
+            if (typeof arg === "string") return arg;
+            try {
+              return JSON.stringify(arg);
+            } catch {
+              return String(arg);
+            }
+          })
+          .join(" ");
     } catch {
-      formattedMessage += ' ' + args.map(String).join(' ');
+      formattedMessage += " " + args.map(String).join(" ");
     }
   }
 
   // Send to Tauri if available
   if (isTauri) {
     isInsideLog = true;
-    invoke('frontend_log', { level, message: formattedMessage })
+    invoke("frontend_log", { level, message: formattedMessage })
       .catch(() => {
         // Fall back to native console (not the overridden one) if invoke fails
         const nativeConsole = window.console as any;
@@ -66,16 +70,16 @@ function sendLog(level: string, message: string, ...args: unknown[]): void {
   const originalLog = nativeConsole._originalLog || nativeConsole.log;
 
   switch (level) {
-    case 'error':
+    case "error":
       originalError.call(nativeConsole, message, ...args);
       break;
-    case 'warn':
+    case "warn":
       originalWarn.call(nativeConsole, message, ...args);
       break;
-    case 'info':
+    case "info":
       originalInfo.call(nativeConsole, message, ...args);
       break;
-    case 'debug':
+    case "debug":
       originalDebug.call(nativeConsole, message, ...args);
       break;
     default:
@@ -87,9 +91,14 @@ function sendLog(level: string, message: string, ...args: unknown[]): void {
  * Tauri logger with the same interface as console
  */
 export const tauriLog = {
-  log: (message: string, ...args: unknown[]) => sendLog('log', message, ...args),
-  info: (message: string, ...args: unknown[]) => sendLog('info', message, ...args),
-  warn: (message: string, ...args: unknown[]) => sendLog('warn', message, ...args),
-  error: (message: string, ...args: unknown[]) => sendLog('error', message, ...args),
-  debug: (message: string, ...args: unknown[]) => sendLog('debug', message, ...args),
+  log: (message: string, ...args: unknown[]) =>
+    sendLog("log", message, ...args),
+  info: (message: string, ...args: unknown[]) =>
+    sendLog("info", message, ...args),
+  warn: (message: string, ...args: unknown[]) =>
+    sendLog("warn", message, ...args),
+  error: (message: string, ...args: unknown[]) =>
+    sendLog("error", message, ...args),
+  debug: (message: string, ...args: unknown[]) =>
+    sendLog("debug", message, ...args),
 };

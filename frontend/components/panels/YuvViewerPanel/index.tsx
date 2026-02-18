@@ -13,25 +13,29 @@
  * - StatusBar: Bottom status bar with info
  */
 
-import { useState, useRef, useEffect, useCallback, memo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { useMode } from '../../../contexts/ModeContext';
-import { useFrameData } from '../../../contexts/FrameDataContext';
-import { createLogger } from '../../../utils/logger';
-import { useCanvasInteraction } from '../../../hooks/useCanvasInteraction';
-import { ZOOM, TIMING } from '../../../constants/ui';
-import { VideoCanvas } from './VideoCanvas';
-import { YUVFrame } from '../../../utils/yuvRenderer';
-import { FrameNavigationControls } from './FrameNavigationControls';
-import { PlaybackControls } from './PlaybackControls';
-import { ModeSelector } from './ModeSelector';
-import { ZoomControls } from './ZoomControls';
-import { StatusBar } from './StatusBar';
-import type { DecodedFrameData, FrameAnalysisData, YUVFrameData } from '../../../types/video';
+import { useState, useRef, useEffect, useCallback, memo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useMode } from "../../../contexts/ModeContext";
+import { useFrameData } from "../../../contexts/FrameDataContext";
+import { createLogger } from "../../../utils/logger";
+import { useCanvasInteraction } from "../../../hooks/useCanvasInteraction";
+import { ZOOM, TIMING } from "../../../constants/ui";
+import { VideoCanvas } from "./VideoCanvas";
+import { YUVFrame } from "../../../utils/yuvRenderer";
+import { FrameNavigationControls } from "./FrameNavigationControls";
+import { PlaybackControls } from "./PlaybackControls";
+import { ModeSelector } from "./ModeSelector";
+import { ZoomControls } from "./ZoomControls";
+import { StatusBar } from "./StatusBar";
+import type {
+  DecodedFrameData,
+  FrameAnalysisData,
+  YUVFrameData,
+} from "../../../types/video";
 
-import './YuvViewerPanel.css';
+import "./YuvViewerPanel.css";
 
-const logger = createLogger('YuvViewerPanel');
+const logger = createLogger("YuvViewerPanel");
 
 /**
  * Convert YUVFrameData from backend to YUVFrame for renderer
@@ -48,7 +52,8 @@ function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
   };
 
   // Extract chroma subsampling from data (default to '420' if not provided)
-  const chromaSubsampling: '420' | '422' | '444' = (data as any).chroma_subsampling || '420';
+  const chromaSubsampling: "420" | "422" | "444" =
+    (data as any).chroma_subsampling || "420";
 
   // Handle null U/V planes - create empty arrays instead of null
   const uPlane = data.u_plane ? base64ToUint8(data.u_plane) : new Uint8Array(0);
@@ -66,7 +71,7 @@ function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
     chromaSubsampling,
   };
 
-  logger.debug('convertYUVDataToYUVFrame:', {
+  logger.debug("convertYUVDataToYUVFrame:", {
     width: frame.width,
     height: frame.height,
     yLength: frame.y.length,
@@ -81,7 +86,6 @@ function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
 
   return frame;
 }
-
 
 interface YuvViewerPanelProps {
   currentFrameIndex: number;
@@ -105,10 +109,20 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   const [yuvData, setYuvData] = useState<YUVFrameData | null>(null);
 
   // Analysis data state
-  const [frameAnalysis, setFrameAnalysis] = useState<FrameAnalysisData | null>(null);
+  const [frameAnalysis, setFrameAnalysis] = useState<FrameAnalysisData | null>(
+    null,
+  );
 
   // Canvas interaction (zoom, pan, drag)
-  const { zoom, pan, isDragging, zoomIn, zoomOut, resetZoom, handlers: canvasHandlers } = useCanvasInteraction({
+  const {
+    zoom,
+    pan,
+    isDragging,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    handlers: canvasHandlers,
+  } = useCanvasInteraction({
     minZoom: ZOOM.MIN,
     maxZoom: ZOOM.MAX,
     zoomStep: ZOOM.STEP,
@@ -130,7 +144,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     setIsLoading(true);
     try {
       // Try YUV first (more efficient)
-      const yuvResult = await invoke<YUVFrameData>('get_decoded_frame_yuv', {
+      const yuvResult = await invoke<YUVFrameData>("get_decoded_frame_yuv", {
         frameIndex,
       });
 
@@ -139,11 +153,18 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         setYuvData(yuvResult);
         setFrameImage(null); // Clear RGB image
         setIsLoading(false);
-        logger.debug('Loaded YUV frame:', frameIndex, 'size:', yuvResult.width, 'x', yuvResult.height);
+        logger.debug(
+          "Loaded YUV frame:",
+          frameIndex,
+          "size:",
+          yuvResult.width,
+          "x",
+          yuvResult.height,
+        );
       } else {
         // Fallback to RGB
-        logger.debug('YUV not available, falling back to RGB');
-        const result = await invoke<DecodedFrameData>('get_decoded_frame', {
+        logger.debug("YUV not available, falling back to RGB");
+        const result = await invoke<DecodedFrameData>("get_decoded_frame", {
           frameIndex,
         });
 
@@ -154,25 +175,25 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             setIsLoading(false);
           };
           img.onerror = () => {
-            logger.error('Failed to decode frame image for frame:', frameIndex);
+            logger.error("Failed to decode frame image for frame:", frameIndex);
             setIsLoading(false);
             setFrameImage(null);
           };
           img.src = `data:image/png;base64,${result.frame_data}`;
         } else {
-          logger.error('Failed to load frame:', result.error);
+          logger.error("Failed to load frame:", result.error);
           setIsLoading(false);
         }
       }
     } catch (error) {
-      logger.error('Failed to load frame:', error);
+      logger.error("Failed to load frame:", error);
       setIsLoading(false);
     }
   };
 
   const loadFrameAnalysis = async (frameIndex: number) => {
     try {
-      const result = await invoke<FrameAnalysisData>('get_frame_analysis', {
+      const result = await invoke<FrameAnalysisData>("get_frame_analysis", {
         frameIndex,
       });
 
@@ -180,7 +201,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       setFrameAnalysis(result);
 
       // Merge analysis data into frames context
-      setFrames(prevFrames => {
+      setFrames((prevFrames) => {
         const newFrames = [...prevFrames];
         if (newFrames[frameIndex]) {
           newFrames[frameIndex] = {
@@ -197,7 +218,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         return newFrames;
       });
     } catch (error) {
-      logger.error('Failed to load frame analysis:', error);
+      logger.error("Failed to load frame analysis:", error);
     }
   };
 
@@ -224,7 +245,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
   // Playback control
   const togglePlay = useCallback(() => {
-    setIsPlaying(prev => !prev);
+    setIsPlaying((prev) => !prev);
   }, []);
 
   // Handle playback with timer
@@ -266,77 +287,87 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
-        case ' ':
+        case " ":
           if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
             e.preventDefault();
             togglePlay();
           }
           break;
-        case 'ArrowLeft':
+        case "ArrowLeft":
           e.preventDefault();
           goToPrevFrame();
           break;
-        case 'ArrowRight':
+        case "ArrowRight":
           e.preventDefault();
           goToNextFrame();
           break;
-        case 'Home':
+        case "Home":
           e.preventDefault();
           goToFirstFrame();
           break;
-        case 'End':
+        case "End":
           e.preventDefault();
           goToLastFrame();
           break;
-        case '+':
-        case '=':
+        case "+":
+        case "=":
           e.preventDefault();
           zoomIn();
           break;
-        case '-':
+        case "-":
           e.preventDefault();
           zoomOut();
           break;
-        case '0':
+        case "0":
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             resetZoom();
           }
           break;
-        case 'F1':
+        case "F1":
           e.preventDefault();
-          setMode('overview');
+          setMode("overview");
           break;
-        case 'F2':
+        case "F2":
           e.preventDefault();
-          setMode('coding-flow');
+          setMode("coding-flow");
           break;
-        case 'F3':
+        case "F3":
           e.preventDefault();
-          setMode('prediction');
+          setMode("prediction");
           break;
-        case 'F4':
+        case "F4":
           e.preventDefault();
-          setMode('transform');
+          setMode("transform");
           break;
-        case 'F5':
+        case "F5":
           e.preventDefault();
-          setMode('qp-map');
+          setMode("qp-map");
           break;
-        case 'F6':
+        case "F6":
           e.preventDefault();
-          setMode('mv-field');
+          setMode("mv-field");
           break;
-        case 'F7':
+        case "F7":
           e.preventDefault();
-          setMode('reference');
+          setMode("reference");
           break;
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, goToPrevFrame, goToNextFrame, goToFirstFrame, goToLastFrame, zoomIn, zoomOut, resetZoom, setMode]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    togglePlay,
+    goToPrevFrame,
+    goToNextFrame,
+    goToFirstFrame,
+    goToLastFrame,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    setMode,
+  ]);
 
   const currentFrame = frames[currentFrameIndex] || null;
 
@@ -365,10 +396,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
         <div className="yuv-toolbar-spacer"></div>
 
-        <ModeSelector
-          currentMode={currentMode}
-          onModeChange={setMode}
-        />
+        <ModeSelector currentMode={currentMode} onModeChange={setMode} />
 
         <div className="yuv-toolbar-spacer"></div>
 
@@ -408,7 +436,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         <div className="yuv-placeholder-overlay">
           <span className="codicon codicon-device-camera"></span>
           <span>No frame loaded</span>
-          <span style={{ fontSize: '11px', opacity: 0.7 }}>
+          <span style={{ fontSize: "11px", opacity: 0.7 }}>
             Use arrow keys or toolbar to navigate
           </span>
         </div>

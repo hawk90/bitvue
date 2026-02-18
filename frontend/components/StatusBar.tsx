@@ -4,8 +4,8 @@
  * Displays status information at the bottom of the application
  */
 
-import { memo } from 'react';
-import './StatusBar.css';
+import { memo } from "react";
+import "./StatusBar.css";
 
 interface StatusBarProps {
   /** Current file path or application name */
@@ -21,7 +21,7 @@ interface StatusBarProps {
 export const StatusBar = memo(function StatusBar({
   fileInfo,
   frameCount,
-  branch = 'main',
+  branch = "main",
   onShowShortcuts,
 }: StatusBarProps) {
   return (
@@ -33,10 +33,10 @@ export const StatusBar = memo(function StatusBar({
         </span>
       </div>
       <div className="status-bar-center">
-        {fileInfo?.path || 'Bitvue - Video Bitstream Analyzer'}
+        {fileInfo?.path || "Bitvue - Video Bitstream Analyzer"}
       </div>
       <div className="status-bar-right">
-        {frameCount > 0 ? `${frameCount} frames` : 'Ready'}
+        {frameCount > 0 ? `${frameCount} frames` : "Ready"}
         {onShowShortcuts && (
           <button
             className="status-shortcuts-btn"

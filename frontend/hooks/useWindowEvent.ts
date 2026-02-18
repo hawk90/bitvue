@@ -14,7 +14,7 @@
  * ```
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 /**
  * Subscribe to a window event with automatic cleanup on unmount
@@ -26,7 +26,7 @@ import { useEffect, useRef } from 'react';
 export function useWindowEvent<K extends keyof WindowEventMap>(
   type: K,
   handler: (event: WindowEventMap[K]) => void,
-  options?: AddEventListenerOptions
+  options?: AddEventListenerOptions,
 ): void {
   // Keep track of the latest handler using ref to avoid re-adding listener
   const handlerRef = useRef(handler);
@@ -60,13 +60,14 @@ export function useWindowEvent<K extends keyof WindowEventMap>(
  */
 export function useWindowEvents<K extends keyof WindowEventMap>(
   events: Partial<Record<K, (event: WindowEventMap[K]) => void>>,
-  options?: AddEventListenerOptions
+  options?: AddEventListenerOptions,
 ): void {
   const handlerRefs = useRef(events);
   handlerRefs.current = events;
 
   useEffect(() => {
-    const listeners: Array<{ type: string; listener: (event: Event) => void }> = [];
+    const listeners: Array<{ type: string; listener: (event: Event) => void }> =
+      [];
 
     for (const [type, _handler] of Object.entries(events)) {
       const eventListener = (event: Event) => {

@@ -4,4 +4,4 @@
  * Central export point for all error handling utilities.
  */
 
-export * from './appError';
+export * from "./appError";

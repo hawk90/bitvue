@@ -105,7 +105,7 @@
 
 .info-value {
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   text-align: right;
   display: flex;
   align-items: center;

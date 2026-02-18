@@ -37,7 +37,7 @@ button {
 /* Button Ripple Effect */
 .btn::before,
 button::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -46,7 +46,9 @@ button::before {
   border-radius: 50%;
   background: rgb(255 255 255 / 15%);
   transform: translate(-50%, -50%);
-  transition: width 0.4s ease, height 0.4s ease;
+  transition:
+    width 0.4s ease,
+    height 0.4s ease;
   pointer-events: none;
 }
 

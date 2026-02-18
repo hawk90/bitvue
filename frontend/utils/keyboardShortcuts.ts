@@ -45,100 +45,199 @@ export interface ShortcutCategory {
  */
 export const KEYBOARD_SHORTCUTS: ShortcutCategory[] = [
   {
-    name: 'Navigation',
+    name: "Navigation",
     shortcuts: [
-      { key: 'ArrowLeft', description: 'Previous frame', action: () => {} },
-      { key: 'ArrowRight', description: 'Next frame', action: () => {} },
-      { key: 'ArrowUp', description: 'Jump to previous keyframe', action: () => {} },
-      { key: 'ArrowDown', description: 'Jump to next keyframe', action: () => {} },
-      { key: 'Home', description: 'First frame', action: () => {} },
-      { key: 'End', description: 'Last frame', action: () => {} },
-      { key: 'PageUp', description: 'Previous 10 frames', action: () => {} },
-      { key: 'PageDown', description: 'Next 10 frames', action: () => {} },
-      { key: '[', description: 'Previous I-frame', action: () => {} },
-      { key: ']', description: 'Next I-frame', action: () => {} },
-      { key: '<', description: 'Go back 10%', action: () => {} },
-      { key: '>', description: 'Go forward 10%', action: () => {} },
+      { key: "ArrowLeft", description: "Previous frame", action: () => {} },
+      { key: "ArrowRight", description: "Next frame", action: () => {} },
+      {
+        key: "ArrowUp",
+        description: "Jump to previous keyframe",
+        action: () => {},
+      },
+      {
+        key: "ArrowDown",
+        description: "Jump to next keyframe",
+        action: () => {},
+      },
+      { key: "Home", description: "First frame", action: () => {} },
+      { key: "End", description: "Last frame", action: () => {} },
+      { key: "PageUp", description: "Previous 10 frames", action: () => {} },
+      { key: "PageDown", description: "Next 10 frames", action: () => {} },
+      { key: "[", description: "Previous I-frame", action: () => {} },
+      { key: "]", description: "Next I-frame", action: () => {} },
+      { key: "<", description: "Go back 10%", action: () => {} },
+      { key: ">", description: "Go forward 10%", action: () => {} },
     ],
   },
   {
-    name: 'Playback',
+    name: "Playback",
     shortcuts: [
-      { key: ' ', description: 'Play/Pause', action: () => {} },
-      { key: 'j', description: 'Reverse playback', action: () => {} },
-      { key: 'k', description: 'Pause', action: () => {} },
-      { key: 'l', description: 'Forward playback', action: () => {} },
-      { key: 'J', shift: true, description: 'Slower reverse', action: () => {} },
-      { key: 'L', shift: true, description: 'Faster forward', action: () => {} },
-      { key: '/', description: 'Step backward', action: () => {} },
-      { key: '.', description: 'Step forward', action: () => {} },
+      { key: " ", description: "Play/Pause", action: () => {} },
+      { key: "j", description: "Reverse playback", action: () => {} },
+      { key: "k", description: "Pause", action: () => {} },
+      { key: "l", description: "Forward playback", action: () => {} },
+      {
+        key: "J",
+        shift: true,
+        description: "Slower reverse",
+        action: () => {},
+      },
+      {
+        key: "L",
+        shift: true,
+        description: "Faster forward",
+        action: () => {},
+      },
+      { key: "/", description: "Step backward", action: () => {} },
+      { key: ".", description: "Step forward", action: () => {} },
     ],
   },
   {
-    name: 'View',
+    name: "View",
     shortcuts: [
-      { key: '+', description: 'Zoom in', action: () => {} },
-      { key: '-', description: 'Zoom out', action: () => {} },
-      { key: '0', ctrl: true, meta: true, description: 'Reset zoom', action: () => {} },
-      { key: 'f', description: 'Toggle fullscreen', action: () => {} },
-      { key: '1', description: 'Fit to window', action: () => {} },
-      { key: '2', description: 'Actual size (100%)', action: () => {} },
-      { key: '3', description: 'Zoom 200%', action: () => {} },
+      { key: "+", description: "Zoom in", action: () => {} },
+      { key: "-", description: "Zoom out", action: () => {} },
+      {
+        key: "0",
+        ctrl: true,
+        meta: true,
+        description: "Reset zoom",
+        action: () => {},
+      },
+      { key: "f", description: "Toggle fullscreen", action: () => {} },
+      { key: "1", description: "Fit to window", action: () => {} },
+      { key: "2", description: "Actual size (100%)", action: () => {} },
+      { key: "3", description: "Zoom 200%", action: () => {} },
     ],
   },
   {
-    name: 'Visualization Modes',
+    name: "Visualization Modes",
     shortcuts: [
-      { key: 'F1', description: 'Overview mode', action: () => {} },
-      { key: 'F2', description: 'Coding Flow mode', action: () => {} },
-      { key: 'F3', description: 'Prediction mode', action: () => {} },
-      { key: 'F4', description: 'Transform mode', action: () => {} },
-      { key: 'F5', description: 'QP Map mode', action: () => {} },
-      { key: 'F6', description: 'MV Field mode', action: () => {} },
-      { key: 'F7', description: 'Reference mode', action: () => {} },
-      { key: 'F8', description: 'B-Pyramid mode', action: () => {} },
-      { key: 'F9', description: 'HRD Buffer mode', action: () => {} },
-      { key: 'F10', description: 'Tile/Partition mode', action: () => {} },
+      { key: "F1", description: "Overview mode", action: () => {} },
+      { key: "F2", description: "Coding Flow mode", action: () => {} },
+      { key: "F3", description: "Prediction mode", action: () => {} },
+      { key: "F4", description: "Transform mode", action: () => {} },
+      { key: "F5", description: "QP Map mode", action: () => {} },
+      { key: "F6", description: "MV Field mode", action: () => {} },
+      { key: "F7", description: "Reference mode", action: () => {} },
+      { key: "F8", description: "B-Pyramid mode", action: () => {} },
+      { key: "F9", description: "HRD Buffer mode", action: () => {} },
+      { key: "F10", description: "Tile/Partition mode", action: () => {} },
     ],
   },
   {
-    name: 'Filmstrip',
+    name: "Filmstrip",
     shortcuts: [
-      { key: 't', description: 'Toggle filmstrip', action: () => {} },
-      { key: 'T', shift: true, description: 'Cycle filmstrip view', action: () => {} },
-      { key: 's', ctrl: true, meta: true, description: 'Toggle frame sizes', action: () => {} },
+      { key: "t", description: "Toggle filmstrip", action: () => {} },
+      {
+        key: "T",
+        shift: true,
+        description: "Cycle filmstrip view",
+        action: () => {},
+      },
+      {
+        key: "s",
+        ctrl: true,
+        meta: true,
+        description: "Toggle frame sizes",
+        action: () => {},
+      },
     ],
   },
   {
-    name: 'Panels',
+    name: "Panels",
     shortcuts: [
-      { key: 'p', description: 'Toggle panels', action: () => {} },
-      { key: '1', alt: true, description: 'Toggle Stream panel', action: () => {} },
-      { key: '2', alt: true, description: 'Toggle Syntax panel', action: () => {} },
-      { key: '3', alt: true, description: 'Toggle Selection panel', action: () => {} },
-      { key: '4', alt: true, description: 'Toggle HEX panel', action: () => {} },
-      { key: '5', alt: true, description: 'Toggle Info panel', action: () => {} },
-      { key: '6', alt: true, description: 'Toggle Stats panel', action: () => {} },
+      { key: "p", description: "Toggle panels", action: () => {} },
+      {
+        key: "1",
+        alt: true,
+        description: "Toggle Stream panel",
+        action: () => {},
+      },
+      {
+        key: "2",
+        alt: true,
+        description: "Toggle Syntax panel",
+        action: () => {},
+      },
+      {
+        key: "3",
+        alt: true,
+        description: "Toggle Selection panel",
+        action: () => {},
+      },
+      {
+        key: "4",
+        alt: true,
+        description: "Toggle HEX panel",
+        action: () => {},
+      },
+      {
+        key: "5",
+        alt: true,
+        description: "Toggle Info panel",
+        action: () => {},
+      },
+      {
+        key: "6",
+        alt: true,
+        description: "Toggle Stats panel",
+        action: () => {},
+      },
     ],
   },
   {
-    name: 'Analysis',
+    name: "Analysis",
     shortcuts: [
-      { key: 'q', description: 'Quick QP view', action: () => {} },
-      { key: 'm', description: 'Quick MV view', action: () => {} },
-      { key: 'b', description: 'Quick partition view', action: () => {} },
-      { key: 'r', description: 'Toggle reference graph', action: () => {} },
+      { key: "q", description: "Quick QP view", action: () => {} },
+      { key: "m", description: "Quick MV view", action: () => {} },
+      { key: "b", description: "Quick partition view", action: () => {} },
+      { key: "r", description: "Toggle reference graph", action: () => {} },
     ],
   },
   {
-    name: 'Application',
+    name: "Application",
     shortcuts: [
-      { key: 'o', ctrl: true, meta: true, description: 'Open file', action: () => {} },
-      { key: 'w', ctrl: true, meta: true, description: 'Close file', action: () => {} },
-      { key: '?', ctrl: true, meta: true, description: 'Show shortcuts', action: () => {} },
-      { key: ',', ctrl: true, meta: true, description: 'Settings', action: () => {} },
-      { key: 'Escape', description: 'Clear selection / Close modal', action: () => {} },
-      { key: 'i', ctrl: true, meta: true, description: 'Show file info', action: () => {} },
+      {
+        key: "o",
+        ctrl: true,
+        meta: true,
+        description: "Open file",
+        action: () => {},
+      },
+      {
+        key: "w",
+        ctrl: true,
+        meta: true,
+        description: "Close file",
+        action: () => {},
+      },
+      {
+        key: "?",
+        ctrl: true,
+        meta: true,
+        description: "Show shortcuts",
+        action: () => {},
+      },
+      {
+        key: ",",
+        ctrl: true,
+        meta: true,
+        description: "Settings",
+        action: () => {},
+      },
+      {
+        key: "Escape",
+        description: "Clear selection / Close modal",
+        action: () => {},
+      },
+      {
+        key: "i",
+        ctrl: true,
+        meta: true,
+        description: "Show file info",
+        action: () => {},
+      },
     ],
   },
 ];
@@ -146,7 +245,10 @@ export const KEYBOARD_SHORTCUTS: ShortcutCategory[] = [
 /**
  * Check if event matches shortcut configuration
  */
-export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutConfig | ShortcutDocumentation): boolean {
+export function matchesShortcut(
+  event: KeyboardEvent,
+  shortcut: ShortcutConfig | ShortcutDocumentation,
+): boolean {
   return (
     event.key === shortcut.key &&
     !!event.ctrlKey === !!shortcut.ctrl &&
@@ -159,36 +261,41 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutConfig |
 /**
  * Get display string for shortcut
  */
-export function getShortcutDisplay(shortcut: ShortcutConfig | ShortcutDocumentation): string {
+export function getShortcutDisplay(
+  shortcut: ShortcutConfig | ShortcutDocumentation,
+): string {
   const parts: string[] = [];
 
-  if (shortcut.ctrl) parts.push(isMac() ? '⌘' : 'Ctrl');
-  if (shortcut.meta) parts.push(isMac() ? '⌘' : 'Win');
-  if (shortcut.alt) parts.push(isMac() ? '⌥' : 'Alt');
-  if (shortcut.shift) parts.push(isMac() ? '⇧' : 'Shift');
+  if (shortcut.ctrl) parts.push(isMac() ? "⌘" : "Ctrl");
+  if (shortcut.meta) parts.push(isMac() ? "⌘" : "Win");
+  if (shortcut.alt) parts.push(isMac() ? "⌥" : "Alt");
+  if (shortcut.shift) parts.push(isMac() ? "⇧" : "Shift");
 
   let key = shortcut.key;
   // Map special keys
   const keyMap: Record<string, string> = {
-    ' ': 'Space',
-    'ArrowLeft': '←',
-    'ArrowRight': '→',
-    'ArrowUp': '↑',
-    'ArrowDown': '↓',
-    'PageUp': 'Page Up',
-    'PageDown': 'Page Down',
+    " ": "Space",
+    ArrowLeft: "←",
+    ArrowRight: "→",
+    ArrowUp: "↑",
+    ArrowDown: "↓",
+    PageUp: "Page Up",
+    PageDown: "Page Down",
   };
   key = keyMap[key] || key;
 
   parts.push(key);
-  return parts.join(isMac() ? '' : '+');
+  return parts.join(isMac() ? "" : "+");
 }
 
 /**
  * Check if running on macOS
  */
 export function isMac(): boolean {
-  return typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  return (
+    typeof navigator !== "undefined" &&
+    /Mac|iPod|iPhone|iPad/.test(navigator.platform)
+  );
 }
 
 /**
@@ -235,10 +342,10 @@ export class KeyboardShortcutHandler {
     const target = event.target as HTMLElement;
     if (
       target &&
-      (target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.isContentEditable ||
-      target.getAttribute('contenteditable')?.toLowerCase() === 'true')
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable ||
+        target.getAttribute("contenteditable")?.toLowerCase() === "true")
     ) {
       return false;
     }
@@ -270,7 +377,7 @@ export class KeyboardShortcutHandler {
    */
   getAllShortcuts(): ShortcutConfig[] {
     const all: ShortcutConfig[] = [];
-    this.shortcuts.forEach(shortcuts => all.push(...shortcuts));
+    this.shortcuts.forEach((shortcuts) => all.push(...shortcuts));
     return all;
   }
 
@@ -283,22 +390,22 @@ export class KeyboardShortcutHandler {
 
   private getShortcutKey(shortcut: ShortcutConfig): string {
     return [
-      shortcut.ctrl ? 'c' : '',
-      shortcut.meta ? 'm' : '',
-      shortcut.shift ? 's' : '',
-      shortcut.alt ? 'a' : '',
+      shortcut.ctrl ? "c" : "",
+      shortcut.meta ? "m" : "",
+      shortcut.shift ? "s" : "",
+      shortcut.alt ? "a" : "",
       shortcut.key.toLowerCase(),
-    ].join('');
+    ].join("");
   }
 
   private getEventKey(event: KeyboardEvent): string {
     return [
-      event.ctrlKey ? 'c' : '',
-      event.metaKey ? 'm' : '',
-      event.shiftKey ? 's' : '',
-      event.altKey ? 'a' : '',
+      event.ctrlKey ? "c" : "",
+      event.metaKey ? "m" : "",
+      event.shiftKey ? "s" : "",
+      event.altKey ? "a" : "",
       event.key.toLowerCase(),
-    ].join('');
+    ].join("");
   }
 }
 

@@ -19,12 +19,12 @@
  * ```
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { createLogger } from '../utils/logger';
-import { processThumbnailResults } from '../utils/thumbnailUtils';
+import { useState, useCallback, useRef, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { createLogger } from "../utils/logger";
+import { processThumbnailResults } from "../utils/thumbnailUtils";
 
-const logger = createLogger('useThumbnail');
+const logger = createLogger("useThumbnail");
 
 /**
  * Cleanup function for pending async operations
@@ -107,90 +107,95 @@ export function useThumbnail(): UseThumbnailResult {
   /**
    * Load thumbnails for the specified frame indices
    */
-  const loadThumbnails = useCallback(async (indices: number[]): Promise<void> => {
-    if (indices.length === 0) return;
+  const loadThumbnails = useCallback(
+    async (indices: number[]): Promise<void> => {
+      if (indices.length === 0) return;
 
-    // Filter out indices that are already cached or currently loading
-    const indicesToLoad = indices.filter(
-      (i) => !thumbnailsRef.current.has(i) && !loadingRef.current.has(i)
-    );
+      // Filter out indices that are already cached or currently loading
+      const indicesToLoad = indices.filter(
+        (i) => !thumbnailsRef.current.has(i) && !loadingRef.current.has(i),
+      );
 
-    if (indicesToLoad.length === 0) return;
+      if (indicesToLoad.length === 0) return;
 
-    // Mark indices as loading and clear previous errors for these indices
-    setLoading((prev) => {
-      const newSet = new Set(prev);
-      indicesToLoad.forEach((i) => newSet.add(i));
-      return newSet;
-    });
-
-    setErrors((prev) => {
-      const newSet = new Set(prev);
-      indicesToLoad.forEach((i) => newSet.delete(i));
-      return newSet;
-    });
-
-    try {
-      const results = await invoke<ThumbnailResult[]>('get_thumbnails', {
-        frameIndices: indicesToLoad
+      // Mark indices as loading and clear previous errors for these indices
+      setLoading((prev) => {
+        const newSet = new Set(prev);
+        indicesToLoad.forEach((i) => newSet.add(i));
+        return newSet;
       });
 
-      // Only update state if component is still mounted
-      if (mountedRef.current) {
-        const failedIndices: number[] = [];
+      setErrors((prev) => {
+        const newSet = new Set(prev);
+        indicesToLoad.forEach((i) => newSet.delete(i));
+        return newSet;
+      });
 
-        // Process thumbnail results using shared utility
-        const processed = processThumbnailResults(results);
-
-        setThumbnails((prev) => {
-          const newMap = new Map(prev);
-          processed.forEach((dataUrl, frameIndex) => {
-            newMap.set(frameIndex, dataUrl);
-          });
-
-          // Track failed thumbnails
-          results.forEach((result) => {
-            if (!result.success) {
-              failedIndices.push(result.frame_index);
-              logger.warn(`Failed to load thumbnail for frame ${result.frame_index}: ${result.error || 'Unknown error'}`);
-            }
-          });
-
-          return newMap;
+      try {
+        const results = await invoke<ThumbnailResult[]>("get_thumbnails", {
+          frameIndices: indicesToLoad,
         });
 
-        // Update error state for failed thumbnails
-        if (failedIndices.length > 0) {
+        // Only update state if component is still mounted
+        if (mountedRef.current) {
+          const failedIndices: number[] = [];
+
+          // Process thumbnail results using shared utility
+          const processed = processThumbnailResults(results);
+
+          setThumbnails((prev) => {
+            const newMap = new Map(prev);
+            processed.forEach((dataUrl, frameIndex) => {
+              newMap.set(frameIndex, dataUrl);
+            });
+
+            // Track failed thumbnails
+            results.forEach((result) => {
+              if (!result.success) {
+                failedIndices.push(result.frame_index);
+                logger.warn(
+                  `Failed to load thumbnail for frame ${result.frame_index}: ${result.error || "Unknown error"}`,
+                );
+              }
+            });
+
+            return newMap;
+          });
+
+          // Update error state for failed thumbnails
+          if (failedIndices.length > 0) {
+            setErrors((prev) => {
+              const newSet = new Set(prev);
+              failedIndices.forEach((i) => newSet.add(i));
+              return newSet;
+            });
+          }
+        }
+      } catch (err) {
+        // Log the error and mark all requested indices as failed
+        logger.error("Failed to load thumbnails batch:", err);
+
+        if (mountedRef.current) {
           setErrors((prev) => {
             const newSet = new Set(prev);
-            failedIndices.forEach((i) => newSet.add(i));
+            indicesToLoad.forEach((i) => newSet.add(i));
+            return newSet;
+          });
+        }
+      } finally {
+        // Only update state if component is still mounted
+        if (mountedRef.current) {
+          // Remove indices from loading state
+          setLoading((prev) => {
+            const newSet = new Set(prev);
+            indicesToLoad.forEach((i) => newSet.delete(i));
             return newSet;
           });
         }
       }
-    } catch (err) {
-      // Log the error and mark all requested indices as failed
-      logger.error('Failed to load thumbnails batch:', err);
-
-      if (mountedRef.current) {
-        setErrors((prev) => {
-          const newSet = new Set(prev);
-          indicesToLoad.forEach((i) => newSet.add(i));
-          return newSet;
-        });
-      }
-    } finally {
-      // Only update state if component is still mounted
-      if (mountedRef.current) {
-        // Remove indices from loading state
-        setLoading((prev) => {
-          const newSet = new Set(prev);
-          indicesToLoad.forEach((i) => newSet.delete(i));
-          return newSet;
-        });
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   /**
    * Clear all cached thumbnails

@@ -2,13 +2,20 @@
  * Compare Context - Manages A/B compare workspace state
  */
 
-import { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  ReactNode,
+  useMemo,
+} from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type {
   CompareWorkspace,
   SyncMode,
   AlignmentQuality,
-} from '../types/video';
+} from "../types/video";
 
 interface CompareContextType {
   // Compare workspace state
@@ -32,7 +39,9 @@ interface CompareContextType {
   setSyncMode: (mode: SyncMode) => Promise<void>;
   setManualOffset: (offset: number) => Promise<void>;
   resetOffset: () => Promise<void>;
-  getAlignedFrame: (streamAIdx: number) => Promise<{ bIdx: number | null; quality: AlignmentQuality }>;
+  getAlignedFrame: (
+    streamAIdx: number,
+  ) => Promise<{ bIdx: number | null; quality: AlignmentQuality }>;
 }
 
 const CompareContext = createContext<CompareContextType | null>(null);
@@ -50,10 +59,13 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await invoke<CompareWorkspace>('create_compare_workspace', {
-        pathA: pA,
-        pathB: pB,
-      });
+      const result = await invoke<CompareWorkspace>(
+        "create_compare_workspace",
+        {
+          pathA: pA,
+          pathB: pB,
+        },
+      );
       setWorkspace(result);
       setPathA(pA);
       setPathB(pB);
@@ -61,7 +73,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
       setCurrentFrameB(0);
     } catch (err) {
       setError(err as string);
-      console.error('Failed to create compare workspace:', err);
+      console.error("Failed to create compare workspace:", err);
     } finally {
       setIsLoading(false);
     }
@@ -84,42 +96,48 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     setCurrentFrameB(index);
   }, []);
 
-  const setSyncMode = useCallback(async (mode: SyncMode) => {
-    try {
-      await invoke('set_sync_mode', { mode });
-      if (workspace) {
-        setWorkspace({ ...workspace, sync_mode: mode });
+  const setSyncMode = useCallback(
+    async (mode: SyncMode) => {
+      try {
+        await invoke("set_sync_mode", { mode });
+        if (workspace) {
+          setWorkspace({ ...workspace, sync_mode: mode });
+        }
+      } catch (err) {
+        console.error("Failed to set sync mode:", err);
       }
-    } catch (err) {
-      console.error('Failed to set sync mode:', err);
-    }
-  }, [workspace]);
+    },
+    [workspace],
+  );
 
-  const setManualOffset = useCallback(async (offset: number) => {
-    try {
-      await invoke('set_manual_offset', { offset });
-      if (workspace) {
-        setWorkspace({ ...workspace, manual_offset: offset });
+  const setManualOffset = useCallback(
+    async (offset: number) => {
+      try {
+        await invoke("set_manual_offset", { offset });
+        if (workspace) {
+          setWorkspace({ ...workspace, manual_offset: offset });
+        }
+      } catch (err) {
+        console.error("Failed to set manual offset:", err);
       }
-    } catch (err) {
-      console.error('Failed to set manual offset:', err);
-    }
-  }, [workspace]);
+    },
+    [workspace],
+  );
 
   const resetOffset = useCallback(async () => {
     try {
-      await invoke('reset_offset');
+      await invoke("reset_offset");
       if (workspace) {
         setWorkspace({ ...workspace, manual_offset: 0 });
       }
     } catch (err) {
-      console.error('Failed to reset offset:', err);
+      console.error("Failed to reset offset:", err);
     }
   }, [workspace]);
 
   const getAlignedFrame = useCallback(async (streamAIdx: number) => {
     try {
-      const result = await invoke<[number, string]>('get_aligned_frame', {
+      const result = await invoke<[number, string]>("get_aligned_frame", {
         streamAIdx,
       });
       return {
@@ -127,53 +145,58 @@ export function CompareProvider({ children }: { children: ReactNode }) {
         quality: result[1] as AlignmentQuality,
       };
     } catch (err) {
-      console.error('Failed to get aligned frame:', err);
+      console.error("Failed to get aligned frame:", err);
       return { bIdx: null, quality: AlignmentQuality.Gap };
     }
   }, []);
 
   // Memoize context value to prevent unnecessary re-renders in consumers
-  const value = useMemo<CompareContextType>(() => ({
-    workspace,
-    isLoading,
-    error,
-    pathA,
-    pathB,
-    currentFrameA,
-    currentFrameB,
-    createWorkspace,
-    closeWorkspace,
-    setFrameA,
-    setFrameB,
-    setSyncMode,
-    setManualOffset,
-    resetOffset,
-    getAlignedFrame,
-  }), [
-    workspace,
-    isLoading,
-    error,
-    pathA,
-    pathB,
-    currentFrameA,
-    currentFrameB,
-    createWorkspace,
-    closeWorkspace,
-    setFrameA,
-    setFrameB,
-    setSyncMode,
-    setManualOffset,
-    resetOffset,
-    getAlignedFrame,
-  ]);
+  const value = useMemo<CompareContextType>(
+    () => ({
+      workspace,
+      isLoading,
+      error,
+      pathA,
+      pathB,
+      currentFrameA,
+      currentFrameB,
+      createWorkspace,
+      closeWorkspace,
+      setFrameA,
+      setFrameB,
+      setSyncMode,
+      setManualOffset,
+      resetOffset,
+      getAlignedFrame,
+    }),
+    [
+      workspace,
+      isLoading,
+      error,
+      pathA,
+      pathB,
+      currentFrameA,
+      currentFrameB,
+      createWorkspace,
+      closeWorkspace,
+      setFrameA,
+      setFrameB,
+      setSyncMode,
+      setManualOffset,
+      resetOffset,
+      getAlignedFrame,
+    ],
+  );
 
-  return <CompareContext.Provider value={value}>{children}</CompareContext.Provider>;
+  return (
+    <CompareContext.Provider value={value}>{children}</CompareContext.Provider>
+  );
 }
 
 export function useCompare(): CompareContextType {
   const context = useContext(CompareContext);
   if (!context) {
-    throw new Error('useCompare must be used within CompareProvider');
+    throw new Error("useCompare must be used within CompareProvider");
   }
   return context;
 }
