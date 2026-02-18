@@ -9,6 +9,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: build-tauri-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
