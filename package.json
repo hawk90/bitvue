@@ -22,5 +22,12 @@
     "clean": "npm run clean:rust && npm run clean:frontend",
     "clean:rust": "cargo clean",
     "clean:frontend": "cd frontend && rm -rf node_modules dist"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jsdom": "^27.0.0",
+    "jsdom": "^28.1.0"
   }
 }

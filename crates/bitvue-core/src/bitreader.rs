@@ -466,7 +466,7 @@ impl ExpGolombReader for BitReader<'_> {
             let leading_zeros = bits.leading_zeros();
 
             // Check BEFORE any processing to prevent bypass
-            if leading_zeros >= MAX_EXP_GOLOMB_ZEROS {
+            if leading_zeros > MAX_EXP_GOLOMB_ZEROS {
                 return Err(BitvueError::Parse {
                     offset: self.position(),
                     message: format!(
@@ -492,7 +492,8 @@ impl ExpGolombReader for BitReader<'_> {
         let mut leading_zeros = 0u32;
 
         // Use a bounded loop to prevent unbounded iteration
-        while leading_zeros < MAX_EXP_GOLOMB_ZEROS {
+        // Allow up to and including MAX_EXP_GOLOMB_ZEROS
+        while leading_zeros <= MAX_EXP_GOLOMB_ZEROS {
             match self.read_bit() {
                 Ok(true) => break, // Found stop bit
                 Ok(false) => leading_zeros += 1,
@@ -500,7 +501,7 @@ impl ExpGolombReader for BitReader<'_> {
             }
         }
 
-        if leading_zeros >= MAX_EXP_GOLOMB_ZEROS {
+        if leading_zeros > MAX_EXP_GOLOMB_ZEROS {
             return Err(BitvueError::Parse {
                 offset: self.position(),
                 message: format!(
@@ -542,7 +543,8 @@ impl UvlcReader for BitReader<'_> {
         let mut leading_zeros = 0u32;
 
         // Use a bounded loop to prevent unbounded iteration
-        while leading_zeros < MAX_UVLC_ZEROS {
+        // Allow up to and including MAX_UVLC_ZEROS
+        while leading_zeros <= MAX_UVLC_ZEROS {
             match self.read_bit() {
                 Ok(true) => break, // Found stop bit
                 Ok(false) => leading_zeros += 1,
@@ -550,7 +552,7 @@ impl UvlcReader for BitReader<'_> {
             }
         }
 
-        if leading_zeros >= MAX_UVLC_ZEROS {
+        if leading_zeros > MAX_UVLC_ZEROS {
             return Err(BitvueError::Parse {
                 offset: self.position(),
                 message: format!("UVLC exceeded maximum zeros ({})", MAX_UVLC_ZEROS),
@@ -588,14 +590,6 @@ impl Leb128Reader for BitReader<'_> {
         let mut bytes_read = 0u8;
 
         loop {
-            // Check for overflow BEFORE shifting to prevent undefined behavior
-            if shift >= MAX_LEB128_SHIFT {
-                return Err(BitvueError::Parse {
-                    offset: self.position(),
-                    message: format!("LEB128 exceeded {} bits", MAX_LEB128_SHIFT),
-                });
-            }
-
             // Check for CPU exhaustion attack - limit total bytes read
             if bytes_read >= MAX_LEB128_BYTES {
                 return Err(BitvueError::Parse {
@@ -613,6 +607,14 @@ impl Leb128Reader for BitReader<'_> {
 
             shift += 7;
             bytes_read += 1;
+
+            // Check for overflow AFTER shifting to allow exactly MAX_LEB128_SHIFT bits
+            if shift > MAX_LEB128_SHIFT {
+                return Err(BitvueError::Parse {
+                    offset: self.position(),
+                    message: format!("LEB128 exceeded {} bits", MAX_LEB128_SHIFT),
+                });
+            }
         }
 
         Ok(value)
@@ -629,14 +631,6 @@ impl Leb128Reader for BitReader<'_> {
         let mut bytes_read = 0u8;
 
         loop {
-            // Check for overflow BEFORE shifting to prevent undefined behavior
-            if shift >= MAX_LEB128_SHIFT {
-                return Err(BitvueError::Parse {
-                    offset: self.position(),
-                    message: format!("LEB128 exceeded {} bits", MAX_LEB128_SHIFT),
-                });
-            }
-
             // Check for CPU exhaustion attack - limit total bytes read
             if bytes_read >= MAX_LEB128_BYTES {
                 return Err(BitvueError::Parse {
@@ -654,6 +648,14 @@ impl Leb128Reader for BitReader<'_> {
 
             shift += 7;
             bytes_read += 1;
+
+            // Check for overflow AFTER shifting to allow exactly MAX_LEB128_SHIFT bits
+            if shift > MAX_LEB128_SHIFT {
+                return Err(BitvueError::Parse {
+                    offset: self.position(),
+                    message: format!("LEB128 exceeded {} bits", MAX_LEB128_SHIFT),
+                });
+            }
         }
 
         // Sign extend

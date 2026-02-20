@@ -56,7 +56,16 @@ fn test_single_bit_read() {
     // Should read one bit successfully
     assert!(reader.read_bit().unwrap());
 
-    // Next read should fail
+    // Can read remaining 7 bits
+    for i in 0..7 {
+        assert!(
+            reader.read_bit().is_ok(),
+            "Bit {} should be readable",
+            i + 2
+        );
+    }
+
+    // Now at end, next read should fail
     assert!(matches!(
         reader.read_bit(),
         Err(BitvueError::UnexpectedEof(_))
@@ -159,16 +168,23 @@ fn test_skip_bits_overflow_protection() {
     let mut reader = BitReader::new(&data);
 
     // Skip to near the end
-    reader.skip_bits(700).unwrap(); // 87.5 bytes
+    reader.skip_bits(700).unwrap(); // 87.5 bytes, 100 bits remaining
 
-    // Try to skip beyond the end - should fail
+    // Skip exactly to the end should succeed
+    reader.skip_bits(100).unwrap();
+
+    // Now try to skip beyond - should fail
     assert!(matches!(
-        reader.skip_bits(100),
+        reader.skip_bits(1),
         Err(BitvueError::UnexpectedEof(_))
     ));
 
+    // Reset for overflow test
+    let mut reader2 = BitReader::new(&data);
+    reader2.skip_bits(100).unwrap();
+
     // Try to skip an amount that would overflow position
-    let result = reader.skip_bits(u64::MAX - 700);
+    let result = reader2.skip_bits(u64::MAX - 50);
     assert!(matches!(result, Err(BitvueError::Decode { .. })));
 }
 
@@ -202,17 +218,19 @@ fn test_exp_golomb_zero_leading_zeros() {
 
 #[test]
 fn test_exp_golomb_max_leading_zeros() {
-    // Create a pattern with exactly 32 leading zeros followed by 1
-    // This should succeed (at the limit)
-    let data = [0x00, 0x00, 0x00, 0x80];
+    // Create a pattern with exactly 31 leading zeros followed by stop bit + value bits
+    // 31 zeros + 1 stop bit + 31 value bits = 63 bits total (8 bytes)
+    // Bits: 000...000 (31 zeros) | 1 (stop) | 000...000 (31 value bits)
+    // Bytes: [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]
+    let data = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let mut reader = BitReader::new(&data);
 
-    // This should read successfully
+    // This should read successfully (31 leading zeros is the H.264 max)
     let result = reader.read_ue();
     assert!(result.is_ok());
 
-    // The value should be 2^32 - 1 = 4294967295
-    // This would be truncated to u32 max
+    // Value should be (2^31 - 1) + 0 = 2147483647
+    assert_eq!(result.unwrap(), (1u32 << 31) - 1);
 }
 
 #[test]
@@ -329,13 +347,15 @@ fn test_uvlc_zero() {
 
 #[test]
 fn test_uvlc_max_leading_zeros() {
-    // Create pattern with 32 leading zeros followed by 1
-    let data = [0x00, 0x00, 0x00, 0x80];
+    // Create pattern with exactly 31 leading zeros (AV1 max) + stop bit + value bits
+    // 31 zeros + 1 stop bit + 31 value bits = 63 bits total (8 bytes)
+    let data = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let mut reader = BitReader::new(&data);
 
-    // Should succeed at boundary
+    // Should succeed at boundary (31 is the max for UVLC)
     let result = reader.read_uvlc();
     assert!(result.is_ok());
+    assert_eq!(result.unwrap(), (1u32 << 31) - 1);
 }
 
 #[test]
@@ -501,14 +521,20 @@ fn test_lsb_skip_overflow_protection() {
     let data = [0xFF; 100];
     let mut reader = LsbBitReader::new(&data);
 
-    // Try to skip beyond data
+    // Skip exactly to end should succeed (100 bytes = 800 bits)
+    reader.skip_bits(800).unwrap();
+
+    // Now try to skip beyond - should fail
     assert!(matches!(
-        reader.skip_bits(800),
+        reader.skip_bits(1),
         Err(BitvueError::UnexpectedEof(_))
     ));
 
+    // Reset for overflow test
+    let mut reader2 = LsbBitReader::new(&data);
+
     // Try to skip with overflow
-    let result = reader.skip_bits(u64::MAX);
+    let result = reader2.skip_bits(u64::MAX);
     assert!(matches!(result, Err(BitvueError::Decode { .. })));
 }
 
@@ -573,8 +599,9 @@ fn test_remaining_data_at_boundary() {
     // Read 4 bits (not byte-aligned)
     reader.read_bits(4).unwrap();
 
-    // Should still return from current byte position
-    assert_eq!(reader.remaining_data().len(), 2);
+    // Should still return from current byte position (byte 1 + remaining bytes 2,3)
+    // Position is now at byte 1, bit 4, so remaining_data includes current byte + rest
+    assert_eq!(reader.remaining_data().len(), 3);
 }
 
 #[test]

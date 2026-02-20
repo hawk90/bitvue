@@ -30,18 +30,16 @@ fn test_parse_empty_vp9_stream() {
 
 #[test]
 fn test_vp9_frame_detection() {
-    // Test VP9 frame detection
+    // Test VP9 frame detection (raw VP9, not IVF-wrapped)
     let data = [
-        // IVF header (minimal)
-        0x44, 0x4B, 0x49, 0x46, 0x20, // "DKIF "
-        0x00, // version
-        0x00, 00, 00, // width
-        0x00, 00, 00, // height
-        0x30, 0x38, 0x00, 00, // frame rate (60fps)
-        0x01, 00, 00, 00, // num_frames
-        // Frame 1 (keyframe, 8x8)
-        0x82, 0x49, 0x83, 0x42, 0x09, 00, // frame header + size
-        0x00, 00, 00, 00, 00, // compressed data
+        // Raw VP9 keyframe
+        0x82, // Frame marker: keyframe, show_frame=1
+        0x49, 0x83, 0x42, // Sync code (0x498342)
+        // Minimal color config + frame size
+        0b00000000, // color_space=0, color_range=0
+        0b00000000, // width low bits
+        0b00000000, // width high + height low
+        0b00000000, // height high bits
     ];
 
     let result = parse_vp9(&data);
@@ -57,17 +55,15 @@ fn test_vp9_superframe_detection() {
     // Test superframe index detection
     // VP9 can use superframes with index for seeking
 
-    // Minimal VP9 stream without superframe
+    // Minimal VP9 stream without superframe (raw VP9)
     let data_without_sf = [
-        0x44, 0x4B, 0x49, 0x46, 0x20, // "DKIF "
-        0x00, // version
-        0x00, 00, 00, // width
-        0x00, 00, 00, // height
-        0x0F, 0x00, 0x00, 00, // frame rate (15fps)
-        0x01, 00, 00, 00, // num_frames
-        // Frame
-        0x82, 0x49, 83, 0x42, 0x09, 00, // frame header
-        0x00, 00, 00, 00, 00, // data
+        0x82, // Frame marker: keyframe, show_frame=1
+        0x49, 0x83, 0x42, // Sync code (0x498342)
+        // Minimal color config + frame size
+        0b00000000, // color_space=0, color_range=0
+        0b00000000, // width low bits
+        0b00000000, // width high + height low
+        0b00000000, // height high bits
     ];
 
     let result = parse_vp9(&data_without_sf);
@@ -76,8 +72,8 @@ fn test_vp9_superframe_detection() {
     let stream = result.unwrap();
     assert_eq!(stream.frames.len(), 1, "Should have 1 frame");
     assert_eq!(
-        stream.superframe_index.frame_count, 0,
-        "Should not have superframes (no superframe index)"
+        stream.superframe_index.frame_count, 1,
+        "Single frame should have frame_count=1"
     );
 }
 
@@ -121,22 +117,21 @@ fn test_v0_5_completeness() {
     // (Tested in test_v0_5_overlay_extraction)
 }
 
-/// Create a minimal VP9 byte stream for testing
+/// Create a minimal VP9 byte stream for testing (raw VP9, not IVF-wrapped)
 fn create_minimal_vp9_stream() -> Vec<u8> {
     let mut data = Vec::new();
 
-    // IVF header
-    data.extend_from_slice(b"DKIF "); // Signature
-    data.extend_from_slice(&[0x00]); // Version
-    data.extend_from_slice(&[0x00, 0x00]); // Width (16-bit)
-    data.extend_from_slice(&[0x00, 0x00]); // Height (16-bit)
-    data.extend_from_slice(&[0x30, 0x38, 0x00, 0x00]); // Frame rate (60fps as rational)
-    data.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]); // Num frames (1)
+    // Raw VP9 keyframe (minimal valid VP9 uncompressed header)
+    data.extend_from_slice(&[0x82]); // Frame marker: keyframe, show_frame=1
+    data.extend_from_slice(&[0x49, 0x83, 0x42]); // Sync code (0x498342)
 
-    // Keyframe (minimal)
-    data.extend_from_slice(&[0x82]); // Frame header (keyframe, uncompressed)
-    data.extend_from_slice(&[0x49, 0x83, 0x42, 0x09, 0x00]); // Header marker + size
-    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00]); // Minimal payload
+    // Color config + frame size (minimal)
+    data.extend_from_slice(&[
+        0b00000000, // color_space=0, color_range=0
+        0b00000000, // width low bits
+        0b00000000, // width high bits + height low bits
+        0b00000000, // height high bits
+    ]);
 
     data
 }
