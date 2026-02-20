@@ -1,4 +1,4 @@
-//! bitvue-container: Container format parsers for bitvue
+//! bitvue-formats: Container format parsers for bitvue
 //!
 //! This crate provides parsers for container formats (MP4, MKV, TS) with zero external
 //! dependencies beyond the Rust standard library.
@@ -30,7 +30,7 @@
 //!
 //! ## Extract AV1 samples
 //! ```no_run
-//! use bitvue_container::mp4;
+//! use bitvue_formats::mp4;
 //! use std::fs;
 //!
 //! let data = fs::read("video.mp4").unwrap();
@@ -40,7 +40,7 @@
 //!
 //! ## Extract H.264 samples
 //! ```no_run
-//! use bitvue_container::mp4;
+//! use bitvue_formats::mp4;
 //! use std::fs;
 //!
 //! let data = fs::read("video_h264.mp4").unwrap();
@@ -50,7 +50,7 @@
 //!
 //! ## Extract H.265 samples
 //! ```no_run
-//! use bitvue_container::mkv;
+//! use bitvue_formats::mkv;
 //! use std::fs;
 //!
 //! let data = fs::read("video_hevc.mkv").unwrap();
