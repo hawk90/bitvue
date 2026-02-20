@@ -626,9 +626,12 @@ fn test_directory_as_file() {
 // ============================================================================
 
 #[test]
+#[cfg(unix)] // OsString::from_vec is Unix-only (std::os::unix::ffi::OsStringExt)
 fn test_invalid_utf8_in_paths() {
     /// Test decoder behavior with invalid UTF-8 in paths
     /// Expected: Should handle gracefully (reject or sanitize)
+    use std::os::unix::ffi::OsStringExt;
+
     let temp_dir = TempDir::new().unwrap();
 
     // Create file with invalid UTF-8 sequence
