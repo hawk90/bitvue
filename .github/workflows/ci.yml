@@ -153,12 +153,20 @@ jobs:
         run: |
           echo "Disk space before cleanup:"
           df -h
-          # Remove unnecessary packages and files to free up ~10GB
-          sudo apt-get clean
+          # Remove unnecessary packages and files to free up ~30GB+
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/graalvm/
+          sudo rm -rf /usr/local/.ghcup/
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules
+          sudo apt-get clean
+          docker rmi $(docker image ls -aq) || true
           echo "Disk space after cleanup:"
           df -h
 
@@ -179,7 +187,11 @@ jobs:
           echo "PKG_CONFIG_PATH=D:\vcpkg\installed\x64-windows-static\lib\pkgconfig" >> $env:GITHUB_ENV
           echo "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" >> $env:GITHUB_PATH
 
-      - run: cargo test --workspace --exclude abseil --no-fail-fast
+      - name: Run tests
+        run: cargo test --workspace --exclude abseil --no-fail-fast
+        env:
+          # Disable incremental compilation to save disk space
+          CARGO_INCREMENTAL: 0
 
   # ================================
   # 4. Code Coverage (PR + main)
