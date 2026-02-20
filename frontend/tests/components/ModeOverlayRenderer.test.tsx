@@ -3,53 +3,71 @@
  * Tests canvas overlay rendering for different visualization modes
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderModeOverlay, type OverlayRenderOptions } from '../OverlayRenderer';
-import type { FrameInfo } from '@/types/video';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  renderModeOverlay,
+  type OverlayRenderOptions,
+} from "../OverlayRenderer";
+import type { FrameInfo } from "@/types/video";
 
 // Mock CSS utility
-vi.mock('@/utils/css', () => ({
+vi.mock("@/utils/css", () => ({
   getCssVar: (variable: string) => {
     const cssVars: Record<string, string> = {
-      '--frame-i': '#e03131',
-      '--frame-p': '#2da44e',
-      '--frame-b': '#1f7ad9',
-      '--text-secondary': '#cccccc',
-      '--accent-primary': '#007acc',
-      '--accent-primary-light': 'rgba(100, 200, 255, 0.8)',
-      '--border-light': 'rgba(255, 255, 255, 0.1)',
-      '--text-bright': '#ffffff',
-      '--color-warning': 'rgba(255, 184, 108, 0.4)',
-      '--color-info': 'rgba(117, 190, 255, 0.4)',
-      '--color-success': 'rgba(137, 209, 133, 0.4)',
+      "--frame-i": "#e03131",
+      "--frame-p": "#2da44e",
+      "--frame-b": "#1f7ad9",
+      "--text-secondary": "#cccccc",
+      "--accent-primary": "#007acc",
+      "--accent-primary-light": "rgba(100, 200, 255, 0.8)",
+      "--border-light": "rgba(255, 255, 255, 0.1)",
+      "--text-bright": "#ffffff",
+      "--color-warning": "rgba(255, 184, 108, 0.4)",
+      "--color-info": "rgba(117, 190, 255, 0.4)",
+      "--color-success": "rgba(137, 209, 133, 0.4)",
     };
-    return cssVars[variable] || '';
+    return cssVars[variable] || "";
   },
 }));
 
 // Mock all overlay renderers
-vi.mock('../OverlayRenderer/renderers/CodingFlowRenderer', () => ({
-  CodingFlowOverlay: vi.fn(),
-}));
-vi.mock('../OverlayRenderer/renderers/PredictionRenderer', () => ({
-  PredictionOverlay: vi.fn(),
-}));
-vi.mock('../OverlayRenderer/renderers/TransformRenderer', () => ({
-  TransformOverlay: vi.fn(),
-}));
-vi.mock('../OverlayRenderer/renderers/QPMapRenderer', () => ({
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/CodingFlowRenderer",
+  () => ({
+    CodingFlowOverlay: vi.fn(),
+  }),
+);
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/PredictionRenderer",
+  () => ({
+    PredictionOverlay: vi.fn(),
+  }),
+);
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/TransformRenderer",
+  () => ({
+    TransformOverlay: vi.fn(),
+  }),
+);
+vi.mock("@/components/panels/OverlayRenderer/renderers/QPMapRenderer", () => ({
   QPMapOverlay: vi.fn(),
 }));
-vi.mock('../OverlayRenderer/renderers/MVFieldRenderer', () => ({
-  MVFieldOverlay: vi.fn(),
-}));
-vi.mock('../OverlayRenderer/renderers/ReferenceRenderer', () => ({
-  ReferenceOverlay: vi.fn(),
-}));
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/MVFieldRenderer",
+  () => ({
+    MVFieldOverlay: vi.fn(),
+  }),
+);
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/ReferenceRenderer",
+  () => ({
+    ReferenceOverlay: vi.fn(),
+  }),
+);
 
 // Create a mock canvas and context
 function createMockCanvas(width: number, height: number): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
+  const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
 
@@ -58,28 +76,42 @@ function createMockCanvas(width: number, height: number): HTMLCanvasElement {
 
   // Mock the 2D context since jsdom doesn't implement it
   const mockCtx = {
-    fillStyle: '',
-    strokeStyle: '',
+    fillStyle: "",
+    strokeStyle: "",
     lineWidth: 1,
-    font: '',
-    textAlign: 'left' as const,
-    textBaseline: 'top' as const,
+    font: "",
+    textAlign: "left" as const,
+    textBaseline: "top" as const,
     globalAlpha: 1,
-    lineCap: 'butt' as const,
-    lineJoin: 'miter' as const,
+    lineCap: "butt" as const,
+    lineJoin: "miter" as const,
 
-    fillRect: vi.fn(() => { hasDrawn = true; }),
-    strokeRect: vi.fn(() => { hasDrawn = true; }),
-    fillText: vi.fn(() => { hasDrawn = true; }),
-    strokeText: vi.fn(() => { hasDrawn = true; }),
+    fillRect: vi.fn(() => {
+      hasDrawn = true;
+    }),
+    strokeRect: vi.fn(() => {
+      hasDrawn = true;
+    }),
+    fillText: vi.fn(() => {
+      hasDrawn = true;
+    }),
+    strokeText: vi.fn(() => {
+      hasDrawn = true;
+    }),
     beginPath: vi.fn(),
-    closePath: vi.fn(() => { hasDrawn = true; }),
+    closePath: vi.fn(() => {
+      hasDrawn = true;
+    }),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
     arc: vi.fn(),
     rect: vi.fn(),
-    fill: vi.fn(() => { hasDrawn = true; }),
-    stroke: vi.fn(() => { hasDrawn = true; }),
+    fill: vi.fn(() => {
+      hasDrawn = true;
+    }),
+    stroke: vi.fn(() => {
+      hasDrawn = true;
+    }),
     clearRect: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(),
@@ -96,7 +128,7 @@ function createMockCanvas(width: number, height: number): HTMLCanvasElement {
         data: new Uint8ClampedArray(w * h * 4).fill(hasDrawn ? 128 : 0),
         width: w,
         height: h,
-        colorSpace: 'srgb' as const,
+        colorSpace: "srgb" as const,
       };
       return imageData;
     }),
@@ -107,22 +139,24 @@ function createMockCanvas(width: number, height: number): HTMLCanvasElement {
         data: new Uint8ClampedArray(w * h * 4).fill(0),
         width: w,
         height: h,
-        colorSpace: 'srgb' as const,
+        colorSpace: "srgb" as const,
       };
     }),
-    drawImage: vi.fn(() => { hasDrawn = true; }),
+    drawImage: vi.fn(() => {
+      hasDrawn = true;
+    }),
     clip: vi.fn(),
   };
 
   // Override getContext to return our mock
-  vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+  vi.spyOn(canvas, "getContext").mockReturnValue(mockCtx as any);
 
   return canvas;
 }
 
 const mockFrame: FrameInfo = {
   frame_index: 0,
-  frame_type: 'I',
+  frame_type: "I",
   size: 50000,
   poc: 0,
   key_frame: true,
@@ -130,7 +164,7 @@ const mockFrame: FrameInfo = {
 
 const mockFrameP: FrameInfo = {
   frame_index: 1,
-  frame_type: 'P',
+  frame_type: "P",
   size: 30000,
   poc: 1,
   ref_frames: [0],
@@ -138,25 +172,25 @@ const mockFrameP: FrameInfo = {
 
 const mockFrameB: FrameInfo = {
   frame_index: 2,
-  frame_type: 'B',
+  frame_type: "B",
   size: 20000,
   poc: 2,
   ref_frames: [0, 1],
 };
 
-describe('renderModeOverlay', () => {
+describe("renderModeOverlay", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should return early when frame is null', () => {
+  it("should return early when frame is null", () => {
     const options: OverlayRenderOptions = {
-      mode: 'overview',
+      mode: "overview",
       frame: null,
       canvas,
       ctx,
@@ -165,15 +199,20 @@ describe('renderModeOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should not render any overlay for overview mode', () => {
+  it("should not render any overlay for overview mode", () => {
     const options: OverlayRenderOptions = {
-      mode: 'overview',
+      mode: "overview",
       frame: mockFrame,
       canvas,
       ctx,
     };
 
-    const initialImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const initialImageData = ctx.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
     renderModeOverlay(options);
     const finalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -182,19 +221,19 @@ describe('renderModeOverlay', () => {
   });
 });
 
-describe('renderCodingFlowOverlay', () => {
+describe("renderCodingFlowOverlay", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should render coding flow overlay', () => {
+  it("should render coding flow overlay", () => {
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas,
       ctx,
@@ -203,9 +242,9 @@ describe('renderCodingFlowOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should draw CTU grid lines', () => {
+  it("should draw CTU grid lines", () => {
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas,
       ctx,
@@ -219,9 +258,9 @@ describe('renderCodingFlowOverlay', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should draw frame type indicator', () => {
+  it("should draw frame type indicator", () => {
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas,
       ctx,
@@ -232,14 +271,14 @@ describe('renderCodingFlowOverlay', () => {
     // Frame type indicator should be drawn in top right corner
     const imageData = ctx.getImageData(canvas.width - 60, 10, 50, 24);
     // Should have non-transparent pixels (indicator drawn)
-    const hasNonTransparentPixels = imageData.data.some((channel, i) =>
-      i % 4 !== 3 && channel > 0 // Check RGB channels, ignore alpha
+    const hasNonTransparentPixels = imageData.data.some(
+      (channel, i) => i % 4 !== 3 && channel > 0, // Check RGB channels, ignore alpha
     );
   });
 
-  it('should work with P frame', () => {
+  it("should work with P frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -248,9 +287,9 @@ describe('renderCodingFlowOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should work with B frame', () => {
+  it("should work with B frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrameB,
       canvas,
       ctx,
@@ -259,12 +298,12 @@ describe('renderCodingFlowOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle small canvas sizes', () => {
+  it("should handle small canvas sizes", () => {
     const smallCanvas = createMockCanvas(64, 64);
-    const smallCtx = smallCanvas.getContext('2d')!;
+    const smallCtx = smallCanvas.getContext("2d")!;
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas: smallCanvas,
       ctx: smallCtx,
@@ -273,12 +312,12 @@ describe('renderCodingFlowOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle large canvas sizes', () => {
+  it("should handle large canvas sizes", () => {
     const largeCanvas = createMockCanvas(3840, 2160);
-    const largeCtx = largeCanvas.getContext('2d')!;
+    const largeCtx = largeCanvas.getContext("2d")!;
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas: largeCanvas,
       ctx: largeCtx,
@@ -288,19 +327,19 @@ describe('renderCodingFlowOverlay', () => {
   });
 });
 
-describe('renderPredictionOverlay', () => {
+describe("renderPredictionOverlay", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should render prediction overlay for I frame', () => {
+  it("should render prediction overlay for I frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'prediction',
+      mode: "prediction",
       frame: mockFrame,
       canvas,
       ctx,
@@ -309,9 +348,9 @@ describe('renderPredictionOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should render prediction overlay for P frame', () => {
+  it("should render prediction overlay for P frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'prediction',
+      mode: "prediction",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -320,9 +359,9 @@ describe('renderPredictionOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should render prediction overlay for B frame', () => {
+  it("should render prediction overlay for B frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'prediction',
+      mode: "prediction",
       frame: mockFrameB,
       canvas,
       ctx,
@@ -331,9 +370,9 @@ describe('renderPredictionOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should draw legend for prediction modes', () => {
+  it("should draw legend for prediction modes", () => {
     const options: OverlayRenderOptions = {
-      mode: 'prediction',
+      mode: "prediction",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -348,19 +387,19 @@ describe('renderPredictionOverlay', () => {
   });
 });
 
-describe('renderTransformOverlay', () => {
+describe("renderTransformOverlay", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should render transform overlay', () => {
+  it("should render transform overlay", () => {
     const options: OverlayRenderOptions = {
-      mode: 'transform',
+      mode: "transform",
       frame: mockFrame,
       canvas,
       ctx,
@@ -369,9 +408,9 @@ describe('renderTransformOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should draw transform block outlines', () => {
+  it("should draw transform block outlines", () => {
     const options: OverlayRenderOptions = {
-      mode: 'transform',
+      mode: "transform",
       frame: mockFrame,
       canvas,
       ctx,
@@ -384,9 +423,9 @@ describe('renderTransformOverlay', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should draw legend for transform sizes', () => {
+  it("should draw legend for transform sizes", () => {
     const options: OverlayRenderOptions = {
-      mode: 'transform',
+      mode: "transform",
       frame: mockFrame,
       canvas,
       ctx,
@@ -401,19 +440,19 @@ describe('renderTransformOverlay', () => {
   });
 });
 
-describe('renderQPMapOverlay', () => {
+describe("renderQPMapOverlay", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should render QP map overlay', () => {
+  it("should render QP map overlay", () => {
     const options: OverlayRenderOptions = {
-      mode: 'qp-map',
+      mode: "qp-map",
       frame: mockFrame,
       canvas,
       ctx,
@@ -422,9 +461,9 @@ describe('renderQPMapOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should draw QP heatmap', () => {
+  it("should draw QP heatmap", () => {
     const options: OverlayRenderOptions = {
-      mode: 'qp-map',
+      mode: "qp-map",
       frame: mockFrame,
       canvas,
       ctx,
@@ -437,9 +476,9 @@ describe('renderQPMapOverlay', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should display QP statistics', () => {
+  it("should display QP statistics", () => {
     const options: OverlayRenderOptions = {
-      mode: 'qp-map',
+      mode: "qp-map",
       frame: mockFrame,
       canvas,
       ctx,
@@ -453,19 +492,19 @@ describe('renderQPMapOverlay', () => {
   });
 });
 
-describe('renderMVFieldOverlay', () => {
+describe("renderMVFieldOverlay", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should render MV field overlay for P frame', () => {
+  it("should render MV field overlay for P frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'mv-field',
+      mode: "mv-field",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -474,9 +513,9 @@ describe('renderMVFieldOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should render MV field overlay for B frame', () => {
+  it("should render MV field overlay for B frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'mv-field',
+      mode: "mv-field",
       frame: mockFrameB,
       canvas,
       ctx,
@@ -485,9 +524,9 @@ describe('renderMVFieldOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should show no MV message for I frame', () => {
+  it("should show no MV message for I frame", () => {
     const options: OverlayRenderOptions = {
-      mode: 'mv-field',
+      mode: "mv-field",
       frame: mockFrame,
       canvas,
       ctx,
@@ -501,9 +540,9 @@ describe('renderMVFieldOverlay', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should draw motion vector arrows for inter frames', () => {
+  it("should draw motion vector arrows for inter frames", () => {
     const options: OverlayRenderOptions = {
-      mode: 'mv-field',
+      mode: "mv-field",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -517,19 +556,19 @@ describe('renderMVFieldOverlay', () => {
   });
 });
 
-describe('renderReferenceOverlay', () => {
+describe("renderReferenceOverlay", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should render reference overlay', () => {
+  it("should render reference overlay", () => {
     const options: OverlayRenderOptions = {
-      mode: 'reference',
+      mode: "reference",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -538,9 +577,9 @@ describe('renderReferenceOverlay', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should display frame info', () => {
+  it("should display frame info", () => {
     const options: OverlayRenderOptions = {
-      mode: 'reference',
+      mode: "reference",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -553,9 +592,9 @@ describe('renderReferenceOverlay', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should display reference frame indices', () => {
+  it("should display reference frame indices", () => {
     const options: OverlayRenderOptions = {
-      mode: 'reference',
+      mode: "reference",
       frame: mockFrameP,
       canvas,
       ctx,
@@ -568,9 +607,9 @@ describe('renderReferenceOverlay', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should handle frame with no references', () => {
+  it("should handle frame with no references", () => {
     const options: OverlayRenderOptions = {
-      mode: 'reference',
+      mode: "reference",
       frame: mockFrame,
       canvas,
       ctx,
@@ -583,9 +622,9 @@ describe('renderReferenceOverlay', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should handle B frame with multiple references', () => {
+  it("should handle B frame with multiple references", () => {
     const options: OverlayRenderOptions = {
-      mode: 'reference',
+      mode: "reference",
       frame: mockFrameB,
       canvas,
       ctx,
@@ -599,28 +638,28 @@ describe('renderReferenceOverlay', () => {
   });
 });
 
-describe('renderModeOverlay - all modes', () => {
+describe("renderModeOverlay - all modes", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should handle all visualization modes', () => {
-    const modes: Array<OverlayRenderOptions['mode']> = [
-      'overview',
-      'coding-flow',
-      'prediction',
-      'transform',
-      'qp-map',
-      'mv-field',
-      'reference',
+  it("should handle all visualization modes", () => {
+    const modes: Array<OverlayRenderOptions["mode"]> = [
+      "overview",
+      "coding-flow",
+      "prediction",
+      "transform",
+      "qp-map",
+      "mv-field",
+      "reference",
     ];
 
-    modes.forEach(mode => {
+    modes.forEach((mode) => {
       const options: OverlayRenderOptions = {
         mode,
         frame: mockFrame,
@@ -633,27 +672,27 @@ describe('renderModeOverlay - all modes', () => {
   });
 });
 
-describe('renderModeOverlay edge cases', () => {
+describe("renderModeOverlay edge cases", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should handle KEY frame type', () => {
+  it("should handle KEY frame type", () => {
     const keyFrame: FrameInfo = {
       frame_index: 0,
-      frame_type: 'KEY',
+      frame_type: "KEY",
       size: 50000,
       poc: 0,
       key_frame: true,
     };
 
     const options: OverlayRenderOptions = {
-      mode: 'mv-field',
+      mode: "mv-field",
       frame: keyFrame,
       canvas,
       ctx,
@@ -662,16 +701,16 @@ describe('renderModeOverlay edge cases', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle INTRA frame type', () => {
+  it("should handle INTRA frame type", () => {
     const intraFrame: FrameInfo = {
       frame_index: 0,
-      frame_type: 'INTRA',
+      frame_type: "INTRA",
       size: 50000,
       poc: 0,
     };
 
     const options: OverlayRenderOptions = {
-      mode: 'mv-field',
+      mode: "mv-field",
       frame: intraFrame,
       canvas,
       ctx,
@@ -680,17 +719,17 @@ describe('renderModeOverlay edge cases', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle INTER frame type', () => {
+  it("should handle INTER frame type", () => {
     const interFrame: FrameInfo = {
       frame_index: 1,
-      frame_type: 'INTER',
+      frame_type: "INTER",
       size: 30000,
       poc: 1,
       ref_frames: [0],
     };
 
     const options: OverlayRenderOptions = {
-      mode: 'mv-field',
+      mode: "mv-field",
       frame: interFrame,
       canvas,
       ctx,
@@ -699,12 +738,12 @@ describe('renderModeOverlay edge cases', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle zero size canvas', () => {
+  it("should handle zero size canvas", () => {
     const zeroCanvas = createMockCanvas(0, 0);
-    const zeroCtx = zeroCanvas.getContext('2d')!;
+    const zeroCtx = zeroCanvas.getContext("2d")!;
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas: zeroCanvas,
       ctx: zeroCtx,
@@ -713,12 +752,12 @@ describe('renderModeOverlay edge cases', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle very small canvas', () => {
+  it("should handle very small canvas", () => {
     const tinyCanvas = createMockCanvas(1, 1);
-    const tinyCtx = tinyCanvas.getContext('2d')!;
+    const tinyCtx = tinyCanvas.getContext("2d")!;
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas: tinyCanvas,
       ctx: tinyCtx,
@@ -727,12 +766,12 @@ describe('renderModeOverlay edge cases', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle non-square canvas', () => {
+  it("should handle non-square canvas", () => {
     const wideCanvas = createMockCanvas(1920, 1080);
-    const wideCtx = wideCanvas.getContext('2d')!;
+    const wideCtx = wideCanvas.getContext("2d")!;
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas: wideCanvas,
       ctx: wideCtx,
@@ -741,12 +780,12 @@ describe('renderModeOverlay edge cases', () => {
     expect(() => renderModeOverlay(options)).not.toThrow();
   });
 
-  it('should handle portrait canvas', () => {
+  it("should handle portrait canvas", () => {
     const portraitCanvas = createMockCanvas(480, 640);
-    const portraitCtx = portraitCanvas.getContext('2d')!;
+    const portraitCtx = portraitCanvas.getContext("2d")!;
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas: portraitCanvas,
       ctx: portraitCtx,
@@ -756,19 +795,19 @@ describe('renderModeOverlay edge cases', () => {
   });
 });
 
-describe('renderModeOverlay consecutive calls', () => {
+describe("renderModeOverlay consecutive calls", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should handle multiple consecutive renders', () => {
+  it("should handle multiple consecutive renders", () => {
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas,
       ctx,
@@ -779,19 +818,19 @@ describe('renderModeOverlay consecutive calls', () => {
     }
   });
 
-  it('should handle mode changes', () => {
-    const modes: Array<OverlayRenderOptions['mode']> = [
-      'overview',
-      'coding-flow',
-      'prediction',
-      'transform',
-      'qp-map',
-      'mv-field',
-      'reference',
-      'overview',
+  it("should handle mode changes", () => {
+    const modes: Array<OverlayRenderOptions["mode"]> = [
+      "overview",
+      "coding-flow",
+      "prediction",
+      "transform",
+      "qp-map",
+      "mv-field",
+      "reference",
+      "overview",
     ];
 
-    modes.forEach(mode => {
+    modes.forEach((mode) => {
       const options: OverlayRenderOptions = {
         mode,
         frame: mockFrame,
@@ -803,39 +842,39 @@ describe('renderModeOverlay consecutive calls', () => {
     });
   });
 
-  it('should handle frame changes', () => {
+  it("should handle frame changes", () => {
     const frames = [mockFrame, mockFrameP, mockFrameB];
-    const optionsBase: Omit<OverlayRenderOptions, 'frame'> = {
-      mode: 'coding-flow',
+    const optionsBase: Omit<OverlayRenderOptions, "frame"> = {
+      mode: "coding-flow",
       canvas,
       ctx,
     };
 
-    frames.forEach(frame => {
+    frames.forEach((frame) => {
       const options = { ...optionsBase, frame };
       expect(() => renderModeOverlay(options)).not.toThrow();
     });
   });
 });
 
-describe('renderModeOverlay canvas state', () => {
+describe("renderModeOverlay canvas state", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should preserve canvas context state', () => {
+  it("should preserve canvas context state", () => {
     // Set some initial state
-    ctx.fillStyle = 'red';
-    ctx.strokeStyle = 'blue';
+    ctx.fillStyle = "red";
+    ctx.strokeStyle = "blue";
     ctx.lineWidth = 5;
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas,
       ctx,
@@ -849,10 +888,10 @@ describe('renderModeOverlay canvas state', () => {
     expect(imageData).toBeDefined();
   });
 
-  it('should not throw on invalid canvas context', () => {
+  it("should not throw on invalid canvas context", () => {
     // Create a canvas but get 2d context (should be fine)
     const testCanvas = createMockCanvas(100, 100);
-    const testCtx = testCanvas.getContext('2d');
+    const testCtx = testCanvas.getContext("2d");
 
     if (!testCtx) {
       // If we can't get a context, skip this test
@@ -860,7 +899,7 @@ describe('renderModeOverlay canvas state', () => {
     }
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas: testCanvas,
       ctx: testCtx,
@@ -870,25 +909,25 @@ describe('renderModeOverlay canvas state', () => {
   });
 });
 
-describe('renderModeOverlay integration', () => {
+describe("renderModeOverlay integration", () => {
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
   beforeEach(() => {
     canvas = createMockCanvas(640, 480);
-    ctx = canvas.getContext('2d')!;
+    ctx = canvas.getContext("2d")!;
     vi.clearAllMocks();
   });
 
-  it('should render overlay on top of existing content', () => {
+  it("should render overlay on top of existing content", () => {
     // Draw some base content
-    ctx.fillStyle = 'gray';
+    ctx.fillStyle = "gray";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const initialImageData = ctx.getImageData(100, 100, 50, 50);
 
     const options: OverlayRenderOptions = {
-      mode: 'coding-flow',
+      mode: "coding-flow",
       frame: mockFrame,
       canvas,
       ctx,
@@ -903,17 +942,17 @@ describe('renderModeOverlay integration', () => {
     expect(finalImageData).toBeDefined();
   });
 
-  it('should handle rapid mode switches', () => {
-    const modes: Array<OverlayRenderOptions['mode']> = [
-      'coding-flow',
-      'prediction',
-      'transform',
-      'coding-flow',
-      'prediction',
-      'transform',
+  it("should handle rapid mode switches", () => {
+    const modes: Array<OverlayRenderOptions["mode"]> = [
+      "coding-flow",
+      "prediction",
+      "transform",
+      "coding-flow",
+      "prediction",
+      "transform",
     ];
 
-    modes.forEach(mode => {
+    modes.forEach((mode) => {
       const options: OverlayRenderOptions = {
         mode,
         frame: mockFrameP,

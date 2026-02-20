@@ -1,10 +1,14 @@
-import { render as rtlRender, RenderOptions } from '@testing-library/react';
-import { ReactElement } from 'react';
-import { ModeProvider } from '../contexts/ModeContext';
-import { SelectionProvider } from '../contexts/SelectionContext';
-import { StreamDataProvider } from '../contexts/StreamDataContext';
-import { LayoutProvider } from '../contexts/LayoutContext';
-import { ThemeProvider } from '../contexts/ThemeContext';
+import { render as rtlRender, RenderOptions } from "@testing-library/react";
+import { ReactElement } from "react";
+import { ModeProvider } from "../contexts/ModeContext";
+import { SelectionProvider } from "../contexts/SelectionContext";
+import {
+  FrameDataProvider,
+  FileStateProvider,
+  CurrentFrameProvider,
+} from "../contexts/StreamDataContext";
+import { LayoutProvider } from "../contexts/LayoutContext";
+import { ThemeProvider } from "../contexts/ThemeContext";
 
 /**
  * All-in-one provider wrapper for tests
@@ -13,13 +17,15 @@ function AllTheProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <LayoutProvider>
-        <StreamDataProvider>
-          <SelectionProvider>
-            <ModeProvider>
-              {children}
-            </ModeProvider>
-          </SelectionProvider>
-        </StreamDataProvider>
+        <FrameDataProvider>
+          <FileStateProvider>
+            <CurrentFrameProvider>
+              <SelectionProvider>
+                <ModeProvider>{children}</ModeProvider>
+              </SelectionProvider>
+            </CurrentFrameProvider>
+          </FileStateProvider>
+        </FrameDataProvider>
       </LayoutProvider>
     </ThemeProvider>
   );
@@ -31,7 +37,7 @@ function AllTheProviders({ children }: { children: React.ReactNode }) {
  */
 export function render(
   ui: ReactElement,
-  options?: Omit<RenderOptions, 'wrapper'>
+  options?: Omit<RenderOptions, "wrapper">,
 ) {
   return rtlRender(ui, { wrapper: AllTheProviders, ...options });
 }
@@ -41,7 +47,7 @@ export function render(
  */
 export function renderWithoutProviders(
   ui: ReactElement,
-  options?: RenderOptions
+  options?: RenderOptions,
 ) {
   return rtlRender(ui, options);
 }
@@ -49,8 +55,8 @@ export function renderWithoutProviders(
 /**
  * Re-export testing library utilities
  */
-export * from '@testing-library/react';
-export { default as userEvent } from '@testing-library/user-event';
+export * from "@testing-library/react";
+export { default as userEvent } from "@testing-library/user-event";
 
 /**
  * Common test data generators
@@ -58,7 +64,7 @@ export { default as userEvent } from '@testing-library/user-event';
 export const mockFrames = [
   {
     frame_index: 0,
-    frame_type: 'I',
+    frame_type: "I",
     size: 50000,
     pts: 0,
     poc: 0,
@@ -68,7 +74,7 @@ export const mockFrames = [
   },
   {
     frame_index: 1,
-    frame_type: 'P',
+    frame_type: "P",
     size: 30000,
     pts: 1,
     poc: 1,
@@ -79,7 +85,7 @@ export const mockFrames = [
   },
   {
     frame_index: 2,
-    frame_type: 'B',
+    frame_type: "B",
     size: 20000,
     pts: 2,
     poc: 2,
@@ -91,8 +97,8 @@ export const mockFrames = [
 ];
 
 export const mockPanelConfig = {
-  id: 'test-panel',
-  title: 'Test Panel',
+  id: "test-panel",
+  title: "Test Panel",
   component: () => <div>Test Panel Content</div>,
-  icon: 'test-icon',
+  icon: "test-icon",
 };

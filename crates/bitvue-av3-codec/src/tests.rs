@@ -33,7 +33,7 @@ fn test_parse_av3_with_obu_header() {
     let result = parse_av3(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.obu_units.len() >= 0);
+    let _ = stream.obu_units.len(); // verify field is accessible
 }
 
 #[test]
@@ -47,7 +47,10 @@ fn test_parse_av3_temporal_delimiter() {
     assert!(result.is_ok());
     let stream = result.unwrap();
     if !stream.obu_units.is_empty() {
-        assert_eq!(stream.obu_units[0].header.obu_type, ObuType::TemporalDelimiter);
+        assert_eq!(
+            stream.obu_units[0].header.obu_type,
+            ObuType::TemporalDelimiter
+        );
     }
 }
 
@@ -57,7 +60,7 @@ fn test_parse_av3_sequence_header() {
     let mut data = vec![0u8; 16];
     data[0] = (1 << 3) | 0x02; // obu_type=1 (SequenceHeader), has_size=1
     data[1] = 14; // size=14
-    // Fill with zeros (incomplete but tests detection)
+                  // Fill with zeros (incomplete but tests detection)
     for i in 2..16 {
         data[i] = 0;
     }
@@ -155,21 +158,29 @@ fn test_parse_av3_multiple_obus() {
     let mut pos = 0;
 
     // Temporal delimiter
-    data[pos] = (2 << 3) | 0x02; pos += 1;
-    data[pos] = 0; pos += 1;
+    data[pos] = (2 << 3) | 0x02;
+    pos += 1;
+    data[pos] = 0;
+    pos += 1;
 
     // Sequence header
-    data[pos] = (1 << 3) | 0x02; pos += 1;
-    data[pos] = 10; pos += 1;
+    data[pos] = (1 << 3) | 0x02;
+    pos += 1;
+    data[pos] = 10;
+    pos += 1;
     for _ in 0..10 {
-        data[pos] = 0; pos += 1;
+        data[pos] = 0;
+        pos += 1;
     }
 
     // Frame header
-    data[pos] = (4 << 3) | 0x02; pos += 1;
-    data[pos] = 10; pos += 1;
+    data[pos] = (4 << 3) | 0x02;
+    pos += 1;
+    data[pos] = 10;
+    pos += 1;
     for _ in 0..10 {
-        data[pos] = 0; pos += 1;
+        data[pos] = 0;
+        pos += 1;
     }
 
     let result = parse_av3(&data[..pos]);
@@ -576,16 +587,22 @@ fn test_parse_av3_multiple_obu_types() {
     let mut pos = 0;
 
     // Sequence Header
-    data[pos] = (1 << 3) | 0x02; pos += 1; // OBU header
-    data[pos] = 0; pos += 1; // size
+    data[pos] = (1 << 3) | 0x02;
+    pos += 1; // OBU header
+    data[pos] = 0;
+    pos += 1; // size
 
     // Frame Header
-    data[pos] = (4 << 3) | 0x02; pos += 1;
-    data[pos] = 0; pos += 1;
+    data[pos] = (4 << 3) | 0x02;
+    pos += 1;
+    data[pos] = 0;
+    pos += 1;
 
     // Tile Group
-    data[pos] = (6 << 3) | 0x02; pos += 1;
-    data[pos] = 0; pos += 1;
+    data[pos] = (6 << 3) | 0x02;
+    pos += 1;
+    data[pos] = 0;
+    pos += 1;
 
     let result = parse_av3(&data[..pos]);
     assert!(result.is_ok());
@@ -684,8 +701,8 @@ fn test_parse_av3_with_obu_extension() {
     // May fail due to incomplete data, but should handle gracefully
     match result {
         Ok(stream) => {
-            // Success case
-            assert!(stream.obu_units.len() >= 0);
+            // Success case - verify field is accessible
+            let _ = stream.obu_units.len();
         }
         Err(_) => {
             // Expected for incomplete OBU data
@@ -913,7 +930,7 @@ fn test_parse_av3_with_embedded_nulls() {
     // Test parse_av3 handles embedded null bytes
     let mut data = vec![0u8; 100];
     data[0] = (1 << 3) | 0x02; // Sequence header OBU
-    // Rest is nulls
+                               // Rest is nulls
     for i in 1..100 {
         data[i] = 0x00;
     }
@@ -1017,7 +1034,7 @@ fn test_parse_frame_header_dimensions() {
     data[0] = (3 << 3) | 0x02; // Frame header OBU
     data[1] = 0x20; // OBU size = 2 (minimal)
     data.extend_from_slice(&[0x80]); // show_frame = 1, frame type = 0 (key)
-    // Add width/height info
+                                     // Add width/height info
     data.extend_from_slice(&[16, 0, 9]); // width = 128
     data.extend_from_slice(&[12, 0, 6]); // height = 96
 
@@ -1028,7 +1045,8 @@ fn test_parse_frame_header_dimensions() {
 #[test]
 fn test_parse_obu_header_types() {
     // Test parsing OBU headers for different OBU types
-    for obu_type in [1u8, 2, 3, 4, 5, 6] { // Sequence header through Tile group
+    for obu_type in [1u8, 2, 3, 4, 5, 6] {
+        // Sequence header through Tile group
         let data = [(obu_type << 3) | 0x02, 0x00]; // OBU header with size 0
 
         let result = parse_obu_header(&data);
@@ -1162,7 +1180,7 @@ fn test_parse_obu_header_with_max_size_field() {
     let mut data = vec![0u8; 260]; // Large OBU size
     data[0] = (1 << 3) | 0x02; // Sequence header
     data[1] = 0xFF; // First byte of LEB128 (indicating large size)
-    // Fill rest with valid LEB128 continuation bytes
+                    // Fill rest with valid LEB128 continuation bytes
     for i in 2..260 {
         data[i] = 0x80; // More continuation bytes
     }

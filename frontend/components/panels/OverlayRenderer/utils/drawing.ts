@@ -4,8 +4,8 @@
  * Canvas drawing functions for overlays
  */
 
-import { getCssVar } from '../../../../utils/css';
-import type { LegendItem } from '../types';
+import { getCssVar } from "../../../../utils/css";
+import type { LegendItem } from "../types";
 
 /**
  * Draw arrow between two points with proper offset from node edges
@@ -17,7 +17,7 @@ export function drawArrowBetweenPoints(
   x2: number,
   y2: number,
   nodeRadius: number,
-  color: string
+  color: string,
 ): void {
   // Calculate direction and distance
   const dx = x2 - x1;
@@ -49,11 +49,11 @@ export function drawArrowBetweenPoints(
   ctx.moveTo(endX, endY);
   ctx.lineTo(
     endX - headLen * Math.cos(angle - Math.PI / 6),
-    endY - headLen * Math.sin(angle - Math.PI / 6)
+    endY - headLen * Math.sin(angle - Math.PI / 6),
   );
   ctx.lineTo(
     endX - headLen * Math.cos(angle + Math.PI / 6),
-    endY - headLen * Math.sin(angle + Math.PI / 6)
+    endY - headLen * Math.sin(angle + Math.PI / 6),
   );
   ctx.closePath();
   ctx.fill();
@@ -62,7 +62,13 @@ export function drawArrowBetweenPoints(
 /**
  * Draw an arrow from (x, y) with delta (dx, dy)
  */
-export function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, dx: number, dy: number): void {
+export function drawArrow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+): void {
   const x2 = x + dx;
   const y2 = y + dy;
 
@@ -77,8 +83,14 @@ export function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, d
   const headLen = 6;
   ctx.beginPath();
   ctx.moveTo(x2, y2);
-  ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
-  ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+  ctx.lineTo(
+    x2 - headLen * Math.cos(angle - Math.PI / 6),
+    y2 - headLen * Math.sin(angle - Math.PI / 6),
+  );
+  ctx.lineTo(
+    x2 - headLen * Math.cos(angle + Math.PI / 6),
+    y2 - headLen * Math.sin(angle + Math.PI / 6),
+  );
   ctx.closePath();
   ctx.fill();
 }
@@ -86,27 +98,36 @@ export function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, d
 /**
  * Draw frame type indicator in corner
  */
-export function drawFrameTypeIndicator(ctx: CanvasRenderingContext2D, frameType: string, width: number): void {
+export function drawFrameTypeIndicator(
+  ctx: CanvasRenderingContext2D,
+  frameType: string,
+  width: number,
+): void {
   const color = getFrameTypeColor(frameType);
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
   ctx.fillRect(width - 60, 10, 50, 24);
 
   ctx.fillStyle = color;
-  ctx.font = 'bold 14px sans-serif';
+  ctx.font = "bold 14px sans-serif";
   ctx.fillText(frameType, width - 50, 27);
 }
 
 /**
  * Draw legend for overlay
  */
-export function drawLegend(ctx: CanvasRenderingContext2D, items: LegendItem[], width: number, height: number): void {
+export function drawLegend(
+  ctx: CanvasRenderingContext2D,
+  items: LegendItem[],
+  width: number,
+  height: number,
+): void {
   const legendWidth = items.length * 80 + 20;
   const legendHeight = 30;
   const x = width - legendWidth - 10;
   const y = height - legendHeight - 10;
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
   ctx.fillRect(x, y, legendWidth, legendHeight);
 
   items.forEach((item, idx) => {
@@ -115,12 +136,12 @@ export function drawLegend(ctx: CanvasRenderingContext2D, items: LegendItem[], w
     ctx.fillStyle = item.color;
     ctx.fillRect(itemX, y + 10, 16, 12);
 
-    ctx.fillStyle = getCssVar('--text-bright') || '#fff';
-    ctx.font = '11px sans-serif';
+    ctx.fillStyle = getCssVar("--text-bright") || "#fff";
+    ctx.font = "11px sans-serif";
     ctx.fillText(item.label, itemX + 22, y + 20);
   });
 }
 
 // Re-export getFrameTypeColor from colors for convenience
-import { getFrameTypeColor as getFrameTypeColorFromColors } from './colors';
+import { getFrameTypeColor as getFrameTypeColorFromColors } from "./colors";
 export { getFrameTypeColorFromColors as getFrameTypeColor };

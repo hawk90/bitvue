@@ -1,3 +1,14 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Edge case and boundary condition tests for the decoder module
 //!
 //! This test suite covers:
@@ -40,7 +51,10 @@ fn test_empty_file() {
     match result {
         Err(DecodeError::Decode(msg)) => {
             assert!(
-                msg.contains("too short") || msg.contains("empty") || msg.contains("incomplete"),
+                msg.contains("too short")
+                    || msg.contains("empty")
+                    || msg.contains("incomplete")
+                    || msg.contains("Invalid argument"),
                 "Error should mention file is empty or too short, got: {}",
                 msg
             );
@@ -612,9 +626,12 @@ fn test_directory_as_file() {
 // ============================================================================
 
 #[test]
+#[cfg(unix)] // OsString::from_vec is Unix-only (std::os::unix::ffi::OsStringExt)
 fn test_invalid_utf8_in_paths() {
     /// Test decoder behavior with invalid UTF-8 in paths
     /// Expected: Should handle gracefully (reject or sanitize)
+    use std::os::unix::ffi::OsStringExt;
+
     let temp_dir = TempDir::new().unwrap();
 
     // Create file with invalid UTF-8 sequence

@@ -5,7 +5,13 @@
  * consistent error handling, default values, and provider components.
  */
 
-import React, { createContext, useContext, ReactNode, Context, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  ReactNode,
+  Context,
+  useCallback,
+} from "react";
 
 // =============================================================================
 // Context Configuration Types
@@ -14,15 +20,21 @@ import React, { createContext, useContext, ReactNode, Context, useCallback } fro
 /**
  * Error handler for context access
  */
-export type ContextErrorHandler<T> = (contextName: string, value: T | null) => Error;
+export type ContextErrorHandler<T> = (
+  contextName: string,
+  value: T | null,
+) => Error;
 
 /**
  * Default error handler that throws an error
  */
-export const defaultErrorHandler: ContextErrorHandler<unknown> = (contextName, value) => {
+export const defaultErrorHandler: ContextErrorHandler<unknown> = (
+  contextName,
+  value,
+) => {
   return new Error(
-    `${contextName} context value ${value === null ? 'is null' : 'is undefined'}. ` +
-    `Did you forget to wrap your component in a ${contextName}Provider?`
+    `${contextName} context value ${value === null ? "is null" : "is undefined"}. ` +
+      `Did you forget to wrap your component in a ${contextName}Provider?`,
   );
 };
 
@@ -81,7 +93,9 @@ export interface CreatedContext<T> {
  * });
  * ```
  */
-export function createContextFactory<T>(config: ContextConfig<T>): CreatedContext<T> {
+export function createContextFactory<T>(
+  config: ContextConfig<T>,
+): CreatedContext<T> {
   const {
     name,
     defaultValue,
@@ -124,7 +138,8 @@ export function createContextFactory<T>(config: ContextConfig<T>): CreatedContex
     if (strict) {
       // Check if we're inside a provider by comparing to default
       // This is a simple heuristic - for production, you might want a different approach
-      const isUsingDefault = JSON.stringify(contextValue) === JSON.stringify(defaultValue);
+      const isUsingDefault =
+        JSON.stringify(contextValue) === JSON.stringify(defaultValue);
 
       if (isUsingDefault) {
         const error = errorHandler(name, contextValue);
@@ -138,13 +153,10 @@ export function createContextFactory<T>(config: ContextConfig<T>): CreatedContex
   useHook.displayName = `use${name}`;
 
   // Create hook with default value fallback
-  const useHookOrDefault = useCallback(
-    (fallbackValue: T): T => {
-      const contextValue = useContext(Context);
-      return contextValue ?? fallbackValue;
-    },
-    []
-  );
+  const useHookOrDefault = useCallback((fallbackValue: T): T => {
+    const contextValue = useContext(Context);
+    return contextValue ?? fallbackValue;
+  }, []);
 
   useHookOrDefault.displayName = `use${name}OrDefault`;
 
@@ -178,10 +190,15 @@ export interface SetterContext<T> extends CreatedContext<T> {
 }
 
 export function createSetterContext<T>(
-  config: ContextConfig<T>
+  config: ContextConfig<T>,
 ): SetterContext<T> {
-  const { Context, Provider: BaseProvider, useHook, useHookOrDefault, name } =
-    createContextFactory(config);
+  const {
+    Context,
+    Provider: BaseProvider,
+    useHook,
+    useHookOrDefault,
+    name,
+  } = createContextFactory(config);
 
   // Create a provider that also provides the setter
   const Provider: React.FC<{ children: ReactNode; value?: T }> = ({
@@ -189,14 +206,16 @@ export function createSetterContext<T>(
     value: providedValue,
   }) => {
     // Store state in provider
-    const [state, setState] = React.useState<T>(providedValue ?? config.defaultValue);
+    const [state, setState] = React.useState<T>(
+      providedValue ?? config.defaultValue,
+    );
 
     return (
       <Context.Provider value={state}>
         {/* Create a separate context for the setter */}
         {React.cloneElement(
           children as React.ReactElement,
-          { [`${name.toLowerCase()}Setter`]: setState } as any
+          { [`${name.toLowerCase()}Setter`]: setState } as any,
         )}
       </Context.Provider>
     );
@@ -206,7 +225,9 @@ export function createSetterContext<T>(
   // a more sophisticated approach with separate contexts for value and setter
   const useSetter = (): React.Dispatch<React.SetStateAction<T>> => {
     // For a complete implementation, you'd need a separate setter context
-    throw new Error('useSetter requires a separate setter context implementation');
+    throw new Error(
+      "useSetter requires a separate setter context implementation",
+    );
   };
 
   return {
@@ -265,7 +286,9 @@ export function createReducerContext<T, A>(config: {
 
     return (
       <StateContext.Provider value={state}>
-        <DispatchContext.Provider value={dispatch}>{children}</DispatchContext.Provider>
+        <DispatchContext.Provider value={dispatch}>
+          {children}
+        </DispatchContext.Provider>
       </StateContext.Provider>
     );
   };
@@ -280,13 +303,10 @@ export function createReducerContext<T, A>(config: {
     return state;
   };
 
-  const useHookOrDefault = useCallback(
-    (fallbackValue: T): T => {
-      const state = useContext(StateContext);
-      return state ?? fallbackValue;
-    },
-    []
-  );
+  const useHookOrDefault = useCallback((fallbackValue: T): T => {
+    const state = useContext(StateContext);
+    return state ?? fallbackValue;
+  }, []);
 
   const useDispatch = (): React.Dispatch<A> => {
     const dispatch = useContext(DispatchContext);
@@ -438,22 +458,19 @@ export function createAsyncContext<T>(config: {
  * ```
  */
 export function mergeContexts(
-  contexts: Array<[Context<unknown>, { value?: unknown }]>
+  contexts: Array<[Context<unknown>, { value?: unknown }]>,
 ): React.FC<{ children: ReactNode }> {
   const MergedProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return (
       <>
-        {contexts.reduceRight(
-          (acc, [Context, config], index) => {
-            const Provider = Context.Provider as any;
-            return (
-              <Provider value={config.value} key={index}>
-                {acc}
-              </Provider>
-            );
-          },
-          children as ReactNode
-        )}
+        {contexts.reduceRight((acc, [Context, config], index) => {
+          const Provider = Context.Provider as any;
+          return (
+            <Provider value={config.value} key={index}>
+              {acc}
+            </Provider>
+          );
+        }, children as ReactNode)}
       </>
     );
   };
@@ -506,13 +523,13 @@ export function mergeContexts(
 export const exampleThemeContext = createContextFactory<{
   primary: string;
   secondary: string;
-  mode: 'light' | 'dark';
+  mode: "light" | "dark";
 }>({
-  name: 'Theme',
+  name: "Theme",
   defaultValue: {
-    primary: '#007bff',
-    secondary: '#6c757d',
-    mode: 'light',
+    primary: "#007bff",
+    secondary: "#6c757d",
+    mode: "light",
   },
   strict: false,
 });
@@ -524,7 +541,7 @@ export const exampleLayoutContext = createContextFactory<{
   sidebarOpen: boolean;
   panelSizes: number[];
 }>({
-  name: 'Layout',
+  name: "Layout",
   defaultValue: {
     sidebarOpen: true,
     panelSizes: [300, 400, 300],

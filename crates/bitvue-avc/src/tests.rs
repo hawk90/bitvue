@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_mut)]
 use super::*;
 
 #[test]
@@ -933,7 +934,7 @@ fn test_parse_avc_with_start_code() {
     data[2] = 0x01;
     // NAL header: nal_ref_idc=3, nal_unit_type=7 (SPS)
     data[3] = 0x67; // forbidden_zero_bit=0, nal_ref_idc=3 (11b), nal_unit_type=7 (00111b)
-    // Minimal SPS data (profile_idc=66 baseline, level=40)
+                    // Minimal SPS data (profile_idc=66 baseline, level=40)
     data[4] = 0x42; // profile_idc = 66 (baseline)
     data[5] = 0x00; // constraint sets
     data[6] = 0x28; // level_idc = 40
@@ -973,9 +974,12 @@ fn test_parse_avc_multiple_nal_units() {
     let mut pos = 0;
 
     // First NAL: SPS (nal_unit_type=7)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
     data[pos] = 0x67; // nal_ref_idc=3, nal_unit_type=7
     pos += 1;
     // Minimal SPS data
@@ -985,9 +989,12 @@ fn test_parse_avc_multiple_nal_units() {
     }
 
     // Second NAL: PPS (nal_unit_type=8)
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x00; pos += 1;
-    data[pos] = 0x01; pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x00;
+    pos += 1;
+    data[pos] = 0x01;
+    pos += 1;
     data[pos] = 0x68; // nal_ref_idc=3, nal_unit_type=8
     pos += 1;
     // Minimal PPS data
@@ -1016,7 +1023,10 @@ fn test_parse_avc_idr_slice() {
     let stream = result.unwrap();
     // Check that IDR slice was identified
     if !stream.nal_units.is_empty() {
-        assert_eq!(stream.nal_units[0].header.nal_unit_type, NalUnitType::IdrSlice);
+        assert_eq!(
+            stream.nal_units[0].header.nal_unit_type,
+            NalUnitType::IdrSlice
+        );
     }
 }
 
@@ -1163,45 +1173,48 @@ fn test_avc_stream_with_sps() {
     use crate::slice::DecRefPicMarking;
 
     let mut sps_map = std::collections::HashMap::new();
-    sps_map.insert(0, Sps {
-        profile_idc: ProfileIdc::High,
-        constraint_set0_flag: false,
-        constraint_set1_flag: false,
-        constraint_set2_flag: false,
-        constraint_set3_flag: false,
-        constraint_set4_flag: false,
-        constraint_set5_flag: false,
-        level_idc: 41,
-        seq_parameter_set_id: 0,
-        chroma_format_idc: ChromaFormat::Yuv420,
-        separate_colour_plane_flag: false,
-        bit_depth_luma_minus8: 0,
-        bit_depth_chroma_minus8: 0,
-        qpprime_y_zero_transform_bypass_flag: false,
-        seq_scaling_matrix_present_flag: false,
-        log2_max_frame_num_minus4: 0,
-        pic_order_cnt_type: 0,
-        log2_max_pic_order_cnt_lsb_minus4: 0,
-        delta_pic_order_always_zero_flag: false,
-        offset_for_non_ref_pic: 0,
-        offset_for_top_to_bottom_field: 0,
-        num_ref_frames_in_pic_order_cnt_cycle: 0,
-        offset_for_ref_frame: vec![],
-        max_num_ref_frames: 1,
-        gaps_in_frame_num_value_allowed_flag: false,
-        pic_width_in_mbs_minus1: 21, // (21+1)*16 = 352
-        pic_height_in_map_units_minus1: 21, // (21+1)*16 = 352
-        frame_mbs_only_flag: true,
-        mb_adaptive_frame_field_flag: false,
-        direct_8x8_inference_flag: true,
-        frame_cropping_flag: false,
-        frame_crop_left_offset: 0,
-        frame_crop_right_offset: 0,
-        frame_crop_top_offset: 0,
-        frame_crop_bottom_offset: 0,
-        vui_parameters_present_flag: false,
-        vui_parameters: None,
-    });
+    sps_map.insert(
+        0,
+        Sps {
+            profile_idc: ProfileIdc::High,
+            constraint_set0_flag: false,
+            constraint_set1_flag: false,
+            constraint_set2_flag: false,
+            constraint_set3_flag: false,
+            constraint_set4_flag: false,
+            constraint_set5_flag: false,
+            level_idc: 41,
+            seq_parameter_set_id: 0,
+            chroma_format_idc: ChromaFormat::Yuv420,
+            separate_colour_plane_flag: false,
+            bit_depth_luma_minus8: 0,
+            bit_depth_chroma_minus8: 0,
+            qpprime_y_zero_transform_bypass_flag: false,
+            seq_scaling_matrix_present_flag: false,
+            log2_max_frame_num_minus4: 0,
+            pic_order_cnt_type: 0,
+            log2_max_pic_order_cnt_lsb_minus4: 0,
+            delta_pic_order_always_zero_flag: false,
+            offset_for_non_ref_pic: 0,
+            offset_for_top_to_bottom_field: 0,
+            num_ref_frames_in_pic_order_cnt_cycle: 0,
+            offset_for_ref_frame: vec![],
+            max_num_ref_frames: 1,
+            gaps_in_frame_num_value_allowed_flag: false,
+            pic_width_in_mbs_minus1: 21,        // (21+1)*16 = 352
+            pic_height_in_map_units_minus1: 21, // (21+1)*16 = 352
+            frame_mbs_only_flag: true,
+            mb_adaptive_frame_field_flag: false,
+            direct_8x8_inference_flag: true,
+            frame_cropping_flag: false,
+            frame_crop_left_offset: 0,
+            frame_crop_right_offset: 0,
+            frame_crop_top_offset: 0,
+            frame_crop_bottom_offset: 0,
+            vui_parameters_present_flag: false,
+            vui_parameters: None,
+        },
+    );
 
     let stream = AvcStream {
         nal_units: vec![],
@@ -1236,45 +1249,48 @@ fn test_avc_stream_profile_string() {
 
     for (profile_idc, expected_name) in profiles {
         let mut sps_map = std::collections::HashMap::new();
-        sps_map.insert(0, Sps {
-            profile_idc: profile_idc.clone(),
-            constraint_set0_flag: false,
-            constraint_set1_flag: false,
-            constraint_set2_flag: false,
-            constraint_set3_flag: false,
-            constraint_set4_flag: false,
-            constraint_set5_flag: false,
-            level_idc: 41,
-            seq_parameter_set_id: 0,
-            chroma_format_idc: ChromaFormat::Yuv420,
-            separate_colour_plane_flag: false,
-            bit_depth_luma_minus8: 0,
-            bit_depth_chroma_minus8: 0,
-            qpprime_y_zero_transform_bypass_flag: false,
-            seq_scaling_matrix_present_flag: false,
-            log2_max_frame_num_minus4: 0,
-            pic_order_cnt_type: 0,
-            log2_max_pic_order_cnt_lsb_minus4: 0,
-            delta_pic_order_always_zero_flag: false,
-            offset_for_non_ref_pic: 0,
-            offset_for_top_to_bottom_field: 0,
-            num_ref_frames_in_pic_order_cnt_cycle: 0,
-            offset_for_ref_frame: vec![],
-            max_num_ref_frames: 1,
-            gaps_in_frame_num_value_allowed_flag: false,
-            pic_width_in_mbs_minus1: 10,
-            pic_height_in_map_units_minus1: 10,
-            frame_mbs_only_flag: true,
-            mb_adaptive_frame_field_flag: false,
-            direct_8x8_inference_flag: true,
-            frame_cropping_flag: false,
-            frame_crop_left_offset: 0,
-            frame_crop_right_offset: 0,
-            frame_crop_top_offset: 0,
-            frame_crop_bottom_offset: 0,
-            vui_parameters_present_flag: false,
-            vui_parameters: None,
-        });
+        sps_map.insert(
+            0,
+            Sps {
+                profile_idc: profile_idc.clone(),
+                constraint_set0_flag: false,
+                constraint_set1_flag: false,
+                constraint_set2_flag: false,
+                constraint_set3_flag: false,
+                constraint_set4_flag: false,
+                constraint_set5_flag: false,
+                level_idc: 41,
+                seq_parameter_set_id: 0,
+                chroma_format_idc: ChromaFormat::Yuv420,
+                separate_colour_plane_flag: false,
+                bit_depth_luma_minus8: 0,
+                bit_depth_chroma_minus8: 0,
+                qpprime_y_zero_transform_bypass_flag: false,
+                seq_scaling_matrix_present_flag: false,
+                log2_max_frame_num_minus4: 0,
+                pic_order_cnt_type: 0,
+                log2_max_pic_order_cnt_lsb_minus4: 0,
+                delta_pic_order_always_zero_flag: false,
+                offset_for_non_ref_pic: 0,
+                offset_for_top_to_bottom_field: 0,
+                num_ref_frames_in_pic_order_cnt_cycle: 0,
+                offset_for_ref_frame: vec![],
+                max_num_ref_frames: 1,
+                gaps_in_frame_num_value_allowed_flag: false,
+                pic_width_in_mbs_minus1: 10,
+                pic_height_in_map_units_minus1: 10,
+                frame_mbs_only_flag: true,
+                mb_adaptive_frame_field_flag: false,
+                direct_8x8_inference_flag: true,
+                frame_cropping_flag: false,
+                frame_crop_left_offset: 0,
+                frame_crop_right_offset: 0,
+                frame_crop_top_offset: 0,
+                frame_crop_bottom_offset: 0,
+                vui_parameters_present_flag: false,
+                vui_parameters: None,
+            },
+        );
 
         let stream = AvcStream {
             nal_units: vec![],
@@ -1294,45 +1310,48 @@ fn test_avc_stream_level_string() {
     // Test level string conversion
     for level_idc in [10, 11, 12, 20, 21, 30, 31, 40, 41, 50, 51, 52] {
         let mut sps_map = std::collections::HashMap::new();
-        sps_map.insert(0, Sps {
-            profile_idc: ProfileIdc::High,
-            constraint_set0_flag: false,
-            constraint_set1_flag: false,
-            constraint_set2_flag: false,
-            constraint_set3_flag: false,
-            constraint_set4_flag: false,
-            constraint_set5_flag: false,
-            level_idc,
-            seq_parameter_set_id: 0,
-            chroma_format_idc: ChromaFormat::Yuv420,
-            separate_colour_plane_flag: false,
-            bit_depth_luma_minus8: 0,
-            bit_depth_chroma_minus8: 0,
-            qpprime_y_zero_transform_bypass_flag: false,
-            seq_scaling_matrix_present_flag: false,
-            log2_max_frame_num_minus4: 0,
-            pic_order_cnt_type: 0,
-            log2_max_pic_order_cnt_lsb_minus4: 0,
-            delta_pic_order_always_zero_flag: false,
-            offset_for_non_ref_pic: 0,
-            offset_for_top_to_bottom_field: 0,
-            num_ref_frames_in_pic_order_cnt_cycle: 0,
-            offset_for_ref_frame: vec![],
-            max_num_ref_frames: 1,
-            gaps_in_frame_num_value_allowed_flag: false,
-            pic_width_in_mbs_minus1: 10,
-            pic_height_in_map_units_minus1: 10,
-            frame_mbs_only_flag: true,
-            mb_adaptive_frame_field_flag: false,
-            direct_8x8_inference_flag: true,
-            frame_cropping_flag: false,
-            frame_crop_left_offset: 0,
-            frame_crop_right_offset: 0,
-            frame_crop_top_offset: 0,
-            frame_crop_bottom_offset: 0,
-            vui_parameters_present_flag: false,
-            vui_parameters: None,
-        });
+        sps_map.insert(
+            0,
+            Sps {
+                profile_idc: ProfileIdc::High,
+                constraint_set0_flag: false,
+                constraint_set1_flag: false,
+                constraint_set2_flag: false,
+                constraint_set3_flag: false,
+                constraint_set4_flag: false,
+                constraint_set5_flag: false,
+                level_idc,
+                seq_parameter_set_id: 0,
+                chroma_format_idc: ChromaFormat::Yuv420,
+                separate_colour_plane_flag: false,
+                bit_depth_luma_minus8: 0,
+                bit_depth_chroma_minus8: 0,
+                qpprime_y_zero_transform_bypass_flag: false,
+                seq_scaling_matrix_present_flag: false,
+                log2_max_frame_num_minus4: 0,
+                pic_order_cnt_type: 0,
+                log2_max_pic_order_cnt_lsb_minus4: 0,
+                delta_pic_order_always_zero_flag: false,
+                offset_for_non_ref_pic: 0,
+                offset_for_top_to_bottom_field: 0,
+                num_ref_frames_in_pic_order_cnt_cycle: 0,
+                offset_for_ref_frame: vec![],
+                max_num_ref_frames: 1,
+                gaps_in_frame_num_value_allowed_flag: false,
+                pic_width_in_mbs_minus1: 10,
+                pic_height_in_map_units_minus1: 10,
+                frame_mbs_only_flag: true,
+                mb_adaptive_frame_field_flag: false,
+                direct_8x8_inference_flag: true,
+                frame_cropping_flag: false,
+                frame_crop_left_offset: 0,
+                frame_crop_right_offset: 0,
+                frame_crop_top_offset: 0,
+                frame_crop_bottom_offset: 0,
+                vui_parameters_present_flag: false,
+                vui_parameters: None,
+            },
+        );
 
         let stream = AvcStream {
             nal_units: vec![],
@@ -1611,7 +1630,7 @@ fn test_parse_avc_quick_returns_idr_count() {
     // Add 2 IDR slices
     data.extend_from_slice(&[0x00, 0x00, 0x01, 0x65, 0x11]); // IDR slice
     data.extend_from_slice(&[0x00, 0x00, 0x01, 0x65, 0x11]); // IDR slice
-    // Add non-IDR slice
+                                                             // Add non-IDR slice
     data.extend_from_slice(&[0x00, 0x00, 0x01, 0x21, 0x01]); // P slice
 
     let result = parse_avc_quick(&data);
@@ -1713,7 +1732,7 @@ fn test_parse_avc_with_3byte_start_codes() {
     data[1] = 0x00;
     data[2] = 0x01;
     data[3] = 0x67; // SPS
-    // Second NAL with 3-byte start code
+                    // Second NAL with 3-byte start code
     data[10] = 0x00;
     data[11] = 0x00;
     data[12] = 0x01;
@@ -1751,7 +1770,7 @@ fn test_parse_avc_with_emulation_prevention() {
     data[1] = 0x00;
     data[2] = 0x03;
     data[3] = 0x01; // Not a start code (0x00 0x00 0x03)
-    // Real start code
+                    // Real start code
     data[4] = 0x00;
     data[5] = 0x00;
     data[6] = 0x01;
@@ -1792,14 +1811,26 @@ fn test_parse_avc_large_stream() {
     let mut pos = 0;
 
     for i in 0..1000 {
-        data[pos] = 0x00; pos += 1;
-        data[pos] = 0x00; pos += 1;
-        data[pos] = 0x01; pos += 1;
-        data[pos] = if i % 3 == 0 { 0x67 } // SPS
-                    else if i % 3 == 1 { 0x68 } // PPS
-                    else { 0x21 }; // P slice
-                pos += 1;
-        data[pos] = 0xFF; pos += 1; // minimal data
+        data[pos] = 0x00;
+        pos += 1;
+        data[pos] = 0x00;
+        pos += 1;
+        data[pos] = 0x01;
+        pos += 1;
+        data[pos] = if i % 3 == 0 {
+            0x67
+        }
+        // SPS
+        else if i % 3 == 1 {
+            0x68
+        }
+        // PPS
+        else {
+            0x21
+        }; // P slice
+        pos += 1;
+        data[pos] = 0xFF;
+        pos += 1; // minimal data
     }
 
     let result = parse_avc(&data[..pos]);
@@ -1816,14 +1847,22 @@ fn test_parse_avc_performance() {
 
     // Add 100 NAL units
     for _ in 0..100 {
-        data[pos] = 0x00; pos += 1;
-        data[pos] = 0x00; pos += 1;
-        data[pos] = 0x01; pos += 1;
-        data[pos] = 0x67; pos += 1;
-        data[pos] = 0x42; pos += 1;
-        data[pos] = 0x00; pos += 1;
-        data[pos] = 0x28; pos += 1;
-        data[pos] = 0xFF; pos += 1;
+        data[pos] = 0x00;
+        pos += 1;
+        data[pos] = 0x00;
+        pos += 1;
+        data[pos] = 0x01;
+        pos += 1;
+        data[pos] = 0x67;
+        pos += 1;
+        data[pos] = 0x42;
+        pos += 1;
+        data[pos] = 0x00;
+        pos += 1;
+        data[pos] = 0x28;
+        pos += 1;
+        data[pos] = 0xFF;
+        pos += 1;
     }
 
     let start = std::time::Instant::now();
@@ -1831,7 +1870,11 @@ fn test_parse_avc_performance() {
     let duration = start.elapsed();
 
     assert!(result.is_ok());
-    assert!(duration.as_millis() < 500, "Parsing took too long: {:?}", duration);
+    assert!(
+        duration.as_millis() < 500,
+        "Parsing took too long: {:?}",
+        duration
+    );
 }
 
 #[test]
@@ -1842,7 +1885,7 @@ fn test_parse_avc_with_cabac() {
     data.extend_from_slice(&[0x42, 0x00]); // baseline profile
     data.extend_from_slice(&[0x00, 0x28]); // level
     data.extend_from_slice(&[0xFF]); // reserved
-    // entropy_coding_mode_flag = 1 for CABAC
+                                     // entropy_coding_mode_flag = 1 for CABAC
     data.extend_from_slice(&[0x01]);
 
     let result = parse_avc(&data);
@@ -1857,7 +1900,7 @@ fn test_parse_avc_with_interlaced() {
     data.extend_from_slice(&[0x42, 0x00]); // baseline
     data.extend_from_slice(&[0x00, 0x28]); // level
     data.extend_from_slice(&[0xFF]); // reserved
-    // frame_mbs_only_flag = 0 (interlaced)
+                                     // frame_mbs_only_flag = 0 (interlaced)
 
     let result = parse_avc(&data);
     assert!(result.is_ok());
@@ -1871,7 +1914,7 @@ fn test_parse_avc_with_frame_cropping() {
     data.extend_from_slice(&[0x42, 0x00]); // baseline
     data.extend_from_slice(&[0x00, 0x28]); // level
     data.extend_from_slice(&[0xFF]); // reserved
-    // frame_cropping_flag = 1
+                                     // frame_cropping_flag = 1
     data.extend_from_slice(&[0x01]);
 
     let result = parse_avc(&data);
@@ -1924,9 +1967,9 @@ fn test_parse_sps_dimensions() {
     data[4] = 66; // profile_idc
     data[5] = 0; // constraint_set0_flag
     data[6] = 31; // level_idc
-    // chroma_format_idc = 1 (YUV420) - encoded as ue(v)
-    // pic_width_in_mbs_minus1 = 9 (1920/16 - 1 = 119)
-    // pic_height_in_map_units_minus1 = 6 (1080/16 - 1 = 66)
+                  // chroma_format_idc = 1 (YUV420) - encoded as ue(v)
+                  // pic_width_in_mbs_minus1 = 9 (1920/16 - 1 = 119)
+                  // pic_height_in_map_units_minus1 = 6 (1080/16 - 1 = 66)
 
     let result = parse_sps(&data[4..]);
     // May fail due to incomplete bitstream, but should not panic
@@ -2032,7 +2075,12 @@ fn test_parse_avc_quick_info_extraction() {
     assert!(result.is_ok());
     let info = result.unwrap();
     // width/height are Option<u32>, profile is Option<u8>
-    assert!(info.width.is_some() || info.height.is_some() || info.profile.is_some() || info.nal_count > 0);
+    assert!(
+        info.width.is_some()
+            || info.height.is_some()
+            || info.profile.is_some()
+            || info.nal_count > 0
+    );
 }
 
 #[test]
@@ -2182,7 +2230,7 @@ fn test_parse_avc_with_embedded_nulls() {
     data[1] = 0x00;
     data[2] = 0x01; // Start code
     data[3] = 0x00; // Embedded null in NAL header position
-    // Rest is nulls
+                    // Rest is nulls
     for i in 4..100 {
         data[i] = 0x00;
     }
@@ -2225,7 +2273,7 @@ fn test_parse_avc_with_unicode_bytes() {
 fn test_parse_nal_header_with_forbidden_bit_set() {
     // Test NAL header parser with forbidden_zero_bit set
     let result = parse_nal_header(0x80); // forbidden_zero_bit = 1
-    // Should return error - forbidden bit must be 0
+                                         // Should return error - forbidden bit must be 0
     assert!(result.is_err());
     if let Err(e) = result {
         assert!(format!("{}", e).contains("forbidden"));
@@ -2342,7 +2390,7 @@ fn test_extract_qp_grid_with_empty_nal_units() {
         vui_parameters: None,
     };
     let result = extract_qp_grid(nal_units, &sps, 26); // Valid base QP
-    // Empty NAL units should return error or empty grid
+                                                       // Empty NAL units should return error or empty grid
     assert!(result.is_ok() || result.is_err());
 }
 

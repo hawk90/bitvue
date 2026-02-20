@@ -1,3 +1,14 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Edge case tests for HEVC stream parsing
 use bitvue_hevc::parse_hevc;
 
@@ -64,10 +75,7 @@ fn test_parse_hevc_all_ones() {
 #[test]
 fn test_parse_hevc_consecutive_start_codes() {
     let data = [
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01,
     ];
     let result = parse_hevc(&data);
     assert!(result.is_ok());
@@ -76,9 +84,9 @@ fn test_parse_hevc_consecutive_start_codes() {
 #[test]
 fn test_parse_hevc_mixed_start_code_lengths() {
     let data = [
-        0x00, 0x00, 0x01,     // 3-byte
+        0x00, 0x00, 0x01, // 3-byte
         0x00, 0x00, 0x00, 0x01, // 4-byte
-        0x00, 0x00, 0x01,     // 3-byte
+        0x00, 0x00, 0x01, // 3-byte
     ];
     let result = parse_hevc(&data);
     assert!(result.is_ok());

@@ -1,7 +1,7 @@
 //! MPEG-2 Video sequence header and extension parsing.
 
-use crate::error::{Mpeg2Error, Result};
 use crate::bitreader::BitReader;
+use crate::error::{Mpeg2Error, Result};
 use serde::{Deserialize, Serialize};
 
 /// Chroma format.
@@ -154,7 +154,7 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
     const MIN_MPEG2_DIMENSION: u16 = 1;
 
     let horizontal_size_value = reader.read_bits(12)? as u16;
-    if horizontal_size_value < MIN_MPEG2_DIMENSION || horizontal_size_value > MAX_MPEG2_DIMENSION {
+    if !(MIN_MPEG2_DIMENSION..=MAX_MPEG2_DIMENSION).contains(&horizontal_size_value) {
         return Err(Mpeg2Error::InvalidSequenceHeader(format!(
             "horizontal_size_value {} must be between {} and {}",
             horizontal_size_value, MIN_MPEG2_DIMENSION, MAX_MPEG2_DIMENSION
@@ -162,7 +162,7 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
     }
 
     let vertical_size_value = reader.read_bits(12)? as u16;
-    if vertical_size_value < MIN_MPEG2_DIMENSION || vertical_size_value > MAX_MPEG2_DIMENSION {
+    if !(MIN_MPEG2_DIMENSION..=MAX_MPEG2_DIMENSION).contains(&vertical_size_value) {
         return Err(Mpeg2Error::InvalidSequenceHeader(format!(
             "vertical_size_value {} must be between {} and {}",
             vertical_size_value, MIN_MPEG2_DIMENSION, MAX_MPEG2_DIMENSION

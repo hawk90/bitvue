@@ -22,21 +22,12 @@ pub struct ExportResult {
 /// Export configuration options
 ///
 /// Groups related export options to reduce function parameter count.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ExportConfig {
     /// Optional frame range to export (start, end indices)
     pub range: Option<(u64, u64)>,
     /// Whether to format JSON output with pretty printing
     pub pretty: bool,
-}
-
-impl Default for ExportConfig {
-    fn default() -> Self {
-        Self {
-            range: None,
-            pretty: false,
-        }
-    }
 }
 
 /// Quality metrics data

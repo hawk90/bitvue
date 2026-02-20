@@ -5,10 +5,10 @@
  * in various formats (CSV, JSON, PDF).
  */
 
-import { invoke } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 
-export type ExportFormat = 'csv' | 'json' | 'txt' | 'pdf';
+export type ExportFormat = "csv" | "json" | "txt" | "pdf";
 
 export interface ExportOptions {
   format: ExportFormat;
@@ -60,86 +60,102 @@ export interface AnalysisReportData {
 function escapeHtml(unsafe: string | number): string {
   const str = String(unsafe);
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /**
  * Export frames to CSV format
  */
-export async function exportFramesToCsv(frames: FrameExportData[]): Promise<string> {
+export async function exportFramesToCsv(
+  frames: FrameExportData[],
+): Promise<string> {
   const csvContent = [
-    'Frame,Type,Size,POC,PTS,KeyFrame,TemporalLayer,SpatialLayer,RefFrames',
-    ...frames.map(f => [
-      f.frame_index,
-      f.frame_type,
-      f.size,
-      f.poc ?? '',
-      f.pts ?? '',
-      f.key_frame ? 'Y' : 'N',
-      f.temporal_id ?? '',
-      f.spatial_id ?? '',
-      f.ref_frames?.join(';') ?? ''
-    ].join(','))
-  ].join('\n');
+    "Frame,Type,Size,POC,PTS,KeyFrame,TemporalLayer,SpatialLayer,RefFrames",
+    ...frames.map((f) =>
+      [
+        f.frame_index,
+        f.frame_type,
+        f.size,
+        f.poc ?? "",
+        f.pts ?? "",
+        f.key_frame ? "Y" : "N",
+        f.temporal_id ?? "",
+        f.spatial_id ?? "",
+        f.ref_frames?.join(";") ?? "",
+      ].join(","),
+    ),
+  ].join("\n");
 
   const filePath = await save({
-    defaultPath: 'frames.csv',
-    filters: [{
-      name: 'CSV',
-      extensions: ['csv']
-    }]
+    defaultPath: "frames.csv",
+    filters: [
+      {
+        name: "CSV",
+        extensions: ["csv"],
+      },
+    ],
   });
 
-  if (!filePath) throw new Error('No file path selected');
+  if (!filePath) throw new Error("No file path selected");
 
   // Use Tauri command to write file
-  await invoke('export_frames_csv', { outputPath: filePath });
+  await invoke("export_frames_csv", { outputPath: filePath });
   return filePath;
 }
 
 /**
  * Export frames to JSON format
  */
-export async function exportFramesToJson(frames: FrameExportData[], metadata: {
-  codec: string;
-  width: number;
-  height: number;
-}): Promise<string> {
+export async function exportFramesToJson(
+  frames: FrameExportData[],
+  metadata: {
+    codec: string;
+    width: number;
+    height: number;
+  },
+): Promise<string> {
   const filePath = await save({
-    defaultPath: 'frames.json',
-    filters: [{
-      name: 'JSON',
-      extensions: ['json']
-    }]
+    defaultPath: "frames.json",
+    filters: [
+      {
+        name: "JSON",
+        extensions: ["json"],
+      },
+    ],
   });
 
-  if (!filePath) throw new Error('No file path selected');
+  if (!filePath) throw new Error("No file path selected");
 
-  await invoke('export_frames_json', { outputPath: filePath });
+  await invoke("export_frames_json", { outputPath: filePath });
   return filePath;
 }
 
 /**
  * Export analysis report to text format
  */
-export async function exportAnalysisReport(data: AnalysisReportData, includeSyntax: boolean = false): Promise<string> {
+export async function exportAnalysisReport(
+  data: AnalysisReportData,
+  includeSyntax: boolean = false,
+): Promise<string> {
   const filePath = await save({
-    defaultPath: 'analysis_report.txt',
-    filters: [{
-      name: 'Text',
-      extensions: ['txt']
-    }]
+    defaultPath: "analysis_report.txt",
+    filters: [
+      {
+        name: "Text",
+        extensions: ["txt"],
+      },
+    ],
   });
 
-  if (!filePath) throw new Error('No file path selected');
+  if (!filePath) throw new Error("No file path selected");
 
-  await invoke('export_analysis_report', {
+  await invoke("export_analysis_report", {
     outputPath: filePath,
-    includeSyntax
+    includeSyntax,
   });
   return filePath;
 }
@@ -147,12 +163,14 @@ export async function exportAnalysisReport(data: AnalysisReportData, includeSynt
 /**
  * Generate analysis report data from frames
  */
-export function generateAnalysisReport(frames: FrameExportData[]): AnalysisReportData {
-  const iFrames = frames.filter(f => f.frame_type === 'I').length;
-  const pFrames = frames.filter(f => f.frame_type === 'P').length;
-  const bFrames = frames.filter(f => f.frame_type === 'B').length;
+export function generateAnalysisReport(
+  frames: FrameExportData[],
+): AnalysisReportData {
+  const iFrames = frames.filter((f) => f.frame_type === "I").length;
+  const pFrames = frames.filter((f) => f.frame_type === "P").length;
+  const bFrames = frames.filter((f) => f.frame_type === "B").length;
 
-  const sizes = frames.map(f => f.size);
+  const sizes = frames.map((f) => f.size);
   const totalSize = sizes.reduce((a, b) => a + b, 0);
   const avgSize = totalSize / frames.length;
   const maxSize = Math.max(...sizes);
@@ -161,7 +179,7 @@ export function generateAnalysisReport(frames: FrameExportData[]): AnalysisRepor
   // GOP analysis
   const gopStarts: number[] = [];
   frames.forEach((f, idx) => {
-    if (f.frame_type === 'I') {
+    if (f.frame_type === "I") {
       gopStarts.push(idx);
     }
   });
@@ -176,7 +194,7 @@ export function generateAnalysisReport(frames: FrameExportData[]): AnalysisRepor
   }
 
   return {
-    codec: 'Unknown',
+    codec: "Unknown",
     width: 1920,
     height: 1080,
     total_frames: frames.length,
@@ -201,11 +219,13 @@ export function generateAnalysisReport(frames: FrameExportData[]): AnalysisRepor
 /**
  * Export to PDF (generates HTML then prints)
  */
-export async function exportToPdf(reportData: AnalysisReportData): Promise<void> {
+export async function exportToPdf(
+  reportData: AnalysisReportData,
+): Promise<void> {
   const reportContent = generateHtmlReport(reportData);
 
   // Create a new window with the report
-  const printWindow = window.open('', '_blank');
+  const printWindow = window.open("", "_blank");
   if (printWindow) {
     printWindow.document.write(reportContent);
     printWindow.document.close();
@@ -236,16 +256,30 @@ function generateHtmlReport(data: AnalysisReportData): string {
   const safeAvgGopSize = escapeHtml(data.gop_structure.average_size);
 
   // Calculate percentages safely
-  const iPct = data.total_frames > 0
-    ? ((data.frame_type_distribution.i_frames / data.total_frames) * 100).toFixed(1)
-    : '0.0';
-  const pPct = data.total_frames > 0
-    ? ((data.frame_type_distribution.p_frames / data.total_frames) * 100).toFixed(1)
-    : '0.0';
-  const bPct = data.total_frames > 0
-    ? ((data.frame_type_distribution.b_frames / data.total_frames) * 100).toFixed(1)
-    : '0.0';
-  const safeMb = escapeHtml((data.size_statistics.total / 1024 / 1024).toFixed(2));
+  const iPct =
+    data.total_frames > 0
+      ? (
+          (data.frame_type_distribution.i_frames / data.total_frames) *
+          100
+        ).toFixed(1)
+      : "0.0";
+  const pPct =
+    data.total_frames > 0
+      ? (
+          (data.frame_type_distribution.p_frames / data.total_frames) *
+          100
+        ).toFixed(1)
+      : "0.0";
+  const bPct =
+    data.total_frames > 0
+      ? (
+          (data.frame_type_distribution.b_frames / data.total_frames) *
+          100
+        ).toFixed(1)
+      : "0.0";
+  const safeMb = escapeHtml(
+    (data.size_statistics.total / 1024 / 1024).toFixed(2),
+  );
 
   return `
 <!DOCTYPE html>

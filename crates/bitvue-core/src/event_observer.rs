@@ -525,6 +525,11 @@ impl HistoryObserver {
         let history = self.history.lock().unwrap();
         history.len()
     }
+
+    /// Check if history is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl Default for HistoryObserver {
@@ -909,7 +914,7 @@ mod tests {
     #[test]
     fn test_event_bus_publish() {
         let bus = EventBus::new();
-        let history = HistoryObserver::new();
+        let _history = HistoryObserver::new();
 
         // Subscribe a second observer that we can inspect
         bus.subscribe(Box::new(LoggingObserver::new()));

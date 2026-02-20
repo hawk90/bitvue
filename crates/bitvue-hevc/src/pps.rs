@@ -191,6 +191,7 @@ impl Pps {
 }
 
 /// Parse PPS from RBSP data.
+#[allow(clippy::field_reassign_with_default)]
 pub fn parse_pps(data: &[u8]) -> Result<Pps> {
     let mut reader = BitReader::new(data);
     let mut pps = Pps::default();
@@ -264,16 +265,21 @@ pub fn parse_pps(data: &[u8]) -> Result<Pps> {
     pps.entropy_coding_sync_enabled_flag = reader.read_bit()?;
 
     if pps.tiles_enabled_flag {
-        let mut tile_config = TileConfig::default();
-
         // num_tile_columns_minus1 (ue(v))
-        tile_config.num_tile_columns_minus1 = reader.read_ue()? as u16;
+        let num_tile_columns_minus1 = reader.read_ue()? as u16;
 
         // num_tile_rows_minus1 (ue(v))
-        tile_config.num_tile_rows_minus1 = reader.read_ue()? as u16;
+        let num_tile_rows_minus1 = reader.read_ue()? as u16;
 
         // uniform_spacing_flag (1 bit)
-        tile_config.uniform_spacing_flag = reader.read_bit()?;
+        let uniform_spacing_flag = reader.read_bit()?;
+
+        let mut tile_config = TileConfig {
+            num_tile_columns_minus1,
+            num_tile_rows_minus1,
+            uniform_spacing_flag,
+            ..Default::default()
+        };
 
         if !tile_config.uniform_spacing_flag {
             // column_width_minus1

@@ -5,7 +5,7 @@
  * Provides consistent behavior for dropdown menus across the application
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from "react";
 
 export interface UseDropdownOptions {
   /** Initial open state */
@@ -54,7 +54,9 @@ export interface UseDropdownReturn {
  * );
  * ```
  */
-export function useDropdown(options: UseDropdownOptions = {}): UseDropdownReturn {
+export function useDropdown(
+  options: UseDropdownOptions = {},
+): UseDropdownReturn {
   const {
     initialOpen = false,
     onOpen,
@@ -82,7 +84,7 @@ export function useDropdown(options: UseDropdownOptions = {}): UseDropdownReturn
   }, [isOpen, onClose]);
 
   const toggle = useCallback(() => {
-    setIsOpen(prev => {
+    setIsOpen((prev) => {
       if (!prev) {
         onOpen?.();
       } else {
@@ -108,8 +110,8 @@ export function useDropdown(options: UseDropdownOptions = {}): UseDropdownReturn
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, closeOnClickOutside, close]);
 
   // Handle escape key
@@ -117,13 +119,13 @@ export function useDropdown(options: UseDropdownOptions = {}): UseDropdownReturn
     if (!isOpen || !closeOnEscape) return;
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         close();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, closeOnEscape, close]);
 
   // Focus trap when open
@@ -133,7 +135,7 @@ export function useDropdown(options: UseDropdownOptions = {}): UseDropdownReturn
     const focusableElements = dropdownRef.current.querySelectorAll<
       HTMLElement | SVGElement
     >(
-      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
     );
 
     if (focusableElements.length > 0) {
@@ -158,7 +160,10 @@ export function useDropdown(options: UseDropdownOptions = {}): UseDropdownReturn
 export function useControlledDropdown(
   isOpen: boolean,
   onClose: () => void,
-  options: Pick<UseDropdownOptions, 'closeOnClickOutside' | 'closeOnEscape'> = {}
+  options: Pick<
+    UseDropdownOptions,
+    "closeOnClickOutside" | "closeOnEscape"
+  > = {},
 ): UseDropdownReturn {
   const { closeOnClickOutside = true, closeOnEscape = true } = options;
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -184,8 +189,8 @@ export function useControlledDropdown(
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, closeOnClickOutside, close]);
 
   // Handle escape key
@@ -193,13 +198,13 @@ export function useControlledDropdown(
     if (!isOpen || !closeOnEscape) return;
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         close();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, closeOnEscape, close]);
 
   return {

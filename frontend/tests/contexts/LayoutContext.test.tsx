@@ -3,9 +3,13 @@
  * Tests layout context provider for panel management
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { LayoutProvider, useLayout, DEFAULT_LAYOUT } from '@/contexts/LayoutContext';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import {
+  LayoutProvider,
+  useLayout,
+  DEFAULT_LAYOUT,
+} from "@/contexts/LayoutContext";
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -24,11 +28,11 @@ const localStorageMock = (() => {
   };
 })();
 
-Object.defineProperty(global, 'localStorage', {
+Object.defineProperty(global, "localStorage", {
   value: localStorageMock,
 });
 
-describe('LayoutContext', () => {
+describe("LayoutContext", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <LayoutProvider>{children}</LayoutProvider>
   );
@@ -37,53 +41,59 @@ describe('LayoutContext', () => {
     localStorageMock.clear();
   });
 
-  it('should provide default layout state', () => {
+  it("should provide default layout state", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     expect(result.current.layoutState).toBeDefined();
-    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
-    expect(result.current.layoutState.topPanelSize).toBe(DEFAULT_LAYOUT.topPanelSize);
-    expect(result.current.layoutState.bottomPanelSizes).toEqual(DEFAULT_LAYOUT.bottomPanelSizes);
+    expect(result.current.layoutState.leftPanelSize).toBe(
+      DEFAULT_LAYOUT.leftPanelSize,
+    );
+    expect(result.current.layoutState.topPanelSize).toBe(
+      DEFAULT_LAYOUT.topPanelSize,
+    );
+    expect(result.current.layoutState.bottomPanelSizes).toEqual(
+      DEFAULT_LAYOUT.bottomPanelSizes,
+    );
   });
 
-  it('should have resetLayout function', () => {
+  it("should have resetLayout function", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.resetLayout).toBe('function');
+    expect(typeof result.current.resetLayout).toBe("function");
   });
 
-  it('should have saveLayout function', () => {
+  it("should have saveLayout function", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.saveLayout).toBe('function');
+    expect(typeof result.current.saveLayout).toBe("function");
   });
 
-  it('should have loadLayout function', () => {
+  it("should have loadLayout function", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.loadLayout).toBe('function');
+    expect(typeof result.current.loadLayout).toBe("function");
   });
 
-  it('should have updateLeftPanel function', () => {
+  it("should have updateLeftPanel function", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.updateLeftPanel).toBe('function');
+    expect(typeof result.current.updateLeftPanel).toBe("function");
   });
 
-  it('should have updateTopPanel function', () => {
+  it("should have updateTopPanel function", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.updateTopPanel).toBe('function');
+    expect(typeof result.current.updateTopPanel).toBe("function");
   });
 
-  it('should have updateBottomPanel function', () => {
+  it("should have updateBottomPanel function", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
-    expect(typeof result.current.updateBottomPanel).toBe('function');
+    expect(typeof result.current.updateBottomPanel).toBe("function");
   });
 });
 
-describe('LayoutContext panel management', () => {
+describe("LayoutContext panel management", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <LayoutProvider>{children}</LayoutProvider>
   );
@@ -92,7 +102,7 @@ describe('LayoutContext panel management', () => {
     localStorageMock.clear();
   });
 
-  it('should update left panel size', () => {
+  it("should update left panel size", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -102,7 +112,7 @@ describe('LayoutContext panel management', () => {
     expect(result.current.layoutState.leftPanelSize).toBe(50);
   });
 
-  it('should update top panel size', () => {
+  it("should update top panel size", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -112,7 +122,7 @@ describe('LayoutContext panel management', () => {
     expect(result.current.layoutState.topPanelSize).toBe(30);
   });
 
-  it('should update bottom panel size at specific index', () => {
+  it("should update bottom panel size at specific index", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -122,7 +132,7 @@ describe('LayoutContext panel management', () => {
     expect(result.current.layoutState.bottomPanelSizes[0]).toBe(50);
   });
 
-  it('should update multiple bottom panel sizes', () => {
+  it("should update multiple bottom panel sizes", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -135,7 +145,7 @@ describe('LayoutContext panel management', () => {
   });
 });
 
-describe('LayoutContext resetLayout', () => {
+describe("LayoutContext resetLayout", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <LayoutProvider>{children}</LayoutProvider>
   );
@@ -144,7 +154,7 @@ describe('LayoutContext resetLayout', () => {
     localStorageMock.clear();
   });
 
-  it('should reset to default layout', () => {
+  it("should reset to default layout", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -159,12 +169,18 @@ describe('LayoutContext resetLayout', () => {
       result.current.resetLayout();
     });
 
-    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
-    expect(result.current.layoutState.topPanelSize).toBe(DEFAULT_LAYOUT.topPanelSize);
-    expect(result.current.layoutState.bottomPanelSizes).toEqual(DEFAULT_LAYOUT.bottomPanelSizes);
+    expect(result.current.layoutState.leftPanelSize).toBe(
+      DEFAULT_LAYOUT.leftPanelSize,
+    );
+    expect(result.current.layoutState.topPanelSize).toBe(
+      DEFAULT_LAYOUT.topPanelSize,
+    );
+    expect(result.current.layoutState.bottomPanelSizes).toEqual(
+      DEFAULT_LAYOUT.bottomPanelSizes,
+    );
   });
 
-  it('should clear localStorage on reset', () => {
+  it("should clear localStorage on reset", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -172,17 +188,17 @@ describe('LayoutContext resetLayout', () => {
       result.current.saveLayout();
     });
 
-    expect(localStorageMock.getItem('bitvue-layout')).toBeDefined();
+    expect(localStorageMock.getItem("bitvue-layout")).toBeDefined();
 
     act(() => {
       result.current.resetLayout();
     });
 
-    expect(localStorageMock.getItem('bitvue-layout')).toBeNull();
+    expect(localStorageMock.getItem("bitvue-layout")).toBeNull();
   });
 });
 
-describe('LayoutContext persistence', () => {
+describe("LayoutContext persistence", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <LayoutProvider>{children}</LayoutProvider>
   );
@@ -191,8 +207,8 @@ describe('LayoutContext persistence', () => {
     localStorageMock.clear();
   });
 
-  it('should save layout to localStorage', () => {
-    const setItemSpy = vi.spyOn(localStorageMock, 'setItem');
+  it("should save layout to localStorage", () => {
+    const setItemSpy = vi.spyOn(localStorageMock, "setItem");
 
     const { result } = renderHook(() => useLayout(), { wrapper });
 
@@ -209,7 +225,7 @@ describe('LayoutContext persistence', () => {
 
     expect(setItemSpy).toHaveBeenCalled();
 
-    const saved = localStorageMock.getItem('bitvue-layout');
+    const saved = localStorageMock.getItem("bitvue-layout");
     expect(saved).toBeDefined();
 
     const parsed = JSON.parse(saved!);
@@ -218,14 +234,14 @@ describe('LayoutContext persistence', () => {
     setItemSpy.mockRestore();
   });
 
-  it('should load layout from localStorage', () => {
+  it("should load layout from localStorage", () => {
     const savedLayout = {
       leftPanelSize: 70,
       topPanelSize: 25,
       bottomPanelSizes: [20, 30, 50],
     };
 
-    localStorageMock.setItem('bitvue-layout', JSON.stringify(savedLayout));
+    localStorageMock.setItem("bitvue-layout", JSON.stringify(savedLayout));
 
     const { result } = renderHook(() => useLayout(), { wrapper });
 
@@ -238,31 +254,33 @@ describe('LayoutContext persistence', () => {
     expect(result.current.layoutState.bottomPanelSizes).toEqual([20, 30, 50]);
   });
 
-  it('should not load layout in test environment on mount', () => {
+  it("should not load layout in test environment on mount", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     // Should have defaults, not anything from localStorage
-    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
+    expect(result.current.layoutState.leftPanelSize).toBe(
+      DEFAULT_LAYOUT.leftPanelSize,
+    );
   });
 });
 
-describe('LayoutContext error handling', () => {
-  it('should throw error when useLayout used outside provider', () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+describe("LayoutContext error handling", () => {
+  it("should throw error when useLayout used outside provider", () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     expect(() => {
       renderHook(() => useLayout());
-    }).toThrow('useLayout must be used within LayoutProvider');
+    }).toThrow("useLayout must be used within LayoutProvider");
 
     consoleSpy.mockRestore();
   });
 
-  it('should handle corrupted localStorage data gracefully', () => {
+  it("should handle corrupted localStorage data gracefully", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <LayoutProvider>{children}</LayoutProvider>
     );
 
-    localStorageMock.setItem('bitvue-layout', 'invalid json');
+    localStorageMock.setItem("bitvue-layout", "invalid json");
 
     const { result } = renderHook(() => useLayout(), { wrapper });
 
@@ -275,10 +293,10 @@ describe('LayoutContext error handling', () => {
 
     // Should still have valid layout state
     expect(result.current.layoutState).toBeDefined();
-    expect(typeof result.current.layoutState.leftPanelSize).toBe('number');
+    expect(typeof result.current.layoutState.leftPanelSize).toBe("number");
   });
 
-  it('should handle missing localStorage gracefully', () => {
+  it("should handle missing localStorage gracefully", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <LayoutProvider>{children}</LayoutProvider>
     );
@@ -291,11 +309,13 @@ describe('LayoutContext error handling', () => {
     });
 
     // Should have default layout
-    expect(result.current.layoutState.leftPanelSize).toBe(DEFAULT_LAYOUT.leftPanelSize);
+    expect(result.current.layoutState.leftPanelSize).toBe(
+      DEFAULT_LAYOUT.leftPanelSize,
+    );
   });
 });
 
-describe('LayoutContext edge cases', () => {
+describe("LayoutContext edge cases", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <LayoutProvider>{children}</LayoutProvider>
   );
@@ -304,7 +324,7 @@ describe('LayoutContext edge cases', () => {
     localStorageMock.clear();
   });
 
-  it('should handle zero panel sizes', () => {
+  it("should handle zero panel sizes", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -318,7 +338,7 @@ describe('LayoutContext edge cases', () => {
     expect(result.current.layoutState.bottomPanelSizes[0]).toBe(0);
   });
 
-  it('should handle large panel sizes', () => {
+  it("should handle large panel sizes", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -332,7 +352,7 @@ describe('LayoutContext edge cases', () => {
     expect(result.current.layoutState.bottomPanelSizes[0]).toBe(100);
   });
 
-  it('should handle rapid updates to same panel', () => {
+  it("should handle rapid updates to same panel", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     act(() => {
@@ -345,7 +365,7 @@ describe('LayoutContext edge cases', () => {
     expect(result.current.layoutState.leftPanelSize).toBe(40);
   });
 
-  it('should preserve other panel sizes when updating one', () => {
+  it("should preserve other panel sizes when updating one", () => {
     const { result } = renderHook(() => useLayout(), { wrapper });
 
     const originalTop = result.current.layoutState.topPanelSize;

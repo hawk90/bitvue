@@ -24,3 +24,8 @@ too-many-lines-threshold = 200
 
 # Enforce explicit field initialization
 # avoid-breaking-exported-api = true
+
+# Allow specific lints for known safe patterns
+allow = [
+    "clippy::uninit_vec",  # Safe when using set_len() before writing data
+]

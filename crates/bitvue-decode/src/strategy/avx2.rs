@@ -328,13 +328,7 @@ unsafe fn store_rgb_interleaved(rgb: &mut [u8], offset: usize, r: __m256i, g: __
     let rg_low = _mm_unpacklo_epi8(r_low, g_low); // R0,G0,R1,G1,R2,G2,R3,G3
     let rg_high = _mm_unpackhi_epi8(r_low, g_low); // R4,G4,R5,G5,R6,G6,R7,G7
 
-    // Step 2: Create B pairs for low and high halves
-    // b_low: B0,B1,B2,B3,B4,B5,B6,B7
-    // We need to duplicate each B value: B0,B0,B1,B1,B2,B2,B3,B3
-    let b_low_pairs = _mm_unpacklo_epi8(b_low, b_low); // B0,B0,B1,B1,B2,B2,B3,B3
-    let b_high_pairs = _mm_unpackhi_epi8(b_low, b_low); // B4,B4,B5,B5,B6,B6,B7,B7
-
-    // Step 3: Now we have:
+    // Step 2: Now we have:
     // rg_low:    R0,G0,R1,G1,R2,G2,R3,G3
     // b_low:     B0,B1,B2,B3,B4,B5,B6,B7
     //
@@ -410,7 +404,9 @@ unsafe fn interleave_rgb4(rg: __m128i, b: __m128i) -> __m128i {
 
     // Shuffle pattern for low half: 0,1,16,2,3,17
     // Indices 0-7 reference rg, 8-15 reference b0_3 (8 is added)
-    let shuffle_mask_low = _mm_setr_epi8(0, 1, 16, 2, 3, 17, 4, 5, 18, 6, 7, 19, -128, -128, -128, -128);
+    let shuffle_mask_low = _mm_setr_epi8(
+        0, 1, 16, 2, 3, 17, 4, 5, 18, 6, 7, 19, -128, -128, -128, -128,
+    );
     let shuffled_low = _mm_shuffle_epi8(_mm_unpacklo_epi8(rg, b0_3), shuffle_mask_low);
 
     shuffled_low
@@ -1093,8 +1089,8 @@ mod tests {
         let strategy = Avx2Strategy::new();
         let caps = strategy.capabilities();
         assert_eq!(caps.speedup_factor, 4.5);
-        assert!(!caps.supports_10bit); // Currently only 8-bit supported
-        assert!(!caps.supports_12bit); // Currently only 8-bit supported
+        assert!(caps.supports_10bit); // 10-bit support added
+        assert!(caps.supports_12bit); // 12-bit support added
         assert!(!caps.is_hardware_accelerated);
     }
 
@@ -1105,7 +1101,7 @@ mod tests {
     }
 
     #[test]
-    fn test_avx2_unsupported_bit_depth() {
+    fn test_avx2_supported_bit_depths() {
         let strategy = Avx2Strategy::new();
 
         let y_plane = vec![0; 100];
@@ -1113,11 +1109,15 @@ mod tests {
         let v_plane = vec![128; 25];
         let mut rgb = vec![0u8; 300];
 
-        // 10-bit not supported by AVX2 yet
-        let result =
-            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 10);
+        // 8-bit is supported
+        let result_8bit =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 8);
+        assert!(result_8bit.is_ok());
 
-        assert!(result.is_err());
+        // 10-bit is now supported
+        let result_10bit =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 10);
+        assert!(result_10bit.is_ok());
     }
 
     #[test]

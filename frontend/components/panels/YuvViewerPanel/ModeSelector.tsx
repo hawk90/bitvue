@@ -4,8 +4,8 @@
  * Dropdown for selecting visualization mode (F1-F7)
  */
 
-import { memo } from 'react';
-import { MODES, type VisualizationMode } from '../../../contexts/ModeContext';
+import { memo } from "react";
+import { MODES, type VisualizationMode } from "../../../contexts/ModeContext";
 
 interface ModeSelectorProps {
   currentMode: VisualizationMode;
@@ -25,7 +25,7 @@ export const ModeSelector = memo(function ModeSelector({
         className="yuv-mode-select"
         title="Visualization Mode"
       >
-        {MODES.map(mode => (
+        {MODES.map((mode) => (
           <option key={mode.key} value={mode.key}>
             {mode.shortcut} - {mode.label}
           </option>

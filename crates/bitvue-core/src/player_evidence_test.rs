@@ -3,6 +3,7 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_transformer() -> CoordinateTransformer {
     use crate::coordinate_transform::{ScreenRect, ZoomMode};
     CoordinateTransformer::new(
@@ -13,18 +14,22 @@ fn create_test_transformer() -> CoordinateTransformer {
     )
 }
 
+#[allow(dead_code)]
 fn create_test_evidence_chain() -> EvidenceChain {
     EvidenceChain::new()
 }
 
+#[allow(dead_code)]
 fn create_test_manager() -> PlayerEvidenceManager {
     PlayerEvidenceManager::new(create_test_transformer(), create_test_evidence_chain())
 }
 
+#[allow(dead_code)]
 fn create_test_screen_px() -> ScreenPx {
     ScreenPx::new(100.0, 100.0)
 }
 
+#[allow(dead_code)]
 fn create_test_block_idx() -> BlockIdx {
     BlockIdx { col: 5, row: 3 }
 }
@@ -34,6 +39,7 @@ fn create_test_block_idx() -> BlockIdx {
 // ============================================================================
 #[cfg(test)]
 mod manager_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -186,6 +192,7 @@ mod manager_tests {
 // ============================================================================
 #[cfg(test)]
 mod evidence_integration_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -246,6 +253,7 @@ mod evidence_integration_tests {
 // ============================================================================
 #[cfg(test)]
 mod id_generation_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

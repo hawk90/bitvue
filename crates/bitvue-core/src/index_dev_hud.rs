@@ -344,6 +344,19 @@ impl IndexDevHUD {
     }
 }
 
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    dead_code,
+    unused_comparisons,
+    unused_must_use,
+    hidden_glob_reexports,
+    unreachable_code,
+    non_camel_case_types,
+    unused_parens,
+    unused_assignments
+)]
 #[cfg(test)]
 mod tests {
     include!("index_dev_hud_test.rs");

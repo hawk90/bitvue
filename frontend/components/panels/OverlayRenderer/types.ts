@@ -4,17 +4,17 @@
  * Type definitions for the mode overlay rendering system
  */
 
-import type { VisualizationMode } from '../../../contexts/ModeContext';
-import type { FrameInfo } from '../../../types/video';
+import type { VisualizationMode } from "../../../contexts/ModeContext";
+import type { FrameInfo } from "../../../types/video";
 
 /**
  * Color stop for gradient interpolation
  */
 export interface ColorStop {
-  t: number;      // Position (0.0 to 1.0)
-  r: number;      // Red component (0-255)
-  g: number;      // Green component (0-255)
-  b: number;      // Blue component (0-255)
+  t: number; // Position (0.0 to 1.0)
+  r: number; // Red component (0-255)
+  g: number; // Green component (0-255)
+  b: number; // Blue component (0-255)
 }
 
 /**

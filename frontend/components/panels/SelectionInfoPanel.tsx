@@ -8,10 +8,10 @@
  * - Current selection analysis
  */
 
-import { useFrameData } from '../../contexts/FrameDataContext';
-import { useCurrentFrame } from '../../contexts/CurrentFrameContext';
-import { memo } from 'react';
-import './SelectionInfoPanel.css';
+import { useFrameData } from "../../contexts/FrameDataContext";
+import { useCurrentFrame } from "../../contexts/CurrentFrameContext";
+import { memo } from "react";
+import "./SelectionInfoPanel.css";
 
 interface SectionProps {
   title: string;
@@ -35,7 +35,7 @@ interface InfoRowProps {
 
 function InfoRow({ label, value, highlight }: InfoRowProps) {
   return (
-    <div className={`info-row ${highlight ? 'highlight' : ''}`}>
+    <div className={`info-row ${highlight ? "highlight" : ""}`}>
       <span className="info-label">{label}:</span>
       <span className="info-value">{value}</span>
     </div>
@@ -51,7 +51,7 @@ interface SelectionInfoPanelProps {
 export const SelectionInfoPanel = memo(function SelectionInfoPanel({
   width = 1920,
   height = 1080,
-  codec = 'AV1',
+  codec = "AV1",
 }: SelectionInfoPanelProps) {
   const { frames, getFrameStats } = useFrameData();
   const { currentFrameIndex } = useCurrentFrame();
@@ -67,20 +67,31 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
       <div className="selection-info-content">
         {/* Current Frame Section */}
         <InfoSection title="Current Frame">
-          <InfoRow label="Frame Index" value={currentFrame?.frame_index ?? 'N/A'} />
+          <InfoRow
+            label="Frame Index"
+            value={currentFrame?.frame_index ?? "N/A"}
+          />
           <InfoRow
             label="Frame Type"
             value={
               currentFrame ? (
-                <span className={`frame-type-badge frame-type-${currentFrame.frame_type.toLowerCase()}`}>
+                <span
+                  className={`frame-type-badge frame-type-${currentFrame.frame_type.toLowerCase()}`}
+                >
                   {currentFrame.frame_type}
                 </span>
-              ) : 'N/A'
+              ) : (
+                "N/A"
+              )
             }
           />
           <InfoRow
             label="Size"
-            value={currentFrame ? `${(currentFrame.size / 1024).toFixed(2)} KB` : 'N/A'}
+            value={
+              currentFrame
+                ? `${(currentFrame.size / 1024).toFixed(2)} KB`
+                : "N/A"
+            }
           />
           {currentFrame?.pts !== undefined && (
             <InfoRow label="PTS" value={currentFrame.pts} />
@@ -107,8 +118,14 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
         <InfoSection title="Stream Statistics">
           <InfoRow label="Total Frames" value={stats.totalFrames} highlight />
           <InfoRow label="Keyframes" value={stats.keyFrames} highlight />
-          <InfoRow label="Avg Size" value={`${(stats.avgSize / 1024).toFixed(2)} KB`} />
-          <InfoRow label="Total Size" value={`${(stats.totalSize / 1024 / 1024).toFixed(2)} MB`} />
+          <InfoRow
+            label="Avg Size"
+            value={`${(stats.avgSize / 1024).toFixed(2)} KB`}
+          />
+          <InfoRow
+            label="Total Size"
+            value={`${(stats.totalSize / 1024 / 1024).toFixed(2)} MB`}
+          />
         </InfoSection>
 
         {/* Frame Type Distribution */}
@@ -119,7 +136,9 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
               label={type}
               value={
                 <span className="frame-type-count">
-                  <span className={`frame-type-badge frame-type-${type.toLowerCase()}`}>
+                  <span
+                    className={`frame-type-badge frame-type-${type.toLowerCase()}`}
+                  >
                     {type}
                   </span>
                   <span className="frame-count">{count}</span>

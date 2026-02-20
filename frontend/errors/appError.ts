@@ -17,23 +17,23 @@
  */
 export enum ErrorCategory {
   /** Input validation failed */
-  Validation = 'VALIDATION',
+  Validation = "VALIDATION",
   /** File or resource not found */
-  NotFound = 'NOT_FOUND',
+  NotFound = "NOT_FOUND",
   /** Permission denied */
-  Permission = 'PERMISSION',
+  Permission = "PERMISSION",
   /** Parsing/decoding error */
-  Parse = 'PARSE',
+  Parse = "PARSE",
   /** I/O operation failed */
-  Io = 'IO',
+  Io = "IO",
   /** Network operation failed */
-  Network = 'NETWORK',
+  Network = "NETWORK",
   /** Codec-specific error */
-  Codec = 'CODEC',
+  Codec = "CODEC",
   /** Internal logic error */
-  Internal = 'INTERNAL',
+  Internal = "INTERNAL",
   /** Feature not implemented */
-  NotImplemented = 'NOT_IMPLEMENTED',
+  NotImplemented = "NOT_IMPLEMENTED",
 }
 
 /**
@@ -41,15 +41,15 @@ export enum ErrorCategory {
  */
 export function getCategoryDisplayName(category: ErrorCategory): string {
   const displayNames: Record<ErrorCategory, string> = {
-    [ErrorCategory.Validation]: 'Validation Error',
-    [ErrorCategory.NotFound]: 'Not Found',
-    [ErrorCategory.Permission]: 'Permission Denied',
-    [ErrorCategory.Parse]: 'Parse Error',
-    [ErrorCategory.Io]: 'I/O Error',
-    [ErrorCategory.Network]: 'Network Error',
-    [ErrorCategory.Codec]: 'Codec Error',
-    [ErrorCategory.Internal]: 'Internal Error',
-    [ErrorCategory.NotImplemented]: 'Not Implemented',
+    [ErrorCategory.Validation]: "Validation Error",
+    [ErrorCategory.NotFound]: "Not Found",
+    [ErrorCategory.Permission]: "Permission Denied",
+    [ErrorCategory.Parse]: "Parse Error",
+    [ErrorCategory.Io]: "I/O Error",
+    [ErrorCategory.Network]: "Network Error",
+    [ErrorCategory.Codec]: "Codec Error",
+    [ErrorCategory.Internal]: "Internal Error",
+    [ErrorCategory.NotImplemented]: "Not Implemented",
   };
   return displayNames[category];
 }
@@ -59,15 +59,15 @@ export function getCategoryDisplayName(category: ErrorCategory): string {
  */
 export function getCategoryIcon(category: ErrorCategory): string {
   const icons: Record<ErrorCategory, string> = {
-    [ErrorCategory.Validation]: '⚠️',
-    [ErrorCategory.NotFound]: '🔍',
-    [ErrorCategory.Permission]: '🔒',
-    [ErrorCategory.Parse]: '📄',
-    [ErrorCategory.Io]: '💾',
-    [ErrorCategory.Network]: '🌐',
-    [ErrorCategory.Codec]: '🎬',
-    [ErrorCategory.Internal]: '⚙️',
-    [ErrorCategory.NotImplemented]: '🚧',
+    [ErrorCategory.Validation]: "⚠️",
+    [ErrorCategory.NotFound]: "🔍",
+    [ErrorCategory.Permission]: "🔒",
+    [ErrorCategory.Parse]: "📄",
+    [ErrorCategory.Io]: "💾",
+    [ErrorCategory.Network]: "🌐",
+    [ErrorCategory.Codec]: "🎬",
+    [ErrorCategory.Internal]: "⚙️",
+    [ErrorCategory.NotImplemented]: "🚧",
   };
   return icons[category];
 }
@@ -80,50 +80,50 @@ export function getCategoryIcon(category: ErrorCategory): string {
  * Validation error codes
  */
 export const ValidationCodes = {
-  INVALID_PATH: 'VAL_001',
-  INVALID_RANGE: 'VAL_002',
-  MISSING_FIELD: 'VAL_003',
-  INVALID_TYPE: 'VAL_004',
+  INVALID_PATH: "VAL_001",
+  INVALID_RANGE: "VAL_002",
+  MISSING_FIELD: "VAL_003",
+  INVALID_TYPE: "VAL_004",
 } as const;
 
 /**
  * File not found error codes
  */
 export const NotFoundCodes = {
-  FILE_NOT_FOUND: 'NF_001',
-  STREAM_NOT_FOUND: 'NF_002',
-  FRAME_NOT_FOUND: 'NF_003',
-  CODEC_NOT_FOUND: 'NF_004',
+  FILE_NOT_FOUND: "NF_001",
+  STREAM_NOT_FOUND: "NF_002",
+  FRAME_NOT_FOUND: "NF_003",
+  CODEC_NOT_FOUND: "NF_004",
 } as const;
 
 /**
  * Parse error codes
  */
 export const ParseCodes = {
-  INVALID_HEADER: 'PARSE_001',
-  INVALID_SYNTAX: 'PARSE_002',
-  TRUNCATED_DATA: 'PARSE_003',
-  UNKNOWN_CODEC: 'PARSE_004',
+  INVALID_HEADER: "PARSE_001",
+  INVALID_SYNTAX: "PARSE_002",
+  TRUNCATED_DATA: "PARSE_003",
+  UNKNOWN_CODEC: "PARSE_004",
 } as const;
 
 /**
  * I/O error codes
  */
 export const IoCodes = {
-  READ_FAILED: 'IO_001',
-  WRITE_FAILED: 'IO_002',
-  OPEN_FAILED: 'IO_003',
-  CREATE_FAILED: 'IO_004',
+  READ_FAILED: "IO_001",
+  WRITE_FAILED: "IO_002",
+  OPEN_FAILED: "IO_003",
+  CREATE_FAILED: "IO_004",
 } as const;
 
 /**
  * Codec error codes
  */
 export const CodecCodes = {
-  UNSUPPORTED_CODEC: 'CODEC_001',
-  INVALID_BITSTREAM: 'CODEC_002',
-  DECODE_FAILED: 'CODEC_003',
-  MISSING_REFERENCE: 'CODEC_004',
+  UNSUPPORTED_CODEC: "CODEC_001",
+  INVALID_BITSTREAM: "CODEC_002",
+  DECODE_FAILED: "CODEC_003",
+  MISSING_REFERENCE: "CODEC_004",
 } as const;
 
 // =============================================================================
@@ -153,10 +153,10 @@ export function isAppError(obj: unknown): obj is AppError {
   const error = obj as AppError;
   return (
     error !== null &&
-    typeof error === 'object' &&
-    typeof error.category === 'string' &&
-    typeof error.code === 'string' &&
-    typeof error.message === 'string'
+    typeof error === "object" &&
+    typeof error.category === "string" &&
+    typeof error.code === "string" &&
+    typeof error.message === "string"
   );
 }
 
@@ -274,7 +274,7 @@ export function invalidPathError(path: string, reason: string): AppError {
   return validationError(
     ValidationCodes.INVALID_PATH,
     `Invalid file path: ${reason}`,
-    `Path: ${path}`
+    `Path: ${path}`,
   );
 }
 
@@ -282,29 +282,33 @@ export function invalidPathError(path: string, reason: string): AppError {
  * Create an error for file not found
  */
 export function fileNotFoundError(path: string): AppError {
-  return notFoundError(
-    NotFoundCodes.FILE_NOT_FOUND,
-    `File not found: ${path}`
-  );
+  return notFoundError(NotFoundCodes.FILE_NOT_FOUND, `File not found: ${path}`);
 }
 
 /**
  * Create an error for invalid frame index
  */
-export function invalidFrameIndexError(frame: number, maxFrame: number): AppError {
+export function invalidFrameIndexError(
+  frame: number,
+  maxFrame: number,
+): AppError {
   return validationError(
     ValidationCodes.INVALID_RANGE,
-    `Frame index ${frame} is out of range (max: ${maxFrame})`
+    `Frame index ${frame} is out of range (max: ${maxFrame})`,
   );
 }
 
 /**
  * Create an error for invalid byte range
  */
-export function invalidByteRangeError(start: number, end: number, fileSize: number): AppError {
+export function invalidByteRangeError(
+  start: number,
+  end: number,
+  fileSize: number,
+): AppError {
   return validationError(
     ValidationCodes.INVALID_RANGE,
-    `Invalid byte range: ${start}-${end} (file size: ${fileSize})`
+    `Invalid byte range: ${start}-${end} (file size: ${fileSize})`,
   );
 }
 
@@ -315,7 +319,7 @@ export function parseFailureError(codec: string, context: string): AppError {
   return parseError(
     ParseCodes.INVALID_SYNTAX,
     `Failed to parse ${codec} bitstream`,
-    context
+    context,
   );
 }
 
@@ -325,7 +329,7 @@ export function parseFailureError(codec: string, context: string): AppError {
 export function unsupportedCodecError(codec: string): AppError {
   return codecError(
     CodecCodes.UNSUPPORTED_CODEC,
-    `Unsupported codec: ${codec}`
+    `Unsupported codec: ${codec}`,
   );
 }
 
@@ -336,7 +340,7 @@ export function decodeFailureError(frame: number, reason: string): AppError {
   return codecError(
     CodecCodes.DECODE_FAILED,
     `Failed to decode frame ${frame}`,
-    reason
+    reason,
   );
 }
 
@@ -353,34 +357,38 @@ export function formatErrorForUI(error: AppError): string {
 
   const baseMessage = `${icon} ${categoryName}\n\n${error.message}`;
 
-  let helpText = '';
+  let helpText = "";
   switch (error.category) {
     case ErrorCategory.Validation:
-      helpText = '\n\n💡 Please check your input and try again.';
+      helpText = "\n\n💡 Please check your input and try again.";
       break;
     case ErrorCategory.NotFound:
-      helpText = '\n\n💡 The requested resource could not be found.';
+      helpText = "\n\n💡 The requested resource could not be found.";
       break;
     case ErrorCategory.Permission:
-      helpText = '\n\n💡 You don\'t have permission to access this resource.';
+      helpText = "\n\n💡 You don't have permission to access this resource.";
       break;
     case ErrorCategory.Parse:
-      helpText = '\n\n💡 The file could not be parsed. It may be corrupted or in an unsupported format.';
+      helpText =
+        "\n\n💡 The file could not be parsed. It may be corrupted or in an unsupported format.";
       break;
     case ErrorCategory.Io:
-      helpText = '\n\n💡 Please check if the file exists and you have permission to access it.';
+      helpText =
+        "\n\n💡 Please check if the file exists and you have permission to access it.";
       break;
     case ErrorCategory.Codec:
-      helpText = '\n\n💡 This appears to be a codec-related issue. Try opening a different file.';
+      helpText =
+        "\n\n💡 This appears to be a codec-related issue. Try opening a different file.";
       break;
     case ErrorCategory.Internal:
-      helpText = '\n\n💡 An unexpected error occurred. Please try again or report this issue.';
+      helpText =
+        "\n\n💡 An unexpected error occurred. Please try again or report this issue.";
       break;
     case ErrorCategory.NotImplemented:
-      helpText = '\n\n💡 This feature is not yet implemented.';
+      helpText = "\n\n💡 This feature is not yet implemented.";
       break;
     case ErrorCategory.Network:
-      helpText = '\n\n💡 Please check your internet connection.';
+      helpText = "\n\n💡 Please check your internet connection.";
       break;
   }
 
@@ -399,10 +407,7 @@ export function formatErrorForNotification(error: AppError): string {
  * Format error for console/logging
  */
 export function formatErrorForLogging(error: AppError): string {
-  const parts = [
-    `[${error.category}:${error.code}]`,
-    error.message,
-  ];
+  const parts = [`[${error.category}:${error.code}]`, error.message];
 
   if (error.details) {
     parts.push(`Details: ${error.details}`);
@@ -412,7 +417,7 @@ export function formatErrorForLogging(error: AppError): string {
     parts.push(`Stack: ${error.stack}`);
   }
 
-  return parts.join(' | ');
+  return parts.join(" | ");
 }
 
 // =============================================================================
@@ -422,20 +427,26 @@ export function formatErrorForLogging(error: AppError): string {
 /**
  * Convert JavaScript Error to AppError
  */
-export function jsErrorToAppError(jsError: Error, category: ErrorCategory, code: string): AppError {
+export function jsErrorToAppError(
+  jsError: Error,
+  category: ErrorCategory,
+  code: string,
+): AppError {
   return createError(
     category,
     code,
-    jsError.message || 'Unknown error',
-    jsError.stack
+    jsError.message || "Unknown error",
+    jsError.stack,
   );
 }
 
 /**
  * Convert fetch Response error to AppError
  */
-export async function fetchErrorToAppError(response: Response): Promise<AppError> {
-  let message = `HTTP ${response.status}: ${response.statusText}`;
+export async function fetchErrorToAppError(
+  response: Response,
+): Promise<AppError> {
+  const message = `HTTP ${response.status}: ${response.statusText}`;
   let details: string | undefined;
 
   try {
@@ -451,7 +462,7 @@ export async function fetchErrorToAppError(response: Response): Promise<AppError
     ErrorCategory.Network,
     `HTTP_${response.status}`,
     message,
-    details
+    details,
   );
 }
 
@@ -464,14 +475,18 @@ export function unknownToAppError(error: unknown): AppError {
   }
 
   if (error instanceof Error) {
-    return jsErrorToAppError(error, ErrorCategory.Internal, 'UNKNOWN_ERROR');
+    return jsErrorToAppError(error, ErrorCategory.Internal, "UNKNOWN_ERROR");
   }
 
-  if (typeof error === 'string') {
-    return createError(ErrorCategory.Internal, 'UNKNOWN_ERROR', error);
+  if (typeof error === "string") {
+    return createError(ErrorCategory.Internal, "UNKNOWN_ERROR", error);
   }
 
-  return createError(ErrorCategory.Internal, 'UNKNOWN_ERROR', 'An unknown error occurred');
+  return createError(
+    ErrorCategory.Internal,
+    "UNKNOWN_ERROR",
+    "An unknown error occurred",
+  );
 }
 
 // =============================================================================
@@ -511,7 +526,9 @@ export function safe<T>(fn: () => T): AppResult<T> {
 /**
  * Wrap an async function that might throw in a try-catch and convert to AppResult
  */
-export async function safeAsync<T>(fn: () => Promise<T>): Promise<AppResult<T>> {
+export async function safeAsync<T>(
+  fn: () => Promise<T>,
+): Promise<AppResult<T>> {
   try {
     return ok(await fn());
   } catch (error) {
@@ -534,7 +551,7 @@ export function getErrorInfo(error: unknown): AppError {
  * Log error to console with proper formatting
  */
 export function logError(error: AppError, context?: string): void {
-  const contextStr = context ? `[${context}] ` : '';
+  const contextStr = context ? `[${context}] ` : "";
   console.error(`${contextStr}${formatErrorForLogging(error)}`);
 }
 

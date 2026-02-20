@@ -3,20 +3,20 @@
  * Tests file operations hook for opening/closing bitstream files
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { useFileOperations, type CodecType } from '@/hooks/useFileOperations';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { useFileOperations, type CodecType } from "@/hooks/useFileOperations";
 
 // Get the mocked functions from the setup file
-const { invoke } = await import('@tauri-apps/api/core');
-const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
+const { invoke } = await import("@tauri-apps/api/core");
+const { open: dialogOpen } = await import("@tauri-apps/plugin-dialog");
 
-describe('useFileOperations', () => {
+describe("useFileOperations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should return initial state', () => {
+  it("should return initial state", () => {
     const { result } = renderHook(() => useFileOperations());
 
     expect(result.current.isLoading).toBe(false);
@@ -24,46 +24,53 @@ describe('useFileOperations', () => {
     expect(result.current.fileInfo).toBe(null);
   });
 
-  it('should have openBitstream function', () => {
+  it("should have openBitstream function", () => {
     const { result } = renderHook(() => useFileOperations());
 
-    expect(typeof result.current.openBitstream).toBe('function');
+    expect(typeof result.current.openBitstream).toBe("function");
   });
 
-  it('should have closeBitstream function', () => {
+  it("should have closeBitstream function", () => {
     const { result } = renderHook(() => useFileOperations());
 
-    expect(typeof result.current.closeBitstream).toBe('function');
+    expect(typeof result.current.closeBitstream).toBe("function");
   });
 
-  it('should have clearError function', () => {
+  it("should have clearError function", () => {
     const { result } = renderHook(() => useFileOperations());
 
-    expect(typeof result.current.clearError).toBe('function');
+    expect(typeof result.current.clearError).toBe("function");
   });
 });
 
-describe('useFileOperations openBitstream', () => {
+describe("useFileOperations openBitstream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should set loading state during open', async () => {
+  it("should set loading state during open", async () => {
     // Mock file dialog to return a file path
-    vi.mocked(dialogOpen).mockResolvedValue('/path/to/file.ivf');
+    vi.mocked(dialogOpen).mockResolvedValue("/path/to/file.ivf");
 
     // Mock invoke to delay response
     vi.mocked(invoke).mockImplementation(
-      () => new Promise(resolve => setTimeout(() => resolve({
-        success: true,
-        path: '/path/to/file.ivf',
-        codec: 'auto',
-        width: 1920,
-        height: 1080,
-        frameRate: 30,
-        duration: 10,
-        totalFrames: 300,
-      }), 100))
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                success: true,
+                path: "/path/to/file.ivf",
+                codec: "auto",
+                width: 1920,
+                height: 1080,
+                frameRate: 30,
+                duration: 10,
+                totalFrames: 300,
+              }),
+            100,
+          ),
+        ),
     );
 
     const { result } = renderHook(() => useFileOperations());
@@ -86,11 +93,11 @@ describe('useFileOperations openBitstream', () => {
     });
   });
 
-  it('should set fileInfo on successful open', async () => {
+  it("should set fileInfo on successful open", async () => {
     const mockFileInfo = {
       success: true,
-      path: '/test/file.ivf',
-      codec: 'av1',
+      path: "/test/file.ivf",
+      codec: "av1",
       width: 1920,
       height: 1080,
       frameRate: 30,
@@ -98,7 +105,7 @@ describe('useFileOperations openBitstream', () => {
       totalFrames: 300,
     };
 
-    vi.mocked(dialogOpen).mockResolvedValue('/test/file.ivf');
+    vi.mocked(dialogOpen).mockResolvedValue("/test/file.ivf");
     vi.mocked(invoke).mockResolvedValue(mockFileInfo);
 
     const { result } = renderHook(() => useFileOperations());
@@ -110,11 +117,11 @@ describe('useFileOperations openBitstream', () => {
     });
   });
 
-  it('should set error on failed open', async () => {
-    vi.mocked(dialogOpen).mockResolvedValue('/test/file.ivf');
+  it("should set error on failed open", async () => {
+    vi.mocked(dialogOpen).mockResolvedValue("/test/file.ivf");
     vi.mocked(invoke).mockResolvedValue({
       success: false,
-      error: 'Failed to parse file',
+      error: "Failed to parse file",
     });
 
     const { result } = renderHook(() => useFileOperations());
@@ -122,11 +129,11 @@ describe('useFileOperations openBitstream', () => {
     await result.current.openBitstream();
 
     await waitFor(() => {
-      expect(result.current.error).toBe('Failed to parse file');
+      expect(result.current.error).toBe("Failed to parse file");
     });
   });
 
-  it('should handle cancelled dialog', async () => {
+  it("should handle cancelled dialog", async () => {
     vi.mocked(dialogOpen).mockResolvedValue(null);
 
     const { result } = renderHook(() => useFileOperations());
@@ -137,31 +144,31 @@ describe('useFileOperations openBitstream', () => {
     expect(result.current.fileInfo).toBe(null);
   });
 
-  it('should pass codec parameter', async () => {
-    vi.mocked(dialogOpen).mockResolvedValue('/test/file.ivf');
+  it("should pass codec parameter", async () => {
+    vi.mocked(dialogOpen).mockResolvedValue("/test/file.ivf");
     vi.mocked(invoke).mockResolvedValue({
       success: true,
-      path: '/test/file.ivf',
-      codec: 'av1',
+      path: "/test/file.ivf",
+      codec: "av1",
     });
 
     const { result } = renderHook(() => useFileOperations());
 
-    await result.current.openBitstream('av1');
+    await result.current.openBitstream("av1");
 
-    expect(invoke).toHaveBeenCalledWith('open_file', {
-      path: '/test/file.ivf',
-      codec: 'av1',
+    expect(invoke).toHaveBeenCalledWith("open_file", {
+      path: "/test/file.ivf",
+      codec: "av1",
     });
   });
 });
 
-describe('useFileOperations closeBitstream', () => {
+describe("useFileOperations closeBitstream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should close file successfully', async () => {
+  it("should close file successfully", async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useFileOperations());
@@ -173,8 +180,8 @@ describe('useFileOperations closeBitstream', () => {
     });
   });
 
-  it('should set error on close failure', async () => {
-    vi.mocked(invoke).mockRejectedValue('Close failed');
+  it("should set error on close failure", async () => {
+    vi.mocked(invoke).mockRejectedValue("Close failed");
 
     const { result } = renderHook(() => useFileOperations());
 
@@ -186,8 +193,8 @@ describe('useFileOperations closeBitstream', () => {
   });
 });
 
-describe('useFileOperations clearError', () => {
-  it('should clear error state', () => {
+describe("useFileOperations clearError", () => {
+  it("should clear error state", () => {
     const { result } = renderHook(() => useFileOperations());
 
     result.current.clearError();
@@ -196,53 +203,73 @@ describe('useFileOperations clearError', () => {
   });
 });
 
-describe('useFileOperations event listeners', () => {
-  it('should register menu event listeners', () => {
-    const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
+describe("useFileOperations event listeners", () => {
+  it("should register menu event listeners", () => {
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
 
     renderHook(() => useFileOperations());
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith('menu-open-bitstream', expect.any(Function));
-    expect(addEventListenerSpy).toHaveBeenCalledWith('menu-close-file', expect.any(Function));
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "menu-open-bitstream",
+      expect.any(Function),
+    );
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "menu-close-file",
+      expect.any(Function),
+    );
 
     addEventListenerSpy.mockRestore();
   });
 
-  it('should cleanup event listeners on unmount', () => {
-    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
+  it("should cleanup event listeners on unmount", () => {
+    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
 
     const { unmount } = renderHook(() => useFileOperations());
 
     unmount();
 
     // Listeners should be cleaned up
-    expect(removeEventListenerSpy).toHaveBeenCalledWith('menu-open-bitstream', expect.any(Function));
-    expect(removeEventListenerSpy).toHaveBeenCalledWith('menu-close-file', expect.any(Function));
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "menu-open-bitstream",
+      expect.any(Function),
+    );
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "menu-close-file",
+      expect.any(Function),
+    );
 
     removeEventListenerSpy.mockRestore();
   });
 });
 
-describe('useFileOperations codecs', () => {
-  it('should support all codec types', () => {
-    const codecs: CodecType[] = ['av1', 'hevc', 'avc', 'vp9', 'vvc', 'mpeg2', 'auto'];
+describe("useFileOperations codecs", () => {
+  it("should support all codec types", () => {
+    const codecs: CodecType[] = [
+      "av1",
+      "hevc",
+      "avc",
+      "vp9",
+      "vvc",
+      "mpeg2",
+      "auto",
+    ];
 
-    codecs.forEach(codec => {
+    codecs.forEach((codec) => {
       expect(codec).toBeTruthy();
     });
   });
 
-  it('should default to auto codec', async () => {
-    vi.mocked(dialogOpen).mockResolvedValue('/test/file.ivf');
+  it("should default to auto codec", async () => {
+    vi.mocked(dialogOpen).mockResolvedValue("/test/file.ivf");
     vi.mocked(invoke).mockResolvedValue({ success: true });
 
     const { result } = renderHook(() => useFileOperations());
 
     await result.current.openBitstream();
 
-    expect(invoke).toHaveBeenCalledWith('open_file', {
-      path: '/test/file.ivf',
-      codec: 'auto',
+    expect(invoke).toHaveBeenCalledWith("open_file", {
+      path: "/test/file.ivf",
+      codec: "auto",
     });
   });
 });

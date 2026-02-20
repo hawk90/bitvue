@@ -27,7 +27,7 @@ where
     D: Deserializer<'de>,
 {
     let opt = Option::<String>::deserialize(deserializer)?;
-    Ok(opt.map(|s| Arc::from(s)))
+    Ok(opt.map(Arc::from))
 }
 
 /// Serialize Arc<str> as String (for JSON compatibility)
@@ -904,6 +904,19 @@ pub struct MetricsModel {
 }
 
 /// Per generate-tests skill: Comprehensive test suite with Arrange-Act-Assert pattern
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    dead_code,
+    unused_comparisons,
+    unused_must_use,
+    hidden_glob_reexports,
+    unreachable_code,
+    non_camel_case_types,
+    unused_parens,
+    unused_assignments
+)]
 #[cfg(test)]
 mod tests {
     include!("stream_state_test.rs");

@@ -237,7 +237,7 @@ pub fn parse_obu_header(data: &[u8]) -> Result<ObuHeader> {
         let temporal_id_plus1 = byte1 & 0x07;
         if temporal_id_plus1 == 0 {
             return Err(Av3Error::InvalidData(
-                "OBU extension temporal_id_plus1 must be >= 1".to_string()
+                "OBU extension temporal_id_plus1 must be >= 1".to_string(),
             ));
         }
         temporal_id = temporal_id_plus1 - 1; // Convert to temporal_id

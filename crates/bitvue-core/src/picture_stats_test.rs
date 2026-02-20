@@ -3,6 +3,7 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_frame(display_idx: usize, frame_type: &str, size_bytes: u64, marker: crate::timeline::FrameMarker) -> crate::timeline::TimelineFrame {
     crate::timeline::TimelineFrame {
         display_idx,
@@ -15,6 +16,7 @@ fn create_test_frame(display_idx: usize, frame_type: &str, size_bytes: u64, mark
     }
 }
 
+#[allow(dead_code)]
 fn create_test_row(display_idx: usize) -> PictureStatsRow {
     PictureStatsRow {
         display_idx,
@@ -35,10 +37,12 @@ fn create_test_row(display_idx: usize) -> PictureStatsRow {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_filter() -> PictureStatsFilter {
     PictureStatsFilter::default()
 }
 
+#[allow(dead_code)]
 fn create_test_table(frame_count: usize) -> PictureStatsTable {
     let frames: Vec<crate::timeline::TimelineFrame> = (0..frame_count)
         .map(|i| create_test_frame(i, "I", 50000, crate::timeline::FrameMarker::Key))
@@ -51,6 +55,7 @@ fn create_test_table(frame_count: usize) -> PictureStatsTable {
 // ============================================================================
 #[cfg(test)]
 mod row_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -104,6 +109,7 @@ mod row_tests {
 // ============================================================================
 #[cfg(test)]
 mod sort_direction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -123,6 +129,7 @@ mod sort_direction_tests {
 // ============================================================================
 #[cfg(test)]
 mod filter_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -229,6 +236,7 @@ mod filter_tests {
 // ============================================================================
 #[cfg(test)]
 mod sequence_stats_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -322,6 +330,7 @@ mod sequence_stats_tests {
 // ============================================================================
 #[cfg(test)]
 mod table_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

@@ -4,10 +4,10 @@
  * F6: Shows motion vectors as arrows using real parser data
  */
 
-import { memo } from 'react';
-import type { OverlayRendererProps } from '../types';
-import { getCssVar } from '../../../../utils/css';
-import { drawArrow } from '../utils/drawing';
+import { memo } from "react";
+import type { OverlayRendererProps } from "../types";
+import { getCssVar } from "../../../../utils/css";
+import { drawArrow } from "../utils/drawing";
 
 export const MVFieldOverlay = memo(function MVFieldOverlay({
   ctx,
@@ -15,19 +15,19 @@ export const MVFieldOverlay = memo(function MVFieldOverlay({
   _height,
   frame,
 }: OverlayRendererProps) {
-  if (frame.frame_type === 'I' || frame.frame_type === 'KEY') {
+  if (frame.frame_type === "I" || frame.frame_type === "KEY") {
     // No motion vectors for intra frames
-    ctx.fillStyle = getCssVar('--text-bright') || 'rgba(255, 255, 255, 0.8)';
-    ctx.font = '14px sans-serif';
-    ctx.fillText('No motion vectors (Intra frame)', 10, 20);
+    ctx.fillStyle = getCssVar("--text-bright") || "rgba(255, 255, 255, 0.8)";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("No motion vectors (Intra frame)", 10, 20);
     return;
   }
 
   if (!frame.mv_grid) {
     // No MV data available - show message
-    ctx.fillStyle = getCssVar('--text-bright') || 'rgba(255, 255, 255, 0.8)';
-    ctx.font = '14px sans-serif';
-    ctx.fillText('MV data not available for this frame', 10, 20);
+    ctx.fillStyle = getCssVar("--text-bright") || "rgba(255, 255, 255, 0.8)";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("MV data not available for this frame", 10, 20);
     return;
   }
 
@@ -36,11 +36,13 @@ export const MVFieldOverlay = memo(function MVFieldOverlay({
   // Density control: cap at 8000 vectors (per spec)
   const maxVectors = 8000;
   const totalBlocks = grid_w * grid_h;
-  const stride = totalBlocks > maxVectors
-    ? Math.ceil(Math.sqrt(totalBlocks / maxVectors))
-    : 1;
+  const stride =
+    totalBlocks > maxVectors
+      ? Math.ceil(Math.sqrt(totalBlocks / maxVectors))
+      : 1;
 
-  const mvColor = getCssVar('--accent-primary-light') || 'rgba(100, 200, 255, 0.8)';
+  const mvColor =
+    getCssVar("--accent-primary-light") || "rgba(100, 200, 255, 0.8)";
   ctx.strokeStyle = mvColor;
   ctx.fillStyle = mvColor;
   ctx.lineWidth = 2;
@@ -69,10 +71,10 @@ export const MVFieldOverlay = memo(function MVFieldOverlay({
   }
 
   // Draw MV statistics
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
   ctx.fillRect(10, 10, 150, 50);
-  ctx.fillStyle = getCssVar('--text-bright') || '#fff';
-  ctx.font = '12px monospace';
+  ctx.fillStyle = getCssVar("--text-bright") || "#fff";
+  ctx.font = "12px monospace";
   ctx.fillText(`MV vectors: ${drawnCount}`, 20, 28);
   ctx.fillText(`Stride: ${stride}`, 20, 48);
 });

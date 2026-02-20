@@ -562,6 +562,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused_imports)]
     fn test_motion_vector_quarter_pel_accessors() {
         use crate::QuarterPel;
 

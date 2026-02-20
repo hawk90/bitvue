@@ -8,26 +8,26 @@
  * - DPB state visualization
  */
 
-import { useState, memo, useCallback } from 'react';
-import { useFrameData } from '../../../contexts/FrameDataContext';
-import { useCurrentFrame } from '../../../contexts/CurrentFrameContext';
-import { FrameViewTab } from './FrameViewTab';
-import { HexViewTab } from './HexViewTab';
-import { DpbViewTab } from './DpbViewTab';
-import '../UnitHexPanel.css';
+import { useState, memo, useCallback } from "react";
+import { useFrameData } from "../../../contexts/FrameDataContext";
+import { useCurrentFrame } from "../../../contexts/CurrentFrameContext";
+import { FrameViewTab } from "./FrameViewTab";
+import { HexViewTab } from "./HexViewTab";
+import { DpbViewTab } from "./DpbViewTab";
+import "../UnitHexPanel.css";
 
-type HexViewTab = 'Frame' | 'Hex' | 'DpbInfo';
+type HexViewTab = "Frame" | "Hex" | "DpbInfo";
 
 const HEX_VIEW_TABS: { value: HexViewTab; label: string; icon: string }[] = [
-  { value: 'Frame', label: 'Frame', icon: 'file' },
-  { value: 'Hex', label: 'Hex', icon: 'file-code' },
-  { value: 'DpbInfo', label: 'DPB', icon: 'database' },
+  { value: "Frame", label: "Frame", icon: "file" },
+  { value: "Hex", label: "Hex", icon: "file-code" },
+  { value: "DpbInfo", label: "DPB", icon: "database" },
 ];
 
 export const UnitHexPanel = memo(function UnitHexPanel() {
   const { frames } = useFrameData();
   const { currentFrameIndex } = useCurrentFrame();
-  const [currentTab, setCurrentTab] = useState<HexViewTab>('Frame');
+  const [currentTab, setCurrentTab] = useState<HexViewTab>("Frame");
 
   const currentFrame = frames[currentFrameIndex] || null;
 
@@ -37,11 +37,11 @@ export const UnitHexPanel = memo(function UnitHexPanel() {
 
   const renderTabContent = () => {
     switch (currentTab) {
-      case 'Frame':
+      case "Frame":
         return <FrameViewTab frame={currentFrame} />;
-      case 'Hex':
+      case "Hex":
         return <HexViewTab frameIndex={currentFrameIndex} frames={frames} />;
-      case 'DpbInfo':
+      case "DpbInfo":
         return <DpbViewTab currentFrame={currentFrame} frames={frames} />;
     }
   };
@@ -54,10 +54,10 @@ export const UnitHexPanel = memo(function UnitHexPanel() {
 
       {/* Tab bar */}
       <div className="hex-tabs">
-        {HEX_VIEW_TABS.map(tab => (
+        {HEX_VIEW_TABS.map((tab) => (
           <button
             key={tab.value}
-            className={`hex-tab ${currentTab === tab.value ? 'active' : ''}`}
+            className={`hex-tab ${currentTab === tab.value ? "active" : ""}`}
             onClick={() => handleTabChange(tab.value)}
             title={tab.label}
           >
@@ -70,9 +70,7 @@ export const UnitHexPanel = memo(function UnitHexPanel() {
       <div className="panel-divider"></div>
 
       {/* Tab content */}
-      <div className="hex-content">
-        {renderTabContent()}
-      </div>
+      <div className="hex-content">{renderTabContent()}</div>
     </div>
   );
 });

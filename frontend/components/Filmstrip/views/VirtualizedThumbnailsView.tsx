@@ -10,8 +10,8 @@
  * - Smoother scrolling with constant memory footprint
  */
 
-import { useRef, useCallback, useState, memo } from 'react';
-import type { FrameInfo } from '../../../types/video';
+import { useRef, useCallback, useState, memo } from "react";
+import type { FrameInfo } from "../../../types/video";
 
 interface VirtualizedThumbnailsViewProps {
   frames: FrameInfo[];
@@ -41,7 +41,6 @@ function VirtualizedThumbnailsView({
   onHoverFrame,
   getFrameTypeColorClass,
 }: VirtualizedThumbnailsViewProps) {
-
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
 
@@ -69,7 +68,7 @@ function VirtualizedThumbnailsView({
       e.preventDefault();
       e.stopPropagation();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
+      setZoom((z) => Math.max(0.5, Math.min(3, z + delta)));
     }
   };
 
@@ -84,10 +83,10 @@ function VirtualizedThumbnailsView({
         aria-label="Frame thumbnails (virtualized view showing frames {start}-{end} of {frames.length})"
         ref={containerRef}
         onWheel={handleWheel}
-        style={{ transform: `scaleX(${zoom})`, transformOrigin: 'left center' }}
+        style={{ transform: `scaleX(${zoom})`, transformOrigin: "left center" }}
       >
         {visibleFrames.map((frame) => {
-          const layer = frame.temporal_id?.toString() ?? 'A';
+          const layer = frame.temporal_id?.toString() ?? "A";
           const isSelected = frame.frame_index === currentFrameIndex;
           const isReferenced = referencedFrameIndices.has(frame.frame_index);
 
@@ -96,10 +95,8 @@ function VirtualizedThumbnailsView({
               key={frame.frame_index}
               data-frame-index={frame.frame_index}
               className={`filmstrip-frame ${getFrameTypeColorClass(frame.frame_type)} ${
-                isSelected ? 'selected' : ''
-              } ${
-                isReferenced ? 'is-referenced' : ''
-              }`}
+                isSelected ? "selected" : ""
+              } ${isReferenced ? "is-referenced" : ""}`}
               onClick={() => onFrameClick(frame.frame_index)}
               onMouseEnter={(e) => handleMouseEnter(frame, e)}
               onMouseMove={(e) => handleMouseMove(frame, e)}
@@ -110,7 +107,12 @@ function VirtualizedThumbnailsView({
               aria-selected={isSelected}
             >
               <div className="frame-thumbnail-wrapper">
-                <div className="frame-header-inner" style={{ color: `var(--frame-${frame.frame_type.toLowerCase()})` }}>
+                <div
+                  className="frame-header-inner"
+                  style={{
+                    color: `var(--frame-${frame.frame_type.toLowerCase()})`,
+                  }}
+                >
                   {frame.frame_type}-{layer} {frame.frame_index}
                 </div>
 
@@ -119,11 +121,21 @@ function VirtualizedThumbnailsView({
                     <img
                       src={thumbnails.get(frame.frame_index)}
                       alt={`Frame ${frame.frame_index}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                      }}
                     />
                   ) : loadingThumbnails.has(frame.frame_index) ? (
-                    <div className="frame-placeholder loading" aria-label="Loading thumbnail">
-                      <span className="codicon codicon-loading codicon-spin" aria-hidden="true"></span>
+                    <div
+                      className="frame-placeholder loading"
+                      aria-label="Loading thumbnail"
+                    >
+                      <span
+                        className="codicon codicon-loading codicon-spin"
+                        aria-hidden="true"
+                      ></span>
                     </div>
                   ) : (
                     <div
@@ -131,19 +143,29 @@ function VirtualizedThumbnailsView({
                       data-frame-type={frame.frame_type}
                       aria-label={`${frame.frame_type} frame placeholder`}
                     >
-                      <span className="codicon codicon-device-camera" aria-hidden="true"></span>
+                      <span
+                        className="codicon codicon-device-camera"
+                        aria-hidden="true"
+                      ></span>
                     </div>
                   )}
                 </div>
 
-                <div className="frame-nal-type-inner" aria-label={`NAL unit type: ${frame.frame_type}`}>
+                <div
+                  className="frame-nal-type-inner"
+                  aria-label={`NAL unit type: ${frame.frame_type}`}
+                >
                   {frame.frame_type}
                 </div>
 
-                {(frame.display_order !== undefined || frame.coding_order !== undefined) && (
+                {(frame.display_order !== undefined ||
+                  frame.coding_order !== undefined) && (
                   <div className="frame-order-info-inner">
                     {frame.display_order !== undefined && (
-                      <span className="frame-display-order" title="Display Order">
+                      <span
+                        className="frame-display-order"
+                        title="Display Order"
+                      >
                         D:{frame.display_order}
                       </span>
                     )}
@@ -156,22 +178,32 @@ function VirtualizedThumbnailsView({
                 )}
 
                 {frame.size === 0 && (
-                  <div className="frame-error-badge" role="alert" aria-label="Error loading frame">!</div>
+                  <div
+                    className="frame-error-badge"
+                    role="alert"
+                    aria-label="Error loading frame"
+                  >
+                    !
+                  </div>
                 )}
 
                 {frame.ref_frames && frame.ref_frames.length > 0 && (
                   <div
-                    className={`frame-ref-badge ${expandedFrameIndex === frame.frame_index ? 'expanded' : ''}`}
+                    className={`frame-ref-badge ${expandedFrameIndex === frame.frame_index ? "expanded" : ""}`}
                     data-count={frame.ref_frames.length}
-                    title={`References: ${frame.ref_frames.join(', ')}`}
-                    aria-label={`Reference frames: ${frame.ref_frames.join(', ')}`}
-                    onClick={(e) => onToggleReferenceExpansion(frame.frame_index, e)}
-                    style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                    title={`References: ${frame.ref_frames.join(", ")}`}
+                    aria-label={`Reference frames: ${frame.ref_frames.join(", ")}`}
+                    onClick={(e) =>
+                      onToggleReferenceExpansion(frame.frame_index, e)
+                    }
+                    style={{ pointerEvents: "auto", cursor: "pointer" }}
                   >
                     {expandedFrameIndex === frame.frame_index ? (
                       <div className="ref-indices">
                         {frame.ref_frames.map((refIdx) => (
-                          <span key={refIdx} className="ref-index">#{refIdx}</span>
+                          <span key={refIdx} className="ref-index">
+                            #{refIdx}
+                          </span>
                         ))}
                       </div>
                     ) : null}

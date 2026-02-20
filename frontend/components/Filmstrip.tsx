@@ -5,32 +5,57 @@
  * Refactored to use useFilmstripState hook for better separation of concerns
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
-import { createPortal } from 'react-dom';
-import { useSelection } from '../contexts/SelectionContext';
-import { FilmstripDropdown, DisplayView } from './FilmstripDropdown';
-import { FrameSizesLegend } from './FrameSizesLegend';
-import ThumbnailsView from './Filmstrip/views/ThumbnailsView';
-import VirtualizedThumbnailsView from './Filmstrip/views/VirtualizedThumbnailsView';
-import FrameSizesView from './Filmstrip/views/FrameSizesView';
-import BPyramidView from './Filmstrip/views/BPyramidView';
-import { TimelineView } from './Filmstrip/views/TimelineView';
-import { MinimapView } from './MinimapView';
-import { FilmstripTooltip } from './FilmstripTooltip';
-import { useFilmstripState } from './useFilmstripState';
-import { getFrameTypeColorClass, getFrameTypeColor, type FrameInfo } from '../types/video';
-import './Filmstrip/Filmstrip.css';
+import { useState, useCallback, useEffect, useRef, useMemo, memo } from "react";
+import { createPortal } from "react-dom";
+import { useSelection } from "../contexts/SelectionContext";
+import { FilmstripDropdown, DisplayView } from "./FilmstripDropdown";
+import { FrameSizesLegend } from "./FrameSizesLegend";
+import ThumbnailsView from "./Filmstrip/views/ThumbnailsView";
+import VirtualizedThumbnailsView from "./Filmstrip/views/VirtualizedThumbnailsView";
+import FrameSizesView from "./Filmstrip/views/FrameSizesView";
+import BPyramidView from "./Filmstrip/views/BPyramidView";
+import { TimelineView } from "./Filmstrip/views/TimelineView";
+import { MinimapView } from "./MinimapView";
+import { FilmstripTooltip } from "./FilmstripTooltip";
+import { useFilmstripState } from "./useFilmstripState";
+import {
+  getFrameTypeColorClass,
+  getFrameTypeColor,
+  type FrameInfo,
+} from "../types/video";
+import "./Filmstrip/Filmstrip.css";
 
 interface FilmstripProps {
   frames: FrameInfo[];
   className?: string;
-  viewMode?: 'overview' | 'coding' | 'prediction' | 'transform' | 'qp' | 'mv' | 'reference';
-  onViewModeChange?: (mode: 'overview' | 'coding' | 'prediction' | 'transform' | 'qp' | 'mv' | 'reference') => void;
+  viewMode?:
+    | "overview"
+    | "coding"
+    | "prediction"
+    | "transform"
+    | "qp"
+    | "mv"
+    | "reference";
+  onViewModeChange?: (
+    mode:
+      | "overview"
+      | "coding"
+      | "prediction"
+      | "transform"
+      | "qp"
+      | "mv"
+      | "reference",
+  ) => void;
 }
 
-function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', onViewModeChange: _onViewModeChange }: FilmstripProps) {
+function Filmstrip({
+  frames,
+  className = "",
+  viewMode: _viewMode = "overview",
+  onViewModeChange: _onViewModeChange,
+}: FilmstripProps) {
   const { selection, setFrameSelection } = useSelection();
-  const [displayView, setDisplayView] = useState<DisplayView>('thumbnails');
+  const [displayView, setDisplayView] = useState<DisplayView>("thumbnails");
   const [scrollRef, setScrollRef] = useState<HTMLDivElement | null>(null);
   const [showingReferences, setShowingReferences] = useState(false);
 
@@ -38,7 +63,7 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
   const VIRTUALIZATION_THRESHOLD = 200;
   const useVirtualizedView = frames.length >= VIRTUALIZATION_THRESHOLD;
 
-  const visibleFrameTypes = useMemo(() => new Set(['I', 'P', 'B']), []);
+  const visibleFrameTypes = useMemo(() => new Set(["I", "P", "B"]), []);
 
   const [sizeMetrics, setSizeMetrics] = useState({
     showBitrateBar: true,
@@ -87,29 +112,40 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
     }
   }, [shouldShowReferences, currentFrameIndex]);
 
-  const effectiveExpandedIndex = shouldShowReferences ? currentFrameIndex : expandedFrameIndex;
+  const effectiveExpandedIndex = shouldShowReferences
+    ? currentFrameIndex
+    : expandedFrameIndex;
 
   // Setup IntersectionObserver for lazy loading thumbnails (only for non-virtualized view)
   useEffect(() => {
     // Virtualized view handles its own visibility-based loading
-    if (useVirtualizedView || displayView !== 'thumbnails' || frames.length === 0 || !scrollRef) return;
+    if (
+      useVirtualizedView ||
+      displayView !== "thumbnails" ||
+      frames.length === 0 ||
+      !scrollRef
+    )
+      return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach(entry => {
+        entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            const frameIndex = parseInt(entry.target.getAttribute('data-frame-index') || '0', 10);
+            const frameIndex = parseInt(
+              entry.target.getAttribute("data-frame-index") || "0",
+              10,
+            );
             if (!isNaN(frameIndex)) {
               loadThumbnails([frameIndex]);
             }
           }
         });
       },
-      { root: scrollRef, rootMargin: '200px' }
+      { root: scrollRef, rootMargin: "200px" },
     );
 
-    const frameElements = scrollRef.querySelectorAll('[data-frame-index]');
-    frameElements.forEach(el => observer.observe(el));
+    const frameElements = scrollRef.querySelectorAll("[data-frame-index]");
+    frameElements.forEach((el) => observer.observe(el));
 
     return () => {
       observer.disconnect();
@@ -119,19 +155,28 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
   // Auto-scroll to current frame
   useEffect(() => {
     if (scrollRef && frames.length > 0) {
-      const frameEl = scrollRef.querySelector(`[data-frame-index="${currentFrameIndex}"]`);
+      const frameEl = scrollRef.querySelector(
+        `[data-frame-index="${currentFrameIndex}"]`,
+      );
       if (frameEl) {
-        frameEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        frameEl.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "center",
+        });
       }
     }
   }, [currentFrameIndex, scrollRef, frames.length, displayView]);
 
-  const handleFrameClick = useCallback((frameIndex: number) => {
-    setFrameSelection({ stream: 'A', frameIndex }, 'filmstrip');
-  }, [setFrameSelection]);
+  const handleFrameClick = useCallback(
+    (frameIndex: number) => {
+      setFrameSelection({ stream: "A", frameIndex }, "filmstrip");
+    },
+    [setFrameSelection],
+  );
 
   const toggleMetric = useCallback((metric: keyof typeof sizeMetrics) => {
-    setSizeMetrics(prev => ({
+    setSizeMetrics((prev) => ({
       ...prev,
       [metric]: !prev[metric],
     }));
@@ -146,9 +191,15 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
   }, [effectiveExpandedIndex, frames]);
 
   return (
-    <div className={`filmstrip ${className} ${showingReferences ? 'showing-references' : ''} ${displayView === 'timeline' ? 'timeline-view-mode' : ''}`}>
+    <div
+      className={`filmstrip ${className} ${showingReferences ? "showing-references" : ""} ${displayView === "timeline" ? "timeline-view-mode" : ""}`}
+    >
       {/* Filmstrip Header */}
-      <div className="filmstrip-header" role="region" aria-label="Filmstrip controls">
+      <div
+        className="filmstrip-header"
+        role="region"
+        aria-label="Filmstrip controls"
+      >
         <div className="filmstrip-title">
           <span className="codicon codicon-film" aria-hidden="true"></span>
           Filmstrip
@@ -160,28 +211,40 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
             <span className="filmstrip-current">Frame {currentFrameIndex}</span>
           )}
 
-          <FilmstripDropdown displayView={displayView} onViewChange={setDisplayView} />
+          <FilmstripDropdown
+            displayView={displayView}
+            onViewChange={setDisplayView}
+          />
         </div>
       </div>
 
       {/* Filmstrip Content */}
       <div
-        className={`filmstrip-content ${showingReferences ? 'showing-reference-lines' : ''}`}
+        className={`filmstrip-content ${showingReferences ? "showing-reference-lines" : ""}`}
         ref={(el) => {
           setScrollRef(el);
-          (filmstripContentRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+          (
+            filmstripContentRef as React.MutableRefObject<HTMLDivElement | null>
+          ).current = el;
         }}
         role="region"
         aria-label="Filmstrip content"
         aria-live="polite"
       >
         {frames.length === 0 ? (
-          <div className="filmstrip-empty" role="status" aria-label="No frames loaded">
-            <span className="codicon codicon-film-strip" aria-hidden="true"></span>
+          <div
+            className="filmstrip-empty"
+            role="status"
+            aria-label="No frames loaded"
+          >
+            <span
+              className="codicon codicon-film-strip"
+              aria-hidden="true"
+            ></span>
             <p>No frames loaded</p>
             <p className="hint">Open a video file to see the filmstrip</p>
           </div>
-        ) : displayView === 'thumbnails' ? (
+        ) : displayView === "thumbnails" ? (
           useVirtualizedView ? (
             <VirtualizedThumbnailsView
               frames={frames}
@@ -209,7 +272,7 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
               getFrameTypeColorClass={getFrameTypeColorClass}
             />
           )
-        ) : displayView === 'sizes' ? (
+        ) : displayView === "sizes" ? (
           <>
             <FrameSizesView
               frames={frames}
@@ -225,30 +288,33 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
                 sizeMetrics={sizeMetrics}
                 onToggleMetric={toggleMetric}
               />,
-              document.body
+              document.body,
             )}
           </>
-        ) : displayView === 'bpyramid' ? (
+        ) : displayView === "bpyramid" ? (
           <BPyramidView
             frames={frames}
             currentFrameIndex={currentFrameIndex}
             onFrameClick={handleFrameClick}
             getFrameTypeColorClass={getFrameTypeColorClass}
           />
-        ) : displayView === 'timeline' ? (
+        ) : displayView === "timeline" ? (
           <TimelineView
             frames={frames}
             currentFrameIndex={currentFrameIndex}
             onFrameClick={handleFrameClick}
             getFrameTypeColorClass={getFrameTypeColorClass}
           />
-        ) : displayView === 'hrdbuffer' ? (
+        ) : displayView === "hrdbuffer" ? (
           <div className="filmstrip-empty">
-            <span className="codicon codicon-database" aria-hidden="true"></span>
+            <span
+              className="codicon codicon-database"
+              aria-hidden="true"
+            ></span>
             <p>HRD Buffer View</p>
             <p className="hint">Coming soon</p>
           </div>
-        ) : displayView === 'enhanced' ? (
+        ) : displayView === "enhanced" ? (
           <div className="filmstrip-empty">
             <span className="codicon codicon-sparkle" aria-hidden="true"></span>
             <p>Enhanced View</p>
@@ -277,6 +343,9 @@ function Filmstrip({ frames, className = '', viewMode: _viewMode = 'overview', o
     </div>
   );
 }
+
+// Named export for direct use in tests
+export { Filmstrip };
 
 // Memoize Filmstrip to prevent unnecessary re-renders
 export const MemoizedFilmstrip = memo(Filmstrip, (prevProps, nextProps) => {

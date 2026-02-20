@@ -1,7 +1,6 @@
 // Comprehensive benchmarks for Cord operations
 // Tests performance of incremental comparison, hashing, and fast paths
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
 use abseil::absl_strings::cord::Cord;
 use std::collections::hash_map::DefaultHasher;
@@ -187,7 +186,7 @@ fn bench_cord_append_cord_large(b: &mut Bencher) {
 fn bench_cord_to_string_single_chunk(b: &mut Bencher) {
     let cord = single_chunk_cord_large();
     b.iter(|| {
-        let s = cord.to_string();
+        let s = cord.to_string_value();
         black_box(s);
     });
 }
@@ -196,7 +195,7 @@ fn bench_cord_to_string_single_chunk(b: &mut Bencher) {
 fn bench_cord_to_string_multi_chunk(b: &mut Bencher) {
     let cord = multi_chunk_cord_medium();
     b.iter(|| {
-        let s = cord.to_string();
+        let s = cord.to_string_value();
         black_box(s);
     });
 }

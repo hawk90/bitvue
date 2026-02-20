@@ -53,6 +53,7 @@ pub struct Cord {
 unsafe impl Send for Cord {}
 unsafe impl Sync for Cord {}
 
+#[allow(clippy::to_string_trait_impl)]
 impl Cord {
     /// Creates an empty Cord.
     pub fn new() -> Self {
@@ -109,7 +110,7 @@ impl Cord {
     }
 
     /// Converts the Cord to a String.
-    pub fn to_string(&self) -> String {
+    pub fn to_string_value(&self) -> String {
         self.chunks.concat()
     }
 
@@ -126,7 +127,7 @@ impl Cord {
     pub fn to_str(&self) -> String {
         self.as_str()
             .map(String::from)
-            .unwrap_or_else(|| self.to_string())
+            .unwrap_or_else(|| self.to_string_value())
     }
 
     /// Creates an iterator over the chunks of the Cord.

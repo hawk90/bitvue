@@ -743,8 +743,9 @@ unsafe fn psnr_avx2(
     _mm256_storeu_si256(mse_array[8..16].as_mut_ptr() as *mut __m256i, mse_hi);
 
     // Process remainder with scalar code
+    // Use i32 to prevent overflow: 255-0=255, 255^2=65025 fits in i32
     for i in (chunks * 32)..size {
-        let diff = reference[i] as i16 - distorted[i] as i16;
+        let diff = (reference[i] as i32) - (distorted[i] as i32);
         mse += (diff * diff) as f64;
     }
 
@@ -845,8 +846,9 @@ unsafe fn psnr_sse2(
     _mm_storeu_si128(mse_array[4..8].as_mut_ptr() as *mut __m128i, mse_accum_hi);
 
     // Process remainder
+    // Use i32 to prevent overflow: 255-0=255, 255^2=65025 fits in i32
     for i in (chunks * 16)..size {
-        let diff = reference[i] as i16 - distorted[i] as i16;
+        let diff = (reference[i] as i32) - (distorted[i] as i32);
         mse += (diff * diff) as f64;
     }
 
@@ -934,10 +936,10 @@ unsafe fn psnr_neon(
         mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi2));
     }
 
-    // Extract sum
+    // Extract sum (use u64 to prevent overflow for large images)
     let mut mse_array = [0u32; 4];
     vst1q_u32(mse_array.as_mut_ptr(), mse_accumulator);
-    let simd_sum: u32 = mse_array.iter().sum();
+    let simd_sum: u64 = mse_array.iter().map(|&x| x as u64).sum();
 
     // Process remainder
     for i in (chunks * 16)..size {

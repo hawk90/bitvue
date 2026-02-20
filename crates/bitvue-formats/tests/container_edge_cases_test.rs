@@ -1,9 +1,19 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
 //! Comprehensive edge case tests for container formats (MP4, MKV)
 //!
 //! This test suite covers critical edge cases for container format parsing
 //! that were identified as missing in the edge case analysis report.
 
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 
 // Note: This is a template file showing what tests SHOULD be added
 // Actual implementation would require the parser modules to be imported
@@ -424,16 +434,16 @@ mod platform_specific_tests {
         {
             // On Unix, backslash is valid filename character
             let _path = "test\\file.ivf"; // Not a directory separator
-            // let result = open_file(path);
-            // Should treat as single filename
+                                          // let result = open_file(path);
+                                          // Should treat as single filename
         }
 
         #[cfg(windows)]
         {
             // On Windows, forward slash is accepted as separator
             let path = "test/file.ivf"; // Forward slash
-            // let result = open_file(path);
-            // Should normalize and work
+                                        // let result = open_file(path);
+                                        // Should normalize and work
         }
     }
 

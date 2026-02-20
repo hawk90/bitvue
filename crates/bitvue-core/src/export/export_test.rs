@@ -1,16 +1,11 @@
 // Export module tests
-#[cfg(test)]
-use crate::export::overlay::OverlayType;
-#[cfg(test)]
-use crate::export::types::{ContextMenuScope, ExportFormat};
-#[cfg(test)]
-use super::*;
 
 // ============================================================================
 // Fixtures
 // ============================================================================
 #[cfg(test)]
 #[cfg(test)]
+#[allow(dead_code)]
 fn create_test_frames() -> Vec<crate::timeline::TimelineFrame> {
     vec![
         crate::timeline::TimelineFrame {
@@ -44,6 +39,7 @@ fn create_test_frames() -> Vec<crate::timeline::TimelineFrame> {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn create_test_metrics() -> (Vec<crate::metrics_distribution::MetricPoint>, Vec<crate::metrics_distribution::MetricPoint>, Vec<crate::metrics_distribution::MetricPoint>) {
     let psnr = vec![
         crate::metrics_distribution::MetricPoint { idx: 0, value: 40.5 },
@@ -59,6 +55,7 @@ fn create_test_metrics() -> (Vec<crate::metrics_distribution::MetricPoint>, Vec<
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn create_test_diagnostic(id: u64, severity: crate::diagnostics::DiagnosticSeverity) -> crate::diagnostics::Diagnostic {
     crate::diagnostics::Diagnostic {
         id,
@@ -77,6 +74,7 @@ fn create_test_diagnostic(id: u64, severity: crate::diagnostics::DiagnosticSever
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn create_test_diagnostics() -> Vec<crate::diagnostics::Diagnostic> {
     vec![
         create_test_diagnostic(1, crate::diagnostics::DiagnosticSeverity::Error),
@@ -86,6 +84,7 @@ fn create_test_diagnostics() -> Vec<crate::diagnostics::Diagnostic> {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn create_test_export_request() -> EvidenceBundleExportRequest {
     EvidenceBundleExportRequest {
         output_dir: std::path::PathBuf::from("/tmp/test"),
@@ -106,6 +105,7 @@ fn create_test_export_request() -> EvidenceBundleExportRequest {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn create_test_overlay_data() -> OverlayExportData {
     let mut data = OverlayExportData::new(100, 100, "Test Overlay", 0);
     data.set_pixel(0, 0, 255, 0, 0, 255);
@@ -114,6 +114,7 @@ fn create_test_overlay_data() -> OverlayExportData {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn create_test_context() -> GuardEvalContext {
     GuardEvalContext {
         has_selection: true,
@@ -126,6 +127,7 @@ fn create_test_context() -> GuardEvalContext {
 // ============================================================================
 #[cfg(test)]
 mod format_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -141,6 +143,7 @@ mod format_tests {
 // ============================================================================
 #[cfg(test)]
 mod frame_row_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -189,6 +192,7 @@ mod frame_row_tests {
 // ============================================================================
 #[cfg(test)]
 mod csv_export_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -335,6 +339,7 @@ mod csv_export_tests {
 // ============================================================================
 #[cfg(test)]
 mod json_export_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -387,6 +392,7 @@ mod json_export_tests {
 // ============================================================================
 #[cfg(test)]
 mod summary_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -438,6 +444,7 @@ mod summary_tests {
 // ============================================================================
 #[cfg(test)]
 mod overlay_data_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -507,6 +514,7 @@ mod overlay_data_tests {
 // ============================================================================
 #[cfg(test)]
 mod overlay_format_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -522,6 +530,7 @@ mod overlay_format_tests {
 // ============================================================================
 #[cfg(test)]
 mod overlay_type_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -538,6 +547,7 @@ mod overlay_type_tests {
 // ============================================================================
 #[cfg(test)]
 mod overlay_request_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -557,6 +567,7 @@ mod overlay_request_tests {
 // ============================================================================
 #[cfg(test)]
 mod context_menu_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -648,6 +659,7 @@ mod context_menu_tests {
 // ============================================================================
 #[cfg(test)]
 mod diagnostics_row_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

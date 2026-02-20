@@ -230,7 +230,10 @@ pub fn parse_obu_header(reader: &mut BitReader) -> Result<ObuHeader> {
         if ext_reserved != 0 {
             return Err(BitvueError::Parse {
                 offset: reader.position(),
-                message: format!("Invalid extension_header_reserved_3bits: {} (must be 0)", ext_reserved),
+                message: format!(
+                    "Invalid extension_header_reserved_3bits: {} (must be 0)",
+                    ext_reserved
+                ),
             });
         }
 
@@ -336,7 +339,7 @@ pub fn parse_obu(data: &[u8], offset: usize) -> Result<(Obu, usize)> {
         frame_header,
     };
 
-    Ok((obu, total_size as usize))
+    Ok((obu, total_size))
 }
 
 /// Parses all OBUs from a byte slice

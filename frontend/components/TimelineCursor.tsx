@@ -4,14 +4,17 @@
  * Shows current frame position indicator
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface TimelineCursorProps {
   positionPercent: number;
   frameIndex: number;
 }
 
-export const TimelineCursor = memo(function TimelineCursor({ positionPercent, frameIndex }: TimelineCursorProps) {
+export const TimelineCursor = memo(function TimelineCursor({
+  positionPercent,
+  frameIndex,
+}: TimelineCursorProps) {
   return (
     <div
       className="timeline-cursor"

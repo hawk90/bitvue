@@ -8,18 +8,18 @@
 /**
  * Chroma subsampling type
  */
-export type ChromaSubsampling = '420' | '422' | '444';
+export type ChromaSubsampling = "420" | "422" | "444";
 
 /**
  * Colorspace enum for YUV to RGB conversion
  */
 export enum Colorspace {
   /** ITU-R BT.601 (SD video) */
-  BT601 = 'BT601',
+  BT601 = "BT601",
   /** ITU-R BT.709 (HD video) */
-  BT709 = 'BT709',
+  BT709 = "BT709",
   /** ITU-R BT.2020 (UHD video) */
-  BT2020 = 'BT2020',
+  BT2020 = "BT2020",
 }
 
 /**
@@ -73,14 +73,16 @@ export interface YUVFrame {
 /**
  * YUV format for buffer parsing
  */
-export type YUVFormat = 'I420' | 'YV12' | 'NV12' | 'YUY2' | 'UYVY';
+export type YUVFormat = "I420" | "YV12" | "NV12" | "YUY2" | "UYVY";
 
 /**
  * Colorspace conversion matrices
  *
  * Maps each colorspace to its YUV to RGB conversion coefficients.
  */
-export const COLORSPACE_MATRICES: Readonly<Record<Colorspace, ColorspaceMatrix>> = {
+export const COLORSPACE_MATRICES: Readonly<
+  Record<Colorspace, ColorspaceMatrix>
+> = {
   [Colorspace.BT601]: {
     // ITU-R BT.601 coefficients (SD video)
     rv: 1.402,

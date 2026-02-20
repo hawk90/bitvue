@@ -223,13 +223,13 @@ impl Sps {
     /// Get picture width in CTBs.
     pub fn pic_width_in_ctbs(&self) -> u32 {
         let ctb_size = self.ctb_size();
-        (self.pic_width_in_luma_samples + ctb_size - 1) / ctb_size
+        self.pic_width_in_luma_samples.div_ceil(ctb_size)
     }
 
     /// Get picture height in CTBs.
     pub fn pic_height_in_ctbs(&self) -> u32 {
         let ctb_size = self.ctb_size();
-        (self.pic_height_in_luma_samples + ctb_size - 1) / ctb_size
+        self.pic_height_in_luma_samples.div_ceil(ctb_size)
     }
 
     /// Get the display width (accounting for conformance window).
@@ -498,6 +498,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<Sps> {
 }
 
 /// Parse VUI parameters (simplified).
+#[allow(clippy::field_reassign_with_default)]
 fn parse_vui_parameters(reader: &mut BitReader) -> Result<VuiParameters> {
     let mut vui = VuiParameters::default();
 

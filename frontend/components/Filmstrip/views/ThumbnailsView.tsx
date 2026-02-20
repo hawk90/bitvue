@@ -7,10 +7,15 @@
  * similar to how thumbnail boxes are pre-rendered and scroll naturally.
  */
 
-import { useRef, useCallback, useState, memo } from 'react';
-import type { FrameInfo } from '../../../types/video';
-import { usePreRenderedArrows, ArrowPosition, PathCalculator, FrameInfoBase } from '../../usePreRenderedArrows';
-import { getFrameTypeColor } from '../../../types/video';
+import { useRef, useCallback, useState, memo } from "react";
+import type { FrameInfo } from "../../../types/video";
+import {
+  usePreRenderedArrows,
+  ArrowPosition,
+  PathCalculator,
+  FrameInfoBase,
+} from "../../usePreRenderedArrows";
+import { getFrameTypeColor } from "../../../types/video";
 
 interface ThumbnailsViewProps {
   frames: FrameInfo[];
@@ -37,29 +42,31 @@ function ThumbnailsView({
   onHoverFrame,
   getFrameTypeColorClass,
 }: ThumbnailsViewProps) {
-
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [zoom, setZoom] = useState(1);
 
   // Path calculator for ㄷ-shaped arrows (down, horizontal, up)
-  const calculateThumbnailPath: PathCalculator = useCallback((
-    sourcePos: ArrowPosition,
-    targetPos: ArrowPosition,
-    _sourceFrame: FrameInfoBase,
-    _targetFrame: FrameInfoBase,
-    slotIndex: number
-  ) => {
-    // Each outgoing arrow gets a different vertical offset to space them out
-    const baseOffset = 30;
-    const spacingPerSlot = 12;
-    const verticalOffset = baseOffset + (slotIndex * spacingPerSlot);
-    // ㄷ-shaped path: down from source, then horizontal, then up to target
-    // Use default values for bottom position in case DOM elements are not rendered
-    const sourceBottom = sourcePos.bottom ?? 0;
-    const targetBottom = targetPos.bottom ?? 0;
-    return `M ${sourcePos.centerX} ${sourceBottom} L ${sourcePos.centerX} ${sourceBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom}`;
-  }, []);
+  const calculateThumbnailPath: PathCalculator = useCallback(
+    (
+      sourcePos: ArrowPosition,
+      targetPos: ArrowPosition,
+      _sourceFrame: FrameInfoBase,
+      _targetFrame: FrameInfoBase,
+      slotIndex: number,
+    ) => {
+      // Each outgoing arrow gets a different vertical offset to space them out
+      const baseOffset = 30;
+      const spacingPerSlot = 12;
+      const verticalOffset = baseOffset + slotIndex * spacingPerSlot;
+      // ㄷ-shaped path: down from source, then horizontal, then up to target
+      // Use default values for bottom position in case DOM elements are not rendered
+      const sourceBottom = sourcePos.bottom ?? 0;
+      const targetBottom = targetPos.bottom ?? 0;
+      return `M ${sourcePos.centerX} ${sourceBottom} L ${sourcePos.centerX} ${sourceBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom}`;
+    },
+    [],
+  );
 
   // Use shared hook for pre-rendered arrows
   const { allArrowData, svgWidth } = usePreRenderedArrows({
@@ -84,7 +91,7 @@ function ThumbnailsView({
       e.preventDefault();
       e.stopPropagation();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
+      setZoom((z) => Math.max(0.5, Math.min(3, z + delta)));
     }
   };
 
@@ -96,7 +103,7 @@ function ThumbnailsView({
         aria-label="Frame thumbnails"
         ref={containerRef}
         onWheel={handleWheel}
-        style={{ transform: `scaleX(${zoom})`, transformOrigin: 'left center' }}
+        style={{ transform: `scaleX(${zoom})`, transformOrigin: "left center" }}
       >
         {/* Reference arrows SVG overlay - scrolls with thumbnails */}
         {allArrowData.length > 0 && svgWidth > 0 && (
@@ -105,15 +112,15 @@ function ThumbnailsView({
             className="thumbnail-arrows-overlay"
             xmlns="http://www.w3.org/2000/svg"
             style={{
-              position: 'absolute',
+              position: "absolute",
               top: 0,
               left: 0,
               width: `${svgWidth}px`,
-              height: '100%',
-              pointerEvents: 'none',
+              height: "100%",
+              pointerEvents: "none",
               zIndex: 10,
               transform: `scaleX(${zoom})`,
-              transformOrigin: 'left',
+              transformOrigin: "left",
             }}
           >
             <defs>
@@ -133,10 +140,12 @@ function ThumbnailsView({
               // Force render all arrows by using opacity 0 instead of visibility hidden
               const isVisible = arrow.sourceFrameIndex === currentFrameIndex;
               const opacity = isVisible ? 0.7 : 0;
-              const renderVisibility = isVisible ? 'visible' : 'hidden';
+              const renderVisibility = isVisible ? "visible" : "hidden";
 
               return (
-                <g key={`${arrow.sourceFrameIndex}-${arrow.targetFrameIndex}-${arrow.slotIndex}`}>
+                <g
+                  key={`${arrow.sourceFrameIndex}-${arrow.targetFrameIndex}-${arrow.slotIndex}`}
+                >
                   <path
                     d={arrow.pathData}
                     fill="none"
@@ -144,7 +153,7 @@ function ThumbnailsView({
                     strokeWidth="2"
                     strokeOpacity={opacity}
                     visibility={renderVisibility}
-                    style={{ willChange: 'opacity, visibility' }}
+                    style={{ willChange: "opacity, visibility" }}
                     markerEnd="url(#thumbnail-arrowhead)"
                   />
                   {/* Slot label at the start of the arrow */}
@@ -159,7 +168,7 @@ function ThumbnailsView({
                     visibility={renderVisibility}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    style={{ willChange: 'opacity, visibility' }}
+                    style={{ willChange: "opacity, visibility" }}
                   >
                     {arrow.label}
                   </text>
@@ -169,7 +178,7 @@ function ThumbnailsView({
           </svg>
         )}
         {frames.map((frame) => {
-          const layer = frame.temporal_id?.toString() ?? 'A';
+          const layer = frame.temporal_id?.toString() ?? "A";
           const isSelected = frame.frame_index === currentFrameIndex;
           const isReferenced = referencedFrameIndices.has(frame.frame_index);
 
@@ -178,10 +187,8 @@ function ThumbnailsView({
               key={frame.frame_index}
               data-frame-index={frame.frame_index}
               className={`filmstrip-frame ${getFrameTypeColorClass(frame.frame_type)} ${
-                isSelected ? 'selected' : ''
-              } ${
-                isReferenced ? 'is-referenced' : ''
-              }`}
+                isSelected ? "selected" : ""
+              } ${isReferenced ? "is-referenced" : ""}`}
               onClick={() => onFrameClick(frame.frame_index)}
               onMouseEnter={(e) => handleMouseEnter(frame, e)}
               onMouseMove={(e) => handleMouseMove(frame, e)}
@@ -192,7 +199,10 @@ function ThumbnailsView({
               aria-selected={isSelected}
             >
               <div className="frame-thumbnail-wrapper">
-                <div className="frame-header-inner" style={{ color: getFrameTypeColor(frame.frame_type) }}>
+                <div
+                  className="frame-header-inner"
+                  style={{ color: getFrameTypeColor(frame.frame_type) }}
+                >
                   {frame.frame_type}-{layer} {frame.frame_index}
                 </div>
 
@@ -201,11 +211,21 @@ function ThumbnailsView({
                     <img
                       src={thumbnails.get(frame.frame_index)}
                       alt={`Frame ${frame.frame_index}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                      }}
                     />
                   ) : loadingThumbnails.has(frame.frame_index) ? (
-                    <div className="frame-placeholder loading" aria-label="Loading thumbnail">
-                      <span className="codicon codicon-loading codicon-spin" aria-hidden="true"></span>
+                    <div
+                      className="frame-placeholder loading"
+                      aria-label="Loading thumbnail"
+                    >
+                      <span
+                        className="codicon codicon-loading codicon-spin"
+                        aria-hidden="true"
+                      ></span>
                     </div>
                   ) : (
                     <div
@@ -213,19 +233,29 @@ function ThumbnailsView({
                       data-frame-type={frame.frame_type}
                       aria-label={`${frame.frame_type} frame placeholder`}
                     >
-                      <span className="codicon codicon-device-camera" aria-hidden="true"></span>
+                      <span
+                        className="codicon codicon-device-camera"
+                        aria-hidden="true"
+                      ></span>
                     </div>
                   )}
                 </div>
 
-                <div className="frame-nal-type-inner" aria-label={`NAL unit type: ${frame.frame_type}`}>
+                <div
+                  className="frame-nal-type-inner"
+                  aria-label={`NAL unit type: ${frame.frame_type}`}
+                >
                   {frame.frame_type}
                 </div>
 
-                {(frame.display_order !== undefined || frame.coding_order !== undefined) && (
+                {(frame.display_order !== undefined ||
+                  frame.coding_order !== undefined) && (
                   <div className="frame-order-info-inner">
                     {frame.display_order !== undefined && (
-                      <span className="frame-display-order" title="Display Order">
+                      <span
+                        className="frame-display-order"
+                        title="Display Order"
+                      >
                         D:{frame.display_order}
                       </span>
                     )}
@@ -238,22 +268,32 @@ function ThumbnailsView({
                 )}
 
                 {frame.size === 0 && (
-                  <div className="frame-error-badge" role="alert" aria-label="Error loading frame">!</div>
+                  <div
+                    className="frame-error-badge"
+                    role="alert"
+                    aria-label="Error loading frame"
+                  >
+                    !
+                  </div>
                 )}
 
                 {frame.ref_frames && frame.ref_frames.length > 0 && (
                   <div
-                    className={`frame-ref-badge ${expandedFrameIndex === frame.frame_index ? 'expanded' : ''}`}
+                    className={`frame-ref-badge ${expandedFrameIndex === frame.frame_index ? "expanded" : ""}`}
                     data-count={frame.ref_frames.length}
-                    title={`References: ${frame.ref_frames.join(', ')}`}
-                    aria-label={`Reference frames: ${frame.ref_frames.join(', ')}`}
-                    onClick={(e) => onToggleReferenceExpansion(frame.frame_index, e)}
-                    style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                    title={`References: ${frame.ref_frames.join(", ")}`}
+                    aria-label={`Reference frames: ${frame.ref_frames.join(", ")}`}
+                    onClick={(e) =>
+                      onToggleReferenceExpansion(frame.frame_index, e)
+                    }
+                    style={{ pointerEvents: "auto", cursor: "pointer" }}
                   >
                     {expandedFrameIndex === frame.frame_index ? (
                       <div className="ref-indices">
                         {frame.ref_frames.map((refIdx) => (
-                          <span key={refIdx} className="ref-index">#{refIdx}</span>
+                          <span key={refIdx} className="ref-index">
+                            #{refIdx}
+                          </span>
                         ))}
                       </div>
                     ) : null}

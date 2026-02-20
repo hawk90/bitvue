@@ -1,5 +1,16 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(unused_assignments)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Stress tests for HEVC codec - large inputs, random patterns, boundary conditions
-use bitvue_hevc::{parse_hevc, parse_nal_header, parse_hevc_quick};
+use bitvue_hevc::{parse_hevc, parse_hevc_quick, parse_nal_header};
 
 #[test]
 fn test_parse_hevc_large_input_10kb() {
@@ -22,8 +33,8 @@ fn test_parse_hevc_large_input_100kb() {
     // Add periodic NAL units
     for i in 0..10 {
         let offset = i * 10_240;
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x20 + (i as u8) % 5;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x20 + (i as u8) % 5;
     }
 
     let result = parse_hevc(&data);
@@ -45,7 +56,7 @@ fn test_parse_hevc_random_pattern_1kb() {
 fn test_parse_hevc_repeated_start_codes() {
     let mut data = vec![0u8; 256];
     for i in 0..32 {
-        data[i*8..i*8+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[i * 8..i * 8 + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     }
 
     let result = parse_hevc(&data);
@@ -60,8 +71,8 @@ fn test_parse_hevc_max_nal_count() {
         if offset + 8 > data.len() {
             break;
         }
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x20; // VPS
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x20; // VPS
         offset += 64;
     }
 
@@ -120,11 +131,11 @@ fn test_parse_hevc_stress_1mb() {
     // Add NAL units periodically
     for i in 0..256 {
         let offset = i * 4096;
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x21 + (i as u8 % 3);
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x21 + (i as u8 % 3);
         // Add payload
         for j in 5..128 {
-            data[offset+j] = ((j + i) % 256) as u8;
+            data[offset + j] = ((j + i) % 256) as u8;
         }
     }
 
@@ -134,7 +145,9 @@ fn test_parse_hevc_stress_1mb() {
 
 #[test]
 fn test_parse_hevc_boundary_sizes() {
-    let sizes = [1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512];
+    let sizes = [
+        1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512,
+    ];
 
     for size in sizes {
         let mut data = vec![0u8; size];
@@ -154,23 +167,23 @@ fn test_parse_hevc_vps_sps_pps_sequence() {
     let mut offset = 0;
 
     // VPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20;
     offset += 64;
 
     // SPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x21;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x21;
     offset += 64;
 
     // PPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x22;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x22;
     offset += 64;
 
     // Slice
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x01; // TRAIL_R
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x01; // TRAIL_R
 
     let result = parse_hevc(&data);
     assert!(result.is_ok());
@@ -183,8 +196,8 @@ fn test_parse_hevc_multiple_slices() {
 
     for i in 0..3 {
         // Slice
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x01; // TRAIL_R
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x01; // TRAIL_R
         offset += 128;
     }
 
@@ -258,7 +271,8 @@ fn test_parse_hevc_max_layers() {
 #[test]
 fn test_parse_hevc_chroma_formats() {
     // Test different chroma formats
-    for chroma in [0u8, 1, 2, 3] { // 400, 420, 422, 444
+    for chroma in [0u8, 1, 2, 3] {
+        // 400, 420, 422, 444
         let mut data = vec![0u8; 64];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
         data[4] = 0x21; // SPS
@@ -276,19 +290,19 @@ fn test_parse_hevc_with_ref_pic_sets() {
     let mut offset = 0;
 
     // VPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20;
     offset += 64;
 
     // SPS with reference picture sets
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x21;
-    data[offset+6] = 0x03; // num_short_term_ref_pic_sets
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x21;
+    data[offset + 6] = 0x03; // num_short_term_ref_pic_sets
     offset += 128;
 
     // Slice
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x01;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x01;
 
     let result = parse_hevc(&data);
     assert!(result.is_ok());
@@ -300,18 +314,18 @@ fn test_parse_hevc_tiles() {
     let mut offset = 0;
 
     // VPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20;
     offset += 64;
 
     // SPS with tiles
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x21;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x21;
     offset += 128;
 
     // Slice with tiles
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x01;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x01;
 
     let result = parse_hevc(&data);
     assert!(result.is_ok() || result.is_err());
@@ -338,14 +352,14 @@ fn test_parse_hevc_with_multiple_sequences() {
 
     // First sequence
     for _ in 0..3 {
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x20; // VPS
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x20; // VPS
         offset += 64;
     }
 
     // Second sequence
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20; // VPS
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20; // VPS
     offset += 64;
 
     let result = parse_hevc(&data);

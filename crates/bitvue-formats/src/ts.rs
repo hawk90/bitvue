@@ -259,7 +259,7 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
     offset += 2;
 
     // Skip program_number (2), version (1), section_number (1), last_section_number (1)
-    offset = match (offset as usize).checked_add(5) {
+    offset = match offset.checked_add(5) {
         Some(v) => v,
         None => return Ok(Vec::new()),
     };
@@ -271,7 +271,7 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
     let program_info_length =
         (((payload[offset] & 0x0F) as u16) << 8) | (payload[offset + 1] as u16);
     // Use checked arithmetic to prevent overflow
-    offset = match (offset as usize)
+    offset = match offset
         .checked_add(2)
         .and_then(|v| v.checked_add(program_info_length as usize))
     {
@@ -299,7 +299,7 @@ fn parse_pmt(payload: &[u8], pusi: bool) -> Result<Vec<PmtStream>> {
         });
 
         // Use checked arithmetic to prevent overflow
-        offset = match (offset as usize)
+        offset = match offset
             .checked_add(5)
             .and_then(|v| v.checked_add(es_info_length as usize))
         {

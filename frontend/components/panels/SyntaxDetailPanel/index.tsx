@@ -9,32 +9,32 @@
  * - Search functionality
  */
 
-import { useState, useCallback, memo } from 'react';
-import { useFrameData } from '../../../contexts/FrameDataContext';
-import { useCurrentFrame } from '../../../contexts/CurrentFrameContext';
-import { useFileState } from '../../../contexts/FileStateContext';
-import { FrameSyntaxTab } from './FrameSyntaxTab';
-import { ReferencesTab } from './ReferencesTab';
-import { StatisticsTab } from './StatisticsTab';
-import { SearchTab } from './SearchTab';
-import '../SyntaxDetailPanel.css';
+import { useState, useCallback, memo } from "react";
+import { useFrameData } from "../../../contexts/FrameDataContext";
+import { useCurrentFrame } from "../../../contexts/CurrentFrameContext";
+import { useFileState } from "../../../contexts/FileStateContext";
+import { FrameSyntaxTab } from "./FrameSyntaxTab";
+import { ReferencesTab } from "./ReferencesTab";
+import { StatisticsTab } from "./StatisticsTab";
+import { SearchTab } from "./SearchTab";
+import "../SyntaxDetailPanel.css";
 
-type SyntaxTab = 'Frame' | 'Refs' | 'Stats' | 'Search';
+type SyntaxTab = "Frame" | "Refs" | "Stats" | "Search";
 
 const SYNTAX_TABS: { value: SyntaxTab; label: string; icon: string }[] = [
-  { value: 'Frame', label: 'Frame', icon: 'file' },
-  { value: 'Refs', label: 'Refs', icon: 'database' },
-  { value: 'Stats', label: 'Stats', icon: 'graph' },
-  { value: 'Search', label: 'Search', icon: 'search' },
+  { value: "Frame", label: "Frame", icon: "file" },
+  { value: "Refs", label: "Refs", icon: "database" },
+  { value: "Stats", label: "Stats", icon: "graph" },
+  { value: "Search", label: "Search", icon: "search" },
 ];
 
 export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
   const { frames } = useFrameData();
   const { currentFrameIndex } = useCurrentFrame();
   const { filePath } = useFileState();
-  const [currentTab, setCurrentTab] = useState<SyntaxTab>('Frame');
+  const [currentTab, setCurrentTab] = useState<SyntaxTab>("Frame");
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<number[]>([]);
 
   const currentFrame = frames[currentFrameIndex] || null;
@@ -45,7 +45,7 @@ export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
 
   // Toggle node expansion
   const toggleNode = useCallback((nodePath: string) => {
-    setExpandedNodes(prev => {
+    setExpandedNodes((prev) => {
       const next = new Set(prev);
       if (next.has(nodePath)) {
         next.delete(nodePath);
@@ -57,38 +57,41 @@ export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
   }, []);
 
   // Search functionality
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
 
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    const lowerQuery = query.toLowerCase();
-    const results: number[] = [];
-
-    frames.forEach((frame, idx) => {
-      const matchByType = frame.frame_type.toLowerCase().includes(lowerQuery);
-      const matchByIndex = String(frame.frame_index).includes(lowerQuery);
-      const matchByPts = String(frame.pts ?? '').includes(lowerQuery);
-
-      if (matchByType || matchByIndex || matchByPts) {
-        results.push(idx);
+      if (!query.trim()) {
+        setSearchResults([]);
+        return;
       }
-    });
 
-    setSearchResults(results);
-  }, [frames]);
+      const lowerQuery = query.toLowerCase();
+      const results: number[] = [];
+
+      frames.forEach((frame, idx) => {
+        const matchByType = frame.frame_type.toLowerCase().includes(lowerQuery);
+        const matchByIndex = String(frame.frame_index).includes(lowerQuery);
+        const matchByPts = String(frame.pts ?? "").includes(lowerQuery);
+
+        if (matchByType || matchByIndex || matchByPts) {
+          results.push(idx);
+        }
+      });
+
+      setSearchResults(results);
+    },
+    [frames],
+  );
 
   const handleClearSearch = useCallback(() => {
-    setSearchQuery('');
+    setSearchQuery("");
     setSearchResults([]);
   }, []);
 
   const renderTabContent = () => {
     switch (currentTab) {
-      case 'Frame':
+      case "Frame":
         return (
           <FrameSyntaxTab
             frame={currentFrame}
@@ -97,21 +100,11 @@ export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
             filePath={filePath ?? undefined}
           />
         );
-      case 'Refs':
-        return (
-          <ReferencesTab
-            currentFrame={currentFrame}
-            frames={frames}
-          />
-        );
-      case 'Stats':
-        return (
-          <StatisticsTab
-            currentFrame={currentFrame}
-            frames={frames}
-          />
-        );
-      case 'Search':
+      case "Refs":
+        return <ReferencesTab currentFrame={currentFrame} frames={frames} />;
+      case "Stats":
+        return <StatisticsTab currentFrame={currentFrame} frames={frames} />;
+      case "Search":
         return (
           <SearchTab
             frames={frames}
@@ -134,10 +127,10 @@ export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
       <div className="syntax-panel-body">
         {/* Tab bar - vertical on the left */}
         <div className="syntax-tabs">
-          {SYNTAX_TABS.map(tab => (
+          {SYNTAX_TABS.map((tab) => (
             <button
               key={tab.value}
-              className={`syntax-tab ${currentTab === tab.value ? 'active' : ''}`}
+              className={`syntax-tab ${currentTab === tab.value ? "active" : ""}`}
               onClick={() => handleTabChange(tab.value)}
               title={tab.label}
             >
@@ -149,9 +142,7 @@ export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
 
         <div className="syntax-content-wrapper">
           {/* Tab content */}
-          <div className="syntax-content">
-            {renderTabContent()}
-          </div>
+          <div className="syntax-content">{renderTabContent()}</div>
         </div>
       </div>
     </div>

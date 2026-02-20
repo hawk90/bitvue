@@ -4,14 +4,17 @@
  * Shows timeline title and frame count
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface TimelineHeaderProps {
   currentFrame: number;
   totalFrames: number;
 }
 
-export const TimelineHeader = memo(function TimelineHeader({ currentFrame, totalFrames }: TimelineHeaderProps) {
+export const TimelineHeader = memo(function TimelineHeader({
+  currentFrame,
+  totalFrames,
+}: TimelineHeaderProps) {
   return (
     <div className="timeline-header">
       <div className="timeline-title">

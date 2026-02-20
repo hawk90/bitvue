@@ -4,8 +4,8 @@
  * Core tooltip management class
  */
 
-import { TIMING, DIMENSIONS, Z_INDEX } from '../../constants/ui';
-import type { TooltipConfig, TooltipContext } from './types';
+import { TIMING, DIMENSIONS, Z_INDEX } from "../../constants/ui";
+import type { TooltipConfig, TooltipContext } from "./types";
 
 /**
  * Tooltip manager for feature discovery
@@ -46,7 +46,7 @@ export class TooltipManager {
   show(
     id: string,
     target: HTMLElement,
-    context?: Partial<TooltipContext>
+    context?: Partial<TooltipContext>,
   ): boolean {
     const config = this.tooltips.get(id);
     if (!config) return false;
@@ -94,7 +94,7 @@ export class TooltipManager {
 
     // Clean up click-outside listener
     if (this.clickOutsideHandler) {
-      document.removeEventListener('click', this.clickOutsideHandler);
+      document.removeEventListener("click", this.clickOutsideHandler);
       this.clickOutsideHandler = null;
     }
 
@@ -118,7 +118,7 @@ export class TooltipManager {
   private shouldShow(
     id: string,
     config: TooltipConfig,
-    context?: Partial<TooltipContext>
+    context?: Partial<TooltipContext>,
   ): boolean {
     // Don't show if dismissed
     if (this.dismissedTips.has(id)) {
@@ -147,26 +147,29 @@ export class TooltipManager {
   /**
    * Create tooltip element
    */
-  private createTooltip(config: TooltipConfig, target: HTMLElement): HTMLElement {
-    const tooltip = document.createElement('div');
-    tooltip.className = 'interactive-tooltip';
-    tooltip.setAttribute('data-tooltip-id', config.id);
+  private createTooltip(
+    config: TooltipConfig,
+    target: HTMLElement,
+  ): HTMLElement {
+    const tooltip = document.createElement("div");
+    tooltip.className = "interactive-tooltip";
+    tooltip.setAttribute("data-tooltip-id", config.id);
 
     // Create header with title (using textContent to prevent XSS)
-    const header = document.createElement('div');
-    header.className = 'tooltip-header';
+    const header = document.createElement("div");
+    header.className = "tooltip-header";
 
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'tooltip-title';
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "tooltip-title";
     titleSpan.textContent = config.title;
     header.appendChild(titleSpan);
 
     if (config.dismissible !== false) {
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'tooltip-close';
-      closeBtn.setAttribute('aria-label', 'Close');
-      closeBtn.textContent = '×';
-      closeBtn.addEventListener('click', () => {
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "tooltip-close";
+      closeBtn.setAttribute("aria-label", "Close");
+      closeBtn.textContent = "×";
+      closeBtn.addEventListener("click", () => {
         this.dismiss(config.id);
         this.hide();
       });
@@ -176,22 +179,22 @@ export class TooltipManager {
     tooltip.appendChild(header);
 
     // Create content with description (using textContent to prevent XSS)
-    const content = document.createElement('div');
-    content.className = 'tooltip-content';
+    const content = document.createElement("div");
+    content.className = "tooltip-content";
 
-    const descP = document.createElement('p');
-    descP.className = 'tooltip-description';
+    const descP = document.createElement("p");
+    descP.className = "tooltip-description";
     descP.textContent = config.description;
     content.appendChild(descP);
 
     // Add shortcut if present (using textContent to prevent XSS)
     if (config.shortcut) {
-      const shortcutDiv = document.createElement('div');
-      shortcutDiv.className = 'tooltip-shortcut';
-      const shortcutLabel = document.createTextNode('Shortcut: ');
+      const shortcutDiv = document.createElement("div");
+      shortcutDiv.className = "tooltip-shortcut";
+      const shortcutLabel = document.createTextNode("Shortcut: ");
       shortcutDiv.appendChild(shortcutLabel);
 
-      const kbd = document.createElement('kbd');
+      const kbd = document.createElement("kbd");
       kbd.textContent = config.shortcut;
       shortcutDiv.appendChild(kbd);
 
@@ -200,10 +203,10 @@ export class TooltipManager {
 
     // Add action button if present (using textContent to prevent XSS)
     if (config.actionLabel && config.onAction) {
-      const actionBtn = document.createElement('button');
-      actionBtn.className = 'tooltip-action';
+      const actionBtn = document.createElement("button");
+      actionBtn.className = "tooltip-action";
       actionBtn.textContent = config.actionLabel;
-      actionBtn.addEventListener('click', () => {
+      actionBtn.addEventListener("click", () => {
         config.onAction!();
         this.hide();
       });
@@ -214,7 +217,10 @@ export class TooltipManager {
 
     // Close on click outside - store handler reference for cleanup
     const handleOutsideClick = (e: Event) => {
-      if (!tooltip.contains(e.target as Node) && !target.contains(e.target as Node)) {
+      if (
+        !tooltip.contains(e.target as Node) &&
+        !target.contains(e.target as Node)
+      ) {
         this.hide();
       }
     };
@@ -222,7 +228,7 @@ export class TooltipManager {
 
     // Add listener with a small delay to avoid immediate triggering
     setTimeout(() => {
-      document.addEventListener('click', handleOutsideClick);
+      document.addEventListener("click", handleOutsideClick);
     }, 0);
 
     return tooltip;
@@ -234,7 +240,7 @@ export class TooltipManager {
   private positionTooltip(
     tooltip: HTMLElement,
     target: HTMLElement,
-    position: 'top' | 'bottom' | 'left' | 'right' | 'auto'
+    position: "top" | "bottom" | "left" | "right" | "auto",
   ): void {
     const targetRect = target.getBoundingClientRect();
     const tooltipRect = tooltip.getBoundingClientRect();
@@ -246,38 +252,38 @@ export class TooltipManager {
     let finalPosition = position;
 
     // Auto-detect best position
-    if (position === 'auto') {
+    if (position === "auto") {
       if (targetRect.top < viewport.height * 0.3) {
-        finalPosition = 'bottom';
+        finalPosition = "bottom";
       } else if (targetRect.bottom > viewport.height * 0.7) {
-        finalPosition = 'top';
+        finalPosition = "top";
       } else if (targetRect.left < viewport.width * 0.3) {
-        finalPosition = 'right';
+        finalPosition = "right";
       } else if (targetRect.right > viewport.width * 0.7) {
-        finalPosition = 'left';
+        finalPosition = "left";
       } else {
-        finalPosition = 'top';
+        finalPosition = "top";
       }
     }
 
     // Apply positioning
-    tooltip.style.position = 'absolute';
+    tooltip.style.position = "absolute";
     tooltip.style.zIndex = String(Z_INDEX.TOOLTIP);
 
     switch (finalPosition) {
-      case 'top':
+      case "top":
         tooltip.style.bottom = `${viewport.height - targetRect.top + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.left = `${targetRect.left + (targetRect.width - tooltipRect.width) / 2}px`;
         break;
-      case 'bottom':
+      case "bottom":
         tooltip.style.top = `${targetRect.bottom + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.left = `${targetRect.left + (targetRect.width - tooltipRect.width) / 2}px`;
         break;
-      case 'left':
+      case "left":
         tooltip.style.right = `${viewport.width - targetRect.left + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.top = `${targetRect.top + (targetRect.height - tooltipRect.height) / 2}px`;
         break;
-      case 'right':
+      case "right":
         tooltip.style.left = `${targetRect.right + DIMENSIONS.TOOLTIP_OFFSET}px`;
         tooltip.style.top = `${targetRect.top + (targetRect.height - tooltipRect.height) / 2}px`;
         break;
@@ -307,11 +313,13 @@ export class TooltipManager {
    */
   private loadState(): void {
     try {
-      const data = localStorage.getItem('bitvue-tooltips');
+      const data = localStorage.getItem("bitvue-tooltips");
       if (data) {
         const parsed = JSON.parse(data);
         this.dismissedTips = new Set(parsed.dismissed || []);
-        this.shownTips = new Map(Object.entries(parsed.shown || {}).map(([k, v]) => [k, v as number]));
+        this.shownTips = new Map(
+          Object.entries(parsed.shown || {}).map(([k, v]) => [k, v as number]),
+        );
       }
     } catch {
       // Ignore errors
@@ -335,7 +343,7 @@ export class TooltipManager {
           dismissed: Array.from(this.dismissedTips),
           shown: Object.fromEntries(this.shownTips),
         };
-        localStorage.setItem('bitvue-tooltips', JSON.stringify(data));
+        localStorage.setItem("bitvue-tooltips", JSON.stringify(data));
       } catch {
         // Ignore errors
       }
@@ -354,7 +362,7 @@ export class TooltipManager {
     }
     this.dismissedTips.clear();
     this.shownTips.clear();
-    localStorage.removeItem('bitvue-tooltips');
+    localStorage.removeItem("bitvue-tooltips");
   }
 
   /**
@@ -362,7 +370,7 @@ export class TooltipManager {
    */
   getStats(): { registered: number; dismissed: number; shownTotal: number } {
     let shownTotal = 0;
-    this.shownTips.forEach(count => {
+    this.shownTips.forEach((count) => {
       shownTotal += count;
     });
 

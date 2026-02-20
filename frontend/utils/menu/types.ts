@@ -4,12 +4,17 @@
  * Shared types for menu creation functions
  */
 
-import { MenuItem, Submenu, PredefinedMenuItem, type MenuItemOptions } from '@tauri-apps/api/menu';
+import {
+  MenuItem,
+  Submenu,
+  PredefinedMenuItem,
+  type MenuItemOptions,
+} from "@tauri-apps/api/menu";
 
 /**
  * Extended menu item options with action
  */
-interface ExtendedMenuItemOptions extends Omit<MenuItemOptions, 'action'> {
+interface ExtendedMenuItemOptions extends Omit<MenuItemOptions, "action"> {
   action?: () => void;
 }
 
@@ -79,7 +84,9 @@ export function dispatchMenuEvent(event: string, detail?: unknown): void {
 /**
  * Create a standard menu item with event dispatch
  */
-export async function createMenuItem(config: MenuItemConfig): Promise<MenuItem> {
+export async function createMenuItem(
+  config: MenuItemConfig,
+): Promise<MenuItem> {
   const itemConfig: ExtendedMenuItemOptions = {
     id: config.id,
     text: config.text,
@@ -103,7 +110,9 @@ export async function createMenuItem(config: MenuItemConfig): Promise<MenuItem> 
 /**
  * Create a submenu with nested items
  */
-export async function createSubmenu(config: SubmenuItemConfig): Promise<Submenu> {
+export async function createSubmenu(
+  config: SubmenuItemConfig,
+): Promise<Submenu> {
   // Wait for all items to resolve
   const resolvedItems = await Promise.all(config.items);
   return await Submenu.new({

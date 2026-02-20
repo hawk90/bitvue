@@ -6,12 +6,21 @@
  * Supports chunked frame loading for faster initial load
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import type { FrameInfo } from '../types/video';
-import { createLogger } from '../utils/logger';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  ReactNode,
+  useMemo,
+} from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { FrameInfo } from "../types/video";
+import { createLogger } from "../utils/logger";
 
-const logger = createLogger('FileStateContext');
+const logger = createLogger("FileStateContext");
 
 interface ChunkedFramesResponse {
   frames: FrameInfo[];
@@ -32,7 +41,9 @@ interface FileStateContextType {
   clearData: () => void;
 }
 
-const FileStateContext = createContext<FileStateContextType | undefined>(undefined);
+const FileStateContext = createContext<FileStateContextType | undefined>(
+  undefined,
+);
 
 // Chunk size for progressive loading
 const CHUNK_SIZE = 100;
@@ -58,17 +69,21 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     setTotalFrames(0);
 
     try {
-      logger.info('refreshFrames: Calling get_frames command...');
+      logger.info("refreshFrames: Calling get_frames command...");
       const startTime = performance.now();
 
-      const result = await invoke<FrameInfo[]>('get_frames');
+      const result = await invoke<FrameInfo[]>("get_frames");
 
       const elapsed = performance.now() - startTime;
-      logger.info(`refreshFrames: Loaded ${result.length} frames in ${elapsed.toFixed(2)}ms`);
+      logger.info(
+        `refreshFrames: Loaded ${result.length} frames in ${elapsed.toFixed(2)}ms`,
+      );
 
       // Check if we should use chunked loading next time
       if (result.length >= CHUNKED_LOADING_THRESHOLD) {
-        logger.info(`refreshFrames: Large file detected (${result.length} frames), will use chunked loading for subsequent loads`);
+        logger.info(
+          `refreshFrames: Large file detected (${result.length} frames), will use chunked loading for subsequent loads`,
+        );
       }
 
       setTotalFrames(result.length);
@@ -76,7 +91,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       setError(errorMsg);
-      logger.error('Failed to load frames:', errorMsg);
+      logger.error("Failed to load frames:", errorMsg);
       return [];
     } finally {
       setLoading(false);
@@ -93,14 +108,18 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     isLoadingMoreRef.current = true;
 
     try {
-      logger.info(`loadMoreFrames: Loading chunk at offset ${currentOffsetRef.current}`);
+      logger.info(
+        `loadMoreFrames: Loading chunk at offset ${currentOffsetRef.current}`,
+      );
 
-      const result = await invoke<ChunkedFramesResponse>('get_frames_chunk', {
+      const result = await invoke<ChunkedFramesResponse>("get_frames_chunk", {
         offset: currentOffsetRef.current,
         limit: CHUNK_SIZE,
       });
 
-      logger.info(`loadMoreFrames: Got ${result.frames.length} frames, has_more: ${result.has_more}, total: ${result.total_frames}`);
+      logger.info(
+        `loadMoreFrames: Got ${result.frames.length} frames, has_more: ${result.has_more}, total: ${result.total_frames}`,
+      );
 
       // Update state for next chunk
       currentOffsetRef.current = result.offset + result.frames.length;
@@ -110,7 +129,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       return result.frames || [];
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      logger.error('Failed to load frames chunk:', errorMsg);
+      logger.error("Failed to load frames chunk:", errorMsg);
       setError(errorMsg);
       return [];
     } finally {
@@ -120,7 +139,10 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
 
   // Initialize chunked loading state after initial frames are loaded
   useEffect(() => {
-    if (totalFrames >= CHUNKED_LOADING_THRESHOLD && currentOffsetRef.current === 0) {
+    if (
+      totalFrames >= CHUNKED_LOADING_THRESHOLD &&
+      currentOffsetRef.current === 0
+    ) {
       // First chunk was loaded via get_frames, update offset
       currentOffsetRef.current = totalFrames;
       setHasMoreFrames(false); // All frames loaded via get_frames
@@ -138,17 +160,29 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     isLoadingMoreRef.current = false;
   }, []);
 
-  const contextValue = useMemo<FileStateContextType>(() => ({
-    filePath,
-    loading,
-    error,
-    setFilePath,
-    refreshFrames,
-    loadMoreFrames,
-    hasMoreFrames,
-    totalFrames,
-    clearData,
-  }), [filePath, loading, error, refreshFrames, loadMoreFrames, hasMoreFrames, totalFrames, clearData]);
+  const contextValue = useMemo<FileStateContextType>(
+    () => ({
+      filePath,
+      loading,
+      error,
+      setFilePath,
+      refreshFrames,
+      loadMoreFrames,
+      hasMoreFrames,
+      totalFrames,
+      clearData,
+    }),
+    [
+      filePath,
+      loading,
+      error,
+      refreshFrames,
+      loadMoreFrames,
+      hasMoreFrames,
+      totalFrames,
+      clearData,
+    ],
+  );
 
   return (
     <FileStateContext.Provider value={contextValue}>
@@ -160,7 +194,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
 export function useFileState(): FileStateContextType {
   const context = useContext(FileStateContext);
   if (!context) {
-    throw new Error('useFileState must be used within a FileStateProvider');
+    throw new Error("useFileState must be used within a FileStateProvider");
   }
   return context;
 }

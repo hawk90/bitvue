@@ -9,11 +9,13 @@
 // ============================================================================
 
 /// Create a test cache debug overlay
+#[allow(dead_code)]
 fn create_test_overlay() -> CacheDebugOverlay {
     CacheDebugOverlay::new()
 }
 
 /// Create a test cache entry
+#[allow(dead_code)]
 fn create_test_cached_entry(
     frame_idx: usize,
     _cache_type: CacheType,
@@ -28,6 +30,7 @@ fn create_test_cached_entry(
 
 #[cfg(test)]
 mod cache_status_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -78,6 +81,7 @@ mod cache_status_tests {
 
 #[cfg(test)]
 mod invalidation_reason_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -161,6 +165,7 @@ mod invalidation_reason_tests {
 
 #[cfg(test)]
 mod cache_provenance_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -210,6 +215,7 @@ mod cache_provenance_tests {
 
 #[cfg(test)]
 mod cache_entry_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -340,6 +346,7 @@ mod cache_entry_tests {
 
 #[cfg(test)]
 mod cache_type_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -430,6 +437,7 @@ mod cache_type_tests {
 
 #[cfg(test)]
 mod construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -459,6 +467,7 @@ mod construction_tests {
 
 #[cfg(test)]
 mod configuration_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -506,6 +515,7 @@ mod configuration_tests {
 
 #[cfg(test)]
 mod recording_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -606,6 +616,7 @@ mod recording_tests {
 
 #[cfg(test)]
 mod retrieval_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -695,6 +706,7 @@ mod retrieval_tests {
 
 #[cfg(test)]
 mod statistics_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -752,6 +764,7 @@ mod statistics_tests {
 
 #[cfg(test)]
 mod clear_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -829,6 +842,7 @@ mod clear_tests {
 
 #[cfg(test)]
 mod cache_stats_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -976,8 +990,10 @@ mod cache_stats_tests {
 // Edge Cases
 // ============================================================================
 
+#[allow(dead_code)]
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

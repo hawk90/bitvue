@@ -9,15 +9,18 @@
  * Falls back to the name itself if not found or in SSR context
  */
 export function getCssVar(name: string): string {
-  if (typeof document === 'undefined') return name;
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || name;
+  if (typeof document === "undefined") return name;
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue(name).trim() ||
+    name
+  );
 }
 
 /**
  * Set CSS variable value on document root
  */
 export function setCssVar(name: string, value: string): void {
-  if (typeof document === 'undefined') return;
+  if (typeof document === "undefined") return;
   document.documentElement.style.setProperty(name, value);
 }
 
@@ -26,13 +29,15 @@ export function setCssVar(name: string, value: string): void {
  */
 export function getCssVars(names: string[]): Record<string, string> {
   const result: Record<string, string> = {};
-  if (typeof document === 'undefined') {
-    names.forEach(name => { result[name] = name; });
+  if (typeof document === "undefined") {
+    names.forEach((name) => {
+      result[name] = name;
+    });
     return result;
   }
 
   const styles = getComputedStyle(document.documentElement);
-  names.forEach(name => {
+  names.forEach((name) => {
     result[name] = styles.getPropertyValue(name).trim() || name;
   });
   return result;
@@ -43,11 +48,11 @@ export function getCssVars(names: string[]): Record<string, string> {
  * Returns NaN if unable to parse
  */
 export function parseCssPixels(value: string): number {
-  if (typeof document === 'undefined') return NaN;
+  if (typeof document === "undefined") return NaN;
 
-  const temp = document.createElement('div');
-  temp.style.position = 'absolute';
-  temp.style.visibility = 'hidden';
+  const temp = document.createElement("div");
+  temp.style.position = "absolute";
+  temp.style.visibility = "hidden";
   temp.style.height = value;
   document.body.appendChild(temp);
 
@@ -61,7 +66,9 @@ export function parseCssPixels(value: string): number {
  * Check if a CSS variable is defined
  */
 export function hasCssVar(name: string): boolean {
-  if (typeof document === 'undefined') return false;
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name);
-  return value !== null && value.trim() !== '';
+  if (typeof document === "undefined") return false;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(
+    name,
+  );
+  return value !== null && value.trim() !== "";
 }

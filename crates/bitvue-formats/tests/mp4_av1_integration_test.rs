@@ -1,8 +1,20 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! MP4 AV1 Extraction Integration Tests
 //!
 //! Tests MP4 container format support for AV1 codec extraction.
 
 #[test]
+#[ignore = "Requires TheaterSquare_640x360.mp4 test file not in repository"]
 fn test_extract_av1_from_mp4_theater_square() {
     use bitvue_formats::mp4;
     use std::fs;
@@ -62,6 +74,7 @@ fn test_extract_av1_from_mp4_theater_square() {
 }
 
 #[test]
+#[ignore = "Requires TSU_640x360.mp4 test file not in repository"]
 fn test_extract_av1_from_mp4_tsu() {
     use bitvue_formats::mp4;
     use std::fs;
@@ -99,6 +112,7 @@ fn test_extract_av1_from_mp4_tsu() {
 }
 
 #[test]
+#[ignore = "Requires TheaterSquare_640x360.mp4 test file not in repository"]
 fn test_mp4_av1_sample_structure() {
     use bitvue_formats::mp4;
     use std::fs;
@@ -122,6 +136,7 @@ fn test_mp4_av1_sample_structure() {
 }
 
 #[test]
+#[ignore = "Requires TheaterSquare_640x360.mp4 test file not in repository"]
 fn test_detect_mp4_container_format() {
     use bitvue_formats::detect_container_format;
     use std::path::Path;

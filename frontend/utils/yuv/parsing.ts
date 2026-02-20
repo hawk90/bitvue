@@ -5,7 +5,7 @@
  * Extracted from yuvRenderer.ts for better modularity.
  */
 
-import type { YUVFrame, YUVFormat, ChromaSubsampling } from '../../types/yuv';
+import type { YUVFrame, YUVFormat, ChromaSubsampling } from "../../types/yuv";
 
 /** Chroma subsampling divisor for YUV420 (2:1 horizontal and vertical) */
 const CHROMA_420_DIVISOR = 2;
@@ -26,7 +26,7 @@ export function parseYUVFromBuffer(
   buffer: ArrayBuffer,
   width: number,
   height: number,
-  format: YUVFormat = 'I420'
+  format: YUVFormat = "I420",
 ): YUVFrame {
   const data = new Uint8Array(buffer);
 
@@ -39,36 +39,21 @@ export function parseYUVFromBuffer(
   let chromaSubsampling: ChromaSubsampling;
 
   const ySize = width * height;
-  const chromaSize = (width / CHROMA_420_DIVISOR) * (height / CHROMA_420_DIVISOR);
+  const chromaSize =
+    (width / CHROMA_420_DIVISOR) * (height / CHROMA_420_DIVISOR);
 
-  if (format === 'I420' || format === 'YV12') {
+  if (format === "I420" || format === "YV12") {
     // Planar YUV420
-    ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } = parsePlanarYUV420(
-      data,
-      width,
-      height,
-      ySize,
-      chromaSize,
-      format
-    ));
-  } else if (format === 'NV12') {
+    ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } =
+      parsePlanarYUV420(data, width, height, ySize, chromaSize, format));
+  } else if (format === "NV12") {
     // Semi-planar YUV420 (UV interleaved)
-    ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } = parseSemiPlanarYUV420(
-      data,
-      width,
-      height,
-      ySize,
-      chromaSize
-    ));
-  } else if (format === 'YUY2' || format === 'UYVY') {
+    ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } =
+      parseSemiPlanarYUV420(data, width, height, ySize, chromaSize));
+  } else if (format === "YUY2" || format === "UYVY") {
     // Packed YUV422
-    ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } = parsePackedYUV422(
-      data,
-      width,
-      height,
-      ySize,
-      format
-    ));
+    ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } =
+      parsePackedYUV422(data, width, height, ySize, format));
   } else {
     throw new Error(`Unsupported YUV format: ${format}`);
   }
@@ -95,7 +80,7 @@ function parsePlanarYUV420(
   height: number,
   ySize: number,
   chromaSize: number,
-  format: 'I420' | 'YV12'
+  format: "I420" | "YV12",
 ): {
   y: Uint8Array;
   u: Uint8Array;
@@ -108,11 +93,11 @@ function parsePlanarYUV420(
   const yStride = width;
   const uStride = width / CHROMA_420_DIVISOR;
   const vStride = width / CHROMA_420_DIVISOR;
-  const chromaSubsampling: ChromaSubsampling = '420';
+  const chromaSubsampling: ChromaSubsampling = "420";
 
   const y = data.subarray(0, ySize);
-  const uStart = format === 'I420' ? ySize : ySize + chromaSize;
-  const vStart = format === 'I420' ? ySize + chromaSize : ySize;
+  const uStart = format === "I420" ? ySize : ySize + chromaSize;
+  const vStart = format === "I420" ? ySize + chromaSize : ySize;
   const u = data.subarray(uStart, uStart + chromaSize);
   const v = data.subarray(vStart, vStart + chromaSize);
 
@@ -127,7 +112,7 @@ function parseSemiPlanarYUV420(
   width: number,
   height: number,
   ySize: number,
-  chromaSize: number
+  chromaSize: number,
 ): {
   y: Uint8Array;
   u: Uint8Array;
@@ -140,7 +125,7 @@ function parseSemiPlanarYUV420(
   const yStride = width;
   const uStride = width;
   const vStride = width;
-  const chromaSubsampling: ChromaSubsampling = '420';
+  const chromaSubsampling: ChromaSubsampling = "420";
 
   const y = data.subarray(0, ySize);
   const uvData = data.subarray(ySize, ySize + chromaSize * 2);
@@ -164,7 +149,7 @@ function parsePackedYUV422(
   width: number,
   height: number,
   ySize: number,
-  format: 'YUY2' | 'UYVY'
+  format: "YUY2" | "UYVY",
 ): {
   y: Uint8Array;
   u: Uint8Array;
@@ -174,7 +159,7 @@ function parsePackedYUV422(
   vStride: number;
   chromaSubsampling: ChromaSubsampling;
 } {
-  const chromaSubsampling: ChromaSubsampling = '422';
+  const chromaSubsampling: ChromaSubsampling = "422";
   const yStride = width;
   const uStride = width;
   const vStride = width;
@@ -183,10 +168,10 @@ function parsePackedYUV422(
   const u = new Uint8Array(ySize);
   const v = new Uint8Array(ySize);
 
-  const y0Offset = format === 'YUY2' ? 0 : 1;
-  const y1Offset = format === 'YUY2' ? 2 : 3;
-  const uOffset = format === 'YUY2' ? 1 : 0;
-  const vOffset = format === 'YUY2' ? 3 : 2;
+  const y0Offset = format === "YUY2" ? 0 : 1;
+  const y1Offset = format === "YUY2" ? 2 : 3;
+  const uOffset = format === "YUY2" ? 1 : 0;
+  const vOffset = format === "YUY2" ? 3 : 2;
 
   for (let i = 0; i < ySize; i++) {
     const pixel = i * 2;
@@ -208,7 +193,8 @@ function parsePackedYUV422(
  */
 export function createBlackYUVFrame(width: number, height: number): YUVFrame {
   const ySize = width * height;
-  const chromaSize = (width / CHROMA_420_DIVISOR) * (height / CHROMA_420_DIVISOR);
+  const chromaSize =
+    (width / CHROMA_420_DIVISOR) * (height / CHROMA_420_DIVISOR);
 
   return {
     y: new Uint8Array(ySize), // All zeros = black
@@ -219,6 +205,6 @@ export function createBlackYUVFrame(width: number, height: number): YUVFrame {
     yStride: width,
     uStride: width / CHROMA_420_DIVISOR,
     vStride: width / CHROMA_420_DIVISOR,
-    chromaSubsampling: '420',
+    chromaSubsampling: "420",
   };
 }

@@ -242,6 +242,7 @@ pub fn extract_plane(source: &[u8], config: PlaneConfig) -> Result<Vec<u8>> {
     // - The final `offset` equals `expected_size`, confirming all bytes were written
     // - We validate source bounds before each copy (lines 262-271)
     // - We return early on any error, so partial writes never reach the caller
+    #[expect(clippy::uninit_vec)]
     let mut data = Vec::with_capacity(expected_size);
     unsafe {
         data.set_len(expected_size);

@@ -2,31 +2,31 @@
  * Tests for ExportDialog component
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { ExportDialog } from '@/components/ExportDialog';
-import type { FrameInfo } from '@/types/video';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { ExportDialog } from "@/components/ExportDialog";
+import type { FrameInfo } from "@/types/video";
 
 // Mock Tauri invoke
 const mockInvoke = vi.fn();
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
 }));
 
 const mockSave = vi.fn();
-vi.mock('@tauri-apps/plugin-dialog', () => ({
+vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: mockSave,
 }));
 
 // Mock exportUtils - must be defined inline due to hoisting
-vi.mock('@/utils/exportUtils', () => ({
+vi.mock("@/utils/exportUtils", () => ({
   exportUtils: {
-    exportFramesToCsv: vi.fn(() => Promise.resolve('/mock/path/export.csv')),
-    exportFramesToJson: vi.fn(() => Promise.resolve('/mock/path/export.json')),
-    exportAnalysisReport: vi.fn(() => Promise.resolve('/mock/path/report.txt')),
+    exportFramesToCsv: vi.fn(() => Promise.resolve("/mock/path/export.csv")),
+    exportFramesToJson: vi.fn(() => Promise.resolve("/mock/path/export.json")),
+    exportAnalysisReport: vi.fn(() => Promise.resolve("/mock/path/report.txt")),
     generateAnalysisReport: vi.fn(() => ({
-      codec: 'hevc',
+      codec: "hevc",
       width: 1920,
       height: 1080,
       total_frames: 3,
@@ -50,11 +50,11 @@ vi.mock('@/utils/exportUtils', () => ({
   },
 }));
 
-describe('ExportDialog', () => {
+describe("ExportDialog", () => {
   const mockFrames: FrameInfo[] = [
     {
       frameNumber: 0,
-      frameType: 'I',
+      frameType: "I",
       poc: 0,
       pts: 0,
       size: 50000,
@@ -62,7 +62,7 @@ describe('ExportDialog', () => {
     },
     {
       frameNumber: 1,
-      frameType: 'P',
+      frameType: "P",
       poc: 1,
       pts: 1,
       size: 25000,
@@ -71,7 +71,7 @@ describe('ExportDialog', () => {
     },
     {
       frameNumber: 2,
-      frameType: 'B',
+      frameType: "B",
       poc: 2,
       pts: 2,
       size: 15000,
@@ -85,10 +85,10 @@ describe('ExportDialog', () => {
   beforeEach(() => {
     mockOnClose = vi.fn();
     vi.clearAllMocks();
-    mockSave.mockResolvedValue('/mock/path/export.csv');
+    mockSave.mockResolvedValue("/mock/path/export.csv");
   });
 
-  it('renders when isOpen is true', () => {
+  it("renders when isOpen is true", () => {
     render(
       <ExportDialog
         isOpen={true}
@@ -97,15 +97,15 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
-    expect(screen.getByText('Export Data')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+    expect(screen.getByText("Export Data")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
   });
 
-  it('does not render when isOpen is false', () => {
+  it("does not render when isOpen is false", () => {
     const { container } = render(
       <ExportDialog
         isOpen={false}
@@ -114,13 +114,13 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
     expect(container.firstChild).toBeNull();
   });
 
-  it('displays export type options', () => {
+  it("displays export type options", () => {
     render(
       <ExportDialog
         isOpen={true}
@@ -129,15 +129,15 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
-    expect(screen.getByText('Frame Data')).toBeInTheDocument();
-    expect(screen.getByText('Analysis Report')).toBeInTheDocument();
-    expect(screen.getByText('Full Report')).toBeInTheDocument();
+    expect(screen.getByText("Frame Data")).toBeInTheDocument();
+    expect(screen.getByText("Analysis Report")).toBeInTheDocument();
+    expect(screen.getByText("Full Report")).toBeInTheDocument();
   });
 
-  it('displays format options', () => {
+  it("displays format options", () => {
     render(
       <ExportDialog
         isOpen={true}
@@ -146,19 +146,19 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
     // CSV and JSON are always available
-    expect(screen.getByText('CSV')).toBeInTheDocument();
-    expect(screen.getByText('JSON')).toBeInTheDocument();
+    expect(screen.getByText("CSV")).toBeInTheDocument();
+    expect(screen.getByText("JSON")).toBeInTheDocument();
 
     // Text and PDF are only shown for analysis/report types
-    expect(screen.queryByText('Text')).not.toBeInTheDocument();
-    expect(screen.queryByText('PDF')).not.toBeInTheDocument();
+    expect(screen.queryByText("Text")).not.toBeInTheDocument();
+    expect(screen.queryByText("PDF")).not.toBeInTheDocument();
   });
 
-  it('shows frame count info', () => {
+  it("shows frame count info", () => {
     render(
       <ExportDialog
         isOpen={true}
@@ -167,13 +167,13 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
     expect(screen.getByText(/Frames to export: 3/)).toBeInTheDocument();
   });
 
-  it('displays Text and PDF format options for analysis type', async () => {
+  it("displays Text and PDF format options for analysis type", async () => {
     const user = userEvent.setup();
     render(
       <ExportDialog
@@ -183,19 +183,19 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
     // Click on Analysis Report radio button
-    const analysisRadio = screen.getByLabelText('Analysis Report');
+    const analysisRadio = screen.getByLabelText("Analysis Report");
     await user.click(analysisRadio);
 
     // Now Text and PDF should be visible
-    expect(screen.getByText('Text')).toBeInTheDocument();
-    expect(screen.getByText('PDF')).toBeInTheDocument();
+    expect(screen.getByText("Text")).toBeInTheDocument();
+    expect(screen.getByText("PDF")).toBeInTheDocument();
   });
 
-  it('disables export button when no frames', () => {
+  it("disables export button when no frames", () => {
     render(
       <ExportDialog
         isOpen={true}
@@ -204,14 +204,14 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
-    const exportButton = screen.getByRole('button', { name: 'Export' });
+    const exportButton = screen.getByRole("button", { name: "Export" });
     expect(exportButton).toBeDisabled();
   });
 
-  it('calls onClose when cancel is clicked', async () => {
+  it("calls onClose when cancel is clicked", async () => {
     const user = userEvent.setup();
     render(
       <ExportDialog
@@ -221,18 +221,18 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
-    const cancelButton = screen.getByRole('button', { name: 'Cancel' });
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
     await user.click(cancelButton);
 
     expect(mockOnClose).toHaveBeenCalled();
   });
 
-  it('calls export when export button is clicked', async () => {
+  it("calls export when export button is clicked", async () => {
     const user = userEvent.setup();
-    const { exportUtils } = await import('@/utils/exportUtils');
+    const { exportUtils } = await import("@/utils/exportUtils");
 
     render(
       <ExportDialog
@@ -242,18 +242,21 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
-    const exportButton = screen.getByRole('button', { name: 'Export' });
+    const exportButton = screen.getByRole("button", { name: "Export" });
     await user.click(exportButton);
 
-    await waitFor(() => {
-      expect(exportUtils.exportFramesToCsv).toHaveBeenCalled();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(exportUtils.exportFramesToCsv).toHaveBeenCalled();
+      },
+      { timeout: 3000 },
+    );
   });
 
-  it('shows export status messages', async () => {
+  it("shows export status messages", async () => {
     const user = userEvent.setup();
 
     render(
@@ -264,10 +267,10 @@ describe('ExportDialog', () => {
         codec="hevc"
         width={1920}
         height={1080}
-      />
+      />,
     );
 
-    const exportButton = screen.getByRole('button', { name: 'Export' });
+    const exportButton = screen.getByRole("button", { name: "Export" });
     await user.click(exportButton);
 
     // The export completes very fast in tests, so we just check for success

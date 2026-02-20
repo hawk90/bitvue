@@ -4,8 +4,8 @@
  * Temporary placeholder for panels under development
  */
 
-import { memo } from 'react';
-import './PlaceholderPanel.css';
+import { memo } from "react";
+import "./PlaceholderPanel.css";
 
 export interface PlaceholderPanelProps {
   title: string;
@@ -15,8 +15,8 @@ export interface PlaceholderPanelProps {
 
 function PlaceholderPanel({
   title,
-  description = 'Coming soon...',
-  icon = 'clock',
+  description = "Coming soon...",
+  icon = "clock",
 }: PlaceholderPanelProps) {
   return (
     <div className="placeholder-panel">

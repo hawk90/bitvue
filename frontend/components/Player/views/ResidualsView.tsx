@@ -8,8 +8,8 @@
  * - Quantization effects on residuals
  */
 
-import { memo, useMemo, useEffect, useState } from 'react';
-import type { FrameInfo } from '../../../types/video';
+import { memo, useMemo, useEffect, useState } from "react";
+import type { FrameInfo } from "../../../types/video";
 
 interface ResidualsViewProps {
   frame: FrameInfo | null;
@@ -47,7 +47,8 @@ export const ResidualsView = memo(function ResidualsView({
   showHistogram = true,
 }: ResidualsViewProps) {
   const [blockResiduals, setBlockResiduals] = useState<BlockResidual[]>([]);
-  const [coefficientStats, setCoefficientStats] = useState<CoefficientStats | null>(null);
+  const [coefficientStats, setCoefficientStats] =
+    useState<CoefficientStats | null>(null);
 
   // Generate mock block residuals based on frame info
   useEffect(() => {
@@ -69,7 +70,9 @@ export const ResidualsView = memo(function ResidualsView({
       for (let x = 0; x < gridW; x++) {
         const energy = Math.random() * (100 - qp);
         const maxCoeff = Math.random() * (255 - qp * 2);
-        const nonZeros = Math.floor(Math.random() * (blockSize * blockSize / 4));
+        const nonZeros = Math.floor(
+          Math.random() * ((blockSize * blockSize) / 4),
+        );
 
         blocks.push({
           x: x * blockSize,
@@ -86,13 +89,17 @@ export const ResidualsView = memo(function ResidualsView({
     setBlockResiduals(blocks);
 
     // Calculate coefficient statistics
-    const allCoeffs = blocks.flatMap(b =>
-      Array(b.nonZeros).fill(0).map(() => Math.random() * b.maxCoeff)
+    const allCoeffs = blocks.flatMap((b) =>
+      Array(b.nonZeros)
+        .fill(0)
+        .map(() => Math.random() * b.maxCoeff),
     );
 
     if (allCoeffs.length > 0) {
       const mean = allCoeffs.reduce((a, b) => a + b, 0) / allCoeffs.length;
-      const variance = allCoeffs.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / allCoeffs.length;
+      const variance =
+        allCoeffs.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) /
+        allCoeffs.length;
       const energy = allCoeffs.reduce((sum, val) => sum + val * val, 0);
 
       setCoefficientStats({
@@ -109,8 +116,8 @@ export const ResidualsView = memo(function ResidualsView({
 
   const heatmapColors = useMemo(() => {
     if (!blockResiduals.length) return [];
-    const maxEnergy = Math.max(...blockResiduals.map(b => b.energy));
-    return blockResiduals.map(block => {
+    const maxEnergy = Math.max(...blockResiduals.map((b) => b.energy));
+    return blockResiduals.map((block) => {
       const intensity = block.energy / maxEnergy;
       return `hsl(${240 - intensity * 240}, 70%, 50%)`;
     });
@@ -123,7 +130,7 @@ export const ResidualsView = memo(function ResidualsView({
     const binSize = maxVal / bins;
     const histogram = new Array(bins).fill(0);
 
-    blockResiduals.forEach(block => {
+    blockResiduals.forEach((block) => {
       const binIndex = Math.min(Math.floor(block.maxCoeff / binSize), bins - 1);
       histogram[binIndex]++;
     });
@@ -149,7 +156,9 @@ export const ResidualsView = memo(function ResidualsView({
         <h3>Residuals Analysis</h3>
         <div className="residuals-frame-info">
           <span>Frame {frame.frame_index}</span>
-          <span className={frame.frame_type.toLowerCase()}>{frame.frame_type}</span>
+          <span className={frame.frame_type.toLowerCase()}>
+            {frame.frame_type}
+          </span>
         </div>
       </div>
 
@@ -158,23 +167,33 @@ export const ResidualsView = memo(function ResidualsView({
         <div className="residuals-stats">
           <div className="residuals-stat-item">
             <span className="residuals-stat-label">Non-Zero Coeffs:</span>
-            <span className="residuals-stat-value">{coefficientStats.nonZeroCount.toLocaleString()}</span>
+            <span className="residuals-stat-value">
+              {coefficientStats.nonZeroCount.toLocaleString()}
+            </span>
           </div>
           <div className="residuals-stat-item">
             <span className="residuals-stat-label">Zero Coeffs:</span>
-            <span className="residuals-stat-value">{coefficientStats.zeroCount.toLocaleString()}</span>
+            <span className="residuals-stat-value">
+              {coefficientStats.zeroCount.toLocaleString()}
+            </span>
           </div>
           <div className="residuals-stat-item">
             <span className="residuals-stat-label">Mean:</span>
-            <span className="residuals-stat-value">{coefficientStats.mean.toFixed(2)}</span>
+            <span className="residuals-stat-value">
+              {coefficientStats.mean.toFixed(2)}
+            </span>
           </div>
           <div className="residuals-stat-item">
             <span className="residuals-stat-label">Std Dev:</span>
-            <span className="residuals-stat-value">{coefficientStats.variance.toFixed(2)}</span>
+            <span className="residuals-stat-value">
+              {coefficientStats.variance.toFixed(2)}
+            </span>
           </div>
           <div className="residuals-stat-item">
             <span className="residuals-stat-label">Energy:</span>
-            <span className="residuals-stat-value">{coefficientStats.energy.toFixed(0)}</span>
+            <span className="residuals-stat-value">
+              {coefficientStats.energy.toFixed(0)}
+            </span>
           </div>
         </div>
       )}
@@ -199,15 +218,17 @@ export const ResidualsView = memo(function ResidualsView({
                     y={block.y}
                     width={block.width}
                     height={block.height}
-                    fill={heatmapColors[index] || '#333'}
+                    fill={heatmapColors[index] || "#333"}
                     stroke="rgba(255,255,255,0.1)"
                     strokeWidth="0.5"
                     opacity={0.8}
                   >
                     <title>
                       Block ({block.x}, {block.y}){`\n`}
-                      Energy: {block.energy.toFixed(2)}{`\n`}
-                      Max Coeff: {block.maxCoeff.toFixed(2)}{`\n`}
+                      Energy: {block.energy.toFixed(2)}
+                      {`\n`}
+                      Max Coeff: {block.maxCoeff.toFixed(2)}
+                      {`\n`}
                       Non-Zeros: {block.nonZeros}
                     </title>
                   </rect>
@@ -223,7 +244,9 @@ export const ResidualsView = memo(function ResidualsView({
                   <div
                     key={i}
                     className="residuals-heatmap-scale-step"
-                    style={{ background: `hsl(${240 - (i / 9) * 240}, 70%, 50%)` }}
+                    style={{
+                      background: `hsl(${240 - (i / 9) * 240}, 70%, 50%)`,
+                    }}
                   />
                 ))}
               </div>
@@ -239,10 +262,13 @@ export const ResidualsView = memo(function ResidualsView({
             <div className="residuals-histogram-container">
               <svg width="100%" height="200" className="residuals-histogram">
                 {histogramData.map((bin, index) => {
-                  const maxCount = Math.max(...histogramData.map(b => b.count));
-                  const barHeight = maxCount > 0 ? (bin.count / maxCount) * 180 : 0;
+                  const maxCount = Math.max(
+                    ...histogramData.map((b) => b.count),
+                  );
+                  const barHeight =
+                    maxCount > 0 ? (bin.count / maxCount) * 180 : 0;
                   const x = (index / histogramData.length) * 100;
-                  const barWidth = (100 / histogramData.length) - 0.5;
+                  const barWidth = 100 / histogramData.length - 0.5;
 
                   return (
                     <g key={index}>
@@ -256,7 +282,8 @@ export const ResidualsView = memo(function ResidualsView({
                         rx="2"
                       >
                         <title>
-                          Range: [{bin.binStart.toFixed(1)}, {bin.binEnd.toFixed(1)}]{`\n`}
+                          Range: [{bin.binStart.toFixed(1)},{" "}
+                          {bin.binEnd.toFixed(1)}]{`\n`}
                           Count: {bin.count}
                         </title>
                       </rect>
@@ -268,7 +295,7 @@ export const ResidualsView = memo(function ResidualsView({
             <div className="residuals-histogram-labels">
               <span>0</span>
               <span>Coefficient Value</span>
-              <span>{coefficientStats?.max.toFixed(0) || '0'}</span>
+              <span>{coefficientStats?.max.toFixed(0) || "0"}</span>
             </div>
           </div>
         )}

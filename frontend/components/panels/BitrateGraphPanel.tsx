@@ -7,8 +7,8 @@
  * Reference: crates/ui/src/panels/bitrate_graph.rs
  */
 
-import PlaceholderPanel from './PlaceholderPanel';
-import { memo } from 'react';
+import PlaceholderPanel from "./PlaceholderPanel";
+import { memo } from "react";
 
 export const BitrateGraphPanel = memo(function BitrateGraphPanel() {
   return (

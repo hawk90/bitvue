@@ -99,11 +99,12 @@ impl ResourceBudget {
     ///
     /// Convenience method for checking Vec allocations.
     pub fn check_vec_allocation<T>(&self, count: usize) -> Result<(), AllocationError> {
-        let size = count.checked_mul(std::mem::size_of::<T>())
-            .ok_or(AllocationError::SingleAllocationTooLarge {
+        let size = count.checked_mul(std::mem::size_of::<T>()).ok_or(
+            AllocationError::SingleAllocationTooLarge {
                 requested: u64::MAX,
                 max_allowed: MAX_SINGLE_ALLOCATION,
-            })? as u64;
+            },
+        )? as u64;
         self.check_allocation(size)
     }
 

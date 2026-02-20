@@ -73,7 +73,7 @@ impl StrategyRegistry {
     pub fn get_type(&self) -> StrategyType {
         *self
             .current_strategy
-            .get_or_init(|| Self::detect_best_strategy_type())
+            .get_or_init(Self::detect_best_strategy_type)
     }
 
     /// Get the current strategy type
@@ -308,7 +308,7 @@ mod tests {
         // Get the current strategy after auto-detection
         let before = current_strategy_type();
 
-        let result = set_strategy(StrategyType::Scalar);
+        let _ = set_strategy(StrategyType::Scalar);
 
         // OnceLock doesn't allow overwriting, so the strategy won't change if already set
         // The result will be Ok() only if the strategy was successfully set to Scalar

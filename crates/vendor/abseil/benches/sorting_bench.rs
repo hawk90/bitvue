@@ -1,5 +1,4 @@
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
 use abseil::absl_sorting::{
     bubble_sort, heapsort, insertion_sort, introsort, mergesort, quicksort, radix_sort, timsort,

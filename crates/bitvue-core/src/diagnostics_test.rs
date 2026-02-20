@@ -1,9 +1,11 @@
 // Diagnostics module tests
+#[allow(unused_imports)]
 use super::*;
 
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_diagnostic() -> Diagnostic {
     Diagnostic::new(
         1,
@@ -15,14 +17,17 @@ fn create_test_diagnostic() -> Diagnostic {
     )
 }
 
+#[allow(dead_code)]
 fn create_test_manager() -> DiagnosticsManager {
     DiagnosticsManager::new()
 }
 
+#[allow(dead_code)]
 fn create_test_filter() -> DiagnosticsFilter {
     DiagnosticsFilter::default()
 }
 
+#[allow(dead_code)]
 fn create_test_panel() -> DiagnosticsPanel {
     DiagnosticsPanel::new()
 }
@@ -32,6 +37,7 @@ fn create_test_panel() -> DiagnosticsPanel {
 // ============================================================================
 #[cfg(test)]
 mod severity_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -60,6 +66,7 @@ mod severity_tests {
 // ============================================================================
 #[cfg(test)]
 mod diagnostic_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -98,6 +105,7 @@ mod diagnostic_tests {
 // ============================================================================
 #[cfg(test)]
 mod manager_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -190,6 +198,7 @@ mod manager_tests {
 // ============================================================================
 #[cfg(test)]
 mod severity_counts_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -232,6 +241,7 @@ mod severity_counts_tests {
 // ============================================================================
 #[cfg(test)]
 mod panel_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -265,6 +275,7 @@ mod panel_tests {
 // ============================================================================
 #[cfg(test)]
 mod degrade_state_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

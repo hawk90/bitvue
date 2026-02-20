@@ -80,8 +80,8 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
     let width = frame_header.width;
     let height = frame_header.height;
 
-    let grid_w = (width + sb_size - 1) / sb_size;
-    let grid_h = (height + sb_size - 1) / sb_size;
+    let grid_w = width.div_ceil(sb_size);
+    let grid_h = height.div_ceil(sb_size);
 
     // SECURITY: Validate grid dimensions to prevent excessive allocation
     if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
@@ -91,15 +91,9 @@ pub fn extract_qp_grid(frame_header: &FrameHeader) -> Result<QPGrid, BitvueError
         )));
     }
 
-    let total_blocks = grid_w
-        .checked_mul(grid_h)
-        .ok_or_else(|| {
-            BitvueError::Decode(format!(
-                "Grid block count overflow: {}x{}",
-                grid_w, grid_h
-            ))
-        })?
-        as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid block count overflow: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     if total_blocks > MAX_GRID_BLOCKS {
         return Err(BitvueError::Decode(format!(
@@ -138,8 +132,8 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
 
     // Use 16x16 blocks for MV grid
     let block_size = 16u32;
-    let grid_w = (width + block_size - 1) / block_size;
-    let grid_h = (height + block_size - 1) / block_size;
+    let grid_w = width.div_ceil(block_size);
+    let grid_h = height.div_ceil(block_size);
 
     // SECURITY: Validate grid dimensions to prevent excessive allocation
     if grid_w > MAX_GRID_DIMENSION || grid_h > MAX_GRID_DIMENSION {
@@ -149,15 +143,9 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
         )));
     }
 
-    let total_blocks = grid_w
-        .checked_mul(grid_h)
-        .ok_or_else(|| {
-            BitvueError::Decode(format!(
-                "Grid block count overflow: {}x{}",
-                grid_w, grid_h
-            ))
-        })?
-        as usize;
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid block count overflow: {}x{}", grid_w, grid_h))
+    })? as usize;
 
     if total_blocks > MAX_GRID_BLOCKS {
         return Err(BitvueError::Decode(format!(
@@ -182,8 +170,8 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
         let valid_height = sb_end_y - sb.y;
 
         // Calculate blocks based on valid area (not full SB size)
-        let blocks_w = (valid_width + block_size - 1) / block_size;
-        let blocks_h = (valid_height + block_size - 1) / block_size;
+        let blocks_w = valid_width.div_ceil(block_size);
+        let blocks_h = valid_height.div_ceil(block_size);
         let blocks_per_sb = blocks_w * blocks_h;
 
         for _ in 0..blocks_per_sb {
@@ -254,8 +242,8 @@ pub fn extract_partition_grid(frame_header: &FrameHeader) -> Result<PartitionGri
     // Fill with scaffold blocks if empty
     if grid.blocks.is_empty() {
         let sb_size = 64u32;
-        let grid_w = (width + sb_size - 1) / sb_size;
-        let grid_h = (height + sb_size - 1) / sb_size;
+        let grid_w = width.div_ceil(sb_size);
+        let grid_h = height.div_ceil(sb_size);
         for sb_y in 0..grid_h {
             for sb_x in 0..grid_w {
                 grid.add_block(PartitionBlock::new(
@@ -284,8 +272,8 @@ fn parse_super_blocks(frame_header: &FrameHeader) -> Vec<SuperBlock> {
     let height = frame_header.height;
     let sb_size = 64u32;
 
-    let sb_cols = (width + sb_size - 1) / sb_size;
-    let sb_rows = (height + sb_size - 1) / sb_size;
+    let sb_cols = width.div_ceil(sb_size);
+    let sb_rows = height.div_ceil(sb_size);
     let total_sbs = sb_cols * sb_rows;
 
     let is_intra = frame_header.frame_type == FrameType::Key;
@@ -324,7 +312,12 @@ mod tests {
     use super::*;
     use crate::frame_header::{FrameHeader, FrameType, Quantization};
 
-    fn create_test_frame_header(width: u32, height: u32, frame_type: FrameType, base_q_idx: u8) -> FrameHeader {
+    fn create_test_frame_header(
+        width: u32,
+        height: u32,
+        frame_type: FrameType,
+        base_q_idx: u8,
+    ) -> FrameHeader {
         FrameHeader {
             frame_type,
             width,
@@ -455,7 +448,7 @@ mod tests {
         let header = create_test_frame_header(3840, 2160, FrameType::Inter, 120);
         let result = extract_mv_grid(&header);
         assert!(result.is_ok());
-        let mv_grid = result.unwrap();
+        let _mv_grid = result.unwrap();
         // coded_width check: assert_eq!(mv_grid.coded_width, 3840);
         // coded_height check: assert_eq!(mv_grid.coded_height, 2160);
     }

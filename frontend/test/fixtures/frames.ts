@@ -1,7 +1,12 @@
 // Test fixtures for Bitvue tests
 // These provide consistent mock data for unit and integration tests
 
-import type { FrameInfo, VideoInfo, StreamInfo, UnitData } from '../../types/video';
+import type {
+  FrameInfo,
+  VideoInfo,
+  StreamInfo,
+  UnitData,
+} from "../../types/video";
 
 /**
  * Mock frame data for testing
@@ -9,7 +14,7 @@ import type { FrameInfo, VideoInfo, StreamInfo, UnitData } from '../../types/vid
 export const mockFrames: FrameInfo[] = [
   {
     frameNumber: 0,
-    frameType: 'I',
+    frameType: "I",
     poc: 0,
     pts: 0,
     size: 50000,
@@ -18,11 +23,11 @@ export const mockFrames: FrameInfo[] = [
     spatialId: 0,
     refFrames: [],
     refSlots: [],
-    nalType: 'IDR',
+    nalType: "IDR",
   },
   {
     frameNumber: 1,
-    frameType: 'P',
+    frameType: "P",
     poc: 1,
     pts: 1,
     size: 25000,
@@ -31,11 +36,11 @@ export const mockFrames: FrameInfo[] = [
     spatialId: 0,
     refFrames: [0],
     refSlots: [0],
-    nalType: 'TRAIL_R',
+    nalType: "TRAIL_R",
   },
   {
     frameNumber: 2,
-    frameType: 'B',
+    frameType: "B",
     poc: 2,
     pts: 2,
     size: 15000,
@@ -44,11 +49,11 @@ export const mockFrames: FrameInfo[] = [
     spatialId: 0,
     refFrames: [0, 1],
     refSlots: [0, 1],
-    nalType: 'TRAIL_R',
+    nalType: "TRAIL_R",
   },
   {
     frameNumber: 3,
-    frameType: 'B',
+    frameType: "B",
     poc: 3,
     pts: 3,
     size: 15000,
@@ -57,11 +62,11 @@ export const mockFrames: FrameInfo[] = [
     spatialId: 0,
     refFrames: [1, 4],
     refSlots: [1, 2],
-    nalType: 'TRAIL_R',
+    nalType: "TRAIL_R",
   },
   {
     frameNumber: 4,
-    frameType: 'P',
+    frameType: "P",
     poc: 4,
     pts: 4,
     size: 28000,
@@ -70,11 +75,11 @@ export const mockFrames: FrameInfo[] = [
     spatialId: 0,
     refFrames: [1],
     refSlots: [1],
-    nalType: 'TRAIL_R',
+    nalType: "TRAIL_R",
   },
   {
     frameNumber: 5,
-    frameType: 'I',
+    frameType: "I",
     poc: 5,
     pts: 5,
     size: 52000,
@@ -83,7 +88,7 @@ export const mockFrames: FrameInfo[] = [
     spatialId: 0,
     refFrames: [],
     refSlots: [],
-    nalType: 'IDR',
+    nalType: "IDR",
   },
 ];
 
@@ -92,7 +97,7 @@ export const mockFrames: FrameInfo[] = [
  */
 export function generateMockFrames(count: number): FrameInfo[] {
   const frames: FrameInfo[] = [];
-  let gopCounter = 0;
+  const gopCounter = 0;
 
   for (let i = 0; i < count; i++) {
     const isI = i % 12 === 0;
@@ -100,18 +105,20 @@ export function generateMockFrames(count: number): FrameInfo[] {
 
     frames.push({
       frameNumber: i,
-      frameType: isI ? 'I' : isP ? 'P' : 'B',
+      frameType: isI ? "I" : isP ? "P" : "B",
       poc: i,
       pts: i,
-      size: isI ? 50000 + Math.floor(Math.random() * 5000) :
-        isP ? 25000 + Math.floor(Math.random() * 5000) :
-        15000 + Math.floor(Math.random() * 3000),
+      size: isI
+        ? 50000 + Math.floor(Math.random() * 5000)
+        : isP
+          ? 25000 + Math.floor(Math.random() * 5000)
+          : 15000 + Math.floor(Math.random() * 3000),
       qp: 26 + Math.floor(Math.random() * 10),
-      temporalId: isI ? 0 : (isP ? 0 : 1),
+      temporalId: isI ? 0 : isP ? 0 : 1,
       spatialId: 0,
       refFrames: isI ? [] : isP ? [i - 3] : [i - 3, i],
       refSlots: isI ? [] : isP ? [0] : [0, 1],
-      nalType: isI ? 'IDR' : 'TRAIL_R',
+      nalType: isI ? "IDR" : "TRAIL_R",
     });
   }
 
@@ -122,26 +129,26 @@ export function generateMockFrames(count: number): FrameInfo[] {
  * Mock video info
  */
 export const mockVideoInfo: VideoInfo = {
-  codec: 'hevc',
+  codec: "hevc",
   width: 1920,
   height: 1080,
   frameRate: 30,
   bitDepth: 8,
-  profile: 'Main',
+  profile: "Main",
   level: 4.1,
-  chromaFormat: '4:2:0',
+  chromaFormat: "4:2:0",
 };
 
 /**
  * Mock stream info
  */
 export const mockStreamInfo: StreamInfo = {
-  codec: 'hevc',
+  codec: "hevc",
   width: 1920,
   height: 1080,
   frameRate: 30,
   bitDepth: 8,
-  profile: 'Main',
+  profile: "Main",
   level: 4.1,
   numFrames: 100,
   duration: 3.33,
@@ -154,7 +161,7 @@ export const mockUnitData: UnitData = {
   offset: 0,
   size: 150000,
   data: new Uint8Array(150000),
-  type: 'frame',
+  type: "frame",
   width: 1920,
   height: 1080,
   poc: 0,
@@ -206,8 +213,14 @@ export const mockAnalysisData = {
  * Mock thumbnails map
  */
 export const mockThumbnails = new Map<number, string>([
-  [0, 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxNjAiIGhlaWdodD0iOTAiIGZpbGw9IiNmZjZiNmIiLz48L3N2Zz4='],
-  [5, 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxNjAiIGhlaWdodD0iOTAiIGZpbGw9IiM1MWNmNjYiLz48L3N2Zz4='],
+  [
+    0,
+    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxNjAiIGhlaWdodD0iOTAiIGZpbGw9IiNmZjZiNmIiLz48L3N2Zz4=",
+  ],
+  [
+    5,
+    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxNjAiIGhlaWdodD0iOTAiIGZpbGw9IiM1MWNmNjYiLz48L3N2Zz4=",
+  ],
 ]);
 
 /**
@@ -221,9 +234,9 @@ export function createLoadingThumbnails(indices: number[]): Set<number> {
  * Mock file info
  */
 export const mockFileInfo = {
-  path: '/path/to/video.hevc',
+  path: "/path/to/video.hevc",
   size: 15000000,
-  codec: 'hevc',
+  codec: "hevc",
   success: true,
   error: undefined,
 };
@@ -232,11 +245,11 @@ export const mockFileInfo = {
  * Mock error file info
  */
 export const mockErrorFileInfo = {
-  path: '/path/to/invalid.video',
+  path: "/path/to/invalid.video",
   size: 0,
-  codec: 'unknown',
+  codec: "unknown",
   success: false,
-  error: 'Failed to open file',
+  error: "Failed to open file",
 };
 
 /**
@@ -244,30 +257,34 @@ export const mockErrorFileInfo = {
  */
 export const testFrameSequences = {
   gop12: generateMockFrames(12),
-  allI: Array(10).fill(null).map((_, i) => ({
-    frameNumber: i,
-    frameType: 'I' as const,
-    poc: i,
-    pts: i,
-    size: 50000,
-    qp: 26,
-    temporalId: 0,
-    spatialId: 0,
-    refFrames: [],
-    refSlots: [],
-    nalType: 'IDR' as const,
-  })),
-  highQp: Array(10).fill(null).map((_, i) => ({
-    frameNumber: i,
-    frameType: 'P' as const,
-    poc: i,
-    pts: i,
-    size: 25000,
-    qp: 45 + (i % 5),
-    temporalId: 0,
-    spatialId: 0,
-    refFrames: i > 0 ? [i - 1] : [],
-    refSlots: i > 0 ? [0] : [],
-    nalType: 'TRAIL_R' as const,
-  })),
+  allI: Array(10)
+    .fill(null)
+    .map((_, i) => ({
+      frameNumber: i,
+      frameType: "I" as const,
+      poc: i,
+      pts: i,
+      size: 50000,
+      qp: 26,
+      temporalId: 0,
+      spatialId: 0,
+      refFrames: [],
+      refSlots: [],
+      nalType: "IDR" as const,
+    })),
+  highQp: Array(10)
+    .fill(null)
+    .map((_, i) => ({
+      frameNumber: i,
+      frameType: "P" as const,
+      poc: i,
+      pts: i,
+      size: 25000,
+      qp: 45 + (i % 5),
+      temporalId: 0,
+      spatialId: 0,
+      refFrames: i > 0 ? [i - 1] : [],
+      refSlots: i > 0 ? [0] : [],
+      nalType: "TRAIL_R" as const,
+    })),
 };

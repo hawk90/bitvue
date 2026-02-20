@@ -42,7 +42,7 @@
 
 /* Tab Active Indicator */
 .tab::before {
-  content: '';
+  content: "";
   position: absolute;
   background: var(--accent-primary);
   opacity: 0;

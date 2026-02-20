@@ -127,7 +127,7 @@
 
 .syntax-info-value {
   color: var(--accent);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 .syntax-tree {
@@ -176,7 +176,7 @@
 .syntax-label {
   flex: 1;
   font-size: 11px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -265,7 +265,7 @@
 
 .ref-index {
   color: var(--text-secondary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 .ref-frame {
@@ -280,7 +280,7 @@
 
 .ref-pts {
   color: var(--text-secondary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 /* Stats Tab Styles */
@@ -317,7 +317,7 @@
 
 .stats-value {
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 /* Search Tab Styles */
@@ -442,16 +442,16 @@
 
 .search-result-index {
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 .search-result-pts {
   color: var(--text-secondary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 .search-result-size {
   color: var(--text-secondary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   text-align: right;
 }

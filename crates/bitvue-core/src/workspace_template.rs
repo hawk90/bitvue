@@ -494,7 +494,7 @@ impl WorkspaceRenderer for CompareRenderer {
             }
             CompareMode::Toggle => {
                 // Toggle based on time
-                let show_ref = (ctx.time_ms / 1000) % 2 == 0;
+                let show_ref = (ctx.time_ms / 1000).is_multiple_of(2);
                 tracing::debug!(
                     "Rendering toggle mode: showing {}",
                     if show_ref { "reference" } else { "distorted" }
@@ -569,6 +569,7 @@ impl CompositeRenderer {
     }
 
     /// Add a child renderer
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, renderer: Arc<dyn WorkspaceRenderer>) -> Self {
         self.renderers.push(renderer);
         self

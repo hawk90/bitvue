@@ -5,19 +5,19 @@
  * Refactored from yuvRenderer.ts to use extracted utilities.
  */
 
-import type { YUVFrame } from '../../types/yuv';
-import { Colorspace } from '../../types/yuv';
-import { YUVCache } from './cache';
-import { ChromaStrategyFactory, getYIndex } from './chroma';
-import { yuvToRgb, setPixelBlack, yuvToRgbaArray } from './conversion';
+import type { YUVFrame } from "../../types/yuv";
+import { Colorspace } from "../../types/yuv";
+import { YUVCache } from "./cache";
+import { ChromaStrategyFactory, getYIndex } from "./chroma";
+import { yuvToRgb, setPixelBlack, yuvToRgbaArray } from "./conversion";
 
 /**
  * Logger for YUV renderer
  */
 const YUV_LOGGER = {
-  error: (...args: unknown[]) => console.error('[yuvRenderer]', ...args),
-  warn: (...args: unknown[]) => console.warn('[yuvRenderer]', ...args),
-  debug: (...args: unknown[]) => console.debug('[yuvRenderer]', ...args),
+  error: (...args: unknown[]) => console.error("[yuvRenderer]", ...args),
+  warn: (...args: unknown[]) => console.warn("[yuvRenderer]", ...args),
+  debug: (...args: unknown[]) => console.debug("[yuvRenderer]", ...args),
 };
 
 /**
@@ -27,9 +27,12 @@ const YUV_LOGGER = {
  * @param colorspace - Colorspace to use for conversion
  * @returns ImageData object ready for canvas
  */
-export function yuvToImageData(frame: YUVFrame, colorspace: Colorspace = Colorspace.BT709): ImageData {
+export function yuvToImageData(
+  frame: YUVFrame,
+  colorspace: Colorspace = Colorspace.BT709,
+): ImageData {
   try {
-    YUV_LOGGER.debug('yuvToImageData called with frame:', {
+    YUV_LOGGER.debug("yuvToImageData called with frame:", {
       width: frame.width,
       height: frame.height,
       yLength: frame.y?.length,
@@ -44,16 +47,16 @@ export function yuvToImageData(frame: YUVFrame, colorspace: Colorspace = Colorsp
 
     // Validate frame has required properties
     if (!frame.y || !frame.u || !frame.v) {
-      throw new Error('Invalid frame: missing Y, U, or V plane data');
+      throw new Error("Invalid frame: missing Y, U, or V plane data");
     }
     if (!frame.chromaSubsampling) {
-      throw new Error('Invalid frame: missing chromaSubsampling property');
+      throw new Error("Invalid frame: missing chromaSubsampling property");
     }
 
     // Check cache first
     const cached = YUVCache.get(frame, colorspace);
     if (cached) {
-      YUV_LOGGER.debug('Returning cached ImageData');
+      YUV_LOGGER.debug("Returning cached ImageData");
       return cached;
     }
 
@@ -65,9 +68,9 @@ export function yuvToImageData(frame: YUVFrame, colorspace: Colorspace = Colorsp
 
     // Get chroma index strategy for this frame's subsampling
     const chromaStrategy = ChromaStrategyFactory.getStrategyForFrame(frame);
-    YUV_LOGGER.debug('Chroma strategy:', chromaStrategy.subsampling);
+    YUV_LOGGER.debug("Chroma strategy:", chromaStrategy.subsampling);
 
-      // Convert each pixel
+    // Convert each pixel
     let outIndex = 0;
     for (let py = 0; py < height; py++) {
       for (let px = 0; px < width; px++) {
@@ -75,8 +78,14 @@ export function yuvToImageData(frame: YUVFrame, colorspace: Colorspace = Colorsp
         const chromaIndex = chromaStrategy.getIndex(px, py, uStride);
 
         // Validate indices before accessing arrays
-        if (yIndex >= y.length || chromaIndex >= u.length || chromaIndex >= v.length) {
-          YUV_LOGGER.warn(`Index out of bounds: yIndex=${yIndex}, chromaIndex=${chromaIndex}`);
+        if (
+          yIndex >= y.length ||
+          chromaIndex >= u.length ||
+          chromaIndex >= v.length
+        ) {
+          YUV_LOGGER.warn(
+            `Index out of bounds: yIndex=${yIndex}, chromaIndex=${chromaIndex}`,
+          );
           // Set to black and continue
           setPixelBlack(data, outIndex);
           outIndex += 4;
@@ -96,10 +105,10 @@ export function yuvToImageData(frame: YUVFrame, colorspace: Colorspace = Colorsp
     // Store in cache for future use
     YUVCache.set(frame, colorspace, imageData);
 
-    YUV_LOGGER.debug('yuvToImageData completed successfully');
+    YUV_LOGGER.debug("yuvToImageData completed successfully");
     return imageData;
   } catch (error) {
-    YUV_LOGGER.error('Error in yuvToImageData:', error);
+    YUV_LOGGER.error("Error in yuvToImageData:", error);
     // Return a black ImageData as fallback
     const fallback = new ImageData(frame.width || 1, frame.height || 1);
     fallback.data.fill(0);
@@ -117,20 +126,24 @@ export function yuvToImageData(frame: YUVFrame, colorspace: Colorspace = Colorsp
 export function renderYUVToCanvas(
   canvas: HTMLCanvasElement,
   frame: YUVFrame,
-  colorspace: Colorspace = Colorspace.BT709
+  colorspace: Colorspace = Colorspace.BT709,
 ): void {
   try {
-    YUV_LOGGER.debug('renderYUVToCanvas called');
+    YUV_LOGGER.debug("renderYUVToCanvas called");
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) {
-      YUV_LOGGER.error('Failed to get 2D context from canvas. Canvas may not be properly initialized.');
+      YUV_LOGGER.error(
+        "Failed to get 2D context from canvas. Canvas may not be properly initialized.",
+      );
       return;
     }
 
     // Ensure canvas size matches frame
     if (canvas.width !== frame.width || canvas.height !== frame.height) {
-      YUV_LOGGER.debug(`Resizing canvas from ${canvas.width}x${canvas.height} to ${frame.width}x${frame.height}`);
+      YUV_LOGGER.debug(
+        `Resizing canvas from ${canvas.width}x${canvas.height} to ${frame.width}x${frame.height}`,
+      );
       canvas.width = frame.width;
       canvas.height = frame.height;
     }
@@ -140,9 +153,9 @@ export function renderYUVToCanvas(
 
     // Render to canvas
     ctx.putImageData(imageData, 0, 0);
-    YUV_LOGGER.debug('renderYUVToCanvas completed');
+    YUV_LOGGER.debug("renderYUVToCanvas completed");
   } catch (error) {
-    YUV_LOGGER.error('Error in renderYUVToCanvas:', error);
+    YUV_LOGGER.error("Error in renderYUVToCanvas:", error);
   }
 }
 
@@ -167,7 +180,7 @@ export class YUVRenderer {
    */
   attachCanvas(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext("2d");
   }
 
   /**
@@ -211,7 +224,7 @@ export class YUVRenderer {
    */
   clear(): void {
     if (!this.ctx || !this.canvas) return;
-    this.ctx.fillStyle = '#000';
+    this.ctx.fillStyle = "#000";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 }

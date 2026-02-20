@@ -1,3 +1,14 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Edge case tests for frame extraction - simplified version
 use bitvue_avc::{extract_annex_b_frames, extract_frame_at_index};
 
@@ -44,11 +55,7 @@ fn test_extract_annex_b_frames_single_nal_unit() {
 
 #[test]
 fn test_extract_annex_b_frames_zero_length_nal() {
-    let data = [
-        0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x67, 0x42,
-    ];
+    let data = [0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x67, 0x42];
 
     let result = extract_annex_b_frames(&data);
     assert!(result.is_ok() || result.is_err());
@@ -57,11 +64,7 @@ fn test_extract_annex_b_frames_zero_length_nal() {
 #[test]
 fn test_extract_annex_b_frames_malformed_data() {
     let data = [
-        0x00, 0x00, 0x01,
-        0xFF, 0xFF, 0xFF,
-        0x00, 0x00, 0x02,
-        0x00, 0x00, 0x01,
-        0x67,
+        0x00, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x02, 0x00, 0x00, 0x01, 0x67,
     ];
 
     let result = extract_annex_b_frames(&data);
@@ -84,11 +87,8 @@ fn test_extract_annex_b_frames_very_long_nal() {
 #[test]
 fn test_extract_annex_b_frames_consecutive_start_codes() {
     let data = [
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x67, 0x42,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x67,
+        0x42,
     ];
 
     let result = extract_annex_b_frames(&data);

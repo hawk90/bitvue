@@ -3,54 +3,105 @@
  * Tests main App component with file operations, keyboard shortcuts, and layout
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@/test/test-utils';
-import App from '@/App';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useMode } from '@/contexts/ModeContext';
-import { useStreamData } from '@/contexts/StreamDataContext';
-import { useSelection } from '@/contexts/SelectionContext';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
+import App from "@/App";
+import { useTheme } from "@/contexts/ThemeContext";
+import { useMode } from "@/contexts/ModeContext";
+import {
+  useStreamData,
+  useFrameData,
+  useFileState,
+  useCurrentFrame,
+} from "@/contexts/StreamDataContext";
+import { useSelection } from "@/contexts/SelectionContext";
+import { useCompare } from "@/contexts/CompareContext";
 
 // Mock contexts - these need to be properly set up
-vi.mock('@/contexts/ThemeContext', () => ({
-  ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock("@/contexts/ThemeContext", () => ({
+  ThemeProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   useTheme: vi.fn(),
 }));
 
-vi.mock('@/contexts/ModeContext', () => ({
-  ModeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock("@/contexts/ModeContext", () => ({
+  ModeProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   useMode: vi.fn(),
 }));
 
-vi.mock('@/contexts/StreamDataContext', () => ({
-  StreamDataProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock("@/contexts/StreamDataContext", () => ({
+  StreamDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   useStreamData: vi.fn(),
+  useFrameData: vi.fn(),
+  useFileState: vi.fn(),
+  useCurrentFrame: vi.fn(),
 }));
 
-vi.mock('@/contexts/SelectionContext', () => ({
-  SelectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock("@/contexts/SelectionContext", () => ({
+  SelectionProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   useSelection: vi.fn(),
 }));
 
-vi.mock('@/contexts/CompareContext', () => ({
-  CompareProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock("@/contexts/CompareContext", () => ({
+  CompareProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useCompare: vi.fn(() => ({
+    workspace: null,
+    isLoading: false,
+    error: null,
+    pathA: null,
+    pathB: null,
+    currentFrameA: 0,
+    currentFrameB: 0,
+    createWorkspace: vi.fn().mockResolvedValue(undefined),
+    closeWorkspace: vi.fn(),
+    setFrameA: vi.fn(),
+    setFrameB: vi.fn(),
+    setSyncMode: vi.fn().mockResolvedValue(undefined),
+    setManualOffset: vi.fn().mockResolvedValue(undefined),
+    resetOffset: vi.fn().mockResolvedValue(undefined),
+    getAlignedFrame: vi.fn().mockResolvedValue({ bIdx: null, quality: "none" }),
+  })),
 }));
 
 // Mock Tauri APIs
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
+vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({
+vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
 }));
 
 // Mock components
-vi.mock('@/components/WelcomeScreen', () => ({
+vi.mock("@/components/ErrorBoundary", () => ({
+  ErrorBoundary: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/components/WelcomeScreen", () => ({
   WelcomeScreen: ({ onOpenFile, loading, error }: any) => (
     <div className="welcome-screen" data-testid="welcome-screen">
       <button onClick={onOpenFile}>Open File</button>
@@ -60,7 +111,7 @@ vi.mock('@/components/WelcomeScreen', () => ({
   ),
 }));
 
-vi.mock('@/components/TitleBar', () => ({
+vi.mock("@/components/TitleBar", () => ({
   TitleBar: ({ fileName, onOpenFile }: any) => (
     <div className="title-bar" data-testid="title-bar">
       <span>{fileName}</span>
@@ -69,80 +120,134 @@ vi.mock('@/components/TitleBar', () => ({
   ),
 }));
 
-vi.mock('@/components/KeyboardShortcutsDialog', () => ({
-  KeyboardShortcutsDialog: ({ isOpen, onClose }: any) => (
+vi.mock("@/components/KeyboardShortcutsDialog", () => ({
+  KeyboardShortcutsDialog: ({ isOpen, onClose }: any) =>
     isOpen ? (
       <div className="shortcuts-dialog" data-testid="shortcuts-dialog">
         <button onClick={onClose}>Close</button>
       </div>
-    ) : null
-  ),
+    ) : null,
 }));
 
-vi.mock('@/components/ErrorDialog', () => ({
-  ErrorDialog: ({ isOpen, title, message, onClose }: any) => (
+vi.mock("@/components/ErrorDialog", () => ({
+  ErrorDialog: ({ isOpen, title, message, onClose }: any) =>
     isOpen ? (
       <div className="error-dialog" data-testid="error-dialog">
         <h2>{title}</h2>
         <p>{message}</p>
         <button onClick={onClose}>Close</button>
       </div>
-    ) : null
-  ),
+    ) : null,
 }));
 
-vi.mock('@/components/StatusBar', () => ({
+vi.mock("@/components/ExportDialog", () => ({
+  ExportDialog: ({ isOpen, onClose }: any) =>
+    isOpen ? (
+      <div className="export-dialog" data-testid="export-dialog">
+        <button onClick={onClose}>Close</button>
+      </div>
+    ) : null,
+}));
+
+vi.mock("@/components/StatusBar", () => ({
   StatusBar: ({ fileInfo, frameCount, onShowShortcuts }: any) => (
     <div className="status-bar" data-testid="status-bar">
-      <span>{fileInfo?.path || 'No file'}</span>
+      <span>{fileInfo?.path || "No file"}</span>
       <span>{frameCount} frames</span>
       <button onClick={onShowShortcuts}>?</button>
     </div>
   ),
 }));
 
-vi.mock('@/components/panels', () => ({
-  DockableLayout: ({ leftPanels, mainView, topPanels, bottomRowPanels }: any) => (
+vi.mock("@/components/panels", () => ({
+  DockableLayout: ({
+    leftPanels,
+    mainView,
+    topPanels,
+    bottomRowPanels,
+  }: any) => (
     <div className="dockable-layout" data-testid="dockable-layout">
       {leftPanels?.map((panel: any) => (
-        <div key={panel.id} className={`panel-${panel.id}`}>{panel.component()}</div>
+        <div key={panel.id} className={`panel-${panel.id}`}>
+          {panel.component()}
+        </div>
       ))}
-      <div className="main-view" data-testid="main-view">{mainView()}</div>
+      <div className="main-view" data-testid="main-view">
+        {mainView()}
+      </div>
       {topPanels?.map((panel: any) => (
-        <div key={panel.id} className={`panel-${panel.id}`}>{panel.component()}</div>
+        <div key={panel.id} className={`panel-${panel.id}`}>
+          {panel.component()}
+        </div>
       ))}
       {bottomRowPanels?.map((panel: any) => (
-        <div key={panel.id} className={`panel-${panel.id}`}>{panel.component()}</div>
+        <div key={panel.id} className={`panel-${panel.id}`}>
+          {panel.component()}
+        </div>
       ))}
     </div>
   ),
   YuvViewerPanel: ({ currentFrameIndex, totalFrames }: any) => (
     <div className="yuv-viewer" data-testid="yuv-viewer">
-      <span>Frame {currentFrameIndex} of {totalFrames}</span>
+      <span>
+        Frame {currentFrameIndex} of {totalFrames}
+      </span>
     </div>
   ),
-  StreamTreePanel: () => <div className="stream-tree" data-testid="stream-tree">Stream Tree</div>,
-  SyntaxDetailPanel: () => <div className="syntax-detail" data-testid="syntax-detail">Syntax</div>,
-  SelectionInfoPanel: () => <div className="selection-info" data-testid="selection-info">Selection</div>,
-  UnitHexPanel: () => <div className="unit-hex" data-testid="unit-hex">Hex</div>,
-  FilmstripPanel: () => <div className="filmstrip" data-testid="filmstrip">Filmstrip</div>,
-  InfoPanel: () => <div className="info" data-testid="info">Info</div>,
-  DetailsPanel: () => <div className="details" data-testid="details">Details</div>,
-  StatisticsPanel: () => <div className="stats" data-testid="stats">Stats</div>,
+  StreamTreePanel: () => (
+    <div className="stream-tree" data-testid="stream-tree">
+      Stream Tree
+    </div>
+  ),
+  SyntaxDetailPanel: () => (
+    <div className="syntax-detail" data-testid="syntax-detail">
+      Syntax
+    </div>
+  ),
+  SelectionInfoPanel: () => (
+    <div className="selection-info" data-testid="selection-info">
+      Selection
+    </div>
+  ),
+  UnitHexPanel: () => (
+    <div className="unit-hex" data-testid="unit-hex">
+      Hex
+    </div>
+  ),
+  FilmstripPanel: () => (
+    <div className="filmstrip" data-testid="filmstrip">
+      Filmstrip
+    </div>
+  ),
+  InfoPanel: () => (
+    <div className="info" data-testid="info">
+      Info
+    </div>
+  ),
+  DetailsPanel: () => (
+    <div className="details" data-testid="details">
+      Details
+    </div>
+  ),
+  StatisticsPanel: () => (
+    <div className="stats" data-testid="stats">
+      Stats
+    </div>
+  ),
 }));
 
-vi.mock('@/utils/platform', () => ({
+vi.mock("@/utils/platform", () => ({
   shouldShowTitleBar: vi.fn(() => false),
 }));
 
-vi.mock('@/utils/keyboardShortcuts', () => ({
+vi.mock("@/utils/keyboardShortcuts", () => ({
   globalShortcutHandler: {
     register: vi.fn(() => vi.fn()),
     handle: vi.fn(),
   },
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock("@/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -151,29 +256,29 @@ vi.mock('@/utils/logger', () => ({
   }),
 }));
 
-import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
-import { listen } from '@tauri-apps/api/event';
-import { shouldShowTitleBar } from '@/utils/platform';
-import { globalShortcutHandler } from '@/utils/keyboardShortcuts';
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
+import { shouldShowTitleBar } from "@/utils/platform";
+import { globalShortcutHandler } from "@/utils/keyboardShortcuts";
 
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 const mockOpen = open as ReturnType<typeof vi.fn>;
 const mockListen = listen as ReturnType<typeof vi.fn>;
 
-describe('App component', () => {
+describe("App component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -196,6 +301,26 @@ describe('App component', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -209,68 +334,68 @@ describe('App component', () => {
     });
   });
 
-  it('should render App component', () => {
+  it("should render App component", () => {
     render(<App />);
 
-    expect(document.querySelector('.app')).toBeInTheDocument();
+    expect(document.querySelector(".app")).toBeInTheDocument();
   });
 
-  it('should render welcome screen when no frames loaded', () => {
+  it("should render welcome screen when no frames loaded", () => {
     render(<App />);
 
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 
-  it('should render status bar', () => {
+  it("should render status bar", () => {
     render(<App />);
 
-    expect(screen.getByTestId('status-bar')).toBeInTheDocument();
+    expect(screen.getByTestId("status-bar")).toBeInTheDocument();
   });
 
-  it('should handle theme changes via event', () => {
+  it("should handle theme changes via event", () => {
     const setThemeMock = vi.fn();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: setThemeMock,
     });
 
     render(<App />);
 
-    const themeChangeEvent = new CustomEvent('menu-theme-change', {
-      detail: 'light'
+    const themeChangeEvent = new CustomEvent("menu-theme-change", {
+      detail: "light",
     });
     window.dispatchEvent(themeChangeEvent);
 
-    expect(setThemeMock).toHaveBeenCalledWith('light');
+    expect(setThemeMock).toHaveBeenCalledWith("light");
   });
 
-  it('should cleanup theme change listener on unmount', () => {
+  it("should cleanup theme change listener on unmount", () => {
     const { unmount } = render(<App />);
 
     expect(() => unmount()).not.toThrow();
   });
 
-  it('should wrap content with ModeProvider and StreamDataProvider', () => {
+  it("should wrap content with ModeProvider and StreamDataProvider", () => {
     render(<App />);
 
     // App should render without errors
-    expect(document.querySelector('.app')).toBeInTheDocument();
+    expect(document.querySelector(".app")).toBeInTheDocument();
   });
 });
 
-describe('AppContent - welcome screen state', () => {
+describe("AppContent - welcome screen state", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -293,6 +418,26 @@ describe('AppContent - welcome screen state', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -306,14 +451,14 @@ describe('AppContent - welcome screen state', () => {
     });
   });
 
-  it('should show welcome screen when frames array is empty', () => {
+  it("should show welcome screen when frames array is empty", () => {
     render(<App />);
 
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
-    expect(screen.queryByTestId('dockable-layout')).not.toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
+    expect(screen.queryByTestId("dockable-layout")).not.toBeInTheDocument();
   });
 
-  it('should display loading state in welcome screen', () => {
+  it("should display loading state in welcome screen", () => {
     vi.mocked(useStreamData).mockReturnValue({
       frames: [],
       filePath: null,
@@ -327,14 +472,25 @@ describe('AppContent - welcome screen state', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: true,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
 
     render(<App />);
 
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
-  it('should display error state in welcome screen', () => {
-    const errorMessage = 'Failed to load file';
+  it("should display error state in welcome screen", () => {
+    const errorMessage = "Failed to load file";
     vi.mocked(useStreamData).mockReturnValue({
       frames: [],
       filePath: null,
@@ -348,38 +504,49 @@ describe('AppContent - welcome screen state', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: errorMessage,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
 
     render(<App />);
 
     expect(screen.getByText(`Error: ${errorMessage}`)).toBeInTheDocument();
   });
 
-  it('should have Open File button in welcome screen', () => {
+  it("should have Open File button in welcome screen", () => {
     render(<App />);
 
-    expect(screen.getByText('Open File')).toBeInTheDocument();
+    expect(screen.getByText("Open File")).toBeInTheDocument();
   });
 });
 
-describe('AppContent - main content state', () => {
+describe("AppContent - main content state", () => {
   const mockFrames = [
-    { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-    { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
-    { frame_index: 2, frame_type: 'B', size: 20000, poc: 2 },
+    { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+    { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+    { frame_index: 2, frame_type: "B", size: 20000, poc: 2 },
   ];
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -402,6 +569,26 @@ describe('AppContent - main content state', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -415,65 +602,65 @@ describe('AppContent - main content state', () => {
     });
   });
 
-  it('should show dockable layout when frames are loaded', () => {
+  it("should show dockable layout when frames are loaded", () => {
     render(<App />);
 
     // fileInfo is null initially, so welcome screen is shown
     // The dockable layout only shows after file open completes
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
     // After file would open, dockable layout would render
   });
 
-  it('should render all left panels', () => {
+  it("should render all left panels", () => {
     render(<App />);
 
     // fileInfo is null, so welcome screen shows instead of panels
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
     // Panels would render after file open completes
   });
 
-  it('should render main view with YuvViewerPanel', () => {
+  it("should render main view with YuvViewerPanel", () => {
     render(<App />);
 
     // fileInfo is null, welcome screen shows
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 
-  it('should render top panels', () => {
+  it("should render top panels", () => {
     render(<App />);
 
     // fileInfo is null, welcome screen shows
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 
-  it('should render bottom row panels', () => {
+  it("should render bottom row panels", () => {
     render(<App />);
 
     // fileInfo is null, welcome screen shows
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 
-  it('should pass correct frame info to InfoPanel', () => {
+  it("should pass correct frame info to InfoPanel", () => {
     render(<App />);
 
     // fileInfo is null, welcome screen shows
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 });
 
-describe('AppContent - keyboard shortcuts', () => {
+describe("AppContent - keyboard shortcuts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -487,9 +674,9 @@ describe('AppContent - keyboard shortcuts', () => {
     const setCurrentFrameIndexMock = vi.fn();
     vi.mocked(useStreamData).mockReturnValue({
       frames: [
-        { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-        { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
-        { frame_index: 2, frame_type: 'B', size: 20000, poc: 2 },
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+        { frame_index: 2, frame_type: "B", size: 20000, poc: 2 },
       ],
       filePath: null,
       currentFrameIndex: 1,
@@ -503,6 +690,30 @@ describe('AppContent - keyboard shortcuts', () => {
       setFrames: vi.fn(),
     });
 
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+        { frame_index: 2, frame_type: "B", size: 20000, poc: 2 },
+      ],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 1,
+      setCurrentFrameIndex: setCurrentFrameIndexMock,
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -516,47 +727,47 @@ describe('AppContent - keyboard shortcuts', () => {
     });
   });
 
-  it('should register global keyboard shortcuts', () => {
+  it("should register global keyboard shortcuts", () => {
     render(<App />);
 
     expect(globalShortcutHandler.register).toHaveBeenCalled();
   });
 
-  it('should show shortcuts dialog on Ctrl+?', () => {
+  it("should show shortcuts dialog on Ctrl+?", () => {
     render(<App />);
 
-    const keyEvent = new KeyboardEvent('keydown', {
-      key: '?',
+    const keyEvent = new KeyboardEvent("keydown", {
+      key: "?",
       ctrlKey: true,
     });
-    Object.defineProperty(keyEvent, 'preventDefault', { value: vi.fn() });
+    Object.defineProperty(keyEvent, "preventDefault", { value: vi.fn() });
 
     window.dispatchEvent(keyEvent);
 
     waitFor(() => {
-      expect(screen.getByTestId('shortcuts-dialog')).toBeInTheDocument();
+      expect(screen.getByTestId("shortcuts-dialog")).toBeInTheDocument();
     });
   });
 
-  it('should close shortcuts dialog when close button is clicked', () => {
+  it("should close shortcuts dialog when close button is clicked", () => {
     render(<App />);
 
     // First need to open the dialog
-    fireEvent.click(screen.getByText('?'));
+    fireEvent.click(screen.getByText("?"));
 
-    const closeButton = screen.getByText('Close');
+    const closeButton = screen.getByText("Close");
     fireEvent.click(closeButton);
 
-    expect(screen.queryByTestId('shortcuts-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shortcuts-dialog")).not.toBeInTheDocument();
   });
 
-  it('should navigate to previous frame with ArrowLeft', () => {
+  it("should navigate to previous frame with ArrowLeft", () => {
     const setCurrentFrameIndexMock = vi.fn();
     vi.mocked(useStreamData).mockReturnValue({
       frames: [
-        { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-        { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
-        { frame_index: 2, frame_type: 'B', size: 20000, poc: 2 },
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+        { frame_index: 2, frame_type: "B", size: 20000, poc: 2 },
       ],
       filePath: null,
       currentFrameIndex: 1,
@@ -572,18 +783,18 @@ describe('AppContent - keyboard shortcuts', () => {
 
     render(<App />);
 
-    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
 
     // The keyboard handler should have been called
     expect(globalShortcutHandler.handle).toHaveBeenCalled();
   });
 
-  it('should navigate to first frame with Home', () => {
+  it("should navigate to first frame with Home", () => {
     const setCurrentFrameIndexMock = vi.fn();
     vi.mocked(useStreamData).mockReturnValue({
       frames: [
-        { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-        { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
       ],
       filePath: null,
       currentFrameIndex: 1,
@@ -599,17 +810,17 @@ describe('AppContent - keyboard shortcuts', () => {
 
     render(<App />);
 
-    fireEvent.keyDown(window, { key: 'Home' });
+    fireEvent.keyDown(window, { key: "Home" });
 
     expect(globalShortcutHandler.handle).toHaveBeenCalled();
   });
 
-  it('should navigate to last frame with End', () => {
+  it("should navigate to last frame with End", () => {
     const setCurrentFrameIndexMock = vi.fn();
     vi.mocked(useStreamData).mockReturnValue({
       frames: [
-        { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-        { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
       ],
       filePath: null,
       currentFrameIndex: 0,
@@ -625,31 +836,31 @@ describe('AppContent - keyboard shortcuts', () => {
 
     render(<App />);
 
-    fireEvent.keyDown(window, { key: 'End' });
+    fireEvent.keyDown(window, { key: "End" });
 
     expect(globalShortcutHandler.handle).toHaveBeenCalled();
   });
 
-  it('should cleanup keyboard shortcuts on unmount', () => {
+  it("should cleanup keyboard shortcuts on unmount", () => {
     const { unmount } = render(<App />);
 
     expect(() => unmount()).not.toThrow();
   });
 });
 
-describe('AppContent - dialog states', () => {
+describe("AppContent - dialog states", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -672,6 +883,26 @@ describe('AppContent - dialog states', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -685,43 +916,43 @@ describe('AppContent - dialog states', () => {
     });
   });
 
-  it('should open keyboard shortcuts dialog when triggered', () => {
+  it("should open keyboard shortcuts dialog when triggered", () => {
     render(<App />);
 
     // Click the shortcuts button in status bar
-    const shortcutsButton = screen.getByText('?');
+    const shortcutsButton = screen.getByText("?");
     fireEvent.click(shortcutsButton);
 
-    expect(screen.getByTestId('shortcuts-dialog')).toBeInTheDocument();
+    expect(screen.getByTestId("shortcuts-dialog")).toBeInTheDocument();
   });
 
-  it('should close keyboard shortcuts dialog', () => {
+  it("should close keyboard shortcuts dialog", () => {
     render(<App />);
 
     // Open the dialog
-    fireEvent.click(screen.getByText('?'));
+    fireEvent.click(screen.getByText("?"));
 
     // Close it
-    const closeButton = screen.getByText('Close');
+    const closeButton = screen.getByText("Close");
     fireEvent.click(closeButton);
 
-    expect(screen.queryByTestId('shortcuts-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shortcuts-dialog")).not.toBeInTheDocument();
   });
 });
 
-describe('AppContent - TitleBar', () => {
+describe("AppContent - TitleBar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -744,6 +975,26 @@ describe('AppContent - TitleBar', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -757,45 +1008,45 @@ describe('AppContent - TitleBar', () => {
     });
   });
 
-  it('should not show TitleBar when shouldShowTitleBar returns false', () => {
+  it("should not show TitleBar when shouldShowTitleBar returns false", () => {
     vi.mocked(shouldShowTitleBar).mockReturnValue(false);
 
     render(<App />);
 
-    expect(screen.queryByTestId('title-bar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId("title-bar")).not.toBeInTheDocument();
   });
 
-  it('should show TitleBar when shouldShowTitleBar returns true', () => {
+  it("should show TitleBar when shouldShowTitleBar returns true", () => {
     vi.mocked(shouldShowTitleBar).mockReturnValue(true);
 
     render(<App />);
 
-    expect(screen.getByTestId('title-bar')).toBeInTheDocument();
+    expect(screen.getByTestId("title-bar")).toBeInTheDocument();
   });
 
-  it('should display file name in TitleBar', () => {
+  it("should display file name in TitleBar", () => {
     vi.mocked(shouldShowTitleBar).mockReturnValue(true);
 
     render(<App />);
 
-    const titleBar = screen.getByTestId('title-bar');
-    expect(titleBar.textContent).toContain('Bitvue');
+    const titleBar = screen.getByTestId("title-bar");
+    expect(titleBar.textContent).toContain("Bitvue");
   });
 });
 
-describe('AppContent - StatusBar', () => {
+describe("AppContent - StatusBar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -807,8 +1058,8 @@ describe('AppContent - StatusBar', () => {
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: [
-        { frame_index: 0, frame_type: 'I', size: 50000, poc: 0 },
-        { frame_index: 1, frame_type: 'P', size: 30000, poc: 1 },
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
       ],
       filePath: null,
       currentFrameIndex: 0,
@@ -821,6 +1072,29 @@ describe('AppContent - StatusBar', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+      ],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -834,13 +1108,13 @@ describe('AppContent - StatusBar', () => {
     });
   });
 
-  it('should display frame count in StatusBar', () => {
+  it("should display frame count in StatusBar", () => {
     render(<App />);
 
-    expect(screen.getByText('2 frames')).toBeInTheDocument();
+    expect(screen.getByText("2 frames")).toBeInTheDocument();
   });
 
-  it('should display no file message in StatusBar when no file loaded', () => {
+  it("should display no file message in StatusBar when no file loaded", () => {
     vi.mocked(useStreamData).mockReturnValue({
       frames: [],
       filePath: null,
@@ -857,29 +1131,29 @@ describe('AppContent - StatusBar', () => {
 
     render(<App />);
 
-    expect(screen.getByText('No file')).toBeInTheDocument();
+    expect(screen.getByText("No file")).toBeInTheDocument();
   });
 
-  it('should have shortcuts help button in StatusBar', () => {
+  it("should have shortcuts help button in StatusBar", () => {
     render(<App />);
 
-    expect(screen.getByText('?')).toBeInTheDocument();
+    expect(screen.getByText("?")).toBeInTheDocument();
   });
 });
 
-describe('AppContent - menu event listeners', () => {
+describe("AppContent - menu event listeners", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -902,6 +1176,26 @@ describe('AppContent - menu event listeners', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -916,40 +1210,40 @@ describe('AppContent - menu event listeners', () => {
     mockOpen.mockResolvedValue(null);
   });
 
-  it('should handle menu-open-bitstream event', () => {
+  it("should handle menu-open-bitstream event", () => {
     render(<App />);
 
-    const openEvent = new CustomEvent('menu-open-bitstream');
+    const openEvent = new CustomEvent("menu-open-bitstream");
     expect(() => window.dispatchEvent(openEvent)).not.toThrow();
   });
 
-  it('should handle menu-close-file event', () => {
+  it("should handle menu-close-file event", () => {
     render(<App />);
 
-    const closeEvent = new CustomEvent('menu-close-file');
+    const closeEvent = new CustomEvent("menu-close-file");
     expect(() => window.dispatchEvent(closeEvent)).not.toThrow();
   });
 
-  it('should cleanup menu event listeners on unmount', () => {
+  it("should cleanup menu event listeners on unmount", () => {
     const { unmount } = render(<App />);
 
     expect(() => unmount()).not.toThrow();
   });
 });
 
-describe('AppContent - Tauri event listeners', () => {
+describe("AppContent - Tauri event listeners", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -972,6 +1266,26 @@ describe('AppContent - Tauri event listeners', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -987,32 +1301,35 @@ describe('AppContent - Tauri event listeners', () => {
     mockListen.mockResolvedValue(() => {});
   });
 
-  it('should listen for file-opened events', () => {
+  it("should listen for file-opened events", () => {
     render(<App />);
 
-    expect(mockListen).toHaveBeenCalledWith('file-opened', expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith(
+      "file-opened",
+      expect.any(Function),
+    );
   });
 
-  it('should cleanup Tauri listeners on unmount', () => {
+  it("should cleanup Tauri listeners on unmount", () => {
     const { unmount } = render(<App />);
 
     expect(() => unmount()).not.toThrow();
   });
 });
 
-describe('AppContent - React.memo optimization', () => {
+describe("AppContent - React.memo optimization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -1035,6 +1352,26 @@ describe('AppContent - React.memo optimization', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -1048,28 +1385,28 @@ describe('AppContent - React.memo optimization', () => {
     });
   });
 
-  it('should use React.memo for App component', () => {
+  it("should use React.memo for App component", () => {
     const { rerender } = render(<App />);
 
     rerender(<App />);
 
-    expect(document.querySelector('.app')).toBeInTheDocument();
+    expect(document.querySelector(".app")).toBeInTheDocument();
   });
 });
 
-describe('AppContent edge cases', () => {
+describe("AppContent edge cases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTheme).mockReturnValue({
-      theme: 'dark',
+      theme: "dark",
       setTheme: vi.fn(),
       toggleTheme: vi.fn(),
     });
     vi.mocked(useMode).mockReturnValue({
-      currentMode: 'overview',
+      currentMode: "overview",
       setMode: vi.fn(),
       cycleMode: vi.fn(),
-      componentMask: 'yuv',
+      componentMask: "yuv",
       toggleComponent: vi.fn(),
       setComponentMask: vi.fn(),
       showGrid: false,
@@ -1092,6 +1429,26 @@ describe('AppContent edge cases', () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -1105,13 +1462,13 @@ describe('AppContent edge cases', () => {
     });
   });
 
-  it('should handle null fileInfo', () => {
+  it("should handle null fileInfo", () => {
     render(<App />);
 
-    expect(screen.getByText('No file')).toBeInTheDocument();
+    expect(screen.getByText("No file")).toBeInTheDocument();
   });
 
-  it('should handle empty frames array', () => {
+  it("should handle empty frames array", () => {
     vi.mocked(useStreamData).mockReturnValue({
       frames: [],
       filePath: null,
@@ -1128,12 +1485,12 @@ describe('AppContent edge cases', () => {
 
     render(<App />);
 
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 
-  it('should handle single frame', () => {
+  it("should handle single frame", () => {
     vi.mocked(useStreamData).mockReturnValue({
-      frames: [{ frame_index: 0, frame_type: 'I', size: 50000, poc: 0 }],
+      frames: [{ frame_index: 0, frame_type: "I", size: 50000, poc: 0 }],
       filePath: null,
       currentFrameIndex: 0,
       loading: false,
@@ -1149,13 +1506,13 @@ describe('AppContent edge cases', () => {
     render(<App />);
 
     // fileInfo is null, welcome screen shows
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 
-  it('should handle very large frame count', () => {
+  it("should handle very large frame count", () => {
     const largeFrames = Array.from({ length: 10000 }, (_, i) => ({
       frame_index: i,
-      frame_type: 'I',
+      frame_type: "I",
       size: 50000,
       poc: i,
     }));
@@ -1177,6 +1534,6 @@ describe('AppContent edge cases', () => {
     render(<App />);
 
     // fileInfo is null, welcome screen shows
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-screen")).toBeInTheDocument();
   });
 });

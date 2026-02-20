@@ -1,6 +1,6 @@
 // Test fixtures for analysis data
 
-import type { FrameAnalysisData } from '../../types/video';
+import type { FrameAnalysisData } from "../../types/video";
 
 /**
  * Mock frame analysis data for different codecs
@@ -122,7 +122,7 @@ export const mockFrameAnalysisData: Record<string, FrameAnalysisData> = {
 export function generateMockAnalysisData(
   width: number,
   height: number,
-  frameIndex: number = 0
+  frameIndex: number = 0,
 ): FrameAnalysisData {
   const blockSize = 16;
   const gridW = Math.ceil(width / blockSize);
@@ -200,15 +200,17 @@ export const mockResidualAnalysisData = {
     zeroCount: 1500000,
     nonZeroCount: 600000,
   },
-  blockResiduals: Array(120 * 68).fill(null).map((_, i) => ({
-    x: (i % 120) * 16,
-    y: Math.floor(i / 120) * 16,
-    width: 16,
-    height: 16,
-    energy: Math.random() * 100,
-    maxCoeff: Math.random() * 255,
-    nonZeros: Math.floor(Math.random() * 256),
-  })),
+  blockResiduals: Array(120 * 68)
+    .fill(null)
+    .map((_, i) => ({
+      x: (i % 120) * 16,
+      y: Math.floor(i / 120) * 16,
+      width: 16,
+      height: 16,
+      energy: Math.random() * 100,
+      maxCoeff: Math.random() * 255,
+      nonZeros: Math.floor(Math.random() * 256),
+    })),
 };
 
 /**
@@ -218,15 +220,17 @@ export const mockDeblockingAnalysisData = {
   frameIndex: 0,
   width: 1920,
   height: 1080,
-  boundaries: Array(240).fill(null).map((_, i) => ({
-    x: (i % 120) * 16,
-    y: Math.floor(i / 120) * 8,
-    length: 16,
-    orientation: i % 2 === 0 ? 'vertical' : 'horizontal',
-    strength: Math.random() * 4,
-    filtered: Math.random() > 0.3,
-    bs: Math.floor(Math.random() * 5),
-  })),
+  boundaries: Array(240)
+    .fill(null)
+    .map((_, i) => ({
+      x: (i % 120) * 16,
+      y: Math.floor(i / 120) * 8,
+      length: 16,
+      orientation: i % 2 === 0 ? "vertical" : "horizontal",
+      strength: Math.random() * 4,
+      filtered: Math.random() > 0.3,
+      bs: Math.floor(Math.random() * 5),
+    })),
   params: {
     betaOffset: 0,
     tcOffset: 0,
@@ -247,15 +251,17 @@ export const mockDeblockingAnalysisData = {
 export const mockCodingFlowData = {
   frameIndex: 0,
   stages: [
-    { id: 'input', label: 'Input', completed: true, dataSize: null },
-    { id: 'prediction', label: 'Prediction', completed: true, dataSize: 1024 },
-    { id: 'transform', label: 'Transform', completed: true, dataSize: 2048 },
-    { id: 'quantization', label: 'Quantization', completed: true, dataSize: 512 },
-    { id: 'entropy', label: 'Entropy Coding', completed: true, dataSize: 256 },
+    { id: "input", label: "Input", completed: true, dataSize: null },
+    { id: "prediction", label: "Prediction", completed: true, dataSize: 1024 },
+    { id: "transform", label: "Transform", completed: true, dataSize: 2048 },
+    {
+      id: "quantization",
+      label: "Quantization",
+      completed: true,
+      dataSize: 512,
+    },
+    { id: "entropy", label: "Entropy Coding", completed: true, dataSize: 256 },
   ],
-  currentStage: 'prediction',
-  codecFeatures: [
-    '35 Intra Modes',
-    'Advanced Motion Vector Pred',
-  ],
+  currentStage: "prediction",
+  codecFeatures: ["35 Intra Modes", "Advanced Motion Vector Pred"],
 };

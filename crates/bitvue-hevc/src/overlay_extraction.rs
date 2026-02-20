@@ -164,8 +164,8 @@ pub fn extract_qp_grid(
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
 
-    let grid_w = (width + ctu_size - 1) / ctu_size;
-    let grid_h = (height + ctu_size - 1) / ctu_size;
+    let grid_w = width.div_ceil(ctu_size);
+    let grid_h = height.div_ceil(ctu_size);
 
     // Check for overflow in grid size calculation
     let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
@@ -306,7 +306,7 @@ pub fn extract_partition_grid(
                                 cu.size as u32,
                                 cu.size as u32,
                                 partition_type,
-                                cu.depth as u8,
+                                cu.depth,
                             ));
                         }
                     }
@@ -326,8 +326,8 @@ pub fn extract_partition_grid(
     // Fill with scaffold blocks if empty
     if grid.blocks.is_empty() {
         let ctu_size = 64u32;
-        let grid_w = (width + ctu_size - 1) / ctu_size;
-        let grid_h = (height + ctu_size - 1) / ctu_size;
+        let grid_w = width.div_ceil(ctu_size);
+        let grid_h = height.div_ceil(ctu_size);
         for ctu_y in 0..grid_h {
             for ctu_x in 0..grid_w {
                 grid.add_block(PartitionBlock::new(
@@ -418,8 +418,8 @@ fn parse_slice_ctus(
     let height = sps.pic_height_in_luma_samples;
     let ctu_size = 64u32;
 
-    let ctu_cols = (width + ctu_size - 1) / ctu_size;
-    let ctu_rows = (height + ctu_size - 1) / ctu_size;
+    let ctu_cols = width.div_ceil(ctu_size);
+    let ctu_rows = height.div_ceil(ctu_size);
     let total_ctus = ctu_cols * ctu_rows;
 
     let is_intra = nal.header.nal_unit_type.is_idr() || nal.header.nal_unit_type.is_bla();
@@ -468,7 +468,7 @@ fn parse_slice_ctus(
 mod tests {
     use super::*;
     use crate::nal::{NalUnit, NalUnitHeader};
-    use crate::sps::{Sps, ChromaFormat, Profile};
+    use crate::sps::{ChromaFormat, Profile, Sps};
 
     fn create_test_sps(width: u32, height: u32) -> Sps {
         use crate::sps::ProfileTierLevel;

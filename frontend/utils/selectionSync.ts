@@ -5,7 +5,7 @@
  * Extracted from SelectionContext for better testability and reusability.
  */
 
-import type { SelectionState } from '../types/selection';
+import type { SelectionState } from "../types/selection";
 
 /**
  * Estimate bit size for a given field type
@@ -14,17 +14,17 @@ import type { SelectionState } from '../types/selection';
 export function estimateBitSize(fieldType: string): number {
   // Rough estimate for common field types
   const bits: Record<string, number> = {
-    'u1': 1,
-    'u2': 2,
-    'u3': 3,
-    'u4': 4,
-    'u5': 5,
-    'u6': 6,
-    'u7': 7,
-    'u8': 8,
-    'ue(v)': 0, // Variable, need actual parsing
-    'leb128': 0,
-    'bytes': 32, // Default
+    u1: 1,
+    u2: 2,
+    u3: 3,
+    u4: 4,
+    u5: 5,
+    u6: 6,
+    u7: 7,
+    u8: 8,
+    "ue(v)": 0, // Variable, need actual parsing
+    leb128: 0,
+    bytes: 32, // Default
   };
 
   return bits[fieldType] ?? 32;
@@ -44,7 +44,10 @@ export function estimateBitSize(fieldType: string): number {
 export function applyTriSyncRules(sel: SelectionState): SelectionState {
   // Rule 1: Temporal selection → Frame selection
   // If temporal is set and frame is not set, or if frame index doesn't match temporal
-  if (sel.temporal && (!sel.frame || sel.frame.frameIndex !== sel.temporal.frameIndex)) {
+  if (
+    sel.temporal &&
+    (!sel.frame || sel.frame.frameIndex !== sel.temporal.frameIndex)
+  ) {
     return {
       ...sel,
       frame: {
@@ -67,7 +70,9 @@ export function applyTriSyncRules(sel: SelectionState): SelectionState {
 
   // Rule 3: SyntaxNode selection → BitRange selection
   if (sel.syntaxNode?.offset !== undefined && !sel.bitRange) {
-    const size = sel.syntaxNode.fieldType ? estimateBitSize(sel.syntaxNode.fieldType) : 32;
+    const size = sel.syntaxNode.fieldType
+      ? estimateBitSize(sel.syntaxNode.fieldType)
+      : 32;
     return {
       ...sel,
       bitRange: {
@@ -83,7 +88,9 @@ export function applyTriSyncRules(sel: SelectionState): SelectionState {
 /**
  * Create a selection source with timestamp
  */
-export function createSelectionSource(panel: SelectionState['source']['panel']): SelectionState['source'] {
+export function createSelectionSource(
+  panel: SelectionState["source"]["panel"],
+): SelectionState["source"] {
   return {
     panel,
     timestamp: Date.now(),
@@ -96,11 +103,11 @@ export function createSelectionSource(panel: SelectionState['source']['panel']):
 export function mergeSelectionUpdates(
   base: SelectionState | null,
   updates: Partial<SelectionState>,
-  sourcePanel: SelectionState['source']['panel']
+  sourcePanel: SelectionState["source"]["panel"],
 ): SelectionState {
   return {
     ...(base || {
-      streamId: 'A',
+      streamId: "A",
       temporal: null,
       frame: null,
       unit: null,

@@ -20,10 +20,10 @@ use bitvue_core::BitvueError;
 /// # Examples
 ///
 /// ```
-/// use bitvue_av1::types::Qp;
+/// use bitvue_av1_codec::types::Qp;
 ///
 /// // Create from valid value
-/// let qp = Qp::new(32)?;
+/// let qp = Qp::new(32).unwrap();
 /// assert_eq!(qp.value(), 32);
 ///
 /// // Reject invalid values
@@ -211,7 +211,7 @@ mod tests {
 /// # Examples
 ///
 /// ```
-/// use bitvue_av1::types::QuarterPel;
+/// use bitvue_av1_codec::types::QuarterPel;
 ///
 /// // Create from quarter-pel value
 /// let mv = QuarterPel::from_qpel(8);  // 2 pixels
@@ -356,10 +356,10 @@ impl std::ops::Neg for QuarterPel {
 /// # Examples
 ///
 /// ```
-/// use bitvue_av1::types::TimestampPts;
+/// use bitvue_av1_codec::types::TimestampPts;
 ///
 /// // Create from valid value
-/// let pts = TimestampPts::new(1000)?;
+/// let pts = TimestampPts::new(1000).unwrap();
 /// assert_eq!(pts.value(), 1000);
 ///
 /// // Reject negative values

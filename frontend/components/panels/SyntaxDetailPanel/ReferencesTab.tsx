@@ -5,7 +5,7 @@
  * Shows list of all reference frames with their types and PTS values
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface ReferencesTabProps {
   currentFrame: {
@@ -58,10 +58,14 @@ export const ReferencesTab = memo(function ReferencesTab({
                 <span className="ref-frame">Frame {refIdx}</span>
                 {refFrame && (
                   <>
-                    <span className={`ref-type frame-type-${refFrame.frame_type.toLowerCase()}`}>
+                    <span
+                      className={`ref-type frame-type-${refFrame.frame_type.toLowerCase()}`}
+                    >
                       {refFrame.frame_type}
                     </span>
-                    <span className="ref-pts">PTS: {refFrame.pts ?? 'N/A'}</span>
+                    <span className="ref-pts">
+                      PTS: {refFrame.pts ?? "N/A"}
+                    </span>
                   </>
                 )}
               </div>

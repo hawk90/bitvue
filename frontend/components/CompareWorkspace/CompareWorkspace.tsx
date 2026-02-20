@@ -8,17 +8,17 @@
  * - Resolution mismatch detection
  */
 
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, memo } from "react";
 import {
   CompareWorkspace as CompareWorkspaceType,
   SyncMode,
   AlignmentQuality,
   type FrameInfo,
-} from '../../types/video';
-import { CompareControls } from './CompareControls';
-import { StreamPlayer } from './StreamPlayer';
-import { DiffOverlay } from './DiffOverlay';
-import './CompareWorkspace.css';
+} from "../../types/video";
+import { CompareControls } from "./CompareControls";
+import { StreamPlayer } from "./StreamPlayer";
+import { DiffOverlay } from "./DiffOverlay";
+import "./CompareWorkspace.css";
 
 interface CompareWorkspaceProps {
   workspace: CompareWorkspaceType;
@@ -40,54 +40,62 @@ function CompareWorkspace({
   onFrameChangeB,
 }: CompareWorkspaceProps) {
   const [showDiff, setShowDiff] = useState(workspace.diff_enabled);
-  const [diffMode, setDiffMode] = useState<'difference' | 'psnr' | 'ssim'>('difference');
+  const [diffMode, setDiffMode] = useState<"difference" | "psnr" | "ssim">(
+    "difference",
+  );
 
   // Get aligned frame for stream A
-  const getAlignedFrame = useCallback((aIdx: number): { bIdx: number | null; quality: AlignmentQuality } => {
-    // Apply manual offset
-    const adjustedAIdx = Math.max(0, aIdx + workspace.manual_offset);
+  const getAlignedFrame = useCallback(
+    (aIdx: number): { bIdx: number | null; quality: AlignmentQuality } => {
+      // Apply manual offset
+      const adjustedAIdx = Math.max(0, aIdx + workspace.manual_offset);
 
-    // Find alignment pair
-    const pair = workspace.alignment.frame_pairs.find(
-      p => p.stream_a_idx === adjustedAIdx
-    );
+      // Find alignment pair
+      const pair = workspace.alignment.frame_pairs.find(
+        (p) => p.stream_a_idx === adjustedAIdx,
+      );
 
-    if (pair && pair.stream_b_idx !== null) {
-      const quality = pair.has_gap
-        ? AlignmentQuality.Gap
-        : pair.pts_delta === 0
-          ? AlignmentQuality.Exact
-          : AlignmentQuality.Nearest;
-      return { bIdx: pair.stream_b_idx, quality };
-    }
+      if (pair && pair.stream_b_idx !== null) {
+        const quality = pair.has_gap
+          ? AlignmentQuality.Gap
+          : pair.pts_delta === 0
+            ? AlignmentQuality.Exact
+            : AlignmentQuality.Nearest;
+        return { bIdx: pair.stream_b_idx, quality };
+      }
 
-    return { bIdx: null, quality: AlignmentQuality.Gap };
-  }, [workspace.alignment.frame_pairs, workspace.manual_offset]);
+      return { bIdx: null, quality: AlignmentQuality.Gap };
+    },
+    [workspace.alignment.frame_pairs, workspace.manual_offset],
+  );
 
   // Handle sync mode change
   const handleSyncModeChange = useCallback((mode: SyncMode) => {
     // This would be handled by parent component
-    console.log('Sync mode changed:', mode);
+    console.log("Sync mode changed:", mode);
   }, []);
 
   // Handle manual offset change
   const handleOffsetChange = useCallback((delta: number) => {
     // This would be handled by parent component
-    console.log('Offset changed:', delta);
+    console.log("Offset changed:", delta);
   }, []);
 
   // Handle frame change with sync
-  const handleFrameChangeA = useCallback((index: number) => {
-    onFrameChangeA(index);
+  const handleFrameChangeA = useCallback(
+    (index: number) => {
+      onFrameChangeA(index);
 
-    // Sync to B if enabled
-    if (workspace.sync_mode !== SyncMode.Off) {
-      const { bIdx } = getAlignedFrame(index);
-      if (bIdx !== null) {
-        onFrameChangeB(bIdx);
+      // Sync to B if enabled
+      if (workspace.sync_mode !== SyncMode.Off) {
+        const { bIdx } = getAlignedFrame(index);
+        if (bIdx !== null) {
+          onFrameChangeB(bIdx);
+        }
       }
-    }
-  }, [onFrameChangeA, onFrameChangeB, workspace.sync_mode, getAlignedFrame]);
+    },
+    [onFrameChangeA, onFrameChangeB, workspace.sync_mode, getAlignedFrame],
+  );
 
   const currentFrameAData = framesA[currentFrameA] || null;
   const currentFrameBData = framesB[currentFrameB] || null;
@@ -99,7 +107,8 @@ function CompareWorkspace({
         <div className="compare-title">
           <h2>A/B Compare</h2>
           <span className="compare-subtitle">
-            {workspace.alignment?.method ?? 'Unknown'} • {workspace.alignment?.confidence ?? 0} confidence
+            {workspace.alignment?.method ?? "Unknown"} •{" "}
+            {workspace.alignment?.confidence ?? 0} confidence
           </span>
         </div>
 
@@ -109,10 +118,12 @@ function CompareWorkspace({
           onSyncModeChange={handleSyncModeChange}
           onOffsetChange={handleOffsetChange}
           alignmentInfo={{
-            method: workspace.alignment?.method ?? 'Unknown',
+            method: workspace.alignment?.method ?? "Unknown",
             confidence: workspace.alignment?.confidence ?? 0,
             gapPercentage: workspace.alignment?.frame_pairs
-              ? (workspace.alignment.gap_count / Math.max(workspace.alignment.frame_pairs.length, 1)) * 100
+              ? (workspace.alignment.gap_count /
+                  Math.max(workspace.alignment.frame_pairs.length, 1)) *
+                100
               : 0,
           }}
         />
@@ -156,7 +167,8 @@ function CompareWorkspace({
           <div className="stream-header stream-a">
             <h3>Stream A</h3>
             <span className="stream-info">
-              {workspace.resolution_info.stream_a[0]}x{workspace.resolution_info.stream_a[1]} • {framesA.length} frames
+              {workspace.resolution_info.stream_a[0]}x
+              {workspace.resolution_info.stream_a[1]} • {framesA.length} frames
             </span>
           </div>
           <StreamPlayer
@@ -173,7 +185,8 @@ function CompareWorkspace({
           <div className="stream-header stream-b">
             <h3>Stream B</h3>
             <span className="stream-info">
-              {workspace.resolution_info.stream_b[0]}x{workspace.resolution_info.stream_b[1]} • {framesB.length} frames
+              {workspace.resolution_info.stream_b[0]}x
+              {workspace.resolution_info.stream_b[1]} • {framesB.length} frames
             </span>
           </div>
           <StreamPlayer
@@ -187,21 +200,29 @@ function CompareWorkspace({
         </div>
 
         {/* Diff overlay */}
-        {showDiff && workspace.diff_enabled && currentFrameAData && currentFrameBData && (
-          <DiffOverlay
-            frameA={currentFrameAData}
-            frameB={currentFrameBData}
-            mode={diffMode}
-          />
-        )}
+        {showDiff &&
+          workspace.diff_enabled &&
+          currentFrameAData &&
+          currentFrameBData && (
+            <DiffOverlay
+              frameA={currentFrameAData}
+              frameB={currentFrameBData}
+              mode={diffMode}
+            />
+          )}
       </div>
 
       {/* Alignment info footer */}
       <div className="compare-footer">
         <div className="alignment-summary">
           <span>Gap: {workspace.alignment.gap_count} frames</span>
-          <span>Offset: {workspace.manual_offset > 0 ? '+' : ''}{workspace.manual_offset}</span>
-          <span className={`quality-indicator quality-${workspace.alignment.confidence.toLowerCase()}`}>
+          <span>
+            Offset: {workspace.manual_offset > 0 ? "+" : ""}
+            {workspace.manual_offset}
+          </span>
+          <span
+            className={`quality-indicator quality-${workspace.alignment.confidence.toLowerCase()}`}
+          >
             {workspace.alignment.confidence}
           </span>
         </div>

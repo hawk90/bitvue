@@ -25,13 +25,14 @@
 //! ```rust,no_run
 //! use bitvue::core;
 //! use bitvue::formats;
-//! use bitvue::codecs;
+//! use std::fs;
 //!
 //! // Access core functionality
-//! let state = core::SelectionState::new();
+//! let state = core::SelectionState::new(core::StreamId::A);
 //!
 //! // Parse a video file
-//! let parser = formats::ivf::IvfParser::new();
+//! let data = fs::read("video.mp4").unwrap();
+//! let samples = formats::mp4::extract_av1_samples(&data).unwrap();
 //! ```
 
 // Re-export core functionality

@@ -235,7 +235,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
     let mut frames = Vec::new();
     let mut current_frame_nals: Vec<(usize, usize)> = Vec::new();
     let mut current_frame_index = 0;
-    let current_poc: Option<i32> = None;
+    let _current_poc: Option<i32> = None; // TODO: Implement POC calculation
     let mut current_frame_num: Option<u32> = None;
     let mut current_is_idr = false;
     let mut current_is_irap = false;
@@ -279,10 +279,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
             let temporal_id = Some(nal_header.temporal_id());
 
             // Check if this starts a new frame
-            let new_frame = if current_frame_nals.is_empty() {
-                true
-            } else if is_idr != current_is_idr {
-                true // IDR boundary
+            let new_frame = if current_frame_nals.is_empty() || is_idr != current_is_idr {
+                true // First NAL or IDR boundary
             } else if let Some(slice) = &current_slice_header {
                 // Try to parse the current slice header
                 if let Ok(new_slice) = crate::slice::parse_slice_header(
@@ -307,7 +305,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    current_poc.unwrap_or(0),
+                    0, // current_poc not yet implemented
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_irap,
@@ -336,7 +334,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                 nal_type,
             ) {
                 if current_frame_nals.is_empty() {
-                    current_frame_num = Some(slice.slice_pic_order_cnt_lsb as u32);
+                    current_frame_num = Some(slice.slice_pic_order_cnt_lsb);
                     current_slice_header = Some(slice.clone());
                 }
 
@@ -353,7 +351,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    current_poc.unwrap_or(0),
+                    0, // current_poc not yet implemented
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_irap,
@@ -400,6 +398,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
 }
 
 /// Build a frame from collected NAL unit positions
+#[allow(clippy::too_many_arguments)]
 fn build_frame_from_nals(
     frame_index: usize,
     nal_positions: &[(usize, usize)],
@@ -456,12 +455,7 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
     let qp_avg = frame
         .slice_header
         .as_ref()
-        .and_then(|header| {
-            // Note: This only includes slice_qp_delta, not init_qp_minus26
-            // For accurate QP, we need access to PPS data
-            Some(QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg)
-        })
-        .flatten();
+        .and_then(|header| QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg);
 
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {

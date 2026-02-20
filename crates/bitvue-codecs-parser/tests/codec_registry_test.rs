@@ -1,3 +1,15 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
+#![allow(unreachable_patterns)]
 //! Tests for Codec Registry System
 
 #[test]
@@ -35,9 +47,9 @@ fn test_codec_identification() {
 
         match start_bytes {
             [0x00, 0x00, 0x00, 0x01, ..] => Some("H.264/H.265/VVC NAL"),
+            [0x00, 0x00, 0x01, 0xB3, ..] => Some("MPEG-2"),
             [0x00, 0x00, 0x01, ..] => Some("H.264/H.265 NAL (3-byte)"),
             [0x12, 0x00, ..] => Some("AV1 OBU"),
-            [0x00, 0x00, 0x01, 0xB3, ..] => Some("MPEG-2"),
             _ => None,
         }
     }

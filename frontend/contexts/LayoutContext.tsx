@@ -5,20 +5,27 @@
  * Provides reset layout functionality
  */
 
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
-import { createLogger } from '../utils/logger';
-import { TIMING } from '../constants/ui';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  ReactNode,
+  useEffect,
+} from "react";
+import { createLogger } from "../utils/logger";
+import { TIMING } from "../constants/ui";
 
-const logger = createLogger('LayoutContext');
+const logger = createLogger("LayoutContext");
 
 /**
  * Storage error types for better error handling
  */
 enum StorageErrorType {
-  QUOTA_EXCEEDED = 'QUOTA_EXCEEDED',
-  ACCESS_DENIED = 'ACCESS_DENIED',
-  PARSE_ERROR = 'PARSE_ERROR',
-  UNKNOWN = 'UNKNOWN',
+  QUOTA_EXCEEDED = "QUOTA_EXCEEDED",
+  ACCESS_DENIED = "ACCESS_DENIED",
+  PARSE_ERROR = "PARSE_ERROR",
+  UNKNOWN = "UNKNOWN",
 }
 
 /**
@@ -26,10 +33,10 @@ enum StorageErrorType {
  */
 function getStorageErrorType(error: unknown): StorageErrorType {
   if (error instanceof DOMException) {
-    if (error.name === 'QuotaExceededError') {
+    if (error.name === "QuotaExceededError") {
       return StorageErrorType.QUOTA_EXCEEDED;
     }
-    if (error.name === 'SecurityError') {
+    if (error.name === "SecurityError") {
       return StorageErrorType.ACCESS_DENIED;
     }
   }
@@ -45,12 +52,12 @@ function getStorageErrorType(error: unknown): StorageErrorType {
  */
 function isValidLayoutState(data: unknown): data is LayoutState {
   // Check if data is a plain object (not null, not array, not null prototype)
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
     return false;
   }
 
-  // Prevent prototype pollution
-  if (Object.prototype.isPrototypeOf(data)) {
+  // Prevent prototype pollution: only allow plain objects
+  if (Object.getPrototypeOf(data) !== Object.prototype) {
     return false;
   }
 
@@ -58,18 +65,22 @@ function isValidLayoutState(data: unknown): data is LayoutState {
   const layoutState = data as Record<string, unknown>;
 
   // Check leftPanelSize
-  if (typeof layoutState.leftPanelSize !== 'number' ||
-      !Number.isFinite(layoutState.leftPanelSize) ||
-      layoutState.leftPanelSize < 0 ||
-      layoutState.leftPanelSize > 100) {
+  if (
+    typeof layoutState.leftPanelSize !== "number" ||
+    !Number.isFinite(layoutState.leftPanelSize) ||
+    layoutState.leftPanelSize < 0 ||
+    layoutState.leftPanelSize > 100
+  ) {
     return false;
   }
 
   // Check topPanelSize
-  if (typeof layoutState.topPanelSize !== 'number' ||
-      !Number.isFinite(layoutState.topPanelSize) ||
-      layoutState.topPanelSize < 0 ||
-      layoutState.topPanelSize > 100) {
+  if (
+    typeof layoutState.topPanelSize !== "number" ||
+    !Number.isFinite(layoutState.topPanelSize) ||
+    layoutState.topPanelSize < 0 ||
+    layoutState.topPanelSize > 100
+  ) {
     return false;
   }
 
@@ -84,16 +95,18 @@ function isValidLayoutState(data: unknown): data is LayoutState {
 
   // Validate each bottom panel size
   for (const size of layoutState.bottomPanelSizes) {
-    if (typeof size !== 'number' ||
-        !Number.isFinite(size) ||
-        size < 0 ||
-        size > 100) {
+    if (
+      typeof size !== "number" ||
+      !Number.isFinite(size) ||
+      size < 0 ||
+      size > 100
+    ) {
       return false;
     }
   }
 
   // Check for unexpected properties (fail closed for security)
-  const allowedKeys = ['leftPanelSize', 'topPanelSize', 'bottomPanelSizes'];
+  const allowedKeys = ["leftPanelSize", "topPanelSize", "bottomPanelSizes"];
   const actualKeys = Object.keys(layoutState);
   for (const key of actualKeys) {
     if (!allowedKeys.includes(key)) {
@@ -112,13 +125,19 @@ function handleStorageError(error: unknown, operation: string): void {
 
   switch (errorType) {
     case StorageErrorType.QUOTA_EXCEEDED:
-      logger.warn(`Storage quota exceeded while ${operation}. Layout will not persist.`);
+      logger.warn(
+        `Storage quota exceeded while ${operation}. Layout will not persist.`,
+      );
       break;
     case StorageErrorType.ACCESS_DENIED:
-      logger.warn(`Storage access denied while ${operation}. Using default layout.`);
+      logger.warn(
+        `Storage access denied while ${operation}. Using default layout.`,
+      );
       break;
     case StorageErrorType.PARSE_ERROR:
-      logger.warn(`Failed to parse stored layout while ${operation}. Using defaults.`);
+      logger.warn(
+        `Failed to parse stored layout while ${operation}. Using defaults.`,
+      );
       break;
     default:
       logger.debug(`Storage error during ${operation}:`, error);
@@ -155,21 +174,21 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
 
   // Load saved layout on mount (skip in test environment)
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'test') {
+    if (process.env.NODE_ENV !== "test") {
       loadLayout();
     }
   }, []);
 
   const updateLeftPanel = useCallback((size: number) => {
-    setLayoutState(prev => ({ ...prev, leftPanelSize: size }));
+    setLayoutState((prev) => ({ ...prev, leftPanelSize: size }));
   }, []);
 
   const updateTopPanel = useCallback((size: number) => {
-    setLayoutState(prev => ({ ...prev, topPanelSize: size }));
+    setLayoutState((prev) => ({ ...prev, topPanelSize: size }));
   }, []);
 
   const updateBottomPanel = useCallback((index: number, size: number) => {
-    setLayoutState(prev => {
+    setLayoutState((prev) => {
       // Create new array only when necessary
       if (prev.bottomPanelSizes[index] === size) {
         return prev; // No change needed
@@ -184,30 +203,33 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     setLayoutState(DEFAULT_LAYOUT);
     // Clear saved layout
     try {
-      localStorage.removeItem('bitvue-layout');
+      localStorage.removeItem("bitvue-layout");
     } catch (e) {
-      handleStorageError(e, 'clearing layout');
+      handleStorageError(e, "clearing layout");
     }
   }, []);
 
   const saveLayout = useCallback(() => {
     try {
-      localStorage.setItem('bitvue-layout', JSON.stringify(layoutState));
+      localStorage.setItem("bitvue-layout", JSON.stringify(layoutState));
     } catch (e) {
-      handleStorageError(e, 'saving layout');
+      handleStorageError(e, "saving layout");
     }
   }, [layoutState]);
 
   const loadLayout = useCallback(() => {
     try {
-      const saved = localStorage.getItem('bitvue-layout');
+      const saved = localStorage.getItem("bitvue-layout");
       if (saved) {
         // SECURITY: Add size limit check to prevent quota exhaustion attacks
         // Layout data should be small (just 4 numbers). 10KB is more than enough.
         const MAX_LAYOUT_SIZE = 10240; // 10KB
         if (saved.length > MAX_LAYOUT_SIZE) {
-          logger.warn('Layout data exceeds size limit ({} bytes), clearing', saved.length);
-          localStorage.removeItem('bitvue-layout');
+          logger.warn(
+            "Layout data exceeds size limit ({} bytes), clearing",
+            saved.length,
+          );
+          localStorage.removeItem("bitvue-layout");
           return;
         }
 
@@ -215,19 +237,19 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
         // Use type guard for comprehensive validation
         if (isValidLayoutState(parsed)) {
           setLayoutState(parsed);
-          logger.info('Successfully loaded layout from storage');
+          logger.info("Successfully loaded layout from storage");
         } else {
-          logger.warn('Invalid layout structure in storage, using defaults');
+          logger.warn("Invalid layout structure in storage, using defaults");
         }
       }
     } catch (e) {
-      handleStorageError(e, 'loading layout');
+      handleStorageError(e, "loading layout");
     }
   }, []);
 
   // Auto-save on changes (skip in test environment)
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'test') {
+    if (process.env.NODE_ENV !== "test") {
       const timeout = setTimeout(() => {
         saveLayout();
       }, TIMING.STORAGE_DEBOUNCE_DELAY); // Debounce saves
@@ -246,16 +268,14 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <LayoutContext.Provider value={value}>
-      {children}
-    </LayoutContext.Provider>
+    <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>
   );
 }
 
 export function useLayout(): LayoutContextType {
   const context = useContext(LayoutContext);
   if (!context) {
-    throw new Error('useLayout must be used within LayoutProvider');
+    throw new Error("useLayout must be used within LayoutProvider");
   }
   return context;
 }

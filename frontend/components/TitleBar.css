@@ -64,7 +64,9 @@
   backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
+  box-shadow:
+    0 8px 32px rgb(0 0 0 / 50%),
+    0 0 0 1px rgb(0 0 0 / 20%);
   z-index: 1000;
   padding: 4px;
   list-style: none;
@@ -128,7 +130,7 @@
   margin-left: 20px;
   color: rgb(255 255 255 / 50%);
   font-size: 11px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
 }
 
 .menu-item:hover .menu-item-shortcut {
@@ -161,7 +163,9 @@
   backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
+  box-shadow:
+    0 8px 32px rgb(0 0 0 / 50%),
+    0 0 0 1px rgb(0 0 0 / 20%);
   z-index: 1001;
   padding: 4px;
   margin-left: 4px;

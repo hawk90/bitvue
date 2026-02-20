@@ -1,3 +1,14 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Overlay Extraction Integration Tests
 //!
 //! Tests overlay extraction with real AV1 bitstream data to verify
@@ -12,16 +23,23 @@ use bitvue_av1_codec::overlay_extraction::{
 fn parse_ivf_to_obu_data(ivf_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use std::fs::File;
     use std::io::Read;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+
+    // Get workspace root by going up from CARGO_MANIFEST_DIR
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("Failed to find workspace root");
 
     // Convert to absolute path from workspace root
     let absolute_path = if Path::new(ivf_path).is_absolute() {
-        ivf_path.to_string()
+        PathBuf::from(ivf_path)
     } else {
-        format!("/Users/hawk/Workspaces/bitvue/{}", ivf_path)
+        workspace_root.join(ivf_path)
     };
 
-    let mut file = File::open(absolute_path)?;
+    let mut file = File::open(&absolute_path)?;
     let mut buffer = Vec::new();
 
     // Skip IVF header (32 bytes)

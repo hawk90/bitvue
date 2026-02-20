@@ -38,7 +38,7 @@
 .frame-sizes-axis .axis-label {
   font-size: 9px;
   color: var(--text-muted);
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
   text-align: right;
   line-height: 1.2;
 }
@@ -278,7 +278,9 @@
   backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 15%);
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
+  box-shadow:
+    0 8px 32px rgb(0 0 0 / 50%),
+    0 0 0 1px rgb(0 0 0 / 20%);
   padding: 0;
   min-width: 160px;
   max-width: 200px;
@@ -409,7 +411,7 @@
 }
 
 .legend-checkbox.checked::after {
-  content: '';
+  content: "";
   position: absolute;
   left: 3px;
   top: 0;

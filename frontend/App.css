@@ -1,8 +1,8 @@
 /* Bitvue App Styles - VQAnalyzer Parity */
 
 @font-face {
-  font-family: 'codicon';
-  src: url('/fonts/codicon.ttf') format('truetype');
+  font-family: "codicon";
+  src: url("/fonts/codicon.ttf") format("truetype");
 }
 
 * {
@@ -29,15 +29,16 @@ pre,
   user-select: text;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   overflow: hidden;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -167,7 +168,7 @@ body {
 
 /* Icons (codicon font) */
 .codicon {
-  font-family: 'codicon', sans-serif;
+  font-family: "codicon", sans-serif;
   font-size: 14px;
   line-height: 1;
 }
@@ -263,7 +264,8 @@ body {
 
 .allotment-separator:hover,
 .allotment-separator:active {
-  background: linear-gradient(to bottom,
+  background: linear-gradient(
+    to bottom,
     rgb(255 255 255 / 15%) 0%,
     rgb(255 255 255 / 5%) 50%,
     rgb(0 0 0 / 10%) 100%
@@ -273,7 +275,7 @@ body {
 }
 
 .allotment-separator::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -387,7 +389,8 @@ textarea,
 .sidebar-tab,
 .bottom-panel-tab,
 .filmstrip-view-btn {
-  transition-property: background, border-color, color, opacity, transform, box-shadow;
+  transition-property:
+    background, border-color, color, opacity, transform, box-shadow;
   transition-duration: 0.15s;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -407,7 +410,8 @@ textarea,
 
 /* Skeleton loading animation */
 @keyframes skeletonPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.4;
     background-position: 0% 50%;
   }
@@ -470,7 +474,8 @@ textarea,
 
 /* Subtle pulse effect for important indicators */
 @keyframes subtlePulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
 

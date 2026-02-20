@@ -1,5 +1,16 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Stress tests for VVC codec - large inputs, random patterns, boundary conditions
-use bitvue_vvc::{parse_vvc, parse_nal_header, parse_sps, parse_pps, NalUnitType};
+use bitvue_vvc::{parse_nal_header, parse_pps, parse_sps, parse_vvc, NalUnitType};
 
 #[test]
 fn test_parse_vvc_large_input_10kb() {
@@ -22,8 +33,8 @@ fn test_parse_vvc_large_input_100kb() {
     // Add periodic NAL units
     for i in 0..10 {
         let offset = i * 10_240;
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x20 + (i as u8) % 5;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x20 + (i as u8) % 5;
     }
 
     let result = parse_vvc(&data);
@@ -45,7 +56,7 @@ fn test_parse_vvc_random_pattern_1kb() {
 fn test_parse_vvc_repeated_start_codes() {
     let mut data = vec![0u8; 256];
     for i in 0..32 {
-        data[i*8..i*8+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[i * 8..i * 8 + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     }
 
     let result = parse_vvc(&data);
@@ -60,8 +71,8 @@ fn test_parse_vvc_max_nal_count() {
         if offset + 8 > data.len() {
             break;
         }
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x20; // VPS
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x20; // VPS
         offset += 64;
     }
 
@@ -100,7 +111,9 @@ fn test_parse_vvc_no_nals() {
 #[test]
 fn test_parse_vvc_all_nal_types() {
     // Test various NAL unit types
-    let nal_types = [0u8, 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    let nal_types = [
+        0u8, 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    ];
 
     for nal_type in nal_types {
         let mut data = vec![0u8; 64];
@@ -118,11 +131,11 @@ fn test_parse_vvc_stress_1mb() {
     // Add NAL units periodically
     for i in 0..256 {
         let offset = i * 4096;
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x21 + (i as u8 % 3);
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x21 + (i as u8 % 3);
         // Add payload
         for j in 5..128 {
-            data[offset+j] = ((j + i) % 256) as u8;
+            data[offset + j] = ((j + i) % 256) as u8;
         }
     }
 
@@ -132,7 +145,9 @@ fn test_parse_vvc_stress_1mb() {
 
 #[test]
 fn test_parse_vvc_boundary_sizes() {
-    let sizes = [1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512];
+    let sizes = [
+        1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512,
+    ];
 
     for size in sizes {
         let mut data = vec![0u8; size];
@@ -152,23 +167,23 @@ fn test_parse_vvc_vps_sps_pps_sequence() {
     let mut offset = 0;
 
     // VPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20;
     offset += 64;
 
     // SPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x21;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x21;
     offset += 64;
 
     // PPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x22;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x22;
     offset += 64;
 
     // Slice
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x09; // TRAIL_R
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x09; // TRAIL_R
 
     let result = parse_vvc(&data);
     assert!(result.is_ok());
@@ -181,8 +196,8 @@ fn test_parse_vvc_multiple_slices() {
 
     for i in 0..3 {
         // Slice
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x09; // TRAIL_R
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x09; // TRAIL_R
         offset += 128;
     }
 
@@ -239,7 +254,8 @@ fn test_parse_vvc_max_layers() {
 #[test]
 fn test_parse_vvc_chroma_formats() {
     // Test different chroma formats
-    for chroma in [0u8, 1, 2, 3] { // 400, 420, 422, 444
+    for chroma in [0u8, 1, 2, 3] {
+        // 400, 420, 422, 444
         let mut data = vec![0u8; 64];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
         data[4] = 0x21; // SPS
@@ -257,18 +273,18 @@ fn test_parse_vvc_with_tiles() {
     let mut offset = 0;
 
     // VPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20;
     offset += 64;
 
     // SPS with tiles
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x21;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x21;
     offset += 128;
 
     // Slice with tiles
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x09;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x09;
 
     let result = parse_vvc(&data);
     assert!(result.is_ok() || result.is_err());
@@ -322,18 +338,18 @@ fn test_parse_vvc_qp_grid() {
     let mut offset = 0;
 
     // VPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x20;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x20;
     offset += 64;
 
     // SPS
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x21;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x21;
     offset += 128;
 
     // Slice
-    data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data[offset+4] = 0x09;
+    data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    data[offset + 4] = 0x09;
 
     let result = parse_vvc(&data);
     assert!(result.is_ok());
@@ -362,18 +378,18 @@ fn test_parse_vvc_idr_frames() {
 
     for i in 0..3 {
         // SPS
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x21;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x21;
         offset += 32;
 
         // PPS
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x22;
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x22;
         offset += 32;
 
         // IDR slice
-        data[offset..offset+4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data[offset+4] = 0x07; // IDR_W_RADL
+        data[offset..offset + 4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        data[offset + 4] = 0x07; // IDR_W_RADL
         offset += 64;
     }
 
@@ -384,10 +400,7 @@ fn test_parse_vvc_idr_frames() {
 #[test]
 fn test_parse_vvc_consecutive_start_codes() {
     let data = [
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01,
     ];
     let result = parse_vvc(&data);
     assert!(result.is_ok());
@@ -396,9 +409,9 @@ fn test_parse_vvc_consecutive_start_codes() {
 #[test]
 fn test_parse_vvc_mixed_start_code_lengths() {
     let data = [
-        0x00, 0x00, 0x01,     // 3-byte
+        0x00, 0x00, 0x01, // 3-byte
         0x00, 0x00, 0x00, 0x01, // 4-byte
-        0x00, 0x00, 0x01,     // 3-byte
+        0x00, 0x00, 0x01, // 3-byte
     ];
     let result = parse_vvc(&data);
     assert!(result.is_ok());

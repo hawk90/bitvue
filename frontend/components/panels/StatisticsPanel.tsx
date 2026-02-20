@@ -5,21 +5,21 @@
  * Reference: VQAnalyzer Statistics
  */
 
-import { useMemo, memo } from 'react';
-import { useFrameData } from '../../contexts/FrameDataContext';
-import { BarChart } from '../charts/BarChart';
-import { getCssVar } from '../../utils/css';
-import './StatisticsPanel.css';
+import { useMemo, memo } from "react";
+import { useFrameData } from "../../contexts/FrameDataContext";
+import { BarChart } from "../charts/BarChart";
+import { getCssVar } from "../../utils/css";
+import "./StatisticsPanel.css";
 
 /**
  * Frame size range categories for statistics
  */
 const FRAME_SIZE_RANGES = {
-  SMALL: '< 10KB',
-  MEDIUM_SMALL: '10-50KB',
-  MEDIUM: '50-100KB',
-  MEDIUM_LARGE: '100-500KB',
-  LARGE: '> 500KB',
+  SMALL: "< 10KB",
+  MEDIUM_SMALL: "10-50KB",
+  MEDIUM: "50-100KB",
+  MEDIUM_LARGE: "100-500KB",
+  LARGE: "> 500KB",
 } as const;
 
 /**
@@ -50,19 +50,22 @@ export const StatisticsPanel = memo(function StatisticsPanel() {
       [FRAME_SIZE_RANGES.LARGE]: 0,
     };
 
-    frames.forEach(frame => {
+    frames.forEach((frame) => {
       const sizeKB = frame.size / 1024;
       if (sizeKB < SIZE_THRESHOLDS.SMALL) ranges[FRAME_SIZE_RANGES.SMALL]++;
-      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM_SMALL) ranges[FRAME_SIZE_RANGES.MEDIUM_SMALL]++;
-      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM) ranges[FRAME_SIZE_RANGES.MEDIUM]++;
-      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM_LARGE) ranges[FRAME_SIZE_RANGES.MEDIUM_LARGE]++;
+      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM_SMALL)
+        ranges[FRAME_SIZE_RANGES.MEDIUM_SMALL]++;
+      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM)
+        ranges[FRAME_SIZE_RANGES.MEDIUM]++;
+      else if (sizeKB < SIZE_THRESHOLDS.MEDIUM_LARGE)
+        ranges[FRAME_SIZE_RANGES.MEDIUM_LARGE]++;
       else ranges[FRAME_SIZE_RANGES.LARGE]++;
     });
 
     return ranges;
   }, [frames]);
 
-  const maxSizeRange = Math.max(...Object.values(frameSizes) as number[]);
+  const maxSizeRange = Math.max(...(Object.values(frameSizes) as number[]));
 
   return (
     <div className="statistics-panel">
@@ -90,7 +93,9 @@ export const StatisticsPanel = memo(function StatisticsPanel() {
               </span>
               <span className="stats-summary-item">
                 <span className="stats-label">Avg Size:</span>
-                <span className="stats-value">{(stats.avgSize / 1024).toFixed(2)} KB</span>
+                <span className="stats-value">
+                  {(stats.avgSize / 1024).toFixed(2)} KB
+                </span>
               </span>
             </div>
           </div>
@@ -104,11 +109,11 @@ export const StatisticsPanel = memo(function StatisticsPanel() {
               data={frameSizes}
               maxValue={maxSizeRange}
               colors={{
-                '< 10KB': getCssVar('--color-info'),
-                '10-50KB': getCssVar('--frame-p'),
-                '50-100KB': getCssVar('--color-success'),
-                '100-500KB': getCssVar('--accent-primary-light'),
-                '> 500KB': getCssVar('--frame-b'),
+                "< 10KB": getCssVar("--color-info"),
+                "10-50KB": getCssVar("--frame-p"),
+                "50-100KB": getCssVar("--color-success"),
+                "100-500KB": getCssVar("--accent-primary-light"),
+                "> 500KB": getCssVar("--frame-b"),
               }}
             />
           </div>
@@ -120,12 +125,17 @@ export const StatisticsPanel = memo(function StatisticsPanel() {
           <div className="stats-section-content">
             <div className="bitrate-info">
               <div className="bitrate-label">Total Size:</div>
-              <div className="bitrate-value">{(stats.totalSize / 1024 / 1024).toFixed(2)} MB</div>
+              <div className="bitrate-value">
+                {(stats.totalSize / 1024 / 1024).toFixed(2)} MB
+              </div>
             </div>
             <div className="bitrate-info">
               <div className="bitrate-label">Avg Bitrate:</div>
               <div className="bitrate-value">
-                {frames.length > 0 ? ((stats.totalSize / frames.length) * 30 / 1000).toFixed(2) : '0'} Mbps
+                {frames.length > 0
+                  ? (((stats.totalSize / frames.length) * 30) / 1000).toFixed(2)
+                  : "0"}{" "}
+                Mbps
               </div>
             </div>
             <div className="bitrate-note">Assuming 30fps</div>

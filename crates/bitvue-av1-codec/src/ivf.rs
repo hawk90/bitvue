@@ -82,7 +82,7 @@ impl IvfFrame {
 /// # Example
 ///
 /// ```
-/// use bitvue_av1::ivf::IvfFrame;
+/// use bitvue_av1_codec::ivf::IvfFrame;
 ///
 /// let frame = IvfFrame::builder()
 ///     .size(1024)
@@ -142,16 +142,16 @@ impl IvfFrameBuilder {
     /// Returns an error if required fields (size, timestamp, temporal_id) are not set.
     pub fn build(self) -> Result<IvfFrame, BitvueError> {
         Ok(IvfFrame {
-            size: self.size.ok_or_else(|| BitvueError::InvalidData(
-                "IvfFrame: size is required".to_string()
-            ))?,
-            timestamp: self.timestamp.ok_or_else(|| BitvueError::InvalidData(
-                "IvfFrame: timestamp is required".to_string()
-            ))?,
+            size: self.size.ok_or_else(|| {
+                BitvueError::InvalidData("IvfFrame: size is required".to_string())
+            })?,
+            timestamp: self.timestamp.ok_or_else(|| {
+                BitvueError::InvalidData("IvfFrame: timestamp is required".to_string())
+            })?,
             data: self.data.unwrap_or_default(),
-            temporal_id: self.temporal_id.ok_or_else(|| BitvueError::InvalidData(
-                "IvfFrame: temporal_id is required".to_string()
-            ))?,
+            temporal_id: self.temporal_id.ok_or_else(|| {
+                BitvueError::InvalidData("IvfFrame: temporal_id is required".to_string())
+            })?,
         })
     }
 }
@@ -159,12 +159,10 @@ impl IvfFrameBuilder {
 /// Parse IVF header from data
 pub fn parse_ivf_header(data: &[u8]) -> Result<IvfHeader, BitvueError> {
     // Validate header size upfront
-    let header_bytes = data
-        .get(0..32)
-        .ok_or_else(|| BitvueError::InsufficientData {
-            needed: 32,
-            available: data.len(),
-        })?;
+    let header_bytes = data.get(0..32).ok_or(BitvueError::InsufficientData {
+        needed: 32,
+        available: data.len(),
+    })?;
 
     // Use safe array accesses via get()
     let signature: [u8; 4] = header_bytes[0..4]

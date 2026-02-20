@@ -3,6 +3,7 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_config() -> TooltipConfig {
     TooltipConfig {
         hover_delay_ms: 100,
@@ -12,6 +13,7 @@ fn create_test_config() -> TooltipConfig {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_timeline_tooltip() -> TimelineTooltip {
     TimelineTooltip {
         frame_idx: 42,
@@ -31,6 +33,7 @@ fn create_test_timeline_tooltip() -> TimelineTooltip {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_metrics_tooltip() -> MetricsTooltip {
     MetricsTooltip {
         frame_idx: 42,
@@ -43,6 +46,7 @@ fn create_test_metrics_tooltip() -> MetricsTooltip {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_tree_tooltip() -> TreeTooltip {
     TreeTooltip {
         path: vec!["root".to_string(), "child".to_string(), "leaf".to_string()],
@@ -56,6 +60,7 @@ fn create_test_tree_tooltip() -> TreeTooltip {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_syntax_tooltip() -> SyntaxTooltip {
     SyntaxTooltip {
         field_name: "frame_type".to_string(),
@@ -68,6 +73,7 @@ fn create_test_syntax_tooltip() -> SyntaxTooltip {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_hex_bit_tooltip() -> HexBitTooltip {
     HexBitTooltip {
         offset_hex: "0x800".to_string(),
@@ -81,6 +87,7 @@ fn create_test_hex_bit_tooltip() -> HexBitTooltip {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_player_tooltip() -> PlayerTooltip {
     PlayerTooltip {
         frame_idx: 42,
@@ -99,6 +106,7 @@ fn create_test_player_tooltip() -> PlayerTooltip {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_diagnostics_tooltip() -> DiagnosticsTooltip {
     DiagnosticsTooltip {
         severity: "Error".to_string(),
@@ -111,6 +119,7 @@ fn create_test_diagnostics_tooltip() -> DiagnosticsTooltip {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_manager() -> TooltipManager {
     
     TooltipManager::new(create_test_config())
@@ -121,6 +130,7 @@ fn create_test_manager() -> TooltipManager {
 // ============================================================================
 #[cfg(test)]
 mod config_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -153,6 +163,7 @@ mod config_tests {
 // ============================================================================
 #[cfg(test)]
 mod content_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -239,6 +250,7 @@ mod content_tests {
 // ============================================================================
 #[cfg(test)]
 mod manager_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -296,6 +308,7 @@ mod manager_tests {
 // ============================================================================
 #[cfg(test)]
 mod state_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -362,6 +375,7 @@ mod state_tests {
 // ============================================================================
 #[cfg(test)]
 mod copy_action_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -377,6 +391,7 @@ mod copy_action_tests {
 // ============================================================================
 #[cfg(test)]
 mod format_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

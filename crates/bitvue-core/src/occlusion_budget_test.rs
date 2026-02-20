@@ -3,6 +3,7 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
+#[allow(unused_imports)]
 use super::*;
 
 // ============================================================================
@@ -10,16 +11,19 @@ use super::*;
 // ============================================================================
 
 /// Create a test overlay config
+#[allow(dead_code)]
 fn create_test_config(layer: OverlayLayer, priority: u32) -> OverlayConfig {
     OverlayConfig::new(layer, priority)
 }
 
 /// Create a test overlay config with alpha
+#[allow(dead_code)]
 fn create_test_config_with_alpha(layer: OverlayLayer, priority: u32, alpha: f32) -> OverlayConfig {
     OverlayConfig::new(layer, priority).with_alpha(alpha)
 }
 
 /// Create a test overlay config with all options
+#[allow(dead_code)]
 fn create_test_config_full(
     layer: OverlayLayer,
     priority: u32,
@@ -33,6 +37,7 @@ fn create_test_config_full(
 }
 
 /// Create a test occlusion budget
+#[allow(dead_code)]
 fn create_test_budget() -> OcclusionBudget {
     OcclusionBudget::new()
 }
@@ -43,6 +48,7 @@ fn create_test_budget() -> OcclusionBudget {
 
 #[cfg(test)]
 mod overlay_layer_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -77,6 +83,7 @@ mod overlay_layer_tests {
 
 #[cfg(test)]
 mod blend_mode_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -105,6 +112,7 @@ mod blend_mode_tests {
 
 #[cfg(test)]
 mod overlay_config_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -180,6 +188,7 @@ mod overlay_config_tests {
 
 #[cfg(test)]
 mod occlusion_budget_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -233,6 +242,7 @@ mod occlusion_budget_construction_tests {
 
 #[cfg(test)]
 mod occlusion_budget_register_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -302,6 +312,7 @@ mod occlusion_budget_register_tests {
 
 #[cfg(test)]
 mod occlusion_budget_visibility_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -382,6 +393,7 @@ mod occlusion_budget_visibility_tests {
 
 #[cfg(test)]
 mod occlusion_budget_stack_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -571,6 +583,7 @@ mod occlusion_budget_stack_tests {
 
 #[cfg(test)]
 mod occlusion_budget_query_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -705,6 +718,7 @@ mod occlusion_budget_query_tests {
 
 #[cfg(test)]
 mod occlusion_budget_remove_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -770,6 +784,7 @@ mod occlusion_budget_remove_tests {
 
 #[cfg(test)]
 mod occlusion_budget_stats_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -814,6 +829,7 @@ mod occlusion_budget_stats_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

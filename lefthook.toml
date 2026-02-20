@@ -1,7 +1,7 @@
 # Lefthook configuration - Optimized for Rust + TypeScript
 # https://github.com/evilmartians/lefthook
 #
-# Strategy: Fast pre-commit, comprehensive pre-push, full CI validation
+# Strategy: Fast pre-commit (format only), comprehensive pre-push (smoke + lint + tests)
 
 [whitespace]
 enabled = true
@@ -11,74 +11,53 @@ ignored_extensions = ["svg", "patch"]
 skip = ["local"]
 
 # ================================
-# Pre-commit: Fast format checks only
+# Pre-commit: Format checks only (fast)
 # ================================
 
-[hooks.pre-commit]
-run = "parallel"
+[pre-commit]
+parallel = true
 
-[actions]
-# Format checks (instant)
+[pre-commit.commands.rust-fmt]
+run = "cargo fmt --all -- --check"
+glob = "*.rs"
 
-[action.rust_format_check]
-command = "cargo fmt --all -- --check"
-run = "workspace"
-stage = ["pre-commit"]
-files = ["Cargo.toml", "crates/**/*.rs", "src-tauri/**/*.rs"]
-
-[action.frontend_format_check]
-skip = ["not exist - frontend/node_modules"]
-command = "cd frontend && npm run format:check --silent || true"
-run = "workspace"
-stage = ["pre-commit"]
-files = ["frontend/**/*.{ts,tsx,js,jsx,json,css,scss,md}"]
+[pre-commit.commands.frontend-fmt]
+run = "cd frontend && npm run format:check --silent"
+glob = "frontend/**/*.{ts,tsx,js,jsx,json,css,scss,md}"
+skip = [{run = "test ! -d frontend/node_modules"}]
 
 # ================================
-# Pre-push: Full validation
+# Pre-push: Smoke + lint + tests
 # ================================
 
-[hooks.pre-push]
+[pre-push]
+parallel = true
 
-# Rust validation
+[pre-push.commands.rust-check]
+run = "cargo check --workspace"
+glob = "*.rs"
 
-[action.rust_clippy]
-command = "cargo clippy --workspace -- -D warnings"
-run = "workspace"
-stage = ["pre-push"]
-files = ["Cargo.toml", "crates/**/*.rs", "src-tauri/**/*.rs"]
+[pre-push.commands.rust-clippy]
+run = "cargo clippy --workspace --lib --exclude abseil -- -D warnings"
+glob = "*.rs"
 
-[action.rust_tests]
-command = "cargo test --workspace --no-fail-fast"
-run = "workspace"
-stage = ["pre-push"]
-files = ["Cargo.toml", "crates/**/*.rs", "src-tauri/**/*.rs"]
+[pre-push.commands.rust-tests]
+run = "cargo test --workspace --exclude abseil --no-fail-fast"
+glob = "*.rs"
 
-# Frontend validation
+[pre-push.commands.frontend-lint]
+run = "cd frontend && npm run lint --silent"
+glob = "frontend/**/*.{ts,tsx,js,jsx}"
+skip = [{run = "test ! -d frontend/node_modules"}]
 
-[action.frontend_lint]
-skip = ["not exist - frontend/node_modules"]
-command = "cd frontend && npm run lint --silent || true"
-run = "workspace"
-stage = ["pre-push"]
-files = ["frontend/**/*.{ts,tsx,js,jsx}"]
-
-[action.frontend_lint_css]
-skip = ["not exist - frontend/node_modules"]
-command = "cd frontend && npm run lint:css --silent || true"
-run = "workspace"
-stage = ["pre-push"]
-files = ["frontend/**/*.{css,scss}"]
-
-[action.frontend_tests]
-skip = ["not exist - frontend/node_modules"]
-command = "cd frontend && npm run test:run --silent || true"
-run = "workspace"
-stage = ["pre-push"]
-files = ["frontend/**/*.{ts,tsx,js,jsx}"]
+[pre-push.commands.frontend-tests]
+run = "cd frontend && npm run test:run --silent"
+glob = "frontend/**/*.{ts,tsx,js,jsx}"
+skip = [{run = "test ! -d frontend/node_modules"}]
 
 # ================================
 # Commit-msg: Conventional commits
 # ================================
 
-[hooks.commit-msg]
-pattern = "^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\\(.+\\))?: .{10,}"
+[commit-msg]
+commands.validate.run = "grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\\(.+\\))?: .{10,}' {1}"

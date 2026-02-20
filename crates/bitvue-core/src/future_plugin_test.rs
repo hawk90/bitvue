@@ -3,6 +3,7 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
+#[allow(unused_imports)]
 use super::*;
 
 // ============================================================================
@@ -10,16 +11,19 @@ use super::*;
 // ============================================================================
 
 /// Create a test plugin metadata
+#[allow(dead_code)]
 fn create_test_metadata(id: &str, name: &str) -> PluginMetadata {
     PluginMetadata::new(id.to_string(), name.to_string(), "1.0.0".to_string())
 }
 
 /// Create a test plugin registry
+#[allow(dead_code)]
 fn create_test_registry() -> PluginRegistry {
     PluginRegistry::new()
 }
 
 /// Create a test plugin entry
+#[allow(dead_code)]
 fn create_test_entry(id: &str, name: &str) -> PluginEntry {
     let metadata = create_test_metadata(id, name);
     PluginEntry::new(metadata, 0)
@@ -29,8 +33,10 @@ fn create_test_entry(id: &str, name: &str) -> PluginEntry {
 // PluginMetadata Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod plugin_metadata_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -108,8 +114,10 @@ mod plugin_metadata_tests {
 // PluginEntry Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod plugin_entry_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -197,8 +205,10 @@ mod plugin_entry_tests {
 // PluginRegistry Construction Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod registry_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -225,8 +235,10 @@ mod registry_construction_tests {
 // PluginRegistry Register Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod registry_register_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -284,8 +296,10 @@ mod registry_register_tests {
 // PluginRegistry Unregister Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod registry_unregister_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -337,8 +351,10 @@ mod registry_unregister_tests {
 // PluginRegistry Get Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod registry_get_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -398,8 +414,10 @@ mod registry_get_tests {
 // PluginRegistry Query Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod registry_query_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -490,8 +508,10 @@ mod registry_query_tests {
 // PluginRegistry State Change Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod registry_state_change_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -591,8 +611,10 @@ mod registry_state_change_tests {
 // PluginRegistry Statistics Tests
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod registry_stats_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -658,8 +680,10 @@ mod registry_stats_tests {
 // Edge Cases
 // ============================================================================
 
+#[allow(unused_must_use, dead_code, unused_imports)]
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

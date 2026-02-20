@@ -18,11 +18,11 @@ export interface UseAppDialogsReturn {
   /** Set show export dialog state */
   setShowExportDialog: (show: boolean) => void;
   /** Error dialog state and methods */
-  errorDialog: ReturnType<typeof useErrorDialog>['errorDialog'];
+  errorDialog: ReturnType<typeof useErrorDialog>["errorDialog"];
   /** Show error dialog */
-  showErrorDialog: ReturnType<typeof useErrorDialog>['showErrorDialog'];
+  showErrorDialog: ReturnType<typeof useErrorDialog>["showErrorDialog"];
   /** Close error dialog */
-  closeErrorDialog: ReturnType<typeof useErrorDialog>['closeErrorDialog'];
+  closeErrorDialog: ReturnType<typeof useErrorDialog>["closeErrorDialog"];
 }
 
 /**

@@ -4,7 +4,7 @@
  * Displays detailed frame information
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface FrameViewTabProps {
   frame: {
@@ -19,7 +19,9 @@ interface FrameViewTabProps {
   } | null;
 }
 
-export const FrameViewTab = memo(function FrameViewTab({ frame }: FrameViewTabProps) {
+export const FrameViewTab = memo(function FrameViewTab({
+  frame,
+}: FrameViewTabProps) {
   if (!frame) {
     return (
       <div className="hex-empty">
@@ -43,7 +45,9 @@ export const FrameViewTab = memo(function FrameViewTab({ frame }: FrameViewTabPr
         </div>
         <div className="frame-info-row">
           <span className="frame-info-label">Frame Type:</span>
-          <span className={`frame-info-value frame-type-${frame.frame_type.toLowerCase()}`}>
+          <span
+            className={`frame-info-value frame-type-${frame.frame_type.toLowerCase()}`}
+          >
             {frame.frame_type}
           </span>
         </div>
@@ -80,14 +84,15 @@ export const FrameViewTab = memo(function FrameViewTab({ frame }: FrameViewTabPr
         <div className="frame-info-row">
           <span className="frame-info-label">References:</span>
           <span className="frame-info-value">
-            {frame.ref_frames?.length || 0} frame{(frame.ref_frames?.length || 0) !== 1 ? 's' : ''}
+            {frame.ref_frames?.length || 0} frame
+            {(frame.ref_frames?.length || 0) !== 1 ? "s" : ""}
           </span>
         </div>
         {frame.ref_frames && frame.ref_frames.length > 0 && (
           <div className="frame-info-row">
             <span className="frame-info-label">Ref Frames:</span>
             <span className="frame-info-value">
-              {frame.ref_frames.join(', ')}
+              {frame.ref_frames.join(", ")}
             </span>
           </div>
         )}

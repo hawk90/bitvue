@@ -148,7 +148,11 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, var(--thumb-bg) 0%, var(--bg-tertiary) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--thumb-bg) 0%,
+    var(--bg-tertiary) 100%
+  );
   position: relative;
   overflow: hidden;
   transition: all var(--transition-normal) var(--ease-default);
@@ -156,7 +160,7 @@
 
 /* Animated pattern overlay */
 .frame-placeholder::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background: repeating-linear-gradient(
@@ -194,7 +198,11 @@
 
 /* Hover effect for placeholders */
 .filmstrip-frame:hover .frame-placeholder {
-  background: linear-gradient(135deg, var(--bg-hover) 0%, var(--bg-tertiary) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--bg-hover) 0%,
+    var(--bg-tertiary) 100%
+  );
 }
 
 .filmstrip-frame:hover .frame-placeholder .codicon {
@@ -209,8 +217,12 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Selection highlight - white outer glow (VQAnalyzer parity) */
@@ -229,7 +241,8 @@
 }
 
 @keyframes referencedPulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow:
       0 0 0 2px rgb(255 165 0 / 60%),
       0 0 12px rgb(255 165 0 / 40%);
@@ -292,7 +305,7 @@
   font-weight: 600;
   padding: 1px 3px;
   border-radius: 2px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
   line-height: 1;
 }
 
@@ -399,14 +412,15 @@
 }
 
 .frame-ref-badge.expanded .ref-index {
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
   padding: 1px 2px;
   background: rgb(0 0 0 / 30%);
   border-radius: 2px;
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 8px rgb(255 165 0 / 60%);
   }
 

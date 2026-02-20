@@ -8,8 +8,8 @@
  * - Codec-specific deblocking parameters
  */
 
-import { memo, useMemo, useEffect, useState } from 'react';
-import type { FrameInfo } from '../../../types/video';
+import { memo, useMemo, useEffect, useState } from "react";
+import type { FrameInfo } from "../../../types/video";
 
 interface DeblockingViewProps {
   frame: FrameInfo | null;
@@ -22,7 +22,7 @@ interface BoundaryEdge {
   x: number;
   y: number;
   length: number;
-  orientation: 'vertical' | 'horizontal';
+  orientation: "vertical" | "horizontal";
   strength: number;
   filtered: boolean;
   bs: number; // Boundary strength
@@ -36,22 +36,24 @@ interface DeblockingParams {
 }
 
 const CODEC_DEFAULT_PARAMS: Record<string, DeblockingParams> = {
-  'AV1': { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  'HEVC': { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  'VVC': { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  'AVC': { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  'VP9': { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: false },
-  'AV3': { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
+  AV1: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
+  HEVC: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
+  VVC: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
+  AVC: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
+  VP9: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: false },
+  AV3: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
 };
 
 export const DeblockingView = memo(function DeblockingView({
   frame,
   width,
   height,
-  codec = 'Unknown',
+  codec = "Unknown",
 }: DeblockingViewProps) {
   const [boundaries, setBoundaries] = useState<BoundaryEdge[]>([]);
-  const [params, setParams] = useState<DeblockingParams>(CODEC_DEFAULT_PARAMS[codec] || CODEC_DEFAULT_PARAMS['AV1']);
+  const [params, setParams] = useState<DeblockingParams>(
+    CODEC_DEFAULT_PARAMS[codec] || CODEC_DEFAULT_PARAMS["AV1"],
+  );
   const [stats, setStats] = useState({
     totalBoundaries: 0,
     filteredBoundaries: 0,
@@ -81,7 +83,7 @@ export const DeblockingView = memo(function DeblockingView({
           x,
           y,
           length: blockSize,
-          orientation: 'vertical',
+          orientation: "vertical",
           strength,
           filtered,
           bs,
@@ -100,7 +102,7 @@ export const DeblockingView = memo(function DeblockingView({
           x,
           y,
           length: blockSize,
-          orientation: 'horizontal',
+          orientation: "horizontal",
           strength,
           filtered,
           bs,
@@ -111,9 +113,9 @@ export const DeblockingView = memo(function DeblockingView({
     setBoundaries(edges);
 
     // Calculate statistics
-    const filteredCount = edges.filter(e => e.filtered).length;
-    const strongCount = edges.filter(e => e.bs >= 3).length;
-    const weakCount = edges.filter(e => e.bs > 0 && e.bs < 3).length;
+    const filteredCount = edges.filter((e) => e.filtered).length;
+    const strongCount = edges.filter((e) => e.bs >= 3).length;
+    const weakCount = edges.filter((e) => e.bs > 0 && e.bs < 3).length;
 
     setStats({
       totalBoundaries: edges.length,
@@ -122,12 +124,12 @@ export const DeblockingView = memo(function DeblockingView({
       weakBoundaries: weakCount,
     });
 
-    setParams(CODEC_DEFAULT_PARAMS[codec] || CODEC_DEFAULT_PARAMS['AV1']);
+    setParams(CODEC_DEFAULT_PARAMS[codec] || CODEC_DEFAULT_PARAMS["AV1"]);
   }, [frame, width, height, codec]);
 
   const getEdgeColor = (edge: BoundaryEdge) => {
     if (!edge.filtered) {
-      return 'rgba(128, 128, 128, 0.2)';
+      return "rgba(128, 128, 128, 0.2)";
     }
 
     const intensity = edge.strength / 4;
@@ -159,7 +161,9 @@ export const DeblockingView = memo(function DeblockingView({
         <h3>Deblocking Filter Analysis</h3>
         <div className="deblocking-frame-info">
           <span>Frame {frame.frame_index}</span>
-          <span className={frame.frame_type.toLowerCase()}>{frame.frame_type}</span>
+          <span className={frame.frame_type.toLowerCase()}>
+            {frame.frame_type}
+          </span>
           <span className="codec-badge">{codec}</span>
         </div>
       </div>
@@ -168,26 +172,38 @@ export const DeblockingView = memo(function DeblockingView({
       <div className="deblocking-stats">
         <div className="deblocking-stat-item">
           <span className="deblocking-stat-label">Total Boundaries:</span>
-          <span className="deblocking-stat-value">{stats.totalBoundaries.toLocaleString()}</span>
+          <span className="deblocking-stat-value">
+            {stats.totalBoundaries.toLocaleString()}
+          </span>
         </div>
         <div className="deblocking-stat-item">
           <span className="deblocking-stat-label">Filtered:</span>
-          <span className="deblocking-stat-value">{stats.filteredBoundaries.toLocaleString()}</span>
+          <span className="deblocking-stat-value">
+            {stats.filteredBoundaries.toLocaleString()}
+          </span>
         </div>
         <div className="deblocking-stat-item">
           <span className="deblocking-stat-label">Strong (BS≥3):</span>
-          <span className="deblocking-stat-value deblocking-strong">{stats.strongBoundaries.toLocaleString()}</span>
+          <span className="deblocking-stat-value deblocking-strong">
+            {stats.strongBoundaries.toLocaleString()}
+          </span>
         </div>
         <div className="deblocking-stat-item">
           <span className="deblocking-stat-label">Weak (BS 1-2):</span>
-          <span className="deblocking-stat-value deblocking-weak">{stats.weakBoundaries.toLocaleString()}</span>
+          <span className="deblocking-stat-value deblocking-weak">
+            {stats.weakBoundaries.toLocaleString()}
+          </span>
         </div>
         <div className="deblocking-stat-item">
           <span className="deblocking-stat-label">Filter Rate:</span>
           <span className="deblocking-stat-value">
             {stats.totalBoundaries > 0
-              ? ((stats.filteredBoundaries / stats.totalBoundaries) * 100).toFixed(1)
-              : '0'}%
+              ? (
+                  (stats.filteredBoundaries / stats.totalBoundaries) *
+                  100
+                ).toFixed(1)
+              : "0"}
+            %
           </span>
         </div>
       </div>
@@ -206,11 +222,15 @@ export const DeblockingView = memo(function DeblockingView({
           </div>
           <div className="deblocking-param-item">
             <span className="deblocking-param-label">Filter Strength:</span>
-            <span className="deblocking-param-value">{params.filterStrength}</span>
+            <span className="deblocking-param-value">
+              {params.filterStrength}
+            </span>
           </div>
           <div className="deblocking-param-item">
             <span className="deblocking-param-label">Chroma Edge:</span>
-            <span className="deblocking-param-value">{params.chromaEdge ? 'Enabled' : 'Disabled'}</span>
+            <span className="deblocking-param-value">
+              {params.chromaEdge ? "Enabled" : "Disabled"}
+            </span>
           </div>
         </div>
       </div>
@@ -227,11 +247,15 @@ export const DeblockingView = memo(function DeblockingView({
             preserveAspectRatio="xMidYMid meet"
           >
             {/* Background */}
-            <rect width={width} height={height} fill="var(--bitvue-bg-primary)" />
+            <rect
+              width={width}
+              height={height}
+              fill="var(--bitvue-bg-primary)"
+            />
 
             {/* Draw edges */}
             {boundaries.map((edge, index) => {
-              if (edge.orientation === 'vertical') {
+              if (edge.orientation === "vertical") {
                 return (
                   <line
                     key={`v-${index}`}
@@ -244,9 +268,11 @@ export const DeblockingView = memo(function DeblockingView({
                   >
                     <title>
                       Vertical Edge ({edge.x}, {edge.y}){`\n`}
-                      BS: {edge.bs}{`\n`}
-                      Strength: {edge.strength.toFixed(2)}{`\n`}
-                      Filtered: {edge.filtered ? 'Yes' : 'No'}
+                      BS: {edge.bs}
+                      {`\n`}
+                      Strength: {edge.strength.toFixed(2)}
+                      {`\n`}
+                      Filtered: {edge.filtered ? "Yes" : "No"}
                     </title>
                   </line>
                 );
@@ -263,9 +289,11 @@ export const DeblockingView = memo(function DeblockingView({
                   >
                     <title>
                       Horizontal Edge ({edge.x}, {edge.y}){`\n`}
-                      BS: {edge.bs}{`\n`}
-                      Strength: {edge.strength.toFixed(2)}{`\n`}
-                      Filtered: {edge.filtered ? 'Yes' : 'No'}
+                      BS: {edge.bs}
+                      {`\n`}
+                      Strength: {edge.strength.toFixed(2)}
+                      {`\n`}
+                      Filtered: {edge.filtered ? "Yes" : "No"}
                     </title>
                   </line>
                 );
@@ -279,21 +307,27 @@ export const DeblockingView = memo(function DeblockingView({
           <div className="deblocking-legend-item">
             <div
               className="deblocking-legend-box deblocking-strong"
-              style={{ background: 'linear-gradient(to right, rgba(255,200,0,0.5), rgba(255,0,0,1))' }}
+              style={{
+                background:
+                  "linear-gradient(to right, rgba(255,200,0,0.5), rgba(255,0,0,1))",
+              }}
             ></div>
             <span>Strong Boundary (BS 3-4)</span>
           </div>
           <div className="deblocking-legend-item">
             <div
               className="deblocking-legend-box deblocking-weak"
-              style={{ background: 'linear-gradient(to right, rgba(0,200,255,0.3), rgba(0,0,255,0.8))' }}
+              style={{
+                background:
+                  "linear-gradient(to right, rgba(0,200,255,0.3), rgba(0,0,255,0.8))",
+              }}
             ></div>
             <span>Weak Boundary (BS 1-2)</span>
           </div>
           <div className="deblocking-legend-item">
             <div
               className="deblocking-legend-box"
-              style={{ background: 'rgba(128,128,128,0.2)' }}
+              style={{ background: "rgba(128,128,128,0.2)" }}
             ></div>
             <span>Not Filtered</span>
           </div>
@@ -304,20 +338,36 @@ export const DeblockingView = memo(function DeblockingView({
       <div className="deblocking-notes">
         <h4>Codec-Specific Notes</h4>
         <div className="deblocking-notes-content">
-          {codec === 'AV1' && (
-            <p>AV1 uses loop restoration filters including deblocking, CDEF, and loop restoration. Deblocking is applied to all block boundaries.</p>
+          {codec === "AV1" && (
+            <p>
+              AV1 uses loop restoration filters including deblocking, CDEF, and
+              loop restoration. Deblocking is applied to all block boundaries.
+            </p>
           )}
-          {codec === 'HEVC' && (
-            <p>HEVC deblocking filter operates on 8x8 block boundaries. Boundary strength (BS) depends on prediction mode, motion vectors, and reference indices.</p>
+          {codec === "HEVC" && (
+            <p>
+              HEVC deblocking filter operates on 8x8 block boundaries. Boundary
+              strength (BS) depends on prediction mode, motion vectors, and
+              reference indices.
+            </p>
           )}
-          {codec === 'VVC' && (
-            <p>VVC includes enhanced deblocking with adaptive filter strength and supports both luma and chroma filtering.</p>
+          {codec === "VVC" && (
+            <p>
+              VVC includes enhanced deblocking with adaptive filter strength and
+              supports both luma and chroma filtering.
+            </p>
           )}
-          {codec === 'AVC' && (
-            <p>H.264/AVC deblocking filter operates on 4x4 block boundaries with adaptive strength based on QP and boundary conditions.</p>
+          {codec === "AVC" && (
+            <p>
+              H.264/AVC deblocking filter operates on 4x4 block boundaries with
+              adaptive strength based on QP and boundary conditions.
+            </p>
           )}
-          {codec === 'VP9' && (
-            <p>VP9 deblocking filter operates on 8x8 block boundaries for luma and 4x4 for chroma (when enabled).</p>
+          {codec === "VP9" && (
+            <p>
+              VP9 deblocking filter operates on 8x8 block boundaries for luma
+              and 4x4 for chroma (when enabled).
+            </p>
           )}
         </div>
       </div>

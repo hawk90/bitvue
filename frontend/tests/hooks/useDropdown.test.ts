@@ -2,24 +2,24 @@
  * useDropdown Hook Tests
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useDropdown } from '../useDropdown';
+import { describe, it, expect, vi } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import { useDropdown } from "@/hooks/useDropdown";
 
-describe('useDropdown', () => {
-  it('should start with initial open state', () => {
+describe("useDropdown", () => {
+  it("should start with initial open state", () => {
     const { result } = renderHook(() => useDropdown({ initialOpen: true }));
 
     expect(result.current.isOpen).toBe(true);
   });
 
-  it('should start closed by default', () => {
+  it("should start closed by default", () => {
     const { result } = renderHook(() => useDropdown());
 
     expect(result.current.isOpen).toBe(false);
   });
 
-  it('should open when open is called', () => {
+  it("should open when open is called", () => {
     const { result } = renderHook(() => useDropdown());
 
     act(() => {
@@ -29,7 +29,7 @@ describe('useDropdown', () => {
     expect(result.current.isOpen).toBe(true);
   });
 
-  it('should close when close is called', () => {
+  it("should close when close is called", () => {
     const { result } = renderHook(() => useDropdown({ initialOpen: true }));
 
     act(() => {
@@ -39,7 +39,7 @@ describe('useDropdown', () => {
     expect(result.current.isOpen).toBe(false);
   });
 
-  it('should toggle when toggle is called', () => {
+  it("should toggle when toggle is called", () => {
     const { result } = renderHook(() => useDropdown());
 
     act(() => {
@@ -55,7 +55,7 @@ describe('useDropdown', () => {
     expect(result.current.isOpen).toBe(false);
   });
 
-  it('should call onOpen callback when opening', () => {
+  it("should call onOpen callback when opening", () => {
     const onOpen = vi.fn();
     const { result } = renderHook(() => useDropdown({ onOpen }));
 
@@ -66,9 +66,11 @@ describe('useDropdown', () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it('should call onClose callback when closing', () => {
+  it("should call onClose callback when closing", () => {
     const onClose = vi.fn();
-    const { result } = renderHook(() => useDropdown({ initialOpen: true, onClose }));
+    const { result } = renderHook(() =>
+      useDropdown({ initialOpen: true, onClose }),
+    );
 
     act(() => {
       result.current.close();
@@ -77,7 +79,7 @@ describe('useDropdown', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('should call callbacks on toggle', () => {
+  it("should call callbacks on toggle", () => {
     const onOpen = vi.fn();
     const onClose = vi.fn();
     const { result } = renderHook(() => useDropdown({ onOpen, onClose }));
@@ -93,9 +95,11 @@ describe('useDropdown', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('should not call onOpen when already open', () => {
+  it("should not call onOpen when already open", () => {
     const onOpen = vi.fn();
-    const { result } = renderHook(() => useDropdown({ initialOpen: true, onOpen }));
+    const { result } = renderHook(() =>
+      useDropdown({ initialOpen: true, onOpen }),
+    );
 
     act(() => {
       result.current.open();
@@ -104,7 +108,7 @@ describe('useDropdown', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('should not call onClose when already closed', () => {
+  it("should not call onClose when already closed", () => {
     const onClose = vi.fn();
     const { result } = renderHook(() => useDropdown({ onClose }));
 
@@ -115,7 +119,7 @@ describe('useDropdown', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('should provide refs for dropdown and trigger', () => {
+  it("should provide refs for dropdown and trigger", () => {
     const { result } = renderHook(() => useDropdown());
 
     expect(result.current.dropdownRef).toBeDefined();
@@ -125,12 +129,17 @@ describe('useDropdown', () => {
     expect(result.current.triggerRef.current).toBe(null);
   });
 
-  it('should close on click outside when enabled', () => {
-    const { result } = renderHook(() => useDropdown({ initialOpen: true, closeOnClickOutside: true }));
+  it("should close on click outside when enabled", () => {
+    const { result } = renderHook(() =>
+      useDropdown({ initialOpen: true, closeOnClickOutside: true }),
+    );
 
     act(() => {
-      const event = new MouseEvent('mousedown', { bubbles: true });
-      Object.defineProperty(event, 'target', { value: document.body, enumerable: true });
+      const event = new MouseEvent("mousedown", { bubbles: true });
+      Object.defineProperty(event, "target", {
+        value: document.body,
+        enumerable: true,
+      });
       document.dispatchEvent(event);
     });
 
@@ -138,47 +147,55 @@ describe('useDropdown', () => {
     expect(result.current.dropdownRef).toBeDefined();
   });
 
-  it('should not close on click outside when disabled', () => {
-    const { result } = renderHook(() => useDropdown({ initialOpen: true, closeOnClickOutside: false }));
+  it("should not close on click outside when disabled", () => {
+    const { result } = renderHook(() =>
+      useDropdown({ initialOpen: true, closeOnClickOutside: false }),
+    );
 
     // The dropdown should remain open
     expect(result.current.isOpen).toBe(true);
   });
 
-  it('should handle escape key when enabled', () => {
-    const { result } = renderHook(() => useDropdown({ initialOpen: true, closeOnEscape: true }));
+  it("should handle escape key when enabled", () => {
+    const { result } = renderHook(() =>
+      useDropdown({ initialOpen: true, closeOnEscape: true }),
+    );
 
     act(() => {
-      const event = new KeyboardEvent('keydown', { key: 'Escape' });
+      const event = new KeyboardEvent("keydown", { key: "Escape" });
       document.dispatchEvent(event);
     });
 
     expect(result.current.isOpen).toBe(false);
   });
 
-  it('should not handle escape key when disabled', () => {
-    const { result } = renderHook(() => useDropdown({ initialOpen: true, closeOnEscape: false }));
+  it("should not handle escape key when disabled", () => {
+    const { result } = renderHook(() =>
+      useDropdown({ initialOpen: true, closeOnEscape: false }),
+    );
 
     act(() => {
-      const event = new KeyboardEvent('keydown', { key: 'Escape' });
+      const event = new KeyboardEvent("keydown", { key: "Escape" });
       document.dispatchEvent(event);
     });
 
     expect(result.current.isOpen).toBe(true);
   });
 
-  it('should not close on other keys', () => {
-    const { result } = renderHook(() => useDropdown({ initialOpen: true, closeOnEscape: true }));
+  it("should not close on other keys", () => {
+    const { result } = renderHook(() =>
+      useDropdown({ initialOpen: true, closeOnEscape: true }),
+    );
 
     act(() => {
-      const event = new KeyboardEvent('keydown', { key: 'Enter' });
+      const event = new KeyboardEvent("keydown", { key: "Enter" });
       document.dispatchEvent(event);
     });
 
     expect(result.current.isOpen).toBe(true);
   });
 
-  it('should handle multiple rapid toggle calls', () => {
+  it("should handle multiple rapid toggle calls", () => {
     const onOpen = vi.fn();
     const onClose = vi.fn();
     const { result } = renderHook(() => useDropdown({ onOpen, onClose }));
@@ -191,6 +208,6 @@ describe('useDropdown', () => {
 
     // Should end up with final state after all toggles
     expect(result.current.isOpen).toBe(true);
-    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 });

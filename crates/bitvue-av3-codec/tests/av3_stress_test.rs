@@ -1,5 +1,18 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Stress tests for AV3 codec - large inputs, random patterns, boundary conditions
-use bitvue_av3_codec::{parse_av3, parse_obu_header, parse_sequence_header, parse_frame_header, ObuType};
+use bitvue_av3_codec::{
+    parse_av3, parse_frame_header, parse_obu_header, parse_sequence_header, ObuType,
+};
 
 #[test]
 fn test_parse_av3_large_input_10kb() {
@@ -23,7 +36,7 @@ fn test_parse_av3_large_input_100kb() {
     for i in 0..10 {
         let offset = i * 10_240;
         data[offset] = (i as u8 % 8) << 3;
-        data[offset+1] = 0x00;
+        data[offset + 1] = 0x00;
     }
 
     let result = parse_av3(&data);
@@ -46,14 +59,14 @@ fn test_parse_av3_all_obu_types() {
     // Test all OBU types
     let obu_types = [
         0u8, // Temporal Delimiter
-        1,  // Sequence Header
-        2,  // TD
-        3,  // Frame Header
-        4,  // Tile Group
-        5,  // Metadata
-        6,  // Frame
-        7,  // Redundant Frame Header
-        8,  // Tile List
+        1,   // Sequence Header
+        2,   // TD
+        3,   // Frame Header
+        4,   // Tile Group
+        5,   // Metadata
+        6,   // Frame
+        7,   // Redundant Frame Header
+        8,   // Tile List
     ];
 
     for obu_type in obu_types {
@@ -74,7 +87,7 @@ fn test_parse_av3_max_obu_count() {
             break;
         }
         data[offset] = 0x80; // Temporal delimiter
-        data[offset+1] = 0x00;
+        data[offset + 1] = 0x00;
         offset += 64;
     }
 
@@ -105,7 +118,7 @@ fn test_parse_av3_stress_1mb() {
         data[offset] = ((i as u8 % 8) << 3) | 0x02;
         // Add payload
         for j in 5..128 {
-            data[offset+j] = ((j + i) % 256) as u8;
+            data[offset + j] = ((j + i) % 256) as u8;
         }
     }
 
@@ -115,7 +128,9 @@ fn test_parse_av3_stress_1mb() {
 
 #[test]
 fn test_parse_av3_boundary_sizes() {
-    let sizes = [1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512];
+    let sizes = [
+        1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512,
+    ];
 
     for size in sizes {
         let data = vec![0u8; size];
@@ -179,12 +194,12 @@ fn test_parse_av3_multiple_frames() {
     for i in 0..5 {
         // Temporal delimiter
         data[offset] = 0x80;
-        data[offset+1] = 0x00;
+        data[offset + 1] = 0x00;
         offset += 32;
 
         // Frame header
         data[offset] = (3 << 3) | 0x04;
-        data[offset+1] = 0x10;
+        data[offset + 1] = 0x10;
         offset += 64;
     }
 
@@ -220,7 +235,7 @@ fn test_parse_av3_tile_groups() {
 
     // Tile group
     data[offset] = (4 << 3) | 0x02;
-    data[offset+1] = 0x10;
+    data[offset + 1] = 0x10;
 
     let result = parse_av3(&data);
     assert!(result.is_ok() || result.is_err());
@@ -234,7 +249,7 @@ fn test_parse_av3_key_frames() {
     for i in 0..3 {
         // Frame header (key frame)
         data[offset] = (3 << 3) | 0x04;
-        data[offset+1] = 0x10;
+        data[offset + 1] = 0x10;
         // frame_type = 0 (KeyFrame)
         offset += 128;
     }
@@ -251,7 +266,7 @@ fn test_parse_av3_inter_frames() {
     for i in 0..3 {
         // Frame header (inter frame)
         data[offset] = (3 << 3) | 0x04;
-        data[offset+1] = 0x10;
+        data[offset + 1] = 0x10;
         // frame_type = 1 (InterFrame)
         offset += 128;
     }
@@ -267,7 +282,7 @@ fn test_parse_av3_alternating_key_inter() {
 
     for i in 0..4 {
         data[offset] = (3 << 3) | 0x04;
-        data[offset+1] = 0x10;
+        data[offset + 1] = 0x10;
         // Key/Inter alternation
         offset += 128;
     }
@@ -403,7 +418,7 @@ fn test_parse_av3_with_tiling() {
 
     // Frame header with uniform tile spacing
     data[offset] = (3 << 3) | 0x04;
-    data[offset+1] = 0x80; // uniform_tile_spacing_flag
+    data[offset + 1] = 0x80; // uniform_tile_spacing_flag
 
     let result = parse_av3(&data);
     assert!(result.is_ok() || result.is_err());

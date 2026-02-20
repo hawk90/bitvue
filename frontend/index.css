@@ -1,9 +1,10 @@
 /* VQAnalyzer Style - Base Reset */
 
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
-    'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
-    'Helvetica Neue', sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
+    "Helvetica Neue", sans-serif;
   line-height: 1.4;
   font-weight: 400;
   color-scheme: dark;
@@ -21,7 +22,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   width: 100%;
   overflow: hidden;

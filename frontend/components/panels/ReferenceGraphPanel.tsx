@@ -5,8 +5,8 @@
  * Reference: VQAnalyzer Reference Graph
  */
 
-import PlaceholderPanel from './PlaceholderPanel';
-import { memo } from 'react';
+import PlaceholderPanel from "./PlaceholderPanel";
+import { memo } from "react";
 
 export const ReferenceGraphPanel = memo(function ReferenceGraphPanel() {
   return (

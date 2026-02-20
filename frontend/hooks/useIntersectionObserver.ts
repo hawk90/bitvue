@@ -13,7 +13,7 @@
  * ```
  */
 
-import { useEffect, useState, useRef, RefObject } from 'react';
+import { useEffect, useState, useRef, RefObject } from "react";
 
 export interface UseIntersectionObserverOptions {
   /** The element's intersection rectangle with the root */
@@ -42,11 +42,11 @@ export interface UseIntersectionObserverResult {
  * @returns Object containing ref and visibility state
  */
 export function useIntersectionObserver(
-  options: UseIntersectionObserverOptions = {}
+  options: UseIntersectionObserverOptions = {},
 ): UseIntersectionObserverResult {
   const {
     root = null,
-    rootMargin = '0px',
+    rootMargin = "0px",
     threshold = 0,
     triggerOnce = false,
   } = options;
@@ -70,7 +70,7 @@ export function useIntersectionObserver(
           observer.disconnect();
         }
       },
-      { root, rootMargin, threshold }
+      { root, rootMargin, threshold },
     );
 
     // Start observing
@@ -95,11 +95,11 @@ export function useIntersectionObserver(
  */
 export function useIntersectionObserverRef(
   targetRef: RefObject<Element>,
-  options: UseIntersectionObserverOptions = {}
+  options: UseIntersectionObserverOptions = {},
 ): boolean {
   const {
     root = null,
-    rootMargin = '0px',
+    rootMargin = "0px",
     threshold = 0,
     triggerOnce = false,
   } = options;
@@ -120,7 +120,7 @@ export function useIntersectionObserverRef(
           observer.disconnect();
         }
       },
-      { root, rootMargin, threshold }
+      { root, rootMargin, threshold },
     );
 
     // Start observing

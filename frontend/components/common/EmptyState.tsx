@@ -5,7 +5,7 @@
  * Used when there's no data to display (no file loaded, no search results, etc.)
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 export interface EmptyStateProps {
   /** Icon name using VS Code codicon class */
@@ -20,24 +20,24 @@ export interface EmptyStateProps {
     onClick: () => void;
   };
   /** Size variant */
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   /** CSS class name for custom styling */
   className?: string;
 }
 
 const SIZE_STYLES = {
-  sm: { icon: '24px', title: 'text-sm', spacing: 'gap-2' },
-  md: { icon: '32px', title: 'text-base', spacing: 'gap-3' },
-  lg: { icon: '48px', title: 'text-lg', spacing: 'gap-4' },
+  sm: { icon: "24px", title: "text-sm", spacing: "gap-2" },
+  md: { icon: "32px", title: "text-base", spacing: "gap-3" },
+  lg: { icon: "48px", title: "text-lg", spacing: "gap-4" },
 } as const;
 
 export const EmptyState = memo(function EmptyState({
-  icon = 'codicon-circle-outline',
+  icon = "codicon-circle-outline",
   title,
   description,
   action,
-  size = 'md',
-  className = 'empty-state',
+  size = "md",
+  className = "empty-state",
 }: EmptyStateProps) {
   const sizeStyle = SIZE_STYLES[size];
 
@@ -68,25 +68,31 @@ export const EmptyState = memo(function EmptyState({
   );
 });
 
-EmptyState.displayName = 'EmptyState';
+EmptyState.displayName = "EmptyState";
 
 /**
  * Pre-configured empty states for common scenarios
  */
 
-export const NoFileLoaded = memo(function NoFileLoaded({ onOpenFile }: { onOpenFile?: () => void }) {
+export const NoFileLoaded = memo(function NoFileLoaded({
+  onOpenFile,
+}: {
+  onOpenFile?: () => void;
+}) {
   return (
     <EmptyState
       icon="codicon-folder-opened"
       title="No file loaded"
       description="Open a video bitstream file to begin analysis"
-      action={onOpenFile ? { label: 'Open File', onClick: onOpenFile } : undefined}
+      action={
+        onOpenFile ? { label: "Open File", onClick: onOpenFile } : undefined
+      }
       size="lg"
     />
   );
 });
 
-NoFileLoaded.displayName = 'NoFileLoaded';
+NoFileLoaded.displayName = "NoFileLoaded";
 
 export const NoFramesFound = memo(function NoFramesFound() {
   return (
@@ -99,20 +105,28 @@ export const NoFramesFound = memo(function NoFramesFound() {
   );
 });
 
-NoFramesFound.displayName = 'NoFramesFound';
+NoFramesFound.displayName = "NoFramesFound";
 
-export const NoResultsFound = memo(function NoResultsFound({ query }: { query?: string }) {
+export const NoResultsFound = memo(function NoResultsFound({
+  query,
+}: {
+  query?: string;
+}) {
   return (
     <EmptyState
       icon="codicon-search"
       title="No results found"
-      description={query ? `No matches for "${query}"` : 'Try adjusting your search or filter criteria'}
+      description={
+        query
+          ? `No matches for "${query}"`
+          : "Try adjusting your search or filter criteria"
+      }
       size="md"
     />
   );
 });
 
-NoResultsFound.displayName = 'NoResultsFound';
+NoResultsFound.displayName = "NoResultsFound";
 
 export const NoSelection = memo(function NoSelection() {
   return (
@@ -125,7 +139,7 @@ export const NoSelection = memo(function NoSelection() {
   );
 });
 
-NoSelection.displayName = 'NoSelection';
+NoSelection.displayName = "NoSelection";
 
 export const NoSearchResults = memo(function NoSearchResults() {
   return (
@@ -138,7 +152,7 @@ export const NoSearchResults = memo(function NoSearchResults() {
   );
 });
 
-NoSearchResults.displayName = 'NoSearchResults';
+NoSearchResults.displayName = "NoSearchResults";
 
 export const NoReferenceFrames = memo(function NoReferenceFrames() {
   return (
@@ -151,9 +165,13 @@ export const NoReferenceFrames = memo(function NoReferenceFrames() {
   );
 });
 
-NoReferenceFrames.displayName = 'NoReferenceFrames';
+NoReferenceFrames.displayName = "NoReferenceFrames";
 
-export const PanelEmptyState = memo(function PanelEmptyState({ panelName }: { panelName: string }) {
+export const PanelEmptyState = memo(function PanelEmptyState({
+  panelName,
+}: {
+  panelName: string;
+}) {
   return (
     <EmptyState
       icon="codicon-panel"
@@ -164,7 +182,7 @@ export const PanelEmptyState = memo(function PanelEmptyState({ panelName }: { pa
   );
 });
 
-PanelEmptyState.displayName = 'PanelEmptyState';
+PanelEmptyState.displayName = "PanelEmptyState";
 
 // Alias for backward compatibility
 export const NoFramesSelected = NoSelection;

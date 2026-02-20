@@ -3,10 +3,12 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_result() -> LockCheckResult {
     LockCheckResult::Pass
 }
 
+#[allow(dead_code)]
 fn create_test_item() -> LockCheckItem {
     LockCheckItem {
         id: "TEST-1".to_string(),
@@ -18,10 +20,12 @@ fn create_test_item() -> LockCheckItem {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_report() -> LockCheckReport {
     LockCheckReport::new("v14".to_string(), 1000)
 }
 
+#[allow(dead_code)]
 fn create_test_executor() -> LockCheckExecutor {
     LockCheckExecutor::new("v14".to_string())
 }
@@ -31,6 +35,7 @@ fn create_test_executor() -> LockCheckExecutor {
 // ============================================================================
 #[cfg(test)]
 mod result_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -55,6 +60,7 @@ mod result_tests {
 // ============================================================================
 #[cfg(test)]
 mod category_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -69,6 +75,7 @@ mod category_tests {
 // ============================================================================
 #[cfg(test)]
 mod report_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -144,6 +151,7 @@ mod report_tests {
 // ============================================================================
 #[cfg(test)]
 mod perf_report_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -189,6 +197,7 @@ mod perf_report_tests {
 // ============================================================================
 #[cfg(test)]
 mod executor_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

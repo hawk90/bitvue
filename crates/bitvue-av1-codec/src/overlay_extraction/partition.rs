@@ -359,7 +359,7 @@ pub fn extract_prediction_mode_grid_from_parsed(
                 // Before: O(grid_h × grid_w × num_coding_units) - millions of iterations
                 // After: O(num_grid_blocks + num_coding_units) - linear scan
                 build_grid_from_coding_units_spatial(
-                    &*coding_units,
+                    &coding_units,
                     parsed,
                     block_w,
                     block_h,
@@ -586,13 +586,13 @@ pub fn extract_transform_grid_from_parsed(
                 // Before: O(grid_h × grid_w × num_coding_units) - millions of iterations
                 // After: O(num_grid_blocks + num_coding_units) - linear scan
                 build_grid_from_coding_units_spatial(
-                    &*coding_units,
+                    &coding_units,
                     parsed,
                     block_w,
                     block_h,
                     &mut tx_sizes,
                     |cu| cu.tx_size,
-                    |grid_x, grid_y| get_transform_size_for_position(grid_x, grid_y),
+                    get_transform_size_for_position,
                 )?;
 
                 return Ok(TransformGrid::new(
@@ -688,10 +688,7 @@ where
         // Calculate which superblock this CU belongs to
         let sb_x = cu.x / parsed.dimensions.sb_size;
         let sb_y = cu.y / parsed.dimensions.sb_size;
-        sb_index
-            .entry((sb_x, sb_y))
-            .or_insert_with(Vec::new)
-            .push(cu_idx);
+        sb_index.entry((sb_x, sb_y)).or_default().push(cu_idx);
     }
 
     // Now iterate through grid blocks, only checking CUs from relevant superblocks
@@ -708,7 +705,7 @@ where
             let mut found_value = false;
             if let Some(cu_indices) = sb_index.get(&(sb_x, sb_y)) {
                 // Only check CUs from this superblock (typically 1-4 CUs)
-                for cu_idx in &*cu_indices {
+                for cu_idx in cu_indices {
                     let cu = &coding_units[*cu_idx];
                     if cu.x < block_x + block_w
                         && cu.x + cu.width > block_x

@@ -201,3 +201,7 @@ pub use worker::*;
 pub use workspace::*;
 
 // test formatting
+
+// Consolidated tests (moved from tests/ to avoid linker OOM)
+#[cfg(test)]
+pub mod tests;

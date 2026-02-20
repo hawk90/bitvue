@@ -187,9 +187,9 @@ pub fn extract_frames(data: &[u8]) -> Result<Vec<&[u8]>> {
         let size = index.frame_sizes[i] as usize;
 
         // Check for negative offset or overflow
-        let end = start.checked_add(size).ok_or_else(|| {
-            Vp9Error::InvalidData(format!("Frame {} offset + size overflow", i))
-        })?;
+        let end = start
+            .checked_add(size)
+            .ok_or_else(|| Vp9Error::InvalidData(format!("Frame {} offset + size overflow", i)))?;
 
         // Check for overlap with previous frame
         if i > 0 && start < last_end {
@@ -203,7 +203,9 @@ pub fn extract_frames(data: &[u8]) -> Result<Vec<&[u8]>> {
         if end > data.len() {
             return Err(Vp9Error::InvalidData(format!(
                 "Frame {} extends beyond data: {} > {}",
-                i, end, data.len()
+                i,
+                end,
+                data.len()
             )));
         }
 

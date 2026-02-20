@@ -4,17 +4,17 @@
  * Displays a single video stream with frame navigation.
  */
 
-import { memo, useMemo } from 'react';
-import { type FrameInfo, AlignmentQuality } from '../../types/video';
-import { VideoCanvas } from '../panels/YuvViewerPanel/VideoCanvas';
-import { FrameNavigationControls } from '../panels/YuvViewerPanel/FrameNavigationControls';
-import './StreamPlayer.css';
+import { memo, useMemo } from "react";
+import { type FrameInfo, AlignmentQuality } from "../../types/video";
+import { VideoCanvas } from "../panels/YuvViewerPanel/VideoCanvas";
+import { FrameNavigationControls } from "../panels/YuvViewerPanel/FrameNavigationControls";
+import "./StreamPlayer.css";
 
 interface StreamPlayerProps {
   frames: FrameInfo[];
   currentFrame: number;
   onFrameChange: (index: number) => void;
-  streamLabel: 'A' | 'B';
+  streamLabel: "A" | "B";
   alignedFrame?: number | null;
   alignmentQuality?: AlignmentQuality;
 }
@@ -30,18 +30,22 @@ function StreamPlayer({
   const currentFrameData = frames[currentFrame] || null;
 
   // Memoize alignment color function - it's recreated on every render otherwise
-  const getAlignmentColor = useMemo(() => (quality?: AlignmentQuality): string => {
-    switch (quality) {
-      case AlignmentQuality.Exact:
-        return 'var(--color-success)';
-      case AlignmentQuality.Nearest:
-        return 'var(--color-warning)';
-      case AlignmentQuality.Gap:
-        return 'var(--color-error)';
-      default:
-        return 'var(--color-text-secondary)';
-    }
-  }, []);
+  const getAlignmentColor = useMemo(
+    () =>
+      (quality?: AlignmentQuality): string => {
+        switch (quality) {
+          case AlignmentQuality.Exact:
+            return "var(--color-success)";
+          case AlignmentQuality.Nearest:
+            return "var(--color-warning)";
+          case AlignmentQuality.Gap:
+            return "var(--color-error)";
+          default:
+            return "var(--color-text-secondary)";
+        }
+      },
+    [],
+  );
 
   return (
     <div className={`stream-player stream-${streamLabel.toLowerCase()}`}>
@@ -60,7 +64,7 @@ function StreamPlayer({
         )}
 
         {/* Alignment indicator for stream B */}
-        {streamLabel === 'B' && alignmentQuality !== undefined && (
+        {streamLabel === "B" && alignmentQuality !== undefined && (
           <div
             className="alignment-indicator"
             style={{ borderColor: getAlignmentColor(alignmentQuality) }}
@@ -81,7 +85,9 @@ function StreamPlayer({
               {streamLabel}: {currentFrame + 1} / {frames.length}
             </span>
             {currentFrameData.frame_type && (
-              <span className={`frame-type frame-${currentFrameData.frame_type.toLowerCase()}`}>
+              <span
+                className={`frame-type frame-${currentFrameData.frame_type.toLowerCase()}`}
+              >
                 {currentFrameData.frame_type}
               </span>
             )}

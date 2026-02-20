@@ -978,7 +978,7 @@ mod tests {
 
         assert_eq!(config.overlay_type, OverlayType::Grid);
         assert_eq!(config.opacity, 0.5);
-        assert_eq!(config.enabled, false);
+        assert!(!config.enabled);
         assert_eq!(config.color, Some((255, 0, 0)));
         assert_eq!(config.grid_size, Some(64));
     }

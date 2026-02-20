@@ -3,14 +3,17 @@
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_reason() -> DisableReason {
     DisableReason::MissingDependency("decoder".to_string())
 }
 
+#[allow(dead_code)]
 fn create_test_feature_id() -> FeatureId {
     FeatureId::TimelinePanel
 }
 
+#[allow(dead_code)]
 fn create_test_matrix() -> DisableReasonMatrix {
     DisableReasonMatrix::new()
 }
@@ -20,6 +23,7 @@ fn create_test_matrix() -> DisableReasonMatrix {
 // ============================================================================
 #[cfg(test)]
 mod disable_reason_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -47,6 +51,7 @@ mod disable_reason_tests {
 // ============================================================================
 #[cfg(test)]
 mod feature_id_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -62,6 +67,7 @@ mod feature_id_tests {
 // ============================================================================
 #[cfg(test)]
 mod matrix_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

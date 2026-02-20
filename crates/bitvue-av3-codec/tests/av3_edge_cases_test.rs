@@ -1,5 +1,18 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Edge case tests for AV3 OBU and frame parsing
-use bitvue_av3_codec::{parse_av3, parse_obu_header, parse_sequence_header, parse_frame_header, ObuType};
+use bitvue_av3_codec::{
+    parse_av3, parse_frame_header, parse_obu_header, parse_sequence_header, ObuType,
+};
 
 #[test]
 fn test_parse_obu_header_empty() {
@@ -42,14 +55,14 @@ fn test_parse_obu_header_all_obu_types() {
     // Test parsing various OBU types
     let obu_types = [
         0u8, // Temporal Delimiter
-        1,  // Sequence Header
-        2,  // TD
-        3,  // Frame Header
-        4,  // Tile Group
-        5,  // Metadata
-        6,  // Frame
-        7,  // Redundant Frame Header
-        8,  // Tile List
+        1,   // Sequence Header
+        2,   // TD
+        3,   // Frame Header
+        4,   // Tile Group
+        5,   // Metadata
+        6,   // Frame
+        7,   // Redundant Frame Header
+        8,   // Tile List
     ];
 
     for obu_type in obu_types {
@@ -176,7 +189,7 @@ fn test_parse_av3_with_temporal_delimiters() {
 fn test_parse_av3_very_long_obu() {
     let mut data = vec![0u8; 10000];
     data[0] = (1 << 3) | 0x02; // Sequence Header
-    // Fill with some pattern
+                               // Fill with some pattern
     for i in 5..data.len() {
         data[i] = (i % 256) as u8;
     }

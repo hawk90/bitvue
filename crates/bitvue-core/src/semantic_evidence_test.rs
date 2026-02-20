@@ -1,9 +1,11 @@
 // Semantic Evidence module tests
+#[allow(unused_imports)]
 use super::*;
 
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_semantic_record(id: &str, display_idx: u64) -> SemanticEvidenceRecord {
     SemanticEvidenceRecord::new(
         id.to_string(),
@@ -19,6 +21,7 @@ fn create_test_semantic_record(id: &str, display_idx: u64) -> SemanticEvidenceRe
     )
 }
 
+#[allow(dead_code)]
 fn create_test_index() -> SemanticIndex {
     SemanticIndex::new()
 }
@@ -28,6 +31,7 @@ fn create_test_index() -> SemanticIndex {
 // ============================================================================
 #[cfg(test)]
 mod codec_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -108,6 +112,7 @@ mod codec_tests {
 // ============================================================================
 #[cfg(test)]
 mod description_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -192,6 +197,7 @@ mod description_tests {
 // ============================================================================
 #[cfg(test)]
 mod record_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -229,6 +235,7 @@ mod record_tests {
 // ============================================================================
 #[cfg(test)]
 mod index_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -322,6 +329,7 @@ mod index_tests {
 // ============================================================================
 #[cfg(test)]
 mod av1_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -377,6 +385,7 @@ mod av1_tests {
 
 #[cfg(test)]
 mod h264_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -421,6 +430,7 @@ mod h264_tests {
 
 #[cfg(test)]
 mod hevc_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -467,6 +477,7 @@ mod hevc_tests {
 
 #[cfg(test)]
 mod vp9_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -509,6 +520,7 @@ mod vp9_tests {
 
 #[cfg(test)]
 mod vvc_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

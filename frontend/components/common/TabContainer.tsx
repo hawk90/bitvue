@@ -5,8 +5,8 @@
  * Replaces duplicate tab implementations in SyntaxDetailPanel, UnitHexPanel, etc.
  */
 
-import { memo, useCallback, MouseEvent } from 'react';
-import './TabContainer.css';
+import { memo, useCallback, MouseEvent } from "react";
+import "./TabContainer.css";
 
 export interface TabOption<T extends string> {
   /** Unique identifier for the tab */
@@ -31,9 +31,9 @@ export interface TabContainerProps<T extends string> {
   /** Optional CSS class name */
   className?: string;
   /** Tab variant style */
-  variant?: 'default' | 'compact' | 'pills';
+  variant?: "default" | "compact" | "pills";
   /** Tab position */
-  position?: 'top' | 'left' | 'right' | 'bottom';
+  position?: "top" | "left" | "right" | "bottom";
   /** Whether to show icons */
   showIcons?: boolean;
 }
@@ -42,9 +42,9 @@ export const TabContainer = memo(function TabContainer<T extends string>({
   tabs,
   activeTab,
   onTabChange,
-  className = '',
-  variant = 'default',
-  position = 'top',
+  className = "",
+  variant = "default",
+  position = "top",
   showIcons = true,
 }: TabContainerProps<T>) {
   const handleTabClick = useCallback(
@@ -52,7 +52,7 @@ export const TabContainer = memo(function TabContainer<T extends string>({
       event.preventDefault();
       onTabChange(tabId);
     },
-    [onTabChange]
+    [onTabChange],
   );
 
   return (
@@ -60,7 +60,7 @@ export const TabContainer = memo(function TabContainer<T extends string>({
       className={`tab-container tab-container-${position} tab-container-${variant} ${className}`.trim()}
     >
       <div className="tab-list" role="tablist">
-        {tabs.map(tab => {
+        {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
           const isDisabled = tab.disabled ?? false;
 
@@ -72,14 +72,17 @@ export const TabContainer = memo(function TabContainer<T extends string>({
               aria-selected={isActive}
               aria-disabled={isDisabled}
               disabled={isDisabled}
-              className={`tab-button ${isActive ? 'tab-active' : ''} ${
-                isDisabled ? 'tab-disabled' : ''
+              className={`tab-button ${isActive ? "tab-active" : ""} ${
+                isDisabled ? "tab-disabled" : ""
               }`}
-              onClick={e => handleTabClick(e, tab.id)}
+              onClick={(e) => handleTabClick(e, tab.id)}
               tabIndex={isActive ? 0 : -1}
             >
               {tab.icon && showIcons && (
-                <span className={`codicon ${tab.icon} tab-icon`} aria-hidden="true" />
+                <span
+                  className={`codicon ${tab.icon} tab-icon`}
+                  aria-hidden="true"
+                />
               )}
               <span className="tab-label">{tab.label}</span>
               {tab.badge !== undefined && (
@@ -95,7 +98,7 @@ export const TabContainer = memo(function TabContainer<T extends string>({
   );
 }) as <T extends string>(props: TabContainerProps<T>) => JSX.Element;
 
-TabContainer.displayName = 'TabContainer';
+TabContainer.displayName = "TabContainer";
 
 /**
  * TabContent component for rendering tab panel content
@@ -114,7 +117,7 @@ export interface TabContentProps {
 export const TabContent = memo(function TabContent({
   tabId,
   isActive,
-  className = '',
+  className = "",
   children,
 }: TabContentProps) {
   if (!isActive) return null;
@@ -131,7 +134,7 @@ export const TabContent = memo(function TabContent({
   );
 });
 
-TabContent.displayName = 'TabContent';
+TabContent.displayName = "TabContent";
 
 /**
  * Complete tabs container with content
@@ -150,9 +153,9 @@ export interface TabsWithContentProps<T extends string> {
   /** Optional CSS class name for container */
   className?: string;
   /** Tab variant style */
-  variant?: 'default' | 'compact' | 'pills';
+  variant?: "default" | "compact" | "pills";
   /** Tab position */
-  position?: 'top' | 'left' | 'right' | 'bottom';
+  position?: "top" | "left" | "right" | "bottom";
 }
 
 export function TabsWithContent<T extends string>({
@@ -163,7 +166,7 @@ export function TabsWithContent<T extends string>({
   variant,
   position,
 }: TabsWithContentProps<T>) {
-  const tabOptions: TabOption<T>[] = tabs.map(tab => ({
+  const tabOptions: TabOption<T>[] = tabs.map((tab) => ({
     id: tab.id,
     label: tab.label,
     icon: tab.icon,
@@ -172,7 +175,7 @@ export function TabsWithContent<T extends string>({
   }));
 
   return (
-    <div className={`tabs-with-content ${className ?? ''}`.trim()}>
+    <div className={`tabs-with-content ${className ?? ""}`.trim()}>
       <TabContainer
         tabs={tabOptions}
         activeTab={activeTab}
@@ -180,7 +183,7 @@ export function TabsWithContent<T extends string>({
         variant={variant}
         position={position}
       />
-      {tabs.map(tab => (
+      {tabs.map((tab) => (
         <TabContent key={tab.id} tabId={tab.id} isActive={tab.id === activeTab}>
           {tab.content}
         </TabContent>

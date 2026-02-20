@@ -163,7 +163,7 @@
 }
 
 .diagnostics-col-code code {
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   font-size: 11px;
   background: var(--bg-panel-secondary);
   padding: 2px 4px;
@@ -227,7 +227,7 @@
 }
 
 .diagnostics-details-code {
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
@@ -282,7 +282,7 @@
 
 .diagnostics-info-value {
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
 .diagnostics-error {

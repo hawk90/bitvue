@@ -1,3 +1,14 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Edge case tests for SEI parsing - simplified version
 use bitvue_avc::parse_sei;
 
@@ -199,11 +210,7 @@ fn test_parse_sei_very_long_payload() {
 
 #[test]
 fn test_parse_sei_zero_length_nal() {
-    let data = [
-        0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x06, 0x00, 0x00,
-    ];
+    let data = [0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x06, 0x00, 0x00];
 
     let result = parse_sei(&data);
     assert!(result.is_ok() || result.is_err());
@@ -223,11 +230,7 @@ fn test_parse_sei_truncated_payload() {
 
 #[test]
 fn test_parse_sei_with_multiple_start_codes() {
-    let data = [
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x01,
-        0x06, 0x00, 0x00,
-    ];
+    let data = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x06, 0x00, 0x00];
 
     let result = parse_sei(&data);
     assert!(result.is_ok() || result.is_err());
@@ -236,9 +239,8 @@ fn test_parse_sei_with_multiple_start_codes() {
 #[test]
 fn test_parse_sei_mixed_start_code_lengths() {
     let data = [
-        0x00, 0x00, 0x01,  // 3-byte
-        0x06, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x01,  // 4-byte
+        0x00, 0x00, 0x01, // 3-byte
+        0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // 4-byte
         0x06, 0x01, 0x00,
     ];
 

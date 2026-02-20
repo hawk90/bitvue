@@ -4,26 +4,29 @@
  * Reusable loading indicators and skeleton screens
  */
 
-import { memo } from 'react';
-import './Loading.css';
+import { memo } from "react";
+import "./Loading.css";
 
-export const Skeleton = memo(function Skeleton({ width, height, variant = 'default' }: {
+export const Skeleton = memo(function Skeleton({
+  width,
+  height,
+  variant = "default",
+}: {
   width?: string | number;
   height?: string | number;
-  variant?: 'default' | 'text' | 'circular' | 'rectangular';
+  variant?: "default" | "text" | "circular" | "rectangular";
 }) {
   const style: React.CSSProperties = {};
-  if (width) style.width = typeof width === 'number' ? `${width}px` : width;
-  if (height) style.height = typeof height === 'number' ? `${height}px` : height;
+  if (width) style.width = typeof width === "number" ? `${width}px` : width;
+  if (height)
+    style.height = typeof height === "number" ? `${height}px` : height;
 
-  return (
-    <div className={`skeleton skeleton-${variant}`} style={style} />
-  );
+  return <div className={`skeleton skeleton-${variant}`} style={style} />;
 });
 
 export const SkeletonBlock = memo(function SkeletonBlock({
   rows = 3,
-  width = '100%',
+  width = "100%",
   height = 12,
 }: {
   rows?: number;
@@ -33,23 +36,21 @@ export const SkeletonBlock = memo(function SkeletonBlock({
   return (
     <div className="skeleton-block">
       {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton
-          key={i}
-          width={width}
-          height={height}
-          variant="default"
-        />
+        <Skeleton key={i} width={width} height={height} variant="default" />
       ))}
     </div>
   );
 });
 
-export const Spinner = memo(function Spinner({ size = 'md', active = true }: {
-  size?: 'sm' | 'md' | 'lg';
+export const Spinner = memo(function Spinner({
+  size = "md",
+  active = true,
+}: {
+  size?: "sm" | "md" | "lg";
   active?: boolean;
 }) {
   return (
-    <div className={`spinner spinner-${size} ${active ? 'active' : ''}`}>
+    <div className={`spinner spinner-${size} ${active ? "active" : ""}`}>
       <div className="spinner-dot" />
       <div className="spinner-dot" />
       <div className="spinner-dot" />
@@ -58,9 +59,9 @@ export const Spinner = memo(function Spinner({ size = 'md', active = true }: {
 });
 
 export const LoadingScreen = memo(function LoadingScreen({
-  title = 'Loading...',
+  title = "Loading...",
   message,
-  progress
+  progress,
 }: {
   title?: string;
   message?: string;
@@ -74,8 +75,13 @@ export const LoadingScreen = memo(function LoadingScreen({
         {message && <p className="loading-message">{message}</p>}
         {progress !== undefined && (
           <div className="loading-progress">
-            <div className="loading-progress-bar" style={{ width: `${progress}%` }} />
-            <span className="loading-progress-text">{Math.round(progress)}%</span>
+            <div
+              className="loading-progress-bar"
+              style={{ width: `${progress}%` }}
+            />
+            <span className="loading-progress-text">
+              {Math.round(progress)}%
+            </span>
           </div>
         )}
       </div>
@@ -83,7 +89,11 @@ export const LoadingScreen = memo(function LoadingScreen({
   );
 });
 
-export const InlineLoading = memo(function InlineLoading({ text = 'Loading...' }: { text?: string }) {
+export const InlineLoading = memo(function InlineLoading({
+  text = "Loading...",
+}: {
+  text?: string;
+}) {
   return (
     <div className="inline-loading">
       <Spinner size="sm" />

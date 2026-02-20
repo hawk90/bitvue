@@ -8,6 +8,16 @@
 //! - H.266/VVC (via vvdec)
 //! - VP9 (via FFmpeg)
 
+// Allow clippy warnings common in decoder code
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::uninit_vec)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::unnecessary_map_or)]
+#![allow(clippy::let_and_return)]
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(unfulfilled_lint_expectations)]
+
 pub mod decoder;
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;

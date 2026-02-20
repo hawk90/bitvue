@@ -9,21 +9,25 @@
 // ============================================================================
 
 /// Create a test scene change
+#[allow(dead_code)]
 fn create_test_scene_change(idx: usize, confidence: f32) -> SceneChange {
     SceneChange::new(idx, confidence)
 }
 
 /// Create a test reorder entry
+#[allow(dead_code)]
 fn create_test_reorder_entry(idx: usize, pts: u64, dts: u64) -> ReorderEntry {
     ReorderEntry::new(idx, pts, dts)
 }
 
 /// Create a test error burst
+#[allow(dead_code)]
 fn create_test_error_burst(start: usize, end: usize, count: usize) -> ErrorBurst {
     ErrorBurst::new(start, end, count)
 }
 
 /// Create a test diagnostics bands
+#[allow(dead_code)]
 fn create_test_diagnostics_bands() -> DiagnosticsBands {
     DiagnosticsBands::new()
 }
@@ -34,6 +38,7 @@ fn create_test_diagnostics_bands() -> DiagnosticsBands {
 
 #[cfg(test)]
 mod diagnostic_band_type_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -97,6 +102,7 @@ mod diagnostic_band_type_tests {
 
 #[cfg(test)]
 mod scene_change_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -147,6 +153,7 @@ mod scene_change_tests {
 
 #[cfg(test)]
 mod reorder_entry_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -219,6 +226,7 @@ mod reorder_entry_tests {
 
 #[cfg(test)]
 mod error_burst_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -316,6 +324,7 @@ mod error_burst_tests {
 
 #[cfg(test)]
 mod error_burst_detection_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -470,6 +479,7 @@ mod error_burst_detection_tests {
 
 #[cfg(test)]
 mod diagnostics_bands_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -503,6 +513,7 @@ mod diagnostics_bands_construction_tests {
 
 #[cfg(test)]
 mod diagnostics_bands_add_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -566,6 +577,7 @@ mod diagnostics_bands_add_tests {
 
 #[cfg(test)]
 mod diagnostics_bands_error_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -615,6 +627,7 @@ mod diagnostics_bands_error_tests {
 
 #[cfg(test)]
 mod diagnostics_bands_selection_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -716,6 +729,7 @@ mod diagnostics_bands_selection_tests {
 
 #[cfg(test)]
 mod diagnostics_bands_visibility_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -777,6 +791,7 @@ mod diagnostics_bands_visibility_tests {
 
 #[cfg(test)]
 mod diagnostics_bands_query_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -865,6 +880,7 @@ mod diagnostics_bands_query_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

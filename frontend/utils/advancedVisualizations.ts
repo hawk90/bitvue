@@ -35,6 +35,6 @@ export {
   yuvToRgb,
   createSampleInspector,
   InterMode,
-} from './advancedVisualizations';
+} from "./advancedVisualizations";
 
-export type { SampleInspector } from './advancedVisualizations/sampleInspector';
+export type { SampleInspector } from "./advancedVisualizations/sampleInspector";

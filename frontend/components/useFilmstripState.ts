@@ -5,13 +5,13 @@
  * Extracted from Filmstrip.tsx for better separation of concerns
  */
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import type { FrameInfo } from '../types/video';
-import { createLogger } from '../utils/logger';
-import { THUMBNAIL_BATCH_SIZE } from '../constants/ui';
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { FrameInfo } from "../types/video";
+import { createLogger } from "../utils/logger";
+import { THUMBNAIL_BATCH_SIZE } from "../constants/ui";
 
-const logger = createLogger('useFilmstripState');
+const logger = createLogger("useFilmstripState");
 
 /**
  * Result from the get_thumbnails Tauri command
@@ -35,13 +35,17 @@ export function useFilmstripState({
   displayView,
 }: UseFilmstripStateProps) {
   const [thumbnails, setThumbnails] = useState<Map<number, string>>(new Map());
-  const [loadingThumbnails, setLoadingThumbnails] = useState<Set<number>>(new Set());
-  const [expandedFrameIndex, setExpandedFrameIndex] = useState<number | null>(null);
+  const [loadingThumbnails, setLoadingThumbnails] = useState<Set<number>>(
+    new Set(),
+  );
+  const [expandedFrameIndex, setExpandedFrameIndex] = useState<number | null>(
+    null,
+  );
   const [hoveredFrame, setHoveredFrame] = useState<FrameInfo | null>(null);
   const [mousePosition, setMousePosition] = useState<{
     x: number;
     y: number;
-    placement: 'left' | 'right';
+    placement: "left" | "right";
   } | null>(null);
 
   const thumbnailsRef = useRef(thumbnails);
@@ -59,7 +63,8 @@ export function useFilmstripState({
     if (indices.length === 0) return;
 
     const indicesToLoad = indices.filter(
-      (i) => !thumbnailsRef.current.has(i) && !loadingThumbnailsRef.current.has(i)
+      (i) =>
+        !thumbnailsRef.current.has(i) && !loadingThumbnailsRef.current.has(i),
     );
     if (indicesToLoad.length === 0) return;
 
@@ -70,7 +75,9 @@ export function useFilmstripState({
     });
 
     try {
-      const results = await invoke<ThumbnailResult[]>('get_thumbnails', { frameIndices: indicesToLoad });
+      const results = await invoke<ThumbnailResult[]>("get_thumbnails", {
+        frameIndices: indicesToLoad,
+      });
 
       setThumbnails((prev) => {
         const newMap = new Map(prev);
@@ -83,7 +90,7 @@ export function useFilmstripState({
         return newMap;
       });
     } catch (err) {
-      logger.error('Failed to load thumbnails:', err);
+      logger.error("Failed to load thumbnails:", err);
     } finally {
       setLoadingThumbnails((prev) => {
         const newSet = new Set(prev);
@@ -95,7 +102,7 @@ export function useFilmstripState({
 
   // Load initial thumbnails
   useEffect(() => {
-    if (displayView !== 'thumbnails' || frames.length === 0) return;
+    if (displayView !== "thumbnails" || frames.length === 0) return;
 
     // Optimize: combine slice and filter into single pass
     const batchSize = Math.min(THUMBNAIL_BATCH_SIZE, frames.length);
@@ -112,20 +119,28 @@ export function useFilmstripState({
     loadThumbnails(indicesToLoad);
   }, [displayView, frames, thumbnails, loadThumbnails]);
 
-  const handleToggleExpansion = useCallback((frameIndex: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedFrameIndex((prev) => (prev === frameIndex ? null : frameIndex));
-  }, []);
+  const handleToggleExpansion = useCallback(
+    (frameIndex: number, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setExpandedFrameIndex((prev) =>
+        prev === frameIndex ? null : frameIndex,
+      );
+    },
+    [],
+  );
 
-  const handleHoverFrame = useCallback((frame: FrameInfo | null, x: number, y: number) => {
-    setHoveredFrame(frame);
-    if (frame) {
-      const placement = x > window.innerWidth / 2 ? 'left' : 'right';
-      setMousePosition({ x, y, placement });
-    } else {
-      setMousePosition(null);
-    }
-  }, []);
+  const handleHoverFrame = useCallback(
+    (frame: FrameInfo | null, x: number, y: number) => {
+      setHoveredFrame(frame);
+      if (frame) {
+        const placement = x > window.innerWidth / 2 ? "left" : "right";
+        setMousePosition({ x, y, placement });
+      } else {
+        setMousePosition(null);
+      }
+    },
+    [],
+  );
 
   // Optimize: avoid intermediate array from map()
   const maxSize = useMemo(() => {

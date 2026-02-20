@@ -6,7 +6,10 @@
  */
 
 import { useEffect, useRef, useCallback } from "react";
-import { globalShortcutHandler, type ShortcutConfig } from "../utils/keyboardShortcuts";
+import {
+  globalShortcutHandler,
+  type ShortcutConfig,
+} from "../utils/keyboardShortcuts";
 
 export interface NavigationCallbacks {
   onPreviousFrame: () => void;
@@ -47,21 +50,21 @@ export function useKeyboardNavigation({
 
   useEffect(() => {
     // Cleanup previous shortcuts
-    shortcutsRef.current.forEach(fn => fn());
+    shortcutsRef.current.forEach((fn) => fn());
     shortcutsRef.current = [];
 
     // Register shortcuts
     const shortcuts: ShortcutConfig[] = [
       {
-        key: '?',
+        key: "?",
         ctrl: true,
         meta: true,
-        description: 'Show shortcuts',
+        description: "Show shortcuts",
         action: onShowShortcuts || (() => {}),
       },
       {
-        key: 'ArrowLeft',
-        description: 'Previous frame',
+        key: "ArrowLeft",
+        description: "Previous frame",
         action: () => {
           if (currentIndexRef.current > 0) {
             onPreviousFrame();
@@ -69,22 +72,25 @@ export function useKeyboardNavigation({
         },
       },
       {
-        key: 'ArrowRight',
-        description: 'Next frame',
+        key: "ArrowRight",
+        description: "Next frame",
         action: () => {
-          if (totalFramesRef.current > 0 && currentIndexRef.current < totalFramesRef.current - 1) {
+          if (
+            totalFramesRef.current > 0 &&
+            currentIndexRef.current < totalFramesRef.current - 1
+          ) {
             onNextFrame();
           }
         },
       },
       {
-        key: 'Home',
-        description: 'First frame',
+        key: "Home",
+        description: "First frame",
         action: onFirstFrame,
       },
       {
-        key: 'End',
-        description: 'Last frame',
+        key: "End",
+        description: "Last frame",
         action: () => {
           if (totalFramesRef.current > 0) {
             onLastFrame();
@@ -93,7 +99,7 @@ export function useKeyboardNavigation({
       },
     ];
 
-    shortcuts.forEach(shortcut => {
+    shortcuts.forEach((shortcut) => {
       shortcutsRef.current.push(globalShortcutHandler.register(shortcut));
     });
 
@@ -102,13 +108,19 @@ export function useKeyboardNavigation({
       globalShortcutHandler.handle(e);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      shortcutsRef.current.forEach(fn => fn());
+      window.removeEventListener("keydown", handleKeyDown);
+      shortcutsRef.current.forEach((fn) => fn());
     };
-  }, [onPreviousFrame, onNextFrame, onFirstFrame, onLastFrame, onShowShortcuts]);
+  }, [
+    onPreviousFrame,
+    onNextFrame,
+    onFirstFrame,
+    onLastFrame,
+    onShowShortcuts,
+  ]);
 }
 
 export default useKeyboardNavigation;

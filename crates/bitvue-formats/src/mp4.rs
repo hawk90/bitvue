@@ -230,12 +230,18 @@ fn extract_samples_with_validator<'a>(
 
     for (i, (offset_ptr, size_ptr)) in sorted_samples.iter() {
         // Validate u64 to usize conversion to prevent truncation on 32-bit
-        let offset = usize::try_from(**offset_ptr).map_err(|_| BitvueError::InvalidData(
-            format!("Sample offset {} exceeds platform address space", **offset_ptr)
-        ))?;
-        let size = usize::try_from(**size_ptr).map_err(|_| BitvueError::InvalidData(
-            format!("Sample size {} exceeds platform address space", **size_ptr)
-        ))?;
+        let offset = usize::try_from(**offset_ptr).map_err(|_| {
+            BitvueError::InvalidData(format!(
+                "Sample offset {} exceeds platform address space",
+                **offset_ptr
+            ))
+        })?;
+        let size = usize::try_from(**size_ptr).map_err(|_| {
+            BitvueError::InvalidData(format!(
+                "Sample size {} exceeds platform address space",
+                **size_ptr
+            ))
+        })?;
 
         // SECURITY: Validate sample size to prevent memory exhaustion
         if size > MAX_SAMPLE_SIZE {
@@ -851,9 +857,9 @@ fn parse_stts(
         // Use checked arithmetic to prevent overflow/wraparound bypass
         total_samples = total_samples
             .checked_add(sample_count as usize)
-            .ok_or_else(|| BitvueError::InvalidData(
-                "Sample count overflow - malicious MP4 file".to_string(),
-            ))?;
+            .ok_or_else(|| {
+                BitvueError::InvalidData("Sample count overflow - malicious MP4 file".to_string())
+            })?;
 
         if total_samples > MAX_TOTAL_SAMPLES {
             return Err(BitvueError::InvalidData(format!(

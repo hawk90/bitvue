@@ -135,7 +135,7 @@ fn validate_path(path: &Path, must_exist: bool) -> Result<PathBuf> {
         path.to_path_buf()
     } else {
         std::env::current_dir()
-            .map_err(|e| YuvLoaderError::Io(e))?
+            .map_err(YuvLoaderError::Io)?
             .join(path)
     };
 

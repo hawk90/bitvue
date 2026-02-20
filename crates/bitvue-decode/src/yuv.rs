@@ -137,8 +137,8 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
         ChromaFormat::Yuv422 => {
             if let Err(e) = convert_yuv422(
                 &frame.y_plane,
-                frame.u_plane.as_ref().map(|v| &**v),
-                frame.v_plane.as_ref().map(|v| &**v),
+                frame.u_plane.as_deref(),
+                frame.v_plane.as_deref(),
                 width,
                 height,
                 &mut rgb,
@@ -155,8 +155,8 @@ pub fn yuv_to_rgb(frame: &DecodedFrame) -> Vec<u8> {
         ChromaFormat::Yuv444 => {
             if let Err(e) = convert_yuv444(
                 &frame.y_plane,
-                frame.u_plane.as_ref().map(|v| &**v),
-                frame.v_plane.as_ref().map(|v| &**v),
+                frame.u_plane.as_deref(),
+                frame.v_plane.as_deref(),
                 width,
                 height,
                 &mut rgb,
@@ -489,7 +489,6 @@ pub fn set_strategy(strategy_type: StrategyType) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::decoder::FrameType;
-    use std::sync::Arc;
 
     #[test]
     fn test_monochrome_conversion() {
@@ -606,7 +605,7 @@ mod tests {
         // Get the current strategy after auto-detection
         let before = current_strategy();
 
-        let result = set_strategy(StrategyType::Scalar);
+        let _ = set_strategy(StrategyType::Scalar);
 
         // OnceLock doesn't allow overwriting, so the strategy won't change if already set
         // The result will be Ok() only if the strategy was successfully set to Scalar

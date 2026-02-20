@@ -4,14 +4,14 @@
  * Shows pixel-wise difference, PSNR map, or SSIM map.
  */
 
-import { memo, useMemo } from 'react';
-import { type FrameInfo } from '../../types/video';
-import './DiffOverlay.css';
+import { memo, useMemo } from "react";
+import { type FrameInfo } from "../../types/video";
+import "./DiffOverlay.css";
 
 interface DiffOverlayProps {
   frameA: FrameInfo;
   frameB: FrameInfo;
-  mode: 'difference' | 'psnr' | 'ssim';
+  mode: "difference" | "psnr" | "ssim";
 }
 
 function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
@@ -20,8 +20,8 @@ function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
     if (!frameA.thumbnail || !frameB.thumbnail) return null;
 
     // Create canvas for diff visualization
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
     const imgA = new Image();
@@ -33,7 +33,7 @@ function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
     return canvas;
   }, [frameA, frameB, mode]);
 
-  if (mode === 'difference') {
+  if (mode === "difference") {
     return (
       <div className="diff-overlay">
         <div className="diff-header">
@@ -60,7 +60,7 @@ function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
     );
   }
 
-  if (mode === 'psnr') {
+  if (mode === "psnr") {
     return (
       <div className="diff-overlay">
         <div className="diff-header">

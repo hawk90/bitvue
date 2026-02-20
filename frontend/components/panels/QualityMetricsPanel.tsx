@@ -7,10 +7,10 @@
  * Reference: crates/ui/src/panels/quality_metrics.rs
  */
 
-import React, { useState, useCallback } from 'react';
-import { memo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import React, { useState, useCallback } from "react";
+import { memo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 
 interface QualityMetrics {
   psnr_y?: number;
@@ -44,23 +44,23 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
         multiple: false,
         filters: [
           {
-            name: 'Video Files',
-            extensions: ['ivf', 'mp4', 'mkv', 'webm', 'yuv', 'y4m']
+            name: "Video Files",
+            extensions: ["ivf", "mp4", "mkv", "webm", "yuv", "y4m"],
           },
           {
-            name: 'All Files',
-            extensions: ['*']
-          }
-        ]
+            name: "All Files",
+            extensions: ["*"],
+          },
+        ],
       });
 
-      if (selected && typeof selected === 'string') {
+      if (selected && typeof selected === "string") {
         setReferencePath(selected);
         setError(null);
       }
     } catch (err) {
-      console.error('Failed to open file dialog:', err);
-      setError('Failed to open file dialog');
+      console.error("Failed to open file dialog:", err);
+      setError("Failed to open file dialog");
     }
   }, []);
 
@@ -70,23 +70,23 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
         multiple: false,
         filters: [
           {
-            name: 'Video Files',
-            extensions: ['ivf', 'mp4', 'mkv', 'webm', 'yuv', 'y4m']
+            name: "Video Files",
+            extensions: ["ivf", "mp4", "mkv", "webm", "yuv", "y4m"],
           },
           {
-            name: 'All Files',
-            extensions: ['*']
-          }
-        ]
+            name: "All Files",
+            extensions: ["*"],
+          },
+        ],
       });
 
-      if (selected && typeof selected === 'string') {
+      if (selected && typeof selected === "string") {
         setDistortedPath(selected);
         setError(null);
       }
     } catch (err) {
-      console.error('Failed to open file dialog:', err);
-      setError('Failed to open file dialog');
+      console.error("Failed to open file dialog:", err);
+      setError("Failed to open file dialog");
     }
   }, []);
 
@@ -98,19 +98,22 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
     setIsCalculating(true);
     setError(null);
     try {
-      const result = await invoke<BatchQualityMetrics>('calculate_quality_metrics', {
-        referencePath,
-        distortedPath,
-        frameIndices: null,  // Calculate for all frames
-        calculatePsnr: true,
-        calculateSsim: true,
-        calculateVmaf: false,  // VMAF requires libvmaf feature
-      });
+      const result = await invoke<BatchQualityMetrics>(
+        "calculate_quality_metrics",
+        {
+          referencePath,
+          distortedPath,
+          frameIndices: null, // Calculate for all frames
+          calculatePsnr: true,
+          calculateSsim: true,
+          calculateVmaf: false, // VMAF requires libvmaf feature
+        },
+      );
 
       setMetrics(result);
     } catch (err) {
       const errorMsg = err as string;
-      console.error('Failed to calculate metrics:', err);
+      console.error("Failed to calculate metrics:", err);
       setError(errorMsg);
     } finally {
       setIsCalculating(false);
@@ -128,7 +131,9 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
       {/* File Selection */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="border rounded p-4">
-          <label className="block text-sm font-medium mb-2">Reference File (Original)</label>
+          <label className="block text-sm font-medium mb-2">
+            Reference File (Original)
+          </label>
           <div className="flex gap-2">
             <button
               onClick={handleSelectReference}
@@ -138,14 +143,20 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
             </button>
           </div>
           {referencePath && (
-            <p className="text-sm text-gray-600 mt-2 truncate" title={referencePath}>
-              {referencePath.split('/').pop() || referencePath.split('\\').pop()}
+            <p
+              className="text-sm text-gray-600 mt-2 truncate"
+              title={referencePath}
+            >
+              {referencePath.split("/").pop() ||
+                referencePath.split("\\").pop()}
             </p>
           )}
         </div>
 
         <div className="border rounded p-4">
-          <label className="block text-sm font-medium mb-2">Distorted File (Encoded)</label>
+          <label className="block text-sm font-medium mb-2">
+            Distorted File (Encoded)
+          </label>
           <div className="flex gap-2">
             <button
               onClick={handleSelectDistorted}
@@ -155,8 +166,12 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
             </button>
           </div>
           {distortedPath && (
-            <p className="text-sm text-gray-600 mt-2 truncate" title={distortedPath}>
-              {distortedPath.split('/').pop() || distortedPath.split('\\').pop()}
+            <p
+              className="text-sm text-gray-600 mt-2 truncate"
+              title={distortedPath}
+            >
+              {distortedPath.split("/").pop() ||
+                distortedPath.split("\\").pop()}
             </p>
           )}
         </div>
@@ -175,7 +190,7 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
         disabled={!referencePath || !distortedPath || isCalculating}
         className="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed mb-4"
       >
-        {isCalculating ? 'Calculating...' : 'Calculate Quality Metrics'}
+        {isCalculating ? "Calculating..." : "Calculate Quality Metrics"}
       </button>
 
       {/* Results */}
@@ -188,13 +203,13 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {displayPsnr !== undefined ? displayPsnr.toFixed(2) : 'N/A'}
+                {displayPsnr !== undefined ? displayPsnr.toFixed(2) : "N/A"}
               </div>
               <div className="text-sm text-gray-600">PSNR (dB)</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {displaySsim !== undefined ? displaySsim.toFixed(4) : 'N/A'}
+                {displaySsim !== undefined ? displaySsim.toFixed(4) : "N/A"}
               </div>
               <div className="text-sm text-gray-600">SSIM</div>
             </div>
@@ -208,7 +223,10 @@ export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
 
       {/* Info */}
       <div className="mt-4 text-sm text-gray-500">
-        <p>Select two video files to compare their quality using PSNR and SSIM metrics.</p>
+        <p>
+          Select two video files to compare their quality using PSNR and SSIM
+          metrics.
+        </p>
         <p className="mt-1">Supported formats: IVF, MP4, MKV, WebM, YUV, Y4M</p>
       </div>
     </div>

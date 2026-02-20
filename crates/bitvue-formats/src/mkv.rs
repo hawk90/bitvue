@@ -316,7 +316,7 @@ pub fn parse_mkv(data: &[u8]) -> Result<MkvInfo, BitvueError> {
     while cursor.position() < segment_end && cursor.position() < data.len() as u64 {
         if element_count >= MAX_ELEMENTS_PER_LEVEL {
             return Err(BitvueError::InvalidData(
-                "Segment element count exceeded maximum".to_string()
+                "Segment element count exceeded maximum".to_string(),
             ));
         }
         element_count += 1;
@@ -353,7 +353,7 @@ fn parse_tracks(
     while cursor.position() < tracks_end {
         if element_count >= MAX_ELEMENTS_PER_LEVEL {
             return Err(BitvueError::InvalidData(
-                "Tracks element count exceeded maximum".to_string()
+                "Tracks element count exceeded maximum".to_string(),
             ));
         }
         element_count += 1;
@@ -387,7 +387,7 @@ fn parse_track_entry(
     while cursor.position() < entry_end {
         if element_count >= MAX_ELEMENTS_PER_LEVEL {
             return Err(BitvueError::InvalidData(
-                "TrackEntry element count exceeded maximum".to_string()
+                "TrackEntry element count exceeded maximum".to_string(),
             ));
         }
         element_count += 1;
@@ -434,7 +434,7 @@ fn parse_cluster(
     while cursor.position() < cluster_end {
         if element_count >= MAX_ELEMENTS_PER_LEVEL {
             return Err(BitvueError::InvalidData(
-                "Cluster element count exceeded maximum".to_string()
+                "Cluster element count exceeded maximum".to_string(),
             ));
         }
         element_count += 1;
@@ -533,7 +533,7 @@ fn parse_block_group(
     while cursor.position() < group_end {
         if element_count >= MAX_ELEMENTS_PER_LEVEL {
             return Err(BitvueError::InvalidData(
-                "BlockGroup element count exceeded maximum".to_string()
+                "BlockGroup element count exceeded maximum".to_string(),
             ));
         }
         element_count += 1;

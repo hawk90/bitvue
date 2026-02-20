@@ -80,7 +80,9 @@
 
 .bpyramid-frame-circle.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgb(0 212 170 / 40%), 0 0 6px rgb(0 212 170 / 80%);
+  box-shadow:
+    0 0 0 2px rgb(0 212 170 / 40%),
+    0 0 6px rgb(0 212 170 / 80%);
   z-index: 5;
 }
 

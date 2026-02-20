@@ -149,7 +149,7 @@ export class LRUCache<K, V> {
    * Get all values
    */
   values(): V[] {
-    return Array.from(this.cache.values()).map(node => node.value);
+    return Array.from(this.cache.values()).map((node) => node.value);
   }
 
   /**
@@ -276,7 +276,7 @@ export class FrameDataCache {
       sizeEstimator: (entry) => entry.size,
       onEvict: (key, value) => {
         // Revoke object URLs to free memory
-        if (value.thumbnailUrl && value.thumbnailUrl.startsWith('blob:')) {
+        if (value.thumbnailUrl && value.thumbnailUrl.startsWith("blob:")) {
           URL.revokeObjectURL(value.thumbnailUrl);
         }
       },
@@ -293,7 +293,7 @@ export class FrameDataCache {
   /**
    * Set frame data
    */
-  set(frameIndex: number, data: Omit<FrameDataEntry, 'size'>): void {
+  set(frameIndex: number, data: Omit<FrameDataEntry, "size">): void {
     const size = this.estimateEntrySize(data);
     this.cache.set(frameIndex, { ...data, size });
   }
@@ -326,7 +326,7 @@ export class FrameDataCache {
    * Estimate size of frame data entry
    * Uses safe math to prevent integer overflow with large resolutions
    */
-  private estimateEntrySize(data: Omit<FrameDataEntry, 'size'>): number {
+  private estimateEntrySize(data: Omit<FrameDataEntry, "size">): number {
     let size = 1000; // Base overhead
 
     if (data.decodedFrame) {
@@ -340,10 +340,7 @@ export class FrameDataCache {
       // Calculate frame size with overflow protection
       // Max reasonable frame size: 16K (15360) × 16K (15360) × 4 = ~943MB
       const MAX_FRAME_SIZE = 1_000_000_000; // 1GB max per frame
-      const frameSize = Math.min(
-        safeWidth * safeHeight * 4,
-        MAX_FRAME_SIZE
-      );
+      const frameSize = Math.min(safeWidth * safeHeight * 4, MAX_FRAME_SIZE);
       size += frameSize;
     }
 
@@ -425,6 +422,9 @@ export interface Partition {
 /**
  * Create a frame data cache
  */
-export function createFrameDataCache(maxFrames?: number, maxMemoryMB?: number): FrameDataCache {
+export function createFrameDataCache(
+  maxFrames?: number,
+  maxMemoryMB?: number,
+): FrameDataCache {
   return new FrameDataCache(maxFrames, maxMemoryMB);
 }

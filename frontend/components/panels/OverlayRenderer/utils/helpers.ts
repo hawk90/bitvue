@@ -4,8 +4,8 @@
  * General utility functions
  */
 
-import type { ColorStop } from '../types';
-import { QP_COLOR_STOPS } from './colors';
+import type { ColorStop } from "../types";
+import { QP_COLOR_STOPS } from "./colors";
 
 /**
  * Linear interpolation between two values
@@ -44,5 +44,5 @@ export function qpToColor(qp: number, minQP: number, maxQP: number): string {
   }
 
   // Fallback (shouldn't reach here)
-  return 'rgba(0, 70, 255, 0.63)';
+  return "rgba(0, 70, 255, 0.63)";
 }

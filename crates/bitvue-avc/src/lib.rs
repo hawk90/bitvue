@@ -8,6 +8,10 @@
 //! - NAL unit parsing with start code detection
 //! - SPS (Sequence Parameter Set) parsing
 //! - PPS (Picture Parameter Set) parsing
+
+// Allow clippy warnings common in parser code
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::too_many_arguments)]
 //! - Slice header parsing
 //! - SEI (Supplemental Enhancement Information) parsing
 //! - Syntax tree extraction for visualization
@@ -50,7 +54,7 @@ pub use overlay_extraction::{
 pub use pps::{parse_pps, Pps};
 pub use sei::{parse_sei, SeiMessage, SeiPayloadType};
 pub use slice::{parse_slice_header, SliceHeader, SliceType};
-pub use sps::{ChromaFormat, parse_sps, ProfileIdc, Sps};
+pub use sps::{parse_sps, ChromaFormat, ProfileIdc, Sps};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -106,13 +110,11 @@ impl AvcStream {
     pub fn frame_rate(&self) -> Option<f64> {
         for sps in self.sps_map.values() {
             if let Some(ref vui) = sps.vui_parameters {
-                if vui.timing_info_present_flag {
-                    if vui.time_scale > 0 && vui.num_units_in_tick > 0 {
-                        // H.264 frame rate = time_scale / (2 * num_units_in_tick) for interlaced
-                        // or time_scale / num_units_in_tick for progressive
-                        let fps = vui.time_scale as f64 / (2.0 * vui.num_units_in_tick as f64);
-                        return Some(fps);
-                    }
+                if vui.timing_info_present_flag && vui.time_scale > 0 && vui.num_units_in_tick > 0 {
+                    // H.264 frame rate = time_scale / (2 * num_units_in_tick) for interlaced
+                    // or time_scale / num_units_in_tick for progressive
+                    let fps = vui.time_scale as f64 / (2.0 * vui.num_units_in_tick as f64);
+                    return Some(fps);
                 }
             }
         }
@@ -433,4 +435,3 @@ pub mod test_exports {
 
 #[cfg(test)]
 mod tests;
-

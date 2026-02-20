@@ -15,7 +15,9 @@
 
 /* Spinner dot animation */
 @keyframes spinner-bounce {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     transform: scale(0.8);
     opacity: 0.5;
   }
@@ -187,7 +189,7 @@
   right: 0;
   top: calc(100% + 4px);
   font-size: 12px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   color: var(--text-secondary);
 }
 

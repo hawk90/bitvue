@@ -4,61 +4,65 @@
  * Export frame data to CSV or JSON format
  */
 
-import type { FrameInfo, UnitTreeNode, SyntaxNode } from '../types/video';
+import type { FrameInfo, UnitTreeNode, SyntaxNode } from "../types/video";
 
 /**
  * Convert frames to CSV format
  */
 export function framesToCSV(frames: FrameInfo[]): string {
   const headers = [
-    'frame_index',
-    'frame_type',
-    'size',
-    'pts',
-    'poc',
-    'temporal_id',
-    'spatial_id',
-    'display_order',
-    'coding_order',
-    'key_frame',
-    'ref_frames',
+    "frame_index",
+    "frame_type",
+    "size",
+    "pts",
+    "poc",
+    "temporal_id",
+    "spatial_id",
+    "display_order",
+    "coding_order",
+    "key_frame",
+    "ref_frames",
   ];
 
-  const rows = frames.map(frame => {
+  const rows = frames.map((frame) => {
     // Validate frame structure to prevent runtime errors
-    if (!frame || typeof frame !== 'object') {
-      return Array(headers.length).fill('');
+    if (!frame || typeof frame !== "object") {
+      return Array(headers.length).fill("");
     }
 
     return [
-      frame?.frame_index ?? '',
-      frame?.frame_type ?? '',
-      frame?.size ?? '',
-      frame?.pts ?? '',
-      frame?.poc ?? '',
-      frame?.temporal_id ?? '',
-      frame?.spatial_id ?? '',
-      frame?.display_order ?? '',
-      frame?.coding_order ?? '',
-      frame?.key_frame ? 'true' : 'false',
-      frame?.ref_frames?.join(';') ?? '',
+      frame?.frame_index ?? "",
+      frame?.frame_type ?? "",
+      frame?.size ?? "",
+      frame?.pts ?? "",
+      frame?.poc ?? "",
+      frame?.temporal_id ?? "",
+      frame?.spatial_id ?? "",
+      frame?.display_order ?? "",
+      frame?.coding_order ?? "",
+      frame?.key_frame ? "true" : "false",
+      frame?.ref_frames?.join(";") ?? "",
     ];
   });
 
-  const headerRow = headers.join(',');
-  const dataRows = rows.map(row => row.join(','));
+  const headerRow = headers.join(",");
+  const dataRows = rows.map((row) => row.join(","));
 
-  return [headerRow, ...dataRows].join('\n');
+  return [headerRow, ...dataRows].join("\n");
 }
 
 /**
  * Generic file download utility
  * Creates a blob, generates a download link, and triggers the download
  */
-function downloadFile(content: string, filename: string, mimeType: string): void {
+function downloadFile(
+  content: string,
+  filename: string,
+  mimeType: string,
+): void {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);
@@ -71,15 +75,18 @@ function downloadFile(content: string, filename: string, mimeType: string): void
  * Download CSV file
  */
 export function downloadCSV(csv: string, filename: string): void {
-  downloadFile(csv, filename, 'text/csv');
+  downloadFile(csv, filename, "text/csv");
 }
 
 /**
  * Export frames to CSV file
  */
-export function exportFramesToCSV(frames: FrameInfo[], filename?: string): void {
+export function exportFramesToCSV(
+  frames: FrameInfo[],
+  filename?: string,
+): void {
   const csv = framesToCSV(frames);
-  const defaultFilename = `bitvue-frames-${frames.length}-${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultFilename = `bitvue-frames-${frames.length}-${new Date().toISOString().split("T")[0]}.csv`;
   downloadCSV(csv, filename || defaultFilename);
 }
 
@@ -94,15 +101,18 @@ export function framesToJSON(frames: FrameInfo[]): string {
  * Download JSON file
  */
 export function downloadJSON(json: string, filename: string): void {
-  downloadFile(json, filename, 'application/json');
+  downloadFile(json, filename, "application/json");
 }
 
 /**
  * Export frames to JSON file
  */
-export function exportFramesToJSON(frames: FrameInfo[], filename?: string): void {
+export function exportFramesToJSON(
+  frames: FrameInfo[],
+  filename?: string,
+): void {
   const json = framesToJSON(frames);
-  const defaultFilename = `bitvue-frames-${frames.length}-${new Date().toISOString().split('T')[0]}.json`;
+  const defaultFilename = `bitvue-frames-${frames.length}-${new Date().toISOString().split("T")[0]}.json`;
   downloadJSON(json, filename || defaultFilename);
 }
 
@@ -139,7 +149,11 @@ export function generateFrameStatsSummary(frames: FrameInfo[]): {
     frameTypes[frame.frame_type] = (frameTypes[frame.frame_type] || 0) + 1;
 
     // Count keyframes
-    if (frame.key_frame || frame.frame_type === 'I' || frame.frame_type === 'KEY') {
+    if (
+      frame.key_frame ||
+      frame.frame_type === "I" ||
+      frame.frame_type === "KEY"
+    ) {
       keyframes++;
     }
   }
@@ -164,23 +178,28 @@ export function generateFrameStatsSummary(frames: FrameInfo[]): {
 /**
  * Export frame statistics to CSV
  */
-export function exportFrameStatsToCSV(frames: FrameInfo[], filename?: string): void {
+export function exportFrameStatsToCSV(
+  frames: FrameInfo[],
+  filename?: string,
+): void {
   const stats = generateFrameStatsSummary(frames);
 
   const csv = [
-    'Metric,Value',
+    "Metric,Value",
     `Total Frames,${stats.totalFrames}`,
     `Total Size,${stats.totalSize}`,
     `Average Size,${stats.avgSize.toFixed(2)}`,
     `Min Size,${stats.minSize}`,
     `Max Size,${stats.maxSize}`,
     `Keyframes,${stats.keyframes}`,
-    '',
-    'Frame Type,Count',
-    ...Object.entries(stats.frameTypes).map(([type, count]) => `${type},${count}`),
-  ].join('\n');
+    "",
+    "Frame Type,Count",
+    ...Object.entries(stats.frameTypes).map(
+      ([type, count]) => `${type},${count}`,
+    ),
+  ].join("\n");
 
-  const defaultFilename = `bitvue-stats-${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultFilename = `bitvue-stats-${new Date().toISOString().split("T")[0]}.csv`;
   downloadCSV(csv, filename || defaultFilename);
 }
 
@@ -208,21 +227,24 @@ export function exportSyntaxTree(tree: SyntaxNode): string {
 /**
  * Export metrics as CSV
  */
-export function exportMetrics(metrics: Record<string, number>, frames: FrameInfo[]): string {
+export function exportMetrics(
+  metrics: Record<string, number>,
+  frames: FrameInfo[],
+): string {
   const frameStats = generateFrameStatsSummary(frames);
 
   const csv = [
-    'Metric,Value',
+    "Metric,Value",
     ...Object.entries(metrics).map(([key, value]) => `${key},${value}`),
-    '',
-    'Frame Statistics',
+    "",
+    "Frame Statistics",
     `Total Frames,${frameStats.totalFrames}`,
     `Total Size,${frameStats.totalSize}`,
     `Average Size,${frameStats.avgSize.toFixed(2)}`,
     `Min Size,${frameStats.minSize}`,
     `Max Size,${frameStats.maxSize}`,
     `Keyframes,${frameStats.keyframes}`,
-  ].join('\n');
+  ].join("\n");
 
   return csv;
 }

@@ -5,7 +5,7 @@
  * Includes reset zoom button
  */
 
-import { memo } from 'react';
+import { memo } from "react";
 
 interface ZoomControlsProps {
   zoom: number;
@@ -22,23 +22,14 @@ export const ZoomControls = memo(function ZoomControls({
 }: ZoomControlsProps) {
   return (
     <div className="yuv-toolbar-group">
-      <button
-        onClick={onZoomOut}
-        title="Zoom Out (-)"
-      >
+      <button onClick={onZoomOut} title="Zoom Out (-)">
         <span className="codicon codicon-zoom-out"></span>
       </button>
       <span className="yuv-zoom-label">{Math.round(zoom * 100)}%</span>
-      <button
-        onClick={onZoomIn}
-        title="Zoom In (+)"
-      >
+      <button onClick={onZoomIn} title="Zoom In (+)">
         <span className="codicon codicon-zoom-in"></span>
       </button>
-      <button
-        onClick={onResetZoom}
-        title="Reset Zoom (Ctrl+0)"
-      >
+      <button onClick={onResetZoom} title="Reset Zoom (Ctrl+0)">
         <span className="codicon codicon-screen-normal"></span>
       </button>
     </div>

@@ -26,7 +26,7 @@ const _: () = assert!(MAX_LEB128_BITS <= 64, "LEB128 max bits must not exceed 64
 ///
 /// # Example
 /// ```
-/// use bitvue_av1::leb128::decode_uleb128;
+/// use bitvue_av1_codec::leb128::decode_uleb128;
 ///
 /// // Value 127 = 0x7F (single byte, no continuation)
 /// assert_eq!(decode_uleb128(&[0x7F]).unwrap(), (127, 1));

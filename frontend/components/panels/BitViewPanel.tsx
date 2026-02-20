@@ -7,8 +7,8 @@
  * Reference: crates/ui/src/panels/bit_view.rs
  */
 
-import PlaceholderPanel from './PlaceholderPanel';
-import { memo } from 'react';
+import PlaceholderPanel from "./PlaceholderPanel";
+import { memo } from "react";
 
 export const BitViewPanel = memo(function BitViewPanel() {
   return (

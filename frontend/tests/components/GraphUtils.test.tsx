@@ -3,12 +3,18 @@
  * Tests graph rendering utilities
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@/test/test-utils';
-import { fireEvent } from '@testing-library/react';
-import { Graph, calculateScales, generateLinePath, generateAreaPath, calculateRollingAverage } from '../GraphUtils';
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@/test/test-utils";
+import { fireEvent } from "@testing-library/react";
+import {
+  Graph,
+  calculateScales,
+  generateLinePath,
+  generateAreaPath,
+  calculateRollingAverage,
+} from "../GraphUtils";
 
-describe('calculateScales', () => {
+describe("calculateScales", () => {
   const mockData = [
     { x: 0, y: 10, value: 10 },
     { x: 10, y: 20, value: 20 },
@@ -22,14 +28,14 @@ describe('calculateScales', () => {
     padding: { top: 20, right: 20, bottom: 30, left: 40 },
   };
 
-  it('should calculate x scale', () => {
+  it("should calculate x scale", () => {
     const { xScale } = calculateScales(mockData, config);
 
     expect(xScale(0)).toBe(40); // left padding
     expect(xScale(30)).toBe(380); // width - right padding
   });
 
-  it('should calculate y scale', () => {
+  it("should calculate y scale", () => {
     const { yScale } = calculateScales(mockData, config);
 
     // yScale uses value field, not y field
@@ -41,7 +47,7 @@ describe('calculateScales', () => {
     expect(yScale(50)).toBeCloseTo(20, 1); // Near top
   });
 
-  it('should handle custom x domain', () => {
+  it("should handle custom x domain", () => {
     const customConfig = { ...config, xDomain: [5, 25] };
 
     const { xScale } = calculateScales(mockData, customConfig);
@@ -50,7 +56,7 @@ describe('calculateScales', () => {
     expect(xScale(25)).toBe(380);
   });
 
-  it('should handle custom y domain', () => {
+  it("should handle custom y domain", () => {
     const customConfig = { ...config, yDomain: [0, 100] };
 
     const { yScale } = calculateScales(mockData, customConfig);
@@ -62,7 +68,7 @@ describe('calculateScales', () => {
     expect(yScale(100)).toBeCloseTo(20, 1);
   });
 
-  it('should handle empty data', () => {
+  it("should handle empty data", () => {
     const { xScale, yScale } = calculateScales([], config);
 
     expect(xScale).toBeDefined();
@@ -70,8 +76,8 @@ describe('calculateScales', () => {
   });
 });
 
-describe('generateLinePath', () => {
-  it('should generate SVG path for line chart', () => {
+describe("generateLinePath", () => {
+  it("should generate SVG path for line chart", () => {
     const mockData = [
       { x: 0, y: 10, value: 10 },
       { x: 10, y: 20, value: 20 },
@@ -83,17 +89,17 @@ describe('generateLinePath', () => {
 
     const path = generateLinePath(mockData, xScale, yScale);
 
-    expect(path).toContain('M'); // Move command
-    expect(path).toContain('L'); // Line commands
+    expect(path).toContain("M"); // Move command
+    expect(path).toContain("L"); // Line commands
   });
 
-  it('should return empty string for empty data', () => {
+  it("should return empty string for empty data", () => {
     const path = generateLinePath([], vi.fn(), vi.fn());
 
-    expect(path).toBe('');
+    expect(path).toBe("");
   });
 
-  it('should handle single data point', () => {
+  it("should handle single data point", () => {
     const mockData = [{ x: 0, y: 10, value: 10 }];
     const xScale = (x: number) => x;
     const yScale = (y: number) => y;
@@ -104,8 +110,8 @@ describe('generateLinePath', () => {
   });
 });
 
-describe('generateAreaPath', () => {
-  it('should generate SVG path for area chart', () => {
+describe("generateAreaPath", () => {
+  it("should generate SVG path for area chart", () => {
     const mockData = [
       { x: 0, y: 10, value: 10 },
       { x: 10, y: 20, value: 20 },
@@ -117,12 +123,12 @@ describe('generateAreaPath', () => {
 
     const path = generateAreaPath(mockData, xScale, yScale, 200, 30);
 
-    expect(path).toContain('M'); // Move
-    expect(path).toContain('L'); // Line
-    expect(path).toContain('Z'); // Close path
+    expect(path).toContain("M"); // Move
+    expect(path).toContain("L"); // Line
+    expect(path).toContain("Z"); // Close path
   });
 
-  it('should close area at bottom', () => {
+  it("should close area at bottom", () => {
     const mockData = [
       { x: 0, y: 10, value: 10 },
       { x: 10, y: 20, value: 20 },
@@ -134,18 +140,18 @@ describe('generateAreaPath', () => {
     const path = generateAreaPath(mockData, xScale, yScale, 200, 30);
 
     // Should include bottom line
-    expect(path).toContain('Z');
+    expect(path).toContain("Z");
   });
 
-  it('should handle empty data', () => {
+  it("should handle empty data", () => {
     const path = generateAreaPath([], vi.fn(), vi.fn(), 100, 20);
 
-    expect(path).toBe('');
+    expect(path).toBe("");
   });
 });
 
-describe('calculateRollingAverage', () => {
-  it('should calculate rolling average', () => {
+describe("calculateRollingAverage", () => {
+  it("should calculate rolling average", () => {
     const data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     const window = 3;
 
@@ -166,7 +172,7 @@ describe('calculateRollingAverage', () => {
     expect(result).toEqual([1.5, 2, 3, 4, 5, 6, 7, 8, 9, 9.5]);
   });
 
-  it('should return original data for window < 2', () => {
+  it("should return original data for window < 2", () => {
     const data = [1, 2, 3];
     const window = 1;
 
@@ -175,13 +181,13 @@ describe('calculateRollingAverage', () => {
     expect(result).toEqual([1, 2, 3]);
   });
 
-  it('should handle empty data', () => {
+  it("should handle empty data", () => {
     const result = calculateRollingAverage([], 5);
 
     expect(result).toEqual([]);
   });
 
-  it('should handle large window', () => {
+  it("should handle large window", () => {
     const data = [1, 2, 3];
     const window = 10;
 
@@ -193,7 +199,7 @@ describe('calculateRollingAverage', () => {
   });
 });
 
-describe('Graph Component', () => {
+describe("Graph Component", () => {
   const mockData = [
     { x: 0, y: 10, value: 10 },
     { x: 1, y: 20, value: 20 },
@@ -206,81 +212,83 @@ describe('Graph Component', () => {
     height: 200,
   };
 
-  it('should render graph', () => {
+  it("should render graph", () => {
     render(<Graph data={mockData} config={config} />);
 
-    const svg = document.querySelector('svg');
+    const svg = document.querySelector("svg");
     expect(svg).toBeInTheDocument();
   });
 
-  it('should render axes', () => {
+  it("should render axes", () => {
     render(<Graph data={mockData} config={config} showAxis />);
 
-    const xAxis = document.querySelector('.timeline-cursor'); // Reuse selector or use appropriate
-    expect(document.querySelector('.graph-container')).toBeInTheDocument();
+    const xAxis = document.querySelector(".timeline-cursor"); // Reuse selector or use appropriate
+    expect(document.querySelector(".graph-container")).toBeInTheDocument();
   });
 
-  it('should render grid lines', () => {
+  it("should render grid lines", () => {
     render(<Graph data={mockData} config={config} showGrid />);
 
     // Should have grid lines
-    const gridLines = document.querySelectorAll('[stroke*="rgba(255, 255, 255, 0.1)"]');
+    const gridLines = document.querySelectorAll(
+      '[stroke*="rgba(255, 255, 255, 0.1)"]',
+    );
     expect(gridLines.length).toBeGreaterThan(0);
   });
 
-  it('should render data points', () => {
+  it("should render data points", () => {
     render(<Graph data={mockData} config={config} />);
 
     // Should have circles for data points
-    const circles = document.querySelectorAll('circle');
+    const circles = document.querySelectorAll("circle");
     expect(circles.length).toBe(4);
   });
 
-  it('should show tooltip on hover', () => {
+  it("should show tooltip on hover", () => {
     render(<Graph data={mockData} config={config} />);
 
-    const points = document.querySelectorAll('.graph-point');
+    const points = document.querySelectorAll(".graph-point");
     if (points.length > 0) {
       fireEvent.mouseEnter(points[0]);
 
       // Should show label
-      expect(points[0]).toHaveClass('graph-point');
+      expect(points[0]).toHaveClass("graph-point");
     }
   });
 
-  it('should handle click events', () => {
+  it("should handle click events", () => {
     const handleClick = vi.fn();
     render(<Graph data={mockData} config={config} onClick={handleClick} />);
 
-    const points = document.querySelectorAll('.graph-point');
+    const points = document.querySelectorAll(".graph-point");
     if (points.length > 0) {
       fireEvent.click(points[0]);
       expect(handleClick).toHaveBeenCalled();
     }
   });
 
-  it('should use React.memo for performance', () => {
+  it("should use React.memo for performance", () => {
     const { rerender } = render(<Graph data={mockData} config={config} />);
 
     rerender(<Graph data={mockData} config={config} />);
 
-    const svg = document.querySelector('svg');
+    const svg = document.querySelector("svg");
     expect(svg).toBeInTheDocument();
   });
 });
 
-describe('Graph edge cases', () => {
-  it('should handle single data point', () => {
+describe("Graph edge cases", () => {
+  it("should handle single data point", () => {
     const singlePoint = [{ x: 0, y: 10, value: 10 }];
     const config = { width: 300, height: 200 };
 
     render(<Graph data={singlePoint} config={config} />);
 
-    const circles = document.querySelectorAll('circle');
+    const circles = document.querySelectorAll("circle");
     expect(circles.length).toBe(1);
   });
 
-  it('should handle zero values', () => {
+  it("should handle zero values", () => {
     const zeroData = [
       { x: 0, y: 0, value: 0 },
       { x: 10, y: 0, value: 0 },
@@ -292,13 +300,16 @@ describe('Graph edge cases', () => {
     expect(yScale(0)).toBeDefined();
   });
 
-  it('should handle negative values', () => {
+  it("should handle negative values", () => {
     const negativeData = [
       { x: 0, y: -10, value: -10 },
       { x: 10, y: -20, value: -20 },
     ];
 
-    const { yScale } = calculateScales(negativeData, { width: 300, height: 200 });
+    const { yScale } = calculateScales(negativeData, {
+      width: 300,
+      height: 200,
+    });
 
     expect(yScale(-20)).toBeDefined();
   });

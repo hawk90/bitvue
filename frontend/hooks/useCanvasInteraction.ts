@@ -26,7 +26,7 @@
  * ```
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from "react";
 
 export interface CanvasInteractionState {
   /** Current zoom level (1 = 100%) */
@@ -80,7 +80,7 @@ export interface UseCanvasInteractionOptions {
  * @returns Object containing state and handlers
  */
 export function useCanvasInteraction(
-  options: UseCanvasInteractionOptions = {}
+  options: UseCanvasInteractionOptions = {},
 ): CanvasInteractionState & { handlers: CanvasInteractionHandlers } {
   const {
     minZoom = 0.25,
@@ -98,12 +98,12 @@ export function useCanvasInteraction(
 
   // Zoom in
   const zoomIn = useCallback(() => {
-    setZoom(z => Math.min(maxZoom, z + zoomStep));
+    setZoom((z) => Math.min(maxZoom, z + zoomStep));
   }, [maxZoom, zoomStep]);
 
   // Zoom out
   const zoomOut = useCallback(() => {
-    setZoom(z => Math.max(minZoom, z - zoomStep));
+    setZoom((z) => Math.max(minZoom, z - zoomStep));
   }, [minZoom, zoomStep]);
 
   // Reset zoom and pan
@@ -113,42 +113,51 @@ export function useCanvasInteraction(
   }, [initialZoom, initialPan]);
 
   // Handle mouse wheel for zooming
-  const onWheel = useCallback((e: React.WheelEvent | WheelEvent) => {
-    // Check if modifier key is required and pressed
-    const hasModifier = 'ctrlKey' in e ? (e.ctrlKey || e.metaKey) : false;
+  const onWheel = useCallback(
+    (e: React.WheelEvent | WheelEvent) => {
+      // Check if modifier key is required and pressed
+      const hasModifier = "ctrlKey" in e ? e.ctrlKey || e.metaKey : false;
 
-    if (!requireModifierKey || hasModifier) {
-      e.preventDefault();
-      const delta = 'deltaY' in e && e.deltaY > 0 ? -zoomStep : zoomStep;
-      setZoom(z => Math.max(minZoom, Math.min(maxZoom, z + delta)));
-    }
-  }, [minZoom, maxZoom, zoomStep, requireModifierKey]);
+      if (!requireModifierKey || hasModifier) {
+        e.preventDefault();
+        const delta = "deltaY" in e && e.deltaY > 0 ? -zoomStep : zoomStep;
+        setZoom((z) => Math.max(minZoom, Math.min(maxZoom, z + delta)));
+      }
+    },
+    [minZoom, maxZoom, zoomStep, requireModifierKey],
+  );
 
   // Handle mouse down for starting drag
-  const onMouseDown = useCallback((e: React.MouseEvent | MouseEvent) => {
-    const button = 'button' in e ? e.button : 0;
-    if (button === 0 || button === 1) {
-      setIsDragging(true);
-      const clientX = 'clientX' in e ? e.clientX : 0;
-      const clientY = 'clientY' in e ? e.clientY : 0;
-      dragStartRef.current = {
-        x: clientX - pan.x,
-        y: clientY - pan.y,
-      };
-    }
-  }, [pan]);
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent | MouseEvent) => {
+      const button = "button" in e ? e.button : 0;
+      if (button === 0 || button === 1) {
+        setIsDragging(true);
+        const clientX = "clientX" in e ? e.clientX : 0;
+        const clientY = "clientY" in e ? e.clientY : 0;
+        dragStartRef.current = {
+          x: clientX - pan.x,
+          y: clientY - pan.y,
+        };
+      }
+    },
+    [pan],
+  );
 
   // Handle mouse move for panning
-  const onMouseMove = useCallback((e: React.MouseEvent | MouseEvent) => {
-    if (isDragging) {
-      const clientX = 'clientX' in e ? e.clientX : 0;
-      const clientY = 'clientY' in e ? e.clientY : 0;
-      setPan({
-        x: clientX - dragStartRef.current.x,
-        y: clientY - dragStartRef.current.y,
-      });
-    }
-  }, [isDragging]);
+  const onMouseMove = useCallback(
+    (e: React.MouseEvent | MouseEvent) => {
+      if (isDragging) {
+        const clientX = "clientX" in e ? e.clientX : 0;
+        const clientY = "clientY" in e ? e.clientY : 0;
+        setPan({
+          x: clientX - dragStartRef.current.x,
+          y: clientY - dragStartRef.current.y,
+        });
+      }
+    },
+    [isDragging],
+  );
 
   // Handle mouse up for ending drag
   const onMouseUp = useCallback(() => {

@@ -1,8 +1,14 @@
-//! bitvue-container: Container format parsers for bitvue
+//! bitvue-formats: Container format parsers for bitvue
 //!
 //! This crate provides parsers for container formats (MP4, MKV, TS) with zero external
 //! dependencies beyond the Rust standard library.
 //!
+
+// Allow clippy warnings common in parser code
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(clippy::useless_conversion)]
 //! # Supported Formats
 //!
 //! - **MP4** (ISO Base Media File Format) - For extracting video samples (AV1, H.264, H.265)
@@ -24,7 +30,7 @@
 //!
 //! ## Extract AV1 samples
 //! ```no_run
-//! use bitvue_container::mp4;
+//! use bitvue_formats::mp4;
 //! use std::fs;
 //!
 //! let data = fs::read("video.mp4").unwrap();
@@ -34,7 +40,7 @@
 //!
 //! ## Extract H.264 samples
 //! ```no_run
-//! use bitvue_container::mp4;
+//! use bitvue_formats::mp4;
 //! use std::fs;
 //!
 //! let data = fs::read("video_h264.mp4").unwrap();
@@ -44,7 +50,7 @@
 //!
 //! ## Extract H.265 samples
 //! ```no_run
-//! use bitvue_container::mkv;
+//! use bitvue_formats::mkv;
 //! use std::fs;
 //!
 //! let data = fs::read("video_hevc.mkv").unwrap();

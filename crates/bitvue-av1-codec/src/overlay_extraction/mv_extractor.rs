@@ -54,7 +54,7 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
 
                 // Build spatial index for O(1) CU lookups (eliminates O(n²) bottleneck)
                 let spatial_index =
-                    CuSpatialIndex::new(&*coding_units, grid_w, grid_h, block_w, block_h);
+                    CuSpatialIndex::new(&coding_units, grid_w, grid_h, block_w, block_h);
 
                 // Build a grid of MVs from coding units using spatial index
                 for sb_y in 0..grid_h {

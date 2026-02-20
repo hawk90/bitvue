@@ -1,17 +1,21 @@
 // Temporal State module tests
+#[allow(unused_imports)]
 use super::*;
 
 // ============================================================================
 // Fixtures
 // ============================================================================
+#[allow(dead_code)]
 fn create_test_reference_slot() -> ReferenceSlot {
     ReferenceSlot::new(0, 100, 100, TemporalRefType::Last)
 }
 
+#[allow(dead_code)]
 fn create_test_dp_state() -> DpbStateSnapshot {
     DpbStateSnapshot::new(0, 0, Codec::Av1, 8)
 }
 
+#[allow(dead_code)]
 fn create_test_timeline() -> TemporalStateTimeline {
     TemporalStateTimeline::new()
 }
@@ -21,6 +25,7 @@ fn create_test_timeline() -> TemporalStateTimeline {
 // ============================================================================
 #[cfg(test)]
 mod ref_type_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -52,6 +57,7 @@ mod ref_type_tests {
 // ============================================================================
 #[cfg(test)]
 mod reference_slot_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -88,6 +94,7 @@ mod reference_slot_tests {
 // ============================================================================
 #[cfg(test)]
 mod eviction_reason_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -112,6 +119,7 @@ mod eviction_reason_tests {
 // ============================================================================
 #[cfg(test)]
 mod dpb_state_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -208,6 +216,7 @@ mod dpb_state_tests {
 // ============================================================================
 #[cfg(test)]
 mod timeline_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -398,6 +407,7 @@ mod timeline_tests {
 // ============================================================================
 #[cfg(test)]
 mod evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -419,6 +429,7 @@ mod evidence_tests {
 // ============================================================================
 #[cfg(test)]
 mod state_index_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

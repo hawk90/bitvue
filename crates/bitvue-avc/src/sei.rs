@@ -219,8 +219,10 @@ pub enum SeiParsedData {
 
 /// Parse SEI messages from NAL unit payload.
 pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
-    const MAX_SEI_TYPE_ITERATIONS: u8 = 4;
-    const MAX_SEI_SIZE_ITERATIONS: u8 = 16;
+    // SECURITY: Limit iterations to prevent DoS attacks.
+    // According to H.264/AVC spec, each SEI type should only appear once per NAL.
+    const MAX_SEI_TYPE_ITERATIONS: u8 = 1;
+    const MAX_SEI_SIZE_ITERATIONS: u8 = 1;
 
     let mut messages = Vec::new();
     let mut offset = 0;
@@ -232,7 +234,7 @@ pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
         while offset < data.len() && data[offset] == 0xFF {
             if type_iterations >= MAX_SEI_TYPE_ITERATIONS {
                 return Err(AvcError::InvalidSei(
-                    "SEI payload type extension exceeds maximum iterations".to_string()
+                    "SEI payload type extension exceeds maximum iterations".to_string(),
                 ));
             }
             payload_type += 255;
@@ -251,7 +253,7 @@ pub fn parse_sei(data: &[u8]) -> Result<Vec<SeiMessage>> {
         while offset < data.len() && data[offset] == 0xFF {
             if size_iterations >= MAX_SEI_SIZE_ITERATIONS {
                 return Err(AvcError::InvalidSei(
-                    "SEI payload size extension exceeds maximum iterations".to_string()
+                    "SEI payload size extension exceeds maximum iterations".to_string(),
                 ));
             }
             payload_size += 255;

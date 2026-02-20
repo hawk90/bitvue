@@ -3,6 +3,7 @@
 // Per generate-tests skill: Arrange-Act-Assert pattern with fixtures
 // and edge case coverage.
 
+#[allow(unused_imports)]
 use super::*;
 use crate::types::BitRange;
 
@@ -11,16 +12,19 @@ use crate::types::BitRange;
 // ============================================================================
 
 /// Create a test evidence ID
+#[allow(dead_code)]
 fn create_test_evidence_id() -> EvidenceId {
     EvidenceId::new()
 }
 
 /// Create a test bit range
+#[allow(dead_code)]
 fn create_test_bit_range(start: u64, end: u64) -> BitRange {
     BitRange { start, end }
 }
 
 /// Create a test reference node evidence
+#[allow(dead_code)]
 fn create_test_node_evidence(
     display_idx: usize,
     frame_type: &str,
@@ -36,6 +40,7 @@ fn create_test_node_evidence(
 }
 
 /// Create a test reference edge evidence
+#[allow(dead_code)]
 fn create_test_edge_evidence(
     from_idx: usize,
     to_idx: usize,
@@ -45,11 +50,13 @@ fn create_test_edge_evidence(
 }
 
 /// Create a test evidence chain
+#[allow(dead_code)]
 fn create_test_evidence_chain() -> EvidenceChain {
     EvidenceChain::new()
 }
 
 /// Create a test reference graph evidence manager
+#[allow(dead_code)]
 fn create_test_manager() -> ReferenceGraphEvidenceManager {
     ReferenceGraphEvidenceManager::new()
 }
@@ -60,6 +67,7 @@ fn create_test_manager() -> ReferenceGraphEvidenceManager {
 
 #[cfg(test)]
 mod reference_node_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -114,6 +122,7 @@ mod reference_node_evidence_tests {
 
 #[cfg(test)]
 mod reference_edge_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -140,6 +149,7 @@ mod reference_edge_evidence_tests {
 
 #[cfg(test)]
 mod manager_construction_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -170,6 +180,7 @@ mod manager_construction_tests {
 
 #[cfg(test)]
 mod manager_node_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -290,6 +301,7 @@ mod manager_node_evidence_tests {
 
 #[cfg(test)]
 mod manager_edge_evidence_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -399,6 +411,7 @@ mod manager_edge_evidence_tests {
 
 #[cfg(test)]
 mod manager_query_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -519,6 +532,7 @@ mod manager_query_tests {
 
 #[cfg(test)]
 mod manager_evidence_chain_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -595,6 +609,7 @@ mod manager_evidence_chain_tests {
 
 #[cfg(test)]
 mod manager_stats_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -649,6 +664,7 @@ mod manager_stats_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+#[allow(unused_imports)]
     use super::*;
 
     #[test]

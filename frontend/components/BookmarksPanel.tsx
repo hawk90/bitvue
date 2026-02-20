@@ -4,14 +4,14 @@
  * VQAnalyzer-style bookmarks for quick frame navigation
  */
 
-import { useState, useCallback, useEffect, memo, useRef } from 'react';
-import { useSelection } from '../contexts/SelectionContext';
-import { useFrameData } from '../contexts/FrameDataContext';
-import { createLogger } from '../utils/logger';
-import { TIMING } from '../constants/ui';
-import './BookmarksPanel.css';
+import { useState, useCallback, useEffect, memo, useRef } from "react";
+import { useSelection } from "../contexts/SelectionContext";
+import { useFrameData } from "../contexts/FrameDataContext";
+import { createLogger } from "../utils/logger";
+import { TIMING } from "../constants/ui";
+import "./BookmarksPanel.css";
 
-const logger = createLogger('BookmarksPanel');
+const logger = createLogger("BookmarksPanel");
 
 export interface Bookmark {
   id: string;
@@ -26,7 +26,7 @@ interface BookmarksPanelProps {
   className?: string;
 }
 
-const STORAGE_KEY = 'bitvue-bookmarks';
+const STORAGE_KEY = "bitvue-bookmarks";
 
 /**
  * Type guard to validate Bookmark structure
@@ -34,48 +34,62 @@ const STORAGE_KEY = 'bitvue-bookmarks';
  */
 function isValidBookmark(data: unknown): data is Bookmark {
   // Check if data is a plain object
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
     return false;
   }
 
-  // Prevent prototype pollution
-  if (Object.prototype.isPrototypeOf(data)) {
+  // Prevent prototype pollution: ensure data is a plain object
+  if (Object.getPrototypeOf(data) !== Object.prototype) {
     return false;
   }
 
   const bookmark = data as Record<string, unknown>;
 
   // Validate required fields
-  if (typeof bookmark.id !== 'string' || bookmark.id.trim() === '') {
+  if (typeof bookmark.id !== "string" || bookmark.id.trim() === "") {
     return false;
   }
 
-  if (typeof bookmark.frameIndex !== 'number' ||
-      !Number.isFinite(bookmark.frameIndex) ||
-      bookmark.frameIndex < 0) {
+  if (
+    typeof bookmark.frameIndex !== "number" ||
+    !Number.isFinite(bookmark.frameIndex) ||
+    bookmark.frameIndex < 0
+  ) {
     return false;
   }
 
-  if (typeof bookmark.frameType !== 'string' || bookmark.frameType.trim() === '') {
+  if (
+    typeof bookmark.frameType !== "string" ||
+    bookmark.frameType.trim() === ""
+  ) {
     return false;
   }
 
-  if (typeof bookmark.poc !== 'number' || !Number.isFinite(bookmark.poc)) {
+  if (typeof bookmark.poc !== "number" || !Number.isFinite(bookmark.poc)) {
     return false;
   }
 
-  if (typeof bookmark.description !== 'string') {
+  if (typeof bookmark.description !== "string") {
     return false;
   }
 
-  if (typeof bookmark.timestamp !== 'number' ||
-      !Number.isFinite(bookmark.timestamp) ||
-      bookmark.timestamp < 0) {
+  if (
+    typeof bookmark.timestamp !== "number" ||
+    !Number.isFinite(bookmark.timestamp) ||
+    bookmark.timestamp < 0
+  ) {
     return false;
   }
 
   // Check for unexpected properties
-  const allowedKeys = ['id', 'frameIndex', 'frameType', 'poc', 'description', 'timestamp'];
+  const allowedKeys = [
+    "id",
+    "frameIndex",
+    "frameType",
+    "poc",
+    "description",
+    "timestamp",
+  ];
   const actualKeys = Object.keys(bookmark);
   for (const key of actualKeys) {
     if (!allowedKeys.includes(key)) {
@@ -98,12 +112,14 @@ function isValidBookmarkArray(data: unknown): data is Bookmark[] {
   return data.every(isValidBookmark);
 }
 
-export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: BookmarksPanelProps) {
+export const BookmarksPanel = memo(function BookmarksPanel({
+  className = "",
+}: BookmarksPanelProps) {
   const { selection, setFrameSelection } = useSelection();
   const { frames } = useFrameData();
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDescription, setEditDescription] = useState('');
+  const [editDescription, setEditDescription] = useState("");
   // Ref to store timeout for debounced saves
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -116,14 +132,18 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
         // Use type guard for comprehensive validation
         if (isValidBookmarkArray(parsed)) {
           setBookmarks(parsed);
-          logger.info(`Successfully loaded ${parsed.length} bookmarks from storage`);
+          logger.info(
+            `Successfully loaded ${parsed.length} bookmarks from storage`,
+          );
         } else {
-          logger.warn('Invalid bookmarks structure in storage, using empty array');
+          logger.warn(
+            "Invalid bookmarks structure in storage, using empty array",
+          );
           setBookmarks([]);
         }
       }
     } catch (error) {
-      logger.error('Failed to load bookmarks:', error);
+      logger.error("Failed to load bookmarks:", error);
       setBookmarks([]);
     }
   }, []);
@@ -132,7 +152,7 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
   // Saves bookmarks after a delay, reducing write frequency
   useEffect(() => {
     // Skip saving in test environment or if no bookmarks
-    if (process.env.NODE_ENV === 'test' || bookmarks.length === 0) {
+    if (process.env.NODE_ENV === "test" || bookmarks.length === 0) {
       return;
     }
 
@@ -147,7 +167,7 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
         localStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks));
         logger.debug(`Saved ${bookmarks.length} bookmarks to storage`);
       } catch (error) {
-        logger.error('Failed to save bookmarks:', error);
+        logger.error("Failed to save bookmarks:", error);
       }
       saveTimeoutRef.current = null;
     }, TIMING.STORAGE_DEBOUNCE_DELAY);
@@ -172,8 +192,8 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
     if (currentFrameIndex === undefined) return;
 
     // Get frame data for type and poc
-    const frame = frames.find(f => f.frame_index === currentFrameIndex);
-    const frameType = frame?.frame_type ?? 'UNKNOWN';
+    const frame = frames.find((f) => f.frame_index === currentFrameIndex);
+    const frameType = frame?.frame_type ?? "UNKNOWN";
     const poc = frame?.poc ?? 0;
 
     const newBookmark: Bookmark = {
@@ -185,28 +205,36 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
       timestamp: Date.now(),
     };
 
-    const updated = [...bookmarks, newBookmark].sort((a, b) => a.frameIndex - b.frameIndex);
+    const updated = [...bookmarks, newBookmark].sort(
+      (a, b) => a.frameIndex - b.frameIndex,
+    );
     saveBookmarks(updated);
     setEditingId(null);
   }, [bookmarks, currentFrameIndex, frames, saveBookmarks]);
 
   // Remove bookmark
-  const removeBookmark = useCallback((id: string) => {
-    const updated = bookmarks.filter(b => b.id !== id);
-    saveBookmarks(updated);
-    if (editingId === id) {
-      setEditingId(null);
-      setEditDescription('');
-    }
-  }, [bookmarks, saveBookmarks, editingId]);
+  const removeBookmark = useCallback(
+    (id: string) => {
+      const updated = bookmarks.filter((b) => b.id !== id);
+      saveBookmarks(updated);
+      if (editingId === id) {
+        setEditingId(null);
+        setEditDescription("");
+      }
+    },
+    [bookmarks, saveBookmarks, editingId],
+  );
 
   // Navigate to bookmark
-  const goToBookmark = useCallback((bookmark: Bookmark) => {
-    setFrameSelection(
-      { stream: 'A', frameIndex: bookmark.frameIndex },
-      'bookmarks'
-    );
-  }, [setFrameSelection]);
+  const goToBookmark = useCallback(
+    (bookmark: Bookmark) => {
+      setFrameSelection(
+        { stream: "A", frameIndex: bookmark.frameIndex },
+        "bookmarks",
+      );
+    },
+    [setFrameSelection],
+  );
 
   // Start editing bookmark description
   const startEdit = useCallback((bookmark: Bookmark) => {
@@ -218,23 +246,23 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
   const saveEdit = useCallback(() => {
     if (!editingId) return;
 
-    const updated = bookmarks.map(b =>
-      b.id === editingId
-        ? { ...b, description: editDescription }
-        : b
+    const updated = bookmarks.map((b) =>
+      b.id === editingId ? { ...b, description: editDescription } : b,
     );
     saveBookmarks(updated);
     setEditingId(null);
-    setEditDescription('');
+    setEditDescription("");
   }, [bookmarks, editingId, editDescription, saveBookmarks]);
 
   // Cancel editing
   const cancelEdit = useCallback(() => {
     setEditingId(null);
-    setEditDescription('');
+    setEditDescription("");
   }, []);
 
-  const canAddBookmark = currentFrameIndex !== undefined && !bookmarks.some(b => b.frameIndex === currentFrameIndex);
+  const canAddBookmark =
+    currentFrameIndex !== undefined &&
+    !bookmarks.some((b) => b.frameIndex === currentFrameIndex);
 
   return (
     <div className={`bookmarks-panel ${className}`}>
@@ -244,9 +272,13 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
           className="add-bookmark-btn"
           onClick={addBookmark}
           disabled={!canAddBookmark}
-          title={canAddBookmark ? 'Bookmark current frame' : 'Already bookmarked'}
+          title={
+            canAddBookmark ? "Bookmark current frame" : "Already bookmarked"
+          }
         >
-          <span className={`codicon codicon-${canAddBookmark ? 'bookmark' : 'bookmark-slash'}`}></span>
+          <span
+            className={`codicon codicon-${canAddBookmark ? "bookmark" : "bookmark-slash"}`}
+          ></span>
         </button>
       </div>
 
@@ -255,14 +287,16 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
           <div className="empty-state">
             <span className="codicon codicon-bookmark"></span>
             <p>No bookmarks yet</p>
-            <p className="hint">Navigate to a frame and click the bookmark icon to add one</p>
+            <p className="hint">
+              Navigate to a frame and click the bookmark icon to add one
+            </p>
           </div>
         ) : (
           <div className="bookmarks-list">
             {bookmarks.map((bookmark) => (
               <div
                 key={bookmark.id}
-                className={`bookmark-item ${editingId === bookmark.id ? 'editing' : ''}`}
+                className={`bookmark-item ${editingId === bookmark.id ? "editing" : ""}`}
               >
                 {editingId === bookmark.id ? (
                   <input
@@ -273,9 +307,9 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
                     autoFocus
                     onBlur={saveEdit}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === "Enter") {
                         saveEdit();
-                      } else if (e.key === 'Escape') {
+                      } else if (e.key === "Escape") {
                         cancelEdit();
                       }
                     }}
@@ -287,8 +321,12 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
                       onClick={() => goToBookmark(bookmark)}
                       title={bookmark.description}
                     >
-                      <div className="bookmark-frame">#{bookmark.frameIndex}</div>
-                      <div className="bookmark-desc">{bookmark.description}</div>
+                      <div className="bookmark-frame">
+                        #{bookmark.frameIndex}
+                      </div>
+                      <div className="bookmark-desc">
+                        {bookmark.description}
+                      </div>
                     </div>
                     <button
                       className="bookmark-edit-btn"
@@ -315,7 +353,9 @@ export const BookmarksPanel = memo(function BookmarksPanel({ className = '' }: B
       {/* Footer with stats */}
       {bookmarks.length > 0 && (
         <div className="panel-footer">
-          <span className="bookmarks-count">{bookmarks.length} bookmark{bookmarks.length > 1 ? 's' : ''}</span>
+          <span className="bookmarks-count">
+            {bookmarks.length} bookmark{bookmarks.length > 1 ? "s" : ""}
+          </span>
         </div>
       )}
     </div>

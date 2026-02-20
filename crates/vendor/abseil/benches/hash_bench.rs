@@ -1,6 +1,5 @@
 // Benchmarks for hash algorithms
-#![feature(test)]
-extern crate test;
+#![cfg(bench)]
 
 use abseil::absl_hash::{
     algorithms::{

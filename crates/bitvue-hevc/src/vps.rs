@@ -181,6 +181,7 @@ impl Vps {
 }
 
 /// Parse VPS from RBSP data.
+#[allow(clippy::field_reassign_with_default)]
 pub fn parse_vps(data: &[u8]) -> Result<Vps> {
     let mut reader = BitReader::new(data);
     let mut vps = Vps::default();
@@ -251,16 +252,21 @@ pub fn parse_vps(data: &[u8]) -> Result<Vps> {
     vps.vps_timing_info_present_flag = reader.read_bit()?;
 
     if vps.vps_timing_info_present_flag {
-        let mut timing = TimingInfo::default();
-
         // vps_num_units_in_tick (32 bits)
-        timing.num_units_in_tick = reader.read_bits(32)?;
+        let num_units_in_tick = reader.read_bits(32)?;
 
         // vps_time_scale (32 bits)
-        timing.time_scale = reader.read_bits(32)?;
+        let time_scale = reader.read_bits(32)?;
 
         // vps_poc_proportional_to_timing_flag (1 bit)
-        timing.poc_proportional_to_timing_flag = reader.read_bit()?;
+        let poc_proportional_to_timing_flag = reader.read_bit()?;
+
+        let mut timing = TimingInfo {
+            num_units_in_tick,
+            time_scale,
+            poc_proportional_to_timing_flag,
+            ..Default::default()
+        };
 
         if timing.poc_proportional_to_timing_flag {
             timing.num_ticks_poc_diff_one_minus1 = reader.read_ue()?;
@@ -336,9 +342,11 @@ fn parse_profile_tier_level(
 
     // Parse sub-layer profile_tier_level
     for i in 0..max_sub_layers_minus1 as usize {
-        let mut sub = SubLayerProfileTierLevel::default();
-        sub.sub_layer_profile_present_flag = sub_layer_profile_present_flag[i];
-        sub.sub_layer_level_present_flag = sub_layer_level_present_flag[i];
+        let mut sub = SubLayerProfileTierLevel {
+            sub_layer_profile_present_flag: sub_layer_profile_present_flag[i],
+            sub_layer_level_present_flag: sub_layer_level_present_flag[i],
+            ..Default::default()
+        };
 
         if sub.sub_layer_profile_present_flag {
             sub.sub_layer_profile_space = reader.read_bits(2)? as u8;

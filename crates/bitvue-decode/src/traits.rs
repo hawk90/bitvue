@@ -45,6 +45,7 @@ impl std::fmt::Display for CodecType {
 ///     Ok(Box::new(MyCustomDecoder::new()) as Box<dyn Decoder>)
 /// ));
 /// ```
+#[derive(Default)]
 pub struct CodecRegistry {
     factories: std::collections::HashMap<
         CodecType,
@@ -98,14 +99,6 @@ impl CodecRegistry {
     /// Get all registered codec types
     pub fn registered_codecs(&self) -> Vec<CodecType> {
         self.factories.keys().copied().collect()
-    }
-}
-
-impl Default for CodecRegistry {
-    fn default() -> Self {
-        Self {
-            factories: std::collections::HashMap::new(),
-        }
     }
 }
 

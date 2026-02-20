@@ -1,3 +1,14 @@
+#![allow(hidden_glob_reexports)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 //! Tests for Video Quality Metrics (PSNR, SSIM, VMAF)
 
 #[test]

@@ -6,13 +6,13 @@
  */
 
 /* Import shared styles */
-@import url('./shared/filmstrip-shared.css');
+@import url("./shared/filmstrip-shared.css");
 
 /* Import view-specific styles */
-@import url('./views/ThumbnailsView.css');
-@import url('./views/FrameSizesView.css');
-@import url('./views/BPyramidView.css');
-@import url('./views/EnhancedView.css');
+@import url("./views/ThumbnailsView.css");
+@import url("./views/FrameSizesView.css");
+@import url("./views/BPyramidView.css");
+@import url("./views/EnhancedView.css");
 
 /* Main Filmstrip Container */
 .filmstrip {
@@ -92,7 +92,7 @@
 
 /* Ripple effect container */
 .filmstrip-view-btn::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -101,7 +101,9 @@
   border-radius: 50%;
   background: rgb(255 255 255 / 20%);
   transform: translate(-50%, -50%);
-  transition: width 0.4s ease, height 0.4s ease;
+  transition:
+    width 0.4s ease,
+    height 0.4s ease;
 }
 
 .filmstrip-view-btn:active::before {

@@ -139,31 +139,27 @@ impl AvcFrameBuilder {
     /// Returns an error if required fields are not set.
     pub fn build(self) -> Result<AvcFrame, String> {
         Ok(AvcFrame {
-            frame_index: self.frame_index.ok_or_else(||
-                "frame_index is required".to_string()
-            )?,
-            frame_type: self.frame_type.ok_or_else(||
-                "frame_type is required".to_string()
-            )?,
+            frame_index: self
+                .frame_index
+                .ok_or_else(|| "frame_index is required".to_string())?,
+            frame_type: self
+                .frame_type
+                .ok_or_else(|| "frame_type is required".to_string())?,
             nal_data: self.nal_data.unwrap_or_default(),
-            offset: self.offset.ok_or_else(||
-                "offset is required".to_string()
-            )?,
-            size: self.size.ok_or_else(||
-                "size is required".to_string()
-            )?,
-            poc: self.poc.ok_or_else(||
-                "poc is required".to_string()
-            )?,
-            frame_num: self.frame_num.ok_or_else(||
-                "frame_num is required".to_string()
-            )?,
-            is_idr: self.is_idr.ok_or_else(||
-                "is_idr is required".to_string()
-            )?,
-            is_ref: self.is_ref.ok_or_else(||
-                "is_ref is required".to_string()
-            )?,
+            offset: self
+                .offset
+                .ok_or_else(|| "offset is required".to_string())?,
+            size: self.size.ok_or_else(|| "size is required".to_string())?,
+            poc: self.poc.ok_or_else(|| "poc is required".to_string())?,
+            frame_num: self
+                .frame_num
+                .ok_or_else(|| "frame_num is required".to_string())?,
+            is_idr: self
+                .is_idr
+                .ok_or_else(|| "is_idr is required".to_string())?,
+            is_ref: self
+                .is_ref
+                .ok_or_else(|| "is_ref is required".to_string())?,
             slice_header: self.slice_header,
         })
     }
@@ -241,7 +237,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
         )
         .map(|(&start, &end)| {
             // Adjust for start code (include start code in range)
-            let adjusted_start = if start >= 4 { start - 4 } else { 0 };
+            let adjusted_start = start.saturating_sub(4);
             (adjusted_start, end)
         })
         .collect();
@@ -249,7 +245,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
     let mut frames = Vec::new();
     let mut current_frame_nals: Vec<(usize, usize)> = Vec::new();
     let mut current_frame_index = 0;
-    let current_poc: Option<i32> = None;
+    let _current_poc: Option<i32> = None;
     let mut current_frame_num: Option<u32> = None;
     let mut current_is_idr = false;
     let mut current_is_ref = false;
@@ -286,10 +282,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
             let is_ref = nal_header.nal_ref_idc != 0;
 
             // Check if this starts a new frame
-            let new_frame = if current_frame_nals.is_empty() {
-                true
-            } else if is_idr != current_is_idr {
-                true // IDR boundary
+            let new_frame = if current_frame_nals.is_empty() || is_idr != current_is_idr {
+                true // First NAL or IDR boundary
             } else if let Some(slice) = &current_slice_header {
                 // Try to parse the current slice header
                 if let Ok(new_slice) = crate::slice::parse_slice_header(
@@ -316,7 +310,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    current_poc.unwrap_or(0),
+                    0,
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_ref,
@@ -362,7 +356,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    current_poc.unwrap_or(0),
+                    0,
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_ref,
@@ -459,12 +453,7 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
     let qp_avg = frame
         .slice_header
         .as_ref()
-        .and_then(|header| {
-            // Note: This only includes slice_qp_delta, not pic_init_qp_minus26
-            // For accurate QP, we need access to PPS data
-            Some(QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg)
-        })
-        .flatten();
+        .and_then(|header| QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg);
 
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {

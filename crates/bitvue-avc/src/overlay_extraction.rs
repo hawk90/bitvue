@@ -133,8 +133,8 @@ pub fn extract_qp_grid(
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
 
-    let grid_w = pic_width_in_mbs as u32;
-    let grid_h = pic_height_in_mbs as u32;
+    let grid_w = pic_width_in_mbs;
+    let grid_h = pic_height_in_mbs;
 
     // Check for overflow in grid size calculation
     let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
@@ -179,10 +179,10 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
 
-    let mb_width = pic_width_in_mbs as u32 * 16;
-    let mb_height = pic_height_in_mbs as u32 * 16;
-    let grid_w = pic_width_in_mbs as u32;
-    let grid_h = pic_height_in_mbs as u32;
+    let mb_width = pic_width_in_mbs * 16;
+    let mb_height = pic_height_in_mbs * 16;
+    let grid_w = pic_width_in_mbs;
+    let grid_h = pic_height_in_mbs;
 
     // Check for overflow in grid size calculation
     let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
@@ -260,8 +260,8 @@ pub fn extract_partition_grid(
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
 
-    let pic_width = pic_width_in_mbs as u32 * 16;
-    let pic_height = pic_height_in_mbs as u32 * 16;
+    let pic_width = pic_width_in_mbs * 16;
+    let pic_height = pic_height_in_mbs * 16;
 
     let mut grid = PartitionGrid::new(pic_width, pic_height, 16);
 
@@ -295,8 +295,8 @@ pub fn extract_partition_grid(
 
     // Fill with scaffold blocks if empty
     if grid.blocks.is_empty() {
-        let grid_w = pic_width_in_mbs as u32;
-        let grid_h = pic_height_in_mbs as u32;
+        let grid_w = pic_width_in_mbs;
+        let grid_h = pic_height_in_mbs;
         for mb_y in 0..grid_h {
             for mb_x in 0..grid_w {
                 grid.add_block(PartitionBlock::new(
@@ -335,8 +335,8 @@ fn parse_slice_macroblocks(
     let is_intra = nal.header.nal_unit_type.is_intra_slice();
 
     for mb_addr in 0..total_mbs {
-        let mb_x = (mb_addr % pic_width_in_mbs) as u32 * 16;
-        let mb_y = (mb_addr / pic_width_in_mbs) as u32 * 16;
+        let mb_x = (mb_addr % pic_width_in_mbs) * 16;
+        let mb_y = (mb_addr / pic_width_in_mbs) * 16;
 
         // Determine macroblock type based on slice type
         let mb_type = if is_intra {
@@ -355,7 +355,7 @@ fn parse_slice_macroblocks(
         let qp = base_qp;
 
         mbs.push(Macroblock {
-            mb_addr: mb_addr as u32,
+            mb_addr,
             x: mb_x,
             y: mb_y,
             mb_type,

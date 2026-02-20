@@ -5,7 +5,7 @@
  * for YUV to RGB conversion utilities.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 import {
   yuvToRgb,
   yuvToRgbaArray,
@@ -14,38 +14,38 @@ import {
   RGB_SHIFT,
   RGBA_CHANNELS,
   DEFAULT_ALPHA,
-} from '../conversion';
-import { Colorspace } from '../../../types/yuv';
+} from "@/utils/yuv/conversion";
+import { Colorspace } from "@/types/yuv";
 
-describe('yuvToRgb edge cases', () => {
-  describe('boundary values', () => {
-    it('should handle minimum YUV values (0, 0, 0)', () => {
+describe("yuvToRgb edge cases", () => {
+  describe("boundary values", () => {
+    it("should handle minimum YUV values (0, 0, 0)", () => {
       const result = yuvToRgb(0, 0, 0, Colorspace.BT709);
       expect(result).toBeGreaterThanOrEqual(0);
       expect(result).toBeLessThanOrEqual(0xffffff);
     });
 
-    it('should handle maximum YUV values (255, 255, 255)', () => {
+    it("should handle maximum YUV values (255, 255, 255)", () => {
       const result = yuvToRgb(255, 255, 255, Colorspace.BT709);
       expect(result).toBeGreaterThanOrEqual(0);
       expect(result).toBeLessThanOrEqual(0xffffff);
     });
 
-    it('should handle Y at boundaries (0 and 255)', () => {
+    it("should handle Y at boundaries (0 and 255)", () => {
       const resultMin = yuvToRgb(0, 128, 128, Colorspace.BT709);
       const resultMax = yuvToRgb(255, 128, 128, Colorspace.BT709);
       expect(resultMin).toBeGreaterThanOrEqual(0);
       expect(resultMax).toBeLessThanOrEqual(0xffffff);
     });
 
-    it('should handle U at boundaries (0 and 255)', () => {
+    it("should handle U at boundaries (0 and 255)", () => {
       const resultMin = yuvToRgb(128, 0, 128, Colorspace.BT709);
       const resultMax = yuvToRgb(128, 255, 128, Colorspace.BT709);
       expect(resultMin).toBeGreaterThanOrEqual(0);
       expect(resultMax).toBeLessThanOrEqual(0xffffff);
     });
 
-    it('should handle V at boundaries (0 and 255)', () => {
+    it("should handle V at boundaries (0 and 255)", () => {
       const resultMin = yuvToRgb(128, 128, 0, Colorspace.BT709);
       const resultMax = yuvToRgb(128, 128, 255, Colorspace.BT709);
       expect(resultMin).toBeGreaterThanOrEqual(0);
@@ -53,8 +53,8 @@ describe('yuvToRgb edge cases', () => {
     });
   });
 
-  describe('grayscale values (U=V=128)', () => {
-    it('should produce pure grayscale for various Y values', () => {
+  describe("grayscale values (U=V=128)", () => {
+    it("should produce pure grayscale for various Y values", () => {
       for (let y = 0; y <= 255; y += 15) {
         const result = yuvToRgb(y, 128, 128, Colorspace.BT709);
         const r = (result >> RGB_SHIFT.R) & 0xff;
@@ -68,7 +68,7 @@ describe('yuvToRgb edge cases', () => {
       }
     });
 
-    it('should handle black (Y=0, U=128, V=128)', () => {
+    it("should handle black (Y=0, U=128, V=128)", () => {
       const result = yuvToRgb(0, 128, 128, Colorspace.BT709);
       const r = (result >> RGB_SHIFT.R) & 0xff;
       const g = (result >> RGB_SHIFT.G) & 0xff;
@@ -79,7 +79,7 @@ describe('yuvToRgb edge cases', () => {
       expect(b).toBe(0);
     });
 
-    it('should handle white (Y=255, U=128, V=128)', () => {
+    it("should handle white (Y=255, U=128, V=128)", () => {
       const result = yuvToRgb(255, 128, 128, Colorspace.BT709);
       const r = (result >> RGB_SHIFT.R) & 0xff;
       const g = (result >> RGB_SHIFT.G) & 0xff;
@@ -91,8 +91,8 @@ describe('yuvToRgb edge cases', () => {
     });
   });
 
-  describe('extreme color combinations', () => {
-    it('should handle pure red (max V)', () => {
+  describe("extreme color combinations", () => {
+    it("should handle pure red (max V)", () => {
       const result = yuvToRgb(128, 128, 255, Colorspace.BT709);
       const r = (result >> RGB_SHIFT.R) & 0xff;
       const g = (result >> RGB_SHIFT.G) & 0xff;
@@ -103,7 +103,7 @@ describe('yuvToRgb edge cases', () => {
       expect(r).toBeGreaterThan(b);
     });
 
-    it('should handle pure blue (max U)', () => {
+    it("should handle pure blue (max U)", () => {
       const result = yuvToRgb(128, 255, 128, Colorspace.BT709);
       const r = (result >> RGB_SHIFT.R) & 0xff;
       const g = (result >> RGB_SHIFT.G) & 0xff;
@@ -114,7 +114,7 @@ describe('yuvToRgb edge cases', () => {
       expect(b).toBeGreaterThanOrEqual(g);
     });
 
-    it('should handle high contrast combinations', () => {
+    it("should handle high contrast combinations", () => {
       const combinations = [
         [0, 0, 0],
         [255, 0, 0],
@@ -134,8 +134,8 @@ describe('yuvToRgb edge cases', () => {
   });
 });
 
-describe('yuvToRgbaArray edge cases', () => {
-  it('should handle empty output array with valid index', () => {
+describe("yuvToRgbaArray edge cases", () => {
+  it("should handle empty output array with valid index", () => {
     const out = new Uint8ClampedArray(4);
     yuvToRgbaArray(128, 128, 128, Colorspace.BT709, out, 0);
 
@@ -145,7 +145,7 @@ describe('yuvToRgbaArray edge cases', () => {
     expect(out[RGBA_CHANNELS.A]).toBe(DEFAULT_ALPHA);
   });
 
-  it('should handle boundary indices', () => {
+  it("should handle boundary indices", () => {
     const out = new Uint8ClampedArray(8); // 2 pixels
 
     // First pixel
@@ -157,7 +157,7 @@ describe('yuvToRgbaArray edge cases', () => {
     expect(out[4 + RGBA_CHANNELS.A]).toBe(DEFAULT_ALPHA);
   });
 
-  it('should not write beyond specified index', () => {
+  it("should not write beyond specified index", () => {
     const out = new Uint8ClampedArray(8);
     out.fill(0);
 
@@ -170,7 +170,7 @@ describe('yuvToRgbaArray edge cases', () => {
     expect(out[7]).toBe(0);
   });
 
-  it('should handle multiple consecutive writes', () => {
+  it("should handle multiple consecutive writes", () => {
     const out = new Uint8ClampedArray(16); // 4 pixels
 
     for (let i = 0; i < 4; i++) {
@@ -184,8 +184,8 @@ describe('yuvToRgbaArray edge cases', () => {
   });
 });
 
-describe('setPixelBlack edge cases', () => {
-  it('should set pixel to pure black', () => {
+describe("setPixelBlack edge cases", () => {
+  it("should set pixel to pure black", () => {
     const out = new Uint8ClampedArray(4);
     setPixelBlack(out, 0);
 
@@ -195,7 +195,7 @@ describe('setPixelBlack edge cases', () => {
     expect(out[RGBA_CHANNELS.A]).toBe(DEFAULT_ALPHA);
   });
 
-  it('should overwrite existing pixel data', () => {
+  it("should overwrite existing pixel data", () => {
     const out = new Uint8ClampedArray(4);
     out[0] = 255;
     out[1] = 128;
@@ -210,7 +210,7 @@ describe('setPixelBlack edge cases', () => {
     expect(out[RGBA_CHANNELS.A]).toBe(DEFAULT_ALPHA);
   });
 
-  it('should handle boundary indices', () => {
+  it("should handle boundary indices", () => {
     const out = new Uint8ClampedArray(8);
 
     setPixelBlack(out, 0);
@@ -221,25 +221,21 @@ describe('setPixelBlack edge cases', () => {
   });
 });
 
-describe('getColorspaceMatrix edge cases', () => {
-  it('should handle all valid colorspaces', () => {
-    const colorspaces = [
-      Colorspace.BT601,
-      Colorspace.BT709,
-      Colorspace.BT2020,
-    ];
+describe("getColorspaceMatrix edge cases", () => {
+  it("should handle all valid colorspaces", () => {
+    const colorspaces = [Colorspace.BT601, Colorspace.BT709, Colorspace.BT2020];
 
     for (const colorspace of colorspaces) {
       const matrix = getColorspaceMatrix(colorspace);
       expect(matrix).toBeDefined();
-      expect(typeof matrix.rv).toBe('number');
-      expect(typeof matrix.gu).toBe('number');
-      expect(typeof matrix.gv).toBe('number');
-      expect(typeof matrix.bu).toBe('number');
+      expect(typeof matrix.rv).toBe("number");
+      expect(typeof matrix.gu).toBe("number");
+      expect(typeof matrix.gv).toBe("number");
+      expect(typeof matrix.bu).toBe("number");
     }
   });
 
-  it('should return coefficients within valid ranges', () => {
+  it("should return coefficients within valid ranges", () => {
     const matrix = getColorspaceMatrix(Colorspace.BT709);
 
     // Coefficients should be finite numbers
@@ -250,28 +246,28 @@ describe('getColorspaceMatrix edge cases', () => {
   });
 });
 
-describe('constants', () => {
-  it('should have correct RGB shift values', () => {
+describe("constants", () => {
+  it("should have correct RGB shift values", () => {
     expect(RGB_SHIFT.R).toBe(16);
     expect(RGB_SHIFT.G).toBe(8);
     expect(RGB_SHIFT.B).toBe(0);
     expect(RGB_SHIFT.A).toBe(24);
   });
 
-  it('should have correct RGBA channel indices', () => {
+  it("should have correct RGBA channel indices", () => {
     expect(RGBA_CHANNELS.R).toBe(0);
     expect(RGBA_CHANNELS.G).toBe(1);
     expect(RGBA_CHANNELS.B).toBe(2);
     expect(RGBA_CHANNELS.A).toBe(3);
   });
 
-  it('should have default alpha as fully opaque', () => {
+  it("should have default alpha as fully opaque", () => {
     expect(DEFAULT_ALPHA).toBe(255);
   });
 });
 
-describe('clamping behavior', () => {
-  it('should clamp negative RGB values to 0', () => {
+describe("clamping behavior", () => {
+  it("should clamp negative RGB values to 0", () => {
     // Y=0, U=0, V=0 can produce negative values in conversion
     const result = yuvToRgb(0, 0, 0, Colorspace.BT709);
     const r = (result >> RGB_SHIFT.R) & 0xff;
@@ -283,7 +279,7 @@ describe('clamping behavior', () => {
     expect(b).toBeGreaterThanOrEqual(0);
   });
 
-  it('should clamp RGB values above 255 to 255', () => {
+  it("should clamp RGB values above 255 to 255", () => {
     // Some combinations can exceed 255
     const result = yuvToRgb(255, 255, 255, Colorspace.BT709);
     const r = (result >> RGB_SHIFT.R) & 0xff;
@@ -296,8 +292,8 @@ describe('clamping behavior', () => {
   });
 });
 
-describe('colorspace comparison', () => {
-  it('should produce different results for different colorspaces', () => {
+describe("colorspace comparison", () => {
+  it("should produce different results for different colorspaces", () => {
     const yuv = { y: 180, u: 80, v: 160 };
 
     const result709 = yuvToRgb(yuv.y, yuv.u, yuv.v, Colorspace.BT709);
@@ -306,7 +302,7 @@ describe('colorspace comparison', () => {
     expect(result709).not.toBe(result601);
   });
 
-  it('should produce same results for same colorspace', () => {
+  it("should produce same results for same colorspace", () => {
     const yuv = { y: 128, u: 128, v: 128 };
 
     const result1 = yuvToRgb(yuv.y, yuv.u, yuv.v, Colorspace.BT709);

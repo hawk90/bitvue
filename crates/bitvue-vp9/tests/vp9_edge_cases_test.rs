@@ -1,5 +1,16 @@
+#![allow(hidden_glob_reexports)]
+#![allow(unreachable_code)]
+#![allow(non_camel_case_types)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_comparisons)]
+#![allow(unused_doc_comments)]
 // Edge case tests for VP9 frame and parsing
-use bitvue_vp9::{parse_vp9, extract_vp9_frames};
+use bitvue_vp9::{extract_vp9_frames, parse_vp9};
 
 #[test]
 fn test_parse_vp9_empty_data() {

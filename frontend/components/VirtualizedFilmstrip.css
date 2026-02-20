@@ -62,7 +62,7 @@
 
 .virtualized-frame-number {
   font-size: 10px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   color: var(--text-primary);
 }
 
