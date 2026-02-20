@@ -668,12 +668,14 @@ mod lru_eviction_tests {
         manager.add_decode_cache_a(0, "params1".to_string(), 1024);
         manager.add_decode_cache_a(1, "params2".to_string(), 2048);
 
-        // Act - Evict with target larger than first entry
+        // Act - Evict with target 1500 bytes
+        // Entry 0 (1024 bytes) is LRU, evicted first (total: 1024 < 1500, continue)
+        // Entry 1 (2048 bytes) evicted second (total: 3072 >= 1500, stop)
         let count = manager.evict_lru_stream(CompareStreamId::A, 1500);
 
-        // Assert
-        assert_eq!(count, 1); // First entry evicted
-        assert_eq!(manager.stats_a().total_entries, 1);
+        // Assert - Both entries evicted to meet target
+        assert_eq!(count, 2);
+        assert_eq!(manager.stats_a().total_entries, 0);
     }
 
     #[test]

@@ -768,11 +768,9 @@ mod eviction_tests {
 
         // Assert
         assert_eq!(candidates.len(), 1);
-        // Note: Implementation sorts by time_since_access ascending,
-        // which returns most-recently-accessed first, not least-recently-used.
-        // Frame 2 was accessed last, so it has the smallest time_since_access.
+        // Frame 0 was never accessed after being added, so it's the LRU (should be evicted first)
         if let CacheKey::Decode { frame_idx, .. } = &candidates[0] {
-            assert_eq!(*frame_idx, 2);
+            assert_eq!(*frame_idx, 0);
         } else {
             panic!("Expected Decode key");
         }

@@ -348,8 +348,8 @@ impl CacheProvenanceTracker {
             .map(|(key, entry)| (key.clone(), entry.time_since_access()))
             .collect();
 
-        // Sort by time since access (oldest first)
-        candidates.sort_by_key(|(_, time)| *time);
+        // Sort by time since access (oldest first = largest duration)
+        candidates.sort_by_key(|(_, time)| std::cmp::Reverse(*time));
 
         // Collect keys until we reach target bytes
         let mut total = 0;
