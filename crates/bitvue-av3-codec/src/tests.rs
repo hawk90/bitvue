@@ -33,7 +33,7 @@ fn test_parse_av3_with_obu_header() {
     let result = parse_av3(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.obu_units.len() >= 0);
+    let _ = stream.obu_units.len(); // verify field is accessible
 }
 
 #[test]
@@ -701,8 +701,8 @@ fn test_parse_av3_with_obu_extension() {
     // May fail due to incomplete data, but should handle gracefully
     match result {
         Ok(stream) => {
-            // Success case
-            assert!(stream.obu_units.len() >= 0);
+            // Success case - verify field is accessible
+            let _ = stream.obu_units.len();
         }
         Err(_) => {
             // Expected for incomplete OBU data
