@@ -1089,8 +1089,8 @@ mod tests {
         let strategy = Avx2Strategy::new();
         let caps = strategy.capabilities();
         assert_eq!(caps.speedup_factor, 4.5);
-        assert!(!caps.supports_10bit); // Currently only 8-bit supported
-        assert!(!caps.supports_12bit); // Currently only 8-bit supported
+        assert!(caps.supports_10bit); // 10-bit support added
+        assert!(caps.supports_12bit); // 12-bit support added
         assert!(!caps.is_hardware_accelerated);
     }
 
@@ -1101,7 +1101,7 @@ mod tests {
     }
 
     #[test]
-    fn test_avx2_unsupported_bit_depth() {
+    fn test_avx2_supported_bit_depths() {
         let strategy = Avx2Strategy::new();
 
         let y_plane = vec![0; 100];
@@ -1109,11 +1109,15 @@ mod tests {
         let v_plane = vec![128; 25];
         let mut rgb = vec![0u8; 300];
 
-        // 10-bit not supported by AVX2 yet
-        let result =
-            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 10);
+        // 8-bit is supported
+        let result_8bit =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 8);
+        assert!(result_8bit.is_ok());
 
-        assert!(result.is_err());
+        // 10-bit is now supported
+        let result_10bit =
+            strategy.convert_yuv420_to_rgb(&y_plane, &u_plane, &v_plane, 10, 10, &mut rgb, 10);
+        assert!(result_10bit.is_ok());
     }
 
     #[test]
