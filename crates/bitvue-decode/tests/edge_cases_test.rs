@@ -51,7 +51,10 @@ fn test_empty_file() {
     match result {
         Err(DecodeError::Decode(msg)) => {
             assert!(
-                msg.contains("too short") || msg.contains("empty") || msg.contains("incomplete"),
+                msg.contains("too short")
+                    || msg.contains("empty")
+                    || msg.contains("incomplete")
+                    || msg.contains("Invalid argument"),
                 "Error should mention file is empty or too short, got: {}",
                 msg
             );

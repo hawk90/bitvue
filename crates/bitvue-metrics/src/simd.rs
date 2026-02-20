@@ -934,10 +934,10 @@ unsafe fn psnr_neon(
         mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi2));
     }
 
-    // Extract sum
+    // Extract sum (use u64 to prevent overflow for large images)
     let mut mse_array = [0u32; 4];
     vst1q_u32(mse_array.as_mut_ptr(), mse_accumulator);
-    let simd_sum: u32 = mse_array.iter().sum();
+    let simd_sum: u64 = mse_array.iter().map(|&x| x as u64).sum();
 
     // Process remainder
     for i in (chunks * 16)..size {

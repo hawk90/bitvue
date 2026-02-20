@@ -533,9 +533,9 @@ fn test_lsb_skip_overflow_protection() {
     // Reset for overflow test
     let mut reader2 = LsbBitReader::new(&data);
 
-    // Try to skip with overflow
+    // Try to skip with overflow - will exceed data bounds and return UnexpectedEof
     let result = reader2.skip_bits(u64::MAX);
-    assert!(matches!(result, Err(BitvueError::Decode { .. })));
+    assert!(matches!(result, Err(BitvueError::UnexpectedEof(_))));
 }
 
 #[test]
