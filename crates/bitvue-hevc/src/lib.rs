@@ -52,8 +52,11 @@ pub use overlay_extraction::{
 pub use pps::{parse_pps, Pps};
 use serde::{Deserialize, Serialize};
 pub use slice::{SliceHeader, SliceType};
-pub use sps::{parse_sps, ChromaFormat, ProfileTierLevel, Sps};
+pub use sps::{parse_sps, ProfileTierLevel, Sps};
 use std::collections::HashMap;
+
+// Re-export ChromaFormat from bitvue_core for backward compatibility
+pub use bitvue_core::ChromaFormat;
 pub use vps::Vps;
 
 /// Parsed HEVC bitstream.

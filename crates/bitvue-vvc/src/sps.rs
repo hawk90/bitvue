@@ -7,6 +7,9 @@ use crate::bitreader::BitReader;
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
+// Re-export ChromaFormat from bitvue_core for backward compatibility
+pub use bitvue_core::ChromaFormat;
+
 /// VVC Profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Profile {
@@ -44,27 +47,6 @@ impl From<u8> for Profile {
             17 => Self::Multilayer,
             65 => Self::MultilayerMain10,
             _ => Self::Unknown(value),
-        }
-    }
-}
-
-/// Chroma format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ChromaFormat {
-    Monochrome = 0,
-    Chroma420 = 1,
-    Chroma422 = 2,
-    Chroma444 = 3,
-}
-
-impl From<u8> for ChromaFormat {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => Self::Monochrome,
-            1 => Self::Chroma420,
-            2 => Self::Chroma422,
-            3 => Self::Chroma444,
-            _ => Self::Chroma420,
         }
     }
 }

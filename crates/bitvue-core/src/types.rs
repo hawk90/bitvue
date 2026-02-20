@@ -3,6 +3,84 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Chroma format (subsampling) used across video codecs.
+///
+/// This enum represents the chroma subsampling format used in video streams.
+/// Values correspond to the chroma_format_idc values used in HEVC (H.265) and VVC (H.266).
+/// - HEVC: See ITU-T H.265 Section 7.4.3.2.1 (chroma_format_idc)
+/// - VVC: See ITU-T H.266 Section 7.4.3.2.1 (sps_chroma_format_idc)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChromaFormat {
+    /// Monochrome (no chroma)
+    Monochrome = 0,
+    /// 4:2:0 chroma subsampling (horizontal 2x, vertical 2x)
+    Chroma420 = 1,
+    /// 4:2:2 chroma subsampling (horizontal 2x, vertical 1x)
+    Chroma422 = 2,
+    /// 4:4:4 chroma (no subsampling)
+    Chroma444 = 3,
+}
+
+impl ChromaFormat {
+    /// Returns the chroma format from the codec's chroma_format_idc value.
+    pub fn from_idc(value: u8) -> Self {
+        match value {
+            0 => Self::Monochrome,
+            1 => Self::Chroma420,
+            2 => Self::Chroma422,
+            3 => Self::Chroma444,
+            _ => Self::Chroma420, // Default fallback
+        }
+    }
+
+    /// Returns the chroma_format_idc value.
+    pub fn idc(self) -> u8 {
+        self as u8
+    }
+
+    /// Returns a human-readable string representation (e.g., "4:2:0").
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Monochrome => "Monochrome",
+            Self::Chroma420 => "4:2:0",
+            Self::Chroma422 => "4:2:2",
+            Self::Chroma444 => "4:4:4",
+        }
+    }
+
+    /// Returns the horizontal subsampling factor.
+    pub fn h_subsampling(self) -> u32 {
+        match self {
+            Self::Monochrome => 0,
+            Self::Chroma420 => 2,
+            Self::Chroma422 => 2,
+            Self::Chroma444 => 1,
+        }
+    }
+
+    /// Returns the vertical subsampling factor.
+    pub fn v_subsampling(self) -> u32 {
+        match self {
+            Self::Monochrome => 0,
+            Self::Chroma420 => 2,
+            Self::Chroma422 => 1,
+            Self::Chroma444 => 1,
+        }
+    }
+}
+
+impl From<u8> for ChromaFormat {
+    fn from(value: u8) -> Self {
+        Self::from_idc(value)
+    }
+}
+
+impl std::fmt::Display for ChromaFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Information about a parsed bitstream
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitstreamInfo {

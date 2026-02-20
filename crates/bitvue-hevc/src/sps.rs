@@ -6,6 +6,9 @@ use crate::bitreader::BitReader;
 use crate::error::{HevcError, Result};
 use serde::{Deserialize, Serialize};
 
+// Re-export ChromaFormat from bitvue_core for backward compatibility
+pub use bitvue_core::ChromaFormat;
+
 /// HEVC Profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Profile {
@@ -74,27 +77,6 @@ pub struct ProfileTierLevel {
     pub general_non_packed_constraint_flag: bool,
     pub general_frame_only_constraint_flag: bool,
     pub general_level_idc: u8,
-}
-
-/// Chroma format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ChromaFormat {
-    Monochrome = 0,
-    Chroma420 = 1,
-    Chroma422 = 2,
-    Chroma444 = 3,
-}
-
-impl From<u8> for ChromaFormat {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => Self::Monochrome,
-            1 => Self::Chroma420,
-            2 => Self::Chroma422,
-            3 => Self::Chroma444,
-            _ => Self::Chroma420, // Default
-        }
-    }
 }
 
 /// Video Usability Information (VUI).

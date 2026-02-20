@@ -743,11 +743,15 @@ unsafe fn psnr_avx2(
     _mm256_storeu_si256(mse_array[8..16].as_mut_ptr() as *mut __m256i, mse_hi);
 
     // Process remainder with scalar code
-    // Use i32 to prevent overflow: 255-0=255, 255^2=65025 fits in i32
+    // Use i64 accumulation to prevent precision loss from repeated f64 additions
+    // Max diff: 255, max squared: 65025, max remainder: 31 pixels
+    // Max remainder sum: 31 * 65025 = 2,015,775 fits easily in i64
+    let mut remainder_mse: i64 = 0;
     for i in (chunks * 32)..size {
         let diff = (reference[i] as i32) - (distorted[i] as i32);
-        mse += (diff * diff) as f64;
+        remainder_mse += (diff * diff) as i64;
     }
+    mse += remainder_mse as f64;
 
     // Add SIMD contribution (sum of 16 32-bit values)
     // Security: Use u64 with saturating add to prevent overflow
@@ -846,11 +850,15 @@ unsafe fn psnr_sse2(
     _mm_storeu_si128(mse_array[4..8].as_mut_ptr() as *mut __m128i, mse_accum_hi);
 
     // Process remainder
-    // Use i32 to prevent overflow: 255-0=255, 255^2=65025 fits in i32
+    // Use i64 accumulation to prevent precision loss from repeated f64 additions
+    // Max diff: 255, max squared: 65025, max remainder: 15 pixels
+    // Max remainder sum: 15 * 65025 = 975,375 fits easily in i64
+    let mut remainder_mse: i64 = 0;
     for i in (chunks * 16)..size {
         let diff = (reference[i] as i32) - (distorted[i] as i32);
-        mse += (diff * diff) as f64;
+        remainder_mse += (diff * diff) as i64;
     }
+    mse += remainder_mse as f64;
 
     // Add SIMD contribution
     // Security: Use u64 to prevent overflow when processing large frames
@@ -942,10 +950,15 @@ unsafe fn psnr_neon(
     let simd_sum: u64 = mse_array.iter().map(|&x| x as u64).sum();
 
     // Process remainder
+    // Use i64 accumulation to prevent precision loss from repeated f64 additions
+    // Max diff: 255, max squared: 65025, max remainder: 15 pixels
+    // Max remainder sum: 15 * 65025 = 975,375 fits easily in i64
+    let mut remainder_mse: i64 = 0;
     for i in (chunks * 16)..size {
-        let diff = reference[i] as f64 - distorted[i] as f64;
-        mse += diff * diff;
+        let diff = (reference[i] as i32) - (distorted[i] as i32);
+        remainder_mse += (diff * diff) as i64;
     }
+    mse += remainder_mse as f64;
 
     mse += simd_sum as f64;
     mse /= size as f64;
