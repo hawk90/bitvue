@@ -148,6 +148,20 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install dav1d
 
+      - name: Free up disk space (Linux)
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          # Remove unnecessary packages and files to free up ~10GB
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          echo "Disk space after cleanup:"
+          df -h
+
       - name: Install dav1d (Linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
