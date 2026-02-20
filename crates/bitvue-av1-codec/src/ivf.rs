@@ -82,7 +82,7 @@ impl IvfFrame {
 /// # Example
 ///
 /// ```
-/// use bitvue_av1::ivf::IvfFrame;
+/// use bitvue_av1_codec::ivf::IvfFrame;
 ///
 /// let frame = IvfFrame::builder()
 ///     .size(1024)
