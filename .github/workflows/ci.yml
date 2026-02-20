@@ -119,7 +119,7 @@ jobs:
       - run: cargo clippy --workspace --lib --exclude abseil -- -D warnings
 
   test:
-    name: Test (Rust, ${{ matrix.os }})
+    name: Test (${{ matrix.crate }}, ${{ matrix.os }})
     needs: [changes, fmt, clippy]
     if: |
       always() &&
@@ -130,13 +130,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-24.04
-            name: Linux
-          - os: macos-latest
-            name: macOS
-          - os: windows-latest
-            name: Windows
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+        crate:
+          - core        # bitvue-core + bitvue-formats
+          - codecs-main # bitvue-avc + bitvue-hevc
+          - codecs-new  # bitvue-vp9 + bitvue-vvc + bitvue-av1-codec
+          - codecs-next # bitvue-av3-codec + bitvue-mpeg2-codec
+          - processing  # bitvue-decode + bitvue-metrics
+          - tools       # bitvue-cli + bitvue-mcp
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -188,10 +189,31 @@ jobs:
           echo "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" >> $env:GITHUB_PATH
 
       - name: Run tests
-        run: cargo test --workspace --exclude abseil --no-fail-fast
+        run: |
+          case "${{ matrix.crate }}" in
+            core)
+              cargo test -p bitvue-core -p bitvue-formats --no-fail-fast
+              ;;
+            codecs-main)
+              cargo test -p bitvue-avc -p bitvue-hevc --no-fail-fast
+              ;;
+            codecs-new)
+              cargo test -p bitvue-vp9 -p bitvue-vvc -p bitvue-av1-codec --no-fail-fast
+              ;;
+            codecs-next)
+              cargo test -p bitvue-av3-codec -p bitvue-mpeg2-codec --no-fail-fast
+              ;;
+            processing)
+              cargo test -p bitvue-decode -p bitvue-metrics --no-fail-fast
+              ;;
+            tools)
+              cargo test -p bitvue-cli -p bitvue-mcp --no-fail-fast
+              ;;
+          esac
         env:
           # Disable incremental compilation to save disk space
           CARGO_INCREMENTAL: 0
+        shell: bash
 
   # ================================
   # 4. Code Coverage (PR + main)
