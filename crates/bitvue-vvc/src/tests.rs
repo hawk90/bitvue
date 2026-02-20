@@ -46,7 +46,7 @@ fn test_parse_vvc_with_start_code() {
     let result = parse_vvc(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.nal_units.len() >= 0);
+    let _ = stream.nal_units.len(); // verify field is accessible
 }
 
 #[test]
@@ -704,8 +704,8 @@ fn test_parse_vvc_with_invalid_nal() {
     // Should either succeed with empty NALs or handle error gracefully
     match result {
         Ok(stream) => {
-            // Parser should skip invalid NAL
-            assert!(stream.nal_units.is_empty() || stream.nal_units.len() >= 0);
+            // Parser should skip invalid NAL (result may be empty or have partial units)
+            let _ = stream.nal_units.len(); // verify field is accessible
         }
         Err(_) => {
             // Or return error
