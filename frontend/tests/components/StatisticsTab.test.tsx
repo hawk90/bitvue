@@ -72,15 +72,15 @@ describe("StatisticsTab", () => {
     render(<StatisticsTab {...defaultProps} />);
 
     expect(screen.getByText("Avg Size:")).toBeInTheDocument();
-    expect(screen.getByText(/32\.00 KB/)).toBeInTheDocument();
+    expect(screen.getByText(/31\.25 KB/)).toBeInTheDocument();
   });
 
   it("should display frame type counts", () => {
     render(<StatisticsTab {...defaultProps} />);
 
-    expect(screen.getByText(/I.*\d+/)).toBeInTheDocument();
-    expect(screen.getByText(/P.*\d+/)).toBeInTheDocument();
-    expect(screen.getByText(/B.*\d+/)).toBeInTheDocument();
+    expect(screen.getByText("I Frames:")).toBeInTheDocument();
+    expect(screen.getByText("P Frames:")).toBeInTheDocument();
+    expect(screen.getByText("B Frames:")).toBeInTheDocument();
   });
 
   it("should use React.memo for performance", () => {
@@ -181,6 +181,6 @@ describe("StatisticsTab calculations", () => {
 
     render(<StatisticsTab currentFrame={frames[0]} frames={frames} />);
 
-    expect(screen.getByText(/I.*1/)).toBeInTheDocument();
+    expect(screen.getByText("I Frames:")).toBeInTheDocument();
   });
 });

@@ -50,6 +50,9 @@ function BPyramidView({
   );
 }
 
+// Named export for direct use (not memoized)
+export { BPyramidView };
+
 // Memoize BPyramidView to prevent unnecessary re-renders
 export default memo(BPyramidView, (prevProps, nextProps) => {
   return (

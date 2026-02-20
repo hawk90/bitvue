@@ -28,7 +28,7 @@ describe("formatBytes", () => {
   });
 
   it("should format small values", () => {
-    expect(formatBytes(512)).toBe("0.5 KB");
+    expect(formatBytes(512)).toBe("512 Bytes");
     expect(formatBytes(100)).toBe("100 Bytes");
   });
 });

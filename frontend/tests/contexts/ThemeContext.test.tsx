@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { ThemeProvider, useTheme } from "../ThemeContext";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 
 describe("ThemeContext", () => {
   beforeEach(() => {
@@ -174,6 +174,7 @@ describe("ThemeContext", () => {
     const { result: result1 } = renderHook(() => useTheme(), { wrapper });
     const { result: result2 } = renderHook(() => useTheme(), { wrapper });
 
+    // Both hooks start with the same default theme from their respective providers
     expect(result1.current.theme).toBe("light");
     expect(result2.current.theme).toBe("light");
 
@@ -181,8 +182,10 @@ describe("ThemeContext", () => {
       result1.current.setTheme("dark");
     });
 
+    // result1's provider state is updated
     expect(result1.current.theme).toBe("dark");
-    expect(result2.current.theme).toBe("dark");
+    // result2 uses a separate React tree, so it maintains its own state
+    expect(result2.current.theme).toBe("light");
   });
 
   it("should accept only valid theme values", () => {

@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
+import { invoke } from "@tauri-apps/api/core";
 import { HexViewTab } from "../HexViewTab";
 
 const mockFrames = [
@@ -217,19 +218,36 @@ describe("HexViewTab", () => {
   });
 
   it("should use frame_index for mock data generation", async () => {
-    const { container: container1 } = render(
+    // Render frame 0 and capture first hex byte
+    const { container: container1, unmount: unmount1 } = render(
       <HexViewTab frameIndex={0} frames={mockFrames} />,
     );
+
+    let hexBytes1: string;
+    await waitFor(() => {
+      const bytes = container1.querySelectorAll(".hex-byte");
+      expect(bytes.length).toBeGreaterThan(3);
+      // Join all byte values - frame index affects byte at position 3+
+      hexBytes1 = Array.from(bytes)
+        .map((b) => b.textContent)
+        .join("");
+    });
+
+    unmount1();
+
+    // Render frame 1 and capture hex bytes
     const { container: container2 } = render(
       <HexViewTab frameIndex={1} frames={mockFrames} />,
     );
 
-    await waitFor(async () => {
-      const byte1 = await waitFor(() => container1.querySelector(".hex-byte"));
-      const byte2 = await waitFor(() => container2.querySelector(".hex-byte"));
-
+    await waitFor(() => {
+      const bytes = container2.querySelectorAll(".hex-byte");
+      expect(bytes.length).toBeGreaterThan(3);
+      const hexBytes2 = Array.from(bytes)
+        .map((b) => b.textContent)
+        .join("");
       // Different frame indices should generate different mock data
-      expect(byte1?.textContent).not.toBe(byte2?.textContent);
+      expect(hexBytes2).not.toBe(hexBytes1!);
     });
   });
 
@@ -258,9 +276,12 @@ describe("HexViewTab", () => {
   });
 
   it("should show loading state initially", () => {
+    // Make invoke never resolve so we can observe the loading state
+    vi.mocked(invoke).mockImplementationOnce(() => new Promise(() => {}));
+
     render(<HexViewTab frameIndex={0} frames={mockFrames} />);
 
-    // Should show loading initially
+    // Should show loading initially (effect sets loading=true before awaiting invoke)
     expect(screen.getByText("Loading hex data...")).toBeInTheDocument();
   });
 });

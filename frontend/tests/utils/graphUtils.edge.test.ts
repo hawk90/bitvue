@@ -12,7 +12,7 @@ import {
   generateAreaPath,
   calculateRollingAverage,
   type DataPoint,
-} from "../graphUtils";
+} from "@/utils/graphUtils";
 
 describe("calculateScales edge cases", () => {
   describe("empty data", () => {

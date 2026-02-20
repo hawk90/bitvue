@@ -5,7 +5,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { StreamDataProvider, useStreamData } from "../StreamDataContext";
+import {
+  StreamDataProvider,
+  useStreamData,
+} from "@/contexts/StreamDataContext";
 import type { FrameInfo } from "@/types/video";
 
 // Mock Tauri invoke - must be done this way for Vitest hoisting

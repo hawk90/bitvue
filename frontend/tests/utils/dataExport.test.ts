@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as dataExport from "../dataExport";
+import * as dataExport from "@/utils/dataExport";
 
 describe("dataExport utilities", () => {
   const mockFrames = [

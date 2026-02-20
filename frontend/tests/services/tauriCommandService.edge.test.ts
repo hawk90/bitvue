@@ -11,7 +11,7 @@ import {
   TauriCommandError,
   invokeCommand,
   safeInvokeCommand,
-} from "../tauriCommandService";
+} from "@/services/tauriCommandService";
 
 // Mock the Tauri invoke function
 const mockInvoke = vi.fn();

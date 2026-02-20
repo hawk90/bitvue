@@ -8,6 +8,12 @@
  */
 
 import { ReactNode, memo } from "react";
+import {
+  calculateScales,
+  generateLinePath,
+  generateAreaPath,
+  calculateRollingAverage,
+} from "../utils/graphUtils";
 
 // Re-export utilities from utils/graphUtils for backwards compatibility
 export {

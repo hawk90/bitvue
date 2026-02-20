@@ -2,7 +2,11 @@ import { render as rtlRender, RenderOptions } from "@testing-library/react";
 import { ReactElement } from "react";
 import { ModeProvider } from "../contexts/ModeContext";
 import { SelectionProvider } from "../contexts/SelectionContext";
-import { StreamDataProvider } from "../contexts/StreamDataContext";
+import {
+  FrameDataProvider,
+  FileStateProvider,
+  CurrentFrameProvider,
+} from "../contexts/StreamDataContext";
 import { LayoutProvider } from "../contexts/LayoutContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
 
@@ -13,11 +17,15 @@ function AllTheProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <LayoutProvider>
-        <StreamDataProvider>
-          <SelectionProvider>
-            <ModeProvider>{children}</ModeProvider>
-          </SelectionProvider>
-        </StreamDataProvider>
+        <FrameDataProvider>
+          <FileStateProvider>
+            <CurrentFrameProvider>
+              <SelectionProvider>
+                <ModeProvider>{children}</ModeProvider>
+              </SelectionProvider>
+            </CurrentFrameProvider>
+          </FileStateProvider>
+        </FrameDataProvider>
       </LayoutProvider>
     </ThemeProvider>
   );

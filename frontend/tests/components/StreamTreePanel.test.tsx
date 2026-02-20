@@ -13,7 +13,24 @@ import { mockFrames } from "@/test/test-utils";
 import { useStreamData } from "@/contexts/StreamDataContext";
 
 // Mock context
-vi.mock("@/contexts/StreamDataContext");
+vi.mock("@/contexts/StreamDataContext", () => ({
+  useStreamData: vi.fn(),
+  useFrameData: vi.fn(),
+  useFileState: vi.fn(),
+  useCurrentFrame: vi.fn(),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  StreamDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
 
 describe.skip("StreamTreePanel", () => {
   const defaultProps = {

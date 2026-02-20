@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useWindowEvent, useWindowEvents } from "../useWindowEvent";
+import { useWindowEvent, useWindowEvents } from "@/hooks/useWindowEvent";
 
 // Mock window.addEventListener and removeEventListener
 const addEventListenerSpy = vi.spyOn(window, "addEventListener");
@@ -83,9 +83,10 @@ describe("useWindowEvent", () => {
 
     rerender({ h: handler2 });
 
-    // Both handlers should have been registered at different times
+    // Hook uses ref pattern - listener stays registered, handler updates via ref
+    // No re-registration needed when only handler changes
     expect(addEventListenerSpy).toHaveBeenCalledTimes(1);
-    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(0);
   });
 
   it("should support multiple event types", () => {
@@ -222,9 +223,12 @@ describe("useWindowEvent edge cases", () => {
 
     renderHook(() => useWindowEvent("resize", handler));
 
-    const listener = addEventListenerSpy.mock.calls[0][1];
+    // Use find to get the resize listener specifically (previous tests may have registered other listeners)
+    const listener = addEventListenerSpy.mock.calls.find(
+      (c) => c[0] === "resize",
+    )?.[1];
 
-    listener(new Event("resize"));
+    listener?.(new Event("resize"));
 
     expect(handler).toHaveBeenCalledWith(expect.any(Event));
   });

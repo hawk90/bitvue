@@ -31,24 +31,39 @@ vi.mock("@/utils/css", () => ({
 }));
 
 // Mock all overlay renderers
-vi.mock("../OverlayRenderer/renderers/CodingFlowRenderer", () => ({
-  CodingFlowOverlay: vi.fn(),
-}));
-vi.mock("../OverlayRenderer/renderers/PredictionRenderer", () => ({
-  PredictionOverlay: vi.fn(),
-}));
-vi.mock("../OverlayRenderer/renderers/TransformRenderer", () => ({
-  TransformOverlay: vi.fn(),
-}));
-vi.mock("../OverlayRenderer/renderers/QPMapRenderer", () => ({
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/CodingFlowRenderer",
+  () => ({
+    CodingFlowOverlay: vi.fn(),
+  }),
+);
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/PredictionRenderer",
+  () => ({
+    PredictionOverlay: vi.fn(),
+  }),
+);
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/TransformRenderer",
+  () => ({
+    TransformOverlay: vi.fn(),
+  }),
+);
+vi.mock("@/components/panels/OverlayRenderer/renderers/QPMapRenderer", () => ({
   QPMapOverlay: vi.fn(),
 }));
-vi.mock("../OverlayRenderer/renderers/MVFieldRenderer", () => ({
-  MVFieldOverlay: vi.fn(),
-}));
-vi.mock("../OverlayRenderer/renderers/ReferenceRenderer", () => ({
-  ReferenceOverlay: vi.fn(),
-}));
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/MVFieldRenderer",
+  () => ({
+    MVFieldOverlay: vi.fn(),
+  }),
+);
+vi.mock(
+  "@/components/panels/OverlayRenderer/renderers/ReferenceRenderer",
+  () => ({
+    ReferenceOverlay: vi.fn(),
+  }),
+);
 
 // Create a mock canvas and context
 function createMockCanvas(width: number, height: number): HTMLCanvasElement {

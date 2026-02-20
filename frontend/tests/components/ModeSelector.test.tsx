@@ -8,7 +8,7 @@ import { render, screen, fireEvent } from "@/test/test-utils";
 import { ModeSelector } from "../YuvViewerPanel/ModeSelector";
 
 // Mock MODES constant - path from __tests__ directory
-vi.mock("../../contexts/ModeContext", () => ({
+vi.mock("@/contexts/ModeContext", () => ({
   MODES: [
     {
       key: "overview",

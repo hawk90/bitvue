@@ -8,7 +8,7 @@ import {
   extractFileName,
   extractFileExtension,
   formatFileSize,
-} from "../platform";
+} from "@/types/platform";
 
 describe("extractFileName", () => {
   it("should extract filename from Unix path", () => {

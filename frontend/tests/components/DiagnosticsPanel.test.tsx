@@ -8,32 +8,77 @@ import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
 import { DiagnosticsPanel } from "@/components/panels/DiagnosticsPanel";
 import type { FrameInfo } from "@/types/video";
 
-// Mock context
-const mockUseStreamData = vi.fn();
+// Mock individual context hooks that DiagnosticsPanel uses
+const mockFrames = [
+  { frame_index: 0, frame_type: "I", size: 150000, key_frame: true },
+  { frame_index: 1, frame_type: "P", size: 25000, key_frame: false },
+] as FrameInfo[];
 
-const defaultStreamData = {
-  frames: [
-    { frame_index: 0, frame_type: "I", size: 150000, key_frame: true },
-    { frame_index: 1, frame_type: "P", size: 25000, key_frame: false },
-  ] as FrameInfo[],
-  filePath: null,
-  loading: false,
-  error: null,
-  currentFrameIndex: 1,
-  setCurrentFrameIndex: vi.fn(),
-  refreshFrames: vi.fn(),
-  clearData: vi.fn(),
-  getFrameStats: vi.fn(),
-  setFilePath: vi.fn(),
-};
-
-vi.mock("@/contexts/StreamDataContext", () => ({
-  useStreamData: () => mockUseStreamData(),
-  StreamDataProvider: ({ children }: { children: React.ReactNode }) => children,
+vi.mock("@/contexts/FrameDataContext", () => ({
+  useFrameData: vi.fn(),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
+vi.mock("@/contexts/CurrentFrameContext", () => ({
+  useCurrentFrame: vi.fn(),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/FileStateContext", () => ({
+  useFileState: vi.fn(),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/StreamDataContext", () => ({
+  useStreamData: vi.fn(),
+  useFrameData: vi.fn(),
+  useFileState: vi.fn(),
+  useCurrentFrame: vi.fn(),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  StreamDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+import { useFrameData } from "@/contexts/FrameDataContext";
+import { useCurrentFrame } from "@/contexts/CurrentFrameContext";
+import { useFileState } from "@/contexts/FileStateContext";
+
 beforeEach(() => {
-  mockUseStreamData.mockReturnValue(defaultStreamData);
+  vi.mocked(useFrameData).mockReturnValue({
+    frames: mockFrames,
+    setFrames: vi.fn(),
+    getFrameStats: vi.fn(),
+  } as any);
+  vi.mocked(useCurrentFrame).mockReturnValue({
+    currentFrameIndex: 1,
+    setCurrentFrameIndex: vi.fn(),
+  } as any);
+  vi.mocked(useFileState).mockReturnValue({
+    filePath: null,
+    loading: false,
+    error: null,
+    setFilePath: vi.fn(),
+    refreshFrames: vi.fn(),
+    clearData: vi.fn(),
+    hasMoreFrames: false,
+    totalFrames: 0,
+    loadMoreFrames: vi.fn(),
+  } as any);
 });
 
 const mockDiagnostics = [
@@ -74,8 +119,7 @@ describe("DiagnosticsPanel", () => {
 
   it("should render empty state when no diagnostics", () => {
     // Provide frames with size < 100000 to avoid auto-generated diagnostics
-    mockUseStreamData.mockReturnValue({
-      ...defaultStreamData,
+    vi.mocked(useFrameData).mockReturnValue({
       frames: [
         { frame_index: 0, frame_type: "I", size: 50000, key_frame: true },
         {
@@ -86,7 +130,9 @@ describe("DiagnosticsPanel", () => {
           ref_frames: ["frame_0"],
         },
       ] as FrameInfo[],
-    });
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
 
     render(<DiagnosticsPanel diagnostics={[]} />);
 
@@ -222,10 +268,17 @@ describe("DiagnosticsPanel", () => {
   });
 
   it("should handle stream errors", () => {
-    mockUseStreamData.mockReturnValue({
-      ...defaultStreamData,
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
       error: "Stream parse error",
-    });
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn(),
+      clearData: vi.fn(),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      loadMoreFrames: vi.fn(),
+    } as any);
 
     render(<DiagnosticsPanel diagnostics={[]} />);
 

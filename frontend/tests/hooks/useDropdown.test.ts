@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useDropdown } from "../useDropdown";
+import { useDropdown } from "@/hooks/useDropdown";
 
 describe("useDropdown", () => {
   it("should start with initial open state", () => {
@@ -208,6 +208,6 @@ describe("useDropdown", () => {
 
     // Should end up with final state after all toggles
     expect(result.current.isOpen).toBe(true);
-    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 });

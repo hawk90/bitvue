@@ -7,8 +7,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@/test/test-utils";
 import { VideoCanvas } from "../YuvViewerPanel/VideoCanvas";
 
-// Mock ModeOverlayRenderer
-vi.mock("../ModeOverlayRenderer", () => ({
+// Mock OverlayRenderer (VideoCanvas imports renderModeOverlay from "../OverlayRenderer")
+vi.mock("../OverlayRenderer", () => ({
   renderModeOverlay: vi.fn(),
 }));
 

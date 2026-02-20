@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, renderWithoutProviders } from "@/test/test-utils";
 import { StatisticsPanel } from "@/components/panels/StatisticsPanel";
-import * as StreamDataContext from "@/contexts/StreamDataContext";
+import * as FrameDataContext from "@/contexts/FrameDataContext";
 
 // Mock data
 const mockFrames = [
@@ -63,14 +63,11 @@ const mockGetFrameStats = () => ({
   keyFrames: 1,
 });
 
-// Mock the useStreamData hook
-vi.spyOn(StreamDataContext, "useStreamData").mockReturnValue({
+// Mock the useFrameData hook - StatisticsPanel imports from FrameDataContext directly
+vi.spyOn(FrameDataContext, "useFrameData").mockReturnValue({
   frames: mockFrames,
-  currentFrameIndex: 1,
   getFrameStats: mockGetFrameStats,
-  loading: false,
-  error: null,
-  setFilePath: vi.fn(),
+  setFrames: vi.fn(),
 });
 
 describe("StatisticsPanel", () => {
@@ -138,9 +135,8 @@ describe("StatisticsPanel with empty frames", () => {
   });
 
   it("should handle empty frames array", () => {
-    vi.spyOn(StreamDataContext, "useStreamData").mockReturnValue({
+    vi.spyOn(FrameDataContext, "useFrameData").mockReturnValue({
       frames: [],
-      currentFrameIndex: 0,
       getFrameStats: () => ({
         totalFrames: 0,
         frameTypes: {},
@@ -148,9 +144,7 @@ describe("StatisticsPanel with empty frames", () => {
         avgSize: 0,
         keyFrames: 0,
       }),
-      loading: false,
-      error: null,
-      setFilePath: vi.fn(),
+      setFrames: vi.fn(),
     });
 
     render(<StatisticsPanel />);
@@ -187,9 +181,8 @@ describe("StatisticsPanel calculations", () => {
       },
     ];
 
-    vi.spyOn(StreamDataContext, "useStreamData").mockReturnValue({
+    vi.spyOn(FrameDataContext, "useFrameData").mockReturnValue({
       frames: mockIFrameData,
-      currentFrameIndex: 0,
       getFrameStats: () => ({
         totalFrames: 2,
         frameTypes: { I: 2 },
@@ -197,9 +190,7 @@ describe("StatisticsPanel calculations", () => {
         avgSize: 55000,
         keyFrames: 2,
       }),
-      loading: false,
-      error: null,
-      setFilePath: vi.fn(),
+      setFrames: vi.fn(),
     });
 
     const { container } = render(<StatisticsPanel />);
@@ -232,9 +223,8 @@ describe("StatisticsPanel calculations", () => {
       },
     ];
 
-    vi.spyOn(StreamDataContext, "useStreamData").mockReturnValue({
+    vi.spyOn(FrameDataContext, "useFrameData").mockReturnValue({
       frames: mockAvgData,
-      currentFrameIndex: 0,
       getFrameStats: () => ({
         totalFrames: 2,
         frameTypes: { I: 1, P: 1 },
@@ -242,9 +232,7 @@ describe("StatisticsPanel calculations", () => {
         avgSize: 40000,
         keyFrames: 1,
       }),
-      loading: false,
-      error: null,
-      setFilePath: vi.fn(),
+      setFrames: vi.fn(),
     });
 
     const { container } = render(<StatisticsPanel />);

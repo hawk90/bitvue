@@ -7,12 +7,17 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@/test/test-utils";
 import { DebugPanel, DebugPanelToggle } from "../DebugPanel";
 
-// Mock SelectionContext
-vi.mock("../contexts/SelectionContext", () => ({
-  useSelection: () => ({
-    selection: { stream: "A", frame: { frameIndex: 5 } },
-  }),
-}));
+// Mock SelectionContext - use @/ alias to resolve to the real module
+vi.mock("@/contexts/SelectionContext", async (importOriginal) => {
+  const mod =
+    await importOriginal<typeof import("@/contexts/SelectionContext")>();
+  return {
+    ...mod,
+    useSelection: () => ({
+      selection: { stream: "A", frame: { frameIndex: 5 } },
+    }),
+  };
+});
 
 const mockFrames = [
   { frame_index: 0, frame_type: "I", size: 50000, poc: 0, key_frame: true },
@@ -109,7 +114,8 @@ describe("DebugPanel", () => {
   it("should show with references count", () => {
     render(<DebugPanel frames={mockFrames} visible={true} onClose={vi.fn()} />);
 
-    expect(screen.getByText("3")).toBeInTheDocument();
+    const threes = screen.queryAllByText("3");
+    expect(threes.length).toBeGreaterThan(0);
   });
 });
 
@@ -155,7 +161,8 @@ describe("DebugPanel current frame", () => {
 
     // Check that the current frame section contains "Display Order"
     expect(screen.getByText("Display Order")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument(); // There are multiple 5s, but at least one exists
+    const fives = screen.queryAllByText("5");
+    expect(fives.length).toBeGreaterThan(0);
   });
 
   it("should show coding order", () => {
@@ -163,7 +170,8 @@ describe("DebugPanel current frame", () => {
 
     // Check that the current frame section contains "Coding Order" and "3"
     expect(screen.getByText("Coding Order")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument(); // There are multiple 3s, but at least one exists
+    const threes = screen.queryAllByText("3");
+    expect(threes.length).toBeGreaterThan(0);
   });
 
   it("should show POC", () => {
@@ -171,7 +179,8 @@ describe("DebugPanel current frame", () => {
 
     // Check that the current frame section contains "POC"
     expect(screen.getByText("POC")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument(); // POC value is 5
+    const fives = screen.queryAllByText("5");
+    expect(fives.length).toBeGreaterThan(0);
   });
 
   it("should show reference frames", () => {

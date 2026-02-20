@@ -38,8 +38,8 @@ function isValidBookmark(data: unknown): data is Bookmark {
     return false;
   }
 
-  // Prevent prototype pollution
-  if (Object.prototype.isPrototypeOf(data)) {
+  // Prevent prototype pollution: ensure data is a plain object
+  if (Object.getPrototypeOf(data) !== Object.prototype) {
     return false;
   }
 

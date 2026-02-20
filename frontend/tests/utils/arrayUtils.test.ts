@@ -116,8 +116,8 @@ describe("shuffle", () => {
 });
 
 describe("flatten", () => {
-  const flatten = <T>(array: (T | T[])[][]): T[] => {
-    return array.flat(2) as T[];
+  const flatten = <T>(array: unknown[]): T[] => {
+    return (array as unknown[]).flat(Infinity) as T[];
   };
 
   it("should flatten nested arrays", () => {

@@ -24,7 +24,7 @@ import {
   type ErrorWithCode,
   type TauriError,
   type TauriSuccess,
-} from "../typeGuards";
+} from "@/utils/typeGuards";
 
 describe("isObject", () => {
   it("should return true for plain objects", () => {

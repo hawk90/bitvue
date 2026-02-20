@@ -11,7 +11,7 @@ import {
   isMac,
   KeyboardShortcutHandler,
   globalShortcutHandler,
-} from "../keyboardShortcuts";
+} from "@/utils/keyboardShortcuts";
 
 // Mock navigator.platform for platform detection
 const originalPlatform = Object.getOwnPropertyDescriptor(navigator, "platform");

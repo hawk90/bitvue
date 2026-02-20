@@ -9,7 +9,7 @@ import {
   findNextFrameByType,
   findPrevFrameByType,
   findFrameByNumber,
-} from "../frameNavigation";
+} from "@/utils/frameNavigation";
 import { mockFrames } from "@/test/test-utils";
 
 describe("findNextKeyframe", () => {

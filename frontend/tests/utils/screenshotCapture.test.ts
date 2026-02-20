@@ -10,7 +10,7 @@ import {
   captureFrame,
   copyCanvasToClipboard,
   getTimestampFilename,
-} from "../screenshotCapture";
+} from "@/utils/screenshotCapture";
 
 // Mock toDataURL and clipboard API
 const mockToDataURL = vi.fn();

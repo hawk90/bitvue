@@ -39,33 +39,23 @@ import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useAppDialogs } from "./hooks/useAppDialogs";
 
 // Lazy load dialog components - only loaded when needed
-// In test environment, use regular imports to avoid async loading issues
-const KeyboardShortcutsDialog =
-  process.env.NODE_ENV === "test"
-    ? require("./components/KeyboardShortcutsDialog").KeyboardShortcutsDialog
-    : lazy(() =>
-        import("./components/KeyboardShortcutsDialog").then((m) => ({
-          default: m.KeyboardShortcutsDialog,
-        })),
-      );
+const KeyboardShortcutsDialog = lazy(() =>
+  import("./components/KeyboardShortcutsDialog").then((m) => ({
+    default: m.KeyboardShortcutsDialog,
+  })),
+);
 
-const ErrorDialog =
-  process.env.NODE_ENV === "test"
-    ? require("./components/ErrorDialog").ErrorDialog
-    : lazy(() =>
-        import("./components/ErrorDialog").then((m) => ({
-          default: m.ErrorDialog,
-        })),
-      );
+const ErrorDialog = lazy(() =>
+  import("./components/ErrorDialog").then((m) => ({
+    default: m.ErrorDialog,
+  })),
+);
 
-const ExportDialog =
-  process.env.NODE_ENV === "test"
-    ? require("./components/ExportDialog").ExportDialog
-    : lazy(() =>
-        import("./components/ExportDialog").then((m) => ({
-          default: m.ExportDialog,
-        })),
-      );
+const ExportDialog = lazy(() =>
+  import("./components/ExportDialog").then((m) => ({
+    default: m.ExportDialog,
+  })),
+);
 
 // Loading fallback for lazy-loaded components
 function DialogLoadingFallback() {
@@ -401,22 +391,15 @@ function AppContent() {
       </ErrorBoundary>
 
       {/* Keyboard Shortcuts Dialog */}
-      {process.env.NODE_ENV === "test" ? (
+      <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
         <KeyboardShortcutsDialog
           isOpen={showShortcuts}
           onClose={() => setShowShortcuts(false)}
         />
-      ) : (
-        <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
-          <KeyboardShortcutsDialog
-            isOpen={showShortcuts}
-            onClose={() => setShowShortcuts(false)}
-          />
-        </LazyDialogWrapper>
-      )}
+      </LazyDialogWrapper>
 
       {/* Error Dialog */}
-      {process.env.NODE_ENV === "test" ? (
+      <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
         <ErrorDialog
           isOpen={errorDialog.isOpen}
           title={errorDialog.title}
@@ -425,21 +408,10 @@ function AppContent() {
           errorCode={errorDialog.errorCode}
           onClose={closeErrorDialog}
         />
-      ) : (
-        <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
-          <ErrorDialog
-            isOpen={errorDialog.isOpen}
-            title={errorDialog.title}
-            message={errorDialog.message}
-            details={errorDialog.details}
-            errorCode={errorDialog.errorCode}
-            onClose={closeErrorDialog}
-          />
-        </LazyDialogWrapper>
-      )}
+      </LazyDialogWrapper>
 
       {/* Export Dialog */}
-      {process.env.NODE_ENV === "test" ? (
+      <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
         <ExportDialog
           isOpen={showExportDialog}
           onClose={() => setShowExportDialog(false)}
@@ -448,18 +420,7 @@ function AppContent() {
           width={fileInfo?.width}
           height={fileInfo?.height}
         />
-      ) : (
-        <LazyDialogWrapper fallback={<DialogLoadingFallback />}>
-          <ExportDialog
-            isOpen={showExportDialog}
-            onClose={() => setShowExportDialog(false)}
-            frames={frames}
-            codec={fileInfo?.codec}
-            width={fileInfo?.width}
-            height={fileInfo?.height}
-          />
-        </LazyDialogWrapper>
-      )}
+      </LazyDialogWrapper>
     </SelectionProvider>
   );
 }

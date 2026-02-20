@@ -97,7 +97,7 @@ export const mockFrames: FrameInfo[] = [
  */
 export function generateMockFrames(count: number): FrameInfo[] {
   const frames: FrameInfo[] = [];
-  let gopCounter = 0;
+  const gopCounter = 0;
 
   for (let i = 0; i < count; i++) {
     const isI = i % 12 === 0;

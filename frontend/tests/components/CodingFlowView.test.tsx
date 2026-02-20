@@ -15,7 +15,7 @@ describe("CodingFlowView", () => {
 
   it("renders without crashing", () => {
     render(<CodingFlowView frame={mockFrame} codec="hevc" />);
-    expect(screen.getByText("Coding Flow")).toBeInTheDocument();
+    expect(screen.getByText(/Coding Flow/)).toBeInTheDocument();
   });
 
   it("displays frame information", () => {

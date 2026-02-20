@@ -155,7 +155,7 @@ describe("DetailsPanel edge cases", () => {
 
     const values = screen.getAllByText("2");
     expect(values).toContainEqual(expect.any(HTMLElement));
-    expect(screen.getByText("N/A")).toBeInTheDocument();
+    expect(screen.getAllByText("N/A").length).toBeGreaterThan(0);
     expect(screen.getByText("None")).toBeInTheDocument();
   });
 

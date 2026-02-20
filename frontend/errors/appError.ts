@@ -446,7 +446,7 @@ export function jsErrorToAppError(
 export async function fetchErrorToAppError(
   response: Response,
 ): Promise<AppError> {
-  let message = `HTTP ${response.status}: ${response.statusText}`;
+  const message = `HTTP ${response.status}: ${response.statusText}`;
   let details: string | undefined;
 
   try {

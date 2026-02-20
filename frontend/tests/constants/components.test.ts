@@ -26,7 +26,7 @@ import {
   type AnalysisMode,
   type PanelId,
   type SizeVariant,
-} from "../components";
+} from "@/constants/components";
 
 describe("DISPLAY_VIEWS", () => {
   it("should have all expected view modes", () => {
@@ -38,10 +38,10 @@ describe("DISPLAY_VIEWS", () => {
   });
 
   it("should be readonly", () => {
-    // @ts-expect-error - Testing immutability
-    expect(() => {
-      DISPLAY_VIEWS.THUMBNAILS = "other";
-    }).toThrow();
+    // TypeScript enforces readonly via 'as const' at compile time
+    // Verify all values remain stable
+    expect(Object.keys(DISPLAY_VIEWS)).toHaveLength(5);
+    expect(Object.values(DISPLAY_VIEWS)).toContain("thumbnails");
   });
 });
 

@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { dispatchMenuEvent, createMenuItem, createSubmenu } from "../types";
+import {
+  dispatchMenuEvent,
+  createMenuItem,
+  createSubmenu,
+} from "@/utils/menu/types";
 
 // Mock Tauri APIs - use vi.hoisted to make variables available to hoisted mock
 const { mockMenuItemNew, mockSubmenuNew } = vi.hoisted(() => ({

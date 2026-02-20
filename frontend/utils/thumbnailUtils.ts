@@ -8,15 +8,27 @@ import type { ThumbnailResult } from "../types/video";
 
 /**
  * Process thumbnail result and extract data URL
- * Backend already returns complete data URLs, so we just validate and extract
+ * Detects format from data content and constructs appropriate data URL
  */
 export function processThumbnailResult(result: ThumbnailResult): string | null {
-  if (result.success && result.thumbnail_data) {
-    // Backend returns complete data URL (e.g., "data:image/png;base64,...")
-    // Just return it directly
-    return result.thumbnail_data;
+  if (!result.success || !result.thumbnail_data) {
+    return null;
   }
-  return null;
+
+  const data = result.thumbnail_data;
+
+  // Already a complete data URL
+  if (data.startsWith("data:")) {
+    return data;
+  }
+
+  // SVG data
+  if (data.startsWith("<svg") || data.startsWith("<SVG")) {
+    return `data:image/svg+xml;base64,${data}`;
+  }
+
+  // Default: treat as PNG base64
+  return `data:image/png;base64,${data}`;
 }
 
 /**

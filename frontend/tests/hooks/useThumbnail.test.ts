@@ -23,7 +23,7 @@ vi.mock("../../utils/logger", () => ({
 
 // Import after mocking
 import { invoke } from "@tauri-apps/api/core";
-import { useThumbnail, ThumbnailResult } from "../useThumbnail";
+import { useThumbnail, ThumbnailResult } from "@/hooks/useThumbnail";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 

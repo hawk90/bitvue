@@ -18,7 +18,7 @@ import {
   type FileInfo,
   type StreamStats,
   type ReferenceSlot,
-} from "../video";
+} from "@/types/video";
 
 describe("FrameType enum", () => {
   it("should have I frame type", () => {

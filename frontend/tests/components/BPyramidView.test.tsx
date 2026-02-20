@@ -5,14 +5,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@/test/test-utils";
-import { BPyramidView } from "../BPyramidView";
+import BPyramidView from "../BPyramidView";
 import { analyzeTemporalLevels } from "../BPyramidTimeline";
 import type { FrameInfo } from "@/types/video";
-import { usePreRenderedArrows } from "@/components/Filmstrip/usePreRenderedArrows";
+import { usePreRenderedArrows } from "@/components/usePreRenderedArrows";
 import { getFrameTypeColor } from "@/types/video";
 
 // Mock usePreRenderedArrows hook
-vi.mock("@/components/Filmstrip/usePreRenderedArrows", () => ({
+vi.mock("@/components/usePreRenderedArrows", () => ({
   usePreRenderedArrows: vi.fn(() => ({
     allArrowData: [],
     svgWidth: 0,

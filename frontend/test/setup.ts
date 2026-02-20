@@ -131,6 +131,45 @@ vi.mock("react-resizable-panels", () => ({
     ),
 }));
 
+// Mock scrollIntoView for jsdom (not implemented in jsdom)
+HTMLElement.prototype.scrollIntoView = vi.fn();
+
+// Mock ClipboardItem for jsdom (not implemented in jsdom)
+if (typeof ClipboardItem === "undefined") {
+  global.ClipboardItem = class MockClipboardItem {
+    constructor(data: Record<string, Blob>) {
+      Object.assign(this, data);
+    }
+  } as unknown as typeof ClipboardItem;
+}
+
+// Mock IntersectionObserver for components that use it
+const mockIntersectionObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+  takeRecords: vi.fn().mockReturnValue([]),
+}));
+Object.defineProperty(window, "IntersectionObserver", {
+  writable: true,
+  configurable: true,
+  value: mockIntersectionObserver,
+});
+global.IntersectionObserver = mockIntersectionObserver;
+
+// Mock ResizeObserver for components that use it
+const mockResizeObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}));
+Object.defineProperty(window, "ResizeObserver", {
+  writable: true,
+  configurable: true,
+  value: mockResizeObserver,
+});
+global.ResizeObserver = mockResizeObserver;
+
 // Mock window.matchMedia for responsive tests
 Object.defineProperty(window, "matchMedia", {
   writable: true,

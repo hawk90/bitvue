@@ -10,7 +10,7 @@ import ThumbnailsView from "../ThumbnailsView";
 import type { FrameInfo } from "@/types/video";
 
 describe.skip("ThumbnailsView", () => {
-  vi.mock("@/components/Filmstrip/usePreRenderedArrows", () => ({
+  vi.mock("@/components/usePreRenderedArrows", () => ({
     usePreRenderedArrows: vi.fn(() => ({
       allArrowData: [],
       svgWidth: 0,
@@ -388,7 +388,7 @@ describe.skip("ThumbnailsView", () => {
     it("should render SVG overlay when arrows exist", () => {
       const {
         usePreRenderedArrows,
-      } = require("@/components/Filmstrip/usePreRenderedArrows");
+      } = require("@/components/usePreRenderedArrows");
       usePreRenderedArrows.mockReturnValue({
         allArrowData: [
           { sourceFrameIndex: 1, targetFrameIndex: 0, pathData: "M0,0 L10,10" },

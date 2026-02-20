@@ -344,6 +344,9 @@ function Filmstrip({
   );
 }
 
+// Named export for direct use in tests
+export { Filmstrip };
+
 // Memoize Filmstrip to prevent unnecessary re-renders
 export const MemoizedFilmstrip = memo(Filmstrip, (prevProps, nextProps) => {
   // Only re-render if frames array reference changed (not just contents)

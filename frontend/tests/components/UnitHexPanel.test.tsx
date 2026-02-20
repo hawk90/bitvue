@@ -8,22 +8,77 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { UnitHexPanel } from "../UnitHexPanel";
 
 // Mock context
-vi.mock("../../../contexts/StreamDataContext", () => ({
+const _unitHexMockFrames = [
+  { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+  { frame_index: 1, frame_type: "P", size: 30000, poc: 1, ref_frames: [0] },
+  {
+    frame_index: 2,
+    frame_type: "B",
+    size: 20000,
+    poc: 2,
+    ref_frames: [0, 1],
+  },
+];
+
+vi.mock("@/contexts/StreamDataContext", () => ({
   useStreamData: () => ({
-    frames: [
-      { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
-      { frame_index: 1, frame_type: "P", size: 30000, poc: 1, ref_frames: [0] },
-      {
-        frame_index: 2,
-        frame_type: "B",
-        size: 20000,
-        poc: 2,
-        ref_frames: [0, 1],
-      },
-    ],
+    frames: _unitHexMockFrames,
     currentFrameIndex: 1,
     filePath: "/test/path",
   }),
+  useFrameData: () => ({
+    frames: _unitHexMockFrames,
+    setFrames: () => {},
+    getFrameStats: () => {},
+  }),
+  useFileState: () => ({
+    filePath: "/test/path",
+    loading: false,
+    error: null,
+    setFilePath: () => {},
+    refreshFrames: () => Promise.resolve([]),
+    clearData: () => {},
+    hasMoreFrames: false,
+    totalFrames: 0,
+    loadMoreFrames: () => Promise.resolve([]),
+  }),
+  useCurrentFrame: () => ({
+    currentFrameIndex: 1,
+    setCurrentFrameIndex: () => {},
+  }),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  StreamDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/FrameDataContext", () => ({
+  useFrameData: () => ({
+    frames: _unitHexMockFrames,
+    setFrames: () => {},
+    getFrameStats: () => {},
+  }),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/CurrentFrameContext", () => ({
+  useCurrentFrame: () => ({
+    currentFrameIndex: 1,
+    setCurrentFrameIndex: () => {},
+  }),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
 describe("UnitHexPanel", () => {

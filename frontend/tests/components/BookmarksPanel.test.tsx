@@ -8,14 +8,58 @@ import { render, screen, fireEvent, waitFor, within } from "@/test/test-utils";
 import { BookmarksPanel } from "../BookmarksPanel";
 
 // Mock contexts
-vi.mock("../contexts/SelectionContext", () => ({
+vi.mock("@/contexts/SelectionContext", () => ({
   useSelection: () => ({
     selection: { frame: { frameIndex: 5 } },
     setFrameSelection: vi.fn(),
   }),
+  SelectionProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
-vi.mock("../contexts/StreamDataContext", () => ({
+vi.mock("@/contexts/FrameDataContext", () => ({
+  useFrameData: () => ({
+    frames: [
+      { frame_index: 5, frame_type: "I", size: 50000, poc: 0 },
+      { frame_index: 10, frame_type: "P", size: 30000, poc: 1 },
+    ],
+    setFrames: () => {},
+    getFrameStats: () => {},
+  }),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/CurrentFrameContext", () => ({
+  useCurrentFrame: () => ({
+    currentFrameIndex: 5,
+    setCurrentFrameIndex: () => {},
+  }),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/FileStateContext", () => ({
+  useFileState: () => ({
+    filePath: null,
+    loading: false,
+    error: null,
+    setFilePath: () => {},
+    refreshFrames: () => Promise.resolve([]),
+    clearData: () => {},
+    hasMoreFrames: false,
+    totalFrames: 0,
+    loadMoreFrames: () => Promise.resolve([]),
+  }),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/StreamDataContext", () => ({
   useStreamData: () => ({
     frames: [
       { frame_index: 5, frame_type: "I", size: 50000, poc: 0 },
@@ -23,6 +67,41 @@ vi.mock("../contexts/StreamDataContext", () => ({
     ],
     currentFrameIndex: 5,
   }),
+  useFrameData: () => ({
+    frames: [
+      { frame_index: 5, frame_type: "I", size: 50000, poc: 0 },
+      { frame_index: 10, frame_type: "P", size: 30000, poc: 1 },
+    ],
+    setFrames: () => {},
+    getFrameStats: () => {},
+  }),
+  useFileState: () => ({
+    filePath: null,
+    loading: false,
+    error: null,
+    setFilePath: () => {},
+    refreshFrames: () => Promise.resolve([]),
+    clearData: () => {},
+    hasMoreFrames: false,
+    totalFrames: 0,
+    loadMoreFrames: () => Promise.resolve([]),
+  }),
+  useCurrentFrame: () => ({
+    currentFrameIndex: 5,
+    setCurrentFrameIndex: () => {},
+  }),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  StreamDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
 describe("BookmarksPanel", () => {

@@ -5,12 +5,17 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { ModeProvider, useMode, MODES, COMPONENTS } from "../ModeContext";
+import {
+  ModeProvider,
+  useMode,
+  MODES,
+  COMPONENTS,
+} from "@/contexts/ModeContext";
 import type {
   VisualizationMode,
   YuvComponent,
   ComponentMask,
-} from "../ModeContext";
+} from "@/contexts/ModeContext";
 
 describe("ModeContext", () => {
   beforeEach(() => {

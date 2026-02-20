@@ -24,7 +24,7 @@ fn test_parse_hevc_with_start_code() {
     let result = parse_hevc(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.nal_units.len() >= 0);
+    let _ = stream.nal_units.len(); // verify field is accessible
 }
 
 #[test]
@@ -577,8 +577,8 @@ fn test_extract_annex_b_frames() {
     let frames = extract_annex_b_frames(&data[..pos]);
     assert!(frames.is_ok());
     let frame_list = frames.unwrap();
-    // The function should find the frames
-    assert!(frame_list.len() >= 0);
+    // The function should return a frame list
+    let _ = frame_list.len(); // verify field is accessible
 }
 
 #[test]
@@ -766,8 +766,8 @@ fn test_parse_hevc_with_invalid_nal() {
     // Should either succeed with empty NALs or handle error gracefully
     match result {
         Ok(stream) => {
-            // Parser should skip invalid NAL
-            assert!(stream.nal_units.is_empty() || stream.nal_units.len() >= 0);
+            // Parser should skip invalid NAL (result may be empty or have partial units)
+            let _ = stream.nal_units.len(); // verify field is accessible
         }
         Err(_) => {
             // Or return error

@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useCanvasInteraction } from "../useCanvasInteraction";
+import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 
 describe("useCanvasInteraction", () => {
   it("should return initial state", () => {
@@ -226,7 +226,9 @@ describe("useCanvasInteraction handlers", () => {
         clientY: 100,
       });
       result.current.handlers.onMouseDown(downEvent);
+    });
 
+    act(() => {
       const moveEvent = new MouseEvent("mousemove", {
         clientX: 150,
         clientY: 150,
@@ -247,14 +249,16 @@ describe("useCanvasInteraction handlers", () => {
         clientY: 100,
       });
       result.current.handlers.onMouseDown(downEvent);
+    });
 
-      expect(result.current.isDragging).toBe(true);
+    expect(result.current.isDragging).toBe(true);
 
+    act(() => {
       const upEvent = new MouseEvent("mouseup", { clientX: 150, clientY: 150 });
       result.current.handlers.onMouseUp(upEvent);
-
-      expect(result.current.isDragging).toBe(false);
     });
+
+    expect(result.current.isDragging).toBe(false);
   });
 });
 

@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useIntersectionObserver } from "../useIntersectionObserver";
+import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 
 // Mock IntersectionObserver
 const mockDisconnect = vi.fn();

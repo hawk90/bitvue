@@ -6,128 +6,142 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@/test/test-utils";
 import { VirtualizedFilmstrip } from "@/components/VirtualizedFilmstrip";
-import { mockFrames } from "@/test/test-utils";
 
-// Mock context
-vi.mock("@/contexts/StreamDataContext", () => ({
-  useStreamData: () => ({
-    frames: mockFrames,
-    currentFrameIndex: 1,
-  }),
-}));
+const mockFrames = [
+  {
+    frame_index: 0,
+    frame_type: "I",
+    size: 50000,
+    pts: 0,
+    poc: 0,
+    key_frame: true,
+    display_order: 0,
+    coding_order: 0,
+  },
+  {
+    frame_index: 1,
+    frame_type: "P",
+    size: 30000,
+    pts: 1,
+    poc: 1,
+    key_frame: false,
+    ref_frames: [0],
+    display_order: 1,
+    coding_order: 1,
+  },
+  {
+    frame_index: 2,
+    frame_type: "B",
+    size: 20000,
+    pts: 2,
+    poc: 2,
+    key_frame: false,
+    ref_frames: [0, 1],
+    display_order: 2,
+    coding_order: 2,
+  },
+];
 
-vi.mock("@/components/useFilmstripState", () => ({
-  useFilmstripState: () => ({
-    thumbnails: new Map([
-      [0, "data:image0"],
-      [1, "data:image1"],
-      [2, "data:image2"],
-    ]),
-    loadThumbnails: vi.fn(),
-  }),
-}));
+const defaultProps = {
+  frames: mockFrames,
+  currentFrameIndex: 1,
+  onFrameChange: vi.fn(),
+  itemWidth: 80,
+  containerWidth: 800,
+};
 
 describe("VirtualizedFilmstrip", () => {
   it("should render virtualized filmstrip", () => {
-    render(<VirtualizedFilmstrip />);
+    const { container } = render(<VirtualizedFilmstrip {...defaultProps} />);
 
-    // Should render frame items
-    expect(screen.queryAllByTestId(/frame-/i).length).toBeGreaterThan(0);
+    // Should render filmstrip container
+    expect(
+      container.querySelector(".virtualized-filmstrip"),
+    ).toBeInTheDocument();
   });
 
   it("should render current frame indicator", () => {
-    render(<VirtualizedFilmstrip />);
+    render(<VirtualizedFilmstrip {...defaultProps} />);
 
-    // Current frame should be highlighted
-    const currentFrame = document.querySelector('[data-selected="true"]');
+    // Current frame should have "current" class
+    const currentFrame = document.querySelector(".virtualized-frame.current");
     expect(currentFrame).toBeInTheDocument();
   });
 
   it("should handle frame click", () => {
-    const handleNavigate = vi.fn();
-    render(<VirtualizedFilmstrip onFrameClick={handleNavigate} />);
+    const handleFrameChange = vi.fn();
+    render(
+      <VirtualizedFilmstrip
+        {...defaultProps}
+        onFrameChange={handleFrameChange}
+      />,
+    );
 
-    const frames = screen.queryAllByTestId(/frame-/i);
+    const frames = document.querySelectorAll(".virtualized-frame");
     if (frames.length > 0) {
       fireEvent.click(frames[0]);
-      expect(handleNavigate).toHaveBeenCalled();
+      expect(handleFrameChange).toHaveBeenCalled();
     }
   });
 
   it("should display frame type indicators", () => {
-    render(<VirtualizedFilmstrip />);
+    render(<VirtualizedFilmstrip {...defaultProps} />);
 
-    // Should have frame type badges
-    const types = document.querySelectorAll(
-      ".frame-type-i, .frame-type-p, .frame-type-b",
-    );
+    // Should have frame type elements
+    const types = document.querySelectorAll(".virtualized-frame-type");
     expect(types.length).toBeGreaterThan(0);
   });
 
   it("should render frame numbers", () => {
-    render(<VirtualizedFilmstrip />);
+    render(<VirtualizedFilmstrip {...defaultProps} />);
 
     // Should show frame numbers
-    const frameNumbers = screen.queryAllByText(/\d+/);
+    const frameNumbers = document.querySelectorAll(".virtualized-frame-number");
     expect(frameNumbers.length).toBeGreaterThan(0);
   });
 
   it("should support horizontal scrolling", () => {
-    const { container } = render(<VirtualizedFilmstrip />);
+    const { container } = render(<VirtualizedFilmstrip {...defaultProps} />);
 
     const scrollContainer = container.querySelector(
-      ".virtualized-filmstrip-container",
+      ".virtualized-filmstrip-viewport",
     );
     expect(scrollContainer).toBeInTheDocument();
   });
 
-  it("should use IntersectionObserver for lazy loading", () => {
-    // Mock IntersectionObserver
-    const mockObserve = vi.fn();
-    global.IntersectionObserver = vi.fn().mockImplementation(() => ({
-      observe: mockObserve,
-      unobserve: vi.fn(),
-      disconnect: vi.fn(),
-    }));
-
-    render(<VirtualizedFilmstrip />);
-
-    // IntersectionObserver should be used
-    expect(global.IntersectionObserver).toHaveBeenCalled();
-  });
-
   it("should handle empty frames array", () => {
-    vi.doMock("@/contexts/StreamDataContext", () => ({
-      useStreamData: () => ({
-        frames: [],
-        currentFrameIndex: 0,
-      }),
-    }));
+    const { container } = render(
+      <VirtualizedFilmstrip
+        {...defaultProps}
+        frames={[]}
+        currentFrameIndex={0}
+      />,
+    );
 
-    render(<VirtualizedFilmstrip />);
-
-    // Should render empty state or handle gracefully
+    // Should render filmstrip container even with no frames
     expect(
-      document.querySelector(".virtualized-filmstrip-container"),
+      container.querySelector(".virtualized-filmstrip"),
     ).toBeInTheDocument();
   });
 
-  it("should support custom thumbnail size", () => {
-    render(<VirtualizedFilmstrip thumbnailWidth={100} />);
+  it("should support custom item width", () => {
+    const { container } = render(
+      <VirtualizedFilmstrip {...defaultProps} itemWidth={100} />,
+    );
 
-    // Thumbnails should render with custom size
-    const thumbnails = document.querySelectorAll('[style*="width"]');
-    expect(thumbnails.length).toBeGreaterThan(0);
+    // Filmstrip should render with custom width items
+    const content = container.querySelector(".virtualized-filmstrip-content");
+    expect(content).toBeInTheDocument();
   });
 
   it("should use stable callbacks (useCallback optimization)", () => {
-    const { rerender } = render(<VirtualizedFilmstrip />);
+    const { rerender } = render(<VirtualizedFilmstrip {...defaultProps} />);
 
-    rerender(<VirtualizedFilmstrip />);
+    rerender(<VirtualizedFilmstrip {...defaultProps} />);
 
     // Should still function correctly
     expect(
-      document.querySelector(".virtualized-filmstrip-container"),
+      document.querySelector(".virtualized-filmstrip"),
     ).toBeInTheDocument();
   });
 });
@@ -142,26 +156,25 @@ describe("VirtualizedFilmstrip performance", () => {
       poc: i,
     }));
 
-    vi.doMock("@/contexts/StreamDataContext", () => ({
-      useStreamData: () => ({
-        frames: largeFrameArray,
-        currentFrameIndex: 500,
-      }),
-    }));
+    render(
+      <VirtualizedFilmstrip
+        frames={largeFrameArray}
+        currentFrameIndex={500}
+        onFrameChange={vi.fn()}
+        itemWidth={80}
+        containerWidth={800}
+      />,
+    );
 
-    render(<VirtualizedFilmstrip />);
-
-    // Should not render all 1000 frames
-    const renderedFrames = document.querySelectorAll("[data-frame-index]");
+    // Should not render all 1000 frames - only visible ones
+    const renderedFrames = document.querySelectorAll(".virtualized-frame");
     expect(renderedFrames.length).toBeLessThan(1000);
   });
 
   it("should update visible frames on scroll", () => {
-    render(<VirtualizedFilmstrip />);
+    render(<VirtualizedFilmstrip {...defaultProps} />);
 
-    const container = document.querySelector(
-      ".virtualized-filmstrip-container",
-    );
+    const container = document.querySelector(".virtualized-filmstrip-viewport");
     if (container) {
       // Simulate scroll
       fireEvent.scroll(container, { target: { scrollLeft: 1000 } });

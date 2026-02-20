@@ -14,8 +14,8 @@ import {
   RGB_SHIFT,
   RGBA_CHANNELS,
   DEFAULT_ALPHA,
-} from "../conversion";
-import { Colorspace } from "../../../types/yuv";
+} from "@/utils/yuv/conversion";
+import { Colorspace } from "@/types/yuv";
 
 describe("yuvToRgb edge cases", () => {
   describe("boundary values", () => {

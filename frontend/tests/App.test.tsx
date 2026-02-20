@@ -8,8 +8,14 @@ import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
 import App from "@/App";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useMode } from "@/contexts/ModeContext";
-import { useStreamData } from "@/contexts/StreamDataContext";
+import {
+  useStreamData,
+  useFrameData,
+  useFileState,
+  useCurrentFrame,
+} from "@/contexts/StreamDataContext";
 import { useSelection } from "@/contexts/SelectionContext";
+import { useCompare } from "@/contexts/CompareContext";
 
 // Mock contexts - these need to be properly set up
 vi.mock("@/contexts/ThemeContext", () => ({
@@ -30,7 +36,19 @@ vi.mock("@/contexts/StreamDataContext", () => ({
   StreamDataProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   useStreamData: vi.fn(),
+  useFrameData: vi.fn(),
+  useFileState: vi.fn(),
+  useCurrentFrame: vi.fn(),
 }));
 
 vi.mock("@/contexts/SelectionContext", () => ({
@@ -44,6 +62,23 @@ vi.mock("@/contexts/CompareContext", () => ({
   CompareProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
+  useCompare: vi.fn(() => ({
+    workspace: null,
+    isLoading: false,
+    error: null,
+    pathA: null,
+    pathB: null,
+    currentFrameA: 0,
+    currentFrameB: 0,
+    createWorkspace: vi.fn().mockResolvedValue(undefined),
+    closeWorkspace: vi.fn(),
+    setFrameA: vi.fn(),
+    setFrameB: vi.fn(),
+    setSyncMode: vi.fn().mockResolvedValue(undefined),
+    setManualOffset: vi.fn().mockResolvedValue(undefined),
+    resetOffset: vi.fn().mockResolvedValue(undefined),
+    getAlignedFrame: vi.fn().mockResolvedValue({ bIdx: null, quality: "none" }),
+  })),
 }));
 
 // Mock Tauri APIs
@@ -60,6 +95,12 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 // Mock components
+vi.mock("@/components/ErrorBoundary", () => ({
+  ErrorBoundary: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 vi.mock("@/components/WelcomeScreen", () => ({
   WelcomeScreen: ({ onOpenFile, loading, error }: any) => (
     <div className="welcome-screen" data-testid="welcome-screen">
@@ -94,6 +135,15 @@ vi.mock("@/components/ErrorDialog", () => ({
       <div className="error-dialog" data-testid="error-dialog">
         <h2>{title}</h2>
         <p>{message}</p>
+        <button onClick={onClose}>Close</button>
+      </div>
+    ) : null,
+}));
+
+vi.mock("@/components/ExportDialog", () => ({
+  ExportDialog: ({ isOpen, onClose }: any) =>
+    isOpen ? (
+      <div className="export-dialog" data-testid="export-dialog">
         <button onClick={onClose}>Close</button>
       </div>
     ) : null,
@@ -251,6 +301,26 @@ describe("App component", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -348,6 +418,26 @@ describe("AppContent - welcome screen state", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -382,6 +472,17 @@ describe("AppContent - welcome screen state", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: true,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
 
     render(<App />);
 
@@ -403,6 +504,17 @@ describe("AppContent - welcome screen state", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: errorMessage,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
 
     render(<App />);
 
@@ -457,6 +569,26 @@ describe("AppContent - main content state", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -558,6 +690,30 @@ describe("AppContent - keyboard shortcuts", () => {
       setFrames: vi.fn(),
     });
 
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+        { frame_index: 2, frame_type: "B", size: 20000, poc: 2 },
+      ],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 1,
+      setCurrentFrameIndex: setCurrentFrameIndexMock,
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -727,6 +883,26 @@ describe("AppContent - dialog states", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -799,6 +975,26 @@ describe("AppContent - TitleBar", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -876,6 +1072,29 @@ describe("AppContent - StatusBar", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [
+        { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+        { frame_index: 1, frame_type: "P", size: 30000, poc: 1 },
+      ],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -957,6 +1176,26 @@ describe("AppContent - menu event listeners", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -1027,6 +1266,26 @@ describe("AppContent - Tauri event listeners", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -1093,6 +1352,26 @@ describe("AppContent - React.memo optimization", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),
@@ -1150,6 +1429,26 @@ describe("AppContent edge cases", () => {
       setFilePath: vi.fn(),
       setFrames: vi.fn(),
     });
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: [],
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useFileState).mockReturnValue({
+      filePath: null,
+      loading: false,
+      error: null,
+      setFilePath: vi.fn(),
+      refreshFrames: vi.fn().mockResolvedValue([]),
+      loadMoreFrames: vi.fn().mockResolvedValue([]),
+      hasMoreFrames: false,
+      totalFrames: 0,
+      clearData: vi.fn(),
+    } as any);
+    vi.mocked(useCurrentFrame).mockReturnValue({
+      currentFrameIndex: 0,
+      setCurrentFrameIndex: vi.fn(),
+    } as any);
     vi.mocked(useSelection).mockReturnValue({
       selection: null,
       setTemporalSelection: vi.fn(),

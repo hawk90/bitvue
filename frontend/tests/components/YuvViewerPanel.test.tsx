@@ -8,11 +8,47 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { YuvViewerPanel } from "../YuvViewerPanel";
 import { useMode } from "@/contexts/ModeContext";
 import { useStreamData } from "@/contexts/StreamDataContext";
+import { useFrameData } from "@/contexts/FrameDataContext";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 
 // Mock contexts
 vi.mock("@/contexts/ModeContext");
-vi.mock("@/contexts/StreamDataContext");
+vi.mock("@/contexts/StreamDataContext", () => ({
+  useStreamData: vi.fn(),
+  useFrameData: vi.fn(),
+  useFileState: vi.fn(),
+  useCurrentFrame: vi.fn(),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  StreamDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+vi.mock("@/contexts/FrameDataContext", () => ({
+  useFrameData: vi.fn(),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+vi.mock("@/contexts/FileStateContext", () => ({
+  useFileState: vi.fn(),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+vi.mock("@/contexts/CurrentFrameContext", () => ({
+  useCurrentFrame: vi.fn(),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
 vi.mock("@/hooks/useCanvasInteraction");
 
 // Mock Tauri invoke
@@ -90,6 +126,11 @@ describe("YuvViewerPanel basic rendering", () => {
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
     } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
@@ -156,6 +197,11 @@ describe("YuvViewerPanel frame navigation controls", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
@@ -297,6 +343,11 @@ describe("YuvViewerPanel playback controls", () => {
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
     } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
@@ -353,6 +404,11 @@ describe("YuvViewerPanel zoom controls", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
@@ -435,6 +491,11 @@ describe("YuvViewerPanel mode selector", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
@@ -608,6 +669,11 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
     } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
@@ -691,6 +757,11 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
@@ -781,6 +852,11 @@ describe("YuvViewerPanel loading states", () => {
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
     } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
@@ -834,6 +910,11 @@ describe("YuvViewerPanel status bar", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
@@ -893,6 +974,11 @@ describe("YuvViewerPanel frame info display", () => {
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
     } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
@@ -938,6 +1024,11 @@ describe("YuvViewerPanel edge cases", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
@@ -1060,6 +1151,11 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
     } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
 
@@ -1134,6 +1230,11 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
     } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
 
     render(<YuvViewerPanel {...mockProps} />);
@@ -1174,6 +1275,11 @@ describe("YuvViewerPanel zoom state interaction", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });
@@ -1232,6 +1338,11 @@ describe("YuvViewerPanel cleanup", () => {
       clearData: vi.fn(),
       getFrameStats: vi.fn(),
       setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
     } as any);
     vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
   });

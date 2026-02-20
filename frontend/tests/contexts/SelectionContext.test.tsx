@@ -9,14 +9,14 @@ import {
   SelectionProvider,
   useSelection,
   useSelectionSubscribe,
-} from "../SelectionContext";
+} from "@/contexts/SelectionContext";
 import type {
   TemporalSelection,
   FrameKey,
   UnitKey,
   SyntaxNodeId,
   BitRange,
-} from "../SelectionContext";
+} from "@/contexts/SelectionContext";
 
 describe("SelectionContext", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (

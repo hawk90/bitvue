@@ -9,15 +9,19 @@
  */
 
 import { memo, useMemo, useEffect, useState, useCallback } from "react";
-import type { FrameInfo } from "../../types/video";
-import ThumbnailsView from "./ThumbnailsView";
-import { getFrameTypeColorClass } from "../../types/video";
+import type { FrameInfo } from "../types/video";
+import ThumbnailsView from "./Filmstrip/views/ThumbnailsView";
+import { getFrameTypeColorClass } from "../types/video";
 
 // Constants for diagnostic thresholds
 const DIAGNOSTIC_THRESHOLDS = {
   HIGH_QP: 45, // QP value above which frame is considered high quality
   LARGE_FRAME: 100000, // Frame size in bytes above which frame is considered large
 } as const;
+
+// Constants for scene change detection
+const SCENE_CHANGE_WINDOW_SIZE = 5; // Number of frames to look before/after for scene change detection
+const SCENE_CHANGE_VARIANCE_THRESHOLD = 0.5; // Variance threshold for scene change detection
 
 interface EnhancedViewProps {
   frames: FrameInfo[];

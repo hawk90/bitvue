@@ -116,8 +116,8 @@ export function isValidFrameIndex(
 export function isValidFilePath(value: unknown): value is string {
   if (!isString(value)) return false;
   if (value.length === 0 || value.length > 4096) return false; // Reasonable path length limit
-  // Check for invalid characters (Windows/Unix)
-  const invalidChars = /[<>:"|?*\x00-\x1f]/;
+  // Check for invalid characters (Windows/Unix); allow colon for Windows drive letters
+  const invalidChars = /[<>"|?*\x00-\x1f]/;
   return !invalidChars.test(value);
 }
 

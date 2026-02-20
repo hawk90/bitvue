@@ -12,7 +12,7 @@ import {
   shouldUseNativeMenu,
   shouldShowTitleBar,
   type Platform,
-} from "../platform";
+} from "@/utils/platform";
 
 // Store original navigator values
 const originalUserAgent = navigator.userAgent;

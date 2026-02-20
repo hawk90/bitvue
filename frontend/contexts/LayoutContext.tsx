@@ -56,8 +56,8 @@ function isValidLayoutState(data: unknown): data is LayoutState {
     return false;
   }
 
-  // Prevent prototype pollution
-  if (Object.prototype.isPrototypeOf(data)) {
+  // Prevent prototype pollution: only allow plain objects
+  if (Object.getPrototypeOf(data) !== Object.prototype) {
     return false;
   }
 

@@ -22,3 +22,6 @@ export type { CurrentFrameContextType } from "./CurrentFrameContext";
 
 // Re-export types
 export type { FrameStats } from "./FrameDataContext";
+
+// Backward-compatible combined context
+export { StreamDataProvider, useStreamData } from "./LegacyStreamDataContext";
