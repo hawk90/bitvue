@@ -145,6 +145,9 @@ impl<'a> BitReader<'a> {
 
     /// Reads n bits and returns them as a u32 (MSB first).
     ///
+    /// Optimized to minimize function calls by reading bits in batches
+    /// rather than bit-by-bit.
+    ///
     /// # Arguments
     ///
     /// * `n` - Number of bits to read (1-32)
@@ -153,6 +156,7 @@ impl<'a> BitReader<'a> {
     ///
     /// - [`BitvueError::UnexpectedEof`] - Not enough data available
     /// - [`BitvueError::Parse`] - n > 32
+    #[inline]
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
         if n == 0 {
             return Ok(0);
@@ -164,14 +168,57 @@ impl<'a> BitReader<'a> {
             });
         }
 
-        let mut result: u32 = 0;
-        for _ in 0..n {
-            result = (result << 1) | (self.read_bit()? as u32);
+        // Check if we have enough data
+        let bits_needed = n as u64;
+        if self.remaining_bits() < bits_needed {
+            return Err(BitvueError::UnexpectedEof(self.position()));
         }
+
+        let mut result: u32 = 0;
+        let mut bits_remaining = n;
+
+        while bits_remaining > 0 {
+            if self.byte_offset >= self.data.len() {
+                return Err(BitvueError::UnexpectedEof(self.position()));
+            }
+
+            // How many bits are available in the current byte
+            let available_in_byte = 8 - self.bit_offset;
+
+            // How many bits to read this iteration (min of remaining and available)
+            let bits_to_read = bits_remaining.min(available_in_byte);
+
+            // Read bits from current byte
+            // Shift to get the bits we want at the LSB positions
+            let shift = available_in_byte - bits_to_read;
+            // Use u32 for mask to avoid overflow when bits_to_read is 8
+            let mask = if bits_to_read == 8 {
+                0xFFu32
+            } else {
+                (1u32 << bits_to_read) - 1
+            };
+            let bits = ((self.data[self.byte_offset] as u32) >> shift) & mask;
+
+            // Add to result
+            result = (result << bits_to_read) | bits;
+
+            // Update state
+            self.bit_offset += bits_to_read;
+            if self.bit_offset == 8 {
+                self.bit_offset = 0;
+                self.byte_offset += 1;
+            }
+
+            bits_remaining -= bits_to_read;
+        }
+
         Ok(result)
     }
 
     /// Reads n bits and returns them as a u64 (MSB first).
+    ///
+    /// Optimized to minimize function calls by reading bits in batches
+    /// rather than bit-by-bit.
     ///
     /// # Arguments
     ///
@@ -181,6 +228,7 @@ impl<'a> BitReader<'a> {
     ///
     /// - [`BitvueError::UnexpectedEof`] - Not enough data available
     /// - [`BitvueError::Parse`] - n > 64
+    #[inline]
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
         if n == 0 {
             return Ok(0);
@@ -192,10 +240,49 @@ impl<'a> BitReader<'a> {
             });
         }
 
-        let mut result: u64 = 0;
-        for _ in 0..n {
-            result = (result << 1) | (self.read_bit()? as u64);
+        // Check if we have enough data
+        let bits_needed = n as u64;
+        if self.remaining_bits() < bits_needed {
+            return Err(BitvueError::UnexpectedEof(self.position()));
         }
+
+        let mut result: u64 = 0;
+        let mut bits_remaining = n;
+
+        while bits_remaining > 0 {
+            if self.byte_offset >= self.data.len() {
+                return Err(BitvueError::UnexpectedEof(self.position()));
+            }
+
+            // How many bits are available in the current byte
+            let available_in_byte = 8 - self.bit_offset;
+
+            // How many bits to read this iteration (min of remaining and available)
+            let bits_to_read = bits_remaining.min(available_in_byte);
+
+            // Read bits from current byte
+            let shift = available_in_byte - bits_to_read;
+            // Use u64 for mask to avoid overflow when bits_to_read is 8
+            let mask = if bits_to_read == 8 {
+                0xFFu64
+            } else {
+                (1u64 << bits_to_read) - 1
+            };
+            let bits = ((self.data[self.byte_offset] as u64) >> shift) & mask;
+
+            // Add to result
+            result = (result << bits_to_read) | bits;
+
+            // Update state
+            self.bit_offset += bits_to_read;
+            if self.bit_offset == 8 {
+                self.bit_offset = 0;
+                self.byte_offset += 1;
+            }
+
+            bits_remaining -= bits_to_read;
+        }
+
         Ok(result)
     }
 

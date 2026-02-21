@@ -196,6 +196,7 @@ pub use types::*;
 pub use validation_strategy::*;
 pub use workspace_template::*;
 // Export commonly used types at crate root for convenience
+pub use types::ChromaFormat;
 pub use types::FrameType;
 pub use worker::*;
 pub use workspace::*;

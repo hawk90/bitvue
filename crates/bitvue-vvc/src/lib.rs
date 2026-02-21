@@ -45,9 +45,10 @@ pub use overlay_extraction::{
     MotionVector, PredMode, SplitMode,
 };
 pub use pps::{parse_pps, Pps};
-pub use sps::{
-    parse_sps, AlfConfig, ChromaFormat, DualTreeConfig, LmcsConfig, Profile, ProfileTierLevel, Sps,
-};
+pub use sps::{parse_sps, AlfConfig, DualTreeConfig, LmcsConfig, Profile, ProfileTierLevel, Sps};
+
+// Re-export ChromaFormat from bitvue_core for backward compatibility
+pub use bitvue_core::ChromaFormat;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
