@@ -34,6 +34,8 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/build-tauri-app.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
     secrets: inherit
 
   # Publish crates to crates.io when release is created
