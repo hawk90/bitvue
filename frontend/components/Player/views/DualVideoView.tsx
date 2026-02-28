@@ -8,7 +8,7 @@
  * - Zoom and pan support
  * - Quality metrics overlay (PSNR, SSIM, VMAF per frame)
  *
- * Reference: VQAnalyzer dual video comparison functionality
+ * Reference: dual video comparison functionality
  */
 
 import { memo, useState, useCallback, useRef, useEffect } from "react";

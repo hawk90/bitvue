@@ -1,7 +1,7 @@
 /**
  * Bookmarks Panel
  *
- * VQAnalyzer-style bookmarks for quick frame navigation
+ * bookmarks for quick frame navigation
  */
 
 import { useState, useCallback, useEffect, memo, useRef } from "react";

@@ -4,7 +4,7 @@
  * Rate-Distortion curves visualization with BD-Rate calculation
  * Compare multiple encoders or encoding parameters
  *
- * Reference: VQAnalyzer RD curves & BD-Rate functionality
+ * Reference: RD curves & BD-Rate functionality
  */
 
 import React, { useState, useCallback, useMemo } from "react";

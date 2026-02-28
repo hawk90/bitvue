@@ -111,7 +111,7 @@ pub mod cache_debug_overlay; // T8-1: Cache Debug Overlay
 pub mod diagnostics;
 pub mod disable_reason; // T8-1: Disable Reason Matrix
 pub mod discoverability; // T8-1: Discoverability System
-pub mod filmstrip; // VQAnalyzer Parity: Filmstrip thumbnail strip
+pub mod filmstrip; //:Filmstrip thumbnail strip
 pub mod occlusion_budget; // T8-1: Occlusion Budget System
 pub mod tooltip; // T8-1: Tooltip System // T8-2: Error & Degrade UI
 

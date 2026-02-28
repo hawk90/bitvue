@@ -11,7 +11,7 @@
  * - Reference Frames (F7)
  * - Extended Modes
  *
- * Reference: VQAnalyzer Mode Menu
+ * Reference: Mode Menu
  */
 
 import { PredefinedMenuItem } from "@tauri-apps/api/menu";

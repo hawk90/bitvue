@@ -1,7 +1,7 @@
 /**
  * Compare Workspace - Side-by-side A/B stream comparison
  *
- * Per VQAnalyzer parity and COMPARE_ALIGNMENT_POLICY.md:
+ * Per parity and COMPARE_ALIGNMENT_POLICY.md:
  * - Side-by-side player view with Stream A and B
  * - Sync controls (Off/Playhead/Full)
  * - Manual offset UI for alignment adjustment

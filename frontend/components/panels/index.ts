@@ -1,7 +1,7 @@
 /**
  * Panels Module
  *
- * All sidebar and analysis panels for VQAnalyzer parity
+ * All sidebar and analysis panels for parity
  */
 
 export { PlaceholderPanel } from "./PlaceholderPanel";

@@ -8,7 +8,7 @@ import type { ColorStop } from "../types";
 import { getCssVar } from "../../../../utils/css";
 
 /**
- * 4-stop RGB ramp for QP heatmap (per VQAnalyzer spec)
+ * 4-stop RGB ramp for QP heatmap
  * Blue → Cyan → Yellow → Red
  */
 export const QP_COLOR_STOPS: ColorStop[] = [

@@ -1,5 +1,5 @@
 /**
- * TitleBar - VQAnalyzer Style Menu Bar
+ * TitleBar - Style Menu Bar
  *
  * Complete menu implementation matching egui reference with full submenu structure.
  *

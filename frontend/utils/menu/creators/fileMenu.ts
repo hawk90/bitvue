@@ -10,7 +10,7 @@
  * - Recent Files
  * - Quit
  *
- * Reference: VQAnalyzer File Menu
+ * Reference: File Menu
  */
 
 import { PredefinedMenuItem } from "@tauri-apps/api/menu";

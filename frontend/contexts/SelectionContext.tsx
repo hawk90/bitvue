@@ -1,7 +1,7 @@
 /**
  * Tri-Sync Selection Context
  *
- * VQAnalyzer's core navigation system:
+ * Core navigation system:
  * - Single source of truth for selection state
  * - Broadcasts selection changes to all panels
  * - Synchronizes: Syntax Tree ↔ Hex View ↔ Main Panel ↔ Timeline

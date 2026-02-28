@@ -15,7 +15,7 @@
  * - Export All Frames
  * - Export Metrics CSV
  *
- * Reference: VQAnalyzer YUVDiff Menu
+ * Reference: YUVDiff Menu
  */
 
 import { PredefinedMenuItem } from "@tauri-apps/api/menu";

@@ -81,7 +81,7 @@ export const WelcomeScreen = memo(function WelcomeScreen({
           </div>
           <h1 className="welcome-title">Bitvue</h1>
           <p className="welcome-subtitle">Video Bitstream Analyzer</p>
-          <span className="welcome-badge">VQAnalyzer Parity</span>
+          <span className="welcome-badge">Feature Complete</span>
         </div>
 
         {/* Actions */}

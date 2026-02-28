@@ -8,7 +8,7 @@
  * - Dark/Light Theme
  * - Save/Load/Reset/Auto-save Layout
  *
- * Reference: VQAnalyzer Options Menu
+ * Reference: Options Menu
  */
 
 import { PredefinedMenuItem } from "@tauri-apps/api/menu";

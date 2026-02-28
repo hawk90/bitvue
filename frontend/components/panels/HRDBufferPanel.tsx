@@ -4,7 +4,7 @@
  * Visualizes CPB (Coded Picture Buffer) fullness over time
  * Shows buffer occupancy, overflow/underflow detection, and target bitrate
  *
- * Per VQAnalyzer parity: HRD buffer plot with occupancy graph
+ * Per parity: HRD buffer plot with occupancy graph
  */
 
 import { useMemo, useRef, useEffect, useState, useCallback, memo } from "react";

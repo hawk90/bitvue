@@ -2,7 +2,7 @@
  * Main Video Viewer Panel
  *
  * Core video display with frame navigation
- * VQAnalyzer-style main viewer
+ * Main viewer
  *
  * Split into subcomponents for better maintainability:
  * - VideoCanvas: Canvas rendering with zoom/pan

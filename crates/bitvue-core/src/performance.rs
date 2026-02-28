@@ -7,7 +7,7 @@
 //! - Exportable performance reports
 //! - JSON logging format per event
 //!
-//! Per perf_budget_and_instrumentation.json (VQAnalyzer parity):
+//! Per perf_budget_and_instrumentation.json :
 //! - Performance budgets with automatic degradation
 //! - LOD virtualization when over budget
 
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-/// Performance budget constants (ms) - VQAnalyzer parity
+/// Performance budget constants (ms) -
 pub mod budget {
     /// Target frame time for 60fps (16.6ms)
     pub const UI_FRAME_TARGET_MS: f64 = 16.6;
@@ -232,13 +232,13 @@ pub enum PerfMetric {
     UploadTexture,
     /// Frame painting (egui)
     Paint,
-    /// Hit testing (VQAnalyzer parity budget)
+    /// Hit testing
     HitTest,
-    /// Tooltip building (VQAnalyzer parity budget)
+    /// Tooltip building
     TooltipBuild,
-    /// Selection propagation (VQAnalyzer parity budget)
+    /// Selection propagation
     SelectionPropagation,
-    /// Total UI frame time (VQAnalyzer parity budget)
+    /// Total UI frame time
     UiFrame,
 }
 

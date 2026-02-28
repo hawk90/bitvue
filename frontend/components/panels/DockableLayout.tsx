@@ -1,7 +1,7 @@
 /**
  * Dockable Panel Layout
  *
- * VQAnalyzer-style panel layout with resizable panels
+ * panel layout with resizable panels
  *
  * Layout structure:
  * ┌─────────────────────────────────────────────────────────────────────────┐
@@ -174,7 +174,7 @@ export const DockableLayout = memo(function DockableLayout({
 
 /**
  * Left Sidebar with Tabbed Panels
- * VQAnalyzer: Stream | Syntax | Selection | Unit HEX | etc.
+ * Stream | Syntax | Selection | Unit HEX | etc.
  */
 const LeftSidebar = memo(function LeftSidebar({
   panels,
@@ -215,7 +215,7 @@ const LeftSidebar = memo(function LeftSidebar({
 
 /**
  * Bottom Panel Bar (Filmstrip/Timeline)
- * VQAnalyzer: Filmstrip with view mode selector
+ * Filmstrip with view mode selector
  */
 const BottomPanelBar = memo(function BottomPanelBar({
   panels,

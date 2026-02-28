@@ -2,7 +2,7 @@
  * Reference Graph Panel
  *
  * Frame dependency graph and DPB visualization
- * Reference: VQAnalyzer Reference Graph
+ * Reference: Reference Graph
  */
 
 import PlaceholderPanel from "./PlaceholderPanel";

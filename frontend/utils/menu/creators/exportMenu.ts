@@ -6,7 +6,7 @@
  * - Data Export (Frame Sizes CSV, Unit Tree JSON, Syntax Tree JSON)
  * - Evidence Bundle
  *
- * Reference: VQAnalyzer Export Menu
+ * Reference: Export Menu
  */
 
 import { PredefinedMenuItem } from "@tauri-apps/api/menu";

@@ -231,7 +231,7 @@ impl ReferenceInfo {
     }
 }
 
-/// Frame information for filmstrip (VQAnalyzer parity)
+/// Frame information for filmstrip 
 ///
 /// Refactored from god object (17 fields) to focused composition.
 /// Now composed of 3 focused value objects: FramePosition, FrameMetadata, ReferenceInfo.

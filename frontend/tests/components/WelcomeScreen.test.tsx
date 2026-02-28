@@ -24,7 +24,7 @@ describe("WelcomeScreen", () => {
 
     expect(screen.getByText("Bitvue")).toBeInTheDocument();
     expect(screen.getByText("Video Bitstream Analyzer")).toBeInTheDocument();
-    expect(screen.getByText("VQAnalyzer Parity")).toBeInTheDocument();
+    expect(screen.getByText("Feature Complete")).toBeInTheDocument();
   });
 
   it("should render open button", () => {

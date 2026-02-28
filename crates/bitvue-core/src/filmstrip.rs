@@ -1,4 +1,4 @@
-//! Filmstrip - Thumbnail data structures for VQAnalyzer-style filmstrip
+//! Filmstrip - Thumbnail data structures for filmstrip
 //!
 //! Monster Pack v14: Feature Parity - Filmstrip Panel
 

@@ -1,6 +1,6 @@
 /**
  * SelectionContext Provider Tests
- * Tests tri-sync selection system for VQAnalyzer-style navigation
+ * Tests tri-sync selection system for frame navigation
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

@@ -7,7 +7,7 @@
  * - Player
  * - Diagnostics
  *
- * Reference: VQAnalyzer View Menu
+ * Reference: View Menu
  */
 
 import { PredefinedMenuItem } from "@tauri-apps/api/menu";

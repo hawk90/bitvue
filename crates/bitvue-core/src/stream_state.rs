@@ -227,7 +227,7 @@ pub struct UnitNode {
     /// Presentation timestamp (if available)
     pub pts: Option<u64>,
 
-    /// Decode timestamp (if available, VQAnalyzer parity)
+    /// Decode timestamp (if available,)
     pub dts: Option<u64>,
 
     /// Display string for tree view
@@ -339,7 +339,7 @@ pub struct FrameInfo {
     /// Presentation timestamp (if available)
     pub pts: Option<u64>,
 
-    /// Decode timestamp (if available, VQAnalyzer parity)
+    /// Decode timestamp (if available,)
     pub dts: Option<u64>,
 
     /// Temporal layer ID (for scalable coding, AV1 temporal_id)

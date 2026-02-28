@@ -2,7 +2,7 @@
  * Statistics Panel
  *
  * Stream statistics and metrics
- * Reference: VQAnalyzer Statistics
+ * Reference: Statistics
  */
 
 import { useMemo, memo } from "react";

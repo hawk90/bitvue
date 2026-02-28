@@ -1,7 +1,7 @@
 /**
  * Compare Controls - Sync controls for A/B compare view
  *
- * Per VQAnalyzer parity:
+ * Per parity:
  * - Sync mode toggle (Off/Playhead/Full)
  * - Manual offset adjustment
  * - Alignment info display

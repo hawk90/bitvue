@@ -6,7 +6,7 @@
  * - Keyboard Shortcuts
  * - About Bitvue
  *
- * Reference: VQAnalyzer Help Menu
+ * Reference: Help Menu
  */
 
 import { PredefinedMenuItem } from "@tauri-apps/api/menu";

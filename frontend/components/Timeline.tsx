@@ -1,5 +1,5 @@
 /**
- * Timeline Component - VQAnalyzer Style
+ * Timeline Component - Style
  *
  * Shows overall frame structure with I/P/B distribution and frame sizes
  */

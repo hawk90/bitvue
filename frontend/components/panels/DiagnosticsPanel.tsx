@@ -2,7 +2,7 @@
  * Diagnostics Panel
  *
  * Error and warning list with severity indicators
- * Reference: VQAnalyzer Diagnostics
+ * Reference: Diagnostics
  */
 
 import { useState, useMemo, memo, useCallback } from "react";
