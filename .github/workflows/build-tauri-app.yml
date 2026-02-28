@@ -249,7 +249,7 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
             VERSION="${{ inputs.tag }}"
           else
             VERSION=${GITHUB_REF#refs/tags/}
