@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.11.0)'
+        required: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          # Strip 'v' prefix for numeric version
+          CLEAN_VERSION=${VERSION#v}
+          echo "version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+
+  # Build Tauri app
+  build-tauri:
+    needs: prepare
+    uses: ./.github/workflows/build-tauri-app.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+    secrets: inherit
+
+  # Publish crates to crates.io
+  publish-crates:
+    needs: prepare
+    uses: ./.github/workflows/publish-packages.yml
+    with:
+      version: ${{ needs.prepare.outputs.tag }}
+    secrets: inherit
