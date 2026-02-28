@@ -9,14 +9,8 @@
       "versioning": "default",
       "extra-files": [
         {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.package.version"
-        },
-        {
-          "type": "toml",
-          "path": "src-tauri/Cargo.toml",
-          "jsonpath": "$.package.version"
+          "type": "text",
+          "path": "version.txt"
         },
         {
           "type": "json",
