@@ -274,7 +274,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: bitvue.*
+          pattern: bitvue*
           merge-multiple: true
 
       - name: Show downloaded files
