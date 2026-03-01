@@ -1,6 +1,6 @@
 {
   "name": "bitvue-workspace",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "description": "Bitvue workspace - video bitstream analyzer with Tauri + React",
   "private": true,
   "scripts": {
