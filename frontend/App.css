@@ -1,4 +1,4 @@
-/* Bitvue App Styles - VQAnalyzer Parity */
+/* Bitvue App Styles */
 
 @font-face {
   font-family: "codicon";
@@ -78,7 +78,7 @@ body {
   overflow: hidden;
 }
 
-/* Status Bar - Polished for subtle appearance (VQAnalyzer style) */
+/* Status Bar - Polished for subtle appearance */
 .status-bar {
   height: 24px;
   background: var(--bg-secondary, rgb(30 30 35 / 95%));

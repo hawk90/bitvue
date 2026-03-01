@@ -1,4 +1,4 @@
-/* VQAnalyzer Style - Base Reset */
+/* Bitvue Style - Base Reset */
 
 :root {
   font-family:
@@ -39,7 +39,7 @@ body {
   width: 100%;
 }
 
-/* Polished Scrollbar styling - VQAnalyzer style consistency */
+/* Polished Scrollbar styling */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

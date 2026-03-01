@@ -4,7 +4,7 @@
  * Displays status information at the bottom of the application
  */
 
-/* Status Bar - Polished for subtle appearance (VQAnalyzer style) */
+/* Status Bar - Polished for subtle appearance */
 .status-bar {
   height: 24px;
   background: var(--bg-secondary, rgb(30 30 35 / 95%));

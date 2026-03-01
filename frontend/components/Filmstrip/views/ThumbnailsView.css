@@ -1,11 +1,11 @@
 /**
  * Thumbnails View Styles
  *
- * VQAnalyzer-style thumbnails view with reference arrows
+ * Thumbnails view with reference arrows
  */
 
 /* ═════════════════════════════════════════════════════════════════════════
-   Thumbnails View - VQAnalyzer Style
+   Thumbnails View
    ═════════════════════════════════════════════════════════════════════════ */
 
 /* Container for thumbnails and arrows overlay */
@@ -45,7 +45,7 @@
   transform: translateZ(0);
 }
 
-/* Frame container - matches VQAnalyzer layout */
+/* Frame container */
 .filmstrip-frame {
   position: relative;
   flex-shrink: 0;
@@ -63,7 +63,7 @@
   transform: scale(1.02);
 }
 
-/* Frame thumbnail with type-colored border (VQAnalyzer parity) */
+/* Frame thumbnail with type-colored border */
 .frame-thumbnail-wrapper {
   position: relative;
   width: var(--thumb-width);
@@ -225,7 +225,7 @@
   }
 }
 
-/* Selection highlight - white outer glow (VQAnalyzer parity) */
+/* Selection highlight - white outer glow */
 .filmstrip-frame.selected .frame-thumbnail-wrapper {
   box-shadow:
     0 0 0 3px #fff,
