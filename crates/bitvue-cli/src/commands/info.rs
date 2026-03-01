@@ -1,6 +1,7 @@
 //! Display stream information about a video file
 
 use anyhow::Result;
+use bitvue_formats::container::detect_container_format;
 use std::path::PathBuf;
 
 pub fn run(file_path: PathBuf) -> Result<()> {
@@ -16,8 +17,11 @@ pub fn run(file_path: PathBuf) -> Result<()> {
     let file_data =
         std::fs::read(&file_path).map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))?;
 
-    // Detect format
-    let format = detect_format(&file_data);
+    // Detect format using proper container detection
+    let format = detect_container_format(&file_path)
+        .map(|f| format!("{:?}", f))
+        .unwrap_or_else(|_| "Unknown".to_string());
+
     println!("File: {}", file_path.display());
     println!("Size: {} bytes", file_data.len());
     println!("Format: {}", format);
@@ -26,18 +30,4 @@ pub fn run(file_path: PathBuf) -> Result<()> {
     // This will be implemented by integrating with existing bitvue-core functionality
 
     Ok(())
-}
-
-fn detect_format(data: &[u8]) -> &'static str {
-    if data.len() >= 4 {
-        let magic = &data[0..4];
-        match magic {
-            b"DKIF" => "IVF (AV1)",
-            b"ftyp" => "MP4/MOV",
-            b"\x1a\x45\xdf\xa3" => "MKV/WebM",
-            _ => "Unknown/Raw bitstream",
-        }
-    } else {
-        "Unknown (too small)"
-    }
 }

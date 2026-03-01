@@ -16,16 +16,28 @@ use std::path::Path;
 // Constants
 // ============================================================================
 
-/// Annex B NAL type range for common H.264/H.265 NAL units
+/// Annex B NAL type range for H.264 NAL units
 ///
-/// Includes: slice (1), IDR (5), SPS (7), PPS (8), AUD (9)
+/// H.264 NAL types: slice (1), IDR (5), SPS (7), PPS (8), AUD (9)
 /// Reference: ITU-T H.264 (02/2014) Table 7-1
 pub const ANNEX_B_NAL_TYPE_MIN: u8 = 1;
 
-/// Maximum NAL type in the common range
-///
-/// Excludes reserved and higher-level NAL types
+/// Maximum H.264 NAL type in the common range
 pub const ANNEX_B_NAL_TYPE_MAX: u8 = 9;
+
+/// H.265 NAL type range for VPS, SPS, PPS
+///
+/// H.265 NAL types: VPS (32), SPS (33), PPS (34)
+/// Reference: ITU-T H.265 (08/2021) Table 7-1
+pub const HEVC_NAL_TYPE_VPS: u8 = 32;
+pub const HEVC_NAL_TYPE_SPS: u8 = 33;
+pub const HEVC_NAL_TYPE_PPS: u8 = 34;
+
+/// Check if NAL type is in HEVC VPS/SPS/PPS range
+#[inline]
+pub fn is_hevc_parameter_set_nal_type(nal_type: u8) -> bool {
+    (HEVC_NAL_TYPE_VPS..=HEVC_NAL_TYPE_PPS).contains(&nal_type)
+}
 
 /// Special NAL type for extended NAL units
 ///
@@ -194,21 +206,28 @@ pub fn detect_from_magic_bytes(path: &Path) -> Result<ContainerFormat, std::io::
     if buffer.len() >= 5 {
         // Check for 4-byte start code
         if MagicBytes::START_CODE_4.matches(buffer) {
-            // Verify NAL unit type (5th byte)
-            let nal_type = buffer[4] & 0x1F;
+            // H.264 NAL type: bits 0-4 (5 bits)
+            let h264_nal_type = buffer[4] & 0x1F;
+            // H.265 NAL type: bits 1-6 (6 bits)
+            let hevc_nal_type = (buffer[4] >> 1) & 0x3F;
+
             // Common H.264 NAL types: 1 (slice), 5 (IDR), 7 (SPS), 8 (PPS)
-            // H.265 NAL types are different but similar
-            if (ANNEX_B_NAL_TYPE_MIN..=ANNEX_B_NAL_TYPE_MAX).contains(&nal_type)
-                || nal_type == ANNEX_B_NAL_TYPE_EXTENDED
+            // H.265 NAL types: 32 (VPS), 33 (SPS), 34 (PPS)
+            if (ANNEX_B_NAL_TYPE_MIN..=ANNEX_B_NAL_TYPE_MAX).contains(&h264_nal_type)
+                || h264_nal_type == ANNEX_B_NAL_TYPE_EXTENDED
+                || is_hevc_parameter_set_nal_type(hevc_nal_type)
             {
                 return Ok(ContainerFormat::AnnexB);
             }
         }
         // Check for 3-byte start code
         if MagicBytes::START_CODE_3.matches(buffer) {
-            let nal_type = buffer[3] & 0x1F;
-            if (ANNEX_B_NAL_TYPE_MIN..=ANNEX_B_NAL_TYPE_MAX).contains(&nal_type)
-                || nal_type == ANNEX_B_NAL_TYPE_EXTENDED
+            let h264_nal_type = buffer[3] & 0x1F;
+            let hevc_nal_type = (buffer[3] >> 1) & 0x3F;
+
+            if (ANNEX_B_NAL_TYPE_MIN..=ANNEX_B_NAL_TYPE_MAX).contains(&h264_nal_type)
+                || h264_nal_type == ANNEX_B_NAL_TYPE_EXTENDED
+                || is_hevc_parameter_set_nal_type(hevc_nal_type)
             {
                 return Ok(ContainerFormat::AnnexB);
             }
