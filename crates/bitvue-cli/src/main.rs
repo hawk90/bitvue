@@ -46,7 +46,7 @@ enum Commands {
         limit: usize,
 
         /// Output format (text, json, csv)
-        #[arg(short, long, default_value = "text")]
+        #[arg(short = 'F', long, default_value = "text")]
         format: String,
     },
 
