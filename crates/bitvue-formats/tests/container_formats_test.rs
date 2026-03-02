@@ -427,3 +427,100 @@ fn test_track_duration() {
 
     assert_eq!(track.duration_seconds(), 10.0);
 }
+
+#[test]
+fn test_real_mp4_sample_extraction() {
+    // Test real MP4 sample extraction to verify the chunk offset fix
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let sample_path = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("samples/foreman_h264.mp4");
+
+    if !sample_path.exists() {
+        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
+        return;
+    }
+
+    let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
+
+    // Try AVC extraction
+    match bitvue_formats::mp4::extract_avc_samples(&file_data) {
+        Ok(samples) => {
+            // Should extract all 60 frames from the MP4
+            assert!(
+                samples.len() > 50,
+                "Expected at least 50 samples, got {}",
+                samples.len()
+            );
+            eprintln!("Extracted {} samples from MP4", samples.len());
+
+            // Verify sample positions are correct by checking sample sizes
+            let expected_sizes = [10850, 4069, 1312, 643, 694, 3539, 1295, 657, 587, 3975];
+            for (i, (sample, expected_size)) in samples
+                .iter()
+                .take(10)
+                .zip(expected_sizes.iter())
+                .enumerate()
+            {
+                assert_eq!(
+                    sample.len(),
+                    *expected_size as usize,
+                    "Sample {} has wrong size: got {}, expected {}",
+                    i,
+                    sample.len(),
+                    expected_size
+                );
+
+                // Verify sample starts with NAL unit start code (for H.264 in MP4, it's length-prefixed)
+                // The first 4 bytes should be the NAL unit length
+                if sample.len() >= 4 {
+                    let nal_len =
+                        u32::from_be_bytes([sample[0], sample[1], sample[2], sample[3]]) as usize;
+                    eprintln!(
+                        "Sample {}: size={}, NAL length={}",
+                        i,
+                        sample.len(),
+                        nal_len
+                    );
+                    assert!(
+                        nal_len > 0 && nal_len < sample.len(),
+                        "Sample {} has invalid NAL length: {}",
+                        i,
+                        nal_len
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            panic!("Failed to extract AVC samples: {}", e);
+        }
+    }
+
+    // Also test HEVC MP4
+    let hevc_path = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("samples/foreman_hevc.mp4");
+
+    if hevc_path.exists() {
+        let hevc_data = std::fs::read(&hevc_path).expect("Failed to read HEVC sample file");
+        match bitvue_formats::mp4::extract_hevc_samples(&hevc_data) {
+            Ok(samples) => {
+                assert!(
+                    samples.len() > 50,
+                    "Expected at least 50 HEVC samples, got {}",
+                    samples.len()
+                );
+                eprintln!("Extracted {} HEVC samples from MP4", samples.len());
+            }
+            Err(e) => {
+                panic!("Failed to extract HEVC samples: {}", e);
+            }
+        }
+    }
+}
