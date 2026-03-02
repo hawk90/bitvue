@@ -32,7 +32,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.11.5"  # Bitvue 0.11.0 Release
+version = "0.11.6"  # Bitvue 0.11.0 Release
 edition = "2021"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/user/bitvue"
