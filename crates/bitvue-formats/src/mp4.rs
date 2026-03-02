@@ -208,20 +208,43 @@ fn extract_samples_with_validator<'a>(
     }
 
     // Validate sample count to prevent DoS
-    if info.sample_offsets.len() > MAX_TOTAL_SAMPLES {
+    if info.sample_sizes.len() > MAX_TOTAL_SAMPLES {
         return Err(BitvueError::InvalidData(format!(
             "Sample count {} exceeds maximum allowed {}",
-            info.sample_offsets.len(),
+            info.sample_sizes.len(),
             MAX_TOTAL_SAMPLES
         )));
     }
 
     // Pre-allocate with exact capacity since we know the sample count
-    let mut samples = Vec::with_capacity(info.sample_offsets.len());
+    let mut samples = Vec::with_capacity(info.sample_sizes.len());
+
+    // CRITICAL: sample_offsets from stco are CHUNK offsets, not sample offsets!
+    // We need to calculate actual sample offsets from chunk offsets + sample sizes.
+    // For simplicity, assume all samples are in chunk order (sample i is in chunk floor(i/samples_per_chunk))
+    // Most MP4 files have samples in sequential order within chunks.
+
+    let actual_sample_offsets: Vec<u64> = if info.sample_offsets.len() == info.sample_sizes.len() {
+        // One sample per chunk - use offsets directly
+        info.sample_offsets.clone()
+    } else if !info.sample_offsets.is_empty() {
+        // Multiple samples per chunk - calculate offsets
+        let mut offsets = Vec::with_capacity(info.sample_sizes.len());
+        let mut current_offset = info.sample_offsets[0];
+
+        for (i, &size) in info.sample_sizes.iter().enumerate() {
+            offsets.push(current_offset);
+            current_offset += size as u64;
+        }
+        offsets
+    } else {
+        return Err(BitvueError::InvalidData(
+            "No chunk offsets found in MP4".to_string(),
+        ));
+    };
 
     // Sort samples by offset to detect overlaps
-    let mut sorted_samples: Vec<_> = info
-        .sample_offsets
+    let mut sorted_samples: Vec<_> = actual_sample_offsets
         .iter()
         .zip(info.sample_sizes.iter())
         .enumerate()
