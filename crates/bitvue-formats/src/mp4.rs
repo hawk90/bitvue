@@ -232,7 +232,7 @@ fn extract_samples_with_validator<'a>(
         let mut offsets = Vec::with_capacity(info.sample_sizes.len());
         let mut current_offset = info.sample_offsets[0];
 
-        for (i, &size) in info.sample_sizes.iter().enumerate() {
+        for &size in &info.sample_sizes {
             offsets.push(current_offset);
             current_offset += size as u64;
         }
