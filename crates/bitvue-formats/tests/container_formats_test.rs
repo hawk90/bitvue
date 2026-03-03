@@ -524,3 +524,36 @@ fn test_real_mp4_sample_extraction() {
         }
     }
 }
+
+#[test]
+fn test_hevc_annex_b_frames() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let sample_path = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("samples/foreman_hevc.265");
+
+    if !sample_path.exists() {
+        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
+        return;
+    }
+
+    let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
+    eprintln!("HEVC AnnexB file size: {} bytes", file_data.len());
+
+    match bitvue_hevc::extract_annex_b_frames(&file_data) {
+        Ok(frames) => {
+            eprintln!("Extracted {} HEVC frames", frames.len());
+            assert!(
+                frames.len() >= 50,
+                "Expected at least 50 HEVC frames, got {}",
+                frames.len()
+            );
+        }
+        Err(e) => {
+            panic!("Failed to extract HEVC frames: {}", e);
+        }
+    }
+}

@@ -278,20 +278,31 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
             let is_ref = nal_type.is_reference();
             let temporal_id = Some(nal_header.temporal_id());
 
+            // Try to read first_slice_segment_in_pic_flag directly from the NAL data
+            // This is the first bit after the NAL header (2 bytes)
+            let first_slice_flag = if nal_data_start + 3 <= nal_end {
+                // NAL header is 2 bytes, then first_slice_segment_in_pic_flag is the first bit
+                data[nal_data_start + 2] & 0x80 != 0
+            } else {
+                true // Assume new frame if we can't read the flag
+            };
+
             // Check if this starts a new frame
-            let new_frame = if current_frame_nals.is_empty() || is_idr != current_is_idr {
-                true // First NAL or IDR boundary
+            let new_frame = if current_frame_nals.is_empty() {
+                true // First VCL NAL
+            } else if is_idr != current_is_idr {
+                true // IDR boundary change
+            } else if first_slice_flag {
+                true // first_slice_segment_in_pic_flag is set
             } else if let Some(slice) = &current_slice_header {
-                // Try to parse the current slice header
+                // Try to parse slice header for additional checks
                 if let Ok(new_slice) = crate::slice::parse_slice_header(
                     &data[nal_data_start + 1..nal_end],
                     &stream.sps_map,
                     &stream.pps_map,
                     nal_type,
                 ) {
-                    // New frame if first_slice_segment_in_pic_flag is set
-                    new_slice.first_slice_segment_in_pic_flag
-                        || new_slice.slice_pic_parameter_set_id != slice.slice_pic_parameter_set_id
+                    new_slice.slice_pic_parameter_set_id != slice.slice_pic_parameter_set_id
                 } else {
                     false
                 }
