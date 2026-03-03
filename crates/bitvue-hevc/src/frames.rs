@@ -288,27 +288,24 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
             };
 
             // Check if this starts a new frame
-            let new_frame = if current_frame_nals.is_empty() {
-                true // First VCL NAL
-            } else if is_idr != current_is_idr {
-                true // IDR boundary change
-            } else if first_slice_flag {
-                true // first_slice_segment_in_pic_flag is set
-            } else if let Some(slice) = &current_slice_header {
-                // Try to parse slice header for additional checks
-                if let Ok(new_slice) = crate::slice::parse_slice_header(
-                    &data[nal_data_start + 1..nal_end],
-                    &stream.sps_map,
-                    &stream.pps_map,
-                    nal_type,
-                ) {
-                    new_slice.slice_pic_parameter_set_id != slice.slice_pic_parameter_set_id
+            let new_frame =
+                if current_frame_nals.is_empty() || is_idr != current_is_idr || first_slice_flag {
+                    true // First VCL NAL, IDR boundary, or first_slice flag
+                } else if let Some(slice) = &current_slice_header {
+                    // Try to parse slice header for additional checks
+                    if let Ok(new_slice) = crate::slice::parse_slice_header(
+                        &data[nal_data_start + 1..nal_end],
+                        &stream.sps_map,
+                        &stream.pps_map,
+                        nal_type,
+                    ) {
+                        new_slice.slice_pic_parameter_set_id != slice.slice_pic_parameter_set_id
+                    } else {
+                        false
+                    }
                 } else {
                     false
-                }
-            } else {
-                false
-            };
+                };
 
             if new_frame && !current_frame_nals.is_empty() {
                 // Finalize previous frame
