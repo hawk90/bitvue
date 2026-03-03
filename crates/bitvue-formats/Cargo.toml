@@ -12,3 +12,4 @@ thiserror = { workspace = true }
 [dev-dependencies]
 tempfile = "3"
 bitvue-hevc = { path = "../bitvue-hevc" }
+bitvue-avc = { path = "../bitvue-avc" }

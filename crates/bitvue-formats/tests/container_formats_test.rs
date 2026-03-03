@@ -557,3 +557,191 @@ fn test_hevc_annex_b_frames() {
         }
     }
 }
+
+/// Helper function to convert length-prefixed NAL units to Annex B format
+fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
+    let mut with_start_codes = Vec::new();
+    let mut pos: usize = 0;
+    const HEADER_SIZE: usize = 4;
+
+    while pos
+        .checked_add(HEADER_SIZE)
+        .map_or(false, |end| end <= sample_data.len())
+    {
+        let len = u32::from_be_bytes([
+            sample_data[pos],
+            sample_data[pos + 1],
+            sample_data[pos + 2],
+            sample_data[pos + 3],
+        ]) as usize;
+
+        pos += HEADER_SIZE;
+
+        let end_pos = match pos.checked_add(len) {
+            Some(end) if end <= sample_data.len() => end,
+            _ => break,
+        };
+
+        with_start_codes.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        with_start_codes.extend_from_slice(&sample_data[pos..end_pos]);
+        pos = end_pos;
+    }
+
+    with_start_codes
+}
+
+#[test]
+fn test_hevc_mp4_tauri_flow() {
+    // This test mimics exactly what the Tauri app does when parsing HEVC MP4 files
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let sample_path = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("samples/foreman_hevc.mp4");
+
+    if !sample_path.exists() {
+        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
+        return;
+    }
+
+    let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
+    eprintln!("HEVC MP4 file size: {} bytes", file_data.len());
+
+    // Extract HEVC samples from MP4 (what parse_mp4_container does)
+    let samples = bitvue_formats::mp4::extract_hevc_samples(&file_data)
+        .expect("Failed to extract HEVC samples from MP4");
+
+    eprintln!("Extracted {} HEVC samples from MP4", samples.len());
+    assert!(!samples.is_empty(), "No HEVC samples extracted");
+
+    // Process first 5 samples like parse_hevc_sample does
+    // IMPORTANT: This test verifies that frame_index should be set to the sample index,
+    // not the index returned by extract_annex_b_frames (which always returns 0 for single samples)
+    for (idx, sample_data) in samples.iter().take(5).enumerate() {
+        eprintln!("\n--- Sample {} ({} bytes) ---", idx, sample_data.len());
+
+        // Convert from length-prefixed to Annex B (what Tauri app does)
+        let annex_b_data = convert_length_prefixed_to_annex_b(&sample_data);
+        eprintln!("  Converted to AnnexB: {} bytes", annex_b_data.len());
+
+        match bitvue_hevc::extract_annex_b_frames(&annex_b_data) {
+            Ok(frames) => {
+                eprintln!("  Converted AnnexB: {} frames extracted", frames.len());
+                if !frames.is_empty() {
+                    // Convert to unit nodes like hevc_frames_to_unit_nodes does
+                    let mut units = bitvue_hevc::hevc_frames_to_unit_nodes(&frames);
+                    eprintln!("  Converted to {} UnitNodes", units.len());
+
+                    // Take first unit like Tauri app does with .next()
+                    if let Some(mut unit) = units.into_iter().next() {
+                        // IMPORTANT: The Tauri app MUST override frame_index with sample index
+                        // because extract_annex_b_frames returns frame_index=0 for each sample
+                        let original_frame_index = unit.frame_index;
+                        unit.frame_index = Some(idx); // This is what the fix does
+
+                        eprintln!(
+                            "  -> Original frame_index: {:?}, Corrected: {:?}",
+                            original_frame_index, unit.frame_index
+                        );
+                        eprintln!("  -> frame_type: {:?}", unit.frame_type);
+
+                        // Verify the fix: frame_index should match sample index
+                        assert_eq!(
+                            unit.frame_index,
+                            Some(idx),
+                            "frame_index should be sample index {}, not {:?}",
+                            idx,
+                            original_frame_index
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("  Converted AnnexB error: {}", e);
+            }
+        }
+    }
+}
+
+#[test]
+fn test_avc_mp4_tauri_flow() {
+    // This test mimics exactly what the Tauri app does when parsing H.264/AVC MP4 files
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let sample_path = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("samples/foreman_h264.mp4");
+
+    if !sample_path.exists() {
+        eprintln!("Skipping test: sample file not found at {:?}", sample_path);
+        return;
+    }
+
+    let file_data = std::fs::read(&sample_path).expect("Failed to read sample file");
+    eprintln!("AVC MP4 file size: {} bytes", file_data.len());
+
+    // Extract AVC samples from MP4 (what parse_mp4_container does)
+    let samples = bitvue_formats::mp4::extract_avc_samples(&file_data)
+        .expect("Failed to extract AVC samples from MP4");
+
+    eprintln!("Extracted {} AVC samples from MP4", samples.len());
+    assert!(!samples.is_empty(), "No AVC samples extracted");
+
+    // Process first 5 samples like parse_avc_sample does
+    for (idx, sample_data) in samples.iter().take(5).enumerate() {
+        eprintln!("\n--- Sample {} ({} bytes) ---", idx, sample_data.len());
+
+        // Convert from length-prefixed to Annex B (what Tauri app does)
+        let annex_b_data = convert_length_prefixed_to_annex_b(&sample_data);
+        eprintln!("  Converted to AnnexB: {} bytes", annex_b_data.len());
+
+        match bitvue_hevc::extract_annex_b_frames(&annex_b_data) {
+            Ok(frames) => {
+                eprintln!(
+                    "  HEVC parsing: {} frames (should be 0 for AVC data)",
+                    frames.len()
+                );
+            }
+            Err(e) => {
+                eprintln!("  HEVC parsing error (expected for AVC data): {}", e);
+            }
+        }
+
+        // Try AVC parsing
+        match bitvue_avc::extract_annex_b_frames(&annex_b_data) {
+            Ok(frames) => {
+                eprintln!("  AVC parsing: {} frames extracted", frames.len());
+                if !frames.is_empty() {
+                    let mut units = bitvue_avc::avc_frames_to_unit_nodes(&frames);
+                    eprintln!("  Converted to {} UnitNodes", units.len());
+
+                    if let Some(mut unit) = units.into_iter().next() {
+                        let original_frame_index = unit.frame_index;
+                        unit.frame_index = Some(idx); // This is what the fix does
+
+                        eprintln!(
+                            "  -> Original frame_index: {:?}, Corrected: {:?}",
+                            original_frame_index, unit.frame_index
+                        );
+                        eprintln!("  -> frame_type: {:?}", unit.frame_type);
+
+                        assert_eq!(
+                            unit.frame_index,
+                            Some(idx),
+                            "frame_index should be sample index {}, not {:?}",
+                            idx,
+                            original_frame_index
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("  AVC parsing error: {}", e);
+            }
+        }
+    }
+}

@@ -645,7 +645,9 @@ fn parse_avc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core:
     // First try: Direct Annex B parsing
     if let Ok(frames) = extract_avc_annex_b_frames(&sample_data) {
         if !frames.is_empty() {
-            if let Some(unit) = avc_frames_to_unit_nodes(&frames).into_iter().next() {
+            if let Some(mut unit) = avc_frames_to_unit_nodes(&frames).into_iter().next() {
+                // Override frame_index with sample index (since extraction starts fresh for each sample)
+                unit.frame_index = Some(idx);
                 return unit;
             }
         }
@@ -655,7 +657,9 @@ fn parse_avc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core:
     let with_start_codes = convert_length_prefixed_to_annex_b(sample_data);
     if let Ok(frames) = extract_avc_annex_b_frames(&with_start_codes) {
         if !frames.is_empty() {
-            if let Some(unit) = avc_frames_to_unit_nodes(&frames).into_iter().next() {
+            if let Some(mut unit) = avc_frames_to_unit_nodes(&frames).into_iter().next() {
+                // Override frame_index with sample index (since extraction starts fresh for each sample)
+                unit.frame_index = Some(idx);
                 return unit;
             }
         }
@@ -673,7 +677,9 @@ fn parse_hevc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core
     // First try: Direct Annex B parsing
     if let Ok(frames) = extract_hevc_annex_b_frames(&sample_data) {
         if !frames.is_empty() {
-            if let Some(unit) = hevc_frames_to_unit_nodes(&frames).into_iter().next() {
+            if let Some(mut unit) = hevc_frames_to_unit_nodes(&frames).into_iter().next() {
+                // Override frame_index with sample index (since extraction starts fresh for each sample)
+                unit.frame_index = Some(idx);
                 return unit;
             }
         }
@@ -683,7 +689,9 @@ fn parse_hevc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core
     let with_start_codes = convert_length_prefixed_to_annex_b(sample_data);
     if let Ok(frames) = extract_hevc_annex_b_frames(&with_start_codes) {
         if !frames.is_empty() {
-            if let Some(unit) = hevc_frames_to_unit_nodes(&frames).into_iter().next() {
+            if let Some(mut unit) = hevc_frames_to_unit_nodes(&frames).into_iter().next() {
+                // Override frame_index with sample index (since extraction starts fresh for each sample)
+                unit.frame_index = Some(idx);
                 return unit;
             }
         }
