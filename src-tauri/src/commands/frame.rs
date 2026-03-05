@@ -626,6 +626,65 @@ pub fn decode_container_frame_yuv_with_samples(
     Ok(decoded_frame)
 }
 
+/// Decode YUV frame from AnnexB file (H.264/H.265 raw streams)
+///
+/// Uses FFmpeg decoder to decode raw AnnexB streams.
+#[cfg(feature = "ffmpeg")]
+pub fn decode_annexb_frame_yuv(
+    file_data: &[u8],
+    frame_index: usize,
+    is_hevc: bool,
+) -> Result<bitvue_decode::DecodedFrame, String> {
+    use bitvue_decode::{Decoder, traits::CodecType};
+
+    log::info!("decode_annexb_frame_yuv: Decoding frame {} (is_hevc: {})", frame_index, is_hevc);
+
+    // Extract frames from AnnexB stream
+    let frames = if is_hevc {
+        bitvue_hevc::extract_annex_b_frames(file_data)
+            .map_err(|e| format!("Failed to extract HEVC frames: {}", e))?
+    } else {
+        bitvue_avc::extract_annex_b_frames(file_data)
+            .map_err(|e| format!("Failed to extract AVC frames: {}", e))?
+    };
+
+    if frames.is_empty() {
+        return Err("No frames found in AnnexB stream".to_string());
+    }
+
+    validate_frame_index_bounds(frame_index, frames.len())?;
+
+    let frame = &frames[frame_index];
+
+    // Create FFmpeg decoder
+    let codec_type = if is_hevc { CodecType::H265 } else { CodecType::H264 };
+    let mut decoder = bitvue_decode::ffmpeg::FfmpegDecoder::new(codec_type)
+        .map_err(|e| format!("Failed to create FFmpeg decoder: {}", e))?;
+
+    // Send the NAL data to the decoder
+    decoder.send_data(&frame.nal_data, frame_index as i64)
+        .map_err(|e| format!("Failed to send data to decoder: {}", e))?;
+
+    // Get the decoded frame
+    let decoded_frame = decoder.get_frame()
+        .map_err(|e| format!("Failed to decode frame: {}", e))?;
+
+    log::info!("decode_annexb_frame_yuv: Decoded frame {} ({}x{})",
+        frame_index, decoded_frame.width, decoded_frame.height);
+
+    Ok(decoded_frame)
+}
+
+/// Decode YUV frame from AnnexB file (stub for non-ffmpeg builds)
+#[cfg(not(feature = "ffmpeg"))]
+pub fn decode_annexb_frame_yuv(
+    _file_data: &[u8],
+    _frame_index: usize,
+    _is_hevc: bool,
+) -> Result<bitvue_decode::DecodedFrame, String> {
+    Err("H.264/H.265 decoding requires FFmpeg. Please rebuild with --features ffmpeg".to_string())
+}
+
 /// Get decoded YUV frame (more efficient than RGB conversion)
 #[tauri::command]
 pub async fn get_decoded_frame_yuv(
@@ -691,7 +750,14 @@ pub async fn get_decoded_frame_yuv(
                     cached_samples.as_ref().map(|s| s.as_slice())
                 )
             }
-            _ => decode_ivf_frame_yuv(file_data, idx),
+            ContainerFormat::AnnexB => {
+                // H.264/H.265 AnnexB decoding requires FFmpeg support
+                // Return error explaining this limitation
+                return Err("H.264/H.265 video display requires FFmpeg support. \
+                    Frame parsing works, but video decoding is not available. \
+                    Use AV1/IVF files for full functionality.".to_string());
+            }
+            _ => return Err(format!("Unsupported container format: {:?}", container_format)),
         }
     };
 
