@@ -15,6 +15,7 @@
   padding: 8px 12px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .panel-title {
@@ -32,6 +33,7 @@
   background: var(--bg-panel-secondary);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  flex-shrink: 0;
 }
 
 .hex-tabs::-webkit-scrollbar {

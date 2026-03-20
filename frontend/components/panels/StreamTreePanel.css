@@ -15,6 +15,7 @@
   padding: 8px 12px;
   background: var(--bitvue-panel-header-bg, #252526);
   border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
+  flex-shrink: 0;
 }
 
 .panel-title {
@@ -33,6 +34,7 @@
   background: var(--bitvue-bg-secondary, #2d2d30);
   border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .filter-checkbox {

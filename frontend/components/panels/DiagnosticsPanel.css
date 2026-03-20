@@ -17,6 +17,7 @@
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel-secondary);
+  flex-shrink: 0;
 }
 
 .diagnostics-title {
