@@ -301,6 +301,7 @@ impl DecodeService {
     /// This is beneficial for video playback where frames are typically accessed
     /// sequentially. By prefetching, the next frames will be ready when needed,
     /// reducing latency.
+    #[allow(dead_code)]
     pub fn get_or_decode_frame_with_prefetch<F>(
         &self,
         frame_index: usize,
@@ -310,7 +311,6 @@ impl DecodeService {
     where
         F: Fn(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>,
     {
-        use crate::constants::cache;
 
         // Get current cache generation
         let current_generation = self.cache_generation.load(Ordering::SeqCst);

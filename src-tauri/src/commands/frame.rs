@@ -67,6 +67,8 @@ pub async fn get_decoded_frame(
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
     let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
+    #[cfg(feature = "ffmpeg")]
+    let codec = stream_a.container.as_ref().map(|c| c.codec.clone()).unwrap_or_default();
     drop(stream_a);
     drop(core);
 
@@ -112,7 +114,22 @@ pub async fn get_decoded_frame(
                     cached_samples.as_ref().map(|s| s.as_slice())
                 )
             }
-            _ => decode_ivf_frame(file_data, idx),
+            ContainerFormat::AnnexB => {
+                // H.264/H.265 AnnexB decoding requires FFmpeg support
+                #[cfg(feature = "ffmpeg")]
+                {
+                    let is_hevc = is_hevc_codec(&codec);
+
+                    // Decode YUV frame and convert to RGB
+                    let yuv_frame = decode_annexb_frame_yuv(file_data, idx, is_hevc)?;
+                    let rgb_data = bitvue_decode::yuv_to_rgb(&yuv_frame);
+                    Ok((yuv_frame.width, yuv_frame.height, rgb_data))
+                }
+                #[cfg(not(feature = "ffmpeg"))]
+                Err("H.264/H.265 video display requires FFmpeg support. \
+                    Use AV1/IVF files for full functionality.".to_string())
+            }
+            _ => Err(format!("Unsupported container format: {:?}", container_format)),
         }
     };
 
@@ -626,6 +643,12 @@ pub fn decode_container_frame_yuv_with_samples(
     Ok(decoded_frame)
 }
 
+/// Returns true if the codec string identifies HEVC/H.265.
+fn is_hevc_codec(codec: &str) -> bool {
+    let lower = codec.to_lowercase();
+    lower.contains("hevc") || lower.contains("h265") || lower.contains("h.265") || lower.contains("265")
+}
+
 /// Decode YUV frame from AnnexB file (H.264/H.265 raw streams)
 ///
 /// Uses FFmpeg decoder to decode raw AnnexB streams.
@@ -639,40 +662,68 @@ pub fn decode_annexb_frame_yuv(
 
     log::info!("decode_annexb_frame_yuv: Decoding frame {} (is_hevc: {})", frame_index, is_hevc);
 
-    // Extract frames from AnnexB stream
-    let frames = if is_hevc {
-        bitvue_hevc::extract_annex_b_frames(file_data)
-            .map_err(|e| format!("Failed to extract HEVC frames: {}", e))?
+    // Extract all NAL units up to and including the target frame.
+    // P-frames and B-frames require prior decoded frames as reference, so we must
+    // feed the decoder from frame 0 — not just the single target frame.
+    let (nal_units, total_frames) = if is_hevc {
+        let frames = bitvue_hevc::extract_annex_b_frames(file_data)
+            .map_err(|e| format!("Failed to extract HEVC frames: {}", e))?;
+        if frames.is_empty() {
+            return Err("No frames found in HEVC AnnexB stream".to_string());
+        }
+        validate_frame_index_bounds(frame_index, frames.len())?;
+        let total = frames.len();
+        let nals: Vec<Vec<u8>> = frames.into_iter()
+            .take(frame_index + 1)
+            .map(|f| f.nal_data)
+            .collect();
+        (nals, total)
     } else {
-        bitvue_avc::extract_annex_b_frames(file_data)
-            .map_err(|e| format!("Failed to extract AVC frames: {}", e))?
+        let frames = bitvue_avc::extract_annex_b_frames(file_data)
+            .map_err(|e| format!("Failed to extract AVC frames: {}", e))?;
+        if frames.is_empty() {
+            return Err("No frames found in AVC AnnexB stream".to_string());
+        }
+        validate_frame_index_bounds(frame_index, frames.len())?;
+        let total = frames.len();
+        let nals: Vec<Vec<u8>> = frames.into_iter()
+            .take(frame_index + 1)
+            .map(|f| f.nal_data)
+            .collect();
+        (nals, total)
     };
-
-    if frames.is_empty() {
-        return Err("No frames found in AnnexB stream".to_string());
-    }
-
-    validate_frame_index_bounds(frame_index, frames.len())?;
-
-    let frame = &frames[frame_index];
 
     // Create FFmpeg decoder
     let codec_type = if is_hevc { CodecType::H265 } else { CodecType::H264 };
     let mut decoder = bitvue_decode::ffmpeg::FfmpegDecoder::new(codec_type)
         .map_err(|e| format!("Failed to create FFmpeg decoder: {}", e))?;
 
-    // Send the NAL data to the decoder
-    decoder.send_data(&frame.nal_data, frame_index as i64)
-        .map_err(|e| format!("Failed to send data to decoder: {}", e))?;
+    // Feed all frames from 0 to frame_index so the decoder has the reference
+    // frames needed to reconstruct P-frames and B-frames.
+    for (i, nal) in nal_units.iter().enumerate() {
+        decoder.send_data(nal, Some(i as i64))
+            .map_err(|e| format!("Failed to send frame {} to decoder: {}", i, e))?;
+    }
 
-    // Get the decoded frame
-    let decoded_frame = decoder.get_frame()
-        .map_err(|e| format!("Failed to decode frame: {}", e))?;
+    // Flush to drain any buffered frames (B-frame reordering etc.)
+    decoder.flush();
 
-    log::info!("decode_annexb_frame_yuv: Decoded frame {} ({}x{})",
-        frame_index, decoded_frame.width, decoded_frame.height);
+    // Drain all decoded frames; the last one is the requested frame
+    let mut decoded_frame = None;
+    loop {
+        match decoder.get_frame() {
+            Ok(f) => decoded_frame = Some(f),
+            Err(_) => break,
+        }
+    }
 
-    Ok(decoded_frame)
+    let decoded = decoded_frame
+        .ok_or_else(|| format!("No decoded output for frame {}/{}", frame_index, total_frames))?;
+
+    log::info!("decode_annexb_frame_yuv: Decoded frame {}/{} ({}x{})",
+        frame_index, total_frames, decoded.width, decoded.height);
+
+    Ok(decoded)
 }
 
 /// Decode YUV frame from AnnexB file (stub for non-ffmpeg builds)
@@ -699,6 +750,11 @@ pub async fn get_decoded_frame_yuv(
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
     let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
+    // Get codec for AnnexB format detection (H.264 vs H.265)
+    let codec = stream_a.container.as_ref()
+        .map(|c| c.codec.clone())
+        .unwrap_or_default();
+    log::info!("get_decoded_frame_yuv: Detected codec from container: '{}'", codec);
     drop(stream_a);
     drop(core);
 
@@ -752,12 +808,18 @@ pub async fn get_decoded_frame_yuv(
             }
             ContainerFormat::AnnexB => {
                 // H.264/H.265 AnnexB decoding requires FFmpeg support
-                // Return error explaining this limitation
-                return Err("H.264/H.265 video display requires FFmpeg support. \
+                #[cfg(feature = "ffmpeg")]
+                {
+                    let is_hevc = is_hevc_codec(&codec);
+                    log::info!("get_decoded_frame_yuv AnnexB: codec='{}', is_hevc={}", codec, is_hevc);
+                    decode_annexb_frame_yuv(file_data, idx, is_hevc)
+                }
+                #[cfg(not(feature = "ffmpeg"))]
+                Err("H.264/H.265 video display requires FFmpeg support. \
                     Frame parsing works, but video decoding is not available. \
-                    Use AV1/IVF files for full functionality.".to_string());
+                    Use AV1/IVF files for full functionality.".to_string())
             }
-            _ => return Err(format!("Unsupported container format: {:?}", container_format)),
+            _ => Err(format!("Unsupported container format: {:?}", container_format)),
         }
     };
 

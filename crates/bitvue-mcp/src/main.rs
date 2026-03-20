@@ -509,7 +509,7 @@ fn parse_ivf_file(path: &PathBuf, stream_id: StreamId) -> Result<Vec<UnitNode>, 
 
         // Calculate timestamp in nanoseconds
         let timestamp_ns = if timebase_den > 0 {
-            pts as u64 * 1_000_000_000 / timebase_den as u64
+            pts * 1_000_000_000 / timebase_den as u64
         } else {
             0
         };
@@ -626,10 +626,7 @@ fn load_file(args: Value, state: &AppState) -> Result<String> {
     }
 
     // Get file size using validated path
-    let file_size = validated_path
-        .metadata()
-        .and_then(|m| Ok(m.len()))
-        .unwrap_or(0);
+    let file_size = validated_path.metadata().map(|m| m.len()).unwrap_or(0);
 
     // Get file extension
     let ext = validated_path
@@ -820,7 +817,7 @@ fn get_motion_vectors(args: Value, state: &AppState) -> Result<String> {
         .find(|u| u.frame_index == Some(frame_index))
         .ok_or_else(|| anyhow::anyhow!("Frame {} not found", frame_index))?;
 
-    let ref_idx = frame.ref_frames.clone().unwrap_or_else(|| vec![]);
+    let ref_idx = frame.ref_frames.clone().unwrap_or_default();
 
     Ok(json!({
         "frame_index": frame_index,
@@ -990,7 +987,7 @@ fn find_decoding_issues(args: Value, state: &AppState) -> Result<String> {
     // Check for unusually large or small frames
     let sizes: Vec<usize> = units.units.iter().map(|u| u.size).collect();
     if !sizes.is_empty() {
-        let avg_size = sizes.iter().map(|&s| s).sum::<usize>() / sizes.len();
+        let avg_size = sizes.iter().copied().sum::<usize>() / sizes.len();
         let max_size = *sizes.iter().max().unwrap();
         let min_size = *sizes.iter().min().unwrap();
 
@@ -1085,7 +1082,7 @@ fn search_syntax(args: Value, state: &AppState) -> Result<String> {
         }
 
         let frame_idx = unit.frame_index;
-        let ftype = unit.frame_type.as_ref().map(|s| &**s);
+        let ftype = unit.frame_type.as_deref();
 
         // Apply filters
         if let Some(filter) = frame_type_filter {

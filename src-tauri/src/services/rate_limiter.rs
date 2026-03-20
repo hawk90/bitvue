@@ -19,7 +19,7 @@ pub struct RateLimitConfig {
 impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
-            // Default: 20 requests per second (50ms between requests)
+            // Allow up to 20 req/s sustained; burst of 10 for rapid initial navigation
             min_interval: Duration::from_millis(50),
             burst_limit: 10,
         }

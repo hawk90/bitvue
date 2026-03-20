@@ -6,8 +6,8 @@ use ffmpeg_next as ffmpeg;
 use crate::decoder::{DecodeError, DecodedFrame, FrameType, Result};
 use crate::plane_utils;
 use crate::traits::{CodecType, Decoder, DecoderCapabilities};
-use abseil::prelude::*;
 use std::collections::VecDeque;
+use tracing::{debug, error, warn};
 
 /// Maximum number of frames to buffer
 ///
@@ -21,9 +21,27 @@ use ffmpeg::codec::{decoder, Context};
 #[cfg(feature = "ffmpeg")]
 use ffmpeg::format::Pixel;
 #[cfg(feature = "ffmpeg")]
-use ffmpeg::media::Type;
-#[cfg(feature = "ffmpeg")]
 use ffmpeg::software::scaling::{context::Context as SwsContext, flag::Flags};
+
+/// Thread-safe wrapper for FFmpeg scaler context.
+///
+/// `SwsContext` contains raw pointers and does not implement `Send`.
+/// This is safe because:
+/// - We hold exclusive access via `&mut self` on `FfmpegDecoder`
+/// - FFmpeg's software scaler has no internal thread state; all state
+///   is in the context struct itself, accessed only through our `&mut self`
+#[cfg(feature = "ffmpeg")]
+struct SafeScaler {
+    ctx: SwsContext,
+    /// Source pixel format this scaler was built for
+    src_format: Pixel,
+    /// Source dimensions this scaler was built for
+    width: u32,
+    height: u32,
+}
+
+#[cfg(feature = "ffmpeg")]
+unsafe impl Send for SafeScaler {}
 #[cfg(feature = "ffmpeg")]
 use ffmpeg::util::frame::video::Video;
 #[cfg(feature = "ffmpeg")]
@@ -37,7 +55,7 @@ pub struct FfmpegDecoder {
     /// FFmpeg decoder context
     decoder: decoder::Video,
     /// Scaler context for converting to YUV420P
-    scaler: Option<SwsContext>,
+    scaler: Option<SafeScaler>,
     /// Frame buffer for receiving decoded frames
     frame_buffer: VecDeque<DecodedFrame>,
     /// Current timestamp
@@ -72,12 +90,14 @@ impl FfmpegDecoder {
             ))
         })?;
 
-        // Create decoder context
+        // Create decoder context and open with the found codec
         let context = Context::new();
         let decoder = context
             .decoder()
+            .open_as(codec)
+            .map_err(|e| DecodeError::Init(format!("Failed to open decoder: {}", e)))?
             .video()
-            .map_err(|e| DecodeError::Init(format!("Failed to create decoder: {}", e)))?;
+            .map_err(|e| DecodeError::Init(format!("Failed to create video decoder: {}", e)))?;
 
         debug!("Created FFmpeg decoder for {}", codec_type);
 
@@ -113,7 +133,7 @@ impl FfmpegDecoder {
 
                     // Convert FFmpeg frame to DecodedFrame
                     if let Ok(frame) = self.ffmpeg_frame_to_decoded(&decoded) {
-                        self.frame_buffer.push(frame);
+                        self.frame_buffer.push_back(frame);
                     }
                 }
                 Err(e) => {
@@ -153,35 +173,42 @@ impl FfmpegDecoder {
         }
 
         // Determine which frame to extract data from (avoid clone when already YUV420P)
-        let data_frame: &Video = if pixel_format != Pixel::YUV420P {
-            // Create scaler if not exists or format changed
-            if self.scaler.is_none() {
-                self.scaler = Some(
-                    SwsContext::get(
-                        pixel_format,
-                        width,
-                        height,
-                        Pixel::YUV420P,
-                        width,
-                        height,
-                        Flags::BILINEAR,
-                    )
-                    .map_err(|e| DecodeError::Decode(format!("Failed to create scaler: {}", e)))?,
-                );
+        if pixel_format != Pixel::YUV420P {
+            // Create or recreate scaler if format/dimensions changed
+            let needs_new_scaler = self.scaler.as_ref().map_or(true, |s| {
+                s.src_format != pixel_format || s.width != width || s.height != height
+            });
+            if needs_new_scaler {
+                let ctx = SwsContext::get(
+                    pixel_format,
+                    width,
+                    height,
+                    Pixel::YUV420P,
+                    width,
+                    height,
+                    Flags::BILINEAR,
+                )
+                .map_err(|e| DecodeError::Decode(format!("Failed to create scaler: {}", e)))?;
+                self.scaler = Some(SafeScaler {
+                    ctx,
+                    src_format: pixel_format,
+                    width,
+                    height,
+                });
             }
 
             // Scale to YUV420P - need to clone the scaled frame since it's owned
             return self.extract_converted_frame(frame);
-        };
+        }
 
         // Already YUV420P - extract data directly without cloning
         // Validate dimensions first
         plane_utils::validate_dimensions(width as usize, height as usize)?;
 
         // Extract Y plane using shared utility
-        let y_stride = data_frame.stride(0) as usize;
+        let y_stride = frame.stride(0) as usize;
         let y_plane = plane_utils::extract_y_plane(
-            data_frame.data(0),
+            frame.data(0),
             width as usize,
             height as usize,
             y_stride,
@@ -189,9 +216,9 @@ impl FfmpegDecoder {
         )?;
 
         // Extract U plane using shared utility (420 chroma subsampling)
-        let u_stride = data_frame.stride(1) as usize;
+        let u_stride = frame.stride(1) as usize;
         let u_plane = plane_utils::extract_uv_plane_420(
-            data_frame.data(1),
+            frame.data(1),
             width as usize,
             height as usize,
             u_stride,
@@ -199,9 +226,9 @@ impl FfmpegDecoder {
         )?;
 
         // Extract V plane using shared utility (420 chroma subsampling)
-        let v_stride = data_frame.stride(2) as usize;
+        let v_stride = frame.stride(2) as usize;
         let v_plane = plane_utils::extract_uv_plane_420(
-            data_frame.data(2),
+            frame.data(2),
             width as usize,
             height as usize,
             v_stride,
@@ -209,14 +236,14 @@ impl FfmpegDecoder {
         )?;
 
         // Detect frame type
-        let frame_type = if data_frame.is_key() {
+        let frame_type = if frame.is_key() {
             FrameType::Key
         } else {
             FrameType::Inter
         };
 
         // Get timestamp
-        let timestamp = data_frame.timestamp().unwrap_or(self.timestamp);
+        let timestamp = frame.timestamp().unwrap_or(self.timestamp);
 
         debug!(
             "Decoded {} frame: {}x{} {:?}",
@@ -229,24 +256,25 @@ impl FfmpegDecoder {
             width,
             height,
             bit_depth: 8, // FFmpeg typically outputs 8-bit
-            y_plane,
+            y_plane: y_plane.into(),
             y_stride: y_stride as usize,
-            u_plane: Some(u_plane),
+            u_plane: Some(u_plane.into()),
             u_stride: u_stride as usize,
-            v_plane: Some(v_plane),
+            v_plane: Some(v_plane.into()),
             v_stride: v_stride as usize,
             timestamp,
             frame_type,
+            qp_avg: None, // FFmpeg doesn't provide QP info easily
             chroma_format: crate::decoder::ChromaFormat::Yuv420,
         })
     }
 
     /// Helper: Extract frame data after colorspace conversion (requires owning the frame)
-    #[cfg(feature = "ffmpeg")]
     fn extract_converted_frame(&mut self, frame: &Video) -> Result<DecodedFrame> {
         let mut yuv = Video::empty();
         if let Some(scaler) = &mut self.scaler {
             scaler
+                .ctx
                 .run(frame, &mut yuv)
                 .map_err(|e| DecodeError::Decode(format!("Failed to scale frame: {}", e)))?;
         }
@@ -281,27 +309,19 @@ impl FfmpegDecoder {
             self.codec_type, width, height, frame_type
         );
 
-        // Detect chroma format once at frame creation
-        let chroma_format = crate::decoder::ChromaFormat::from_frame_data(
-            width,
-            height,
-            8,
-            Some(&u_plane),
-            Some(&v_plane),
-        );
-
         Ok(DecodedFrame {
             width,
             height,
             bit_depth: 8,
-            y_plane,
+            y_plane: y_plane.into(),
             y_stride: y_stride as usize,
-            u_plane: Some(u_plane),
+            u_plane: Some(u_plane.into()),
             u_stride: u_stride as usize,
-            v_plane: Some(v_plane),
+            v_plane: Some(v_plane.into()),
             v_stride: v_stride as usize,
             timestamp,
             frame_type,
+            qp_avg: None,
             chroma_format: crate::decoder::ChromaFormat::Yuv420,
         })
     }
@@ -335,10 +355,7 @@ impl Decoder for FfmpegDecoder {
     }
 
     fn get_frame(&mut self) -> Result<DecodedFrame> {
-        if self.frame_buffer.is_empty() {
-            return Err(DecodeError::NoFrame);
-        }
-        Ok(self.frame_buffer.remove(0))
+        self.frame_buffer.pop_front().ok_or(DecodeError::NoFrame)
     }
 
     fn flush(&mut self) {
@@ -360,7 +377,7 @@ impl Decoder for FfmpegDecoder {
                     }
 
                     if let Ok(decoded) = self.ffmpeg_frame_to_decoded(&frame) {
-                        self.frame_buffer.push(decoded);
+                        self.frame_buffer.push_back(decoded);
                     }
                 }
                 Err(_) => break,

@@ -51,7 +51,5 @@ macro_rules! lock_write {
     };
 }
 
-// Re-export macros for use in other modules
+// Re-export for use via `use crate::services::utils::lock_mutex;`
 pub use lock_mutex;
-pub use lock_read;
-pub use lock_write;

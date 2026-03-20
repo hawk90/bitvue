@@ -126,44 +126,31 @@ pub struct MVGrid {
 impl MVGrid {
     /// Create a new MV grid
     ///
-    /// # Panics
-    /// Panics if grid dimensions don't match vector lengths
+    /// Automatically fills in missing MVs with default values if the input
+    /// vectors don't match the expected grid size.
     pub fn new(
         coded_width: u32,
         coded_height: u32,
         block_w: u32,
         block_h: u32,
-        mv_l0: Vec<MotionVector>,
-        mv_l1: Vec<MotionVector>,
-        mode: Option<Vec<BlockMode>>,
+        mut mv_l0: Vec<MotionVector>,
+        mut mv_l1: Vec<MotionVector>,
+        mut mode: Option<Vec<BlockMode>>,
     ) -> Self {
         let grid_w = coded_width.div_ceil(block_w);
         let grid_h = coded_height.div_ceil(block_h);
         let expected_len = (grid_w * grid_h) as usize;
 
-        assert_eq!(
-            mv_l0.len(),
-            expected_len,
-            "mv_l0 length mismatch: expected {}, got {}",
-            expected_len,
-            mv_l0.len()
-        );
-        assert_eq!(
-            mv_l1.len(),
-            expected_len,
-            "mv_l1 length mismatch: expected {}, got {}",
-            expected_len,
-            mv_l1.len()
-        );
+        // Log before filling so the counts are accurate
+        let l0_missing = expected_len.saturating_sub(mv_l0.len());
+        if l0_missing > 0 {
+            tracing::debug!("MVGrid: filling {} missing L0 MVs with ZERO", l0_missing);
+        }
 
-        if let Some(ref m) = mode {
-            assert_eq!(
-                m.len(),
-                expected_len,
-                "mode length mismatch: expected {}, got {}",
-                expected_len,
-                m.len()
-            );
+        mv_l0.resize(expected_len, MotionVector::ZERO);
+        mv_l1.resize(expected_len, MotionVector::MISSING);
+        if let Some(ref mut m) = mode {
+            m.resize(expected_len, BlockMode::Inter);
         }
 
         Self {

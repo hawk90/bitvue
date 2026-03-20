@@ -8,8 +8,8 @@ license.workspace = true
 [dependencies]
 bitvue-core = { workspace = true }
 
-# Optional: VMAF support (CPU)
-libvmaf-rs = { version = "0.4", optional = true }
+# Optional: VMAF support (CPU) - requires ffmpeg-next ^6.0.0
+libvmaf-rs = { version = "0.5", optional = true }
 
 # Optional: GPU-accelerated metrics (NVIDIA CUDA)
 # turbo-metrics = { version = "0.3", optional = true }

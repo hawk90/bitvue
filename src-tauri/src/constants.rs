@@ -88,6 +88,7 @@ pub mod cache {
 }
 
 /// Thumbnail dimensions
+#[allow(dead_code)]
 pub mod thumbnails {
     /// Default thumbnail width
     pub const DEFAULT_WIDTH: u32 = 160;
@@ -131,6 +132,7 @@ pub mod format {
 /// Error message templates
 ///
 /// Using static strings reduces allocations compared to `.to_string()`
+#[allow(dead_code)]
 pub mod error_msgs {
     pub const FILE_NOT_FOUND: &str = "File not found";
     pub const PATH_NOT_FILE: &str = "Path is not a file";
@@ -148,6 +150,7 @@ pub mod error_msgs {
 }
 
 /// Common string helpers to reduce allocations
+#[allow(dead_code)]
 pub mod strings {
     /// Efficiently format file size with unit
     pub fn format_file_size(bytes: u64) -> String {

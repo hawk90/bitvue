@@ -45,3 +45,8 @@ bitvue-av3-codec = { path = "../crates/bitvue-av3-codec" }
 bitvue-decode = { path = "../crates/bitvue-decode" }
 bitvue-formats = { path = "../crates/bitvue-formats" }
 bitvue-metrics = { path = "../crates/bitvue-metrics", features = ["parallel"] }
+
+[features]
+default = ["ffmpeg"]
+# FFmpeg support for H.264/HEVC/VP9 decoding
+ffmpeg = ["bitvue-decode/ffmpeg"]
