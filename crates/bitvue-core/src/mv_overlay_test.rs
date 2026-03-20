@@ -170,15 +170,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "mv_l0 length mismatch")]
-    fn test_mv_grid_new_panics_on_wrong_l0_length() {
-        // Arrange
-        let mv_l0 = vec![MotionVector::ZERO; 100];
+    fn test_mv_grid_new_fills_short_l0_with_zero() {
+        // MVGrid::new auto-fills short mv_l0 with ZERO rather than panicking
+        let mv_l0 = vec![MotionVector::ZERO; 100]; // shorter than expected (510)
         let mv_l1 = vec![MotionVector::ZERO; 510];
         let mode = vec![BlockMode::None; 510];
 
-        // Act & Should panic
-        MVGrid::new(1920, 1080, 64, 64, mv_l0, mv_l1, Some(mode));
+        let grid = MVGrid::new(1920, 1080, 64, 64, mv_l0, mv_l1, Some(mode));
+        // Should succeed and pad to expected length
+        assert_eq!(grid.mv_l0.len(), grid.mv_l1.len());
     }
 
     #[test]
