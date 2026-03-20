@@ -60,7 +60,8 @@
   padding: 4px;
   background: rgb(37 37 38 / 95%);
   border-bottom: 1px solid rgb(255 255 255 / 8%);
-  overflow: auto hidden;
+  overflow: hidden auto;
+  flex-shrink: 0;
 }
 
 .sidebar-tab {
@@ -132,7 +133,7 @@
 }
 
 /* Main Content Panel */
-.main-content-panel {
+.main-area-panel {
   display: flex;
   flex-direction: column;
 }
@@ -450,8 +451,8 @@
   padding: 2px 0;
 }
 
-/* File path truncation */
-.info-value:first-child {
+/* File path truncation — scoped to bottom-panel-content to avoid leaking into other panels */
+.bottom-panel-content .info-value:first-child {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
