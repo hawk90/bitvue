@@ -86,6 +86,12 @@ export interface UseFileOperationsResult {
 }
 
 /**
+ * Extract a string message from an unknown caught value
+ */
+const toMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
+/**
  * File filter for the open file dialog
  */
 const FILE_FILTERS = [
@@ -168,7 +174,7 @@ export function useFileOperations(): UseFileOperationsResult {
 
         return { success: false };
       } catch (err) {
-        const errorMsg = err as string;
+        const errorMsg = toMessage(err);
         setError(errorMsg);
         logger.error("Failed to open file:", err);
         return { success: false, error: errorMsg };
@@ -191,7 +197,7 @@ export function useFileOperations(): UseFileOperationsResult {
       setFileInfo(null);
       logger.info("File closed successfully");
     } catch (err) {
-      const errorMsg = err as string;
+      const errorMsg = toMessage(err);
       setError(errorMsg);
       logger.error("Failed to close file:", err);
     } finally {

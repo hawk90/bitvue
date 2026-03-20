@@ -114,8 +114,8 @@ export async function exportFramesToCsv(
  * Export frames to JSON format
  */
 export async function exportFramesToJson(
-  _frames: FrameExportData[],
-  _metadata: {
+  frames: FrameExportData[],
+  metadata: {
     codec: string;
     width: number;
     height: number;
@@ -133,7 +133,11 @@ export async function exportFramesToJson(
 
   if (!filePath) throw new Error("No file path selected");
 
-  await invoke("export_frames_json", { outputPath: filePath });
+  await invoke("export_frames_json", {
+    outputPath: filePath,
+    frames,
+    metadata,
+  });
   return filePath;
 }
 
@@ -242,11 +246,14 @@ export async function exportToPdf(
 
   // Create a new window with the report
   const printWindow = window.open("", "_blank");
-  if (printWindow) {
-    printWindow.document.write(reportContent);
-    printWindow.document.close();
-    printWindow.print();
+  if (printWindow === null) {
+    throw new Error(
+      "Unable to open print window. Please allow pop-ups for this application.",
+    );
   }
+  printWindow.document.write(reportContent);
+  printWindow.document.close();
+  printWindow.print();
 }
 
 /**

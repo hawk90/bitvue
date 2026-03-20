@@ -11,6 +11,12 @@ import {
   useMemo,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+
+/**
+ * Extract a string message from an unknown caught value
+ */
+const toMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
 import type {
   CompareWorkspace,
   SyncMode,
@@ -72,7 +78,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
       setCurrentFrameA(0);
       setCurrentFrameB(0);
     } catch (err) {
-      setError(err as string);
+      setError(toMessage(err));
       console.error("Failed to create compare workspace:", err);
     } finally {
       setIsLoading(false);
@@ -104,6 +110,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
           setWorkspace({ ...workspace, sync_mode: mode });
         }
       } catch (err) {
+        setError(toMessage(err));
         console.error("Failed to set sync mode:", err);
       }
     },
@@ -118,6 +125,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
           setWorkspace({ ...workspace, manual_offset: offset });
         }
       } catch (err) {
+        setError(toMessage(err));
         console.error("Failed to set manual offset:", err);
       }
     },
@@ -131,6 +139,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
         setWorkspace({ ...workspace, manual_offset: 0 });
       }
     } catch (err) {
+      setError(toMessage(err));
       console.error("Failed to reset offset:", err);
     }
   }, [workspace]);
@@ -145,6 +154,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
         quality: result[1] as AlignmentQuality,
       };
     } catch (err) {
+      setError(toMessage(err));
       console.error("Failed to get aligned frame:", err);
       return { bIdx: null, quality: AlignmentQuality.Gap };
     }

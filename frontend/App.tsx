@@ -359,7 +359,7 @@ function AppContent() {
         justifyContent: "center",
         height: "100vh",
         gap: "16px",
-        color: "#888",
+        color: "var(--text-muted, #888)",
       }}
     >
       <h2>No Frames Available</h2>

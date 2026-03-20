@@ -40,34 +40,50 @@ export function useKeyboardNavigation({
 }: KeyboardNavigationOptions) {
   const { onPreviousFrame, onNextFrame, onFirstFrame, onLastFrame } = callbacks;
 
-  // Use refs to avoid re-registering shortcuts on every render
+  // Keep numeric state in refs so the single effect closure always reads current values
   const currentIndexRef = useRef(currentIndex);
   const totalFramesRef = useRef(totalFrames);
-  const shortcutsRef = useRef<(() => void)[]>([]);
 
   currentIndexRef.current = currentIndex;
   totalFramesRef.current = totalFrames;
 
-  useEffect(() => {
-    // Cleanup previous shortcuts
-    shortcutsRef.current.forEach((fn) => fn());
-    shortcutsRef.current = [];
+  // Keep callbacks in a ref so the effect never needs to re-register on callback identity changes
+  const callbacksRef = useRef({
+    onPreviousFrame,
+    onNextFrame,
+    onFirstFrame,
+    onLastFrame,
+    onShowShortcuts,
+  });
+  callbacksRef.current = {
+    onPreviousFrame,
+    onNextFrame,
+    onFirstFrame,
+    onLastFrame,
+    onShowShortcuts,
+  };
 
-    // Register shortcuts
+  useEffect(() => {
+    const shortcutUnregisters: Array<() => void> = [];
+
+    // Register shortcuts — all callbacks are read via callbacksRef so this
+    // effect only needs to run once (stable empty deps).
     const shortcuts: ShortcutConfig[] = [
       {
         key: "?",
         ctrl: true,
         meta: true,
         description: "Show shortcuts",
-        action: onShowShortcuts || (() => {}),
+        action: () => {
+          callbacksRef.current.onShowShortcuts?.();
+        },
       },
       {
         key: "ArrowLeft",
         description: "Previous frame",
         action: () => {
           if (currentIndexRef.current > 0) {
-            onPreviousFrame();
+            callbacksRef.current.onPreviousFrame();
           }
         },
       },
@@ -79,31 +95,32 @@ export function useKeyboardNavigation({
             totalFramesRef.current > 0 &&
             currentIndexRef.current < totalFramesRef.current - 1
           ) {
-            onNextFrame();
+            callbacksRef.current.onNextFrame();
           }
         },
       },
       {
         key: "Home",
         description: "First frame",
-        action: onFirstFrame,
+        action: () => {
+          callbacksRef.current.onFirstFrame();
+        },
       },
       {
         key: "End",
         description: "Last frame",
         action: () => {
           if (totalFramesRef.current > 0) {
-            onLastFrame();
+            callbacksRef.current.onLastFrame();
           }
         },
       },
     ];
 
     shortcuts.forEach((shortcut) => {
-      shortcutsRef.current.push(globalShortcutHandler.register(shortcut));
+      shortcutUnregisters.push(globalShortcutHandler.register(shortcut));
     });
 
-    // Handle keyboard events
     const handleKeyDown = (e: KeyboardEvent) => {
       globalShortcutHandler.handle(e);
     };
@@ -112,15 +129,9 @@ export function useKeyboardNavigation({
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      shortcutsRef.current.forEach((fn) => fn());
+      shortcutUnregisters.forEach((fn) => fn());
     };
-  }, [
-    onPreviousFrame,
-    onNextFrame,
-    onFirstFrame,
-    onLastFrame,
-    onShowShortcuts,
-  ]);
+  }, []); // stable: never re-registers; callbacks read via refs
 }
 
 export default useKeyboardNavigation;

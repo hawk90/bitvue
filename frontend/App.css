@@ -218,7 +218,11 @@ body {
   right: 2px;
   width: 24px;
   height: 24px;
-  background: linear-gradient(to bottom, #3a3a3a 0%, #2a2a2a 100%);
+  background: linear-gradient(
+    to bottom,
+    var(--bg-collapse-top, #3a3a3a) 0%,
+    var(--bg-collapse-bottom, #2a2a2a) 100%
+  );
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 6px;
   display: flex;
@@ -234,7 +238,11 @@ body {
 }
 
 .panel-collapse-btn:hover {
-  background: linear-gradient(to bottom, #4a4a4a 0%, #3a3a3a 100%);
+  background: linear-gradient(
+    to bottom,
+    var(--bg-collapse-hover-top, #4a4a4a) 0%,
+    var(--bg-collapse-top, #3a3a3a) 100%
+  );
   border-color: rgb(255 255 255 / 20%);
   box-shadow:
     0 2px 8px rgb(0 0 0 / 50%),

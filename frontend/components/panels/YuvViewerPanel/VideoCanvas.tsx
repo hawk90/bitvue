@@ -37,7 +37,7 @@ interface VideoCanvasProps {
 
 export const VideoCanvas = memo(function VideoCanvas({
   frameImage,
-  currentFrameIndex: _currentFrameIndex,
+  currentFrameIndex,
   currentFrame,
   currentMode,
   zoom,
@@ -144,6 +144,8 @@ export const VideoCanvas = memo(function VideoCanvas({
         height={yuvData?.height ?? frameImage?.height ?? 360}
         className="yuv-canvas"
         style={canvasStyle}
+        role="img"
+        aria-label={`Video frame ${currentFrameIndex}`}
       />
     </div>
   );

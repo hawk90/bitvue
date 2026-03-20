@@ -70,7 +70,11 @@ export function FrameDataProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // For large arrays, use Web Worker
+    // For large arrays, use Web Worker.
+    // Track mount state so we can discard results and terminate the worker if
+    // the component unmounts before the async initialization completes.
+    let mounted = true;
+
     const calculateWithWorker = async () => {
       // Terminate existing worker if any
       if (workerRef.current) {
@@ -85,34 +89,57 @@ export function FrameDataProvider({ children }: { children: ReactNode }) {
           { type: "module" },
         );
 
+        // If the component unmounted while we were constructing the worker,
+        // terminate it immediately to prevent a memory leak.
+        if (!mounted) {
+          worker.terminate();
+          return;
+        }
+
         workerRef.current = worker;
 
         // Set up message handler
         worker.onmessage = (event: MessageEvent<FrameStats>) => {
-          setFrameStats(event.data);
+          if (mounted) {
+            setFrameStats(event.data);
+          }
           // Don't terminate worker immediately - it might be reused
         };
 
         worker.onerror = (error) => {
           console.error("Frame stats worker error:", error);
-          // Fallback to sync calculation on error
-          const stats = calculateFrameStatsSync(frames);
-          setFrameStats(stats);
+          if (mounted) {
+            // Fallback to sync calculation on error
+            const stats = calculateFrameStatsSync(frames);
+            setFrameStats(stats);
+          }
           worker.terminate();
-          workerRef.current = null;
+          if (workerRef.current === worker) {
+            workerRef.current = null;
+          }
         };
 
         // Send frames to worker
         worker.postMessage(frames);
       } catch (error) {
         console.error("Failed to create frame stats worker:", error);
-        // Fallback to sync calculation
-        const stats = calculateFrameStatsSync(frames);
-        setFrameStats(stats);
+        if (mounted) {
+          // Fallback to sync calculation
+          const stats = calculateFrameStatsSync(frames);
+          setFrameStats(stats);
+        }
       }
     };
 
     calculateWithWorker();
+
+    return () => {
+      mounted = false;
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
   }, [frames]);
 
   // Get frame statistics (returns current value)

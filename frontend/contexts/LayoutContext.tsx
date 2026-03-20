@@ -240,12 +240,36 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Load saved layout on mount (skip in test environment)
+  // Load saved layout on mount (skip in test environment).
+  // Logic is inlined here rather than calling loadLayout() so the effect has
+  // stable empty deps and cannot accidentally re-run if loadLayout's identity
+  // ever changes.
   useEffect(() => {
-    if (process.env.NODE_ENV !== "test") {
-      loadLayout();
+    if (process.env.NODE_ENV === "test") return;
+    try {
+      const saved = localStorage.getItem("bitvue-layout");
+      if (saved) {
+        const MAX_LAYOUT_SIZE = 10240; // 10KB
+        if (saved.length > MAX_LAYOUT_SIZE) {
+          logger.warn(
+            "Layout data exceeds size limit ({} bytes), clearing",
+            saved.length,
+          );
+          localStorage.removeItem("bitvue-layout");
+          return;
+        }
+        const parsed = JSON.parse(saved);
+        if (isValidLayoutState(parsed)) {
+          setLayoutState(parsed);
+          logger.info("Successfully loaded layout from storage");
+        } else {
+          logger.warn("Invalid layout structure in storage, using defaults");
+        }
+      }
+    } catch (e) {
+      handleStorageError(e, "loading layout");
     }
-  }, [loadLayout]);
+  }, []); // stable: runs once on mount
 
   // Auto-save on changes (skip in test environment)
   useEffect(() => {

@@ -142,6 +142,8 @@ describe("exportUtils", () => {
 
       expect(invoke).toHaveBeenCalledWith("export_frames_json", {
         outputPath: "/test/export.json",
+        frames,
+        metadata: { codec: "hevc", width: 1920, height: 1080 },
       });
       expect(result).toBe("/test/export.json");
     });

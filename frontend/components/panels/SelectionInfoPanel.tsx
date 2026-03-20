@@ -22,7 +22,7 @@ function InfoSection({ title, children }: SectionProps) {
   return (
     <div className="info-section">
       <div className="info-section-title">{title}</div>
-      <div className="info-section-content">{children}</div>
+      <dl className="info-section-content">{children}</dl>
     </div>
   );
 }
@@ -36,8 +36,8 @@ interface InfoRowProps {
 function InfoRow({ label, value, highlight }: InfoRowProps) {
   return (
     <div className={`info-row ${highlight ? "highlight" : ""}`}>
-      <span className="info-label">{label}:</span>
-      <span className="info-value">{value}</span>
+      <dt className="info-label">{label}:</dt>
+      <dd className="info-value">{value}</dd>
     </div>
   );
 }
