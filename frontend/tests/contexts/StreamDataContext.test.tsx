@@ -32,7 +32,7 @@ const mockedInvoke = invoke as ReturnType<typeof vi.fn>;
 
 // Get the mocked logger
 import { createLogger } from "@/utils/logger";
-const mockLogger = createLogger("test") as ReturnType<typeof createLogger>;
+const _mockLogger = createLogger("test") as ReturnType<typeof createLogger>;
 
 const mockFrames: FrameInfo[] = [
   { frame_index: 0, frame_type: "I", size: 50000, poc: 0, key_frame: true },

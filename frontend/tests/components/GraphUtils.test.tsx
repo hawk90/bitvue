@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@/test/test-utils";
+import { render } from "@/test/test-utils";
 import { fireEvent } from "@testing-library/react";
 import {
   Graph,
@@ -222,7 +222,7 @@ describe("Graph Component", () => {
   it("should render axes", () => {
     render(<Graph data={mockData} config={config} showAxis />);
 
-    const xAxis = document.querySelector(".timeline-cursor"); // Reuse selector or use appropriate
+    const _xAxis = document.querySelector(".timeline-cursor"); // Reuse selector or use appropriate
     expect(document.querySelector(".graph-container")).toBeInTheDocument();
   });
 

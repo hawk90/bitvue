@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor, act } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import {
   useStreamData,
   StreamDataProvider,
@@ -297,6 +297,7 @@ describe("useStreamData edge cases", () => {
   });
 
   it("should handle loading state", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let resolveInvoke: (value: any) => void;
     const { invoke } = await import("@tauri-apps/api/core");
     vi.mocked(invoke).mockImplementation(

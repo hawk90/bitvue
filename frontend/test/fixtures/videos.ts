@@ -1,7 +1,5 @@
 // Test fixtures for video data
 
-import type { VideoInfo, StreamInfo } from "../../types/video";
-
 /**
  * Mock video info for different codecs
  */

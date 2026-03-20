@@ -4,23 +4,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  render,
-  screen,
-  fireEvent,
-  renderWithoutProviders,
-} from "@/test/test-utils";
+import { fireEvent, renderWithoutProviders } from "@/test/test-utils";
 import { TimelineThumbnails } from "@/components/TimelineThumbnails";
 
 // Mock Tauri invoke to prevent actual calls during tests
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(() => Promise.resolve([])),
 }));
-
-// Simple wrapper for tests that don't need providers
-function TestWrapper({ children }: { children: React.ReactNode }) {
-  return <div data-testid="test-wrapper">{children}</div>;
-}
 
 const mockFrames = [
   { frame_index: 0, frame_type: "I", size: 50000, poc: 0, key_frame: true },

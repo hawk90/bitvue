@@ -3,7 +3,7 @@
  * TODO: Skipping due to complex codec view requiring full parser backend
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DeblockingView } from "../DeblockingView";
 import type { FrameInfo } from "@/types/video";
@@ -122,7 +122,7 @@ describe.skip("DeblockingView", () => {
   });
 
   it("handles null frame gracefully", () => {
-    const { container } = render(
+    render(
       <DeblockingView frame={null} width={1920} height={1080} codec="hevc" />,
     );
 

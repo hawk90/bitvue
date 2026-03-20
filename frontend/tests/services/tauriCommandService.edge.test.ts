@@ -329,7 +329,7 @@ describe("TauriCommandService edge cases", () => {
   describe("latency tracking edge cases", () => {
     it("should handle negative latency", async () => {
       // Mock performance.now to return negative (unlikely but possible edge case)
-      const originalNow = performance.now;
+      const _originalNow = performance.now;
       let callCount = 0;
       vi.spyOn(performance, "now").mockImplementation(() => {
         callCount++;

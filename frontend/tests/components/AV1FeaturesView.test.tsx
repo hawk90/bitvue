@@ -2,7 +2,7 @@
  * Tests for AV1FeaturesView component
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AV1FeaturesView } from "../AV1FeaturesView";
 import type { FrameInfo } from "@/types/video";
@@ -109,9 +109,7 @@ describe("AV1FeaturesView", () => {
   });
 
   it("handles null frame gracefully", () => {
-    const { container } = render(
-      <AV1FeaturesView frame={null} width={64} height={64} />,
-    );
+    render(<AV1FeaturesView frame={null} width={64} height={64} />);
 
     expect(screen.getByText("No frame selected")).toBeInTheDocument();
   });

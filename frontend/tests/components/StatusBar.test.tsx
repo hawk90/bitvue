@@ -3,7 +3,7 @@
  * Tests status bar with frame and playback info
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@/test/test-utils";
 import { StatusBar } from "../YuvViewerPanel/StatusBar";
 
@@ -27,8 +27,9 @@ describe("StatusBar", () => {
   it("should display frame count", () => {
     const { container } = render(<StatusBar {...defaultProps} />);
 
+    // Component shows 1-based frame number (currentFrameIndex + 1)
     const frameSection = container.querySelector(".status-section");
-    expect(frameSection?.textContent).toContain("42");
+    expect(frameSection?.textContent).toContain("43"); // 42 + 1
     expect(frameSection?.textContent).toContain("1000");
   });
 
@@ -80,8 +81,9 @@ describe("StatusBar", () => {
       <StatusBar {...defaultProps} totalFrames={1} currentFrameIndex={0} />,
     );
 
+    // 1-based: frame 0 → "Frame 1 / 1"
     const frameSection = container.querySelector(".status-section");
-    expect(frameSection?.textContent).toContain("0 / 1");
+    expect(frameSection?.textContent).toContain("1 / 1");
   });
 
   it("should handle zero zoom", () => {
@@ -115,8 +117,9 @@ describe("StatusBar formatting", () => {
       />,
     );
 
+    // 1-based: frame 50000 → "Frame 50001 / 100000"
     const frameSection = container.querySelector(".status-section");
-    expect(frameSection?.textContent).toContain("50000");
+    expect(frameSection?.textContent).toContain("50001");
     expect(frameSection?.textContent).toContain("100000");
   });
 
@@ -125,8 +128,9 @@ describe("StatusBar formatting", () => {
       <StatusBar {...defaultProps} currentFrameIndex={0} />,
     );
 
+    // 1-based: frame 0 → "Frame 1 / ..."
     const frameSection = container.querySelector(".status-section");
-    expect(frameSection?.textContent).toContain("0 /");
+    expect(frameSection?.textContent).toContain("1 /");
   });
 
   it("should display different mode names", () => {
@@ -158,8 +162,9 @@ describe("StatusBar edge cases", () => {
       <StatusBar {...defaultProps} totalFrames={0} currentFrameIndex={0} />,
     );
 
+    // 1-based: frame 0 → "Frame 1 / 0"
     const frameSection = container.querySelector(".status-section");
-    expect(frameSection?.textContent).toContain("0 / 0");
+    expect(frameSection?.textContent).toContain("1 / 0");
   });
 
   it("should handle very fast playback speed", () => {
@@ -204,5 +209,123 @@ describe("StatusBar layout", () => {
 
     const sections = document.querySelectorAll(".status-section");
     expect(sections.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Additional edge case tests
+// ---------------------------------------------------------------------------
+
+describe("StatusBar 1-based frame display", () => {
+  it("frame index 0 displays as Frame 1", () => {
+    render(
+      <StatusBar {...defaultProps} currentFrameIndex={0} totalFrames={100} />,
+    );
+
+    expect(screen.getByText(/Frame 1 \/ 100/i)).toBeInTheDocument();
+  });
+
+  it("frame index 99 displays as Frame 100", () => {
+    render(
+      <StatusBar {...defaultProps} currentFrameIndex={99} totalFrames={100} />,
+    );
+
+    expect(screen.getByText(/Frame 100 \/ 100/i)).toBeInTheDocument();
+  });
+});
+
+describe("StatusBar playback indicator", () => {
+  it("shows 'Paused' text when isPlaying is false", () => {
+    render(<StatusBar {...defaultProps} isPlaying={false} />);
+
+    expect(screen.getByText(/Paused/i)).toBeInTheDocument();
+  });
+
+  it("shows 'Playing 1x' when isPlaying=true and speed=1", () => {
+    const { container } = render(
+      <StatusBar {...defaultProps} isPlaying={true} playbackSpeed={1} />,
+    );
+
+    const indicator = container.querySelector(".yuv-playing-indicator");
+    expect(indicator?.textContent).toContain("Playing 1x");
+  });
+
+  it("formats playbackSpeed=0.5 as 'Playing 0.50x'", () => {
+    const { container } = render(
+      <StatusBar {...defaultProps} isPlaying={true} playbackSpeed={0.5} />,
+    );
+
+    const indicator = container.querySelector(".yuv-playing-indicator");
+    expect(indicator?.textContent).toContain("Playing 0.50x");
+  });
+});
+
+describe("StatusBar zoom percentage", () => {
+  it("zoom=1.5 shows '150%'", () => {
+    const { container } = render(<StatusBar {...defaultProps} zoom={1.5} />);
+
+    const sections = container.querySelectorAll(".status-section");
+    const zoomSection = Array.from(sections).find((s) =>
+      s.textContent?.includes("Zoom"),
+    );
+    expect(zoomSection?.textContent).toContain("150%");
+  });
+
+  it("zoom=0.5 shows '50%'", () => {
+    const { container } = render(<StatusBar {...defaultProps} zoom={0.5} />);
+
+    const sections = container.querySelectorAll(".status-section");
+    const zoomSection = Array.from(sections).find((s) =>
+      s.textContent?.includes("Zoom"),
+    );
+    expect(zoomSection?.textContent).toContain("50%");
+  });
+});
+
+describe("StatusBar mode display", () => {
+  it("shows correct label for each known mode", () => {
+    const modes = [
+      { mode: "overview" as const, pattern: /overview/i },
+      { mode: "coding-flow" as const, pattern: /coding flow/i },
+      { mode: "prediction" as const, pattern: /prediction/i },
+      { mode: "transform" as const, pattern: /transform/i },
+      { mode: "qp-map" as const, pattern: /qp map/i },
+      { mode: "mv-field" as const, pattern: /mv field/i },
+      { mode: "reference" as const, pattern: /reference/i },
+    ];
+
+    for (const { mode, pattern } of modes) {
+      const { container, unmount } = render(
+        <StatusBar {...defaultProps} currentMode={mode} />,
+      );
+
+      const modeIndicator = container.querySelector(".yuv-mode-indicator");
+      expect(modeIndicator?.textContent).toMatch(pattern);
+
+      unmount();
+    }
+  });
+
+  it("shows mode shortcut in the mode indicator", () => {
+    const { container } = render(
+      <StatusBar {...defaultProps} currentMode="overview" />,
+    );
+
+    const modeIndicator = container.querySelector(".yuv-mode-indicator");
+    // Overview mode has shortcut "F1"
+    expect(modeIndicator?.textContent).toContain("F1");
+  });
+
+  it("falls back to 'overview' label for an unrecognised mode", () => {
+    const { container } = render(
+      // Cast to bypass type check so we can test an unknown mode string
+      <StatusBar
+        {...defaultProps}
+        currentMode={"unknown-mode" as "overview"}
+      />,
+    );
+
+    const modeIndicator = container.querySelector(".yuv-mode-indicator");
+    expect(modeIndicator?.textContent).toContain("overview");
   });
 });

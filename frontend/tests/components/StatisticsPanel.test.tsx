@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, renderWithoutProviders } from "@/test/test-utils";
+import { render, screen } from "@/test/test-utils";
 import { StatisticsPanel } from "@/components/panels/StatisticsPanel";
 import * as FrameDataContext from "@/contexts/FrameDataContext";
 

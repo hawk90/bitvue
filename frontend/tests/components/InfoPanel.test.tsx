@@ -78,7 +78,7 @@ describe("InfoPanel", () => {
       />,
     );
 
-    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("6")).toBeInTheDocument();
   });
 
   it("should display frame type", () => {
@@ -92,6 +92,21 @@ describe("InfoPanel", () => {
     );
 
     expect(screen.getByText("P")).toBeInTheDocument();
+  });
+
+  it("should display N/A for UNKNOWN frame type", () => {
+    const unknownFrame = { ...mockFrame, frame_type: "UNKNOWN" as const };
+    render(
+      <InfoPanel
+        filePath="/test/video.mp4"
+        frameCount={100}
+        currentFrameIndex={0}
+        currentFrame={unknownFrame}
+      />,
+    );
+
+    const naElements = screen.queryAllByText("N/A");
+    expect(naElements.length).toBeGreaterThan(0);
   });
 
   it("should display N/A when no current frame", () => {

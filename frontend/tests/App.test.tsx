@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * App Component Tests
  * Tests main App component with file operations, keyboard shortcuts, and layout
@@ -15,7 +16,6 @@ import {
   useCurrentFrame,
 } from "@/contexts/StreamDataContext";
 import { useSelection } from "@/contexts/SelectionContext";
-import { useCompare } from "@/contexts/CompareContext";
 
 // Mock contexts - these need to be properly set up
 vi.mock("@/contexts/ThemeContext", () => ({
@@ -262,7 +262,7 @@ import { listen } from "@tauri-apps/api/event";
 import { shouldShowTitleBar } from "@/utils/platform";
 import { globalShortcutHandler } from "@/utils/keyboardShortcuts";
 
-const mockInvoke = invoke as ReturnType<typeof vi.fn>;
+const _mockInvoke = invoke as ReturnType<typeof vi.fn>;
 const mockOpen = open as ReturnType<typeof vi.fn>;
 const mockListen = listen as ReturnType<typeof vi.fn>;
 

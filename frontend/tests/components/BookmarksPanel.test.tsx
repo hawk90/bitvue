@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@/test/test-utils";
+import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
 import { BookmarksPanel } from "../BookmarksPanel";
 
 // Mock contexts

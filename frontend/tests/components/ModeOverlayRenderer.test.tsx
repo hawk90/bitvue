@@ -149,6 +149,7 @@ function createMockCanvas(width: number, height: number): HTMLCanvasElement {
   };
 
   // Override getContext to return our mock
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.spyOn(canvas, "getContext").mockReturnValue(mockCtx as any);
 
   return canvas;
@@ -271,7 +272,7 @@ describe("renderCodingFlowOverlay", () => {
     // Frame type indicator should be drawn in top right corner
     const imageData = ctx.getImageData(canvas.width - 60, 10, 50, 24);
     // Should have non-transparent pixels (indicator drawn)
-    const hasNonTransparentPixels = imageData.data.some(
+    const _hasNonTransparentPixels = imageData.data.some(
       (channel, i) => i % 4 !== 3 && channel > 0, // Check RGB channels, ignore alpha
     );
   });
@@ -924,7 +925,7 @@ describe("renderModeOverlay integration", () => {
     ctx.fillStyle = "gray";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const initialImageData = ctx.getImageData(100, 100, 50, 50);
+    const _initialImageData = ctx.getImageData(100, 100, 50, 50);
 
     const options: OverlayRenderOptions = {
       mode: "coding-flow",

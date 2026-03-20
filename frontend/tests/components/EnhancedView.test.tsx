@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@/test/test-utils";
+import { render } from "@/test/test-utils";
 import { EnhancedView } from "../EnhancedView";
 
 describe("EnhancedView", () => {

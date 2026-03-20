@@ -14,6 +14,7 @@ const mockUnobserve = vi.fn();
 
 // Store callbacks to trigger them manually in tests
 let intersectCallback: IntersectionObserverCallback | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let observerInstances: any[] = [];
 
 class MockIntersectionObserver {
@@ -48,6 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   intersectCallback = null;
   observerInstances = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   global.IntersectionObserver = MockIntersectionObserver as any;
 });
 

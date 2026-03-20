@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@/test/test-utils";
+import { render } from "@/test/test-utils";
 import { TimelineFilmstrip } from "../TimelineFilmstrip";
 import type { FrameInfo } from "@/types/video";
 import { useSelection } from "@/contexts/SelectionContext";

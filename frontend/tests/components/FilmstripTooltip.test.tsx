@@ -19,7 +19,7 @@ const mockFrame: FrameInfo = {
 
 describe("FilmstripTooltip", () => {
   it("should render frame number and type", () => {
-    const { container } = render(
+    render(
       <FilmstripTooltip frame={mockFrame} x={100} y={100} placement="right" />,
     );
 

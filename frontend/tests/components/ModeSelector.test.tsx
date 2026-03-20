@@ -53,6 +53,7 @@ vi.mock("@/contexts/ModeContext", () => ({
       description: "Frame dependency graph",
     },
   ],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   VisualizationMode: {} as any,
 }));
 

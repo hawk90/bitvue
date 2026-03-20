@@ -137,7 +137,7 @@ describe("KeyboardShortcutsDialog categories", () => {
   });
 });
 
-const BASE_SHORTCUTS = [
+const _BASE_SHORTCUTS = [
   { key: "ArrowLeft", action: "Previous frame" },
   { key: "ArrowRight", action: "Next frame" },
   { key: " ", action: "Play/Pause" },

@@ -120,12 +120,15 @@ describe("dataExport utilities", () => {
 
       const createElementSpy = vi
         .spyOn(document, "createElement")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .mockReturnValue(mockLink as any);
       const appendChildSpy = vi
         .spyOn(document.body, "appendChild")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .mockImplementation(() => mockLink as any);
       const removeChildSpy = vi
         .spyOn(document.body, "removeChild")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .mockImplementation(() => mockLink as any);
 
       dataExport.downloadCSV("frame_index,size\n0,100", "test.csv");

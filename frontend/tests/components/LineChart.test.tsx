@@ -26,7 +26,7 @@ describe("LineChart", () => {
   });
 
   it("shows no data message when empty", () => {
-    const { container } = render(<LineChart series={[]} height={300} />);
+    render(<LineChart series={[]} height={300} />);
 
     expect(screen.getByText(/no data to display/i)).toBeInTheDocument();
   });
@@ -73,9 +73,7 @@ describe("LineChart", () => {
       },
     ];
 
-    const { container } = render(
-      <LineChart series={series} showLegend={false} height={300} />,
-    );
+    render(<LineChart series={series} showLegend={false} height={300} />);
 
     expect(screen.queryByText("HEVC")).not.toBeInTheDocument();
   });
@@ -87,7 +85,7 @@ describe("LineChart", () => {
       { name: "VVC", data: [{ x: 0, y: 14 }] },
     ];
 
-    const { container } = render(<LineChart series={series} height={300} />);
+    render(<LineChart series={series} height={300} />);
 
     expect(screen.getByText("AVC")).toBeInTheDocument();
     expect(screen.getByText("HEVC")).toBeInTheDocument();

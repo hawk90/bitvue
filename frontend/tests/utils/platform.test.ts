@@ -3,7 +3,7 @@
  * Tests platform detection and platform-specific UI behavior
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   detectPlatform,
   isMacOS,

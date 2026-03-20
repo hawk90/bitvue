@@ -6,7 +6,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@/test/test-utils";
 import { FrameNavigationToolbar } from "@/components/FrameNavigationToolbar";
-import { mockFrames } from "@/test/test-utils";
 
 // Inline frames for vi.mock factories (must not reference module-level imports due to hoisting)
 const _navToolbarMockFrames = [

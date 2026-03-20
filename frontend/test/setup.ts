@@ -55,7 +55,7 @@ const { mockInvoke } = vi.hoisted(() => {
           const frameSize = args?.frameSize ?? 100;
 
           // Generate mock hex data based on frame index
-          const dataLength = Math.min(maxBytes, frameSize);
+          const _dataLength = Math.min(maxBytes, frameSize);
           const mockData = generateMockHexData(frameIndex, maxBytes, frameSize);
           const isTruncated = maxBytes < frameSize;
 

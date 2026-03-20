@@ -64,11 +64,12 @@ describe("FrameNavigationControls", () => {
     expect(input).toBeInTheDocument();
   });
 
-  it("should display current frame in input", () => {
+  it("should display current frame in input (1-based)", () => {
     render(<FrameNavigationControls {...defaultProps} />);
 
+    // currentFrameIndex=5 displays as 6 (1-based)
     const input = screen.getByRole("spinbutton");
-    expect(input).toHaveValue(5);
+    expect(input).toHaveValue(6);
   });
 
   it("should call onFirstFrame when first button clicked", () => {
@@ -129,9 +130,10 @@ describe("FrameNavigationControls", () => {
     );
 
     const input = screen.getByRole("spinbutton");
+    // User types "10" (1-based), component converts to 0-based index 9
     fireEvent.change(input, { target: { value: "10" } });
 
-    expect(handleChange).toHaveBeenCalledWith(10);
+    expect(handleChange).toHaveBeenCalledWith(9);
   });
 
   it("should use React.memo for performance", () => {
@@ -144,14 +146,15 @@ describe("FrameNavigationControls", () => {
 });
 
 describe("FrameNavigationControls edge cases", () => {
-  it("should handle first frame", () => {
+  it("should handle first frame (displays as 1)", () => {
     render(<FrameNavigationControls {...defaultProps} currentFrameIndex={0} />);
 
+    // Index 0 → displayed as 1
     const input = screen.getByRole("spinbutton");
-    expect(input).toHaveValue(0);
+    expect(input).toHaveValue(1);
   });
 
-  it("should handle last frame", () => {
+  it("should handle last frame (displays as totalFrames)", () => {
     render(
       <FrameNavigationControls
         {...defaultProps}
@@ -160,8 +163,9 @@ describe("FrameNavigationControls edge cases", () => {
       />,
     );
 
+    // Index 99 → displayed as 100
     const input = screen.getByRole("spinbutton");
-    expect(input).toHaveValue(99);
+    expect(input).toHaveValue(100);
   });
 
   it("should handle single frame", () => {
@@ -173,7 +177,8 @@ describe("FrameNavigationControls edge cases", () => {
       />,
     );
 
-    expect(screen.getByRole("spinbutton")).toHaveValue(0);
+    // Index 0 → displayed as 1
+    expect(screen.getByRole("spinbutton")).toHaveValue(1);
   });
 
   it("should handle large frame numbers", () => {
@@ -185,7 +190,8 @@ describe("FrameNavigationControls edge cases", () => {
       />,
     );
 
-    expect(screen.getByRole("spinbutton")).toHaveValue(9999);
+    // Index 9999 → displayed as 10000
+    expect(screen.getByRole("spinbutton")).toHaveValue(10000);
   });
 
   it("should validate input range", () => {

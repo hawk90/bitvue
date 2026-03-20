@@ -386,6 +386,7 @@ describe.skip("ThumbnailsView", () => {
     });
 
     it("should render SVG overlay when arrows exist", () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const {
         usePreRenderedArrows,
       } = require("@/components/usePreRenderedArrows");

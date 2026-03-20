@@ -58,6 +58,7 @@ import { useFrameData } from "@/contexts/FrameDataContext";
 import { useCurrentFrame } from "@/contexts/CurrentFrameContext";
 import { useFileState } from "@/contexts/FileStateContext";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 beforeEach(() => {
   vi.mocked(useFrameData).mockReturnValue({
     frames: mockFrames,
@@ -80,6 +81,7 @@ beforeEach(() => {
     loadMoreFrames: vi.fn(),
   } as any);
 });
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 const mockDiagnostics = [
   {
@@ -119,6 +121,7 @@ describe("DiagnosticsPanel", () => {
 
   it("should render empty state when no diagnostics", () => {
     // Provide frames with size < 100000 to avoid auto-generated diagnostics
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     vi.mocked(useFrameData).mockReturnValue({
       frames: [
         { frame_index: 0, frame_type: "I", size: 50000, key_frame: true },
@@ -133,6 +136,7 @@ describe("DiagnosticsPanel", () => {
       setFrames: vi.fn(),
       getFrameStats: vi.fn(),
     } as any);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
 
     render(<DiagnosticsPanel diagnostics={[]} />);
 
@@ -268,6 +272,7 @@ describe("DiagnosticsPanel", () => {
   });
 
   it("should handle stream errors", () => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     vi.mocked(useFileState).mockReturnValue({
       filePath: null,
       loading: false,
@@ -279,6 +284,7 @@ describe("DiagnosticsPanel", () => {
       totalFrames: 0,
       loadMoreFrames: vi.fn(),
     } as any);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
 
     render(<DiagnosticsPanel diagnostics={[]} />);
 

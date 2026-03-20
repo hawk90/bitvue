@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import QualityComparisonPanel from "../QualityComparisonPanel";
 
@@ -28,8 +28,8 @@ describe("QualityComparisonPanel", () => {
     render(<QualityComparisonPanel />);
 
     const fileInputs = screen.getAllByRole("button"); // File selection buttons
-    const file1 = new File([""], "ref.mp4", { type: "video/mp4" });
-    const file2 = new File([""], "dist.mp4", { type: "video/mp4" });
+    const _file1 = new File([""], "ref.mp4", { type: "video/mp4" });
+    const _file2 = new File([""], "dist.mp4", { type: "video/mp4" });
 
     // Select files through the UI
     await user.click(fileInputs[0]);
@@ -45,8 +45,8 @@ describe("QualityComparisonPanel", () => {
     render(<QualityComparisonPanel />);
 
     const fileInputs = screen.getAllByRole("button");
-    const file1 = new File([""], "ref.mp4", { type: "video/mp4" });
-    const file2 = new File([""], "dist.mp4", { type: "video/mp4" });
+    const _file1 = new File([""], "ref.mp4", { type: "video/mp4" });
+    const _file2 = new File([""], "dist.mp4", { type: "video/mp4" });
 
     await user.click(fileInputs[0]);
     await user.click(fileInputs[1]);

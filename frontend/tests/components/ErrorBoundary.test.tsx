@@ -9,7 +9,6 @@ import {
   renderWithoutProviders,
   screen,
   fireEvent,
-  waitFor,
   cleanup,
 } from "../../test/test-utils";
 import { act } from "@testing-library/react";
@@ -97,7 +96,7 @@ const AsyncErrorComponent = () => {
 // Custom fallback component
 const CustomFallback = ({
   error,
-  errorInfo,
+  errorInfo: _errorInfo,
   resetError,
 }: ErrorFallbackProps) => (
   <div className="custom-error">
@@ -1639,6 +1638,7 @@ describe("ErrorBoundary with React features", () => {
 
   it("should work with memo", () => {
     const MemoComponent = React.memo(() => <div>Memoized</div>);
+    MemoComponent.displayName = "MemoComponent";
 
     const consoleErrorSpy = vi
       .spyOn(console, "error")

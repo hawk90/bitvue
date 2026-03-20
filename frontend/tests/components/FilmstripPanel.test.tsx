@@ -4,15 +4,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@/test/test-utils";
+import { render, screen } from "@/test/test-utils";
 import { FilmstripPanel } from "../panels/FilmstripPanel";
 
 // Mock TimelineFilmstrip dependency
 vi.mock("../TimelineFilmstrip", () => ({
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   TimelineFilmstrip: ({
     frames,
     className,
-    viewMode,
+    viewMode: _viewMode,
     filmstripCollapsed,
   }: any) => (
     <div
@@ -31,6 +32,7 @@ vi.mock("../TimelineFilmstrip", () => ({
       )}
     </div>
   ),
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }));
 
 describe("FilmstripPanel", () => {

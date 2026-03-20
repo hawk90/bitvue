@@ -345,11 +345,12 @@ describe.skip("FrameSizesView", () => {
     });
 
     it("should apply frame type color to bar", () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { getFrameTypeColor } = require("@/types/video");
 
       render(<FrameSizesView {...defaultProps} />);
 
-      const bar = document.querySelector('[data-frame-index="0"]');
+      const _bar = document.querySelector('[data-frame-index="0"]');
       expect(getFrameTypeColor).toHaveBeenCalledWith("I");
     });
 
