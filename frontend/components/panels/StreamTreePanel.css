@@ -58,8 +58,8 @@
   background: var(--bitvue-border, #3c3c3c);
 }
 
-.frame-filter-select,
-.search-input {
+.stream-tree-panel .frame-filter-select,
+.stream-tree-panel .search-input {
   padding: 3px 6px;
   background: var(--bitvue-bg, #1e1e1e);
   border: 1px solid var(--bitvue-border, #3c3c3c);
@@ -69,13 +69,13 @@
   cursor: pointer;
 }
 
-.frame-filter-select:focus,
-.search-input:focus {
+.stream-tree-panel .frame-filter-select:focus,
+.stream-tree-panel .search-input:focus {
   outline: none;
   border-color: var(--bitvue-accent, #007acc);
 }
 
-.search-input {
+.stream-tree-panel .search-input {
   flex: 1;
   min-width: 80px;
   cursor: text;

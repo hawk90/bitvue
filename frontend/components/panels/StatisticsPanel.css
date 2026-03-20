@@ -49,12 +49,12 @@
   background: var(--bitvue-scrollbar-slider-hover, #4f4f4f);
 }
 
-/* Stats Sections */
-.stats-section {
+/* Stats Sections — scoped to avoid collision with SyntaxDetailPanel's .stats-section */
+.statistics-panel .stats-section {
   margin-bottom: 24px;
 }
 
-.stats-section:last-child {
+.statistics-panel .stats-section:last-child {
   margin-bottom: 0;
 }
 

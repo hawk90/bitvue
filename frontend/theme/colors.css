@@ -298,6 +298,53 @@
   --input-height-sm: 24px;
   --input-height-md: 28px;
   --input-height-lg: 32px;
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     Compatibility Aliases
+     Short-form aliases used by some components; maps to canonical names above.
+     Also provides backwards-compatibility for legacy --bitvue-* variable names
+     still present in older panel CSS files.
+     ═════════════════════════════════════════════════════════════════════════ */
+
+  /* Short-form aliases (used by newer panel CSS that omitted the suffix) */
+  --accent: var(--accent-primary);
+  --border: var(--border-default);
+  --status-info: var(--color-info);
+  --status-success: var(--color-success);
+  --warning-fg: var(--color-warning);
+  --error-fg: var(--color-error);
+
+  /* Legacy aliases for older fg/bg variable names */
+  --fg-primary: var(--text-primary);
+  --fg-secondary: var(--text-secondary);
+  --bg-secondary: var(--bg-panel-secondary);
+  --bg-tertiary: var(--bg-panel);
+
+  /* Legacy --bitvue-* aliases (older panel CSS files) */
+  --bitvue-fg: var(--text-primary);
+  --bitvue-fg-dim: var(--text-secondary);
+  --bitvue-accent: var(--accent-primary);
+  --bitvue-border: var(--border-default);
+  --bitvue-bg: var(--bg-app);
+  --bitvue-bg-secondary: var(--bg-panel-secondary);
+  --bitvue-panel-bg: var(--bg-panel);
+  --bitvue-panel-header-bg: var(--bg-panel);
+  --bitvue-scrollbar: var(--scrollbar-thumb);
+  --bitvue-scrollbar-hover: var(--scrollbar-thumb-hover);
+  --bitvue-scrollbar-slider: var(--scrollbar-thumb);
+  --bitvue-scrollbar-slider-hover: var(--scrollbar-thumb-hover);
+  --bitvue-hover-bg: var(--bg-hover);
+  --bitvue-selection-bg: var(--bg-selected);
+  --bitvue-active-bg: var(--bg-active);
+  --bitvue-button-bg: var(--bg-button);
+  --bitvue-button-hover-bg: var(--bg-button-hover);
+  --bitvue-button-hover-border: var(--border-default);
+  --bitvue-button-active-bg: var(--bg-button-active);
+  --bitvue-input-bg: var(--bg-input);
+  --bitvue-input-border: var(--border-default);
+  --bitvue-input-hover-bg: var(--bg-input-hover);
+  --bitvue-badge-bg: var(--accent-primary-bg);
+  --bitvue-badge-fg: var(--text-link);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -449,4 +496,40 @@
   --shadow-2xl: 0 20px 40px rgb(0 0 0 / 20%);
   --shadow-dialog: 0 12px 40px rgb(0 0 0 / 15%), 0 0 0 1px rgb(0 0 0 / 5%);
   --shadow-dropdown: 0 8px 32px rgb(0 0 0 / 12%), 0 0 0 1px rgb(0 0 0 / 5%);
+
+  /* Compatibility aliases (light theme overrides for canonical values above) */
+  --accent: var(--accent-primary);
+  --border: var(--border-default);
+  --status-info: var(--color-info);
+  --status-success: var(--color-success);
+  --warning-fg: var(--color-warning);
+  --error-fg: var(--color-error);
+  --fg-primary: var(--text-primary);
+  --fg-secondary: var(--text-secondary);
+  --bg-secondary: var(--bg-panel-secondary);
+  --bg-tertiary: var(--bg-panel);
+  --bitvue-fg: var(--text-primary);
+  --bitvue-fg-dim: var(--text-secondary);
+  --bitvue-accent: var(--accent-primary);
+  --bitvue-border: var(--border-default);
+  --bitvue-bg: var(--bg-app);
+  --bitvue-bg-secondary: var(--bg-panel-secondary);
+  --bitvue-panel-bg: var(--bg-panel);
+  --bitvue-panel-header-bg: var(--bg-panel);
+  --bitvue-scrollbar: var(--scrollbar-thumb);
+  --bitvue-scrollbar-hover: var(--scrollbar-thumb-hover);
+  --bitvue-scrollbar-slider: var(--scrollbar-thumb);
+  --bitvue-scrollbar-slider-hover: var(--scrollbar-thumb-hover);
+  --bitvue-hover-bg: var(--bg-hover);
+  --bitvue-selection-bg: var(--bg-selected);
+  --bitvue-active-bg: var(--bg-active);
+  --bitvue-button-bg: var(--bg-button);
+  --bitvue-button-hover-bg: var(--bg-button-hover);
+  --bitvue-button-hover-border: var(--border-default);
+  --bitvue-button-active-bg: var(--bg-button-active);
+  --bitvue-input-bg: var(--bg-input);
+  --bitvue-input-border: var(--border-default);
+  --bitvue-input-hover-bg: var(--bg-input-hover);
+  --bitvue-badge-bg: var(--accent-primary-bg);
+  --bitvue-badge-fg: var(--text-link);
 }

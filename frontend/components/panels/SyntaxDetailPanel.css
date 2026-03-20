@@ -297,16 +297,16 @@
   font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
-/* Stats Tab Styles */
-.stats-section {
+/* Stats Tab Styles — scoped to avoid collision with StatisticsPanel's .stats-section */
+.syntax-detail-panel .stats-section {
   margin-bottom: 16px;
 }
 
-.stats-section:last-child {
+.syntax-detail-panel .stats-section:last-child {
   margin-bottom: 0;
 }
 
-.stats-header {
+.syntax-detail-panel .stats-header {
   padding: 6px 8px;
   background: var(--bg-panel-secondary);
   border: 1px solid var(--border);
@@ -317,7 +317,7 @@
   color: var(--text-primary);
 }
 
-.stats-grid {
+.syntax-detail-panel .stats-grid {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 16px;
@@ -325,11 +325,11 @@
   font-size: 11px;
 }
 
-.stats-label {
+.syntax-detail-panel .stats-label {
   color: var(--text-secondary);
 }
 
-.stats-value {
+.syntax-detail-panel .stats-value {
   color: var(--text-primary);
   font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
@@ -359,7 +359,7 @@
   flex-shrink: 0;
 }
 
-.search-input {
+.syntax-detail-panel .search-input {
   flex: 1;
   background: transparent;
   border: none;
@@ -368,7 +368,7 @@
   outline: none;
 }
 
-.search-input::placeholder {
+.syntax-detail-panel .search-input::placeholder {
   color: var(--text-secondary);
 }
 
