@@ -233,8 +233,6 @@
 
 /* Bottom Row Panel (3 panels below main view) */
 .bottom-row-panel {
-  min-height: 150px !important;
-  max-height: 350px !important;
   background: var(--bitvue-panel-bg, #1e1e1e);
   border-top: 1px solid var(--bitvue-border, #3c3c3c);
 }
@@ -385,10 +383,12 @@
   opacity: 0.5;
 }
 
-/* Mouse wheel scrolling for panels */
-.sidebar-content,
-.bottom-panel-content {
-  scroll-behavior: smooth;
+/* Mouse wheel scrolling for panels — only enable smooth scroll when motion is acceptable */
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-content,
+  .bottom-panel-content {
+    scroll-behavior: smooth;
+  }
 }
 
 .sidebar-content::-webkit-scrollbar,

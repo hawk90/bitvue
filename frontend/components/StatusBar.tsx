@@ -12,8 +12,6 @@ interface StatusBarProps {
   fileInfo: { path?: string } | null;
   /** Number of frames loaded */
   frameCount: number;
-  /** Current git branch */
-  branch?: string;
   /** Callback to show keyboard shortcuts dialog */
   onShowShortcuts?: () => void;
 }
@@ -21,17 +19,11 @@ interface StatusBarProps {
 export const StatusBar = memo(function StatusBar({
   fileInfo,
   frameCount,
-  branch = "main",
   onShowShortcuts,
 }: StatusBarProps) {
   return (
     <div className="status-bar" data-testid="status-bar">
-      <div className="status-bar-left">
-        <span className="status-item">
-          <span className="codicon codicon-git-branch"></span>
-          <span>{branch}</span>
-        </span>
-      </div>
+      <div className="status-bar-left"></div>
       <div className="status-bar-center">
         {fileInfo?.path || "Bitvue - Video Bitstream Analyzer"}
       </div>

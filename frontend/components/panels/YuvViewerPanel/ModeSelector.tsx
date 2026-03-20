@@ -21,9 +21,14 @@ export const ModeSelector = memo(function ModeSelector({
       <span className="yuv-mode-label">Mode:</span>
       <select
         value={currentMode}
-        onChange={(e) => onModeChange(e.target.value as VisualizationMode)}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (MODES.some((m) => m.key === val))
+            onModeChange(val as VisualizationMode);
+        }}
         className="yuv-mode-select"
         title="Visualization Mode"
+        aria-label="Visualization mode"
       >
         {MODES.map((mode) => (
           <option key={mode.key} value={mode.key}>

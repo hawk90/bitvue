@@ -36,6 +36,7 @@ export const PlaybackControls = memo(function PlaybackControls({
         onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
         className="yuv-speed-select"
         title="Playback Speed"
+        aria-label="Playback speed"
       >
         <option value={0.25}>0.25x</option>
         <option value={0.5}>0.5x</option>

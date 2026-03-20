@@ -276,7 +276,7 @@ export function createErrorContext(
 ): ErrorContext {
   return {
     operation,
-    ...additionalInfo,
+    additionalInfo,
   };
 }
 

@@ -2,30 +2,24 @@
  * Simple Welcome Screen
  */
 
-import { memo, useEffect } from "react";
+import { memo } from "react";
+import { isMacOS } from "../utils/platform";
 import "./WelcomeScreen.css";
 
 interface WelcomeScreenProps {
   onOpenFile: () => void;
   loading: boolean;
   error: string | null;
+  onShowShortcuts?: () => void;
 }
 
 export const WelcomeScreen = memo(function WelcomeScreen({
   onOpenFile,
   loading,
   error,
+  onShowShortcuts,
 }: WelcomeScreenProps) {
-  console.log("[WelcomeScreen] Rendering", {
-    loading,
-    error,
-    onOpenFile: typeof onOpenFile,
-  });
-
-  useEffect(() => {
-    console.log("[WelcomeScreen] Mounted");
-    return () => console.log("[WelcomeScreen] Unmounted");
-  }, []);
+  const modKey = isMacOS() ? "⌘" : "Ctrl";
 
   return (
     <div className="welcome-screen" data-testid="welcome-screen">
@@ -135,7 +129,7 @@ export const WelcomeScreen = memo(function WelcomeScreen({
           )}
 
           <div className="welcome-shortcuts">
-            <kbd>⌘</kbd>
+            <kbd>{modKey}</kbd>
             <span>+</span>
             <kbd>O</kbd>
             <span>to open a file</span>
@@ -262,9 +256,7 @@ export const WelcomeScreen = memo(function WelcomeScreen({
               href="#"
               onClick={(e) => {
                 e.preventDefault();
-                window.dispatchEvent(
-                  new CustomEvent("menu-keyboard-shortcuts"),
-                );
+                onShowShortcuts?.();
               }}
             >
               <span className="codicon codicon-keyboard" />

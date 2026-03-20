@@ -157,7 +157,6 @@
 .menu-item.menu-item-disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  pointer-events: none;
 }
 
 /* Nested Submenu */
@@ -180,7 +179,7 @@
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   Window Controls (macOS style)
+   Window Controls (Windows/Linux style)
    ═════════════════════════════════════════════════════════════════════════ */
 
 .title-bar-controls {

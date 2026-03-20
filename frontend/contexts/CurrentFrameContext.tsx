@@ -1,45 +1,45 @@
 /**
  * Current Frame Context
  *
- * Manages the current frame index for navigation
- * Separated from file data to prevent unnecessary re-renders
+ * Manages the current frame index for navigation.
+ * Separated into value and setter contexts to prevent unnecessary re-renders:
+ * - Components that only read the frame index subscribe to ValueCtx.
+ * - Components that only dispatch changes subscribe to SetterCtx.
  */
 
-import { createContext, useContext, useState, ReactNode, useMemo } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  Dispatch,
+  SetStateAction,
+} from "react";
 
-interface CurrentFrameContextType {
-  currentFrameIndex: number;
-  setCurrentFrameIndex: (index: number) => void;
-}
-
-const CurrentFrameContext = createContext<CurrentFrameContextType | undefined>(
-  undefined,
-);
+const ValueCtx = createContext<number>(0);
+const SetterCtx = createContext<Dispatch<SetStateAction<number>>>(() => {});
 
 export function CurrentFrameProvider({ children }: { children: ReactNode }) {
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
-
-  const contextValue = useMemo<CurrentFrameContextType>(
-    () => ({
-      currentFrameIndex,
-      setCurrentFrameIndex,
-    }),
-    [currentFrameIndex, setCurrentFrameIndex],
-  );
-
+  const [currentFrame, setCurrentFrame] = useState(0);
   return (
-    <CurrentFrameContext.Provider value={contextValue}>
-      {children}
-    </CurrentFrameContext.Provider>
+    <SetterCtx.Provider value={setCurrentFrame}>
+      <ValueCtx.Provider value={currentFrame}>{children}</ValueCtx.Provider>
+    </SetterCtx.Provider>
   );
 }
 
-export function useCurrentFrame(): CurrentFrameContextType {
-  const context = useContext(CurrentFrameContext);
-  if (!context) {
-    throw new Error(
-      "useCurrentFrame must be used within a CurrentFrameProvider",
-    );
-  }
-  return context;
+export const useCurrentFrameValue = (): number => useContext(ValueCtx);
+
+export const useCurrentFrameSetter = (): Dispatch<SetStateAction<number>> =>
+  useContext(SetterCtx);
+
+// Keep useCurrentFrame for backwards compatibility
+export function useCurrentFrame(): {
+  currentFrameIndex: number;
+  setCurrentFrameIndex: Dispatch<SetStateAction<number>>;
+} {
+  return {
+    currentFrameIndex: useCurrentFrameValue(),
+    setCurrentFrameIndex: useCurrentFrameSetter(),
+  };
 }

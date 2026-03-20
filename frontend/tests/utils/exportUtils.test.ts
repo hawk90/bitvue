@@ -112,6 +112,7 @@ describe("exportUtils", () => {
 
       expect(invoke).toHaveBeenCalledWith("export_frames_csv", {
         outputPath: "/test/export.csv",
+        content: expect.any(String),
       });
       expect(result).toBe("/test/export.csv");
     });

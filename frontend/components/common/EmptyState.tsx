@@ -21,8 +21,8 @@ export interface EmptyStateProps {
   };
   /** Size variant */
   size?: "sm" | "md" | "lg";
-  /** CSS class name for custom styling */
-  className?: string;
+  /** Additional CSS class name(s) appended to "empty-state" */
+  extraClassName?: string;
 }
 
 const SIZE_STYLES = {
@@ -37,12 +37,16 @@ export const EmptyState = memo(function EmptyState({
   description,
   action,
   size = "md",
-  className = "empty-state",
+  extraClassName,
 }: EmptyStateProps) {
   const sizeStyle = SIZE_STYLES[size];
 
   return (
-    <div className={`${className} ${sizeStyle.spacing}`}>
+    <div
+      className={["empty-state", extraClassName, sizeStyle.spacing]
+        .filter(Boolean)
+        .join(" ")}
+    >
       {icon && (
         <span
           className={`codicon ${icon}`}

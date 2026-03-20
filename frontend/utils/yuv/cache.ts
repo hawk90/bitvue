@@ -72,8 +72,10 @@ function createYUVCacheKey(frame: YUVFrame, colorspace: Colorspace): string {
   hash = Math.imul(hash, 0x01000193) ^ key.yLength;
   hash = Math.imul(hash, 0x01000193) ^ key.uvLength;
 
-  // Convert to hex string for use as cache key
-  return hash.toString(16);
+  // Use composite key to prevent hash collisions between frames with different dimensions
+  // but an identical hash (e.g. two frames where width/height/yLength happen to produce
+  // the same 32-bit FNV output).
+  return `${hash.toString(16)}_${key.width}_${key.height}_${key.yLength}_${key.colorspace}`;
 }
 
 /**
@@ -136,6 +138,7 @@ class YUVConversionCache {
 
   /**
    * Set cache size limits
+   * @internal
    */
   setLimits(_maxSize: number, _maxMemory: number): void {
     // Note: This would require extending LRUCache to support resizing
@@ -154,7 +157,10 @@ export const YUVCache = {
   clear: () => yuvCache.clear(),
   /** Get cache statistics */
   getStats: () => yuvCache.getStats(),
-  /** Set cache size limits */
+  /**
+   * Set cache size limits
+   * @internal — dynamic resizing not yet implemented
+   */
   setLimits: (maxSize: number, maxMemory: number) =>
     yuvCache.setLimits(maxSize, maxMemory),
   /** Get cached ImageData */

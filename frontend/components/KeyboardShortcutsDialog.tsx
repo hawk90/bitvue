@@ -4,7 +4,7 @@
  * Shows all available keyboard shortcuts
  */
 
-import { useState, useEffect, memo } from "react";
+import { useEffect, memo } from "react";
 import {
   KEYBOARD_SHORTCUTS,
   getShortcutDisplay,
@@ -21,16 +21,6 @@ export const KeyboardShortcutsDialog = memo(function KeyboardShortcutsDialog({
   isOpen,
   onClose,
 }: KeyboardShortcutsDialogProps) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setIsVisible(true);
-    } else {
-      setIsVisible(false);
-    }
-  }, [isOpen]);
-
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -47,7 +37,7 @@ export const KeyboardShortcutsDialog = memo(function KeyboardShortcutsDialog({
   return (
     <div className="shortcuts-overlay" onClick={onClose}>
       <div
-        className={`shortcuts-dialog ${isVisible ? "visible" : ""}`}
+        className="shortcuts-dialog visible"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="shortcuts-header">
@@ -66,8 +56,8 @@ export const KeyboardShortcutsDialog = memo(function KeyboardShortcutsDialog({
             <div key={category.name} className="shortcuts-category">
               <h3 className="shortcuts-category-title">{category.name}</h3>
               <div className="shortcuts-list">
-                {category.shortcuts.map((shortcut, idx) => (
-                  <div key={idx} className="shortcuts-item">
+                {category.shortcuts.map((shortcut) => (
+                  <div key={shortcut.description} className="shortcuts-item">
                     <span className="shortcuts-description">
                       {shortcut.description}
                     </span>

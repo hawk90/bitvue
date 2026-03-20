@@ -15,6 +15,9 @@ import { useCompare } from "../contexts/CompareContext";
 
 const logger = createLogger("useAppFileOperations");
 
+const toMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 export interface AppFileOperationsCallbacks {
   onError: (title: string, message: string, details?: string) => void;
 }
@@ -54,7 +57,7 @@ export function useAppFileOperations(
       clearData();
     } catch (err) {
       logger.error("Failed to close file:", err);
-      onError("Failed to Close File", err as string);
+      onError("Failed to Close File", toMessage(err));
     }
   }, [setFilePath, clearData, onError]);
 
@@ -117,7 +120,7 @@ export function useAppFileOperations(
             onError(
               "Frame Load Warning",
               "File opened but failed to load frame data. Please try refreshing.",
-              refreshErr as string,
+              toMessage(refreshErr),
             );
           }
         } else {
@@ -130,7 +133,7 @@ export function useAppFileOperations(
       }
     } catch (err) {
       logger.error("Failed to open file:", err);
-      onError("Failed to Open File", err as string);
+      onError("Failed to Open File", toMessage(err));
     }
   }, [refreshFrames, setFilePath, onError, setFrames]);
 
@@ -188,7 +191,7 @@ export function useAppFileOperations(
       );
     } catch (err) {
       logger.error("Failed to open dependent bitstream:", err);
-      setOpenError(err as string);
+      setOpenError(toMessage(err));
     }
   }, [fileInfo, createWorkspace]);
 

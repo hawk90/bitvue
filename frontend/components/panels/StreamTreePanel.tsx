@@ -46,6 +46,100 @@ const FRAME_FILTERS: { value: FrameFilter; label: string }[] = [
   { value: "HeadersOnly", label: "Headers" },
 ];
 
+// Color map for unit types — kept external so it's never recreated
+const UNIT_COLOR_MAP: Record<string, string> = {
+  SEQUENCE_HEADER: "#64c864",
+  FRAME: "#6496ff",
+  FRAME_HEADER: "#6496ff",
+  TILE_GROUP: "#c89664",
+  TEMPORAL_DELIMITER: "#969696",
+};
+
+const DEFAULT_UNIT_COLOR = "#ffffff";
+
+// Derive color from the map without creating a function inside the component
+function getUnitColor(unitType: string): string {
+  return UNIT_COLOR_MAP[unitType] ?? DEFAULT_UNIT_COLOR;
+}
+
+// Icon map for unit types — kept external
+const UNIT_ICON_MAP: Record<string, string> = {
+  SEQUENCE_HEADER: "S",
+  TEMPORAL_DELIMITER: "T",
+  METADATA: "M",
+  PADDING: "P",
+};
+
+const DEFAULT_UNIT_ICON = "•";
+const FRAME_UNIT_ICON = "F";
+
+function getUnitIcon(unit: UnitNode): string {
+  if (unit.frame_index !== undefined) return FRAME_UNIT_ICON;
+  return UNIT_ICON_MAP[unit.unit_type] ?? DEFAULT_UNIT_ICON;
+}
+
+// Props for the memoized tree node component
+interface TreeNodeProps {
+  unit: UnitNode;
+  depth: number;
+  isSelected: boolean;
+  isExpanded: boolean;
+  onSelect: (unit: UnitNode) => void;
+  onToggle: (key: string, e: React.MouseEvent) => void;
+  // Pass a stable render-children callback to avoid re-creating inline lambdas
+  renderChildren: (children: UnitNode[], depth: number) => React.ReactNode;
+}
+
+const TreeNode = memo(function TreeNode({
+  unit,
+  depth,
+  isSelected,
+  isExpanded,
+  onSelect,
+  onToggle,
+  renderChildren,
+}: TreeNodeProps) {
+  const color = getUnitColor(unit.unit_type);
+  const icon = getUnitIcon(unit);
+  const hasChildren = unit.children.length > 0;
+
+  const label =
+    unit.frame_index !== undefined
+      ? `[${icon}] Frame #${unit.frame_index} - ${unit.unit_type} @ 0x${unit.offset.toString(16).padStart(8, "0")} (${unit.size} bytes)`
+      : `[${icon}] ${unit.unit_type} @ 0x${unit.offset.toString(16).padStart(8, "0")} (${unit.size} bytes)`;
+
+  return (
+    <div className="stream-tree-node">
+      <div
+        className={`stream-tree-item ${isSelected ? "selected" : ""}`}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+      >
+        {hasChildren ? (
+          <span
+            className={`codicon codicon-${isExpanded ? "chevron-down" : "chevron-right"} expand-toggle`}
+            onClick={(e) => onToggle(unit.key, e)}
+          />
+        ) : (
+          <span className="expand-placeholder" />
+        )}
+        <span
+          className="stream-tree-label"
+          style={{ color }}
+          onClick={() => onSelect(unit)}
+          title={label}
+        >
+          {label}
+        </span>
+      </div>
+      {hasChildren && isExpanded && (
+        <div className="stream-tree-children">
+          {renderChildren(unit.children, depth + 1)}
+        </div>
+      )}
+    </div>
+  );
+});
+
 export const StreamTreePanel = memo(function StreamTreePanel({
   units = [],
   selectedUnitKey,
@@ -194,81 +288,24 @@ export const StreamTreePanel = memo(function StreamTreePanel({
     return filterEnabled ? flattenUnits(displayUnits) : displayUnits;
   }, [displayUnits, filterEnabled, flattenUnits]);
 
-  // Get color for unit type
-  const getUnitColor = (unitType: string): string => {
-    if (unitType === "SEQUENCE_HEADER") return "#64c864";
-    if (unitType === "FRAME" || unitType === "FRAME_HEADER") return "#6496ff";
-    if (unitType === "TILE_GROUP") return "#c89664";
-    if (unitType === "TEMPORAL_DELIMITER") return "#969696";
-    return "#ffffff";
-  };
-
-  // Get icon for unit type
-  const getUnitIcon = (unit: UnitNode): string => {
-    if (unit.frame_index !== undefined) return "F";
-    switch (unit.unit_type) {
-      case "SEQUENCE_HEADER":
-        return "S";
-      case "TEMPORAL_DELIMITER":
-        return "T";
-      case "METADATA":
-        return "M";
-      case "PADDING":
-        return "P";
-      default:
-        return "•";
-    }
-  };
-
-  // Render unit node recursively
-  const renderUnitNode = (
-    unit: UnitNode,
-    depth: number = 0,
-  ): JSX.Element | null => {
-    if (filterEnabled && !passesFilter(unit)) return null;
-
-    const color = getUnitColor(unit.unit_type);
-    const icon = getUnitIcon(unit);
-    const isSelected = selectedUnitKey === unit.key;
-    const isExpanded = expandedNodes.has(unit.key);
-    const hasChildren = unit.children.length > 0;
-
-    const label =
-      unit.frame_index !== undefined
-        ? `[${icon}] Frame #${unit.frame_index} - ${unit.unit_type} @ 0x${unit.offset.toString(16).padStart(8, "0")} (${unit.size} bytes)`
-        : `[${icon}] ${unit.unit_type} @ 0x${unit.offset.toString(16).padStart(8, "0")} (${unit.size} bytes)`;
-
-    return (
-      <div key={unit.key} className="stream-tree-node">
-        <div
-          className={`stream-tree-item ${isSelected ? "selected" : ""}`}
-          style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        >
-          {hasChildren ? (
-            <span
-              className={`codicon codicon-${isExpanded ? "chevron-down" : "chevron-right"} expand-toggle`}
-              onClick={(e) => handleToggleNode(unit.key, e)}
-            />
-          ) : (
-            <span className="expand-placeholder" />
-          )}
-          <span
-            className="stream-tree-label"
-            style={{ color }}
-            onClick={() => handleUnitSelect(unit)}
-            title={label}
-          >
-            {label}
-          </span>
-        </div>
-        {hasChildren && isExpanded && (
-          <div className="stream-tree-children">
-            {unit.children.map((child) => renderUnitNode(child, depth + 1))}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // Stable recursive render helper passed down to TreeNode
+  const renderChildren = useCallback(
+    (children: UnitNode[], depth: number): React.ReactNode => {
+      return children.map((child) => (
+        <TreeNode
+          key={child.key}
+          unit={child}
+          depth={depth}
+          isSelected={selectedUnitKey === child.key}
+          isExpanded={expandedNodes.has(child.key)}
+          onSelect={handleUnitSelect}
+          onToggle={handleToggleNode}
+          renderChildren={renderChildren}
+        />
+      ));
+    },
+    [selectedUnitKey, expandedNodes, handleUnitSelect, handleToggleNode],
+  );
 
   return (
     <div className="stream-tree-panel">
@@ -349,7 +386,17 @@ export const StreamTreePanel = memo(function StreamTreePanel({
           </div>
         ) : filteredUnits.length > 0 ? (
           filteredUnits.map((unit) => (
-            <Fragment key={unit.key}>{renderUnitNode(unit)}</Fragment>
+            <Fragment key={unit.key}>
+              <TreeNode
+                unit={unit}
+                depth={0}
+                isSelected={selectedUnitKey === unit.key}
+                isExpanded={expandedNodes.has(unit.key)}
+                onSelect={handleUnitSelect}
+                onToggle={handleToggleNode}
+                renderChildren={renderChildren}
+              />
+            </Fragment>
           ))
         ) : (
           <div className="stream-tree-empty">

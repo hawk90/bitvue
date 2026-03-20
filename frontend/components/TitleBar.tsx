@@ -7,7 +7,8 @@
  * system menu is used instead (see utils/menu/setup.ts).
  */
 
-import { useState, memo, useCallback, useMemo } from "react";
+import { useState, useRef, memo, useCallback, useMemo } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MODES, type VisualizationMode } from "../contexts/ModeContext";
 import "./TitleBar.css";
 
@@ -39,6 +40,7 @@ interface TitleBarProps {
 }
 
 export const TitleBar = memo(function TitleBar({
+  fileName,
   onOpenFile,
   onOpenDependentFile,
   onCloseFile,
@@ -48,6 +50,9 @@ export const TitleBar = memo(function TitleBar({
 }: TitleBarProps) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
+  const submenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const menuItems: MenuConfig[] = useMemo(
     () => [
@@ -269,13 +274,19 @@ export const TitleBar = memo(function TitleBar({
   const handleSubmenuEnter = useCallback(
     (itemId: string, e: React.MouseEvent) => {
       e.stopPropagation();
+      if (submenuCloseTimerRef.current) {
+        clearTimeout(submenuCloseTimerRef.current);
+        submenuCloseTimerRef.current = null;
+      }
       setActiveSubmenu(itemId);
     },
     [],
   );
 
   const handleSubmenuLeave = useCallback(() => {
-    setActiveSubmenu(null);
+    submenuCloseTimerRef.current = setTimeout(() => {
+      setActiveSubmenu(null);
+    }, 150);
   }, []);
 
   const handleMenuItemClick = useCallback(
@@ -310,7 +321,15 @@ export const TitleBar = memo(function TitleBar({
             <span className="menu-item-arrow">▶</span>
 
             {activeSubmenu === item.id && (
-              <div className="menu-submenu">
+              <div
+                className="menu-submenu"
+                onMouseEnter={() => {
+                  if (submenuCloseTimerRef.current) {
+                    clearTimeout(submenuCloseTimerRef.current);
+                    submenuCloseTimerRef.current = null;
+                  }
+                }}
+              >
                 {renderMenuItems(item.items, true)}
               </div>
             )}
@@ -358,14 +377,25 @@ export const TitleBar = memo(function TitleBar({
         ))}
       </div>
 
+      {/* Center: File name */}
+      <div className="title-bar-title">{fileName || "Bitvue"}</div>
+
       {/* Right side: Window controls (Windows style) */}
       <div className="title-bar-controls">
-        <button className="title-bar-button" title="Minimize">
+        <button
+          className="title-bar-button"
+          title="Minimize"
+          onClick={() => getCurrentWindow().minimize()}
+        >
           <svg width="12" height="12" viewBox="0 0 12 12">
             <rect x="0" y="5" width="12" height="2" fill="currentColor" />
           </svg>
         </button>
-        <button className="title-bar-button" title="Maximize">
+        <button
+          className="title-bar-button"
+          title="Maximize"
+          onClick={() => getCurrentWindow().toggleMaximize()}
+        >
           <svg width="12" height="12" viewBox="0 0 12 12">
             <rect
               x="1"
@@ -378,7 +408,11 @@ export const TitleBar = memo(function TitleBar({
             />
           </svg>
         </button>
-        <button className="title-bar-button title-bar-close" title="Close">
+        <button
+          className="title-bar-button title-bar-close"
+          title="Close"
+          onClick={() => onQuit?.()}
+        >
           <svg width="12" height="12" viewBox="0 0 12 12">
             <path
               d="M2 2l8 8M10 2l-8 8"

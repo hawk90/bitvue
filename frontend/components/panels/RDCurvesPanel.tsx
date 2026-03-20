@@ -7,10 +7,11 @@
  * Reference: RD curves & BD-Rate functionality
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LineChart, type Series, type DataPoint } from "../charts/LineChart";
+import "./RDCurvesPanel.css";
 
 interface RDCurveData {
   name: string;
@@ -35,43 +36,46 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock data for demonstration
+  // Mock data for demonstration (DEV only)
   const mockCurves: RDCurveData[] = useMemo(
-    () => [
-      {
-        name: "H.264/AVC",
-        points: [
-          { x: 500, y: 36.5 },
-          { x: 1000, y: 38.2 },
-          { x: 2000, y: 40.1 },
-          { x: 4000, y: 41.8 },
-          { x: 8000, y: 43.2 },
-        ],
-        color: "#ef4444",
-      },
-      {
-        name: "H.265/HEVC",
-        points: [
-          { x: 500, y: 38.1 },
-          { x: 1000, y: 40.5 },
-          { x: 2000, y: 42.8 },
-          { x: 4000, y: 44.5 },
-          { x: 8000, y: 45.8 },
-        ],
-        color: "#3b82f6",
-      },
-      {
-        name: "H.266/VVC",
-        points: [
-          { x: 500, y: 39.2 },
-          { x: 1000, y: 42.0 },
-          { x: 2000, y: 44.5 },
-          { x: 4000, y: 46.5 },
-          { x: 8000, y: 47.9 },
-        ],
-        color: "#10b981",
-      },
-    ],
+    () =>
+      import.meta.env.DEV
+        ? [
+            {
+              name: "H.264/AVC",
+              points: [
+                { x: 500, y: 36.5 },
+                { x: 1000, y: 38.2 },
+                { x: 2000, y: 40.1 },
+                { x: 4000, y: 41.8 },
+                { x: 8000, y: 43.2 },
+              ],
+              color: "#ef4444",
+            },
+            {
+              name: "H.265/HEVC",
+              points: [
+                { x: 500, y: 38.1 },
+                { x: 1000, y: 40.5 },
+                { x: 2000, y: 42.8 },
+                { x: 4000, y: 44.5 },
+                { x: 8000, y: 45.8 },
+              ],
+              color: "#3b82f6",
+            },
+            {
+              name: "H.266/VVC",
+              points: [
+                { x: 500, y: 39.2 },
+                { x: 1000, y: 42.0 },
+                { x: 2000, y: 44.5 },
+                { x: 4000, y: 46.5 },
+                { x: 8000, y: 47.9 },
+              ],
+              color: "#10b981",
+            },
+          ]
+        : [],
     [],
   );
 
@@ -108,7 +112,7 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
 
       setBdRateResult(result);
     } catch (err) {
-      const errorMsg = err as string;
+      const errorMsg = err instanceof Error ? err.message : String(err);
       console.error("Failed to calculate BD-Rate:", err);
       setError(errorMsg);
     } finally {
@@ -148,45 +152,37 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
   }, [selectedMetric]);
 
   return (
-    <div className="rd-curves-panel p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Rate-Distortion Curves</h3>
-        <div className="flex gap-2">
-          <button
-            onClick={handleLoadMockData}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Load Demo Data
-          </button>
+    <div className="rd-curves-panel">
+      <div className="rd-curves-header">
+        <h3>Rate-Distortion Curves</h3>
+        <div className="rd-curves-actions">
+          {import.meta.env.DEV && (
+            <button onClick={handleLoadMockData} className="rd-btn rd-btn-blue">
+              Load Demo Data
+            </button>
+          )}
           <button
             onClick={handleCalculateBDRate}
             disabled={curves.length < 2 || isCalculating}
-            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="rd-btn rd-btn-green"
           >
             {isCalculating ? "Calculating..." : "Calculate BD-Rate"}
           </button>
-          <button
-            onClick={handleClear}
-            className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
+          <button onClick={handleClear} className="rd-btn rd-btn-gray">
             Clear
           </button>
         </div>
       </div>
 
       {/* Metric Selection */}
-      <div className="mb-4 flex items-center gap-4">
-        <label className="text-sm font-medium">Quality Metric:</label>
-        <div className="flex gap-2">
+      <div className="rd-metric-row">
+        <span className="rd-metric-label">Quality Metric:</span>
+        <div className="rd-metric-buttons">
           {(["PSNR", "SSIM", "VMAF"] as const).map((metric) => (
             <button
               key={metric}
               onClick={() => setSelectedMetric(metric)}
-              className={`px-3 py-1 text-sm rounded ${
-                selectedMetric === metric
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
+              className={`rd-metric-btn${selectedMetric === metric ? " active" : ""}`}
             >
               {metric}
             </button>
@@ -195,15 +191,11 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
       </div>
 
       {/* Error Message */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <div className="rd-error">{error}</div>}
 
       {/* RD Curve Chart */}
       {curves.length > 0 ? (
-        <div className="mb-4 p-4 border rounded bg-gray-50">
+        <div className="rd-chart-container">
           <LineChart
             series={chartSeries}
             xAxisLabel="Bitrate (kbps)"
@@ -215,49 +207,48 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
           />
         </div>
       ) : (
-        <div className="mb-4 p-8 border rounded bg-gray-50 text-center text-text-secondary">
-          <p className="mb-2">No data loaded</p>
-          <p className="text-sm">
-            Click &quot;Load Demo Data&quot; to see example RD curves, or load
-            your own encoding data
+        <div className="rd-empty">
+          <p>No data loaded</p>
+          <p>
+            {import.meta.env.DEV
+              ? 'Click "Load Demo Data" to see example RD curves, or load your own encoding data'
+              : "Load your own encoding data to compare codec performance"}
           </p>
         </div>
       )}
 
       {/* BD-Rate Results */}
       {bdRateResult && (
-        <div className="p-4 border rounded bg-green-50">
-          <h4 className="font-semibold mb-3 text-green-800">
-            BD-Rate Calculation Results
-          </h4>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <div className="text-sm text-gray-600">Anchor</div>
-              <div className="font-medium">{bdRateResult.anchor_name}</div>
+        <div className="rd-bdrate-results">
+          <h4>BD-Rate Calculation Results</h4>
+          <div className="rd-bdrate-grid">
+            <div className="rd-bdrate-item">
+              <label>Anchor</label>
+              <span className="value">{bdRateResult.anchor_name}</span>
             </div>
-            <div>
-              <div className="text-sm text-gray-600">Test</div>
-              <div className="font-medium">{bdRateResult.test_name}</div>
+            <div className="rd-bdrate-item">
+              <label>Test</label>
+              <span className="value">{bdRateResult.test_name}</span>
             </div>
-            <div>
-              <div className="text-sm text-gray-600">BD-Rate</div>
-              <div
-                className={`font-bold text-lg ${bdRateResult.bd_rate < 0 ? "text-green-600" : "text-red-600"}`}
+            <div className="rd-bdrate-item">
+              <label>BD-Rate</label>
+              <span
+                className={`value ${bdRateResult.bd_rate < 0 ? "negative" : "positive"}`}
               >
                 {bdRateResult.bd_rate > 0 ? "+" : ""}
                 {bdRateResult.bd_rate.toFixed(2)}%
-              </div>
+              </span>
             </div>
-            <div>
-              <div className="text-sm text-gray-600">BD-PSNR</div>
-              <div className="font-bold text-lg text-blue-600">
+            <div className="rd-bdrate-item">
+              <label>BD-PSNR</label>
+              <span className="value blue">
                 {bdRateResult.bd_psnr > 0 ? "+" : ""}
                 {bdRateResult.bd_psnr.toFixed(2)} dB
-              </div>
+              </span>
             </div>
-            <div className="col-span-2">
-              <div className="text-sm text-gray-600">Interpretation</div>
-              <div className="text-sm mt-1 p-2 bg-white rounded border">
+            <div className="rd-bdrate-item span-2">
+              <label>Interpretation</label>
+              <div className="rd-bdrate-interpretation">
                 {bdRateResult.interpretation}
               </div>
             </div>
@@ -266,16 +257,16 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
       )}
 
       {/* Info */}
-      <div className="mt-4 text-sm text-gray-500">
+      <div className="rd-info">
         <p>
           <strong>BD-Rate</strong> (Bjøntegaard Delta Rate) measures the bitrate
           savings between two codecs for equivalent quality.
         </p>
-        <p className="mt-1">
+        <p>
           Negative values indicate the test codec is more efficient (lower
           bitrate for same quality).
         </p>
-        <p className="mt-1">
+        <p>
           Load multiple RD curves to compare encoder performance across
           different bitrates.
         </p>

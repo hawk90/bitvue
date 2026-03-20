@@ -37,7 +37,7 @@ interface VideoCanvasProps {
 
 export const VideoCanvas = memo(function VideoCanvas({
   frameImage,
-  currentFrameIndex,
+  currentFrameIndex: _currentFrameIndex,
   currentFrame,
   currentMode,
   zoom,
@@ -74,6 +74,10 @@ export const VideoCanvas = memo(function VideoCanvas({
     if (canvasRef.current) {
       rendererRef.current = new YUVRenderer(canvasRef.current);
     }
+    return () => {
+      rendererRef.current?.dispose?.();
+      rendererRef.current = null;
+    };
   }, []);
 
   // Render frame to canvas
@@ -94,8 +98,8 @@ export const VideoCanvas = memo(function VideoCanvas({
     if (!source) return;
 
     // Set canvas size
-    const width = useYUV ? yuvData.width : frameImage.width;
-    const height = useYUV ? yuvData.height : frameImage.height;
+    const width = useYUV ? yuvData.width : (frameImage?.width ?? 0);
+    const height = useYUV ? yuvData.height : (frameImage?.height ?? 0);
 
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
@@ -122,7 +126,7 @@ export const VideoCanvas = memo(function VideoCanvas({
       canvas,
       ctx,
     });
-  }, [frameImage, yuvData, currentMode, currentFrame, currentFrameIndex]);
+  }, [frameImage, yuvData, currentMode, currentFrame]);
 
   return (
     <div

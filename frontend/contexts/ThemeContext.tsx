@@ -9,6 +9,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   ReactNode,
   useMemo,
 } from "react";
@@ -32,35 +33,18 @@ export function ThemeProvider({
   children,
   defaultTheme = "dark",
 }: ThemeProviderProps) {
-  console.log("[ThemeProvider] Initializing with defaultTheme:", defaultTheme);
+  const [theme, setThemeState] = useState<Theme>(defaultTheme);
 
-  const [theme, setThemeState] = useState<Theme>(() => {
-    // Set initial theme attribute immediately during state initialization
-    console.log("[ThemeProvider] Setting initial theme to:", defaultTheme);
-    document.documentElement.setAttribute("data-theme", defaultTheme);
-    console.log(
-      "[ThemeProvider] data-theme attribute set to:",
-      document.documentElement.getAttribute("data-theme"),
-    );
-    return defaultTheme;
-  });
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const setTheme = useCallback((newTheme: Theme) => {
-    console.log("[ThemeProvider] setTheme called:", newTheme);
     setThemeState(newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
-    console.log(
-      "[ThemeProvider] data-theme attribute now:",
-      document.documentElement.getAttribute("data-theme"),
-    );
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((prev) => {
-      const newTheme = prev === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-theme", newTheme);
-      return newTheme;
-    });
+    setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
   }, []);
 
   // Memoize context value to prevent unnecessary re-renders in consumers

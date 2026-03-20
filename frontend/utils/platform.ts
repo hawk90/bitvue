@@ -10,25 +10,24 @@ export type Platform = "macos" | "windows" | "linux" | "unknown";
 
 /**
  * Detect the current platform
+ *
+ * Uses userAgent-based detection. navigator.platform is deprecated
+ * and should not be used.
  */
 export function detectPlatform(): Platform {
   const userAgent = navigator.userAgent;
-  const platform = navigator.platform;
 
-  logger.debug("userAgent:", userAgent, "platform:", platform);
+  logger.debug("userAgent:", userAgent);
 
-  if (
-    platform.startsWith("Mac") ||
-    /Macintosh|MacIntel|MacPPC|Mac68K/i.test(userAgent)
-  ) {
+  if (/Macintosh|MacIntel|MacPPC|Mac68K/i.test(userAgent)) {
     logger.debug("Detected as macOS");
     return "macos";
   }
-  if (platform.startsWith("Win") || /Windows|Win32|Win64/i.test(userAgent)) {
+  if (/Windows|Win32|Win64/i.test(userAgent)) {
     logger.debug("Detected as Windows");
     return "windows";
   }
-  if (platform.startsWith("Linux") || /Linux/i.test(userAgent)) {
+  if (/Linux/i.test(userAgent) && !/Android/i.test(userAgent)) {
     logger.debug("Detected as Linux");
     return "linux";
   }

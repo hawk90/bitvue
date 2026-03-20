@@ -22,6 +22,7 @@ interface SearchTabProps {
   searchResults: number[];
   onSearchChange: (query: string) => void;
   onClearSearch: () => void;
+  onNavigateToFrame: (frameIndex: number) => void;
 }
 
 export const SearchTab = memo(function SearchTab({
@@ -31,12 +32,14 @@ export const SearchTab = memo(function SearchTab({
   searchResults,
   onSearchChange,
   onClearSearch,
+  onNavigateToFrame,
 }: SearchTabProps) {
-  const handleNavigateToFrame = useCallback((frameIndex: number) => {
-    window.dispatchEvent(
-      new CustomEvent("navigate-to-frame", { detail: frameIndex }),
-    );
-  }, []);
+  const handleNavigateToFrame = useCallback(
+    (frameIndex: number) => {
+      onNavigateToFrame(frameIndex);
+    },
+    [onNavigateToFrame],
+  );
 
   return (
     <div className="syntax-tab-content">

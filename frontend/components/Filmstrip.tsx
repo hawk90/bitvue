@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo, memo } from "react";
+import { VIRTUALIZATION_THRESHOLD } from "../constants/ui";
 import { createPortal } from "react-dom";
 import { useSelection } from "../contexts/SelectionContext";
 import { FilmstripDropdown, DisplayView } from "./FilmstripDropdown";
@@ -59,8 +60,6 @@ function Filmstrip({
   const [scrollRef, setScrollRef] = useState<HTMLDivElement | null>(null);
   const [showingReferences, setShowingReferences] = useState(false);
 
-  // Threshold for using virtualized view (200 frames = ~30KB DOM)
-  const VIRTUALIZATION_THRESHOLD = 200;
   const useVirtualizedView = frames.length >= VIRTUALIZATION_THRESHOLD;
 
   const visibleFrameTypes = useMemo(() => new Set(["I", "P", "B"]), []);
@@ -352,17 +351,6 @@ function Filmstrip({
 
 // Named export for direct use in tests
 export { Filmstrip };
-
-// Memoize Filmstrip to prevent unnecessary re-renders
-export const MemoizedFilmstrip = memo(Filmstrip, (prevProps, nextProps) => {
-  // Only re-render if frames array reference changed (not just contents)
-  // or if className changed
-  return (
-    prevProps.frames === nextProps.frames &&
-    prevProps.className === nextProps.className &&
-    prevProps.viewMode === nextProps.viewMode
-  );
-});
 
 // Export as default for backward compatibility
 export default memo(Filmstrip);

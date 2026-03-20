@@ -32,10 +32,33 @@ const SIZE_THRESHOLDS = {
   MEDIUM_LARGE: 500,
 } as const;
 
-export const StatisticsPanel = memo(function StatisticsPanel() {
+interface StatisticsPanelProps {
+  /** Frame rate in fps used for bitrate calculation. Defaults to 30 if not provided. */
+  frameRate?: number;
+}
+
+export const StatisticsPanel = memo(function StatisticsPanel({
+  frameRate,
+}: StatisticsPanelProps) {
   const { frames, getFrameStats } = useFrameData();
 
   const stats = useMemo(() => getFrameStats(), [getFrameStats]);
+
+  // Derive frame rate from PTS delta when available; fall back to prop or 30fps default
+  const effectiveFrameRate = useMemo(() => {
+    if (frameRate !== undefined && frameRate > 0) return frameRate;
+    if (frames.length >= 2) {
+      const pts0 = frames[0]?.pts;
+      const pts1 = frames[1]?.pts;
+      if (pts0 !== undefined && pts1 !== undefined && pts1 > pts0) {
+        const ptsDelta = pts1 - pts0;
+        // PTS is typically in 90kHz units for MPEG or 1 unit per frame — guard against implausible values
+        const derived = 1 / ptsDelta;
+        if (derived >= 1 && derived <= 240) return derived;
+      }
+    }
+    return 30;
+  }, [frameRate, frames]);
 
   // Calculate frame size distribution for histogram
   const frameSizes = useMemo(() => {
@@ -65,7 +88,10 @@ export const StatisticsPanel = memo(function StatisticsPanel() {
     return ranges;
   }, [frames]);
 
-  const maxSizeRange = Math.max(...(Object.values(frameSizes) as number[]));
+  const maxSizeRange = useMemo(() => {
+    const values = Object.values(frameSizes) as number[];
+    return values.length > 0 ? Math.max(...values) : 0;
+  }, [frameSizes]);
 
   return (
     <div className="statistics-panel">
@@ -133,12 +159,17 @@ export const StatisticsPanel = memo(function StatisticsPanel() {
               <div className="bitrate-label">Avg Bitrate:</div>
               <div className="bitrate-value">
                 {frames.length > 0
-                  ? (((stats.totalSize / frames.length) * 30) / 1000).toFixed(2)
+                  ? (
+                      ((stats.totalSize / frames.length) * effectiveFrameRate) /
+                      1000
+                    ).toFixed(2)
                   : "0"}{" "}
                 Mbps
               </div>
             </div>
-            <div className="bitrate-note">Assuming 30fps</div>
+            <div className="bitrate-note">
+              Assuming {Math.round(effectiveFrameRate)}fps
+            </div>
           </div>
         </section>
       </div>

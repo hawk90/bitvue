@@ -5,13 +5,7 @@
  * consistent error handling, default values, and provider components.
  */
 
-import React, {
-  createContext,
-  useContext,
-  ReactNode,
-  Context,
-  useCallback,
-} from "react";
+import React, { createContext, useContext, ReactNode, Context } from "react";
 
 // =============================================================================
 // Context Configuration Types
@@ -104,8 +98,16 @@ export function createContextFactory<T>(
     schema,
   } = config;
 
-  // Create the React context
-  const Context = createContext<T>(defaultValue);
+  // Symbol sentinel used in strict mode to detect "used outside provider"
+  // reliably, without JSON.stringify comparison.
+  const UNSET: unique symbol = Symbol(`${name}_UNSET`);
+  type MaybeUnset = T | typeof UNSET;
+
+  // Create the React context — in strict mode we store UNSET as the default so
+  // useHook can distinguish "no provider" from a real value.
+  const Context = (
+    strict ? createContext<MaybeUnset>(UNSET) : createContext<T>(defaultValue)
+  ) as React.Context<T>;
   Context.displayName = `${name}Context`;
 
   // Create provider component
@@ -132,34 +134,24 @@ export function createContextFactory<T>(
 
   // Create hook to access context
   const useHook = (): T => {
-    const contextValue = useContext(Context);
+    const contextValue = useContext(Context) as MaybeUnset;
 
-    // In strict mode, throw error if context value equals default and wasn't provided
-    if (strict) {
-      // Check if we're inside a provider by comparing to default
-      // This is a simple heuristic - for production, you might want a different approach
-      const isUsingDefault =
-        JSON.stringify(contextValue) === JSON.stringify(defaultValue);
-
-      if (isUsingDefault) {
-        const error = errorHandler(name, contextValue);
-        throw error;
-      }
+    if (strict && (contextValue as unknown) === UNSET) {
+      throw errorHandler(name, null);
     }
 
-    return contextValue;
+    return contextValue as T;
   };
 
   useHook.displayName = `use${name}`;
 
   // Create hook with default value fallback
-  // eslint-disable-next-line react-hooks/rules-of-hooks, react-hooks/exhaustive-deps
-  const useHookOrDefault = useCallback((fallbackValue: T): T => {
+  const useHookOrDefault = (fallbackValue: T): T => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    const contextValue = useContext(Context);
-    return contextValue ?? fallbackValue;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const contextValue = useContext(Context) as MaybeUnset;
+    if ((contextValue as unknown) === UNSET) return fallbackValue;
+    return (contextValue as T) ?? fallbackValue;
+  };
 
   useHookOrDefault.displayName = `use${name}OrDefault`;
 
@@ -309,13 +301,11 @@ export function createReducerContext<T, A>(config: {
     return state;
   };
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks, react-hooks/exhaustive-deps
-  const useHookOrDefault = useCallback((fallbackValue: T): T => {
+  const useHookOrDefault = (fallbackValue: T): T => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const state = useContext(StateContext);
     return state ?? fallbackValue;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
 
   const useDispatch = (): React.Dispatch<A> => {
     const dispatch = useContext(DispatchContext);
@@ -467,18 +457,23 @@ export function createAsyncContext<T>(config: {
  * ```
  */
 export function mergeContexts(
-  contexts: Array<[Context<unknown>, { value?: unknown }]>,
+  contexts: Array<
+    [Context<unknown>, { value?: unknown; displayName?: string }]
+  >,
 ): React.FC<{ children: ReactNode }> {
   const MergedProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return (
       <>
-        {contexts.reduceRight((acc, [Context, config], index) => {
-          const Provider = Context.Provider as React.FC<{
+        {contexts.reduceRight((acc, [Ctx, config], index) => {
+          const Provider = Ctx.Provider as React.FC<{
             value?: unknown;
             children?: ReactNode;
-          }> & { key?: React.Key };
+          }>;
           return (
-            <Provider value={config.value} key={index}>
+            <Provider
+              value={config.value}
+              key={config.displayName ?? String(index)}
+            >
               {acc}
             </Provider>
           );
@@ -524,39 +519,3 @@ export function mergeContexts(
 //     return WrappedComponent;
 //   };
 // }
-
-// =============================================================================
-// Pre-built Context Instances (Example)
-// =============================================================================
-
-/**
- * Example: Create a Theme context using the factory
- */
-export const exampleThemeContext = createContextFactory<{
-  primary: string;
-  secondary: string;
-  mode: "light" | "dark";
-}>({
-  name: "Theme",
-  defaultValue: {
-    primary: "#007bff",
-    secondary: "#6c757d",
-    mode: "light",
-  },
-  strict: false,
-});
-
-/**
- * Example: Create a Layout context using the factory
- */
-export const exampleLayoutContext = createContextFactory<{
-  sidebarOpen: boolean;
-  panelSizes: number[];
-}>({
-  name: "Layout",
-  defaultValue: {
-    sidebarOpen: true,
-    panelSizes: [300, 400, 300],
-  },
-  strict: false,
-});

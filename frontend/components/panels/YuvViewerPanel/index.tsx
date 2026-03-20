@@ -13,7 +13,7 @@
  * - StatusBar: Bottom status bar with info
  */
 
-import { useState, useRef, useEffect, useCallback, memo } from "react";
+import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMode } from "../../../contexts/ModeContext";
 import { useFrameData } from "../../../contexts/FrameDataContext";
@@ -106,6 +106,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Retry counter — incrementing triggers a reload via useEffect
+  const [retryCount, setRetryCount] = useState(0);
 
   // YUV data state (more efficient than RGB conversion)
   const [yuvData, setYuvData] = useState<YUVFrameData | null>(null);
@@ -136,96 +138,122 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
   // Load frame and analysis data when currentFrameIndex changes
   useEffect(() => {
-    loadFrame(currentFrameIndex);
-    loadFrameAnalysis(currentFrameIndex);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFrameIndex]);
+    let cancelled = false;
 
-  const loadFrame = async (frameIndex: number) => {
-    setIsLoading(true);
-    setLoadError(null);
-    try {
-      // Try YUV first (more efficient)
-      const yuvResult = await invoke<YUVFrameData>("get_decoded_frame_yuv", {
-        frameIndex,
-      });
-
-      if (yuvResult && yuvResult.success && yuvResult.y_plane) {
-        // Successfully got YUV data
-        setYuvData(yuvResult);
-        setFrameImage(null); // Clear RGB image
-        setIsLoading(false);
-        logger.debug(
-          "Loaded YUV frame:",
-          frameIndex,
-          "size:",
-          yuvResult.width,
-          "x",
-          yuvResult.height,
-        );
-      } else {
-        // Fallback to RGB
-        logger.debug("YUV not available, falling back to RGB");
-        const result = await invoke<DecodedFrameData>("get_decoded_frame", {
+    const loadFrame = async (frameIndex: number) => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        // Try YUV first (more efficient)
+        const yuvResult = await invoke<YUVFrameData>("get_decoded_frame_yuv", {
           frameIndex,
         });
 
-        if (result && result.success && result.frame_data) {
-          const img = new Image();
-          img.onload = () => {
-            setFrameImage(img);
-            setIsLoading(false);
-          };
-          img.onerror = () => {
-            logger.error("Failed to decode frame image for frame:", frameIndex);
-            setIsLoading(false);
-            setFrameImage(null);
-            setLoadError("Failed to decode frame image");
-          };
-          img.src = `data:image/png;base64,${result.frame_data}`;
+        if (cancelled) return;
+
+        if (yuvResult && yuvResult.success && yuvResult.y_plane) {
+          // Successfully got YUV data
+          setYuvData(yuvResult);
+          setFrameImage(null); // Clear RGB image
+          logger.debug(
+            "Loaded YUV frame:",
+            frameIndex,
+            "size:",
+            yuvResult.width,
+            "x",
+            yuvResult.height,
+          );
         } else {
-          logger.error("Failed to load frame:", result.error);
-          setIsLoading(false);
-          setLoadError(result.error || "Failed to load frame");
+          // Fallback to RGB
+          logger.debug("YUV not available, falling back to RGB");
+          const result = await invoke<DecodedFrameData>("get_decoded_frame", {
+            frameIndex,
+          });
+
+          if (cancelled) return;
+
+          if (result && result.success && result.frame_data) {
+            const img = new Image();
+            img.onload = () => {
+              if (!cancelled) {
+                setFrameImage(img);
+                setIsLoading(false);
+              }
+            };
+            img.onerror = () => {
+              if (!cancelled) {
+                logger.error(
+                  "Failed to decode frame image for frame:",
+                  frameIndex,
+                );
+                setIsLoading(false);
+                setFrameImage(null);
+                setLoadError("Failed to decode frame image");
+              }
+            };
+            img.src = `data:image/png;base64,${result.frame_data}`;
+            // Return early — isLoading will be cleared in img callbacks
+            return;
+          } else {
+            logger.error("Failed to load frame:", result.error);
+            setLoadError(result.error || "Failed to load frame");
+          }
         }
+      } catch (error) {
+        if (cancelled) return;
+        logger.error("Failed to load frame:", error);
+        setLoadError("Failed to load frame — check console for details");
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-    } catch (error) {
-      logger.error("Failed to load frame:", error);
-      setIsLoading(false);
-      setLoadError("Failed to load frame — check console for details");
-    }
-  };
+    };
 
-  const loadFrameAnalysis = async (frameIndex: number) => {
-    try {
-      const result = await invoke<FrameAnalysisData>("get_frame_analysis", {
-        frameIndex,
-      });
+    const loadFrameAnalysis = async (frameIndex: number) => {
+      try {
+        const result = await invoke<FrameAnalysisData>("get_frame_analysis", {
+          frameIndex,
+        });
 
-      // Update frame with analysis data
-      setFrameAnalysis(result);
+        if (cancelled) return;
 
-      // Merge analysis data into frames context
-      setFrames((prevFrames) => {
-        const newFrames = [...prevFrames];
-        if (newFrames[frameIndex]) {
-          newFrames[frameIndex] = {
-            ...newFrames[frameIndex],
-            qp_grid: result.qp_grid,
-            mv_grid: result.mv_grid,
-            partition_grid: result.partition_grid,
-            prediction_mode_grid: result.prediction_mode_grid,
-            transform_grid: result.transform_grid,
-            width: result.width,
-            height: result.height,
-          };
-        }
-        return newFrames;
-      });
-    } catch (error) {
-      logger.error("Failed to load frame analysis:", error);
-    }
-  };
+        // Update frame with analysis data
+        setFrameAnalysis(result);
+
+        // Merge analysis data into frames context
+        setFrames((prevFrames) => {
+          const newFrames = [...prevFrames];
+          if (newFrames[frameIndex]) {
+            newFrames[frameIndex] = {
+              ...newFrames[frameIndex],
+              qp_grid: result.qp_grid,
+              mv_grid: result.mv_grid,
+              partition_grid: result.partition_grid,
+              prediction_mode_grid: result.prediction_mode_grid,
+              transform_grid: result.transform_grid,
+              width: result.width,
+              height: result.height,
+            };
+          }
+          return newFrames;
+        });
+      } catch (error) {
+        if (cancelled) return;
+        logger.error("Failed to load frame analysis:", error);
+      }
+    };
+
+    // Run both loads in parallel
+    Promise.all([
+      loadFrame(currentFrameIndex),
+      loadFrameAnalysis(currentFrameIndex),
+    ]).catch((err) => {
+      logger.error("Frame load error:", err);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFrameIndex, retryCount, setFrames]);
 
   // Frame navigation callbacks
   const goToPrevFrame = useCallback(() => {
@@ -291,6 +319,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
       switch (e.key) {
         case " ":
           if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
@@ -374,6 +404,12 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     setMode,
   ]);
 
+  // Memoize YUV conversion to avoid re-running on every render
+  const convertedYuvFrame = useMemo(
+    () => (yuvData ? convertYUVDataToYUVFrame(yuvData) : undefined),
+    [yuvData],
+  );
+
   const currentFrame = frames[currentFrameIndex] || null;
 
   return (
@@ -426,7 +462,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         onMouseMove={canvasHandlers.onMouseMove}
         onMouseUp={canvasHandlers.onMouseUp}
         isDragging={isDragging}
-        yuvData={yuvData ? convertYUVDataToYUVFrame(yuvData) : undefined}
+        yuvData={convertedYuvFrame}
       />
 
       {/* Loading and Placeholder States */}
@@ -443,7 +479,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           <span className="yuv-error-message">{loadError}</span>
           <button
             className="yuv-error-retry"
-            onClick={() => loadFrame(currentFrameIndex)}
+            onClick={() => setRetryCount((c) => c + 1)}
           >
             <span className="codicon codicon-refresh"></span>
             Retry

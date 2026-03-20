@@ -74,22 +74,14 @@ export function useThumbnail(): UseThumbnailResult {
   // Track if component is mounted to prevent state updates after unmount
   const mountedRef = useRef(true);
 
-  // Use refs to avoid stale closures in callbacks
+  // Use refs to avoid stale closures in callbacks — assigned directly during
+  // render so they are always in sync without needing a separate useEffect.
   const thumbnailsRef = useRef(thumbnails);
+  thumbnailsRef.current = thumbnails;
   const loadingRef = useRef(loading);
+  loadingRef.current = loading;
   const errorsRef = useRef(errors);
-
-  useEffect(() => {
-    thumbnailsRef.current = thumbnails;
-  }, [thumbnails]);
-
-  useEffect(() => {
-    loadingRef.current = loading;
-  }, [loading]);
-
-  useEffect(() => {
-    errorsRef.current = errors;
-  }, [errors]);
+  errorsRef.current = errors;
 
   // Set mounted to false on unmount
   useEffect(() => {
@@ -133,27 +125,25 @@ export function useThumbnail(): UseThumbnailResult {
 
         // Only update state if component is still mounted
         if (mountedRef.current) {
-          const failedIndices: number[] = [];
-
           // Process thumbnail results using shared utility
           const processed = processThumbnailResults(results);
+
+          // Collect failed indices and log OUTSIDE the state updater
+          const failedIndices = results
+            .filter((r) => !r.success)
+            .map((r) => r.frame_index);
+          failedIndices.forEach((idx) => {
+            const result = results.find((r) => r.frame_index === idx);
+            logger.warn(
+              `Failed to load thumbnail for frame ${idx}: ${result?.error ?? "Unknown error"}`,
+            );
+          });
 
           setThumbnails((prev) => {
             const newMap = new Map(prev);
             processed.forEach((dataUrl, frameIndex) => {
               newMap.set(frameIndex, dataUrl);
             });
-
-            // Track failed thumbnails
-            results.forEach((result) => {
-              if (!result.success) {
-                failedIndices.push(result.frame_index);
-                logger.warn(
-                  `Failed to load thumbnail for frame ${result.frame_index}: ${result.error || "Unknown error"}`,
-                );
-              }
-            });
-
             return newMap;
           });
 

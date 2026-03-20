@@ -49,7 +49,10 @@ export function isFunction(
 }
 
 /**
- * Check if error is an Error object
+ * Check if error is an Error object or an error-like plain object.
+ *
+ * The duck-type fallback handles cases where Tauri or system APIs return
+ * plain objects instead of proper Error instances.
  */
 export function isError(value: unknown): value is Error {
   return (

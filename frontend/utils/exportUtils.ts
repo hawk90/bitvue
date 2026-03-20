@@ -73,7 +73,7 @@ function escapeHtml(unsafe: string | number): string {
 export async function exportFramesToCsv(
   frames: FrameExportData[],
 ): Promise<string> {
-  const _csvContent = [
+  const csvContent = [
     "Frame,Type,Size,POC,PTS,KeyFrame,TemporalLayer,SpatialLayer,RefFrames",
     ...frames.map((f) =>
       [
@@ -102,8 +102,11 @@ export async function exportFramesToCsv(
 
   if (!filePath) throw new Error("No file path selected");
 
-  // Use Tauri command to write file
-  await invoke("export_frames_csv", { outputPath: filePath });
+  // Use Tauri command to write file (csvContent passed for potential future use)
+  await invoke("export_frames_csv", {
+    outputPath: filePath,
+    content: csvContent,
+  });
   return filePath;
 }
 
@@ -165,7 +168,20 @@ export async function exportAnalysisReport(
  */
 export function generateAnalysisReport(
   frames: FrameExportData[],
+  metadata: { codec?: string; width?: number; height?: number } = {},
 ): AnalysisReportData {
+  const defaultReport: AnalysisReportData = {
+    codec: metadata.codec ?? "Unknown",
+    width: metadata.width ?? 0,
+    height: metadata.height ?? 0,
+    total_frames: 0,
+    frame_type_distribution: { i_frames: 0, p_frames: 0, b_frames: 0 },
+    size_statistics: { total: 0, average: 0, max: 0, min: 0 },
+    gop_structure: { count: 0, average_size: 0 },
+  };
+
+  if (frames.length === 0) return defaultReport;
+
   const iFrames = frames.filter((f) => f.frame_type === "I").length;
   const pFrames = frames.filter((f) => f.frame_type === "P").length;
   const bFrames = frames.filter((f) => f.frame_type === "B").length;
@@ -194,9 +210,9 @@ export function generateAnalysisReport(
   }
 
   return {
-    codec: "Unknown",
-    width: 1920,
-    height: 1080,
+    codec: metadata.codec ?? "Unknown",
+    width: metadata.width ?? 1920,
+    height: metadata.height ?? 1080,
     total_frames: frames.length,
     frame_type_distribution: {
       i_frames: iFrames,

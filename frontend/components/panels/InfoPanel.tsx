@@ -19,22 +19,6 @@ interface InfoPanelProps {
   currentFrame: FrameInfo | null;
 }
 
-/**
- * Custom comparison for InfoPanel props
- * Performs deep comparison for currentFrame object to prevent unnecessary re-renders
- */
-function arePropsEqual(
-  prevProps: InfoPanelProps,
-  nextProps: InfoPanelProps,
-): boolean {
-  return (
-    prevProps.filePath === nextProps.filePath &&
-    prevProps.frameCount === nextProps.frameCount &&
-    prevProps.currentFrameIndex === nextProps.currentFrameIndex &&
-    prevProps.currentFrame === nextProps.currentFrame // Reference equality for frame object
-  );
-}
-
 export const InfoPanel = memo(function InfoPanel({
   filePath,
   frameCount,
@@ -69,6 +53,6 @@ export const InfoPanel = memo(function InfoPanel({
       </div>
     </div>
   );
-}, arePropsEqual);
+});
 
 export default InfoPanel;

@@ -39,7 +39,6 @@ const HRDBufferPanelInternal = ({
 }: HRDBufferPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [_hoveredFrame, setHoveredFrame] = useState<number | null>(null);
   const [hoverData, setHoverData] = useState<{
     frame: number;
     occupancy: number;
@@ -61,16 +60,14 @@ const HRDBufferPanelInternal = ({
       const frame = frames[i];
       if (!frame) continue;
 
-      // Remove frame size from buffer (decoded frame removal)
       const frameSize = frame.size || 0;
 
-      // Check for initial removal delay
-      const _initialRemovalDelay = frameSize; // Simplified
-
-      // Add current frame to buffer (if it's the frame being decoded)
-      // and remove older frames
-      currentOccupancy = Math.max(0, currentOccupancy - frameSize);
-      currentOccupancy += frameSize;
+      // Proper HRD model: decoder drains at target bitrate, then frame is added
+      const drainPerFrame = targetBitrate
+        ? targetBitrate / frameRate / 8 // bytes drained per frame interval
+        : frameSize; // fallback: drain same as frame size
+      currentOccupancy = Math.max(0, currentOccupancy - drainPerFrame);
+      currentOccupancy = Math.min(bufferSize, currentOccupancy + frameSize);
 
       // Check overflow
       const overflow = currentOccupancy > bufferSize;
@@ -89,10 +86,11 @@ const HRDBufferPanelInternal = ({
 
     state.occupancy = currentOccupancy;
     return state;
-  }, [frames, bufferSize]);
+  }, [frames, bufferSize, targetBitrate, frameRate]);
 
-  // Draw HRD buffer graph
-  useEffect(() => {
+  // Draw HRD buffer graph — wrapped in useCallback so the ResizeObserver can
+  // call it directly without re-subscribing on every render.
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container || hrdState.occupancyHistory.length === 0) return;
@@ -221,10 +219,6 @@ const HRDBufferPanelInternal = ({
 
     // Draw current frame marker
     const currentX = margin.left + currentFrameIndex * stepX;
-    const _currentY =
-      margin.top +
-      graphHeight -
-      (hrdState.occupancy / maxOccupancy) * graphHeight;
 
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 2;
@@ -258,6 +252,21 @@ const HRDBufferPanelInternal = ({
     }
   }, [hrdState, currentFrameIndex, bufferSize, targetBitrate, frameRate]);
 
+  // Redraw when data changes
+  useEffect(() => {
+    drawCanvas();
+  }, [drawCanvas]);
+
+  // Redraw canvas on container resize
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => drawCanvas());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [drawCanvas]);
+
   // Handle mouse move for tooltip
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -271,7 +280,6 @@ const HRDBufferPanelInternal = ({
       const graphWidth = rect.width - margin.left - margin.right;
 
       if (x < margin.left || x > margin.left + graphWidth) {
-        setHoveredFrame(null);
         setHoverData(null);
         return;
       }
@@ -281,7 +289,6 @@ const HRDBufferPanelInternal = ({
       const frameIndex = Math.round((x - margin.left) / stepX);
 
       if (frameIndex >= 0 && frameIndex < history.length) {
-        setHoveredFrame(frameIndex);
         setHoverData(history[frameIndex]);
       }
     },
@@ -333,7 +340,6 @@ const HRDBufferPanelInternal = ({
           ref={canvasRef}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => {
-            setHoveredFrame(null);
             setHoverData(null);
           }}
         />

@@ -363,3 +363,9 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+@media (width <= 480px) {
+  .formats-grid {
+    grid-template-columns: 1fr;
+  }
+}

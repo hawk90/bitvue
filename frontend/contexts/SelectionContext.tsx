@@ -58,31 +58,23 @@ interface SelectionProviderProps {
 
 export function SelectionProvider({ children }: SelectionProviderProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null);
-  const [listeners] = useState<Set<(event: SelectionChangeEvent) => void>>(
-    new Set(),
-  );
-  // Keep track of all listener subscriptions for cleanup on unmount
-  const unsubscribeFunctionsRef = useRef<Array<() => void>>([]);
+  const listenersRef = useRef(new Set<(event: SelectionChangeEvent) => void>());
 
   // Cleanup all listeners when provider unmounts
   useEffect(() => {
+    const listeners = listenersRef.current;
     return () => {
-      // Call all unsubscribe functions to prevent memory leaks
-      unsubscribeFunctionsRef.current.forEach((unsubscribe) => unsubscribe());
-      unsubscribeFunctionsRef.current = [];
+      listeners.clear();
     };
   }, []);
 
-  const notifyListeners = useCallback(
-    (newSelection: SelectionState) => {
-      const event: SelectionChangeEvent = {
-        selection: newSelection,
-        source: newSelection.source,
-      };
-      listeners.forEach((callback) => callback(event));
-    },
-    [listeners],
-  );
+  const notifyListeners = useCallback((newSelection: SelectionState) => {
+    const event: SelectionChangeEvent = {
+      selection: newSelection,
+      source: newSelection.source,
+    };
+    listenersRef.current.forEach((callback) => callback(event));
+  }, []);
 
   const updateSelection = useCallback(
     (
@@ -191,15 +183,12 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
 
   const subscribe = useCallback(
     (callback: (event: SelectionChangeEvent) => void) => {
-      listeners.add(callback);
-      const unsubscribe = () => {
-        listeners.delete(callback);
+      listenersRef.current.add(callback);
+      return () => {
+        listenersRef.current.delete(callback);
       };
-      // Track unsubscribe function for cleanup on unmount
-      unsubscribeFunctionsRef.current.push(unsubscribe);
-      return unsubscribe;
     },
-    [listeners],
+    [],
   );
 
   const value: SelectionContextType = {
@@ -236,13 +225,10 @@ export function useSelection(): SelectionContextType {
 // Helper hook for panels that need to react to selection changes
 export function useSelectionSubscribe(
   callback: (event: SelectionChangeEvent) => void,
-  deps: unknown[] = [],
 ) {
   const { subscribe } = useSelection();
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const unsubscribe = subscribe(callback);
-    return unsubscribe;
-  }, deps); // Re-subscribe when deps change
+  useEffect(() => subscribe((e) => callbackRef.current(e)), [subscribe]);
 }

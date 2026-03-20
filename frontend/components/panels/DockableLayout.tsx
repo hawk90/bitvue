@@ -18,7 +18,7 @@
  * └──────────┴───────────────┴──────────────────────────────────────────────┘
  */
 
-import React, { memo, useCallback } from "react";
+import React, { memo, useState, useCallback, useRef } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import "./DockableLayout.css";
 
@@ -78,6 +78,118 @@ interface DockableLayoutProps {
   /** Default sizes (percentage) */
   defaultLeftSize?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Shared tabbed container — used by both LeftSidebar and BottomPanelBar
+// ---------------------------------------------------------------------------
+
+interface TabbedPanelContainerProps {
+  panels: PanelConfig[];
+  /** CSS class for the tabs wrapper element */
+  tabsClassName: string;
+  /** CSS class for each individual tab button */
+  tabClassName: string;
+  /** CSS class for the active-tab modifier (appended when active) */
+  activeTabClassName: string;
+  /** CSS class for the panel content area */
+  contentClassName: string;
+  /** Accessible label for the tablist (defaults to "Panels") */
+  ariaLabel?: string;
+}
+
+const TabbedPanelContainer = memo(function TabbedPanelContainer({
+  panels,
+  tabsClassName,
+  tabClassName,
+  activeTabClassName,
+  contentClassName,
+  ariaLabel,
+}: TabbedPanelContainerProps) {
+  const [activeTab, setActiveTab] = useState(panels[0]?.id ?? "");
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  const ActivePanel = panels.find((p) => p.id === activeTab)?.component;
+
+  const handleTabClick = useCallback((panelId: string) => {
+    setActiveTab(panelId);
+  }, []);
+
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      const currentIndex = panels.findIndex((p) => p.id === activeTab);
+      if (currentIndex === -1) return;
+
+      let nextIndex: number | null = null;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        nextIndex = (currentIndex + 1) % panels.length;
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        nextIndex = (currentIndex - 1 + panels.length) % panels.length;
+      } else if (e.key === "Home") {
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        nextIndex = panels.length - 1;
+      }
+
+      if (nextIndex !== null) {
+        e.preventDefault();
+        const nextPanel = panels[nextIndex];
+        setActiveTab(nextPanel.id);
+        // Move focus to the newly activated tab button
+        const tabButtons =
+          tabListRef.current?.querySelectorAll<HTMLButtonElement>(
+            '[role="tab"]',
+          );
+        tabButtons?.[nextIndex]?.focus();
+      }
+    },
+    [activeTab, panels],
+  );
+
+  return (
+    <>
+      <div
+        ref={tabListRef}
+        role="tablist"
+        aria-label={ariaLabel ?? "Panels"}
+        className={tabsClassName}
+      >
+        {panels.map((panel) => (
+          <button
+            key={panel.id}
+            role="tab"
+            aria-selected={activeTab === panel.id}
+            aria-controls={`tabpanel-${panel.id}`}
+            id={`tab-${panel.id}`}
+            tabIndex={activeTab === panel.id ? 0 : -1}
+            className={`${tabClassName} ${activeTab === panel.id ? activeTabClassName : ""}`}
+            onClick={() => handleTabClick(panel.id)}
+            onKeyDown={handleTabKeyDown}
+          >
+            {panel.icon && (
+              <span
+                className={`codicon codicon-${panel.icon}`}
+                aria-hidden="true"
+              ></span>
+            )}
+            <span>{panel.title}</span>
+          </button>
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={`tabpanel-${activeTab}`}
+        aria-labelledby={`tab-${activeTab}`}
+        className={contentClassName}
+      >
+        {ActivePanel && <ActivePanel />}
+      </div>
+    </>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// DockableLayout
+// ---------------------------------------------------------------------------
 
 export const DockableLayout = memo(function DockableLayout({
   leftPanels,
@@ -162,94 +274,54 @@ export const DockableLayout = memo(function DockableLayout({
   );
 });
 
-/**
- * Left Sidebar with Tabbed Panels
- * Stream | Syntax | Selection | Unit HEX | etc.
- */
+// ---------------------------------------------------------------------------
+// Left Sidebar with Tabbed Panels
+// Stream | Syntax | Selection | Unit HEX | etc.
+// ---------------------------------------------------------------------------
 const LeftSidebar = memo(function LeftSidebar({
   panels,
 }: {
   panels: PanelConfig[];
 }) {
-  const [activeTab, setActiveTab] = React.useState(panels[0]?.id || "");
-
-  const ActivePanel = panels.find((p) => p.id === activeTab)?.component;
-
-  const handleTabClick = useCallback((panelId: string) => {
-    setActiveTab(panelId);
-  }, []);
-
   return (
     <div className="left-sidebar">
-      {/* Tab Headers */}
-      <div className="sidebar-tabs">
-        {panels.map((panel) => (
-          <button
-            key={panel.id}
-            className={`sidebar-tab ${activeTab === panel.id ? "active" : ""}`}
-            onClick={() => handleTabClick(panel.id)}
-          >
-            {panel.icon && (
-              <span className={`codicon codicon-${panel.icon}`}></span>
-            )}
-            <span>{panel.title}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Active Panel Content */}
-      <div className="sidebar-content">{ActivePanel && <ActivePanel />}</div>
+      <TabbedPanelContainer
+        panels={panels}
+        tabsClassName="sidebar-tabs"
+        tabClassName="sidebar-tab"
+        activeTabClassName="active"
+        contentClassName="sidebar-content"
+      />
     </div>
   );
 });
 
-/**
- * Bottom Panel Bar (Filmstrip/Timeline)
- * Filmstrip with view mode selector
- */
+// ---------------------------------------------------------------------------
+// Bottom Panel Bar (Filmstrip/Timeline)
+// Filmstrip with view mode selector
+// ---------------------------------------------------------------------------
 const BottomPanelBar = memo(function BottomPanelBar({
   panels,
 }: {
   panels: PanelConfig[];
 }) {
-  const [activeTab, setActiveTab] = React.useState(panels[0]?.id || "");
-
-  const ActivePanel = panels.find((p) => p.id === activeTab)?.component;
-
-  const handleTabClick = useCallback((panelId: string) => {
-    setActiveTab(panelId);
-  }, []);
-
   return (
     <div className="bottom-panel-bar">
-      {/* Panel Tabs */}
-      <div className="bottom-panel-tabs">
-        {panels.map((panel) => (
-          <button
-            key={panel.id}
-            className={`bottom-panel-tab ${activeTab === panel.id ? "active" : ""}`}
-            onClick={() => handleTabClick(panel.id)}
-          >
-            {panel.icon && (
-              <span className={`codicon codicon-${panel.icon}`}></span>
-            )}
-            <span>{panel.title}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Active Panel Content */}
-      <div className="bottom-panel-content">
-        {ActivePanel && <ActivePanel />}
-      </div>
+      <TabbedPanelContainer
+        panels={panels}
+        tabsClassName="bottom-panel-tabs"
+        tabClassName="bottom-panel-tab"
+        activeTabClassName="active"
+        contentClassName="bottom-panel-content"
+      />
     </div>
   );
 });
 
-/**
- * Bottom Row Panel Bar (3 panels displayed horizontally)
- * Shows all panels side by side with resize capability
- */
+// ---------------------------------------------------------------------------
+// Bottom Row Panel Bar (3 panels displayed horizontally)
+// Shows all panels side by side with resize capability
+// ---------------------------------------------------------------------------
 const BottomRowPanelBar = memo(function BottomRowPanelBar({
   panels,
 }: {

@@ -1,0 +1,229 @@
+/**
+ * RD Curves Panel Styles
+ */
+
+.rd-curves-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bitvue-bg, #1e1e1e);
+  overflow-y: auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.rd-curves-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.rd-curves-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bitvue-fg, #ccc);
+  margin: 0;
+}
+
+.rd-curves-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rd-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #fff;
+}
+
+.rd-btn:disabled {
+  background: var(--bitvue-bg-secondary, #2d2d30);
+  color: var(--bitvue-fg-dim, #858585);
+  cursor: not-allowed;
+}
+
+.rd-btn-blue {
+  background: #007acc;
+}
+
+.rd-btn-blue:hover:not(:disabled) {
+  background: #005fa3;
+}
+
+.rd-btn-green {
+  background: #2da44e;
+}
+
+.rd-btn-green:hover:not(:disabled) {
+  background: #1e7e34;
+}
+
+.rd-btn-gray {
+  background: var(--bitvue-bg-secondary, #3c3c3c);
+  color: var(--bitvue-fg, #ccc);
+}
+
+.rd-btn-gray:hover:not(:disabled) {
+  background: var(--bitvue-border, #4c4c4c);
+}
+
+.rd-metric-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.rd-metric-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bitvue-fg, #ccc);
+}
+
+.rd-metric-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.rd-metric-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--bitvue-border, #3c3c3c);
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--bitvue-bg-secondary, #2d2d30);
+  color: var(--bitvue-fg-dim, #858585);
+}
+
+.rd-metric-btn:hover {
+  background: var(--bitvue-border, #3c3c3c);
+  color: var(--bitvue-fg, #ccc);
+}
+
+.rd-metric-btn.active {
+  background: #007acc;
+  color: #fff;
+  border-color: #007acc;
+}
+
+.rd-error {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #ff6b6b;
+}
+
+.rd-chart-container {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--bitvue-border, #3c3c3c);
+  border-radius: 4px;
+  background: var(--bitvue-bg-secondary, #252526);
+}
+
+.rd-empty {
+  margin-bottom: 16px;
+  padding: 32px 16px;
+  border: 1px solid var(--bitvue-border, #3c3c3c);
+  border-radius: 4px;
+  background: var(--bitvue-bg-secondary, #252526);
+  text-align: center;
+  color: var(--bitvue-fg-dim, #858585);
+}
+
+.rd-empty p {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+}
+
+.rd-empty p:last-child {
+  font-size: 11px;
+  margin: 0;
+}
+
+.rd-bdrate-results {
+  padding: 16px;
+  border: 1px solid rgba(45, 164, 78, 0.3);
+  border-radius: 4px;
+  background: rgba(45, 164, 78, 0.08);
+  margin-bottom: 16px;
+}
+
+.rd-bdrate-results h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2da44e;
+  margin: 0 0 12px 0;
+}
+
+.rd-bdrate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.rd-bdrate-item label {
+  display: block;
+  font-size: 11px;
+  color: var(--bitvue-fg-dim, #858585);
+  margin-bottom: 3px;
+}
+
+.rd-bdrate-item .value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bitvue-fg, #ccc);
+}
+
+.rd-bdrate-item .value.positive {
+  color: #ff6b6b;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.rd-bdrate-item .value.negative {
+  color: #2da44e;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.rd-bdrate-item .value.blue {
+  color: #339af0;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.rd-bdrate-item.span-2 {
+  grid-column: span 2;
+}
+
+.rd-bdrate-interpretation {
+  font-size: 11px;
+  padding: 6px 8px;
+  background: var(--bitvue-bg, #1e1e1e);
+  border: 1px solid var(--bitvue-border, #3c3c3c);
+  border-radius: 3px;
+  color: var(--bitvue-fg, #ccc);
+}
+
+.rd-info {
+  font-size: 11px;
+  color: var(--bitvue-fg-dim, #858585);
+  margin-top: 16px;
+}
+
+.rd-info p {
+  margin: 0 0 4px 0;
+}
+
+.rd-info p:last-child {
+  margin: 0;
+}

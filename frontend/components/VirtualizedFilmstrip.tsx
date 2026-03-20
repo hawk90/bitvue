@@ -51,6 +51,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
   // Handle scroll with requestAnimationFrame for smooth updates
   const rafRef = useRef<number>();
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const scrollLeft = e.currentTarget.scrollLeft; // extract synchronously before event is recycled
     // Cancel any pending animation frame
     if (rafRef.current !== undefined) {
       cancelAnimationFrame(rafRef.current);
@@ -58,7 +59,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
 
     // Schedule state update for next animation frame
     rafRef.current = requestAnimationFrame(() => {
-      setScrollLeft(e.currentTarget.scrollLeft);
+      setScrollLeft(scrollLeft);
       rafRef.current = undefined;
     });
   }, []);

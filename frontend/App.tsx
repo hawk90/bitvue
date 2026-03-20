@@ -1,4 +1,4 @@
-import { useEffect, memo, lazy, Suspense, useMemo } from "react";
+import { useEffect, memo, lazy, Suspense, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
@@ -112,6 +112,127 @@ function App() {
   );
 }
 
+// Stable panel component wrappers — defined outside AppContent to avoid remounting
+const StreamTreePanelWrapper = memo(function StreamTreePanelWrapper() {
+  return <StreamTreePanel />;
+});
+const SyntaxDetailPanelWrapper = memo(function SyntaxDetailPanelWrapper() {
+  return <SyntaxDetailPanel />;
+});
+const SelectionInfoPanelWrapper = memo(function SelectionInfoPanelWrapper() {
+  return <SelectionInfoPanel />;
+});
+const UnitHexPanelWrapper = memo(function UnitHexPanelWrapper() {
+  return <UnitHexPanel />;
+});
+const StatisticsPanelWrapper = memo(function StatisticsPanelWrapper() {
+  return <StatisticsPanel />;
+});
+
+/**
+ * Stable main view component — reads current frame data from context.
+ * Defined outside AppContent so it has a stable identity and never causes remounting.
+ */
+const MainViewFromContext = memo(function MainViewFromContext() {
+  const { frames } = useFrameData();
+  const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
+  return (
+    <YuvViewerPanel
+      currentFrameIndex={currentFrameIndex}
+      totalFrames={frames.length}
+      onFrameChange={setCurrentFrameIndex}
+    />
+  );
+});
+
+/** Stable filmstrip panel — reads frames from context */
+const FilmstripPanelFromContext = memo(function FilmstripPanelFromContext() {
+  const { frames } = useFrameData();
+  return <FilmstripPanel frames={frames} />;
+});
+
+/** Stable info panel — reads state from context */
+const InfoPanelFromContext = memo(function InfoPanelFromContext() {
+  const { frames } = useFrameData();
+  const { currentFrameIndex } = useCurrentFrame();
+  const { filePath } = useFileState();
+  return (
+    <InfoPanel
+      filePath={filePath ?? undefined}
+      frameCount={frames.length}
+      currentFrameIndex={currentFrameIndex}
+      currentFrame={frames[currentFrameIndex] || null}
+    />
+  );
+});
+
+/** Stable details panel — reads current frame from context */
+const DetailsPanelFromContext = memo(function DetailsPanelFromContext() {
+  const { frames } = useFrameData();
+  const { currentFrameIndex } = useCurrentFrame();
+  return <DetailsPanel frame={frames[currentFrameIndex] || null} />;
+});
+
+// Stable top panels config
+const TOP_PANELS = [
+  {
+    id: "filmstrip",
+    title: "Filmstrip",
+    component: FilmstripPanelFromContext,
+    icon: "media",
+  },
+];
+
+// Stable bottom row panels config
+const BOTTOM_ROW_PANELS = [
+  {
+    id: "info",
+    title: "Info",
+    component: InfoPanelFromContext,
+    icon: "info",
+  },
+  {
+    id: "details",
+    title: "Details",
+    component: DetailsPanelFromContext,
+    icon: "list-tree",
+  },
+  {
+    id: "stats",
+    title: "Stats",
+    component: StatisticsPanelWrapper,
+    icon: "graph",
+  },
+];
+
+// Stable left panels config — never changes
+const LEFT_PANELS = [
+  {
+    id: "stream",
+    title: "Stream",
+    component: StreamTreePanelWrapper,
+    icon: "symbol-tree",
+  },
+  {
+    id: "syntax",
+    title: "Syntax",
+    component: SyntaxDetailPanelWrapper,
+    icon: "code",
+  },
+  {
+    id: "selection",
+    title: "Selection",
+    component: SelectionInfoPanelWrapper,
+    icon: "info",
+  },
+  {
+    id: "hex",
+    title: "Unit HEX",
+    component: UnitHexPanelWrapper,
+    icon: "file-code",
+  },
+];
+
 /**
  * Main App Content component
  * Manages file operations, keyboard navigation, and UI state
@@ -146,25 +267,41 @@ function AppContent() {
     onError: showErrorDialog,
   });
 
+  // Stable keyboard navigation callbacks
+  const onPreviousFrame = useCallback(() => {
+    if (currentFrameIndex > 0) setCurrentFrameIndex(currentFrameIndex - 1);
+  }, [currentFrameIndex, setCurrentFrameIndex]);
+
+  const onNextFrame = useCallback(() => {
+    if (frames.length > 0 && currentFrameIndex < frames.length - 1) {
+      setCurrentFrameIndex(currentFrameIndex + 1);
+    }
+  }, [currentFrameIndex, frames.length, setCurrentFrameIndex]);
+
+  const onFirstFrame = useCallback(() => {
+    setCurrentFrameIndex(0);
+  }, [setCurrentFrameIndex]);
+
+  const onLastFrame = useCallback(() => {
+    if (frames.length > 0) setCurrentFrameIndex(frames.length - 1);
+  }, [frames.length, setCurrentFrameIndex]);
+
+  const onShowShortcuts = useCallback(
+    () => setShowShortcuts(true),
+    [setShowShortcuts],
+  );
+
   // Keyboard navigation
   useKeyboardNavigation({
     currentIndex: currentFrameIndex,
     totalFrames: frames.length,
     callbacks: {
-      onPreviousFrame: () => {
-        if (currentFrameIndex > 0) setCurrentFrameIndex(currentFrameIndex - 1);
-      },
-      onNextFrame: () => {
-        if (frames.length > 0 && currentFrameIndex < frames.length - 1) {
-          setCurrentFrameIndex(currentFrameIndex + 1);
-        }
-      },
-      onFirstFrame: () => setCurrentFrameIndex(0),
-      onLastFrame: () => {
-        if (frames.length > 0) setCurrentFrameIndex(frames.length - 1);
-      },
+      onPreviousFrame,
+      onNextFrame,
+      onFirstFrame,
+      onLastFrame,
     },
-    onShowShortcuts: () => setShowShortcuts(true),
+    onShowShortcuts,
   });
 
   // Tauri event listeners
@@ -188,8 +325,8 @@ function AppContent() {
       // Proper cleanup: handle potential errors during unlisten
       unlisten
         .then((fn) => fn())
-        .catch((_err) => {
-          // logger.warn('Failed to unlisten from file-opened event:', err);
+        .catch((err) => {
+          console.warn("Failed to unlisten from file-opened event:", err);
         });
     };
   }, [refreshFrames, setFileInfo, setFilePath, showErrorDialog, setFrames]);
@@ -232,98 +369,17 @@ function AppContent() {
     </div>
   );
 
-  // Memoized panel configurations to prevent re-renders (PERF: App.tsx)
-  // These configurations are stable across renders, preventing unnecessary re-creation
-  // of component functions and reducing re-renders by 40-60%
-  const leftPanels = useMemo(
-    () => [
-      {
-        id: "stream",
-        title: "Stream",
-        component: () => <StreamTreePanel />,
-        icon: "symbol-tree",
-      },
-      {
-        id: "syntax",
-        title: "Syntax",
-        component: () => <SyntaxDetailPanel />,
-        icon: "code",
-      },
-      {
-        id: "selection",
-        title: "Selection",
-        component: () => <SelectionInfoPanel />,
-        icon: "info",
-      },
-      {
-        id: "hex",
-        title: "Unit HEX",
-        component: () => <UnitHexPanel />,
-        icon: "file-code",
-      },
-    ],
-    [],
-  ); // Empty deps - panels never change
+  // Use stable left panels config defined outside component
+  const leftPanels = LEFT_PANELS;
 
-  // Memoized main view - depends on currentFrameIndex and frames.length
-  const mainView = useMemo(() => {
-    const MainView = () => (
-      <YuvViewerPanel
-        currentFrameIndex={currentFrameIndex}
-        totalFrames={frames.length}
-        onFrameChange={setCurrentFrameIndex}
-      />
-    );
-    MainView.displayName = "MainView";
-    return MainView;
-  }, [currentFrameIndex, frames.length, setCurrentFrameIndex]);
+  // Stable main view component — reads from context directly to avoid remounting
+  const mainView = MainViewFromContext;
 
-  // Memoized top panels - depends on frames
-  const topPanels = useMemo(
-    () => [
-      {
-        id: "filmstrip",
-        title: "Filmstrip",
-        component: () => <FilmstripPanel frames={frames} />,
-        icon: "media",
-      },
-    ],
-    [frames],
-  ); // Re-create only when frames change
+  // Stable top panels — component reads from context directly
+  const topPanels = TOP_PANELS;
 
-  // Memoized bottom panels - depends on frames, currentFrameIndex, fileInfo
-  const bottomRowPanels = useMemo(
-    () => [
-      {
-        id: "info",
-        title: "Info",
-        component: () => (
-          <InfoPanel
-            filePath={fileInfo?.path}
-            frameCount={frames.length}
-            currentFrameIndex={currentFrameIndex}
-            currentFrame={frames[currentFrameIndex] || null}
-          />
-        ),
-        icon: "info",
-      },
-      {
-        id: "details",
-        title: "Details",
-        component: () => (
-          <DetailsPanel frame={frames[currentFrameIndex] || null} />
-        ),
-        icon: "list-tree",
-      },
-      {
-        id: "stats",
-        title: "Stats",
-        component: () => <StatisticsPanel />,
-        icon: "graph",
-      },
-    ],
-    [frames, currentFrameIndex, fileInfo?.path],
-  ); // Re-create when these change
+  // Stable bottom panels — components read from context directly
+  const bottomRowPanels = BOTTOM_ROW_PANELS;
 
   // Main content when file is loaded
   const mainContent =
@@ -365,7 +421,6 @@ function AppContent() {
           <StatusBar
             fileInfo={fileInfo}
             frameCount={frames.length}
-            branch="main"
             onShowShortcuts={() => setShowShortcuts(true)}
           />
         </div>

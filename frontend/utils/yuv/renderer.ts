@@ -110,7 +110,9 @@ export function yuvToImageData(
   } catch (error) {
     YUV_LOGGER.error("Error in yuvToImageData:", error);
     // Return a black ImageData as fallback
-    const fallback = new ImageData(frame.width || 1, frame.height || 1);
+    const fw = frame.width > 0 ? frame.width : 1;
+    const fh = frame.height > 0 ? frame.height : 1;
+    const fallback = new ImageData(fw, fh);
     fallback.data.fill(0);
     return fallback;
   }

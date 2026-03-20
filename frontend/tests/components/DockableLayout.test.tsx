@@ -50,7 +50,7 @@ describe("DockableLayout", () => {
   it("should render left sidebar with tabs", () => {
     render(<DockableLayout leftPanels={leftPanels} mainView={MockMainView} />);
 
-    const tabs = screen.queryAllByRole("button");
+    const tabs = screen.queryAllByRole("tab");
     const tabTitles = tabs.filter((tab) =>
       tab.className.includes("sidebar-tab"),
     );

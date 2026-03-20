@@ -50,23 +50,43 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   bitvueWindow.console._originalDebug = originalDebug;
 
   console.log = (...args) => {
-    tauriLog.log(String(args[0]), ...args.slice(1));
+    const first = args[0];
+    tauriLog.log(
+      typeof first === "string" ? first : JSON.stringify(first),
+      ...args.slice(1),
+    );
     originalLog(...args);
   };
   console.info = (...args) => {
-    tauriLog.info(String(args[0]), ...args.slice(1));
+    const first = args[0];
+    tauriLog.info(
+      typeof first === "string" ? first : JSON.stringify(first),
+      ...args.slice(1),
+    );
     originalInfo(...args);
   };
   console.warn = (...args) => {
-    tauriLog.warn(String(args[0]), ...args.slice(1));
+    const first = args[0];
+    tauriLog.warn(
+      typeof first === "string" ? first : JSON.stringify(first),
+      ...args.slice(1),
+    );
     originalWarn(...args);
   };
   console.error = (...args) => {
-    tauriLog.error(String(args[0]), ...args.slice(1));
+    const first = args[0];
+    tauriLog.error(
+      typeof first === "string" ? first : JSON.stringify(first),
+      ...args.slice(1),
+    );
     originalError(...args);
   };
   console.debug = (...args) => {
-    tauriLog.debug(String(args[0]), ...args.slice(1));
+    const first = args[0];
+    tauriLog.debug(
+      typeof first === "string" ? first : JSON.stringify(first),
+      ...args.slice(1),
+    );
     originalDebug(...args);
   };
 
@@ -87,21 +107,16 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
   window.addEventListener("unhandledrejection", (event) => {
     originalError("[UNHANDLED REJECTION]", event.reason);
   });
-
-  originalLog("[main] Global error handlers installed");
 } else {
-  console.log("[main] Console override already installed, skipping");
+  // Override already installed (HMR re-run) — skip silently
 }
 
 logger.info("Starting app...");
-console.log("[main] Script starting, document ready:", !!document);
-console.log("[main] Root element:", document.getElementById("root"));
 
 // Initialize system menu (macOS only)
 initializeSystemMenu()
   .then(() => {
     logger.info("System menu initialized");
-    console.log("[main] System menu initialized successfully");
   })
   .catch((err) => {
     logger.error("System menu init failed:", err);
@@ -109,21 +124,14 @@ initializeSystemMenu()
   });
 
 logger.info("Rendering App...");
-console.log("[main] Creating React root and rendering App");
 
 const rootElement = document.getElementById("root");
-if (!rootElement) {
-  console.error("[main] CRITICAL: Root element not found!");
-} else {
-  console.log("[main] Root element found, creating ReactDOM root");
-}
+if (!rootElement) throw new Error("Root element #root not found");
 
-ReactDOM.createRoot(rootElement as HTMLElement).render(
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <ThemeProvider defaultTheme="dark">
       <App />
     </ThemeProvider>
   </React.StrictMode>,
 );
-
-console.log("[main] ReactDOM.render called");

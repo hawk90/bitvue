@@ -33,8 +33,7 @@ function Timeline({ frames, className = "" }: TimelineProps) {
   // Refs to each frame element
   const frameRefs = useRef<(HTMLDivElement | null)[]>([]);
   // Cache for timeline bounding rect to avoid repeated getBoundingClientRect calls
-  const timelineRectCache = useRef<DOMRect | null>(null);
-  const [isRectCacheValid, setIsRectCacheValid] = useState(false);
+  const rectCache = useRef<DOMRect | null>(null);
 
   // Calculate cursor position based on actual DOM element position (memoized)
   const cursorPosition = useMemo(() => {
@@ -69,23 +68,14 @@ function Timeline({ frames, className = "" }: TimelineProps) {
   // Helper function to get cached timeline rect
   const getTimelineRect = useCallback((): DOMRect | null => {
     if (!timelineRef.current) return null;
-
-    // Return cached rect if valid
-    if (isRectCacheValid && timelineRectCache.current) {
-      return timelineRectCache.current;
-    }
-
-    // Calculate and cache new rect
-    const rect = timelineRef.current.getBoundingClientRect();
-    timelineRectCache.current = rect;
-    setIsRectCacheValid(true);
-    return rect;
-  }, [isRectCacheValid]);
+    rectCache.current ??= timelineRef.current.getBoundingClientRect();
+    return rectCache.current;
+  }, []);
 
   // Invalidate rect cache on window resize
   useEffect(() => {
     const handleResize = () => {
-      setIsRectCacheValid(false);
+      rectCache.current = null;
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -202,6 +192,7 @@ function Timeline({ frames, className = "" }: TimelineProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key === "ArrowLeft" && highlightedFrameIndex > 0) {
+        e.preventDefault();
         const newIndex = highlightedFrameIndex - 1;
         setHighlightedFrameIndex(newIndex);
         setFrameSelection({ stream: "A", frameIndex: newIndex }, "timeline");
@@ -209,6 +200,7 @@ function Timeline({ frames, className = "" }: TimelineProps) {
         e.key === "ArrowRight" &&
         highlightedFrameIndex < frames.length - 1
       ) {
+        e.preventDefault();
         const newIndex = highlightedFrameIndex + 1;
         setHighlightedFrameIndex(newIndex);
         setFrameSelection({ stream: "A", frameIndex: newIndex }, "timeline");

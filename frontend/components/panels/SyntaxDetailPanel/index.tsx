@@ -30,7 +30,7 @@ const SYNTAX_TABS: { value: SyntaxTab; label: string; icon: string }[] = [
 
 export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
   const { frames } = useFrameData();
-  const { currentFrameIndex } = useCurrentFrame();
+  const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
   const { filePath } = useFileState();
   const [currentTab, setCurrentTab] = useState<SyntaxTab>("Frame");
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -113,6 +113,7 @@ export const SyntaxDetailPanel = memo(function SyntaxDetailPanel() {
             searchResults={searchResults}
             onSearchChange={handleSearch}
             onClearSearch={handleClearSearch}
+            onNavigateToFrame={setCurrentFrameIndex}
           />
         );
     }

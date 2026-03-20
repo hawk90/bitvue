@@ -69,9 +69,7 @@ describe("RDCurvesPanel", () => {
     render(<RDCurvesPanel />);
 
     await user.click(screen.getByRole("button", { name: "SSIM" }));
-    expect(screen.getByRole("button", { name: "SSIM" })).toHaveClass(
-      "bg-blue-500",
-    );
+    expect(screen.getByRole("button", { name: "SSIM" })).toHaveClass("active");
   });
 
   it("calculates bd-rate after loading data", async () => {

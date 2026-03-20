@@ -165,3 +165,8 @@ export const STATISTICS = {
   BAR_MIN_HEIGHT: 1, // Minimum bar height in percentage
   BAR_CHART_HEIGHT: 40, // Bar chart height in pixels
 } as const;
+
+// ==================== Virtualization ====================
+
+/** Frame count threshold above which the filmstrip switches to virtual rendering (~30KB DOM) */
+export const VIRTUALIZATION_THRESHOLD = 200;

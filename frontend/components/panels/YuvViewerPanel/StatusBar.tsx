@@ -44,7 +44,7 @@ export const StatusBar = memo(function StatusBar({
       <span className="status-section">
         {isPlaying ? (
           <span className="yuv-playing-indicator">
-            <span className="codicon codicon-loading codicon-spin"></span>
+            <span className="codicon codicon-play"></span>
             Playing {formattedSpeed}x
           </span>
         ) : (
