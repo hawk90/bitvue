@@ -24,6 +24,7 @@ export const PlaybackControls = memo(function PlaybackControls({
       <button
         onClick={onTogglePlay}
         title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+        aria-label={isPlaying ? "Pause playback" : "Play frames"}
         className={isPlaying ? "active" : ""}
       >
         <span

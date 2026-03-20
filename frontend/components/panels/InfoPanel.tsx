@@ -51,10 +51,14 @@ export const InfoPanel = memo(function InfoPanel({
         <span className="info-value">{frameCount}</span>
 
         <span className="info-label">Current Frame:</span>
-        <span className="info-value">{currentFrameIndex}</span>
+        <span className="info-value">{currentFrameIndex + 1}</span>
 
         <span className="info-label">Frame Type:</span>
-        <span className="info-value">{currentFrame?.frame_type || "N/A"}</span>
+        <span className="info-value">
+          {currentFrame?.frame_type && currentFrame.frame_type !== "UNKNOWN"
+            ? currentFrame.frame_type
+            : "N/A"}
+        </span>
 
         <span className="info-label">Size:</span>
         <span className="info-value">

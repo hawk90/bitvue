@@ -66,7 +66,7 @@ export function renderIntraModes(
   width: number,
   height: number,
   grid: PredictionModeGrid,
-  blockSize: number = 16,
+  _blockSize: number = 16,
 ): void {
   const { grid_w, grid_h, modes } = grid;
   const blockW = width / grid_w;

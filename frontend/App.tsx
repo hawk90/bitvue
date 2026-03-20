@@ -1,5 +1,6 @@
 import { useEffect, memo, lazy, Suspense, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
 import { WelcomeScreen } from "./components/WelcomeScreen";
@@ -7,7 +8,7 @@ import { TitleBar } from "./components/TitleBar";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SelectionProvider } from "./contexts/SelectionContext";
-import { ModeProvider } from "./contexts/ModeContext";
+import { ModeProvider, useMode } from "./contexts/ModeContext";
 import {
   FrameDataProvider,
   FileStateProvider,
@@ -85,24 +86,17 @@ function LazyDialogWrapper({
 function App() {
   const { setTheme } = useTheme();
 
-  console.log("[App] Component mounted, theme:", typeof setTheme);
-
   // Theme changes
   useEffect(() => {
-    console.log("[App] Setting up theme change listener");
     const handleThemeChange = (e: Event) => {
       const themeEvent = e as ThemeChangeEvent;
-      console.log("[App] Theme change event:", themeEvent.detail);
       setTheme(themeEvent.detail);
     };
     window.addEventListener("menu-theme-change", handleThemeChange);
     return () => {
-      console.log("[App] Cleaning up theme change listener");
       window.removeEventListener("menu-theme-change", handleThemeChange);
     };
   }, [setTheme]);
-
-  console.log("[App] Rendering providers");
   return (
     <ModeProvider>
       <FrameDataProvider>
@@ -139,23 +133,17 @@ function AppContent() {
   } = useAppDialogs();
 
   // Use custom hooks for app logic
+  const { setMode } = useMode();
+
   const {
     fileInfo,
     setFileInfo,
     openError,
-    setOpenError,
     handleOpenFile,
     handleCloseFile,
     handleOpenDependentFile,
   } = useAppFileOperations({
     onError: showErrorDialog,
-  });
-
-  console.log("[AppContent] Render:", {
-    fileInfo,
-    framesLength: frames.length,
-    loading,
-    error,
   });
 
   // Keyboard navigation
@@ -200,7 +188,7 @@ function AppContent() {
       // Proper cleanup: handle potential errors during unlisten
       unlisten
         .then((fn) => fn())
-        .catch((err) => {
+        .catch((_err) => {
           // logger.warn('Failed to unlisten from file-opened event:', err);
         });
     };
@@ -278,16 +266,17 @@ function AppContent() {
   ); // Empty deps - panels never change
 
   // Memoized main view - depends on currentFrameIndex and frames.length
-  const mainView = useMemo(
-    () => () => (
+  const mainView = useMemo(() => {
+    const MainView = () => (
       <YuvViewerPanel
         currentFrameIndex={currentFrameIndex}
         totalFrames={frames.length}
         onFrameChange={setCurrentFrameIndex}
       />
-    ),
-    [currentFrameIndex, frames.length],
-  );
+    );
+    MainView.displayName = "MainView";
+    return MainView;
+  }, [currentFrameIndex, frames.length, setCurrentFrameIndex]);
 
   // Memoized top panels - depends on frames
   const topPanels = useMemo(
@@ -357,27 +346,19 @@ function AppContent() {
               fileName={fileInfo?.path || "Bitvue"}
               onOpenFile={handleOpenFile}
               onOpenDependentFile={handleOpenDependentFile}
+              onCloseFile={handleCloseFile}
+              onQuit={() => invoke("close_window")}
+              onShowShortcuts={() => setShowShortcuts(true)}
+              onModeChange={setMode}
             />
           )}
 
           <div className="app-container">
-            {(() => {
-              // File opened successfully with frames
-              if (fileInfo?.success && frames.length > 0) {
-                console.log(
-                  "[AppContent] Showing mainContent (file loaded with frames)",
-                );
-                return mainContent;
-              }
-              // File opened but no frames (error state)
-              if (fileInfo?.success && frames.length === 0) {
-                console.log("[AppContent] Showing noFramesError");
-                return noFramesError;
-              }
-              // No file opened (welcome screen)
-              console.log("[AppContent] Showing welcomeScreen");
-              return welcomeScreen;
-            })()}
+            {fileInfo?.success && frames.length > 0
+              ? mainContent
+              : fileInfo?.success && frames.length === 0
+                ? noFramesError
+                : welcomeScreen}
           </div>
 
           {/* Status Bar */}

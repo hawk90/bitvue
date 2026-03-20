@@ -22,7 +22,6 @@ import type {
   SelectionState,
   SelectionContextType,
   SelectionChangeEvent,
-  DEFAULT_SELECTION,
 } from "../types/selection";
 import {
   applyTriSyncRules,

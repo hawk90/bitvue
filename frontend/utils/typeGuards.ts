@@ -117,6 +117,7 @@ export function isValidFilePath(value: unknown): value is string {
   if (!isString(value)) return false;
   if (value.length === 0 || value.length > 4096) return false; // Reasonable path length limit
   // Check for invalid characters (Windows/Unix); allow colon for Windows drive letters
+  // eslint-disable-next-line no-control-regex
   const invalidChars = /[<>"|?*\x00-\x1f]/;
   return !invalidChars.test(value);
 }

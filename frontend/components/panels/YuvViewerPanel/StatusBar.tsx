@@ -34,7 +34,7 @@ export const StatusBar = memo(function StatusBar({
   return (
     <div className="yuv-status-bar">
       <span className="status-section">
-        Frame {currentFrameIndex} / {totalFrames}
+        Frame {currentFrameIndex + 1} / {totalFrames}
       </span>
       <span className="status-section">Zoom: {Math.round(zoom * 100)}%</span>
       <span className="status-section yuv-mode-indicator">

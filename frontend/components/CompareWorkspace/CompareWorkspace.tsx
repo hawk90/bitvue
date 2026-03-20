@@ -142,7 +142,9 @@ function CompareWorkspace({
           {showDiff && (
             <select
               value={diffMode}
-              onChange={(e) => setDiffMode(e.target.value as any)}
+              onChange={(e) =>
+                setDiffMode(e.target.value as "difference" | "psnr" | "ssim")
+              }
               className="diff-mode-select"
             >
               <option value="difference">Difference</option>

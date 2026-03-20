@@ -172,13 +172,6 @@ export const DEFAULT_LAYOUT: LayoutState = {
 export function LayoutProvider({ children }: { children: ReactNode }) {
   const [layoutState, setLayoutState] = useState<LayoutState>(DEFAULT_LAYOUT);
 
-  // Load saved layout on mount (skip in test environment)
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "test") {
-      loadLayout();
-    }
-  }, []);
-
   const updateLeftPanel = useCallback((size: number) => {
     setLayoutState((prev) => ({ ...prev, leftPanelSize: size }));
   }, []);
@@ -246,6 +239,13 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       handleStorageError(e, "loading layout");
     }
   }, []);
+
+  // Load saved layout on mount (skip in test environment)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "test") {
+      loadLayout();
+    }
+  }, [loadLayout]);
 
   // Auto-save on changes (skip in test environment)
   useEffect(() => {

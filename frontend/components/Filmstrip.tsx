@@ -150,7 +150,13 @@ function Filmstrip({
     return () => {
       observer.disconnect();
     };
-  }, [displayView, frames.length, scrollRef, loadThumbnails]);
+  }, [
+    displayView,
+    frames.length,
+    scrollRef,
+    loadThumbnails,
+    useVirtualizedView,
+  ]);
 
   // Auto-scroll to current frame
   useEffect(() => {

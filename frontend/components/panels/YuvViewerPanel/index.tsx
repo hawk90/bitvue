@@ -53,7 +53,8 @@ function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
 
   // Extract chroma subsampling from data (default to '420' if not provided)
   const chromaSubsampling: "420" | "422" | "444" =
-    (data as any).chroma_subsampling || "420";
+    (data as YUVFrameData & { chroma_subsampling?: "420" | "422" | "444" })
+      .chroma_subsampling || "420";
 
   // Handle null U/V planes - create empty arrays instead of null
   const uPlane = data.u_plane ? base64ToUint8(data.u_plane) : new Uint8Array(0);
@@ -104,14 +105,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   // Image and loading state
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // YUV data state (more efficient than RGB conversion)
   const [yuvData, setYuvData] = useState<YUVFrameData | null>(null);
 
   // Analysis data state
-  const [frameAnalysis, setFrameAnalysis] = useState<FrameAnalysisData | null>(
-    null,
-  );
+  const [, setFrameAnalysis] = useState<FrameAnalysisData | null>(null);
 
   // Canvas interaction (zoom, pan, drag)
   const {
@@ -138,10 +138,12 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   useEffect(() => {
     loadFrame(currentFrameIndex);
     loadFrameAnalysis(currentFrameIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFrameIndex]);
 
   const loadFrame = async (frameIndex: number) => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       // Try YUV first (more efficient)
       const yuvResult = await invoke<YUVFrameData>("get_decoded_frame_yuv", {
@@ -178,16 +180,19 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             logger.error("Failed to decode frame image for frame:", frameIndex);
             setIsLoading(false);
             setFrameImage(null);
+            setLoadError("Failed to decode frame image");
           };
           img.src = `data:image/png;base64,${result.frame_data}`;
         } else {
           logger.error("Failed to load frame:", result.error);
           setIsLoading(false);
+          setLoadError(result.error || "Failed to load frame");
         }
       }
     } catch (error) {
       logger.error("Failed to load frame:", error);
       setIsLoading(false);
+      setLoadError("Failed to load frame — check console for details");
     }
   };
 
@@ -432,7 +437,21 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         </div>
       )}
 
-      {!frameImage && !isLoading && (
+      {loadError && !isLoading && (
+        <div className="yuv-error-overlay">
+          <span className="codicon codicon-error"></span>
+          <span className="yuv-error-message">{loadError}</span>
+          <button
+            className="yuv-error-retry"
+            onClick={() => loadFrame(currentFrameIndex)}
+          >
+            <span className="codicon codicon-refresh"></span>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!frameImage && !yuvData && !isLoading && !loadError && (
         <div className="yuv-placeholder-overlay">
           <span className="codicon codicon-device-camera"></span>
           <span>No frame loaded</span>

@@ -4,12 +4,11 @@
  * F6: Shows motion vectors as arrows using real parser data
  */
 
-import { memo } from "react";
 import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { drawArrow } from "../utils/drawing";
 
-export const MVFieldOverlay = memo(function MVFieldOverlay({
+export function MVFieldOverlay({
   ctx,
   _width,
   _height,
@@ -77,4 +76,4 @@ export const MVFieldOverlay = memo(function MVFieldOverlay({
   ctx.font = "12px monospace";
   ctx.fillText(`MV vectors: ${drawnCount}`, 20, 28);
   ctx.fillText(`Stride: ${stride}`, 20, 48);
-});
+}

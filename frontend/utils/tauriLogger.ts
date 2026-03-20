@@ -52,6 +52,7 @@ function sendLog(level: string, message: string, ...args: unknown[]): void {
     invoke("frontend_log", { level, message: formattedMessage })
       .catch(() => {
         // Fall back to native console (not the overridden one) if invoke fails
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const nativeConsole = window.console as any;
         const originalLog = nativeConsole._originalLog || nativeConsole.log;
         originalLog(`[TAURI LOG FAILED] ${level}:`, message, ...args);
@@ -62,6 +63,7 @@ function sendLog(level: string, message: string, ...args: unknown[]): void {
   }
 
   // Always log to console as well (use native console to avoid infinite loop)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nativeConsole = window.console as any;
   const originalError = nativeConsole._originalError || nativeConsole.error;
   const originalWarn = nativeConsole._originalWarn || nativeConsole.warn;

@@ -192,7 +192,7 @@ export const StreamTreePanel = memo(function StreamTreePanel({
 
   const filteredUnits = useMemo(() => {
     return filterEnabled ? flattenUnits(displayUnits) : displayUnits;
-  }, [displayUnits, filterEnabled, flattenUnits, frameUnits]);
+  }, [displayUnits, filterEnabled, flattenUnits]);
 
   // Get color for unit type
   const getUnitColor = (unitType: string): string => {

@@ -5,14 +5,7 @@
  * Separated from file data to prevent unnecessary re-renders
  */
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  ReactNode,
-  useMemo,
-} from "react";
+import { createContext, useContext, useState, ReactNode, useMemo } from "react";
 
 interface CurrentFrameContextType {
   currentFrameIndex: number;

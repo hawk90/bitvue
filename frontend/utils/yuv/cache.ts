@@ -137,7 +137,7 @@ class YUVConversionCache {
   /**
    * Set cache size limits
    */
-  setLimits(maxSize: number, maxMemory: number): void {
+  setLimits(_maxSize: number, _maxMemory: number): void {
     // Note: This would require extending LRUCache to support resizing
     YUV_CACHE_LOGGER.warn("Dynamic cache resizing not yet implemented");
   }

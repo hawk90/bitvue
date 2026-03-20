@@ -6,7 +6,6 @@
  */
 
 import { useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { exportUtils, type ExportFormat } from "../utils/exportUtils";
 import type { FrameInfo } from "../types/video";
 import "./ExportDialog.css";
@@ -83,7 +82,7 @@ export function ExportDialog({
           break;
 
         case "analysis":
-        case "report":
+        case "report": {
           const reportData = exportUtils.generateAnalysisReport(
             frames.map((f) => ({
               frame_index: f.frameNumber,
@@ -107,6 +106,7 @@ export function ExportDialog({
             result = "PDF export initiated";
           }
           break;
+        }
       }
 
       setStatus("success");

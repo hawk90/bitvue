@@ -1,6 +1,18 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+
+// Extend Window to allow custom console override guard and stored originals
+interface BitvueWindow extends Window {
+  __bitvue_console_override_installed__?: boolean;
+  console: Console & {
+    _originalLog?: typeof console.log;
+    _originalInfo?: typeof console.info;
+    _originalWarn?: typeof console.warn;
+    _originalError?: typeof console.error;
+    _originalDebug?: typeof console.debug;
+  };
+}
 import "./index.css";
 import "./theme/colors.css";
 import "./theme/utilities.css";
@@ -19,8 +31,9 @@ const logger = createLogger("main");
 // Guard to prevent multiple console overrides due to HMR
 const CONSOLE_OVERRIDE_KEY = "__bitvue_console_override_installed__";
 
-if (!(window as any)[CONSOLE_OVERRIDE_KEY]) {
-  (window as any)[CONSOLE_OVERRIDE_KEY] = true;
+const bitvueWindow = window as BitvueWindow;
+if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
+  bitvueWindow[CONSOLE_OVERRIDE_KEY] = true;
 
   // Override console methods to also send logs to terminal
   const originalLog = console.log;
@@ -30,11 +43,11 @@ if (!(window as any)[CONSOLE_OVERRIDE_KEY]) {
   const originalDebug = console.debug;
 
   // Store original methods on window.console for tauriLogger to access
-  (window.console as any)._originalLog = originalLog;
-  (window.console as any)._originalInfo = originalInfo;
-  (window.console as any)._originalWarn = originalWarn;
-  (window.console as any)._originalError = originalError;
-  (window.console as any)._originalDebug = originalDebug;
+  bitvueWindow.console._originalLog = originalLog;
+  bitvueWindow.console._originalInfo = originalInfo;
+  bitvueWindow.console._originalWarn = originalWarn;
+  bitvueWindow.console._originalError = originalError;
+  bitvueWindow.console._originalDebug = originalDebug;
 
   console.log = (...args) => {
     tauriLog.log(String(args[0]), ...args.slice(1));

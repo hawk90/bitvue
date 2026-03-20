@@ -73,7 +73,7 @@ function escapeHtml(unsafe: string | number): string {
 export async function exportFramesToCsv(
   frames: FrameExportData[],
 ): Promise<string> {
-  const csvContent = [
+  const _csvContent = [
     "Frame,Type,Size,POC,PTS,KeyFrame,TemporalLayer,SpatialLayer,RefFrames",
     ...frames.map((f) =>
       [
@@ -111,8 +111,8 @@ export async function exportFramesToCsv(
  * Export frames to JSON format
  */
 export async function exportFramesToJson(
-  frames: FrameExportData[],
-  metadata: {
+  _frames: FrameExportData[],
+  _metadata: {
     codec: string;
     width: number;
     height: number;

@@ -4,7 +4,6 @@
  * F4: Shows transform block sizes using real parser data
  */
 
-import { memo } from "react";
 import type { OverlayRendererProps, LegendItem } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import {
@@ -14,7 +13,7 @@ import {
 } from "../utils/colors";
 import { drawLegend } from "../utils/drawing";
 
-export const TransformOverlay = memo(function TransformOverlay({
+export function TransformOverlay({
   ctx,
   width,
   height,
@@ -31,7 +30,8 @@ export const TransformOverlay = memo(function TransformOverlay({
   }
 
   const { tx_sizes, block_w, block_h, grid_w, grid_h } = frame.transform_grid;
-  const borderColor = getCssVar("--border-light") || "rgba(255, 255, 255, 0.1)";
+  const _borderColor =
+    getCssVar("--border-light") || "rgba(255, 255, 255, 0.1)";
 
   // Count transform sizes for legend
   const txCounts = new Map<number, number>();
@@ -89,4 +89,4 @@ export const TransformOverlay = memo(function TransformOverlay({
   if (legendItems.length > 0) {
     drawLegend(ctx, legendItems, width, height);
   }
-});
+}

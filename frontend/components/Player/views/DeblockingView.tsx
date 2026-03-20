@@ -8,7 +8,7 @@
  * - Codec-specific deblocking parameters
  */
 
-import { memo, useMemo, useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 
 interface DeblockingViewProps {
@@ -70,7 +70,7 @@ export const DeblockingView = memo(function DeblockingView({
 
     const blockSize = 8;
     const edges: BoundaryEdge[] = [];
-    const qp = 26; // Default QP value
+    const _qp = 26; // Default QP value
 
     // Generate vertical edges
     for (let y = 0; y < height; y += blockSize) {

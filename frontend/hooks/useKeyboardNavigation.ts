@@ -5,7 +5,7 @@
  * Extracted from App.tsx for better separation of concerns.
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import {
   globalShortcutHandler,
   type ShortcutConfig,

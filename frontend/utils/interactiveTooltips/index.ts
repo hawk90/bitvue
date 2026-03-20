@@ -78,7 +78,7 @@ export function registerFeatureTooltips(): void {
 /**
  * Hook for showing tooltips on mount
  */
-export function useTooltip(id: string, config?: Partial<TooltipConfig>) {
+export function useTooltip(id: string, _config?: Partial<TooltipConfig>) {
   const show = (target: HTMLElement) => {
     return globalTooltipManager.show(id, target);
   };

@@ -8,12 +8,7 @@
  */
 
 import { ReactNode, memo } from "react";
-import {
-  calculateScales,
-  generateLinePath,
-  generateAreaPath,
-  calculateRollingAverage,
-} from "../utils/graphUtils";
+import { calculateScales } from "../utils/graphUtils";
 
 // Re-export utilities from utils/graphUtils for backwards compatibility
 export {
@@ -70,7 +65,12 @@ export const Graph = memo(function Graph({
     axisLabels = true,
   } = config;
 
-  const { xScale, yScale, xDomain, yDomain } = calculateScales(data, config);
+  const {
+    xScale,
+    yScale,
+    xDomain: _xDomain,
+    yDomain,
+  } = calculateScales(data, config);
 
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;

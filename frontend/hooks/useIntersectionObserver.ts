@@ -130,7 +130,7 @@ export function useIntersectionObserverRef(
     return () => {
       observer.disconnect();
     };
-  }, [root, rootMargin, threshold, triggerOnce]);
+  }, [targetRef, root, rootMargin, threshold, triggerOnce]);
 
   return isVisible;
 }

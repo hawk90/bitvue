@@ -70,7 +70,7 @@ export function renderSAO(
   width: number,
   height: number,
   saoType: "edge" | "band" | "none",
-  saoOffset: number = 0,
+  _saoOffset: number = 0,
 ): void {
   if (saoType === "none") {
     return;
@@ -111,7 +111,7 @@ export function renderALF(
   width: number,
   height: number,
   alfEnabled: boolean[],
-  alfCoefficients?: number[][],
+  _alfCoefficients?: number[][],
 ): void {
   if (!alfEnabled || alfEnabled.length === 0) {
     return;

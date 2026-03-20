@@ -4,15 +4,14 @@
  * F2: Shows block structure (CTU/tile boundaries) using real partition data
  */
 
-import { memo } from "react";
 import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { drawFrameTypeIndicator } from "../utils/drawing";
 
-export const CodingFlowOverlay = memo(function CodingFlowOverlay({
+export function CodingFlowOverlay({
   ctx,
   width,
-  height,
+  height: _height,
   frame,
 }: OverlayRendererProps) {
   if (!frame.partition_grid) {
@@ -81,4 +80,4 @@ export const CodingFlowOverlay = memo(function CodingFlowOverlay({
   ctx.font = "12px monospace";
   ctx.fillText(`Blocks: ${blocks.length}`, 20, 28);
   ctx.fillText(`SB: ${sb_size}px`, 20, 45);
-});
+}

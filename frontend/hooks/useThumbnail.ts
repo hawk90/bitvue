@@ -27,11 +27,6 @@ import { processThumbnailResults } from "../utils/thumbnailUtils";
 const logger = createLogger("useThumbnail");
 
 /**
- * Cleanup function for pending async operations
- */
-type CleanupFunction = () => void;
-
-/**
  * Result from the get_thumbnails Tauri command
  */
 export interface ThumbnailResult {

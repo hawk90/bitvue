@@ -9,7 +9,7 @@ import type { YUVFrame } from "../../types/yuv";
 import { Colorspace } from "../../types/yuv";
 import { YUVCache } from "./cache";
 import { ChromaStrategyFactory, getYIndex } from "./chroma";
-import { yuvToRgb, setPixelBlack, yuvToRgbaArray } from "./conversion";
+import { setPixelBlack, yuvToRgbaArray } from "./conversion";
 
 /**
  * Logger for YUV renderer

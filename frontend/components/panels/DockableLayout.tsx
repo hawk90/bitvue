@@ -77,7 +77,6 @@ interface DockableLayoutProps {
   bottomRowPanels?: PanelConfig[];
   /** Default sizes (percentage) */
   defaultLeftSize?: number;
-  defaultTopSize?: number;
 }
 
 export const DockableLayout = memo(function DockableLayout({
@@ -86,36 +85,27 @@ export const DockableLayout = memo(function DockableLayout({
   topPanels,
   bottomRowPanels,
   defaultLeftSize = PANEL_SIZES.LEFT_SIDEBAR,
-  defaultTopSize = PANEL_SIZES.BOTTOM_PANEL,
 }: DockableLayoutProps) {
+  // Resolve top panel component before JSX — JSX requires PascalCase variable for dynamic components
+  const FilmstripBar =
+    topPanels?.length === 1 && topPanels[0].id === "filmstrip"
+      ? topPanels[0].component
+      : null;
+
   return (
     <div className="dockable-layout" data-testid="dockable-layout">
-      <Group orientation="vertical" className="layout-vertical">
-        {/* Filmstrip/Timeline (if provided) */}
-        {topPanels && topPanels.length > 0 && (
-          <>
-            <Panel
-              defaultSize={defaultTopSize}
-              minSize={PANEL_MIN_SIZES.BOTTOM_PANEL}
-              collapsible={true}
-              id="top-panel"
-              className="top-panel"
-            >
-              {/* Render filmstrip without tab bar wrapper */}
-              {(() => {
-                const FilmstripComponent = topPanels[0].component;
-                return topPanels.length === 1 &&
-                  topPanels[0].id === "filmstrip" ? (
-                  <FilmstripComponent />
-                ) : (
-                  <BottomPanelBar panels={topPanels} />
-                );
-              })()}
-            </Panel>
-            <Separator className="resize-handle-vertical" />
-          </>
-        )}
+      {/* Filmstrip/Timeline fixed bar — outside Group so height is CSS-controlled, not draggable */}
+      {topPanels && topPanels.length > 0 && (
+        <div className="filmstrip-bar">
+          {FilmstripBar ? (
+            <FilmstripBar />
+          ) : (
+            <BottomPanelBar panels={topPanels} />
+          )}
+        </div>
+      )}
 
+      <Group orientation="vertical" className="layout-vertical">
         {/* Main content area with left sidebar */}
         <Panel
           defaultSize={PANEL_SIZES.YUV_VIEWER}

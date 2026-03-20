@@ -18,8 +18,8 @@ interface TimelineViewProps {
 
 export const TimelineView = memo(function TimelineView({
   frames,
-  currentFrameIndex,
-  onFrameClick,
+  currentFrameIndex: _currentFrameIndex,
+  onFrameClick: _onFrameClick,
 }: TimelineViewProps) {
   if (frames.length === 0) {
     return (

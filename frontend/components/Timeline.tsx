@@ -57,7 +57,7 @@ function Timeline({ frames, className = "" }: TimelineProps) {
       }
     }
     return 0;
-  }, [highlightedFrameIndex, frames.length]);
+  }, [highlightedFrameIndex]);
 
   // Sync highlighted frame with selection from external sources (not during drag)
   useEffect(() => {

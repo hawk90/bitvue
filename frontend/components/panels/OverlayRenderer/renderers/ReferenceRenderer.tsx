@@ -4,12 +4,11 @@
  * F7: Shows reference frame relationships with visual graph
  */
 
-import { memo } from "react";
 import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { drawArrowBetweenPoints } from "../utils/drawing";
 
-export const ReferenceOverlay = memo(function ReferenceOverlay({
+export function ReferenceOverlay({
   ctx,
   width,
   height,
@@ -135,4 +134,4 @@ export const ReferenceOverlay = memo(function ReferenceOverlay({
       );
     }
   }
-});
+}

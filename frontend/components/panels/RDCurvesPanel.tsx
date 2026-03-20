@@ -218,8 +218,8 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
         <div className="mb-4 p-8 border rounded bg-gray-50 text-center text-text-secondary">
           <p className="mb-2">No data loaded</p>
           <p className="text-sm">
-            Click "Load Demo Data" to see example RD curves, or load your own
-            encoding data
+            Click &quot;Load Demo Data&quot; to see example RD curves, or load
+            your own encoding data
           </p>
         </div>
       )}

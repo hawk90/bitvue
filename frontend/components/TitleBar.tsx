@@ -7,14 +7,17 @@
  * system menu is used instead (see utils/menu/setup.ts).
  */
 
-import { useState, memo, useCallback } from "react";
+import { useState, memo, useCallback, useMemo } from "react";
+import { MODES, type VisualizationMode } from "../contexts/ModeContext";
 import "./TitleBar.css";
 
 interface MenuItem {
   id: string;
   label: string;
   shortcut?: string;
-  action?: () => void; // Optional for submenus
+  /** Explicitly mark as disabled; if omitted, items without action are auto-disabled */
+  disabled?: boolean;
+  action?: () => void;
   separator?: boolean;
   items?: MenuItem[]; // For submenus
 }
@@ -29,333 +32,230 @@ interface TitleBarProps {
   fileName: string;
   onOpenFile: () => void;
   onOpenDependentFile?: () => void;
+  onCloseFile?: () => void;
+  onQuit?: () => void;
+  onShowShortcuts?: () => void;
+  onModeChange?: (mode: VisualizationMode) => void;
 }
 
 export const TitleBar = memo(function TitleBar({
   onOpenFile,
   onOpenDependentFile,
+  onCloseFile,
+  onQuit,
+  onShowShortcuts,
+  onModeChange,
 }: TitleBarProps) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 
-  const menuItems: MenuConfig[] = [
-    {
-      id: "file",
-      label: "File",
-      items: [
-        {
-          id: "open",
-          label: "Open bitstream...",
-          shortcut: "Ctrl+O",
-          action: onOpenFile,
-        },
-        {
-          id: "open-as",
-          label: "Open bitstream as...",
-          items: [
-            { id: "open-av1", label: "AV1", action: () => {} },
-            { id: "open-hevc", label: "HEVC", action: () => {} },
-            { id: "open-avc", label: "AVC/H.264", action: () => {} },
-            { id: "open-vp9", label: "VP9", action: () => {} },
-            { id: "open-vvc", label: "VVC/H.266", action: () => {} },
-            { id: "open-mpeg2", label: "MPEG-2", action: () => {} },
-          ],
-        },
-        {
-          id: "open-dependent",
-          label: "Open dependent bitstream...",
-          action: onOpenDependentFile || (() => {}),
-        },
-        { id: "sep1", label: "", separator: true, action: () => {} },
-        {
-          id: "close",
-          label: "Close bitstream",
-          shortcut: "Ctrl+W",
-          action: () => {},
-        },
-        { id: "sep2", label: "", separator: true, action: () => {} },
-        {
-          id: "extract",
-          label: "Extract...",
-          items: [
-            { id: "extract-yuv", label: "YUV frames", action: () => {} },
-            {
-              id: "extract-pred",
-              label: "Prediction frames",
-              action: () => {},
-            },
-            {
-              id: "extract-recon",
-              label: "Reconstruction frames",
-              action: () => {},
-            },
-            {
-              id: "extract-transform",
-              label: "Transform coefficients",
-              action: () => {},
-            },
-          ],
-        },
-        { id: "sep3", label: "", separator: true, action: () => {} },
-        { id: "recent", label: "Recent Files", action: () => {} },
-        { id: "sep4", label: "", separator: true, action: () => {} },
-        { id: "quit", label: "Quit", shortcut: "Ctrl+Q", action: () => {} },
-      ],
-    },
-    {
-      id: "mode",
-      label: "Mode",
-      items: [
-        { id: "overview", label: "Overview", shortcut: "F1", action: () => {} },
-        {
-          id: "coding",
-          label: "Coding Flow",
-          shortcut: "F2",
-          action: () => {},
-        },
-        {
-          id: "prediction",
-          label: "Prediction",
-          shortcut: "F3",
-          action: () => {},
-        },
-        {
-          id: "transform",
-          label: "Transform",
-          shortcut: "F4",
-          action: () => {},
-        },
-        { id: "qp", label: "QP Map", shortcut: "F5", action: () => {} },
-        { id: "mv", label: "MV Field", shortcut: "F6", action: () => {} },
-        {
-          id: "reference",
-          label: "Reference Frames",
-          shortcut: "F7",
-          action: () => {},
-        },
-        { id: "sep1", label: "", separator: true, action: () => {} },
-        { id: "ext-modes", label: "Extended Modes", action: () => {} },
-      ],
-    },
-    {
-      id: "yuvdiff",
-      label: "YUVDiff",
-      items: [
-        {
-          id: "open-debug",
-          label: "Open debug YUV...",
-          shortcut: "Ctrl+Y",
-          action: () => {},
-        },
-        { id: "recent-yuv", label: "Recent YUV files", action: () => {} },
-        { id: "close-debug", label: "Close debug YUV", action: () => {} },
-        { id: "sep1", label: "", separator: true, action: () => {} },
-        {
-          id: "subsampling",
-          label: "Subsampling",
-          items: [
-            {
-              id: "subsampling-planar",
-              label: "Planar (YUV420)",
-              action: () => {},
-            },
-            {
-              id: "subsampling-interleaved",
-              label: "Interleaved (YUV422)",
-              action: () => {},
-            },
-          ],
-        },
-        { id: "display-order", label: "Display order", action: () => {} },
-        { id: "decode-order", label: "Decode order", action: () => {} },
-        { id: "sep2", label: "", separator: true, action: () => {} },
-        {
-          id: "stream-crop",
-          label: "Use stream crop values",
-          action: () => {},
-        },
-        {
-          id: "picture-offset",
-          label: "Set picture offset here",
-          action: () => {},
-        },
-        { id: "sep3", label: "", separator: true, action: () => {} },
-        {
-          id: "bitdepth-stream",
-          label: "Use stream bitdepth",
-          action: () => {},
-        },
-        {
-          id: "bitdepth-max",
-          label: "Use max stream bitdepth",
-          action: () => {},
-        },
-        { id: "bitdepth-16", label: "Use 16 bit bitdepth", action: () => {} },
-        { id: "sep4", label: "", separator: true, action: () => {} },
-        {
-          id: "check-file-changes",
-          label: "Check for file changes",
-          action: () => {},
-        },
-        { id: "sep5", label: "", separator: true, action: () => {} },
-        { id: "show-psnr", label: "Show PSNR Map", action: () => {} },
-        { id: "show-ssim", label: "Show SSIM Map", action: () => {} },
-        { id: "show-delta", label: "Show Delta Image", action: () => {} },
-        { id: "sep6", label: "", separator: true, action: () => {} },
-        {
-          id: "export-all-frames",
-          label: "Export All Frames",
-          action: () => {},
-        },
-        {
-          id: "export-metrics",
-          label: "Export Metrics CSV...",
-          action: () => {},
-        },
-      ],
-    },
-    {
-      id: "options",
-      label: "Options",
-      items: [
-        {
-          id: "color-space",
-          label: "Color Space",
-          items: [
-            { id: "color-bt601", label: "ITU Rec. 601", action: () => {} },
-            { id: "color-bt709", label: "ITU Rec. 709", action: () => {} },
-            { id: "color-bt2020", label: "ITU Rec. 2020", action: () => {} },
-            { id: "sep1", label: "", separator: true, action: () => {} },
-            { id: "color-yuv-rgb", label: "YUV as RGB", action: () => {} },
-            { id: "color-yuv-gbr", label: "YUV as GBR", action: () => {} },
-          ],
-        },
-        {
-          id: "cpu-perf",
-          label: "CPU & Performance",
-          items: [
-            {
-              id: "cpu-avx2",
-              label: "Enable CPU optimizations [avx2]",
-              action: () => {},
-            },
-            { id: "sep1", label: "", separator: true, action: () => {} },
-            { id: "loop-playback", label: "Loop playback", action: () => {} },
-          ],
-        },
-        {
-          id: "codec-settings",
-          label: "Codec Settings",
-          items: [
-            {
-              id: "codec-hevc-ext",
-              label: "HEVC: Enable extensions",
-              action: () => {},
-            },
-            {
-              id: "codec-hevc-index",
-              label: "HEVC: Enable stream index",
-              action: () => {},
-            },
-            {
-              id: "codec-hevc-mv",
-              label: "HEVC: Show only visible CTB MV",
-              action: () => {},
-            },
-            { id: "sep1", label: "", separator: true, action: () => {} },
-            {
-              id: "codec-vvc-dynamic",
-              label: "VVC: Dynamic selection info",
-              action: () => {},
-            },
-            {
-              id: "codec-vvc-details",
-              label: "VVC: Details popup window",
-              action: () => {},
-            },
-            { id: "sep2", label: "", separator: true, action: () => {} },
-            {
-              id: "digest-force",
-              label: "Digest: Force digest",
-              action: () => {},
-            },
-            { id: "digest-none", label: "Digest: No digest", action: () => {} },
-            {
-              id: "digest-stream",
-              label: "Digest: As in bitstream",
-              action: () => {},
-            },
-          ],
-        },
-        { id: "sep1", label: "", separator: true, action: () => {} },
-        { id: "theme-dark", label: "Dark Theme", action: () => {} },
-        { id: "theme-light", label: "Light Theme", action: () => {} },
-        { id: "sep2", label: "", separator: true, action: () => {} },
-        { id: "save-layout", label: "Save Layout...", action: () => {} },
-        { id: "load-layout", label: "Load Layout...", action: () => {} },
-        { id: "reset-layout", label: "Reset Layout", action: () => {} },
-        {
-          id: "auto-save-layout",
-          label: "Auto-save on exit",
-          action: () => {},
-        },
-      ],
-    },
-    {
-      id: "export",
-      label: "Export",
-      items: [
-        {
-          id: "export-data",
-          label: "Data Export",
-          items: [
-            {
-              id: "export-frame-sizes",
-              label: "Frame Sizes (CSV)",
-              action: () => {},
-            },
-            {
-              id: "export-unit-tree",
-              label: "Unit Tree (JSON)",
-              action: () => {},
-            },
-            {
-              id: "export-syntax-tree",
-              label: "Syntax Tree (JSON)",
-              action: () => {},
-            },
-          ],
-        },
-        { id: "sep1", label: "", separator: true, action: () => {} },
-        {
-          id: "export-evidence",
-          label: "Evidence Bundle...",
-          action: () => {},
-        },
-      ],
-    },
-    {
-      id: "view",
-      label: "View",
-      items: [
-        { id: "reset-layout", label: "Reset Layout", action: () => {} },
-        { id: "sep1", label: "", separator: true, action: () => {} },
-        { id: "show-stream-tree", label: "Stream Tree", action: () => {} },
-        { id: "show-player", label: "Player", action: () => {} },
-        { id: "show-diagnostics", label: "Diagnostics", action: () => {} },
-      ],
-    },
-    {
-      id: "help",
-      label: "Help",
-      items: [
-        { id: "docs", label: "Documentation", action: () => {} },
-        { id: "shortcuts", label: "Keyboard Shortcuts", action: () => {} },
-        { id: "sep1", label: "", separator: true, action: () => {} },
-        { id: "about", label: "About Bitvue", action: () => {} },
-      ],
-    },
-  ];
+  const menuItems: MenuConfig[] = useMemo(
+    () => [
+      {
+        id: "file",
+        label: "File",
+        items: [
+          {
+            id: "open",
+            label: "Open bitstream...",
+            shortcut: "Ctrl+O",
+            action: onOpenFile,
+          },
+          {
+            id: "open-as",
+            label: "Open bitstream as...",
+            items: [
+              { id: "open-av1", label: "AV1" },
+              { id: "open-hevc", label: "HEVC" },
+              { id: "open-avc", label: "AVC/H.264" },
+              { id: "open-vp9", label: "VP9" },
+              { id: "open-vvc", label: "VVC/H.266" },
+              { id: "open-mpeg2", label: "MPEG-2" },
+            ],
+          },
+          {
+            id: "open-dependent",
+            label: "Open dependent bitstream...",
+            action: onOpenDependentFile,
+          },
+          { id: "sep1", label: "", separator: true },
+          {
+            id: "close",
+            label: "Close bitstream",
+            shortcut: "Ctrl+W",
+            action: onCloseFile,
+          },
+          { id: "sep2", label: "", separator: true },
+          {
+            id: "extract",
+            label: "Extract...",
+            items: [
+              { id: "extract-yuv", label: "YUV frames" },
+              { id: "extract-pred", label: "Prediction frames" },
+              { id: "extract-recon", label: "Reconstruction frames" },
+              { id: "extract-transform", label: "Transform coefficients" },
+            ],
+          },
+          { id: "sep3", label: "", separator: true },
+          { id: "recent", label: "Recent Files" },
+          { id: "sep4", label: "", separator: true },
+          { id: "quit", label: "Quit", shortcut: "Ctrl+Q", action: onQuit },
+        ],
+      },
+      {
+        id: "mode",
+        label: "Mode",
+        items: [
+          // Generated from MODES — uses correct VisualizationMode keys (e.g. "coding-flow", "qp-map")
+          ...MODES.map((mode) => ({
+            id: mode.key,
+            label: mode.label,
+            shortcut: mode.shortcut,
+            action: () => onModeChange?.(mode.key),
+          })),
+          { id: "sep-modes", label: "", separator: true },
+          { id: "ext-modes", label: "Extended Modes" },
+        ],
+      },
+      {
+        id: "yuvdiff",
+        label: "YUVDiff",
+        items: [
+          { id: "open-debug", label: "Open debug YUV...", shortcut: "Ctrl+Y" },
+          { id: "recent-yuv", label: "Recent YUV files" },
+          { id: "close-debug", label: "Close debug YUV" },
+          { id: "sep1", label: "", separator: true },
+          {
+            id: "subsampling",
+            label: "Subsampling",
+            items: [
+              { id: "subsampling-planar", label: "Planar (YUV420)" },
+              { id: "subsampling-interleaved", label: "Interleaved (YUV422)" },
+            ],
+          },
+          { id: "display-order", label: "Display order" },
+          { id: "decode-order", label: "Decode order" },
+          { id: "sep2", label: "", separator: true },
+          { id: "stream-crop", label: "Use stream crop values" },
+          { id: "picture-offset", label: "Set picture offset here" },
+          { id: "sep3", label: "", separator: true },
+          { id: "bitdepth-stream", label: "Use stream bitdepth" },
+          { id: "bitdepth-max", label: "Use max stream bitdepth" },
+          { id: "bitdepth-16", label: "Use 16 bit bitdepth" },
+          { id: "sep4", label: "", separator: true },
+          { id: "check-file-changes", label: "Check for file changes" },
+          { id: "sep5", label: "", separator: true },
+          { id: "show-psnr", label: "Show PSNR Map" },
+          { id: "show-ssim", label: "Show SSIM Map" },
+          { id: "show-delta", label: "Show Delta Image" },
+          { id: "sep6", label: "", separator: true },
+          { id: "export-all-frames", label: "Export All Frames" },
+          { id: "export-metrics", label: "Export Metrics CSV..." },
+        ],
+      },
+      {
+        id: "options",
+        label: "Options",
+        items: [
+          {
+            id: "color-space",
+            label: "Color Space",
+            items: [
+              { id: "color-bt601", label: "ITU Rec. 601" },
+              { id: "color-bt709", label: "ITU Rec. 709" },
+              { id: "color-bt2020", label: "ITU Rec. 2020" },
+              { id: "sep1", label: "", separator: true },
+              { id: "color-yuv-rgb", label: "YUV as RGB" },
+              { id: "color-yuv-gbr", label: "YUV as GBR" },
+            ],
+          },
+          {
+            id: "cpu-perf",
+            label: "CPU & Performance",
+            items: [
+              { id: "cpu-avx2", label: "Enable CPU optimizations [avx2]" },
+              { id: "sep1", label: "", separator: true },
+              { id: "loop-playback", label: "Loop playback" },
+            ],
+          },
+          {
+            id: "codec-settings",
+            label: "Codec Settings",
+            items: [
+              { id: "codec-hevc-ext", label: "HEVC: Enable extensions" },
+              { id: "codec-hevc-index", label: "HEVC: Enable stream index" },
+              { id: "codec-hevc-mv", label: "HEVC: Show only visible CTB MV" },
+              { id: "sep1", label: "", separator: true },
+              { id: "codec-vvc-dynamic", label: "VVC: Dynamic selection info" },
+              { id: "codec-vvc-details", label: "VVC: Details popup window" },
+              { id: "sep2", label: "", separator: true },
+              { id: "digest-force", label: "Digest: Force digest" },
+              { id: "digest-none", label: "Digest: No digest" },
+              { id: "digest-stream", label: "Digest: As in bitstream" },
+            ],
+          },
+          { id: "sep1", label: "", separator: true },
+          { id: "theme-dark", label: "Dark Theme" },
+          { id: "theme-light", label: "Light Theme" },
+          { id: "sep2", label: "", separator: true },
+          { id: "save-layout", label: "Save Layout..." },
+          { id: "load-layout", label: "Load Layout..." },
+          { id: "reset-layout", label: "Reset Layout" },
+          { id: "auto-save-layout", label: "Auto-save on exit" },
+        ],
+      },
+      {
+        id: "export",
+        label: "Export",
+        items: [
+          {
+            id: "export-data",
+            label: "Data Export",
+            items: [
+              { id: "export-frame-sizes", label: "Frame Sizes (CSV)" },
+              { id: "export-unit-tree", label: "Unit Tree (JSON)" },
+              { id: "export-syntax-tree", label: "Syntax Tree (JSON)" },
+            ],
+          },
+          { id: "sep1", label: "", separator: true },
+          { id: "export-evidence", label: "Evidence Bundle..." },
+        ],
+      },
+      {
+        id: "view",
+        label: "View",
+        items: [
+          { id: "reset-layout", label: "Reset Layout" },
+          { id: "sep1", label: "", separator: true },
+          { id: "show-stream-tree", label: "Stream Tree" },
+          { id: "show-player", label: "Player" },
+          { id: "show-diagnostics", label: "Diagnostics" },
+        ],
+      },
+      {
+        id: "help",
+        label: "Help",
+        items: [
+          { id: "docs", label: "Documentation" },
+          {
+            id: "shortcuts",
+            label: "Keyboard Shortcuts",
+            action: onShowShortcuts,
+          },
+          { id: "sep1", label: "", separator: true },
+          { id: "about", label: "About Bitvue" },
+        ],
+      },
+    ],
+    [
+      onOpenFile,
+      onOpenDependentFile,
+      onCloseFile,
+      onQuit,
+      onShowShortcuts,
+      onModeChange,
+    ],
+  );
 
   const handleMenuEnter = useCallback((menuId: string) => {
     setActiveMenu(menuId);
@@ -418,12 +318,16 @@ export const TitleBar = memo(function TitleBar({
         );
       }
 
-      // Regular menu item
+      // Regular menu item — disabled when no action (or explicitly flagged)
+      const isDisabled = item.disabled ?? !item.action;
       return (
         <div
           key={item.id}
-          className="menu-item"
-          onClick={() => handleMenuItemClick(item, isSubmenu)}
+          className={`menu-item${isDisabled ? " menu-item-disabled" : ""}`}
+          onClick={
+            isDisabled ? undefined : () => handleMenuItemClick(item, isSubmenu)
+          }
+          title={isDisabled ? "Not yet implemented" : undefined}
         >
           <span className="menu-item-label">{item.label}</span>
           {item.shortcut && (

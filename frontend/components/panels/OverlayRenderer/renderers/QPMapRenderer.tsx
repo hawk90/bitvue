@@ -4,12 +4,11 @@
  * F5: Shows quantization parameter heatmap using real parser data
  */
 
-import { memo } from "react";
 import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { qpToColor } from "../utils/helpers";
 
-export const QPMapOverlay = memo(function QPMapOverlay({
+export function QPMapOverlay({
   ctx,
   _width,
   _height,
@@ -50,4 +49,4 @@ export const QPMapOverlay = memo(function QPMapOverlay({
   ctx.font = "12px monospace";
   ctx.fillText(`QP: ${qp_min} - ${qp_max}`, 20, 28);
   ctx.fillText(`Blocks: ${grid_w}x${grid_h}`, 20, 48);
-});
+}

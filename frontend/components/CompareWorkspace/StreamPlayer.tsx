@@ -24,7 +24,7 @@ function StreamPlayer({
   currentFrame,
   onFrameChange,
   streamLabel,
-  alignedFrame,
+  alignedFrame: _alignedFrame,
   alignmentQuality,
 }: StreamPlayerProps) {
   const currentFrameData = frames[currentFrame] || null;

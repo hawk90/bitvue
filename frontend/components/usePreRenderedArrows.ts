@@ -196,7 +196,7 @@ export function usePreRenderedArrows({
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [frames, enabled, calculateArrows]);
+  }, [frames, enabled, calculateArrows, containerRef]);
 
   /**
    * Update SVG width on resize

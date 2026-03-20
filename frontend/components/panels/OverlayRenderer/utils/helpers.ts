@@ -4,7 +4,6 @@
  * General utility functions
  */
 
-import type { ColorStop } from "../types";
 import { QP_COLOR_STOPS } from "./colors";
 
 /**

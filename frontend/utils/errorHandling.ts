@@ -95,7 +95,7 @@ export class BitvueError extends Error {
  * Convert error to user-friendly format
  */
 function convertToUserFriendly(error: BitvueError): UserFriendlyError {
-  const { type, context, isRecoverable } = error;
+  const { type, context } = error;
 
   switch (type) {
     case BitvueErrorType.FileNotFound:

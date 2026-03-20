@@ -334,6 +334,7 @@
 }
 
 /* Status bar - Polished */
+.yuv-status-bar,
 .yuv-status {
   display: flex;
   justify-content: space-between;
@@ -353,6 +354,12 @@
   gap: 6px;
   color: var(--bitvue-accent, #007acc);
   font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.yuv-paused-indicator {
+  transition: color 0.2s ease;
+  color: var(--bitvue-fg-dim, #999);
 }
 
 .yuv-mode-indicator {
@@ -366,4 +373,66 @@
   border: 1px solid rgb(255 255 255 / 8%);
   border-radius: 3px;
   font-weight: 500;
+}
+
+/* Error overlay when frame loading fails */
+.yuv-error-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgb(30 0 0 / 80%);
+  backdrop-filter: blur(4px);
+  z-index: 20;
+  pointer-events: all;
+  color: var(--bitvue-fg-dim, #ccc);
+  font-size: 13px;
+  animation: fadeIn 0.2s ease;
+}
+
+.yuv-error-overlay .codicon-error {
+  font-size: 40px;
+  color: #f48771;
+}
+
+.yuv-error-message {
+  max-width: 320px;
+  text-align: center;
+  color: #f48771;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.yuv-error-retry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgb(244 135 113 / 15%);
+  border: 1px solid rgb(244 135 113 / 40%);
+  border-radius: 4px;
+  color: #f48771;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: all;
+}
+
+.yuv-error-retry:hover {
+  background: rgb(244 135 113 / 25%);
+  border-color: #f48771;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

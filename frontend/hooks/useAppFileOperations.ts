@@ -132,7 +132,7 @@ export function useAppFileOperations(
       logger.error("Failed to open file:", err);
       onError("Failed to Open File", err as string);
     }
-  }, [refreshFrames, setFilePath, onError]);
+  }, [refreshFrames, setFilePath, onError, setFrames]);
 
   /**
    * Handle opening dependent bitstream for comparison

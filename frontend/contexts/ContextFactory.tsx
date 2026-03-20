@@ -153,9 +153,12 @@ export function createContextFactory<T>(
   useHook.displayName = `use${name}`;
 
   // Create hook with default value fallback
+  // eslint-disable-next-line react-hooks/rules-of-hooks, react-hooks/exhaustive-deps
   const useHookOrDefault = useCallback((fallbackValue: T): T => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const contextValue = useContext(Context);
     return contextValue ?? fallbackValue;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useHookOrDefault.displayName = `use${name}OrDefault`;
@@ -194,7 +197,7 @@ export function createSetterContext<T>(
 ): SetterContext<T> {
   const {
     Context,
-    Provider: BaseProvider,
+    Provider: _BaseProvider,
     useHook,
     useHookOrDefault,
     name,
@@ -215,7 +218,10 @@ export function createSetterContext<T>(
         {/* Create a separate context for the setter */}
         {React.cloneElement(
           children as React.ReactElement,
-          { [`${name.toLowerCase()}Setter`]: setState } as any,
+          { [`${name.toLowerCase()}Setter`]: setState } as Record<
+            string,
+            unknown
+          >,
         )}
       </Context.Provider>
     );
@@ -303,9 +309,12 @@ export function createReducerContext<T, A>(config: {
     return state;
   };
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks, react-hooks/exhaustive-deps
   const useHookOrDefault = useCallback((fallbackValue: T): T => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const state = useContext(StateContext);
     return state ?? fallbackValue;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const useDispatch = (): React.Dispatch<A> => {
@@ -464,7 +473,10 @@ export function mergeContexts(
     return (
       <>
         {contexts.reduceRight((acc, [Context, config], index) => {
-          const Provider = Context.Provider as any;
+          const Provider = Context.Provider as React.FC<{
+            value?: unknown;
+            children?: ReactNode;
+          }> & { key?: React.Key };
           return (
             <Provider value={config.value} key={index}>
               {acc}

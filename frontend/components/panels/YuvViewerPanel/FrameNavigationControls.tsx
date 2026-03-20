@@ -32,14 +32,16 @@ export const FrameNavigationControls = memo(function FrameNavigationControls({
           onClick={onFirstFrame}
           disabled={currentFrameIndex === 0}
           title="First Frame (Home)"
+          aria-label="Go to first frame"
         >
-          <span className="codicon codicon-chevron-left"></span>
+          <span className="codicon codicon-triangle-left"></span>
           <span className="codicon codicon-chevron-left"></span>
         </button>
         <button
           onClick={onPrevFrame}
           disabled={currentFrameIndex === 0}
           title="Previous Frame (←)"
+          aria-label="Go to previous frame"
         >
           <span className="codicon codicon-chevron-left"></span>
         </button>
@@ -48,19 +50,21 @@ export const FrameNavigationControls = memo(function FrameNavigationControls({
       <div className="yuv-toolbar-group">
         <input
           type="number"
-          min={0}
-          max={totalFrames - 1}
-          value={currentFrameIndex}
+          min={1}
+          max={totalFrames}
+          value={currentFrameIndex + 1}
           onChange={(e) => {
             const val = parseInt(e.target.value);
-            if (!isNaN(val) && val >= 0 && val < totalFrames) {
-              onFrameChange(val);
+            if (!isNaN(val) && val >= 1 && val <= totalFrames) {
+              onFrameChange(val - 1);
             }
           }}
           className="yuv-frame-input"
+          aria-label={`Frame number, 1 to ${totalFrames}`}
+          title={`Frame ${currentFrameIndex + 1} of ${totalFrames}`}
         />
         <span className="yuv-frame-divider">/</span>
-        <span className="yuv-frame-total">{totalFrames - 1}</span>
+        <span className="yuv-frame-total">{totalFrames}</span>
       </div>
 
       <div className="yuv-toolbar-group">
@@ -68,6 +72,7 @@ export const FrameNavigationControls = memo(function FrameNavigationControls({
           onClick={onNextFrame}
           disabled={currentFrameIndex >= totalFrames - 1}
           title="Next Frame (→)"
+          aria-label="Go to next frame"
         >
           <span className="codicon codicon-chevron-right"></span>
         </button>
@@ -75,9 +80,10 @@ export const FrameNavigationControls = memo(function FrameNavigationControls({
           onClick={onLastFrame}
           disabled={currentFrameIndex >= totalFrames - 1}
           title="Last Frame (End)"
+          aria-label="Go to last frame"
         >
           <span className="codicon codicon-chevron-right"></span>
-          <span className="codicon codicon-chevron-right"></span>
+          <span className="codicon codicon-triangle-right"></span>
         </button>
       </div>
     </>

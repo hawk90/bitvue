@@ -39,7 +39,7 @@ const HRDBufferPanelInternal = ({
 }: HRDBufferPanelProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [hoveredFrame, setHoveredFrame] = useState<number | null>(null);
+  const [_hoveredFrame, setHoveredFrame] = useState<number | null>(null);
   const [hoverData, setHoverData] = useState<{
     frame: number;
     occupancy: number;
@@ -65,7 +65,7 @@ const HRDBufferPanelInternal = ({
       const frameSize = frame.size || 0;
 
       // Check for initial removal delay
-      const initialRemovalDelay = frameSize; // Simplified
+      const _initialRemovalDelay = frameSize; // Simplified
 
       // Add current frame to buffer (if it's the frame being decoded)
       // and remove older frames
@@ -221,7 +221,7 @@ const HRDBufferPanelInternal = ({
 
     // Draw current frame marker
     const currentX = margin.left + currentFrameIndex * stepX;
-    const currentY =
+    const _currentY =
       margin.top +
       graphHeight -
       (hrdState.occupancy / maxOccupancy) * graphHeight;

@@ -4,13 +4,12 @@
  * F3: Shows prediction modes with color coding
  */
 
-import { memo } from "react";
 import type { OverlayRendererProps, LegendItem } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { PREDICTION_MODE_COLORS, getPredictionModeName } from "../utils/colors";
 import { drawLegend } from "../utils/drawing";
 
-export const PredictionOverlay = memo(function PredictionOverlay({
+export function PredictionOverlay({
   ctx,
   width,
   height,
@@ -81,4 +80,4 @@ export const PredictionOverlay = memo(function PredictionOverlay({
   if (legendItems.length > 0) {
     drawLegend(ctx, legendItems, width, height);
   }
-});
+}

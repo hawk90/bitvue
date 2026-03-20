@@ -71,15 +71,17 @@ export const SearchTab = memo(function SearchTab({
         <div className="search-hints">
           <div className="search-hint-title">Search Tips:</div>
           <div className="search-hint-item">
-            • Type frame type: "I", "P", "B"
+            • Type frame type: &quot;I&quot;, &quot;P&quot;, &quot;B&quot;
           </div>
-          <div className="search-hint-item">• Type frame number: "42"</div>
+          <div className="search-hint-item">
+            • Type frame number: &quot;42&quot;
+          </div>
           <div className="search-hint-item">• Type PTS value</div>
         </div>
       ) : searchResults.length === 0 ? (
         <div className="syntax-empty">
           <span className="codicon codicon-search"></span>
-          <span>No results found for "{searchQuery}"</span>
+          <span>No results found for &quot;{searchQuery}&quot;</span>
         </div>
       ) : (
         <div className="search-results">

@@ -103,3 +103,5 @@ export const TimelineThumbnails = forwardRef<
     );
   },
 );
+
+TimelineThumbnails.displayName = "TimelineThumbnails";

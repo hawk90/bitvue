@@ -440,7 +440,7 @@ function exportAnalysisToCSV(
   }
 
   if (analysis.mv_grid) {
-    const { mv_l0, mv_l1 } = analysis.mv_grid;
+    const { mv_l0 } = analysis.mv_grid;
     lines.push("# MV Grid L0");
     lines.push("block_index,mv_x,mv_y");
 
@@ -472,7 +472,7 @@ function exportAnalysisToCSV(
 export async function exportBatchAnalysis(
   filePath: string,
   frameIndices: number[],
-  format: "csv" | "json" = "json",
+  _format: "csv" | "json" = "json",
 ): Promise<void> {
   try {
     logger.info("Batch export:", filePath, "frames:", frameIndices.length);

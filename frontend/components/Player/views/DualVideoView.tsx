@@ -11,7 +11,7 @@
  * Reference: dual video comparison functionality
  */
 
-import { memo, useState, useCallback, useRef, useEffect } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import type { FrameInfo } from "../../../types/video";
 
 export interface DualVideoViewProps {
@@ -102,7 +102,7 @@ export const DualVideoView = memo(function DualVideoView({
   }, [showMetrics]);
 
   // Calculate difference color
-  const getDifferenceColor = useCallback((x: number, y: number) => {
+  const _getDifferenceColor = useCallback((x: number, y: number) => {
     // Mock difference calculation - in real implementation would compare actual pixels
     const diff = Math.abs(Math.sin(x * 0.01) * Math.cos(y * 0.01) * 255);
     const intensity = Math.floor(diff);
@@ -388,7 +388,15 @@ export const DualVideoView = memo(function DualVideoView({
             <select
               id="view-mode-select"
               value={currentViewMode}
-              onChange={(e) => setCurrentViewMode(e.target.value as any)}
+              onChange={(e) =>
+                setCurrentViewMode(
+                  e.target.value as
+                    | "side-by-side"
+                    | "top-bottom"
+                    | "difference"
+                    | "slide",
+                )
+              }
               className="text-sm border rounded px-2 py-1"
             >
               <option value="side-by-side">Side by Side</option>

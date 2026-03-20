@@ -33,7 +33,7 @@ export function renderInterModes(
   width: number,
   height: number,
   mvGrid: MVGrid,
-  blockSize: number = 16,
+  _blockSize: number = 16,
 ): void {
   const { grid_w, grid_h, mv_l0, mode } = mvGrid;
   const blockW = width / grid_w;

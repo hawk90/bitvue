@@ -35,7 +35,7 @@ const SIZE_THRESHOLDS = {
 export const StatisticsPanel = memo(function StatisticsPanel() {
   const { frames, getFrameStats } = useFrameData();
 
-  const stats = useMemo(() => getFrameStats(), [frames, getFrameStats]);
+  const stats = useMemo(() => getFrameStats(), [getFrameStats]);
 
   // Calculate frame size distribution for histogram
   const frameSizes = useMemo(() => {

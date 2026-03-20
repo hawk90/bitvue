@@ -16,7 +16,7 @@ interface DiffOverlayProps {
 
 function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
   // Calculate difference visualization
-  const diffCanvas = useMemo(() => {
+  const _diffCanvas = useMemo(() => {
     if (!frameA.thumbnail || !frameB.thumbnail) return null;
 
     // Create canvas for diff visualization
@@ -24,14 +24,14 @@ function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    const imgA = new Image();
-    const imgB = new Image();
+    const _imgA = new Image();
+    const _imgB = new Image();
 
     // This would need actual image data
     // For now, it's a placeholder for the diff visualization
 
     return canvas;
-  }, [frameA, frameB, mode]);
+  }, [frameA, frameB]);
 
   if (mode === "difference") {
     return (
