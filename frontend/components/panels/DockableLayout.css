@@ -427,7 +427,6 @@
   font-size: 11px;
 }
 
-.info-grid,
 .details-grid,
 .stats-grid {
   display: grid;
@@ -436,14 +435,12 @@
   align-items: center;
 }
 
-.info-label,
 .details-label,
 .stats-label {
   color: var(--bitvue-fg-dim, #858585);
   padding: 2px 0;
 }
 
-.info-value,
 .details-value,
 .stats-value {
   color: var(--bitvue-fg, #ccc);
@@ -451,8 +448,8 @@
   padding: 2px 0;
 }
 
-/* File path truncation — scoped to bottom-panel-content to avoid leaking into other panels */
-.bottom-panel-content .info-value:first-child {
+/* File path truncation — scoped to InfoPanel to avoid leaking into other panels */
+.info-panel .info-value:first-child {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

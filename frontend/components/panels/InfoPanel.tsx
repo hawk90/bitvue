@@ -42,7 +42,7 @@ export const InfoPanel = memo(function InfoPanel({
   currentFrame,
 }: InfoPanelProps) {
   return (
-    <div className="bottom-panel-content">
+    <div className="bottom-panel-content info-panel">
       <div className="info-grid">
         <span className="info-label">File:</span>
         <span className="info-value">{filePath || "N/A"}</span>

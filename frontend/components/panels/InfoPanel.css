@@ -10,21 +10,21 @@
   overflow: auto;
 }
 
-.info-grid {
+.info-panel .info-grid {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 6px 12px;
   font-size: 12px;
 }
 
-.info-label {
+.info-panel .info-label {
   color: var(--text-secondary);
   font-weight: 500;
   text-align: right;
   padding-right: 8px;
 }
 
-.info-value {
+.info-panel .info-value {
   color: var(--text-primary);
   font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
   font-size: 11px;
