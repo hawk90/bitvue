@@ -1,13 +1,15 @@
 /**
  * Tests for DeblockingView component
- * TODO: Skipping due to complex codec view requiring full parser backend
  */
 
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "@/test/test-utils";
 import { DeblockingView } from "../DeblockingView";
 import type { FrameInfo } from "@/types/video";
 
+// SKIPPED: At 1920x1080, this component generates ~65,000 SVG boundary lines per test,
+// making each test take 30-40s and the full suite ~250s. A smaller test resolution
+// would require refactoring the component to accept a testable viewport prop.
 describe.skip("DeblockingView", () => {
   const mockFrame: FrameInfo = {
     frame_index: 100,
@@ -44,7 +46,7 @@ describe.skip("DeblockingView", () => {
 
     expect(screen.getByText("Frame 100")).toBeInTheDocument();
     expect(screen.getByText("P")).toBeInTheDocument();
-    expect(screen.getByText(/1920x1080/)).toBeInTheDocument();
+    expect(screen.getByText("hevc")).toBeInTheDocument();
   });
 
   it("displays deblocking statistics", () => {
@@ -84,7 +86,7 @@ describe.skip("DeblockingView", () => {
         frame={mockFrame}
         width={1920}
         height={1080}
-        codec="av1"
+        codec="AV1"
       />,
     );
 
@@ -99,7 +101,7 @@ describe.skip("DeblockingView", () => {
         frame={mockFrame}
         width={1920}
         height={1080}
-        codec="hevc"
+        codec="HEVC"
       />,
     );
 
@@ -112,12 +114,12 @@ describe.skip("DeblockingView", () => {
         frame={mockFrame}
         width={1920}
         height={1080}
-        codec="hevc"
+        codec="HEVC"
       />,
     );
 
-    expect(screen.getByText("Strong Boundary")).toBeInTheDocument();
-    expect(screen.getByText("Weak Boundary")).toBeInTheDocument();
+    expect(screen.getByText("Strong Boundary (BS 3-4)")).toBeInTheDocument();
+    expect(screen.getByText("Weak Boundary (BS 1-2)")).toBeInTheDocument();
     expect(screen.getByText("Not Filtered")).toBeInTheDocument();
   });
 

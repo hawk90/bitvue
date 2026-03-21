@@ -10,23 +10,24 @@ import FrameSizesView, {
   SizeMetrics,
 } from "@/components/Filmstrip/views/FrameSizesView";
 import type { FrameInfo } from "@/types/video";
+import * as VideoTypes from "@/types/video";
 
-describe.skip("FrameSizesView", () => {
-  vi.mock("@/types/video", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("@/types/video")>();
-    return {
-      ...actual,
-      getFrameTypeColor: vi.fn((type) => {
-        const colors: Record<string, string> = {
-          I: "#ff4444",
-          P: "#44ff44",
-          B: "#4444ff",
-        };
-        return colors[type] || "#888888";
-      }),
-    };
-  });
+vi.mock("@/types/video", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/types/video")>();
+  return {
+    ...actual,
+    getFrameTypeColor: vi.fn((type: string) => {
+      const colors: Record<string, string> = {
+        I: "#ff4444",
+        P: "#44ff44",
+        B: "#4444ff",
+      };
+      return colors[type] || "#888888";
+    }),
+  };
+});
 
+describe("FrameSizesView", () => {
   const mockFrames: FrameInfo[] = [
     { frame_index: 0, frame_type: "I", size: 100000, poc: 0, duration: 1 },
     { frame_index: 1, frame_type: "P", size: 50000, poc: 1, duration: 1 },
@@ -110,7 +111,8 @@ describe.skip("FrameSizesView", () => {
     it("should display min label (0)", () => {
       render(<FrameSizesView {...defaultProps} />);
 
-      expect(screen.getByText("0")).toBeInTheDocument();
+      // Both left (Bitrate) and right (QP) Y-axes have a "0" min label
+      expect(screen.getAllByText("0").length).toBeGreaterThan(0);
     });
 
     it("should display max QP value", () => {
@@ -270,9 +272,14 @@ describe.skip("FrameSizesView", () => {
     });
 
     it("should hide bitrate curve when disabled", () => {
+      // Disable both bitrate curve and moving average to ensure no line chart SVG renders
       const props = {
         ...defaultProps,
-        sizeMetrics: { ...defaultSizeMetrics, showBitrateCurve: false },
+        sizeMetrics: {
+          ...defaultSizeMetrics,
+          showBitrateCurve: false,
+          showMovingAvg: false,
+        },
       };
 
       render(<FrameSizesView {...props} />);
@@ -345,13 +352,12 @@ describe.skip("FrameSizesView", () => {
     });
 
     it("should apply frame type color to bar", () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { getFrameTypeColor } = require("@/types/video");
+      // Use the module-level import (vi.mock is hoisted, so VideoTypes.getFrameTypeColor is the mock)
+      vi.mocked(VideoTypes.getFrameTypeColor).mockClear();
 
       render(<FrameSizesView {...defaultProps} />);
 
-      const _bar = document.querySelector('[data-frame-index="0"]');
-      expect(getFrameTypeColor).toHaveBeenCalledWith("I");
+      expect(VideoTypes.getFrameTypeColor).toHaveBeenCalledWith("I");
     });
 
     it("should have tooltip with frame info", () => {

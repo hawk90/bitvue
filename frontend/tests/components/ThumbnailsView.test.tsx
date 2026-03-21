@@ -1,25 +1,25 @@
 /**
  * ThumbnailsView Component Tests
  * Tests frame thumbnail strip display with reference arrows
- * TODO: Skipping due to complex thumbnail rendering requiring backend support
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@/test/test-utils";
 import ThumbnailsView from "../ThumbnailsView";
 import type { FrameInfo } from "@/types/video";
+import * as PreRenderedArrows from "@/components/usePreRenderedArrows";
 
-describe.skip("ThumbnailsView", () => {
-  vi.mock("@/components/usePreRenderedArrows", () => ({
-    usePreRenderedArrows: vi.fn(() => ({
-      allArrowData: [],
-      svgWidth: 0,
-    })),
-    ArrowPosition: null,
-    PathCalculator: null,
-    FrameInfoBase: null,
-  }));
+vi.mock("@/components/usePreRenderedArrows", () => ({
+  usePreRenderedArrows: vi.fn(() => ({
+    allArrowData: [],
+    svgWidth: 0,
+  })),
+  ArrowPosition: null,
+  PathCalculator: null,
+  FrameInfoBase: null,
+}));
 
+describe("ThumbnailsView", () => {
   // Mock getFrameTypeColor
   vi.mock("@/types/video", async (importOriginal) => {
     const actual = await importOriginal<typeof import("@/types/video")>();
@@ -128,8 +128,9 @@ describe.skip("ThumbnailsView", () => {
     it("should display frame type in NAL label", () => {
       render(<ThumbnailsView {...defaultProps} />);
 
-      expect(screen.getByText("I")).toBeInTheDocument();
-      expect(screen.getByText("P")).toBeInTheDocument();
+      // Multiple I-type frames exist in mockFrames; use getAllByText
+      expect(screen.getAllByText("I").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("P").length).toBeGreaterThan(0);
       expect(screen.getByText("B")).toBeInTheDocument();
     });
 
@@ -386,11 +387,8 @@ describe.skip("ThumbnailsView", () => {
     });
 
     it("should render SVG overlay when arrows exist", () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const {
-        usePreRenderedArrows,
-      } = require("@/components/usePreRenderedArrows");
-      usePreRenderedArrows.mockReturnValue({
+      // Use the module-level mock reference (vi.mock is hoisted above imports)
+      vi.mocked(PreRenderedArrows.usePreRenderedArrows).mockReturnValue({
         allArrowData: [
           { sourceFrameIndex: 1, targetFrameIndex: 0, pathData: "M0,0 L10,10" },
         ],

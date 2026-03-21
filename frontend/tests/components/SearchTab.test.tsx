@@ -1,14 +1,13 @@
 /**
  * SearchTab Component Tests
  * Tests search functionality in syntax detail panel
- * TODO: Skipping due to complex search functionality requiring full parser backend
  */
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@/test/test-utils";
 import { SearchTab } from "../SyntaxDetailPanel/SearchTab";
 
-describe.skip("SearchTab", () => {
+describe("SearchTab", () => {
   const mockFrames = [
     { frame_index: 0, frame_type: "I", size: 50000, pts: 0 },
     { frame_index: 1, frame_type: "P", size: 30000, pts: 1 },
@@ -23,6 +22,7 @@ describe.skip("SearchTab", () => {
     searchResults: [],
     onSearchChange: vi.fn(),
     onClearSearch: vi.fn(),
+    onNavigateToFrame: vi.fn(),
   };
 
   describe("SearchTab", () => {
@@ -41,13 +41,21 @@ describe.skip("SearchTab", () => {
     it("should show frame type hint", () => {
       render(<SearchTab {...defaultProps} />);
 
-      expect(screen.getByText(/Type "I", "P", "B"/)).toBeInTheDocument();
+      const hintItems = document.querySelectorAll(".search-hint-item");
+      const hintTexts = Array.from(hintItems).map((el) => el.textContent ?? "");
+      expect(
+        hintTexts.some(
+          (t) => t.includes('I"') && t.includes('P"') && t.includes('B"'),
+        ),
+      ).toBe(true);
     });
 
     it("should show frame number hint", () => {
       render(<SearchTab {...defaultProps} />);
 
-      expect(screen.getByText(/Type "42"/)).toBeInTheDocument();
+      const hintItems = document.querySelectorAll(".search-hint-item");
+      const hintTexts = Array.from(hintItems).map((el) => el.textContent ?? "");
+      expect(hintTexts.some((t) => t.includes("42"))).toBe(true);
     });
 
     it("should show PTS hint", () => {
@@ -69,7 +77,7 @@ describe.skip("SearchTab", () => {
     it("should show clear button when query exists", () => {
       render(<SearchTab {...defaultProps} searchQuery="test" />);
 
-      const clearButton = screen.queryByRole("button", { name: /clear/i });
+      const clearButton = document.querySelector(".search-clear");
       expect(clearButton).toBeInTheDocument();
     });
 
@@ -83,7 +91,7 @@ describe.skip("SearchTab", () => {
         />,
       );
 
-      const clearButton = screen.queryByRole("button", { name: /clear/i });
+      const clearButton = document.querySelector(".search-clear");
       fireEvent.click(clearButton!);
 
       expect(handleClear).toHaveBeenCalledTimes(1);
@@ -91,7 +99,7 @@ describe.skip("SearchTab", () => {
 
     it("should display result count", () => {
       render(
-        <SearchTab {...defaultProps} searchQuery="I" searchResults={[0, 5]} />,
+        <SearchTab {...defaultProps} searchQuery="I" searchResults={[0, 3]} />,
       );
 
       expect(screen.getByText(/Found 2 results/)).toBeInTheDocument();
@@ -124,7 +132,7 @@ describe.skip("SearchTab", () => {
   describe("SearchTab results", () => {
     it("should display search results", () => {
       render(
-        <SearchTab {...defaultProps} searchQuery="I" searchResults={[0, 5]} />,
+        <SearchTab {...defaultProps} searchQuery="I" searchResults={[0, 3]} />,
       );
 
       expect(screen.getByText("#0")).toBeInTheDocument();
@@ -170,16 +178,21 @@ describe.skip("SearchTab", () => {
       expect(currentItem).toBeInTheDocument();
     });
 
-    it("should dispatch navigate event on result click", () => {
+    it("should call onNavigateToFrame on result click", () => {
+      const handleNavigate = vi.fn();
       render(
-        <SearchTab {...defaultProps} searchQuery="0" searchResults={[0]} />,
+        <SearchTab
+          {...defaultProps}
+          searchQuery="0"
+          searchResults={[0]}
+          onNavigateToFrame={handleNavigate}
+        />,
       );
 
       const resultItem = document.querySelector(".search-result-item");
       if (resultItem) {
         fireEvent.click(resultItem);
-        // Event should be dispatched (verified by not crashing)
-        expect(resultItem).toBeInTheDocument();
+        expect(handleNavigate).toHaveBeenCalledWith(0);
       }
     });
   });
@@ -191,7 +204,7 @@ describe.skip("SearchTab", () => {
       );
 
       expect(screen.getByText(/No results found/)).toBeInTheDocument();
-      expect(screen.getByText('"xyz"')).toBeInTheDocument();
+      expect(screen.getByText(/xyz/)).toBeInTheDocument();
     });
 
     it("should show empty state initially", () => {
@@ -228,7 +241,7 @@ describe.skip("SearchTab", () => {
         />,
       );
 
-      const clearButton = screen.queryByRole("button", { name: /clear/i });
+      const clearButton = document.querySelector(".search-clear");
       fireEvent.click(clearButton!);
 
       expect(handleClear).toHaveBeenCalledTimes(1);

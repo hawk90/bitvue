@@ -1,47 +1,64 @@
 /**
  * SyntaxDetailPanel Component Tests
  * Tests syntax detail panel with tabs and search
- * TODO: Skipping due to requiring full parser backend implementation
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent } from "@/test/test-utils";
 import { SyntaxDetailPanel } from "../SyntaxDetailPanel";
 
-describe.skip("SyntaxDetailPanel", () => {
-  // Mock context
-  vi.mock("../../../contexts/StreamDataContext", () => ({
-    useStreamData: () => ({
-      frames: [
-        {
-          frame_index: 0,
-          frame_type: "I",
-          size: 50000,
-          pts: 0,
-          temporal_id: 0,
-        },
-        {
-          frame_index: 1,
-          frame_type: "P",
-          size: 30000,
-          pts: 1,
-          temporal_id: 0,
-          ref_frames: [0],
-        },
-        {
-          frame_index: 2,
-          frame_type: "B",
-          size: 20000,
-          pts: 2,
-          temporal_id: 1,
-          ref_frames: [0, 1],
-        },
-      ],
-      currentFrameIndex: 1,
-      filePath: "/test/path",
-    }),
-  }));
+const mockFrames = [
+  { frame_index: 0, frame_type: "I", size: 50000, pts: 0, temporal_id: 0 },
+  {
+    frame_index: 1,
+    frame_type: "P",
+    size: 30000,
+    pts: 1,
+    temporal_id: 0,
+    ref_frames: [0],
+  },
+  {
+    frame_index: 2,
+    frame_type: "B",
+    size: 20000,
+    pts: 2,
+    temporal_id: 1,
+    ref_frames: [0, 1],
+  },
+];
 
+vi.mock("@/contexts/FrameDataContext", () => ({
+  useFrameData: () => ({
+    frames: mockFrames,
+    setFrames: vi.fn(),
+    getFrameStats: vi.fn(),
+  }),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/CurrentFrameContext", () => ({
+  useCurrentFrame: () => ({
+    currentFrameIndex: 1,
+    setCurrentFrameIndex: vi.fn(),
+  }),
+  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("@/contexts/FileStateContext", () => ({
+  useFileState: () => ({
+    filePath: "/test/path",
+    setFilePath: vi.fn(),
+  }),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+describe("SyntaxDetailPanel", () => {
   describe("SyntaxDetailPanel", () => {
     it("should render syntax detail panel", () => {
       render(<SyntaxDetailPanel />);
