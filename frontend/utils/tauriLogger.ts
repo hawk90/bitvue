@@ -16,6 +16,14 @@ try {
 // Flag to prevent infinite logging loops
 let isInsideLog = false;
 
+interface NativeConsole extends Console {
+  _originalLog?: (...args: unknown[]) => void;
+  _originalError?: (...args: unknown[]) => void;
+  _originalWarn?: (...args: unknown[]) => void;
+  _originalInfo?: (...args: unknown[]) => void;
+  _originalDebug?: (...args: unknown[]) => void;
+}
+
 /**
  * Send a log message to the terminal via Tauri
  */
@@ -52,9 +60,8 @@ function sendLog(level: string, message: string, ...args: unknown[]): void {
     invoke("frontend_log", { level, message: formattedMessage })
       .catch(() => {
         // Fall back to native console (not the overridden one) if invoke fails
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nativeConsole = window.console as any;
-        const originalLog = nativeConsole._originalLog || nativeConsole.log;
+        const nativeConsole = window.console as NativeConsole;
+        const originalLog = nativeConsole._originalLog ?? nativeConsole.log;
         originalLog(`[TAURI LOG FAILED] ${level}:`, message, ...args);
       })
       .finally(() => {
@@ -63,13 +70,12 @@ function sendLog(level: string, message: string, ...args: unknown[]): void {
   }
 
   // Always log to console as well (use native console to avoid infinite loop)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nativeConsole = window.console as any;
-  const originalError = nativeConsole._originalError || nativeConsole.error;
-  const originalWarn = nativeConsole._originalWarn || nativeConsole.warn;
-  const originalInfo = nativeConsole._originalInfo || nativeConsole.info;
-  const originalDebug = nativeConsole._originalDebug || nativeConsole.debug;
-  const originalLog = nativeConsole._originalLog || nativeConsole.log;
+  const nativeConsole = window.console as NativeConsole;
+  const originalError = nativeConsole._originalError ?? nativeConsole.error;
+  const originalWarn = nativeConsole._originalWarn ?? nativeConsole.warn;
+  const originalInfo = nativeConsole._originalInfo ?? nativeConsole.info;
+  const originalDebug = nativeConsole._originalDebug ?? nativeConsole.debug;
+  const originalLog = nativeConsole._originalLog ?? nativeConsole.log;
 
   switch (level) {
     case "error":

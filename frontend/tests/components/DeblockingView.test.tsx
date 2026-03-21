@@ -7,10 +7,12 @@ import { render, screen } from "@/test/test-utils";
 import { DeblockingView } from "../DeblockingView";
 import type { FrameInfo } from "@/types/video";
 
-// SKIPPED: At 1920x1080, this component generates ~65,000 SVG boundary lines per test,
-// making each test take 30-40s and the full suite ~250s. A smaller test resolution
-// would require refactoring the component to accept a testable viewport prop.
-describe.skip("DeblockingView", () => {
+// Use small dimensions (16x16) to keep SVG boundary count manageable (~6 elements)
+// instead of 1920x1080 which generates ~65,000 elements per test.
+const TEST_WIDTH = 16;
+const TEST_HEIGHT = 16;
+
+describe("DeblockingView", () => {
   const mockFrame: FrameInfo = {
     frame_index: 100,
     frame_type: "P",
@@ -26,8 +28,8 @@ describe.skip("DeblockingView", () => {
     render(
       <DeblockingView
         frame={mockFrame}
-        width={1920}
-        height={1080}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
         codec="hevc"
       />,
     );
@@ -38,8 +40,8 @@ describe.skip("DeblockingView", () => {
     render(
       <DeblockingView
         frame={mockFrame}
-        width={1920}
-        height={1080}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
         codec="hevc"
       />,
     );
@@ -53,23 +55,23 @@ describe.skip("DeblockingView", () => {
     render(
       <DeblockingView
         frame={mockFrame}
-        width={1920}
-        height={1080}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
         codec="hevc"
       />,
     );
 
     // The component generates mock stats
     expect(screen.getByText(/Total Boundaries:/)).toBeInTheDocument();
-    expect(screen.getByText(/Filtered:/)).toBeInTheDocument();
+    expect(screen.getByText(/^Filtered:$/)).toBeInTheDocument();
   });
 
   it("displays deblocking parameters", () => {
     render(
       <DeblockingView
         frame={mockFrame}
-        width={1920}
-        height={1080}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
         codec="hevc"
       />,
     );
@@ -84,8 +86,8 @@ describe.skip("DeblockingView", () => {
     render(
       <DeblockingView
         frame={mockFrame}
-        width={1920}
-        height={1080}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
         codec="AV1"
       />,
     );
@@ -99,8 +101,8 @@ describe.skip("DeblockingView", () => {
     render(
       <DeblockingView
         frame={mockFrame}
-        width={1920}
-        height={1080}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
         codec="HEVC"
       />,
     );
@@ -112,8 +114,8 @@ describe.skip("DeblockingView", () => {
     render(
       <DeblockingView
         frame={mockFrame}
-        width={1920}
-        height={1080}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
         codec="HEVC"
       />,
     );
@@ -125,7 +127,12 @@ describe.skip("DeblockingView", () => {
 
   it("handles null frame gracefully", () => {
     render(
-      <DeblockingView frame={null} width={1920} height={1080} codec="hevc" />,
+      <DeblockingView
+        frame={null}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
+        codec="hevc"
+      />,
     );
 
     expect(screen.getByText("No frame selected")).toBeInTheDocument();
