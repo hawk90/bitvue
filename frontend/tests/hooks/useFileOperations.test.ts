@@ -214,7 +214,7 @@ describe("useFileOperations event listeners", () => {
       expect.any(Function),
     );
     expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "menu-close-file",
+      "menu-close-bitstream",
       expect.any(Function),
     );
 
@@ -234,7 +234,7 @@ describe("useFileOperations event listeners", () => {
       expect.any(Function),
     );
     expect(removeEventListenerSpy).toHaveBeenCalledWith(
-      "menu-close-file",
+      "menu-close-bitstream",
       expect.any(Function),
     );
 

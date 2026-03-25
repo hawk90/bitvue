@@ -24,50 +24,40 @@ use std::path::PathBuf;
 fn validate_output_path(path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(path);
 
-    // SECURITY CRITICAL: Canonicalize FIRST before any validation
-    // This handles:
-    // - All `..` components (path traversal)
-    // - Symlinks (including nested symlinks)
-    // - Relative path resolution
-    // - Path separator normalization
-    let canonical = path.canonicalize()
-        .map_err(|e| format!("Invalid path: cannot resolve path '{}': {}", path.display(), e))?;
-
-    // Validate the canonical path against system directory restrictions
-    // This must happen on the canonicalized path to catch traversal attempts
-    check_system_directory_access(&canonical.to_string_lossy())
-        .map_err(|e| format!("Path validation failed: {}", e))?;
-
-    // Check if the canonical path has a valid extension (prevents writing to system files)
-    // Check extension AFTER canonicalization to ensure we validate the actual destination
-    // Convert to lowercase first for consistent case-insensitive validation
-    let extension_lower = canonical.extension()
+    // Validate extension on the requested destination path. The target file may not
+    // exist yet, so validating the parent directory is more reliable than requiring
+    // the full output path to canonicalize successfully.
+    let extension_lower = path.extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase())
         .ok_or_else(|| {
-            // SECURITY: Don't reveal the file path in error message
             "Invalid path: file has no extension".to_string()
         })?;
 
-    // Only allow specific file extensions (case-insensitive)
     const ALLOWED_EXTENSIONS: &[&str] = &["csv", "json", "txt", "md"];
     if !ALLOWED_EXTENSIONS.contains(&extension_lower.as_str()) {
-        // SECURITY: Use consistent case in error message (lowercase)
         return Err(format!(
             "Invalid path: extension '{}' not allowed. Allowed extensions: csv, json, txt, md",
             extension_lower
         ));
     }
 
-    // Check if the parent directory exists
-    if let Some(parent) = canonical.parent() {
-        if !parent.as_os_str().is_empty() && !parent.exists() {
-            // SECURITY: Don't reveal the parent directory path
-            return Err("Invalid path: parent directory does not exist".to_string());
-        }
-    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| "Invalid path: parent directory does not exist".to_string())?;
 
-    Ok(canonical)
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|_| "Invalid path: parent directory does not exist".to_string())?;
+
+    check_system_directory_access(&canonical_parent.to_string_lossy())
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    Ok(canonical_parent.join(
+        path.file_name()
+            .ok_or_else(|| "Invalid path: file name is missing".to_string())?,
+    ))
 }
 
 /// Export frame data to CSV format

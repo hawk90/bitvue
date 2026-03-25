@@ -334,11 +334,59 @@ function AppContent() {
   // File menu events
   useEffect(() => {
     const handleExportListener = () => setShowExportDialog(true);
+    const handleOpenBitstream = () => {
+      void handleOpenFile();
+    };
+    const handleCloseBitstream = () => {
+      void handleCloseFile();
+    };
+    const handleOpenDependentBitstream = () => {
+      void handleOpenDependentFile();
+    };
+    const handleQuit = () => {
+      void invoke("close_window");
+    };
+    const handleShowShortcuts = () => setShowShortcuts(true);
+
+    window.addEventListener("menu-open-bitstream", handleOpenBitstream);
+    window.addEventListener("menu-open-as-av1", handleOpenBitstream);
+    window.addEventListener("menu-open-as-hevc", handleOpenBitstream);
+    window.addEventListener("menu-open-as-avc", handleOpenBitstream);
+    window.addEventListener("menu-open-as-vp9", handleOpenBitstream);
+    window.addEventListener("menu-open-as-vvc", handleOpenBitstream);
+    window.addEventListener("menu-open-as-mpeg2", handleOpenBitstream);
+    window.addEventListener(
+      "menu-open-dependent",
+      handleOpenDependentBitstream,
+    );
+    window.addEventListener("menu-close-bitstream", handleCloseBitstream);
+    window.addEventListener("menu-quit", handleQuit);
+    window.addEventListener("menu-shortcuts", handleShowShortcuts);
     window.addEventListener("menu-export", handleExportListener);
     return () => {
+      window.removeEventListener("menu-open-bitstream", handleOpenBitstream);
+      window.removeEventListener("menu-open-as-av1", handleOpenBitstream);
+      window.removeEventListener("menu-open-as-hevc", handleOpenBitstream);
+      window.removeEventListener("menu-open-as-avc", handleOpenBitstream);
+      window.removeEventListener("menu-open-as-vp9", handleOpenBitstream);
+      window.removeEventListener("menu-open-as-vvc", handleOpenBitstream);
+      window.removeEventListener("menu-open-as-mpeg2", handleOpenBitstream);
+      window.removeEventListener(
+        "menu-open-dependent",
+        handleOpenDependentBitstream,
+      );
+      window.removeEventListener("menu-close-bitstream", handleCloseBitstream);
+      window.removeEventListener("menu-quit", handleQuit);
+      window.removeEventListener("menu-shortcuts", handleShowShortcuts);
       window.removeEventListener("menu-export", handleExportListener);
     };
-  }, [setShowExportDialog]);
+  }, [
+    handleCloseFile,
+    handleOpenDependentFile,
+    handleOpenFile,
+    setShowExportDialog,
+    setShowShortcuts,
+  ]);
 
   // Welcome screen
   const welcomeScreen = (

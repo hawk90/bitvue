@@ -307,7 +307,7 @@ pub async fn open_file(
                 .set_file_with_data(
                     path_buf.clone(),
                     final_codec.clone(),
-                    file_data.clone()
+                    file_data
                 )
             {
                 log::warn!("open_file: Failed to cache file data in decode_service: {}", e);
@@ -449,20 +449,21 @@ pub async fn get_frames_chunk(
     let units = stream_a.units.as_ref()
         .ok_or("No units available")?;
 
-    // Convert UnitNode to FrameData
-    let all_frames: Vec<crate::commands::FrameData> = units.units.iter()
+    let total_frames = units.units.iter()
         .filter(|u| u.frame_index.is_some())
-        .map(unit_to_frame_data)
-        .collect();
-
-    let total_frames = all_frames.len();
+        .count();
 
     // Calculate the actual range to return
     let start = offset.min(total_frames);
     let end = (offset + limit).min(total_frames);
 
     let frames_chunk: Vec<crate::commands::FrameData> = if start < end {
-        all_frames[start..end].to_vec()
+        units.units.iter()
+            .filter(|u| u.frame_index.is_some())
+            .skip(start)
+            .take(end - start)
+            .map(unit_to_frame_data)
+            .collect()
     } else {
         Vec::new()
     };

@@ -235,11 +235,11 @@ export function useFileOperations(): UseFileOperationsResult {
     };
 
     window.addEventListener("menu-open-bitstream", handleOpenBitstream);
-    window.addEventListener("menu-close-file", handleCloseFile);
+    window.addEventListener("menu-close-bitstream", handleCloseFile);
 
     return () => {
       window.removeEventListener("menu-open-bitstream", handleOpenBitstream);
-      window.removeEventListener("menu-close-file", handleCloseFile);
+      window.removeEventListener("menu-close-bitstream", handleCloseFile);
     };
   }, []); // Empty deps - listeners are set up once and use refs for callbacks
 

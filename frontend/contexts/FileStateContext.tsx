@@ -19,6 +19,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import type { FrameInfo } from "../types/video";
 import { createLogger } from "../utils/logger";
+import { useFrameData } from "./FrameDataContext";
 
 const logger = createLogger("FileStateContext");
 
@@ -51,6 +52,7 @@ const CHUNK_SIZE = 100;
 const CHUNKED_LOADING_THRESHOLD = 200;
 
 export function FileStateProvider({ children }: { children: ReactNode }) {
+  const { setFrames } = useFrameData();
   const [filePath, setFilePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,36 +69,64 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     currentOffsetRef.current = 0;
     setHasMoreFrames(false);
     setTotalFrames(0);
+    setFrames([]);
 
     try {
-      logger.info("refreshFrames: Calling get_frames command...");
+      logger.info("refreshFrames: Calling get_frames_chunk command...");
       const startTime = performance.now();
+      const firstChunk = await invoke<ChunkedFramesResponse>(
+        "get_frames_chunk",
+        {
+          offset: 0,
+          limit: CHUNK_SIZE,
+        },
+      );
 
-      const result = await invoke<FrameInfo[]>("get_frames");
+      let allFrames = firstChunk.frames || [];
+      currentOffsetRef.current = firstChunk.offset + allFrames.length;
+      setHasMoreFrames(firstChunk.has_more);
+      setTotalFrames(firstChunk.total_frames);
+      setFrames(allFrames);
+
+      while (currentOffsetRef.current < firstChunk.total_frames) {
+        const nextChunk = await invoke<ChunkedFramesResponse>(
+          "get_frames_chunk",
+          {
+            offset: currentOffsetRef.current,
+            limit: CHUNK_SIZE,
+          },
+        );
+        if (nextChunk.frames.length === 0) break;
+        allFrames = [...allFrames, ...nextChunk.frames];
+        currentOffsetRef.current = nextChunk.offset + nextChunk.frames.length;
+        setHasMoreFrames(nextChunk.has_more);
+        setTotalFrames(nextChunk.total_frames);
+        setFrames(allFrames);
+      }
 
       const elapsed = performance.now() - startTime;
       logger.info(
-        `refreshFrames: Loaded ${result.length} frames in ${elapsed.toFixed(2)}ms`,
+        `refreshFrames: Loaded ${allFrames.length} frames in ${elapsed.toFixed(2)}ms`,
       );
 
-      // Check if we should use chunked loading next time
-      if (result.length >= CHUNKED_LOADING_THRESHOLD) {
+      if (allFrames.length >= CHUNKED_LOADING_THRESHOLD) {
         logger.info(
-          `refreshFrames: Large file detected (${result.length} frames), will use chunked loading for subsequent loads`,
+          `refreshFrames: Loaded large file progressively (${allFrames.length} frames)`,
         );
       }
 
-      setTotalFrames(result.length);
-      return result || [];
+      setHasMoreFrames(false);
+      return allFrames;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       setError(errorMsg);
       logger.error("Failed to load frames:", errorMsg);
+      setFrames([]);
       return [];
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setFrames]);
 
   // Load more frames using chunked loading
   const loadMoreFrames = useCallback(async () => {
@@ -137,18 +167,6 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     }
   }, [hasMoreFrames]);
 
-  // Initialize chunked loading state after initial frames are loaded
-  useEffect(() => {
-    if (
-      totalFrames >= CHUNKED_LOADING_THRESHOLD &&
-      currentOffsetRef.current === 0
-    ) {
-      // First chunk was loaded via get_frames, update offset
-      currentOffsetRef.current = totalFrames;
-      setHasMoreFrames(false); // All frames loaded via get_frames
-    }
-  }, [totalFrames]);
-
   // Clear all data (used when closing file)
   const clearData = useCallback(() => {
     setFilePath(null);
@@ -158,6 +176,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     setTotalFrames(0);
     currentOffsetRef.current = 0;
     isLoadingMoreRef.current = false;
+    setFrames([]);
   }, []);
 
   const contextValue = useMemo<FileStateContextType>(
