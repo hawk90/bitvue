@@ -217,6 +217,13 @@ pub fn detect_format(data: &[u8]) -> VideoFormat {
 /// AV1 decoder using dav1d
 pub struct Av1Decoder {
     decoder: Decoder,
+    /// Most-recently sent OBU data, stored so that `picture_to_frame` can
+    /// parse `base_q_idx` from the frame header after dav1d produces a picture.
+    ///
+    /// dav1d's Rust bindings do not expose the quantisation parameter directly
+    /// from `Picture`, so we parse it ourselves from the raw OBU bytes using
+    /// the `bitvue-av1-codec` bitstream parser.
+    last_obu_data: Option<Vec<u8>>,
 }
 
 // Implement the universal Decoder trait for Av1Decoder
@@ -259,6 +266,26 @@ impl crate::traits::Decoder for Av1Decoder {
     }
 }
 
+/// Extract `base_q_idx` from raw AV1 OBU data.
+///
+/// Searches the OBU stream for a Frame or FrameHeader OBU and returns
+/// `base_q_idx` as a `u8`. Returns `None` if no frame header is found or if
+/// parsing fails. This is a best-effort operation; callers must handle the
+/// `None` case.
+fn extract_qp_from_obu_data(obu_data: &[u8]) -> Option<u8> {
+    use bitvue_av1_codec::{parse_all_obus, ObuType};
+
+    let obus = parse_all_obus(obu_data).ok()?;
+    for obu in &obus {
+        if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
+            if let Ok(fh) = bitvue_av1_codec::parse_frame_header_basic(&obu.payload) {
+                return fh.base_q_idx;
+            }
+        }
+    }
+    None
+}
+
 /// IVF frame header with data offset for frame extraction
 #[derive(Debug, Clone)]
 struct IvfFrameHeaderWithOffset {
@@ -270,10 +297,13 @@ impl Av1Decoder {
     /// Creates a new AV1 decoder
     pub fn new() -> Result<Self> {
         let decoder = Decoder::new().map_err(|e| DecodeError::Init(e.to_string()))?;
-        Ok(Self { decoder })
+        Ok(Self {
+            decoder,
+            last_obu_data: None,
+        })
     }
 
-    /// Sends data to the decoder (clones the slice)
+    /// Sends data to the decoder (clones the slice into an owned Vec)
     pub fn send_data(&mut self, data: &[u8], timestamp: i64) -> Result<()> {
         self.send_data_owned(data.to_vec(), timestamp)
     }
@@ -283,6 +313,8 @@ impl Av1Decoder {
     /// This is more efficient than `send_data` when you already have owned data,
     /// as it avoids cloning. Use this for IVF frame extraction.
     pub fn send_data_owned(&mut self, data: Vec<u8>, timestamp: i64) -> Result<()> {
+        // Keep a copy for QP extraction after dav1d produces the picture.
+        self.last_obu_data = Some(data.clone());
         self.decoder
             .send_data(data, None, Some(timestamp), None)
             .map_err(|e| DecodeError::Decode(e.to_string()))
@@ -323,7 +355,7 @@ impl Av1Decoder {
     }
 
     /// Convert a dav1d Picture to DecodedFrame
-    fn picture_to_frame(&self, picture: &dav1d::Picture) -> Result<DecodedFrame> {
+    fn picture_to_frame(&mut self, picture: &dav1d::Picture) -> Result<DecodedFrame> {
         let width = picture.width();
         let height = picture.height();
         let bit_depth = picture.bit_depth() as u8;
@@ -444,6 +476,17 @@ impl Av1Decoder {
             v_plane.as_deref(),
         );
 
+        // Extract base_q_idx from the last sent OBU data using the AV1 bitstream
+        // parser. dav1d's Rust bindings do not expose the quantisation parameter
+        // from Picture, so we parse the frame header ourselves.
+        //
+        // The result is best-effort: if no OBU data is available or parsing
+        // fails the field is left as None rather than returning an error.
+        let qp_avg = self
+            .last_obu_data
+            .as_deref()
+            .and_then(|obu_data| extract_qp_from_obu_data(obu_data));
+
         Ok(DecodedFrame {
             width,
             height,
@@ -456,7 +499,7 @@ impl Av1Decoder {
             v_stride,
             timestamp: picture.timestamp().unwrap_or(0),
             frame_type,
-            qp_avg: None, // TODO: Extract QP from bitstream parser
+            qp_avg,
             chroma_format,
         })
     }

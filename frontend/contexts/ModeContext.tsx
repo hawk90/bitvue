@@ -182,6 +182,24 @@ export const MODES: {
     shortcut: "F7",
     description: "Frame dependency graph",
   },
+  {
+    key: "deblocking",
+    label: "Deblocking",
+    shortcut: "F8",
+    description: "Deblocking filter boundary strength",
+  },
+  {
+    key: "residuals",
+    label: "Residuals",
+    shortcut: "F9",
+    description: "Residual energy heatmap (QP-based)",
+  },
+  {
+    key: "av1-features",
+    label: "AV1 Features",
+    shortcut: "F10",
+    description: "CDEF, Loop Restoration, Film Grain",
+  },
 ];
 
 // Component metadata

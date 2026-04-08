@@ -7,7 +7,8 @@
  * - Current stage highlighting based on analysis mode
  */
 
-import { memo, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 
 interface CodingFlowViewProps {
@@ -94,12 +95,38 @@ const CODEC_FEATURES: Record<string, string[]> = {
 
 export const CodingFlowView = memo(function CodingFlowView({
   frame,
-  currentStage = "prediction",
+  currentStage: _currentStageProp = "prediction",
   codec = "Unknown",
 }: CodingFlowViewProps) {
+  const [currentStage, setCurrentStage] = useState(_currentStageProp);
+  const [backendCodecFeatures, setBackendCodecFeatures] = useState<
+    string[] | null
+  >(null);
+
+  useEffect(() => {
+    if (!frame) return;
+    invoke<{
+      frame_index: number;
+      stages: {
+        id: string;
+        label: string;
+        completed: boolean;
+        data_size: number | null;
+      }[];
+      current_stage: string;
+      codec_features: string[];
+    }>("get_coding_flow_analysis", { frameIndex: frame.frame_index })
+      .then((data) => {
+        setCurrentStage(data.current_stage);
+        setBackendCodecFeatures(data.codec_features);
+      })
+      .catch(() => {});
+  }, [frame]);
+
   const codecFeatures = useMemo(() => {
+    if (backendCodecFeatures) return backendCodecFeatures;
     return CODEC_FEATURES[codec.toUpperCase()] || ["Standard Features"];
-  }, [codec]);
+  }, [codec, backendCodecFeatures]);
 
   const getStageClass = (stageId: string) => {
     const isActive = stageId === currentStage;

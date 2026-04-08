@@ -667,6 +667,8 @@ fn test_hevc_frame_to_unit_node() {
         is_ref: true,
         temporal_id: Some(0),
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let node = hevc_frame_to_unit_node(&frame, 0);
@@ -693,6 +695,8 @@ fn test_hevc_frames_to_unit_nodes() {
             is_ref: true,
             temporal_id: Some(0),
             slice_header: None,
+            width: 0,
+            height: 0,
         },
         HevcFrame {
             frame_index: 1,
@@ -707,6 +711,8 @@ fn test_hevc_frames_to_unit_nodes() {
             is_ref: true,
             temporal_id: Some(0),
             slice_header: None,
+            width: 0,
+            height: 0,
         },
     ];
 

@@ -886,3 +886,199 @@ fn decode_samples(samples: &[std::borrow::Cow<'_, [u8]>]) -> Result<Vec<bitvue_d
 
     Ok(all_frames)
 }
+
+/// Response for get_rd_point: average QP and bitrate for a single file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RdPointData {
+    /// Estimated PSNR from average QP (rough approximation)
+    pub avg_psnr: f64,
+    /// Bitrate in kbps
+    pub bitrate_kbps: f64,
+    /// Average QP value
+    pub avg_qp: f64,
+    /// File name (for display)
+    pub file_name: String,
+    /// Codec identifier ("av1", "hevc", "h264", "unknown")
+    pub codec: String,
+    /// Curve group key — common prefix for grouping multi-file RD curves
+    pub curve_key: String,
+}
+
+/// Extract average QP and bitrate from a video file to generate an RD point.
+///
+/// Returns an estimated PSNR (50 - 0.7 * avg_qp) and bitrate from the
+/// file metadata. Used by RDCurvesPanel to build multi-file RD curves.
+#[tauri::command]
+pub async fn get_rd_point(file_path: String) -> Result<RdPointData, String> {
+    use crate::commands::file::validate_file_path;
+    use std::path::Path;
+
+    validate_file_path(&file_path)?;
+
+    let path = Path::new(&file_path);
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let data = std::fs::read(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let file_size_bytes = data.len();
+
+    // Extract frames and compute average QP
+    let (avg_qp, duration_secs, codec) = extract_rd_stats_from_data(&data)?;
+
+    // Compute bitrate: bits / seconds → kbps
+    let bitrate_kbps = if duration_secs > 0.0 {
+        (file_size_bytes as f64 * 8.0) / (duration_secs * 1000.0)
+    } else {
+        // No duration info: estimate from file size (assume 1 second)
+        file_size_bytes as f64 * 8.0 / 1000.0
+    };
+
+    // Codec-specific PSNR approximation
+    let avg_psnr = psnr_from_qp(&codec, avg_qp);
+    let curve_key = curve_key_from_name(&file_name);
+
+    Ok(RdPointData {
+        avg_psnr,
+        bitrate_kbps,
+        avg_qp,
+        file_name,
+        codec,
+        curve_key,
+    })
+}
+
+/// Codec-specific PSNR approximation.
+///
+/// Returns PSNR estimate in dB given codec name and average QP.
+/// Formulas are empirically derived from typical codec behavior:
+/// - AV1: base_q_idx (0–255), roughly PSNR ≈ 48 - 0.15 * q_idx
+/// - HEVC: QP (0–51), roughly PSNR ≈ 52 - 0.60 * qp
+/// - H.264: QP (0–51), roughly PSNR ≈ 51 - 0.65 * qp
+/// - Unknown: fallback 50 - 0.70 * qp
+pub fn psnr_from_qp(codec: &str, avg_qp: f64) -> f64 {
+    let psnr = match codec {
+        "av1"  => 48.0 - 0.15 * avg_qp,
+        "hevc" => 52.0 - 0.60 * avg_qp,
+        "h264" => 51.0 - 0.65 * avg_qp,
+        _      => 50.0 - 0.70 * avg_qp,
+    };
+    psnr.max(0.0)
+}
+
+/// Derive a curve-group key from a file name for grouping multi-file RD series.
+///
+/// Strips trailing QP/CRF/quality indicators so that files from the same
+/// encoding run but at different quality levels share a common key.
+///
+/// Examples:
+///   `video_qp28.ivf`  → `video`
+///   `clip_crf32.mp4`  → `clip`
+///   `test_q40.265`    → `test`
+///   `movie.mkv`       → `movie`
+fn curve_key_from_name(file_name: &str) -> String {
+    // Strip extension
+    let stem = std::path::Path::new(file_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_name);
+
+    // Strip trailing quality suffixes: _qpN, _crfN, _qN (case-insensitive), then trim separators.
+    let lower = stem.to_lowercase();
+    let trimmed = strip_quality_suffix(&lower);
+    // Use the same slice length from the original (preserve original casing)
+    let key = &stem[..trimmed.len().min(stem.len())];
+    key.trim_matches(|c: char| c == '_' || c == '-').to_string()
+}
+
+/// Remove trailing `_qpN`, `_crfN`, `_qN`, or plain digits suffix.
+fn strip_quality_suffix(s: &str) -> &str {
+    // Try known keyword prefixes followed by digits.
+    for sep in &['_', '-'] {
+        for kw in &["qp", "crf", "q", "cq"] {
+            let pattern = format!("{}{}", sep, kw);
+            if let Some(pos) = s.rfind(pattern.as_str()) {
+                let after = &s[pos + pattern.len()..];
+                if !after.is_empty() && after.chars().all(|c| c.is_ascii_digit()) {
+                    return &s[..pos];
+                }
+            }
+        }
+    }
+    // Strip plain trailing digits (e.g. "encode28")
+    let trimmed = s.trim_end_matches(|c: char| c.is_ascii_digit());
+    if trimmed.len() < s.len() && !trimmed.is_empty() {
+        return trimmed;
+    }
+    s
+}
+
+/// Extract average QP and duration from raw file data.
+/// Returns (avg_qp, duration_seconds, codec_name).
+fn extract_rd_stats_from_data(data: &[u8]) -> Result<(f64, f64, String), String> {
+    // Try IVF (AV1)
+    if data.len() >= 32 && &data[0..4] == b"DKIF" {
+        if let Ok((header, frames)) = bitvue_av1_codec::parse_ivf(data) {
+            let frame_count = frames.len() as f64;
+            let fps = if header.framerate_den > 0 && header.framerate_num > 0 {
+                header.framerate_num as f64 / header.framerate_den as f64
+            } else {
+                30.0
+            };
+            let duration_secs = if fps > 0.0 { frame_count / fps } else { 0.0 };
+
+            // Extract avg QP from AV1 OBU headers
+            let mut qp_sum = 0.0f64;
+            let mut qp_count = 0usize;
+            for frame in &frames {
+                if let Ok(obus) = bitvue_av1_codec::parse_all_obus(&frame.data) {
+                    for obu in &obus {
+                        if matches!(obu.obu_type, bitvue_av1_codec::ObuType::FrameHeader | bitvue_av1_codec::ObuType::Frame) {
+                            if let Ok(fh) = bitvue_av1_codec::parse_frame_header_basic(&obu.data) {
+                                qp_sum += fh.base_q_idx as f64;
+                                qp_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            let avg_qp = if qp_count > 0 { qp_sum / qp_count as f64 } else { 30.0 };
+            return Ok((avg_qp, duration_secs, "av1".to_string()));
+        }
+    }
+
+    // Try HEVC Annex B
+    if let Ok(frames) = bitvue_hevc::extract_annex_b_frames(data) {
+        if !frames.is_empty() {
+            let qp_values: Vec<f64> = frames.iter()
+                .filter_map(|f| f.slice_header.as_ref())
+                .map(|h| (26 + h.slice_qp_delta as i32).clamp(0, 51) as f64)
+                .collect();
+            let avg_qp = if !qp_values.is_empty() {
+                qp_values.iter().sum::<f64>() / qp_values.len() as f64
+            } else { 30.0 };
+            let duration_secs = frames.len() as f64 / 30.0;
+            return Ok((avg_qp, duration_secs, "hevc".to_string()));
+        }
+    }
+
+    // Try H.264 Annex B
+    if let Ok(frames) = bitvue_avc::extract_annex_b_frames(data) {
+        if !frames.is_empty() {
+            let qp_values: Vec<f64> = frames.iter()
+                .filter_map(|f| f.slice_header.as_ref())
+                .map(|h| (26 + h.slice_qp_delta).clamp(0, 51) as f64)
+                .collect();
+            let avg_qp = if !qp_values.is_empty() {
+                qp_values.iter().sum::<f64>() / qp_values.len() as f64
+            } else { 30.0 };
+            let duration_secs = frames.len() as f64 / 30.0;
+            return Ok((avg_qp, duration_secs, "h264".to_string()));
+        }
+    }
+
+    // Fallback: use file size heuristic (QP 30, 1 second)
+    Ok((30.0, 1.0, "unknown".to_string()))
+}

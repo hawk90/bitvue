@@ -413,15 +413,146 @@ impl Default for Av1FrameIdentityExtractor {
 }
 
 impl FrameIdentityExtractor for Av1FrameIdentityExtractor {
-    fn extract_frames(&self, _data: &[u8]) -> Result<Vec<FrameMetadata>, ExtractionError> {
-        // TODO: Implement actual AV1 frame extraction
-        // For now, return stub implementation
-        Ok(vec![])
+    /// Extract frame metadata from a raw AV1 OBU stream.
+    ///
+    /// Scans OBUs to count displayable frames.  Because a raw AV1 stream
+    /// carries no external PTS/DTS (those come from a container), each
+    /// discovered frame is given `pts = None` and `dts = None`.
+    ///
+    /// When `has_container = true` the caller is expected to merge container
+    /// timestamps into the returned metadata after the fact; this method still
+    /// returns `None` timestamps since the raw OBU bytes contain none.
+    ///
+    /// A "frame" is counted when an OBU of type Frame (6) or FrameHeader (3)
+    /// is encountered and the parsed `show_frame` flag is set, **or** when
+    /// a `show_existing_frame` OBU is found (also displayable).
+    ///
+    /// If the bitstream cannot be parsed at all an empty vec is returned
+    /// rather than an error, per the resilient-parsing contract.
+    fn extract_frames(&self, data: &[u8]) -> Result<Vec<FrameMetadata>, ExtractionError> {
+        // Minimal inline OBU scanner — avoids a circular dependency on
+        // bitvue-av1-codec by duplicating only the 20-line OBU header parse.
+        let mut frames: Vec<FrameMetadata> = Vec::new();
+        let mut offset = 0usize;
+
+        while offset < data.len() {
+            // ── Parse OBU header ──────────────────────────────────────────
+            let slice = &data[offset..];
+            if slice.is_empty() {
+                break;
+            }
+
+            let byte0 = slice[0];
+            // forbidden_bit (bit 7) must be 0
+            if byte0 & 0x80 != 0 {
+                // Skip one byte and try to resync
+                offset += 1;
+                continue;
+            }
+            let obu_type = (byte0 >> 3) & 0x0F; // bits 6-3
+            let has_extension = (byte0 >> 2) & 0x01 != 0;
+            let has_size = (byte0 >> 1) & 0x01 != 0;
+
+            let header_bytes = if has_extension { 2usize } else { 1usize };
+            if slice.len() < header_bytes {
+                break;
+            }
+
+            // ── Parse OBU size (LEB128) ────────────────────────────────────
+            let payload_start = if has_size {
+                let mut size_offset = header_bytes;
+                let mut leb_bytes = 0usize;
+                loop {
+                    if size_offset >= slice.len() || leb_bytes >= 8 {
+                        // Truncated or malformed — skip
+                        break;
+                    }
+                    let b = slice[size_offset];
+                    size_offset += 1;
+                    leb_bytes += 1;
+                    if b & 0x80 == 0 {
+                        break;
+                    }
+                }
+                size_offset
+            } else {
+                header_bytes
+            };
+
+            // Compute payload size
+            let payload_size: usize = if has_size {
+                // Decode the LEB128 we just scanned
+                let mut val = 0u64;
+                let mut shift = 0u32;
+                let mut pos = header_bytes;
+                loop {
+                    if pos >= payload_start || pos >= slice.len() {
+                        break;
+                    }
+                    let b = slice[pos] as u64;
+                    val |= (b & 0x7F) << shift;
+                    shift += 7;
+                    pos += 1;
+                    if slice[pos - 1] & 0x80 == 0 {
+                        break;
+                    }
+                }
+                val as usize
+            } else {
+                slice.len().saturating_sub(payload_start)
+            };
+
+            let total_obu_bytes = payload_start + payload_size;
+            if total_obu_bytes > slice.len() {
+                // Truncated OBU — stop
+                break;
+            }
+
+            // ── Detect displayable frames ──────────────────────────────────
+            // OBU types: 3 = FRAME_HEADER, 6 = FRAME
+            if obu_type == 3 || obu_type == 6 {
+                let payload = &slice[payload_start..payload_start + payload_size];
+                if let Some(show) = parse_av1_show_frame_flag(payload) {
+                    if show {
+                        frames.push(FrameMetadata {
+                            pts: None,
+                            dts: None,
+                        });
+                    }
+                }
+            }
+
+            offset += total_obu_bytes;
+        }
+
+        Ok(frames)
     }
 
     fn codec_name(&self) -> &'static str {
         "AV1"
     }
+}
+
+/// Minimal AV1 frame-header parser that extracts only the `show_frame` flag.
+///
+/// Returns `Some(true)` when the frame is displayable (show_frame=1 or
+/// show_existing_frame=1), `Some(false)` when it is not, and `None` when
+/// the payload is too short to parse.
+fn parse_av1_show_frame_flag(payload: &[u8]) -> Option<bool> {
+    if payload.is_empty() {
+        return None;
+    }
+    let byte0 = payload[0];
+
+    // show_existing_frame is bit 7 of the first byte
+    let show_existing = (byte0 & 0x80) != 0;
+    if show_existing {
+        return Some(true);
+    }
+
+    // frame_type occupies bits 6-5, show_frame is bit 4
+    let show_frame = (byte0 & 0x10) != 0;
+    Some(show_frame)
 }
 
 // ============================================================================

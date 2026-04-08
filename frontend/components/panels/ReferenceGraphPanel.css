@@ -1,0 +1,241 @@
+/**
+ * Reference Graph Panel Styles
+ */
+
+.refgraph-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-primary, #e2e8f0);
+  background: var(--panel-bg, #1e2130);
+}
+
+.refgraph-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.refgraph-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.refgraph-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border-color, #374151);
+  border-radius: 4px;
+  background: var(--btn-bg, #2d3748);
+  color: var(--text-secondary, #a0aec0);
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s;
+}
+
+.refgraph-btn:hover:not(:disabled) {
+  background: var(--btn-hover, #4a5568);
+}
+
+.refgraph-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Stats row */
+.refgraph-stats {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.rg-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 40px;
+}
+
+.rg-stat-label {
+  font-size: 10px;
+  color: var(--text-muted, #718096);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rg-stat-value {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* GOP navigation */
+.refgraph-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.refgraph-nav-label {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary, #a0aec0);
+}
+
+.refgraph-nav-range {
+  font-size: 11px;
+  color: var(--text-muted, #718096);
+}
+
+/* GOP frame display */
+.refgraph-gop {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.refgraph-frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: 140px;
+  padding: 2px;
+}
+
+/* Frame card */
+.rg-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 40px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.1s;
+  user-select: none;
+  overflow: hidden;
+}
+
+.rg-frame:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rg-frame.selected {
+  background: rgba(255, 255, 255, 0.12);
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.rg-frame-header {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  padding: 2px 0;
+  line-height: 1.2;
+}
+
+.rg-frame-idx {
+  font-size: 10px;
+  color: var(--text-muted, #718096);
+  padding: 1px 0;
+}
+
+.rg-frame-size {
+  font-size: 9px;
+  color: var(--text-muted, #718096);
+  padding-bottom: 2px;
+}
+
+.rg-frame-tid {
+  font-size: 9px;
+  color: #a78bfa;
+  padding-bottom: 2px;
+}
+
+/* Detail panel */
+.rg-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #374151);
+  flex-shrink: 0;
+}
+
+.rg-detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.rg-detail-row > span:first-child {
+  color: var(--text-muted, #718096);
+}
+
+.rg-detail-row > span:last-child {
+  font-weight: 500;
+  color: var(--text-primary, #e2e8f0);
+}
+
+/* Mini overview */
+.refgraph-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex-shrink: 0;
+  max-height: 40px;
+  overflow: hidden;
+  padding: 4px 0;
+  border-top: 1px solid var(--border-color, #374151);
+  align-content: flex-start;
+}
+
+.rg-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.rg-dot-more {
+  font-size: 10px;
+  color: var(--text-muted, #718096);
+  align-self: center;
+  padding-left: 4px;
+}
+
+/* States */
+.refgraph-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #718096);
+  font-size: 13px;
+}
+
+.refgraph-error {
+  padding: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  color: #f87171;
+  font-size: 12px;
+  margin-bottom: 4px;
+}

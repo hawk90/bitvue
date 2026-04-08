@@ -10,13 +10,23 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { createLogger } from "../utils/logger";
 import type { FileInfo } from "../types/video";
-import { useFileState, useFrameData } from "../contexts/StreamDataContext";
+import { useFileState, useCurrentFrame } from "../contexts/StreamDataContext";
 import { useCompare } from "../contexts/CompareContext";
 
 const logger = createLogger("useAppFileOperations");
 
 const toMessage = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
+
+/** Extensions that are shown in the file picker but not yet fully supported. */
+const UNSUPPORTED_CODEC_EXTENSIONS: Record<string, string> = {
+  vvc: "VVC (H.266) analysis is not yet implemented. File structure can be opened, but frame-level analysis, QP heatmap, and motion vector overlays are unavailable.",
+  h266: "VVC (H.266) analysis is not yet implemented. File structure can be opened, but frame-level analysis, QP heatmap, and motion vector overlays are unavailable.",
+};
+
+/** Get the file extension (lowercase, no dot) from a path. */
+const getExtension = (path: string): string =>
+  path.split(".").pop()?.toLowerCase() ?? "";
 
 export interface AppFileOperationsCallbacks {
   onError: (title: string, message: string, details?: string) => void;
@@ -40,7 +50,7 @@ export function useAppFileOperations(
 ): AppFileOperationsReturn {
   const { onError } = callbacks;
   const { setFilePath, refreshFrames, clearData } = useFileState();
-  const { setFrames } = useFrameData();
+  const { setCurrentFrameIndex } = useCurrentFrame();
   const { createWorkspace } = useCompare();
 
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
@@ -54,12 +64,13 @@ export function useAppFileOperations(
       await invoke("close_file");
       setFileInfo(null);
       setFilePath(null);
+      setCurrentFrameIndex(0);
       clearData();
     } catch (err) {
       logger.error("Failed to close file:", err);
       onError("Failed to Close File", toMessage(err));
     }
-  }, [setFilePath, clearData, onError]);
+  }, [setFilePath, setCurrentFrameIndex, clearData, onError]);
 
   /**
    * Handle opening a file
@@ -99,6 +110,13 @@ export function useAppFileOperations(
       if (selected && typeof selected === "string") {
         logger.debug("Opening file:", selected);
 
+        // Pre-flight: warn user about codecs with limited support
+        const ext = getExtension(selected);
+        const unsupportedMsg = UNSUPPORTED_CODEC_EXTENSIONS[ext];
+        if (unsupportedMsg) {
+          onError("Limited Support", unsupportedMsg, selected);
+        }
+
         // Call the Tauri command to open the file
         const result = await invoke<FileInfo>("open_file", { path: selected });
 
@@ -107,10 +125,10 @@ export function useAppFileOperations(
 
         if (result.success) {
           logger.info("File opened successfully");
+          setCurrentFrameIndex(0);
           // Refresh frames after opening file
           try {
-            const loadedFrames = await refreshFrames();
-            setFrames(loadedFrames);
+            await refreshFrames();
           } catch (refreshErr) {
             logger.error(
               "Failed to refresh frames after opening file:",
@@ -135,7 +153,7 @@ export function useAppFileOperations(
       logger.error("Failed to open file:", err);
       onError("Failed to Open File", toMessage(err));
     }
-  }, [refreshFrames, setFilePath, onError, setFrames]);
+  }, [refreshFrames, setFilePath, setCurrentFrameIndex, onError]);
 
   /**
    * Handle opening dependent bitstream for comparison
@@ -179,9 +197,16 @@ export function useAppFileOperations(
         return; // User cancelled
       }
 
-      const pathB = typeof selected === "string" ? selected : selected.path;
+      const pathB = selected as string;
 
       logger.info(`Opening dependent bitstream: ${pathB}`);
+
+      // Pre-flight: warn user about codecs with limited support
+      const extB = getExtension(pathB);
+      const unsupportedMsgB = UNSUPPORTED_CODEC_EXTENSIONS[extB];
+      if (unsupportedMsgB) {
+        setOpenError(`Limited support for .${extB}: ${unsupportedMsgB}`);
+      }
 
       // Create compare workspace with current file as Stream A and selected file as Stream B
       await createWorkspace(fileInfo.path, pathB);

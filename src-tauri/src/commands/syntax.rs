@@ -51,19 +51,32 @@ pub async fn get_frame_syntax(
         .and_then(|e| e.to_str())
         .unwrap_or("unknown");
 
+    // Detect real stream dimensions from loaded file data
+    let (width, height) = {
+        let maybe_data = state.decode_service.lock()
+            .ok()
+            .and_then(|svc| svc.get_file_data().ok());
+        if let Some(file_data) = maybe_data {
+            let codec = crate::commands::analysis::detect_codec_from_path(&path);
+            crate::commands::analysis::extract_stream_dimensions(&file_data, &codec)
+        } else {
+            (1920u32, 1080u32)
+        }
+    };
+
     // Build syntax tree based on codec
     let syntax_tree = match ext {
-        "ivf" | "av1" => build_av1_syntax_tree(frame_index, frame, &path),
+        "ivf" | "av1" => build_av1_syntax_tree(frame_index, frame, width, height),
         "webm" | "mkv" => {
             // Could be AV1, VP9, etc.
-            build_av1_syntax_tree(frame_index, frame, &path)
+            build_av1_syntax_tree(frame_index, frame, width, height)
         }
         "mp4" | "mov" => {
             // Could be AV1, H.264, H.265 - try AV1 first
-            build_av1_syntax_tree(frame_index, frame, &path)
+            build_av1_syntax_tree(frame_index, frame, width, height)
         }
-        "h264" | "264" => build_avc_syntax_tree(frame_index, frame),
-        "h265" | "265" | "hevc" => build_hevc_syntax_tree(frame_index, frame),
+        "h264" | "264" => build_avc_syntax_tree(frame_index, frame, width, height),
+        "h265" | "265" | "hevc" => build_hevc_syntax_tree(frame_index, frame, width, height),
         _ => build_generic_syntax_tree(frame),
     };
 
@@ -90,7 +103,7 @@ fn create_leaf_node(
 /// Helper: Build sequence header OBU node
 ///
 /// Creates the sequence_header OBU syntax tree with global decoder config.
-fn build_sequence_header_node() -> SyntaxNode {
+fn build_sequence_header_node(width: u32, height: u32) -> SyntaxNode {
     SyntaxNode {
         name: "sequence_header".to_string(),
         description: Some("Sequence Header OBU - global decoder configuration".to_string()),
@@ -98,8 +111,8 @@ fn build_sequence_header_node() -> SyntaxNode {
         children: vec![
             create_leaf_node("seq_profile", Some(SyntaxValue::Number(0)), Some("AV1 profile (0=main, 1=high, 2=professional)")),
             create_leaf_node("still_picture", Some(SyntaxValue::Boolean(false)), Some("Whether this is a still picture")),
-            create_leaf_node("max_frame_width", Some(SyntaxValue::Number(1920)), Some("Maximum frame width in pixels")),
-            create_leaf_node("max_frame_height", Some(SyntaxValue::Number(1080)), Some("Maximum frame height in pixels")),
+            create_leaf_node("max_frame_width", Some(SyntaxValue::Number(width as i64)), Some("Maximum frame width in pixels")),
+            create_leaf_node("max_frame_height", Some(SyntaxValue::Number(height as i64)), Some("Maximum frame height in pixels")),
         ],
     }
 }
@@ -264,13 +277,13 @@ fn build_tile_group_node(frame_size: &str) -> SyntaxNode {
 /// Helper: Build OBU sequence node
 ///
 /// Creates the obu_sequence syntax tree with OBU hierarchy.
-fn build_obu_sequence_node(frame_type: &str, frame_size: &str) -> SyntaxNode {
+fn build_obu_sequence_node(frame_type: &str, frame_size: &str, width: u32, height: u32) -> SyntaxNode {
     SyntaxNode {
         name: "obu_sequence".to_string(),
         description: Some("OBU (Open Bitstream Unit) sequence in this frame".to_string()),
         value: None,
         children: vec![
-            build_sequence_header_node(),
+            build_sequence_header_node(width, height),
             build_frame_header_node(frame_type),
             build_tile_group_node(frame_size),
         ],
@@ -296,9 +309,10 @@ fn build_size_node(frame_size: usize) -> SyntaxNode {
 fn build_av1_syntax_tree(
     frame_index: usize,
     frame: &FrameData,
-    _path: &str,
+    width: u32,
+    height: u32,
 ) -> SyntaxNode {
-    let frame_size = "1920x1080"; // Default frame size for syntax tree display
+    let frame_size = format!("{}x{}", width, height);
 
     SyntaxNode {
         name: format!("Frame {}", frame_index),
@@ -326,7 +340,7 @@ fn build_av1_syntax_tree(
                 Some(SyntaxValue::Boolean(frame.key_frame.unwrap_or(false))),
                 Some("Whether this is a key frame (random access point)"),
             ),
-            build_obu_sequence_node(&frame.frame_type, &frame_size),
+            build_obu_sequence_node(&frame.frame_type, &frame_size, width, height),
         ],
     }
 }
@@ -335,6 +349,8 @@ fn build_av1_syntax_tree(
 fn build_avc_syntax_tree(
     frame_index: usize,
     frame: &FrameData,
+    width: u32,
+    height: u32,
 ) -> SyntaxNode {
     SyntaxNode {
         name: format!("Frame {}", frame_index),
@@ -389,7 +405,7 @@ fn build_avc_syntax_tree(
                             },
                             SyntaxNode {
                                 name: "resolution".to_string(),
-                                value: Some(SyntaxValue::String("1920x1080".to_string())),
+                                value: Some(SyntaxValue::String(format!("{}x{}", width, height))),
                                 description: Some("Frame resolution".to_string()),
                                 children: vec![],
                             },
@@ -438,7 +454,7 @@ fn build_avc_syntax_tree(
                                     },
                                     SyntaxNode {
                                         name: "mb_count".to_string(),
-                                        value: Some(SyntaxValue::Number((1920 / 16) * (1080 / 16))), // Approx
+                                        value: Some(SyntaxValue::Number(((width / 16) * (height / 16)) as i64)),
                                         description: Some("Number of macroblocks".to_string()),
                                         children: vec![],
                                     },
@@ -456,6 +472,8 @@ fn build_avc_syntax_tree(
 fn build_hevc_syntax_tree(
     frame_index: usize,
     frame: &FrameData,
+    width: u32,
+    height: u32,
 ) -> SyntaxNode {
     SyntaxNode {
         name: format!("Frame {}", frame_index),
@@ -561,7 +579,7 @@ fn build_hevc_syntax_tree(
                             },
                             SyntaxNode {
                                 name: "ctu_count".to_string(),
-                                value: Some(SyntaxValue::Number((1920 / 64) * (1080 / 64))), // Approx
+                                value: Some(SyntaxValue::Number(((width.div_ceil(64)) * (height.div_ceil(64))) as i64)),
                                 description: Some("Number of CTUs in frame".to_string()),
                                 children: vec![],
                             },

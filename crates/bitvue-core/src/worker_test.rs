@@ -655,3 +655,85 @@ mod edge_case_tests {
         assert_eq!(manager.in_flight_count(StreamId::A), 0);
     }
 }
+
+// ============================================================================
+// Spawn (Actual Execution) Tests
+// ============================================================================
+
+#[cfg(test)]
+mod spawn_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_spawn_executes_work() {
+        // Arrange
+        let manager = AsyncJobManager::new();
+        let executed = Arc::new(AtomicBool::new(false));
+        let executed_clone = executed.clone();
+        let job = create_test_parse_job(StreamId::A, 0);
+
+        // Act
+        manager.spawn(job, move || {
+            executed_clone.store(true, Ordering::SeqCst);
+        });
+
+        // Wait for thread (max 1s)
+        let start = std::time::Instant::now();
+        while !executed.load(Ordering::SeqCst) && start.elapsed().as_millis() < 1000 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        // Assert
+        assert!(executed.load(Ordering::SeqCst), "Work function should have been executed");
+        assert_eq!(manager.in_flight_count(StreamId::A), 0, "Job should be complete");
+    }
+
+    #[test]
+    fn test_spawn_queued_work_runs_after_slot_opens() {
+        // Arrange
+        let manager = AsyncJobManager::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        // Fill both in-flight slots
+        let job1 = create_test_decode_job(StreamId::A, 1, 0);
+        let job2 = create_test_decode_job(StreamId::A, 2, 0);
+        manager.submit(job1.clone());
+        manager.submit(job2.clone());
+        assert_eq!(manager.in_flight_count(StreamId::A), 2);
+
+        // Queue a third job via spawn (should be queued, not run yet)
+        let count_clone = count.clone();
+        let job3 = create_test_decode_job(StreamId::A, 3, 0);
+        manager.spawn(job3.clone(), move || {
+            count_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        // Third job should be queued, not yet executed
+        assert_eq!(manager.in_flight_count(StreamId::A), 2);
+
+        // Complete one in-flight job — this should trigger the queued spawn
+        manager.complete_job(&job1);
+
+        // Wait for the queued job to run
+        let start = std::time::Instant::now();
+        while count.load(Ordering::SeqCst) == 0 && start.elapsed().as_millis() < 1000 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        // Assert
+        assert_eq!(count.load(Ordering::SeqCst), 1, "Queued work should have run after slot opened");
+    }
+
+    #[test]
+    fn test_spawn_cloneable() {
+        // Assert that AsyncJobManager is Clone (used by spawn internals)
+        let manager = AsyncJobManager::new();
+        let cloned = manager.clone();
+        assert_eq!(
+            manager.current_request_id(StreamId::A),
+            cloned.current_request_id(StreamId::A)
+        );
+    }
+}

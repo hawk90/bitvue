@@ -16,6 +16,10 @@
 import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMode } from "../../../contexts/ModeContext";
+import { CodingFlowView } from "../../Player/views/CodingFlowView";
+import { DeblockingView } from "../../Player/views/DeblockingView";
+import { ResidualsView } from "../../Player/views/ResidualsView";
+import { AV1FeaturesView } from "../../Player/views/AV1FeaturesView";
 import { useFrameData } from "../../../contexts/FrameDataContext";
 import { createLogger } from "../../../utils/logger";
 import { useCanvasInteraction } from "../../../hooks/useCanvasInteraction";
@@ -387,6 +391,18 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           e.preventDefault();
           setMode("reference");
           break;
+        case "F8":
+          e.preventDefault();
+          setMode("deblocking");
+          break;
+        case "F9":
+          e.preventDefault();
+          setMode("residuals");
+          break;
+        case "F10":
+          e.preventDefault();
+          setMode("av1-features");
+          break;
       }
     };
 
@@ -449,21 +465,51 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         />
       </div>
 
-      {/* Canvas Area */}
-      <VideoCanvas
-        frameImage={frameImage}
-        currentFrameIndex={currentFrameIndex}
-        currentFrame={currentFrame}
-        currentMode={currentMode}
-        zoom={zoom}
-        pan={pan}
-        onWheel={canvasHandlers.onWheel}
-        onMouseDown={canvasHandlers.onMouseDown}
-        onMouseMove={canvasHandlers.onMouseMove}
-        onMouseUp={canvasHandlers.onMouseUp}
-        isDragging={isDragging}
-        yuvData={convertedYuvFrame}
-      />
+      {/* Canvas Area or Analysis View */}
+      {currentMode === "coding-flow" ? (
+        <div className="yuv-analysis-view-container">
+          <CodingFlowView frame={currentFrame} />
+        </div>
+      ) : currentMode === "deblocking" ? (
+        <div className="yuv-analysis-view-container">
+          <DeblockingView
+            frame={currentFrame}
+            width={frameImage?.width ?? 1920}
+            height={frameImage?.height ?? 1080}
+          />
+        </div>
+      ) : currentMode === "residuals" ? (
+        <div className="yuv-analysis-view-container">
+          <ResidualsView
+            frame={currentFrame}
+            width={frameImage?.width ?? 1920}
+            height={frameImage?.height ?? 1080}
+          />
+        </div>
+      ) : currentMode === "av1-features" ? (
+        <div className="yuv-analysis-view-container">
+          <AV1FeaturesView
+            frame={currentFrame}
+            width={frameImage?.width ?? 1920}
+            height={frameImage?.height ?? 1080}
+          />
+        </div>
+      ) : (
+        <VideoCanvas
+          frameImage={frameImage}
+          currentFrameIndex={currentFrameIndex}
+          currentFrame={currentFrame}
+          currentMode={currentMode}
+          zoom={zoom}
+          pan={pan}
+          onWheel={canvasHandlers.onWheel}
+          onMouseDown={canvasHandlers.onMouseDown}
+          onMouseMove={canvasHandlers.onMouseMove}
+          onMouseUp={canvasHandlers.onMouseUp}
+          isDragging={isDragging}
+          yuvData={convertedYuvFrame}
+        />
+      )}
 
       {/* Loading and Placeholder States */}
       {isLoading && (

@@ -9,11 +9,21 @@
 //! - Scrub behavior: cancel all non-current jobs
 //! - Late results discarded via request_id mismatch
 //! - UI thread never blocks
+//!
+//! Architecture Note:
+//! AsyncJobManager serves two roles:
+//! 1. Tracking-only via `submit()` — for systems (e.g. Tauri commands) that do
+//!    their own async execution and only need request-ID staleness detection.
+//! 2. Actual execution via `spawn()` — schedules work on a background thread,
+//!    respects the latest-wins queue, and calls `complete_job()` automatically.
 
 use crate::StreamId;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// A boxed, once-callable work function that can be sent across threads.
+type WorkFn = Box<dyn FnOnce() + Send + 'static>;
 
 /// Job types for worker pool
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,10 +138,9 @@ pub enum JobState {
 /// Per ASYNC_PIPELINE_BACKPRESSURE.md:
 /// - Latest-wins queue (only most recent request kept)
 /// - Max 2 in-flight tasks per stream
-#[derive(Debug)]
 struct StreamQueue {
-    /// Latest queued job (replaces previous)
-    latest_job: Option<Job>,
+    /// Latest queued item — job descriptor + optional work closure (latest-wins).
+    latest_work: Option<(Job, Option<WorkFn>)>,
 
     /// In-flight jobs (max 2)
     in_flight: Vec<Job>,
@@ -140,24 +149,34 @@ struct StreamQueue {
     in_flight_count: AtomicUsize,
 }
 
+// SAFETY: WorkFn is Box<dyn FnOnce() + Send>, so StreamQueue is Send.
+// It is not Sync (FnOnce is not Sync), but Arc<Mutex<StreamQueue>> only needs Send.
+unsafe impl Send for StreamQueue {}
+
 impl StreamQueue {
     fn new() -> Self {
         Self {
-            latest_job: None,
+            latest_work: None,
             in_flight: Vec::with_capacity(2),
             in_flight_count: AtomicUsize::new(0),
         }
     }
 
-    /// Enqueue job (latest-wins: replaces previous queued job)
+    /// Enqueue job without a work function (tracking-only, latest-wins).
     fn enqueue(&mut self, job: Job) {
-        self.latest_job = Some(job);
+        self.latest_work = Some((job, None));
     }
 
-    /// Try to dequeue job if in-flight limit not reached
-    fn try_dequeue(&mut self) -> Option<Job> {
+    /// Enqueue job with a work function (spawn path, latest-wins).
+    fn enqueue_with_fn(&mut self, job: Job, f: WorkFn) {
+        self.latest_work = Some((job, Some(f)));
+    }
+
+    /// Try to dequeue the queued item if in-flight limit not reached.
+    /// Returns `(job, Option<work_fn>)`.
+    fn try_dequeue(&mut self) -> Option<(Job, Option<WorkFn>)> {
         if self.in_flight.len() < 2 {
-            self.latest_job.take()
+            self.latest_work.take()
         } else {
             None
         }
@@ -179,7 +198,7 @@ impl StreamQueue {
 
     /// Cancel all jobs (scrub behavior)
     fn cancel_all(&mut self) {
-        self.latest_job = None;
+        self.latest_work = None;
         self.in_flight.clear();
         self.in_flight_count.store(0, Ordering::Relaxed);
     }
@@ -187,9 +206,9 @@ impl StreamQueue {
     /// Cancel decode/convert jobs only (scrub behavior)
     fn cancel_decode_convert(&mut self) {
         // Clear queued decode/convert
-        if let Some(job) = &self.latest_job {
+        if let Some((job, _)) = &self.latest_work {
             if job.is_decode_convert() {
-                self.latest_job = None;
+                self.latest_work = None;
             }
         }
 
@@ -203,6 +222,11 @@ impl StreamQueue {
     fn in_flight_count(&self) -> usize {
         self.in_flight_count.load(Ordering::Relaxed)
     }
+
+    /// Whether there is any pending work (queued or in-flight)
+    fn has_pending_work(&self) -> bool {
+        self.latest_work.is_some() || !self.in_flight.is_empty()
+    }
 }
 
 /// AsyncJobManager - Worker pool with latest-wins cancellation
@@ -215,15 +239,20 @@ impl StreamQueue {
 /// - Scrub behavior (cancel non-current decode/convert jobs)
 /// - Request ID tracking for late result discarding
 /// - Cooperative cancellation
+/// - Actual background execution via `spawn()` using `std::thread`
+///
+/// Two usage modes:
+/// - `submit(job)` — tracking only; callers manage their own execution
+///   (used by Tauri commands that already run on an async thread pool).
+/// - `spawn(job, f)` — schedules `f` on a new background thread, respects
+///   the latest-wins queue, and automatically calls `complete_job()` when done.
+#[derive(Clone)]
 pub struct AsyncJobManager {
     // Request ID per stream (incremented on file open/reload/scrub)
     stream_request_ids: Arc<[AtomicU64; 2]>, // [StreamA, StreamB]
 
     // Per-stream job queues
     stream_queues: Arc<Mutex<[StreamQueue; 2]>>, // [StreamA, StreamB]
-
-                                                 // TODO Phase 2: Add actual threadpool (crossbeam-channel or tokio)
-                                                 // For MVP: in-memory queue + request_id tracking only
 }
 
 impl AsyncJobManager {
@@ -279,11 +308,15 @@ impl AsyncJobManager {
         job.request_id() == self.current_request_id(job.stream_id())
     }
 
-    /// Submit job (latest-wins queue)
+    /// Submit job for tracking only (latest-wins queue, no execution).
+    ///
+    /// Use this when the caller manages its own execution (e.g. Tauri async
+    /// commands already running on a thread pool). The job is tracked for
+    /// request-ID staleness detection and in-flight backpressure.
     ///
     /// Per ASYNC_PIPELINE_BACKPRESSURE.md:
     /// - Latest-wins: only most recent request kept
-    /// - If in-flight < 2, start immediately
+    /// - If in-flight < 2, mark in-flight immediately
     /// - Otherwise, replace queued job
     pub fn submit(&self, job: Job) {
         let stream_id = job.stream_id();
@@ -292,18 +325,14 @@ impl AsyncJobManager {
         match self.stream_queues.lock() {
             Ok(mut queues) => {
                 let queue = &mut queues[idx];
-
-                // Check if we can start immediately (in-flight < 2)
                 if queue.in_flight_count() < 2 {
                     queue.mark_in_flight(job.clone());
                     tracing::debug!(
-                        "AsyncJobManager: Started job immediately: {:?} (in-flight: {})",
+                        "AsyncJobManager: Tracking job in-flight: {:?} (in-flight: {})",
                         job,
                         queue.in_flight_count()
                     );
-                    // TODO Phase 2: Actually spawn worker thread/task here
                 } else {
-                    // Queue replaces previous (latest-wins)
                     queue.enqueue(job.clone());
                     tracing::debug!("AsyncJobManager: Queued job (latest-wins): {:?}", job);
                 }
@@ -314,16 +343,58 @@ impl AsyncJobManager {
         }
     }
 
-    /// Complete job (called by worker when done)
+    /// Spawn a job on a background thread (latest-wins queue, actual execution).
     ///
-    /// This removes the job from in-flight and tries to start queued job.
+    /// The closure `f` is executed on a new `std::thread`. When it finishes,
+    /// `complete_job()` is called automatically and the next queued work (if any)
+    /// is started. If in-flight slots are full, `f` is queued (latest-wins) and
+    /// will run when a slot opens.
+    pub fn spawn<F>(&self, job: Job, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let stream_id = job.stream_id();
+        let idx = Self::stream_idx(stream_id);
+
+        match self.stream_queues.lock() {
+            Ok(mut queues) => {
+                let queue = &mut queues[idx];
+                if queue.in_flight_count() < 2 {
+                    queue.mark_in_flight(job.clone());
+                    tracing::debug!(
+                        "AsyncJobManager: Spawning job immediately: {:?} (in-flight: {})",
+                        job,
+                        queue.in_flight_count()
+                    );
+                    let this = self.clone();
+                    let job_clone = job.clone();
+                    std::thread::spawn(move || {
+                        f();
+                        this.complete_job(&job_clone);
+                    });
+                } else {
+                    queue.enqueue_with_fn(job.clone(), Box::new(f));
+                    tracing::debug!(
+                        "AsyncJobManager: Queued job for spawn (latest-wins): {:?}",
+                        job
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!("AsyncJobManager: Mutex poisoned during spawn: {}", e);
+            }
+        }
+    }
+
+    /// Complete job (called by worker when done, or by `spawn` automatically).
+    ///
+    /// Removes the job from in-flight and starts the next queued job if any.
     /// Uses atomic check-and-invalidate pattern to prevent TOCTOU race condition.
     pub fn complete_job(&self, job: &Job) -> bool {
         let stream_id = job.stream_id();
         let idx = Self::stream_idx(stream_id);
 
-        // Load queues with atomic check of request_id
-        if let Ok(mut queues) = self.stream_queues.lock() {
+        let next_work = if let Ok(mut queues) = self.stream_queues.lock() {
             // Re-check request_id while holding lock to prevent TOCTOU
             let current_id = self.stream_request_ids[idx].load(Ordering::Acquire);
             if job.request_id() != current_id {
@@ -339,16 +410,30 @@ impl AsyncJobManager {
             let queue = &mut queues[idx];
             queue.complete_job(job);
 
-            // Try to start queued job
-            if let Some(next_job) = queue.try_dequeue() {
+            // Dequeue next item (job + optional work fn)
+            if let Some((next_job, work_fn)) = queue.try_dequeue() {
                 queue.mark_in_flight(next_job.clone());
                 tracing::debug!(
-                    "AsyncJobManager: Started queued job: {:?} (in-flight: {})",
+                    "AsyncJobManager: Starting queued job: {:?} (in-flight: {})",
                     next_job,
                     queue.in_flight_count()
                 );
-                // TODO Phase 2: Actually spawn worker thread/task here
+                Some((next_job, work_fn))
+            } else {
+                None
             }
+        } else {
+            None
+        };
+
+        // Spawn the next job outside the lock to avoid holding it across thread spawn
+        if let Some((next_job, Some(work_fn))) = next_work {
+            let this = self.clone();
+            let job_clone = next_job.clone();
+            std::thread::spawn(move || {
+                work_fn();
+                this.complete_job(&job_clone);
+            });
         }
 
         true
@@ -399,7 +484,7 @@ impl AsyncJobManager {
     pub fn has_pending_work(&self, stream_id: StreamId) -> bool {
         let idx = Self::stream_idx(stream_id);
         if let Ok(queues) = self.stream_queues.lock() {
-            queues[idx].latest_job.is_some() || !queues[idx].in_flight.is_empty()
+            queues[idx].has_pending_work()
         } else {
             false
         }

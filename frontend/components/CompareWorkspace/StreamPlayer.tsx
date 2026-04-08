@@ -4,10 +4,16 @@
  * Displays a single video stream with frame navigation.
  */
 
-import { memo, useMemo } from "react";
-import { type FrameInfo, AlignmentQuality } from "../../types/video";
+import { memo, useMemo, useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  type FrameInfo,
+  type YUVFrameData,
+  AlignmentQuality,
+} from "../../types/video";
 import { VideoCanvas } from "../panels/YuvViewerPanel/VideoCanvas";
 import { FrameNavigationControls } from "../panels/YuvViewerPanel/FrameNavigationControls";
+import type { YUVFrame } from "../../types/yuv";
 import "./StreamPlayer.css";
 
 interface StreamPlayerProps {
@@ -28,6 +34,43 @@ function StreamPlayer({
   alignmentQuality,
 }: StreamPlayerProps) {
   const currentFrameData = frames[currentFrame] || null;
+  const [yuvFrame, setYuvFrame] = useState<YUVFrame | null>(null);
+
+  useEffect(() => {
+    if (!currentFrameData) {
+      setYuvFrame(null);
+      return;
+    }
+    let cancelled = false;
+    invoke<YUVFrameData>("get_decoded_frame_yuv", {
+      frameIndex: currentFrame,
+      streamId: streamLabel,
+    })
+      .then((data) => {
+        if (cancelled || !data.success || !data.y_plane) return;
+        const b64 = (s: string) => {
+          const bin = atob(s);
+          const arr = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          return arr;
+        };
+        setYuvFrame({
+          width: data.width,
+          height: data.height,
+          y: b64(data.y_plane),
+          u: data.u_plane ? b64(data.u_plane) : new Uint8Array(0),
+          v: data.v_plane ? b64(data.v_plane) : new Uint8Array(0),
+          yStride: data.y_stride,
+          uStride: data.u_stride,
+          vStride: data.v_stride,
+          chromaSubsampling: "420",
+        });
+      })
+      .catch(() => setYuvFrame(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFrame, currentFrameData, streamLabel]);
 
   // Memoize alignment color function - it's recreated on every render otherwise
   const getAlignmentColor = useMemo(
@@ -56,6 +99,7 @@ function StreamPlayer({
             width={currentFrameData.width || 1920}
             height={currentFrameData.height || 1080}
             frameData={currentFrameData}
+            yuvData={yuvFrame ?? undefined}
           />
         ) : (
           <div className="player-placeholder">

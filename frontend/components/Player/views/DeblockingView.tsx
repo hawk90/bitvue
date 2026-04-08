@@ -8,6 +8,7 @@
  * - Codec-specific deblocking parameters
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import { memo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 
@@ -61,71 +62,67 @@ export const DeblockingView = memo(function DeblockingView({
     weakBoundaries: 0,
   });
 
-  // Generate mock boundary data
   useEffect(() => {
-    if (!frame || width === 0 || height === 0) {
+    if (!frame) {
       setBoundaries([]);
       return;
     }
 
-    const blockSize = 8;
-    const edges: BoundaryEdge[] = [];
-    const _qp = 26; // Default QP value
-
-    // Generate vertical edges
-    for (let y = 0; y < height; y += blockSize) {
-      for (let x = blockSize; x < width; x += blockSize) {
-        const bs = Math.floor(Math.random() * 5); // Boundary strength 0-4
-        const strength = bs > 0 ? (bs / 4) * (4 + Math.random()) : 0;
-        const filtered = bs > 0 && Math.random() > 0.3;
-
-        edges.push({
-          x,
-          y,
-          length: blockSize,
-          orientation: "vertical",
-          strength,
-          filtered,
-          bs,
+    invoke<{
+      frame_index: number;
+      width: number;
+      height: number;
+      boundaries: {
+        x: number;
+        y: number;
+        length: number;
+        orientation: string;
+        strength: number;
+        filtered: boolean;
+        bs: number;
+      }[];
+      params: {
+        beta_offset: number;
+        tc_offset: number;
+        filter_strength: number;
+        chroma_edge: boolean;
+      };
+      stats: {
+        total_boundaries: number;
+        filtered_boundaries: number;
+        strong_boundaries: number;
+        weak_boundaries: number;
+      };
+    }>("get_deblocking_analysis", { frameIndex: frame.frame_index })
+      .then((data) => {
+        setBoundaries(
+          data.boundaries.map((b) => ({
+            x: b.x,
+            y: b.y,
+            length: b.length,
+            orientation: b.orientation as "vertical" | "horizontal",
+            strength: b.strength,
+            filtered: b.filtered,
+            bs: b.bs,
+          })),
+        );
+        setParams({
+          betaOffset: data.params.beta_offset,
+          tcOffset: data.params.tc_offset,
+          filterStrength: data.params.filter_strength,
+          chromaEdge: data.params.chroma_edge,
         });
-      }
-    }
-
-    // Generate horizontal edges
-    for (let y = blockSize; y < height; y += blockSize) {
-      for (let x = 0; x < width; x += blockSize) {
-        const bs = Math.floor(Math.random() * 5);
-        const strength = bs > 0 ? (bs / 4) * (4 + Math.random()) : 0;
-        const filtered = bs > 0 && Math.random() > 0.3;
-
-        edges.push({
-          x,
-          y,
-          length: blockSize,
-          orientation: "horizontal",
-          strength,
-          filtered,
-          bs,
+        setStats({
+          totalBoundaries: data.stats.total_boundaries,
+          filteredBoundaries: data.stats.filtered_boundaries,
+          strongBoundaries: data.stats.strong_boundaries,
+          weakBoundaries: data.stats.weak_boundaries,
         });
-      }
-    }
-
-    setBoundaries(edges);
-
-    // Calculate statistics
-    const filteredCount = edges.filter((e) => e.filtered).length;
-    const strongCount = edges.filter((e) => e.bs >= 3).length;
-    const weakCount = edges.filter((e) => e.bs > 0 && e.bs < 3).length;
-
-    setStats({
-      totalBoundaries: edges.length,
-      filteredBoundaries: filteredCount,
-      strongBoundaries: strongCount,
-      weakBoundaries: weakCount,
-    });
-
-    setParams(CODEC_DEFAULT_PARAMS[codec] || CODEC_DEFAULT_PARAMS["AV1"]);
-  }, [frame, width, height, codec]);
+      })
+      .catch(() => {
+        setBoundaries([]);
+      });
+  }, [frame]);
 
   const getEdgeColor = (edge: BoundaryEdge) => {
     if (!edge.filtered) {

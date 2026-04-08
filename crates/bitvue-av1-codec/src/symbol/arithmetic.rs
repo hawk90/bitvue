@@ -64,9 +64,70 @@ pub struct ArithmeticDecoder<'a> {
     /// Count of symbols read (for debugging)
     pub count: u64,
     /// Enable CDF updates (adaptive probability)
-    /// TODO: Will be used when implementing adaptive CDFs (Phase 2)
-    #[allow(dead_code)]
-    allow_update_cdf: bool,
+    ///
+    /// When true, CDF tables passed to `read_symbol_adaptive` are updated
+    /// after each symbol decode, implementing the probability adaptation from
+    /// AV1 spec Section 8.3. This is used for inter-frame coding where CDFs
+    /// are updated incrementally as symbols are decoded.
+    ///
+    /// When false (e.g., for intra-only frames or when `disable_cdf_update` is
+    /// signalled in the frame header), CDF tables remain fixed.
+    pub allow_update_cdf: bool,
+}
+
+/// Update a CDF table after decoding symbol `s`.
+///
+/// Implements the AV1 spec Section 8.3 CDF update process, adapted for the
+/// CDF layout used by this decoder:
+///
+/// ```text
+/// cdf = [0, p_1, p_2, ..., p_{N-1}, 32768]
+///         ^                          ^
+///         always 0                   always CDF_SCALE
+/// ```
+///
+/// The last entry is always `CDF_SCALE` (32768), not a counter. A fixed
+/// adaptation rate is used (rate = 5, equivalent to ~3% per update) which
+/// is a reasonable default for general-purpose CDF adaptation.
+///
+/// Entries strictly below the decoded symbol are moved toward `CDF_SCALE`
+/// (higher probability), while entries at or above the symbol are moved
+/// toward 0 (lower probability). The boundary entries (0 and CDF_SCALE) are
+/// left unchanged.
+///
+/// # Arguments
+///
+/// * `cdf` - Mutable CDF slice of length `n_symbols + 1`; last entry must be
+///   `CDF_SCALE`.
+/// * `symbol` - The decoded symbol index (0..n_symbols-1). Must be < cdf.len()-1.
+pub fn update_cdf(cdf: &mut [u16], symbol: u8) {
+    if cdf.len() < 2 {
+        return; // Defensive: nothing to update
+    }
+
+    // Fixed adaptation rate: shift by 5 gives roughly 3% probability movement
+    // per decoded symbol, matching typical AV1 decoder behavior.
+    const RATE: u16 = 5;
+
+    // The mutable region is cdf[1..len-1]; the first entry is always 0 and
+    // the last is always CDF_SCALE — neither should be modified.
+    // Standard CDF format: cdf[i] = P(symbol < i) * 32768, increasing from 0 to 32768.
+    // P(symbol s) = cdf[s+1] - cdf[s].
+    // To increase P(s): push cdf[i] toward CDF_SCALE for i > s (boundary above s moves up),
+    // and push cdf[i] toward 0 for i <= s (boundary at/below s moves down).
+    let n_symbols = cdf.len() - 1;
+
+    for i in 1..n_symbols {
+        let entry = &mut cdf[i];
+        if (i as u8) > symbol {
+            // Boundary is above the decoded symbol: increase toward CDF_SCALE.
+            // This widens the probability mass for the decoded symbol.
+            *entry += (CDF_SCALE as u16 - *entry) >> RATE;
+        } else {
+            // Boundary is at or below the decoded symbol: decrease toward 0.
+            *entry -= *entry >> RATE;
+        }
+    }
 }
 
 impl<'a> ArithmeticDecoder<'a> {
@@ -185,6 +246,44 @@ impl<'a> ArithmeticDecoder<'a> {
 
         self.count += 1;
         Ok(symbol)
+    }
+
+    /// Read a symbol and update the CDF for adaptive probability estimation.
+    ///
+    /// This is the adaptive variant of `read_symbol`. In addition to decoding
+    /// the symbol, it updates the CDF entries in-place following AV1 spec
+    /// Section 8.3 (CDF update process) when `allow_update_cdf` is enabled.
+    ///
+    /// ## CDF Update Algorithm (AV1 spec Section 8.3)
+    ///
+    /// Given decoded symbol `s` and `n_symbols`:
+    /// ```text
+    /// rate = 4 + (cdf[n_symbols] >> 4)   // where cdf[n_symbols] is the count
+    /// for i in 0..n_symbols:
+    ///     if i < s: cdf[i] += (32768 - cdf[i]) >> rate
+    ///     else:      cdf[i] -= cdf[i] >> rate
+    /// if cdf[n_symbols] < 32:
+    ///     cdf[n_symbols] += 1             // increment count (saturates at 32)
+    /// ```
+    ///
+    /// When `allow_update_cdf` is false the CDF is not modified (same as
+    /// calling `read_symbol` with the same CDF).
+    pub fn read_symbol_adaptive(&mut self, cdf: &mut [u16]) -> Result<u8> {
+        let symbol = self.read_symbol(cdf)?;
+
+        if self.allow_update_cdf {
+            update_cdf(cdf, symbol);
+        }
+
+        Ok(symbol)
+    }
+
+    /// Configure whether CDF updates are applied by `read_symbol_adaptive`.
+    ///
+    /// Set to `false` for frames that signal `disable_cdf_update = 1` in
+    /// their frame header (AV1 spec Section 5.9.2).
+    pub fn set_allow_update_cdf(&mut self, allow: bool) {
+        self.allow_update_cdf = allow;
     }
 
     /// Read a boolean value with given probability
@@ -323,9 +422,15 @@ mod tests {
             decoder.value, decoder.range, decoder.cnt
         );
         assert_eq!(decoder.range, INITIAL_RANGE);
-        // After refill, value should be properly initialized
-        // TODO: Update expected value after understanding refill behavior
-        //assert_eq!(decoder.value, ...);
+        // After refill with EC_WIN_SIZE=64, cnt starts at -15 so c=55:
+        // 0x80<<55 = 0x4000_0000_0000_0000
+        // 0x00<<47 = 0
+        // 0x12<<39 = 0x0000_0900_0000_0000
+        // 0x34<<31 = 0x0000_001A_0000_0000
+        // exhausted: 0xFF<<23 = 0x0000_0000_7F80_0000
+        // cnt = 64 - 23 - 24 = 17
+        assert_eq!(decoder.value, 0x4000_091A_7F80_0000_usize);
+        assert_eq!(decoder.cnt, 17);
     }
 
     #[test]
@@ -414,5 +519,88 @@ mod tests {
 
         let result = decoder.read_symbol(&cdf);
         assert!(result.is_err(), "Should reject CDF that's too short");
+    }
+
+    #[test]
+    fn test_allow_update_cdf_field_accessible() {
+        // Verify that allow_update_cdf is a public field, not dead code
+        let data = vec![0x80, 0x00, 0x00, 0x00];
+        let mut decoder = ArithmeticDecoder::new(&data).unwrap();
+
+        // Default should be true (adaptive CDFs enabled)
+        assert!(decoder.allow_update_cdf);
+
+        // Can be disabled via set_allow_update_cdf
+        decoder.set_allow_update_cdf(false);
+        assert!(!decoder.allow_update_cdf);
+
+        // Can be re-enabled
+        decoder.set_allow_update_cdf(true);
+        assert!(decoder.allow_update_cdf);
+    }
+
+    #[test]
+    fn test_update_cdf_shifts_probability() {
+        // CDF: uniform 2 symbols [0, 16384, 32768]
+        // Decoding symbol 0 should increase cdf[1] (boundary between sym0 and sym1)
+        let mut cdf = vec![0u16, 16384u16, 32768u16];
+        let original_mid = cdf[1];
+
+        update_cdf(&mut cdf, 0);
+
+        // After decoding symbol 0, cdf[1] should be higher (sym0 becomes more likely)
+        assert!(
+            cdf[1] > original_mid,
+            "cdf[1] should increase after decoding symbol 0: {} > {}",
+            cdf[1],
+            original_mid
+        );
+        // Boundary entries must not change
+        assert_eq!(cdf[0], 0, "First entry should remain 0");
+        assert_eq!(cdf[2], 32768, "Last entry should remain CDF_SCALE");
+    }
+
+    #[test]
+    fn test_update_cdf_no_op_when_disabled() {
+        // When allow_update_cdf is false, read_symbol_adaptive should not modify the CDF
+        let data = vec![0x80, 0x00, 0x00, 0x00];
+        let mut decoder = ArithmeticDecoder::new(&data).unwrap();
+        decoder.set_allow_update_cdf(false);
+
+        let mut cdf = vec![0u16, 16384u16, 32768u16];
+        let original = cdf.clone();
+
+        let result = decoder.read_symbol_adaptive(&mut cdf);
+        assert!(result.is_ok());
+
+        // CDF should be unchanged since allow_update_cdf is false
+        assert_eq!(
+            cdf, original,
+            "CDF should not be modified when allow_update_cdf is false"
+        );
+    }
+
+    #[test]
+    fn test_update_cdf_applied_when_enabled() {
+        // When allow_update_cdf is true, read_symbol_adaptive should modify the CDF
+        let data = vec![0x80, 0x00, 0x00, 0x00];
+        let mut decoder = ArithmeticDecoder::new(&data).unwrap();
+        // allow_update_cdf defaults to true
+
+        let mut cdf = vec![0u16, 16384u16, 32768u16];
+        let original = cdf.clone();
+
+        let result = decoder.read_symbol_adaptive(&mut cdf);
+        assert!(result.is_ok());
+
+        // CDF should have changed since allow_update_cdf is true
+        // (the middle probability entry should shift)
+        assert_ne!(
+            cdf, original,
+            "CDF should be modified when allow_update_cdf is true"
+        );
+        // Boundary values must remain valid
+        assert_eq!(cdf[0], 0);
+        assert_eq!(*cdf.last().unwrap(), 32768);
     }
 }

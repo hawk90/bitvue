@@ -9,6 +9,7 @@
  */
 
 import { memo, useMemo, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { FrameInfo } from "../../../types/video";
 
 interface ResidualsViewProps {
@@ -50,69 +51,63 @@ export const ResidualsView = memo(function ResidualsView({
   const [coefficientStats, setCoefficientStats] =
     useState<CoefficientStats | null>(null);
 
-  // Generate mock block residuals based on frame info
   useEffect(() => {
-    if (!frame || width === 0 || height === 0) {
+    if (!frame) {
       setBlockResiduals([]);
       setCoefficientStats(null);
       return;
     }
 
-    const blockSize = 16;
-    const blocks: BlockResidual[] = [];
-    const qp = 26; // Default QP value
-
-    // Generate mock residual data
-    const gridW = Math.ceil(width / blockSize);
-    const gridH = Math.ceil(height / blockSize);
-
-    for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        const energy = Math.random() * (100 - qp);
-        const maxCoeff = Math.random() * (255 - qp * 2);
-        const nonZeros = Math.floor(
-          Math.random() * ((blockSize * blockSize) / 4),
+    invoke<{
+      frame_index: number;
+      width: number;
+      height: number;
+      coefficient_stats: {
+        min: number;
+        max: number;
+        mean: number;
+        variance: number;
+        energy: number;
+        zero_count: number;
+        non_zero_count: number;
+      };
+      block_residuals: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        energy: number;
+        max_coeff: number;
+        non_zeros: number;
+      }[];
+    }>("get_residual_analysis", { frameIndex: frame.frame_index })
+      .then((data) => {
+        setBlockResiduals(
+          data.block_residuals.map((b) => ({
+            x: b.x,
+            y: b.y,
+            width: b.width,
+            height: b.height,
+            energy: b.energy,
+            maxCoeff: b.max_coeff,
+            nonZeros: b.non_zeros,
+          })),
         );
-
-        blocks.push({
-          x: x * blockSize,
-          y: y * blockSize,
-          width: blockSize,
-          height: blockSize,
-          energy,
-          maxCoeff,
-          nonZeros,
+        setCoefficientStats({
+          min: data.coefficient_stats.min,
+          max: data.coefficient_stats.max,
+          mean: data.coefficient_stats.mean,
+          variance: data.coefficient_stats.variance,
+          energy: data.coefficient_stats.energy,
+          zeroCount: data.coefficient_stats.zero_count,
+          nonZeroCount: data.coefficient_stats.non_zero_count,
         });
-      }
-    }
-
-    setBlockResiduals(blocks);
-
-    // Calculate coefficient statistics
-    const allCoeffs = blocks.flatMap((b) =>
-      Array(b.nonZeros)
-        .fill(0)
-        .map(() => Math.random() * b.maxCoeff),
-    );
-
-    if (allCoeffs.length > 0) {
-      const mean = allCoeffs.reduce((a, b) => a + b, 0) / allCoeffs.length;
-      const variance =
-        allCoeffs.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) /
-        allCoeffs.length;
-      const energy = allCoeffs.reduce((sum, val) => sum + val * val, 0);
-
-      setCoefficientStats({
-        min: Math.min(...allCoeffs),
-        max: Math.max(...allCoeffs),
-        mean,
-        variance: Math.sqrt(variance),
-        energy,
-        zeroCount: blocks.length * blockSize * blockSize - allCoeffs.length,
-        nonZeroCount: allCoeffs.length,
+      })
+      .catch(() => {
+        setBlockResiduals([]);
+        setCoefficientStats(null);
       });
-    }
-  }, [frame, width, height]);
+  }, [frame]);
 
   const heatmapColors = useMemo(() => {
     if (!blockResiduals.length) return [];
@@ -158,6 +153,12 @@ export const ResidualsView = memo(function ResidualsView({
           <span>Frame {frame.frame_index}</span>
           <span className={frame.frame_type.toLowerCase()}>
             {frame.frame_type}
+          </span>
+          <span
+            className="residuals-approx-label"
+            title="Energy derived from QP values; actual coefficient decoding not yet implemented"
+          >
+            QP-based approximation
           </span>
         </div>
       </div>

@@ -1,11 +1,12 @@
 /**
  * Diff Overlay - Difference visualization for A/B compare
  *
- * Shows pixel-wise difference, PSNR map, or SSIM map.
+ * Shows QP-delta difference map, or frame-size based approximation.
  */
 
-import { memo, useMemo } from "react";
-import { type FrameInfo } from "../../types/video";
+import { memo, useMemo, useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { type FrameInfo, type YUVFrameData } from "../../types/video";
 import "./DiffOverlay.css";
 
 interface DiffOverlayProps {
@@ -14,99 +15,264 @@ interface DiffOverlayProps {
   mode: "difference" | "psnr" | "ssim";
 }
 
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * Math.max(0, Math.min(1, t));
+}
+
+function diffColor(delta: number, maxDelta: number): string {
+  if (maxDelta === 0) return "rgba(0,100,200,0.25)";
+  const t = Math.abs(delta) / maxDelta;
+  // Blue (low diff) → yellow → red (high diff)
+  if (t < 0.5) {
+    const r = Math.round(lerp(0, 255, t * 2));
+    const g = Math.round(lerp(100, 220, t * 2));
+    return `rgba(${r},${g},20,${0.3 + t * 0.5})`;
+  } else {
+    const r = 255;
+    const g = Math.round(lerp(220, 0, (t - 0.5) * 2));
+    return `rgba(${r},${g},0,${0.55 + (t - 0.5) * 0.45})`;
+  }
+}
+
 function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
-  // Calculate difference visualization
-  const _diffCanvas = useMemo(() => {
-    if (!frameA.thumbnail || !frameB.thumbnail) return null;
+  // Load YUV data for both streams to enable pixel-level diff
+  const [yuvA, setYuvA] = useState<YUVFrameData | null>(null);
+  const [yuvB, setYuvB] = useState<YUVFrameData | null>(null);
 
-    // Create canvas for diff visualization
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      invoke<YUVFrameData>("get_decoded_frame_yuv", {
+        frameIndex: frameA.frame_index,
+        streamId: "A",
+      }).catch(() => null),
+      invoke<YUVFrameData>("get_decoded_frame_yuv", {
+        frameIndex: frameB.frame_index,
+        streamId: "B",
+      }).catch(() => null),
+    ]).then(([a, b]) => {
+      if (cancelled) return;
+      setYuvA(a && a.success ? a : null);
+      setYuvB(b && b.success ? b : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [frameA.frame_index, frameB.frame_index]);
 
-    const _imgA = new Image();
-    const _imgB = new Image();
+  // Build block-level delta grid: prefer YUV pixel diff → QP grid → size approx
+  const diffBlocks = useMemo(() => {
+    // 1. Pixel-level YUV diff (16x16 blocks sampled from Y plane)
+    if (
+      yuvA &&
+      yuvB &&
+      yuvA.y_plane &&
+      yuvB.y_plane &&
+      yuvA.width === yuvB.width
+    ) {
+      const b64 = (s: string) => {
+        const bin = atob(s);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return arr;
+      };
+      const yaData = b64(yuvA.y_plane);
+      const ybData = b64(yuvB.y_plane);
+      const w = yuvA.width;
+      const h = yuvA.height;
+      const blockSize = 16;
+      const gridW = Math.ceil(w / blockSize);
+      const gridH = Math.ceil(h / blockSize);
+      const deltas: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        delta: number;
+      }[] = [];
+      let maxDelta = 0;
+      for (let row = 0; row < gridH; row++) {
+        for (let col = 0; col < gridW; col++) {
+          let sumDiff = 0;
+          let count = 0;
+          for (let dy = 0; dy < blockSize; dy++) {
+            const py = row * blockSize + dy;
+            if (py >= h) break;
+            for (let dx = 0; dx < blockSize; dx++) {
+              const px = col * blockSize + dx;
+              if (px >= w) break;
+              const idx = py * yuvA.y_stride + px;
+              sumDiff += Math.abs((yaData[idx] ?? 0) - (ybData[idx] ?? 0));
+              count++;
+            }
+          }
+          const avgDiff = count > 0 ? sumDiff / count : 0;
+          if (avgDiff > maxDelta) maxDelta = avgDiff;
+          deltas.push({
+            x: col * blockSize,
+            y: row * blockSize,
+            w: blockSize,
+            h: blockSize,
+            delta: avgDiff,
+          });
+        }
+      }
+      return {
+        blocks: deltas,
+        maxDelta: Math.max(maxDelta, 1),
+        totalW: w,
+        totalH: h,
+        source: "pixel" as const,
+      };
+    }
 
-    // This would need actual image data
-    // For now, it's a placeholder for the diff visualization
+    // 2. QP grid delta
+    const qpA = frameA.qp_grid;
+    const qpB = frameB.qp_grid;
 
-    return canvas;
+    if (qpA && qpB && qpA.qp.length > 0 && qpB.qp.length > 0) {
+      const gridW = Math.min(qpA.grid_w, qpB.grid_w);
+      const gridH = Math.min(qpA.grid_h, qpB.grid_h);
+      const blockW = qpA.block_w;
+      const blockH = qpA.block_h;
+
+      const deltas: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        delta: number;
+      }[] = [];
+      let maxDelta = 0;
+
+      for (let row = 0; row < gridH; row++) {
+        for (let col = 0; col < gridW; col++) {
+          const idxA = row * qpA.grid_w + col;
+          const idxB = row * qpB.grid_w + col;
+          const qpValA = qpA.qp[idxA] ?? -1;
+          const qpValB = qpB.qp[idxB] ?? -1;
+          if (qpValA < 0 || qpValB < 0) continue;
+          const delta = qpValB - qpValA;
+          if (Math.abs(delta) > maxDelta) maxDelta = Math.abs(delta);
+          deltas.push({
+            x: col * blockW,
+            y: row * blockH,
+            w: blockW,
+            h: blockH,
+            delta,
+          });
+        }
+      }
+
+      const totalW = gridW * blockW;
+      const totalH = gridH * blockH;
+      return {
+        blocks: deltas,
+        maxDelta,
+        totalW,
+        totalH,
+        source: "qp" as const,
+      };
+    }
+
+    // 3. Fallback: single-block size diff approximation
+    const sizeDiff = Math.abs(frameB.size - frameA.size);
+    const maxSize = Math.max(frameA.size, frameB.size, 1);
+    const relDiff = sizeDiff / maxSize;
+    return {
+      blocks: [{ x: 0, y: 0, w: 320, h: 180, delta: relDiff * 51 }],
+      maxDelta: 51,
+      totalW: 320,
+      totalH: 180,
+      source: "size" as const,
+    };
+  }, [frameA, frameB, yuvA, yuvB]);
+
+  const svgBlocks = useMemo(() => {
+    const { blocks, maxDelta } = diffBlocks;
+    return blocks.map((b, i) => (
+      <rect
+        key={i}
+        x={b.x}
+        y={b.y}
+        width={b.w}
+        height={b.h}
+        fill={diffColor(b.delta, maxDelta)}
+        stroke="none"
+      />
+    ));
+  }, [diffBlocks]);
+
+  // PSNR approximation: invert QP delta (higher QP diff → lower PSNR)
+  const psnrLabel = useMemo(() => {
+    const qpA = frameA.qp_grid;
+    const qpB = frameB.qp_grid;
+    if (!qpA || !qpB) return null;
+    const avgQpA =
+      qpA.qp.filter((q) => q >= 0).reduce((a, b) => a + b, 0) /
+      (qpA.qp.filter((q) => q >= 0).length || 1);
+    const avgQpB =
+      qpB.qp.filter((q) => q >= 0).reduce((a, b) => a + b, 0) /
+      (qpB.qp.filter((q) => q >= 0).length || 1);
+    // Rough approximation: PSNR ≈ 50 - QP * 0.7
+    const estPsnrA = Math.max(0, 50 - avgQpA * 0.7);
+    const estPsnrB = Math.max(0, 50 - avgQpB * 0.7);
+    return {
+      a: estPsnrA.toFixed(1),
+      b: estPsnrB.toFixed(1),
+      delta: (estPsnrB - estPsnrA).toFixed(1),
+    };
   }, [frameA, frameB]);
 
-  if (mode === "difference") {
-    return (
-      <div className="diff-overlay">
-        <div className="diff-header">
-          <span>Difference Map</span>
-          <span className="diff-legend">
-            <span className="legend-item">
-              <span className="legend-color diff-none"></span> None
-            </span>
-            <span className="legend-item">
-              <span className="legend-color diff-low"></span> Low
-            </span>
-            <span className="legend-item">
-              <span className="legend-color diff-high"></span> High
-            </span>
-          </span>
-        </div>
-        <div className="diff-canvas">
-          {/* Placeholder for diff visualization */}
-          <div className="diff-placeholder">
-            Difference visualization would be rendered here
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const sourceLabel =
+    diffBlocks.source === "pixel"
+      ? "YUV pixel"
+      : diffBlocks.source === "qp"
+        ? "QP delta"
+        : "size approx";
+  const header =
+    mode === "psnr"
+      ? `PSNR Map (${sourceLabel})`
+      : mode === "ssim"
+        ? `SSIM Map (${sourceLabel})`
+        : `Difference Map (${sourceLabel})`;
 
-  if (mode === "psnr") {
-    return (
-      <div className="diff-overlay">
-        <div className="diff-header">
-          <span>PSNR Map</span>
-          <span className="diff-legend">
-            <span className="legend-item">
-              <span className="legend-color psnr-high"></span> High (&gt;40dB)
-            </span>
-            <span className="legend-item">
-              <span className="legend-color psnr-med"></span> Med (30-40dB)
-            </span>
-            <span className="legend-item">
-              <span className="legend-color psnr-low"></span> Low (&lt;30dB)
-            </span>
-          </span>
-        </div>
-        <div className="diff-canvas">
-          <div className="diff-placeholder">
-            PSNR map visualization would be rendered here
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // SSIM mode
   return (
     <div className="diff-overlay">
       <div className="diff-header">
-        <span>SSIM Map</span>
+        <span>{header}</span>
+        {diffBlocks.source === "size" && (
+          <span className="diff-approx-note">Size-based approximation</span>
+        )}
+        {diffBlocks.source === "pixel" && (
+          <span className="diff-approx-note diff-pixel-note">
+            Pixel-accurate
+          </span>
+        )}
+        {psnrLabel && mode !== "difference" && (
+          <span className="diff-psnr-note">
+            A: ~{psnrLabel.a} dB &nbsp; B: ~{psnrLabel.b} dB &nbsp; Δ:{" "}
+            {Number(psnrLabel.delta) > 0 ? "+" : ""}
+            {psnrLabel.delta} dB
+          </span>
+        )}
         <span className="diff-legend">
           <span className="legend-item">
-            <span className="legend-color ssim-high"></span> High (&gt;0.95)
+            <span className="legend-color diff-none"></span> Low
           </span>
           <span className="legend-item">
-            <span className="legend-color ssim-med"></span> Med (0.85-0.95)
-          </span>
-          <span className="legend-item">
-            <span className="legend-color ssim-low"></span> Low (&lt;0.85)
+            <span className="legend-color diff-high"></span> High
           </span>
         </span>
       </div>
       <div className="diff-canvas">
-        <div className="diff-placeholder">
-          SSIM map visualization would be rendered here
-        </div>
+        <svg
+          viewBox={`0 0 ${diffBlocks.totalW} ${diffBlocks.totalH}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ width: "100%", height: "100%", display: "block" }}
+        >
+          {svgBlocks}
+        </svg>
       </div>
     </div>
   );

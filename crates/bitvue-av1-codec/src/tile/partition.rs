@@ -151,6 +151,18 @@ pub enum BlockSize {
     Block128x64,
     /// 128x128 block
     Block128x128,
+    /// 32x8 block (HORZ_4 sub-block)
+    Block32x8,
+    /// 64x16 block (HORZ_4 sub-block)
+    Block64x16,
+    /// 128x32 block (HORZ_4 sub-block)
+    Block128x32,
+    /// 8x32 block (VERT_4 sub-block)
+    Block8x32,
+    /// 16x64 block (VERT_4 sub-block)
+    Block16x64,
+    /// 32x128 block (VERT_4 sub-block)
+    Block32x128,
 }
 
 impl BlockSize {
@@ -158,11 +170,24 @@ impl BlockSize {
     pub fn width(&self) -> u32 {
         match self {
             BlockSize::Block4x4 | BlockSize::Block4x8 => 4,
-            BlockSize::Block8x4 | BlockSize::Block8x8 | BlockSize::Block8x16 => 8,
-            BlockSize::Block16x8 | BlockSize::Block16x16 | BlockSize::Block16x32 => 16,
-            BlockSize::Block32x16 | BlockSize::Block32x32 | BlockSize::Block32x64 => 32,
-            BlockSize::Block64x32 | BlockSize::Block64x64 | BlockSize::Block64x128 => 64,
-            BlockSize::Block128x64 | BlockSize::Block128x128 => 128,
+            BlockSize::Block8x4
+            | BlockSize::Block8x8
+            | BlockSize::Block8x16
+            | BlockSize::Block8x32 => 8,
+            BlockSize::Block16x8
+            | BlockSize::Block16x16
+            | BlockSize::Block16x32
+            | BlockSize::Block16x64 => 16,
+            BlockSize::Block32x8
+            | BlockSize::Block32x16
+            | BlockSize::Block32x32
+            | BlockSize::Block32x64
+            | BlockSize::Block32x128 => 32,
+            BlockSize::Block64x16
+            | BlockSize::Block64x32
+            | BlockSize::Block64x64
+            | BlockSize::Block64x128 => 64,
+            BlockSize::Block128x32 | BlockSize::Block128x64 | BlockSize::Block128x128 => 128,
         }
     }
 
@@ -170,11 +195,24 @@ impl BlockSize {
     pub fn height(&self) -> u32 {
         match self {
             BlockSize::Block4x4 | BlockSize::Block8x4 => 4,
-            BlockSize::Block4x8 | BlockSize::Block8x8 | BlockSize::Block16x8 => 8,
-            BlockSize::Block8x16 | BlockSize::Block16x16 | BlockSize::Block32x16 => 16,
-            BlockSize::Block16x32 | BlockSize::Block32x32 | BlockSize::Block64x32 => 32,
-            BlockSize::Block32x64 | BlockSize::Block64x64 | BlockSize::Block128x64 => 64,
-            BlockSize::Block64x128 | BlockSize::Block128x128 => 128,
+            BlockSize::Block4x8
+            | BlockSize::Block8x8
+            | BlockSize::Block16x8
+            | BlockSize::Block32x8 => 8,
+            BlockSize::Block8x16
+            | BlockSize::Block16x16
+            | BlockSize::Block32x16
+            | BlockSize::Block64x16 => 16,
+            BlockSize::Block16x32
+            | BlockSize::Block32x32
+            | BlockSize::Block64x32
+            | BlockSize::Block128x32 => 32,
+            BlockSize::Block8x32
+            | BlockSize::Block16x64
+            | BlockSize::Block32x64
+            | BlockSize::Block64x64
+            | BlockSize::Block128x64 => 64,
+            BlockSize::Block32x128 | BlockSize::Block64x128 | BlockSize::Block128x128 => 128,
         }
     }
 
@@ -215,9 +253,137 @@ impl BlockSize {
                     _ => vec![*self], // Fallback
                 }
             }
-            _ => {
-                // Complex partitions - TODO: implement
-                vec![*self]
+            PartitionType::HorzA => {
+                // Top row: full-width block at half height
+                // Bottom row: left half + right half, each at half height
+                // sub-block sizes: [top-full, bottom-left-half, bottom-right-half]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block16x8,
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block32x16,
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block64x32,
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block128x64,
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::HorzB => {
+                // Top row: left half + right half, each at half height
+                // Bottom row: full-width block at half height
+                // sub-block sizes: [top-left-half, top-right-half, bottom-full]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                        BlockSize::Block16x8,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                        BlockSize::Block32x16,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                        BlockSize::Block64x32,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                        BlockSize::Block128x64,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::VertA => {
+                // Left column: full-height block at half width
+                // Right column: top half + bottom half, each at half width
+                // sub-block sizes: [left-full, top-right-half, bottom-right-half]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block8x16,
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block16x32,
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block32x64,
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block64x128,
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::VertB => {
+                // Left column: top half + bottom half, each at half width
+                // Right column: full-height block at half width
+                // sub-block sizes: [top-left-half, bottom-left-half, right-full]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x16,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x32,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x64,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x128,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::Horz4 => {
+                // Four equal horizontal strips, each at 1/4 height
+                match self {
+                    BlockSize::Block16x32 => vec![BlockSize::Block16x8; 4],
+                    BlockSize::Block32x32 => vec![BlockSize::Block32x8; 4],
+                    BlockSize::Block64x64 => vec![BlockSize::Block64x16; 4],
+                    BlockSize::Block128x128 => vec![BlockSize::Block128x32; 4],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::Vert4 => {
+                // Four equal vertical strips, each at 1/4 width
+                match self {
+                    BlockSize::Block32x16 => vec![BlockSize::Block8x16; 4],
+                    BlockSize::Block32x32 => vec![BlockSize::Block8x32; 4],
+                    BlockSize::Block64x64 => vec![BlockSize::Block16x64; 4],
+                    BlockSize::Block128x128 => vec![BlockSize::Block32x128; 4],
+                    _ => vec![*self],
+                }
             }
         }
     }
@@ -330,9 +496,49 @@ fn child_position(
                 _ => (parent_x, parent_y),
             }
         }
-        _ => {
-            // Complex partitions - for MVP, just return parent position
-            (parent_x, parent_y)
+        PartitionType::HorzA => {
+            // sub-blocks: [0]=top-full-width, [1]=bottom-left, [2]=bottom-right
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x, parent_y + h / 2),
+                2 => (parent_x + w / 2, parent_y + h / 2),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::HorzB => {
+            // sub-blocks: [0]=top-left, [1]=top-right, [2]=bottom-full-width
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x + w / 2, parent_y),
+                2 => (parent_x, parent_y + h / 2),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::VertA => {
+            // sub-blocks: [0]=left-full-height, [1]=top-right, [2]=bottom-right
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x + w / 2, parent_y),
+                2 => (parent_x + w / 2, parent_y + h / 2),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::VertB => {
+            // sub-blocks: [0]=top-left, [1]=bottom-left, [2]=right-full-height
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x, parent_y + h / 2),
+                2 => (parent_x + w / 2, parent_y),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::Horz4 => {
+            // Four equal horizontal strips at offsets 0, h/4, h/2, 3h/4
+            (parent_x, parent_y + (child_index as u32) * (h / 4))
+        }
+        PartitionType::Vert4 => {
+            // Four equal vertical strips at offsets 0, w/4, w/2, 3w/4
+            (parent_x + (child_index as u32) * (w / 4), parent_y)
         }
     }
 }

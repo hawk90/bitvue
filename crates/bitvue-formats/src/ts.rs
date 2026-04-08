@@ -20,6 +20,12 @@ const PAT_PID: u16 = 0x0000;
 /// AV1 stream type in PMT
 const STREAM_TYPE_AV1: u8 = 0x06; // Private data, need descriptor check
 
+/// H.264/AVC stream type in PMT (ISO/IEC 14496-10)
+const STREAM_TYPE_AVC: u8 = 0x1B;
+
+/// H.265/HEVC stream type in PMT (ISO/IEC 23008-2)
+const STREAM_TYPE_HEVC: u8 = 0x24;
+
 /// TS packet header
 #[derive(Debug, Clone)]
 struct TsPacket {
@@ -54,8 +60,25 @@ struct PmtStream {
 struct PesPacket {
     _stream_id: u8,
     pts: Option<u64>,
-    _dts: Option<u64>,
+    dts: Option<u64>,
     payload: Vec<u8>,
+}
+
+/// A video sample extracted from a TS stream
+#[derive(Debug, Clone)]
+pub struct VideoSample {
+    /// Byte offset in the original data where the NAL unit starts
+    pub offset: usize,
+    /// Size of the NAL unit in bytes
+    pub size: usize,
+    /// Presentation timestamp (90 kHz clock)
+    pub pts: Option<u64>,
+    /// Decode timestamp (90 kHz clock)
+    pub dts: Option<u64>,
+    /// Whether this is a keyframe (IDR for H.264, IRAP for HEVC)
+    pub key_frame: bool,
+    /// Raw NAL unit bytes (without Annex B start codes)
+    pub data: Vec<u8>,
 }
 
 /// TS demuxer information
@@ -377,7 +400,7 @@ fn parse_pes(data: &[u8]) -> Result<PesPacket> {
     Ok(PesPacket {
         _stream_id: stream_id,
         pts,
-        _dts: dts,
+        dts,
         payload,
     })
 }
@@ -391,50 +414,247 @@ fn parse_timestamp(data: &[u8]) -> u64 {
         | ((data[4] as u64) >> 1)
 }
 
+/// Split an Annex B byte sequence into individual NAL units.
+///
+/// Scans for 3-byte (0x000001) and 4-byte (0x00000001) start codes and returns
+/// the raw NAL unit payload (start code stripped) for each unit found.
+fn split_annex_b_nal_units(data: &[u8]) -> Vec<Vec<u8>> {
+    let mut nal_units = Vec::new();
+    let mut i = 0;
+
+    // Locate all start code positions
+    let mut starts: Vec<(usize, usize)> = Vec::new(); // (payload_start, start_code_len)
+    while i < data.len() {
+        if i + 3 <= data.len() && data[i] == 0x00 && data[i + 1] == 0x00 {
+            if i + 4 <= data.len() && data[i + 2] == 0x00 && data[i + 3] == 0x01 {
+                starts.push((i + 4, 4));
+                i += 4;
+                continue;
+            } else if data[i + 2] == 0x01 {
+                starts.push((i + 3, 3));
+                i += 3;
+                continue;
+            }
+        }
+        i += 1;
+    }
+
+    // Extract NAL unit bytes between consecutive start codes
+    for (idx, &(payload_start, _)) in starts.iter().enumerate() {
+        let payload_end = if idx + 1 < starts.len() {
+            // The next start code begins sc_len bytes before its payload_start;
+            // use the minimum of both to trim trailing zeros of the start code prefix.
+            let next_payload = starts[idx + 1].0;
+            let next_sc_len = starts[idx + 1].1;
+            next_payload.saturating_sub(next_sc_len)
+        } else {
+            data.len()
+        };
+
+        if payload_end > payload_start {
+            nal_units.push(data[payload_start..payload_end].to_vec());
+        }
+    }
+
+    nal_units
+}
+
+/// Determine whether an H.264 NAL unit represents a keyframe (IDR slice).
+///
+/// Per ITU-T H.264 Table 7-1, nal_unit_type 5 is an IDR slice.
+fn is_avc_keyframe(nal_data: &[u8]) -> bool {
+    if nal_data.is_empty() {
+        return false;
+    }
+    let nal_type = nal_data[0] & 0x1F;
+    nal_type == 5 // IDR slice
+}
+
+/// Determine whether an H.265 NAL unit represents a keyframe (IRAP).
+///
+/// Per ITU-T H.265 Table 7-1, nal_unit_type values 16–23 are IRAP pictures
+/// (BLA, IDR, CRA). Bit layout: nal_unit_type occupies bits [9:4] of the
+/// 2-byte NAL header.
+fn is_hevc_keyframe(nal_data: &[u8]) -> bool {
+    if nal_data.len() < 2 {
+        return false;
+    }
+    // HEVC NAL header: forbidden_zero_bit(1) | nal_unit_type(6) | nuh_layer_id(6) | nuh_temporal_id_plus1(3)
+    let nal_type = (nal_data[0] >> 1) & 0x3F;
+    // IRAP types: BLA_W_LP=16..CRA_NUT=21, RSV_IRAP_VCL22=22, RSV_IRAP_VCL23=23
+    (16..=23).contains(&nal_type)
+}
+
+/// Extract PES packets and convert them to VideoSamples for a specific PID.
+///
+/// Reassembles fragmented TS payloads into complete PES packets, strips the
+/// PES header to obtain the elementary stream payload, then splits on Annex B
+/// start codes to produce individual VideoSample entries.
+fn extract_video_samples_for_pid<F>(
+    data: &[u8],
+    video_pid: u16,
+    is_keyframe_fn: F,
+) -> Result<Vec<VideoSample>>
+where
+    F: Fn(&[u8]) -> bool,
+{
+    let mut pes_buffers: HashMap<u16, (Vec<u8>, Option<u64>, Option<u64>)> = HashMap::new();
+    let mut samples: Vec<VideoSample> = Vec::new();
+    let mut byte_offset: usize = 0;
+
+    let mut offset = 0;
+    while offset + TS_PACKET_SIZE <= data.len() {
+        let packet_data = &data[offset..offset + TS_PACKET_SIZE];
+        let packet = parse_ts_packet(packet_data)?;
+
+        if packet.pid == video_pid {
+            if packet.payload_unit_start {
+                // Flush any previously accumulated PES buffer
+                if let Some((buffer, pts, dts)) = pes_buffers.remove(&video_pid) {
+                    let nal_units = split_annex_b_nal_units(&buffer);
+                    for nal in nal_units {
+                        if nal.is_empty() {
+                            continue;
+                        }
+                        let key_frame = is_keyframe_fn(&nal);
+                        let size = nal.len();
+                        samples.push(VideoSample {
+                            offset: byte_offset,
+                            size,
+                            pts,
+                            dts,
+                            key_frame,
+                            data: nal,
+                        });
+                        byte_offset += size;
+                    }
+                }
+
+                // Start a new PES packet: parse its header to extract PTS/DTS
+                if let Ok(pes) = parse_pes(&packet.payload) {
+                    pes_buffers.insert(video_pid, (pes.payload, pes.pts, pes.dts));
+                }
+            } else if let Some((buf, _, _)) = pes_buffers.get_mut(&video_pid) {
+                buf.extend_from_slice(&packet.payload);
+            }
+        }
+
+        offset += TS_PACKET_SIZE;
+    }
+
+    // Flush the final PES buffer
+    if let Some((buffer, pts, dts)) = pes_buffers.remove(&video_pid) {
+        let nal_units = split_annex_b_nal_units(&buffer);
+        for nal in nal_units {
+            if nal.is_empty() {
+                continue;
+            }
+            let key_frame = is_keyframe_fn(&nal);
+            let size = nal.len();
+            samples.push(VideoSample {
+                offset: byte_offset,
+                size,
+                pts,
+                dts,
+                key_frame,
+                data: nal,
+            });
+            byte_offset += size;
+        }
+    }
+
+    Ok(samples)
+}
+
+/// Find the video PID in PMT streams matching a specific stream type.
+fn find_pid_by_stream_type(pmt_streams: &[PmtStream], stream_type: u8) -> Option<u16> {
+    pmt_streams
+        .iter()
+        .find(|s| s.stream_type == stream_type)
+        .map(|s| s.elementary_pid)
+}
+
 /// Extract AV1 samples from TS file
 pub fn extract_av1_samples(data: &[u8]) -> Result<Vec<Vec<u8>>> {
     let info = parse_ts(data)?;
     Ok(info.samples)
 }
 
-/// Extract H.264/AVC samples from TS file
+/// Extract H.264/AVC samples from TS file.
 ///
-/// # Note
+/// Parses the PAT and PMT to locate the H.264 video PID (stream type 0x1B),
+/// reassembles PES packets from that PID, and extracts individual NAL units
+/// by splitting on Annex B start codes (0x000001 / 0x00000001).
 ///
-/// Phase 12A: Basic implementation. Full H.264/AVC TS parsing requires:
-/// - PMT stream type detection (0x1B for H.264)
-/// - NAL unit extraction from PES packets
-/// - Annex B start code handling
-///
-/// TODO Phase 12B: Implement full H.264 TS parsing with stream type detection
+/// Returns a `Vec<Vec<u8>>` where each inner Vec is one raw NAL unit payload
+/// with start codes stripped.
 pub fn extract_avc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>> {
-    let _info = parse_ts(data)?;
+    let (_pat_entries, pmt_streams) = extract_pat_pmt(data)?;
 
-    // TODO Phase 12B: Parse TS for H.264/AVC streams
-    // For now, return an error indicating this is not yet implemented
-    Err(BitvueError::UnsupportedCodec(
-        "H.264/AVC TS parsing not yet implemented (Phase 12B)".to_string(),
-    ))
+    let video_pid = match find_pid_by_stream_type(&pmt_streams, STREAM_TYPE_AVC) {
+        Some(pid) => pid,
+        None => {
+            // No H.264 stream found in PMT; return empty rather than an error so
+            // callers can distinguish "no stream" from "parse failure".
+            return Ok(Vec::new());
+        }
+    };
+
+    let samples = extract_video_samples_for_pid(data, video_pid, is_avc_keyframe)?;
+    Ok(samples.into_iter().map(|s| s.data).collect())
 }
 
-/// Extract H.265/HEVC samples from TS file
+/// Extract H.265/HEVC samples from TS file.
 ///
-/// # Note
+/// Parses the PAT and PMT to locate the HEVC video PID (stream type 0x24),
+/// reassembles PES packets from that PID, and extracts individual NAL units
+/// by splitting on Annex B start codes (0x000001 / 0x00000001).
 ///
-/// Phase 12A: Basic implementation. Full H.265/HEVC TS parsing requires:
-/// - PMT stream type detection (0x24 for HEVC)
-/// - NAL unit extraction from PES packets
-/// - Annex B start code handling
-///
-/// TODO Phase 12C: Implement full H.265/HEVC TS parsing with stream type detection
+/// Returns a `Vec<Vec<u8>>` where each inner Vec is one raw NAL unit payload
+/// with start codes stripped.
 pub fn extract_hevc_samples(data: &[u8]) -> Result<Vec<Vec<u8>>> {
-    let _info = parse_ts(data)?;
+    let (_pat_entries, pmt_streams) = extract_pat_pmt(data)?;
 
-    // TODO Phase 12C: Parse TS for H.265/HEVC streams
-    // For now, return an error indicating this is not yet implemented
-    Err(BitvueError::UnsupportedCodec(
-        "H.265/HEVC TS parsing not yet implemented (Phase 12C)".to_string(),
-    ))
+    let video_pid = match find_pid_by_stream_type(&pmt_streams, STREAM_TYPE_HEVC) {
+        Some(pid) => pid,
+        None => {
+            // No HEVC stream found in PMT; return empty rather than an error.
+            return Ok(Vec::new());
+        }
+    };
+
+    let samples = extract_video_samples_for_pid(data, video_pid, is_hevc_keyframe)?;
+    Ok(samples.into_iter().map(|s| s.data).collect())
+}
+
+/// Extract H.264/AVC video samples as structured VideoSample records.
+///
+/// Like `extract_avc_samples` but returns full `VideoSample` structs with
+/// offset, size, PTS, DTS, and keyframe flag instead of just raw bytes.
+pub fn extract_avc_video_samples(data: &[u8]) -> Result<Vec<VideoSample>> {
+    let (_pat_entries, pmt_streams) = extract_pat_pmt(data)?;
+
+    let video_pid = match find_pid_by_stream_type(&pmt_streams, STREAM_TYPE_AVC) {
+        Some(pid) => pid,
+        None => return Ok(Vec::new()),
+    };
+
+    extract_video_samples_for_pid(data, video_pid, is_avc_keyframe)
+}
+
+/// Extract H.265/HEVC video samples as structured VideoSample records.
+///
+/// Like `extract_hevc_samples` but returns full `VideoSample` structs with
+/// offset, size, PTS, DTS, and keyframe flag instead of just raw bytes.
+pub fn extract_hevc_video_samples(data: &[u8]) -> Result<Vec<VideoSample>> {
+    let (_pat_entries, pmt_streams) = extract_pat_pmt(data)?;
+
+    let video_pid = match find_pid_by_stream_type(&pmt_streams, STREAM_TYPE_HEVC) {
+        Some(pid) => pid,
+        None => return Ok(Vec::new()),
+    };
+
+    extract_video_samples_for_pid(data, video_pid, is_hevc_keyframe)
 }
 
 /// Extract PAT and PMT entries from TS data
@@ -723,5 +943,84 @@ mod tests {
         let result = extract_av1_samples(&[]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_extract_avc_samples_empty() {
+        // Empty data: should succeed with no samples (no PMT, no AVC PID)
+        let result = extract_avc_samples(&[]);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_extract_hevc_samples_empty() {
+        // Empty data: should succeed with no samples (no PMT, no HEVC PID)
+        let result = extract_hevc_samples(&[]);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_split_annex_b_empty() {
+        let result = split_annex_b_nal_units(&[]);
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_split_annex_b_3byte_start_code() {
+        // Two NAL units separated by 3-byte start codes
+        let data = [
+            0x00, 0x00, 0x01, 0x67, 0xAA, 0xBB, // SPS NAL (type 7)
+            0x00, 0x00, 0x01, 0x65, 0xCC, 0xDD, // IDR NAL (type 5)
+        ];
+        let nal_units = split_annex_b_nal_units(&data);
+        assert_eq!(nal_units.len(), 2);
+        assert_eq!(nal_units[0], vec![0x67, 0xAA, 0xBB]);
+        assert_eq!(nal_units[1], vec![0x65, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn test_split_annex_b_4byte_start_code() {
+        // Two NAL units separated by 4-byte start codes
+        let data = [
+            0x00, 0x00, 0x00, 0x01, 0x67, 0xAA, // SPS NAL
+            0x00, 0x00, 0x00, 0x01, 0x65, 0xBB, // IDR NAL
+        ];
+        let nal_units = split_annex_b_nal_units(&data);
+        assert_eq!(nal_units.len(), 2);
+        assert_eq!(nal_units[0], vec![0x67, 0xAA]);
+        assert_eq!(nal_units[1], vec![0x65, 0xBB]);
+    }
+
+    #[test]
+    fn test_is_avc_keyframe() {
+        // IDR slice (type 5) is keyframe
+        assert!(is_avc_keyframe(&[0x65, 0x00])); // 0x65 & 0x1F = 5
+                                                 // Non-IDR slice (type 1) is not a keyframe
+        assert!(!is_avc_keyframe(&[0x41, 0x00])); // 0x41 & 0x1F = 1
+                                                  // SPS (type 7) is not a keyframe
+        assert!(!is_avc_keyframe(&[0x67, 0x00])); // 0x67 & 0x1F = 7
+                                                  // Empty is not keyframe
+        assert!(!is_avc_keyframe(&[]));
+    }
+
+    #[test]
+    fn test_is_hevc_keyframe() {
+        // IDR_W_RADL (type 19 = 0x13): nal_unit_type in bits [6:1] of first byte
+        // First byte = (19 << 1) = 0x26
+        let idr_nal = [0x26, 0x01];
+        assert!(is_hevc_keyframe(&idr_nal));
+
+        // CRA_NUT (type 21 = 0x15): first byte = (21 << 1) = 0x2A
+        let cra_nal = [0x2A, 0x01];
+        assert!(is_hevc_keyframe(&cra_nal));
+
+        // TRAIL_R (type 1): first byte = (1 << 1) = 0x02 - not keyframe
+        let trail_nal = [0x02, 0x01];
+        assert!(!is_hevc_keyframe(&trail_nal));
+
+        // Empty is not keyframe
+        assert!(!is_hevc_keyframe(&[]));
     }
 }

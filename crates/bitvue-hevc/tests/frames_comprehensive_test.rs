@@ -302,6 +302,8 @@ fn test_hevc_frame_to_unit_node_basic() {
         is_ref: true,
         temporal_id: Some(0),
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let node = hevc_frame_to_unit_node(&frame, 0);
@@ -327,6 +329,8 @@ fn test_hevc_frame_to_unit_node_p_frame() {
         is_ref: true,
         temporal_id: Some(1),
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let node = hevc_frame_to_unit_node(&frame, 0);
@@ -352,6 +356,8 @@ fn test_hevc_frame_to_unit_node_b_frame() {
         is_ref: false,
         temporal_id: None,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let node = hevc_frame_to_unit_node(&frame, 0);
@@ -387,6 +393,8 @@ fn test_hevc_frames_to_unit_nodes_single() {
         is_ref: true,
         temporal_id: Some(0),
         slice_header: None,
+        width: 0,
+        height: 0,
     }];
 
     let nodes = hevc_frames_to_unit_nodes(&frames);
@@ -410,6 +418,8 @@ fn test_hevc_frames_to_unit_nodes_multiple() {
             is_ref: true,
             temporal_id: Some(0),
             slice_header: None,
+            width: 0,
+            height: 0,
         },
         HevcFrame {
             frame_index: 1,
@@ -424,6 +434,8 @@ fn test_hevc_frames_to_unit_nodes_multiple() {
             is_ref: true,
             temporal_id: None,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
         HevcFrame {
             frame_index: 2,
@@ -438,6 +450,8 @@ fn test_hevc_frames_to_unit_nodes_multiple() {
             is_ref: false,
             temporal_id: Some(1),
             slice_header: None,
+            width: 0,
+            height: 0,
         },
     ];
 
@@ -467,6 +481,8 @@ fn test_hevc_frame_clone() {
         is_ref: true,
         temporal_id: Some(2),
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let cloned = frame.clone();

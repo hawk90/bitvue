@@ -19,10 +19,9 @@ use bitvue_av1_codec::{
     FrameType, SymbolDecoder,
 };
 
-// TODO: Re-enable after fixing overflow bug in src/tile/mv_prediction.rs:107
-// The parsing code panics with "attempt to add with overflow" when parsing certain IVF files
+// Overflow bug in src/tile/mv_prediction.rs fixed: saturating arithmetic now used for
+// neighbor position checks and MotionVector add/sub operations.
 #[test]
-#[ignore]
 fn test_mv_extraction_with_spec_cdfs() {
     // Load test IVF file
     let test_file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

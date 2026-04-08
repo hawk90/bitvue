@@ -53,9 +53,10 @@ pub fn run() {
       commands::frame::get_decoded_frame,
       commands::frame::get_decoded_frame_yuv,
       commands::analysis::get_frame_analysis,
-      commands::analysis::get_coding_flow_analysis,
-      commands::analysis::get_residual_analysis,
-      commands::analysis::get_deblocking_analysis,
+      commands::analysis::views::get_coding_flow_analysis,
+      commands::analysis::views::get_residual_analysis,
+      commands::analysis::views::get_deblocking_analysis,
+      commands::analysis::views::get_av1_features,
       commands::frame::get_frame_hex_data,
       commands::syntax::get_frame_syntax,
       commands::compare::create_compare_workspace,
@@ -68,6 +69,7 @@ pub fn run() {
       commands::export::export_analysis_report,
       commands::quality::calculate_quality_metrics,
       commands::quality::calculate_bd_rate,
+      commands::quality::get_rd_point,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

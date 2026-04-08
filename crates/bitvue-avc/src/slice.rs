@@ -158,7 +158,7 @@ impl SliceHeader {
     }
 }
 
-/// Parse slice header.
+/// Parse slice header from raw bytes.
 pub fn parse_slice_header(
     data: &[u8],
     sps_map: &HashMap<u8, Sps>,
@@ -167,7 +167,18 @@ pub fn parse_slice_header(
     nal_ref_idc: u8,
 ) -> Result<SliceHeader> {
     let mut reader = BitReader::new(data);
+    parse_slice_header_reader(&mut reader, sps_map, pps_map, nal_type, nal_ref_idc)
+}
 
+/// Parse slice header from an existing BitReader, leaving the reader positioned
+/// immediately after the slice header (i.e., at the start of slice_data()).
+pub fn parse_slice_header_reader(
+    mut reader: &mut BitReader<'_>,
+    sps_map: &HashMap<u8, Sps>,
+    pps_map: &HashMap<u8, Pps>,
+    nal_type: NalUnitType,
+    nal_ref_idc: u8,
+) -> Result<SliceHeader> {
     let first_mb_in_slice = reader.read_ue()?;
     let slice_type_raw = reader.read_ue()?;
     let slice_type = SliceType::from_u32(slice_type_raw);

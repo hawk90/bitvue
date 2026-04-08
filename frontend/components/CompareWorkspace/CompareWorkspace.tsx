@@ -18,6 +18,7 @@ import {
 import { CompareControls } from "./CompareControls";
 import { StreamPlayer } from "./StreamPlayer";
 import { DiffOverlay } from "./DiffOverlay";
+import { useCompare } from "../../contexts/CompareContext";
 import "./CompareWorkspace.css";
 
 interface CompareWorkspaceProps {
@@ -39,6 +40,7 @@ function CompareWorkspace({
   onFrameChangeA,
   onFrameChangeB,
 }: CompareWorkspaceProps) {
+  const { setSyncMode, setManualOffset } = useCompare();
   const [showDiff, setShowDiff] = useState(workspace.diff_enabled);
   const [diffMode, setDiffMode] = useState<"difference" | "psnr" | "ssim">(
     "difference",
@@ -70,16 +72,20 @@ function CompareWorkspace({
   );
 
   // Handle sync mode change
-  const handleSyncModeChange = useCallback((mode: SyncMode) => {
-    // This would be handled by parent component
-    console.log("Sync mode changed:", mode);
-  }, []);
+  const handleSyncModeChange = useCallback(
+    (mode: SyncMode) => {
+      setSyncMode(mode).catch(() => {});
+    },
+    [setSyncMode],
+  );
 
   // Handle manual offset change
-  const handleOffsetChange = useCallback((delta: number) => {
-    // This would be handled by parent component
-    console.log("Offset changed:", delta);
-  }, []);
+  const handleOffsetChange = useCallback(
+    (delta: number) => {
+      setManualOffset(workspace.manual_offset + delta).catch(() => {});
+    },
+    [setManualOffset, workspace.manual_offset],
+  );
 
   // Handle frame change with sync
   const handleFrameChangeA = useCallback(

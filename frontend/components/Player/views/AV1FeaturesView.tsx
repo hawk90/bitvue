@@ -8,6 +8,7 @@
  * - Super Resolution
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 
@@ -76,7 +77,7 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
   const [superRes, setSuperRes] = useState<SuperResParams | null>(null);
 
   useEffect(() => {
-    if (!frame || width === 0 || height === 0) {
+    if (!frame) {
       setCdefBlocks([]);
       setRestorationUnits([]);
       setFilmGrain(null);
@@ -84,76 +85,103 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
       return;
     }
 
-    // Generate mock CDEF blocks
-    const blockSize = 8;
-    const gridW = Math.ceil(width / blockSize);
-    const gridH = Math.ceil(height / blockSize);
-
-    const blocks: CdefBlock[] = [];
-    for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        blocks.push({
-          x: x * blockSize,
-          y: y * blockSize,
-          size: blockSize,
-          direction: Math.floor(Math.random() * 8),
-          strength: Math.floor(Math.random() * 16),
-        });
-      }
-    }
-    setCdefBlocks(blocks);
-
-    // Generate mock restoration units
-    const unitSize = 64;
-    const restorationGridW = Math.ceil(width / unitSize);
-    const restorationGridH = Math.ceil(height / unitSize);
-
-    const units: RestorationUnit[] = [];
-    for (let y = 0; y < restorationGridH; y++) {
-      for (let x = 0; x < restorationGridW; x++) {
-        const type = Math.floor(Math.random() * 3);
-        units.push({
-          x: x * unitSize,
-          y: y * unitSize,
-          size: unitSize,
-          restorationType: type,
-          filterData:
-            type > 0
-              ? [
-                  Math.floor(Math.random() * 8) - 4,
-                  Math.floor(Math.random() * 8) - 4,
-                  Math.floor(Math.random() * 8) - 4,
-                ]
-              : undefined,
-        });
-      }
-    }
-    setRestorationUnits(units);
-
-    // Mock film grain params
-    setFilmGrain({
-      enabled: true,
-      updateOffset: 0,
-      seed: Math.floor(Math.random() * 10000),
-      scalingShift: 11,
-      arCoeffLag: 3,
-      arCoeffsY: [0, 1, -1, 0],
-      arCoeffsUV: [0, 1, 0],
-      arCoeffShift: 6,
-      grainScaleShift: 0,
-      chromaScalingFromLuma: false,
-      overlap: true,
-      clipToRestrictedRange: true,
-    });
-
-    // Mock super res
-    setSuperRes({
-      enabled: false,
-      scaleDenominator: 8,
-      upscaledWidth: width,
-      upscaledHeight: height,
-    });
-  }, [frame, width, height]);
+    invoke<{
+      frame_index: number;
+      cdef: {
+        width: number;
+        height: number;
+        block_size: number;
+        blocks: {
+          x: number;
+          y: number;
+          size: number;
+          direction: number;
+          strength: number;
+        }[];
+        damping: number;
+        y_primary_strength: number;
+        y_secondary_strength: number;
+      } | null;
+      loop_restoration: {
+        width: number;
+        height: number;
+        unit_size: number;
+        y_type: number;
+        units: {
+          x: number;
+          y: number;
+          size: number;
+          restoration_type: number;
+        }[];
+      } | null;
+      film_grain: {
+        enabled: boolean;
+        seed: number;
+        scaling_shift: number;
+        ar_coeff_lag: number;
+        chroma_scaling_from_luma: boolean;
+        overlap: boolean;
+      } | null;
+      super_resolution: {
+        enabled: boolean;
+        scale_denominator: number;
+        upscaled_width: number;
+        upscaled_height: number;
+      } | null;
+    }>("get_av1_features", { frameIndex: frame.frame_index })
+      .then((data) => {
+        if (data.cdef) {
+          setCdefBlocks(
+            data.cdef.blocks.map((b) => ({
+              x: b.x,
+              y: b.y,
+              size: b.size,
+              direction: b.direction,
+              strength: b.strength,
+            })),
+          );
+        }
+        if (data.loop_restoration) {
+          setRestorationUnits(
+            data.loop_restoration.units.map((u) => ({
+              x: u.x,
+              y: u.y,
+              size: u.size,
+              restorationType: u.restoration_type,
+              filterData: undefined,
+            })),
+          );
+        }
+        if (data.film_grain) {
+          setFilmGrain({
+            enabled: data.film_grain.enabled,
+            updateOffset: 0,
+            seed: data.film_grain.seed,
+            scalingShift: data.film_grain.scaling_shift,
+            arCoeffLag: data.film_grain.ar_coeff_lag,
+            arCoeffsY: [],
+            arCoeffsUV: [],
+            arCoeffShift: 6,
+            grainScaleShift: 0,
+            chromaScalingFromLuma: data.film_grain.chroma_scaling_from_luma,
+            overlap: data.film_grain.overlap,
+            clipToRestrictedRange: true,
+          });
+        }
+        if (data.super_resolution) {
+          setSuperRes({
+            enabled: data.super_resolution.enabled,
+            scaleDenominator: data.super_resolution.scale_denominator,
+            upscaledWidth: data.super_resolution.upscaled_width,
+            upscaledHeight: data.super_resolution.upscaled_height,
+          });
+        }
+      })
+      .catch(() => {
+        setCdefBlocks([]);
+        setRestorationUnits([]);
+      });
+  }, [frame]);
 
   const cdefColors = useMemo(() => {
     return cdefBlocks.map((block) => {

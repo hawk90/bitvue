@@ -160,6 +160,7 @@ fn test_quantization_default() {
 fn test_stream_dimensions() {
     // Test Vp9Stream dimension queries
     let stream = Vp9Stream {
+        frame_payloads: vec![],
         superframe_index: bitvue_vp9::SuperframeIndex {
             frame_count: 0,
             frame_sizes: vec![],

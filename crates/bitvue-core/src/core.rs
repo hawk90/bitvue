@@ -5,7 +5,14 @@
 use crate::{ByteCache, Command, Event, JobManager, SelectionState, StreamId, StreamState};
 use parking_lot::RwLock;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+
+/// Global monotonically increasing counter for diagnostic IDs.
+///
+/// Using `Relaxed` ordering is sufficient: IDs only need to be unique, not
+/// sequentially consistent with respect to other memory operations.
+static NEXT_DIAGNOSTIC_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Core is the central coordinator between UI and state
 ///
@@ -168,7 +175,7 @@ impl Core {
             }
             Err(e) => {
                 let diagnostic = crate::event::Diagnostic {
-                    id: 0, // TODO: proper ID generation
+                    id: NEXT_DIAGNOSTIC_ID.fetch_add(1, Ordering::Relaxed),
                     severity: crate::event::Severity::Error,
                     stream_id: stream,
                     message: format!("Failed to open file: {}", e),

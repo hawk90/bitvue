@@ -268,7 +268,10 @@ export type VisualizationMode =
   | "transform" // Transform block sizes
   | "qp-map" // QP heatmap
   | "mv-field" // Motion vector field
-  | "reference"; // Reference frame relationships
+  | "reference" // Reference frame relationships
+  | "deblocking" // Deblocking filter boundary visualization
+  | "residuals" // Residual energy heatmap
+  | "av1-features"; // AV1 CDEF/Loop Restoration/Film Grain
 
 /**
  * Filmstrip display view

@@ -186,6 +186,8 @@ fn test_frame_structure() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert_eq!(frame.offset, 0);
@@ -216,6 +218,8 @@ fn test_frame_type_variants() {
             is_idr: matches!(frame_type, AvcFrameType::I),
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         };
 
         let _ = format!("{:?}", frame_type);
@@ -236,6 +240,8 @@ fn test_frame_with_nal_data() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert_eq!(frame.nal_data.len(), 3);
@@ -308,6 +314,8 @@ fn test_frame_size_calculation() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert_eq!(frame.offset, offset);
@@ -330,6 +338,8 @@ fn test_frame_poc_values() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         };
 
         assert_eq!(frame.poc, poc);
@@ -352,6 +362,8 @@ fn test_frame_num_values() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         };
 
         assert_eq!(frame.frame_num, frame_num);
@@ -715,6 +727,8 @@ fn test_frame_is_idr_detection() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert!(idr_frame.is_idr);
@@ -734,6 +748,8 @@ fn test_frame_reference_property() {
         is_idr: false,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert!(reference_frame.is_ref);
@@ -750,6 +766,8 @@ fn test_frame_reference_property() {
         is_idr: false,
         is_ref: false,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert!(!non_ref_frame.is_ref);
@@ -769,6 +787,8 @@ fn test_frame_index_sequence() {
             is_idr: true,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
         AvcFrame {
             frame_index: 1,
@@ -781,6 +801,8 @@ fn test_frame_index_sequence() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
     ];
 
@@ -829,6 +851,8 @@ fn test_avc_frame_to_unit_node_i_frame() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 0);
@@ -860,6 +884,8 @@ fn test_avc_frame_to_unit_node_p_frame() {
         is_idr: false,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 1);
@@ -884,6 +910,8 @@ fn test_avc_frame_to_unit_node_b_frame() {
         is_idr: false,
         is_ref: false,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 2);
@@ -906,6 +934,8 @@ fn test_avc_frame_to_unit_node_display_name() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 0);
@@ -926,6 +956,8 @@ fn test_avc_frames_to_unit_nodes() {
             is_idr: true,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
         AvcFrame {
             frame_index: 1,
@@ -938,6 +970,8 @@ fn test_avc_frames_to_unit_nodes() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
     ];
 

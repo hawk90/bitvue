@@ -14,6 +14,7 @@ fn test_empty_stream() {
 #[test]
 fn test_stream_methods() {
     let stream = Vp9Stream {
+        frame_payloads: vec![],
         superframe_index: SuperframeIndex {
             frame_count: 1,
             frame_sizes: vec![100],
@@ -100,6 +101,7 @@ fn test_parse_vp9_quick_empty() {
 fn test_vp9_stream_inter_frames() {
     // Test inter_frames() method
     let stream = Vp9Stream {
+        frame_payloads: vec![],
         superframe_index: SuperframeIndex {
             frame_count: 3,
             frame_sizes: vec![100, 100, 100],
@@ -149,6 +151,7 @@ fn test_vp9_stream_inter_frames() {
 fn test_vp9_stream_render_dimensions() {
     // Test render_dimensions() method with different render sizes
     let stream = Vp9Stream {
+        frame_payloads: vec![],
         superframe_index: SuperframeIndex {
             frame_count: 1,
             frame_sizes: vec![100],
@@ -174,6 +177,7 @@ fn test_vp9_stream_render_dimensions() {
 fn test_vp9_stream_color_space() {
     // Test color_space() method
     let stream = Vp9Stream {
+        frame_payloads: vec![],
         superframe_index: SuperframeIndex {
             frame_count: 1,
             frame_sizes: vec![100],
@@ -199,6 +203,7 @@ fn test_vp9_stream_color_space() {
 fn test_vp9_stream_visible_frame_count() {
     // Test visible_frame_count() method
     let stream = Vp9Stream {
+        frame_payloads: vec![],
         superframe_index: SuperframeIndex {
             frame_count: 5,
             frame_sizes: vec![100; 5],
@@ -396,6 +401,7 @@ fn test_color_space_variants() {
         };
 
         let stream = Vp9Stream {
+            frame_payloads: vec![],
             superframe_index: SuperframeIndex {
                 frame_count: 1,
                 frame_sizes: vec![100],
@@ -725,6 +731,7 @@ fn test_vp9_various_resolutions() {
         };
 
         let stream = Vp9Stream {
+            frame_payloads: vec![],
             superframe_index: SuperframeIndex {
                 frame_count: 1,
                 frame_sizes: vec![100],

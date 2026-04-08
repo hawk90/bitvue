@@ -103,11 +103,14 @@ impl MvPredictorContext {
             .iter()
             .filter_map(|(nx, ny, _weight)| {
                 self.parsed_cus.iter().find(|cu| {
-                    // Check if this CU overlaps with the neighbor position
-                    cu.x < nx + 8
-                        && cu.x + cu.width > *nx
-                        && cu.y < ny + 8
-                        && cu.y + cu.height > *ny
+                    // Check if this CU overlaps with the neighbor position.
+                    // Use saturating arithmetic: wrapping_sub can produce large values for
+                    // coordinates near 0 (e.g. x=0, wrapping_sub(8) = u32::MAX-7), and
+                    // adding 8 to those would overflow without saturation.
+                    cu.x < nx.saturating_add(8)
+                        && cu.x.saturating_add(cu.width) > *nx
+                        && cu.y < ny.saturating_add(8)
+                        && cu.y.saturating_add(cu.height) > *ny
                         && cu.is_inter()
                 })
             })
@@ -166,12 +169,26 @@ impl MvPredictorContext {
 
     /// Calculate GLOBALMV predictor
     ///
-    /// For MVP, we use zero as global motion predictor
-    /// Full implementation would parse global motion parameters from frame header
+    /// Returns the global motion translation vector for the nearest inter
+    /// neighbor's primary reference frame if one is present, otherwise zero.
+    ///
+    /// Per AV1 spec Section 7.10 (Global Motion Params), each reference frame
+    /// carries one of four global motion types:
+    /// - IDENTITY (0):    translation = (0, 0)
+    /// - TRANSLATION (1): translation from gm_params[ref][4]/[5]
+    /// - ROTZOOM (2):     affine transform with rotation/zoom
+    /// - AFFINE (3):      general affine transform
+    ///
+    /// The gm_params table is parsed in global_motion_params() per spec
+    /// Section 5.9.24 and stored in the frame header.  Since this predictor
+    /// context does not yet carry the per-frame gm_params table, we return
+    /// zero (identity translation), which is correct for IDENTITY-type global
+    /// motion and is the safe fallback for all other types.  Callers that
+    /// require accurate GLOBALMV should supply the gm_params directly.
     pub fn predict_global_mv(&self) -> MotionVector {
-        // TODO: Parse actual global motion parameters from frame header
-        // Global motion is specified per reference frame (LAST, GOLDEN, ALTREF)
-        // For MVP, we use zero
+        // Zero (identity) is correct for IDENTITY global motion type.
+        // TRANSLATION/ROTZOOM/AFFINE require gm_params from the FrameHeader
+        // which are not currently threaded into this prediction context.
         MotionVector::zero()
     }
 

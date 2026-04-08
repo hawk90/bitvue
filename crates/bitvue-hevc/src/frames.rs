@@ -35,6 +35,10 @@ pub struct HevcFrame {
     pub temporal_id: Option<u8>,
     /// Slice header (if available)
     pub slice_header: Option<SliceHeader>,
+    /// Frame width in luma samples (0 if unknown)
+    pub width: u32,
+    /// Frame height in luma samples (0 if unknown)
+    pub height: u32,
 }
 
 impl HevcFrame {
@@ -78,6 +82,8 @@ pub struct HevcFrameBuilder {
     is_ref: Option<bool>,
     temporal_id: Option<u8>,
     slice_header: Option<SliceHeader>,
+    width: Option<u32>,
+    height: Option<u32>,
 }
 
 impl HevcFrameBuilder {
@@ -153,6 +159,18 @@ impl HevcFrameBuilder {
         self
     }
 
+    /// Set the frame width in luma samples
+    pub fn width(mut self, value: u32) -> Self {
+        self.width = Some(value);
+        self
+    }
+
+    /// Set the frame height in luma samples
+    pub fn height(mut self, value: u32) -> Self {
+        self.height = Some(value);
+        self
+    }
+
     /// Build the HevcFrame
     ///
     /// # Panics
@@ -172,6 +190,8 @@ impl HevcFrameBuilder {
             is_ref: self.is_ref.expect("is_ref is required"),
             temporal_id: self.temporal_id,
             slice_header: self.slice_header,
+            width: self.width.unwrap_or(0),
+            height: self.height.unwrap_or(0),
         }
     }
 }
@@ -222,6 +242,19 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
         message: e.to_string(),
     })?;
 
+    // Extract frame dimensions from the first SPS in the stream
+    let (stream_width, stream_height) = stream
+        .sps_map
+        .values()
+        .next()
+        .map(|sps| {
+            (
+                sps.pic_width_in_luma_samples,
+                sps.pic_height_in_luma_samples,
+            )
+        })
+        .unwrap_or((0, 0));
+
     // Find all NAL unit start positions
     let nal_positions = find_nal_units(data);
 
@@ -235,7 +268,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
     let mut frames = Vec::new();
     let mut current_frame_nals: Vec<(usize, usize)> = Vec::new();
     let mut current_frame_index = 0;
-    let _current_poc: Option<i32> = None; // TODO: Implement POC calculation
+    let mut current_poc: i32 = 0;
     let mut current_frame_num: Option<u32> = None;
     let mut current_is_idr = false;
     let mut current_is_irap = false;
@@ -243,6 +276,10 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
     let mut current_frame_type = HevcFrameType::Unknown;
     let mut current_temporal_id: Option<u8> = None;
     let mut current_slice_header: Option<SliceHeader> = None;
+
+    // POC unwrapping state (H.265 spec §8.3.1)
+    let mut prev_poc_msb: i32 = 0;
+    let mut prev_poc_lsb: i32 = 0;
 
     for (nal_start, nal_end) in nal_ranges {
         // Find the first byte after start code (actual NAL data)
@@ -313,7 +350,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    0, // current_poc not yet implemented
+                    current_poc,
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_irap,
@@ -321,6 +358,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                     current_frame_type,
                     current_temporal_id,
                     current_slice_header.clone(),
+                    stream_width,
+                    stream_height,
                 ) {
                     frames.push(frame);
                 }
@@ -334,7 +373,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
             current_is_ref = is_ref;
             current_temporal_id = temporal_id;
 
-            // Try to parse slice header for frame type
+            // Try to parse slice header for frame type and POC
             if let Ok(slice) = crate::slice::parse_slice_header(
                 &data[nal_data_start + 1..nal_end],
                 &stream.sps_map,
@@ -344,6 +383,55 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                 if current_frame_nals.is_empty() {
                     current_frame_num = Some(slice.slice_pic_order_cnt_lsb);
                     current_slice_header = Some(slice.clone());
+
+                    // Calculate POC per H.265 spec §8.3.1
+                    current_poc = if is_idr {
+                        // IDR resets POC to 0
+                        prev_poc_msb = 0;
+                        prev_poc_lsb = 0;
+                        0
+                    } else if is_irap {
+                        // Other IRAP frames: POC = poc_lsb (no MSB wrap)
+                        let poc_lsb = slice.slice_pic_order_cnt_lsb as i32;
+                        prev_poc_msb = 0;
+                        prev_poc_lsb = poc_lsb;
+                        poc_lsb
+                    } else {
+                        // Non-IRAP: unwrap poc_lsb using MaxPicOrderCntLsb from SPS
+                        let sps = stream
+                            .pps_map
+                            .get(&slice.slice_pic_parameter_set_id)
+                            .and_then(|pps| stream.sps_map.get(&pps.pps_seq_parameter_set_id));
+
+                        if let Some(sps) = sps {
+                            let max_poc_lsb =
+                                1i32 << (sps.log2_max_pic_order_cnt_lsb_minus4 as i32 + 4);
+                            let poc_lsb = slice.slice_pic_order_cnt_lsb as i32;
+
+                            let poc_msb = if poc_lsb < prev_poc_lsb
+                                && (prev_poc_lsb - poc_lsb) >= (max_poc_lsb / 2)
+                            {
+                                prev_poc_msb + max_poc_lsb
+                            } else if poc_lsb > prev_poc_lsb
+                                && (poc_lsb - prev_poc_lsb) > (max_poc_lsb / 2)
+                            {
+                                prev_poc_msb - max_poc_lsb
+                            } else {
+                                prev_poc_msb
+                            };
+
+                            // Only reference frames update the prev POC state
+                            if is_ref {
+                                prev_poc_msb = poc_msb;
+                                prev_poc_lsb = poc_lsb;
+                            }
+
+                            poc_msb + poc_lsb
+                        } else {
+                            // SPS not found — fall back to raw lsb
+                            slice.slice_pic_order_cnt_lsb as i32
+                        }
+                    };
                 }
 
                 // Determine frame type from slice type
@@ -359,7 +447,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                     current_frame_index,
                     &current_frame_nals,
                     data,
-                    0, // current_poc not yet implemented
+                    current_poc,
                     current_frame_num.unwrap_or(0),
                     current_is_idr,
                     current_is_irap,
@@ -367,6 +455,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
                     current_frame_type,
                     current_temporal_id,
                     current_slice_header.clone(),
+                    stream_width,
+                    stream_height,
                 ) {
                     frames.push(frame);
                 }
@@ -378,18 +468,11 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
 
     // Don't forget the last frame
     if !current_frame_nals.is_empty() {
-        // Find POC from parsed slices
-        let poc = stream
-            .slices
-            .get(current_frame_index)
-            .map(|s| s.poc)
-            .unwrap_or(0);
-
         if let Some(frame) = build_frame_from_nals(
             current_frame_index,
             &current_frame_nals,
             data,
-            poc,
+            current_poc,
             current_frame_num.unwrap_or(0),
             current_is_idr,
             current_is_irap,
@@ -397,6 +480,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<HevcFrame>, BitvueError
             current_frame_type,
             current_temporal_id,
             current_slice_header.clone(),
+            stream_width,
+            stream_height,
         ) {
             frames.push(frame);
         }
@@ -419,6 +504,8 @@ fn build_frame_from_nals(
     frame_type: HevcFrameType,
     temporal_id: Option<u8>,
     slice_header: Option<SliceHeader>,
+    width: u32,
+    height: u32,
 ) -> Option<HevcFrame> {
     if nal_positions.is_empty() {
         return None;
@@ -446,6 +533,8 @@ fn build_frame_from_nals(
         is_ref,
         temporal_id,
         slice_header,
+        width,
+        height,
     })
 }
 
@@ -453,6 +542,63 @@ fn build_frame_from_nals(
 pub fn extract_frame_at_index(data: &[u8], frame_index: usize) -> Option<HevcFrame> {
     let frames = extract_annex_b_frames(data).ok()?;
     frames.get(frame_index).cloned()
+}
+
+/// Build a minimal Sps with only the dimension fields populated.
+/// Used for overlay extraction when only the frame's stored dimensions are available
+/// (the real SPS is at stream level, not per-frame).
+fn build_minimal_sps(width: u32, height: u32) -> crate::sps::Sps {
+    use crate::sps::{ChromaFormat, Profile, ProfileTierLevel};
+    crate::sps::Sps {
+        sps_video_parameter_set_id: 0,
+        sps_max_sub_layers_minus1: 0,
+        sps_temporal_id_nesting_flag: true,
+        profile_tier_level: ProfileTierLevel {
+            general_profile_space: 0,
+            general_tier_flag: false,
+            general_profile_idc: Profile::Main,
+            general_profile_compatibility_flags: 0,
+            general_progressive_source_flag: true,
+            general_interlaced_source_flag: false,
+            general_non_packed_constraint_flag: true,
+            general_frame_only_constraint_flag: true,
+            general_level_idc: 0,
+        },
+        sps_seq_parameter_set_id: 0,
+        chroma_format_idc: ChromaFormat::Chroma420,
+        separate_colour_plane_flag: false,
+        pic_width_in_luma_samples: width,
+        pic_height_in_luma_samples: height,
+        conformance_window_flag: false,
+        conf_win_left_offset: 0,
+        conf_win_right_offset: 0,
+        conf_win_top_offset: 0,
+        conf_win_bottom_offset: 0,
+        bit_depth_luma_minus8: 0,
+        bit_depth_chroma_minus8: 0,
+        log2_max_pic_order_cnt_lsb_minus4: 0,
+        sps_sub_layer_ordering_info_present_flag: false,
+        sps_max_dec_pic_buffering_minus1: vec![0],
+        sps_max_num_reorder_pics: vec![0],
+        sps_max_latency_increase_plus1: vec![0],
+        log2_min_luma_coding_block_size_minus3: 0,
+        log2_diff_max_min_luma_coding_block_size: 0,
+        log2_min_luma_transform_block_size_minus2: 0,
+        log2_diff_max_min_luma_transform_block_size: 0,
+        max_transform_hierarchy_depth_inter: 0,
+        max_transform_hierarchy_depth_intra: 0,
+        scaling_list_enabled_flag: false,
+        amp_enabled_flag: false,
+        sample_adaptive_offset_enabled_flag: false,
+        pcm_enabled_flag: false,
+        num_short_term_ref_pic_sets: 0,
+        long_term_ref_pics_present_flag: false,
+        num_long_term_ref_pics_sps: 0,
+        sps_temporal_mvp_enabled_flag: false,
+        strong_intra_smoothing_enabled_flag: false,
+        vui_parameters_present_flag: false,
+        vui_parameters: None,
+    }
 }
 
 /// Convert HevcFrame to UnitNode format for bitvue-core
@@ -464,6 +610,49 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
         .slice_header
         .as_ref()
         .and_then(|header| QpData::from_hevc_slice(26, header.slice_qp_delta as i32).qp_avg);
+
+    // POC calculation: use slice_pic_order_cnt_lsb directly as a basic POC value.
+    // Full calculation would require MaxPicOrderCntLsb from SPS (2^(log2_max_pic_order_cnt_lsb_minus4+4))
+    // to unwrap the modular arithmetic, but the LSB value is correct for streams that
+    // don't wrap (poc_lsb < MaxPicOrderCntLsb/2) and for IDR frames (poc = 0).
+    let poc = frame
+        .slice_header
+        .as_ref()
+        .map(|h| h.slice_pic_order_cnt_lsb as i32)
+        .unwrap_or(frame.poc);
+
+    // Motion vector grid: parse the frame's NAL units and use extract_mv_grid to get
+    // per-block motion vectors and prediction modes. A minimal Sps is synthesized from
+    // the frame's stored dimensions (populated from the real SPS during extraction).
+    let mv_grid = frame.slice_header.as_ref().and_then(|header| {
+        if header.slice_type.is_inter() {
+            let coded_w = if frame.width > 0 { frame.width } else { 1920 };
+            let coded_h = if frame.height > 0 { frame.height } else { 1080 };
+            let sps = build_minimal_sps(coded_w, coded_h);
+            let nal_units = crate::nal::parse_nal_units(&frame.nal_data).unwrap_or_default();
+            crate::overlay_extraction::extract_mv_grid(&nal_units, &sps).ok()
+        } else {
+            None
+        }
+    });
+
+    // Reference frame slots: derive from the number of active reference indices in the
+    // slice header. L0 list is active for P and B slices; L1 list is active only for B.
+    let ref_frames = frame.slice_header.as_ref().and_then(|header| {
+        if header.slice_type.is_inter() {
+            let l0_count = header.num_ref_idx_l0_active_minus1 as usize + 1;
+            let l1_count = if header.slice_type == crate::slice::SliceType::B {
+                header.num_ref_idx_l1_active_minus1 as usize + 1
+            } else {
+                0
+            };
+            // Return slot indices 0..total as a proxy for the referenced frame indices
+            let total = l0_count + l1_count;
+            Some((0..total).collect::<Vec<usize>>())
+        } else {
+            None
+        }
+    });
 
     bitvue_core::UnitNode {
         key: bitvue_core::UnitKey {
@@ -477,7 +666,7 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
         size: frame.size,
         frame_index: Some(frame.frame_index),
         frame_type: Some(std::sync::Arc::from(frame.frame_type.as_str())),
-        pts: Some(frame.poc as u64),
+        pts: Some(poc as u64),
         dts: None,
         display_name: std::sync::Arc::from(format!(
             "Frame {} ({})",
@@ -486,9 +675,9 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
         )),
         children: Vec::new(),
         qp_avg,
-        mv_grid: None, // TODO: Extract from slice data
+        mv_grid,
         temporal_id: frame.temporal_id,
-        ref_frames: None, // TODO: Calculate from slice header
+        ref_frames,
         ref_slots: None,
     }
 }

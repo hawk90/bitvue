@@ -238,7 +238,7 @@ const LEFT_PANELS = [
  * Manages file operations, keyboard navigation, and UI state
  */
 function AppContent() {
-  const { frames, setFrames } = useFrameData();
+  const { frames } = useFrameData();
   const { loading, error, setFilePath, refreshFrames } = useFileState();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
 
@@ -310,9 +310,8 @@ function AppContent() {
       setFileInfo(event.payload);
       setFilePath(event.payload.success ? event.payload.path : null);
       if (event.payload.success) {
-        // Refresh frames after opening file
-        const loadedFrames = await refreshFrames();
-        setFrames(loadedFrames);
+        setCurrentFrameIndex(0);
+        await refreshFrames();
       } else {
         showErrorDialog(
           "Failed to Open File",
@@ -329,7 +328,13 @@ function AppContent() {
           console.warn("Failed to unlisten from file-opened event:", err);
         });
     };
-  }, [refreshFrames, setFileInfo, setFilePath, showErrorDialog, setFrames]);
+  }, [
+    refreshFrames,
+    setFileInfo,
+    setFilePath,
+    showErrorDialog,
+    setCurrentFrameIndex,
+  ]);
 
   // File menu events
   useEffect(() => {

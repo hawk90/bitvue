@@ -209,6 +209,18 @@ pub fn extract_qp_grid(
 ///
 /// Parses CTUs from slice data and extracts motion vectors.
 pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, BitvueError> {
+    let base_qp = nal_units
+        .iter()
+        .find_map(|nal| {
+            if nal.header.nal_unit_type == crate::nal::NalUnitType::PpsNut {
+                crate::pps::parse_pps(&nal.payload)
+                    .ok()
+                    .map(|p| p.init_qp() as i16)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(26);
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
 
@@ -230,7 +242,7 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     // Parse CTUs from slice data
     for nal in nal_units {
         if nal.header.nal_unit_type.is_vcl() {
-            match parse_slice_ctus(nal, sps, 26) {
+            match parse_slice_ctus(nal, sps, base_qp) {
                 Ok(ctus) => {
                     for ctu in &ctus {
                         // Expand CTU CUs to block grid
@@ -276,10 +288,76 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
 /// Extract Partition Grid from HEVC bitstream
 ///
 /// Parses CTUs from slice data and creates a partition grid.
+/// Extract prediction mode grid from HEVC bitstream.
+///
+/// Returns `(coded_width, coded_height, block_w, block_h, modes)` where
+/// `modes` is a flat Vec (one entry per CTU) with values:
+///   0 = Intra, 1 = Inter, 2 = Skip
+pub fn extract_prediction_mode_grid(
+    nal_units: &[NalUnit],
+    sps: &Sps,
+) -> Result<(u32, u32, u32, u32, Vec<Option<u8>>), BitvueError> {
+    let base_qp = nal_units
+        .iter()
+        .find_map(|nal| {
+            if nal.header.nal_unit_type == crate::nal::NalUnitType::PpsNut {
+                crate::pps::parse_pps(&nal.payload)
+                    .ok()
+                    .map(|p| p.init_qp() as i16)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(26);
+    let width = sps.pic_width_in_luma_samples;
+    let height = sps.pic_height_in_luma_samples;
+    let ctu_size = 64u32;
+    let grid_w = width.div_ceil(ctu_size);
+    let grid_h = height.div_ceil(ctu_size);
+    let total = (grid_w * grid_h) as usize;
+
+    let mut modes: Vec<Option<u8>> = Vec::with_capacity(total);
+
+    for nal in nal_units {
+        if nal.header.nal_unit_type.is_vcl() {
+            if let Ok(ctus) = parse_slice_ctus(nal, sps, base_qp) {
+                for ctu in &ctus {
+                    // Use the dominant (first) CU prediction mode for the CTU
+                    let dominant = ctu.coding_units.first().map(|cu| match cu.pred_mode {
+                        PredMode::Intra => 0u8,
+                        PredMode::Inter => 1u8,
+                        PredMode::Skip => 2u8,
+                    });
+                    modes.push(dominant);
+                }
+            }
+        }
+    }
+
+    while modes.len() < total {
+        modes.push(None);
+    }
+    modes.truncate(total);
+
+    Ok((width, height, ctu_size, ctu_size, modes))
+}
+
 pub fn extract_partition_grid(
     nal_units: &[NalUnit],
     sps: &Sps,
 ) -> Result<PartitionGrid, BitvueError> {
+    let base_qp = nal_units
+        .iter()
+        .find_map(|nal| {
+            if nal.header.nal_unit_type == crate::nal::NalUnitType::PpsNut {
+                crate::pps::parse_pps(&nal.payload)
+                    .ok()
+                    .map(|p| p.init_qp() as i16)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(26);
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
 
@@ -288,7 +366,7 @@ pub fn extract_partition_grid(
     // Parse CTUs from slice data
     for nal in nal_units {
         if nal.header.nal_unit_type.is_vcl() {
-            match parse_slice_ctus(nal, sps, 26) {
+            match parse_slice_ctus(nal, sps, base_qp) {
                 Ok(ctus) => {
                     for ctu in &ctus {
                         for cu in &ctu.coding_units {
@@ -403,17 +481,244 @@ fn expand_cu_to_blocks(
     }
 }
 
-/// Parse CTUs from slice data
+// ---------------------------------------------------------------------------
+// Minimal HEVC CABAC decoder — used to detect cu_skip_flag per CTU.
+// Core arithmetic coding tables are identical to H.264 CABAC (spec-verified).
+// Context initialization uses the HEVC-specific formula from spec Table 9-5.
+// ---------------------------------------------------------------------------
+
+/// LPS range table — same in H.264 and HEVC (spec Table 9-35 / HEVC 9.3.3.2.2).
+#[rustfmt::skip]
+static HEVC_RANGE_LPS: [[u8; 4]; 64] = [
+    [128,176,208,240],[128,167,197,227],[128,158,187,216],[123,150,178,205],
+    [116,142,169,195],[111,135,160,185],[105,128,152,175],[100,122,144,166],
+    [ 95,116,137,158],[ 90,110,130,150],[ 85,104,123,142],[ 81, 99,117,135],
+    [ 77, 94,111,128],[ 73, 89,105,122],[ 69, 85,100,116],[ 66, 80, 95,110],
+    [ 62, 76, 90,104],[ 59, 72, 86, 99],[ 56, 69, 81, 94],[ 53, 65, 77, 89],
+    [ 51, 62, 73, 85],[ 48, 59, 69, 80],[ 46, 56, 66, 76],[ 43, 53, 63, 72],
+    [ 41, 50, 59, 69],[ 39, 48, 56, 65],[ 37, 45, 54, 62],[ 35, 43, 51, 59],
+    [ 33, 41, 48, 56],[ 32, 39, 46, 53],[ 30, 37, 43, 50],[ 29, 35, 41, 48],
+    [ 27, 33, 39, 45],[ 26, 31, 37, 43],[ 24, 30, 35, 41],[ 23, 28, 33, 39],
+    [ 22, 27, 32, 37],[ 21, 26, 30, 35],[ 20, 24, 29, 33],[ 19, 23, 27, 31],
+    [ 18, 22, 26, 30],[ 17, 21, 24, 28],[ 16, 20, 23, 26],[ 15, 19, 22, 25],
+    [ 14, 18, 21, 24],[ 14, 17, 20, 23],[ 13, 16, 19, 22],[ 12, 15, 18, 21],
+    [ 12, 14, 17, 20],[ 11, 14, 16, 19],[ 11, 13, 15, 18],[ 10, 12, 15, 17],
+    [ 10, 12, 14, 16],[  9, 11, 13, 15],[  9, 11, 12, 14],[  8, 10, 12, 14],
+    [  8,  9, 11, 13],[  7,  9, 11, 12],[  7,  9, 10, 12],[  7,  8, 10, 11],
+    [  6,  8,  9, 11],[  6,  7,  9, 10],[  6,  7,  8,  9],[  2,  2,  2,  2],
+];
+
+/// MPS state transitions — same in H.264 and HEVC.
+#[rustfmt::skip]
+static HEVC_TRANS_MPS: [u8; 64] = [
+     1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,
+    17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,
+    33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,
+    49,50,51,52,53,54,55,56,57,58,59,60,61,62,62,63,
+];
+
+/// LPS state transitions — same in H.264 and HEVC.
+#[rustfmt::skip]
+static HEVC_TRANS_LPS: [u8; 64] = [
+     0, 0, 1, 2, 2, 4, 4, 5, 6, 7, 8, 9, 9,11,11,12,
+    13,13,15,15,16,16,18,18,19,19,21,21,22,22,23,24,
+    24,25,26,26,27,27,28,29,29,30,30,31,32,32,33,33,
+    34,34,35,35,36,36,37,37,38,38,39,39,40,40,41,41,
+];
+
+/// HEVC context initialization from initValue (spec 9.3.2.2).
 ///
-/// This is a simplified implementation that extracts basic CTU
-/// information. Full implementation would parse coding_tree_unit() syntax.
+/// `initValue` is a 7-bit value from Table 9-5 (high 4 bits = slope group, low 4 = offset).
+/// Returns (pStateIdx, valMPS).
+fn hevc_init_ctx(init_value: u8, qp: i32) -> (u8, u8) {
+    let m = (5 * (init_value >> 4) as i32) - 45;
+    let n = ((init_value & 15) as i32 * 8) - 16;
+    let pre = ((m * qp) >> 4) + n;
+    let pre = pre.clamp(1, 126);
+    if pre <= 63 {
+        ((63 - pre) as u8, 0)
+    } else {
+        ((pre - 64) as u8, 1)
+    }
+}
+
+/// HEVC CABAC arithmetic decoder.
+struct HevcCabac<'a> {
+    data: &'a [u8],
+    byte_pos: usize,
+    bit_pos: i8,
+    cod_i_range: u32,
+    cod_i_offset: u32,
+}
+
+impl<'a> HevcCabac<'a> {
+    fn new(data: &'a [u8]) -> Option<Self> {
+        if data.len() < 2 {
+            return None;
+        }
+        let cod_i_offset = ((data[0] as u32) << 1) | ((data[1] >> 7) as u32);
+        Some(HevcCabac {
+            data,
+            byte_pos: 1,
+            bit_pos: 6,
+            cod_i_range: 510,
+            cod_i_offset,
+        })
+    }
+
+    fn read_raw_bit(&mut self) -> u32 {
+        if self.byte_pos >= self.data.len() {
+            return 0;
+        }
+        let bit = ((self.data[self.byte_pos] >> (self.bit_pos as u8)) & 1) as u32;
+        self.bit_pos -= 1;
+        if self.bit_pos < 0 {
+            self.byte_pos += 1;
+            self.bit_pos = 7;
+        }
+        bit
+    }
+
+    fn decode_bin(&mut self, p_state: &mut u8, mps: &mut u8) -> Option<u8> {
+        let q = ((self.cod_i_range >> 6) & 3) as usize;
+        let range_lps = HEVC_RANGE_LPS[*p_state as usize][q] as u32;
+        let range_mps = self.cod_i_range - range_lps;
+        let bin;
+        if self.cod_i_offset >= range_mps {
+            bin = 1 - *mps;
+            self.cod_i_offset -= range_mps;
+            self.cod_i_range = range_lps;
+            if *p_state == 0 {
+                *mps ^= 1;
+            }
+            *p_state = HEVC_TRANS_LPS[*p_state as usize];
+        } else {
+            bin = *mps;
+            self.cod_i_range = range_mps;
+            *p_state = HEVC_TRANS_MPS[*p_state as usize];
+        }
+        while self.cod_i_range < 256 {
+            self.cod_i_range <<= 1;
+            self.cod_i_offset = (self.cod_i_offset << 1) | self.read_raw_bit();
+        }
+        if self.cod_i_offset >= self.cod_i_range {
+            return None;
+        }
+        Some(bin)
+    }
+
+    /// Read a single bit from the raw bitstream (used by bypass mode).
+    fn next_bit(&mut self) -> Option<u8> {
+        if self.byte_pos >= self.data.len() {
+            return None;
+        }
+        let bit = (self.data[self.byte_pos] >> (self.bit_pos as u8)) & 1;
+        self.bit_pos -= 1;
+        if self.bit_pos < 0 {
+            self.byte_pos += 1;
+            self.bit_pos = 7;
+        }
+        Some(bit)
+    }
+
+    /// HEVC CABAC bypass decode — spec 9.3.3.2.3.
+    fn decode_bypass(&mut self) -> Option<u8> {
+        self.cod_i_offset <<= 1;
+        if let Some(b) = self.next_bit() {
+            self.cod_i_offset |= b as u32;
+        }
+        if self.cod_i_offset >= self.cod_i_range {
+            self.cod_i_offset -= self.cod_i_range;
+            Some(1)
+        } else {
+            Some(0)
+        }
+    }
+
+    /// Exp-Golomb order-k bypass decode — spec 9.3.3.2.6.
+    ///
+    /// Returns the decoded non-negative integer value.
+    fn decode_eg_bypass(&mut self, k: u32) -> Option<u32> {
+        let mut num_zeros = 0u32;
+        loop {
+            let bit = self.decode_bypass()?;
+            if bit == 1 {
+                break;
+            }
+            num_zeros += 1;
+            if num_zeros > 16 {
+                return None;
+            } // safety guard
+        }
+        let suffix_len = num_zeros + k;
+        let mut suffix = 0u32;
+        for _ in 0..suffix_len {
+            suffix = (suffix << 1) | self.decode_bypass()? as u32;
+        }
+        Some((1 << suffix_len) + suffix - 1)
+    }
+
+    /// Decode one MVD component (x or y) from the CABAC stream.
+    ///
+    /// `ctx_g0`: (pState, valMPS) for abs_mvd_greater0_flag context.
+    /// `ctx_g1`: (pState, valMPS) for abs_mvd_greater1_flag context.
+    ///
+    /// Returns the signed MVD value in quarter-pel units.
+    fn decode_mvd_component(
+        &mut self,
+        ctx_g0: &mut (u8, u8),
+        ctx_g1: &mut (u8, u8),
+    ) -> Option<i32> {
+        let g0 = self.decode_bin(&mut ctx_g0.0, &mut ctx_g0.1)?;
+        if g0 == 0 {
+            return Some(0);
+        }
+
+        let g1 = self.decode_bin(&mut ctx_g1.0, &mut ctx_g1.1)?;
+        let abs_val: i32 = if g1 == 0 {
+            1
+        } else {
+            // abs_mvd_minus2 via EG-1 bypass; result is abs_mvd_minus2, so abs = result + 2
+            let eg = self.decode_eg_bypass(1)?;
+            (eg + 2) as i32
+        };
+
+        let sign = self.decode_bypass()?;
+        Some(if sign == 1 { -abs_val } else { abs_val })
+    }
+}
+
+/// HEVC initValue for `cu_skip_flag` (ctxIdx 0,1,2) by slice type.
+/// From HEVC spec Table 9-5 (cabac_init_flag = 0).
+/// Indices: [P][0..3], [B][0..3]
+const CU_SKIP_INIT_P: [u8; 3] = [197, 185, 201]; // ctxIdx 0,1,2 for P slice
+const CU_SKIP_INIT_B: [u8; 3] = [197, 185, 201]; // ctxIdx 0,1,2 for B slice
+
+/// initValue for `pred_mode_flag` — HEVC Table 9-5 (ctxIdx 0).
+/// P slice: 149, B slice: 134.
+const PRED_MODE_INIT_P: u8 = 149;
+const PRED_MODE_INIT_B: u8 = 134;
+
+/// initValue for `merge_flag_l0` — HEVC Table 9-5 (ctxIdx 0).
+/// Same for P and B slices: 110.
+const MERGE_FLAG_INIT: u8 = 110;
+
+/// initValues for `abs_mvd_greater0_flag` (ctxIdx 0,1) — HEVC Table 9-5.
+const ABS_MVD_GREATER0_INIT: [u8; 2] = [104, 168];
+
+/// initValues for `abs_mvd_greater1_flag` (ctxIdx 2,3) — HEVC Table 9-5.
+const ABS_MVD_GREATER1_INIT: [u8; 2] = [71, 71];
+
+/// Parse CTUs from slice data using HEVC CABAC for cu_skip_flag detection.
+///
+/// Reads `cu_skip_flag` for each CTU in the slice to classify blocks as
+/// Skip vs Inter. Residuals and MVD are not decoded. Falls back to a typed
+/// scaffold when CABAC parsing fails.
 fn parse_slice_ctus(
     nal: &NalUnit,
     sps: &Sps,
     base_qp: i16,
 ) -> Result<Vec<CodingTreeUnit>, BitvueError> {
-    let mut ctus = Vec::new();
-
     let width = sps.pic_width_in_luma_samples;
     let height = sps.pic_height_in_luma_samples;
     let ctu_size = 64u32;
@@ -422,42 +727,203 @@ fn parse_slice_ctus(
     let ctu_rows = height.div_ceil(ctu_size);
     let total_ctus = ctu_cols * ctu_rows;
 
-    let is_intra = nal.header.nal_unit_type.is_idr() || nal.header.nal_unit_type.is_bla();
+    // Determine slice type from NAL unit type.
+    let is_intra = nal.header.nal_unit_type.is_idr()
+        || nal.header.nal_unit_type.is_bla()
+        || nal.header.nal_unit_type.is_irap();
+    let is_b = !is_intra
+        && matches!(
+            nal.header.nal_unit_type,
+            crate::nal::NalUnitType::TrailN
+                | crate::nal::NalUnitType::TrailR
+                | crate::nal::NalUnitType::TsaN
+                | crate::nal::NalUnitType::TsaR
+        );
+
+    // For intra slices, no skip detection needed.
+    if is_intra {
+        return Ok((0..total_ctus)
+            .map(|ctu_idx| {
+                let ctu_x = (ctu_idx % ctu_cols) * ctu_size;
+                let ctu_y = (ctu_idx / ctu_cols) * ctu_size;
+                let mut ctu = CodingTreeUnit::new(ctu_x, ctu_y, ctu_size as u8);
+                ctu.add_cu(CodingUnit {
+                    x: ctu_x,
+                    y: ctu_y,
+                    size: ctu_size as u8,
+                    pred_mode: PredMode::Intra,
+                    part_mode: PartMode::Part2Nx2N,
+                    intra_mode: Some(IntraMode::Planar),
+                    qp: base_qp,
+                    mv_l0: None,
+                    mv_l1: None,
+                    ref_idx_l0: None,
+                    ref_idx_l1: None,
+                    transform_size: 4,
+                    depth: 0,
+                });
+                ctu
+            })
+            .collect());
+    }
+
+    // Try CABAC skip detection for P/B slices.
+    // The CABAC stream starts at byte 2 of the NAL payload (after the 2-byte NAL header).
+    let payload = nal.payload.get(2..).unwrap_or(&nal.payload);
+    let init_vals = if is_b {
+        &CU_SKIP_INIT_B
+    } else {
+        &CU_SKIP_INIT_P
+    };
+    let qp = base_qp as i32;
+
+    // Initialize CABAC contexts for cu_skip_flag ctxIdx 0,1,2.
+    let mut skip_ctx: [(u8, u8); 3] = [
+        hevc_init_ctx(init_vals[0], qp),
+        hevc_init_ctx(init_vals[1], qp),
+        hevc_init_ctx(init_vals[2], qp),
+    ];
+
+    // pred_mode_flag: 1 context (ctxIdx 0)
+    let pred_mode_init = if is_b {
+        PRED_MODE_INIT_B
+    } else {
+        PRED_MODE_INIT_P
+    };
+    let mut pred_mode_ctx: (u8, u8) = hevc_init_ctx(pred_mode_init, qp);
+
+    // merge_flag_l0: 1 context (ctxIdx 0)
+    let mut merge_flag_ctx: (u8, u8) = hevc_init_ctx(MERGE_FLAG_INIT, qp);
+
+    // abs_mvd_greater0_flag: 2 contexts (one per component, reused across CTUs)
+    let mut mvd_g0_ctx: [(u8, u8); 2] = [
+        hevc_init_ctx(ABS_MVD_GREATER0_INIT[0], qp),
+        hevc_init_ctx(ABS_MVD_GREATER0_INIT[1], qp),
+    ];
+
+    // abs_mvd_greater1_flag: 2 contexts (one per component, reused across CTUs)
+    let mut mvd_g1_ctx: [(u8, u8); 2] = [
+        hevc_init_ctx(ABS_MVD_GREATER1_INIT[0], qp),
+        hevc_init_ctx(ABS_MVD_GREATER1_INIT[1], qp),
+    ];
+
+    let mut ctus = Vec::with_capacity(total_ctus as usize);
+    let mut failed = false;
+
+    let mut cabac = HevcCabac::new(payload);
+    // Track skip status for neighboring CTU context (simplified: left and top).
+    let mut ctu_skip_map: Vec<bool> = vec![false; total_ctus as usize];
 
     for ctu_idx in 0..total_ctus {
         let ctu_x = (ctu_idx % ctu_cols) * ctu_size;
         let ctu_y = (ctu_idx / ctu_cols) * ctu_size;
-
         let mut ctu = CodingTreeUnit::new(ctu_x, ctu_y, ctu_size as u8);
 
-        // Add a single CU covering the entire CTU (simplified)
-        let pred_mode = if is_intra {
-            PredMode::Intra
+        // Derive ctxIdx: 0 if no skipped neighbors, 1 if one, 2 if both.
+        let left_skip = ctu_idx % ctu_cols > 0 && ctu_skip_map[(ctu_idx - 1) as usize];
+        let above_skip = ctu_idx >= ctu_cols && ctu_skip_map[(ctu_idx - ctu_cols) as usize];
+        let ctx_idx = (left_skip as usize) + (above_skip as usize);
+        let ctx_idx = ctx_idx.min(2);
+
+        // --- cu_skip_flag ---
+        let skip = if !failed {
+            if let Some(ref mut cab) = cabac {
+                let (ref mut ps, ref mut mv) = skip_ctx[ctx_idx];
+                match cab.decode_bin(ps, mv) {
+                    Some(1) => true,
+                    Some(_) => false,
+                    None => {
+                        failed = true;
+                        false
+                    }
+                }
+            } else {
+                false
+            }
         } else {
-            PredMode::Inter
+            false
         };
 
-        let cu = CodingUnit {
+        ctu_skip_map[ctu_idx as usize] = skip;
+
+        let (pred_mode, mv_l0) = if skip {
+            // Skip CU: no further syntax elements for prediction; MV is zero.
+            (PredMode::Skip, None)
+        } else if !failed {
+            // Non-skip CTU: decode pred_mode_flag, then merge/MVD for Inter.
+            if let Some(ref mut cab) = cabac {
+                // pred_mode_flag: 1 = Intra, 0 = Inter
+                let is_intra_cu = match cab.decode_bin(&mut pred_mode_ctx.0, &mut pred_mode_ctx.1) {
+                    Some(v) => v == 1,
+                    None => {
+                        failed = true;
+                        false
+                    }
+                };
+
+                if failed {
+                    (PredMode::Inter, None)
+                } else if is_intra_cu {
+                    (PredMode::Intra, None)
+                } else {
+                    // Inter CU: decode merge_flag_l0
+                    let merge = match cab.decode_bin(&mut merge_flag_ctx.0, &mut merge_flag_ctx.1) {
+                        Some(v) => v == 1,
+                        None => {
+                            failed = true;
+                            false
+                        }
+                    };
+
+                    let mv = if failed || merge {
+                        // Merge: no explicit MVD; treat as zero displacement.
+                        Some(MotionVector::zero())
+                    } else {
+                        // Non-merge Inter: decode MVD for x then y components.
+                        // Each component uses its own greater0/greater1 context pair.
+                        let mvd_x =
+                            cab.decode_mvd_component(&mut mvd_g0_ctx[0], &mut mvd_g1_ctx[0]);
+                        let mvd_y =
+                            cab.decode_mvd_component(&mut mvd_g0_ctx[1], &mut mvd_g1_ctx[1]);
+
+                        match (mvd_x, mvd_y) {
+                            (Some(dx), Some(dy)) => Some(MotionVector::new(dx, dy)),
+                            _ => {
+                                failed = true;
+                                Some(MotionVector::zero())
+                            }
+                        }
+                    };
+
+                    (PredMode::Inter, mv)
+                }
+            } else {
+                (PredMode::Inter, None)
+            }
+        } else {
+            (PredMode::Inter, None)
+        };
+
+        ctu.add_cu(CodingUnit {
             x: ctu_x,
             y: ctu_y,
             size: ctu_size as u8,
             pred_mode,
             part_mode: PartMode::Part2Nx2N,
-            intra_mode: if is_intra {
+            intra_mode: if pred_mode == PredMode::Intra {
                 Some(IntraMode::Planar)
             } else {
                 None
             },
             qp: base_qp,
-            mv_l0: None,
+            mv_l0,
             mv_l1: None,
             ref_idx_l0: None,
             ref_idx_l1: None,
-            transform_size: 4, // 4x4 transform base
+            transform_size: 4,
             depth: 0,
-        };
+        });
 
-        ctu.add_cu(cu);
         ctus.push(ctu);
     }
 

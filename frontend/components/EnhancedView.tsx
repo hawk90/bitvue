@@ -90,7 +90,8 @@ export const EnhancedView = memo(function EnhancedView({
     setGopBoundaries(boundaries);
   }, [frames]);
 
-  // Detect scene changes (mock implementation using frame size variance)
+  // Detect scene changes using frame size variance heuristic
+  // (I-frames after high-variance windows are likely scene boundaries)
   useEffect(() => {
     if (frames.length === 0) {
       setSceneChanges([]);

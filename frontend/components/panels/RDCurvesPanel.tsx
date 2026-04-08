@@ -10,6 +10,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { LineChart, type Series, type DataPoint } from "../charts/LineChart";
 import "./RDCurvesPanel.css";
 
@@ -27,6 +28,15 @@ interface BDRateResult {
   interpretation: string;
 }
 
+interface RdPointData {
+  avg_psnr: number;
+  bitrate_kbps: number;
+  avg_qp: number;
+  file_name: string;
+  codec: string;
+  curve_key: string;
+}
+
 export const RDCurvesPanel = memo(function RDCurvesPanel() {
   const [curves, setCurves] = useState<RDCurveData[]>([]);
   const [selectedMetric, setSelectedMetric] = useState<
@@ -34,6 +44,7 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
   >("PSNR");
   const [bdRateResult, setBdRateResult] = useState<BDRateResult | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Mock data for demonstration (DEV only)
@@ -78,6 +89,90 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
         : [],
     [],
   );
+
+  const handleAddFile = useCallback(async () => {
+    setIsLoadingFile(true);
+    setError(null);
+    try {
+      const selected = await open({
+        multiple: true,
+        filters: [
+          {
+            name: "Video Files",
+            extensions: [
+              "ivf",
+              "mp4",
+              "mkv",
+              "264",
+              "265",
+              "hevc",
+              "h264",
+              "h265",
+            ],
+          },
+        ],
+      });
+      if (!selected) return;
+      const filePaths = Array.isArray(selected) ? selected : [selected];
+      if (filePaths.length === 0) return;
+
+      const CURVE_COLORS = [
+        "#ef4444",
+        "#3b82f6",
+        "#10b981",
+        "#f59e0b",
+        "#8b5cf6",
+        "#ec4899",
+      ];
+
+      // Fetch all RD points
+      const rdPoints = await Promise.all(
+        filePaths.map((filePath) =>
+          invoke<RdPointData>("get_rd_point", { filePath }),
+        ),
+      );
+
+      // Group by curve_key: files with matching keys become points on the same curve
+      const groupMap = new Map<
+        string,
+        { pts: Array<{ x: number; y: number }>; codec: string }
+      >();
+      for (const pt of rdPoints) {
+        const key = pt.curve_key || pt.file_name;
+        if (!groupMap.has(key)) groupMap.set(key, { pts: [], codec: pt.codec });
+        groupMap.get(key)!.pts.push({ x: pt.bitrate_kbps, y: pt.avg_psnr });
+      }
+
+      setCurves((prev) => {
+        const next = [...prev];
+        let colorIdx = prev.length;
+        for (const [key, { pts }] of groupMap.entries()) {
+          const existing = next.findIndex((c) => c.name === key);
+          // Sort points by bitrate for proper curve rendering
+          const sortedPts = [...pts].sort((a, b) => a.x - b.x);
+          if (existing >= 0) {
+            // Merge into existing curve
+            const merged = [...next[existing].points, ...sortedPts].sort(
+              (a, b) => a.x - b.x,
+            );
+            next[existing] = { ...next[existing], points: merged };
+          } else {
+            next.push({
+              name: key,
+              points: sortedPts,
+              color: CURVE_COLORS[colorIdx % CURVE_COLORS.length],
+            });
+            colorIdx++;
+          }
+        }
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsLoadingFile(false);
+    }
+  }, []);
 
   const handleLoadMockData = useCallback(() => {
     setCurves(mockCurves);
@@ -156,6 +251,14 @@ export const RDCurvesPanel = memo(function RDCurvesPanel() {
       <div className="rd-curves-header">
         <h3>Rate-Distortion Curves</h3>
         <div className="rd-curves-actions">
+          <button
+            onClick={handleAddFile}
+            disabled={isLoadingFile}
+            className="rd-btn rd-btn-blue"
+            title="Add a video file as an RD point"
+          >
+            {isLoadingFile ? "Loading..." : "+ Add File"}
+          </button>
           {import.meta.env.DEV && (
             <button onClick={handleLoadMockData} className="rd-btn rd-btn-blue">
               Load Demo Data

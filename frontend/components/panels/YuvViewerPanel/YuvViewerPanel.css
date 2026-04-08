@@ -402,3 +402,11 @@
     transform: scale(1);
   }
 }
+
+/* Analysis view container (Deblocking, Residuals, AV1 Features) */
+.yuv-analysis-view-container {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: var(--vscode-editor-background, #1e1e1e);
+}

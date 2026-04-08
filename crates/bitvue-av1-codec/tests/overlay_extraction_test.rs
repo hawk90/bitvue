@@ -287,9 +287,7 @@ fn test_empty_obu_stream() {
     assert!(result.is_ok());
 }
 
-// TODO: Fix extraction code to handle minimal test data correctly
 #[test]
-#[ignore]
 fn test_overlay_extraction_with_obus() {
     // Create OBUs with sequence header and frame
     let mut data = Vec::new();
@@ -300,7 +298,7 @@ fn test_overlay_extraction_with_obus() {
     // Frame Header OBU (minimal)
     data.extend_from_slice(&[0x22, 0x80, 0x02, 0x00, 0x01]);
 
-    // Should not crash when extracting
+    // Should not crash when extracting; uses resilient OBU parsing fallback
     let qp_result = overlay_extraction::extract_qp_grid(&data, 0, 26);
     assert!(qp_result.is_ok());
 }
@@ -420,9 +418,7 @@ fn test_overlay_error_handling() {
     assert!(qp_result.is_ok() || qp_result.is_err());
 }
 
-// TODO: Fix extraction code to handle minimal test data correctly
 #[test]
-#[ignore]
 fn test_multi_tile_extraction() {
     // Create frame with multiple tiles
     let mut data = Vec::new();
@@ -433,7 +429,7 @@ fn test_multi_tile_extraction() {
     // Frame Header
     data.extend_from_slice(&[0x22, 0x80, 0x02, 0x00, 0x01]);
 
-    // Extract grids - should not crash
+    // Extract grids - should not crash; uses resilient OBU parsing fallback
     let qp_result = overlay_extraction::extract_qp_grid(&data, 0, 26);
     assert!(qp_result.is_ok());
 }

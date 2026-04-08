@@ -218,18 +218,24 @@ impl MotionVector {
         self.y / 4
     }
 
-    /// Add motion vectors
+    /// Add motion vectors (saturating to prevent overflow with large predictor values)
     #[inline]
     #[must_use]
     pub fn add(&self, other: MotionVector) -> MotionVector {
-        MotionVector::new(self.x + other.x, self.y + other.y)
+        MotionVector::new(
+            self.x.saturating_add(other.x),
+            self.y.saturating_add(other.y),
+        )
     }
 
-    /// Subtract motion vectors
+    /// Subtract motion vectors (saturating to prevent overflow with large predictor values)
     #[inline]
     #[must_use]
     pub fn sub(&self, other: MotionVector) -> MotionVector {
-        MotionVector::new(self.x - other.x, self.y - other.y)
+        MotionVector::new(
+            self.x.saturating_sub(other.x),
+            self.y.saturating_sub(other.y),
+        )
     }
 
     /// Get magnitude in quarter-pel units

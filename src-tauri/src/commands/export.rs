@@ -10,6 +10,44 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+/// Compute MV magnitude average and skip ratio from an MVGrid.
+///
+/// Returns `(mv_magnitude_avg, skip_ratio)` where:
+/// - `mv_magnitude_avg`: mean Euclidean magnitude of inter-block MVs (in quarter-pel)
+/// - `skip_ratio`: fraction of blocks with Skip mode (0.0–1.0)
+fn compute_mv_stats(mv_grid: Option<&bitvue_core::MVGrid>) -> (f64, f64) {
+    use bitvue_core::mv_overlay::BlockMode;
+    let grid = match mv_grid {
+        Some(g) if !g.mv_l0.is_empty() => g,
+        _ => return (0.0, 0.0),
+    };
+
+    let total = grid.mv_l0.len();
+    if total == 0 { return (0.0, 0.0); }
+
+    let mut mag_sum = 0.0f64;
+    let mut inter_count = 0usize;
+    let mut skip_count = 0usize;
+
+    for (i, mv) in grid.mv_l0.iter().enumerate() {
+        let mode = grid.mode.as_ref().and_then(|m| m.get(i)).copied();
+        match mode {
+            Some(BlockMode::Skip) => skip_count += 1,
+            Some(BlockMode::Intra) | Some(BlockMode::None) => continue,
+            _ => {
+                // Inter or no mode info — include in MV stats
+                let mag = ((mv.dx_qpel as f64).powi(2) + (mv.dy_qpel as f64).powi(2)).sqrt();
+                mag_sum += mag;
+                inter_count += 1;
+            }
+        }
+    }
+
+    let mv_mag_avg = if inter_count > 0 { mag_sum / inter_count as f64 } else { 0.0 };
+    let skip_ratio = skip_count as f64 / total as f64;
+    (mv_mag_avg, skip_ratio)
+}
+
 /// Validate output path to prevent path traversal and ensure safe file operations
 ///
 /// SECURITY: Canonicalize FIRST before any validation to fully resolve all path
@@ -80,10 +118,10 @@ pub async fn export_frames_csv(
     let mut file = File::create(&path)
         .map_err(|e| format!("Failed to create file: {}", e))?;
 
-    // Write CSV header
+    // Write CSV header — includes analysis columns derived from mv_grid and qp_avg
     writeln!(
         file,
-        "Frame,Type,Size,PTS,DTS,FrameTypeKey,TemporalLayer,RefFrames,RefSlots"
+        "Frame,Type,Size,PTS,DTS,FrameTypeKey,TemporalLayer,RefFrames,RefSlots,AvgQP,MvMagnitudeAvg,SkipRatio"
     )
     .map_err(|e| format!("Failed to write header: {}", e))?;
 
@@ -99,9 +137,11 @@ pub async fn export_frames_csv(
             .map(|slots| slots.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(";"))
             .unwrap_or_default();
 
+        let (mv_magnitude_avg, skip_ratio) = compute_mv_stats(unit.mv_grid.as_ref());
+
         writeln!(
             file,
-            "{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{:.2},{:.4}",
             idx,
             unit.frame_type.as_deref().unwrap_or("UNKNOWN"),
             unit.size,
@@ -110,7 +150,10 @@ pub async fn export_frames_csv(
             unit.unit_type,
             unit.temporal_id.map(|t| t.to_string()).unwrap_or_default(),
             ref_frames_str,
-            ref_slots_str
+            ref_slots_str,
+            unit.qp_avg.map(|q| q.to_string()).unwrap_or_default(),
+            mv_magnitude_avg,
+            skip_ratio,
         )
         .map_err(|e| format!("Failed to write row: {}", e))?;
     }
@@ -148,6 +191,7 @@ pub async fn export_frames_json(
     }
 
     let frames_json: Vec<serde_json::Value> = units.units.iter().enumerate().map(|(idx, unit)| {
+        let (mv_magnitude_avg, skip_ratio) = compute_mv_stats(unit.mv_grid.as_ref());
         json!({
             "frame_index": idx,
             "frame_type": unit.frame_type,
@@ -159,6 +203,8 @@ pub async fn export_frames_json(
             "ref_frames": unit.ref_frames,
             "ref_slots": unit.ref_slots,
             "qp_avg": unit.qp_avg,
+            "mv_magnitude_avg": if mv_magnitude_avg > 0.0 { Some(mv_magnitude_avg) } else { None },
+            "skip_ratio": if unit.mv_grid.is_some() { Some(skip_ratio) } else { None },
         })
     }).collect();
 

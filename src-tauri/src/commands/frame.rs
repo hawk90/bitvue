@@ -67,7 +67,6 @@ pub async fn get_decoded_frame(
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
     let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
-    #[cfg(feature = "ffmpeg")]
     let codec = stream_a.container.as_ref().map(|c| c.codec.clone()).unwrap_or_default();
     drop(stream_a);
     drop(core);
@@ -89,7 +88,7 @@ pub async fn get_decoded_frame(
     let container_format = detect_container_format(&file_path)
         .unwrap_or(ContainerFormat::Unknown);
 
-    log::info!("get_decoded_frame: Container format: {:?}", container_format);
+    log::info!("get_decoded_frame: Container format: {:?}, codec: {}", container_format, codec);
 
     // Get decode_service early to use in closure
     let decode_service = state.decode_service.lock().map_err(|e| e.to_string())?;
@@ -99,29 +98,33 @@ pub async fn get_decoded_frame(
         match container_format {
             ContainerFormat::IVF => decode_ivf_frame(file_data, idx),
             ContainerFormat::MP4 | ContainerFormat::Matroska => {
-                // Try to use cached samples for MP4/MKV (performance optimization)
-                let cached_samples = match container_format {
-                    ContainerFormat::MP4 => decode_service.get_or_extract_mp4_samples()?,
-                    ContainerFormat::Matroska => decode_service.get_or_extract_mkv_samples()?,
-                    _ => None,
-                };
-
-                // Use cached samples if available, otherwise extract on demand
-                decode_container_frame_with_samples(
-                    file_data,
-                    idx,
-                    container_format,
-                    cached_samples.as_ref().map(|s| s.as_slice())
-                )
+                // Route by codec: H.264/HEVC → FFmpeg, AV1 → native decoder
+                if is_hevc_codec(&codec) || is_avc_codec(&codec) {
+                    let yuv_frame = decode_container_h26x_frame_yuv(
+                        file_data, idx, container_format, is_hevc_codec(&codec)
+                    )?;
+                    let rgb_data = bitvue_decode::yuv_to_rgb(&yuv_frame);
+                    Ok((yuv_frame.width, yuv_frame.height, rgb_data))
+                } else {
+                    // Default: AV1 with cached samples
+                    let cached_samples = match container_format {
+                        ContainerFormat::MP4 => decode_service.get_or_extract_mp4_samples()?,
+                        ContainerFormat::Matroska => decode_service.get_or_extract_mkv_samples()?,
+                        _ => None,
+                    };
+                    decode_container_frame_with_samples(
+                        file_data,
+                        idx,
+                        container_format,
+                        cached_samples.as_ref().map(|s| s.as_slice())
+                    )
+                }
             }
             ContainerFormat::AnnexB => {
                 // H.264/H.265 AnnexB decoding requires FFmpeg support
                 #[cfg(feature = "ffmpeg")]
                 {
-                    let is_hevc = is_hevc_codec(&codec);
-
-                    // Decode YUV frame and convert to RGB
-                    let yuv_frame = decode_annexb_frame_yuv(file_data, idx, is_hevc)?;
+                    let yuv_frame = decode_annexb_frame_yuv(file_data, idx, is_hevc_codec(&codec))?;
                     let rgb_data = bitvue_decode::yuv_to_rgb(&yuv_frame);
                     Ok((yuv_frame.width, yuv_frame.height, rgb_data))
                 }
@@ -647,6 +650,101 @@ pub fn decode_container_frame_yuv_with_samples(
 fn is_hevc_codec(codec: &str) -> bool {
     let lower = codec.to_lowercase();
     lower.contains("hevc") || lower.contains("h265") || lower.contains("h.265") || lower.contains("265")
+        || lower.contains("hev1") || lower.contains("hvc1")
+}
+
+/// Returns true if the codec string identifies H.264/AVC.
+fn is_avc_codec(codec: &str) -> bool {
+    let lower = codec.to_lowercase();
+    lower.contains("avc") || lower.contains("h264") || lower.contains("h.264") || lower.contains("264")
+        || lower.contains("avc1") || lower.contains("avc3")
+}
+
+/// Decode YUV frame from MP4/MKV container for H.264 or HEVC via FFmpeg.
+///
+/// Extracts samples from the container using the appropriate codec parser,
+/// then decodes them sequentially so that P/B-frame references are satisfied.
+/// Returns the decoded YUV frame at `frame_index`.
+#[cfg(feature = "ffmpeg")]
+pub fn decode_container_h26x_frame_yuv(
+    file_data: &[u8],
+    frame_index: usize,
+    container_format: ContainerFormat,
+    is_hevc: bool,
+) -> Result<bitvue_decode::DecodedFrame, String> {
+    use bitvue_decode::{Decoder, traits::CodecType};
+
+    // Extract per-access-unit samples from the container
+    let samples: Vec<Vec<u8>> = match container_format {
+        ContainerFormat::MP4 => {
+            if is_hevc {
+                bitvue_formats::mp4::extract_hevc_samples(file_data)
+                    .map_err(|e| format!("Failed to extract HEVC from MP4: {}", e))?
+                    .into_iter().map(|cow| cow.to_vec()).collect()
+            } else {
+                bitvue_formats::mp4::extract_avc_samples(file_data)
+                    .map_err(|e| format!("Failed to extract AVC from MP4: {}", e))?
+                    .into_iter().map(|cow| cow.to_vec()).collect()
+            }
+        }
+        ContainerFormat::Matroska => {
+            if is_hevc {
+                bitvue_formats::mkv::extract_hevc_samples(file_data)
+                    .map_err(|e| format!("Failed to extract HEVC from MKV: {}", e))?
+            } else {
+                bitvue_formats::mkv::extract_avc_samples(file_data)
+                    .map_err(|e| format!("Failed to extract AVC from MKV: {}", e))?
+            }
+        }
+        _ => return Err(format!("Unsupported container for H.26x: {:?}", container_format)),
+    };
+
+    if samples.is_empty() {
+        return Err(format!(
+            "No {} samples found in {:?}",
+            if is_hevc { "HEVC" } else { "AVC" },
+            container_format
+        ));
+    }
+
+    validate_frame_index_bounds(frame_index, samples.len())?;
+
+    let codec_type = if is_hevc { CodecType::H265 } else { CodecType::H264 };
+    let mut decoder = bitvue_decode::ffmpeg::FfmpegDecoder::new(codec_type)
+        .map_err(|e| format!("Failed to create FFmpeg decoder: {}", e))?;
+
+    // Feed all frames from 0..=frame_index so reference frames are available.
+    for (i, sample) in samples.iter().take(frame_index + 1).enumerate() {
+        decoder.send_data(sample, Some(i as i64))
+            .map_err(|e| format!("Failed to send frame {} to decoder: {}", i, e))?;
+    }
+    decoder.flush();
+
+    // Drain output; the last decoded frame is the one we want.
+    let mut decoded_frame = None;
+    loop {
+        match decoder.get_frame() {
+            Ok(f) => decoded_frame = Some(f),
+            Err(_) => break,
+        }
+    }
+
+    decoded_frame.ok_or_else(|| format!(
+        "FFmpeg produced no output for frame {} (codec: {})",
+        frame_index,
+        if is_hevc { "HEVC" } else { "AVC" }
+    ))
+}
+
+/// Stub for non-FFmpeg builds — H.264/HEVC container decoding requires FFmpeg.
+#[cfg(not(feature = "ffmpeg"))]
+pub fn decode_container_h26x_frame_yuv(
+    _file_data: &[u8],
+    _frame_index: usize,
+    _container_format: ContainerFormat,
+    _is_hevc: bool,
+) -> Result<bitvue_decode::DecodedFrame, String> {
+    Err("H.264/H.265 decoding from MP4/MKV requires FFmpeg support.".to_string())
 }
 
 /// Decode YUV frame from AnnexB file (H.264/H.265 raw streams)
@@ -741,21 +839,25 @@ pub fn decode_annexb_frame_yuv(
 pub async fn get_decoded_frame_yuv(
     state: tauri::State<'_, AppState>,
     frame_index: usize,
+    stream_id: Option<String>,
 ) -> Result<YUVFrameData, String> {
-    log::info!("get_decoded_frame_yuv: Requesting YUV frame {}", frame_index);
+    let use_stream_b = stream_id.as_deref() == Some("B");
+    log::info!("get_decoded_frame_yuv: Requesting YUV frame {} (stream={})",
+        frame_index, if use_stream_b { "B" } else { "A" });
 
     // SECURITY: Validate frame index early at command boundary (defense in depth)
     let core = state.core.lock().map_err(|e| e.to_string())?;
-    let stream_a_lock = core.get_stream(StreamId::A);
-    let stream_a = stream_a_lock.read();
-    let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
-    let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
+    let target_stream = if use_stream_b { StreamId::B } else { StreamId::A };
+    let stream_lock = core.get_stream(target_stream);
+    let stream = stream_lock.read();
+    let file_path = stream.file_path.as_ref().ok_or("No file loaded")?.clone();
+    let total_frames = stream.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
     // Get codec for AnnexB format detection (H.264 vs H.265)
-    let codec = stream_a.container.as_ref()
+    let codec = stream.container.as_ref()
         .map(|c| c.codec.clone())
         .unwrap_or_default();
     log::info!("get_decoded_frame_yuv: Detected codec from container: '{}'", codec);
-    drop(stream_a);
+    drop(stream);
     drop(core);
 
     // Early validation to avoid unnecessary work for out-of-range indices
@@ -783,36 +885,29 @@ pub async fn get_decoded_frame_yuv(
 
     log::info!("get_decoded_frame_yuv: Container format: {:?}", container_format);
 
-    // Get decode_service early to use in closure
-    let decode_service = state.decode_service.lock().map_err(|e| e.to_string())?;
-
-    // Use decode_service cache to avoid repeated YUV frame decoding
-    let decode_fn = |file_data: &[u8], idx: usize| -> Result<bitvue_decode::DecodedFrame, String> {
+    // Build a decode function that works regardless of stream
+    let decode_fn_inner = |file_data: &[u8], idx: usize, cached_samples: Option<Vec<Vec<u8>>>| -> Result<bitvue_decode::DecodedFrame, String> {
         match container_format {
             ContainerFormat::IVF => decode_ivf_frame_yuv(file_data, idx),
             ContainerFormat::MP4 | ContainerFormat::Matroska => {
-                // Try to use cached samples for MP4/MKV (performance optimization)
-                let cached_samples = match container_format {
-                    ContainerFormat::MP4 => decode_service.get_or_extract_mp4_samples()?,
-                    ContainerFormat::Matroska => decode_service.get_or_extract_mkv_samples()?,
-                    _ => None,
-                };
-
-                // Use cached samples if available, otherwise extract on demand
-                decode_container_frame_yuv_with_samples(
-                    file_data,
-                    idx,
-                    container_format,
-                    cached_samples.as_ref().map(|s| s.as_slice())
-                )
+                if is_hevc_codec(&codec) || is_avc_codec(&codec) {
+                    decode_container_h26x_frame_yuv(
+                        file_data, idx, container_format, is_hevc_codec(&codec)
+                    )
+                } else {
+                    decode_container_frame_yuv_with_samples(
+                        file_data,
+                        idx,
+                        container_format,
+                        cached_samples.as_ref().map(|s| s.as_slice())
+                    )
+                }
             }
             ContainerFormat::AnnexB => {
-                // H.264/H.265 AnnexB decoding requires FFmpeg support
                 #[cfg(feature = "ffmpeg")]
                 {
-                    let is_hevc = is_hevc_codec(&codec);
-                    log::info!("get_decoded_frame_yuv AnnexB: codec='{}', is_hevc={}", codec, is_hevc);
-                    decode_annexb_frame_yuv(file_data, idx, is_hevc)
+                    log::info!("get_decoded_frame_yuv AnnexB: codec='{}', is_hevc={}", codec, is_hevc_codec(&codec));
+                    decode_annexb_frame_yuv(file_data, idx, is_hevc_codec(&codec))
                 }
                 #[cfg(not(feature = "ffmpeg"))]
                 Err("H.264/H.265 video display requires FFmpeg support. \
@@ -823,8 +918,25 @@ pub async fn get_decoded_frame_yuv(
         }
     };
 
-    let decode_result = decode_service.get_or_decode_frame_yuv(frame_index, decode_fn);
-    drop(decode_service);
+    let decode_result = if use_stream_b {
+        // Stream B: decode directly without cache (compare view usage)
+        let file_data = std::fs::read(&file_path).map_err(|e| e.to_string())?;
+        decode_fn_inner(&file_data, frame_index, None)
+    } else {
+        // Stream A: use decode_service cache for repeated frame access
+        let decode_service = state.decode_service.lock().map_err(|e| e.to_string())?;
+        let decode_fn = |file_data: &[u8], idx: usize| -> Result<bitvue_decode::DecodedFrame, String> {
+            let cached_samples = match container_format {
+                ContainerFormat::MP4 => decode_service.get_or_extract_mp4_samples().ok().flatten(),
+                ContainerFormat::Matroska => decode_service.get_or_extract_mkv_samples().ok().flatten(),
+                _ => None,
+            };
+            decode_fn_inner(file_data, idx, cached_samples)
+        };
+        let result = decode_service.get_or_decode_frame_yuv(frame_index, decode_fn);
+        drop(decode_service);
+        result
+    };
 
     match decode_result {
         Ok(frame) => {

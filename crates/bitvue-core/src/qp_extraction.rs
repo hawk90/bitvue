@@ -73,13 +73,15 @@ impl QpData {
     ///
     /// QP data with calculated average QP
     pub fn from_avc_slice(pic_init_qp_minus26: i32, slice_qp_delta: i32) -> Self {
-        let qp_avg = Some(Self::calculate_qp_from_delta(
-            pic_init_qp_minus26,
-            slice_qp_delta,
-        ));
+        let qp = Self::calculate_qp_from_delta(pic_init_qp_minus26, slice_qp_delta);
+        let qp_avg = Some(qp);
+        // When called for a single slice, min and max are both the same QP value.
+        // Callers that aggregate across multiple slices should update qp_range separately
+        // using calculate_average_qp over all slice deltas, deriving min/max in the same pass.
+        let qp_range = Some((qp, qp));
         Self {
             qp_avg,
-            qp_range: None, // TODO: Calculate min/max from all slices
+            qp_range,
             qp_delta: Some(slice_qp_delta),
             chroma_qp_delta: None, // AVC uses separate chroma QP with slice_qs_delta
         }
@@ -96,13 +98,17 @@ impl QpData {
     ///
     /// QP data with calculated average QP
     pub fn from_hevc_slice(pic_init_qp_minus26: i32, slice_qp_delta: i32) -> Self {
-        let qp_avg = Some(Self::calculate_qp_from_delta(
-            pic_init_qp_minus26,
-            slice_qp_delta,
-        ));
+        let qp = Self::calculate_qp_from_delta(pic_init_qp_minus26, slice_qp_delta);
+        let qp_avg = Some(qp);
+        // The CTU-level QP delta (cu_qp_delta) refines QP per coding tree unit but is not
+        // available at the slice-header parsing stage. The slice QP establishes both the
+        // base and a valid single-value range; callers that parse CTU data can widen the
+        // range by tracking per-CTU QP values derived from pic_init_qp + slice_qp_delta +
+        // cu_qp_delta (clamped to 0-51).
+        let qp_range = Some((qp, qp));
         Self {
             qp_avg,
-            qp_range: None, // TODO: Calculate min/max from all CTUs
+            qp_range,
             qp_delta: Some(slice_qp_delta),
             chroma_qp_delta: None, // HEVC has separate chroma QP handling
         }

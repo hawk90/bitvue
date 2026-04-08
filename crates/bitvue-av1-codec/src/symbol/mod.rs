@@ -31,7 +31,7 @@
 pub mod arithmetic;
 pub mod cdf;
 
-pub use arithmetic::ArithmeticDecoder;
+pub use arithmetic::{update_cdf, ArithmeticDecoder};
 pub use cdf::{CdfContext, PartitionCdf};
 
 use bitvue_core::Result;
