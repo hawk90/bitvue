@@ -77,6 +77,7 @@ pub fn run() {
       commands::debug_yuv::unload_debug_yuv,
       commands::debug_yuv::set_debug_yuv_offset,
       commands::debug_yuv::set_debug_yuv_crop,
+      commands::debug_yuv::detect_yuv_format,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

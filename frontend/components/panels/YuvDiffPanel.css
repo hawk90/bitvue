@@ -1,0 +1,403 @@
+/* ─── YUV Diff Panel ─────────────────────────────────────────────────────── */
+
+.yuv-diff-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-primary, #ccc);
+  background: var(--panel-bg, #1a1a1a);
+  border-top: 1px solid var(--border-color, #333);
+  user-select: none;
+}
+
+.yuv-diff-panel--empty {
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.yuv-diff-hint {
+  color: var(--text-muted, #666);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ── File row ─────────────────────────────────────────────────────────────── */
+
+.yuv-diff-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yuv-diff-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-secondary, #aaa);
+}
+
+.yuv-diff-frame-count {
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  white-space: nowrap;
+}
+
+.yuv-diff-unload-btn {
+  padding: 1px 5px;
+  background: none;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 3px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.yuv-diff-unload-btn:hover {
+  border-color: #e55;
+  color: #e55;
+}
+
+/* ── Mode buttons ─────────────────────────────────────────────────────────── */
+
+.yuv-diff-mode-row {
+  display: flex;
+  gap: 4px;
+}
+
+.yuv-diff-mode-btn {
+  flex: 1;
+  padding: 4px 0;
+  background: var(--btn-bg, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-secondary, #bbb);
+  cursor: pointer;
+  font-size: 11px;
+  text-align: center;
+  transition: background 0.12s;
+}
+
+.yuv-diff-mode-btn:hover {
+  background: var(--btn-hover-bg, #363636);
+}
+
+.yuv-diff-mode-btn--active {
+  background: var(--accent, #3a7bd5);
+  border-color: var(--accent, #3a7bd5);
+  color: #fff;
+}
+
+/* ── Amplify row ──────────────────────────────────────────────────────────── */
+
+.yuv-diff-amplify-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.yuv-diff-label {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.yuv-diff-amplify-slider {
+  flex: 1;
+  accent-color: var(--accent, #3a7bd5);
+  cursor: pointer;
+}
+
+.yuv-diff-amplify-value {
+  font-size: 11px;
+  color: var(--text-secondary, #bbb);
+  min-width: 40px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Metrics row ─────────────────────────────────────────────────────────── */
+
+.yuv-diff-metrics-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.yuv-diff-metrics-btn {
+  padding: 3px 8px;
+  background: var(--btn-bg, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-secondary, #bbb);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.yuv-diff-metrics-btn:hover:not(:disabled) {
+  background: var(--btn-hover-bg, #363636);
+}
+
+.yuv-diff-metrics-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.yuv-diff-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #bbb);
+}
+
+.yuv-diff-metrics span {
+  white-space: nowrap;
+}
+
+.yuv-diff-metrics strong {
+  color: #7df;
+}
+
+.yuv-diff-metrics-placeholder {
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  font-style: italic;
+}
+
+.yuv-diff-mismatch-badge {
+  background: #c33;
+  color: #fff;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.03em;
+}
+
+/* ── Controls row ─────────────────────────────────────────────────────────── */
+
+.yuv-diff-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.yuv-diff-find-btn {
+  padding: 3px 8px;
+  background: var(--btn-bg, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-secondary, #bbb);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.yuv-diff-find-btn:hover:not(:disabled) {
+  background: var(--btn-hover-bg, #363636);
+}
+
+.yuv-diff-find-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.yuv-diff-offset-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+}
+
+.yuv-diff-offset-input {
+  width: 52px;
+  padding: 2px 4px;
+  background: var(--input-bg, #222);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 3px;
+  color: var(--text-primary, #ccc);
+  font-size: 11px;
+  text-align: right;
+}
+
+.yuv-diff-crop-btn,
+.yuv-diff-reload-btn {
+  padding: 3px 7px;
+  background: var(--btn-bg, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-secondary, #bbb);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.yuv-diff-crop-btn:hover,
+.yuv-diff-reload-btn:hover {
+  background: var(--btn-hover-bg, #363636);
+}
+
+.yuv-diff-reload-btn--active {
+  border-color: var(--accent, #3a7bd5);
+  color: #7df;
+}
+
+/* ── Error ────────────────────────────────────────────────────────────────── */
+
+.yuv-diff-error {
+  font-size: 11px;
+  color: #f88;
+  background: rgba(200, 50, 50, 0.12);
+  border: 1px solid rgba(200, 50, 50, 0.3);
+  border-radius: 3px;
+  padding: 4px 8px;
+}
+
+/* ─── Load Debug YUV Dialog ──────────────────────────────────────────────── */
+
+.yuv-diff-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+
+.yuv-diff-dialog {
+  background: var(--panel-bg, #1e1e1e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-width: 340px;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.yuv-diff-dialog h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-primary, #ddd);
+  font-weight: 600;
+}
+
+.yuv-diff-dialog-path {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yuv-diff-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yuv-diff-dialog-label {
+  font-size: 12px;
+  color: var(--text-secondary, #bbb);
+  min-width: 70px;
+}
+
+.yuv-diff-dialog select,
+.yuv-diff-dialog input[type="number"] {
+  padding: 4px 6px;
+  background: var(--input-bg, #222);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-primary, #ccc);
+  font-size: 12px;
+}
+
+.yuv-diff-dialog select {
+  min-width: 110px;
+}
+
+.yuv-diff-dialog input[type="number"] {
+  width: 70px;
+  text-align: right;
+}
+
+.yuv-diff-dialog-hint {
+  font-size: 10px;
+  color: var(--text-muted, #666);
+  font-style: italic;
+}
+
+.yuv-diff-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.yuv-diff-dialog-buttons button {
+  padding: 5px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.yuv-diff-dialog-btn-cancel {
+  background: none;
+  border: 1px solid var(--border-color, #444);
+  color: var(--text-secondary, #bbb);
+}
+
+.yuv-diff-dialog-btn-cancel:hover {
+  border-color: #888;
+}
+
+.yuv-diff-dialog-btn-load {
+  background: var(--accent, #3a7bd5);
+  border: none;
+  color: #fff;
+}
+
+.yuv-diff-dialog-btn-load:hover {
+  background: var(--accent-hover, #4a8be5);
+}
+
+/* ─── Crop Dialog ────────────────────────────────────────────────────────── */
+
+.yuv-diff-crop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.yuv-diff-crop-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.yuv-diff-crop-field label {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+}
+
+.yuv-diff-crop-field input {
+  width: 70px;
+  padding: 4px 6px;
+  background: var(--input-bg, #222);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-primary, #ccc);
+  font-size: 12px;
+  text-align: right;
+}

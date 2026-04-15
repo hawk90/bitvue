@@ -7,12 +7,16 @@
  *   [Decoded] [Reference] [Diff] [Amplified ×N]
  *   PSNR Y: 42.3 dB  U: 43.1 dB  V: 42.8 dB  Avg: 42.5 dB
  *   SSIM Y: 0.994     Max-Diff Y: 3
- *   [Find First Diff]  Offset: [±n]
+ *   [Find First Diff]  Offset: [±n]  [Crop…]  [⟳ Auto]
  */
 
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useYuvDiff } from "../../contexts/YuvDiffContext";
 import type { YuvDiffDisplayMode } from "../../contexts/YuvDiffContext";
+import { CropDialog } from "./CropDialog";
+import type { CropValues } from "./CropDialog";
+import "./YuvDiffPanel.css";
 
 interface YuvDiffPanelProps {
   /** Currently displayed frame index — used to fetch per-frame metrics. */
@@ -28,13 +32,18 @@ const DISPLAY_MODES: { mode: YuvDiffDisplayMode; label: string }[] = [
   { mode: "amplified", label: "Amplified" },
 ];
 
-const AMPLIFY_FACTORS = [2, 4, 8, 16];
+/** Amplify slider: ×1 to ×64, non-linear (powers of 2 in the low end). */
+const AMPLIFY_MIN = 1;
+const AMPLIFY_MAX = 64;
 
 function fmt(v: number | undefined, dp = 2): string {
   if (v === undefined || v === null) return "—";
   if (v >= 99.99) return "∞";
   return v.toFixed(dp);
 }
+
+/** Auto-reload interval in seconds. */
+const AUTO_RELOAD_INTERVAL_MS = 3000;
 
 export const YuvDiffPanel = memo(function YuvDiffPanel({
   currentFrameIndex,
@@ -58,6 +67,37 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
     unloadFile,
   } = useYuvDiff();
 
+  const [showCropDialog, setShowCropDialog] = useState(false);
+  const [crop, setCrop] = useState<CropValues>({
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  });
+  const [autoReload, setAutoReload] = useState(false);
+  const autoReloadRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Auto-reload ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (autoReload && isLoaded) {
+      autoReloadRef.current = setInterval(() => {
+        void fetchMetrics(currentFrameIndex);
+      }, AUTO_RELOAD_INTERVAL_MS);
+    } else {
+      if (autoReloadRef.current) {
+        clearInterval(autoReloadRef.current);
+        autoReloadRef.current = null;
+      }
+    }
+    return () => {
+      if (autoReloadRef.current) {
+        clearInterval(autoReloadRef.current);
+        autoReloadRef.current = null;
+      }
+    };
+  }, [autoReload, isLoaded, currentFrameIndex, fetchMetrics]);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleRefreshMetrics = useCallback(() => {
     void fetchMetrics(currentFrameIndex);
   }, [fetchMetrics, currentFrameIndex]);
@@ -77,21 +117,38 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
     [setPictureOffset],
   );
 
+  const handleAmplifyChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setAmplifyFactor(parseInt(e.target.value, 10));
+    },
+    [setAmplifyFactor],
+  );
+
+  const handleCropApply = useCallback((newCrop: CropValues) => {
+    setCrop(newCrop);
+    setShowCropDialog(false);
+    invoke("set_debug_yuv_crop", { crop: newCrop }).catch((e: unknown) =>
+      console.warn("set_debug_yuv_crop:", e),
+    );
+  }, []);
+
   if (!isLoaded) {
     return (
       <div className="yuv-diff-panel yuv-diff-panel--empty">
         <span className="yuv-diff-hint">
-          No debug YUV loaded. Use <strong>Debug → Load Reference YUV…</strong>
+          No debug YUV loaded. Use <strong>Debug → Open debug YUV…</strong>
         </span>
       </div>
     );
   }
 
   const filename = path ? path.split(/[\\/]/).pop() : "unknown";
+  const hasCrop =
+    crop.left > 0 || crop.right > 0 || crop.top > 0 || crop.bottom > 0;
 
   return (
     <div className="yuv-diff-panel">
-      {/* File info row */}
+      {/* ── File info row ────────────────────────────────────────────────── */}
       <div className="yuv-diff-file-row">
         <span className="yuv-diff-file-name" title={path ?? ""}>
           {filename}
@@ -106,7 +163,7 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
         </button>
       </div>
 
-      {/* Display mode toggle */}
+      {/* ── Display mode toggle ──────────────────────────────────────────── */}
       <div className="yuv-diff-mode-row" role="group" aria-label="Display mode">
         {DISPLAY_MODES.map(({ mode, label }) => (
           <button
@@ -120,24 +177,25 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
         ))}
       </div>
 
-      {/* Amplification factor (only when amplified mode is active) */}
+      {/* ── Amplification slider ─────────────────────────────────────────── */}
       {displayMode === "amplified" && (
         <div className="yuv-diff-amplify-row">
           <span className="yuv-diff-label">Amplify:</span>
-          {AMPLIFY_FACTORS.map((f) => (
-            <button
-              key={f}
-              className={`yuv-diff-amp-btn${amplifyFactor === f ? " yuv-diff-amp-btn--active" : ""}`}
-              onClick={() => setAmplifyFactor(f)}
-              aria-pressed={amplifyFactor === f}
-            >
-              ×{f}
-            </button>
-          ))}
+          <input
+            type="range"
+            className="yuv-diff-amplify-slider"
+            min={AMPLIFY_MIN}
+            max={AMPLIFY_MAX}
+            step={1}
+            value={amplifyFactor}
+            onChange={handleAmplifyChange}
+            aria-label="Amplification factor"
+          />
+          <span className="yuv-diff-amplify-value">×{amplifyFactor}</span>
         </div>
       )}
 
-      {/* Metrics row */}
+      {/* ── Metrics row ──────────────────────────────────────────────────── */}
       <div className="yuv-diff-metrics-row">
         <button
           className="yuv-diff-metrics-btn"
@@ -172,7 +230,7 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
         )}
       </div>
 
-      {/* Controls row: Find-first-diff + picture offset */}
+      {/* ── Controls row ─────────────────────────────────────────────────── */}
       <div className="yuv-diff-controls-row">
         <button
           className="yuv-diff-find-btn"
@@ -195,10 +253,44 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
             title="Frame index offset between decoded and reference"
           />
         </label>
+
+        <button
+          className="yuv-diff-crop-btn"
+          onClick={() => setShowCropDialog(true)}
+          title={
+            hasCrop
+              ? `Crop: L${crop.left} R${crop.right} T${crop.top} B${crop.bottom}`
+              : "Set crop values"
+          }
+          style={hasCrop ? { color: "#ffa", borderColor: "#aa8" } : undefined}
+        >
+          {hasCrop ? "Crop✓" : "Crop…"}
+        </button>
+
+        <button
+          className={`yuv-diff-reload-btn${autoReload ? " yuv-diff-reload-btn--active" : ""}`}
+          onClick={() => setAutoReload((v) => !v)}
+          title={
+            autoReload
+              ? "Auto-reload active (click to disable)"
+              : "Enable auto-reload every 3 s"
+          }
+        >
+          {autoReload ? "⟳ Live" : "⟳ Auto"}
+        </button>
       </div>
 
-      {/* Error display */}
+      {/* ── Error ────────────────────────────────────────────────────────── */}
       {error && <div className="yuv-diff-error">{error}</div>}
+
+      {/* ── Crop dialog ──────────────────────────────────────────────────── */}
+      {showCropDialog && (
+        <CropDialog
+          current={crop}
+          onConfirm={handleCropApply}
+          onCancel={() => setShowCropDialog(false)}
+        />
+      )}
     </div>
   );
 });

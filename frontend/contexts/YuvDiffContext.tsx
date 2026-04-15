@@ -22,7 +22,7 @@ const logger = createLogger("YuvDiffContext");
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type YuvFormat = "i420" | "nv12" | "i422" | "i444";
+export type YuvFormat = "i420" | "nv12" | "nv21" | "i422" | "i444";
 
 export type YuvDiffDisplayMode = "decoded" | "reference" | "diff" | "amplified";
 

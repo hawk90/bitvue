@@ -63,6 +63,12 @@ const ExportDialog = lazy(() =>
   })),
 );
 
+const LoadDebugYuvDialog = lazy(() =>
+  import("./components/panels/LoadDebugYuvDialog").then((m) => ({
+    default: m.LoadDebugYuvDialog,
+  })),
+);
+
 // Loading fallback for lazy-loaded components
 function DialogLoadingFallback() {
   return <div className="dialog-loading">Loading...</div>;
@@ -274,6 +280,9 @@ function AppContent() {
     useMode();
   const { loadFile: loadDebugYuv } = useYuvDiff();
 
+  // Pending YUV path — set when user picks a file, cleared after dialog confirm/cancel
+  const [pendingYuvPath, setPendingYuvPath] = useState<string | null>(null);
+
   const {
     fileInfo,
     setFileInfo,
@@ -455,17 +464,8 @@ function AppContent() {
         multiple: false,
       });
       if (!selected || typeof selected !== "string") return;
-      // Prompt for resolution from the file name heuristic (e.g. 1920x1080_420_8.yuv)
-      const nameMatch = selected.match(/(\d{3,4})[x_](\d{3,4})/i);
-      const w = nameMatch ? parseInt(nameMatch[1], 10) : 1920;
-      const h = nameMatch ? parseInt(nameMatch[2], 10) : 1080;
-      await loadDebugYuv({
-        path: selected,
-        width: w,
-        height: h,
-        format: "i420",
-        bitdepth: 8,
-      });
+      // Show the load dialog for the user to confirm resolution / format / bitdepth
+      setPendingYuvPath(selected);
     };
     const handleCloseBitstream = () => {
       void handleCloseFile();
@@ -651,6 +651,20 @@ function AppContent() {
         totalFrames={frames.length}
         onGoTo={setCurrentFrameIndex}
       />
+
+      {/* Load Debug YUV Dialog */}
+      {pendingYuvPath && (
+        <Suspense fallback={null}>
+          <LoadDebugYuvDialog
+            filePath={pendingYuvPath}
+            onConfirm={(params) => {
+              setPendingYuvPath(null);
+              void loadDebugYuv({ path: pendingYuvPath, ...params });
+            }}
+            onCancel={() => setPendingYuvPath(null)}
+          />
+        </Suspense>
+      )}
     </SelectionProvider>
   );
 }
