@@ -328,13 +328,14 @@ pub fn extract_partition_grid(
                                 SplitMode::HorzT | SplitMode::VertT => PartitionType::Split,
                             };
 
-                            grid.add_block(PartitionBlock::new(
+                            grid.add_block(PartitionBlock::new_vvc(
                                 cu.x,
                                 cu.y,
                                 cu.size as u32,
                                 cu.size as u32,
                                 partition_type,
                                 cu.depth,
+                                cu.tree_type,
                             ));
                         }
                     }

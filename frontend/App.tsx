@@ -1,4 +1,4 @@
-import { useEffect, memo, lazy, Suspense, useCallback } from "react";
+import { useEffect, memo, lazy, Suspense, useCallback, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
@@ -18,9 +18,12 @@ import {
   useFileState,
 } from "./contexts/StreamDataContext";
 import { CompareProvider } from "./contexts/CompareContext";
+import { YuvDiffProvider, useYuvDiff } from "./contexts/YuvDiffContext";
 import { useTheme } from "./contexts/ThemeContext";
+import { useLayout } from "./contexts/LayoutContext";
 import { shouldShowTitleBar } from "./utils/platform";
 import type { ThemeChangeEvent, FileOpenedEvent } from "./types/video";
+import { isKeyframe } from "./types/video";
 import {
   DockableLayout,
   FilmstripPanel,
@@ -33,11 +36,13 @@ import {
   InfoPanel,
   DetailsPanel,
 } from "./components/panels";
+import { GoToFrameDialog } from "./components/GoToFrameDialog";
 
 // Custom hooks for App logic
 import { useAppFileOperations } from "./hooks/useAppFileOperations";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useAppDialogs } from "./hooks/useAppDialogs";
+import { useRecentFiles } from "./hooks/useRecentFiles";
 
 // Lazy load dialog components - only loaded when needed
 const KeyboardShortcutsDialog = lazy(() =>
@@ -103,7 +108,9 @@ function App() {
         <FileStateProvider>
           <CurrentFrameProvider>
             <CompareProvider>
-              <AppContent />
+              <YuvDiffProvider>
+                <AppContent />
+              </YuvDiffProvider>
             </CompareProvider>
           </CurrentFrameProvider>
         </FileStateProvider>
@@ -242,6 +249,15 @@ function AppContent() {
   const { loading, error, setFilePath, refreshFrames } = useFileState();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
 
+  // GoToFrame dialog state
+  const [showGoToFrame, setShowGoToFrame] = useState(false);
+
+  // Layout context for save/load/reset
+  const { saveLayout, loadLayout, resetLayout } = useLayout();
+
+  // Recent files
+  const { recentFiles, addRecentFile } = useRecentFiles();
+
   // Get error dialog first
   const {
     showShortcuts,
@@ -254,7 +270,9 @@ function AppContent() {
   } = useAppDialogs();
 
   // Use custom hooks for app logic
-  const { setMode } = useMode();
+  const { setMode, setActiveCodec, handleFKey, toggleOverlay, clearOverlays } =
+    useMode();
+  const { loadFile: loadDebugYuv } = useYuvDiff();
 
   const {
     fileInfo,
@@ -265,9 +283,10 @@ function AppContent() {
     handleOpenDependentFile,
   } = useAppFileOperations({
     onError: showErrorDialog,
+    onCodecChange: setActiveCodec,
   });
 
-  // Stable keyboard navigation callbacks
+  // ── Frame navigation callbacks ────────────────────────────────────────
   const onPreviousFrame = useCallback(() => {
     if (currentFrameIndex > 0) setCurrentFrameIndex(currentFrameIndex - 1);
   }, [currentFrameIndex, setCurrentFrameIndex]);
@@ -286,10 +305,38 @@ function AppContent() {
     if (frames.length > 0) setCurrentFrameIndex(frames.length - 1);
   }, [frames.length, setCurrentFrameIndex]);
 
+  // I-frame navigation
+  const onPreviousKeyFrame = useCallback(() => {
+    for (let i = currentFrameIndex - 1; i >= 0; i--) {
+      const f = frames[i];
+      if (f && isKeyframe(f.frame_type, f.key_frame)) {
+        setCurrentFrameIndex(i);
+        return;
+      }
+    }
+  }, [currentFrameIndex, frames, setCurrentFrameIndex]);
+
+  const onNextKeyFrame = useCallback(() => {
+    for (let i = currentFrameIndex + 1; i < frames.length; i++) {
+      const f = frames[i];
+      if (f && isKeyframe(f.frame_type, f.key_frame)) {
+        setCurrentFrameIndex(i);
+        return;
+      }
+    }
+  }, [currentFrameIndex, frames, setCurrentFrameIndex]);
+
   const onShowShortcuts = useCallback(
     () => setShowShortcuts(true),
     [setShowShortcuts],
   );
+
+  const onGoToFrame = useCallback(() => setShowGoToFrame(true), []);
+
+  const onSaveFrame = useCallback(() => {
+    // Dispatch synthetic event to trigger export of current frame
+    window.dispatchEvent(new CustomEvent("save-current-frame"));
+  }, []);
 
   // Keyboard navigation
   useKeyboardNavigation({
@@ -300,8 +347,19 @@ function AppContent() {
       onNextFrame,
       onFirstFrame,
       onLastFrame,
+      onPreviousKeyFrame,
+      onNextKeyFrame,
     },
     onShowShortcuts,
+    onGoToFrame,
+    onOpenFile: handleOpenFile,
+    onCloseFile: handleCloseFile,
+    onShowExport: useCallback(
+      () => setShowExportDialog(true),
+      [setShowExportDialog],
+    ),
+    onSaveFrame,
+    onFKey: handleFKey,
   });
 
   // Tauri event listeners
@@ -311,6 +369,7 @@ function AppContent() {
       setFilePath(event.payload.success ? event.payload.path : null);
       if (event.payload.success) {
         setCurrentFrameIndex(0);
+        addRecentFile(event.payload.path);
         await refreshFrames();
       } else {
         showErrorDialog(
@@ -334,13 +393,79 @@ function AppContent() {
     setFilePath,
     showErrorDialog,
     setCurrentFrameIndex,
+    addRecentFile,
   ]);
+
+  // Layout menu events
+  useEffect(() => {
+    const handleSaveLayout = () => saveLayout();
+    const handleLoadLayout = () => loadLayout();
+    const handleResetLayout = () => resetLayout();
+    window.addEventListener("menu-save-layout", handleSaveLayout);
+    window.addEventListener("menu-load-layout", handleLoadLayout);
+    window.addEventListener("menu-reset-layout", handleResetLayout);
+    return () => {
+      window.removeEventListener("menu-save-layout", handleSaveLayout);
+      window.removeEventListener("menu-load-layout", handleLoadLayout);
+      window.removeEventListener("menu-reset-layout", handleResetLayout);
+    };
+  }, [saveLayout, loadLayout, resetLayout]);
+
+  // Overlay toggle / clear events (from View → Info Overlays submenu)
+  useEffect(() => {
+    const handleToggleOverlay = (e: Event) => {
+      const mode = (e as CustomEvent<string>).detail;
+      if (mode)
+        toggleOverlay(
+          mode as import("./utils/codecModeRegistry").VisualizationMode,
+        );
+    };
+    const handleClearOverlays = () => clearOverlays();
+    window.addEventListener("menu-toggle-overlay", handleToggleOverlay);
+    window.addEventListener("menu-clear-overlays", handleClearOverlays);
+    return () => {
+      window.removeEventListener("menu-toggle-overlay", handleToggleOverlay);
+      window.removeEventListener("menu-clear-overlays", handleClearOverlays);
+    };
+  }, [toggleOverlay, clearOverlays]);
+
+  // Recent files menu: open the selected path
+  useEffect(() => {
+    const handleOpenRecent = (e: Event) => {
+      const path = (e as CustomEvent<string>).detail;
+      if (path) void invoke("open_file", { path });
+    };
+    window.addEventListener("menu-open-recent-file", handleOpenRecent);
+    return () => {
+      window.removeEventListener("menu-open-recent-file", handleOpenRecent);
+    };
+  }, []);
 
   // File menu events
   useEffect(() => {
     const handleExportListener = () => setShowExportDialog(true);
     const handleOpenBitstream = () => {
       void handleOpenFile();
+    };
+    const handleOpenDebugYuv = async () => {
+      const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+      const selected = await openDialog({
+        title: "Load Reference YUV File",
+        filters: [{ name: "Raw YUV", extensions: ["yuv", "raw", "y4m"] }],
+        multiple: false,
+      });
+      if (!selected || typeof selected !== "string") return;
+      // Prompt for resolution from the file name heuristic (e.g. 1920x1080_420_8.yuv)
+      const nameMatch = selected.match(/(\d{3,4})[x_](\d{3,4})/i);
+      const w = nameMatch ? parseInt(nameMatch[1], 10) : 1920;
+      const h = nameMatch ? parseInt(nameMatch[2], 10) : 1080;
+      await loadDebugYuv({
+        path: selected,
+        width: w,
+        height: h,
+        format: "i420",
+        bitdepth: 8,
+      });
     };
     const handleCloseBitstream = () => {
       void handleCloseFile();
@@ -368,6 +493,8 @@ function AppContent() {
     window.addEventListener("menu-quit", handleQuit);
     window.addEventListener("menu-shortcuts", handleShowShortcuts);
     window.addEventListener("menu-export", handleExportListener);
+    const handleOpenDebugYuvEvent = () => void handleOpenDebugYuv();
+    window.addEventListener("menu-open-debug-yuv", handleOpenDebugYuvEvent);
     return () => {
       window.removeEventListener("menu-open-bitstream", handleOpenBitstream);
       window.removeEventListener("menu-open-as-av1", handleOpenBitstream);
@@ -384,11 +511,16 @@ function AppContent() {
       window.removeEventListener("menu-quit", handleQuit);
       window.removeEventListener("menu-shortcuts", handleShowShortcuts);
       window.removeEventListener("menu-export", handleExportListener);
+      window.removeEventListener(
+        "menu-open-debug-yuv",
+        handleOpenDebugYuvEvent,
+      );
     };
   }, [
     handleCloseFile,
     handleOpenDependentFile,
     handleOpenFile,
+    loadDebugYuv,
     setShowExportDialog,
     setShowShortcuts,
   ]);
@@ -510,6 +642,15 @@ function AppContent() {
           height={fileInfo?.height}
         />
       </LazyDialogWrapper>
+
+      {/* Go To Frame Dialog */}
+      <GoToFrameDialog
+        isOpen={showGoToFrame}
+        onClose={() => setShowGoToFrame(false)}
+        currentIndex={currentFrameIndex}
+        totalFrames={frames.length}
+        onGoTo={setCurrentFrameIndex}
+      />
     </SelectionProvider>
   );
 }

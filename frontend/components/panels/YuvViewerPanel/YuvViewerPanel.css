@@ -410,3 +410,60 @@
   position: relative;
   background: var(--vscode-editor-background, #1e1e1e);
 }
+
+/* ── Codec badge ─────────────────────────────────────────────── */
+.yuv-codec-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vscode-badge-foreground, #fff);
+  background: var(--vscode-badge-background, #4d4d4d);
+  user-select: none;
+}
+
+/* ── Overlay toggle bar ──────────────────────────────────────── */
+.yuv-overlay-toggles {
+  gap: 2px;
+}
+
+.yuv-overlay-label {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-right: 2px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.yuv-overlay-btn {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #3c3c3c);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  transition:
+    background 0.1s,
+    color 0.1s;
+  white-space: nowrap;
+}
+
+.yuv-overlay-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #505050);
+  color: var(--vscode-button-secondaryForeground, #fff);
+}
+
+.yuv-overlay-btn--active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.yuv-overlay-btn--active:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}

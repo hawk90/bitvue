@@ -30,6 +30,9 @@ const getExtension = (path: string): string =>
 
 export interface AppFileOperationsCallbacks {
   onError: (title: string, message: string, details?: string) => void;
+  /** Called with the detected codec string when a file is opened successfully,
+   *  or null when the file is closed. Drives the codec-aware mode registry. */
+  onCodecChange?: (codec: string | null) => void;
 }
 
 export interface AppFileOperationsReturn {
@@ -48,7 +51,7 @@ export interface AppFileOperationsReturn {
 export function useAppFileOperations(
   callbacks: AppFileOperationsCallbacks,
 ): AppFileOperationsReturn {
-  const { onError } = callbacks;
+  const { onError, onCodecChange } = callbacks;
   const { setFilePath, refreshFrames, clearData } = useFileState();
   const { setCurrentFrameIndex } = useCurrentFrame();
   const { createWorkspace } = useCompare();
@@ -66,11 +69,12 @@ export function useAppFileOperations(
       setFilePath(null);
       setCurrentFrameIndex(0);
       clearData();
+      onCodecChange?.(null);
     } catch (err) {
       logger.error("Failed to close file:", err);
       onError("Failed to Close File", toMessage(err));
     }
-  }, [setFilePath, setCurrentFrameIndex, clearData, onError]);
+  }, [setFilePath, setCurrentFrameIndex, clearData, onError, onCodecChange]);
 
   /**
    * Handle opening a file
@@ -126,6 +130,10 @@ export function useAppFileOperations(
         if (result.success) {
           logger.info("File opened successfully");
           setCurrentFrameIndex(0);
+          // Notify mode registry about the new codec
+          if (result.codec) {
+            onCodecChange?.(result.codec.toUpperCase());
+          }
           // Refresh frames after opening file
           try {
             await refreshFrames();
@@ -153,7 +161,13 @@ export function useAppFileOperations(
       logger.error("Failed to open file:", err);
       onError("Failed to Open File", toMessage(err));
     }
-  }, [refreshFrames, setFilePath, setCurrentFrameIndex, onError]);
+  }, [
+    refreshFrames,
+    setFilePath,
+    setCurrentFrameIndex,
+    onError,
+    onCodecChange,
+  ]);
 
   /**
    * Handle opening dependent bitstream for comparison

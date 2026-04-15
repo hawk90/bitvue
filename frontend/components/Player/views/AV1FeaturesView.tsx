@@ -16,6 +16,9 @@ interface AV1FeaturesViewProps {
   frame: FrameInfo | null;
   width: number;
   height: number;
+  /** Specific sub-mode from the codec mode registry (optional). When set,
+   *  only that feature panel is shown; when absent all panels are shown. */
+  subMode?: string;
   showCdef?: boolean;
   showLoopRestoration?: boolean;
   showFilmGrain?: boolean;

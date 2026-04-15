@@ -10,13 +10,27 @@ description = "Bitvue CLI - AV1 Bitstream Analyzer Command Line Interface"
 name = "bitvue"
 path = "src/main.rs"
 
+# Expose internals as a library so integration tests can call `run()` directly.
+[lib]
+name = "bitvue_cli"
+path = "src/lib.rs"
+
 [dependencies]
 # Core business logic
 bitvue-core = { path = "../bitvue-core" }
 bitvue-formats = { path = "../bitvue-formats" }
 bitvue-decode = { path = "../bitvue-decode" }
 bitvue-av1-codec = { path = "../bitvue-av1-codec" }
+bitvue-hevc = { path = "../bitvue-hevc" }
+bitvue-avc = { path = "../bitvue-avc" }
+bitvue-vp9 = { path = "../bitvue-vp9" }
 bitvue-metrics = { path = "../bitvue-metrics" }
+
+# MD5 for per-frame checksums (-md5 flag)
+md5 = "0.7"
+
+# Parallelism for batch operations (--md5 with large files)
+rayon = { workspace = true }
 
 # CLI
 clap = { workspace = true }
@@ -36,3 +50,6 @@ memmap2 = { workspace = true }
 # Serialization (for output formats)
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

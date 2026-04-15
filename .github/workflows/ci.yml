@@ -208,10 +208,10 @@ jobs:
   coverage:
     name: Code Coverage
     needs: changes
-    # Temporarily disabled due to "Argument list too long" error (ARG_MAX limitation)
-    # cargo-llvm-cov cannot work with long absolute paths in GitHub Actions CI
-    # TODO: Investigate alternative coverage tools (tarpaulin) or per-crate coverage
-    if: false && needs.changes.outputs.rust == 'true'
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.rust == 'true' &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -226,40 +226,43 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev ffmpeg libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev libavdevice-dev
+        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev pkg-config
 
-      - name: Generate coverage report
-        working-directory: crates/bitvue-hevc
+      # Use short CARGO_TARGET_DIR (/t) and per-crate approach to stay under
+      # the Linux ARG_MAX limit (131072 bytes).  Each crate is measured
+      # independently; reports are merged into a single Codecov upload.
+      - name: Generate coverage (codec crates)
         env:
-          CARGO_TARGET_DIR: /tmp/t
+          CARGO_TARGET_DIR: /t
         run: |
-          cargo llvm-cov --codecov --output-path ../../coverage/llvm-cov.json
-          cargo llvm-cov --html --output-dir ../../coverage/html
+          mkdir -p coverage
+          for CRATE in bitvue-hevc bitvue-avc bitvue-vp9 bitvue-av1-codec bitvue-core bitvue-formats bitvue-cli; do
+            echo "=== $CRATE ==="
+            cargo llvm-cov \
+              --package "$CRATE" \
+              --codecov \
+              --output-path "coverage/${CRATE}.json" \
+              || echo "WARN: $CRATE coverage failed (non-fatal)"
+          done
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: ./coverage/llvm-cov.json
+          files: coverage/bitvue-hevc.json,coverage/bitvue-avc.json,coverage/bitvue-vp9.json,coverage/bitvue-av1-codec.json,coverage/bitvue-core.json,coverage/bitvue-formats.json,coverage/bitvue-cli.json
           flags: rust
           name: rust-coverage
           fail_ci_if_error: false
 
-      - name: Upload coverage HTML (artifact)
+      - name: Upload coverage JSON (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage/
 
       - name: Coverage summary
-        working-directory: crates/bitvue-hevc
-        env:
-          CARGO_TARGET_DIR: /tmp/t
         run: |
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "📊 Coverage report generated (bitvue-hevc only)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ This PR adds 145 tests to HEVC codec for 95%+ coverage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          cargo llvm-cov --summary 2>&1 || true
+          echo "Crates measured: bitvue-hevc, bitvue-avc, bitvue-vp9, bitvue-av1-codec, bitvue-core, bitvue-formats, bitvue-cli" >> $GITHUB_STEP_SUMMARY
 
   # ================================
   # 5. Frontend Full Checks (PR only)

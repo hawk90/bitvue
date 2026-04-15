@@ -834,19 +834,20 @@ pub fn decode_annexb_frame_yuv(
     Err("H.264/H.265 decoding requires FFmpeg. Please rebuild with --features ffmpeg".to_string())
 }
 
-/// Get decoded YUV frame (more efficient than RGB conversion)
-#[tauri::command]
-pub async fn get_decoded_frame_yuv(
-    state: tauri::State<'_, AppState>,
+/// Internal YUV decode helper.
+///
+/// Shared between the `get_decoded_frame_yuv` Tauri command and the `debug_yuv`
+/// module so neither has to call a Tauri command from Rust code.
+pub(crate) async fn decode_frame_yuv_internal(
+    app_state: &AppState,
     frame_index: usize,
-    stream_id: Option<String>,
+    use_stream_b: bool,
 ) -> Result<YUVFrameData, String> {
-    let use_stream_b = stream_id.as_deref() == Some("B");
     log::info!("get_decoded_frame_yuv: Requesting YUV frame {} (stream={})",
         frame_index, if use_stream_b { "B" } else { "A" });
 
     // SECURITY: Validate frame index early at command boundary (defense in depth)
-    let core = state.core.lock().map_err(|e| e.to_string())?;
+    let core = app_state.core.lock().map_err(|e| e.to_string())?;
     let target_stream = if use_stream_b { StreamId::B } else { StreamId::A };
     let stream_lock = core.get_stream(target_stream);
     let stream = stream_lock.read();
@@ -924,7 +925,7 @@ pub async fn get_decoded_frame_yuv(
         decode_fn_inner(&file_data, frame_index, None)
     } else {
         // Stream A: use decode_service cache for repeated frame access
-        let decode_service = state.decode_service.lock().map_err(|e| e.to_string())?;
+        let decode_service = app_state.decode_service.lock().map_err(|e| e.to_string())?;
         let decode_fn = |file_data: &[u8], idx: usize| -> Result<bitvue_decode::DecodedFrame, String> {
             let cached_samples = match container_format {
                 ContainerFormat::MP4 => decode_service.get_or_extract_mp4_samples().ok().flatten(),
@@ -1039,4 +1040,15 @@ pub async fn get_decoded_frame_yuv(
             error: Some(e),
         }),
     }
+}
+
+/// Get decoded YUV frame (more efficient than RGB conversion)
+#[tauri::command]
+pub async fn get_decoded_frame_yuv(
+    state: tauri::State<'_, AppState>,
+    frame_index: usize,
+    stream_id: Option<String>,
+) -> Result<YUVFrameData, String> {
+    let use_stream_b = stream_id.as_deref() == Some("B");
+    decode_frame_yuv_internal(state.inner(), frame_index, use_stream_b).await
 }

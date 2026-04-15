@@ -19,6 +19,7 @@ use crate::services::{DecodeService, ThumbnailService, RateLimiter};
 // Re-export module contents
 pub mod analysis;
 pub mod compare;
+pub mod debug_yuv;
 pub mod export;
 pub mod file;
 pub mod frame;
@@ -101,6 +102,8 @@ pub struct AppState {
     pub rate_limiter: Arc<RateLimiter>,
     /// Compare workspace for A/B comparison
     pub compare_workspace: Arc<Mutex<Option<CompareWorkspace>>>,
+    /// Debug YUV reference file state (YUVDiff mode)
+    pub debug_yuv: Arc<Mutex<Option<debug_yuv::DebugYuvState>>>,
 }
 
 impl AppState {
@@ -111,6 +114,7 @@ impl AppState {
             thumbnail_service: Arc::new(Mutex::new(ThumbnailService::new())),
             rate_limiter: Arc::new(RateLimiter::new()),
             compare_workspace: Arc::new(Mutex::new(None)),
+            debug_yuv: Arc::new(Mutex::new(None)),
         }
     }
 }

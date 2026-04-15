@@ -31,6 +31,7 @@ anyhow = "1.0"
 base64 = "0.22"
 image = "0.25"  # Updated to match workspace
 chrono = "0.4"
+memmap2 = "0.9"
 
 # Bitvue core crates (existing Rust parsers/decoders)
 # Note: hevc-indexer, vp9-indexer, vvc-indexer features are disabled due to cyclic dependency

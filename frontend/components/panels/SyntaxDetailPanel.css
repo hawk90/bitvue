@@ -334,6 +334,89 @@
   font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
+/* Stats Tab — chart components */
+.stats-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stats-chart-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px 4px;
+}
+
+.stats-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stats-legend-item {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+
+.stats-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stats-legend-type {
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats-legend-count {
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  text-align: right;
+  min-width: 24px;
+}
+
+.stats-legend-pct {
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  text-align: right;
+  min-width: 38px;
+}
+
+.stats-chart-bar {
+  padding: 4px 4px 0;
+  background: var(--bg-panel-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.stats-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px;
+  font-size: 9px;
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+}
+
+.stats-chart-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 /* Search Tab Styles */
 .search-container {
   padding: 8px 0;

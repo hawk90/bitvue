@@ -21,3 +21,4 @@ export { DockableLayout } from "./DockableLayout";
 export type { PanelConfig } from "./DockableLayout";
 export { InfoPanel } from "./InfoPanel";
 export { DetailsPanel } from "./DetailsPanel";
+export { YuvDiffPanel } from "./YuvDiffPanel";

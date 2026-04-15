@@ -9,6 +9,8 @@
 import { useRef, useEffect, memo, useMemo } from "react";
 import { renderModeOverlay } from "../OverlayRenderer";
 import type { VisualizationMode } from "../../../contexts/ModeContext";
+import type { OverlayRenderOptionsExtended } from "../OverlayRenderer";
+import type { Av1FeaturesData } from "../OverlayRenderer";
 import type { FrameInfo } from "../../../types/video";
 import {
   YUVRenderer,
@@ -33,6 +35,10 @@ interface VideoCanvasProps {
   isDragging: boolean;
   /** Raw YUV data if available (overrides frameImage when present) */
   yuvData?: YUVFrame;
+  /** Active info overlays drawn on top of the main mode overlay. */
+  activeOverlays?: ReadonlySet<VisualizationMode>;
+  /** AV1 advanced feature data for CDEF / LR / film-grain / super-res modes. */
+  av1Features?: Av1FeaturesData;
 }
 
 export const VideoCanvas = memo(function VideoCanvas({
@@ -48,6 +54,8 @@ export const VideoCanvas = memo(function VideoCanvas({
   onMouseUp,
   isDragging,
   yuvData,
+  activeOverlays,
+  av1Features,
 }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<YUVRenderer | null>(null);
@@ -119,14 +127,24 @@ export const VideoCanvas = memo(function VideoCanvas({
       ctx.drawImage(frameImage, 0, 0);
     }
 
-    // Render mode overlay on top
-    renderModeOverlay({
+    // Render mode overlay + active info overlays on top
+    const overlayOpts: OverlayRenderOptionsExtended = {
       mode: currentMode,
       frame: currentFrame,
       canvas,
       ctx,
-    });
-  }, [frameImage, yuvData, currentMode, currentFrame]);
+      activeOverlays,
+      av1Features,
+    };
+    renderModeOverlay(overlayOpts);
+  }, [
+    frameImage,
+    yuvData,
+    currentMode,
+    currentFrame,
+    activeOverlays,
+    av1Features,
+  ]);
 
   return (
     <div

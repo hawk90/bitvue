@@ -16,6 +16,8 @@
 import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMode } from "../../../contexts/ModeContext";
+import { CodecBadge } from "./ModeSelector";
+import { OverlayToggleBar } from "./OverlayToggleBar";
 import { CodingFlowView } from "../../Player/views/CodingFlowView";
 import { DeblockingView } from "../../Player/views/DeblockingView";
 import { ResidualsView } from "../../Player/views/ResidualsView";
@@ -23,6 +25,7 @@ import { AV1FeaturesView } from "../../Player/views/AV1FeaturesView";
 import { useFrameData } from "../../../contexts/FrameDataContext";
 import { createLogger } from "../../../utils/logger";
 import { useCanvasInteraction } from "../../../hooks/useCanvasInteraction";
+import { useAv1Features } from "../../../hooks/useAv1Features";
 import { ZOOM, TIMING } from "../../../constants/ui";
 import { VideoCanvas } from "./VideoCanvas";
 import { YUVFrame } from "../../../utils/yuvRenderer";
@@ -103,7 +106,16 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   totalFrames,
   onFrameChange,
 }: YuvViewerPanelProps) {
-  const { currentMode, setMode } = useMode();
+  const {
+    currentMode,
+    setMode,
+    availableModes,
+    availableOverlays,
+    activeOverlays,
+    toggleOverlay,
+    activeCodec,
+    handleFKey,
+  } = useMode();
   const { frames, setFrames } = useFrameData();
 
   // Image and loading state
@@ -364,45 +376,21 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           }
           break;
         case "F1":
-          e.preventDefault();
-          setMode("overview");
-          break;
         case "F2":
-          e.preventDefault();
-          setMode("coding-flow");
-          break;
         case "F3":
-          e.preventDefault();
-          setMode("prediction");
-          break;
         case "F4":
-          e.preventDefault();
-          setMode("transform");
-          break;
         case "F5":
-          e.preventDefault();
-          setMode("qp-map");
-          break;
         case "F6":
-          e.preventDefault();
-          setMode("mv-field");
-          break;
         case "F7":
-          e.preventDefault();
-          setMode("reference");
-          break;
         case "F8":
-          e.preventDefault();
-          setMode("deblocking");
-          break;
         case "F9":
-          e.preventDefault();
-          setMode("residuals");
-          break;
         case "F10":
-          e.preventDefault();
-          setMode("av1-features");
+        case "F11":
+        case "F12": {
+          const fNum = parseInt(e.key.slice(1), 10);
+          if (handleFKey(fNum)) e.preventDefault();
           break;
+        }
       }
     };
 
@@ -417,7 +405,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     zoomIn,
     zoomOut,
     resetZoom,
-    setMode,
+    handleFKey,
   ]);
 
   // Memoize YUV conversion to avoid re-running on every render
@@ -427,6 +415,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   );
 
   const currentFrame = frames[currentFrameIndex] || null;
+
+  // Fetch AV1 advanced features when in an AV1-specific mode
+  const { av1Features } = useAv1Features(
+    currentFrameIndex,
+    activeCodec,
+    currentMode,
+  );
 
   return (
     <div className="yuv-viewer">
@@ -453,7 +448,19 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
         <div className="yuv-toolbar-spacer"></div>
 
-        <ModeSelector currentMode={currentMode} onModeChange={setMode} />
+        <CodecBadge codec={activeCodec} />
+
+        <ModeSelector
+          currentMode={currentMode}
+          onModeChange={setMode}
+          availableModes={availableModes}
+        />
+
+        <OverlayToggleBar
+          availableOverlays={availableOverlays}
+          activeOverlays={activeOverlays}
+          onToggle={toggleOverlay}
+        />
 
         <div className="yuv-toolbar-spacer"></div>
 
@@ -470,7 +477,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         <div className="yuv-analysis-view-container">
           <CodingFlowView frame={currentFrame} />
         </div>
-      ) : currentMode === "deblocking" ? (
+      ) : currentMode === "deblocking" || currentMode === "loop-filter" ? (
         <div className="yuv-analysis-view-container">
           <DeblockingView
             frame={currentFrame}
@@ -492,6 +499,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             frame={currentFrame}
             width={frameImage?.width ?? 1920}
             height={frameImage?.height ?? 1080}
+            subMode={currentMode}
           />
         </div>
       ) : (
@@ -508,6 +516,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onMouseUp={canvasHandlers.onMouseUp}
           isDragging={isDragging}
           yuvData={convertedYuvFrame}
+          activeOverlays={activeOverlays}
+          av1Features={av1Features ?? undefined}
         />
       )}
 

@@ -2,6 +2,7 @@
 
 pub mod analyze;
 pub mod batch;
+pub mod decode;
 pub mod export;
 pub mod frames;
 pub mod info;

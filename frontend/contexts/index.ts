@@ -12,3 +12,10 @@ export { CurrentFrameProvider, useCurrentFrame } from "./CurrentFrameContext";
 export { ThumbnailProvider, useThumbnails } from "./ThumbnailContext";
 export { LayoutProvider, useLayout } from "./LayoutContext";
 export { CompareProvider, useCompare } from "./CompareContext";
+export { YuvDiffProvider, useYuvDiff } from "./YuvDiffContext";
+export type {
+  YuvDiffDisplayMode,
+  YuvDiffMetrics,
+  YuvDiffLoadParams,
+  YuvFormat,
+} from "./YuvDiffContext";

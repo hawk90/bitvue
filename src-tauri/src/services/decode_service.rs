@@ -1,10 +1,20 @@
 //! Decode Service - Frame decoding business logic
 //!
 //! Caches file data and decoded frames to avoid repeated operations.
+//!
+//! ## Large-file strategy
+//!
+//! File data is stored as a [`FileBytes`] which can be either:
+//! - `FileBytes::Mapped` — a memory-mapped view of the file on disk.  The OS
+//!   pages data in on demand and can evict pages under memory pressure, so the
+//!   full file never has to live in the process heap.
+//! - `FileBytes::Owned` — a heap-allocated `Vec<u8>` used when the caller
+//!   provides the data directly (e.g. `set_file_with_data`).
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
 use std::collections::{HashMap, VecDeque};
+use memmap2::MmapOptions;
 
 // Import path validation from commands module
 use crate::commands::file::validate_file_path;
@@ -14,6 +24,39 @@ use crate::services::utils::lock_mutex;
 
 // Import ChromaFormat from bitvue_decode
 use bitvue_decode::decoder::ChromaFormat;
+
+// ─── FileBytes ────────────────────────────────────────────────────────────────
+
+/// Unified file-data handle that is either memory-mapped or heap-owned.
+///
+/// Both variants deref to `[u8]`, so all downstream code that does
+/// `&**file_data` (Arc → FileBytes → [u8]) continues to work unchanged.
+pub(crate) enum FileBytes {
+    /// Memory-mapped view.  The `_file` field keeps the `File` handle alive
+    /// so the mapping stays valid.  Pages are loaded on demand by the OS.
+    Mapped {
+        _file: std::fs::File,
+        data: memmap2::Mmap,
+    },
+    /// Heap-owned bytes (used when data is provided by the caller).
+    Owned(Vec<u8>),
+}
+
+impl std::ops::Deref for FileBytes {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            FileBytes::Mapped { data, .. } => data,
+            FileBytes::Owned(v) => v,
+        }
+    }
+}
+
+// SAFETY: `memmap2::Mmap` is `Sync` + `Send` (it is a read-only shared
+// mapping with no interior mutability).  `FileBytes` therefore inherits
+// those bounds so it can live inside `Arc<FileBytes>` across threads.
+unsafe impl Sync for FileBytes {}
+unsafe impl Send for FileBytes {}
 
 /// Cached decoded RGB frame data
 #[derive(Debug, Clone)]
@@ -72,8 +115,8 @@ pub struct DecodeService {
     /// Codec type
     codec: String,
     /// Cached file data (to avoid repeated disk reads)
-    /// Using Arc to avoid expensive Vec clones
-    cached_data: Mutex<Option<Arc<Vec<u8>>>>,
+    /// Using Arc<FileBytes> — either memory-mapped or heap-owned.
+    cached_data: Mutex<Option<Arc<FileBytes>>>,
     /// Combined RGB cache state (single mutex prevents race conditions)
     rgb_cache_state: Mutex<RGBCacheState>,
     /// Combined YUV cache state (single mutex prevents race conditions)
@@ -138,11 +181,14 @@ impl DecodeService {
         self.file_path = Some(path.clone());
         self.codec = codec;
 
-        // Pre-load file data into cache for faster access
-        let file_data = std::fs::read(&path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        // Memory-map the file — OS pages data on demand, never fully loads into heap
+        let file = std::fs::File::open(&path)
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+        // SAFETY: The file is read-only and we hold `_file` alive inside FileBytes::Mapped.
+        let mmap = unsafe { MmapOptions::new().map(&file) }
+            .map_err(|e| format!("Failed to mmap file: {}", e))?;
 
-        *lock_mutex!(self.cached_data) = Some(Arc::new(file_data));
+        *lock_mutex!(self.cached_data) = Some(Arc::new(FileBytes::Mapped { _file: file, data: mmap }));
 
         Ok(())
     }
@@ -169,7 +215,7 @@ impl DecodeService {
         self.codec = codec;
 
         // Use provided data instead of reading from disk
-        *lock_mutex!(self.cached_data) = Some(Arc::new(file_data));
+        *lock_mutex!(self.cached_data) = Some(Arc::new(FileBytes::Owned(file_data)));
 
         // Increment cache generation to invalidate stale cache entries
         self.cache_generation.fetch_add(1, Ordering::SeqCst);
@@ -177,9 +223,11 @@ impl DecodeService {
         Ok(())
     }
 
-    /// Get cached file data as Arc slice (cheap clone)
-    /// Returns Arc<Vec<u8>> which can be cheaply cloned and dereferenced to &[u8]
-    pub fn get_file_data_arc(&self) -> Result<Arc<Vec<u8>>, String> {
+    /// Get cached file data as `Arc<FileBytes>` (cheap clone).
+    ///
+    /// All callers that need `&[u8]` can deref-coerce:
+    /// `&file_data` → `&Arc<FileBytes>` → `&FileBytes` → `&[u8]`
+    pub fn get_file_data_arc(&self) -> Result<Arc<FileBytes>, String> {
         // Check cache first
         if let Some(data) = lock_mutex!(self.cached_data).as_ref() {
             return Ok(data.clone());
@@ -194,15 +242,17 @@ impl DecodeService {
             .ok_or("Invalid path: unable to convert to string")?;
         let validated_path = validate_file_path(path_str)?;
 
+        // Fallback: heap-read (no open file handle to mmap)
         std::fs::read(&validated_path)
             .map_err(|e| format!("Failed to read file: {}", e))
-            .map(|data| Arc::new(data))
+            .map(|data| Arc::new(FileBytes::Owned(data)))
     }
 
-    /// Get cached file data, or read from disk if not cached
-    /// Note: This clones the data. For better performance, use get_file_data_arc()
+    /// Get cached file data as a cloned `Vec<u8>`.
+    ///
+    /// Prefer `get_file_data_arc()` where possible to avoid the copy.
     pub fn get_file_data(&self) -> Result<Vec<u8>, String> {
-        self.get_file_data_arc().map(|arc| (*arc).clone())
+        self.get_file_data_arc().map(|arc| (**arc).to_vec())
     }
 
     /// Get a cached decoded RGB frame, or decode it if not cached

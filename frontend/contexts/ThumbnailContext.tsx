@@ -20,6 +20,12 @@ import { TIMING } from "../constants/ui";
 
 const logger = createLogger("ThumbnailContext");
 
+/** Maximum number of decoded thumbnails to keep in memory at once.
+ *  At ~20 KB each (160×90 JPEG), 256 entries ≈ 5 MB.
+ *  When the limit is exceeded the oldest-loaded entries are evicted (FIFO).
+ */
+const MAX_CACHED_THUMBNAILS = 256;
+
 export interface ThumbnailResult {
   frame_index: number;
   thumbnail_data: string;
@@ -50,6 +56,12 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
   // Use refs to avoid stale closures in callbacks
   const thumbnailsRef = useRef(thumbnails);
   const loadingRef = useRef(loading);
+
+  // FIFO eviction queue — tracks insertion order for LRU eviction.
+  // We use a plain array here because:
+  //  - pushes happen at most once per thumbnail batch
+  //  - evictions walk from the front (oldest entry)
+  const evictionQueueRef = useRef<number[]>([]);
 
   // Refs for debouncing thumbnail loads
   const debounceTimeoutRef = useRef<number | null>(null);
@@ -88,11 +100,26 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
         // Process results using shared utility
         const processed = processThumbnailResults(results);
 
-        // Update thumbnails map
+        // Update thumbnails map with LRU eviction
         const newThumbnails = new Map(thumbnailsRef.current);
         processed.forEach((dataUrl, frameIndex) => {
+          // Only enqueue new entries — don't duplicate entries that are
+          // being refreshed (their eviction-order position stays unchanged).
+          if (!newThumbnails.has(frameIndex)) {
+            evictionQueueRef.current.push(frameIndex);
+          }
           newThumbnails.set(frameIndex, dataUrl);
         });
+
+        // Evict oldest entries when the cache exceeds the size cap.
+        while (newThumbnails.size > MAX_CACHED_THUMBNAILS) {
+          const oldest = evictionQueueRef.current.shift();
+          if (oldest !== undefined) {
+            newThumbnails.delete(oldest);
+          } else {
+            break; // eviction queue is empty (shouldn't happen, but guard anyway)
+          }
+        }
 
         setThumbnails(newThumbnails);
         updateThumbnailsRef(newThumbnails);
@@ -159,8 +186,9 @@ export function ThumbnailProvider({ children }: { children: ReactNode }) {
       clearTimeout(debounceTimeoutRef.current);
       debounceTimeoutRef.current = null;
     }
-    // Clear pending load set
+    // Clear pending load set and eviction queue
     pendingLoadRef.current.clear();
+    evictionQueueRef.current = [];
     // Clear thumbnails map
     setThumbnails(new Map());
     updateThumbnailsRef(new Map());

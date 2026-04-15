@@ -70,6 +70,13 @@ pub fn run() {
       commands::quality::calculate_quality_metrics,
       commands::quality::calculate_bd_rate,
       commands::quality::get_rd_point,
+      commands::debug_yuv::load_debug_yuv,
+      commands::debug_yuv::get_debug_yuv_frame,
+      commands::debug_yuv::get_yuv_diff_metrics,
+      commands::debug_yuv::find_first_diff_frame,
+      commands::debug_yuv::unload_debug_yuv,
+      commands::debug_yuv::set_debug_yuv_offset,
+      commands::debug_yuv::set_debug_yuv_crop,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

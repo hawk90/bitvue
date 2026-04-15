@@ -165,6 +165,10 @@ pub struct PartitionBlock {
     pub partition: PartitionType,
     /// Nesting depth (0 = superblock, increases with splits)
     pub depth: u8,
+    /// Tree type for VVC dual tree (0 = single/luma, 1 = dual-tree luma, 2 = dual-tree chroma).
+    /// `None` for codecs without dual-tree (HEVC, AV1, VP9, AVC).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tree_type: Option<u8>,
 }
 
 impl PartitionBlock {
@@ -184,6 +188,28 @@ impl PartitionBlock {
             height,
             partition,
             depth,
+            tree_type: None,
+        }
+    }
+
+    /// Create a VVC partition block with tree_type set.
+    pub fn new_vvc(
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        partition: PartitionType,
+        depth: u8,
+        tree_type: u8,
+    ) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            partition,
+            depth,
+            tree_type: Some(tree_type),
         }
     }
 

@@ -16,6 +16,10 @@ export interface NavigationCallbacks {
   onNextFrame: () => void;
   onFirstFrame: () => void;
   onLastFrame: () => void;
+  /** Jump to previous I/key frame */
+  onPreviousKeyFrame?: () => void;
+  /** Jump to next I/key frame */
+  onNextKeyFrame?: () => void;
 }
 
 export interface KeyboardNavigationOptions {
@@ -25,113 +29,215 @@ export interface KeyboardNavigationOptions {
   totalFrames: number;
   /** Navigation callbacks */
   callbacks: NavigationCallbacks;
-  /** Optional: Show shortcuts callback */
+  /** Optional: Show shortcuts dialog */
   onShowShortcuts?: () => void;
+  /** Optional: Show go-to-frame dialog */
+  onGoToFrame?: () => void;
+  /** Optional: Open file */
+  onOpenFile?: () => void;
+  /** Optional: Close file */
+  onCloseFile?: () => void;
+  /** Optional: Show export dialog */
+  onShowExport?: () => void;
+  /** Optional: Save current frame as PNG */
+  onSaveFrame?: () => void;
+  /** Optional: Handle F-key mode switch (1-12). Returns true if handled. */
+  onFKey?: (fKey: number) => boolean;
 }
 
 /**
- * Hook for managing keyboard navigation shortcuts
+ * Hook for managing keyboard navigation shortcuts.
+ *
+ * All callbacks are stored in refs so the single effect registers once
+ * and always sees the latest callback values without re-registering.
  */
 export function useKeyboardNavigation({
   currentIndex,
   totalFrames,
   callbacks,
   onShowShortcuts,
+  onGoToFrame,
+  onOpenFile,
+  onCloseFile,
+  onShowExport,
+  onSaveFrame,
+  onFKey,
 }: KeyboardNavigationOptions) {
-  const { onPreviousFrame, onNextFrame, onFirstFrame, onLastFrame } = callbacks;
-
   // Keep numeric state in refs so the single effect closure always reads current values
   const currentIndexRef = useRef(currentIndex);
   const totalFramesRef = useRef(totalFrames);
-
   currentIndexRef.current = currentIndex;
   totalFramesRef.current = totalFrames;
 
-  // Keep callbacks in a ref so the effect never needs to re-register on callback identity changes
-  const callbacksRef = useRef({
-    onPreviousFrame,
-    onNextFrame,
-    onFirstFrame,
-    onLastFrame,
+  // Keep all callbacks in a ref so the effect never needs to re-register
+  const cbRef = useRef({
+    ...callbacks,
     onShowShortcuts,
+    onGoToFrame,
+    onOpenFile,
+    onCloseFile,
+    onShowExport,
+    onSaveFrame,
+    onFKey,
   });
-  callbacksRef.current = {
-    onPreviousFrame,
-    onNextFrame,
-    onFirstFrame,
-    onLastFrame,
+  cbRef.current = {
+    ...callbacks,
     onShowShortcuts,
+    onGoToFrame,
+    onOpenFile,
+    onCloseFile,
+    onShowExport,
+    onSaveFrame,
+    onFKey,
   };
 
   useEffect(() => {
-    const shortcutUnregisters: Array<() => void> = [];
+    const unregs: Array<() => void> = [];
+    const reg = (s: ShortcutConfig) =>
+      unregs.push(globalShortcutHandler.register(s));
 
-    // Register shortcuts — all callbacks are read via callbacksRef so this
-    // effect only needs to run once (stable empty deps).
-    const shortcuts: ShortcutConfig[] = [
-      {
-        key: "?",
-        ctrl: true,
-        meta: true,
-        description: "Show shortcuts",
-        action: () => {
-          callbacksRef.current.onShowShortcuts?.();
-        },
+    // ── Frame navigation ──────────────────────────────────────────────────
+    reg({
+      key: "ArrowLeft",
+      description: "Previous frame",
+      action: () => {
+        if (currentIndexRef.current > 0) cbRef.current.onPreviousFrame();
       },
-      {
-        key: "ArrowLeft",
-        description: "Previous frame",
-        action: () => {
-          if (currentIndexRef.current > 0) {
-            callbacksRef.current.onPreviousFrame();
-          }
-        },
-      },
-      {
-        key: "ArrowRight",
-        description: "Next frame",
-        action: () => {
-          if (
-            totalFramesRef.current > 0 &&
-            currentIndexRef.current < totalFramesRef.current - 1
-          ) {
-            callbacksRef.current.onNextFrame();
-          }
-        },
-      },
-      {
-        key: "Home",
-        description: "First frame",
-        action: () => {
-          callbacksRef.current.onFirstFrame();
-        },
-      },
-      {
-        key: "End",
-        description: "Last frame",
-        action: () => {
-          if (totalFramesRef.current > 0) {
-            callbacksRef.current.onLastFrame();
-          }
-        },
-      },
-    ];
-
-    shortcuts.forEach((shortcut) => {
-      shortcutUnregisters.push(globalShortcutHandler.register(shortcut));
     });
+    reg({
+      key: "ArrowRight",
+      description: "Next frame",
+      action: () => {
+        if (currentIndexRef.current < totalFramesRef.current - 1)
+          cbRef.current.onNextFrame();
+      },
+    });
+    // Space = next frame
+    reg({
+      key: " ",
+      description: "Next frame",
+      action: () => {
+        if (currentIndexRef.current < totalFramesRef.current - 1)
+          cbRef.current.onNextFrame();
+      },
+    });
+    reg({
+      key: "Home",
+      description: "First frame",
+      action: () => cbRef.current.onFirstFrame(),
+    });
+    reg({
+      key: "End",
+      description: "Last frame",
+      action: () => {
+        if (totalFramesRef.current > 0) cbRef.current.onLastFrame();
+      },
+    });
+
+    // Ctrl+← / Ctrl+→  — jump to previous/next I-frame
+    reg({
+      key: "ArrowLeft",
+      ctrl: true,
+      meta: true,
+      description: "Previous I-frame",
+      action: () => cbRef.current.onPreviousKeyFrame?.(),
+    });
+    reg({
+      key: "ArrowRight",
+      ctrl: true,
+      meta: true,
+      description: "Next I-frame",
+      action: () => cbRef.current.onNextKeyFrame?.(),
+    });
+
+    // [ / ]  — also jump to previous/next I-frame (VQA parity)
+    reg({
+      key: "[",
+      description: "Previous I-frame",
+      action: () => cbRef.current.onPreviousKeyFrame?.(),
+    });
+    reg({
+      key: "]",
+      description: "Next I-frame",
+      action: () => cbRef.current.onNextKeyFrame?.(),
+    });
+
+    // ── File operations ───────────────────────────────────────────────────
+    reg({
+      key: "o",
+      ctrl: true,
+      meta: true,
+      description: "Open file",
+      action: () => cbRef.current.onOpenFile?.(),
+    });
+    reg({
+      key: "w",
+      ctrl: true,
+      meta: true,
+      description: "Close file",
+      action: () => cbRef.current.onCloseFile?.(),
+    });
+    reg({
+      key: "e",
+      ctrl: true,
+      meta: true,
+      description: "Export",
+      action: () => cbRef.current.onShowExport?.(),
+    });
+    reg({
+      key: "s",
+      ctrl: true,
+      meta: true,
+      description: "Save frame PNG",
+      action: () => cbRef.current.onSaveFrame?.(),
+    });
+
+    // ── Go to frame ───────────────────────────────────────────────────────
+    reg({
+      key: "g",
+      ctrl: true,
+      meta: true,
+      description: "Go to frame",
+      action: () => cbRef.current.onGoToFrame?.(),
+    });
+    reg({
+      key: "f",
+      ctrl: true,
+      meta: true,
+      description: "Go to frame",
+      action: () => cbRef.current.onGoToFrame?.(),
+    });
+
+    // ── Help ──────────────────────────────────────────────────────────────
+    reg({
+      key: "?",
+      description: "Show keyboard shortcuts",
+      action: () => cbRef.current.onShowShortcuts?.(),
+    });
+
+    // ── F-key mode switching (F1–F12) ─────────────────────────────────────
+    // Codec-specific: ModeContext maps each F-key to a visualization mode.
+    // We register all 12 keys; getModeByFKey returns null if not mapped for
+    // the current codec, so unhandled keys fall through silently.
+    for (let n = 1; n <= 12; n++) {
+      const fKey = n; // capture for closure
+      reg({
+        key: `F${fKey}`,
+        description: `Mode F${fKey}`,
+        action: () => cbRef.current.onFKey?.(fKey),
+      });
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       globalShortcutHandler.handle(e);
     };
-
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      shortcutUnregisters.forEach((fn) => fn());
+      unregs.forEach((fn) => fn());
     };
-  }, []); // stable: never re-registers; callbacks read via refs
+  }, []); // stable: registers once, reads current values via refs
 }
 
 export default useKeyboardNavigation;

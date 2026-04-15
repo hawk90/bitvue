@@ -446,6 +446,8 @@ export interface PartitionBlock {
   height: number; // Block height in pixels
   partition: PartitionType; // How this block was created
   depth: number; // Nesting depth (0 = superblock)
+  /** VVC dual-tree type: 0=single/luma, 1=dual-tree luma, 2=dual-tree chroma. Absent for non-VVC. */
+  tree_type?: number;
 }
 
 /**
