@@ -44,6 +44,8 @@ export type VisualizationMode =
   | "dequant" // De-quantized coefficients
   | "mct" // Multiple Component Transform
   | "nlt" // Non-Linear Transform
+  // ── VC-3 / DNxHD exclusive ────────────────────────────────────────────────
+  | "segment" // DNxHD segment / macroblock grid
   // ── Dedicated info-overlay modes ─────────────────────────────────────────
   | "psnr-overlay" // Per-block PSNR heatmap (requires debug YUV reference)
   | "ssim-overlay" // Per-block SSIM map (HEVC only)
@@ -691,6 +693,27 @@ const JPEGXS_MODES: CodecModeEntry[] = [
   },
 ];
 
+/**
+ * VC-3 / DNxHD
+ *
+ * F1 Segment | F2 QP Map
+ */
+const VC3_MODES: CodecModeEntry[] = [
+  {
+    fKey: 1,
+    mode: "segment",
+    label: "Segment",
+    description: "DNxHD macroblock grid with bit-cost heatmap",
+  },
+  {
+    fKey: null,
+    mode: "qp-map",
+    label: "QP Map",
+    description: "Per-macroblock QP heatmap",
+    isInfoOverlay: true,
+  },
+];
+
 // ─── Default modes (no file / unknown codec) ─────────────────────────────────
 
 const DEFAULT_MODES: CodecModeEntry[] = [
@@ -727,6 +750,10 @@ export const CODEC_MODE_REGISTRY: Record<string, CodecModeEntry[]> = {
   JPEGXS: JPEGXS_MODES,
   "JPEG XS": JPEGXS_MODES,
   "JPEG-XS": JPEGXS_MODES,
+  VC3: VC3_MODES,
+  "VC-3": VC3_MODES,
+  DNXHD: VC3_MODES,
+  DNXHR: VC3_MODES,
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────────

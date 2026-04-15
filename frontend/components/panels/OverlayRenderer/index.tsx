@@ -28,6 +28,12 @@ import { Av1EfficiencyMapOverlay } from "./renderers/Av1EfficiencyMapRenderer";
 import { Av1BlockTypeOverlay } from "./renderers/Av1BlockTypeRenderer";
 import { Avs3EsaoRenderer } from "./renderers/Avs3EsaoRenderer";
 import { Avs3CcsaoRenderer } from "./renderers/Avs3CcsaoRenderer";
+import { JpegXsPrecinctRenderer } from "./renderers/JpegXsPrecinctRenderer";
+import { JpegXsDequantRenderer } from "./renderers/JpegXsDequantRenderer";
+import { JpegXsTransformRenderer } from "./renderers/JpegXsTransformRenderer";
+import { JpegXsMctRenderer } from "./renderers/JpegXsMctRenderer";
+import { JpegXsNltRenderer } from "./renderers/JpegXsNltRenderer";
+import { Vc3SegmentRenderer } from "./renderers/Vc3SegmentRenderer";
 
 // ─── Extended options ─────────────────────────────────────────────────────────
 
@@ -139,6 +145,38 @@ function renderMainModeOverlay({
     case "ccsao":
       ctx.save();
       Avs3CcsaoRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    // ── JPEG XS exclusive modes ───────────────────────────────────────────────
+    case "precinct":
+      ctx.save();
+      JpegXsPrecinctRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    case "dequant":
+      ctx.save();
+      JpegXsDequantRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    case "transform":
+      ctx.save();
+      JpegXsTransformRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    case "mct":
+      ctx.save();
+      JpegXsMctRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    case "nlt":
+      ctx.save();
+      JpegXsNltRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    // ── VC-3 exclusive modes ──────────────────────────────────────────────────
+    case "segment":
+      ctx.save();
+      Vc3SegmentRenderer({ ctx, width, height, frame });
       ctx.restore();
       break;
     case "yuv":

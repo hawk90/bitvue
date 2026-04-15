@@ -27,6 +27,8 @@ members = [
     "crates/bitvue-av3-codec",  # AV3 parser
     "crates/bitvue-mpeg2-codec", # MPEG-2 Video parser
     "crates/bitvue-avs3",       # AVS3/IEEE 1857.10 parser
+    "crates/bitvue-jpegxs",     # JPEG XS (ISO 21122) parser
+    "crates/bitvue-vc3",        # VC-3/DNxHD parser
 
     # Third-party dependencies (vendor/private)
     "crates/vendor/abseil",     # Abseil logging library (private fork)
@@ -67,6 +69,8 @@ bitvue-av1-codec = { path = "crates/bitvue-av1-codec" }
 bitvue-av3-codec = { path = "crates/bitvue-av3-codec" }
 bitvue-mpeg2-codec = { path = "crates/bitvue-mpeg2-codec" }
 bitvue-avs3 = { path = "crates/bitvue-avs3" }
+bitvue-jpegxs = { path = "crates/bitvue-jpegxs" }
+bitvue-vc3 = { path = "crates/bitvue-vc3" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

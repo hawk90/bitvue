@@ -26,6 +26,8 @@ pub enum ForceCodec {
     VVC,
     MPEG2,
     AVS3,
+    JpegXs,
+    Vc3,
 }
 
 /// Full configuration for the `decode` subcommand.
@@ -212,6 +214,8 @@ fn codec_name(c: ForceCodec) -> &'static str {
         ForceCodec::VVC => "VVC/H.266",
         ForceCodec::MPEG2 => "MPEG-2 Video",
         ForceCodec::AVS3 => "AVS3",
+        ForceCodec::JpegXs => "JPEG XS",
+        ForceCodec::Vc3 => "VC-3/DNxHD",
     }
 }
 
@@ -230,6 +234,8 @@ fn extract_frames(
         ForceCodec::AVC => extract_avc_frames(data, limit, want_md5),
         ForceCodec::VP9 => extract_vp9_frames(data, limit, want_md5),
         ForceCodec::AVS3 => extract_avs3_frames(data, limit, want_md5),
+        ForceCodec::JpegXs => extract_jpegxs_frames(data, limit, want_md5),
+        ForceCodec::Vc3 => extract_vc3_frames_cli(data, limit, want_md5),
         _ => {
             eprintln!(
                 "Note: Frame extraction not yet implemented for {}.",
@@ -804,6 +810,62 @@ fn extract_avs3_frames(
             pts: None,
             offset: frame.offset as u64,
             key_frame: frame.is_key_frame(),
+            md5_hex: maybe_md5(frame_data, want_md5),
+        });
+    }
+
+    Ok((records, result.parse_errors))
+}
+
+fn extract_jpegxs_frames(
+    data: &[u8],
+    limit: usize,
+    want_md5: bool,
+) -> Result<(Vec<FrameRecord>, usize)> {
+    use bitvue_jpegxs::extract_jpegxs_frames as jxs_extract;
+
+    let result =
+        jxs_extract(data, limit).map_err(|e| anyhow::anyhow!("JPEG XS parse error: {}", e))?;
+
+    let mut records = Vec::new();
+    for frame in &result.frames {
+        let end = (frame.offset + frame.size).min(data.len());
+        let frame_data = &data[frame.offset..end];
+        records.push(FrameRecord {
+            index: frame.frame_index,
+            frame_type: "JXS".to_string(),
+            size: frame.size,
+            pts: None,
+            offset: frame.offset as u64,
+            key_frame: true, // JPEG XS is intra-only
+            md5_hex: maybe_md5(frame_data, want_md5),
+        });
+    }
+
+    Ok((records, result.parse_errors))
+}
+
+fn extract_vc3_frames_cli(
+    data: &[u8],
+    limit: usize,
+    want_md5: bool,
+) -> Result<(Vec<FrameRecord>, usize)> {
+    use bitvue_vc3::extract_vc3_frames;
+
+    let result =
+        extract_vc3_frames(data, limit).map_err(|e| anyhow::anyhow!("VC-3 parse error: {}", e))?;
+
+    let mut records = Vec::new();
+    for frame in &result.frames {
+        let end = (frame.offset + frame.frame_size as usize).min(data.len());
+        let frame_data = &data[frame.offset..end];
+        records.push(FrameRecord {
+            index: frame.frame_index,
+            frame_type: frame.frame_type_str().to_string(),
+            size: frame.frame_size as usize,
+            pts: None,
+            offset: frame.offset as u64,
+            key_frame: true, // VC-3 frames are all intra
             md5_hex: maybe_md5(frame_data, want_md5),
         });
     }
