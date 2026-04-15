@@ -26,6 +26,8 @@ import { VvcAdaptiveFilterRenderer } from "./renderers/VvcAdaptiveFilterRenderer
 import { VvcInverseMapRenderer } from "./renderers/VvcInverseMapRenderer";
 import { Av1EfficiencyMapOverlay } from "./renderers/Av1EfficiencyMapRenderer";
 import { Av1BlockTypeOverlay } from "./renderers/Av1BlockTypeRenderer";
+import { Avs3EsaoRenderer } from "./renderers/Avs3EsaoRenderer";
+import { Avs3CcsaoRenderer } from "./renderers/Avs3CcsaoRenderer";
 
 // ─── Extended options ─────────────────────────────────────────────────────────
 
@@ -126,6 +128,17 @@ function renderMainModeOverlay({
     case "inverse-map":
       ctx.save();
       VvcInverseMapRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    // ── AVS3 exclusive modes ───────────────────────────────────────────────
+    case "esao":
+      ctx.save();
+      Avs3EsaoRenderer({ ctx, width, height, frame });
+      ctx.restore();
+      break;
+    case "ccsao":
+      ctx.save();
+      Avs3CcsaoRenderer({ ctx, width, height, frame });
       ctx.restore();
       break;
     case "yuv":

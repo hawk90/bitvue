@@ -24,6 +24,7 @@ bitvue-av1-codec = { path = "../bitvue-av1-codec" }
 bitvue-hevc = { path = "../bitvue-hevc" }
 bitvue-avc = { path = "../bitvue-avc" }
 bitvue-vp9 = { path = "../bitvue-vp9" }
+bitvue-avs3 = { path = "../bitvue-avs3" }
 bitvue-metrics = { path = "../bitvue-metrics" }
 
 # MD5 for per-frame checksums (-md5 flag)
