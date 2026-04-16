@@ -124,6 +124,10 @@ enum Commands {
         /// Reference file for PSNR/SSIM calculation
         #[arg(long)]
         reference: Option<PathBuf>,
+
+        /// Limit CPU instruction-set features (none, sse2, sse4, avx2, avx512)
+        #[arg(long = "cpu-max-feature", value_name = "FEATURE")]
+        cpu_max_feature: Option<String>,
     },
 
     /// Analyze a video file and display stream information
@@ -276,6 +280,7 @@ fn main() -> Result<()> {
             errors,
             psnr,
             reference,
+            cpu_max_feature,
         } => {
             use commands::decode::{DecodeConfig, ForceCodec};
             let force_codec = if codec_av1 {
@@ -314,6 +319,7 @@ fn main() -> Result<()> {
                 errors_file: errors,
                 psnr,
                 reference,
+                cpu_max_feature,
             })?;
         }
         Commands::Info { file } => {

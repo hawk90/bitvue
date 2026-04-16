@@ -51,6 +51,10 @@ pub struct DecodeConfig {
     pub errors_file: Option<PathBuf>,
     pub psnr: bool,
     pub reference: Option<PathBuf>,
+    /// Limit CPU instruction-set extensions used during decoding.
+    /// Recognised tokens: "none", "sse2", "sse4", "avx2", "avx512".
+    /// Passed through to the underlying decoder where supported.
+    pub cpu_max_feature: Option<String>,
 }
 
 // ─── Unified frame record ─────────────────────────────────────────────────────
@@ -95,6 +99,9 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
             file_data.len() as f64 / 1_048_576.0
         );
         println!("Codec:  {}", codec_name(effective_codec));
+        if let Some(ref feat) = cfg.cpu_max_feature {
+            println!("CPU:    max feature = {}", feat);
+        }
     }
 
     // ── Extract frames ──────────────────────────────────────────────────────
@@ -105,6 +112,18 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
     };
     // Pass want_md5=false; we compute MD5 in parallel below after extraction.
     let (mut records, parse_errors) = extract_frames(effective_codec, &file_data, limit, false)?;
+
+    // ── Display-order sort ──────────────────────────────────────────────────
+    // When --display-order is set, reorder frames by their PTS/POC so that
+    // the frame table and statistics reflect presentation order rather than
+    // the bitstream decode order (relevant for B-frame reordering in HEVC/AVC).
+    if cfg.display_order {
+        records.sort_by_key(|r| r.pts.unwrap_or(r.index as u64));
+        // Re-assign sequential indices to reflect the new order.
+        for (new_idx, r) in records.iter_mut().enumerate() {
+            r.index = new_idx;
+        }
+    }
 
     // ── Parallel MD5 computation ────────────────────────────────────────────
     // rayon splits the slice across available CPU cores.  Each record already
@@ -140,6 +159,10 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
     if cfg.stats || cfg.stream_stats {
         println!();
         print_stream_stats(&records, cfg.stream_stats);
+        // HEVC-specific NAL unit type breakdown (--stream-stats only)
+        if cfg.stream_stats && matches!(effective_codec, ForceCodec::HEVC) {
+            print_hevc_nal_stats(&file_data);
+        }
     }
 
     // ── PSNR ────────────────────────────────────────────────────────────────
@@ -153,7 +176,7 @@ pub fn run(cfg: DecodeConfig) -> Result<()> {
     }
 
     // ── YUV / Y4M dump ──────────────────────────────────────────────────────
-    if cfg.dump || cfg.output.is_some() {
+    if cfg.dump || cfg.output.is_some() || cfg.film_grain {
         println!();
         do_yuv_dump(&cfg, &file_data, &records, effective_codec)?;
     }
@@ -328,7 +351,7 @@ fn extract_hevc_frames(
     limit: usize,
     want_md5: bool,
 ) -> Result<(Vec<FrameRecord>, usize)> {
-    use bitvue_hevc::{parse_hevc, NalUnitType};
+    use bitvue_hevc::parse_hevc;
 
     let stream = parse_hevc(data).map_err(|e| anyhow::anyhow!("HEVC parse error: {}", e))?;
     let mut records = Vec::new();
@@ -647,6 +670,38 @@ fn do_yuv_dump(
         return Ok(());
     }
 
+    // --film-grain: output both pre-grain and post-grain YUV streams.
+    if cfg.film_grain {
+        let base = cfg
+            .output
+            .clone()
+            .unwrap_or_else(|| cfg.file.with_extension(""));
+        let stem = base.file_stem().unwrap_or_default().to_string_lossy();
+        let parent = base.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+        let pre_path = parent.join(format!("{}.pre_grain.yuv", stem));
+        let post_path = parent.join(format!("{}.post_grain.yuv", stem));
+
+        println!("Film grain — decoding pre-grain frames…");
+        let pre_decoded = decode_av1_yuv_with_grain(file_data, records.len(), false)?;
+        write_yuv_frames(&pre_decoded, &pre_path, cfg)?;
+        println!(
+            "Wrote {} pre-grain frame(s) to {}",
+            pre_decoded.len(),
+            pre_path.display()
+        );
+
+        println!("Film grain — decoding post-grain frames…");
+        let post_decoded = decode_av1_yuv_with_grain(file_data, records.len(), true)?;
+        write_yuv_frames(&post_decoded, &post_path, cfg)?;
+        println!(
+            "Wrote {} post-grain frame(s) to {}",
+            post_decoded.len(),
+            post_path.display()
+        );
+        return Ok(());
+    }
+
     let decoded = decode_av1_yuv(file_data, records.len())?;
     if decoded.is_empty() {
         anyhow::bail!("No frames decoded");
@@ -871,4 +926,147 @@ fn extract_vc3_frames_cli(
     }
 
     Ok((records, result.parse_errors))
+}
+
+// ─── Film-grain helpers ───────────────────────────────────────────────────────
+
+/// Decode AV1 IVF with explicit film-grain control.
+fn decode_av1_yuv_with_grain(
+    data: &[u8],
+    limit: usize,
+    apply_grain: bool,
+) -> Result<Vec<(Vec<u8>, usize, usize, u8)>> {
+    use bitvue_decode::Av1Decoder;
+    let (_hdr, frames) = parse_ivf_frames(data).map_err(|e| anyhow::anyhow!("IVF error: {}", e))?;
+    let mut dec = Av1Decoder::new_with_apply_grain(apply_grain)
+        .map_err(|e| anyhow::anyhow!("Decoder init: {}", e))?;
+    let mut out: Vec<(Vec<u8>, usize, usize, u8)> = Vec::new();
+
+    for f in &frames {
+        dec.send_data_owned(f.data.clone(), f.timestamp as i64)
+            .map_err(|e| anyhow::anyhow!("Decode send: {}", e))?;
+        drain_frames_yuv(&mut dec, &mut out);
+        if out.len() >= limit {
+            break;
+        }
+    }
+    if out.len() < limit {
+        dec.flush();
+        drain_frames_yuv(&mut dec, &mut out);
+    }
+    Ok(out)
+}
+
+/// Write a decoded YUV frame list to `path`, honouring the y4m and
+/// dump_bitdepth settings from `cfg`.
+fn write_yuv_frames(
+    decoded: &[(Vec<u8>, usize, usize, u8)],
+    path: &std::path::Path,
+    cfg: &DecodeConfig,
+) -> Result<()> {
+    if decoded.is_empty() {
+        return Ok(());
+    }
+    let mut out =
+        File::create(path).with_context(|| format!("Cannot create output: {}", path.display()))?;
+
+    if cfg.y4m {
+        if let Some((_, w, h, _)) = decoded.first() {
+            writeln!(
+                out,
+                "YUV4MPEG2 W{} H{} F30:1 Ip A0:0 C420mpeg2 XYSCSS=420MPEG2",
+                w, h
+            )?;
+        }
+    }
+
+    let target_bd = cfg.dump_bitdepth.unwrap_or(8);
+    for (i, (yuv, w, h, src_bd)) in decoded.iter().enumerate() {
+        if cfg.y4m {
+            out.write_all(b"FRAME\n")?;
+        }
+        let y_size = w * h;
+        let uv_size = (w / 2) * (h / 2);
+        let mut offset = 0;
+        for &plane_sz in &[y_size, uv_size, uv_size] {
+            let plane = &yuv[offset..offset + plane_sz * if *src_bd > 8 { 2 } else { 1 }];
+            if *src_bd > 8 && target_bd == 8 {
+                let out_plane: Vec<u8> = plane.chunks(2).map(|c| c[1]).collect();
+                out.write_all(&out_plane)?;
+            } else {
+                out.write_all(plane)?;
+            }
+            offset += plane.len();
+        }
+        if (i + 1) % 100 == 0 {
+            eprintln!("  Dumped {} frames…", i + 1);
+        }
+    }
+    Ok(())
+}
+
+// ─── HEVC-specific stream statistics ─────────────────────────────────────────
+
+/// Print HEVC NAL unit type distribution.
+/// Re-parses the bitstream so it is only called when --stream-stats is requested.
+fn print_hevc_nal_stats(data: &[u8]) {
+    use bitvue_hevc::parse_hevc;
+    let stream = match parse_hevc(data) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("  (HEVC NAL stats unavailable: {})", e);
+            return;
+        }
+    };
+
+    // NAL unit type distribution
+    let mut nal_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut total_nal_bytes = 0usize;
+    for nal in &stream.nal_units {
+        let label = format!("{:?}", nal.header.nal_unit_type);
+        *nal_counts.entry(label).or_insert(0) += 1;
+        total_nal_bytes += nal.size as usize;
+    }
+
+    println!("  HEVC NAL unit distribution:");
+    for (label, count) in &nal_counts {
+        println!(
+            "    {:30} {:>5}  ({:.1}%)",
+            label,
+            count,
+            (*count as f64 / stream.nal_units.len().max(1) as f64) * 100.0
+        );
+    }
+    println!(
+        "  Total NAL units: {}  ({:.2} MB payload)",
+        stream.nal_units.len(),
+        total_nal_bytes as f64 / 1_048_576.0
+    );
+
+    // Slice type distribution
+    if !stream.slices.is_empty() {
+        let mut slice_counts: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for slice in &stream.slices {
+            let nal = &stream.nal_units[slice.nal_index];
+            let t = if nal.header.nal_unit_type.is_idr() {
+                "IDR".to_string()
+            } else if nal.header.nal_unit_type.is_irap() {
+                "IRAP".to_string()
+            } else {
+                format!("{:?}", nal.header.nal_unit_type)
+            };
+            *slice_counts.entry(t).or_insert(0) += 1;
+        }
+        println!("  HEVC slice type distribution:");
+        for (t, n) in &slice_counts {
+            println!(
+                "    {:30} {:>5}  ({:.1}%)",
+                t,
+                n,
+                (*n as f64 / stream.slices.len().max(1) as f64) * 100.0
+            );
+        }
+    }
 }

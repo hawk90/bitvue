@@ -303,6 +303,22 @@ impl Av1Decoder {
         })
     }
 
+    /// Creates a new AV1 decoder with explicit film grain control.
+    ///
+    /// When `apply_grain` is `false`, dav1d outputs pre-grain frames (the raw
+    /// decoded signal before film grain synthesis is applied).  Set to `true`
+    /// for the default post-grain output.
+    pub fn new_with_apply_grain(apply_grain: bool) -> Result<Self> {
+        let mut settings = dav1d::Settings::new();
+        settings.set_apply_grain(apply_grain);
+        let decoder =
+            Decoder::with_settings(&settings).map_err(|e| DecodeError::Init(e.to_string()))?;
+        Ok(Self {
+            decoder,
+            last_obu_data: None,
+        })
+    }
+
     /// Sends data to the decoder (clones the slice into an owned Vec)
     pub fn send_data(&mut self, data: &[u8], timestamp: i64) -> Result<()> {
         self.send_data_owned(data.to_vec(), timestamp)
