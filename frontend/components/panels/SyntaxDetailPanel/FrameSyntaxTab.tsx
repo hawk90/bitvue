@@ -7,6 +7,7 @@
 
 import { memo, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
 
 export interface SyntaxValue {
   String?: string;
@@ -21,6 +22,7 @@ export interface SyntaxNode {
   value?: SyntaxValue;
   children?: SyntaxNode[];
   description?: string;
+  byte_offset?: number;
 }
 
 // Helper to get display value from SyntaxValue
@@ -59,6 +61,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
   const [syntaxTree, setSyntaxTree] = useState<SyntaxNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { setHighlightedByteOffset } = useSyntaxHexLink();
 
   // Fetch real syntax tree from backend
   useEffect(() => {
@@ -167,6 +170,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
           depth={0}
           expandedNodes={expandedNodes}
           onToggle={onToggleNode}
+          onJumpToHex={setHighlightedByteOffset}
         />
       </div>
     </div>
@@ -182,6 +186,7 @@ interface SyntaxTreeNodeProps {
   depth: number;
   expandedNodes: Set<string>;
   onToggle: (path: string) => void;
+  onJumpToHex?: (offset: number) => void;
 }
 
 const SyntaxTreeNode = memo(function SyntaxTreeNode({
@@ -190,6 +195,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
   depth,
   expandedNodes,
   onToggle,
+  onJumpToHex,
 }: SyntaxTreeNodeProps) {
   const currentPath = path ? `${path}/${node.name}` : node.name;
   const isExpanded = expandedNodes.has(currentPath);
@@ -217,6 +223,18 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
         {displayValue !== undefined && (
           <span className="syntax-value">= {String(displayValue)}</span>
         )}
+        {node.byte_offset !== undefined && onJumpToHex && (
+          <span
+            className="syntax-hex-jump"
+            title={`Jump to byte 0x${node.byte_offset.toString(16).toUpperCase()} in HEX view`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onJumpToHex(node.byte_offset!);
+            }}
+          >
+            ⇥
+          </span>
+        )}
       </div>
       {hasChildren && isExpanded && (
         <div className="syntax-children">
@@ -228,6 +246,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
               depth={depth + 1}
               expandedNodes={expandedNodes}
               onToggle={onToggle}
+              onJumpToHex={onJumpToHex}
             />
           ))}
         </div>

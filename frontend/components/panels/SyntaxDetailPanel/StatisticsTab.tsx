@@ -3,11 +3,14 @@
  *
  * Displays frame and stream statistics with SVG charts:
  * - Pie chart: frame type distribution
+ * - Pie chart: intra / inter ratio
  * - Bar chart: per-frame sizes (sparkline with current-frame highlight)
+ * - QP distribution histogram (on-demand via IPC)
  * - Stream stats table
  */
 
-import React, { memo, useMemo } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 // ─── Frame type colour palette ────────────────────────────────────────────────
 
@@ -30,6 +33,13 @@ function frameColor(type: string): string {
   return FRAME_TYPE_COLORS[type.toUpperCase()] ?? DEFAULT_COLOR;
 }
 
+// ─── QP colour helper ─────────────────────────────────────────────────────────
+
+function qpColor(qp: number, qpMax = 51): string {
+  const t = Math.min(1, qp / qpMax);
+  return `rgb(${Math.round(t * 220)}, ${Math.round((1 - Math.abs(t - 0.5) * 2) * 140)}, ${Math.round((1 - t) * 220)})`;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface FrameRow {
@@ -45,6 +55,8 @@ interface FrameRow {
 interface StatisticsTabProps {
   currentFrame: FrameRow | null;
   frames: FrameRow[];
+  filePath?: string;
+  frameIndex?: number;
 }
 
 // ─── Pie chart ────────────────────────────────────────────────────────────────
@@ -202,13 +214,76 @@ const BarChart = memo(function BarChart({
   );
 });
 
+// ─── QP histogram bar chart ───────────────────────────────────────────────────
+
+interface QpChartProps {
+  histogram: Array<{ qp: number; count: number }>;
+  height?: number;
+}
+
+const QpChart = memo(function QpChart({
+  histogram,
+  height = 56,
+}: QpChartProps) {
+  if (histogram.length === 0)
+    return <div className="stats-chart-empty">No QP data</div>;
+  const maxCount = Math.max(...histogram.map((b) => b.count), 1);
+  const qpMax = Math.max(...histogram.map((b) => b.qp), 51);
+  const svgW = Math.max(histogram.length * 4, 200);
+  return (
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${svgW} ${height}`}
+      preserveAspectRatio="none"
+      style={{ display: "block" }}
+    >
+      {histogram.map((b, i) => {
+        const barH = Math.max(1, (b.count / maxCount) * (height - 2));
+        const barW = Math.max(1, Math.floor(svgW / histogram.length) - 1);
+        return (
+          <rect
+            key={i}
+            x={i * (barW + 1)}
+            y={height - barH}
+            width={barW}
+            height={barH}
+            fill={qpColor(b.qp, qpMax)}
+            opacity={0.85}
+          >
+            <title>
+              QP {b.qp}: {b.count} frames
+            </title>
+          </rect>
+        );
+      })}
+    </svg>
+  );
+});
+
+// ─── Intra/Inter colour palette ───────────────────────────────────────────────
+
+const INTRA_INTER_COLORS: Record<string, string> = {
+  Intra: "#4fc3f7",
+  "P-Inter": "#66bb6a",
+  "B-Inter": "#ffa726",
+};
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export const StatisticsTab = memo(function StatisticsTab({
   currentFrame,
   frames,
+  filePath,
+  frameIndex,
 }: StatisticsTabProps) {
   const totalFrames = frames.length;
+
+  // QP histogram state
+  const [qpHistogram, setQpHistogram] = useState<
+    Array<{ qp: number; count: number }>
+  >([]);
+  const [qpLoading, setQpLoading] = useState(false);
 
   // Aggregate frame type counts
   const typeCounts = useMemo(
@@ -224,7 +299,7 @@ export const StatisticsTab = memo(function StatisticsTab({
     [frames],
   );
 
-  // Build pie slices
+  // Build pie slices (frame type distribution)
   const pieSlices = useMemo<PieSlice[]>(() => {
     let angle = 0;
     return Object.entries(typeCounts)
@@ -242,6 +317,38 @@ export const StatisticsTab = memo(function StatisticsTab({
         return slice;
       });
   }, [typeCounts, totalFrames]);
+
+  // Intra / Inter grouping
+  const intraCounts = useMemo(() => {
+    const acc: Record<string, number> = {};
+    frames.forEach((f) => {
+      const t = f.frame_type.toUpperCase();
+      let group: string;
+      if (["I", "KEY", "IDR", "CRA", "INTRA"].includes(t)) group = "Intra";
+      else if (["B", "BI"].includes(t)) group = "B-Inter";
+      else group = "P-Inter";
+      acc[group] = (acc[group] ?? 0) + 1;
+    });
+    return acc;
+  }, [frames]);
+
+  const intraPieSlices = useMemo<PieSlice[]>(() => {
+    let angle = 0;
+    return Object.entries(intraCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => {
+        const span = (count / totalFrames) * 360;
+        const slice: PieSlice = {
+          type,
+          count,
+          color: INTRA_INTER_COLORS[type] ?? "#78909c",
+          startAngle: angle,
+          endAngle: angle + span,
+        };
+        angle += span;
+        return slice;
+      });
+  }, [intraCounts, totalFrames]);
 
   const totalBytes = useMemo(
     () => frames.reduce((s, f) => s + f.size, 0),
@@ -262,6 +369,18 @@ export const StatisticsTab = memo(function StatisticsTab({
         : null,
     [frames],
   );
+
+  const handleLoadQp = useCallback(() => {
+    if (!filePath) return;
+    setQpLoading(true);
+    invoke<{ qp_histogram: Array<{ qp: number; count: number }> }>(
+      "get_codec_extended_info",
+      { path: filePath, frameIndex: frameIndex ?? 0 },
+    )
+      .then((info) => setQpHistogram(info.qp_histogram ?? []))
+      .catch(console.warn)
+      .finally(() => setQpLoading(false));
+  }, [filePath, frameIndex]);
 
   return (
     <div className="syntax-tab-content stats-tab">
@@ -326,6 +445,31 @@ export const StatisticsTab = memo(function StatisticsTab({
         </div>
       )}
 
+      {/* ── Intra / Inter ratio ── */}
+      {totalFrames > 0 && intraPieSlices.length > 0 && (
+        <div className="stats-section">
+          <div className="stats-header">Intra / Inter Ratio</div>
+          <div className="stats-chart-row">
+            <PieChart slices={intraPieSlices} total={totalFrames} size={96} />
+            <div className="stats-legend">
+              {intraPieSlices.map((s) => (
+                <div key={s.type} className="stats-legend-item">
+                  <span
+                    className="stats-legend-dot"
+                    style={{ background: s.color }}
+                  />
+                  <span className="stats-legend-type">{s.type}</span>
+                  <span className="stats-legend-count">{s.count}</span>
+                  <span className="stats-legend-pct">
+                    {((s.count / totalFrames) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Frame sizes sparkline ── */}
       {totalFrames > 0 && (
         <div className="stats-section">
@@ -341,6 +485,39 @@ export const StatisticsTab = memo(function StatisticsTab({
             <span>0</span>
             <span>{totalFrames - 1}</span>
           </div>
+        </div>
+      )}
+
+      {/* ── QP Distribution ── */}
+      {filePath && (
+        <div className="stats-section">
+          <div className="stats-header">
+            QP Distribution
+            <button
+              className="stats-qp-btn"
+              onClick={handleLoadQp}
+              disabled={qpLoading}
+              style={{ marginLeft: 8, fontSize: 10, padding: "1px 6px" }}
+            >
+              {qpLoading ? "…" : qpHistogram.length > 0 ? "⟳" : "Load"}
+            </button>
+          </div>
+          {qpHistogram.length > 0 && (
+            <>
+              <div className="stats-chart-bar">
+                <QpChart histogram={qpHistogram} height={54} />
+              </div>
+              <div className="stats-chart-labels">
+                <span>QP {qpHistogram[0]?.qp ?? 0}</span>
+                <span>QP {qpHistogram[qpHistogram.length - 1]?.qp ?? 51}</span>
+              </div>
+            </>
+          )}
+          {qpHistogram.length === 0 && !qpLoading && (
+            <div className="stats-chart-empty">
+              Press Load to compute QP distribution
+            </div>
+          )}
         </div>
       )}
 

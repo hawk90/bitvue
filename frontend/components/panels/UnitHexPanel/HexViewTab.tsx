@@ -4,9 +4,10 @@
  * Displays hex dump of frame bytes with highlighting
  */
 
-import { memo, useCallback, useState, useEffect } from "react";
+import { memo, useCallback, useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { createLogger } from "../../../utils/logger";
+import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
 
 const logger = createLogger("HexViewTab");
 const BYTES_PER_LINE = 16;
@@ -38,6 +39,8 @@ export const HexViewTab = memo(function HexViewTab({
   const [error, setError] = useState<string | null>(null);
   const [totalSize, setTotalSize] = useState<number>(0);
   const [truncated, setTruncated] = useState<boolean>(false);
+  const { highlightedByteOffset } = useSyntaxHexLink();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const currentFrame = frames[frameIndex];
 
@@ -88,6 +91,16 @@ export const HexViewTab = memo(function HexViewTab({
       cancelled = true;
     };
   }, [frameIndex, currentFrame]);
+
+  // Scroll to and select byte when driven by SyntaxHexLink
+  useEffect(() => {
+    if (highlightedByteOffset === null || !containerRef.current) return;
+    setSelectedByte(highlightedByteOffset);
+    // Scroll: each hex line is ~20px tall
+    const lineIdx = Math.floor(highlightedByteOffset / BYTES_PER_LINE);
+    const lineHeight = 20;
+    containerRef.current.scrollTop = Math.max(0, lineIdx * lineHeight - 40);
+  }, [highlightedByteOffset]);
 
   // Convert byte to ASCII character
   const byteToAscii = useCallback((byte: number): string => {
@@ -186,7 +199,7 @@ export const HexViewTab = memo(function HexViewTab({
   const lines = Math.ceil(hexData.length / BYTES_PER_LINE);
 
   return (
-    <div className="hex-dump-content">
+    <div className="hex-dump-content" ref={containerRef}>
       <div className="hex-info-bar">
         <span className="hex-info-item">
           <span className="hex-info-label">Data:</span>

@@ -19,6 +19,7 @@ import {
 } from "./contexts/StreamDataContext";
 import { CompareProvider } from "./contexts/CompareContext";
 import { YuvDiffProvider, useYuvDiff } from "./contexts/YuvDiffContext";
+import { SyntaxHexLinkProvider } from "./contexts/SyntaxHexLinkContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { useLayout } from "./contexts/LayoutContext";
 import { shouldShowTitleBar } from "./utils/platform";
@@ -109,19 +110,21 @@ function App() {
     };
   }, [setTheme]);
   return (
-    <ModeProvider>
-      <FrameDataProvider>
-        <FileStateProvider>
-          <CurrentFrameProvider>
-            <CompareProvider>
-              <YuvDiffProvider>
-                <AppContent />
-              </YuvDiffProvider>
-            </CompareProvider>
-          </CurrentFrameProvider>
-        </FileStateProvider>
-      </FrameDataProvider>
-    </ModeProvider>
+    <SyntaxHexLinkProvider>
+      <ModeProvider>
+        <FrameDataProvider>
+          <FileStateProvider>
+            <CurrentFrameProvider>
+              <CompareProvider>
+                <YuvDiffProvider>
+                  <AppContent />
+                </YuvDiffProvider>
+              </CompareProvider>
+            </CurrentFrameProvider>
+          </FileStateProvider>
+        </FrameDataProvider>
+      </ModeProvider>
+    </SyntaxHexLinkProvider>
   );
 }
 
