@@ -40,17 +40,16 @@ import { Vc3SegmentRenderer } from "./renderers/Vc3SegmentRenderer";
 export interface OverlayRenderOptionsExtended extends OverlayRenderOptions {
   /** Additional info overlays to layer on top of the main mode overlay. */
   activeOverlays?: ReadonlySet<VisualizationMode>;
+  /** Optional WebGL2 overlay canvas for high-density MV rendering. */
+  webglCanvas?: HTMLCanvasElement;
 }
 
 // ─── Main mode rendering ──────────────────────────────────────────────────────
 
-function renderMainModeOverlay({
-  mode,
-  frame,
-  canvas,
-  ctx,
-  av1Features,
-}: OverlayRenderOptions): void {
+function renderMainModeOverlay(
+  { mode, frame, canvas, ctx, av1Features }: OverlayRenderOptions,
+  webglCanvas?: HTMLCanvasElement,
+): void {
   if (!frame) return;
 
   const width = canvas.width;
@@ -72,7 +71,7 @@ function renderMainModeOverlay({
       QPMapOverlay({ ctx, width, height, frame });
       break;
     case "mv-field":
-      MVFieldOverlay({ ctx, width, height, frame });
+      MVFieldOverlay({ ctx, width, height, frame, webglCanvas });
       break;
     case "reference":
       ReferenceOverlay({ ctx, width, height, frame });
@@ -202,6 +201,7 @@ function renderInfoOverlay(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
+  webglCanvas?: HTMLCanvasElement,
 ): void {
   ctx.save();
   ctx.globalAlpha = INFO_OVERLAY_ALPHA;
@@ -212,7 +212,7 @@ function renderInfoOverlay(
       break;
     case "mv-field":
     case "heat-map": // heat-map reuses MVField as a magnitude heatmap for now
-      MVFieldOverlay({ ctx, width, height, frame });
+      MVFieldOverlay({ ctx, width, height, frame, webglCanvas });
       break;
     case "block-type":
       Av1BlockTypeOverlay({ ctx, width, height, frame });
@@ -239,21 +239,22 @@ function renderInfoOverlay(
  *                  optional `av1Features` for AV1-specific modes.
  */
 export function renderModeOverlay(options: OverlayRenderOptionsExtended): void {
-  const { mode, frame, canvas, ctx, activeOverlays, av1Features } = options;
+  const { mode, frame, canvas, ctx, activeOverlays, av1Features, webglCanvas } =
+    options;
   if (!frame) return;
 
   const width = canvas.width;
   const height = canvas.height;
 
   // Pass 1 — main mode
-  renderMainModeOverlay({ mode, frame, canvas, ctx, av1Features });
+  renderMainModeOverlay({ mode, frame, canvas, ctx, av1Features }, webglCanvas);
 
   // Pass 2 — info overlays (only when a set is provided and non-empty)
   if (activeOverlays && activeOverlays.size > 0) {
     for (const overlayMode of activeOverlays) {
       // Skip if this overlay is the same as the main mode (would double-render)
       if (overlayMode !== mode) {
-        renderInfoOverlay(overlayMode, frame, ctx, width, height);
+        renderInfoOverlay(overlayMode, frame, ctx, width, height, webglCanvas);
       }
     }
   }

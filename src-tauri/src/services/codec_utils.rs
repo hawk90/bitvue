@@ -21,21 +21,21 @@ pub fn create_ivf_wrapper(sample_data: &[u8]) -> Vec<u8> {
     let mut ivf = Vec::with_capacity(32 + 12 + sample_data.len());
 
     // IVF header (32 bytes)
-    ivf.extend_from_slice(b"DKIF");              // Signature (4 bytes)
-    ivf.extend_from_slice(&0u16.to_le_bytes());  // Version (2 bytes)
-    ivf.extend_from_slice(&1u16.to_le_bytes());  // Header length (2 bytes)
-    ivf.extend_from_slice(b"AV01");              // FourCC (4 bytes)
+    ivf.extend_from_slice(b"DKIF"); // Signature (4 bytes)
+    ivf.extend_from_slice(&0u16.to_le_bytes()); // Version (2 bytes)
+    ivf.extend_from_slice(&1u16.to_le_bytes()); // Header length (2 bytes)
+    ivf.extend_from_slice(b"AV01"); // FourCC (4 bytes)
     ivf.extend_from_slice(&1920u16.to_le_bytes()); // Width (placeholder, 2 bytes)
     ivf.extend_from_slice(&1080u16.to_le_bytes()); // Height (placeholder, 2 bytes)
     ivf.extend_from_slice(&30u32.to_le_bytes()); // Timebase denominator (4 bytes)
-    ivf.extend_from_slice(&1u32.to_le_bytes());  // Timebase numerator (4 bytes)
-    ivf.extend_from_slice(&1u32.to_le_bytes());  // Frame count (4 bytes)
-    ivf.extend_from_slice(&[0u8; 4]);            // Reserved (4 bytes)
+    ivf.extend_from_slice(&1u32.to_le_bytes()); // Timebase numerator (4 bytes)
+    ivf.extend_from_slice(&1u32.to_le_bytes()); // Frame count (4 bytes)
+    ivf.extend_from_slice(&[0u8; 4]); // Reserved (4 bytes)
 
     // IVF frame header (12 bytes)
     ivf.extend_from_slice(&(sample_data.len() as u32).to_le_bytes()); // Frame size (4 bytes)
     ivf.extend_from_slice(&0u64.to_le_bytes()); // Timestamp (8 bytes)
-    ivf.extend_from_slice(sample_data);          // Frame data
+    ivf.extend_from_slice(sample_data); // Frame data
 
     ivf
 }
@@ -76,8 +76,7 @@ mod tests {
         assert_eq!(frame_size, 9); // "test_data".len()
 
         let timestamp = u64::from_le_bytes([
-            ivf[36], ivf[37], ivf[38], ivf[39],
-            ivf[40], ivf[41], ivf[42], ivf[43],
+            ivf[36], ivf[37], ivf[38], ivf[39], ivf[40], ivf[41], ivf[42], ivf[43],
         ]);
         assert_eq!(timestamp, 0);
 

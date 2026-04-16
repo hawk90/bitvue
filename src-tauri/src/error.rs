@@ -142,7 +142,10 @@ impl BitvueError {
             Self::InvalidParameter(msg) => format!("Invalid parameter: {}", msg),
             Self::ResourceExhausted(msg) => format!("Resource limit reached: {}", msg),
             Self::RateLimited { duration_secs } => {
-                format!("Rate limited. Please wait {:.1}s before retrying.", duration_secs)
+                format!(
+                    "Rate limited. Please wait {:.1}s before retrying.",
+                    duration_secs
+                )
             }
             Self::Unsupported(msg) => format!("Unsupported operation: {}", msg),
         }

@@ -2,11 +2,11 @@
 //!
 //! Commands for getting decoded frames, frame analysis, and hex data.
 
-use serde::{Deserialize, Serialize};
 use base64::Engine;
+use serde::{Deserialize, Serialize};
 
-use crate::commands::{AppState, validate_frame_index_bounds};
-use crate::constants::{video, limits, batch, error_msgs};
+use crate::commands::{validate_frame_index_bounds, AppState};
+use crate::constants::{batch, error_msgs, limits, video};
 use bitvue_core::StreamId;
 use bitvue_formats::{detect_container_format, ContainerFormat};
 use image::{ImageBuffer, RgbImage};
@@ -17,7 +17,7 @@ pub struct DecodedFrameData {
     pub frame_index: usize,
     pub width: u32,
     pub height: u32,
-    pub frame_data: String,  // Base64 encoded PNG (full resolution)
+    pub frame_data: String, // Base64 encoded PNG (full resolution)
     pub success: bool,
     pub error: Option<String>,
 }
@@ -55,11 +55,12 @@ pub async fn get_decoded_frame(
     log::info!("get_decoded_frame: Requesting frame {}", frame_index);
 
     // Rate limiting check (frame decoding is CPU-intensive)
-    state.rate_limiter.check_rate_limit()
-        .map_err(|wait_time| {
-            format!("Rate limited: too many frame decode requests. Please try again in {:.1}s",
-                wait_time.as_secs_f64())
-        })?;
+    state.rate_limiter.check_rate_limit().map_err(|wait_time| {
+        format!(
+            "Rate limited: too many frame decode requests. Please try again in {:.1}s",
+            wait_time.as_secs_f64()
+        )
+    })?;
 
     // SECURITY: Validate frame index early at command boundary (defense in depth)
     let core = state.core.lock().map_err(|e| e.to_string())?;
@@ -67,7 +68,11 @@ pub async fn get_decoded_frame(
     let stream_a = stream_a_lock.read();
     let file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
     let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
-    let codec = stream_a.container.as_ref().map(|c| c.codec.clone()).unwrap_or_default();
+    let codec = stream_a
+        .container
+        .as_ref()
+        .map(|c| c.codec.clone())
+        .unwrap_or_default();
     drop(stream_a);
     drop(core);
 
@@ -85,10 +90,13 @@ pub async fn get_decoded_frame(
     }
 
     // Detect container format
-    let container_format = detect_container_format(&file_path)
-        .unwrap_or(ContainerFormat::Unknown);
+    let container_format = detect_container_format(&file_path).unwrap_or(ContainerFormat::Unknown);
 
-    log::info!("get_decoded_frame: Container format: {:?}, codec: {}", container_format, codec);
+    log::info!(
+        "get_decoded_frame: Container format: {:?}, codec: {}",
+        container_format,
+        codec
+    );
 
     // Get decode_service early to use in closure
     let decode_service = state.decode_service.lock().map_err(|e| e.to_string())?;
@@ -101,7 +109,10 @@ pub async fn get_decoded_frame(
                 // Route by codec: H.264/HEVC → FFmpeg, AV1 → native decoder
                 if is_hevc_codec(&codec) || is_avc_codec(&codec) {
                     let yuv_frame = decode_container_h26x_frame_yuv(
-                        file_data, idx, container_format, is_hevc_codec(&codec)
+                        file_data,
+                        idx,
+                        container_format,
+                        is_hevc_codec(&codec),
                     )?;
                     let rgb_data = bitvue_decode::yuv_to_rgb(&yuv_frame);
                     Ok((yuv_frame.width, yuv_frame.height, rgb_data))
@@ -116,7 +127,7 @@ pub async fn get_decoded_frame(
                         file_data,
                         idx,
                         container_format,
-                        cached_samples.as_ref().map(|s| s.as_slice())
+                        cached_samples.as_ref().map(|s| s.as_slice()),
                     )
                 }
             }
@@ -130,9 +141,13 @@ pub async fn get_decoded_frame(
                 }
                 #[cfg(not(feature = "ffmpeg"))]
                 Err("H.264/H.265 video display requires FFmpeg support. \
-                    Use AV1/IVF files for full functionality.".to_string())
+                    Use AV1/IVF files for full functionality."
+                    .to_string())
             }
-            _ => Err(format!("Unsupported container format: {:?}", container_format)),
+            _ => Err(format!(
+                "Unsupported container format: {:?}",
+                container_format
+            )),
         }
     };
 
@@ -140,29 +155,32 @@ pub async fn get_decoded_frame(
     drop(decode_service);
 
     match decode_result {
-        Ok((width, height, rgb_data)) => {
-            match create_png_base64(&rgb_data, width, height) {
-                Ok(png_base64) => {
-                    log::info!("get_decoded_frame: Successfully decoded frame {} ({}x{})", frame_index, width, height);
-                    Ok(DecodedFrameData {
-                        frame_index,
-                        width,
-                        height,
-                        frame_data: png_base64,
-                        success: true,
-                        error: None,
-                    })
-                }
-                Err(e) => Ok(DecodedFrameData {
+        Ok((width, height, rgb_data)) => match create_png_base64(&rgb_data, width, height) {
+            Ok(png_base64) => {
+                log::info!(
+                    "get_decoded_frame: Successfully decoded frame {} ({}x{})",
+                    frame_index,
+                    width,
+                    height
+                );
+                Ok(DecodedFrameData {
                     frame_index,
                     width,
                     height,
-                    frame_data: String::new(),
-                    success: false,
-                    error: Some(format!("Failed to encode PNG: {}", e)),
-                }),
+                    frame_data: png_base64,
+                    success: true,
+                    error: None,
+                })
             }
-        }
+            Err(e) => Ok(DecodedFrameData {
+                frame_index,
+                width,
+                height,
+                frame_data: String::new(),
+                success: false,
+                error: Some(format!("Failed to encode PNG: {}", e)),
+            }),
+        },
         Err(e) => Ok(DecodedFrameData {
             frame_index,
             width: 0,
@@ -175,7 +193,10 @@ pub async fn get_decoded_frame(
 }
 
 /// Decode multiple frames from IVF file (batch decoding for thumbnails)
-pub fn decode_ivf_frames_batch(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec<(usize, (u32, u32, Vec<u8>))>, String> {
+pub fn decode_ivf_frames_batch(
+    file_data: &[u8],
+    frame_indices: &[usize],
+) -> Result<Vec<(usize, (u32, u32, Vec<u8>))>, String> {
     // SECURITY: Validate frame_indices is not empty
     if frame_indices.is_empty() {
         return Err("No frame indices provided".to_string());
@@ -185,7 +206,8 @@ pub fn decode_ivf_frames_batch(file_data: &[u8], frame_indices: &[usize]) -> Res
     let frames = parse_ivf(file_data)?;
 
     // Find the maximum frame index needed
-    let max_idx = *frame_indices.iter()
+    let max_idx = *frame_indices
+        .iter()
         .max()
         .ok_or("Frame indices is empty (should not happen)".to_string())?;
 
@@ -220,8 +242,8 @@ pub fn decode_ivf_frames_batch(file_data: &[u8], frame_indices: &[usize]) -> Res
     }
 
     // Create a single decoder for all frames (more efficient than creating new decoder per frame)
-    let mut decoder = bitvue_decode::Av1Decoder::new()
-        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+    let mut decoder =
+        bitvue_decode::Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
 
     let mut results = Vec::new();
     let mut indices_iter = frame_indices.iter().copied().collect::<Vec<_>>();
@@ -235,7 +257,8 @@ pub fn decode_ivf_frames_batch(file_data: &[u8], frame_indices: &[usize]) -> Res
     for idx in 0..=max_idx {
         let frame_data = &frames[idx].data;
 
-        decoder.send_data(frame_data, frames[idx].timestamp as i64)
+        decoder
+            .send_data(frame_data, frames[idx].timestamp as i64)
             .map_err(|e| format!("Failed to send frame data for index {}: {}", idx, e))?;
 
         match decoder.get_frame() {
@@ -263,7 +286,10 @@ pub fn decode_ivf_frames_batch(file_data: &[u8], frame_indices: &[usize]) -> Res
 /// Decode frame from IVF file (single frame decoding for performance)
 ///
 /// Uses shared generic decoder for code maintainability.
-pub fn decode_ivf_frame(file_data: &[u8], frame_index: usize) -> Result<(u32, u32, Vec<u8>), String> {
+pub fn decode_ivf_frame(
+    file_data: &[u8],
+    frame_index: usize,
+) -> Result<(u32, u32, Vec<u8>), String> {
     decode_ivf_frame_generic(file_data, frame_index, |frame| {
         let width = frame.width;
         let height = frame.height;
@@ -273,7 +299,10 @@ pub fn decode_ivf_frame(file_data: &[u8], frame_index: usize) -> Result<(u32, u3
 }
 
 /// Parse IVF file and validate frame index (shared helper)
-pub fn parse_ivf_and_validate(file_data: &[u8], frame_index: usize) -> Result<Vec<bitvue_av1_codec::IvfFrame>, String> {
+pub fn parse_ivf_and_validate(
+    file_data: &[u8],
+    frame_index: usize,
+) -> Result<Vec<bitvue_av1_codec::IvfFrame>, String> {
     let frames = parse_ivf(file_data)?;
     validate_frame_index_bounds(frame_index, frames.len())?;
     Ok(frames)
@@ -336,15 +365,17 @@ where
     let timestamp = frames[frame_index].timestamp as i64;
 
     // Create decoder and send only this frame's data
-    let mut decoder = bitvue_decode::Av1Decoder::new()
-        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+    let mut decoder =
+        bitvue_decode::Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
 
     // Send the frame data
-    decoder.send_data(frame_data, timestamp)
+    decoder
+        .send_data(frame_data, timestamp)
         .map_err(|e| format!("Failed to send frame data: {}", e))?;
 
     // Get the decoded frame
-    let frame = decoder.get_frame()
+    let frame = decoder
+        .get_frame()
         .map_err(|e| format!("Failed to decode frame: {}", e))?;
 
     // Apply converter to get desired output format
@@ -383,19 +414,20 @@ pub fn decode_container_frame_with_samples(
 ) -> Result<(u32, u32, Vec<u8>), String> {
     // Extract AV1 samples from container (use cached samples if provided)
     let extracted_samples: Vec<Vec<u8>> = if let Some(cached_samples) = samples {
-        log::debug!("decode_container_frame_with_samples: Using {} cached samples", cached_samples.len());
+        log::debug!(
+            "decode_container_frame_with_samples: Using {} cached samples",
+            cached_samples.len()
+        );
         cached_samples.to_vec()
     } else {
         match container_format {
-            ContainerFormat::MP4 => {
-                bitvue_formats::mp4::extract_av1_samples(file_data)
-                    .map_err(|e| format!("Failed to extract AV1 from MP4: {}", e))?
-                    .into_iter().map(|cow| cow.to_vec()).collect()
-            }
-            ContainerFormat::Matroska => {
-                bitvue_formats::mkv::extract_av1_samples(file_data)
-                    .map_err(|e| format!("Failed to extract AV1 from MKV: {}", e))?
-            }
+            ContainerFormat::MP4 => bitvue_formats::mp4::extract_av1_samples(file_data)
+                .map_err(|e| format!("Failed to extract AV1 from MP4: {}", e))?
+                .into_iter()
+                .map(|cow| cow.to_vec())
+                .collect(),
+            ContainerFormat::Matroska => bitvue_formats::mkv::extract_av1_samples(file_data)
+                .map_err(|e| format!("Failed to extract AV1 from MKV: {}", e))?,
             _ => return Err("Unsupported container format".to_string()),
         }
     };
@@ -406,23 +438,29 @@ pub fn decode_container_frame_with_samples(
 
     // Decode the sample directly as raw OBU data
     // Av1Decoder.send_data accepts raw OBU sequences - no IVF wrapper needed
-    let mut decoder = bitvue_decode::Av1Decoder::new()
-        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+    let mut decoder =
+        bitvue_decode::Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
 
     // Send the raw OBU sample to the decoder
-    decoder.send_data(sample_data, frame_index as i64)
+    decoder
+        .send_data(sample_data, frame_index as i64)
         .map_err(|e| format!("Failed to send data to decoder: {}", e))?;
 
     // Get the decoded frame
-    let decoded_frame = decoder.get_frame()
+    let decoded_frame = decoder
+        .get_frame()
         .map_err(|e| format!("Failed to decode frame: {}", e))?;
 
     let width = decoded_frame.width;
     let height = decoded_frame.height;
     let rgb_data = bitvue_decode::yuv_to_rgb(&decoded_frame);
 
-    log::info!("decode_container_frame: Decoded frame {} from container ({}x{})",
-        frame_index, width, height);
+    log::info!(
+        "decode_container_frame: Decoded frame {} from container ({}x{})",
+        frame_index,
+        width,
+        height
+    );
     Ok((width, height, rgb_data))
 }
 
@@ -430,9 +468,9 @@ pub fn decode_container_frame_with_samples(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrameHexData {
     pub frame_index: usize,
-    pub data: Vec<u8>,       // Raw OBU/frame bytes
-    pub size: usize,         // Total size in bytes
-    pub truncated: bool,     // Whether data was truncated for display
+    pub data: Vec<u8>,   // Raw OBU/frame bytes
+    pub size: usize,     // Total size in bytes
+    pub truncated: bool, // Whether data was truncated for display
     pub success: bool,
     pub error: Option<String>,
 }
@@ -444,8 +482,11 @@ pub async fn get_frame_hex_data(
     frame_index: usize,
     max_bytes: Option<usize>,
 ) -> Result<FrameHexData, String> {
-    log::info!("get_frame_hex_data: Requesting hex data for frame {}, max_bytes: {:?}",
-        frame_index, max_bytes);
+    log::info!(
+        "get_frame_hex_data: Requesting hex data for frame {}, max_bytes: {:?}",
+        frame_index,
+        max_bytes
+    );
 
     // Get file path
     let core = state.core.lock().map_err(|e| e.to_string())?;
@@ -464,12 +505,17 @@ pub async fn get_frame_hex_data(
             size: 0,
             truncated: false,
             success: false,
-            error: Some(format!("Frame index {} out of range (total: {})", frame_index, total_frames)),
+            error: Some(format!(
+                "Frame index {} out of range (total: {})",
+                frame_index, total_frames
+            )),
         });
     }
 
     // Use cached file data from decode_service to avoid repeated disk reads
-    let file_data = state.decode_service.lock()
+    let file_data = state
+        .decode_service
+        .lock()
         .map_err(|e| e.to_string())?
         .get_file_data_arc()?;
 
@@ -562,7 +608,10 @@ pub fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<Str
     if width > video::MAX_DIMENSION || height > video::MAX_DIMENSION {
         return Err(format!(
             "Dimensions too large (max {}x{}, got {}x{})",
-            video::MAX_DIMENSION, video::MAX_DIMENSION, width, height
+            video::MAX_DIMENSION,
+            video::MAX_DIMENSION,
+            width,
+            height
         ));
     }
 
@@ -570,7 +619,8 @@ pub fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<Str
     if expected_size > limits::MAX_IMAGE_SIZE_BYTES {
         return Err(format!(
             "Image size too large: {} bytes (max {})",
-            expected_size, limits::MAX_IMAGE_SIZE_BYTES
+            expected_size,
+            limits::MAX_IMAGE_SIZE_BYTES
         ));
     }
 
@@ -578,8 +628,11 @@ pub fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<Str
         .ok_or("Failed to create image buffer from raw data")?;
 
     let mut png_bytes = Vec::new();
-    img.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+    img.write_to(
+        &mut std::io::Cursor::new(&mut png_bytes),
+        image::ImageFormat::Png,
+    )
+    .map_err(|e| format!("Failed to encode PNG: {}", e))?;
 
     Ok(base64::engine::general_purpose::STANDARD.encode(&png_bytes))
 }
@@ -587,7 +640,10 @@ pub fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<Str
 /// Decode YUV frame from IVF file (single frame decoding for performance)
 ///
 /// Uses shared generic decoder for code maintainability.
-pub fn decode_ivf_frame_yuv(file_data: &[u8], frame_index: usize) -> Result<bitvue_decode::DecodedFrame, String> {
+pub fn decode_ivf_frame_yuv(
+    file_data: &[u8],
+    frame_index: usize,
+) -> Result<bitvue_decode::DecodedFrame, String> {
     decode_ivf_frame_generic(file_data, frame_index, |frame| frame.clone())
 }
 
@@ -613,19 +669,20 @@ pub fn decode_container_frame_yuv_with_samples(
 ) -> Result<bitvue_decode::DecodedFrame, String> {
     // Extract AV1 samples from container (use cached samples if provided)
     let extracted_samples: Vec<Vec<u8>> = if let Some(cached_samples) = samples {
-        log::debug!("decode_container_frame_yuv_with_samples: Using {} cached samples", cached_samples.len());
+        log::debug!(
+            "decode_container_frame_yuv_with_samples: Using {} cached samples",
+            cached_samples.len()
+        );
         cached_samples.to_vec()
     } else {
         match container_format {
-            ContainerFormat::MP4 => {
-                bitvue_formats::mp4::extract_av1_samples(file_data)
-                    .map_err(|e| format!("Failed to extract AV1 from MP4: {}", e))?
-                    .into_iter().map(|cow| cow.to_vec()).collect()
-            }
-            ContainerFormat::Matroska => {
-                bitvue_formats::mkv::extract_av1_samples(file_data)
-                    .map_err(|e| format!("Failed to extract AV1 from MKV: {}", e))?
-            }
+            ContainerFormat::MP4 => bitvue_formats::mp4::extract_av1_samples(file_data)
+                .map_err(|e| format!("Failed to extract AV1 from MP4: {}", e))?
+                .into_iter()
+                .map(|cow| cow.to_vec())
+                .collect(),
+            ContainerFormat::Matroska => bitvue_formats::mkv::extract_av1_samples(file_data)
+                .map_err(|e| format!("Failed to extract AV1 from MKV: {}", e))?,
             _ => return Err("Unsupported container format".to_string()),
         }
     };
@@ -634,13 +691,15 @@ pub fn decode_container_frame_yuv_with_samples(
 
     // Decode directly as raw OBU data - no IVF wrapper needed
     let sample_data = &extracted_samples[frame_index];
-    let mut decoder = bitvue_decode::Av1Decoder::new()
-        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+    let mut decoder =
+        bitvue_decode::Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
 
-    decoder.send_data(sample_data, frame_index as i64)
+    decoder
+        .send_data(sample_data, frame_index as i64)
         .map_err(|e| format!("Failed to send data to decoder: {}", e))?;
 
-    let decoded_frame = decoder.get_frame()
+    let decoded_frame = decoder
+        .get_frame()
         .map_err(|e| format!("Failed to decode frame: {}", e))?;
 
     Ok(decoded_frame)
@@ -649,15 +708,23 @@ pub fn decode_container_frame_yuv_with_samples(
 /// Returns true if the codec string identifies HEVC/H.265.
 fn is_hevc_codec(codec: &str) -> bool {
     let lower = codec.to_lowercase();
-    lower.contains("hevc") || lower.contains("h265") || lower.contains("h.265") || lower.contains("265")
-        || lower.contains("hev1") || lower.contains("hvc1")
+    lower.contains("hevc")
+        || lower.contains("h265")
+        || lower.contains("h.265")
+        || lower.contains("265")
+        || lower.contains("hev1")
+        || lower.contains("hvc1")
 }
 
 /// Returns true if the codec string identifies H.264/AVC.
 fn is_avc_codec(codec: &str) -> bool {
     let lower = codec.to_lowercase();
-    lower.contains("avc") || lower.contains("h264") || lower.contains("h.264") || lower.contains("264")
-        || lower.contains("avc1") || lower.contains("avc3")
+    lower.contains("avc")
+        || lower.contains("h264")
+        || lower.contains("h.264")
+        || lower.contains("264")
+        || lower.contains("avc1")
+        || lower.contains("avc3")
 }
 
 /// Decode YUV frame from MP4/MKV container for H.264 or HEVC via FFmpeg.
@@ -672,7 +739,7 @@ pub fn decode_container_h26x_frame_yuv(
     container_format: ContainerFormat,
     is_hevc: bool,
 ) -> Result<bitvue_decode::DecodedFrame, String> {
-    use bitvue_decode::{Decoder, traits::CodecType};
+    use bitvue_decode::{traits::CodecType, Decoder};
 
     // Extract per-access-unit samples from the container
     let samples: Vec<Vec<u8>> = match container_format {
@@ -680,11 +747,15 @@ pub fn decode_container_h26x_frame_yuv(
             if is_hevc {
                 bitvue_formats::mp4::extract_hevc_samples(file_data)
                     .map_err(|e| format!("Failed to extract HEVC from MP4: {}", e))?
-                    .into_iter().map(|cow| cow.to_vec()).collect()
+                    .into_iter()
+                    .map(|cow| cow.to_vec())
+                    .collect()
             } else {
                 bitvue_formats::mp4::extract_avc_samples(file_data)
                     .map_err(|e| format!("Failed to extract AVC from MP4: {}", e))?
-                    .into_iter().map(|cow| cow.to_vec()).collect()
+                    .into_iter()
+                    .map(|cow| cow.to_vec())
+                    .collect()
             }
         }
         ContainerFormat::Matroska => {
@@ -696,7 +767,12 @@ pub fn decode_container_h26x_frame_yuv(
                     .map_err(|e| format!("Failed to extract AVC from MKV: {}", e))?
             }
         }
-        _ => return Err(format!("Unsupported container for H.26x: {:?}", container_format)),
+        _ => {
+            return Err(format!(
+                "Unsupported container for H.26x: {:?}",
+                container_format
+            ))
+        }
     };
 
     if samples.is_empty() {
@@ -709,13 +785,18 @@ pub fn decode_container_h26x_frame_yuv(
 
     validate_frame_index_bounds(frame_index, samples.len())?;
 
-    let codec_type = if is_hevc { CodecType::H265 } else { CodecType::H264 };
+    let codec_type = if is_hevc {
+        CodecType::H265
+    } else {
+        CodecType::H264
+    };
     let mut decoder = bitvue_decode::ffmpeg::FfmpegDecoder::new(codec_type)
         .map_err(|e| format!("Failed to create FFmpeg decoder: {}", e))?;
 
     // Feed all frames from 0..=frame_index so reference frames are available.
     for (i, sample) in samples.iter().take(frame_index + 1).enumerate() {
-        decoder.send_data(sample, Some(i as i64))
+        decoder
+            .send_data(sample, Some(i as i64))
             .map_err(|e| format!("Failed to send frame {} to decoder: {}", i, e))?;
     }
     decoder.flush();
@@ -729,11 +810,13 @@ pub fn decode_container_h26x_frame_yuv(
         }
     }
 
-    decoded_frame.ok_or_else(|| format!(
-        "FFmpeg produced no output for frame {} (codec: {})",
-        frame_index,
-        if is_hevc { "HEVC" } else { "AVC" }
-    ))
+    decoded_frame.ok_or_else(|| {
+        format!(
+            "FFmpeg produced no output for frame {} (codec: {})",
+            frame_index,
+            if is_hevc { "HEVC" } else { "AVC" }
+        )
+    })
 }
 
 /// Stub for non-FFmpeg builds — H.264/HEVC container decoding requires FFmpeg.
@@ -756,9 +839,13 @@ pub fn decode_annexb_frame_yuv(
     frame_index: usize,
     is_hevc: bool,
 ) -> Result<bitvue_decode::DecodedFrame, String> {
-    use bitvue_decode::{Decoder, traits::CodecType};
+    use bitvue_decode::{traits::CodecType, Decoder};
 
-    log::info!("decode_annexb_frame_yuv: Decoding frame {} (is_hevc: {})", frame_index, is_hevc);
+    log::info!(
+        "decode_annexb_frame_yuv: Decoding frame {} (is_hevc: {})",
+        frame_index,
+        is_hevc
+    );
 
     // Extract all NAL units up to and including the target frame.
     // P-frames and B-frames require prior decoded frames as reference, so we must
@@ -771,7 +858,8 @@ pub fn decode_annexb_frame_yuv(
         }
         validate_frame_index_bounds(frame_index, frames.len())?;
         let total = frames.len();
-        let nals: Vec<Vec<u8>> = frames.into_iter()
+        let nals: Vec<Vec<u8>> = frames
+            .into_iter()
             .take(frame_index + 1)
             .map(|f| f.nal_data)
             .collect();
@@ -784,7 +872,8 @@ pub fn decode_annexb_frame_yuv(
         }
         validate_frame_index_bounds(frame_index, frames.len())?;
         let total = frames.len();
-        let nals: Vec<Vec<u8>> = frames.into_iter()
+        let nals: Vec<Vec<u8>> = frames
+            .into_iter()
             .take(frame_index + 1)
             .map(|f| f.nal_data)
             .collect();
@@ -792,14 +881,19 @@ pub fn decode_annexb_frame_yuv(
     };
 
     // Create FFmpeg decoder
-    let codec_type = if is_hevc { CodecType::H265 } else { CodecType::H264 };
+    let codec_type = if is_hevc {
+        CodecType::H265
+    } else {
+        CodecType::H264
+    };
     let mut decoder = bitvue_decode::ffmpeg::FfmpegDecoder::new(codec_type)
         .map_err(|e| format!("Failed to create FFmpeg decoder: {}", e))?;
 
     // Feed all frames from 0 to frame_index so the decoder has the reference
     // frames needed to reconstruct P-frames and B-frames.
     for (i, nal) in nal_units.iter().enumerate() {
-        decoder.send_data(nal, Some(i as i64))
+        decoder
+            .send_data(nal, Some(i as i64))
             .map_err(|e| format!("Failed to send frame {} to decoder: {}", i, e))?;
     }
 
@@ -815,11 +909,20 @@ pub fn decode_annexb_frame_yuv(
         }
     }
 
-    let decoded = decoded_frame
-        .ok_or_else(|| format!("No decoded output for frame {}/{}", frame_index, total_frames))?;
+    let decoded = decoded_frame.ok_or_else(|| {
+        format!(
+            "No decoded output for frame {}/{}",
+            frame_index, total_frames
+        )
+    })?;
 
-    log::info!("decode_annexb_frame_yuv: Decoded frame {}/{} ({}x{})",
-        frame_index, total_frames, decoded.width, decoded.height);
+    log::info!(
+        "decode_annexb_frame_yuv: Decoded frame {}/{} ({}x{})",
+        frame_index,
+        total_frames,
+        decoded.width,
+        decoded.height
+    );
 
     Ok(decoded)
 }
@@ -843,21 +946,33 @@ pub(crate) async fn decode_frame_yuv_internal(
     frame_index: usize,
     use_stream_b: bool,
 ) -> Result<YUVFrameData, String> {
-    log::info!("get_decoded_frame_yuv: Requesting YUV frame {} (stream={})",
-        frame_index, if use_stream_b { "B" } else { "A" });
+    log::info!(
+        "get_decoded_frame_yuv: Requesting YUV frame {} (stream={})",
+        frame_index,
+        if use_stream_b { "B" } else { "A" }
+    );
 
     // SECURITY: Validate frame index early at command boundary (defense in depth)
     let core = app_state.core.lock().map_err(|e| e.to_string())?;
-    let target_stream = if use_stream_b { StreamId::B } else { StreamId::A };
+    let target_stream = if use_stream_b {
+        StreamId::B
+    } else {
+        StreamId::A
+    };
     let stream_lock = core.get_stream(target_stream);
     let stream = stream_lock.read();
     let file_path = stream.file_path.as_ref().ok_or("No file loaded")?.clone();
     let total_frames = stream.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
     // Get codec for AnnexB format detection (H.264 vs H.265)
-    let codec = stream.container.as_ref()
+    let codec = stream
+        .container
+        .as_ref()
         .map(|c| c.codec.clone())
         .unwrap_or_default();
-    log::info!("get_decoded_frame_yuv: Detected codec from container: '{}'", codec);
+    log::info!(
+        "get_decoded_frame_yuv: Detected codec from container: '{}'",
+        codec
+    );
     drop(stream);
     drop(core);
 
@@ -881,41 +996,57 @@ pub(crate) async fn decode_frame_yuv_internal(
     }
 
     // Detect container format
-    let container_format = detect_container_format(&file_path)
-        .unwrap_or(ContainerFormat::Unknown);
+    let container_format = detect_container_format(&file_path).unwrap_or(ContainerFormat::Unknown);
 
-    log::info!("get_decoded_frame_yuv: Container format: {:?}", container_format);
+    log::info!(
+        "get_decoded_frame_yuv: Container format: {:?}",
+        container_format
+    );
 
     // Build a decode function that works regardless of stream
-    let decode_fn_inner = |file_data: &[u8], idx: usize, cached_samples: Option<Vec<Vec<u8>>>| -> Result<bitvue_decode::DecodedFrame, String> {
+    let decode_fn_inner = |file_data: &[u8],
+                           idx: usize,
+                           cached_samples: Option<Vec<Vec<u8>>>|
+     -> Result<bitvue_decode::DecodedFrame, String> {
         match container_format {
             ContainerFormat::IVF => decode_ivf_frame_yuv(file_data, idx),
             ContainerFormat::MP4 | ContainerFormat::Matroska => {
                 if is_hevc_codec(&codec) || is_avc_codec(&codec) {
                     decode_container_h26x_frame_yuv(
-                        file_data, idx, container_format, is_hevc_codec(&codec)
+                        file_data,
+                        idx,
+                        container_format,
+                        is_hevc_codec(&codec),
                     )
                 } else {
                     decode_container_frame_yuv_with_samples(
                         file_data,
                         idx,
                         container_format,
-                        cached_samples.as_ref().map(|s| s.as_slice())
+                        cached_samples.as_ref().map(|s| s.as_slice()),
                     )
                 }
             }
             ContainerFormat::AnnexB => {
                 #[cfg(feature = "ffmpeg")]
                 {
-                    log::info!("get_decoded_frame_yuv AnnexB: codec='{}', is_hevc={}", codec, is_hevc_codec(&codec));
+                    log::info!(
+                        "get_decoded_frame_yuv AnnexB: codec='{}', is_hevc={}",
+                        codec,
+                        is_hevc_codec(&codec)
+                    );
                     decode_annexb_frame_yuv(file_data, idx, is_hevc_codec(&codec))
                 }
                 #[cfg(not(feature = "ffmpeg"))]
                 Err("H.264/H.265 video display requires FFmpeg support. \
                     Frame parsing works, but video decoding is not available. \
-                    Use AV1/IVF files for full functionality.".to_string())
+                    Use AV1/IVF files for full functionality."
+                    .to_string())
             }
-            _ => Err(format!("Unsupported container format: {:?}", container_format)),
+            _ => Err(format!(
+                "Unsupported container format: {:?}",
+                container_format
+            )),
         }
     };
 
@@ -926,10 +1057,14 @@ pub(crate) async fn decode_frame_yuv_internal(
     } else {
         // Stream A: use decode_service cache for repeated frame access
         let decode_service = app_state.decode_service.lock().map_err(|e| e.to_string())?;
-        let decode_fn = |file_data: &[u8], idx: usize| -> Result<bitvue_decode::DecodedFrame, String> {
+        let decode_fn = |file_data: &[u8],
+                         idx: usize|
+         -> Result<bitvue_decode::DecodedFrame, String> {
             let cached_samples = match container_format {
                 ContainerFormat::MP4 => decode_service.get_or_extract_mp4_samples().ok().flatten(),
-                ContainerFormat::Matroska => decode_service.get_or_extract_mkv_samples().ok().flatten(),
+                ContainerFormat::Matroska => {
+                    decode_service.get_or_extract_mkv_samples().ok().flatten()
+                }
                 _ => None,
             };
             decode_fn_inner(file_data, idx, cached_samples)
@@ -943,7 +1078,10 @@ pub(crate) async fn decode_frame_yuv_internal(
         Ok(frame) => {
             // Validate frame data before encoding
             if frame.y_plane.is_empty() {
-                log::warn!("get_decoded_frame_yuv: Frame {} has empty Y plane", frame_index);
+                log::warn!(
+                    "get_decoded_frame_yuv: Frame {} has empty Y plane",
+                    frame_index
+                );
                 return Ok(YUVFrameData {
                     frame_index,
                     width: frame.width,
@@ -962,8 +1100,12 @@ pub(crate) async fn decode_frame_yuv_internal(
 
             // Validate dimensions are reasonable
             if frame.width == 0 || frame.height == 0 {
-                log::warn!("get_decoded_frame_yuv: Frame {} has invalid dimensions: {}x{}",
-                    frame_index, frame.width, frame.height);
+                log::warn!(
+                    "get_decoded_frame_yuv: Frame {} has invalid dimensions: {}x{}",
+                    frame_index,
+                    frame.width,
+                    frame.height
+                );
                 return Ok(YUVFrameData {
                     frame_index,
                     width: frame.width,
@@ -976,14 +1118,20 @@ pub(crate) async fn decode_frame_yuv_internal(
                     u_stride: frame.u_stride,
                     v_stride: frame.v_stride,
                     success: false,
-                    error: Some(format!("Invalid frame dimensions: {}x{}", frame.width, frame.height)),
+                    error: Some(format!(
+                        "Invalid frame dimensions: {}x{}",
+                        frame.width, frame.height
+                    )),
                 });
             }
 
             // Validate strides are reasonable
             if frame.y_stride == 0 || frame.y_stride < frame.width as usize {
-                log::warn!("get_decoded_frame_yuv: Frame {} has invalid Y stride: {}",
-                    frame_index, frame.y_stride);
+                log::warn!(
+                    "get_decoded_frame_yuv: Frame {} has invalid Y stride: {}",
+                    frame_index,
+                    frame.y_stride
+                );
                 return Ok(YUVFrameData {
                     frame_index,
                     width: frame.width,
@@ -1004,11 +1152,22 @@ pub(crate) async fn decode_frame_yuv_internal(
             use base64::Engine;
 
             let y_plane = base64::engine::general_purpose::STANDARD.encode(&*frame.y_plane);
-            let u_plane = frame.u_plane.as_ref().map(|p| base64::engine::general_purpose::STANDARD.encode(&**p));
-            let v_plane = frame.v_plane.as_ref().map(|p| base64::engine::general_purpose::STANDARD.encode(&**p));
+            let u_plane = frame
+                .u_plane
+                .as_ref()
+                .map(|p| base64::engine::general_purpose::STANDARD.encode(&**p));
+            let v_plane = frame
+                .v_plane
+                .as_ref()
+                .map(|p| base64::engine::general_purpose::STANDARD.encode(&**p));
 
-            log::info!("get_decoded_frame_yuv: Successfully decoded YUV frame {} ({}x{}, {}bit)",
-                frame_index, frame.width, frame.height, frame.bit_depth);
+            log::info!(
+                "get_decoded_frame_yuv: Successfully decoded YUV frame {} ({}x{}, {}bit)",
+                frame_index,
+                frame.width,
+                frame.height,
+                frame.bit_depth
+            );
 
             Ok(YUVFrameData {
                 frame_index,

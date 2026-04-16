@@ -62,8 +62,8 @@ impl YuvFormat {
     fn bpp_millis(&self) -> usize {
         match self {
             YuvFormat::I420 | YuvFormat::Nv12 | YuvFormat::Nv21 => 1500, // 1.5 bpp
-            YuvFormat::I422 => 2000,                                       // 2.0 bpp
-            YuvFormat::I444 => 3000,                                       // 3.0 bpp
+            YuvFormat::I422 => 2000,                                     // 2.0 bpp
+            YuvFormat::I444 => 3000,                                     // 3.0 bpp
         }
     }
 
@@ -253,7 +253,9 @@ pub async fn load_debug_yuv(
         });
     }
 
-    let frame_size = params.format.frame_size(params.width, params.height, params.bitdepth);
+    let frame_size = params
+        .format
+        .frame_size(params.width, params.height, params.bitdepth);
     if frame_size == 0 {
         return Ok(LoadDebugYuvResult {
             success: false,
@@ -263,9 +265,7 @@ pub async fn load_debug_yuv(
         });
     }
 
-    let file_len = std::fs::metadata(&path)
-        .map_err(|e| e.to_string())?
-        .len() as usize;
+    let file_len = std::fs::metadata(&path).map_err(|e| e.to_string())?.len() as usize;
 
     let frame_count = file_len / frame_size;
 
@@ -311,8 +311,18 @@ pub async fn get_debug_yuv_frame(
     // Block-scope the guard so it is dropped before any `.await` points.
     let (frame_size, w, h, fmt, bd, offset, path) = {
         let guard = state.debug_yuv.lock().map_err(|e| e.to_string())?;
-        let s = guard.as_ref().ok_or("No debug YUV loaded. Call load_debug_yuv first.")?;
-        (s.frame_size, s.width, s.height, s.format, s.bitdepth, s.picture_offset, s.path.clone())
+        let s = guard
+            .as_ref()
+            .ok_or("No debug YUV loaded. Call load_debug_yuv first.")?;
+        (
+            s.frame_size,
+            s.width,
+            s.height,
+            s.format,
+            s.bitdepth,
+            s.picture_offset,
+            s.path.clone(),
+        )
         // guard is dropped here
     };
 
@@ -326,7 +336,10 @@ pub async fn get_debug_yuv_frame(
         YuvDiffMode::Reference => {
             let raw = read_yuv_frame(&path, params.frame_index, frame_size, offset)?;
             Ok(make_yuv_frame_data(
-                params.frame_index, w, h, bd,
+                params.frame_index,
+                w,
+                h,
+                bd,
                 &raw[..luma_size],
                 &raw[luma_size..luma_size + chroma_u_size],
                 &raw[luma_size + chroma_u_size..],
@@ -336,7 +349,8 @@ pub async fn get_debug_yuv_frame(
 
         YuvDiffMode::Diff | YuvDiffMode::Amplified => {
             // Get decoded frame from the backend decoder
-            let decoded_raw = get_decoded_yuv_raw(&state, params.frame_index, luma_size, chroma_u_size).await?;
+            let decoded_raw =
+                get_decoded_yuv_raw(&state, params.frame_index, luma_size, chroma_u_size).await?;
             let ref_raw = read_yuv_frame(&path, params.frame_index, frame_size, offset)?;
 
             let amplify = if params.mode == YuvDiffMode::Amplified {
@@ -376,9 +390,13 @@ pub async fn get_debug_yuv_frame(
         YuvDiffMode::Decoded => {
             // Just return the normal decoded frame — frontend can call get_decoded_frame_yuv
             // directly for this case; we support it here for completeness.
-            let decoded_raw = get_decoded_yuv_raw(&state, params.frame_index, luma_size, chroma_u_size).await?;
+            let decoded_raw =
+                get_decoded_yuv_raw(&state, params.frame_index, luma_size, chroma_u_size).await?;
             Ok(make_yuv_frame_data(
-                params.frame_index, w, h, bd,
+                params.frame_index,
+                w,
+                h,
+                bd,
                 &decoded_raw[..luma_size],
                 &decoded_raw[luma_size..luma_size + chroma_u_size],
                 &decoded_raw[luma_size + chroma_u_size..],
@@ -397,7 +415,14 @@ pub async fn get_yuv_diff_metrics(
     let (frame_size, w, h, bd, offset, path) = {
         let guard = state.debug_yuv.lock().map_err(|e| e.to_string())?;
         let s = guard.as_ref().ok_or("No debug YUV loaded.")?;
-        (s.frame_size, s.width, s.height, s.bitdepth, s.picture_offset, s.path.clone())
+        (
+            s.frame_size,
+            s.width,
+            s.height,
+            s.bitdepth,
+            s.picture_offset,
+            s.path.clone(),
+        )
     };
 
     let luma_size = (w as usize) * (h as usize) * (if bd > 8 { 2 } else { 1 });
@@ -440,13 +465,19 @@ pub async fn get_yuv_diff_metrics(
 
 /// Scan all frames and return the index of the first one where decoded ≠ reference.
 #[tauri::command]
-pub async fn find_first_diff_frame(
-    state: State<'_, AppState>,
-) -> Result<FirstDiffResult, String> {
+pub async fn find_first_diff_frame(state: State<'_, AppState>) -> Result<FirstDiffResult, String> {
     let (frame_count, frame_size, w, h, bd, offset, path) = {
         let guard = state.debug_yuv.lock().map_err(|e| e.to_string())?;
         let s = guard.as_ref().ok_or("No debug YUV loaded.")?;
-        (s.frame_count, s.frame_size, s.width, s.height, s.bitdepth, s.picture_offset, s.path.clone())
+        (
+            s.frame_count,
+            s.frame_size,
+            s.width,
+            s.height,
+            s.bitdepth,
+            s.picture_offset,
+            s.path.clone(),
+        )
     };
 
     let luma_size = (w as usize) * (h as usize) * (if bd > 8 { 2 } else { 1 });
@@ -499,9 +530,7 @@ pub fn detect_yuv_format(
     width: u32,
     height: u32,
 ) -> Result<serde_json::Value, String> {
-    let file_size = std::fs::metadata(&path)
-        .map_err(|e| e.to_string())?
-        .len() as usize;
+    let file_size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len() as usize;
 
     let candidates: &[(YuvFormat, u8, &str)] = &[
         (YuvFormat::I420, 8, "i420 8-bit"),
@@ -542,10 +571,7 @@ pub fn unload_debug_yuv(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Update picture offset for the loaded debug YUV.
 #[tauri::command]
-pub fn set_debug_yuv_offset(
-    state: State<'_, AppState>,
-    offset: i32,
-) -> Result<(), String> {
+pub fn set_debug_yuv_offset(state: State<'_, AppState>, offset: i32) -> Result<(), String> {
     let mut debug_yuv = state.debug_yuv.lock().map_err(|e| e.to_string())?;
     if let Some(ref mut s) = *debug_yuv {
         s.picture_offset = offset;
@@ -557,10 +583,7 @@ pub fn set_debug_yuv_offset(
 
 /// Update crop values for the loaded debug YUV.
 #[tauri::command]
-pub fn set_debug_yuv_crop(
-    state: State<'_, AppState>,
-    crop: CropValues,
-) -> Result<(), String> {
+pub fn set_debug_yuv_crop(state: State<'_, AppState>, crop: CropValues) -> Result<(), String> {
     let mut debug_yuv = state.debug_yuv.lock().map_err(|e| e.to_string())?;
     if let Some(ref mut s) = *debug_yuv {
         s.crop = crop;
@@ -609,7 +632,8 @@ async fn get_decoded_yuv_raw(
     luma_size: usize,
     chroma_u_size: usize,
 ) -> Result<Vec<u8>, String> {
-    let yuv = crate::commands::frame::decode_frame_yuv_internal(state.inner(), frame_index, false).await
+    let yuv = crate::commands::frame::decode_frame_yuv_internal(state.inner(), frame_index, false)
+        .await
         .map_err(|e| e.to_string())?;
 
     if !yuv.success {

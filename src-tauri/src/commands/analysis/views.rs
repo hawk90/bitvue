@@ -7,8 +7,11 @@ use bitvue_av1_codec::advanced_features::{
 use bitvue_core::StreamId;
 use serde::{Deserialize, Serialize};
 
+use super::{
+    detect_codec_from_path, extract_analysis_by_codec, extract_stream_dimensions,
+    load_file_data_and_codec, validate_frame_index,
+};
 use crate::commands::AppState;
-use super::{validate_frame_index, load_file_data_and_codec, extract_analysis_by_codec, extract_stream_dimensions, detect_codec_from_path};
 
 // =============================================================================
 // Coding Flow
@@ -82,8 +85,14 @@ pub async fn get_coding_flow_analysis(
     ];
 
     let codec_features = match codec.as_str() {
-        "av1" => vec!["Directional Intra Pred".to_string(), "Compound Prediction".to_string()],
-        "hevc" => vec!["35 Intra Modes".to_string(), "Advanced Motion Vector Pred".to_string()],
+        "av1" => vec![
+            "Directional Intra Pred".to_string(),
+            "Compound Prediction".to_string(),
+        ],
+        "hevc" => vec![
+            "35 Intra Modes".to_string(),
+            "Advanced Motion Vector Pred".to_string(),
+        ],
         "vvc" => vec!["67 Intra Modes".to_string(), "GPM/Combine Pred".to_string()],
         "avc" | "h264" => vec!["CAVLC/CABAC".to_string(), "IPCM Prediction".to_string()],
         _ => vec!["Standard Features".to_string()],
@@ -156,7 +165,8 @@ pub async fn get_residual_analysis(
 
     let analysis = analysis.map_err(|e| format!("QP extraction failed: {}", e))?;
 
-    let qp_grid = analysis.qp_grid
+    let qp_grid = analysis
+        .qp_grid
         .ok_or("No QP grid available for this frame")?;
 
     let width = analysis.width;
@@ -171,8 +181,16 @@ pub async fn get_residual_analysis(
     for by in 0..grid_h {
         for bx in 0..grid_w {
             let idx = by * grid_w + bx;
-            let qp = if idx < qp_grid.qp.len() { qp_grid.qp[idx] } else { missing };
-            let effective_qp = if qp == missing { 26i16 } else { qp.max(0).min(51) };
+            let qp = if idx < qp_grid.qp.len() {
+                qp_grid.qp[idx]
+            } else {
+                missing
+            };
+            let effective_qp = if qp == missing {
+                26i16
+            } else {
+                qp.max(0).min(51)
+            };
 
             let energy = (51 - effective_qp) as f32 / 51.0 * 100.0;
             let max_coeff = energy * 2.55;
@@ -200,7 +218,8 @@ pub async fn get_residual_analysis(
     let min_e = energies.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_e = energies.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let mean_e = energies.iter().sum::<f32>() / n as f32;
-    let variance_e = (energies.iter().map(|&e| (e - mean_e).powi(2)).sum::<f32>() / n as f32).sqrt();
+    let variance_e =
+        (energies.iter().map(|&e| (e - mean_e).powi(2)).sum::<f32>() / n as f32).sqrt();
     let energy_sum: f64 = energies.iter().map(|&e| (e * e) as f64).sum();
     let total_non_zeros: usize = block_residuals.iter().map(|b| b.non_zeros).sum();
     let total_coeffs = n * (block_w * block_h) as usize;
@@ -291,12 +310,20 @@ pub async fn get_deblocking_analysis(
 
     for y in (0..height).step_by(block_size as usize).take(30) {
         for x in (block_size..width).step_by(block_size as usize).take(40) {
-            let bs = if (x % 16 == 0) || is_intra { base_bs } else { 0 };
+            let bs = if (x % 16 == 0) || is_intra {
+                base_bs
+            } else {
+                0
+            };
             if bs > 0 {
                 boundaries.push(BoundaryEdgeData {
-                    x, y, length: block_size,
+                    x,
+                    y,
+                    length: block_size,
                     orientation: "vertical".to_string(),
-                    strength: bs as f32, filtered: true, bs,
+                    strength: bs as f32,
+                    filtered: true,
+                    bs,
                 });
             }
         }
@@ -304,12 +331,20 @@ pub async fn get_deblocking_analysis(
 
     for y in (block_size..height).step_by(block_size as usize).take(30) {
         for x in (0..width).step_by(block_size as usize).take(40) {
-            let bs = if (y % 16 == 0) || is_intra { base_bs } else { 0 };
+            let bs = if (y % 16 == 0) || is_intra {
+                base_bs
+            } else {
+                0
+            };
             if bs > 0 {
                 boundaries.push(BoundaryEdgeData {
-                    x, y, length: block_size,
+                    x,
+                    y,
+                    length: block_size,
                     orientation: "horizontal".to_string(),
-                    strength: bs as f32, filtered: true, bs,
+                    strength: bs as f32,
+                    filtered: true,
+                    bs,
                 });
             }
         }
@@ -416,7 +451,13 @@ pub async fn get_av1_features(
     let (file_data, codec) = load_file_data_and_codec(&state).await?;
 
     if !matches!(codec.to_lowercase().as_str(), "av1") {
-        return Ok(Av1FeaturesData { frame_index, cdef: None, loop_restoration: None, film_grain: None, super_resolution: None });
+        return Ok(Av1FeaturesData {
+            frame_index,
+            cdef: None,
+            loop_restoration: None,
+            film_grain: None,
+            super_resolution: None,
+        });
     }
 
     // Parse IVF and get frame header
@@ -425,24 +466,46 @@ pub async fn get_av1_features(
         .ok()
         .and_then(|(_, frames)| frames.into_iter().nth(frame_index))
         .and_then(|f| {
-            bitvue_av1_codec::parse_all_obus(&f.data).ok().and_then(|obus| {
-                obus.into_iter()
-                    .find(|o| matches!(o.obu_type, bitvue_av1_codec::ObuType::FrameHeader | bitvue_av1_codec::ObuType::Frame))
-                    .and_then(|o| bitvue_av1_codec::parse_frame_header_basic(&o.payload).ok())
-            })
+            bitvue_av1_codec::parse_all_obus(&f.data)
+                .ok()
+                .and_then(|obus| {
+                    obus.into_iter()
+                        .find(|o| {
+                            matches!(
+                                o.obu_type,
+                                bitvue_av1_codec::ObuType::FrameHeader
+                                    | bitvue_av1_codec::ObuType::Frame
+                            )
+                        })
+                        .and_then(|o| bitvue_av1_codec::parse_frame_header_basic(&o.payload).ok())
+                })
         });
 
     let Some(fh) = frame_header else {
-        return Ok(Av1FeaturesData { frame_index, cdef: None, loop_restoration: None, film_grain: None, super_resolution: None });
+        return Ok(Av1FeaturesData {
+            frame_index,
+            cdef: None,
+            loop_restoration: None,
+            film_grain: None,
+            super_resolution: None,
+        });
     };
 
     let cdef = extract_cdef_data(&fh).map(|d| CdefDataResponse {
         width: d.width,
         height: d.height,
         block_size: 8,
-        blocks: d.block_strengths.iter().map(|b| CdefBlockResponse {
-            x: b.x, y: b.y, size: b.size, direction: b.direction, strength: b.strength,
-        }).collect(),
+        blocks: d
+            .block_strengths
+            .iter()
+            .map(|b| CdefBlockResponse {
+                x: b.x,
+                y: b.y,
+                size: b.size,
+                direction: b.direction,
+                strength: b.strength,
+            })
+            .collect(),
         damping: d.damping,
         y_primary_strength: d.y_primary_strength,
         y_secondary_strength: d.y_secondary_strength,
@@ -453,9 +516,16 @@ pub async fn get_av1_features(
         height: d.height,
         unit_size: d.unit_size,
         y_type: d.y_restoration_type as u8,
-        units: d.units.iter().map(|u| RestorationUnitResponse {
-            x: u.x, y: u.y, size: u.size, restoration_type: u.restoration_type as u8,
-        }).collect(),
+        units: d
+            .units
+            .iter()
+            .map(|u| RestorationUnitResponse {
+                x: u.x,
+                y: u.y,
+                size: u.size,
+                restoration_type: u.restoration_type as u8,
+            })
+            .collect(),
     });
 
     let film_grain = extract_film_grain_data(&fh).map(|d| FilmGrainResponse {
@@ -474,5 +544,11 @@ pub async fn get_av1_features(
         upscaled_height: d.upscaled_height,
     });
 
-    Ok(Av1FeaturesData { frame_index, cdef, loop_restoration, film_grain, super_resolution })
+    Ok(Av1FeaturesData {
+        frame_index,
+        cdef,
+        loop_restoration,
+        film_grain,
+        super_resolution,
+    })
 }

@@ -58,7 +58,9 @@ impl RateLimiter {
 
         // Check minimum interval
         {
-            let mut last_request = self.last_request.lock()
+            let mut last_request = self
+                .last_request
+                .lock()
                 .map_err(|_| Duration::from_secs(1))?;
             let elapsed = now.duration_since(*last_request);
 
@@ -72,9 +74,13 @@ impl RateLimiter {
 
         // Check burst limit
         if self.config.burst_limit > 0 {
-            let mut burst_count = self.burst_count.lock()
+            let mut burst_count = self
+                .burst_count
+                .lock()
                 .map_err(|_| Duration::from_secs(1))?;
-            let mut burst_window_start = self.burst_window_start.lock()
+            let mut burst_window_start = self
+                .burst_window_start
+                .lock()
                 .map_err(|_| Duration::from_secs(1))?;
 
             // Reset burst counter if window has expired (1 second)
@@ -85,7 +91,8 @@ impl RateLimiter {
             }
 
             if *burst_count >= self.config.burst_limit {
-                let wait_time = window_duration.saturating_sub(now.duration_since(*burst_window_start));
+                let wait_time =
+                    window_duration.saturating_sub(now.duration_since(*burst_window_start));
                 return Err(wait_time);
             }
 
@@ -157,7 +164,7 @@ mod tests {
     fn test_burst_limit() {
         let limiter = RateLimiter::with_config(RateLimitConfig {
             min_interval: Duration::from_millis(10), // Very short interval
-            burst_limit: 3, // Allow 3 requests in burst
+            burst_limit: 3,                          // Allow 3 requests in burst
         });
 
         // First 3 requests should succeed

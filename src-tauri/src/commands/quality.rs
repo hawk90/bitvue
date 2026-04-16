@@ -3,9 +3,9 @@
 //! Commands for calculating video quality metrics (PSNR, SSIM, VMAF)
 //! and Rate-Distortion analysis (BD-Rate).
 
-use serde::{Deserialize, Serialize};
-use crate::commands::AppState;
 use crate::commands::frame::parse_ivf_and_validate;
+use crate::commands::AppState;
+use serde::{Deserialize, Serialize};
 
 /// Maximum number of samples to prevent DoS through millions of tiny samples
 const MAX_SAMPLES: usize = 100_000;
@@ -39,8 +39,8 @@ pub struct BatchQualityMetrics {
 /// Point on a Rate-Distortion curve
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RDPoint {
-    pub bitrate: f64,    // Bitrate in kbps
-    pub quality: f64,    // Quality metric value (PSNR, SSIM, or VMAF)
+    pub bitrate: f64, // Bitrate in kbps
+    pub quality: f64, // Quality metric value (PSNR, SSIM, or VMAF)
 }
 
 /// RD curve data for a single encoder/configuration
@@ -55,8 +55,8 @@ pub struct RDCurve {
 pub struct BDRateResult {
     pub anchor_name: String,
     pub test_name: String,
-    pub bd_rate: f64,        // Percentage bitrate savings (negative = test is better)
-    pub bd_psnr: f64,        // PSNR improvement in dB
+    pub bd_rate: f64, // Percentage bitrate savings (negative = test is better)
+    pub bd_psnr: f64, // PSNR improvement in dB
     pub interpretation: String,
 }
 
@@ -66,7 +66,7 @@ pub struct BDRateResult {
 pub struct QualityCalculationRequest {
     pub reference_path: String,
     pub distorted_path: String,
-    pub frame_indices: Option<Vec<usize>>,  // None = all frames
+    pub frame_indices: Option<Vec<usize>>, // None = all frames
     pub calculate_psnr: bool,
     pub calculate_ssim: bool,
     pub calculate_vmaf: bool,
@@ -103,14 +103,21 @@ fn get_cached_file_data(
 fn decode_frames_for_comparison(
     file_data: &[u8],
     frame_indices: &Option<Vec<usize>>,
-) -> Result<(Vec<bitvue_decode::DecodedFrame>, Vec<bitvue_decode::DecodedFrame>), String> {
+) -> Result<
+    (
+        Vec<bitvue_decode::DecodedFrame>,
+        Vec<bitvue_decode::DecodedFrame>,
+    ),
+    String,
+> {
     if let Some(indices) = &frame_indices {
         // OPTIMIZATION: Validate all indices once and get max
         if indices.is_empty() {
             return Err("No frame indices provided".to_string());
         }
 
-        let max_idx = *indices.iter()
+        let max_idx = *indices
+            .iter()
             .max()
             .ok_or("Frame indices is empty (should not happen)".to_string())?;
 
@@ -121,11 +128,13 @@ fn decode_frames_for_comparison(
         // Extract requested frames for both reference and distorted
         // Note: For real quality comparison, these would come from different files
         // This is a simplified version that duplicates the same frames
-        let ref_frames: Vec<_> = indices.iter()
+        let ref_frames: Vec<_> = indices
+            .iter()
             .filter_map(|&idx| all_frames.get(idx).cloned())
             .collect();
 
-        let dist_frames: Vec<_> = indices.iter()
+        let dist_frames: Vec<_> = indices
+            .iter()
             .filter_map(|&idx| all_frames.get(idx).cloned())
             .collect();
 
@@ -148,8 +157,8 @@ fn decode_frames_up_to(
 ) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
     let frames = parse_ivf_and_validate(file_data, max_idx)?;
 
-    let mut decoder = bitvue_decode::Av1Decoder::new()
-        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+    let mut decoder =
+        bitvue_decode::Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
 
     let mut decoded_frames = Vec::with_capacity(max_idx + 1);
 
@@ -157,7 +166,8 @@ fn decode_frames_up_to(
     for idx in 0..=max_idx {
         let frame_data = &frames[idx].data;
 
-        decoder.send_data(frame_data, frames[idx].timestamp as i64)
+        decoder
+            .send_data(frame_data, frames[idx].timestamp as i64)
             .map_err(|e| format!("Failed to send frame data for index {}: {}", idx, e))?;
 
         match decoder.get_frame() {
@@ -209,22 +219,29 @@ fn calculate_frame_psnr(
     );
 
     // Validate dimensions to prevent division by zero and overflow
-    if ref_frame.width == 0 || ref_frame.height == 0 ||
-       dist_frame.width == 0 || dist_frame.height == 0 {
-        log::warn!("calculate_frame_psnr: Invalid dimensions (width=0 or height=0), returning None");
+    if ref_frame.width == 0
+        || ref_frame.height == 0
+        || dist_frame.width == 0
+        || dist_frame.height == 0
+    {
+        log::warn!(
+            "calculate_frame_psnr: Invalid dimensions (width=0 or height=0), returning None"
+        );
         return None;
     }
 
     // Calculate chroma height with overflow protection
     // For chroma planes in 4:2:0 subsampling, height is half of luma height
     let chroma_height_ref = if ref_frame.width > 0 {
-        (ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize).saturating_div(2)
+        (ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize)
+            .saturating_div(2)
     } else {
         ref_frame.height as usize / 2
     };
 
     let chroma_height_dist = if dist_frame.width > 0 {
-        (dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize).saturating_div(2)
+        (dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize)
+            .saturating_div(2)
     } else {
         dist_frame.height as usize / 2
     };
@@ -270,22 +287,29 @@ fn calculate_frame_ssim(
     );
 
     // Validate dimensions to prevent division by zero and overflow
-    if ref_frame.width == 0 || ref_frame.height == 0 ||
-       dist_frame.width == 0 || dist_frame.height == 0 {
-        log::warn!("calculate_frame_ssim: Invalid dimensions (width=0 or height=0), returning None");
+    if ref_frame.width == 0
+        || ref_frame.height == 0
+        || dist_frame.width == 0
+        || dist_frame.height == 0
+    {
+        log::warn!(
+            "calculate_frame_ssim: Invalid dimensions (width=0 or height=0), returning None"
+        );
         return None;
     }
 
     // Calculate chroma height with overflow protection
     // For chroma planes in 4:2:0 subsampling, height is half of luma height
     let chroma_height_ref = if ref_frame.width > 0 {
-        (ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize).saturating_div(2)
+        (ref_frame.u_stride * ref_frame.height as usize / ref_frame.width as usize)
+            .saturating_div(2)
     } else {
         ref_frame.height as usize / 2
     };
 
     let chroma_height_dist = if dist_frame.width > 0 {
-        (dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize).saturating_div(2)
+        (dist_frame.u_stride * dist_frame.height as usize / dist_frame.width as usize)
+            .saturating_div(2)
     } else {
         dist_frame.height as usize / 2
     };
@@ -341,7 +365,9 @@ fn calculate_single_frame_metrics(
 
     // Calculate PSNR if requested
     if calculate_psnr {
-        if let Some((psnr_y, psnr_u, psnr_v, psnr_avg)) = calculate_frame_psnr(ref_frame, dist_frame) {
+        if let Some((psnr_y, psnr_u, psnr_v, psnr_avg)) =
+            calculate_frame_psnr(ref_frame, dist_frame)
+        {
             frame_metrics.psnr_y = Some(psnr_y);
             frame_metrics.psnr_u = Some(psnr_u);
             frame_metrics.psnr_v = Some(psnr_v);
@@ -351,7 +377,9 @@ fn calculate_single_frame_metrics(
 
     // Calculate SSIM if requested
     if calculate_ssim {
-        if let Some((ssim_y, ssim_u, ssim_v, ssim_avg)) = calculate_frame_ssim(ref_frame, dist_frame) {
+        if let Some((ssim_y, ssim_u, ssim_v, ssim_avg)) =
+            calculate_frame_ssim(ref_frame, dist_frame)
+        {
             frame_metrics.ssim_y = Some(ssim_y);
             frame_metrics.ssim_u = Some(ssim_u);
             frame_metrics.ssim_v = Some(ssim_v);
@@ -373,15 +401,19 @@ pub async fn calculate_quality_metrics(
     calculate_ssim: bool,
     _calculate_vmaf: bool,
 ) -> Result<BatchQualityMetrics, String> {
-    log::info!("calculate_quality_metrics: Comparing {} vs {}",
-        reference_path, distorted_path);
+    log::info!(
+        "calculate_quality_metrics: Comparing {} vs {}",
+        reference_path,
+        distorted_path
+    );
 
     // Rate limiting check (quality metrics are CPU-intensive)
-    state.rate_limiter.check_rate_limit()
-        .map_err(|wait_time| {
-            format!("Rate limited: too many requests. Please try again in {:.1}s",
-                wait_time.as_secs_f64())
-        })?;
+    state.rate_limiter.check_rate_limit().map_err(|wait_time| {
+        format!(
+            "Rate limited: too many requests. Please try again in {:.1}s",
+            wait_time.as_secs_f64()
+        )
+    })?;
 
     // Validate file paths for security
     let _ref_path = validate_file_path(&reference_path)?;
@@ -392,7 +424,10 @@ pub async fn calculate_quality_metrics(
         if let Ok(core) = state.core.lock() {
             let stream_lock = core.get_stream(bitvue_core::StreamId::A);
             let stream = stream_lock.read();
-            stream.file_path.as_ref().and_then(|p| p.to_str().map(|s| s.to_string()))
+            stream
+                .file_path
+                .as_ref()
+                .and_then(|p| p.to_str().map(|s| s.to_string()))
         } else {
             None
         }
@@ -476,8 +511,16 @@ pub async fn calculate_quality_metrics(
         valid_count += 1;
     }
 
-    let avg_psnr = if psnr_sum > 0.0 { Some(psnr_sum / valid_count as f64) } else { None };
-    let avg_ssim = if ssim_sum > 0.0 { Some(ssim_sum / valid_count as f64) } else { None };
+    let avg_psnr = if psnr_sum > 0.0 {
+        Some(psnr_sum / valid_count as f64)
+    } else {
+        None
+    };
+    let avg_ssim = if ssim_sum > 0.0 {
+        Some(ssim_sum / valid_count as f64)
+    } else {
+        None
+    };
     let avg_vmaf = None; // VMAF not yet implemented
 
     // SECURITY: Don't log frame count to prevent information disclosure
@@ -500,20 +543,26 @@ pub async fn calculate_bd_rate(
     anchor_curve: RDCurve,
     test_curve: RDCurve,
 ) -> Result<BDRateResult, String> {
-    log::info!("calculate_bd_rate: Comparing {} vs {}", anchor_curve.name, test_curve.name);
+    log::info!(
+        "calculate_bd_rate: Comparing {} vs {}",
+        anchor_curve.name,
+        test_curve.name
+    );
 
     if anchor_curve.points.len() < 4 || test_curve.points.len() < 4 {
         return Err("Need at least 4 points on each curve for BD-Rate calculation".to_string());
     }
 
     // Filter out NaN and Inf values before processing
-    let anchor_sorted: Vec<_> = anchor_curve.points
+    let anchor_sorted: Vec<_> = anchor_curve
+        .points
         .clone()
         .into_iter()
         .filter(|p| p.bitrate.is_finite() && p.quality.is_finite())
         .collect();
 
-    let test_sorted: Vec<_> = test_curve.points
+    let test_sorted: Vec<_> = test_curve
+        .points
         .clone()
         .into_iter()
         .filter(|p| p.bitrate.is_finite() && p.quality.is_finite())
@@ -536,13 +585,15 @@ pub async fn calculate_bd_rate(
     // Sort points by bitrate (safe now - no NaN values)
     let mut anchor_sorted = anchor_sorted;
     anchor_sorted.sort_by(|a, b| {
-        a.bitrate.partial_cmp(&b.bitrate)
+        a.bitrate
+            .partial_cmp(&b.bitrate)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     let mut test_sorted = test_sorted;
     test_sorted.sort_by(|a, b| {
-        a.bitrate.partial_cmp(&b.bitrate)
+        a.bitrate
+            .partial_cmp(&b.bitrate)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -559,17 +610,29 @@ pub async fn calculate_bd_rate(
 
     // Generate interpretation
     let interpretation = if bd_rate < 0.0 {
-        format!("{} achieves similar quality at {:.1}% lower bitrate than {}",
-            test_curve.name, bd_rate.abs(), anchor_curve.name)
+        format!(
+            "{} achieves similar quality at {:.1}% lower bitrate than {}",
+            test_curve.name,
+            bd_rate.abs(),
+            anchor_curve.name
+        )
     } else if bd_rate > 0.0 {
-        format!("{} requires {:.1}% higher bitrate than {} for similar quality",
-            test_curve.name, bd_rate, anchor_curve.name)
+        format!(
+            "{} requires {:.1}% higher bitrate than {} for similar quality",
+            test_curve.name, bd_rate, anchor_curve.name
+        )
     } else {
-        format!("{} and {} have equivalent coding efficiency",
-            test_curve.name, anchor_curve.name)
+        format!(
+            "{} and {} have equivalent coding efficiency",
+            test_curve.name, anchor_curve.name
+        )
     };
 
-    log::info!("calculate_bd_rate: BD-Rate = {:.2}%, BD-PSNR = {:.2} dB", bd_rate, bd_psnr);
+    log::info!(
+        "calculate_bd_rate: BD-Rate = {:.2}%, BD-PSNR = {:.2} dB",
+        bd_rate,
+        bd_psnr
+    );
 
     Ok(BDRateResult {
         anchor_name: anchor_curve.name,
@@ -671,14 +734,18 @@ fn interpolate_quality(points: &[RDPoint], bitrate: f64) -> Option<f64> {
 
 /// Decode specific frames from video data (IVF, MP4, MKV)
 /// This is more efficient than decode_all_frames when only a subset is needed
-fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+fn decode_frames_subset(
+    file_data: &[u8],
+    frame_indices: &[usize],
+) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
     // Validate frame_indices is not empty
     if frame_indices.is_empty() {
         return Err("No frame indices provided".to_string());
     }
 
     // Find max frame index needed
-    let max_idx = *frame_indices.iter()
+    let max_idx = *frame_indices
+        .iter()
         .max()
         .ok_or("Frame indices is empty (should not happen)".to_string())?;
 
@@ -700,7 +767,8 @@ fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec
         for idx in 0..=max_idx {
             let frame_data = &frames[idx].data;
 
-            decoder.send_data(frame_data, frames[idx].timestamp as i64)
+            decoder
+                .send_data(frame_data, frames[idx].timestamp as i64)
                 .map_err(|e| format!("Failed to send frame data: {}", e))?;
 
             match decoder.get_frame() {
@@ -733,10 +801,12 @@ fn decode_frames_subset(file_data: &[u8], frame_indices: &[usize]) -> Result<Vec
     }
     // Check if MKV
     else if let Ok(samples) = bitvue_formats::mkv::extract_av1_samples(file_data) {
-        let cow_samples: Vec<std::borrow::Cow<'_, [u8]>> = samples.iter().map(|s| std::borrow::Cow::Borrowed(s.as_slice())).collect();
+        let cow_samples: Vec<std::borrow::Cow<'_, [u8]>> = samples
+            .iter()
+            .map(|s| std::borrow::Cow::Borrowed(s.as_slice()))
+            .collect();
         decode_samples_subset(&cow_samples, frame_indices, max_idx)
-    }
-    else {
+    } else {
         // Unknown format, fall back to decode_all
         decode_all_frames(file_data)
     }
@@ -765,15 +835,16 @@ fn decode_samples_subset(
     }
 
     let mut decoded_frames: Vec<Option<bitvue_decode::DecodedFrame>> = Vec::new();
-    let mut decoder = bitvue_decode::Av1Decoder::new()
-        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+    let mut decoder =
+        bitvue_decode::Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
 
     // Decode samples up to max index using a single decoder
     for idx in 0..=max_idx {
         let sample_data = &samples[idx];
 
         // Send raw OBU data directly - no IVF wrapper needed
-        decoder.send_data(sample_data, idx as i64)
+        decoder
+            .send_data(sample_data, idx as i64)
             .map_err(|e| format!("Failed to send sample data: {}", e))?;
 
         // Try to get frame, handling EAGAIN properly
@@ -798,7 +869,11 @@ fn decode_samples_subset(
     let mut result = Vec::new();
     for &idx in frame_indices {
         if idx >= decoded_frames.len() {
-            return Err(format!("Frame index {} out of range (decoded: {})", idx, decoded_frames.len()));
+            return Err(format!(
+                "Frame index {} out of range (decoded: {})",
+                idx,
+                decoded_frames.len()
+            ));
         }
         if let Some(frame) = &decoded_frames[idx] {
             result.push(frame.clone());
@@ -829,7 +904,10 @@ fn decode_all_frames(file_data: &[u8]) -> Result<Vec<bitvue_decode::DecodedFrame
 
     // Try MKV
     if let Ok(samples) = bitvue_formats::mkv::extract_av1_samples(file_data) {
-        let cow_samples: Vec<std::borrow::Cow<'_, [u8]>> = samples.iter().map(|s| std::borrow::Cow::Borrowed(s.as_slice())).collect();
+        let cow_samples: Vec<std::borrow::Cow<'_, [u8]>> = samples
+            .iter()
+            .map(|s| std::borrow::Cow::Borrowed(s.as_slice()))
+            .collect();
         return decode_samples(&cow_samples);
     }
 
@@ -840,7 +918,9 @@ fn decode_all_frames(file_data: &[u8]) -> Result<Vec<bitvue_decode::DecodedFrame
 ///
 /// Uses a single decoder instance to efficiently decode all samples.
 /// This is faster than creating a new decoder for each sample.
-fn decode_samples(samples: &[std::borrow::Cow<'_, [u8]>]) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
+fn decode_samples(
+    samples: &[std::borrow::Cow<'_, [u8]>],
+) -> Result<Vec<bitvue_decode::DecodedFrame>, String> {
     // SECURITY: Validate total samples to prevent DoS
     if samples.len() > MAX_SAMPLES {
         return Err(format!(
@@ -850,14 +930,15 @@ fn decode_samples(samples: &[std::borrow::Cow<'_, [u8]>]) -> Result<Vec<bitvue_d
         ));
     }
 
-    let mut decoder = bitvue_decode::Av1Decoder::new()
-        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+    let mut decoder =
+        bitvue_decode::Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
 
     let mut all_frames = Vec::new();
 
     for (idx, sample) in samples.iter().enumerate() {
         // Send raw OBU data directly - no IVF wrapper needed
-        decoder.send_data(sample, idx as i64)
+        decoder
+            .send_data(sample, idx as i64)
             .map_err(|e| format!("Failed to send sample {}: {}", idx, e))?;
 
         // Collect all frames from this sample
@@ -960,10 +1041,10 @@ pub async fn get_rd_point(file_path: String) -> Result<RdPointData, String> {
 /// - Unknown: fallback 50 - 0.70 * qp
 pub fn psnr_from_qp(codec: &str, avg_qp: f64) -> f64 {
     let psnr = match codec {
-        "av1"  => 48.0 - 0.15 * avg_qp,
+        "av1" => 48.0 - 0.15 * avg_qp,
         "hevc" => 52.0 - 0.60 * avg_qp,
         "h264" => 51.0 - 0.65 * avg_qp,
-        _      => 50.0 - 0.70 * avg_qp,
+        _ => 50.0 - 0.70 * avg_qp,
     };
     psnr.max(0.0)
 }
@@ -1035,7 +1116,11 @@ fn extract_rd_stats_from_data(data: &[u8]) -> Result<(f64, f64, String), String>
             for frame in &frames {
                 if let Ok(obus) = bitvue_av1_codec::parse_all_obus(&frame.data) {
                     for obu in &obus {
-                        if matches!(obu.obu_type, bitvue_av1_codec::ObuType::FrameHeader | bitvue_av1_codec::ObuType::Frame) {
+                        if matches!(
+                            obu.obu_type,
+                            bitvue_av1_codec::ObuType::FrameHeader
+                                | bitvue_av1_codec::ObuType::Frame
+                        ) {
                             if let Ok(fh) = bitvue_av1_codec::parse_frame_header_basic(&obu.data) {
                                 qp_sum += fh.base_q_idx as f64;
                                 qp_count += 1;
@@ -1044,7 +1129,11 @@ fn extract_rd_stats_from_data(data: &[u8]) -> Result<(f64, f64, String), String>
                     }
                 }
             }
-            let avg_qp = if qp_count > 0 { qp_sum / qp_count as f64 } else { 30.0 };
+            let avg_qp = if qp_count > 0 {
+                qp_sum / qp_count as f64
+            } else {
+                30.0
+            };
             return Ok((avg_qp, duration_secs, "av1".to_string()));
         }
     }
@@ -1052,13 +1141,16 @@ fn extract_rd_stats_from_data(data: &[u8]) -> Result<(f64, f64, String), String>
     // Try HEVC Annex B
     if let Ok(frames) = bitvue_hevc::extract_annex_b_frames(data) {
         if !frames.is_empty() {
-            let qp_values: Vec<f64> = frames.iter()
+            let qp_values: Vec<f64> = frames
+                .iter()
                 .filter_map(|f| f.slice_header.as_ref())
                 .map(|h| (26 + h.slice_qp_delta as i32).clamp(0, 51) as f64)
                 .collect();
             let avg_qp = if !qp_values.is_empty() {
                 qp_values.iter().sum::<f64>() / qp_values.len() as f64
-            } else { 30.0 };
+            } else {
+                30.0
+            };
             let duration_secs = frames.len() as f64 / 30.0;
             return Ok((avg_qp, duration_secs, "hevc".to_string()));
         }
@@ -1067,13 +1159,16 @@ fn extract_rd_stats_from_data(data: &[u8]) -> Result<(f64, f64, String), String>
     // Try H.264 Annex B
     if let Ok(frames) = bitvue_avc::extract_annex_b_frames(data) {
         if !frames.is_empty() {
-            let qp_values: Vec<f64> = frames.iter()
+            let qp_values: Vec<f64> = frames
+                .iter()
                 .filter_map(|f| f.slice_header.as_ref())
                 .map(|h| (26 + h.slice_qp_delta).clamp(0, 51) as f64)
                 .collect();
             let avg_qp = if !qp_values.is_empty() {
                 qp_values.iter().sum::<f64>() / qp_values.len() as f64
-            } else { 30.0 };
+            } else {
+                30.0
+            };
             let duration_secs = frames.len() as f64 / 30.0;
             return Ok((avg_qp, duration_secs, "h264".to_string()));
         }

@@ -2,17 +2,21 @@
 //!
 //! Commands for opening, closing, and querying file/stream information.
 
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 use std::io::Read;
-use serde::{Serialize, Deserialize};
+use std::path::PathBuf;
 
 use crate::commands::{AppState, FileInfo};
-use bitvue_core::{Command, Event, StreamId, UnitModel, ContainerModel, ContainerFormat as CoreContainerFormat};
-use bitvue_av1_codec::{parse_ivf_frames, parse_ivf_header, ObuIterator, ObuType, FrameType};
+use bitvue_av1_codec::{parse_ivf_frames, parse_ivf_header, FrameType, ObuIterator, ObuType};
 use bitvue_avc::{avc_frames_to_unit_nodes, extract_annex_b_frames as extract_avc_annex_b_frames};
-use bitvue_hevc::{hevc_frames_to_unit_nodes, extract_annex_b_frames as extract_hevc_annex_b_frames};
-use bitvue_vp9::{vp9_frames_to_unit_nodes, extract_vp9_frames};
+use bitvue_core::{
+    Command, ContainerFormat as CoreContainerFormat, ContainerModel, Event, StreamId, UnitModel,
+};
 use bitvue_formats::{detect_container_format, ContainerFormat};
+use bitvue_hevc::{
+    extract_annex_b_frames as extract_hevc_annex_b_frames, hevc_frames_to_unit_nodes,
+};
+use bitvue_vp9::{extract_vp9_frames, vp9_frames_to_unit_nodes};
 
 /// Validate file path to prevent path traversal and access to sensitive directories
 /// This is a public function so other modules (like decode_service) can use it
@@ -34,8 +38,13 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf, String> {
     // - Symlinks (including nested symlinks)
     // - Relative path resolution
     // - Path separator normalization
-    let canonical = path.canonicalize()
-        .map_err(|e| format!("Invalid path: cannot resolve path '{}': {}", path.display(), e))?;
+    let canonical = path.canonicalize().map_err(|e| {
+        format!(
+            "Invalid path: cannot resolve path '{}': {}",
+            path.display(),
+            e
+        )
+    })?;
 
     // Validate the canonical path against system directory restrictions
     // This must happen on the canonicalized path to catch traversal attempts
@@ -67,19 +76,24 @@ pub fn validate_and_open_file(path: &str) -> Result<(PathBuf, std::fs::File), St
     let path = PathBuf::from(path);
 
     // SECURITY CRITICAL: Canonicalize FIRST before any validation
-    let canonical = path.canonicalize()
-        .map_err(|e| format!("Invalid path: cannot resolve path '{}': {}", path.display(), e))?;
+    let canonical = path.canonicalize().map_err(|e| {
+        format!(
+            "Invalid path: cannot resolve path '{}': {}",
+            path.display(),
+            e
+        )
+    })?;
 
     // Validate the canonical path against system directory restrictions
     check_system_directory_access(&canonical.to_string_lossy())
         .map_err(|e| format!("Path validation failed: {}", e))?;
 
     // Open file IMMEDIATELY after validation to minimize TOCTOU window
-    let file = std::fs::File::open(&canonical)
-        .map_err(|e| format!("Cannot open file: {}", e))?;
+    let file = std::fs::File::open(&canonical).map_err(|e| format!("Cannot open file: {}", e))?;
 
     // Verify it's actually a file (not a directory/device)
-    let metadata = file.metadata()
+    let metadata = file
+        .metadata()
         .map_err(|e| format!("Cannot get file metadata: {}", e))?;
 
     if !metadata.is_file() {
@@ -96,8 +110,10 @@ pub fn validate_and_open_file(path: &str) -> Result<(PathBuf, std::fs::File), St
 pub fn check_system_directory_access(canonical_str: &str) -> Result<(), String> {
     #[cfg(unix)]
     {
-        let blocked_paths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/var",
-            "/boot", "/lib", "/lib64", "/root", "/sys", "/proc", "/dev"];
+        let blocked_paths = [
+            "/System", "/usr", "/bin", "/sbin", "/etc", "/var", "/boot", "/lib", "/lib64", "/root",
+            "/sys", "/proc", "/dev",
+        ];
         for blocked in &blocked_paths {
             if canonical_str.starts_with(blocked) {
                 // SECURITY: Use generic error to avoid revealing which directory was blocked
@@ -111,7 +127,8 @@ pub fn check_system_directory_access(canonical_str: &str) -> Result<(), String> 
         if path_lower.starts_with("c:\\windows")
             || path_lower.starts_with("c:\\program files")
             || path_lower.starts_with("c:\\program files (x86)")
-            || path_lower.starts_with("c:\\programdata") {
+            || path_lower.starts_with("c:\\programdata")
+        {
             // SECURITY: Use generic error to avoid revealing which directory was blocked
             return Err("Cannot access system directory".to_string());
         }
@@ -148,9 +165,7 @@ pub async fn open_file(
     };
 
     // Get file size from the already-open file handle (no TOCTOU window)
-    let size = file_handle.metadata()
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let size = file_handle.metadata().map(|m| m.len()).unwrap_or(0);
 
     // SECURITY: Validate file size to prevent memory issues with extremely large files
     // Maximum file size: 2GB (2 * 1024 * 1024 * 1024 bytes)
@@ -165,18 +180,24 @@ pub async fn open_file(
             size,
             codec: "unknown".to_string(),
             success: false,
-            error: Some(format!("File too large: {} MB. Maximum supported size is 2 GB.",
-                size / BYTES_PER_MB)),
+            error: Some(format!(
+                "File too large: {} MB. Maximum supported size is 2 GB.",
+                size / BYTES_PER_MB
+            )),
         });
     }
 
-    let ext = path_buf.extension()
+    let ext = path_buf
+        .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("unknown");
 
     let codec_from_ext = detect_codec_from_extension(ext);
     // SECURITY: Don't log file size to prevent information disclosure
-    log::info!("open_file: Detected codec from extension: {}", codec_from_ext);
+    log::info!(
+        "open_file: Detected codec from extension: {}",
+        codec_from_ext
+    );
 
     // Final codec will be determined after reading file (for IVF files)
     // Default to extension-based codec, may be updated for IVF files
@@ -213,26 +234,31 @@ pub async fn open_file(
     // Try to parse the file (basic IVF/AV1 parsing for now)
     if success {
         // Detect container format
-        let container_format = detect_container_format(&path_buf)
-            .unwrap_or(ContainerFormat::Unknown);
+        let container_format =
+            detect_container_format(&path_buf).unwrap_or(ContainerFormat::Unknown);
 
-        log::info!("open_file: Detected container format: {:?}", container_format);
+        log::info!(
+            "open_file: Detected container format: {:?}",
+            container_format
+        );
 
         // Update thumbnail service with new file (clears cache)
         {
-            let thumbnail_service = state.thumbnail_service.lock()
+            let thumbnail_service = state
+                .thumbnail_service
+                .lock()
                 .map_err(|e| format!("Failed to lock thumbnail service: {}", e))?;
-            let _ = thumbnail_service.set_file(path_buf.clone())
-                .map_err(|e| {
-                    log::warn!("open_file: Failed to update thumbnail service: {}", e);
-                });
+            let _ = thumbnail_service.set_file(path_buf.clone()).map_err(|e| {
+                log::warn!("open_file: Failed to update thumbnail service: {}", e);
+            });
         } // Lock is dropped here
 
         // Re-open file to read full contents for parsing (original handle was consumed by metadata check)
         let mut file_data = Vec::new();
         let mut file_handle_reopened = std::fs::File::open(&path_buf)
             .map_err(|e| format!("Failed to re-open file for reading: {}", e))?;
-        file_handle_reopened.read_to_end(&mut file_data)
+        file_handle_reopened
+            .read_to_end(&mut file_data)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
         // Override codec detection for IVF files by reading header
@@ -250,7 +276,10 @@ pub async fn open_file(
             ContainerFormat::MP4 => parse_mp4_container(&file_data),
             ContainerFormat::Matroska => parse_mkv_container(&file_data),
             _ => {
-                log::info!("open_file: Format {:?} not yet supported for extraction", container_format);
+                log::info!(
+                    "open_file: Format {:?} not yet supported for extraction",
+                    container_format
+                );
                 None
             }
         };
@@ -263,7 +292,12 @@ pub async fn open_file(
             log::info!("open_file: Parsed {} units from file", unit_count);
             // Debug: log first few units
             for (i, u) in units.iter().take(5).enumerate() {
-                log::info!("open_file: Unit[{}] frame_index={:?}, frame_type={:?}", i, u.frame_index, u.frame_type);
+                log::info!(
+                    "open_file: Unit[{}] frame_index={:?}, frame_type={:?}",
+                    i,
+                    u.frame_index,
+                    u.frame_type
+                );
             }
 
             // Get stream state and populate units (re-acquire lock)
@@ -297,24 +331,31 @@ pub async fn open_file(
                     bit_depth: None,
                 });
 
-                log::info!("open_file: Created UnitModel with {} units, codec={}", unit_count, final_codec);
+                log::info!(
+                    "open_file: Created UnitModel with {} units, codec={}",
+                    unit_count,
+                    final_codec
+                );
             } // Lock is dropped here
 
             // Cache file data in decode_service for faster access
             // Use already-read data to avoid re-reading from disk (optimizes core lock duration)
-            if let Err(e) = state.decode_service.lock()
+            if let Err(e) = state
+                .decode_service
+                .lock()
                 .map_err(|e| format!("Failed to lock decode service: {}", e))?
-                .set_file_with_data(
-                    path_buf.clone(),
-                    final_codec.clone(),
-                    file_data
-                )
+                .set_file_with_data(path_buf.clone(), final_codec.clone(), file_data)
             {
-                log::warn!("open_file: Failed to cache file data in decode_service: {}", e);
+                log::warn!(
+                    "open_file: Failed to cache file data in decode_service: {}",
+                    e
+                );
             }
 
             // Add to recent files on successful open
-            if let Err(e) = crate::commands::recent_files::add_recent_file(app.clone(), path.clone()).await {
+            if let Err(e) =
+                crate::commands::recent_files::add_recent_file(app.clone(), path.clone()).await
+            {
                 log::warn!("open_file: Failed to add to recent files: {}", e);
             }
         }
@@ -340,20 +381,22 @@ pub async fn close_file(state: tauri::State<'_, AppState>) -> Result<(), String>
     });
 
     // Clear thumbnail cache
-    let thumbnail_service = state.thumbnail_service.lock()
+    let thumbnail_service = state
+        .thumbnail_service
+        .lock()
         .map_err(|e| format!("Failed to lock thumbnail service: {}", e))?;
-    let _ = thumbnail_service.set_file(PathBuf::new())
-        .map_err(|e| {
-            log::warn!("close_file: Failed to update thumbnail service: {}", e);
-        });
+    let _ = thumbnail_service.set_file(PathBuf::new()).map_err(|e| {
+        log::warn!("close_file: Failed to update thumbnail service: {}", e);
+    });
 
     // Clear decode service cache
-    let decode_service = state.decode_service.lock()
+    let decode_service = state
+        .decode_service
+        .lock()
         .map_err(|e| format!("Failed to lock decode service: {}", e))?;
-    let _ = decode_service.clear_cache()
-        .map_err(|e| {
-            log::warn!("close_file: Failed to clear decode service cache: {}", e);
-        });
+    let _ = decode_service.clear_cache().map_err(|e| {
+        log::warn!("close_file: Failed to clear decode service cache: {}", e);
+    });
 
     log::info!("close_file: File closed");
     Ok(())
@@ -366,7 +409,10 @@ pub async fn get_stream_info(state: tauri::State<'_, AppState>) -> Result<Stream
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
 
-    let file_path = stream_a.file_path.clone().map(|p| p.to_string_lossy().to_string());
+    let file_path = stream_a
+        .file_path
+        .clone()
+        .map(|p| p.to_string_lossy().to_string());
     let unit_count = stream_a.units.as_ref().map(|u| u.unit_count).unwrap_or(0);
     let frame_count = stream_a.units.as_ref().map(|u| u.frame_count).unwrap_or(0);
 
@@ -405,24 +451,39 @@ fn unit_to_frame_data(u: &bitvue_core::UnitNode) -> crate::commands::FrameData {
 
 /// Get frame list for the current stream
 #[tauri::command]
-pub async fn get_frames(state: tauri::State<'_, AppState>) -> Result<Vec<crate::commands::FrameData>, String> {
+pub async fn get_frames(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::commands::FrameData>, String> {
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
 
-    let units = stream_a.units.as_ref()
-        .ok_or("No units available")?;
+    let units = stream_a.units.as_ref().ok_or("No units available")?;
 
     log::info!("get_frames: Total units: {}", units.units.len());
-    log::info!("get_frames: Units with frame_index: {}", units.units.iter().filter(|u| u.frame_index.is_some()).count());
+    log::info!(
+        "get_frames: Units with frame_index: {}",
+        units
+            .units
+            .iter()
+            .filter(|u| u.frame_index.is_some())
+            .count()
+    );
 
     // Debug: log first few units
     for (i, u) in units.units.iter().take(5).enumerate() {
-        log::info!("get_frames: Unit[{}] frame_index={:?}, frame_type={:?}", i, u.frame_index, u.frame_type);
+        log::info!(
+            "get_frames: Unit[{}] frame_index={:?}, frame_type={:?}",
+            i,
+            u.frame_index,
+            u.frame_type
+        );
     }
 
     // Convert UnitNode to FrameData
-    let frames: Vec<crate::commands::FrameData> = units.units.iter()
+    let frames: Vec<crate::commands::FrameData> = units
+        .units
+        .iter()
         .filter(|u| u.frame_index.is_some())
         .map(unit_to_frame_data)
         .collect();
@@ -446,10 +507,11 @@ pub async fn get_frames_chunk(
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
 
-    let units = stream_a.units.as_ref()
-        .ok_or("No units available")?;
+    let units = stream_a.units.as_ref().ok_or("No units available")?;
 
-    let total_frames = units.units.iter()
+    let total_frames = units
+        .units
+        .iter()
         .filter(|u| u.frame_index.is_some())
         .count();
 
@@ -458,7 +520,9 @@ pub async fn get_frames_chunk(
     let end = (offset + limit).min(total_frames);
 
     let frames_chunk: Vec<crate::commands::FrameData> = if start < end {
-        units.units.iter()
+        units
+            .units
+            .iter()
             .filter(|u| u.frame_index.is_some())
             .skip(start)
             .take(end - start)
@@ -507,7 +571,8 @@ fn detect_codec_from_extension(ext: &str) -> String {
         "h265" | "265" => "hevc",
         "av1" => "av1",
         _ => "unknown",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Detect codec from IVF header (more accurate than extension-based detection)
@@ -522,7 +587,10 @@ fn detect_codec_from_ivf_header(data: &[u8]) -> Option<String> {
         b"VP90" => Some("vp9".to_string()),
         b"AV01" => Some("av1".to_string()),
         _ => {
-            log::warn!("Unknown IVF FourCC: {:?}", std::str::from_utf8(&header.fourcc));
+            log::warn!(
+                "Unknown IVF FourCC: {:?}",
+                std::str::from_utf8(&header.fourcc)
+            );
             None
         }
     }
@@ -533,20 +601,28 @@ fn detect_codec_from_ivf_header(data: &[u8]) -> Option<String> {
 /// Generic over sample type so the same logic handles `Cow<[u8]>` (MP4) and `Vec<u8>` (MKV).
 fn samples_to_units<S: AsRef<[u8]>>(samples: Vec<S>, codec: &str) -> Vec<bitvue_core::UnitNode> {
     match codec {
-        "avc" => samples.into_iter().enumerate()
+        "avc" => samples
+            .into_iter()
+            .enumerate()
             .map(|(idx, s)| parse_avc_sample(idx, codec, s.as_ref()))
             .collect(),
-        "hevc" => samples.into_iter().enumerate()
+        "hevc" => samples
+            .into_iter()
+            .enumerate()
             .map(|(idx, s)| parse_hevc_sample(idx, codec, s.as_ref()))
             .collect(),
-        "av1" => samples.into_iter().enumerate()
+        "av1" => samples
+            .into_iter()
+            .enumerate()
             .map(|(idx, s)| {
                 let data = s.as_ref();
                 let frame_type = av1_frame_type_str(data);
                 create_placeholder_unit(idx, codec, data, frame_type)
             })
             .collect(),
-        _ => samples.into_iter().enumerate()
+        _ => samples
+            .into_iter()
+            .enumerate()
             .map(|(idx, s)| create_placeholder_unit(idx, codec, s.as_ref(), None))
             .collect(),
     }
@@ -562,7 +638,9 @@ fn vp9_samples_to_units(samples: Vec<Vec<u8>>) -> Vec<bitvue_core::UnitNode> {
 
     match extract_vp9_frames(&combined_data) {
         Ok(vp9_frames) => vp9_frames_to_unit_nodes(&vp9_frames),
-        Err(_) => samples.into_iter().enumerate()
+        Err(_) => samples
+            .into_iter()
+            .enumerate()
             .map(|(idx, s)| create_placeholder_unit(idx, "vp9", &s, None))
             .collect(),
     }
@@ -589,8 +667,8 @@ fn find_first_nal_byte(data: &[u8]) -> Option<u8> {
 fn guess_avc_frame_type(data: &[u8]) -> Option<std::sync::Arc<str>> {
     let nal_type = find_first_nal_byte(data)? & 0x1F;
     match nal_type {
-        5 => Some("I".into()),  // IDR slice — definitely a key frame
-        _ => None,              // Non-IDR: could be P or B, can't determine without slice header
+        5 => Some("I".into()), // IDR slice — definitely a key frame
+        _ => None,             // Non-IDR: could be P or B, can't determine without slice header
     }
 }
 
@@ -598,7 +676,7 @@ fn guess_avc_frame_type(data: &[u8]) -> Option<std::sync::Arc<str>> {
 fn guess_hevc_frame_type(data: &[u8]) -> Option<std::sync::Arc<str>> {
     let nal_type = (find_first_nal_byte(data)? >> 1) & 0x3F;
     match nal_type {
-        16..=21 => Some("I".into()),  // IDR_W_RADL, IDR_N_LP, BLA, CRA — all IRAP/key frames
+        16..=21 => Some("I".into()), // IDR_W_RADL, IDR_N_LP, BLA, CRA — all IRAP/key frames
         _ => None,
     }
 }
@@ -660,7 +738,10 @@ fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
     const HEADER_SIZE: usize = 4;
 
     // SECURITY: Use checked arithmetic to prevent integer overflow
-    while pos.checked_add(HEADER_SIZE).map_or(false, |end| end <= sample_data.len()) {
+    while pos
+        .checked_add(HEADER_SIZE)
+        .map_or(false, |end| end <= sample_data.len())
+    {
         // Read NAL unit length (big-endian)
         let len = u32::from_be_bytes([
             sample_data[pos],
@@ -698,14 +779,22 @@ fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
 
 /// Parse a single AVC/H.264 sample; falls back to placeholder with best-effort frame type
 fn parse_avc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core::UnitNode {
-    try_parse_sample(idx, sample_data, extract_avc_annex_b_frames, |f| avc_frames_to_unit_nodes(f))
-        .unwrap_or_else(|| create_placeholder_unit(idx, codec, sample_data, guess_avc_frame_type(sample_data)))
+    try_parse_sample(idx, sample_data, extract_avc_annex_b_frames, |f| {
+        avc_frames_to_unit_nodes(f)
+    })
+    .unwrap_or_else(|| {
+        create_placeholder_unit(idx, codec, sample_data, guess_avc_frame_type(sample_data))
+    })
 }
 
 /// Parse a single HEVC/H.265 sample; falls back to placeholder with best-effort frame type
 fn parse_hevc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core::UnitNode {
-    try_parse_sample(idx, sample_data, extract_hevc_annex_b_frames, |f| hevc_frames_to_unit_nodes(f))
-        .unwrap_or_else(|| create_placeholder_unit(idx, codec, sample_data, guess_hevc_frame_type(sample_data)))
+    try_parse_sample(idx, sample_data, extract_hevc_annex_b_frames, |f| {
+        hevc_frames_to_unit_nodes(f)
+    })
+    .unwrap_or_else(|| {
+        create_placeholder_unit(idx, codec, sample_data, guess_hevc_frame_type(sample_data))
+    })
 }
 
 /// Create a placeholder UnitNode for samples that could not be fully parsed
@@ -748,31 +837,37 @@ fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
         Ok((_header, frames)) => {
             // SECURITY: Don't log frame count to prevent information disclosure
             log::info!("parse_ivf_container: IVF parsing successful");
-            Some(frames.into_iter().enumerate().map(|(idx, ivf_frame)| {
-                let frame_type = av1_frame_type_str(&ivf_frame.data);
-                bitvue_core::UnitNode {
-                    key: bitvue_core::UnitKey {
-                        stream: StreamId::A,
-                        unit_type: "FRAME".into(),
-                        offset: 0,
-                        size: ivf_frame.size as usize,
-                    },
-                    unit_type: "FRAME".into(),
-                    offset: 0,
-                    size: ivf_frame.size as usize,
-                    frame_index: Some(idx),
-                    frame_type,
-                    pts: Some(ivf_frame.timestamp),
-                    dts: None,
-                    display_name: format!("Frame {}", idx).into(),
-                    children: Vec::new(),
-                    qp_avg: None,
-                    mv_grid: None,
-                    temporal_id: None,
-                    ref_frames: None,
-                    ref_slots: None,
-                }
-            }).collect::<Vec<_>>())
+            Some(
+                frames
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, ivf_frame)| {
+                        let frame_type = av1_frame_type_str(&ivf_frame.data);
+                        bitvue_core::UnitNode {
+                            key: bitvue_core::UnitKey {
+                                stream: StreamId::A,
+                                unit_type: "FRAME".into(),
+                                offset: 0,
+                                size: ivf_frame.size as usize,
+                            },
+                            unit_type: "FRAME".into(),
+                            offset: 0,
+                            size: ivf_frame.size as usize,
+                            frame_index: Some(idx),
+                            frame_type,
+                            pts: Some(ivf_frame.timestamp),
+                            dts: None,
+                            display_name: format!("Frame {}", idx).into(),
+                            children: Vec::new(),
+                            qp_avg: None,
+                            mv_grid: None,
+                            temporal_id: None,
+                            ref_frames: None,
+                            ref_slots: None,
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
         }
         Err(e) => {
             log::error!("parse_ivf_container: IVF parsing failed: {}", e);
@@ -824,7 +919,10 @@ fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     // SECURITY: Validate minimum file size for MP4 format
     const MIN_MP4_SIZE: usize = 8; // At least need ftyp box header
     if file_data.len() < MIN_MP4_SIZE {
-        log::warn!("parse_mp4_container: File too small to be valid MP4 ({} bytes)", file_data.len());
+        log::warn!(
+            "parse_mp4_container: File too small to be valid MP4 ({} bytes)",
+            file_data.len()
+        );
         return None;
     }
 
@@ -848,7 +946,10 @@ fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     // Try AV1 first
     match bitvue_formats::mp4::extract_av1_samples(file_data) {
         Ok(av1_samples) if !av1_samples.is_empty() => {
-            log::info!("parse_mp4_container: Extracted {} AV1 samples from MP4", av1_samples.len());
+            log::info!(
+                "parse_mp4_container: Extracted {} AV1 samples from MP4",
+                av1_samples.len()
+            );
             return Some(samples_to_units(av1_samples, "av1"));
         }
         Ok(_) => {
@@ -864,38 +965,54 @@ fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     // Try H.265/HEVC
     match bitvue_formats::mp4::extract_hevc_samples(file_data) {
         Ok(hevc_samples) if !hevc_samples.is_empty() => {
-            log::info!("parse_mp4_container: Extracted {} HEVC samples from MP4", hevc_samples.len());
+            log::info!(
+                "parse_mp4_container: Extracted {} HEVC samples from MP4",
+                hevc_samples.len()
+            );
             return Some(samples_to_units(hevc_samples, "hevc"));
         }
         Ok(_) => {
             log::warn!("parse_mp4_container: HEVC track exists but contains no samples");
-            if last_error.is_none() { last_error = Some("HEVC track exists but contains no samples"); }
+            if last_error.is_none() {
+                last_error = Some("HEVC track exists but contains no samples");
+            }
         }
         Err(e) => {
             log::debug!("parse_mp4_container: HEVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some("extraction failed"); }
+            if last_error.is_none() {
+                last_error = Some("extraction failed");
+            }
         }
     }
 
     // Try H.264/AVC
     match bitvue_formats::mp4::extract_avc_samples(file_data) {
         Ok(avc_samples) if !avc_samples.is_empty() => {
-            log::info!("parse_mp4_container: Extracted {} AVC samples from MP4", avc_samples.len());
+            log::info!(
+                "parse_mp4_container: Extracted {} AVC samples from MP4",
+                avc_samples.len()
+            );
             return Some(samples_to_units(avc_samples, "avc"));
         }
         Ok(_) => {
             log::warn!("parse_mp4_container: AVC track exists but contains no samples");
-            if last_error.is_none() { last_error = Some("AVC track exists but contains no samples"); }
+            if last_error.is_none() {
+                last_error = Some("AVC track exists but contains no samples");
+            }
         }
         Err(e) => {
             log::debug!("parse_mp4_container: AVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some("extraction failed"); }
+            if last_error.is_none() {
+                last_error = Some("extraction failed");
+            }
         }
     }
 
     // All codecs failed
-    log::warn!("parse_mp4_container: Failed to extract any video samples from MP4. Last error: {:?}",
-        last_error.unwrap_or(&"No valid video track found"));
+    log::warn!(
+        "parse_mp4_container: Failed to extract any video samples from MP4. Last error: {:?}",
+        last_error.unwrap_or(&"No valid video track found")
+    );
     None
 }
 
@@ -910,7 +1027,10 @@ fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     // SECURITY: Validate minimum file size for MKV format
     const MIN_MKV_SIZE: usize = 4; // At least need EBML header
     if file_data.len() < MIN_MKV_SIZE {
-        log::warn!("parse_mkv_container: File too small to be valid MKV/WebM ({} bytes)", file_data.len());
+        log::warn!(
+            "parse_mkv_container: File too small to be valid MKV/WebM ({} bytes)",
+            file_data.len()
+        );
         return None;
     }
 
@@ -929,7 +1049,10 @@ fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     // Try AV1
     match bitvue_formats::mkv::extract_av1_samples(file_data) {
         Ok(av1_samples) if !av1_samples.is_empty() => {
-            log::info!("parse_mkv_container: Extracted {} AV1 samples from MKV", av1_samples.len());
+            log::info!(
+                "parse_mkv_container: Extracted {} AV1 samples from MKV",
+                av1_samples.len()
+            );
             return Some(samples_to_units(av1_samples, "av1"));
         }
         Ok(_) => {
@@ -945,37 +1068,53 @@ fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
     // Try H.265/HEVC
     match bitvue_formats::mkv::extract_hevc_samples(file_data) {
         Ok(hevc_samples) if !hevc_samples.is_empty() => {
-            log::info!("parse_mkv_container: Extracted {} HEVC samples from MKV", hevc_samples.len());
+            log::info!(
+                "parse_mkv_container: Extracted {} HEVC samples from MKV",
+                hevc_samples.len()
+            );
             return Some(samples_to_units(hevc_samples, "hevc"));
         }
         Ok(_) => {
             log::warn!("parse_mkv_container: HEVC track exists but contains no samples");
-            if last_error.is_none() { last_error = Some("HEVC track exists but contains no samples"); }
+            if last_error.is_none() {
+                last_error = Some("HEVC track exists but contains no samples");
+            }
         }
         Err(e) => {
             log::debug!("parse_mkv_container: HEVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some("extraction failed"); }
+            if last_error.is_none() {
+                last_error = Some("extraction failed");
+            }
         }
     }
 
     // Try H.264/AVC
     match bitvue_formats::mkv::extract_avc_samples(file_data) {
         Ok(avc_samples) if !avc_samples.is_empty() => {
-            log::info!("parse_mkv_container: Extracted {} AVC samples from MKV", avc_samples.len());
+            log::info!(
+                "parse_mkv_container: Extracted {} AVC samples from MKV",
+                avc_samples.len()
+            );
             return Some(samples_to_units(avc_samples, "avc"));
         }
         Ok(_) => {
             log::warn!("parse_mkv_container: AVC track exists but contains no samples");
-            if last_error.is_none() { last_error = Some("AVC track exists but contains no samples"); }
+            if last_error.is_none() {
+                last_error = Some("AVC track exists but contains no samples");
+            }
         }
         Err(e) => {
             log::debug!("parse_mkv_container: AVC extraction failed: {}", e);
-            if last_error.is_none() { last_error = Some("extraction failed"); }
+            if last_error.is_none() {
+                last_error = Some("extraction failed");
+            }
         }
     }
 
     // All codecs failed
-    log::warn!("parse_mkv_container: Failed to extract any video samples from MKV. Last error: {:?}",
-        last_error.unwrap_or(&"No valid video track found"));
+    log::warn!(
+        "parse_mkv_container: Failed to extract any video samples from MKV. Last error: {:?}",
+        last_error.unwrap_or(&"No valid video track found")
+    );
     None
 }

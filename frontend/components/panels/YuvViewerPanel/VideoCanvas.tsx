@@ -58,6 +58,7 @@ export const VideoCanvas = memo(function VideoCanvas({
   av1Features,
 }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const webglCanvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<YUVRenderer | null>(null);
 
   // Memoize canvas style to avoid creating new object on every render
@@ -114,6 +115,13 @@ export const VideoCanvas = memo(function VideoCanvas({
       canvas.height = height;
     }
 
+    // Keep WebGL overlay canvas in sync with the main canvas size
+    const wgl = webglCanvasRef.current;
+    if (wgl && (wgl.width !== width || wgl.height !== height)) {
+      wgl.width = width;
+      wgl.height = height;
+    }
+
     // Clear canvas
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -135,6 +143,7 @@ export const VideoCanvas = memo(function VideoCanvas({
       ctx,
       activeOverlays,
       av1Features,
+      webglCanvas: webglCanvasRef.current ?? undefined,
     };
     renderModeOverlay(overlayOpts);
   }, [
@@ -164,6 +173,20 @@ export const VideoCanvas = memo(function VideoCanvas({
         style={canvasStyle}
         role="img"
         aria-label={`Video frame ${currentFrameIndex}`}
+      />
+      <canvas
+        ref={webglCanvasRef}
+        width={yuvData?.width ?? frameImage?.width ?? 640}
+        height={yuvData?.height ?? frameImage?.height ?? 360}
+        className="yuv-canvas yuv-canvas--webgl"
+        style={{
+          ...canvasStyle,
+          position: "absolute",
+          top: 0,
+          left: 0,
+          pointerEvents: "none",
+        }}
+        aria-hidden
       />
     </div>
   );

@@ -9,11 +9,11 @@
 //! - Resolution mismatch detection
 
 use crate::commands::AppState;
-use bitvue_core::{
-    AlignmentEngine, AlignmentMethod, AlignmentConfidence, CompareWorkspace, ResolutionInfo,
-    SyncMode, FrameIndexMap, FramePair,
-};
 use bitvue_core::frame_identity::FrameMetadata;
+use bitvue_core::{
+    AlignmentConfidence, AlignmentEngine, AlignmentMethod, CompareWorkspace, FrameIndexMap,
+    FramePair, ResolutionInfo, SyncMode,
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -31,9 +31,7 @@ impl From<FrameIndexMap> for FrameIndexMapData {
         let frame_count = map.frame_count();
         Self {
             frame_count,
-            pts_values: (0..frame_count)
-                .map(|i| map.get_pts(i))
-                .collect(),
+            pts_values: (0..frame_count).map(|i| map.get_pts(i)).collect(),
             display_indices: (0..frame_count).collect(),
             coding_indices: (0..frame_count).collect(),
         }
@@ -160,36 +158,41 @@ impl From<CompareWorkspace> for CompareWorkspaceData {
 fn parse_video_metadata(path: &Path) -> Result<Vec<FrameMetadata>, String> {
     use bitvue_formats::detect_container_format;
 
-    let file_data = std::fs::read(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let file_data = std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    let container_format = detect_container_format(path)
-        .unwrap_or(bitvue_formats::ContainerFormat::Unknown);
+    let container_format =
+        detect_container_format(path).unwrap_or(bitvue_formats::ContainerFormat::Unknown);
 
     match container_format {
         bitvue_formats::ContainerFormat::IVF => {
             // Parse IVF header and frames
             use bitvue_av1_codec::parse_ivf_frames;
-            let (_header, frames) = parse_ivf_frames(&file_data)
-                .map_err(|e| format!("Failed to parse IVF: {}", e))?;
+            let (_header, frames) =
+                parse_ivf_frames(&file_data).map_err(|e| format!("Failed to parse IVF: {}", e))?;
 
-            Ok(frames.iter().enumerate().map(|(_idx, frame)| {
-                FrameMetadata {
+            Ok(frames
+                .iter()
+                .enumerate()
+                .map(|(_idx, frame)| FrameMetadata {
                     pts: Some(frame.timestamp),
                     dts: Some(frame.timestamp),
-                }
-            }).collect())
+                })
+                .collect())
         }
         bitvue_formats::ContainerFormat::MP4 => {
             // Extract AV1 samples from MP4
             match bitvue_formats::mp4::extract_av1_samples(&file_data) {
                 Ok(samples) => {
-                    Ok(samples.iter().enumerate().map(|(idx, _sample)| {
-                        FrameMetadata {
-                            pts: Some(idx as u64 * 1000), // Approximate PTS
-                            dts: Some(idx as u64 * 1000),
-                        }
-                    }).collect())
+                    Ok(samples
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, _sample)| {
+                            FrameMetadata {
+                                pts: Some(idx as u64 * 1000), // Approximate PTS
+                                dts: Some(idx as u64 * 1000),
+                            }
+                        })
+                        .collect())
                 }
                 Err(_) => {
                     // Try other codecs
@@ -200,18 +203,21 @@ fn parse_video_metadata(path: &Path) -> Result<Vec<FrameMetadata>, String> {
         bitvue_formats::ContainerFormat::Matroska => {
             // Extract AV1 samples from MKV
             match bitvue_formats::mkv::extract_av1_samples(&file_data) {
-                Ok(samples) => {
-                    Ok(samples.iter().enumerate().map(|(idx, _sample)| {
-                        FrameMetadata {
-                            pts: Some(idx as u64 * 1000),
-                            dts: Some(idx as u64 * 1000),
-                        }
-                    }).collect())
-                }
-                Err(_) => Ok(Vec::new())
+                Ok(samples) => Ok(samples
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, _sample)| FrameMetadata {
+                        pts: Some(idx as u64 * 1000),
+                        dts: Some(idx as u64 * 1000),
+                    })
+                    .collect()),
+                Err(_) => Ok(Vec::new()),
             }
         }
-        _ => Err(format!("Unsupported container format: {:?}", container_format))
+        _ => Err(format!(
+            "Unsupported container format: {:?}",
+            container_format
+        )),
     }
 }
 
@@ -251,11 +257,12 @@ pub async fn create_compare_workspace(
     log::info!("create_compare_workspace: Creating compare workspace");
 
     // Rate limiting check (workspace creation involves file parsing)
-    state.rate_limiter.check_rate_limit()
-        .map_err(|wait_time| {
-            format!("Rate limited: too many requests. Please try again in {:.1}s",
-                wait_time.as_secs_f64())
-        })?;
+    state.rate_limiter.check_rate_limit().map_err(|wait_time| {
+        format!(
+            "Rate limited: too many requests. Please try again in {:.1}s",
+            wait_time.as_secs_f64()
+        )
+    })?;
 
     // Validate files exist
     let path_a_buf = Path::new(&path_a);
@@ -296,24 +303,24 @@ pub async fn create_compare_workspace(
     let _alignment = AlignmentEngine::new(&stream_a, &stream_b);
 
     // Create compare workspace
-    let workspace = CompareWorkspace::new(
-        stream_a,
-        stream_b,
-        resolution_a,
-        resolution_b,
-    );
+    let workspace = CompareWorkspace::new(stream_a, stream_b, resolution_a, resolution_b);
 
     // Store workspace in state
     {
-        let mut workspace_guard = state.compare_workspace.lock()
+        let mut workspace_guard = state
+            .compare_workspace
+            .lock()
             .map_err(|e| format!("Failed to lock workspace: {}", e))?;
         *workspace_guard = Some(workspace);
     }
 
     // Return workspace data
-    let workspace_guard = state.compare_workspace.lock()
+    let workspace_guard = state
+        .compare_workspace
+        .lock()
         .map_err(|e| format!("Failed to lock workspace: {}", e))?;
-    let workspace = workspace_guard.as_ref()
+    let workspace = workspace_guard
+        .as_ref()
         .ok_or("Workspace not initialized")?;
 
     Ok(workspace.clone().into())
@@ -329,9 +336,12 @@ pub async fn get_aligned_frame(
 ) -> Result<(usize, String), String> {
     log::info!("get_aligned_frame: stream_a_idx={}", stream_a_idx);
 
-    let workspace_guard = state.compare_workspace.lock()
+    let workspace_guard = state
+        .compare_workspace
+        .lock()
         .map_err(|e| format!("Failed to lock workspace: {}", e))?;
-    let workspace = workspace_guard.as_ref()
+    let workspace = workspace_guard
+        .as_ref()
         .ok_or("No compare workspace created")?;
 
     // SECURITY: Validate frame index bounds before accessing workspace data
@@ -351,10 +361,7 @@ pub async fn get_aligned_frame(
 
 /// Set sync mode for compare workspace
 #[tauri::command]
-pub async fn set_sync_mode(
-    state: tauri::State<'_, AppState>,
-    mode: String,
-) -> Result<(), String> {
+pub async fn set_sync_mode(state: tauri::State<'_, AppState>, mode: String) -> Result<(), String> {
     log::info!("set_sync_mode: mode={}", mode);
 
     let sync_mode = match mode.as_str() {
@@ -364,7 +371,9 @@ pub async fn set_sync_mode(
         _ => return Err(format!("Invalid sync mode: {}", mode)),
     };
 
-    let mut workspace_guard = state.compare_workspace.lock()
+    let mut workspace_guard = state
+        .compare_workspace
+        .lock()
         .map_err(|e| format!("Failed to lock workspace: {}", e))?;
 
     if let Some(workspace) = workspace_guard.as_mut() {
@@ -387,7 +396,9 @@ pub async fn set_manual_offset(
 ) -> Result<(), String> {
     log::info!("set_manual_offset: offset={}", offset);
 
-    let mut workspace_guard = state.compare_workspace.lock()
+    let mut workspace_guard = state
+        .compare_workspace
+        .lock()
         .map_err(|e| format!("Failed to lock workspace: {}", e))?;
 
     if let Some(workspace) = workspace_guard.as_mut() {
@@ -401,9 +412,7 @@ pub async fn set_manual_offset(
 
 /// Reset manual offset to 0
 #[tauri::command]
-pub async fn reset_offset(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn reset_offset(state: tauri::State<'_, AppState>) -> Result<(), String> {
     log::info!("reset_offset");
 
     set_manual_offset(state, 0).await

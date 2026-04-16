@@ -15,7 +15,9 @@
 #[macro_export]
 macro_rules! lock_mutex {
     ($mutex:expr) => {
-        $mutex.lock().map_err(|e| format!("Mutex poisoned: {}", e))?
+        $mutex
+            .lock()
+            .map_err(|e| format!("Mutex poisoned: {}", e))?
     };
 }
 
@@ -31,7 +33,9 @@ macro_rules! lock_mutex {
 #[macro_export]
 macro_rules! lock_read {
     ($rwlock:expr) => {
-        $rwlock.read().map_err(|e| format!("RwLock poisoned: {}", e))?
+        $rwlock
+            .read()
+            .map_err(|e| format!("RwLock poisoned: {}", e))?
     };
 }
 
@@ -47,7 +51,9 @@ macro_rules! lock_read {
 #[macro_export]
 macro_rules! lock_write {
     ($rwlock:expr) => {
-        $rwlock.write().map_err(|e| format!("RwLock poisoned: {}", e))?
+        $rwlock
+            .write()
+            .map_err(|e| format!("RwLock poisoned: {}", e))?
     };
 }
 

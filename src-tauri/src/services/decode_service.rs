@@ -11,10 +11,13 @@
 //! - `FileBytes::Owned` — a heap-allocated `Vec<u8>` used when the caller
 //!   provides the data directly (e.g. `set_file_with_data`).
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
-use std::collections::{HashMap, VecDeque};
 use memmap2::MmapOptions;
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 
 // Import path validation from commands module
 use crate::commands::file::validate_file_path;
@@ -63,10 +66,10 @@ unsafe impl Send for FileBytes {}
 struct CachedDecodedFrame {
     width: u32,
     height: u32,
-    rgb_data: Arc<Vec<u8>>,  // Arc to avoid expensive clones
-    generation: u64,  // Cache generation to prevent stale data
+    rgb_data: Arc<Vec<u8>>, // Arc to avoid expensive clones
+    generation: u64,        // Cache generation to prevent stale data
     #[allow(dead_code)]
-    cached_at: std::time::Instant,  // When this frame was cached (for LRU eviction)
+    cached_at: std::time::Instant, // When this frame was cached (for LRU eviction)
 }
 
 /// Cached decoded YUV frame data (separate cache for efficiency)
@@ -81,11 +84,11 @@ struct CachedYUVFrame {
     y_stride: usize,
     u_stride: usize,
     v_stride: usize,
-    timestamp: i64,  // Frame timestamp from video
+    timestamp: i64, // Frame timestamp from video
     frame_type: bitvue_decode::FrameType,
     qp_avg: Option<u8>,
     #[allow(dead_code)]
-    cached_at: std::time::Instant,  // When this frame was cached (for LRU eviction)
+    cached_at: std::time::Instant, // When this frame was cached (for LRU eviction)
 }
 
 /// Combined RGB cache state protected by single mutex
@@ -182,19 +185,26 @@ impl DecodeService {
         self.codec = codec;
 
         // Memory-map the file — OS pages data on demand, never fully loads into heap
-        let file = std::fs::File::open(&path)
-            .map_err(|e| format!("Failed to open file: {}", e))?;
+        let file = std::fs::File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
         // SAFETY: The file is read-only and we hold `_file` alive inside FileBytes::Mapped.
         let mmap = unsafe { MmapOptions::new().map(&file) }
             .map_err(|e| format!("Failed to mmap file: {}", e))?;
 
-        *lock_mutex!(self.cached_data) = Some(Arc::new(FileBytes::Mapped { _file: file, data: mmap }));
+        *lock_mutex!(self.cached_data) = Some(Arc::new(FileBytes::Mapped {
+            _file: file,
+            data: mmap,
+        }));
 
         Ok(())
     }
 
     /// Set the file for decoding with already-read data (avoids re-reading from disk)
-    pub fn set_file_with_data(&mut self, path: PathBuf, codec: String, file_data: Vec<u8>) -> Result<(), String> {
+    pub fn set_file_with_data(
+        &mut self,
+        path: PathBuf,
+        codec: String,
+        file_data: Vec<u8>,
+    ) -> Result<(), String> {
         // Clear previous cache and reset byte counter
         *lock_mutex!(self.cached_data) = None;
         *lock_mutex!(self.rgb_cache_state) = RGBCacheState {
@@ -234,11 +244,11 @@ impl DecodeService {
         }
 
         // If not cached, try to read from disk (for backward compatibility)
-        let path = self.file_path.as_ref()
-            .ok_or("No file loaded")?;
+        let path = self.file_path.as_ref().ok_or("No file loaded")?;
 
         // SECURITY: Validate path before reading to prevent path traversal
-        let path_str = path.to_str()
+        let path_str = path
+            .to_str()
             .ok_or("Invalid path: unable to convert to string")?;
         let validated_path = validate_file_path(path_str)?;
 
@@ -259,7 +269,11 @@ impl DecodeService {
     /// Returns Arc<Vec<u8>> for cheap cloning - caller can deref to &[u8] for most use cases
     ///
     /// Uses combined cache state with single mutex to prevent race conditions
-    pub fn get_or_decode_frame(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>) -> Result<(u32, u32, Arc<Vec<u8>>), String> {
+    pub fn get_or_decode_frame(
+        &self,
+        frame_index: usize,
+        decode_fn: impl FnOnce(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>,
+    ) -> Result<(u32, u32, Arc<Vec<u8>>), String> {
         // Get current cache generation
         let current_generation = self.cache_generation.load(Ordering::SeqCst);
 
@@ -303,7 +317,8 @@ impl DecodeService {
 
         // Evict oldest frames until there's space for the new frame (O(1) per eviction)
         // SECURITY: Use saturating_sub to prevent underflow
-        while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty() {
+        while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty()
+        {
             if let Some(oldest_key) = state.lru_order.pop_front() {
                 if let Some(removed_frame) = state.cache.remove(&oldest_key) {
                     let removed_size = removed_frame.rgb_data.len();
@@ -312,8 +327,11 @@ impl DecodeService {
 
                     // Sanity check: log if state is inconsistent
                     if removed_size > state.current_bytes + frame_size {
-                        log::warn!("Cache state inconsistency: removed {} bytes but only had {} tracked",
-                            removed_size, state.current_bytes);
+                        log::warn!(
+                            "Cache state inconsistency: removed {} bytes but only had {} tracked",
+                            removed_size,
+                            state.current_bytes
+                        );
                     }
                 }
             } else {
@@ -324,13 +342,16 @@ impl DecodeService {
         // Add new frame to cache and LRU order (back = most recently used)
         // Wrap RGB data in Arc for cheap cloning
         let rgb_arc = Arc::new(rgb_data);
-        state.cache.insert(frame_index, CachedDecodedFrame {
-            width,
-            height,
-            rgb_data: rgb_arc.clone(),
-            generation: current_generation,
-            cached_at: std::time::Instant::now(),
-        });
+        state.cache.insert(
+            frame_index,
+            CachedDecodedFrame {
+                width,
+                height,
+                rgb_data: rgb_arc.clone(),
+                generation: current_generation,
+                cached_at: std::time::Instant::now(),
+            },
+        );
         state.lru_order.push_back(frame_index);
         state.current_bytes += frame_size;
 
@@ -361,7 +382,6 @@ impl DecodeService {
     where
         F: Fn(&[u8], usize) -> Result<(u32, u32, Vec<u8>), String>,
     {
-
         // Get current cache generation
         let current_generation = self.cache_generation.load(Ordering::SeqCst);
 
@@ -395,7 +415,9 @@ impl DecodeService {
 
                     // Check if we have space for this frame
                     // Evict if necessary, but be more conservative with prefetching
-                    while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty() {
+                    while state.current_bytes + frame_size > self.max_cache_bytes
+                        && !state.lru_order.is_empty()
+                    {
                         if let Some(oldest_key) = state.lru_order.pop_front() {
                             if let Some(removed_frame) = state.cache.remove(&oldest_key) {
                                 state.current_bytes -= removed_frame.rgb_data.len();
@@ -409,13 +431,16 @@ impl DecodeService {
                     // Only cache if we have enough space (prefer eviction of old frames over eviction of prefetches)
                     if state.current_bytes + frame_size <= self.max_cache_bytes {
                         let rgb_arc = Arc::new(rgb_data);
-                        state.cache.insert(idx, CachedDecodedFrame {
-                            width,
-                            height,
-                            rgb_data: rgb_arc.clone(),
-                            generation: current_generation,
-                            cached_at: std::time::Instant::now(),
-                        });
+                        state.cache.insert(
+                            idx,
+                            CachedDecodedFrame {
+                                width,
+                                height,
+                                rgb_data: rgb_arc.clone(),
+                                generation: current_generation,
+                                cached_at: std::time::Instant::now(),
+                            },
+                        );
                         state.lru_order.push_back(idx);
                         state.current_bytes += frame_size;
                     }
@@ -436,7 +461,11 @@ impl DecodeService {
     /// Get a cached decoded YUV frame, or decode it if not cached
     ///
     /// Uses combined cache state with single mutex to prevent race conditions
-    pub fn get_or_decode_frame_yuv(&self, frame_index: usize, decode_fn: impl FnOnce(&[u8], usize) -> Result<bitvue_decode::DecodedFrame, String>) -> Result<bitvue_decode::DecodedFrame, String> {
+    pub fn get_or_decode_frame_yuv(
+        &self,
+        frame_index: usize,
+        decode_fn: impl FnOnce(&[u8], usize) -> Result<bitvue_decode::DecodedFrame, String>,
+    ) -> Result<bitvue_decode::DecodedFrame, String> {
         // Single lock acquisition for cache state (prevents race conditions)
         let mut state = lock_mutex!(self.yuv_cache_state);
 
@@ -501,7 +530,8 @@ impl DecodeService {
         let mut state = lock_mutex!(self.yuv_cache_state);
 
         // Evict oldest frames until there's space for the new frame (O(1) per eviction)
-        while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty() {
+        while state.current_bytes + frame_size > self.max_cache_bytes && !state.lru_order.is_empty()
+        {
             if let Some(oldest_key) = state.lru_order.pop_front() {
                 if let Some(removed_frame) = state.cache.remove(&oldest_key) {
                     let removed_size = removed_frame.y_plane.len()
@@ -515,21 +545,24 @@ impl DecodeService {
         }
 
         // Add new frame to cache and LRU order (back = most recently used)
-        state.cache.insert(frame_index, CachedYUVFrame {
-            width: frame.width,
-            height: frame.height,
-            bit_depth: frame.bit_depth,
-            y_plane: frame.y_plane.as_ref().to_vec(),
-            u_plane: frame.u_plane.as_ref().map(|p| p.as_ref().to_vec()),
-            v_plane: frame.v_plane.as_ref().map(|p| p.as_ref().to_vec()),
-            y_stride: frame.y_stride,
-            u_stride: frame.u_stride,
-            v_stride: frame.v_stride,
-            timestamp: frame.timestamp,
-            frame_type: frame.frame_type,
-            qp_avg: frame.qp_avg,
-            cached_at: std::time::Instant::now(),
-        });
+        state.cache.insert(
+            frame_index,
+            CachedYUVFrame {
+                width: frame.width,
+                height: frame.height,
+                bit_depth: frame.bit_depth,
+                y_plane: frame.y_plane.as_ref().to_vec(),
+                u_plane: frame.u_plane.as_ref().map(|p| p.as_ref().to_vec()),
+                v_plane: frame.v_plane.as_ref().map(|p| p.as_ref().to_vec()),
+                y_stride: frame.y_stride,
+                u_stride: frame.u_stride,
+                v_stride: frame.v_stride,
+                timestamp: frame.timestamp,
+                frame_type: frame.frame_type,
+                qp_avg: frame.qp_avg,
+                cached_at: std::time::Instant::now(),
+            },
+        );
         state.lru_order.push_back(frame_index);
         state.current_bytes += frame_size;
 
@@ -547,7 +580,8 @@ impl DecodeService {
         let file_data = self.get_file_data_arc()?;
         match bitvue_formats::mp4::extract_av1_samples(&file_data) {
             Ok(samples) => {
-                let owned_samples: Vec<Vec<u8>> = samples.into_iter().map(|cow| cow.to_vec()).collect();
+                let owned_samples: Vec<Vec<u8>> =
+                    samples.into_iter().map(|cow| cow.to_vec()).collect();
                 *lock_mutex!(self.mp4_samples_cache) = Some(owned_samples.clone());
                 Ok(Some(owned_samples))
             }
@@ -576,7 +610,10 @@ impl DecodeService {
     /// Get cached IVF frames, or parse them if not cached
     /// Returns the parsed IVF header and frame information
     #[allow(dead_code)]
-    pub fn get_or_parse_ivf_frames(&self) -> Result<Option<(bitvue_av1_codec::IvfHeader, Vec<bitvue_av1_codec::IvfFrame>)>, String> {
+    pub fn get_or_parse_ivf_frames(
+        &self,
+    ) -> Result<Option<(bitvue_av1_codec::IvfHeader, Vec<bitvue_av1_codec::IvfFrame>)>, String>
+    {
         // Check cache first
         if let Some(frames) = lock_mutex!(self.ivf_frames_cache).as_ref() {
             return Ok(Some(frames.clone()));

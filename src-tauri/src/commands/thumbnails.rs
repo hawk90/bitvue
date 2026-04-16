@@ -2,21 +2,22 @@
 //!
 //! Commands for generating frame thumbnails.
 
-use serde::{Deserialize, Serialize};
 use base64::Engine;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
+use crate::commands::frame::{decode_container_frame, decode_ivf_frame, decode_ivf_frames_batch};
 use crate::commands::AppState;
 use crate::services::create_svg_thumbnail;
-use crate::commands::frame::{decode_ivf_frame, decode_ivf_frames_batch, decode_container_frame};
 use bitvue_core::StreamId;
 use bitvue_formats::{detect_container_format, ContainerFormat};
-use image::{ImageBuffer, RgbImage, DynamicImage};
+use image::{DynamicImage, ImageBuffer, RgbImage};
 
 /// Thumbnail data for a single frame
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThumbnailData {
     pub frame_index: usize,
-    pub thumbnail_data: String,  // Data URL (PNG or SVG)
+    pub thumbnail_data: String, // Data URL (PNG or SVG)
     pub width: u32,
     pub height: u32,
     pub success: bool,
@@ -33,7 +34,10 @@ pub async fn get_thumbnails(
     state: tauri::State<'_, AppState>,
     frame_indices: Vec<usize>,
 ) -> Result<Vec<ThumbnailData>, String> {
-    log::info!("get_thumbnails: Requesting {} thumbnails", frame_indices.len());
+    log::info!(
+        "get_thumbnails: Requesting {} thumbnails",
+        frame_indices.len()
+    );
 
     // SECURITY: Validate number of frame indices to prevent DoS
     const MAX_THUMBNAIL_REQUEST: usize = 500;
@@ -46,11 +50,12 @@ pub async fn get_thumbnails(
     }
 
     // Rate limiting check (thumbnail generation is CPU-intensive)
-    state.rate_limiter.check_rate_limit()
-        .map_err(|wait_time| {
-            format!("Rate limited: too many requests. Please try again in {:.1}s",
-                wait_time.as_secs_f64())
-        })?;
+    state.rate_limiter.check_rate_limit().map_err(|wait_time| {
+        format!(
+            "Rate limited: too many requests. Please try again in {:.1}s",
+            wait_time.as_secs_f64()
+        )
+    })?;
 
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
@@ -65,7 +70,9 @@ pub async fn get_thumbnails(
     // Create a HashMap for frame_index -> frame_type lookup
     // This fixes the bug where units.get(frame_idx) was using array index instead of frame_index
     use std::collections::HashMap;
-    let units_map: HashMap<usize, String> = units_ref.units.iter()
+    let units_map: HashMap<usize, String> = units_ref
+        .units
+        .iter()
         .filter_map(|u| {
             // Both frame_index and frame_type need to be Some
             match (&u.frame_index, &u.frame_type) {
@@ -79,12 +86,13 @@ pub async fn get_thumbnails(
     drop(core);
 
     // Detect container format
-    let container_format = detect_container_format(&file_path)
-        .unwrap_or(ContainerFormat::Unknown);
+    let container_format = detect_container_format(&file_path).unwrap_or(ContainerFormat::Unknown);
 
     // Use cached file data from decode_service to avoid repeated disk reads
     // Use Arc to avoid cloning the entire file data
-    let file_data = state.decode_service.lock()
+    let file_data = state
+        .decode_service
+        .lock()
         .map_err(|e| e.to_string())?
         .get_file_data_arc()?;
 
@@ -96,7 +104,9 @@ pub async fn get_thumbnails(
 
     for &frame_idx in &frame_indices {
         // Check cache first
-        if let Ok(Some(cached)) = state.thumbnail_service.lock()
+        if let Ok(Some(cached)) = state
+            .thumbnail_service
+            .lock()
             .map_err(|e| e.to_string())?
             .get_cached(frame_idx)
         {
@@ -107,7 +117,7 @@ pub async fn get_thumbnails(
                 height: 90,
                 success: true,
                 error: None,
-                cached: true,  // Cache hit
+                cached: true, // Cache hit
             });
         } else if !units_map.contains_key(&frame_idx) {
             // Frame index out of bounds
@@ -117,12 +127,16 @@ pub async fn get_thumbnails(
                 width: 0,
                 height: 0,
                 success: false,
-                error: Some(format!("Frame index {} out of bounds (total units: {})", frame_idx, unit_count)),
+                error: Some(format!(
+                    "Frame index {} out of bounds (total units: {})",
+                    frame_idx, unit_count
+                )),
                 cached: false,
             });
         } else {
             // Frame exists but not cached - collect for batch processing
-            let frame_type = units_map.get(&frame_idx)
+            let frame_type = units_map
+                .get(&frame_idx)
                 .map(|ft| ft.as_str())
                 .unwrap_or("UNKNOWN");
             uncached_frames.push((frame_idx, frame_type.to_string()));
@@ -143,7 +157,8 @@ pub async fn get_thumbnails(
                     match create_thumbnail_from_rgb(width, height, &rgb_data) {
                         Ok(thumbnail_data) => {
                             // Find the frame_type for this frame
-                            let frame_type = uncached_frames.iter()
+                            let frame_type = uncached_frames
+                                .iter()
                                 .find(|(idx, _)| *idx == frame_idx)
                                 .map(|(_, ft)| ft.clone())
                                 .unwrap_or("UNKNOWN".to_string());
@@ -163,13 +178,14 @@ pub async fn get_thumbnails(
                                 height: 90,
                                 success: true,
                                 error: None,
-                                cached: false,  // Freshly generated
+                                cached: false, // Freshly generated
                             });
                         }
                         Err(e) => {
                             // Fall back to SVG placeholder
                             log::warn!("get_thumbnails: Failed to create thumbnail for frame {} ({}), using SVG", frame_idx, e);
-                            let frame_type = uncached_frames.iter()
+                            let frame_type = uncached_frames
+                                .iter()
                                 .find(|(idx, _)| *idx == frame_idx)
                                 .map(|(_, ft)| ft.clone())
                                 .unwrap_or("UNKNOWN".to_string());
@@ -183,7 +199,7 @@ pub async fn get_thumbnails(
                                 height: 90,
                                 success: true,
                                 error: None,
-                                cached: false,  // Freshly generated SVG
+                                cached: false, // Freshly generated SVG
                             });
                         }
                     }
@@ -191,7 +207,10 @@ pub async fn get_thumbnails(
             }
             Err(e) => {
                 // Batch decode failed, fall back to individual processing with SVG placeholders
-                log::warn!("get_thumbnails: Batch decode failed ({}), using SVG placeholders", e);
+                log::warn!(
+                    "get_thumbnails: Batch decode failed ({}), using SVG placeholders",
+                    e
+                );
                 for (frame_idx, frame_type) in uncached_frames {
                     let svg_data = create_svg_thumbnail(&frame_type);
                     thumbnails.push(ThumbnailData {
@@ -207,23 +226,43 @@ pub async fn get_thumbnails(
             }
         }
     } else {
-        // For non-IVF containers, process individually
-        for (frame_idx, frame_type) in uncached_frames {
-            let thumbnail_data = match generate_real_thumbnail(&file_data, frame_idx, container_format) {
+        // For non-IVF containers, decode frames in parallel (no inter-frame dependencies)
+        let file_data_ref: &[u8] = &file_data;
+        let decode_results: Vec<(usize, String, Result<String, String>)> = uncached_frames
+            .par_iter()
+            .map(|(frame_idx, frame_type)| {
+                let result = generate_real_thumbnail(file_data_ref, *frame_idx, container_format);
+                (*frame_idx, frame_type.clone(), result)
+            })
+            .collect();
+
+        // Sequentially cache results and push to thumbnails (Mutex cannot cross thread boundary)
+        for (frame_idx, frame_type, result) in decode_results {
+            let thumbnail_data = match result {
                 Ok(data) => data,
                 Err(e) => {
                     // Fall back to SVG placeholder if decoding fails
-                    log::warn!("get_thumbnails: Failed to decode frame {} ({}), using SVG placeholder", frame_idx, e);
+                    log::warn!(
+                        "get_thumbnails: Failed to decode frame {} ({}), using SVG placeholder",
+                        frame_idx,
+                        e
+                    );
                     create_svg_thumbnail(&frame_type)
                 }
             };
 
             // Cache the thumbnail
-            let _ = state.thumbnail_service.lock()
+            let _ = state
+                .thumbnail_service
+                .lock()
                 .map_err(|e| e.to_string())?
                 .cache_thumbnail(frame_idx, thumbnail_data.clone(), frame_type.clone())
                 .map_err(|e| {
-                    log::warn!("get_thumbnails: Failed to cache thumbnail for frame {}: {}", frame_idx, e);
+                    log::warn!(
+                        "get_thumbnails: Failed to cache thumbnail for frame {}: {}",
+                        frame_idx,
+                        e
+                    );
                 });
 
             thumbnails.push(ThumbnailData {
@@ -233,7 +272,7 @@ pub async fn get_thumbnails(
                 height: 90,
                 success: true,
                 error: None,
-                cached: false,  // Freshly generated
+                cached: false, // Freshly generated
             });
         }
     }
@@ -262,7 +301,11 @@ fn create_thumbnail_from_rgb(width: u32, height: u32, rgb_data: &[u8]) -> Result
 
     // Encode as PNG
     let mut thumbnail_bytes = Vec::new();
-    resized.write_to(&mut std::io::Cursor::new(&mut thumbnail_bytes), image::ImageFormat::Png)
+    resized
+        .write_to(
+            &mut std::io::Cursor::new(&mut thumbnail_bytes),
+            image::ImageFormat::Png,
+        )
         .map_err(|e| format!("Failed to encode thumbnail: {}", e))?;
 
     // Return as data URL
@@ -282,9 +325,7 @@ fn generate_real_thumbnail(
 
     // Decode the frame
     let (_width, _height, rgb_data) = match container_format {
-        ContainerFormat::IVF => {
-            decode_ivf_frame(file_data, frame_index)?
-        }
+        ContainerFormat::IVF => decode_ivf_frame(file_data, frame_index)?,
         ContainerFormat::MP4 | ContainerFormat::Matroska => {
             decode_container_frame(file_data, frame_index, container_format)?
         }
@@ -294,8 +335,8 @@ fn generate_real_thumbnail(
     };
 
     // Create image from RGB data
-    let img: RgbImage = ImageBuffer::from_raw(_width, _height, rgb_data)
-        .ok_or("Failed to create image buffer")?;
+    let img: RgbImage =
+        ImageBuffer::from_raw(_width, _height, rgb_data).ok_or("Failed to create image buffer")?;
 
     // Resize to thumbnail size
     let resized = image::imageops::resize(
@@ -307,7 +348,11 @@ fn generate_real_thumbnail(
 
     // Encode as WebP for smaller size (or PNG as fallback)
     let mut thumbnail_bytes = Vec::new();
-    resized.write_to(&mut std::io::Cursor::new(&mut thumbnail_bytes), image::ImageFormat::Png)
+    resized
+        .write_to(
+            &mut std::io::Cursor::new(&mut thumbnail_bytes),
+            image::ImageFormat::Png,
+        )
         .map_err(|e| format!("Failed to encode thumbnail: {}", e))?;
 
     // Return as data URL

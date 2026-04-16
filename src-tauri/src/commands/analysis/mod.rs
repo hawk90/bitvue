@@ -7,21 +7,29 @@ mod extractors;
 pub mod views;
 
 pub use views::{
-    CodingFlowData, CodingStage,
-    ResidualAnalysisData, CoefficientStats, BlockResidualData,
-    DeblockingAnalysisData, BoundaryEdgeData, DeblockingParams, DeblockingStats,
-    Av1FeaturesData,
+    Av1FeaturesData, BlockResidualData, BoundaryEdgeData, CodingFlowData, CodingStage,
+    CoefficientStats, DeblockingAnalysisData, DeblockingParams, DeblockingStats,
+    ResidualAnalysisData,
 };
 
-use bitvue_av1_codec::overlay_extraction::{extract_qp_grid, extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_transform_grid};
+use bitvue_av1_codec::overlay_extraction::{
+    extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_qp_grid,
+    extract_transform_grid,
+};
 use bitvue_core::StreamId;
 use serde::{Deserialize, Serialize};
 
-use crate::commands::{FrameAnalysisData, QPGridData, MVGridData, PartitionGridData, PredictionModeGridData, TransformGridData, AppState, MotionVectorData};
+use crate::commands::{
+    AppState, FrameAnalysisData, MVGridData, MotionVectorData, PartitionGridData,
+    PredictionModeGridData, QPGridData, TransformGridData,
+};
 
 /// Validate frame_index against the loaded stream's frame count
 /// Returns an error if frame_index is out of bounds
-pub(crate) fn validate_frame_index(state: &tauri::State<'_, AppState>, frame_index: usize) -> Result<(), String> {
+pub(crate) fn validate_frame_index(
+    state: &tauri::State<'_, AppState>,
+    frame_index: usize,
+) -> Result<(), String> {
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
@@ -87,10 +95,12 @@ pub(crate) fn extract_stream_dimensions(file_data: &[u8], codec: &str) -> (u32, 
             let Ok(nal_units) = bitvue_avc::parse_nal_units(file_data) else {
                 return (1920, 1080);
             };
-            nal_units.iter()
+            nal_units
+                .iter()
                 .find_map(|nal| {
                     if nal.header.nal_unit_type == bitvue_avc::NalUnitType::Sps {
-                        bitvue_avc::sps::parse_sps(&nal.payload).ok()
+                        bitvue_avc::sps::parse_sps(&nal.payload)
+                            .ok()
                             .map(|sps| (sps.display_width(), sps.display_height()))
                     } else {
                         None
@@ -102,10 +112,12 @@ pub(crate) fn extract_stream_dimensions(file_data: &[u8], codec: &str) -> (u32, 
             let Ok(nal_units) = bitvue_hevc::parse_nal_units(file_data) else {
                 return (1920, 1080);
             };
-            nal_units.iter()
+            nal_units
+                .iter()
                 .find_map(|nal| {
                     if nal.header.nal_unit_type == bitvue_hevc::NalUnitType::SpsNut {
-                        bitvue_hevc::sps::parse_sps(&nal.payload).ok()
+                        bitvue_hevc::sps::parse_sps(&nal.payload)
+                            .ok()
                             .map(|sps| (sps.display_width(), sps.display_height()))
                     } else {
                         None
@@ -132,7 +144,9 @@ pub(crate) fn extract_stream_dimensions(file_data: &[u8], codec: &str) -> (u32, 
 ///
 /// Extracts file path, loads cached file data, and detects codec type.
 /// Reduces nesting in get_frame_analysis.
-pub(crate) async fn load_file_data_and_codec(state: &tauri::State<'_, AppState>) -> Result<(Vec<u8>, String), String> {
+pub(crate) async fn load_file_data_and_codec(
+    state: &tauri::State<'_, AppState>,
+) -> Result<(Vec<u8>, String), String> {
     let (file_path, file_data) = {
         let core = state.core.lock().map_err(|e| e.to_string())?;
         let stream_a_lock = core.get_stream(StreamId::A);
@@ -143,7 +157,9 @@ pub(crate) async fn load_file_data_and_codec(state: &tauri::State<'_, AppState>)
         log::info!("get_frame_analysis: Stream A loaded");
 
         // Use cached file data from decode_service to avoid repeated disk reads
-        let file_data = state.decode_service.lock()
+        let file_data = state
+            .decode_service
+            .lock()
             .map_err(|e| e.to_string())?
             .get_file_data()?;
 
@@ -206,12 +222,30 @@ fn log_analysis_result(result: &Result<FrameAnalysisData, String>) {
     match result {
         Ok(analysis) => {
             log::info!("get_frame_analysis: === Analysis successful ===");
-            log::info!("get_frame_analysis: QP grid: {}",
-                if analysis.qp_grid.is_some() { "present" } else { "none" });
-            log::info!("get_frame_analysis: MV grid: {}",
-                if analysis.mv_grid.is_some() { "present" } else { "none" });
-            log::info!("get_frame_analysis: Partition grid: {}",
-                if analysis.partition_grid.is_some() { "present" } else { "none" });
+            log::info!(
+                "get_frame_analysis: QP grid: {}",
+                if analysis.qp_grid.is_some() {
+                    "present"
+                } else {
+                    "none"
+                }
+            );
+            log::info!(
+                "get_frame_analysis: MV grid: {}",
+                if analysis.mv_grid.is_some() {
+                    "present"
+                } else {
+                    "none"
+                }
+            );
+            log::info!(
+                "get_frame_analysis: Partition grid: {}",
+                if analysis.partition_grid.is_some() {
+                    "present"
+                } else {
+                    "none"
+                }
+            );
         }
         Err(e) => {
             log::error!("get_frame_analysis: === Analysis failed: {} ===", e);
@@ -227,11 +261,12 @@ pub async fn get_frame_analysis(
     log::info!("get_frame_analysis: === Starting frame analysis request ===");
 
     // SECURITY: Apply rate limiting to prevent CPU exhaustion attacks
-    state.rate_limiter.check_rate_limit()
-        .map_err(|wait_time| {
-            format!("Rate limited: too many analysis requests. Please try again in {:.1}s",
-                wait_time.as_secs_f64())
-        })?;
+    state.rate_limiter.check_rate_limit().map_err(|wait_time| {
+        format!(
+            "Rate limited: too many analysis requests. Please try again in {:.1}s",
+            wait_time.as_secs_f64()
+        )
+    })?;
 
     log::info!("get_frame_analysis: Frame index: {}", frame_index);
 
@@ -242,7 +277,10 @@ pub async fn get_frame_analysis(
     let (file_data, codec) = load_file_data_and_codec(&state).await?;
 
     // Extract analysis based on codec type
-    log::info!("get_frame_analysis: Selecting extraction function for codec: {}", codec);
+    log::info!(
+        "get_frame_analysis: Selecting extraction function for codec: {}",
+        codec
+    );
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let result = extract_analysis_by_codec(&file_data, frame_index, &core, &codec);
 
@@ -255,7 +293,8 @@ pub async fn get_frame_analysis(
 /// Detect codec from file path
 pub(crate) fn detect_codec_from_path(path: &str) -> String {
     let path_buf = std::path::PathBuf::from(path);
-    path_buf.extension()
+    path_buf
+        .extension()
         .and_then(|e| e.to_str())
         .and_then(|ext| match ext.to_lowercase().as_str() {
             "ivf" => Some("av1".to_string()),
@@ -306,11 +345,20 @@ pub(crate) fn detect_codec_from_data(data: &[u8]) -> String {
             let box_type = &data[4..8];
             if box_type == b"ftyp" {
                 let search_range = &data[..data.len().min(8192)];
-                if search_range.windows(4).any(|w| w == b"vvc1" || w == b"vvi1") {
+                if search_range
+                    .windows(4)
+                    .any(|w| w == b"vvc1" || w == b"vvi1")
+                {
                     return "vvc".to_string();
-                } else if search_range.windows(4).any(|w| w == b"hvc1" || w == b"hev1") {
+                } else if search_range
+                    .windows(4)
+                    .any(|w| w == b"hvc1" || w == b"hev1")
+                {
                     return "hevc".to_string();
-                } else if search_range.windows(4).any(|w| w == b"avc1" || w == b"avc3") {
+                } else if search_range
+                    .windows(4)
+                    .any(|w| w == b"avc1" || w == b"avc3")
+                {
                     return "avc".to_string();
                 } else if search_range.windows(4).any(|w| w == b"av01") {
                     return "av1".to_string();

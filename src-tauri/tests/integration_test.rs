@@ -33,13 +33,22 @@ mod tests {
     /// Verifies that QualityMetrics properly groups related metric arrays.
     #[test]
     fn test_quality_metrics_workflow() {
-        use bitvue_core::QualityMetrics;
         use bitvue_core::MetricPoint;
+        use bitvue_core::QualityMetrics;
 
         // Create sample metrics
-        let psnr = vec![MetricPoint { idx: 0, value: 40.5 }];
-        let ssim = vec![MetricPoint { idx: 0, value: 0.98 }];
-        let vmaf = vec![MetricPoint { idx: 0, value: 95.0 }];
+        let psnr = vec![MetricPoint {
+            idx: 0,
+            value: 40.5,
+        }];
+        let ssim = vec![MetricPoint {
+            idx: 0,
+            value: 0.98,
+        }];
+        let vmaf = vec![MetricPoint {
+            idx: 0,
+            value: 95.0,
+        }];
 
         let metrics = QualityMetrics {
             psnr_y: &psnr,
@@ -162,7 +171,11 @@ mod tests {
         // Test 2: Each layer has a name
         for layer in all_layers {
             let name: &str = layer.name();
-            assert!(!name.is_empty(), "Layer {} should have a name", format!("{:?}", layer));
+            assert!(
+                !name.is_empty(),
+                "Layer {} should have a name",
+                format!("{:?}", layer)
+            );
         }
     }
 }

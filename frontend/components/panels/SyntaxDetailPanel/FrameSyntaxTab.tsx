@@ -5,7 +5,7 @@
  * Shows frame properties in expandable tree format
  */
 
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
 
@@ -164,14 +164,164 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
       </div>
       <div className="panel-divider"></div>
       <div className="syntax-tree">
-        <SyntaxTreeNode
-          node={frameSyntax}
-          path=""
-          depth={0}
-          expandedNodes={expandedNodes}
-          onToggle={onToggleNode}
-          onJumpToHex={setHighlightedByteOffset}
-        />
+        {flattenVisible(frameSyntax, "", 0, expandedNodes).length >
+        VIRTUALIZATION_THRESHOLD ? (
+          <VirtualSyntaxTree
+            rootNode={frameSyntax}
+            expandedNodes={expandedNodes}
+            onToggle={onToggleNode}
+            onJumpToHex={setHighlightedByteOffset}
+          />
+        ) : (
+          <SyntaxTreeNode
+            node={frameSyntax}
+            path=""
+            depth={0}
+            expandedNodes={expandedNodes}
+            onToggle={onToggleNode}
+            onJumpToHex={setHighlightedByteOffset}
+          />
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ─── Virtual list for large syntax trees ─────────────────────────────────────
+
+const ITEM_HEIGHT = 24; // px per visible row
+const OVERSCAN = 15; // extra rows rendered above and below the visible window
+/** Below this threshold we use the plain recursive renderer (faster for small trees). */
+const VIRTUALIZATION_THRESHOLD = 120;
+
+interface FlatNode {
+  node: SyntaxNode;
+  path: string;
+  depth: number;
+}
+
+/** Flatten the tree respecting the current expand/collapse state. */
+function flattenVisible(
+  node: SyntaxNode,
+  path: string,
+  depth: number,
+  expandedNodes: Set<string>,
+  out: FlatNode[] = [],
+): FlatNode[] {
+  const currentPath = path ? `${path}/${node.name}` : node.name;
+  out.push({ node, path: currentPath, depth });
+  if (
+    node.children &&
+    node.children.length > 0 &&
+    expandedNodes.has(currentPath)
+  ) {
+    for (const child of node.children) {
+      flattenVisible(child, currentPath, depth + 1, expandedNodes, out);
+    }
+  }
+  return out;
+}
+
+interface VirtualSyntaxTreeProps {
+  rootNode: SyntaxNode;
+  expandedNodes: Set<string>;
+  onToggle: (path: string) => void;
+  onJumpToHex?: (offset: number) => void;
+}
+
+/** Virtual-scroll tree renderer — only mounts DOM nodes for the visible window. */
+const VirtualSyntaxTree = memo(function VirtualSyntaxTree({
+  rootNode,
+  expandedNodes,
+  onToggle,
+  onJumpToHex,
+}: VirtualSyntaxTreeProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(400);
+
+  // Keep container height in sync with ResizeObserver
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  const flatNodes = flattenVisible(rootNode, "", 0, expandedNodes);
+  const totalHeight = flatNodes.length * ITEM_HEIGHT;
+  const startIdx = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
+  const endIdx = Math.min(
+    flatNodes.length,
+    Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + OVERSCAN,
+  );
+  const paddingTop = startIdx * ITEM_HEIGHT;
+  const visibleSlice = flatNodes.slice(startIdx, endIdx);
+
+  return (
+    <div
+      ref={containerRef}
+      className="syntax-virtual-scroll"
+      onScroll={handleScroll}
+    >
+      <div style={{ height: totalHeight, position: "relative" }}>
+        <div style={{ position: "absolute", top: paddingTop, width: "100%" }}>
+          {visibleSlice.map(({ node, path, depth }) => {
+            const hasChildren = !!node.children && node.children.length > 0;
+            const isExpanded = expandedNodes.has(path);
+            const displayValue = getDisplayValue(node.value);
+            return (
+              <div
+                key={path}
+                className="syntax-node"
+                title={node.description}
+                style={{ height: ITEM_HEIGHT }}
+              >
+                <div
+                  className="syntax-node-item"
+                  style={{ paddingLeft: `${depth * 12 + 8}px` }}
+                >
+                  {hasChildren ? (
+                    <span
+                      className={`codicon codicon-${isExpanded ? "chevron-down" : "chevron-right"} expand-toggle`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(path);
+                      }}
+                    />
+                  ) : (
+                    <span className="expand-placeholder">▪</span>
+                  )}
+                  <span className="syntax-label">{node.name}</span>
+                  {displayValue !== undefined && (
+                    <span className="syntax-value">
+                      = {String(displayValue)}
+                    </span>
+                  )}
+                  {node.byte_offset !== undefined && onJumpToHex && (
+                    <span
+                      className="syntax-hex-jump"
+                      title={`Jump to byte 0x${node.byte_offset.toString(16).toUpperCase()}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onJumpToHex(node.byte_offset!);
+                      }}
+                    >
+                      ⇥
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

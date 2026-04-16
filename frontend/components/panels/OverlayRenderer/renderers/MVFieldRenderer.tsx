@@ -1,19 +1,34 @@
 /**
  * MV Field Overlay Renderer
  *
- * F6: Shows motion vectors as arrows using real parser data
+ * F6: Shows motion vectors as arrows using real parser data.
+ * When `webglCanvas` is provided and the block count exceeds
+ * WEBGL_MV_THRESHOLD, rendering is delegated to the WebGL2 path for
+ * better performance on dense grids.
  */
 
 import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { drawArrow } from "../utils/drawing";
+import {
+  renderMVWebGL,
+  clearMVWebGL,
+  WEBGL_MV_THRESHOLD,
+} from "../webgl/mv-webgl";
+
+export interface MVFieldOverlayProps extends OverlayRendererProps {
+  /** Optional WebGL overlay canvas. When present and the grid is dense,
+   *  rendering switches to the WebGL2 path. */
+  webglCanvas?: HTMLCanvasElement;
+}
 
 export function MVFieldOverlay({
   ctx,
-  _width,
-  _height,
+  width,
+  height,
   frame,
-}: OverlayRendererProps) {
+  webglCanvas,
+}: MVFieldOverlayProps) {
   if (frame.frame_type === "I" || frame.frame_type === "KEY") {
     // No motion vectors for intra frames
     ctx.fillStyle = getCssVar("--text-bright") || "rgba(255, 255, 255, 0.8)";
@@ -31,10 +46,21 @@ export function MVFieldOverlay({
   }
 
   const { mv_l0, block_w, block_h, grid_w, grid_h } = frame.mv_grid;
+  const totalBlocks = grid_w * grid_h;
+
+  // ── WebGL fast path for dense grids ─────────────────────────────────────
+  if (webglCanvas) {
+    if (totalBlocks > WEBGL_MV_THRESHOLD) {
+      renderMVWebGL(webglCanvas, frame, width, height);
+      return;
+    } else {
+      // Clear any leftover WebGL content before 2D path runs
+      clearMVWebGL(webglCanvas);
+    }
+  }
 
   // Density control: cap at 8000 vectors (per spec)
   const maxVectors = 8000;
-  const totalBlocks = grid_w * grid_h;
   const stride =
     totalBlocks > maxVectors
       ? Math.ceil(Math.sqrt(totalBlocks / maxVectors))

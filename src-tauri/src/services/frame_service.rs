@@ -105,7 +105,13 @@ pub struct FrameMetadata {
 #[allow(dead_code)]
 impl FrameMetadata {
     /// Create from individual components
-    pub fn new(frame_type: String, nal_type: String, layer: String, offset: u64, size: usize) -> Self {
+    pub fn new(
+        frame_type: String,
+        nal_type: String,
+        layer: String,
+        offset: u64,
+        size: usize,
+    ) -> Self {
         Self {
             frame_type,
             nal_type,
@@ -192,7 +198,9 @@ impl ReferenceInfo {
     /// Create from UnitModel
     pub fn from_unit_model(unit: &bitvue_core::UnitModel) -> Self {
         // Extract ref_frames/ref_slots from the first frame unit
-        let (ref_frames, ref_slots) = unit.units.first()
+        let (ref_frames, ref_slots) = unit
+            .units
+            .first()
             .map(|u| (u.ref_frames.clone(), u.ref_slots.clone()))
             .unwrap_or((None, None));
 
@@ -231,7 +239,7 @@ impl ReferenceInfo {
     }
 }
 
-/// Frame information for filmstrip 
+/// Frame information for filmstrip
 ///
 /// Refactored from god object (17 fields) to focused composition.
 /// Now composed of 3 focused value objects: FramePosition, FrameMetadata, ReferenceInfo.
@@ -323,20 +331,48 @@ impl FrameDisplayData {
 
     // ========== Convenience accessors for field compatibility ==========
 
-    pub fn frame_index(&self) -> usize { self.position.frame_index }
-    pub fn frame_type(&self) -> &str { &self.metadata.frame_type }
-    pub fn offset(&self) -> u64 { self.metadata.offset }
-    pub fn size(&self) -> usize { self.metadata.size }
-    pub fn poc(&self) -> i32 { self.position.poc }
-    pub fn nal_type(&self) -> &str { &self.metadata.nal_type }
-    pub fn layer(&self) -> &str { &self.metadata.layer }
-    pub fn pts(&self) -> Option<u64> { self.position.pts }
-    pub fn dts(&self) -> Option<u64> { self.position.dts }
-    pub fn ref_list(&self) -> Option<&String> { self.references.ref_list.as_ref() }
-    pub fn temporal_id(&self) -> Option<u8> { self.position.temporal_id }
-    pub fn ref_frames(&self) -> Option<&Vec<usize>> { self.references.ref_frames.as_ref() }
-    pub fn ref_slots(&self) -> Option<&Vec<u8>> { self.references.ref_slots.as_ref() }
-    pub fn ref_slot_info(&self) -> Option<&Vec<ReferenceSlotInfo>> { self.references.ref_slot_info.as_ref() }
+    pub fn frame_index(&self) -> usize {
+        self.position.frame_index
+    }
+    pub fn frame_type(&self) -> &str {
+        &self.metadata.frame_type
+    }
+    pub fn offset(&self) -> u64 {
+        self.metadata.offset
+    }
+    pub fn size(&self) -> usize {
+        self.metadata.size
+    }
+    pub fn poc(&self) -> i32 {
+        self.position.poc
+    }
+    pub fn nal_type(&self) -> &str {
+        &self.metadata.nal_type
+    }
+    pub fn layer(&self) -> &str {
+        &self.metadata.layer
+    }
+    pub fn pts(&self) -> Option<u64> {
+        self.position.pts
+    }
+    pub fn dts(&self) -> Option<u64> {
+        self.position.dts
+    }
+    pub fn ref_list(&self) -> Option<&String> {
+        self.references.ref_list.as_ref()
+    }
+    pub fn temporal_id(&self) -> Option<u8> {
+        self.position.temporal_id
+    }
+    pub fn ref_frames(&self) -> Option<&Vec<usize>> {
+        self.references.ref_frames.as_ref()
+    }
+    pub fn ref_slots(&self) -> Option<&Vec<u8>> {
+        self.references.ref_slots.as_ref()
+    }
+    pub fn ref_slot_info(&self) -> Option<&Vec<ReferenceSlotInfo>> {
+        self.references.ref_slot_info.as_ref()
+    }
 }
 
 /// Codec-specific reference slot names

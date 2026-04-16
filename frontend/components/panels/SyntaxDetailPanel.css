@@ -970,3 +970,19 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* ─── Virtual syntax tree scroll container ──────────────────────────────── */
+.syntax-virtual-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Fill the remaining height inside .syntax-tree */
+  height: 100%;
+  min-height: 0;
+}
+
+.syntax-virtual-scroll .syntax-node {
+  /* Fixed height kept in sync with ITEM_HEIGHT const (24px) */
+  height: 24px;
+  overflow: hidden;
+}

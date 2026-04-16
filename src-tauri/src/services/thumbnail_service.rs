@@ -5,10 +5,10 @@
 //! - Lazy loading (only decode what's needed)
 //! - Consistent data format (raw data, no data URL prefix)
 
+use base64::Engine;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use base64::Engine;
 
 // Import shared utilities
 use crate::services::utils::lock_mutex;
@@ -84,7 +84,7 @@ impl ThumbnailService {
     pub fn set_dimensions(&mut self, width: u32, height: u32) -> Result<(), String> {
         // SECURITY: Validate dimensions to prevent DoS with extremely large thumbnails
         const MAX_THUMB_DIMENSION: u32 = 4096; // 4K max for thumbnails
-        const MIN_THUMB_DIMENSION: u32 = 16;   // Minimum reasonable size
+        const MIN_THUMB_DIMENSION: u32 = 16; // Minimum reasonable size
 
         if width < MIN_THUMB_DIMENSION || height < MIN_THUMB_DIMENSION {
             return Err(format!(
@@ -140,7 +140,12 @@ impl ThumbnailService {
     }
 
     /// Cache a thumbnail
-    pub fn cache_thumbnail(&self, frame_index: usize, data: String, frame_type: String) -> Result<(), String> {
+    pub fn cache_thumbnail(
+        &self,
+        frame_index: usize,
+        data: String,
+        frame_type: String,
+    ) -> Result<(), String> {
         let mut state = lock_mutex!(self.state);
 
         let now = std::time::Instant::now();
@@ -154,16 +159,19 @@ impl ThumbnailService {
         }
 
         // Add/update entry
-        state.cache.insert(frame_index, CacheEntry {
-            thumbnail: CachedThumbnail {
-                data,
-                width: self.thumb_width,
-                height: self.thumb_height,
-                frame_type,
-                cached_at: now,
+        state.cache.insert(
+            frame_index,
+            CacheEntry {
+                thumbnail: CachedThumbnail {
+                    data,
+                    width: self.thumb_width,
+                    height: self.thumb_height,
+                    frame_type,
+                    cached_at: now,
+                },
+                last_accessed: now,
             },
-            last_accessed: now,
-        });
+        );
 
         // Update LRU queue
         state.lru_queue.retain(|x| *x != frame_index);
@@ -197,7 +205,11 @@ impl ThumbnailService {
     #[allow(dead_code)]
     pub fn get_missing_indices(&self, indices: &[usize]) -> Result<Vec<usize>, String> {
         let state = lock_mutex!(self.state);
-        Ok(indices.iter().filter(|&&idx| !state.cache.contains_key(&idx)).copied().collect())
+        Ok(indices
+            .iter()
+            .filter(|&&idx| !state.cache.contains_key(&idx))
+            .copied()
+            .collect())
     }
 }
 
@@ -240,7 +252,8 @@ pub fn decode_av1_thumbnails(
     use bitvue_decode::{Av1Decoder, FrameType};
 
     let mut decoder = Av1Decoder::new().map_err(|e| format!("Failed to create decoder: {}", e))?;
-    let decoded_frames = decoder.decode_all(file_data)
+    let decoded_frames = decoder
+        .decode_all(file_data)
         .map_err(|e| format!("Failed to decode: {}", e))?;
 
     let mut results = Vec::new();
@@ -265,7 +278,8 @@ pub fn decode_av1_thumbnails(
                 FrameType::Key => "KEY",
                 FrameType::Inter => "P",
                 FrameType::Intra => "I",
-            }.to_string();
+            }
+            .to_string();
 
             results.push((idx, png_base64, frame_type_str));
         }
@@ -293,7 +307,10 @@ fn resize_rgb(
         .checked_mul(dst_height)
         .and_then(|v| v.checked_mul(3))
         .ok_or_else(|| {
-            format!("Invalid dimensions: {}x{} causes integer overflow", dst_width, dst_height)
+            format!(
+                "Invalid dimensions: {}x{} causes integer overflow",
+                dst_width, dst_height
+            )
         })?;
 
     // Limit maximum output size to prevent DoS (100MB = ~31K x 31K image)
@@ -345,8 +362,11 @@ fn create_png_base64(rgb_data: &[u8], width: u32, height: u32) -> Result<String,
         .ok_or("Failed to create image buffer")?;
 
     let mut png_bytes = Vec::new();
-    img.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+    img.write_to(
+        &mut std::io::Cursor::new(&mut png_bytes),
+        image::ImageFormat::Png,
+    )
+    .map_err(|e| format!("Failed to encode PNG: {}", e))?;
 
     Ok(base64::engine::general_purpose::STANDARD.encode(&png_bytes))
 }

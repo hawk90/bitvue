@@ -172,8 +172,16 @@ pub mod strings {
     }
 
     /// Efficiently format codec name
-    pub const fn codec_name_av1() -> &'static str { "AV1" }
-    pub const fn codec_name_h264() -> &'static str { "H.264/AVC" }
-    pub const fn codec_name_h265() -> &'static str { "H.265/HEVC" }
-    pub const fn codec_name_vp9() -> &'static str { "VP9" }
+    pub const fn codec_name_av1() -> &'static str {
+        "AV1"
+    }
+    pub const fn codec_name_h264() -> &'static str {
+        "H.264/AVC"
+    }
+    pub const fn codec_name_h265() -> &'static str {
+        "H.265/HEVC"
+    }
+    pub const fn codec_name_vp9() -> &'static str {
+        "VP9"
+    }
 }

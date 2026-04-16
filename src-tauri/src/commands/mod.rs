@@ -13,8 +13,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-use bitvue_core::{Core, CompareWorkspace};
-use crate::services::{DecodeService, ThumbnailService, RateLimiter};
+use crate::services::{DecodeService, RateLimiter, ThumbnailService};
+use bitvue_core::{CompareWorkspace, Core};
 
 // Re-export module contents
 pub mod analysis;
@@ -25,9 +25,9 @@ pub mod file;
 pub mod frame;
 pub mod log;
 pub mod quality;
+pub mod recent_files;
 pub mod syntax;
 pub mod thumbnails;
-pub mod recent_files;
 pub mod window;
 
 // Re-export commonly used types and commands
@@ -35,19 +35,26 @@ pub mod window;
 #[allow(unused_imports)]
 pub use analysis::get_frame_analysis;
 #[allow(unused_imports)]
-pub use file::{open_file, close_file, get_stream_info, get_frames, get_frames_chunk, ChunkedFramesResponse};
+pub use compare::{
+    create_compare_workspace, get_aligned_frame, reset_offset, set_manual_offset, set_sync_mode,
+};
 #[allow(unused_imports)]
-pub use frame::{get_decoded_frame, get_decoded_frame_yuv, get_frame_hex_data, DecodedFrameData, FrameHexData, YUVFrameData};
+pub use file::{
+    close_file, get_frames, get_frames_chunk, get_stream_info, open_file, ChunkedFramesResponse,
+};
+#[allow(unused_imports)]
+pub use frame::{
+    get_decoded_frame, get_decoded_frame_yuv, get_frame_hex_data, DecodedFrameData, FrameHexData,
+    YUVFrameData,
+};
+#[allow(unused_imports)]
+pub use recent_files::{add_recent_file, clear_recent_files, get_recent_files};
+#[allow(unused_imports)]
+pub use syntax::{get_frame_syntax, SyntaxNode, SyntaxValue};
 #[allow(unused_imports)]
 pub use thumbnails::get_thumbnails;
 #[allow(unused_imports)]
-pub use recent_files::{get_recent_files, add_recent_file, clear_recent_files};
-#[allow(unused_imports)]
 pub use window::close_window;
-#[allow(unused_imports)]
-pub use compare::{create_compare_workspace, get_aligned_frame, set_sync_mode, set_manual_offset, reset_offset};
-#[allow(unused_imports)]
-pub use syntax::{get_frame_syntax, SyntaxNode, SyntaxValue};
 
 // =============================================================================
 // Shared Types
@@ -158,15 +165,15 @@ pub fn validate_frame_index_bounds(frame_index: usize, total_frames: usize) -> R
 /// Motion vector data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MotionVectorData {
-    pub dx_qpel: i32,  // X component in quarter-pel units
-    pub dy_qpel: i32,  // Y component in quarter-pel units
+    pub dx_qpel: i32, // X component in quarter-pel units
+    pub dy_qpel: i32, // Y component in quarter-pel units
 }
 
 /// Block mode for motion vectors
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub struct BlockModeData {
-    pub mode: u8,  // 0=Intra, 1=Inter, 2=Skip
+    pub mode: u8, // 0=Intra, 1=Inter, 2=Skip
 }
 
 /// QP Grid data
@@ -202,7 +209,7 @@ pub struct PartitionBlockData {
     pub y: u32,
     pub width: u32,
     pub height: u32,
-    pub partition: u8,  // PartitionType as u8
+    pub partition: u8, // PartitionType as u8
     pub depth: u8,
 }
 
@@ -257,7 +264,7 @@ pub struct FrameAnalysisData {
 #[allow(dead_code)]
 pub struct ThumbnailData {
     pub frame_index: usize,
-    pub thumbnail: String,  // SVG data URL
+    pub thumbnail: String, // SVG data URL
     pub width: u32,
     pub height: u32,
 }
@@ -284,7 +291,13 @@ pub fn greet(name: &str) -> String {
     let sanitized: String = sanitized
         .chars()
         .take(MAX_NAME_LENGTH)
-        .map(|ch| if SANITIZE_CHARS.contains(&ch) { ' ' } else { ch })
+        .map(|ch| {
+            if SANITIZE_CHARS.contains(&ch) {
+                ' '
+            } else {
+                ch
+            }
+        })
         .collect();
 
     format!("Hello, {}! You've been greeted from Rust!", sanitized)

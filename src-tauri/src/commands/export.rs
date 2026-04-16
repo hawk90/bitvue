@@ -2,8 +2,8 @@
 //!
 //! Commands for exporting frame data, analysis results, and reports.
 
-use crate::commands::AppState;
 use crate::commands::file::check_system_directory_access;
+use crate::commands::AppState;
 use bitvue_core::StreamId;
 use serde_json::json;
 use std::fs::File;
@@ -23,7 +23,9 @@ fn compute_mv_stats(mv_grid: Option<&bitvue_core::MVGrid>) -> (f64, f64) {
     };
 
     let total = grid.mv_l0.len();
-    if total == 0 { return (0.0, 0.0); }
+    if total == 0 {
+        return (0.0, 0.0);
+    }
 
     let mut mag_sum = 0.0f64;
     let mut inter_count = 0usize;
@@ -43,7 +45,11 @@ fn compute_mv_stats(mv_grid: Option<&bitvue_core::MVGrid>) -> (f64, f64) {
         }
     }
 
-    let mv_mag_avg = if inter_count > 0 { mag_sum / inter_count as f64 } else { 0.0 };
+    let mv_mag_avg = if inter_count > 0 {
+        mag_sum / inter_count as f64
+    } else {
+        0.0
+    };
     let skip_ratio = skip_count as f64 / total as f64;
     (mv_mag_avg, skip_ratio)
 }
@@ -65,12 +71,11 @@ fn validate_output_path(path: &str) -> Result<PathBuf, String> {
     // Validate extension on the requested destination path. The target file may not
     // exist yet, so validating the parent directory is more reliable than requiring
     // the full output path to canonicalize successfully.
-    let extension_lower = path.extension()
+    let extension_lower = path
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase())
-        .ok_or_else(|| {
-            "Invalid path: file has no extension".to_string()
-        })?;
+        .ok_or_else(|| "Invalid path: file has no extension".to_string())?;
 
     const ALLOWED_EXTENSIONS: &[&str] = &["csv", "json", "txt", "md"];
     if !ALLOWED_EXTENSIONS.contains(&extension_lower.as_str()) {
@@ -115,8 +120,7 @@ pub async fn export_frames_csv(
     let stream_a = stream_a.read();
 
     let units = stream_a.units.as_ref().ok_or("No data loaded")?;
-    let mut file = File::create(&path)
-        .map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
 
     // Write CSV header — includes analysis columns derived from mv_grid and qp_avg
     writeln!(
@@ -127,14 +131,27 @@ pub async fn export_frames_csv(
 
     // Write frame data
     for (idx, unit) in units.units.iter().enumerate() {
-        let ref_frames_str = unit.ref_frames
+        let ref_frames_str = unit
+            .ref_frames
             .as_ref()
-            .map(|refs| refs.iter().map(|r| r.to_string()).collect::<Vec<_>>().join(";"))
+            .map(|refs| {
+                refs.iter()
+                    .map(|r| r.to_string())
+                    .collect::<Vec<_>>()
+                    .join(";")
+            })
             .unwrap_or_default();
 
-        let ref_slots_str = unit.ref_slots
+        let ref_slots_str = unit
+            .ref_slots
             .as_ref()
-            .map(|slots| slots.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(";"))
+            .map(|slots| {
+                slots
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(";")
+            })
             .unwrap_or_default();
 
         let (mv_magnitude_avg, skip_ratio) = compute_mv_stats(unit.mv_grid.as_ref());
@@ -186,7 +203,8 @@ pub async fn export_frames_json(
     if units.units.len() > MAX_EXPORT_FRAMES {
         return Err(format!(
             "Cannot export more than {} frames. File has {} frames.",
-            MAX_EXPORT_FRAMES, units.units.len()
+            MAX_EXPORT_FRAMES,
+            units.units.len()
         ));
     }
 
@@ -214,12 +232,14 @@ pub async fn export_frames_json(
         // SECURITY: Don't include file_path in export to prevent information disclosure
     });
 
-    let mut file = File::create(&path)
-        .map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
 
-    file.write_all(serde_json::to_string_pretty(&output)
-        .map_err(|e| format!("Failed to serialize JSON: {}", e))?.as_bytes())
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    file.write_all(
+        serde_json::to_string_pretty(&output)
+            .map_err(|e| format!("Failed to serialize JSON: {}", e))?
+            .as_bytes(),
+    )
+    .map_err(|e| format!("Failed to write file: {}", e))?;
 
     // SECURITY: Don't log frame count to prevent information disclosure
     log::info!("export_frames_json: Export successful");
@@ -246,8 +266,7 @@ pub async fn export_analysis_report(
 
     let units = stream_a.units.as_ref().ok_or("No data loaded")?;
 
-    let mut file = File::create(&path)
-        .map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
 
     // Write header
     writeln!(file, "Bitvue Analysis Report").map_err(|e| format!("Failed to write: {}", e))?;
@@ -262,9 +281,23 @@ pub async fn export_analysis_report(
     writeln!(file).map_err(|e| format!("Failed to write: {}", e))?;
 
     // Frame type statistics
-    let i_frames = units.units.iter().filter(|u| u.frame_type.as_deref() == Some("I") || u.frame_type.as_deref() == Some("KEY")).count();
-    let p_frames = units.units.iter().filter(|u| u.frame_type.as_deref() == Some("P") || u.frame_type.as_deref() == Some("INTER")).count();
-    let b_frames = units.units.iter().filter(|u| u.frame_type.as_deref() == Some("B")).count();
+    let i_frames = units
+        .units
+        .iter()
+        .filter(|u| u.frame_type.as_deref() == Some("I") || u.frame_type.as_deref() == Some("KEY"))
+        .count();
+    let p_frames = units
+        .units
+        .iter()
+        .filter(|u| {
+            u.frame_type.as_deref() == Some("P") || u.frame_type.as_deref() == Some("INTER")
+        })
+        .count();
+    let b_frames = units
+        .units
+        .iter()
+        .filter(|u| u.frame_type.as_deref() == Some("B"))
+        .count();
 
     // Get total frame count once for reuse
     let total_frames = units.units.len();
@@ -273,33 +306,59 @@ pub async fn export_analysis_report(
 
     // Helper function for safe percentage calculation
     fn safe_percentage(count: usize, total: usize) -> f64 {
-        if total == 0 { 0.0 } else { (count as f64 / total as f64) * 100.0 }
+        if total == 0 {
+            0.0
+        } else {
+            (count as f64 / total as f64) * 100.0
+        }
     }
 
-    writeln!(file, "  I-Frames: {} ({:.1}%)", i_frames, safe_percentage(i_frames, total_frames))
-        .map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  P-Frames: {} ({:.1}%)", p_frames, safe_percentage(p_frames, total_frames))
-        .map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  B-Frames: {} ({:.1}%)", b_frames, safe_percentage(b_frames, total_frames))
-        .map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(
+        file,
+        "  I-Frames: {} ({:.1}%)",
+        i_frames,
+        safe_percentage(i_frames, total_frames)
+    )
+    .map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(
+        file,
+        "  P-Frames: {} ({:.1}%)",
+        p_frames,
+        safe_percentage(p_frames, total_frames)
+    )
+    .map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(
+        file,
+        "  B-Frames: {} ({:.1}%)",
+        b_frames,
+        safe_percentage(b_frames, total_frames)
+    )
+    .map_err(|e| format!("Failed to write: {}", e))?;
     writeln!(file).map_err(|e| format!("Failed to write: {}", e))?;
 
     // Size statistics
     let total_size: usize = units.units.iter().map(|u| u.size).sum();
     // Guard against division by zero
-    let avg_size = if total_frames > 0 { total_size / total_frames } else { 0 };
+    let avg_size = if total_frames > 0 {
+        total_size / total_frames
+    } else {
+        0
+    };
     let max_size = units.units.iter().map(|u| u.size).max().unwrap_or(0);
     let min_size = units.units.iter().map(|u| u.size).min().unwrap_or(0);
 
     writeln!(file, "Frame Size Statistics:").map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  Total: {} bytes ({:.2} MB)", total_size, total_size as f64 / 1024.0 / 1024.0)
-        .map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(
+        file,
+        "  Total: {} bytes ({:.2} MB)",
+        total_size,
+        total_size as f64 / 1024.0 / 1024.0
+    )
+    .map_err(|e| format!("Failed to write: {}", e))?;
     writeln!(file, "  Average: {} bytes", avg_size)
         .map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  Max: {} bytes", max_size)
-        .map_err(|e| format!("Failed to write: {}", e))?;
-    writeln!(file, "  Min: {} bytes", min_size)
-        .map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(file, "  Max: {} bytes", max_size).map_err(|e| format!("Failed to write: {}", e))?;
+    writeln!(file, "  Min: {} bytes", min_size).map_err(|e| format!("Failed to write: {}", e))?;
     writeln!(file).map_err(|e| format!("Failed to write: {}", e))?;
 
     // GOP structure

@@ -6,7 +6,6 @@
  * - Limits message length to prevent DoS
  * - Validates log level to prevent arbitrary log level injection
  */
-
 use tauri::command;
 
 /// Maximum log message length to prevent DoS through oversized logs
@@ -46,7 +45,10 @@ pub fn frontend_log(level: String, message: String) {
     // Validate log level first
     if !validate_log_level(&level) {
         // Don't log arbitrary levels, use a default
-        println!("[FRONTEND] [INVALID_LEVEL] {}", sanitize_log_message(&message));
+        println!(
+            "[FRONTEND] [INVALID_LEVEL] {}",
+            sanitize_log_message(&message)
+        );
         return;
     }
 

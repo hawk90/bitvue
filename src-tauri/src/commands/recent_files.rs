@@ -3,8 +3,8 @@
 //! Commands for managing recent file history using Tauri's persistent store.
 
 use serde::{Deserialize, Serialize};
-use tauri_plugin_store::StoreExt;
 use std::path::Path;
+use tauri_plugin_store::StoreExt;
 
 /// Maximum number of recent files to track
 const MAX_RECENT_FILES: usize = 10;
@@ -27,7 +27,13 @@ fn sanitize_path(path: &str) -> String {
     // Remove dangerous characters
     truncated
         .chars()
-        .map(|ch| if SANITIZE_CHARS.contains(&ch) { ' ' } else { ch })
+        .map(|ch| {
+            if SANITIZE_CHARS.contains(&ch) {
+                ' '
+            } else {
+                ch
+            }
+        })
         .collect()
 }
 
@@ -55,9 +61,7 @@ impl RecentFileEntry {
 /// Returns a list of recently opened file paths in most-recently-used order.
 /// Files that no longer exist are filtered out.
 #[tauri::command]
-pub async fn get_recent_files(
-    app: tauri::AppHandle,
-) -> Result<Vec<String>, String> {
+pub async fn get_recent_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     let store = app.store("recent_files.json").map_err(|e| e.to_string())?;
 
     // Load recent files from store
@@ -78,7 +82,10 @@ pub async fn get_recent_files(
         }
     }
 
-    log::info!("get_recent_files: returning {} valid recent files", valid_files.len());
+    log::info!(
+        "get_recent_files: returning {} valid recent files",
+        valid_files.len()
+    );
     Ok(valid_files)
 }
 
@@ -87,10 +94,7 @@ pub async fn get_recent_files(
 /// Tracks a file as recently opened. If the file is already in the list,
 /// it's moved to the front. The list is limited to MAX_RECENT_FILES entries.
 #[tauri::command]
-pub async fn add_recent_file(
-    app: tauri::AppHandle,
-    path: String,
-) -> Result<(), String> {
+pub async fn add_recent_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
     // SECURITY: Sanitize path before storing to prevent injection attacks
     let sanitized_path = sanitize_path(&path);
 
@@ -118,7 +122,10 @@ pub async fn add_recent_file(
     store.set(RECENT_FILES_KEY, json_value);
     store.save().map_err(|e| e.to_string())?;
 
-    log::info!("add_recent_file: added file, total recent files: {}", entries.len());
+    log::info!(
+        "add_recent_file: added file, total recent files: {}",
+        entries.len()
+    );
     Ok(())
 }
 
@@ -126,9 +133,7 @@ pub async fn add_recent_file(
 ///
 /// Removes all entries from the recent files list.
 #[tauri::command]
-pub async fn clear_recent_files(
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+pub async fn clear_recent_files(app: tauri::AppHandle) -> Result<(), String> {
     let store = app.store("recent_files.json").map_err(|e| e.to_string())?;
 
     // Clear the store
