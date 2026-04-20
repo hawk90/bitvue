@@ -105,6 +105,18 @@ maybe_download() {
 
 mkdir -p "$TEST_DATA"
 
+# ── Temp file registry & unified cleanup ──────────────────────────────────────
+TMPFILES=()
+cleanup() { rm -f "${TMPFILES[@]+"${TMPFILES[@]}"}"; }
+trap cleanup EXIT
+
+new_tmp() {
+  local f
+  f=$(mktemp "${TMPDIR:-/tmp}/bitvue_parity_XXXXXX")
+  TMPFILES+=("$f")
+  echo "$f"
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Section 1: Local AV1 fixture
 # ══════════════════════════════════════════════════════════════════════════════
@@ -145,8 +157,7 @@ else
 fi
 
 # Empty file must not crash
-TMPFILE=$(mktemp /tmp/bitvue_parity_XXXXXX.bin)
-trap "rm -f $TMPFILE" EXIT
+TMPFILE=$(new_tmp bin)
 : > "$TMPFILE"   # empty
 if "$BITVUE" decode "$TMPFILE" >/dev/null 2>&1; then
   ok "Empty file handled gracefully"
@@ -167,8 +178,7 @@ echo
 # Section 4: HEVC synthetic tests
 # ══════════════════════════════════════════════════════════════════════════════
 echo "=== HEVC (synthetic) ==="
-HEVC_TMP=$(mktemp /tmp/bitvue_hevc_XXXXXX.hevc)
-trap "rm -f $HEVC_TMP" EXIT
+HEVC_TMP=$(new_tmp hevc)
 
 # Minimal Annex B: start code + HEVC VPS NAL header (2 bytes)
 printf '\x00\x00\x00\x01\x40\x01' > "$HEVC_TMP"
@@ -209,8 +219,7 @@ echo
 # Section 5: AVC synthetic tests
 # ══════════════════════════════════════════════════════════════════════════════
 echo "=== AVC/H.264 (synthetic) ==="
-AVC_TMP=$(mktemp /tmp/bitvue_avc_XXXXXX.h264)
-trap "rm -f $AVC_TMP" EXIT
+AVC_TMP=$(new_tmp h264)
 
 # Minimal Annex B: start code + AVC SPS NAL header (0x67)
 printf '\x00\x00\x00\x01\x67\x00\x00\x00' > "$AVC_TMP"
@@ -250,8 +259,7 @@ echo
 # Section 6: VP9 synthetic tests
 # ══════════════════════════════════════════════════════════════════════════════
 echo "=== VP9 (synthetic) ==="
-VP9_TMP=$(mktemp /tmp/bitvue_vp9_XXXXXX.ivf)
-trap "rm -f $VP9_TMP" EXIT
+VP9_TMP=$(new_tmp ivf)
 
 # Minimal IVF with VP90 FourCC, 0 frames
 {

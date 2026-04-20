@@ -35,8 +35,8 @@ pub use bitreader::BitReader;
 pub use bool_decoder::{Vp9BoolDecoder, BIASED_SEG_TREE_PROBS, DEFAULT_SEG_TREE_PROBS};
 pub use error::{Result, Vp9Error};
 pub use frame_header::{
-    ColorSpace, FrameHeader, FrameType, InterpolationFilter, LoopFilter, Quantization, RefFrame,
-    SegmentFeature, Segmentation,
+    parse_frame_header, ColorSpace, FrameHeader, FrameType, InterpolationFilter, LoopFilter,
+    Quantization, RefFrame, SegmentFeature, Segmentation,
 };
 pub use frames::{
     extract_frame_at_index, extract_vp9_frames, vp9_frame_to_unit_node, vp9_frames_to_unit_nodes,

@@ -110,6 +110,25 @@ impl<'a> MsbBitReader<'a> {
             _ => Vp9Error::InvalidData(e.to_string()),
         })
     }
+
+    /// Read `n` bits MSB-first and return as a u32 value.
+    /// Identical to `read_bits` but mirrors the `BitReader::read_literal` API
+    /// so that `parse_frame_header` can be used with either reader type.
+    pub fn read_literal(&mut self, n: u8) -> Result<u32> {
+        if n == 0 {
+            return Ok(0);
+        }
+        if n > 32 {
+            return Err(Vp9Error::InvalidData(
+                "Cannot read more than 32 bits at once".to_string(),
+            ));
+        }
+        let mut result: u32 = 0;
+        for _ in 0..n {
+            result = (result << 1) | (self.read_bit()? as u32);
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(test)]

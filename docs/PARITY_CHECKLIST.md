@@ -26,21 +26,19 @@ Run the regression suite to validate:
 | L1-AV1-04 | AV1 | max-frames limit | [x] | `parity_test::av1_max_frames_limit_respected` |
 | L1-AV1-05 | AV1 | Auto-detect IVF | [x] | `parity_test::av1_autodetect_without_force_codec` |
 | L1-AV1-06 | AV1 | Stream stats | [x] | `parity_test::av1_stream_stats_flag_runs_without_error` |
-| L1-HEVC-01 | HEVC | Annex B NAL extraction | [-] | `parity_test::hevc_minimal_annexb_does_not_panic` |
-| L1-HEVC-02 | HEVC | Frame stats (IDR/CRA/TRAIL) | [-] | `parity_check.sh §4` |
-| L1-HEVC-03 | HEVC | --stream-stats NAL breakdown | [-] | `parity_check.sh §4` |
+| L1-HEVC-01 | HEVC | Annex B NAL extraction | [x] | `parity_check.sh §4` |
+| L1-HEVC-02 | HEVC | Frame stats (IDR/CRA/TRAIL) | [x] | `parity_check.sh §4 fixture` |
+| L1-HEVC-03 | HEVC | --stream-stats NAL breakdown | [x] | `parity_check.sh §4 --stream-stats` |
 | L1-HEVC-04 | HEVC | Empty/garbage resilience | [x] | `parity_test::hevc_empty/garbage_*` |
-| L1-AVC-01 | AVC | Annex B NAL extraction | [-] | `parity_test::avc_minimal_annexb_does_not_panic` |
-| L1-AVC-02 | AVC | Frame stats (IDR/I/P/B) | [-] | `parity_check.sh §5` |
+| L1-AVC-01 | AVC | Annex B NAL extraction | [x] | `parity_check.sh §5` |
+| L1-AVC-02 | AVC | Frame stats (IDR/I/P/B) | [x] | `parity_check.sh §5 fixture` |
 | L1-AVC-03 | AVC | Empty/garbage resilience | [x] | `parity_test::avc_empty/garbage_*` |
-| L1-VP9-01 | VP9 | IVF VP90 frame extraction | [-] | `parity_test::vp9_minimal_ivf_*` |
+| L1-VP9-01 | VP9 | IVF VP90 frame extraction | [x] | `parity_check.sh §6 fixture` |
 | L1-VP9-02 | VP9 | Auto-detect VP90 FourCC | [x] | `parity_test::vp9_autodetect_from_ivf_fourcc_does_not_panic` |
-| L1-VP9-03 | VP9 | KEY/INTER frame types | [-] | `parity_check.sh §6` |
+| L1-VP9-03 | VP9 | KEY/INTER frame types | [x] | `parity_check.sh §6 KEY frame check` |
 | L1-VP9-04 | VP9 | Empty/garbage resilience | [x] | `parity_test::vp9_empty/garbage_*` |
 
-**Notes:**
-- `[-]` items require real fixture files in `test_data/` to fully validate.  
-  Add `test_data/hevc_test.hevc`, `test_data/avc_test.h264`, `test_data/vp9_test.ivf` to unlock them.
+**Fixtures**: `test_data/hevc_test.hevc`, `test_data/avc_test.h264`, `test_data/vp9_test.ivf` (generated via ffmpeg testsrc).
 
 ---
 
@@ -50,12 +48,12 @@ Mapped from `FULL_PARITY_MATRIX_JSON` P0/P1 items.
 
 | ID | Item | Severity | Status | Notes |
 |----|------|----------|--------|-------|
-| IA-01 | Main panel: coding flow grid (CTB/CU/PU hierarchy) | P0 | [-] | AV1/HEVC partition overlay implemented |
-| IA-02 | Timeline view (frame sizes, QP, filmstrip) | P0 | [-] | QP heatmap + filmstrip in progress |
-| IA-03 | Syntax tree panel per codec | P0 | [-] | Frontend syntax panel pending |
-| IA-04 | Selection info (CTB addr, MV, QP, pred mode) | P0 | [-] | Block selection overlay implemented |
-| IA-05 | Hex view (raw bytes, offset, ASCII) | P0 | [ ] | Not started |
-| IA-06 | Status panel (errors, warnings, stream info) | P1 | [-] | Status bar partial |
+| IA-01 | Main panel: coding flow grid (CTB/CU/PU hierarchy) | P0 | [x] | `coding-flow` mode (F2) — CodingFlowRenderer.tsx |
+| IA-02 | Timeline view (frame sizes, QP, filmstrip) | P0 | [-] | QP heatmap (F5) done; filmstrip/timeline lane pending |
+| IA-03 | Syntax tree panel per codec | P0 | [x] | SyntaxPanel — per-codec tabs (Phase 8) |
+| IA-04 | Selection info (CTB addr, MV, QP, pred mode) | P0 | [x] | SelectionInfoPanel — block click shows details |
+| IA-05 | Hex view (raw bytes, offset, ASCII) | P0 | [ ] | Not started — no HexView component |
+| IA-06 | Status panel (errors, warnings, stream info) | P1 | [x] | StatusBar + error count in AppLayout |
 
 ---
 
@@ -66,13 +64,13 @@ Mapped from `FULL_PARITY_MATRIX_JSON` P0/P1 items.
 | OV-01 | QP Heatmap | AV1, HEVC, AVC, VP9 | [x] | F2 |
 | OV-02 | MV Field | AV1, HEVC, AVC | [x] | F1 |
 | OV-03 | Partition grid | AV1, HEVC | [x] | F3 |
-| OV-04 | CBF Luma | AV1, HEVC | [-] | F4 |
-| OV-05 | Transform type | AV1 | [-] | F5 |
-| OV-06 | Prediction mode | AV1, HEVC, AVC | [-] | F6 |
-| OV-07 | CDEF | AV1 | [-] | F7 |
-| OV-08 | Loop restoration | AV1 | [-] | F8 |
-| OV-09 | Film grain | AV1 | [-] | F9 |
-| OV-10 | Super-res | AV1 | [-] | F10 |
+| OV-04 | CBF Luma | AV1, HEVC | [x] | F4 (`transform` mode via TransformRenderer) |
+| OV-05 | Transform type | AV1 | [x] | F4 (`transform` / TransformRenderer.tsx) |
+| OV-06 | Prediction mode | AV1, HEVC, AVC | [x] | F3 (`prediction` / PredictionRenderer.tsx) |
+| OV-07 | CDEF | AV1 | [x] | `cdef-filter` / Av1CdefRenderer.tsx |
+| OV-08 | Loop restoration | AV1 | [x] | `loop-restoration` / Av1LoopRestorationRenderer.tsx |
+| OV-09 | Film grain | AV1 | [x] | `film-grain` / Av1FilmGrainRenderer.tsx |
+| OV-10 | Super-res | AV1 | [x] | `super-res` / Av1SuperResRenderer.tsx |
 
 ---
 
@@ -124,19 +122,28 @@ All shortcuts verified against VQA reference (Phase 11).
 Run `./scripts/run_regression_suite.sh` and paste results here.
 
 ```
-Last run: (not yet run)
-PASS: -
-FAIL: -
+Last run: 2026-04-20
+PASS: 29 (parity_check.sh --local)
+FAIL: 0
+cargo test -p bitvue-cli --test parity_test: 29/29
 ```
 
 ---
 
-## Fixture Files Needed
+## Remaining Work
 
-To unlock `[-]` items, add these to `test_data/`:
+| Item | Priority | Description |
+|------|----------|-------------|
+| IA-05 Hex view | P0 | HexView component — raw byte viewer with offset/hex/ASCII columns |
+| IA-02 Timeline lane | P2 | Filmstrip timeline with frame-size bars (QP heatmap already done) |
 
-| File | Description | How to obtain |
-|------|-------------|---------------|
-| `test_data/hevc_test.hevc` | Any valid HEVC Annex B clip | `ffmpeg -i input.mp4 -c:v libx265 -frames:v 30 -bsf:v hevc_mp4toannexb test_data/hevc_test.hevc` |
-| `test_data/avc_test.h264` | Any valid AVC Annex B clip | `ffmpeg -i input.mp4 -c:v libx264 -frames:v 30 -bsf:v h264_mp4toannexb test_data/avc_test.h264` |
-| `test_data/vp9_test.ivf` | VP9 in IVF container | `ffmpeg -i input.mp4 -c:v libvpx-vp9 -frames:v 30 -f ivf test_data/vp9_test.ivf` |
+## Fixture Files
+
+Generated with ffmpeg testsrc (synthetic, 30 frames, 320×240):
+
+| File | Codec | Size |
+|------|-------|------|
+| `test_data/av1_test.ivf` | AV1 IVF | (existing) |
+| `test_data/hevc_test.hevc` | HEVC Annex B | 7.5 KB |
+| `test_data/avc_test.h264` | AVC Annex B | 7.4 KB |
+| `test_data/vp9_test.ivf` | VP9 IVF | 11.4 KB |

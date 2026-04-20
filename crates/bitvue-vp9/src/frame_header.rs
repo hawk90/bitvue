@@ -6,7 +6,7 @@
 //!
 //! This module parses the uncompressed header.
 
-use crate::bitreader::BitReader;
+use crate::bitreader::MsbBitReader as BitReader;
 use crate::error::{Result, Vp9Error};
 // Re-export FrameType for other modules in this crate
 pub use bitvue_core::FrameType;

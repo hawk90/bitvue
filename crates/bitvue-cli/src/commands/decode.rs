@@ -437,25 +437,63 @@ fn extract_vp9_frames(
     limit: usize,
     want_md5: bool,
 ) -> Result<(Vec<FrameRecord>, usize)> {
-    use bitvue_vp9::{extract_vp9_frames as vp9_extract, Vp9FrameType};
+    use bitvue_vp9::{parse_frame_header, FrameType as Vp9FrameType2};
 
-    let frames = vp9_extract(data).map_err(|e| anyhow::anyhow!("VP9 parse error: {}", e))?;
-    let mut records = Vec::new();
+    // VP9 is commonly carried in IVF.  When the file starts with "DKIF" we strip
+    // the IVF container and process each IVF packet as one VP9 frame payload.
+    // For raw VP9 bitstream (no IVF wrapper) we pass the whole slice.
+    let is_ivf = data.len() >= 4 && &data[0..4] == b"DKIF";
 
-    for frame in frames.iter().take(limit) {
-        let key_frame = matches!(frame.frame_type, Vp9FrameType::Key);
+    let payloads: Vec<(u64, u64, &[u8])>; // (pts, file_offset, vp9_payload)
+    let _owned: Vec<u8>; // keep allocations alive
+
+    if is_ivf {
+        let (hdr, ivf_frames) =
+            parse_ivf_frames(data).map_err(|e| anyhow::anyhow!("VP9 IVF parse error: {}", e))?;
+        let header_size = hdr.header_size as usize;
+        payloads = ivf_frames
+            .iter()
+            .scan(header_size + 0, |off, f| {
+                // IVF frame header = 12 bytes (4 size + 8 pts)
+                let payload_off = *off + 12;
+                let payload_end = (payload_off + f.data.len()).min(data.len());
+                let pts = f.timestamp;
+                let file_off = payload_off as u64;
+                *off = payload_end;
+                Some((pts, file_off, &data[payload_off..payload_end]))
+            })
+            .collect();
+    } else {
+        // Raw VP9 — treat whole slice as one payload
+        payloads = vec![(0, 0, data)];
+    }
+
+    let mut records: Vec<FrameRecord> = Vec::new();
+
+    for (frame_idx, (pts, file_offset, payload)) in payloads.iter().enumerate() {
+        if records.len() >= limit {
+            break;
+        }
+        if payload.is_empty() {
+            continue;
+        }
+
+        // Parse VP9 uncompressed frame header to get frame type
+        let key_frame = match parse_frame_header(payload) {
+            Ok(hdr) => matches!(hdr.frame_type, Vp9FrameType2::Key),
+            // If header parse fails, assume INTER (non-key) — don't crash
+            Err(_) => false,
+        };
         let frame_type = if key_frame { "KEY" } else { "INTER" }.to_string();
-        let end = (frame.offset + frame.size).min(data.len());
-        let frame_data = &data[frame.offset..end];
 
         records.push(FrameRecord {
-            index: frame.frame_index,
+            index: frame_idx,
             frame_type,
-            size: frame.size,
-            pts: None,
-            offset: frame.offset as u64,
+            size: payload.len(),
+            pts: Some(*pts),
+            offset: *file_offset,
             key_frame,
-            md5_hex: maybe_md5(frame_data, want_md5),
+            md5_hex: maybe_md5(payload, want_md5),
         });
     }
 
