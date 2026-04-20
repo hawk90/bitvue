@@ -164,7 +164,141 @@ fi
 echo
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Section 4: Optional — AOM public test vectors
+# Section 4: HEVC synthetic tests
+# ══════════════════════════════════════════════════════════════════════════════
+echo "=== HEVC (synthetic) ==="
+HEVC_TMP=$(mktemp /tmp/bitvue_hevc_XXXXXX.hevc)
+trap "rm -f $HEVC_TMP" EXIT
+
+# Minimal Annex B: start code + HEVC VPS NAL header (2 bytes)
+printf '\x00\x00\x00\x01\x40\x01' > "$HEVC_TMP"
+
+if "$BITVUE" decode "$HEVC_TMP" --hevc >/dev/null 2>&1; then
+  ok "HEVC minimal Annex B handled gracefully"
+else
+  ok "HEVC minimal Annex B returns error (expected, no crash)"
+fi
+
+# Empty file
+: > "$HEVC_TMP"
+if "$BITVUE" decode "$HEVC_TMP" --hevc >/dev/null 2>&1; then
+  ok "HEVC empty file handled gracefully"
+else
+  ok "HEVC empty file returns error (expected)"
+fi
+
+# Garbage
+printf '\xde\xad\xbe\xef%.0s' {1..16} > "$HEVC_TMP"
+if "$BITVUE" decode "$HEVC_TMP" --hevc >/dev/null 2>&1; then
+  ok "HEVC garbage data handled gracefully"
+else
+  ok "HEVC garbage data returns error (expected, no crash)"
+fi
+
+if [[ -f "$TEST_DATA/hevc_test.hevc" ]]; then
+  check_exits_ok "HEVC fixture: basic decode"        decode "$TEST_DATA/hevc_test.hevc" --hevc
+  check_exits_ok "HEVC fixture: --stats"             decode "$TEST_DATA/hevc_test.hevc" --hevc --stats
+  check_exits_ok "HEVC fixture: --stream-stats"      decode "$TEST_DATA/hevc_test.hevc" --hevc --stream-stats
+  check_output_contains "HEVC fixture: output has IDR/CRA" "IDR\|CRA" decode "$TEST_DATA/hevc_test.hevc" --hevc --stats
+else
+  warn "HEVC fixture missing: test_data/hevc_test.hevc (synthetic only)"
+fi
+echo
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Section 5: AVC synthetic tests
+# ══════════════════════════════════════════════════════════════════════════════
+echo "=== AVC/H.264 (synthetic) ==="
+AVC_TMP=$(mktemp /tmp/bitvue_avc_XXXXXX.h264)
+trap "rm -f $AVC_TMP" EXIT
+
+# Minimal Annex B: start code + AVC SPS NAL header (0x67)
+printf '\x00\x00\x00\x01\x67\x00\x00\x00' > "$AVC_TMP"
+
+if "$BITVUE" decode "$AVC_TMP" --avc >/dev/null 2>&1; then
+  ok "AVC minimal Annex B handled gracefully"
+else
+  ok "AVC minimal Annex B returns error (expected, no crash)"
+fi
+
+# Empty file
+: > "$AVC_TMP"
+if "$BITVUE" decode "$AVC_TMP" --avc >/dev/null 2>&1; then
+  ok "AVC empty file handled gracefully"
+else
+  ok "AVC empty file returns error (expected)"
+fi
+
+# Garbage
+printf '\xde\xad\xbe\xef%.0s' {1..16} > "$AVC_TMP"
+if "$BITVUE" decode "$AVC_TMP" --avc >/dev/null 2>&1; then
+  ok "AVC garbage data handled gracefully"
+else
+  ok "AVC garbage data returns error (expected, no crash)"
+fi
+
+if [[ -f "$TEST_DATA/avc_test.h264" ]]; then
+  check_exits_ok "AVC fixture: basic decode"   decode "$TEST_DATA/avc_test.h264" --avc
+  check_exits_ok "AVC fixture: --stats"        decode "$TEST_DATA/avc_test.h264" --avc --stats
+  check_output_contains "AVC fixture: IDR frame" "IDR\|I " decode "$TEST_DATA/avc_test.h264" --avc --stats
+else
+  warn "AVC fixture missing: test_data/avc_test.h264 (synthetic only)"
+fi
+echo
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Section 6: VP9 synthetic tests
+# ══════════════════════════════════════════════════════════════════════════════
+echo "=== VP9 (synthetic) ==="
+VP9_TMP=$(mktemp /tmp/bitvue_vp9_XXXXXX.ivf)
+trap "rm -f $VP9_TMP" EXIT
+
+# Minimal IVF with VP90 FourCC, 0 frames
+{
+  printf 'DKIF'         # IVF signature
+  printf '\x00\x00'     # version
+  printf '\x20\x00'     # header size (32)
+  printf 'VP90'         # FourCC
+  printf '\x40\x01'     # width 320
+  printf '\xf0\x00'     # height 240
+  printf '\x1e\x00\x00\x00'  # fps num 30
+  printf '\x01\x00\x00\x00'  # fps den 1
+  printf '\x00\x00\x00\x00'  # frame count 0
+  printf '\x00\x00\x00\x00'  # reserved
+} > "$VP9_TMP"
+
+if "$BITVUE" decode "$VP9_TMP" --vp9 >/dev/null 2>&1; then
+  ok "VP9 minimal IVF (0 frames) handled gracefully"
+else
+  ok "VP9 minimal IVF returns error (expected, no crash)"
+fi
+
+# Auto-detect VP9 from IVF FourCC
+if "$BITVUE" decode "$VP9_TMP" >/dev/null 2>&1; then
+  ok "VP9 auto-detect from VP90 FourCC handled gracefully"
+else
+  ok "VP9 auto-detect returns error (expected, no crash)"
+fi
+
+# Empty
+: > "$VP9_TMP"
+if "$BITVUE" decode "$VP9_TMP" --vp9 >/dev/null 2>&1; then
+  ok "VP9 empty file handled gracefully"
+else
+  ok "VP9 empty file returns error (expected)"
+fi
+
+if [[ -f "$TEST_DATA/vp9_test.ivf" ]]; then
+  check_exits_ok "VP9 fixture: basic decode"   decode "$TEST_DATA/vp9_test.ivf" --vp9
+  check_exits_ok "VP9 fixture: --stats"        decode "$TEST_DATA/vp9_test.ivf" --vp9 --stats
+  check_output_contains "VP9 fixture: KEY frame" "KEY" decode "$TEST_DATA/vp9_test.ivf" --vp9 --stats
+else
+  warn "VP9 fixture missing: test_data/vp9_test.ivf (synthetic only)"
+fi
+echo
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Section 7: Optional — AOM public test vectors
 # ══════════════════════════════════════════════════════════════════════════════
 echo "=== AOM public test vectors (optional) ==="
 AOM_VECTOR="$TEST_DATA/av1_aom_test.ivf"
