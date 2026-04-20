@@ -11,6 +11,7 @@ export type {
   YUVFormat,
   ChromaSubsampling,
   ColorspaceMatrix,
+  ChannelMode,
 } from "../../types/yuv";
 export { Colorspace, COLORSPACE_MATRICES } from "../../types/yuv";
 

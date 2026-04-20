@@ -43,6 +43,16 @@ export interface KeyboardNavigationOptions {
   onSaveFrame?: () => void;
   /** Optional: Handle F-key mode switch (1-12). Returns true if handled. */
   onFKey?: (fKey: number) => boolean;
+  /** Optional: Reload current file */
+  onReloadFile?: () => void;
+  /** Optional: Toggle fullscreen */
+  onToggleFullscreen?: () => void;
+  /** Optional: Escape action (exit fullscreen / clear selection) */
+  onEscape?: () => void;
+  /** Optional: Undo last selection */
+  onUndoSelection?: () => void;
+  /** Optional: Copy selected block info to clipboard */
+  onCopyBlockInfo?: () => void;
 }
 
 /**
@@ -62,6 +72,11 @@ export function useKeyboardNavigation({
   onShowExport,
   onSaveFrame,
   onFKey,
+  onReloadFile,
+  onToggleFullscreen,
+  onEscape,
+  onUndoSelection,
+  onCopyBlockInfo,
 }: KeyboardNavigationOptions) {
   // Keep numeric state in refs so the single effect closure always reads current values
   const currentIndexRef = useRef(currentIndex);
@@ -79,6 +94,11 @@ export function useKeyboardNavigation({
     onShowExport,
     onSaveFrame,
     onFKey,
+    onReloadFile,
+    onToggleFullscreen,
+    onEscape,
+    onUndoSelection,
+    onCopyBlockInfo,
   });
   cbRef.current = {
     ...callbacks,
@@ -89,6 +109,11 @@ export function useKeyboardNavigation({
     onShowExport,
     onSaveFrame,
     onFKey,
+    onReloadFile,
+    onToggleFullscreen,
+    onEscape,
+    onUndoSelection,
+    onCopyBlockInfo,
   };
 
   useEffect(() => {
@@ -214,6 +239,80 @@ export function useKeyboardNavigation({
       description: "Show keyboard shortcuts",
       action: () => cbRef.current.onShowShortcuts?.(),
     });
+
+    // ── File reload ───────────────────────────────────────────────────────
+    reg({
+      key: "r",
+      ctrl: true,
+      meta: true,
+      description: "Reload file",
+      action: () => cbRef.current.onReloadFile?.(),
+    });
+
+    // ── Fullscreen ────────────────────────────────────────────────────────
+    reg({
+      key: "f",
+      description: "Toggle fullscreen",
+      action: () => cbRef.current.onToggleFullscreen?.(),
+    });
+    reg({
+      key: "F11",
+      description: "Toggle OS fullscreen",
+      action: () => cbRef.current.onToggleFullscreen?.(),
+    });
+    reg({
+      key: "Escape",
+      description: "Exit fullscreen / clear selection",
+      action: () => cbRef.current.onEscape?.(),
+    });
+
+    // ── Selection ─────────────────────────────────────────────────────────
+    reg({
+      key: "z",
+      ctrl: true,
+      meta: true,
+      description: "Undo selection",
+      action: () => cbRef.current.onUndoSelection?.(),
+    });
+    reg({
+      key: "c",
+      ctrl: true,
+      meta: true,
+      description: "Copy block info",
+      action: () => cbRef.current.onCopyBlockInfo?.(),
+    });
+
+    // ── Channel display (Y / U / V) ───────────────────────────────────────
+    reg({
+      key: "y",
+      description: "Toggle Y channel display",
+      action: () => window.dispatchEvent(new CustomEvent("viewer-channel-y")),
+    });
+    reg({
+      key: "u",
+      description: "Toggle U channel display",
+      action: () => window.dispatchEvent(new CustomEvent("viewer-channel-u")),
+    });
+    reg({
+      key: "v",
+      description: "Toggle V channel display",
+      action: () => window.dispatchEvent(new CustomEvent("viewer-channel-v")),
+    });
+
+    // ── Ctrl+F1–F6: Info Overlay toggles ─────────────────────────────────
+    for (let n = 1; n <= 6; n++) {
+      const fKey = n;
+      reg({
+        key: `F${fKey}`,
+        ctrl: true,
+        description: `Toggle info overlay F${fKey}`,
+        action: () => {
+          window.dispatchEvent(
+            new CustomEvent("viewer-toggle-overlay-fkey", { detail: fKey }),
+          );
+        },
+      });
+    }
 
     // ── F-key mode switching (F1–F12) ─────────────────────────────────────
     // Codec-specific: ModeContext maps each F-key to a visualization mode.

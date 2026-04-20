@@ -16,10 +16,68 @@ import {
   YUVRenderer,
   type YUVFrame,
   Colorspace,
+  type ChannelMode,
 } from "../../../utils/yuvRenderer";
 import { createLogger } from "../../../utils/logger";
 
 const logger = createLogger("VideoCanvas");
+
+/** Apply channel isolation by zeroing out the unused planes (neutral chroma = 128). */
+function applyChannelMode(frame: YUVFrame, mode: ChannelMode): YUVFrame {
+  if (mode === "all") return frame;
+  const neutral128 = (len: number) => new Uint8Array(len).fill(128);
+  switch (mode) {
+    case "Y":
+      return {
+        ...frame,
+        u: neutral128(frame.u.length),
+        v: neutral128(frame.v.length),
+      };
+    case "U": {
+      // Upscale U plane to luma size and display as luminance (grayscale)
+      const yFromU = new Uint8Array(frame.y.length);
+      const scaleX =
+        frame.chromaSubsampling === "420" || frame.chromaSubsampling === "422"
+          ? 2
+          : 1;
+      const scaleY = frame.chromaSubsampling === "420" ? 2 : 1;
+      for (let py = 0; py < frame.height; py++) {
+        for (let px = 0; px < frame.width; px++) {
+          const cu = Math.floor(px / scaleX);
+          const cv = Math.floor(py / scaleY);
+          yFromU[py * frame.yStride + px] = frame.u[cv * frame.uStride + cu];
+        }
+      }
+      return {
+        ...frame,
+        y: yFromU,
+        u: neutral128(frame.u.length),
+        v: neutral128(frame.v.length),
+      };
+    }
+    case "V": {
+      const yFromV = new Uint8Array(frame.y.length);
+      const scaleX =
+        frame.chromaSubsampling === "420" || frame.chromaSubsampling === "422"
+          ? 2
+          : 1;
+      const scaleY = frame.chromaSubsampling === "420" ? 2 : 1;
+      for (let py = 0; py < frame.height; py++) {
+        for (let px = 0; px < frame.width; px++) {
+          const cu = Math.floor(px / scaleX);
+          const cv = Math.floor(py / scaleY);
+          yFromV[py * frame.yStride + px] = frame.v[cv * frame.vStride + cu];
+        }
+      }
+      return {
+        ...frame,
+        y: yFromV,
+        u: neutral128(frame.u.length),
+        v: neutral128(frame.v.length),
+      };
+    }
+  }
+}
 
 interface VideoCanvasProps {
   frameImage: HTMLImageElement | null;
@@ -39,6 +97,10 @@ interface VideoCanvasProps {
   activeOverlays?: ReadonlySet<VisualizationMode>;
   /** AV1 advanced feature data for CDEF / LR / film-grain / super-res modes. */
   av1Features?: Av1FeaturesData;
+  /** Colorspace for YUV→RGB conversion (default BT.709) */
+  colorspace?: Colorspace;
+  /** Channel isolation mode (default "all") */
+  channelMode?: ChannelMode;
 }
 
 export const VideoCanvas = memo(function VideoCanvas({
@@ -56,6 +118,8 @@ export const VideoCanvas = memo(function VideoCanvas({
   yuvData,
   activeOverlays,
   av1Features,
+  colorspace = Colorspace.BT709,
+  channelMode = "all",
 }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const webglCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -128,8 +192,8 @@ export const VideoCanvas = memo(function VideoCanvas({
 
     // Render source
     if (useYUV && yuvData && rendererRef.current) {
-      // Render YUV data using the renderer
-      rendererRef.current.render(yuvData, Colorspace.BT709);
+      const frameToRender = applyChannelMode(yuvData, channelMode);
+      rendererRef.current.render(frameToRender, colorspace);
     } else if (frameImage) {
       // Render image as fallback
       ctx.drawImage(frameImage, 0, 0);
@@ -153,6 +217,8 @@ export const VideoCanvas = memo(function VideoCanvas({
     currentFrame,
     activeOverlays,
     av1Features,
+    colorspace,
+    channelMode,
   ]);
 
   return (

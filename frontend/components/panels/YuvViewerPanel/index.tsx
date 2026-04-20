@@ -28,7 +28,11 @@ import { useCanvasInteraction } from "../../../hooks/useCanvasInteraction";
 import { useAv1Features } from "../../../hooks/useAv1Features";
 import { ZOOM, TIMING } from "../../../constants/ui";
 import { VideoCanvas } from "./VideoCanvas";
-import { YUVFrame } from "../../../utils/yuvRenderer";
+import {
+  YUVFrame,
+  Colorspace,
+  type ChannelMode,
+} from "../../../utils/yuvRenderer";
 import { FrameNavigationControls } from "./FrameNavigationControls";
 import { PlaybackControls } from "./PlaybackControls";
 import { ModeSelector } from "./ModeSelector";
@@ -149,8 +153,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const playbackTimerRef = useRef<number | null>(null);
+
+  // Color space and channel display
+  const [colorspace, setColorspace] = useState<Colorspace>(Colorspace.BT709);
+  const [channelMode, setChannelMode] = useState<ChannelMode>("all");
 
   // Load frame and analysis data when currentFrameIndex changes
   useEffect(() => {
@@ -311,6 +320,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     playbackTimerRef.current = setTimeout(() => {
       if (currentFrameIndex < totalFrames - 1) {
         onFrameChange(currentFrameIndex + 1);
+      } else if (isLooping) {
+        onFrameChange(0);
       } else {
         setIsPlaying(false);
       }
@@ -321,7 +332,14 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         clearTimeout(playbackTimerRef.current);
       }
     };
-  }, [isPlaying, currentFrameIndex, totalFrames, playbackSpeed, onFrameChange]);
+  }, [
+    isPlaying,
+    isLooping,
+    currentFrameIndex,
+    totalFrames,
+    playbackSpeed,
+    onFrameChange,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -329,6 +347,43 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       if (playbackTimerRef.current) {
         clearTimeout(playbackTimerRef.current);
       }
+    };
+  }, []);
+
+  // Color space, channel mode, and loop events from menus/keyboard
+  useEffect(() => {
+    const onColorBT601 = () => setColorspace(Colorspace.BT601);
+    const onColorBT709 = () => setColorspace(Colorspace.BT709);
+    const onColorBT2020 = () => setColorspace(Colorspace.BT2020);
+    const onColorYuvRgb = () => setColorspace(Colorspace.BT709); // YUV-as-RGB: same matrix but skip offset
+    const onColorYuvGbr = () => setColorspace(Colorspace.BT709); // placeholder
+    const onChannelY = () => setChannelMode((m) => (m === "Y" ? "all" : "Y"));
+    const onChannelU = () => setChannelMode((m) => (m === "U" ? "all" : "U"));
+    const onChannelV = () => setChannelMode((m) => (m === "V" ? "all" : "V"));
+    const onChannelAll = () => setChannelMode("all");
+    const onLoopPlayback = () => setIsLooping((v) => !v);
+
+    window.addEventListener("menu-color-bt601", onColorBT601);
+    window.addEventListener("menu-color-bt709", onColorBT709);
+    window.addEventListener("menu-color-bt2020", onColorBT2020);
+    window.addEventListener("menu-color-yuv-rgb", onColorYuvRgb);
+    window.addEventListener("menu-color-yuv-gbr", onColorYuvGbr);
+    window.addEventListener("viewer-channel-y", onChannelY);
+    window.addEventListener("viewer-channel-u", onChannelU);
+    window.addEventListener("viewer-channel-v", onChannelV);
+    window.addEventListener("viewer-channel-all", onChannelAll);
+    window.addEventListener("menu-loop-playback", onLoopPlayback);
+    return () => {
+      window.removeEventListener("menu-color-bt601", onColorBT601);
+      window.removeEventListener("menu-color-bt709", onColorBT709);
+      window.removeEventListener("menu-color-bt2020", onColorBT2020);
+      window.removeEventListener("menu-color-yuv-rgb", onColorYuvRgb);
+      window.removeEventListener("menu-color-yuv-gbr", onColorYuvGbr);
+      window.removeEventListener("viewer-channel-y", onChannelY);
+      window.removeEventListener("viewer-channel-u", onChannelU);
+      window.removeEventListener("viewer-channel-v", onChannelV);
+      window.removeEventListener("viewer-channel-all", onChannelAll);
+      window.removeEventListener("menu-loop-playback", onLoopPlayback);
     };
   }, []);
 
@@ -518,6 +573,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           yuvData={convertedYuvFrame}
           activeOverlays={activeOverlays}
           av1Features={av1Features ?? undefined}
+          colorspace={colorspace}
+          channelMode={channelMode}
         />
       )}
 

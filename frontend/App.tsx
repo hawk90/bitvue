@@ -255,7 +255,8 @@ const LEFT_PANELS = [
  */
 function AppContent() {
   const { frames } = useFrameData();
-  const { loading, error, setFilePath, refreshFrames } = useFileState();
+  const { loading, error, setFilePath, refreshFrames, filePath } =
+    useFileState();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
 
   // GoToFrame dialog state
@@ -350,6 +351,53 @@ function AppContent() {
     window.dispatchEvent(new CustomEvent("save-current-frame"));
   }, []);
 
+  const onReloadFile = useCallback(() => {
+    if (filePath) void invoke("open_file", { path: filePath });
+  }, [filePath]);
+
+  const onToggleFullscreen = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const isFs = await win.isFullscreen();
+      await win.setFullscreen(!isFs);
+    } catch {
+      // Fallback to browser fullscreen API
+      if (!document.fullscreenElement) {
+        void document.documentElement.requestFullscreen();
+      } else {
+        void document.exitFullscreen();
+      }
+    }
+  }, []);
+
+  const onEscape = useCallback(async () => {
+    // Exit fullscreen if active
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      if (await win.isFullscreen()) {
+        await win.setFullscreen(false);
+        return;
+      }
+    } catch {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+        return;
+      }
+    }
+    // Clear selection
+    window.dispatchEvent(new CustomEvent("clear-selection"));
+  }, []);
+
+  const onUndoSelection = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("undo-selection"));
+  }, []);
+
+  const onCopyBlockInfo = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("copy-block-info"));
+  }, []);
+
   // Keyboard navigation
   useKeyboardNavigation({
     currentIndex: currentFrameIndex,
@@ -372,6 +420,11 @@ function AppContent() {
     ),
     onSaveFrame,
     onFKey: handleFKey,
+    onReloadFile,
+    onToggleFullscreen,
+    onEscape,
+    onUndoSelection,
+    onCopyBlockInfo,
   });
 
   // Tauri event listeners
@@ -423,7 +476,57 @@ function AppContent() {
     };
   }, [saveLayout, loadLayout, resetLayout]);
 
-  // Overlay toggle / clear events (from View → Info Overlays submenu)
+  // Options menu events: CPU avx2, codec settings, auto-save layout
+  useEffect(() => {
+    // CPU avx2 toggle — persist preference to localStorage
+    const handleCpuAvx2 = () => {
+      const key = "bitvue:cpu-avx2";
+      const next = !(localStorage.getItem(key) === "true");
+      localStorage.setItem(key, String(next));
+    };
+    // Codec settings — forward as viewer events so backend/panel can react
+    const fwd = (eventName: string) => () =>
+      window.dispatchEvent(new CustomEvent(eventName));
+    const handleHevcExt = fwd("codec-hevc-extensions");
+    const handleHevcIndex = fwd("codec-hevc-index");
+    const handleHevcMv = fwd("codec-hevc-mv");
+    const handleVvcDynamic = fwd("codec-vvc-dynamic");
+    const handleVvcDetails = fwd("codec-vvc-details");
+    const handleDigestForce = fwd("codec-digest-force");
+    const handleDigestNone = fwd("codec-digest-none");
+    const handleDigestStream = fwd("codec-digest-stream");
+    // Auto-save layout toggle
+    const handleAutoSaveLayout = () => {
+      const key = "bitvue:auto-save-layout";
+      const next = !(localStorage.getItem(key) === "true");
+      localStorage.setItem(key, String(next));
+    };
+
+    window.addEventListener("menu-cpu-avx2", handleCpuAvx2);
+    window.addEventListener("menu-codec-hevc-ext", handleHevcExt);
+    window.addEventListener("menu-codec-hevc-index", handleHevcIndex);
+    window.addEventListener("menu-codec-hevc-mv", handleHevcMv);
+    window.addEventListener("menu-codec-vvc-dynamic", handleVvcDynamic);
+    window.addEventListener("menu-codec-vvc-details", handleVvcDetails);
+    window.addEventListener("menu-digest-force", handleDigestForce);
+    window.addEventListener("menu-digest-none", handleDigestNone);
+    window.addEventListener("menu-digest-stream", handleDigestStream);
+    window.addEventListener("menu-auto-save-layout", handleAutoSaveLayout);
+    return () => {
+      window.removeEventListener("menu-cpu-avx2", handleCpuAvx2);
+      window.removeEventListener("menu-codec-hevc-ext", handleHevcExt);
+      window.removeEventListener("menu-codec-hevc-index", handleHevcIndex);
+      window.removeEventListener("menu-codec-hevc-mv", handleHevcMv);
+      window.removeEventListener("menu-codec-vvc-dynamic", handleVvcDynamic);
+      window.removeEventListener("menu-codec-vvc-details", handleVvcDetails);
+      window.removeEventListener("menu-digest-force", handleDigestForce);
+      window.removeEventListener("menu-digest-none", handleDigestNone);
+      window.removeEventListener("menu-digest-stream", handleDigestStream);
+      window.removeEventListener("menu-auto-save-layout", handleAutoSaveLayout);
+    };
+  }, []);
+
+  // Overlay toggle / clear events (from View → Info Overlays submenu + Ctrl+F1–F6)
   useEffect(() => {
     const handleToggleOverlay = (e: Event) => {
       const mode = (e as CustomEvent<string>).detail;
@@ -433,11 +536,33 @@ function AppContent() {
         );
     };
     const handleClearOverlays = () => clearOverlays();
+    // Ctrl+F1–F6: map to the first 6 available overlay modes
+    const handleOverlayFKey = (e: Event) => {
+      const fKey = (e as CustomEvent<number>).detail;
+      const overlayKeys = [
+        "mv-field",
+        "qp-heatmap",
+        "partition",
+        "cbf-luma",
+        "transform",
+        "pred-mode",
+      ] as const;
+      const mode = overlayKeys[fKey - 1];
+      if (mode)
+        toggleOverlay(
+          mode as import("./utils/codecModeRegistry").VisualizationMode,
+        );
+    };
     window.addEventListener("menu-toggle-overlay", handleToggleOverlay);
     window.addEventListener("menu-clear-overlays", handleClearOverlays);
+    window.addEventListener("viewer-toggle-overlay-fkey", handleOverlayFKey);
     return () => {
       window.removeEventListener("menu-toggle-overlay", handleToggleOverlay);
       window.removeEventListener("menu-clear-overlays", handleClearOverlays);
+      window.removeEventListener(
+        "viewer-toggle-overlay-fkey",
+        handleOverlayFKey,
+      );
     };
   }, [toggleOverlay, clearOverlays]);
 
