@@ -488,29 +488,33 @@ pub async fn get_frame_hex_data(
         max_bytes
     );
 
-    // Get file path
+    // Get frame offset/size from the already-parsed unit model (codec-agnostic)
     let core = state.core.lock().map_err(|e| e.to_string())?;
     let stream_a_lock = core.get_stream(StreamId::A);
     let stream_a = stream_a_lock.read();
     let _file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
-    let total_frames = stream_a.units.as_ref().map(|u| u.units.len()).unwrap_or(0);
+    let unit_info = stream_a.units.as_ref().and_then(|u| {
+        u.units.get(frame_index).map(|node| (node.offset, node.size))
+    });
     drop(stream_a);
     drop(core);
 
-    // Check frame index
-    if frame_index >= total_frames {
-        return Ok(FrameHexData {
-            frame_index,
-            data: Vec::new(),
-            size: 0,
-            truncated: false,
-            success: false,
-            error: Some(format!(
-                "Frame index {} out of range (total: {})",
-                frame_index, total_frames
-            )),
-        });
-    }
+    let (byte_offset, byte_size) = match unit_info {
+        Some(info) => info,
+        None => {
+            return Ok(FrameHexData {
+                frame_index,
+                data: Vec::new(),
+                size: 0,
+                truncated: false,
+                success: false,
+                error: Some(format!(
+                    "Frame index {} out of range",
+                    frame_index
+                )),
+            });
+        }
+    };
 
     // Use cached file data from decode_service to avoid repeated disk reads
     let file_data = state
@@ -519,45 +523,24 @@ pub async fn get_frame_hex_data(
         .map_err(|e| e.to_string())?
         .get_file_data_arc()?;
 
-    // Check if AV1 IVF file
-    if file_data.len() < 4 || &file_data[0..4] != b"DKIF" {
+    // Slice the raw frame bytes using the pre-computed offset/size (works for all codecs)
+    let start = byte_offset as usize;
+    let end = start.saturating_add(byte_size);
+    if end > file_data.len() {
         return Ok(FrameHexData {
             frame_index,
             data: Vec::new(),
             size: 0,
             truncated: false,
             success: false,
-            error: Some("Not an AV1 IVF file".to_string()),
+            error: Some(format!(
+                "Frame {} byte range {}..{} exceeds file size {}",
+                frame_index, start, end, file_data.len()
+            )),
         });
     }
 
-    // Parse IVF to get frame data
-    let frames = match bitvue_av1_codec::parse_ivf_frames(&file_data) {
-        Ok((_, ivf_frames)) => ivf_frames,
-        Err(e) => {
-            return Ok(FrameHexData {
-                frame_index,
-                data: Vec::new(),
-                size: 0,
-                truncated: false,
-                success: false,
-                error: Some(format!("Failed to parse IVF: {}", e)),
-            });
-        }
-    };
-
-    if validate_frame_index_bounds(frame_index, frames.len()).is_err() {
-        return Ok(FrameHexData {
-            frame_index,
-            data: Vec::new(),
-            size: 0,
-            truncated: false,
-            success: false,
-            error: Some(format!("Frame {} not found", frame_index)),
-        });
-    }
-
-    let frame_data = frames[frame_index].data.clone();
+    let frame_data = file_data[start..end].to_vec();
     let total_size = frame_data.len();
 
     // Limit bytes for display (default 2048 bytes)

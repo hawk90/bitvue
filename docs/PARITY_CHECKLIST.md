@@ -49,10 +49,10 @@ Mapped from `FULL_PARITY_MATRIX_JSON` P0/P1 items.
 | ID | Item | Severity | Status | Notes |
 |----|------|----------|--------|-------|
 | IA-01 | Main panel: coding flow grid (CTB/CU/PU hierarchy) | P0 | [x] | `coding-flow` mode (F2) — CodingFlowRenderer.tsx |
-| IA-02 | Timeline view (frame sizes, QP, filmstrip) | P0 | [-] | QP heatmap (F5) done; filmstrip/timeline lane pending |
+| IA-02 | Timeline view (frame sizes, QP, filmstrip) | P0 | [x] | FrameSizesView (bars + QP axis + bitrate curve) + Timeline.tsx + Filmstrip — wired via FilmstripPanel |
 | IA-03 | Syntax tree panel per codec | P0 | [x] | SyntaxPanel — per-codec tabs (Phase 8) |
 | IA-04 | Selection info (CTB addr, MV, QP, pred mode) | P0 | [x] | SelectionInfoPanel — block click shows details |
-| IA-05 | Hex view (raw bytes, offset, ASCII) | P0 | [ ] | Not started — no HexView component |
+| IA-05 | Hex view (raw bytes, offset, ASCII) | P0 | [x] | HexViewTab.tsx + `get_frame_hex_data` (codec-agnostic via UnitNode offset/size) |
 | IA-06 | Status panel (errors, warnings, stream info) | P1 | [x] | StatusBar + error count in AppLayout |
 
 ---
@@ -132,10 +132,7 @@ cargo test -p bitvue-cli --test parity_test: 29/29
 
 ## Remaining Work
 
-| Item | Priority | Description |
-|------|----------|-------------|
-| IA-05 Hex view | P0 | HexView component — raw byte viewer with offset/hex/ASCII columns |
-| IA-02 Timeline lane | P2 | Filmstrip timeline with frame-size bars (QP heatmap already done) |
+All P0/P1 parity items complete. No remaining required work.
 
 ## Fixture Files
 

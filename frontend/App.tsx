@@ -36,6 +36,7 @@ import {
   StatisticsPanel,
   InfoPanel,
   DetailsPanel,
+  YuvDiffPanel,
 } from "./components/panels";
 import { GoToFrameDialog } from "./components/GoToFrameDialog";
 
@@ -189,6 +190,17 @@ const DetailsPanelFromContext = memo(function DetailsPanelFromContext() {
   return <DetailsPanel frame={frames[currentFrameIndex] || null} />;
 });
 
+/** Stable YUV diff panel — reads frame index and provides jump callback */
+const YuvDiffPanelFromContext = memo(function YuvDiffPanelFromContext() {
+  const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
+  return (
+    <YuvDiffPanel
+      currentFrameIndex={currentFrameIndex}
+      onJumpToFrame={setCurrentFrameIndex}
+    />
+  );
+});
+
 // Stable top panels config
 const TOP_PANELS = [
   {
@@ -246,6 +258,12 @@ const LEFT_PANELS = [
     title: "Unit HEX",
     component: UnitHexPanelWrapper,
     icon: "file-code",
+  },
+  {
+    id: "yuv-diff",
+    title: "YUV Diff",
+    component: YuvDiffPanelFromContext,
+    icon: "diff",
   },
 ];
 

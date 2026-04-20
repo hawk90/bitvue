@@ -33,6 +33,7 @@ import {
   Colorspace,
   type ChannelMode,
 } from "../../../utils/yuvRenderer";
+import { useYuvDiff } from "../../../contexts/YuvDiffContext";
 import { FrameNavigationControls } from "./FrameNavigationControls";
 import { PlaybackControls } from "./PlaybackControls";
 import { ModeSelector } from "./ModeSelector";
@@ -161,6 +162,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   const [colorspace, setColorspace] = useState<Colorspace>(Colorspace.BT709);
   const [channelMode, setChannelMode] = useState<ChannelMode>("all");
 
+  // Debug YUV diff state
+  const {
+    isLoaded: debugYuvLoaded,
+    displayMode: debugDisplayMode,
+    amplifyFactor: debugAmplifyFactor,
+  } = useYuvDiff();
+
   // Load frame and analysis data when currentFrameIndex changes
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +177,27 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       setIsLoading(true);
       setLoadError(null);
       try {
+        // When debug YUV is loaded, fetch via get_debug_yuv_frame instead
+        if (debugYuvLoaded) {
+          const yuvResult = await invoke<YUVFrameData>("get_debug_yuv_frame", {
+            params: {
+              frame_index: frameIndex,
+              mode: debugDisplayMode,
+              amplify:
+                debugDisplayMode === "amplified" ? debugAmplifyFactor : null,
+            },
+          });
+          if (cancelled) return;
+          if (yuvResult && yuvResult.success && yuvResult.y_plane) {
+            setYuvData(yuvResult);
+            setFrameImage(null);
+            setIsLoading(false);
+          } else {
+            setLoadError(yuvResult?.error ?? "Failed to load debug YUV frame");
+          }
+          return;
+        }
+
         // Try YUV first (more efficient)
         const yuvResult = await invoke<YUVFrameData>("get_decoded_frame_yuv", {
           frameIndex,
@@ -278,7 +307,14 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     return () => {
       cancelled = true;
     };
-  }, [currentFrameIndex, retryCount, setFrames]);
+  }, [
+    currentFrameIndex,
+    retryCount,
+    setFrames,
+    debugYuvLoaded,
+    debugDisplayMode,
+    debugAmplifyFactor,
+  ]);
 
   // Frame navigation callbacks
   const goToPrevFrame = useCallback(() => {
