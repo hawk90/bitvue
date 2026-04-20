@@ -151,6 +151,8 @@ export interface FrameInfo {
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction visualization
   transform_grid?: TransformGrid; // Transform grid for transform visualization
+  mb_type_grid?: MbTypeGrid; // AVC macroblock type grid for MB Type overlay
+  ref_idx_grid?: RefIdxGrid; // AVC reference frame index grid
 
   // Frame dimensions
   width?: number; // Frame width in pixels
@@ -490,6 +492,39 @@ export interface TransformGrid {
 }
 
 /**
+ * AVC Macroblock Type Grid data
+ * Per-macroblock type data for MB Type overlay visualization.
+ * Type index: I4x4=0, I16x16=1, IPCM=2, PLuma=3, P8x8=4,
+ *             BDirect=5, B16x16=6, B16x8=7, B8x16=8, B8x8=9,
+ *             PSkip=10, BSkip=11
+ */
+export interface MbTypeGrid {
+  coded_width: number;
+  coded_height: number;
+  block_w: number;
+  block_h: number;
+  grid_w: number;
+  grid_h: number;
+  mb_types: (number | null)[]; // MbType index for each macroblock, or null
+}
+
+/**
+ * AVC Reference Frame Index Grid data
+ * Per-macroblock reference frame indices (L0 and L1 lists).
+ * null means intra or list not used.
+ */
+export interface RefIdxGrid {
+  coded_width: number;
+  coded_height: number;
+  block_w: number;
+  block_h: number;
+  grid_w: number;
+  grid_h: number;
+  ref_idx_l0: (number | null)[]; // L0 reference index per macroblock
+  ref_idx_l1: (number | null)[]; // L1 reference index per macroblock
+}
+
+/**
  * Decoded frame data
  * Full-resolution frame for video player display
  */
@@ -534,6 +569,8 @@ export interface FrameAnalysisData {
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction overlay
   transform_grid?: TransformGrid; // Transform grid for transform overlay
+  mb_type_grid?: MbTypeGrid; // AVC macroblock type grid
+  ref_idx_grid?: RefIdxGrid; // AVC reference frame index grid
 }
 
 /**

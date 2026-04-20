@@ -1628,6 +1628,116 @@ impl NalUnitTypeExt for crate::NalUnitType {
     }
 }
 
+/// Extract MB Type Grid from H.264 bitstream
+///
+/// Returns a 16×16 macroblock-resolution grid where each cell contains the
+/// numeric index of the MbType enum value (or None for missing blocks):
+///   I4x4=0, I16x16=1, IPCM=2, PLuma=3, P8x8=4, BDirect=5,
+///   B16x16=6, B16x8=7, B8x16=8, B8x8=9, PSkip=10, BSkip=11
+pub fn extract_mb_type_grid(
+    nal_units: &[NalUnit],
+    sps: &Sps,
+) -> Result<(u32, u32, u32, u32, Vec<Option<u8>>), BitvueError> {
+    let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
+    let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
+    let grid_w = pic_width_in_mbs;
+    let grid_h = pic_height_in_mbs;
+
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
+
+    let mut mb_types: Vec<Option<u8>> = Vec::with_capacity(total_blocks);
+    let (sps_map, pps_map) = build_parameter_maps(nal_units);
+
+    for nal in nal_units {
+        if nal.header.nal_unit_type.is_slice() {
+            if let Ok(mbs) = parse_slice_macroblocks(nal, &sps_map, &pps_map, sps, 26) {
+                for mb in &mbs {
+                    let type_idx = match mb.mb_type {
+                        MbType::I4x4 => 0u8,
+                        MbType::I16x16 => 1,
+                        MbType::IPCM => 2,
+                        MbType::PLuma => 3,
+                        MbType::P8x8 => 4,
+                        MbType::BDirect => 5,
+                        MbType::B16x16 => 6,
+                        MbType::B16x8 => 7,
+                        MbType::B8x16 => 8,
+                        MbType::B8x8 => 9,
+                        MbType::PSkip => 10,
+                        MbType::BSkip => 11,
+                    };
+                    mb_types.push(Some(type_idx));
+                }
+            }
+        }
+    }
+
+    while mb_types.len() < total_blocks {
+        mb_types.push(None);
+    }
+    mb_types.truncate(total_blocks);
+
+    Ok((
+        pic_width_in_mbs * 16,
+        pic_height_in_mbs * 16,
+        16,
+        16,
+        mb_types,
+    ))
+}
+
+/// Extract Reference Index Grid from H.264 bitstream
+///
+/// Returns a 16×16 macroblock-resolution grid with L0 and L1 reference frame
+/// indices per block.  None means the macroblock is intra or the list is
+/// not used.
+pub fn extract_ref_idx_grid(
+    nal_units: &[NalUnit],
+    sps: &Sps,
+) -> Result<(u32, u32, u32, u32, Vec<Option<i8>>, Vec<Option<i8>>), BitvueError> {
+    let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
+    let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
+    let grid_w = pic_width_in_mbs;
+    let grid_h = pic_height_in_mbs;
+
+    let total_blocks = grid_w.checked_mul(grid_h).ok_or_else(|| {
+        BitvueError::Decode(format!("Grid dimensions too large: {}x{}", grid_w, grid_h))
+    })? as usize;
+
+    let mut l0: Vec<Option<i8>> = Vec::with_capacity(total_blocks);
+    let mut l1: Vec<Option<i8>> = Vec::with_capacity(total_blocks);
+    let (sps_map, pps_map) = build_parameter_maps(nal_units);
+
+    for nal in nal_units {
+        if nal.header.nal_unit_type.is_slice() {
+            if let Ok(mbs) = parse_slice_macroblocks(nal, &sps_map, &pps_map, sps, 26) {
+                for mb in &mbs {
+                    l0.push(mb.ref_idx_l0);
+                    l1.push(mb.ref_idx_l1);
+                }
+            }
+        }
+    }
+
+    while l0.len() < total_blocks {
+        l0.push(None);
+        l1.push(None);
+    }
+    l0.truncate(total_blocks);
+    l1.truncate(total_blocks);
+
+    Ok((
+        pic_width_in_mbs * 16,
+        pic_height_in_mbs * 16,
+        16,
+        16,
+        l0,
+        l1,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

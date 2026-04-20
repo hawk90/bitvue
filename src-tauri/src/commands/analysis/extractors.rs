@@ -7,8 +7,8 @@ use bitvue_av1_codec::overlay_extraction::{
 use bitvue_core::StreamId;
 
 use crate::commands::{
-    FrameAnalysisData, MVGridData, MotionVectorData, PartitionGridData, PredictionModeGridData,
-    QPGridData, TransformGridData,
+    FrameAnalysisData, MVGridData, MbTypeGridData, MotionVectorData, PartitionGridData,
+    PredictionModeGridData, QPGridData, RefIdxGridData, TransformGridData,
 };
 
 /// Extract frame analysis for AV1 codec
@@ -174,6 +174,8 @@ pub(super) fn extract_av1_analysis(
         partition_grid,
         prediction_mode_grid,
         transform_grid,
+        mb_type_grid: None,
+        ref_idx_grid: None,
     })
 }
 
@@ -289,6 +291,39 @@ pub(super) fn extract_avc_analysis(
             }
         });
 
+    let mb_type_grid = bitvue_avc::extract_mb_type_grid(&nal_units, &sps).ok().map(
+        |(coded_width, coded_height, block_w, block_h, mb_types)| {
+            let grid_w = coded_width / block_w;
+            let grid_h = coded_height / block_h;
+            MbTypeGridData {
+                coded_width,
+                coded_height,
+                block_w,
+                block_h,
+                grid_w,
+                grid_h,
+                mb_types,
+            }
+        },
+    );
+
+    let ref_idx_grid = bitvue_avc::extract_ref_idx_grid(&nal_units, &sps).ok().map(
+        |(coded_width, coded_height, block_w, block_h, ref_idx_l0, ref_idx_l1)| {
+            let grid_w = coded_width / block_w;
+            let grid_h = coded_height / block_h;
+            RefIdxGridData {
+                coded_width,
+                coded_height,
+                block_w,
+                block_h,
+                grid_w,
+                grid_h,
+                ref_idx_l0,
+                ref_idx_l1,
+            }
+        },
+    );
+
     Ok(FrameAnalysisData {
         frame_index,
         width,
@@ -298,6 +333,8 @@ pub(super) fn extract_avc_analysis(
         partition_grid,
         prediction_mode_grid,
         transform_grid: None,
+        mb_type_grid,
+        ref_idx_grid,
     })
 }
 
@@ -422,6 +459,8 @@ pub(super) fn extract_hevc_analysis(
         partition_grid,
         prediction_mode_grid,
         transform_grid: None,
+        mb_type_grid: None,
+        ref_idx_grid: None,
     })
 }
 
@@ -526,6 +565,8 @@ pub(super) fn extract_vp9_analysis(
         partition_grid,
         prediction_mode_grid: None,
         transform_grid: None,
+        mb_type_grid: None,
+        ref_idx_grid: None,
     })
 }
 
@@ -634,6 +675,8 @@ pub(super) fn extract_vvc_analysis(
         partition_grid,
         prediction_mode_grid: None,
         transform_grid: None,
+        mb_type_grid: None,
+        ref_idx_grid: None,
     })
 }
 
@@ -736,5 +779,7 @@ pub(super) fn extract_av3_analysis(
         partition_grid,
         prediction_mode_grid: None,
         transform_grid: None,
+        mb_type_grid: None,
+        ref_idx_grid: None,
     })
 }

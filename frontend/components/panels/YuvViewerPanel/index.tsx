@@ -284,6 +284,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
               partition_grid: result.partition_grid,
               prediction_mode_grid: result.prediction_mode_grid,
               transform_grid: result.transform_grid,
+              mb_type_grid: result.mb_type_grid,
+              ref_idx_grid: result.ref_idx_grid,
               width: result.width,
               height: result.height,
             };

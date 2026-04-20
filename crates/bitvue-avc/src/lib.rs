@@ -49,7 +49,8 @@ pub use nal::{
     find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType,
 };
 pub use overlay_extraction::{
-    extract_mv_grid, extract_partition_grid, extract_qp_grid, Macroblock, MbType, MotionVector,
+    extract_mb_type_grid, extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid,
+    extract_qp_grid, extract_ref_idx_grid, Macroblock, MbType, MotionVector,
 };
 pub use pps::{parse_pps, Pps};
 pub use sei::{parse_sei, SeiMessage, SeiPayloadType};

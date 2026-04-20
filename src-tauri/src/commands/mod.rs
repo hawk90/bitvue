@@ -246,6 +246,31 @@ pub struct TransformGridData {
     pub tx_sizes: Vec<Option<u8>>,
 }
 
+/// AVC macroblock type grid data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MbTypeGridData {
+    pub coded_width: u32,
+    pub coded_height: u32,
+    pub block_w: u32,
+    pub block_h: u32,
+    pub grid_w: u32,
+    pub grid_h: u32,
+    pub mb_types: Vec<Option<u8>>,
+}
+
+/// AVC reference frame index grid data (L0 and L1 lists)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefIdxGridData {
+    pub coded_width: u32,
+    pub coded_height: u32,
+    pub block_w: u32,
+    pub block_h: u32,
+    pub grid_w: u32,
+    pub grid_h: u32,
+    pub ref_idx_l0: Vec<Option<i8>>,
+    pub ref_idx_l1: Vec<Option<i8>>,
+}
+
 /// Frame analysis data response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrameAnalysisData {
@@ -257,6 +282,8 @@ pub struct FrameAnalysisData {
     pub partition_grid: Option<PartitionGridData>,
     pub prediction_mode_grid: Option<PredictionModeGridData>,
     pub transform_grid: Option<TransformGridData>,
+    pub mb_type_grid: Option<MbTypeGridData>,
+    pub ref_idx_grid: Option<RefIdxGridData>,
 }
 
 /// Thumbnail data for a single frame

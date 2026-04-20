@@ -34,6 +34,8 @@ import { JpegXsTransformRenderer } from "./renderers/JpegXsTransformRenderer";
 import { JpegXsMctRenderer } from "./renderers/JpegXsMctRenderer";
 import { JpegXsNltRenderer } from "./renderers/JpegXsNltRenderer";
 import { Vc3SegmentRenderer } from "./renderers/Vc3SegmentRenderer";
+import { AvcMbTypeOverlay } from "./renderers/AvcMbTypeRenderer";
+import { AvcRefIdxOverlay } from "./renderers/AvcRefIdxRenderer";
 
 // ─── Extended options ─────────────────────────────────────────────────────────
 
@@ -219,6 +221,12 @@ function renderInfoOverlay(
       break;
     case "efficiency-map":
       Av1EfficiencyMapOverlay({ ctx, width, height, frame });
+      break;
+    case "mb-type":
+      AvcMbTypeOverlay({ ctx, width, height, frame });
+      break;
+    case "reference-indices":
+      AvcRefIdxOverlay({ ctx, width, height, frame });
       break;
     // Future overlays (stubs — renderers will be added in later phases):
     // case "psnr-overlay": PSNROverlay({ ctx, width, height, frame }); break;
