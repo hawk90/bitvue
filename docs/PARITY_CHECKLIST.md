@@ -2,6 +2,10 @@
 
 Phase 12 tracking for VQ Analyzer feature parity (V14 spec §7.3).
 
+See also: `VQA_PARITY_SPEC_V3.md` (backend/codec parity spec), `COMPETITOR_FEATURE_MATRIX.md` (per-product
+feature matrix backing Layer 6 below), `UX_PARITY_MATRIX.md` (UI/UX interaction parity), `DEVELOPMENT_PHASES.md`
+(Phase 0-12 implementation roadmap).
+
 ## How to use
 
 - `[x]` = implemented and tested
@@ -13,6 +17,94 @@ Run the regression suite to validate:
 ./scripts/run_regression_suite.sh
 ./scripts/parity_check.sh --local
 ```
+
+---
+
+## Parity Validation Strategy & Test Sources
+
+Merged from `VQA_PARITY_SPEC_V3.md` §7 (2026-07-31 doc-family split) — verification methodology belongs with
+the tracking doc, not the feature spec. Renamed "Layer 1-4" (verification tiers) to "Tier 1-4" below to avoid
+clashing with this doc's own "Layer 1-6" feature-category tables.
+
+### Reference test-bitstream sources
+
+| Codec | Source | URL / note |
+|---|---|---|
+| HEVC | JCT-VC HM official test set | MPEG/ITU-T FTP |
+| VVC | VTM official test set | https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM |
+| AV1 | AOM test vectors | https://storage.googleapis.com/aom-test-data/ |
+| VP9 | Chrome/WebM test vectors | https://chromium.googlesource.com/webm/vp9-test-vectors |
+| AVC | JM/x264 test set | self-generate recommended |
+| MPEG-2 | MPEG official | self-generate recommended |
+| AVS3 | AVS official | http://www.avs.org.cn/ |
+
+**Self-generated sequences** (ffmpeg, when no public vector exists):
+```bash
+# HEVC (x265)
+ffmpeg -i input.mp4 -c:v libx265 -x265-params "ctu=64:qp=28" output_hevc.mkv
+# AV1 (libaom)
+ffmpeg -i input.mp4 -c:v libaom-av1 -cpu-used 4 output_av1.mkv
+# VP9
+ffmpeg -i input.mp4 -c:v libvpx-vp9 -b:v 2M output_vp9.webm
+# AVC
+ffmpeg -i input.mp4 -c:v libx264 -profile:v high output_avc.mp4
+```
+
+### Verification tiers
+
+| Tier | Goal | Method | Tolerance | Automation |
+|---|---|---|---|---|
+| 1. Parsing accuracy | Syntax values match source 100% | Parse same file with public reference decoder (HM/VTM/dav1d), extract key syntax (QP/MV/partitions) → JSON, diff vs Bitvue output | 0% (parsing must be exact) | `cargo test --test syntax_parity -- --test-threads=1` |
+| 2. Overlay visual accuracy | Overlay color/position pixel-near matches VQ Analyzer | Screenshot same frame in both tools, pixel-compare | ±2 RGB, ±1px boundary | `scripts/parity_screenshot_compare.py` (future) |
+| 3. Value accuracy | PSNR/SSIM/QP etc. match source | Compute in Debug YUV mode, compare vs `ffmpeg psnr` filter | ±0.01dB (PSNR), ±0.0001 (SSIM) | manual / scripted |
+| 4. UX behavior | Click/keyboard/zoom behavior matches original | Checklist-based manual test | — | Playwright E2E (automated) |
+
+### Pre-release parity checklist (by codec)
+
+Where an item already has a Layer 1-6 ID above, that ID is the source of truth — this table only adds
+granular release-gate items not yet tracked by an ID.
+
+| Codec | Check | Existing ID (if any) |
+|---|---|---|
+| HEVC | NAL unit count/type match | L1-HEVC-01 |
+| HEVC | SPS/PPS parameter values match | — (new) |
+| HEVC | Slice header values match | — (new) |
+| HEVC | CU/TU/PU partition tree structure match | OV-03 |
+| HEVC | QP Map heatmap color match | OV-01 |
+| HEVC | MV vector magnitude/direction match (PU-level) | OV-02 |
+| HEVC | SAO type/parameter match | — (new, see `COMPETITOR_FEATURE_MATRIX.md` §1 HEVC "SAO" row — not tracked) |
+| HEVC | Deblocking boundary position match | — (new, see `COMPETITOR_FEATURE_MATRIX.md` §1 HEVC "Loop Filter" row — not tracked) |
+| HEVC | Stats tab figures match | — (new) |
+| VVC | Dual Tree luma/chroma boundary match | — (blocked on vvdec connection, spec §3.1) |
+| VVC | LMCS APS parameter match | — (blocked, same) |
+| VVC | ALF parameter match | — (blocked, same) |
+| VVC | CCLM prediction parameter display | — (blocked, same) |
+| AV1 | OBU type/size match | L1-AV1-01 |
+| AV1 | Superblock partition structure match | OV-03 |
+| AV1 | CDEF direction/strength match | OV-07 |
+| AV1 | Loop Restoration type match | OV-08 |
+| AV1 | Film Grain parameter display match | OV-09 |
+| VP9 | Frame header parameter match | L1-VP9-01 |
+| VP9 | Segment map match | — (new) |
+| VP9 | Probability table initial-value match | — (new) |
+
+### Release-gate checklist (from `_import_v14` product-readiness pack, 2026-07-31)
+
+Concrete, non-generic items only — cross-checked against code where claimed.
+
+| Category | Gate | Status/note |
+|---|---|---|
+| Error handling | No `unwrap()`/`expect()` in data paths (parse/decode/IO) | Verified via grep: only 2 occurrences in `src-tauri/src` (`lib.rs`, `commands/recent_files.rs`) — largely already compliant, not a gap |
+| Error handling | Typed error carries `category, severity, user_message, debug_details, recovery_action`; failed viz renders placeholder + banner + Retry/Compute/Load CTA (never blank panel) | Matches `crates/bitvue-core/src/{diagnostics,error,app_error}.rs` `DiagnosticSeverity`/`DiagnosticCategory` design — not independently verified for 100% UI coverage |
+| Error handling | Decoder init fail → Player shows checkerboard, other panels stay usable; frame decode fail → ghost previous frame + jump-to-nearest-decodable | Not verified against current Player component — flag for QA pass, not confirmed done |
+| Data integrity | IDs stable (`FrameKey`/`UnitKey`/`SyntaxNodeId`) across a session once full index built | Matches `crates/bitvue-core/src/selection.rs` key types — structurally present |
+| Data integrity | Hex→Syntax reverse mapping deterministic (see Tri-sync rule in `DEVELOPMENT_PHASES.md` Architecture appendix) | `crates/bitvue-core/src/evidence.rs` implements the 4-stage chain — logic present, UI-level determinism unverified |
+| Performance | Overlay toggle < 50ms | Not measured/benchmarked — add to Phase 10/12 perf test matrix |
+| Release process | Every release: features added / known limitations / perf metrics / compatibility notes | Not currently enforced — add as PR/release template checklist item (Phase 12) |
+| QA gate (V12_LOCKCHECK_SPEC) | Validate workspace grid + LOD/cache keys + overlay specs + MCP resource schemas + degradation rules against locked contracts, output pass/fail report | **Already implemented as code**, not just a checklist: `crates/bitvue-core/src/lockcheck.rs` (`LockCheckResult`/`LockCheckItem`/`LockCheckCategory` incl. `Workspace/LodCache/PlayerOverlays/McpResources/Degradation/CacheCaps`) — verify it's wired into `scripts/parity_check.sh` or CI; not confirmed in this pass |
+
+**Skipped as low-value**: `VERSIONING_POLICY.md` (generic semver description, "v12 = product-ready baseline" doesn't map
+to Bitvue's actual 0.x versioning — no actionable Bitvue-specific content).
 
 ---
 
@@ -100,6 +192,16 @@ All shortcuts verified against VQA reference (Phase 11).
 | Y/U/V | Channel isolation | [x] |
 | F1–F10 | Visualization mode switch | [x] |
 | Ctrl+F1–F6 | Toggle info overlay | [x] |
+| `0` | Fit to window / reset zoom (100%) | [x] |
+| `+` / `=` | Zoom in | [x] |
+| `-` | Zoom out | [x] |
+| `Ctrl+Click` (block) | Multi-select blocks (VVC Dynamic Selection Info) | [ ] |
+
+**Mouse-only interactions** (wheel zoom, click+drag pan, double-click reset, thumbnail click/right-click/scroll)
+are out of scope for this keyboard-only table — see `UX_PARITY_MATRIX.md` §3 "Per-panel interaction contract"
+and §5 "Zoom/pan policy per panel" for the general Player-surface pan/zoom/click contract these map to.
+Migrated from `VQA_PARITY_SPEC_V3.md` §6 (2026-07-31 doc-family split); source also listed right-click-extract
+on thumbnails, which is separately tracked in that spec's §4.1 Stream View table (not a keyboard shortcut).
 
 ---
 
@@ -117,12 +219,42 @@ All shortcuts verified against VQA reference (Phase 11).
 
 ---
 
+## Layer 6: Dual-Stream Compare & Quality Metrics (NEW — 2026-07-31, VQA_PARITY_SPEC_V3 §4.9/§1.5)
+
+Discovered via competitor research (ViCueSoft VQ Probe, Elecard StreamEye, Interra VEGA) — not covered by
+Layers 1-5, which is why this doc previously read "All P0/P1 complete." Full per-feature source breakdown:
+`COMPETITOR_FEATURE_MATRIX.md` §3 (metrics) and §4 (compare). Priority rationale: `VQA_PARITY_SPEC_V3.md` §1.5.
+
+| ID | Feature | Severity | Status | Notes |
+|----|---------|----------|--------|-------|
+| CMP-01 | Stream A/B independent load + sync playback | P0 | [-] | **2026-07-31 정정** (grep 확인): `crates/bitvue-core/src/{compare,alignment}.rs` + `src-tauri/src/commands/compare.rs` (`create_compare_workspace`/`get_aligned_frame`/`set_sync_mode`/`set_manual_offset`/`reset_offset`, `lib.rs`에 등록됨) + `frontend/components/CompareWorkspace/CompareWorkspace.tsx` 이미 존재. Sync mode(Off/Playhead/Full) 백엔드 확인, 프론트엔드 전체 커버리지는 미검증 |
+| CMP-02 | Side-by-side / Split (H/V) view | P0 | [-] | Side-by-side 렌더링 `CompareWorkspace.tsx`에서 확인됨; Split(H/V)/Subtraction/Temperature 토글은 grep 미검출 — 미구현 추정 |
+| CMP-03 | Subtraction / Temperature (diff heatmap) view | P0 | [ ] | Reuses §4.7 diff engine. 구현 스펙: `DEVELOPMENT_PHASES.md` Phase 7.5 "Diff Heatmap 구현 상세" 참조 (2026-07-31 `_import_v14` 마이닝, mode/캐시키/텍스처 규칙 포함) |
+| CMP-04 | Find First Difference (stream vs stream) | P1 | [ ] | Shares logic with YUVDiff §4.7 |
+| CMP-05 | RD-curve + BD-rate calculation | P0 | [ ] | RDCurvesPanel exists; BD-rate calc unverified |
+| CMP-06 | VMAF scoring (pooled + per-frame) | P0 | [ ] | `libvmaf-sys` already an optional Cargo feature — needs wiring |
+| CMP-07 | VMAF sub-scores (ADM2, VIF, motion2) | P2 | [ ] | Nice-to-have beyond VQ Probe baseline |
+| CMP-08 | APV codec support | P2 | [ ] | ViCueSoft added this in v7.7/7.8; niche/professional format |
+| CMP-09 | AV3/AVM naming reconciliation | P1 | [ ] | Confirm Bitvue's "AV3" and VQ Analyzer's "AVM" refer to the same codec |
+| CMP-10 | CABAC range/state visualization (HEVC/AVC) | P1 | [ ] | Both VQ Analyzer and VEGA expose this; Bitvue coverage unverified |
+
+**Explicitly out of scope** (broadcast QC territory, not a bitstream analyzer concern): live TS conformance
+(TR 101290, SCTE-35, CableLabs), captions (EIA-608/708, DVB), audio codec/loudness analysis. See spec §1.5.
+
+---
+
 ## Regression Suite Status
 
-Run `./scripts/run_regression_suite.sh` and paste results here.
+**2026-07-31: now CI-enforced** — `.github/workflows/ci.yml` job `parity-regression` runs
+`scripts/parity_check.sh --local` on every PR touching Rust code. This log no longer needs manual pasting;
+check the CI run for the ground truth. Also fixed the same day: `bitvue-avs3`, `bitvue-jpegxs`, `bitvue-vc3`,
+`bitvue-codecs-parser` had real `#[test]` coverage but were missing from the CI test matrix since they landed
+(Phase 5/6) — their tests had never run in CI until now.
+
+Manual local run: `./scripts/run_regression_suite.sh`
 
 ```
-Last run: 2026-04-20
+Last manual run: 2026-04-20 (stale — see CI from here on)
 PASS: 29 (parity_check.sh --local)
 FAIL: 0
 cargo test -p bitvue-cli --test parity_test: 29/29
@@ -132,7 +264,10 @@ cargo test -p bitvue-cli --test parity_test: 29/29
 
 ## Remaining Work
 
-All P0/P1 parity items complete. No remaining required work.
+All P0/P1 items in Layers 1-5 are complete. **Layer 6 (added 2026-07-31) is mostly unstarted, but CMP-01/02 are
+partially built** (compare alignment + side-by-side view already exist in code — see corrected status above,
+2026-07-31 `_import_v14` mining pass) — competitor research surfaced dual-stream compare and VMAF as gaps not
+previously tracked. See VQA_PARITY_SPEC_V3.md §4.9/§1.5/Phase 7.5 for implementation detail.
 
 ## Fixture Files
 
