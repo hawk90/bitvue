@@ -317,6 +317,8 @@ fn psnr_max_i(bit_depth: u8) -> f64 {
 **예외**:
 - 진짜 8-bit(0~255) 컨텐츠이거나, 이미 명시적으로 "full u16 range"로 재양자화(requantize)한 중간 표현이라면 65535 기준이 맞다 — 다만 이 경우 변수명/타입에 그 사실을 명확히 남겨야 한다.
 
+**관련**: `UIX_VIZ.md` UIX-VIZ-002 참고 — bit-depth 의존 정규화 상수를 빠뜨리는 동일 패턴이나, 대상이 raw 픽셀 샘플 정규화(여기)와 QP 값의 legend 표시(UIX-VIZ-002)로 다름.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -804,6 +806,8 @@ fn get_display_dimensions(decoded: &DecodedFrame) -> (u32, u32) {
 
 **예외**:
 - crop이 0인(coded size == display size) 스트림에서는 두 값이 우연히 같으므로 버그가 드러나지 않는다 — 이는 예외가 아니라 "숨은 버그가 아직 발현되지 않은 상태"임에 유의해야 한다.
+
+**관련**: `UIX_VIZ.md` UIX-VIZ-006 참고 — overlay 좌표가 실제 프레임 지오메트리와 어긋나는 문제이나, 이쪽은 crop/coded-size 오프셋, UIX-VIZ-006은 heatmap grid/CU 정합이 원인.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 

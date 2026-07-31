@@ -44,6 +44,8 @@
 - 균일 QP 합성 프레임(constant-QP)과 극단 QP 프레임을 연달아 재생하며 legend 값이 유지되는지 확인.
 - 코드 리뷰: 컬러 스케일 domain 계산이 프레임 루프 내부에 있는지 검색.
 
+**관련**: `HEAT.md` HEAT-009 참고 — 동일한 per-frame auto-normalize 패턴이나 QP heatmap(Bitvue)과 VQ-Probe 품질-score heatmap은 별도 서브시스템.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -78,6 +80,8 @@ HEVC 등 일부 코덱은 bit depth에 따라 QP에 offset이 존재한다(예: 
 - 동일 콘텐츠의 8bit/10bit 인코딩 페어로 heatmap을 나란히 렌더링해 색상 분포 일치 여부 확인.
 - 도메인 리뷰: 코덱별 QP-bit depth 관계식이 정규화 로직에 반영됐는지 검토.
 
+**관련**: `PIXEL.md` PIXEL-006 참고 — bit-depth 의존 정규화 상수를 빠뜨리는 동일 패턴이나, 대상이 QP 값의 legend 표시(여기)와 raw 픽셀 샘플 정규화(PIXEL-006)로 다름.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -110,6 +114,8 @@ HEVC 등 일부 코덱은 bit depth에 따라 QP에 offset이 존재한다(예: 
 **탐지**:
 - delta 모드에서 변화가 없는 블록의 색이 중립색(흰색/회색)인지 확인.
 - 절대값 모드와 delta 모드의 팔레트 정의가 코드상 실제로 분리돼 있는지 검토.
+
+**관련**: `HEAT.md` HEAT-016 참고 — sequential/diverging 팔레트 구분 필요성은 동일하나 대상이 QP delta(Bitvue)와 VQ-Probe 스트림 간 delta score로 다름.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
@@ -145,6 +151,8 @@ legend를 "보조 UI"로 취급해 초기 구현에서 생략했거나, 반응�
 - 다양한 창 크기/해상도에서 legend 가시성 시각 회귀 테스트.
 - legend 없이 특정 블록의 QP 값을 알아낼 방법이 있는지 UX 워크스루로 확인.
 
+**관련**: `HEAT.md` HEAT-010 참고 — legend가 실제 값을 반영하지 못하는 문제이나, HEAT-010은 legend 컴포넌트 부재가 아니라 backend가 사용된 range를 응답에 포함하지 않아 legend 자체가 정확할 수 없는 경우.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -178,6 +186,8 @@ heatmap 데이터 구조가 `Option<u8>` 대신 plain `u8`을 사용해 sentinel
 - 의도적으로 파싱 실패를 유발하는 손상 스트림으로 테스트.
 - invalid 블록 카운트와 heatmap상 QP=0 블록 카운트가 겹치는지 코드 감사.
 
+**관련**: `HEAT.md` HEAT-012 참고 — invalid/NaN 데이터를 유효 극단값(0)으로 치환해 오인시키는 동일 패턴. QP=0은 "최상"으로, score=0은 "최하"로 위장돼 방향은 반대.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -210,6 +220,8 @@ heatmap을 코덱 native partition tree가 아니라 고정 grid(예: 16×16 고
 
 **탐지**:
 - 알려진 partition 구조(예: 좌상단 64×64, 우하단 8×8 강제 분할)를 가진 합성 스트림으로 픽셀 좌표 대조.
+
+**관련**: `PIXEL.md` PIXEL-015 참고 — overlay 좌표가 실제 프레임 지오메트리와 어긋나는 문제이나, 이쪽은 heatmap grid/CU 정합, PIXEL-015는 crop/coded-size 오프셋이 원인.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
@@ -275,6 +287,8 @@ opacity를 사용자 조절 가능한 값으로 노출하지 않고 "잘 보이�
 
 **탐지**:
 - 확대 상태에서 블록 경계의 색상 전이가 하드 엣지(1픽셀)인지 다수 픽셀에 걸친 그라디언트인지 픽셀 값 검사.
+
+**관련**: `HEAT.md` HEAT-018 참고 — 이산적 block-grid 값을 보간으로 매끄럽게 렌더링해 정밀도를 과장하는 동일 패턴. QP heatmap(Bitvue) vs VQ-Probe 품질-score heatmap.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
@@ -767,6 +781,8 @@ scene detection 결과(키프레임 위치 또는 별도 씬 컷 감지 알고�
 
 **탐지**:
 - 정상 변동 데이터에 극단 outlier 하나를 주입한 합성 데이터셋으로 나머지 데이터의 시각적 변별력이 유지되는지 확인.
+
+**관련**: `HEAT.md` HEAT-011 참고 — outlier가 autoscale 범위를 왜곡하는 동일 문제이나, 이쪽은 시계열 차트 Y축, HEAT-011은 heatmap color range 대상.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 

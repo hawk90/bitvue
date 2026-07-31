@@ -254,6 +254,8 @@ fn build_inputs(pair: &NormalizedFramePair, display_size: Option<(u32, u32)>) ->
 **예외**:
 - metric마다 목표 크기가 실제로 다르고 재사용 가능한 중간 크기가 없는 경우(예: VMAF는 원본 해상도, heatmap은 1/4 축소). 이때도 각 크기별로 "한 번만" 리사이즈하는 원칙은 유지해야 한다.
 
+**관련**: `CACHE.md` CACHE-012 참고 — 이쪽은 metric마다 동일 목표 크기로 리사이즈를 반복 계산하는 문제이고, CACHE-012는 썸네일을 원본과 별도로 중복 저장하는 캐시 설계 문제다.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -509,6 +511,8 @@ impl NormalizedFramePair {
 **예외**:
 - 실제로 모든 metric이 동일한 정밀도 요구사항을 갖는다면(예: 모두 8bit RGB로 충분) 단일 표현으로 통일하는 것이 맞다. 이 항목은 "무조건 여러 표현을 만들라"가 아니라 "필요 이상으로 강제 통일하지 말라"는 뜻이다.
 
+**관련**: `CACHE.md` CACHE-002 참고 — 이쪽은 metric별 정밀도 요구에 맞춰 중간 표현을 분리하는 문제이고, CACHE-002는 재취득 비용이 다른 데이터를 캐시 티어로 분리하는 문제다.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -571,6 +575,8 @@ pub fn spawn_pipeline(capacity: usize) -> (SyncSender<FramePair>, JoinHandle<()>
 
 **예외**:
 - 프레임 쌍이 아니라 이미 스칼라로 축약된 결과(metric 점수 하나, 수십 바이트)를 전달하는 채널이라면 unbounded여도 메모리 위험이 낮다.
+
+**관련**: `CACHE.md` CACHE-001 참고 — 이쪽은 디코드/metric 파이프라인 큐의 backpressure(bounded channel) 문제이고, CACHE-001은 프레임 캐시의 byte-budget 축출 정책 문제다.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
@@ -708,6 +714,8 @@ impl MetricPipeline {
 
 **예외**:
 - 파이프라인이 극히 짧게 살고(예: 단발성 CLI 배치 실행 후 프로세스 종료) 명시적 해제 없이도 프로세스 종료 시 전체가 정리되는 워크로드라면 엄격한 수명 관리가 필요 없을 수 있다.
+
+**관련**: `CACHE.md` CACHE-009 참고 — 이쪽은 Arc clone을 소유권 설계 없이 여기저기 보관해 해제 시점이 불명확해지는 문제이고, CACHE-009는 강한 참조 순환으로 인한 명시적 메모리 누수다.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
@@ -963,6 +971,8 @@ fn run_pipeline(reference_path: &Path, distorted_path: &Path, in_flight_budget: 
 
 **예외**:
 - 디코드와 metric 처리 속도가 실측상 비슷하거나 metric이 더 빠른 조합(예: 저해상도 + PSNR만)에서는 backpressure의 실질적 이득이 작을 수 있다. 다만 코덱/metric 조합이 바뀌면 다시 문제가 될 수 있으므로 구조적으로는 갖춰두는 것이 안전하다.
+
+**관련**: `CACHE.md` CACHE-023 참고 — 이쪽은 파이프라인 큐의 in-flight budget을 프레임 크기 기반으로 산정하는 backpressure 문제이고, CACHE-023은 프레임 캐시 예산을 해상도에 비례해 산정하는 문제다.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 

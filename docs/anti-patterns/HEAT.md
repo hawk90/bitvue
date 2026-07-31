@@ -496,6 +496,8 @@ fn compute_global_range(all_frame_scores: &[Vec<f32>]) -> (f32, f32) {
 **예외**:
 - 단일 프레임의 내부 상대 분포(그 프레임 안에서 어디가 상대적으로 나쁜가)만 보여주는 것이 명시적 목적인 UI 모드라면 프레임별 정규화가 의도된 설계다(단, HEAT-010처럼 반드시 UI에 그 사실을 표시해야 한다).
 
+**관련**: `UIX_VIZ.md` UIX-VIZ-001 참고 — 동일한 per-frame auto-normalize 패턴이나 VQ-Probe 품질-score heatmap(여기)과 QP heatmap(Bitvue, UIX-VIZ-001)은 별도 서브시스템.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -544,6 +546,8 @@ fn get_heatmap_for_display(frame_index: u32, range: Option<(f32, f32)>) -> Heatm
 **예외**:
 - 단일 프레임 단독 상세 검사 모드(비교 목적이 아닌)에서는 auto-range가 대비를 극대화해 오히려 유용할 수 있다 — 이 경우 UI에 "auto-range 사용 중"임을 명시해야 한다.
 
+**관련**: `UIX_VIZ.md` UIX-VIZ-004 참고 — legend가 실제 값을 반영하지 못하는 문제이나, 여기는 backend가 사용된 range를 응답에 포함하지 않는 것이 원인, UIX-VIZ-004는 legend 컴포넌트 자체의 부재/은닉이 원인.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -589,6 +593,8 @@ fn compute_display_range(scores: &[f32], percentile_clip: (f32, f32)) -> (f32, f
 
 **예외**:
 - 이상치 탐지가 명시적 목적인 뷰(예: "가장 나쁜 블록 찾기" 모드)에서는 min/max 전체 범위를 그대로 쓰는 것이 오히려 맞다.
+
+**관련**: `UIX_VIZ.md` UIX-VIZ-023 참고 — outlier가 autoscale 범위를 왜곡하는 동일 문제이나, 여기는 heatmap color range, UIX-VIZ-023은 시계열 차트 Y축 대상.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
@@ -656,6 +662,8 @@ fn aggregate_mean(scores: &[ScoreCell]) -> f32 {
 
 **예외**:
 - 없음 — NaN을 유효 점수로 치환하는 것은 항상 정보 손실이며, 유일한 논의 대상은 "어떻게 표시할지"이지 "치환해도 되는지"가 아니다.
+
+**관련**: `UIX_VIZ.md` UIX-VIZ-005 참고 — invalid/NaN 데이터를 유효 극단값(0)으로 치환해 오인시키는 동일 패턴. score=0은 "최하"로, QP=0은 "최상"으로 위장돼 방향은 반대.
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
@@ -866,6 +874,8 @@ fn compute_delta_heatmap(a: &FrameHeatmap, b: &FrameHeatmap) -> FrameHeatmap {
 **예외**:
 - 델타의 절대값(크기)만 관심 대상이고 부호(어느 쪽이 나은지)는 이미 별도 UI 요소(예: 화살표 아이콘)로 표시되는 경우라면 순차 팔레트로 "차이의 크기"만 표현해도 무방하다.
 
+**관련**: `UIX_VIZ.md` UIX-VIZ-003 참고 — sequential/diverging 팔레트 구분 필요성은 동일하나 대상이 VQ-Probe 스트림 간 delta score(여기)와 QP delta(UIX-VIZ-003)로 다름.
+
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
 
 ---
@@ -980,5 +990,7 @@ fn render_heatmap_canvas(scores: &[f32], grid_w: u32, grid_h: u32, canvas_w: u32
 
 **예외**:
 - "정밀 조사"가 아니라 "전체적인 트렌드 미리보기"가 명시적 목적인 축소 오버뷰(예: 매우 작은 필름스트립 썸네일)에서는 부드러운 보간이 가독성 면에서 오히려 낫다.
+
+**관련**: `UIX_VIZ.md` UIX-VIZ-008 참고 — 이산적 block-grid 값을 보간으로 매끄럽게 렌더링해 정밀도를 과장하는 동일 패턴. VQ-Probe 품질-score heatmap(여기) vs QP heatmap(Bitvue).
 
 **Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
