@@ -88,3 +88,11 @@ with names that might collide globally.
 tables → fix cross-references. Run with `Workflow({scriptPath: '.claude/workflows/parity-gap.js', args: {product: 'vega'}})`
 (product keys: `vq_analyzer`, `vq_probe`, `vega`, `streameye`, `codecian`, or pass `urls` explicitly for a new
 source). Only invoke when actually re-scanning for parity drift — it spawns multiple research agents per run.
+
+## Anti-pattern catalog
+
+`docs/anti-patterns/INDEX.md` — 751 items across 36 files, three domain waves (Rust/media engineering,
+VQ-Probe quality-analysis domain, UI/UX+Tauri+React). Reference catalog only — every item's `Bitvue 판정`
+field is unfilled by design; the actual repo audit is a separate later pass via a not-yet-built
+`.claude/workflows/anti-pattern-scan.js`. Read `INDEX.md` first, not the individual files, for the full map
+and next-steps (a dedup pass is recommended before adding a Phase 4).
