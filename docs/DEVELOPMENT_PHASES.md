@@ -9,6 +9,26 @@
 
 ---
 
+## 우선순위 재검토 (2026-07-31, 경쟁사/UX 리서치 반영 후)
+
+Phase 0-12 순서는 4월 스펙 당시 그대로다 — 이번 세션의 경쟁사(`COMPETITOR_FEATURE_MATRIX.md`)/UX(`UX_PARITY_MATRIX.md`)
+리서치가 끝난 뒤 순서 자체를 재검토한 결과:
+
+- **Phase 1(F키 모드 분기)은 순위 유지.** Phase 2-6의 코덱별 오버레이 작업 전체가 이 인프라에 의존하므로 여전히
+  최우선 — Dual-Stream Compare(7.5)나 UX 갭이 새로 발견됐다고 해서 이 의존관계가 바뀌지 않는다.
+- **Phase 7.5(Dual-Stream Compare & VMAF)는 위치 유지, 순서를 앞당기지 않음.** 자체 아키텍처 경계 노트대로 기존
+  렌더링/디코딩 파이프라인을 재사용하는 독립 트랙(Analyzer 코드와 분리)이라 Phase 1-6 순서를 밀어낼 근거가 아니다.
+- **신규 삽입: Phase 7.6 (Context Menu & Evidence Bundle).** `UX_PARITY_MATRIX.md` §9에서 컨텍스트 메뉴(P1)와
+  Evidence Bundle export(P0)가 심각도 P0/P1로 채점됐고 Phase 7.5의 Compare 워크스페이스가 이 두 계약(우클릭 메뉴,
+  번들 export 4개 진입점)을 직접 요구하므로(§2/§6/§7), 기존 계획대로 Phase 11(🟢 최하위 우선순위)까지 미루지 않고
+  Phase 7.5 직후로 승격한다. 아래 Phase 7.6 참조.
+- **그 외 신규 발견 항목**(CABAC 시각화, AVM 명명 정리, 컨테이너 확장, HRD 버퍼 그래프, bit-distribution 시각화 등)은
+  전부 기존 phase에 체크리스트 항목으로 흡수했다 — 순서를 바꿀 만큼 독립적이거나 큰 작업이 아니라고 판단.
+- Phase 8(Syntax 패널 완성)이 이번 리서치로 흡수한 항목이 많아 범위가 커졌지만, "코덱 디코딩 완성(Phase 3-6) →
+  시각화/신택스 심화(Phase 8)"라는 기존 순서 논리와 여전히 맞으므로 위치는 유지.
+
+---
+
 ## Phase 0: Project Setup & Foundation ✅ (이미 완료)
 
 **현재 상태:** Bitvue v0.12.0에서 대부분 완료됨
@@ -22,6 +42,8 @@
 - [x] CI/CD 파이프라인 기초
 - [ ] MXF 컨테이너 지원
 - [ ] AVI 컨테이너 지원
+- [ ] HEIC 컨테이너 지원 (`COMPETITOR_FEATURE_MATRIX.md` §6, SE 소스 — 신규 2026-07-31)
+- [ ] DASH-MPD 컨테이너 지원 (`COMPETITOR_FEATURE_MATRIX.md` §6, SE 소스 — 신규 2026-07-31)
 
 **추가 해야 할 일:**
 - [ ] vvdec-sys 바인딩 구현 및 VVC 디코딩 연결
@@ -113,6 +135,17 @@ get_codec_modes(codec: string) -> Vec<{f_key: number, mode: string, label: strin
 | SSIM Overlay | HEVC | ⚠️ | Debug YUV 필요 |
 | Inter Memory Reads | VVC | ❌ | 신규 구현 |
 | Simple Motion | 전체 | ⚠️ | 단순화 MV 화살표 |
+| Loop Filter (deblock BS 색상) | HEVC, VP9, AVC | ❌ | 신규 구현 (`COMPETITOR_FEATURE_MATRIX.md` §1 — 신규 2026-07-31) |
+| SAO | HEVC | ❌ | 신규 구현 (`COMPETITOR_FEATURE_MATRIX.md` §1 — 신규 2026-07-31) |
+| Reconstruction (+Detail popup) | HEVC, AV1 | ⚠️ | 전용 렌더러 없음, Detail popup 신규 (`COMPETITOR_FEATURE_MATRIX.md` §1 — 신규 2026-07-31) |
+| Predictions/Transform Detail popup | HEVC | ❌ | Options 메뉴 "Detail Popup Windows" 참조 (`UX_PARITY_MATRIX.md` §10) — 신규 2026-07-31 |
+| CABAC range/state 시각화 | HEVC, AVC | ⚠️ | `PARITY_CHECKLIST.md` Layer 6 CMP-10 참조 — 신규 2026-07-31 |
+
+**코덱 확장 (신규 2026-07-31, `COMPETITOR_FEATURE_MATRIX.md` §1 VP9/AVC 테이블):**
+- [ ] VP9: Coding Flow/Partition grid, MV Field, Predictions, Transform/Reconstruction, Efficiency Map — 현재 OV-02~06이 VP9 제외
+- [ ] AVC: Coding Flow/Partition grid, Transform/CBF — 현재 OV-03~05가 AVC 제외
+- [ ] HEVC RExt(4:2:2/4:4:4)/SCC/SHVC 확장 디코딩 지원 확인 및 완성 (`COMPETITOR_FEATURE_MATRIX.md` §5, spec §3.3)
+- [ ] Decode-stage pixel value 표시 (pre-deblock/predicted/residual/final) — Reconstruction Detail popup 확장 (`COMPETITOR_FEATURE_MATRIX.md` §5/§6 — 신규 2026-07-31)
 
 **Parity 검증:**
 - 각 오버레이의 색상 스케일이 VQ Analyzer와 일치
@@ -345,6 +378,8 @@ VQ-*(Probe 전용)를 분리된 하위 카탈로그로 유지한다 — 문서 �
 - [ ] VMAF 통합: `libvmaf-sys` 연결 (이미 optional feature로 존재 — spec §1.2), pooled score + per-frame score + ADM2/VIF/motion2 서브스코어
 - [ ] "Find First Difference" (두 스트림 간)
 - [ ] CLI: `bitvue compare --stream-a --stream-b --vmaf` 서브커맨드
+- [ ] ROI 기반 메트릭 (선택 영역 한정 PSNR/SSIM/VMAF) — `COMPETITOR_FEATURE_MATRIX.md` §3/§6 "Metrics-in-ROI" (신규 2026-07-31)
+- [ ] 추가 메트릭 (APSNR/DELTA/MSE/MSAD/VQM/NQI/EPSNR/VIF) — SE 소스, 우선순위 낮음, `COMPETITOR_FEATURE_MATRIX.md` §3 (신규 2026-07-31)
 
 **Parity 검증:** `VQA_PARITY_SPEC_V3.md` §4.9 참조.
 
@@ -372,14 +407,52 @@ CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 �
 
 ---
 
+## Phase 7.6: UX Contract 완성 — Context Menu & Evidence Bundle 🔴 (신규 — `UX_PARITY_MATRIX.md` §6/§7, `PARITY_CHECKLIST.md` Layer 7)
+
+**목표:** Compare 워크스페이스(Phase 7.5)를 포함해 전체 앱에 공통으로 필요한 우클릭 컨텍스트 메뉴 계약과 원클릭
+Evidence Bundle export 계약을 구현한다. 둘 다 `UX_PARITY_MATRIX.md` §9에서 P0/P1로 채점된 실제 갭이며, 기존
+계획(Phase 11 "폴리시" 항목)까지 미루지 않도록 여기로 승격했다 — 근거는 문서 상단 "우선순위 재검토" 참조.
+
+**Context Menu 시스템 (`PARITY_CHECKLIST.md` Layer 7 CTX-01, `UX_PARITY_MATRIX.md` §6):**
+- [ ] 3개 스코프(Player/HexView/StreamView) × 7개 항목 starter 세트 구현 (`Toggle.DetailMode`, `Export.EvidenceBundle`,
+      `Copy.Selection`, `Copy.Bytes`, `Set.OrderType.Display`, `Set.OrderType.Decode`)
+- [ ] Guard 평가 엔진: `always` / `has_selection` / `has_byte_range` — guard 평가는 상태를 변경하지 않아야 함
+- [ ] 비활성 항목에 disabled reason을 툴팁으로 표시 ("No selection." / "No byte range selected.")
+- [ ] `UX_PARITY_MATRIX.md` §3 per-panel interaction contract의 Context menu 컬럼(Timeline/Metrics/Reference
+      graph/Player/Hex/Trees)을 screenshot-driven refinement로 확장 (starter 세트 이후 단계)
+
+**Evidence Bundle export (`PARITY_CHECKLIST.md` Layer 7 EVB-01, `UX_PARITY_MATRIX.md` §7):**
+- [ ] 번들 포맷: `bundle_manifest.json`, `env.json`, `version.json`, `selection_state.json`, `order_type.json`,
+      `backend_fingerprint.json`, `plugin_versions.json`, `warnings.json`, `screenshots/*`
+- [ ] ABI 호환 정책 구현: forward-compatible 필드 추가, 필드 삭제는 major bump 필요, rename은 ≥2 minor alias 유지
+- [ ] Diff 계약: `selection_state`/`order_type`/`backend_fingerprint`/`plugin_versions`/`warnings`/`render_snapshots`
+      비교, `timestamps`/`machine_hostname`/`paths`는 diff 제외
+- [ ] 4개 진입점 배선: MainMenu(File > Export > Evidence Bundle), MainPanel(BottomBar > Export), ContextMenu
+      (RightClick > Export Evidence Bundle — 위 Context Menu 항목과 공유), CompareWorkspace(Toolbar > Export Diff Bundle)
+- [ ] 기존 `bitvue export --json`과 관계 정리 — 단일 프레임/스트림 export는 유지, Evidence Bundle은 별도 상위 기능
+
+**Parity 검증:** `UX_PARITY_MATRIX.md` §9 `INTERACTION_CONTEXT_MENU_GUARDS`/`EVIDENCE_ONE_CLICK_BUNDLE` 항목 통과.
+
+**예상 소요:** 중급 2~3주
+
+---
+
 ## Phase 8: Syntax 패널 완성 (코덱별 탭 상세화) 🟡
 
 **목표:** 각 코덱의 Syntax 탭을 VQ Analyzer 수준으로 완성
 
 - [ ] **Stats 탭 완성**:
   - 파이 차트: 프레임 타입 분포, CU 크기 분포, 인트라/인터 비율
-  - 바 차트: 프레임별 크기, QP 분포
+  - 바 차트: 프레임별 크기, QP 분포, OBU-size 분포 (AV1, VEGA "Graph View" 참조 — 신규 2026-07-31)
   - 스트림 통계 테이블
+  - Bit distribution 시각화 (신택스 요소별/블록타입별 비트 분포) — `COMPETITOR_FEATURE_MATRIX.md` §5/§6 (신규 2026-07-31)
+  - Scene change detection (프레임 간 콘텐츠 변화 마커, Timeline 연동) — `COMPETITOR_FEATURE_MATRIX.md` §3/§6,
+    `UX_PARITY_MATRIX.md` §1 "Scene-change markers" (신규 2026-07-31)
+- [ ] **HRD/CPB Buffer 그래프** (fullness plot + VBV violation 마커) — spec §4.1 (build 미확인), `COMPETITOR_FEATURE_MATRIX.md`
+      §1 "HRD/VBV buffer plot" / §5 "Buffer Analyzer"; conformance-checking 레이어(T-STD)는 범위 밖 (신규 2026-07-31)
+- [ ] **DPB-occupancy 그래프** (`WS_REFERENCE_DPB` 참조, `UX_PARITY_MATRIX.md` §8) — Ref Lists 탭과 함께 구현 (신규 2026-07-31)
+- [ ] **CABAC range/state 시각화** (HEVC/AVC) — `PARITY_CHECKLIST.md` Layer 6 CMP-10; 오버레이 자체는 Phase 2에서
+      추적, Syntax 패널 쪽 상태 트레이스 뷰는 여기서 구현 (신규 2026-07-31)
 - [ ] **신택스 트리 네비게이션**:
   - 트리 노드 펼치기/접기
   - 노드 클릭 → HEX View에서 비트 오프셋 강조
@@ -412,13 +485,22 @@ CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 �
 - [ ] `-fast <0|1|2>` 성능 모드
 - [ ] `-md5` 프레임별 MD5 체크섬
 - [ ] `-psnr` PSNR 계산
-- [ ] `-errors` 에러 로그 파일
+- [ ] `-errors <file>` 구조화된 에러 로그 export (XML/PDF 또는 JSON 동등물) — `COMPETITOR_FEATURE_MATRIX.md` §5
+      "Error Log Viewer" (신규 2026-07-31, 기존 텍스트 로그를 구조화 포맷으로 확장)
 - [ ] `-stats` 통계 출력
 - [ ] `-stream_stats` HEVC 스트림 통계
 - [ ] `-display_order` 표시 순서 YUV 출력
 - [ ] `-nocrop` 크롭 비활성화
 - [ ] `-cpu_max_feature <feature>` CPU 최적화 선택
 - [ ] `-film_grain` 필름 그레인 전/후 별도 출력 (AV1)
+- [ ] `-n <frame>` 시작 프레임 seek (신규 2026-07-31, `COMPETITOR_FEATURE_MATRIX.md` §2)
+- [ ] `-debug_yuv <file>` / `-dependent <file>` (§4.7 Debug YUV CLI 경로, 신규 2026-07-31)
+- [ ] `-extract <pattern>` / `-dump` / `-dump_mode <stage>` (신규 2026-07-31)
+- [ ] `-syntax_stats <file>` / `-syntax_count` (신규 2026-07-31)
+- [ ] `-norm_pix` / `-norm_bits` / `-percent` (신규 2026-07-31)
+- [ ] `-dump_headers` / `-dump_headers_filter` (신규 2026-07-31)
+- [ ] `-oppoint` (AV1 operating point) — VVC `-ols`는 vvdec 미연결로 보류 (신규 2026-07-31)
+- [ ] `-mv-to-csv` (신규 2026-07-31); `-track`/`-library_stream`(AVS3)은 AVS3 미구현이라 Phase 5 선행 필요
 
 **예상 소요:** 중급 1~2주
 
@@ -474,6 +556,8 @@ CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 �
 - [ ] 접근성 (ARIA 레이블, 키보드 네비게이션)
 - [ ] 다크/라이트 테마 완성
 - [ ] 라이선스 활성화 시스템 (오픈소스이므로 생략 가능)
+- [ ] YUV Viewer: Color-gamut 전환(BT.601/709/2020, Options 메뉴 "Color Conversion" — `UX_PARITY_MATRIX.md` §10),
+      Endianness 선택, Raw pixel format 20+종 지원 — `COMPETITOR_FEATURE_MATRIX.md` §5/§6 (신규 2026-07-31)
 
 **예상 소요:** 중급 2~3주
 
@@ -485,6 +569,9 @@ CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 �
 - [ ] 자동화 스크린샷 비교 테스트
 - [ ] 신택스 값 비교 테스트
 - [ ] 회귀 테스트 스위트 구축
+- [ ] **AV3/AVM 명명 정리 감사** (`PARITY_CHECKLIST.md` Layer 6 CMP-09) — Bitvue의 "AV3"와 VQ Analyzer v7.5+의
+      "AVM"(AOM 차세대 실험 코덱 공식 명칭)이 동일 코덱을 가리키는지 1회성 감사로 확정하고, 다르면 명칭을 분리,
+      같으면 문서/코드 전반의 명칭을 통일 (신규 2026-07-31 — 별도 phase가 아니라 한 줄짜리 감사 작업으로 스코프)
 
 **예상 소요:** 중급 2~3주
 

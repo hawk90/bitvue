@@ -39,7 +39,7 @@ One row = one measurable data item competitors expose. Bitvue must have: a defau
 | Bitstream Syntax | SEI/metadata (HDR, mastering, color info) | ⚠️ unverified |
 | Frame Temporal | Frame size/type/QP stats, slice/tile counts | ✅ (FrameSizesView) |
 | Frame Temporal | Complexity proxies (bits/pixel, motion magnitude) | ⚠️ unverified |
-| Frame Temporal | Scene-change markers | ❌ not tracked anywhere in existing docs |
+| Frame Temporal | Scene-change markers | ❌ now tracked: `DEVELOPMENT_PHASES.md` Phase 8 Stats 탭 bullet (added 2026-07-31) |
 | Frame Temporal | Reference depth + reordering indicators | ⚠️ unverified |
 | Decoder-Path | DPB / ref picture sets | ✅ (IA-04 selection info) |
 | Decoder-Path | HRD/CPB fullness + constraints | ⚠️ spec'd (§4.1) — build status unverified |
@@ -230,9 +230,9 @@ Scoring model (for future use if formalized): weights `information_architecture=
 | EVIDENCE_ONE_CLICK_BUNDLE | Evidence | P0 | One-click export bundling screenshots+evidence+version/env+selection-state+order-type+backend fingerprints? | ⚠️ contract now defined in §7 above (required files, ABI policy, 4 entrypoints) — not yet implemented; closest existing is `bitvue export --json` (single-frame/stream, not a full bundle) |
 | PERF_ENVELOPE_LOD_VIRTUALIZATION | Performance | P1 | Does the UI stay responsive on large streams via virtualization+LOD, no stale-async or cache-invalidation bugs? | ⚠️ Phase 10 (perf) claimed done in git log — LOD/virtualization specifics unverified against this bar. Concrete budget targets from `perf_budget_and_instrumentation.json`: UI frame ≤16.6ms, hit-test ≤1.5ms, overlay render ≤6.0ms, tooltip build ≤0.8ms, selection propagation ≤2.0ms; degrade steps on breach: disable labels → aggregate vectors → downsample heatmap → placeholder with reason |
 
-**Layer 7 candidate:** context-menu system (§6) and one-click evidence-bundle export (§7) are both real gaps
-with concrete contracts now defined above but no current Bitvue implementation — recommend adding as Layer 7
-in `PARITY_CHECKLIST.md` once scoped.
+**Now tracked as Layer 7** (2026-07-31): context-menu system (§6) → `PARITY_CHECKLIST.md` CTX-01, one-click
+evidence-bundle export (§7) → EVB-01. Both promoted into `DEVELOPMENT_PHASES.md` Phase 7.6 (inserted right after
+Phase 7.5 rather than deferred to Phase 11 — see that doc's "우선순위 재검토" note for rationale).
 
 ---
 

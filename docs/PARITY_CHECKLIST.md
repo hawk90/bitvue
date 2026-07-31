@@ -243,6 +243,18 @@ Layers 1-5, which is why this doc previously read "All P0/P1 complete." Full per
 
 ---
 
+## Layer 7: UX Interaction Contracts (NEW — 2026-07-31, `UX_PARITY_MATRIX.md` §6/§7/§9)
+
+Discovered via the V14-pack UX mining pass — real gaps, not codec/compare features so they don't fit Layer 6.
+Referenced from `DEVELOPMENT_PHASES.md` Phase 7.6 the same way Layer 6 is referenced from Phase 7.5.
+
+| ID | Feature | Severity | Status | Notes |
+|----|---------|----------|--------|-------|
+| CTX-01 | Context-menu system (Player/HexView/StreamView scopes, guard+disabled-reason policy) | P1 | [ ] | Contract: `UX_PARITY_MATRIX.md` §6 (3 scopes, 7 items, 3 guards: `always`/`has_selection`/`has_byte_range`) |
+| EVB-01 | One-click Evidence Bundle export (manifest+env+version+selection_state+order_type+backend_fingerprint+plugin_versions+warnings+screenshots, 4 entrypoints, ABI compat policy) | P0 | [ ] | Contract: `UX_PARITY_MATRIX.md` §7; closest existing is `bitvue export --json` (single-frame/stream, not a full bundle) |
+
+---
+
 ## Regression Suite Status
 
 **2026-07-31: now CI-enforced** — `.github/workflows/ci.yml` job `parity-regression` runs
@@ -267,7 +279,10 @@ cargo test -p bitvue-cli --test parity_test: 29/29
 All P0/P1 items in Layers 1-5 are complete. **Layer 6 (added 2026-07-31) is mostly unstarted, but CMP-01/02 are
 partially built** (compare alignment + side-by-side view already exist in code — see corrected status above,
 2026-07-31 `_import_v14` mining pass) — competitor research surfaced dual-stream compare and VMAF as gaps not
-previously tracked. See VQA_PARITY_SPEC_V3.md §4.9/§1.5/Phase 7.5 for implementation detail.
+previously tracked. See VQA_PARITY_SPEC_V3.md §4.9/§1.5/Phase 7.5 for implementation detail. **Layer 7 (added
+2026-07-31) is entirely unstarted** — context-menu system and one-click evidence bundle export, both real UX
+gaps with concrete contracts now spec'd in `UX_PARITY_MATRIX.md` §6/§7, promoted to `DEVELOPMENT_PHASES.md`
+Phase 7.6 (see "우선순위 재검토" note there for why it's not deferred to Phase 11).
 
 ## Fixture Files
 

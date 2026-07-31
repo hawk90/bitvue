@@ -28,11 +28,11 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | Mode | Source(s) | Bitvue status |
 |---|---|---|
 | Coding Flow (CTU/CU/PU tree) | VQA | ✅ OV-03 Partition grid |
-| Predictions (+Detail popup) | VQA | ✅ OV-06 Prediction mode; detail popup ❌ |
-| Transform (+Detail popup) | VQA | ⚠️ OV-04 CBF Luma (partial); TU detail popup ❌ |
-| Reconstruction (+Detail) | VQA | ⚠️ unverified — no dedicated checklist ID |
-| Loop Filter (+Detail, deblock BS colors) | VQA, VEGA (in-loop-filter viz) | ❌ not tracked |
-| SAO (+Detail) | VQA | ❌ not tracked |
+| Predictions (+Detail popup) | VQA | ✅ OV-06 Prediction mode; detail popup ❌ phased Phase 2 (2026-07-31) |
+| Transform (+Detail popup) | VQA | ⚠️ OV-04 CBF Luma (partial); TU detail popup ❌ phased Phase 2 (2026-07-31) |
+| Reconstruction (+Detail) | VQA | ⚠️ phased Phase 2 new table row (2026-07-31) |
+| Loop Filter (+Detail, deblock BS colors) | VQA, VEGA (in-loop-filter viz) | ❌ phased Phase 2 new table row (2026-07-31) |
+| SAO (+Detail) | VQA | ❌ phased Phase 2 new table row (2026-07-31) |
 | YUV (plain decode) | VQA, all | ✅ base decode view |
 | Heat Map (bit-cost) | VQA, SE (bit-size color map), CV (MB-bits heatmap) | ⚠️ TransformRenderer partial (spec Phase 2) |
 | MV Heat | VQA | ✅ OV-02 MV Field (plain); magnitude-heat coloring unverified |
@@ -42,7 +42,7 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | PU Type | VQA | ⚠️ PredictionRenderer partial (spec Phase 2) |
 | PU Reference Indices | VQA, VEGA (ref-index overlay) | ⚠️ HEVC PU-level unverified (AVC MB-level ✅, see below) |
 | Simple Motion | VQA | ⚠️ unverified (spec Phase 2) |
-| CABAC range/state visualization | VQA (v6.1+), VEGA | ⚠️ CMP-10 unverified |
+| CABAC range/state visualization | VQA (v6.1+), VEGA | ⚠️ CMP-10; phased `DEVELOPMENT_PHASES.md` Phase 2 (overlay) + Phase 8 (state trace view), 2026-07-31 |
 
 ### VVC
 | Mode | Source | Bitvue status |
@@ -70,7 +70,7 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | Film Grain Pixels | VQA | ✅ OV-09 |
 | YUV | VQA | ✅ base view |
 | Heat Map | VQA, SE, CV | ⚠️ unverified |
-| Efficiency Map | VQA, SE | ❌ not tracked |
+| Efficiency Map | VQA, SE | ⚠️ Phase 4 roadmap item, unchecked (`DEVELOPMENT_PHASES.md` — was already tracked, this row's ❌ was stale) |
 | Block Type | VQA, SE | ⚠️ unverified |
 | PSNR | VQA, SE | ❌ CMP-06/07 |
 | Simple Motion | VQA | ⚠️ unverified |
@@ -79,14 +79,14 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | Mode | Source | Bitvue status |
 |---|---|---|
 | QP Map | VQA, SE | ✅ OV-01 |
-| Coding Flow / Partition grid | VQA | ❌ OV-03 excludes VP9 |
-| MV Field | VQA | ❌ OV-02 excludes VP9 |
-| Predictions | VQA | ❌ OV-06 excludes VP9 |
-| Transform / Reconstruction | VQA | ❌ OV-04/05 exclude VP9 |
-| Loop Filter | VQA | ❌ not tracked |
+| Coding Flow / Partition grid | VQA | ❌ OV-03 excludes VP9; phased Phase 2 "코덱 확장" (2026-07-31) |
+| MV Field | VQA | ❌ OV-02 excludes VP9; phased Phase 2 "코덱 확장" (2026-07-31) |
+| Predictions | VQA | ❌ OV-06 excludes VP9; phased Phase 2 "코덱 확장" (2026-07-31) |
+| Transform / Reconstruction | VQA | ❌ OV-04/05 exclude VP9; phased Phase 2 "코덱 확장" (2026-07-31) |
+| Loop Filter | VQA | ❌ phased Phase 2 new table row (2026-07-31) |
 | Heat Map | VQA, SE, CV | ⚠️ unverified |
 | Block Type | VQA, SE | ⚠️ unverified |
-| Efficiency Map | VQA, SE | ❌ not tracked |
+| Efficiency Map | VQA, SE | ❌ phased Phase 2 "코덱 확장" (2026-07-31) |
 | PSNR | VQA, SE | ❌ CMP-06/07 |
 
 ### AVC / H.264
@@ -95,9 +95,9 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | QP Map | VQA, VEGA | ✅ OV-01 |
 | MV Field | VQA | ✅ OV-02 |
 | Predictions | VQA | ✅ OV-06 |
-| Coding Flow / Partition grid | VQA | ❌ OV-03 excludes AVC |
-| Transform / CBF | VQA | ❌ OV-04/05 exclude AVC |
-| Loop Filter | VQA | ❌ not tracked |
+| Coding Flow / Partition grid | VQA | ❌ OV-03 excludes AVC; phased Phase 2 "코덱 확장" (2026-07-31) |
+| Transform / CBF | VQA | ❌ OV-04/05 exclude AVC; phased Phase 2 "코덱 확장" (2026-07-31) |
+| Loop Filter | VQA | ❌ phased Phase 2 new table row (2026-07-31) |
 | MB Type | VQA, VEGA | ✅ `AvcMbTypeRenderer.tsx` (commit db5a308, VQA Phase 2) |
 | MB Reference Indices | VQA, VEGA | ✅ `reference-indices` overlay case confirmed in `OverlayRenderer/index.tsx` (commit db5a308) |
 | YUV | VQA | ✅ base view |
@@ -118,7 +118,7 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | JPEG XS | Precinct, Dequant, Transform, MCT, NLT, YUV | ❌ codec unimplemented |
 | APV | decode support added VQA v7.7/7.8, no published named-overlay list (gated) | ❌ codec unimplemented (CMP-08) |
 | VC-3 / DNxHD | decode support added VQA v7.5+, macroblock/QSF/ACF params | ❌ codec unimplemented |
-| AVM | VQA official name for AOM next-gen experimental codec (v7.5+) | ⚠️ naming reconciliation vs Bitvue "AV3" unresolved (CMP-09) |
+| AVM | VQA official name for AOM next-gen experimental codec (v7.5+) | ⚠️ naming reconciliation vs Bitvue "AV3" unresolved (CMP-09); phased as one-line audit in `DEVELOPMENT_PHASES.md` Phase 12 (2026-07-31) |
 
 ### Global cross-codec
 | Feature | Source | Bitvue status |
@@ -126,7 +126,7 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | Dual View (2 bitstreams synced + delta diff) | VQA, SE (Compare) | ❌ CMP-01/02 |
 | Debug YUV (PSNR/SSIM vs reference, find-first-diff) | VQA | ⚠️ planned §4.7; find-first-diff ❌ |
 | Thumbnails/Bars Filmstrip | VQA, all | ✅ IA-02 |
-| HRD/VBV buffer plot | VQA | ⚠️ spec'd §4.1, build unverified |
+| HRD/VBV buffer plot | VQA | ⚠️ spec'd §4.1, build unverified; phased `DEVELOPMENT_PHASES.md` Phase 8 (2026-07-31) |
 | Stats export-to-file | VQA | ✅ Layer 5 JSON export / `--stats` (partial) |
 
 ---
@@ -176,11 +176,11 @@ conformance reports (SPS/PPS/VPS/SEI/Slice) — broadcast-conformance focus, mos
 | VMAF phone | SE | ❌ CMP-07 (nice-to-have) |
 | VMAF sub-scores (ADM2/VIF/motion2) | (Bitvue proposal, beyond baseline) | ❌ CMP-07 |
 | APSNR / DELTA / MSE / MSAD / VQM / NQI / EPSNR / VIF | SE | ❌ not tracked |
-| Metrics-in-ROI | VQP, SE | ❌ not tracked |
+| Metrics-in-ROI | VQP, SE | ❌ phased `DEVELOPMENT_PHASES.md` Phase 7.5 (2026-07-31) |
 | RD-curve plotting | VQP | ⚠️ RDCurvesPanel exists (CMP-05) |
 | BD-Rate calculation | VQP | ❌ CMP-05 |
 | Convex Hull (ABR ladder optimization) | VQP | ❌ likely out of scope — ABR encode-ladder tuning, not bitstream analysis |
-| Scene change detection | VQP | ❌ not tracked (also flagged in `UX_PARITY_MATRIX.md` §1) |
+| Scene change detection | VQP | ❌ phased `DEVELOPMENT_PHASES.md` Phase 8 (also flagged in `UX_PARITY_MATRIX.md` §1, 2026-07-31) |
 | PSNR/SSIM/VMAF support | CV | **—** confirmed absent even in CodecVisa itself; not a Bitvue gap, note as CV limitation |
 
 ---
@@ -198,7 +198,7 @@ conformance reports (SPS/PPS/VPS/SEI/Slice) — broadcast-conformance focus, mos
 | Find First Difference (stream vs stream) | VQA (dual/dependent stream), SE | ❌ CMP-04 |
 | Cross-codec compare (HEVC/H264/VP9 in one view) | VEGA (Comparison Viewer) | ❌ not tracked, niche |
 | QP-variation-across-ABR-renditions | VEGA | ❌ out of scope (ABR/broadcast QC) |
-| CABAC range/state visualization | VQA, VEGA | ⚠️ CMP-10 unverified |
+| CABAC range/state visualization | VQA, VEGA | ⚠️ CMP-10; phased `DEVELOPMENT_PHASES.md` Phase 2 + Phase 8 (2026-07-31) |
 
 Alignment correctness rules for A/B compare are specified in `UX_PARITY_MATRIX.md` §2.1 (alignment axes,
 mismatch handling) — directly implements CMP-01..05.
@@ -209,30 +209,30 @@ mismatch handling) — directly implements CMP-01..05.
 
 | Tool | Source | Bitvue status |
 |---|---|---|
-| Buffer Analyzer (CPB/T-STD conformance) | VEGA | ⚠️ HRD buffer graph spec'd §4.1; conformance-checking layer not tracked |
+| Buffer Analyzer (CPB/T-STD conformance) | VEGA | ⚠️ HRD buffer graph phased Phase 8 (2026-07-31); T-STD conformance-checking layer explicitly out of scope (broadcast QC) |
 | Trace Viewer (syntax↔hex linked inspector) | VEGA | ⚠️ IA-03+IA-05 exist; bidirectional linking is Phase 8 in-progress (spec §4.6) |
-| Comparison Viewer (cross-codec bitrate/QP/buffer/MV/blockiness) | VEGA | ❌ not tracked, overlaps §4 CMP items above |
-| Error Log Viewer (XML/PDF export) | VEGA | ❌ Status panel exists (IA-06) but no structured export |
+| Comparison Viewer (cross-codec bitrate/QP/buffer/MV/blockiness) | VEGA | ❌ not tracked, overlaps §4 CMP items above — deliberately left unphased (niche, cross-codec framing) |
+| Error Log Viewer (XML/PDF export) | VEGA | ❌ Status panel exists (IA-06); structured export phased Phase 9 `-errors` bullet (2026-07-31) |
 | Quad Tree view (block-split structure) | VEGA | ✅ overlaps OV-03 Partition grid (AV1/HEVC only) |
-| Per-block overlay (coded bits/prediction/MV/QP/interpolation/ref-index) | VEGA | ⚠️ mostly covered piecemeal (OV-01/02/06 + AVC MB Type/RefIdx); "interpolation" sub-mode not tracked |
-| Analytical graphs (bitrate/frame-dist/compression-ratio/QP/DPB-occupancy) | VEGA | ⚠️ FrameSizesView covers bitrate/QP; DPB-occupancy graph not tracked |
-| In-loop-filter + intra-prediction process visualization | VEGA | ⚠️ overlaps HEVC Loop Filter/SAO gaps above |
-| Pixel-value-at-every-decode-stage display (pre-deblock/predicted/residual/final) | VEGA, CV | ❌ not tracked |
+| Per-block overlay (coded bits/prediction/MV/QP/interpolation/ref-index) | VEGA | ⚠️ mostly covered piecemeal (OV-01/02/06 + AVC MB Type/RefIdx); "interpolation" sub-mode deliberately left unphased (too granular/vague to scope yet) |
+| Analytical graphs (bitrate/frame-dist/compression-ratio/QP/DPB-occupancy) | VEGA | ⚠️ FrameSizesView covers bitrate/QP; DPB-occupancy graph phased Phase 8 (2026-07-31) |
+| In-loop-filter + intra-prediction process visualization | VEGA | ⚠️ overlaps HEVC Loop Filter/SAO gaps above, both phased Phase 2 (2026-07-31) |
+| Pixel-value-at-every-decode-stage display (pre-deblock/predicted/residual/final) | VEGA, CV | ❌ phased `DEVELOPMENT_PHASES.md` Phase 2 "코덱 확장" (2026-07-31) |
 | Detailed residue view (HEVC/H264) | VEGA | ⚠️ Transform/CBF renderer partial overlap |
 | Closed-caption visualization | VEGA | ❌ out of scope (§1.5 broadcast-QC exclusion) |
 | HEVC SCC extension / RExt (4:2:2/4:4:4) | VEGA, VQA | ⚠️ listed in spec §3.3, decode-level support unverified |
 | Conformance checks (TR101290/CableLabs/ARIB/HbbTV/ATSC3/CMAF) | VEGA | ❌ explicitly out of scope (§1.5 rationale) |
 | ABR quality checks (blockiness/black-frame/freeze/loudness/silence/CALM) | VEGA | ❌ out of scope (broadcast/ABR QC + audio loudness) |
-| AV1 Analyzer: Access Unit View / Graph View (compression-ratio, OBU-size) | VEGA | ⚠️ AU view overlaps IA-03; standalone compression-ratio/OBU-size graph not tracked |
+| AV1 Analyzer: Access Unit View / Graph View (compression-ratio, OBU-size) | VEGA | ⚠️ AU view overlaps IA-03; OBU-size distribution phased Phase 8 Stats 탭 (2026-07-31); standalone compression-ratio graph still not tracked |
 | AV1 Analyzer: Frame Buffer / MV / Coefficient / Filtering View | VEGA | ⚠️ mostly overlaps OV-01..10 AV1 overlays (already ✅); standalone "view" framing not tracked |
 | AV1 Analyzer: Stream Compliance Assurance | VEGA | ❌ out of scope (compliance/QC framing) |
 | Hex viewer (offset/bytes/ASCII) | SE, VEGA (Unit Info) | ✅ IA-05 HexViewTab |
 | Header text/syntax view | SE, VEGA | ✅ IA-03 SyntaxPanel |
-| Bit distribution visualization | SE | ❌ not tracked |
+| Bit distribution visualization | SE | ❌ phased `DEVELOPMENT_PHASES.md` Phase 8 Stats 탭 (2026-07-31) |
 | GOP thumbnail nav | SE | ✅ IA-02 Filmstrip |
-| Color-gamut switch (BT.601/709/2020) | SE (YUV Viewer) | ⚠️ described as target UI in `UX_PARITY_MATRIX.md` §10 Options menu (moved from spec §2.2); build status unverified |
-| Endianness selection, 20+ raw pixel formats | SE (YUV Viewer) | ❌ not tracked |
-| Container breadth (MPEG-1 System, MXF, HEIC, DASH-MPD, etc.) | SE | ⚠️ spec §3.2 — MXF/AVI/MMT explicitly ❌; HEIC/DASH-MPD not tracked at all |
+| Color-gamut switch (BT.601/709/2020) | SE (YUV Viewer) | ⚠️ described as target UI in `UX_PARITY_MATRIX.md` §10 Options menu (moved from spec §2.2); phased `DEVELOPMENT_PHASES.md` Phase 11 (2026-07-31), build status still unverified |
+| Endianness selection, 20+ raw pixel formats | SE (YUV Viewer) | ❌ phased `DEVELOPMENT_PHASES.md` Phase 11, same bullet as above (2026-07-31) |
+| Container breadth (MPEG-1 System, MXF, HEIC, DASH-MPD, etc.) | SE | ⚠️ spec §3.2 — MXF/AVI explicitly tracked Phase 0; HEIC/DASH-MPD added to Phase 0 (2026-07-31); MMT still not tracked (niche, left unphased) |
 | Bit-numbers-per-CU/MB, binary view of CU/MB bits, per-block-type bit histogram | CV | ❌ not tracked (legacy/2017 source, low confidence) |
 | Any2Hevc transcoder / Pelscope (bundled utilities) | CV | **—** bundled tool, not an analyzer feature; N/A for Bitvue |
 | H.264 Data Partitions support | CV | ❌ not tracked, niche |
@@ -241,9 +241,28 @@ mismatch handling) — directly implements CMP-01..05.
 
 ---
 
-## 6. New backlog items surfaced (not yet in `PARITY_CHECKLIST.md`)
+## 6. Backlog items — now phased (2026-07-31)
 
-Beyond the existing CMP-01..10 (Layer 6): ROI-based metrics, bit-distribution visualization, decode-stage
-pixel display (pre-deblock/predicted/residual/final), structured error-log export (XML/PDF or JSON
-equivalent), YUV-viewer color-gamut/endianness/raw-pixel-format options, and MXF/HEIC/DASH-MPD container
-support. Recommend scoping into a future checklist layer once prioritized — not added speculatively here.
+Previously listed here as unphased ("not added speculatively"). All now have a home in `DEVELOPMENT_PHASES.md`
+(no new Layer 6 IDs needed — none of these are codec/compare features, so they're plain checklist bullets in
+existing phases, same style as the rest of those phases):
+
+| Item | Landed in |
+|---|---|
+| ROI-based metrics | Phase 7.5 (new bullet) |
+| Bit-distribution visualization | Phase 8 Stats 탭 (new bullet) |
+| Decode-stage pixel display (pre-deblock/predicted/residual/final) | Phase 2 "코덱 확장" (new bullet) |
+| Structured error-log export (XML/PDF/JSON) | Phase 9 `-errors <file>` bullet (extended) |
+| YUV-viewer color-gamut/endianness/raw-pixel-format options | Phase 11 (new bullet) |
+| MXF/HEIC/DASH-MPD container support | Phase 0 (MXF already tracked; HEIC/DASH-MPD added) |
+
+Also newly phased this pass, beyond this section's original list: HEVC Loop Filter/SAO/Reconstruction+Detail
+popups, VP9/AVC overlay-mode gaps, HEVC RExt/SCC/SHVC (Phase 2); HRD/CPB buffer graph, DPB-occupancy graph,
+CABAC range/state viz (Phase 8, also Layer 6 CMP-10); missing CLI flags (Phase 9); AV3/AVM naming audit
+(Phase 12, Layer 6 CMP-09); context-menu system + evidence-bundle export (Phase 7.6, new Layer 7 CTX-01/EVB-01
+in `PARITY_CHECKLIST.md`). Deliberately left unphased: cross-codec compare viewer and per-block "interpolation"
+sub-mode (both niche, overlap existing CMP items, too vague to scope yet), CodecVisa-sourced bit-numbers-per-
+CU/MB / binary CU-bit view / per-block-type bit histogram (legacy 2017 source, low confidence), H.264 Data
+Partitions support (niche), Convex Hull ABR-ladder optimization and QP-variation-across-ABR-renditions (out of
+scope — ABR encode-ladder tuning, not bitstream analysis), all conformance/TR101290/CableLabs/ARIB/HbbTV/
+ATSC3/CMAF/closed-caption/ABR-QC items (out of scope per spec §1.5, broadcast QC territory).
