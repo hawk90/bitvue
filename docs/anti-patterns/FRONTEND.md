@@ -1,6 +1,6 @@
 # Anti-Pattern Catalog — FRONTEND: 프런트엔드 렌더링 연계
 
-이 카탈로그는 더 큰 Anti-Pattern Catalog(`docs/anti-patterns/INDEX.md`, 별도 작성 예정)의 한 파트이며, 원 설계 논의에서는 요약 표에 "프런트엔드 렌더링 연계 — 15 items"로 규모만 언급되고 개별 항목은 나열되지 않았던 카테고리를 카탈로그 저술 과정에서 새로 항목화한 것이다. Rust 쪽의 `PIXEL`(디코드 YUV → RGBA → PNG/base64 → WebView 전달 파이프라인)과 `IPC`(Tauri 커맨드/이벤트 설계) 카테고리가 다루는 문제의 프런트엔드측 거울상(mirror image)에 해당하며, 두 문서와 짝을 이루어 읽는 것을 권장한다.
+이 카탈로그는 더 큰 Anti-Pattern Catalog(`docs/anti-patterns/INDEX.md`, 별도 작성 예정)의 한 파트이며, 원 설계 논의에서는 요약 표에 "프런트엔드 렌더링 연계 — 15 items"로 규모만 언급되고 개별 항목은 나열되지 않았던 카테고리를 카탈로그 저술 과정에서 새로 항목화한 것이다. Rust 쪽의 `PIXEL`(디코드 YUV → RGBA → PNG/base64 → WebView 전달 파이프라인)과 `IPC`(Tauri 커맨드/이벤트 설계) 카테고리가 다루는 문제의 프런트엔드측 거울상(mirror image)에 해당하며, 두 문서와 짝을 이루어 읽는 것을 권장한다. 이 문서가 캔버스 레이어 분리·좌표계·HiDPI·WebGL 업로드·가상화 등 "렌더링 메커니즘·레이어 분리" 중심이라면, 같은 Phase 3 웨이브의 `docs/anti-patterns/FRONT_REACT.md`는 그 위 층위인 React 상태 아키텍처(store/selector 설계)와 렌더 비용 패턴을 다루는 짝 문서다.
 
 ---
 
