@@ -2,9 +2,9 @@ export const meta = {
   name: 'anti-pattern-scan',
   description: "Audit the Bitvue repo against docs/anti-patterns/*.md, filling in each item's Bitvue 판정 verdict",
   whenToUse:
-    'Run after the anti-pattern catalog is stable (see docs/anti-patterns/INDEX.md - dedup pass recommended ' +
-    'first). args: { files?: string[] } - category IDs like ["PARSE","MEM"] to scope the scan; omit for all ' +
-    'files (expensive - 36 files as of the last catalog wave, one agent per file).',
+    'Run after the anti-pattern catalog is stable (see docs/anti-patterns/INDEX.md). args: { files?: string[] } ' +
+    '- category IDs like ["PARSE","MEM"] to scope the scan; omit for all files (expensive - 47 files as of the ' +
+    'last catalog wave, one agent per file).',
   phases: [{ title: 'Audit', detail: 'per file: grep the relevant crate/dir, judge each item, write verdict back' }],
 }
 
@@ -46,6 +46,17 @@ const AREA_HINTS = {
   TAURI_WEB: 'src-tauri/',
   FRONT_REACT: 'frontend/components frontend/contexts',
   UX_SCENARIO: 'frontend/ scripts/',
+  FFI: 'crates/bitvue-decode (dav1d FFI) crates/bitvue-metrics (libvmaf FFI) crates/vendor/abseil',
+  DEC: 'crates/bitvue-decode',
+  RPERF: 'crates/',
+  SER: 'src-tauri/src/commands crates/bitvue-cli crates/bitvue-mcp',
+  PLUGIN: 'crates/bitvue-codecs crates/bitvue-codecs-parser Cargo.toml',
+  MCP: 'crates/bitvue-mcp crates/bitvue-core/src/mcp.rs',
+  BUILD: 'Cargo.toml crates/*/Cargo.toml .github/workflows/ci.yml src-tauri/Cargo.toml',
+  PLAT: 'src-tauri/ frontend/',
+  TEST: 'crates/*/tests fuzz/ scripts/ crates/bitvue-cli/tests',
+  OBS: 'crates/bitvue-core src-tauri/src',
+  SEC: 'src-tauri/src/commands crates/bitvue-formats crates/bitvue-core',
 }
 
 const targets = args?.files ?? Object.keys(AREA_HINTS)
