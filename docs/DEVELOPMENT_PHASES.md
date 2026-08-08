@@ -893,7 +893,7 @@ exclude에 남아있음** — 이번 수정은 나중에 워크스페이스가 �
 | ~~`contexts/YuvDiffContext.tsx`, `components/panels/YuvDiffPanel.tsx`~~ | ~~`load_debug_yuv` 등~~ — 2026-08-09 "Debug YUV 커맨드 패밀리 구현" 참고, 완료됨 |
 | `contexts/CompareContext.tsx` (Provider는 마운트, `createWorkspace`는 `useAppFileOperations.ts`의 dependent-file-open 경로에서 실제로 호출됨) | `create_compare_workspace`, `set_sync_mode`, `set_manual_offset`, `reset_offset` — 단 `setSyncMode`/`setManualOffset`는 죽은 `CompareWorkspace.tsx`에서만 쓰여서 사실상 미호출 |
 | `components/panels/SyntaxDetailPanel/RefListTab.tsx`, `StatisticsTab.tsx` | `get_codec_extended_info` |
-| `components/Player/views/AV1FeaturesView.tsx`, `hooks/useAv1Features.ts` | `get_av1_features` (두 파일이 서로 다른 param 모양으로 각자 부름 — 중복 구현 가능성, 미조사) |
+| ~~`components/Player/views/AV1FeaturesView.tsx`, `hooks/useAv1Features.ts`~~ | ~~`get_av1_features`~~ — 2026-08-09 "get_av1_features 구현" 참고, 완료됨 (중복 구현 아니었음 — 대시보드 뷰 vs 단일 오버레이, 둘 다 정당한 소비자) |
 | `components/Player/views/DeblockingView.tsx` | `get_deblocking_analysis` |
 | `components/Player/views/ResidualsView.tsx` | `get_residual_analysis` |
 | `components/Player/views/CodingFlowView.tsx` (기존에 이미 플래그됨) | `get_coding_flow_analysis` |
@@ -969,8 +969,45 @@ enum이 숫자로 나오는지 확인, out-of-range/stream-closed 에러 경로)
 이걸로 `QPMapRenderer`/`MVFieldRenderer`/`CodingFlowRenderer`/`PredictionRenderer`/`TransformRenderer`
 5개 오버레이 렌더러가 (렌더 트리엔 있었지만 데이터가 한 번도 안 왔던 상태에서) 실제 데이터를 받게 됨.
 
-**남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_av1_features`,
-`get_deblocking_analysis`, `get_residual_analysis`, `get_coding_flow_analysis` — 6개.
+**남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_av1_features` (다음 섹션에서
+완료됨), `get_deblocking_analysis`, `get_residual_analysis`, `get_coding_flow_analysis` — 6개.
+
+### get_av1_features 구현 — 예상보다 훨씬 컸던 케이스 (2026-08-09, 782148b/9ae50f7)
+
+처음엔 get_frame_analysis와 같은 "이미 구현된 추출 로직, 배선만 필요" 패턴으로 보였음
+(`bitvue-av1-codec::advanced_features`에 `extract_cdef_data`/`extract_loop_restoration_data`/
+`extract_film_grain_data`/`extract_super_resolution_data`가 전부 이미 구현+테스트돼있었음). 그런데
+실제로 파보니 이 함수들의 입력(`FrameHeader.cdef_damping`/`loop_restoration`/`film_grain`/
+`super_resolution`)을 채워주는 코드가 어디에도 없었음 — 유일한 프레임 헤더 파서인
+`parse_frame_header_basic`이 quantization_params() 직후에 의도적으로 멈춤(자기 모듈 문서에 명시).
+CDEF/LR/film-grain까지 가려면 segmentation_params~film_grain_params까지 AV1 스펙의 나머지 프레임
+헤더 섹션 전체를 새로 파싱해야 했음.
+
+**진짜 어려웠던 지점**: `skip_mode_params()`의 비트 존재 여부가 참조 프레임들의 order hint 비교에
+달려있는데, 이건 프레임 단위 고립 파싱으로는 알 수 없고 스트림 시작부터 모든 프레임을 순서대로
+파싱하면서 8슬롯 참조 상태(`RefFrameState`)를 추적해야만 알 수 있음 — get_frame_analysis처럼
+프레임 1개만 떼서 못 봄. (다행히 `PrevGmParams`는 global_motion_params()의 서브지수 골롬 코드 길이가
+참조값과 무관하게 자기-종결적이라 필요 없음을 스펙 확인 후 검증.) short reference-signaling
+스트림(`set_frame_refs()` 필요)은 명시적으로 미지원으로 남김 — `parse_frame_header_basic`의 기존
+"좁은 범위 문서화" 선례와 같은 방식.
+
+**검증**: 독립적인 디코더 오라클이 없음(`dav1d` Rust 바인딩이 헤더 introspection을 노출 안 함) —
+합성 비트스트림 유닛 테스트 6개(그 중 하나가 실제 버그를 잡음: `seq_choose_screen_content_tools=1`이면
+프레임 헤더가 `allow_screen_content_tools`를 스킵한다고 처음에 잘못 가정했는데 실제론 정반대 — choose=1은
+"프레임 헤더 비트로 결정한다"는 뜻이라 오히려 명시적으로 읽어야 함) + 실제 픽스처 250프레임 전부
+순차 파싱 성공 + 320x240 확인 (`bitvue-av1-codec` 라이브러리 쪽). `bitvue-sidecar` 쪽은 88개 유닛
+테스트(get_av1_features용 4개 + dispatch 레벨 2개 신규). `BITVUE_ELECTRON_SELFTEST`에
+`getAv1Features(0)` 라운드 추가 — 실제 IPC 체인으로 진짜 CDEF 데이터(320x240, non-empty blocks)
+확인, exit 0.
+
+**프론트엔드 발견**: `AV1FeaturesView.tsx`(전체 대시보드)와 `useAv1Features.ts`(단일 오버레이 모드)가
+독립적으로 같은(존재하지 않던) 커맨드를 서로 다른 응답 shape 가정으로 부르고 있었음 — 진짜 중복
+구현이 아니라 그냥 두 개의 정당한 소비자가 둘 다 고장나 있었던 것. wire 타입은 sidecar 자체와 맞춰
+snake_case로(`AV1FeaturesView.tsx`가 이미 그렇게 가정하고 있었음), `useAv1Features.ts`가 자기
+경계에서 기존 camelCase `Av1FeaturesData`로 변환.
+
+**남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_deblocking_analysis`,
+`get_residual_analysis`, `get_coding_flow_analysis` — 5개.
 
 ### 확정 순서
 
