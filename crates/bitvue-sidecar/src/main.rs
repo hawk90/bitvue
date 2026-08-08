@@ -72,6 +72,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+mod decode_bridge;
+
 use bitvue_engine::{
     BitRange, BitvueError, Command, Core, Event, FrameKey, SpatialBlock, StreamId, UnitKey,
 };
@@ -268,6 +270,9 @@ fn write_frame<W: Write>(
 fn compute_frames(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)> {
     if request.method == "get_hex_range" {
         return get_hex_range(core, request);
+    }
+    if request.method == "get_decoded_frame_yuv" {
+        return get_decoded_frame_yuv(core, request);
     }
     let response = dispatch(core, request);
     vec![(
@@ -925,6 +930,104 @@ fn get_hex_range(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)> {
             WireError {
                 code: wire_error_code_for(&err),
                 message: err.to_string(),
+                offset: None,
+            },
+        )),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GetDecodedFrameYuvParams {
+    stream: String,
+    frame_index: usize,
+}
+
+/// Second data-plane command (after `get_hex_range`): a `Control` metadata frame (width/height/
+/// strides/chroma format) followed by a `Data` frame of raw concatenated Y+U+V bytes -- same
+/// no-base64 wire pattern as `get_hex_range`. Business logic lives in `decode_bridge`, not
+/// `bitvue-indexer` (which is explicitly pixel-decode-free by design, see its crate doc) --
+/// `bitvue-sidecar` is the orchestration layer allowed to depend on `bitvue-decode` directly.
+fn get_decoded_frame_yuv(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)> {
+    let params: GetDecodedFrameYuvParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return single_control_frame(Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            ))
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return single_control_frame(response),
+    };
+
+    let stream_state = core.get_stream(stream);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return single_control_frame(Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            ))
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return single_control_frame(Response::failure(
+                request.id,
+                WireError {
+                    code: wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            ))
+        }
+    };
+
+    match decode_bridge::get_decoded_frame_yuv(data, params.frame_index) {
+        Ok(frame) => {
+            let meta = Response::success(
+                request.id,
+                serde_json::json!({
+                    "width": frame.width,
+                    "height": frame.height,
+                    "bit_depth": frame.bit_depth,
+                    "chroma_subsampling": frame.chroma_subsampling,
+                    "y_stride": frame.y_stride,
+                    "u_stride": frame.u_stride,
+                    "v_stride": frame.v_stride,
+                    "y_len": frame.y_len,
+                    "u_len": frame.u_len,
+                    "v_len": frame.v_len,
+                }),
+            );
+            vec![
+                (
+                    FrameKind::Control,
+                    serde_json::to_vec(&meta).expect("Response always serializes"),
+                ),
+                (FrameKind::Data, frame.bytes),
+            ]
+        }
+        Err(message) => single_control_frame(Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
                 offset: None,
             },
         )),
@@ -1727,6 +1830,81 @@ mod tests {
         );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    // -- get_decoded_frame_yuv --------------------------------------------------------------
+
+    #[test]
+    fn get_decoded_frame_yuv_end_to_end_returns_real_yuv_planes() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        // Deliberately not calling index_stream -- decode reads raw IVF bytes directly, it
+        // doesn't depend on bitvue-indexer's metadata pass at all.
+
+        let request = Request {
+            id: 200,
+            method: "get_decoded_frame_yuv".to_string(),
+            params: serde_json::json!({"stream": "A", "frame_index": 0}),
+        };
+        let frames = get_decoded_frame_yuv(&core, &request);
+        assert_eq!(
+            frames.len(),
+            2,
+            "expected Control metadata + Data planes, got {frames:?}"
+        );
+        assert_eq!(frames[0].0, FrameKind::Control);
+        let ctrl_response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        assert!(ctrl_response.ok, "decode failed: {ctrl_response:?}");
+        let meta = ctrl_response.result.unwrap();
+        let width = meta["width"].as_u64().unwrap();
+        let height = meta["height"].as_u64().unwrap();
+        assert!(
+            width > 0 && height > 0,
+            "expected real dimensions: {meta:?}"
+        );
+        let y_len = meta["y_len"].as_u64().unwrap() as usize;
+        let u_len = meta["u_len"].as_u64().unwrap() as usize;
+        let v_len = meta["v_len"].as_u64().unwrap() as usize;
+        assert!(y_len > 0, "expected non-empty Y plane");
+
+        assert_eq!(frames[1].0, FrameKind::Data);
+        assert_eq!(
+            frames[1].1.len(),
+            y_len + u_len + v_len,
+            "Data frame should be exactly the concatenated Y+U+V planes"
+        );
+    }
+
+    #[test]
+    fn get_decoded_frame_yuv_out_of_range_frame_index_is_a_wire_error() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let request = Request {
+            id: 201,
+            method: "get_decoded_frame_yuv".to_string(),
+            params: serde_json::json!({"stream": "A", "frame_index": 999_999}),
+        };
+        let frames = get_decoded_frame_yuv(&core, &request);
+        assert_eq!(frames.len(), 1, "error path should not emit a Data frame");
+        let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    #[test]
+    fn get_decoded_frame_yuv_stream_not_open_returns_not_found() {
+        let core = Core::new();
+        let request = Request {
+            id: 202,
+            method: "get_decoded_frame_yuv".to_string(),
+            params: serde_json::json!({"stream": "A", "frame_index": 0}),
+        };
+        let frames = get_decoded_frame_yuv(&core, &request);
+        assert_eq!(frames.len(), 1);
+        let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
     }
 
     #[test]

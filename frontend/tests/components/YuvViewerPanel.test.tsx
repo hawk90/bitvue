@@ -68,9 +68,16 @@ vi.mock("@/contexts/YuvDiffContext", () => ({
   })),
 }));
 
-// Mock Tauri invoke
+// Mock Tauri invoke — still used by the debug-YUV path (get_decoded_frame_yuv's Tauri call was
+// replaced by the Electron bridge below; get_debug_yuv_frame has no sidecar equivalent yet).
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(() => Promise.resolve({ success: false, error: "Test mode" })),
+}));
+
+// Mock the Electron bridge's getDecodedFrameYuv — the real decode path (2026-08-08 migration
+// off Tauri's get_decoded_frame_yuv).
+vi.mock("@/services/electronBridgeService", () => ({
+  getDecodedFrameYuv: vi.fn(() => Promise.reject(new Error("Test mode"))),
 }));
 
 // Mock Image constructor
@@ -1542,19 +1549,29 @@ function setupStandardMocks() {
 // Error state tests
 // ---------------------------------------------------------------------------
 
-// Obtain the shared invoke mock at module level (after the vi.mock at top)
+// Obtain the shared mocks at module level (after the vi.mock calls at top). get_decoded_frame_yuv
+// moved from Tauri's invoke() to the Electron bridge (2026-08-08) -- sharedInvokeMock still
+// covers the debug-YUV path (get_debug_yuv_frame, unmigrated), sharedGetDecodedFrameYuvMock
+// covers the real primary decode path.
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { getDecodedFrameYuv as bridgeGetDecodedFrameYuv } from "@/services/electronBridgeService";
 const sharedInvokeMock = tauriInvoke as ReturnType<typeof vi.fn>;
+const sharedGetDecodedFrameYuvMock = bridgeGetDecodedFrameYuv as ReturnType<
+  typeof vi.fn
+>;
 
 describe("YuvViewerPanel frame load error handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sharedInvokeMock.mockResolvedValue({ success: false });
+    sharedGetDecodedFrameYuvMock.mockRejectedValue(new Error("Test mode"));
     setupStandardMocks();
   });
 
   it("shows error overlay when invoke throws", async () => {
-    sharedInvokeMock.mockRejectedValue(new Error("Backend unavailable"));
+    sharedGetDecodedFrameYuvMock.mockRejectedValue(
+      new Error("Backend unavailable"),
+    );
 
     const { findByText } = render(<YuvViewerPanel {...mockProps} />);
 
@@ -1563,39 +1580,34 @@ describe("YuvViewerPanel frame load error handling", () => {
     expect(errMsg).toBeInTheDocument();
   });
 
-  it("shows error overlay when invoke returns success:false with an error message", async () => {
-    // Both YUV and RGB fail. We intercept based on the command name argument.
-    sharedInvokeMock.mockImplementation((command: string) => {
-      if (command === "get_decoded_frame_yuv") {
-        return Promise.resolve({ success: false });
-      }
-      if (command === "get_decoded_frame") {
-        return Promise.resolve({ success: false, error: "Corrupt frame data" });
-      }
-      return Promise.resolve({ success: false }); // get_frame_analysis etc.
-    });
+  it("shows error overlay when the bridge call rejects", async () => {
+    sharedGetDecodedFrameYuvMock.mockRejectedValue(
+      new Error("Corrupt frame data"),
+    );
 
     const { findByText } = render(<YuvViewerPanel {...mockProps} />);
 
-    const errMsg = await findByText(/Corrupt frame data/i);
+    // The bridge has no "soft failure" shape (unlike the old Tauri success:false convention) --
+    // any failure is a rejected promise, and the catch block always surfaces the same generic
+    // message (see "shows error overlay when invoke throws" above).
+    const errMsg = await findByText(/Failed to load frame/i);
     expect(errMsg).toBeInTheDocument();
   });
 
   it("does not show error overlay when loading succeeds", async () => {
-    sharedInvokeMock
-      .mockResolvedValueOnce({
-        success: true,
-        y_plane: btoa("y"),
-        u_plane: btoa("u"),
-        v_plane: btoa("v"),
-        width: 16,
-        height: 16,
-        y_stride: 16,
-        u_stride: 8,
-        v_stride: 8,
-        bit_depth: 8,
-      }) // get_decoded_frame_yuv — success
-      .mockResolvedValue({ success: false }); // everything else (analysis etc.)
+    sharedGetDecodedFrameYuvMock.mockResolvedValue({
+      width: 16,
+      height: 16,
+      bitDepth: 8,
+      chromaSubsampling: "420",
+      yStride: 16,
+      uStride: 8,
+      vStride: 8,
+      yLen: 4,
+      uLen: 2,
+      vLen: 2,
+      bytes: new Uint8Array(8),
+    });
 
     const { container } = render(<YuvViewerPanel {...mockProps} />);
 
@@ -1608,7 +1620,7 @@ describe("YuvViewerPanel frame load error handling", () => {
   });
 
   it("shows a retry button inside the error overlay", async () => {
-    sharedInvokeMock.mockRejectedValue(new Error("Network error"));
+    sharedGetDecodedFrameYuvMock.mockRejectedValue(new Error("Network error"));
 
     const { findByText } = render(<YuvViewerPanel {...mockProps} />);
 
@@ -1616,22 +1628,22 @@ describe("YuvViewerPanel frame load error handling", () => {
     expect(retryButton).toBeInTheDocument();
   });
 
-  it("clicking Retry clears error and calls invoke again", async () => {
+  it("clicking Retry clears error and calls the bridge again", async () => {
     // First call throws → error state shown
-    sharedInvokeMock
-      .mockRejectedValueOnce(new Error("Transient error"))
-      .mockResolvedValue({ success: false });
+    sharedGetDecodedFrameYuvMock.mockRejectedValueOnce(
+      new Error("Transient error"),
+    );
 
     const { findByText } = render(<YuvViewerPanel {...mockProps} />);
 
     const retryButton = await findByText(/Retry/i);
-    const callCountBefore = sharedInvokeMock.mock.calls.length;
+    const callCountBefore = sharedGetDecodedFrameYuvMock.mock.calls.length;
 
     fireEvent.click(retryButton);
 
-    // After click, invoke should have been called at least once more
+    // After click, the bridge should have been called at least once more
     await vi.waitFor(() => {
-      expect(sharedInvokeMock.mock.calls.length).toBeGreaterThan(
+      expect(sharedGetDecodedFrameYuvMock.mock.calls.length).toBeGreaterThan(
         callCountBefore,
       );
     });
@@ -1850,20 +1862,12 @@ describe("YuvViewerPanel loading and placeholder states", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("error overlay appears and placeholder is absent when invoke returns error message", async () => {
-    sharedInvokeMock.mockImplementation((command: string) => {
-      if (command === "get_decoded_frame_yuv") {
-        return Promise.resolve({ success: false });
-      }
-      if (command === "get_decoded_frame") {
-        return Promise.resolve({ success: false, error: "Bad frame" });
-      }
-      return Promise.resolve({ success: false }); // analysis etc.
-    });
+  it("error overlay appears and placeholder is absent when the bridge call rejects", async () => {
+    sharedGetDecodedFrameYuvMock.mockRejectedValue(new Error("Bad frame"));
 
     const { container, findByText } = render(<YuvViewerPanel {...mockProps} />);
 
-    await findByText(/Bad frame/i);
+    await findByText(/Failed to load frame/i);
 
     // When error overlay is showing, placeholder must not be visible
     expect(
@@ -1872,12 +1876,12 @@ describe("YuvViewerPanel loading and placeholder states", () => {
     expect(container.querySelector(".yuv-error-overlay")).toBeInTheDocument();
   });
 
-  it("loading overlay is visible while invoke is pending", async () => {
-    // Make invoke never resolve during the synchronous part of the test
-    let resolveInvoke!: (value: unknown) => void;
-    sharedInvokeMock.mockReturnValue(
+  it("loading overlay is visible while the bridge call is pending", async () => {
+    // Make the bridge call never resolve during the synchronous part of the test
+    let resolveDecode!: (value: unknown) => void;
+    sharedGetDecodedFrameYuvMock.mockReturnValue(
       new Promise((resolve) => {
-        resolveInvoke = resolve;
+        resolveDecode = resolve;
       }),
     );
 
@@ -1887,6 +1891,18 @@ describe("YuvViewerPanel loading and placeholder states", () => {
     expect(container.querySelector(".yuv-loading-overlay")).toBeInTheDocument();
 
     // Resolve to avoid hanging promise warning
-    resolveInvoke({ success: false });
+    resolveDecode({
+      width: 16,
+      height: 16,
+      bitDepth: 8,
+      chromaSubsampling: "420",
+      yStride: 16,
+      uStride: 8,
+      vStride: 8,
+      yLen: 4,
+      uLen: 2,
+      vLen: 2,
+      bytes: new Uint8Array(8),
+    });
   });
 });

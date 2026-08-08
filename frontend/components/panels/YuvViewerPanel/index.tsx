@@ -15,6 +15,8 @@
 
 import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getDecodedFrameYuv } from "../../../services/electronBridgeService";
+import type { BridgeDecodedYuvFrame } from "../../../services/electronBridgeService";
 import { useMode } from "../../../contexts/ModeContext";
 import { CodecBadge } from "./ModeSelector";
 import { OverlayToggleBar } from "./OverlayToggleBar";
@@ -39,11 +41,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { ModeSelector } from "./ModeSelector";
 import { ZoomControls } from "./ZoomControls";
 import { StatusBar } from "./StatusBar";
-import type {
-  DecodedFrameData,
-  FrameAnalysisData,
-  YUVFrameData,
-} from "../../../types/video";
+import type { FrameAnalysisData, YUVFrameData } from "../../../types/video";
 
 import "./YuvViewerPanel.css";
 
@@ -100,6 +98,28 @@ function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
   return frame;
 }
 
+/** `BridgeDecodedYuvFrame` (sidecar's raw-bytes wire shape, one concatenated `bytes` buffer) ->
+ *  `YUVFrame` (the renderer's target type) -- no base64 round trip, `bytes` is already a real
+ *  `Uint8Array` off the Electron IPC structured clone. `.subarray` gives zero-copy views, not
+ *  fresh allocations. */
+function bridgeYuvToRendererFrame(frame: BridgeDecodedYuvFrame): YUVFrame {
+  const { bytes, yLen, uLen, vLen } = frame;
+  return {
+    y: bytes.subarray(0, yLen),
+    u: uLen > 0 ? bytes.subarray(yLen, yLen + uLen) : new Uint8Array(0),
+    v:
+      vLen > 0
+        ? bytes.subarray(yLen + uLen, yLen + uLen + vLen)
+        : new Uint8Array(0),
+    width: frame.width,
+    height: frame.height,
+    yStride: frame.yStride,
+    uStride: frame.uStride,
+    vStride: frame.vStride,
+    chromaSubsampling: frame.chromaSubsampling,
+  };
+}
+
 interface YuvViewerPanelProps {
   currentFrameIndex: number;
   totalFrames: number;
@@ -130,8 +150,11 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   // Retry counter — incrementing triggers a reload via useEffect
   const [retryCount, setRetryCount] = useState(0);
 
-  // YUV data state (more efficient than RGB conversion)
+  // YUV data state (more efficient than RGB conversion) -- still Tauri-backed, only used by the
+  // debug-YUV path below (get_debug_yuv_frame has no sidecar equivalent yet, unmigrated).
   const [yuvData, setYuvData] = useState<YUVFrameData | null>(null);
+  // Real decoded-pixel path, via the Electron bridge's getDecodedFrameYuv (no base64).
+  const [decodedFrame, setDecodedFrame] = useState<YUVFrame | null>(null);
 
   // Analysis data state
   const [, setFrameAnalysis] = useState<FrameAnalysisData | null>(null);
@@ -177,7 +200,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       setIsLoading(true);
       setLoadError(null);
       try {
-        // When debug YUV is loaded, fetch via get_debug_yuv_frame instead
+        // When debug YUV is loaded, fetch via get_debug_yuv_frame instead -- still Tauri-backed,
+        // no sidecar equivalent yet (see this file's import comment).
         if (debugYuvLoaded) {
           const yuvResult = await invoke<YUVFrameData>("get_debug_yuv_frame", {
             params: {
@@ -190,6 +214,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           if (cancelled) return;
           if (yuvResult && yuvResult.success && yuvResult.y_plane) {
             setYuvData(yuvResult);
+            setDecodedFrame(null);
             setFrameImage(null);
             setIsLoading(false);
           } else {
@@ -198,61 +223,23 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           return;
         }
 
-        // Try YUV first (more efficient)
-        const yuvResult = await invoke<YUVFrameData>("get_decoded_frame_yuv", {
-          frameIndex,
-        });
+        // Real decode path, via the Electron bridge -- AV1/IVF only, matches this app's stream
+        // "A" convention (see FileStateContext/electronBridgeService callers).
+        const decoded = await getDecodedFrameYuv("A", frameIndex);
 
         if (cancelled) return;
 
-        if (yuvResult && yuvResult.success && yuvResult.y_plane) {
-          // Successfully got YUV data
-          setYuvData(yuvResult);
-          setFrameImage(null); // Clear RGB image
-          logger.debug(
-            "Loaded YUV frame:",
-            frameIndex,
-            "size:",
-            yuvResult.width,
-            "x",
-            yuvResult.height,
-          );
-        } else {
-          // Fallback to RGB
-          logger.debug("YUV not available, falling back to RGB");
-          const result = await invoke<DecodedFrameData>("get_decoded_frame", {
-            frameIndex,
-          });
-
-          if (cancelled) return;
-
-          if (result && result.success && result.frame_data) {
-            const img = new Image();
-            img.onload = () => {
-              if (!cancelled) {
-                setFrameImage(img);
-                setIsLoading(false);
-              }
-            };
-            img.onerror = () => {
-              if (!cancelled) {
-                logger.error(
-                  "Failed to decode frame image for frame:",
-                  frameIndex,
-                );
-                setIsLoading(false);
-                setFrameImage(null);
-                setLoadError("Failed to decode frame image");
-              }
-            };
-            img.src = `data:image/png;base64,${result.frame_data}`;
-            // Return early — isLoading will be cleared in img callbacks
-            return;
-          } else {
-            logger.error("Failed to load frame:", result.error);
-            setLoadError(result.error || "Failed to load frame");
-          }
-        }
+        setDecodedFrame(bridgeYuvToRendererFrame(decoded));
+        setYuvData(null);
+        setFrameImage(null);
+        logger.debug(
+          "Loaded YUV frame:",
+          frameIndex,
+          "size:",
+          decoded.width,
+          "x",
+          decoded.height,
+        );
       } catch (error) {
         if (cancelled) return;
         logger.error("Failed to load frame:", error);
@@ -501,10 +488,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     handleFKey,
   ]);
 
-  // Memoize YUV conversion to avoid re-running on every render
+  // Memoize YUV conversion to avoid re-running on every render. decodedFrame (real bridge path)
+  // takes priority; yuvData (debug-YUV, still Tauri-backed) is the fallback -- loadFrame keeps
+  // the two mutually exclusive (setting one always clears the other).
   const convertedYuvFrame = useMemo(
-    () => (yuvData ? convertYUVDataToYUVFrame(yuvData) : undefined),
-    [yuvData],
+    () =>
+      decodedFrame ?? (yuvData ? convertYUVDataToYUVFrame(yuvData) : undefined),
+    [decodedFrame, yuvData],
   );
 
   const currentFrame = frames[currentFrameIndex] || null;
@@ -638,7 +628,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         </div>
       )}
 
-      {!frameImage && !yuvData && !isLoading && !loadError && (
+      {!frameImage && !yuvData && !decodedFrame && !isLoading && !loadError && (
         <div className="yuv-placeholder-overlay">
           <span className="codicon codicon-device-camera"></span>
           <span>No frame loaded</span>

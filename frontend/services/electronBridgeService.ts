@@ -5,20 +5,22 @@
  * `bitvue-desktop/electron/preload.cjs` via `contextBridge`.
  *
  * IMPORTANT — the old Tauri command surface (~40 commands, `src-tauri/src/commands/*.rs`,
- * deleted 2026-08-08) and the new `bitvue-sidecar` surface (14 commands, see
- * `docs/DEVELOPMENT_PHASES.md` § "제품 아키텍처 확정") are NOT the same API — different names,
- * different param/result shapes, and most of the old capability (frame pixel decode/YUV data,
- * compare workspaces, export, quality metrics) has no sidecar equivalent implemented yet. This
- * file wraps all 14 real sidecar commands: open/close a stream, select a frame (selection-sync
- * only — no decoded pixel data), the four structural multi-sync selections
+ * deleted 2026-08-08 -- though several *frontend* files still call `@tauri-apps/api` directly
+ * and haven't been migrated to this bridge yet, e.g. the compare workspace / quality panels /
+ * system menu / filmstrip thumbnails; grep the frontend tree before assuming a panel is covered)
+ * and the new `bitvue-sidecar` surface (15 commands, see `docs/DEVELOPMENT_PHASES.md` §
+ * "제품 아키텍처 확정") are NOT the same API — different names, different param/result shapes.
+ * This file wraps all 15 real sidecar commands: open/close a stream, select a frame
+ * (selection-sync only), the four structural multi-sync selections
  * (`selectUnit`/`selectSyntax`/`selectBitRange`/`selectSpatialBlock` — no live UI consumer as of
  * 2026-08-08, wired because the sidecar-side capability is real, not because a feature needs them
- * yet), a raw hex byte range, the native open-file dialog, and metadata indexing
- * (`indexStream`/`getStreamInfo`/`getFramesChunk` — container + per-frame metadata, IVF/AV1 only
- * so far, no pixel decode) plus lazy per-unit syntax trees (`getFrameSyntax`) and a display-order
- * timeline (`getTimeline`, also no live UI consumer yet — see its own doc), both AV1 only; see
- * `bitvue-indexer`'s module doc. Don't add wrappers here for capabilities the sidecar doesn't
- * have; that would silently promise something broken.
+ * yet), a raw hex byte range, decoded YUV pixel planes for one frame (`getDecodedFrameYuv` —
+ * AV1/IVF only, re-decodes from the stream start every call, no session caching yet), the native
+ * open-file dialog, and metadata indexing (`indexStream`/`getStreamInfo`/`getFramesChunk` —
+ * container + per-frame metadata, IVF/AV1 only so far) plus lazy per-unit syntax trees
+ * (`getFrameSyntax`) and a display-order timeline (`getTimeline`, also no live UI consumer yet —
+ * see its own doc), both AV1 only; see `bitvue-indexer`'s module doc. Don't add wrappers here for
+ * capabilities the sidecar doesn't have; that would silently promise something broken.
  */
 
 export type StreamId = "A" | "B";
@@ -120,6 +122,23 @@ export interface BridgeTimeline {
   vertical_viewport: [number, number];
 }
 
+/** Mirrors `get_decoded_frame_yuv`'s Control-frame metadata (`bitvue-sidecar`'s `decode_bridge`
+ *  module) -- the `Data` frame that follows is the concatenated Y+U+V raw bytes, sliced using
+ *  `y_len`/`u_len`/`v_len` below. Same no-base64, no-JSON-array approach as `getHexRange`. */
+export interface BridgeDecodedYuvFrame {
+  width: number;
+  height: number;
+  bitDepth: number;
+  chromaSubsampling: "420" | "422" | "444";
+  yStride: number;
+  uStride: number;
+  vStride: number;
+  yLen: number;
+  uLen: number;
+  vLen: number;
+  bytes: Uint8Array;
+}
+
 declare global {
   interface Window {
     bitvue?: {
@@ -140,6 +159,10 @@ declare global {
         offset: number,
         len: number,
       ) => Promise<{ offset: number; len: number; bytes: Uint8Array }>;
+      getDecodedFrameYuv: (
+        stream: StreamId,
+        frameIndex: number,
+      ) => Promise<BridgeDecodedYuvFrame>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -232,6 +255,16 @@ export async function getHexRange(
   len: number,
 ): Promise<{ offset: number; len: number; bytes: Uint8Array }> {
   return requireBridge().getHexRange(stream, offset, len);
+}
+
+/** Decodes (dav1d, via `bitvue-decode`) the stream from its start up to and including
+ *  `frameIndex`, returning that frame's real YUV planes. AV1/IVF only, no session caching yet --
+ *  see `bitvue-sidecar`'s `decode_bridge` module doc for the current O(frameIndex) perf caveat. */
+export async function getDecodedFrameYuv(
+  stream: StreamId,
+  frameIndex: number,
+): Promise<BridgeDecodedYuvFrame> {
+  return requireBridge().getDecodedFrameYuv(stream, frameIndex);
 }
 
 export interface OpenFileDialogFilter {

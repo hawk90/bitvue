@@ -13,6 +13,8 @@ path = "src/main.rs"
 bitvue-protocol = { workspace = true }
 bitvue-engine = { workspace = true }
 bitvue-indexer = { workspace = true }
+bitvue-av1-codec = { workspace = true }
+bitvue-decode = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

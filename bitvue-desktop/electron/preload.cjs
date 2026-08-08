@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("bitvue", {
   closeStream: (stream) => ipcRenderer.invoke("bitvue:closeStream", stream),
   selectFrame: (stream, frameIndex) => ipcRenderer.invoke("bitvue:selectFrame", stream, frameIndex),
   getHexRange: (stream, offset, len) => ipcRenderer.invoke("bitvue:getHexRange", stream, offset, len),
+  getDecodedFrameYuv: (stream, frameIndex) =>
+    ipcRenderer.invoke("bitvue:getDecodedFrameYuv", stream, frameIndex),
   indexStream: (stream) => ipcRenderer.invoke("bitvue:indexStream", stream),
   getStreamInfo: (stream) => ipcRenderer.invoke("bitvue:getStreamInfo", stream),
   getFramesChunk: (stream, offset, limit) =>

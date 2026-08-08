@@ -67,6 +67,19 @@ function registerIpcHandlers(): void {
     return { ...metadata, bytes };
   });
 
+  ipcMain.handle(
+    "bitvue:getDecodedFrameYuv",
+    async (_event, stream: string, frameIndex: number) => {
+      const { bytes, ...metadata } = await requireSidecar().getDecodedFrameYuv({
+        stream,
+        frameIndex,
+      });
+      // Same raw-Buffer-over-structured-clone approach as getHexRange above -- no base64. The
+      // renderer slices `bytes` into Y/U/V planes itself using `yLen`/`uLen`/`vLen`.
+      return { ...metadata, bytes };
+    },
+  );
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
