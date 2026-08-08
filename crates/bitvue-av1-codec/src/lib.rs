@@ -29,6 +29,7 @@ pub mod advanced_features;
 pub mod bitreader;
 pub mod dependency;
 pub mod frame_header;
+pub mod frame_header_full;
 pub mod ivf;
 pub mod leb128;
 pub mod obu;

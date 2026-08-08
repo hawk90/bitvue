@@ -185,7 +185,7 @@ fn read_delta_q(reader: &mut BitReader) -> Result<Option<i8>, BitvueError> {
 ///
 /// `separate_uv_delta_q` comes from the sequence header color config.
 /// We assume false (the most common case) when no sequence header is available.
-fn parse_quantization_params(
+pub(crate) fn parse_quantization_params(
     reader: &mut BitReader,
     separate_uv_delta_q: bool,
 ) -> Result<(Option<u8>, Option<i8>, Option<i8>), BitvueError> {
