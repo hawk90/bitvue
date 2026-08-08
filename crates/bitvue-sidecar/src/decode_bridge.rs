@@ -80,7 +80,7 @@ fn drain(dec: &mut Av1Decoder, out: &mut Vec<DecodedFrame>) {
     }
 }
 
-fn to_wire(frame: &DecodedFrame) -> DecodedYuvFrame {
+pub(crate) fn to_wire(frame: &DecodedFrame) -> DecodedYuvFrame {
     let chroma_subsampling = match frame.chroma_format {
         ChromaFormat::Yuv420 | ChromaFormat::Monochrome => "420",
         ChromaFormat::Yuv422 => "422",
