@@ -184,8 +184,11 @@ fn get_frame_syntax_errors_for_an_out_of_range_frame_index() {
 /// (see `TrackedBitReader::new`'s doc), not a byte offset -- passing the raw byte offset (an
 /// earlier version of `get_frame_syntax` did exactly this) silently makes every node's
 /// `bit_range` wrong by a factor of 8, without any error or empty-tree symptom to notice it by.
-/// Asserts the actual numeric value against the real, known file layout: frame 0's OBU starts at
-/// byte 44 (32-byte IVF header + 12-byte chunk header), so its first field must start at bit 352.
+/// Asserts the actual numeric value against the real, known file layout: frame 0's real Frame OBU
+/// (found via `find_frame_obu`, past the leading Temporal Delimiter + Sequence Header -- see
+/// `frame_zero_chunk_starts_with_a_temporal_delimiter_not_a_frame_obu`) starts at byte 59
+/// (32-byte IVF header + 12-byte chunk header + 15 bytes of preceding OBUs), so its first field
+/// must start at bit 472.
 #[test]
 fn get_frame_syntax_bit_range_is_a_real_bit_offset_not_a_byte_offset() {
     use crate::get_frame_syntax;
@@ -208,9 +211,10 @@ fn get_frame_syntax_bit_range_is_a_real_bit_offset_not_a_byte_offset() {
             )
         });
     assert_eq!(
-        forbidden_bit.bit_range.start_bit, 352,
-        "expected obu_forbidden_bit to start at bit 352 (byte 44 * 8) -- got {}, which looks \
-         like a byte offset (44) leaking through unmultiplied",
+        forbidden_bit.bit_range.start_bit, 472,
+        "expected obu_forbidden_bit to start at bit 472 (byte 59 * 8) -- got {}, which looks \
+         like the wrong OBU (e.g. the Temporal Delimiter at byte 44) or an unmultiplied byte \
+         offset leaking through",
         forbidden_bit.bit_range.start_bit
     );
 }
@@ -260,5 +264,65 @@ fn get_timeline_errors_honestly_when_index_stream_has_not_run() {
     assert!(
         result.is_err(),
         "expected an error, not a panic or a fabricated timeline"
+    );
+}
+
+/// Regression test for a real bug found via a visual screenshot check (not caught by any earlier
+/// unit test): every one of the fixture's 250 frames was coming back as frame_type "I", which is
+/// implausible given the wildly varying frame sizes (10627, 5488, 217, 251, ... bytes -- looks
+/// exactly like real I/P size variation). Root cause: index_ivf_av1 grabbed the FIRST OBU in each
+/// IVF chunk and assumed it was the Frame/FrameHeader OBU, but AV1 chunks typically start with a
+/// Temporal Delimiter OBU first -- parse_frame_header_basic was silently parsing the TD's
+/// leftover bytes as if they were frame-header syntax. Real streams should have a mix of frame
+/// types, not just one.
+#[test]
+fn index_stream_frame_types_are_not_all_the_same() {
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    index_stream(&core, StreamId::A);
+
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    let units = &state.units.as_ref().unwrap().units;
+
+    let distinct_types: std::collections::HashSet<_> = units
+        .iter()
+        .filter_map(|u| u.frame_type.as_deref())
+        .collect();
+    assert!(
+        distinct_types.len() > 1,
+        "expected a mix of frame types across {} frames, got only {:?} -- looks like every \
+         frame is being parsed as the same (likely wrong) OBU",
+        units.len(),
+        distinct_types
+    );
+}
+
+/// Ground-truth check (independent of `bitvue-indexer`'s own code) for the fixture's real OBU
+/// layout, using `ObuIterator` directly -- pins the exact structure that [`find_frame_obu`] must
+/// keep navigating correctly: frame 0's IVF chunk is Temporal Delimiter, then Sequence Header,
+/// then the actual Frame OBU at byte 15 within the chunk (not byte 0).
+#[test]
+fn frame_zero_chunk_starts_with_a_temporal_delimiter_not_a_frame_obu() {
+    use bitvue_av1_codec::ivf::parse_ivf_frames;
+    use bitvue_av1_codec::obu::{ObuIterator, ObuType};
+
+    let (_, frames) = parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+    let chunk = &frames[0].data;
+
+    let obus: Vec<_> = ObuIterator::new(chunk)
+        .filter_map(|r| r.ok())
+        .map(|obu| obu.header.obu_type)
+        .collect();
+
+    assert_eq!(
+        obus,
+        vec![
+            ObuType::TemporalDelimiter,
+            ObuType::SequenceHeader,
+            ObuType::Frame
+        ],
+        "if this fixture's OBU layout ever changes, the hardcoded bit-offset (472) in \
+         get_frame_syntax_bit_range_is_a_real_bit_offset_not_a_byte_offset needs updating too"
     );
 }

@@ -138,6 +138,14 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     "bitvue:showOpenDialog",
     async (event, filters?: Array<{ name: string; extensions: string[] }>) => {
+      // Test-only bypass: a real native OS dialog can't be scripted in an automated/offscreen
+      // run. Only takes effect when this env var is explicitly set (never in normal usage) --
+      // lets BITVUE_ELECTRON_SCREENSHOT drive the actual production handleOpenFile() code path
+      // (real dialog call site, just answered without a human) instead of calling bridge
+      // functions directly the way BITVUE_ELECTRON_SELFTEST does.
+      if (process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH) {
+        return process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH;
+      }
       const win = BrowserWindow.fromWebContents(event.sender);
       const options: Electron.OpenDialogOptions = {
         properties: ["openFile"],
@@ -360,6 +368,39 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
   }
 }
 
+/**
+ * Visual proof mode (`BITVUE_ELECTRON_SCREENSHOT=<output.png>`): drives the REAL production
+ * "open file" code path -- App.tsx's `handleOpenFile`, triggered the same way a native menu
+ * click would (dispatching the `"menu-open-bitstream"` DOM event it already listens for) -- with
+ * the native OS dialog answered via `BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH` (see
+ * `registerIpcHandlers`'s `showOpenDialog` handler) instead of a human, since a real dialog can't
+ * be scripted. Captures a real screenshot after the open/index/refresh chain settles, so an
+ * actual human (or an agent with vision, via the Read tool) can inspect what's on screen --
+ * closes a real gap none of `BITVUE_ELECTRON_SELFTEST`'s checks cover: proving *data* comes back
+ * correctly says nothing about whether it actually renders visibly.
+ */
+async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Promise<void> {
+  try {
+    await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 50))"); // let preload settle
+    await win.webContents.executeJavaScript(
+      'window.dispatchEvent(new CustomEvent("menu-open-bitstream"))',
+    );
+    // Real IPC round-trips here have all been sub-second in prior selftest runs -- a generous
+    // fixed wait for the open -> index -> refreshFrames chain + React re-render to settle,
+    // rather than guessing at a DOM-text heuristic that could false-positive on unrelated text.
+    await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 3000))");
+    const image = await win.webContents.capturePage();
+    writeFileSync(outputPath, image.toPNG());
+    console.log(`[screenshot] saved to ${outputPath}`);
+    process.exitCode = 0;
+  } catch (err) {
+    console.error("[screenshot] FAILED:", err);
+    process.exitCode = 1;
+  } finally {
+    app.quit();
+  }
+}
+
 async function main(): Promise<void> {
   if (!existsSync(sidecarBinaryPath)) {
     throw new Error(
@@ -399,6 +440,12 @@ async function main(): Promise<void> {
   if (process.env.BITVUE_ELECTRON_SELFTEST === "1") {
     win.webContents.once("did-finish-load", () => {
       runSelfTestAndExit(win);
+    });
+  }
+
+  if (process.env.BITVUE_ELECTRON_SCREENSHOT) {
+    win.webContents.once("did-finish-load", () => {
+      runScreenshotAndExit(win, process.env.BITVUE_ELECTRON_SCREENSHOT as string);
     });
   }
 }

@@ -616,6 +616,49 @@ stream id) + `electronBridgeService.test.ts`(+2) 전부 통과. `BITVUE_ELECTRON
 확인(마커 매핑 버그가 E2E 레벨에서도 재발 안 하는지 증명), exit code 0. `npx vitest run` 전체 — 여전히
 9파일/36개 pre-existing 실패만, 새 실패 0개.
 
+### 실제 스크린샷 검증 인프라 + 진짜 프레임 타입 파싱 버그 발견/수정 (2026-08-08)
+
+"다음 고고" 지시로 계속 진행 — 이전에 "육안 확인은 사용자 눈이 필요하다"고 여러 번 말했었는데, 실제로는
+Electron의 `webContents.capturePage()`로 스크린샷을 찍어서 Read 툴로 직접 볼 수 있다는 걸 깨달음(멀티모달
+LLM이라는 걸 스스로 활용 안 하고 있었음). 실제 프로덕션 코드 경로(App.tsx의 `handleOpenFile`, 네이티브
+메뉴가 원래 디스패치하는 `"menu-open-bitstream"` DOM 이벤트로 트리거)를 실행시켜서 진짜 화면을 캡처.
+
+**한 일:** `main.ts`에 `BITVUE_ELECTRON_SCREENSHOT=<output.png>` 모드 추가 — `menu-open-bitstream` 이벤트를
+디스패치해 실제 `handleOpenFile()`을 실행시키고(네이티브 OS 파일 다이얼로그만 테스트 전용 환경변수
+`BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH`로 우회 — 실제 사용 시엔 절대 설정 안 되는 값이라 프로덕션 동작에
+영향 없음), 3초 대기 후 `capturePage()`로 진짜 화면을 PNG로 저장.
+
+**첫 스크린샷에서 실제 버그 발견:** Stream Tree 패널에 250개 프레임이 전부 "I" 타입으로 나옴 — 프레임
+사이즈가 10627/5488/217/251...로 크게 요동치는 걸 보면(전형적인 I/P 사이즈 패턴) 명백히 잘못됨. 원인:
+IVF 청크 하나는 OBU 하나가 아니라 보통 Temporal Delimiter + (키프레임이면 Sequence Header) + 실제
+Frame/FrameHeader OBU 순서로 여러 개가 들어있는데, `index_ivf_av1`이 청크의 **첫 바이트를 무조건 프레임
+헤더로 가정**해서 Temporal Delimiter의 찌꺼기 바이트를 프레임 헤더인 것처럼 파싱하고 있었음
+(`ObuIterator`로 실제 검증: frame 0 청크 = TD(2바이트) + SequenceHeader(13바이트) + Frame(그 다음부터)).
+**`get_frame_syntax`도 똑같은 버그**였음 — 이전 라운드의 회귀 테스트(`bit_range.start_bit == 352`)가
+통과했던 이유는 `obu_forbidden_bit` 필드가 OBU 타입과 무관하게 모든 OBU 헤더에 공통으로 존재해서, TD를
+파싱해도 그 필드 자체는 나왔기 때문 — 테스트가 "트리가 나온다"만 확인하고 "올바른 OBU의 트리인지"는
+확인 안 하고 있었음.
+
+**수정:** `find_frame_obu()` 헬퍼 신규 — `ObuIterator`로 청크 안의 OBU들을 순회해서 `Frame`/`FrameHeader`
+타입을 실제로 찾음(CLI의 `analyze.rs`가 이미 쓰던 정확한 패턴 그대로). `index_ivf_av1`과
+`get_frame_syntax` 둘 다 이 헬퍼로 교체 — 더 이상 첫 바이트를 가정하지 않음. `get_frame_syntax`의
+회귀테스트 기댓값도 352(이전 버그값, TD의 위치)에서 472(진짜 Frame OBU 위치, byte 59)로 정정, 새 회귀
+테스트(`frame_zero_chunk_starts_with_a_temporal_delimiter_not_a_frame_obu`)로 픽스처의 실제 OBU 순서를
+고정, `index_stream_frame_types_are_not_all_the_same`으로 프레임 타입이 실제로 다양한지 확인.
+
+**결과 재확인:** 수정 전 분포 `{I: 250}` → 수정 후 `{P: 249, I: 1}` — 정상적인 인코딩 패턴. 두 번째
+스크린샷으로 최종 확인: 필름스트립이 "I-00"(빨강) 다음 "P-01"~"P-08"(초록)로, Stream Tree도 "Frame #0 - I",
+"Frame #1 - P"...로 정확하게 표시됨.
+
+**발견했지만 안 고친 것(플래그만):** Stream Tree의 모든 프레임이 여전히 `@ 0x00000000`로 표시됨 —
+`frontend/components/panels/StreamTreePanel.tsx`의 `frameUnits` fallback 생성 코드가 `offset: 0`을
+하드코딩(프리-이 세션, 백엔드 버그와 무관) — 실제 오프셋 데이터는 이미 백엔드에 있음, 프론트엔드
+쪽 별도 수정 필요, 이번 라운드 스코프 밖.
+
+**검증:** `bitvue-indexer` 신규/수정 테스트 3개, `bitvue-sidecar`/`bitvue-indexer` 전체 스위트(11+37)
+전부 통과. `cargo fmt --all --check`/`cargo check --workspace` 클린. 실제 Electron 프로세스 스크린샷
+2회(버그 확인용 1회 + 수정 확인용 1회) — 코드 검증이 아니라 실제로 화면을 보고 확인한 첫 사례.
+
 ### 확정 순서
 
 ```

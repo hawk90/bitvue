@@ -192,26 +192,32 @@ pub fn get_frame_syntax(
         ));
     }
 
-    // unit_offset/unit_size cover the full IVF chunk (12-byte chunk header + OBU payload, see
-    // index_ivf_av1's UnitNode construction) -- skip the chunk header to get the raw OBU bytes
-    // parse_obu_syntax expects.
+    // unit_offset/unit_size cover the full IVF chunk (12-byte chunk header + OBU-container
+    // payload, see index_ivf_av1's UnitNode construction) -- skip the chunk header to get the
+    // raw OBU-container bytes.
     if unit_size <= 12 {
         return Err(format!(
             "Unit at offset {unit_offset} is too small to contain OBU data"
         ));
     }
-    let obu_offset = unit_offset + 12;
-    let obu_len = unit_size - 12;
-    let obu_bytes = byte_cache
-        .read_range(obu_offset, obu_len)
+    let chunk_offset = unit_offset + 12;
+    let chunk_len = unit_size - 12;
+    let chunk_bytes = byte_cache
+        .read_range(chunk_offset, chunk_len)
         .map_err(|e| format!("Failed to read OBU bytes: {e}"))?;
 
+    // An IVF chunk isn't one OBU -- it's typically a Temporal Delimiter followed by the actual
+    // Frame/FrameHeader OBU (an earlier version of this function assumed byte 0 was the frame
+    // header directly, which parsed the TD's leftover bytes instead; see find_frame_obu's doc).
+    let found = find_frame_obu(chunk_bytes)
+        .ok_or_else(|| "No Frame/FrameHeader OBU found in this unit's chunk".to_string())?;
+    let obu_bytes = &chunk_bytes[found.offset..found.offset + found.consumed];
     // parse_obu_syntax's global_offset is a BIT offset from file start (see
     // TrackedBitReader::new's doc), not a byte offset -- matches the CLI's analyze.rs convention
-    // ((offset * 8) as u64). Passing the raw byte offset here would silently make every
-    // SyntaxNode's bit_range wrong (off by a factor of 8), which the "jump to hex" frontend
-    // feature would then jump to the wrong byte for.
-    let model = parse_obu_syntax(obu_bytes, frame_index, obu_offset * 8)
+    // ((offset * 8) as u64), here applied to the found OBU's own absolute file offset (chunk
+    // start + its offset within the chunk), not the chunk's own start.
+    let obu_file_offset = chunk_offset + found.offset as u64;
+    let model = parse_obu_syntax(obu_bytes, frame_index, obu_file_offset * 8)
         .map_err(|e| format!("Failed to parse OBU syntax: {e}"))?;
 
     {
@@ -296,11 +302,34 @@ pub fn get_timeline(core: &Core, stream: StreamId) -> Result<TimelineBase, Strin
     Ok(mapper.build_timeline_av1())
 }
 
+/// Finds the Frame/FrameHeader OBU within one IVF chunk's OBU-container bytes. An IVF chunk is
+/// NOT one OBU -- it's typically a Temporal Delimiter (a tiny, mostly-empty OBU) followed by the
+/// actual Frame/FrameHeader OBU. A real bug (found via a visual screenshot check, not caught by
+/// any unit test until one was added afterward) came from an earlier version of this crate
+/// treating the first OBU in each chunk as the frame header directly -- every single frame in a
+/// 250-frame fixture silently came back as frame_type "I", because `parse_frame_header_basic` was
+/// parsing the Temporal Delimiter's leftover bytes as if they were frame-header syntax. Returns
+/// `None` if no Frame/FrameHeader OBU is found (malformed chunk, or every OBU fails to parse).
+fn find_frame_obu(chunk_data: &[u8]) -> Option<bitvue_av1_codec::obu::ObuWithOffset> {
+    let mut iter = bitvue_av1_codec::obu::ObuIterator::new(chunk_data);
+    while let Some(result) = iter.next_obu_with_offset() {
+        let Ok(found) = result else { continue };
+        match found.obu.header.obu_type {
+            bitvue_av1_codec::obu::ObuType::Frame | bitvue_av1_codec::obu::ObuType::FrameHeader => {
+                return Some(found)
+            }
+            _ => continue,
+        }
+    }
+    None
+}
+
 /// Real IVF/AV1 parsing: walks IVF chunks via `bitvue_av1_codec::ivf::parse_ivf_frames`, then
-/// parses each frame's OBU frame header for frame-type/QP/ref-frame metadata. Modeled on
-/// `bitvue-mcp`'s `parse_ivf_file` (proven working there), adapted to operate on an in-memory
-/// slice (via `ByteCache`) instead of re-reading the file, and to compute byte offsets manually
-/// since `parse_ivf_frames` doesn't expose them.
+/// parses each frame's real Frame/FrameHeader OBU (found via [`find_frame_obu`], not assumed to
+/// be the first OBU in the chunk) for frame-type/QP/ref-frame metadata. Modeled on
+/// `bitvue-mcp`'s `parse_ivf_file` (proven working there) for the container-level walk, adapted
+/// to operate on an in-memory slice (via `ByteCache`) instead of re-reading the file, and to
+/// compute byte offsets manually since `parse_ivf_frames` doesn't expose them.
 fn index_ivf_av1(
     data: &[u8],
     stream: StreamId,
@@ -314,27 +343,18 @@ fn index_ivf_av1(
         let chunk_size = 12u64 + frame.size as u64;
         let frame_start = offset;
 
-        let obu_header_payload = if !frame.data.is_empty() {
-            let obu_header = frame.data[0];
-            let obu_header_size = 1 + usize::from((obu_header & 0x04) != 0);
-            frame.data.get(obu_header_size..).unwrap_or(&[])
-        } else {
-            &[][..]
-        };
-        let frame_header = parse_frame_header_basic(obu_header_payload);
+        let frame_header = find_frame_obu(&frame.data)
+            .and_then(|found| parse_frame_header_basic(&found.obu.payload).ok());
 
-        let frame_type_str = match &frame_header {
-            Ok(fh) => match fh.frame_type {
-                bitvue_engine::FrameType::Key => "I",
-                bitvue_engine::FrameType::Inter => "P",
-                bitvue_engine::FrameType::BFrame => "B",
-                bitvue_engine::FrameType::IntraOnly => "I",
-                bitvue_engine::FrameType::Switch => "I",
-                bitvue_engine::FrameType::SI => "I",
-                bitvue_engine::FrameType::SP => "P",
-                bitvue_engine::FrameType::Unknown => "?",
-            },
-            Err(_) => "?",
+        let frame_type_str = match frame_header.as_ref().map(|fh| fh.frame_type) {
+            Some(bitvue_engine::FrameType::Key) => "I",
+            Some(bitvue_engine::FrameType::Inter) => "P",
+            Some(bitvue_engine::FrameType::BFrame) => "B",
+            Some(bitvue_engine::FrameType::IntraOnly) => "I",
+            Some(bitvue_engine::FrameType::Switch) => "I",
+            Some(bitvue_engine::FrameType::SI) => "I",
+            Some(bitvue_engine::FrameType::SP) => "P",
+            Some(bitvue_engine::FrameType::Unknown) | None => "?",
         };
 
         let mut unit = UnitNode::new(
@@ -352,7 +372,7 @@ fn index_ivf_av1(
             frame.size
         ));
 
-        if let Ok(fh) = &frame_header {
+        if let Some(fh) = &frame_header {
             if let Some(ref_idx) = fh.ref_frame_idx {
                 unit.ref_frames = Some(ref_idx.iter().map(|&x| x as usize).collect());
             }
