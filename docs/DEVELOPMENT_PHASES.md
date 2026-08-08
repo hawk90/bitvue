@@ -659,6 +659,23 @@ Frame/FrameHeader OBU 순서로 여러 개가 들어있는데, `index_ivf_av1`�
 전부 통과. `cargo fmt --all --check`/`cargo check --workspace` 클린. 실제 Electron 프로세스 스크린샷
 2회(버그 확인용 1회 + 수정 확인용 1회) — 코드 검증이 아니라 실제로 화면을 보고 확인한 첫 사례.
 
+### `FrameInfo.offset` — StreamTreePanel의 `@ 0x00000000` 하드코딩 수정 (2026-08-08)
+
+바로 위 라운드에서 플래그만 해두고 넘어갔던 것 — "다음 고고" 지시로 바로 이어서 처리. 원인 재확인:
+`FrameInfo` 인터페이스 자체에 `offset` 필드가 아예 없었음 — `StreamTreePanel.tsx`의 `frameUnits` fallback
+생성 코드가 `offset: 0`을 하드코딩한 게 아니라, 애초에 `frame.offset`이라는 필드를 참조할 방법이 없어서
+`0`을 넣을 수밖에 없었던 것. 실제 오프셋 데이터는 `UnitNode.offset`(백엔드)에 이미 있었지만
+`unitNodeToFrameInfo` 매핑(`FileStateContext.tsx`)이 이 필드를 건너뛰고 있었음.
+
+**한 일:** `types/video.ts`의 `FrameInfo`에 `offset?: number` 추가, `unitNodeToFrameInfo`가 `unit.offset`을
+그대로 전달하도록 수정, `StreamTreePanel.tsx`는 `frame.offset ?? 0`으로 실제 값 사용.
+
+**검증:** `FileStateContext.test.tsx`에 실제 오프셋 값(16147) 왕복 확인 테스트 추가, 기존 `StreamTreePanel.
+test.tsx`(75개, `units` prop 경로로 이미 0이 아닌 오프셋 포매팅을 검증하고 있었음 — 이번 수정은 데이터
+소스만 고침) 전부 통과. `npx tsc --noEmit`/`npx vitest run` 전체 — 여전히 9파일/36개 pre-existing 실패만.
+**세 번째 스크린샷으로 실측 확인**: `0x00000020`(=32, IVF 헤더), `0x000029a3`(=10659),
+`0x00003f13`(=16147)... 전부 Rust 테스트에서 이미 검증된 실제 값과 정확히 일치.
+
 ### 확정 순서
 
 ```

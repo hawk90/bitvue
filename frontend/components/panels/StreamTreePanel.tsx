@@ -272,7 +272,7 @@ export const StreamTreePanel = memo(function StreamTreePanel({
         ({
           key: `frame-${frame.frame_index}`,
           unit_type: frame.frame_type,
-          offset: 0,
+          offset: frame.offset ?? 0,
           size: frame.size,
           frame_index: frame.frame_index,
           pts: frame.pts,

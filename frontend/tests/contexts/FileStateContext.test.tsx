@@ -131,6 +131,7 @@ describe("FileStateContext", () => {
             frame_type: "I",
             pts: 12345,
             ref_frames: [0],
+            offset: 16147,
           }),
         ],
         1,
@@ -149,6 +150,9 @@ describe("FileStateContext", () => {
     const frame = result.current.data.frames[0];
     expect(frame.pts).toBe(12345);
     expect(frame.ref_frames).toEqual([0]);
+    // Real, correctly-derived field -- was silently dropped before FrameInfo grew an offset
+    // field (StreamTreePanel.tsx was hardcoding 0 for every displayed frame as a result).
+    expect(frame.offset).toBe(16147);
     expect(frame.poc).toBeUndefined();
     expect(frame.thumbnail).toBeUndefined();
   });

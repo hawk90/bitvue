@@ -42,6 +42,7 @@ function unitNodeToFrameInfo(unit: BridgeUnitNode): FrameInfo {
     frame_index: unit.frame_index ?? 0,
     frame_type: unit.frame_type ?? "?",
     size: unit.size,
+    offset: unit.offset,
     pts: unit.pts ?? undefined,
     temporal_id: unit.temporal_id ?? undefined,
     key_frame: unit.frame_type === "I",

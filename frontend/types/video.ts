@@ -122,6 +122,7 @@ export interface FrameInfo {
   frame_index: number; // Sequential frame index in the stream
   frame_type: string; // Frame type (I, P, B, KEY, etc.)
   size: number; // Frame size in bytes
+  offset?: number; // Byte offset of this frame's unit within the file
 
   // Display and coding order
   poc?: number; // Picture Order Count
