@@ -74,6 +74,7 @@ use std::thread;
 
 mod debug_yuv;
 mod decode_bridge;
+mod frame_analysis;
 
 use bitvue_engine::{
     BitRange, BitvueError, Command, Core, Event, FrameKey, SpatialBlock, StreamId, UnitKey,
@@ -346,6 +347,7 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "get_frame_syntax" => get_frame_syntax(core, request),
         "get_timeline" => get_timeline(core, request),
         "get_thumbnails" => get_thumbnails(core, request),
+        "get_frame_analysis" => get_frame_analysis(core, request),
         other => Response::failure(
             request.id,
             WireError {
@@ -885,6 +887,75 @@ fn get_timeline(core: &Core, request: &Request) -> Response {
             request.id,
             serde_json::to_value(&timeline).expect("TimelineBase always serializes"),
         ),
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GetFrameAnalysisParams {
+    frame_index: usize,
+}
+
+/// QP/MV/partition/prediction-mode/transform-size grids for one frame of stream A -- see
+/// `frame_analysis`'s module doc. Control-only (unlike `get_decoded_frame_yuv`) -- these are
+/// structured grids, not raw pixel bytes, so a single JSON response is the right shape, same as
+/// `get_frame_syntax`/`get_timeline`.
+fn get_frame_analysis(core: &Core, request: &Request) -> Response {
+    let params: GetFrameAnalysisParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    match frame_analysis::get_frame_analysis(data, params.frame_index) {
+        Ok(value) => Response::success(request.id, value),
         Err(message) => Response::failure(
             request.id,
             WireError {
@@ -1557,7 +1628,7 @@ mod tests {
         let core = Core::new();
         let request = Request {
             id: 7,
-            method: "get_frame_analysis".to_string(),
+            method: "get_codec_extended_info".to_string(),
             params: serde_json::json!({}),
         };
         let response = dispatch(&core, &request);
@@ -2299,6 +2370,65 @@ mod tests {
         let frames = get_decoded_frame_yuv(&core, &request);
         assert_eq!(frames.len(), 1);
         let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    // -- get_frame_analysis ------------------------------------------------------------------
+
+    #[test]
+    fn get_frame_analysis_end_to_end_returns_real_grids() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 220,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(result["frame_index"], 0);
+        assert_eq!(result["width"], 320);
+        assert_eq!(result["height"], 240);
+        assert!(!result["qp_grid"]["qp"].as_array().unwrap().is_empty());
+        assert!(!result["partition_grid"]["blocks"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn get_frame_analysis_out_of_range_frame_index_is_a_wire_error() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 221,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 999_999}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    #[test]
+    fn get_frame_analysis_stream_not_open_returns_not_found() {
+        let core = Core::new();
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 222,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
     }
