@@ -241,6 +241,24 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 이로써 `docs/DEVELOPMENT_PHASES.md`가 처음부터 그린 4-계층 경계(`bitvue-engine`/`bitvue-protocol`/`bitvue-sidecar`/`bitvue-desktop`)의 모든 연결점이 최소 1개 실커맨드 기준으로는 전부 실증됨. 남은 건 폭(더 많은 커맨드), 크레이트 리네이밍(의도적으로 계속 보류 — 이유는 위 "Electron 전환 시 경계" 참조), 실제 React UI(`bitvue-ui`) 연결.
 
+### `bitvue-sidecar` 동시성 모델 (2026-08-08)
+
+**결정: OS 스레드(요청당 1개), async 런타임(tokio) 아님.** `bitvue_core::Core`의 작업이 I/O 대기가 아니라 CPU-bound 동기 Rust라서 스레드가 자연스러운 선택 — tokio를 도입해도 결국 모든 `Core` 호출을 `spawn_blocking`으로 감싸야 해서 얻는 게 없음.
+
+**문제였던 것:** 기존 구조는 stdin 리더 루프가 요청 하나를 완전히 처리(`dispatch` 동기 호출)한 뒤에야 다음 프레임을 읽었음 — 즉 미래에 느린 커맨드(디코딩 등)가 생기면 그 동안 `hello`/`select_frame` 같은 가벼운 요청도 전부 막힘. `cancel_request`도 취소할 "진행 중인 작업" 개념 자체가 없어 구현 불가능했음.
+
+**설계:**
+- 리더 루프(메인 스레드)는 프레임을 읽고 파싱만 하고 즉시 다음 프레임을 읽으러 감 — 각 요청은 `thread::spawn`으로 워커 스레드에 위임.
+- `compute_frames`(응답 계산)는 **순수 함수, I/O 없음** — 여러 워커 스레드가 동시에 lock 없이 실행 가능. 최종 프레임 쓰기만 `Mutex<Stdout>`으로 짧게 직렬화(요청 1개의 프레임 쓰기 동안만 lock, 계산 중엔 lock 안 잡음 — 계산 중에 lock을 잡으면 그 자체로 다시 전부 직렬화되는 실수라 명시적으로 피함).
+- `cancel_request`: `correlation_id → Arc<AtomicBool>` 레지스트리(`Mutex<HashMap<...>>`). 워커 스레드는 시작 직전 자기 플래그를 **한 번만** 확인함 — **선점형 취소 아님**: 지금 커맨드들은 전부 빠른 동기 호출(파일 mmap 1회, selection 갱신, `read_range` 1회)이라 중간 체크포인트가 없음. 실행이 이미 시작된 요청은 취소해도 효과 없음, "아직 시작 전" 좁은 타이밍 창에서만 동작. 진짜 느린 커맨드가 생기면 그 커맨드 자신이 협조적 체크포인트를 추가해야 함(공짜로 되는 게 아님) — 정직하게 문서화된 한계.
+- 종료 시 `main()`은 아직 안 끝난 워커 스레드의 `JoinHandle`을 전부 `join()`한 뒤에야 프로세스를 종료(리스트는 매 루프마다 완료된 핸들을 `retain`으로 정리해 무한정 안 커지게 함).
+
+**실제로 잡은 버그(가상 아님):** 위 join 처리 없이 처음 구현했을 때, "요청 여러 개를 응답 안 기다리고 연달아 보낸 뒤 stdin을 바로 닫는" 실제 파이프라인 사용 패턴을 흉내낸 테스트에서 **응답 하나가 통째로 유실됨**을 실제 서브프로세스로 확인(Rust는 detached `thread::spawn` 스레드를 `main()` 종료 시 기다려주지 않음). `join()` 추가로 수정. 회귀 테스트로 `crates/bitvue-sidecar/tests/subprocess_smoke.rs`의 `all_in_flight_responses_arrive_even_when_stdin_closes_immediately_after`를 추가 — fix를 되돌리고 실제로 실패하는 것까지 확인(반대로 fix 없이 두면 "cancel_request 미구현" 등 다른 이유로도 실패할 수 있어 완전히 격리된 재현은 아니지만, 실제 유실 시나리오를 정확히 흉내내는 유일한 테스트).
+
+**검증:** `cargo test -p bitvue-sidecar` 유닛 17개(신규: `cancel_request` 3개, 동시성 stress 1개 — `Arc<Core>` 공유 상태에 16개 실제 OS 스레드로 `select_frame` 동시 호출, panic/deadlock 없음 + 모든 correlation id 정확히 왕복 확인) + 통합 2개(기존 hello/open_stream/get_hex_range + 신규 shutdown-race 회귀). `cargo fmt --check`/`cargo check --workspace`/`bitvue-desktop` 14개 테스트 전부 이 변경 이후 재확인, 회귀 없음.
+
+**타이밍 기반 증명은 없음, 의도적으로.** "느린 요청이 빠른 요청을 막지 않는다"는 걸 실제 지연시간 측정으로 보여주려면 인위적으로 느린 테스트 커맨드가 필요한데, 지금 커맨드가 전부 서브밀리초라 그런 커맨드를 진짜 제품 커맨드 세트에 끼워 넣는 건 오염이라고 판단해 안 함. 지금 검증된 건 아키텍처적 정확성(스레드 안전, 데드락 없음, 종료 시 유실 없음)이지 체감 성능이 아님 — 실제로 느린 커맨드가 생기면 그때 latency-hiding을 실측할 것.
+
 ### 확정 순서
 
 ```

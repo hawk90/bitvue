@@ -116,3 +116,59 @@ fn subprocess_smoke_hello_open_stream_get_hex_range() {
     let status = child.wait().expect("sidecar process failed to exit");
     assert!(status.success(), "sidecar exited with {status:?}");
 }
+
+/// Regression test for a real bug the concurrency model introduced and this test caught:
+/// each request is handled on its own `thread::spawn`ed worker, and Rust does NOT wait for
+/// detached threads when `main()` returns — closing stdin right after sending a batch (without
+/// reading responses first, the way real pipelined usage would) used to make the process exit
+/// before some workers had finished writing, silently losing their responses. Fixed by joining
+/// all in-flight `JoinHandle`s before the process exits. This test writes 3 requests back-to-back
+/// with **no interleaved reads**, closes stdin immediately, and only then reads — if the join-on-
+/// shutdown fix regresses, this fails with fewer than 3 frames on stdout instead of an assertion
+/// mismatch, which is exactly what happened when this was first written without the fix.
+#[test]
+fn all_in_flight_responses_arrive_even_when_stdin_closes_immediately_after() {
+    let bin = env!("CARGO_BIN_EXE_bitvue-sidecar");
+    let mut child = Command::new(bin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn bitvue-sidecar binary");
+
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+
+    write_request(
+        &mut stdin,
+        1,
+        "hello",
+        serde_json::json!({"client_version": "0.1.0-shutdown-race"}),
+    );
+    write_request(
+        &mut stdin,
+        2,
+        "cancel_request",
+        serde_json::json!({"target_id": 999}),
+    );
+    write_request(
+        &mut stdin,
+        3,
+        "select_frame",
+        serde_json::json!({"stream": "A", "frame_index": 5}),
+    );
+    drop(stdin); // close immediately — no responses read yet, unlike the test above
+
+    let mut seen_ids = std::collections::HashSet::new();
+    for _ in 0..3 {
+        let (header, body) = read_frame_blocking(&mut stdout);
+        assert_eq!(header.kind, FrameKind::Control);
+        let response: Response = serde_json::from_slice(&body).unwrap();
+        assert!(response.ok, "request {} failed: {response:?}", response.id);
+        seen_ids.insert(response.id);
+    }
+    assert_eq!(seen_ids, std::collections::HashSet::from([1, 2, 3]));
+
+    let status = child.wait().expect("sidecar process failed to exit");
+    assert!(status.success(), "sidecar exited with {status:?}");
+}

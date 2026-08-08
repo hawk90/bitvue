@@ -1,12 +1,37 @@
 //! bitvue-sidecar: standalone process hosting the bitvue engine, speaking `bitvue-protocol`
 //! over stdio to `bitvue-desktop` (Electron main). See `docs/DEVELOPMENT_PHASES.md`
-//! ("sidecar 결정" / "bitvue-protocol wire schema v0") for the full design.
+//! ("sidecar 결정" / "bitvue-protocol wire schema v0" / "동시성 모델") for the full design.
 //!
-//! Four real commands are wired end to end to `bitvue_core::Core`: `open_stream`,
-//! `select_frame`, `close_stream` (all control-plane), and `get_hex_range` — the first
-//! data-plane command, returning a small `Control` metadata frame followed by a `Data` frame
-//! of raw bytes (no JSON array, no base64). Everything else still returns
-//! `WireErrorCode::Internal` "not implemented".
+//! Five real commands are wired end to end to `bitvue_core::Core`: `open_stream`,
+//! `select_frame`, `close_stream` (control-plane), `get_hex_range` (the first data-plane
+//! command — a `Control` metadata frame followed by a `Data` frame of raw bytes, no JSON array,
+//! no base64), and `cancel_request` (see "Concurrency model" below). Everything else still
+//! returns `WireErrorCode::Internal` "not implemented".
+//!
+//! # Concurrency model
+//!
+//! The reader loop (main thread) never blocks on request *handling* — it parses each incoming
+//! `Control` frame and spawns a plain `std::thread` to compute the response, then immediately
+//! goes back to reading the next frame. This means a slow request (once a genuinely slow command
+//! exists — nothing today is slow enough to matter) can't block `hello`/`select_frame`/etc.
+//! arriving concurrently. Chose OS threads over an async runtime (tokio) deliberately:
+//! `bitvue_core::Core`'s work is CPU-bound synchronous Rust, not I/O-bound waiting, so threads are
+//! the simpler fit — pulling in an async runtime would just mean wrapping every `Core` call in
+//! `spawn_blocking` anyway.
+//!
+//! Response computation (`compute_frames`) is pure — no I/O, doesn't touch the writer — so it
+//! runs fully unlocked/in parallel across threads. Only the final write is serialized (one
+//! `Mutex<Stdout>` lock per request, held just long enough to write that request's frame(s));
+//! locking around *computation* would silently re-serialize everything and defeat the point.
+//!
+//! `cancel_request` sets a per-request `AtomicBool` flag in a shared registry
+//! (`correlation_id` → flag). A worker thread checks its own flag exactly once, immediately
+//! before running its handler. **This is best-effort, not preemption**: none of today's handlers
+//! have a cooperative checkpoint mid-execution (they're all fast synchronous calls — a file mmap,
+//! a selection-state write, one `ByteCache::read_range`), so cancelling a request that has already
+//! started executing has no effect; it only works for the (currently narrow, timing-dependent)
+//! window before the worker thread's check runs. Once a genuinely slow command exists, it will
+//! need to add its own checkpoints against the flag — this mechanism doesn't do that for free.
 //!
 //! `Command`/`Event` (bitvue-core) don't derive `Serialize`/`Deserialize` — they're the
 //! internal UI↔Core bus, not a wire contract. Params/results for the commands above are
@@ -16,28 +41,78 @@
 //! `stdin`/`stdout` carry only protocol frames; all diagnostics go to `stderr` so a crash here
 //! stays readable from the Electron main process's captured logs.
 
+use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use bitvue_core::{BitvueError, Command, Core, Event, FrameKey, StreamId};
 use bitvue_protocol::{
-    FrameHeader, FrameKind, HelloParams, HelloResult, Request, Response, WireError, WireErrorCode,
-    FRAME_HEADER_LEN, PROTOCOL_VERSION,
+    CancelParams, FrameHeader, FrameKind, HelloParams, HelloResult, Request, Response, WireError,
+    WireErrorCode, FRAME_HEADER_LEN, PROTOCOL_VERSION,
 };
 
+/// `correlation_id` → cancellation flag, for requests currently being computed on a worker
+/// thread. Entries are removed once that thread finishes (success, failure, or cancellation).
+type CancelRegistry = Arc<Mutex<HashMap<u32, Arc<AtomicBool>>>>;
+
 fn main() {
-    let core = Core::new();
+    let core = Arc::new(Core::new());
+    let writer = Arc::new(Mutex::new(io::stdout()));
+    let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
+    // In-flight worker handles. Rust does NOT wait for detached `thread::spawn`ed threads when
+    // `main()` returns — a request whose worker hasn't finished writing yet when stdin closes
+    // would silently lose its response otherwise. Joined below, right before exit. Pruned
+    // opportunistically (not just at shutdown) so this doesn't grow unbounded over a long-lived
+    // process handling many requests.
+    let mut handles: Vec<thread::JoinHandle<()>> = Vec::new();
+
     let stdin = io::stdin();
-    let stdout = io::stdout();
     let mut reader = stdin.lock();
-    let mut writer = stdout.lock();
 
     loop {
         match read_frame(&mut reader) {
             Ok(Some((header, payload))) => {
-                if let Err(err) = handle_frame(&core, header, &payload, &mut writer) {
-                    eprintln!("bitvue-sidecar: error writing response: {err}");
+                if header.kind != FrameKind::Control {
+                    eprintln!(
+                        "bitvue-sidecar: unexpected {:?} frame from main, ignoring",
+                        header.kind
+                    );
+                    continue;
                 }
+                let request: Request = match serde_json::from_slice(&payload) {
+                    Ok(r) => r,
+                    Err(err) => {
+                        eprintln!("bitvue-sidecar: malformed control frame (dropped): {err}");
+                        continue;
+                    }
+                };
+
+                if request.method == "cancel_request" {
+                    let response = compute_cancel_response(&registry, &request);
+                    let body = serde_json::to_vec(&response).expect("Response always serializes");
+                    let mut guard = writer.lock().unwrap();
+                    if let Err(err) = write_frame(
+                        &mut *guard,
+                        FrameKind::Control,
+                        header.correlation_id,
+                        &body,
+                    ) {
+                        eprintln!("bitvue-sidecar: error writing cancel_request response: {err}");
+                    }
+                    continue;
+                }
+
+                handles.retain(|h| !h.is_finished());
+                handles.push(spawn_request(
+                    Arc::clone(&core),
+                    Arc::clone(&writer),
+                    Arc::clone(&registry),
+                    header.correlation_id,
+                    request,
+                ));
             }
             // stdin closed — Electron main exited or is shutting the sidecar down.
             Ok(None) => break,
@@ -46,6 +121,88 @@ fn main() {
                 break;
             }
         }
+    }
+
+    // Let every in-flight request finish and write its response before the process exits —
+    // otherwise a request accepted right before shutdown would silently lose its response.
+    for handle in handles {
+        let _ = handle.join();
+    }
+}
+
+/// Registers a cancel flag for `correlation_id`, then spawns a worker thread that computes the
+/// response (unlocked — no I/O, no shared-writer contention while it runs) and writes whatever
+/// frames the computation produces under a brief writer-lock. See module doc for the concurrency
+/// model and its cancellation limitations.
+fn spawn_request(
+    core: Arc<Core>,
+    writer: Arc<Mutex<io::Stdout>>,
+    registry: CancelRegistry,
+    correlation_id: u32,
+    request: Request,
+) -> thread::JoinHandle<()> {
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    registry
+        .lock()
+        .unwrap()
+        .insert(correlation_id, Arc::clone(&cancel_flag));
+
+    thread::spawn(move || {
+        let frames = if cancel_flag.load(Ordering::SeqCst) {
+            let response = Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::Cancelled,
+                    message: "cancelled before execution started".to_string(),
+                    offset: None,
+                },
+            );
+            vec![(
+                FrameKind::Control,
+                serde_json::to_vec(&response).expect("Response always serializes"),
+            )]
+        } else {
+            compute_frames(&core, &request)
+        };
+
+        registry.lock().unwrap().remove(&correlation_id);
+
+        let mut guard = writer.lock().unwrap();
+        for (kind, payload) in frames {
+            if let Err(err) = write_frame(&mut *guard, kind, correlation_id, &payload) {
+                eprintln!(
+                    "bitvue-sidecar: error writing response for {}: {err}",
+                    request.method
+                );
+                break;
+            }
+        }
+    })
+}
+
+/// Pure compute for `cancel_request` — sets the target's flag (if it's still registered) and
+/// reports whether it was found. Kept separate from I/O for the same reason `compute_frames` is:
+/// testable without touching a real writer, and consistent with how every other command works.
+fn compute_cancel_response(registry: &CancelRegistry, request: &Request) -> Response {
+    match serde_json::from_value::<CancelParams>(request.params.clone()) {
+        Ok(params) => {
+            let found = match registry.lock().unwrap().get(&params.target_id) {
+                Some(flag) => {
+                    flag.store(true, Ordering::SeqCst);
+                    true
+                }
+                None => false,
+            };
+            Response::success(request.id, serde_json::json!({ "found": found }))
+        }
+        Err(err) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::InvalidData,
+                message: err.to_string(),
+                offset: None,
+            },
+        ),
     }
 }
 
@@ -79,51 +236,18 @@ fn write_frame<W: Write>(
     writer.flush()
 }
 
-fn handle_frame<W: Write>(
-    core: &Core,
-    header: FrameHeader,
-    payload: &[u8],
-    writer: &mut W,
-) -> io::Result<()> {
-    match header.kind {
-        FrameKind::Control => {
-            let request: Request = match serde_json::from_slice(payload) {
-                Ok(r) => r,
-                Err(err) => {
-                    eprintln!("bitvue-sidecar: malformed control frame (dropped): {err}");
-                    return Ok(());
-                }
-            };
-            // Most methods produce exactly one `Response` control frame — `dispatch` covers
-            // those. `get_hex_range` is the first data-plane command: it must write a control
-            // frame *and* a follow-up `Data` frame, so it writes directly to `writer` instead
-            // of going through `dispatch`'s single-`Response` return type.
-            if request.method == "get_hex_range" {
-                return get_hex_range(core, &request, header.correlation_id, writer);
-            }
-            let response = dispatch(core, &request);
-            write_response_frame(writer, header.correlation_id, &response)
-        }
-        FrameKind::Data | FrameKind::Event => {
-            eprintln!(
-                "bitvue-sidecar: unexpected {:?} frame from main, ignoring",
-                header.kind
-            );
-            Ok(())
-        }
+/// Pure compute: turns a request into the frame(s) that should be written for it. No I/O, no
+/// locking — safe (and intended) to run concurrently across worker threads, which is the whole
+/// point of the concurrency model above.
+fn compute_frames(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)> {
+    if request.method == "get_hex_range" {
+        return get_hex_range(core, request);
     }
-}
-
-/// Serialize and write a single `Control`-kind `Response` frame. Shared by `dispatch`'s
-/// single-response methods and by multi-frame handlers (like `get_hex_range`) for their
-/// leading metadata frame.
-fn write_response_frame<W: Write>(
-    writer: &mut W,
-    correlation_id: u32,
-    response: &Response,
-) -> io::Result<()> {
-    let body = serde_json::to_vec(response).expect("Response always serializes");
-    write_frame(writer, FrameKind::Control, correlation_id, &body)
+    let response = dispatch(core, request);
+    vec![(
+        FrameKind::Control,
+        serde_json::to_vec(&response).expect("Response always serializes"),
+    )]
 }
 
 fn dispatch(core: &Core, request: &Request) -> Response {
@@ -285,32 +409,26 @@ struct GetHexRangeParams {
     len: usize,
 }
 
-/// First data-plane command: writes a `Control` metadata frame followed by a `Data` frame
-/// carrying the raw bytes — no JSON array, no base64. Both frames share `correlation_id` so
-/// the client can pair them without a nested envelope.
-fn get_hex_range<W: Write>(
-    core: &Core,
-    request: &Request,
-    correlation_id: u32,
-    writer: &mut W,
-) -> io::Result<()> {
+/// First data-plane command: produces a `Control` metadata frame followed by a `Data` frame
+/// carrying the raw bytes — no JSON array, no base64. Both frames share `correlation_id` so the
+/// client can pair them without a nested envelope. Pure (no I/O) — see `compute_frames`.
+fn get_hex_range(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)> {
     let params: GetHexRangeParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
         Err(err) => {
-            let response = Response::failure(
+            return single_control_frame(Response::failure(
                 request.id,
                 WireError {
                     code: WireErrorCode::InvalidData,
                     message: err.to_string(),
                     offset: None,
                 },
-            );
-            return write_response_frame(writer, correlation_id, &response);
+            ))
         }
     };
     let stream = match parse_stream_id(request.id, &params.stream) {
         Ok(s) => s,
-        Err(response) => return write_response_frame(writer, correlation_id, &response),
+        Err(response) => return single_control_frame(response),
     };
 
     let stream_state = core.get_stream(stream);
@@ -318,15 +436,14 @@ fn get_hex_range<W: Write>(
     let byte_cache = match state.byte_cache.as_ref() {
         Some(cache) => std::sync::Arc::clone(cache),
         None => {
-            let response = Response::failure(
+            return single_control_frame(Response::failure(
                 request.id,
                 WireError {
                     code: WireErrorCode::NotFound,
                     message: "stream not open".to_string(),
                     offset: None,
                 },
-            );
-            return write_response_frame(writer, correlation_id, &response);
+            ))
         }
     };
     drop(state);
@@ -337,21 +454,30 @@ fn get_hex_range<W: Write>(
                 request.id,
                 serde_json::json!({ "offset": params.offset, "len": bytes.len() }),
             );
-            write_response_frame(writer, correlation_id, &meta)?;
-            write_frame(writer, FrameKind::Data, correlation_id, bytes)
+            vec![
+                (
+                    FrameKind::Control,
+                    serde_json::to_vec(&meta).expect("Response always serializes"),
+                ),
+                (FrameKind::Data, bytes.to_vec()),
+            ]
         }
-        Err(err) => {
-            let response = Response::failure(
-                request.id,
-                WireError {
-                    code: wire_error_code_for(&err),
-                    message: err.to_string(),
-                    offset: None,
-                },
-            );
-            write_response_frame(writer, correlation_id, &response)
-        }
+        Err(err) => single_control_frame(Response::failure(
+            request.id,
+            WireError {
+                code: wire_error_code_for(&err),
+                message: err.to_string(),
+                offset: None,
+            },
+        )),
     }
+}
+
+fn single_control_frame(response: Response) -> Vec<(FrameKind, Vec<u8>)> {
+    vec![(
+        FrameKind::Control,
+        serde_json::to_vec(&response).expect("Response always serializes"),
+    )]
 }
 
 /// Mirror of `bitvue_core::BitvueError` variants onto `WireErrorCode` — see the "not a direct
@@ -420,8 +546,18 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    /// Encode a list of (kind, payload) frames the same way the real writer does, for tests
+    /// that assert on the exact byte stream `compute_frames`'s output would produce.
+    fn encode_frames(correlation_id: u32, frames: &[(FrameKind, Vec<u8>)]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for (kind, payload) in frames {
+            write_frame(&mut out, *kind, correlation_id, payload).unwrap();
+        }
+        out
+    }
+
     #[test]
-    fn hello_handshake_roundtrips() {
+    fn frame_read_write_roundtrips() {
         let request = Request {
             id: 1,
             method: "hello".to_string(),
@@ -444,10 +580,13 @@ mod tests {
 
         let mut reader = Cursor::new(input);
         let (header, payload) = read_frame(&mut reader).unwrap().unwrap();
+        let parsed: Request = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(header.correlation_id, 1);
+        assert_eq!(parsed.method, "hello");
 
         let core = Core::new();
-        let mut output = Vec::new();
-        handle_frame(&core, header, &payload, &mut output).unwrap();
+        let frames = compute_frames(&core, &parsed);
+        let output = encode_frames(header.correlation_id, &frames);
 
         let out_header =
             FrameHeader::decode(output[..FRAME_HEADER_LEN].try_into().unwrap()).unwrap();
@@ -607,8 +746,8 @@ mod tests {
             method: "get_hex_range".to_string(),
             params: serde_json::json!({"stream": "A", "offset": 0, "len": 4}),
         };
-        let mut output = Vec::new();
-        get_hex_range(&core, &request, 14, &mut output).unwrap();
+        let frames = get_hex_range(&core, &request);
+        let output = encode_frames(14, &frames);
 
         let out_header =
             FrameHeader::decode(output[..FRAME_HEADER_LEN].try_into().unwrap()).unwrap();
@@ -644,8 +783,8 @@ mod tests {
             method: "get_hex_range".to_string(),
             params: serde_json::json!({"stream": "A", "offset": offset, "len": len}),
         };
-        let mut output = Vec::new();
-        get_hex_range(&core, &request, 21, &mut output).unwrap();
+        let frames = get_hex_range(&core, &request);
+        let output = encode_frames(21, &frames);
 
         // Frame 1: Control metadata.
         let ctrl_header =
@@ -703,8 +842,8 @@ mod tests {
             method: "get_hex_range".to_string(),
             params: serde_json::json!({"stream": "A", "offset": 0, "len": 1000}),
         };
-        let mut output = Vec::new();
-        get_hex_range(&core, &request, 31, &mut output).unwrap();
+        let frames = get_hex_range(&core, &request);
+        let output = encode_frames(31, &frames);
 
         let out_header =
             FrameHeader::decode(output[..FRAME_HEADER_LEN].try_into().unwrap()).unwrap();
@@ -712,5 +851,86 @@ mod tests {
         let response: Response = serde_json::from_slice(&output[FRAME_HEADER_LEN..]).unwrap();
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::InvalidRange);
+    }
+
+    #[test]
+    fn cancel_request_reports_not_found_for_unknown_target() {
+        let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let request = Request {
+            id: 99,
+            method: "cancel_request".to_string(),
+            params: serde_json::to_value(CancelParams { target_id: 12345 }).unwrap(),
+        };
+        let response = compute_cancel_response(&registry, &request);
+        assert!(response.ok);
+        assert_eq!(
+            response.result.unwrap(),
+            serde_json::json!({"found": false})
+        );
+    }
+
+    #[test]
+    fn cancel_request_reports_found_and_sets_flag_for_registered_target() {
+        let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let flag = Arc::new(AtomicBool::new(false));
+        registry.lock().unwrap().insert(42, Arc::clone(&flag));
+
+        let request = Request {
+            id: 100,
+            method: "cancel_request".to_string(),
+            params: serde_json::to_value(CancelParams { target_id: 42 }).unwrap(),
+        };
+        let response = compute_cancel_response(&registry, &request);
+        assert!(response.ok);
+        assert_eq!(response.result.unwrap(), serde_json::json!({"found": true}));
+        assert!(flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn cancel_request_malformed_params_is_invalid_data() {
+        let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let request = Request {
+            id: 101,
+            method: "cancel_request".to_string(),
+            params: serde_json::json!({"wrong_field": true}),
+        };
+        let response = compute_cancel_response(&registry, &request);
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::InvalidData);
+    }
+
+    /// Real multi-threaded stress test: spawns worker threads the same way `spawn_request` does
+    /// (via `compute_frames` against a shared `Arc<Core>`, not by calling functions sequentially
+    /// on one thread) and asserts no panics/deadlocks and every response correlates correctly.
+    /// This is what actually proves the concurrency model is thread-safe, not just structurally
+    /// plausible — timing-based proof that a slow request can't block a fast one isn't included
+    /// because no command today is slow enough to need it (see module doc).
+    #[test]
+    fn concurrent_requests_on_shared_core_do_not_panic_or_corrupt_state() {
+        let core = Arc::new(Core::new());
+        let mut handles = Vec::new();
+
+        for i in 0..16u32 {
+            let core = Arc::clone(&core);
+            handles.push(thread::spawn(move || {
+                let stream = if i % 2 == 0 { "A" } else { "B" };
+                let request = Request {
+                    id: i,
+                    method: "select_frame".to_string(),
+                    params: serde_json::json!({"stream": stream, "frame_index": i as usize}),
+                };
+                let frames = compute_frames(&core, &request);
+                assert_eq!(frames.len(), 1);
+                let (kind, payload) = &frames[0];
+                assert_eq!(*kind, FrameKind::Control);
+                let response: Response = serde_json::from_slice(payload).unwrap();
+                assert!(response.ok, "request {i} failed: {response:?}");
+                response.id
+            }));
+        }
+
+        let mut seen_ids: Vec<u32> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        seen_ids.sort_unstable();
+        assert_eq!(seen_ids, (0..16u32).collect::<Vec<_>>());
     }
 }
