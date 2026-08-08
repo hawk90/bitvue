@@ -51,6 +51,22 @@ vi.mock("@/contexts/CurrentFrameContext", () => ({
   ),
 }));
 vi.mock("@/hooks/useCanvasInteraction");
+vi.mock("@/contexts/YuvDiffContext", () => ({
+  YuvDiffProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useYuvDiff: vi.fn(() => ({
+    isLoaded: false,
+    displayMode: "decoded",
+    amplifyFactor: 1,
+    frameCount: 0,
+    loadFile: vi.fn(),
+    unloadFile: vi.fn(),
+    setDisplayMode: vi.fn(),
+    setAmplifyFactor: vi.fn(),
+    fetchMetrics: vi.fn(),
+  })),
+}));
 
 // Mock Tauri invoke
 vi.mock("@tauri-apps/api/core", () => ({
@@ -114,6 +130,13 @@ describe("YuvViewerPanel basic rendering", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -187,6 +210,13 @@ describe("YuvViewerPanel frame navigation controls", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -332,6 +362,13 @@ describe("YuvViewerPanel playback controls", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -394,6 +431,13 @@ describe("YuvViewerPanel zoom controls", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -481,6 +525,13 @@ describe("YuvViewerPanel mode selector", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -532,6 +583,13 @@ describe("YuvViewerPanel keyboard shortcuts - navigation", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -658,6 +716,13 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -729,14 +794,14 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
 });
 
 describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
-  let setModeMock: ReturnType<typeof vi.fn>;
+  let handleFKeyMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    setModeMock = vi.fn();
+    handleFKeyMock = vi.fn().mockReturnValue(true);
     vi.mocked(useMode).mockReturnValue({
       currentMode: "overview",
-      setMode: setModeMock,
+      setMode: vi.fn(),
       cycleMode: vi.fn(),
       componentMask: "yuv",
       toggleComponent: vi.fn(),
@@ -747,6 +812,13 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: handleFKeyMock,
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -773,7 +845,7 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
 
     fireEvent.keyDown(document, { key: "F1" });
 
-    expect(setModeMock).toHaveBeenCalledWith("overview");
+    expect(handleFKeyMock).toHaveBeenCalledWith(1);
   });
 
   it("should handle F2 key for coding-flow mode", () => {
@@ -781,7 +853,7 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
 
     fireEvent.keyDown(document, { key: "F2" });
 
-    expect(setModeMock).toHaveBeenCalledWith("coding-flow");
+    expect(handleFKeyMock).toHaveBeenCalledWith(2);
   });
 
   it("should handle F3 key for prediction mode", () => {
@@ -789,7 +861,7 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
 
     fireEvent.keyDown(document, { key: "F3" });
 
-    expect(setModeMock).toHaveBeenCalledWith("prediction");
+    expect(handleFKeyMock).toHaveBeenCalledWith(3);
   });
 
   it("should handle F4 key for transform mode", () => {
@@ -797,7 +869,7 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
 
     fireEvent.keyDown(document, { key: "F4" });
 
-    expect(setModeMock).toHaveBeenCalledWith("transform");
+    expect(handleFKeyMock).toHaveBeenCalledWith(4);
   });
 
   it("should handle F5 key for qp-map mode", () => {
@@ -805,7 +877,7 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
 
     fireEvent.keyDown(document, { key: "F5" });
 
-    expect(setModeMock).toHaveBeenCalledWith("qp-map");
+    expect(handleFKeyMock).toHaveBeenCalledWith(5);
   });
 
   it("should handle F6 key for mv-field mode", () => {
@@ -813,7 +885,7 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
 
     fireEvent.keyDown(document, { key: "F6" });
 
-    expect(setModeMock).toHaveBeenCalledWith("mv-field");
+    expect(handleFKeyMock).toHaveBeenCalledWith(6);
   });
 
   it("should handle F7 key for reference mode", () => {
@@ -821,7 +893,7 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
 
     fireEvent.keyDown(document, { key: "F7" });
 
-    expect(setModeMock).toHaveBeenCalledWith("reference");
+    expect(handleFKeyMock).toHaveBeenCalledWith(7);
   });
 });
 
@@ -841,6 +913,13 @@ describe("YuvViewerPanel loading states", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -901,6 +980,13 @@ describe("YuvViewerPanel status bar", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -964,6 +1050,13 @@ describe("YuvViewerPanel frame info display", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -1015,6 +1108,13 @@ describe("YuvViewerPanel edge cases", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -1141,6 +1241,13 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -1206,10 +1313,10 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
   });
 
   it("should handle multiple mode switches", () => {
-    const setModeMock = vi.fn();
+    const handleFKeyMock2 = vi.fn().mockReturnValue(true);
     vi.mocked(useMode).mockReturnValue({
       currentMode: "overview",
-      setMode: setModeMock,
+      setMode: vi.fn(),
       cycleMode: vi.fn(),
       componentMask: "yuv",
       toggleComponent: vi.fn(),
@@ -1220,6 +1327,13 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: handleFKeyMock2,
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -1246,7 +1360,7 @@ describe("YuvViewerPanel keyboard shortcut edge cases", () => {
     fireEvent.keyDown(document, { key: "F2" });
     fireEvent.keyDown(document, { key: "F3" });
 
-    expect(setModeMock).toHaveBeenCalledTimes(3);
+    expect(handleFKeyMock2).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -1266,6 +1380,13 @@ describe("YuvViewerPanel zoom state interaction", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -1329,6 +1450,13 @@ describe("YuvViewerPanel cleanup", () => {
       toggleLabels: vi.fn(),
       showBlockTypes: false,
       toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
     });
     vi.mocked(useStreamData).mockReturnValue({
       frames: mockFrames,
@@ -1382,6 +1510,13 @@ function setupStandardMocks() {
     toggleLabels: vi.fn(),
     showBlockTypes: false,
     toggleBlockTypes: vi.fn(),
+    availableModes: [],
+    availableOverlays: [],
+    activeOverlays: new Set(),
+    toggleOverlay: vi.fn(),
+    activeCodec: null,
+    handleFKey: vi.fn().mockReturnValue(false),
+    setActiveCodec: vi.fn(),
   });
   vi.mocked(useStreamData).mockReturnValue({
     frames: mockFrames,

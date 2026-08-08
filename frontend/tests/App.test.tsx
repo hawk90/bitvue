@@ -58,6 +58,17 @@ vi.mock("@/contexts/SelectionContext", () => ({
   useSelection: vi.fn(),
 }));
 
+vi.mock("@/contexts/LayoutContext", () => ({
+  LayoutProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useLayout: vi.fn(() => ({
+    saveLayout: vi.fn(),
+    loadLayout: vi.fn(),
+    resetLayout: vi.fn(),
+  })),
+}));
+
 vi.mock("@/contexts/CompareContext", () => ({
   CompareProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>

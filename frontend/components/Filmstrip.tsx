@@ -18,6 +18,8 @@ import BPyramidView from "./Filmstrip/views/BPyramidView";
 import { TimelineView } from "./Filmstrip/views/TimelineView";
 import { MinimapView } from "./MinimapView";
 import { FilmstripTooltip } from "./FilmstripTooltip";
+import { EnhancedView } from "./EnhancedView";
+import { HRDBufferPanel } from "./panels/HRDBufferPanel";
 import { useFilmstripState } from "./useFilmstripState";
 import {
   getFrameTypeColorClass,
@@ -311,20 +313,20 @@ function Filmstrip({
             getFrameTypeColorClass={getFrameTypeColorClass}
           />
         ) : displayView === "hrdbuffer" ? (
-          <div className="filmstrip-empty">
-            <span
-              className="codicon codicon-database"
-              aria-hidden="true"
-            ></span>
-            <p>HRD Buffer View</p>
-            <p className="hint">Coming soon</p>
-          </div>
+          <HRDBufferPanel
+            frames={frames}
+            currentFrameIndex={currentFrameIndex}
+            frameRate={30}
+          />
         ) : displayView === "enhanced" ? (
-          <div className="filmstrip-empty">
-            <span className="codicon codicon-sparkle" aria-hidden="true"></span>
-            <p>Enhanced View</p>
-            <p className="hint">Coming soon</p>
-          </div>
+          <EnhancedView
+            frames={frames}
+            currentFrameIndex={currentFrameIndex}
+            thumbnails={thumbnails}
+            loadingThumbnails={loadingThumbnails}
+            onFrameClick={handleFrameClick}
+            onHoverFrame={handleHoverFrame}
+          />
         ) : (
           <MinimapView
             frames={frames}

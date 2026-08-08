@@ -65,7 +65,14 @@ function renderMainModeOverlay(
       PredictionOverlay({ ctx, width, height, frame });
       break;
     case "transform":
-      TransformOverlay({ ctx, width, height, frame });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((frame as any).transform_map) {
+        ctx.save();
+        JpegXsTransformRenderer({ ctx, width, height, frame });
+        ctx.restore();
+      } else {
+        TransformOverlay({ ctx, width, height, frame });
+      }
       break;
     // Legacy standalone modes — kept so old code that sets these as the
     // current mode still renders something.
@@ -157,11 +164,6 @@ function renderMainModeOverlay(
     case "dequant":
       ctx.save();
       JpegXsDequantRenderer({ ctx, width, height, frame });
-      ctx.restore();
-      break;
-    case "transform":
-      ctx.save();
-      JpegXsTransformRenderer({ ctx, width, height, frame });
       ctx.restore();
       break;
     case "mct":
