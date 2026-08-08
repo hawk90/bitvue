@@ -2,14 +2,19 @@
 //!
 //! Populates `StreamState.container`/`.units` from a real file -- no pixel decode. This is
 //! deliberately the *first* stage only (see docs/DEVELOPMENT_PHASES.md's decode-pipeline design
-//! discussion, 2026-08-08): `.timeline` is NOT populated here, and only IVF/AV1 is supported so
-//! far. Other formats/codecs get an honest `Event::DiagnosticAdded`, not a fabricated result.
+//! discussion, 2026-08-08), and only IVF/AV1 is supported so far. Other formats/codecs get an
+//! honest `Event::DiagnosticAdded`, not a fabricated result.
 //!
 //! `.syntax` IS populated, but lazily: [`get_frame_syntax`] parses one unit's syntax tree on
 //! demand (mirrors `Core::handle_command`'s `SelectBitRange`, which already does an on-demand
 //! nearest-node lookup against whatever `.syntax` happens to hold) rather than eagerly building a
 //! tree for every unit in [`index_stream`] -- that would be wasted work for units the UI never
 //! looks at, and real cost on long streams.
+//!
+//! [`get_timeline`] builds a real `bitvue_engine::timeline::TimelineBase` from already-indexed
+//! units via the existing (previously never-called) `frame_identity::TimelineMapper` -- see that
+//! function's doc for why `StreamState.timeline: Option<TimelineModel>` is deliberately NOT
+//! written to (that field's type is confirmed dead/vestigial code, not the real timeline design).
 //!
 //! # Why this crate exists, and why it's not inside `bitvue-engine`
 //!
@@ -25,6 +30,8 @@ use bitvue_av1_codec::frame_header::parse_frame_header_basic;
 use bitvue_av1_codec::ivf::parse_ivf_frames;
 use bitvue_av1_codec::parse_obu_syntax;
 use bitvue_engine::event::{Category, Diagnostic, Severity};
+use bitvue_engine::frame_identity::{FrameMetadata, TimelineMapper};
+use bitvue_engine::timeline::TimelineBase;
 use bitvue_engine::{ContainerFormat, ContainerModel, SyntaxModel, UnitModel, UnitNode};
 use bitvue_engine::{Core, StreamId};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -214,6 +221,79 @@ pub fn get_frame_syntax(
     }
 
     Ok(model)
+}
+
+/// Builds a real display-order timeline from already-indexed units, via
+/// `frame_identity::TimelineMapper`/`Av1TimelineExtractor` -- code that already existed in
+/// `bitvue-engine`, is used by 9+ other modules (lanes, window, evidence, export, picture_stats),
+/// and had zero production callers before this. No pixel decode needed: `TimelineMapper` only
+/// needs per-frame `{pts, dts}`/size/type in *decode* order and sorts them into display order
+/// itself (that's the whole point of the type -- see its own doc for the AV1 reordering case).
+///
+/// Deliberately does NOT write into `StreamState.timeline: Option<TimelineModel>` -- investigated
+/// this before writing any code: `TimelineModel`/`stream_state.rs`'s own `TimelineFrame` have zero
+/// non-definition references anywhere in the codebase, are never constructed by any production
+/// code, and read as an early "Phase 1" placeholder superseded by the real "T4-1 deliverable"
+/// (`timeline::TimelineBase`, this function's return type) that a real subsystem already depends
+/// on. Retiring the dead `TimelineModel` type and giving `StreamState` a real timeline slot is a
+/// `bitvue-engine`-internal cleanup, out of scope for this crate (which only ever adds data
+/// through `Core`'s already-public accessors, never changes `bitvue-engine` itself).
+pub fn get_timeline(core: &Core, stream: StreamId) -> Result<TimelineBase, String> {
+    let (units, codec) = {
+        let stream_state = core.get_stream(stream);
+        let state = stream_state.read();
+        let codec = state
+            .container
+            .as_ref()
+            .map(|c| c.codec.clone())
+            .unwrap_or_default();
+        let units = state
+            .units
+            .as_ref()
+            .ok_or_else(|| "No units indexed for this stream -- has index_stream run?".to_string())?
+            .units
+            .clone();
+        (units, codec)
+    };
+
+    if codec != "av1" {
+        return Err(format!(
+            "Timeline building is only implemented for AV1 so far (this stream's codec: {codec:?})"
+        ));
+    }
+
+    // Units are already in decode order (index_ivf_av1 assigns frame_index sequentially as it
+    // walks the IVF chunk list) -- exactly what TimelineMapper::new expects.
+    let frame_units: Vec<&UnitNode> = units.iter().filter(|u| u.frame_index.is_some()).collect();
+    if frame_units.is_empty() {
+        return Err("No frame units found -- has index_stream run for this stream?".to_string());
+    }
+
+    let frames: Vec<FrameMetadata> = frame_units
+        .iter()
+        .map(|u| FrameMetadata {
+            pts: u.pts,
+            dts: None,
+        })
+        .collect();
+    let sizes: Vec<u64> = frame_units.iter().map(|u| u.size as u64).collect();
+    // Av1TimelineExtractor::determine_marker matches literal "KEY_FRAME"/"INTRA_ONLY_FRAME"
+    // strings -- NOT the generic default extractor's "I" shortcut, which index_ivf_av1's short
+    // codes ("I"/"P"/"B") would otherwise silently fail to match, marking zero keyframes in an
+    // otherwise-correct timeline. Translate at this call boundary only -- UnitNode.frame_type
+    // itself stays "I"/"P"/"B" everywhere else (frontend, syntax display, etc.).
+    let types: Vec<String> = frame_units
+        .iter()
+        .map(|u| match u.frame_type.as_deref() {
+            Some("I") => "KEY_FRAME",
+            Some("P") | Some("B") => "INTER_FRAME",
+            _ => "INTER_FRAME",
+        })
+        .map(String::from)
+        .collect();
+
+    let mapper = TimelineMapper::new(format!("{stream:?}"), frames, sizes, types);
+    Ok(mapper.build_timeline_av1())
 }
 
 /// Real IVF/AV1 parsing: walks IVF chunks via `bitvue_av1_codec::ivf::parse_ivf_frames`, then

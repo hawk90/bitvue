@@ -5,18 +5,19 @@
  * `bitvue-desktop/electron/preload.cjs` via `contextBridge`.
  *
  * IMPORTANT — the old Tauri command surface (~40 commands, `src-tauri/src/commands/*.rs`,
- * deleted 2026-08-08) and the new `bitvue-sidecar` surface (13 commands, see
+ * deleted 2026-08-08) and the new `bitvue-sidecar` surface (14 commands, see
  * `docs/DEVELOPMENT_PHASES.md` § "제품 아키텍처 확정") are NOT the same API — different names,
  * different param/result shapes, and most of the old capability (frame pixel decode/YUV data,
  * compare workspaces, export, quality metrics) has no sidecar equivalent implemented yet. This
- * file wraps all 13 real sidecar commands: open/close a stream, select a frame (selection-sync
+ * file wraps all 14 real sidecar commands: open/close a stream, select a frame (selection-sync
  * only — no decoded pixel data), the four structural multi-sync selections
  * (`selectUnit`/`selectSyntax`/`selectBitRange`/`selectSpatialBlock` — no live UI consumer as of
  * 2026-08-08, wired because the sidecar-side capability is real, not because a feature needs them
  * yet), a raw hex byte range, the native open-file dialog, and metadata indexing
  * (`indexStream`/`getStreamInfo`/`getFramesChunk` — container + per-frame metadata, IVF/AV1 only
- * so far, no pixel decode) plus lazy per-unit syntax trees (`getFrameSyntax`, AV1 only; see
- * `bitvue-indexer`'s module doc). Don't add wrappers here for capabilities the sidecar doesn't
+ * so far, no pixel decode) plus lazy per-unit syntax trees (`getFrameSyntax`) and a display-order
+ * timeline (`getTimeline`, also no live UI consumer yet — see its own doc), both AV1 only; see
+ * `bitvue-indexer`'s module doc. Don't add wrappers here for capabilities the sidecar doesn't
  * have; that would silently promise something broken.
  */
 
@@ -96,6 +97,29 @@ export interface BridgeSyntaxNode {
   children: BridgeSyntaxNode[];
 }
 
+/** Mirrors `bitvue_engine::timeline::TimelineFrame` -- it (and `BridgeTimeline` below) derive
+ *  `Serialize` directly, unlike most `bitvue-engine` types, so this is a straight field mirror,
+ *  no hand-mapped JSON on the Rust side to keep in sync. */
+export interface BridgeTimelineFrame {
+  display_idx: number;
+  size_bytes: number;
+  frame_type: string;
+  marker: "None" | "Key" | "Error" | "Bookmark";
+  pts: number | null;
+  dts: number | null;
+  is_selected: boolean;
+}
+
+/** Mirrors `bitvue_engine::timeline::TimelineBase`. */
+export interface BridgeTimeline {
+  stream_id: string;
+  frames: BridgeTimelineFrame[];
+  current_frame: number | null;
+  scrub_mode: "Idle" | "Active";
+  viewport: [number, number];
+  vertical_viewport: [number, number];
+}
+
 declare global {
   interface Window {
     bitvue?: {
@@ -130,6 +154,7 @@ declare global {
         stream: StreamId,
         frameIndex: number,
       ) => Promise<BridgeSyntaxNode>;
+      getTimeline: (stream: StreamId) => Promise<BridgeTimeline>;
       selectUnit: (
         stream: StreamId,
         unitType: string,
@@ -254,6 +279,16 @@ export async function getFrameSyntax(
   frameIndex: number,
 ): Promise<BridgeSyntaxNode> {
   return requireBridge().getFrameSyntax(stream, frameIndex);
+}
+
+/** Display-order timeline (frame types/sizes/markers), built from already-indexed units via
+ *  `bitvue_engine::frame_identity::TimelineMapper` (AV1 only so far -- see `bitvue-indexer`'s
+ *  `get_timeline` doc). No component consumes this yet as of 2026-08-08 (grepped for an existing
+ *  dead call site the way `getFramesChunk`/`getFrameSyntax` had -- none found); wired because the
+ *  backend capability is real and tested, not because a specific UI feature needs it. Throws on
+ *  failure (no units indexed yet, wrong codec) -- same reasoning as `getFrameSyntax`. */
+export async function getTimeline(stream: StreamId): Promise<BridgeTimeline> {
+  return requireBridge().getTimeline(stream);
 }
 
 // -- Structural (multi-sync) selection ---------------------------------------------------------

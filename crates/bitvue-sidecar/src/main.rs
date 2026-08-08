@@ -2,24 +2,26 @@
 //! over stdio to `bitvue-desktop` (Electron main). See `docs/DEVELOPMENT_PHASES.md`
 //! ("sidecar 결정" / "bitvue-protocol wire schema v0" / "동시성 모델") for the full design.
 //!
-//! Thirteen real commands are wired end to end: `open_stream`,
+//! Fourteen real commands are wired end to end: `open_stream`,
 //! `select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`
 //! (multi-sync — see `docs/DEVELOPMENT_PHASES.md`'s `SelectionState` note; these five map
 //! straight onto `bitvue_engine::Command`'s existing "Tri-sync" selection variants, no new engine
 //! work needed), `close_stream` (control-plane), `get_hex_range` (the first data-plane command —
 //! a `Control` metadata frame followed by a `Data` frame of raw bytes, no JSON array, no base64),
-//! `cancel_request` (see "Concurrency model" below), and four newer ones that go through
+//! `cancel_request` (see "Concurrency model" below), and five newer ones that go through
 //! `bitvue-indexer` rather than `Core::handle_command`: `index_stream` (IVF/AV1 metadata
 //! indexing — container + units, no pixel decode yet, see that crate's module doc for exactly
 //! what's covered), two read-only pagination-style queries over the result,
-//! `get_stream_info`/`get_frames_chunk`, and `get_frame_syntax` (lazy, per-unit syntax tree —
-//! AV1 only, parsed on demand rather than eagerly for every unit). These four are *not*
-//! `bitvue_engine::Command` variants — `Core` is a leaf crate and can't call into codec/format
-//! crates itself (see `docs/DEVELOPMENT_PHASES.md`'s decode-pipeline design note, 2026-08-08), so
-//! `bitvue-indexer` sits on the other side of that dependency edge and mutates `StreamState`
-//! through `Core`'s already-public `get_stream()`/`get_job_manager()` accessors.
-//! `Command::RunFullAnalysis` stays defined-but-unused as a result — this sidecar deliberately
-//! doesn't route through it.
+//! `get_stream_info`/`get_frames_chunk`, `get_frame_syntax` (lazy, per-unit syntax tree — AV1
+//! only, parsed on demand rather than eagerly for every unit), and `get_timeline` (display-order
+//! timeline built from already-indexed units via `bitvue_engine::frame_identity::TimelineMapper`
+//! — real, previously-unused engine code, not new logic; see `bitvue-indexer`'s module doc for why
+//! this does NOT write to `StreamState.timeline`). These five are *not* `bitvue_engine::Command`
+//! variants — `Core` is a leaf crate and can't call into codec/format crates itself (see
+//! `docs/DEVELOPMENT_PHASES.md`'s decode-pipeline design note, 2026-08-08), so `bitvue-indexer`
+//! sits on the other side of that dependency edge and mutates `StreamState` through `Core`'s
+//! already-public `get_stream()`/`get_job_manager()` accessors. `Command::RunFullAnalysis` stays
+//! defined-but-unused as a result — this sidecar deliberately doesn't route through it.
 //!
 //! **Every other `bitvue_engine::Command` variant is currently a no-op in `Core::handle_command`**
 //! (falls through to its catch-all `_ => vec![]` arm — verified by reading `core.rs`, not
@@ -307,6 +309,7 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "get_stream_info" => get_stream_info(core, request),
         "get_frames_chunk" => get_frames_chunk(core, request),
         "get_frame_syntax" => get_frame_syntax(core, request),
+        "get_timeline" => get_timeline(core, request),
         other => Response::failure(
             request.id,
             WireError {
@@ -801,6 +804,51 @@ fn get_frame_syntax(core: &Core, request: &Request) -> Response {
             let tree = syntax_node_to_json(&model, &model.root_id);
             Response::success(request.id, tree)
         }
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GetTimelineParams {
+    stream: String,
+}
+
+/// `bitvue_engine::timeline::TimelineBase` via `bitvue_indexer::get_timeline` -- not a
+/// `Core::handle_command` variant, same reasoning as the other `bitvue-indexer`-backed commands.
+/// `TimelineBase`/`TimelineFrame` already derive `Serialize` (unlike most `bitvue-engine` types),
+/// so this serializes directly -- no hand-mapping function needed like `syntax_node_to_json`.
+/// Failure is a real wire error, same as `get_frame_syntax` -- no meaningful partial timeline.
+fn get_timeline(core: &Core, request: &Request) -> Response {
+    let params: GetTimelineParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return response,
+    };
+
+    match bitvue_indexer::get_timeline(core, stream) {
+        Ok(timeline) => Response::success(
+            request.id,
+            serde_json::to_value(&timeline).expect("TimelineBase always serializes"),
+        ),
         Err(message) => Response::failure(
             request.id,
             WireError {
@@ -1690,6 +1738,76 @@ mod tests {
                 id: 112,
                 method: "get_frame_syntax".to_string(),
                 params: serde_json::json!({"stream": "Z", "frame_index": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::InvalidData);
+    }
+
+    #[test]
+    fn get_timeline_end_to_end_returns_a_real_display_order_timeline() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        dispatch(
+            &core,
+            &Request {
+                id: 113,
+                method: "index_stream".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 114,
+                method: "get_timeline".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let timeline = response.result.unwrap();
+        assert_eq!(timeline["stream_id"], "A");
+        let frames = timeline["frames"]
+            .as_array()
+            .expect("expected a frames array");
+        assert!(
+            !frames.is_empty(),
+            "expected real frame entries, got {timeline:?}"
+        );
+        assert_eq!(
+            frames[0]["marker"], "Key",
+            "first frame should be marked as a keyframe"
+        );
+    }
+
+    #[test]
+    fn get_timeline_before_indexing_is_a_wire_error_not_a_crash() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        // Deliberately not calling index_stream first.
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 115,
+                method: "get_timeline".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    #[test]
+    fn get_timeline_unknown_stream_id_is_invalid_data() {
+        let core = Core::new();
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 116,
+                method: "get_timeline".to_string(),
+                params: serde_json::json!({"stream": "Z"}),
             },
         );
         assert!(!response.ok);

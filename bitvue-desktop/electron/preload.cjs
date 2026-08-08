@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("bitvue", {
   getFramesChunk: (stream, offset, limit) =>
     ipcRenderer.invoke("bitvue:getFramesChunk", stream, offset, limit),
   getFrameSyntax: (stream, frameIndex) => ipcRenderer.invoke("bitvue:getFrameSyntax", stream, frameIndex),
+  getTimeline: (stream) => ipcRenderer.invoke("bitvue:getTimeline", stream),
   // Structural (multi-sync) selection commands -- independent of selectFrame's temporal cursor.
   // See bitvue-sidecar's module doc / bitvue_engine::selection for the tri-sync design.
   selectUnit: (stream, unitType, offset, size) =>

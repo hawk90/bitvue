@@ -577,6 +577,45 @@ framerate 필드로 계산 가능)도 검토했지만, IVF rate/scale 필드 의
 있던 기존 테스트(각 2개씩, 8개)로 이미 검증돼 있어서 새로 안 만듦. Electron selftest는 확장 안 함 —
 실제로 호출할 UI 트리거가 없어서 의미 있는 E2E 시나리오를 못 만듦(정직하게 생략, 억지로 안 만듦).
 
+### `TimelineFrame` 이중정의 조사 → `get_timeline` 구현 (2026-08-08)
+
+"다음 구현" 지시에 이전에 "사용자 판단 필요"로 플래그해뒀던 `TimelineFrame` 이중정의 문제를 다시 봄 —
+Explore 에이전트로 실제 코드 증거를 조사해보니 **애매하지 않고 결론이 명확했음**: `stream_state.rs`의
+`TimelineModel`/`TimelineFrame`은 참조 0건, 어디서도 생성 안 됨 — `ContainerModel`/`UnitModel`이 이 세션
+초반에 그랬던 것과 똑같은 "Phase 1" 미완성 placeholder. `timeline.rs`의 `TimelineBase`/`TimelineFrame`은
+9개 이상의 실제 서브시스템 파일(lanes/window/evidence/export/picture_stats)이 이미 의존하는, "T4-1
+deliverable"이라고 명시된 진짜 설계. **이건 제품 의미 결정이 아니라 조사로 풀리는 질문이었음** — 처음에
+"물어봐야 한다"고 플래그한 게 성급했음, 답이 이미 코드 안에 있었음.
+
+**추가 조사로 실현 가능성 확인:** `timeline.rs`를 실제로 쓰는 `TimelineMapper::new(stream_id, Vec<
+FrameMetadata>, sizes, types).build_timeline_av1()`(`frame_identity.rs`)이 필요로 하는 입력은 딱
+`{pts, dts}` + 크기 + 타입 문자열 — 디코드 순서로만 있으면 되고 내부에서 알아서 display order로 정렬함
+(AV1 리오더링 케이스까지 이미 처리됨). 픽셀 디코딩 전혀 불필요 — `bitvue-indexer`가 이미 갖고 있는
+`Vec<UnitNode>`(pts/size/frame_type)로 충분. `build_timeline_av1` 자체는 이 세션 이전부터 있었지만
+프로덕션 호출자가 0건이었음(테스트에서만 씀).
+
+**부수 발견(설계 중 우연히, 또 하나):** `Av1TimelineExtractor::determine_marker`는 리터럴 `"KEY_FRAME"`/
+`"INTRA_ONLY_FRAME"` 문자열만 매치 — 제네릭 기본 extractor의 `"I"` 단축 매치와 다름(AV1 전용
+override가 그걸 안 씀). `index_ivf_av1`이 만드는 "I"/"P"/"B" 단축 코드를 그대로 넘기면 키프레임이
+0개로 조용히 나옴 — 테스트로 실제로 걸림(`keyframe_indices()`가 비어서 나옴), 이 호출 경계에서만
+"I"→"KEY_FRAME" 매핑 추가해서 수정(`UnitNode.frame_type` 자체는 다른 곳 전부 "I"/"P"/"B" 그대로 유지).
+
+**한 일:** `bitvue-indexer::get_timeline(core, stream) -> Result<TimelineBase, String>` — AV1만,
+`index_stream`이 먼저 안 돌았으면 에러. **`StreamState.timeline`(죽은 `TimelineModel` 타입)엔 의도적으로
+안 씀** — 함수 doc에 이유 명시(타입을 바꾸는 건 `bitvue-engine` 자체를 고치는 일이라 이 세션 내내
+지켜온 "leaf crate는 안 건드림" 원칙 밖). `bitvue-sidecar`에 `get_timeline` 커맨드(14번째) — `TimelineBase`
+가 이미 `Serialize`를 derive하고 있어서(대부분의 bitvue-engine 타입과 다름) `syntax_node_to_json` 같은
+수동 매핑 불필요, 그대로 직렬화. frontend `getTimeline` wrapper도 같이 추가(`components/Timeline.tsx`에
+`getTimelineRect`라는 이름이 비슷한 DOM 헬퍼가 있어서 착각할 뻔했지만 확인 결과 무관 — 실제 UI 소비자는
+없음, `select_unit`류와 같은 이유로 완결성 목적으로 배선, 모듈 doc에 명시).
+
+**검증:** `bitvue-indexer` 신규 테스트 2개(실제 픽스처로 frame_count 일치 + 첫 프레임 키프레임 마킹 확인)
++ `bitvue-sidecar` 통합 테스트 3개(전체 체인 진짜 타임라인 + marker 확인 / 인덱싱 전 wire error / 잘못된
+stream id) + `electronBridgeService.test.ts`(+2) 전부 통과. `BITVUE_ELECTRON_SELFTEST`에 `getTimeline("B")`
+추가해서 실제 렌더러→preload→main→sidecar 체인으로 진짜 타임라인 받아서 `frames[0].marker === "Key"`까지
+확인(마커 매핑 버그가 E2E 레벨에서도 재발 안 하는지 증명), exit code 0. `npx vitest run` 전체 — 여전히
+9파일/36개 pre-existing 실패만, 새 실패 0개.
+
 ### 확정 순서
 
 ```

@@ -94,6 +94,10 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("get_frame_syntax", { stream, frame_index: frameIndex });
   });
 
+  ipcMain.handle("bitvue:getTimeline", async (_event, stream: string) => {
+    return requireSidecar().request("get_timeline", { stream });
+  });
+
   ipcMain.handle(
     "bitvue:selectUnit",
     async (_event, stream: string, unitType: string, offset: number, size: number) => {
@@ -254,6 +258,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const streamInfo = await window.bitvue.getStreamInfo("B");
         const framesChunk = await window.bitvue.getFramesChunk("B", 0, 5);
         const frameSyntax = await window.bitvue.getFrameSyntax("B", 0);
+        const timeline = await window.bitvue.getTimeline("B");
         await window.bitvue.closeStream("B");
 
         return {
@@ -275,6 +280,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           streamInfo,
           framesChunk,
           frameSyntax,
+          timeline,
         };
       })()
     `);
@@ -313,6 +319,10 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     }
     const forbiddenBitNode = findSyntaxNode(result.frameSyntax, "obu_forbidden_bit");
     const frameSyntaxOk = forbiddenBitNode?.bit_range?.start_bit === 352;
+    const timelineOk =
+      result.timeline?.stream_id === "B" &&
+      result.timeline?.frames?.length > 0 &&
+      result.timeline?.frames?.[0]?.marker === "Key";
     const rootMountedOk = (result.rootChildCount ?? 0) > 0;
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
     console.log("[selftest] document title (real frontend's <title>, not the placeholder's):", result.documentTitle);
@@ -326,6 +336,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       " get_stream_info OK:", streamInfoOk,
       " get_frames_chunk OK:", framesChunkOk,
       " get_frame_syntax OK:", frameSyntaxOk,
+      " get_timeline OK:", timelineOk,
     );
     console.log("[selftest] #root mounted OK:", rootMountedOk);
     process.exitCode =
@@ -336,6 +347,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       streamInfoOk &&
       framesChunkOk &&
       frameSyntaxOk &&
+      timelineOk &&
       rootMountedOk
         ? 0
         : 1;

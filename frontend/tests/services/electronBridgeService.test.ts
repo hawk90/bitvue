@@ -5,6 +5,7 @@ import {
   getFramesChunk,
   getHexRange,
   getStreamInfo,
+  getTimeline,
   hasElectronBridge,
   indexStream,
   openStream,
@@ -53,6 +54,14 @@ function installMockBridge(
       value: null,
       bit_range: { start_bit: 352, end_bit: 368 },
       children: [],
+    }),
+    getTimeline: vi.fn().mockResolvedValue({
+      stream_id: "A",
+      frames: [],
+      current_frame: null,
+      scrub_mode: "Idle",
+      viewport: [0, 0],
+      vertical_viewport: [0, 0],
     }),
     onSidecarRestarted: vi.fn().mockReturnValue(() => {}),
     ...overrides,
@@ -238,6 +247,46 @@ describe("electronBridgeService", () => {
         getFrameSyntax: vi.fn().mockRejectedValue(new Error("frame not found")),
       });
       await expect(getFrameSyntax("A", 999)).rejects.toThrow("frame not found");
+    });
+  });
+
+  describe("getTimeline", () => {
+    beforeEach(() => installMockBridge());
+
+    it("forwards the stream and returns the real display-order timeline", async () => {
+      installMockBridge({
+        getTimeline: vi.fn().mockResolvedValue({
+          stream_id: "A",
+          frames: [
+            {
+              display_idx: 0,
+              size_bytes: 5488,
+              frame_type: "KEY_FRAME",
+              marker: "Key",
+              pts: 0,
+              dts: null,
+              is_selected: false,
+            },
+          ],
+          current_frame: null,
+          scrub_mode: "Idle",
+          viewport: [0, 0],
+          vertical_viewport: [0, 0],
+        }),
+      });
+      const timeline = await getTimeline("A");
+      expect(window.bitvue!.getTimeline).toHaveBeenCalledWith("A");
+      expect(timeline.frames).toHaveLength(1);
+      expect(timeline.frames[0].marker).toBe("Key");
+    });
+
+    it("rejects when the bridge rejects (no units indexed yet)", async () => {
+      installMockBridge({
+        getTimeline: vi
+          .fn()
+          .mockRejectedValue(new Error("No units indexed for this stream")),
+      });
+      await expect(getTimeline("A")).rejects.toThrow("No units indexed");
     });
   });
 

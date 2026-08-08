@@ -214,3 +214,51 @@ fn get_frame_syntax_bit_range_is_a_real_bit_offset_not_a_byte_offset() {
         forbidden_bit.bit_range.start_bit
     );
 }
+
+#[test]
+fn get_timeline_returns_a_real_timeline_for_the_fixture() {
+    use crate::get_timeline;
+
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    index_stream(&core, StreamId::A);
+
+    let timeline = get_timeline(&core, StreamId::A).expect("get_timeline should succeed");
+
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    let expected_frame_count = state.units.as_ref().unwrap().unit_count;
+    drop(state);
+
+    assert_eq!(timeline.stream_id, "A");
+    assert_eq!(
+        timeline.frame_count(),
+        expected_frame_count,
+        "timeline should have one entry per indexed unit"
+    );
+    // First frame of a well-formed stream is a keyframe -- confirmed by index_stream's own test.
+    assert!(
+        !timeline.keyframe_indices().is_empty(),
+        "expected at least one keyframe in the timeline"
+    );
+    assert_eq!(
+        timeline.keyframe_indices()[0],
+        0,
+        "the first frame should be marked as a keyframe"
+    );
+}
+
+#[test]
+fn get_timeline_errors_honestly_when_index_stream_has_not_run() {
+    use crate::get_timeline;
+
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    // Deliberately not calling index_stream first.
+
+    let result = get_timeline(&core, StreamId::A);
+    assert!(
+        result.is_err(),
+        "expected an error, not a panic or a fabricated timeline"
+    );
+}
