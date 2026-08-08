@@ -889,8 +889,8 @@ exclude에 남아있음** — 이번 수정은 나중에 워크스페이스가 �
 
 | 파일 (실제 App.tsx 트리에서 살아있음 확인) | 부르는 커맨드 |
 |---|---|
-| `YuvViewerPanel/index.tsx` | `get_frame_analysis`, `get_debug_yuv_frame` |
-| `contexts/YuvDiffContext.tsx`, `components/panels/YuvDiffPanel.tsx` (App.tsx에 `YuvDiffProvider`+`YuvDiffPanelFromContext`로 마운트됨) | `load_debug_yuv`, `unload_debug_yuv`, `set_debug_yuv_crop`, `set_debug_yuv_offset` |
+| `YuvViewerPanel/index.tsx` | `get_frame_analysis` (`get_debug_yuv_frame`은 2026-08-09 "Debug YUV 커맨드 패밀리 구현" 참고 — 완료됨) |
+| ~~`contexts/YuvDiffContext.tsx`, `components/panels/YuvDiffPanel.tsx`~~ | ~~`load_debug_yuv` 등~~ — 2026-08-09 "Debug YUV 커맨드 패밀리 구현" 참고, 완료됨 |
 | `contexts/CompareContext.tsx` (Provider는 마운트, `createWorkspace`는 `useAppFileOperations.ts`의 dependent-file-open 경로에서 실제로 호출됨) | `create_compare_workspace`, `set_sync_mode`, `set_manual_offset`, `reset_offset` — 단 `setSyncMode`/`setManualOffset`는 죽은 `CompareWorkspace.tsx`에서만 쓰여서 사실상 미호출 |
 | `components/panels/SyntaxDetailPanel/RefListTab.tsx`, `StatisticsTab.tsx` | `get_codec_extended_info` |
 | `components/Player/views/AV1FeaturesView.tsx`, `hooks/useAv1Features.ts` | `get_av1_features` (두 파일이 서로 다른 param 모양으로 각자 부름 — 중복 구현 가능성, 미조사) |
@@ -901,6 +901,47 @@ exclude에 남아있음** — 이번 수정은 나중에 워크스페이스가 �
 이 8개 커맨드는 전부 `bitvue-sidecar`에 없고(`bitvue-indexer`/`decode_bridge` grep으로 확인), 프론트엔드
 스왑만으로 못 고침 — 각각 새 Rust 분석 로직이 필요함. 이걸로 프론트엔드 쪽 "배선 스위프"는 사실상 끝 —
 남은 모든 항목이 새 백엔드 작업이거나 확인된 죽은 코드.
+
+### Debug YUV 커맨드 패밀리 구현 (2026-08-09, 33ab6aa/aee52b6)
+
+위 표에서 새 Core 작업 필요로 분류된 8개 커맨드 중 YuvDiffPanel 쪽(`load_debug_yuv`/`unload_debug_yuv`/
+`set_debug_yuv_offset`/`set_debug_yuv_crop`/`get_yuv_diff_metrics`/`find_first_diff_frame`/
+`get_debug_yuv_frame`, 7개)을 실제로 구현. VQ Analyzer의 "Debug → Load Reference YUV" 워크플로 —
+사용자가 raw YUV 파일을 열어서 스트림 A의 디코딩 결과와 프레임 단위로 diff — 이 `YuvDiffPanel.tsx`/
+`YuvDiffContext.tsx`에 UI는 이미 있었지만(`App.tsx`에 `YuvDiffProvider`+`YuvDiffPanelFromContext`로
+실제 마운트돼있음) 백엔드가 마이그레이션 이후 한 번도 존재한 적이 없어서 완전히 죽어있었음.
+
+**새 `bitvue-sidecar::debug_yuv` 모듈**: I420/NV12/NV21/I422/I444, 8/10/12/16-bit raw YUV 파일을
+디스크에서 직접 읽음(디코드 아님) — `decode_bridge`가 압축 비트스트림을 다루는 것과 대조. 세션 상태
+(경로/해상도/포맷/비트뎁스/offset/crop)는 `Core`가 아니라 `main.rs`가 들고 있는
+`Mutex<Option<Session>>` — `StreamId`(A/B)별 상태가 아니고, `Core`는 리프 크레이트라 파일시스템 접근을
+할 수 없음(다른 모듈 문서와 같은 이유). **스코프 결정**: diff/amplified/metrics 전부 8비트 정밀도로만
+동작(10비트 이상은 비교 전에 다운시프트) — `decode_bridge`의 기존 wire 포맷과 프론트엔드
+`VideoCanvas`/`yuv_to_rgb` 렌더러 둘 다 8비트 전용이라 거기 맞춤, 진짜 고비트뎁스 비교는 별도 wire
+포맷+렌더러가 필요해서 범위 밖으로 명시적으로 남김. PSNR/SSIM은 새로 안 짜고 이미 구현+테스트된
+`bitvue-metrics` 크레이트(`psnr_yuv`/`ssim_yuv`) 재사용 — VMAF까지 갖춘 크레이트인데 지금까지 아무도
+안 쓰고 있었음. `get_debug_yuv_frame`은 `get_decoded_frame_yuv`가 이미 확립한 두-프레임(Control 메타
++ raw bytes Data) wire 패턴을 그대로 따름 — 옛 Tauri 시절 base64 `YUVFrameData`로 되돌아가지 않음.
+`find_first_diff_frame`은 `get_thumbnails`처럼 스트리밍 디코드 한 번으로 처리(요청된 프레임마다 처음부터
+다시 디코드하는 `get_decoded_frame_yuv` 방식대로 했으면 O(n²)이었을 것).
+
+**프론트엔드**: `YuvDiffContext.tsx`/`YuvDiffPanel.tsx`의 죽은 Tauri `invoke()` 호출을
+`electronBridgeService`의 새 래퍼로 교체. `YuvViewerPanel/index.tsx`의 debug-YUV 프레임 로딩도
+`getDebugYuvFrame`(raw bytes)로 바뀌면서, 이제 실제 디코드 경로와 debug-YUV 경로 둘 다 같은
+`bridgeYuvToFrame` 변환으로 수렴 — 옛 base64 전용이었던 `convertYUVDataToYUVFrame`/`yuvData` state를
+통째로 제거(더 이상 아무도 base64 shape를 안 만들어서).
+
+**검증**: Rust 쪽 74개 테스트(기존 60 + debug_yuv 유닛 테스트 14 + main.rs 통합 테스트 다수, 실제 AV1
+픽스처의 진짜 디코드 바이트로 만든 참조 파일 써서 identical-frame PSNR/mismatch 검증까지). 프론트엔드
+타입체크 409개 파일 그대로 클린, 전체 vitest 기존 36-실패/9-파일 베이스라인 그대로. **실제 Electron
+IPC 체인까지 통과 확인** — `BITVUE_ELECTRON_SELFTEST`에 debug-YUV 라운드 추가: 스트림 A의 진짜 디코드
+바이트로 참조 파일 생성 → `loadDebugYuv` → `getDebugYuvFrame("reference")`가 원본과 byte-exact 일치 →
+`getYuvDiffMetrics`가 mismatch 없음 보고 → `getDebugYuvFrame("diff")`의 luma가 전부 0 → 실제 렌더러/
+preload/main/sidecar 경로 전체를 거쳐서 exit 0.
+
+**남은 것**: `get_frame_analysis`, `create_compare_workspace`류, `get_codec_extended_info`,
+`get_av1_features`, `get_deblocking_analysis`, `get_residual_analysis`, `get_coding_flow_analysis` —
+위 표 그대로 아직 미구현.
 
 ### 확정 순서
 
