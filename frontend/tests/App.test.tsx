@@ -97,6 +97,11 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+const { closeWindow } = vi.hoisted(() => ({
+  closeWindow: vi.fn(),
+}));
+vi.mock("@/services/electronBridgeService", () => ({ closeWindow }));
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));
@@ -123,10 +128,11 @@ vi.mock("@/components/WelcomeScreen", () => ({
 }));
 
 vi.mock("@/components/TitleBar", () => ({
-  TitleBar: ({ fileName, onOpenFile }: any) => (
+  TitleBar: ({ fileName, onOpenFile, onQuit }: any) => (
     <div className="title-bar" data-testid="title-bar">
       <span>{fileName}</span>
       <button onClick={onOpenFile}>Open</button>
+      <button onClick={onQuit}>Quit</button>
     </div>
   ),
 }));
@@ -1043,6 +1049,17 @@ describe("AppContent - TitleBar", () => {
     const titleBar = screen.getByTestId("title-bar");
     expect(titleBar.textContent).toContain("Bitvue");
   });
+
+  it("should call the Electron bridge's closeWindow when the Quit button is clicked", () => {
+    vi.mocked(shouldShowTitleBar).mockReturnValue(true);
+    closeWindow.mockClear();
+
+    render(<App />);
+
+    fireEvent.click(screen.getByText("Quit"));
+
+    expect(closeWindow).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("AppContent - StatusBar", () => {
@@ -1233,6 +1250,15 @@ describe("AppContent - menu event listeners", () => {
 
     const closeEvent = new CustomEvent("menu-close-file");
     expect(() => window.dispatchEvent(closeEvent)).not.toThrow();
+  });
+
+  it("should call the Electron bridge's closeWindow on a menu-quit event", () => {
+    closeWindow.mockClear();
+    render(<App />);
+
+    window.dispatchEvent(new CustomEvent("menu-quit"));
+
+    expect(closeWindow).toHaveBeenCalledTimes(1);
   });
 
   it("should cleanup menu event listeners on unmount", () => {

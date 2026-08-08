@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld("bitvue", {
   // directly). Returns the selected path, or null if the user cancelled. `filters` matches
   // Electron's `dialog.showOpenDialog` FileFilter shape: [{name, extensions}].
   showOpenDialog: (filters) => ipcRenderer.invoke("bitvue:showOpenDialog", filters),
+  closeWindow: () => ipcRenderer.invoke("bitvue:closeWindow"),
   // Fires after the sidecar process crashed and was automatically respawned (see
   // sidecarClient.ts's crash-recovery doc) — application state (open streams, selection) was
   // lost and is NOT restored automatically. A real UI should use this to prompt the user to

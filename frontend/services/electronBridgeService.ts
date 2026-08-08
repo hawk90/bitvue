@@ -17,7 +17,9 @@
  * yet), a raw hex byte range, decoded YUV pixel planes for one frame (`getDecodedFrameYuv` —
  * AV1/IVF only, re-decodes from the stream start every call, no session caching yet), batch
  * filmstrip thumbnails (`getThumbnails` — one decode pass per batch, not per index), the native
- * open-file dialog, and metadata indexing (`indexStream`/`getStreamInfo`/`getFramesChunk` —
+ * open-file dialog and app-quit (`closeWindow` — pure Electron `app.quit()`, no sidecar
+ * involvement at all, unlike everything else here), and metadata indexing
+ * (`indexStream`/`getStreamInfo`/`getFramesChunk` —
  * container + per-frame metadata, IVF/AV1 only so far) plus lazy per-unit syntax trees
  * (`getFrameSyntax`) and a display-order timeline (`getTimeline`, also no live UI consumer yet —
  * see its own doc), both AV1 only; see `bitvue-indexer`'s module doc. Don't add wrappers here for
@@ -178,6 +180,7 @@ declare global {
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
+      closeWindow: () => Promise<void>;
       indexStream: (stream: StreamId) => Promise<{ events: BridgeEvent[] }>;
       getStreamInfo: (stream: StreamId) => Promise<StreamInfoResult>;
       getFramesChunk: (
@@ -294,6 +297,12 @@ export async function showOpenDialog(
   filters?: OpenFileDialogFilter[],
 ): Promise<string | null> {
   return requireBridge().showOpenDialog(filters);
+}
+
+/** Quits the whole app (not just the current window) -- the "Quit" menu item / TitleBar button's
+ *  intent, matches cross-platform app.quit() semantics in the main process. */
+export async function closeWindow(): Promise<void> {
+  return requireBridge().closeWindow();
 }
 
 /** Runs `bitvue-indexer`'s metadata indexing (container + units) for the given stream. IVF/AV1

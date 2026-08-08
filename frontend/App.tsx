@@ -1,6 +1,7 @@
 import { useEffect, memo, lazy, Suspense, useCallback, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { closeWindow } from "./services/electronBridgeService";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
 import { WelcomeScreen } from "./components/WelcomeScreen";
@@ -620,7 +621,7 @@ function AppContent() {
       void handleOpenDependentFile();
     };
     const handleQuit = () => {
-      void invoke("close_window");
+      void closeWindow();
     };
     const handleShowShortcuts = () => setShowShortcuts(true);
 
@@ -734,7 +735,7 @@ function AppContent() {
               onOpenFile={handleOpenFile}
               onOpenDependentFile={handleOpenDependentFile}
               onCloseFile={handleCloseFile}
-              onQuit={() => invoke("close_window")}
+              onQuit={() => closeWindow()}
               onShowShortcuts={() => setShowShortcuts(true)}
               onModeChange={setMode}
             />

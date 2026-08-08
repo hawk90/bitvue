@@ -180,6 +180,13 @@ function registerIpcHandlers(): void {
       return result.filePaths[0];
     },
   );
+
+  // Quit menu item / TitleBar's Quit button -- app.quit() (not window.close()) so this means
+  // "quit the app" cross-platform, not just "close the current window" (which on macOS
+  // wouldn't actually terminate the process). before-quit already handles sidecar cleanup.
+  ipcMain.handle("bitvue:closeWindow", async () => {
+    app.quit();
+  });
 }
 
 // Packaged builds ship the built frontend under resources/frontend/ (extraResources, see
