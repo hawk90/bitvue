@@ -773,6 +773,31 @@ Control-only 커맨드(`get_hex_range`/`get_decoded_frame_yuv`와 달리 Data �
 `get_frame_analysis`(QP/MV grid)와 `get_debug_yuv_frame`은 확인 결과 실제로 새 `Core` 엔진 작업이
 필요함(기존 코드 재사용 불가), 나머지는 개별 확인 필요.
 
+### `HexViewTab` — Rust 작업 전혀 없이 배선만으로 수정 (2026-08-09)
+
+"다음 세션" 경계에서 사용자에게 방향 확인(Tauri 배선 스위프 계속 vs 새 Core 엔진 작업 vs 안티패턴
+트랙 전환) — "Tauri 배선 스위프 계속" 선택. 남은 파일들을 훑다가 `UnitHexPanel/HexViewTab.tsx`의
+`get_frame_hex_data`가 이전 두 라운드(`get_decoded_frame_yuv`/`get_thumbnails`)보다도 훨씬 가벼운
+케이스임을 발견 — **새 Rust 코드가 전혀 필요 없었음**. 기존 `get_frame_hex_data`는 frameIndex를 받아
+서버에서 offset으로 변환했지만, 이미 완성된 `getHexRange(stream, offset, len)`가 raw offset을 직접
+받고, `FrameInfo.offset`(이전 라운드 `a4197b1`에서 StreamTreePanel 수정할 때 이미 추가한 필드)이
+정확히 그 offset을 갖고 있음 — 프론트엔드 호출부만 바꾸면 끝.
+
+**한 일:** `HexViewTabProps.frames` 아이템 타입에 `offset?: number` 추가, `invoke("get_frame_hex_data",
+{frameIndex, maxBytes})` 호출을 `getHexRange("A", currentFrame.offset, Math.min(currentFrame.size,
+2048))`로 교체. offset이 없는 프레임 소스에 대해선(구조적으로 가능하지만 실제 `FileStateContext`는
+항상 채워줌) "No on-disk offset available" 정직한 에러 표시 — 값 추측 안 함. 스크린샷 검증 인프라도
+확장: `BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB`이 이제 쉼표로 여러 탭을 순서대로 클릭 가능(`"Unit HEX,Hex"`
+처럼 중첩 서브탭까지 도달) — 이전엔 최상위 탭 하나만 클릭 가능했음.
+
+**검증:** 기존 22개 테스트가 `test/setup.ts`의 전역 `get_frame_hex_data` Tauri mock에 전부 의존하고
+있었음(더 이상 안 맞음) — `getHexRange` bridge mock으로 재작성(신규 2개: 실제 offset으로 호출되는지,
+offset 없을 때 에러 경로). 스크린샷으로 실측 확인: frame 0의 첫 12바이트가
+`77 29 00 00 00 00 00 00 00 00 00 00` — 정확히 IVF 청크 헤더(size=10615=0x2977 리틀엔디안 + PTS=0),
+그다음 바이트가 `12`(이전 라운드에서 이미 확인된 진짜 Temporal Delimiter OBU 헤더 값)로 이어짐 — 완벽한
+ground-truth 일치. Truncation 메시지도 "First 2048 bytes (of 10627 total)"로 정확. 36-실패/9-파일
+베이스라인 변화 없음.
+
 ### 확정 순서
 
 ```
