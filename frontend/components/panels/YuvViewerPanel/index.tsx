@@ -13,10 +13,11 @@
  * - StatusBar: Bottom status bar with info
  */
 
-import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   getDecodedFrameYuv,
+  getDebugYuvFrame,
   bridgeYuvToFrame,
 } from "../../../services/electronBridgeService";
 import { useMode } from "../../../contexts/ModeContext";
@@ -43,62 +44,11 @@ import { PlaybackControls } from "./PlaybackControls";
 import { ModeSelector } from "./ModeSelector";
 import { ZoomControls } from "./ZoomControls";
 import { StatusBar } from "./StatusBar";
-import type { FrameAnalysisData, YUVFrameData } from "../../../types/video";
+import type { FrameAnalysisData } from "../../../types/video";
 
 import "./YuvViewerPanel.css";
 
 const logger = createLogger("YuvViewerPanel");
-
-/**
- * Convert YUVFrameData from backend to YUVFrame for renderer
- * Decodes base64 strings to Uint8Array
- */
-function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
-  const base64ToUint8 = (base64: string): Uint8Array => {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  };
-
-  // Extract chroma subsampling from data (default to '420' if not provided)
-  const chromaSubsampling: "420" | "422" | "444" =
-    (data as YUVFrameData & { chroma_subsampling?: "420" | "422" | "444" })
-      .chroma_subsampling || "420";
-
-  // Handle null U/V planes - create empty arrays instead of null
-  const uPlane = data.u_plane ? base64ToUint8(data.u_plane) : new Uint8Array(0);
-  const vPlane = data.v_plane ? base64ToUint8(data.v_plane) : new Uint8Array(0);
-
-  const frame: YUVFrame = {
-    width: data.width,
-    height: data.height,
-    y: base64ToUint8(data.y_plane),
-    u: uPlane,
-    v: vPlane,
-    yStride: data.y_stride,
-    uStride: data.u_stride,
-    vStride: data.v_stride,
-    chromaSubsampling,
-  };
-
-  logger.debug("convertYUVDataToYUVFrame:", {
-    width: frame.width,
-    height: frame.height,
-    yLength: frame.y.length,
-    uLength: frame.u.length,
-    vLength: frame.v.length,
-    yStride: frame.yStride,
-    uStride: frame.uStride,
-    vStride: frame.vStride,
-    chromaSubsampling: frame.chromaSubsampling,
-    bitDepth: data.bit_depth,
-  });
-
-  return frame;
-}
 
 interface YuvViewerPanelProps {
   currentFrameIndex: number;
@@ -130,10 +80,9 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   // Retry counter — incrementing triggers a reload via useEffect
   const [retryCount, setRetryCount] = useState(0);
 
-  // YUV data state (more efficient than RGB conversion) -- still Tauri-backed, only used by the
-  // debug-YUV path below (get_debug_yuv_frame has no sidecar equivalent yet, unmigrated).
-  const [yuvData, setYuvData] = useState<YUVFrameData | null>(null);
-  // Real decoded-pixel path, via the Electron bridge's getDecodedFrameYuv (no base64).
+  // Decoded-pixel state, via the Electron bridge (no base64) -- getDecodedFrameYuv for the real
+  // stream, or getDebugYuvFrame when a debug YUV reference is loaded (see the debugYuvLoaded
+  // branch below); both converge on the same bridgeYuvToFrame conversion.
   const [decodedFrame, setDecodedFrame] = useState<YUVFrame | null>(null);
 
   // Analysis data state
@@ -180,26 +129,18 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       setIsLoading(true);
       setLoadError(null);
       try {
-        // When debug YUV is loaded, fetch via get_debug_yuv_frame instead -- still Tauri-backed,
-        // no sidecar equivalent yet (see this file's import comment).
+        // When debug YUV is loaded, fetch via the bridge's getDebugYuvFrame instead -- same
+        // raw-bytes wire shape as getDecodedFrameYuv, so both paths converge on bridgeYuvToFrame.
         if (debugYuvLoaded) {
-          const yuvResult = await invoke<YUVFrameData>("get_debug_yuv_frame", {
-            params: {
-              frame_index: frameIndex,
-              mode: debugDisplayMode,
-              amplify:
-                debugDisplayMode === "amplified" ? debugAmplifyFactor : null,
-            },
-          });
+          const debugFrame = await getDebugYuvFrame(
+            frameIndex,
+            debugDisplayMode,
+            debugDisplayMode === "amplified" ? debugAmplifyFactor : undefined,
+          );
           if (cancelled) return;
-          if (yuvResult && yuvResult.success && yuvResult.y_plane) {
-            setYuvData(yuvResult);
-            setDecodedFrame(null);
-            setFrameImage(null);
-            setIsLoading(false);
-          } else {
-            setLoadError(yuvResult?.error ?? "Failed to load debug YUV frame");
-          }
+          setDecodedFrame(bridgeYuvToFrame(debugFrame));
+          setFrameImage(null);
+          setIsLoading(false);
           return;
         }
 
@@ -210,7 +151,6 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         if (cancelled) return;
 
         setDecodedFrame(bridgeYuvToFrame(decoded));
-        setYuvData(null);
         setFrameImage(null);
         logger.debug(
           "Loaded YUV frame:",
@@ -468,15 +408,6 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     handleFKey,
   ]);
 
-  // Memoize YUV conversion to avoid re-running on every render. decodedFrame (real bridge path)
-  // takes priority; yuvData (debug-YUV, still Tauri-backed) is the fallback -- loadFrame keeps
-  // the two mutually exclusive (setting one always clears the other).
-  const convertedYuvFrame = useMemo(
-    () =>
-      decodedFrame ?? (yuvData ? convertYUVDataToYUVFrame(yuvData) : undefined),
-    [decodedFrame, yuvData],
-  );
-
   const currentFrame = frames[currentFrameIndex] || null;
 
   // Fetch AV1 advanced features when in an AV1-specific mode
@@ -578,7 +509,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onMouseMove={canvasHandlers.onMouseMove}
           onMouseUp={canvasHandlers.onMouseUp}
           isDragging={isDragging}
-          yuvData={convertedYuvFrame}
+          yuvData={decodedFrame ?? undefined}
           activeOverlays={activeOverlays}
           av1Features={av1Features ?? undefined}
           colorspace={colorspace}
@@ -608,7 +539,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         </div>
       )}
 
-      {!frameImage && !yuvData && !decodedFrame && !isLoading && !loadError && (
+      {!frameImage && !decodedFrame && !isLoading && !loadError && (
         <div className="yuv-placeholder-overlay">
           <span className="codicon codicon-device-camera"></span>
           <span>No frame loaded</span>

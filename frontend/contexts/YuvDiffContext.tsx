@@ -15,7 +15,13 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import {
+  loadDebugYuv,
+  unloadDebugYuv,
+  setDebugYuvOffset as bridgeSetDebugYuvOffset,
+  getYuvDiffMetrics,
+  findFirstDiffFrame,
+} from "../services/electronBridgeService";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("YuvDiffContext");
@@ -110,12 +116,7 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
   const loadFile = useCallback(async (params: YuvDiffLoadParams) => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      const result = await invoke<{
-        success: boolean;
-        frame_count: number;
-        frame_size: number;
-        error: string | null;
-      }>("load_debug_yuv", { params });
+      const result = await loadDebugYuv(params);
 
       if (!result.success) {
         setState((s) => ({
@@ -151,9 +152,7 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unloadFile = useCallback(() => {
-    invoke("unload_debug_yuv").catch((e) =>
-      logger.warn("unload_debug_yuv:", e),
-    );
+    unloadDebugYuv().catch((e) => logger.warn("unloadDebugYuv:", e));
     setState(INITIAL_STATE);
   }, []);
 
@@ -167,8 +166,8 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
 
   const setPictureOffset = useCallback((offset: number) => {
     setState((s) => ({ ...s, pictureOffset: offset }));
-    invoke("set_debug_yuv_offset", { offset }).catch((e) =>
-      logger.warn("set_debug_yuv_offset:", e),
+    bridgeSetDebugYuvOffset(offset).catch((e) =>
+      logger.warn("setDebugYuvOffset:", e),
     );
   }, []);
 
@@ -176,9 +175,7 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
     async (frameIndex: number): Promise<YuvDiffMetrics | null> => {
       if (!state.isLoaded) return null;
       try {
-        const metrics = await invoke<YuvDiffMetrics>("get_yuv_diff_metrics", {
-          frameIndex,
-        });
+        const metrics = await getYuvDiffMetrics(frameIndex);
         setState((s) => ({ ...s, metrics }));
         return metrics;
       } catch (err) {
@@ -193,10 +190,7 @@ export function YuvDiffProvider({ children }: { children: ReactNode }) {
     if (!state.isLoaded) return null;
     setState((s) => ({ ...s, loading: true }));
     try {
-      const result = await invoke<{
-        frame_index: number | null;
-        total_checked: number;
-      }>("find_first_diff_frame");
+      const result = await findFirstDiffFrame();
       setState((s) => ({ ...s, loading: false }));
       return result.frame_index ?? null;
     } catch (err) {

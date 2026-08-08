@@ -432,6 +432,95 @@ export class SidecarClient extends EventEmitter {
     }
   }
 
+  /**
+   * Convenience wrapper for `get_debug_yuv_frame` — third data-plane command, same two-frame
+   * shape as `getDecodedFrameYuv`. Requires a debug YUV session to already be loaded via
+   * `request("load_debug_yuv", ...)`; the sidecar returns a `NotFound` wire error otherwise.
+   */
+  async getDebugYuvFrame(params: {
+    frameIndex: number;
+    mode: "decoded" | "reference" | "diff" | "amplified";
+    amplify?: number;
+  }): Promise<{
+    width: number;
+    height: number;
+    bitDepth: number;
+    chromaSubsampling: "420" | "422" | "444";
+    yStride: number;
+    uStride: number;
+    vStride: number;
+    yLen: number;
+    uLen: number;
+    vLen: number;
+    bytes: Buffer;
+  }> {
+    if (this.exited) {
+      return Promise.reject(new SidecarExitedError("getDebugYuvFrame() called after process exit"));
+    }
+    const id = this.nextCorrelationId++;
+    const body = Buffer.from(
+      JSON.stringify({
+        id,
+        method: "get_debug_yuv_frame",
+        params: { frame_index: params.frameIndex, mode: params.mode, amplify: params.amplify },
+      }),
+      "utf8",
+    );
+    const frame = encodeFrame(FrameKind.Control, id, body);
+
+    let onData: (correlationId: number, payload: Buffer) => void = () => {};
+    const dataPromise = new Promise<Buffer>((resolve) => {
+      onData = (correlationId, payload) => {
+        if (correlationId !== id) return;
+        this.off("data", onData);
+        resolve(payload);
+      };
+      this.on("data", onData);
+    });
+
+    type DebugYuvFrameMetadata = {
+      width: number;
+      height: number;
+      bit_depth: number;
+      chroma_subsampling: "420" | "422" | "444";
+      y_stride: number;
+      u_stride: number;
+      v_stride: number;
+      y_len: number;
+      u_len: number;
+      v_len: number;
+    };
+    const metadataPromise = new Promise<DebugYuvFrameMetadata>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject });
+      this.child.stdin.write(frame, (err) => {
+        if (err) {
+          this.pending.delete(id);
+          reject(err);
+        }
+      });
+    });
+
+    try {
+      const [metadata, bytes] = await Promise.all([metadataPromise, dataPromise]);
+      return {
+        width: metadata.width,
+        height: metadata.height,
+        bitDepth: metadata.bit_depth,
+        chromaSubsampling: metadata.chroma_subsampling,
+        yStride: metadata.y_stride,
+        uStride: metadata.u_stride,
+        vStride: metadata.v_stride,
+        yLen: metadata.y_len,
+        uLen: metadata.u_len,
+        vLen: metadata.v_len,
+        bytes,
+      };
+    } catch (err) {
+      this.off("data", onData);
+      throw err;
+    }
+  }
+
   /** Convenience wrapper for the startup handshake described in the protocol spec. */
   async hello(clientVersion = "bitvue-desktop/0.0.0"): Promise<HelloResult> {
     const result = (await this.request("hello", { client_version: clientVersion })) as HelloResult;

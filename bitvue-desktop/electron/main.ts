@@ -80,6 +80,60 @@ function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.handle(
+    "bitvue:getDebugYuvFrame",
+    async (_event, frameIndex: number, mode: string, amplify?: number) => {
+      const { bytes, ...metadata } = await requireSidecar().getDebugYuvFrame({
+        frameIndex,
+        mode: mode as "decoded" | "reference" | "diff" | "amplified",
+        amplify,
+      });
+      // Same raw-Buffer-over-structured-clone approach as getDecodedFrameYuv above.
+      return { ...metadata, bytes };
+    },
+  );
+
+  ipcMain.handle(
+    "bitvue:loadDebugYuv",
+    async (
+      _event,
+      params: {
+        path: string;
+        width: number;
+        height: number;
+        format: string;
+        bitdepth: number;
+        picture_offset?: number;
+        crop?: { left: number; right: number; top: number; bottom: number };
+      },
+    ) => {
+      return requireSidecar().request("load_debug_yuv", params);
+    },
+  );
+
+  ipcMain.handle("bitvue:unloadDebugYuv", async () => {
+    return requireSidecar().request("unload_debug_yuv");
+  });
+
+  ipcMain.handle("bitvue:setDebugYuvOffset", async (_event, offset: number) => {
+    return requireSidecar().request("set_debug_yuv_offset", { offset });
+  });
+
+  ipcMain.handle(
+    "bitvue:setDebugYuvCrop",
+    async (_event, crop: { left: number; right: number; top: number; bottom: number }) => {
+      return requireSidecar().request("set_debug_yuv_crop", { crop });
+    },
+  );
+
+  ipcMain.handle("bitvue:getYuvDiffMetrics", async (_event, frameIndex: number) => {
+    return requireSidecar().request("get_yuv_diff_metrics", { frame_index: frameIndex });
+  });
+
+  ipcMain.handle("bitvue:findFirstDiffFrame", async () => {
+    return requireSidecar().request("find_first_diff_frame");
+  });
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -300,6 +354,15 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const timeline = await window.bitvue.getTimeline("B");
         await window.bitvue.closeStream("B");
 
+        // Debug YUV (VQ Analyzer "Load Reference YUV") always compares against stream "A" (the
+        // primary analyzer file) -- reopen the real fixture there (stream "A" was already freed
+        // by closeStream("A") above) to prove that path through the real renderer/preload/main
+        // path too, not just bitvue-sidecar's own unit tests.
+        await window.bitvue.openStream("A", ${JSON.stringify(realFixturePath)});
+        const decoded = await window.bitvue.getDecodedFrameYuv("A", 0);
+        const decodedBytesHex = Array.from(new Uint8Array(Object.values(decoded.bytes)))
+          .map(b => b.toString(16).padStart(2, "0")).join("");
+
         return {
           documentTitle: document.title,
           // document.title alone doesn't prove the React bundle actually executed -- it's a
@@ -320,7 +383,43 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           framesChunk,
           frameSyntax,
           timeline,
+          decodedWidth: decoded.width,
+          decodedHeight: decoded.height,
+          decodedBytesHex,
         };
+      })()
+    `);
+
+    // Debug YUV verification, part 2: write the exact bytes stream A just decoded out to a raw
+    // I420 file (real Node fs, main process side -- the renderer can't touch the filesystem
+    // directly) and use it as the reference, so "identical to what's already open" is a real,
+    // independently reproducible fact instead of a fabricated fixture (same approach
+    // bitvue-sidecar's own debug_yuv tests use, just proven here through the full IPC path).
+    const debugYuvRefPath = path.join(tempDir, "debug_ref.i420");
+    writeFileSync(debugYuvRefPath, Buffer.from(result.decodedBytesHex, "hex"));
+    const debugYuvResult = await win.webContents.executeJavaScript(`
+      (async () => {
+        const load = await window.bitvue.loadDebugYuv({
+          path: ${JSON.stringify(debugYuvRefPath)},
+          width: ${result.decodedWidth},
+          height: ${result.decodedHeight},
+          format: "i420",
+          bitdepth: 8,
+        });
+        const referenceFrame = await window.bitvue.getDebugYuvFrame(0, "reference");
+        const referenceBytesHex = Array.from(new Uint8Array(Object.values(referenceFrame.bytes)))
+          .map(b => b.toString(16).padStart(2, "0")).join("");
+        const metrics = await window.bitvue.getYuvDiffMetrics(0);
+        const diffFrame = await window.bitvue.getDebugYuvFrame(0, "diff");
+        // "diff" mode is luma-only (see debug_yuv::get_frame's doc) -- U/V are intentionally
+        // neutral 128, not 0, so only the Y portion should be all-zero here.
+        const diffYBytes = Array.from(new Uint8Array(Object.values(diffFrame.bytes))).slice(0, diffFrame.yLen);
+        const firstDiff = await window.bitvue.findFirstDiffFrame();
+        await window.bitvue.setDebugYuvOffset(0);
+        await window.bitvue.setDebugYuvCrop({ left: 0, right: 0, top: 0, bottom: 0 });
+        await window.bitvue.unloadDebugYuv();
+        await window.bitvue.closeStream("A");
+        return { load, referenceBytesHex, metrics, diffYAllZero: diffYBytes.every((b) => b === 0), firstDiff };
       })()
     `);
     const expectedHex = knownBytes.subarray(10, 26).toString("hex");
@@ -365,6 +464,23 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.timeline?.frames?.length > 0 &&
       result.timeline?.frames?.[0]?.marker === "Key";
     const rootMountedOk = (result.rootChildCount ?? 0) > 0;
+    // Debug YUV: reference file was built from stream A's own exact decoded bytes, so reference
+    // mode must round-trip those bytes unchanged, and diff/metrics must report "no difference at
+    // all" -- not just "small" -- since this isn't lossy re-encoding, it's the same bytes twice.
+    const debugYuvLoadOk = debugYuvResult.load?.success === true && debugYuvResult.load?.frame_count === 1;
+    const debugYuvReferenceOk = debugYuvResult.referenceBytesHex === result.decodedBytesHex;
+    const debugYuvMetricsOk =
+      debugYuvResult.metrics?.has_mismatch === false && debugYuvResult.metrics?.max_diff_y === 0;
+    const debugYuvDiffOk = debugYuvResult.diffYAllZero === true;
+    const debugYuvFindFirstDiffOk =
+      debugYuvResult.firstDiff?.frame_index === null && debugYuvResult.firstDiff?.total_checked === 1;
+    console.log(
+      "[selftest] debug YUV: load OK:", debugYuvLoadOk,
+      " reference bytes match decoded OK:", debugYuvReferenceOk,
+      " metrics (no mismatch) OK:", debugYuvMetricsOk,
+      " diff (all-zero) OK:", debugYuvDiffOk,
+      " find_first_diff (none found) OK:", debugYuvFindFirstDiffOk,
+    );
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
     console.log("[selftest] document title (real frontend's <title>, not the placeholder's):", result.documentTitle);
     console.log("[selftest] #root child count (proves the React bundle actually executed, not just that the HTML shell loaded):", result.rootChildCount);
@@ -389,7 +505,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       framesChunkOk &&
       frameSyntaxOk &&
       timelineOk &&
-      rootMountedOk
+      rootMountedOk &&
+      debugYuvLoadOk &&
+      debugYuvReferenceOk &&
+      debugYuvMetricsOk &&
+      debugYuvDiffOk &&
+      debugYuvFindFirstDiffOk
         ? 0
         : 1;
   } catch (err) {

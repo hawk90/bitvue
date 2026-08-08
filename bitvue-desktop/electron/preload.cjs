@@ -23,6 +23,16 @@ contextBridge.exposeInMainWorld("bitvue", {
   getHexRange: (stream, offset, len) => ipcRenderer.invoke("bitvue:getHexRange", stream, offset, len),
   getDecodedFrameYuv: (stream, frameIndex) =>
     ipcRenderer.invoke("bitvue:getDecodedFrameYuv", stream, frameIndex),
+  // Debug YUV (VQ Analyzer "Load Reference YUV" workflow) -- one global reference-file session,
+  // not per-stream. See bitvue-sidecar's debug_yuv module doc.
+  loadDebugYuv: (params) => ipcRenderer.invoke("bitvue:loadDebugYuv", params),
+  unloadDebugYuv: () => ipcRenderer.invoke("bitvue:unloadDebugYuv"),
+  setDebugYuvOffset: (offset) => ipcRenderer.invoke("bitvue:setDebugYuvOffset", offset),
+  setDebugYuvCrop: (crop) => ipcRenderer.invoke("bitvue:setDebugYuvCrop", crop),
+  getYuvDiffMetrics: (frameIndex) => ipcRenderer.invoke("bitvue:getYuvDiffMetrics", frameIndex),
+  findFirstDiffFrame: () => ipcRenderer.invoke("bitvue:findFirstDiffFrame"),
+  getDebugYuvFrame: (frameIndex, mode, amplify) =>
+    ipcRenderer.invoke("bitvue:getDebugYuvFrame", frameIndex, mode, amplify),
   indexStream: (stream) => ipcRenderer.invoke("bitvue:indexStream", stream),
   getStreamInfo: (stream) => ipcRenderer.invoke("bitvue:getStreamInfo", stream),
   getFramesChunk: (stream, offset, limit) =>

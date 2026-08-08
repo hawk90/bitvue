@@ -11,7 +11,7 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { setDebugYuvCrop } from "../../services/electronBridgeService";
 import { useYuvDiff } from "../../contexts/YuvDiffContext";
 import type { YuvDiffDisplayMode } from "../../contexts/YuvDiffContext";
 import { CropDialog } from "./CropDialog";
@@ -127,8 +127,8 @@ export const YuvDiffPanel = memo(function YuvDiffPanel({
   const handleCropApply = useCallback((newCrop: CropValues) => {
     setCrop(newCrop);
     setShowCropDialog(false);
-    invoke("set_debug_yuv_crop", { crop: newCrop }).catch((e: unknown) =>
-      console.warn("set_debug_yuv_crop:", e),
+    setDebugYuvCrop(newCrop).catch((e: unknown) =>
+      console.warn("setDebugYuvCrop:", e),
     );
   }, []);
 

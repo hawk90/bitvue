@@ -6,24 +6,27 @@
  *
  * IMPORTANT — the old Tauri command surface (~40 commands, `src-tauri/src/commands/*.rs`,
  * deleted 2026-08-08 -- though several *frontend* files still call `@tauri-apps/api` directly
- * and haven't been migrated to this bridge yet, e.g. the compare workspace / quality panels /
- * system menu; grep the frontend tree before assuming a panel is covered) and the new
- * `bitvue-sidecar` surface (16 commands, see `docs/DEVELOPMENT_PHASES.md` §
- * "제품 아키텍처 확정") are NOT the same API — different names, different param/result shapes.
- * This file wraps all 16 real sidecar commands: open/close a stream, select a frame
- * (selection-sync only), the four structural multi-sync selections
- * (`selectUnit`/`selectSyntax`/`selectBitRange`/`selectSpatialBlock` — no live UI consumer as of
- * 2026-08-08, wired because the sidecar-side capability is real, not because a feature needs them
- * yet), a raw hex byte range, decoded YUV pixel planes for one frame (`getDecodedFrameYuv` —
- * AV1/IVF only, re-decodes from the stream start every call, no session caching yet), batch
- * filmstrip thumbnails (`getThumbnails` — one decode pass per batch, not per index), the native
- * open-file dialog and app-quit (`closeWindow` — pure Electron `app.quit()`, no sidecar
- * involvement at all, unlike everything else here), and metadata indexing
- * (`indexStream`/`getStreamInfo`/`getFramesChunk` —
- * container + per-frame metadata, IVF/AV1 only so far) plus lazy per-unit syntax trees
- * (`getFrameSyntax`) and a display-order timeline (`getTimeline`, also no live UI consumer yet —
- * see its own doc), both AV1 only; see `bitvue-indexer`'s module doc. Don't add wrappers here for
- * capabilities the sidecar doesn't have; that would silently promise something broken.
+ * and haven't been migrated to this bridge yet, e.g. quality panels / other Player views / system
+ * menu; grep the frontend tree before assuming a panel is covered) and the new `bitvue-sidecar`
+ * surface (see `docs/DEVELOPMENT_PHASES.md` § "제품 아키텍처 확정") are NOT the same API —
+ * different names, different param/result shapes. This file wraps every real sidecar command:
+ * open/close a stream, select a frame (selection-sync only), the four structural multi-sync
+ * selections (`selectUnit`/`selectSyntax`/`selectBitRange`/`selectSpatialBlock` — no live UI
+ * consumer as of 2026-08-08, wired because the sidecar-side capability is real, not because a
+ * feature needs them yet), a raw hex byte range, decoded YUV pixel planes for one frame
+ * (`getDecodedFrameYuv` — AV1/IVF only, re-decodes from the stream start every call, no session
+ * caching yet), batch filmstrip thumbnails (`getThumbnails` — one decode pass per batch, not per
+ * index), the native open-file dialog and app-quit (`closeWindow` — pure Electron `app.quit()`,
+ * no sidecar involvement at all, unlike everything else here), metadata indexing
+ * (`indexStream`/`getStreamInfo`/`getFramesChunk` — container + per-frame metadata, IVF/AV1 only
+ * so far) plus lazy per-unit syntax trees (`getFrameSyntax`) and a display-order timeline
+ * (`getTimeline`, also no live UI consumer yet — see its own doc), both AV1 only (see
+ * `bitvue-indexer`'s module doc), and the debug-YUV reference-file workflow
+ * (`loadDebugYuv`/`unloadDebugYuv`/`setDebugYuvOffset`/`setDebugYuvCrop`/`getYuvDiffMetrics`/
+ * `findFirstDiffFrame`/`getDebugYuvFrame` — one global session, not per-`StreamId`; see
+ * `bitvue-sidecar`'s `debug_yuv` module doc for the 8-bit-only diff/metrics scoping decision).
+ * Don't add wrappers here for capabilities the sidecar doesn't have; that would silently promise
+ * something broken.
  */
 
 import type { YUVFrame } from "../types/yuv";
@@ -155,6 +158,53 @@ export interface BridgeDecodedYuvFrame {
   bytes: Uint8Array;
 }
 
+export type DebugYuvFormat = "i420" | "nv12" | "nv21" | "i422" | "i444";
+export type DebugYuvDisplayMode =
+  | "decoded"
+  | "reference"
+  | "diff"
+  | "amplified";
+
+export interface DebugYuvCrop {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export interface LoadDebugYuvParams {
+  path: string;
+  width: number;
+  height: number;
+  format: DebugYuvFormat;
+  bitdepth: number;
+  picture_offset?: number;
+  crop?: DebugYuvCrop;
+}
+
+export interface LoadDebugYuvResult {
+  success: boolean;
+  frame_count: number;
+  frame_size: number;
+  error: string | null;
+}
+
+export interface YuvDiffMetricsResult {
+  frame_index: number;
+  psnr_y: number;
+  psnr_u: number;
+  psnr_v: number;
+  psnr_avg: number;
+  ssim_y: number;
+  max_diff_y: number;
+  has_mismatch: boolean;
+}
+
+export interface FindFirstDiffFrameResult {
+  frame_index: number | null;
+  total_checked: number;
+}
+
 declare global {
   interface Window {
     bitvue?: {
@@ -178,6 +228,17 @@ declare global {
       getDecodedFrameYuv: (
         stream: StreamId,
         frameIndex: number,
+      ) => Promise<BridgeDecodedYuvFrame>;
+      loadDebugYuv: (params: LoadDebugYuvParams) => Promise<LoadDebugYuvResult>;
+      unloadDebugYuv: () => Promise<void>;
+      setDebugYuvOffset: (offset: number) => Promise<void>;
+      setDebugYuvCrop: (crop: DebugYuvCrop) => Promise<void>;
+      getYuvDiffMetrics: (frameIndex: number) => Promise<YuvDiffMetricsResult>;
+      findFirstDiffFrame: () => Promise<FindFirstDiffFrameResult>;
+      getDebugYuvFrame: (
+        frameIndex: number,
+        mode: DebugYuvDisplayMode,
+        amplify?: number,
       ) => Promise<BridgeDecodedYuvFrame>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
@@ -307,6 +368,53 @@ export function bridgeYuvToFrame(frame: BridgeDecodedYuvFrame): YUVFrame {
     vStride: frame.vStride,
     chromaSubsampling: frame.chromaSubsampling,
   };
+}
+
+// -- Debug YUV (VQ Analyzer "Load Reference YUV" workflow) --------------------------------------
+//
+// One global reference-file session, not per-StreamId -- see bitvue-sidecar's debug_yuv module
+// doc. `loadDebugYuv`'s domain failure (bad path, file too small for the declared resolution) is
+// NOT a thrown error -- same "RPC succeeded, check result.success" split as openStream -- but the
+// rest all throw on failure (mirroring getFrameSyntax/getTimeline's "no meaningful partial result"
+// reasoning): a NotFound wire error when no session is loaded yet.
+
+export async function loadDebugYuv(
+  params: LoadDebugYuvParams,
+): Promise<LoadDebugYuvResult> {
+  return requireBridge().loadDebugYuv(params);
+}
+
+export async function unloadDebugYuv(): Promise<void> {
+  return requireBridge().unloadDebugYuv();
+}
+
+export async function setDebugYuvOffset(offset: number): Promise<void> {
+  return requireBridge().setDebugYuvOffset(offset);
+}
+
+export async function setDebugYuvCrop(crop: DebugYuvCrop): Promise<void> {
+  return requireBridge().setDebugYuvCrop(crop);
+}
+
+export async function getYuvDiffMetrics(
+  frameIndex: number,
+): Promise<YuvDiffMetricsResult> {
+  return requireBridge().getYuvDiffMetrics(frameIndex);
+}
+
+export async function findFirstDiffFrame(): Promise<FindFirstDiffFrameResult> {
+  return requireBridge().findFirstDiffFrame();
+}
+
+/** Decoded/reference/diff/amplified pixel data for one display-index frame -- see
+ *  `debug_yuv::get_frame`'s doc for what each mode means. Requires `loadDebugYuv` to have
+ *  succeeded first. */
+export async function getDebugYuvFrame(
+  frameIndex: number,
+  mode: DebugYuvDisplayMode,
+  amplify?: number,
+): Promise<BridgeDecodedYuvFrame> {
+  return requireBridge().getDebugYuvFrame(frameIndex, mode, amplify);
 }
 
 export interface OpenFileDialogFilter {
