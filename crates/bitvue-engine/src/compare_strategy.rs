@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use bitvue_core::{ComparisonStrategy, PsnrComparisonStrategy};
+//! use bitvue_engine::{ComparisonStrategy, PsnrComparisonStrategy};
 //!
 //! let strategy = PsnrComparisonStrategy::new();
 //! let result = strategy.compare_frames(&reference, &distorted)?;

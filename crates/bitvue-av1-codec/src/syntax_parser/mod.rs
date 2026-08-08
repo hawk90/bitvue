@@ -39,7 +39,7 @@ pub use sequence::parse_sequence_header_syntax;
 pub use tracked_bitreader::TrackedBitReader;
 
 use crate::obu::{ObuIterator, ObuWithOffset};
-use bitvue_core::{
+use bitvue_engine::{
     types::{BitRange, SyntaxModel, SyntaxNode, SyntaxNodeId},
     Result,
 };

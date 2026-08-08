@@ -14,8 +14,8 @@ libfuzzer-sys = "0.4"
 [dependencies.bitvue-av1]
 path = "../crates/bitvue-av1"
 
-[dependencies.bitvue-core]
-path = "../crates/bitvue-core"
+[dependencies.bitvue-engine]
+path = "../crates/bitvue-engine"
 
 # Fuzz targets for AV1 parsing
 [[bin]]

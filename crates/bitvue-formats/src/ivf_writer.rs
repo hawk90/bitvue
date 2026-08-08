@@ -3,7 +3,7 @@
 //! Writes AV1 OBU data to IVF (Indeo Video Format) container.
 //! IVF is the simplest container format for AV1, used for testing and debugging.
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 
 /// IVF file writer
 pub struct IvfWriter {

@@ -23,7 +23,7 @@ use crate::nal::{NalUnit, NalUnitType};
 use crate::pps::{parse_pps, Pps};
 use crate::slice::{parse_slice_header_reader, SliceType};
 use crate::sps::Sps;
-use bitvue_core::{
+use bitvue_engine::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
     qp_heatmap::QPGrid,

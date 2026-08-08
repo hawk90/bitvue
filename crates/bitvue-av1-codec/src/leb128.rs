@@ -3,7 +3,7 @@
 //! AV1 uses unsigned LEB128 (uleb128) for encoding OBU sizes.
 //! Each byte has 7 bits of data and 1 continuation bit (MSB).
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 
 /// Maximum bytes for a valid LEB128 in AV1 (8 bytes = 56 bits max)
 pub const MAX_LEB128_BYTES: usize = 8;

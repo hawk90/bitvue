@@ -4,7 +4,7 @@
 //! and extract minimal reproducible clips from AV1 bitstreams.
 
 use crate::obu::{Obu, ObuType};
-use bitvue_core::FrameType;
+use bitvue_engine::FrameType;
 use std::collections::HashSet;
 
 /// Frame dependency information

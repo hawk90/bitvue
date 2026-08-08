@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use bitvue_core::BitReader;
+//! use bitvue_engine::BitReader;
 //!
 //! let data = [0b10110100, 0b11110000];
 //! let mut reader = BitReader::new(&data);
@@ -781,7 +781,7 @@ impl Leb128Reader for BitReader<'_> {
 /// # Example
 ///
 /// ```
-/// use bitvue_core::remove_emulation_prevention_bytes;
+/// use bitvue_engine::remove_emulation_prevention_bytes;
 ///
 /// let raw = [0x00, 0x00, 0x03, 0x01, 0xFF];
 /// let cleaned = remove_emulation_prevention_bytes(&raw);

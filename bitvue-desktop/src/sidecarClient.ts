@@ -22,7 +22,7 @@
  *    binary is dev-built alongside this client right now); revisit once the pair actually ships
  *    independently versioned.
  *  - Crash recovery (`options.restart`) restarts the *process*, not application state.
- *    `bitvue_core::Core` lives entirely in-process in the sidecar with no persistence, so a
+ *    `bitvue_engine::Core` lives entirely in-process in the sidecar with no persistence, so a
  *    crash loses whatever streams were open and whatever was selected — there is no command
  *    log to replay. Pending requests at crash time are rejected (`SidecarExitedError`), never
  *    silently retried, because a request might have partially mutated state before the crash

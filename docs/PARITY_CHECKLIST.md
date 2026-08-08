@@ -95,13 +95,13 @@ Concrete, non-generic items only — cross-checked against code where claimed.
 | Category | Gate | Status/note |
 |---|---|---|
 | Error handling | No `unwrap()`/`expect()` in data paths (parse/decode/IO) | Verified via grep: only 2 occurrences in `src-tauri/src` (`lib.rs`, `commands/recent_files.rs`) — largely already compliant, not a gap |
-| Error handling | Typed error carries `category, severity, user_message, debug_details, recovery_action`; failed viz renders placeholder + banner + Retry/Compute/Load CTA (never blank panel) | Matches `crates/bitvue-core/src/{diagnostics,error,app_error}.rs` `DiagnosticSeverity`/`DiagnosticCategory` design — not independently verified for 100% UI coverage |
+| Error handling | Typed error carries `category, severity, user_message, debug_details, recovery_action`; failed viz renders placeholder + banner + Retry/Compute/Load CTA (never blank panel) | Matches `crates/bitvue-engine/src/{diagnostics,error,app_error}.rs` `DiagnosticSeverity`/`DiagnosticCategory` design — not independently verified for 100% UI coverage |
 | Error handling | Decoder init fail → Player shows checkerboard, other panels stay usable; frame decode fail → ghost previous frame + jump-to-nearest-decodable | Not verified against current Player component — flag for QA pass, not confirmed done |
-| Data integrity | IDs stable (`FrameKey`/`UnitKey`/`SyntaxNodeId`) across a session once full index built | Matches `crates/bitvue-core/src/selection.rs` key types — structurally present |
-| Data integrity | Hex→Syntax reverse mapping deterministic (see Tri-sync rule in `DEVELOPMENT_PHASES.md` Architecture appendix) | `crates/bitvue-core/src/evidence.rs` implements the 4-stage chain — logic present, UI-level determinism unverified |
+| Data integrity | IDs stable (`FrameKey`/`UnitKey`/`SyntaxNodeId`) across a session once full index built | Matches `crates/bitvue-engine/src/selection.rs` key types — structurally present |
+| Data integrity | Hex→Syntax reverse mapping deterministic (see Tri-sync rule in `DEVELOPMENT_PHASES.md` Architecture appendix) | `crates/bitvue-engine/src/evidence.rs` implements the 4-stage chain — logic present, UI-level determinism unverified |
 | Performance | Overlay toggle < 50ms | Not measured/benchmarked — add to Phase 10/12 perf test matrix |
 | Release process | Every release: features added / known limitations / perf metrics / compatibility notes | Not currently enforced — add as PR/release template checklist item (Phase 12) |
-| QA gate (V12_LOCKCHECK_SPEC) | Validate workspace grid + LOD/cache keys + overlay specs + MCP resource schemas + degradation rules against locked contracts, output pass/fail report | **Already implemented as code**, not just a checklist: `crates/bitvue-core/src/lockcheck.rs` (`LockCheckResult`/`LockCheckItem`/`LockCheckCategory` incl. `Workspace/LodCache/PlayerOverlays/McpResources/Degradation/CacheCaps`) — verify it's wired into `scripts/parity_check.sh` or CI; not confirmed in this pass |
+| QA gate (V12_LOCKCHECK_SPEC) | Validate workspace grid + LOD/cache keys + overlay specs + MCP resource schemas + degradation rules against locked contracts, output pass/fail report | **Already implemented as code**, not just a checklist: `crates/bitvue-engine/src/lockcheck.rs` (`LockCheckResult`/`LockCheckItem`/`LockCheckCategory` incl. `Workspace/LodCache/PlayerOverlays/McpResources/Degradation/CacheCaps`) — verify it's wired into `scripts/parity_check.sh` or CI; not confirmed in this pass |
 
 **Skipped as low-value**: `VERSIONING_POLICY.md` (generic semver description, "v12 = product-ready baseline" doesn't map
 to Bitvue's actual 0.x versioning — no actionable Bitvue-specific content).
@@ -227,7 +227,7 @@ Layers 1-5, which is why this doc previously read "All P0/P1 complete." Full per
 
 | ID | Feature | Severity | Status | Notes |
 |----|---------|----------|--------|-------|
-| CMP-01 | Stream A/B independent load + sync playback | P0 | [-] | **2026-07-31 정정** (grep 확인): `crates/bitvue-core/src/{compare,alignment}.rs` + `src-tauri/src/commands/compare.rs` (`create_compare_workspace`/`get_aligned_frame`/`set_sync_mode`/`set_manual_offset`/`reset_offset`, `lib.rs`에 등록됨) + `frontend/components/CompareWorkspace/CompareWorkspace.tsx` 이미 존재. Sync mode(Off/Playhead/Full) 백엔드 확인, 프론트엔드 전체 커버리지는 미검증 |
+| CMP-01 | Stream A/B independent load + sync playback | P0 | [-] | **2026-07-31 정정** (grep 확인): `crates/bitvue-engine/src/{compare,alignment}.rs` + `src-tauri/src/commands/compare.rs` (`create_compare_workspace`/`get_aligned_frame`/`set_sync_mode`/`set_manual_offset`/`reset_offset`, `lib.rs`에 등록됨) + `frontend/components/CompareWorkspace/CompareWorkspace.tsx` 이미 존재. Sync mode(Off/Playhead/Full) 백엔드 확인, 프론트엔드 전체 커버리지는 미검증 |
 | CMP-02 | Side-by-side / Split (H/V) view | P0 | [-] | Side-by-side 렌더링 `CompareWorkspace.tsx`에서 확인됨; Split(H/V)/Subtraction/Temperature 토글은 grep 미검출 — 미구현 추정 |
 | CMP-03 | Subtraction / Temperature (diff heatmap) view | P0 | [ ] | Reuses §4.7 diff engine. 구현 스펙: `DEVELOPMENT_PHASES.md` Phase 7.5 "Diff Heatmap 구현 상세" 참조 (2026-07-31 `_import_v14` 마이닝, mode/캐시키/텍스처 규칙 포함) |
 | CMP-04 | Find First Difference (stream vs stream) | P1 | [ ] | Shares logic with YUVDiff §4.7 |

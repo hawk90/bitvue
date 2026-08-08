@@ -4,7 +4,7 @@
 //!
 //! Refactored from god object (17 fields) to focused value objects.
 
-use bitvue_core::UnitModel;
+use bitvue_engine::UnitModel;
 use serde::{Deserialize, Serialize};
 
 /// Reference slot information for codec-specific reference naming
@@ -54,7 +54,7 @@ impl FramePosition {
     }
 
     /// Create from UnitModel with defaults
-    pub fn from_unit_model(unit: &bitvue_core::UnitModel) -> Self {
+    pub fn from_unit_model(unit: &bitvue_engine::UnitModel) -> Self {
         // Get data from first frame unit
         let first_unit = unit.units.first();
         let frame_index = first_unit.and_then(|u| u.frame_index).unwrap_or(0);
@@ -72,7 +72,7 @@ impl FramePosition {
     }
 
     /// Create from UnitNode
-    pub fn from_unit_node(unit: &bitvue_core::UnitNode) -> Self {
+    pub fn from_unit_node(unit: &bitvue_engine::UnitNode) -> Self {
         let frame_index = unit.frame_index.unwrap_or(0);
         Self {
             frame_index,
@@ -122,7 +122,7 @@ impl FrameMetadata {
     }
 
     /// Create from UnitModel
-    pub fn from_unit_model(unit: &bitvue_core::UnitModel, display_type: &str) -> Self {
+    pub fn from_unit_model(unit: &bitvue_engine::UnitModel, display_type: &str) -> Self {
         // Get data from first frame unit
         let first_unit = unit.units.first();
         let unit_type = first_unit.map(|u| &*u.unit_type).unwrap_or("FRAME");
@@ -145,7 +145,7 @@ impl FrameMetadata {
     }
 
     /// Create from UnitNode
-    pub fn from_unit_node(unit: &bitvue_core::UnitNode, display_type: &str) -> Self {
+    pub fn from_unit_node(unit: &bitvue_engine::UnitNode, display_type: &str) -> Self {
         let nal_type = if &*unit.unit_type == "FRAME" {
             display_type.to_string()
         } else {
@@ -196,7 +196,7 @@ impl ReferenceInfo {
     }
 
     /// Create from UnitModel
-    pub fn from_unit_model(unit: &bitvue_core::UnitModel) -> Self {
+    pub fn from_unit_model(unit: &bitvue_engine::UnitModel) -> Self {
         // Extract ref_frames/ref_slots from the first frame unit
         let (ref_frames, ref_slots) = unit
             .units
@@ -215,7 +215,7 @@ impl ReferenceInfo {
     }
 
     /// Create from UnitNode
-    pub fn from_unit_node(unit: &bitvue_core::UnitNode) -> Self {
+    pub fn from_unit_node(unit: &bitvue_engine::UnitNode) -> Self {
         let ref_frames = unit.ref_frames.clone();
         let ref_slots = unit.ref_slots.clone();
         let ref_slot_info = generate_slot_info(ref_slots.clone(), ref_frames.clone());
@@ -270,7 +270,7 @@ impl FrameDisplayData {
     }
 
     /// Create from UnitModel
-    pub fn from_unit_model(unit: &bitvue_core::UnitModel, display_type: &str) -> Self {
+    pub fn from_unit_model(unit: &bitvue_engine::UnitModel, display_type: &str) -> Self {
         Self {
             position: FramePosition::from_unit_model(unit),
             metadata: FrameMetadata::from_unit_model(unit, display_type),
@@ -279,7 +279,7 @@ impl FrameDisplayData {
     }
 
     /// Create from UnitNode
-    pub fn from_unit_node(unit: &bitvue_core::UnitNode, display_type: &str) -> Self {
+    pub fn from_unit_node(unit: &bitvue_engine::UnitNode, display_type: &str) -> Self {
         Self {
             position: FramePosition::from_unit_node(unit),
             metadata: FrameMetadata::from_unit_node(unit, display_type),

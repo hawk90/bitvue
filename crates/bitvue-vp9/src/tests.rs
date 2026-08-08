@@ -630,8 +630,8 @@ fn test_motion_vector_zero() {
 #[test]
 fn test_super_block_creation() {
     // Test SuperBlock creation
-    use bitvue_core::mv_overlay::BlockMode;
-    use bitvue_core::partition_grid::PartitionType;
+    use bitvue_engine::mv_overlay::BlockMode;
+    use bitvue_engine::partition_grid::PartitionType;
 
     let sb = SuperBlock {
         x: 0,

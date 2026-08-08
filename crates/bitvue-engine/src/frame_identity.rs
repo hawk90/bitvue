@@ -1211,7 +1211,7 @@ impl TimelineMapper {
     /// # Example
     ///
     /// ```
-    /// use bitvue_core::frame_identity::{FrameMetadata, TimelineMapper};
+    /// use bitvue_engine::frame_identity::{FrameMetadata, TimelineMapper};
     ///
     /// let frames = vec![
     ///     FrameMetadata { pts: Some(0), dts: Some(0) },

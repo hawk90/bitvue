@@ -77,7 +77,7 @@ pub use types::{Qp, QuarterPel, TimestampPts};
 /// This is a convenience function that parses all OBUs and extracts
 /// the sequence header if present. Supports raw OBU format, IVF, MP4,
 /// MOV, MKV, WebM, and TS container formats.
-pub fn parse_av1(data: &[u8]) -> bitvue_core::Result<Av1Info> {
+pub fn parse_av1(data: &[u8]) -> bitvue_engine::Result<Av1Info> {
     // Check format and extract OBU data (order matters for detection)
     let obu_data = if is_ivf(data) {
         // IVF container
@@ -195,7 +195,7 @@ pub fn is_ts(data: &[u8]) -> bool {
 }
 
 /// Extract OBU data from MP4 container
-pub fn extract_obu_data_from_mp4(data: &[u8]) -> bitvue_core::Result<Vec<u8>> {
+pub fn extract_obu_data_from_mp4(data: &[u8]) -> bitvue_engine::Result<Vec<u8>> {
     use bitvue_formats::mp4;
 
     // Extract AV1 samples from MP4
@@ -211,7 +211,7 @@ pub fn extract_obu_data_from_mp4(data: &[u8]) -> bitvue_core::Result<Vec<u8>> {
 }
 
 /// Extract OBU data from MKV container
-pub fn extract_obu_data_from_mkv(data: &[u8]) -> bitvue_core::Result<Vec<u8>> {
+pub fn extract_obu_data_from_mkv(data: &[u8]) -> bitvue_engine::Result<Vec<u8>> {
     use bitvue_formats::mkv;
 
     // Extract AV1 samples from MKV
@@ -227,7 +227,7 @@ pub fn extract_obu_data_from_mkv(data: &[u8]) -> bitvue_core::Result<Vec<u8>> {
 }
 
 /// Extract OBU data from TS container
-pub fn extract_obu_data_from_ts(data: &[u8]) -> bitvue_core::Result<Vec<u8>> {
+pub fn extract_obu_data_from_ts(data: &[u8]) -> bitvue_engine::Result<Vec<u8>> {
     use bitvue_formats::ts;
 
     // Extract AV1 samples from TS

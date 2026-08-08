@@ -14,7 +14,7 @@
 //! - Uses 16-bit → 32-bit widening to avoid overflow
 //! - Accumulates squared differences in 32-bit lanes
 
-use bitvue_core::Result;
+use bitvue_engine::Result;
 
 /// Window statistics for SSIM computation
 #[derive(Debug, Default, Copy, Clone)]
@@ -701,7 +701,7 @@ unsafe fn psnr_avx2(
         // Security: Explicit bounds check to prevent buffer overflow
         // when size is not a multiple of 32
         if offset + 32 > reference.len() || offset + 32 > distorted.len() {
-            return Err(bitvue_core::BitvueError::InvalidData(
+            return Err(bitvue_engine::BitvueError::InvalidData(
                 "SIMD buffer overflow: insufficient data for 32-byte read".to_string(),
             ));
         }
@@ -809,7 +809,7 @@ unsafe fn psnr_sse2(
         // Security: Explicit bounds check to prevent buffer overflow
         // when size is not a multiple of 16
         if offset + 16 > reference.len() || offset + 16 > distorted.len() {
-            return Err(bitvue_core::BitvueError::InvalidData(
+            return Err(bitvue_engine::BitvueError::InvalidData(
                 "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
             ));
         }
@@ -902,7 +902,7 @@ unsafe fn psnr_neon(
         // Security: Explicit bounds check to prevent buffer overflow
         // when size is not a multiple of 16
         if offset + 16 > reference.len() || offset + 16 > distorted.len() {
-            return Err(bitvue_core::BitvueError::InvalidData(
+            return Err(bitvue_engine::BitvueError::InvalidData(
                 "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
             ));
         }

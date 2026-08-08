@@ -37,7 +37,7 @@
 //! ```
 
 use crate::symbol::SymbolDecoder;
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Partition type (AV1 Spec Section 5.11.4)
@@ -698,8 +698,8 @@ pub fn partition_tree_to_grid(
     coded_width: u32,
     coded_height: u32,
     sb_size: u32,
-) -> bitvue_core::PartitionGrid {
-    let mut grid = bitvue_core::PartitionGrid::new(coded_width, coded_height, sb_size);
+) -> bitvue_engine::PartitionGrid {
+    let mut grid = bitvue_engine::PartitionGrid::new(coded_width, coded_height, sb_size);
 
     // Flatten tree to list of blocks
     let mut blocks = Vec::new();
@@ -707,8 +707,8 @@ pub fn partition_tree_to_grid(
 
     // Convert to PartitionGrid blocks
     for (x, y, width, height, partition, depth) in blocks {
-        let partition_type = bitvue_core::partition_grid::PartitionType::from(partition);
-        let block = bitvue_core::partition_grid::PartitionBlock::new(
+        let partition_type = bitvue_engine::partition_grid::PartitionType::from(partition);
+        let block = bitvue_engine::partition_grid::PartitionBlock::new(
             x,
             y,
             width,

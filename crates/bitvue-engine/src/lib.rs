@@ -1,4 +1,4 @@
-//! bitvue-core: Core types and traits for bitstream analysis
+//! bitvue-engine: Core types and traits for bitstream analysis
 //!
 //! Monster Pack v9 Architecture:
 //! - SelectionState: Single source of truth

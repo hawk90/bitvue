@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 use crate::services::{DecodeService, RateLimiter, ThumbnailService};
-use bitvue_core::{CompareWorkspace, Core};
+use bitvue_engine::{CompareWorkspace, Core};
 
 // Re-export module contents
 pub mod analysis;

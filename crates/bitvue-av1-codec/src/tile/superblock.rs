@@ -16,7 +16,7 @@ use crate::symbol::SymbolDecoder;
 use crate::tile::{
     parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode, PartitionType,
 };
-use bitvue_core::Result;
+use bitvue_engine::Result;
 use serde::{Deserialize, Serialize};
 
 /// Superblock data (partition tree + coding units)
@@ -151,7 +151,7 @@ fn parse_partition_recursive(
     // Read partition symbol
     let partition_symbol = decoder.read_partition(bsize_log2, has_rows, has_cols)?;
     let partition = PartitionType::from_u8(partition_symbol).ok_or_else(|| {
-        bitvue_core::BitvueError::InvalidData(format!(
+        bitvue_engine::BitvueError::InvalidData(format!(
             "Invalid partition symbol: {}",
             partition_symbol
         ))

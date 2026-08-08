@@ -149,12 +149,12 @@ HEVC has several structural differences from AV1:
 
 ## File Location
 ```
-/Users/hawk/Workspaces/bitvue/crates/bitvue-core/tests/frame_identity_compare_av1_quirks_hevc_012.rs
+/Users/hawk/Workspaces/bitvue/crates/bitvue-engine/tests/frame_identity_compare_av1_quirks_hevc_012.rs
 ```
 
 ## Run Tests
 ```bash
-cd /Users/hawk/Workspaces/bitvue/crates/bitvue-core
+cd /Users/hawk/Workspaces/bitvue/crates/bitvue-engine
 cargo test --test frame_identity_compare_av1_quirks_hevc_012
 ```
 

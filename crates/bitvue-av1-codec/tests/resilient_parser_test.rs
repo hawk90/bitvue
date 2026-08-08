@@ -12,8 +12,8 @@
 //! Tests for resilient OBU parser with diagnostic generation
 
 use bitvue_av1_codec::{parse_all_obus_resilient, parse_ivf_frames};
-use bitvue_core::event::{Category, Severity};
-use bitvue_core::StreamId;
+use bitvue_engine::event::{Category, Severity};
+use bitvue_engine::StreamId;
 
 #[test]
 fn test_resilient_parser_valid_file() {

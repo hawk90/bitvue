@@ -4,7 +4,7 @@
  * `SidecarClient`'s `options.restart` actually respawns it and the new process is usable. This
  * is the sidecar crash-recovery policy flagged unresolved since the sidecar bridge decision in
  * `docs/DEVELOPMENT_PHASES.md` — see that doc and `sidecarClient.ts`'s module doc for what this
- * does and (deliberately) doesn't restore (process only, not `bitvue_core::Core`'s in-memory
+ * does and (deliberately) doesn't restore (process only, not `bitvue_engine::Core`'s in-memory
  * state).
  */
 

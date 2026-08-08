@@ -27,7 +27,7 @@
 //! - Parse residuals (optional for visualization)
 
 use crate::symbol::SymbolDecoder;
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Prediction mode for intra and inter prediction

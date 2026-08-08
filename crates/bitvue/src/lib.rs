@@ -36,7 +36,7 @@
 //! ```
 
 // Re-export core functionality
-pub use bitvue_core as core;
+pub use bitvue_engine as core;
 
 // Re-export format parsers
 pub use bitvue_formats as formats;

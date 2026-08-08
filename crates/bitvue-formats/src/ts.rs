@@ -5,7 +5,7 @@
 //!
 //! Reference: ISO/IEC 13818-1 (MPEG-2 Systems)
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 use std::collections::HashMap;
 
 /// TS packet size (188 bytes standard)

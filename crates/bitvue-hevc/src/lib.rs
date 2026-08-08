@@ -55,8 +55,8 @@ pub use slice::{SliceHeader, SliceType};
 pub use sps::{parse_sps, ProfileTierLevel, Sps};
 use std::collections::HashMap;
 
-// Re-export ChromaFormat from bitvue_core for backward compatibility
-pub use bitvue_core::ChromaFormat;
+// Re-export ChromaFormat from bitvue_engine for backward compatibility
+pub use bitvue_engine::ChromaFormat;
 pub use vps::Vps;
 
 /// Parsed HEVC bitstream.

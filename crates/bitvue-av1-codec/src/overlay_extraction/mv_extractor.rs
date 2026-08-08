@@ -2,7 +2,7 @@
 //!
 //! Provides functions to extract motion vector data from AV1 bitstreams.
 
-use bitvue_core::{
+use bitvue_engine::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     BitvueError,
 };

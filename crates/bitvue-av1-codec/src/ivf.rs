@@ -7,7 +7,7 @@
 
 use crate::bitreader::BitReader;
 use crate::obu::parse_obu_header;
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 
 /// IVF file header size in bytes
 pub const IVF_HEADER_SIZE: usize = 32;

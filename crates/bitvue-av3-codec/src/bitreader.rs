@@ -1,9 +1,9 @@
 //! Bit reader for AV3 OBU parsing.
 //!
-//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! This module provides a wrapper around the shared BitReader from bitvue_engine
 //! with AV3-specific error mapping and LEB128 support.
 
-use bitvue_core::{BitReader as CoreBitReader, Leb128Reader};
+use bitvue_engine::{BitReader as CoreBitReader, Leb128Reader};
 
 use crate::error::{Av3Error, Result};
 

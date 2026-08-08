@@ -57,7 +57,7 @@ describe("SidecarClient <-> real bitvue-sidecar binary", () => {
     expect(result).toEqual({ protocol_version: "0.1.0", capabilities: [] });
   });
 
-  it("opens a stream and receives a real ModelUpdated event from bitvue-core", async () => {
+  it("opens a stream and receives a real ModelUpdated event from bitvue-engine", async () => {
     client = new SidecarClient(binaryPath);
     await client.hello("bitvue-desktop-integration-test/0.0.1");
 

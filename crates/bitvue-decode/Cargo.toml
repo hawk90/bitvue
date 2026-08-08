@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-bitvue-core = { workspace = true }
+bitvue-engine = { workspace = true }
 bitvue-av1-codec = { workspace = true }
 abseil = { workspace = true }
 dav1d = { workspace = true }

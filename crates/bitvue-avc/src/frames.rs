@@ -5,7 +5,7 @@
 use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
 use crate::parse_avc;
 use crate::slice::{SliceHeader, SliceType};
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use serde::{Deserialize, Serialize};
 
 /// H.264 frame data extracted from the bitstream
@@ -539,9 +539,9 @@ fn build_minimal_avc_sps(width: u32, height: u32) -> crate::sps::Sps {
     }
 }
 
-/// Convert AvcFrame to UnitNode format for bitvue-core
-pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::UnitNode {
-    use bitvue_core::qp_extraction::QpData;
+/// Convert AvcFrame to UnitNode format for bitvue-engine
+pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_engine::UnitNode {
+    use bitvue_engine::qp_extraction::QpData;
 
     // Extract QP from slice header if available
     let qp_avg = frame
@@ -577,9 +577,9 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
         }
     });
 
-    bitvue_core::UnitNode {
-        key: bitvue_core::UnitKey {
-            stream: bitvue_core::StreamId::A,
+    bitvue_engine::UnitNode {
+        key: bitvue_engine::UnitKey {
+            stream: bitvue_engine::StreamId::A,
             unit_type: "FRAME".to_string(),
             offset: frame.offset as u64,
             size: frame.size,
@@ -606,7 +606,7 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
 }
 
 /// Convert multiple AvcFrames to UnitNode format
-pub fn avc_frames_to_unit_nodes(frames: &[AvcFrame]) -> Vec<bitvue_core::UnitNode> {
+pub fn avc_frames_to_unit_nodes(frames: &[AvcFrame]) -> Vec<bitvue_engine::UnitNode> {
     frames
         .iter()
         .map(|f| avc_frame_to_unit_node(f, 0))

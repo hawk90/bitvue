@@ -17,7 +17,7 @@ use bitvue_avc::frames::{
     avc_frame_to_unit_node, avc_frames_to_unit_nodes, extract_annex_b_frames,
     extract_frame_at_index, AvcFrame, AvcFrameType,
 };
-use bitvue_core::{StreamId, UnitNode};
+use bitvue_engine::{StreamId, UnitNode};
 use std::sync::Arc;
 
 #[test]

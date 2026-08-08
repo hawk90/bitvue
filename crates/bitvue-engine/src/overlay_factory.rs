@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use bitvue_core::{OverlayFactory, Av1OverlayFactory};
+//! use bitvue_engine::{OverlayFactory, Av1OverlayFactory};
 //!
 //! let factory = Av1OverlayFactory::new();
 //! let qp_renderer = factory.create_qp_heatmap()?;

@@ -109,8 +109,8 @@ impl Default for VideoFrame {
 /// # Example
 ///
 /// ```rust
-/// use bitvue_core::frame::{VideoFrame, VideoFrameBuilder};
-/// use bitvue_core::FrameType;
+/// use bitvue_engine::frame::{VideoFrame, VideoFrameBuilder};
+/// use bitvue_engine::FrameType;
 ///
 /// let frame = VideoFrame::builder()
 ///     .frame_index(0)

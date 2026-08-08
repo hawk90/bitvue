@@ -8,7 +8,7 @@
 //! - AV1 Codec ISO Media File Format Binding
 
 use crate::resource_budget::ResourceBudget;
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 

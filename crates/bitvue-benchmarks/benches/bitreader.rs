@@ -3,7 +3,7 @@
 //! BitReader is one of the most performance-critical components as it's called
 //! millions of times during video bitstream parsing.
 
-use bitvue_core::BitReader;
+use bitvue_engine::BitReader;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 /// Benchmark reading 8 bits (single byte) repeatedly

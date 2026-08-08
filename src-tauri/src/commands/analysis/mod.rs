@@ -16,7 +16,7 @@ use bitvue_av1_codec::overlay_extraction::{
     extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_qp_grid,
     extract_transform_grid,
 };
-use bitvue_core::StreamId;
+use bitvue_engine::StreamId;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::{
@@ -181,7 +181,7 @@ pub(crate) async fn load_file_data_and_codec(
 pub(crate) fn extract_analysis_by_codec(
     file_data: &[u8],
     frame_index: usize,
-    core: &bitvue_core::Core,
+    core: &bitvue_engine::Core,
     codec: &str,
 ) -> Result<FrameAnalysisData, String> {
     let video_codec = VideoCodec::from_str(codec);

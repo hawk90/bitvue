@@ -24,7 +24,7 @@ static NEXT_DIAGNOSTIC_ID: AtomicU64 = AtomicU64::new(1);
 ///
 /// Usage:
 /// ```no_run
-/// use bitvue_core::{Core, Command, StreamId};
+/// use bitvue_engine::{Core, Command, StreamId};
 /// use std::path::Path;
 ///
 /// let core = Core::new();

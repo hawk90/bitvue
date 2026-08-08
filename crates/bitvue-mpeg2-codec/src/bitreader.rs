@@ -1,9 +1,9 @@
 //! Bit-level reader for MPEG-2 parsing.
 //!
-//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! This module provides a wrapper around the shared BitReader from bitvue_engine
 //! with MPEG-2-specific error mapping.
 
-use bitvue_core::BitReader as CoreBitReader;
+use bitvue_engine::BitReader as CoreBitReader;
 
 use crate::error::{Mpeg2Error, Result};
 

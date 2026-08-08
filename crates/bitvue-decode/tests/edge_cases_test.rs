@@ -23,8 +23,8 @@
 //! - Encoding Issues: Invalid UTF-8, surrogate pairs, BOM handling
 //! - Platform Differences: Windows vs Unix paths, line endings
 
-use bitvue_core::limits::*;
 use bitvue_decode::decoder::{detect_format, Av1Decoder, DecodeError, DecodedFrame, VideoFormat};
+use bitvue_engine::limits::*;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -385,10 +385,10 @@ fn test_buffer_size_limits() {
     let buffer_size = MAX_BUFFER_SIZE;
 
     // Test validation function
-    let result = bitvue_core::limits::validate_buffer_size(buffer_size);
+    let result = bitvue_engine::limits::validate_buffer_size(buffer_size);
     assert!(result.is_ok(), "Should accept buffer at MAX_BUFFER_SIZE");
 
-    let result = bitvue_core::limits::validate_buffer_size(buffer_size + 1);
+    let result = bitvue_engine::limits::validate_buffer_size(buffer_size + 1);
     assert!(result.is_err(), "Should reject buffer over MAX_BUFFER_SIZE");
 }
 

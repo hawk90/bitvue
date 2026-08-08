@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::{validate_frame_index_bounds, AppState};
 use crate::constants::{batch, error_msgs, limits, video};
-use bitvue_core::StreamId;
+use bitvue_engine::StreamId;
 use bitvue_formats::{detect_container_format, ContainerFormat};
 use image::{ImageBuffer, RgbImage};
 
@@ -494,7 +494,9 @@ pub async fn get_frame_hex_data(
     let stream_a = stream_a_lock.read();
     let _file_path = stream_a.file_path.as_ref().ok_or("No file loaded")?.clone();
     let unit_info = stream_a.units.as_ref().and_then(|u| {
-        u.units.get(frame_index).map(|node| (node.offset, node.size))
+        u.units
+            .get(frame_index)
+            .map(|node| (node.offset, node.size))
     });
     drop(stream_a);
     drop(core);
@@ -508,10 +510,7 @@ pub async fn get_frame_hex_data(
                 size: 0,
                 truncated: false,
                 success: false,
-                error: Some(format!(
-                    "Frame index {} out of range",
-                    frame_index
-                )),
+                error: Some(format!("Frame index {} out of range", frame_index)),
             });
         }
     };
@@ -535,7 +534,10 @@ pub async fn get_frame_hex_data(
             success: false,
             error: Some(format!(
                 "Frame {} byte range {}..{} exceeds file size {}",
-                frame_index, start, end, file_data.len()
+                frame_index,
+                start,
+                end,
+                file_data.len()
             )),
         });
     }

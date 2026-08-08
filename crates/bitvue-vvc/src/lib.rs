@@ -47,8 +47,8 @@ pub use overlay_extraction::{
 pub use pps::{parse_pps, Pps};
 pub use sps::{parse_sps, AlfConfig, DualTreeConfig, LmcsConfig, Profile, ProfileTierLevel, Sps};
 
-// Re-export ChromaFormat from bitvue_core for backward compatibility
-pub use bitvue_core::ChromaFormat;
+// Re-export ChromaFormat from bitvue_engine for backward compatibility
+pub use bitvue_engine::ChromaFormat;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

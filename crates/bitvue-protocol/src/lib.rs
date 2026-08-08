@@ -3,7 +3,7 @@
 //!
 //! Transport is a single stdio duplex channel. `stdout`/`stdin` carry only framed protocol
 //! bytes; `stderr` is reserved for logs/panic output so a sidecar crash stays diagnosable.
-//! This crate intentionally does not depend on `bitvue-core` — the wire contract must stay
+//! This crate intentionally does not depend on `bitvue-engine` — the wire contract must stay
 //! stable independent of internal engine error/type changes. Mapping engine errors onto
 //! [`WireErrorCode`] is the sidecar binary's job, not this crate's.
 
@@ -121,7 +121,7 @@ pub struct WireError {
 }
 
 /// Stable wire-level error taxonomy. Deliberately a curated mirror of
-/// `bitvue_core::error::BitvueError`'s variants, not a direct `Serialize` derive on that type —
+/// `bitvue_engine::error::BitvueError`'s variants, not a direct `Serialize` derive on that type —
 /// keeps the cross-process contract stable if internal engine error fields change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]

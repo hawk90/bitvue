@@ -37,7 +37,7 @@ memmap2 = "0.9"
 # Bitvue core crates (existing Rust parsers/decoders)
 # Note: hevc-indexer, vp9-indexer, vvc-indexer features are disabled due to cyclic dependency
 # Use the individual codec crates directly for HEVC/VP9/VVC parsing
-bitvue-core = { path = "../crates/bitvue-core" }
+bitvue-engine = { path = "../crates/bitvue-engine" }
 bitvue-av1-codec = { path = "../crates/bitvue-av1-codec" }
 bitvue-avc = { path = "../crates/bitvue-avc" }
 bitvue-hevc = { path = "../crates/bitvue-hevc" }

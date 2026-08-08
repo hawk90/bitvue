@@ -4,7 +4,7 @@
 
 use crate::commands::file::check_system_directory_access;
 use crate::commands::AppState;
-use bitvue_core::StreamId;
+use bitvue_engine::StreamId;
 use serde_json::json;
 use std::fs::File;
 use std::io::Write;
@@ -15,8 +15,8 @@ use std::path::PathBuf;
 /// Returns `(mv_magnitude_avg, skip_ratio)` where:
 /// - `mv_magnitude_avg`: mean Euclidean magnitude of inter-block MVs (in quarter-pel)
 /// - `skip_ratio`: fraction of blocks with Skip mode (0.0–1.0)
-fn compute_mv_stats(mv_grid: Option<&bitvue_core::MVGrid>) -> (f64, f64) {
-    use bitvue_core::mv_overlay::BlockMode;
+fn compute_mv_stats(mv_grid: Option<&bitvue_engine::MVGrid>) -> (f64, f64) {
+    use bitvue_engine::mv_overlay::BlockMode;
     let grid = match mv_grid {
         Some(g) if !g.mv_l0.is_empty() => g,
         _ => return (0.0, 0.0),

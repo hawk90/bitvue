@@ -4,7 +4,7 @@
 //! re-parsing when extracting multiple overlays from the same frame.
 
 use crate::Qp;
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;

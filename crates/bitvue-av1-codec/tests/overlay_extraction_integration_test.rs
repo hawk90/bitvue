@@ -118,13 +118,13 @@ fn test_mv_grid_extraction_with_real_av1() {
         .mode
         .iter()
         .flat_map(|m| m.iter())
-        .filter(|m| **m == bitvue_core::mv_overlay::BlockMode::Intra)
+        .filter(|m| **m == bitvue_engine::mv_overlay::BlockMode::Intra)
         .count();
     let inter_count = mv_grid
         .mode
         .iter()
         .flat_map(|m| m.iter())
-        .filter(|m| **m == bitvue_core::mv_overlay::BlockMode::Inter)
+        .filter(|m| **m == bitvue_engine::mv_overlay::BlockMode::Inter)
         .count();
 
     println!(

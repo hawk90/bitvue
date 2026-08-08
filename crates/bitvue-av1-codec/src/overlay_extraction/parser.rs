@@ -3,7 +3,7 @@
 //! Provides ParsedFrame struct and related types for caching parsed OBU data.
 
 use crate::{parse_all_obus, parse_frame_header_basic, ObuType};
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use std::sync::Arc;
 
 /// Cached frame data to avoid re-parsing

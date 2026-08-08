@@ -9,7 +9,7 @@ description = "Video bitstream analyzer - unified library interface"
 
 [dependencies]
 # Core functionality
-bitvue-core = { path = "../bitvue-core" }
+bitvue-engine = { path = "../bitvue-engine" }
 
 # Format parsers
 bitvue-formats = { path = "../bitvue-formats" }

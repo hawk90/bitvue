@@ -15,8 +15,8 @@
 
 use bitvue_av3_codec::frame_header::FrameType;
 use bitvue_av3_codec::overlay_extraction;
-use bitvue_core::partition_grid::PartitionType;
-use bitvue_core::BlockMode;
+use bitvue_engine::partition_grid::PartitionType;
+use bitvue_engine::BlockMode;
 
 #[test]
 fn test_extract_qp_grid_basic() {
@@ -514,9 +514,9 @@ fn test_coding_unit_positions() {
 
 #[test]
 fn test_grid_dimensions() {
-    use bitvue_core::mv_overlay::MVGrid;
-    use bitvue_core::partition_grid::PartitionGrid;
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
+    use bitvue_engine::partition_grid::PartitionGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test various dimensions
     let dimensions = vec![(640, 480), (1280, 720), (1920, 1080)];
@@ -539,9 +539,11 @@ fn test_grid_dimensions() {
         let mv_grid_w = width / 16;
         let mv_grid_h = (height + 16 - 1) / 16;
         let mv_l0 =
-            vec![bitvue_core::mv_overlay::MotionVector::ZERO; (mv_grid_w * mv_grid_h) as usize];
-        let mv_l1 =
-            vec![bitvue_core::mv_overlay::MotionVector::MISSING; (mv_grid_w * mv_grid_h) as usize];
+            vec![bitvue_engine::mv_overlay::MotionVector::ZERO; (mv_grid_w * mv_grid_h) as usize];
+        let mv_l1 = vec![
+            bitvue_engine::mv_overlay::MotionVector::MISSING;
+            (mv_grid_w * mv_grid_h) as usize
+        ];
         let mv_grid = MVGrid::new(width, height, 16, 16, mv_l0, mv_l1, None);
         assert_eq!(mv_grid.grid_w, mv_grid_w);
 
@@ -552,9 +554,9 @@ fn test_grid_dimensions() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::mv_overlay::MVGrid;
-    use bitvue_core::partition_grid::PartitionGrid;
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
+    use bitvue_engine::partition_grid::PartitionGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 64, 64, vec![], -1);
@@ -569,7 +571,7 @@ fn test_grid_with_zero_dimensions() {
 
 #[test]
 fn test_large_grid() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test 4K resolution
     // Use ceiling division for height to match overlay_extraction implementation
@@ -585,15 +587,15 @@ fn test_large_grid() {
 
 #[test]
 fn test_mv_grid_large() {
-    use bitvue_core::mv_overlay::MVGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
 
     // Test 4K resolution
     // Use ceiling division for height to match overlay_extraction implementation
     let grid_w = 3840 / 16;
     let grid_h = (2160 + 16 - 1) / 16; // Ceiling division
 
-    let mv_l0 = vec![bitvue_core::mv_overlay::MotionVector::ZERO; (grid_w * grid_h) as usize];
-    let mv_l1 = vec![bitvue_core::mv_overlay::MotionVector::MISSING; (grid_w * grid_h) as usize];
+    let mv_l0 = vec![bitvue_engine::mv_overlay::MotionVector::ZERO; (grid_w * grid_h) as usize];
+    let mv_l1 = vec![bitvue_engine::mv_overlay::MotionVector::MISSING; (grid_w * grid_h) as usize];
     let grid = MVGrid::new(3840, 2160, 16, 16, mv_l0, mv_l1, None);
     assert_eq!(grid.grid_w, grid_w);
     assert_eq!(grid.grid_h, grid_h);

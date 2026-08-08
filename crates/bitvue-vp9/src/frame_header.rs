@@ -9,7 +9,7 @@
 use crate::bitreader::MsbBitReader as BitReader;
 use crate::error::{Result, Vp9Error};
 // Re-export FrameType for other modules in this crate
-pub use bitvue_core::FrameType;
+pub use bitvue_engine::FrameType;
 use serde::{Deserialize, Serialize};
 
 /// VP9 color space.

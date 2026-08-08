@@ -20,7 +20,7 @@
 //! - Super-resolution with scaling
 
 use crate::frame_header::FrameHeader;
-use bitvue_core::{
+use bitvue_engine::{
     limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},

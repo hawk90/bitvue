@@ -14,8 +14,8 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
-use bitvue_core::limits::*;
-use bitvue_core::{BitReader, BitvueError, ExpGolombReader, LsbBitReader};
+use bitvue_engine::limits::*;
+use bitvue_engine::{BitReader, BitvueError, ExpGolombReader, LsbBitReader};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -665,7 +665,7 @@ mod boundary_value_tests {
 // ============================================================================
 
 mod emulation_prevention_tests {
-    use bitvue_core::remove_emulation_prevention_bytes;
+    use bitvue_engine::remove_emulation_prevention_bytes;
 
     /// Test emulation prevention at start
     #[test]

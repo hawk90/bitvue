@@ -14,7 +14,7 @@
 //! Comprehensive tests for AV1 overlay data extraction.
 
 use bitvue_av1_codec::overlay_extraction;
-use bitvue_core::BlockMode;
+use bitvue_engine::BlockMode;
 
 #[test]
 fn test_extract_qp_grid_basic() {
@@ -87,7 +87,7 @@ fn test_block_mode_variants() {
 
 #[test]
 fn test_qp_grid_with_base_qp() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     let base_qp = 30i16;
     let grid = QPGrid::new(10, 10, 64, 64, vec![base_qp; 100], -1);
@@ -98,7 +98,7 @@ fn test_qp_grid_with_base_qp() {
 
 #[test]
 fn test_mv_grid_basic() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 
     // 1920x1080 with 64x64 blocks needs 30x17 = 510 elements
     let mv_l0 = vec![MotionVector::ZERO; 510];
@@ -113,7 +113,7 @@ fn test_mv_grid_basic() {
 
 #[test]
 fn test_partition_grid_basic() {
-    use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
+    use bitvue_engine::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
 
     let mut grid = PartitionGrid::new(1920, 1080, 64);
 
@@ -132,7 +132,7 @@ fn test_partition_grid_basic() {
 
 #[test]
 fn test_motion_vector_creation() {
-    use bitvue_core::mv_overlay::MotionVector;
+    use bitvue_engine::mv_overlay::MotionVector;
 
     let mv = MotionVector::new(10, -5);
 
@@ -142,7 +142,7 @@ fn test_motion_vector_creation() {
 
 #[test]
 fn test_motion_vector_zero() {
-    use bitvue_core::mv_overlay::MotionVector;
+    use bitvue_engine::mv_overlay::MotionVector;
 
     let mv = MotionVector::ZERO;
 
@@ -152,7 +152,7 @@ fn test_motion_vector_zero() {
 
 #[test]
 fn test_motion_vector_missing() {
-    use bitvue_core::mv_overlay::MotionVector;
+    use bitvue_engine::mv_overlay::MotionVector;
 
     let mv = MotionVector::MISSING;
 
@@ -161,7 +161,7 @@ fn test_motion_vector_missing() {
 
 #[test]
 fn test_motion_vector_to_pixels() {
-    use bitvue_core::mv_overlay::MotionVector;
+    use bitvue_engine::mv_overlay::MotionVector;
 
     let mv = MotionVector::new(8, 4); // 2 pixels, 1 pixel
     let (px_x, px_y) = mv.to_pixels();
@@ -186,7 +186,7 @@ fn test_block_mode_intra() {
 
 #[test]
 fn test_partition_none() {
-    use bitvue_core::partition_grid::PartitionType;
+    use bitvue_engine::partition_grid::PartitionType;
     let none = PartitionType::None;
     let _ = format!("{:?}", none);
     // Verify None partition exists
@@ -194,7 +194,7 @@ fn test_partition_none() {
 
 #[test]
 fn test_partition_horz() {
-    use bitvue_core::partition_grid::PartitionType;
+    use bitvue_engine::partition_grid::PartitionType;
     let horz = PartitionType::Horz;
     let _ = format!("{:?}", horz);
     // Verify Horz partition exists
@@ -202,7 +202,7 @@ fn test_partition_horz() {
 
 #[test]
 fn test_partition_vert() {
-    use bitvue_core::partition_grid::PartitionType;
+    use bitvue_engine::partition_grid::PartitionType;
     let vert = PartitionType::Vert;
     let _ = format!("{:?}", vert);
     // Verify Vert partition exists
@@ -210,7 +210,7 @@ fn test_partition_vert() {
 
 #[test]
 fn test_partition_split() {
-    use bitvue_core::partition_grid::PartitionType;
+    use bitvue_engine::partition_grid::PartitionType;
     let split = PartitionType::Split;
     let _ = format!("{:?}", split);
     // Verify Split partition exists
@@ -218,7 +218,7 @@ fn test_partition_split() {
 
 #[test]
 fn test_qp_grid_with_various_base_qp() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     let base_qp_values = vec![0i16, 20, 26, 40, 63];
 
@@ -232,7 +232,7 @@ fn test_qp_grid_with_various_base_qp() {
 
 #[test]
 fn test_mv_grid_with_motion_vectors() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 
     // 1920x1080 with 64x64 blocks needs 30x17 = 510 elements
     let mut mv_l0 = vec![MotionVector::ZERO; 510];
@@ -250,7 +250,7 @@ fn test_mv_grid_with_motion_vectors() {
 
 #[test]
 fn test_partition_grid_with_partitions() {
-    use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
+    use bitvue_engine::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
 
     let mut grid = PartitionGrid::new(128, 128, 64);
 
@@ -305,8 +305,8 @@ fn test_overlay_extraction_with_obus() {
 
 #[test]
 fn test_grid_dimensions() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test various dimensions
     let dimensions = vec![(64, 64), (128, 128), (1920, 1080)];
@@ -336,7 +336,7 @@ fn test_grid_dimensions() {
 
 #[test]
 fn test_grid_boundary_handling() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 
     // 1920x1080 with 64x64 blocks = 30x17 = 510 blocks
     let mv_l0 = vec![MotionVector::ZERO; 510];
@@ -354,7 +354,7 @@ fn test_grid_boundary_handling() {
 
 #[test]
 fn test_qp_range() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test various QP values
     let qp_values = vec![0i16, 10, 20, 30, 40, 50, 63];
@@ -367,7 +367,7 @@ fn test_qp_range() {
 
 #[test]
 fn test_mv_range() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 
     // Test various MV values including large values
     let mv_values = vec![(0, 0), (10, -5), (-10, 5), (100, -100), (-127, 127)];
@@ -388,7 +388,7 @@ fn test_mv_range() {
 
 #[test]
 fn test_partition_various_sizes() {
-    use bitvue_core::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
+    use bitvue_engine::partition_grid::{PartitionBlock, PartitionGrid, PartitionType};
 
     let sizes = vec![4, 8, 16, 32, 64, 128];
 
@@ -436,7 +436,7 @@ fn test_multi_tile_extraction() {
 
 #[test]
 fn test_grid_consistency() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     let width = 8u32;
     let height = 8u32;
@@ -457,7 +457,7 @@ fn test_grid_consistency() {
 
 #[test]
 fn test_mv_grid_consistency() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 
     // Use a smaller resolution for easier testing
     let width = 256u32;
@@ -505,8 +505,8 @@ fn test_block_mode_properties() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 64, 64, vec![], -1);
@@ -518,7 +518,7 @@ fn test_grid_with_zero_dimensions() {
 
 #[test]
 fn test_large_grid() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test 4K resolution
     let width: u32 = 3840 / 64; // 60 SBs
@@ -533,7 +533,7 @@ fn test_large_grid() {
 
 #[test]
 fn test_mv_grid_large() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 
     // Test 4K resolution
     // MVGrid uses ceiling division for height
@@ -642,14 +642,14 @@ fn test_superblock_coverage() {
 
 #[test]
 fn test_partition_block_contains() {
-    use bitvue_core::partition_grid::PartitionBlock;
+    use bitvue_engine::partition_grid::PartitionBlock;
 
     let block = PartitionBlock {
         x: 100,
         y: 200,
         width: 64,
         height: 64,
-        partition: bitvue_core::partition_grid::PartitionType::None,
+        partition: bitvue_engine::partition_grid::PartitionType::None,
         depth: 0,
     };
 
@@ -667,14 +667,14 @@ fn test_partition_block_contains() {
 
 #[test]
 fn test_partition_block_area() {
-    use bitvue_core::partition_grid::PartitionBlock;
+    use bitvue_engine::partition_grid::PartitionBlock;
 
     let block = PartitionBlock {
         x: 0,
         y: 0,
         width: 64,
         height: 32,
-        partition: bitvue_core::partition_grid::PartitionType::None,
+        partition: bitvue_engine::partition_grid::PartitionType::None,
         depth: 0,
     };
 
@@ -683,7 +683,7 @@ fn test_partition_block_area() {
 
 #[test]
 fn test_partition_type_from_u8() {
-    use bitvue_core::partition_grid::PartitionType;
+    use bitvue_engine::partition_grid::PartitionType;
 
     // Test conversion from u8
     assert_eq!(PartitionType::from(0u8), PartitionType::None);

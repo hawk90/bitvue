@@ -422,7 +422,7 @@ pub async fn calculate_quality_metrics(
     // Get the currently loaded file path from core for cache checking
     let current_file_path = {
         if let Ok(core) = state.core.lock() {
-            let stream_lock = core.get_stream(bitvue_core::StreamId::A);
+            let stream_lock = core.get_stream(bitvue_engine::StreamId::A);
             let stream = stream_lock.read();
             stream
                 .file_path

@@ -2,21 +2,21 @@
 //! over stdio to `bitvue-desktop` (Electron main). See `docs/DEVELOPMENT_PHASES.md`
 //! ("sidecar 결정" / "bitvue-protocol wire schema v0" / "동시성 모델") for the full design.
 //!
-//! Nine real commands are wired end to end to `bitvue_core::Core`: `open_stream`,
+//! Nine real commands are wired end to end to `bitvue_engine::Core`: `open_stream`,
 //! `select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`
 //! (multi-sync — see `docs/DEVELOPMENT_PHASES.md`'s `SelectionState` note; these five map
-//! straight onto `bitvue_core::Command`'s existing "Tri-sync" selection variants, no new engine
+//! straight onto `bitvue_engine::Command`'s existing "Tri-sync" selection variants, no new engine
 //! work needed), `close_stream` (control-plane), `get_hex_range` (the first data-plane command —
 //! a `Control` metadata frame followed by a `Data` frame of raw bytes, no JSON array, no base64),
 //! and `cancel_request` (see "Concurrency model" below).
 //!
-//! **Every other `bitvue_core::Command` variant is currently a no-op in `Core::handle_command`**
+//! **Every other `bitvue_engine::Command` variant is currently a no-op in `Core::handle_command`**
 //! (falls through to its catch-all `_ => vec![]` arm — verified by reading `core.rs`, not
 //! assumed) — `JumpToOffset`/`JumpToFrame`, `PlayPause`/`StepForward`/`StepBackward`,
 //! `ToggleOverlay`/`SetOverlayOpacity`/`SetPlayerMode`, `SetWorkspaceMode`/`SetSyncMode`,
 //! `ExportCsv`/`ExportBitstream`/`Export`, `RunFullAnalysis`. Wiring any of those to the sidecar
 //! today would just proxy through to nothing — they need real `Core` implementation first (a
-//! `bitvue-core` engine task, not a sidecar wiring task). The 7 `OpenFile`/`CloseFile`/
+//! `bitvue-engine` engine task, not a sidecar wiring task). The 7 `OpenFile`/`CloseFile`/
 //! `SelectFrame`/`SelectUnit`/`SelectSyntax`/`SelectBitRange`/`SelectSpatialBlock` variants that
 //! *are* implemented are now all wired — there is no more "free" sidecar command-wiring left in
 //! this crate until `Core` grows more real command handlers. Everything else in this file's
@@ -29,7 +29,7 @@
 //! goes back to reading the next frame. This means a slow request (once a genuinely slow command
 //! exists — nothing today is slow enough to matter) can't block `hello`/`select_frame`/etc.
 //! arriving concurrently. Chose OS threads over an async runtime (tokio) deliberately:
-//! `bitvue_core::Core`'s work is CPU-bound synchronous Rust, not I/O-bound waiting, so threads are
+//! `bitvue_engine::Core`'s work is CPU-bound synchronous Rust, not I/O-bound waiting, so threads are
 //! the simpler fit — pulling in an async runtime would just mean wrapping every `Core` call in
 //! `spawn_blocking` anyway.
 //!
@@ -47,7 +47,7 @@
 //! window before the worker thread's check runs. Once a genuinely slow command exists, it will
 //! need to add its own checkpoints against the flag — this mechanism doesn't do that for free.
 //!
-//! `Command`/`Event` (bitvue-core) don't derive `Serialize`/`Deserialize` — they're the
+//! `Command`/`Event` (bitvue-engine) don't derive `Serialize`/`Deserialize` — they're the
 //! internal UI↔Core bus, not a wire contract. Params/results for the commands above are
 //! hand-mapped JSON shapes here rather than a derive, matching the same decoupling reasoning
 //! already applied to `WireErrorCode` vs `BitvueError` in `bitvue-protocol`.
@@ -62,7 +62,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use bitvue_core::{
+use bitvue_engine::{
     BitRange, BitvueError, Command, Core, Event, FrameKey, SpatialBlock, StreamId, UnitKey,
 };
 use bitvue_protocol::{
@@ -402,7 +402,7 @@ struct SelectUnitParams {
 }
 
 /// Structural selection (multi-sync): a container-level unit (e.g. an OBU/NAL), independent of
-/// `select_frame`'s temporal cursor. See `bitvue_core::selection::UnitKey`.
+/// `select_frame`'s temporal cursor. See `bitvue_engine::selection::UnitKey`.
 fn select_unit(core: &Core, request: &Request) -> Response {
     let params: SelectUnitParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
@@ -444,7 +444,7 @@ struct SelectSyntaxParams {
 }
 
 /// Structural selection (multi-sync): a syntax tree node + its bit range — the syntax
-/// tree ↔ hex direction of tri-sync. See `bitvue_core::selection::SyntaxNodeId`/`BitRange`.
+/// tree ↔ hex direction of tri-sync. See `bitvue_engine::selection::SyntaxNodeId`/`BitRange`.
 fn select_syntax(core: &Core, request: &Request) -> Response {
     let params: SelectSyntaxParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
@@ -485,7 +485,7 @@ struct SelectBitRangeParams {
 
 /// Structural selection (multi-sync): the hex ↔ syntax tree direction — Core finds the nearest
 /// containing syntax node for this bit range itself (see `Command::SelectBitRange` handling in
-/// `bitvue_core::Core::handle_command`), so this handler doesn't need to do that mapping.
+/// `bitvue_engine::Core::handle_command`), so this handler doesn't need to do that mapping.
 fn select_bit_range(core: &Core, request: &Request) -> Response {
     let params: SelectBitRangeParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
@@ -667,7 +667,7 @@ fn single_control_frame(response: Response) -> Vec<(FrameKind, Vec<u8>)> {
     )]
 }
 
-/// Mirror of `bitvue_core::BitvueError` variants onto `WireErrorCode` — see the "not a direct
+/// Mirror of `bitvue_engine::BitvueError` variants onto `WireErrorCode` — see the "not a direct
 /// `Serialize` derive" note on `WireErrorCode` in `bitvue-protocol` for why this mapping lives
 /// here instead of on the engine's error type.
 fn wire_error_code_for(err: &BitvueError) -> WireErrorCode {

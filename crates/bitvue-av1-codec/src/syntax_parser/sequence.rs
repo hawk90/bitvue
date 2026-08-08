@@ -14,7 +14,7 @@
 
 use super::{SyntaxBuilder, TrackedBitReader};
 use crate::sequence::Av1Profile;
-use bitvue_core::Result;
+use bitvue_engine::Result;
 
 /// Parse Sequence Header OBU payload with bit-level tracking
 ///
@@ -496,7 +496,7 @@ fn parse_color_config_simplified(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitvue_core::types::BitRange;
+    use bitvue_engine::types::BitRange;
 
     #[test]
     fn test_reduced_still_picture_header() {

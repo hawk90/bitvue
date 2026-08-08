@@ -13,14 +13,14 @@
 //!
 //! Comprehensive tests for VP9 overlay data extraction.
 
-use bitvue_core::partition_grid::PartitionType;
-use bitvue_core::BlockMode;
+use bitvue_engine::partition_grid::PartitionType;
+use bitvue_engine::BlockMode;
 use bitvue_vp9::overlay_extraction;
 
 #[test]
 fn test_extract_qp_grid_basic() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_core::FrameType::Key,
+        frame_type: bitvue_engine::FrameType::Key,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -41,7 +41,7 @@ fn test_extract_qp_grid_basic() {
 #[test]
 fn test_extract_mv_grid_basic() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_core::FrameType::Inter,
+        frame_type: bitvue_engine::FrameType::Inter,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -62,7 +62,7 @@ fn test_extract_mv_grid_basic() {
 #[test]
 fn test_extract_partition_grid_basic() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_core::FrameType::Key,
+        frame_type: bitvue_engine::FrameType::Key,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -143,7 +143,7 @@ fn test_partition_type_variants() {
 #[ignore = "Requires actual VP9 test file not in repository"]
 fn test_qp_grid_with_keyframe() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_core::FrameType::Key,
+        frame_type: bitvue_engine::FrameType::Key,
         width: 640,
         height: 480,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -165,7 +165,7 @@ fn test_qp_grid_with_keyframe() {
 #[ignore = "Requires actual VP9 test file not in repository"]
 fn test_qp_grid_with_interframe() {
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_core::FrameType::Inter,
+        frame_type: bitvue_engine::FrameType::Inter,
         width: 1280,
         height: 720,
         quantization: bitvue_vp9::frame_header::Quantization {
@@ -194,7 +194,7 @@ fn test_various_resolutions() {
 
     for (width, height) in resolutions {
         let frame_header = bitvue_vp9::frame_header::FrameHeader {
-            frame_type: bitvue_core::FrameType::Key,
+            frame_type: bitvue_engine::FrameType::Key,
             width,
             height,
             quantization: bitvue_vp9::frame_header::Quantization {
@@ -222,7 +222,7 @@ fn test_qp_range() {
 
     for base_qp in qp_values {
         let frame_header = bitvue_vp9::frame_header::FrameHeader {
-            frame_type: bitvue_core::FrameType::Key,
+            frame_type: bitvue_engine::FrameType::Key,
             width: 640,
             height: 480,
             quantization: bitvue_vp9::frame_header::Quantization {
@@ -334,9 +334,9 @@ fn test_super_block_modes() {
 #[test]
 #[ignore = "Requires actual VP9 test file not in repository"]
 fn test_grid_dimensions() {
-    use bitvue_core::mv_overlay::MVGrid;
-    use bitvue_core::partition_grid::PartitionGrid;
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
+    use bitvue_engine::partition_grid::PartitionGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test various dimensions
     let dimensions = vec![(640, 480), (1280, 720), (1920, 1080)];
@@ -357,9 +357,11 @@ fn test_grid_dimensions() {
         let mv_grid_w = width / 16;
         let mv_grid_h = height / 16;
         let mv_l0 =
-            vec![bitvue_core::mv_overlay::MotionVector::ZERO; (mv_grid_w * mv_grid_h) as usize];
-        let mv_l1 =
-            vec![bitvue_core::mv_overlay::MotionVector::MISSING; (mv_grid_w * mv_grid_h) as usize];
+            vec![bitvue_engine::mv_overlay::MotionVector::ZERO; (mv_grid_w * mv_grid_h) as usize];
+        let mv_l1 = vec![
+            bitvue_engine::mv_overlay::MotionVector::MISSING;
+            (mv_grid_w * mv_grid_h) as usize
+        ];
         let mv_grid = MVGrid::new(width, height, 16, 16, mv_l0, mv_l1, None);
         assert_eq!(mv_grid.grid_w, mv_grid_w);
 
@@ -370,9 +372,9 @@ fn test_grid_dimensions() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::mv_overlay::MVGrid;
-    use bitvue_core::partition_grid::PartitionGrid;
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
+    use bitvue_engine::partition_grid::PartitionGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 64, 64, vec![], -1);
@@ -387,7 +389,7 @@ fn test_grid_with_zero_dimensions() {
 
 #[test]
 fn test_large_grid() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test 4K resolution
     let width: u32 = 3840 / 64; // 60 SBs
@@ -402,14 +404,14 @@ fn test_large_grid() {
 
 #[test]
 fn test_mv_grid_large() {
-    use bitvue_core::mv_overlay::MVGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
 
     // Test 4K resolution
     let grid_w = 3840 / 16;
     let grid_h = 2160 / 16;
 
-    let mv_l0 = vec![bitvue_core::mv_overlay::MotionVector::ZERO; (grid_w * grid_h) as usize];
-    let mv_l1 = vec![bitvue_core::mv_overlay::MotionVector::MISSING; (grid_w * grid_h) as usize];
+    let mv_l0 = vec![bitvue_engine::mv_overlay::MotionVector::ZERO; (grid_w * grid_h) as usize];
+    let mv_l1 = vec![bitvue_engine::mv_overlay::MotionVector::MISSING; (grid_w * grid_h) as usize];
     let grid = MVGrid::new(3840, 2160, 16, 16, mv_l0, mv_l1, None);
     assert_eq!(grid.grid_w, grid_w);
     assert_eq!(grid.grid_h, grid_h);
@@ -459,7 +461,7 @@ fn test_frame_type_keyframe() {
     use bitvue_vp9::frame_header::FrameType;
 
     let frame_header = bitvue_vp9::frame_header::FrameHeader {
-        frame_type: bitvue_core::FrameType::Key,
+        frame_type: bitvue_engine::FrameType::Key,
         width: 1920,
         height: 1080,
         quantization: bitvue_vp9::frame_header::Quantization {

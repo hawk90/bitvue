@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use bitvue_core::{CommandBuilder, StreamId, FrameKey};
+//! use bitvue_engine::{CommandBuilder, StreamId, FrameKey};
 //!
 //! // Build a select frame command
 //! let command = CommandBuilder::new()

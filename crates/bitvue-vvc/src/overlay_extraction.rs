@@ -24,7 +24,7 @@
 
 use crate::nal::NalUnit;
 use crate::sps::Sps;
-use bitvue_core::{
+use bitvue_engine::{
     limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},

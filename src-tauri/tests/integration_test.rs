@@ -12,7 +12,7 @@ mod tests {
     /// and that default values are sensible.
     #[test]
     fn test_export_config_workflow() {
-        use bitvue_core::ExportConfig;
+        use bitvue_engine::ExportConfig;
 
         // Test 1: Default configuration should export all frames without pretty print
         let config = ExportConfig::default();
@@ -33,8 +33,8 @@ mod tests {
     /// Verifies that QualityMetrics properly groups related metric arrays.
     #[test]
     fn test_quality_metrics_workflow() {
-        use bitvue_core::MetricPoint;
-        use bitvue_core::QualityMetrics;
+        use bitvue_engine::MetricPoint;
+        use bitvue_engine::QualityMetrics;
 
         // Create sample metrics
         let psnr = vec![MetricPoint {
@@ -101,7 +101,7 @@ mod tests {
     /// Verifies that frame type detection and conversion works correctly.
     #[test]
     fn test_frame_type_workflow() {
-        use bitvue_core::types::FrameType;
+        use bitvue_engine::types::FrameType;
 
         // Test 1: Key frame detection
         assert!(FrameType::Key.is_key());
@@ -128,7 +128,7 @@ mod tests {
     /// Verifies that cache invalidation works correctly across different triggers.
     #[test]
     fn test_cache_provenance_workflow() {
-        use bitvue_core::{CacheProvenanceTracker, InvalidationTrigger};
+        use bitvue_engine::{CacheProvenanceTracker, InvalidationTrigger};
 
         let mut tracker = CacheProvenanceTracker::new();
 
@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(stats.total_entries, 0);
 
         // Test 2: Add entry
-        let key = bitvue_core::CacheKey::Timeline {
+        let key = bitvue_engine::CacheKey::Timeline {
             data_revision: 0,
             zoom_level_x100: 100,
             filter_hash: 0,
@@ -162,7 +162,7 @@ mod tests {
     /// Verifies that all overlay layers are properly defined.
     #[test]
     fn test_overlay_layer_workflow() {
-        use bitvue_core::types::OverlayLayer;
+        use bitvue_engine::types::OverlayLayer;
 
         // Test 1: All layers are accessible
         let all_layers = OverlayLayer::all();

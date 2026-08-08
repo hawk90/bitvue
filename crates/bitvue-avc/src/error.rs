@@ -49,19 +49,19 @@ pub enum AvcError {
 /// Result type alias for AVC operations.
 pub type Result<T> = std::result::Result<T, AvcError>;
 
-impl From<bitvue_core::CodecError> for AvcError {
-    fn from(err: bitvue_core::CodecError) -> Self {
+impl From<bitvue_engine::CodecError> for AvcError {
+    fn from(err: bitvue_engine::CodecError) -> Self {
         match err {
-            bitvue_core::CodecError::UnexpectedEof { codec: _, position } => {
+            bitvue_engine::CodecError::UnexpectedEof { codec: _, position } => {
                 AvcError::NotEnoughData {
                     expected: position as usize + 1,
                     got: 0,
                 }
             }
-            bitvue_core::CodecError::InvalidData { codec: _, message } => {
+            bitvue_engine::CodecError::InvalidData { codec: _, message } => {
                 AvcError::ParseError(message)
             }
-            bitvue_core::CodecError::InsufficientData {
+            bitvue_engine::CodecError::InsufficientData {
                 codec: _,
                 expected,
                 actual,
@@ -69,22 +69,22 @@ impl From<bitvue_core::CodecError> for AvcError {
                 expected,
                 got: actual,
             },
-            bitvue_core::CodecError::Io { codec: _, source } => {
+            bitvue_engine::CodecError::Io { codec: _, source } => {
                 AvcError::BitstreamError(source.to_string())
             }
-            bitvue_core::CodecError::Parse {
+            bitvue_engine::CodecError::Parse {
                 codec: _,
                 offset,
                 message,
             } => AvcError::ParseError(format!("at offset {}: {}", offset, message)),
-            bitvue_core::CodecError::Unsupported { codec: _, feature } => {
+            bitvue_engine::CodecError::Unsupported { codec: _, feature } => {
                 AvcError::Unsupported(feature)
             }
-            bitvue_core::CodecError::MissingParameter {
+            bitvue_engine::CodecError::MissingParameter {
                 codec: _,
                 parameter,
             } => AvcError::MissingParameterSet(parameter),
-            bitvue_core::CodecError::CodecSpecific { codec: _, message } => {
+            bitvue_engine::CodecError::CodecSpecific { codec: _, message } => {
                 AvcError::ParseError(message)
             }
         }

@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 
 use crate::bitreader::BitReader;
 use crate::leb128::decode_uleb128;
@@ -361,9 +361,9 @@ pub fn parse_all_obus(data: &[u8]) -> Result<Vec<Obu>> {
 /// - Vector of diagnostics for any errors encountered
 pub fn parse_all_obus_resilient(
     data: &[u8],
-    stream_id: bitvue_core::StreamId,
-) -> (Vec<Obu>, Vec<bitvue_core::event::Diagnostic>) {
-    use bitvue_core::event::{Category, Diagnostic, Severity};
+    stream_id: bitvue_engine::StreamId,
+) -> (Vec<Obu>, Vec<bitvue_engine::event::Diagnostic>) {
+    use bitvue_engine::event::{Category, Diagnostic, Severity};
 
     let mut obus = Vec::new();
     let mut diagnostics = Vec::new();

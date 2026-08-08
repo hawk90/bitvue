@@ -23,9 +23,9 @@
 //! refresh_frame_flags / ref_frame_idx for INTER frames.
 
 use crate::bitreader::BitReader;
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 // Re-export FrameType for other modules in this crate
-pub use bitvue_core::FrameType;
+pub use bitvue_engine::FrameType;
 
 /// Loop restoration type (per plane)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

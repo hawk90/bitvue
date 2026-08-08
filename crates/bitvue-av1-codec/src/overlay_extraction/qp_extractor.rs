@@ -2,8 +2,8 @@
 //!
 //! Provides functions to extract QP heatmap data from AV1 bitstreams.
 
-use bitvue_core::qp_heatmap::QPGrid;
-use bitvue_core::BitvueError;
+use bitvue_engine::qp_heatmap::QPGrid;
+use bitvue_engine::BitvueError;
 
 use super::cu_parser::{parse_all_coding_units, CuSpatialIndex};
 use super::parser::ParsedFrame;

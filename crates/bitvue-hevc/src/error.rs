@@ -7,7 +7,7 @@ pub type Result<T> = std::result::Result<T, HevcError>;
 
 /// HEVC parsing errors.
 ///
-/// This now uses the shared `CodecError` from bitvue-core for consistency
+/// This now uses the shared `CodecError` from bitvue-engine for consistency
 /// across all codec parsers, maintaining backward compatibility with existing code.
 #[derive(Error, Debug)]
 pub enum HevcError {
@@ -32,34 +32,34 @@ pub enum HevcError {
     Parse { offset: u64, message: String },
 }
 
-impl From<bitvue_core::CodecError> for HevcError {
-    fn from(err: bitvue_core::CodecError) -> Self {
+impl From<bitvue_engine::CodecError> for HevcError {
+    fn from(err: bitvue_engine::CodecError) -> Self {
         match err {
-            bitvue_core::CodecError::UnexpectedEof { codec: _, position } => {
+            bitvue_engine::CodecError::UnexpectedEof { codec: _, position } => {
                 HevcError::UnexpectedEof(position)
             }
-            bitvue_core::CodecError::InvalidData { codec: _, message } => {
+            bitvue_engine::CodecError::InvalidData { codec: _, message } => {
                 HevcError::InvalidData(message)
             }
-            bitvue_core::CodecError::InsufficientData {
+            bitvue_engine::CodecError::InsufficientData {
                 codec: _,
                 expected,
                 actual,
             } => HevcError::InsufficientData { expected, actual },
-            bitvue_core::CodecError::Io { codec: _, source } => HevcError::Io(source),
-            bitvue_core::CodecError::Parse {
+            bitvue_engine::CodecError::Io { codec: _, source } => HevcError::Io(source),
+            bitvue_engine::CodecError::Parse {
                 codec: _,
                 offset,
                 message,
             } => HevcError::Parse { offset, message },
-            bitvue_core::CodecError::Unsupported { codec: _, feature } => {
+            bitvue_engine::CodecError::Unsupported { codec: _, feature } => {
                 HevcError::InvalidData(format!("Unsupported: {}", feature))
             }
-            bitvue_core::CodecError::MissingParameter {
+            bitvue_engine::CodecError::MissingParameter {
                 codec: _,
                 parameter,
             } => HevcError::InvalidData(format!("Missing parameter: {}", parameter)),
-            bitvue_core::CodecError::CodecSpecific { codec: _, message } => {
+            bitvue_engine::CodecError::CodecSpecific { codec: _, message } => {
                 HevcError::InvalidData(message)
             }
         }

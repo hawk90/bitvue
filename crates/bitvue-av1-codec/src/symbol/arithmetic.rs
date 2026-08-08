@@ -24,7 +24,7 @@
 //! Algorithm based on AV1 spec Section 8.2.2 and reference implementation.
 //! CDF update logic implements adaptive probability per spec Section 8.3.
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 
 /// CDF scale constant (32768 = 2^15)
 const CDF_SCALE: u32 = 32768;

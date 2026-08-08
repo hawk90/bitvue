@@ -813,6 +813,6 @@ fn test_stream_id_parameter_ignored() {
     let node2 = avc_frame_to_unit_node(&frame, 99);
 
     // The key.stream should always be A (hardcoded)
-    assert_eq!(node1.key.stream, bitvue_core::StreamId::A);
-    assert_eq!(node2.key.stream, bitvue_core::StreamId::A);
+    assert_eq!(node1.key.stream, bitvue_engine::StreamId::A);
+    assert_eq!(node2.key.stream, bitvue_engine::StreamId::A);
 }

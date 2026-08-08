@@ -4,13 +4,13 @@
 //! - Bits are read MSB-first (big-endian bit order)
 //! - Exp-Golomb coding for variable-length values
 //!
-//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! This module provides a wrapper around the shared BitReader from bitvue_engine
 //! with VVC-specific error mapping and Exp-Golomb support.
 
-use bitvue_core::{BitReader as CoreBitReader, ExpGolombReader};
+use bitvue_engine::{BitReader as CoreBitReader, ExpGolombReader};
 
-// Re-export emulation prevention function from bitvue_core for convenience
-pub use bitvue_core::remove_emulation_prevention_bytes;
+// Re-export emulation prevention function from bitvue_engine for convenience
+pub use bitvue_engine::remove_emulation_prevention_bytes;
 
 use crate::error::{Result, VvcError};
 
@@ -57,7 +57,7 @@ impl<'a> BitReader<'a> {
     /// Read a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
         self.inner.read_bit().map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }
@@ -65,7 +65,7 @@ impl<'a> BitReader<'a> {
     /// Read up to 32 bits.
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
         self.inner.read_bits(n).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }
@@ -73,7 +73,7 @@ impl<'a> BitReader<'a> {
     /// Read up to 64 bits.
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
         self.inner.read_bits_u64(n).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }
@@ -81,7 +81,7 @@ impl<'a> BitReader<'a> {
     /// Read a single byte.
     pub fn read_byte(&mut self) -> Result<u8> {
         self.inner.read_byte().map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }
@@ -89,7 +89,7 @@ impl<'a> BitReader<'a> {
     /// Skip n bits.
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
         self.inner.skip_bits(n).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }
@@ -110,20 +110,20 @@ impl<'a> BitReader<'a> {
 
     /// Read unsigned Exp-Golomb coded value (ue(v)).
     ///
-    /// This uses the ExpGolombReader trait from bitvue_core.
+    /// This uses the ExpGolombReader trait from bitvue_engine.
     pub fn read_ue(&mut self) -> Result<u32> {
         ExpGolombReader::read_ue(&mut self.inner).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }
 
     /// Read signed Exp-Golomb coded value (se(v)).
     ///
-    /// This uses the ExpGolombReader trait from bitvue_core.
+    /// This uses the ExpGolombReader trait from bitvue_engine.
     pub fn read_se(&mut self) -> Result<i32> {
         ExpGolombReader::read_se(&mut self.inner).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }
@@ -165,7 +165,7 @@ impl<'a> BitReader<'a> {
     /// Peek at next n bits without consuming them.
     pub fn peek_bits(&self, n: u8) -> Result<u32> {
         self.inner.peek_bits(n).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => VvcError::UnexpectedEof(pos),
             _ => VvcError::InvalidData(e.to_string()),
         })
     }

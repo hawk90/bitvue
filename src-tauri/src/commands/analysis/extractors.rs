@@ -4,7 +4,7 @@ use bitvue_av1_codec::overlay_extraction::{
     extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_qp_grid,
     extract_transform_grid,
 };
-use bitvue_core::StreamId;
+use bitvue_engine::StreamId;
 
 use crate::commands::{
     FrameAnalysisData, MVGridData, MbTypeGridData, MotionVectorData, PartitionGridData,
@@ -15,7 +15,7 @@ use crate::commands::{
 pub(super) fn extract_av1_analysis(
     file_data: &[u8],
     frame_index: usize,
-    core: &bitvue_core::Core,
+    core: &bitvue_engine::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_av1_analysis: === Starting AV1 analysis extraction ===");
     log::info!("extract_av1_analysis: Analysis started");
@@ -87,7 +87,7 @@ pub(super) fn extract_av1_analysis(
                 .collect(),
             mode: grid
                 .mode
-                .map(|modes: Vec<bitvue_core::mv_overlay::BlockMode>| {
+                .map(|modes: Vec<bitvue_engine::mv_overlay::BlockMode>| {
                     modes.into_iter().map(|m| m as u8).collect()
                 }),
         });
@@ -183,7 +183,7 @@ pub(super) fn extract_av1_analysis(
 pub(super) fn extract_avc_analysis(
     file_data: &[u8],
     frame_index: usize,
-    _core: &bitvue_core::Core,
+    _core: &bitvue_engine::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_avc_analysis: Extracting AVC analysis");
 
@@ -240,7 +240,7 @@ pub(super) fn extract_avc_analysis(
                 .collect(),
             mode: grid
                 .mode
-                .map(|modes: Vec<bitvue_core::mv_overlay::BlockMode>| {
+                .map(|modes: Vec<bitvue_engine::mv_overlay::BlockMode>| {
                     modes.into_iter().map(|m| m as u8).collect()
                 }),
         });
@@ -342,7 +342,7 @@ pub(super) fn extract_avc_analysis(
 pub(super) fn extract_hevc_analysis(
     file_data: &[u8],
     frame_index: usize,
-    _core: &bitvue_core::Core,
+    _core: &bitvue_engine::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_hevc_analysis: Extracting HEVC analysis");
 
@@ -399,7 +399,7 @@ pub(super) fn extract_hevc_analysis(
                 .collect(),
             mode: grid
                 .mode
-                .map(|modes: Vec<bitvue_core::mv_overlay::BlockMode>| {
+                .map(|modes: Vec<bitvue_engine::mv_overlay::BlockMode>| {
                     modes.into_iter().map(|m| m as u8).collect()
                 }),
         });
@@ -468,7 +468,7 @@ pub(super) fn extract_hevc_analysis(
 pub(super) fn extract_vp9_analysis(
     file_data: &[u8],
     frame_index: usize,
-    _core: &bitvue_core::Core,
+    _core: &bitvue_engine::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_vp9_analysis: Extracting VP9 analysis");
 
@@ -521,7 +521,7 @@ pub(super) fn extract_vp9_analysis(
                 .collect(),
             mode: grid
                 .mode
-                .map(|modes: Vec<bitvue_core::mv_overlay::BlockMode>| {
+                .map(|modes: Vec<bitvue_engine::mv_overlay::BlockMode>| {
                     modes.into_iter().map(|m| m as u8).collect()
                 }),
         });
@@ -574,7 +574,7 @@ pub(super) fn extract_vp9_analysis(
 pub(super) fn extract_vvc_analysis(
     file_data: &[u8],
     frame_index: usize,
-    _core: &bitvue_core::Core,
+    _core: &bitvue_engine::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_vvc_analysis: Extracting VVC analysis");
 
@@ -631,7 +631,7 @@ pub(super) fn extract_vvc_analysis(
                 .collect(),
             mode: grid
                 .mode
-                .map(|modes: Vec<bitvue_core::mv_overlay::BlockMode>| {
+                .map(|modes: Vec<bitvue_engine::mv_overlay::BlockMode>| {
                     modes.into_iter().map(|m| m as u8).collect()
                 }),
         });
@@ -684,7 +684,7 @@ pub(super) fn extract_vvc_analysis(
 pub(super) fn extract_av3_analysis(
     file_data: &[u8],
     frame_index: usize,
-    _core: &bitvue_core::Core,
+    _core: &bitvue_engine::Core,
 ) -> Result<FrameAnalysisData, String> {
     log::info!("extract_av3_analysis: Extracting AV3 analysis");
 
@@ -735,7 +735,7 @@ pub(super) fn extract_av3_analysis(
                 .collect(),
             mode: grid
                 .mode
-                .map(|modes: Vec<bitvue_core::mv_overlay::BlockMode>| {
+                .map(|modes: Vec<bitvue_engine::mv_overlay::BlockMode>| {
                     modes.into_iter().map(|m| m as u8).collect()
                 }),
         });

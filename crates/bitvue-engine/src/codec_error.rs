@@ -180,8 +180,8 @@ impl CodecError {
 
 /// Result type alias for codec operations
 ///
-/// Use `codec_error::Result` or `bitvue_core::CodecResult` to avoid ambiguity
-/// with `bitvue_core::error::Result` (BitvueError).
+/// Use `codec_error::Result` or `bitvue_engine::CodecResult` to avoid ambiguity
+/// with `bitvue_engine::error::Result` (BitvueError).
 pub type CodecResult<T> = std::result::Result<T, CodecError>;
 
 #[cfg(test)]

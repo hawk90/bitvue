@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 
 use super::cache::{compute_cache_key, get_or_parse_coding_units};
 use super::parser::ParsedFrame;

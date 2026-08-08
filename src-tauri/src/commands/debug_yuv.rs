@@ -486,7 +486,7 @@ pub async fn find_first_diff_frame(state: State<'_, AppState>) -> Result<FirstDi
     // Obtain the number of decoded frames from core
     let total_decoded = {
         let core = state.core.lock().map_err(|e| e.to_string())?;
-        let stream = core.get_stream(bitvue_core::StreamId::A);
+        let stream = core.get_stream(bitvue_engine::StreamId::A);
         let s = stream.read();
         s.units.as_ref().map(|u| u.units.len()).unwrap_or(0)
     };

@@ -18,7 +18,7 @@ use bitvue_avc::overlay_extraction::{
     extract_mv_grid, extract_partition_grid, extract_qp_grid, Macroblock, MbType, MotionVector,
 };
 use bitvue_avc::sps::{ChromaFormat, ProfileIdc, Sps};
-use bitvue_core::partition_grid::PartitionType;
+use bitvue_engine::partition_grid::PartitionType;
 
 /// Create a minimal SPS for testing
 fn create_test_sps() -> Sps {

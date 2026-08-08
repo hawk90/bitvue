@@ -15,8 +15,8 @@
 
 use bitvue_avc::overlay_extraction;
 use bitvue_avc::sps::{ChromaFormat, ProfileIdc, Sps};
-use bitvue_core::partition_grid::PartitionType;
-use bitvue_core::BlockMode;
+use bitvue_engine::partition_grid::PartitionType;
+use bitvue_engine::BlockMode;
 
 fn create_minimal_sps() -> Sps {
     Sps {
@@ -439,9 +439,9 @@ fn test_motion_vector_range() {
 
 #[test]
 fn test_grid_dimensions() {
-    use bitvue_core::mv_overlay::MVGrid;
-    use bitvue_core::partition_grid::PartitionGrid;
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
+    use bitvue_engine::partition_grid::PartitionGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     let mb_width: u32 = 120;
     let mb_height: u32 = 68;
@@ -458,9 +458,10 @@ fn test_grid_dimensions() {
     );
     assert_eq!(qp_grid.grid_w, mb_width);
 
-    let mv_l0 = vec![bitvue_core::mv_overlay::MotionVector::ZERO; (mb_width * mb_height) as usize];
+    let mv_l0 =
+        vec![bitvue_engine::mv_overlay::MotionVector::ZERO; (mb_width * mb_height) as usize];
     let mv_l1 =
-        vec![bitvue_core::mv_overlay::MotionVector::MISSING; (mb_width * mb_height) as usize];
+        vec![bitvue_engine::mv_overlay::MotionVector::MISSING; (mb_width * mb_height) as usize];
     let mv_grid = MVGrid::new(pic_width, pic_height, 16, 16, mv_l0, mv_l1, None);
     assert_eq!(mv_grid.grid_w, mb_width);
 
@@ -470,9 +471,9 @@ fn test_grid_dimensions() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::mv_overlay::MVGrid;
-    use bitvue_core::partition_grid::PartitionGrid;
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::MVGrid;
+    use bitvue_engine::partition_grid::PartitionGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 16, 16, vec![], -1);

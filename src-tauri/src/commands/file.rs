@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::commands::{AppState, FileInfo};
 use bitvue_av1_codec::{parse_ivf_frames, parse_ivf_header, FrameType, ObuIterator, ObuType};
 use bitvue_avc::{avc_frames_to_unit_nodes, extract_annex_b_frames as extract_avc_annex_b_frames};
-use bitvue_core::{
+use bitvue_engine::{
     Command, ContainerFormat as CoreContainerFormat, ContainerModel, Event, StreamId, UnitModel,
 };
 use bitvue_formats::{detect_container_format, ContainerFormat};
@@ -203,7 +203,7 @@ pub async fn open_file(
     // Default to extension-based codec, may be updated for IVF files
     let mut final_codec = codec_from_ext.clone();
 
-    // Use bitvue-core to open the file
+    // Use bitvue-engine to open the file
     let (success, error) = {
         let core = state.core.lock().map_err(|e| e.to_string())?;
         let events = core.handle_command(Command::OpenFile {
@@ -431,7 +431,7 @@ pub struct StreamInfo {
     pub frame_count: usize,
 }
 
-fn unit_to_frame_data(u: &bitvue_core::UnitNode) -> crate::commands::FrameData {
+fn unit_to_frame_data(u: &bitvue_engine::UnitNode) -> crate::commands::FrameData {
     crate::commands::FrameData {
         frame_index: u.frame_index.unwrap_or(0),
         frame_type: u.frame_type.as_deref().unwrap_or("UNKNOWN").to_string(),
@@ -599,7 +599,7 @@ fn detect_codec_from_ivf_header(data: &[u8]) -> Option<String> {
 /// Convert video samples to UnitNode list — codec-aware, works for MP4, MKV, and other containers
 ///
 /// Generic over sample type so the same logic handles `Cow<[u8]>` (MP4) and `Vec<u8>` (MKV).
-fn samples_to_units<S: AsRef<[u8]>>(samples: Vec<S>, codec: &str) -> Vec<bitvue_core::UnitNode> {
+fn samples_to_units<S: AsRef<[u8]>>(samples: Vec<S>, codec: &str) -> Vec<bitvue_engine::UnitNode> {
     match codec {
         "avc" => samples
             .into_iter()
@@ -630,7 +630,7 @@ fn samples_to_units<S: AsRef<[u8]>>(samples: Vec<S>, codec: &str) -> Vec<bitvue_
 
 /// Convert VP9 video samples to UnitNode list
 #[allow(dead_code)]
-fn vp9_samples_to_units(samples: Vec<Vec<u8>>) -> Vec<bitvue_core::UnitNode> {
+fn vp9_samples_to_units(samples: Vec<Vec<u8>>) -> Vec<bitvue_engine::UnitNode> {
     let mut combined_data = Vec::new();
     for sample in &samples {
         combined_data.extend_from_slice(sample);
@@ -703,8 +703,8 @@ fn try_parse_sample<V, E: std::fmt::Debug>(
     idx: usize,
     sample_data: &[u8],
     extract: impl Fn(&[u8]) -> Result<Vec<V>, E>,
-    to_nodes: impl Fn(&[V]) -> Vec<bitvue_core::UnitNode>,
-) -> Option<bitvue_core::UnitNode> {
+    to_nodes: impl Fn(&[V]) -> Vec<bitvue_engine::UnitNode>,
+) -> Option<bitvue_engine::UnitNode> {
     // First try: direct Annex B parsing
     if let Ok(frames) = extract(sample_data) {
         if !frames.is_empty() {
@@ -778,7 +778,7 @@ fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
 }
 
 /// Parse a single AVC/H.264 sample; falls back to placeholder with best-effort frame type
-fn parse_avc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core::UnitNode {
+fn parse_avc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_engine::UnitNode {
     try_parse_sample(idx, sample_data, extract_avc_annex_b_frames, |f| {
         avc_frames_to_unit_nodes(f)
     })
@@ -788,7 +788,7 @@ fn parse_avc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core:
 }
 
 /// Parse a single HEVC/H.265 sample; falls back to placeholder with best-effort frame type
-fn parse_hevc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_core::UnitNode {
+fn parse_hevc_sample(idx: usize, codec: &str, sample_data: &[u8]) -> bitvue_engine::UnitNode {
     try_parse_sample(idx, sample_data, extract_hevc_annex_b_frames, |f| {
         hevc_frames_to_unit_nodes(f)
     })
@@ -803,9 +803,9 @@ fn create_placeholder_unit(
     codec: &str,
     sample_data: &[u8],
     frame_type: Option<std::sync::Arc<str>>,
-) -> bitvue_core::UnitNode {
-    bitvue_core::UnitNode {
-        key: bitvue_core::UnitKey {
+) -> bitvue_engine::UnitNode {
+    bitvue_engine::UnitNode {
+        key: bitvue_engine::UnitKey {
             stream: StreamId::A,
             unit_type: "FRAME".into(),
             offset: 0,
@@ -831,7 +831,7 @@ fn create_placeholder_unit(
 /// Parse IVF container format (AV1)
 ///
 /// Returns parsed unit nodes from IVF file, or None if parsing fails.
-fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_engine::UnitNode>> {
     log::info!("parse_ivf_container: Parsing IVF byte stream...");
     match parse_ivf_frames(file_data) {
         Ok((_header, frames)) => {
@@ -843,8 +843,8 @@ fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
                     .enumerate()
                     .map(|(idx, ivf_frame)| {
                         let frame_type = av1_frame_type_str(&ivf_frame.data);
-                        bitvue_core::UnitNode {
-                            key: bitvue_core::UnitKey {
+                        bitvue_engine::UnitNode {
+                            key: bitvue_engine::UnitKey {
                                 stream: StreamId::A,
                                 unit_type: "FRAME".into(),
                                 offset: 0,
@@ -880,7 +880,7 @@ fn parse_ivf_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
 ///
 /// Returns parsed unit nodes from Annex B file, or None if parsing fails.
 /// Tries H.264 first, then falls back to H.265/HEVC.
-fn parse_annex_b_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+fn parse_annex_b_container(file_data: &[u8]) -> Option<Vec<bitvue_engine::UnitNode>> {
     log::info!("parse_annex_b_container: Parsing Annex B byte stream...");
 
     // Try H.264 first
@@ -913,7 +913,7 @@ fn parse_annex_b_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode
 /// Returns parsed unit nodes from MP4 file, or None if parsing fails.
 /// Tries AV1, HEVC, then AVC in order.
 /// Provides detailed error messages for debugging malformed files.
-fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_engine::UnitNode>> {
     log::info!("parse_mp4_container: Attempting to extract video samples from MP4...");
 
     // SECURITY: Validate minimum file size for MP4 format
@@ -1021,7 +1021,7 @@ fn parse_mp4_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
 /// Returns parsed unit nodes from MKV/WebM file, or None if parsing fails.
 /// Tries AV1, HEVC, then AVC in order.
 /// Provides detailed error messages for debugging malformed files.
-fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_core::UnitNode>> {
+fn parse_mkv_container(file_data: &[u8]) -> Option<Vec<bitvue_engine::UnitNode>> {
     log::info!("parse_mkv_container: Attempting to extract video samples from Matroska...");
 
     // SECURITY: Validate minimum file size for MKV format

@@ -9,8 +9,8 @@
 //! - Resolution mismatch detection
 
 use crate::commands::AppState;
-use bitvue_core::frame_identity::FrameMetadata;
-use bitvue_core::{
+use bitvue_engine::frame_identity::FrameMetadata;
+use bitvue_engine::{
     AlignmentConfidence, AlignmentEngine, AlignmentMethod, CompareWorkspace, FrameIndexMap,
     FramePair, ResolutionInfo, SyncMode,
 };

@@ -4,7 +4,7 @@
 //! For CUDA acceleration, build with `vmaf-cuda` feature and ensure
 //! libvmaf was compiled with `-Denable_cuda=true`.
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 
 #[cfg(feature = "vmaf")]
 use libvmaf_rs::{model::VmafModel, picture::VmafPicture, vmaf::Vmaf};

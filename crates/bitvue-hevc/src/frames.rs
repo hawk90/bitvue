@@ -5,7 +5,7 @@
 use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
 use crate::parse_hevc;
 use crate::slice::SliceHeader;
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use serde::{Deserialize, Serialize};
 
 /// HEVC frame data extracted from the bitstream
@@ -601,9 +601,9 @@ fn build_minimal_sps(width: u32, height: u32) -> crate::sps::Sps {
     }
 }
 
-/// Convert HevcFrame to UnitNode format for bitvue-core
-pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core::UnitNode {
-    use bitvue_core::qp_extraction::QpData;
+/// Convert HevcFrame to UnitNode format for bitvue-engine
+pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_engine::UnitNode {
+    use bitvue_engine::qp_extraction::QpData;
 
     // Extract QP from slice header if available
     let qp_avg = frame
@@ -654,9 +654,9 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
         }
     });
 
-    bitvue_core::UnitNode {
-        key: bitvue_core::UnitKey {
-            stream: bitvue_core::StreamId::A,
+    bitvue_engine::UnitNode {
+        key: bitvue_engine::UnitKey {
+            stream: bitvue_engine::StreamId::A,
             unit_type: "FRAME".to_string(),
             offset: frame.offset as u64,
             size: frame.size,
@@ -683,7 +683,7 @@ pub fn hevc_frame_to_unit_node(frame: &HevcFrame, _stream_id: u8) -> bitvue_core
 }
 
 /// Convert multiple HevcFrames to UnitNode format
-pub fn hevc_frames_to_unit_nodes(frames: &[HevcFrame]) -> Vec<bitvue_core::UnitNode> {
+pub fn hevc_frames_to_unit_nodes(frames: &[HevcFrame]) -> Vec<bitvue_engine::UnitNode> {
     frames
         .iter()
         .map(|f| hevc_frame_to_unit_node(f, 0))

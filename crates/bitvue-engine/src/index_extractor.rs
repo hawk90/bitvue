@@ -650,8 +650,8 @@ impl IndexExtractor for H264IndexExtractor {
 }
 
 // NOTE: HEVC/H.265, VP9, and VVC/H.266 indexers are disabled due to cyclic dependency.
-// The codec crates (bitvue-hevc, bitvue-vp9, bitvue-vvc) depend on bitvue-core,
-// creating a circular dependency when bitvue-core tries to depend on them.
+// The codec crates (bitvue-hevc, bitvue-vp9, bitvue-vvc) depend on bitvue-engine,
+// creating a circular dependency when bitvue-engine tries to depend on them.
 // Use the individual codec crates directly in the calling code for HEVC/VP9/VVC parsing.
 
 /// Factory for creating codec-specific extractors

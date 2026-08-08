@@ -156,8 +156,8 @@ pub fn run(
 
 /// Recursively print a syntax tree node with indentation.
 fn print_syntax_tree(
-    model: &bitvue_core::SyntaxModel,
-    node: &bitvue_core::SyntaxNode,
+    model: &bitvue_engine::SyntaxModel,
+    node: &bitvue_engine::SyntaxNode,
     depth: usize,
 ) {
     let indent = "  ".repeat(depth);

@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   }
 
   // See sidecarClient.ts's module doc: this restarts the *process* on an unexpected crash, not
-  // bitvue_core::Core's in-memory state (no open streams/selection survive a crash — there's
+  // bitvue_engine::Core's in-memory state (no open streams/selection survive a crash — there's
   // nothing to replay them from). The renderer is told via 'bitvue:sidecar-restarted' below so
   // real UI can react (e.g. prompt the user to re-open their file); this shell doesn't do that
   // itself yet since there's no real UI to prompt.

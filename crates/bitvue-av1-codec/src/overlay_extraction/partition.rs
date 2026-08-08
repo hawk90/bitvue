@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use bitvue_core::{
+use bitvue_engine::{
     limits::{AV1_BLOCK_SIZE, MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     partition_grid::{PartitionGrid, PartitionType},
     BitvueError,
@@ -91,7 +91,7 @@ pub fn extract_partition_grid_from_parsed(
                 .sb_size
                 .saturating_sub(parsed.dimensions.height.saturating_sub(sb_pixel_y));
 
-            grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
+            grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
                 sb_pixel_x,
                 sb_pixel_y,
                 remaining_w,
@@ -180,7 +180,7 @@ fn parse_partition_trees_from_tile_data(
                 Ok((sb, _final_qp)) => {
                     // Convert partition tree to grid blocks
                     for cu in &sb.coding_units {
-                        grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
+                        grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
                             cu.x,
                             cu.y,
                             cu.width,
@@ -198,7 +198,7 @@ fn parse_partition_trees_from_tile_data(
                         sb_pixel_y,
                         e
                     );
-                    grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
+                    grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
                         sb_pixel_x,
                         sb_pixel_y,
                         remaining_w,

@@ -14,7 +14,7 @@
 //! Tests AvcError enum variants and From<CodecError> implementation
 
 use bitvue_avc::error::{AvcError, Result};
-use bitvue_core::codec_error::{Codec, CodecError};
+use bitvue_engine::codec_error::{Codec, CodecError};
 
 // ============================================================================
 // AvcError Variant Tests

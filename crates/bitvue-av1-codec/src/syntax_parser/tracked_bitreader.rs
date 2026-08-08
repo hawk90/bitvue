@@ -4,7 +4,7 @@
 //! file start, enabling precise bit range tracking for syntax tree generation.
 
 use crate::bitreader::BitReader as Av1BitReader;
-use bitvue_core::{types::BitRange, Result};
+use bitvue_engine::{types::BitRange, Result};
 
 /// A bit reader that tracks absolute bit positions from file start
 ///

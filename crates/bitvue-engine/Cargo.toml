@@ -1,5 +1,5 @@
 [package]
-name = "bitvue-core"
+name = "bitvue-engine"
 description = "Core types and traits for bitvue bitstream analyzer"
 version.workspace = true
 edition.workspace = true
@@ -24,7 +24,7 @@ tempfile = "3.8"
 [features]
 # Codec-specific indexer features (optional, for faster compilation)
 # NOTE: hevc-indexer, vp9-indexer, vvc-indexer are disabled due to cyclic dependency
-# The codec crates (bitvue-hevc, bitvue-vp9, bitvue-vvc) depend on bitvue-core
+# The codec crates (bitvue-hevc, bitvue-vp9, bitvue-vvc) depend on bitvue-engine
 # Use the individual codec crates directly for HEVC/VP9/VVC parsing
 default = []
 # hevc-indexer = []  # Disabled due to cyclic dependency

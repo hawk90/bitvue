@@ -1,7 +1,7 @@
 //! AV1 decoder wrapper using dav1d
 
 use crate::plane_utils;
-use bitvue_core::limits::{MAX_FILE_SIZE, MAX_FRAMES_PER_FILE, MAX_FRAME_SIZE};
+use bitvue_engine::limits::{MAX_FILE_SIZE, MAX_FRAMES_PER_FILE, MAX_FRAME_SIZE};
 use dav1d::{Decoder, PlanarImageComponent};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

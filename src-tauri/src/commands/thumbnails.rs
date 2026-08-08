@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::commands::frame::{decode_container_frame, decode_ivf_frame, decode_ivf_frames_batch};
 use crate::commands::AppState;
 use crate::services::create_svg_thumbnail;
-use bitvue_core::StreamId;
+use bitvue_engine::StreamId;
 use bitvue_formats::{detect_container_format, ContainerFormat};
 use image::{DynamicImage, ImageBuffer, RgbImage};
 

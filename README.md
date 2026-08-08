@@ -142,7 +142,7 @@ bitvue/
 ├── crates/
 │   ├── bitvue/               # Main library facade (re-exports all)
 │   ├── bitvue-codecs/        # Unified codec interface
-│   ├── bitvue-core/         # Core types, state, caching
+│   ├── bitvue-engine/         # Core types, state, caching
 │   ├── bitvue-formats/      # Container parsers (IVF, MP4, MKV, TS)
 │   ├── bitvue-decode/       # Decoder bindings (dav1d for AV1)
 │   ├── bitvue-metrics/      # Quality metrics (PSNR, SSIM, VMAF)

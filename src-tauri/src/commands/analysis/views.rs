@@ -4,7 +4,7 @@ use bitvue_av1_codec::advanced_features::{
     extract_cdef_data, extract_film_grain_data, extract_loop_restoration_data,
     extract_super_resolution_data,
 };
-use bitvue_core::StreamId;
+use bitvue_engine::StreamId;
 use serde::{Deserialize, Serialize};
 
 use super::{

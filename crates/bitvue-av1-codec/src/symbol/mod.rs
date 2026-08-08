@@ -34,7 +34,7 @@ pub mod cdf;
 pub use arithmetic::{update_cdf, ArithmeticDecoder};
 pub use cdf::{CdfContext, PartitionCdf};
 
-use bitvue_core::Result;
+use bitvue_engine::Result;
 
 /// Symbol decoder state
 ///

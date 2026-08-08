@@ -1,6 +1,6 @@
 //! AVS3 syntax tree construction for the Syntax Detail Panel.
 //!
-//! Returns plain `(key, value)` pairs rather than bitvue-core `UnitNode`,
+//! Returns plain `(key, value)` pairs rather than bitvue-engine `UnitNode`,
 //! keeping this crate free of the stream-state dependency.
 
 use crate::frames::Avs3Frame;

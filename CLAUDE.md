@@ -29,7 +29,7 @@ deletion. Someone with shell access should run (originals remain in `~/Downloads
 rm -rf docs/_import_v14/monster_pack docs/_import_v14/index_generator docs/_import_v14/task_schemas docs/_import_v14/parity_harness
 ```
 (`parity_harness/` included — its unread files turned out to be a manifest/schema/prompt-file set for a
-competitor-parity-matrix harness already implemented in `crates/bitvue-core/src/parity_harness/mod.rs`; nothing
+competitor-parity-matrix harness already implemented in `crates/bitvue-engine/src/parity_harness/mod.rs`; nothing
 left in it was undocumented.) Then delete `docs/_import_v14/` itself and remove its row from the doc-map table
 above.
 

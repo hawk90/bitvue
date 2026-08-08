@@ -20,7 +20,7 @@
 
 use crate::bool_decoder::{Vp9BoolDecoder, BIASED_SEG_TREE_PROBS, DEFAULT_SEG_TREE_PROBS};
 use crate::frame_header::{FrameHeader, FrameType};
-use bitvue_core::{
+use bitvue_engine::{
     limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},

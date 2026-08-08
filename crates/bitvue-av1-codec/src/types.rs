@@ -3,7 +3,7 @@
 //! This module provides newtype wrappers for domain-specific values
 //! to provide type safety and prevent mixing of incompatible values.
 
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 
 /// Quantization Parameter (QP)
 ///

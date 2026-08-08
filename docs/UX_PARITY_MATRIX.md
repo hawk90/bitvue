@@ -463,7 +463,7 @@ not yet built):
 ## 14. Interaction & edge-case rules (from `ux_rules/UI_INTERACTION_RULEBOOK.md` + `edge_cases/EDGE_CASES_AND_DEGRADE_BEHAVIOR.md`, mined 2026-07-31)
 
 New items beyond what §3-§5 (Mouse/Tooltip/Zoom, already mined) cover — cross-checked, `SelectionState`/`TemporalSelection`
-precedence in `crates/bitvue-core/src/selection.rs` already matches the rulebook's Block>Point>Range>Marker order.
+precedence in `crates/bitvue-engine/src/selection.rs` already matches the rulebook's Block>Point>Range>Marker order.
 
 | Rule | Detail |
 |---|---|
@@ -501,7 +501,7 @@ Checked but not distilled (no genuinely new content beyond what's above): `VIZ_D
 
 **2026-07-31 correction**: the `critical_contracts/*.md` files this note previously called "generic engineering
 rules, not concrete enough to fold in" turned out to be the opposite — they're implemented nearly verbatim as
-Rust modules in `crates/bitvue-core/src/` (module doc-comments cite the exact spec filenames: `selection.rs` ↔
+Rust modules in `crates/bitvue-engine/src/` (module doc-comments cite the exact spec filenames: `selection.rs` ↔
 `SELECTION_PRECEDENCE_RULES.md`, `coordinate_transform.rs` ↔ `COORDINATE_SYSTEM_CONTRACT.md`, etc.). They were
 UI/UX-irrelevant enough to leave out of *this* doc (engineering/backend contracts, not interaction/visual parity)
 but are now compactly tracked in `DEVELOPMENT_PHASES.md`'s "Architecture & Correctness Reference" appendix —

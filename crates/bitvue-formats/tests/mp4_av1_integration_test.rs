@@ -64,7 +64,7 @@ fn test_extract_av1_from_mp4_theater_square() {
             // The file might not be AV1 codec - that's okay for this test
             // We're testing that the function works correctly
             match e {
-                bitvue_core::BitvueError::InvalidData(msg) if msg.contains("Not an AV1 file") => {
+                bitvue_engine::BitvueError::InvalidData(msg) if msg.contains("Not an AV1 file") => {
                     println!("File is not AV1 codec - this is expected for test files");
                 }
                 _ => panic!("Unexpected error: {:?}", e),

@@ -17,7 +17,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core business logic
-bitvue-core = { path = "../bitvue-core" }
+bitvue-engine = { path = "../bitvue-engine" }
 bitvue-formats = { path = "../bitvue-formats" }
 bitvue-decode = { path = "../bitvue-decode" }
 bitvue-av1-codec = { path = "../bitvue-av1-codec" }

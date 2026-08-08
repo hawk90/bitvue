@@ -1,9 +1,9 @@
-//! Minimal integration tests for bitvue-core
+//! Minimal integration tests for bitvue-engine
 //!
 //! The actual tests are in src/tests/ (compiled as part of lib.rs)
 //! to avoid linker OOM from compiling 4500+ separate test binaries.
 
-use bitvue_core::*;
+use bitvue_engine::*;
 
 #[test]
 fn lib_can_be_imported() {

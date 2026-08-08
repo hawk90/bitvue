@@ -48,7 +48,7 @@
 //! # }
 //! ```
 
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 
 #[cfg(feature = "vmaf")]
 pub mod vmaf;

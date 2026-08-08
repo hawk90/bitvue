@@ -1,4 +1,4 @@
-//! Consolidated integration tests for bitvue-core
+//! Consolidated integration tests for bitvue-engine
 //!
 //! These tests were moved from tests/ to src/tests/ to solve
 //! linker OOM issues in CI (signal 7 [Bus error]).

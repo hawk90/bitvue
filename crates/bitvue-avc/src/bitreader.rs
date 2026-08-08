@@ -1,12 +1,12 @@
 //! Bit-level reader for H.264/AVC parsing.
 //!
-//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! This module provides a wrapper around the shared BitReader from bitvue_engine
 //! with AVC-specific error mapping and Exp-Golomb support.
 
-use bitvue_core::{BitReader as CoreBitReader, ExpGolombReader};
+use bitvue_engine::{BitReader as CoreBitReader, ExpGolombReader};
 
-// Re-export emulation prevention function from bitvue_core for convenience
-pub use bitvue_core::remove_emulation_prevention_bytes;
+// Re-export emulation prevention function from bitvue_engine for convenience
+pub use bitvue_engine::remove_emulation_prevention_bytes;
 
 use crate::error::{AvcError, Result};
 
@@ -85,7 +85,7 @@ impl<'a> BitReader<'a> {
 
     /// Read unsigned Exp-Golomb coded value.
     ///
-    /// This uses the ExpGolombReader trait from bitvue_core.
+    /// This uses the ExpGolombReader trait from bitvue_engine.
     pub fn read_ue(&mut self) -> Result<u32> {
         ExpGolombReader::read_ue(&mut self.inner).map_err(|_| AvcError::NotEnoughData {
             expected: 1,
@@ -95,7 +95,7 @@ impl<'a> BitReader<'a> {
 
     /// Read signed Exp-Golomb coded value.
     ///
-    /// This uses the ExpGolombReader trait from bitvue_core.
+    /// This uses the ExpGolombReader trait from bitvue_engine.
     pub fn read_se(&mut self) -> Result<i32> {
         ExpGolombReader::read_se(&mut self.inner).map_err(|_| AvcError::NotEnoughData {
             expected: 1,

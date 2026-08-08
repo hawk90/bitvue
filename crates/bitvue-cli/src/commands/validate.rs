@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use bitvue_av1_codec::{parse_all_obus_resilient, parse_ivf_frames, parse_ivf_header, ObuType};
-use bitvue_core::StreamId;
+use bitvue_engine::StreamId;
 use bitvue_formats::container::{detect_container_format, ContainerFormat};
 use std::path::PathBuf;
 

@@ -23,12 +23,12 @@ use std::sync::Arc;
 ///
 /// Usage:
 /// ```no_run
-/// use bitvue_core::ByteCache;
+/// use bitvue_engine::ByteCache;
 /// use std::path::Path;
 ///
 /// let cache = ByteCache::new(Path::new("video.ivf"), 256 * 1024, 256 * 1024 * 1024)?;
 /// let data = cache.read_range(0, 100)?;
-/// # Ok::<(), bitvue_core::BitvueError>(())
+/// # Ok::<(), bitvue_engine::BitvueError>(())
 /// ```
 pub struct ByteCache {
     /// Memory-mapped file (read-only)

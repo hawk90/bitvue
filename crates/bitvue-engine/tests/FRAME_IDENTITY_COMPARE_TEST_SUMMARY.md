@@ -1,7 +1,7 @@
 # Frame Identity Compare Test Summary
 
 ## Test File Created
-**Path**: `/Users/hawk/Workspaces/bitvue/crates/bitvue-core/tests/frame_identity_compare_av1_viz_core_009.rs`
+**Path**: `/Users/hawk/Workspaces/bitvue/crates/bitvue-engine/tests/frame_identity_compare_av1_viz_core_009.rs`
 
 **Deliverable**: cursor:FrameIdentity:Compare:AV1:viz_core  
 **Subtask**: S.T0-1.AV1.FrameIdentity.Compare.impl.viz_core.009

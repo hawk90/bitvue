@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use bitvue_core::{EventBus, LoggingObserver, SelectionChangedEvent};
+//! use bitvue_engine::{EventBus, LoggingObserver, SelectionChangedEvent};
 //!
 //! let mut bus = EventBus::new();
 //! bus.subscribe(Box::new(LoggingObserver::new()));

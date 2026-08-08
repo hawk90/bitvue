@@ -33,10 +33,10 @@ Phase 0-12 순서는 4월 스펙 당시 그대로다 — 이번 세션의 경쟁
 
 > 설계 확정 — 성능/구현 세부는 나중에 갱신. `electron-migration` 브랜치 생성됨(코드 변경은 아직 없음).
 
-### 제품 구조: bitvue-core 공유, 3-제품 분기
+### 제품 구조: bitvue-engine 공유, 3-제품 분기
 
 ```
-                    bitvue-core (공유 엔진)
+                    bitvue-engine (공유 엔진)
       codec/parser · bitstream model · metrics · diagnostics · compare · indexing
                                │
              ┌─────────────────┼─────────────────┐
@@ -55,8 +55,8 @@ Phase 0-12 순서는 4월 스펙 당시 그대로다 — 이번 세션의 경쟁
 **아키텍처 근거 (경계, 필수 준수):** Analyzer(파서 안전성·syntax 표현·codec state가 핵심 위험)와 Probe(프레임 정렬·색공간 정합성·중복 decode·메트릭 정확성이 핵심 위험)는 실패 모드가 다르다 — `UniversalFrameAnalysis` 같은 god-struct로 합치지 말 것. 이미 Phase 7.5에 명문화된 원칙([[project_analyzer_probe_separation]] 참조)이며 이번 확정은 이를 3-제품 구조로 확장한 것뿐, 새 원칙 아님.
 
 **검증됨 (제안이 아니라 이미 사실) — 단, 범위는 제한적으로 읽을 것:**
-- `bitvue-cli`의 Cargo 의존성은 `bitvue-core/formats/decode/{codec}/metrics`뿐, `src-tauri` 없음 — 이건 **라이브러리 모듈성**(core가 특정 UI 프레임워크 크레이트에 링크되지 않음)만 증명한다. GUI가 실제로 필요로 하는 incremental/viewport-scoped/cancelable query 형태(`get_syntax_range`, `get_hex_range` 등)까지 core가 이미 그 모양으로 노출하고 있다는 뜻은 아님 — CLI는 1회성 배치 호출이라 이 부분은 검증하지 못한다. "core-UI 분리는 됐다, interactive query API 설계는 아직 안 됐다"가 정확한 상태.
-- Cross-view multi-sync(Analyzer의 핵심 차별점)는 부분적으로만 이미 있음 — `crates/bitvue-core/src/selection.rs`의 `SelectionState`가 `stream_id`/`temporal`/`cursor`/`unit`/`syntax_node`/`bit_range`/`source_view` 7개 필드로 **Syntax tree·Player·Timeline·Hex** 4개 뷰의 tri/multi-sync는 커버한다. 하지만 **QP heatmap**(frame 단위라 `cursor`로 충분, 사실상 커버)을 빼면 **Ref Graph 노드**와 **Metrics 샘플** 선택을 나타내는 필드는 없음 — 7개 뷰 중 2개는 새 필드/설계가 필요하다. 참고로 이 struct 자체에 "God object refactoring note: intentionally cohesive"라는 방어적 주석이 이미 달려 있어 필드 추가 전에 한번 검토할 가치가 있음.
+- `bitvue-cli`의 Cargo 의존성은 `bitvue-engine/formats/decode/{codec}/metrics`뿐, `src-tauri` 없음 — 이건 **라이브러리 모듈성**(core가 특정 UI 프레임워크 크레이트에 링크되지 않음)만 증명한다. GUI가 실제로 필요로 하는 incremental/viewport-scoped/cancelable query 형태(`get_syntax_range`, `get_hex_range` 등)까지 core가 이미 그 모양으로 노출하고 있다는 뜻은 아님 — CLI는 1회성 배치 호출이라 이 부분은 검증하지 못한다. "core-UI 분리는 됐다, interactive query API 설계는 아직 안 됐다"가 정확한 상태.
+- Cross-view multi-sync(Analyzer의 핵심 차별점)는 부분적으로만 이미 있음 — `crates/bitvue-engine/src/selection.rs`의 `SelectionState`가 `stream_id`/`temporal`/`cursor`/`unit`/`syntax_node`/`bit_range`/`source_view` 7개 필드로 **Syntax tree·Player·Timeline·Hex** 4개 뷰의 tri/multi-sync는 커버한다. 하지만 **QP heatmap**(frame 단위라 `cursor`로 충분, 사실상 커버)을 빼면 **Ref Graph 노드**와 **Metrics 샘플** 선택을 나타내는 필드는 없음 — 7개 뷰 중 2개는 새 필드/설계가 필요하다. 참고로 이 struct 자체에 "God object refactoring note: intentionally cohesive"라는 방어적 주석이 이미 달려 있어 필드 추가 전에 한번 검토할 가치가 있음.
 
 ### 왜 Electron인가 — 결정 근거
 
@@ -104,7 +104,7 @@ Phase 0-12 순서는 4월 스펙 당시 그대로다 — 이번 세션의 경쟁
 이 선택이 안 끝나면 `bitvue-protocol`을 뭘로 설계할지도 정해지지 않으므로, 아래 크레이트 경계보다 먼저 결정할 것.
 
 **결정 (2026-08-08): sidecar.** Bitvue의 핵심 가치가 "malformed/비정상 비트스트림 파싱"이라 FFI 디코더(dav1d/vvdec/libvmaf)의 segfault 위험이 상시 존재(`docs/anti-patterns/PARSE.md`/`CODEC.md`가 이 카테고리를 통째로 다룰 정도). napi-rs는 이 경우 Electron 메인 프로세스 전체를 죽여 지금 Tauri 대비 개선이 없고, 위 결정 테이블의 "Rust crash 격리" 행 자체가 무효화됨. sidecar는 초기 구현 비용(프로세스 lifecycle, IPC 프레이밍)이 더 들지만 Bitvue 특성상 맞는 트레이드오프로 판단. VS Code language-server 패턴과 동일 구조.
-- Rust sidecar는 기존 `crates/bitvue-core`의 `AppState`(`Arc<Mutex<Core>>`)를 그대로 프로세스 경계로 옮기는 형태 — Electron main process가 spawn/monitor/restart를 담당하고, sidecar crash 시 상태(열린 스트림/커서 등)를 복구하는 정책은 별도 설계 필요(현재 미해결).
+- Rust sidecar는 기존 `crates/bitvue-engine`의 `AppState`(`Arc<Mutex<Core>>`)를 그대로 프로세스 경계로 옮기는 형태 — Electron main process가 spawn/monitor/restart를 담당하고, sidecar crash 시 상태(열린 스트림/커서 등)를 복구하는 정책은 별도 설계 필요(현재 미해결).
 - `bitvue-protocol`은 문자 그대로 wire schema로 확정 — stdio 또는 로컬 소켓 위에 binary framing(control-plane 메시지는 구조화, data-plane은 raw buffer).
 
 **핵심 원칙 — Electron IPC로 프레임을 통째로 보내지 않는다.** `src-tauri/commands`를 Electron IPC로 1:1 번역하면 프레임워크만 바뀌고 문제는 그대로 재발한다. 실제로 지금 이미 이 실패 패턴이 존재함(검증됨, `src-tauri/src/commands/frame.rs:28-43` `YUVFrameData`): Y/U/V 플레인을 base64 `String`으로 JSON 직렬화해 반환 — 정확히 "Rust frame → JSON 배열 → IPC → React state → Canvas" 안티패턴. Electron 전환은 이걸 프레임워크 무관하게 고칠 기회지, 자동으로 고쳐지는 게 아니다.
@@ -127,7 +127,7 @@ Electron 공식 API의 renderer↔main/utility process 간 `MessagePort` 통신�
 **크레이트/프로세스 경계 (전환 전 먼저 확정, 나중에 재배치하지 말 것):**
 
 ```
-bitvue-engine     순수 Rust 도메인 엔진   ≈ 기존 crates/bitvue-core + formats/decode/codecs/metrics (이미 존재, 명명만 정리)
+bitvue-engine     순수 Rust 도메인 엔진   ≈ 기존 crates/bitvue-engine + formats/decode/codecs/metrics (이미 존재, 명명만 정리)
 bitvue-protocol   request/event/error/binary schema   ← 신규, `crates/bitvue-protocol`로 구현됨(2026-08-08)
 bitvue-sidecar    engine을 감싸고 bitvue-protocol을 stdio로 말하는 독립 프로세스   ← 신규, 스켈레톤 구현됨(2026-08-08, 아래 참조)
 bitvue-desktop    Electron main + preload   ≈ 기존 src-tauri 대체
@@ -136,8 +136,8 @@ bitvue-ui         React renderer   ≈ 기존 frontend/
 
 **정정:** 원래 4-box 구성은 napi-rs(in-process) 브리지를 암묵적으로 가정한 그림이었음 — 그 경우 engine이 `bitvue-desktop` 안에서 직접 로드되니 별도 프로세스 개념이 필요 없었음. sidecar로 결정하면서 실제로는 5번째 조각이 필요해짐: engine을 감싸고 `bitvue-protocol`을 stdio로 말하는 **독립 Rust 바이너리**. `bitvue-sidecar`로 명명.
 
-**`bitvue-sidecar` 스켈레톤 + 첫 실커맨드 (2026-08-08):** `crates/bitvue-sidecar` — stdin에서 프레임을 읽고, `hello` 핸드셰이크에 `HelloResult`로 응답. **`open_stream`을 `bitvue_core::Core::handle_command(Command::OpenFile)`에 실제로 연결**(스켈레톤이 아니라 진짜 엔진 호출) — 나머지 메서드는 여전히 `WireErrorCode::Internal`. 검증: 유닛테스트 6개(핸드셰이크/미구현 메서드/stdin 종료/`open_stream` 성공·존재하지 않는 파일·잘못된 stream id) + **실제 컴파일된 바이너리에 raw stdio 바이트를 파이프로 흘려 `hello`→`open_stream` 두 요청을 연속으로 보내고 진짜 `ModelUpdated` 이벤트를 받는 end-to-end 스모크 테스트**까지 통과. `cargo check --workspace` 클린.
-- **발견한 것:** `bitvue_core::{Command, Event}`도 `Serialize`/`Deserialize`를 derive하지 않음(`BitvueError`와 같은 상황). 둘 다 내부 UI↔Core 버스 타입이라 wire 계약과 분리하는 게 맞다고 판단해, `bitvue-sidecar`에서 `open_stream` 전용 JSON params 구조체를 손으로 만들고 `Event`→JSON 매핑 함수(`event_to_json`)를 수동 작성함(`WireErrorCode` vs `BitvueError`와 동일한 디커플링 논리 재사용). 메서드가 늘어날수록 이 수동 매핑이 반복 작업이 될 것 — 나중에 패턴이 명확해지면 매크로화 고려.
+**`bitvue-sidecar` 스켈레톤 + 첫 실커맨드 (2026-08-08):** `crates/bitvue-sidecar` — stdin에서 프레임을 읽고, `hello` 핸드셰이크에 `HelloResult`로 응답. **`open_stream`을 `bitvue_engine::Core::handle_command(Command::OpenFile)`에 실제로 연결**(스켈레톤이 아니라 진짜 엔진 호출) — 나머지 메서드는 여전히 `WireErrorCode::Internal`. 검증: 유닛테스트 6개(핸드셰이크/미구현 메서드/stdin 종료/`open_stream` 성공·존재하지 않는 파일·잘못된 stream id) + **실제 컴파일된 바이너리에 raw stdio 바이트를 파이프로 흘려 `hello`→`open_stream` 두 요청을 연속으로 보내고 진짜 `ModelUpdated` 이벤트를 받는 end-to-end 스모크 테스트**까지 통과. `cargo check --workspace` 클린.
+- **발견한 것:** `bitvue_engine::{Command, Event}`도 `Serialize`/`Deserialize`를 derive하지 않음(`BitvueError`와 같은 상황). 둘 다 내부 UI↔Core 버스 타입이라 wire 계약과 분리하는 게 맞다고 판단해, `bitvue-sidecar`에서 `open_stream` 전용 JSON params 구조체를 손으로 만들고 `Event`→JSON 매핑 함수(`event_to_json`)를 수동 작성함(`WireErrorCode` vs `BitvueError`와 동일한 디커플링 논리 재사용). 메서드가 늘어날수록 이 수동 매핑이 반복 작업이 될 것 — 나중에 패턴이 명확해지면 매크로화 고려.
 - **설계상 확인된 것(버그 아님):** `Core::handle_command`는 실패도 `Result`가 아니라 `Event`(`DiagnosticAdded`, severity Error)로 표현함 — 즉 존재하지 않는 파일을 열어도 wire 레벨 `Response`는 `ok:true`이고 events 배열 안에 에러 진단이 담김. `bitvue-sidecar`가 이걸 protocol-level 에러로 바꾸지 않고 그대로 통과시키는 게 맞음 — Core 자체가 성공/실패를 RPC 레벨에서 구분하지 않는 설계이므로 wire 레이어가 없는 구분을 만들어내면 안 됨.
 
 **`bitvue-sidecar` 세 커맨드 추가 + 첫 데이터플레인 증명 (2026-08-08):**
@@ -158,7 +158,7 @@ bitvue-ui         React renderer   ≈ 기존 frontend/
 
 ### `bitvue-protocol` wire schema v0 (2026-08-08, sidecar 결정에 따라 확정, 크레이트로 구현됨)
 
-**상태:** 설계만이 아니라 `crates/bitvue-protocol`로 실제 존재 — `FrameHeader`/`Request`/`Response`/`WireError`/`WireErrorCode`/`CancelParams`/`HelloParams`/`HelloResult` 구현 + 단위테스트 3개, `cargo test -p bitvue-protocol` 통과, 워크스페이스 전체 `cargo check` 정상. `bitvue-core`에 의존하지 않음(의도적 — 아래 참조).
+**상태:** 설계만이 아니라 `crates/bitvue-protocol`로 실제 존재 — `FrameHeader`/`Request`/`Response`/`WireError`/`WireErrorCode`/`CancelParams`/`HelloParams`/`HelloResult` 구현 + 단위테스트 3개, `cargo test -p bitvue-protocol` 통과, 워크스페이스 전체 `cargo check` 정상. `bitvue-engine`에 의존하지 않음(의도적 — 아래 참조).
 
 **전송:** 단일 stdio duplex 채널(LSP와 동일 패턴). `stdin`(Electron main→sidecar)/`stdout`(sidecar→main)을 프로토콜 프레임 전용으로 예약, **`stderr`는 로그/패닉 메시지 전용**(바이너리 프로토콜과 섞이면 크래시 진단이 불가능해지므로 분리 필수). 소켓 대신 stdio를 쓰는 이유: 포트/권한 관리가 필요 없고, Electron `child_process.spawn`이 파이프를 기본 제공하며, OS 파이프는 대용량(4K YUV 프레임 ~12MB) 벌크 전송에도 문제없음.
 
@@ -187,7 +187,7 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 **버전 핸드셰이크:** sidecar 기동 직후 main이 `{"method":"hello","params":{"client_version":"..."}}` 전송, sidecar가 `{"result":{"protocol_version":"0.1.0","capabilities":[...]}}`로 응답. 버전 불일치 시 조용히 깨진 프레임을 만드는 대신 기동 단계에서 바로 실패시키기 위함.
 
-**에러 타입:** 기존 `crates/bitvue-core/src/error.rs`의 `BitvueError`는 `thiserror`만 derive하고 `Serialize`가 없음(확인함, `grep derive` 결과 `#[derive(Error, Debug)]`뿐) — 지금 Tauri 커맨드들도 이미 `Result<T, String>`으로 문자열화해서 넘기는 중이라 이 문제를 우회만 해왔음. `bitvue-protocol`은 `BitvueError` variant마다 안정적인 `code`(`"PARSE_ERROR"`/`"UNSUPPORTED_CODEC"`/... 위 example 참조)를 매핑하는 별도 wire-error enum을 새로 정의해야 함 — `BitvueError`에 `Serialize`를 직접 derive하는 것보다, 크로스 언어 계약을 `BitvueError`의 내부 변경(필드 추가/제거)으로부터 격리하기 위해 별도 매핑이 낫다.
+**에러 타입:** 기존 `crates/bitvue-engine/src/error.rs`의 `BitvueError`는 `thiserror`만 derive하고 `Serialize`가 없음(확인함, `grep derive` 결과 `#[derive(Error, Debug)]`뿐) — 지금 Tauri 커맨드들도 이미 `Result<T, String>`으로 문자열화해서 넘기는 중이라 이 문제를 우회만 해왔음. `bitvue-protocol`은 `BitvueError` variant마다 안정적인 `code`(`"PARSE_ERROR"`/`"UNSUPPORTED_CODEC"`/... 위 example 참조)를 매핑하는 별도 wire-error enum을 새로 정의해야 함 — `BitvueError`에 `Serialize`를 직접 derive하는 것보다, 크로스 언어 계약을 `BitvueError`의 내부 변경(필드 추가/제거)으로부터 격리하기 위해 별도 매핑이 낫다.
 
 **미해결로 남기는 것(지금 안 막힘, 설계 시점에만 명시):** sidecar 프로세스가 죽었을 때 이미 날아간 미완료 request들의 재시도/타임아웃 정책, frame별 progressive/streaming 응답(하나의 `get_frame_analysis`가 여러 data 프레임을 순차로 낼 수 있는지) 여부.
 
@@ -220,7 +220,7 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 - `src/sidecarClient.ts` — `SidecarClient extends EventEmitter`. `request(method, params)`가 `correlation_id`를 키로 pending Promise map에 등록하고 매칭되는 `Control` 응답이 오면 resolve(`ok:true`)/reject(`SidecarRequestError`, `ok:false`)함. `Data`/`Event` 프레임은 응답 흐름에 안 걸리므로 `'data'`/`'event'` EventEmitter 이벤트로 노출(요청-응답과 1:1 대응하지 않는 프레임까지 `request()`가 억지로 반환값에 끼워넣지 않기 위한 선택). 프로세스가 죽으면(`exit`/`error`) pending Promise 전부를 `SidecarExitedError`로 reject — 무한 대기 방지. `stderr`는 줄 단위로 `console.error('[bitvue-sidecar] ...')`.
 - `hello(clientVersion)` 편의 메서드 — `protocol_version` 불일치는 v0 시점엔 `console.error` 경고만(하드 실패시키지 않음, 지금은 클라이언트/sidecar가 같은 리포에서 함께 빌드되는 개발 단계라 조기 강제가 실익이 적다고 판단 — 페어가 독립 버전으로 배포되는 시점에 재검토).
 
-**검증됨(실제 컴파일된 바이너리 기준, mock 아님):** `npx vitest run` — 유닛테스트 11개(`protocol.test.ts`, 프레이밍/조각화 전담) + 통합테스트 3개(`sidecarClient.integration.test.ts`, `cargo build -p bitvue-sidecar`로 만든 실제 바이너리를 `child_process.spawn`으로 띄움) 총 14개 전부 통과, `npx tsc --noEmit` 클린. 이 검증은 최초 작성 워크트리와 실제 크레이트가 있는 공유 체크아웃 양쪽에서 각각 확인함(아래 참조). 통합테스트 3개: (1) `hello()` → `{protocol_version: "0.1.0", capabilities: []}` 실수신 확인, (2) 임시파일로 `open_stream` 호출 → 실제 `bitvue_core::Core`가 발생시킨 `ModelUpdated` 이벤트(`crates/bitvue-sidecar`의 `open_stream_success_emits_model_updated` 테스트와 동일 픽스처) 수신 확인, (3) 요청 대기 중 sidecar 프로세스를 강제 종료했을 때 pending Promise가 멈추지 않고 reject되는지 확인.
+**검증됨(실제 컴파일된 바이너리 기준, mock 아님):** `npx vitest run` — 유닛테스트 11개(`protocol.test.ts`, 프레이밍/조각화 전담) + 통합테스트 3개(`sidecarClient.integration.test.ts`, `cargo build -p bitvue-sidecar`로 만든 실제 바이너리를 `child_process.spawn`으로 띄움) 총 14개 전부 통과, `npx tsc --noEmit` 클린. 이 검증은 최초 작성 워크트리와 실제 크레이트가 있는 공유 체크아웃 양쪽에서 각각 확인함(아래 참조). 통합테스트 3개: (1) `hello()` → `{protocol_version: "0.1.0", capabilities: []}` 실수신 확인, (2) 임시파일로 `open_stream` 호출 → 실제 `bitvue_engine::Core`가 발생시킨 `ModelUpdated` 이벤트(`crates/bitvue-sidecar`의 `open_stream_success_emits_model_updated` 테스트와 동일 픽스처) 수신 확인, (3) 요청 대기 중 sidecar 프로세스를 강제 종료했을 때 pending Promise가 멈추지 않고 reject되는지 확인.
 
 **통합 경과:** 이 절은 원래 `bitvue-protocol`/`bitvue-sidecar`가 없는 별도 워크트리에서 작성되어 `BITVUE_SIDECAR_BIN` 환경변수로 바이너리 경로를 임시 지정해 검증했음(기본 경로 `<repoRoot>/target/debug/bitvue-sidecar`는 그 워크트리에 없었기 때문). 이후 소스만(`node_modules`/lockfile 제외) 이 체크아웃(`crates/`와 같은 위치, `electron-migration`)으로 옮기고 `npm install` + `cargo build -p bitvue-sidecar` + `npx vitest run`을 여기서 다시 실행 — **환경변수 없이 기본 경로만으로 14개 테스트 전부 재확인 통과**, `npx tsc --noEmit` 클린.
 
@@ -243,7 +243,7 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 ### `bitvue-sidecar` 동시성 모델 (2026-08-08)
 
-**결정: OS 스레드(요청당 1개), async 런타임(tokio) 아님.** `bitvue_core::Core`의 작업이 I/O 대기가 아니라 CPU-bound 동기 Rust라서 스레드가 자연스러운 선택 — tokio를 도입해도 결국 모든 `Core` 호출을 `spawn_blocking`으로 감싸야 해서 얻는 게 없음.
+**결정: OS 스레드(요청당 1개), async 런타임(tokio) 아님.** `bitvue_engine::Core`의 작업이 I/O 대기가 아니라 CPU-bound 동기 Rust라서 스레드가 자연스러운 선택 — tokio를 도입해도 결국 모든 `Core` 호출을 `spawn_blocking`으로 감싸야 해서 얻는 게 없음.
 
 **문제였던 것:** 기존 구조는 stdin 리더 루프가 요청 하나를 완전히 처리(`dispatch` 동기 호출)한 뒤에야 다음 프레임을 읽었음 — 즉 미래에 느린 커맨드(디코딩 등)가 생기면 그 동안 `hello`/`select_frame` 같은 가벼운 요청도 전부 막힘. `cancel_request`도 취소할 "진행 중인 작업" 개념 자체가 없어 구현 불가능했음.
 
@@ -261,17 +261,17 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 ### `bitvue-sidecar` 커맨드 폭 확장 — multi-sync 5종, 그리고 "더 이상 공짜 커맨드가 없음" 확인 (2026-08-08)
 
-**추가:** `select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block` — `select_frame`과 같은 "Selection commands (Tri-sync)" 그룹에 속한 `bitvue_core::Command` variant를 그대로 매핑. **새 엔진 작업 없음** — `Core::handle_command`가 이미 넷 다 처리하고 `Event::SelectionUpdated`를 반환함(`select_bit_range`는 Core 내부에서 알아서 가장 가까운 syntax node를 찾아 매칭까지 해줌, `select_spatial_block`은 현재 커서의 frame_index를 Core가 알아서 채워줌 — sidecar가 그 로직을 중복 구현할 필요 없음). 파라미터 타입은 `bitvue_core::{UnitKey, BitRange, SpatialBlock}` 그대로: `UnitKey{stream,unit_type:String,offset:u64,size:usize}`, `BitRange{start_bit:u64,end_bit:u64}`, `SpatialBlock{x:u32,y:u32,w:u32,h:u32}`.
+**추가:** `select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block` — `select_frame`과 같은 "Selection commands (Tri-sync)" 그룹에 속한 `bitvue_engine::Command` variant를 그대로 매핑. **새 엔진 작업 없음** — `Core::handle_command`가 이미 넷 다 처리하고 `Event::SelectionUpdated`를 반환함(`select_bit_range`는 Core 내부에서 알아서 가장 가까운 syntax node를 찾아 매칭까지 해줌, `select_spatial_block`은 현재 커서의 frame_index를 Core가 알아서 채워줌 — sidecar가 그 로직을 중복 구현할 필요 없음). 파라미터 타입은 `bitvue_engine::{UnitKey, BitRange, SpatialBlock}` 그대로: `UnitKey{stream,unit_type:String,offset:u64,size:usize}`, `BitRange{start_bit:u64,end_bit:u64}`, `SpatialBlock{x:u32,y:u32,w:u32,h:u32}`.
 
-이걸로 `SelectionState`(`stream_id/temporal/cursor/unit/syntax_node/bit_range/source_view`)가 커버하는 7개 multi-sync 뷰 중 Ref Graph·Metrics를 뺀 5개(Syntax tree/Player/Timeline/Hex/QP-heatmap) 전부에 대응하는 wire 커맨드가 존재하게 됨(`select_frame`=Player/Timeline, `select_unit`=구조 단위, `select_syntax`=Syntax tree, `select_bit_range`=Hex, `select_spatial_block`=QP/MV overlay). 나머지 2개는 여전히 `SelectionState` 필드 자체가 없어서(이전 critical-review 기록 참조) sidecar 작업이 아니라 `bitvue-core` 설계 작업으로 남아있음.
+이걸로 `SelectionState`(`stream_id/temporal/cursor/unit/syntax_node/bit_range/source_view`)가 커버하는 7개 multi-sync 뷰 중 Ref Graph·Metrics를 뺀 5개(Syntax tree/Player/Timeline/Hex/QP-heatmap) 전부에 대응하는 wire 커맨드가 존재하게 됨(`select_frame`=Player/Timeline, `select_unit`=구조 단위, `select_syntax`=Syntax tree, `select_bit_range`=Hex, `select_spatial_block`=QP/MV overlay). 나머지 2개는 여전히 `SelectionState` 필드 자체가 없어서(이전 critical-review 기록 참조) sidecar 작업이 아니라 `bitvue-engine` 설계 작업으로 남아있음.
 
-**중요하게 확인한 것 — `Core::handle_command`의 실제 구현 범위를 `core.rs` grep으로 재확인:** `Command` enum에는 `JumpToOffset`/`JumpToFrame`/`PlayPause`/`StepForward`/`StepBackward`/`ToggleOverlay`/`SetOverlayOpacity`/`SetPlayerMode`/`SetWorkspaceMode`/`SetSyncMode`/`ExportCsv`/`ExportBitstream`/`Export`/`RunFullAnalysis`까지 훨씬 많은 variant가 정의돼 있지만, **실제로 구현된 건 `OpenFile`/`CloseFile`/`SelectFrame`/`SelectUnit`/`SelectSyntax`/`SelectBitRange`/`SelectSpatialBlock` 7개뿐** — 나머지는 전부 `_ => { tracing::debug!(...); vec![] }` catch-all no-op으로 떨어짐. 이 7개를 이번 세션에 전부 sidecar에 연결 완료(`open_stream`/`close_stream`/`select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`) — **`bitvue-sidecar` 쪽에서 "더 연결하기만 하면 되는" 공짜 커맨드는 더 이상 없음.** 다음 커맨드 확장은 먼저 `bitvue-core`에 실제 핸들러를 구현하는 엔진 작업이 선행돼야 함 — sidecar 쪽 와이어링 패턴 자체는 이미 9번 검증됐으니 반복 위험은 낮지만, 순서가 바뀌었다는 걸 다음 세션이 헷갈리지 않게 여기 명시.
+**중요하게 확인한 것 — `Core::handle_command`의 실제 구현 범위를 `core.rs` grep으로 재확인:** `Command` enum에는 `JumpToOffset`/`JumpToFrame`/`PlayPause`/`StepForward`/`StepBackward`/`ToggleOverlay`/`SetOverlayOpacity`/`SetPlayerMode`/`SetWorkspaceMode`/`SetSyncMode`/`ExportCsv`/`ExportBitstream`/`Export`/`RunFullAnalysis`까지 훨씬 많은 variant가 정의돼 있지만, **실제로 구현된 건 `OpenFile`/`CloseFile`/`SelectFrame`/`SelectUnit`/`SelectSyntax`/`SelectBitRange`/`SelectSpatialBlock` 7개뿐** — 나머지는 전부 `_ => { tracing::debug!(...); vec![] }` catch-all no-op으로 떨어짐. 이 7개를 이번 세션에 전부 sidecar에 연결 완료(`open_stream`/`close_stream`/`select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`) — **`bitvue-sidecar` 쪽에서 "더 연결하기만 하면 되는" 공짜 커맨드는 더 이상 없음.** 다음 커맨드 확장은 먼저 `bitvue-engine`에 실제 핸들러를 구현하는 엔진 작업이 선행돼야 함 — sidecar 쪽 와이어링 패턴 자체는 이미 9번 검증됐으니 반복 위험은 낮지만, 순서가 바뀌었다는 걸 다음 세션이 헷갈리지 않게 여기 명시.
 
 **검증:** `cargo test -p bitvue-sidecar` 유닛 27개(select_unit/select_syntax/select_bit_range/select_spatial_block 각 성공+잘못된 stream id 케이스) + 통합 2개, 전부 통과. 실제 컴파일된 바이너리에 `hello`→`select_unit`→`select_syntax`→`select_bit_range` 배치 파이프 + `select_spatial_block` 단독 요청 둘 다 검증(서브프로세스, mock 아님) — 전부 `ok:true` + 올바른 `SelectionUpdated`. `cargo fmt --check`/`cargo check --workspace` 클린.
 
 ### `bitvue-sidecar` 크래시 복구 정책 (2026-08-08)
 
-**결정: sidecar "프로세스"만 재시작, `bitvue_core::Core`의 인메모리 상태는 복구 안 함.** `Core`가 프로세스 안에만 존재하고 영속화가 전혀 없어서, 크래시 시점에 열려있던 스트림/선택 상태를 재구성할 방법 자체가 없음(재생할 커맨드 로그도 없음) — 그래서 "프로세스 재시작"과 "애플리케이션 상태 복구"를 명확히 분리: 후자는 이번 범위 밖, 필요하면 caller(`bitvue-desktop`)가 `'restarted'` 이벤트를 받고 직접 `open_stream` 등을 재발급해야 함. 크래시 시점에 대기 중이던 요청은 자동 재시도하지 않고 그냥 reject함(`SidecarExitedError`) — 크래시 전에 이미 부분적으로 상태를 바꿨을 수도 있는 요청을 맹목적으로 재시도하는 게 안전하지 않다고 판단.
+**결정: sidecar "프로세스"만 재시작, `bitvue_engine::Core`의 인메모리 상태는 복구 안 함.** `Core`가 프로세스 안에만 존재하고 영속화가 전혀 없어서, 크래시 시점에 열려있던 스트림/선택 상태를 재구성할 방법 자체가 없음(재생할 커맨드 로그도 없음) — 그래서 "프로세스 재시작"과 "애플리케이션 상태 복구"를 명확히 분리: 후자는 이번 범위 밖, 필요하면 caller(`bitvue-desktop`)가 `'restarted'` 이벤트를 받고 직접 `open_stream` 등을 재발급해야 함. 크래시 시점에 대기 중이던 요청은 자동 재시도하지 않고 그냥 reject함(`SidecarExitedError`) — 크래시 전에 이미 부분적으로 상태를 바꿨을 수도 있는 요청을 맹목적으로 재시도하는 게 안전하지 않다고 판단.
 
 **구현 위치:** `bitvue-desktop/src/sidecarClient.ts`(Rust 쪽 변경 없음 — sidecar 프로세스 자체는 그냥 죽고 다시 뜨는 것뿐, 프로토콜/엔진 변경 불필요). `SidecarClientOptions.restart`(옵트인, 기본 비활성 — 기존 테스트/호출자 동작 안 바뀜)로 `{maxAttempts, backoffMs}` 지정. `'exit'` 핸들러가 (a) `close()`로 인한 의도적 종료가 아니고 (b) 재시도 횟수가 안 찼으면 `backoffMs` 뒤에 동일 binaryPath/args로 재spawn, `hello()`로 새 프로세스가 실제로 응답하는지까지 확인한 뒤 `'restarted'` emit. `'restarting'`/`'restarted'`/`'restart_failed'` 이벤트 추가. `bitvue-desktop/electron/main.ts`가 `restart:{maxAttempts:3,backoffMs:500}`로 활성화하고, `'restarted'`를 `preload.cjs`의 새 `window.bitvue.onSidecarRestarted(cb)` 채널로 렌더러까지 전달(실제 UI가 아직 없어서 지금은 로그만 찍지만 채널 자체는 연결해둠).
 
@@ -291,7 +291,7 @@ Probe보다 CLI를 먼저 하는 이유: Probe부터 벌리면 범위가 너무 
 
 ### 미해결 — Probe→Analyzer 핸드오프
 
-Probe에서 이상 구간 클릭 → "Analyze in Bitvue" → Analyzer가 해당 시점의 bitstream/frame을 염. Probe와 Analyzer가 별개 Electron 앱/윈도우일 경우 이를 위한 명시적 계약(딥링크 프로토콜 또는 로컬 소켓으로 stream+frame+timestamp 전달)이 필요 — `bitvue-core` 공유만으로는 풀리지 않는 유일한 조각. Probe phase 착수 시 설계, 지금은 블로커 아님.
+Probe에서 이상 구간 클릭 → "Analyze in Bitvue" → Analyzer가 해당 시점의 bitstream/frame을 염. Probe와 Analyzer가 별개 Electron 앱/윈도우일 경우 이를 위한 명시적 계약(딥링크 프로토콜 또는 로컬 소켓으로 stream+frame+timestamp 전달)이 필요 — `bitvue-engine` 공유만으로는 풀리지 않는 유일한 조각. Probe phase 착수 시 설계, 지금은 블로커 아님.
 
 **한 줄 정의:** Bitvue = 영상 코덱을 위한 observability & analysis platform. Analyzer로 원인을 파고들고, Probe로 문제를 발견하고, CLI로 자동화한다.
 
@@ -636,7 +636,7 @@ struct UniversalFrameAnalysis {
 ```
 공유해야 하는 것은 **미디어 입력과 실행 인프라**(Demuxer, Decoder abstraction, PixelFormat, ColorMetadata,
 FrameBuffer/Pool, Timeline, Job scheduler, Cache budget)이지 **분석 결과 도메인 자체가 아니다**. 이미 존재하는
-`crates/bitvue-core/src/{compare,alignment,...}.rs`가 비트스트림 분석 코드와 섞이지 않고 독립 모듈로 남아있는지
+`crates/bitvue-engine/src/{compare,alignment,...}.rs`가 비트스트림 분석 코드와 섞이지 않고 독립 모듈로 남아있는지
 구현 착수 전 확인할 것. `docs/anti-patterns/`(작성 중)의 카탈로그도 이 경계를 그대로 따라 BIT-*(Analyzer 전용)와
 VQ-*(Probe 전용)를 분리된 하위 카탈로그로 유지한다 — 문서 구조와 실제 코드 구조가 어긋나면 이 원칙이 무의미해짐.
 
@@ -652,7 +652,7 @@ VQ-*(Probe 전용)를 분리된 하위 카탈로그로 유지한다 — 문서 �
 **Parity 검증:** `VQA_PARITY_SPEC_V3.md` §4.9 참조.
 
 **현황 정정 (2026-07-31, `docs/_import_v14` 마이닝 중 grep으로 발견):** `PARITY_CHECKLIST.md` Layer 6은
-CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 구현되어 있음 — `crates/bitvue-core/src/{compare,alignment,compare_cache,compare_evidence,compare_strategy}.rs`,
+CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 구현되어 있음 — `crates/bitvue-engine/src/{compare,alignment,compare_cache,compare_evidence,compare_strategy}.rs`,
 `src-tauri/src/commands/compare.rs`(`create_compare_workspace`/`get_aligned_frame`/`set_sync_mode`/`set_manual_offset`/`reset_offset`,
 전부 `lib.rs`에 등록됨), `frontend/components/CompareWorkspace/CompareWorkspace.tsx`(side-by-side 렌더링 확인)가
 이미 존재. Split(H/V)·Subtraction/Temperature 뷰는 미확인. `PARITY_CHECKLIST.md` Layer 6에 `[-]`로 정정함 — 아래 참조.
@@ -668,7 +668,7 @@ CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 �
 | 인터랙션 | hover 시 픽셀/블록 diff 값 표시; 클릭 시 툴팁 고정(ESC로 해제) |
 | 승인 테스트 | diff=0 영역 완전 투명 / opacity만 바뀌면 캐시 재사용 / 모드 전환 시에만 텍스처 재생성 |
 
-이미 존재하는 `crates/bitvue-core/src/diff_heatmap.rs`(YUVDiff §4.7용)를 Compare A/B 컨텍스트로 재사용 가능한지 확인 필요 —
+이미 존재하는 `crates/bitvue-engine/src/diff_heatmap.rs`(YUVDiff §4.7용)를 Compare A/B 컨텍스트로 재사용 가능한지 확인 필요 —
 현재 diff_heatmap.rs가 단일 스트림 YUVDiff용인지 A/B 두 스트림용인지 구현 시 확인.
 
 **예상 소요:** 중급 3~4주
@@ -877,17 +877,17 @@ get_vp9_prob_data(frame: number) -> ProbabilityData
 
 ## Appendix: Architecture & Correctness Reference (from `docs/_import_v14` critical_contracts/architecture pack, 2026-07-31)
 
-**중요 발견 — 이 규칙들은 "앞으로 구현할 로드맵"이 아니라 이미 `crates/bitvue-core/src/`에 대부분 코드로 구현되어 있음.**
+**중요 발견 — 이 규칙들은 "앞으로 구현할 로드맵"이 아니라 이미 `crates/bitvue-engine/src/`에 대부분 코드로 구현되어 있음.**
 해당 크레이트의 모듈 주석이 이 v14 pack의 정확한 파일명을 인용한다 (예: `selection.rs`가 `SELECTION_PRECEDENCE_RULES.md`를,
 `command.rs`/`event.rs`가 `ARCHITECTURE.md §3.2/§3.3`을, `diagnostics.rs`가 `ERROR_MODEL.md`를, `coordinate_transform.rs`가
 `COORDINATE_SYSTEM_CONTRACT.md`를, `lockcheck.rs`가 `V12_LOCKCHECK_SPEC.md`를 인용) — 즉 이 spec pack의 이전 버전(v9~v13)이
-과거 세션에서 이미 `bitvue-core`로 구현되었다는 뜻. `crates/bitvue-core/src/lib.rs`의 `pub mod` 목록은 T0-1~T10-1 단계 태그를
+과거 세션에서 이미 `bitvue-engine`로 구현되었다는 뜻. `crates/bitvue-engine/src/lib.rs`의 `pub mod` 목록은 T0-1~T10-1 단계 태그를
 달고 있어 순차 구현 이력이 그대로 남아 있다. 아래 표는 그 규칙 자체(유지보수 시 지켜야 할 계약)를 압축한 것이지 신규 작업이 아님 —
 새 오버레이/패널 추가 시 이 표를 어기지 않았는지 확인하는 용도로 사용.
 
 | 계약 | 핵심 규칙 | 구현 위치(코드) |
 |---|---|---|
-| Frame Identity | Primary timeline index = Display order(PTS). decode_idx는 내부 전용. PTS/DTS mismatch는 전용 band로만 시각화 | `crates/bitvue-core/src/frame_identity.rs`, `frame_identity_test.rs` |
+| Frame Identity | Primary timeline index = Display order(PTS). decode_idx는 내부 전용. PTS/DTS mismatch는 전용 band로만 시각화 | `crates/bitvue-engine/src/frame_identity.rs`, `frame_identity_test.rs` |
 | Coordinate System | 파이프라인 고정: `screen_px → video_rect_norm(0..1) → coded_px → block_idx`. 모든 오버레이가 이 파이프라인만 사용, fit/zoom/pan은 screen→norm 단계만 수정 | `coordinate_transform.rs`, `coordinate_transform_test.rs` |
 | Selection Precedence | 우선순위 Block > Point > Range > Marker, 한 번에 하나의 selection type만 활성 | `selection.rs` (`TemporalSelection` enum) |
 | Cache Invalidation | QP/MV/Partition/Diff/Timeline 오버레이별 무효화 트리거 목록; 프레임 변경 시 프레임 종속 오버레이는 항상 무효화; 텍스처를 다른 frame_idx에 재사용 금지 | `cache_provenance.rs`, `cache_validation.rs` |
@@ -909,7 +909,7 @@ splitter 최소 폭 320px/최소 높이 140px, 타임라인 스트립 기본 높
 ## Appendix: Future Differentiators (beyond parity — post-parity/aspirational, from `docs/_import_v14` insight/session/ci/compliance/mcp specs)
 
 이 섹션은 경쟁사 패리티(CMP-0N)가 아니라 v14 pack이 자체적으로 "Differentiators (our advantage)"로 분류한 신규 기능 제안이다.
-**패리티 백로그에 섞지 말 것.** 다만 2026-07-31 마이닝 중 확인된 중요 사실: 아래 4개 기능 모두 `crates/bitvue-core/src/`에
+**패리티 백로그에 섞지 말 것.** 다만 2026-07-31 마이닝 중 확인된 중요 사실: 아래 4개 기능 모두 `crates/bitvue-engine/src/`에
 데이터 모델/로직 수준으로는 이미 부분 구현되어 있으나(모듈 주석이 각 spec 파일명을 그대로 인용), **`frontend/`에서 이를 사용하는 곳은
 전무하고 Tauri 커맨드로도 노출되지 않음** (grep 결과 `InsightFeed|ComplianceScoreboard|McpIntegration|SessionEvidence` 프론트엔드 매치 0건).
 즉 "데이터 계층은 있음, UI/커맨드 배선이 남은 작업"이라는 뜻 — 신규 설계가 아니라 배선 작업으로 재정의됨.
@@ -919,7 +919,7 @@ splitter 최소 폭 320px/최소 높이 140px, 타임라인 스트립 기본 높
 | Insight Feed | 규칙/통계 기반 auto-summary 카드(QP spike, metric dip, error burst, reorder mismatch, HRD risk, A/B regression 등), Jump/Filter/Export 가능, 트리거 근거 표시 | `insight_feed.rs` (`InsightType` enum 등 확인됨) | Tauri 커맨드 노출 + 프론트엔드 카드 UI |
 | Session Evidence | `.baxsession.json` 세션(열린 파일/레이아웃/선택/북마크) + 북마크를 "증거 번들"(스냅샷+수치 요약+딥링크)로 export, 버그리포트(md+이미지+csv) 생성 | `evidence.rs` (bit_offset/syntax/decode/viz 4-stage evidence chain) | 세션 직렬화 포맷 확정 + export 커맨드 |
 | Compliance Scoreboard | timing/reference structure/HRD/metadata/syntax legality 카테고리별 점수 + 위반 목록(룰 id, 조건, 관측값, jump target) | **미구현** — `parity_harness/mod.rs`의 `CategoryScore`는 이름만 비슷할 뿐 competitor-parity 스코어링용(아래 행 참조)이지 codec-compliance 스코어보드가 아님. 확인 완료(2026-07-31), 착오 정정 | 전체 신규 구현 |
-| Regression Guard (CI) | A/B 비교에서 metric_delta/error_burst/reorder_mismatch/HRD 조건으로 CI 게이트 규칙 생성, `regression_report.json`/`regression_summary.md` 출력 | **목적이 다른 유사 시스템 존재**: `crates/bitvue-core/src/parity_harness/mod.rs`는 REGRESSION_GUARD_SPEC이 아니라 `_import_v14/parity_harness/*.json`(경쟁사 패리티 매트릭스 스키마 검증/스코어링/semantic probe/render snapshot/evidence diff/Hard-Fail·Parity·Perf 게이트)의 구현체 — A/B 스트림 리그레션이 아닌 "Bitvue vs 경쟁툴 parity matrix" 채점용. 테스트(`tests/parity_harness.rs`, `parity_baseline_evaluation.rs`)만 있고 `scripts/parity_check.sh`/CI에는 배선 안 됨(grep 확인) | 전용 A/B 리그레션 룰 엔진 + CI 잡 (완전 별개 신규 구현 필요); 별도로 `parity_harness/mod.rs`를 실제 `scripts/parity_check.sh`에 연결하는 것도 독립적인 미완 작업 |
+| Regression Guard (CI) | A/B 비교에서 metric_delta/error_burst/reorder_mismatch/HRD 조건으로 CI 게이트 규칙 생성, `regression_report.json`/`regression_summary.md` 출력 | **목적이 다른 유사 시스템 존재**: `crates/bitvue-engine/src/parity_harness/mod.rs`는 REGRESSION_GUARD_SPEC이 아니라 `_import_v14/parity_harness/*.json`(경쟁사 패리티 매트릭스 스키마 검증/스코어링/semantic probe/render snapshot/evidence diff/Hard-Fail·Parity·Perf 게이트)의 구현체 — A/B 스트림 리그레션이 아닌 "Bitvue vs 경쟁툴 parity matrix" 채점용. 테스트(`tests/parity_harness.rs`, `parity_baseline_evaluation.rs`)만 있고 `scripts/parity_check.sh`/CI에는 배선 안 됨(grep 확인) | 전용 A/B 리그레션 룰 엔진 + CI 잡 (완전 별개 신규 구현 필요); 별도로 `parity_harness/mod.rs`를 실제 `scripts/parity_check.sh`에 연결하는 것도 독립적인 미완 작업 |
 
 **Explainability Hints (from `EXPLAINABILITY_HINTS.md`)** — 오버레이별 마이크로 힌트 카피 예시, UI 문구 작성 시 참고:
 QP Heatmap "Auto scale: min/max from current frame" / "Fixed scale: 0..63"; MV "Vectors shown in px (qpel/4)"; Partition
@@ -938,12 +938,12 @@ Stream B 로드 후 Compare 워크스페이스로 A/B 델타 확인. Bitvue에 �
 
 **결론: Bitvue에는 서로 무관한 두 개의 MCP 관련 구현이 존재하며, spec을 실제로 따르는 쪽은 바이너리로 노출되지 않는다.**
 
-| | spec (`MCP_INTERACTION_MODEL.md`) | `crates/bitvue-mcp`(`bitvue-mcp-server` 바이너리, 실행됨) | `crates/bitvue-core/src/mcp.rs`(`McpIntegration`) |
+| | spec (`MCP_INTERACTION_MODEL.md`) | `crates/bitvue-mcp`(`bitvue-mcp-server` 바이너리, 실행됨) | `crates/bitvue-engine/src/mcp.rs`(`McpIntegration`) |
 |---|---|---|---|
 | 모델 | Read-only "resources"(8종) + "actions"(제안/설명/초안 생성, 5종) | JSON-RPC stdio, MCP 표준 "tools"(10종: load_file/analyze_frame/get_qp_map/get_motion_vectors/compare_streams/get_gop_structure/find_decoding_issues/get_stream_info/search_syntax/list_files) | spec의 resource 목록과 거의 동일: `selection_state/insight_feed/diagnostics/metrics_summary/timeline_lanes/compare/session_evidence/compliance` — `get_resource(name)`/`list_resources()` 구현 |
-| 코덱 지원 | 코덱 무관 설계 | **IVF/AV1 컨테이너만 파싱** (`parse_ivf_file`, 확장자 `.ivf`/`.av1` 외 전부 미지원 에러) | `bitvue-core` 전체 모델을 재사용하므로 코덱 무관 |
-| 관계 | — | `bitvue-core`/`bitvue-av1-codec`에 의존하지만 **`bitvue_core::mcp::McpIntegration`은 import하지 않음** — 자체 tool 세트를 처음부터 새로 구현 | `bitvue-mcp-server`의 `main.rs`에서 전혀 참조되지 않음 — 어디서도 호출되지 않는 죽은 코드에 가까움(테스트 커버리지만 있을 가능성) |
+| 코덱 지원 | 코덱 무관 설계 | **IVF/AV1 컨테이너만 파싱** (`parse_ivf_file`, 확장자 `.ivf`/`.av1` 외 전부 미지원 에러) | `bitvue-engine` 전체 모델을 재사용하므로 코덱 무관 |
+| 관계 | — | `bitvue-engine`/`bitvue-av1-codec`에 의존하지만 **`bitvue_engine::mcp::McpIntegration`은 import하지 않음** — 자체 tool 세트를 처음부터 새로 구현 | `bitvue-mcp-server`의 `main.rs`에서 전혀 참조되지 않음 — 어디서도 호출되지 않는 죽은 코드에 가까움(테스트 커버리지만 있을 가능성) |
 
 **정리:** 실행 가능한 `bitvue-mcp-server`는 spec과 무관한, 훨씬 단순한 자체 설계(질의형 tool-calling, AV1/IVF 전용)이고, spec을
-거의 그대로 구현한 `McpIntegration`(read-only resource 모델)은 `bitvue-core` 안에 존재하지만 어떤 바이너리에서도 사용되지 않는다.
+거의 그대로 구현한 `McpIntegration`(read-only resource 모델)은 `bitvue-engine` 안에 존재하지만 어떤 바이너리에서도 사용되지 않는다.
 두 구현을 통합할지, `McpIntegration`을 `bitvue-mcp-server`에 연결할지는 결정되지 않은 상태 — Phase 12 이후 정리 대상으로 기록.
