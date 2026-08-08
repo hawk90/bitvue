@@ -1,7 +1,7 @@
 {
   "name": "bitvue-workspace",
   "version": "0.11.5",
-  "description": "Bitvue workspace - video bitstream analyzer with Tauri + React",
+  "description": "Bitvue workspace - video bitstream analyzer with Electron + React (migrated from Tauri 2026-08-08, see docs/DEVELOPMENT_PHASES.md)",
   "private": true,
   "scripts": {
     "dev": "cd frontend && npm run dev",
@@ -16,9 +16,7 @@
     "lint:css": "cd frontend && npm run lint:css",
     "format": "cd frontend && npm run format",
     "format:check": "cd frontend && npm run format:check",
-    "tauri": "cd src-tauri && cargo tauri",
-    "tauri:dev": "cd src-tauri && cargo tauri dev",
-    "tauri:build": "cd src-tauri && cargo tauri build",
+    "electron": "cd bitvue-desktop && npm run electron",
     "clean": "npm run clean:rust && npm run clean:frontend",
     "clean:rust": "cargo clean",
     "clean:frontend": "cd frontend && rm -rf node_modules dist"

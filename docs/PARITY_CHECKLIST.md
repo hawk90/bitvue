@@ -6,6 +6,15 @@ See also: `VQA_PARITY_SPEC_V3.md` (backend/codec parity spec), `COMPETITOR_FEATU
 feature matrix backing Layer 6 below), `UX_PARITY_MATRIX.md` (UI/UX interaction parity), `DEVELOPMENT_PHASES.md`
 (Phase 0-12 implementation roadmap).
 
+## ⚠️ 2026-08-08: `src-tauri` 삭제됨 (Tauri→Electron 전환 완료)
+
+이 파일의 기존 `[x]`/`[-]` 표시 중 근거가 `src-tauri/src/commands/*.rs` 파일 인용인 것들은 **그 코드가 지금 삭제되고
+없음**을 뜻함 — 기능 설계/로직이 검증됐다는 기록으로는 유효하지만, 지금 코드베이스(Electron/`bitvue-sidecar`)에
+그 기능이 실제로 존재한다는 뜻은 아니니 재확인 없이 신뢰하지 말 것. 자세한 배경은 `DEVELOPMENT_PHASES.md`
+Phase 0 바로 위 경고 섹션 참조. `bitvue-sidecar`에 실제로 이식된 건 현재 9개 커맨드뿐(`open_stream`/
+`select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`/`close_stream`/
+`get_hex_range`/`cancel_request`) — 이 목록에 없는 항목은 재이식 전이라고 가정할 것.
+
 ## How to use
 
 - `[x]` = implemented and tested

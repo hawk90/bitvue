@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["src-tauri", "fuzz"]  # Tauri app and fuzz targets have their own Cargo.toml
+exclude = ["fuzz"]  # Fuzz targets have their own Cargo.toml. src-tauri retired 2026-08-08 (Electron migration).
 members = [
     # Main library
     "crates/bitvue",            # Unified library interface (re-exports all)

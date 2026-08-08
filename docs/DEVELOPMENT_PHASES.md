@@ -313,6 +313,17 @@ Probe에서 이상 구간 클릭 → "Analyze in Bitvue" → Analyzer가 해당 
 
 ---
 
+## ⚠️ 주의 — 아래 Phase 0-12는 Tauri 구현 시절 작성됨, `src-tauri`는 2026-08-08 삭제됨
+
+아래 로드맵은 Electron 전환(위 "제품 아키텍처 확정" 섹션) 이전에 작성돼서 **"Tauri 커맨드 추가"를 구현 단위로 삼음** — 이제 그 구현 벡터는 `bitvue-sidecar` 커맨드(위 섹션들의 `open_stream`/`select_frame`/... 패턴)로 바뀌었지만, **기능 자체(코덱 지원, 오버레이 모드, 재생, export 등)는 그대로 유효한 요구사항 목록**이다. 항목을 볼 때:
+
+- `[ ] X Tauri 커맨드 추가` 같은 문구는 **"bitvue-sidecar에 X 커맨드 추가"로 읽을 것** — 무엇을 만들지는 안 바뀌었고 어디에 만들지만 바뀜.
+- **`[x]`(완료 표시)는 신뢰하지 말 것.** 그 구현이 `src-tauri/src/commands/*.rs`에 있었다면 지금은 코드 자체가 삭제됨(`src-tauri` 전체 제거, 2026-08-08) — "기능 설계가 검증됐다"는 뜻이지 "지금 코드베이스에 그 기능이 동작한다"는 뜻이 아님. 지금까지 `bitvue-sidecar`에 실제로 이식된 건 위 섹션들에 나열된 9개 커맨드뿐(`open_stream`/`select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`/`close_stream`/`get_hex_range`/`cancel_request`) — 그 외 전부(codec 오버레이, export, playback 등)는 재이식 전이라고 가정할 것.
+- `docs/PARITY_CHECKLIST.md`(✅/⚠️/❌ source of truth)도 동일한 문제가 있음 — 거기도 같은 취지의 주석을 달아둠.
+- `frontend/`는 여전히 `@tauri-apps/api`의 `invoke()`를 광범위하게 직접 호출 중(수십 개 파일 — `tauriCommandService.ts`, 각종 훅/컴포넌트)이라 **`src-tauri` 삭제로 인해 지금 당장 동작 안 함** — `bitvue-ui`로의 실제 배선은 이 rename보다 훨씬 큰 별도 작업(각 호출부를 `window.bitvue.*`로 재작성)이고, 아직 손 안 댐.
+
+---
+
 ## Phase 0: Project Setup & Foundation ✅ (이미 완료)
 
 **현재 상태:** Bitvue v0.12.0에서 대부분 완료됨

@@ -1,14 +1,16 @@
 #!/bin/bash
 # Bitvue Development Script
-# Starts both Rust backend watch and frontend dev server
+# Starts the Electron dev shell (spawns bitvue-sidecar, loads the renderer).
+# See docs/DEVELOPMENT_PHASES.md for the Tauri->Electron migration; src-tauri retired 2026-08-08.
 
 echo "🚀 Starting Bitvue development environment..."
 
-# Check if setup has been run
-if [ ! -d "frontend/node_modules" ]; then
-    echo "❌ Frontend dependencies not installed. Run 'npm run setup' or './scripts/setup.sh' first."
+if [ ! -d "bitvue-desktop/node_modules" ]; then
+    echo "❌ bitvue-desktop dependencies not installed. Run 'npm run setup' or './scripts/setup.sh' first."
     exit 1
 fi
 
-# Run Tauri dev (which starts both frontend and backend)
-cd frontend && npm run tauri:dev
+echo "Building the sidecar (cargo build -p bitvue-sidecar)..."
+cargo build -p bitvue-sidecar
+
+cd bitvue-desktop && npm run electron
