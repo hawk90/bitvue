@@ -405,10 +405,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * closes a real gap none of `BITVUE_ELECTRON_SELFTEST`'s checks cover: proving *data* comes back
  * correctly says nothing about whether it actually renders visibly.
  *
- * `BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB=<label>` (optional): after the file settles, click a
- * left-panel tab by its visible label (e.g. `"Syntax"`) before capturing -- the left dock's
- * tabs (`App.tsx`'s `LEFT_PANELS`) default to whichever was active last, so this is the only
- * way to reliably screenshot a non-default tab like Syntax instead of guessing at prior state.
+ * `BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB=<label>[,<label>...]` (optional): after the file
+ * settles, click one or more tabs by their visible label (e.g. `"Syntax"`, or
+ * `"Unit HEX,Hex"` to open a left-panel tab then a nested sub-tab within it) before capturing,
+ * in order, waiting for each to render before the next -- the left dock's tabs (`App.tsx`'s
+ * `LEFT_PANELS`) default to whichever was active last, so this is the only way to reliably
+ * screenshot a non-default (or nested) tab instead of guessing at prior state.
  */
 async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Promise<void> {
   try {
@@ -420,8 +422,10 @@ async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Pro
     // fixed wait for the open -> index -> refreshFrames chain + React re-render to settle,
     // rather than guessing at a DOM-text heuristic that could false-positive on unrelated text.
     await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 3000))");
-    const clickTab = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB;
-    if (clickTab) {
+    const clickTabs = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const clickTab of clickTabs ?? []) {
       // Tab markup varies by dock (DockableLayout's TabbedPanelContainer renders a bare
       // `<button class="sidebar-tab"><span>{title}</span></button>` with no dedicated label
       // class), so match on any button's trimmed text rather than a specific class name.
