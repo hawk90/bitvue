@@ -5,27 +5,23 @@
  */
 
 import { memo, useCallback, useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { getHexRange } from "../../../services/electronBridgeService";
 import { createLogger } from "../../../utils/logger";
 import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
 
 const logger = createLogger("HexViewTab");
 const BYTES_PER_LINE = 16;
-
-interface FrameHexData {
-  frame_index: number;
-  data: number[];
-  size: number;
-  truncated: boolean;
-  success: boolean;
-  error?: string;
-}
+const MAX_HEX_BYTES = 2048;
 
 interface HexViewTabProps {
   frameIndex: number;
   frames: Array<{
     frame_index: number;
     size: number;
+    /** Real on-disk unit offset (see FrameInfo.offset) -- required to fetch this frame's raw
+     *  bytes. Frames sourced from anywhere but FileStateContext's real bridge data won't have
+     *  this, so it's optional and the fetch below handles its absence honestly. */
+    offset?: number;
   }>;
 }
 
@@ -55,23 +51,21 @@ export const HexViewTab = memo(function HexViewTab({
       setError(null);
 
       try {
-        const result = await invoke<FrameHexData>("get_frame_hex_data", {
-          frameIndex,
-          maxBytes: 2048,
-        });
+        if (currentFrame.offset === undefined) {
+          setError("No on-disk offset available for this frame");
+          return;
+        }
+        const len = Math.min(currentFrame.size, MAX_HEX_BYTES);
+        const result = await getHexRange("A", currentFrame.offset, len);
 
         if (cancelled) return;
 
-        if (result.success && result.data) {
-          setHexData(new Uint8Array(result.data));
-          setTotalSize(result.size);
-          setTruncated(result.truncated);
-          logger.info(
-            `Loaded ${result.data.length} bytes for frame ${frameIndex} (total: ${result.size})`,
-          );
-        } else {
-          setError(result.error || "Failed to load hex data");
-        }
+        setHexData(result.bytes);
+        setTotalSize(currentFrame.size);
+        setTruncated(currentFrame.size > MAX_HEX_BYTES);
+        logger.info(
+          `Loaded ${result.bytes.length} bytes for frame ${frameIndex} (total: ${currentFrame.size})`,
+        );
       } catch (err) {
         if (!cancelled) {
           const errorMsg = err instanceof Error ? err.message : String(err);
