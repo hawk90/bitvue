@@ -1,0 +1,154 @@
+name: Build Electron App
+
+# Builds the Electron desktop app (bitvue-desktop + bitvue-sidecar + frontend), replacing the
+# Tauri app build removed 2026-08-08 (see docs/DEVELOPMENT_PHASES.md § "제품 아키텍처 확정").
+# Packaging is unsigned for now -- no code-signing certs/secrets exist yet, see the "Known
+# simplifications" note in that doc. Each matrix leg builds for its own runner's native
+# architecture only (no cross-compilation/universal binaries).
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g., v0.1.0)'
+        required: false
+        type: string
+
+concurrency:
+  group: build-electron-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            electron_platform: mac
+            artifact_glob: release/*.zip
+          - os: windows-latest
+            electron_platform: win
+            artifact_glob: release/*.exe
+          - os: ubuntu-24.04
+            electron_platform: linux
+            artifact_glob: release/*.AppImage
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dav1d (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install dav1d
+
+      - name: Install dav1d (Linux)
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdav1d-dev pkg-config
+
+      - name: Install dav1d (Windows) - vcpkg
+        if: matrix.os == 'windows-latest'
+        run: |
+          if (-not (Test-Path "D:\vcpkg\vcpkg.exe")) {
+            git clone https://github.com/microsoft/vcpkg D:\vcpkg
+            D:\vcpkg\bootstrap-vcpkg.bat
+          }
+          D:\vcpkg\vcpkg install dav1d:x64-windows-static pkgconf:x64-windows-static --clean-after-build
+          echo "PKG_CONFIG_PATH=D:\vcpkg\installed\x64-windows-static\lib\pkgconfig" >> $env:GITHUB_ENV
+          echo "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" >> $env:GITHUB_PATH
+
+      - name: Build sidecar (release)
+        run: cargo build --release -p bitvue-sidecar
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            bitvue-desktop/package-lock.json
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Install bitvue-desktop deps
+        run: cd bitvue-desktop && npm ci
+
+      - name: Package Electron app
+        run: cd bitvue-desktop && npm run package:${{ matrix.electron_platform }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitvue-${{ matrix.electron_platform }}
+          path: bitvue-desktop/${{ matrix.artifact_glob }}
+          if-no-files-found: warn
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            VERSION="${{ inputs.tag }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: bitvue-*
+          merge-multiple: true
+
+      - name: Show downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Bitvue ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: artifacts/*

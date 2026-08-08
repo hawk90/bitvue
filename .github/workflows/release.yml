@@ -41,9 +41,13 @@ jobs:
           echo "version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
           echo "tag=$VERSION" >> $GITHUB_OUTPUT
 
-  # NOTE: the Tauri app build job was removed 2026-08-08 when src-tauri was retired (Electron
-  # migration, see docs/DEVELOPMENT_PHASES.md). There is no Electron desktop-app build/packaging
-  # workflow yet -- bitvue-desktop only has dev-mode scripts so far. Add one here once that exists.
+  # Build the Electron desktop app (replaces the Tauri build-tauri job removed 2026-08-08)
+  build-electron:
+    needs: prepare
+    uses: ./.github/workflows/build-electron-app.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+    secrets: inherit
 
   # Publish crates to crates.io
   publish-crates:

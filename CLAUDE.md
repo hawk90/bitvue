@@ -55,7 +55,8 @@ above.
 ## Key scripts
 
 `scripts/dev.sh` `scripts/setup.sh` `scripts/parity_check.sh` (--local for the regression gate)
-`scripts/run_regression_suite.sh` `scripts/clean.sh`
+`scripts/run_regression_suite.sh` `scripts/clean.sh` `scripts/package_electron.sh [mac|linux|win]`
+(builds+packages the Electron app; local counterpart to `.github/workflows/build-electron-app.yml`)
 
 ## Agents
 

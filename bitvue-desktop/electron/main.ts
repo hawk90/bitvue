@@ -29,7 +29,18 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // dist/electron/main.js -> dist/electron -> dist -> bitvue-desktop -> repo root
 const repoRoot = path.resolve(here, "..", "..", "..");
 const defaultBinaryName = process.platform === "win32" ? "bitvue-sidecar.exe" : "bitvue-sidecar";
-const sidecarBinaryPath = process.env.BITVUE_SIDECAR_BIN ?? path.join(repoRoot, "target", "debug", defaultBinaryName);
+/**
+ * Packaged builds (`app.isPackaged`) don't have a `target/`/`frontend/` checkout next to the
+ * app — electron-builder's `extraResources` (see `bitvue-desktop/package.json`'s `build` field)
+ * copies the release sidecar binary and built frontend into `process.resourcesPath` instead
+ * (`Contents/Resources` on macOS, `resources/` next to the exe on Windows/Linux). Dev mode keeps
+ * resolving against the repo checkout so `npm run electron` works without packaging first.
+ */
+const sidecarBinaryPath =
+  process.env.BITVUE_SIDECAR_BIN ??
+  (app.isPackaged
+    ? path.join(process.resourcesPath, "bin", defaultBinaryName)
+    : path.join(repoRoot, "target", "debug", defaultBinaryName));
 
 let sidecar: SidecarClient | undefined;
 let shuttingDown = false;
@@ -79,14 +90,18 @@ function registerIpcHandlers(): void {
   );
 }
 
-const frontendDistIndex = path.join(repoRoot, "frontend", "dist", "index.html");
+// Packaged builds ship the built frontend under resources/frontend/ (extraResources, see
+// sidecarBinaryPath's doc above); dev mode resolves against the repo checkout.
+const frontendDistIndex = app.isPackaged
+  ? path.join(process.resourcesPath, "frontend", "index.html")
+  : path.join(repoRoot, "frontend", "dist", "index.html");
 
 /**
  * Where to load the renderer content from, in priority order:
  * 1. `BITVUE_FRONTEND_URL` (explicit override — e.g. the Vite dev server, `http://localhost:5173`,
  *    for `npm run dev` workflows where `frontend/` is served separately, not built).
- * 2. `frontend/dist/index.html`, if it's been built (`cd frontend && npm run build`) — this is
- *    the *real* Bitvue Analyzer UI.
+ * 2. `frontend/dist/index.html` (dev) or the bundled `resources/frontend/index.html` (packaged),
+ *    if it exists — this is the *real* Bitvue Analyzer UI.
  * 3. This package's own placeholder `index.html` — only reached if neither of the above is
  *    available, e.g. a bare `bitvue-desktop` checkout with `frontend/` never built. Logs a
  *    warning so it's not mistaken for the real app.
@@ -96,7 +111,7 @@ function resolveRendererTarget(): { kind: "url" | "file"; target: string } {
   if (overrideUrl) return { kind: "url", target: overrideUrl };
   if (existsSync(frontendDistIndex)) return { kind: "file", target: frontendDistIndex };
   console.warn(
-    `[bitvue-desktop] frontend/dist not found (${frontendDistIndex}) and BITVUE_FRONTEND_URL not set — ` +
+    `[bitvue-desktop] frontend dist not found (${frontendDistIndex}) and BITVUE_FRONTEND_URL not set — ` +
       "loading the placeholder shell instead of the real Bitvue Analyzer UI. " +
       "Run `cd frontend && npm run build`, or set BITVUE_FRONTEND_URL to a dev server.",
   );

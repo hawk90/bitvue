@@ -314,6 +314,64 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 **아직 안 되는 것(정직하게 남겨둠):** 실제 프레임 렌더링/썸네일(프레임 목록 조회 자체가 sidecar에 없음), codec 인식(→ codec-aware 모드 UI 비활성 상태), compare 워크스페이스, export, quality metrics — 전부 `bitvue-sidecar`에 해당 커맨드가 생겨야 다음 슬라이스로 진행 가능.
 
+### 남은 `invoke()` 콜사이트 재조사 — 규모 정정 (2026-08-08)
+
+이전 정리에서 "8개 파일 남음"이라 적었던 건 **잘못된 수치** — 실제로 grep해보니 `frontend/`에서 Tauri
+`invoke()`를 직접(또는 `tauriCommandService.ts` 경유로) 호출하는 파일이 **~40개 이상**. 실제 호출되는
+커맨드명(`get_frames`, `get_frames_chunk`, `get_thumbnails`, `get_decoded_frame_yuv`, `get_frame_syntax`,
+`get_frame_analysis`, `get_stream_info`, `get_codec_extended_info`, `get_yuv_diff_metrics`, `get_rd_point`,
+`calculate_bd_rate`, `export_frames_json/csv`, `export_analysis_report` 등)을 추출해 확인한 결과 **전부
+`bitvue-sidecar`에 대응 커맨드가 없음** — 파일열기+선택 슬라이스와 달리, 이건 "콜사이트 하나씩 재배선"이
+아니라 "`bitvue-engine`에 프레임 목록/썸네일/syntax-detail/stream-info류 조회(query) API 자체가 아직
+없다"는 하나의 근본 원인으로 수렴. 다음 라운드를 "다음 콜사이트"로 고르지 말 것 — 먼저 엔진에 어떤 조회
+API를 추가할지부터 정해야 함(그리고 이건 `JumpToFrame`처럼 제품 의미 결정이 필요한 문제이지 순수 엔지니어링
+문제가 아님). Tauri 창/메뉴 API(`getCurrentWindow`, `utils/menu/**` ~8개 파일)도 `invoke()`와 별개로 아직
+전혀 손대지 않은 영역.
+
+### Electron 패키징/빌드 워크플로우 (2026-08-08)
+
+`src-tauri` 삭제(`e7194cc`) 이후 `release.yml`에 TODO로만 남아있던 항목. `bitvue-desktop`은 지금까지
+dev 모드(`npm run electron`, 리포 체크아웃에 상대 경로로 sidecar/frontend를 찾음)만 있었고, 실제 배포
+가능한 패키지를 만들 방법이 없었음.
+
+**한 일:**
+- `bitvue-desktop/electron/main.ts` — `app.isPackaged` 분기 추가: 패키징된 빌드는 `process.resourcesPath`
+  기준(`resources/bin/bitvue-sidecar[.exe]`, `resources/frontend/index.html`)으로 리소스를 찾고, dev
+  모드는 기존처럼 리포 체크아웃 상대 경로를 그대로 씀. 이 분기 없이는 패키징된 앱이 아예 sidecar를 못 찾음.
+- `bitvue-desktop/package.json` — `electron-builder` devDependency 추가, `build` 필드에 플랫폼별
+  `extraResources`(mac/linux는 `target/release/bitvue-sidecar`, win은 `.exe`, 공통으로
+  `frontend/dist` → `resources/frontend`) 설정, `package`/`package:mac`/`package:linux`/`package:win`
+  스크립트 추가. 서명 인증서가 없어 **미서명 빌드**(mac은 `zip`, win은 `nsis`, linux는 `AppImage` 타겟만) —
+  코드사이닝/공증/자동업데이트는 다음 단계로 명시적으로 미룸, 지어내지 않음.
+- `scripts/package_electron.sh`(신규, `[mac|linux|win]` 인자) — sidecar release 빌드 → frontend 빌드 →
+  electron-builder 패키징을 한 번에. `CLAUDE.md` Key scripts 표에 반영.
+- `.github/workflows/build-electron-app.yml`(신규) — 삭제된 `build-tauri-app.yml`과 동일한 구조(3-OS
+  매트릭스, `workflow_call`로 `release.yml`에서 재사용, 태그 push 시 내부 `release` job이
+  `softprops/action-gh-release`로 GH 릴리스 생성). 크로스컴파일 없음(러너 네이티브 아키텍처만) — Tauri
+  워크플로우의 `aarch64-apple-darwin` 타겟 지정 같은 건 불필요, Electron은 러너별로 알아서 네이티브 빌드.
+- `release.yml`의 TODO 주석을 실제 `build-electron` job(`build-electron-app.yml` 호출)으로 교체.
+- **부수적으로 발견해 고침(범위 내 실제 버그):** `ci.yml`이 `bitvue-core`→`bitvue-engine` 리네임(`c2a0e44`)
+  때 빠져서 3곳(test matrix, coverage 루프, 커버리지 파일 목록)에서 존재하지 않는 크레이트를 여전히
+  참조 — 다음 CI 실행에서 그 크레이트만 실패했을 버그. `bitvue-engine`으로 정정. (참고: `bitvue-sidecar`/
+  `bitvue-protocol`은 애초에 `ci.yml`의 test 매트릭스에 없었음 — 그건 별개 gap, 이번엔 안 건드림.)
+
+**검증(로컬에서 실제 패키징된 앱을 실행, 빌드 성공만으로 끝내지 않음):**
+- `cargo build --release -p bitvue-sidecar` → `arm64` Mach-O 바이너리 생성 확인.
+- `./scripts/package_electron.sh mac` 클린 상태(`release/` 삭제 후)에서 처음부터 끝까지 실행 — sidecar
+  릴리스 빌드 → frontend 빌드 → electron-builder 패키징까지 전부 성공, `Bitvue.app` 번들 생성.
+  `Contents/Resources/{bin/bitvue-sidecar, frontend/index.html}` 실제 배치 확인.
+- **패키징된 `Bitvue.app`을 실제로 실행**(`BITVUE_ELECTRON_SELFTEST=1`, dev 체크아웃이 아니라 번들
+  자체를 실행) — `hello`/`openStream`/`selectFrame`/`getHexRange`(byte-exact)/`closeStream` 전부
+  `process.resourcesPath` 기준 경로로 실제 성공, `document.title`도 실제 프론트엔드로 확인. 리소스 해석
+  분기가 실제로 동작한다는 증거(패키징만 되고 실행은 깨지는 흔한 실패 모드를 배제).
+- `cargo fmt --all --check` / `cargo check --workspace` 클린. YAML 3개 파일(`build-electron-app.yml`,
+  `release.yml`, `ci.yml`) `yaml.safe_load`로 파싱 검증.
+
+**아직 안 한 것(플래그만, 미구현):** 코드사이닝/공증(mac)·서명(win) — 인증서/시크릿 없음. 자동 업데이트
+(`electron-updater` 등) — 미검토. 앱 아이콘 — `electron-builder`가 기본 Electron 아이콘 사용 중, 실제
+Bitvue 아이콘 에셋 없음. Windows/Linux 매트릭스 레그는 로컬에서 실행 못 해봄(이 샌드박스는 macOS) — CI에서
+처음 실행될 때 검증 필요.
+
 ### 확정 순서
 
 ```

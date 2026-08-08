@@ -71,6 +71,9 @@ src-tauri/target/
 crates/*/target/
 src-tauri/WixTools/
 
+# electron-builder packaging output (bitvue-desktop/package.json "build".directories.output)
+bitvue-desktop/release/
+
 # =============================================================================
 # Backup files
 # =============================================================================

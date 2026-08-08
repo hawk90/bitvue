@@ -12,12 +12,71 @@
     "test:integration": "vitest run tests/sidecarClient.integration.test.ts",
     "typecheck": "tsc --noEmit",
     "build:electron": "tsc -p tsconfig.build.json && cp electron/preload.cjs electron/index.html dist/electron/",
-    "electron": "npm run build:electron && electron ."
+    "electron": "npm run build:electron && electron .",
+    "package": "npm run build:electron && electron-builder --publish=never",
+    "package:mac": "npm run build:electron && electron-builder --mac --publish=never",
+    "package:linux": "npm run build:electron && electron-builder --linux --publish=never",
+    "package:win": "npm run build:electron && electron-builder --win --publish=never"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "electron": "^43.3.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"
+  },
+  "build": {
+    "appId": "com.bitvue.desktop",
+    "productName": "Bitvue",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend"
+      }
+    ],
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.video",
+      "extraResources": [
+        {
+          "from": "../target/release/bitvue-sidecar",
+          "to": "bin/bitvue-sidecar"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo",
+      "extraResources": [
+        {
+          "from": "../target/release/bitvue-sidecar",
+          "to": "bin/bitvue-sidecar"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "../target/release/bitvue-sidecar.exe",
+          "to": "bin/bitvue-sidecar.exe"
+        }
+      ]
+    }
   }
 }
