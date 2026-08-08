@@ -738,6 +738,41 @@ Electron IPC(`main.ts`/`preload.cjs`) → `electronBridgeService.ts` → `YuvVie
 **안 고친 것(의도적, 스코프 밖):** 나머지 39개 파일(메뉴/필름스트립 썸네일/YUV diff/품질비교/RD
 curves/Compare Workspace 등)은 여전히 Tauri `invoke()` 직접 호출 — 다음 스코프 결정 필요.
 
+### `get_thumbnails` — 필름스트립 실제 썸네일 복구 (2026-08-08)
+
+`YuvViewerPanel` 라운드와 같은 패턴("다음" 지시로 이어서 진행): 남은 ~39개 Tauri 파일 중 어느 것이
+`get_decoded_frame_yuv`처럼 "이미 존재하는 기능, 배선만 하면 됨"인지 먼저 조사 — `useFilmstripState.ts`의
+`get_thumbnails`가 정확히 그 케이스였음(필름스트립은 매 프레임마다 "[useFilmstripState] Failed to load
+thumbnails" 콘솔 에러를 내며 색깔 블록 placeholder만 표시 중이었음). `bitvue_engine::filmstrip::
+ThumbnailCache::generate_thumbnail`/`CachedFrame`(완전히 구현+테스트됐지만 프로덕션 호출자 0개 — 이전
+세션들에서 이미 발견됐던 "완성됐지만 연결 안 된 코드" 패턴과 동일)와 `bitvue_decode::yuv_to_rgb`가 이미
+존재 — sidecar에 배선만 하면 됐음. 기본 썸네일 폭(120px)이 프론트엔드 `THUMBNAIL_SIZE.WIDTH` 상수와
+정확히 일치하는 것도 이 조합이 원래 의도된 것이었다는 신호.
+
+**한 일:** `decode_bridge.rs`에 `get_thumbnails(data, frame_indices, target_width)` 추가 — 인덱스별로
+매번 새로 디코드하지 않고, 배치(최대 `THUMBNAIL_BATCH_SIZE=50`개) 안의 요청된 인덱스를 **한 번의 디코드
+패스**로 전부 캡처(최대 인덱스까지만 디코드). `yuv_to_rgb` → `CachedFrame` 구성 → `ThumbnailCache::
+generate_thumbnail`(박스필터 다운샘플) → `image` crate로 실제 PNG 인코딩 → `base64`로 `data:image/png;
+base64,...` URL 생성 — 프론트엔드가 `<img src>`에 그대로 꽂는 정확한 형식이라 base64가 낭비가 아니라
+맞는 선택(`get_decoded_frame_yuv`의 raw-bytes 방식과 반대 이유로 base64 사용). 워크스페이스에
+`base64`(신규) + `image`(sidecar 직접 의존성 추가, 기존에 `bitvue-decode`를 통해 이미 컴파일되던 것) 추가.
+Control-only 커맨드(`get_hex_range`/`get_decoded_frame_yuv`와 달리 Data 프레임 없음) — sidecar의 16번째
+커맨드. `main.ts`/`preload.cjs`/`electronBridgeService.ts`/`useFilmstripState.ts` 관통 배선.
+
+**검증:** Rust 8개 신규 테스트(PNG를 `image::load_from_memory`로 실제 재디코드해서 진짜 유효한 PNG인지
+확인, 엔드투엔드 dispatch, custom target_width, out-of-range/stream-not-open 에러) — `bitvue-sidecar`
+전체 49개 테스트 통과. 프론트엔드 5개 신규(`useFilmstripState.test.ts`, 이 훅을 직접 테스트하는 파일
+자체가 이전엔 없었음 — `Filmstrip.test.tsx`가 훅 전체를 mock 처리해서 실제 로직이 한 번도 검증된 적
+없었음). 테스트 작성 중 발견한 나 자신의 실수: `frames` 배열을 렌더 콜백 안에서 매번 새로 만들면 매
+리렌더마다 auto-load effect가 재실행되는 무한 재시도 루프가 생김 — 실제 제품 버그 아님, 안정적인
+`frames` 참조를 콜백 밖에 정의해서 해결. 스크린샷으로 최종 확인 — 필름스트립의 모든 셀에 실제 EBU
+테스트카드 썸네일(타이머가 프레임마다 줄어드는 파이차트)이 표시됨, 더 이상 placeholder 블록 아님.
+36-실패/9-파일 기존 베이스라인 변화 없음.
+
+**남은 것:** ~38개 파일 여전히 Tauri 직접 호출(메뉴/YUV diff/품질비교/RD curves/Compare Workspace) —
+`get_frame_analysis`(QP/MV grid)와 `get_debug_yuv_frame`은 확인 결과 실제로 새 `Core` 엔진 작업이
+필요함(기존 코드 재사용 불가), 나머지는 개별 확인 필요.
+
 ### 확정 순서
 
 ```
