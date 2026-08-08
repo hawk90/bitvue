@@ -204,6 +204,57 @@ export class SidecarClient extends EventEmitter {
     });
   }
 
+  /**
+   * Convenience wrapper for `get_hex_range` — the one command today whose response spans two
+   * frames (a `Control` metadata response, then a `Data` frame with the raw bytes, both sharing
+   * the same correlation id per the wire schema). `request()` alone only surfaces the `Control`
+   * side; this method also listens for the matching `'data'` event so callers (like the Electron
+   * main-process IPC handler) don't need to know about frame-kind internals to use a data-plane
+   * command.
+   */
+  async getHexRange(params: {
+    stream: string;
+    offset: number;
+    len: number;
+  }): Promise<{ offset: number; len: number; bytes: Buffer }> {
+    if (this.exited) {
+      return Promise.reject(new SidecarExitedError("getHexRange() called after process exit"));
+    }
+    const id = this.nextCorrelationId++;
+    const body = Buffer.from(JSON.stringify({ id, method: "get_hex_range", params }), "utf8");
+    const frame = encodeFrame(FrameKind.Control, id, body);
+
+    let onData: (correlationId: number, payload: Buffer) => void = () => {};
+    const dataPromise = new Promise<Buffer>((resolve) => {
+      onData = (correlationId, payload) => {
+        if (correlationId !== id) return;
+        this.off("data", onData);
+        resolve(payload);
+      };
+      this.on("data", onData);
+    });
+
+    const metadataPromise = new Promise<{ offset: number; len: number }>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject });
+      this.child.stdin.write(frame, (err) => {
+        if (err) {
+          this.pending.delete(id);
+          reject(err);
+        }
+      });
+    });
+
+    try {
+      const [metadata, bytes] = await Promise.all([metadataPromise, dataPromise]);
+      return { offset: metadata.offset, len: metadata.len, bytes };
+    } catch (err) {
+      // Error path (e.g. NotFound/InvalidRange): no Data frame follows, so the listener would
+      // otherwise leak — clean it up regardless of which promise rejected.
+      this.off("data", onData);
+      throw err;
+    }
+  }
+
   /** Convenience wrapper for the startup handshake described in the protocol spec. */
   async hello(clientVersion = "bitvue-desktop/0.0.0"): Promise<HelloResult> {
     const result = (await this.request("hello", { client_version: clientVersion })) as HelloResult;

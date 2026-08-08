@@ -4,16 +4,20 @@
   "description": "Electron main-process side of the bitvue-sidecar bridge (Node child_process client for bitvue-protocol over stdio). Standalone package, not an npm workspace member.",
   "private": true,
   "type": "module",
+  "main": "dist/electron/main.js",
   "scripts": {
     "test": "vitest",
     "test:run": "vitest run",
     "test:unit": "vitest run tests/protocol.test.ts",
     "test:integration": "vitest run tests/sidecarClient.integration.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:electron": "tsc -p tsconfig.build.json && cp electron/preload.cjs electron/index.html dist/electron/",
+    "electron": "npm run build:electron && electron ."
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^43.3.0",
     "typescript": "^5.3.0",
-    "vitest": "^1.0.0",
-    "@types/node": "^22.0.0"
+    "vitest": "^1.0.0"
   }
 }

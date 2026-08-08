@@ -224,6 +224,23 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 **통합 경과:** 이 절은 원래 `bitvue-protocol`/`bitvue-sidecar`가 없는 별도 워크트리에서 작성되어 `BITVUE_SIDECAR_BIN` 환경변수로 바이너리 경로를 임시 지정해 검증했음(기본 경로 `<repoRoot>/target/debug/bitvue-sidecar`는 그 워크트리에 없었기 때문). 이후 소스만(`node_modules`/lockfile 제외) 이 체크아웃(`crates/`와 같은 위치, `electron-migration`)으로 옮기고 `npm install` + `cargo build -p bitvue-sidecar` + `npx vitest run`을 여기서 다시 실행 — **환경변수 없이 기본 경로만으로 14개 테스트 전부 재확인 통과**, `npx tsc --noEmit` 클린.
 
+### `bitvue-desktop` Electron 셸 — 마지막 미검증 링크 증명 (2026-08-08)
+
+**상태:** `bitvue-desktop/electron/{main.ts,preload.cjs,index.html}` — 지금까지 독립적으로 검증된 조각들(`bitvue-protocol`/`bitvue-sidecar`/`SidecarClient`)을 실제로 **동작하는 Electron 앱**으로 처음 묶음. `electron` 패키지를 devDependency로 설치(다운로드 성공, v43.3.0 — 이 샌드박스가 외부 네트워크에 접근 가능함을 이번에 확인).
+
+- `preload.cjs` — **의도적으로 TS 컴파일 안 함, 손으로 쓴 plain CommonJS.** Electron의 sandboxed preload가 ESM에 버전별 제약이 많아서, preload 하나만 컴파일 파이프라인 밖에 둠. `contextBridge.exposeInMainWorld("bitvue", {...})`로 `hello`/`openStream`/`getHexRange` 3개만 노출 — 범용 "아무 채널이나 invoke" 통로가 아니라 처음부터 이름 있는 채널만 노출(문서의 query 기반 IPC 원칙과 일치).
+- `main.ts` — `ipcMain.handle`로 위 3채널을 등록해 `SidecarClient`에 위임. `getHexRange` 핸들러가 반환하는 `Buffer`는 Electron의 구조적 복제(structured clone)를 그대로 타고 렌더러까지 감(JSON/base64 인코딩 전혀 없음) — `YUVFrameData` 안티패턴을 프레임워크 경계 전체(Rust→sidecar→Electron main→renderer)에 걸쳐 실제로 회피했다는 증거.
+- `SidecarClient`에 `getHexRange()` 편의 메서드 추가(기존 `request()`는 `Control` 응답만 반환하고 뒤따르는 `Data` 프레임을 correlation id로 엮어주지 않았음 — 이번에 추가, 에러 경로에서 `'data'` 리스너가 새지 않도록 정리도 포함).
+- **빌드:** preload는 컴파일 안 하지만 `main.ts`/`src/*.ts`는 별도 `tsconfig.build.json`(CommonJS 아님, 기존과 동일한 NodeNext ESM 유지 — `dist/electron/main.js`가 `dist/src/sidecarClient.js`를 상대경로로 그대로 import)로 빌드, `npm run build:electron`이 컴파일+정적 자산 복사(`preload.cjs`/`index.html`)까지 수행.
+- **알려진 단순화(프로토타입 단계, 출시 전 재검토 필요):** `sandbox:false`(sandboxed preload의 ESM 제약 회피), IPC 핸들러 파라미터 검증 없음(sidecar 자체가 거부하는 것 이상 검증 안 함), 단일 전역 `SidecarClient` 인스턴스(멀티 윈도우/멀티 세션 스토리 없음).
+
+**검증(실제로 실행한 Electron 프로세스 기준, 목만 아님):**
+- `BITVUE_ELECTRON_OFFSCREEN=1 npx electron .` — 오프스크린 렌더링(디스플레이 없는 샌드박스에서도 검증 가능하게, `webPreferences.offscreen` + `show:false`)으로 실제 앱 기동 성공, sidecar handshake 성공, SIGTERM으로 정상 종료(false-alarm "unexpectedly exited" 로그도 종료 플래그로 정리).
+- `BITVUE_ELECTRON_SELFTEST=1` — **렌더러 → preload(`contextBridge`) → `ipcRenderer.invoke` → `ipcMain.handle` → `SidecarClient` → 실제 컴파일된 Rust 바이너리**까지 전체 경로를 `webContents.executeJavaScript`로 실제 렌더러 컨텍스트에서 구동(메인 프로세스가 `SidecarClient`를 직접 호출하는 우회가 아님): `hello()` → `protocol_version:"0.1.0"` 확인, `openStream("A", tempFile)` → 실제 `ModelUpdated` 이벤트 확인, `getHexRange("A",10,16)` → 64바이트 known-content 임시파일에서 offset 10~25 바이트가 **byte-exact** 일치(`BYTE_EXACT_MATCH: true`, 클린 재빌드 후 재확인 완료).
+- 기존 `bitvue-desktop` 유닛+통합 테스트 14개, `cargo test -p bitvue-sidecar`(13+1)/`-p bitvue-protocol`(3), `cargo check --workspace` 전부 이 변경 이후 재실행해서 회귀 없음 확인.
+
+이로써 `docs/DEVELOPMENT_PHASES.md`가 처음부터 그린 4-계층 경계(`bitvue-engine`/`bitvue-protocol`/`bitvue-sidecar`/`bitvue-desktop`)의 모든 연결점이 최소 1개 실커맨드 기준으로는 전부 실증됨. 남은 건 폭(더 많은 커맨드), 크레이트 리네이밍(의도적으로 계속 보류 — 이유는 위 "Electron 전환 시 경계" 참조), 실제 React UI(`bitvue-ui`) 연결.
+
 ### 확정 순서
 
 ```
