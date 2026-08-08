@@ -5,15 +5,16 @@
  * `bitvue-desktop/electron/preload.cjs` via `contextBridge`.
  *
  * IMPORTANT — the old Tauri command surface (~40 commands, `src-tauri/src/commands/*.rs`,
- * deleted 2026-08-08) and the new `bitvue-sidecar` surface (12 commands, see
+ * deleted 2026-08-08) and the new `bitvue-sidecar` surface (13 commands, see
  * `docs/DEVELOPMENT_PHASES.md` § "제품 아키텍처 확정") are NOT the same API — different names,
  * different param/result shapes, and most of the old capability (frame pixel decode/YUV data,
  * compare workspaces, export, quality metrics) has no sidecar equivalent implemented yet. This
  * file wraps: open/close a stream, select a frame (selection-sync only — no decoded pixel data),
  * read a raw hex byte range, the native open-file dialog, and (as of 2026-08-08) metadata
  * indexing (`indexStream`/`getStreamInfo`/`getFramesChunk` — container + per-frame metadata,
- * IVF/AV1 only so far, no pixel decode; see `bitvue-indexer`'s module doc). Don't add wrappers
- * here for capabilities the sidecar doesn't have; that would silently promise something broken.
+ * IVF/AV1 only so far, no pixel decode) plus lazy per-unit syntax trees (`getFrameSyntax`, AV1
+ * only; see `bitvue-indexer`'s module doc). Don't add wrappers here for capabilities the sidecar
+ * doesn't have; that would silently promise something broken.
  */
 
 export type StreamId = "A" | "B";
@@ -80,6 +81,18 @@ export interface FramesChunkResult {
   total_count: number;
 }
 
+/** Mirrors `bitvue-sidecar`'s `syntax_node_to_json` -- a nested tree built from
+ *  `bitvue_engine::SyntaxModel`'s flat node map. `value` is a plain string (or null for
+ *  container/non-leaf fields), not a discriminated union -- unlike `bitvue_engine::UnitNode`,
+ *  `SyntaxNode`'s `value` field is already just a display string in the Rust type. */
+export interface BridgeSyntaxNode {
+  type: string;
+  name: string;
+  value: string | null;
+  bit_range: { start_bit: number; end_bit: number };
+  children: BridgeSyntaxNode[];
+}
+
 declare global {
   interface Window {
     bitvue?: {
@@ -110,6 +123,10 @@ declare global {
         offset: number,
         limit: number,
       ) => Promise<FramesChunkResult>;
+      getFrameSyntax: (
+        stream: StreamId,
+        frameIndex: number,
+      ) => Promise<BridgeSyntaxNode>;
       onSidecarRestarted: (callback: () => void) => () => void;
     };
   }
@@ -199,4 +216,15 @@ export async function getFramesChunk(
   limit: number,
 ): Promise<FramesChunkResult> {
   return requireBridge().getFramesChunk(stream, offset, limit);
+}
+
+/** Lazy, per-unit syntax tree (AV1 only so far -- see `bitvue-indexer`'s module doc). Unlike
+ *  `getStreamInfo`/`getFramesChunk`, this throws on failure (no unit for that frame_index, index
+ *  hasn't run yet, wrong codec) rather than returning an `{indexed: false}`-style payload -- the
+ *  sidecar reports it as a real wire error since there's no meaningful partial syntax tree. */
+export async function getFrameSyntax(
+  stream: StreamId,
+  frameIndex: number,
+): Promise<BridgeSyntaxNode> {
+  return requireBridge().getFrameSyntax(stream, frameIndex);
 }

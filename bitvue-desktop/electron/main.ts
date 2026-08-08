@@ -90,6 +90,10 @@ function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.handle("bitvue:getFrameSyntax", async (_event, stream: string, frameIndex: number) => {
+    return requireSidecar().request("get_frame_syntax", { stream, frame_index: frameIndex });
+  });
+
   ipcMain.handle(
     "bitvue:showOpenDialog",
     async (event, filters?: Array<{ name: string; extensions: string[] }>) => {
@@ -212,6 +216,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const indexResult = await window.bitvue.indexStream("B");
         const streamInfo = await window.bitvue.getStreamInfo("B");
         const framesChunk = await window.bitvue.getFramesChunk("B", 0, 5);
+        const frameSyntax = await window.bitvue.getFrameSyntax("B", 0);
         await window.bitvue.closeStream("B");
 
         return {
@@ -232,6 +237,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           indexEvents: indexResult.events,
           streamInfo,
           framesChunk,
+          frameSyntax,
         };
       })()
     `);
@@ -247,6 +253,29 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.framesChunk?.indexed === true &&
       result.framesChunk?.units?.length === 5 &&
       result.framesChunk?.units?.[0]?.frame_type === "I";
+    // Recursively find a node by name to prove real nested tree data came back -- and check its
+    // bit_range against the known real file layout (byte 44 = bit 352), the exact value a
+    // byte-vs-bit global_offset mixup (a real bug caught earlier, see bitvue-indexer) would get
+    // wrong silently.
+    interface SyntaxNodeResult {
+      name: string;
+      bit_range: { start_bit: number; end_bit: number };
+      children?: SyntaxNodeResult[];
+    }
+    function findSyntaxNode(
+      node: SyntaxNodeResult | undefined,
+      name: string,
+    ): SyntaxNodeResult | undefined {
+      if (!node) return undefined;
+      if (node.name === name) return node;
+      for (const child of node.children ?? []) {
+        const found = findSyntaxNode(child, name);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const forbiddenBitNode = findSyntaxNode(result.frameSyntax, "obu_forbidden_bit");
+    const frameSyntaxOk = forbiddenBitNode?.bit_range?.start_bit === 352;
     const rootMountedOk = (result.rootChildCount ?? 0) > 0;
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
     console.log("[selftest] document title (real frontend's <title>, not the placeholder's):", result.documentTitle);
@@ -259,6 +288,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       "[selftest] index_stream OK:", indexOk,
       " get_stream_info OK:", streamInfoOk,
       " get_frames_chunk OK:", framesChunkOk,
+      " get_frame_syntax OK:", frameSyntaxOk,
     );
     console.log("[selftest] #root mounted OK:", rootMountedOk);
     process.exitCode =
@@ -268,6 +298,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       indexOk &&
       streamInfoOk &&
       framesChunkOk &&
+      frameSyntaxOk &&
       rootMountedOk
         ? 0
         : 1;

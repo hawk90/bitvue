@@ -6,8 +6,11 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
+import {
+  getFrameSyntax,
+  type BridgeSyntaxNode,
+} from "../../../services/electronBridgeService";
 
 export interface SyntaxValue {
   String?: string;
@@ -23,6 +26,20 @@ export interface SyntaxNode {
   children?: SyntaxNode[];
   description?: string;
   byte_offset?: number;
+}
+
+/** `BridgeSyntaxNode` (sidecar's JSON shape, flat `value: string | null`) -> this tab's local
+ *  `SyntaxNode` (discriminated `SyntaxValue` union). `byte_offset` is a real derived value
+ *  (`bit_range.start_bit / 8`), not fabricated -- `bit_range` is itself a real absolute
+ *  file-bit-offset (see bitvue-indexer's `get_frame_syntax` doc on why that's not just the raw
+ *  byte offset passed in). `description` has no sidecar equivalent, left undefined. */
+function bridgeNodeToLocal(node: BridgeSyntaxNode): SyntaxNode {
+  return {
+    name: node.name,
+    value: node.value !== null ? { String: node.value } : undefined,
+    children: node.children.map(bridgeNodeToLocal),
+    byte_offset: Math.floor(node.bit_range.start_bit / 8),
+  };
 }
 
 // Helper to get display value from SyntaxValue
@@ -74,11 +91,8 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
     setLoading(true);
     setError(null);
 
-    invoke<SyntaxNode>("get_frame_syntax", {
-      path: filePath,
-      frameIndex: frame.frame_index,
-    })
-      .then(setSyntaxTree)
+    getFrameSyntax("A", frame.frame_index)
+      .then((node) => setSyntaxTree(bridgeNodeToLocal(node)))
       .catch((err) => {
         console.error("Failed to fetch frame syntax:", err);
         setError(err?.toString?.() || "Failed to load syntax data");

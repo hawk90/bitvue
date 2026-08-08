@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   closeStream,
+  getFrameSyntax,
   getFramesChunk,
   getHexRange,
   getStreamInfo,
@@ -42,6 +43,13 @@ function installMockBridge(
     getFramesChunk: vi
       .fn()
       .mockResolvedValue({ indexed: false, units: [], total_count: 0 }),
+    getFrameSyntax: vi.fn().mockResolvedValue({
+      type: "obu_0",
+      name: "obu_0",
+      value: null,
+      bit_range: { start_bit: 352, end_bit: 368 },
+      children: [],
+    }),
     onSidecarRestarted: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   };
@@ -190,6 +198,42 @@ describe("electronBridgeService", () => {
       expect(window.bitvue!.getFramesChunk).toHaveBeenCalledWith("A", 10, 5);
       expect(result.total_count).toBe(42);
       expect(result.units).toHaveLength(1);
+    });
+  });
+
+  describe("getFrameSyntax", () => {
+    beforeEach(() => installMockBridge());
+
+    it("forwards stream/frameIndex and returns the real nested tree", async () => {
+      installMockBridge({
+        getFrameSyntax: vi.fn().mockResolvedValue({
+          type: "obu_0",
+          name: "obu_0",
+          value: null,
+          bit_range: { start_bit: 352, end_bit: 368 },
+          children: [
+            {
+              type: "obu_forbidden_bit",
+              name: "obu_forbidden_bit",
+              value: "0",
+              bit_range: { start_bit: 352, end_bit: 353 },
+              children: [],
+            },
+          ],
+        }),
+      });
+      const tree = await getFrameSyntax("A", 3);
+      expect(window.bitvue!.getFrameSyntax).toHaveBeenCalledWith("A", 3);
+      expect(tree.children).toHaveLength(1);
+      expect(tree.children[0].name).toBe("obu_forbidden_bit");
+      expect(tree.children[0].bit_range.start_bit).toBe(352);
+    });
+
+    it("rejects when the bridge rejects (a real wire error, not an {indexed:false} payload)", async () => {
+      installMockBridge({
+        getFrameSyntax: vi.fn().mockRejectedValue(new Error("frame not found")),
+      });
+      await expect(getFrameSyntax("A", 999)).rejects.toThrow("frame not found");
     });
   });
 });

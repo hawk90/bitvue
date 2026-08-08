@@ -7,9 +7,12 @@
  */
 
 import { useState, useEffect, useCallback, memo } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useFileState } from "../../contexts/StreamDataContext";
 import { useCurrentFrame } from "../../contexts/StreamDataContext";
+import {
+  getFrameSyntax,
+  type BridgeSyntaxNode,
+} from "../../services/electronBridgeService";
 import "./BitViewPanel.css";
 
 interface SyntaxNode {
@@ -17,6 +20,19 @@ interface SyntaxNode {
   value?: string | number | boolean | string[] | null;
   children: SyntaxNode[];
   description?: string | null;
+}
+
+/** `BridgeSyntaxNode` (sidecar's JSON shape) -> this panel's local `SyntaxNode`. `value` is
+ *  already a plain string in the bridge shape, so this is mostly a field-name/nesting mapping,
+ *  not a real transformation. `description` has no sidecar equivalent -- left undefined rather
+ *  than fabricated. */
+function bridgeNodeToLocal(node: BridgeSyntaxNode): SyntaxNode {
+  return {
+    name: node.name,
+    value: node.value,
+    children: node.children.map(bridgeNodeToLocal),
+    description: undefined,
+  };
 }
 
 function formatValue(value: SyntaxNode["value"]): string {
@@ -97,15 +113,12 @@ export const BitViewPanel = memo(function BitViewPanel() {
 
   const frameIndex = pinnedFrame ?? currentFrameIndex;
 
-  const load = useCallback(async (path: string, idx: number) => {
+  const load = useCallback(async (idx: number) => {
     setLoading(true);
     setError(null);
     try {
-      const node = await invoke<SyntaxNode>("get_frame_syntax", {
-        path,
-        frameIndex: idx,
-      });
-      setSyntax(node);
+      const node = await getFrameSyntax("A", idx);
+      setSyntax(bridgeNodeToLocal(node));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setSyntax(null);
@@ -116,7 +129,7 @@ export const BitViewPanel = memo(function BitViewPanel() {
 
   useEffect(() => {
     if (filePath) {
-      load(filePath, frameIndex);
+      load(frameIndex);
     } else {
       setSyntax(null);
       setError(null);
@@ -159,7 +172,7 @@ export const BitViewPanel = memo(function BitViewPanel() {
           )}
           <button
             className="bitview-btn"
-            onClick={() => filePath && load(filePath, frameIndex)}
+            onClick={() => filePath && load(frameIndex)}
             disabled={loading}
           >
             {loading ? "..." : "Reload"}

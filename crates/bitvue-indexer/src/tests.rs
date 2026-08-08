@@ -179,3 +179,38 @@ fn get_frame_syntax_errors_for_an_out_of_range_frame_index() {
     let result = get_frame_syntax(&core, StreamId::A, 999_999);
     assert!(result.is_err());
 }
+
+/// Regression test for a real bug: `parse_obu_syntax`'s `global_offset` param is a BIT offset
+/// (see `TrackedBitReader::new`'s doc), not a byte offset -- passing the raw byte offset (an
+/// earlier version of `get_frame_syntax` did exactly this) silently makes every node's
+/// `bit_range` wrong by a factor of 8, without any error or empty-tree symptom to notice it by.
+/// Asserts the actual numeric value against the real, known file layout: frame 0's OBU starts at
+/// byte 44 (32-byte IVF header + 12-byte chunk header), so its first field must start at bit 352.
+#[test]
+fn get_frame_syntax_bit_range_is_a_real_bit_offset_not_a_byte_offset() {
+    use crate::get_frame_syntax;
+
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    index_stream(&core, StreamId::A);
+    let model = get_frame_syntax(&core, StreamId::A, 0).expect("get_frame_syntax should succeed");
+
+    // The root node ("obu_0") is a synthetic container spanning the whole tree (bit_range
+    // 0..total) -- look up a real leaf field instead of taking a blind min across all nodes.
+    let forbidden_bit = model
+        .nodes
+        .values()
+        .find(|n| n.field_name == "obu_forbidden_bit")
+        .unwrap_or_else(|| {
+            panic!(
+                "expected an obu_forbidden_bit node, got: {:?}",
+                model.nodes.keys().collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(
+        forbidden_bit.bit_range.start_bit, 352,
+        "expected obu_forbidden_bit to start at bit 352 (byte 44 * 8) -- got {}, which looks \
+         like a byte offset (44) leaking through unmultiplied",
+        forbidden_bit.bit_range.start_bit
+    );
+}

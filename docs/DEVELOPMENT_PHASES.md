@@ -517,6 +517,38 @@ syntax` 채워짐 / `index_stream` 안 돌았을 때 에러 / 범위 밖 frame_i
 라운드), AV1 외 코덱(VP9 등 — 세션 중 시도했다가 사용자 피드백으로 되돌림, 명시적 재확인 없이 다시 진행
 안 함).
 
+### `get_frame_syntax` frontend 소비 + 실제 버그 발견/수정 (2026-08-08)
+
+`get_frame_syntax`를 이미 쓰던(옛 Tauri 커맨드) 컴포넌트 2개를 새 bridge로 재배선: `BitViewPanel.tsx`
+(로컬 flat-value `SyntaxNode` 타입), `SyntaxDetailPanel/FrameSyntaxTab.tsx`(로컬 discriminated-union
+`SyntaxValue` 타입). 두 컴포넌트가 서로 다른 로컬 타입을 갖고 있어서(공유 안 됨) 각자 자기 shape로 변환하는
+어댑터 함수(`bridgeNodeToLocal`)를 각각 작성 — `unitNodeToFrameInfo` 때와 같은 "경계에서 번역" 패턴.
+
+**실제 버그 발견(설계 중 우연히):** `FrameSyntaxTab`의 `byte_offset`(hex 뷰 점프용) 필드를 `bit_range.
+start_bit / 8`로 계산하려다가, `bitvue-indexer::get_frame_syntax`(직전 라운드 `2b7f873`에서 커밋됨)가
+`parse_obu_syntax`에 **바이트 오프셋을 그대로** 넘기고 있다는 걸 발견 — `TrackedBitReader::new`의 문서
+확인 결과 `global_offset` 파라미터는 **비트** 오프셋이어야 함(CLI의 `analyze.rs`가 이미
+`(offset * 8) as u64`로 올바르게 호출 중인 것도 확인). 고치지 않았으면 모든 `SyntaxNode.bit_range`가
+8배 어긋난 채로 조용히 나갔을 것 — 트리 구조 자체는 정상이라 기존 테스트(빈 트리 아님만 확인)로는
+안 걸림. `bitvue-indexer/src/lib.rs`에서 `obu_offset` → `obu_offset * 8`로 수정, 실제 파일 레이아웃
+기준 회귀 테스트 추가(프레임 0의 OBU는 바이트 44=IVF헤더32+청크헤더12에서 시작하므로 `obu_forbidden_bit`
+필드가 정확히 비트 352에서 시작해야 함 — 수정 전엔 44로 나와서 실패하는 것까지 확인).
+
+**한 일:** `bitvue-desktop/electron/{preload.cjs,main.ts}`에 `getFrameSyntax` IPC 채널.
+`electronBridgeService.ts`에 `BridgeSyntaxNode` 타입(`{type,name,value,bit_range,children}`, sidecar의
+`syntax_node_to_json`을 그대로 미러링) + wrapper(13번째 커맨드 — 실패 시 `{indexed:false}`류가 아니라
+진짜 throw, `get_stream_info`류와 다르게 "이 프레임 신택스"엔 의미있는 부분결과가 없어서). 두 컴포넌트
+모두 `path`/`filePath` 기반 호출을 `stream="A"` 고정 호출로 교체(다른 콜사이트들과 동일한 단일-스트림
+가정).
+
+**검증:** `electronBridgeService.test.ts`(+2, 신규) 통과. `BitViewPanel.test.tsx`(5개 실패)는 기존
+pre-existing 베이스라인(공급자 래핑 없이 구버전 placeholder 텍스트를 찾는 낡은 테스트, 이번 변경과 무관 —
+확인함) 그대로, `FrameSyntaxTab.test.tsx`(16개)는 전부 통과. `npx vitest run` 전체 — 여전히 9파일/36개
+pre-existing 실패만, 새 실패 0개. `BITVUE_ELECTRON_SELFTEST`에 `getFrameSyntax("B", 0)` 호출 추가 —
+실제 렌더러→preload→main→sidecar 체인으로 진짜 중첩 트리를 받아서 `obu_forbidden_bit` 필드를 재귀
+탐색해 `bit_range.start_bit === 352`까지 확인(수정된 비트오프셋 버그가 E2E 레벨에서도 안 재발하는지
+증명), exit code 0.
+
 ### 확정 순서
 
 ```

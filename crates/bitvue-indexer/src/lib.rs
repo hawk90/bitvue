@@ -199,7 +199,12 @@ pub fn get_frame_syntax(
         .read_range(obu_offset, obu_len)
         .map_err(|e| format!("Failed to read OBU bytes: {e}"))?;
 
-    let model = parse_obu_syntax(obu_bytes, frame_index, obu_offset)
+    // parse_obu_syntax's global_offset is a BIT offset from file start (see
+    // TrackedBitReader::new's doc), not a byte offset -- matches the CLI's analyze.rs convention
+    // ((offset * 8) as u64). Passing the raw byte offset here would silently make every
+    // SyntaxNode's bit_range wrong (off by a factor of 8), which the "jump to hex" frontend
+    // feature would then jump to the wrong byte for.
+    let model = parse_obu_syntax(obu_bytes, frame_index, obu_offset * 8)
         .map_err(|e| format!("Failed to parse OBU syntax: {e}"))?;
 
     {
