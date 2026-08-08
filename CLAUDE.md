@@ -1,8 +1,9 @@
 # Bitvue — CLAUDE.md
 
 Baseline pointer file. Keep this short — details live in the docs it points to, not duplicated here.
-Bitvue = open-source video bitstream analyzer (Tauri + Rust + React/TypeScript), building feature parity
-with commercial tools (VQ Analyzer, VQ Probe, VEGA, StreamEye).
+Bitvue = open-source video bitstream analyzer (Electron + Rust + React/TypeScript), building feature parity
+with commercial tools (VQ Analyzer, VQ Probe, VEGA, StreamEye). Migrated off Tauri 2026-08-08 — see
+`docs/DEVELOPMENT_PHASES.md` § "제품 아키텍처 확정" for the sidecar-process architecture and rationale.
 
 ## Doc map (source of truth — read before starting parity/feature work)
 
@@ -14,24 +15,9 @@ with commercial tools (VQ Analyzer, VQ Probe, VEGA, StreamEye).
 | `docs/UX_PARITY_MATRIX.md` | UI/UX interaction parity (mouse/tooltip/zoom contracts, workspace specs, menu structure, overlay color scale) |
 | `docs/DEVELOPMENT_PHASES.md` | Phase 0-12 implementation roadmap (Rust sketches, task checklists, time estimates) |
 | `archive_docs/` | Retired docs, kept for history — don't treat as current |
-| `docs/_import_v14/` | Gitignored raw import (a prior design-blueprint pack, dated 2026-01) — **mining complete as of 2026-07-31** (all ~30 previously-unread files triaged; nothing of value left unmined). Pending deletion (not yet executed — see below), then this row should be removed |
 
 All four active docs cross-link via a "See also" header — follow it before assuming a doc is standalone.
 Don't create a 5th parity doc; extend one of the four above.
-
-## Pending cleanup (flagged, not executed — 2026-07-31)
-
-`docs/_import_v14/` mining pass finished (see `DEVELOPMENT_PHASES.md` Architecture/Future-Differentiators/MCP
-appendices, `PARITY_CHECKLIST.md` release-gate + Layer 6 CMP-01/02 corrections, `UX_PARITY_MATRIX.md` §13-14 —
-all added 2026-07-31). The subagent that did this mining had no shell tool, so it could not run the intended
-deletion. Someone with shell access should run (originals remain in `~/Downloads/` as fallback):
-```
-rm -rf docs/_import_v14/monster_pack docs/_import_v14/index_generator docs/_import_v14/task_schemas docs/_import_v14/parity_harness
-```
-(`parity_harness/` included — its unread files turned out to be a manifest/schema/prompt-file set for a
-competitor-parity-matrix harness already implemented in `crates/bitvue-engine/src/parity_harness/mod.rs`; nothing
-left in it was undocumented.) Then delete `docs/_import_v14/` itself and remove its row from the doc-map table
-above.
 
 ## Known doc drift (unresolved — flag before trusting)
 
