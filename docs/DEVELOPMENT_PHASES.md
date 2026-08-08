@@ -676,6 +676,68 @@ test.tsx`(75개, `units` prop 경로로 이미 0이 아닌 오프셋 포매팅�
 **세 번째 스크린샷으로 실측 확인**: `0x00000020`(=32, IVF 헤더), `0x000029a3`(=10659),
 `0x00003f13`(=16147)... 전부 Rust 테스트에서 이미 검증된 실제 값과 정확히 일치.
 
+### Electron selftest의 stale 352 값 수정 (2026-08-08)
+
+바로 위 라운드(OBU 파싱 버그 수정, `find_frame_obu`)에서 `bitvue-indexer`의 Rust 회귀 테스트는
+352→472로 고쳤지만, 같은 값을 독립적으로 검증하는 `bitvue-desktop/electron/main.ts`의
+`BITVUE_ELECTRON_SELFTEST` 자체 어서션(`frameSyntaxOk`)은 고치지 않고 넘어갔던 것 — 다음 세션 시작
+시 `grep`으로 재확인하다 발견. 352→472로 정정하고 `BITVUE_ELECTRON_SELFTEST=1` 전체 재실행으로
+`get_frame_syntax OK: true`, exit 0 확인 — Rust 유닛/통합 테스트와 풀스택 Electron selftest가 이제
+전부 같은 값(472)에 동의함.
+
+### `YuvViewerPanel` 메인 미리보기 화면 완전 복구 (2026-08-08)
+
+**발견 경위:** `get_frame_syntax` 수정을 스크린샷으로 육안 확인하려고 `BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB`
+(신규 — 스크린샷 모드가 캡처 전에 지정한 라벨의 좌측 탭을 클릭하게 함, 기본 탭 외의 패널도 검증 가능)을
+추가해 Syntax 탭을 열어보던 중, 메인 비디오 미리보기 화면이 "Failed to load frame" 에러로 완전히
+깨져있는 걸 발견. 콘솔에 `[YuvViewerPanel] Failed to load frame: TypeError: Cannot read properties of
+undefined (reading 'invoke')` — `YuvViewerPanel`이 아직 `@tauri-apps/api/core`의 `invoke()`를 직접
+호출하고 있었음(`get_decoded_frame_yuv`), Electron 브릿지로 마이그레이션된 적이 없어서.
+
+**스코프 확인:** grep으로 확인한 결과 `frontend/` 전체에서 아직 `@tauri-apps/api`를 직접 import하는
+파일이 40개(메뉴/필름스트립 썸네일/YUV diff/품질비교/RD curves/Compare Workspace 등) — 이번 세션의
+좁은 스코프(파일 열기+선택 인프라)를 훨씬 넘는 별도의 큰 작업임을 사용자에게 보고, "YuvViewerPanel만
+우선 수정"으로 스코프 확정 (전체 40개 스윕은 보류).
+
+**한 일 — `get_decoded_frame_yuv` 신규 sidecar 커맨드:**
+`bitvue-decode::Av1Decoder`(dav1d 기반, `bitvue-cli`의 `decode --dump`가 이미 씀)는 이미 실제로
+동작하는 코드였음 — sidecar에 연결만 안 돼 있었음. `bitvue-sidecar/src/decode_bridge.rs` 신규
+(`bitvue-indexer`가 아님 — 그 크레이트 자체 doc이 "no pixel decode"를 명시적으로 선언하고 있어서
+경계를 지킴). `get_hex_range`와 동일한 데이터플레인 패턴(Control 메타데이터 + Data 프레임 raw
+bytes, base64/JSON 배열 없음)으로 `get_decoded_frame_yuv` 커맨드 신규 — `sidecarClient.ts` →
+Electron IPC(`main.ts`/`preload.cjs`) → `electronBridgeService.ts` → `YuvViewerPanel`까지 관통 배선.
+정확성 우선, 성능은 나중(매 호출마다 스트림 처음부터 재디코드, 세션 캐싱 없음 — 모듈 doc에 명시).
+
+**실제로 발견한 버그 2개 (스크린샷 없이는 못 잡았을 것들):**
+1. **stride 메타데이터 오염** — `bitvue_decode::DecodedFrame.y_stride`/`u_stride`/`v_stride`는
+   dav1d **원본** 픽처 stride(패딩 포함, 예: 384)인데, 실제 `y_plane`/`u_plane`/`v_plane` 바이트는
+   `extract_plane()`이 항상 타이트하게 패킹(패딩 제거, 실제 width 기준)해서 복사함 — 즉 stride
+   필드가 실제 바이트 레이아웃과 안 맞는 stale 메타데이터. `decode_bridge.rs`가 이 필드를 그대로
+   믿고 프론트엔드에 전달해서, 매 행이 잘못된 오프셋에서 읽혀 이미지가 심하게 깨져 나옴(원(circle)
+   무늬처럼 보이는 리피팅 아티팩트). 수정: stride를 `frame.width`(Y)/`chroma_width`(U,V, 크로마
+   포맷 기준 직접 계산)로 재계산 — dav1d 원본 stride 무시.
+2. **`YUVRenderer.render()`가 한 번도 실제로 그린 적이 없었음** — `frontend/utils/yuv/renderer.ts`:
+   `render()`가 `!this.imageData`면 즉시 return하는데, `imageData`는 `resize()` 안에서만 생성되고
+   그 `resize()` 호출은 이 얼리리턴 **다음 줄**에 있었음 — 즉 최초 호출 시 `imageData`가 항상
+   `null`이라 `resize()`가 실행될 기회조차 없이 매번 return. `VideoCanvas.tsx`가 매 프레임마다
+   검은색으로 `fillRect`한 게 유일하게 화면에 남는 것이었음 — 이 버그는 (1)번을 고친 뒤에도 여전히
+   검은 화면만 나와서 추가로 파고들다 발견. 수정: `resize()` 호출을 얼리리턴보다 먼저 실행하도록
+   순서 교체.
+
+**검증:** `bitvue-cli`의 `decode --dump` 결과를 ground truth로 삼아 바이트 단위 정확히 일치 확인
+(`0f 10 10 10 d5 d5 d6 d6...`). `bitvue-sidecar` 신규 테스트 3개(성공/out-of-range/stream-not-open,
++ ground-truth 픽셀 핀 테스트), `frontend/tests/utils/yuvRenderer.test.ts` 신규(YUVRenderer 최초
+호출 시 실제로 paint하는지 직접 검증 — 기존엔 이 클래스를 직접 테스트하는 파일 자체가 없었음, 그래서
+버그가 안 걸렸음). 스크린샷 4연속(에러 화면 → 검은 화면(디코드는 성공, 렌더 실패) → 깨진 이미지(stride
+버그) → 최종 정상 EBU 테스트패턴("25fps SQUARE 320 x 240p 4:3", 타임코드, "Bip!" 톤, 컬러바)) —
+전형적인 방송 테스트 카드였음, 실제 영상이 아니라 놀랄 필요 없음. `cargo test --workspace`/
+`npx vitest run` 전체 재확인 — pre-existing 실패(`bitvue-av1-codec` 컴파일 에러 1개, `bitvue-engine`
+플레이키 LRU 테스트 1개, 프론트엔드 9파일 무관 실패)만 남고 전부 이 세션 이전부터 있던 것으로 확인
+(git stash로 내 변경분 뺐다 넣어서 직접 검증).
+
+**안 고친 것(의도적, 스코프 밖):** 나머지 39개 파일(메뉴/필름스트립 썸네일/YUV diff/품질비교/RD
+curves/Compare Workspace 등)은 여전히 Tauri `invoke()` 직접 호출 — 다음 스코프 결정 필요.
+
 ### 확정 순서
 
 ```
