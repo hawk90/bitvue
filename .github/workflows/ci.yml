@@ -132,7 +132,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-latest, windows-latest]
         crate:
-          - bitvue-core
+          - bitvue-engine
           - bitvue-formats
           - bitvue-avc
           - bitvue-hevc
@@ -269,7 +269,7 @@ jobs:
           CARGO_TARGET_DIR: /t
         run: |
           mkdir -p coverage
-          for CRATE in bitvue-hevc bitvue-avc bitvue-vp9 bitvue-av1-codec bitvue-avs3 bitvue-jpegxs bitvue-vc3 bitvue-codecs-parser bitvue-core bitvue-formats bitvue-cli; do
+          for CRATE in bitvue-hevc bitvue-avc bitvue-vp9 bitvue-av1-codec bitvue-avs3 bitvue-jpegxs bitvue-vc3 bitvue-codecs-parser bitvue-engine bitvue-formats bitvue-cli; do
             echo "=== $CRATE ==="
             cargo llvm-cov \
               --package "$CRATE" \
@@ -281,7 +281,7 @@ jobs:
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: coverage/bitvue-hevc.json,coverage/bitvue-avc.json,coverage/bitvue-vp9.json,coverage/bitvue-av1-codec.json,coverage/bitvue-avs3.json,coverage/bitvue-jpegxs.json,coverage/bitvue-vc3.json,coverage/bitvue-codecs-parser.json,coverage/bitvue-core.json,coverage/bitvue-formats.json,coverage/bitvue-cli.json
+          files: coverage/bitvue-hevc.json,coverage/bitvue-avc.json,coverage/bitvue-vp9.json,coverage/bitvue-av1-codec.json,coverage/bitvue-avs3.json,coverage/bitvue-jpegxs.json,coverage/bitvue-vc3.json,coverage/bitvue-codecs-parser.json,coverage/bitvue-engine.json,coverage/bitvue-formats.json,coverage/bitvue-cli.json
           flags: rust
           name: rust-coverage
           fail_ci_if_error: false
@@ -295,7 +295,7 @@ jobs:
       - name: Coverage summary
         run: |
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "Crates measured: bitvue-hevc, bitvue-avc, bitvue-vp9, bitvue-av1-codec, bitvue-avs3, bitvue-jpegxs, bitvue-vc3, bitvue-codecs-parser, bitvue-core, bitvue-formats, bitvue-cli" >> $GITHUB_STEP_SUMMARY
+          echo "Crates measured: bitvue-hevc, bitvue-avc, bitvue-vp9, bitvue-av1-codec, bitvue-avs3, bitvue-jpegxs, bitvue-vc3, bitvue-codecs-parser, bitvue-engine, bitvue-formats, bitvue-cli" >> $GITHUB_STEP_SUMMARY
 
   # ================================
   # 5. Frontend Full Checks (PR only)
