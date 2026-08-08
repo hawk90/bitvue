@@ -798,6 +798,31 @@ offset 없을 때 에러 경로). 스크린샷으로 실측 확인: frame 0의 �
 ground-truth 일치. Truncation 메시지도 "First 2048 bytes (of 10627 total)"로 정확. 36-실패/9-파일
 베이스라인 변화 없음.
 
+### Quit / Reload File / Open Recent File — 죽어있던 버튼 3개 (2026-08-09)
+
+"다음 세션" 방향 확인 후 계속 Tauri 스위프. `App.tsx`에 남아있던 `@tauri-apps/api/core` 직접 호출
+2종을 조사 — `HexViewTab`류와 또 다른 성격: **sidecar와 아예 무관**, 순수 Electron 창/앱 제어.
+
+**`close_window` (Quit 메뉴/TitleBar 버튼):** `invoke("close_window")` — Tauri 커맨드 자체가 없어져서
+Quit 버튼을 눌러도 아무 일도 안 일어나고 있었음. `bitvue-sidecar` 관여 전혀 없이 순수 Electron
+`app.quit()` 하나만 새 IPC 채널(`bitvue:closeWindow`)로 노출 — `window.close()`가 아니라 `app.quit()`을
+쓴 이유: macOS에서 "창 닫기"와 "앱 종료"는 다른 동작이라 Quit의 의미상 후자가 맞음. 기존
+`before-quit` 핸들러가 이미 sidecar 정리를 담당하고 있어서 추가 변경 불필요.
+
+**`open_file` (Reload File / Open Recent File):** 둘 다 `invoke("open_file", {path})` 직접 호출 —
+역시 죽은 Tauri 커맨드라 아무 반응 없었음. `useAppFileOperations.ts`의 `handleOpenFile`이 다이얼로그
+선택 후 실제로 하는 일(openStream → selectFrame → refreshFrames, 이미 검증된 브릿지 체인)을
+`openFileAtPath(path)`로 분리해서 세 진입점(다이얼로그/reload/recent) 전부 같은 실제 로직 공유하도록
+리팩터 — `handleOpenFile`은 이제 `showOpenDialog()` + `openFileAtPath(selected)`로 단순화.
+
+**검증:** hook 레벨 신규 2개(`openFileAtPath` 성공/실패 경로), App.tsx 레벨 신규 2개(`menu-quit` →
+`closeWindow` 실제 호출 확인, TitleBar Quit 버튼 클릭 → 실제 호출 확인) + `menu-open-recent-file`
+디스패치가 안 던지는지(이 파일 기존 관례와 동일한 가벼운 스모크 테스트 수준). `onReloadFile` 자체의
+App.tsx 배선(키보드 단축키 설정 객체를 통해 호출)은 별도 테스트 안 함 — 호출하는 로직
+(`openFileAtPath`)은 이미 hook 레벨에서 충분히 커버되고, `globalShortcutHandler`의 mock 내부까지
+파고드는 비용 대비 얻는 게 적다고 판단. `App.tsx`의 `invoke` import가 이제 완전히 미사용이라 제거.
+36-실패/9-파일 베이스라인 변화 없음.
+
 ### 확정 순서
 
 ```
