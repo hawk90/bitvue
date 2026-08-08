@@ -146,6 +146,17 @@ function createWindow(): BrowserWindow {
       offscreen: process.env.BITVUE_ELECTRON_OFFSCREEN === "1",
     },
   });
+  // Renderer console/load errors don't surface in this process's stdout by default -- a blank
+  // page (e.g. a JS asset 404 under file://, an uncaught exception during React mount) is
+  // otherwise silent here. Forward them so `npm run electron`'s terminal output is actually
+  // useful for debugging instead of just showing an unexplained blank window.
+  win.webContents.on("console-message", (_event, _level, message, line, sourceId) => {
+    console.log(`[renderer console] ${sourceId}:${line} ${message}`);
+  });
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[bitvue-desktop] renderer failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
+  });
+
   const renderer = resolveRendererTarget();
   console.log(`[bitvue-desktop] loading renderer (${renderer.kind}): ${renderer.target}`);
   if (renderer.kind === "url") {
@@ -176,6 +187,19 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
 
   try {
     await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 50))"); // let preload settle
+    // Poll for the React app to actually mount, rather than racing a fixed delay -- the app's
+    // JS bundle has to load/parse/execute and do its initial render, which isn't bounded by the
+    // preload-settle wait above (that's just for window.bitvue to exist, not for the page's own
+    // script to have run). Times out at 5s so a real mount failure still fails loudly instead of
+    // hanging.
+    await win.webContents.executeJavaScript(`
+      (async () => {
+        const deadline = Date.now() + 5000;
+        while ((document.getElementById("root")?.childElementCount ?? 0) === 0 && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      })()
+    `);
     const result = await win.webContents.executeJavaScript(`
       (async () => {
         const hello = await window.bitvue.hello("selftest/0.0.1");
@@ -192,6 +216,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
 
         return {
           documentTitle: document.title,
+          // document.title alone doesn't prove the React bundle actually executed -- it's a
+          // static <title> tag that loads even if the app's JS 404s (found the hard way: a
+          // Vite base-path bug meant the bundle silently failed to load under file://, leaving
+          // a blank page, while this exact selftest was still reporting the right title). Check
+          // real rendered DOM content too.
+          rootChildCount: document.getElementById("root")?.childElementCount ?? -1,
           hello,
           openEvents: openResult.events,
           selectEvents: selectResult.events,
@@ -217,8 +247,10 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.framesChunk?.indexed === true &&
       result.framesChunk?.units?.length === 5 &&
       result.framesChunk?.units?.[0]?.frame_type === "I";
+    const rootMountedOk = (result.rootChildCount ?? 0) > 0;
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
-    console.log("[selftest] document title (proves the real frontend loaded, not the placeholder):", result.documentTitle);
+    console.log("[selftest] document title (real frontend's <title>, not the placeholder's):", result.documentTitle);
+    console.log("[selftest] #root child count (proves the React bundle actually executed, not just that the HTML shell loaded):", result.rootChildCount);
     console.log("[selftest] expected hex bytes:", expectedHex);
     console.log("[selftest] actual   hex bytes:", result.hexBytesHex);
     console.log("[selftest] BYTE_EXACT_MATCH:", expectedHex === result.hexBytesHex);
@@ -228,8 +260,15 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       " get_stream_info OK:", streamInfoOk,
       " get_frames_chunk OK:", framesChunkOk,
     );
+    console.log("[selftest] #root mounted OK:", rootMountedOk);
     process.exitCode =
-      expectedHex === result.hexBytesHex && selectOk && closeOk && indexOk && streamInfoOk && framesChunkOk
+      expectedHex === result.hexBytesHex &&
+      selectOk &&
+      closeOk &&
+      indexOk &&
+      streamInfoOk &&
+      framesChunkOk &&
+      rootMountedOk
         ? 0
         : 1;
   } catch (err) {

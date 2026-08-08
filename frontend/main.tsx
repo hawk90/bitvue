@@ -22,6 +22,7 @@ import "./theme/dropdowns.css";
 import "./theme/forms.css";
 import "./theme/tabs.css";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { LayoutProvider } from "./contexts/LayoutContext";
 import { initializeSystemMenu } from "./utils/menu";
 import { createLogger } from "./utils/logger";
 import { tauriLog } from "./utils/tauriLogger";
@@ -131,7 +132,9 @@ if (!rootElement) throw new Error("Root element #root not found");
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <ThemeProvider defaultTheme="dark">
-      <App />
+      <LayoutProvider>
+        <App />
+      </LayoutProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );
