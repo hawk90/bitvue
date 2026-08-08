@@ -7,6 +7,8 @@ members = [
 
     # Core architecture
     "crates/bitvue-core",       # SelectionState, Command/Event bus, Worker runtime, Caches
+    "crates/bitvue-protocol",   # Electron sidecar wire protocol (control/data plane framing, DEVELOPMENT_PHASES.md)
+    "crates/bitvue-sidecar",    # Standalone process hosting the engine, speaks bitvue-protocol over stdio (skeleton)
     "crates/bitvue-formats",    # Container parsers (IVF, MP4, MKV, TS)
     "crates/bitvue-codecs",     # Unified codec interface (re-exports all codec parsers)
     "crates/bitvue-codecs-parser",  # Codec parsers integration layer
@@ -47,6 +49,7 @@ bitvue = { path = "crates/bitvue" }
 
 # Core architecture
 bitvue-core = { path = "crates/bitvue-core" }
+bitvue-protocol = { path = "crates/bitvue-protocol" }
 bitvue-formats = { path = "crates/bitvue-formats" }
 bitvue-codecs = { path = "crates/bitvue-codecs" }
 bitvue-codecs-parser = { path = "crates/bitvue-codecs-parser" }

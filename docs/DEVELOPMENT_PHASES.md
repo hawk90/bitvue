@@ -29,6 +29,174 @@ Phase 0-12 순서는 4월 스펙 당시 그대로다 — 이번 세션의 경쟁
 
 ---
 
+## 제품 아키텍처 확정 (2026-08-08, Tauri→Electron 전환 결정에 따른 정리)
+
+> 설계 확정 — 성능/구현 세부는 나중에 갱신. `electron-migration` 브랜치 생성됨(코드 변경은 아직 없음).
+
+### 제품 구조: bitvue-core 공유, 3-제품 분기
+
+```
+                    bitvue-core (공유 엔진)
+      codec/parser · bitstream model · metrics · diagnostics · compare · indexing
+                               │
+             ┌─────────────────┼─────────────────┐
+             ▼                 ▼                 ▼
+      Bitvue Analyzer      Bitvue Probe       Bitvue CLI
+       (Electron GUI)     (live monitoring)   (automation/CI)
+```
+
+| 제품 | 역할 | 사용 시점 | 현재 상태 |
+|---|---|---|---|
+| **Bitvue Analyzer** | Deep inspection / debugging — 지금 만드는 본체, 개발 리소스 80-90% 집중 대상 | 문제 원인 분석 | 진행 중 (Phase 1-12) |
+| **Bitvue Probe** | Live/장시간 관측 (QoS: bitrate/fps/QP/GOP, 이벤트: corruption/discontinuity/decoder error) | 문제 탐지 | 미착수 — Analyzer 안정화 후 착수 |
+| **Bitvue CLI** | 자동화/CI/스크립팅 (`bitvue inspect/frames/metrics/validate/diff/compare --fail-if`) | 반복 분석, 회귀 게이트 | **이미 존재** — `crates/bitvue-cli` 3055줄, Phase 9(커맨드라인 강화)에서 확장 중 |
+| **bitvue-mcp** | 4번째 "제품"이 아니라 core의 인터페이스 중 하나 (Rust API / JSON Schema / CLI / IPC / MCP 중 하나) | 에이전트/외부 툴 연동 | **이미 존재** — `crates/bitvue-mcp` 1224줄, CLI와 형제 크레이트 |
+
+**아키텍처 근거 (경계, 필수 준수):** Analyzer(파서 안전성·syntax 표현·codec state가 핵심 위험)와 Probe(프레임 정렬·색공간 정합성·중복 decode·메트릭 정확성이 핵심 위험)는 실패 모드가 다르다 — `UniversalFrameAnalysis` 같은 god-struct로 합치지 말 것. 이미 Phase 7.5에 명문화된 원칙([[project_analyzer_probe_separation]] 참조)이며 이번 확정은 이를 3-제품 구조로 확장한 것뿐, 새 원칙 아님.
+
+**검증됨 (제안이 아니라 이미 사실) — 단, 범위는 제한적으로 읽을 것:**
+- `bitvue-cli`의 Cargo 의존성은 `bitvue-core/formats/decode/{codec}/metrics`뿐, `src-tauri` 없음 — 이건 **라이브러리 모듈성**(core가 특정 UI 프레임워크 크레이트에 링크되지 않음)만 증명한다. GUI가 실제로 필요로 하는 incremental/viewport-scoped/cancelable query 형태(`get_syntax_range`, `get_hex_range` 등)까지 core가 이미 그 모양으로 노출하고 있다는 뜻은 아님 — CLI는 1회성 배치 호출이라 이 부분은 검증하지 못한다. "core-UI 분리는 됐다, interactive query API 설계는 아직 안 됐다"가 정확한 상태.
+- Cross-view multi-sync(Analyzer의 핵심 차별점)는 부분적으로만 이미 있음 — `crates/bitvue-core/src/selection.rs`의 `SelectionState`가 `stream_id`/`temporal`/`cursor`/`unit`/`syntax_node`/`bit_range`/`source_view` 7개 필드로 **Syntax tree·Player·Timeline·Hex** 4개 뷰의 tri/multi-sync는 커버한다. 하지만 **QP heatmap**(frame 단위라 `cursor`로 충분, 사실상 커버)을 빼면 **Ref Graph 노드**와 **Metrics 샘플** 선택을 나타내는 필드는 없음 — 7개 뷰 중 2개는 새 필드/설계가 필요하다. 참고로 이 struct 자체에 "God object refactoring note: intentionally cohesive"라는 방어적 주석이 이미 달려 있어 필드 추가 전에 한번 검토할 가치가 있음.
+
+### 왜 Electron인가 — 결정 근거
+
+| Bitvue 관점 | Tauri v2 | Electron |
+|---|---|---|
+| macOS/Windows/Linux 렌더러 일관성 | 낮음 | 높음 (타겟이 Chromium 하나라 재현·추적이 쉽다는 의미 — "문제가 없다"는 아님, 아래 각주) |
+| Linux WebGL/Canvas 지원 부담 | 높음 | 상대적으로 낮음 |
+| Rust 코어 직접 호출 | 매우 좋음 | bridge 필요 |
+| Rust crash 격리 | 별도 설계 필요 | **sidecar를 선택할 때만** 성립 (아래 "브리지 방식" 참조 — napi-rs면 이 행 무효) |
+| 번들·idle 메모리 | 좋음 | 나쁨 (Bitvue는 이미 4K/8K 프레임 버퍼로 메모리를 많이 쓰는 도구라 실사용 환경에서 재확인 필요 — 아래 각주) |
+| 대규모 시각화 생태계 | 보통 | 좋음 |
+| DevTools/프로파일링 | 플랫폼별 차이 | 일관적 |
+| Playwright/E2E 재현성 | 보통 | 좋음 |
+| 업데이트·배포 사례 | 보통 | 풍부함 |
+| 기본 보안 모델 | 좋음 | 명시적 hardening 필요 |
+| 장기 플랫폼 QA 비용 | 높음 | 낮음 |
+| 현재 Bitvue 코드 재사용 | 최대 | Rust 코어·React 재사용 가능 |
+| 앱 전체 전환 비용 | 없음 | Tauri adapter 재작성 |
+
+**결정 조건 (조건부 — repo 어디에도 플랫폼 지원 티어를 명시한 문서가 없어 아직 미확인):** Linux가 best-effort(Windows/macOS 1급, Ubuntu LTS 공식 지원, 기타 Linux best-effort)면 Tauri 유지로도 충분했다. Bitvue에서 실패 요인은 번들 크기/메모리가 아니라 "특정 Linux에서 빈 화면", "GPU 가속 fallback 차이", "QP/MV overlay 렌더링 차이", "macOS 버전별 WebKit 동작 차이", "플랫폼별 Canvas/WebGL 버그 추적 비용" — 즉 **Linux까지 진짜 1급으로 지원해야 하는 전문 영상 시각화 도구**라면 Electron이 맞다. **단, "Linux가 1급이다"는 아직 사용자가 명시적으로 확정한 사실이 아니라 이 판단의 전제 조건일 뿐** — Electron 전환 자체는 이미 결정·실행됐으므로(브랜치 생성됨) 지금 재논의 대상은 아니지만, 이 전제가 실제로 맞는지는 별도로 확인 필요.
+
+> **각주 — Linux 렌더러 일관성 행에 대해:** Electron도 Linux GPU 가속은 그 자체로 까다롭다(VAAPI/ANGLE 백엔드 선택, X11 vs Wayland, NVIDIA 독점 드라이버, `--disable-gpu-sandbox` 류 플래그). Electron이 사는 건 "Linux GPU 문제가 없어짐"이 아니라 "타겟이 WebKitGTK 대신 Chromium 하나로 줄어 재현·추적 비용이 낮아짐" — Electron 전환 후에도 Linux GPU 이슈 트래킹은 계속 필요.
+>
+> **각주 — idle 메모리 행에 대해:** "Electron의 무거움은 실패 요인이 아니다"는 사용자 판단을 그대로 반영한 것. Bitvue는 4K/8K 프레임 버퍼·다중 코덱 디코더를 이미 메모리 집약적으로 쓰는 도구라, Chromium 베이스라인(윈도우당 수백MB)이 encoder/decoder 벤치마크 툴과 동시 실행되는 실사용 환경에서 실제로 무해한지는 실측으로 재확인하는 걸 권장.
+
+### Electron 전환 시 경계
+
+```
+┌─ Electron: React/TypeScript ── Workspace/Timeline/Tree/Hex/Graph/Player ─┐
+│                              │ typed IPC (control/data plane 분리)       │
+└─ Rust: Parse → Model → Analyze → Query ── AV1/H264/HEVC/VP9/VVC/AVS3... ─┘
+```
+
+- Electron = presentation/workspace 계층만. Rust가 codec parsing/indexing/frame model/metrics/diagnostics/compare 전부 계속 소유 — **엔진을 JS로 옮기는 게 아니다.**
+- FFI 디코더(dav1d/vvdec/libvmaf)를 포함해 `crates/bitvue-*`는 이미 Tauri에 종속되지 않은 순수 Rust이므로 재작성 불필요. 새로 필요한 건 브리지 레이어와 `src-tauri/src/commands/*.rs`(**40개 커맨드**, 15개 파일 — 이전에 161개로 잘못 기록됐던 걸 정정, `grep -rc '#\[tauri::command\]' src-tauri/src/commands/` 재확인) + AppState + 이벤트버스의 Electron 대응물뿐.
+
+**먼저 결정해야 함 — 브리지 방식(napi-rs vs sidecar), 나머지가 이 선택에 종속됨:**
+
+| | napi-rs (in-process native addon) | sidecar (별도 프로세스) |
+|---|---|---|
+| 호출 방식 | N-API 직접 함수 호출, 직렬화 프레이밍 없음 | 진짜 wire protocol 필요 (stdio/socket + 바이너리 프레이밍) |
+| Rust crash 격리 | **안 됨** — panic/segfault(vvdec FFI 등) 시 로드된 프로세스 전체가 죽음, 지금 Tauri와 노출도 비슷하거나 더 나쁨 | 됨 — 위 결정 테이블의 "Rust crash 격리" 장점은 이 경로에서만 성립 |
+| `bitvue-protocol`의 의미 | 사실상 공유 타입 정의(codegen)에 가까움, "protocol"이라 부르기엔 과장 | 문자 그대로 필요한 스키마 레이어 |
+
+이 선택이 안 끝나면 `bitvue-protocol`을 뭘로 설계할지도 정해지지 않으므로, 아래 크레이트 경계보다 먼저 결정할 것.
+
+**결정 (2026-08-08): sidecar.** Bitvue의 핵심 가치가 "malformed/비정상 비트스트림 파싱"이라 FFI 디코더(dav1d/vvdec/libvmaf)의 segfault 위험이 상시 존재(`docs/anti-patterns/PARSE.md`/`CODEC.md`가 이 카테고리를 통째로 다룰 정도). napi-rs는 이 경우 Electron 메인 프로세스 전체를 죽여 지금 Tauri 대비 개선이 없고, 위 결정 테이블의 "Rust crash 격리" 행 자체가 무효화됨. sidecar는 초기 구현 비용(프로세스 lifecycle, IPC 프레이밍)이 더 들지만 Bitvue 특성상 맞는 트레이드오프로 판단. VS Code language-server 패턴과 동일 구조.
+- Rust sidecar는 기존 `crates/bitvue-core`의 `AppState`(`Arc<Mutex<Core>>`)를 그대로 프로세스 경계로 옮기는 형태 — Electron main process가 spawn/monitor/restart를 담당하고, sidecar crash 시 상태(열린 스트림/커서 등)를 복구하는 정책은 별도 설계 필요(현재 미해결).
+- `bitvue-protocol`은 문자 그대로 wire schema로 확정 — stdio 또는 로컬 소켓 위에 binary framing(control-plane 메시지는 구조화, data-plane은 raw buffer).
+
+**핵심 원칙 — Electron IPC로 프레임을 통째로 보내지 않는다.** `src-tauri/commands`를 Electron IPC로 1:1 번역하면 프레임워크만 바뀌고 문제는 그대로 재발한다. 실제로 지금 이미 이 실패 패턴이 존재함(검증됨, `src-tauri/src/commands/frame.rs:28-43` `YUVFrameData`): Y/U/V 플레인을 base64 `String`으로 JSON 직렬화해 반환 — 정확히 "Rust frame → JSON 배열 → IPC → React state → Canvas" 안티패턴. Electron 전환은 이걸 프레임워크 무관하게 고칠 기회지, 자동으로 고쳐지는 게 아니다.
+
+**Control plane** — 작고 구조화된 데이터만: `open_stream` / `request_frame` / `select_frame` / `set_overlay` / `cancel_request` / `get_syntax_range` / `get_hex_range`.
+
+**Data plane** — 대용량 데이터는 목적별 typed 전송:
+
+| 데이터 | 전송 형태 |
+|---|---|
+| decoded frame | binary/custom protocol/transferable buffer (base64 문자열 금지) |
+| thumbnail | encoded image cache |
+| syntax tree | viewport 범위만 |
+| hex data | byte range만 |
+| QP/MV map | compact typed array — 예: MV를 객체 배열이 아니라 `Int16Array [x0,y0,ref0,flags0, x1,y1,ref1,flags1, ...]` |
+| statistics | batch/chunk |
+
+Electron 공식 API의 renderer↔main/utility process 간 `MessagePort` 통신을 data plane 전달에 활용 가능.
+
+**크레이트/프로세스 경계 (전환 전 먼저 확정, 나중에 재배치하지 말 것):**
+
+```
+bitvue-engine     순수 Rust 도메인 엔진   ≈ 기존 crates/bitvue-core + formats/decode/codecs/metrics (이미 존재, 명명만 정리)
+bitvue-protocol   request/event/error/binary schema   ← 신규, `crates/bitvue-protocol`로 구현됨(2026-08-08)
+bitvue-sidecar    engine을 감싸고 bitvue-protocol을 stdio로 말하는 독립 프로세스   ← 신규, 스켈레톤 구현됨(2026-08-08, 아래 참조)
+bitvue-desktop    Electron main + preload   ≈ 기존 src-tauri 대체
+bitvue-ui         React renderer   ≈ 기존 frontend/
+```
+
+**정정:** 원래 4-box 구성은 napi-rs(in-process) 브리지를 암묵적으로 가정한 그림이었음 — 그 경우 engine이 `bitvue-desktop` 안에서 직접 로드되니 별도 프로세스 개념이 필요 없었음. sidecar로 결정하면서 실제로는 5번째 조각이 필요해짐: engine을 감싸고 `bitvue-protocol`을 stdio로 말하는 **독립 Rust 바이너리**. `bitvue-sidecar`로 명명.
+
+**`bitvue-sidecar` 스켈레톤 + 첫 실커맨드 (2026-08-08):** `crates/bitvue-sidecar` — stdin에서 프레임을 읽고, `hello` 핸드셰이크에 `HelloResult`로 응답. **`open_stream`을 `bitvue_core::Core::handle_command(Command::OpenFile)`에 실제로 연결**(스켈레톤이 아니라 진짜 엔진 호출) — 나머지 메서드는 여전히 `WireErrorCode::Internal`. 검증: 유닛테스트 6개(핸드셰이크/미구현 메서드/stdin 종료/`open_stream` 성공·존재하지 않는 파일·잘못된 stream id) + **실제 컴파일된 바이너리에 raw stdio 바이트를 파이프로 흘려 `hello`→`open_stream` 두 요청을 연속으로 보내고 진짜 `ModelUpdated` 이벤트를 받는 end-to-end 스모크 테스트**까지 통과. `cargo check --workspace` 클린.
+- **발견한 것:** `bitvue_core::{Command, Event}`도 `Serialize`/`Deserialize`를 derive하지 않음(`BitvueError`와 같은 상황). 둘 다 내부 UI↔Core 버스 타입이라 wire 계약과 분리하는 게 맞다고 판단해, `bitvue-sidecar`에서 `open_stream` 전용 JSON params 구조체를 손으로 만들고 `Event`→JSON 매핑 함수(`event_to_json`)를 수동 작성함(`WireErrorCode` vs `BitvueError`와 동일한 디커플링 논리 재사용). 메서드가 늘어날수록 이 수동 매핑이 반복 작업이 될 것 — 나중에 패턴이 명확해지면 매크로화 고려.
+- **설계상 확인된 것(버그 아님):** `Core::handle_command`는 실패도 `Result`가 아니라 `Event`(`DiagnosticAdded`, severity Error)로 표현함 — 즉 존재하지 않는 파일을 열어도 wire 레벨 `Response`는 `ok:true`이고 events 배열 안에 에러 진단이 담김. `bitvue-sidecar`가 이걸 protocol-level 에러로 바꾸지 않고 그대로 통과시키는 게 맞음 — Core 자체가 성공/실패를 RPC 레벨에서 구분하지 않는 설계이므로 wire 레이어가 없는 구분을 만들어내면 안 됨.
+
+`bitvue-protocol`이 유일하게 실제로 새로 만들어야 하는 조각 — 지금 IPC 스키마가 `src-tauri/src/commands/*.rs`에 흩어진 `#[tauri::command]` 함수 시그니처+`serde` 구조체로만 존재하고, control/data plane을 강제하는 단일 스키마 레이어가 없어서 위 `YUVFrameData` 같은 사례가 생긴 것. 이 크레이트가 그 강제 지점이 된다.
+
+### `bitvue-protocol` wire schema v0 (2026-08-08, sidecar 결정에 따라 확정, 크레이트로 구현됨)
+
+**상태:** 설계만이 아니라 `crates/bitvue-protocol`로 실제 존재 — `FrameHeader`/`Request`/`Response`/`WireError`/`WireErrorCode`/`CancelParams`/`HelloParams`/`HelloResult` 구현 + 단위테스트 3개, `cargo test -p bitvue-protocol` 통과, 워크스페이스 전체 `cargo check` 정상. `bitvue-core`에 의존하지 않음(의도적 — 아래 참조).
+
+**전송:** 단일 stdio duplex 채널(LSP와 동일 패턴). `stdin`(Electron main→sidecar)/`stdout`(sidecar→main)을 프로토콜 프레임 전용으로 예약, **`stderr`는 로그/패닉 메시지 전용**(바이너리 프로토콜과 섞이면 크래시 진단이 불가능해지므로 분리 필수). 소켓 대신 stdio를 쓰는 이유: 포트/권한 관리가 필요 없고, Electron `child_process.spawn`이 파이프를 기본 제공하며, OS 파이프는 대용량(4K YUV 프레임 ~12MB) 벌크 전송에도 문제없음.
+
+**프레임 포맷** (고정 9바이트 헤더 + payload):
+
+```
+[1B kind][4B correlation_id][4B payload_len][payload...]
+kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
+```
+
+- **control payload** = JSON. 빈도 낮고 디버깅 편의(로그로 그대로 읽힘)가 직렬화 속도보다 중요해서 bincode/msgpack 대신 JSON 선택.
+- **data payload** = raw bytes 그대로(길이는 헤더의 `payload_len`이 이미 앎, 추가 인코딩 없음). 메타데이터(width/height/bit_depth/block 개수 등)는 같은 `correlation_id`의 직전 control 응답으로 먼저 보내고, data 프레임은 순수 바이트만 — MV/QP는 `Int16Array`/`Uint8Array`에 그대로 매핑되는 raw 배열.
+
+**Request/Response 봉투 (control):**
+```jsonc
+// main → sidecar
+{ "id": 42, "method": "get_frame_analysis", "params": { "frame_index": 183 } }
+// sidecar → main (성공)
+{ "id": 42, "ok": true, "result": { /* 작은 구조화 데이터, 또는 뒤따라올 data 프레임의 메타데이터 */ } }
+// sidecar → main (실패)
+{ "id": 42, "ok": false, "error": { "code": "PARSE_ERROR", "message": "...", "offset": 4096 } }
+```
+`correlation_id`(헤더)와 JSON의 `id`는 동일 값 — 헤더만 보고도 라우팅 가능하게 이중화(파싱 전에 프레임을 correlation로 버킷팅하기 위함).
+
+**취소:** `cancel_request { "target_id": 42 }`를 control로 전송. sidecar는 해당 job을 중단하고 `{"id":42,"ok":false,"error":{"code":"CANCELLED"}}` 응답 — 프론트엔드가 이미 쓰고 있는 stale-response 방지 패턴(`YuvViewerPanel`의 `cancelled` 플래그)과 동일 개념을 프로토콜 레벨로 승격.
+
+**버전 핸드셰이크:** sidecar 기동 직후 main이 `{"method":"hello","params":{"client_version":"..."}}` 전송, sidecar가 `{"result":{"protocol_version":"0.1.0","capabilities":[...]}}`로 응답. 버전 불일치 시 조용히 깨진 프레임을 만드는 대신 기동 단계에서 바로 실패시키기 위함.
+
+**에러 타입:** 기존 `crates/bitvue-core/src/error.rs`의 `BitvueError`는 `thiserror`만 derive하고 `Serialize`가 없음(확인함, `grep derive` 결과 `#[derive(Error, Debug)]`뿐) — 지금 Tauri 커맨드들도 이미 `Result<T, String>`으로 문자열화해서 넘기는 중이라 이 문제를 우회만 해왔음. `bitvue-protocol`은 `BitvueError` variant마다 안정적인 `code`(`"PARSE_ERROR"`/`"UNSUPPORTED_CODEC"`/... 위 example 참조)를 매핑하는 별도 wire-error enum을 새로 정의해야 함 — `BitvueError`에 `Serialize`를 직접 derive하는 것보다, 크로스 언어 계약을 `BitvueError`의 내부 변경(필드 추가/제거)으로부터 격리하기 위해 별도 매핑이 낫다.
+
+**미해결로 남기는 것(지금 안 막힘, 설계 시점에만 명시):** sidecar 프로세스가 죽었을 때 이미 날아간 미완료 request들의 재시도/타임아웃 정책, frame별 progressive/streaming 응답(하나의 `get_frame_analysis`가 여러 data 프레임을 순차로 낼 수 있는지) 여부.
+
+### 확정 순서
+
+```
+Phase 1  Bitvue Analyzer (AV1 분석 완성)          ← 현재 위치
+Phase 2  Analyzer multi-codec (H264/HEVC/VP9/...)
+Phase 3  Bitvue CLI 강화 (CI/regression/automation) — 이미 부분 구현, 처음부터 만드는 게 아님
+Phase 4  Bitvue Probe (live monitoring)
+Phase 5  MCP/SDK/ecosystem — 이미 부분 구현
+```
+
+Probe보다 CLI를 먼저 하는 이유: Probe부터 벌리면 범위가 너무 커짐. CLI는 "Analyzer의 core가 제대로 분리됐는지" 검증하는 저비용 아키텍처 테스트 — 라이브러리 분리 자체는 이미 통과했지만, interactive query API 설계 검증은 CLI 강화 단계에서 실제로 완료해야 함(위 "검증됨" 항목 참조, 과신 금지).
+
+### 미해결 — Probe→Analyzer 핸드오프
+
+Probe에서 이상 구간 클릭 → "Analyze in Bitvue" → Analyzer가 해당 시점의 bitstream/frame을 염. Probe와 Analyzer가 별개 Electron 앱/윈도우일 경우 이를 위한 명시적 계약(딥링크 프로토콜 또는 로컬 소켓으로 stream+frame+timestamp 전달)이 필요 — `bitvue-core` 공유만으로는 풀리지 않는 유일한 조각. Probe phase 착수 시 설계, 지금은 블로커 아님.
+
+**한 줄 정의:** Bitvue = 영상 코덱을 위한 observability & analysis platform. Analyzer로 원인을 파고들고, Probe로 문제를 발견하고, CLI로 자동화한다.
+
+---
+
 ## Phase 0: Project Setup & Foundation ✅ (이미 완료)
 
 **현재 상태:** Bitvue v0.12.0에서 대부분 완료됨
