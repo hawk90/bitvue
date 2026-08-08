@@ -10,7 +10,7 @@
  */
 
 import type { VisualizationMode } from "../../../contexts/ModeContext";
-import type { OverlayRenderOptions, Av1FeaturesData } from "./types";
+import type { OverlayRenderOptions } from "./types";
 import { CodingFlowOverlay } from "./renderers/CodingFlowRenderer";
 import { PredictionOverlay } from "./renderers/PredictionRenderer";
 import { TransformOverlay } from "./renderers/TransformRenderer";

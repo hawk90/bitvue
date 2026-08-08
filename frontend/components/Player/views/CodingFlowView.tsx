@@ -11,15 +11,30 @@ import { invoke } from "@tauri-apps/api/core";
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 
+type CodingStage =
+  | "input"
+  | "prediction"
+  | "transform"
+  | "quantization"
+  | "entropy"
+  | "reconstruction";
+
+const CODING_STAGES: readonly CodingStage[] = [
+  "input",
+  "prediction",
+  "transform",
+  "quantization",
+  "entropy",
+  "reconstruction",
+];
+
+function isCodingStage(value: string): value is CodingStage {
+  return (CODING_STAGES as readonly string[]).includes(value);
+}
+
 interface CodingFlowViewProps {
   frame: FrameInfo | null;
-  currentStage?:
-    | "input"
-    | "prediction"
-    | "transform"
-    | "quantization"
-    | "entropy"
-    | "reconstruction";
+  currentStage?: CodingStage;
   codec?: string;
 }
 
@@ -117,7 +132,11 @@ export const CodingFlowView = memo(function CodingFlowView({
       codec_features: string[];
     }>("get_coding_flow_analysis", { frameIndex: frame.frame_index })
       .then((data) => {
-        setCurrentStage(data.current_stage);
+        // Backend data is untrusted at the type level (plain string) -- validate against the
+        // real stage union rather than casting blindly.
+        if (isCodingStage(data.current_stage)) {
+          setCurrentStage(data.current_stage);
+        }
         setBackendCodecFeatures(data.codec_features);
       })
       .catch(() => {});

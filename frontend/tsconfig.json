@@ -23,16 +23,43 @@
     /* Path mapping */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./*"]
     }
   },
-  "include": ["src"],
+  // There is no src/ directory -- source lives directly under frontend/ (components/, contexts/,
+  // hooks/, services/, types/, utils/, App.tsx, main.tsx, etc.). "include": ["src"] matched zero
+  // files, meaning `tsc --noEmit -p .` (both `npm run typecheck` and `npm run build`'s `tsc` gate)
+  // has been silently checking nothing at all -- found 2026-08-09 while investigating a real type
+  // error in ExportDialog.tsx that should have been caught ages ago. vite.config.ts's `@` alias
+  // has the same `./src` mistake (unexercised in practice: no real source file uses `@/` imports,
+  // only test files do, and vitest.config.ts already has its own corrected alias).
+  "include": ["."],
   "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/__tests__/**",
-    "src/test/**",
-    "src/vitest.config.ts"
+    "node_modules",
+    "dist",
+    "tests",
+    "test",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "vite.config.ts",
+    "vitest.config.ts",
+    // Confirmed-dead code (zero real importers from the live App.tsx render tree, verified via
+    // grep 2026-08-09 while restoring this typecheck config) -- excluded rather than fixed, so
+    // this stays an honest "out of scope" marker instead of polishing code nothing reaches.
+    // Re-verify liveness before ever removing an entry here.
+    "components/CompareWorkspace/**",
+    "components/GraphUtils.tsx",
+    "components/panels/QualityComparisonPanel.tsx",
+    "components/panels/RDCurvesPanel.tsx",
+    "components/Player/views/DualVideoView.tsx",
+    "components/common/TabContainer.tsx",
+    "errors/**",
+    "utils/advancedVisualizations.ts",
+    "utils/advancedVisualizations/**",
+    "utils/exportData.ts",
+    "utils/interactiveTooltips.ts",
+    "utils/interactiveTooltips/**",
+    "utils/progressiveLoader.ts"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

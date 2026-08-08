@@ -17,11 +17,8 @@ import { invoke } from "@tauri-apps/api/core";
  */
 const toMessage = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
-import type {
-  CompareWorkspace,
-  SyncMode,
-  AlignmentQuality,
-} from "../types/video";
+import { AlignmentQuality } from "../types/video";
+import type { CompareWorkspace, SyncMode } from "../types/video";
 
 interface CompareContextType {
   // Compare workspace state

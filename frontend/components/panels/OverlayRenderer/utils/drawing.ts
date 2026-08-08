@@ -5,6 +5,7 @@
  */
 
 import { getCssVar } from "../../../../utils/css";
+import { getFrameTypeColor } from "../../../../types/video";
 import type { LegendItem } from "../types";
 
 /**

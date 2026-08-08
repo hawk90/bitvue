@@ -274,7 +274,7 @@ export class FrameDataCache {
       maxSize: maxFrames,
       maxMemory: maxMemoryMB * 1024 * 1024,
       sizeEstimator: (entry) => entry.size,
-      onEvict: (key, value) => {
+      onEvict: (_key, value) => {
         // Revoke object URLs to free memory
         if (value.thumbnailUrl && value.thumbnailUrl.startsWith("blob:")) {
           URL.revokeObjectURL(value.thumbnailUrl);

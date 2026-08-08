@@ -6,7 +6,7 @@
  */
 
 import { memo } from "react";
-import { useMode, type VisualizationMode } from "../../../contexts/ModeContext";
+import type { VisualizationMode } from "../../../contexts/ModeContext";
 import type { CodecModeEntry } from "../../../utils/codecModeRegistry";
 
 interface ModeSelectorProps {

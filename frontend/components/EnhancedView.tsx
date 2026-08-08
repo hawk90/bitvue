@@ -67,7 +67,7 @@ export const EnhancedView = memo(function EnhancedView({
     let gopNumber = 1;
 
     for (let i = 0; i < frames.length; i++) {
-      if (frames[i].frameType === "I" && i > 0) {
+      if (frames[i].frame_type === "I" && i > 0) {
         boundaries.push({
           frameIndex: currentGopStart,
           gopNumber,
@@ -186,11 +186,11 @@ export const EnhancedView = memo(function EnhancedView({
     // Check for various diagnostic conditions
     const issues = [];
 
-    if (frame.qp && frame.qp > DIAGNOSTIC_THRESHOLDS.HIGH_QP)
-      issues.push("high-qp");
+    // No per-frame average QP scalar in FrameInfo (qp_grid is a full grid, not a single value)
+    // -- a "high-qp" diagnostic needs real backend QP-average data that doesn't exist yet.
     if (frame.size && frame.size > DIAGNOSTIC_THRESHOLDS.LARGE_FRAME)
       issues.push("large-frame");
-    if (frame.frameType === "B" && !frame.refFrames?.length)
+    if (frame.frame_type === "B" && !frame.ref_frames?.length)
       issues.push("no-reference");
 
     if (issues.length === 0) return "";
@@ -283,7 +283,7 @@ export const EnhancedView = memo(function EnhancedView({
           onFrameClick={onFrameClick}
           onToggleReferenceExpansion={() => {}}
           onHoverFrame={(frame, x, y) => {
-            setHoveredFrame(frame?.frameNumber ?? null);
+            setHoveredFrame(frame?.frame_index ?? null);
             onHoverFrame(frame, x, y);
           }}
           getFrameTypeColorClass={getFrameTypeColorClass}
@@ -324,7 +324,7 @@ export const EnhancedView = memo(function EnhancedView({
 
       {/* Diagnostic Severity Heatmap (below thumbnails) */}
       <div className="enhanced-heatmap">
-        {frames.map((frame, index) => {
+        {frames.map((_frame, index) => {
           const diagnosticClass = getDiagnosticColor(index);
           const sceneChange = sceneChanges.find((c) => c.frameIndex === index);
           const isGOPStart = gopBoundaries.some((b) => b.frameIndex === index);
@@ -380,9 +380,9 @@ export const EnhancedView = memo(function EnhancedView({
           <div className="enhanced-hover-section">
             <span className="enhanced-hover-label">Type:</span>
             <span
-              className={`enhanced-hover-value ${getFrameTypeColorClass(frames[hoveredFrame]?.frameType ?? "UNKNOWN")}`}
+              className={`enhanced-hover-value ${getFrameTypeColorClass(frames[hoveredFrame]?.frame_type ?? "UNKNOWN")}`}
             >
-              {frames[hoveredFrame]?.frameType ?? "UNKNOWN"}
+              {frames[hoveredFrame]?.frame_type ?? "UNKNOWN"}
             </span>
           </div>
           {frames[hoveredFrame]?.size && (

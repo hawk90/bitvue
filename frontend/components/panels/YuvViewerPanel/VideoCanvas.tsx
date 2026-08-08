@@ -142,13 +142,15 @@ export const VideoCanvas = memo(function VideoCanvas({
     [isDragging],
   );
 
-  // Initialize YUV renderer
+  // Initialize YUV renderer. No explicit teardown needed on unmount -- YUVRenderer only holds
+  // canvas/context/ImageData references (no timers, listeners, or GPU handles), so it's plain
+  // garbage-collected; the previous `.dispose?.()` call here referenced a method that never
+  // existed on the class (silently absorbed by the optional call, a real but harmless bug).
   useEffect(() => {
     if (canvasRef.current) {
       rendererRef.current = new YUVRenderer(canvasRef.current);
     }
     return () => {
-      rendererRef.current?.dispose?.();
       rendererRef.current = null;
     };
   }, []);

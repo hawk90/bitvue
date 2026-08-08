@@ -54,27 +54,27 @@ export function ExportDialog({
           if (format === "csv") {
             result = await exportUtils.exportFramesToCsv(
               frames.map((f) => ({
-                frame_index: f.frameNumber,
-                frame_type: f.frameType,
+                frame_index: f.frame_index,
+                frame_type: f.frame_type,
                 size: f.size || 0,
                 poc: f.poc,
                 pts: f.pts,
-                key_frame: f.frameType === "I",
-                temporal_id: f.temporalId,
-                spatial_id: f.spatialId,
+                key_frame: f.frame_type === "I",
+                temporal_id: f.temporal_id,
+                spatial_id: f.spatial_id,
               })),
             );
           } else if (format === "json") {
             result = await exportUtils.exportFramesToJson(
               frames.map((f) => ({
-                frame_index: f.frameNumber,
-                frame_type: f.frameType,
+                frame_index: f.frame_index,
+                frame_type: f.frame_type,
                 size: f.size || 0,
                 poc: f.poc,
                 pts: f.pts,
-                key_frame: f.frameType === "I",
-                temporal_id: f.temporalId,
-                spatial_id: f.spatialId,
+                key_frame: f.frame_type === "I",
+                temporal_id: f.temporal_id,
+                spatial_id: f.spatial_id,
               })),
               { codec, width, height },
             );
@@ -85,14 +85,14 @@ export function ExportDialog({
         case "report": {
           const reportData = exportUtils.generateAnalysisReport(
             frames.map((f) => ({
-              frame_index: f.frameNumber,
-              frame_type: f.frameType,
+              frame_index: f.frame_index,
+              frame_type: f.frame_type,
               size: f.size || 0,
               poc: f.poc,
               pts: f.pts,
-              key_frame: f.frameType === "I",
-              temporal_id: f.temporalId,
-              spatial_id: f.spatialId,
+              key_frame: f.frame_type === "I",
+              temporal_id: f.temporal_id,
+              spatial_id: f.spatial_id,
             })),
           );
 

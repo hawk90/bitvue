@@ -284,7 +284,10 @@ function AppContent() {
   const { saveLayout, loadLayout, resetLayout } = useLayout();
 
   // Recent files
-  const { recentFiles, addRecentFile } = useRecentFiles();
+  // recentFiles itself isn't consumed here -- nothing currently syncs it to a native "Recent
+  // Files" menu or any UI; pre-existing gap, not something this typecheck-restoration pass
+  // implements. addRecentFile is called below whenever a file opens successfully.
+  const { addRecentFile } = useRecentFiles();
 
   // Get error dialog first
   const {
@@ -450,8 +453,8 @@ function AppContent() {
   useEffect(() => {
     const unlisten = listen<FileOpenedEvent>("file-opened", async (event) => {
       setFileInfo(event.payload);
-      setFilePath(event.payload.success ? event.payload.path : null);
-      if (event.payload.success) {
+      setFilePath(event.payload.success ? (event.payload.path ?? null) : null);
+      if (event.payload.success && event.payload.path) {
         setCurrentFrameIndex(0);
         addRecentFile(event.payload.path);
         await refreshFrames();

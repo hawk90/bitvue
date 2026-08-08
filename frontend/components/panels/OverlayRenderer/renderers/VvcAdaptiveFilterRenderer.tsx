@@ -38,7 +38,7 @@ export function VvcAdaptiveFilterRenderer({
     return;
   }
 
-  const { grid_w, grid_h, block_w, block_h, qp } = qpGrid;
+  const { grid_w, grid_h, qp } = qpGrid;
 
   // Compute average QP for threshold
   let sum = 0;

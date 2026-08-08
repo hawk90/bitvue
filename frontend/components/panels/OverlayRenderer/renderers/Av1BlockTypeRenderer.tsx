@@ -27,12 +27,6 @@ const MODE_COLORS: Record<number, string> = {
   [MODE_INTER]: "rgba(52,  168,  83, 0.45)", // green
   [MODE_SKIP]: "rgba(251, 188,   5, 0.48)", // yellow
 };
-const MODE_LABELS: Record<number, string> = {
-  [MODE_INTRA]: "INTRA",
-  [MODE_INTER]: "INTER",
-  [MODE_SKIP]: "SKIP",
-};
-
 const LEGEND_ITEMS = [
   { color: "rgba(66,135,245,0.80)", label: "INTRA" },
   { color: "rgba(52,168,83,0.80)", label: "INTER" },
@@ -49,9 +43,6 @@ export function Av1BlockTypeOverlay({
   if (!mvGrid?.mode) return; // no-op if no mode data
 
   const { grid_w, grid_h, block_w, block_h, mode } = mvGrid;
-
-  const cellW = width / grid_w;
-  const cellH = height / grid_h;
 
   // Scale block dimensions to canvas size
   const scaleX = width / (grid_w * block_w);

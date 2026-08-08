@@ -53,14 +53,18 @@ describe("EnhancedView", () => {
     expect(gopLabel?.textContent).toBe("GOP:");
   });
 
-  it("should have disabled navigation buttons", () => {
-    render(<EnhancedView {...defaultProps} />);
+  it("disables Prev GOP (already at the first GOP) and both Scene buttons (no scene changes detected), but enables Next GOP (a second GOP exists)", () => {
+    // Regression pin: this component previously read frame.frameType (always undefined on the
+    // real FrameInfo shape, which only has frame_type) so gopBoundaries was always empty and
+    // every nav button was unconditionally disabled regardless of the frame data -- this test
+    // originally asserted that broken behavior. mockFrames has a real second I-frame at index 3,
+    // so with the frame_type fix there are genuinely two GOPs and Next GOP must be enabled.
+    const { getByTitle } = render(<EnhancedView {...defaultProps} />);
 
-    const buttons = document.querySelectorAll(".enhanced-nav-btn");
-    expect(buttons.length).toBeGreaterThan(0);
-    buttons.forEach((button) => {
-      expect(button).toBeDisabled();
-    });
+    expect(getByTitle("Previous GOP")).toBeDisabled();
+    expect(getByTitle("Next GOP")).not.toBeDisabled();
+    expect(getByTitle("Previous Scene Change")).toBeDisabled();
+    expect(getByTitle("Next Scene Change")).toBeDisabled();
   });
 
   it("should use React.memo for performance", () => {

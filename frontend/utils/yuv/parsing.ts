@@ -45,15 +45,15 @@ export function parseYUVFromBuffer(
   if (format === "I420" || format === "YV12") {
     // Planar YUV420
     ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } =
-      parsePlanarYUV420(data, width, height, ySize, chromaSize, format));
+      parsePlanarYUV420(data, width, ySize, chromaSize, format));
   } else if (format === "NV12") {
     // Semi-planar YUV420 (UV interleaved)
     ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } =
-      parseSemiPlanarYUV420(data, width, height, ySize, chromaSize));
+      parseSemiPlanarYUV420(data, width, ySize, chromaSize));
   } else if (format === "YUY2" || format === "UYVY") {
     // Packed YUV422
     ({ y, u, v, yStride, uStride, vStride, chromaSubsampling } =
-      parsePackedYUV422(data, width, height, ySize, format));
+      parsePackedYUV422(data, width, ySize, format));
   } else {
     throw new Error(`Unsupported YUV format: ${format}`);
   }
@@ -77,7 +77,6 @@ export function parseYUVFromBuffer(
 function parsePlanarYUV420(
   data: Uint8Array,
   width: number,
-  height: number,
   ySize: number,
   chromaSize: number,
   format: "I420" | "YV12",
@@ -110,7 +109,6 @@ function parsePlanarYUV420(
 function parseSemiPlanarYUV420(
   data: Uint8Array,
   width: number,
-  height: number,
   ySize: number,
   chromaSize: number,
 ): {
@@ -147,7 +145,6 @@ function parseSemiPlanarYUV420(
 function parsePackedYUV422(
   data: Uint8Array,
   width: number,
-  height: number,
   ySize: number,
   format: "YUY2" | "UYVY",
 ): {

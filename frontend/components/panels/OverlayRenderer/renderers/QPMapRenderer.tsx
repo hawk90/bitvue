@@ -8,12 +8,7 @@ import type { OverlayRendererProps } from "../types";
 import { getCssVar } from "../../../../utils/css";
 import { qpToColor } from "../utils/helpers";
 
-export function QPMapOverlay({
-  ctx,
-  _width,
-  _height,
-  frame,
-}: OverlayRendererProps) {
+export function QPMapOverlay({ ctx, frame }: OverlayRendererProps) {
   if (!frame.qp_grid) {
     // No QP data available - show message
     ctx.fillStyle = "rgba(0, 0, 0, 0.7)";

@@ -7,7 +7,7 @@
  * Reference: crates/ui/src/panels/quality_metrics.rs
  */
 
-import React, { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";

@@ -215,7 +215,7 @@ export function useAppFileOperations(
     try {
       setOpenError(null);
 
-      if (!fileInfo?.success) {
+      if (!fileInfo?.success || !fileInfo.path) {
         setOpenError(
           "Please open a primary bitstream first before opening a dependent bitstream for comparison.",
         );

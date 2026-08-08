@@ -145,7 +145,11 @@ export async function exportFramesToJson(
  * Export analysis report to text format
  */
 export async function exportAnalysisReport(
-  data: AnalysisReportData,
+  // Not yet used -- export_analysis_report has no sidecar equivalent (unlike CSV/JSON export,
+  // this needs real report-generation logic that never existed even in the old Tauri version,
+  // which only ever passed {outputPath, includeSyntax}, never the report data itself). Flagged,
+  // not implemented here -- see exportFramesToCsv/Json for the export paths that do work.
+  _data: AnalysisReportData,
   includeSyntax: boolean = false,
 ): Promise<string> {
   const filePath = await save({

@@ -48,7 +48,7 @@ function getDisplayValue(value?: SyntaxValue): string | number | undefined {
   if (value.String !== undefined) return value.String;
   if (value.Number !== undefined) return value.Number;
   if (value.Float !== undefined) return value.Float.toFixed(2);
-  if (value.Boolean !== undefined) return value.Boolean;
+  if (value.Boolean !== undefined) return String(value.Boolean);
   if (value.Array !== undefined) return `[${value.Array.join(", ")}]`;
   return undefined;
 }
@@ -152,7 +152,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
       },
       {
         name: "ref_frames",
-        value: { Array: frame.ref_frames ?? [] },
+        value: { Array: (frame.ref_frames ?? []).map(String) },
         description: "Reference frame indices",
         children: (frame.ref_frames ?? []).map((ref, idx) => ({
           name: `ref[${idx}]`,

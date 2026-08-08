@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useRef, useEffect, useState, useCallback, memo } from "react";
-import type { FrameInfo } from "../types/video";
+import type { FrameInfo } from "../../types/video";
 import "./HRDBufferPanel.css";
 
 export interface HRDBufferPanelProps {

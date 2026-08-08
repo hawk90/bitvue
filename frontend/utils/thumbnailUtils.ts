@@ -53,7 +53,7 @@ export function processThumbnailResults(
  * Check if a thumbnail result is successful
  */
 export function isThumbnailSuccessful(result: ThumbnailResult): boolean {
-  return result.success && result.thumbnail_data.length > 0;
+  return result.success && (result.thumbnail_data?.length ?? 0) > 0;
 }
 
 /**
