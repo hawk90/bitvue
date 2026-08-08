@@ -2,14 +2,25 @@
 //! over stdio to `bitvue-desktop` (Electron main). See `docs/DEVELOPMENT_PHASES.md`
 //! ("sidecar 결정" / "bitvue-protocol wire schema v0" / "동시성 모델") for the full design.
 //!
-//! Eight real commands are wired end to end to `bitvue_core::Core`: `open_stream`,
-//! `select_frame`/`select_unit`/`select_syntax`/`select_bit_range` (multi-sync — see
-//! `docs/DEVELOPMENT_PHASES.md`'s `SelectionState` note; these four map straight onto
-//! `bitvue_core::Command`'s existing "Tri-sync" selection commands, no new engine work needed),
-//! `close_stream` (control-plane), `get_hex_range` (the first data-plane command — a `Control`
-//! metadata frame followed by a `Data` frame of raw bytes, no JSON array, no base64), and
-//! `cancel_request` (see "Concurrency model" below). Everything else still returns
-//! `WireErrorCode::Internal` "not implemented".
+//! Nine real commands are wired end to end to `bitvue_core::Core`: `open_stream`,
+//! `select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`
+//! (multi-sync — see `docs/DEVELOPMENT_PHASES.md`'s `SelectionState` note; these five map
+//! straight onto `bitvue_core::Command`'s existing "Tri-sync" selection variants, no new engine
+//! work needed), `close_stream` (control-plane), `get_hex_range` (the first data-plane command —
+//! a `Control` metadata frame followed by a `Data` frame of raw bytes, no JSON array, no base64),
+//! and `cancel_request` (see "Concurrency model" below).
+//!
+//! **Every other `bitvue_core::Command` variant is currently a no-op in `Core::handle_command`**
+//! (falls through to its catch-all `_ => vec![]` arm — verified by reading `core.rs`, not
+//! assumed) — `JumpToOffset`/`JumpToFrame`, `PlayPause`/`StepForward`/`StepBackward`,
+//! `ToggleOverlay`/`SetOverlayOpacity`/`SetPlayerMode`, `SetWorkspaceMode`/`SetSyncMode`,
+//! `ExportCsv`/`ExportBitstream`/`Export`, `RunFullAnalysis`. Wiring any of those to the sidecar
+//! today would just proxy through to nothing — they need real `Core` implementation first (a
+//! `bitvue-core` engine task, not a sidecar wiring task). The 7 `OpenFile`/`CloseFile`/
+//! `SelectFrame`/`SelectUnit`/`SelectSyntax`/`SelectBitRange`/`SelectSpatialBlock` variants that
+//! *are* implemented are now all wired — there is no more "free" sidecar command-wiring left in
+//! this crate until `Core` grows more real command handlers. Everything else in this file's
+//! method dispatch returns `WireErrorCode::Internal` "not implemented".
 //!
 //! # Concurrency model
 //!
@@ -51,7 +62,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use bitvue_core::{BitRange, BitvueError, Command, Core, Event, FrameKey, StreamId, UnitKey};
+use bitvue_core::{
+    BitRange, BitvueError, Command, Core, Event, FrameKey, SpatialBlock, StreamId, UnitKey,
+};
 use bitvue_protocol::{
     CancelParams, FrameHeader, FrameKind, HelloParams, HelloResult, Request, Response, WireError,
     WireErrorCode, FRAME_HEADER_LEN, PROTOCOL_VERSION,
@@ -280,6 +293,7 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "select_unit" => select_unit(core, request),
         "select_syntax" => select_syntax(core, request),
         "select_bit_range" => select_bit_range(core, request),
+        "select_spatial_block" => select_spatial_block(core, request),
         "close_stream" => close_stream(core, request),
         other => Response::failure(
             request.id,
@@ -496,6 +510,50 @@ fn select_bit_range(core: &Core, request: &Request) -> Response {
         bit_range: BitRange {
             start_bit: params.start_bit,
             end_bit: params.end_bit,
+        },
+    });
+    let events_json: Vec<serde_json::Value> = events.iter().map(event_to_json).collect();
+    Response::success(request.id, serde_json::json!({ "events": events_json }))
+}
+
+#[derive(serde::Deserialize)]
+struct SelectSpatialBlockParams {
+    stream: String,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+}
+
+/// Structural selection (multi-sync): a spatial block in the current frame — the QP/MV overlay
+/// click-to-select direction. `Core` resolves the frame index from the current cursor itself
+/// (defaulting to 0 if nothing is selected yet), so this handler doesn't pass one explicitly.
+fn select_spatial_block(core: &Core, request: &Request) -> Response {
+    let params: SelectSpatialBlockParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return response,
+    };
+
+    let events = core.handle_command(Command::SelectSpatialBlock {
+        stream,
+        block: SpatialBlock {
+            x: params.x,
+            y: params.y,
+            w: params.w,
+            h: params.h,
         },
     });
     let events_json: Vec<serde_json::Value> = events.iter().map(event_to_json).collect();
@@ -935,6 +993,38 @@ mod tests {
             id: 22,
             method: "select_bit_range".to_string(),
             params: serde_json::json!({"stream": "Z", "start_bit": 0, "end_bit": 0}),
+        };
+        let response = dispatch(&core, &request);
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::InvalidData);
+    }
+
+    #[test]
+    fn select_spatial_block_emits_selection_updated() {
+        let core = Core::new();
+        let request = Request {
+            id: 23,
+            method: "select_spatial_block".to_string(),
+            params: serde_json::json!({"stream": "A", "x": 64, "y": 32, "w": 16, "h": 16}),
+        };
+        let response = dispatch(&core, &request);
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let events = response.result.unwrap()["events"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "SelectionUpdated");
+        assert_eq!(events[0]["stream"], "A");
+    }
+
+    #[test]
+    fn select_spatial_block_unknown_stream_id_is_invalid_data() {
+        let core = Core::new();
+        let request = Request {
+            id: 24,
+            method: "select_spatial_block".to_string(),
+            params: serde_json::json!({"stream": "Z", "x": 0, "y": 0, "w": 0, "h": 0}),
         };
         let response = dispatch(&core, &request);
         assert!(!response.ok);
