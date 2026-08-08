@@ -305,9 +305,11 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.framesChunk?.units?.length === 5 &&
       result.framesChunk?.units?.[0]?.frame_type === "I";
     // Recursively find a node by name to prove real nested tree data came back -- and check its
-    // bit_range against the known real file layout (byte 44 = bit 352), the exact value a
-    // byte-vs-bit global_offset mixup (a real bug caught earlier, see bitvue-indexer) would get
-    // wrong silently.
+    // bit_range against the known real file layout. Frame 0's chunk is TemporalDelimiter(2B) +
+    // SequenceHeader(13B) + the real Frame OBU starting 15 bytes in (byte 44+15=59, bit 472) --
+    // see bitvue-indexer's find_frame_obu doc for the real-OBU-parsing bug this pins against
+    // (an earlier, wrong value here, 352, was byte 44*8 -- the Temporal Delimiter's position,
+    // not the real Frame OBU's).
     interface SyntaxNodeResult {
       name: string;
       bit_range: { start_bit: number; end_bit: number };
@@ -326,7 +328,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       return undefined;
     }
     const forbiddenBitNode = findSyntaxNode(result.frameSyntax, "obu_forbidden_bit");
-    const frameSyntaxOk = forbiddenBitNode?.bit_range?.start_bit === 352;
+    const frameSyntaxOk = forbiddenBitNode?.bit_range?.start_bit === 472;
     const timelineOk =
       result.timeline?.stream_id === "B" &&
       result.timeline?.frames?.length > 0 &&
