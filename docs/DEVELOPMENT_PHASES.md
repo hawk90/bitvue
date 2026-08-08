@@ -823,6 +823,53 @@ App.tsx 배선(키보드 단축키 설정 객체를 통해 호출)은 별도 테
 파고드는 비용 대비 얻는 게 적다고 판단. `App.tsx`의 `invoke` import가 이제 완전히 미사용이라 제거.
 36-실패/9-파일 베이스라인 변화 없음.
 
+### 타입체크 안전망이 이번 세션 내내(아마 훨씬 전부터) 0개 파일을 검사하고 있었음 (2026-08-09)
+
+`export_frames_csv`류 프론트엔드 Tauri 호출을 조사하다가 `ExportDialog.tsx`에서 `FrameInfo`에 없는
+필드(`frameNumber`, `frameType` 등)를 참조하는 진짜 타입 에러를 발견 — 그런데 `npx tsc --noEmit -p .`는
+이번 세션 내내 에러 0개로 통과하고 있었음. 원인: `tsconfig.json`의 `"include": ["src"]`가 이 repo에
+**한 번도 존재한 적 없는** `src/` 디렉토리를 가리키고 있어서 — 소스는 `frontend/` 바로 아래
+(`components/`, `contexts/`, `hooks/`, `services/`, `types/`, `utils/`, `App.tsx` 등)에 있음. 즉
+`npm run typecheck`와 `npm run build`의 `tsc` 게이트 둘 다 이번 세션(그리고 그 이전 세션들도, 메모리에
+남은 "typecheck clean" 기록들로 미루어) 내내 **파일을 0개 검사**하고 있었고, "타입체크 통과" 확인은
+전부 빈 include가 만든 거짓 양성이었지 코드가 실제로 맞다는 증거가 아니었음. `vite.config.ts`의 `@`
+alias도 똑같이 `./src`를 가리키는 실수가 있었지만(프로덕션 코드는 전부 상대 경로만 써서 실제로는
+안 쓰였음 — `@/` import는 테스트 파일만 사용하고, `vitest.config.ts`는 이미 자체적으로 고친 alias를
+갖고 있었음, 심지어 이 파일 자체에 "Fix @ alias to point to frontend root" 코멘트가 이미 있었는데
+`tsconfig.json` 쪽은 한 번도 연결 안 됨).
+
+**한 일:** include/paths를 실제 레이아웃에 맞게 수정. 누락됐던 `@types/react`/`@types/react-dom`
+설치(애초에 설치된 적이 없었음) — 고친 include가 처음엔 4677개 에러를 냈는데 그 중 4571개는 순전히 타입
+패키지 누락 때문(JSX.IntrinsicElements 등, 설치로 즉시 해결). 진짜 남은 106개는 두 그룹으로 처리:
+
+1. **죽은 코드 확인 후 tsconfig exclude** — `App.tsx` 실제 렌더 트리에서 grep으로 importer 0개 확인된
+   파일들(CompareWorkspace 전체, GraphUtils.tsx, QualityComparisonPanel.tsx, RDCurvesPanel.tsx,
+   DualVideoView.tsx, TabContainer.tsx, errors/ 전체, advancedVisualizations류, exportData.ts,
+   interactiveTooltips류, progressiveLoader.ts) — 고치지 않고 exclude에 추가, "스코프 밖"이라는
+   정직한 표시로 남김. (QualityMetricsPanel.tsx/thumbnailUtils.ts는 똑같이 죽었지만 살아있는 배럴
+   파일이 안 쓰이는 재출력을 갖고 있어서 exclude가 안 먹힘 — tsconfig exclude가 transitive import까지
+   막지는 못한다는 걸 확인, 그냥 1줄짜리 진짜 수정으로 처리.)
+2. **살아있는 코드의 진짜 버그 수정** — `ExportDialog.tsx`/`EnhancedView.tsx`가 `FrameInfo`를 옛날
+   Tauri 시절 camelCase 필드명(`frameNumber`/`frameType`/`temporalId`/`spatialId`/`refFrames`)으로
+   읽고 있었음 — 실제 필드는 `frame_index`/`frame_type`/`temporal_id`/`spatial_id`/`ref_frames`,
+   전부 그동안 `undefined`를 조용히 읽고 있었던 것. `EnhancedView.tsx`의 `frame.qp` 체크는 아예
+   존재하지 않는 필드라서 통째로 제거(진짜 프레임 평균 QP 데이터가 어디에도 없음, 조작 안 하고
+   플래그만). `VideoCanvas.tsx`의 `YUVRenderer.dispose?.()`는 존재한 적 없는 메서드 호출(옵셔널
+   체이닝이 조용히 흡수하고 있었음, 클래스 자체가 명시적 정리가 필요한 리소스를 안 가지므로 실질적
+   해는 없었음) — 제거. `CodingFlowView.tsx`는 백엔드 응답의 `current_stage`(untyped string)를
+   실제 유니온 타입으로 검증 후 setState하도록 수정. 그 외 `CompareContext.tsx`(enum을 `import type`으로
+   가져와서 값으로 못 쓰던 문제), `StreamDataContext.tsx`(존재한 적 없는 타입 재출력), `HRDBufferPanel.tsx`
+   (import 경로 깊이 오류), `tauriLogger.ts`(`window.__TAURI__` 미타입 접근), `OverlayRenderer` 렌더러
+   여러 개(`_`-prefix가 매개변수에만 통하고 지역 변수엔 안 통하는 걸 모르고 붙인 케이스, 구조분해
+   리네임 버그로 항상 undefined였던 프롭) 등 자잘한 미사용 import/변수 다수.
+
+**검증:** 전체 테스트 스위트가 기존 36-실패/9-파일 베이스라인으로 정확히 복귀(중간에 EnhancedView.test.tsx
+가 37번째로 잠깐 실패 — `frame_type` 수정으로 `gopBoundaries`가 더 이상 항상 비어있지 않게 되면서
+"Next GOP" 버튼이 이제 정확하게 활성화됨, 테스트가 옛날 버그 동작을 검증하고 있었던 것이라 테스트를
+고침). `npm run build`의 `tsc` 게이트가 이제 진짜로 통과함(이전엔 아무것도 안 검사해서 "통과"했던 것).
+스크린샷 + 전체 `BITVUE_ELECTRON_SELFTEST` 재확인(exit 0, 모든 IPC 체인 byte-exact 그대로) — 아무것도
+안 깨짐.
+
 ### 확정 순서
 
 ```
