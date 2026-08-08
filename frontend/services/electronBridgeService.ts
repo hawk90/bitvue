@@ -9,12 +9,15 @@
  * `docs/DEVELOPMENT_PHASES.md` § "제품 아키텍처 확정") are NOT the same API — different names,
  * different param/result shapes, and most of the old capability (frame pixel decode/YUV data,
  * compare workspaces, export, quality metrics) has no sidecar equivalent implemented yet. This
- * file wraps: open/close a stream, select a frame (selection-sync only — no decoded pixel data),
- * read a raw hex byte range, the native open-file dialog, and (as of 2026-08-08) metadata
- * indexing (`indexStream`/`getStreamInfo`/`getFramesChunk` — container + per-frame metadata,
- * IVF/AV1 only so far, no pixel decode) plus lazy per-unit syntax trees (`getFrameSyntax`, AV1
- * only; see `bitvue-indexer`'s module doc). Don't add wrappers here for capabilities the sidecar
- * doesn't have; that would silently promise something broken.
+ * file wraps all 13 real sidecar commands: open/close a stream, select a frame (selection-sync
+ * only — no decoded pixel data), the four structural multi-sync selections
+ * (`selectUnit`/`selectSyntax`/`selectBitRange`/`selectSpatialBlock` — no live UI consumer as of
+ * 2026-08-08, wired because the sidecar-side capability is real, not because a feature needs them
+ * yet), a raw hex byte range, the native open-file dialog, and metadata indexing
+ * (`indexStream`/`getStreamInfo`/`getFramesChunk` — container + per-frame metadata, IVF/AV1 only
+ * so far, no pixel decode) plus lazy per-unit syntax trees (`getFrameSyntax`, AV1 only; see
+ * `bitvue-indexer`'s module doc). Don't add wrappers here for capabilities the sidecar doesn't
+ * have; that would silently promise something broken.
  */
 
 export type StreamId = "A" | "B";
@@ -127,6 +130,30 @@ declare global {
         stream: StreamId,
         frameIndex: number,
       ) => Promise<BridgeSyntaxNode>;
+      selectUnit: (
+        stream: StreamId,
+        unitType: string,
+        offset: number,
+        size: number,
+      ) => Promise<{ events: BridgeEvent[] }>;
+      selectSyntax: (
+        stream: StreamId,
+        nodeId: string,
+        startBit: number,
+        endBit: number,
+      ) => Promise<{ events: BridgeEvent[] }>;
+      selectBitRange: (
+        stream: StreamId,
+        startBit: number,
+        endBit: number,
+      ) => Promise<{ events: BridgeEvent[] }>;
+      selectSpatialBlock: (
+        stream: StreamId,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+      ) => Promise<{ events: BridgeEvent[] }>;
       onSidecarRestarted: (callback: () => void) => () => void;
     };
   }
@@ -227,4 +254,74 @@ export async function getFrameSyntax(
   frameIndex: number,
 ): Promise<BridgeSyntaxNode> {
   return requireBridge().getFrameSyntax(stream, frameIndex);
+}
+
+// -- Structural (multi-sync) selection ---------------------------------------------------------
+//
+// These four map onto bitvue_engine::Command's "Tri-sync" selection variants -- independent of
+// selectFrame's temporal cursor (a unit/syntax-node/bit-range/spatial-block selection can exist
+// without a frame selection, and vice versa). No frontend component calls these yet as of
+// 2026-08-08 -- they're wired here because the sidecar-side capability is real and tested
+// (bitvue-sidecar's select_unit/select_syntax/select_bit_range/select_spatial_block, wired
+// earlier this migration), not because a specific UI interaction needs them right now. Don't
+// treat their existence as proof any cross-view sync feature is wired up end to end.
+
+export async function selectUnit(
+  stream: StreamId,
+  unitType: string,
+  offset: number,
+  size: number,
+): Promise<BridgeEvent[]> {
+  const { events } = await requireBridge().selectUnit(
+    stream,
+    unitType,
+    offset,
+    size,
+  );
+  return events;
+}
+
+export async function selectSyntax(
+  stream: StreamId,
+  nodeId: string,
+  startBit: number,
+  endBit: number,
+): Promise<BridgeEvent[]> {
+  const { events } = await requireBridge().selectSyntax(
+    stream,
+    nodeId,
+    startBit,
+    endBit,
+  );
+  return events;
+}
+
+export async function selectBitRange(
+  stream: StreamId,
+  startBit: number,
+  endBit: number,
+): Promise<BridgeEvent[]> {
+  const { events } = await requireBridge().selectBitRange(
+    stream,
+    startBit,
+    endBit,
+  );
+  return events;
+}
+
+export async function selectSpatialBlock(
+  stream: StreamId,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): Promise<BridgeEvent[]> {
+  const { events } = await requireBridge().selectSpatialBlock(
+    stream,
+    x,
+    y,
+    w,
+    h,
+  );
+  return events;
 }

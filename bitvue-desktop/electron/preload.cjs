@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld("bitvue", {
   getFramesChunk: (stream, offset, limit) =>
     ipcRenderer.invoke("bitvue:getFramesChunk", stream, offset, limit),
   getFrameSyntax: (stream, frameIndex) => ipcRenderer.invoke("bitvue:getFrameSyntax", stream, frameIndex),
+  // Structural (multi-sync) selection commands -- independent of selectFrame's temporal cursor.
+  // See bitvue-sidecar's module doc / bitvue_engine::selection for the tri-sync design.
+  selectUnit: (stream, unitType, offset, size) =>
+    ipcRenderer.invoke("bitvue:selectUnit", stream, unitType, offset, size),
+  selectSyntax: (stream, nodeId, startBit, endBit) =>
+    ipcRenderer.invoke("bitvue:selectSyntax", stream, nodeId, startBit, endBit),
+  selectBitRange: (stream, startBit, endBit) =>
+    ipcRenderer.invoke("bitvue:selectBitRange", stream, startBit, endBit),
+  selectSpatialBlock: (stream, x, y, w, h) =>
+    ipcRenderer.invoke("bitvue:selectSpatialBlock", stream, x, y, w, h),
   // Native "open file" dialog, proxied through main (renderers can't call Electron's dialog API
   // directly). Returns the selected path, or null if the user cancelled. `filters` matches
   // Electron's `dialog.showOpenDialog` FileFilter shape: [{name, extensions}].

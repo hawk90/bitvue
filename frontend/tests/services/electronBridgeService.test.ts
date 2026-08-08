@@ -8,7 +8,11 @@ import {
   hasElectronBridge,
   indexStream,
   openStream,
+  selectBitRange,
   selectFrame,
+  selectSpatialBlock,
+  selectSyntax,
+  selectUnit,
   showOpenDialog,
 } from "@/services/electronBridgeService";
 
@@ -234,6 +238,65 @@ describe("electronBridgeService", () => {
         getFrameSyntax: vi.fn().mockRejectedValue(new Error("frame not found")),
       });
       await expect(getFrameSyntax("A", 999)).rejects.toThrow("frame not found");
+    });
+  });
+
+  describe("structural (multi-sync) selection", () => {
+    beforeEach(() =>
+      installMockBridge({
+        selectUnit: vi.fn().mockResolvedValue({
+          events: [{ type: "SelectionUpdated", stream: "A" }],
+        }),
+        selectSyntax: vi.fn().mockResolvedValue({
+          events: [{ type: "SelectionUpdated", stream: "A" }],
+        }),
+        selectBitRange: vi.fn().mockResolvedValue({
+          events: [{ type: "SelectionUpdated", stream: "A" }],
+        }),
+        selectSpatialBlock: vi.fn().mockResolvedValue({
+          events: [{ type: "SelectionUpdated", stream: "A" }],
+        }),
+      }),
+    );
+
+    it("selectUnit forwards unitType/offset/size and returns events", async () => {
+      const events = await selectUnit("A", "OBU_FRAME_HEADER", 100, 50);
+      expect(window.bitvue!.selectUnit).toHaveBeenCalledWith(
+        "A",
+        "OBU_FRAME_HEADER",
+        100,
+        50,
+      );
+      expect(events).toEqual([{ type: "SelectionUpdated", stream: "A" }]);
+    });
+
+    it("selectSyntax forwards nodeId/startBit/endBit and returns events", async () => {
+      const events = await selectSyntax("A", "node-42", 352, 360);
+      expect(window.bitvue!.selectSyntax).toHaveBeenCalledWith(
+        "A",
+        "node-42",
+        352,
+        360,
+      );
+      expect(events).toEqual([{ type: "SelectionUpdated", stream: "A" }]);
+    });
+
+    it("selectBitRange forwards startBit/endBit and returns events", async () => {
+      const events = await selectBitRange("A", 100, 200);
+      expect(window.bitvue!.selectBitRange).toHaveBeenCalledWith("A", 100, 200);
+      expect(events).toEqual([{ type: "SelectionUpdated", stream: "A" }]);
+    });
+
+    it("selectSpatialBlock forwards x/y/w/h and returns events", async () => {
+      const events = await selectSpatialBlock("A", 16, 32, 8, 8);
+      expect(window.bitvue!.selectSpatialBlock).toHaveBeenCalledWith(
+        "A",
+        16,
+        32,
+        8,
+        8,
+      );
+      expect(events).toEqual([{ type: "SelectionUpdated", stream: "A" }]);
     });
   });
 });

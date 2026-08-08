@@ -549,6 +549,34 @@ pre-existing 실패만, 새 실패 0개. `BITVUE_ELECTRON_SELFTEST`에 `getFrame
 탐색해 `bit_range.start_bit === 352`까지 확인(수정된 비트오프셋 버그가 E2E 레벨에서도 안 재발하는지
 증명), exit code 0.
 
+### 나머지 tri-sync 선택 커맨드 4개를 bridge에 추가 (2026-08-08)
+
+`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block` — 이 세션 이전부터
+`bitvue-sidecar`에 이미 있었고 테스트도 돼 있었지만(`Command`의 "Tri-sync" variant에 직결) `electronBridgeService.ts`엔 한 번도 안 걸려있었음. `selectFrame`만 있었음.
+
+**이번 라운드는 이전 라운드들과 성격이 다름:** `get_frames_chunk`/`get_frame_syntax`는 전부 frontend에
+이미 죽어있던 콜사이트(옛 Tauri invoke)가 있어서 "이름이 우연히 맞아떨어짐" 패턴이었지만, 이 4개는
+**현재 아무 frontend 컴포넌트도 호출하지 않음**(grep으로 확인 — select_unit/select_syntax/
+select_bit_range/select_spatial_block 관련 문자열이 frontend 어디에도 없음). "다음 구현" 지시에 따라
+진행했지만, 실제 UI 트리거 없이 미리 배선하는 것 — sidecar 쪽 능력이 실재하고 테스트돼 있다는 근거로
+진행, UI 기능이 완성됐다는 뜻은 아님. 모듈 doc에 명시.
+
+**다른 후보들과 비교해 이걸 고른 이유:** `ContainerModel.duration_ms`/`bitrate_bps`(IVF 헤더의
+framerate 필드로 계산 가능)도 검토했지만, IVF rate/scale 필드 의미가 구현마다 뒤바뀌기 쉬운 걸로 알려져
+있어서(바로 전 라운드에서 발견한 bit/byte 오프셋 버그와 같은 부류의 위험) 실제 소비자도 없는 채로
+추측성 단위 변환을 넣는 건 보류 — 이번 4개는 최소한 파라미터 shape가 이미 확정/테스트된 기존 커맨드를
+그대로 미러링하는 순수 기계적 작업이라 리스크가 낮음.
+
+**한 일:** `preload.cjs`/`main.ts`에 4개 IPC 채널(각 sidecar 커맨드의 정확한 파라미터 shape 그대로:
+`select_unit{unit_type,offset,size}`, `select_syntax{node_id,start_bit,end_bit}`,
+`select_bit_range{start_bit,end_bit}`, `select_spatial_block{x,y,w,h}`). `electronBridgeService.ts`에
+동일 이름 wrapper 4개 추가 — 전부 `selectFrame`과 같은 `{events}` 반환 패턴.
+
+**검증:** `electronBridgeService.test.ts`(+4, 신규) 전부 통과. `npx tsc --noEmit` 클린. `npx vitest run`
+전체 — 여전히 9파일/36개 pre-existing 실패만, 새 실패 0개. sidecar 쪽 4개 커맨드는 이번 세션 이전부터
+있던 기존 테스트(각 2개씩, 8개)로 이미 검증돼 있어서 새로 안 만듦. Electron selftest는 확장 안 함 —
+실제로 호출할 UI 트리거가 없어서 의미 있는 E2E 시나리오를 못 만듦(정직하게 생략, 억지로 안 만듦).
+
 ### 확정 순서
 
 ```

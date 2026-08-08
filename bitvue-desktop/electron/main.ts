@@ -95,6 +95,43 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(
+    "bitvue:selectUnit",
+    async (_event, stream: string, unitType: string, offset: number, size: number) => {
+      return requireSidecar().request("select_unit", { stream, unit_type: unitType, offset, size });
+    },
+  );
+
+  ipcMain.handle(
+    "bitvue:selectSyntax",
+    async (_event, stream: string, nodeId: string, startBit: number, endBit: number) => {
+      return requireSidecar().request("select_syntax", {
+        stream,
+        node_id: nodeId,
+        start_bit: startBit,
+        end_bit: endBit,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "bitvue:selectBitRange",
+    async (_event, stream: string, startBit: number, endBit: number) => {
+      return requireSidecar().request("select_bit_range", {
+        stream,
+        start_bit: startBit,
+        end_bit: endBit,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "bitvue:selectSpatialBlock",
+    async (_event, stream: string, x: number, y: number, w: number, h: number) => {
+      return requireSidecar().request("select_spatial_block", { stream, x, y, w, h });
+    },
+  );
+
+  ipcMain.handle(
     "bitvue:showOpenDialog",
     async (event, filters?: Array<{ name: string; extensions: string[] }>) => {
       const win = BrowserWindow.fromWebContents(event.sender);
