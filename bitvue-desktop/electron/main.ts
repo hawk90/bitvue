@@ -17,7 +17,7 @@
  *  - Single global `SidecarClient` instance, no multi-window/multi-stream-session story yet.
  */
 
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -55,12 +55,58 @@ function registerIpcHandlers(): void {
     // `YUVFrameData` anti-pattern note in DEVELOPMENT_PHASES.md.
     return { ...metadata, bytes };
   });
+
+  ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
+    return requireSidecar().request("close_stream", { stream });
+  });
+
+  ipcMain.handle("bitvue:selectFrame", async (_event, stream: string, frameIndex: number) => {
+    return requireSidecar().request("select_frame", { stream, frame_index: frameIndex });
+  });
+
+  ipcMain.handle(
+    "bitvue:showOpenDialog",
+    async (event, filters?: Array<{ name: string; extensions: string[] }>) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const options: Electron.OpenDialogOptions = {
+        properties: ["openFile"],
+        filters: filters ?? [{ name: "All Files", extensions: ["*"] }],
+      };
+      const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return result.filePaths[0];
+    },
+  );
+}
+
+const frontendDistIndex = path.join(repoRoot, "frontend", "dist", "index.html");
+
+/**
+ * Where to load the renderer content from, in priority order:
+ * 1. `BITVUE_FRONTEND_URL` (explicit override — e.g. the Vite dev server, `http://localhost:5173`,
+ *    for `npm run dev` workflows where `frontend/` is served separately, not built).
+ * 2. `frontend/dist/index.html`, if it's been built (`cd frontend && npm run build`) — this is
+ *    the *real* Bitvue Analyzer UI.
+ * 3. This package's own placeholder `index.html` — only reached if neither of the above is
+ *    available, e.g. a bare `bitvue-desktop` checkout with `frontend/` never built. Logs a
+ *    warning so it's not mistaken for the real app.
+ */
+function resolveRendererTarget(): { kind: "url" | "file"; target: string } {
+  const overrideUrl = process.env.BITVUE_FRONTEND_URL;
+  if (overrideUrl) return { kind: "url", target: overrideUrl };
+  if (existsSync(frontendDistIndex)) return { kind: "file", target: frontendDistIndex };
+  console.warn(
+    `[bitvue-desktop] frontend/dist not found (${frontendDistIndex}) and BITVUE_FRONTEND_URL not set — ` +
+      "loading the placeholder shell instead of the real Bitvue Analyzer UI. " +
+      "Run `cd frontend && npm run build`, or set BITVUE_FRONTEND_URL to a dev server.",
+  );
+  return { kind: "file", target: path.join(here, "index.html") };
 }
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1024,
-    height: 768,
+    width: 1280,
+    height: 800,
     show: process.env.BITVUE_ELECTRON_OFFSCREEN !== "1",
     webPreferences: {
       preload: path.join(here, "preload.cjs"),
@@ -70,7 +116,13 @@ function createWindow(): BrowserWindow {
       offscreen: process.env.BITVUE_ELECTRON_OFFSCREEN === "1",
     },
   });
-  win.loadFile(path.join(here, "index.html"));
+  const renderer = resolveRendererTarget();
+  console.log(`[bitvue-desktop] loading renderer (${renderer.kind}): ${renderer.target}`);
+  if (renderer.kind === "url") {
+    win.loadURL(renderer.target);
+  } else {
+    win.loadFile(renderer.target);
+  }
   return win;
 }
 
@@ -93,10 +145,15 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       (async () => {
         const hello = await window.bitvue.hello("selftest/0.0.1");
         const openResult = await window.bitvue.openStream("A", ${JSON.stringify(tempFile)});
+        const selectResult = await window.bitvue.selectFrame("A", 3);
         const hexResult = await window.bitvue.getHexRange("A", 10, 16);
+        const closeResult = await window.bitvue.closeStream("A");
         return {
+          documentTitle: document.title,
           hello,
           openEvents: openResult.events,
+          selectEvents: selectResult.events,
+          closeEvents: closeResult.events,
           hexOffset: hexResult.offset,
           hexLen: hexResult.len,
           hexBytesHex: Array.from(new Uint8Array(Object.values(hexResult.bytes))).map(b => b.toString(16).padStart(2,"0")).join(""),
@@ -104,11 +161,15 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       })()
     `);
     const expectedHex = knownBytes.subarray(10, 26).toString("hex");
+    const selectOk = result.selectEvents?.[0]?.type === "SelectionUpdated";
+    const closeOk = result.closeEvents?.[0]?.type === "ModelUpdated";
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
+    console.log("[selftest] document title (proves the real frontend loaded, not the placeholder):", result.documentTitle);
     console.log("[selftest] expected hex bytes:", expectedHex);
     console.log("[selftest] actual   hex bytes:", result.hexBytesHex);
     console.log("[selftest] BYTE_EXACT_MATCH:", expectedHex === result.hexBytesHex);
-    process.exitCode = expectedHex === result.hexBytesHex ? 0 : 1;
+    console.log("[selftest] select_frame OK:", selectOk, " close_stream OK:", closeOk);
+    process.exitCode = expectedHex === result.hexBytesHex && selectOk && closeOk ? 0 : 1;
   } catch (err) {
     console.error("[selftest] FAILED:", err);
     process.exitCode = 1;

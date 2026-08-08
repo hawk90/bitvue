@@ -3,15 +3,26 @@
  *
  * Manages file operations specific to App.tsx including frame loading
  * and dependent file opening for comparison mode.
+ *
+ * `handleOpenFile`/`handleCloseFile` go through `electronBridgeService` (bitvue-sidecar), not
+ * Tauri, as of the 2026-08-08 migration — see that file's module doc for exactly what is and
+ * isn't backed by the new engine yet. `handleOpenDependentFile` (compare workspaces) still calls
+ * the old Tauri `open()` dialog + `createWorkspace` — there's no sidecar equivalent for compare
+ * yet, so this path is currently non-functional (left as-is rather than half-migrated).
  */
 
 import { useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { createLogger } from "../utils/logger";
 import type { FileInfo } from "../types/video";
 import { useFileState, useCurrentFrame } from "../contexts/StreamDataContext";
 import { useCompare } from "../contexts/CompareContext";
+import {
+  closeStream,
+  openStream,
+  selectFrame,
+  showOpenDialog,
+} from "../services/electronBridgeService";
 
 const logger = createLogger("useAppFileOperations");
 
@@ -64,7 +75,7 @@ export function useAppFileOperations(
    */
   const handleCloseFile = useCallback(async () => {
     try {
-      await invoke("close_file");
+      await closeStream("A");
       setFileInfo(null);
       setFilePath(null);
       setCurrentFrameIndex(0);
@@ -83,33 +94,30 @@ export function useAppFileOperations(
     try {
       setOpenError(null);
 
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: "Video Files",
-            extensions: [
-              "ivf",
-              "av1",
-              "hevc",
-              "h265",
-              "265",
-              "h264",
-              "264",
-              "vvc",
-              "h266",
-              "mp4",
-              "mkv",
-              "webm",
-              "ts",
-            ],
-          },
-          {
-            name: "All Files",
-            extensions: ["*"],
-          },
-        ],
-      });
+      const selected = await showOpenDialog([
+        {
+          name: "Video Files",
+          extensions: [
+            "ivf",
+            "av1",
+            "hevc",
+            "h265",
+            "265",
+            "h264",
+            "264",
+            "vvc",
+            "h266",
+            "mp4",
+            "mkv",
+            "webm",
+            "ts",
+          ],
+        },
+        {
+          name: "All Files",
+          extensions: ["*"],
+        },
+      ]);
 
       if (selected && typeof selected === "string") {
         logger.debug("Opening file:", selected);
@@ -121,8 +129,15 @@ export function useAppFileOperations(
           onError("Limited Support", unsupportedMsg, selected);
         }
 
-        // Call the Tauri command to open the file
-        const result = await invoke<FileInfo>("open_file", { path: selected });
+        const bridgeResult = await openStream("A", selected);
+        // bitvue-sidecar's open_stream doesn't return codec/dimensions/frameCount yet (unlike
+        // the old Tauri open_file) -- only success/path are populated honestly here. Extending
+        // FileInfo further needs a real sidecar command that doesn't exist yet.
+        const result: FileInfo = {
+          success: bridgeResult.success,
+          path: bridgeResult.path,
+          error: bridgeResult.error,
+        };
 
         setFileInfo(result);
         setFilePath(result.success ? selected : null);
@@ -130,9 +145,14 @@ export function useAppFileOperations(
         if (result.success) {
           logger.info("File opened successfully");
           setCurrentFrameIndex(0);
-          // Notify mode registry about the new codec
-          if (result.codec) {
-            onCodecChange?.(result.codec.toUpperCase());
+          try {
+            await selectFrame("A", 0);
+          } catch (selectErr) {
+            // Non-blocking: the file opened, tri-sync just didn't get the initial selection.
+            logger.error(
+              "Failed to select initial frame after opening file:",
+              selectErr,
+            );
           }
           // Refresh frames after opening file
           try {
@@ -161,13 +181,7 @@ export function useAppFileOperations(
       logger.error("Failed to open file:", err);
       onError("Failed to Open File", toMessage(err));
     }
-  }, [
-    refreshFrames,
-    setFilePath,
-    setCurrentFrameIndex,
-    onError,
-    onCodecChange,
-  ]);
+  }, [refreshFrames, setFilePath, setCurrentFrameIndex, onError]);
 
   /**
    * Handle opening dependent bitstream for comparison

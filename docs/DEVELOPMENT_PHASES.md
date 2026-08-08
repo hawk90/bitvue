@@ -293,6 +293,27 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 **검증:** `cargo check --workspace` 클린, `cargo test -p bitvue-engine`(3848개) + `-p bitvue-sidecar` + `-p bitvue-protocol` 전부 통과, `cargo fmt --all --check` 클린, `bitvue-desktop` 17/17 유지. 사전에 존재하던 미커밋 anti-pattern-audit 변경분(약 55개 파일)은 이번 커밋 전후로 정확히 동일하게 남아있음(`git status` diff로 확인) — 섞이지 않음.
 
+### `bitvue-ui` 실배선 — 첫 세로 슬라이스: 파일 열기 + 선택 (2026-08-08)
+
+**범위를 실제 코드 조사 후 더 좁힘:** 처음엔 "shim 하나로 `invoke()` 호출을 전부 우회" 아이디어였지만, 실제로 확인해보니 **명령체계가 통째로 다름** — 예전 Tauri 커맨드(~40개)와 지금 `bitvue-sidecar`(9개, selection/query 중심으로 재설계)는 이름도 파라미터 모양도 겹치지 않음. 범용 shim은 애초에 불가능 — 콜사이트마다 새 의미로 다시 생각해야 함. 그래서 "파일 열기 + 프레임 선택만 진짜로 동작하게"로 좁힘 — 그마저도 조사하다 보니 **프레임 목록 조회(`get_frames_chunk` 등)조차 sidecar에 없어서** 실제 프레임 렌더링/썸네일은 이번 슬라이스에서 여전히 불가능하다는 걸 확인, 정직하게 그 경계를 지키며 진행.
+
+**핵심 발견 — `frontend/`엔 이미 좋은 진입점이 있었음:** `frontend/services/tauriCommandService.ts`가 커맨드 호출의 90%가 지나가는 중앙 wrapper였지만, 명령체계 자체가 다르므로 그 파일의 내부만 바꾸는 것도 의미 없음(command name이 안 맞음) — 대신 실제 활성 훅(`frontend/App.tsx`가 쓰는 건 `useFileOperations.ts`가 아니라 `useAppFileOperations.ts`)의 `handleOpenFile`/`handleCloseFile` 두 곳만 정밀 타겟팅.
+
+**한 일:**
+- `bitvue-desktop/electron/main.ts`: `ipcMain.handle`에 `bitvue:selectFrame`/`bitvue:closeStream`/`bitvue:showOpenDialog`(Electron 네이티브 `dialog.showOpenDialog`, 렌더러가 직접 못 부르므로 main 경유) 추가. `createWindow()`가 이제 placeholder `index.html` 대신 **`frontend/dist/index.html`(빌드돼 있으면)을 실제로 로드** — `BITVUE_FRONTEND_URL` 환경변수로 dev 서버(`vite`, 5173) 지정도 가능, 아무것도 없으면 경고 로그와 함께 placeholder로 폴백.
+- `bitvue-desktop/electron/preload.cjs`: `window.bitvue`에 `closeStream`/`selectFrame`/`showOpenDialog` 추가.
+- `frontend/services/electronBridgeService.ts`(신규) — `window.bitvue.*`를 감싸는 얇은 wrapper. 모듈 doc에 "sidecar 9개 커맨드 외엔 아무것도 없다"는 경계를 명시적으로 적어둠(나중에 여기에 함부로 wrapper 추가하지 말라는 가드레일).
+- `frontend/hooks/useAppFileOperations.ts`: `handleOpenFile`이 이제 `showOpenDialog`(네이티브 다이얼로그) → `openStream("A", path)` → 성공 시 `selectFrame("A", 0)`까지 실제로 호출. `FileInfo`의 `codec`/`width`/`height` 등은 sidecar가 아직 안 주므로 **정직하게 비워둠**(예전처럼 채워진 것처럼 속이지 않음, 주석으로 이유 명시). `handleCloseFile`도 `closeStream("A")`로 교체. `handleOpenDependentFile`(compare)은 안 건드림 — sidecar에 compare 대응이 없어서 손대도 의미 없음, 현재도 비작동 상태 그대로 둠.
+
+**검증(3단계, 전부 실제로 실행):**
+1. `frontend/tests/services/electronBridgeService.test.ts`(11개) — bridge wrapper 자체, `window.bitvue` mock.
+2. `frontend/tests/hooks/useAppFileOperations.test.ts`(6개, 신규) — 훅이 새 bridge를 올바른 인자로 호출하는지, 성공/실패/부분실패(open은 성공했는데 selectFrame만 실패) 케이스 전부. React 훅 로직 검증은 Electron 프로세스보다 이쪽이 맞는 도구라고 판단.
+3. **`bitvue-desktop`의 `BITVUE_ELECTRON_SELFTEST`를 확장**해서 실제 Electron 프로세스로 `selectFrame`/`closeStream`까지 검증 + `document.title`이 실제 프론트엔드("Bitvue - Bitstream Analyzer")인지 확인(placeholder가 아니라 진짜 앱이 로드됐다는 증거) — `frontend/dist`를 실제로 빌드해서 Electron이 그걸 로드하게 하고 실행, 전부 통과.
+
+`npm run typecheck`/`eslint` 변경 파일 전부 클린. `npx vitest run`(frontend 전체) — 기존 36개 pre-existing 실패(무관한 다른 파일들, 전에 이미 확인된 것과 정확히 동일)만 남고 새 실패 0개, 신규 테스트 17개 전부 통과.
+
+**아직 안 되는 것(정직하게 남겨둠):** 실제 프레임 렌더링/썸네일(프레임 목록 조회 자체가 sidecar에 없음), codec 인식(→ codec-aware 모드 UI 비활성 상태), compare 워크스페이스, export, quality metrics — 전부 `bitvue-sidecar`에 해당 커맨드가 생겨야 다음 슬라이스로 진행 가능.
+
 ### 확정 순서
 
 ```
