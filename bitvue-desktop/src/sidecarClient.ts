@@ -21,6 +21,14 @@
  *    for wire schema v0 hard-failing startup over a version string felt premature (the sidecar
  *    binary is dev-built alongside this client right now); revisit once the pair actually ships
  *    independently versioned.
+ *  - Crash recovery (`options.restart`) restarts the *process*, not application state.
+ *    `bitvue_core::Core` lives entirely in-process in the sidecar with no persistence, so a
+ *    crash loses whatever streams were open and whatever was selected — there is no command
+ *    log to replay. Pending requests at crash time are rejected (`SidecarExitedError`), never
+ *    silently retried, because a request might have partially mutated state before the crash
+ *    and blind retry isn't safe to assume is idempotent. After a `'restarted'` event, it's the
+ *    *caller's* job to re-establish whatever state it cares about (e.g. re-issue `open_stream`
+ *    for whatever file was open) — this client doesn't track or replay that automatically.
  */
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
@@ -64,6 +72,14 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
+/** See `SidecarClientOptions.restart` — process-only recovery, no state replay. */
+export interface SidecarRestartOptions {
+  /** Max consecutive restart attempts before giving up. Default 3. */
+  maxAttempts?: number;
+  /** Delay before each restart attempt, in ms. Default 500. Fixed, not exponential — see module doc. */
+  backoffMs?: number;
+}
+
 export interface SidecarClientOptions {
   /** Extra argv passed to the sidecar binary. Defaults to none. */
   args?: string[];
@@ -71,6 +87,12 @@ export interface SidecarClientOptions {
   cwd?: string;
   /** Client version string sent in the `hello` handshake. Defaults to this package's version. */
   clientVersion?: string;
+  /**
+   * Auto-restart the sidecar process if it exits unexpectedly (crash — not via `.close()`).
+   * Omit to disable (default), matching prior behavior for existing callers/tests. See the
+   * module doc's "Crash recovery" note for exactly what this does and doesn't restore.
+   */
+  restart?: SidecarRestartOptions;
 }
 
 type SidecarChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -82,31 +104,96 @@ type SidecarChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
  *    (sidecar-initiated push; JSON-decode the payload yourself, shape is method-specific).
  *  - `'stderr'` (line: string) — one line of the child's stderr (also always logged via
  *    `console.error`; listen to this only if you need to capture it yourself too).
- *  - `'exit'` (code: number | null, signal: NodeJS.Signals | null) — child process exited.
+ *  - `'exit'` (code: number | null, signal: NodeJS.Signals | null) — child process exited
+ *    (fires on every exit, including ones that trigger a restart).
+ *  - `'restarting'` (attempt: number) — only with `options.restart`: about to respawn after an
+ *    unexpected exit.
+ *  - `'restarted'` (attempt: number) — respawn succeeded and the new process answered `hello()`.
+ *  - `'restart_failed'` (attempts: number) — gave up after `maxAttempts`; the client is now
+ *    permanently dead, same as without `options.restart`.
  */
 export class SidecarClient extends EventEmitter {
-  private readonly child: SidecarChildProcess;
-  private readonly decoder = new FrameDecoder();
+  private child: SidecarChildProcess;
+  private decoder = new FrameDecoder();
   private readonly pending = new Map<number, PendingRequest>();
   private nextCorrelationId = 1;
   private exited = false;
   private stderrRemainder = "";
+  private readonly binaryPath: string;
+  private readonly spawnArgs: string[];
+  private readonly spawnCwd: string | undefined;
+  private readonly restartConfig: Required<SidecarRestartOptions> | undefined;
+  private restartAttempts = 0;
+  /** Set by `close()` — distinguishes an intentional shutdown from a crash, so we know not to restart. */
+  private manualClose = false;
 
   constructor(binaryPath: string, options: SidecarClientOptions = {}) {
     super();
-    this.child = spawn(binaryPath, options.args ?? [], {
-      cwd: options.cwd,
+    this.binaryPath = binaryPath;
+    this.spawnArgs = options.args ?? [];
+    this.spawnCwd = options.cwd;
+    this.restartConfig = options.restart
+      ? {
+          maxAttempts: options.restart.maxAttempts ?? 3,
+          backoffMs: options.restart.backoffMs ?? 500,
+        }
+      : undefined;
+    this.child = this.spawnChild();
+  }
+
+  private spawnChild(): SidecarChildProcess {
+    const child = spawn(this.binaryPath, this.spawnArgs, {
+      cwd: this.spawnCwd,
       stdio: ["pipe", "pipe", "pipe"],
     }) as SidecarChildProcess;
 
-    this.child.stdout.on("data", (chunk: Buffer) => this.onStdout(chunk));
-    this.child.stderr.on("data", (chunk: Buffer) => this.onStderr(chunk));
-    this.child.on("error", (err) => this.onChildGone(`spawn error: ${err.message}`));
-    this.child.on("exit", (code, signal) => {
+    child.stdout.on("data", (chunk: Buffer) => this.onStdout(chunk));
+    child.stderr.on("data", (chunk: Buffer) => this.onStderr(chunk));
+    child.on("error", (err) => this.onChildGone(`spawn error: ${err.message}`));
+    child.on("exit", (code, signal) => {
       this.exited = true;
       this.emit("exit", code, signal);
       this.onChildGone(`exited with code=${code} signal=${signal}`);
+      this.maybeRestart(code, signal);
     });
+    return child;
+  }
+
+  private maybeRestart(code: number | null, signal: NodeJS.Signals | null): void {
+    if (this.manualClose || !this.restartConfig) return;
+    if (this.restartAttempts >= this.restartConfig.maxAttempts) {
+      console.error(
+        `[bitvue-sidecar] gave up restarting after ${this.restartAttempts} attempt(s) ` +
+          `(last exit: code=${code} signal=${signal})`,
+      );
+      this.emit("restart_failed", this.restartAttempts);
+      return;
+    }
+    this.restartAttempts += 1;
+    const attempt = this.restartAttempts;
+    console.error(
+      `[bitvue-sidecar] crashed (code=${code} signal=${signal}), restart attempt ` +
+        `${attempt}/${this.restartConfig.maxAttempts} in ${this.restartConfig.backoffMs}ms...`,
+    );
+    this.emit("restarting", attempt);
+
+    setTimeout(() => {
+      if (this.manualClose) return; // closed while the backoff timer was pending
+      this.decoder = new FrameDecoder(); // old buffer belongs to the dead process's byte stream
+      this.child = this.spawnChild();
+      this.exited = false;
+      this.hello()
+        .then(() => {
+          this.restartAttempts = 0; // recovered — give the next crash (if any) a fresh budget
+          this.emit("restarted", attempt);
+        })
+        .catch((err) => {
+          // The new child's own 'exit' handler will trigger another maybeRestart if it also
+          // dies; if it's alive but hello() itself failed for some other reason, we don't spin
+          // retrying hello() specifically — that's an unexpected-enough state to just surface.
+          console.error(`[bitvue-sidecar] restart attempt ${attempt}: post-restart hello() failed: ${err}`);
+        });
+    }, this.restartConfig.backoffMs);
   }
 
   /** stdout carries ONLY protocol frames — decode and route them, never treat as text. */
@@ -266,8 +353,18 @@ export class SidecarClient extends EventEmitter {
     return result;
   }
 
-  /** Kills the child process. Any still-pending requests reject via the `exit` handler. */
+  /** PID of the currently-running sidecar process (changes across a restart). For diagnostics/tests. */
+  get pid(): number | undefined {
+    return this.child.pid;
+  }
+
+  /**
+   * Kills the child process for good — sets a flag so a subsequent `exit` is treated as
+   * intentional and does NOT trigger `options.restart`. Any still-pending requests reject via
+   * the `exit` handler.
+   */
   close(): void {
+    this.manualClose = true;
     if (this.exited) return;
     this.child.stdin.end();
     this.child.kill();

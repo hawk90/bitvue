@@ -5,7 +5,8 @@
 // historically been the least forgiving part of the process model around module systems
 // (sandboxed preload + ESM has version-dependent caveats), and this file's logic is small
 // enough that hand-writing it avoids that whole class of build problem. Keep it in sync with
-// `electron/main.ts`'s `ipcMain.handle` channel names by hand — there are only 3 today.
+// `electron/main.ts`'s `ipcMain.handle` channel names by hand — there are only 3 today, plus
+// one main-to-renderer push (`bitvue:sidecar-restarted`, see `onSidecarRestarted` below).
 //
 // This is a prototype proving the bridge, not a hardened renderer boundary: it exposes a
 // thin, fixed set of named methods (not a generic "invoke any channel" passthrough), which is
@@ -18,4 +19,13 @@ contextBridge.exposeInMainWorld("bitvue", {
   hello: (clientVersion) => ipcRenderer.invoke("bitvue:hello", clientVersion),
   openStream: (stream, filePath) => ipcRenderer.invoke("bitvue:openStream", stream, filePath),
   getHexRange: (stream, offset, len) => ipcRenderer.invoke("bitvue:getHexRange", stream, offset, len),
+  // Fires after the sidecar process crashed and was automatically respawned (see
+  // sidecarClient.ts's crash-recovery doc) — application state (open streams, selection) was
+  // lost and is NOT restored automatically. A real UI should use this to prompt the user to
+  // re-open whatever they had open. Returns an unsubscribe function.
+  onSidecarRestarted: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("bitvue:sidecar-restarted", listener);
+    return () => ipcRenderer.removeListener("bitvue:sidecar-restarted", listener);
+  },
 });

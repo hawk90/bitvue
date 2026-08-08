@@ -127,17 +127,32 @@ async function main(): Promise<void> {
     );
   }
 
-  sidecar = new SidecarClient(sidecarBinaryPath);
+  // See sidecarClient.ts's module doc: this restarts the *process* on an unexpected crash, not
+  // bitvue_core::Core's in-memory state (no open streams/selection survive a crash — there's
+  // nothing to replay them from). The renderer is told via 'bitvue:sidecar-restarted' below so
+  // real UI can react (e.g. prompt the user to re-open their file); this shell doesn't do that
+  // itself yet since there's no real UI to prompt.
+  sidecar = new SidecarClient(sidecarBinaryPath, { restart: { maxAttempts: 3, backoffMs: 500 } });
   sidecar.on("exit", (code, signal) => {
     if (shuttingDown) return; // expected — we called sidecar.close() ourselves
     console.error(`[bitvue-desktop] sidecar exited unexpectedly (code=${code} signal=${signal})`);
   });
+  sidecar.on("restart_failed", (attempts: number) => {
+    console.error(`[bitvue-desktop] sidecar would not stay up after ${attempts} restart attempt(s), giving up`);
+  });
 
   const hello = await sidecar.hello("bitvue-desktop/0.0.1");
-  console.log(`[bitvue-desktop] sidecar handshake ok, protocol_version=${hello.protocol_version}`);
+  console.log(
+    `[bitvue-desktop] sidecar handshake ok, protocol_version=${hello.protocol_version}, pid=${sidecar.pid}`,
+  );
 
   registerIpcHandlers();
   const win = createWindow();
+
+  sidecar.on("restarted", (attempt: number) => {
+    console.log(`[bitvue-desktop] sidecar restarted (attempt ${attempt}) — application state was lost`);
+    win.webContents.send("bitvue:sidecar-restarted");
+  });
 
   if (process.env.BITVUE_ELECTRON_SELFTEST === "1") {
     win.webContents.once("did-finish-load", () => {
