@@ -1,0 +1,13 @@
+[package]
+name = "bitvue-indexer"
+description = "Metadata-indexing pipeline: populates Core's StreamState.container/.units from a real file (no pixel decode). First stage of the RunFullAnalysis pipeline, IVF/AV1 only so far -- see docs/DEVELOPMENT_PHASES.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bitvue-engine = { workspace = true }
+bitvue-av1-codec = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

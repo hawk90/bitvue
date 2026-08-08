@@ -14,6 +14,7 @@ members = [
     "crates/bitvue-codecs-parser",  # Codec parsers integration layer
     "crates/bitvue-decode",     # Decoders (dav1d for AV1)
     "crates/bitvue-metrics",    # Quality metrics (PSNR, SSIM, VMAF)
+    "crates/bitvue-indexer",    # Metadata-indexing pipeline (container/units, IVF/AV1 only so far)
 
     # CLI and tools
     "crates/bitvue-cli",        # CLI tool (terminal interface)
@@ -55,6 +56,7 @@ bitvue-codecs = { path = "crates/bitvue-codecs" }
 bitvue-codecs-parser = { path = "crates/bitvue-codecs-parser" }
 bitvue-decode = { path = "crates/bitvue-decode" }
 bitvue-metrics = { path = "crates/bitvue-metrics" }
+bitvue-indexer = { path = "crates/bitvue-indexer" }
 
 # CLI and tools
 bitvue-cli = { path = "crates/bitvue-cli" }

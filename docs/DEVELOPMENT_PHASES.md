@@ -372,6 +372,64 @@ dev 모드(`npm run electron`, 리포 체크아웃에 상대 경로로 sidecar/f
 Bitvue 아이콘 에셋 없음. Windows/Linux 매트릭스 레그는 로컬에서 실행 못 해봄(이 샌드박스는 macOS) — CI에서
 처음 실행될 때 검증 필요.
 
+### 디코드/분석 파이프라인 설계 논의 + 첫 구현: `bitvue-indexer` (2026-08-08)
+
+**배경:** `RunFullAnalysis`, Ref Graph/Metrics multi-sync, frontend의 남은 ~40개 `invoke()` 콜사이트 —
+전부 같은 근본 원인에 막혀있었음: `Core`가 파일을 열어도 `ByteCache`만 만들 뿐 실제로 컨테이너/유닛/신택스를
+파싱하는 코드가 어디에도 없었음(`StreamState.syntax`는 쓰는 코드가 전무, 읽기만 존재). 사용자와 논의 후
+두 가지를 확정: **(1) 첫 단계는 메타데이터 인덱싱까지만**(컨테이너+유닛, 픽셀 디코딩은 다음 단계로 보류 —
+`DecodedFrame`은 무거운 타입이라 스트림이 길면 전체 디코딩이 비쌈), **(2) sidecar 명령은 세분화**(하나의
+`run_full_analysis`가 아니라 `index_stream`/`get_stream_info`/`get_frames_chunk`처럼 frontend가 이미
+기대하던 이름에 맞춘 개별 명령, 진행률 보고가 가능한 구조).
+
+**아키텍처 조사 결과 — 재설계가 필요 없었음:** `bitvue-engine`이 leaf crate라 `Core`가 `bitvue-decode`를
+직접 호출할 수 없다는 문제는, `Core::get_stream()`/`get_job_manager()`가 이미 `pub`이라는 걸 확인하면서
+해소됨 — `bitvue-decode`처럼 `bitvue-engine`에 의존하는 크레이트라면 `bitvue-engine` 수정 없이
+`Arc<RwLock<StreamState>>`를 통해 읽기/쓰기가 가능. `worker.rs`의 `JobManager`(latest-wins 취소, 스트림당
+최대 2개 동시 실행)와 `Job` enum(`ParseContainer`/`ParseUnits`/`BuildSyntaxTree`/`BuildTimelineIndex`/
+`DecodeFrame`/`ComputeMetrics` 등, 정확히 이 파이프라인 모양)도 이미 완성돼 테스트까지 있지만 **실제 호출자가
+전무**(`spawn()`/`submit()` 호출이 코드베이스 전체에 0건) — 죽은 인프라였음. `indexing.rs`/`index_extractor.rs`
+/`index_session.rs`(1781줄, "T1-1 Two-Phase Index Builder")도 마찬가지: `QuickIndex`/`FullIndex`/
+`IndexState`/`IndexProgress` 등 진행률·게이팅 상태기계는 완성돼 있지만 실제 파싱 로직을 채우는 코드가 없음.
+**이번 라운드는 이 진행률/2단계 상태기계에 올라타지 않음** — 그건 별도 스코프, 지금은 동기적으로
+`StreamState.container`/`.units`만 채움. `TimelineModel`도 이번엔 스킵 — `stream_state.rs`와 `timeline.rs`에
+서로 다른 `TimelineFrame` 구조체가 두 개 존재하는 걸 발견, 어느 게 정본인지 불명확해서 설계 재확인 없이
+막 채우지 않기로 결정.
+
+**한 일 (`crates/bitvue-indexer`, 신규 크레이트):**
+- `bitvue-engine`+`bitvue-av1-codec`에만 의존. `pub fn index_stream(core: &Core, stream: StreamId) ->
+  Vec<Event>` — `ByteCache`에서 바이트를 읽어 IVF 매직(`DKIF`) 확인 → `bitvue_av1_codec::ivf::
+  parse_ivf_frames`로 프레임 워크 → 프레임마다 `parse_frame_header_basic`으로 OBU 프레임 헤더 파싱(프레임
+  타입/QP/참조 프레임) → `ContainerModel`+`UnitModel`을 만들어 `StreamState`에 씀. IVF가 아니면 정직하게
+  `DiagnosticAdded`(카테고리 Container) — 지어내지 않음.
+- 로직은 `bitvue-mcp`의 기존 `parse_ivf_file`(실제로 동작 중인 코드, `load_file` MCP 툴이 씀)을 참고해
+  거의 그대로 재현 — 바이트 오프셋 계산, OBU 헤더 스킵, `ref_frame_idx`/`base_q_idx` 추출 로직까지 동일.
+  `bitvue-mcp`는 건드리지 않음(중복이지만, 이미 동작 중인 별도 툴을 이번 라운드에서 리팩터링할 이유 없음 —
+  중복 사실만 정직하게 코드 주석에 남김).
+- `Command::RunFullAnalysis`는 그대로 미사용 — `bitvue-sidecar`가 `Core::handle_command`를 거치지 않고
+  `bitvue_indexer::index_stream()`을 직접 호출.
+
+**sidecar 신규 명령 3개 (`index_stream`/`get_stream_info`/`get_frames_chunk`):** `get_stream_info`/
+`get_frames_chunk`는 순수 읽기 — `state.container`/`.units`가 아직 없으면(인덱싱 전) 와이어 에러가 아니라
+`{"indexed": false, ...}`로 정직하게 응답(아직 인덱싱 안 된 건 정상 상태지, 실패가 아님). `get_frames_chunk`는
+`offset`/`limit` 페이지네이션. `UnitNode`는 이미 `Serialize` derive가 있어서(대부분의 `bitvue-engine` 타입과
+달리) 직접 `serde_json::to_value`— `ContainerModel`은 derive가 없어서 수동 JSON 매핑(기존 `event_to_json`
+패턴과 동일).
+
+**검증:** `bitvue-indexer` 유닛 테스트 3개 — 실제 `test_data/av1_test.ivf` 픽스처로 컨테이너/유닛 채워짐,
+첫 프레임 키프레임 확인, 오프셋이 단조증가+겹침없음(`offset[i+1] == offset[i] + size[i]`) 검증. 파일 미오픈/
+비-IVF 입력에 대한 정직한 diagnostic도 테스트. `bitvue-sidecar` 통합 테스트 5개(신규) — 실제 픽스처로
+`open_stream`→`index_stream`→`get_stream_info`/`get_frames_chunk` 전체 체인, 페이지네이션 2페이지째 확인,
+인덱싱 전 `get_frames_chunk` 호출이 에러가 아니라 `indexed:false`로 응답하는 것까지. `cargo fmt --all --check`
+/ `cargo check --workspace` 클린, `bitvue-indexer`+`bitvue-sidecar`+`bitvue-engine`+`bitvue-protocol`
+전체 테스트 스위트(29+2+5+... 전부) 통과.
+
+**아직 안 한 것(다음 단계 후보, 이번엔 의도적으로 안 함):** `.syntax`/`.timeline` 채우기(TimelineModel 이중
+정의 문제 먼저 정리 필요), AV1 외 코덱(H.264/HEVC/VP9/VVC — `bitvue-codecs-parser`가 이름과 달리 실제
+디스패처가 아니라 미구현 placeholder라는 것도 이번에 확인됨, "BOSS_03에서 구현 예정" 주석만 있음), MP4/MKV/TS
+컨테이너, 픽셀 디코딩(`DecodeFrame` job), frontend 쪽 소비(`electronBridgeService`에 대응 함수 추가 — 다음
+라운드), `JobManager`/`IndexState` 진행률 상태기계와의 통합(현재는 동기 호출, 스트리밍 진행률 없음).
+
 ### 확정 순서
 
 ```

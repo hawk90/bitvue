@@ -2,13 +2,22 @@
 //! over stdio to `bitvue-desktop` (Electron main). See `docs/DEVELOPMENT_PHASES.md`
 //! ("sidecar 결정" / "bitvue-protocol wire schema v0" / "동시성 모델") for the full design.
 //!
-//! Nine real commands are wired end to end to `bitvue_engine::Core`: `open_stream`,
+//! Twelve real commands are wired end to end: `open_stream`,
 //! `select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`
 //! (multi-sync — see `docs/DEVELOPMENT_PHASES.md`'s `SelectionState` note; these five map
 //! straight onto `bitvue_engine::Command`'s existing "Tri-sync" selection variants, no new engine
 //! work needed), `close_stream` (control-plane), `get_hex_range` (the first data-plane command —
 //! a `Control` metadata frame followed by a `Data` frame of raw bytes, no JSON array, no base64),
-//! and `cancel_request` (see "Concurrency model" below).
+//! `cancel_request` (see "Concurrency model" below), and three newer ones that go through
+//! `bitvue-indexer` rather than `Core::handle_command`: `index_stream` (IVF/AV1 metadata
+//! indexing — container + units, no pixel decode yet, see that crate's module doc for exactly
+//! what's covered), and two read-only pagination-style queries over the result,
+//! `get_stream_info`/`get_frames_chunk`. These three are *not* `bitvue_engine::Command` variants
+//! — `Core` is a leaf crate and can't call into codec/format crates itself (see
+//! `docs/DEVELOPMENT_PHASES.md`'s decode-pipeline design note, 2026-08-08), so `bitvue-indexer`
+//! sits on the other side of that dependency edge and mutates `StreamState` through `Core`'s
+//! already-public `get_stream()`/`get_job_manager()` accessors. `Command::RunFullAnalysis` stays
+//! defined-but-unused as a result — this sidecar deliberately doesn't route through it.
 //!
 //! **Every other `bitvue_engine::Command` variant is currently a no-op in `Core::handle_command`**
 //! (falls through to its catch-all `_ => vec![]` arm — verified by reading `core.rs`, not
@@ -16,10 +25,7 @@
 //! `ToggleOverlay`/`SetOverlayOpacity`/`SetPlayerMode`, `SetWorkspaceMode`/`SetSyncMode`,
 //! `ExportCsv`/`ExportBitstream`/`Export`, `RunFullAnalysis`. Wiring any of those to the sidecar
 //! today would just proxy through to nothing — they need real `Core` implementation first (a
-//! `bitvue-engine` engine task, not a sidecar wiring task). The 7 `OpenFile`/`CloseFile`/
-//! `SelectFrame`/`SelectUnit`/`SelectSyntax`/`SelectBitRange`/`SelectSpatialBlock` variants that
-//! *are* implemented are now all wired — there is no more "free" sidecar command-wiring left in
-//! this crate until `Core` grows more real command handlers. Everything else in this file's
+//! `bitvue-engine` engine task, not a sidecar wiring task). Everything else in this file's
 //! method dispatch returns `WireErrorCode::Internal` "not implemented".
 //!
 //! # Concurrency model
@@ -295,6 +301,9 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "select_bit_range" => select_bit_range(core, request),
         "select_spatial_block" => select_spatial_block(core, request),
         "close_stream" => close_stream(core, request),
+        "index_stream" => index_stream(core, request),
+        "get_stream_info" => get_stream_info(core, request),
+        "get_frames_chunk" => get_frames_chunk(core, request),
         other => Response::failure(
             request.id,
             WireError {
@@ -587,6 +596,148 @@ fn close_stream(core: &Core, request: &Request) -> Response {
     let events = core.handle_command(Command::CloseFile { stream });
     let events_json: Vec<serde_json::Value> = events.iter().map(event_to_json).collect();
     Response::success(request.id, serde_json::json!({ "events": events_json }))
+}
+
+#[derive(serde::Deserialize)]
+struct IndexStreamParams {
+    stream: String,
+}
+
+/// Runs `bitvue_indexer::index_stream` -- IVF/AV1 metadata indexing (container + units, no pixel
+/// decode). See that crate's module doc for exactly what is and isn't populated. Not a
+/// `Core::handle_command` variant: `Command::RunFullAnalysis` stays unused, this bypasses it
+/// entirely by calling the indexer directly against `Core::get_stream()`/`get_job_manager()`.
+fn index_stream(core: &Core, request: &Request) -> Response {
+    let params: IndexStreamParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return response,
+    };
+
+    let events = bitvue_indexer::index_stream(core, stream);
+    let events_json: Vec<serde_json::Value> = events.iter().map(event_to_json).collect();
+    Response::success(request.id, serde_json::json!({ "events": events_json }))
+}
+
+fn container_model_to_json(container: &bitvue_engine::ContainerModel) -> serde_json::Value {
+    serde_json::json!({
+        "format": format!("{:?}", container.format),
+        "codec": container.codec,
+        "track_count": container.track_count,
+        "duration_ms": container.duration_ms,
+        "bitrate_bps": container.bitrate_bps,
+        "width": container.width,
+        "height": container.height,
+        "bit_depth": container.bit_depth,
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct GetStreamInfoParams {
+    stream: String,
+}
+
+/// Read-only query: returns the `ContainerModel` populated by `index_stream`, if any.
+/// `{"indexed": false, "container": null}` (not a wire error) when nothing's been indexed yet --
+/// "not indexed" is a normal, expected state for a freshly-opened stream, not a failure.
+fn get_stream_info(core: &Core, request: &Request) -> Response {
+    let params: GetStreamInfoParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return response,
+    };
+
+    let stream_state = core.get_stream(stream);
+    let state = stream_state.read();
+    match &state.container {
+        Some(container) => Response::success(
+            request.id,
+            serde_json::json!({ "indexed": true, "container": container_model_to_json(container) }),
+        ),
+        None => Response::success(
+            request.id,
+            serde_json::json!({ "indexed": false, "container": null }),
+        ),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GetFramesChunkParams {
+    stream: String,
+    offset: usize,
+    limit: usize,
+}
+
+/// Read-only, paginated query over `UnitModel.units` (populated by `index_stream`). `UnitNode`
+/// already derives `Serialize` (unlike most `bitvue-engine` types -- see this file's module doc),
+/// so units serialize directly, no hand-mapping needed.
+fn get_frames_chunk(core: &Core, request: &Request) -> Response {
+    let params: GetFramesChunkParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return response,
+    };
+
+    let stream_state = core.get_stream(stream);
+    let state = stream_state.read();
+    match &state.units {
+        Some(unit_model) => {
+            let end = (params.offset + params.limit).min(unit_model.units.len());
+            let slice = if params.offset < unit_model.units.len() {
+                &unit_model.units[params.offset..end]
+            } else {
+                &[]
+            };
+            Response::success(
+                request.id,
+                serde_json::json!({
+                    "indexed": true,
+                    "units": serde_json::to_value(slice).expect("UnitNode always serializes"),
+                    "total_count": unit_model.unit_count,
+                }),
+            )
+        }
+        None => Response::success(
+            request.id,
+            serde_json::json!({ "indexed": false, "units": [], "total_count": 0 }),
+        ),
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -1257,5 +1408,153 @@ mod tests {
         let mut seen_ids: Vec<u32> = handles.into_iter().map(|h| h.join().unwrap()).collect();
         seen_ids.sort_unstable();
         assert_eq!(seen_ids, (0..16u32).collect::<Vec<_>>());
+    }
+
+    // -- index_stream / get_stream_info / get_frames_chunk --------------------------------
+
+    const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
+
+    /// Real fixture, not a fake file -- these commands need actual IVF/AV1 bytes to produce
+    /// anything, unlike `open_stream`'s tests above which only need *a* file to exist.
+    fn open_real_fixture(core: &Core, stream: &str) {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(AV1_IVF_FIXTURE).unwrap();
+        let request = Request {
+            id: 100,
+            method: "open_stream".to_string(),
+            params: serde_json::json!({"stream": stream, "path": file.path().to_str().unwrap()}),
+        };
+        let response = dispatch(core, &request);
+        assert!(response.ok, "expected real fixture to open: {response:?}");
+        std::mem::forget(file); // keep the path alive for ByteCache, matches bitvue-indexer's tests
+    }
+
+    #[test]
+    fn index_stream_end_to_end_populates_real_container_and_units() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let request = Request {
+            id: 101,
+            method: "index_stream".to_string(),
+            params: serde_json::json!({"stream": "A"}),
+        };
+        let response = dispatch(&core, &request);
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let events = response.result.unwrap()["events"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["type"], "ModelUpdated");
+        assert_eq!(events[0]["kind"], "Container");
+        assert_eq!(events[1]["kind"], "Units");
+    }
+
+    #[test]
+    fn get_stream_info_reflects_index_stream_result() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        // Before indexing: honestly reports not-indexed, not a wire error.
+        let before = dispatch(
+            &core,
+            &Request {
+                id: 102,
+                method: "get_stream_info".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+        assert!(before.ok);
+        assert_eq!(before.result.as_ref().unwrap()["indexed"], false);
+
+        dispatch(
+            &core,
+            &Request {
+                id: 103,
+                method: "index_stream".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+
+        let after = dispatch(
+            &core,
+            &Request {
+                id: 104,
+                method: "get_stream_info".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+        assert!(after.ok);
+        let result = after.result.unwrap();
+        assert_eq!(result["indexed"], true);
+        assert_eq!(result["container"]["codec"], "av1");
+        assert_eq!(result["container"]["format"], "Ivf");
+        assert!(result["container"]["width"].as_u64().unwrap() > 0);
+    }
+
+    #[test]
+    fn get_frames_chunk_paginates_real_units() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        dispatch(
+            &core,
+            &Request {
+                id: 105,
+                method: "index_stream".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+
+        let chunk = dispatch(
+            &core,
+            &Request {
+                id: 106,
+                method: "get_frames_chunk".to_string(),
+                params: serde_json::json!({"stream": "A", "offset": 0, "limit": 5}),
+            },
+        );
+        assert!(chunk.ok, "expected ok response, got {chunk:?}");
+        let result = chunk.result.unwrap();
+        assert_eq!(result["indexed"], true);
+        let units = result["units"].as_array().unwrap();
+        assert_eq!(units.len(), 5, "limit=5 should return exactly 5 units");
+        assert_eq!(units[0]["frame_index"], 0);
+        assert_eq!(
+            units[0]["frame_type"], "I",
+            "first frame should be a keyframe"
+        );
+        let total_count = result["total_count"].as_u64().unwrap();
+        assert!(total_count > 5, "fixture should have more than 5 frames");
+
+        // Second page picks up where the first left off.
+        let page_2 = dispatch(
+            &core,
+            &Request {
+                id: 107,
+                method: "get_frames_chunk".to_string(),
+                params: serde_json::json!({"stream": "A", "offset": 5, "limit": 5}),
+            },
+        );
+        let page_2_units = page_2.result.unwrap()["units"].as_array().unwrap().clone();
+        assert_eq!(page_2_units[0]["frame_index"], 5);
+    }
+
+    #[test]
+    fn get_frames_chunk_before_indexing_reports_not_indexed_not_an_error() {
+        let core = Core::new();
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 108,
+                method: "get_frames_chunk".to_string(),
+                params: serde_json::json!({"stream": "A", "offset": 0, "limit": 10}),
+            },
+        );
+        assert!(response.ok);
+        let result = response.result.unwrap();
+        assert_eq!(result["indexed"], false);
+        assert_eq!(result["total_count"], 0);
+        assert_eq!(result["units"].as_array().unwrap().len(), 0);
     }
 }
