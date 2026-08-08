@@ -1,0 +1,19 @@
+{
+  "name": "bitvue-desktop",
+  "version": "0.0.1",
+  "description": "Electron main-process side of the bitvue-sidecar bridge (Node child_process client for bitvue-protocol over stdio). Standalone package, not an npm workspace member.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:unit": "vitest run tests/protocol.test.ts",
+    "test:integration": "vitest run tests/sidecarClient.integration.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "@types/node": "^22.0.0"
+  }
+}

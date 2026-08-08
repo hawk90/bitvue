@@ -140,6 +140,20 @@ bitvue-ui         React renderer   ≈ 기존 frontend/
 - **발견한 것:** `bitvue_core::{Command, Event}`도 `Serialize`/`Deserialize`를 derive하지 않음(`BitvueError`와 같은 상황). 둘 다 내부 UI↔Core 버스 타입이라 wire 계약과 분리하는 게 맞다고 판단해, `bitvue-sidecar`에서 `open_stream` 전용 JSON params 구조체를 손으로 만들고 `Event`→JSON 매핑 함수(`event_to_json`)를 수동 작성함(`WireErrorCode` vs `BitvueError`와 동일한 디커플링 논리 재사용). 메서드가 늘어날수록 이 수동 매핑이 반복 작업이 될 것 — 나중에 패턴이 명확해지면 매크로화 고려.
 - **설계상 확인된 것(버그 아님):** `Core::handle_command`는 실패도 `Result`가 아니라 `Event`(`DiagnosticAdded`, severity Error)로 표현함 — 즉 존재하지 않는 파일을 열어도 wire 레벨 `Response`는 `ok:true`이고 events 배열 안에 에러 진단이 담김. `bitvue-sidecar`가 이걸 protocol-level 에러로 바꾸지 않고 그대로 통과시키는 게 맞음 — Core 자체가 성공/실패를 RPC 레벨에서 구분하지 않는 설계이므로 wire 레이어가 없는 구분을 만들어내면 안 됨.
 
+**`bitvue-sidecar` 세 커맨드 추가 + 첫 데이터플레인 증명 (2026-08-08):**
+
+| 커맨드 | 종류 | params | 성공 결과 | 실패 매핑 |
+|---|---|---|---|---|
+| `select_frame` | control | `{stream, frame_index}` | `Command::SelectFrame{stream, frame_key: FrameKey{stream, frame_index, pts: None}}` → `{events:[SelectionUpdated]}` | stream 오타 → `InvalidData` |
+| `close_stream` | control | `{stream}` | `Command::CloseFile{stream}` → `{events:[ModelUpdated{kind:Container}]}` | stream 오타 → `InvalidData` |
+| `get_hex_range` | **control+data** | `{stream, offset, len}` | control `Response{result:{offset,len}}` 프레임 직후, **같은 correlation_id**로 `Data` 프레임(raw bytes, JSON/base64 래핑 없음) | 스트림 미오픈 → `NotFound`("stream not open"); `ByteCache::read_range` 실패(범위 초과 등) → `BitvueError` variant를 그대로 미러링하는 `wire_error_code_for()`로 매핑(예: `InvalidRange`) |
+
+`get_hex_range`가 이 마이그레이션의 핵심 주장("bulk 데이터는 JSON에 태우지 않는다")을 처음으로 실증한 커맨드 — 검증 3단계: (1) `tempfile`에 알려진 256바이트(`0..=255`)를 쓰고 `open_stream`→`get_hex_range`, 반환된 `Data` 프레임 바이트를 원본 슬라이스와 정확히 비교(단순 "바이트가 왔다"가 아니라 `assert_eq!(data_body, &known_bytes[offset..offset+len])`), (2) 실제 컴파일된 바이너리(`cargo build -p bitvue-sidecar`)에 대해 `hello`→`open_stream`→`get_hex_range` 세 요청을 실 OS 파이프로 흘리는 subprocess 통합테스트(`crates/bitvue-sidecar/tests/subprocess_smoke.rs`), (3) Python으로 프레임을 손수 인코딩해 같은 바이너리에 직접 파이프한 독립 확인 — 세 경로 모두 offset=100/len=32에서 `expected == actual` 바이트 일치.
+
+**리팩터링 — `dispatch`의 단일-`Response` 반환을 유지하면서 `get_hex_range`만 예외로 뺌:** 기존 `dispatch(core, &request) -> Response` 시그니처는 `hello`/`open_stream`/`select_frame`/`close_stream` 그대로 유지(요청 1개당 응답 프레임 1개인 공통 케이스). `get_hex_range`만 `handle_frame`에서 메서드 이름으로 먼저 갈라내 `get_hex_range(core, &request, correlation_id, writer) -> io::Result<()>` 형태(`&mut W`를 받아 직접 프레임을 씀)로 처리 — control 메타 프레임 + data 프레임 두 개를 써야 해서 단일 `Response` 반환 타입에 맞지 않기 때문. 두 프레임 다 같은 correlation_id를 공유하도록 `write_response_frame()` 헬퍼로 통일(기존 `dispatch` 경로의 응답 쓰기와 `get_hex_range`의 메타 프레임 쓰기가 같은 헬퍼를 공유). 데이터플레인 커맨드가 하나뿐인 지금 단계에서는 이 정도 분기로 충분 — 여러 개로 늘어나면 그때 `enum HandlerResult { Single(Response), Custom(...) }` 류 추상화를 고려.
+
+**`Arc<T>` 클론 함정(발견, 실제로 걸림):** `state.byte_cache.as_ref()`가 `Option<&Arc<ByteCache>>`를 주는데, 그 참조에 바로 `.clone()`을 호출하면(`cache.clone()`) 표준 라이브러리의 `impl<T> Clone for &T` 블랭킷 impl이 메서드 탐색에서 `Arc::clone`보다 먼저 매치되어 **참조 자체만 복사**되고 `Arc`의 refcount는 증가하지 않음 — 결과 타입도 `&Arc<ByteCache>`라서 락 가드(`state`)를 drop하면 바로 borrow-checker 에러로 잡히긴 하지만, 명시적으로 `std::sync::Arc::clone(cache)`를 쓰는 게 맞음(에러 없이도 조용히 잘못된 타입을 만드는 경우가 있을 수 있으므로 습관화 권장).
+
 `bitvue-protocol`이 유일하게 실제로 새로 만들어야 하는 조각 — 지금 IPC 스키마가 `src-tauri/src/commands/*.rs`에 흩어진 `#[tauri::command]` 함수 시그니처+`serde` 구조체로만 존재하고, control/data plane을 강제하는 단일 스키마 레이어가 없어서 위 `YUVFrameData` 같은 사례가 생긴 것. 이 크레이트가 그 강제 지점이 된다.
 
 ### `bitvue-protocol` wire schema v0 (2026-08-08, sidecar 결정에 따라 확정, 크레이트로 구현됨)
@@ -176,6 +190,39 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 **에러 타입:** 기존 `crates/bitvue-core/src/error.rs`의 `BitvueError`는 `thiserror`만 derive하고 `Serialize`가 없음(확인함, `grep derive` 결과 `#[derive(Error, Debug)]`뿐) — 지금 Tauri 커맨드들도 이미 `Result<T, String>`으로 문자열화해서 넘기는 중이라 이 문제를 우회만 해왔음. `bitvue-protocol`은 `BitvueError` variant마다 안정적인 `code`(`"PARSE_ERROR"`/`"UNSUPPORTED_CODEC"`/... 위 example 참조)를 매핑하는 별도 wire-error enum을 새로 정의해야 함 — `BitvueError`에 `Serialize`를 직접 derive하는 것보다, 크로스 언어 계약을 `BitvueError`의 내부 변경(필드 추가/제거)으로부터 격리하기 위해 별도 매핑이 낫다.
 
 **미해결로 남기는 것(지금 안 막힘, 설계 시점에만 명시):** sidecar 프로세스가 죽었을 때 이미 날아간 미완료 request들의 재시도/타임아웃 정책, frame별 progressive/streaming 응답(하나의 `get_frame_analysis`가 여러 data 프레임을 순차로 낼 수 있는지) 여부.
+
+### `bitvue-sidecar` — 3개 커맨드 추가 + data-plane 증명 (2026-08-08)
+
+**상태:** `crates/bitvue-sidecar/src/main.rs` — 실커맨드가 `open_stream` 1개에서 4개로: `select_frame`/`close_stream`(control-plane, `open_stream`과 동일한 param-struct/handler 패턴, 4곳에서 중복되던 `"A"/"B"` 매칭을 `parse_stream_id()` 헬퍼로 통합)/**`get_hex_range`(첫 data-plane 커맨드)**.
+
+| 커맨드 | 종류 | Core 호출 | 비고 |
+|---|---|---|---|
+| `select_frame` | control | `Command::SelectFrame{stream, frame_key: FrameKey{stream, frame_index, pts: None}}` | |
+| `close_stream` | control | `Command::CloseFile{stream}` | |
+| `get_hex_range` | **data** | `core.get_stream(stream)` → `byte_cache.read_range(offset, len)` | 아래 참조 |
+
+**`get_hex_range` 구현:** `handle_frame`이 메서드 이름으로 먼저 분기하도록 리팩터 — 기존 "요청 1개당 `Response` 1개"만 다루던 `dispatch`는 그대로 두고, `get_hex_range`는 별도 `fn get_hex_range<W: Write>(core, request, correlation_id, writer) -> io::Result<()>`로 분리해 metadata `Control` 프레임(`{offset, len}`) 하나 + raw bytes `Data` 프레임 하나, 총 두 프레임을 같은 `correlation_id`로 직접 씀(`write_response_frame()` 헬퍼를 양쪽 경로가 공유). 단일 데이터플레인 커맨드 하나 때문에 `dispatch` 전체를 더 크게 추상화하진 않음.
+
+**실제로 만난 버그(가상 아님):** `state.byte_cache.as_ref()`는 `Option<&Arc<ByteCache>>`를 반환하는데, 여기에 바로 `.clone()`을 호출하면 `Arc::clone`이 아니라 `&T`용 blanket `Clone` impl(참조 자체만 복사)로 resolve됨 — `std::sync::Arc::clone(cache)`로 명시해서 우회. Rust에서 `Option<&Arc<T>>.clone()` 패턴을 쓸 때 일반적으로 재발 가능한 함정.
+
+**검증(3중, 전부 실행 완료):**
+1. 유닛테스트 13개(기존 6 + 신규 7: `select_frame`/`close_stream` 성공·잘못된 stream id, `get_hex_range` stream-not-open→`NotFound`/out-of-bounds→`InvalidRange`/**byte-exact 성공** — 256바이트(`0..=255`) 임시파일에 써놓고 offset=10,len=16 요청해서 `data_body == &known_bytes[10..26]` 정확히 일치 확인).
+2. `crates/bitvue-sidecar/tests/subprocess_smoke.rs`(신규 통합테스트 — `env!("CARGO_BIN_EXE_bitvue-sidecar")`가 유닛테스트가 아닌 통합테스트 디렉터리에서만 채워지는 걸 이번에 확인, 그래서 유닛테스트 파일이 아니라 여기로 옮김): 실제 컴파일된 바이너리를 OS 파이프로 구동해 `hello`→`open_stream`→`get_hex_range`(offset=5,len=20) byte-exact 확인.
+3. 독립된 세 번째 증명: Python으로 프레임을 수동 인코딩해 `target/debug/bitvue-sidecar`에 직접 파이프(offset=100,len=32) — `expected`/`actual` 바이트열 정확히 일치, exit code 0.
+
+`cargo fmt --check`/`cargo check --workspace`/`cargo test -p bitvue-sidecar`(13+1)/`cargo test -p bitvue-protocol`(3, 미변경) 전부 클린 — 이 세션에서 직접 재확인함(에이전트 최초 보고 + 병합 후 재검증 두 번 다 통과).
+
+### `bitvue-desktop` sidecar client (2026-08-08, TS 측 브리지 구현)
+
+**상태:** `bitvue-desktop/` — `frontend`/`src-tauri`와 같은 레벨의 독립 패키지(npm workspace 멤버 아님, 루트 `package.json` 패턴 그대로 따름), Electron `main`이 나중에 그대로 import할 sidecar 클라이언트만 구현. `electron`/`BrowserWindow`/renderer IPC는 범위 밖 — `child_process.spawn`은 Node core API라 Electron main에서도 동일하게 동작하므로 `electron` 의존성 자체가 불필요.
+
+- `src/protocol.ts` — 9바이트 헤더(`kind`/`correlation_id` LE u32/`payload_len` LE u32) 인코더 + `FrameDecoder` 클래스. `FrameDecoder.push(chunk)`가 상태를 들고 있다가 완성된 프레임만 배열로 반환 — `stdout`의 `data` 이벤트가 프레임 경계와 무관하게 조각나거나 여러 프레임을 이어붙여 오는 걸 전제로 설계(헤더 중간 분할/payload 중간 분할/1바이트씩 분할 모두 유닛테스트로 커버).
+- `src/sidecarClient.ts` — `SidecarClient extends EventEmitter`. `request(method, params)`가 `correlation_id`를 키로 pending Promise map에 등록하고 매칭되는 `Control` 응답이 오면 resolve(`ok:true`)/reject(`SidecarRequestError`, `ok:false`)함. `Data`/`Event` 프레임은 응답 흐름에 안 걸리므로 `'data'`/`'event'` EventEmitter 이벤트로 노출(요청-응답과 1:1 대응하지 않는 프레임까지 `request()`가 억지로 반환값에 끼워넣지 않기 위한 선택). 프로세스가 죽으면(`exit`/`error`) pending Promise 전부를 `SidecarExitedError`로 reject — 무한 대기 방지. `stderr`는 줄 단위로 `console.error('[bitvue-sidecar] ...')`.
+- `hello(clientVersion)` 편의 메서드 — `protocol_version` 불일치는 v0 시점엔 `console.error` 경고만(하드 실패시키지 않음, 지금은 클라이언트/sidecar가 같은 리포에서 함께 빌드되는 개발 단계라 조기 강제가 실익이 적다고 판단 — 페어가 독립 버전으로 배포되는 시점에 재검토).
+
+**검증됨(실제 컴파일된 바이너리 기준, mock 아님):** `npx vitest run` — 유닛테스트 11개(`protocol.test.ts`, 프레이밍/조각화 전담) + 통합테스트 3개(`sidecarClient.integration.test.ts`, `cargo build -p bitvue-sidecar`로 만든 실제 바이너리를 `child_process.spawn`으로 띄움) 총 14개 전부 통과, `npx tsc --noEmit` 클린. 이 검증은 최초 작성 워크트리와 실제 크레이트가 있는 공유 체크아웃 양쪽에서 각각 확인함(아래 참조). 통합테스트 3개: (1) `hello()` → `{protocol_version: "0.1.0", capabilities: []}` 실수신 확인, (2) 임시파일로 `open_stream` 호출 → 실제 `bitvue_core::Core`가 발생시킨 `ModelUpdated` 이벤트(`crates/bitvue-sidecar`의 `open_stream_success_emits_model_updated` 테스트와 동일 픽스처) 수신 확인, (3) 요청 대기 중 sidecar 프로세스를 강제 종료했을 때 pending Promise가 멈추지 않고 reject되는지 확인.
+
+**통합 경과:** 이 절은 원래 `bitvue-protocol`/`bitvue-sidecar`가 없는 별도 워크트리에서 작성되어 `BITVUE_SIDECAR_BIN` 환경변수로 바이너리 경로를 임시 지정해 검증했음(기본 경로 `<repoRoot>/target/debug/bitvue-sidecar`는 그 워크트리에 없었기 때문). 이후 소스만(`node_modules`/lockfile 제외) 이 체크아웃(`crates/`와 같은 위치, `electron-migration`)으로 옮기고 `npm install` + `cargo build -p bitvue-sidecar` + `npx vitest run`을 여기서 다시 실행 — **환경변수 없이 기본 경로만으로 14개 테스트 전부 재확인 통과**, `npx tsc --noEmit` 클린.
 
 ### 확정 순서
 
