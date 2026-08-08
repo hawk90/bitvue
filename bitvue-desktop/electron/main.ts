@@ -134,6 +134,10 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("find_first_diff_frame");
   });
 
+  ipcMain.handle("bitvue:getFrameAnalysis", async (_event, frameIndex: number) => {
+    return requireSidecar().request("get_frame_analysis", { frame_index: frameIndex });
+  });
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -362,6 +366,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const decoded = await window.bitvue.getDecodedFrameYuv("A", 0);
         const decodedBytesHex = Array.from(new Uint8Array(Object.values(decoded.bytes)))
           .map(b => b.toString(16).padStart(2, "0")).join("");
+        const frameAnalysis = await window.bitvue.getFrameAnalysis(0);
 
         return {
           documentTitle: document.title,
@@ -386,6 +391,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           decodedWidth: decoded.width,
           decodedHeight: decoded.height,
           decodedBytesHex,
+          frameAnalysis,
         };
       })()
     `);
@@ -474,6 +480,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     const debugYuvDiffOk = debugYuvResult.diffYAllZero === true;
     const debugYuvFindFirstDiffOk =
       debugYuvResult.firstDiff?.frame_index === null && debugYuvResult.firstDiff?.total_checked === 1;
+    const frameAnalysisOk =
+      result.frameAnalysis?.width === 320 &&
+      result.frameAnalysis?.height === 240 &&
+      (result.frameAnalysis?.qp_grid?.qp?.length ?? 0) > 0 &&
+      (result.frameAnalysis?.partition_grid?.blocks?.length ?? 0) > 0;
+    console.log("[selftest] get_frame_analysis OK:", frameAnalysisOk);
     console.log(
       "[selftest] debug YUV: load OK:", debugYuvLoadOk,
       " reference bytes match decoded OK:", debugYuvReferenceOk,
@@ -510,7 +522,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvReferenceOk &&
       debugYuvMetricsOk &&
       debugYuvDiffOk &&
-      debugYuvFindFirstDiffOk
+      debugYuvFindFirstDiffOk &&
+      frameAnalysisOk
         ? 0
         : 1;
   } catch (err) {

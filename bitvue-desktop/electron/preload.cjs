@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld("bitvue", {
   findFirstDiffFrame: () => ipcRenderer.invoke("bitvue:findFirstDiffFrame"),
   getDebugYuvFrame: (frameIndex, mode, amplify) =>
     ipcRenderer.invoke("bitvue:getDebugYuvFrame", frameIndex, mode, amplify),
+  getFrameAnalysis: (frameIndex) => ipcRenderer.invoke("bitvue:getFrameAnalysis", frameIndex),
   indexStream: (stream) => ipcRenderer.invoke("bitvue:indexStream", stream),
   getStreamInfo: (stream) => ipcRenderer.invoke("bitvue:getStreamInfo", stream),
   getFramesChunk: (stream, offset, limit) =>

@@ -14,10 +14,10 @@
  */
 
 import { useState, useRef, useEffect, useCallback, memo } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import {
   getDecodedFrameYuv,
   getDebugYuvFrame,
+  getFrameAnalysis,
   bridgeYuvToFrame,
 } from "../../../services/electronBridgeService";
 import { useMode } from "../../../contexts/ModeContext";
@@ -171,9 +171,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
     const loadFrameAnalysis = async (frameIndex: number) => {
       try {
-        const result = await invoke<FrameAnalysisData>("get_frame_analysis", {
-          frameIndex,
-        });
+        const result = await getFrameAnalysis(frameIndex);
 
         if (cancelled) return;
 

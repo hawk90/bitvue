@@ -30,6 +30,7 @@
  */
 
 import type { YUVFrame } from "../types/yuv";
+import type { FrameAnalysisData } from "../types/video";
 
 export type StreamId = "A" | "B";
 
@@ -240,6 +241,7 @@ declare global {
         mode: DebugYuvDisplayMode,
         amplify?: number,
       ) => Promise<BridgeDecodedYuvFrame>;
+      getFrameAnalysis: (frameIndex: number) => Promise<FrameAnalysisData>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -415,6 +417,15 @@ export async function getDebugYuvFrame(
   amplify?: number,
 ): Promise<BridgeDecodedYuvFrame> {
   return requireBridge().getDebugYuvFrame(frameIndex, mode, amplify);
+}
+
+/** QP/MV/partition/prediction-mode/transform-size grids for one frame of stream A -- feeds the
+ *  main viewer's overlay renderers. AV1/IVF only. Throws on failure (frame out of range, stream
+ *  not open) -- no meaningful partial result, same reasoning as getFrameSyntax/getTimeline. */
+export async function getFrameAnalysis(
+  frameIndex: number,
+): Promise<FrameAnalysisData> {
+  return requireBridge().getFrameAnalysis(frameIndex);
 }
 
 export interface OpenFileDialogFilter {
