@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld("bitvue", {
   closeStream: (stream) => ipcRenderer.invoke("bitvue:closeStream", stream),
   selectFrame: (stream, frameIndex) => ipcRenderer.invoke("bitvue:selectFrame", stream, frameIndex),
   getHexRange: (stream, offset, len) => ipcRenderer.invoke("bitvue:getHexRange", stream, offset, len),
+  indexStream: (stream) => ipcRenderer.invoke("bitvue:indexStream", stream),
+  getStreamInfo: (stream) => ipcRenderer.invoke("bitvue:getStreamInfo", stream),
+  getFramesChunk: (stream, offset, limit) =>
+    ipcRenderer.invoke("bitvue:getFramesChunk", stream, offset, limit),
   // Native "open file" dialog, proxied through main (renderers can't call Electron's dialog API
   // directly). Returns the selected path, or null if the user cancelled. `filters` matches
   // Electron's `dialog.showOpenDialog` FileFilter shape: [{name, extensions}].

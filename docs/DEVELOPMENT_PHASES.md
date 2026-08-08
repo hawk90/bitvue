@@ -427,8 +427,42 @@ Bitvue 아이콘 에셋 없음. Windows/Linux 매트릭스 레그는 로컬에�
 **아직 안 한 것(다음 단계 후보, 이번엔 의도적으로 안 함):** `.syntax`/`.timeline` 채우기(TimelineModel 이중
 정의 문제 먼저 정리 필요), AV1 외 코덱(H.264/HEVC/VP9/VVC — `bitvue-codecs-parser`가 이름과 달리 실제
 디스패처가 아니라 미구현 placeholder라는 것도 이번에 확인됨, "BOSS_03에서 구현 예정" 주석만 있음), MP4/MKV/TS
-컨테이너, 픽셀 디코딩(`DecodeFrame` job), frontend 쪽 소비(`electronBridgeService`에 대응 함수 추가 — 다음
-라운드), `JobManager`/`IndexState` 진행률 상태기계와의 통합(현재는 동기 호출, 스트리밍 진행률 없음).
+컨테이너, 픽셀 디코딩(`DecodeFrame` job), `JobManager`/`IndexState` 진행률 상태기계와의 통합(현재는 동기
+호출, 스트리밍 진행률 없음).
+
+### `bitvue-indexer` frontend 소비 — 프레임 리스트가 처음으로 UI에 도달 (2026-08-08)
+
+**핵심 발견:** `frontend/contexts/FileStateContext.tsx`가 이미 Tauri의 `get_frames_chunk` 커맨드를
+페이지네이션 방식으로 호출하고 있었음(`refreshFrames`/`loadMoreFrames`, 청크 크기 100) — 이름까지 새
+sidecar 커맨드와 우연히 일치. 데이터 소스만 교체하면 되는 좋은 슬라이스였음. `types/video.ts`의 `FrameInfo`
+타입도 `UnitNode`와 필드가 상당히 겹침(`frame_index`/`frame_type`/`size`/`pts`/`temporal_id`/
+`ref_frames`/`ref_slots`).
+
+**한 일:**
+- `bitvue-desktop/electron/{preload.cjs,main.ts}`: `indexStream`/`getStreamInfo`/`getFramesChunk` IPC 채널
+  추가(각각 sidecar의 `index_stream`/`get_stream_info`/`get_frames_chunk`에 그대로 매핑).
+- `frontend/services/electronBridgeService.ts`: 위 3개 wrapper 함수 + `BridgeUnitNode`/
+  `BridgeContainerModel`/`StreamInfoResult`/`FramesChunkResult` 타입(sidecar의 JSON 응답 shape를 그대로
+  미러링).
+- `frontend/contexts/FileStateContext.tsx`: `refreshFrames`가 이제 `indexStream("A")` 호출 후
+  `getFramesChunk`로 페이지네이션 — 기존 청크 루프 구조는 그대로 유지, 데이터 소스만 Tauri `invoke`에서
+  bridge로 교체. `unitNodeToFrameInfo()`가 `UnitNode`→`FrameInfo` 매핑, 없는 필드(`poc`/`display_order`/
+  `coding_order`/`spatial_id`/`thumbnail`/`duration`/`ref_slot_info`)는 정직하게 `undefined`.
+- **부수 발견(고치지 않음, 정직하게 테스트로 남김):** `loadMoreFrames`는 `refreshFrames`가 끝나면
+  무조건 `hasMoreFrames`를 `false`로 리셋하는 기존 로직(이번 마이그레이션과 무관, Tauri 시절부터 있던 코드)
+  때문에 **현재 앱 흐름에서는 사실상 도달 불가능한 죽은 코드** — `refreshFrames` 자체가 이미 전체를
+  즉시 페이지네이션해서 다 가져오기 때문. 고치라는 요청도 없었고 동작 변경은 범위 밖이라 그대로 두고,
+  테스트로 이 사실을 정직하게 문서화(가드가 실제로 no-op을 반환하는지만 검증).
+
+**검증:** `frontend/tests/services/electronBridgeService.test.ts`(+4, 신규 wrapper), `frontend/tests/
+contexts/FileStateContext.test.tsx`(5개, 신규 — 단일 페이지, 멀티 페이지 페이지네이션, 필드 미조작 확인,
+에러 전파, `loadMoreFrames` no-op) 전부 통과. `npx vitest run` 전체 — 기존 36개 pre-existing 실패(파일
+9개, 전 세션과 정확히 동일한 목록: AV1FeaturesView/BitrateGraphPanel/BitViewPanel/
+KeyboardShortcutsDialog/ModeSelector/ReferenceGraphPanel/ResidualsView/StatisticsTab/
+SyntaxDetailPanel)만 남고 새 실패 0개. **`BITVUE_ELECTRON_SELFTEST`를 실제 AV1/IVF 픽스처
+(`test_data/av1_test.ivf`, 스트림 "B")로 확장**해서 진짜 Electron 프로세스로 `indexStream`→
+`getStreamInfo`→`getFramesChunk`까지 실행 — `container.codec === "av1"`, 첫 5프레임 중 `frame_type ===
+"I"`까지 실제 데이터로 확인, exit code 0. `npm run typecheck`(frontend+bitvue-desktop) 클린.
 
 ### 확정 순서
 

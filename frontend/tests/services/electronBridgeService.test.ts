@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   closeStream,
+  getFramesChunk,
   getHexRange,
+  getStreamInfo,
   hasElectronBridge,
+  indexStream,
   openStream,
   selectFrame,
   showOpenDialog,
@@ -30,6 +33,15 @@ function installMockBridge(
       bytes: new Uint8Array([1, 2, 3, 4]),
     }),
     showOpenDialog: vi.fn().mockResolvedValue("/tmp/fake.ivf"),
+    indexStream: vi
+      .fn()
+      .mockResolvedValue({ events: [{ type: "ModelUpdated", stream: "A" }] }),
+    getStreamInfo: vi
+      .fn()
+      .mockResolvedValue({ indexed: false, container: null }),
+    getFramesChunk: vi
+      .fn()
+      .mockResolvedValue({ indexed: false, units: [], total_count: 0 }),
     onSidecarRestarted: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   };
@@ -131,6 +143,53 @@ describe("electronBridgeService", () => {
       installMockBridge({ showOpenDialog: vi.fn().mockResolvedValue(null) });
       const path = await showOpenDialog();
       expect(path).toBeNull();
+    });
+  });
+
+  describe("indexStream / getStreamInfo / getFramesChunk", () => {
+    beforeEach(() => installMockBridge());
+
+    it("indexStream forwards the stream and returns events", async () => {
+      const events = await indexStream("A");
+      expect(window.bitvue!.indexStream).toHaveBeenCalledWith("A");
+      expect(events).toEqual([{ type: "ModelUpdated", stream: "A" }]);
+    });
+
+    it("getStreamInfo passes through indexed:false before anything's been indexed", async () => {
+      const result = await getStreamInfo("A");
+      expect(result).toEqual({ indexed: false, container: null });
+    });
+
+    it("getStreamInfo passes through a populated container", async () => {
+      installMockBridge({
+        getStreamInfo: vi.fn().mockResolvedValue({
+          indexed: true,
+          container: {
+            format: "Ivf",
+            codec: "av1",
+            track_count: 1,
+            width: 352,
+            height: 288,
+          },
+        }),
+      });
+      const result = await getStreamInfo("A");
+      expect(result.indexed).toBe(true);
+      expect(result.container?.codec).toBe("av1");
+    });
+
+    it("getFramesChunk forwards stream/offset/limit and returns the raw result", async () => {
+      installMockBridge({
+        getFramesChunk: vi.fn().mockResolvedValue({
+          indexed: true,
+          units: [{ frame_index: 0, frame_type: "I" }],
+          total_count: 42,
+        }),
+      });
+      const result = await getFramesChunk("A", 10, 5);
+      expect(window.bitvue!.getFramesChunk).toHaveBeenCalledWith("A", 10, 5);
+      expect(result.total_count).toBe(42);
+      expect(result.units).toHaveLength(1);
     });
   });
 });

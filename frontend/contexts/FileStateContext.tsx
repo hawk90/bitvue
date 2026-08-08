@@ -4,6 +4,13 @@
  * Manages file loading state and operations
  * Separated from frame navigation to prevent unnecessary re-renders
  * Supports chunked frame loading for faster initial load
+ *
+ * `refreshFrames`/`loadMoreFrames` go through `electronBridgeService` (bitvue-sidecar's
+ * `index_stream`/`get_frames_chunk`) as of the 2026-08-08 migration, not Tauri's `invoke()`.
+ * `bitvue-indexer` only supports IVF/AV1 so far -- other formats/codecs surface as an error here
+ * (via a `DiagnosticAdded` event from `indexStream`, or an empty `indexed: false` chunk), same as
+ * any other unsupported-input case. Only stream "A" is wired (matches `useAppFileOperations.ts`'s
+ * single-primary-stream assumption -- compare/stream B isn't migrated).
  */
 
 import {
@@ -16,18 +23,31 @@ import {
   ReactNode,
   useMemo,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { FrameInfo } from "../types/video";
 import { createLogger } from "../utils/logger";
 import { useFrameData } from "./FrameDataContext";
+import {
+  indexStream,
+  getFramesChunk,
+  type BridgeUnitNode,
+} from "../services/electronBridgeService";
 
 const logger = createLogger("FileStateContext");
 
-interface ChunkedFramesResponse {
-  frames: FrameInfo[];
-  total_frames: number;
-  has_more: boolean;
-  offset: number;
+/** `bitvue_engine::UnitNode` -> `FrameInfo`. Only fields the sidecar actually provides are
+ *  populated -- poc/display_order/coding_order/spatial_id/thumbnail/duration/ref_slot_info have
+ *  no bitvue-indexer equivalent yet, left undefined rather than fabricated. */
+function unitNodeToFrameInfo(unit: BridgeUnitNode): FrameInfo {
+  return {
+    frame_index: unit.frame_index ?? 0,
+    frame_type: unit.frame_type ?? "?",
+    size: unit.size,
+    pts: unit.pts ?? undefined,
+    temporal_id: unit.temporal_id ?? undefined,
+    key_frame: unit.frame_type === "I",
+    ref_frames: unit.ref_frames ?? undefined,
+    ref_slots: unit.ref_slots ?? undefined,
+  };
 }
 
 interface FileStateContextType {
@@ -72,35 +92,32 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     setFrames([]);
 
     try {
-      logger.info("refreshFrames: Calling get_frames_chunk command...");
-      const startTime = performance.now();
-      const firstChunk = await invoke<ChunkedFramesResponse>(
-        "get_frames_chunk",
-        {
-          offset: 0,
-          limit: CHUNK_SIZE,
-        },
+      logger.info(
+        "refreshFrames: indexing stream, then calling get_frames_chunk...",
       );
+      const startTime = performance.now();
 
-      let allFrames = firstChunk.frames || [];
-      currentOffsetRef.current = firstChunk.offset + allFrames.length;
-      setHasMoreFrames(firstChunk.has_more);
-      setTotalFrames(firstChunk.total_frames);
+      await indexStream("A");
+
+      const firstChunk = await getFramesChunk("A", 0, CHUNK_SIZE);
+      let allFrames = firstChunk.units.map(unitNodeToFrameInfo);
+      currentOffsetRef.current = allFrames.length;
+      setHasMoreFrames(currentOffsetRef.current < firstChunk.total_count);
+      setTotalFrames(firstChunk.total_count);
       setFrames(allFrames);
 
-      while (currentOffsetRef.current < firstChunk.total_frames) {
-        const nextChunk = await invoke<ChunkedFramesResponse>(
-          "get_frames_chunk",
-          {
-            offset: currentOffsetRef.current,
-            limit: CHUNK_SIZE,
-          },
+      while (currentOffsetRef.current < firstChunk.total_count) {
+        const nextChunk = await getFramesChunk(
+          "A",
+          currentOffsetRef.current,
+          CHUNK_SIZE,
         );
-        if (nextChunk.frames.length === 0) break;
-        allFrames = [...allFrames, ...nextChunk.frames];
-        currentOffsetRef.current = nextChunk.offset + nextChunk.frames.length;
-        setHasMoreFrames(nextChunk.has_more);
-        setTotalFrames(nextChunk.total_frames);
+        if (nextChunk.units.length === 0) break;
+        const nextFrames = nextChunk.units.map(unitNodeToFrameInfo);
+        allFrames = [...allFrames, ...nextFrames];
+        currentOffsetRef.current += nextFrames.length;
+        setHasMoreFrames(currentOffsetRef.current < nextChunk.total_count);
+        setTotalFrames(nextChunk.total_count);
         setFrames(allFrames);
       }
 
@@ -142,21 +159,23 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
         `loadMoreFrames: Loading chunk at offset ${currentOffsetRef.current}`,
       );
 
-      const result = await invoke<ChunkedFramesResponse>("get_frames_chunk", {
-        offset: currentOffsetRef.current,
-        limit: CHUNK_SIZE,
-      });
+      const result = await getFramesChunk(
+        "A",
+        currentOffsetRef.current,
+        CHUNK_SIZE,
+      );
+      const frames = result.units.map(unitNodeToFrameInfo);
 
       logger.info(
-        `loadMoreFrames: Got ${result.frames.length} frames, has_more: ${result.has_more}, total: ${result.total_frames}`,
+        `loadMoreFrames: Got ${frames.length} frames, total: ${result.total_count}`,
       );
 
       // Update state for next chunk
-      currentOffsetRef.current = result.offset + result.frames.length;
-      setHasMoreFrames(result.has_more);
-      setTotalFrames(result.total_frames);
+      currentOffsetRef.current += frames.length;
+      setHasMoreFrames(currentOffsetRef.current < result.total_count);
+      setTotalFrames(result.total_count);
 
-      return result.frames || [];
+      return frames;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       logger.error("Failed to load frames chunk:", errorMsg);

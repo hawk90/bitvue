@@ -75,6 +75,21 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("select_frame", { stream, frame_index: frameIndex });
   });
 
+  ipcMain.handle("bitvue:indexStream", async (_event, stream: string) => {
+    return requireSidecar().request("index_stream", { stream });
+  });
+
+  ipcMain.handle("bitvue:getStreamInfo", async (_event, stream: string) => {
+    return requireSidecar().request("get_stream_info", { stream });
+  });
+
+  ipcMain.handle(
+    "bitvue:getFramesChunk",
+    async (_event, stream: string, offset: number, limit: number) => {
+      return requireSidecar().request("get_frames_chunk", { stream, offset, limit });
+    },
+  );
+
   ipcMain.handle(
     "bitvue:showOpenDialog",
     async (event, filters?: Array<{ name: string; extensions: string[] }>) => {
@@ -153,6 +168,11 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
   const tempFile = path.join(tempDir, "fixture.bin");
   const knownBytes = Buffer.from(Array.from({ length: 64 }, (_, i) => i));
   writeFileSync(tempFile, knownBytes);
+  // Real AV1/IVF fixture, opened on stream "B" so it doesn't disturb stream "A"'s synthetic
+  // byte-exact hex-range proof above -- indexStream/getFramesChunk need real IVF bytes to
+  // produce anything (bitvue-indexer's diagnostic-only path for non-IVF input is already
+  // covered by its own unit tests, not re-proven here).
+  const realFixturePath = path.join(repoRoot, "test_data", "av1_test.ivf");
 
   try {
     await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 50))"); // let preload settle
@@ -163,6 +183,13 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const selectResult = await window.bitvue.selectFrame("A", 3);
         const hexResult = await window.bitvue.getHexRange("A", 10, 16);
         const closeResult = await window.bitvue.closeStream("A");
+
+        await window.bitvue.openStream("B", ${JSON.stringify(realFixturePath)});
+        const indexResult = await window.bitvue.indexStream("B");
+        const streamInfo = await window.bitvue.getStreamInfo("B");
+        const framesChunk = await window.bitvue.getFramesChunk("B", 0, 5);
+        await window.bitvue.closeStream("B");
+
         return {
           documentTitle: document.title,
           hello,
@@ -172,19 +199,39 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           hexOffset: hexResult.offset,
           hexLen: hexResult.len,
           hexBytesHex: Array.from(new Uint8Array(Object.values(hexResult.bytes))).map(b => b.toString(16).padStart(2,"0")).join(""),
+          indexEvents: indexResult.events,
+          streamInfo,
+          framesChunk,
         };
       })()
     `);
     const expectedHex = knownBytes.subarray(10, 26).toString("hex");
     const selectOk = result.selectEvents?.[0]?.type === "SelectionUpdated";
     const closeOk = result.closeEvents?.[0]?.type === "ModelUpdated";
+    const indexOk =
+      result.indexEvents?.length === 2 &&
+      result.indexEvents[0]?.kind === "Container" &&
+      result.indexEvents[1]?.kind === "Units";
+    const streamInfoOk = result.streamInfo?.indexed === true && result.streamInfo?.container?.codec === "av1";
+    const framesChunkOk =
+      result.framesChunk?.indexed === true &&
+      result.framesChunk?.units?.length === 5 &&
+      result.framesChunk?.units?.[0]?.frame_type === "I";
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
     console.log("[selftest] document title (proves the real frontend loaded, not the placeholder):", result.documentTitle);
     console.log("[selftest] expected hex bytes:", expectedHex);
     console.log("[selftest] actual   hex bytes:", result.hexBytesHex);
     console.log("[selftest] BYTE_EXACT_MATCH:", expectedHex === result.hexBytesHex);
     console.log("[selftest] select_frame OK:", selectOk, " close_stream OK:", closeOk);
-    process.exitCode = expectedHex === result.hexBytesHex && selectOk && closeOk ? 0 : 1;
+    console.log(
+      "[selftest] index_stream OK:", indexOk,
+      " get_stream_info OK:", streamInfoOk,
+      " get_frames_chunk OK:", framesChunkOk,
+    );
+    process.exitCode =
+      expectedHex === result.hexBytesHex && selectOk && closeOk && indexOk && streamInfoOk && framesChunkOk
+        ? 0
+        : 1;
   } catch (err) {
     console.error("[selftest] FAILED:", err);
     process.exitCode = 1;

@@ -5,15 +5,15 @@
  * `bitvue-desktop/electron/preload.cjs` via `contextBridge`.
  *
  * IMPORTANT — the old Tauri command surface (~40 commands, `src-tauri/src/commands/*.rs`,
- * deleted 2026-08-08) and the new `bitvue-sidecar` surface (9 commands, see
+ * deleted 2026-08-08) and the new `bitvue-sidecar` surface (12 commands, see
  * `docs/DEVELOPMENT_PHASES.md` § "제품 아키텍처 확정") are NOT the same API — different names,
- * different param/result shapes, and most of the old capability (frame decode/YUV pixel data,
- * compare workspaces, export, quality metrics) has no sidecar equivalent implemented yet (only
- * `bitvue_engine::Core`'s 7 real `Command` handlers are ported — see `bitvue-sidecar`'s module
- * doc). This file only wraps what actually exists today: open/close a stream, select a frame
- * (selection-sync only — no decoded pixel data comes back), read a raw hex byte range, and the
- * native open-file dialog. Don't add wrappers here for capabilities the sidecar doesn't have;
- * that would silently promise something broken.
+ * different param/result shapes, and most of the old capability (frame pixel decode/YUV data,
+ * compare workspaces, export, quality metrics) has no sidecar equivalent implemented yet. This
+ * file wraps: open/close a stream, select a frame (selection-sync only — no decoded pixel data),
+ * read a raw hex byte range, the native open-file dialog, and (as of 2026-08-08) metadata
+ * indexing (`indexStream`/`getStreamInfo`/`getFramesChunk` — container + per-frame metadata,
+ * IVF/AV1 only so far, no pixel decode; see `bitvue-indexer`'s module doc). Don't add wrappers
+ * here for capabilities the sidecar doesn't have; that would silently promise something broken.
  */
 
 export type StreamId = "A" | "B";
@@ -35,6 +35,49 @@ export interface OpenStreamResult {
   events: BridgeEvent[];
   /** Present only when `success` is false. */
   error?: string;
+}
+
+/** Mirrors `bitvue_engine::UnitNode`'s JSON shape (it's one of the few `bitvue-engine` types that
+ *  derives `Serialize` — see `bitvue-sidecar`'s module doc). One entry per parsed frame/unit. */
+export interface BridgeUnitNode {
+  key: unknown;
+  unit_type: string;
+  offset: number;
+  size: number;
+  frame_index: number | null;
+  frame_type: string | null;
+  pts: number | null;
+  dts: number | null;
+  display_name: string;
+  children: BridgeUnitNode[];
+  qp_avg: number | null;
+  mv_grid: unknown;
+  temporal_id: number | null;
+  ref_frames: number[] | null;
+  ref_slots: number[] | null;
+}
+
+/** Mirrors `get_stream_info`'s hand-mapped JSON (`bitvue-sidecar::container_model_to_json`). */
+export interface BridgeContainerModel {
+  format: string;
+  codec: string;
+  track_count: number;
+  duration_ms: number | null;
+  bitrate_bps: number | null;
+  width: number | null;
+  height: number | null;
+  bit_depth: number | null;
+}
+
+export interface StreamInfoResult {
+  indexed: boolean;
+  container: BridgeContainerModel | null;
+}
+
+export interface FramesChunkResult {
+  indexed: boolean;
+  units: BridgeUnitNode[];
+  total_count: number;
 }
 
 declare global {
@@ -60,6 +103,13 @@ declare global {
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
+      indexStream: (stream: StreamId) => Promise<{ events: BridgeEvent[] }>;
+      getStreamInfo: (stream: StreamId) => Promise<StreamInfoResult>;
+      getFramesChunk: (
+        stream: StreamId,
+        offset: number,
+        limit: number,
+      ) => Promise<FramesChunkResult>;
       onSidecarRestarted: (callback: () => void) => () => void;
     };
   }
@@ -125,4 +175,28 @@ export async function showOpenDialog(
   filters?: OpenFileDialogFilter[],
 ): Promise<string | null> {
   return requireBridge().showOpenDialog(filters);
+}
+
+/** Runs `bitvue-indexer`'s metadata indexing (container + units) for the given stream. IVF/AV1
+ *  only so far — other formats come back as a `DiagnosticAdded` event, not an exception. */
+export async function indexStream(stream: StreamId): Promise<BridgeEvent[]> {
+  const { events } = await requireBridge().indexStream(stream);
+  return events;
+}
+
+/** Container metadata populated by `indexStream`. `indexed: false` (not a thrown error) when
+ *  nothing's been indexed yet -- that's a normal, expected state. */
+export async function getStreamInfo(
+  stream: StreamId,
+): Promise<StreamInfoResult> {
+  return requireBridge().getStreamInfo(stream);
+}
+
+/** Paginated slice of the unit/frame list populated by `indexStream`. */
+export async function getFramesChunk(
+  stream: StreamId,
+  offset: number,
+  limit: number,
+): Promise<FramesChunkResult> {
+  return requireBridge().getFramesChunk(stream, offset, limit);
 }
