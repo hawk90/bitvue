@@ -127,7 +127,7 @@ Electron 공식 API의 renderer↔main/utility process 간 `MessagePort` 통신�
 **크레이트/프로세스 경계 (전환 전 먼저 확정, 나중에 재배치하지 말 것):**
 
 ```
-bitvue-engine     순수 Rust 도메인 엔진   ≈ 기존 crates/bitvue-engine + formats/decode/codecs/metrics (이미 존재, 명명만 정리)
+bitvue-engine     순수 Rust 도메인 엔진   crates/bitvue-engine(구 bitvue-core) + formats/decode/codecs/metrics — 리네이밍 완료(2026-08-08, `c2a0e44`)
 bitvue-protocol   request/event/error/binary schema   ← 신규, `crates/bitvue-protocol`로 구현됨(2026-08-08)
 bitvue-sidecar    engine을 감싸고 bitvue-protocol을 stdio로 말하는 독립 프로세스   ← 신규, 스켈레톤 구현됨(2026-08-08, 아래 참조)
 bitvue-desktop    Electron main + preload   ≈ 기존 src-tauri 대체
@@ -239,7 +239,7 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 - `BITVUE_ELECTRON_SELFTEST=1` — **렌더러 → preload(`contextBridge`) → `ipcRenderer.invoke` → `ipcMain.handle` → `SidecarClient` → 실제 컴파일된 Rust 바이너리**까지 전체 경로를 `webContents.executeJavaScript`로 실제 렌더러 컨텍스트에서 구동(메인 프로세스가 `SidecarClient`를 직접 호출하는 우회가 아님): `hello()` → `protocol_version:"0.1.0"` 확인, `openStream("A", tempFile)` → 실제 `ModelUpdated` 이벤트 확인, `getHexRange("A",10,16)` → 64바이트 known-content 임시파일에서 offset 10~25 바이트가 **byte-exact** 일치(`BYTE_EXACT_MATCH: true`, 클린 재빌드 후 재확인 완료).
 - 기존 `bitvue-desktop` 유닛+통합 테스트 14개, `cargo test -p bitvue-sidecar`(13+1)/`-p bitvue-protocol`(3), `cargo check --workspace` 전부 이 변경 이후 재실행해서 회귀 없음 확인.
 
-이로써 `docs/DEVELOPMENT_PHASES.md`가 처음부터 그린 4-계층 경계(`bitvue-engine`/`bitvue-protocol`/`bitvue-sidecar`/`bitvue-desktop`)의 모든 연결점이 최소 1개 실커맨드 기준으로는 전부 실증됨. 남은 건 폭(더 많은 커맨드), 크레이트 리네이밍(의도적으로 계속 보류 — 이유는 위 "Electron 전환 시 경계" 참조), 실제 React UI(`bitvue-ui`) 연결.
+이로써 `docs/DEVELOPMENT_PHASES.md`가 처음부터 그린 4-계층 경계(`bitvue-engine`/`bitvue-protocol`/`bitvue-sidecar`/`bitvue-desktop`)의 모든 연결점이 최소 1개 실커맨드 기준으로는 전부 실증됨. 남은 건 폭(더 많은 커맨드), 실제 React UI(`bitvue-ui`) 연결. (`bitvue-core`→`bitvue-engine` 리네이밍은 2026-08-08 완료 — 아래 별도 항목 참조. `src-tauri`/`frontend/` 자체의 이동·삭제는 여전히 별개의 더 큰 단계로 남아있음, `src-tauri`는 아직 작동하는 fallback 앱.)
 
 ### `bitvue-sidecar` 동시성 모델 (2026-08-08)
 
@@ -276,6 +276,22 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 **구현 위치:** `bitvue-desktop/src/sidecarClient.ts`(Rust 쪽 변경 없음 — sidecar 프로세스 자체는 그냥 죽고 다시 뜨는 것뿐, 프로토콜/엔진 변경 불필요). `SidecarClientOptions.restart`(옵트인, 기본 비활성 — 기존 테스트/호출자 동작 안 바뀜)로 `{maxAttempts, backoffMs}` 지정. `'exit'` 핸들러가 (a) `close()`로 인한 의도적 종료가 아니고 (b) 재시도 횟수가 안 찼으면 `backoffMs` 뒤에 동일 binaryPath/args로 재spawn, `hello()`로 새 프로세스가 실제로 응답하는지까지 확인한 뒤 `'restarted'` emit. `'restarting'`/`'restarted'`/`'restart_failed'` 이벤트 추가. `bitvue-desktop/electron/main.ts`가 `restart:{maxAttempts:3,backoffMs:500}`로 활성화하고, `'restarted'`를 `preload.cjs`의 새 `window.bitvue.onSidecarRestarted(cb)` 채널로 렌더러까지 전달(실제 UI가 아직 없어서 지금은 로그만 찍지만 채널 자체는 연결해둠).
 
 **검증(전부 실제 프로세스, mock 아님):** `bitvue-desktop/tests/sidecarClient.restart.test.ts` 3개 — (1) 실제 컴파일된 바이너리를 `process.kill(pid, 'SIGKILL')`로 진짜 죽이고 `'restarted'` 이벤트 수신 + 새 PID로 `hello()` 재성공 확인, (2) 크래시 시점 대기 요청이 재시도 없이 reject되는지 확인, (3) 계속 즉시 죽는 바이너리(`true`)를 붙여서 `maxAttempts` 소진 후 `'restart_failed'`로 포기하는지 확인. 여기에 **실제 Electron 앱 레벨 증명**도 추가: `BITVUE_ELECTRON_OFFSCREEN=1`로 앱을 띄우고 로그에서 실제 sidecar PID를 추출해 밖에서 `kill -9`, 앱이 죽지 않고 재시작 로그(`sidecar restarted (attempt 1) — application state was lost`)까지 찍히는 것 확인 — `SidecarClient` 단위 테스트뿐 아니라 `main.ts` 배선까지 전부 실증. `npx vitest run` 17/17, `npx tsc --noEmit` 클린.
+
+### `bitvue-core` → `bitvue-engine` 크레이트 리네이밍 완료 (2026-08-08)
+
+**범위 판단 — 세션 시작 시 명확히 좁혀서 진행:** "리네이밍" 항목이 원래 `bitvue-core`→`bitvue-engine`, `src-tauri`→퇴역, `frontend/`→`bitvue-ui` 셋을 포괄하는 것처럼 서술돼 있었지만, 실제로 실행한 건 **`bitvue-core`→`bitvue-engine`뿐**. `src-tauri` 삭제/이동과 `frontend/` 리네이밍은 지금도 하지 않음 — `src-tauri`는 여전히(불완전하게나마, 아래 참조) 작동하는 fallback 앱이고, `frontend/`는 이 세션과 무관한 anti-pattern-audit 작업이 이미 커밋되지 않은 채로 걸려있는 디렉터리라 지금 손대면 두 작업이 뒤섞임. 두 항목 다 "나중에 별도로" 남겨둠.
+
+**실행:** `crates/bitvue-core` → `crates/bitvue-engine` (`git mv`), `Cargo.toml`의 `name` 필드, 루트 워크스페이스 `members`/`workspace.dependencies`, 그리고 **워크스페이스 전체에서 `bitvue_core`/`bitvue-core` 토큰 145개 파일**(Rust 소스+Cargo.toml 19개+`src-tauri`+`fuzz`+활성 문서 6개+`bitvue-desktop` 4개)을 순수 텍스트 치환 — 충돌 위험 사전 확인(`bitvue_core`/`bitvue-core`가 다른 크레이트명의 부분 문자열이 아님을 grep으로 확인 후 진행).
+
+**일부러 안 건드린 것:**
+- `docs/anti-patterns/*.md`(약 40개), `.claude/workflows/anti-pattern-scan.js` — 이 세션과 무관한, 아직 커밋 안 된 다른 세션의 작업물. 여기 있는 `bitvue-core` 텍스트 언급은 지금 stale 상태로 남음(다음에 그 작업을 커밋할 때 같이 고칠 것).
+- `archive_docs/` — CLAUDE.md에 명시된 대로 동결된 과거 기록, 편집 대상 아님.
+- `frontend/types/video.ts` — 딱 2군데 doc-comment 언급뿐이라 안전했지만, 이 파일을 건드리면 lefthook의 `frontend-fmt` 훅이 **스테이징된 파일이 아니라 `frontend/` 전체**를 prettier로 검사해서(`glob`이 트리거만 결정, 실제 `run`은 범위 지정 없음) 무관한 `ModeContext.test.tsx`의 기존 포맷 이슈 때문에 커밋 자체가 막힘 — 그래서 이 파일 변경은 되돌리고 커밋에서 제외.
+- `crates/bitvue-core/tests/*_SUMMARY.md` 등 산문 요약본 — 경로는 옮겨졌지만(`bitvue-engine/tests/`로 이동) 내용 중 `bitvue_core` 언급은 히스토리 기록이라 자연스럽게 같이 치환됨(문제 없음, 별도 작업 아니었음).
+
+**실제로 발견한 것 — `src-tauri`는 이미 (rename과 무관하게) 컴파일 안 되고 있었음:** `cargo check --no-default-features`(ffmpeg 헤더가 이 샌드박스에 없어서 기본 feature로는 검증 불가)에서 `bitvue_av1_codec::Obu`에 `obu_type`/`data` 필드가 없다는 등 7개 에러 발생. `git stash`로 리네이밍 이전 원본 코드를 재현해 **동일한 7개 에러가 리네이밍과 무관하게 이미 존재**함을 확인 — `Obu` 구조체가 세션 어느 시점엔가 필드를 `.header` 서브구조체로 옮기는 리팩터를 거쳤는데 `src-tauri`의 일부 호출부가 안 따라간 것으로 보임. **이건 이번 작업 범위 밖, 고치지 않음** — 다만 "src-tauri가 아직 작동하는 fallback"이라는 이 세션 내내의 전제 자체가 최소 이 구성(no-default-features)에서는 이미 깨져 있었다는 뜻이라 명시해둠. 기본 feature(ffmpeg 포함) 빌드가 실제로 되는지는 이 샌드박스에서 검증 불가.
+
+**검증:** `cargo check --workspace` 클린, `cargo test -p bitvue-engine`(3848개) + `-p bitvue-sidecar` + `-p bitvue-protocol` 전부 통과, `cargo fmt --all --check` 클린, `bitvue-desktop` 17/17 유지. 사전에 존재하던 미커밋 anti-pattern-audit 변경분(약 55개 파일)은 이번 커밋 전후로 정확히 동일하게 남아있음(`git status` diff로 확인) — 섞이지 않음.
 
 ### 확정 순서
 
