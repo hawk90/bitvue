@@ -315,6 +315,7 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "get_frames_chunk" => get_frames_chunk(core, request),
         "get_frame_syntax" => get_frame_syntax(core, request),
         "get_timeline" => get_timeline(core, request),
+        "get_thumbnails" => get_thumbnails(core, request),
         other => Response::failure(
             request.id,
             WireError {
@@ -1031,6 +1032,101 @@ fn get_decoded_frame_yuv(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<
                 offset: None,
             },
         )),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GetThumbnailsParams {
+    stream: String,
+    frame_indices: Vec<usize>,
+    /// Defaults to `ThumbnailCache::default()`'s 120px (matches the frontend's
+    /// `THUMBNAIL_SIZE.WIDTH`) when omitted.
+    #[serde(default)]
+    target_width: Option<u32>,
+}
+
+const DEFAULT_THUMBNAIL_WIDTH: u32 = 120;
+
+/// Control-only (unlike `get_decoded_frame_yuv`/`get_hex_range`) -- thumbnails are small enough
+/// that base64-in-JSON is a reasonable choice, and the frontend already expects a `data:` URL
+/// string per thumbnail (feeds straight into an `<img src>`), not raw bytes. Business logic in
+/// `decode_bridge::get_thumbnails` decodes once per batch, not once per requested index.
+fn get_thumbnails(core: &Core, request: &Request) -> Response {
+    let params: GetThumbnailsParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return response,
+    };
+
+    let stream_state = core.get_stream(stream);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    let target_width = params.target_width.unwrap_or(DEFAULT_THUMBNAIL_WIDTH);
+    match decode_bridge::get_thumbnails(data, &params.frame_indices, target_width) {
+        Ok(results) => {
+            let json_results: Vec<serde_json::Value> = results
+                .into_iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "frame_index": t.frame_index,
+                        "thumbnail_data": t.data_url,
+                        "width": t.width,
+                        "height": t.height,
+                        "success": true,
+                    })
+                })
+                .collect();
+            Response::success(request.id, serde_json::json!(json_results))
+        }
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
     }
 }
 
@@ -1903,6 +1999,84 @@ mod tests {
         let frames = get_decoded_frame_yuv(&core, &request);
         assert_eq!(frames.len(), 1);
         let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    // -- get_thumbnails ----------------------------------------------------------------------
+
+    #[test]
+    fn get_thumbnails_end_to_end_returns_real_png_data_urls() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 210,
+                method: "get_thumbnails".to_string(),
+                params: serde_json::json!({"stream": "A", "frame_indices": [0, 3, 7]}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let results = response.result.unwrap();
+        let results = results.as_array().unwrap();
+        assert_eq!(results.len(), 3);
+        for thumb in results {
+            assert_eq!(thumb["success"], true);
+            assert_eq!(thumb["width"], 120, "default target_width should be 120");
+            assert!(thumb["height"].as_u64().unwrap() > 0);
+            let data_url = thumb["thumbnail_data"].as_str().unwrap();
+            assert!(data_url.starts_with("data:image/png;base64,"));
+        }
+    }
+
+    #[test]
+    fn get_thumbnails_honors_a_custom_target_width() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 211,
+                method: "get_thumbnails".to_string(),
+                params: serde_json::json!({"stream": "A", "frame_indices": [0], "target_width": 60}),
+            },
+        );
+        assert!(response.ok);
+        let results = response.result.unwrap();
+        assert_eq!(results[0]["width"], 60);
+    }
+
+    #[test]
+    fn get_thumbnails_out_of_range_index_is_a_wire_error() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 212,
+                method: "get_thumbnails".to_string(),
+                params: serde_json::json!({"stream": "A", "frame_indices": [999_999]}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    #[test]
+    fn get_thumbnails_stream_not_open_returns_not_found() {
+        let core = Core::new();
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 213,
+                method: "get_thumbnails".to_string(),
+                params: serde_json::json!({"stream": "A", "frame_indices": [0]}),
+            },
+        );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
     }

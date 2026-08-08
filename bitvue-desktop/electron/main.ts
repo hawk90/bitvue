@@ -112,6 +112,17 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(
+    "bitvue:getThumbnails",
+    async (_event, stream: string, frameIndices: number[], targetWidth?: number) => {
+      return requireSidecar().request("get_thumbnails", {
+        stream,
+        frame_indices: frameIndices,
+        target_width: targetWidth,
+      });
+    },
+  );
+
+  ipcMain.handle(
     "bitvue:selectUnit",
     async (_event, stream: string, unitType: string, offset: number, size: number) => {
       return requireSidecar().request("select_unit", { stream, unit_type: unitType, offset, size });

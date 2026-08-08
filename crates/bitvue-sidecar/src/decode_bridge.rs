@@ -1,20 +1,23 @@
-//! Pixel-decode bridge backing the `get_decoded_frame_yuv` command.
+//! Pixel-decode bridge backing the `get_decoded_frame_yuv` and `get_thumbnails` commands.
 //!
 //! Lives in `bitvue-sidecar`, not `bitvue-indexer` -- `bitvue-indexer`'s crate doc explicitly
 //! scopes it to "no pixel decode" (metadata-indexing only). The sidecar is the orchestration
 //! layer that's allowed to depend on both `bitvue-av1-codec` (IVF framing) and `bitvue-decode`
 //! (dav1d) directly, the same way it already depends on `bitvue-indexer` for metadata.
 //!
-//! Correctness-first, not perf-first: re-decodes from the start of the stream up to
-//! `frame_index` on every call (same approach `bitvue-cli`'s `decode_av1_yuv` already uses for
-//! its `--yuv-dump`). No decoder-session caching, so repeatedly scrubbing a long stream is
-//! O(n) in frame index per request -- acceptable for a first working version (the main preview
-//! pane currently renders nothing at all), flagged here for a later perf pass rather than
-//! solved preemptively.
+//! Correctness-first, not perf-first: re-decodes from the start of the stream up to the target
+//! frame on every call (same approach `bitvue-cli`'s `decode_av1_yuv` already uses for its
+//! `--yuv-dump`). No decoder-session caching, so repeatedly scrubbing a long stream is O(n) in
+//! frame index per request -- acceptable for a first working version (the main preview pane
+//! and filmstrip previously rendered nothing at all), flagged here for a later perf pass rather
+//! than solved preemptively. `get_thumbnails` does at least batch this: one decode pass captures
+//! every requested index up to the batch's max, rather than one pass per index.
 
 use bitvue_av1_codec::ivf::parse_ivf_frames;
 use bitvue_decode::decoder::ChromaFormat;
 use bitvue_decode::{Av1Decoder, DecodedFrame};
+use bitvue_engine::{CachedFrame, Thumbnail, ThumbnailCache};
+use std::collections::HashSet;
 
 /// Wire-ready decoded frame: metadata fields plus the concatenated Y+U+V byte buffer sent as
 /// the `Data` frame that follows this command's `Control` response (see `get_hex_range` for the
@@ -118,6 +121,110 @@ fn to_wire(frame: &DecodedFrame) -> DecodedYuvFrame {
     }
 }
 
+/// One filmstrip thumbnail: a small PNG, base64-encoded as a `data:` URL -- the exact shape
+/// `frontend/components/Filmstrip/views/*ThumbnailsView.tsx` already feeds straight into an
+/// `<img src=...>`, so no frontend-side format translation is needed (unlike the raw-bytes
+/// approach used for full-resolution `get_decoded_frame_yuv` -- thumbnails are small enough that
+/// base64 JSON is a reasonable, not wasteful, choice here).
+pub struct ThumbnailResult {
+    pub frame_index: usize,
+    pub data_url: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Decodes once, capturing a thumbnail at every requested index along the way, rather than one
+/// full decode pass per index (`frame_indices` is typically a batch of up to
+/// `THUMBNAIL_BATCH_SIZE` -- see `frontend/constants/ui.ts`). `target_width` matches
+/// `ThumbnailCache::default()`'s 120px (`THUMBNAIL_SIZE.WIDTH` on the frontend) unless overridden.
+pub fn get_thumbnails(
+    data: &[u8],
+    frame_indices: &[usize],
+    target_width: u32,
+) -> Result<Vec<ThumbnailResult>, String> {
+    let (_hdr, frames) = parse_ivf_frames(data).map_err(|e| format!("IVF parse error: {e}"))?;
+    let wanted: HashSet<usize> = frame_indices.iter().copied().collect();
+    let max_wanted = match wanted.iter().max() {
+        Some(&m) => m,
+        None => return Ok(Vec::new()),
+    };
+    if max_wanted >= frames.len() {
+        return Err(format!(
+            "frame_index {max_wanted} out of range (stream has {} frames)",
+            frames.len()
+        ));
+    }
+
+    let mut dec = Av1Decoder::new().map_err(|e| format!("decoder init: {e}"))?;
+    let mut results = Vec::with_capacity(wanted.len());
+    let mut decoded_count = 0usize;
+
+    let capture = |decoded: &DecodedFrame, index: usize, out: &mut Vec<ThumbnailResult>| {
+        if !wanted.contains(&index) {
+            return;
+        }
+        let rgb_data = bitvue_decode::yuv_to_rgb(decoded);
+        let cached = CachedFrame {
+            index,
+            rgb_data,
+            width: decoded.width,
+            height: decoded.height,
+            decoded: true,
+            error: None,
+            y_plane: None,
+            u_plane: None,
+            v_plane: None,
+            chroma_width: None,
+            chroma_height: None,
+        };
+        let thumb = ThumbnailCache::generate_thumbnail(&cached, target_width);
+        out.push(ThumbnailResult {
+            frame_index: index,
+            data_url: thumbnail_to_png_data_url(&thumb),
+            width: thumb.width,
+            height: thumb.height,
+        });
+    };
+
+    for f in &frames {
+        dec.send_data_owned(f.data.clone(), f.timestamp as i64)
+            .map_err(|e| format!("decode send: {e}"))?;
+        while let Ok(frame) = dec.get_frame() {
+            capture(&frame, decoded_count, &mut results);
+            decoded_count += 1;
+        }
+        if decoded_count > max_wanted {
+            break;
+        }
+    }
+    if decoded_count <= max_wanted {
+        dec.flush();
+        while let Ok(frame) = dec.get_frame() {
+            capture(&frame, decoded_count, &mut results);
+            decoded_count += 1;
+        }
+    }
+
+    Ok(results)
+}
+
+fn thumbnail_to_png_data_url(thumb: &Thumbnail) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use image::{DynamicImage, ImageFormat, RgbImage};
+    use std::io::Cursor;
+
+    let img = RgbImage::from_raw(thumb.width, thumb.height, thumb.rgb_data.clone())
+        .expect("Thumbnail's rgb_data is always width*height*3 bytes, see generate_thumbnail");
+    let mut png_bytes = Cursor::new(Vec::new());
+    DynamicImage::ImageRgb8(img)
+        .write_to(&mut png_bytes, ImageFormat::Png)
+        .expect("in-memory PNG encode does not fail");
+    format!(
+        "data:image/png;base64,{}",
+        STANDARD.encode(png_bytes.into_inner())
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +260,52 @@ mod tests {
     #[test]
     fn out_of_range_frame_index_is_a_real_error() {
         let result = get_decoded_frame_yuv(AV1_IVF_FIXTURE, 999_999);
+        assert!(result.is_err());
+    }
+
+    // -- get_thumbnails ----------------------------------------------------------------------
+
+    #[test]
+    fn get_thumbnails_returns_one_real_decodable_png_per_requested_index() {
+        let results = get_thumbnails(AV1_IVF_FIXTURE, &[0, 5, 10], 120).unwrap();
+        assert_eq!(results.len(), 3);
+
+        let mut by_index: Vec<&ThumbnailResult> = results.iter().collect();
+        by_index.sort_by_key(|t| t.frame_index);
+        assert_eq!(
+            by_index.iter().map(|t| t.frame_index).collect::<Vec<_>>(),
+            vec![0, 5, 10]
+        );
+
+        for thumb in &results {
+            assert_eq!(thumb.width, 120, "target_width should be honored exactly");
+            assert!(thumb.height > 0);
+            let prefix = "data:image/png;base64,";
+            assert!(
+                thumb.data_url.starts_with(prefix),
+                "expected a PNG data URL, got: {}...",
+                &thumb.data_url[..prefix.len().min(thumb.data_url.len())]
+            );
+
+            // Round-trip through a real PNG decoder to prove this isn't just a string that
+            // happens to start with the right prefix -- it must actually decode.
+            use base64::{engine::general_purpose::STANDARD, Engine as _};
+            let png_bytes = STANDARD.decode(&thumb.data_url[prefix.len()..]).unwrap();
+            let decoded = image::load_from_memory(&png_bytes).unwrap();
+            assert_eq!(decoded.width(), thumb.width);
+            assert_eq!(decoded.height(), thumb.height);
+        }
+    }
+
+    #[test]
+    fn get_thumbnails_empty_request_returns_empty_not_an_error() {
+        let results = get_thumbnails(AV1_IVF_FIXTURE, &[], 120).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn get_thumbnails_out_of_range_index_is_a_real_error() {
+        let result = get_thumbnails(AV1_IVF_FIXTURE, &[0, 999_999], 120);
         assert!(result.is_err());
     }
 }

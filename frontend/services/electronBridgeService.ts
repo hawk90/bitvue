@@ -7,15 +7,16 @@
  * IMPORTANT — the old Tauri command surface (~40 commands, `src-tauri/src/commands/*.rs`,
  * deleted 2026-08-08 -- though several *frontend* files still call `@tauri-apps/api` directly
  * and haven't been migrated to this bridge yet, e.g. the compare workspace / quality panels /
- * system menu / filmstrip thumbnails; grep the frontend tree before assuming a panel is covered)
- * and the new `bitvue-sidecar` surface (15 commands, see `docs/DEVELOPMENT_PHASES.md` §
+ * system menu; grep the frontend tree before assuming a panel is covered) and the new
+ * `bitvue-sidecar` surface (16 commands, see `docs/DEVELOPMENT_PHASES.md` §
  * "제품 아키텍처 확정") are NOT the same API — different names, different param/result shapes.
- * This file wraps all 15 real sidecar commands: open/close a stream, select a frame
+ * This file wraps all 16 real sidecar commands: open/close a stream, select a frame
  * (selection-sync only), the four structural multi-sync selections
  * (`selectUnit`/`selectSyntax`/`selectBitRange`/`selectSpatialBlock` — no live UI consumer as of
  * 2026-08-08, wired because the sidecar-side capability is real, not because a feature needs them
  * yet), a raw hex byte range, decoded YUV pixel planes for one frame (`getDecodedFrameYuv` —
- * AV1/IVF only, re-decodes from the stream start every call, no session caching yet), the native
+ * AV1/IVF only, re-decodes from the stream start every call, no session caching yet), batch
+ * filmstrip thumbnails (`getThumbnails` — one decode pass per batch, not per index), the native
  * open-file dialog, and metadata indexing (`indexStream`/`getStreamInfo`/`getFramesChunk` —
  * container + per-frame metadata, IVF/AV1 only so far) plus lazy per-unit syntax trees
  * (`getFrameSyntax`) and a display-order timeline (`getTimeline`, also no live UI consumer yet —
@@ -122,6 +123,17 @@ export interface BridgeTimeline {
   vertical_viewport: [number, number];
 }
 
+/** Mirrors `get_thumbnails`'s JSON array response (`bitvue-sidecar`'s `decode_bridge` module).
+ *  `thumbnail_data` is a real `data:image/png;base64,...` URL -- feeds directly into an
+ *  `<img src>`, no frontend-side decoding needed. */
+export interface BridgeThumbnailResult {
+  frame_index: number;
+  thumbnail_data: string;
+  width: number;
+  height: number;
+  success: boolean;
+}
+
 /** Mirrors `get_decoded_frame_yuv`'s Control-frame metadata (`bitvue-sidecar`'s `decode_bridge`
  *  module) -- the `Data` frame that follows is the concatenated Y+U+V raw bytes, sliced using
  *  `y_len`/`u_len`/`v_len` below. Same no-base64, no-JSON-array approach as `getHexRange`. */
@@ -178,6 +190,11 @@ declare global {
         frameIndex: number,
       ) => Promise<BridgeSyntaxNode>;
       getTimeline: (stream: StreamId) => Promise<BridgeTimeline>;
+      getThumbnails: (
+        stream: StreamId,
+        frameIndices: number[],
+        targetWidth?: number,
+      ) => Promise<BridgeThumbnailResult[]>;
       selectUnit: (
         stream: StreamId,
         unitType: string,
@@ -322,6 +339,17 @@ export async function getFrameSyntax(
  *  failure (no units indexed yet, wrong codec) -- same reasoning as `getFrameSyntax`. */
 export async function getTimeline(stream: StreamId): Promise<BridgeTimeline> {
   return requireBridge().getTimeline(stream);
+}
+
+/** Batch thumbnail generation -- decodes once per call, capturing every requested index along
+ *  the way (see `bitvue-sidecar`'s `decode_bridge::get_thumbnails` doc), not once per index.
+ *  `targetWidth` defaults to 120px server-side (matches `THUMBNAIL_SIZE.WIDTH`) if omitted. */
+export async function getThumbnails(
+  stream: StreamId,
+  frameIndices: number[],
+  targetWidth?: number,
+): Promise<BridgeThumbnailResult[]> {
+  return requireBridge().getThumbnails(stream, frameIndices, targetWidth);
 }
 
 // -- Structural (multi-sync) selection ---------------------------------------------------------
