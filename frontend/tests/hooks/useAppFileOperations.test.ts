@@ -2,8 +2,9 @@
  * useAppFileOperations Hook Tests
  *
  * Covers the 2026-08-08 rewiring to `electronBridgeService` (bitvue-sidecar) — proves
- * `handleOpenFile`/`handleCloseFile` call the new bridge with the right arguments and manage
- * local state correctly, without needing a real Electron process (that's covered separately by
+ * `handleOpenFile`/`openFileAtPath`/`handleCloseFile` call the new bridge with the right
+ * arguments and manage local state correctly, without needing a real Electron process (that's
+ * covered separately by
  * `bitvue-desktop/electron/main.ts`'s selftest, which drives the real renderer/preload/sidecar
  * chain). `handleOpenDependentFile` (compare workspaces) is untouched by this migration and not
  * covered here.
@@ -146,6 +147,57 @@ describe("useAppFileOperations", () => {
       });
 
       expect(selectFrame).not.toHaveBeenCalled();
+      expect(mockSetFilePath).toHaveBeenCalledWith(null);
+      expect(onError).toHaveBeenCalledWith(
+        "Failed to Open File",
+        "Failed to open file: No such file or directory",
+        "/tmp/missing.ivf",
+      );
+    });
+  });
+
+  describe("openFileAtPath", () => {
+    it("opens a known path directly, without showing the file dialog", async () => {
+      openStream.mockResolvedValue({
+        success: true,
+        path: "/tmp/clip.ivf",
+        events: [],
+        error: undefined,
+      });
+      selectFrame.mockResolvedValue([
+        { type: "SelectionUpdated", stream: "A" },
+      ]);
+
+      const { result } = renderHook(() =>
+        useAppFileOperations({ onError, onCodecChange }),
+      );
+
+      await act(async () => {
+        await result.current.openFileAtPath("/tmp/clip.ivf");
+      });
+
+      expect(showOpenDialog).not.toHaveBeenCalled();
+      expect(openStream).toHaveBeenCalledWith("A", "/tmp/clip.ivf");
+      expect(selectFrame).toHaveBeenCalledWith("A", 0);
+      await waitFor(() => expect(result.current.fileInfo?.success).toBe(true));
+    });
+
+    it("on failure: sets filePath to null and calls onError, same as handleOpenFile", async () => {
+      openStream.mockResolvedValue({
+        success: false,
+        path: "/tmp/missing.ivf",
+        events: [],
+        error: "Failed to open file: No such file or directory",
+      });
+
+      const { result } = renderHook(() =>
+        useAppFileOperations({ onError, onCodecChange }),
+      );
+
+      await act(async () => {
+        await result.current.openFileAtPath("/tmp/missing.ivf");
+      });
+
       expect(mockSetFilePath).toHaveBeenCalledWith(null);
       expect(onError).toHaveBeenCalledWith(
         "Failed to Open File",

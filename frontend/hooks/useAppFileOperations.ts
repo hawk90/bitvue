@@ -4,11 +4,15 @@
  * Manages file operations specific to App.tsx including frame loading
  * and dependent file opening for comparison mode.
  *
- * `handleOpenFile`/`handleCloseFile` go through `electronBridgeService` (bitvue-sidecar), not
- * Tauri, as of the 2026-08-08 migration — see that file's module doc for exactly what is and
- * isn't backed by the new engine yet. `handleOpenDependentFile` (compare workspaces) still calls
- * the old Tauri `open()` dialog + `createWorkspace` — there's no sidecar equivalent for compare
- * yet, so this path is currently non-functional (left as-is rather than half-migrated).
+ * `handleOpenFile`/`openFileAtPath`/`handleCloseFile` go through `electronBridgeService`
+ * (bitvue-sidecar), not Tauri, as of the 2026-08-08 migration — see that file's module doc for
+ * exactly what is and isn't backed by the new engine yet. `openFileAtPath` is `handleOpenFile`'s
+ * post-dialog logic pulled out so App.tsx's "reload current file" / "open recent file" actions
+ * (2026-08-09) can reuse the real bridge chain (openStream -> selectFrame -> refreshFrames)
+ * instead of a path that no longer exists (`invoke("open_file", ...)`).
+ * `handleOpenDependentFile` (compare workspaces) still calls the old Tauri `open()` dialog +
+ * `createWorkspace` — there's no sidecar equivalent for compare yet, so this path is currently
+ * non-functional (left as-is rather than half-migrated).
  */
 
 import { useState, useCallback } from "react";
@@ -52,6 +56,8 @@ export interface AppFileOperationsReturn {
   openError: string | null;
   setOpenError: (error: string | null) => void;
   handleOpenFile: () => Promise<void>;
+  /** Opens a known path directly, no dialog -- for "reload" and "open recent file". */
+  openFileAtPath: (path: string) => Promise<void>;
   handleCloseFile: () => Promise<void>;
   handleOpenDependentFile: () => Promise<void>;
 }
@@ -88,38 +94,15 @@ export function useAppFileOperations(
   }, [setFilePath, setCurrentFrameIndex, clearData, onError, onCodecChange]);
 
   /**
-   * Handle opening a file
+   * Open a known path directly (no file dialog) -- shared by handleOpenFile (after the dialog
+   * resolves), a "reload the current file" action, and "open recent file", so all three go
+   * through the same real bridge chain (openStream -> selectFrame -> refreshFrames) instead of
+   * duplicating it or falling back to a dead Tauri open_file() call.
    */
-  const handleOpenFile = useCallback(async () => {
-    try {
-      setOpenError(null);
-
-      const selected = await showOpenDialog([
-        {
-          name: "Video Files",
-          extensions: [
-            "ivf",
-            "av1",
-            "hevc",
-            "h265",
-            "265",
-            "h264",
-            "264",
-            "vvc",
-            "h266",
-            "mp4",
-            "mkv",
-            "webm",
-            "ts",
-          ],
-        },
-        {
-          name: "All Files",
-          extensions: ["*"],
-        },
-      ]);
-
-      if (selected && typeof selected === "string") {
+  const openFileAtPath = useCallback(
+    async (selected: string) => {
+      try {
+        setOpenError(null);
         logger.debug("Opening file:", selected);
 
         // Pre-flight: warn user about codecs with limited support
@@ -176,12 +159,54 @@ export function useAppFileOperations(
             selected,
           );
         }
+      } catch (err) {
+        logger.error("Failed to open file:", err);
+        onError("Failed to Open File", toMessage(err));
       }
+    },
+    [refreshFrames, setFilePath, setCurrentFrameIndex, onError],
+  );
+
+  /**
+   * Handle opening a file
+   */
+  const handleOpenFile = useCallback(async () => {
+    let selected: string | null;
+    try {
+      selected = await showOpenDialog([
+        {
+          name: "Video Files",
+          extensions: [
+            "ivf",
+            "av1",
+            "hevc",
+            "h265",
+            "265",
+            "h264",
+            "264",
+            "vvc",
+            "h266",
+            "mp4",
+            "mkv",
+            "webm",
+            "ts",
+          ],
+        },
+        {
+          name: "All Files",
+          extensions: ["*"],
+        },
+      ]);
     } catch (err) {
-      logger.error("Failed to open file:", err);
+      logger.error("Failed to open file dialog:", err);
       onError("Failed to Open File", toMessage(err));
+      return;
     }
-  }, [refreshFrames, setFilePath, setCurrentFrameIndex, onError]);
+
+    if (selected && typeof selected === "string") {
+      await openFileAtPath(selected);
+    }
+  }, [openFileAtPath, onError]);
 
   /**
    * Handle opening dependent bitstream for comparison
@@ -254,6 +279,7 @@ export function useAppFileOperations(
     openError,
     setOpenError,
     handleOpenFile,
+    openFileAtPath,
     handleCloseFile,
     handleOpenDependentFile,
   };

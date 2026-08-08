@@ -1261,6 +1261,15 @@ describe("AppContent - menu event listeners", () => {
     expect(closeWindow).toHaveBeenCalledTimes(1);
   });
 
+  it("should handle menu-open-recent-file event (openFileAtPath, not dead Tauri open_file)", () => {
+    render(<App />);
+
+    const recentEvent = new CustomEvent("menu-open-recent-file", {
+      detail: "/tmp/recent-clip.ivf",
+    });
+    expect(() => window.dispatchEvent(recentEvent)).not.toThrow();
+  });
+
   it("should cleanup menu event listeners on unmount", () => {
     const { unmount } = render(<App />);
 

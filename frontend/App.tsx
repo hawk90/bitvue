@@ -1,6 +1,5 @@
 import { useEffect, memo, lazy, Suspense, useCallback, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import { closeWindow } from "./services/electronBridgeService";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
@@ -311,6 +310,7 @@ function AppContent() {
     setFileInfo,
     openError,
     handleOpenFile,
+    openFileAtPath,
     handleCloseFile,
     handleOpenDependentFile,
   } = useAppFileOperations({
@@ -371,8 +371,8 @@ function AppContent() {
   }, []);
 
   const onReloadFile = useCallback(() => {
-    if (filePath) void invoke("open_file", { path: filePath });
-  }, [filePath]);
+    if (filePath) void openFileAtPath(filePath);
+  }, [filePath, openFileAtPath]);
 
   const onToggleFullscreen = useCallback(async () => {
     try {
@@ -589,13 +589,13 @@ function AppContent() {
   useEffect(() => {
     const handleOpenRecent = (e: Event) => {
       const path = (e as CustomEvent<string>).detail;
-      if (path) void invoke("open_file", { path });
+      if (path) void openFileAtPath(path);
     };
     window.addEventListener("menu-open-recent-file", handleOpenRecent);
     return () => {
       window.removeEventListener("menu-open-recent-file", handleOpenRecent);
     };
-  }, []);
+  }, [openFileAtPath]);
 
   // File menu events
   useEffect(() => {
