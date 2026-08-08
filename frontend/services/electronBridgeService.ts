@@ -26,6 +26,8 @@
  * capabilities the sidecar doesn't have; that would silently promise something broken.
  */
 
+import type { YUVFrame } from "../types/yuv";
+
 export type StreamId = "A" | "B";
 
 /** Shape of the JSON-mapped `bitvue_engine::Event` values the sidecar sends back — see
@@ -285,6 +287,26 @@ export async function getDecodedFrameYuv(
   frameIndex: number,
 ): Promise<BridgeDecodedYuvFrame> {
   return requireBridge().getDecodedFrameYuv(stream, frameIndex);
+}
+
+/** Slices a `BridgeDecodedYuvFrame`'s single concatenated `bytes` buffer into the
+ *  y/u/v `Uint8Array` views `YUVFrame` (and thus `VideoCanvas`) expects. */
+export function bridgeYuvToFrame(frame: BridgeDecodedYuvFrame): YUVFrame {
+  const { bytes, yLen, uLen, vLen } = frame;
+  return {
+    y: bytes.subarray(0, yLen),
+    u: uLen > 0 ? bytes.subarray(yLen, yLen + uLen) : new Uint8Array(0),
+    v:
+      vLen > 0
+        ? bytes.subarray(yLen + uLen, yLen + uLen + vLen)
+        : new Uint8Array(0),
+    width: frame.width,
+    height: frame.height,
+    yStride: frame.yStride,
+    uStride: frame.uStride,
+    vStride: frame.vStride,
+    chromaSubsampling: frame.chromaSubsampling,
+  };
 }
 
 export interface OpenFileDialogFilter {

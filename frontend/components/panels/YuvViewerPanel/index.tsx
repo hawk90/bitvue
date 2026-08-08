@@ -15,8 +15,10 @@
 
 import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getDecodedFrameYuv } from "../../../services/electronBridgeService";
-import type { BridgeDecodedYuvFrame } from "../../../services/electronBridgeService";
+import {
+  getDecodedFrameYuv,
+  bridgeYuvToFrame,
+} from "../../../services/electronBridgeService";
 import { useMode } from "../../../contexts/ModeContext";
 import { CodecBadge } from "./ModeSelector";
 import { OverlayToggleBar } from "./OverlayToggleBar";
@@ -96,28 +98,6 @@ function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
   });
 
   return frame;
-}
-
-/** `BridgeDecodedYuvFrame` (sidecar's raw-bytes wire shape, one concatenated `bytes` buffer) ->
- *  `YUVFrame` (the renderer's target type) -- no base64 round trip, `bytes` is already a real
- *  `Uint8Array` off the Electron IPC structured clone. `.subarray` gives zero-copy views, not
- *  fresh allocations. */
-function bridgeYuvToRendererFrame(frame: BridgeDecodedYuvFrame): YUVFrame {
-  const { bytes, yLen, uLen, vLen } = frame;
-  return {
-    y: bytes.subarray(0, yLen),
-    u: uLen > 0 ? bytes.subarray(yLen, yLen + uLen) : new Uint8Array(0),
-    v:
-      vLen > 0
-        ? bytes.subarray(yLen + uLen, yLen + uLen + vLen)
-        : new Uint8Array(0),
-    width: frame.width,
-    height: frame.height,
-    yStride: frame.yStride,
-    uStride: frame.uStride,
-    vStride: frame.vStride,
-    chromaSubsampling: frame.chromaSubsampling,
-  };
 }
 
 interface YuvViewerPanelProps {
@@ -229,7 +209,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
         if (cancelled) return;
 
-        setDecodedFrame(bridgeYuvToRendererFrame(decoded));
+        setDecodedFrame(bridgeYuvToFrame(decoded));
         setYuvData(null);
         setFrameImage(null);
         logger.debug(

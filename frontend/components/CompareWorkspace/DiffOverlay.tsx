@@ -5,8 +5,11 @@
  */
 
 import { memo, useMemo, useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { type FrameInfo, type YUVFrameData } from "../../types/video";
+import { type FrameInfo } from "../../types/video";
+import {
+  getDecodedFrameYuv,
+  type BridgeDecodedYuvFrame,
+} from "../../services/electronBridgeService";
 import "./DiffOverlay.css";
 
 interface DiffOverlayProps {
@@ -36,24 +39,18 @@ function diffColor(delta: number, maxDelta: number): string {
 
 function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
   // Load YUV data for both streams to enable pixel-level diff
-  const [yuvA, setYuvA] = useState<YUVFrameData | null>(null);
-  const [yuvB, setYuvB] = useState<YUVFrameData | null>(null);
+  const [yuvA, setYuvA] = useState<BridgeDecodedYuvFrame | null>(null);
+  const [yuvB, setYuvB] = useState<BridgeDecodedYuvFrame | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      invoke<YUVFrameData>("get_decoded_frame_yuv", {
-        frameIndex: frameA.frame_index,
-        streamId: "A",
-      }).catch(() => null),
-      invoke<YUVFrameData>("get_decoded_frame_yuv", {
-        frameIndex: frameB.frame_index,
-        streamId: "B",
-      }).catch(() => null),
+      getDecodedFrameYuv("A", frameA.frame_index).catch(() => null),
+      getDecodedFrameYuv("B", frameB.frame_index).catch(() => null),
     ]).then(([a, b]) => {
       if (cancelled) return;
-      setYuvA(a && a.success ? a : null);
-      setYuvB(b && b.success ? b : null);
+      setYuvA(a);
+      setYuvB(b);
     });
     return () => {
       cancelled = true;
@@ -66,18 +63,12 @@ function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
     if (
       yuvA &&
       yuvB &&
-      yuvA.y_plane &&
-      yuvB.y_plane &&
+      yuvA.yLen > 0 &&
+      yuvB.yLen > 0 &&
       yuvA.width === yuvB.width
     ) {
-      const b64 = (s: string) => {
-        const bin = atob(s);
-        const arr = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return arr;
-      };
-      const yaData = b64(yuvA.y_plane);
-      const ybData = b64(yuvB.y_plane);
+      const yaData = yuvA.bytes.subarray(0, yuvA.yLen);
+      const ybData = yuvB.bytes.subarray(0, yuvB.yLen);
       const w = yuvA.width;
       const h = yuvA.height;
       const blockSize = 16;
@@ -101,7 +92,7 @@ function DiffOverlay({ frameA, frameB, mode }: DiffOverlayProps) {
             for (let dx = 0; dx < blockSize; dx++) {
               const px = col * blockSize + dx;
               if (px >= w) break;
-              const idx = py * yuvA.y_stride + px;
+              const idx = py * yuvA.yStride + px;
               sumDiff += Math.abs((yaData[idx] ?? 0) - (ybData[idx] ?? 0));
               count++;
             }

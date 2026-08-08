@@ -5,15 +5,14 @@
  */
 
 import { memo, useMemo, useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import {
-  type FrameInfo,
-  type YUVFrameData,
-  AlignmentQuality,
-} from "../../types/video";
+import { type FrameInfo, AlignmentQuality } from "../../types/video";
 import { VideoCanvas } from "../panels/YuvViewerPanel/VideoCanvas";
 import { FrameNavigationControls } from "../panels/YuvViewerPanel/FrameNavigationControls";
 import type { YUVFrame } from "../../types/yuv";
+import {
+  getDecodedFrameYuv,
+  bridgeYuvToFrame,
+} from "../../services/electronBridgeService";
 import "./StreamPlayer.css";
 
 interface StreamPlayerProps {
@@ -42,29 +41,10 @@ function StreamPlayer({
       return;
     }
     let cancelled = false;
-    invoke<YUVFrameData>("get_decoded_frame_yuv", {
-      frameIndex: currentFrame,
-      streamId: streamLabel,
-    })
+    getDecodedFrameYuv(streamLabel, currentFrame)
       .then((data) => {
-        if (cancelled || !data.success || !data.y_plane) return;
-        const b64 = (s: string) => {
-          const bin = atob(s);
-          const arr = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-          return arr;
-        };
-        setYuvFrame({
-          width: data.width,
-          height: data.height,
-          y: b64(data.y_plane),
-          u: data.u_plane ? b64(data.u_plane) : new Uint8Array(0),
-          v: data.v_plane ? b64(data.v_plane) : new Uint8Array(0),
-          yStride: data.y_stride,
-          uStride: data.u_stride,
-          vStride: data.v_stride,
-          chromaSubsampling: "420",
-        });
+        if (cancelled) return;
+        setYuvFrame(bridgeYuvToFrame(data));
       })
       .catch(() => setYuvFrame(null));
     return () => {
