@@ -870,6 +870,38 @@ alias도 똑같이 `./src`를 가리키는 실수가 있었지만(프로덕션 �
 스크린샷 + 전체 `BITVUE_ELECTRON_SELFTEST` 재확인(exit 0, 모든 IPC 체인 byte-exact 그대로) — 아무것도
 안 깨짐.
 
+### Tauri 배선 스위프 마무리 — 남은 건 전부 새 Core 작업 (2026-08-09)
+
+타입체크 복구 다음 라운드로 나머지 `@tauri-apps/api/core` 직접 호출 파일들을 마저 훑음. 결과:
+
+**"이미 브릿지에 있음, 배선만 필요" 케이스 처리 완료:** `components/CompareWorkspace/DiffOverlay.tsx`,
+`StreamPlayer.tsx`가 옛 Tauri `get_decoded_frame_yuv`(base64 평면)를 직접 부르고 있었음 —
+`electronBridgeService.getDecodedFrameYuv`(raw bytes)로 교체. `YuvViewerPanel/index.tsx`에 있던
+`BridgeDecodedYuvFrame → YUVFrame` 바이트 슬라이싱 헬퍼를 `electronBridgeService.bridgeYuvToFrame`로
+뽑아서 세 곳 다 공유. **단, `CompareWorkspace/**`는 여전히 `App.tsx` 렌더 트리에 안 걸려서 tsconfig
+exclude에 남아있음** — 이번 수정은 나중에 워크스페이스가 실제로 연결될 때를 위한 사전 정리이지,
+지금 당장 뭔가 동작하게 만든 건 아님. (`contexts/ThumbnailContext.tsx`/`hooks/useThumbnail.ts`도
+확인해봤는데 `get_thumbnails`를 각자 따로 부르는 죽은 병렬 구현 — 실제 필름스트립은
+`components/useFilmstripState.ts` + `electronBridgeService.getThumbnails`를 씀, `ThumbnailProvider`는
+어디에도 마운트 안 됨. 건드리지 않음, 향후 exclude 후보.)
+
+**"새 Core 작업 필요" — 살아있는데 sidecar 16개 커맨드에 아예 없음:**
+
+| 파일 (실제 App.tsx 트리에서 살아있음 확인) | 부르는 커맨드 |
+|---|---|
+| `YuvViewerPanel/index.tsx` | `get_frame_analysis`, `get_debug_yuv_frame` |
+| `contexts/YuvDiffContext.tsx`, `components/panels/YuvDiffPanel.tsx` (App.tsx에 `YuvDiffProvider`+`YuvDiffPanelFromContext`로 마운트됨) | `load_debug_yuv`, `unload_debug_yuv`, `set_debug_yuv_crop`, `set_debug_yuv_offset` |
+| `contexts/CompareContext.tsx` (Provider는 마운트, `createWorkspace`는 `useAppFileOperations.ts`의 dependent-file-open 경로에서 실제로 호출됨) | `create_compare_workspace`, `set_sync_mode`, `set_manual_offset`, `reset_offset` — 단 `setSyncMode`/`setManualOffset`는 죽은 `CompareWorkspace.tsx`에서만 쓰여서 사실상 미호출 |
+| `components/panels/SyntaxDetailPanel/RefListTab.tsx`, `StatisticsTab.tsx` | `get_codec_extended_info` |
+| `components/Player/views/AV1FeaturesView.tsx`, `hooks/useAv1Features.ts` | `get_av1_features` (두 파일이 서로 다른 param 모양으로 각자 부름 — 중복 구현 가능성, 미조사) |
+| `components/Player/views/DeblockingView.tsx` | `get_deblocking_analysis` |
+| `components/Player/views/ResidualsView.tsx` | `get_residual_analysis` |
+| `components/Player/views/CodingFlowView.tsx` (기존에 이미 플래그됨) | `get_coding_flow_analysis` |
+
+이 8개 커맨드는 전부 `bitvue-sidecar`에 없고(`bitvue-indexer`/`decode_bridge` grep으로 확인), 프론트엔드
+스왑만으로 못 고침 — 각각 새 Rust 분석 로직이 필요함. 이걸로 프론트엔드 쪽 "배선 스위프"는 사실상 끝 —
+남은 모든 항목이 새 백엔드 작업이거나 확인된 죽은 코드.
+
 ### 확정 순서
 
 ```
