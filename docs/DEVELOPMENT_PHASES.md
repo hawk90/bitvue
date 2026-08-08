@@ -889,7 +889,7 @@ exclude에 남아있음** — 이번 수정은 나중에 워크스페이스가 �
 
 | 파일 (실제 App.tsx 트리에서 살아있음 확인) | 부르는 커맨드 |
 |---|---|
-| `YuvViewerPanel/index.tsx` | `get_frame_analysis` (`get_debug_yuv_frame`은 2026-08-09 "Debug YUV 커맨드 패밀리 구현" 참고 — 완료됨) |
+| ~~`YuvViewerPanel/index.tsx`~~ | ~~`get_frame_analysis`~~ — 2026-08-09 "get_frame_analysis 구현" 참고, 완료됨 (`get_debug_yuv_frame`은 그 앞 "Debug YUV 커맨드 패밀리 구현" 참고, 완료됨) |
 | ~~`contexts/YuvDiffContext.tsx`, `components/panels/YuvDiffPanel.tsx`~~ | ~~`load_debug_yuv` 등~~ — 2026-08-09 "Debug YUV 커맨드 패밀리 구현" 참고, 완료됨 |
 | `contexts/CompareContext.tsx` (Provider는 마운트, `createWorkspace`는 `useAppFileOperations.ts`의 dependent-file-open 경로에서 실제로 호출됨) | `create_compare_workspace`, `set_sync_mode`, `set_manual_offset`, `reset_offset` — 단 `setSyncMode`/`setManualOffset`는 죽은 `CompareWorkspace.tsx`에서만 쓰여서 사실상 미호출 |
 | `components/panels/SyntaxDetailPanel/RefListTab.tsx`, `StatisticsTab.tsx` | `get_codec_extended_info` |
@@ -939,9 +939,38 @@ IPC 체인까지 통과 확인** — `BITVUE_ELECTRON_SELFTEST`에 debug-YUV 라
 `getYuvDiffMetrics`가 mismatch 없음 보고 → `getDebugYuvFrame("diff")`의 luma가 전부 0 → 실제 렌더러/
 preload/main/sidecar 경로 전체를 거쳐서 exit 0.
 
-**남은 것**: `get_frame_analysis`, `create_compare_workspace`류, `get_codec_extended_info`,
-`get_av1_features`, `get_deblocking_analysis`, `get_residual_analysis`, `get_coding_flow_analysis` —
-위 표 그대로 아직 미구현.
+**남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_av1_features`,
+`get_deblocking_analysis`, `get_residual_analysis`, `get_coding_flow_analysis` — 아래 섹션에서
+`get_frame_analysis`가 먼저 완료됨, 나머지 6개는 아직 미구현.
+
+### get_frame_analysis 구현 — QP/MV/Partition/Prediction/Transform 그리드 (2026-08-09, 7bde09f/fa6157b)
+
+앞 섹션에서 "새 Core 작업 필요"로 분류됐던 7개 중 두 번째 트랙 완료. 조사해보니 `bitvue-av1-codec::
+overlay_extraction`에 QP/MV/partition/prediction-mode/transform-size 그리드 추출 로직이 **전부 이미
+완성돼있고 유닛 테스트까지 있었는데**, `bitvue-cli`에도 `bitvue-sidecar`에도 어디서도 호출하는 곳이
+없었음(debug-YUV 라운드의 `bitvue-metrics`와 완전히 같은 패턴 — "이미 있는데 아무도 안 쓰던 코드").
+그래서 이번 라운드는 새 비트스트림 파싱이 아니라 순수 오케스트레이션 + wire 매핑.
+
+**진짜 신경 쓴 부분**: `ParsedFrame::parse`는 넘겨준 `obu_data` 안에서 SequenceHeader OBU를 찾아야
+실제 해상도를 알아냄(못 찾으면 1920x1080 스캐폴드로 조용히 폴백) — AV1 스트림은 보통 시퀀스 헤더를
+프레임 0에만 한 번 싣고 반복 안 함. 그래서 앞쪽 몇 프레임을 스캔해서 시퀀스 헤더 원본 바이트를 찾아
+매 프레임 요청마다 prepend — 테스트로 "5번 프레임(자기 청크에 시퀀스 헤더 없음)도 진짜 320x240이 나옴
+(스캐폴드 아님)"까지 핀 박음. 그리고 `QPGrid`/`MVGrid`/`PartitionGrid`는 `Serialize` derive가 있지만
+enum 필드(`PartitionType`, `BlockMode`)는 기본 derive로 직렬화하면 variant 이름 문자열("Split")이
+나오는데 프론트엔드는 숫자 TS enum을 기대함 — 전부 손으로 JSON 매핑. `PredictionMode`는 단순
+`as u8` 캐스팅도 안 통함: Rust enum의 자연 순서는 AV1 스펙의 intra y_mode 번호(0-12)와 정확히
+일치하지만, 프론트엔드 색상/이름 테이블(`utils/colors.ts`)은 inter 모드를 64+ 대역에 기대함 — 진짜
+의미론적 리매핑 테이블을 손으로 작성함(`TxSize`는 반대로 그대로 캐스팅 가능, 프론트 번호랑 이미 일치).
+
+**검증**: Rust 92개 테스트(신규 10개 — 실제 픽스처 end-to-end, non-first-frame 실제 해상도 확인,
+enum이 숫자로 나오는지 확인, out-of-range/stream-closed 에러 경로). 프론트엔드 타입체크/빌드/vitest
+전부 기존 베이스라인 그대로. `BITVUE_ELECTRON_SELFTEST`에 `getFrameAnalysis(0)` 라운드 추가 —
+실제 렌더러/preload/main/sidecar 경로로 진짜 320x240 + QP/partition 그리드 non-empty 확인, exit 0.
+이걸로 `QPMapRenderer`/`MVFieldRenderer`/`CodingFlowRenderer`/`PredictionRenderer`/`TransformRenderer`
+5개 오버레이 렌더러가 (렌더 트리엔 있었지만 데이터가 한 번도 안 왔던 상태에서) 실제 데이터를 받게 됨.
+
+**남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_av1_features`,
+`get_deblocking_analysis`, `get_residual_analysis`, `get_coding_flow_analysis` — 6개.
 
 ### 확정 순서
 
