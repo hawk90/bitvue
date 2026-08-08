@@ -380,6 +380,11 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * actual human (or an agent with vision, via the Read tool) can inspect what's on screen --
  * closes a real gap none of `BITVUE_ELECTRON_SELFTEST`'s checks cover: proving *data* comes back
  * correctly says nothing about whether it actually renders visibly.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB=<label>` (optional): after the file settles, click a
+ * left-panel tab by its visible label (e.g. `"Syntax"`) before capturing -- the left dock's
+ * tabs (`App.tsx`'s `LEFT_PANELS`) default to whichever was active last, so this is the only
+ * way to reliably screenshot a non-default tab like Syntax instead of guessing at prior state.
  */
 async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Promise<void> {
   try {
@@ -391,6 +396,21 @@ async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Pro
     // fixed wait for the open -> index -> refreshFrames chain + React re-render to settle,
     // rather than guessing at a DOM-text heuristic that could false-positive on unrelated text.
     await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 3000))");
+    const clickTab = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB;
+    if (clickTab) {
+      // Tab markup varies by dock (DockableLayout's TabbedPanelContainer renders a bare
+      // `<button class="sidebar-tab"><span>{title}</span></button>` with no dedicated label
+      // class), so match on any button's trimmed text rather than a specific class name.
+      await win.webContents.executeJavaScript(`
+        (() => {
+          const button = Array.from(document.querySelectorAll("button"))
+            .find((el) => el.textContent?.trim() === ${JSON.stringify(clickTab)});
+          if (!button) throw new Error(${JSON.stringify(`tab not found: ${clickTab}`)});
+          button.click();
+        })()
+      `);
+      await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 500))");
+    }
     const image = await win.webContents.capturePage();
     writeFileSync(outputPath, image.toPNG());
     console.log(`[screenshot] saved to ${outputPath}`);
