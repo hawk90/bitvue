@@ -2,9 +2,14 @@
 //!
 //! Populates `StreamState.container`/`.units` from a real file -- no pixel decode. This is
 //! deliberately the *first* stage only (see docs/DEVELOPMENT_PHASES.md's decode-pipeline design
-//! discussion, 2026-08-08): `.syntax`/`.timeline` are NOT populated here, and only IVF/AV1 is
-//! supported so far. Other formats/codecs get an honest `Event::DiagnosticAdded`, not a fabricated
-//! result.
+//! discussion, 2026-08-08): `.timeline` is NOT populated here, and only IVF/AV1 is supported so
+//! far. Other formats/codecs get an honest `Event::DiagnosticAdded`, not a fabricated result.
+//!
+//! `.syntax` IS populated, but lazily: [`get_frame_syntax`] parses one unit's syntax tree on
+//! demand (mirrors `Core::handle_command`'s `SelectBitRange`, which already does an on-demand
+//! nearest-node lookup against whatever `.syntax` happens to hold) rather than eagerly building a
+//! tree for every unit in [`index_stream`] -- that would be wasted work for units the UI never
+//! looks at, and real cost on long streams.
 //!
 //! # Why this crate exists, and why it's not inside `bitvue-engine`
 //!
@@ -18,8 +23,9 @@
 
 use bitvue_av1_codec::frame_header::parse_frame_header_basic;
 use bitvue_av1_codec::ivf::parse_ivf_frames;
+use bitvue_av1_codec::parse_obu_syntax;
 use bitvue_engine::event::{Category, Diagnostic, Severity};
-use bitvue_engine::{ContainerFormat, ContainerModel, UnitModel, UnitNode};
+use bitvue_engine::{ContainerFormat, ContainerModel, SyntaxModel, UnitModel, UnitNode};
 use bitvue_engine::{Core, StreamId};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -132,6 +138,77 @@ pub fn index_stream(core: &Core, stream: StreamId) -> Vec<bitvue_engine::Event> 
             stream,
         },
     ]
+}
+
+/// Parses one unit's syntax tree on demand (AV1 only, matching [`index_stream`]'s scope) and
+/// writes it into `StreamState.syntax` -- `Core::handle_command`'s `SelectBitRange` handler
+/// already does an on-demand nearest-node lookup against whatever `.syntax` holds, so this is
+/// what actually makes that lookup meaningful instead of always empty. Returns the parsed model
+/// directly (not events) since the caller (the sidecar's `get_frame_syntax` command) needs the
+/// tree data itself, not just a "something changed" notification -- matches `get_hex_range`'s
+/// data-returning shape rather than `index_stream`'s event-emitting one.
+///
+/// Requires [`index_stream`] to have already run for this stream (needs `.units` to look up the
+/// unit's byte range) -- returns a plain error string, not a panic, if it hasn't.
+pub fn get_frame_syntax(
+    core: &Core,
+    stream: StreamId,
+    frame_index: usize,
+) -> Result<SyntaxModel, String> {
+    let (byte_cache, unit_offset, unit_size, codec) = {
+        let stream_state = core.get_stream(stream);
+        let state = stream_state.read();
+        let codec = state
+            .container
+            .as_ref()
+            .map(|c| c.codec.clone())
+            .unwrap_or_default();
+        let unit = state
+            .units
+            .as_ref()
+            .and_then(|m| m.units.iter().find(|u| u.frame_index == Some(frame_index)))
+            .ok_or_else(|| {
+                format!(
+                    "No unit found for frame_index {frame_index} -- has index_stream run for this stream?"
+                )
+            })?;
+        let byte_cache = state
+            .byte_cache
+            .clone()
+            .ok_or_else(|| "No file open for this stream".to_string())?;
+        (byte_cache, unit.offset, unit.size, codec)
+    };
+
+    if codec != "av1" {
+        return Err(format!(
+            "Syntax parsing is only implemented for AV1 so far (this stream's codec: {codec:?})"
+        ));
+    }
+
+    // unit_offset/unit_size cover the full IVF chunk (12-byte chunk header + OBU payload, see
+    // index_ivf_av1's UnitNode construction) -- skip the chunk header to get the raw OBU bytes
+    // parse_obu_syntax expects.
+    if unit_size <= 12 {
+        return Err(format!(
+            "Unit at offset {unit_offset} is too small to contain OBU data"
+        ));
+    }
+    let obu_offset = unit_offset + 12;
+    let obu_len = unit_size - 12;
+    let obu_bytes = byte_cache
+        .read_range(obu_offset, obu_len)
+        .map_err(|e| format!("Failed to read OBU bytes: {e}"))?;
+
+    let model = parse_obu_syntax(obu_bytes, frame_index, obu_offset)
+        .map_err(|e| format!("Failed to parse OBU syntax: {e}"))?;
+
+    {
+        let stream_state = core.get_stream(stream);
+        let mut state = stream_state.write();
+        state.syntax = Some(model.clone());
+    }
+
+    Ok(model)
 }
 
 /// Real IVF/AV1 parsing: walks IVF chunks via `bitvue_av1_codec::ivf::parse_ivf_frames`, then

@@ -464,6 +464,59 @@ SyntaxDetailPanel)만 남고 새 실패 0개. **`BITVUE_ELECTRON_SELFTEST`를 �
 `getStreamInfo`→`getFramesChunk`까지 실행 — `container.codec === "av1"`, 첫 5프레임 중 `frame_type ===
 "I"`까지 실제 데이터로 확인, exit code 0. `npm run typecheck`(frontend+bitvue-desktop) 클린.
 
+### 실제 앱 첫 실행에서 발견된 블랭크 스크린 버그 수정 (2026-08-08)
+
+사용자가 `npm run electron`으로 실제 앱을 처음 띄워봄 — 검은/빈 화면. 이번 세션 내내 "실제 프론트엔드가
+로드됐다"는 증거로 써온 `document.title` 체크는 정적 `<title>` 태그라 JS 번들이 아예 실행 안 돼도 통과한다는
+게 드러남 — 진짜 검증 공백이었음. 원인은 두 개, 독립적:
+
+1. `frontend/vite.config.ts`에 `base` 옵션이 없어서 Vite 기본값(절대경로, `/assets/index-*.js`)이 나감 —
+   `http://`로 서빙할 땐 문제없지만 Electron의 `file://` 로딩(`win.loadFile()`)에선 404. `base: "./"`로 수정.
+2. `App.tsx`의 `AppContent`가 `useLayout()`을 쓰는데 `main.tsx`는 `ThemeProvider`만 씌우고
+   `LayoutProvider`는 한 번도 감싼 적이 없었음 — `git log`로 확인, 이번 마이그레이션이 만든 회귀가 아니라
+   원래부터 있던 갭. `App.test.tsx`가 `LayoutContext`를 통째로 모킹해서 테스트로는 안 걸림. 렌더 트리가
+   uncaught 에러로 죽어서 `#root`가 비어있었음. `main.tsx`에 `<LayoutProvider>` 추가로 수정.
+
+**검증 공백도 같이 닫음:** `BITVUE_ELECTRON_SELFTEST`에 `document.getElementById("root").
+childElementCount`를 폴링(고정 딜레이 아님)으로 확인하는 체크 추가, `console-message`/`did-fail-load`를
+렌더러→메인 프로세스 stdout으로 포워딩(전에는 빈 화면이 떠도 터미널에 아무 설명이 안 나왔음). **교훈:
+`document.title`은 HTML이 로드됐다는 증거지 React 앱이 렌더됐다는 증거가 아님** — 앞으로 "프론트엔드
+로드 확인" 주장엔 실제 DOM 체크가 필요.
+
+남은 논-fatal 이슈(고치지 않음, 플래그만): `initializeSystemMenu`(Tauri 메뉴 API)가 Electron에선 Tauri
+런타임이 없어서 throw — catch돼서 렌더링은 안 막지만, `utils/menu/**` 아직 마이그레이션 안 된 기존
+스코프 경계와 일치.
+
+### `get_frame_syntax` — 지연(lazy) 신택스 트리 파싱 (2026-08-08)
+
+`bitvue-indexer`의 다음 후보 중 "AV1 확장 코딩만 집중" 신호에 맞춰 신택스 트리 쪽으로: `Core::
+handle_command`의 `SelectBitRange`가 이미 `.syntax`에 대한 on-demand nearest-node 탐색을 하고 있었지만
+`.syntax`를 채우는 코드가 어디에도 없어서 항상 빈 상태였음 — 이번에 그 공백을 메움.
+
+**핵심 발견:** `bitvue_av1_codec::parse_obu_syntax(data, obu_index, global_offset) -> Result<SyntaxModel>`
+가 이미 완성돼 있고 CLI의 `analyze.rs`가 이미 씀 — 새로 파싱 로직을 안 짜고 그대로 재사용. frontend의
+`FrameSyntaxTab.tsx`/`BitViewPanel.tsx`가 이미 `invoke("get_frame_syntax", {path, frameIndex})`를 호출하고
+있던 것도(옛 Tauri 커맨드, 지금은 죽어있음) `get_frames_chunk` 때와 같은 패턴 — 이름이 이미 맞아떨어짐.
+
+**한 일:** `bitvue-indexer::get_frame_syntax(core, stream, frame_index) -> Result<SyntaxModel, String>` —
+`state.units`에서 유닛 조회 → `unit.offset+12`(12바이트 IVF 청크 헤더 스킵)부터 OBU 바이트 읽기 →
+`parse_obu_syntax` 호출 → 결과를 `state.syntax`에 씀(그래서 `SelectBitRange`의 탐색이 이제 실제로 뭔가를
+찾을 수 있음) → 모델을 그대로 반환. AV1이 아니거나 `index_stream`이 먼저 안 돌았으면 정직한 에러 문자열.
+`bitvue-sidecar`에 `get_frame_syntax` 커맨드 추가(13번째 실제 커맨드) — `SyntaxModel`의 flat
+`HashMap<SyntaxNodeId, SyntaxNode>`+`root_id`를 재귀로 중첩 JSON 트리로 변환(`syntax_node_to_json`),
+frontend의 느슨한 `SyntaxNode{type,name,children,...}` 모양에 맞춤. 실패는 `get_frames_chunk`류와 다르게
+진짜 wire error(`WireErrorCode::FrameNotFound`)로 — "이 프레임의 신택스 트리"엔 `{indexed:false}`같은
+의미있는 부분 결과가 없어서.
+
+**검증:** `bitvue-indexer` 신규 테스트 3개(실제 픽스처로 진짜 트리 생성 확인 — root에 자식 있음, `state.
+syntax` 채워짐 / `index_stream` 안 돌았을 때 에러 / 범위 밖 frame_index 에러) + `bitvue-sidecar` 통합
+테스트 3개(전체 체인으로 진짜 중첩 트리 확인 / 인덱싱 전엔 wire error / 잘못된 stream id) 전부 통과.
+`cargo fmt --all --check` / `cargo check --workspace` 클린.
+
+**아직 안 함(정직하게 남겨둠):** frontend 쪽 소비(`electronBridgeService`에 `getFrameSyntax` 추가 — 다음
+라운드), AV1 외 코덱(VP9 등 — 세션 중 시도했다가 사용자 피드백으로 되돌림, 명시적 재확인 없이 다시 진행
+안 함).
+
 ### 확정 순서
 
 ```

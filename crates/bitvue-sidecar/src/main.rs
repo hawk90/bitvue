@@ -2,22 +2,24 @@
 //! over stdio to `bitvue-desktop` (Electron main). See `docs/DEVELOPMENT_PHASES.md`
 //! ("sidecar 결정" / "bitvue-protocol wire schema v0" / "동시성 모델") for the full design.
 //!
-//! Twelve real commands are wired end to end: `open_stream`,
+//! Thirteen real commands are wired end to end: `open_stream`,
 //! `select_frame`/`select_unit`/`select_syntax`/`select_bit_range`/`select_spatial_block`
 //! (multi-sync — see `docs/DEVELOPMENT_PHASES.md`'s `SelectionState` note; these five map
 //! straight onto `bitvue_engine::Command`'s existing "Tri-sync" selection variants, no new engine
 //! work needed), `close_stream` (control-plane), `get_hex_range` (the first data-plane command —
 //! a `Control` metadata frame followed by a `Data` frame of raw bytes, no JSON array, no base64),
-//! `cancel_request` (see "Concurrency model" below), and three newer ones that go through
+//! `cancel_request` (see "Concurrency model" below), and four newer ones that go through
 //! `bitvue-indexer` rather than `Core::handle_command`: `index_stream` (IVF/AV1 metadata
 //! indexing — container + units, no pixel decode yet, see that crate's module doc for exactly
-//! what's covered), and two read-only pagination-style queries over the result,
-//! `get_stream_info`/`get_frames_chunk`. These three are *not* `bitvue_engine::Command` variants
-//! — `Core` is a leaf crate and can't call into codec/format crates itself (see
-//! `docs/DEVELOPMENT_PHASES.md`'s decode-pipeline design note, 2026-08-08), so `bitvue-indexer`
-//! sits on the other side of that dependency edge and mutates `StreamState` through `Core`'s
-//! already-public `get_stream()`/`get_job_manager()` accessors. `Command::RunFullAnalysis` stays
-//! defined-but-unused as a result — this sidecar deliberately doesn't route through it.
+//! what's covered), two read-only pagination-style queries over the result,
+//! `get_stream_info`/`get_frames_chunk`, and `get_frame_syntax` (lazy, per-unit syntax tree —
+//! AV1 only, parsed on demand rather than eagerly for every unit). These four are *not*
+//! `bitvue_engine::Command` variants — `Core` is a leaf crate and can't call into codec/format
+//! crates itself (see `docs/DEVELOPMENT_PHASES.md`'s decode-pipeline design note, 2026-08-08), so
+//! `bitvue-indexer` sits on the other side of that dependency edge and mutates `StreamState`
+//! through `Core`'s already-public `get_stream()`/`get_job_manager()` accessors.
+//! `Command::RunFullAnalysis` stays defined-but-unused as a result — this sidecar deliberately
+//! doesn't route through it.
 //!
 //! **Every other `bitvue_engine::Command` variant is currently a no-op in `Core::handle_command`**
 //! (falls through to its catch-all `_ => vec![]` arm — verified by reading `core.rs`, not
@@ -304,6 +306,7 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "index_stream" => index_stream(core, request),
         "get_stream_info" => get_stream_info(core, request),
         "get_frames_chunk" => get_frames_chunk(core, request),
+        "get_frame_syntax" => get_frame_syntax(core, request),
         other => Response::failure(
             request.id,
             WireError {
@@ -736,6 +739,75 @@ fn get_frames_chunk(core: &Core, request: &Request) -> Response {
         None => Response::success(
             request.id,
             serde_json::json!({ "indexed": false, "units": [], "total_count": 0 }),
+        ),
+    }
+}
+
+/// Converts `bitvue_engine::SyntaxModel`'s flat `HashMap<SyntaxNodeId, SyntaxNode>` + `root_id`
+/// into a nested tree, recursing from the root -- `SyntaxNode` doesn't derive `Serialize` (see
+/// this file's module doc on `bitvue-engine` types generally not being wire types), and the
+/// frontend's `SyntaxNode` shape (`{type, name, children, ...}`) expects nesting, not a flat map.
+fn syntax_node_to_json(model: &bitvue_engine::SyntaxModel, node_id: &str) -> serde_json::Value {
+    let Some(node) = model.nodes.get(node_id) else {
+        return serde_json::Value::Null;
+    };
+    let children: Vec<serde_json::Value> = node
+        .children
+        .iter()
+        .map(|child_id| syntax_node_to_json(model, child_id))
+        .collect();
+    serde_json::json!({
+        "type": node.field_name,
+        "name": node.field_name,
+        "value": node.value,
+        "bit_range": { "start_bit": node.bit_range.start_bit, "end_bit": node.bit_range.end_bit },
+        "children": children,
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct GetFrameSyntaxParams {
+    stream: String,
+    frame_index: usize,
+}
+
+/// Lazy, per-unit syntax tree (AV1 only so far) via `bitvue_indexer::get_frame_syntax` -- not a
+/// `Core::handle_command` variant, same reasoning as `index_stream`/`get_stream_info`/
+/// `get_frames_chunk` (see this file's module doc). Unlike those, failure here IS a wire error
+/// (`WireErrorCode::NotFound`/`InvalidData`) rather than an `{indexed: false}`-style payload --
+/// there's no meaningful partial result for "this frame's syntax tree" the way there is for
+/// "nothing indexed yet."
+fn get_frame_syntax(core: &Core, request: &Request) -> Response {
+    let params: GetFrameSyntaxParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    let stream = match parse_stream_id(request.id, &params.stream) {
+        Ok(s) => s,
+        Err(response) => return response,
+    };
+
+    match bitvue_indexer::get_frame_syntax(core, stream, params.frame_index) {
+        Ok(model) => {
+            let tree = syntax_node_to_json(&model, &model.root_id);
+            Response::success(request.id, tree)
+        }
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
         ),
     }
 }
@@ -1556,5 +1628,71 @@ mod tests {
         assert_eq!(result["indexed"], false);
         assert_eq!(result["total_count"], 0);
         assert_eq!(result["units"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn get_frame_syntax_end_to_end_returns_a_real_nested_tree() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        dispatch(
+            &core,
+            &Request {
+                id: 109,
+                method: "index_stream".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 110,
+                method: "get_frame_syntax".to_string(),
+                params: serde_json::json!({"stream": "A", "frame_index": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let tree = response.result.unwrap();
+        let children = tree["children"]
+            .as_array()
+            .expect("root should have a children array");
+        assert!(
+            !children.is_empty(),
+            "expected real syntax fields under the root, got {tree:?}"
+        );
+        assert!(tree["name"].as_str().is_some());
+    }
+
+    #[test]
+    fn get_frame_syntax_before_indexing_is_a_wire_error_not_a_crash() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        // Deliberately not calling index_stream first.
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 111,
+                method: "get_frame_syntax".to_string(),
+                params: serde_json::json!({"stream": "A", "frame_index": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    #[test]
+    fn get_frame_syntax_unknown_stream_id_is_invalid_data() {
+        let core = Core::new();
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 112,
+                method: "get_frame_syntax".to_string(),
+                params: serde_json::json!({"stream": "Z", "frame_index": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::InvalidData);
     }
 }

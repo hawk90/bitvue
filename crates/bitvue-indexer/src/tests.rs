@@ -122,3 +122,60 @@ fn index_stream_reports_a_diagnostic_for_non_ivf_data() {
         "expected an honest diagnostic instead of a fabricated result: {events:?}"
     );
 }
+
+#[test]
+fn get_frame_syntax_returns_a_real_tree_for_the_first_frame() {
+    use crate::get_frame_syntax;
+
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    index_stream(&core, StreamId::A);
+
+    let model = get_frame_syntax(&core, StreamId::A, 0).expect("get_frame_syntax should succeed");
+
+    assert!(!model.nodes.is_empty(), "expected a non-empty syntax tree");
+    let root = model
+        .nodes
+        .get(&model.root_id)
+        .expect("root_id should resolve to a real node");
+    assert!(
+        !root.children.is_empty(),
+        "root should have child fields (obu header etc.)"
+    );
+
+    // Written into StreamState.syntax too, so SelectBitRange's on-demand nearest-node lookup has
+    // something real to search against afterward.
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    assert!(
+        state.syntax.is_some(),
+        "get_frame_syntax should populate StreamState.syntax"
+    );
+}
+
+#[test]
+fn get_frame_syntax_errors_honestly_when_index_stream_has_not_run() {
+    use crate::get_frame_syntax;
+
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    // Deliberately not calling index_stream first -- state.units is still None.
+
+    let result = get_frame_syntax(&core, StreamId::A, 0);
+    assert!(
+        result.is_err(),
+        "expected an error, not a panic or fabricated tree"
+    );
+}
+
+#[test]
+fn get_frame_syntax_errors_for_an_out_of_range_frame_index() {
+    use crate::get_frame_syntax;
+
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    index_stream(&core, StreamId::A);
+
+    let result = get_frame_syntax(&core, StreamId::A, 999_999);
+    assert!(result.is_err());
+}
