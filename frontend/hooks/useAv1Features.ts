@@ -10,11 +10,67 @@
  */
 
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { Av1FeaturesData } from "../components/panels/OverlayRenderer/types";
+import {
+  getAv1Features as bridgeGetAv1Features,
+  type Av1FeaturesWireResult,
+} from "../services/electronBridgeService";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("useAv1Features");
+
+/** Translates the bridge's snake_case wire shape (matching bitvue-sidecar's own field naming
+ *  directly) into this hook's camelCase `Av1FeaturesData` -- the two shapes predate each other by
+ *  design (see electronBridgeService.ts's wire-type doc comment), so this is the boundary where
+ *  they meet. */
+function wireToAv1FeaturesData(data: Av1FeaturesWireResult): Av1FeaturesData {
+  return {
+    frameIndex: data.frame_index,
+    cdef: data.cdef
+      ? {
+          width: data.cdef.width,
+          height: data.cdef.height,
+          blockSize: data.cdef.block_size,
+          blocks: data.cdef.blocks,
+          damping: data.cdef.damping,
+          yPrimaryStrength: data.cdef.y_primary_strength,
+          ySecondaryStrength: data.cdef.y_secondary_strength,
+        }
+      : undefined,
+    loopRestoration: data.loop_restoration
+      ? {
+          width: data.loop_restoration.width,
+          height: data.loop_restoration.height,
+          unitSize: data.loop_restoration.unit_size,
+          yType: data.loop_restoration.y_type,
+          units: data.loop_restoration.units.map((u) => ({
+            x: u.x,
+            y: u.y,
+            size: u.size,
+            restorationType: u.restoration_type,
+          })),
+        }
+      : undefined,
+    filmGrain: data.film_grain
+      ? {
+          enabled: data.film_grain.enabled,
+          seed: data.film_grain.seed,
+          scalingShift: data.film_grain.scaling_shift,
+          arCoeffLag: data.film_grain.ar_coeff_lag,
+          chromaScalingFromLuma: data.film_grain.chroma_scaling_from_luma,
+          overlap: data.film_grain.overlap,
+        }
+      : undefined,
+    superResolution: data.super_resolution
+      ? {
+          enabled: data.super_resolution.enabled,
+          scaleDenominator: data.super_resolution.scale_denominator,
+          upscaledWidth: data.super_resolution.upscaled_width,
+          upscaledHeight: data.super_resolution.upscaled_height,
+        }
+      : undefined,
+  };
+}
 
 /** Modes that require AV1 feature data from the backend. */
 const AV1_FEATURE_MODES = new Set([
@@ -47,11 +103,9 @@ export function useAv1Features(
     const fetchFeatures = async () => {
       setLoading(true);
       try {
-        const data = await invoke<Av1FeaturesData>("get_av1_features", {
-          frameIndex,
-        });
+        const data = await bridgeGetAv1Features(frameIndex);
         if (!cancelled) {
-          setAv1Features(data);
+          setAv1Features(wireToAv1FeaturesData(data));
         }
       } catch (err) {
         if (!cancelled) {

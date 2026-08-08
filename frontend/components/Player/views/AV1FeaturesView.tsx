@@ -8,9 +8,9 @@
  * - Super Resolution
  */
 
-import { invoke } from "@tauri-apps/api/core";
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
+import { getAv1Features } from "../../../services/electronBridgeService";
 
 interface AV1FeaturesViewProps {
   frame: FrameInfo | null;
@@ -88,50 +88,7 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
       return;
     }
 
-    invoke<{
-      frame_index: number;
-      cdef: {
-        width: number;
-        height: number;
-        block_size: number;
-        blocks: {
-          x: number;
-          y: number;
-          size: number;
-          direction: number;
-          strength: number;
-        }[];
-        damping: number;
-        y_primary_strength: number;
-        y_secondary_strength: number;
-      } | null;
-      loop_restoration: {
-        width: number;
-        height: number;
-        unit_size: number;
-        y_type: number;
-        units: {
-          x: number;
-          y: number;
-          size: number;
-          restoration_type: number;
-        }[];
-      } | null;
-      film_grain: {
-        enabled: boolean;
-        seed: number;
-        scaling_shift: number;
-        ar_coeff_lag: number;
-        chroma_scaling_from_luma: boolean;
-        overlap: boolean;
-      } | null;
-      super_resolution: {
-        enabled: boolean;
-        scale_denominator: number;
-        upscaled_width: number;
-        upscaled_height: number;
-      } | null;
-    }>("get_av1_features", { frameIndex: frame.frame_index })
+    getAv1Features(frame.frame_index)
       .then((data) => {
         if (data.cdef) {
           setCdefBlocks(

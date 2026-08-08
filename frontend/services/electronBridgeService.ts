@@ -32,6 +32,69 @@
 import type { YUVFrame } from "../types/yuv";
 import type { FrameAnalysisData } from "../types/video";
 
+// -- get_av1_features wire shapes ----------------------------------------------------------------
+//
+// Snake_case, matching bitvue-sidecar's av1_features module directly (not the camelCase
+// Av1FeaturesData in components/panels/OverlayRenderer/types.ts -- that's a separate,
+// pre-existing consumer shape; useAv1Features.ts translates between the two at its boundary).
+
+export interface Av1CdefBlockWire {
+  x: number;
+  y: number;
+  size: number;
+  direction: number;
+  strength: number;
+}
+
+export interface Av1CdefDataWire {
+  width: number;
+  height: number;
+  block_size: number;
+  blocks: Av1CdefBlockWire[];
+  damping: number;
+  y_primary_strength: number;
+  y_secondary_strength: number;
+}
+
+export interface Av1RestorationUnitWire {
+  x: number;
+  y: number;
+  size: number;
+  restoration_type: number;
+}
+
+export interface Av1LoopRestorationDataWire {
+  width: number;
+  height: number;
+  unit_size: number;
+  y_type: number;
+  units: Av1RestorationUnitWire[];
+}
+
+export interface Av1FilmGrainDataWire {
+  enabled: boolean;
+  seed: number;
+  scaling_shift: number;
+  ar_coeff_lag: number;
+  chroma_scaling_from_luma: boolean;
+  overlap: boolean;
+}
+
+export interface Av1SuperResDataWire {
+  enabled: boolean;
+  scale_denominator: number;
+  upscaled_width: number;
+  upscaled_height: number;
+}
+
+export interface Av1FeaturesWireResult {
+  frame_index: number;
+  cdef: Av1CdefDataWire | null;
+  loop_restoration: Av1LoopRestorationDataWire | null;
+  film_grain: Av1FilmGrainDataWire | null;
+  super_resolution: Av1SuperResDataWire | null;
+}
+
 export type StreamId = "A" | "B";
 
 /** Shape of the JSON-mapped `bitvue_engine::Event` values the sidecar sends back — see
@@ -242,6 +305,7 @@ declare global {
         amplify?: number,
       ) => Promise<BridgeDecodedYuvFrame>;
       getFrameAnalysis: (frameIndex: number) => Promise<FrameAnalysisData>;
+      getAv1Features: (frameIndex: number) => Promise<Av1FeaturesWireResult>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -426,6 +490,15 @@ export async function getFrameAnalysis(
   frameIndex: number,
 ): Promise<FrameAnalysisData> {
   return requireBridge().getFrameAnalysis(frameIndex);
+}
+
+/** CDEF/loop-restoration/film-grain/super-resolution data for one frame of stream A. AV1/IVF
+ *  only. Throws on failure (frame out of range, stream not open, or a stream using short
+ *  reference-frame signaling -- see bitvue_av1_codec::frame_header_full's module doc). */
+export async function getAv1Features(
+  frameIndex: number,
+): Promise<Av1FeaturesWireResult> {
+  return requireBridge().getAv1Features(frameIndex);
 }
 
 export interface OpenFileDialogFilter {

@@ -138,6 +138,10 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("get_frame_analysis", { frame_index: frameIndex });
   });
 
+  ipcMain.handle("bitvue:getAv1Features", async (_event, frameIndex: number) => {
+    return requireSidecar().request("get_av1_features", { frame_index: frameIndex });
+  });
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -367,6 +371,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const decodedBytesHex = Array.from(new Uint8Array(Object.values(decoded.bytes)))
           .map(b => b.toString(16).padStart(2, "0")).join("");
         const frameAnalysis = await window.bitvue.getFrameAnalysis(0);
+        const av1Features = await window.bitvue.getAv1Features(0);
 
         return {
           documentTitle: document.title,
@@ -392,6 +397,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           decodedHeight: decoded.height,
           decodedBytesHex,
           frameAnalysis,
+          av1Features,
         };
       })()
     `);
@@ -486,6 +492,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       (result.frameAnalysis?.qp_grid?.qp?.length ?? 0) > 0 &&
       (result.frameAnalysis?.partition_grid?.blocks?.length ?? 0) > 0;
     console.log("[selftest] get_frame_analysis OK:", frameAnalysisOk);
+    const av1FeaturesOk =
+      result.av1Features?.frame_index === 0 &&
+      result.av1Features?.cdef?.width === 320 &&
+      result.av1Features?.cdef?.height === 240 &&
+      (result.av1Features?.cdef?.blocks?.length ?? 0) > 0;
+    console.log("[selftest] get_av1_features OK:", av1FeaturesOk);
     console.log(
       "[selftest] debug YUV: load OK:", debugYuvLoadOk,
       " reference bytes match decoded OK:", debugYuvReferenceOk,
@@ -523,7 +535,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvMetricsOk &&
       debugYuvDiffOk &&
       debugYuvFindFirstDiffOk &&
-      frameAnalysisOk
+      frameAnalysisOk &&
+      av1FeaturesOk
         ? 0
         : 1;
   } catch (err) {
