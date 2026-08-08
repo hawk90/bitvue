@@ -259,6 +259,14 @@ kind: 0=control  1=data  2=event(sidecar가 먼저 보내는 알림, id=0)
 
 **타이밍 기반 증명은 없음, 의도적으로.** "느린 요청이 빠른 요청을 막지 않는다"는 걸 실제 지연시간 측정으로 보여주려면 인위적으로 느린 테스트 커맨드가 필요한데, 지금 커맨드가 전부 서브밀리초라 그런 커맨드를 진짜 제품 커맨드 세트에 끼워 넣는 건 오염이라고 판단해 안 함. 지금 검증된 건 아키텍처적 정확성(스레드 안전, 데드락 없음, 종료 시 유실 없음)이지 체감 성능이 아님 — 실제로 느린 커맨드가 생기면 그때 latency-hiding을 실측할 것.
 
+### `bitvue-sidecar` 커맨드 폭 확장 — multi-sync 4종 (2026-08-08)
+
+**추가:** `select_unit`/`select_syntax`/`select_bit_range` — `select_frame`과 같은 "Selection commands (Tri-sync)" 그룹에 속한 `bitvue_core::Command` variant를 그대로 매핑. **새 엔진 작업 없음** — `Core::handle_command`가 이미 셋 다 처리하고 `Event::SelectionUpdated`를 반환함(`select_bit_range`는 Core 내부에서 알아서 가장 가까운 syntax node를 찾아 매칭까지 해줌 — sidecar가 그 매핑을 할 필요 없음). 파라미터 타입은 `bitvue_core::{UnitKey, BitRange}`를 그대로 참고: `UnitKey{stream,unit_type:String,offset:u64,size:usize}`, `BitRange{start_bit:u64,end_bit:u64}`.
+
+이걸로 `SelectionState`(`stream_id/temporal/cursor/unit/syntax_node/bit_range/source_view`)가 커버하는 7개 multi-sync 뷰 중 Ref Graph·Metrics를 뺀 5개(Syntax tree/Player/Timeline/Hex/QP-heatmap) 전부에 대응하는 wire 커맨드가 존재하게 됨(`select_frame`=Player/Timeline/QP, `select_unit`=구조 단위, `select_syntax`=Syntax tree, `select_bit_range`=Hex). 나머지 2개는 여전히 `SelectionState` 필드 자체가 없어서(이전 critical-review 기록 참조) sidecar 작업이 아니라 `bitvue-core` 설계 작업으로 남아있음.
+
+**검증:** `cargo test -p bitvue-sidecar` 유닛 23개(신규 6개: 4커맨드×성공/잘못된 stream id, 단 `select_syntax`/`select_bit_range`는 성공 케이스 1개씩만) + 기존 통합 2개, 전부 통과. 실제 컴파일된 바이너리에 `hello`→`select_unit`→`select_syntax`→`select_bit_range`를 한 배치로 파이프해 4개 응답 전부 `ok:true` + 올바른 `SelectionUpdated` 확인(서브프로세스, mock 아님). `cargo fmt --check`/`cargo check --workspace` 클린.
+
 ### 확정 순서
 
 ```
