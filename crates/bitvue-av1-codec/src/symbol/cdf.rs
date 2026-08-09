@@ -161,6 +161,28 @@ pub struct CdfContext {
     /// General diff CDF for reading variable-length differences
     /// Used for delta_q_abs when larger values are needed
     diff_cdf: Vec<u16>,
+
+    /// Residual coefficient CDFs -- see `residual` module doc (`symbol/mod.rs`) for why these are
+    /// deliberately context-*independent* (one representative CDF per symbol kind, not indexed by
+    /// neighbor levels / tx-size-context / plane / is_inter like the real spec's Section 9.24
+    /// tables) -- same simplification precedent as every other CDF in this struct, just applied
+    /// to a syntax element where getting *some* real value beats the previous behavior of reading
+    /// nothing at all.
+    /// `txb_skip_cdf`: all_zero flag for one transform block (2 symbols).
+    txb_skip_cdf: Vec<u16>,
+    /// `eob_pt` CDFs, one per coefficient-count class (16/64/256/1024 -- indices 0..=3), each
+    /// uniform over its alphabet (5/7/9/11 symbols respectively; see `eob_pt_cdf_for_tx_size`).
+    eob_pt_cdfs: [Vec<u16>; 4],
+    /// `coeff_base_eob` -- level (1..=3) for the highest-scan-order nonzero coefficient (3 symbols).
+    coeff_base_eob_cdf: Vec<u16>,
+    /// `coeff_base` -- level (0..=3) for every other coefficient position (4 symbols).
+    coeff_base_cdf: Vec<u16>,
+    /// `coeff_br` -- range-extension increment (0..=3), read in a loop while extending a level
+    /// past `NUM_BASE_LEVELS` (4 symbols).
+    coeff_br_cdf: Vec<u16>,
+    /// `dc_sign` -- sign of the DC (position 0) coefficient (2 symbols). AC coefficient signs are
+    /// read as literal (uniform) bits per spec, not CDF-coded.
+    dc_sign_cdf: Vec<u16>,
 }
 
 impl CdfContext {
@@ -334,6 +356,50 @@ impl CdfContext {
             CDF_SCALE,                        // 5+: 1%
         ];
 
+        // txb_skip: most transform blocks within a non-skip CU are still fully zero.
+        let txb_skip_cdf = vec![0, (CDF_SCALE as f32 * 0.35) as u16, CDF_SCALE];
+
+        // eob_pt: uniform over the alphabet for each coefficient-count class. Alphabet sizes
+        // (5/7/9/11) match the real spec's eob_pt_16/64/256/1024 table sizes -- chosen so the
+        // maximum representable eob for the largest symbol exactly equals the class's real
+        // coefficient count (2^(num_symbols-1) == 16/64/256/1024), even though the probabilities
+        // themselves are uniform rather than spec-exact.
+        let eob_pt_cdfs = [
+            PartitionCdf::uniform(5).cdf,
+            PartitionCdf::uniform(7).cdf,
+            PartitionCdf::uniform(9).cdf,
+            PartitionCdf::uniform(11).cdf,
+        ];
+
+        // coeff_base_eob: the EOB coefficient is never zero (level 1..=3), skewed toward 1.
+        let coeff_base_eob_cdf = vec![
+            0,
+            (CDF_SCALE as f32 * 0.60) as u16,
+            (CDF_SCALE as f32 * 0.85) as u16,
+            CDF_SCALE,
+        ];
+
+        // coeff_base: most non-EOB positions are zero.
+        let coeff_base_cdf = vec![
+            0,
+            (CDF_SCALE as f32 * 0.70) as u16,
+            (CDF_SCALE as f32 * 0.85) as u16,
+            (CDF_SCALE as f32 * 0.95) as u16,
+            CDF_SCALE,
+        ];
+
+        // coeff_br: range-extension loop should terminate quickly most of the time.
+        let coeff_br_cdf = vec![
+            0,
+            (CDF_SCALE as f32 * 0.55) as u16,
+            (CDF_SCALE as f32 * 0.80) as u16,
+            (CDF_SCALE as f32 * 0.93) as u16,
+            CDF_SCALE,
+        ];
+
+        // dc_sign: uniform (no real reason to bias this).
+        let dc_sign_cdf = vec![0, CDF_SCALE / 2, CDF_SCALE];
+
         Self {
             partition_cdfs,
             skip_cdf,
@@ -346,6 +412,12 @@ impl CdfContext {
             delta_q_cdf,
             delta_q_sign_cdf,
             diff_cdf,
+            txb_skip_cdf,
+            eob_pt_cdfs,
+            coeff_base_eob_cdf,
+            coeff_base_cdf,
+            coeff_br_cdf,
+            dc_sign_cdf,
         }
     }
 
@@ -478,6 +550,44 @@ impl CdfContext {
     /// Used when delta_q_abs is >= 4
     pub fn get_diff_cdf(&self) -> &[u16] {
         &self.diff_cdf
+    }
+
+    /// Get `txb_skip` (all_zero) CDF for one transform block.
+    pub fn get_txb_skip_cdf(&self) -> &[u16] {
+        &self.txb_skip_cdf
+    }
+
+    /// Get `eob_pt` CDF for a transform block of `tx_size_px` pixels per side (4/8/16/32/64).
+    /// 64x64 shares the 1024-coefficient class with 32x32 (real AV1 caps the coefficient scan at
+    /// the top-left 32x32 sub-area for larger transforms).
+    pub fn get_eob_pt_cdf(&self, tx_size_px: u32) -> &[u16] {
+        let class = match tx_size_px {
+            0..=4 => 0,
+            5..=8 => 1,
+            9..=16 => 2,
+            _ => 3, // 32 and 64
+        };
+        &self.eob_pt_cdfs[class]
+    }
+
+    /// Get `coeff_base_eob` CDF (level 1..=3 for the highest-scan-order nonzero coefficient).
+    pub fn get_coeff_base_eob_cdf(&self) -> &[u16] {
+        &self.coeff_base_eob_cdf
+    }
+
+    /// Get `coeff_base` CDF (level 0..=3 for every other coefficient position).
+    pub fn get_coeff_base_cdf(&self) -> &[u16] {
+        &self.coeff_base_cdf
+    }
+
+    /// Get `coeff_br` CDF (range-extension increment 0..=3).
+    pub fn get_coeff_br_cdf(&self) -> &[u16] {
+        &self.coeff_br_cdf
+    }
+
+    /// Get `dc_sign` CDF (sign of the DC coefficient).
+    pub fn get_dc_sign_cdf(&self) -> &[u16] {
+        &self.dc_sign_cdf
     }
 }
 

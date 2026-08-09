@@ -185,4 +185,45 @@ mod tests {
         assert_eq!(index.get_cu_index(1, 0), Some(1)); // Second CU
         assert_eq!(index.get_cu_index(0, 1), None); // No CU here
     }
+
+    const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../../test_data/av1_test.ivf");
+
+    fn find_seq_header_bytes(frames: &[crate::ivf::IvfFrame]) -> Option<Vec<u8>> {
+        for frame in frames.iter().take(8) {
+            let mut iter = crate::obu::ObuIterator::new(&frame.data);
+            while let Some(Ok(found)) = iter.next_obu_with_offset() {
+                if found.obu.header.obu_type == crate::obu::ObuType::SequenceHeader {
+                    return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
+                }
+            }
+        }
+        None
+    }
+
+    /// Regression test for a real desync/crash bug: `parse_coding_unit` used to never read AV1's
+    /// `residual()` syntax for non-skip coding units, which silently desynced the shared
+    /// `SymbolDecoder` from every later syntax element in a tile -- confirmed to eventually run
+    /// the arithmetic decoder past the end of real tile bytes and panic on real fixture frames
+    /// (frame 100, then frame 19 after a partial fix, before `SymbolDecoder::read_residual_block`
+    /// closed the gap). Parses every single frame of the real fixture through the full real-CU
+    /// path to guard against regressing back to that state.
+    #[test]
+    fn real_fixture_every_frame_parses_coding_units_without_panicking_or_erroring() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        for (idx, frame) in frames.iter().enumerate() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let result = parse_all_coding_units(&parsed);
+            assert!(
+                result.is_ok(),
+                "frame {idx} failed to parse coding units: {:?}",
+                result.err()
+            );
+        }
+    }
 }

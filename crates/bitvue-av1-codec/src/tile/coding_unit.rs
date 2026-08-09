@@ -25,8 +25,20 @@
 //! - Parse transform sizes
 //! - Parse quantization info
 //! - Parse residuals (optional for visualization)
+//!
+//! ## Residual reading is not optional -- it was a real desync bug, not a scope choice
+//!
+//! `parse_coding_unit` used to return immediately after `delta_q`, never reading the AV1 spec's
+//! `residual()` syntax element for non-skip coding units. Because a tile's coefficient data is
+//! arithmetic-coded with no byte-aligned skip points, this silently desynced the shared
+//! `SymbolDecoder`'s position from every subsequent syntax element in the tile as soon as any CU
+//! had `skip == false` -- confirmed via a real crash (`get_codec_extended_info` on frame 100 of
+//! the real fixture panicked in `ArithmeticDecoder::refill` once the drift exhausted the tile's
+//! real bytes). `SymbolDecoder::read_residual_block` (see its own doc for the CDF/context
+//! simplifications) now reads a real (if non-spec-exact) residual read sequence for every
+//! non-skip CU's transform blocks, closing the gap that caused this.
 
-use crate::symbol::SymbolDecoder;
+use crate::symbol::{ResidualBlockStats, SymbolDecoder};
 use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
@@ -320,6 +332,13 @@ pub struct CodingUnit {
     /// QP value (quantization parameter)
     /// None for blocks that don't have QP (e.g., skip blocks)
     pub qp: Option<i16>,
+
+    /// Aggregate residual coefficient statistics, summed across every transform block tiling
+    /// this coding unit. `None` for skipped CUs (no residual read at all -- not the same as a
+    /// non-skip CU whose transform blocks all happened to signal `all_zero`, which is `Some` with
+    /// zero counts). See `SymbolDecoder::read_residual_block`'s doc for what this does and
+    /// doesn't capture.
+    pub residual: Option<ResidualBlockStats>,
 }
 
 impl CodingUnit {
@@ -337,6 +356,7 @@ impl CodingUnit {
             mv: [MotionVector::zero(), MotionVector::zero()],
             tx_size,
             qp: None,
+            residual: None,
         }
     }
 
@@ -486,6 +506,25 @@ pub fn parse_coding_unit(
         cu.qp = Some(current_qp);
         current_qp
     };
+
+    // Read residual() for every transform block tiling this CU -- required for correct bitstream
+    // alignment whenever skip == false, not just for producing residual statistics. See this
+    // module's doc and `SymbolDecoder::read_residual_block`'s doc.
+    if !cu.skip {
+        let tx_px = cu.tx_size.size();
+        let tx_cols = width.div_ceil(tx_px).max(1);
+        let tx_rows = height.div_ceil(tx_px).max(1);
+        let mut summary = ResidualBlockStats::default();
+        for _ in 0..(tx_cols * tx_rows) {
+            let block = decoder.read_residual_block(tx_px)?;
+            summary.nonzero_count += block.nonzero_count;
+            summary.sum_abs_level += block.sum_abs_level;
+            summary.max_level = summary.max_level.max(block.max_level);
+        }
+        cu.residual = Some(summary);
+    } else {
+        cu.residual = None;
+    }
 
     Ok((cu, new_qp))
 }

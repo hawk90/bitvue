@@ -342,6 +342,142 @@ impl<'a> SymbolDecoder<'a> {
     pub fn exit(&self) -> bool {
         self.decoder.value == 0
     }
+
+    /// Read one transform block's residual coefficients (AV1 spec Section 5.11.39 `coeffs()`),
+    /// returning summary statistics rather than a full per-position coefficient array -- this
+    /// crate has no dequantization/inverse-transform/pixel-reconstruction stage, so individual
+    /// coefficient positions aren't independently useful, only their aggregate magnitude.
+    ///
+    /// `tx_size_px` is the transform block's size in pixels per side (4/8/16/32/64).
+    ///
+    /// # Known simplifications (see `symbol/cdf.rs`'s residual-CDF doc for the CDF side)
+    ///
+    /// - **No neighbor/level context**: real AV1 derives `txb_skip`/`coeff_base`/`coeff_br`
+    ///   context from already-decoded neighbor coefficient levels and the above/left transform
+    ///   block state. This uses one fixed representative CDF per symbol kind regardless of
+    ///   position or neighbors -- consistent with `skip`/`intra_mode`/`inter_mode` already doing
+    ///   the same in this codebase (see `CdfContext::new`'s doc).
+    /// - **`eob_extra` bits are uniform literal bits**, not the spec's context-coded first bit --
+    ///   the resulting `eob` value only needs to land in the right *range*, not match the spec's
+    ///   exact encoding, since nothing here reconstructs pixels from it.
+    /// - **Single combined level+sign+golomb pass** per position (descending scan order) instead
+    ///   of the spec's two separate passes (all levels, then all signs) -- doesn't change which
+    ///   information gets read, only its order, which is irrelevant once the CDFs themselves are
+    ///   already non-spec-exact.
+    /// - **Golomb extension is a bounded, always-terminating read** (capped at 20 length bits) --
+    ///   not necessarily bit-exact against the spec's `read_golomb`, but always produces a real,
+    ///   finite level value.
+    /// - **No real `tx_size()` bitstream reads**: this crate's `CodingUnit.tx_size` is a
+    ///   dimension-based heuristic (`TxSize::from_dimensions`), not read from the bitstream (see
+    ///   its own doc) -- residual reading here reuses that same heuristic size, inheriting the
+    ///   same pre-existing gap rather than introducing a new one.
+    ///
+    /// None of these change the *shape* of the read sequence (an `all_zero` check, then --  when
+    /// not all-zero -- an `eob_pt` symbol, `eob` extra bits, and exactly `eob` per-position level/
+    /// sign/golomb reads) -- which is what matters for keeping the shared arithmetic decoder's
+    /// position advancing by a plausible amount instead of not reading residual data at all (see
+    /// `crate::tile::coding_unit`'s module doc for why that previously caused real desync/crashes
+    /// on real streams).
+    pub fn read_residual_block(&mut self, tx_size_px: u32) -> Result<ResidualBlockStats> {
+        let txb_skip_cdf = self.cdf_context.get_txb_skip_cdf();
+        let all_zero = self.decoder.read_symbol(txb_skip_cdf)? == 1;
+        if all_zero {
+            return Ok(ResidualBlockStats {
+                all_zero: true,
+                ..Default::default()
+            });
+        }
+
+        let eob_pt_cdf = self.cdf_context.get_eob_pt_cdf(tx_size_px);
+        let eob_pt = self.decoder.read_symbol(eob_pt_cdf)? as u32 + 1;
+
+        let eob: u32 = if eob_pt <= 2 {
+            eob_pt
+        } else {
+            let num_extra_bits = eob_pt - 2;
+            let base = 1u32 << (eob_pt - 2);
+            let mut extra = 0u32;
+            for _ in 0..num_extra_bits {
+                let bit = self.decoder.read_bool(16384)? as u32;
+                extra = (extra << 1) | bit;
+            }
+            base + 1 + extra
+        };
+
+        let mut stats = ResidualBlockStats {
+            all_zero: false,
+            ..Default::default()
+        };
+
+        for c in (0..eob).rev() {
+            let base_level = if c == eob - 1 {
+                let cdf = self.cdf_context.get_coeff_base_eob_cdf();
+                self.decoder.read_symbol(cdf)? as u32 + 1
+            } else {
+                let cdf = self.cdf_context.get_coeff_base_cdf();
+                self.decoder.read_symbol(cdf)? as u32
+            };
+
+            let mut level = base_level;
+            if level > 2 {
+                let coeff_br_cdf = self.cdf_context.get_coeff_br_cdf();
+                for _ in 0..4 {
+                    let br = self.decoder.read_symbol(coeff_br_cdf)? as u32;
+                    level += br;
+                    if br < 3 {
+                        break;
+                    }
+                }
+            }
+
+            if level > 0 {
+                if c == 0 {
+                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf();
+                    self.decoder.read_symbol(dc_sign_cdf)?;
+                } else {
+                    self.decoder.read_bool(16384)?;
+                }
+
+                if level > 14 {
+                    let mut length = 0u32;
+                    loop {
+                        length += 1;
+                        let terminate = self.decoder.read_bool(16384)?;
+                        if terminate || length >= 20 {
+                            break;
+                        }
+                    }
+                    let mut extra = 1u32;
+                    for _ in 0..length.saturating_sub(1) {
+                        let bit = self.decoder.read_bool(16384)? as u32;
+                        extra = (extra << 1) | bit;
+                    }
+                    level = extra + 14;
+                }
+
+                stats.nonzero_count += 1;
+                stats.sum_abs_level += level as u64;
+                stats.max_level = stats.max_level.max(level.min(u16::MAX as u32) as u16);
+            }
+        }
+
+        Ok(stats)
+    }
+}
+
+/// Summary statistics for one transform block's residual coefficients -- see
+/// `SymbolDecoder::read_residual_block`'s doc for what this deliberately does and doesn't capture
+/// (aggregate magnitude, not per-position values or real pixel-domain energy).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResidualBlockStats {
+    /// True if `txb_skip` (all_zero) was signaled -- every other field is 0 in that case.
+    pub all_zero: bool,
+    /// Number of nonzero coefficient levels read.
+    pub nonzero_count: u32,
+    /// Sum of absolute coefficient levels (a rough energy proxy).
+    pub sum_abs_level: u64,
+    /// Largest single coefficient level read.
+    pub max_level: u16,
 }
 
 #[cfg(test)]

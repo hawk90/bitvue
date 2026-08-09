@@ -206,6 +206,7 @@ mod tests {
             mv: [MotionVector::zero(), MotionVector::zero()],
             tx_size: TxSize::from_dimensions(w, h),
             qp: None,
+            residual: None,
         }
     }
 

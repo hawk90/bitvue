@@ -370,9 +370,18 @@ impl<'a> ArithmeticDecoder<'a> {
 
         loop {
             if self.offset >= self.data.len() {
-                // Exhausted buffer: set remaining bits to 1
+                // Exhausted buffer: set remaining bits to 1. `c` can exceed the maximum valid
+                // shift amount for `usize` here -- the documented `cnt >= MIN_CNT` (-31)
+                // invariant alone permits `c` up to `EC_WIN_SIZE - MIN_CNT - 24` (71 on a 64-bit
+                // build), already past the 63-bit shift limit, independent of how the decoder got
+                // here. This is always the "no real data left" branch already inventing synthetic
+                // 1-bits, so clamping the shift amount doesn't reduce fidelity where none exists
+                // past this point -- it just avoids turning an already-degenerate state into a
+                // process-ending panic (found via a real crash on real fixture data once residual
+                // reading started actually consuming bits, see `coding_unit`'s module doc).
                 if c >= 0 {
-                    value |= !(!(0xFF_usize << c));
+                    let shift = c.min(EC_WIN_SIZE as i32 - 1) as u32;
+                    value |= !(!(0xFF_usize << shift));
                 }
                 break;
             }
