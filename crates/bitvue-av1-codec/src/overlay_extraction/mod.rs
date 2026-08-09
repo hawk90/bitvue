@@ -36,6 +36,7 @@
 
 mod cache;
 mod cu_parser;
+mod deblocking;
 mod mv_extractor;
 mod parser;
 mod partition;
@@ -73,6 +74,7 @@ pub fn strict_mode_enabled() -> bool {
 }
 
 // Re-export public API
+pub use deblocking::{extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge};
 pub use mv_extractor::{extract_mv_grid, extract_mv_grid_from_parsed};
 pub use parser::{
     extract_pixel_info, FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame, PixelInfo,

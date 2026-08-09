@@ -53,8 +53,8 @@
 
 use crate::bitreader::BitReader;
 use crate::frame_header::{
-    CdefInfo, FilmGrainInfo, FrameHeader, FrameType, LoopRestorationInfo, LoopRestorationType,
-    SuperResolutionInfo,
+    CdefInfo, FilmGrainInfo, FrameHeader, FrameType, LoopFilterInfo, LoopRestorationInfo,
+    LoopRestorationType, SuperResolutionInfo,
 };
 use crate::sequence::SequenceHeader;
 use bitvue_engine::{BitvueError, Result};
@@ -435,39 +435,61 @@ fn skip_delta_lf_params(
     Ok(())
 }
 
-fn skip_loop_filter_params(
+/// Parse `loop_filter_params()` per AV1 spec Section 5.9.11. Unlike `skip_loop_filter_params`
+/// (`crate::frame_header`), this retains every value -- needed by `get_deblocking_analysis` to
+/// report real per-plane filter levels/sharpness/deltas alongside boundary-strength derivation
+/// (see `overlay_extraction::deblocking`'s module doc for how BS itself is computed from
+/// coding-unit data, independent of these values).
+///
+/// Note: the spec's `loop_filter_delta_update` only rewrites deltas that are explicitly signaled
+/// (`update_ref_delta`/`update_mode_delta`); un-signaled deltas keep their *previous frame's*
+/// value (`PrevRefDeltas`/`PrevModeDeltas`, spec 7.20). This parser has no cross-frame delta
+/// state (unlike `RefFrameState`'s order-hint tracking, which is required for correct bit
+/// alignment) -- un-signaled deltas here reset to 0 rather than carrying forward. This only
+/// affects the *reported* delta values, never bit consumption (every delta's presence bit is
+/// still read correctly either way).
+fn parse_loop_filter_params(
     reader: &mut BitReader,
     num_planes: u8,
     coded_lossless: bool,
     allow_intrabc: bool,
-) -> Result<()> {
+) -> Result<LoopFilterInfo> {
     if coded_lossless || allow_intrabc {
-        return Ok(());
+        return Ok(LoopFilterInfo::default());
     }
-    let level0 = reader.read_bits(6)?;
-    let level1 = reader.read_bits(6)?;
-    if num_planes > 1 && (level0 != 0 || level1 != 0) {
-        reader.read_bits(6)?; // level[2]
-        reader.read_bits(6)?; // level[3]
+    let mut level = [0u8; 4];
+    level[0] = reader.read_bits(6)? as u8;
+    level[1] = reader.read_bits(6)? as u8;
+    if num_planes > 1 && (level[0] != 0 || level[1] != 0) {
+        level[2] = reader.read_bits(6)? as u8;
+        level[3] = reader.read_bits(6)? as u8;
     }
-    reader.read_bits(3)?; // sharpness
+    let sharpness = reader.read_bits(3)? as u8;
     let delta_enabled = reader.read_bit()?;
+    let mut ref_deltas = [0i8; NUM_REF_FRAMES];
+    let mut mode_deltas = [0i8; 2];
     if delta_enabled {
         let delta_update = reader.read_bit()?;
         if delta_update {
-            for _ in 0..NUM_REF_FRAMES {
+            for delta in ref_deltas.iter_mut() {
                 if reader.read_bit()? {
-                    reader.read_su(7)?; // ref delta, su(1+6)
+                    *delta = reader.read_su(7)? as i8;
                 }
             }
-            for _ in 0..2 {
+            for delta in mode_deltas.iter_mut() {
                 if reader.read_bit()? {
-                    reader.read_su(7)?; // mode delta, su(1+6)
+                    *delta = reader.read_su(7)? as i8;
                 }
             }
         }
     }
-    Ok(())
+    Ok(LoopFilterInfo {
+        level,
+        sharpness,
+        delta_enabled,
+        ref_deltas,
+        mode_deltas,
+    })
 }
 
 fn parse_cdef_params(
@@ -865,6 +887,7 @@ pub fn parse_frame_header_full(
             height: 0,
             upscaled_width: 0,
             upscaled_height: 0,
+            loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
             cdef_y_secondary_strength: 0,
@@ -1086,7 +1109,7 @@ pub fn parse_frame_header_full(
         base_q_idx == 0 && y_dc_delta_q.unwrap_or(0) == 0 && uv_dc_delta_q.unwrap_or(0) == 0;
     let all_lossless = coded_lossless && width == upscaled_width;
 
-    skip_loop_filter_params(
+    let loop_filter = parse_loop_filter_params(
         &mut reader,
         seq.color_config.num_planes,
         coded_lossless,
@@ -1160,6 +1183,7 @@ pub fn parse_frame_header_full(
         height,
         upscaled_width,
         upscaled_height,
+        loop_filter,
         cdef_damping: cdef.clone(),
         cdef_y_primary_strength: cdef.y_primary_strength,
         cdef_y_secondary_strength: cdef.y_secondary_strength,

@@ -48,6 +48,23 @@ impl LoopRestorationType {
     }
 }
 
+/// Loop filter (deblocking) parameters parsed from the frame header, per AV1 spec Section 5.9.11
+/// (`loop_filter_params()`).
+#[derive(Debug, Clone, Default)]
+pub struct LoopFilterInfo {
+    /// Per-plane filter levels: `[0]`=vertical luma edges, `[1]`=horizontal luma edges,
+    /// `[2]`=U, `[3]`=V (chroma levels only set when `num_planes > 1`).
+    pub level: [u8; 4],
+    pub sharpness: u8,
+    pub delta_enabled: bool,
+    /// Per-reference-frame delta (indexed by `RefFrame as usize`, `NUM_REF_FRAMES` = 8), only
+    /// meaningful when `delta_enabled`.
+    pub ref_deltas: [i8; 8],
+    /// Per-mode delta (`[0]` = ZEROMV, `[1]` = other inter modes), only meaningful when
+    /// `delta_enabled`.
+    pub mode_deltas: [i8; 2],
+}
+
 /// CDEF damping info parsed from the frame header
 #[derive(Debug, Clone, Default)]
 pub struct CdefInfo {
@@ -144,6 +161,8 @@ pub struct FrameHeader {
     pub upscaled_width: u32,
     /// Upscaled height (super-resolution)
     pub upscaled_height: u32,
+    /// Loop filter (deblocking) parameters
+    pub loop_filter: LoopFilterInfo,
     /// CDEF parameters
     pub cdef_damping: CdefInfo,
     /// Convenience alias: y primary CDEF strength
@@ -484,6 +503,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             height: 0,
             upscaled_width: 0,
             upscaled_height: 0,
+            loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
             cdef_y_secondary_strength: 0,
@@ -652,6 +672,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         height: 0,
         upscaled_width: 0,
         upscaled_height: 0,
+        loop_filter: LoopFilterInfo::default(),
         cdef_damping: CdefInfo::default(),
         cdef_y_primary_strength: 0,
         cdef_y_secondary_strength: 0,
