@@ -1070,6 +1070,38 @@ BS 3-4/1-2 가정). 타입체크 409파일/vitest 36실패-9파일 베이스라�
 **남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_residual_analysis` —
 3개.
 
+### get_codec_extended_info 구현 — 초기 스코핑보다 훨씬 작았던 케이스 (2026-08-09, 8617c1c/3dc4c4a)
+
+이전 스코핑에서 "HEVC scaling-list/VP9 prob-decode/VVC APS 파서 3개 신규, 남은 것 중 가장 큼"으로
+분류됐던 커맨드. 하지만 이 커맨드의 프론트 소비자 5개(QmTab/ProbsTab/ApsTab/RefListTab/
+StatisticsTab) 중 QmTab/ProbsTab/ApsTab은 **진짜 죽은 코드임을 재확인** — `bitvue-sidecar`가
+`bitvue-av1-codec`에만 의존하고 HEVC/VP9/VVC 디코드 경로가 전혀 없어서, 파일 확장자로 탭 버튼이
+보이더라도 뒤에 실제 데이터를 만들 방법이 없음. 실제 도달 가능한 소비자는 `RefListTab`(L0/L1
+참조 리스트)과 `StatisticsTab`(QP 히스토그램)뿐이고, 둘 다 이미 파싱된 데이터의 재조합이었음(신규
+파싱 없음) — "get_av1_features급 이상"이라던 초기 추정이 실제로는 완전히 뒤집힌 사례.
+
+`FrameHeader.ref_frame_idx`가 AV1의 실제 7개 참조 슬롯(REFS_PER_FRAME) 중 3개만 저장하고 있었음
+(나머지 4개는 이미 읽고 버리고 있었음) — `[u8;7]`로 확장. `FrameHeader.order_hint`도 지역 변수로만
+계산되고 구조체엔 한 번도 저장 안 되고 있었음 — 신규 필드 추가. 두 확장 다 "이미 파싱은 되고
+있었는데 저장을 안 하고 있었다"는 이번 세션의 반복 패턴과 같은 결의 사소한 확장(get_deblocking의
+두 버그처럼 "실행조차 안 되던 코드"는 아니고, 그냥 필드가 좁게 설계돼 있었을 뿐). 슬롯→
+(order_hint, frame_index, frame_type) 추적은 `av1_features`/`deblocking`과 같은 순차 스캔 +
+`refresh_frame_flags` 갱신 패턴 재사용, L0/L1 분류는 `skip_mode_params`가 이미 쓰던
+`relative_dist`(스펙 7.9.2 부호있는 order-hint 비교)를 `pub`으로 노출해 재사용. QP 히스토그램은
+기존 QP 그리드에 대한 단순 버킷팅.
+
+AV1은 HEVC식 long-term 마킹/weighted-prediction 신택스가 없어서 `long_term`은 항상 `false`,
+`weight`/`offset`은 항상 `null` — 프론트엔드 `RefEntry` 타입이 이미 nullable로 설계돼 있어 그대로
+맞음. `RefListTab.tsx`/`StatisticsTab.tsx`도 죽은 Tauri invoke(+불필요한 `path` 파라미터)였음 —
+bridge 이관, 다른 AV1 커맨드처럼 이미 열린 스트림 A 기준으로 통일. 검증: av1-codec 278 + sidecar
+106(신규 4개) 전부 통과, `ref_frame_idx` 타입 변경의 다른 소비자(`bitvue-mcp`/`bitvue-indexer`)도
+iterator 기반이라 회귀 없음 확인. 타입체크 409파일/vitest 36실패-9파일 베이스라인 그대로,
+`BITVUE_ELECTRON_SELFTEST`에 `getCodecExtendedInfo(5)`(실제 L0 참조가 있는 인터 프레임) 라운드
+추가, exit 0.
+
+**남은 것**: `create_compare_workspace`류, `get_residual_analysis` — 2개(전자는 죽은 UI라 저우선,
+후자는 AV1 잔차 CDF 심볼 디코드 신규 필요 — 이 세션에서 확인된 것 중 유일하게 진짜 큰 신규 작업).
+
 ### 확정 순서
 
 ```
