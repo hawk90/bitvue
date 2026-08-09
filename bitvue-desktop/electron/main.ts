@@ -146,6 +146,10 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("get_coding_flow_analysis", { frame_index: frameIndex });
   });
 
+  ipcMain.handle("bitvue:getDeblockingAnalysis", async (_event, frameIndex: number) => {
+    return requireSidecar().request("get_deblocking_analysis", { frame_index: frameIndex });
+  });
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -377,6 +381,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const frameAnalysis = await window.bitvue.getFrameAnalysis(0);
         const av1Features = await window.bitvue.getAv1Features(0);
         const codingFlow = await window.bitvue.getCodingFlowAnalysis(0);
+        const deblocking = await window.bitvue.getDeblockingAnalysis(0);
 
         return {
           documentTitle: document.title,
@@ -404,6 +409,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           frameAnalysis,
           av1Features,
           codingFlow,
+          deblocking,
         };
       })()
     `);
@@ -510,6 +516,13 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       (result.codingFlow?.stages?.length ?? 0) === 6 &&
       (result.codingFlow?.codec_features?.length ?? 0) > 0;
     console.log("[selftest] get_coding_flow_analysis OK:", codingFlowOk);
+    const deblockingOk =
+      result.deblocking?.frame_index === 0 &&
+      result.deblocking?.width === 320 &&
+      result.deblocking?.height === 240 &&
+      (result.deblocking?.edges?.length ?? 0) > 0 &&
+      result.deblocking?.stats?.total_edges === result.deblocking?.edges?.length;
+    console.log("[selftest] get_deblocking_analysis OK:", deblockingOk);
     console.log(
       "[selftest] debug YUV: load OK:", debugYuvLoadOk,
       " reference bytes match decoded OK:", debugYuvReferenceOk,
@@ -549,7 +562,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvFindFirstDiffOk &&
       frameAnalysisOk &&
       av1FeaturesOk &&
-      codingFlowOk
+      codingFlowOk &&
+      deblockingOk
         ? 0
         : 1;
   } catch (err) {

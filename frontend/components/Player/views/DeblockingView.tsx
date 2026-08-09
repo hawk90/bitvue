@@ -8,9 +8,9 @@
  * - Codec-specific deblocking parameters
  */
 
-import { invoke } from "@tauri-apps/api/core";
 import { memo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
+import { getDeblockingAnalysis } from "../../../services/electronBridgeService";
 
 interface DeblockingViewProps {
   frame: FrameInfo | null;
@@ -29,20 +29,22 @@ interface BoundaryEdge {
   bs: number; // Boundary strength
 }
 
+/** Real AV1 loop_filter_params() fields (spec 5.9.11) -- level[0]/[1] are luma
+ *  vertical/horizontal edges, level[2]/[3] are U/V (only set when num_planes > 1). */
 interface DeblockingParams {
-  betaOffset: number;
-  tcOffset: number;
-  filterStrength: number;
-  chromaEdge: boolean;
+  level: [number, number, number, number];
+  sharpness: number;
+  deltaEnabled: boolean;
+  refDeltas: number[];
+  modeDeltas: number[];
 }
 
-const CODEC_DEFAULT_PARAMS: Record<string, DeblockingParams> = {
-  AV1: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  HEVC: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  VVC: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  AVC: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
-  VP9: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: false },
-  AV3: { betaOffset: 0, tcOffset: 0, filterStrength: 1, chromaEdge: true },
+const DEFAULT_PARAMS: DeblockingParams = {
+  level: [0, 0, 0, 0],
+  sharpness: 0,
+  deltaEnabled: false,
+  refDeltas: [],
+  modeDeltas: [],
 };
 
 export const DeblockingView = memo(function DeblockingView({
@@ -52,9 +54,7 @@ export const DeblockingView = memo(function DeblockingView({
   codec = "Unknown",
 }: DeblockingViewProps) {
   const [boundaries, setBoundaries] = useState<BoundaryEdge[]>([]);
-  const [params, setParams] = useState<DeblockingParams>(
-    CODEC_DEFAULT_PARAMS[codec] || CODEC_DEFAULT_PARAMS["AV1"],
-  );
+  const [params, setParams] = useState<DeblockingParams>(DEFAULT_PARAMS);
   const [stats, setStats] = useState({
     totalBoundaries: 0,
     filteredBoundaries: 0,
@@ -68,55 +68,31 @@ export const DeblockingView = memo(function DeblockingView({
       return;
     }
 
-    invoke<{
-      frame_index: number;
-      width: number;
-      height: number;
-      boundaries: {
-        x: number;
-        y: number;
-        length: number;
-        orientation: string;
-        strength: number;
-        filtered: boolean;
-        bs: number;
-      }[];
-      params: {
-        beta_offset: number;
-        tc_offset: number;
-        filter_strength: number;
-        chroma_edge: boolean;
-      };
-      stats: {
-        total_boundaries: number;
-        filtered_boundaries: number;
-        strong_boundaries: number;
-        weak_boundaries: number;
-      };
-    }>("get_deblocking_analysis", { frameIndex: frame.frame_index })
+    getDeblockingAnalysis(frame.frame_index)
       .then((data) => {
         setBoundaries(
-          data.boundaries.map((b) => ({
-            x: b.x,
-            y: b.y,
-            length: b.length,
-            orientation: b.orientation as "vertical" | "horizontal",
-            strength: b.strength,
-            filtered: b.filtered,
-            bs: b.bs,
+          data.edges.map((e) => ({
+            x: e.x,
+            y: e.y,
+            length: e.length,
+            orientation: e.orientation,
+            strength: e.strength,
+            filtered: e.filtered,
+            bs: e.boundary_strength,
           })),
         );
         setParams({
-          betaOffset: data.params.beta_offset,
-          tcOffset: data.params.tc_offset,
-          filterStrength: data.params.filter_strength,
-          chromaEdge: data.params.chroma_edge,
+          level: data.params.level,
+          sharpness: data.params.sharpness,
+          deltaEnabled: data.params.delta_enabled,
+          refDeltas: data.params.ref_deltas,
+          modeDeltas: data.params.mode_deltas,
         });
         setStats({
-          totalBoundaries: data.stats.total_boundaries,
-          filteredBoundaries: data.stats.filtered_boundaries,
-          strongBoundaries: data.stats.strong_boundaries,
-          weakBoundaries: data.stats.weak_boundaries,
+          totalBoundaries: data.stats.total_edges,
+          filteredBoundaries: data.stats.filtered_edges,
+          strongBoundaries: data.stats.strong_edges,
+          weakBoundaries: data.stats.weak_edges,
         });
       })
       .catch(() => {
@@ -129,19 +105,21 @@ export const DeblockingView = memo(function DeblockingView({
       return "rgba(128, 128, 128, 0.2)";
     }
 
-    const intensity = edge.strength / 4;
-    if (edge.bs >= 3) {
-      // Strong boundary - red to yellow
+    // AV1 boundary strength is 0/1/2 (spec 7.14.2) -- 2 means an intra edge, 1 means an inter
+    // edge with coded residual, differing references, or a large MV difference.
+    const intensity = Math.min(edge.strength / 63, 1);
+    if (edge.bs >= 2) {
+      // Strong (intra) boundary - red to yellow
       return `rgba(255, ${Math.floor(200 * (1 - intensity))}, 0, ${0.5 + intensity * 0.5})`;
     } else {
-      // Weak boundary - blue to cyan
+      // Weak (inter) boundary - blue to cyan
       return `rgba(0, ${Math.floor(200 * intensity)}, 255, ${0.3 + intensity * 0.5})`;
     }
   };
 
   const getEdgeWidth = (edge: BoundaryEdge) => {
     if (!edge.filtered) return 0.5;
-    return 0.5 + edge.strength * 0.5;
+    return 0.5 + (edge.strength / 63) * 2;
   };
 
   if (!frame) {
@@ -180,13 +158,13 @@ export const DeblockingView = memo(function DeblockingView({
           </span>
         </div>
         <div className="deblocking-stat-item">
-          <span className="deblocking-stat-label">Strong (BS≥3):</span>
+          <span className="deblocking-stat-label">Strong (BS 2, intra):</span>
           <span className="deblocking-stat-value deblocking-strong">
             {stats.strongBoundaries.toLocaleString()}
           </span>
         </div>
         <div className="deblocking-stat-item">
-          <span className="deblocking-stat-label">Weak (BS 1-2):</span>
+          <span className="deblocking-stat-label">Weak (BS 1, inter):</span>
           <span className="deblocking-stat-value deblocking-weak">
             {stats.weakBoundaries.toLocaleString()}
           </span>
@@ -207,26 +185,28 @@ export const DeblockingView = memo(function DeblockingView({
 
       {/* Deblocking Parameters */}
       <div className="deblocking-params">
-        <h4>Deblocking Parameters</h4>
+        <h4>Loop Filter Parameters</h4>
         <div className="deblocking-params-grid">
           <div className="deblocking-param-item">
-            <span className="deblocking-param-label">β Offset:</span>
-            <span className="deblocking-param-value">{params.betaOffset}</span>
-          </div>
-          <div className="deblocking-param-item">
-            <span className="deblocking-param-label">tc Offset:</span>
-            <span className="deblocking-param-value">{params.tcOffset}</span>
-          </div>
-          <div className="deblocking-param-item">
-            <span className="deblocking-param-label">Filter Strength:</span>
+            <span className="deblocking-param-label">Level (Y vert/horz):</span>
             <span className="deblocking-param-value">
-              {params.filterStrength}
+              {params.level[0]} / {params.level[1]}
             </span>
           </div>
           <div className="deblocking-param-item">
-            <span className="deblocking-param-label">Chroma Edge:</span>
+            <span className="deblocking-param-label">Level (U / V):</span>
             <span className="deblocking-param-value">
-              {params.chromaEdge ? "Enabled" : "Disabled"}
+              {params.level[2]} / {params.level[3]}
+            </span>
+          </div>
+          <div className="deblocking-param-item">
+            <span className="deblocking-param-label">Sharpness:</span>
+            <span className="deblocking-param-value">{params.sharpness}</span>
+          </div>
+          <div className="deblocking-param-item">
+            <span className="deblocking-param-label">Ref/Mode Deltas:</span>
+            <span className="deblocking-param-value">
+              {params.deltaEnabled ? "Enabled" : "Disabled"}
             </span>
           </div>
         </div>
@@ -309,7 +289,7 @@ export const DeblockingView = memo(function DeblockingView({
                   "linear-gradient(to right, rgba(255,200,0,0.5), rgba(255,0,0,1))",
               }}
             ></div>
-            <span>Strong Boundary (BS 3-4)</span>
+            <span>Strong Boundary (BS 2, intra)</span>
           </div>
           <div className="deblocking-legend-item">
             <div
@@ -319,7 +299,7 @@ export const DeblockingView = memo(function DeblockingView({
                   "linear-gradient(to right, rgba(0,200,255,0.3), rgba(0,0,255,0.8))",
               }}
             ></div>
-            <span>Weak Boundary (BS 1-2)</span>
+            <span>Weak Boundary (BS 1, inter)</span>
           </div>
           <div className="deblocking-legend-item">
             <div

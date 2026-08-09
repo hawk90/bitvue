@@ -109,6 +109,42 @@ export interface CodingFlowAnalysisWireResult {
   codec_features: string[];
 }
 
+export interface DeblockingEdgeWire {
+  x: number;
+  y: number;
+  length: number;
+  orientation: "vertical" | "horizontal";
+  boundary_strength: number;
+  filtered: boolean;
+  strength: number;
+}
+
+/** Real AV1 loop_filter_params() fields (spec 5.9.11). `level`/`ref_deltas`/`mode_deltas` mirror
+ *  bitvue_av1_codec::frame_header::LoopFilterInfo directly. */
+export interface DeblockingParamsWire {
+  level: [number, number, number, number];
+  sharpness: number;
+  delta_enabled: boolean;
+  ref_deltas: number[];
+  mode_deltas: number[];
+}
+
+export interface DeblockingStatsWire {
+  total_edges: number;
+  filtered_edges: number;
+  strong_edges: number;
+  weak_edges: number;
+}
+
+export interface DeblockingAnalysisWireResult {
+  frame_index: number;
+  width: number;
+  height: number;
+  edges: DeblockingEdgeWire[];
+  params: DeblockingParamsWire;
+  stats: DeblockingStatsWire;
+}
+
 export type StreamId = "A" | "B";
 
 /** Shape of the JSON-mapped `bitvue_engine::Event` values the sidecar sends back — see
@@ -323,6 +359,9 @@ declare global {
       getCodingFlowAnalysis: (
         frameIndex: number,
       ) => Promise<CodingFlowAnalysisWireResult>;
+      getDeblockingAnalysis: (
+        frameIndex: number,
+      ) => Promise<DeblockingAnalysisWireResult>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -525,6 +564,15 @@ export async function getCodingFlowAnalysis(
   frameIndex: number,
 ): Promise<CodingFlowAnalysisWireResult> {
   return requireBridge().getCodingFlowAnalysis(frameIndex);
+}
+
+/** AV1 loop-filter boundary strength per coding-unit edge + real loop-filter parameters for one
+ *  frame of stream A -- feeds DeblockingView. AV1/IVF only. Throws on failure (frame out of
+ *  range, stream not open). */
+export async function getDeblockingAnalysis(
+  frameIndex: number,
+): Promise<DeblockingAnalysisWireResult> {
+  return requireBridge().getDeblockingAnalysis(frameIndex);
 }
 
 export interface OpenFileDialogFilter {
