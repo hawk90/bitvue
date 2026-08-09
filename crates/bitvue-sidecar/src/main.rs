@@ -73,6 +73,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 mod av1_features;
+mod coding_flow;
 mod debug_yuv;
 mod decode_bridge;
 mod frame_analysis;
@@ -350,6 +351,7 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "get_thumbnails" => get_thumbnails(core, request),
         "get_frame_analysis" => get_frame_analysis(core, request),
         "get_av1_features" => get_av1_features(core, request),
+        "get_coding_flow_analysis" => get_coding_flow_analysis(core, request),
         other => Response::failure(
             request.id,
             WireError {
@@ -1019,6 +1021,68 @@ fn get_av1_features(core: &Core, request: &Request) -> Response {
     };
 
     match av1_features::get_av1_features(data, params.frame_index) {
+        Ok(value) => Response::success(request.id, value),
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
+/// Encoder/decoder pipeline stage completion + real codec features for one frame of stream A --
+/// see `coding_flow`'s module doc. Control-only, same reasoning as `get_frame_analysis`.
+fn get_coding_flow_analysis(core: &Core, request: &Request) -> Response {
+    let params: GetFrameAnalysisParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    match coding_flow::get_coding_flow_analysis(data, params.frame_index) {
         Ok(value) => Response::success(request.id, value),
         Err(message) => Response::failure(
             request.id,
@@ -2528,6 +2592,44 @@ mod tests {
             &Request {
                 id: 224,
                 method: "get_av1_features".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    // -- get_coding_flow_analysis --------------------------------------------------------------
+
+    #[test]
+    fn get_coding_flow_analysis_end_to_end_reaches_quantization() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 225,
+                method: "get_coding_flow_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(result["frame_index"], 0);
+        assert_eq!(result["current_stage"], "quantization");
+        assert_eq!(result["stages"].as_array().unwrap().len(), 6);
+        assert!(!result["codec_features"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn get_coding_flow_analysis_stream_not_open_returns_not_found() {
+        let core = Core::new();
+        let response = dispatch(
+            &core,
+            &Request {
+                id: 226,
+                method: "get_coding_flow_analysis".to_string(),
                 params: serde_json::json!({"frame_index": 0}),
             },
         );
