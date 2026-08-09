@@ -75,9 +75,11 @@ use std::thread;
 mod av1_features;
 mod codec_extended_info;
 mod coding_flow;
+mod context_menu;
 mod deblocking;
 mod debug_yuv;
 mod decode_bridge;
+mod evidence_export;
 mod frame_analysis;
 mod residual_analysis;
 
@@ -358,6 +360,8 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "get_deblocking_analysis" => get_deblocking_analysis(core, request),
         "get_codec_extended_info" => get_codec_extended_info(core, request),
         "get_residual_analysis" => get_residual_analysis(core, request),
+        "get_context_menu_items" => context_menu::get_context_menu_items(request),
+        "export_evidence_bundle" => evidence_export::export_evidence_bundle_command(core, request),
         other => Response::failure(
             request.id,
             WireError {
