@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("bitvue", {
     ipcRenderer.invoke("bitvue:getDeblockingAnalysis", frameIndex),
   getCodecExtendedInfo: (frameIndex) =>
     ipcRenderer.invoke("bitvue:getCodecExtendedInfo", frameIndex),
+  getResidualAnalysis: (frameIndex) =>
+    ipcRenderer.invoke("bitvue:getResidualAnalysis", frameIndex),
   indexStream: (stream) => ipcRenderer.invoke("bitvue:indexStream", stream),
   getStreamInfo: (stream) => ipcRenderer.invoke("bitvue:getStreamInfo", stream),
   getFramesChunk: (stream, offset, limit) =>

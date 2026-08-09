@@ -171,6 +171,37 @@ export interface CodecExtendedInfoWireResult {
   qp_histogram: QpHistogramBucketWire[];
 }
 
+/** `energy` is `sum_abs_level` (sum of absolute coefficient levels), not a spatial-domain energy
+ *  metric -- bitvue-sidecar has no inverse-transform stage to produce one. See
+ *  bitvue-sidecar::residual_analysis's module doc. */
+export interface CoefficientStatsWire {
+  min: number;
+  max: number;
+  mean: number;
+  variance: number;
+  energy: number;
+  zero_count: number;
+  non_zero_count: number;
+}
+
+export interface BlockResidualWire {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  energy: number;
+  max_coeff: number;
+  non_zeros: number;
+}
+
+export interface ResidualAnalysisWireResult {
+  frame_index: number;
+  width: number;
+  height: number;
+  coefficient_stats: CoefficientStatsWire;
+  block_residuals: BlockResidualWire[];
+}
+
 export type StreamId = "A" | "B";
 
 /** Shape of the JSON-mapped `bitvue_engine::Event` values the sidecar sends back — see
@@ -391,6 +422,9 @@ declare global {
       getCodecExtendedInfo: (
         frameIndex: number,
       ) => Promise<CodecExtendedInfoWireResult>;
+      getResidualAnalysis: (
+        frameIndex: number,
+      ) => Promise<ResidualAnalysisWireResult>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -611,6 +645,14 @@ export async function getCodecExtendedInfo(
   frameIndex: number,
 ): Promise<CodecExtendedInfoWireResult> {
   return requireBridge().getCodecExtendedInfo(frameIndex);
+}
+
+/** Per-block residual coefficient magnitude statistics for one frame of stream A -- feeds
+ *  ResidualsView. AV1/IVF only. Throws on failure (frame out of range, stream not open). */
+export async function getResidualAnalysis(
+  frameIndex: number,
+): Promise<ResidualAnalysisWireResult> {
+  return requireBridge().getResidualAnalysis(frameIndex);
 }
 
 export interface OpenFileDialogFilter {

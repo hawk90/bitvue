@@ -154,6 +154,10 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("get_codec_extended_info", { frame_index: frameIndex });
   });
 
+  ipcMain.handle("bitvue:getResidualAnalysis", async (_event, frameIndex: number) => {
+    return requireSidecar().request("get_residual_analysis", { frame_index: frameIndex });
+  });
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -387,6 +391,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const codingFlow = await window.bitvue.getCodingFlowAnalysis(0);
         const deblocking = await window.bitvue.getDeblockingAnalysis(0);
         const codecExtendedInfo = await window.bitvue.getCodecExtendedInfo(5);
+        const residualAnalysis = await window.bitvue.getResidualAnalysis(5);
 
         return {
           documentTitle: document.title,
@@ -416,6 +421,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           codingFlow,
           deblocking,
           codecExtendedInfo,
+          residualAnalysis,
         };
       })()
     `);
@@ -536,6 +542,11 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.codecExtendedInfo?.l0_refs?.[0]?.long_term === false &&
       (result.codecExtendedInfo?.qp_histogram?.length ?? 0) > 0;
     console.log("[selftest] get_codec_extended_info OK:", codecExtendedInfoOk);
+    const residualAnalysisOk =
+      result.residualAnalysis?.frame_index === 5 &&
+      (result.residualAnalysis?.block_residuals?.length ?? 0) > 0 &&
+      result.residualAnalysis?.coefficient_stats?.energy >= 0;
+    console.log("[selftest] get_residual_analysis OK:", residualAnalysisOk);
     console.log(
       "[selftest] debug YUV: load OK:", debugYuvLoadOk,
       " reference bytes match decoded OK:", debugYuvReferenceOk,
@@ -577,7 +588,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       av1FeaturesOk &&
       codingFlowOk &&
       deblockingOk &&
-      codecExtendedInfoOk
+      codecExtendedInfoOk &&
+      residualAnalysisOk
         ? 0
         : 1;
   } catch (err) {

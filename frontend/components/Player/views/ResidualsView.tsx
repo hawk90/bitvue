@@ -9,8 +9,8 @@
  */
 
 import { memo, useMemo, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { FrameInfo } from "../../../types/video";
+import { getResidualAnalysis } from "../../../services/electronBridgeService";
 
 interface ResidualsViewProps {
   frame: FrameInfo | null;
@@ -58,29 +58,7 @@ export const ResidualsView = memo(function ResidualsView({
       return;
     }
 
-    invoke<{
-      frame_index: number;
-      width: number;
-      height: number;
-      coefficient_stats: {
-        min: number;
-        max: number;
-        mean: number;
-        variance: number;
-        energy: number;
-        zero_count: number;
-        non_zero_count: number;
-      };
-      block_residuals: {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        energy: number;
-        max_coeff: number;
-        non_zeros: number;
-      }[];
-    }>("get_residual_analysis", { frameIndex: frame.frame_index })
+    getResidualAnalysis(frame.frame_index)
       .then((data) => {
         setBlockResiduals(
           data.block_residuals.map((b) => ({
@@ -156,9 +134,9 @@ export const ResidualsView = memo(function ResidualsView({
           </span>
           <span
             className="residuals-approx-label"
-            title="Energy derived from QP values; actual coefficient decoding not yet implemented"
+            title="Real per-block coefficient magnitudes from entropy decode. Uses representative (not neighbor-adaptive) probability contexts, so exact values may differ from a spec-exact decoder -- see bitvue-sidecar's residual_analysis module doc."
           >
-            QP-based approximation
+            Approximate coefficient decode
           </span>
         </div>
       </div>
