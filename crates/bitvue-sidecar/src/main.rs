@@ -73,6 +73,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 mod av1_features;
+mod codec_extended_info;
 mod coding_flow;
 mod deblocking;
 mod debug_yuv;
@@ -354,6 +355,7 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "get_av1_features" => get_av1_features(core, request),
         "get_coding_flow_analysis" => get_coding_flow_analysis(core, request),
         "get_deblocking_analysis" => get_deblocking_analysis(core, request),
+        "get_codec_extended_info" => get_codec_extended_info(core, request),
         other => Response::failure(
             request.id,
             WireError {
@@ -1159,6 +1161,68 @@ fn get_deblocking_analysis(core: &Core, request: &Request) -> Response {
     }
 }
 
+/// AV1 reference-frame lists (L0/L1) + QP histogram for one frame of stream A -- see
+/// `codec_extended_info`'s module doc. Control-only, same reasoning as `get_frame_analysis`.
+fn get_codec_extended_info(core: &Core, request: &Request) -> Response {
+    let params: GetFrameAnalysisParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    match codec_extended_info::get_codec_extended_info(data, params.frame_index) {
+        Ok(value) => Response::success(request.id, value),
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct GetHexRangeParams {
     stream: String,
@@ -1820,7 +1884,7 @@ mod tests {
         let core = Core::new();
         let request = Request {
             id: 7,
-            method: "get_codec_extended_info".to_string(),
+            method: "get_residual_analysis".to_string(),
             params: serde_json::json!({}),
         };
         let response = dispatch(&core, &request);

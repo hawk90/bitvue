@@ -151,8 +151,12 @@ pub struct FrameHeader {
     pub header_size_bytes: usize,
     /// Refresh frame flags (8 bits) - which reference slots to refresh
     pub refresh_frame_flags: Option<u8>,
-    /// Reference frame indices [LAST, GOLDEN, ALTREF] (3 bits each)
-    pub ref_frame_idx: Option<[u8; 3]>,
+    /// Reference frame indices, one per `ref_frame_sign_bias` slot
+    /// [LAST, LAST2, LAST3, GOLDEN, BWDREF, ALTREF2, ALTREF] (3 bits each, `REFS_PER_FRAME`=7).
+    pub ref_frame_idx: Option<[u8; 7]>,
+    /// `OrderHint` for this frame (spec 7.4) -- 0 when not parsed (e.g. via
+    /// `parse_frame_header_basic`, which deliberately doesn't track it).
+    pub order_hint: u32,
     /// Frame width in pixels (0 if not parsed)
     pub width: u32,
     /// Frame height in pixels (0 if not parsed)
@@ -499,6 +503,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             header_size_bytes,
             refresh_frame_flags: None,
             ref_frame_idx: None,
+            order_hint: 0,
             width: 0,
             height: 0,
             upscaled_width: 0,
@@ -588,7 +593,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     // For INTRA_ONLY frames: read ref_order_hint for each refreshed buffer
     // (we skip the actual values since we don't use them for extraction)
     // For INTER frames: read reference frame info
-    let mut ref_frame_idx: Option<[u8; 3]> = None;
+    let mut ref_frame_idx: Option<[u8; 7]> = None;
     if !is_intra {
         // frame_refs_short_signaling  f(1)
         // Only present when enable_order_hint is true in sequence header.
@@ -606,8 +611,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
                                       // We cannot recover the index values without running set_frame_refs().
         } else {
             // Long signaling: read all 7 ref_frame_idx u(3) entries
-            let mut idx = [0u8; 3];
-            let ok = (0..3).all(|i| {
+            let mut idx = [0u8; 7];
+            let ok = (0..7).all(|i| {
                 reader
                     .read_bits(3)
                     .map(|v| {
@@ -615,10 +620,6 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
                     })
                     .is_ok()
             });
-            // Skip remaining 4 ref indices (REFS_PER_FRAME=7, we track 3)
-            for _ in 3..7usize {
-                reader.read_bits(3).ok();
-            }
             if ok {
                 ref_frame_idx = Some(idx);
             }
@@ -668,6 +669,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         header_size_bytes,
         refresh_frame_flags,
         ref_frame_idx,
+        order_hint: 0,
         width: 0,
         height: 0,
         upscaled_width: 0,

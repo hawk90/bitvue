@@ -628,7 +628,11 @@ fn read_frame_reference_mode(reader: &mut BitReader, frame_is_intra: bool) -> Re
 }
 
 /// `get_relative_dist` (AV1 spec 5.9.3) -- signed circular distance between two order hints.
-fn relative_dist(a: u32, b: u32, enable_order_hint: bool, order_hint_bits: u32) -> i64 {
+/// Signed relative distance between two order hints per AV1 spec 7.9.2 `get_relative_dist` --
+/// positive when `a` is "after" `b` in display order. `pub` so `bitvue-sidecar`'s
+/// `codec_extended_info` can reuse it to classify references into L0 (forward/past) vs L1
+/// (backward/future), the same comparison `skip_mode_params` uses internally.
+pub fn relative_dist(a: u32, b: u32, enable_order_hint: bool, order_hint_bits: u32) -> i64 {
     if !enable_order_hint || order_hint_bits == 0 {
         return 0;
     }
@@ -867,8 +871,9 @@ pub fn parse_frame_header_full(
         let frame_to_show_map_idx = reader.read_bits(3)?;
         // Real AV1 also refreshes RefOrderHint for a KEY-frame show_existing_frame using the
         // shown slot's own already-tracked order hint (RefOrderHint[idx] stays what it was) --
-        // no new hint is introduced, so ref_state needs no update here.
-        let _ = frame_to_show_map_idx;
+        // no new hint is introduced, so ref_state needs no update here. The shown frame's
+        // OrderHint (spec 7.4) IS that same already-tracked slot value, though.
+        let order_hint = ref_state.ref_order_hint[frame_to_show_map_idx as usize];
         return Ok(FrameHeader {
             frame_type: FrameType::Key,
             show_frame: true,
@@ -883,6 +888,7 @@ pub fn parse_frame_header_full(
             header_size_bytes: reader.byte_position(),
             refresh_frame_flags: None,
             ref_frame_idx: None,
+            order_hint,
             width: 0,
             height: 0,
             upscaled_width: 0,
@@ -1174,11 +1180,12 @@ pub fn parse_frame_header_full(
             .byte_position()
             .saturating_add(usize::from(!reader.position().is_multiple_of(8))),
         refresh_frame_flags: Some(refresh_frame_flags as u8),
-        ref_frame_idx: Some([
-            ref_frame_idx[0] as u8,
-            ref_frame_idx[1] as u8,
-            ref_frame_idx[2] as u8,
-        ]),
+        ref_frame_idx: if frame_is_intra {
+            None
+        } else {
+            Some(std::array::from_fn(|i| ref_frame_idx[i] as u8))
+        },
+        order_hint,
         width,
         height,
         upscaled_width,
