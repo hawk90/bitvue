@@ -1036,6 +1036,40 @@ pre-migration 코드였음 — `electronBridgeService.ts` 패턴으로 이관. `
 `get_residual_analysis` — 4개, 전부 get_av1_features급 이상의 신규 엔진/파서 작업 확인됨(더 이상
 "배선만" 남은 케이스 없음).
 
+### get_deblocking_analysis 구현 — 도중에 진짜 잠복 버그 2개 발견 (2026-08-09, ec47049/54a013d/e6a0ca3)
+
+두 가지 신규 작업으로 구성: (1) `frame_header_full`의 `loop_filter_params()`가 지금까지 모든 값을
+버려왔던 것(`skip_loop_filter_params`)을 실제 파싱으로 교체 — `get_av1_features` 때 cdef/lr/
+film_grain을 추가했던 것과 같은 자리, 같은 패턴. (2) AV1 스펙 7.14.2 boundary-strength(BS) 유도
+알고리즘이 이 워크스페이스 어디에도 없었음 — `overlay_extraction::deblocking` 신규 모듈에서 이미
+파싱돼있던 코딩유닛 데이터(skip/mode/ref_frames/mv)만으로 유도(entropy/잔차 디코드 불필요 — AV1의
+skip 플래그가 스펙상 "잔차 없음"과 정확히 동치라 근사가 아니라 정확한 조건).
+
+**진짜 발견 — `ParsedFrame::parse`가 결합형 OBU(`ObuType::Frame`)에서 tile_data를 전혀 못 채우고
+있었음**: `get_deblocking_analysis`가 실제 코딩유닛 파서를 처음으로 가드 없이 직접 호출하면서
+드러남 — 다른 모든 extractor(QP/MV/partition/prediction-mode/transform 그리드, 즉
+`get_frame_analysis` 전체)는 `has_tile_data()`/`Err` 시 스캐폴드로 조용히 폴백하는 구조라 이
+버그가 지금까지 한 번도 겉으로 드러난 적이 없었음 — **실제 픽스처의 모든 프레임에서 tile_data가
+항상 비어있었고, get_frame_analysis의 "real leaf blocks" 테스트를 포함한 모든 real-CU 검증이
+사실 스캐폴드 데이터를 보고 통과하고 있었음**(약한 assertion 탓에 스캐폴드와 real을 구분 못함).
+사용자에게 스코프 확인 받고(`이 세션에서 바로 고치고 진행`) `FrameHeader.header_size_bytes` 이후
+바이트를 tile_data로 슬라이스하도록 수정. 이 수정이 real-CU 코드 경로를 처음으로 실제 실행시키면서
+**두 번째 잠복 버그**를 노출: `build_grid_from_coding_units_spatial`(prediction-mode/transform
+그리드 공용)이 `output[idx] = ...` 직접 인덱싱을 쓰는데 호출부가 `Vec::with_capacity`(길이 0)만
+넘겨서 모든 쓰기가 `idx < output.len()` 가드에 조용히 막혀있었음 — `resize_with`로 사전 채움 추가.
+두 버그 다 "한 번도 실행된 적이 없던 코드"라 이전 세션까지 전혀 발견되지 않았음.
+
+**검증**: 수정 전/후 `cargo test -p bitvue-av1-codec --lib`(278) + `-p bitvue-sidecar`(98, 신규
+4개) 전부 통과, `-p bitvue-cli`도 회귀 없음 확인. 프론트엔드: `DeblockingView.tsx`도 죽은 Tauri
+invoke였음 — bridge 이관 + HEVC/VVC식 beta/tc offset을 실제 AV1 `loop_filter_params()` 필드(레벨/
+sharpness/ref·mode 델타)로 교체, BS 범위도 AV1 실제 범위(0-2)에 맞게 조정(기존 코드는 HEVC식
+BS 3-4/1-2 가정). 타입체크 409파일/vitest 36실패-9파일 베이스라인 그대로(변경된 텍스트에 맞춰
+`DeblockingView.test.tsx` 2개 assertion만 업데이트). `BITVUE_ELECTRON_SELFTEST`에
+`getDeblockingAnalysis(0)` 라운드 추가, exit 0.
+
+**남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_residual_analysis` —
+3개.
+
 ### 확정 순서
 
 ```
