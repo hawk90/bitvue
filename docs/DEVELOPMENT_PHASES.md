@@ -1549,33 +1549,54 @@ CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 �
 
 ---
 
-## Phase 7.6: UX Contract 완성 — Context Menu & Evidence Bundle 🔴 (신규 — `UX_PARITY_MATRIX.md` §6/§7, `PARITY_CHECKLIST.md` Layer 7)
+## Phase 7.6: UX Contract 완성 — Context Menu & Evidence Bundle 🟡 (2026-08-09, 35955fc/f3e9e81 — MVP 슬라이스 완료, 아래 잔여 항목 참고)
 
 **목표:** Compare 워크스페이스(Phase 7.5)를 포함해 전체 앱에 공통으로 필요한 우클릭 컨텍스트 메뉴 계약과 원클릭
 Evidence Bundle export 계약을 구현한다. 둘 다 `UX_PARITY_MATRIX.md` §9에서 P0/P1로 채점된 실제 갭이며, 기존
 계획(Phase 11 "폴리시" 항목)까지 미루지 않도록 여기로 승격했다 — 근거는 문서 상단 "우선순위 재검토" 참조.
 
+**착수 시점 발견**: `bitvue-engine`의 `export::context_menu`(guard 엔진+5스코프 카탈로그, starter 3스코프보다 이미
+넓음)와 `export::evidence`(진짜 파일 쓰기, 411줄)는 이미 완성돼 컴파일까지 되고 있었으나 sidecar 커맨드로 노출된
+적이 없었음(`create_compare_workspace`처럼 완전 미구현이 아니라 "배선 누락"). 또한 `parity_harness::context`라는
+완전히 별개의, 한 번도 안 쓰인 중복 구현(`ContextMenuScope`/`ContextMenuItem`/`evaluate_guard`, 유일한 소비자가
+자기 자신의 단위테스트)이 이미 존재했음 — 크레이트 루트 glob re-export 충돌을 `bitvue_engine::export::` 명시
+경로로 회피, 중복 자체는 이번 패스 범위 밖이라 손대지 않음(코드에 문서화만).
+
 **Context Menu 시스템 (`PARITY_CHECKLIST.md` Layer 7 CTX-01, `UX_PARITY_MATRIX.md` §6):**
-- [ ] 3개 스코프(Player/HexView/StreamView) × 7개 항목 starter 세트 구현 (`Toggle.DetailMode`, `Export.EvidenceBundle`,
-      `Copy.Selection`, `Copy.Bytes`, `Set.OrderType.Display`, `Set.OrderType.Decode`)
-- [ ] Guard 평가 엔진: `always` / `has_selection` / `has_byte_range` — guard 평가는 상태를 변경하지 않아야 함
-- [ ] 비활성 항목에 disabled reason을 툴팁으로 표시 ("No selection." / "No byte range selected.")
-- [ ] `UX_PARITY_MATRIX.md` §3 per-panel interaction contract의 Context menu 컬럼(Timeline/Metrics/Reference
-      graph/Player/Hex/Trees)을 screenshot-driven refinement로 확장 (starter 세트 이후 단계)
+- [x] `get_context_menu_items` sidecar 커맨드로 배선 완료 — 실제로는 5스코프(Player/HexView/StreamView/Timeline/
+      DiagnosticsPanel, starter 3개보다 많음) × guard 엔진(`always`/`has_selection`/`has_byte_range`) 전부 이미
+      완성돼있던 걸 노출만 함
+- [x] 비활성 항목 disabled reason 툴팁 — 프론트 `ContextMenu.tsx`가 `item.disabled_reason`을 `title` 속성으로 표시
+- [x] 신규 범용 `ContextMenu` 컴포넌트(`frontend/components/ContextMenu.tsx`) — 이 세션 이전엔 우클릭 UI 자체가
+      프론트엔드 어디에도 전혀 없었음(완전 greenfield)
+- [x] Player 스코프 실제 연결(`VideoCanvas.tsx`의 `onContextMenu`) — 나머지 4개 스코프(HexView/StreamView/
+      Timeline/DiagnosticsPanel)는 백엔드 API는 이미 동일하게 작동하지만 각 패널에 아직 연결 안 함(다음 세션 후보)
+- [ ] `UX_PARITY_MATRIX.md` §3 per-panel interaction contract 전체 확장(screenshot-driven refinement) — 범위 밖
 
 **Evidence Bundle export (`PARITY_CHECKLIST.md` Layer 7 EVB-01, `UX_PARITY_MATRIX.md` §7):**
-- [ ] 번들 포맷: `bundle_manifest.json`, `env.json`, `version.json`, `selection_state.json`, `order_type.json`,
-      `backend_fingerprint.json`, `plugin_versions.json`, `warnings.json`, `screenshots/*`
-- [ ] ABI 호환 정책 구현: forward-compatible 필드 추가, 필드 삭제는 major bump 필요, rename은 ≥2 minor alias 유지
-- [ ] Diff 계약: `selection_state`/`order_type`/`backend_fingerprint`/`plugin_versions`/`warnings`/`render_snapshots`
-      비교, `timestamps`/`machine_hostname`/`paths`는 diff 제외
-- [ ] 4개 진입점 배선: MainMenu(File > Export > Evidence Bundle), MainPanel(BottomBar > Export), ContextMenu
-      (RightClick > Export Evidence Bundle — 위 Context Menu 항목과 공유), CompareWorkspace(Toolbar > Export Diff Bundle)
-- [ ] 기존 `bitvue export --json`과 관계 정리 — 단일 프레임/스트림 export는 유지, Evidence Bundle은 별도 상위 기능
+- [x] `export_evidence_bundle` sidecar 커맨드로 배선 완료 — `bundle_manifest.json`/`env.json`/`version.json`/
+      `selection_state.json`/`order_type.json`/`backend_fingerprint.json`/`warnings.json` 실제 파일 쓰기 확인
+- [ ] `plugin_versions.json` 별도 파일(현재는 `backend_fingerprint.json` 안에만 내장), `screenshots/*` — 엔진 함수
+      자체의 기존 갭(이번 세션에서 만든 게 아님, `include_screenshots`/`include_interaction_trace`/`include_logs`
+      플래그는 있지만 아무것도 캡처 안 함)
+- [ ] ABI 호환 정책 — 문서화만 되고 코드 어디에도 구현 없음(정책-온-페이퍼), 이번 패스에서도 미착수
+- [ ] Diff 계약(`bundle_diff`/`EvidenceBundleDiff`) — 엔진에 함수 자체가 존재하지 않음
+- [x]/[ ] 4개 진입점 중 2개 배선: MainMenu(File > Export > Evidence Bundle — 죽어있던 `menu-export-evidence`
+      리스너 신규 연결), ContextMenu(Player 스코프 한정). 남은 2개: MainPanel(BottomBar > Export — 애초에 export
+      버튼 자체가 없음), CompareWorkspace(Toolbar — UI 자체가 죽은 트리, Phase 7.5 참고)
+- `stream_fingerprint`는 진짜 값(스트림 A 파일경로+바이트길이 해시, `qp_heatmap`/`timeline_cache`와 같은 기존
+  `DefaultHasher` 컨벤션 재사용) — placeholder 아님
 
-**Parity 검증:** `UX_PARITY_MATRIX.md` §9 `INTERACTION_CONTEXT_MENU_GUARDS`/`EVIDENCE_ONE_CLICK_BUNDLE` 항목 통과.
+**검증**: sidecar 112→118(신규 6개) 테스트 통과, 타입체크 411파일(신규 컴포넌트 2개 포함)/vitest 36실패-9파일
+베이스라인 그대로(진행 중 `YuvViewerPanel`에 `SelectionContext` 의존성을 실수로 추가해 128개 테스트 깨뜨렸다가
+발견 즉시 되돌림 — 테스트 스위트가 실제로 회귀를 잡아준 사례). `BITVUE_ELECTRON_SELFTEST`에
+`getContextMenuItems`+`exportEvidenceBundle`(실제 임시 디렉터리에 파일 쓰기) 라운드 추가, exit 0.
 
-**예상 소요:** 중급 2~3주
+**Parity 검증**: `UX_PARITY_MATRIX.md` §9 `INTERACTION_CONTEXT_MENU_GUARDS`/`EVIDENCE_ONE_CLICK_BUNDLE` 항목은
+starter 슬라이스만 통과 — 전체 통과는 위 미완료 항목들에 달림.
+
+**예상 소요**: 원래 추정 중급 2~3주 → 실측은 반나절(사전 존재하던 엔진 로직 덕분, "배선만" 패턴). 남은 잔여
+항목(스크린샷 캡처, ABI 정책, diff 계약, 나머지 4스코프+2진입점 연결)은 여전히 별도 작업.
 
 ---
 
