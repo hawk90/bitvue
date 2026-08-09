@@ -45,6 +45,7 @@ import { useAppFileOperations } from "./hooks/useAppFileOperations";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { useAppDialogs } from "./hooks/useAppDialogs";
 import { useRecentFiles } from "./hooks/useRecentFiles";
+import { useExportEvidenceBundle } from "./hooks/useExportEvidenceBundle";
 
 // Lazy load dialog components - only loaded when needed
 const KeyboardShortcutsDialog = lazy(() =>
@@ -320,6 +321,8 @@ function AppContent() {
     onError: showErrorDialog,
     onCodecChange: setActiveCodec,
   });
+
+  const exportEvidenceBundle = useExportEvidenceBundle();
 
   // ── Frame navigation callbacks ────────────────────────────────────────
   const onPreviousFrame = useCallback(() => {
@@ -623,6 +626,9 @@ function AppContent() {
     const handleOpenDependentBitstream = () => {
       void handleOpenDependentFile();
     };
+    const handleExportEvidence = () => {
+      void exportEvidenceBundle();
+    };
     const handleQuit = () => {
       void closeWindow();
     };
@@ -643,6 +649,7 @@ function AppContent() {
     window.addEventListener("menu-quit", handleQuit);
     window.addEventListener("menu-shortcuts", handleShowShortcuts);
     window.addEventListener("menu-export", handleExportListener);
+    window.addEventListener("menu-export-evidence", handleExportEvidence);
     const handleOpenDebugYuvEvent = () => void handleOpenDebugYuv();
     window.addEventListener("menu-open-debug-yuv", handleOpenDebugYuvEvent);
     return () => {
@@ -661,12 +668,14 @@ function AppContent() {
       window.removeEventListener("menu-quit", handleQuit);
       window.removeEventListener("menu-shortcuts", handleShowShortcuts);
       window.removeEventListener("menu-export", handleExportListener);
+      window.removeEventListener("menu-export-evidence", handleExportEvidence);
       window.removeEventListener(
         "menu-open-debug-yuv",
         handleOpenDebugYuvEvent,
       );
     };
   }, [
+    exportEvidenceBundle,
     handleCloseFile,
     handleOpenDependentFile,
     handleOpenFile,

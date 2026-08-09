@@ -202,6 +202,39 @@ export interface ResidualAnalysisWireResult {
   block_residuals: BlockResidualWire[];
 }
 
+/** Matches `bitvue_engine::export::types::ContextMenuScope` (5 variants) -- serialized as the
+ *  bare variant name (no `serde(rename_all)` on the Rust side). */
+export type ContextMenuScopeWire =
+  | "Player"
+  | "HexView"
+  | "StreamView"
+  | "Timeline"
+  | "DiagnosticsPanel";
+
+export interface ContextMenuItemWire {
+  id: string;
+  label: string;
+  command: string;
+  guard: string;
+  enabled: boolean;
+  disabled_reason: string | null;
+}
+
+export interface EvidenceBundleExportResultWire {
+  success: boolean;
+  bundle_path: string | null;
+  files_created: string[];
+  total_bytes: number;
+  error: string | null;
+}
+
+export interface ExportEvidenceBundleParams {
+  outputDir: string;
+  workspace?: string;
+  mode?: string;
+  orderType?: "display" | "decode";
+}
+
 export type StreamId = "A" | "B";
 
 /** Shape of the JSON-mapped `bitvue_engine::Event` values the sidecar sends back — see
@@ -425,9 +458,18 @@ declare global {
       getResidualAnalysis: (
         frameIndex: number,
       ) => Promise<ResidualAnalysisWireResult>;
+      getContextMenuItems: (
+        scope: ContextMenuScopeWire,
+        hasSelection: boolean,
+        hasByteRange: boolean,
+      ) => Promise<{ items: ContextMenuItemWire[] }>;
+      exportEvidenceBundle: (
+        params: ExportEvidenceBundleParams,
+      ) => Promise<EvidenceBundleExportResultWire>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
+      showDirectoryDialog: () => Promise<string | null>;
       closeWindow: () => Promise<void>;
       indexStream: (stream: StreamId) => Promise<{ events: BridgeEvent[] }>;
       getStreamInfo: (stream: StreamId) => Promise<StreamInfoResult>;
@@ -653,6 +695,35 @@ export async function getResidualAnalysis(
   frameIndex: number,
 ): Promise<ResidualAnalysisWireResult> {
   return requireBridge().getResidualAnalysis(frameIndex);
+}
+
+/** Right-click menu items + guard-evaluated enabled/disabled state for one UI scope. Throws on
+ *  failure (invalid scope). */
+export async function getContextMenuItems(
+  scope: ContextMenuScopeWire,
+  hasSelection: boolean,
+  hasByteRange: boolean,
+): Promise<ContextMenuItemWire[]> {
+  const result = await requireBridge().getContextMenuItems(
+    scope,
+    hasSelection,
+    hasByteRange,
+  );
+  return result.items;
+}
+
+/** Writes a diagnostic evidence bundle (manifest, env/version info, selection state, order type,
+ *  backend fingerprint, warnings) to `params.outputDir`. Throws on failure (write error). */
+export async function exportEvidenceBundle(
+  params: ExportEvidenceBundleParams,
+): Promise<EvidenceBundleExportResultWire> {
+  return requireBridge().exportEvidenceBundle(params);
+}
+
+/** Native "choose a folder" dialog, for evidence-bundle export. Returns the selected directory,
+ *  or null if cancelled. */
+export async function showDirectoryDialog(): Promise<string | null> {
+  return requireBridge().showDirectoryDialog();
 }
 
 export interface OpenFileDialogFilter {

@@ -19,7 +19,11 @@ import {
   getDebugYuvFrame,
   getFrameAnalysis,
   bridgeYuvToFrame,
+  getContextMenuItems,
+  type ContextMenuItemWire,
 } from "../../../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../../../hooks/useExportEvidenceBundle";
+import { ContextMenu } from "../../ContextMenu";
 import { useMode } from "../../../contexts/ModeContext";
 import { CodecBadge } from "./ModeSelector";
 import { OverlayToggleBar } from "./OverlayToggleBar";
@@ -120,6 +124,40 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     displayMode: debugDisplayMode,
     amplifyFactor: debugAmplifyFactor,
   } = useYuvDiff();
+
+  // Right-click context menu (Phase 7.6, "Player" scope) -- see ContextMenu component doc.
+  const exportEvidence = useExportEvidenceBundle();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleCanvasContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    // TODO(Phase 7.6 follow-up): thread real selection state in (SelectionContext isn't
+    // currently a dependency of this component, and this is the only place that would need it --
+    // deferred rather than adding a hard context dependency here for one guard on one item
+    // (Player's "toggle_detail") that isn't wired to a real action yet anyway).
+    const hasSelection = false;
+    const hasByteRange = false;
+    const x = event.clientX;
+    const y = event.clientY;
+    getContextMenuItems("Player", hasSelection, hasByteRange)
+      .then((items) => setContextMenu({ x, y, items }))
+      .catch(() => setContextMenu(null));
+  }, []);
+
+  const handleContextMenuSelect = useCallback(
+    (command: string) => {
+      if (command === "Export.EvidenceBundle") {
+        void exportEvidence();
+      }
+      // Other Player-scope commands (Toggle.DetailMode, Copy.Selection) aren't wired to a real
+      // action yet -- deliberately out of scope for this pass (see Phase 7.6 doc).
+    },
+    [exportEvidence],
+  );
 
   // Load frame and analysis data when currentFrameIndex changes
   useEffect(() => {
@@ -506,12 +544,23 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onMouseDown={canvasHandlers.onMouseDown}
           onMouseMove={canvasHandlers.onMouseMove}
           onMouseUp={canvasHandlers.onMouseUp}
+          onContextMenu={handleCanvasContextMenu}
           isDragging={isDragging}
           yuvData={decodedFrame ?? undefined}
           activeOverlays={activeOverlays}
           av1Features={av1Features ?? undefined}
           colorspace={colorspace}
           channelMode={channelMode}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
         />
       )}
 

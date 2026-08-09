@@ -158,6 +158,32 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("get_residual_analysis", { frame_index: frameIndex });
   });
 
+  ipcMain.handle(
+    "bitvue:getContextMenuItems",
+    async (_event, scope: string, hasSelection: boolean, hasByteRange: boolean) => {
+      return requireSidecar().request("get_context_menu_items", {
+        scope,
+        has_selection: hasSelection,
+        has_byte_range: hasByteRange,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "bitvue:exportEvidenceBundle",
+    async (
+      _event,
+      params: { outputDir: string; workspace?: string; mode?: string; orderType?: string },
+    ) => {
+      return requireSidecar().request("export_evidence_bundle", {
+        output_dir: params.outputDir,
+        workspace: params.workspace,
+        mode: params.mode,
+        order_type: params.orderType,
+      });
+    },
+  );
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -258,6 +284,22 @@ function registerIpcHandlers(): void {
       return result.filePaths[0];
     },
   );
+
+  ipcMain.handle("bitvue:showDirectoryDialog", async (event) => {
+    // Same SELFTEST_FIXTURE_PATH test bypass reasoning as showOpenDialog above -- reused here as
+    // an arbitrary writable directory (a temp dir would need its own env var; the fixture path's
+    // parent directory is always writable in the test environment this runs in).
+    if (process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH) {
+      return path.dirname(process.env.BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH);
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.OpenDialogOptions = {
+      properties: ["openDirectory", "createDirectory"],
+    };
+    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
 
   // Quit menu item / TitleBar's Quit button -- app.quit() (not window.close()) so this means
   // "quit the app" cross-platform, not just "close the current window" (which on macOS
@@ -392,6 +434,13 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const deblocking = await window.bitvue.getDeblockingAnalysis(0);
         const codecExtendedInfo = await window.bitvue.getCodecExtendedInfo(5);
         const residualAnalysis = await window.bitvue.getResidualAnalysis(5);
+        const contextMenuItems = await window.bitvue.getContextMenuItems("Player", false, false);
+        const evidenceBundle = await window.bitvue.exportEvidenceBundle({
+          outputDir: ${JSON.stringify(tempDir)},
+          workspace: "player",
+          mode: "normal",
+          orderType: "display",
+        });
 
         return {
           documentTitle: document.title,
@@ -422,6 +471,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           deblocking,
           codecExtendedInfo,
           residualAnalysis,
+          contextMenuItems,
+          evidenceBundle,
         };
       })()
     `);
@@ -547,6 +598,16 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       (result.residualAnalysis?.block_residuals?.length ?? 0) > 0 &&
       result.residualAnalysis?.coefficient_stats?.energy >= 0;
     console.log("[selftest] get_residual_analysis OK:", residualAnalysisOk);
+    const contextMenuItemsOk =
+      (result.contextMenuItems?.items?.length ?? 0) === 3 &&
+      result.contextMenuItems?.items?.find(
+        (i: { id: string; enabled: boolean }) => i.id === "export_bundle",
+      )?.enabled === true;
+    console.log("[selftest] get_context_menu_items OK:", contextMenuItemsOk);
+    const evidenceBundleOk =
+      result.evidenceBundle?.success === true &&
+      (result.evidenceBundle?.files_created?.length ?? 0) > 0;
+    console.log("[selftest] export_evidence_bundle OK:", evidenceBundleOk);
     console.log(
       "[selftest] debug YUV: load OK:", debugYuvLoadOk,
       " reference bytes match decoded OK:", debugYuvReferenceOk,
@@ -589,7 +650,9 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       codingFlowOk &&
       deblockingOk &&
       codecExtendedInfoOk &&
-      residualAnalysisOk
+      residualAnalysisOk &&
+      contextMenuItemsOk &&
+      evidenceBundleOk
         ? 0
         : 1;
   } catch (err) {

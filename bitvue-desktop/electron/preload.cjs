@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld("bitvue", {
     ipcRenderer.invoke("bitvue:getCodecExtendedInfo", frameIndex),
   getResidualAnalysis: (frameIndex) =>
     ipcRenderer.invoke("bitvue:getResidualAnalysis", frameIndex),
+  getContextMenuItems: (scope, hasSelection, hasByteRange) =>
+    ipcRenderer.invoke("bitvue:getContextMenuItems", scope, hasSelection, hasByteRange),
+  exportEvidenceBundle: (params) => ipcRenderer.invoke("bitvue:exportEvidenceBundle", params),
+  showDirectoryDialog: () => ipcRenderer.invoke("bitvue:showDirectoryDialog"),
   indexStream: (stream) => ipcRenderer.invoke("bitvue:indexStream", stream),
   getStreamInfo: (stream) => ipcRenderer.invoke("bitvue:getStreamInfo", stream),
   getFramesChunk: (stream, offset, limit) =>

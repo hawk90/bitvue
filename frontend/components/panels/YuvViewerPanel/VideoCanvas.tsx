@@ -90,6 +90,7 @@ interface VideoCanvasProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   isDragging: boolean;
   /** Raw YUV data if available (overrides frameImage when present) */
   yuvData?: YUVFrame;
@@ -114,6 +115,7 @@ export const VideoCanvas = memo(function VideoCanvas({
   onMouseDown,
   onMouseMove,
   onMouseUp,
+  onContextMenu,
   isDragging,
   yuvData,
   activeOverlays,
@@ -231,6 +233,7 @@ export const VideoCanvas = memo(function VideoCanvas({
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
+      onContextMenu={onContextMenu}
       style={containerStyle}
     >
       <canvas
