@@ -679,6 +679,17 @@ where
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
+    // Callers pass `Vec::with_capacity(total_blocks)` (length 0, only reserved capacity) --
+    // every write below is a direct `output[idx] = ...` index assignment, which the `idx <
+    // output.len()` guards silently skip entirely on a zero-length vec. Pre-fill to the real
+    // length here so writes actually land (this path never actually ran before `ParsedFrame::
+    // parse`'s OBU_FRAME tile-data bug was fixed -- has_tile_data() was always false, so this
+    // function was never reached; the bug was latent, not a regression from that fix).
+    let total = (grid_w as usize).saturating_mul(grid_h as usize);
+    if output.len() < total {
+        output.resize_with(total, || None);
+    }
+
     // Build spatial index: map superblock position to relevant CUs
     // This allows O(1) lookup of which CUs to check for each grid block
     use std::collections::HashMap;

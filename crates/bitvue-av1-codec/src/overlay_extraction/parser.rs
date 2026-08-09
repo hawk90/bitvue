@@ -167,7 +167,27 @@ impl ParsedFrame {
                         };
                     }
                 }
-                ObuType::Frame | ObuType::FrameHeader => {
+                ObuType::Frame => {
+                    // OBU_FRAME packs frame_header() + byte_alignment() + tile_group() into one
+                    // payload (spec 5.10) -- unlike a standalone FrameHeader OBU, the tile bytes
+                    // live right here, after header_size_bytes. Most real encoders (including
+                    // this crate's own IVF test fixture) emit this combined form rather than
+                    // separate FrameHeader+TileGroup OBUs, so without this split, tile_data stays
+                    // empty and every real-CU-parsing consumer (QP/MV/partition/prediction-mode/
+                    // transform grids, deblocking boundary strength) silently falls back to
+                    // scaffold data -- found via `get_deblocking_analysis` returning a decode
+                    // error on real fixture frames that should have real tile data.
+                    if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
+                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra_only();
+                        frame_type.base_qp = frame_hdr.base_q_idx;
+                        delta_q_enabled = frame_hdr.delta_q_present;
+                        if frame_hdr.header_size_bytes < obu.payload.len() {
+                            tile_data
+                                .extend_from_slice(&obu.payload[frame_hdr.header_size_bytes..]);
+                        }
+                    }
+                }
+                ObuType::FrameHeader => {
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         frame_type.is_intra_only = frame_hdr.frame_type.is_intra_only();
                         frame_type.base_qp = frame_hdr.base_q_idx;
