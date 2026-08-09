@@ -1009,6 +1009,33 @@ snake_case로(`AV1FeaturesView.tsx`가 이미 그렇게 가정하고 있었음),
 **남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_deblocking_analysis`,
 `get_residual_analysis`, `get_coding_flow_analysis` — 5개.
 
+### get_coding_flow_analysis 구현 — 가장 저렴했던 케이스 (2026-08-09, 70b8877/02b2593)
+
+남은 4개(`get_codec_extended_info`/`get_deblocking_analysis`/`get_residual_analysis`/
+`get_coding_flow_analysis`) 스코프를 먼저 조사(Explore 에이전트): 앞 셋은 각각 HEVC scaling-list/VP9
+prob-decode/VVC APS 파서 신규(codec_extended_info, 여러 크레이트에 걸침), boundary-strength 신규
+알고리즘(deblocking), AV1 잔차 CDF 심볼 디코드 신규(residual, `bitvue-av1-codec::tile` 모듈독에 이미
+`⏳ pending`으로 표시돼 있던 항목) — 셋 다 get_av1_features급 이상. `get_coding_flow_analysis`만
+예외: 프론트엔드(`CodingFlowView.tsx`)가 실제로 쓰는 필드는 `current_stage`+`codec_features`뿐이고
+(`stages`는 타입엔 있지만 컴포넌트 바디에서 미사용), 둘 다 이미 있는 데이터로 만들 수 있음 —
+`frame_analysis`의 prediction/transform/QP 그리드 추출 성공 여부로 파이프라인 단계별 완료를
+판정(input→prediction→transform→quantization까지 도달, entropy/reconstruction은 이 코드베이스에
+잔차 엔트로피 디코드/픽셀 재구성 단계가 아예 없어서 항상 미완료로 보고), `av1_features`가 이미
+쓰던 시퀀스 헤더 스캔으로 `SequenceHeader`의 실제 bool 플래그(enable_cdef 등 15개)를
+codec_features로 매핑 — 프론트엔드의 코덱명 기반 정적 테이블보다 스트림별로 진짜인 값.
+
+신규 파싱 없음, `frame_analysis`/`av1_features` 패턴 재사용만으로 완결. `bitvue-sidecar` 유닛
+테스트 4개(coding_flow 모듈) + dispatch 레벨 2개, 전부 실제 픽스처로 검증(frame 0 기준
+`current_stage: "quantization"`, `codec_features`에 CDEF 포함 확인). 프론트엔드 발견: `CodingFlowView.tsx`가
+`get_av1_features`와 마찬가지로 삭제된 `@tauri-apps/api` invoke를 그대로 부르고 있던 죽은
+pre-migration 코드였음 — `electronBridgeService.ts` 패턴으로 이관. `BITVUE_ELECTRON_SELFTEST`에
+`getCodingFlowAnalysis(0)` 라운드 추가, 실제 IPC 체인 exit 0 확인. 타입체크 409파일/vitest
+36실패-9파일 베이스라인 그대로, 신규 회귀 없음.
+
+**남은 것**: `create_compare_workspace`류, `get_codec_extended_info`, `get_deblocking_analysis`,
+`get_residual_analysis` — 4개, 전부 get_av1_features급 이상의 신규 엔진/파서 작업 확인됨(더 이상
+"배선만" 남은 케이스 없음).
+
 ### 확정 순서
 
 ```
