@@ -1102,6 +1102,44 @@ iterator 기반이라 회귀 없음 확인. 타입체크 409파일/vitest 36실�
 **남은 것**: `create_compare_workspace`류, `get_residual_analysis` — 2개(전자는 죽은 UI라 저우선,
 후자는 AV1 잔차 CDF 심볼 디코드 신규 필요 — 이 세션에서 확인된 것 중 유일하게 진짜 큰 신규 작업).
 
+### get_residual_analysis 구현 — 도중에 발견한 진짜 desync/crash 버그부터 수정 (2026-08-09, de2deac/19ef3e5/66f0073)
+
+이 세션 백엔드 스윕의 마지막 항목. `bitvue-cli` 자체가 "requires a full AV1 tile-group decoder,
+not yet implemented"라고 이미 선언했던 케이스, GUI는 QP값 기반 가짜 근사치를 렌더링하며 백엔드를
+아예 호출하지 않고 있었음 — 정말로 신규 구현이 필요했던 유일한 커맨드.
+
+**작업 도중 이 세션 전체를 소급 위협하는 버그 발견**: `parse_coding_unit`이 skip/mode/mv/delta_q만
+읽고 AV1 스펙의 `residual()` 신택스를 전혀 안 읽고 있었음 — 타일의 계수 데이터는 바이트 정렬 없는
+산술부호화라 skip=false인 CU 하나만 있어도 공유 `SymbolDecoder`가 이후 모든 신택스에서 통째로
+desync됨. `get_codec_extended_info(fixture, 100)`이 실제로 크래시하는 것으로 확인 —
+이번 세션에 만든 real-CU 기반 커맨드(`get_frame_analysis`/`get_deblocking_analysis`/
+`get_codec_extended_info`) 전부가 tile_data가 실제로 채워지기 시작한 순간(OBU_FRAME 버그 수정,
+같은 세션) 이 위험에 노출돼 있었음 — 사용자에게 먼저 실측 확인받고("지금 바로 측정") 실제 크래시
+재현으로 근본 원인 확정 후 진행.
+
+`SymbolDecoder::read_residual_block` 신규 추가(txb_skip/eob_pt+extra bits/coeff_base_eob/
+coeff_base/coeff_br/dc_sign/골롬 확장) — skip/mode/partition이 이미 쓰던 "컨텍스트 독립
+대표 CDF" 선례를 그대로 계수 신택스까지 확장(스펙 정확한 확률/컨텍스트 아님, 하지만 읽는
+심볼의 개수/모양은 실제 신택스와 같아서 디코더 위치가 최소한 그럴듯한 만큼 전진함). 부수적으로
+`ArithmeticDecoder::refill`의 버퍼 소진 경로에서 시프트 오버플로 patch(문서화된 `cnt>=MIN_CNT`
+불변식만으로도 이미 64비트 시프트 한계를 넘을 수 있던 잠재 버그, residual 수정 후에도 남아있던
+frame 19 크래시로 발견) — 실제 250프레임 전부 무크래시 확인하는 영구 회귀 테스트 추가.
+
+`CodingUnit.residual`(nonzero_count/sum_abs_level/max_level) 신규 필드를 그대로
+`get_residual_analysis`의 `block_residuals`/`coefficient_stats`로 매핑 — "energy"는
+sum_abs_level(잔차 크기 총합)이지 공간영역 에너지 아님(역변환 단계 자체가 없음), 명시적으로
+문서화. `ResidualsView.tsx`도 죽은 Tauri invoke + "QP-based approximation" 가짜 라벨이었음 —
+bridge 이관 + 라벨을 실제 상태("Approximate coefficient decode", 근사 이유 명시)로 교체.
+검증: av1-codec 279 + sidecar 106(신규 4개) 전부 통과, 250프레임 전부 무에러 확인, 타입체크
+409파일/vitest 36실패-9파일 베이스라인 그대로, `BITVUE_ELECTRON_SELFTEST`에
+`getResidualAnalysis(5)` 라운드 추가, exit 0 — 6개 AV1 커맨드 전부(`get_frame_analysis`/
+`get_av1_features`/`get_coding_flow_analysis`/`get_deblocking_analysis`/
+`get_codec_extended_info`/`get_residual_analysis`) 실제 IPC 체인으로 한 번에 검증됨.
+
+**남은 것**: `create_compare_workspace`류(죽은 UI, 저우선) 1개 — 이번 세션의 backend-command
+스윕은 여기서 사실상 종료. 남은 항목 하나는 소비하는 `<CompareWorkspace>` UI 자체가 이미
+죽은 트리라 배선해도 사용자에게 보이는 효과가 없음.
+
 ### 확정 순서
 
 ```
