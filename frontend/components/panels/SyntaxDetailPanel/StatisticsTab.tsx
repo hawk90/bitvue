@@ -10,7 +10,7 @@
  */
 
 import React, { memo, useCallback, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { getCodecExtendedInfo } from "../../../services/electronBridgeService";
 
 // ─── Frame type colour palette ────────────────────────────────────────────────
 
@@ -373,10 +373,7 @@ export const StatisticsTab = memo(function StatisticsTab({
   const handleLoadQp = useCallback(() => {
     if (!filePath) return;
     setQpLoading(true);
-    invoke<{ qp_histogram: Array<{ qp: number; count: number }> }>(
-      "get_codec_extended_info",
-      { path: filePath, frameIndex: frameIndex ?? 0 },
-    )
+    getCodecExtendedInfo(frameIndex ?? 0)
       .then((info) => setQpHistogram(info.qp_histogram ?? []))
       .catch(console.warn)
       .finally(() => setQpLoading(false));

@@ -150,6 +150,10 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("get_deblocking_analysis", { frame_index: frameIndex });
   });
 
+  ipcMain.handle("bitvue:getCodecExtendedInfo", async (_event, frameIndex: number) => {
+    return requireSidecar().request("get_codec_extended_info", { frame_index: frameIndex });
+  });
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -382,6 +386,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const av1Features = await window.bitvue.getAv1Features(0);
         const codingFlow = await window.bitvue.getCodingFlowAnalysis(0);
         const deblocking = await window.bitvue.getDeblockingAnalysis(0);
+        const codecExtendedInfo = await window.bitvue.getCodecExtendedInfo(5);
 
         return {
           documentTitle: document.title,
@@ -410,6 +415,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           av1Features,
           codingFlow,
           deblocking,
+          codecExtendedInfo,
         };
       })()
     `);
@@ -523,6 +529,13 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       (result.deblocking?.edges?.length ?? 0) > 0 &&
       result.deblocking?.stats?.total_edges === result.deblocking?.edges?.length;
     console.log("[selftest] get_deblocking_analysis OK:", deblockingOk);
+    const codecExtendedInfoOk =
+      result.codecExtendedInfo?.frame_index === 5 &&
+      (result.codecExtendedInfo?.l0_refs?.length ?? 0) > 0 &&
+      result.codecExtendedInfo?.l0_refs?.[0]?.frame_index < 5 &&
+      result.codecExtendedInfo?.l0_refs?.[0]?.long_term === false &&
+      (result.codecExtendedInfo?.qp_histogram?.length ?? 0) > 0;
+    console.log("[selftest] get_codec_extended_info OK:", codecExtendedInfoOk);
     console.log(
       "[selftest] debug YUV: load OK:", debugYuvLoadOk,
       " reference bytes match decoded OK:", debugYuvReferenceOk,
@@ -563,7 +576,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       frameAnalysisOk &&
       av1FeaturesOk &&
       codingFlowOk &&
-      deblockingOk
+      deblockingOk &&
+      codecExtendedInfoOk
         ? 0
         : 1;
   } catch (err) {

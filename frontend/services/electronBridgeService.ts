@@ -145,6 +145,32 @@ export interface DeblockingAnalysisWireResult {
   stats: DeblockingStatsWire;
 }
 
+/** AV1 has no long-term marking or weighted-prediction syntax -- `long_term` is always `false`
+ *  and `weight`/`offset` are always `null` on the wire (see bitvue-sidecar::codec_extended_info's
+ *  module doc). */
+export interface RefEntryWire {
+  list_idx: number;
+  slot: number;
+  poc: number;
+  frame_index: number;
+  frame_type: string;
+  long_term: boolean;
+  weight: number | null;
+  offset: number | null;
+}
+
+export interface QpHistogramBucketWire {
+  qp: number;
+  count: number;
+}
+
+export interface CodecExtendedInfoWireResult {
+  frame_index: number;
+  l0_refs: RefEntryWire[];
+  l1_refs: RefEntryWire[];
+  qp_histogram: QpHistogramBucketWire[];
+}
+
 export type StreamId = "A" | "B";
 
 /** Shape of the JSON-mapped `bitvue_engine::Event` values the sidecar sends back — see
@@ -362,6 +388,9 @@ declare global {
       getDeblockingAnalysis: (
         frameIndex: number,
       ) => Promise<DeblockingAnalysisWireResult>;
+      getCodecExtendedInfo: (
+        frameIndex: number,
+      ) => Promise<CodecExtendedInfoWireResult>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -573,6 +602,15 @@ export async function getDeblockingAnalysis(
   frameIndex: number,
 ): Promise<DeblockingAnalysisWireResult> {
   return requireBridge().getDeblockingAnalysis(frameIndex);
+}
+
+/** AV1 reference-frame lists (L0/L1) + QP histogram for one frame of stream A -- feeds
+ *  RefListTab/StatisticsTab. AV1/IVF only. Throws on failure (frame out of range, stream not
+ *  open). */
+export async function getCodecExtendedInfo(
+  frameIndex: number,
+): Promise<CodecExtendedInfoWireResult> {
+  return requireBridge().getCodecExtendedInfo(frameIndex);
 }
 
 export interface OpenFileDialogFilter {

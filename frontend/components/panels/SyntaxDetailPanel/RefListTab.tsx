@@ -7,7 +7,7 @@
  */
 
 import { memo, useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { getCodecExtendedInfo } from "../../../services/electronBridgeService";
 
 interface RefEntry {
   list_idx: number;
@@ -18,11 +18,6 @@ interface RefEntry {
   long_term: boolean;
   weight: number | null;
   offset: number | null;
-}
-
-interface CodecExtendedInfo {
-  l0_refs: RefEntry[];
-  l1_refs: RefEntry[];
 }
 
 interface RefListTabProps {
@@ -94,10 +89,7 @@ export const RefListTab = memo(function RefListTab({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    invoke<CodecExtendedInfo>("get_codec_extended_info", {
-      path: filePath,
-      frameIndex,
-    })
+    getCodecExtendedInfo(frameIndex)
       .then((info) => {
         if (!cancelled) {
           setL0(info.l0_refs);
