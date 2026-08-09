@@ -95,6 +95,20 @@ export interface Av1FeaturesWireResult {
   super_resolution: Av1SuperResDataWire | null;
 }
 
+export interface CodingFlowStageWire {
+  id: string;
+  label: string;
+  completed: boolean;
+  data_size: number | null;
+}
+
+export interface CodingFlowAnalysisWireResult {
+  frame_index: number;
+  stages: CodingFlowStageWire[];
+  current_stage: string;
+  codec_features: string[];
+}
+
 export type StreamId = "A" | "B";
 
 /** Shape of the JSON-mapped `bitvue_engine::Event` values the sidecar sends back — see
@@ -306,6 +320,9 @@ declare global {
       ) => Promise<BridgeDecodedYuvFrame>;
       getFrameAnalysis: (frameIndex: number) => Promise<FrameAnalysisData>;
       getAv1Features: (frameIndex: number) => Promise<Av1FeaturesWireResult>;
+      getCodingFlowAnalysis: (
+        frameIndex: number,
+      ) => Promise<CodingFlowAnalysisWireResult>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -499,6 +516,15 @@ export async function getAv1Features(
   frameIndex: number,
 ): Promise<Av1FeaturesWireResult> {
   return requireBridge().getAv1Features(frameIndex);
+}
+
+/** Encoder/decoder pipeline stage completion + real sequence-header codec features for one frame
+ *  of stream A -- feeds CodingFlowView. AV1/IVF only. Throws on failure (frame out of range,
+ *  stream not open). */
+export async function getCodingFlowAnalysis(
+  frameIndex: number,
+): Promise<CodingFlowAnalysisWireResult> {
+  return requireBridge().getCodingFlowAnalysis(frameIndex);
 }
 
 export interface OpenFileDialogFilter {

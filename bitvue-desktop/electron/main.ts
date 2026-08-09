@@ -142,6 +142,10 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("get_av1_features", { frame_index: frameIndex });
   });
 
+  ipcMain.handle("bitvue:getCodingFlowAnalysis", async (_event, frameIndex: number) => {
+    return requireSidecar().request("get_coding_flow_analysis", { frame_index: frameIndex });
+  });
+
   ipcMain.handle("bitvue:closeStream", async (_event, stream: string) => {
     return requireSidecar().request("close_stream", { stream });
   });
@@ -372,6 +376,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           .map(b => b.toString(16).padStart(2, "0")).join("");
         const frameAnalysis = await window.bitvue.getFrameAnalysis(0);
         const av1Features = await window.bitvue.getAv1Features(0);
+        const codingFlow = await window.bitvue.getCodingFlowAnalysis(0);
 
         return {
           documentTitle: document.title,
@@ -398,6 +403,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
           decodedBytesHex,
           frameAnalysis,
           av1Features,
+          codingFlow,
         };
       })()
     `);
@@ -498,6 +504,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.av1Features?.cdef?.height === 240 &&
       (result.av1Features?.cdef?.blocks?.length ?? 0) > 0;
     console.log("[selftest] get_av1_features OK:", av1FeaturesOk);
+    const codingFlowOk =
+      result.codingFlow?.frame_index === 0 &&
+      result.codingFlow?.current_stage === "quantization" &&
+      (result.codingFlow?.stages?.length ?? 0) === 6 &&
+      (result.codingFlow?.codec_features?.length ?? 0) > 0;
+    console.log("[selftest] get_coding_flow_analysis OK:", codingFlowOk);
     console.log(
       "[selftest] debug YUV: load OK:", debugYuvLoadOk,
       " reference bytes match decoded OK:", debugYuvReferenceOk,
@@ -536,7 +548,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       debugYuvDiffOk &&
       debugYuvFindFirstDiffOk &&
       frameAnalysisOk &&
-      av1FeaturesOk
+      av1FeaturesOk &&
+      codingFlowOk
         ? 0
         : 1;
   } catch (err) {

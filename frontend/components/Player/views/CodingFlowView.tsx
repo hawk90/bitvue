@@ -7,9 +7,9 @@
  * - Current stage highlighting based on analysis mode
  */
 
-import { invoke } from "@tauri-apps/api/core";
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
+import { getCodingFlowAnalysis } from "../../../services/electronBridgeService";
 
 type CodingStage =
   | "input"
@@ -120,17 +120,7 @@ export const CodingFlowView = memo(function CodingFlowView({
 
   useEffect(() => {
     if (!frame) return;
-    invoke<{
-      frame_index: number;
-      stages: {
-        id: string;
-        label: string;
-        completed: boolean;
-        data_size: number | null;
-      }[];
-      current_stage: string;
-      codec_features: string[];
-    }>("get_coding_flow_analysis", { frameIndex: frame.frame_index })
+    getCodingFlowAnalysis(frame.frame_index)
       .then((data) => {
         // Backend data is untrusted at the type level (plain string) -- validate against the
         // real stage union rather than casting blindly.
