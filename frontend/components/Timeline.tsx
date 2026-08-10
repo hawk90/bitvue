@@ -10,6 +10,12 @@ import { TimelineHeader } from "./TimelineHeader";
 import { TimelineCursor } from "./TimelineCursor";
 import { TimelineTooltip } from "./TimelineTooltip";
 import { TimelineThumbnails } from "./TimelineThumbnails";
+import {
+  getContextMenuItems,
+  type ContextMenuItemWire,
+} from "../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../hooks/useExportEvidenceBundle";
+import { ContextMenu } from "./ContextMenu";
 import type { FrameInfo } from "../types/video";
 import "./Timeline.css";
 
@@ -34,6 +40,45 @@ function Timeline({ frames, className = "" }: TimelineProps) {
   const frameRefs = useRef<(HTMLDivElement | null)[]>([]);
   // Cache for timeline bounding rect to avoid repeated getBoundingClientRect calls
   const rectCache = useRef<DOMRect | null>(null);
+
+  // Right-click context menu (Phase 7.6, "Timeline" scope) -- see ContextMenu component doc.
+  const exportEvidence = useExportEvidenceBundle();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleTimelineContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      const hasSelection = selection?.frame?.frameIndex !== undefined;
+      const x = event.clientX;
+      const y = event.clientY;
+      getContextMenuItems("Timeline", hasSelection, false)
+        .then((items) => setContextMenu({ x, y, items }))
+        .catch(() => setContextMenu(null));
+    },
+    [selection?.frame?.frameIndex],
+  );
+
+  const handleContextMenuSelect = useCallback(
+    (command: string) => {
+      if (command === "Export.EvidenceBundle") {
+        void exportEvidence();
+      } else if (
+        command === "Copy.Selection" &&
+        selection?.frame?.frameIndex !== undefined
+      ) {
+        const frame = frames[selection.frame.frameIndex];
+        const text = frame
+          ? `Frame ${frame.frame_index} (pts=${frame.pts})`
+          : `Frame ${selection.frame.frameIndex}`;
+        void navigator.clipboard.writeText(text);
+      }
+    },
+    [exportEvidence, selection?.frame?.frameIndex, frames],
+  );
 
   // Calculate cursor position based on actual DOM element position (memoized)
   const cursorPosition = useMemo(() => {
@@ -248,7 +293,11 @@ function Timeline({ frames, className = "" }: TimelineProps) {
         totalFrames={frames.length}
       />
       {/* Timeline Content */}
-      <div className="timeline-content" ref={timelineRef}>
+      <div
+        className="timeline-content"
+        ref={timelineRef}
+        onContextMenu={handleTimelineContextMenu}
+      >
         {/* Compressed thumbnails (Touch Bar style) */}
         <TimelineThumbnails
           frames={frames}
@@ -276,6 +325,16 @@ function Timeline({ frames, className = "" }: TimelineProps) {
             positionPercent={hoverPercent}
           />
         )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

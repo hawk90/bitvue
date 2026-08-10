@@ -5,7 +5,13 @@
  */
 
 import { memo, useCallback, useState, useEffect, useRef } from "react";
-import { getHexRange } from "../../../services/electronBridgeService";
+import {
+  getHexRange,
+  getContextMenuItems,
+  type ContextMenuItemWire,
+} from "../../../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../../../hooks/useExportEvidenceBundle";
+import { ContextMenu } from "../../ContextMenu";
 import { createLogger } from "../../../utils/logger";
 import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
 
@@ -37,6 +43,42 @@ export const HexViewTab = memo(function HexViewTab({
   const [truncated, setTruncated] = useState<boolean>(false);
   const { highlightedByteOffset } = useSyntaxHexLink();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Right-click context menu (Phase 7.6, "HexView" scope) -- see ContextMenu component doc.
+  const exportEvidence = useExportEvidenceBundle();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleHexContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      const hasByteRange = selectedByte !== null;
+      const x = event.clientX;
+      const y = event.clientY;
+      getContextMenuItems("HexView", false, hasByteRange)
+        .then((items) => setContextMenu({ x, y, items }))
+        .catch(() => setContextMenu(null));
+    },
+    [selectedByte],
+  );
+
+  const handleContextMenuSelect = useCallback(
+    (command: string) => {
+      if (command === "Export.EvidenceBundle") {
+        void exportEvidence();
+      } else if (command === "Copy.Bytes" && selectedByte !== null) {
+        const hex = hexData[selectedByte]
+          .toString(16)
+          .padStart(2, "0")
+          .toUpperCase();
+        void navigator.clipboard.writeText(hex);
+      }
+    },
+    [exportEvidence, selectedByte, hexData],
+  );
 
   const currentFrame = frames[frameIndex];
 
@@ -193,7 +235,11 @@ export const HexViewTab = memo(function HexViewTab({
   const lines = Math.ceil(hexData.length / BYTES_PER_LINE);
 
   return (
-    <div className="hex-dump-content" ref={containerRef}>
+    <div
+      className="hex-dump-content"
+      ref={containerRef}
+      onContextMenu={handleHexContextMenu}
+    >
       <div className="hex-info-bar">
         <span className="hex-info-item">
           <span className="hex-info-label">Data:</span>
@@ -297,6 +343,16 @@ export const HexViewTab = memo(function HexViewTab({
             </span>
           </div>
         </div>
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );
