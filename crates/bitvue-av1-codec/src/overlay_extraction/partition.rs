@@ -3,15 +3,13 @@
 //! Provides functions to extract partition trees, prediction modes,
 //! and transform sizes from AV1 bitstreams.
 
-use std::sync::Arc;
-
 use bitvue_engine::{
     limits::{AV1_BLOCK_SIZE, MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     partition_grid::{PartitionGrid, PartitionType},
     BitvueError,
 };
 
-use super::cache::{compute_cache_key, get_or_parse_coding_units};
+use super::cu_parser::parse_all_coding_units;
 use super::parser::ParsedFrame;
 use crate::tile::{BlockSize, PredictionMode, TxSize};
 
@@ -747,93 +745,6 @@ where
     }
 
     Ok(())
-}
-
-/// Parse all coding units from tile data
-///
-/// Per optimize-code skill: Uses thread-safe LRU cache to avoid re-parsing
-/// the same tile data when extracting multiple overlays.
-///
-/// Returns `Arc<Vec<CodingUnit>>` for O(1) cloning on cache hits.
-/// Use `&*result` or `result.as_ref()` to access the slice of coding units.
-/// This is used by prediction mode and transform grid extraction.
-fn parse_all_coding_units(
-    parsed: &ParsedFrame,
-) -> Result<std::sync::Arc<Vec<crate::tile::CodingUnit>>, BitvueError> {
-    let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-    let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
-
-    // Clone data needed for parsing (move into closure)
-    let tile_data = Arc::clone(&parsed.tile_data);
-    let sb_size = parsed.dimensions.sb_size;
-    let sb_cols = parsed.dimensions.sb_cols;
-    let sb_rows = parsed.dimensions.sb_rows;
-    let is_key_frame = parsed.frame_type.is_intra_only;
-    let delta_q_enabled = parsed.delta_q_enabled;
-    let reference_select = parsed.reference_select;
-    let allow_intrabc = parsed.allow_intrabc;
-
-    // Per optimize-code skill: Use get_or_parse helper for cache pattern
-    get_or_parse_coding_units(cache_key, || {
-        let mut all_cus = Vec::new();
-
-        // Pre-allocate capacity based on superblock count (per optimize-code)
-        let estimated_cus = (sb_cols * sb_rows) as usize * 4;
-        all_cus.reserve(estimated_cus);
-
-        // Create SymbolDecoder for tile data
-        let mut decoder = crate::SymbolDecoder::new(&tile_data)?;
-
-        // Track running QP value across superblocks
-        let mut current_qp = base_qp;
-
-        // Create MV predictor context
-        let mut mv_ctx = crate::tile::MvPredictorContext::new(sb_cols, sb_rows);
-
-        // Parse each superblock
-        for sb_y in 0..sb_rows {
-            for sb_x in 0..sb_cols {
-                let sb_pixel_x = sb_x * sb_size;
-                let sb_pixel_y = sb_y * sb_size;
-
-                // Try to parse the superblock
-                match crate::parse_superblock(
-                    &mut decoder,
-                    sb_pixel_x,
-                    sb_pixel_y,
-                    sb_size,
-                    is_key_frame,
-                    current_qp,
-                    delta_q_enabled,
-                    &mut mv_ctx,
-                    reference_select,
-                    allow_intrabc,
-                ) {
-                    Ok((sb, new_qp)) => {
-                        // Collect all coding units from this superblock
-                        all_cus.extend(sb.coding_units);
-                        current_qp = new_qp;
-                    }
-                    Err(e) => {
-                        tracing::debug!(
-                            "Failed to parse superblock ({}, {}): {}, skipping",
-                            sb_pixel_x,
-                            sb_pixel_y,
-                            e
-                        );
-                        // Continue parsing other superblocks
-                    }
-                }
-            }
-        }
-
-        tracing::debug!(
-            "Parsed {} coding units from tile data (final QP: {})",
-            all_cus.len(),
-            current_qp
-        );
-        Ok(all_cus)
-    })
 }
 
 #[cfg(test)]
