@@ -904,6 +904,21 @@ pub fn compare_evidence_bundles(
     let mut ignored_changes = Vec::new();
     let compares = |field: &str| config.compare_fields.iter().any(|f| f == field);
 
+    // Schema/ABI compatibility -- always checked, not gated by compare_fields. This isn't a
+    // value comparison, it's a precondition for whether the rest of the diff is trustworthy: a
+    // MAJOR-version mismatch means a field may have been removed/repurposed between the two
+    // bundles' schemas, so a value-level diff below could silently miss or misreport it.
+    if let crate::export::BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major } =
+        crate::export::check_bundle_schema_compatibility(&a.bundle_version, &b.bundle_version)
+    {
+        differences.push(EvidenceDifference {
+            field: "bundle_version".to_string(),
+            a_value: format!("{} (schema major {a_major})", a.bundle_version),
+            b_value: format!("{} (schema major {b_major})", b.bundle_version),
+            severity: DiffSeverity::Breaking,
+        });
+    }
+
     // Order type must match (critical)
     if compares("order_type") && a.order_type != b.order_type {
         differences.push(EvidenceDifference {

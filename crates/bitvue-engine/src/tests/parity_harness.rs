@@ -13,7 +13,10 @@
 //!
 //! These tests validate the parity matrix parsing, scoring, gates, and report generation.
 
-use crate::export::EvidenceBundleManifest;
+use crate::export::{
+    check_bundle_schema_compatibility, BundleSchemaCompatibility, EvidenceBundleManifest,
+    CURRENT_BUNDLE_SCHEMA_VERSION,
+};
 use crate::parity_harness::{
     calculate_parity_score, compare_evidence_bundle_dirs, compare_evidence_bundles,
     compare_render_snapshots, evaluate_guard, get_full_parity_matrix,
@@ -449,6 +452,75 @@ fn test_compare_evidence_bundle_dirs_against_real_exported_bundles() {
     assert!(diff.differences.iter().any(|d| d.field == "order_type"));
 
     let _ = std::fs::remove_dir_all(&temp);
+}
+
+#[test]
+fn test_check_bundle_schema_compatibility() {
+    assert_eq!(
+        check_bundle_schema_compatibility("1.0", CURRENT_BUNDLE_SCHEMA_VERSION),
+        BundleSchemaCompatibility::Compatible
+    );
+    assert_eq!(
+        check_bundle_schema_compatibility("1.0", "1.7"),
+        BundleSchemaCompatibility::Compatible,
+        "same MAJOR, different MINOR must still be compatible"
+    );
+    assert_eq!(
+        check_bundle_schema_compatibility("1.0", "2.0"),
+        BundleSchemaCompatibility::IncompatibleMajorVersion {
+            a_major: 1,
+            b_major: 2,
+        }
+    );
+    assert_eq!(
+        check_bundle_schema_compatibility("not-a-version", "1.0"),
+        BundleSchemaCompatibility::UnparseableVersion("not-a-version".to_string())
+    );
+}
+
+#[test]
+fn test_evidence_bundle_diff_flags_major_schema_version_mismatch_as_breaking() {
+    let manifest_a = EvidenceBundleManifest {
+        bundle_version: "1.0".to_string(),
+        app_version: "0.1.0".to_string(),
+        git_commit: "abc123".to_string(),
+        build_profile: "release".to_string(),
+        os: "macOS".to_string(),
+        gpu: "Apple M1".to_string(),
+        cpu: "Apple M1".to_string(),
+        backend: "dav1d".to_string(),
+        plugin_versions: HashMap::new(),
+        stream_fingerprint: "stream_001".to_string(),
+        order_type: OrderType::Display,
+        selection_state: SelectionSnapshot {
+            selected_entity: None,
+            selected_byte_range: None,
+            order_type: OrderType::Display,
+        },
+        workspace: "player".to_string(),
+        mode: "normal".to_string(),
+        warnings: vec![],
+        artifacts: vec![],
+    };
+
+    let mut manifest_b = manifest_a.clone();
+    manifest_b.bundle_version = "2.0".to_string();
+
+    // Even with an empty compare_fields list, the schema check must still fire -- it's a
+    // precondition for the diff being meaningful at all, not a value comparison the config
+    // opts in/out of.
+    let config = EvidenceDiffConfig {
+        compare_fields: vec![],
+        ignore_fields: vec![],
+    };
+    let result = compare_evidence_bundles(&manifest_a, &manifest_b, &config);
+
+    assert!(!result.matches);
+    assert!(!result.abi_compatible);
+    assert!(result
+        .differences
+        .iter()
+        .any(|d| d.field == "bundle_version" && d.severity == DiffSeverity::Breaking));
 }
 
 #[test]

@@ -6,8 +6,68 @@ use std::path::Path;
 
 use crate::parity_harness::{OrderType, RenderSnapshot, SelectionSnapshot};
 
+/// Current `EvidenceBundleManifest` schema version ("MAJOR.MINOR"). All 16 fields have existed
+/// since the manifest's introduction (`eb2cee3`, 2026-01-30) with no schema changes since, so
+/// there's no real removal/rename history to encode yet -- this constant plus the policy below
+/// exist so the *next* schema change has a place to record itself instead of silently drifting.
+///
+/// ABI compatibility policy (per `docs/UX_PARITY_MATRIX.md` §7):
+/// - **Additions** are backward-compatible and need no MINOR/MAJOR bump: the struct-level
+///   `#[serde(default)]` below (backed by `Default for EvidenceBundleManifest`) means a bundle
+///   written before a field existed just gets that field's default on read, and an unrecognized
+///   field in a newer bundle is silently ignored by an older reader (serde's default behavior,
+///   no `deny_unknown_fields`).
+/// - **Removals** need a MAJOR bump. `check_bundle_schema_compatibility` compares MAJOR only --
+///   a mismatch means the schema had a breaking change and a diff between two such bundles may
+///   silently misinterpret repurposed fields, so callers should surface that prominently rather
+///   than diffing quietly.
+/// - **Renames** should keep the old name working via `#[serde(alias = "old_name")]` on the new
+///   field for at least 2 MINOR versions before the MAJOR bump that finally drops the alias.
+pub const CURRENT_BUNDLE_SCHEMA_VERSION: &str = "1.0";
+
+/// Result of comparing a bundle's declared `bundle_version` against another (either another
+/// bundle's, or [`CURRENT_BUNDLE_SCHEMA_VERSION`]) per the policy on [`CURRENT_BUNDLE_SCHEMA_VERSION`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BundleSchemaCompatibility {
+    /// Same MAJOR version -- safe to diff/compare field values directly.
+    Compatible,
+    /// Different MAJOR version -- a breaking schema change (field removal/repurposing) happened
+    /// between these versions.
+    IncompatibleMajorVersion { a_major: u32, b_major: u32 },
+    /// `bundle_version` wasn't parseable as `MAJOR.MINOR` (pre-versioning or corrupt bundle).
+    UnparseableVersion(String),
+}
+
+fn parse_major_version(version: &str) -> Option<u32> {
+    version.split('.').next()?.parse::<u32>().ok()
+}
+
+/// Compares two `bundle_version` strings per this module's ABI policy. Pass
+/// [`CURRENT_BUNDLE_SCHEMA_VERSION`] as `b` to check a bundle against the running build's schema,
+/// or two real bundles' versions to check whether they're safe to diff against each other.
+pub fn check_bundle_schema_compatibility(a: &str, b: &str) -> BundleSchemaCompatibility {
+    let (Some(a_major), Some(b_major)) = (parse_major_version(a), parse_major_version(b)) else {
+        let bad = if parse_major_version(a).is_none() {
+            a
+        } else {
+            b
+        };
+        return BundleSchemaCompatibility::UnparseableVersion(bad.to_string());
+    };
+    if a_major == b_major {
+        BundleSchemaCompatibility::Compatible
+    } else {
+        BundleSchemaCompatibility::IncompatibleMajorVersion { a_major, b_major }
+    }
+}
+
 /// Evidence bundle manifest (per export_evidence_bundle.schema.json)
+///
+/// `#[serde(default)]` (container-level, backed by this struct's `Default` impl below) means a
+/// bundle missing a field a newer schema added deserializes fine instead of hard-failing -- see
+/// [`CURRENT_BUNDLE_SCHEMA_VERSION`]'s doc for the full ABI policy this implements.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct EvidenceBundleManifest {
     /// Bundle schema version
     pub bundle_version: String,
@@ -46,7 +106,7 @@ pub struct EvidenceBundleManifest {
 impl Default for EvidenceBundleManifest {
     fn default() -> Self {
         Self {
-            bundle_version: "1.0".to_string(),
+            bundle_version: CURRENT_BUNDLE_SCHEMA_VERSION.to_string(),
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             git_commit: "unknown".to_string(),
             build_profile: if cfg!(debug_assertions) {

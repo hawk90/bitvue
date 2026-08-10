@@ -347,6 +347,64 @@ fn test_evidence_bundle_manifest_default() {
 }
 
 #[test]
+fn test_evidence_bundle_manifest_deserializes_with_a_field_missing() {
+    // A bundle written by an older/newer build might be missing a field this schema version
+    // has -- per the ABI policy on `CURRENT_BUNDLE_SCHEMA_VERSION`, that must default rather
+    // than hard-fail. Before `#[serde(default)]` was added to the struct, this exact JSON (real
+    // manifest shape minus `warnings`/`artifacts`) failed to parse at all.
+    let json = r#"{
+        "bundle_version": "1.0",
+        "app_version": "0.1.0",
+        "git_commit": "abc123",
+        "build_profile": "release",
+        "os": "macOS",
+        "gpu": "Apple M1",
+        "cpu": "Apple M1",
+        "backend": "dav1d",
+        "plugin_versions": {},
+        "stream_fingerprint": "stream_001",
+        "order_type": "display",
+        "selection_state": {"selected_entity": null, "selected_byte_range": null, "order_type": "display"},
+        "workspace": "player",
+        "mode": "normal"
+    }"#;
+
+    let manifest: EvidenceBundleManifest =
+        serde_json::from_str(json).expect("missing fields should default, not fail to parse");
+    assert!(manifest.warnings.is_empty());
+    assert!(manifest.artifacts.is_empty());
+}
+
+#[test]
+fn test_evidence_bundle_manifest_ignores_an_unknown_field() {
+    // The forward-compatibility half of the same policy: a bundle from a *newer* schema with an
+    // extra field an older reader doesn't know about must still parse.
+    let json = r#"{
+        "bundle_version": "1.0",
+        "app_version": "0.1.0",
+        "git_commit": "abc123",
+        "build_profile": "release",
+        "os": "macOS",
+        "gpu": "Apple M1",
+        "cpu": "Apple M1",
+        "backend": "dav1d",
+        "plugin_versions": {},
+        "stream_fingerprint": "stream_001",
+        "order_type": "display",
+        "selection_state": {"selected_entity": null, "selected_byte_range": null, "order_type": "display"},
+        "workspace": "player",
+        "mode": "normal",
+        "warnings": [],
+        "artifacts": [],
+        "some_field_from_a_future_schema_version": 42
+    }"#;
+
+    let manifest: EvidenceBundleManifest =
+        serde_json::from_str(json).expect("unknown fields should be ignored, not fail to parse");
+    assert_eq!(manifest.mode, "normal");
+}
+
+#[test]
 fn test_evidence_bundle_export_request_default() {
     let request = EvidenceBundleExportRequest::default();
 
