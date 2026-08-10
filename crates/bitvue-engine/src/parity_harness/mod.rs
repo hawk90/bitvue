@@ -832,27 +832,12 @@ pub struct SnapshotDifference {
 // =============================================================================
 // EVIDENCE BUNDLE DIFF (per evidence_bundle_diff_contracts.json)
 // =============================================================================
-
-/// Evidence bundle manifest
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvidenceBundleManifest {
-    pub bundle_version: String,
-    pub app_version: String,
-    pub git_commit: String,
-    pub build_profile: String,
-    pub os: String,
-    pub gpu: String,
-    pub cpu: String,
-    pub backend: String,
-    pub plugin_versions: HashMap<String, String>,
-    pub stream_fingerprint: String,
-    pub order_type: OrderType,
-    pub selection_state: SelectionSnapshot,
-    pub workspace: String,
-    pub mode: String,
-    pub warnings: Vec<String>,
-    pub artifacts: Vec<String>,
-}
+//
+// `EvidenceBundleManifest` lives in `crate::export::evidence` -- that's the type actually
+// serialized to `bundle_manifest.json` by `export_evidence_bundle`. This module used to define
+// its own duplicate copy with identical fields, so `compare_evidence_bundles` could never be
+// called on a manifest that came from a real bundle on disk (only from hand-built test structs).
+// Fixed 2026-08-11: reuse the real type instead.
 
 /// Evidence bundle diff configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -906,17 +891,21 @@ pub enum DiffSeverity {
     Info,
 }
 
-/// Compare two evidence bundle manifests
+/// Compare two evidence bundle manifests. Only fields listed in `config.compare_fields` are
+/// diffed -- an unlisted field never contributes an `EvidenceDifference`, matching the
+/// documented contract (`docs/UX_PARITY_MATRIX.md` §7) that `timestamps`/`machine_hostname`/
+/// `paths` are ignored by design, not merely omitted from this function's hardcoded checks.
 pub fn compare_evidence_bundles(
-    a: &EvidenceBundleManifest,
-    b: &EvidenceBundleManifest,
-    _config: &EvidenceDiffConfig,
+    a: &crate::export::EvidenceBundleManifest,
+    b: &crate::export::EvidenceBundleManifest,
+    config: &EvidenceDiffConfig,
 ) -> EvidenceBundleDiffResult {
     let mut differences = Vec::new();
     let mut ignored_changes = Vec::new();
+    let compares = |field: &str| config.compare_fields.iter().any(|f| f == field);
 
     // Order type must match (critical)
-    if a.order_type != b.order_type {
+    if compares("order_type") && a.order_type != b.order_type {
         differences.push(EvidenceDifference {
             field: "order_type".to_string(),
             a_value: format!("{:?}", a.order_type),
@@ -926,21 +915,23 @@ pub fn compare_evidence_bundles(
     }
 
     // Selection state
-    let a_sel = serde_json::to_string(&a.selection_state).unwrap_or_default();
-    let b_sel = serde_json::to_string(&b.selection_state).unwrap_or_default();
-    if a_sel != b_sel {
-        differences.push(EvidenceDifference {
-            field: "selection_state".to_string(),
-            a_value: a_sel,
-            b_value: b_sel,
-            severity: DiffSeverity::Warning,
-        });
+    if compares("selection_state") {
+        let a_sel = serde_json::to_string(&a.selection_state).unwrap_or_default();
+        let b_sel = serde_json::to_string(&b.selection_state).unwrap_or_default();
+        if a_sel != b_sel {
+            differences.push(EvidenceDifference {
+                field: "selection_state".to_string(),
+                a_value: a_sel,
+                b_value: b_sel,
+                severity: DiffSeverity::Warning,
+            });
+        }
     }
 
     // Backend fingerprint
-    if a.backend != b.backend {
+    if compares("backend_fingerprint") && a.backend != b.backend {
         differences.push(EvidenceDifference {
-            field: "backend".to_string(),
+            field: "backend_fingerprint".to_string(),
             a_value: a.backend.clone(),
             b_value: b.backend.clone(),
             severity: DiffSeverity::Info,
@@ -948,47 +939,51 @@ pub fn compare_evidence_bundles(
     }
 
     // Plugin versions
-    for (key, a_ver) in &a.plugin_versions {
-        match b.plugin_versions.get(key) {
-            Some(b_ver) if a_ver != b_ver => {
-                differences.push(EvidenceDifference {
-                    field: format!("plugin_versions.{}", key),
-                    a_value: a_ver.clone(),
-                    b_value: b_ver.clone(),
-                    severity: DiffSeverity::Info,
-                });
+    if compares("plugin_versions") {
+        for (key, a_ver) in &a.plugin_versions {
+            match b.plugin_versions.get(key) {
+                Some(b_ver) if a_ver != b_ver => {
+                    differences.push(EvidenceDifference {
+                        field: format!("plugin_versions.{}", key),
+                        a_value: a_ver.clone(),
+                        b_value: b_ver.clone(),
+                        severity: DiffSeverity::Info,
+                    });
+                }
+                None => {
+                    differences.push(EvidenceDifference {
+                        field: format!("plugin_versions.{}", key),
+                        a_value: a_ver.clone(),
+                        b_value: "(missing)".to_string(),
+                        severity: DiffSeverity::Warning,
+                    });
+                }
+                _ => {}
             }
-            None => {
-                differences.push(EvidenceDifference {
-                    field: format!("plugin_versions.{}", key),
-                    a_value: a_ver.clone(),
-                    b_value: "(missing)".to_string(),
-                    severity: DiffSeverity::Warning,
-                });
-            }
-            _ => {}
         }
-    }
 
-    // Check for new plugins in b
-    for key in b.plugin_versions.keys() {
-        if !a.plugin_versions.contains_key(key) {
-            ignored_changes.push(format!("New plugin in b: {}", key));
+        // Check for new plugins in b
+        for key in b.plugin_versions.keys() {
+            if !a.plugin_versions.contains_key(key) {
+                ignored_changes.push(format!("New plugin in b: {}", key));
+            }
         }
     }
 
     // Warnings
-    let mut a_warnings = a.warnings.clone();
-    let mut b_warnings = b.warnings.clone();
-    a_warnings.sort();
-    b_warnings.sort();
-    if a_warnings != b_warnings {
-        differences.push(EvidenceDifference {
-            field: "warnings".to_string(),
-            a_value: a_warnings.join(", "),
-            b_value: b_warnings.join(", "),
-            severity: DiffSeverity::Warning,
-        });
+    if compares("warnings") {
+        let mut a_warnings = a.warnings.clone();
+        let mut b_warnings = b.warnings.clone();
+        a_warnings.sort();
+        b_warnings.sort();
+        if a_warnings != b_warnings {
+            differences.push(EvidenceDifference {
+                field: "warnings".to_string(),
+                a_value: a_warnings.join(", "),
+                b_value: b_warnings.join(", "),
+                severity: DiffSeverity::Warning,
+            });
+        }
     }
 
     // ABI compatibility: breaking if order_type differs
@@ -1002,6 +997,30 @@ pub fn compare_evidence_bundles(
         differences,
         ignored_changes,
     }
+}
+
+/// Loads `bundle_manifest.json` from an evidence bundle directory (as produced by
+/// `export_evidence_bundle`).
+pub fn load_evidence_bundle_manifest(
+    bundle_dir: &std::path::Path,
+) -> Result<crate::export::EvidenceBundleManifest, String> {
+    let path = bundle_dir.join("bundle_manifest.json");
+    let data = std::fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    serde_json::from_str(&data).map_err(|e| format!("failed to parse {}: {e}", path.display()))
+}
+
+/// Loads and compares two evidence bundle directories' manifests. This is the entry point real
+/// callers (CLI, future UI) should use -- `compare_evidence_bundles` itself only operates on
+/// already-parsed manifests.
+pub fn compare_evidence_bundle_dirs(
+    dir_a: &std::path::Path,
+    dir_b: &std::path::Path,
+    config: &EvidenceDiffConfig,
+) -> Result<EvidenceBundleDiffResult, String> {
+    let a = load_evidence_bundle_manifest(dir_a)?;
+    let b = load_evidence_bundle_manifest(dir_b)?;
+    Ok(compare_evidence_bundles(&a, &b, config))
 }
 
 // =============================================================================

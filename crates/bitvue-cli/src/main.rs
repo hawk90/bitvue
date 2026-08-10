@@ -234,6 +234,19 @@ enum Commands {
         #[arg(short, long)]
         strict: bool,
     },
+
+    /// Diff two Evidence Bundle export directories
+    EvidenceDiff {
+        /// First evidence bundle directory (as produced by "Export Evidence Bundle")
+        bundle_a: PathBuf,
+
+        /// Second evidence bundle directory
+        bundle_b: PathBuf,
+
+        /// Exit with error code if the bundles differ
+        #[arg(short, long)]
+        strict: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -365,6 +378,13 @@ fn main() -> Result<()> {
         }
         Commands::Validate { file, strict } => {
             commands::validate::run(file, strict)?;
+        }
+        Commands::EvidenceDiff {
+            bundle_a,
+            bundle_b,
+            strict,
+        } => {
+            commands::evidence_diff::run(bundle_a, bundle_b, strict)?;
         }
     }
 

@@ -13,13 +13,14 @@
 //!
 //! These tests validate the parity matrix parsing, scoring, gates, and report generation.
 
+use crate::export::EvidenceBundleManifest;
 use crate::parity_harness::{
-    calculate_parity_score, compare_evidence_bundles, compare_render_snapshots, evaluate_guard,
-    get_full_parity_matrix, parse_and_validate_parity_matrix, DiffSeverity, EntityRef,
-    EvidenceBundleManifest, EvidenceDiffConfig, GuardContext, HardFailGate, HardFailKind,
-    OrderType, ParityCategory, ParityGate, ParityHarness, ParityHarnessConfig, ParityResult,
-    PerfEventType, PerfGate, PerfTelemetryEvent, RenderSnapshot, ScoringWeights, SelectionSnapshot,
-    Severity, SnapshotTolerances, ViewportState,
+    calculate_parity_score, compare_evidence_bundle_dirs, compare_evidence_bundles,
+    compare_render_snapshots, evaluate_guard, get_full_parity_matrix,
+    parse_and_validate_parity_matrix, DiffSeverity, EntityRef, EvidenceDiffConfig, GuardContext,
+    HardFailGate, HardFailKind, OrderType, ParityCategory, ParityGate, ParityHarness,
+    ParityHarnessConfig, ParityResult, PerfEventType, PerfGate, PerfTelemetryEvent, RenderSnapshot,
+    ScoringWeights, SelectionSnapshot, Severity, SnapshotTolerances, ViewportState,
 };
 use std::collections::HashMap;
 
@@ -367,6 +368,87 @@ fn test_evidence_bundle_diff_order_type_breaking() {
         .differences
         .iter()
         .any(|d| d.severity == DiffSeverity::Breaking));
+}
+
+#[test]
+fn test_evidence_bundle_diff_respects_compare_fields_config() {
+    let manifest_a = EvidenceBundleManifest {
+        bundle_version: "1.0".to_string(),
+        app_version: "0.1.0".to_string(),
+        git_commit: "abc123".to_string(),
+        build_profile: "release".to_string(),
+        os: "macOS".to_string(),
+        gpu: "Apple M1".to_string(),
+        cpu: "Apple M1".to_string(),
+        backend: "dav1d".to_string(),
+        plugin_versions: HashMap::new(),
+        stream_fingerprint: "stream_001".to_string(),
+        order_type: OrderType::Display,
+        selection_state: SelectionSnapshot {
+            selected_entity: None,
+            selected_byte_range: None,
+            order_type: OrderType::Display,
+        },
+        workspace: "player".to_string(),
+        mode: "normal".to_string(),
+        warnings: vec![],
+        artifacts: vec![],
+    };
+
+    let mut manifest_b = manifest_a.clone();
+    manifest_b.order_type = OrderType::Decode;
+
+    // order_type is excluded from compare_fields -- must not surface as a difference even
+    // though it changed, proving the config actually gates the checks (not just documents them).
+    let config = EvidenceDiffConfig {
+        compare_fields: vec!["selection_state".to_string()],
+        ignore_fields: vec![],
+    };
+    let result = compare_evidence_bundles(&manifest_a, &manifest_b, &config);
+    assert!(result.matches);
+    assert!(result.abi_compatible);
+}
+
+#[test]
+fn test_compare_evidence_bundle_dirs_against_real_exported_bundles() {
+    use crate::export::{export_evidence_bundle, EvidenceBundleExportRequest};
+
+    let temp = std::env::temp_dir().join(format!(
+        "bitvue_evidence_diff_test_{:?}",
+        std::thread::current().id()
+    ));
+    let dir_a = temp.join("a");
+    let dir_b = temp.join("b");
+    std::fs::create_dir_all(&dir_a).unwrap();
+    std::fs::create_dir_all(&dir_b).unwrap();
+
+    let mut request_a = EvidenceBundleExportRequest {
+        include_screenshots: false,
+        include_render_snapshots: false,
+        order_type: OrderType::Display,
+        ..EvidenceBundleExportRequest::default()
+    };
+    request_a.output_dir = dir_a.clone();
+    let result_a = export_evidence_bundle(&request_a, &[], &[]);
+    assert!(result_a.success, "{:?}", result_a.error);
+
+    let mut request_b = request_a.clone();
+    request_b.output_dir = dir_b.clone();
+    request_b.order_type = OrderType::Decode;
+    let result_b = export_evidence_bundle(&request_b, &[], &[]);
+    assert!(result_b.success, "{:?}", result_b.error);
+
+    let bundle_a_dir = std::path::PathBuf::from(result_a.bundle_path.unwrap());
+    let bundle_b_dir = std::path::PathBuf::from(result_b.bundle_path.unwrap());
+
+    let config = EvidenceDiffConfig::default();
+    let diff = compare_evidence_bundle_dirs(&bundle_a_dir, &bundle_b_dir, &config).unwrap();
+
+    assert!(!diff.matches);
+    assert!(!diff.abi_compatible);
+    assert!(diff.differences.iter().any(|d| d.field == "order_type"));
+
+    let _ = std::fs::remove_dir_all(&temp);
 }
 
 #[test]
