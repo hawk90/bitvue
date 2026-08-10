@@ -1270,7 +1270,7 @@ Probe에서 이상 구간 클릭 → "Analyze in Bitvue" → Analyzer가 해당 
 | MB Type | AVC | ✅ 렌더러 완성(`AvcMbTypeRenderer.tsx`) + 백엔드 추출 함수 존재(`crates/bitvue-avc/src/overlay_extraction.rs:1637 extract_mb_type_grid`), 단 `bitvue-avc`가 `bitvue-sidecar/Cargo.toml`에 의존성으로 없어 프로덕트에 미배선 | sidecar에 `bitvue-avc` 의존성 추가 + 커맨드 배선 |
 | MB Reference Indices | AVC | ✅ 렌더러+백엔드 존재(`extract_ref_idx_grid`, 같은 파일 1696행), 동일하게 sidecar 미배선 | sidecar 배선 |
 | Block Type | AV1, VP9 | ✅ 렌더러 완성(`Av1BlockTypeRenderer.tsx`, `frame.mv_grid.mode` 기반), AV1은 실데이터 도달, VP9은 `bitvue-vp9`가 sidecar 미배선 | VP9 백엔드 연결 |
-| Efficiency Map | AV1, VP9 | ⚠️ 렌더러는 있으나(`Av1EfficiencyMapRenderer.tsx`) 문서가 요구한 "면적당 비트 계산"이 아니라 QP 기반 근사치(`bpp ≈ (64-QP)*scale`) — 코드 주석에 "proxy" 명시 | 실제 bits-per-block 계산으로 교체 |
+| Efficiency Map | AV1, VP9 | ✅ AV1은 2026-08-10 완료 — 실제 per-CU 잔차 에너지 기반(`energy_extractor.rs`, `ab8faa2`), QP 프록시는 폴백으로만 남음. VP9은 여전히 sidecar 미배선(`bitvue-vp9` 의존성 없음) | VP9 백엔드 연결 |
 | PSNR Overlay | 전체 | ❌ 메뉴/토글만 존재, 렌더러 없음(`OverlayRenderer/index.tsx:234` 주석 스텁) | Debug YUV 파이프라인 연결 + 렌더러 신규 |
 | SSIM Overlay | HEVC | ❌ 동일 — 렌더러 없음, 토글만 존재 | Debug YUV 필요 + 렌더러 신규 |
 | Inter Memory Reads | VVC | ❌ 토글만 존재(`inter-memory`), 렌더러 없음 | 신규 구현 |
@@ -1386,9 +1386,13 @@ LMCS/ALF 추출 함수 신규 구현, 원래 추정보다 상당히 짧을 가�
 - [x] **Loop Restoration 모드** — `extract_loop_restoration_data` + `Av1LoopRestorationRenderer.tsx`
       (Wiener/Self-guided/미적용 구분 렌더링 확인)
 - [x] **Film Grain 모드** — `extract_film_grain_data` + `Av1FilmGrainRenderer.tsx`
-- [x] AV1 Efficiency Map — 렌더러 완성(`Av1EfficiencyMapRenderer.tsx`)이나 **정확도는 근사치**: "각 블록의
-      비트수/면적 계산"이 아니라 QP 기반 근사식(`bpp ≈ (64-QP)*scale`)을 씀 — 코드 주석에 proxy임을 명시.
-      실제 bits-per-block 계산으로 교체하는 작업은 아직 남음 (Phase 2 표와 동일 항목)
+- [x] AV1 Efficiency Map — **2026-08-10 정확도 개선 완료** (`ab8faa2`): QP 기반 근사식 대신 실제 디코드된
+      per-CU 잔차 크기(`CodingUnit.residual.sum_abs_level / block_area`)를 사용하도록 교체 —
+      `crates/bitvue-av1-codec/src/overlay_extraction/energy_extractor.rs` 신규(`extract_energy_grid_from_parsed`,
+      qp_extractor.rs와 동일한 `CuSpatialIndex` 재사용), `get_frame_analysis` 응답에 `energy_grid` 필드 추가,
+      `Av1EfficiencyMapRenderer.tsx`가 이를 우선 사용하고 없을 때만 QP 프록시로 폴백. 여전히 진짜 엔트로피
+      비트 수는 아님(컨텍스트 독립 대표 CDF 사용, 실제 스펙의 이웃-컨텍스트 적응형 아님) — 실제 fixture로
+      0이 아닌 에너지 값 확인하는 e2e 테스트로 검증
 - [x] AV1 Block Type 오버레이 — `Av1BlockTypeRenderer.tsx`, `frame.mv_grid.mode`(INTRA/INTER/SKIP) 기반 실데이터
       사용 확인. 단 "INTRA_BC"·"복합 예측 모드 별도 색상"까지는 다루지 않음(3종 모드만 구분) — 세부 항목 일부 남음
 
@@ -1407,7 +1411,7 @@ uncompressed_header()의 segmentation~film_grain_params 구간, skip_mode_params
 - CDEF 방향 화살표가 실제 CDEF 방향 결정과 일치 — 코드 레벨 검증(단위/e2e 테스트), 육안 VQ Analyzer 대조는 미실시
 - Film Grain 전/후 픽셀 값이 dav1d 출력과 일치 — 미검증 (프레임 헤더 파라미터 추출은 완료, 픽셀 비교 테스트는 없음)
 
-**예상 소요:** 완료. 남은 세부 작업: Efficiency Map을 실제 bits-per-block 계산으로 교체, Block Type에 INTRA_BC/복합 예측 색상 추가 (각 1주 미만)
+**예상 소요:** 완료. 남은 세부 작업: Block Type에 INTRA_BC/복합 예측 색상 추가 (1주 미만) — Efficiency Map 정확도 개선은 2026-08-10 완료
 
 ---
 
