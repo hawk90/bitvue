@@ -22,6 +22,7 @@
 //! - ⏳ Transform coefficient parsing
 
 pub mod coding_unit;
+pub mod context;
 pub mod mv_prediction;
 pub mod partition;
 pub mod superblock;
@@ -30,6 +31,7 @@ pub mod tile_group;
 pub use coding_unit::{
     parse_coding_unit, CodingUnit, MotionVector, PredictionMode, RefFrame, TxSize,
 };
+pub use context::TileContext;
 pub use mv_prediction::MvPredictorContext;
 pub use partition::{
     parse_partition_tree, partition_tree_to_grid, BlockSize, PartitionNode, PartitionType,

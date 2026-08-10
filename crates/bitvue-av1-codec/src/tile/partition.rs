@@ -548,8 +548,14 @@ fn child_position(
 /// Set to 10 to provide safety margin while allowing valid deep recursion
 const MAX_PARTITION_DEPTH: u8 = 10;
 
-/// Recursively parse partition tree using symbol decoder
-fn parse_partition_recursive(
+/// Recursively parse partition tree using symbol decoder.
+///
+/// This is the sole partition-tree walker in the crate (a duplicate, weaker copy used to live in
+/// `tile/superblock.rs` -- no depth guard, no partition-legality validation, and a `child_position`
+/// that silently returned the parent's own position for 6 of the 10 partition types (`HorzA`/
+/// `HorzB`/`VertA`/`VertB`/`Horz4`/`Vert4`) instead of erroring or computing real child offsets --
+/// consolidated onto this implementation instead of fixing the weaker one in place).
+pub(crate) fn parse_partition_recursive(
     decoder: &mut SymbolDecoder,
     x: u32,
     y: u32,

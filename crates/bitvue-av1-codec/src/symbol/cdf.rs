@@ -125,9 +125,11 @@ pub struct CdfContext {
     /// - block_size_log2 = 7 → 128x128 (10 symbols)
     partition_cdfs: Vec<PartitionCdf>,
 
-    /// Skip flag CDF (2 symbols: false, true)
-    /// [0, prob_true, 32768]
-    skip_cdf: Vec<u16>,
+    /// Skip flag CDFs, one per context (0..=2, from `TileContext::skip_context` -- see
+    /// `SymbolDecoder::read_skip`'s doc). Real spec/rav1d default values (`memorysafety/rav1d`,
+    /// BSD-2-Clause, `src/cdf.rs:4605`, `Default_Skip_Cdf`) and real per-context adaptation --
+    /// unlike every other CDF in this struct, this one is not a "representative" placeholder.
+    skip_cdf: [Vec<u16>; 3],
 
     /// Prediction mode CDFs
     /// For INTRA: 13 modes (DC, V, H, D45, D135, D113, D157, D203, D67, SMOOTH, SMOOTH_V, SMOOTH_H, PAETH)
@@ -217,10 +219,31 @@ pub struct CdfContext {
     use_intrabc_cdf: Vec<u16>,
 }
 
-/// Build a 2-symbol CDF from `p0`, the probability of the first (index-0) symbol.
-/// Matches the hand-picked-bias style every other CDF in this file uses (see `skip_cdf`).
+/// Build a 2-symbol CDF from `p0`, the probability of the first (index-0) symbol. Returns the
+/// real spec/rav1d descending format directly (see `to_descending`'s doc) -- matches the
+/// hand-picked-bias style every other CDF in this file uses (see `skip_cdf`).
 fn binary_cdf(p0: f32) -> Vec<u16> {
-    vec![0, (CDF_SCALE as f32 * p0) as u16, CDF_SCALE]
+    to_descending(&[0, (CDF_SCALE as f32 * p0) as u16, CDF_SCALE])
+}
+
+/// Convert an ascending CDF (this crate's older convention: `cdf[0]=0 .. cdf[n]=CDF_SCALE`, still
+/// how every table in this file is authored/hand-tuned for readability) into the real spec/rav1d
+/// descending convention `ArithmeticDecoder::read_symbol`/`update_cdf` require (see their docs in
+/// `symbol/arithmetic.rs`): `d[i] = CDF_SCALE - ascending[i+1]` for `i in 0..n_symbols`, with the
+/// trailing slot repurposed from "always CDF_SCALE" to the adaptation count (initialized to 0).
+///
+/// This is a pure format conversion, not a values upgrade -- it preserves whatever
+/// representative/hand-picked probability shape the ascending literal already encoded. Context
+/// derivation (see `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note) is a
+/// per-symbol upgrade tracked separately; `partition`/`skip` get it in this same phase, everything
+/// else is deferred.
+fn to_descending(ascending: &[u16]) -> Vec<u16> {
+    let n_symbols = ascending.len() - 1;
+    let mut out: Vec<u16> = (0..n_symbols)
+        .map(|i| CDF_SCALE - ascending[i + 1])
+        .collect();
+    out.push(0); // adaptation count starts at 0
+    out
 }
 
 impl CdfContext {
@@ -238,12 +261,29 @@ impl CdfContext {
         for _ in 4..=7 {
             partition_cdfs.push(PartitionCdf::biased_none(10));
         }
+        // `PartitionCdf::biased_none`/`uniform` build the ascending format (kept as-is -- their
+        // own unit tests exercise that constructor output directly); convert to the real
+        // spec/rav1d descending format `read_symbol` requires only here, at assembly time. This
+        // is the same mechanical, values-preserving conversion every other CDF in this struct
+        // gets -- NOT real per-context values or adaptation (still indexed only by
+        // `block_size_log2`, no above/left neighbor state) -- see `docs/DEVELOPMENT_PHASES.md`
+        // Phase 4's AV1 entropy-decoding note for why real partition context is a separate,
+        // deferred, considerably larger phase (dav1d's context derivation needs a per-8x8 bitmask
+        // tied to its edge-index tree, not a simple neighbor count).
+        for entry in &mut partition_cdfs {
+            entry.cdf = to_descending(&entry.cdf);
+        }
 
-        // Skip flag CDF: 20% skip rate (most blocks are not skipped)
-        let skip_cdf = vec![
-            0,                               // false: 0
-            (CDF_SCALE as f32 * 0.8) as u16, // false: 80%
-            CDF_SCALE,                       // true: 20%
+        // Skip flag CDFs, per context (0..=2 above/left-skip-neighbor count). Real spec/rav1d
+        // default probabilities (`Default_Skip_Cdf`, `src/cdf.rs:4605`): raw probs 31671/16515/
+        // 4576 for contexts 0/1/2 respectively. rav1d's own `cdf0d` helper computes the
+        // descending threshold as `32768 - raw_prob` -- the same transform `to_descending` uses,
+        // just applied directly here since these are already the final real spec values (not
+        // hand-picked placeholders needing the ascending-literal round trip).
+        let skip_cdf = [
+            vec![32768 - 31671, 0, 0], // context 0 (no skip neighbors): mostly not-skip
+            vec![32768 - 16515, 0, 0], // context 1 (one skip neighbor)
+            vec![32768 - 4576, 0, 0],  // context 2 (both neighbors skip): mostly skip
         ];
 
         // INTRA mode CDF (13 modes)
@@ -264,6 +304,7 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.99) as u16, // SMOOTH_H_PRED: 2%
             CDF_SCALE,                        // PAETH_PRED: 1%
         ];
+        let intra_mode_cdf = to_descending(&intra_mode_cdf);
 
         // INTER mode CDF (4 modes)
         // Biased toward NEWMV (explicit motion vectors)
@@ -274,6 +315,7 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.95) as u16, // NEARMV: 20%
             CDF_SCALE,                        // GLOBALMV: 5%
         ];
+        let inter_mode_cdf = to_descending(&inter_mode_cdf);
 
         // compound_mode CDF (8 modes, spec 5.11.24) -- see `read_compound_mode`'s doc for symbol
         // ordering. Biased toward NEAREST_NEARESTMV and NEW_NEWMV, the two "symmetric" choices.
@@ -288,6 +330,7 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.70) as u16, // GLOBAL_GLOBALMV: 2%
             CDF_SCALE,                        // NEW_NEWMV: 30%
         ];
+        let compound_mode_cdf = to_descending(&compound_mode_cdf);
 
         // MV joint CDF (correlation between horizontal/vertical MV components)
         // Default values from AV1 spec / rav1d reference implementation
@@ -315,6 +358,7 @@ impl CdfContext {
                 CDF_SCALE
             );
         }
+        let mv_joint_cdf = to_descending(&mv_joint_cdf);
 
         // MV sign CDF: 50/50 positive/negative (uniform)
         let mv_sign_cdf = vec![
@@ -322,6 +366,7 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.5) as u16, // Positive: 50%
             CDF_SCALE,                       // Negative: 50%
         ];
+        let mv_sign_cdf = to_descending(&mv_sign_cdf);
 
         // MV class CDF (11 classes for magnitude)
         // Per AV1 spec Section 5.11.47 (Motion Vector Component)
@@ -357,6 +402,7 @@ impl CdfContext {
                 CDF_SCALE
             );
         }
+        let mv_class_cdf = to_descending(&mv_class_cdf);
 
         // MV bit CDF: 50/50 for each bit (uniform)
         let mv_bit_cdf = vec![
@@ -364,6 +410,7 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.5) as u16, // 0: 50%
             CDF_SCALE,                       // 1: 50%
         ];
+        let mv_bit_cdf = to_descending(&mv_bit_cdf);
 
         // Delta Q CDF (for reading delta_q_abs)
         // Per AV1 spec, delta_q_abs is encoded using a variable-length code
@@ -387,6 +434,7 @@ impl CdfContext {
         if let Some(last) = delta_q_cdf.last_mut() {
             *last = CDF_SCALE;
         }
+        let delta_q_cdf = to_descending(&delta_q_cdf);
 
         // Delta Q sign CDF: Slightly biased toward positive
         let delta_q_sign_cdf = vec![
@@ -394,6 +442,7 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.55) as u16, // Positive: 55%
             CDF_SCALE,                        // Negative: 45%
         ];
+        let delta_q_sign_cdf = to_descending(&delta_q_sign_cdf);
 
         // General diff CDF for variable-length differences
         // Used when delta_q_abs is >= 4
@@ -407,9 +456,10 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.99) as u16, // 4: 2%
             CDF_SCALE,                        // 5+: 1%
         ];
+        let diff_cdf = to_descending(&diff_cdf);
 
         // txb_skip: most transform blocks within a non-skip CU are still fully zero.
-        let txb_skip_cdf = vec![0, (CDF_SCALE as f32 * 0.35) as u16, CDF_SCALE];
+        let txb_skip_cdf = to_descending(&[0, (CDF_SCALE as f32 * 0.35) as u16, CDF_SCALE]);
 
         // eob_pt: uniform over the alphabet for each coefficient-count class. Alphabet sizes
         // (5/7/9/11) match the real spec's eob_pt_16/64/256/1024 table sizes -- chosen so the
@@ -417,40 +467,40 @@ impl CdfContext {
         // coefficient count (2^(num_symbols-1) == 16/64/256/1024), even though the probabilities
         // themselves are uniform rather than spec-exact.
         let eob_pt_cdfs = [
-            PartitionCdf::uniform(5).cdf,
-            PartitionCdf::uniform(7).cdf,
-            PartitionCdf::uniform(9).cdf,
-            PartitionCdf::uniform(11).cdf,
+            to_descending(&PartitionCdf::uniform(5).cdf),
+            to_descending(&PartitionCdf::uniform(7).cdf),
+            to_descending(&PartitionCdf::uniform(9).cdf),
+            to_descending(&PartitionCdf::uniform(11).cdf),
         ];
 
         // coeff_base_eob: the EOB coefficient is never zero (level 1..=3), skewed toward 1.
-        let coeff_base_eob_cdf = vec![
+        let coeff_base_eob_cdf = to_descending(&[
             0,
             (CDF_SCALE as f32 * 0.60) as u16,
             (CDF_SCALE as f32 * 0.85) as u16,
             CDF_SCALE,
-        ];
+        ]);
 
         // coeff_base: most non-EOB positions are zero.
-        let coeff_base_cdf = vec![
+        let coeff_base_cdf = to_descending(&[
             0,
             (CDF_SCALE as f32 * 0.70) as u16,
             (CDF_SCALE as f32 * 0.85) as u16,
             (CDF_SCALE as f32 * 0.95) as u16,
             CDF_SCALE,
-        ];
+        ]);
 
         // coeff_br: range-extension loop should terminate quickly most of the time.
-        let coeff_br_cdf = vec![
+        let coeff_br_cdf = to_descending(&[
             0,
             (CDF_SCALE as f32 * 0.55) as u16,
             (CDF_SCALE as f32 * 0.80) as u16,
             (CDF_SCALE as f32 * 0.93) as u16,
             CDF_SCALE,
-        ];
+        ]);
 
         // dc_sign: uniform (no real reason to bias this).
-        let dc_sign_cdf = vec![0, CDF_SCALE / 2, CDF_SCALE];
+        let dc_sign_cdf = to_descending(&[0, CDF_SCALE / 2, CDF_SCALE]);
 
         // Reference-frame selection: biased toward the statistically common case (single-ref,
         // recent LAST-group frames) at every branch -- see `read_ref_frames`' doc.
@@ -529,50 +579,12 @@ impl CdfContext {
         self.partition_cdfs[index].as_slice()
     }
 
-    /// Update partition CDF with standard AV1 CDF adaptation formula
-    ///
-    /// Per AV1 spec Section 8.3 (CDF Update Process):
-    /// `new_cdf[i] = old_cdf[i] + (((count[i] << 15) - old_cdf[i]) >> rate)`
-    ///
-    /// In practice this is equivalently expressed as:
-    /// `cdf[i] -= (cdf[i] - (symbol == i ? 32768 : 0)) >> rate`
-    ///
-    /// Rate is derived from the count stored in the CDF tail entry
-    /// (cdf[num_symbols]), clamped per the spec.
-    #[allow(dead_code)]
-    pub fn update_partition_cdf(&mut self, block_size_log2: u8, symbol: u8) {
-        let index = (block_size_log2 as usize)
-            .saturating_sub(2)
-            .min(self.partition_cdfs.len() - 1);
-        let cdf_entry = &mut self.partition_cdfs[index];
-        let n = cdf_entry.num_symbols;
-
-        // The count for rate calculation is stored after the last probability
-        // entry. For our simplified CDFs we derive rate from n_symbols.
-        // Per AV1 spec: rate = 4 + (count >> 4), clamped to [4, 9].
-        // With static CDFs we start count at 0 and use the minimum rate.
-        let rate: u32 = 4;
-
-        // Update each CDF entry: cdf[i] -= (cdf[i] - (i > symbol) * 32768) >> rate
-        // This moves probability mass toward the observed symbol.
-        for i in 0..n {
-            let target: u16 = if (i as u8) > symbol { CDF_SCALE } else { 0 };
-            let current = cdf_entry.cdf[i + 1];
-            // Compute signed difference then apply the rate shift
-            let diff = current as i32 - target as i32;
-            let new_val = current as i32 - (diff >> rate);
-            // Clamp to [0, CDF_SCALE] to guard against any rounding edge cases
-            cdf_entry.cdf[i + 1] = new_val.clamp(0, CDF_SCALE as i32) as u16;
-        }
-        // Ensure last entry is always exactly CDF_SCALE
-        cdf_entry.cdf[n] = CDF_SCALE;
-    }
-
-    /// Get skip flag CDF
-    ///
-    /// Returns CDF for skip flag (2 symbols: false, true)
-    pub fn get_skip_cdf(&self) -> &[u16] {
-        &self.skip_cdf
+    /// Get mutable skip flag CDF for the given context (0..=2, from
+    /// `TileContext::skip_context`) -- mutable because `read_skip` adapts it in place via
+    /// `update_cdf` after every read (see `skip_cdf`'s doc: this is real context, not a
+    /// representative placeholder).
+    pub fn get_skip_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.skip_cdf[(ctx as usize).min(2)]
     }
 
     /// Get INTRA prediction mode CDF
@@ -834,30 +846,33 @@ mod tests {
         let context = CdfContext::new();
         let cdf = context.get_mv_class_cdf();
 
-        // Verify length: 11 classes + start + end = 12 values
+        // Verify length: 11 classes + adaptation count = 12 values
         assert_eq!(cdf.len(), 12);
 
-        // Verify first and last values
-        assert_eq!(cdf[0], 0, "CDF should start at 0");
-        assert_eq!(cdf[11], CDF_SCALE, "CDF should end at 32768");
+        // Real spec/rav1d descending convention (see `to_descending`'s doc): last real entry
+        // (index 10) is 0, and the trailing count slot starts at 0.
+        assert_eq!(cdf[10], 0, "last real entry should be 0");
+        assert_eq!(cdf[11], 0, "adaptation count should start at 0");
 
-        // Verify monotonically increasing
-        for i in 1..cdf.len() {
+        // Verify monotonically non-increasing
+        for i in 1..cdf.len() - 1 {
             assert!(
-                cdf[i] >= cdf[i - 1],
-                "CDF should be monotonically increasing at index {}",
+                cdf[i] <= cdf[i - 1],
+                "CDF should be monotonically non-increasing at index {}",
                 i
             );
         }
 
-        // Verify spec-compliant values from rav1d
-        assert_eq!(cdf[1], 28672, "Class 0 (0 qpel) cumulative probability");
-        assert_eq!(cdf[2], 30976, "Class 1 (±1 qpel) cumulative probability");
-        assert_eq!(cdf[3], 31858, "Class 2 (±2-3 qpel) cumulative probability");
-        assert_eq!(cdf[4], 32320, "Class 3 (±4-7 qpel) cumulative probability");
+        // Verify spec-compliant values from rav1d (converted from the ascending
+        // rav1d-sourced counts via `d[i] = CDF_SCALE - ascending[i+1]`; see `mv_class_counts`).
+        assert_eq!(cdf[0], 4096, "Class 0 (0 qpel) descending threshold");
+        assert_eq!(cdf[1], 1792, "Class 1 (±1 qpel) descending threshold");
+        assert_eq!(cdf[2], 910, "Class 2 (±2-3 qpel) descending threshold");
+        assert_eq!(cdf[3], 448, "Class 3 (±4-7 qpel) descending threshold");
 
-        // Verify realistic distribution (most MVs are small magnitude)
-        let prob_class_0 = cdf[1] as f32 / CDF_SCALE as f32;
+        // Verify realistic distribution (most MVs are small magnitude): class 0's interval width
+        // is CDF_SCALE - cdf[0] (the "u - v" width for val=0, since u starts at the full range).
+        let prob_class_0 = (CDF_SCALE - cdf[0]) as f32 / CDF_SCALE as f32;
         assert!(
             prob_class_0 > 0.85,
             "Class 0 should be very common (>85%), got {:.1}%",
@@ -870,26 +885,24 @@ mod tests {
         let context = CdfContext::new();
         let cdf = context.get_mv_joint_cdf();
 
-        // Verify length: 4 symbols + start = 5 values
+        // Verify length: 4 symbols + adaptation count = 5 values
         assert_eq!(cdf.len(), 5);
 
-        // Verify first and last values
-        assert_eq!(cdf[0], 0, "CDF should start at 0");
-        assert_eq!(cdf[4], CDF_SCALE, "CDF should end at 32768");
+        assert_eq!(cdf[3], 0, "last real entry should be 0");
+        assert_eq!(cdf[4], 0, "adaptation count should start at 0");
 
-        // Verify monotonically increasing
-        for i in 1..cdf.len() {
+        for i in 1..cdf.len() - 1 {
             assert!(
-                cdf[i] >= cdf[i - 1],
-                "CDF should be monotonically increasing at index {}",
+                cdf[i] <= cdf[i - 1],
+                "CDF should be monotonically non-increasing at index {}",
                 i
             );
         }
 
-        // Verify spec-compliant values from rav1d
-        assert_eq!(cdf[1], 4096, "MV_JOINT_ZERO cumulative probability");
-        assert_eq!(cdf[2], 11264, "MV_JOINT_HNZVZ cumulative probability");
-        assert_eq!(cdf[3], 19328, "MV_JOINT_HZVNZ cumulative probability");
+        // Verify spec-compliant values from rav1d (same conversion as mv_class above).
+        assert_eq!(cdf[0], 28672, "MV_JOINT_ZERO descending threshold");
+        assert_eq!(cdf[1], 21504, "MV_JOINT_HNZVZ descending threshold");
+        assert_eq!(cdf[2], 13440, "MV_JOINT_HZVNZ descending threshold");
     }
 
     #[test]
@@ -897,13 +910,13 @@ mod tests {
         let context = CdfContext::new();
         let cdf = context.get_mv_sign_cdf();
 
-        // Verify length: 2 symbols + start = 3 values
+        // Verify length: 2 symbols + adaptation count = 3 values
         assert_eq!(cdf.len(), 3);
 
-        // Verify uniform distribution (50/50)
-        assert_eq!(cdf[0], 0);
-        assert_eq!(cdf[1], 16384, "Sign should be 50/50");
-        assert_eq!(cdf[2], CDF_SCALE);
+        // Verify uniform distribution (50/50): descending threshold at the midpoint.
+        assert_eq!(cdf[0], 16384, "Sign should be 50/50");
+        assert_eq!(cdf[1], 0, "last real entry should be 0");
+        assert_eq!(cdf[2], 0, "adaptation count should start at 0");
     }
 
     #[test]
@@ -911,12 +924,27 @@ mod tests {
         let context = CdfContext::new();
         let cdf = context.get_mv_bit_cdf();
 
-        // Verify length: 2 symbols + start = 3 values
+        // Verify length: 2 symbols + adaptation count = 3 values
         assert_eq!(cdf.len(), 3);
 
-        // Verify uniform distribution (50/50)
-        assert_eq!(cdf[0], 0);
-        assert_eq!(cdf[1], 16384, "Bit should be 50/50");
-        assert_eq!(cdf[2], CDF_SCALE);
+        // Verify uniform distribution (50/50): descending threshold at the midpoint.
+        assert_eq!(cdf[0], 16384, "Bit should be 50/50");
+        assert_eq!(cdf[1], 0, "last real entry should be 0");
+        assert_eq!(cdf[2], 0, "adaptation count should start at 0");
+    }
+
+    #[test]
+    fn test_to_descending_round_trips_ascending_shape() {
+        // A well-formed ascending CDF (cdf[0]=0..cdf[n]=CDF_SCALE) should convert into a
+        // well-formed descending one (monotonically non-increasing, last real entry 0, trailing
+        // count-slot 0) with the same length.
+        let ascending = vec![0u16, 8192, 16384, 24576, CDF_SCALE];
+        let descending = to_descending(&ascending);
+
+        assert_eq!(descending.len(), ascending.len());
+        assert_eq!(descending, vec![24576, 16384, 8192, 0, 0]);
+        for i in 1..descending.len() - 1 {
+            assert!(descending[i] <= descending[i - 1]);
+        }
     }
 }

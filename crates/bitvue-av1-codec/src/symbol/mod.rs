@@ -76,12 +76,19 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.read_symbol(cdf)
     }
 
-    /// Read skip flag
+    /// Read skip flag, per AV1 spec Section 5.11.11 / Section 9.3's `SkipCdf` context (`ctx`,
+    /// 0..=2 -- see `crate::tile::TileContext::skip_context`).
+    ///
+    /// Unlike every other `read_*` method in this decoder, this one is real: real per-context
+    /// default CDFs (`CdfContext`'s `skip_cdf` doc) and real adaptation via `read_symbol_adaptive`
+    /// (spec Section 8.3), not the "representative, context-independent, non-adaptive" bar the
+    /// rest of this file still uses -- see `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1
+    /// entropy-decoding note for which symbols have and haven't been upgraded yet.
     ///
     /// Returns true if block is skipped (uses prediction only, no residual)
-    pub fn read_skip(&mut self) -> Result<bool> {
-        let cdf = self.cdf_context.get_skip_cdf();
-        let symbol = self.decoder.read_symbol(cdf)?;
+    pub fn read_skip(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_skip_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
         Ok(symbol == 1)
     }
 

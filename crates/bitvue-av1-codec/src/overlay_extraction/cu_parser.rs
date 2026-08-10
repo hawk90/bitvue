@@ -51,8 +51,16 @@ pub fn parse_all_coding_units(
         // Create MV predictor context
         let mut mv_ctx = crate::tile::MvPredictorContext::new(sb_cols, sb_rows);
 
+        // Create entropy-context tracker (currently only `skip` uses it -- see
+        // `crate::tile::TileContext`'s doc), sized to the tile's full extent in 4x4 units.
+        let mut tile_ctx = crate::tile::TileContext::new(
+            (sb_cols * sb_size).div_ceil(4),
+            (sb_rows * sb_size).div_ceil(4),
+        );
+
         // Parse each superblock
         for sb_y in 0..sb_rows {
+            tile_ctx.start_superblock_row();
             for sb_x in 0..sb_cols {
                 let sb_pixel_x = sb_x * sb_size;
                 let sb_pixel_y = sb_y * sb_size;
@@ -69,6 +77,7 @@ pub fn parse_all_coding_units(
                     &mut mv_ctx,
                     reference_select,
                     allow_intrabc,
+                    &mut tile_ctx,
                 ) {
                     Ok((sb, new_qp)) => {
                         // Collect all coding units from this superblock
@@ -303,6 +312,53 @@ mod tests {
              motion vector across {} distinct compound modes ({distinct_compound_modes:?}) -- L1 \
              MV reading may have regressed to the old always-zero placeholder",
             distinct_compound_modes.len()
+        );
+    }
+
+    /// Regression test for the real `skip` entropy-context work (this session's arithmetic-core
+    /// rewrite, see `symbol/arithmetic.rs`'s doc): `read_skip` now uses real per-context
+    /// (`TileContext::skip_context`, 0..=2) default CDFs and real adaptation instead of a single
+    /// fixed non-adaptive CDF. Parses the real fixture and confirms both `skip=true` and
+    /// `skip=false` actually occur (not degenerate to always one value, which is exactly the
+    /// failure mode a wrongly-wired context/CDF-direction bug would produce -- see this test's
+    /// sibling `real_fixture_ref_frame_values_are_not_degenerate` for the established pattern).
+    #[test]
+    fn real_fixture_skip_flags_are_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut saw_skip_true = false;
+        let mut saw_skip_false = false;
+        let mut total_cus = 0usize;
+
+        for frame in frames.iter().take(30) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            for cu in cus.iter() {
+                total_cus += 1;
+                if cu.skip {
+                    saw_skip_true = true;
+                } else {
+                    saw_skip_false = true;
+                }
+            }
+        }
+
+        assert!(total_cus > 0, "fixture should have real coding units");
+        assert!(
+            saw_skip_true && saw_skip_false,
+            "expected both skip=true and skip=false across {total_cus} real coding units, got \
+             true={saw_skip_true} false={saw_skip_false} -- the real per-context skip CDFs/\
+             adaptation may have regressed to a degenerate always-one-value decode"
         );
     }
 }

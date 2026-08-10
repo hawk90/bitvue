@@ -473,6 +473,8 @@ impl CodingUnit {
 /// * `reference_select` - Frame header's `reference_select` flag (compound prediction enabled
 ///   for this frame at all) -- see `ParsedFrame::reference_select`'s doc for how it's sourced.
 /// * `allow_intrabc` - Frame header's `allow_intrabc` flag (only meaningful when `is_key_frame`)
+/// * `tile_ctx` - Above/left neighbor-state tracker for entropy context (currently only `skip`
+///   uses it -- see `crate::tile::TileContext`'s doc)
 ///
 /// # Returns
 ///
@@ -490,11 +492,21 @@ pub fn parse_coding_unit(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    tile_ctx: &mut crate::tile::TileContext,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
 
-    // Read skip flag
-    cu.skip = decoder.read_skip()?;
+    // Read skip flag -- real per-context CDF + adaptation, see `SymbolDecoder::read_skip`'s doc.
+    let (x4, y4) = (x / 4, y / 4);
+    let skip_ctx = tile_ctx.skip_context(x4, y4);
+    cu.skip = decoder.read_skip(skip_ctx)?;
+    tile_ctx.set_skip(
+        x4,
+        y4,
+        width.div_ceil(4).max(1),
+        height.div_ceil(4).max(1),
+        cu.skip,
+    );
 
     // TODO: Read segment ID (if segmentation enabled)
 

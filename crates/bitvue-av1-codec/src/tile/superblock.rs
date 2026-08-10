@@ -13,9 +13,7 @@
 //! 4. Build MVGrid for visualization
 
 use crate::symbol::SymbolDecoder;
-use crate::tile::{
-    parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode, PartitionType,
-};
+use crate::tile::{parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode};
 use bitvue_engine::Result;
 use serde::{Deserialize, Serialize};
 
@@ -83,6 +81,9 @@ impl Superblock {
 /// * `delta_q_enabled` - True if delta Q is enabled for this frame
 /// * `reference_select` - Frame header's `reference_select` flag (see `parse_coding_unit`'s doc)
 /// * `allow_intrabc` - Frame header's `allow_intrabc` flag (see `parse_coding_unit`'s doc)
+/// * `tile_ctx` - Above/left neighbor-state tracker for entropy context, shared across every
+///   superblock in the tile (see `crate::tile::TileContext`'s doc). Callers looping over
+///   superblock rows should call `tile_ctx.start_superblock_row()` at the start of each row.
 ///
 /// # Returns
 ///
@@ -99,6 +100,7 @@ pub fn parse_superblock(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    tile_ctx: &mut crate::tile::TileContext,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -107,10 +109,12 @@ pub fn parse_superblock(
         _ => BlockSize::Block64x64, // Default
     };
 
-    // Parse partition tree
-    let partition = parse_partition_recursive(
+    // Parse partition tree -- see `tile::partition::parse_partition_recursive`'s doc for why this
+    // module no longer keeps its own copy.
+    let partition = crate::tile::partition::parse_partition_recursive(
         decoder, x, y, block_size, true, // has_rows
         true, // has_cols
+        0,    // depth
     )?;
 
     // Create superblock
@@ -126,6 +130,7 @@ pub fn parse_superblock(
         mv_ctx,
         reference_select,
         allow_intrabc,
+        tile_ctx,
         &mut sb.coding_units,
     )?;
 
@@ -142,87 +147,6 @@ pub fn parse_superblock(
     Ok((sb, final_qp))
 }
 
-/// Recursively parse partition tree
-fn parse_partition_recursive(
-    decoder: &mut SymbolDecoder,
-    x: u32,
-    y: u32,
-    block_size: BlockSize,
-    has_rows: bool,
-    has_cols: bool,
-) -> Result<PartitionNode> {
-    // Get block size log2 for CDF lookup
-    let size = block_size.width().max(block_size.height());
-    let bsize_log2 = (size.ilog2() as u8).clamp(2, 7);
-
-    // Read partition symbol
-    let partition_symbol = decoder.read_partition(bsize_log2, has_rows, has_cols)?;
-    let partition = PartitionType::from_u8(partition_symbol).ok_or_else(|| {
-        bitvue_engine::BitvueError::InvalidData(format!(
-            "Invalid partition symbol: {}",
-            partition_symbol
-        ))
-    })?;
-
-    // Create node
-    let mut node = PartitionNode::new(x, y, block_size, partition);
-
-    // If not NONE, recursively parse children
-    if partition != PartitionType::None {
-        let sub_sizes = block_size.sub_block_size(partition);
-
-        for (i, sub_size) in sub_sizes.iter().enumerate() {
-            let (child_x, child_y) = child_position(x, y, i, partition, block_size);
-
-            let child = parse_partition_recursive(
-                decoder, child_x, child_y, *sub_size, has_rows, has_cols,
-            )?;
-
-            node.children.push(child);
-        }
-    }
-
-    Ok(node)
-}
-
-/// Calculate child block position
-fn child_position(
-    parent_x: u32,
-    parent_y: u32,
-    child_index: usize,
-    partition: PartitionType,
-    parent_size: BlockSize,
-) -> (u32, u32) {
-    let w = parent_size.width();
-    let h = parent_size.height();
-
-    match partition {
-        PartitionType::None => (parent_x, parent_y),
-        PartitionType::Horz => {
-            if child_index == 0 {
-                (parent_x, parent_y)
-            } else {
-                (parent_x, parent_y + h / 2)
-            }
-        }
-        PartitionType::Vert => {
-            if child_index == 0 {
-                (parent_x, parent_y)
-            } else {
-                (parent_x + w / 2, parent_y)
-            }
-        }
-        PartitionType::Split => match child_index {
-            0 => (parent_x, parent_y),
-            1 => (parent_x + w / 2, parent_y),
-            2 => (parent_x, parent_y + h / 2),
-            3 => (parent_x + w / 2, parent_y + h / 2),
-            _ => (parent_x, parent_y),
-        },
-        _ => (parent_x, parent_y),
-    }
-}
-
 /// Recursively parse coding units for leaf blocks
 #[allow(clippy::too_many_arguments)]
 fn parse_coding_units_recursive(
@@ -234,6 +158,7 @@ fn parse_coding_units_recursive(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    tile_ctx: &mut crate::tile::TileContext,
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
@@ -250,6 +175,7 @@ fn parse_coding_units_recursive(
             mv_ctx,
             reference_select,
             allow_intrabc,
+            tile_ctx,
         )?;
 
         coding_units.push(cu);
@@ -267,6 +193,7 @@ fn parse_coding_units_recursive(
                 mv_ctx,
                 reference_select,
                 allow_intrabc,
+                tile_ctx,
                 coding_units,
             )?;
         }
@@ -277,6 +204,7 @@ fn parse_coding_units_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tile::PartitionType;
     use crate::tile::PredictionMode;
 
     #[test]

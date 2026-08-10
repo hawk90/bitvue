@@ -127,8 +127,18 @@ fn parse_partition_trees_from_tile_data(
 
     let is_key_frame = parsed.frame_type.is_intra_only;
 
+    // Entropy-context tracker (currently only `skip` uses it -- see `crate::tile::TileContext`'s
+    // doc). Created once for the whole tile, unlike `mv_ctx` below (which -- pre-existing, not
+    // touched here -- is recreated fresh every superblock instead of persisting across the tile);
+    // `tile_ctx` must persist across superblocks or every context lookup would degenerate to 0.
+    let mut tile_ctx = crate::tile::TileContext::new(
+        (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
+        (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
+    );
+
     // Parse each superblock
     for sb_y in 0..parsed.dimensions.sb_rows {
+        tile_ctx.start_superblock_row();
         for sb_x in 0..parsed.dimensions.sb_cols {
             let sb_pixel_x = sb_x * sb_size;
             let sb_pixel_y = sb_y * sb_size;
@@ -174,6 +184,7 @@ fn parse_partition_trees_from_tile_data(
                 &mut mv_ctx,
                 parsed.reference_select,
                 parsed.allow_intrabc,
+                &mut tile_ctx,
             );
 
             match sb_result {
@@ -865,9 +876,14 @@ mod tests {
             parsed.dimensions.sb_cols,
             parsed.dimensions.sb_rows,
         );
+        let mut tile_ctx = crate::tile::TileContext::new(
+            (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
+            (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
+        );
         let mut current_qp = base_qp;
         let mut all_cus = Vec::new();
         for sb_y in 0..parsed.dimensions.sb_rows {
+            tile_ctx.start_superblock_row();
             for sb_x in 0..parsed.dimensions.sb_cols {
                 let (sb, new_qp) = crate::parse_superblock(
                     &mut decoder,
@@ -880,6 +896,7 @@ mod tests {
                     &mut mv_ctx,
                     parsed.reference_select,
                     parsed.allow_intrabc,
+                    &mut tile_ctx,
                 )?;
                 current_qp = new_qp;
                 all_cus.extend(sb.coding_units);
