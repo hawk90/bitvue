@@ -11,36 +11,41 @@ use bitvue_metrics::{psnr, ssim};
 use std::path::PathBuf;
 
 #[derive(Debug)]
-struct FrameMetrics {
-    frame: usize,
-    psnr_db: Option<f64>,
-    ssim: Option<f64>,
+pub struct FrameMetrics {
+    pub frame: usize,
+    pub psnr_db: Option<f64>,
+    pub ssim: Option<f64>,
 }
 
-pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) -> Result<()> {
+/// Decodes `reference`/`distorted` (AV1 IVF only) and computes per-frame PSNR/SSIM for the
+/// frames selected by `frames` ("0", "0,1,2", or "all"). Shared by `quality`'s CLI output and
+/// `bd-rate`'s per-file average-quality extraction -- both need the same decode+compare, just a
+/// different summary of the result.
+pub fn compute_frame_metrics(
+    reference: &std::path::Path,
+    distorted: &std::path::Path,
+    frames: &str,
+    want_psnr: bool,
+    want_ssim: bool,
+) -> Result<Vec<FrameMetrics>> {
     if !reference.exists() {
         anyhow::bail!("Reference file not found: {}", reference.display());
     }
     if !distorted.exists() {
         anyhow::bail!("Distorted file not found: {}", distorted.display());
     }
-
-    // Parse which metrics to compute
-    let want_psnr = metrics.contains("psnr");
-    let want_ssim = metrics.contains("ssim");
-
     if !want_psnr && !want_ssim {
-        anyhow::bail!("Unknown metrics '{}'. Supported: psnr, ssim", metrics);
+        anyhow::bail!("At least one of psnr/ssim must be requested");
     }
 
-    let ref_data = std::fs::read(&reference)
+    let ref_data = std::fs::read(reference)
         .with_context(|| format!("Failed to read reference: {}", reference.display()))?;
-    let dist_data = std::fs::read(&distorted)
+    let dist_data = std::fs::read(distorted)
         .with_context(|| format!("Failed to read distorted: {}", distorted.display()))?;
 
     // Only IVF (AV1) is currently supported for frame-level decode
-    let ref_fmt = detect_container_format(&reference).unwrap_or(ContainerFormat::Unknown);
-    let dist_fmt = detect_container_format(&distorted).unwrap_or(ContainerFormat::Unknown);
+    let ref_fmt = detect_container_format(reference).unwrap_or(ContainerFormat::Unknown);
+    let dist_fmt = detect_container_format(distorted).unwrap_or(ContainerFormat::Unknown);
 
     if !matches!(ref_fmt, ContainerFormat::IVF) || !matches!(dist_fmt, ContainerFormat::IVF) {
         anyhow::bail!(
@@ -66,15 +71,6 @@ pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) 
     // Determine which frame indices to compare
     let total_pairs = ref_decoded.len().min(dist_decoded.len());
     let frame_indices: Vec<usize> = parse_frame_spec(frames, total_pairs)?;
-
-    println!(
-        "Comparing {} frame(s) from {} vs {}",
-        frame_indices.len(),
-        reference.display(),
-        distorted.display()
-    );
-    println!("Metrics: {}", metrics);
-    println!();
 
     let mut results: Vec<FrameMetrics> = Vec::new();
 
@@ -115,6 +111,26 @@ pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) 
             ssim: ssim_val,
         });
     }
+
+    Ok(results)
+}
+
+pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) -> Result<()> {
+    let want_psnr = metrics.contains("psnr");
+    let want_ssim = metrics.contains("ssim");
+    if !want_psnr && !want_ssim {
+        anyhow::bail!("Unknown metrics '{}'. Supported: psnr, ssim", metrics);
+    }
+
+    println!(
+        "Comparing {} vs {}",
+        reference.display(),
+        distorted.display()
+    );
+    println!("Metrics: {}", metrics);
+    println!();
+
+    let results = compute_frame_metrics(&reference, &distorted, frames, want_psnr, want_ssim)?;
 
     // Print per-frame results
     if want_psnr && want_ssim {

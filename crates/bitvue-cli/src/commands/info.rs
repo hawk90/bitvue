@@ -114,9 +114,13 @@ fn print_ivf_info(data: &[u8]) {
                     let first_ts = frames.first().map(|f| f.timestamp).unwrap_or(0);
                     let last_ts = frames.last().map(|f| f.timestamp).unwrap_or(0);
                     if last_ts > first_ts && header.framerate_den > 0 {
-                        // timestamps are in framerate_num/framerate_den units
+                        // NOTE: `IvfHeader::framerate_den`/`framerate_num` are named backwards
+                        // from their actual on-disk meaning (verified empirically against a
+                        // known-25fps real file: framerate_den holds the raw "rate" byte value,
+                        // framerate_num holds "scale" -- fps = framerate_den/framerate_num, so
+                        // seconds-per-tick = framerate_num/framerate_den, not the reverse).
                         let duration_secs = (last_ts - first_ts) as f64
-                            * (header.framerate_den as f64 / header.framerate_num as f64);
+                            * (header.framerate_num as f64 / header.framerate_den as f64);
                         if duration_secs > 0.0 {
                             let bitrate_kbps =
                                 (total_bytes as f64 * 8.0 / duration_secs / 1000.0) as u64;

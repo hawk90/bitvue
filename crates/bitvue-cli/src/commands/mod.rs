@@ -2,6 +2,7 @@
 
 pub mod analyze;
 pub mod batch;
+pub mod bd_rate;
 pub mod decode;
 pub mod evidence_diff;
 pub mod export;

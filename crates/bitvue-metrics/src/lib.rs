@@ -53,6 +53,7 @@ use bitvue_engine::{BitvueError, Result};
 #[cfg(feature = "vmaf")]
 pub mod vmaf;
 
+pub mod bd_rate;
 pub mod simd;
 
 #[cfg(feature = "parallel")]

@@ -235,6 +235,38 @@ enum Commands {
         strict: bool,
     },
 
+    /// Build RD curves from real files and compute BD-rate/BD-quality between two encoder runs
+    ///
+    /// Example:
+    ///   bitvue bd-rate --reference src.ivf \
+    ///     --anchor anchor_q28.ivf anchor_q36.ivf anchor_q44.ivf anchor_q52.ivf \
+    ///     --test test_q28.ivf test_q36.ivf test_q44.ivf test_q52.ivf
+    BdRate {
+        /// Reference (undistorted) file each anchor/test file is compared against for quality
+        #[arg(long)]
+        reference: PathBuf,
+
+        /// Anchor curve's encoded files (>= 4, e.g. one per QP/CRF level)
+        #[arg(long, num_args = 1.., required = true)]
+        anchor: Vec<PathBuf>,
+
+        /// Test curve's encoded files (>= 4, e.g. one per QP/CRF level)
+        #[arg(long, num_args = 1.., required = true)]
+        test: Vec<PathBuf>,
+
+        /// Anchor curve's display name
+        #[arg(long, default_value = "anchor")]
+        anchor_name: String,
+
+        /// Test curve's display name
+        #[arg(long, default_value = "test")]
+        test_name: String,
+
+        /// Quality metric to build curves from (psnr or ssim)
+        #[arg(long, default_value = "psnr")]
+        metric: String,
+    },
+
     /// Diff two Evidence Bundle export directories
     EvidenceDiff {
         /// First evidence bundle directory (as produced by "Export Evidence Bundle")
@@ -378,6 +410,16 @@ fn main() -> Result<()> {
         }
         Commands::Validate { file, strict } => {
             commands::validate::run(file, strict)?;
+        }
+        Commands::BdRate {
+            reference,
+            anchor,
+            test,
+            anchor_name,
+            test_name,
+            metric,
+        } => {
+            commands::bd_rate::run(reference, anchor, test, anchor_name, test_name, metric)?;
         }
         Commands::EvidenceDiff {
             bundle_a,
