@@ -36,6 +36,7 @@ import {
   InfoPanel,
   DetailsPanel,
   YuvDiffPanel,
+  DiagnosticsPanel,
 } from "./components/panels";
 import { GoToFrameDialog } from "./components/GoToFrameDialog";
 
@@ -145,6 +146,9 @@ const UnitHexPanelWrapper = memo(function UnitHexPanelWrapper() {
 const StatisticsPanelWrapper = memo(function StatisticsPanelWrapper() {
   return <StatisticsPanel />;
 });
+const DiagnosticsPanelWrapper = memo(function DiagnosticsPanelWrapper() {
+  return <DiagnosticsPanel />;
+});
 
 /**
  * Stable main view component — reads current frame data from context.
@@ -230,6 +234,12 @@ const BOTTOM_ROW_PANELS = [
     title: "Stats",
     component: StatisticsPanelWrapper,
     icon: "graph",
+  },
+  {
+    id: "diagnostics",
+    title: "Diagnostics",
+    component: DiagnosticsPanelWrapper,
+    icon: "warning",
   },
 ];
 
