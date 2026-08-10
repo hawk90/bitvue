@@ -45,6 +45,17 @@ const sidecarBinaryPath =
 let sidecar: SidecarClient | undefined;
 let shuttingDown = false;
 
+/**
+ * Error/warning-level renderer console messages, collected by `createWindow`'s `console-message`
+ * forwarder below. `runSelfTestAndExit` fails the run if this is non-empty at the end -- found
+ * necessary the hard way: macOS's menu system was completely broken (two separate Tauri-leftover
+ * calls throwing an unhandled rejection on *every* launch) for the entire session without
+ * BITVUE_ELECTRON_SELFTEST ever catching it, because the selftest checked IPC *data* correctness
+ * but never looked at whether the renderer logged any errors along the way. A real bug report
+ * ("영상 디코딩도 제대로 안되는구만") is what surfaced it, not this test suite.
+ */
+const consoleErrors: string[] = [];
+
 function requireSidecar(): SidecarClient {
   if (!sidecar) throw new Error("sidecar not started yet — this shouldn't happen post-app.whenReady()");
   return sidecar;
@@ -598,8 +609,15 @@ function createWindow(): BrowserWindow {
   // page (e.g. a JS asset 404 under file://, an uncaught exception during React mount) is
   // otherwise silent here. Forward them so `npm run electron`'s terminal output is actually
   // useful for debugging instead of just showing an unexplained blank window.
-  win.webContents.on("console-message", (_event, _level, message, line, sourceId) => {
+  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
     console.log(`[renderer console] ${sourceId}:${line} ${message}`);
+    // level: 0=verbose, 1=info, 2=warning, 3=error (Electron's MessageDetails.level) -- only
+    // error-level fails the selftest; warnings (e.g. the CSP notice under file://, expected in
+    // this dev-mode shell) are noisy but not indicative of a real bug the way an uncaught
+    // exception or unhandled rejection is.
+    if (level >= 3) {
+      consoleErrors.push(`${sourceId}:${line} ${message}`);
+    }
   });
   win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
     console.error(`[bitvue-desktop] renderer failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
@@ -874,6 +892,11 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       " get_timeline OK:", timelineOk,
     );
     console.log("[selftest] #root mounted OK:", rootMountedOk);
+    const noConsoleErrorsOk = consoleErrors.length === 0;
+    if (!noConsoleErrorsOk) {
+      console.log("[selftest] renderer console errors (FAIL):", consoleErrors);
+    }
+    console.log("[selftest] no renderer console errors OK:", noConsoleErrorsOk);
     process.exitCode =
       expectedHex === result.hexBytesHex &&
       selectOk &&
@@ -896,7 +919,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       codecExtendedInfoOk &&
       residualAnalysisOk &&
       contextMenuItemsOk &&
-      evidenceBundleOk
+      evidenceBundleOk &&
+      noConsoleErrorsOk
         ? 0
         : 1;
   } catch (err) {
@@ -904,7 +928,10 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     process.exitCode = 1;
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
-    app.quit();
+    // app.quit() is a graceful, cancelable *request* to quit and does not take an exit code --
+    // it does not reliably propagate a previously-set process.exitCode to the actual OS exit
+    // code. app.exit(code) is the immediate, forceful API that actually honors it.
+    app.exit(process.exitCode === undefined ? 0 : Number(process.exitCode));
   }
 }
 
@@ -956,12 +983,24 @@ async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Pro
     const image = await win.webContents.capturePage();
     writeFileSync(outputPath, image.toPNG());
     console.log(`[screenshot] saved to ${outputPath}`);
-    process.exitCode = 0;
+    // Same reasoning as runSelfTestAndExit's noConsoleErrorsOk check -- a screenshot can look
+    // completely fine while the renderer silently threw (that's exactly how macOS's broken menu
+    // system went unnoticed all session: this mode is what a human/agent uses to visually
+    // inspect the app, and a visual inspection alone won't reveal an off-screen unhandled
+    // rejection).
+    if (consoleErrors.length > 0) {
+      console.error("[screenshot] renderer console errors (FAIL):", consoleErrors);
+      process.exitCode = 1;
+    } else {
+      process.exitCode = 0;
+    }
   } catch (err) {
     console.error("[screenshot] FAILED:", err);
     process.exitCode = 1;
   } finally {
-    app.quit();
+    // See runSelfTestAndExit's finally block: app.quit() does not reliably propagate
+    // process.exitCode to the actual OS exit code, app.exit(code) does.
+    app.exit(process.exitCode === undefined ? 0 : Number(process.exitCode));
   }
 }
 
