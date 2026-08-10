@@ -252,9 +252,6 @@ export const VideoCanvas = memo(function VideoCanvas({
         className="yuv-canvas yuv-canvas--webgl"
         style={{
           ...canvasStyle,
-          position: "absolute",
-          top: 0,
-          left: 0,
           pointerEvents: "none",
         }}
         aria-hidden

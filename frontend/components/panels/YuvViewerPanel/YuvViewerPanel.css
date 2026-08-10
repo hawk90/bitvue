@@ -236,9 +236,14 @@
 /* Canvas container - Polished */
 .yuv-canvas-container {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* Grid (not flex) so the main and WebGL-overlay canvases stack in the exact same cell --
+     both get centered identically. Previously the overlay canvas was pulled out of the flex
+     flow with position:absolute;top:0;left:0 while the main canvas stayed flex-centered, so
+     whenever the video didn't fill the container (letterboxed at 100% zoom), the two canvases'
+     origins diverged and the overlay's opaque black background masked part of the real frame
+     in an L-shaped notch (found via a real AOM conformance clip, 2026-08-10). */
+  display: grid;
+  place-items: center;
   overflow: hidden;
   background: #000;
   position: relative;
@@ -292,11 +297,21 @@
 
 .yuv-canvas {
   display: block;
+  grid-area: 1 / 1; /* stack both canvases in the same grid cell, see .yuv-canvas-container */
   background: #000;
   image-rendering: pixelated;
   max-width: 100%;
   max-height: 100%;
   transition: opacity 0.2s ease;
+}
+
+/* Now correctly aligned with the main canvas (see .yuv-canvas-container), the overlay canvas
+   would otherwise fully mask the real frame with its own opaque black background whenever
+   nothing is drawn on it (e.g. "F1 -- Overview" mode paints nothing here at all, see
+   OverlayRenderer's renderMainModeOverlay) -- transparent so an unpainted overlay is a no-op
+   visually, not an opaque cover. */
+.yuv-canvas--webgl {
+  background: transparent;
 }
 
 /* Status bar - Polished */
