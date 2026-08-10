@@ -223,6 +223,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             newFrames[frameIndex] = {
               ...newFrames[frameIndex],
               qp_grid: result.qp_grid,
+              energy_grid: result.energy_grid,
               mv_grid: result.mv_grid,
               partition_grid: result.partition_grid,
               prediction_mode_grid: result.prediction_mode_grid,

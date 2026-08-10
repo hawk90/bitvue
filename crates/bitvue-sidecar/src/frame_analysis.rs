@@ -21,9 +21,10 @@
 
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
-    extract_mv_grid_from_parsed, extract_partition_grid_from_parsed,
-    extract_prediction_mode_grid_from_parsed, extract_qp_grid_from_parsed,
-    extract_transform_grid_from_parsed, ParsedFrame, PredictionModeGrid, TransformGrid,
+    extract_energy_grid_from_parsed, extract_mv_grid_from_parsed,
+    extract_partition_grid_from_parsed, extract_prediction_mode_grid_from_parsed,
+    extract_qp_grid_from_parsed, extract_transform_grid_from_parsed, EnergyGrid, ParsedFrame,
+    PredictionModeGrid, TransformGrid,
 };
 use bitvue_av1_codec::tile::PredictionMode;
 use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
@@ -78,6 +79,7 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
     let prediction_mode_grid =
         extract_prediction_mode_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
     let transform_grid = extract_transform_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
+    let energy_grid = extract_energy_grid_from_parsed(&parsed).map_err(|e| e.to_string())?;
 
     Ok(json!({
         "frame_index": frame_index,
@@ -88,6 +90,7 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
         "partition_grid": partition_grid_to_json(&partition_grid),
         "prediction_mode_grid": prediction_mode_grid_to_json(&prediction_mode_grid),
         "transform_grid": transform_grid_to_json(&transform_grid),
+        "energy_grid": energy_grid_to_json(&energy_grid),
     }))
 }
 
@@ -100,6 +103,16 @@ fn qp_grid_to_json(g: &QPGrid) -> Value {
         "qp": g.qp,
         "qp_min": g.qp_min,
         "qp_max": g.qp_max,
+    })
+}
+
+fn energy_grid_to_json(g: &EnergyGrid) -> Value {
+    json!({
+        "grid_w": g.grid_w,
+        "grid_h": g.grid_h,
+        "block_w": g.block_w,
+        "block_h": g.block_h,
+        "energy_bpp": g.energy_bpp,
     })
 }
 

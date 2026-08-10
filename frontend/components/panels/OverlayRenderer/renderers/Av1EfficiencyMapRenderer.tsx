@@ -11,8 +11,11 @@
  *   1 bpp (normal)        → green      (#00CC00)
  *   ≥3 bpp (complex)      → red        (#CC0000)
  *
- * The QP grid is used as a proxy: low QP → more bits allocated → higher bpp.
- * Blocks estimated from: bpp ≈ (64 - QP) * scale_factor.
+ * Uses `frame.energy_grid` when present -- real per-CU decoded residual magnitude
+ * (`sum_abs_level / block_area`, see `bitvue_av1_codec::overlay_extraction::EnergyGrid`'s doc),
+ * not literal entropy-coded bit count but a real data-driven signal rather than a header-only
+ * heuristic. Falls back to the old QP-derived proxy (`bpp ≈ (64 - QP) * scale_factor`) only when
+ * no energy grid is available (e.g. a codec/path that doesn't populate it yet).
  */
 
 import type { OverlayRendererProps } from "../types";
@@ -32,32 +35,55 @@ export function Av1EfficiencyMapOverlay({
   height,
   frame,
 }: OverlayRendererProps): void {
+  const energyGrid = frame.energy_grid;
   const qpGrid = frame.qp_grid;
-  if (!qpGrid) return; // no-op if no data
 
-  const { grid_w, grid_h, qp } = qpGrid;
-  const cellW = width / grid_w;
-  const cellH = height / grid_h;
+  if (energyGrid) {
+    const { grid_w, grid_h, energy_bpp } = energyGrid;
+    const cellW = width / grid_w;
+    const cellH = height / grid_h;
 
-  // Find QP range for normalization
-  let minQp = 63,
-    maxQp = 0;
-  for (const v of qp) {
-    if (v < minQp) minQp = v;
-    if (v > maxQp) maxQp = v;
-  }
-  const range = Math.max(1, maxQp - minQp);
-
-  for (let row = 0; row < grid_h; row++) {
-    for (let col = 0; col < grid_w; col++) {
-      const idx = row * grid_w + col;
-      const blockQp = qp[idx] ?? 32;
-      // Lower QP → more bits → higher t (warmer color = less efficient)
-      // We invert: low QP = high "bit cost" proxy
-      const t = 1 - (blockQp - minQp) / range;
-      ctx.fillStyle = jetColor(t);
-      ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
+    let maxEnergy = 0;
+    for (const v of energy_bpp) {
+      if (v > maxEnergy) maxEnergy = v;
     }
+    const range = Math.max(1e-9, maxEnergy);
+
+    for (let row = 0; row < grid_h; row++) {
+      for (let col = 0; col < grid_w; col++) {
+        const idx = row * grid_w + col;
+        const t = (energy_bpp[idx] ?? 0) / range;
+        ctx.fillStyle = jetColor(t);
+        ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
+      }
+    }
+  } else if (qpGrid) {
+    // Fallback: no real energy data available (e.g. a codec path that doesn't populate
+    // energy_grid yet) -- approximate from QP alone, same as before this was wired up.
+    const { grid_w, grid_h, qp } = qpGrid;
+    const cellW = width / grid_w;
+    const cellH = height / grid_h;
+
+    let minQp = 63,
+      maxQp = 0;
+    for (const v of qp) {
+      if (v < minQp) minQp = v;
+      if (v > maxQp) maxQp = v;
+    }
+    const range = Math.max(1, maxQp - minQp);
+
+    for (let row = 0; row < grid_h; row++) {
+      for (let col = 0; col < grid_w; col++) {
+        const idx = row * grid_w + col;
+        const blockQp = qp[idx] ?? 32;
+        // Lower QP → more bits → higher t (warmer color = less efficient)
+        const t = 1 - (blockQp - minQp) / range;
+        ctx.fillStyle = jetColor(t);
+        ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
+      }
+    }
+  } else {
+    return; // no-op if no data at all
   }
 
   // ── Colorbar legend ───────────────────────────────────────────────────────

@@ -148,6 +148,7 @@ export interface FrameInfo {
 
   // Analysis data (QP heatmap, MV field, partition grid, prediction mode, transform)
   qp_grid?: QPGrid; // QP grid data for heatmap visualization
+  energy_grid?: EnergyGrid; // Real per-block residual energy for the Efficiency Map overlay
   mv_grid?: MVGrid; // MV grid data for motion vector field
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction visualization
@@ -388,6 +389,21 @@ export interface QPGrid {
 }
 
 /**
+ * Per-block residual "energy" grid -- real, data-driven Efficiency Map input.
+ * Same grid_w/grid_h/block_w/block_h layout as QPGrid. Backed by real decoded per-CU residual
+ * magnitude (sum_abs_level / block area), not a QP-derived heuristic -- see
+ * `bitvue_av1_codec::overlay_extraction::EnergyGrid`'s doc for what this does and doesn't
+ * capture (still not literal entropy-coded bit count).
+ */
+export interface EnergyGrid {
+  grid_w: number;
+  grid_h: number;
+  block_w: number;
+  block_h: number;
+  energy_bpp: number[]; // Bits-per-pixel-like value per cell (row-major), 0 = no residual/skip
+}
+
+/**
  * Motion Vector data for a single block
  */
 export interface MotionVectorBlock {
@@ -566,6 +582,7 @@ export interface FrameAnalysisData {
   width: number;
   height: number;
   qp_grid?: QPGrid;
+  energy_grid?: EnergyGrid; // Real per-block residual energy for the Efficiency Map overlay
   mv_grid?: MVGrid;
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction overlay
