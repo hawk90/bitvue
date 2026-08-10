@@ -165,6 +165,14 @@ pub struct FrameHeader {
     pub upscaled_width: u32,
     /// Upscaled height (super-resolution)
     pub upscaled_height: u32,
+    /// `reference_select` (spec 5.9.23 `frame_reference_mode()`) -- whether compound (2-reference)
+    /// prediction is enabled for this frame. Always `false` from `parse_frame_header_basic` (it
+    /// doesn't reach this field's bit position -- see that function's doc); real value only from
+    /// `parse_frame_header_full`.
+    pub reference_select: bool,
+    /// `allow_intrabc` (spec 5.9.2) -- whether intra block copy is enabled for this (intra) frame.
+    /// Same basic-vs-full caveat as `reference_select`.
+    pub allow_intrabc: bool,
     /// Loop filter (deblocking) parameters
     pub loop_filter: LoopFilterInfo,
     /// CDEF parameters
@@ -508,6 +516,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             height: 0,
             upscaled_width: 0,
             upscaled_height: 0,
+            reference_select: false,
+            allow_intrabc: false,
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -674,6 +684,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         height: 0,
         upscaled_width: 0,
         upscaled_height: 0,
+        reference_select: false,
+        allow_intrabc: false,
         loop_filter: LoopFilterInfo::default(),
         cdef_damping: CdefInfo::default(),
         cdef_y_primary_strength: 0,

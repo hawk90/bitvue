@@ -116,7 +116,18 @@ fn test_mv_extraction_with_spec_cdfs() {
         // Parse first superblock (at 0, 0)
         let sb_size = 64;
         let mut mv_ctx = MvPredictorContext::new(30, 17); // Typical 1920x1080 frame in 64x64 superblocks
-        match parse_superblock(&mut decoder, 0, 0, sb_size, false, 128, false, &mut mv_ctx) {
+        match parse_superblock(
+            &mut decoder,
+            0,
+            0,
+            sb_size,
+            false,
+            128,
+            false,
+            &mut mv_ctx,
+            false,
+            false,
+        ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(
                     "  Superblock has {} coding units",

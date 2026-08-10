@@ -133,7 +133,7 @@ impl PredictionMode {
 }
 
 /// Reference frame type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum RefFrame {
     /// No reference (INTRA)
@@ -322,6 +322,12 @@ pub struct CodingUnit {
     /// AV1 supports compound prediction (2 references)
     pub ref_frames: [RefFrame; 2],
 
+    /// `use_intrabc` (spec 5.11.6) -- true if this intra-frame block uses intra block copy
+    /// (screen-content-coding: motion-compensation-style copy from already-decoded pixels in the
+    /// *current* frame, rather than spatial intra prediction). Always `false` for inter blocks;
+    /// only ever `true` when the frame header's `allow_intrabc` was set.
+    pub use_intrabc: bool,
+
     /// Motion vectors (for INTER)
     /// L0 = forward reference, L1 = backward reference
     pub mv: [MotionVector; 2],
@@ -353,6 +359,7 @@ impl CodingUnit {
             skip: false,
             mode: PredictionMode::DcPred,
             ref_frames: [RefFrame::Intra, RefFrame::Intra],
+            use_intrabc: false,
             mv: [MotionVector::zero(), MotionVector::zero()],
             tx_size,
             qp: None,
@@ -390,10 +397,14 @@ impl CodingUnit {
 /// * `current_qp` - Current quantization parameter value
 /// * `delta_q_enabled` - True if delta Q is enabled for this frame
 /// * `mv_ctx` - MV predictor context for calculating motion vector predictors
+/// * `reference_select` - Frame header's `reference_select` flag (compound prediction enabled
+///   for this frame at all) -- see `ParsedFrame::reference_select`'s doc for how it's sourced.
+/// * `allow_intrabc` - Frame header's `allow_intrabc` flag (only meaningful when `is_key_frame`)
 ///
 /// # Returns
 ///
 /// Parsed coding unit with prediction info, motion vectors (if INTER), and QP value
+#[allow(clippy::too_many_arguments)]
 pub fn parse_coding_unit(
     decoder: &mut SymbolDecoder,
     x: u32,
@@ -404,6 +415,8 @@ pub fn parse_coding_unit(
     current_qp: i16,
     delta_q_enabled: bool,
     mv_ctx: &mut crate::tile::MvPredictorContext,
+    reference_select: bool,
+    allow_intrabc: bool,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
 
@@ -417,17 +430,26 @@ pub fn parse_coding_unit(
         // KEY frames are always INTRA
         cu.ref_frames = [RefFrame::Intra, RefFrame::Intra];
 
+        // use_intrabc (spec 5.11.6) -- rare (screen-content-coding), only read at all when the
+        // frame header allows it.
+        cu.use_intrabc = if allow_intrabc {
+            decoder.read_use_intrabc()?
+        } else {
+            false
+        };
+
         // Read INTRA prediction mode
         let mode_symbol = decoder.read_intra_mode()?;
         cu.mode = intra_mode_from_symbol(mode_symbol)?;
     } else {
+        // ref_frame() (spec 5.11.25) -- read before mode, matching real spec order (this
+        // decoder's CDFs are all non-adaptive/representative, so unlike a real spec-exact
+        // decoder, this reordering doesn't affect correctness -- see read_ref_frames' doc).
+        cu.ref_frames = decoder.read_ref_frames(reference_select, width.min(height))?;
+
         // INTER frame - read prediction mode
         let mode_symbol = decoder.read_inter_mode()?;
         cu.mode = inter_mode_from_symbol(mode_symbol)?;
-
-        // TODO: Read reference frames
-        // For MVP, use LAST frame as default
-        cu.ref_frames = [RefFrame::Last, RefFrame::Intra];
 
         // If NEWMV, read motion vectors
         if cu.mode == PredictionMode::NewMv {
@@ -440,8 +462,10 @@ pub fn parse_coding_unit(
             let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
             cu.mv[0] = MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
 
-            // TODO: If compound prediction (2 references), read L1 MV
-            // For MVP, single reference only
+            // TODO: compound blocks (cu.ref_frames[1] != RefFrame::Intra) should read a real L1
+            // MV here (and `mode` above should be a distinct compound_mode symbol, not this
+            // single-ref 4-way one) -- neither is implemented, see read_ref_frames' doc for why
+            // this is an intentionally-scoped, pre-existing gap rather than a new regression.
             cu.mv[1] = MotionVector::zero();
 
             tracing::debug!(

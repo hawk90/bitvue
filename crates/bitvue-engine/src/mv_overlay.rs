@@ -84,6 +84,13 @@ pub enum BlockMode {
     Inter = 1,
     Intra = 2,
     Skip = 3,
+    /// Intra block copy (spec 5.11.6) -- always a subset of `Intra` blocks (`use_intrabc`
+    /// implies `ref_frame[0] == RefFrame::Intra`), broken out as its own category since it's a
+    /// visually/analytically distinct prediction mechanism (motion-compensation-style copy from
+    /// the current frame, not spatial intra prediction).
+    IntraBc = 4,
+    /// Compound (2-reference) inter prediction.
+    Compound = 5,
 }
 
 impl From<u8> for BlockMode {
@@ -92,6 +99,8 @@ impl From<u8> for BlockMode {
             1 => BlockMode::Inter,
             2 => BlockMode::Intra,
             3 => BlockMode::Skip,
+            4 => BlockMode::IntraBc,
+            5 => BlockMode::Compound,
             _ => BlockMode::None,
         }
     }
@@ -607,8 +616,8 @@ impl MVGrid {
                 // Mode statistics
                 if let Some(mode) = self.get_mode(col, row) {
                     match mode {
-                        BlockMode::Inter => stats.inter_count += 1,
-                        BlockMode::Intra => stats.intra_count += 1,
+                        BlockMode::Inter | BlockMode::Compound => stats.inter_count += 1,
+                        BlockMode::Intra | BlockMode::IntraBc => stats.intra_count += 1,
                         BlockMode::Skip => stats.skip_count += 1,
                         BlockMode::None => {}
                     }

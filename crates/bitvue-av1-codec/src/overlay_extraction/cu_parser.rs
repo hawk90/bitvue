@@ -31,6 +31,8 @@ pub fn parse_all_coding_units(
     let sb_rows = parsed.dimensions.sb_rows;
     let is_key_frame = parsed.frame_type.is_intra_only;
     let delta_q_enabled = parsed.delta_q_enabled;
+    let reference_select = parsed.reference_select;
+    let allow_intrabc = parsed.allow_intrabc;
 
     // Use get_or_parse helper for cache pattern
     get_or_parse_coding_units(cache_key, || {
@@ -65,6 +67,8 @@ pub fn parse_all_coding_units(
                     current_qp,
                     delta_q_enabled,
                     &mut mv_ctx,
+                    reference_select,
+                    allow_intrabc,
                 ) {
                     Ok((sb, new_qp)) => {
                         // Collect all coding units from this superblock
@@ -225,5 +229,61 @@ mod tests {
                 result.err()
             );
         }
+    }
+
+    /// Regression test for the ref_frame() desync fix (2026-08-11): `parse_coding_unit` used to
+    /// hardcode every inter block's reference frame to `RefFrame::Last` (never reading the real
+    /// `ref_frame()` syntax at all -- the same "syntax element completely unread" bug shape as
+    /// the residual() bug above, just never crashed because nothing downstream cross-checks
+    /// ref_frame values against anything). Confirms real bits are actually being read: `Last`
+    /// alone would mean the fix silently regressed to the old hardcoded behavior, and zero
+    /// compound blocks despite `reference_select=true` on many frames would mean the comp_mode
+    /// branch never actually triggers.
+    #[test]
+    fn real_fixture_ref_frame_values_are_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut distinct_ref0_values: std::collections::HashSet<crate::tile::RefFrame> =
+            Default::default();
+        let mut compound_count = 0;
+        let mut inter_count = 0;
+        let mut saw_reference_select_true = false;
+
+        for frame in frames.iter().take(30) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+            saw_reference_select_true |= parsed.reference_select;
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let cus = parse_all_coding_units(&parsed).unwrap();
+            for cu in cus.iter() {
+                if cu.is_inter() {
+                    inter_count += 1;
+                    distinct_ref0_values.insert(cu.ref_frames[0]);
+                    if cu.ref_frames[1] != crate::tile::RefFrame::Intra {
+                        compound_count += 1;
+                    }
+                }
+            }
+        }
+
+        assert!(inter_count > 0, "fixture should have real inter blocks");
+        assert!(
+            saw_reference_select_true,
+            "expected at least one of the first 30 frames to have reference_select=true"
+        );
+        assert!(
+            distinct_ref0_values.len() > 1,
+            "expected more than one distinct ref_frame[0] value across {inter_count} real inter \
+             blocks, got only {distinct_ref0_values:?} -- ref_frame() may have regressed to the \
+             old hardcoded-to-Last behavior"
+        );
+        assert!(
+            compound_count > 0,
+            "expected at least one compound-prediction block given reference_select was true on \
+             multiple frames -- the comp_mode branch may not be triggering"
+        );
     }
 }

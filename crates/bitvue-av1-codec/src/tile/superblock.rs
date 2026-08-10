@@ -81,10 +81,13 @@ impl Superblock {
 /// * `is_key_frame` - True if KEY frame (INTRA only)
 /// * `current_qp` - Current quantization parameter value
 /// * `delta_q_enabled` - True if delta Q is enabled for this frame
+/// * `reference_select` - Frame header's `reference_select` flag (see `parse_coding_unit`'s doc)
+/// * `allow_intrabc` - Frame header's `allow_intrabc` flag (see `parse_coding_unit`'s doc)
 ///
 /// # Returns
 ///
 /// Parsed superblock with partition tree and coding units, plus final QP value
+#[allow(clippy::too_many_arguments)]
 pub fn parse_superblock(
     decoder: &mut SymbolDecoder,
     x: u32,
@@ -94,6 +97,8 @@ pub fn parse_superblock(
     current_qp: i16,
     delta_q_enabled: bool,
     mv_ctx: &mut crate::tile::MvPredictorContext,
+    reference_select: bool,
+    allow_intrabc: bool,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -119,6 +124,8 @@ pub fn parse_superblock(
         current_qp,
         delta_q_enabled,
         mv_ctx,
+        reference_select,
+        allow_intrabc,
         &mut sb.coding_units,
     )?;
 
@@ -217,6 +224,7 @@ fn child_position(
 }
 
 /// Recursively parse coding units for leaf blocks
+#[allow(clippy::too_many_arguments)]
 fn parse_coding_units_recursive(
     decoder: &mut SymbolDecoder,
     partition: &PartitionNode,
@@ -224,6 +232,8 @@ fn parse_coding_units_recursive(
     current_qp: i16,
     delta_q_enabled: bool,
     mv_ctx: &mut crate::tile::MvPredictorContext,
+    reference_select: bool,
+    allow_intrabc: bool,
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
@@ -238,6 +248,8 @@ fn parse_coding_units_recursive(
             current_qp,
             delta_q_enabled,
             mv_ctx,
+            reference_select,
+            allow_intrabc,
         )?;
 
         coding_units.push(cu);
@@ -253,6 +265,8 @@ fn parse_coding_units_recursive(
                 qp,
                 delta_q_enabled,
                 mv_ctx,
+                reference_select,
+                allow_intrabc,
                 coding_units,
             )?;
         }

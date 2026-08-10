@@ -183,6 +183,38 @@ pub struct CdfContext {
     /// `dc_sign` -- sign of the DC (position 0) coefficient (2 symbols). AC coefficient signs are
     /// read as literal (uniform) bits per spec, not CDF-coded.
     dc_sign_cdf: Vec<u16>,
+
+    /// Reference-frame selection CDFs -- see `SymbolDecoder::read_ref_frames`' doc for why these
+    /// are (like every other CDF in this struct) context-*independent* representative values, not
+    /// the real spec's neighbor/`reference_select`-adaptive Section 9.24 tables. Naming mirrors
+    /// AV1 spec 5.11.25's syntax element names (`single_ref_p1`..`p6`, `comp_ref_type`, etc.) so
+    /// the decision-tree structure in `read_ref_frames` is easy to cross-check against the spec.
+    comp_mode_cdf: Vec<u16>,
+    single_ref_p1_cdf: Vec<u16>,
+    single_ref_p2_cdf: Vec<u16>,
+    single_ref_p3_cdf: Vec<u16>,
+    single_ref_p4_cdf: Vec<u16>,
+    single_ref_p5_cdf: Vec<u16>,
+    single_ref_p6_cdf: Vec<u16>,
+    comp_ref_type_cdf: Vec<u16>,
+    uni_comp_ref_cdf: Vec<u16>,
+    uni_comp_ref_p1_cdf: Vec<u16>,
+    uni_comp_ref_p2_cdf: Vec<u16>,
+    comp_ref_cdf: Vec<u16>,
+    comp_ref_p1_cdf: Vec<u16>,
+    comp_ref_p2_cdf: Vec<u16>,
+    comp_bwdref_cdf: Vec<u16>,
+    comp_bwdref_p1_cdf: Vec<u16>,
+
+    /// `use_intrabc` (spec 5.11.6) -- intra block copy flag, read for intra-frame blocks only
+    /// when the frame header's `allow_intrabc` is set (rare, screen-content-coding use case).
+    use_intrabc_cdf: Vec<u16>,
+}
+
+/// Build a 2-symbol CDF from `p0`, the probability of the first (index-0) symbol.
+/// Matches the hand-picked-bias style every other CDF in this file uses (see `skip_cdf`).
+fn binary_cdf(p0: f32) -> Vec<u16> {
+    vec![0, (CDF_SCALE as f32 * p0) as u16, CDF_SCALE]
 }
 
 impl CdfContext {
@@ -400,6 +432,28 @@ impl CdfContext {
         // dc_sign: uniform (no real reason to bias this).
         let dc_sign_cdf = vec![0, CDF_SCALE / 2, CDF_SCALE];
 
+        // Reference-frame selection: biased toward the statistically common case (single-ref,
+        // recent LAST-group frames) at every branch -- see `read_ref_frames`' doc.
+        let comp_mode_cdf = binary_cdf(0.85); // single: 85%, compound: 15%
+        let single_ref_p1_cdf = binary_cdf(0.70); // forward group: 70%, backward group: 30%
+        let single_ref_p2_cdf = binary_cdf(0.50); // (backward) BWDREF/ALTREF2 group vs ALTREF
+        let single_ref_p3_cdf = binary_cdf(0.70); // (forward) LAST/LAST2 group vs LAST3/GOLDEN
+        let single_ref_p4_cdf = binary_cdf(0.80); // LAST vs LAST2
+        let single_ref_p5_cdf = binary_cdf(0.50); // LAST3 vs GOLDEN
+        let single_ref_p6_cdf = binary_cdf(0.50); // BWDREF vs ALTREF2
+        let comp_ref_type_cdf = binary_cdf(0.30); // unidirectional: 30%, bidirectional: 70%
+        let uni_comp_ref_cdf = binary_cdf(0.85); // LAST-group pair vs (BWDREF, ALTREF)
+        let uni_comp_ref_p1_cdf = binary_cdf(0.70); // (LAST, LAST2) vs (LAST, LAST3/GOLDEN)
+        let uni_comp_ref_p2_cdf = binary_cdf(0.50); // LAST3 vs GOLDEN
+        let comp_ref_cdf = binary_cdf(0.70); // forward ref: LAST/LAST2 group vs LAST3/GOLDEN
+        let comp_ref_p1_cdf = binary_cdf(0.80); // LAST vs LAST2
+        let comp_ref_p2_cdf = binary_cdf(0.50); // LAST3 vs GOLDEN
+        let comp_bwdref_cdf = binary_cdf(0.60); // backward ref: BWDREF/ALTREF2 group vs ALTREF
+        let comp_bwdref_p1_cdf = binary_cdf(0.50); // BWDREF vs ALTREF2
+
+        // use_intrabc: rare (screen-content-coding only), heavily biased toward false.
+        let use_intrabc_cdf = binary_cdf(0.97);
+
         Self {
             partition_cdfs,
             skip_cdf,
@@ -418,6 +472,23 @@ impl CdfContext {
             coeff_base_cdf,
             coeff_br_cdf,
             dc_sign_cdf,
+            comp_mode_cdf,
+            single_ref_p1_cdf,
+            single_ref_p2_cdf,
+            single_ref_p3_cdf,
+            single_ref_p4_cdf,
+            single_ref_p5_cdf,
+            single_ref_p6_cdf,
+            comp_ref_type_cdf,
+            uni_comp_ref_cdf,
+            uni_comp_ref_p1_cdf,
+            uni_comp_ref_p2_cdf,
+            comp_ref_cdf,
+            comp_ref_p1_cdf,
+            comp_ref_p2_cdf,
+            comp_bwdref_cdf,
+            comp_bwdref_p1_cdf,
+            use_intrabc_cdf,
         }
     }
 
@@ -588,6 +659,75 @@ impl CdfContext {
     /// Get `dc_sign` CDF (sign of the DC coefficient).
     pub fn get_dc_sign_cdf(&self) -> &[u16] {
         &self.dc_sign_cdf
+    }
+
+    /// Get `comp_mode` CDF (single-reference vs compound prediction).
+    pub fn get_comp_mode_cdf(&self) -> &[u16] {
+        &self.comp_mode_cdf
+    }
+    /// Get `single_ref_p1` CDF (forward vs backward reference group).
+    pub fn get_single_ref_p1_cdf(&self) -> &[u16] {
+        &self.single_ref_p1_cdf
+    }
+    /// Get `single_ref_p2` CDF (BWDREF/ALTREF2 group vs ALTREF, backward branch).
+    pub fn get_single_ref_p2_cdf(&self) -> &[u16] {
+        &self.single_ref_p2_cdf
+    }
+    /// Get `single_ref_p3` CDF (LAST/LAST2 group vs LAST3/GOLDEN group, forward branch).
+    pub fn get_single_ref_p3_cdf(&self) -> &[u16] {
+        &self.single_ref_p3_cdf
+    }
+    /// Get `single_ref_p4` CDF (LAST vs LAST2).
+    pub fn get_single_ref_p4_cdf(&self) -> &[u16] {
+        &self.single_ref_p4_cdf
+    }
+    /// Get `single_ref_p5` CDF (LAST3 vs GOLDEN).
+    pub fn get_single_ref_p5_cdf(&self) -> &[u16] {
+        &self.single_ref_p5_cdf
+    }
+    /// Get `single_ref_p6` CDF (BWDREF vs ALTREF2).
+    pub fn get_single_ref_p6_cdf(&self) -> &[u16] {
+        &self.single_ref_p6_cdf
+    }
+    /// Get `comp_ref_type` CDF (unidirectional vs bidirectional compound reference).
+    pub fn get_comp_ref_type_cdf(&self) -> &[u16] {
+        &self.comp_ref_type_cdf
+    }
+    /// Get `uni_comp_ref` CDF ((LAST,LAST2)/(LAST,LAST3-or-GOLDEN) pair vs (BWDREF,ALTREF)).
+    pub fn get_uni_comp_ref_cdf(&self) -> &[u16] {
+        &self.uni_comp_ref_cdf
+    }
+    /// Get `uni_comp_ref_p1` CDF ((LAST,LAST2) vs (LAST,LAST3-or-GOLDEN)).
+    pub fn get_uni_comp_ref_p1_cdf(&self) -> &[u16] {
+        &self.uni_comp_ref_p1_cdf
+    }
+    /// Get `uni_comp_ref_p2` CDF (LAST3 vs GOLDEN, second slot of the unidirectional pair).
+    pub fn get_uni_comp_ref_p2_cdf(&self) -> &[u16] {
+        &self.uni_comp_ref_p2_cdf
+    }
+    /// Get `comp_ref` CDF (forward group choice, bidirectional compound).
+    pub fn get_comp_ref_cdf(&self) -> &[u16] {
+        &self.comp_ref_cdf
+    }
+    /// Get `comp_ref_p1` CDF (LAST vs LAST2, bidirectional compound forward ref).
+    pub fn get_comp_ref_p1_cdf(&self) -> &[u16] {
+        &self.comp_ref_p1_cdf
+    }
+    /// Get `comp_ref_p2` CDF (LAST3 vs GOLDEN, bidirectional compound forward ref).
+    pub fn get_comp_ref_p2_cdf(&self) -> &[u16] {
+        &self.comp_ref_p2_cdf
+    }
+    /// Get `comp_bwdref` CDF (backward group choice, bidirectional compound).
+    pub fn get_comp_bwdref_cdf(&self) -> &[u16] {
+        &self.comp_bwdref_cdf
+    }
+    /// Get `comp_bwdref_p1` CDF (BWDREF vs ALTREF2, bidirectional compound backward ref).
+    pub fn get_comp_bwdref_p1_cdf(&self) -> &[u16] {
+        &self.comp_bwdref_p1_cdf
+    }
+    /// Get `use_intrabc` CDF (intra block copy flag).
+    pub fn get_use_intrabc_cdf(&self) -> &[u16] {
+        &self.use_intrabc_cdf
     }
 }
 

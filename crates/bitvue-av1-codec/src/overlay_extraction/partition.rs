@@ -174,6 +174,8 @@ fn parse_partition_trees_from_tile_data(
                 base_qp,
                 false, // delta_q_enabled - not implemented for MVP
                 &mut mv_ctx,
+                parsed.reference_select,
+                parsed.allow_intrabc,
             );
 
             match sb_result {
@@ -768,6 +770,8 @@ fn parse_all_coding_units(
     let sb_rows = parsed.dimensions.sb_rows;
     let is_key_frame = parsed.frame_type.is_intra_only;
     let delta_q_enabled = parsed.delta_q_enabled;
+    let reference_select = parsed.reference_select;
+    let allow_intrabc = parsed.allow_intrabc;
 
     // Per optimize-code skill: Use get_or_parse helper for cache pattern
     get_or_parse_coding_units(cache_key, || {
@@ -802,6 +806,8 @@ fn parse_all_coding_units(
                     current_qp,
                     delta_q_enabled,
                     &mut mv_ctx,
+                    reference_select,
+                    allow_intrabc,
                 ) {
                     Ok((sb, new_qp)) => {
                         // Collect all coding units from this superblock

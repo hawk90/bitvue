@@ -203,6 +203,7 @@ mod tests {
             skip,
             mode,
             ref_frames: [RefFrame::Intra, RefFrame::Intra],
+            use_intrabc: false,
             mv: [MotionVector::zero(), MotionVector::zero()],
             tx_size: TxSize::from_dimensions(w, h),
             qp: None,

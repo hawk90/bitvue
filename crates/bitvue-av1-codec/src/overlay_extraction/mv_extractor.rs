@@ -64,11 +64,24 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
                             let cu = &coding_units[cu_idx];
 
                             // This CU overlaps our block - use its MV
-                            if cu.is_inter() {
+                            if cu.use_intrabc {
+                                // Always a subset of intra (ref_frame[0] == Intra) -- see
+                                // BlockMode::IntraBc's doc.
+                                mv_l0.push(CoreMV::MISSING);
+                                mv_l1.push(CoreMV::MISSING);
+                                mode.push(BlockMode::IntraBc);
+                            } else if cu.is_inter() {
                                 // Use quarter-pel precision motion vector directly
                                 mv_l0.push(CoreMV::new(cu.mv[0].x, cu.mv[0].y));
                                 mv_l1.push(CoreMV::MISSING);
-                                mode.push(BlockMode::Inter);
+                                let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
+                                mode.push(if cu.skip {
+                                    BlockMode::Skip
+                                } else if is_compound {
+                                    BlockMode::Compound
+                                } else {
+                                    BlockMode::Inter
+                                });
                             } else {
                                 mv_l0.push(CoreMV::MISSING);
                                 mv_l1.push(CoreMV::MISSING);

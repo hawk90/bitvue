@@ -198,7 +198,14 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
                     mv_l1.push(CoreMV::MISSING);
                     modes.push(BlockMode::Intra);
                 }
-                BlockMode::Skip | BlockMode::Inter | BlockMode::None => {
+                // IntraBc/Compound are AV1-only categories (this VP9 parser never produces
+                // them) -- grouped into the same catch-all as the pre-existing Skip/Inter/None
+                // arm for exhaustiveness, matching what None already did.
+                BlockMode::Skip
+                | BlockMode::Inter
+                | BlockMode::None
+                | BlockMode::IntraBc
+                | BlockMode::Compound => {
                     if let Some(ref mv) = sb.mv_l0 {
                         mv_l0.push(CoreMV::new(mv.x, mv.y));
                     } else {

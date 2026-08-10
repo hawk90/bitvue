@@ -420,6 +420,10 @@ export enum BlockMode {
   Inter = 1,
   Intra = 2,
   Skip = 3,
+  /** Intra block copy (spec 5.11.6) -- always a subset of Intra blocks. */
+  IntraBc = 4,
+  /** Compound (2-reference) inter prediction. */
+  Compound = 5,
 }
 
 /**

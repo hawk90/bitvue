@@ -2,6 +2,7 @@
 //!
 //! Provides ParsedFrame struct and related types for caching parsed OBU data.
 
+use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
 use crate::{parse_all_obus, parse_frame_header_basic, ObuType};
 use bitvue_engine::BitvueError;
 use std::sync::Arc;
@@ -25,6 +26,19 @@ pub struct ParsedFrame {
     pub tile_data: Arc<[u8]>,
     /// Whether delta Q is enabled for this frame
     pub delta_q_enabled: bool,
+    /// `reference_select` (spec 5.9.23) -- whether compound (2-reference) prediction is enabled
+    /// for this frame. Computed via `parse_frame_header_full` (needs a real `SequenceHeader`,
+    /// unlike `parse_frame_header_basic` which can't reach this field's bit position at all --
+    /// see that function's doc) with a *fresh* `RefFrameState::new()` rather than real
+    /// accumulated cross-frame state: `reference_select`'s bit position doesn't depend on
+    /// `ref_state`'s stored values (only `read_skip_mode_params`, which runs *after* it, does) --
+    /// see `parse_coding_unit`'s doc for the full reasoning. `false` (i.e. "no compound
+    /// prediction, safe to assume single-ref") if the sequence header wasn't found or the frame
+    /// header failed to parse (same resilient-fallback precedent as `delta_q_enabled`).
+    pub reference_select: bool,
+    /// `allow_intrabc` (spec 5.9.2) -- whether intra block copy is enabled for this (intra) frame.
+    /// Same sourcing/fallback story as `reference_select`.
+    pub allow_intrabc: bool,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -110,6 +124,8 @@ impl ParsedFrame {
                 frame_type: FrameTypeInfo::default(),
                 tile_data: Arc::from([]),
                 delta_q_enabled: false,
+                reference_select: false,
+                allow_intrabc: false,
             });
         }
 
@@ -139,6 +155,11 @@ impl ParsedFrame {
         let mut frame_type = FrameTypeInfo::default();
         let mut tile_data = Vec::new();
         let mut delta_q_enabled = false; // Default to false
+        let mut reference_select = false;
+        let mut allow_intrabc = false;
+        // Retained across the loop so the frame-header OBU (which comes after the sequence
+        // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
+        let mut seq_header: Option<crate::SequenceHeader> = None;
 
         for obu in &obus_vec {
             let payload_start = offset + obu.header.header_size;
@@ -165,6 +186,7 @@ impl ParsedFrame {
                             sb_cols: 0,
                             sb_rows: 0,
                         };
+                        seq_header = Some(seq_hdr);
                     }
                 }
                 ObuType::Frame => {
@@ -186,12 +208,28 @@ impl ParsedFrame {
                                 .extend_from_slice(&obu.payload[frame_hdr.header_size_bytes..]);
                         }
                     }
+                    if let Some(seq) = &seq_header {
+                        if let Ok(full_hdr) =
+                            parse_frame_header_full(&obu.payload, seq, &mut RefFrameState::new())
+                        {
+                            reference_select = full_hdr.reference_select;
+                            allow_intrabc = full_hdr.allow_intrabc;
+                        }
+                    }
                 }
                 ObuType::FrameHeader => {
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         frame_type.is_intra_only = frame_hdr.frame_type.is_intra_only();
                         frame_type.base_qp = frame_hdr.base_q_idx;
                         delta_q_enabled = frame_hdr.delta_q_present;
+                    }
+                    if let Some(seq) = &seq_header {
+                        if let Ok(full_hdr) =
+                            parse_frame_header_full(&obu.payload, seq, &mut RefFrameState::new())
+                        {
+                            reference_select = full_hdr.reference_select;
+                            allow_intrabc = full_hdr.allow_intrabc;
+                        }
                     }
                 }
                 ObuType::TileGroup => {
@@ -216,6 +254,8 @@ impl ParsedFrame {
             frame_type,
             tile_data: Arc::from(tile_data),
             delta_q_enabled,
+            reference_select,
+            allow_intrabc,
         })
     }
 

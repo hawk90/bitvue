@@ -109,6 +109,154 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.read_symbol(cdf)
     }
 
+    /// Read `ref_frame()` per AV1 spec Section 5.11.25 (`read_ref_frames`), for inter blocks.
+    ///
+    /// Returns `[ref_frame0, ref_frame1]` -- `ref_frame1` is `RefFrame::Intra` when this is not a
+    /// compound-prediction block, matching this crate's existing "Intra used as the None/single-
+    /// ref sentinel" convention (see `CodingUnit::new`'s default `[RefFrame::Intra; 2]`).
+    ///
+    /// `reference_select` is the frame header flag of the same name (whether compound prediction
+    /// is enabled for this frame at all -- see `ParsedFrame::reference_select`'s doc for how it's
+    /// sourced). `min_block_dim_px` is `min(cu.width, cu.height)`: compound prediction
+    /// additionally requires `Min(bw4, bh4) >= 2` per spec, i.e. at least 8px in the smaller
+    /// dimension.
+    ///
+    /// Uses representative (non-adaptive) CDFs like every other `read_*` method in this decoder
+    /// -- see `CdfContext`'s ref-frame CDF fields' doc. Real per-block *mode* reading for
+    /// compound blocks (`compound_mode`, a different/larger symbol alphabet than this decoder's
+    /// 4-way `read_inter_mode`) and compound motion-vector-difference reading are **not**
+    /// implemented -- callers still read a single-ref-shaped mode/MV for compound blocks
+    /// afterwards, an existing, unchanged approximation this method doesn't attempt to fix. Only
+    /// `ref_frame[0]`/`ref_frame[1]`'s categorical values (and the entropy-decoder bit
+    /// consumption needed to reach them correctly) are new.
+    pub fn read_ref_frames(
+        &mut self,
+        reference_select: bool,
+        min_block_dim_px: u32,
+    ) -> Result<[crate::tile::RefFrame; 2]> {
+        use crate::tile::RefFrame;
+
+        let is_compound = if reference_select && min_block_dim_px >= 8 {
+            let cdf = self.cdf_context.get_comp_mode_cdf();
+            self.decoder.read_symbol(cdf)? == 1
+        } else {
+            false
+        };
+
+        if !is_compound {
+            let cdf = self.cdf_context.get_single_ref_p1_cdf();
+            let backward = self.decoder.read_symbol(cdf)? == 1;
+
+            let ref0 = if backward {
+                let cdf = self.cdf_context.get_single_ref_p2_cdf();
+                let is_altref = self.decoder.read_symbol(cdf)? == 1;
+                if is_altref {
+                    RefFrame::AltRef
+                } else {
+                    let cdf = self.cdf_context.get_single_ref_p6_cdf();
+                    let is_altref2 = self.decoder.read_symbol(cdf)? == 1;
+                    if is_altref2 {
+                        RefFrame::AltRef2
+                    } else {
+                        RefFrame::BwdRef
+                    }
+                }
+            } else {
+                let cdf = self.cdf_context.get_single_ref_p3_cdf();
+                let last3_or_golden = self.decoder.read_symbol(cdf)? == 1;
+                if last3_or_golden {
+                    let cdf = self.cdf_context.get_single_ref_p5_cdf();
+                    let is_golden = self.decoder.read_symbol(cdf)? == 1;
+                    if is_golden {
+                        RefFrame::Golden
+                    } else {
+                        RefFrame::Last3
+                    }
+                } else {
+                    let cdf = self.cdf_context.get_single_ref_p4_cdf();
+                    let is_last2 = self.decoder.read_symbol(cdf)? == 1;
+                    if is_last2 {
+                        RefFrame::Last2
+                    } else {
+                        RefFrame::Last
+                    }
+                }
+            };
+            return Ok([ref0, RefFrame::Intra]);
+        }
+
+        let cdf = self.cdf_context.get_comp_ref_type_cdf();
+        let is_bidir = self.decoder.read_symbol(cdf)? == 1;
+
+        if !is_bidir {
+            // Unidirectional compound: both references from the same "direction" group.
+            let cdf = self.cdf_context.get_uni_comp_ref_cdf();
+            let is_bwdref_altref = self.decoder.read_symbol(cdf)? == 1;
+            if is_bwdref_altref {
+                return Ok([RefFrame::BwdRef, RefFrame::AltRef]);
+            }
+            let cdf = self.cdf_context.get_uni_comp_ref_p1_cdf();
+            let p1 = self.decoder.read_symbol(cdf)? == 1;
+            if !p1 {
+                return Ok([RefFrame::Last, RefFrame::Last2]);
+            }
+            let cdf = self.cdf_context.get_uni_comp_ref_p2_cdf();
+            let p2 = self.decoder.read_symbol(cdf)? == 1;
+            return Ok([
+                RefFrame::Last,
+                if p2 {
+                    RefFrame::Last3
+                } else {
+                    RefFrame::Golden
+                },
+            ]);
+        }
+
+        // Bidirectional compound: independent forward + backward group choices.
+        let cdf = self.cdf_context.get_comp_ref_cdf();
+        let fwd_group_b = self.decoder.read_symbol(cdf)? == 1;
+        let ref0 = if !fwd_group_b {
+            let cdf = self.cdf_context.get_comp_ref_p1_cdf();
+            let is_last2 = self.decoder.read_symbol(cdf)? == 1;
+            if is_last2 {
+                RefFrame::Last2
+            } else {
+                RefFrame::Last
+            }
+        } else {
+            let cdf = self.cdf_context.get_comp_ref_p2_cdf();
+            let is_golden = self.decoder.read_symbol(cdf)? == 1;
+            if is_golden {
+                RefFrame::Golden
+            } else {
+                RefFrame::Last3
+            }
+        };
+
+        let cdf = self.cdf_context.get_comp_bwdref_cdf();
+        let bwd_group_b = self.decoder.read_symbol(cdf)? == 1;
+        let ref1 = if !bwd_group_b {
+            let cdf = self.cdf_context.get_comp_bwdref_p1_cdf();
+            let is_altref2 = self.decoder.read_symbol(cdf)? == 1;
+            if is_altref2 {
+                RefFrame::AltRef2
+            } else {
+                RefFrame::BwdRef
+            }
+        } else {
+            RefFrame::AltRef
+        };
+
+        Ok([ref0, ref1])
+    }
+
+    /// Read `use_intrabc` per AV1 spec Section 5.11.6 -- only call when the frame header's
+    /// `allow_intrabc` is true and the current block is on an intra frame.
+    pub fn read_use_intrabc(&mut self) -> Result<bool> {
+        let cdf = self.cdf_context.get_use_intrabc_cdf();
+        Ok(self.decoder.read_symbol(cdf)? == 1)
+    }
+
     /// Read motion vector component (horizontal or vertical)
     ///
     /// Per AV1 Spec Section 5.11.47 (Motion Vector Component)
