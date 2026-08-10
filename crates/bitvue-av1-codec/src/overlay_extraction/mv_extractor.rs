@@ -73,8 +73,17 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
                             } else if cu.is_inter() {
                                 // Use quarter-pel precision motion vector directly
                                 mv_l0.push(CoreMV::new(cu.mv[0].x, cu.mv[0].y));
-                                mv_l1.push(CoreMV::MISSING);
                                 let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
+                                // L1 (backward reference MV) is only meaningful for compound
+                                // blocks -- `cu.mv[1]` is always zero for single-ref blocks (see
+                                // `parse_coding_unit`), so reporting it as MISSING there (rather
+                                // than a misleading real-looking zero) matches how intra/no-CU
+                                // blocks already report MISSING for both planes.
+                                mv_l1.push(if is_compound {
+                                    CoreMV::new(cu.mv[1].x, cu.mv[1].y)
+                                } else {
+                                    CoreMV::MISSING
+                                });
                                 mode.push(if cu.skip {
                                     BlockMode::Skip
                                 } else if is_compound {

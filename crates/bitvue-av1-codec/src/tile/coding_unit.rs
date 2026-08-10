@@ -61,7 +61,7 @@ use serde::{Deserialize, Serialize};
 /// - **NearestMv**: Use nearest MV from neighboring blocks
 /// - **NearMv**: Use near MV from neighboring blocks
 /// - **GlobalMv**: Use global motion vector
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PredictionMode {
     /// DC prediction (INTRA)
     DcPred,
@@ -98,6 +98,39 @@ pub enum PredictionMode {
     NearMv,
     /// INTER: Global motion
     GlobalMv,
+
+    /// INTER (compound, spec 5.11.24 `compound_mode()`): L0=nearest, L1=nearest
+    NearestNearestMv,
+    /// INTER (compound): L0=near, L1=near
+    NearNearMv,
+    /// INTER (compound): L0=nearest, L1=new (explicit MV read for L1 only)
+    NearestNewMv,
+    /// INTER (compound): L0=new (explicit MV read for L0 only), L1=nearest
+    NewNearestMv,
+    /// INTER (compound): L0=near, L1=new (explicit MV read for L1 only)
+    NearNewMv,
+    /// INTER (compound): L0=new (explicit MV read for L0 only), L1=near
+    NewNearMv,
+    /// INTER (compound): L0=global, L1=global
+    GlobalGlobalMv,
+    /// INTER (compound): L0=new, L1=new (explicit MV read for both)
+    NewNewMv,
+}
+
+/// Which MV-selection strategy applies to one reference-list slot (L0 or L1) of a prediction
+/// mode. Single-ref modes only ever have an L0 component; compound modes (spec 5.11.24
+/// `compound_mode()`) can combine two different kinds across L0/L1 -- e.g. `NearestNewMv` means
+/// L0 uses the nearest-neighbor predictor while L1 reads an explicit MV from the bitstream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MvKind {
+    /// Use the nearest neighboring block's MV
+    Nearest,
+    /// Use the second-nearest candidate MV
+    Near,
+    /// Use the frame's global motion translation
+    Global,
+    /// Read an explicit MV delta from the bitstream (added to a nearest-MV predictor)
+    New,
 }
 
 impl PredictionMode {
@@ -126,9 +159,49 @@ impl PredictionMode {
         !self.is_intra()
     }
 
-    /// Check if this mode requires reading motion vectors
+    /// Check if this mode requires reading at least one explicit MV component from the
+    /// bitstream (single-ref `NewMv`, or any compound mode with a `New` component on either
+    /// reference list).
     pub fn needs_mv(&self) -> bool {
-        matches!(self, PredictionMode::NewMv)
+        matches!(
+            self,
+            PredictionMode::NewMv
+                | PredictionMode::NearestNewMv
+                | PredictionMode::NewNearestMv
+                | PredictionMode::NearNewMv
+                | PredictionMode::NewNearMv
+                | PredictionMode::NewNewMv
+        )
+    }
+
+    /// True for any of the 8 compound (`compound_mode()`) modes.
+    pub fn is_compound(&self) -> bool {
+        self.l1_mv_kind().is_some()
+    }
+
+    /// MV-selection strategy for reference list 0 (L0). `None` for INTRA modes.
+    pub fn l0_mv_kind(&self) -> Option<MvKind> {
+        use PredictionMode::*;
+        match self {
+            NewMv | NewNearestMv | NewNearMv | NewNewMv => Some(MvKind::New),
+            NearestMv | NearestNearestMv | NearestNewMv => Some(MvKind::Nearest),
+            NearMv | NearNearMv | NearNewMv => Some(MvKind::Near),
+            GlobalMv | GlobalGlobalMv => Some(MvKind::Global),
+            _ => None,
+        }
+    }
+
+    /// MV-selection strategy for reference list 1 (L1). `None` for single-ref and INTRA modes
+    /// (no L1 exists).
+    pub fn l1_mv_kind(&self) -> Option<MvKind> {
+        use PredictionMode::*;
+        match self {
+            NearestNearestMv | NewNearestMv => Some(MvKind::Nearest),
+            NearNearMv | NewNearMv => Some(MvKind::Near),
+            NearestNewMv | NearNewMv | NewNewMv => Some(MvKind::New),
+            GlobalGlobalMv => Some(MvKind::Global),
+            _ => None,
+        }
     }
 }
 
@@ -446,48 +519,80 @@ pub fn parse_coding_unit(
         // decoder's CDFs are all non-adaptive/representative, so unlike a real spec-exact
         // decoder, this reordering doesn't affect correctness -- see read_ref_frames' doc).
         cu.ref_frames = decoder.read_ref_frames(reference_select, width.min(height))?;
+        let is_compound = cu.ref_frames[1] != RefFrame::Intra;
 
-        // INTER frame - read prediction mode
-        let mode_symbol = decoder.read_inter_mode()?;
-        cu.mode = inter_mode_from_symbol(mode_symbol)?;
+        if is_compound {
+            // compound_mode() (spec 5.11.24) -- a distinct 8-symbol alphabet from the single-ref
+            // 4-way `inter_mode`, see `SymbolDecoder::read_compound_mode`'s doc.
+            let mode_symbol = decoder.read_compound_mode()?;
+            cu.mode = compound_mode_from_symbol(mode_symbol)?;
 
-        // If NEWMV, read motion vectors
-        if cu.mode == PredictionMode::NewMv {
-            // Read MV for L0 (forward reference)
-            let mv_x = decoder.read_mv_component()?;
-            let mv_y = decoder.read_mv_component()?;
-            let explicit_mv = MotionVector::new(mv_x, mv_y);
-
-            // Get MV predictor and add to explicit MV
-            let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
-            cu.mv[0] = MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
-
-            // TODO: compound blocks (cu.ref_frames[1] != RefFrame::Intra) should read a real L1
-            // MV here (and `mode` above should be a distinct compound_mode symbol, not this
-            // single-ref 4-way one) -- neither is implemented, see read_ref_frames' doc for why
-            // this is an intentionally-scoped, pre-existing gap rather than a new regression.
-            cu.mv[1] = MotionVector::zero();
-
-            tracing::debug!(
-                "NEWMV at ({}, {}): explicit=({:?}), predictor=({:?}), final=({:?})",
-                x,
-                y,
-                explicit_mv,
-                predictor,
-                cu.mv[0]
-            );
-        } else {
-            // For NEARESTMV, NEARMV, GLOBALMV: use predictor directly
-            let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
-            cu.mv = [predictor, MotionVector::zero()];
+            cu.mv[0] = match cu.mode.l0_mv_kind() {
+                Some(MvKind::New) => {
+                    let explicit_mv = read_explicit_mv(decoder)?;
+                    let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
+                    explicit_mv.add(predictor)
+                }
+                Some(kind) => mv_ctx.predict_by_kind(kind, x, y, cu.ref_frames[0]),
+                None => MotionVector::zero(),
+            };
+            cu.mv[1] = match cu.mode.l1_mv_kind() {
+                Some(MvKind::New) => {
+                    let explicit_mv = read_explicit_mv(decoder)?;
+                    let predictor = mv_ctx.get_mv_predictor_l1(cu.mode, x, y, cu.ref_frames[1]);
+                    explicit_mv.add(predictor)
+                }
+                Some(kind) => mv_ctx.predict_by_kind(kind, x, y, cu.ref_frames[1]),
+                None => MotionVector::zero(),
+            };
 
             tracing::debug!(
-                "Mode {:?} at ({}, {}): using predictor {:?}",
+                "Compound mode {:?} at ({}, {}): mv0={:?}, mv1={:?}",
                 cu.mode,
                 x,
                 y,
-                cu.mv[0]
+                cu.mv[0],
+                cu.mv[1]
             );
+        } else {
+            // INTER frame - read prediction mode
+            let mode_symbol = decoder.read_inter_mode()?;
+            cu.mode = inter_mode_from_symbol(mode_symbol)?;
+
+            // If NEWMV, read motion vectors
+            if cu.mode == PredictionMode::NewMv {
+                // Read MV for L0 (forward reference)
+                let mv_x = decoder.read_mv_component()?;
+                let mv_y = decoder.read_mv_component()?;
+                let explicit_mv = MotionVector::new(mv_x, mv_y);
+
+                // Get MV predictor and add to explicit MV
+                let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
+                cu.mv[0] =
+                    MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
+                cu.mv[1] = MotionVector::zero();
+
+                tracing::debug!(
+                    "NEWMV at ({}, {}): explicit=({:?}), predictor=({:?}), final=({:?})",
+                    x,
+                    y,
+                    explicit_mv,
+                    predictor,
+                    cu.mv[0]
+                );
+            } else {
+                // For NEARESTMV, NEARMV, GLOBALMV: use predictor directly
+                let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
+                cu.mv = [predictor, MotionVector::zero()];
+
+                tracing::debug!(
+                    "Mode {:?} at ({}, {}): using predictor {:?}",
+                    cu.mode,
+                    x,
+                    y,
+                    cu.mv[0]
+                );
+            }
         }
     }
 
@@ -553,6 +658,34 @@ pub fn parse_coding_unit(
     Ok((cu, new_qp))
 }
 
+/// Read one explicit MV delta (horizontal + vertical component) from the bitstream. Used for
+/// every `MvKind::New` reference-list slot -- single-ref `NewMv`'s L0, and compound modes'
+/// L0 and/or L1 (spec 5.11.26 `assign_mv()`, `read_mv()` calls).
+fn read_explicit_mv(decoder: &mut SymbolDecoder) -> Result<MotionVector> {
+    let mv_x = decoder.read_mv_component()?;
+    let mv_y = decoder.read_mv_component()?;
+    Ok(MotionVector::new(mv_x, mv_y))
+}
+
+/// Convert compound_mode() symbol (spec 5.11.24) to PredictionMode. Symbol ordering matches
+/// libaom's `COMPOUND_TYPES`/`compound_mode` enum (`NEAREST_NEARESTMV`=0 .. `NEW_NEWMV`=7).
+fn compound_mode_from_symbol(symbol: u8) -> Result<PredictionMode> {
+    match symbol {
+        0 => Ok(PredictionMode::NearestNearestMv),
+        1 => Ok(PredictionMode::NearNearMv),
+        2 => Ok(PredictionMode::NearestNewMv),
+        3 => Ok(PredictionMode::NewNearestMv),
+        4 => Ok(PredictionMode::NearNewMv),
+        5 => Ok(PredictionMode::NewNearMv),
+        6 => Ok(PredictionMode::GlobalGlobalMv),
+        7 => Ok(PredictionMode::NewNewMv),
+        _ => Err(BitvueError::InvalidData(format!(
+            "Invalid compound mode symbol: {}",
+            symbol
+        ))),
+    }
+}
+
 /// Convert INTRA mode symbol to PredictionMode
 fn intra_mode_from_symbol(symbol: u8) -> Result<PredictionMode> {
     match symbol {
@@ -613,6 +746,56 @@ mod tests {
         assert!(PredictionMode::NewMv.needs_mv());
         assert!(!PredictionMode::NearestMv.needs_mv()); // Uses neighbor MV
         assert!(!PredictionMode::DcPred.needs_mv());
+        assert!(PredictionMode::NewNewMv.needs_mv());
+        assert!(PredictionMode::NearestNewMv.needs_mv()); // L1 is New
+        assert!(PredictionMode::NewNearestMv.needs_mv()); // L0 is New
+        assert!(!PredictionMode::NearestNearestMv.needs_mv()); // no New component
+        assert!(!PredictionMode::GlobalGlobalMv.needs_mv());
+    }
+
+    #[test]
+    fn test_compound_mode_from_symbol_round_trips_all_8() {
+        let expected = [
+            PredictionMode::NearestNearestMv,
+            PredictionMode::NearNearMv,
+            PredictionMode::NearestNewMv,
+            PredictionMode::NewNearestMv,
+            PredictionMode::NearNewMv,
+            PredictionMode::NewNearMv,
+            PredictionMode::GlobalGlobalMv,
+            PredictionMode::NewNewMv,
+        ];
+        for (symbol, mode) in expected.iter().enumerate() {
+            assert_eq!(compound_mode_from_symbol(symbol as u8).unwrap(), *mode);
+        }
+        assert!(compound_mode_from_symbol(8).is_err());
+    }
+
+    #[test]
+    fn test_compound_mode_l0_l1_mv_kind() {
+        // L0=nearest, L1=new
+        assert_eq!(
+            PredictionMode::NearestNewMv.l0_mv_kind(),
+            Some(MvKind::Nearest)
+        );
+        assert_eq!(PredictionMode::NearestNewMv.l1_mv_kind(), Some(MvKind::New));
+        // L0=new, L1=near
+        assert_eq!(PredictionMode::NewNearMv.l0_mv_kind(), Some(MvKind::New));
+        assert_eq!(PredictionMode::NewNearMv.l1_mv_kind(), Some(MvKind::Near));
+        // Single-ref modes have no L1
+        assert_eq!(PredictionMode::NewMv.l1_mv_kind(), None);
+        assert_eq!(PredictionMode::NewMv.l0_mv_kind(), Some(MvKind::New));
+        // INTRA modes have neither
+        assert_eq!(PredictionMode::DcPred.l0_mv_kind(), None);
+        assert_eq!(PredictionMode::DcPred.l1_mv_kind(), None);
+    }
+
+    #[test]
+    fn test_prediction_mode_is_compound() {
+        assert!(PredictionMode::NewNewMv.is_compound());
+        assert!(PredictionMode::GlobalGlobalMv.is_compound());
+        assert!(!PredictionMode::NewMv.is_compound());
+        assert!(!PredictionMode::DcPred.is_compound());
     }
 
     #[test]

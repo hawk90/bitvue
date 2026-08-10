@@ -249,6 +249,9 @@ mod tests {
         let mut compound_count = 0;
         let mut inter_count = 0;
         let mut saw_reference_select_true = false;
+        let mut distinct_compound_modes: std::collections::HashSet<crate::tile::PredictionMode> =
+            Default::default();
+        let mut nonzero_l1_mv_count = 0;
 
         for frame in frames.iter().take(30) {
             let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
@@ -264,6 +267,10 @@ mod tests {
                     distinct_ref0_values.insert(cu.ref_frames[0]);
                     if cu.ref_frames[1] != crate::tile::RefFrame::Intra {
                         compound_count += 1;
+                        distinct_compound_modes.insert(cu.mode);
+                        if cu.mv[1] != crate::tile::MotionVector::zero() {
+                            nonzero_l1_mv_count += 1;
+                        }
                     }
                 }
             }
@@ -284,6 +291,18 @@ mod tests {
             compound_count > 0,
             "expected at least one compound-prediction block given reference_select was true on \
              multiple frames -- the comp_mode branch may not be triggering"
+        );
+        assert!(
+            compound_count == 0 || !distinct_compound_modes.is_empty(),
+            "compound blocks exist but none produced a compound PredictionMode -- \
+             read_compound_mode()/compound_mode_from_symbol may not be wired up"
+        );
+        assert!(
+            nonzero_l1_mv_count > 0,
+            "expected at least one compound block ({compound_count} total) with a non-zero L1 \
+             motion vector across {} distinct compound modes ({distinct_compound_modes:?}) -- L1 \
+             MV reading may have regressed to the old always-zero placeholder",
+            distinct_compound_modes.len()
         );
     }
 }

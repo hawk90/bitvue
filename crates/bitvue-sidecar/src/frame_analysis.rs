@@ -161,6 +161,11 @@ fn partition_grid_to_json(g: &PartitionGrid) -> Value {
 /// modes at 64+ to keep them visually/logically separate from the intra range, which our enum's
 /// natural sequential discriminants (13..16) don't provide. Remapped explicitly rather than cast,
 /// unlike `PartitionType`/`TxSize` where the raw discriminant already lines up with the frontend.
+///
+/// The 8 compound modes (`is_compound()`) all collapse to wire value 69 ("Compound modes"), the
+/// single bucket the frontend already reserves -- it doesn't yet distinguish NEAREST_NEARESTMV
+/// from NEW_NEWMV etc. visually. If per-compound-mode color/label detail is ever wanted, extend
+/// `PREDICTION_MODE_COLORS`/`getPredictionModeName` with 8 new slots (70..=77) first.
 fn prediction_mode_to_wire(mode: PredictionMode) -> u8 {
     match mode {
         PredictionMode::DcPred => 0,
@@ -180,6 +185,14 @@ fn prediction_mode_to_wire(mode: PredictionMode) -> u8 {
         PredictionMode::NearestMv => 65,
         PredictionMode::NearMv => 66,
         PredictionMode::GlobalMv => 68,
+        PredictionMode::NearestNearestMv
+        | PredictionMode::NearNearMv
+        | PredictionMode::NearestNewMv
+        | PredictionMode::NewNearestMv
+        | PredictionMode::NearNewMv
+        | PredictionMode::NewNearMv
+        | PredictionMode::GlobalGlobalMv
+        | PredictionMode::NewNewMv => 69,
     }
 }
 
@@ -270,6 +283,28 @@ mod tests {
             real_mode.is_some_and(|m| m <= 12 || (64..=68).contains(&m)),
             "expected a real prediction mode value, got {modes:?}"
         );
+    }
+
+    #[test]
+    fn prediction_mode_to_wire_maps_all_8_compound_modes_to_the_shared_bucket() {
+        use bitvue_av1_codec::tile::PredictionMode;
+        let compound_modes = [
+            PredictionMode::NearestNearestMv,
+            PredictionMode::NearNearMv,
+            PredictionMode::NearestNewMv,
+            PredictionMode::NewNearestMv,
+            PredictionMode::NearNewMv,
+            PredictionMode::NewNearMv,
+            PredictionMode::GlobalGlobalMv,
+            PredictionMode::NewNewMv,
+        ];
+        for mode in compound_modes {
+            assert_eq!(
+                prediction_mode_to_wire(mode),
+                69,
+                "{mode:?} should map to the frontend's shared 'Compound modes' wire value"
+            );
+        }
     }
 
     #[test]

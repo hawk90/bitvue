@@ -134,6 +134,12 @@ pub struct CdfContext {
     /// For INTER: 4 modes (NEWMV, NEARESTMV, NEARMV, GLOBALMV)
     intra_mode_cdf: Vec<u16>,
     inter_mode_cdf: Vec<u16>,
+    /// `compound_mode` CDF (spec 5.11.24, 8 symbols) -- see `SymbolDecoder::read_compound_mode`'s
+    /// doc for the symbol ordering. Context-independent representative value like every other
+    /// CDF in this struct, biased toward the statistically common cases (both-nearest, and
+    /// both-new since compound is itself already only selected for blocks the encoder judged
+    /// worth the extra signaling cost).
+    compound_mode_cdf: Vec<u16>,
 
     /// Motion Vector CDFs
     /// MV joint CDF (4 symbols: correlation between horizontal/vertical components)
@@ -267,6 +273,20 @@ impl CdfContext {
             (CDF_SCALE as f32 * 0.75) as u16, // NEARESTMV: 25%
             (CDF_SCALE as f32 * 0.95) as u16, // NEARMV: 20%
             CDF_SCALE,                        // GLOBALMV: 5%
+        ];
+
+        // compound_mode CDF (8 modes, spec 5.11.24) -- see `read_compound_mode`'s doc for symbol
+        // ordering. Biased toward NEAREST_NEARESTMV and NEW_NEWMV, the two "symmetric" choices.
+        let compound_mode_cdf = vec![
+            0,                                // Start
+            (CDF_SCALE as f32 * 0.30) as u16, // NEAREST_NEARESTMV: 30%
+            (CDF_SCALE as f32 * 0.40) as u16, // NEAR_NEARMV: 10%
+            (CDF_SCALE as f32 * 0.48) as u16, // NEAREST_NEWMV: 8%
+            (CDF_SCALE as f32 * 0.56) as u16, // NEW_NEARESTMV: 8%
+            (CDF_SCALE as f32 * 0.62) as u16, // NEAR_NEWMV: 6%
+            (CDF_SCALE as f32 * 0.68) as u16, // NEW_NEARMV: 6%
+            (CDF_SCALE as f32 * 0.70) as u16, // GLOBAL_GLOBALMV: 2%
+            CDF_SCALE,                        // NEW_NEWMV: 30%
         ];
 
         // MV joint CDF (correlation between horizontal/vertical MV components)
@@ -459,6 +479,7 @@ impl CdfContext {
             skip_cdf,
             intra_mode_cdf,
             inter_mode_cdf,
+            compound_mode_cdf,
             mv_joint_cdf,
             mv_sign_cdf,
             mv_class_cdf,
@@ -566,6 +587,13 @@ impl CdfContext {
     /// Returns CDF for INTER modes (4 symbols)
     pub fn get_inter_mode_cdf(&self) -> &[u16] {
         &self.inter_mode_cdf
+    }
+
+    /// Get `compound_mode` CDF
+    ///
+    /// Returns CDF for compound modes (8 symbols, spec 5.11.24)
+    pub fn get_compound_mode_cdf(&self) -> &[u16] {
+        &self.compound_mode_cdf
     }
 
     /// Get MV joint CDF

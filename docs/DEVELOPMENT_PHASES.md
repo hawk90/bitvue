@@ -1418,7 +1418,7 @@ uncompressed_header()의 segmentation~film_grain_params 구간, skip_mode_params
 - CDEF 방향 화살표가 실제 CDEF 방향 결정과 일치 — 코드 레벨 검증(단위/e2e 테스트), 육안 VQ Analyzer 대조는 미실시
 - Film Grain 전/후 픽셀 값이 dav1d 출력과 일치 — 미검증 (프레임 헤더 파라미터 추출은 완료, 픽셀 비교 테스트는 없음)
 
-**예상 소요:** 완료. Efficiency Map 정확도 개선(2026-08-10)과 Block Type IntraBC/Compound 구분(2026-08-11) 둘 다 완료 — 남은 세부 작업 없음. 단 compound 블록의 실제 예측 모드(`compound_mode`)/L1 모션벡터 값 자체는 여전히 미구현(단일참조용 근사치 재사용) — `read_ref_frames`/`parse_coding_unit` 문서 참조
+**예상 소요:** 완료. Efficiency Map 정확도 개선(2026-08-10), Block Type IntraBC/Compound 구분(2026-08-11), **compound 블록의 실제 예측 모드+L1 모션벡터(2026-08-11)** 셋 다 완료 — 남은 세부 작업 없음. `compound_mode()`(spec 5.11.24, 8-심볼 알파벳, `SymbolDecoder::read_compound_mode`) 신규 파싱 + `PredictionMode`에 compound 8종(`NearestNearestMv`..`NewNewMv`) 추가 + L0/L1 각각의 MV-selection 전략(`MvKind`: Nearest/Near/Global/New)을 `l0_mv_kind()`/`l1_mv_kind()`로 분리해 L1 predictor(`MvPredictorContext::get_mv_predictor_l1`)와 명시적 MV 읽기(New 컴포넌트가 L0/L1 어느 쪽이든)를 실제로 처리. `mv_extractor.rs`의 MV 그리드도 compound 블록에서 여태 항상 MISSING이던 L1을 실값으로 노출하도록 수정(그리드 슬롯 자체는 이미 있었지만 아무도 채운 적 없었음). 실제 fixture(`AV1_IVF_FIXTURE`)로 8종 중 실제로 관측되는 compound mode + 0이 아닌 L1 MV를 검증하는 회귀 테스트 추가(`cu_parser.rs`의 기존 `real_fixture_ref_frame_values_are_not_degenerate` 확장). `cargo test --workspace --lib` 클린(3853+ 통과, 무관한 기존 flaky LRU 테스트 1개 제외).
 
 ---
 

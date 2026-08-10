@@ -109,6 +109,29 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.read_symbol(cdf)
     }
 
+    /// Read `compound_mode()` per AV1 spec Section 5.11.24, for compound-prediction inter blocks
+    /// (`ref_frame[1] != NONE`, i.e. `read_ref_frames` returned two real reference frames).
+    ///
+    /// Distinct 8-symbol alphabet from the single-ref `read_inter_mode`'s 4-way one -- each
+    /// symbol independently selects an MV-selection strategy (`MvKind`) for L0 and L1 (see
+    /// `PredictionMode::l0_mv_kind`/`l1_mv_kind`). Symbol ordering matches libaom's
+    /// `compound_mode` enum:
+    /// - 0: NEAREST_NEARESTMV
+    /// - 1: NEAR_NEARMV
+    /// - 2: NEAREST_NEWMV
+    /// - 3: NEW_NEARESTMV
+    /// - 4: NEAR_NEWMV
+    /// - 5: NEW_NEARMV
+    /// - 6: GLOBAL_GLOBALMV
+    /// - 7: NEW_NEWMV
+    ///
+    /// Uses a representative (non-adaptive) CDF like every other `read_*` method in this
+    /// decoder -- see `CdfContext`'s `compound_mode_cdf` field doc.
+    pub fn read_compound_mode(&mut self) -> Result<u8> {
+        let cdf = self.cdf_context.get_compound_mode_cdf();
+        self.decoder.read_symbol(cdf)
+    }
+
     /// Read `ref_frame()` per AV1 spec Section 5.11.25 (`read_ref_frames`), for inter blocks.
     ///
     /// Returns `[ref_frame0, ref_frame1]` -- `ref_frame1` is `RefFrame::Intra` when this is not a
