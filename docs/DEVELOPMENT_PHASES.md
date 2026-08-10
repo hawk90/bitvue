@@ -1196,253 +1196,303 @@ Probe에서 이상 구간 클릭 → "Analyze in Bitvue" → Analyzer가 해당 
 
 ---
 
-## Phase 1: 코덱별 F키 모드 분기 시스템 🔴 (핵심 갭)
+## Phase 1: 코덱별 F키 모드 분기 시스템 🟢 (2026-08-10 재감사 — 대부분 완료, 배선만 남음)
 
 **목표:** 현재 고정 6모드 → 코덱별 동적 모드 시스템으로 교체
 
-- [ ] `CodecModeRegistry` 구조체 설계 (코덱 → 가능한 모드 목록)
-- [ ] 각 코덱별 F키 → 모드 이름 매핑 테이블 구현
-- [ ] 프론트엔드 Mode 메뉴 동적 생성 (파일 로드 후 코덱 감지 → 메뉴 갱신)
-- [ ] 툴바의 F키 버튼 동적 표시/숨기기
-- [ ] `get_available_modes` Tauri 커맨드 추가
+> **재감사 요약:** 문서는 미착수(🔴)로 표시돼 있었지만 실제로는 Rust 구조체가 아니라 **프론트엔드 TS 레지스트리**로
+> 동일한 목표가 이미 구현·배선 완료돼 있음 (HEVC/VVC/AV1/VP9/AVC/MPEG-2/AVS3/JPEG XS/VC-3 9개 코덱 전부).
+> 아래 원래 설계(Rust `CodecModeRegistry` + `get_codec_modes` Tauri 커맨드)는 채택되지 않았고, 대신 정적 클라이언트
+> 조회 테이블로 구현됐다 — 파일 로드 시 서버에 모드 목록을 물어볼 필요가 없어 별도 백엔드 커맨드가 불필요했던 것으로 보임.
 
-```rust
-// 설계 예시
-pub enum AnalysisMode {
-    // 공통
-    YuvDirect,
-    CodingFlow,
-    // HEVC 전용
-    HevcSao,
-    // VVC 전용
-    VvcDualTree,
-    VvcInverseMap,
-    VvcAdaptiveFilter,
-    // AV1 전용
-    Av1CdefFilter,
-    Av1SuperRes,
-    Av1LoopRestoration,
-    Av1FilmGrain,
-    // AVS3 전용
-    Avs3Esao,
-    Avs3Ccsao,
-    // JPEG XS 전용
-    JpegXsPrecinct,
-    JpegXsNlt,
-    // ...
-}
+- [x] `CodecModeRegistry` 구조체 설계 (코덱 → 가능한 모드 목록) — Rust 구조체 대신 TS 싱글 소스오브트루스로 구현:
+      `frontend/utils/codecModeRegistry.ts`의 `CODEC_MODE_REGISTRY` (HEVC/VVC/AV1/VP9/AVC/MPEG2/AVS3/JPEGXS/VC3 9개 코덱)
+- [x] 각 코덱별 F키 → 모드 이름 매핑 테이블 구현 — 같은 파일의 `HEVC_MODES`/`VVC_MODES`/`AV1_MODES`/... 배열들
+      (각 항목 `{fKey, mode, label, description}`), `getModeByFKey()`/`getFKeyForMode()`
+- [x] 프론트엔드 Mode 메뉴 동적 생성 (파일 로드 후 코덱 감지 → 메뉴 갱신) —
+      `frontend/contexts/ModeContext.tsx`의 `setActiveCodec()`(코덱 변경 시 모드 목록 재계산 + 유효하지 않으면 기본 모드로
+      리셋) + `frontend/components/panels/YuvViewerPanel/ModeSelector.tsx`(드롭다운이 `availableModes`로 렌더링),
+      `App.tsx:329`에서 코덱 감지 콜백을 `setActiveCodec`에 연결
+- [x] 툴바의 F키 버튼 동적 표시/숨기기 — `frontend/components/panels/YuvViewerPanel/OverlayToggleBar.tsx`
+      (코덱에 오버레이가 없으면 `availableOverlays.length === 0`일 때 바 전체를 숨김, 있으면 코덱별 토글 버튼만 렌더링)
+- [ ] `get_available_modes` Tauri 커맨드 추가 — **불필요로 판명, 미구현.** 모드 레지스트리가 정적 클라이언트 데이터라
+      파일별 백엔드 조회가 필요 없음. 다만 코덱 감지 자체(문자열 "HEVC"/"AV1"/... 판별)가 실제로 sidecar를 거치는지는
+      Phase 2의 백엔드 스코프 캐비어트 참조 — 현재 sidecar 파이프라인은 AV1 IVF만 실제로 디코드/분석하므로, 다른 코덱의
+      `activeCodec` 판별 경로 자체를 별도로 검증 필요 (미검증, 후속 확인 요망).
 
-pub struct CodecModeRegistry {
-    pub modes: HashMap<CodecType, Vec<(u8, AnalysisMode, &'static str)>>, // (f_key, mode, label)
-}
-```
-
-**Tauri 커맨드:**
-```typescript
-// 신규 커맨드
-get_codec_modes(codec: string) -> Vec<{f_key: number, mode: string, label: string}>
-```
+> ⚠️ **백엔드 스코프 캐비어트 (Phase 2에서 상세):** 위 UI 레이어(메뉴/F키/토글 버튼)는 9개 코덱 모두에 대해 올바르게
+> 나타나지만, 실제로 화면에 그려지는 오버레이 데이터를 공급하는 `get_frame_analysis`/`get_av1_features`/
+> `get_decoded_frame_yuv` sidecar 커맨드는 **AV1/IVF 전용**이다 (`crates/bitvue-sidecar/src/frame_analysis.rs:4`
+> 모듈 주석 "AV1/IVF only", `crates/bitvue-sidecar/Cargo.toml`에 bitvue-hevc/bitvue-avc/bitvue-vp9/bitvue-vvc/
+> bitvue-avs3/bitvue-jpegxs/bitvue-vc3 의존성이 전무). 따라서 HEVC/VVC/AVC/VP9/AVS3/JPEG XS/VC-3 파일을 열면
+> Mode 메뉴와 F키는 정확한 코덱별 항목을 보여주지만, 실제 오버레이 캔버스에는 데이터가 없거나(빈 화면) 렌더러의
+> "데이터 없음" 폴백 메시지만 표시된다. 이 항목은 원래 Phase 1의 범위(메뉴/키 배선)는 아니지만, 사용자 체감상
+> "다 됐다"고 오인하기 쉬운 지점이라 여기 명시한다.
 
 **Parity 검증:**
-- 각 코덱 파일 로드 후 Mode 메뉴에 올바른 항목만 표시되는지 확인
-- F키 눌렀을 때 올바른 오버레이 렌더러 활성화
+- 각 코덱 파일 로드 후 Mode 메뉴에 올바른 항목만 표시되는지 확인 — ✅ 확인됨 (레지스트리 코드 검토 기준)
+- F키 눌렀을 때 올바른 오버레이 렌더러 활성화 — ⚠️ F키 → 모드 매핑 자체는 맞지만, 위 캐비어트대로 AV1 외 코덱은
+  렌더러가 활성화돼도 실데이터가 없어 시각적으로 빈 상태
 
-**예상 소요:** 중급 1~2주
+**예상 소요:** 완료 (남은 것은 코덱별 백엔드 데이터 연결 — Phase 2/3/5/6 참조)
 
 ---
 
-## Phase 2: 코덱별 Info Overlay 토글 시스템 🔴
+## Phase 2: 코덱별 Info Overlay 토글 시스템 🟡 (2026-08-10 재감사)
 
 **목표:** QP Map, Heat Map, MV Heat 등 오버레이를 코덱별로 사용 가능/불가능 처리
 
-- [ ] `InfoOverlayCapabilities` 코덱별 매트릭스 구현
-- [ ] View/Mode 메뉴의 Info Overlays 하위 메뉴 동적 활성화/비활성화
-- [ ] 다중 오버레이 동시 표시 지원 (예: CodingFlow + QP Map 중첩)
-- [ ] 각 오버레이별 토글 상태 저장 (Options에서 유지)
+> **재감사 요약:** 토글 인프라(메뉴, 다중 표시, 상태 저장)는 완료. 렌더러 컴포넌트도 표에 있는 항목 대부분 이미
+> 존재한다(`frontend/components/panels/OverlayRenderer/renderers/*.tsx`, 29개 파일). 하지만 실데이터를 공급하는
+> `get_frame_analysis`/`get_av1_features` sidecar 커맨드가 **AV1/IVF 전용**이라(Phase 1 캐비어트 참조), HEVC/VVC/
+> AVC/VP9 대상 렌더러는 코드는 있어도 프로덕트에서 실제 데이터를 받아본 적이 없다. 아래 표의 "Bitvue 현황"은
+> "렌더러 존재 여부"와 "실데이터 도달 여부"를 분리해서 표기한다.
+
+- [x] `InfoOverlayCapabilities` 코덱별 매트릭스 구현 — `frontend/utils/codecModeRegistry.ts`의
+      `getInfoOverlaysForCodec()` (코덱별 `isInfoOverlay: true` 항목 필터)
+- [x] View/Mode 메뉴의 Info Overlays 하위 메뉴 동적 활성화/비활성화 —
+      `frontend/components/panels/YuvViewerPanel/OverlayToggleBar.tsx` (코덱에 없는 오버레이는 목록에서 아예 제외)
+- [x] 다중 오버레이 동시 표시 지원 (예: CodingFlow + QP Map 중첩) —
+      `frontend/components/panels/OverlayRenderer/index.tsx`의 `renderModeOverlay()` — Pass 1(메인 모드) +
+      Pass 2(`activeOverlays` Set을 순회하며 `INFO_OVERLAY_ALPHA=0.72` 반투명 중첩)
+- [x] 각 오버레이별 토글 상태 저장 (Options에서 유지) — `ModeContext.tsx`의 `loadOverlayPrefs`/`saveOverlayPrefs`
+      (`localStorage` 키 `bitvue-overlay-prefs`, 코덱별로 저장 후 코덱 전환 시 유효한 것만 복원)
 
 **구현할 오버레이 우선순위:**
 
 | 오버레이 | 코덱 지원 | Bitvue 현황 | 작업 |
 |---------|---------|-----------|-----|
-| QP Map | HEVC, VVC, AVC, MPEG-2 | ✅ QPMapRenderer | 코덱 분기 추가 |
-| Heat Map | 전체 | ✅ TransformRenderer 일부 | 전용 렌더러 완성 |
-| MV Heat | HEVC | ⚠️ MVFieldRenderer | HEVC 전용 강도 맵 완성 |
-| PU Type | HEVC | ⚠️ PredictionRenderer | HEVC PU 타입별 색상 완성 |
-| PU Reference Indices | HEVC | ⚠️ | 참조 인덱스 색상 맵 |
-| MB Type | AVC | ❌ | 신규 구현 |
-| MB Reference Indices | AVC | ❌ | 신규 구현 |
-| Block Type | AV1, VP9 | ⚠️ | 블록 타입 색상 맵 |
-| Efficiency Map | AV1, VP9 | ⚠️ | 면적당 비트 계산 |
-| PSNR Overlay | 전체 | ⚠️ | Debug YUV 필요 |
-| SSIM Overlay | HEVC | ⚠️ | Debug YUV 필요 |
-| Inter Memory Reads | VVC | ❌ | 신규 구현 |
-| Simple Motion | 전체 | ⚠️ | 단순화 MV 화살표 |
-| Loop Filter (deblock BS 색상) | HEVC, VP9, AVC | ❌ | 신규 구현 (`COMPETITOR_FEATURE_MATRIX.md` §1 — 신규 2026-07-31) |
-| SAO | HEVC | ❌ | 신규 구현 (`COMPETITOR_FEATURE_MATRIX.md` §1 — 신규 2026-07-31) |
-| Reconstruction (+Detail popup) | HEVC, AV1 | ⚠️ | 전용 렌더러 없음, Detail popup 신규 (`COMPETITOR_FEATURE_MATRIX.md` §1 — 신규 2026-07-31) |
-| Predictions/Transform Detail popup | HEVC | ❌ | Options 메뉴 "Detail Popup Windows" 참조 (`UX_PARITY_MATRIX.md` §10) — 신규 2026-07-31 |
-| CABAC range/state 시각화 | HEVC, AVC | ⚠️ | `PARITY_CHECKLIST.md` Layer 6 CMP-10 참조 — 신규 2026-07-31 |
+| QP Map | HEVC, VVC, AVC, MPEG-2 | ✅ 렌더러 완성(`QPMapRenderer.tsx`), 실데이터는 AV1만 (`frame.qp_grid`, AV1/IVF 전용) | 나머지 코덱 백엔드 연결 |
+| Heat Map | 전체 | ⚠️ 전용 렌더러 없음 — `OverlayRenderer/index.tsx:218`가 명시적으로 MVField를 매그니튜드 히트맵으로 재사용 | 전용 bit-cost 렌더러 신규 |
+| MV Heat | HEVC | ✅ 렌더러 완성(`MVFieldRenderer.tsx` + WebGL2 가속 `webgl/mv-webgl.ts`), 실데이터는 AV1만(`frame.mv_grid`) | HEVC 백엔드 연결(`bitvue-hevc`는 sidecar에 미배선) |
+| PU Type | HEVC | ❌ 메뉴/토글 버튼은 있음(`codecModeRegistry.ts`, `OverlayToggleBar.tsx`)이나 렌더러 자체가 없음 — `OverlayRenderer/index.tsx:235`에 주석 처리된 스텁만 존재 | 렌더러 신규 구현 |
+| PU Reference Indices | HEVC | ✅ 렌더러 완성 (`AvcRefIdxRenderer.tsx`, mode="reference-indices" 공유), 실데이터는 sidecar 미배선으로 도달 안 함 | HEVC 백엔드 연결 |
+| MB Type | AVC | ✅ 렌더러 완성(`AvcMbTypeRenderer.tsx`) + 백엔드 추출 함수 존재(`crates/bitvue-avc/src/overlay_extraction.rs:1637 extract_mb_type_grid`), 단 `bitvue-avc`가 `bitvue-sidecar/Cargo.toml`에 의존성으로 없어 프로덕트에 미배선 | sidecar에 `bitvue-avc` 의존성 추가 + 커맨드 배선 |
+| MB Reference Indices | AVC | ✅ 렌더러+백엔드 존재(`extract_ref_idx_grid`, 같은 파일 1696행), 동일하게 sidecar 미배선 | sidecar 배선 |
+| Block Type | AV1, VP9 | ✅ 렌더러 완성(`Av1BlockTypeRenderer.tsx`, `frame.mv_grid.mode` 기반), AV1은 실데이터 도달, VP9은 `bitvue-vp9`가 sidecar 미배선 | VP9 백엔드 연결 |
+| Efficiency Map | AV1, VP9 | ⚠️ 렌더러는 있으나(`Av1EfficiencyMapRenderer.tsx`) 문서가 요구한 "면적당 비트 계산"이 아니라 QP 기반 근사치(`bpp ≈ (64-QP)*scale`) — 코드 주석에 "proxy" 명시 | 실제 bits-per-block 계산으로 교체 |
+| PSNR Overlay | 전체 | ❌ 메뉴/토글만 존재, 렌더러 없음(`OverlayRenderer/index.tsx:234` 주석 스텁) | Debug YUV 파이프라인 연결 + 렌더러 신규 |
+| SSIM Overlay | HEVC | ❌ 동일 — 렌더러 없음, 토글만 존재 | Debug YUV 필요 + 렌더러 신규 |
+| Inter Memory Reads | VVC | ❌ 토글만 존재(`inter-memory`), 렌더러 없음 | 신규 구현 |
+| Simple Motion | 전체 | ❌ 토글만 존재(`simple-motion`), 렌더러 없음 | 단순화 MV 화살표 신규 |
+| Loop Filter (deblock BS 색상) | HEVC, VP9, AVC | ✅ 완성 — 캔버스 오버레이가 아니라 전용 패널 `DeblockingView.tsx`로 구현, 실제 AV1 boundary-strength 알고리즘(AV1 spec §7.14.2) 백엔드 연동 확인됨(`crates/bitvue-sidecar/src/deblocking.rs`). HEVC/VP9/AVC는 여전히 sidecar 미배선 | HEVC/VP9/AVC 백엔드 연결 |
+| SAO | HEVC | ❌ 메뉴/F키(HEVC F6, VVC F8, AVS3 F6)는 있으나 렌더러 자체가 없음(`OverlayRenderer/index.tsx` switch에 `case "sao"` 없음 → 아무것도 그려지지 않음). `bitvue-hevc`에는 SAO 파싱 코드가 존재하나 sidecar 미배선 | 렌더러 신규 구현 + sidecar 배선 |
+| Reconstruction (+Detail popup) | HEVC, AV1 | ❌ 메뉴/F키는 있으나(`reconstruction` mode) `OverlayRenderer/index.tsx` switch에 대응 case가 없어 아무것도 그려지지 않음, Detail popup 컴포넌트도 검색 결과 없음 | 렌더러 신규 구현, Detail popup 신규 (`COMPETITOR_FEATURE_MATRIX.md` §1) |
+| Predictions/Transform Detail popup | HEVC | ❌ 미착수 확인 (`DetailPopup` 관련 컴포넌트 grep 결과 없음) | Options 메뉴 "Detail Popup Windows" 참조 (`UX_PARITY_MATRIX.md` §10) |
+| CABAC range/state 시각화 | HEVC, AVC | ❌ `CodingFlowView.tsx`에 "CABAC/CAVLC Encoding"이라는 정적 라벨만 존재, range/state 실시간 시각화 없음 | `PARITY_CHECKLIST.md` Layer 6 CMP-10 참조 |
 
 **코덱 확장 (신규 2026-07-31, `COMPETITOR_FEATURE_MATRIX.md` §1 VP9/AVC 테이블):**
-- [ ] VP9: Coding Flow/Partition grid, MV Field, Predictions, Transform/Reconstruction, Efficiency Map — 현재 OV-02~06이 VP9 제외
-- [ ] AVC: Coding Flow/Partition grid, Transform/CBF — 현재 OV-03~05가 AVC 제외
-- [ ] HEVC RExt(4:2:2/4:4:4)/SCC/SHVC 확장 디코딩 지원 확인 및 완성 (`COMPETITOR_FEATURE_MATRIX.md` §5, spec §3.3)
-- [ ] Decode-stage pixel value 표시 (pre-deblock/predicted/residual/final) — Reconstruction Detail popup 확장 (`COMPETITOR_FEATURE_MATRIX.md` §5/§6 — 신규 2026-07-31)
+- [ ] VP9: Coding Flow/Partition grid, MV Field, Predictions, Transform/Reconstruction, Efficiency Map — 여전히 미배선.
+      `crates/bitvue-vp9/src/overlay_extraction.rs`에 `extract_qp_grid`/`extract_mv_grid`/`extract_partition_grid`
+      등 실제 추출 로직은 이미 존재하지만 `bitvue-sidecar`가 `bitvue-vp9`에 의존하지 않아 미배선
+- [ ] AVC: Coding Flow/Partition grid, Transform/CBF — 여전히 미배선. `crates/bitvue-avc/src/overlay_extraction.rs`에
+      동등한 추출 로직 존재(위 MB Type/Ref Indices 행 참조), 역시 sidecar 미배선
+- [ ] HEVC RExt(4:2:2/4:4:4)/SCC/SHVC 확장 디코딩 지원 확인 및 완성 — 미검증 (`bitvue-hevc`가 sidecar에 없어 애초에
+      HEVC 디코딩 자체가 프로덕트 경로에 없음. 파서 레벨 지원 여부는 `crates/bitvue-hevc/src/sps.rs` 별도 확인 필요)
+- [ ] Decode-stage pixel value 표시 (pre-deblock/predicted/residual/final) — 미착수, Reconstruction 렌더러 자체가
+      없으므로 선행 작업(Reconstruction 행 참조)이 먼저 필요
 
 **Parity 검증:**
 - 각 오버레이의 색상 스케일이 VQ Analyzer와 일치
 - QP Map: jet colormap (blue→green→yellow→red) 범위 정확도
 - 오버레이 중첩 시 투명도 처리
 
-**예상 소요:** 중급 3~4주
+**예상 소요:** 중급 2~3주 (렌더러 다수는 이미 완성, 남은 작업은 주로 sidecar 코덱별 배선 + 8개 미구현 렌더러)
 
 ---
 
-## Phase 3: VVC 전용 기능 완성 🟡
+## Phase 3: VVC 전용 기능 완성 🟡 (2026-08-10 재감사 — 라이브러리 레벨은 완성, 제품 경로는 미연결)
 
 **목표:** VVC 파싱 → 디코딩 → 전용 모드 완전 구현
 
-- [ ] vvdec-sys Rust 바인딩 구현 (`vvdec` C API 래핑)
-- [ ] VVC 디코딩 파이프라인 연결 (`bitvue-decode/src/decoder.rs`)
-- [ ] **Dual Tree 모드 렌더러** 구현:
-  - 루마 파티션 트리 (파란색 경계)
-  - 크로마 파티션 트리 (빨간색 경계)
-  - 루마/크로마 중첩 표시 모드
-- [ ] **Inverse Map 모드** (LMCS 역 매핑 시각화):
-  - 루마 픽셀 값 → 매핑 함수 → 변환된 값 표시
-  - 색상: 밝기 변화량에 따른 히트맵
-- [ ] **Adaptive Filter (ALF) 모드**:
-  - ALF 필터 사용 블록 표시 (파랑 = ALF 적용, 회색 = 미적용)
-  - ALF 파라미터 (필터 계수) 선택 정보에 표시
-- [ ] **Inter Memory Reads** 오버레이:
-  - inter 예측 시 참조 메모리 접근 패턴 시각화
-  - 접근 빈도 히트맵
-- [ ] VVC Syntax 탭 완성 (APS 탭 추가)
+> **재감사 요약:** vvdec FFI 바인딩은 이미 완전하게(RAII 가드, 타임아웃/포이즌 복구, 스레드 안전성까지) 구현돼
+> 있지만 **cargo feature `vvdec`가 어디에서도 활성화되지 않아** 실제로는 링크/컴파일되지 않는다 — `bitvue-sidecar`가
+> `bitvue-decode`를 feature 지정 없이 의존하고, 저장소 전체에서 `--features vvdec`를 사용하는 빌드 스크립트/CI가
+> 없음(확인: `Cargo.toml`, `crates/bitvue-sidecar/Cargo.toml`, `scripts/package_electron.sh` grep 결과 0건).
+> 게다가 실제 미리보기 픽셀 디코드 경로(`crates/bitvue-sidecar/src/decode_bridge.rs::get_decoded_frame_yuv`)는
+> 코덱 분기 없이 `Av1Decoder` + IVF 파싱으로 하드코딩돼 있어, `vvdec` feature를 켜더라도 이 경로가 VVC를 타도록
+> 별도 연결이 필요하다. VVC 전용 비트스트림 파서 크레이트(`bitvue-vvc`)는 실제로 존재하고 워크스페이스 멤버로
+> 등록돼 있으며(`crates/bitvue-vvc/src/`, 4700줄+: `sps.rs`/`pps.rs`/`overlay_extraction.rs`/`tests.rs` 등),
+> `overlay_extraction.rs::extract_partition_grid`가 슬라이스 데이터에서 실제 CTU/CU를 파싱해(`parse_slice_ctus`,
+> intra 슬라이스는 CABAC 없이 CTU당 1개 Intra CU로 처리) `PartitionGrid`를 만든다 — 파싱 실패 시에만 "scaffold"
+> 블록으로 폴백. 다만 이 크레이트는 어디에도 소비되지 않는다: `bitvue-sidecar`가 여전히 의존하지 않고,
+> `bitvue-cli`에서도 VVC 전용 커맨드 배선을 찾지 못함(둘 다 grep 결과 0건) — 즉 "파서가 없다"가 아니라
+> **"파서는 있는데 제품 어디에서도 안 부른다"**가 정확한 상태.
 
-**핵심 구현 과제 — vvdec 연결:**
+- [x] vvdec-sys Rust 바인딩 구현 (`vvdec` C API 래핑) — `crates/bitvue-decode/src/vvdec.rs`, 별도
+      `vvdec-sys` 크레이트가 아니라 `bitvue-decode` 내부 `mod ffi`로 직접 구현 (RAII `DecoderGuard`/
+      `AccessUnitGuard`, 타임아웃 감지+decoder poison/reset, `Decoder` trait 구현까지 완료).
+      단, `[cfg(feature = "vvdec")]` 뒤에 있고 이 feature가 실제로 켜지는 곳이 없음 — **컴파일은 되지만 링크되지 않음**
+- [ ] VVC 디코딩 파이프라인 연결 (`crates/bitvue-decode/src/decoder.rs`) — `DecoderFactory::create(CodecType::H266)`
+      에서 `VvcDecoder::new()`를 호출하도록 배선은 돼 있음(`traits.rs:363`)이나, 실제 제품이 쓰는
+      `get_decoded_frame_yuv` 경로가 이 팩토리를 거치지 않고 `Av1Decoder`로 하드코딩돼 있어 미연결. VVC 전용
+      CU/파티션 파서 자체는 `bitvue-vvc::overlay_extraction::extract_partition_grid`로 이미 존재(intra 슬라이스
+      CTU/CU 파싱 포함, `tree_type` 필드도 채움) — 없는 건 파서가 아니라 이 크레이트를 부르는 sidecar/CLI 배선
+- [x] **Dual Tree 모드 렌더러** 구현 — `frontend/components/panels/OverlayRenderer/renderers/VvcDualTreeRenderer.tsx`,
+      `frame.partition_grid`의 `tree_type` 필드로 루마(파랑)/크로마(빨강) 구분 + 데이터 없을 때 폴백 메시지까지 존재.
+      백엔드(`bitvue-vvc`)는 `tree_type`을 실제로 채우지만 크레이트 자체가 sidecar에 미배선이라 GUI까지는
+      도달 못 함 — 배선만 하면 이 렌더러는 바로 동작할 가능성이 높음(원본 데이터 자체가 없는 게 아님)
+- [x] **Inverse Map 모드** (LMCS 역 매핑 시각화) — `VvcInverseMapRenderer.tsx` 렌더러 존재, 백엔드 LMCS 데이터 미공급으로 동일하게 폴백만 표시될 것으로 추정(직접 실행 미검증)
+- [x] **Adaptive Filter (ALF) 모드** — `VvcAdaptiveFilterRenderer.tsx` 렌더러 존재, 동일 사유로 실데이터 미도달 추정
+- [ ] **Inter Memory Reads** 오버레이 — 메뉴/토글만 존재(`inter-memory` in `codecModeRegistry.ts`), 렌더러 없음
+      (Phase 2 표의 동일 행 참조)
+- [ ] VVC Syntax 탭 완성 (APS 탭 추가) — 미검증 (Syntax 패널 쪽은 이번 재감사 범위 밖, 별도 확인 필요)
+
+**핵심 구현 과제 — vvdec 연결 (Tauri → Electron+sidecar 아키텍처 갱신):**
 ```rust
-// src-tauri/src/decode/vvc_decoder.rs
+// crates/bitvue-decode/src/vvdec.rs (구현 완료, 인용 경로만 갱신 — 원래 예시는 이제 없는
+// src-tauri/src/decode/vvc_decoder.rs를 가리켰음. 실제 구조는 아래와 유사:)
 pub struct VvcDecoder {
-    ctx: *mut vvdec_sys::vvdecDecoder,
-}
-
-impl VvcDecoder {
-    pub fn decode_frame(&mut self, nal_data: &[u8]) -> Result<YuvFrame> {
-        // vvdec_decode() 호출 → VvcYUVBuffer 변환
-    }
-}
-```
-
-**Parity 검증:**
-- Dual Tree: 루마/크로마 경계가 VQ Analyzer와 pixel-perfect 매칭
-- LMCS 적용된 시퀀스에서 Inverse Map 시각화 확인
-
-**예상 소요:** 중급 4~6주 (vvdec 연결 포함)
-
----
-
-## Phase 4: AV1 전용 고급 모드 완성 🟡
-
-**목표:** AV1 전용 F6~F9 모드 구현 (CDEF, SuperRes, Loop Restoration, Film Grain)
-
-- [ ] **CDEF Filter 모드**:
-  - CDEF 방향 화살표 (8방향 × 강도)
-  - 적용 블록 하이라이트
-  - CDEF 강도(primary_strength, secondary_strength) 색상 스케일
-- [ ] **SuperRes Filter 모드**:
-  - 다운스케일된 영역 vs 업스케일된 영역 구분 표시
-  - denom 파라미터 시각화
-- [ ] **Loop Restoration 모드**:
-  - Wiener 필터 적용 블록 (파랑)
-  - Self-guided 필터 적용 블록 (초록)
-  - 미적용 블록 (회색)
-  - 필터 파라미터 selection info에 표시
-- [ ] **Film Grain 모드**:
-  - 그레인 합성 전 픽셀 표시
-  - 그레인 합성 후 픽셀 표시
-  - 두 뷰 나란히 또는 오버레이로 비교
-  - film_grain_params selection info에 표시
-- [ ] AV1 Efficiency Map 완성:
-  - 각 블록의 비트수 / 블록 면적 계산
-  - jet colormap으로 시각화
-- [ ] AV1 Block Type 오버레이 완성:
-  - INTRA, INTER, INTRA_BC 색상 구분
-  - 복합 예측 모드 별도 색상
-
-**AV1 파싱 보강 필요:**
-```rust
-// bitvue-av1-codec/src/advanced_features.rs
-pub struct FilmGrainParams {
-    pub apply_grain: bool,
-    pub grain_seed: u16,
-    pub num_y_points: u8,
-    pub point_y_value: [u8; 14],
-    pub point_y_scaling: [u8; 14],
+    decoder: Mutex<*mut ffi::VvdecDecoder>,      // FFI 핸들, 뮤텍스로 보호
+    access_unit: Mutex<*mut ffi::VvdecAccessUnit>,
     // ...
 }
 
-pub struct CdefParams {
-    pub cdef_damping_minus_3: u8,
-    pub cdef_bits: u8,
-    pub cdef_y_pri_strength: [u8; 8],
-    pub cdef_y_sec_strength: [u8; 8],
-    // per-unit direction and variance
+impl Decoder for VvcDecoder {
+    fn get_frame(&mut self) -> Result<DecodedFrame> {
+        // vvdec_decode() 호출 → DecodedFrame 변환 (convert_frame)
+    }
 }
 ```
+남은 일은 대부분 코드 자체가 아니라 **배선**: (1) `bitvue-sidecar`가 `vvdec` feature를 켜고 빌드되도록 CI/패키징
+스크립트 갱신, (2) `get_decoded_frame_yuv`가 코덱별로 `Av1Decoder`/`VvcDecoder`를 선택하도록 리팩터, (3)
+`bitvue-vvc`(파티션/QP/MV 파서는 이미 있음)를 sidecar 의존성에 추가하고 커맨드로 노출. LMCS(Inverse Map)/
+ALF(Adaptive Filter) 전용 추출 함수는 `bitvue-vvc`에 아직 없어 이 둘만 진짜 신규 구현이 필요.
 
 **Parity 검증:**
-- CDEF 방향 화살표가 실제 CDEF 방향 결정과 일치
-- Film Grain 전/후 픽셀 값이 dav1d 출력과 일치
+- Dual Tree: 루마/크로마 경계가 VQ Analyzer와 pixel-perfect 매칭 — 검증 불가 (배선 전, sidecar까지 데이터 미도달)
+- LMCS 적용된 시퀀스에서 Inverse Map 시각화 확인 — 검증 불가 (추출 함수 자체가 아직 없음)
 
-**예상 소요:** 중급 3~4주
+**예상 소요:** 중급 2~4주 (vvdec 라이브러리 코드 + VVC 파티션 파서 모두 이미 있음 — 주 작업은 sidecar 배선과
+LMCS/ALF 추출 함수 신규 구현, 원래 추정보다 상당히 짧을 가능성)
 
 ---
 
-## Phase 5: AVS3 지원 구현 🔴 (신규)
+## Phase 4: AV1 전용 고급 모드 완성 ✅ (2026-08-10 재감사 — 사실상 완료)
+
+**목표:** AV1 전용 F6~F9 모드 구현 (CDEF, SuperRes, Loop Restoration, Film Grain)
+
+> **재감사 요약:** 이 Phase는 문서상 🟡(부분 완료)였지만 실제로는 백엔드·프론트엔드·와이어 매핑·엔드투엔드
+> 테스트까지 전부 완료돼 있다 — 6개 코덱 Phase 중 유일하게 백엔드 데이터가 프로덕트 경로(AV1/IVF)와 정확히
+> 일치하는 Phase라서 온전히 동작한다 (Phase 1의 "AV1만 실데이터 도달" 캐비어트가 Phase 4에는 적용되지 않음,
+> Phase 4 자체가 AV1 전용이기 때문).
+
+- [x] **CDEF Filter 모드** — 백엔드 `bitvue_av1_codec::advanced_features::extract_cdef_data` +
+      sidecar `crates/bitvue-sidecar/src/av1_features.rs`(`get_av1_features` 커맨드) +
+      프론트엔드 `Av1CdefRenderer.tsx`(8방향 화살표, strength 색상 스케일, 강도=0 블록 회색 처리 모두 구현).
+      end-to-end 테스트 `av1_features.rs`의 `get_av1_features_end_to_end_returns_real_cdef_data`로 실제 fixture
+      데이터 검증 완료
+- [x] **SuperRes Filter 모드** — `extract_super_resolution_data` + `Av1SuperResRenderer.tsx`, 같은 커맨드로 배선
+- [x] **Loop Restoration 모드** — `extract_loop_restoration_data` + `Av1LoopRestorationRenderer.tsx`
+      (Wiener/Self-guided/미적용 구분 렌더링 확인)
+- [x] **Film Grain 모드** — `extract_film_grain_data` + `Av1FilmGrainRenderer.tsx`
+- [x] AV1 Efficiency Map — 렌더러 완성(`Av1EfficiencyMapRenderer.tsx`)이나 **정확도는 근사치**: "각 블록의
+      비트수/면적 계산"이 아니라 QP 기반 근사식(`bpp ≈ (64-QP)*scale`)을 씀 — 코드 주석에 proxy임을 명시.
+      실제 bits-per-block 계산으로 교체하는 작업은 아직 남음 (Phase 2 표와 동일 항목)
+- [x] AV1 Block Type 오버레이 — `Av1BlockTypeRenderer.tsx`, `frame.mv_grid.mode`(INTRA/INTER/SKIP) 기반 실데이터
+      사용 확인. 단 "INTRA_BC"·"복합 예측 모드 별도 색상"까지는 다루지 않음(3종 모드만 구분) — 세부 항목 일부 남음
+
+**AV1 파싱 보강 (완료 — Electron+sidecar 아키텍처 기준 인용 경로 갱신):**
+```rust
+// crates/bitvue-av1-codec/src/advanced_features.rs (실제 구현, 원 예시의
+// bitvue-av1-codec/src/advanced_features.rs 경로는 유지되지만 이제
+// Tauri 커맨드가 아니라 crates/bitvue-sidecar/src/av1_features.rs가 호출)
+pub struct FilmGrainParams { /* apply_grain, grain_seed, point_y_value 등 — 구현 완료 */ }
+pub struct CdefParams { /* cdef_damping_minus_3, cdef_y_pri_strength 등 — 구현 완료 */ }
+```
+uncompressed_header()의 segmentation~film_grain_params 구간, skip_mode_params용 8슬롯 참조상태 순차추적까지
+신규 구현되어 실제 250프레임 스트림 파싱 검증을 통과함 (2026-08-09, electron-migration 커밋 이력 참조).
+
+**Parity 검증:**
+- CDEF 방향 화살표가 실제 CDEF 방향 결정과 일치 — 코드 레벨 검증(단위/e2e 테스트), 육안 VQ Analyzer 대조는 미실시
+- Film Grain 전/후 픽셀 값이 dav1d 출력과 일치 — 미검증 (프레임 헤더 파라미터 추출은 완료, 픽셀 비교 테스트는 없음)
+
+**예상 소요:** 완료. 남은 세부 작업: Efficiency Map을 실제 bits-per-block 계산으로 교체, Block Type에 INTRA_BC/복합 예측 색상 추가 (각 1주 미만)
+
+---
+
+## Phase 5: AVS3 지원 구현 🟡 (2026-08-10 재감사 — 크레이트/파서/렌더러 존재, 제품 미연결)
 
 **목표:** AVS3 코덱 전체 파싱 + 디코딩 + 전용 모드
 
-- [ ] `bitvue-avs3-codec` 크레이트 신규 생성
-- [ ] AVS3 비트스트림 구조 파싱:
-  - 시작 코드 (AVS3 prefix: 0x000001xx)
-  - Sequence Header, Picture Header 파싱
-  - CTU/CU 분할 구조 (HEVC 유사)
-- [ ] AVS3 엔트로피 코딩: CABAC 변형 (AEC — Adaptive Entropy Coding)
-- [ ] **ESAO 모드 렌더러** (Enhanced SAO, AVS3 전용):
-  - ESAO 타입/파라미터 시각화
-- [ ] **CCSAO 모드 렌더러** (Cross-Component SAO, AVS3 전용):
-  - 크로스 컴포넌트 필터 적용 블록 시각화
-- [ ] openavs3d 또는 FFmpeg 기반 AVS3 디코딩
-- [ ] AVS3 Syntax 탭 구현
+> **재감사 요약:** "크레이트 신규 생성"부터 다시 시작해야 하는 상태가 전혀 아니다 — `crates/bitvue-avs3/`가 이미
+> 존재하고 시작코드 스캔, Sequence/Picture Header 파싱, ESAO/CCSAO "휴리스틱" 오버레이 추출까지 구현돼 있으며
+> `bitvue-cli`(Analyzer CLI 제품)에 배선까지 완료돼 있다(`crates/bitvue-cli/src/commands/decode.rs:916
+> extract_avs3_frames`). 다만 (1) AEC 엔트로피 디코딩·CTU/CU 분할 파싱은 크레이트 자체 문서(`lib.rs:15-19`)가
+> "planned but not yet implemented"라고 명시, (2) 실제 픽셀 디코딩 경로가 전혀 없고, (3) Electron 데스크톱 앱이
+> 쓰는 `bitvue-sidecar`는 이 크레이트에 전혀 의존하지 않아 GUI에서는 AVS3 파일을 열어도 아무것도 볼 수 없다.
+
+- [x] `bitvue-avs3-codec` 크레이트 신규 생성 — `crates/bitvue-avs3/` (패키지명은 `bitvue-avs3`), 이미 존재
+- [x] AVS3 비트스트림 구조 파싱:
+  - [x] 시작 코드 (AVS3 prefix: 0x000001xx) — `crates/bitvue-avs3/src/nal.rs::scan_nal_units`
+  - [x] Sequence Header, Picture Header 파싱 — `sequence_header.rs::parse_sequence_header`,
+        `picture_header.rs::parse_i_picture_header`/`parse_pb_picture_header`
+  - [ ] CTU/CU 분할 구조 (HEVC 유사) — **미구현.** 헤더 레벨 파싱만 있고 CTU/CU 트리 파싱은 없음
+        (`lib.rs` 모듈 문서가 명시적으로 "AEC decoding ... planned but not yet implemented"라 표기)
+- [ ] AVS3 엔트로피 코딩: CABAC 변형 (AEC — Adaptive Entropy Coding) — **미구현** (위와 동일 근거)
+- [x] **ESAO 모드 렌더러** (Enhanced SAO, AVS3 전용) — `frontend/.../renderers/Avs3EsaoRenderer.tsx` 렌더러
+      존재 + 백엔드 `overlay_extraction.rs::extract_esao_map`도 존재. 단 이 백엔드 함수 자체가 진짜 AEC 디코딩이
+      아니라 **"(qp + ctu_index) mod 6" 결정론적 휴리스틱**이라고 코드 주석에 명시(`overlay_extraction.rs:98-99`
+      "Deterministic heuristic"), 렌더러도 화면에 "⚠ ESAO proxy" 워터마크를 표시함. 게다가 sidecar 미배선이라
+      이 프록시 데이터조차 GUI에는 도달하지 않음(항상 "ESAO: disabled or unavailable" 표시)
+- [x] **CCSAO 모드 렌더러** (Cross-Component SAO, AVS3 전용) — `Avs3CcsaoRenderer.tsx` + `extract_ccsao_map`,
+      ESAO와 동일하게 휴리스틱 proxy + sidecar 미배선
+- [ ] openavs3d 또는 FFmpeg 기반 AVS3 디코딩 — **미착수.** 픽셀 디코딩 코드 자체가 없음(파싱만 존재)
+- [ ] AVS3 Syntax 탭 구현 — 미검증 (프론트엔드에서 AVS3 전용 Syntax 탭 컴포넌트를 찾지 못함, 후속 확인 필요)
+
+**남은 작업 우선순위 (재감사 기준):**
+1. AEC(Adaptive Entropy Coding) 엔트로피 디코더 신규 구현 — 나머지 항목 대부분의 선행 조건
+2. CTU/CU 분할 구조 파싱 (AEC 위에서 동작)
+3. `bitvue-sidecar`에 `bitvue-avs3` 의존성 추가 + IPC 커맨드 배선 (ESAO/CCSAO 프록시라도 우선 GUI에 노출 가능)
+4. openavs3d/FFmpeg 기반 실제 픽셀 디코딩 연결
+5. ESAO/CCSAO를 휴리스틱 proxy에서 실제 AEC 디코드 기반으로 교체
 
 **레퍼런스:**
 - AVS 표준 문서: http://www.avs.org.cn/
 - openavs3d 오픈소스 구현
 
-**예상 소요:** 중급 6~8주
+**예상 소요:** 중급 5~7주 (헤더 파싱은 이미 끝났으므로 원래 추정보다 다소 단축, AEC 구현이 여전히 최대 리스크)
 
 ---
 
-## Phase 6: JPEG XS + VC-3 + APV 지원 🟢 (Nice-to-have)
+## Phase 6: JPEG XS + VC-3 + APV 지원 🟡 (2026-08-10 재감사 — JPEG XS/VC-3 파싱·렌더러 완료 · 제품 미연결, APV 완전 미착수)
+
+> **재감사 요약:** JPEG XS와 VC-3는 Phase 5(AVS3)와 같은 패턴 — 파서 크레이트, 오버레이 추출 함수, 전용 F키
+> 렌더러까지 전부 존재하지만 `bitvue-sidecar`가 두 크레이트 어느 쪽에도 의존하지 않아 GUI에서는 도달 불가.
+> APV는 크레이트/코드가 전혀 없어(저장소 전체 grep 결과 0건) 완전 미착수 상태 그대로다.
 
 #### JPEG XS
-- [ ] `bitvue-jpegxs-codec` 크레이트 신규 생성
-- [ ] JPEG XS 마커 파싱 (SOC, SLH, SLI, SLD, EOC)
-- [ ] Precinct 구조 파싱
-- [ ] 웨이블릿 계수 추출
-- [ ] NLT, MCT 파라미터 파싱
-- [ ] 전용 F1~F6 모드 렌더러
+- [x] `bitvue-jpegxs-codec` 크레이트 신규 생성 — `crates/bitvue-jpegxs/` (패키지명 `bitvue-jpegxs`), 이미 존재
+- [x] JPEG XS 마커 파싱 (SOC, SLH, SLI, SLD, EOC) — `crates/bitvue-jpegxs/src/marker.rs`, 5개 마커 전부
+      (`0xFF10`/`0xFF54`/`0xFF55`/`0xFF56`/`0xFF11`) 정의 및 스캔 구현 확인
+- [x] Precinct 구조 파싱 — `overlay_extraction.rs::extract_precinct_map` + 렌더러 `JpegXsPrecinctRenderer.tsx`
+- [x] 웨이블릿 계수 추출 — `overlay_extraction.rs::extract_dequant_map`/`extract_transform_map`
+      (역양자화 계수·변환 서브밴드 구조 추출, 원시 웨이블릿 계수 자체보다는 서브밴드/양자화 레벨 단위 — 세부
+      정확도는 픽셀 디코딩이 없어 검증 불가)
+- [x] NLT, MCT 파라미터 파싱 — `nlt.rs`/`mct.rs` + `extract_nlt_info`/`extract_mct_info`,
+      렌더러 `JpegXsNltRenderer.tsx`/`JpegXsMctRenderer.tsx`
+- [x] 전용 F1~F6 모드 렌더러 — `codecModeRegistry.ts`의 `JPEGXS_MODES`(F1 Precinct ~ F5 NLT, F6 YUV) 전부
+      대응 렌더러 존재(`JpegXsPrecinctRenderer`/`JpegXsDequantRenderer`/`JpegXsTransformRenderer`/
+      `JpegXsMctRenderer`/`JpegXsNltRenderer`), sidecar 미배선으로 실데이터는 미도달
 
 #### VC-3 / DNxHD
-- [ ] `bitvue-vc3-codec` 크레이트 신규 생성
-- [ ] DNxHD 세그먼트 구조 파싱
-- [ ] FFmpeg 기반 디코딩
+- [x] `bitvue-vc3-codec` 크레이트 신규 생성 — `crates/bitvue-vc3/` (패키지명 `bitvue-vc3`), 이미 존재
+- [x] DNxHD 세그먼트 구조 파싱 — `segment.rs::scan_segments`/`parse_frame_header` (`DNXHD_MAGIC` 매직 넘버 확인 포함)
+      + 렌더러 `Vc3SegmentRenderer.tsx` (`overlay_extraction.rs::extract_mb_grid`)
+- [ ] FFmpeg 기반 디코딩 — **미착수**, 픽셀 디코딩 코드 없음 (파싱만 존재, AVS3/JPEG XS와 동일 패턴)
 
 #### APV (Apple ProRes Video)
-- [ ] APV 비트스트림 파싱
-- [ ] FFmpeg ProRes 디코딩
+- [ ] APV 비트스트림 파싱 — **완전 미착수.** 저장소 전체에서 `bitvue-apv` 크레이트 없음, "APV"/"ProRes" 관련
+      코드 grep 결과 무관한 우연 매치 1건 외 없음
+- [ ] FFmpeg ProRes 디코딩 — 미착수
 
-**예상 소요:** 각각 중급 4~6주
+**남은 작업 우선순위 (재감사 기준):**
+1. JPEG XS·VC-3: `bitvue-sidecar`에 두 크레이트 의존성 추가 + IPC 커맨드 배선 (파싱/렌더러가 이미 있으므로
+   Phase 6 중 가장 저비용으로 "실제 동작"까지 갈 수 있는 경로)
+2. VC-3: FFmpeg 기반 픽셀 디코딩 연결
+3. APV: 크레이트 신규 생성부터 시작 (유일하게 원 계획대로 처음부터 시작해야 하는 항목)
+
+**예상 소요:** JPEG XS/VC-3 배선 각 1~2주(파싱 완료 상태 기준), VC-3 FFmpeg 디코딩 2~3주, APV는 원안 그대로 중급 4~6주
 
 ---
 
