@@ -1,5 +1,4 @@
 import { useEffect, memo, lazy, Suspense, useCallback, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { closeWindow } from "./services/electronBridgeService";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
@@ -23,7 +22,7 @@ import { SyntaxHexLinkProvider } from "./contexts/SyntaxHexLinkContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { useLayout } from "./contexts/LayoutContext";
 import { shouldShowTitleBar } from "./utils/platform";
-import type { ThemeChangeEvent, FileOpenedEvent } from "./types/video";
+import type { ThemeChangeEvent } from "./types/video";
 import { isKeyframe } from "./types/video";
 import {
   DockableLayout,
@@ -274,8 +273,7 @@ const LEFT_PANELS = [
  */
 function AppContent() {
   const { frames } = useFrameData();
-  const { loading, error, setFilePath, refreshFrames, filePath } =
-    useFileState();
+  const { loading, error, filePath } = useFileState();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
 
   // GoToFrame dialog state
@@ -311,7 +309,6 @@ function AppContent() {
 
   const {
     fileInfo,
-    setFileInfo,
     openError,
     handleOpenFile,
     openFileAtPath,
@@ -320,6 +317,7 @@ function AppContent() {
   } = useAppFileOperations({
     onError: showErrorDialog,
     onCodecChange: setActiveCodec,
+    onFileOpened: addRecentFile,
   });
 
   const exportEvidenceBundle = useExportEvidenceBundle();
@@ -451,40 +449,6 @@ function AppContent() {
     onUndoSelection,
     onCopyBlockInfo,
   });
-
-  // Tauri event listeners
-  useEffect(() => {
-    const unlisten = listen<FileOpenedEvent>("file-opened", async (event) => {
-      setFileInfo(event.payload);
-      setFilePath(event.payload.success ? (event.payload.path ?? null) : null);
-      if (event.payload.success && event.payload.path) {
-        setCurrentFrameIndex(0);
-        addRecentFile(event.payload.path);
-        await refreshFrames();
-      } else {
-        showErrorDialog(
-          "Failed to Open File",
-          event.payload.error || "Unknown error",
-          event.payload.path,
-        );
-      }
-    });
-    return () => {
-      // Proper cleanup: handle potential errors during unlisten
-      unlisten
-        .then((fn) => fn())
-        .catch((err) => {
-          console.warn("Failed to unlisten from file-opened event:", err);
-        });
-    };
-  }, [
-    refreshFrames,
-    setFileInfo,
-    setFilePath,
-    showErrorDialog,
-    setCurrentFrameIndex,
-    addRecentFile,
-  ]);
 
   // Layout menu events
   useEffect(() => {

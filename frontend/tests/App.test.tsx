@@ -1347,15 +1347,6 @@ describe("AppContent - Tauri event listeners", () => {
     mockListen.mockResolvedValue(() => {});
   });
 
-  it("should listen for file-opened events", () => {
-    render(<App />);
-
-    expect(mockListen).toHaveBeenCalledWith(
-      "file-opened",
-      expect.any(Function),
-    );
-  });
-
   it("should cleanup Tauri listeners on unmount", () => {
     const { unmount } = render(<App />);
 

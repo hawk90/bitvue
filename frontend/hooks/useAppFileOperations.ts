@@ -48,6 +48,11 @@ export interface AppFileOperationsCallbacks {
   /** Called with the detected codec string when a file is opened successfully,
    *  or null when the file is closed. Drives the codec-aware mode registry. */
   onCodecChange?: (codec: string | null) => void;
+  /** Called with the path when a file opens successfully -- e.g. to record it in the recent-files
+   *  list. Previously done by App.tsx listening for Tauri's "file-opened" event, which no longer
+   *  exists post-Electron-migration (unhandled rejection on every launch, unrelated to this hook
+   *  -- see bitvue-desktop/electron/main.ts's installNativeMacMenu doc for the fuller story). */
+  onFileOpened?: (path: string) => void;
 }
 
 export interface AppFileOperationsReturn {
@@ -68,7 +73,7 @@ export interface AppFileOperationsReturn {
 export function useAppFileOperations(
   callbacks: AppFileOperationsCallbacks,
 ): AppFileOperationsReturn {
-  const { onError, onCodecChange } = callbacks;
+  const { onError, onCodecChange, onFileOpened } = callbacks;
   const { setFilePath, refreshFrames, clearData } = useFileState();
   const { setCurrentFrameIndex } = useCurrentFrame();
   const { createWorkspace } = useCompare();
@@ -127,6 +132,7 @@ export function useAppFileOperations(
 
         if (result.success) {
           logger.info("File opened successfully");
+          onFileOpened?.(selected);
           setCurrentFrameIndex(0);
           try {
             await selectFrame("A", 0);
@@ -164,7 +170,7 @@ export function useAppFileOperations(
         onError("Failed to Open File", toMessage(err));
       }
     },
-    [refreshFrames, setFilePath, setCurrentFrameIndex, onError],
+    [refreshFrames, setFilePath, setCurrentFrameIndex, onError, onFileOpened],
   );
 
   /**

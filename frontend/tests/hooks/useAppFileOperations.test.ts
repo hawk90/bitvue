@@ -103,6 +103,51 @@ describe("useAppFileOperations", () => {
       expect(result.current.fileInfo?.path).toBe("/tmp/clip.ivf");
     });
 
+    it("on success: calls onFileOpened with the opened path (e.g. to record it as a recent file)", async () => {
+      showOpenDialog.mockResolvedValue("/tmp/clip.ivf");
+      openStream.mockResolvedValue({
+        success: true,
+        path: "/tmp/clip.ivf",
+        events: [],
+        error: undefined,
+      });
+      selectFrame.mockResolvedValue([
+        { type: "SelectionUpdated", stream: "A" },
+      ]);
+      const onFileOpened = vi.fn();
+
+      const { result } = renderHook(() =>
+        useAppFileOperations({ onError, onCodecChange, onFileOpened }),
+      );
+
+      await act(async () => {
+        await result.current.handleOpenFile();
+      });
+
+      expect(onFileOpened).toHaveBeenCalledWith("/tmp/clip.ivf");
+    });
+
+    it("on failure: does not call onFileOpened", async () => {
+      showOpenDialog.mockResolvedValue("/tmp/clip.ivf");
+      openStream.mockResolvedValue({
+        success: false,
+        path: undefined,
+        events: [],
+        error: "decode error",
+      });
+      const onFileOpened = vi.fn();
+
+      const { result } = renderHook(() =>
+        useAppFileOperations({ onError, onCodecChange, onFileOpened }),
+      );
+
+      await act(async () => {
+        await result.current.handleOpenFile();
+      });
+
+      expect(onFileOpened).not.toHaveBeenCalled();
+    });
+
     it("on success but selectFrame throwing: still succeeds (selection failure is non-blocking)", async () => {
       showOpenDialog.mockResolvedValue("/tmp/clip.ivf");
       openStream.mockResolvedValue({
