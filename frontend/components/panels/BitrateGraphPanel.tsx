@@ -31,6 +31,14 @@ function getFrameColor(frameType: string): string {
   return FRAME_TYPE_COLORS[frameType] ?? FRAME_TYPE_COLORS.UNKNOWN;
 }
 
+// WARNING: not currently rendered anywhere in App.tsx's panel lists (dead code, kept for its
+// tests + panels/index.ts barrel export). If this panel is ever mounted for real, note that
+// invoke("get_frames") below uses @tauri-apps/api/core -- that runtime doesn't exist under
+// Electron post-migration, so it will always throw. It's caught by loadFrames' try/catch (shows
+// as an error state, not an unhandled rejection), but the panel would never actually load real
+// data -- rewire to electronBridgeService first (see how other panels do it, e.g.
+// StreamTreePanel/UnitHexPanel), same class of issue as the Tauri-leftover bugs documented in
+// bitvue-desktop/electron/main.ts's installNativeMacMenu doc (2026-08-10).
 export const BitrateGraphPanel = memo(function BitrateGraphPanel() {
   const [frames, setFrames] = useState<FrameData[]>([]);
   const [loading, setLoading] = useState(false);
