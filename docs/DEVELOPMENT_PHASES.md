@@ -1393,8 +1393,15 @@ LMCS/ALF 추출 함수 신규 구현, 원래 추정보다 상당히 짧을 가�
       `Av1EfficiencyMapRenderer.tsx`가 이를 우선 사용하고 없을 때만 QP 프록시로 폴백. 여전히 진짜 엔트로피
       비트 수는 아님(컨텍스트 독립 대표 CDF 사용, 실제 스펙의 이웃-컨텍스트 적응형 아님) — 실제 fixture로
       0이 아닌 에너지 값 확인하는 e2e 테스트로 검증
-- [x] AV1 Block Type 오버레이 — `Av1BlockTypeRenderer.tsx`, `frame.mv_grid.mode`(INTRA/INTER/SKIP) 기반 실데이터
-      사용 확인. 단 "INTRA_BC"·"복합 예측 모드 별도 색상"까지는 다루지 않음(3종 모드만 구분) — 세부 항목 일부 남음
+- [x] AV1 Block Type 오버레이 — **2026-08-11 IntraBC/Compound 구분 추가 완료** (`8b27766`):
+      `parse_coding_unit`가 `ref_frame()`(spec 5.11.25)를 전혀 안 읽고 모든 inter 블록을
+      `RefFrame::Last`로 하드코딩하던 진짜 desync 버그(이번 세션의 residual() 버그와 동일 패턴 —
+      신택스 자체를 안 읽음, 단 크래시로 안 드러났을 뿐) 발견+수정하면서 같이 완성. 단일 참조
+      7종 전부 + compound(uni/bidirectional) 트리 실제 파싱, `use_intrabc` 비트도 신규 파싱.
+      부수로 `Av1BlockTypeRenderer.tsx`가 실제 `BlockMode` enum 값과 다른 매핑(0=Inter 가정, 실제는
+      0=None)을 쓰고 있던 **별개의 기존 버그**도 발견+수정(모든 블록이 한 칸씩 밀려서 잘못된
+      색으로 표시되고 있었음). 실제 fixture로 ref_frame 분포가 7종 전부 나오고 compound 블록도
+      실제 검출됨을 확인하는 영구 회귀 테스트 추가
 
 **AV1 파싱 보강 (완료 — Electron+sidecar 아키텍처 기준 인용 경로 갱신):**
 ```rust
@@ -1411,7 +1418,7 @@ uncompressed_header()의 segmentation~film_grain_params 구간, skip_mode_params
 - CDEF 방향 화살표가 실제 CDEF 방향 결정과 일치 — 코드 레벨 검증(단위/e2e 테스트), 육안 VQ Analyzer 대조는 미실시
 - Film Grain 전/후 픽셀 값이 dav1d 출력과 일치 — 미검증 (프레임 헤더 파라미터 추출은 완료, 픽셀 비교 테스트는 없음)
 
-**예상 소요:** 완료. 남은 세부 작업: Block Type에 INTRA_BC/복합 예측 색상 추가 (1주 미만) — Efficiency Map 정확도 개선은 2026-08-10 완료
+**예상 소요:** 완료. Efficiency Map 정확도 개선(2026-08-10)과 Block Type IntraBC/Compound 구분(2026-08-11) 둘 다 완료 — 남은 세부 작업 없음. 단 compound 블록의 실제 예측 모드(`compound_mode`)/L1 모션벡터 값 자체는 여전히 미구현(단일참조용 근사치 재사용) — `read_ref_frames`/`parse_coding_unit` 문서 참조
 
 ---
 
