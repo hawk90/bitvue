@@ -19,12 +19,15 @@ with commercial tools (VQ Analyzer, VQ Probe, VEGA, StreamEye). Migrated off Tau
 All four active docs cross-link via a "See also" header — follow it before assuming a doc is standalone.
 Don't create a 5th parity doc; extend one of the four above.
 
-## Known doc drift (unresolved — flag before trusting)
+## Known doc drift
 
-- `README.md` claims "VMAF calculation with BD-rate analysis" as a shipped feature. Per `PARITY_CHECKLIST.md`
-  Layer 6 (CMP-05/CMP-06), this is **not implemented** — `libvmaf-sys` exists as an optional Cargo feature but
-  is unwired, and BD-rate calc is unverified. Reconcile before next release; don't silently "fix" the README's
-  marketing claims without the user's sign-off (public-facing copy).
+- **Resolved 2026-08-10** (`3dcd0dc`, user sign-off given): `README.md`'s Tauri-era build instructions
+  (`npm run tauri:dev`/`tauri:build`, WebView2 prereq, `src-tauri/` architecture tree) reconciled with the
+  Electron migration, and the VMAF/BD-rate "shipped feature" claim corrected to match `PARITY_CHECKLIST.md`
+  Layer 6 (CMP-05/CMP-06: BD-rate unwired, VMAF behind an optional unwired-by-default Cargo feature). If
+  README drifts again (new features shipped, build flow changes), re-run the same reconciliation — grep
+  actual `Cargo.toml` workspace members / `package.json` scripts / `PARITY_CHECKLIST.md` status rather than
+  trusting README's existing prose, and get user sign-off before changing public-facing marketing claims.
 
 ## Working conventions (established this session, confirmed by user correction)
 
