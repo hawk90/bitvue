@@ -176,9 +176,14 @@ impl EvidenceBundleExportResult {
 /// - BottomBar > Export
 /// - ContextMenu > Export Evidence Bundle
 /// - CompareWorkspace > Toolbar > Export Diff Bundle
+///
+/// `screenshots` is raw PNG bytes, one entry per captured image -- decoding a base64/data-URL
+/// screenshot (e.g. from Electron's `capturePage()`) is the caller's job, matching how
+/// `render_snapshots` is likewise already-decoded data by the time it reaches this function.
 pub fn export_evidence_bundle(
     request: &EvidenceBundleExportRequest,
     render_snapshots: &[RenderSnapshot],
+    screenshots: &[Vec<u8>],
 ) -> EvidenceBundleExportResult {
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
     let bundle_name = format!("bitvue_evidence_{}", timestamp);
@@ -335,6 +340,33 @@ pub fn export_evidence_bundle(
                 "Failed to write warnings.json: {}",
                 e
             ))
+        }
+    }
+
+    // Write screenshots if requested
+    if request.include_screenshots && !screenshots.is_empty() {
+        let screenshots_dir = bundle_dir.join("screenshots");
+        if let Err(e) = std::fs::create_dir_all(&screenshots_dir) {
+            return EvidenceBundleExportResult::error(&format!(
+                "Failed to create screenshots directory: {}",
+                e
+            ));
+        }
+
+        for (idx, png_bytes) in screenshots.iter().enumerate() {
+            let screenshot_path = screenshots_dir.join(format!("screenshot_{:04}.png", idx));
+            match std::fs::write(&screenshot_path, png_bytes) {
+                Ok(()) => {
+                    files_created.push(format!("screenshots/screenshot_{:04}.png", idx));
+                    total_bytes += png_bytes.len();
+                }
+                Err(e) => {
+                    return EvidenceBundleExportResult::error(&format!(
+                        "Failed to write screenshot: {}",
+                        e
+                    ))
+                }
+            }
         }
     }
 

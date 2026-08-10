@@ -12,6 +12,7 @@ import { useCallback } from "react";
 import {
   showDirectoryDialog,
   exportEvidenceBundle,
+  captureScreenshot,
 } from "../services/electronBridgeService";
 import { createLogger } from "../utils/logger";
 
@@ -23,11 +24,19 @@ export function useExportEvidenceBundle(): () => Promise<void> {
     if (!dir) return;
 
     try {
+      // Best-effort: a bundle without a screenshot is still useful, so a capture failure
+      // shouldn't block the export itself.
+      const screenshotDataUrl = await captureScreenshot().catch((err) => {
+        logger.warn("Screenshot capture failed, exporting without one", err);
+        return null;
+      });
+
       const result = await exportEvidenceBundle({
         outputDir: dir,
         workspace: "player",
         mode: "normal",
         orderType: "display",
+        screenshotDataUrl: screenshotDataUrl ?? undefined,
       });
       if (result.success) {
         window.alert(`Evidence bundle exported to:\n${result.bundle_path}`);

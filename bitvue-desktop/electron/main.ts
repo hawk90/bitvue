@@ -17,7 +17,14 @@
  *  - Single global `SidecarClient` instance, no multi-window/multi-stream-session story yet.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  type MenuItemConstructorOptions,
+} from "electron";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -28,7 +35,8 @@ import { SidecarClient } from "../src/sidecarClient.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 // dist/electron/main.js -> dist/electron -> dist -> bitvue-desktop -> repo root
 const repoRoot = path.resolve(here, "..", "..", "..");
-const defaultBinaryName = process.platform === "win32" ? "bitvue-sidecar.exe" : "bitvue-sidecar";
+const defaultBinaryName =
+  process.platform === "win32" ? "bitvue-sidecar.exe" : "bitvue-sidecar";
 /**
  * Packaged builds (`app.isPackaged`) don't have a `target/`/`frontend/` checkout next to the
  * app — electron-builder's `extraResources` (see `bitvue-desktop/package.json`'s `build` field)
@@ -57,7 +65,10 @@ let shuttingDown = false;
 const consoleErrors: string[] = [];
 
 function requireSidecar(): SidecarClient {
-  if (!sidecar) throw new Error("sidecar not started yet — this shouldn't happen post-app.whenReady()");
+  if (!sidecar)
+    throw new Error(
+      "sidecar not started yet — this shouldn't happen post-app.whenReady()",
+    );
   return sidecar;
 }
 
@@ -66,17 +77,30 @@ function registerIpcHandlers(): void {
     return requireSidecar().hello(clientVersion);
   });
 
-  ipcMain.handle("bitvue:openStream", async (_event, stream: string, filePath: string) => {
-    return requireSidecar().request("open_stream", { stream, path: filePath });
-  });
+  ipcMain.handle(
+    "bitvue:openStream",
+    async (_event, stream: string, filePath: string) => {
+      return requireSidecar().request("open_stream", {
+        stream,
+        path: filePath,
+      });
+    },
+  );
 
-  ipcMain.handle("bitvue:getHexRange", async (_event, stream: string, offset: number, len: number) => {
-    const { bytes, ...metadata } = await requireSidecar().getHexRange({ stream, offset, len });
-    // Buffer survives Electron's structured-clone IPC as-is (renderer sees a Uint8Array) —
-    // no base64/JSON-array encoding. This is the whole point of the migration; see the
-    // `YUVFrameData` anti-pattern note in DEVELOPMENT_PHASES.md.
-    return { ...metadata, bytes };
-  });
+  ipcMain.handle(
+    "bitvue:getHexRange",
+    async (_event, stream: string, offset: number, len: number) => {
+      const { bytes, ...metadata } = await requireSidecar().getHexRange({
+        stream,
+        offset,
+        len,
+      });
+      // Buffer survives Electron's structured-clone IPC as-is (renderer sees a Uint8Array) —
+      // no base64/JSON-array encoding. This is the whole point of the migration; see the
+      // `YUVFrameData` anti-pattern note in DEVELOPMENT_PHASES.md.
+      return { ...metadata, bytes };
+    },
+  );
 
   ipcMain.handle(
     "bitvue:getDecodedFrameYuv",
@@ -132,46 +156,89 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     "bitvue:setDebugYuvCrop",
-    async (_event, crop: { left: number; right: number; top: number; bottom: number }) => {
+    async (
+      _event,
+      crop: { left: number; right: number; top: number; bottom: number },
+    ) => {
       return requireSidecar().request("set_debug_yuv_crop", { crop });
     },
   );
 
-  ipcMain.handle("bitvue:getYuvDiffMetrics", async (_event, frameIndex: number) => {
-    return requireSidecar().request("get_yuv_diff_metrics", { frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getYuvDiffMetrics",
+    async (_event, frameIndex: number) => {
+      return requireSidecar().request("get_yuv_diff_metrics", {
+        frame_index: frameIndex,
+      });
+    },
+  );
 
   ipcMain.handle("bitvue:findFirstDiffFrame", async () => {
     return requireSidecar().request("find_first_diff_frame");
   });
 
-  ipcMain.handle("bitvue:getFrameAnalysis", async (_event, frameIndex: number) => {
-    return requireSidecar().request("get_frame_analysis", { frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getFrameAnalysis",
+    async (_event, frameIndex: number) => {
+      return requireSidecar().request("get_frame_analysis", {
+        frame_index: frameIndex,
+      });
+    },
+  );
 
-  ipcMain.handle("bitvue:getAv1Features", async (_event, frameIndex: number) => {
-    return requireSidecar().request("get_av1_features", { frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getAv1Features",
+    async (_event, frameIndex: number) => {
+      return requireSidecar().request("get_av1_features", {
+        frame_index: frameIndex,
+      });
+    },
+  );
 
-  ipcMain.handle("bitvue:getCodingFlowAnalysis", async (_event, frameIndex: number) => {
-    return requireSidecar().request("get_coding_flow_analysis", { frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getCodingFlowAnalysis",
+    async (_event, frameIndex: number) => {
+      return requireSidecar().request("get_coding_flow_analysis", {
+        frame_index: frameIndex,
+      });
+    },
+  );
 
-  ipcMain.handle("bitvue:getDeblockingAnalysis", async (_event, frameIndex: number) => {
-    return requireSidecar().request("get_deblocking_analysis", { frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getDeblockingAnalysis",
+    async (_event, frameIndex: number) => {
+      return requireSidecar().request("get_deblocking_analysis", {
+        frame_index: frameIndex,
+      });
+    },
+  );
 
-  ipcMain.handle("bitvue:getCodecExtendedInfo", async (_event, frameIndex: number) => {
-    return requireSidecar().request("get_codec_extended_info", { frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getCodecExtendedInfo",
+    async (_event, frameIndex: number) => {
+      return requireSidecar().request("get_codec_extended_info", {
+        frame_index: frameIndex,
+      });
+    },
+  );
 
-  ipcMain.handle("bitvue:getResidualAnalysis", async (_event, frameIndex: number) => {
-    return requireSidecar().request("get_residual_analysis", { frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getResidualAnalysis",
+    async (_event, frameIndex: number) => {
+      return requireSidecar().request("get_residual_analysis", {
+        frame_index: frameIndex,
+      });
+    },
+  );
 
   ipcMain.handle(
     "bitvue:getContextMenuItems",
-    async (_event, scope: string, hasSelection: boolean, hasByteRange: boolean) => {
+    async (
+      _event,
+      scope: string,
+      hasSelection: boolean,
+      hasByteRange: boolean,
+    ) => {
       return requireSidecar().request("get_context_menu_items", {
         scope,
         has_selection: hasSelection,
@@ -184,13 +251,20 @@ function registerIpcHandlers(): void {
     "bitvue:exportEvidenceBundle",
     async (
       _event,
-      params: { outputDir: string; workspace?: string; mode?: string; orderType?: string },
+      params: {
+        outputDir: string;
+        workspace?: string;
+        mode?: string;
+        orderType?: string;
+        screenshotDataUrl?: string;
+      },
     ) => {
       return requireSidecar().request("export_evidence_bundle", {
         output_dir: params.outputDir,
         workspace: params.workspace,
         mode: params.mode,
         order_type: params.orderType,
+        screenshot_data_url: params.screenshotDataUrl,
       });
     },
   );
@@ -199,9 +273,15 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("close_stream", { stream });
   });
 
-  ipcMain.handle("bitvue:selectFrame", async (_event, stream: string, frameIndex: number) => {
-    return requireSidecar().request("select_frame", { stream, frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:selectFrame",
+    async (_event, stream: string, frameIndex: number) => {
+      return requireSidecar().request("select_frame", {
+        stream,
+        frame_index: frameIndex,
+      });
+    },
+  );
 
   ipcMain.handle("bitvue:indexStream", async (_event, stream: string) => {
     return requireSidecar().request("index_stream", { stream });
@@ -214,13 +294,23 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     "bitvue:getFramesChunk",
     async (_event, stream: string, offset: number, limit: number) => {
-      return requireSidecar().request("get_frames_chunk", { stream, offset, limit });
+      return requireSidecar().request("get_frames_chunk", {
+        stream,
+        offset,
+        limit,
+      });
     },
   );
 
-  ipcMain.handle("bitvue:getFrameSyntax", async (_event, stream: string, frameIndex: number) => {
-    return requireSidecar().request("get_frame_syntax", { stream, frame_index: frameIndex });
-  });
+  ipcMain.handle(
+    "bitvue:getFrameSyntax",
+    async (_event, stream: string, frameIndex: number) => {
+      return requireSidecar().request("get_frame_syntax", {
+        stream,
+        frame_index: frameIndex,
+      });
+    },
+  );
 
   ipcMain.handle("bitvue:getTimeline", async (_event, stream: string) => {
     return requireSidecar().request("get_timeline", { stream });
@@ -228,7 +318,12 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     "bitvue:getThumbnails",
-    async (_event, stream: string, frameIndices: number[], targetWidth?: number) => {
+    async (
+      _event,
+      stream: string,
+      frameIndices: number[],
+      targetWidth?: number,
+    ) => {
       return requireSidecar().request("get_thumbnails", {
         stream,
         frame_indices: frameIndices,
@@ -239,14 +334,31 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     "bitvue:selectUnit",
-    async (_event, stream: string, unitType: string, offset: number, size: number) => {
-      return requireSidecar().request("select_unit", { stream, unit_type: unitType, offset, size });
+    async (
+      _event,
+      stream: string,
+      unitType: string,
+      offset: number,
+      size: number,
+    ) => {
+      return requireSidecar().request("select_unit", {
+        stream,
+        unit_type: unitType,
+        offset,
+        size,
+      });
     },
   );
 
   ipcMain.handle(
     "bitvue:selectSyntax",
-    async (_event, stream: string, nodeId: string, startBit: number, endBit: number) => {
+    async (
+      _event,
+      stream: string,
+      nodeId: string,
+      startBit: number,
+      endBit: number,
+    ) => {
       return requireSidecar().request("select_syntax", {
         stream,
         node_id: nodeId,
@@ -269,8 +381,21 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     "bitvue:selectSpatialBlock",
-    async (_event, stream: string, x: number, y: number, w: number, h: number) => {
-      return requireSidecar().request("select_spatial_block", { stream, x, y, w, h });
+    async (
+      _event,
+      stream: string,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+    ) => {
+      return requireSidecar().request("select_spatial_block", {
+        stream,
+        x,
+        y,
+        w,
+        h,
+      });
     },
   );
 
@@ -290,7 +415,9 @@ function registerIpcHandlers(): void {
         properties: ["openFile"],
         filters: filters ?? [{ name: "All Files", extensions: ["*"] }],
       };
-      const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+      const result = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
       if (result.canceled || result.filePaths.length === 0) return null;
       return result.filePaths[0];
     },
@@ -307,9 +434,24 @@ function registerIpcHandlers(): void {
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
     };
-    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  // Captures the current window as a PNG, base64-encoded as a data: URL -- the same
+  // `capturePage()`/`toPNG()` pair `runScreenshotAndExit` already uses for the
+  // BITVUE_ELECTRON_SCREENSHOT dev/CI mode, exposed here as an on-demand handler for real
+  // in-app features (currently: Evidence Bundle export's `screenshots/` artifact). Returns null
+  // if there's no window to capture from (shouldn't happen in practice -- the renderer calling
+  // this is itself running inside a window).
+  ipcMain.handle("bitvue:captureScreenshot", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return null;
+    const image = await win.webContents.capturePage();
+    return `data:image/png;base64,${image.toPNG().toString("base64")}`;
   });
 
   // Quit menu item / TitleBar's Quit button -- app.quit() (not window.close()) so this means
@@ -339,7 +481,8 @@ const frontendDistIndex = app.isPackaged
 function resolveRendererTarget(): { kind: "url" | "file"; target: string } {
   const overrideUrl = process.env.BITVUE_FRONTEND_URL;
   if (overrideUrl) return { kind: "url", target: overrideUrl };
-  if (existsSync(frontendDistIndex)) return { kind: "file", target: frontendDistIndex };
+  if (existsSync(frontendDistIndex))
+    return { kind: "file", target: frontendDistIndex };
   console.warn(
     `[bitvue-desktop] frontend dist not found (${frontendDistIndex}) and BITVUE_FRONTEND_URL not set — ` +
       "loading the placeholder shell instead of the real Bitvue Analyzer UI. " +
@@ -380,9 +523,10 @@ function installNativeMacMenu(win: BrowserWindow): void {
 
   const dispatch = (event: string, detail?: unknown) => {
     const target = BrowserWindow.getFocusedWindow() ?? win;
-    const script = detail === undefined
-      ? `window.dispatchEvent(new CustomEvent(${JSON.stringify(event)}))`
-      : `window.dispatchEvent(new CustomEvent(${JSON.stringify(event)}, { detail: ${JSON.stringify(detail)} }))`;
+    const script =
+      detail === undefined
+        ? `window.dispatchEvent(new CustomEvent(${JSON.stringify(event)}))`
+        : `window.dispatchEvent(new CustomEvent(${JSON.stringify(event)}, { detail: ${JSON.stringify(detail)} }))`;
     void target.webContents.executeJavaScript(script);
   };
 
@@ -609,22 +753,32 @@ function createWindow(): BrowserWindow {
   // page (e.g. a JS asset 404 under file://, an uncaught exception during React mount) is
   // otherwise silent here. Forward them so `npm run electron`'s terminal output is actually
   // useful for debugging instead of just showing an unexplained blank window.
-  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
-    console.log(`[renderer console] ${sourceId}:${line} ${message}`);
-    // level: 0=verbose, 1=info, 2=warning, 3=error (Electron's MessageDetails.level) -- only
-    // error-level fails the selftest; warnings (e.g. the CSP notice under file://, expected in
-    // this dev-mode shell) are noisy but not indicative of a real bug the way an uncaught
-    // exception or unhandled rejection is.
-    if (level >= 3) {
-      consoleErrors.push(`${sourceId}:${line} ${message}`);
-    }
-  });
-  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
-    console.error(`[bitvue-desktop] renderer failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
-  });
+  win.webContents.on(
+    "console-message",
+    (_event, level, message, line, sourceId) => {
+      console.log(`[renderer console] ${sourceId}:${line} ${message}`);
+      // level: 0=verbose, 1=info, 2=warning, 3=error (Electron's MessageDetails.level) -- only
+      // error-level fails the selftest; warnings (e.g. the CSP notice under file://, expected in
+      // this dev-mode shell) are noisy but not indicative of a real bug the way an uncaught
+      // exception or unhandled rejection is.
+      if (level >= 3) {
+        consoleErrors.push(`${sourceId}:${line} ${message}`);
+      }
+    },
+  );
+  win.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL) => {
+      console.error(
+        `[bitvue-desktop] renderer failed to load ${validatedURL}: ${errorDescription} (${errorCode})`,
+      );
+    },
+  );
 
   const renderer = resolveRendererTarget();
-  console.log(`[bitvue-desktop] loading renderer (${renderer.kind}): ${renderer.target}`);
+  console.log(
+    `[bitvue-desktop] loading renderer (${renderer.kind}): ${renderer.target}`,
+  );
   if (renderer.kind === "url") {
     win.loadURL(renderer.target);
   } else {
@@ -652,7 +806,9 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
   const realFixturePath = path.join(repoRoot, "test_data", "av1_test.ivf");
 
   try {
-    await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 50))"); // let preload settle
+    await win.webContents.executeJavaScript(
+      "new Promise((r) => setTimeout(r, 50))",
+    ); // let preload settle
     // Poll for the React app to actually mount, rather than racing a fixed delay -- the app's
     // JS bundle has to load/parse/execute and do its initial render, which isn't bounded by the
     // preload-settle wait above (that's just for window.bitvue to exist, not for the page's own
@@ -697,11 +853,13 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const codecExtendedInfo = await window.bitvue.getCodecExtendedInfo(5);
         const residualAnalysis = await window.bitvue.getResidualAnalysis(5);
         const contextMenuItems = await window.bitvue.getContextMenuItems("Player", false, false);
+        const screenshotDataUrl = await window.bitvue.captureScreenshot();
         const evidenceBundle = await window.bitvue.exportEvidenceBundle({
           outputDir: ${JSON.stringify(tempDir)},
           workspace: "player",
           mode: "normal",
           orderType: "display",
+          screenshotDataUrl: screenshotDataUrl ?? undefined,
         });
 
         return {
@@ -778,7 +936,9 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.indexEvents?.length === 2 &&
       result.indexEvents[0]?.kind === "Container" &&
       result.indexEvents[1]?.kind === "Units";
-    const streamInfoOk = result.streamInfo?.indexed === true && result.streamInfo?.container?.codec === "av1";
+    const streamInfoOk =
+      result.streamInfo?.indexed === true &&
+      result.streamInfo?.container?.codec === "av1";
     const framesChunkOk =
       result.framesChunk?.indexed === true &&
       result.framesChunk?.units?.length === 5 &&
@@ -806,7 +966,10 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       }
       return undefined;
     }
-    const forbiddenBitNode = findSyntaxNode(result.frameSyntax, "obu_forbidden_bit");
+    const forbiddenBitNode = findSyntaxNode(
+      result.frameSyntax,
+      "obu_forbidden_bit",
+    );
     const frameSyntaxOk = forbiddenBitNode?.bit_range?.start_bit === 472;
     const timelineOk =
       result.timeline?.stream_id === "B" &&
@@ -816,13 +979,18 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     // Debug YUV: reference file was built from stream A's own exact decoded bytes, so reference
     // mode must round-trip those bytes unchanged, and diff/metrics must report "no difference at
     // all" -- not just "small" -- since this isn't lossy re-encoding, it's the same bytes twice.
-    const debugYuvLoadOk = debugYuvResult.load?.success === true && debugYuvResult.load?.frame_count === 1;
-    const debugYuvReferenceOk = debugYuvResult.referenceBytesHex === result.decodedBytesHex;
+    const debugYuvLoadOk =
+      debugYuvResult.load?.success === true &&
+      debugYuvResult.load?.frame_count === 1;
+    const debugYuvReferenceOk =
+      debugYuvResult.referenceBytesHex === result.decodedBytesHex;
     const debugYuvMetricsOk =
-      debugYuvResult.metrics?.has_mismatch === false && debugYuvResult.metrics?.max_diff_y === 0;
+      debugYuvResult.metrics?.has_mismatch === false &&
+      debugYuvResult.metrics?.max_diff_y === 0;
     const debugYuvDiffOk = debugYuvResult.diffYAllZero === true;
     const debugYuvFindFirstDiffOk =
-      debugYuvResult.firstDiff?.frame_index === null && debugYuvResult.firstDiff?.total_checked === 1;
+      debugYuvResult.firstDiff?.frame_index === null &&
+      debugYuvResult.firstDiff?.total_checked === 1;
     const frameAnalysisOk =
       result.frameAnalysis?.width === 320 &&
       result.frameAnalysis?.height === 240 &&
@@ -846,7 +1014,8 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       result.deblocking?.width === 320 &&
       result.deblocking?.height === 240 &&
       (result.deblocking?.edges?.length ?? 0) > 0 &&
-      result.deblocking?.stats?.total_edges === result.deblocking?.edges?.length;
+      result.deblocking?.stats?.total_edges ===
+        result.deblocking?.edges?.length;
     console.log("[selftest] get_deblocking_analysis OK:", deblockingOk);
     const codecExtendedInfoOk =
       result.codecExtendedInfo?.frame_index === 5 &&
@@ -869,27 +1038,70 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     const evidenceBundleOk =
       result.evidenceBundle?.success === true &&
       (result.evidenceBundle?.files_created?.length ?? 0) > 0;
-    console.log("[selftest] export_evidence_bundle OK:", evidenceBundleOk);
+    // Real end-to-end proof of the 2026-08-11 screenshot-capture addition: not just that the
+    // export succeeded, but that a real captured screenshot (via the actual
+    // bitvue:captureScreenshot -> capturePage() path, not a mock) made it into the bundle as an
+    // actual file on disk.
+    const evidenceBundleScreenshotOk =
+      result.evidenceBundle?.files_created?.some(
+        (f: string) => f === "screenshots/screenshot_0000.png",
+      ) === true &&
+      existsSync(
+        path.join(
+          result.evidenceBundle.bundle_path,
+          "screenshots/screenshot_0000.png",
+        ),
+      );
     console.log(
-      "[selftest] debug YUV: load OK:", debugYuvLoadOk,
-      " reference bytes match decoded OK:", debugYuvReferenceOk,
-      " metrics (no mismatch) OK:", debugYuvMetricsOk,
-      " diff (all-zero) OK:", debugYuvDiffOk,
-      " find_first_diff (none found) OK:", debugYuvFindFirstDiffOk,
+      "[selftest] export_evidence_bundle OK:",
+      evidenceBundleOk,
+      " screenshot included:",
+      evidenceBundleScreenshotOk,
+    );
+    console.log(
+      "[selftest] debug YUV: load OK:",
+      debugYuvLoadOk,
+      " reference bytes match decoded OK:",
+      debugYuvReferenceOk,
+      " metrics (no mismatch) OK:",
+      debugYuvMetricsOk,
+      " diff (all-zero) OK:",
+      debugYuvDiffOk,
+      " find_first_diff (none found) OK:",
+      debugYuvFindFirstDiffOk,
     );
     console.log("[selftest] result:", JSON.stringify(result, null, 2));
-    console.log("[selftest] document title (real frontend's <title>, not the placeholder's):", result.documentTitle);
-    console.log("[selftest] #root child count (proves the React bundle actually executed, not just that the HTML shell loaded):", result.rootChildCount);
+    console.log(
+      "[selftest] document title (real frontend's <title>, not the placeholder's):",
+      result.documentTitle,
+    );
+    console.log(
+      "[selftest] #root child count (proves the React bundle actually executed, not just that the HTML shell loaded):",
+      result.rootChildCount,
+    );
     console.log("[selftest] expected hex bytes:", expectedHex);
     console.log("[selftest] actual   hex bytes:", result.hexBytesHex);
-    console.log("[selftest] BYTE_EXACT_MATCH:", expectedHex === result.hexBytesHex);
-    console.log("[selftest] select_frame OK:", selectOk, " close_stream OK:", closeOk);
     console.log(
-      "[selftest] index_stream OK:", indexOk,
-      " get_stream_info OK:", streamInfoOk,
-      " get_frames_chunk OK:", framesChunkOk,
-      " get_frame_syntax OK:", frameSyntaxOk,
-      " get_timeline OK:", timelineOk,
+      "[selftest] BYTE_EXACT_MATCH:",
+      expectedHex === result.hexBytesHex,
+    );
+    console.log(
+      "[selftest] select_frame OK:",
+      selectOk,
+      " close_stream OK:",
+      closeOk,
+    );
+    console.log(
+      "[selftest] index_stream OK:",
+      indexOk,
+      " get_stream_info OK:",
+      streamInfoOk,
+      " get_frames_chunk OK:",
+      framesChunkOk,
+      " get_frame_syntax OK:",
+      frameSyntaxOk,
+      " get_timeline OK:",
+      timelineOk,
     );
     console.log("[selftest] #root mounted OK:", rootMountedOk);
     const noConsoleErrorsOk = consoleErrors.length === 0;
@@ -920,6 +1132,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       residualAnalysisOk &&
       contextMenuItemsOk &&
       evidenceBundleOk &&
+      evidenceBundleScreenshotOk &&
       noConsoleErrorsOk
         ? 0
         : 1;
@@ -953,17 +1166,26 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * `LEFT_PANELS`) default to whichever was active last, so this is the only way to reliably
  * screenshot a non-default (or nested) tab instead of guessing at prior state.
  */
-async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Promise<void> {
+async function runScreenshotAndExit(
+  win: BrowserWindow,
+  outputPath: string,
+): Promise<void> {
   try {
-    await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 50))"); // let preload settle
+    await win.webContents.executeJavaScript(
+      "new Promise((r) => setTimeout(r, 50))",
+    ); // let preload settle
     await win.webContents.executeJavaScript(
       'window.dispatchEvent(new CustomEvent("menu-open-bitstream"))',
     );
     // Real IPC round-trips here have all been sub-second in prior selftest runs -- a generous
     // fixed wait for the open -> index -> refreshFrames chain + React re-render to settle,
     // rather than guessing at a DOM-text heuristic that could false-positive on unrelated text.
-    await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 3000))");
-    const clickTabs = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB?.split(",")
+    await win.webContents.executeJavaScript(
+      "new Promise((r) => setTimeout(r, 3000))",
+    );
+    const clickTabs = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB?.split(
+      ",",
+    )
       .map((s) => s.trim())
       .filter(Boolean);
     for (const clickTab of clickTabs ?? []) {
@@ -978,7 +1200,9 @@ async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Pro
           button.click();
         })()
       `);
-      await win.webContents.executeJavaScript("new Promise((r) => setTimeout(r, 500))");
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
     }
     const image = await win.webContents.capturePage();
     writeFileSync(outputPath, image.toPNG());
@@ -989,7 +1213,10 @@ async function runScreenshotAndExit(win: BrowserWindow, outputPath: string): Pro
     // inspect the app, and a visual inspection alone won't reveal an off-screen unhandled
     // rejection).
     if (consoleErrors.length > 0) {
-      console.error("[screenshot] renderer console errors (FAIL):", consoleErrors);
+      console.error(
+        "[screenshot] renderer console errors (FAIL):",
+        consoleErrors,
+      );
       process.exitCode = 1;
     } else {
       process.exitCode = 0;
@@ -1018,13 +1245,19 @@ async function main(): Promise<void> {
   // nothing to replay them from). The renderer is told via 'bitvue:sidecar-restarted' below so
   // real UI can react (e.g. prompt the user to re-open their file); this shell doesn't do that
   // itself yet since there's no real UI to prompt.
-  sidecar = new SidecarClient(sidecarBinaryPath, { restart: { maxAttempts: 3, backoffMs: 500 } });
+  sidecar = new SidecarClient(sidecarBinaryPath, {
+    restart: { maxAttempts: 3, backoffMs: 500 },
+  });
   sidecar.on("exit", (code, signal) => {
     if (shuttingDown) return; // expected — we called sidecar.close() ourselves
-    console.error(`[bitvue-desktop] sidecar exited unexpectedly (code=${code} signal=${signal})`);
+    console.error(
+      `[bitvue-desktop] sidecar exited unexpectedly (code=${code} signal=${signal})`,
+    );
   });
   sidecar.on("restart_failed", (attempts: number) => {
-    console.error(`[bitvue-desktop] sidecar would not stay up after ${attempts} restart attempt(s), giving up`);
+    console.error(
+      `[bitvue-desktop] sidecar would not stay up after ${attempts} restart attempt(s), giving up`,
+    );
   });
 
   const hello = await sidecar.hello("bitvue-desktop/0.0.1");
@@ -1037,7 +1270,9 @@ async function main(): Promise<void> {
   installNativeMacMenu(win);
 
   sidecar.on("restarted", (attempt: number) => {
-    console.log(`[bitvue-desktop] sidecar restarted (attempt ${attempt}) — application state was lost`);
+    console.log(
+      `[bitvue-desktop] sidecar restarted (attempt ${attempt}) — application state was lost`,
+    );
     win.webContents.send("bitvue:sidecar-restarted");
   });
 
@@ -1049,15 +1284,21 @@ async function main(): Promise<void> {
 
   if (process.env.BITVUE_ELECTRON_SCREENSHOT) {
     win.webContents.once("did-finish-load", () => {
-      runScreenshotAndExit(win, process.env.BITVUE_ELECTRON_SCREENSHOT as string);
+      runScreenshotAndExit(
+        win,
+        process.env.BITVUE_ELECTRON_SCREENSHOT as string,
+      );
     });
   }
 }
 
-app.whenReady().then(main).catch((err) => {
-  console.error("[bitvue-desktop] fatal startup error:", err);
-  app.exit(1);
-});
+app
+  .whenReady()
+  .then(main)
+  .catch((err) => {
+    console.error("[bitvue-desktop] fatal startup error:", err);
+    app.exit(1);
+  });
 
 app.on("window-all-closed", () => {
   shuttingDown = true;

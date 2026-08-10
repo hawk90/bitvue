@@ -233,6 +233,9 @@ export interface ExportEvidenceBundleParams {
   workspace?: string;
   mode?: string;
   orderType?: "display" | "decode";
+  /** `data:image/png;base64,...` from `captureScreenshot()` -- written into the bundle's
+   *  `screenshots/` directory if present. Omit to export without a screenshot. */
+  screenshotDataUrl?: string;
 }
 
 export type StreamId = "A" | "B";
@@ -466,6 +469,7 @@ declare global {
       exportEvidenceBundle: (
         params: ExportEvidenceBundleParams,
       ) => Promise<EvidenceBundleExportResultWire>;
+      captureScreenshot: () => Promise<string | null>;
       showOpenDialog: (
         filters?: Array<{ name: string; extensions: string[] }>,
       ) => Promise<string | null>;
@@ -724,6 +728,12 @@ export async function exportEvidenceBundle(
  *  or null if cancelled. */
 export async function showDirectoryDialog(): Promise<string | null> {
   return requireBridge().showDirectoryDialog();
+}
+
+/** Captures the current window as a `data:image/png;base64,...` string, for embedding in an
+ *  evidence bundle's `screenshots/` directory. Null if there's no window to capture from. */
+export async function captureScreenshot(): Promise<string | null> {
+  return requireBridge().captureScreenshot();
 }
 
 export interface OpenFileDialogFilter {
