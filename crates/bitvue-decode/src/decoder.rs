@@ -924,8 +924,15 @@ impl Av1Decoder {
         )))
     }
 
-    /// Drain remaining frames from decoder
-    fn drain_decoder_frames(&mut self, decoded_frames: &mut Vec<DecodedFrame>) -> Result<()> {
+    /// Drain remaining buffered frames from the decoder at end-of-stream, once all input data has
+    /// been sent. Deliberately does NOT call `flush()` first -- `flush()` wraps `dav1d_flush()`,
+    /// which is documented (dav1d.h) as clearing internal decoder state for *seeking*, not as an
+    /// EOS-drain primitive. Calling it before this loop discards any frames still buffered in
+    /// dav1d's internal (auto-detected multi-threaded by default) pipeline instead of returning
+    /// them -- on a stream shorter than the thread-pipeline depth, that silently drops every
+    /// frame. The correct EOS pattern, per dav1d.h's own example, is to just call `get_picture()`
+    /// until it returns EAGAIN, with no flush involved.
+    pub fn drain_decoder_frames(&mut self, decoded_frames: &mut Vec<DecodedFrame>) -> Result<()> {
         for _ in 0..100 {
             match self.decoder.get_picture() {
                 Ok(picture) => {

@@ -816,22 +816,31 @@ fn decode_av1_luma(data: &[u8]) -> Result<Vec<(Vec<u8>, usize, usize)>> {
             .map_err(|e| anyhow::anyhow!("Decode send: {}", e))?;
         drain_frames_luma(&mut dec, &mut out);
     }
-    dec.flush();
-    drain_frames_luma(&mut dec, &mut out);
+    // Not dec.flush() -- see bitvue_decode::Av1Decoder::drain_decoder_frames' doc: flush() clears
+    // dav1d's internal state (for seeking) instead of draining buffered frames, which silently
+    // dropped every frame on streams shorter than dav1d's thread-pipeline depth.
+    let mut remaining = Vec::new();
+    dec.drain_decoder_frames(&mut remaining)
+        .map_err(|e| anyhow::anyhow!("Decode drain: {}", e))?;
+    for f in &remaining {
+        push_luma_frame(f, &mut out);
+    }
     Ok(out)
+}
+
+fn push_luma_frame(f: &bitvue_decode::DecodedFrame, out: &mut Vec<(Vec<u8>, usize, usize)>) {
+    let y: Vec<u8> = if f.bit_depth == 8 {
+        f.y_plane.to_vec()
+    } else {
+        f.y_plane.chunks(2).map(|c| c[0]).collect()
+    };
+    out.push((y, f.width as usize, f.height as usize));
 }
 
 fn drain_frames_luma(dec: &mut bitvue_decode::Av1Decoder, out: &mut Vec<(Vec<u8>, usize, usize)>) {
     loop {
         match dec.get_frame() {
-            Ok(f) => {
-                let y: Vec<u8> = if f.bit_depth == 8 {
-                    f.y_plane.to_vec()
-                } else {
-                    f.y_plane.chunks(2).map(|c| c[0]).collect()
-                };
-                out.push((y, f.width as usize, f.height as usize));
-            }
+            Ok(f) => push_luma_frame(&f, out),
             Err(_) => break,
         }
     }
@@ -853,10 +862,20 @@ fn decode_av1_yuv(data: &[u8], limit: usize) -> Result<Vec<(Vec<u8>, usize, usiz
         }
     }
     if out.len() < limit {
-        dec.flush();
-        drain_frames_yuv(&mut dec, &mut out);
+        drain_frames_yuv_at_eos(&mut dec, &mut out)?;
     }
     Ok(out)
+}
+
+fn push_yuv_frame(f: &bitvue_decode::DecodedFrame, out: &mut Vec<(Vec<u8>, usize, usize, u8)>) {
+    let mut combined = f.y_plane.to_vec();
+    if let Some(ref u) = f.u_plane {
+        combined.extend_from_slice(u);
+    }
+    if let Some(ref v) = f.v_plane {
+        combined.extend_from_slice(v);
+    }
+    out.push((combined, f.width as usize, f.height as usize, f.bit_depth));
 }
 
 fn drain_frames_yuv(
@@ -865,19 +884,26 @@ fn drain_frames_yuv(
 ) {
     loop {
         match dec.get_frame() {
-            Ok(f) => {
-                let mut combined = f.y_plane.to_vec();
-                if let Some(ref u) = f.u_plane {
-                    combined.extend_from_slice(u);
-                }
-                if let Some(ref v) = f.v_plane {
-                    combined.extend_from_slice(v);
-                }
-                out.push((combined, f.width as usize, f.height as usize, f.bit_depth));
-            }
+            Ok(f) => push_yuv_frame(&f, out),
             Err(_) => break,
         }
     }
+}
+
+/// Not dec.flush() -- see bitvue_decode::Av1Decoder::drain_decoder_frames' doc: flush() clears
+/// dav1d's internal state (for seeking) instead of draining buffered frames, which silently
+/// dropped every frame on streams shorter than dav1d's thread-pipeline depth.
+fn drain_frames_yuv_at_eos(
+    dec: &mut bitvue_decode::Av1Decoder,
+    out: &mut Vec<(Vec<u8>, usize, usize, u8)>,
+) -> Result<()> {
+    let mut remaining = Vec::new();
+    dec.drain_decoder_frames(&mut remaining)
+        .map_err(|e| anyhow::anyhow!("Decode drain: {}", e))?;
+    for f in &remaining {
+        push_yuv_frame(f, out);
+    }
+    Ok(())
 }
 
 // AVS3 ─────────────────────────────────────────────────────────────────────────
@@ -989,8 +1015,7 @@ fn decode_av1_yuv_with_grain(
         }
     }
     if out.len() < limit {
-        dec.flush();
-        drain_frames_yuv(&mut dec, &mut out);
+        drain_frames_yuv_at_eos(&mut dec, &mut out)?;
     }
     Ok(out)
 }

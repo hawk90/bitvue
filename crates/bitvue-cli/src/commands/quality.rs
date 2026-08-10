@@ -198,15 +198,15 @@ fn decode_ivf_frames(data: &[u8]) -> Result<Vec<(Vec<u8>, usize, usize)>> {
         }
     }
 
-    // Flush remaining frames
-    decoder.flush();
-    loop {
-        match decoder.get_frame() {
-            Ok(f) => {
-                decoded.push(decoded_frame_to_luma(f));
-            }
-            Err(_) => break,
-        }
+    // Not decoder.flush() -- see bitvue_decode::Av1Decoder::drain_decoder_frames' doc: flush()
+    // clears dav1d's internal state (for seeking) instead of draining buffered frames, which
+    // silently dropped every frame on streams shorter than dav1d's thread-pipeline depth.
+    let mut remaining = Vec::new();
+    decoder
+        .drain_decoder_frames(&mut remaining)
+        .map_err(|e| anyhow::anyhow!("Decode drain error: {}", e))?;
+    for f in remaining {
+        decoded.push(decoded_frame_to_luma(f));
     }
 
     Ok(decoded)

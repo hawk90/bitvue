@@ -647,11 +647,15 @@ pub fn find_first_diff(core: &Core, session: &Session) -> Result<(Option<usize>,
         }
     }
     if found.is_none() {
-        dec.flush();
-        while let Ok(decoded) = dec.get_frame() {
+        // Not dec.flush() -- see decode_bridge::get_decoded_frame_yuv's comment: flush() clears
+        // dav1d's internal state instead of draining buffered frames.
+        let mut remaining = Vec::new();
+        dec.drain_decoder_frames(&mut remaining)
+            .map_err(|e| e.to_string())?;
+        for decoded in &remaining {
             let index = decoded_count;
             decoded_count += 1;
-            if check_one(&decoded, index, &mut checked, &mut found) {
+            if check_one(decoded, index, &mut checked, &mut found) {
                 break;
             }
         }

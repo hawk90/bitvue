@@ -58,8 +58,12 @@ pub fn get_decoded_frame_yuv(data: &[u8], frame_index: usize) -> Result<DecodedY
         }
     }
     if decoded.len() <= frame_index {
-        dec.flush();
-        drain(&mut dec, &mut decoded);
+        // Deliberately not dec.flush() -- see Av1Decoder::drain_decoder_frames' doc: flush()
+        // clears dav1d's internal state (for seeking) rather than draining it, which discarded
+        // every still-buffered frame on streams shorter than dav1d's thread-pipeline depth (e.g.
+        // real AOM conformance vectors as short as 2 frames -- confirmed via reproduction).
+        dec.drain_decoder_frames(&mut decoded)
+            .map_err(|e| format!("decode drain: {e}"))?;
     }
 
     let frame = decoded.get(frame_index).ok_or_else(|| {
@@ -198,9 +202,13 @@ pub fn get_thumbnails(
         }
     }
     if decoded_count <= max_wanted {
-        dec.flush();
-        while let Ok(frame) = dec.get_frame() {
-            capture(&frame, decoded_count, &mut results);
+        // See get_decoded_frame_yuv's comment -- flush() would discard buffered frames instead
+        // of draining them.
+        let mut remaining = Vec::new();
+        dec.drain_decoder_frames(&mut remaining)
+            .map_err(|e| format!("decode drain: {e}"))?;
+        for frame in &remaining {
+            capture(frame, decoded_count, &mut results);
             decoded_count += 1;
         }
     }
