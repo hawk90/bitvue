@@ -156,7 +156,7 @@ fn parse_partition_trees_from_tile_data(
                 };
 
             // Try to parse the superblock
-            // Note: For MVP, we use default QP=128 and delta_q_enabled=false
+            // Note: For MVP, we use default QP=128 if the frame type doesn't carry a real one.
             let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
 
             // Create MV predictor context (local for partition extraction)
@@ -172,7 +172,7 @@ fn parse_partition_trees_from_tile_data(
                 actual_block_size.width(),
                 is_key_frame,
                 base_qp,
-                false, // delta_q_enabled - not implemented for MVP
+                parsed.delta_q_enabled,
                 &mut mv_ctx,
                 parsed.reference_select,
                 parsed.allow_intrabc,
@@ -911,5 +911,137 @@ mod tests {
         // Out of bounds
         assert!(grid.get(120, 0).is_none());
         assert!(grid.get(0, 68).is_none());
+    }
+
+    const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../../test_data/av1_test.ivf");
+
+    fn find_seq_header_bytes(frames: &[crate::ivf::IvfFrame]) -> Option<Vec<u8>> {
+        for frame in frames.iter().take(8) {
+            let mut iter = crate::obu::ObuIterator::new(&frame.data);
+            while let Some(Ok(found)) = iter.next_obu_with_offset() {
+                if found.obu.header.obu_type == crate::obu::ObuType::SequenceHeader {
+                    return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
+                }
+            }
+        }
+        None
+    }
+
+    /// Regression test for the `delta_q_enabled` hardcoded-`false` bug: this module's own
+    /// superblock parse (`extract_partition_grid_from_parsed`, the real path `get_frame_analysis`
+    /// uses for `partition_grid`) used to always pass `false` regardless of the real frame
+    /// header's `delta_q_present`, instead of the already-correctly-sourced
+    /// `parsed.delta_q_enabled` that `cu_parser::parse_all_coding_units` (the QP/MV/prediction
+    /// grid path) already used. Since `delta_q` reads real bits from the shared `SymbolDecoder`
+    /// whenever the frame has `delta_q_enabled=true`, skipping them desyncs every subsequent
+    /// syntax element in that superblock -- the same "syntax element completely unread" bug shape
+    /// as the earlier `residual()`/`ref_frame()` fixes.
+    ///
+    /// Parses every superblock of `parsed.tile_data` with `delta_q_enabled` forced to the given
+    /// value (bypassing `parsed.delta_q_enabled` entirely), mirroring
+    /// `cu_parser::parse_all_coding_units`'s loop structure. Used to reconstruct the pre-fix
+    /// hardcoded-`false` behavior for `real_fixture_delta_q_frame_changes_with_the_flag`.
+    fn parse_all_coding_units_with_delta_q_flag(
+        parsed: &super::super::parser::ParsedFrame,
+        delta_q_enabled: bool,
+    ) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
+        let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
+        let is_key_frame = parsed.frame_type.is_intra_only;
+        let sb_size = parsed.dimensions.sb_size;
+
+        let mut decoder = crate::SymbolDecoder::new(&parsed.tile_data)?;
+        let mut mv_ctx = crate::tile::MvPredictorContext::new(
+            parsed.dimensions.sb_cols,
+            parsed.dimensions.sb_rows,
+        );
+        let mut current_qp = base_qp;
+        let mut all_cus = Vec::new();
+        for sb_y in 0..parsed.dimensions.sb_rows {
+            for sb_x in 0..parsed.dimensions.sb_cols {
+                let (sb, new_qp) = crate::parse_superblock(
+                    &mut decoder,
+                    sb_x * sb_size,
+                    sb_y * sb_size,
+                    sb_size,
+                    is_key_frame,
+                    current_qp,
+                    delta_q_enabled,
+                    &mut mv_ctx,
+                    parsed.reference_select,
+                    parsed.allow_intrabc,
+                )?;
+                current_qp = new_qp;
+                all_cus.extend(sb.coding_units);
+            }
+        }
+        Ok(all_cus)
+    }
+
+    /// Regression test for the `delta_q_enabled` hardcoded-`false` bug: this module's own
+    /// superblock parse (`extract_partition_grid_from_parsed`, the real path `get_frame_analysis`
+    /// uses for `partition_grid`) used to always pass `false` regardless of the real frame
+    /// header's `delta_q_present`, instead of the already-correctly-sourced
+    /// `parsed.delta_q_enabled` that `cu_parser::parse_all_coding_units` (the QP/MV/prediction
+    /// grid path) already used. Since `delta_q` reads real bits from the shared `SymbolDecoder`
+    /// whenever the frame has `delta_q_enabled=true`, skipping them desyncs every subsequent
+    /// syntax element in that tile -- the same "syntax element completely unread" bug shape as
+    /// the earlier `residual()`/`ref_frame()` fixes.
+    ///
+    /// Proves the flag is causally consequential on real bits: parses a real
+    /// `delta_q_enabled=true` frame's entire tile data twice with `parse_all_coding_units_with_delta_q_flag`
+    /// (same superblock-loop shape as both real callers) -- once `true` (correct), once `false`
+    /// (the old hardcoded bug) -- and asserts the two runs diverge (either a different CU list, or
+    /// the old-flag run erroring where the correct one doesn't, from running the arithmetic
+    /// decoder past real tile data once the missing `delta_q` bits accumulate enough drift).
+    #[test]
+    fn real_fixture_delta_q_frame_changes_with_the_flag() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut checked_a_delta_q_frame = false;
+        for frame in frames.iter().take(60) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.delta_q_enabled || !parsed.has_tile_data() {
+                continue;
+            }
+
+            let Ok(real_cus) = parse_all_coding_units_with_delta_q_flag(&parsed, true) else {
+                // Nothing to compare against for this frame if even the correct run fails.
+                continue;
+            };
+            checked_a_delta_q_frame = true;
+
+            let real_positions: Vec<(u32, u32, u32, u32)> = real_cus
+                .iter()
+                .map(|cu| (cu.x, cu.y, cu.width, cu.height))
+                .collect();
+            let old_buggy_positions: Option<Vec<(u32, u32, u32, u32)>> =
+                parse_all_coding_units_with_delta_q_flag(&parsed, false)
+                    .ok()
+                    .map(|cus| {
+                        cus.iter()
+                            .map(|cu| (cu.x, cu.y, cu.width, cu.height))
+                            .collect()
+                    });
+
+            assert_ne!(
+                Some(real_positions),
+                old_buggy_positions,
+                "a delta_q_enabled=true frame should decode a different (or outright failing) \
+                 coding-unit list under the old hardcoded delta_q_enabled=false behavior -- if \
+                 these match, the flag isn't actually affecting bitstream consumption anymore"
+            );
+        }
+
+        assert!(
+            checked_a_delta_q_frame,
+            "expected at least one delta_q_enabled=true frame in the first 60 frames of the \
+             fixture whose tile data parses successfully with the correct flag -- if this fails, \
+             the fixture changed and this test needs a different frame range to exercise the bug"
+        );
     }
 }
