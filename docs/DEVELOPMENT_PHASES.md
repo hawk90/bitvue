@@ -1569,12 +1569,26 @@ tx블록 개수만큼 읽기) → `real_fixture_key_frame_intra_modes_are_not_de
 코드 안 남김 — `read_residual_block` 문서에 여전히 열린 진짜 디싱크 버그로 기록(실제 크로마 CDF
 테이블 또는 검증된 안전한 shape-only 폴백 필요, 다음 세션 후보).
 
-- **다음 단계(로드맵, 남은 것)**: (1) 크로마 잔차 버그 재시도(위 되돌림에서 지목한 두 가지 미검증
-지점 — 실제 UV tx 크기 매핑, 정확한 HasChroma 조건 — 먼저 검증 후). (2) 인터/IntraBC 실제 var-tx
-재귀 읽기(CodingUnit 스키마 변경 선행 필요) — 이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장
-가능. (3) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예
-안 읽는 신택스 요소들. (4) inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전
-세션에 재스코핑만 하고 보류).
+- **크로마 잔차 버그 재시도 → 부분 완료(2026-08-11, `23f2729`)**: 사용자가 "크로마 버그 계속 진행"
+확정 후 실제 구현. rav1d 소스 재검증 결과 8x8/16x16/32x32 정사각 루마 블록(비-IntraBC)은 chroma tx
+크기·개수 매핑이 정확히 맞음을 재확인, 실제 크로마 CDF 기본값(rav1d `[chroma=1]` 축, luma와 별도
+데이터)까지 이식 완료. `coeff_base`/`coeff_br`은 `symbol::scan::lo_ctx`(평면 무관)를 그대로 재사용해
+진짜 이웃 컨텍스트 확보, `txb_skip`/`dc_sign`은 크로마 전용 above/left 배열이 없어 고정 대표 컨텍스트
+유지(luma 초기 단계와 동일 수준). **64x64/128x128 확장 시도 → 되돌림**: 이론상 안전해 보였으나
+(chroma 32x32 캡 tiling도 rav1d 표와 일치 확인) 실 fixture 회귀, tx_size_class=3 경로 특유의 원인
+미상 버그로 되돌림. **중간에 `is_key_frame` 제한을 추가했다가 오진단으로 확인되어 제거**: 이 fixture의
+키프레임이 전부 미분할 128x128뿐이라 8~32 크기 CU가 전무해서, key-frame 제한을 걸면 게이트가 실제로는
+단 한 번도 발동하지 않은 채 모든 테스트가 "우연히" 통과하고 있었음(전용 회귀 테스트 추가로 발견) —
+인터 프레임에서도 8/16/32 스코프는 실제로 안전함을 재확인 후 제한 제거. 381/381(신규 1개: 게이트가
+실제 fixture에서 헛돌지 않고 발동하는지 확인하는 "non-vacuous" 테스트), 워크스페이스 전체 클린.
+**남은 것**: 64x64/128x128(원인 미상), 인터/IntraBC의 실제 var-tx(스키마 결정 필요), 비정사각 블록
+전부 여전히 열린 갭.
+
+- **다음 단계(로드맵, 남은 것)**: (1) 크로마 64x64/128x128 확장 재시도(tx_size_class=3 경로 원인
+불명 버그부터 규명 필요). (2) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit 스키마 변경 선행 필요) —
+이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장 가능. (3) partition의 `has_rows`/`has_cols`
+프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예 안 읽는 신택스 요소들. (4)
+inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전 세션에 재스코핑만 하고 보류).
 
 ---
 
