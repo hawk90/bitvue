@@ -93,15 +93,22 @@ impl<'a> SymbolDecoder<'a> {
     }
 
     /// Read INTRA prediction mode
+    /// Read key-frame `intra_mode` (spec 5.11.10 `kf_y_mode`), per its `above_mode_class`/
+    /// `left_mode_class` context (0..=4 each -- see `crate::tile::TileContext::intra_mode_context`).
+    ///
+    /// Real per-context default CDFs (`CdfContext`'s `kfym` doc) and real adaptation via
+    /// `read_symbol_adaptive`, matching `read_skip`'s bar -- not the "representative,
+    /// context-independent, non-adaptive" one the rest of this file still uses (see
+    /// `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note).
     ///
     /// Returns INTRA mode symbol (0-12):
     /// - 0: DC_PRED
     /// - 1: V_PRED
     /// - 2: H_PRED
     /// - 3-12: Directional and smooth modes
-    pub fn read_intra_mode(&mut self) -> Result<u8> {
-        let cdf = self.cdf_context.get_intra_mode_cdf();
-        self.decoder.read_symbol(cdf)
+    pub fn read_intra_mode(&mut self, above_class: u8, left_class: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_kfym_cdf_mut(above_class, left_class);
+        self.decoder.read_symbol_adaptive(cdf)
     }
 
     /// Read INTER prediction mode

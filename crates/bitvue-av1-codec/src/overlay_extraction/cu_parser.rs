@@ -361,4 +361,49 @@ mod tests {
              adaptation may have regressed to a degenerate always-one-value decode"
         );
     }
+
+    /// Regression test for the real key-frame `intra_mode` (`kfym`) context work: `read_intra_mode`
+    /// now uses real per-context (`TileContext::intra_mode_context`, 5x5 above/left mode-class
+    /// grid) default CDFs sourced from rav1d's `Default_Kf_Y_Mode_Cdf` and real adaptation,
+    /// instead of a single fixed non-adaptive CDF. Parses the real fixture's key/intra-only frames
+    /// and confirms more than one distinct `PredictionMode` occurs among their coding units --
+    /// same "not degenerate" bar as this test's siblings (`real_fixture_ref_frame_values_are_not_degenerate`,
+    /// `real_fixture_skip_flags_are_not_degenerate`).
+    #[test]
+    fn real_fixture_key_frame_intra_modes_are_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut distinct_modes: std::collections::HashSet<crate::tile::PredictionMode> =
+            Default::default();
+        let mut key_frame_cu_count = 0usize;
+
+        for frame in frames.iter().take(30) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.frame_type.is_intra_only || !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            key_frame_cu_count += cus.len();
+            distinct_modes.extend(cus.iter().map(|cu| cu.mode));
+        }
+
+        assert!(
+            key_frame_cu_count > 0,
+            "expected at least one key/intra-only frame with real coding units in the first 30 \
+             frames of the fixture"
+        );
+        assert!(
+            distinct_modes.len() > 1,
+            "expected more than one distinct intra PredictionMode across {key_frame_cu_count} \
+             real key-frame coding units, got only {distinct_modes:?} -- the real kfym \
+             context/CDF wiring may have regressed to a degenerate always-one-mode decode"
+        );
+    }
 }

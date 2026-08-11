@@ -131,10 +131,11 @@ pub struct CdfContext {
     /// unlike every other CDF in this struct, this one is not a "representative" placeholder.
     skip_cdf: [Vec<u16>; 3],
 
-    /// Prediction mode CDFs
-    /// For INTRA: 13 modes (DC, V, H, D45, D135, D113, D157, D203, D67, SMOOTH, SMOOTH_V, SMOOTH_H, PAETH)
-    /// For INTER: 4 modes (NEWMV, NEARESTMV, NEARMV, GLOBALMV)
-    intra_mode_cdf: Vec<u16>,
+    /// Key-frame `intra_mode` CDFs, indexed `[above_mode_class][left_mode_class]` (0..=4 each,
+    /// see `crate::tile::TileContext::intra_mode_context`). Real spec/rav1d default values +
+    /// real per-context adaptation -- like `skip_cdf`, not a "representative" placeholder.
+    kfym: [[Vec<u16>; 5]; 5],
+    /// INTER: 4 modes (NEWMV, NEARESTMV, NEARMV, GLOBALMV)
     inter_mode_cdf: Vec<u16>,
     /// `compound_mode` CDF (spec 5.11.24, 8 symbols) -- see `SymbolDecoder::read_compound_mode`'s
     /// doc for the symbol ordering. Context-independent representative value like every other
@@ -286,25 +287,122 @@ impl CdfContext {
             vec![32768 - 4576, 0, 0],  // context 2 (both neighbors skip): mostly skip
         ];
 
-        // INTRA mode CDF (13 modes)
-        // Biased toward DC_PRED (most common)
-        let intra_mode_cdf = vec![
-            0,                                // Start
-            (CDF_SCALE as f32 * 0.30) as u16, // DC_PRED: 30%
-            (CDF_SCALE as f32 * 0.40) as u16, // V_PRED: 10%
-            (CDF_SCALE as f32 * 0.50) as u16, // H_PRED: 10%
-            (CDF_SCALE as f32 * 0.58) as u16, // D45_PRED: 8%
-            (CDF_SCALE as f32 * 0.66) as u16, // D135_PRED: 8%
-            (CDF_SCALE as f32 * 0.72) as u16, // D113_PRED: 6%
-            (CDF_SCALE as f32 * 0.78) as u16, // D157_PRED: 6%
-            (CDF_SCALE as f32 * 0.84) as u16, // D203_PRED: 6%
-            (CDF_SCALE as f32 * 0.90) as u16, // D67_PRED: 6%
-            (CDF_SCALE as f32 * 0.94) as u16, // SMOOTH_PRED: 4%
-            (CDF_SCALE as f32 * 0.97) as u16, // SMOOTH_V_PRED: 3%
-            (CDF_SCALE as f32 * 0.99) as u16, // SMOOTH_H_PRED: 2%
-            CDF_SCALE,                        // PAETH_PRED: 1%
+        // kfym: real spec/rav1d default CDFs for key-frame intra_mode (spec 5.11.10
+        // `kf_y_mode`), indexed [above_mode_class][left_mode_class] (0..=4 each, from
+        // `INTRA_MODE_CONTEXT`). Source: rav1d `src/cdf.rs` `kfym` (`memorysafety/rav1d`,
+        // BSD-2-Clause). Each leaf already stores the real spec's raw cumulative-style
+        // probabilities; converted to this decoder's descending convention via the same
+        // `32768 - p` transform `to_descending`/rav1d's `cdf0d` both use, with the 13th
+        // (always-0) real entry and the adaptation-count slot appended explicitly.
+        let kfym: [[Vec<u16>; 5]; 5] = [
+            [
+                vec![
+                    17180, 15741, 13430, 12550, 12086, 11658, 10943, 9524, 8579, 4603, 3675, 2302,
+                    0, 0,
+                ],
+                vec![
+                    20752, 14702, 13252, 12465, 12049, 11324, 10880, 9736, 8334, 4110, 2596, 1359,
+                    0, 0,
+                ],
+                vec![
+                    22716, 21997, 10472, 9980, 9713, 9529, 8635, 7148, 6608, 3432, 2839, 1201, 0, 0,
+                ],
+                vec![
+                    18677, 17362, 16326, 13960, 13632, 13222, 12770, 10672, 8022, 3183, 1810, 306,
+                    0, 0,
+                ],
+                vec![
+                    20646, 19503, 17165, 16267, 14159, 12735, 10377, 7185, 6331, 2507, 1695, 293,
+                    0, 0,
+                ],
+            ],
+            [
+                vec![
+                    22745, 13183, 11920, 11328, 10936, 10008, 9679, 8745, 7387, 3754, 2286, 1332,
+                    0, 0,
+                ],
+                vec![
+                    26785, 8669, 8208, 7882, 7702, 6973, 6855, 6345, 5158, 2863, 1492, 974, 0, 0,
+                ],
+                vec![
+                    25324, 19987, 12591, 12040, 11691, 11161, 10598, 9363, 8299, 4853, 3678, 2276,
+                    0, 0,
+                ],
+                vec![
+                    24231, 18079, 17336, 15681, 15360, 14596, 14360, 12943, 8119, 3615, 1672, 558,
+                    0, 0,
+                ],
+                vec![
+                    25225, 18537, 17272, 16573, 14863, 12051, 10784, 8252, 6767, 3093, 1787, 774,
+                    0, 0,
+                ],
+            ],
+            [
+                vec![
+                    20155, 19177, 11385, 10764, 10456, 10191, 9367, 7713, 7039, 3230, 2463, 691, 0,
+                    0,
+                ],
+                vec![
+                    23081, 19298, 14262, 13538, 13164, 12621, 12073, 10706, 9549, 5025, 3557, 1861,
+                    0, 0,
+                ],
+                vec![
+                    26585, 26263, 6744, 6516, 6402, 6334, 5686, 4414, 4213, 2301, 1974, 682, 0, 0,
+                ],
+                vec![
+                    22050, 21034, 17814, 15544, 15203, 14844, 14207, 11245, 8890, 3793, 2481, 516,
+                    0, 0,
+                ],
+                vec![
+                    23574, 22910, 16267, 15505, 14344, 13597, 11205, 6807, 6207, 2696, 2031, 305,
+                    0, 0,
+                ],
+            ],
+            [
+                vec![
+                    20166, 18369, 17280, 14387, 13990, 13453, 13044, 11349, 7708, 3072, 1851, 359,
+                    0, 0,
+                ],
+                vec![
+                    24565, 18947, 18244, 15663, 15329, 14637, 14364, 13300, 7543, 3283, 1610, 426,
+                    0, 0,
+                ],
+                vec![
+                    24317, 23037, 17764, 15125, 14756, 14343, 13698, 11230, 8163, 3650, 2690, 750,
+                    0, 0,
+                ],
+                vec![
+                    25054, 23720, 23252, 16101, 15951, 15774, 15615, 14001, 6025, 2379, 1232, 240,
+                    0, 0,
+                ],
+                vec![
+                    23925, 22488, 21272, 17451, 16116, 14825, 13660, 10050, 6999, 2815, 1785, 283,
+                    0, 0,
+                ],
+            ],
+            [
+                vec![
+                    20190, 19097, 16789, 15934, 13693, 11855, 9779, 7319, 6549, 2554, 1618, 291, 0,
+                    0,
+                ],
+                vec![
+                    23205, 19142, 17688, 16876, 15012, 11905, 10561, 8532, 7388, 3115, 1625, 491,
+                    0, 0,
+                ],
+                vec![
+                    24412, 23867, 15152, 14512, 13418, 12662, 10170, 6821, 6302, 2868, 2245, 507,
+                    0, 0,
+                ],
+                vec![
+                    21933, 20953, 19644, 16726, 15750, 14729, 13821, 10015, 8153, 3279, 1885, 286,
+                    0, 0,
+                ],
+                vec![
+                    25150, 24480, 22909, 22259, 17382, 14111, 9865, 3992, 3588, 1413, 966, 175, 0,
+                    0,
+                ],
+            ],
         ];
-        let intra_mode_cdf = to_descending(&intra_mode_cdf);
 
         // INTER mode CDF (4 modes)
         // Biased toward NEWMV (explicit motion vectors)
@@ -527,7 +625,7 @@ impl CdfContext {
         Self {
             partition_cdfs,
             skip_cdf,
-            intra_mode_cdf,
+            kfym,
             inter_mode_cdf,
             compound_mode_cdf,
             mv_joint_cdf,
@@ -587,11 +685,11 @@ impl CdfContext {
         &mut self.skip_cdf[(ctx as usize).min(2)]
     }
 
-    /// Get INTRA prediction mode CDF
-    ///
-    /// Returns CDF for INTRA modes (13 symbols)
-    pub fn get_intra_mode_cdf(&self) -> &[u16] {
-        &self.intra_mode_cdf
+    /// Get mutable key-frame `intra_mode` CDF for the given context (`above_mode_class`,
+    /// `left_mode_class`, each 0..=4 -- see `crate::tile::TileContext::intra_mode_context`) --
+    /// mutable because `read_intra_mode` adapts it in place via `update_cdf` after every read.
+    pub fn get_kfym_cdf_mut(&mut self, above_class: u8, left_class: u8) -> &mut [u16] {
+        &mut self.kfym[(above_class as usize).min(4)][(left_class as usize).min(4)]
     }
 
     /// Get INTER prediction mode CDF

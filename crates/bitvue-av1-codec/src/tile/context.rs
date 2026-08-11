@@ -1,20 +1,29 @@
 //! Above/left neighbor-state tracking for entropy-context derivation.
 //!
 //! Per AV1 spec Section 9.3 (Function `get_ctx`) and rav1d's `BlockContext`
-//! (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`) -- currently covers only the `skip` flag's
-//! context (see `SymbolDecoder::read_skip`'s doc). Real partition-context derivation needs a
-//! per-8x8 bitmask tied to dav1d's edge-index tree (`src/decode.rs`'s `decode_sb`), a
-//! considerably larger port deferred to a later phase -- see `docs/DEVELOPMENT_PHASES.md` Phase 4's
-//! AV1 entropy-decoding note.
+//! (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`) -- currently covers the `skip` flag's
+//! context (see `SymbolDecoder::read_skip`'s doc) and key-frame `intra_mode`'s context (see
+//! `SymbolDecoder::read_intra_mode`'s doc). Real partition-context and inter/compound-mode
+//! context derivation both need considerably larger ports deferred to later phases -- partition
+//! needs a per-8x8 bitmask tied to dav1d's edge-index tree (`src/decode.rs`'s `decode_sb`);
+//! inter/compound mode context needs dav1d's reference-motion-vector-candidate subsystem
+//! (`src/refmvs.rs`, `rav1d_refmvs_find`) -- see `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1
+//! entropy-decoding note.
 //!
 //! Units throughout are 4x4 pixels (spec's context-array granularity).
 
+/// Maps a raw intra prediction-mode symbol (0..=12, spec `y_mode`/`uv_mode` values -- matches
+/// `bitvue_av1_codec::tile::PredictionMode`'s intra-variant declaration order exactly) to one of
+/// 5 mode-context classes used to index the key-frame `kfym` CDF. Source: rav1d
+/// `DAV1D_INTRA_MODE_CONTEXT` (`memorysafety/rav1d`, BSD-2-Clause, `src/tables.rs`).
+const INTRA_MODE_CONTEXT: [u8; 13] = [0, 1, 2, 3, 4, 4, 4, 4, 3, 0, 1, 2, 0];
+
 /// Tracks above/left neighbor state for one tile, at 4x4-unit granularity.
 ///
-/// `above_skip` spans the tile's full width and persists for the whole tile (matches spec: the
-/// above-context row is only reset at a new tile, not at every superblock row). `left_skip` spans
-/// the tile's full height and is addressed with the same absolute 4x4 coordinates as
-/// `above_skip` -- real dav1d instead sizes its left-context column to one superblock and
+/// `above_*` arrays span the tile's full width and persist for the whole tile (matches spec: the
+/// above-context row is only reset at a new tile, not at every superblock row). `left_*` arrays
+/// span the tile's full height and are addressed with the same absolute 4x4 coordinates as the
+/// `above_*` ones -- real dav1d instead sizes its left-context column to one superblock and
 /// addresses it with row-relative offsets (a memory/cache optimization for a real-time decoder);
 /// this crate isn't performance-constrained the same way, so `start_superblock_row` simply clears
 /// the whole array at each new superblock row, which is behaviorally equivalent (spec's
@@ -23,6 +32,11 @@
 pub struct TileContext {
     above_skip: Vec<bool>,
     left_skip: Vec<bool>,
+    /// Raw intra-mode symbol (0..=12) of the last block covering this 4x4 position, defaulting
+    /// to `0` (`DC_PRED`) -- matches dav1d's `BlockContext::mode` default/edge behavior (an
+    /// unwritten position reads as `DC_PRED`'s context class, per spec `INTRA_MODE_CONTEXT[0]`).
+    above_mode: Vec<u8>,
+    left_mode: Vec<u8>,
 }
 
 impl TileContext {
@@ -31,12 +45,40 @@ impl TileContext {
         Self {
             above_skip: vec![false; tile_width_4x4.max(1) as usize],
             left_skip: vec![false; tile_height_4x4.max(1) as usize],
+            above_mode: vec![0; tile_width_4x4.max(1) as usize],
+            left_mode: vec![0; tile_height_4x4.max(1) as usize],
         }
     }
 
-    /// Reset the left-context array at the start of each new superblock row.
+    /// Reset the left-context arrays at the start of each new superblock row.
     pub fn start_superblock_row(&mut self) {
         self.left_skip.iter_mut().for_each(|v| *v = false);
+        self.left_mode.iter_mut().for_each(|v| *v = 0);
+    }
+
+    /// Key-frame `intra_mode` context: `(above_mode_class, left_mode_class)`, each 0..=4, for a
+    /// block at absolute 4x4 position `(x4, y4)` -- per spec/dav1d:
+    /// `INTRA_MODE_CONTEXT[above_mode[x4]]`, `INTRA_MODE_CONTEXT[left_mode[y4]]`.
+    pub fn intra_mode_context(&self, x4: u32, y4: u32) -> (u8, u8) {
+        let above_raw = self.above_mode.get(x4 as usize).copied().unwrap_or(0);
+        let left_raw = self.left_mode.get(y4 as usize).copied().unwrap_or(0);
+        (
+            INTRA_MODE_CONTEXT[above_raw as usize],
+            INTRA_MODE_CONTEXT[left_raw as usize],
+        )
+    }
+
+    /// Record a decoded intra-mode symbol across the block's 4x4-unit footprint, for future
+    /// context lookups.
+    pub fn set_mode(&mut self, x4: u32, y4: u32, width_4x4: u32, height_4x4: u32, mode_symbol: u8) {
+        let x_end = (x4 + width_4x4).min(self.above_mode.len() as u32);
+        for x in x4..x_end {
+            self.above_mode[x as usize] = mode_symbol;
+        }
+        let y_end = (y4 + height_4x4).min(self.left_mode.len() as u32);
+        for y in y4..y_end {
+            self.left_mode[y as usize] = mode_symbol;
+        }
     }
 
     /// `skip` context index (0..=2) for a block at absolute 4x4 position `(x4, y4)` -- per
@@ -113,5 +155,52 @@ mod tests {
         let mut ctx = TileContext::new(4, 4);
         ctx.set_skip(2, 2, 100, 100, true);
         assert_eq!(ctx.skip_context(3, 3), 2);
+    }
+
+    #[test]
+    fn test_intra_mode_context_defaults_to_dc_pred_class() {
+        // No neighbors written yet -- both default to raw mode 0 (DC_PRED), class 0.
+        let ctx = TileContext::new(16, 16);
+        assert_eq!(ctx.intra_mode_context(0, 0), (0, 0));
+    }
+
+    #[test]
+    fn test_intra_mode_context_maps_through_intra_mode_context_table() {
+        let mut ctx = TileContext::new(16, 16);
+        // Raw mode 8 (D67_PRED) -> class 3 per INTRA_MODE_CONTEXT.
+        ctx.set_mode(0, 0, 4, 4, 8);
+        assert_eq!(ctx.intra_mode_context(0, 5).0, 3); // above contribution only
+        assert_eq!(ctx.intra_mode_context(5, 0).1, 3); // left contribution only
+    }
+
+    #[test]
+    fn test_intra_mode_context_combines_distinct_above_and_left_classes() {
+        let mut ctx = TileContext::new(16, 16);
+        // A block at (x4=0, y4=0..4) sets above_mode[0..4] AND left_mode[0..4] -- to isolate the
+        // two contributions for a query at (x4=0, y4=4), use two non-overlapping blocks: one
+        // covering only above_mode[0] (a block above-and-to-the-left, x4=0 y4=0..4), one covering
+        // only left_mode[4] (a block directly above the query's row, y4=4 x4=4..8 -- outside the
+        // query's own x4=0 column, so it can't also perturb above_mode[0]).
+        ctx.set_mode(0, 0, 4, 4, 8); // above_mode[0..4]=8, left_mode[0..4]=8
+        ctx.set_mode(4, 4, 4, 4, 4); // above_mode[4..8]=4, left_mode[4..8]=4
+                                     // Query (0, 4): above_mode[0]=8 (class 3, untouched by the second call), left_mode[4]=4
+                                     // (class 4, set by the second call).
+        assert_eq!(ctx.intra_mode_context(0, 4), (3, 4));
+    }
+
+    #[test]
+    fn test_start_superblock_row_resets_left_mode_but_not_above_mode() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_mode(0, 0, 4, 4, 8);
+        ctx.start_superblock_row();
+        assert_eq!(ctx.intra_mode_context(5, 0).1, 0); // left reset to DC_PRED class
+        assert_eq!(ctx.intra_mode_context(0, 5).0, 3); // above persists
+    }
+
+    #[test]
+    fn test_intra_mode_context_table_matches_rav1d_dav1d_intra_mode_context() {
+        // Source: rav1d `DAV1D_INTRA_MODE_CONTEXT` (`src/tables.rs`). Pinning the exact table
+        // here catches an accidental edit independent of the round-trip tests above.
+        assert_eq!(INTRA_MODE_CONTEXT, [0, 1, 2, 3, 4, 4, 4, 4, 3, 0, 1, 2, 0]);
     }
 }

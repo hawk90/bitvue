@@ -498,15 +498,10 @@ pub fn parse_coding_unit(
 
     // Read skip flag -- real per-context CDF + adaptation, see `SymbolDecoder::read_skip`'s doc.
     let (x4, y4) = (x / 4, y / 4);
+    let (width_4x4, height_4x4) = (width.div_ceil(4).max(1), height.div_ceil(4).max(1));
     let skip_ctx = tile_ctx.skip_context(x4, y4);
     cu.skip = decoder.read_skip(skip_ctx)?;
-    tile_ctx.set_skip(
-        x4,
-        y4,
-        width.div_ceil(4).max(1),
-        height.div_ceil(4).max(1),
-        cu.skip,
-    );
+    tile_ctx.set_skip(x4, y4, width_4x4, height_4x4, cu.skip);
 
     // TODO: Read segment ID (if segmentation enabled)
 
@@ -523,9 +518,12 @@ pub fn parse_coding_unit(
             false
         };
 
-        // Read INTRA prediction mode
-        let mode_symbol = decoder.read_intra_mode()?;
+        // Read INTRA prediction mode -- real per-context CDF + adaptation, see
+        // `SymbolDecoder::read_intra_mode`'s doc.
+        let (above_class, left_class) = tile_ctx.intra_mode_context(x4, y4);
+        let mode_symbol = decoder.read_intra_mode(above_class, left_class)?;
         cu.mode = intra_mode_from_symbol(mode_symbol)?;
+        tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, mode_symbol);
     } else {
         // ref_frame() (spec 5.11.25) -- read before mode, matching real spec order (this
         // decoder's CDFs are all non-adaptive/representative, so unlike a real spec-exact

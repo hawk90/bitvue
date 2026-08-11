@@ -1428,7 +1428,14 @@ uncompressed_header()의 segmentation~film_grain_params 구간, skip_mode_params
 - **`skip`은 진짜 컨텍스트+적응 완성**: `TileContext`(신규, 4x4단위 above/left skip 상태 추적) + rav1d 실제 기본값(`Default_Skip_Cdf`: 컨텍스트별 31671/16515/4576) + `read_symbol_adaptive`로 실제 적응까지 배선.
 - **partition 컨텍스트(비트마스크+edge-index 트리)는 예상보다 훨씬 커서 사용자 확인 후 이번 라운드에서 보류** — 대신 `partition_cdfs`도 다른 35개와 동일하게 방향만 변환(진짜 컨텍스트는 아님)했는데, 이게 없었으면 이전 세션에 고친 delta_q 회귀테스트가 다시 깨졌을 정도로 필수적이었음(파티션 디코드가 방향 불일치로 "항상 no-split"으로 퇴화해있었음).
 - 검증: `cargo test --workspace --lib` 전체 클린(3854+ 통과), `cargo clippy`/`cargo fmt` 클린(남은 warning 전부 무관한 기존 파일). 실제 fixture로 skip=true/false 둘 다 관측되는지 확인하는 회귀 테스트 신규 추가.
-- **다음 단계(로드맵, 이번엔 미착수)**: partition 실제 컨텍스트(edge-index 트리, 큰 작업), mode/ref_frame 컨텍스트, MV/delta_q 적응(컨텍스트는 이미 불필요, 적응만 배선하면 됨), residual coefficient 전체 컨텍스트(scan-order+neighbor-level 유도, 가장 큰 남은 작업), segment_id/실제 tx_size/palette 등 아예 안 읽는 신택스 요소들.
+
+**key-frame intra_mode(`kfym`) 컨텍스트도 진짜로 완성(2026-08-11)**: "mode 컨텍스트도 같은 방식으로?" 질문에 rav1d로 먼저 스코핑 — intra_mode(키프레임용 `kfym`, above/left 실제 예측모드를 5개 클래스로 묶어 5×5 컨텍스트)는 skip급 크기, inter_mode/compound_mode는 `rav1d_refmvs_find()`(spatial+temporal 후보 스캔하는 참조-MV 서브시스템, `src/refmvs.rs`)가 필요해 partition급으로 큼 — intra_mode만 진행하기로 사용자 확인.
+- `TileContext`에 above/left raw 모드값 추적 추가 + `INTRA_MODE_CONTEXT`(rav1d `DAV1D_INTRA_MODE_CONTEXT`) 클래스 매핑.
+- `kfym` 5×5×13 실제 기본 CDF 테이블을 rav1d `src/cdf.rs`에서 파이썬 스크립트로 직접 파싱+변환해 이식(325개 숫자 수기 옮기면 오타 위험 커서 자동화) — `read_symbol_adaptive`로 실제 적응까지 배선.
+- **검증 중 진짜 큰 버그 발견**: 새 kfym 테스트가 "첫 30프레임 중 키프레임이 하나도 없음"으로 계속 실패 — 원인 추적 결과 `overlay_extraction/parser.rs`가 `FrameType::is_intra_only()`(AV1의 희귀한 INTRA_ONLY_FRAME 타입만 매치)를 쓰고 있었는데 실제로 필요했던 건 `is_intra()`(KEY_FRAME도 포함, spec 5.9.2의 `FrameIsIntra` 정의와 일치) — **이 세션 내내(사실상 프로젝트 전체 기간) 진짜 키프레임이 전부 `is_key_frame=false`로 잘못 분류돼 `parse_coding_unit`의 INTER 분기를 타고 있었음**. 필드 이름/문서는 원래 의도("key/intra-only")를 정확히 담고 있었고 메서드 호출 하나만 틀렸던 것 — 2줄 수정으로 해결, 워크스페이스 전체 재검증 클린.
+- 실제 fixture로 키프레임에서 여러 종류의 intra PredictionMode가 관측되는지 확인하는 회귀 테스트 추가(이 버그 수정 전엔 통과가 불가능했음 — 키프레임 자체가 감지되지 않았으므로).
+
+- **다음 단계(로드맵, 아직 미착수)**: partition 실제 컨텍스트(edge-index 트리, 큰 작업), inter_mode/compound_mode 컨텍스트(refmvs 서브시스템, partition급), ref_frame 브랜치 컨텍스트, MV/delta_q 적응(컨텍스트는 이미 불필요, 적응만 배선하면 됨), residual coefficient 전체 컨텍스트(scan-order+neighbor-level 유도, 가장 큰 남은 작업), segment_id/실제 tx_size/palette 등 아예 안 읽는 신택스 요소들.
 
 ---
 

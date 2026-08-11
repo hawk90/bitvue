@@ -200,7 +200,18 @@ impl ParsedFrame {
                     // scaffold data -- found via `get_deblocking_analysis` returning a decode
                     // error on real fixture frames that should have real tile data.
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
-                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra_only();
+                        // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
+                        // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
+                        // INTRA_ONLY_FRAME`), which is `FrameType::is_intra()`, NOT
+                        // `FrameType::is_intra_only()` (`bitvue-engine`'s codec-agnostic type --
+                        // that method only matches AV1's literal, rare INTRA_ONLY_FRAME type,
+                        // excluding ordinary KEY_FRAME). Using the narrower method meant every
+                        // real KEY_FRAME in every fixture this session ever parsed was silently
+                        // routed through `parse_coding_unit`'s INTER branch instead of its INTRA
+                        // one -- found while verifying the new key-frame `intra_mode`/`kfym`
+                        // context work (`SymbolDecoder::read_intra_mode`) had zero real frames to
+                        // exercise it on.
+                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
                         frame_type.base_qp = frame_hdr.base_q_idx;
                         delta_q_enabled = frame_hdr.delta_q_present;
                         if frame_hdr.header_size_bytes < obu.payload.len() {
@@ -219,7 +230,9 @@ impl ParsedFrame {
                 }
                 ObuType::FrameHeader => {
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
-                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra_only();
+                        // See the `ObuType::Frame` branch above for why this is `is_intra()`, not
+                        // `is_intra_only()`.
+                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
                         frame_type.base_qp = frame_hdr.base_q_idx;
                         delta_q_enabled = frame_hdr.delta_q_present;
                     }
