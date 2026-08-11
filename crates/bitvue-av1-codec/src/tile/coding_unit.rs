@@ -875,27 +875,48 @@ pub fn parse_coding_unit(
 
         // Chroma (U/V) residual -- required for bitstream sync (spec 5.11.34's `residual()`
         // reads luma, then U, then V for every `HasChroma` block). Restricted to non-IntraBC,
-        // square luma coding blocks 8x8/16x16/32x32 (`tx_size_class` 0..=2) in a 4:2:0 stream --
-        // see `SymbolDecoder::read_chroma_residual_block`'s doc for the full scope and,
-        // importantly, what was *tried and empirically reverted*: extending to 64x64/128x128
-        // luma blocks (`tx_size_class` 3, chroma capped at 32x32) regressed a real-fixture test
-        // despite looking structurally correct against the real rav1d reference tables -- root
-        // cause not fully isolated, so it's excluded here rather than shipped speculatively. Not
-        // restricted to key frames: this scope (`tx_size_class` 0..=2) is real-fixture-verified
-        // on inter frames too (the only frame type this fixture's 8x8..32x32 CUs occur on --
-        // key-frame content here happens to only ever use unpartitioned 128x128 blocks, so an
-        // earlier key-frame-only version of this gate was accidentally *never exercised* by this
-        // fixture at all -- see `real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`).
+        // square luma coding blocks 8x8 through 64x64 (`tx_size_class` 0..=3) in a 4:2:0 stream --
+        // see `SymbolDecoder::read_chroma_residual_block`'s doc for the full scope. Not restricted
+        // to key frames: real fixture-verified on inter frames too (key-frame content here
+        // happens to only ever use unpartitioned 128x128 blocks, so an earlier key-frame-only
+        // version of this gate was accidentally *never exercised* by this fixture at all -- see
+        // `real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`).
+        //
+        // 64x64 (this pass): chroma's real max transform size is capped at 32x32 (spec
+        // `Max_Tx_Size_Rect`, confirmed against rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS` table)
+        // regardless of luma size, so a 64x64 luma block's 32x32 chroma plane is still exactly
+        // one chroma transform block (`chroma_area_px.min(32) == chroma_area_px` here) -- same
+        // shape as the already-working 8/16/32 cases, just reaching `tx_size_class` 3 for the
+        // first time. Confirmed real-fixture-verified (a real, non-vacuous set of 64x64 CUs
+        // parse cleanly).
+        //
+        // 128x128 (still excluded, still unresolved): a 128x128 luma block's 64x64 chroma plane
+        // needs *four* real 32x32 transform blocks (`num4x4W/H` stepped by the real chroma tx
+        // size), not one -- tiling this (`chroma_tiles_per_axis`-per-axis loop, tried both
+        // plane-outer -- all U then all V -- and interleaved U/V orderings, since
+        // `read_chroma_residual_block` takes no position and chroma's above/left context isn't
+        // tracked, so only call *count* and *order* could matter) still desyncs the very next
+        // superblock's decode, even though the tile count itself checks out against the same
+        // `Max_Tx_Size_Rect` table. Root cause not isolated in this pass either (matches the
+        // prior attempt's outcome) -- excluded via the `(8..=64)` bound below rather than shipped
+        // speculatively.
         if !cu.use_intrabc
             && !tx_type_flags.mono_chrome
             && tx_type_flags.subsampling_x
             && tx_type_flags.subsampling_y
             && width == height
-            && (8..64).contains(&width)
+            && (8..=64).contains(&width)
         {
-            let chroma_tx_px = width / 2;
-            decoder.read_chroma_residual_block(chroma_tx_px)?; // U
-            decoder.read_chroma_residual_block(chroma_tx_px)?; // V
+            let chroma_area_px = width / 2;
+            let chroma_tx_px = chroma_area_px.min(32);
+            let chroma_tiles_per_axis = chroma_area_px.div_ceil(chroma_tx_px).max(1);
+            let chroma_tile_count = chroma_tiles_per_axis * chroma_tiles_per_axis;
+            for _ in 0..chroma_tile_count {
+                decoder.read_chroma_residual_block(chroma_tx_px)?; // U
+            }
+            for _ in 0..chroma_tile_count {
+                decoder.read_chroma_residual_block(chroma_tx_px)?; // V
+            }
         }
 
         cu.residual = Some(summary);

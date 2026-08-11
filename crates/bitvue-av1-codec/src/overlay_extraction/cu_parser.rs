@@ -464,6 +464,7 @@ mod tests {
         let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
 
         let mut square_chroma_eligible_cu_count = 0usize;
+        let mut saw_64x64 = false;
 
         for frame in frames.iter() {
             let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
@@ -485,18 +486,24 @@ mod tests {
                 if !cu.skip
                     && !cu.use_intrabc
                     && cu.width == cu.height
-                    && (8..64).contains(&cu.width)
+                    && (8..=64).contains(&cu.width)
                 {
                     square_chroma_eligible_cu_count += 1;
+                    saw_64x64 |= cu.width == 64;
                 }
             }
         }
 
         assert!(
             square_chroma_eligible_cu_count > 0,
-            "expected at least one non-skip, non-IntraBC, square 8x8/16x16/32x32 coding unit \
-             (the chroma residual read's gate condition) across the real fixture -- if this is \
-             ever 0, the gate has gone dead and chroma bits are silently unread again"
+            "expected at least one non-skip, non-IntraBC, square 8x8/16x16/32x32/64x64 coding \
+             unit (the chroma residual read's gate condition) across the real fixture -- if this \
+             is ever 0, the gate has gone dead and chroma bits are silently unread again"
+        );
+        assert!(
+            saw_64x64,
+            "expected at least one real 64x64 CU -- if this regresses to 0, the 64x64 chroma \
+             extension (single-tile, tx_size_class=3) is passing vacuously"
         );
     }
 

@@ -972,26 +972,38 @@ impl<'a> SymbolDecoder<'a> {
     ///
     /// **Scope, deliberately narrower than luma's, and empirically pinned down (not just
     /// theorized)**: one call reads exactly one chroma transform block of `chroma_tx_px` pixels
-    /// per side. Callers must only invoke this for *square*, *non-IntraBC* luma coding blocks
-    /// 8x8/16x16/32x32 (`chroma_tx_px` = `luma_width/2` = 4/8/16, one call per plane, no tiling
-    /// needed), on *any* frame type -- see `parse_coding_unit`'s call site for the exact gate.
+    /// per side (always `<= 32`, chroma's real `Max_Tx_Size_Rect` cap regardless of luma size --
+    /// confirmed against rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS` table). Callers must only invoke
+    /// this for *square*, *non-IntraBC* luma coding blocks 8x8 through 64x64 (`chroma_tx_px` =
+    /// `min(luma_width/2, 32)` = 4/8/16/32, one call per plane -- 64x64 luma's 32x32 chroma plane
+    /// is exactly one transform block, same shape as the smaller sizes just reaching
+    /// `tx_size_class` 3 for the first time), on *any* frame type -- see `parse_coding_unit`'s
+    /// call site for the exact gate and its tiling-loop shape (needed for 128x128, see below).
     ///
-    /// Extending to 64x64/128x128 luma blocks (`chroma_tx_px` capped at 32, real chroma tx's
-    /// actual cap -- 128x128 needs a 2x2 tiling loop, 4 chroma blocks per plane) was *attempted
-    /// and reverted* after it regressed `real_fixture_key_frame_intra_modes_are_not_degenerate`,
-    /// despite looking structurally sound against rav1d's real reference tables (verified via a
-    /// dedicated research pass, not guessed). Traced (via forcing each read to a zero-bit no-op
-    /// and re-enabling incrementally) to something specific to the 32x32-chroma-transform
-    /// (`tx_size_class` 3) path itself, not the tiling loop or call count -- but the exact defect
-    /// wasn't isolated further. The `coeff_base`/`coeff_br` context (`symbol::scan::lo_ctx`) that
-    /// works correctly here offers no explanation, since it's plane-agnostic and already proven
-    /// at this same tx size for luma; the fixed-representative-context approximation used for
-    /// `txb_skip`/`dc_sign` (untested at this size/content combination until this attempt) is the
-    /// more likely culprit but unconfirmed. A real, open, narrower version of the same desync gap
-    /// (see `read_residual_block`'s doc) -- as is any non-square luma coding block (common, e.g.
-    /// `Horz`/`Vert` partitions), which was never attempted.
+    /// **128x128 luma (chroma capped-at-32 needs a real 2x2 tiling, 4 chroma blocks per plane):
+    /// attempted twice now (this pass and an earlier one), still unresolved.** Both attempts
+    /// regressed `real_fixture_key_frame_intra_modes_are_not_degenerate` (128x128 is this
+    /// fixture's only key-frame CU size) despite the tile *count* checking out against the real
+    /// spec table both times. This pass additionally ruled out call *order* (tried both
+    /// plane-outer -- all U tiles then all V -- and interleaved U/V per tile; identical failure
+    /// either way, expected since `read_chroma_residual_block` takes no position and chroma's
+    /// above/left context isn't tracked) and, more usefully, **ruled out the earlier attempt's
+    /// leading suspect**: it guessed the fixed-representative `txb_skip`/`dc_sign` context
+    /// approximation (only ever exercised via this same buggy 128x128 path before) as the likely
+    /// culprit -- but this pass's working single-tile 64x64 case exercises that *exact* same
+    /// `tx_size_class` 3 fixed-context path (just once instead of four times) and is real-fixture
+    /// clean, which rules that out as a *sufficient* explanation. What's left: something specific
+    /// to calling this function *more than once in a row* for the same coding unit -- e.g. CDF
+    /// adaptation state carried across those calls behaving differently than a real encoder
+    /// assumes, though nothing in this function's own state (each call's `LevelBuffer` is a fresh
+    /// local, and CDF adaptation across repeated real transform blocks is the normal/expected
+    /// entropy-coding behavior, not obviously wrong) explains it either -- not isolated further in
+    /// this pass. Excluded via `parse_coding_unit`'s `(8..=64)` bound rather than shipped
+    /// speculatively. Also still untried: non-square luma coding blocks (common, e.g. `Horz`/
+    /// `Vert` partitions), a real, open, narrower version of the same desync gap (see
+    /// `read_residual_block`'s doc).
     ///
-    /// An *earlier* attempt at this same 8x8/16x16/32x32 scope additionally required
+    /// An *earlier* attempt at the 8x8/16x16/32x32-only scope additionally required
     /// `is_key_frame` (misdiagnosing the tx_size_class-3 regression above as frame-type-specific,
     /// since it was only ever tested at `tx_size_class` 3 on an inter frame) -- that restriction
     /// turned out to make the gate *never fire at all* against the real fixture (its key frames
