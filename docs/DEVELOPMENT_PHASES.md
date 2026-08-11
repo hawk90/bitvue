@@ -1513,12 +1513,25 @@ tx_size별 실제 rav1d 기본값은 유지(컨텍스트는 0 고정) — 여전
 이웃-컨텍스트 코드(TileContext의 res_ctx 추적, set_res_ctx, txb_skip_context/dc_sign_context)는 죽은
 코드로 남기지 않고 완전 제거.
 
-- **다음 단계(로드맵, 남은 것 중 가장 큰 것들)**: (1) txb_skip/dc_sign의 실제 이웃 컨텍스트 — **실제
-`tx_size()` 비트스트림 읽기 구현이 선행 조건**(현재 차원 휴리스틱이라 tx 블록 경계 자체가 부정확), 그 다음
-res_ctx 이웃 로직 재시도. (2) coeff_base/coeff_br(스캔순서 테이블+블록당 scratch 버퍼, 여전히 가장 큰
-단일 작업). (3) 크로마 잔차 전체 미read 버그 수정(별도 이슈, transform_type()과 같은 계열이지만 luma-only
-호출부 자체를 바꿔야 함). (4) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기,
-segment_id/실제 tx_size/palette 등 아예 안 읽는 신택스 요소들.
+- **완료(2026-08-11, `755267d`)**: 인트라 전용 실제 `tx_size()` 비트스트림 읽기(spec 5.11.15/16) —
+위 txb_skip/dc_sign 되돌림에서 지목한 선행조건 자체를 구현. `read_tx_mode`가 버려지던 `tx_mode_select`
+비트를 실제로 반환하도록 변경(`TxfmMode::Only4x4`/`Largest`/`Switchable` 신규, `FrameHeader`에 노출).
+`TileContext`에 above/left `tx_class` 이웃 배열 + `tx_size_context`(get_tx_ctx: 이웃 tx_class가 이
+블록의 max_tx_class 이상인지 합산) 신규. `SymbolDecoder::read_tx_size`가 rav1d 기본값 이식한
+`txsz_cdf`로 실제 depth 심볼 읽음. `parse_coding_unit`은 `!use_intrabc`인 INTRA CU에 한해 Only4x4/
+Largest는 0비트로 즉시 해석, Switchable만 실제 심볼 읽기로 분기. **인터 블록과 IntraBC는 여전히 차원
+휴리스틱** — 실제 spec은 재귀적 var-tx 쿼드트리(5.11.17/18)를 쓰는데, 이는 CU 하나가 여러 tx 크기를
+가질 수 있다는 뜻이라 현재 `CodingUnit`의 단일 `tx_size: TxSize` 필드로 표현 불가 — 스키마 변경이
+필요한 설계 갈림길이라 임의로 결정하지 않고 향후 세션으로 보류. 358/358(av1-codec lib, 신규 테스트 7개),
+워크스페이스 전체(3853/3854, pre-existing flaky 1개 무관) + `--tests` 통합 스위트 클린, fmt/clippy 클린.
+
+- **다음 단계(로드맵, 남은 것 중 가장 큰 것들)**: (1) txb_skip/dc_sign의 실제 이웃 컨텍스트 재시도 —
+이제 인트라 경로는 tx 블록 경계가 정확해졌으므로 인트라 전용으로는 가능할 수 있음(인터/IntraBC 프레임은
+여전히 휴리스틱이라 부분적으로만 풀림). (2) coeff_base/coeff_br(스캔순서 테이블+블록당 scratch 버퍼,
+여전히 가장 큰 단일 작업). (3) 크로마 잔차 전체 미read 버그 수정(별도 이슈, transform_type()과 같은
+계열이지만 luma-only 호출부 자체를 바꿔야 함). (4) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit
+스키마 변경 선행 필요). (5) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기,
+segment_id/palette 등 아예 안 읽는 신택스 요소들.
 
 ---
 
