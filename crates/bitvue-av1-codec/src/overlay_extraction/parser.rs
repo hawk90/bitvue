@@ -52,6 +52,20 @@ pub struct ParsedFrame {
     /// `TxMode` (spec 5.9.21) -- see `TxfmMode`'s doc. Same sourcing/fallback story as
     /// `reference_select`.
     pub txfm_mode: TxfmMode,
+    /// `mono_chrome` (spec sequence header `color_config()`) -- true means this stream has no
+    /// chroma planes at all (`num_planes == 1`), sourced directly from the sequence header's
+    /// `ColorConfig` (no `parse_frame_header_full` needed, unlike `reference_select`/etc.).
+    /// Defaults to `true` (conservatively "no chroma") if the sequence header wasn't found --
+    /// this crate can't derive `subsampling_x`/`subsampling_y` without it, and guessing chroma
+    /// geometry wrong would be worse than the existing luma-only gap (see
+    /// `crate::tile::coding_unit`'s module doc for why this gap was a real desync bug, not just
+    /// missing data).
+    pub mono_chrome: bool,
+    /// `subsampling_x`/`subsampling_y` (spec sequence header `color_config()`) -- chroma plane
+    /// dimensions are `luma_dim >> subsampling_{x,y}` (spec `get_plane_residual_size`). Same
+    /// sourcing/fallback story as `mono_chrome` (irrelevant when `mono_chrome` is true).
+    pub subsampling_x: bool,
+    pub subsampling_y: bool,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -142,6 +156,9 @@ impl ParsedFrame {
                 reduced_tx_set: false,
                 coded_lossless: false,
                 txfm_mode: TxfmMode::default(),
+                mono_chrome: true,
+                subsampling_x: false,
+                subsampling_y: false,
             });
         }
 
@@ -176,6 +193,9 @@ impl ParsedFrame {
         let mut reduced_tx_set = false;
         let mut coded_lossless = false;
         let mut txfm_mode = TxfmMode::default();
+        let mut mono_chrome = true;
+        let mut subsampling_x = false;
+        let mut subsampling_y = false;
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -205,6 +225,9 @@ impl ParsedFrame {
                             sb_cols: 0,
                             sb_rows: 0,
                         };
+                        mono_chrome = seq_hdr.color_config.mono_chrome;
+                        subsampling_x = seq_hdr.color_config.subsampling_x;
+                        subsampling_y = seq_hdr.color_config.subsampling_y;
                         seq_header = Some(seq_hdr);
                     }
                 }
@@ -301,6 +324,9 @@ impl ParsedFrame {
             reduced_tx_set,
             coded_lossless,
             txfm_mode,
+            mono_chrome,
+            subsampling_x,
+            subsampling_y,
         })
     }
 

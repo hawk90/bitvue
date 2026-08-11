@@ -190,6 +190,9 @@ fn parse_partition_trees_from_tile_data(
                     qidx_is_zero: parsed.frame_type.base_qp == Some(0),
                     reduced_tx_set: parsed.reduced_tx_set,
                     txfm_mode: parsed.txfm_mode,
+                    mono_chrome: parsed.mono_chrome,
+                    subsampling_x: parsed.subsampling_x,
+                    subsampling_y: parsed.subsampling_y,
                 },
             );
 
@@ -908,6 +911,9 @@ mod tests {
                         qidx_is_zero: parsed.frame_type.base_qp == Some(0),
                         reduced_tx_set: parsed.reduced_tx_set,
                         txfm_mode: parsed.txfm_mode,
+                        mono_chrome: parsed.mono_chrome,
+                        subsampling_x: parsed.subsampling_x,
+                        subsampling_y: parsed.subsampling_y,
                     },
                 )?;
                 current_qp = new_qp;

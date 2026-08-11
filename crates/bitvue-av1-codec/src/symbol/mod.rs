@@ -762,7 +762,27 @@ impl<'a> SymbolDecoder<'a> {
     /// - **Chroma-plane residual is never read at all** -- callers only invoke this for luma
     ///   transform blocks (a separate, previously undocumented gap found while re-scoping this
     ///   work, not fixed here -- every real CDF/context added in this pass hardcodes the
-    ///   `chroma=0` axis of its rav1d source table for exactly this reason).
+    ///   `chroma=0` axis of its rav1d source table for exactly this reason). **Confirmed a real
+    ///   desync bug, not just missing data**: the real fixture is 4:2:0 (non-monochrome), so any
+    ///   non-skip `HasChroma` coding block's real encoder wrote chroma residual bits this crate
+    ///   never consumes. **Attempted and reverted**: a "shape-only" fix (real transform-block
+    ///   *count* for the dominant `>=8x8`-both-dimensions case, reusing luma's CDFs/tables with a
+    ///   fixed `ctx=0` and the last luma transform block's `is_1d`, since no real chroma CDF data
+    ///   exists in this crate) regressed `real_fixture_key_frame_intra_modes_are_not_degenerate`
+    ///   -- confirmed via disabling the new code path and re-running (test passed), isolating the
+    ///   chroma read as the cause. Root cause, best understanding: unlike the tolerated
+    ///   fixed-context-`0` approximation elsewhere (e.g. inter-frame luma `txb_skip`/`dc_sign`),
+    ///   an adaptive range decoder's bit *consumption* for variable-length constructs
+    ///   (`eob_bin`'s extra bits, the golomb extension) depends on the *decoded value*, which
+    ///   depends on the context/CDF used -- a context mismatch there can change how many bits get
+    ///   consumed, not just misinterpret them, and chroma coefficient statistics differ enough
+    ///   from luma's that this crate's luma-shaped approximation diverged in practice on real
+    ///   data. Real UV transform-size mapping (`Max_Tx_Size_Rect`, not this crate's
+    ///   luma-dimension-based `TxSize::from_dimensions` heuristic) and the exact `HasChroma`
+    ///   condition weren't independently verified either -- either could also be wrong. Reverted
+    ///   cleanly (no unverified/dead code left behind); `mono_chrome`/`subsampling_x`/
+    ///   `subsampling_y` sourcing (`ParsedFrame`, `crate::tile::TxTypeFrameFlags`) was kept since
+    ///   it's correct and independently useful for a future real attempt.
     ///
     /// None of these change the *shape* of the read sequence (an `all_zero` check, then -- when
     /// not all-zero -- an `eob_bin` symbol, `eob` extra bits, and exactly `eob` per-position

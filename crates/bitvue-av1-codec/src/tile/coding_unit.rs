@@ -48,12 +48,21 @@ use serde::{Deserialize, Serialize};
 /// `read_transform_type_is_1d`'s doc for why `qidx_is_zero` is a distinct condition from
 /// `coded_lossless` (the real spec shortcut checks `base_q_idx == 0` alone, without also
 /// requiring zero delta-Q).
+///
+/// `mono_chrome`/`subsampling_x`/`subsampling_y` are threaded through here too (sourced from
+/// `ParsedFrame`'s fields of the same name) but **not yet consumed by anything** -- an attempted
+/// chroma residual read using them regressed the real fixture (see `symbol/mod.rs`'s
+/// `read_residual_block` doc for the root-cause writeup) and was reverted. Kept here since the
+/// sourcing itself is correct and directly reusable by a future real attempt.
 #[derive(Debug, Clone, Copy)]
 pub struct TxTypeFrameFlags {
     pub coded_lossless: bool,
     pub qidx_is_zero: bool,
     pub reduced_tx_set: bool,
     pub txfm_mode: crate::frame_header::TxfmMode,
+    pub mono_chrome: bool,
+    pub subsampling_x: bool,
+    pub subsampling_y: bool,
 }
 
 /// Prediction mode for intra and inter prediction
@@ -806,6 +815,7 @@ pub fn parse_coding_unit(
                 summary.max_level = summary.max_level.max(block.max_level);
             }
         }
+
         cu.residual = Some(summary);
     } else {
         cu.residual = None;
