@@ -369,6 +369,67 @@ mod tests {
         );
     }
 
+    /// Regression test for the real `coeff_base`/`coeff_br` neighbor-context work
+    /// (`symbol::scan::lo_ctx`, real scan order): confirms real, varied residual-energy stats
+    /// still come out of the full fixture parse -- same "not degenerate" bar as this test's
+    /// siblings. A regression to a flat/broken context (or a scan-order/level-buffer indexing
+    /// bug) would most likely show up as either every non-skip CU reporting `nonzero_count == 0`
+    /// (context desync causing `txb_skip`/`coeff_base` to read spuriously-all-zero) or a single
+    /// repeated `sum_abs_level` value (context stuck at one bucket).
+    #[test]
+    fn real_fixture_residual_energy_is_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut distinct_sum_abs_levels: std::collections::HashSet<u64> = Default::default();
+        let mut saw_nonzero_residual = false;
+        let mut non_skip_cu_count = 0usize;
+
+        for frame in frames.iter().take(30) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            for cu in cus.iter() {
+                if cu.skip {
+                    continue;
+                }
+                non_skip_cu_count += 1;
+                if let Some(residual) = cu.residual {
+                    distinct_sum_abs_levels.insert(residual.sum_abs_level);
+                    if residual.nonzero_count > 0 {
+                        saw_nonzero_residual = true;
+                    }
+                }
+            }
+        }
+
+        assert!(
+            non_skip_cu_count > 0,
+            "fixture should have real non-skip coding units"
+        );
+        assert!(
+            saw_nonzero_residual,
+            "expected at least one non-skip CU with real nonzero residual coefficients among \
+             {non_skip_cu_count} non-skip CUs -- the real coeff_base/coeff_br context/scan-order \
+             work may have regressed to spurious all-zero decodes"
+        );
+        assert!(
+            distinct_sum_abs_levels.len() > 1,
+            "expected varied sum_abs_level values across {non_skip_cu_count} non-skip CUs, got \
+             only {} distinct value(s) -- may indicate coeff_base/coeff_br context is stuck at a \
+             single bucket",
+            distinct_sum_abs_levels.len()
+        );
+    }
+
     /// Regression test for the real key-frame `intra_mode` (`kfym`) context work: `read_intra_mode`
     /// now uses real per-context (`TileContext::intra_mode_context`, 5x5 above/left mode-class
     /// grid) default CDFs sourced from rav1d's `Default_Kf_Y_Mode_Cdf` and real adaptation,

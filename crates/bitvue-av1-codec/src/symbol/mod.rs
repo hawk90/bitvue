@@ -30,6 +30,7 @@
 
 pub mod arithmetic;
 pub mod cdf;
+pub mod scan;
 
 pub use arithmetic::{update_cdf, ArithmeticDecoder};
 pub use cdf::{CdfContext, PartitionCdf};
@@ -813,27 +814,68 @@ impl<'a> SymbolDecoder<'a> {
             ..Default::default()
         };
 
+        // Real coefficient scan order + per-position neighbor context (spec 8.3.2's
+        // `get_coef_base_ctx`/`get_br_ctx`) -- see `symbol::scan`'s module doc. `capped_class`
+        // mirrors `eob_bin`/`coeff_base_eob_context`'s existing 32x32 scan/context cap (real AV1
+        // never scans/contexts past the top-left 32x32 sub-block, even for a 64x64 transform).
+        let capped_class = tx_class.min(3);
+        let mut levels = scan::LevelBuffer::new(4 << capped_class);
+
         for c in (0..eob).rev() {
-            let base_level = if c == eob - 1 {
+            let (x, y) = scan::coeff_position(capped_class, is_1d, c);
+            let is_eob_pos = c == eob - 1;
+
+            // `br_ctx`: `coeff_br`'s context if this position's token turns out to need
+            // extending (`base_level > 2`) -- computed alongside `base_level` since both draw
+            // from the same neighbor lookup (`lo_ctx`'s `hi_mag` output, per its doc), matching
+            // rav1d's `get_lo_ctx` call site producing both values together.
+            let (base_level, br_ctx) = if is_eob_pos {
+                // No neighbors decoded yet (this is the first position visited) -- `coeff_br`'s
+                // context here is purely positional (spec: no magnitude bucket for the eob
+                // position specifically), unlike every other position below.
                 let ctx = coeff_base_eob_context(eob, tx_size_px);
                 let cdf = self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx);
-                self.decoder.read_symbol_adaptive(cdf)? as u32 + 1
+                let level = self.decoder.read_symbol_adaptive(cdf)? as u32 + 1;
+                let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
+                (level, if pos_band { 14 } else { 7 })
+            } else if c == 0 {
+                // DC position: 2D's `coeff_base` context is hardcoded to `0` (spec/rav1d), but
+                // `coeff_br`'s magnitude still comes from the same 3-neighbor sum `lo_ctx` would
+                // produce -- call it regardless of `is_1d` and only override the `coeff_base`
+                // context choice, matching dav1d's manual-recompute-for-2D special case.
+                let (lo_ctx_val, hi_mag) = scan::lo_ctx(&levels, 0, 0, is_1d);
+                let base_ctx = if is_1d { lo_ctx_val } else { 0 };
+                let cdf = self.cdf_context.get_coeff_base_cdf_mut(tx_class, base_ctx);
+                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
+                let mag = hi_mag & 63;
+                // DC's `coeff_br` context has no position-band offset (spec's lowest band).
+                (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
             } else {
-                let cdf = self.cdf_context.get_coeff_base_cdf();
-                self.decoder.read_symbol(cdf)? as u32
+                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, is_1d);
+                let cdf = self.cdf_context.get_coeff_base_cdf_mut(tx_class, ctx);
+                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
+                let mag = hi_mag & 63;
+                let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
+                let band = if pos_band { 14 } else { 7 };
+                (
+                    level,
+                    band + (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8,
+                )
             };
 
             let mut level = base_level;
-            if level > 2 {
-                let coeff_br_cdf = self.cdf_context.get_coeff_br_cdf();
+            let extended = level > 2;
+            if extended {
+                let coeff_br_cdf = self.cdf_context.get_coeff_br_cdf_mut(capped_class, br_ctx);
                 for _ in 0..4 {
-                    let br = self.decoder.read_symbol(coeff_br_cdf)? as u32;
+                    let br = self.decoder.read_symbol_adaptive(coeff_br_cdf)? as u32;
                     level += br;
                     if br < 3 {
                         break;
                     }
                 }
             }
+            levels.set(x, y, extended, level);
 
             if level > 0 {
                 if c == 0 {
