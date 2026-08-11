@@ -1538,12 +1538,26 @@ txb_skip은 above/left `cul_level`(계수 절댓값 합, 63캡) 바이트를 tx�
 (x4,y4) 위치를 추적(예전엔 단순 반복 횟수뿐이었음). 369/369(신규 테스트 11개, 지난번 회귀를 잡아냈던
 바로 그 real-fixture 테스트로 재확인), 워크스페이스 전체 클린.
 
-- **다음 단계(로드맵, 남은 것 중 가장 큰 것들)**: (1) coeff_base/coeff_br(스캔순서 테이블+블록당
-scratch 버퍼, 이제 진짜로 가장 큰 단일 작업). (2) 크로마 잔차 전체 미read 버그 수정(별도 이슈,
-transform_type()과 같은 계열이지만 luma-only 호출부 자체를 바꿔야 함). (3) 인터/IntraBC 실제 var-tx
-재귀 읽기(CodingUnit 스키마 변경 선행 필요) — 이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장
-가능. (4) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예
-안 읽는 신택스 요소들.
+- **완료(2026-08-11, `6dc76ef`)**: coeff_base/coeff_br 실제 이웃 컨텍스트 + 실제 스캔 순서. 이 세션
+남은 것 중 가장 컸던 단일 작업 완료. rav1d `src/scan.rs`(스캔테이블)+`src/recon_tmpl.c`의 `get_lo_ctx`
+(컨텍스트 공식)를 직접 소스 대조로 이식한 신규 `symbol::scan` 모듈: (1) 정사각 tx 4개 크기(4x4/8x8/
+16x16/32x32, 기존 eob_bin/coeff_base_eob과 동일하게 32x32 캡) 실제 2D 스캔테이블. TX_CLASS_H/V는
+테이블 불필요 — 정사각 전용인 이 크레이트 범위에선 두 클래스의 위치공식이 `x=c%dim,y=c/dim`으로
+완전히 동일해짐을 dav1d의 `DECODE_COEFS_CLASS` 매크로 직접 대조로 확인(추측 아님), 기존 `is_1d: bool`
+그대로 충분 — 3분류 TxClass 불필요. (2) `LevelBuffer`: 블록당 scratch 상태(TileContext의 타일범위
+above/left 배열과 다른 신규 패턴, 트랜스폼블록마다 초기화). dav1d의 바이트 인코딩(`tok*65`
+비확장/`tok+192` coeff_br확장)을 값 그대로가 아니라 인코딩 자체를 이식 — get_lo_ctx의 magnitude 합산이
+raw 바이트를 "이웃이 얼마나 유의미한가" 신호로 취급하기 때문에 인코딩 보존이 필수였음. (3) `lo_ctx`:
+5개 고정 오프셋(항상 이미 디코드된 고주파 위치) 이웃합산 공식 + coeff_br이 재사용하는 `hi_mag` 부산물.
+`coeff_base_cdf`/`coeff_br_cdf`를 단일 flat Vec에서 `[tx_size_class][ctx 0..40/20]` 실제 테이블로
+전환(rav1d 기본값 이식, 41/21 컨텍스트), 둘 다 real adaptation(`read_symbol_adaptive`)으로 전환.
+380/380(신규 테스트 11개+잔차 에너지 non-degenerate 회귀테스트 1개), 워크스페이스 전체 클린.
+
+- **다음 단계(로드맵, 남은 것)**: (1) 크로마 잔차 전체 미read 버그 수정(별도 이슈, transform_type()과
+같은 계열이지만 luma-only 호출부 자체를 바꿔야 함). (2) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit
+스키마 변경 선행 필요) — 이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장 가능. (3) partition의
+`has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예 안 읽는 신택스 요소들.
+(4) inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전 세션에 재스코핑만 하고 보류).
 
 ---
 
