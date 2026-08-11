@@ -185,20 +185,28 @@ pub struct CdfContext {
     /// struct, just applied to a syntax element where getting *some* real value beats the
     /// previous behavior of reading nothing at all. `eob_pt`/`coeff_base_eob` (below) are the
     /// exception: real per-context CDFs + adaptation, like `skip_cdf`/`ref_frame`'s CDFs.
-    /// `txb_skip_cdf`: all_zero flag for one transform block (2 symbols).
-    txb_skip_cdf: Vec<u16>,
+    /// `txb_skip_cdf`: all_zero flag for one transform block (2 symbols), indexed
+    /// `[tx_size_class 0..=4][ctx]`. Real above/left neighbor context (`ctx` 0..=6) was attempted
+    /// and reverted -- see `SymbolDecoder::read_residual_block`'s doc for why; `ctx` is always
+    /// `0` for now, still giving a real per-tx-size default value (chroma axis fixed to 0,
+    /// luma-only). Source: rav1d `coef.skip` (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`),
+    /// first qindex-bucket variant only (see `eob_bin_16_cdf`'s doc).
+    txb_skip_cdf: [[Vec<u16>; 7]; 5],
     /// `coeff_base` -- level (0..=3) for every other coefficient position (4 symbols).
     coeff_base_cdf: Vec<u16>,
     /// `coeff_br` -- range-extension increment (0..=3), read in a loop while extending a level
     /// past `NUM_BASE_LEVELS` (4 symbols).
     coeff_br_cdf: Vec<u16>,
-    /// `dc_sign` -- sign of the DC (position 0) coefficient (2 symbols). AC coefficient signs are
-    /// read as literal (uniform) bits per spec, not CDF-coded.
-    dc_sign_cdf: Vec<u16>,
+    /// `dc_sign` -- sign of the DC (position 0) coefficient (2 symbols), indexed `[ctx]`. Real
+    /// above/left neighbor context (`ctx` 0..=2) was attempted and reverted alongside
+    /// `txb_skip_cdf` -- see `SymbolDecoder::read_residual_block`'s doc; `ctx` is always `0` for
+    /// now (chroma axis fixed to 0). AC coefficient signs are read as literal (uniform) bits per
+    /// spec, not CDF-coded. Source: rav1d `coef.dc_sign`, first qindex-bucket variant only.
+    dc_sign_cdf: [Vec<u16>; 3],
 
     /// `eob_bin` (spec 5.11.39's `eob_pt_*`), real spec/rav1d default CDFs + real adaptation, one
     /// family per coefficient-count class (16/64/256/1024, the only 4 of rav1d's 7 classes a
-    /// *square*-only transform ever selects -- see `SymbolDecoder::eob_bin_context`'s doc) each
+    /// *square*-only transform ever selects -- see `get_eob_bin_cdf_mut`'s doc) each
     /// indexed by `is_1d` (0..=1, from `SymbolDecoder::read_transform_type_is_1d`; the real
     /// spec's `chroma` axis is always 0 here since this crate only reads luma residual, see
     /// `read_residual_block`'s doc). Source: rav1d `eob_bin_16/64/256/1024`
@@ -677,8 +685,16 @@ impl CdfContext {
         ];
         let diff_cdf = to_descending(&diff_cdf);
 
-        // txb_skip: most transform blocks within a non-skip CU are still fully zero.
-        let txb_skip_cdf = to_descending(&[0, (CDF_SCALE as f32 * 0.35) as u16, CDF_SCALE]);
+        // txb_skip: real spec/rav1d default CDFs, indexed [tx_size_class][ctx 0..=6] (chroma=0
+        // fixed -- see `txb_skip_cdf`'s doc). Source: rav1d `coef.skip`, first qindex-bucket
+        // variant.
+        let txb_skip_cdf: [[Vec<u16>; 7]; 5] = [
+            [31849, 5892, 12112, 21935, 20289, 27473, 32487].map(binary_ctx_cdf),
+            [31548, 1549, 10130, 16656, 18591, 26308, 32537].map(binary_ctx_cdf),
+            [29957, 5391, 18039, 23566, 22431, 25822, 32197].map(binary_ctx_cdf),
+            [17920, 1818, 7282, 25273, 10923, 31554, 32624].map(binary_ctx_cdf),
+            [6308, 117, 1638, 2161, 16384, 10923, 30247].map(binary_ctx_cdf),
+        ];
 
         // eob_bin: real spec/rav1d default CDFs, indexed [is_1d] (chroma=0 fixed -- see
         // `eob_bin_16_cdf`'s doc). Source: rav1d `eob_bin_16/64/256/1024`, first qindex-bucket
@@ -848,7 +864,9 @@ impl CdfContext {
         ]);
 
         // dc_sign: uniform (no real reason to bias this).
-        let dc_sign_cdf = to_descending(&[0, CDF_SCALE / 2, CDF_SCALE]);
+        // dc_sign: real spec/rav1d default CDFs, indexed [ctx 0..=2] (chroma=0 fixed -- see
+        // `dc_sign_cdf`'s doc). Source: rav1d `coef.dc_sign`, first qindex-bucket variant.
+        let dc_sign_cdf = [16000, 13056, 18816].map(binary_ctx_cdf);
 
         // Reference-frame selection: real spec/rav1d default probabilities (`memorysafety/rav1d`,
         // BSD-2-Clause, `src/cdf.rs`'s `comp`/`comp_dir`/`r#ref`/`comp_fwd_ref`/`comp_bwd_ref`/
@@ -1026,9 +1044,11 @@ impl CdfContext {
         &mut self.diff_cdf
     }
 
-    /// Get `txb_skip` (all_zero) CDF for one transform block.
-    pub fn get_txb_skip_cdf(&self) -> &[u16] {
-        &self.txb_skip_cdf
+    /// Get mutable `txb_skip` (all_zero) CDF for one transform block. `tx_size_class`: 0..=4 (see
+    /// `tx_size_class`). `ctx`: 0..=6, currently always called with `0` -- see
+    /// `SymbolDecoder::read_residual_block`'s doc.
+    pub fn get_txb_skip_cdf_mut(&mut self, tx_size_class: usize, ctx: u8) -> &mut [u16] {
+        &mut self.txb_skip_cdf[tx_size_class.min(4)][(ctx as usize).min(6)]
     }
 
     /// Get mutable `eob_bin` CDF for a transform block of `tx_size_px` pixels per side
@@ -1102,9 +1122,10 @@ impl CdfContext {
         &self.coeff_br_cdf
     }
 
-    /// Get `dc_sign` CDF (sign of the DC coefficient).
-    pub fn get_dc_sign_cdf(&self) -> &[u16] {
-        &self.dc_sign_cdf
+    /// Get mutable `dc_sign` CDF (sign of the DC coefficient). `ctx`: 0..=2, currently always
+    /// called with `0` -- see `SymbolDecoder::read_residual_block`'s doc.
+    pub fn get_dc_sign_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.dc_sign_cdf[(ctx as usize).min(2)]
     }
 
     /// Get `comp_mode` CDF (single-reference vs compound prediction), real context (0..=4, see

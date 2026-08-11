@@ -695,7 +695,18 @@ impl<'a> SymbolDecoder<'a> {
     ///   derives these from already-decoded neighbor coefficient levels and the above/left
     ///   transform block state. `eob_bin`/`eob_hi_bit`/`coeff_base_eob` are the exception --
     ///   real context, like `skip`/`intra_mode`/`inter_mode`/`ref_frame` (see `CdfContext::new`'s
-    ///   doc).
+    ///   doc). `txb_skip`/`dc_sign` **were** attempted with real above/left neighbor context (a
+    ///   packed `res_ctx` byte + OR-reduce/sum formulas ported from rav1d's `get_skip_ctx`/
+    ///   `get_dc_sign_ctx`) but reverted after it caused real decode corruption on the real test
+    ///   fixture (`real_fixture_key_frame_intra_modes_are_not_degenerate` started failing) --
+    ///   root cause traced to this crate's `tx_size` being a dimension-based *heuristic*
+    ///   (`TxSize::from_dimensions`, see below), not a real bitstream read: neighbor context is
+    ///   only meaningful when transform-block *boundaries* are accurate, which they aren't here.
+    ///   The flat CDF this replaced didn't care about tx boundaries at all, so this gap silently
+    ///   never mattered before -- real per-context reads exposed it. Both now use a fixed context
+    ///   (`0`) with real per-tx-size default CDF values (still an improvement over the old single
+    ///   flat representative CDF), leaving real neighbor derivation for a future session once
+    ///   real `tx_size()` reading exists.
     /// - **`eob_extra` bits after the first are uniform literal bits**, not spec-exact CDF-coded
     ///   -- the real spec only context-codes the *first* extra bit (`eob_hi_bit`, real here); the
     ///   rest are genuinely literal per spec too, so this isn't a simplification for those.
@@ -726,8 +737,12 @@ impl<'a> SymbolDecoder<'a> {
         tx_size_px: u32,
         is_1d: bool,
     ) -> Result<ResidualBlockStats> {
-        let txb_skip_cdf = self.cdf_context.get_txb_skip_cdf();
-        let all_zero = self.decoder.read_symbol(txb_skip_cdf)? == 1;
+        let tx_class = cdf::tx_size_class(tx_size_px);
+
+        // Context fixed at 0 -- see this method's doc for why real above/left context is
+        // reverted for now.
+        let txb_skip_cdf = self.cdf_context.get_txb_skip_cdf_mut(tx_class, 0);
+        let all_zero = self.decoder.read_symbol_adaptive(txb_skip_cdf)? == 1;
         if all_zero {
             return Ok(ResidualBlockStats {
                 all_zero: true,
@@ -739,7 +754,6 @@ impl<'a> SymbolDecoder<'a> {
         let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
 
         let eob: u32 = if eob_bin > 1 {
-            let tx_class = cdf::tx_size_class(tx_size_px);
             let eob_hi_bit_cdf = self
                 .cdf_context
                 .get_eob_hi_bit_cdf_mut(tx_class, eob_bin as u8);
@@ -759,10 +773,12 @@ impl<'a> SymbolDecoder<'a> {
             all_zero: false,
             ..Default::default()
         };
+        // Context fixed at 0 -- see this method's doc for why real above/left context is
+        // reverted for now.
+        let dc_sign_ctx = 0;
 
         for c in (0..eob).rev() {
             let base_level = if c == eob - 1 {
-                let tx_class = cdf::tx_size_class(tx_size_px);
                 let ctx = coeff_base_eob_context(eob, tx_size_px);
                 let cdf = self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx);
                 self.decoder.read_symbol_adaptive(cdf)? as u32 + 1
@@ -785,8 +801,8 @@ impl<'a> SymbolDecoder<'a> {
 
             if level > 0 {
                 if c == 0 {
-                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf();
-                    self.decoder.read_symbol(dc_sign_cdf)?;
+                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf_mut(dc_sign_ctx);
+                    self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
                 } else {
                     self.decoder.read_bool(16384)?;
                 }
