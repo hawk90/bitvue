@@ -42,16 +42,18 @@ use crate::symbol::{ResidualBlockStats, SymbolDecoder};
 use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
-/// Frame header flags `SymbolDecoder::read_transform_type_is_1d` needs, bundled to avoid growing
-/// `parse_coding_unit`'s already-long parameter list further -- see `ParsedFrame`'s doc for how
-/// `coded_lossless`/`reduced_tx_set` are sourced, and `read_transform_type_is_1d`'s doc for why
-/// `qidx_is_zero` is a distinct condition from `coded_lossless` (the real spec shortcut checks
-/// `base_q_idx == 0` alone, without also requiring zero delta-Q).
+/// Frame header flags `SymbolDecoder::read_transform_type_is_1d`/`read_tx_size` need, bundled to
+/// avoid growing `parse_coding_unit`'s already-long parameter list further -- see `ParsedFrame`'s
+/// doc for how `coded_lossless`/`reduced_tx_set`/`txfm_mode` are sourced, and
+/// `read_transform_type_is_1d`'s doc for why `qidx_is_zero` is a distinct condition from
+/// `coded_lossless` (the real spec shortcut checks `base_q_idx == 0` alone, without also
+/// requiring zero delta-Q).
 #[derive(Debug, Clone, Copy)]
 pub struct TxTypeFrameFlags {
     pub coded_lossless: bool,
     pub qidx_is_zero: bool,
     pub reduced_tx_set: bool,
+    pub txfm_mode: crate::frame_header::TxfmMode,
 }
 
 /// Prediction mode for intra and inter prediction
@@ -384,6 +386,19 @@ impl TxSize {
             _ => TxSize::Tx64x64,
         }
     }
+
+    /// Inverse of this enum's own discriminant order (0..=4) -- the size-*class* form
+    /// `SymbolDecoder::read_tx_size`/`TileContext::tx_size_context` operate on. Clamps rather
+    /// than erroring since callers only ever pass values already derived from a `TxSize`.
+    pub fn from_class(class: u8) -> Self {
+        match class {
+            0 => TxSize::Tx4x4,
+            1 => TxSize::Tx8x8,
+            2 => TxSize::Tx16x16,
+            3 => TxSize::Tx32x32,
+            _ => TxSize::Tx64x64,
+        }
+    }
 }
 
 /// Coding Unit information
@@ -545,6 +560,29 @@ pub fn parse_coding_unit(
         cu.mode = intra_mode_from_symbol(mode_symbol)?;
         tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, mode_symbol);
         y_mode_raw = mode_symbol;
+
+        // tx_size() (spec 5.11.15/16) -- real per-context CDF + adaptation, see
+        // `SymbolDecoder::read_tx_size`'s doc. IntraBC blocks are excluded: real spec routes
+        // them through the recursive `read_var_tx_size()` tree (like inter blocks), which this
+        // crate doesn't implement yet -- they keep the existing `TxSize::from_dimensions`
+        // heuristic unchanged, same as the `else` (inter) branch below.
+        if !cu.use_intrabc {
+            let max_tx_class = cu.tx_size as u8; // from_dimensions's heuristic starting point
+            let resolved_class = if tx_type_flags.coded_lossless {
+                0
+            } else {
+                match tx_type_flags.txfm_mode {
+                    crate::frame_header::TxfmMode::Only4x4 => 0,
+                    crate::frame_header::TxfmMode::Largest => max_tx_class,
+                    crate::frame_header::TxfmMode::Switchable => {
+                        let ctx = tile_ctx.tx_size_context(x4, y4, max_tx_class);
+                        decoder.read_tx_size(max_tx_class, ctx)?
+                    }
+                }
+            };
+            cu.tx_size = TxSize::from_class(resolved_class);
+            tile_ctx.set_tx_class(x4, y4, width_4x4, height_4x4, resolved_class);
+        }
     } else {
         // ref_frame() (spec 5.11.25) -- real per-context CDF + adaptation, see
         // `SymbolDecoder::read_ref_frames`'s doc.

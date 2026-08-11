@@ -2,6 +2,7 @@
 //!
 //! Provides ParsedFrame struct and related types for caching parsed OBU data.
 
+use crate::frame_header::TxfmMode;
 use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
 use crate::{parse_all_obus, parse_frame_header_basic, ObuType};
 use bitvue_engine::BitvueError;
@@ -48,6 +49,9 @@ pub struct ParsedFrame {
     /// `frame_header_full.rs`'s own `coded_lossless` derivation (see that module's doc). `false`
     /// if `base_q_idx` wasn't parsed (same resilient-fallback precedent as `delta_q_enabled`).
     pub coded_lossless: bool,
+    /// `TxMode` (spec 5.9.21) -- see `TxfmMode`'s doc. Same sourcing/fallback story as
+    /// `reference_select`.
+    pub txfm_mode: TxfmMode,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -137,6 +141,7 @@ impl ParsedFrame {
                 allow_intrabc: false,
                 reduced_tx_set: false,
                 coded_lossless: false,
+                txfm_mode: TxfmMode::default(),
             });
         }
 
@@ -170,6 +175,7 @@ impl ParsedFrame {
         let mut allow_intrabc = false;
         let mut reduced_tx_set = false;
         let mut coded_lossless = false;
+        let mut txfm_mode = TxfmMode::default();
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -242,6 +248,7 @@ impl ParsedFrame {
                             coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
+                            txfm_mode = full_hdr.txfm_mode;
                         }
                     }
                 }
@@ -263,6 +270,7 @@ impl ParsedFrame {
                             coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
+                            txfm_mode = full_hdr.txfm_mode;
                         }
                     }
                 }
@@ -292,6 +300,7 @@ impl ParsedFrame {
             allow_intrabc,
             reduced_tx_set,
             coded_lossless,
+            txfm_mode,
         })
     }
 

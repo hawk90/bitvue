@@ -54,7 +54,7 @@
 use crate::bitreader::BitReader;
 use crate::frame_header::{
     CdefInfo, FilmGrainInfo, FrameHeader, FrameType, LoopFilterInfo, LoopRestorationInfo,
-    LoopRestorationType, SuperResolutionInfo,
+    LoopRestorationType, SuperResolutionInfo, TxfmMode,
 };
 use crate::sequence::SequenceHeader;
 use bitvue_engine::{BitvueError, Result};
@@ -612,11 +612,16 @@ fn parse_lr_params(
     })
 }
 
-fn read_tx_mode(reader: &mut BitReader, coded_lossless: bool) -> Result<()> {
-    if !coded_lossless {
-        reader.read_bit()?; // tx_mode_select
+fn read_tx_mode(reader: &mut BitReader, coded_lossless: bool) -> Result<TxfmMode> {
+    if coded_lossless {
+        return Ok(TxfmMode::Only4x4);
     }
-    Ok(())
+    let tx_mode_select = reader.read_bit()?;
+    Ok(if tx_mode_select {
+        TxfmMode::Switchable
+    } else {
+        TxfmMode::Largest
+    })
 }
 
 fn read_frame_reference_mode(reader: &mut BitReader, frame_is_intra: bool) -> Result<bool> {
@@ -896,6 +901,7 @@ pub fn parse_frame_header_full(
             reference_select: false,
             allow_intrabc: false,
             reduced_tx_set: false,
+            txfm_mode: TxfmMode::Largest,
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -1127,7 +1133,7 @@ pub fn parse_frame_header_full(
     let cdef = parse_cdef_params(&mut reader, seq, coded_lossless, allow_intrabc)?;
     let loop_restoration = parse_lr_params(&mut reader, seq, all_lossless, allow_intrabc)?;
 
-    read_tx_mode(&mut reader, coded_lossless)?;
+    let txfm_mode = read_tx_mode(&mut reader, coded_lossless)?;
     let reference_select = read_frame_reference_mode(&mut reader, frame_is_intra)?;
     read_skip_mode_params(
         &mut reader,
@@ -1196,6 +1202,7 @@ pub fn parse_frame_header_full(
         reference_select,
         allow_intrabc,
         reduced_tx_set,
+        txfm_mode,
         loop_filter,
         cdef_damping: cdef.clone(),
         cdef_y_primary_strength: cdef.y_primary_strength,

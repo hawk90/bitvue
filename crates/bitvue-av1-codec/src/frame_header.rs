@@ -123,6 +123,23 @@ pub struct SuperResolutionInfo {
     pub scale_denominator: u8,
 }
 
+/// `TxMode` (spec 5.9.21 `read_tx_mode`) -- selects how a coding block's transform size(s) are
+/// determined. `Only4x4` and `Largest` both read zero bits (a mechanical table lookup only);
+/// `Switchable` is the only mode where `tx_size()`/`read_var_tx_size()` (spec 5.11.15-18) read
+/// real per-block symbols. Default `Largest` matches the real spec's fallback for OBUs this
+/// crate can't parse (same resilient-fallback precedent as `reference_select`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TxfmMode {
+    /// `CodedLossless == 1` forces this -- every transform is 4x4, unconditionally.
+    Only4x4,
+    /// No `tx_size()` bits read -- every transform is the largest that fits the coding block.
+    #[default]
+    Largest,
+    /// Real per-block `tx_size()`/`read_var_tx_size()` reads determine the actual transform
+    /// size(s), which can be smaller than the coding block's own largest-fitting size.
+    Switchable,
+}
+
 /// Minimal frame header information
 #[derive(Debug, Clone)]
 pub struct FrameHeader {
@@ -178,6 +195,9 @@ pub struct FrameHeader {
     /// basic-vs-full caveat as `reference_select`); real value only from
     /// `parse_frame_header_full`.
     pub reduced_tx_set: bool,
+    /// `TxMode` (spec 5.9.21) -- see `TxfmMode`'s doc. Always `TxfmMode::Largest` from
+    /// `parse_frame_header_basic` (same basic-vs-full caveat as `reference_select`).
+    pub txfm_mode: TxfmMode,
     /// Loop filter (deblocking) parameters
     pub loop_filter: LoopFilterInfo,
     /// CDEF parameters
@@ -524,6 +544,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             reference_select: false,
             allow_intrabc: false,
             reduced_tx_set: false,
+            txfm_mode: TxfmMode::Largest,
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -693,6 +714,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         reference_select: false,
         allow_intrabc: false,
         reduced_tx_set: false,
+        txfm_mode: TxfmMode::Largest,
         loop_filter: LoopFilterInfo::default(),
         cdef_damping: CdefInfo::default(),
         cdef_y_primary_strength: 0,

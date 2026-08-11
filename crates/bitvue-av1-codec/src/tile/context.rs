@@ -349,6 +349,15 @@ pub struct TileContext {
     /// `inter_mode`/`compound_mode` context -- see `SpatialRefContext`'s doc (full-grid, not
     /// above/left arrays, and never reset per superblock row).
     spatial_ref: SpatialRefContext,
+    /// Intra `tx_size()` (spec 5.11.15/16) context state: the resolved transform's size *class*
+    /// (0..=4, `TxSize`'s own discriminant order -- matches rav1d's `TxfmInfo.lw`/`.lh` exactly
+    /// for a square transform, so no separate log2 conversion is needed). Defaults to `-1`
+    /// (`i8`, never a real class) so an unwritten position can never satisfy the context
+    /// formula's `>=` comparison -- matches rav1d's own tile-start reset value for this array
+    /// (`memorysafety/rav1d`, BSD-2-Clause, `src/decode.rs`'s `tx_intra` reset), unlike
+    /// `above_mode`'s "default reads as a real class" shortcut.
+    above_tx_class: Vec<i8>,
+    left_tx_class: Vec<i8>,
 }
 
 impl TileContext {
@@ -375,6 +384,8 @@ impl TileContext {
             above_ref1: vec![0; tile_width_4x4.max(1) as usize],
             left_ref1: vec![0; tile_height_4x4.max(1) as usize],
             spatial_ref: SpatialRefContext::new(tile_width_4x4, tile_height_4x4),
+            above_tx_class: vec![-1; tile_width_4x4.max(1) as usize],
+            left_tx_class: vec![-1; tile_height_4x4.max(1) as usize],
         }
     }
 
@@ -387,6 +398,7 @@ impl TileContext {
         self.left_ref_comp.iter_mut().for_each(|v| *v = false);
         self.left_ref0.iter_mut().for_each(|v| *v = 0);
         self.left_ref1.iter_mut().for_each(|v| *v = 0);
+        self.left_tx_class.iter_mut().for_each(|v| *v = -1);
     }
 
     /// `partition` context index (0..=3) for a block at absolute 8x8-unit position `(x8, y8)`,
@@ -439,6 +451,39 @@ impl TileContext {
         let y_end = (y4 + height_4x4).min(self.left_mode.len() as u32);
         for y in y4..y_end {
             self.left_mode[y as usize] = mode_symbol;
+        }
+    }
+
+    /// Intra `tx_size()` context (0..=2) for a block at absolute 4x4 position `(x4, y4)` with
+    /// max transform class `max_tx_class` (0..=4, `TxSize`'s discriminant order) -- per
+    /// spec/rav1d `get_tx_ctx`: `(left_tx_class[y4] >= max_tx_class) + (above_tx_class[x4] >=
+    /// max_tx_class)`. An unwritten neighbor (`-1`, see the struct field doc) never satisfies
+    /// `>=` for any real class, so it correctly contributes `0` without needing an explicit
+    /// `have_top`/`have_left` check (same "default array value" pattern as `skip_context`).
+    pub fn tx_size_context(&self, x4: u32, y4: u32, max_tx_class: u8) -> u8 {
+        let above = self.above_tx_class.get(x4 as usize).copied().unwrap_or(-1);
+        let left = self.left_tx_class.get(y4 as usize).copied().unwrap_or(-1);
+        u8::from(left >= max_tx_class as i8) + u8::from(above >= max_tx_class as i8)
+    }
+
+    /// Record a decoded (or table-derived, for non-`Switchable` `TxMode`s) transform's size
+    /// class across the block's 4x4-unit footprint, for future `tx_size_context` lookups.
+    pub fn set_tx_class(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        tx_class: u8,
+    ) {
+        let tx_class = tx_class as i8;
+        let x_end = (x4 + width_4x4).min(self.above_tx_class.len() as u32);
+        for x in x4..x_end {
+            self.above_tx_class[x as usize] = tx_class;
+        }
+        let y_end = (y4 + height_4x4).min(self.left_tx_class.len() as u32);
+        for y in y4..y_end {
+            self.left_tx_class[y as usize] = tx_class;
         }
     }
 
@@ -796,6 +841,7 @@ fn cmp_counts(c1: u8, c2: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::symbol::SymbolDecoder;
 
     #[test]
     fn test_skip_context_starts_at_zero_with_no_neighbors() {
@@ -1210,5 +1256,89 @@ mod tests {
         let ctx = SpatialRefContext::new(16, 16);
         assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0), 0);
         assert_eq!(ctx.compound_mode_context(5, 5, 4, 4, 0, 4), 0);
+    }
+
+    // `tx_size()` (intra) tests.
+
+    #[test]
+    fn test_tx_size_context_no_neighbors_is_zero() {
+        let ctx = TileContext::new(16, 16);
+        assert_eq!(ctx.tx_size_context(0, 0, 4), 0);
+    }
+
+    #[test]
+    fn test_tx_size_context_above_neighbor_at_least_as_large_contributes() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_tx_class(0, 0, 4, 4, 4); // neighbor's tx class = Tx64x64 (4)
+                                         // Query at (0, 5): above-only (x4=0 means have_left irrelevant here since query itself
+                                         // reads left_tx_class[y4=5], untouched -> only above contributes).
+        assert_eq!(ctx.tx_size_context(0, 5, 3), 1); // 4 >= 3
+    }
+
+    #[test]
+    fn test_tx_size_context_left_neighbor_smaller_does_not_contribute() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_tx_class(0, 0, 4, 4, 1); // neighbor's tx class = Tx8x8 (1)
+        assert_eq!(ctx.tx_size_context(5, 0, 3), 0); // 1 < 3
+    }
+
+    #[test]
+    fn test_tx_size_context_sums_both_neighbors() {
+        let mut ctx = TileContext::new(16, 16);
+        // Isolated placements: above contribution at column x4=5 (query x4), left at row y4=5.
+        ctx.set_tx_class(5, 0, 4, 4, 4);
+        ctx.set_tx_class(0, 5, 4, 4, 4);
+        assert_eq!(ctx.tx_size_context(5, 5, 3), 2);
+    }
+
+    #[test]
+    fn test_start_superblock_row_resets_left_tx_class_but_not_above() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_tx_class(0, 0, 4, 4, 4);
+        ctx.start_superblock_row();
+        assert_eq!(ctx.tx_size_context(5, 0, 3), 0); // left reset to -1
+        assert_eq!(ctx.tx_size_context(0, 5, 3), 1); // above persists
+    }
+
+    #[test]
+    fn test_read_tx_size_class_zero_reads_zero_bits() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = (
+            decoder.decoder.range,
+            decoder.decoder.value,
+            decoder.decoder.cnt,
+        );
+        let resolved = decoder.read_tx_size(0, 0).unwrap();
+        assert_eq!(resolved, 0);
+        assert_eq!(
+            (
+                decoder.decoder.range,
+                decoder.decoder.value,
+                decoder.decoder.cnt
+            ),
+            before
+        );
+    }
+
+    #[test]
+    fn test_read_tx_size_class_reads_real_bits_and_never_exceeds_max() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = (
+            decoder.decoder.range,
+            decoder.decoder.value,
+            decoder.decoder.cnt,
+        );
+        let resolved = decoder.read_tx_size(4, 1).unwrap();
+        assert!(resolved <= 4);
+        assert_ne!(
+            (
+                decoder.decoder.range,
+                decoder.decoder.value,
+                decoder.decoder.cnt
+            ),
+            before
+        );
     }
 }

@@ -248,6 +248,15 @@ pub struct CdfContext {
     txtp_inter2_cdf: Vec<u16>,
     txtp_inter3_cdf: [Vec<u16>; 4],
 
+    /// Intra `tx_size()` (spec 5.11.15/16) depth CDF, indexed `[max_tx_class - 1][ctx 0..=2]`
+    /// (only classes 1..=4, i.e. 8x8..64x64 -- 4x4 never reads this symbol at all, see
+    /// `SymbolDecoder::read_tx_size`'s doc). Real spec/rav1d default CDFs + real adaptation,
+    /// context from `crate::tile::TileContext::tx_size_context`. Source: rav1d `m.txsz`
+    /// (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`), first qindex-bucket variant only (this
+    /// one isn't itself qindex-bucketed like the residual-coefficient tables, but follows the
+    /// same "one representative variant" precedent for consistency).
+    txsz_cdf: [[Vec<u16>; 3]; 4],
+
     /// Reference-frame selection CDFs, indexed by real above/left neighbor context (see
     /// `crate::tile::TileContext`'s `comp_mode_context`/`comp_ref_type_context`/
     /// `single_ref_p*_context`/`uni_comp_ref_p1_context` methods). Real spec/rav1d default values
@@ -845,6 +854,31 @@ impl CdfContext {
         ]);
         let txtp_inter3_cdf = [16384, 4167, 1998, 748].map(binary_ctx_cdf);
 
+        // tx_size(): real spec/rav1d default CDFs, indexed [max_tx_class-1][ctx]. Source: rav1d
+        // `m.txsz`.
+        let txsz_cdf: [[Vec<u16>; 3]; 4] = [
+            [
+                multi_ctx_cdf(&[19968]),
+                multi_ctx_cdf(&[19968]),
+                multi_ctx_cdf(&[24320]),
+            ],
+            [
+                multi_ctx_cdf(&[12272, 30172]),
+                multi_ctx_cdf(&[12272, 30172]),
+                multi_ctx_cdf(&[18677, 30848]),
+            ],
+            [
+                multi_ctx_cdf(&[12986, 15180]),
+                multi_ctx_cdf(&[12986, 15180]),
+                multi_ctx_cdf(&[24302, 25602]),
+            ],
+            [
+                multi_ctx_cdf(&[5782, 11475]),
+                multi_ctx_cdf(&[5782, 11475]),
+                multi_ctx_cdf(&[16803, 22759]),
+            ],
+        ];
+
         // coeff_base: most non-EOB positions are zero.
         let coeff_base_cdf = to_descending(&[
             0,
@@ -925,6 +959,7 @@ impl CdfContext {
             txtp_inter1_cdf,
             txtp_inter2_cdf,
             txtp_inter3_cdf,
+            txsz_cdf,
             comp_mode_cdf,
             single_ref_p1_cdf,
             single_ref_p2_cdf,
@@ -1110,6 +1145,13 @@ impl CdfContext {
     /// `tx_size_class`: only 0..=1 (4x4/8x8) are ever reached.
     pub fn get_txtp_inter1_cdf_mut(&mut self, tx_size_class: usize) -> &mut [u16] {
         &mut self.txtp_inter1_cdf[tx_size_class.min(1)]
+    }
+
+    /// Get mutable `tx_size()` depth CDF. `max_tx_class`: 1..=4 (4x4/class 0 never reaches this,
+    /// see `SymbolDecoder::read_tx_size`'s doc). `ctx`: 0..=2, see
+    /// `crate::tile::TileContext::tx_size_context`.
+    pub fn get_txsz_cdf_mut(&mut self, max_tx_class: usize, ctx: u8) -> &mut [u16] {
+        &mut self.txsz_cdf[max_tx_class.clamp(1, 4) - 1][(ctx as usize).min(2)]
     }
 
     /// Get `coeff_base` CDF (level 0..=3 for every other coefficient position).

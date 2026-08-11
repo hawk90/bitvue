@@ -602,6 +602,42 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.value == 0
     }
 
+    /// Read `tx_size()` (AV1 spec Section 5.11.15/16 `read_tx_size`) for an **intra** coding
+    /// block on a `TxfmMode::Switchable` frame -- inter blocks instead use a recursive
+    /// `read_var_tx_size()` (spec 5.11.17/18) this crate doesn't implement yet (a coding block
+    /// can hold a *mix* of transform sizes there, which `CodingUnit`'s single `tx_size: TxSize`
+    /// field can't represent -- see `docs/DEVELOPMENT_PHASES.md`'s AV1 entropy-decoding note).
+    ///
+    /// `max_tx_class` is the largest transform size that fits the coding block, as a `TxSize`
+    /// discriminant (0..=4) -- callers source this from `TxSize::from_dimensions`, which already
+    /// matches rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS` table for the square coding blocks this crate
+    /// models (see this method's caller for the non-square caveat this doesn't need to handle).
+    /// Reads nothing and returns `0` (4x4) immediately if `max_tx_class == 0` -- spec: no
+    /// `tx_size()` symbol exists once the block is already as small as it can get.
+    ///
+    /// Real per-context CDF (`CdfContext`'s `txsz_cdf` doc) + real adaptation, matching
+    /// `read_skip`/`read_ref_frames`'s bar. `ctx` (0..=2) is
+    /// `crate::tile::TileContext::tx_size_context`'s result. Returns the resolved `TxSize`
+    /// discriminant (0..=4): the depth symbol (0..=`min(max_tx_class,2)`) is subtracted from
+    /// `max_tx_class`, walking the same `Tx64x64→Tx32x32→Tx16x16→Tx8x8→Tx4x4` chain rav1d's
+    /// `TxfmInfo.sub` does (this crate's `TxSize` enum happens to already be ordered that way).
+    ///
+    /// Callers must handle the *other* `TxMode`s themselves before ever reaching this method:
+    /// `Only4x4` (unconditionally 4x4) and `Largest` (unconditionally `max_tx_class`, i.e. no
+    /// depth reduction) both read zero bits -- this method is only for `Switchable`. Real spec
+    /// also forces 4x4 when `CodedLossless`, regardless of `TxMode` -- callers must check that
+    /// first too (this method has no way to know it).
+    pub fn read_tx_size(&mut self, max_tx_class: u8, ctx: u8) -> Result<u8> {
+        if max_tx_class == 0 {
+            return Ok(0);
+        }
+        let cdf = self
+            .cdf_context
+            .get_txsz_cdf_mut(max_tx_class as usize, ctx);
+        let depth = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(max_tx_class.saturating_sub(depth))
+    }
+
     /// Read `transform_type()` (AV1 spec Section 5.11.47), returning only `is_1d` (whether the
     /// resulting `TxClass` is `TX_CLASS_H`/`TX_CLASS_V`, as opposed to `TX_CLASS_2D`) rather than
     /// the full `TxType` -- that's all `eob_bin`'s context axis needs (see

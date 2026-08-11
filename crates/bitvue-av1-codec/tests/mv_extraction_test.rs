@@ -134,6 +134,7 @@ fn test_mv_extraction_with_spec_cdfs() {
                 coded_lossless: false,
                 qidx_is_zero: false,
                 reduced_tx_set: false,
+                txfm_mode: bitvue_av1_codec::frame_header::TxfmMode::default(),
             },
         ) {
             Ok((superblock, _final_qp)) => {

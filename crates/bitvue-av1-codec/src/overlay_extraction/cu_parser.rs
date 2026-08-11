@@ -37,6 +37,7 @@ pub fn parse_all_coding_units(
         coded_lossless: parsed.coded_lossless,
         qidx_is_zero: parsed.frame_type.base_qp == Some(0),
         reduced_tx_set: parsed.reduced_tx_set,
+        txfm_mode: parsed.txfm_mode,
     };
 
     // Use get_or_parse helper for cache pattern
