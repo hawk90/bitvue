@@ -244,6 +244,31 @@ pub struct CdfContext {
     /// `src/cdf.rs`), first qindex-bucket variant only (see `eob_bin_16_cdf`'s doc).
     coeff_base_eob_cdf: [[Vec<u16>; 4]; 5],
 
+    /// Chroma-plane residual CDFs -- see `SymbolDecoder::read_chroma_residual_block`'s doc for
+    /// the (deliberately narrower than luma's) scope these back: square luma coding blocks
+    /// 8x8..128x128 only (`tx_size_class` 0..=3 -- chroma real caps at 32x32 regardless of luma
+    /// size, per rav1d's `dav1d_max_txfm_size_for_bs` table for 4:2:0, so `tx_size_class` 3
+    /// (32x32) is the largest chroma ever needs -- a 128x128 luma block's 64x64 chroma area tiles
+    /// 4 real `TX_32X32` blocks, still this same size class), `is_1d` fixed `false` (2D).
+    /// `txb_skip`/`dc_sign` use a single *real* representative chroma
+    /// default (rav1d's chroma `get_skip_ctx`/`get_dc_sign_ctx` need a chroma-plane above/left
+    /// array this crate doesn't track -- not attempted, see this piece's revert-then-retry
+    /// history in `read_residual_block`'s doc) rather than a full context formula; `coeff_base`/
+    /// `coeff_br` reuse `symbol::scan::lo_ctx`'s real neighbor-context formula verbatim (it's
+    /// plane-agnostic) against these chroma-specific default values. All sourced from rav1d's
+    /// real `[chroma=1]` axis (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`), first
+    /// qindex-bucket variant only, same precedent as every luma table above.
+    txb_skip_cdf_chroma: [Vec<u16>; 4],
+    dc_sign_cdf_chroma: Vec<u16>,
+    eob_bin_16_cdf_chroma: Vec<u16>,
+    eob_bin_64_cdf_chroma: Vec<u16>,
+    eob_bin_256_cdf_chroma: Vec<u16>,
+    eob_bin_1024_cdf_chroma: Vec<u16>,
+    eob_hi_bit_cdf_chroma: [[Vec<u16>; 11]; 4],
+    coeff_base_eob_cdf_chroma: [[Vec<u16>; 4]; 4],
+    coeff_base_cdf_chroma: [[Vec<u16>; 41]; 4],
+    coeff_br_cdf_chroma: [[Vec<u16>; 21]; 4],
+
     /// `transform_type()` (spec 5.11.47) CDFs -- read once per transform block, before its
     /// `coeffs()`, to determine `TxClass`/`is_1d` for `eob_bin_*_cdf`'s context axis (see
     /// `SymbolDecoder::read_transform_type_is_1d`'s doc for the decision tree these back and why
@@ -793,6 +818,330 @@ impl CdfContext {
             ],
         ];
 
+        // Chroma-plane residual CDFs -- see `txb_skip_cdf_chroma`'s doc for scope. Real chroma
+        // (rav1d `[chroma=1]` axis) default values, first qindex-bucket variant.
+        let txb_skip_cdf_chroma: [Vec<u16>; 4] = [7654, 5403, 3778, 1366].map(binary_ctx_cdf);
+        let dc_sign_cdf_chroma: Vec<u16> = binary_ctx_cdf(15232);
+        let eob_bin_16_cdf_chroma = multi_ctx_cdf(&[3247, 4950, 9688, 14563]);
+        let eob_bin_64_cdf_chroma = multi_ctx_cdf(&[3505, 5304, 10086, 13814, 17684, 23370]);
+        let eob_bin_256_cdf_chroma =
+            multi_ctx_cdf(&[2520, 3240, 5952, 8870, 12577, 17558, 19954, 24168]);
+        let eob_bin_1024_cdf_chroma = multi_ctx_cdf(&[
+            1865, 1988, 2930, 4242, 10533, 16538, 21354, 27255, 28546, 31784,
+        ]);
+        let eob_hi_bit_cdf_chroma: [[Vec<u16>; 11]; 4] = [
+            [
+                16384, 16384, 19069, 22525, 13377, 16384, 16384, 16384, 16384, 16384, 16384,
+            ]
+            .map(binary_ctx_cdf),
+            [
+                16384, 16384, 20681, 20701, 15250, 15017, 14928, 16384, 16384, 16384, 16384,
+            ]
+            .map(binary_ctx_cdf),
+            [
+                16384, 16384, 23959, 20799, 19021, 16203, 17886, 14144, 12010, 16384, 16384,
+            ]
+            .map(binary_ctx_cdf),
+            [
+                16384, 16384, 24932, 20833, 12027, 16670, 19914, 15106, 17662, 13783, 28756,
+            ]
+            .map(binary_ctx_cdf),
+        ];
+        let coeff_base_eob_cdf_chroma: [[Vec<u16>; 4]; 4] = [
+            [
+                multi_ctx_cdf(&[21365, 30026]),
+                multi_ctx_cdf(&[30512, 32423]),
+                multi_ctx_cdf(&[31658, 32621]),
+                multi_ctx_cdf(&[29630, 31881]),
+            ],
+            [
+                multi_ctx_cdf(&[12608, 27820]),
+                multi_ctx_cdf(&[30680, 32225]),
+                multi_ctx_cdf(&[30809, 32335]),
+                multi_ctx_cdf(&[31299, 32423]),
+            ],
+            [
+                multi_ctx_cdf(&[18857, 23865]),
+                multi_ctx_cdf(&[31428, 32428]),
+                multi_ctx_cdf(&[31744, 32373]),
+                multi_ctx_cdf(&[31775, 32526]),
+            ],
+            [
+                multi_ctx_cdf(&[13751, 22235]),
+                multi_ctx_cdf(&[32089, 32409]),
+                multi_ctx_cdf(&[27084, 27920]),
+                multi_ctx_cdf(&[29291, 32594]),
+            ],
+        ];
+        let coeff_base_cdf_chroma: [[Vec<u16>; 41]; 4] = [
+            [
+                multi_ctx_cdf(&[6302, 16444, 21761]),
+                multi_ctx_cdf(&[23040, 31538, 32475]),
+                multi_ctx_cdf(&[15196, 28452, 31496]),
+                multi_ctx_cdf(&[10020, 22946, 28514]),
+                multi_ctx_cdf(&[6533, 16862, 23501]),
+                multi_ctx_cdf(&[3538, 9816, 15076]),
+                multi_ctx_cdf(&[24444, 31875, 32525]),
+                multi_ctx_cdf(&[15881, 28924, 31635]),
+                multi_ctx_cdf(&[9922, 22873, 28466]),
+                multi_ctx_cdf(&[6527, 16966, 23691]),
+                multi_ctx_cdf(&[4114, 11303, 17220]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[20201, 30770, 32209]),
+                multi_ctx_cdf(&[14754, 28071, 31258]),
+                multi_ctx_cdf(&[8378, 20186, 26517]),
+                multi_ctx_cdf(&[5916, 15299, 21978]),
+                multi_ctx_cdf(&[4268, 11583, 17901]),
+                multi_ctx_cdf(&[24361, 32025, 32581]),
+                multi_ctx_cdf(&[18673, 30105, 31943]),
+                multi_ctx_cdf(&[10196, 22244, 27576]),
+                multi_ctx_cdf(&[5495, 14349, 20417]),
+                multi_ctx_cdf(&[2676, 7415, 11498]),
+                multi_ctx_cdf(&[24678, 31958, 32585]),
+                multi_ctx_cdf(&[18629, 29906, 31831]),
+                multi_ctx_cdf(&[9364, 20724, 26315]),
+                multi_ctx_cdf(&[4641, 12318, 18094]),
+                multi_ctx_cdf(&[2758, 7387, 11579]),
+                multi_ctx_cdf(&[25433, 31842, 32469]),
+                multi_ctx_cdf(&[18795, 29289, 31411]),
+                multi_ctx_cdf(&[7644, 17584, 23592]),
+                multi_ctx_cdf(&[3408, 9014, 15047]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+            ],
+            [
+                multi_ctx_cdf(&[6037, 16771, 21957]),
+                multi_ctx_cdf(&[24774, 31704, 32426]),
+                multi_ctx_cdf(&[16830, 28589, 31056]),
+                multi_ctx_cdf(&[10602, 22828, 27760]),
+                multi_ctx_cdf(&[6733, 16829, 23071]),
+                multi_ctx_cdf(&[3250, 8914, 13556]),
+                multi_ctx_cdf(&[25582, 32220, 32668]),
+                multi_ctx_cdf(&[18659, 30342, 32223]),
+                multi_ctx_cdf(&[12546, 26149, 30515]),
+                multi_ctx_cdf(&[8420, 20451, 26801]),
+                multi_ctx_cdf(&[4636, 12420, 18344]),
+                multi_ctx_cdf(&[27581, 32362, 32639]),
+                multi_ctx_cdf(&[18987, 30083, 31978]),
+                multi_ctx_cdf(&[11327, 24248, 29084]),
+                multi_ctx_cdf(&[7264, 17719, 24120]),
+                multi_ctx_cdf(&[3995, 10768, 16169]),
+                multi_ctx_cdf(&[25893, 31831, 32487]),
+                multi_ctx_cdf(&[16577, 28587, 31379]),
+                multi_ctx_cdf(&[10189, 22748, 28182]),
+                multi_ctx_cdf(&[6832, 17094, 23556]),
+                multi_ctx_cdf(&[3708, 10110, 15334]),
+                multi_ctx_cdf(&[25904, 32282, 32656]),
+                multi_ctx_cdf(&[19721, 30792, 32276]),
+                multi_ctx_cdf(&[12819, 26243, 30411]),
+                multi_ctx_cdf(&[8572, 20614, 26891]),
+                multi_ctx_cdf(&[5364, 14059, 20467]),
+                multi_ctx_cdf(&[26580, 32438, 32677]),
+                multi_ctx_cdf(&[20852, 31225, 32340]),
+                multi_ctx_cdf(&[12435, 25700, 29967]),
+                multi_ctx_cdf(&[8691, 20825, 26976]),
+                multi_ctx_cdf(&[4446, 12209, 17269]),
+                multi_ctx_cdf(&[27350, 32429, 32696]),
+                multi_ctx_cdf(&[21372, 30977, 32272]),
+                multi_ctx_cdf(&[12673, 25270, 29853]),
+                multi_ctx_cdf(&[9208, 20925, 26640]),
+                multi_ctx_cdf(&[5018, 13351, 18732]),
+                multi_ctx_cdf(&[27351, 32479, 32713]),
+                multi_ctx_cdf(&[21398, 31209, 32387]),
+                multi_ctx_cdf(&[12162, 25047, 29842]),
+                multi_ctx_cdf(&[7896, 18691, 25319]),
+                multi_ctx_cdf(&[4670, 12882, 18881]),
+            ],
+            [
+                multi_ctx_cdf(&[5673, 14302, 19711]),
+                multi_ctx_cdf(&[26251, 30701, 31834]),
+                multi_ctx_cdf(&[12782, 23783, 27803]),
+                multi_ctx_cdf(&[9127, 20657, 25808]),
+                multi_ctx_cdf(&[6368, 16208, 21462]),
+                multi_ctx_cdf(&[2465, 7177, 10822]),
+                multi_ctx_cdf(&[29961, 32563, 32719]),
+                multi_ctx_cdf(&[18318, 29891, 31949]),
+                multi_ctx_cdf(&[11361, 24514, 29357]),
+                multi_ctx_cdf(&[7900, 19603, 25607]),
+                multi_ctx_cdf(&[4002, 10590, 15546]),
+                multi_ctx_cdf(&[29637, 32310, 32595]),
+                multi_ctx_cdf(&[18296, 29913, 31809]),
+                multi_ctx_cdf(&[10144, 21515, 26871]),
+                multi_ctx_cdf(&[5358, 14322, 20394]),
+                multi_ctx_cdf(&[3067, 8362, 13346]),
+                multi_ctx_cdf(&[28652, 32470, 32676]),
+                multi_ctx_cdf(&[17538, 30771, 32209]),
+                multi_ctx_cdf(&[13924, 26882, 30494]),
+                multi_ctx_cdf(&[10496, 22837, 27869]),
+                multi_ctx_cdf(&[7236, 16396, 21621]),
+                multi_ctx_cdf(&[30743, 32687, 32746]),
+                multi_ctx_cdf(&[23006, 31676, 32489]),
+                multi_ctx_cdf(&[14494, 27828, 31120]),
+                multi_ctx_cdf(&[10174, 22801, 28352]),
+                multi_ctx_cdf(&[6242, 15281, 21043]),
+                multi_ctx_cdf(&[25817, 32243, 32720]),
+                multi_ctx_cdf(&[18618, 31367, 32325]),
+                multi_ctx_cdf(&[13997, 28318, 31878]),
+                multi_ctx_cdf(&[12255, 26534, 31383]),
+                multi_ctx_cdf(&[9561, 21588, 28450]),
+                multi_ctx_cdf(&[28188, 32635, 32724]),
+                multi_ctx_cdf(&[22060, 32365, 32728]),
+                multi_ctx_cdf(&[18102, 30690, 32528]),
+                multi_ctx_cdf(&[14196, 28864, 31999]),
+                multi_ctx_cdf(&[12262, 25792, 30865]),
+                multi_ctx_cdf(&[24176, 32109, 32628]),
+                multi_ctx_cdf(&[18280, 29681, 31963]),
+                multi_ctx_cdf(&[10205, 23703, 29664]),
+                multi_ctx_cdf(&[7889, 20025, 27676]),
+                multi_ctx_cdf(&[6060, 16743, 23970]),
+            ],
+            [
+                multi_ctx_cdf(&[2461, 7013, 9371]),
+                multi_ctx_cdf(&[24749, 29600, 30986]),
+                multi_ctx_cdf(&[9466, 19037, 22417]),
+                multi_ctx_cdf(&[3584, 9280, 14400]),
+                multi_ctx_cdf(&[1505, 3929, 5433]),
+                multi_ctx_cdf(&[677, 1500, 2736]),
+                multi_ctx_cdf(&[23987, 30702, 32117]),
+                multi_ctx_cdf(&[13554, 24571, 29263]),
+                multi_ctx_cdf(&[6211, 14556, 21155]),
+                multi_ctx_cdf(&[3135, 10972, 15625]),
+                multi_ctx_cdf(&[2435, 7127, 11427]),
+                multi_ctx_cdf(&[31300, 32532, 32550]),
+                multi_ctx_cdf(&[14757, 30365, 31954]),
+                multi_ctx_cdf(&[4405, 11612, 18553]),
+                multi_ctx_cdf(&[580, 4132, 7322]),
+                multi_ctx_cdf(&[1695, 10169, 14124]),
+                multi_ctx_cdf(&[30008, 32282, 32591]),
+                multi_ctx_cdf(&[19244, 30108, 31748]),
+                multi_ctx_cdf(&[11180, 24158, 29555]),
+                multi_ctx_cdf(&[5650, 14972, 19209]),
+                multi_ctx_cdf(&[2114, 5109, 8456]),
+                multi_ctx_cdf(&[31856, 32716, 32748]),
+                multi_ctx_cdf(&[23012, 31664, 32572]),
+                multi_ctx_cdf(&[13694, 26656, 30636]),
+                multi_ctx_cdf(&[8142, 19508, 26093]),
+                multi_ctx_cdf(&[4253, 10955, 16724]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+                multi_ctx_cdf(&[8192, 16384, 24576]),
+            ],
+        ];
+        let coeff_br_cdf_chroma: [[Vec<u16>; 21]; 4] = [
+            [
+                multi_ctx_cdf(&[15967, 22905, 26286]),
+                multi_ctx_cdf(&[13534, 20654, 24579]),
+                multi_ctx_cdf(&[9504, 16092, 20535]),
+                multi_ctx_cdf(&[6975, 12568, 16903]),
+                multi_ctx_cdf(&[5364, 10091, 14020]),
+                multi_ctx_cdf(&[4357, 8370, 11857]),
+                multi_ctx_cdf(&[2506, 4934, 7218]),
+                multi_ctx_cdf(&[23032, 28815, 30936]),
+                multi_ctx_cdf(&[19540, 26704, 29719]),
+                multi_ctx_cdf(&[15158, 22969, 27097]),
+                multi_ctx_cdf(&[11408, 18865, 23650]),
+                multi_ctx_cdf(&[8885, 15448, 20250]),
+                multi_ctx_cdf(&[7108, 12853, 17416]),
+                multi_ctx_cdf(&[4231, 8041, 11480]),
+                multi_ctx_cdf(&[19823, 26490, 29156]),
+                multi_ctx_cdf(&[18890, 25929, 28932]),
+                multi_ctx_cdf(&[15660, 23491, 27433]),
+                multi_ctx_cdf(&[12147, 19776, 24488]),
+                multi_ctx_cdf(&[9728, 16774, 21649]),
+                multi_ctx_cdf(&[7919, 14277, 19066]),
+                multi_ctx_cdf(&[5440, 10170, 14185]),
+            ],
+            [
+                multi_ctx_cdf(&[15460, 21696, 25469]),
+                multi_ctx_cdf(&[12170, 19249, 23191]),
+                multi_ctx_cdf(&[8723, 15027, 19332]),
+                multi_ctx_cdf(&[6428, 11704, 15874]),
+                multi_ctx_cdf(&[4922, 9292, 13052]),
+                multi_ctx_cdf(&[4139, 7695, 11010]),
+                multi_ctx_cdf(&[2291, 4508, 6598]),
+                multi_ctx_cdf(&[19856, 26920, 29828]),
+                multi_ctx_cdf(&[17923, 25289, 28792]),
+                multi_ctx_cdf(&[14278, 21968, 26297]),
+                multi_ctx_cdf(&[10910, 18136, 22950]),
+                multi_ctx_cdf(&[8423, 14815, 19627]),
+                multi_ctx_cdf(&[6771, 12283, 16774]),
+                multi_ctx_cdf(&[4074, 7750, 11081]),
+                multi_ctx_cdf(&[19852, 26074, 28672]),
+                multi_ctx_cdf(&[19371, 26110, 28989]),
+                multi_ctx_cdf(&[16265, 23873, 27663]),
+                multi_ctx_cdf(&[12758, 20378, 24952]),
+                multi_ctx_cdf(&[10095, 17098, 21961]),
+                multi_ctx_cdf(&[8250, 14628, 19451]),
+                multi_ctx_cdf(&[5205, 9745, 13622]),
+            ],
+            [
+                multi_ctx_cdf(&[10870, 16684, 20949]),
+                multi_ctx_cdf(&[9664, 15230, 18680]),
+                multi_ctx_cdf(&[6886, 12109, 15408]),
+                multi_ctx_cdf(&[4825, 8900, 12305]),
+                multi_ctx_cdf(&[3630, 7162, 10314]),
+                multi_ctx_cdf(&[3036, 6429, 9387]),
+                multi_ctx_cdf(&[1671, 3296, 4940]),
+                multi_ctx_cdf(&[13819, 19159, 23026]),
+                multi_ctx_cdf(&[11984, 19108, 23120]),
+                multi_ctx_cdf(&[10690, 17210, 21663]),
+                multi_ctx_cdf(&[7984, 14154, 18333]),
+                multi_ctx_cdf(&[6868, 12294, 16124]),
+                multi_ctx_cdf(&[5274, 8994, 12868]),
+                multi_ctx_cdf(&[2988, 5771, 8424]),
+                multi_ctx_cdf(&[19736, 26647, 29141]),
+                multi_ctx_cdf(&[18933, 26070, 28984]),
+                multi_ctx_cdf(&[15779, 23048, 27200]),
+                multi_ctx_cdf(&[12638, 20061, 24532]),
+                multi_ctx_cdf(&[10692, 17545, 22220]),
+                multi_ctx_cdf(&[9217, 15251, 20054]),
+                multi_ctx_cdf(&[5078, 9284, 12594]),
+            ],
+            [
+                multi_ctx_cdf(&[5842, 9229, 10838]),
+                multi_ctx_cdf(&[2313, 3491, 4276]),
+                multi_ctx_cdf(&[2998, 6104, 7496]),
+                multi_ctx_cdf(&[2420, 7447, 9868]),
+                multi_ctx_cdf(&[3034, 8495, 10923]),
+                multi_ctx_cdf(&[4076, 8937, 10975]),
+                multi_ctx_cdf(&[1086, 2370, 3299]),
+                multi_ctx_cdf(&[9714, 17254, 20444]),
+                multi_ctx_cdf(&[8543, 13698, 17123]),
+                multi_ctx_cdf(&[4918, 9007, 11910]),
+                multi_ctx_cdf(&[4129, 7532, 10553]),
+                multi_ctx_cdf(&[2364, 5533, 8058]),
+                multi_ctx_cdf(&[1834, 3546, 5563]),
+                multi_ctx_cdf(&[1473, 2908, 4133]),
+                multi_ctx_cdf(&[15405, 21193, 25619]),
+                multi_ctx_cdf(&[15691, 21952, 26561]),
+                multi_ctx_cdf(&[12962, 19194, 24165]),
+                multi_ctx_cdf(&[10272, 17855, 22129]),
+                multi_ctx_cdf(&[8588, 15270, 20718]),
+                multi_ctx_cdf(&[8682, 14669, 19500]),
+                multi_ctx_cdf(&[4870, 9636, 13205]),
+            ],
+        ];
+
         // transform_type(): real spec/rav1d default CDFs, indexed [tx_size_class][...]. Source:
         // rav1d `txtp_intra1`/`txtp_intra2`/`txtp_inter1`/`txtp_inter2`/`txtp_inter3`, first
         // qindex-bucket variant.
@@ -1265,6 +1614,16 @@ impl CdfContext {
             eob_bin_1024_cdf,
             eob_hi_bit_cdf,
             coeff_base_eob_cdf,
+            txb_skip_cdf_chroma,
+            dc_sign_cdf_chroma,
+            eob_bin_16_cdf_chroma,
+            eob_bin_64_cdf_chroma,
+            eob_bin_256_cdf_chroma,
+            eob_bin_1024_cdf_chroma,
+            eob_hi_bit_cdf_chroma,
+            coeff_base_eob_cdf_chroma,
+            coeff_base_cdf_chroma,
+            coeff_br_cdf_chroma,
             txtp_intra1_cdf,
             txtp_intra2_cdf,
             txtp_inter1_cdf,
@@ -1425,6 +1784,66 @@ impl CdfContext {
     /// `SymbolDecoder::coeff_base_eob_context`'s doc).
     pub fn get_coeff_base_eob_cdf_mut(&mut self, tx_size_class: usize, ctx: u8) -> &mut [u16] {
         &mut self.coeff_base_eob_cdf[tx_size_class.min(4)][(ctx as usize).min(3)]
+    }
+
+    /// Get mutable chroma `txb_skip` CDF -- see `txb_skip_cdf_chroma`'s doc for scope
+    /// (`tx_size_class` 0..=3 only). No `ctx` param: a single real representative chroma default
+    /// is used unconditionally (chroma's real above/left context isn't tracked).
+    pub fn get_txb_skip_cdf_chroma_mut(&mut self, tx_size_class: usize) -> &mut [u16] {
+        &mut self.txb_skip_cdf_chroma[tx_size_class.min(3)]
+    }
+
+    /// Get mutable chroma `dc_sign` CDF -- single real representative chroma default (see
+    /// `dc_sign_cdf_chroma`'s doc), no `ctx` param for the same reason as `txb_skip`'s.
+    pub fn get_dc_sign_cdf_chroma_mut(&mut self) -> &mut [u16] {
+        &mut self.dc_sign_cdf_chroma
+    }
+
+    /// Get mutable chroma `eob_bin` CDF for a chroma transform block of `chroma_tx_px` pixels
+    /// per side (4/8/16/32 -- see `txb_skip_cdf_chroma`'s doc). `is_1d` is always `false` for
+    /// chroma in this crate's scope, so there's no axis for it (unlike `get_eob_bin_cdf_mut`).
+    pub fn get_eob_bin_cdf_chroma_mut(&mut self, chroma_tx_px: u32) -> &mut [u16] {
+        match chroma_tx_px {
+            0..=4 => &mut self.eob_bin_16_cdf_chroma,
+            5..=8 => &mut self.eob_bin_64_cdf_chroma,
+            9..=16 => &mut self.eob_bin_256_cdf_chroma,
+            _ => &mut self.eob_bin_1024_cdf_chroma, // 32, this crate's chroma scope max
+        }
+    }
+
+    /// Get mutable chroma `eob_hi_bit` CDF. `tx_size_class`: 0..=3. `eob_bin`: same real,
+    /// dynamic indexing as luma's `get_eob_hi_bit_cdf_mut`.
+    pub fn get_eob_hi_bit_cdf_chroma_mut(
+        &mut self,
+        tx_size_class: usize,
+        eob_bin: u8,
+    ) -> &mut [u16] {
+        &mut self.eob_hi_bit_cdf_chroma[tx_size_class.min(3)][(eob_bin as usize).min(10)]
+    }
+
+    /// Get mutable chroma `coeff_base_eob` CDF. `tx_size_class`: 0..=3. `ctx`: same real formula
+    /// as luma's (`SymbolDecoder::coeff_base_eob_context`, plane-agnostic).
+    pub fn get_coeff_base_eob_cdf_chroma_mut(
+        &mut self,
+        tx_size_class: usize,
+        ctx: u8,
+    ) -> &mut [u16] {
+        &mut self.coeff_base_eob_cdf_chroma[tx_size_class.min(3)][(ctx as usize).min(3)]
+    }
+
+    /// Get mutable chroma `coeff_base` CDF. `tx_size_class`: 0..=3. `ctx`: 0..=40, from
+    /// `symbol::scan::lo_ctx` (same real formula as luma's, plane-agnostic -- only the default
+    /// CDF values differ).
+    pub fn get_coeff_base_cdf_chroma_mut(&mut self, tx_size_class: usize, ctx: u8) -> &mut [u16] {
+        &mut self.coeff_base_cdf_chroma[tx_size_class.min(3)][(ctx as usize).min(40)]
+    }
+
+    /// Get mutable chroma `coeff_br` CDF. `tx_size_class`: 0..=3 (matches `coeff_base_cdf_chroma`
+    /// exactly here, unlike luma's `min(tx_size_class,3)` cap against a 5-bucket table -- this
+    /// crate's chroma table only ever has 4 buckets, 0..=3 is already the whole range). `ctx`:
+    /// 0..=20.
+    pub fn get_coeff_br_cdf_chroma_mut(&mut self, tx_size_class: usize, ctx: u8) -> &mut [u16] {
+        &mut self.coeff_br_cdf_chroma[tx_size_class.min(3)][(ctx as usize).min(20)]
     }
 
     /// Get mutable `txtp_intra2` CDF (spec 5.11.47's reduced intra `transform_type()` alphabet).

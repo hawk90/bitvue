@@ -433,6 +433,67 @@ mod tests {
         );
     }
 
+    /// Regression test for the chroma residual desync fix (`SymbolDecoder::
+    /// read_chroma_residual_block`): confirms the gate `parse_coding_unit` uses to decide "should
+    /// this CU also read chroma" (non-IntraBC, non-monochrome, 4:2:0, square luma width
+    /// `8..64`) is non-vacuously true on the real fixture -- i.e. guards against the condition
+    /// silently becoming dead code (never matching) in a future change, which would look
+    /// identical to "working" in every other test here since it'd just silently stop reading
+    /// chroma bits again. Parsing succeeding at all for these frames (via
+    /// `parse_all_coding_units`, which would error out on an arithmetic-decoder desync) is the
+    /// actual regression signal -- this test's real job is proving the gate fires, not
+    /// re-deriving decoded values.
+    ///
+    /// Scans the *entire* fixture (not just the first 30 frames like this file's other tests):
+    /// qualifying CUs are rare here (17 total across all 250 frames, confirmed while developing
+    /// this fix) and, moreover, occur *only* on inter frames -- this fixture's key frames happen
+    /// to consist entirely of unpartitioned 128x128 coding blocks (never small enough to
+    /// qualify). An earlier, more conservative version of the real gate additionally required
+    /// `is_key_frame`, which happened to make it *never actually fire* against this fixture at
+    /// all -- every test still passed, vacuously, until this test was added specifically to
+    /// catch that (see `read_chroma_residual_block`'s doc for the full story).
+    #[test]
+    fn real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut square_chroma_eligible_cu_count = 0usize;
+
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            assert!(
+                !parsed.mono_chrome && parsed.subsampling_x && parsed.subsampling_y,
+                "fixture is expected to be a real 4:2:0 (non-monochrome) stream"
+            );
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                panic!("frame failed to parse coding units -- possible chroma-read desync");
+            };
+            for cu in cus.iter() {
+                if !cu.skip
+                    && !cu.use_intrabc
+                    && cu.width == cu.height
+                    && (8..64).contains(&cu.width)
+                {
+                    square_chroma_eligible_cu_count += 1;
+                }
+            }
+        }
+
+        assert!(
+            square_chroma_eligible_cu_count > 0,
+            "expected at least one non-skip, non-IntraBC, square 8x8/16x16/32x32 coding unit \
+             (the chroma residual read's gate condition) across the real fixture -- if this is \
+             ever 0, the gate has gone dead and chroma bits are silently unread again"
+        );
+    }
+
     /// Regression test for the real key-frame `intra_mode` (`kfym`) context work: `read_intra_mode`
     /// now uses real per-context (`TileContext::intra_mode_context`, 5x5 above/left mode-class
     /// grid) default CDFs sourced from rav1d's `Default_Kf_Y_Mode_Cdf` and real adaptation,

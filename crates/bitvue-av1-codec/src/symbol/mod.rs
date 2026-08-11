@@ -759,30 +759,24 @@ impl<'a> SymbolDecoder<'a> {
     ///   (`TxSize::from_dimensions`) -- only key-frame, non-IntraBC coding units get a real
     ///   `tx_size()` bitstream read (`SymbolDecoder::read_tx_size`'s doc); residual reading here
     ///   reuses whichever size the caller resolved, real or heuristic.
-    /// - **Chroma-plane residual is never read at all** -- callers only invoke this for luma
-    ///   transform blocks (a separate, previously undocumented gap found while re-scoping this
-    ///   work, not fixed here -- every real CDF/context added in this pass hardcodes the
-    ///   `chroma=0` axis of its rav1d source table for exactly this reason). **Confirmed a real
-    ///   desync bug, not just missing data**: the real fixture is 4:2:0 (non-monochrome), so any
-    ///   non-skip `HasChroma` coding block's real encoder wrote chroma residual bits this crate
-    ///   never consumes. **Attempted and reverted**: a "shape-only" fix (real transform-block
-    ///   *count* for the dominant `>=8x8`-both-dimensions case, reusing luma's CDFs/tables with a
-    ///   fixed `ctx=0` and the last luma transform block's `is_1d`, since no real chroma CDF data
-    ///   exists in this crate) regressed `real_fixture_key_frame_intra_modes_are_not_degenerate`
-    ///   -- confirmed via disabling the new code path and re-running (test passed), isolating the
-    ///   chroma read as the cause. Root cause, best understanding: unlike the tolerated
-    ///   fixed-context-`0` approximation elsewhere (e.g. inter-frame luma `txb_skip`/`dc_sign`),
-    ///   an adaptive range decoder's bit *consumption* for variable-length constructs
-    ///   (`eob_bin`'s extra bits, the golomb extension) depends on the *decoded value*, which
-    ///   depends on the context/CDF used -- a context mismatch there can change how many bits get
-    ///   consumed, not just misinterpret them, and chroma coefficient statistics differ enough
-    ///   from luma's that this crate's luma-shaped approximation diverged in practice on real
-    ///   data. Real UV transform-size mapping (`Max_Tx_Size_Rect`, not this crate's
-    ///   luma-dimension-based `TxSize::from_dimensions` heuristic) and the exact `HasChroma`
-    ///   condition weren't independently verified either -- either could also be wrong. Reverted
-    ///   cleanly (no unverified/dead code left behind); `mono_chrome`/`subsampling_x`/
-    ///   `subsampling_y` sourcing (`ParsedFrame`, `crate::tile::TxTypeFrameFlags`) was kept since
-    ///   it's correct and independently useful for a future real attempt.
+    /// - **Chroma-plane residual is read by a separate method, `read_chroma_residual_block`, and
+    ///   only for a restricted subset of coding blocks** -- callers of *this* method only ever
+    ///   handle luma. **Confirmed a real desync bug, not just missing data**: the real fixture is
+    ///   4:2:0 (non-monochrome), so any non-skip `HasChroma` coding block's real encoder wrote
+    ///   chroma residual bits this crate previously never consumed. A first "shape-only" attempt
+    ///   (reusing luma's CDF tables/context with a fixed `ctx=0`) regressed
+    ///   `real_fixture_key_frame_intra_modes_are_not_degenerate` and was reverted -- root-caused
+    ///   to applying *luma-trained* default probabilities to chroma data (chroma coefficient
+    ///   statistics differ enough from luma's that the borrowed CDFs caused real symbol
+    ///   misdecodes, which for variable-length constructs like `eob_bin`'s extra bits or the
+    ///   golomb extension changes *how many bits get consumed*, not just their interpretation).
+    ///   The follow-up fix (`read_chroma_residual_block`) ports **real chroma-specific default
+    ///   CDF values** (rav1d's actual `[chroma=1]` axis, not luma's) instead of a from-scratch
+    ///   context derivation -- verified via a dedicated research pass that rav1d's real chroma
+    ///   transform-size mapping (`dav1d_max_txfm_size_for_bs`) and `HasChroma` condition exactly
+    ///   match this crate's restricted scope (square 8x8/16x16/32x32 luma blocks only -- see that
+    ///   method's doc for what's still not covered: non-square coding blocks and luma >=64x64,
+    ///   both a real, narrower, still-open version of this same gap).
     ///
     /// None of these change the *shape* of the read sequence (an `all_zero` check, then -- when
     /// not all-zero -- an `eob_bin` symbol, `eob` extra bits, and exactly `eob` per-position
@@ -930,6 +924,161 @@ impl<'a> SymbolDecoder<'a> {
         }
 
         Ok(stats)
+    }
+
+    /// Read one chroma-plane (U or V) transform block's residual coefficients -- the chroma
+    /// counterpart to `read_residual_block`, see that method's doc for the full desync-bug
+    /// history this closes (part of it) and the "Chroma-plane residual is never read at all"
+    /// bullet for why this exists and what it deliberately doesn't cover yet.
+    ///
+    /// **Scope, deliberately narrower than luma's, and empirically pinned down (not just
+    /// theorized)**: one call reads exactly one chroma transform block of `chroma_tx_px` pixels
+    /// per side. Callers must only invoke this for *square*, *non-IntraBC* luma coding blocks
+    /// 8x8/16x16/32x32 (`chroma_tx_px` = `luma_width/2` = 4/8/16, one call per plane, no tiling
+    /// needed), on *any* frame type -- see `parse_coding_unit`'s call site for the exact gate.
+    ///
+    /// Extending to 64x64/128x128 luma blocks (`chroma_tx_px` capped at 32, real chroma tx's
+    /// actual cap -- 128x128 needs a 2x2 tiling loop, 4 chroma blocks per plane) was *attempted
+    /// and reverted* after it regressed `real_fixture_key_frame_intra_modes_are_not_degenerate`,
+    /// despite looking structurally sound against rav1d's real reference tables (verified via a
+    /// dedicated research pass, not guessed). Traced (via forcing each read to a zero-bit no-op
+    /// and re-enabling incrementally) to something specific to the 32x32-chroma-transform
+    /// (`tx_size_class` 3) path itself, not the tiling loop or call count -- but the exact defect
+    /// wasn't isolated further. The `coeff_base`/`coeff_br` context (`symbol::scan::lo_ctx`) that
+    /// works correctly here offers no explanation, since it's plane-agnostic and already proven
+    /// at this same tx size for luma; the fixed-representative-context approximation used for
+    /// `txb_skip`/`dc_sign` (untested at this size/content combination until this attempt) is the
+    /// more likely culprit but unconfirmed. A real, open, narrower version of the same desync gap
+    /// (see `read_residual_block`'s doc) -- as is any non-square luma coding block (common, e.g.
+    /// `Horz`/`Vert` partitions), which was never attempted.
+    ///
+    /// An *earlier* attempt at this same 8x8/16x16/32x32 scope additionally required
+    /// `is_key_frame` (misdiagnosing the tx_size_class-3 regression above as frame-type-specific,
+    /// since it was only ever tested at `tx_size_class` 3 on an inter frame) -- that restriction
+    /// turned out to make the gate *never fire at all* against the real fixture (its key frames
+    /// consist entirely of unpartitioned 128x128 blocks; only inter frames have small enough
+    /// CUs), so every test passed vacuously until a dedicated test
+    /// (`real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`) was added
+    /// specifically to catch that. Removing the `is_key_frame` restriction is what's actually
+    /// real-fixture-verified now.
+    ///
+    /// Unlike luma, `is_1d` is always `false` (2D) here -- chroma's real `transform_type()` isn't
+    /// independently read at all (derived from luma's), and this crate doesn't attempt to derive
+    /// it; `false` is the common case. `txb_skip`/`dc_sign` use a single fixed real chroma
+    /// default CDF (`CdfContext::txb_skip_cdf_chroma`/`dc_sign_cdf_chroma`'s doc) rather than a
+    /// real context formula -- rav1d's chroma `get_skip_ctx`/`get_dc_sign_ctx` need a chroma-plane
+    /// above/left context array this crate doesn't track. `coeff_base`/`coeff_br` reuse
+    /// `symbol::scan::lo_ctx`'s real neighbor-context formula verbatim (it's plane-agnostic)
+    /// against chroma-specific default CDF values -- real context for these two, unlike
+    /// `txb_skip`/`dc_sign`.
+    ///
+    /// Returns nothing (unlike `read_residual_block`) -- this piece exists purely to keep the
+    /// shared `SymbolDecoder`'s bit position in sync with what the real encoder wrote; chroma
+    /// residual statistics aren't exposed anywhere yet (no consumer needs them).
+    pub fn read_chroma_residual_block(&mut self, chroma_tx_px: u32) -> Result<()> {
+        let tx_class = cdf::tx_size_class(chroma_tx_px).min(3);
+
+        let txb_skip_cdf = self.cdf_context.get_txb_skip_cdf_chroma_mut(tx_class);
+        let all_zero = self.decoder.read_symbol_adaptive(txb_skip_cdf)? == 1;
+        if all_zero {
+            return Ok(());
+        }
+
+        let eob_bin_cdf = self.cdf_context.get_eob_bin_cdf_chroma_mut(chroma_tx_px);
+        let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
+
+        let eob: u32 = if eob_bin > 1 {
+            let eob_hi_bit_cdf = self
+                .cdf_context
+                .get_eob_hi_bit_cdf_chroma_mut(tx_class, eob_bin as u8);
+            let eob_hi_bit = self.decoder.read_symbol_adaptive(eob_hi_bit_cdf)? as u32;
+            let num_extra_bits = eob_bin - 2;
+            let mut extra = 0u32;
+            for _ in 0..num_extra_bits {
+                let bit = self.decoder.read_bool(16384)? as u32;
+                extra = (extra << 1) | bit;
+            }
+            ((eob_hi_bit | 2) << (eob_bin - 2)) | extra
+        } else {
+            eob_bin
+        };
+
+        let mut levels = scan::LevelBuffer::new(4 << tx_class);
+
+        for c in (0..eob).rev() {
+            let (x, y) = scan::coeff_position(tx_class, false, c);
+            let is_eob_pos = c == eob - 1;
+
+            let (base_level, br_ctx) = if is_eob_pos {
+                let ctx = coeff_base_eob_context(eob, chroma_tx_px);
+                let cdf = self
+                    .cdf_context
+                    .get_coeff_base_eob_cdf_chroma_mut(tx_class, ctx);
+                let level = self.decoder.read_symbol_adaptive(cdf)? as u32 + 1;
+                let pos_band = (x | y) > 1;
+                (level, if pos_band { 14 } else { 7 })
+            } else if c == 0 {
+                let cdf = self.cdf_context.get_coeff_base_cdf_chroma_mut(tx_class, 0);
+                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
+                let (_, hi_mag) = scan::lo_ctx(&levels, 0, 0, false);
+                let mag = hi_mag & 63;
+                (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
+            } else {
+                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, false);
+                let cdf = self
+                    .cdf_context
+                    .get_coeff_base_cdf_chroma_mut(tx_class, ctx);
+                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
+                let mag = hi_mag & 63;
+                let pos_band = (x | y) > 1;
+                let band = if pos_band { 14 } else { 7 };
+                (
+                    level,
+                    band + (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8,
+                )
+            };
+
+            let mut level = base_level;
+            let extended = level > 2;
+            if extended {
+                let coeff_br_cdf = self
+                    .cdf_context
+                    .get_coeff_br_cdf_chroma_mut(tx_class, br_ctx);
+                for _ in 0..4 {
+                    let br = self.decoder.read_symbol_adaptive(coeff_br_cdf)? as u32;
+                    level += br;
+                    if br < 3 {
+                        break;
+                    }
+                }
+            }
+            levels.set(x, y, extended, level);
+
+            if level > 0 {
+                if c == 0 {
+                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf_chroma_mut();
+                    self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
+                } else {
+                    self.decoder.read_bool(16384)?;
+                }
+
+                if level > 14 {
+                    let mut length = 0u32;
+                    loop {
+                        length += 1;
+                        let terminate = self.decoder.read_bool(16384)?;
+                        if terminate || length >= 20 {
+                            break;
+                        }
+                    }
+                    for _ in 0..length.saturating_sub(1) {
+                        self.decoder.read_bool(16384)?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

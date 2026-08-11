@@ -50,10 +50,9 @@ use serde::{Deserialize, Serialize};
 /// requiring zero delta-Q).
 ///
 /// `mono_chrome`/`subsampling_x`/`subsampling_y` are threaded through here too (sourced from
-/// `ParsedFrame`'s fields of the same name) but **not yet consumed by anything** -- an attempted
-/// chroma residual read using them regressed the real fixture (see `symbol/mod.rs`'s
-/// `read_residual_block` doc for the root-cause writeup) and was reverted. Kept here since the
-/// sourcing itself is correct and directly reusable by a future real attempt.
+/// `ParsedFrame`'s fields of the same name), gating `parse_coding_unit`'s chroma residual read
+/// (`SymbolDecoder::read_chroma_residual_block`, see its doc for scope and the regression this
+/// piece's first attempt hit before landing on real chroma-specific default CDF values).
 #[derive(Debug, Clone, Copy)]
 pub struct TxTypeFrameFlags {
     pub coded_lossless: bool,
@@ -814,6 +813,31 @@ pub fn parse_coding_unit(
                 summary.sum_abs_level += block.sum_abs_level;
                 summary.max_level = summary.max_level.max(block.max_level);
             }
+        }
+
+        // Chroma (U/V) residual -- required for bitstream sync (spec 5.11.34's `residual()`
+        // reads luma, then U, then V for every `HasChroma` block). Restricted to non-IntraBC,
+        // square luma coding blocks 8x8/16x16/32x32 (`tx_size_class` 0..=2) in a 4:2:0 stream --
+        // see `SymbolDecoder::read_chroma_residual_block`'s doc for the full scope and,
+        // importantly, what was *tried and empirically reverted*: extending to 64x64/128x128
+        // luma blocks (`tx_size_class` 3, chroma capped at 32x32) regressed a real-fixture test
+        // despite looking structurally correct against the real rav1d reference tables -- root
+        // cause not fully isolated, so it's excluded here rather than shipped speculatively. Not
+        // restricted to key frames: this scope (`tx_size_class` 0..=2) is real-fixture-verified
+        // on inter frames too (the only frame type this fixture's 8x8..32x32 CUs occur on --
+        // key-frame content here happens to only ever use unpartitioned 128x128 blocks, so an
+        // earlier key-frame-only version of this gate was accidentally *never exercised* by this
+        // fixture at all -- see `real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`).
+        if !cu.use_intrabc
+            && !tx_type_flags.mono_chrome
+            && tx_type_flags.subsampling_x
+            && tx_type_flags.subsampling_y
+            && width == height
+            && (8..64).contains(&width)
+        {
+            let chroma_tx_px = width / 2;
+            decoder.read_chroma_residual_block(chroma_tx_px)?; // U
+            decoder.read_chroma_residual_block(chroma_tx_px)?; // V
         }
 
         cu.residual = Some(summary);
