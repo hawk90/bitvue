@@ -1525,13 +1525,25 @@ Largest는 0비트로 즉시 해석, Switchable만 실제 심볼 읽기로 분�
 필요한 설계 갈림길이라 임의로 결정하지 않고 향후 세션으로 보류. 358/358(av1-codec lib, 신규 테스트 7개),
 워크스페이스 전체(3853/3854, pre-existing flaky 1개 무관) + `--tests` 통합 스위트 클린, fmt/clippy 클린.
 
-- **다음 단계(로드맵, 남은 것 중 가장 큰 것들)**: (1) txb_skip/dc_sign의 실제 이웃 컨텍스트 재시도 —
-이제 인트라 경로는 tx 블록 경계가 정확해졌으므로 인트라 전용으로는 가능할 수 있음(인터/IntraBC 프레임은
-여전히 휴리스틱이라 부분적으로만 풀림). (2) coeff_base/coeff_br(스캔순서 테이블+블록당 scratch 버퍼,
-여전히 가장 큰 단일 작업). (3) 크로마 잔차 전체 미read 버그 수정(별도 이슈, transform_type()과 같은
-계열이지만 luma-only 호출부 자체를 바꿔야 함). (4) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit
-스키마 변경 선행 필요). (5) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기,
-segment_id/palette 등 아예 안 읽는 신택스 요소들.
+- **완료(2026-08-11, `e7171d5`)**: txb_skip/dc_sign 실제 above/left 이웃 컨텍스트 재시도 — 위 `8c05ba4`
+되돌림의 근본원인(tx_size 휴리스틱)이 해소된 키프레임 인트라(비-IntraBC) CU에 한해 다시 도입. rav1d
+`get_skip_ctx`/`get_dc_sign_ctx`(`src/recon_tmpl.c`)를 리서치 에이전트로 정밀 분석해 정확한 공식 확보:
+txb_skip은 above/left `cul_level`(계수 절댓값 합, 63캡) 바이트를 tx블록 폭/높이만큼 비트 OR reduce한
+뒤 `DAV1D_SKIP_CTX[min(la,4)][min(ll,4)]` 테이블 조회, dc_sign은 above/left DC부호 카테고리
+(0=음수/1=중립/2=양수)를 `(category-1)`로 합산한 부호로 0/1/2 분류. `TileContext`에 rav1d의 패킹된
+단일 바이트 대신 언패킹된 `cul_level`/`dc_sign_category` above/left 배열로 이식(이 크레이트는 chroma
+축을 애초에 안 다뤄 패킹 트릭이 불필요). **인터/IntraBC CU는 여전히 예전 고정-컨텍스트-0 폴백을 쓰고
+공유 이웃 배열을 아예 건드리지 않음** — 부정확한 tx 경계가 지금 막 정확해진 인트라 상태를 오염시키는
+걸 원천 차단(정확히 지난 회귀의 재발 방지). `parse_coding_unit`의 잔차 루프가 이제 tx블록별 실제
+(x4,y4) 위치를 추적(예전엔 단순 반복 횟수뿐이었음). 369/369(신규 테스트 11개, 지난번 회귀를 잡아냈던
+바로 그 real-fixture 테스트로 재확인), 워크스페이스 전체 클린.
+
+- **다음 단계(로드맵, 남은 것 중 가장 큰 것들)**: (1) coeff_base/coeff_br(스캔순서 테이블+블록당
+scratch 버퍼, 이제 진짜로 가장 큰 단일 작업). (2) 크로마 잔차 전체 미read 버그 수정(별도 이슈,
+transform_type()과 같은 계열이지만 luma-only 호출부 자체를 바꿔야 함). (3) 인터/IntraBC 실제 var-tx
+재귀 읽기(CodingUnit 스키마 변경 선행 필요) — 이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장
+가능. (4) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예
+안 읽는 신택스 요소들.
 
 ---
 
