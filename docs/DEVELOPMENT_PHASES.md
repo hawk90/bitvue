@@ -1462,10 +1462,34 @@ CDF(rav1d `Default_Partition_W8/16/32/64/128_Cdf`, 5블록레벨×4컨텍스트,
 315/315(av1-codec lib) 통과, `cargo test --workspace --tests` 141개 스위트 클린, clippy/fmt 클린.
 `has_rows`/`has_cols`(프레임 경계 축소-알파벳 읽기)는 여전히 미구현으로 남음(스코프 유지, 별도 항목).
 
-- **다음 단계(로드맵, 아직 미착수)**: inter_mode/compound_mode 컨텍스트(refmvs 서브시스템 — 이번
-partition 재스코핑과 달리 진짜로 큼, 참조-MV 후보 스캔이라는 별도 서브시스템이 실제로 필요함), ref_frame
-브랜치 컨텍스트, partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, residual coefficient
-전체 컨텍스트(scan-order+neighbor-level 유도, 가장 큰 남은 작업), segment_id/실제 tx_size/palette 등
+- **완료(2026-08-11)**: ref_frame 브랜치 컨텍스트(`0e8cc0f`, 9개 rav1d 컨텍스트 함수 전부 이식, 16개
+CDF 테이블 실값 포팅, decode.rs 실제 호출부 대조 중 uni_comp_ref_p2 극성 버그 발견+수정). inter_mode/
+compound_mode의 **공간(spatial) 절반**(`33379f6`, `SpatialRefContext` 신규 — have_newmv_match/
+have_refmv_match가 순수 불리언이라 rav1d의 가중치 MV candidate list 없이도 계산 가능함을 확인해 스코프
+축소, `read_inter_mode`를 진짜 3단계 캐스케이드로 재작성). globalmv_ctx(temporal/cross-frame 성분)는
+segment_id급 TODO로 고정 0 유지 — 결정론적 실제 스코핑 결과, 확대 안 함.
+
+- **residual coefficient 컨텍스트 재조사 완료, 착수는 보류(2026-08-11)**: "42개 컨텍스트"라는 기존
+프레이밍은 ref_frame의 "14/16 CDF"급 과대평가로 확인 — eob_bin/eob_hi_bit/coeff_base_eob는 상태 없는
+순수 산술 공식이고 txb_skip/dc_sign은 partition급 above/left 배열로 끝남. 단, 직접 rav1d
+`recon_tmpl.c`(아직 C, Rust 미포팅) 재확인 중 두 가지 진짜 걸림돌 발견: (1) **eob_bin 컨텍스트의
+`is_1d` 축이 `transform_type()`(spec 5.11.47)에 의존하는데 이 신택스 요소 자체가 Bitvue에 전혀
+구현돼있지 않음** — 별도의 실비트스트림-소모 심볼읽기(5개 조건분기 CDF패밀리 중 하나)이자, `lossless`/
+`qidx`/`reduced_txtp_set` 등 현재 `parse_coding_unit` 호출체인에 전혀 threading 안 된 프레임헤더 플래그가
+추가로 필요함(단순 컨텍스트 추가가 아니라 호출부 시그니처 확장이 필요한 아키텍처 확장). (2)
+**txb_skip/dc_sign(`get_skip_ctx`/`get_dc_sign_ctx`)은 partition의 "above/left 비트마스크"급이 아니라
+SIMD 최적화용으로 타입-폭(uint8/16/32/64)별로 분기하는 packed-byte above/left 배열**이라 값 인코딩부터
+역설계 필요(폭 얕지 않음). 사용자에게 "컨텍스트만, 크로마 버그는 별도로" 확인 받았으나, 재조사 중 실제
+드러난 스코프가 최초 프레이밍보다 커서(특히 transform_type() 프레임헤더 플래그 threading) 이번 세션에서는
+착수하지 않고 정밀 스코프 맵만 남김. **크로마 잔차(chroma residual)가 luma 전용 호출부라 한 번도 읽힌 적
+없다는 것도 이번 재조사 중 발견** — residual()/ref_frame()과 동일한 묵음 디스싱크급 잠재 버그, 별도 항목
+(둘 다 다음 세션 후보).
+
+- **다음 단계(로드맵)**: (1) `transform_type()` 신규 구현 + `parse_coding_unit`에 `lossless`/`qidx`/
+`reduced_txtp_set` 프레임헤더 플래그 threading, 그 다음 eob_bin/eob_hi_bit/coeff_base_eob 실컨텍스트.
+(2) txb_skip/dc_sign의 packed above/left 배열 설계(값 인코딩부터). (3) coeff_base/coeff_br(스캔순서
+테이블+블록당 scratch 버퍼, 여전히 가장 큰 단일 작업). (4) 크로마 잔차 전체 미read 버그 수정(별도 이슈).
+(5) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/실제 tx_size/palette 등
 아예 안 읽는 신택스 요소들.
 
 ---
