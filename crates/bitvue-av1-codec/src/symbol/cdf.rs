@@ -140,14 +140,16 @@ pub struct CdfContext {
     /// see `crate::tile::TileContext::intra_mode_context`). Real spec/rav1d default values +
     /// real per-context adaptation -- like `skip_cdf`, not a "representative" placeholder.
     kfym: [[Vec<u16>; 5]; 5],
-    /// INTER: 4 modes (NEWMV, NEARESTMV, NEARMV, GLOBALMV)
-    inter_mode_cdf: Vec<u16>,
+    /// `inter_mode()`'s 3 cascaded booleans (spec 5.11.23) -- real per-context CDFs + adaptation,
+    /// context from `crate::tile::TileContext::inter_mode_context`. See
+    /// `SymbolDecoder::read_inter_mode`'s doc for the decision tree these back.
+    newmv_mode_cdf: [Vec<u16>; 6],
+    globalmv_mode_cdf: [Vec<u16>; 2],
+    refmv_mode_cdf: [Vec<u16>; 6],
     /// `compound_mode` CDF (spec 5.11.24, 8 symbols) -- see `SymbolDecoder::read_compound_mode`'s
-    /// doc for the symbol ordering. Context-independent representative value like every other
-    /// CDF in this struct, biased toward the statistically common cases (both-nearest, and
-    /// both-new since compound is itself already only selected for blocks the encoder judged
-    /// worth the extra signaling cost).
-    compound_mode_cdf: Vec<u16>,
+    /// doc for the symbol ordering. Real per-context CDFs + adaptation, context from
+    /// `crate::tile::TileContext::compound_mode_context` -- not a "representative" placeholder.
+    compound_mode_cdf: [Vec<u16>; 8],
 
     /// Motion Vector CDFs
     /// MV joint CDF (4 symbols: correlation between horizontal/vertical components)
@@ -243,6 +245,16 @@ fn binary_cdf(p0: f32) -> Vec<u16> {
 /// adaptation-count-slot shape as `skip_cdf`'s per-context entries (see that field's doc).
 fn binary_ctx_cdf(raw_prob: u16) -> Vec<u16> {
     vec![CDF_SCALE - raw_prob, 0, 0]
+}
+
+/// Build an N-symbol CDF from `N-1` raw rav1d default probabilities (already the real spec
+/// values). Same shape as `binary_ctx_cdf` generalized to more than 2 symbols -- per-element
+/// `32768-p`, then the last symbol's implicit-0 boundary and the adaptation-count slot appended.
+fn multi_ctx_cdf(raw_probs: &[u16]) -> Vec<u16> {
+    let mut out: Vec<u16> = raw_probs.iter().map(|&p| CDF_SCALE - p).collect();
+    out.push(0); // last symbol's implicit boundary
+    out.push(0); // adaptation count starts at 0
+    out
 }
 
 /// Convert an ascending CDF (this crate's older convention: `cdf[0]=0 .. cdf[n]=CDF_SCALE`, still
@@ -456,31 +468,33 @@ impl CdfContext {
             ],
         ];
 
-        // INTER mode CDF (4 modes)
-        // Biased toward NEWMV (explicit motion vectors)
-        let inter_mode_cdf = vec![
-            0,                                // Start
-            (CDF_SCALE as f32 * 0.50) as u16, // NEWMV: 50%
-            (CDF_SCALE as f32 * 0.75) as u16, // NEARESTMV: 25%
-            (CDF_SCALE as f32 * 0.95) as u16, // NEARMV: 20%
-            CDF_SCALE,                        // GLOBALMV: 5%
-        ];
-        let inter_mode_cdf = to_descending(&inter_mode_cdf);
+        // `inter_mode()` (spec 5.11.23) -- real spec/rav1d default CDFs + real per-context
+        // adaptation, one context each for the 3 cascaded booleans (`newmv`/`globalmv`/`refmv`,
+        // see `SymbolDecoder::read_inter_mode`'s doc for the decision tree), context from
+        // `crate::tile::TileContext::inter_mode_context` (mirrors rav1d's packed
+        // `refmv_ctx<<4|globalmv_ctx<<3|newmv_ctx`, `src/refmvs.rs`). Source: rav1d
+        // `newmv_mode`/`globalmv_mode`/`refmv_mode` (`memorysafety/rav1d`, BSD-2-Clause,
+        // `src/cdf.rs`), same `32768-p` per-context transform as `skip_cdf`/ref_frame's CDFs.
+        let newmv_mode_cdf = [24035, 16630, 15339, 8386, 12222, 4676].map(binary_ctx_cdf);
+        let globalmv_mode_cdf = [2175, 1054].map(binary_ctx_cdf);
+        let refmv_mode_cdf = [23974, 24188, 17848, 28622, 24312, 19923].map(binary_ctx_cdf);
 
-        // compound_mode CDF (8 modes, spec 5.11.24) -- see `read_compound_mode`'s doc for symbol
-        // ordering. Biased toward NEAREST_NEARESTMV and NEW_NEWMV, the two "symmetric" choices.
-        let compound_mode_cdf = vec![
-            0,                                // Start
-            (CDF_SCALE as f32 * 0.30) as u16, // NEAREST_NEARESTMV: 30%
-            (CDF_SCALE as f32 * 0.40) as u16, // NEAR_NEARMV: 10%
-            (CDF_SCALE as f32 * 0.48) as u16, // NEAREST_NEWMV: 8%
-            (CDF_SCALE as f32 * 0.56) as u16, // NEW_NEARESTMV: 8%
-            (CDF_SCALE as f32 * 0.62) as u16, // NEAR_NEWMV: 6%
-            (CDF_SCALE as f32 * 0.68) as u16, // NEW_NEARMV: 6%
-            (CDF_SCALE as f32 * 0.70) as u16, // GLOBAL_GLOBALMV: 2%
-            CDF_SCALE,                        // NEW_NEWMV: 30%
+        // `compound_mode` (spec 5.11.24, 8 symbols) -- real spec/rav1d default CDFs + real
+        // per-context adaptation, context from
+        // `crate::tile::TileContext::compound_mode_context` (mirrors rav1d's compound remap of
+        // `refmv_ctx`/`newmv_ctx`, `src/refmvs.rs`). Source: rav1d `comp_inter_mode`
+        // (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`), same per-element `32768-p` + trailing
+        // implicit-0 + adaptation-count-slot transform as `kfym`/`partition_cdfs`.
+        let compound_mode_cdf: [Vec<u16>; 8] = [
+            multi_ctx_cdf(&[7760, 13823, 15808, 17641, 19156, 20666, 26891]),
+            multi_ctx_cdf(&[10730, 19452, 21145, 22749, 24039, 25131, 28724]),
+            multi_ctx_cdf(&[10664, 20221, 21588, 22906, 24295, 25387, 28436]),
+            multi_ctx_cdf(&[13298, 16984, 20471, 24182, 25067, 25736, 26422]),
+            multi_ctx_cdf(&[18904, 23325, 25242, 27432, 27898, 28258, 30758]),
+            multi_ctx_cdf(&[10725, 17454, 20124, 22820, 24195, 25168, 26046]),
+            multi_ctx_cdf(&[17125, 24273, 25814, 27492, 28214, 28704, 30592]),
+            multi_ctx_cdf(&[13046, 23214, 24505, 25942, 27435, 28442, 29330]),
         ];
-        let compound_mode_cdf = to_descending(&compound_mode_cdf);
 
         // MV joint CDF (correlation between horizontal/vertical MV components)
         // Default values from AV1 spec / rav1d reference implementation
@@ -683,7 +697,9 @@ impl CdfContext {
             partition_cdfs,
             skip_cdf,
             kfym,
-            inter_mode_cdf,
+            newmv_mode_cdf,
+            globalmv_mode_cdf,
+            refmv_mode_cdf,
             compound_mode_cdf,
             mv_joint_cdf,
             mv_sign_cdf,
@@ -753,18 +769,26 @@ impl CdfContext {
         &mut self.kfym[(above_class as usize).min(4)][(left_class as usize).min(4)]
     }
 
-    /// Get INTER prediction mode CDF
-    ///
-    /// Returns CDF for INTER modes (4 symbols)
-    pub fn get_inter_mode_cdf(&self) -> &[u16] {
-        &self.inter_mode_cdf
+    /// Get mutable `newmv_mode` CDF for the given context (0..=5, `ctx & 7` of
+    /// `crate::tile::TileContext::inter_mode_context`'s packed result).
+    pub fn get_newmv_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.newmv_mode_cdf[(ctx as usize).min(5)]
     }
 
-    /// Get `compound_mode` CDF
-    ///
-    /// Returns CDF for compound modes (8 symbols, spec 5.11.24)
-    pub fn get_compound_mode_cdf(&self) -> &[u16] {
-        &self.compound_mode_cdf
+    /// Get mutable `globalmv_mode` CDF for the given context (0..=1, `ctx >> 3 & 1`).
+    pub fn get_globalmv_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.globalmv_mode_cdf[(ctx as usize).min(1)]
+    }
+
+    /// Get mutable `refmv_mode` CDF for the given context (0..=5, `ctx >> 4 & 15`).
+    pub fn get_refmv_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.refmv_mode_cdf[(ctx as usize).min(5)]
+    }
+
+    /// Get mutable `compound_mode` CDF for the given context (0..=7, spec 5.11.24, see
+    /// `crate::tile::TileContext::compound_mode_context`).
+    pub fn get_compound_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.compound_mode_cdf[(ctx as usize).min(7)]
     }
 
     /// Get mutable MV joint CDF (4 symbols) -- mutable because `read_mv_joint` adapts it in place

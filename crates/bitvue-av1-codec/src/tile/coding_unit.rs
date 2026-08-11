@@ -544,11 +544,19 @@ pub fn parse_coding_unit(
                 -1
             },
         );
+        let rav1d_ref0 = cu.ref_frames[0] as i8 - 1;
+        let rav1d_ref1 = if is_compound {
+            cu.ref_frames[1] as i8 - 1
+        } else {
+            -1
+        };
 
         if is_compound {
             // compound_mode() (spec 5.11.24) -- a distinct 8-symbol alphabet from the single-ref
             // 4-way `inter_mode`, see `SymbolDecoder::read_compound_mode`'s doc.
-            let mode_symbol = decoder.read_compound_mode()?;
+            let ctx = tile_ctx
+                .compound_mode_context(x4, y4, width_4x4, height_4x4, rav1d_ref0, rav1d_ref1);
+            let mode_symbol = decoder.read_compound_mode(ctx)?;
             cu.mode = compound_mode_from_symbol(mode_symbol)?;
 
             cu.mv[0] = match cu.mode.l0_mv_kind() {
@@ -570,6 +578,17 @@ pub fn parse_coding_unit(
                 None => MotionVector::zero(),
             };
 
+            tile_ctx.set_spatial_ref_block(
+                x4,
+                y4,
+                width_4x4,
+                height_4x4,
+                rav1d_ref0,
+                rav1d_ref1,
+                cu.mode.l0_mv_kind() == Some(MvKind::New)
+                    || cu.mode.l1_mv_kind() == Some(MvKind::New),
+            );
+
             tracing::debug!(
                 "Compound mode {:?} at ({}, {}): mv0={:?}, mv1={:?}",
                 cu.mode,
@@ -580,7 +599,8 @@ pub fn parse_coding_unit(
             );
         } else {
             // INTER frame - read prediction mode
-            let mode_symbol = decoder.read_inter_mode()?;
+            let ctx = tile_ctx.inter_mode_context(x4, y4, width_4x4, height_4x4, rav1d_ref0);
+            let mode_symbol = decoder.read_inter_mode(ctx)?;
             cu.mode = inter_mode_from_symbol(mode_symbol)?;
 
             // If NEWMV, read motion vectors
@@ -615,6 +635,16 @@ pub fn parse_coding_unit(
                     cu.mv[0]
                 );
             }
+
+            tile_ctx.set_spatial_ref_block(
+                x4,
+                y4,
+                width_4x4,
+                height_4x4,
+                rav1d_ref0,
+                rav1d_ref1,
+                cu.mode == PredictionMode::NewMv,
+            );
         }
     }
 

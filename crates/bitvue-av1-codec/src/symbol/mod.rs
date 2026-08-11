@@ -117,16 +117,39 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.read_symbol_adaptive(cdf)
     }
 
-    /// Read INTER prediction mode
+    /// Read `inter_mode()` per AV1 spec Section 5.11.23, as 3 cascaded real-context-adaptive
+    /// booleans (`newmv`/`globalmv`/`refmv`), not a single 4-way symbol -- matches rav1d's actual
+    /// decode tree (`decode.rs`, `memorysafety/rav1d`, BSD-2-Clause): `newmv_bit == 0` means
+    /// NEWMV; otherwise `globalmv_bit == 0` means GLOBALMV; otherwise `refmv_bit` distinguishes
+    /// NEARMV (1) from NEARESTMV (0). `ctx` is `crate::tile::TileContext::inter_mode_context`'s
+    /// packed result (`refmv_ctx << 4 | globalmv_ctx << 3 | newmv_ctx`) -- real per-context CDFs
+    /// (`CdfContext`'s `newmv_mode_cdf`/`globalmv_mode_cdf`/`refmv_mode_cdf` doc) + real
+    /// adaptation via `read_symbol_adaptive`, matching `read_skip`/`read_ref_frames`'s bar.
     ///
     /// Returns INTER mode symbol (0-3):
     /// - 0: NEWMV (read explicit MV)
     /// - 1: NEARESTMV (use nearest neighbor MV)
     /// - 2: NEARMV (use near neighbor MV)
     /// - 3: GLOBALMV (use global motion MV)
-    pub fn read_inter_mode(&mut self) -> Result<u8> {
-        let cdf = self.cdf_context.get_inter_mode_cdf();
-        self.decoder.read_symbol(cdf)
+    pub fn read_inter_mode(&mut self, ctx: u16) -> Result<u8> {
+        let newmv_ctx = (ctx & 7) as u8;
+        let cdf = self.cdf_context.get_newmv_mode_cdf_mut(newmv_ctx);
+        let newmv_bit = self.decoder.read_symbol_adaptive(cdf)?;
+        if newmv_bit == 0 {
+            return Ok(0); // NEWMV
+        }
+
+        let globalmv_ctx = (ctx >> 3 & 1) as u8;
+        let cdf = self.cdf_context.get_globalmv_mode_cdf_mut(globalmv_ctx);
+        let globalmv_bit = self.decoder.read_symbol_adaptive(cdf)?;
+        if globalmv_bit == 0 {
+            return Ok(3); // GLOBALMV
+        }
+
+        let refmv_ctx = (ctx >> 4 & 15) as u8;
+        let cdf = self.cdf_context.get_refmv_mode_cdf_mut(refmv_ctx);
+        let refmv_bit = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(if refmv_bit == 1 { 2 } else { 1 }) // NEARMV : NEARESTMV
     }
 
     /// Read `compound_mode()` per AV1 spec Section 5.11.24, for compound-prediction inter blocks
@@ -145,11 +168,13 @@ impl<'a> SymbolDecoder<'a> {
     /// - 6: GLOBAL_GLOBALMV
     /// - 7: NEW_NEWMV
     ///
-    /// Uses a representative (non-adaptive) CDF like every other `read_*` method in this
-    /// decoder -- see `CdfContext`'s `compound_mode_cdf` field doc.
-    pub fn read_compound_mode(&mut self) -> Result<u8> {
-        let cdf = self.cdf_context.get_compound_mode_cdf();
-        self.decoder.read_symbol(cdf)
+    /// Real per-context CDF (`CdfContext`'s `compound_mode_cdf` doc) + real adaptation via
+    /// `read_symbol_adaptive`, matching `read_inter_mode`'s bar. `ctx` (0..=7) is
+    /// `crate::tile::TileContext::compound_mode_context`'s result -- fully real, no temporal
+    /// dependency (see that method's doc).
+    pub fn read_compound_mode(&mut self, ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_compound_mode_cdf_mut(ctx);
+        self.decoder.read_symbol_adaptive(cdf)
     }
 
     /// Read `ref_frame()` per AV1 spec Section 5.11.25 (`read_ref_frames`), for inter blocks.

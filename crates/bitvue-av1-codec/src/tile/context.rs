@@ -52,6 +52,258 @@ pub fn partition_bl(block_size_log2: u8) -> u8 {
     7 - block_size_log2.clamp(3, 7)
 }
 
+/// One 4x4 cell's reference-frame/mode state for `inter_mode`/`compound_mode` context (spec
+/// 5.11.23/5.11.24's `newmv_ctx`/`refmv_ctx`/`compound_mode`'s CDF index). Source: rav1d
+/// `RefMvsBlock` (`memorysafety/rav1d`, BSD-2-Clause, `src/refmvs.rs`), reduced to only the
+/// fields `rav1d_refmvs_find`'s context derivation (not its motion-vector CANDIDATE LIST, which
+/// this crate doesn't replicate -- see `crate::tile::mv_prediction::MvPredictorContext` for
+/// Bitvue's separate, simpler MV-value predictor) actually reads: whether a decoded block's
+/// stored ref matches the current block's ref (any block width works, since a wider block just
+/// repeats the same ref/mode across its own footprint -- see `SpatialRefContext`'s doc for why
+/// per-4x4-cell scanning doesn't need rav1d's block-width-aware step optimization at all).
+#[derive(Clone, Copy, Default)]
+struct SpatialRefCell {
+    /// `false` for intra blocks (rav1d: `RefMvsBlock.mv[0].is_invalid()`) or unwritten cells --
+    /// never contributes to a match.
+    valid: bool,
+    /// rav1d's 0..=6 `ref` encoding (see `TileContext`'s `above_ref0`/`left_ref0` doc).
+    ref0: i8,
+    /// rav1d's 0..=6 `ref` encoding, or `-1` for a single-ref block.
+    ref1: i8,
+    /// Whether this block's decoded mode contains a `NEWMV` component (rav1d: `RefMvsBlock.mf`
+    /// bit 1 -- `mode == NEWMV` for single-ref, or any compound mode with a "New" L0/L1 component
+    /// for compound; matches this crate's `PredictionMode::l0_mv_kind`/`l1_mv_kind` returning
+    /// `Some(MvKind::New)`).
+    is_newmv: bool,
+}
+
+/// Real above/left/secondary-neighbor `inter_mode`/`compound_mode` context, per AV1 spec
+/// 5.11.23/5.11.24 and rav1d's `rav1d_refmvs_find` (`memorysafety/rav1d`, BSD-2-Clause,
+/// `src/refmvs.rs`) -- **spatial only**. `globalmv_ctx` (the third component of single-ref
+/// `inter_mode`'s packed context) additionally depends on a temporal motion-field projected from
+/// a *different* decoded frame (rav1d: `add_temporal_candidate`, gated on the frame header's
+/// `use_ref_frame_mvs`) -- a separate, decoder-wide cross-frame subsystem this doesn't implement;
+/// `globalmv_context` always returns `0` (equivalent to `use_ref_frame_mvs == false`), a
+/// documented approximation, not a bug (confirmed with the user before implementing the spatial
+/// piece alone). `compound_mode`'s context has no temporal dependency at all, so it's fully real.
+///
+/// Unlike `TileContext`'s above/left arrays (`skip`/`mode`/`partition`/`ref_frame`), this needs a
+/// full `width x height` grid, not just one row + one column: rav1d's neighbor scan reaches a
+/// top-right cell, a top-left cell, and "secondary" rows/columns 2-3 units further back, all of
+/// which can be genuinely above-*and*-to-the-side of the query block, not purely above or purely
+/// left. Persists for the whole tile (no `start_superblock_row` reset -- the secondary scans need
+/// history from earlier superblock rows, unlike `skip`/`mode`/`partition`'s one-row lookback).
+///
+/// rav1d additionally uses candidate blocks' *widths* to skip redundant same-block re-scans (a
+/// performance optimization for its real-time decoder). This doesn't affect the result: since a
+/// wider block repeats the same `ref`/`is_newmv` across every 4x4 cell it covers, scanning every
+/// cell individually and OR-ing the match outcome is behaviorally identical to rav1d's
+/// width-aware stepping -- so `SpatialRefCell` doesn't need to store block dimensions at all.
+pub struct SpatialRefContext {
+    width_4x4: u32,
+    height_4x4: u32,
+    cells: Vec<SpatialRefCell>,
+}
+
+impl SpatialRefContext {
+    pub fn new(width_4x4: u32, height_4x4: u32) -> Self {
+        let width_4x4 = width_4x4.max(1);
+        let height_4x4 = height_4x4.max(1);
+        Self {
+            width_4x4,
+            height_4x4,
+            cells: vec![SpatialRefCell::default(); (width_4x4 * height_4x4) as usize],
+        }
+    }
+
+    fn cell(&self, x4: u32, y4: u32) -> Option<&SpatialRefCell> {
+        if x4 >= self.width_4x4 || y4 >= self.height_4x4 {
+            return None;
+        }
+        self.cells.get((y4 * self.width_4x4 + x4) as usize)
+    }
+
+    /// Record a decoded **inter** block's ref/mode state across its 4x4-unit footprint. Never
+    /// called for intra blocks -- rav1d's own `splat_mv` is likewise only invoked from the
+    /// inter-block decode path (`decode.rs`), leaving intra-covered cells at their default
+    /// `valid: false` for the lifetime of the tile (every cell is visited by exactly one coding
+    /// block during a tile's decode, so "never written" and "written by an intra block" coincide).
+    pub fn set_block(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        ref0: i8,
+        ref1: i8,
+        is_newmv: bool,
+    ) {
+        let cell = SpatialRefCell {
+            valid: true,
+            ref0,
+            ref1,
+            is_newmv,
+        };
+        let x_end = (x4 + width_4x4).min(self.width_4x4);
+        let y_end = (y4 + height_4x4).min(self.height_4x4);
+        for y in y4..y_end {
+            for x in x4..x_end {
+                self.cells[(y * self.width_4x4 + x) as usize] = cell;
+            }
+        }
+    }
+
+    /// Whether a decoded cell's ref matches the query block's `(ref0, ref1)` -- rav1d
+    /// `add_spatial_candidate`: single-ref (`ref1 < 0`) matches if the cell's `ref0` *or* `ref1`
+    /// equals the query's `ref0`; compound matches only on an exact `(ref0, ref1)` pair match.
+    fn ref_matches(cell: &SpatialRefCell, ref0: i8, ref1: i8) -> bool {
+        if !cell.valid {
+            return false;
+        }
+        if ref1 < 0 {
+            cell.ref0 == ref0 || cell.ref1 == ref0
+        } else {
+            cell.ref0 == ref0 && cell.ref1 == ref1
+        }
+    }
+
+    /// Spatial neighbor scan shared by `inter_mode_context`/`compound_mode_context`. Returns
+    /// `(nearest_match, ref_match_count, have_newmv)`, matching rav1d `rav1d_refmvs_find`'s
+    /// same-named locals (`src/refmvs.rs`) computed purely from the "primary" above-row/left-
+    /// column/top-right/top-left scans plus the "secondary" (2/3-units-back) row/column scans --
+    /// everything except the temporal (`add_temporal_candidate`) contribution, see this struct's
+    /// doc. `w4`/`h4` are the query block's own width/height in 4x4 units, capped to 16 (rav1d:
+    /// `cmp::min(bw4, 16)`/`cmp::min(bh4, 16)` -- the tile-bound clamp rav1d also applies is
+    /// skipped here, matching the rest of this crate's "whole frame as one tile" simplification).
+    fn scan(&self, x4: u32, y4: u32, bw4: u32, bh4: u32, ref0: i8, ref1: i8) -> (u8, u8, bool) {
+        let w4 = bw4.clamp(1, 16);
+        let h4 = bh4.clamp(1, 16);
+        let mut have_newmv = false;
+        let mut have_row_mvs = false;
+        let mut have_col_mvs = false;
+
+        // Primary above-row scan.
+        if y4 > 0 {
+            for x in x4..x4 + w4 {
+                if let Some(cell) = self.cell(x, y4 - 1) {
+                    if Self::ref_matches(cell, ref0, ref1) {
+                        have_row_mvs = true;
+                        have_newmv |= cell.is_newmv;
+                    }
+                }
+            }
+        }
+        // Primary left-column scan.
+        if x4 > 0 {
+            for y in y4..y4 + h4 {
+                if let Some(cell) = self.cell(x4 - 1, y) {
+                    if Self::ref_matches(cell, ref0, ref1) {
+                        have_col_mvs = true;
+                        have_newmv |= cell.is_newmv;
+                    }
+                }
+            }
+        }
+        // Top-right corner (single cell, one unit right of the block's own top-right 4x4).
+        if y4 > 0 {
+            if let Some(cell) = self.cell(x4 + bw4.max(1), y4 - 1) {
+                if Self::ref_matches(cell, ref0, ref1) {
+                    have_row_mvs = true;
+                    have_newmv |= cell.is_newmv;
+                }
+            }
+        }
+
+        let nearest_match = u8::from(have_row_mvs) + u8::from(have_col_mvs);
+
+        // Top-left corner -- contributes to `have_row_mvs` only, never `have_newmv` (rav1d uses a
+        // throwaway `have_dummy_newmv_match` for this candidate, see `rav1d_refmvs_find`).
+        if x4 > 0 && y4 > 0 {
+            if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
+                if Self::ref_matches(cell, ref0, ref1) {
+                    have_row_mvs = true;
+                }
+            }
+        }
+
+        // "Secondary" row/column scans at 2 and 3 units back -- also `have_newmv`-inert.
+        for n in 2..=3u32 {
+            let back = 2 * n - 1;
+            if y4 >= back {
+                let ry = y4 - back;
+                for x in x4..x4 + w4 {
+                    if let Some(cell) = self.cell(x, ry) {
+                        if Self::ref_matches(cell, ref0, ref1) {
+                            have_row_mvs = true;
+                        }
+                    }
+                }
+            }
+            if x4 >= back {
+                let cx = x4 - back;
+                for y in y4..y4 + h4 {
+                    if let Some(cell) = self.cell(cx, y) {
+                        if Self::ref_matches(cell, ref0, ref1) {
+                            have_col_mvs = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        let ref_match_count = u8::from(have_row_mvs) + u8::from(have_col_mvs);
+        (nearest_match, ref_match_count, have_newmv)
+    }
+
+    /// `(refmv_ctx, newmv_ctx)` per rav1d `rav1d_refmvs_find`'s context build-up (`src/refmvs.rs`).
+    fn refmv_newmv_ctx(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        ref0: i8,
+        ref1: i8,
+    ) -> (u8, u8) {
+        let (nearest_match, ref_match_count, have_newmv) = self.scan(x4, y4, bw4, bh4, ref0, ref1);
+        match nearest_match {
+            0 => (ref_match_count.min(2), u8::from(ref_match_count > 0)),
+            1 => ((ref_match_count * 3).min(4), 3 - u8::from(have_newmv)),
+            _ => (5, 5 - u8::from(have_newmv)), // nearest_match == 2 (max possible)
+        }
+    }
+
+    /// Packed single-ref `inter_mode` context (spec 5.11.23): `newmv_mode`'s CDF index is
+    /// `ctx & 7`, `globalmv_mode`'s is `ctx >> 3 & 1`, `refmv_mode`'s is `ctx >> 4 & 15`. Source:
+    /// rav1d `*ctx = refmv_ctx << 4 | globalmv_ctx << 3 | newmv_ctx` (`src/refmvs.rs`).
+    /// `globalmv_ctx` is always `0` here -- see this struct's doc.
+    pub fn inter_mode_context(&self, x4: u32, y4: u32, bw4: u32, bh4: u32, ref0: i8) -> u16 {
+        let (refmv_ctx, newmv_ctx) = self.refmv_newmv_ctx(x4, y4, bw4, bh4, ref0, -1);
+        let globalmv_ctx = 0u16; // temporal-context approximation, see struct doc
+        (refmv_ctx as u16) << 4 | globalmv_ctx << 3 | newmv_ctx as u16
+    }
+
+    /// `compound_mode` context (spec 5.11.24, 0..=7): fully real, no temporal dependency. Source:
+    /// rav1d's compound remap of `refmv_ctx`/`newmv_ctx` (`src/refmvs.rs`):
+    /// `match refmv_ctx >> 1 { 0 => min(newmv_ctx,1), 1 => 1+min(newmv_ctx,3), _ => clamp(3+newmv_ctx,4,7) }`.
+    pub fn compound_mode_context(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        ref0: i8,
+        ref1: i8,
+    ) -> u8 {
+        let (refmv_ctx, newmv_ctx) = self.refmv_newmv_ctx(x4, y4, bw4, bh4, ref0, ref1);
+        match refmv_ctx >> 1 {
+            0 => newmv_ctx.min(1),
+            1 => 1 + newmv_ctx.min(3),
+            _ => (3 + newmv_ctx).clamp(4, 7),
+        }
+    }
+}
+
 /// Tracks above/left neighbor state for one tile, at 4x4-unit granularity.
 ///
 /// `above_*` arrays span the tile's full width and persist for the whole tile (matches spec: the
@@ -94,6 +346,9 @@ pub struct TileContext {
     left_ref0: Vec<i8>,
     above_ref1: Vec<i8>,
     left_ref1: Vec<i8>,
+    /// `inter_mode`/`compound_mode` context -- see `SpatialRefContext`'s doc (full-grid, not
+    /// above/left arrays, and never reset per superblock row).
+    spatial_ref: SpatialRefContext,
 }
 
 impl TileContext {
@@ -119,6 +374,7 @@ impl TileContext {
             left_ref0: vec![0; tile_height_4x4.max(1) as usize],
             above_ref1: vec![0; tile_width_4x4.max(1) as usize],
             left_ref1: vec![0; tile_height_4x4.max(1) as usize],
+            spatial_ref: SpatialRefContext::new(tile_width_4x4, tile_height_4x4),
         }
     }
 
@@ -488,6 +744,42 @@ impl TileContext {
         cnt[1] += cnt[2];
         cmp_counts(cnt[0], cnt[1])
     }
+
+    /// Record a decoded **inter** block's ref/mode state for future `inter_mode`/`compound_mode`
+    /// context lookups -- see `SpatialRefContext::set_block`'s doc (never call for intra blocks).
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_spatial_ref_block(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        ref0: i8,
+        ref1: i8,
+        is_newmv: bool,
+    ) {
+        self.spatial_ref
+            .set_block(x4, y4, width_4x4, height_4x4, ref0, ref1, is_newmv);
+    }
+
+    /// Packed single-ref `inter_mode` context -- see `SpatialRefContext::inter_mode_context`.
+    pub fn inter_mode_context(&self, x4: u32, y4: u32, bw4: u32, bh4: u32, ref0: i8) -> u16 {
+        self.spatial_ref.inter_mode_context(x4, y4, bw4, bh4, ref0)
+    }
+
+    /// `compound_mode` context -- see `SpatialRefContext::compound_mode_context`.
+    pub fn compound_mode_context(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        ref0: i8,
+        ref1: i8,
+    ) -> u8 {
+        self.spatial_ref
+            .compound_mode_context(x4, y4, bw4, bh4, ref0, ref1)
+    }
 }
 
 /// 3-way ordinal comparison of two neighbor reference-frame counts, used by every count-based
@@ -815,5 +1107,108 @@ mod tests {
         // After reset, left_ref_intra defaults back to `true` (see `start_superblock_row`'s doc),
         // so the stale backward-ref value at left_ref0[0] is excluded again -- back to a tie.
         assert_eq!(ctx.single_ref_p1_context(5, 0), 1);
+    }
+
+    // `inter_mode`/`compound_mode` (`SpatialRefContext`) tests.
+
+    #[test]
+    fn test_inter_mode_context_no_neighbors_is_zero() {
+        let ctx = SpatialRefContext::new(16, 16);
+        assert_eq!(ctx.inter_mode_context(0, 0, 4, 4, 0), 0);
+    }
+
+    #[test]
+    fn test_inter_mode_context_top_forward_match_not_newmv() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_block(0, 0, 4, 4, 0, -1, false); // LAST, covers x4=0..4, y4=0..4
+                                                 // Query directly below: top row scan hits row y4=0, columns 0..4 -- a match.
+                                                 // nearest_match=1 -> refmv_ctx=min(1*3,4)=3, newmv_ctx=3-0=3 -> packed = 3<<4|3 = 51.
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0), 51);
+    }
+
+    #[test]
+    fn test_inter_mode_context_top_match_is_newmv_lowers_newmv_ctx() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_block(0, 0, 4, 4, 0, -1, true);
+        // Same as above but is_newmv=true -> newmv_ctx = 3-1=2 -> packed = 3<<4|2 = 50.
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0), 50);
+    }
+
+    #[test]
+    fn test_inter_mode_context_no_ref_match_is_zero() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_block(0, 0, 4, 4, 4, -1, false); // GOLDEN
+                                                 // Query for a different ref (LAST) -- no match at all.
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0), 0);
+    }
+
+    #[test]
+    fn test_inter_mode_context_single_ref_matches_either_slot_of_compound_neighbor() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_block(0, 0, 4, 4, 2, 5, false); // compound neighbor: LAST3 + ALTREF2
+                                                // Single-ref query for ref0=5 (ALTREF2) matches via the neighbor's ref1 slot.
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 5), 51);
+    }
+
+    #[test]
+    fn test_compound_mode_context_no_neighbors_is_zero() {
+        let ctx = SpatialRefContext::new(16, 16);
+        assert_eq!(ctx.compound_mode_context(0, 0, 4, 4, 0, 4), 0);
+    }
+
+    #[test]
+    fn test_compound_mode_context_exact_pair_required() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        ctx.set_block(0, 0, 4, 4, 0, 4, false); // compound (LAST, BWDREF)
+                                                // Swapped pair must NOT match (rav1d: exact `RefMvsRefPair` equality).
+        assert_eq!(ctx.compound_mode_context(0, 1, 4, 4, 4, 0), 0);
+        // Exact pair matches: nearest_match=1 -> refmv_ctx=3, refmv_ctx>>1=1 -> 1+min(newmv_ctx,3).
+        // newmv_ctx=3 (not newmv) -> 1+3=4.
+        assert_eq!(ctx.compound_mode_context(0, 1, 4, 4, 0, 4), 4);
+    }
+
+    #[test]
+    fn test_compound_mode_context_both_sides_match_saturates_to_seven() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        // Isolated single-cell placements: row 4 (above the query row) and column 4 (left of the
+        // query column), so both the top and left primary scans find exactly one match each.
+        ctx.set_block(5, 4, 4, 1, 0, 4, false);
+        ctx.set_block(4, 5, 1, 4, 0, 4, false);
+        // nearest_match=2 -> refmv_ctx=5, refmv_ctx>>1=2 -> clamp(3+newmv_ctx,4,7).
+        // newmv_ctx=5-0=5 -> clamp(8,4,7)=7.
+        assert_eq!(ctx.compound_mode_context(5, 5, 4, 4, 0, 4), 7);
+    }
+
+    #[test]
+    fn test_inter_mode_context_top_left_corner_contributes_but_not_to_newmv() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        // Only the top-left corner cell (x4-1, y4-1) matches, and it's a newmv block -- rav1d
+        // discards this candidate's newmv contribution (`have_dummy_newmv_match`).
+        ctx.set_block(4, 4, 1, 1, 0, -1, true);
+        // nearest_match=0 (top-left isn't scanned until after nearest_match is computed) ->
+        // refmv_ctx=min(ref_match_count,2), newmv_ctx=(ref_match_count>0).
+        // ref_match_count=1 (top-left counted into have_row_mvs) -> refmv_ctx=1, newmv_ctx=1.
+        // packed = 1<<4|1 = 17 -- and critically NOT lowered by the neighbor's newmv flag.
+        assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0), 17);
+    }
+
+    #[test]
+    fn test_inter_mode_context_secondary_row_scan_finds_distant_match() {
+        let mut ctx = SpatialRefContext::new(16, 16);
+        // 3 rows above the query, out of reach of the primary top scan (row y4-1) but within the
+        // secondary n=2 scan's `back = 2*2-1 = 3` reach.
+        ctx.set_block(0, 2, 4, 1, 0, -1, false);
+        // Primary top scan (row 4) and top-right/top-left find nothing -> nearest_match=0.
+        // Secondary scan finds the match -> ref_match_count=1 -> refmv_ctx=1, newmv_ctx=1.
+        assert_eq!(ctx.inter_mode_context(0, 5, 4, 4, 0), 17);
+    }
+
+    #[test]
+    fn test_set_block_intra_default_never_matches() {
+        // A cell that's never written (the "intra block" simplification -- see `set_block`'s doc)
+        // stays `valid: false` and never contributes, regardless of what ref0/ref1 it queries for.
+        let ctx = SpatialRefContext::new(16, 16);
+        assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0), 0);
+        assert_eq!(ctx.compound_mode_context(5, 5, 4, 4, 0, 4), 0);
     }
 }
