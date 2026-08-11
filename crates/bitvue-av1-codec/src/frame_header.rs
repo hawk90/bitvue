@@ -198,6 +198,17 @@ pub struct FrameHeader {
     /// `TxMode` (spec 5.9.21) -- see `TxfmMode`'s doc. Always `TxfmMode::Largest` from
     /// `parse_frame_header_basic` (same basic-vs-full caveat as `reference_select`).
     pub txfm_mode: TxfmMode,
+    /// `use_ref_frame_mvs` (spec 5.9.2) -- whether this frame's `inter_mode` context may draw on
+    /// temporal (cross-frame) motion-field candidates (spec 7.9's `motion_field_estimation`).
+    /// This crate never saves a per-frame motion field (no reconstruction/motion compensation),
+    /// so `crate::tile::context::SpatialRefContext::inter_mode_context` uses this flag directly as
+    /// `globalmv_ctx`'s value -- rav1d's own `globalmv_ctx` starts at exactly this flag and is
+    /// only ever overridden away from it when a real temporal candidate is found (`src/refmvs.rs`
+    /// `rav1d_refmvs_find`/`add_temporal_candidate`), so this matches rav1d's *initial* value
+    /// unconditionally and its *final* value whenever no temporal candidate happens to override
+    /// it -- a strictly closer approximation than a hardcoded `false`, not a full implementation
+    /// of the temporal subsystem itself. Same basic-vs-full caveat as `reference_select`.
+    pub use_ref_frame_mvs: bool,
     /// Loop filter (deblocking) parameters
     pub loop_filter: LoopFilterInfo,
     /// CDEF parameters
@@ -545,6 +556,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             allow_intrabc: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
+            use_ref_frame_mvs: false,
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -715,6 +727,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         allow_intrabc: false,
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
+        use_ref_frame_mvs: false,
         loop_filter: LoopFilterInfo::default(),
         cdef_damping: CdefInfo::default(),
         cdef_y_primary_strength: 0,

@@ -528,6 +528,7 @@ pub fn parse_coding_unit(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    use_ref_frame_mvs: bool,
     tile_ctx: &mut crate::tile::TileContext,
     tx_type_flags: TxTypeFrameFlags,
 ) -> Result<(CodingUnit, i16)> {
@@ -666,7 +667,14 @@ pub fn parse_coding_unit(
             );
         } else {
             // INTER frame - read prediction mode
-            let ctx = tile_ctx.inter_mode_context(x4, y4, width_4x4, height_4x4, rav1d_ref0);
+            let ctx = tile_ctx.inter_mode_context(
+                x4,
+                y4,
+                width_4x4,
+                height_4x4,
+                rav1d_ref0,
+                use_ref_frame_mvs,
+            );
             let mode_symbol = decoder.read_inter_mode(ctx)?;
             cu.mode = inter_mode_from_symbol(mode_symbol)?;
 

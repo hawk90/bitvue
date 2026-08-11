@@ -84,6 +84,8 @@ impl Superblock {
 /// * `delta_q_enabled` - True if delta Q is enabled for this frame
 /// * `reference_select` - Frame header's `reference_select` flag (see `parse_coding_unit`'s doc)
 /// * `allow_intrabc` - Frame header's `allow_intrabc` flag (see `parse_coding_unit`'s doc)
+/// * `use_ref_frame_mvs` - Frame header's `use_ref_frame_mvs` flag, used as `inter_mode`'s
+///   `globalmv_ctx` (see `crate::tile::context::SpatialRefContext::inter_mode_context`'s doc)
 /// * `tile_ctx` - Above/left neighbor-state tracker for entropy context, shared across every
 ///   superblock in the tile (see `crate::tile::TileContext`'s doc). Callers looping over
 ///   superblock rows should call `tile_ctx.start_superblock_row()` at the start of each row.
@@ -111,6 +113,7 @@ pub fn parse_superblock(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    use_ref_frame_mvs: bool,
     tile_ctx: &mut crate::tile::TileContext,
     tx_type_flags: TxTypeFrameFlags,
     mi_rows: u32,
@@ -148,6 +151,7 @@ pub fn parse_superblock(
         mv_ctx,
         reference_select,
         allow_intrabc,
+        use_ref_frame_mvs,
         tile_ctx,
         tx_type_flags,
         &mut sb.coding_units,
@@ -177,6 +181,7 @@ fn parse_coding_units_recursive(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    use_ref_frame_mvs: bool,
     tile_ctx: &mut crate::tile::TileContext,
     tx_type_flags: TxTypeFrameFlags,
     coding_units: &mut Vec<CodingUnit>,
@@ -195,6 +200,7 @@ fn parse_coding_units_recursive(
             mv_ctx,
             reference_select,
             allow_intrabc,
+            use_ref_frame_mvs,
             tile_ctx,
             tx_type_flags,
         )?;
@@ -214,6 +220,7 @@ fn parse_coding_units_recursive(
                 mv_ctx,
                 reference_select,
                 allow_intrabc,
+                use_ref_frame_mvs,
                 tile_ctx,
                 tx_type_flags,
                 coding_units,

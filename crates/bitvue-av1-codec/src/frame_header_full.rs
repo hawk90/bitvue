@@ -902,6 +902,7 @@ pub fn parse_frame_header_full(
             allow_intrabc: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
+            use_ref_frame_mvs: false,
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -1015,6 +1016,7 @@ pub fn parse_frame_header_full(
     let mut allow_intrabc = false;
     let (width, height, upscaled_width, upscaled_height, use_superres, superres_denom);
     let mut allow_high_precision_mv = false;
+    let mut use_ref_frame_mvs = false;
     if frame_is_intra {
         let size = read_frame_size(&mut reader, seq, frame_size_override_flag)?;
         read_render_size(&mut reader)?;
@@ -1077,12 +1079,11 @@ pub fn parse_frame_header_full(
         };
         read_interpolation_filter(&mut reader)?;
         reader.read_bit()?; // is_motion_mode_switchable
-        let use_ref_frame_mvs = if error_resilient_mode || !seq.enable_ref_frame_mvs {
+        use_ref_frame_mvs = if error_resilient_mode || !seq.enable_ref_frame_mvs {
             false
         } else {
             reader.read_bit()?
         };
-        let _ = use_ref_frame_mvs;
     }
 
     let disable_frame_end_update_cdf = if seq.reduced_still_picture_header || disable_cdf_update {
@@ -1203,6 +1204,7 @@ pub fn parse_frame_header_full(
         allow_intrabc,
         reduced_tx_set,
         txfm_mode,
+        use_ref_frame_mvs,
         loop_filter,
         cdef_damping: cdef.clone(),
         cdef_y_primary_strength: cdef.y_primary_strength,

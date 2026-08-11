@@ -52,6 +52,9 @@ pub struct ParsedFrame {
     /// `TxMode` (spec 5.9.21) -- see `TxfmMode`'s doc. Same sourcing/fallback story as
     /// `reference_select`.
     pub txfm_mode: TxfmMode,
+    /// `use_ref_frame_mvs` (spec 5.9.2) -- see `FrameHeader::use_ref_frame_mvs`'s doc. Same
+    /// sourcing/fallback story as `reference_select`.
+    pub use_ref_frame_mvs: bool,
     /// `mono_chrome` (spec sequence header `color_config()`) -- true means this stream has no
     /// chroma planes at all (`num_planes == 1`), sourced directly from the sequence header's
     /// `ColorConfig` (no `parse_frame_header_full` needed, unlike `reference_select`/etc.).
@@ -156,6 +159,7 @@ impl ParsedFrame {
                 reduced_tx_set: false,
                 coded_lossless: false,
                 txfm_mode: TxfmMode::default(),
+                use_ref_frame_mvs: false,
                 mono_chrome: true,
                 subsampling_x: false,
                 subsampling_y: false,
@@ -193,6 +197,7 @@ impl ParsedFrame {
         let mut reduced_tx_set = false;
         let mut coded_lossless = false;
         let mut txfm_mode = TxfmMode::default();
+        let mut use_ref_frame_mvs = false;
         let mut mono_chrome = true;
         let mut subsampling_x = false;
         let mut subsampling_y = false;
@@ -272,6 +277,7 @@ impl ParsedFrame {
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
+                            use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
                         }
                     }
                 }
@@ -294,6 +300,7 @@ impl ParsedFrame {
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
+                            use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
                         }
                     }
                 }
@@ -324,6 +331,7 @@ impl ParsedFrame {
             reduced_tx_set,
             coded_lossless,
             txfm_mode,
+            use_ref_frame_mvs,
             mono_chrome,
             subsampling_x,
             subsampling_y,

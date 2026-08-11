@@ -186,6 +186,7 @@ fn parse_partition_trees_from_tile_data(
                 &mut mv_ctx,
                 parsed.reference_select,
                 parsed.allow_intrabc,
+                parsed.use_ref_frame_mvs,
                 &mut tile_ctx,
                 crate::tile::TxTypeFrameFlags {
                     coded_lossless: parsed.coded_lossless,
@@ -911,6 +912,7 @@ mod tests {
                     &mut mv_ctx,
                     parsed.reference_select,
                     parsed.allow_intrabc,
+                    parsed.use_ref_frame_mvs,
                     &mut tile_ctx,
                     crate::tile::TxTypeFrameFlags {
                         coded_lossless: parsed.coded_lossless,

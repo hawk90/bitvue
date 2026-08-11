@@ -35,6 +35,7 @@ pub fn parse_all_coding_units(
     let delta_q_enabled = parsed.delta_q_enabled;
     let reference_select = parsed.reference_select;
     let allow_intrabc = parsed.allow_intrabc;
+    let use_ref_frame_mvs = parsed.use_ref_frame_mvs;
     let tx_type_flags = crate::tile::TxTypeFrameFlags {
         coded_lossless: parsed.coded_lossless,
         qidx_is_zero: parsed.frame_type.base_qp == Some(0),
@@ -88,6 +89,7 @@ pub fn parse_all_coding_units(
                     &mut mv_ctx,
                     reference_select,
                     allow_intrabc,
+                    use_ref_frame_mvs,
                     &mut tile_ctx,
                     tx_type_flags,
                     mi_rows,
@@ -688,6 +690,47 @@ mod tests {
              across {total_cus} real coding units -- the real hasRows/hasCols frame-edge gate may \
              not be firing against this fixture's real 320x240-in-128x128-superblocks geometry, or \
              may have regressed to always reading the full alphabet"
+        );
+    }
+
+    /// Regression test for `inter_mode`'s `globalmv_ctx` fix: previously hardcoded to `0`
+    /// (`crate::tile::context::SpatialRefContext::inter_mode_context`'s old doc), now the frame
+    /// header's real `use_ref_frame_mvs` flag. Confirms the fix is exercised non-vacuously against
+    /// this fixture -- every real inter frame here has `use_ref_frame_mvs == true` (not just a
+    /// contrived edge case), meaning the old hardcoded `false` was wrong for 100% of this
+    /// fixture's inter frames, not some rare corner. Same "assert the gate genuinely fires"
+    /// discipline as `real_fixture_frame_edge_partitions_are_not_degenerate`'s doc.
+    #[test]
+    fn real_fixture_use_ref_frame_mvs_is_true_for_inter_frames() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut inter_frame_count = 0usize;
+        let mut use_ref_frame_mvs_true_count = 0usize;
+
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let Ok(parsed) = super::super::parser::ParsedFrame::parse(&obu_data) else {
+                continue;
+            };
+            if parsed.frame_type.is_intra_only || !parsed.has_tile_data() {
+                continue;
+            }
+            inter_frame_count += 1;
+            if parsed.use_ref_frame_mvs {
+                use_ref_frame_mvs_true_count += 1;
+            }
+        }
+
+        assert!(
+            inter_frame_count > 0,
+            "expected real inter frames in the fixture"
+        );
+        assert_eq!(
+            use_ref_frame_mvs_true_count, inter_frame_count,
+            "expected every real inter frame in the fixture to have use_ref_frame_mvs == true \
+             ({use_ref_frame_mvs_true_count}/{inter_frame_count} did) -- if this regresses, the \
+             globalmv_ctx fix may be passing vacuously again"
         );
     }
 }

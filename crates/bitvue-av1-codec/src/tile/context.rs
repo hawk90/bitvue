@@ -93,10 +93,18 @@ struct SpatialRefCell {
 /// `src/refmvs.rs`) -- **spatial only**. `globalmv_ctx` (the third component of single-ref
 /// `inter_mode`'s packed context) additionally depends on a temporal motion-field projected from
 /// a *different* decoded frame (rav1d: `add_temporal_candidate`, gated on the frame header's
-/// `use_ref_frame_mvs`) -- a separate, decoder-wide cross-frame subsystem this doesn't implement;
-/// `globalmv_context` always returns `0` (equivalent to `use_ref_frame_mvs == false`), a
-/// documented approximation, not a bug (confirmed with the user before implementing the spatial
-/// piece alone). `compound_mode`'s context has no temporal dependency at all, so it's fully real.
+/// `use_ref_frame_mvs` AND on `rf.n_mfmvs > 0`, itself gated on at least one reference slot
+/// actually having a *saved* motion field from decoding that reference -- spec 7.9's
+/// `motion_field_estimation`) -- a separate, decoder-wide cross-frame subsystem this doesn't
+/// implement (no reconstruction/motion compensation, so no per-frame motion field is ever saved).
+/// `inter_mode_context` takes `use_ref_frame_mvs` (the frame header flag) directly as
+/// `globalmv_ctx`'s value: rav1d's own `globalmv_ctx` local is *initialized* to exactly this flag
+/// and only gets overridden away from it when a real temporal candidate is found at that specific
+/// query position, so this matches rav1d's true value in every case except "a temporal candidate
+/// existed and disagreed" -- a documented, deliberately partial approximation (confirmed with the
+/// user before implementing the spatial piece alone; the temporal half remains a follow-up, not a
+/// bug), strictly closer than the earlier hardcoded `0`. `compound_mode`'s context has no
+/// temporal dependency at all, so it's fully real.
 ///
 /// Unlike `TileContext`'s above/left arrays (`skip`/`mode`/`partition`/`ref_frame`), this needs a
 /// full `width x height` grid, not just one row + one column: rav1d's neighbor scan reaches a
@@ -287,10 +295,22 @@ impl SpatialRefContext {
     /// Packed single-ref `inter_mode` context (spec 5.11.23): `newmv_mode`'s CDF index is
     /// `ctx & 7`, `globalmv_mode`'s is `ctx >> 3 & 1`, `refmv_mode`'s is `ctx >> 4 & 15`. Source:
     /// rav1d `*ctx = refmv_ctx << 4 | globalmv_ctx << 3 | newmv_ctx` (`src/refmvs.rs`).
-    /// `globalmv_ctx` is always `0` here -- see this struct's doc.
-    pub fn inter_mode_context(&self, x4: u32, y4: u32, bw4: u32, bh4: u32, ref0: i8) -> u16 {
+    /// `globalmv_ctx` is the frame header's `use_ref_frame_mvs` flag directly (`rav1d_refmvs_find`
+    /// initializes its own `globalmv_ctx` local to exactly this value, then only ever overrides it
+    /// away when a real temporal motion-field candidate is found -- this crate doesn't save any
+    /// per-frame motion field, see this struct's doc, so it always takes rav1d's un-overridden
+    /// initial value).
+    pub fn inter_mode_context(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        ref0: i8,
+        use_ref_frame_mvs: bool,
+    ) -> u16 {
         let (refmv_ctx, newmv_ctx) = self.refmv_newmv_ctx(x4, y4, bw4, bh4, ref0, -1);
-        let globalmv_ctx = 0u16; // temporal-context approximation, see struct doc
+        let globalmv_ctx = use_ref_frame_mvs as u16;
         (refmv_ctx as u16) << 4 | globalmv_ctx << 3 | newmv_ctx as u16
     }
 
@@ -950,8 +970,17 @@ impl TileContext {
     }
 
     /// Packed single-ref `inter_mode` context -- see `SpatialRefContext::inter_mode_context`.
-    pub fn inter_mode_context(&self, x4: u32, y4: u32, bw4: u32, bh4: u32, ref0: i8) -> u16 {
-        self.spatial_ref.inter_mode_context(x4, y4, bw4, bh4, ref0)
+    pub fn inter_mode_context(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        ref0: i8,
+        use_ref_frame_mvs: bool,
+    ) -> u16 {
+        self.spatial_ref
+            .inter_mode_context(x4, y4, bw4, bh4, ref0, use_ref_frame_mvs)
     }
 
     /// `compound_mode` context -- see `SpatialRefContext::compound_mode_context`.
@@ -1302,7 +1331,17 @@ mod tests {
     #[test]
     fn test_inter_mode_context_no_neighbors_is_zero() {
         let ctx = SpatialRefContext::new(16, 16);
-        assert_eq!(ctx.inter_mode_context(0, 0, 4, 4, 0), 0);
+        assert_eq!(ctx.inter_mode_context(0, 0, 4, 4, 0, false), 0);
+    }
+
+    #[test]
+    fn test_inter_mode_context_use_ref_frame_mvs_sets_globalmv_bit() {
+        // No spatial neighbors (refmv_ctx=0, newmv_ctx=0) isolates globalmv_ctx: packed layout is
+        // `refmv_ctx << 4 | globalmv_ctx << 3 | newmv_ctx`, so globalmv_ctx alone should produce
+        // exactly bit 3 (value 8).
+        let ctx = SpatialRefContext::new(16, 16);
+        assert_eq!(ctx.inter_mode_context(0, 0, 4, 4, 0, false), 0);
+        assert_eq!(ctx.inter_mode_context(0, 0, 4, 4, 0, true), 8);
     }
 
     #[test]
@@ -1311,7 +1350,7 @@ mod tests {
         ctx.set_block(0, 0, 4, 4, 0, -1, false); // LAST, covers x4=0..4, y4=0..4
                                                  // Query directly below: top row scan hits row y4=0, columns 0..4 -- a match.
                                                  // nearest_match=1 -> refmv_ctx=min(1*3,4)=3, newmv_ctx=3-0=3 -> packed = 3<<4|3 = 51.
-        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0), 51);
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0, false), 51);
     }
 
     #[test]
@@ -1319,7 +1358,7 @@ mod tests {
         let mut ctx = SpatialRefContext::new(16, 16);
         ctx.set_block(0, 0, 4, 4, 0, -1, true);
         // Same as above but is_newmv=true -> newmv_ctx = 3-1=2 -> packed = 3<<4|2 = 50.
-        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0), 50);
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0, false), 50);
     }
 
     #[test]
@@ -1327,7 +1366,7 @@ mod tests {
         let mut ctx = SpatialRefContext::new(16, 16);
         ctx.set_block(0, 0, 4, 4, 4, -1, false); // GOLDEN
                                                  // Query for a different ref (LAST) -- no match at all.
-        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0), 0);
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0, false), 0);
     }
 
     #[test]
@@ -1335,7 +1374,7 @@ mod tests {
         let mut ctx = SpatialRefContext::new(16, 16);
         ctx.set_block(0, 0, 4, 4, 2, 5, false); // compound neighbor: LAST3 + ALTREF2
                                                 // Single-ref query for ref0=5 (ALTREF2) matches via the neighbor's ref1 slot.
-        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 5), 51);
+        assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 5, false), 51);
     }
 
     #[test]
@@ -1377,7 +1416,7 @@ mod tests {
         // refmv_ctx=min(ref_match_count,2), newmv_ctx=(ref_match_count>0).
         // ref_match_count=1 (top-left counted into have_row_mvs) -> refmv_ctx=1, newmv_ctx=1.
         // packed = 1<<4|1 = 17 -- and critically NOT lowered by the neighbor's newmv flag.
-        assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0), 17);
+        assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0, false), 17);
     }
 
     #[test]
@@ -1388,7 +1427,7 @@ mod tests {
         ctx.set_block(0, 2, 4, 1, 0, -1, false);
         // Primary top scan (row 4) and top-right/top-left find nothing -> nearest_match=0.
         // Secondary scan finds the match -> ref_match_count=1 -> refmv_ctx=1, newmv_ctx=1.
-        assert_eq!(ctx.inter_mode_context(0, 5, 4, 4, 0), 17);
+        assert_eq!(ctx.inter_mode_context(0, 5, 4, 4, 0, false), 17);
     }
 
     #[test]
@@ -1396,7 +1435,7 @@ mod tests {
         // A cell that's never written (the "intra block" simplification -- see `set_block`'s doc)
         // stays `valid: false` and never contributes, regardless of what ref0/ref1 it queries for.
         let ctx = SpatialRefContext::new(16, 16);
-        assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0), 0);
+        assert_eq!(ctx.inter_mode_context(5, 5, 4, 4, 0, false), 0);
         assert_eq!(ctx.compound_mode_context(5, 5, 4, 4, 0, 4), 0);
     }
 

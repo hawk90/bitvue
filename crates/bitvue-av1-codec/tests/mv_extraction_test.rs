@@ -132,6 +132,7 @@ fn test_mv_extraction_with_spec_cdfs() {
             &mut mv_ctx,
             false,
             false,
+            false,
             &mut tile_ctx,
             bitvue_av1_codec::tile::TxTypeFrameFlags {
                 coded_lossless: false,
