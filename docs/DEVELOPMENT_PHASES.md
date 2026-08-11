@@ -1502,11 +1502,23 @@ lossless 아님·최대tx 아님이라는 흔한 케이스에서 실제 인코�
 `parse_coding_unit` 호출체인 threading 완료. 351/351(av1-codec lib, 신규 테스트 11개), 워크스페이스 전체
 클린.
 
-- **다음 단계(로드맵, 남은 것 중 가장 큰 2개)**: (1) txb_skip/dc_sign의 packed above/left 배열 설계(값
-인코딩부터 역설계 필요, rav1d가 SIMD 최적화용으로 타입폭별 분기). (2) coeff_base/coeff_br(스캔순서
-테이블+블록당 scratch 버퍼, 여전히 가장 큰 단일 작업). (3) 크로마 잔차 전체 미read 버그 수정(별도 이슈,
-transform_type()과 같은 계열이지만 luma-only 호출부 자체를 바꿔야 함). (4) partition의 `has_rows`/
-`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/실제 tx_size/palette 등 아예 안 읽는 신택스 요소들.
+- **txb_skip/dc_sign 실제 이웃 컨텍스트 시도 → 되돌림(2026-08-11, `8c05ba4`)**: packed above/left
+`res_ctx` 바이트(rav1d `get_skip_ctx`/`get_dc_sign_ctx` 그대로 포팅) 구현 → 실 fixture 회귀 발견
+(`real_fixture_key_frame_intra_modes_are_not_degenerate`, 모든 key-frame CU가 DcPred로만 디코드됨).
+강제 컨텍스트 A/B 테스트로 `txb_skip_context`가 128x128(2x2 tx타일링) CU에서 잘못된 값을 만드는 것까지
+좁힘. **근본원인**: 이 크레이트의 `tx_size`는 실제 비트스트림 `tx_size()` 읽기가 아니라 차원 기반
+휴리스틱(`TxSize::from_dimensions`) — 예전 flat CDF는 tx 블록 경계를 신경 안 써서 이 갭이 무해했지만,
+이웃 컨텍스트는 경계 정확도에 의존하므로 즉시 문제가 됨. **되돌리되 안전한 부분은 유지**: 두 CDF 모두
+tx_size별 실제 rav1d 기본값은 유지(컨텍스트는 0 고정) — 여전히 예전 단일 flat 대표값보다는 개선. 미검증
+이웃-컨텍스트 코드(TileContext의 res_ctx 추적, set_res_ctx, txb_skip_context/dc_sign_context)는 죽은
+코드로 남기지 않고 완전 제거.
+
+- **다음 단계(로드맵, 남은 것 중 가장 큰 것들)**: (1) txb_skip/dc_sign의 실제 이웃 컨텍스트 — **실제
+`tx_size()` 비트스트림 읽기 구현이 선행 조건**(현재 차원 휴리스틱이라 tx 블록 경계 자체가 부정확), 그 다음
+res_ctx 이웃 로직 재시도. (2) coeff_base/coeff_br(스캔순서 테이블+블록당 scratch 버퍼, 여전히 가장 큰
+단일 작업). (3) 크로마 잔차 전체 미read 버그 수정(별도 이슈, transform_type()과 같은 계열이지만 luma-only
+호출부 자체를 바꿔야 함). (4) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기,
+segment_id/실제 tx_size/palette 등 아예 안 읽는 신택스 요소들.
 
 ---
 
