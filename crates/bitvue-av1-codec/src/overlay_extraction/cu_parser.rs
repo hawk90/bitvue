@@ -406,4 +406,51 @@ mod tests {
              context/CDF wiring may have regressed to a degenerate always-one-mode decode"
         );
     }
+
+    /// Regression test for the `mv_joint` desync fix: `read_explicit_mv` used to unconditionally
+    /// read both the horizontal and vertical MV components for every `NewMv`/compound-`New` slot,
+    /// skipping the spec 5.11.32 `mv_joint` symbol that gates whether either axis is actually
+    /// coded at all. Confirms real, non-degenerate `NewMv` decoding: more than one distinct
+    /// explicit-MV outcome (proving the conditional reads aren't just producing one fixed
+    /// pattern), and both real adaptive MV CDFs (`mv_class`/`mv_bit`/`mv_sign`/`mv_joint`, wired
+    /// in the same change) actually getting exercised across the fixture.
+    #[test]
+    fn real_fixture_new_mv_values_are_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut distinct_mv0: std::collections::HashSet<(i32, i32)> = Default::default();
+        let mut new_mv_count = 0usize;
+
+        for frame in frames.iter().take(30) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            for cu in cus.iter() {
+                if cu.mode == crate::tile::PredictionMode::NewMv {
+                    new_mv_count += 1;
+                    distinct_mv0.insert((cu.mv[0].x, cu.mv[0].y));
+                }
+            }
+        }
+
+        assert!(
+            new_mv_count > 0,
+            "expected at least one real NewMv coding unit in the first 30 frames of the fixture"
+        );
+        assert!(
+            distinct_mv0.len() > 1,
+            "expected more than one distinct MV across {new_mv_count} real NewMv coding units, \
+             got only {distinct_mv0:?} -- the mv_joint/mv_class/mv_bit/mv_sign real adaptation \
+             may have regressed to a degenerate always-one-value decode"
+        );
+    }
 }

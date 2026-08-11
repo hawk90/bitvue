@@ -457,12 +457,27 @@ pub struct ObuWithOffset {
 pub struct ObuIterator<'a> {
     data: &'a [u8],
     offset: usize,
+    /// Set once `parse_obu` errors, so a truncated/malformed OBU is reported exactly once
+    /// instead of forever -- `offset` never advances on `Err` (there's no well-defined "next"
+    /// position once parsing has failed), so without this flag `next()`/`next_obu_with_offset()`
+    /// would re-run `parse_obu` at the same offset and get the same `Err` on every call,
+    /// infinitely. This is a genuine, previously-undiscovered hang: any malformed or truncated
+    /// OBU before end-of-data (e.g. a claimed payload size that overruns the buffer) would spin
+    /// every `for obu in ObuIterator::new(...)` caller forever -- CLI commands, sidecar commands,
+    /// and the indexer all iterate this way. Only surfaced once a compile error in an unrelated
+    /// integration test (that had been silently blocking `cargo test --tests` from ever building)
+    /// was fixed, letting `test_multi_tile_extraction` actually run for the first time.
+    done: bool,
 }
 
 impl<'a> ObuIterator<'a> {
     /// Creates a new OBU iterator for the given data
     pub fn new(data: &'a [u8]) -> Self {
-        Self { data, offset: 0 }
+        Self {
+            data,
+            offset: 0,
+            done: false,
+        }
     }
 
     /// Returns the current offset in the data
@@ -472,10 +487,10 @@ impl<'a> ObuIterator<'a> {
 
     /// Parses the next OBU with offset information
     ///
-    /// Returns `None` when at end of data, `Some(Ok(...))` on success,
-    /// or `Some(Err(...))` on parse failure.
+    /// Returns `None` when at end of data (or after a parse failure -- see `ObuIterator::done`'s
+    /// doc), `Some(Ok(...))` on success, or `Some(Err(...))` on parse failure.
     pub fn next_obu_with_offset(&mut self) -> Option<Result<ObuWithOffset>> {
-        if self.offset >= self.data.len() {
+        if self.done || self.offset >= self.data.len() {
             return None;
         }
 
@@ -489,7 +504,10 @@ impl<'a> ObuIterator<'a> {
                     consumed,
                 }))
             }
-            Err(e) => Some(Err(e)),
+            Err(e) => {
+                self.done = true;
+                Some(Err(e))
+            }
         }
     }
 }
@@ -498,7 +516,7 @@ impl<'a> Iterator for ObuIterator<'a> {
     type Item = Result<Obu>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.offset >= self.data.len() {
+        if self.done || self.offset >= self.data.len() {
             return None;
         }
 
@@ -507,7 +525,10 @@ impl<'a> Iterator for ObuIterator<'a> {
                 self.offset += consumed;
                 Some(Ok(obu))
             }
-            Err(e) => Some(Err(e)),
+            Err(e) => {
+                self.done = true;
+                Some(Err(e))
+            }
         }
     }
 }
@@ -515,6 +536,33 @@ impl<'a> Iterator for ObuIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression test for the "iterator never terminates on a parse error" hang: a truncated
+    /// OBU (a valid header claiming a payload size that overruns the remaining buffer) used to
+    /// make `Iterator::next()` return the same `Err` forever, since `offset` never advances past
+    /// a failed parse. Bounds the loop itself so a regression fails fast instead of hanging the
+    /// test suite.
+    #[test]
+    fn test_obu_iterator_terminates_after_truncated_obu() {
+        // Sequence header OBU (valid, 0 payload bytes) followed by an OBU_FRAME header claiming
+        // a 256-byte payload with only 2 bytes actually present.
+        let data: Vec<u8> = vec![0x0A, 0x80, 0x00, 0x22, 0x80, 0x02, 0x00, 0x01];
+
+        let results: Vec<_> = ObuIterator::new(&data).take(1000).collect();
+
+        assert!(
+            results.len() < 1000,
+            "iterator did not terminate within 1000 items -- regressed to the infinite-loop-on-\
+             parse-error bug"
+        );
+        assert_eq!(
+            results.len(),
+            2,
+            "one successful OBU, then one error, then done"
+        );
+        assert!(results[0].is_ok());
+        assert!(results[1].is_err());
+    }
 
     #[test]
     fn test_obu_type_from_u8() {

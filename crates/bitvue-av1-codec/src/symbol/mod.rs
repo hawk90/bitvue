@@ -294,6 +294,16 @@ impl<'a> SymbolDecoder<'a> {
         Ok(self.decoder.read_symbol(cdf)? == 1)
     }
 
+    /// Read `mv_joint` (AV1 spec Section 5.11.32 `read_mv()`) -- gates which axis, if any, has a
+    /// coded component to read next. Returns one of the `MV_JOINT_*` values (see
+    /// `CdfContext::get_mv_joint_cdf_mut`'s doc): 0=both zero, 1=horizontal only, 2=vertical
+    /// only, 3=both. Real adaptation via `read_symbol_adaptive` -- MV CDFs have no above/left
+    /// neighbor context in the real spec (unlike `skip`/`kfym`), just frame-lifetime adaptation.
+    pub fn read_mv_joint(&mut self) -> Result<u8> {
+        let cdf = self.cdf_context.get_mv_joint_cdf_mut();
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
     /// Read motion vector component (horizontal or vertical)
     ///
     /// Per AV1 Spec Section 5.11.47 (Motion Vector Component)
@@ -301,7 +311,7 @@ impl<'a> SymbolDecoder<'a> {
     /// Returns MV component in quarter-pel units (divide by 4 for pixel units)
     pub fn read_mv_component(&mut self) -> Result<i32> {
         // Read MV class (magnitude range)
-        let mv_class_cdf = self.cdf_context.get_mv_class_cdf();
+        let mv_class_cdf = self.cdf_context.get_mv_class_cdf_mut();
 
         tracing::trace!(
             "  Before read_mv_class: decoder.value={:#06x}, decoder.range={:#06x}",
@@ -309,7 +319,7 @@ impl<'a> SymbolDecoder<'a> {
             self.decoder.range
         );
 
-        let mv_class = self.decoder.read_symbol(mv_class_cdf)?;
+        let mv_class = self.decoder.read_symbol_adaptive(mv_class_cdf)?;
 
         tracing::trace!(
             "  After read_mv_class: decoder.value={:#06x}, decoder.range={:#06x}",
@@ -355,9 +365,9 @@ impl<'a> SymbolDecoder<'a> {
 
             // Read additional bits
             let mut mag = base;
-            let mv_bit_cdf = self.cdf_context.get_mv_bit_cdf();
+            let mv_bit_cdf = self.cdf_context.get_mv_bit_cdf_mut();
             for i in 0..num_bits {
-                let bit = self.decoder.read_symbol(mv_bit_cdf)?;
+                let bit = self.decoder.read_symbol_adaptive(mv_bit_cdf)?;
                 mag = (mag << 1) | bit as i32;
                 tracing::trace!("      bit[{}] = {} → mag = {}", i, bit, mag);
             }
@@ -368,13 +378,13 @@ impl<'a> SymbolDecoder<'a> {
 
         // Read sign (0 = positive, 1 = negative)
         let sign = if magnitude > 0 {
-            let mv_sign_cdf = self.cdf_context.get_mv_sign_cdf();
+            let mv_sign_cdf = self.cdf_context.get_mv_sign_cdf_mut();
             tracing::trace!(
                 "  Before read_sign: decoder.value={:#06x}, decoder.range={:#06x}",
                 self.decoder.value,
                 self.decoder.range
             );
-            let s = self.decoder.read_symbol(mv_sign_cdf)?;
+            let s = self.decoder.read_symbol_adaptive(mv_sign_cdf)?;
             tracing::trace!(
                 "  After read_sign: decoder.value={:#06x}, decoder.range={:#06x}, sign={}",
                 self.decoder.value,
@@ -399,14 +409,14 @@ impl<'a> SymbolDecoder<'a> {
 
         // Read fractional bits (AV1 spec Section 7.9.3)
         // mv_fr: half-pel bit (0 or 2 qpel)
-        let mv_bit_cdf = self.cdf_context.get_mv_bit_cdf();
+        let mv_bit_cdf = self.cdf_context.get_mv_bit_cdf_mut();
 
         tracing::trace!(
             "  Before read_fr: decoder.value={:#06x}, decoder.range={:#06x}",
             self.decoder.value,
             self.decoder.range
         );
-        let fr = self.decoder.read_symbol(mv_bit_cdf)? as i32;
+        let fr = self.decoder.read_symbol_adaptive(mv_bit_cdf)? as i32;
         tracing::trace!(
             "  After read_fr: decoder.value={:#06x}, decoder.range={:#06x}, fr={}",
             self.decoder.value,
@@ -421,7 +431,7 @@ impl<'a> SymbolDecoder<'a> {
             self.decoder.value,
             self.decoder.range
         );
-        let hp = self.decoder.read_symbol(mv_bit_cdf)? as i32;
+        let hp = self.decoder.read_symbol_adaptive(mv_bit_cdf)? as i32;
         tracing::trace!(
             "  After read_hp: decoder.value={:#06x}, decoder.range={:#06x}, hp={}",
             self.decoder.value,
@@ -479,8 +489,8 @@ impl<'a> SymbolDecoder<'a> {
         }
 
         // Read sign bit (0 = positive, 1 = negative)
-        let sign_cdf = self.cdf_context.get_delta_q_sign_cdf();
-        let sign = self.decoder.read_symbol(sign_cdf)?;
+        let sign_cdf = self.cdf_context.get_delta_q_sign_cdf_mut();
+        let sign = self.decoder.read_symbol_adaptive(sign_cdf)?;
 
         let delta_q = if sign == 1 { -abs } else { abs };
 
@@ -497,10 +507,10 @@ impl<'a> SymbolDecoder<'a> {
     ///
     /// Returns absolute value in range 0..=63
     fn read_delta_q_abs(&mut self) -> Result<i16> {
-        let delta_q_cdf = self.cdf_context.get_delta_q_cdf();
+        let delta_q_cdf = self.cdf_context.get_delta_q_cdf_mut();
 
         // Read the base value (0-3, or 4+)
-        let base = self.decoder.read_symbol(delta_q_cdf)?;
+        let base = self.decoder.read_symbol_adaptive(delta_q_cdf)?;
 
         let abs = if base <= 3 {
             // Small value: use directly
@@ -508,8 +518,8 @@ impl<'a> SymbolDecoder<'a> {
         } else {
             // Large value (4+): use diff-based encoding
             // Read additional diff value
-            let diff_cdf = self.cdf_context.get_diff_cdf();
-            let diff = self.decoder.read_symbol(diff_cdf)? as i16;
+            let diff_cdf = self.cdf_context.get_diff_cdf_mut();
+            let diff = self.decoder.read_symbol_adaptive(diff_cdf)? as i16;
 
             // Calculate: abs = 4 + diff
             let result = 4 + diff;

@@ -15,7 +15,8 @@
 // correctly decode motion vectors from real AV1 bitstreams.
 
 use bitvue_av1_codec::{
-    parse_all_obus, parse_frame_header_basic, parse_superblock, tile::MvPredictorContext,
+    parse_all_obus, parse_frame_header_basic, parse_superblock,
+    tile::{MvPredictorContext, TileContext},
     FrameType, SymbolDecoder,
 };
 
@@ -116,6 +117,7 @@ fn test_mv_extraction_with_spec_cdfs() {
         // Parse first superblock (at 0, 0)
         let sb_size = 64;
         let mut mv_ctx = MvPredictorContext::new(30, 17); // Typical 1920x1080 frame in 64x64 superblocks
+        let mut tile_ctx = TileContext::new(30 * sb_size / 4, 17 * sb_size / 4);
         match parse_superblock(
             &mut decoder,
             0,
@@ -127,6 +129,7 @@ fn test_mv_extraction_with_spec_cdfs() {
             &mut mv_ctx,
             false,
             false,
+            &mut tile_ctx,
         ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(

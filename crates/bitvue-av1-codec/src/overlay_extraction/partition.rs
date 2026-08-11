@@ -921,13 +921,21 @@ mod tests {
     /// (the old hardcoded bug) -- and asserts the two runs diverge (either a different CU list, or
     /// the old-flag run erroring where the correct one doesn't, from running the arithmetic
     /// decoder past real tile data once the missing `delta_q` bits accumulate enough drift).
+    ///
+    /// Searches the whole fixture (not just an early prefix) for a frame where the `true` run
+    /// fully succeeds: most of this crate's CDFs (mode/ref_frame/compound_mode/residual/
+    /// partition) are still representative approximations, not real per-context tables, so a
+    /// given frame's tile data can legitimately fail to parse end-to-end under either flag --
+    /// that's an expected consequence of the still-incomplete entropy-context work (see
+    /// `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note), not evidence this
+    /// specific fix is wrong. The test only needs one clean frame to prove causality.
     #[test]
     fn real_fixture_delta_q_frame_changes_with_the_flag() {
         let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
         let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
 
         let mut checked_a_delta_q_frame = false;
-        for frame in frames.iter().take(60) {
+        for frame in frames.iter() {
             let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
             let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
                 Ok(p) => p,
@@ -967,9 +975,10 @@ mod tests {
 
         assert!(
             checked_a_delta_q_frame,
-            "expected at least one delta_q_enabled=true frame in the first 60 frames of the \
-             fixture whose tile data parses successfully with the correct flag -- if this fails, \
-             the fixture changed and this test needs a different frame range to exercise the bug"
+            "expected at least one delta_q_enabled=true frame in the fixture whose tile data \
+             parses successfully with the correct flag -- if this fails, the fixture changed (or \
+             enough of the still-representative, non-context CDF tables shifted) and this test \
+             needs a different approach to exercise the bug"
         );
     }
 }

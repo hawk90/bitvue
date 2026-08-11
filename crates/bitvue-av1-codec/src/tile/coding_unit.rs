@@ -572,9 +572,7 @@ pub fn parse_coding_unit(
             // If NEWMV, read motion vectors
             if cu.mode == PredictionMode::NewMv {
                 // Read MV for L0 (forward reference)
-                let mv_x = decoder.read_mv_component()?;
-                let mv_y = decoder.read_mv_component()?;
-                let explicit_mv = MotionVector::new(mv_x, mv_y);
+                let explicit_mv = read_explicit_mv(decoder)?;
 
                 // Get MV predictor and add to explicit MV
                 let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
@@ -668,12 +666,32 @@ pub fn parse_coding_unit(
     Ok((cu, new_qp))
 }
 
-/// Read one explicit MV delta (horizontal + vertical component) from the bitstream. Used for
-/// every `MvKind::New` reference-list slot -- single-ref `NewMv`'s L0, and compound modes'
-/// L0 and/or L1 (spec 5.11.26 `assign_mv()`, `read_mv()` calls).
+/// Read one explicit MV delta (horizontal + vertical component) from the bitstream, per AV1 spec
+/// 5.11.32 `read_mv(ref)`. Used for every `MvKind::New` reference-list slot -- single-ref
+/// `NewMv`'s L0, and compound modes' L0 and/or L1 (spec 5.11.26 `assign_mv()`).
+///
+/// The `mv_joint` symbol gates which axis actually has a coded component -- an axis mv_joint
+/// marks "zero" is NOT read from the bitstream at all (it's implicitly 0), it doesn't just
+/// happen to decode to a small value. The previous implementation unconditionally read both
+/// components for every MV, which desynced the shared `SymbolDecoder` against any real
+/// bitstream whenever mv_joint indicated a zero axis -- the same "syntax element not read at
+/// all" pattern as this session's earlier residual()/ref_frame() bugs, just not crash-visible
+/// here since a `SymbolDecoder` never panics on merely-wrong-but-in-range values.
 fn read_explicit_mv(decoder: &mut SymbolDecoder) -> Result<MotionVector> {
-    let mv_x = decoder.read_mv_component()?;
-    let mv_y = decoder.read_mv_component()?;
+    let joint = decoder.read_mv_joint()?;
+    // MV_JOINT_HZVNZ(2)/MV_JOINT_HNZVNZ(3): vertical component is non-zero, read it (spec reads
+    // diffMv[0], the row/vertical component, first).
+    let mv_y = if matches!(joint, 2 | 3) {
+        decoder.read_mv_component()?
+    } else {
+        0
+    };
+    // MV_JOINT_HNZVZ(1)/MV_JOINT_HNZVNZ(3): horizontal component is non-zero, read it.
+    let mv_x = if matches!(joint, 1 | 3) {
+        decoder.read_mv_component()?
+    } else {
+        0
+    };
     Ok(MotionVector::new(mv_x, mv_y))
 }
 

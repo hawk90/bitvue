@@ -706,59 +706,46 @@ impl CdfContext {
         &self.compound_mode_cdf
     }
 
-    /// Get MV joint CDF
+    /// Get mutable MV joint CDF (4 symbols) -- mutable because `read_mv_joint` adapts it in place
+    /// via `update_cdf` after every read (no neighbor context in the real spec either -- MV
+    /// adaptation is frame-lifetime-global, unlike `skip`/`kfym`'s above/left context).
     ///
-    /// Returns CDF for MV joint type (4 symbols):
     /// - MV_JOINT_ZERO (both components zero)
     /// - MV_JOINT_HNZVZ (horizontal non-zero, vertical zero)
     /// - MV_JOINT_HZVNZ (horizontal zero, vertical non-zero)
     /// - MV_JOINT_HNZVNZ (both components non-zero)
-    pub fn get_mv_joint_cdf(&self) -> &[u16] {
-        &self.mv_joint_cdf
+    pub fn get_mv_joint_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.mv_joint_cdf
     }
 
-    /// Get MV sign CDF
-    ///
-    /// Returns CDF for MV sign (2 symbols: positive, negative)
-    pub fn get_mv_sign_cdf(&self) -> &[u16] {
-        &self.mv_sign_cdf
+    /// Get mutable MV sign CDF (2 symbols: positive, negative) -- adapted after every read.
+    pub fn get_mv_sign_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.mv_sign_cdf
     }
 
-    /// Get MV class CDF
-    ///
-    /// Returns CDF for MV magnitude class (12 symbols)
-    pub fn get_mv_class_cdf(&self) -> &[u16] {
-        &self.mv_class_cdf
+    /// Get mutable MV class CDF (12 symbols: magnitude class) -- adapted after every read.
+    pub fn get_mv_class_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.mv_class_cdf
     }
 
-    /// Get MV bit CDF
-    ///
-    /// Returns CDF for MV magnitude bits (2 symbols: 0, 1)
-    pub fn get_mv_bit_cdf(&self) -> &[u16] {
-        &self.mv_bit_cdf
+    /// Get mutable MV bit CDF (2 symbols: 0, 1) -- adapted after every read.
+    pub fn get_mv_bit_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.mv_bit_cdf
     }
 
-    /// Get Delta Q CDF
-    ///
-    /// Returns CDF for delta_q_abs (quantization parameter delta)
-    /// Per AV1 Spec Section 5.11.38 (Quantization Parameter Delta)
-    pub fn get_delta_q_cdf(&self) -> &[u16] {
-        &self.delta_q_cdf
+    /// Get mutable Delta Q CDF (`delta_q_abs`, spec 5.11.38) -- adapted after every read.
+    pub fn get_delta_q_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.delta_q_cdf
     }
 
-    /// Get Delta Q sign CDF
-    ///
-    /// Returns CDF for delta_q_sign_bit (2 symbols: positive, negative)
-    pub fn get_delta_q_sign_cdf(&self) -> &[u16] {
-        &self.delta_q_sign_cdf
+    /// Get mutable Delta Q sign CDF (2 symbols: positive, negative) -- adapted after every read.
+    pub fn get_delta_q_sign_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.delta_q_sign_cdf
     }
 
-    /// Get general diff CDF
-    ///
-    /// Returns CDF for reading variable-length differences
-    /// Used when delta_q_abs is >= 4
-    pub fn get_diff_cdf(&self) -> &[u16] {
-        &self.diff_cdf
+    /// Get mutable general diff CDF (used when `delta_q_abs` >= 4) -- adapted after every read.
+    pub fn get_diff_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.diff_cdf
     }
 
     /// Get `txb_skip` (all_zero) CDF for one transform block.
@@ -941,8 +928,8 @@ mod tests {
 
     #[test]
     fn test_mv_class_cdf_spec_compliant() {
-        let context = CdfContext::new();
-        let cdf = context.get_mv_class_cdf();
+        let mut context = CdfContext::new();
+        let cdf = context.get_mv_class_cdf_mut();
 
         // Verify length: 11 classes + adaptation count = 12 values
         assert_eq!(cdf.len(), 12);
@@ -980,8 +967,8 @@ mod tests {
 
     #[test]
     fn test_mv_joint_cdf_spec_compliant() {
-        let context = CdfContext::new();
-        let cdf = context.get_mv_joint_cdf();
+        let mut context = CdfContext::new();
+        let cdf = context.get_mv_joint_cdf_mut();
 
         // Verify length: 4 symbols + adaptation count = 5 values
         assert_eq!(cdf.len(), 5);
@@ -1005,8 +992,8 @@ mod tests {
 
     #[test]
     fn test_mv_sign_cdf() {
-        let context = CdfContext::new();
-        let cdf = context.get_mv_sign_cdf();
+        let mut context = CdfContext::new();
+        let cdf = context.get_mv_sign_cdf_mut();
 
         // Verify length: 2 symbols + adaptation count = 3 values
         assert_eq!(cdf.len(), 3);
@@ -1019,8 +1006,8 @@ mod tests {
 
     #[test]
     fn test_mv_bit_cdf() {
-        let context = CdfContext::new();
-        let cdf = context.get_mv_bit_cdf();
+        let mut context = CdfContext::new();
+        let cdf = context.get_mv_bit_cdf_mut();
 
         // Verify length: 2 symbols + adaptation count = 3 values
         assert_eq!(cdf.len(), 3);

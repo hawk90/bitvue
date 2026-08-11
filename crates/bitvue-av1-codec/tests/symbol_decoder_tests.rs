@@ -109,15 +109,27 @@ fn test_cdf_context_block_sizes() {
             expected_len
         );
 
-        // Verify CDF properties
-        assert_eq!(cdf[0], 0, "CDF should start at 0");
-        assert_eq!(cdf[cdf.len() - 1], 32768, "CDF should end at 32768");
+        // Verify CDF properties -- real spec/rav1d descending convention (see
+        // `bitvue_av1_codec::symbol::cdf::to_descending`'s doc): `cdf[0]` is the interval start
+        // (<=32768, not a fixed constant), the last *real* symbol entry is 0, and the trailing
+        // slot is the adaptation count (starts at 0, not part of the probability curve).
+        assert!(cdf[0] <= 32768, "CDF should start at or below 32768");
+        assert_eq!(
+            cdf[cdf.len() - 2],
+            0,
+            "last real CDF entry should be 0 (descending convention)"
+        );
+        assert_eq!(
+            cdf[cdf.len() - 1],
+            0,
+            "trailing adaptation-count slot should start at 0"
+        );
 
-        // Verify monotonically increasing
-        for i in 1..cdf.len() {
+        // Verify monotonically non-increasing (descending convention)
+        for i in 1..cdf.len() - 1 {
             assert!(
-                cdf[i] >= cdf[i - 1],
-                "CDF should be monotonically increasing at index {}",
+                cdf[i] <= cdf[i - 1],
+                "CDF should be monotonically non-increasing at index {}",
                 i
             );
         }

@@ -124,6 +124,7 @@ fn test_partition_grid_basic() {
         height: 64,
         partition: PartitionType::None,
         depth: 0,
+        tree_type: None,
     };
 
     grid.add_block(block);
@@ -261,6 +262,7 @@ fn test_partition_grid_with_partitions() {
         height: 64,
         partition: PartitionType::Split,
         depth: 0,
+        tree_type: None,
     };
 
     grid.add_block(block);
@@ -402,6 +404,7 @@ fn test_partition_various_sizes() {
             height: size,
             partition: PartitionType::Split,
             depth: 0,
+            tree_type: None,
         };
 
         grid.add_block(block);
@@ -651,6 +654,7 @@ fn test_partition_block_contains() {
         height: 64,
         partition: bitvue_engine::partition_grid::PartitionType::None,
         depth: 0,
+        tree_type: None,
     };
 
     // Point inside block
@@ -676,6 +680,7 @@ fn test_partition_block_area() {
         height: 32,
         partition: bitvue_engine::partition_grid::PartitionType::None,
         depth: 0,
+        tree_type: None,
     };
 
     assert_eq!(block.area(), 64 * 32);
