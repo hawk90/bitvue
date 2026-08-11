@@ -1490,14 +1490,23 @@ SIMD 최적화용으로 타입-폭(uint8/16/32/64)별로 분기하는 packed-byt
 하는 프레임헤더 플래그 중 `parse_coding_unit` 호출체인 밖(프레임 레벨)에서 구할 수 있는 부분만 먼저 노출.
 `base_q_idx` 자체는 이미 노출돼 있었음. 아직 `parse_coding_unit`에 실제로 threading은 안 됨 — 다음 단계.
 
-- **다음 단계(로드맵)**: (1) `transform_type()` 신규 구현(txtp_intra1/intra2/inter1/inter2/inter3 5개
-CDF패밀리 + `dav1d_tx_types_per_set`/`dav1d_tx_type_class` 룩업테이블 이식, eob_bin/eob_hi_bit도 마찬가지로
-qindex-버킷 4벌 중 대표값 1벌만 채택하는 근사 필요 — 리터럴 포팅량이 ref_frame/inter_mode 세션 것보다 훨씬
-큼, 재평가 필요) + 위 플래그를 `parse_coding_unit`에 실제 threading, 그 다음 eob_bin/eob_hi_bit/coeff_base_eob 실컨텍스트.
-(2) txb_skip/dc_sign의 packed above/left 배열 설계(값 인코딩부터). (3) coeff_base/coeff_br(스캔순서
-테이블+블록당 scratch 버퍼, 여전히 가장 큰 단일 작업). (4) 크로마 잔차 전체 미read 버그 수정(별도 이슈).
-(5) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/실제 tx_size/palette 등
-아예 안 읽는 신택스 요소들.
+- **완료(2026-08-11, `dfb38be`)**: `transform_type()`(spec 5.11.47) 신규 구현 — txtp_intra1/intra2/
+inter1/inter2/inter3 5개 CDF패밀리 rav1d 그대로 이식, 결정트리(lossless/large-tx/qidx==0 각각 0비트
+분기 + intra가 inter보다 한 사이즈클래스 먼저 "large tx" 처리되는 실제 spec 비대칭 확인) 그대로 포팅.
+전체 TxType 대신 `is_1d`(TX_CLASS_H/V vs 2D) 불리언만 추적(픽셀 재구성 안 하는 이 크레이트엔 그걸로 충분).
+**이 자체가 실제 미구현 신택스 요소였다는 점에서 크로마 버그와 동일 계열의 잠복 디싱크 버그**(qidx!=0·
+lossless 아님·최대tx 아님이라는 흔한 케이스에서 실제 인코더가 쓴 비트를 전혀 안 읽고 있었음) — 발견과
+동시에 수정. 이어서 eob_bin/eob_hi_bit/coeff_base_eob도 실컨텍스트+적응으로 전환(정방형 전용이라 rav1d의
+7개 계수-클래스 중 16/64/256/1024 4개만 도달 가능함을 tx2dszctx 산술로 직접 확인, qindex-버킷 4벌 중
+1벌만 대표값 채택). `TxTypeFrameFlags`(coded_lossless/qidx_is_zero/reduced_tx_set) 신규 번들로
+`parse_coding_unit` 호출체인 threading 완료. 351/351(av1-codec lib, 신규 테스트 11개), 워크스페이스 전체
+클린.
+
+- **다음 단계(로드맵, 남은 것 중 가장 큰 2개)**: (1) txb_skip/dc_sign의 packed above/left 배열 설계(값
+인코딩부터 역설계 필요, rav1d가 SIMD 최적화용으로 타입폭별 분기). (2) coeff_base/coeff_br(스캔순서
+테이블+블록당 scratch 버퍼, 여전히 가장 큰 단일 작업). (3) 크로마 잔차 전체 미read 버그 수정(별도 이슈,
+transform_type()과 같은 계열이지만 luma-only 호출부 자체를 바꿔야 함). (4) partition의 `has_rows`/
+`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/실제 tx_size/palette 등 아예 안 읽는 신택스 요소들.
 
 ---
 
