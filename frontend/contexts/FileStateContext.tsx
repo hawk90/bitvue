@@ -28,6 +28,7 @@ import { useFrameData } from "./FrameDataContext";
 import {
   indexStream,
   getFramesChunk,
+  getStreamInfo,
   type BridgeUnitNode,
 } from "../services/electronBridgeService";
 
@@ -72,7 +73,7 @@ const CHUNK_SIZE = 100;
 const CHUNKED_LOADING_THRESHOLD = 200;
 
 export function FileStateProvider({ children }: { children: ReactNode }) {
-  const { setFrames } = useFrameData();
+  const { setFrames, setStreamInfo } = useFrameData();
   const [filePath, setFilePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     setHasMoreFrames(false);
     setTotalFrames(0);
     setFrames([]);
+    setStreamInfo(null);
 
     try {
       logger.info(
@@ -98,6 +100,24 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       const startTime = performance.now();
 
       await indexStream("A");
+
+      // Container-level width/height/codec (`get_stream_info`, populated by `index_stream` above)
+      // -- real data for `SelectionInfoPanel`'s "Video Properties" section, which used to have no
+      // source at all and silently rendered hardcoded 1920x1080/AV1 placeholders for every file.
+      try {
+        const info = await getStreamInfo("A");
+        if (info.indexed && info.container) {
+          setStreamInfo({
+            width: info.container.width ?? 0,
+            height: info.container.height ?? 0,
+            codec: info.container.codec,
+            bitDepth: info.container.bit_depth,
+          });
+        }
+      } catch (streamInfoErr) {
+        // Non-fatal: frame loading below is the primary data path, stream info is supplementary.
+        logger.error("Failed to load stream info:", streamInfoErr);
+      }
 
       const firstChunk = await getFramesChunk("A", 0, CHUNK_SIZE);
       let allFrames = firstChunk.units.map(unitNodeToFrameInfo);
@@ -139,11 +159,12 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       setError(errorMsg);
       logger.error("Failed to load frames:", errorMsg);
       setFrames([]);
+      setStreamInfo(null);
       return [];
     } finally {
       setLoading(false);
     }
-  }, [setFrames]);
+  }, [setFrames, setStreamInfo]);
 
   // Load more frames using chunked loading
   const loadMoreFrames = useCallback(async () => {
@@ -196,7 +217,8 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     currentOffsetRef.current = 0;
     isLoadingMoreRef.current = false;
     setFrames([]);
-  }, []);
+    setStreamInfo(null);
+  }, [setFrames, setStreamInfo]);
 
   const contextValue = useMemo<FileStateContextType>(
     () => ({

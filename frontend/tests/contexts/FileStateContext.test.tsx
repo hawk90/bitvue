@@ -13,16 +13,19 @@ import { FileStateProvider, useFileState } from "@/contexts/FileStateContext";
 import type {
   BridgeUnitNode,
   FramesChunkResult,
+  StreamInfoResult,
 } from "@/services/electronBridgeService";
 
-const { indexStream, getFramesChunk } = vi.hoisted(() => ({
+const { indexStream, getFramesChunk, getStreamInfo } = vi.hoisted(() => ({
   indexStream: vi.fn(),
   getFramesChunk: vi.fn(),
+  getStreamInfo: vi.fn(),
 }));
 
 vi.mock("@/services/electronBridgeService", () => ({
   indexStream,
   getFramesChunk,
+  getStreamInfo,
 }));
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -66,6 +69,7 @@ describe("FileStateContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     indexStream.mockResolvedValue([{ type: "ModelUpdated" }]);
+    getStreamInfo.mockResolvedValue({ indexed: false, container: null });
   });
 
   it("refreshFrames indexes the stream, then fetches and maps all frames in one page", async () => {
@@ -95,6 +99,63 @@ describe("FileStateContext", () => {
     expect(result.current.data.frames[1].key_frame).toBe(false);
     expect(result.current.file.totalFrames).toBe(2);
     expect(result.current.file.hasMoreFrames).toBe(false);
+  });
+
+  it("refreshFrames calls getStreamInfo after indexing and stores the real container width/height/codec/bitDepth -- SelectionInfoPanel's 'Video Properties' section used to have no real data source at all and always rendered hardcoded 1920x1080/AV1 placeholders", async () => {
+    getFramesChunk.mockResolvedValueOnce(
+      chunk([unit({ frame_index: 0, frame_type: "I" })], 1),
+    );
+    getStreamInfo.mockResolvedValueOnce({
+      indexed: true,
+      container: {
+        format: "IVF",
+        codec: "AV1",
+        track_count: 1,
+        duration_ms: 10000,
+        bitrate_bps: 177000,
+        width: 320,
+        height: 240,
+        bit_depth: 8,
+      },
+    } satisfies StreamInfoResult);
+
+    const { result } = renderHook(
+      () => ({ file: useFileState(), data: useFrameData() }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.file.refreshFrames();
+    });
+
+    expect(getStreamInfo).toHaveBeenCalledWith("A");
+    await waitFor(() =>
+      expect(result.current.data.streamInfo).toEqual({
+        width: 320,
+        height: 240,
+        codec: "AV1",
+        bitDepth: 8,
+      }),
+    );
+  });
+
+  it("refreshFrames leaves streamInfo null when the stream isn't indexed yet (getStreamInfo returns indexed:false)", async () => {
+    getFramesChunk.mockResolvedValueOnce(
+      chunk([unit({ frame_index: 0, frame_type: "I" })], 1),
+    );
+    // beforeEach's default already returns {indexed: false, container: null}
+
+    const { result } = renderHook(
+      () => ({ file: useFileState(), data: useFrameData() }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.file.refreshFrames();
+    });
+
+    await waitFor(() => expect(result.current.data.frames).toHaveLength(1));
+    expect(result.current.data.streamInfo).toBeNull();
   });
 
   it("refreshFrames pages through multiple chunks until total_count is reached", async () => {

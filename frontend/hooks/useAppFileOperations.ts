@@ -118,9 +118,14 @@ export function useAppFileOperations(
         }
 
         const bridgeResult = await openStream("A", selected);
-        // bitvue-sidecar's open_stream doesn't return codec/dimensions/frameCount yet (unlike
-        // the old Tauri open_file) -- only success/path are populated honestly here. Extending
-        // FileInfo further needs a real sidecar command that doesn't exist yet.
+        // bitvue-sidecar's open_stream doesn't return codec/dimensions/frameCount itself (unlike
+        // the old Tauri open_file) -- only success/path are populated honestly here. That data IS
+        // available for real, though (this comment used to say otherwise -- stale as of this fix):
+        // `getStreamInfo` (`get_stream_info`, real + tested) exposes it once `indexStream` has run,
+        // which `FileStateContext.refreshFrames` now calls and stores in `FrameDataContext`'s
+        // `streamInfo` -- see `SelectionInfoPanel`'s "Video Properties" section, which used to
+        // render hardcoded 1920x1080/AV1 placeholders for every file because nothing populated
+        // this `FileInfo.width/height/codec` and nothing else called `getStreamInfo` either.
         const result: FileInfo = {
           success: bridgeResult.success,
           path: bridgeResult.path,

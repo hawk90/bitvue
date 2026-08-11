@@ -26,10 +26,22 @@ interface FrameStats {
   keyFrames: number;
 }
 
+/** Container-level stream metadata (`bitvue_engine::ContainerModel`, via `getStreamInfo`) --
+ *  distinct from per-frame `FrameInfo`: this is the coded/display resolution and codec name for
+ *  the whole stream, not any one frame's data. `null` until `indexStream` has actually run. */
+interface StreamInfo {
+  width: number;
+  height: number;
+  codec: string;
+  bitDepth: number | null;
+}
+
 interface FrameDataContextType {
   frames: FrameInfo[];
   setFrames: React.Dispatch<React.SetStateAction<FrameInfo[]>>;
   getFrameStats: () => FrameStats;
+  streamInfo: StreamInfo | null;
+  setStreamInfo: React.Dispatch<React.SetStateAction<StreamInfo | null>>;
 }
 
 const FrameDataContext = createContext<FrameDataContextType | undefined>(
@@ -41,6 +53,7 @@ const WORKER_THRESHOLD = 100;
 
 export function FrameDataProvider({ children }: { children: ReactNode }) {
   const [frames, setFrames] = useState<FrameInfo[]>([]);
+  const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [frameStats, setFrameStats] = useState<FrameStats>({
     totalFrames: 0,
     frameTypes: {},
@@ -152,8 +165,10 @@ export function FrameDataProvider({ children }: { children: ReactNode }) {
       frames,
       setFrames,
       getFrameStats,
+      streamInfo,
+      setStreamInfo,
     }),
-    [frames, getFrameStats],
+    [frames, getFrameStats, streamInfo],
   );
 
   return (

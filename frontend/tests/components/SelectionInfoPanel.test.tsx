@@ -75,6 +75,11 @@ vi.mock("@/contexts/FrameDataContext", () => ({
     frames: _selectionInfoMockFrames,
     setFrames: () => {},
     getFrameStats: _mockGetFrameStats,
+    // No real getStreamInfo call happens in this mocked-data test harness (see
+    // FrameDataContext.test.tsx/FileStateContext.test.tsx for the real wiring), so this stays
+    // null the same way it would for a freshly-opened, not-yet-indexed stream.
+    streamInfo: null,
+    setStreamInfo: () => {},
   }),
   FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -127,7 +132,11 @@ describe("SelectionInfoPanel", () => {
   });
 
   it("should display video properties section", () => {
-    render(<SelectionInfoPanel />);
+    // Explicit width/height: with no real `streamInfo` in this test harness (no `indexStream`/
+    // `getStreamInfo` IPC ever runs here) and no props, the panel now honestly renders "--" for
+    // Resolution/Codec instead of the old hardcoded 1920x1080/AV1 fallback that used to render
+    // for every file regardless of its real dimensions.
+    render(<SelectionInfoPanel width={1920} height={1080} />);
 
     expect(screen.getByText("Video Properties")).toBeInTheDocument();
     expect(screen.getByText("Resolution:")).toBeInTheDocument();
@@ -135,7 +144,7 @@ describe("SelectionInfoPanel", () => {
   });
 
   it("should display codec information", () => {
-    render(<SelectionInfoPanel />);
+    render(<SelectionInfoPanel codec="AV1" />);
 
     expect(screen.getByText("Codec:")).toBeInTheDocument();
     expect(screen.getAllByText("AV1").length).toBeGreaterThan(0);
@@ -212,11 +221,21 @@ describe("SelectionInfoPanel", () => {
   });
 
   it("should display codec badge", () => {
-    render(<SelectionInfoPanel />);
+    render(<SelectionInfoPanel codec="AV1" />);
 
     const badge = document.querySelector(".codec-badge");
     expect(badge).toBeInTheDocument();
     expect(badge?.textContent).toBe("AV1");
+  });
+
+  it("shows '--' (not a fabricated 1920x1080/AV1 placeholder) when no real stream info exists yet and no props are given", () => {
+    render(<SelectionInfoPanel />);
+
+    expect(screen.getByText("Resolution:")).toBeInTheDocument();
+    expect(screen.getByText("--x--")).toBeInTheDocument();
+    expect(screen.getAllByText("--").length).toBeGreaterThan(0);
+    expect(screen.queryByText("1920x1080")).not.toBeInTheDocument();
+    expect(screen.queryAllByText("AV1").length).toBe(0);
   });
 
   it("should use React.memo for performance", () => {
