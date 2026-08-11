@@ -440,8 +440,19 @@ pub struct CodingUnit {
     /// L0 = forward reference, L1 = backward reference
     pub mv: [MotionVector; 2],
 
-    /// Transform size (for residual coding)
+    /// Transform size (for residual coding). For CUs with a real `tx_blocks` var-tx breakdown,
+    /// this is just the block's own starting/largest class (`Max_Tx_Size_Rect`) -- see
+    /// `tx_blocks`'s doc for the real per-leaf sizes.
     pub tx_size: TxSize,
+
+    /// Real per-leaf transform block breakdown from `read_var_tx_size` (spec 5.11.17/18), when
+    /// available. `Some` only for non-`skip`, non-IntraBC INTER coding units whose width and
+    /// height are both square-transform-representable (this crate's `TxSize` is square-only, see
+    /// its doc) -- see `read_var_tx_size`'s doc for the exact scope and why. `None` elsewhere
+    /// (intra, IntraBC, skip, or non-square/oversized CUs): those still use the older uniform
+    /// `tx_size`-tiled grid (`width.div_ceil(tx_size.size())` etc, see `parse_coding_unit`'s
+    /// residual loop) -- a heuristic, not a real bitstream read, for exactly those CUs.
+    pub tx_blocks: Option<Vec<TxBlock>>,
 
     /// QP value (quantization parameter)
     /// None for blocks that don't have QP (e.g., skip blocks)
@@ -453,6 +464,15 @@ pub struct CodingUnit {
     /// zero counts). See `SymbolDecoder::read_residual_block`'s doc for what this does and
     /// doesn't capture.
     pub residual: Option<ResidualBlockStats>,
+}
+
+/// One leaf transform block from a real `read_var_tx_size` walk (spec 5.11.17/18), in absolute
+/// 4x4 ("MI") units -- see `CodingUnit::tx_blocks`'s doc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxBlock {
+    pub x4: u32,
+    pub y4: u32,
+    pub size: TxSize,
 }
 
 impl CodingUnit {
@@ -470,6 +490,7 @@ impl CodingUnit {
             use_intrabc: false,
             mv: [MotionVector::zero(), MotionVector::zero()],
             tx_size,
+            tx_blocks: None,
             qp: None,
             residual: None,
         }
@@ -531,6 +552,8 @@ pub fn parse_coding_unit(
     use_ref_frame_mvs: bool,
     tile_ctx: &mut crate::tile::TileContext,
     tx_type_flags: TxTypeFrameFlags,
+    mi_rows: u32,
+    mi_cols: u32,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
 
@@ -721,6 +744,22 @@ pub fn parse_coding_unit(
                 cu.mode == PredictionMode::NewMv,
             );
         }
+
+        // read_block_tx_size() (spec 5.11.16/17/18) for INTER blocks -- real recursive var-tx
+        // read, see `read_var_tx_size`'s doc for the exact scope (square CUs only) and why.
+        cu.tx_blocks = compute_inter_tx_blocks(
+            decoder,
+            tile_ctx,
+            x,
+            y,
+            width,
+            height,
+            cu.skip,
+            tx_type_flags.coded_lossless,
+            tx_type_flags.txfm_mode,
+            mi_rows,
+            mi_cols,
+        )?;
     }
 
     // Add this CU to the MV predictor context for future blocks
@@ -767,60 +806,71 @@ pub fn parse_coding_unit(
     // alignment whenever skip == false, not just for producing residual statistics. See this
     // module's doc and `SymbolDecoder::read_residual_block`'s doc.
     if !cu.skip {
-        let tx_px = cu.tx_size.size();
-        let tx_cols = width.div_ceil(tx_px).max(1);
-        let tx_rows = height.div_ceil(tx_px).max(1);
-        let tx_wh4 = tx_px / 4;
+        // Real `tx_blocks` (var-tx, inter only -- see `compute_inter_tx_blocks`'s doc) gives the
+        // true per-leaf positions/sizes directly; everything else still tiles uniformly at
+        // `cu.tx_size` (a heuristic for those CUs, not a real bitstream-derived size).
+        let tx_positions: Vec<(u32, u32, u32)> = if let Some(blocks) = &cu.tx_blocks {
+            blocks.iter().map(|b| (b.x4, b.y4, b.size.size())).collect()
+        } else {
+            let tx_px = cu.tx_size.size();
+            let tx_cols = width.div_ceil(tx_px).max(1);
+            let tx_rows = height.div_ceil(tx_px).max(1);
+            let tx_wh4 = tx_px / 4;
+            (0..tx_rows)
+                .flat_map(|tx_row| {
+                    (0..tx_cols)
+                        .map(move |tx_col| (x4 + tx_col * tx_wh4, y4 + tx_row * tx_wh4, tx_px))
+                })
+                .collect()
+        };
         // Real `txb_skip`/`dc_sign` neighbor context is only trustworthy where transform-block
-        // boundaries are real (key-frame, non-IntraBC -- same gate as the `tx_size()` read
-        // above); other CUs keep the fixed-context-0 fallback and never touch `tile_ctx`'s
-        // residual arrays, matching `SymbolDecoder::read_residual_block`'s doc.
-        let use_real_residual_ctx = is_key_frame && !cu.use_intrabc;
-        let is_single_tx_block = tx_cols == 1 && tx_rows == 1;
+        // boundaries are real (key-frame non-IntraBC via `tx_size()`, or inter via real
+        // `tx_blocks` -- both real bitstream-derived boundaries); other CUs keep the
+        // fixed-context-0 fallback and never touch `tile_ctx`'s residual arrays, matching
+        // `SymbolDecoder::read_residual_block`'s doc.
+        let use_real_residual_ctx = (is_key_frame && !cu.use_intrabc) || cu.tx_blocks.is_some();
+        let is_single_tx_block = tx_positions.len() == 1;
         let mut summary = ResidualBlockStats::default();
-        for tx_row in 0..tx_rows {
-            for tx_col in 0..tx_cols {
-                let tx_x4 = x4 + tx_col * tx_wh4;
-                let tx_y4 = y4 + tx_row * tx_wh4;
+        for (tx_x4, tx_y4, tx_px) in tx_positions {
+            let tx_wh4 = tx_px / 4;
 
-                // transform_type() (spec 5.11.47) precedes coeffs() for every transform block --
-                // see `SymbolDecoder::read_transform_type_is_1d`'s doc.
-                let is_1d = decoder.read_transform_type_is_1d(
-                    is_key_frame,
-                    tx_type_flags.coded_lossless,
-                    tx_type_flags.qidx_is_zero,
-                    tx_type_flags.reduced_tx_set,
-                    tx_px,
-                    y_mode_raw,
-                )?;
+            // transform_type() (spec 5.11.47) precedes coeffs() for every transform block --
+            // see `SymbolDecoder::read_transform_type_is_1d`'s doc.
+            let is_1d = decoder.read_transform_type_is_1d(
+                is_key_frame,
+                tx_type_flags.coded_lossless,
+                tx_type_flags.qidx_is_zero,
+                tx_type_flags.reduced_tx_set,
+                tx_px,
+                y_mode_raw,
+            )?;
 
-                let (txb_skip_ctx, dc_sign_ctx) = if use_real_residual_ctx {
-                    (
-                        tile_ctx.txb_skip_context(tx_x4, tx_y4, tx_wh4, tx_wh4, is_single_tx_block),
-                        tile_ctx.dc_sign_context(tx_x4, tx_y4, tx_wh4, tx_wh4),
-                    )
-                } else {
-                    (0, 0)
-                };
+            let (txb_skip_ctx, dc_sign_ctx) = if use_real_residual_ctx {
+                (
+                    tile_ctx.txb_skip_context(tx_x4, tx_y4, tx_wh4, tx_wh4, is_single_tx_block),
+                    tile_ctx.dc_sign_context(tx_x4, tx_y4, tx_wh4, tx_wh4),
+                )
+            } else {
+                (0, 0)
+            };
 
-                let block = decoder.read_residual_block(tx_px, is_1d, txb_skip_ctx, dc_sign_ctx)?;
+            let block = decoder.read_residual_block(tx_px, is_1d, txb_skip_ctx, dc_sign_ctx)?;
 
-                if use_real_residual_ctx {
-                    let cul_level = block.sum_abs_level.min(63) as u8;
-                    tile_ctx.set_residual_ctx(
-                        tx_x4,
-                        tx_y4,
-                        tx_wh4,
-                        tx_wh4,
-                        cul_level,
-                        block.dc_sign_value,
-                    );
-                }
-
-                summary.nonzero_count += block.nonzero_count;
-                summary.sum_abs_level += block.sum_abs_level;
-                summary.max_level = summary.max_level.max(block.max_level);
+            if use_real_residual_ctx {
+                let cul_level = block.sum_abs_level.min(63) as u8;
+                tile_ctx.set_residual_ctx(
+                    tx_x4,
+                    tx_y4,
+                    tx_wh4,
+                    tx_wh4,
+                    cul_level,
+                    block.dc_sign_value,
+                );
             }
+
+            summary.nonzero_count += block.nonzero_count;
+            summary.sum_abs_level += block.sum_abs_level;
+            summary.max_level = summary.max_level.max(block.max_level);
         }
 
         // Chroma (U/V) residual -- required for bitstream sync (spec 5.11.34's `residual()`
@@ -854,6 +904,224 @@ pub fn parse_coding_unit(
     }
 
     Ok((cu, new_qp))
+}
+
+/// Compute the real (or, for non-`Switchable` `TxMode`s, deterministic-no-read) transform block
+/// breakdown for one INTER coding unit -- spec 5.11.16's `read_block_tx_size()`, restricted to
+/// **square** coding units (`width == height`; this crate's `TxSize` is square-only, see its
+/// doc -- non-square inter CUs, which do occur here via `HORZ`/`VERT` partitions, keep the older
+/// `TxSize::from_dimensions` heuristic, `None` return). Not extended to IntraBC: IntraBC also
+/// uses this same recursive reader per spec, but this crate's intra-branch tx_size() handling
+/// (`755267d`) never routed IntraBC through it either (kept on the heuristic, "no schema
+/// decision needed yet" at the time) -- unifying both is a follow-up, not required for this pass.
+///
+/// Mirrors rav1d's `read_vartx_tree` (`src/decode.rs`, `memorysafety/rav1d`, BSD-2-Clause)
+/// dispatch order:
+/// 1. `skip` (spec: no bits read regardless of `TxMode` -- but `Switchable` still needs the
+///    block's natural max size written into `var_tx_context`'s neighbor arrays for later blocks'
+///    context, even though this CU's own leaf list is moot since `residual()` never runs for a
+///    skipped CU). Returns `None` (caller's `!cu.skip` gate already skips the residual loop).
+/// 2. `coded_lossless` (this crate's frame-wide approximation of spec's per-segment
+///    `LosslessArray`) forces uniform 4x4 tiling, no bits read, regardless of `TxMode` -- checked
+///    before `TxMode` since lossless overrides even `Switchable`.
+/// 3. `TxfmMode::Only4x4`/`Largest`: deterministic uniform tiling (4x4, or the CU's own natural
+///    max size), no bits read -- `TxfmMode::Switchable` is the only case needing a real read.
+/// 4. `TxfmMode::Switchable`: real recursive `read_var_tx_size` walk.
+///
+/// For CUs bigger than one max-size transform tile (only possible at 128x128, since
+/// `TxSize::from_dimensions` caps at 64x64), tiles the walk across each max-size block --
+/// matches rav1d's own `for y_off in 0..bh4/h { for x_off in 0..bw4/w { read_tx_tree(...) } }`.
+#[allow(clippy::too_many_arguments)]
+fn compute_inter_tx_blocks(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut crate::tile::TileContext,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    skip: bool,
+    coded_lossless: bool,
+    txfm_mode: crate::frame_header::TxfmMode,
+    mi_rows: u32,
+    mi_cols: u32,
+) -> Result<Option<Vec<TxBlock>>> {
+    if width != height || !(8..=128).contains(&width) {
+        return Ok(None);
+    }
+    let (x4, y4) = (x / 4, y / 4);
+    let (width_4x4, height_4x4) = (width / 4, height / 4);
+    let max_ytx = TxSize::from_dimensions(width, height);
+
+    if skip {
+        tile_ctx.set_var_tx_class(x4, y4, width_4x4, height_4x4, max_ytx as u8);
+        return Ok(None);
+    }
+
+    let uniform_size = if coded_lossless {
+        Some(TxSize::Tx4x4)
+    } else {
+        match txfm_mode {
+            crate::frame_header::TxfmMode::Only4x4 => Some(TxSize::Tx4x4),
+            crate::frame_header::TxfmMode::Largest => Some(max_ytx),
+            crate::frame_header::TxfmMode::Switchable => None,
+        }
+    };
+
+    let mut leaves = Vec::new();
+    if let Some(uniform_size) = uniform_size {
+        let wh4 = uniform_size.size() / 4;
+        let mut ly = y4;
+        while ly < y4 + height_4x4 {
+            let mut lx = x4;
+            while lx < x4 + width_4x4 {
+                leaves.push(TxBlock {
+                    x4: lx,
+                    y4: ly,
+                    size: uniform_size,
+                });
+                tile_ctx.set_var_tx_class(lx, ly, wh4, wh4, uniform_size as u8);
+                lx += wh4;
+            }
+            ly += wh4;
+        }
+    } else {
+        let tile_wh4 = max_ytx.size() / 4;
+        let mut ty = y4;
+        while ty < y4 + height_4x4 {
+            let mut tx = x4;
+            while tx < x4 + width_4x4 {
+                read_var_tx_size(
+                    decoder,
+                    tile_ctx,
+                    tx,
+                    ty,
+                    max_ytx,
+                    0,
+                    mi_rows,
+                    mi_cols,
+                    &mut leaves,
+                )?;
+                tx += tile_wh4;
+            }
+            ty += tile_wh4;
+        }
+    }
+    Ok(Some(leaves))
+}
+
+/// Recursively read `read_var_tx_size()` (spec 5.11.17/18) for one max-size transform tile,
+/// square-starting-size only -- see `compute_inter_tx_blocks`'s doc. Ports rav1d's `read_tx_tree`
+/// (`src/decode.rs`, `memorysafety/rav1d`, BSD-2-Clause) index-for-index:
+///
+/// - Reads `txfm_split` only when `depth < 2 && from != Tx4x4` (spec: recursion caps at 2 levels
+///   below the tile's own starting size, and 4x4 is always terminal) -- `cat = 2*(4-from_class)
+///   -depth` selects the CDF row (`SymbolDecoder::read_txfm_split`'s doc), context from
+///   `TileContext::var_tx_context`.
+/// - If split and `from` is bigger than 8x8 (class > 1): recurse into 4 quadrant children at the
+///   next-smaller square class, skipping (early return, no read, no leaves) any child whose
+///   origin is `>= mi_rows`/`mi_cols` -- spec: transform blocks entirely outside the frame aren't
+///   separately coded (the same shape as, but distinct from,
+///   `tile::partition::parse_partition_recursive`'s own frame-edge check).
+/// - If split and `from` is exactly 8x8 (class == 1): no further symbol is read (an 8x8 split is
+///   always exactly four 4x4 leaves, spec-deterministic) -- the leaf loop below naturally produces
+///   all four since it always walks `from`'s full footprint at the resolved leaf granularity.
+/// - Otherwise (not split, or `depth`/`from` already forced no-read): `from` itself is the one
+///   leaf covering this node's whole footprint.
+///
+/// Every leaf updates `TileContext::set_var_tx_class` across its own footprint before returning,
+/// matching rav1d's `case.set_disjoint(&dir.tx, tx)`.
+#[allow(clippy::too_many_arguments)]
+fn read_var_tx_size(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut crate::tile::TileContext,
+    x4: u32,
+    y4: u32,
+    from: TxSize,
+    depth: u8,
+    mi_rows: u32,
+    mi_cols: u32,
+    out: &mut Vec<TxBlock>,
+) -> Result<()> {
+    if x4 >= mi_cols || y4 >= mi_rows {
+        return Ok(());
+    }
+    let from_class = from as u8;
+    let is_split = if depth < 2 && from != TxSize::Tx4x4 {
+        let cat = 2 * (4 - from_class) - depth;
+        let (a, l) = tile_ctx.var_tx_context(x4, y4, from_class);
+        decoder.read_txfm_split(cat, a + l)?
+    } else {
+        false
+    };
+
+    if is_split && from_class > 1 {
+        let sub = TxSize::from_class(from_class - 1);
+        let half4 = from.size() / 8;
+        read_var_tx_size(
+            decoder,
+            tile_ctx,
+            x4,
+            y4,
+            sub,
+            depth + 1,
+            mi_rows,
+            mi_cols,
+            out,
+        )?;
+        read_var_tx_size(
+            decoder,
+            tile_ctx,
+            x4 + half4,
+            y4,
+            sub,
+            depth + 1,
+            mi_rows,
+            mi_cols,
+            out,
+        )?;
+        read_var_tx_size(
+            decoder,
+            tile_ctx,
+            x4,
+            y4 + half4,
+            sub,
+            depth + 1,
+            mi_rows,
+            mi_cols,
+            out,
+        )?;
+        read_var_tx_size(
+            decoder,
+            tile_ctx,
+            x4 + half4,
+            y4 + half4,
+            sub,
+            depth + 1,
+            mi_rows,
+            mi_cols,
+            out,
+        )?;
+        return Ok(());
+    }
+
+    let leaf_size = if is_split { TxSize::Tx4x4 } else { from };
+    let leaf_wh4 = leaf_size.size() / 4;
+    let wh4 = from.size() / 4;
+    let mut ly = y4;
+    while ly < y4 + wh4 {
+        let mut lx = x4;
+        while lx < x4 + wh4 {
+            out.push(TxBlock {
+                x4: lx,
+                y4: ly,
+                size: leaf_size,
+            });
+            tile_ctx.set_var_tx_class(lx, ly, leaf_wh4, leaf_wh4, leaf_size as u8);
+            lx += leaf_wh4;
+        }
+        ly += leaf_wh4;
+    }
+    Ok(())
 }
 
 /// Read one explicit MV delta (horizontal + vertical component) from the bitstream, per AV1 spec

@@ -206,6 +206,7 @@ mod tests {
             use_intrabc: false,
             mv: [MotionVector::zero(), MotionVector::zero()],
             tx_size: TxSize::from_dimensions(w, h),
+            tx_blocks: None,
             qp: None,
             residual: None,
         }

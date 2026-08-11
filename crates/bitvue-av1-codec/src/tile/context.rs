@@ -407,6 +407,23 @@ pub struct TileContext {
     left_cul_level: Vec<u8>,
     above_dc_sign_category: Vec<u8>,
     left_dc_sign_category: Vec<u8>,
+    /// Inter/IntraBC `read_var_tx_size()` (spec 5.11.17/18, `SymbolDecoder::read_txfm_split`)
+    /// above/left context: the leaf transform size *class* last written at each position (0..=4,
+    /// `TxSize`'s discriminant order). Defaults to `0` (`TxSize::Tx4x4`'s own class, matching
+    /// rav1d's `TxfmSize` `#[derive(Default)]` -- its `.tx` array's own tile-start reset value,
+    /// `memorysafety/rav1d`'s `env.rs` `BlockContext.tx` field): `read_txfm_split`'s context
+    /// formula (`stored < candidate`) only ever evaluates `candidate` at sizes `>4x4` (spec only
+    /// reads `txfm_split` when the candidate is bigger than `TX_4X4`), so a `0` default and any
+    /// sentinel strictly below every real class are behaviorally identical for every case that
+    /// matters here. Distinct from `above_tx_class`/`left_tx_class` (intra `tx_size()`'s own
+    /// separate context array -- real rav1d keeps these as two genuinely independent fields,
+    /// `tx_intra` vs `tx`, not one shared array). Currently only written by var-tx leaves (inter,
+    /// non-IntraBC -- see `parse_coding_unit`'s doc), never by intra `tx_size()`, so an inter CU's
+    /// context lookup against an intra above/left neighbor sees the unwritten default rather than
+    /// that neighbor's real chosen size -- a known context-derivation approximation (doesn't
+    /// affect bit-position sync, only which adaptive CDF entry gets selected), not a bug.
+    above_var_tx: Vec<i8>,
+    left_var_tx: Vec<i8>,
 }
 
 impl TileContext {
@@ -439,6 +456,8 @@ impl TileContext {
             left_cul_level: vec![0; tile_height_4x4.max(1) as usize],
             above_dc_sign_category: vec![1; tile_width_4x4.max(1) as usize],
             left_dc_sign_category: vec![1; tile_height_4x4.max(1) as usize],
+            above_var_tx: vec![0; tile_width_4x4.max(1) as usize],
+            left_var_tx: vec![0; tile_height_4x4.max(1) as usize],
         }
     }
 
@@ -454,6 +473,7 @@ impl TileContext {
         self.left_tx_class.iter_mut().for_each(|v| *v = -1);
         self.left_cul_level.iter_mut().for_each(|v| *v = 0);
         self.left_dc_sign_category.iter_mut().for_each(|v| *v = 1);
+        self.left_var_tx.iter_mut().for_each(|v| *v = 0);
     }
 
     /// `partition` context index (0..=3) for a block at absolute 8x8-unit position `(x8, y8)`,
@@ -539,6 +559,42 @@ impl TileContext {
         let y_end = (y4 + height_4x4).min(self.left_tx_class.len() as u32);
         for y in y4..y_end {
             self.left_tx_class[y as usize] = tx_class;
+        }
+    }
+
+    /// `read_txfm_split` context `(a, l)` pair (each `0` or `1`) at absolute 4x4 position
+    /// `(x4, y4)` for a candidate split of size class `candidate_class` (0..=4) -- per
+    /// spec/rav1d: `a = above_var_tx[x4] < candidate_class`, `l = left_var_tx[y4] <
+    /// candidate_class`. Caller sums `a + l` for the CDF's `0..=2` context index (see
+    /// `above_var_tx`'s doc for why `candidate_class` is never `0` in practice, and why the `0`
+    /// default is safe).
+    pub fn var_tx_context(&self, x4: u32, y4: u32, candidate_class: u8) -> (u8, u8) {
+        let above = self.above_var_tx.get(x4 as usize).copied().unwrap_or(0);
+        let left = self.left_var_tx.get(y4 as usize).copied().unwrap_or(0);
+        (
+            u8::from(above < candidate_class as i8),
+            u8::from(left < candidate_class as i8),
+        )
+    }
+
+    /// Record a var-tx leaf's size class across its own 4x4-unit footprint, for future
+    /// `var_tx_context` lookups -- see `above_var_tx`'s doc.
+    pub fn set_var_tx_class(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        tx_class: u8,
+    ) {
+        let tx_class = tx_class as i8;
+        let x_end = (x4 + width_4x4).min(self.above_var_tx.len() as u32);
+        for x in x4..x_end {
+            self.above_var_tx[x as usize] = tx_class;
+        }
+        let y_end = (y4 + height_4x4).min(self.left_var_tx.len() as u32);
+        for y in y4..y_end {
+            self.left_var_tx[y as usize] = tx_class;
         }
     }
 
@@ -1479,6 +1535,29 @@ mod tests {
         ctx.start_superblock_row();
         assert_eq!(ctx.tx_size_context(5, 0, 3), 0); // left reset to -1
         assert_eq!(ctx.tx_size_context(0, 5, 3), 1); // above persists
+    }
+
+    // `read_var_tx_size` (inter/IntraBC var-tx) context tests.
+
+    #[test]
+    fn test_var_tx_context_no_neighbors_is_zero_zero() {
+        let ctx = TileContext::new(16, 16);
+        // Default `0` < any real candidate class > 0 -- both should contribute.
+        assert_eq!(ctx.var_tx_context(0, 0, 3), (1, 1));
+    }
+
+    #[test]
+    fn test_var_tx_context_neighbor_at_least_as_large_does_not_contribute() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_var_tx_class(0, 0, 1, 1, 3); // neighbor leaf class = Tx32x32 (3)
+        assert_eq!(ctx.var_tx_context(0, 1, 3), (0, 1)); // above: 3 < 3 false; left default 0<3 true
+    }
+
+    #[test]
+    fn test_var_tx_context_neighbor_smaller_contributes() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_var_tx_class(0, 0, 1, 1, 1); // neighbor leaf class = Tx8x8 (1)
+        assert_eq!(ctx.var_tx_context(0, 1, 3), (1, 1)); // above: 1 < 3 true
     }
 
     #[test]

@@ -136,6 +136,10 @@ pub struct CdfContext {
     /// unlike every other CDF in this struct, this one is not a "representative" placeholder.
     skip_cdf: [Vec<u16>; 3],
 
+    /// `txfm_split` CDFs, `[cat 0..=6][ctx 0..=2]` -- real per-context values + adaptation, see
+    /// its construction site's doc in `CdfContext::new`.
+    txpart_cdf: [[Vec<u16>; 3]; 7],
+
     /// Key-frame `intra_mode` CDFs, indexed `[above_mode_class][left_mode_class]` (0..=4 each,
     /// see `crate::tile::TileContext::intra_mode_context`). Real spec/rav1d default values +
     /// real per-context adaptation -- like `skip_cdf`, not a "representative" placeholder.
@@ -517,6 +521,49 @@ impl CdfContext {
             vec![32768 - 31671, 0, 0], // context 0 (no skip neighbors): mostly not-skip
             vec![32768 - 16515, 0, 0], // context 1 (one skip neighbor)
             vec![32768 - 4576, 0, 0],  // context 2 (both neighbors skip): mostly skip
+        ];
+
+        // txfm_split (spec 5.11.18 `read_var_tx_size`'s `txfm_split` symbol) CDFs, per
+        // `[cat 0..=6][ctx 0..=2]`. `cat` packs the candidate size class and recursion depth
+        // (`2*(4-candidate_class)-depth`, `crate::tile::coding_unit::read_var_tx_size`'s doc);
+        // `ctx` is `TileContext::var_tx_context`'s `a+l` sum. Source: rav1d `Default_Txpart_Cdf`
+        // (`src/cdf.rs`, `memorysafety/rav1d`, BSD-2-Clause).
+        let txpart_cdf: [[Vec<u16>; 3]; 7] = [
+            [
+                binary_ctx_cdf(28581),
+                binary_ctx_cdf(23846),
+                binary_ctx_cdf(20847),
+            ],
+            [
+                binary_ctx_cdf(24315),
+                binary_ctx_cdf(18196),
+                binary_ctx_cdf(12133),
+            ],
+            [
+                binary_ctx_cdf(18791),
+                binary_ctx_cdf(10887),
+                binary_ctx_cdf(11005),
+            ],
+            [
+                binary_ctx_cdf(27179),
+                binary_ctx_cdf(20004),
+                binary_ctx_cdf(11281),
+            ],
+            [
+                binary_ctx_cdf(26549),
+                binary_ctx_cdf(19308),
+                binary_ctx_cdf(14224),
+            ],
+            [
+                binary_ctx_cdf(28015),
+                binary_ctx_cdf(21546),
+                binary_ctx_cdf(14400),
+            ],
+            [
+                binary_ctx_cdf(28165),
+                binary_ctx_cdf(22401),
+                binary_ctx_cdf(16088),
+            ],
         ];
 
         // kfym: real spec/rav1d default CDFs for key-frame intra_mode (spec 5.11.10
@@ -1653,6 +1700,7 @@ impl CdfContext {
         Self {
             partition_cdfs,
             skip_cdf,
+            txpart_cdf,
             kfym,
             newmv_mode_cdf,
             globalmv_mode_cdf,
@@ -1737,6 +1785,13 @@ impl CdfContext {
     /// representative placeholder).
     pub fn get_skip_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
         &mut self.skip_cdf[(ctx as usize).min(2)]
+    }
+
+    /// Get mutable `txfm_split` CDF for `(cat, ctx)` (`cat` 0..=6, `ctx` 0..=2 -- see
+    /// `read_var_tx_size`'s doc and `TileContext::var_tx_context`) -- mutable because
+    /// `read_txfm_split` adapts it in place via `update_cdf` after every read.
+    pub fn get_txpart_cdf_mut(&mut self, cat: u8, ctx: u8) -> &mut [u16] {
+        &mut self.txpart_cdf[(cat as usize).min(6)][(ctx as usize).min(2)]
     }
 
     /// Get mutable key-frame `intra_mode` CDF for the given context (`above_mode_class`,

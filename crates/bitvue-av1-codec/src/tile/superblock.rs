@@ -154,6 +154,8 @@ pub fn parse_superblock(
         use_ref_frame_mvs,
         tile_ctx,
         tx_type_flags,
+        mi_rows,
+        mi_cols,
         &mut sb.coding_units,
     )?;
 
@@ -184,6 +186,8 @@ fn parse_coding_units_recursive(
     use_ref_frame_mvs: bool,
     tile_ctx: &mut crate::tile::TileContext,
     tx_type_flags: TxTypeFrameFlags,
+    mi_rows: u32,
+    mi_cols: u32,
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
@@ -203,6 +207,8 @@ fn parse_coding_units_recursive(
             use_ref_frame_mvs,
             tile_ctx,
             tx_type_flags,
+            mi_rows,
+            mi_cols,
         )?;
 
         coding_units.push(cu);
@@ -223,6 +229,8 @@ fn parse_coding_units_recursive(
                 use_ref_frame_mvs,
                 tile_ctx,
                 tx_type_flags,
+                mi_rows,
+                mi_cols,
                 coding_units,
             )?;
         }

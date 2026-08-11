@@ -733,4 +733,72 @@ mod tests {
              globalmv_ctx fix may be passing vacuously again"
         );
     }
+
+    /// Regression test for real inter var-tx (`compute_inter_tx_blocks`/`read_var_tx_size`, spec
+    /// 5.11.16/17/18): confirms the real `txfm_split` reads are genuinely exercised against the
+    /// fixture (not vacuous -- every eligible non-skip square inter CU gets a real `tx_blocks`
+    /// breakdown) and produce non-degenerate output (a real mix of leaf sizes across the whole
+    /// fixture, and a majority of eligible CUs show at least one real split rather than always
+    /// falling back to the CU's own uniform max size). Same "assert the gate genuinely fires"
+    /// discipline as `real_fixture_frame_edge_partitions_are_not_degenerate`'s doc.
+    #[test]
+    fn real_fixture_inter_var_tx_is_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut eligible_cu_count = 0usize;
+        let mut cus_with_tx_blocks = 0usize;
+        let mut cus_with_a_real_split = 0usize;
+        let mut distinct_leaf_sizes: std::collections::HashSet<u32> = Default::default();
+
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let Ok(parsed) = super::super::parser::ParsedFrame::parse(&obu_data) else {
+                continue;
+            };
+            if parsed.frame_type.is_intra_only || !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            for cu in cus.iter() {
+                if !(cu.is_inter() && cu.width == cu.height && !cu.skip) {
+                    continue;
+                }
+                eligible_cu_count += 1;
+                let Some(blocks) = &cu.tx_blocks else {
+                    continue;
+                };
+                cus_with_tx_blocks += 1;
+                if blocks.len() > 1 {
+                    cus_with_a_real_split += 1;
+                }
+                distinct_leaf_sizes.extend(blocks.iter().map(|b| b.size.size()));
+            }
+        }
+
+        assert!(
+            eligible_cu_count > 0,
+            "expected real non-skip square inter coding units in the fixture"
+        );
+        assert_eq!(
+            cus_with_tx_blocks, eligible_cu_count,
+            "expected every eligible non-skip square inter CU to get a real tx_blocks breakdown \
+             ({cus_with_tx_blocks}/{eligible_cu_count} did) -- the real var-tx gate may not be \
+             firing against this fixture, or may have regressed to the old dimension-only \
+             heuristic"
+        );
+        assert!(
+            cus_with_a_real_split * 2 > eligible_cu_count,
+            "expected a majority of eligible CUs to show a real txfm_split (more than one leaf), \
+             got only {cus_with_a_real_split}/{eligible_cu_count} -- the txfm_split reads may be \
+             degenerating to always-not-split"
+        );
+        assert!(
+            distinct_leaf_sizes.len() > 2,
+            "expected more than two distinct real leaf transform sizes across the fixture, got \
+             only {distinct_leaf_sizes:?}"
+        );
+    }
 }

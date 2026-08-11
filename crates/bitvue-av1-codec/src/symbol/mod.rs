@@ -128,6 +128,16 @@ impl<'a> SymbolDecoder<'a> {
         Ok(symbol == 1)
     }
 
+    /// Read `txfm_split` (spec 5.11.18's `read_var_tx_size`) -- real per-`(cat, ctx)` CDF +
+    /// adaptation, matching `read_skip`'s bar. `cat`/`ctx` are `crate::tile::coding_unit::read_var_tx_size`'s
+    /// packed category and `TileContext::var_tx_context`'s `a+l` sum, respectively. Returns
+    /// `true` if this node splits into 4 smaller transform blocks.
+    pub fn read_txfm_split(&mut self, cat: u8, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_txpart_cdf_mut(cat, ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
     /// Read INTRA prediction mode
     /// Read key-frame `intra_mode` (spec 5.11.10 `kf_y_mode`), per its `above_mode_class`/
     /// `left_mode_class` context (0..=4 each -- see `crate::tile::TileContext::intra_mode_context`).
