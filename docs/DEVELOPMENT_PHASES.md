@@ -1485,8 +1485,15 @@ SIMD 최적화용으로 타입-폭(uint8/16/32/64)별로 분기하는 packed-byt
 없다는 것도 이번 재조사 중 발견** — residual()/ref_frame()과 동일한 묵음 디스싱크급 잠재 버그, 별도 항목
 (둘 다 다음 세션 후보).
 
-- **다음 단계(로드맵)**: (1) `transform_type()` 신규 구현 + `parse_coding_unit`에 `lossless`/`qidx`/
-`reduced_txtp_set` 프레임헤더 플래그 threading, 그 다음 eob_bin/eob_hi_bit/coeff_base_eob 실컨텍스트.
+- **완료(2026-08-11, `4133ca8`)**: `reduced_tx_set` 노출(기존엔 읽고 버려짐) + `ParsedFrame`에
+`coded_lossless`(`base_q_idx==0 && y/uv_dc_delta_q==0`) 신규 파생 필드 — `transform_type()`가 필요로
+하는 프레임헤더 플래그 중 `parse_coding_unit` 호출체인 밖(프레임 레벨)에서 구할 수 있는 부분만 먼저 노출.
+`base_q_idx` 자체는 이미 노출돼 있었음. 아직 `parse_coding_unit`에 실제로 threading은 안 됨 — 다음 단계.
+
+- **다음 단계(로드맵)**: (1) `transform_type()` 신규 구현(txtp_intra1/intra2/inter1/inter2/inter3 5개
+CDF패밀리 + `dav1d_tx_types_per_set`/`dav1d_tx_type_class` 룩업테이블 이식, eob_bin/eob_hi_bit도 마찬가지로
+qindex-버킷 4벌 중 대표값 1벌만 채택하는 근사 필요 — 리터럴 포팅량이 ref_frame/inter_mode 세션 것보다 훨씬
+큼, 재평가 필요) + 위 플래그를 `parse_coding_unit`에 실제 threading, 그 다음 eob_bin/eob_hi_bit/coeff_base_eob 실컨텍스트.
 (2) txb_skip/dc_sign의 packed above/left 배열 설계(값 인코딩부터). (3) coeff_base/coeff_br(스캔순서
 테이블+블록당 scratch 버퍼, 여전히 가장 큰 단일 작업). (4) 크로마 잔차 전체 미read 버그 수정(별도 이슈).
 (5) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/실제 tx_size/palette 등
