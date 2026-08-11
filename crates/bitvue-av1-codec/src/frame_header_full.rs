@@ -895,6 +895,7 @@ pub fn parse_frame_header_full(
             upscaled_height: 0,
             reference_select: false,
             allow_intrabc: false,
+            reduced_tx_set: false,
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -1145,7 +1146,7 @@ pub fn parse_frame_header_full(
         reader.read_bit()?
     };
     let _ = allow_warped_motion;
-    reader.read_bit()?; // reduced_tx_set
+    let reduced_tx_set = reader.read_bit()?;
 
     parse_global_motion_params(&mut reader, allow_high_precision_mv)?;
 
@@ -1194,6 +1195,7 @@ pub fn parse_frame_header_full(
         upscaled_height,
         reference_select,
         allow_intrabc,
+        reduced_tx_set,
         loop_filter,
         cdef_damping: cdef.clone(),
         cdef_y_primary_strength: cdef.y_primary_strength,

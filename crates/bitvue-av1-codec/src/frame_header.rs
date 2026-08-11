@@ -173,6 +173,11 @@ pub struct FrameHeader {
     /// `allow_intrabc` (spec 5.9.2) -- whether intra block copy is enabled for this (intra) frame.
     /// Same basic-vs-full caveat as `reference_select`.
     pub allow_intrabc: bool,
+    /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
+    /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
+    /// basic-vs-full caveat as `reference_select`); real value only from
+    /// `parse_frame_header_full`.
+    pub reduced_tx_set: bool,
     /// Loop filter (deblocking) parameters
     pub loop_filter: LoopFilterInfo,
     /// CDEF parameters
@@ -518,6 +523,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             upscaled_height: 0,
             reference_select: false,
             allow_intrabc: false,
+            reduced_tx_set: false,
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -686,6 +692,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         upscaled_height: 0,
         reference_select: false,
         allow_intrabc: false,
+        reduced_tx_set: false,
         loop_filter: LoopFilterInfo::default(),
         cdef_damping: CdefInfo::default(),
         cdef_y_primary_strength: 0,

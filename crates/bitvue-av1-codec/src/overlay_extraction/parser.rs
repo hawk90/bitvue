@@ -39,6 +39,15 @@ pub struct ParsedFrame {
     /// `allow_intrabc` (spec 5.9.2) -- whether intra block copy is enabled for this (intra) frame.
     /// Same sourcing/fallback story as `reference_select`.
     pub allow_intrabc: bool,
+    /// `reduced_tx_set` (spec 5.9.2) -- see `FrameHeader::reduced_tx_set`'s doc. Same
+    /// sourcing/fallback story as `reference_select`.
+    pub reduced_tx_set: bool,
+    /// `CodedLossless` (spec 5.9.2/7.12.3): `base_q_idx == 0 && y_dc_delta_q == 0 &&
+    /// uv_dc_delta_q == 0`. This crate doesn't implement segmentation, so unlike the real spec's
+    /// per-segment `LosslessArray`, this is frame-wide only -- matches
+    /// `frame_header_full.rs`'s own `coded_lossless` derivation (see that module's doc). `false`
+    /// if `base_q_idx` wasn't parsed (same resilient-fallback precedent as `delta_q_enabled`).
+    pub coded_lossless: bool,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -126,6 +135,8 @@ impl ParsedFrame {
                 delta_q_enabled: false,
                 reference_select: false,
                 allow_intrabc: false,
+                reduced_tx_set: false,
+                coded_lossless: false,
             });
         }
 
@@ -157,6 +168,8 @@ impl ParsedFrame {
         let mut delta_q_enabled = false; // Default to false
         let mut reference_select = false;
         let mut allow_intrabc = false;
+        let mut reduced_tx_set = false;
+        let mut coded_lossless = false;
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -225,6 +238,10 @@ impl ParsedFrame {
                         {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
+                            reduced_tx_set = full_hdr.reduced_tx_set;
+                            coded_lossless = full_hdr.base_q_idx == Some(0)
+                                && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
+                                && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                         }
                     }
                 }
@@ -242,6 +259,10 @@ impl ParsedFrame {
                         {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
+                            reduced_tx_set = full_hdr.reduced_tx_set;
+                            coded_lossless = full_hdr.base_q_idx == Some(0)
+                                && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
+                                && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                         }
                     }
                 }
@@ -269,6 +290,8 @@ impl ParsedFrame {
             delta_q_enabled,
             reference_select,
             allow_intrabc,
+            reduced_tx_set,
+            coded_lossless,
         })
     }
 
