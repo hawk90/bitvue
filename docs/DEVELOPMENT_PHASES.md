@@ -1609,11 +1609,27 @@ tx블록 개수만큼 읽기) → `real_fixture_key_frame_intra_modes_are_not_de
 (`64x128` leaf, D203Pred 등 다양한 모드) 확인. 385/385(신규 4개: gather 함수 유닛테스트 3개 + 실제
 fixture 비정사각 leaf 존재 확인 회귀테스트), 워크스페이스 전체(`--lib`+`--tests`) 클린, fmt 클린.
 
+- **inter_mode globalmv_ctx 재조사 → 부분 완료(2026-08-11)**: "사용자 확인 후 보류"됐던 refmvs 항목을
+"다 해주세요" 위임으로 재착수. rav1d `src/refmvs.rs` 직접 대조 결과 `globalmv_ctx`는
+`rav1d_refmvs_find`에서 **`frm_hdr.use_ref_frame_mvs` 값으로 초기화**된 뒤, `rf.n_mfmvs>0`(과거
+프레임에서 저장된 모션필드가 실제로 존재)일 때만 `add_temporal_candidate`가 이를 덮어씀을 확인 —
+즉 진짜 시간축 예측(7.9 motion_field_estimation, 프레임 간 저장/투영 서브시스템)은 여전히 이
+크레이트 범위 밖(픽셀 재구성 자체를 안 하므로 저장할 모션필드가 없음)이지만, **덮어쓰기 전
+초기값**은 단순히 프레임 헤더 플래그 하나이므로 무료로 정확해질 수 있음을 발견. `use_ref_frame_mvs`
+가 `parse_frame_header_full`에서 이미 파싱만 되고 버려지고 있던 걸(`let _ = use_ref_frame_mvs;`)
+`FrameHeader`/`ParsedFrame`에 노출(`reference_select`/`allow_intrabc` 선례와 동일 패턴) →
+`inter_mode_context`의 하드코딩 `0` 대신 이 플래그 직접 사용. 실측: 이 fixture의 실제 인터 프레임
+249개 전부 `use_ref_frame_mvs=true` — 즉 기존 하드코딩 `0`은 100% 오답이었던 케이스에 적용되고
+있었음. 유닛테스트(globalmv 비트 토글 확인) + 실제 fixture 비-vacuous 회귀테스트 추가, 387/387 +
+워크스페이스 전체 클린. **여전히 남은 갭**: 실제 시간축 후보 발견 시의 override(진짜 모션필드
+저장+투영 서브시스템)는 미구현 — 이 크레이트가 재구성을 아예 안 하는 한 원천적으로 큰 작업.
+
 - **다음 단계(로드맵, 남은 것)**: (1) 크로마 64x64/128x128 확장 재시도(tx_size_class=3 경로 원인
 불명 버그부터 규명 필요). (2) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit 스키마 변경 선행 필요) —
 이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장 가능. (3) segment_id/palette 등 아예 안 읽는
-신택스 요소들. (4) inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전 세션에
-재스코핑만 하고 보류).
+신택스 요소들(단, segment_id는 이 fixture가 segmentation_enabled=true인 프레임이 전무해 실측 검증
+불가 — 별도 오라클 필요). (4) inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(위 항목
+참고, 이 크레이트가 재구성을 구현하기 전엔 근본적으로 범위 밖).
 
 ---
 
