@@ -602,27 +602,107 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.value == 0
     }
 
+    /// Read `transform_type()` (AV1 spec Section 5.11.47), returning only `is_1d` (whether the
+    /// resulting `TxClass` is `TX_CLASS_H`/`TX_CLASS_V`, as opposed to `TX_CLASS_2D`) rather than
+    /// the full `TxType` -- that's all `eob_bin`'s context axis needs (see
+    /// `read_residual_block`'s doc), and this crate has no reconstruction stage that would need
+    /// the exact transform kernel. Must still consume the *real* number of bits regardless of
+    /// which branch is taken, matching rav1d's `read_coefs` (`memorysafety/rav1d`, BSD-2-Clause,
+    /// `src/recon_tmpl.c` -- not yet ported to that project's Rust) exactly, since skipping this
+    /// read entirely (as this crate did before) desyncs every later symbol in the tile whenever
+    /// the real encoder actually wrote transform-type bits (the common case: `coded_lossless`
+    /// false, tx not the largest, `qidx != 0`).
+    ///
+    /// `is_intra`: whether this is an intra-predicted block (compound/inter blocks are never
+    /// "intra" for this purpose). `coded_lossless`/`reduced_tx_set`: frame header flags (see
+    /// `ParsedFrame`'s doc). `qidx_is_zero`: the frame's `base_q_idx == 0` (a real spec shortcut
+    /// distinct from `coded_lossless`, which additionally requires zero delta-Q). `tx_size_px`:
+    /// transform block size in pixels per side. `y_mode_raw`: the intra prediction mode symbol
+    /// (0..=12, only meaningful when `is_intra`) -- spec's `FILTER_PRED` substitution never
+    /// applies since this crate's `PredictionMode` has no such variant.
+    ///
+    /// Five CDF families cover the real decision tree (`CdfContext`'s `txtp_*_cdf` doc); which
+    /// tx-size classes reach which family is a direct consequence of the branch conditions below,
+    /// not arbitrary -- e.g. `txtp_intra1`/`txtp_inter1` only ever see tx classes 0..=1 (4x4/8x8)
+    /// because every larger size is intercepted by an earlier branch first.
+    pub fn read_transform_type_is_1d(
+        &mut self,
+        is_intra: bool,
+        coded_lossless: bool,
+        qidx_is_zero: bool,
+        reduced_tx_set: bool,
+        tx_size_px: u32,
+        y_mode_raw: u8,
+    ) -> Result<bool> {
+        let tx_class = cdf::tx_size_class(tx_size_px);
+        // `t_dim->max + intra >= TX_64X64`: intra additionally forces DCT_DCT (2D, no bits) one
+        // tx-size class earlier than inter (at 32x32, not just 64x64) -- real spec asymmetry, not
+        // a simplification.
+        if coded_lossless || qidx_is_zero || tx_class + usize::from(is_intra) >= 4 {
+            return Ok(false);
+        }
+        if is_intra {
+            if reduced_tx_set || tx_class == 2 {
+                // Intra2 alphabet (IDTX/DCT_DCT/ADST_ADST/ADST_DCT/DCT_ADST) is entirely
+                // TX_CLASS_2D -- no symbol value here can ever produce `is_1d = true`.
+                let cdf = self
+                    .cdf_context
+                    .get_txtp_intra2_cdf_mut(tx_class, y_mode_raw);
+                self.decoder.read_symbol_adaptive(cdf)?;
+                Ok(false)
+            } else {
+                // Intra1 alphabet: IDTX, DCT_DCT, V_DCT, H_DCT, ADST_ADST, ADST_DCT, DCT_ADST.
+                let cdf = self
+                    .cdf_context
+                    .get_txtp_intra1_cdf_mut(tx_class, y_mode_raw);
+                let idx = self.decoder.read_symbol_adaptive(cdf)?;
+                Ok(idx == 2 || idx == 3) // V_DCT, H_DCT
+            }
+        } else if reduced_tx_set || tx_class == 3 {
+            // Inter3 alphabet is a single bit choosing between IDTX and DCT_DCT -- both 2D.
+            let cdf = self.cdf_context.get_txtp_inter3_cdf_mut(tx_class);
+            self.decoder.read_symbol_adaptive(cdf)?;
+            Ok(false)
+        } else if tx_class == 2 {
+            // Inter2 alphabet: IDTX, V_DCT, H_DCT, DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT,
+            // DCT_FLIPADST, ADST_ADST, FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST.
+            let cdf = self.cdf_context.get_txtp_inter2_cdf_mut();
+            let idx = self.decoder.read_symbol_adaptive(cdf)?;
+            Ok(idx == 1 || idx == 2) // V_DCT, H_DCT
+        } else {
+            // Inter1 alphabet: IDTX, V_DCT, H_DCT, V_ADST, H_ADST, V_FLIPADST, H_FLIPADST,
+            // DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT, DCT_FLIPADST, ADST_ADST,
+            // FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST.
+            let cdf = self.cdf_context.get_txtp_inter1_cdf_mut(tx_class);
+            let idx = self.decoder.read_symbol_adaptive(cdf)?;
+            Ok((1..=6).contains(&idx)) // V_DCT, H_DCT, V_ADST, H_ADST, V_FLIPADST, H_FLIPADST
+        }
+    }
+
     /// Read one transform block's residual coefficients (AV1 spec Section 5.11.39 `coeffs()`),
     /// returning summary statistics rather than a full per-position coefficient array -- this
     /// crate has no dequantization/inverse-transform/pixel-reconstruction stage, so individual
     /// coefficient positions aren't independently useful, only their aggregate magnitude.
     ///
-    /// `tx_size_px` is the transform block's size in pixels per side (4/8/16/32/64).
+    /// `tx_size_px` is the transform block's size in pixels per side (4/8/16/32/64). `is_1d` is
+    /// `read_transform_type_is_1d`'s result for this same transform block -- callers must read
+    /// `transform_type()` first (spec order) and pass its result here; only `eob_bin`'s context
+    /// depends on it (see `CdfContext`'s `eob_bin_16_cdf`/etc. doc).
     ///
     /// # Known simplifications (see `symbol/cdf.rs`'s residual-CDF doc for the CDF side)
     ///
-    /// - **No neighbor/level context**: real AV1 derives `txb_skip`/`coeff_base`/`coeff_br`
-    ///   context from already-decoded neighbor coefficient levels and the above/left transform
-    ///   block state. This uses one fixed representative CDF per symbol kind regardless of
-    ///   position or neighbors -- consistent with `skip`/`intra_mode`/`inter_mode` already doing
-    ///   the same in this codebase (see `CdfContext::new`'s doc).
-    /// - **`eob_extra` bits are uniform literal bits**, not the spec's context-coded first bit --
-    ///   the resulting `eob` value only needs to land in the right *range*, not match the spec's
-    ///   exact encoding, since nothing here reconstructs pixels from it.
+    /// - **No neighbor/level context for `txb_skip`/`coeff_base`/`coeff_br`/`dc_sign`**: real AV1
+    ///   derives these from already-decoded neighbor coefficient levels and the above/left
+    ///   transform block state. `eob_bin`/`eob_hi_bit`/`coeff_base_eob` are the exception --
+    ///   real context, like `skip`/`intra_mode`/`inter_mode`/`ref_frame` (see `CdfContext::new`'s
+    ///   doc).
+    /// - **`eob_extra` bits after the first are uniform literal bits**, not spec-exact CDF-coded
+    ///   -- the real spec only context-codes the *first* extra bit (`eob_hi_bit`, real here); the
+    ///   rest are genuinely literal per spec too, so this isn't a simplification for those.
     /// - **Single combined level+sign+golomb pass** per position (descending scan order) instead
     ///   of the spec's two separate passes (all levels, then all signs) -- doesn't change which
-    ///   information gets read, only its order, which is irrelevant once the CDFs themselves are
-    ///   already non-spec-exact.
+    ///   information gets read, only its order, which is irrelevant once `coeff_base`/`coeff_br`
+    ///   themselves are still non-spec-exact.
     /// - **Golomb extension is a bounded, always-terminating read** (capped at 20 length bits) --
     ///   not necessarily bit-exact against the spec's `read_golomb`, but always produces a real,
     ///   finite level value.
@@ -630,14 +710,22 @@ impl<'a> SymbolDecoder<'a> {
     ///   dimension-based heuristic (`TxSize::from_dimensions`), not read from the bitstream (see
     ///   its own doc) -- residual reading here reuses that same heuristic size, inheriting the
     ///   same pre-existing gap rather than introducing a new one.
+    /// - **Chroma-plane residual is never read at all** -- callers only invoke this for luma
+    ///   transform blocks (a separate, previously undocumented gap found while re-scoping this
+    ///   work, not fixed here -- every real CDF/context added in this pass hardcodes the
+    ///   `chroma=0` axis of its rav1d source table for exactly this reason).
     ///
-    /// None of these change the *shape* of the read sequence (an `all_zero` check, then --  when
-    /// not all-zero -- an `eob_pt` symbol, `eob` extra bits, and exactly `eob` per-position level/
-    /// sign/golomb reads) -- which is what matters for keeping the shared arithmetic decoder's
-    /// position advancing by a plausible amount instead of not reading residual data at all (see
-    /// `crate::tile::coding_unit`'s module doc for why that previously caused real desync/crashes
-    /// on real streams).
-    pub fn read_residual_block(&mut self, tx_size_px: u32) -> Result<ResidualBlockStats> {
+    /// None of these change the *shape* of the read sequence (an `all_zero` check, then -- when
+    /// not all-zero -- an `eob_bin` symbol, `eob` extra bits, and exactly `eob` per-position
+    /// level/sign/golomb reads) -- which is what matters for keeping the shared arithmetic
+    /// decoder's position advancing by a plausible amount instead of not reading residual data at
+    /// all (see `crate::tile::coding_unit`'s module doc for why that previously caused real
+    /// desync/crashes on real streams).
+    pub fn read_residual_block(
+        &mut self,
+        tx_size_px: u32,
+        is_1d: bool,
+    ) -> Result<ResidualBlockStats> {
         let txb_skip_cdf = self.cdf_context.get_txb_skip_cdf();
         let all_zero = self.decoder.read_symbol(txb_skip_cdf)? == 1;
         if all_zero {
@@ -647,20 +735,24 @@ impl<'a> SymbolDecoder<'a> {
             });
         }
 
-        let eob_pt_cdf = self.cdf_context.get_eob_pt_cdf(tx_size_px);
-        let eob_pt = self.decoder.read_symbol(eob_pt_cdf)? as u32 + 1;
+        let eob_bin_cdf = self.cdf_context.get_eob_bin_cdf_mut(tx_size_px, is_1d);
+        let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
 
-        let eob: u32 = if eob_pt <= 2 {
-            eob_pt
-        } else {
-            let num_extra_bits = eob_pt - 2;
-            let base = 1u32 << (eob_pt - 2);
+        let eob: u32 = if eob_bin > 1 {
+            let tx_class = cdf::tx_size_class(tx_size_px);
+            let eob_hi_bit_cdf = self
+                .cdf_context
+                .get_eob_hi_bit_cdf_mut(tx_class, eob_bin as u8);
+            let eob_hi_bit = self.decoder.read_symbol_adaptive(eob_hi_bit_cdf)? as u32;
+            let num_extra_bits = eob_bin - 2;
             let mut extra = 0u32;
             for _ in 0..num_extra_bits {
                 let bit = self.decoder.read_bool(16384)? as u32;
                 extra = (extra << 1) | bit;
             }
-            base + 1 + extra
+            ((eob_hi_bit | 2) << (eob_bin - 2)) | extra
+        } else {
+            eob_bin
         };
 
         let mut stats = ResidualBlockStats {
@@ -670,8 +762,10 @@ impl<'a> SymbolDecoder<'a> {
 
         for c in (0..eob).rev() {
             let base_level = if c == eob - 1 {
-                let cdf = self.cdf_context.get_coeff_base_eob_cdf();
-                self.decoder.read_symbol(cdf)? as u32 + 1
+                let tx_class = cdf::tx_size_class(tx_size_px);
+                let ctx = coeff_base_eob_context(eob, tx_size_px);
+                let cdf = self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx);
+                self.decoder.read_symbol_adaptive(cdf)? as u32 + 1
             } else {
                 let cdf = self.cdf_context.get_coeff_base_cdf();
                 self.decoder.read_symbol(cdf)? as u32
@@ -724,6 +818,17 @@ impl<'a> SymbolDecoder<'a> {
     }
 }
 
+/// `coeff_base_eob`'s context (1..=3): purely a function of `eob` and tx size, no neighbor/level
+/// state needed (unlike `coeff_base`/`coeff_br`, still deferred -- see `read_residual_block`'s
+/// doc). Source: rav1d's inline formula in `decode_coefs` (`memorysafety/rav1d`, BSD-2-Clause,
+/// `src/recon_tmpl.c`): `1 + (eob > 2<<tx2dszctx) + (eob > 4<<tx2dszctx)`, where `tx2dszctx` is
+/// `2 * min(tx_size_class, 3)` for a square transform (real AV1 caps the 2D coefficient scan's
+/// size class at 32x32).
+fn coeff_base_eob_context(eob: u32, tx_size_px: u32) -> u8 {
+    let tx2dszctx = 2 * cdf::tx_size_class(tx_size_px).min(3) as u32;
+    1 + u8::from(eob > (2 << tx2dszctx)) + u8::from(eob > (4 << tx2dszctx))
+}
+
 /// Summary statistics for one transform block's residual coefficients -- see
 /// `SymbolDecoder::read_residual_block`'s doc for what this deliberately does and doesn't capture
 /// (aggregate magnitude, not per-position values or real pixel-domain energy).
@@ -760,5 +865,121 @@ mod tests {
         // Note: This will likely fail without real entropy-coded data
         // This is just a structural test
         let _result = decoder.read_partition(6, 0, true, true); // 64x64 block (2^6)
+    }
+
+    // `read_transform_type_is_1d` tests. Each early-return branch (`coded_lossless`/
+    // `qidx_is_zero`/large-tx) must consume zero bits -- verified by comparing the raw decoder
+    // state (`range`/`value`/`cnt`) before and after, since any real symbol read changes it.
+    fn decoder_state(d: &SymbolDecoder) -> (u32, usize, i32) {
+        (d.decoder.range, d.decoder.value, d.decoder.cnt)
+    }
+
+    #[test]
+    fn test_transform_type_coded_lossless_reads_zero_bits() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        let is_1d = decoder
+            .read_transform_type_is_1d(true, true, false, false, 16, 0)
+            .unwrap();
+        assert!(!is_1d);
+        assert_eq!(decoder_state(&decoder), before);
+    }
+
+    #[test]
+    fn test_transform_type_qidx_zero_reads_zero_bits() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        let is_1d = decoder
+            .read_transform_type_is_1d(false, false, true, false, 16, 0)
+            .unwrap();
+        assert!(!is_1d);
+        assert_eq!(decoder_state(&decoder), before);
+    }
+
+    #[test]
+    fn test_transform_type_large_tx_reads_zero_bits() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        // 64x64 (tx_size_px=64 -> tx_size_class=4), inter (is_intra=false): 4+0>=4 -> large tx.
+        let is_1d = decoder
+            .read_transform_type_is_1d(false, false, false, false, 64, 0)
+            .unwrap();
+        assert!(!is_1d);
+        assert_eq!(decoder_state(&decoder), before);
+    }
+
+    #[test]
+    fn test_transform_type_large_tx_threshold_is_one_class_lower_for_intra() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        // 32x32 (tx_size_class=3), intra: 3+1>=4 -> large tx, zero bits (unlike inter at the same
+        // size -- see `read_transform_type_is_1d`'s doc on this real spec asymmetry).
+        let is_1d = decoder
+            .read_transform_type_is_1d(true, false, false, false, 32, 0)
+            .unwrap();
+        assert!(!is_1d);
+        assert_eq!(decoder_state(&decoder), before);
+    }
+
+    #[test]
+    fn test_transform_type_32x32_inter_is_not_large_tx_and_reads_bits() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        // 32x32, inter: 3+0<4, not large -- falls into the real txtp_inter3 read (reduced/32x32
+        // branch), which must consume real bits.
+        let _is_1d = decoder
+            .read_transform_type_is_1d(false, false, false, false, 32, 0)
+            .unwrap();
+        assert_ne!(decoder_state(&decoder), before);
+    }
+
+    #[test]
+    fn test_transform_type_intra2_reduced_branch_never_returns_1d() {
+        // Intra2's alphabet (IDTX/DCT_DCT/ADST_ADST/ADST_DCT/DCT_ADST) is entirely TX_CLASS_2D --
+        // run it across enough synthetic decoders to exercise multiple symbol values and confirm
+        // `is_1d` is always false, matching the alphabet's real composition (no V_DCT/H_DCT).
+        for seed in 0u8..8 {
+            let data = vec![0x80, seed, 0xFF, 0xFF, 0xAA ^ seed, 0xBB];
+            let mut decoder = SymbolDecoder::new(&data).unwrap();
+            let is_1d = decoder
+                .read_transform_type_is_1d(true, false, false, true, 4, 0)
+                .unwrap();
+            assert!(!is_1d);
+        }
+    }
+
+    #[test]
+    fn test_transform_type_intra1_branch_reads_real_bits_and_returns_valid_bool() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        // 4x4, intra, not reduced -- reaches txtp_intra1 (real 7-symbol read).
+        let _is_1d = decoder
+            .read_transform_type_is_1d(true, false, false, false, 4, 0)
+            .unwrap();
+        assert_ne!(decoder_state(&decoder), before);
+    }
+
+    #[test]
+    fn test_coeff_base_eob_context_increases_with_eob() {
+        // tx_size_px=16 -> tx_size_class=2 -> tx2dszctx=4 -> thresholds 2<<4=32, 4<<4=64.
+        assert_eq!(coeff_base_eob_context(10, 16), 1); // below both thresholds
+        assert_eq!(coeff_base_eob_context(40, 16), 2); // above first only
+        assert_eq!(coeff_base_eob_context(100, 16), 3); // above both
+    }
+
+    #[test]
+    fn test_coeff_base_eob_context_caps_tx2dszctx_at_32x32() {
+        // 32x32 and 64x64 share the same tx2dszctx (real AV1 caps the 2D coefficient scan's size
+        // class at 32x32) -- same context for the same `eob`.
+        assert_eq!(
+            coeff_base_eob_context(500, 32),
+            coeff_base_eob_context(500, 64)
+        );
     }
 }

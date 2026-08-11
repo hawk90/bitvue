@@ -29,7 +29,7 @@ pub mod superblock;
 pub mod tile_group;
 
 pub use coding_unit::{
-    parse_coding_unit, CodingUnit, MotionVector, PredictionMode, RefFrame, TxSize,
+    parse_coding_unit, CodingUnit, MotionVector, PredictionMode, RefFrame, TxSize, TxTypeFrameFlags,
 };
 pub use context::TileContext;
 pub use mv_prediction::MvPredictorContext;

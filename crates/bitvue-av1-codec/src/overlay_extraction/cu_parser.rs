@@ -33,6 +33,11 @@ pub fn parse_all_coding_units(
     let delta_q_enabled = parsed.delta_q_enabled;
     let reference_select = parsed.reference_select;
     let allow_intrabc = parsed.allow_intrabc;
+    let tx_type_flags = crate::tile::TxTypeFrameFlags {
+        coded_lossless: parsed.coded_lossless,
+        qidx_is_zero: parsed.frame_type.base_qp == Some(0),
+        reduced_tx_set: parsed.reduced_tx_set,
+    };
 
     // Use get_or_parse helper for cache pattern
     get_or_parse_coding_units(cache_key, || {
@@ -78,6 +83,7 @@ pub fn parse_all_coding_units(
                     reference_select,
                     allow_intrabc,
                     &mut tile_ctx,
+                    tx_type_flags,
                 ) {
                     Ok((sb, new_qp)) => {
                         // Collect all coding units from this superblock

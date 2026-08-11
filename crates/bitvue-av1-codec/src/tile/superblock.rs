@@ -13,7 +13,9 @@
 //! 4. Build MVGrid for visualization
 
 use crate::symbol::SymbolDecoder;
-use crate::tile::{parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode};
+use crate::tile::{
+    parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode, TxTypeFrameFlags,
+};
 use bitvue_engine::Result;
 use serde::{Deserialize, Serialize};
 
@@ -84,6 +86,7 @@ impl Superblock {
 /// * `tile_ctx` - Above/left neighbor-state tracker for entropy context, shared across every
 ///   superblock in the tile (see `crate::tile::TileContext`'s doc). Callers looping over
 ///   superblock rows should call `tile_ctx.start_superblock_row()` at the start of each row.
+/// * `tx_type_flags` - Frame header flags for `transform_type()` (see `parse_coding_unit`'s doc)
 ///
 /// # Returns
 ///
@@ -101,6 +104,7 @@ pub fn parse_superblock(
     reference_select: bool,
     allow_intrabc: bool,
     tile_ctx: &mut crate::tile::TileContext,
+    tx_type_flags: TxTypeFrameFlags,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -132,6 +136,7 @@ pub fn parse_superblock(
         reference_select,
         allow_intrabc,
         tile_ctx,
+        tx_type_flags,
         &mut sb.coding_units,
     )?;
 
@@ -160,6 +165,7 @@ fn parse_coding_units_recursive(
     reference_select: bool,
     allow_intrabc: bool,
     tile_ctx: &mut crate::tile::TileContext,
+    tx_type_flags: TxTypeFrameFlags,
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
@@ -177,6 +183,7 @@ fn parse_coding_units_recursive(
             reference_select,
             allow_intrabc,
             tile_ctx,
+            tx_type_flags,
         )?;
 
         coding_units.push(cu);
@@ -195,6 +202,7 @@ fn parse_coding_units_recursive(
                 reference_select,
                 allow_intrabc,
                 tile_ctx,
+                tx_type_flags,
                 coding_units,
             )?;
         }

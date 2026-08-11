@@ -178,19 +178,15 @@ pub struct CdfContext {
     /// Used for delta_q_abs when larger values are needed
     diff_cdf: Vec<u16>,
 
-    /// Residual coefficient CDFs -- see `residual` module doc (`symbol/mod.rs`) for why these are
-    /// deliberately context-*independent* (one representative CDF per symbol kind, not indexed by
-    /// neighbor levels / tx-size-context / plane / is_inter like the real spec's Section 9.24
-    /// tables) -- same simplification precedent as every other CDF in this struct, just applied
-    /// to a syntax element where getting *some* real value beats the previous behavior of reading
-    /// nothing at all.
+    /// Residual coefficient CDFs -- see `residual` module doc (`symbol/mod.rs`) for why most of
+    /// these are still deliberately context-*independent* (one representative CDF per symbol
+    /// kind, not indexed by neighbor levels / tx-size-context / plane / is_inter like the real
+    /// spec's Section 9.24 tables) -- same simplification precedent as every other CDF in this
+    /// struct, just applied to a syntax element where getting *some* real value beats the
+    /// previous behavior of reading nothing at all. `eob_pt`/`coeff_base_eob` (below) are the
+    /// exception: real per-context CDFs + adaptation, like `skip_cdf`/`ref_frame`'s CDFs.
     /// `txb_skip_cdf`: all_zero flag for one transform block (2 symbols).
     txb_skip_cdf: Vec<u16>,
-    /// `eob_pt` CDFs, one per coefficient-count class (16/64/256/1024 -- indices 0..=3), each
-    /// uniform over its alphabet (5/7/9/11 symbols respectively; see `eob_pt_cdf_for_tx_size`).
-    eob_pt_cdfs: [Vec<u16>; 4],
-    /// `coeff_base_eob` -- level (1..=3) for the highest-scan-order nonzero coefficient (3 symbols).
-    coeff_base_eob_cdf: Vec<u16>,
     /// `coeff_base` -- level (0..=3) for every other coefficient position (4 symbols).
     coeff_base_cdf: Vec<u16>,
     /// `coeff_br` -- range-extension increment (0..=3), read in a loop while extending a level
@@ -199,6 +195,50 @@ pub struct CdfContext {
     /// `dc_sign` -- sign of the DC (position 0) coefficient (2 symbols). AC coefficient signs are
     /// read as literal (uniform) bits per spec, not CDF-coded.
     dc_sign_cdf: Vec<u16>,
+
+    /// `eob_bin` (spec 5.11.39's `eob_pt_*`), real spec/rav1d default CDFs + real adaptation, one
+    /// family per coefficient-count class (16/64/256/1024, the only 4 of rav1d's 7 classes a
+    /// *square*-only transform ever selects -- see `SymbolDecoder::eob_bin_context`'s doc) each
+    /// indexed by `is_1d` (0..=1, from `SymbolDecoder::read_transform_type_is_1d`; the real
+    /// spec's `chroma` axis is always 0 here since this crate only reads luma residual, see
+    /// `read_residual_block`'s doc). Source: rav1d `eob_bin_16/64/256/1024`
+    /// (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`) -- only the first of rav1d's 4
+    /// redundant qindex-bucket default-CDF variants is ported (same "one representative default"
+    /// precedent as every other CDF in this struct; real per-context *selection* is what's new
+    /// here, not per-qindex tuning). `eob_bin_1024` has no `is_1d` axis in rav1d itself (only
+    /// `chroma`), hence the plain `[Vec<u16>; 1]`-shaped (i.e. unindexed) field below.
+    eob_bin_16_cdf: [Vec<u16>; 2],
+    eob_bin_64_cdf: [Vec<u16>; 2],
+    eob_bin_256_cdf: [Vec<u16>; 2],
+    eob_bin_1024_cdf: Vec<u16>,
+    /// `eob_hi_bit` -- the single context-coded first bit of `eob`'s extra-bits suffix (spec
+    /// 5.11.39), indexed `[tx_size_class 0..=4][eob_bin 0..=10]` (chroma axis fixed to 0, same
+    /// as `eob_bin_*`). Every extra bit *after* the first stays a plain literal 50/50 bit (see
+    /// `read_residual_block`'s doc) -- matches the real spec, which only context-codes the first
+    /// one. Source: rav1d `eob_hi_bit` (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`), first
+    /// qindex-bucket variant only (see `eob_bin_16_cdf`'s doc).
+    eob_hi_bit_cdf: [[Vec<u16>; 11]; 5],
+    /// `coeff_base_eob` -- level (1..=3) for the highest-scan-order nonzero coefficient (3
+    /// symbols), indexed `[tx_size_class 0..=4][ctx 0..=3]` (chroma axis fixed to 0). Real
+    /// spec/rav1d default CDFs + real adaptation -- context is a pure arithmetic function of
+    /// `eob` and tx size (see `SymbolDecoder::coeff_base_eob_context`'s doc), no neighbor/above-
+    /// left state needed. Source: rav1d `eob_base_tok` (`memorysafety/rav1d`, BSD-2-Clause,
+    /// `src/cdf.rs`), first qindex-bucket variant only (see `eob_bin_16_cdf`'s doc).
+    coeff_base_eob_cdf: [[Vec<u16>; 4]; 5],
+
+    /// `transform_type()` (spec 5.11.47) CDFs -- read once per transform block, before its
+    /// `coeffs()`, to determine `TxClass`/`is_1d` for `eob_bin_*_cdf`'s context axis (see
+    /// `SymbolDecoder::read_transform_type_is_1d`'s doc for the decision tree these back and why
+    /// only `is_1d`, not the exact `TxType`, is tracked). All indexed `[tx_size_class][...]`
+    /// (`txtp_intra1`/`txtp_inter1`: 0..=1 only, `txtp_intra2`: 0..=2, `txtp_inter3`: 0..=3 --
+    /// the other tx-size classes are unreachable for that specific CDF, see that method's doc).
+    /// Source: rav1d `txtp_intra1`/`txtp_intra2`/`txtp_inter1`/`txtp_inter2`/`txtp_inter3`
+    /// (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`), first qindex-bucket variant only.
+    txtp_intra1_cdf: [[Vec<u16>; 13]; 2],
+    txtp_intra2_cdf: [[Vec<u16>; 13]; 3],
+    txtp_inter1_cdf: [Vec<u16>; 2],
+    txtp_inter2_cdf: Vec<u16>,
+    txtp_inter3_cdf: [Vec<u16>; 4],
 
     /// Reference-frame selection CDFs, indexed by real above/left neighbor context (see
     /// `crate::tile::TileContext`'s `comp_mode_context`/`comp_ref_type_context`/
@@ -231,6 +271,21 @@ pub struct CdfContext {
     /// `use_intrabc` (spec 5.11.6) -- intra block copy flag, read for intra-frame blocks only
     /// when the frame header's `allow_intrabc` is set (rare, screen-content-coding use case).
     use_intrabc_cdf: Vec<u16>,
+}
+
+/// Maps a transform block's size in pixels per side (4/8/16/32/64) to rav1d's square `TxfmSize`
+/// class (0..=4, `TX_4X4`..`TX_64X64`). Used throughout the residual-coefficient CDFs' context
+/// (`eob_hi_bit_cdf`/`coeff_base_eob_cdf`/`txtp_*_cdf`) -- a coarser 0..=3 "coefficient-count
+/// class" (16/64/256/1024, folding 64x64 into 32x32's bucket) is used separately by
+/// `get_eob_bin_cdf_mut`, matching real AV1's coefficient-scan cap at 32x32.
+pub fn tx_size_class(tx_size_px: u32) -> usize {
+    match tx_size_px {
+        0..=4 => 0,
+        5..=8 => 1,
+        9..=16 => 2,
+        17..=32 => 3,
+        _ => 4,
+    }
 }
 
 /// Build a 2-symbol CDF from `p0`, the probability of the first (index-0) symbol. Returns the
@@ -625,25 +680,154 @@ impl CdfContext {
         // txb_skip: most transform blocks within a non-skip CU are still fully zero.
         let txb_skip_cdf = to_descending(&[0, (CDF_SCALE as f32 * 0.35) as u16, CDF_SCALE]);
 
-        // eob_pt: uniform over the alphabet for each coefficient-count class. Alphabet sizes
-        // (5/7/9/11) match the real spec's eob_pt_16/64/256/1024 table sizes -- chosen so the
-        // maximum representable eob for the largest symbol exactly equals the class's real
-        // coefficient count (2^(num_symbols-1) == 16/64/256/1024), even though the probabilities
-        // themselves are uniform rather than spec-exact.
-        let eob_pt_cdfs = [
-            to_descending(&PartitionCdf::uniform(5).cdf),
-            to_descending(&PartitionCdf::uniform(7).cdf),
-            to_descending(&PartitionCdf::uniform(9).cdf),
-            to_descending(&PartitionCdf::uniform(11).cdf),
+        // eob_bin: real spec/rav1d default CDFs, indexed [is_1d] (chroma=0 fixed -- see
+        // `eob_bin_16_cdf`'s doc). Source: rav1d `eob_bin_16/64/256/1024`, first qindex-bucket
+        // variant.
+        let eob_bin_16_cdf = [
+            multi_ctx_cdf(&[840, 1039, 1980, 4895]),
+            multi_ctx_cdf(&[370, 671, 1883, 4471]),
+        ];
+        let eob_bin_64_cdf = [
+            multi_ctx_cdf(&[329, 498, 1101, 1784, 3265, 7758]),
+            multi_ctx_cdf(&[335, 730, 1459, 5494, 8755, 12997]),
+        ];
+        let eob_bin_256_cdf = [
+            multi_ctx_cdf(&[310, 584, 1887, 3589, 6168, 8611, 11352, 15652]),
+            multi_ctx_cdf(&[998, 1850, 2998, 5604, 17341, 19888, 22899, 25583]),
+        ];
+        let eob_bin_1024_cdf =
+            multi_ctx_cdf(&[393, 421, 751, 1623, 3160, 6352, 13345, 18047, 22571, 25830]);
+
+        // eob_hi_bit: real spec/rav1d default CDFs, indexed [tx_size_class][eob_bin] (chroma=0
+        // fixed). Source: rav1d `eob_hi_bit`, first qindex-bucket variant.
+        let eob_hi_bit_cdf: [[Vec<u16>; 11]; 5] = [
+            [
+                16384, 16384, 16961, 17223, 7621, 16384, 16384, 16384, 16384, 16384, 16384,
+            ]
+            .map(binary_ctx_cdf),
+            [
+                16384, 16384, 20401, 17025, 12845, 12873, 14094, 16384, 16384, 16384, 16384,
+            ]
+            .map(binary_ctx_cdf),
+            [
+                16384, 16384, 23905, 17194, 16170, 17695, 13826, 15810, 12036, 16384, 16384,
+            ]
+            .map(binary_ctx_cdf),
+            [
+                16384, 16384, 27399, 16327, 18071, 19584, 20721, 18432, 19560, 10150, 8805,
+            ]
+            .map(binary_ctx_cdf),
+            [
+                16384, 16384, 23406, 21845, 18432, 16384, 17096, 12561, 17320, 22395, 21370,
+            ]
+            .map(binary_ctx_cdf),
         ];
 
-        // coeff_base_eob: the EOB coefficient is never zero (level 1..=3), skewed toward 1.
-        let coeff_base_eob_cdf = to_descending(&[
-            0,
-            (CDF_SCALE as f32 * 0.60) as u16,
-            (CDF_SCALE as f32 * 0.85) as u16,
-            CDF_SCALE,
+        // coeff_base_eob: real spec/rav1d default CDFs, indexed [tx_size_class][ctx] (chroma=0
+        // fixed). Source: rav1d `eob_base_tok`, first qindex-bucket variant.
+        let coeff_base_eob_cdf: [[Vec<u16>; 4]; 5] = [
+            [
+                multi_ctx_cdf(&[17837, 29055]),
+                multi_ctx_cdf(&[29600, 31446]),
+                multi_ctx_cdf(&[30844, 31878]),
+                multi_ctx_cdf(&[24926, 28948]),
+            ],
+            [
+                multi_ctx_cdf(&[5717, 26477]),
+                multi_ctx_cdf(&[30491, 31703]),
+                multi_ctx_cdf(&[31550, 32158]),
+                multi_ctx_cdf(&[29648, 31491]),
+            ],
+            [
+                multi_ctx_cdf(&[1786, 12612]),
+                multi_ctx_cdf(&[30663, 31625]),
+                multi_ctx_cdf(&[32339, 32468]),
+                multi_ctx_cdf(&[31148, 31833]),
+            ],
+            [
+                multi_ctx_cdf(&[1787, 2532]),
+                multi_ctx_cdf(&[30832, 31662]),
+                multi_ctx_cdf(&[31824, 32682]),
+                multi_ctx_cdf(&[32133, 32569]),
+            ],
+            [
+                multi_ctx_cdf(&[1725, 3449]),
+                multi_ctx_cdf(&[31102, 31935]),
+                multi_ctx_cdf(&[32457, 32613]),
+                multi_ctx_cdf(&[32412, 32649]),
+            ],
+        ];
+
+        // transform_type(): real spec/rav1d default CDFs, indexed [tx_size_class][...]. Source:
+        // rav1d `txtp_intra1`/`txtp_intra2`/`txtp_inter1`/`txtp_inter2`/`txtp_inter3`, first
+        // qindex-bucket variant.
+        let txtp_intra1_cdf: [[Vec<u16>; 13]; 2] = [
+            [
+                multi_ctx_cdf(&[1535, 8035, 9461, 12751, 23467, 27825]),
+                multi_ctx_cdf(&[564, 3335, 9709, 10870, 18143, 28094]),
+                multi_ctx_cdf(&[672, 3247, 3676, 11982, 19415, 23127]),
+                multi_ctx_cdf(&[5279, 13885, 15487, 18044, 23527, 30252]),
+                multi_ctx_cdf(&[4423, 6074, 7985, 10416, 25693, 29298]),
+                multi_ctx_cdf(&[1486, 4241, 9460, 10662, 16456, 27694]),
+                multi_ctx_cdf(&[439, 2838, 3522, 6737, 18058, 23754]),
+                multi_ctx_cdf(&[1190, 4233, 4855, 11670, 20281, 24377]),
+                multi_ctx_cdf(&[1045, 4312, 8647, 10159, 18644, 29335]),
+                multi_ctx_cdf(&[202, 3734, 4747, 7298, 17127, 24016]),
+                multi_ctx_cdf(&[447, 4312, 6819, 8884, 16010, 23858]),
+                multi_ctx_cdf(&[277, 4369, 5255, 8905, 16465, 22271]),
+                multi_ctx_cdf(&[3409, 5436, 10599, 15599, 19687, 24040]),
+            ],
+            [
+                multi_ctx_cdf(&[1870, 13742, 14530, 16498, 23770, 27698]),
+                multi_ctx_cdf(&[326, 8796, 14632, 15079, 19272, 27486]),
+                multi_ctx_cdf(&[484, 7576, 7712, 14443, 19159, 22591]),
+                multi_ctx_cdf(&[1126, 15340, 15895, 17023, 20896, 30279]),
+                multi_ctx_cdf(&[655, 4854, 5249, 5913, 22099, 27138]),
+                multi_ctx_cdf(&[1299, 6458, 8885, 9290, 14851, 25497]),
+                multi_ctx_cdf(&[311, 5295, 5552, 6885, 16107, 22672]),
+                multi_ctx_cdf(&[883, 8059, 8270, 11258, 17289, 21549]),
+                multi_ctx_cdf(&[741, 7580, 9318, 10345, 16688, 29046]),
+                multi_ctx_cdf(&[110, 7406, 7915, 9195, 16041, 23329]),
+                multi_ctx_cdf(&[363, 7974, 9357, 10673, 15629, 24474]),
+                multi_ctx_cdf(&[153, 7647, 8112, 9936, 15307, 19996]),
+                multi_ctx_cdf(&[3511, 6332, 11165, 15335, 19323, 23594]),
+            ],
+        ];
+        let txtp_intra2_uniform =
+            || std::array::from_fn::<_, 13, _>(|_| multi_ctx_cdf(&[6554, 13107, 19661, 26214]));
+        let txtp_intra2_cdf: [[Vec<u16>; 13]; 3] = [
+            txtp_intra2_uniform(),
+            txtp_intra2_uniform(),
+            [
+                multi_ctx_cdf(&[1127, 12814, 22772, 27483]),
+                multi_ctx_cdf(&[145, 6761, 11980, 26667]),
+                multi_ctx_cdf(&[362, 5887, 11678, 16725]),
+                multi_ctx_cdf(&[385, 15213, 18587, 30693]),
+                multi_ctx_cdf(&[25, 2914, 23134, 27903]),
+                multi_ctx_cdf(&[60, 4470, 11749, 23991]),
+                multi_ctx_cdf(&[37, 3332, 14511, 21448]),
+                multi_ctx_cdf(&[157, 6320, 13036, 17439]),
+                multi_ctx_cdf(&[119, 6719, 12906, 29396]),
+                multi_ctx_cdf(&[47, 5537, 12576, 21499]),
+                multi_ctx_cdf(&[269, 6076, 11258, 23115]),
+                multi_ctx_cdf(&[83, 5615, 12001, 17228]),
+                multi_ctx_cdf(&[1968, 5556, 12023, 18547]),
+            ],
+        ];
+        let txtp_inter1_cdf = [
+            multi_ctx_cdf(&[
+                4458, 5560, 7695, 9709, 13330, 14789, 17537, 20266, 21504, 22848, 23934, 25474,
+                27727, 28915, 30631,
+            ]),
+            multi_ctx_cdf(&[
+                1645, 2573, 4778, 5711, 7807, 8622, 10522, 15357, 17674, 20408, 22517, 25010,
+                27116, 28856, 30749,
+            ]),
+        ];
+        let txtp_inter2_cdf = multi_ctx_cdf(&[
+            770, 2421, 5225, 12907, 15819, 18927, 21561, 24089, 26595, 28526, 30529,
         ]);
+        let txtp_inter3_cdf = [16384, 4167, 1998, 748].map(binary_ctx_cdf);
 
         // coeff_base: most non-EOB positions are zero.
         let coeff_base_cdf = to_descending(&[
@@ -709,11 +893,20 @@ impl CdfContext {
             delta_q_sign_cdf,
             diff_cdf,
             txb_skip_cdf,
-            eob_pt_cdfs,
-            coeff_base_eob_cdf,
             coeff_base_cdf,
             coeff_br_cdf,
             dc_sign_cdf,
+            eob_bin_16_cdf,
+            eob_bin_64_cdf,
+            eob_bin_256_cdf,
+            eob_bin_1024_cdf,
+            eob_hi_bit_cdf,
+            coeff_base_eob_cdf,
+            txtp_intra1_cdf,
+            txtp_intra2_cdf,
+            txtp_inter1_cdf,
+            txtp_inter2_cdf,
+            txtp_inter3_cdf,
             comp_mode_cdf,
             single_ref_p1_cdf,
             single_ref_p2_cdf,
@@ -838,22 +1031,65 @@ impl CdfContext {
         &self.txb_skip_cdf
     }
 
-    /// Get `eob_pt` CDF for a transform block of `tx_size_px` pixels per side (4/8/16/32/64).
-    /// 64x64 shares the 1024-coefficient class with 32x32 (real AV1 caps the coefficient scan at
-    /// the top-left 32x32 sub-area for larger transforms).
-    pub fn get_eob_pt_cdf(&self, tx_size_px: u32) -> &[u16] {
-        let class = match tx_size_px {
-            0..=4 => 0,
-            5..=8 => 1,
-            9..=16 => 2,
-            _ => 3, // 32 and 64
-        };
-        &self.eob_pt_cdfs[class]
+    /// Get mutable `eob_bin` CDF for a transform block of `tx_size_px` pixels per side
+    /// (4/8/16/32/64) and `is_1d` (`SymbolDecoder::read_transform_type_is_1d`'s result). 64x64
+    /// shares the 1024-coefficient class with 32x32 (real AV1 caps the coefficient scan at the
+    /// top-left 32x32 sub-area for larger transforms) -- matches `tx_size_class`'s doc. The
+    /// 1024-coefficient class has no real `is_1d` axis in rav1d (see `eob_bin_1024_cdf`'s doc),
+    /// so `is_1d` is ignored there.
+    pub fn get_eob_bin_cdf_mut(&mut self, tx_size_px: u32, is_1d: bool) -> &mut [u16] {
+        let is_1d = usize::from(is_1d);
+        match tx_size_px {
+            0..=4 => &mut self.eob_bin_16_cdf[is_1d],
+            5..=8 => &mut self.eob_bin_64_cdf[is_1d],
+            9..=16 => &mut self.eob_bin_256_cdf[is_1d],
+            _ => &mut self.eob_bin_1024_cdf, // 32 and 64
+        }
     }
 
-    /// Get `coeff_base_eob` CDF (level 1..=3 for the highest-scan-order nonzero coefficient).
-    pub fn get_coeff_base_eob_cdf(&self) -> &[u16] {
-        &self.coeff_base_eob_cdf
+    /// Get mutable `eob_hi_bit` CDF -- the single context-coded first bit of `eob`'s extra-bits
+    /// suffix (see `eob_hi_bit_cdf`'s doc). `tx_size_class`: 0..=4 (4x4..64x64, see
+    /// `tx_size_class`). `eob_bin`: the symbol just read from `get_eob_bin_cdf_mut`'s CDF (0..=10).
+    pub fn get_eob_hi_bit_cdf_mut(&mut self, tx_size_class: usize, eob_bin: u8) -> &mut [u16] {
+        &mut self.eob_hi_bit_cdf[tx_size_class.min(4)][(eob_bin as usize).min(10)]
+    }
+
+    /// Get mutable `coeff_base_eob` CDF (level 1..=3 for the highest-scan-order nonzero
+    /// coefficient), real context (`tx_size_class` 0..=4, `ctx` 0..=3 -- see
+    /// `SymbolDecoder::coeff_base_eob_context`'s doc).
+    pub fn get_coeff_base_eob_cdf_mut(&mut self, tx_size_class: usize, ctx: u8) -> &mut [u16] {
+        &mut self.coeff_base_eob_cdf[tx_size_class.min(4)][(ctx as usize).min(3)]
+    }
+
+    /// Get mutable `txtp_intra2` CDF (spec 5.11.47's reduced intra `transform_type()` alphabet).
+    /// `tx_size_class`: only 0..=2 (4x4/8x8/16x16) are ever reached -- see
+    /// `SymbolDecoder::read_transform_type_is_1d`'s doc.
+    pub fn get_txtp_intra2_cdf_mut(&mut self, tx_size_class: usize, y_mode: u8) -> &mut [u16] {
+        &mut self.txtp_intra2_cdf[tx_size_class.min(2)][(y_mode as usize).min(12)]
+    }
+
+    /// Get mutable `txtp_intra1` CDF (spec 5.11.47's full intra `transform_type()` alphabet).
+    /// `tx_size_class`: only 0..=1 (4x4/8x8) are ever reached.
+    pub fn get_txtp_intra1_cdf_mut(&mut self, tx_size_class: usize, y_mode: u8) -> &mut [u16] {
+        &mut self.txtp_intra1_cdf[tx_size_class.min(1)][(y_mode as usize).min(12)]
+    }
+
+    /// Get mutable `txtp_inter3` CDF (spec 5.11.47's reduced/32x32 inter `transform_type()`
+    /// alphabet). `tx_size_class`: only 0..=3 (4x4/8x8/16x16/32x32) are ever reached.
+    pub fn get_txtp_inter3_cdf_mut(&mut self, tx_size_class: usize) -> &mut [u16] {
+        &mut self.txtp_inter3_cdf[tx_size_class.min(3)]
+    }
+
+    /// Get mutable `txtp_inter2` CDF (spec 5.11.47's 16x16 inter `transform_type()` alphabet --
+    /// only ever reached at that one tx size, so no context axis).
+    pub fn get_txtp_inter2_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.txtp_inter2_cdf
+    }
+
+    /// Get mutable `txtp_inter1` CDF (spec 5.11.47's full inter `transform_type()` alphabet).
+    /// `tx_size_class`: only 0..=1 (4x4/8x8) are ever reached.
+    pub fn get_txtp_inter1_cdf_mut(&mut self, tx_size_class: usize) -> &mut [u16] {
+        &mut self.txtp_inter1_cdf[tx_size_class.min(1)]
     }
 
     /// Get `coeff_base` CDF (level 0..=3 for every other coefficient position).

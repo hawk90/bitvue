@@ -130,6 +130,11 @@ fn test_mv_extraction_with_spec_cdfs() {
             false,
             false,
             &mut tile_ctx,
+            bitvue_av1_codec::tile::TxTypeFrameFlags {
+                coded_lossless: false,
+                qidx_is_zero: false,
+                reduced_tx_set: false,
+            },
         ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(

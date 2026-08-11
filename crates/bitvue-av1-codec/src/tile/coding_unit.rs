@@ -42,6 +42,18 @@ use crate::symbol::{ResidualBlockStats, SymbolDecoder};
 use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
+/// Frame header flags `SymbolDecoder::read_transform_type_is_1d` needs, bundled to avoid growing
+/// `parse_coding_unit`'s already-long parameter list further -- see `ParsedFrame`'s doc for how
+/// `coded_lossless`/`reduced_tx_set` are sourced, and `read_transform_type_is_1d`'s doc for why
+/// `qidx_is_zero` is a distinct condition from `coded_lossless` (the real spec shortcut checks
+/// `base_q_idx == 0` alone, without also requiring zero delta-Q).
+#[derive(Debug, Clone, Copy)]
+pub struct TxTypeFrameFlags {
+    pub coded_lossless: bool,
+    pub qidx_is_zero: bool,
+    pub reduced_tx_set: bool,
+}
+
 /// Prediction mode for intra and inter prediction
 ///
 /// # Intra Modes (DcPred through PaethPred)
@@ -475,6 +487,7 @@ impl CodingUnit {
 /// * `allow_intrabc` - Frame header's `allow_intrabc` flag (only meaningful when `is_key_frame`)
 /// * `tile_ctx` - Above/left neighbor-state tracker for entropy context (currently only `skip`
 ///   uses it -- see `crate::tile::TileContext`'s doc)
+/// * `tx_type_flags` - Frame header flags for `transform_type()` -- see `TxTypeFrameFlags`'s doc.
 ///
 /// # Returns
 ///
@@ -493,6 +506,7 @@ pub fn parse_coding_unit(
     reference_select: bool,
     allow_intrabc: bool,
     tile_ctx: &mut crate::tile::TileContext,
+    tx_type_flags: TxTypeFrameFlags,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
 
@@ -504,6 +518,12 @@ pub fn parse_coding_unit(
     tile_ctx.set_skip(x4, y4, width_4x4, height_4x4, cu.skip);
 
     // TODO: Read segment ID (if segmentation enabled)
+
+    // Raw intra mode symbol (0..=12), captured below when `is_key_frame` -- only meaningful for
+    // `SymbolDecoder::read_transform_type_is_1d`'s `y_mode_raw` param when `is_intra` (this
+    // decoder never reads intra blocks within inter frames, so `is_key_frame` and "is this CU
+    // intra" coincide -- see `read_ref_frames`'s wiring above/below for the same equivalence).
+    let mut y_mode_raw: u8 = 0;
 
     // Determine if INTRA or INTER
     if is_key_frame {
@@ -524,6 +544,7 @@ pub fn parse_coding_unit(
         let mode_symbol = decoder.read_intra_mode(above_class, left_class)?;
         cu.mode = intra_mode_from_symbol(mode_symbol)?;
         tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, mode_symbol);
+        y_mode_raw = mode_symbol;
     } else {
         // ref_frame() (spec 5.11.25) -- real per-context CDF + adaptation, see
         // `SymbolDecoder::read_ref_frames`'s doc.
@@ -697,7 +718,17 @@ pub fn parse_coding_unit(
         let tx_rows = height.div_ceil(tx_px).max(1);
         let mut summary = ResidualBlockStats::default();
         for _ in 0..(tx_cols * tx_rows) {
-            let block = decoder.read_residual_block(tx_px)?;
+            // transform_type() (spec 5.11.47) precedes coeffs() for every transform block --
+            // see `SymbolDecoder::read_transform_type_is_1d`'s doc.
+            let is_1d = decoder.read_transform_type_is_1d(
+                is_key_frame,
+                tx_type_flags.coded_lossless,
+                tx_type_flags.qidx_is_zero,
+                tx_type_flags.reduced_tx_set,
+                tx_px,
+                y_mode_raw,
+            )?;
+            let block = decoder.read_residual_block(tx_px, is_1d)?;
             summary.nonzero_count += block.nonzero_count;
             summary.sum_abs_level += block.sum_abs_level;
             summary.max_level = summary.max_level.max(block.max_level);

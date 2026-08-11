@@ -185,6 +185,11 @@ fn parse_partition_trees_from_tile_data(
                 parsed.reference_select,
                 parsed.allow_intrabc,
                 &mut tile_ctx,
+                crate::tile::TxTypeFrameFlags {
+                    coded_lossless: parsed.coded_lossless,
+                    qidx_is_zero: parsed.frame_type.base_qp == Some(0),
+                    reduced_tx_set: parsed.reduced_tx_set,
+                },
             );
 
             match sb_result {
@@ -897,6 +902,11 @@ mod tests {
                     parsed.reference_select,
                     parsed.allow_intrabc,
                     &mut tile_ctx,
+                    crate::tile::TxTypeFrameFlags {
+                        coded_lossless: parsed.coded_lossless,
+                        qidx_is_zero: parsed.frame_type.base_qp == Some(0),
+                        reduced_tx_set: parsed.reduced_tx_set,
+                    },
                 )?;
                 current_qp = new_qp;
                 all_cus.extend(sb.coding_units);
