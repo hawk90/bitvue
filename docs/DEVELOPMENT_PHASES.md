@@ -1624,12 +1624,32 @@ fixture 비정사각 leaf 존재 확인 회귀테스트), 워크스페이스 전
 워크스페이스 전체 클린. **여전히 남은 갭**: 실제 시간축 후보 발견 시의 override(진짜 모션필드
 저장+투영 서브시스템)는 미구현 — 이 크레이트가 재구성을 아예 안 하는 한 원천적으로 큰 작업.
 
+- **인터 var-tx 실제 재귀 읽기 완성(2026-08-11, `613e0e8`)**: "CodingUnit 스키마 변경 선행 필요"로
+보류됐던 항목 착수. `CodingUnit`에 `tx_blocks: Option<Vec<TxBlock>>` 신규(실제 leaf 목록, 절대
+4x4단위 x/y+정사각 `TxSize`) — 기존 `tx_size` 필드는 유지(var-tx CU에선 "시작/최대" 크기 의미로
+격하). rav1d `read_tx_tree`/`read_vartx_tree`(`src/decode.rs`) 인덱스 단위 이식: `cat =
+2*(4-from_class)-depth`로 CDF 행 선택(7개 카테고리, `Default_Txpart_Cdf` 실값 이식) +
+`TileContext`에 신규 `above_var_tx`/`left_var_tx` 배열(인트라 `tx_size()`가 쓰는
+`above_tx_class`와는 별개 — 실제 rav1d도 `tx_intra`/`tx` 두 개 독립 필드로 관리) + depth 2단계
+캡(그 이상은 안 읽고 자동 non-split) + 8x8→4x4 분할은 심볼 없이 결정론적. **스코프**: 정사각
+non-skip 인터 CU만(이 크레이트 `TxSize`가 정사각 전용이라 HORZ/VERT산 비정사각 인터 CU는 기존
+휴리스틱 유지, IntraBC도 기존 tx_size() 선례와 동일하게 이번엔 제외). lossless/Only4x4/Largest
+`TxfmMode`는 결정론적 균일 타일링(비트 안 읽음, `Switchable`만 진짜 재귀 읽기 필요) — 이전엔
+이 세 경우조차 인터 분기가 아예 `TxfmMode`를 참조 안 하고 항상 차원 휴리스틱만 쓰고 있었던
+별개 부정확성도 같이 해소. 잔차 루프를 균일 그리드 대신 `tx_blocks`(있으면) 순회로 교체 — **부수
+효과로 txb_skip/dc_sign 실제 컨텍스트도 이 CU들에 한해 인터 프레임까지 자동 확장됨**(로드맵에
+"이게 풀리면 확장 가능"이라 적어뒀던 항목까지 같이 해소, `use_real_residual_ctx` 조건에
+`cu.tx_blocks.is_some()` 추가). 실측: 이 fixture의 non-skip 정사각 인터 CU 915개 전부 실제
+`tx_blocks` 획득, 73%가 실제 분할 발생, leaf 크기 4x4~64x64 전부 관측(퇴화 없음). 유닛테스트(컨텍스트
+공식) + 실제 fixture 비-vacuous 회귀테스트 추가, 391/391 + 워크스페이스 전체 클린. **남은 갭**:
+비정사각 인터 CU, IntraBC의 var-tx 전부 여전히 차원 휴리스틱.
+
 - **다음 단계(로드맵, 남은 것)**: (1) 크로마 64x64/128x128 확장 재시도(tx_size_class=3 경로 원인
-불명 버그부터 규명 필요). (2) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit 스키마 변경 선행 필요) —
-이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장 가능. (3) segment_id/palette 등 아예 안 읽는
-신택스 요소들(단, segment_id는 이 fixture가 segmentation_enabled=true인 프레임이 전무해 실측 검증
-불가 — 별도 오라클 필요). (4) inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(위 항목
-참고, 이 크레이트가 재구성을 구현하기 전엔 근본적으로 범위 밖).
+불명 버그부터 규명 필요). (2) 비정사각 인터 CU + IntraBC의 var-tx(스키마는 이미 있음, `TxSize`
+정사각 제한이 근본 원인이라 더 큰 리팩터 필요). (3) segment_id/palette 등 아예 안 읽는 신택스
+요소들(단, segment_id는 이 fixture가 segmentation_enabled=true인 프레임이 전무해 실측 검증 불가
+— 별도 오라클 필요). (4) inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 크레이트가
+재구성을 구현하기 전엔 근본적으로 범위 밖).
 
 ---
 
