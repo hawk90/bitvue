@@ -270,6 +270,11 @@
   border-radius: var(--radius-sm);
   font-size: 11px;
   transition: all var(--transition-fast) var(--ease-default);
+  /* Same fix as UnitHexPanel.css's `.frame-info-row`/`.dpb-row`: grid's default
+     `justify-items: stretch` blockifies `.ref-type`'s `.frame-type-*` badge (border+background,
+     defined in SelectionInfoPanel.css and shared globally) and stretches it to fill the 40px
+     column instead of shrinking to the single-letter content. */
+  justify-items: start;
 }
 
 .ref-item:hover {
@@ -519,6 +524,9 @@
   font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast) var(--ease-default);
+  /* Same fix as `.ref-item` above -- `.search-result-type`'s `.frame-type-*` badge otherwise
+     stretches to fill its column instead of shrinking to its single-letter content. */
+  justify-items: start;
 }
 
 .search-result-item:hover {

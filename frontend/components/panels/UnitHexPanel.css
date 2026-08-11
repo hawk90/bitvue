@@ -326,6 +326,12 @@
   padding: 4px 8px;
   font-size: 10px;
   color: var(--text-primary);
+  /* Same fix as `.frame-info-row` above: grid's default `justify-items: stretch` blockifies the
+     Type column's `.frame-type-*` span (a border+background badge, defined in
+     SelectionInfoPanel.css and shared globally since these aren't CSS-modules-scoped) and
+     stretches it to fill the whole 40px column instead of shrinking to the single-letter
+     content. */
+  justify-items: start;
 }
 
 .dpb-row.dpb-header-row {
