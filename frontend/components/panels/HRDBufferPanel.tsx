@@ -233,7 +233,21 @@ const HRDBufferPanelInternal = ({
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
 
-    const yLabels = [0, 25, 50, 75, 100];
+    // This panel shares the filmstrip's fixed-height strip with the other view modes, so
+    // `graphHeight` here is typically small (tens of pixels once header/legend/margins are
+    // subtracted) -- a fixed 5-label set (0/25/50/75/100%) doesn't leave enough room for 10px
+    // text between adjacent labels and visibly overlaps into an illegible stack. Scale the label
+    // count to how much vertical room is actually available instead.
+    const minYLabelSpacingPx = 14;
+    const maxYLabelCount = Math.max(
+      2,
+      Math.floor(graphHeight / minYLabelSpacingPx) + 1,
+    );
+    const yLabelCount = Math.min(5, maxYLabelCount);
+    const yLabels = Array.from(
+      { length: yLabelCount },
+      (_, i) => (100 * i) / (yLabelCount - 1),
+    );
     yLabels.forEach((percent) => {
       const y = margin.top + graphHeight - (percent / 100) * graphHeight;
       const value = Math.round((bufferSize * percent) / 100 / 1024);

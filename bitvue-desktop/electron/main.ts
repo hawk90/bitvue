@@ -1197,6 +1197,15 @@ async function runScreenshotAndExit(
           const button = Array.from(document.querySelectorAll("button"))
             .find((el) => el.textContent?.trim() === ${JSON.stringify(clickTab)});
           if (!button) throw new Error(${JSON.stringify(`tab not found: ${clickTab}`)});
+          // Some buttons (e.g. FilmstripDropdown's trigger) open on mousedown, not click, to
+          // match native menu-button feel -- element.click() only synthesizes a "click" event
+          // per the DOM spec, never "mousedown"/"mouseup", so those handlers silently never fire
+          // through this harness even though a real user's click works fine (found while
+          // screenshot-sweeping the filmstrip's view-mode dropdown: the trigger appeared to do
+          // nothing, then the next chained click failed with "tab not found" since the dropdown
+          // never actually opened). Dispatching a real mousedown before click() covers both
+          // conventions without needing to know which one a given button uses.
+          button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
           button.click();
         })()
       `);
