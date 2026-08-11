@@ -1584,11 +1584,36 @@ tx블록 개수만큼 읽기) → `real_fixture_key_frame_intra_modes_are_not_de
 **남은 것**: 64x64/128x128(원인 미상), 인터/IntraBC의 실제 var-tx(스키마 결정 필요), 비정사각 블록
 전부 여전히 열린 갭.
 
+- **partition `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기 완성(2026-08-11)**: spec 5.11.4의
+`decode_partition` 첫 두 줄(`r>=MiRows||c>=MiCols`→즉시 0, 심볼 없음)과 hasRows/hasCols 계산
+(`MiCols=2*((FrameWidth+7)>>3)` 등, spec 5.9.5)을 그대로 이식, 이전엔 `parse_partition_recursive`에
+하드코딩돼있던 `true,true`를 실제 프레임 MiRows/MiCols 기반 계산으로 교체(`mi_units` 신규, 3개
+`parse_superblock` 호출부 전부 갱신). hasCols-only는 `split_or_horz`(HORZ vs SPLIT), hasRows-only는
+`split_or_vert`(VERT vs SPLIT) 축소 이진 심볼로 분기 — rav1d `gather_top/left_partition_prob`
+(`src/env.rs`)를 인덱스 단위로 이식(`symbol::cdf::split_or_horz_prob`/`split_or_vert_prob`, 128x128
+버킷은 실제 0이 아닌 VertB 확률질량 때문에 패딩-제로 트릭이 아니라 명시적 `cdf.len()>=11` 가드 필요—
+8x8/128x128/16-64 세 버킷 전부 손계산 대조 유닛테스트로 검증). 두 축소 심볼 모두 **비적응**(rav1d가
+`partition_cdfs`에 write-back 안 함, `read_symbol_adaptive`가 아니라 `read_symbol` 사용).
+**부수 발견+수정: 이 크레이트가 처음부터 갖고 있던 잠복 버그** — partition 트리 재귀가 SPLIT뿐 아니라
+모든 non-None 파티션(HORZ/VERT/`_A`/`_B`/`_4`)의 자식에 대해서도 `parse_partition_recursive`를 다시
+호출하고 있었음(spec은 SPLIT만 재귀, 나머지는 전부 terminal — 자식이 곧바로 `decode_block`). 비정사각
+자식(예: 64x128)도 `block_size_log2`가 최대변 기준으로 실제 CDF 버킷을 골라버려 스펙에 없는 **두
+번째 partition 심볼**을 읽고 있었음 — 이전엔 그 스퓨리어스 심볼이 대개 None으로 디코드돼(가장 흔한
+결과) 그럴듯하지만 틀린 leaf 크기로 조용히 끝났을 뿐 거의 안 드러났는데, 실제 hasRows/hasCols가 프레임
+경계에서 VERT/HORZ를 실제로 선택하게 만들자(이 fixture는 320x240, 128x128 슈퍼블록이라 우측/하단
+슈퍼블록이 전부 실제로 경계에 걸침 — 조작 아닌 진짜 케이스) 잘못된 CDF 버킷 조회가 명시적 디코드
+에러로 드러남(`VertB on block size Block64x128 produces sub-blocks of same size`). 근본 수정: SPLIT만
+재귀, 나머지 non-None은 자식을 곧장 leaf `PartitionNode`로 생성(추가 심볼 읽기 없음). **부수 정정**:
+바로 위 크로마 항목이 "이 fixture의 키프레임은 전부 미분할 128x128"라고 기록했던 것도 사실은 이
+버그(+구 hardcoded true,true) 조합의 산물이었음 — 실제로는 우측 열 슈퍼블록이 VERT로 갈라짐
+(`64x128` leaf, D203Pred 등 다양한 모드) 확인. 385/385(신규 4개: gather 함수 유닛테스트 3개 + 실제
+fixture 비정사각 leaf 존재 확인 회귀테스트), 워크스페이스 전체(`--lib`+`--tests`) 클린, fmt 클린.
+
 - **다음 단계(로드맵, 남은 것)**: (1) 크로마 64x64/128x128 확장 재시도(tx_size_class=3 경로 원인
 불명 버그부터 규명 필요). (2) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit 스키마 변경 선행 필요) —
-이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장 가능. (3) partition의 `has_rows`/`has_cols`
-프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예 안 읽는 신택스 요소들. (4)
-inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전 세션에 재스코핑만 하고 보류).
+이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장 가능. (3) segment_id/palette 등 아예 안 읽는
+신택스 요소들. (4) inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전 세션에
+재스코핑만 하고 보류).
 
 ---
 
