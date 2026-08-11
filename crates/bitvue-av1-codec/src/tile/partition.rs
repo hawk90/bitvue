@@ -563,6 +563,7 @@ pub(crate) fn parse_partition_recursive(
     has_rows: bool,
     has_cols: bool,
     depth: u8,
+    tile_ctx: &mut crate::tile::TileContext,
 ) -> Result<PartitionNode> {
     // Prevent infinite recursion from malformed bitstreams
     if depth >= MAX_PARTITION_DEPTH {
@@ -575,8 +576,19 @@ pub(crate) fn parse_partition_recursive(
     // Get block size log2 for CDF lookup
     let bsize_log2 = block_size_log2(block_size);
 
+    // Real context (spec 9.3, `crate::tile::TileContext::partition_context`) only exists for
+    // block sizes >= 8x8 (log2 >= 3) -- 4x4 blocks (log2 == 2) never read a real `partition`
+    // symbol at all (see `partition_cdfs`' doc), so `ctx` is a don't-care 0 there.
+    let x8 = x / 8;
+    let y8 = y / 8;
+    let ctx = if bsize_log2 >= 3 {
+        tile_ctx.partition_context(x8, y8, crate::tile::context::partition_bl(bsize_log2))
+    } else {
+        0
+    };
+
     // Read partition symbol from bitstream
-    let partition_symbol = decoder.read_partition(bsize_log2, has_rows, has_cols)?;
+    let partition_symbol = decoder.read_partition(bsize_log2, ctx, has_rows, has_cols)?;
 
     // Convert symbol to partition type
     let partition = PartitionType::from_u8(partition_symbol).ok_or_else(|| {
@@ -606,6 +618,17 @@ pub(crate) fn parse_partition_recursive(
         }
     }
 
+    // Record this node's own context footprint for future above/left lookups -- per spec/rav1d,
+    // skipped only for `Split` above 8x8, since in that case each recursively-parsed child (which
+    // exists at real `BlockLevel`s down to 8x8) writes its own footprint instead; at 8x8 `Split`
+    // the children are 4x4 (no context tracked there per `partition_cdfs`' doc), so the 8x8 level
+    // itself must still write. See `crate::tile::context::PARTITION_CTX_TABLE`'s doc.
+    if bsize_log2 >= 3 && (partition != PartitionType::Split || bsize_log2 == 3) {
+        let bl = crate::tile::context::partition_bl(bsize_log2);
+        let hsz8 = 1u32 << (bsize_log2 - 3);
+        tile_ctx.set_partition(x8, y8, hsz8, bl, partition as u8);
+    }
+
     // Create node
     let mut node = PartitionNode::new(x, y, block_size, partition);
 
@@ -630,6 +653,7 @@ pub(crate) fn parse_partition_recursive(
                 child_has_rows,
                 child_has_cols,
                 depth + 1,
+                tile_ctx,
             )?;
 
             node.children.push(child);
@@ -663,9 +687,15 @@ pub fn parse_partition_tree(
     // Create symbol decoder for tile data
     let mut decoder = SymbolDecoder::new(tile_data)?;
 
+    // Throwaway context sized to just this one block -- this function has no real caller (see
+    // `parse_partition_recursive`'s doc; production code goes through `parse_superblock`, which
+    // threads a real tile-wide `TileContext` shared across the whole tile).
+    let extent_4x4 = (block_size.width().max(block_size.height()) / 4).max(1);
+    let mut tile_ctx = crate::tile::TileContext::new(extent_4x4, extent_4x4);
+
     // Recursively parse partition tree starting at depth 0
     // For MVP, assume all blocks are within frame boundaries
-    parse_partition_recursive(&mut decoder, x, y, block_size, true, true, 0)
+    parse_partition_recursive(&mut decoder, x, y, block_size, true, true, 0, &mut tile_ctx)
 }
 
 /// Flatten partition tree to list of leaf blocks

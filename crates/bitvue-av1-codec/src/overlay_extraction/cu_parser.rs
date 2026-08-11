@@ -453,4 +453,49 @@ mod tests {
              may have regressed to a degenerate always-one-value decode"
         );
     }
+
+    /// Regression test for the real `partition` entropy-context work: `parse_partition_recursive`
+    /// now uses real per-context (`crate::tile::TileContext::partition_context`, above/left 8x8
+    /// bitmask) default CDFs sourced from rav1d's `Default_Partition_W*_Cdf` tables and real
+    /// adaptation, instead of a single context-independent CDF per block size. Confirms real,
+    /// non-degenerate leaf-block sizes across the fixture (CU width/height directly reflects
+    /// which `PartitionType` was decoded at each level) -- same "not degenerate" bar as this
+    /// test's siblings (`real_fixture_ref_frame_values_are_not_degenerate`,
+    /// `real_fixture_skip_flags_are_not_degenerate`, `real_fixture_new_mv_values_are_not_degenerate`).
+    #[test]
+    fn real_fixture_partition_leaf_sizes_are_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut distinct_leaf_sizes: std::collections::HashSet<(u32, u32)> = Default::default();
+        let mut total_cus = 0usize;
+
+        for frame in frames.iter().take(30) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            total_cus += cus.len();
+            distinct_leaf_sizes.extend(cus.iter().map(|cu| (cu.width, cu.height)));
+        }
+
+        assert!(
+            total_cus > 0,
+            "expected real coding units in the first 30 frames of the fixture"
+        );
+        assert!(
+            distinct_leaf_sizes.len() > 1,
+            "expected more than one distinct leaf-block size across {total_cus} real coding \
+             units, got only {distinct_leaf_sizes:?} -- the real partition context/CDF wiring may \
+             have regressed to a degenerate always-one-size decode (e.g. every superblock reading \
+             PARTITION_NONE)"
+        );
+    }
 }

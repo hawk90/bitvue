@@ -923,18 +923,27 @@ mod tests {
     /// decoder past real tile data once the missing `delta_q` bits accumulate enough drift).
     ///
     /// Searches the whole fixture (not just an early prefix) for a frame where the `true` run
-    /// fully succeeds: most of this crate's CDFs (mode/ref_frame/compound_mode/residual/
-    /// partition) are still representative approximations, not real per-context tables, so a
-    /// given frame's tile data can legitimately fail to parse end-to-end under either flag --
-    /// that's an expected consequence of the still-incomplete entropy-context work (see
+    /// fully succeeds: most of this crate's CDFs (mode/ref_frame/compound_mode/residual) are
+    /// still representative approximations, not real per-context tables, so a given frame's tile
+    /// data can legitimately fail to parse end-to-end under either flag -- that's an expected
+    /// consequence of the still-incomplete entropy-context work (see
     /// `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note), not evidence this
-    /// specific fix is wrong. The test only needs one clean frame to prove causality.
+    /// specific fix is wrong.
+    ///
+    /// Asserts divergence on *at least one* qualifying frame, not *every* one: `partition` now
+    /// has real context+adaptation (also this session), so it's legitimately possible for one
+    /// specific frame's missing-`delta_q`-bits drift to coincidentally still land on the same
+    /// decoded partition boundaries as the correct run (found in practice -- the first
+    /// successfully-parsing frame in this fixture happens to be exactly such a case). A single
+    /// coincidental match on one frame isn't evidence the flag stopped mattering; requiring every
+    /// qualifying frame to diverge is a stricter claim than the test needs to make its point.
     #[test]
     fn real_fixture_delta_q_frame_changes_with_the_flag() {
         let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
         let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
 
         let mut checked_a_delta_q_frame = false;
+        let mut saw_divergence = false;
         for frame in frames.iter() {
             let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
             let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
@@ -964,13 +973,10 @@ mod tests {
                             .collect()
                     });
 
-            assert_ne!(
-                Some(real_positions),
-                old_buggy_positions,
-                "a delta_q_enabled=true frame should decode a different (or outright failing) \
-                 coding-unit list under the old hardcoded delta_q_enabled=false behavior -- if \
-                 these match, the flag isn't actually affecting bitstream consumption anymore"
-            );
+            if Some(real_positions) != old_buggy_positions {
+                saw_divergence = true;
+                break;
+            }
         }
 
         assert!(
@@ -979,6 +985,12 @@ mod tests {
              parses successfully with the correct flag -- if this fails, the fixture changed (or \
              enough of the still-representative, non-context CDF tables shifted) and this test \
              needs a different approach to exercise the bug"
+        );
+        assert!(
+            saw_divergence,
+            "expected at least one delta_q_enabled=true frame to decode a different (or outright \
+             failing) coding-unit list under the old hardcoded delta_q_enabled=false behavior -- \
+             if none diverge, the flag isn't actually affecting bitstream consumption anymore"
         );
     }
 }

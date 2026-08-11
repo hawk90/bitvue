@@ -45,7 +45,7 @@ fn test_symbol_decoder_read_partition() {
     let mut decoder = SymbolDecoder::new(&data).expect("Failed to create decoder");
 
     // Read partition symbol for 64x64 block (2^6)
-    let result = decoder.read_partition(6, true, true);
+    let result = decoder.read_partition(6, 0, true, true);
 
     // Should succeed (even though data is synthetic)
     assert!(result.is_ok(), "Should read partition symbol");
@@ -87,20 +87,21 @@ fn test_arithmetic_decoder_read_symbol() {
 
 #[test]
 fn test_cdf_context_block_sizes() {
-    let context = CdfContext::new();
+    let mut context = CdfContext::new();
 
-    // Test different block sizes
+    // Test different block sizes. `block_size_log2=7` (128x128) has only 8 real symbols (no
+    // HORZ_4/VERT_4 -- see `CdfContext::partition_cdfs`' doc), unlike 16x16..64x64's 10.
     let test_cases = vec![
-        (2, 2),  // 4x4: 1 symbol + end marker
-        (3, 5),  // 8x8: 4 symbols + end marker
-        (4, 11), // 16x16: 10 symbols + end marker
-        (5, 11), // 32x32: 10 symbols + end marker
-        (6, 11), // 64x64: 10 symbols + end marker
-        (7, 11), // 128x128: 10 symbols + end marker
+        (2, 2),  // 4x4: 1 symbol + count slot (never actually read)
+        (3, 5),  // 8x8: 4 symbols + count slot
+        (4, 11), // 16x16: 10 symbols + count slot
+        (5, 11), // 32x32: 10 symbols + count slot
+        (6, 11), // 64x64: 10 symbols + count slot
+        (7, 9),  // 128x128: 8 symbols + count slot
     ];
 
     for (block_size_log2, expected_len) in test_cases {
-        let cdf = context.get_partition_cdf(block_size_log2);
+        let cdf = context.get_partition_cdf_mut(block_size_log2, 0);
         assert_eq!(
             cdf.len(),
             expected_len,
@@ -193,7 +194,7 @@ fn test_symbol_decoder_with_real_file() {
                     println!("  Created symbol decoder from FRAME payload");
 
                     // Try reading a partition symbol (may fail due to wrong context)
-                    if let Ok(symbol) = decoder.read_partition(6, true, true) {
+                    if let Ok(symbol) = decoder.read_partition(6, 0, true, true) {
                         println!("  Read partition symbol: {} (may be incorrect without proper tile data)", symbol);
                     }
                 }
@@ -224,7 +225,7 @@ fn test_symbol_decoder_multiple_reads() {
     let block_sizes = vec![6, 5, 4, 3]; // 64x64, 32x32, 16x16, 8x8
 
     for (i, &block_size_log2) in block_sizes.iter().enumerate() {
-        let result = decoder.read_partition(block_size_log2, true, true);
+        let result = decoder.read_partition(block_size_log2, 0, true, true);
 
         if let Ok(symbol) = result {
             assert!(symbol <= 9, "Symbol {} out of range", symbol);

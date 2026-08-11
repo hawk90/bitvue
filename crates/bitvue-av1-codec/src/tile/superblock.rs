@@ -115,6 +115,7 @@ pub fn parse_superblock(
         decoder, x, y, block_size, true, // has_rows
         true, // has_cols
         0,    // depth
+        tile_ctx,
     )?;
 
     // Create superblock

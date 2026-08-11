@@ -59,21 +59,27 @@ impl<'a> SymbolDecoder<'a> {
         })
     }
 
-    /// Read a partition symbol
+    /// Read a `partition` symbol (spec 5.11.4), per its real above/left context (`ctx`, 0..=3,
+    /// from `crate::tile::TileContext::partition_context`) -- real per-context default CDFs
+    /// (`CdfContext`'s `partition_cdfs` doc) and real adaptation via `read_symbol_adaptive`,
+    /// matching `read_skip`/`read_intra_mode`'s bar.
+    ///
+    /// `has_rows`/`has_cols` (frame-edge legality) are still not modeled -- every read uses the
+    /// full alphabet regardless of whether the block is fully within frame bounds, unlike the
+    /// real spec's reduced-alphabet `split_or_horz`/`split_or_vert` edge reads. Deferred alongside
+    /// the rest of this crate's not-yet-real edge-case handling (see
+    /// `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note).
     ///
     /// Returns partition type (0-9) for current block context.
-    /// Context depends on block size and neighboring partitions.
     pub fn read_partition(
         &mut self,
         block_size_log2: u8,
+        ctx: u8,
         _has_rows: bool,
         _has_cols: bool,
     ) -> Result<u8> {
-        // Get CDF for this block size
-        let cdf = self.cdf_context.get_partition_cdf(block_size_log2);
-
-        // Read symbol using CDF
-        self.decoder.read_symbol(cdf)
+        let cdf = self.cdf_context.get_partition_cdf_mut(block_size_log2, ctx);
+        self.decoder.read_symbol_adaptive(cdf)
     }
 
     /// Read skip flag, per AV1 spec Section 5.11.11 / Section 9.3's `SkipCdf` context (`ctx`,
@@ -695,6 +701,6 @@ mod tests {
         // Read partition symbol
         // Note: This will likely fail without real entropy-coded data
         // This is just a structural test
-        let _result = decoder.read_partition(6, true, true); // 64x64 block (2^6)
+        let _result = decoder.read_partition(6, 0, true, true); // 64x64 block (2^6)
     }
 }

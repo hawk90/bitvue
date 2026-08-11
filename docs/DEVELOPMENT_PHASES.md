@@ -1441,7 +1441,32 @@ uncompressed_header()의 segmentation~film_grain_params 구간, skip_mode_params
 - 실제 fixture로 NewMv 블록의 MV 값이 여러 종류로 관측되는지 확인하는 회귀 테스트 추가(`real_fixture_new_mv_values_are_not_degenerate`).
 - 검증: `cargo test --workspace --lib` 클린(3854+ 통과, 무관한 기존 flaky LRU 테스트 1개 제외 — 단독 실행 시 통과 확인), `cargo test --tests -p bitvue-av1-codec`(integration test 바이너리) 실행 중 별개로 이 세션 초반 `TileContext` 매개변수 추가 때부터 컴파일이 깨져있던 `tests/overlay_extraction_test.rs`(5곳, `PartitionBlock`에 신규 `tree_type` 필드 누락)와 `tests/mv_extraction_test.rs`(`parse_superblock` 인자 누락)도 함께 수정 — `cargo test --workspace --lib`만으로는 `tests/` 통합 테스트 바이너리가 컴파일되는지 전혀 검증되지 않는다는 사각지대였음. `cargo clippy`/`cargo fmt` 클린(터치한 파일 기준 경고 0).
 
-- **다음 단계(로드맵, 아직 미착수)**: partition 실제 컨텍스트(edge-index 트리, 큰 작업), inter_mode/compound_mode 컨텍스트(refmvs 서브시스템, partition급), ref_frame 브랜치 컨텍스트, residual coefficient 전체 컨텍스트(scan-order+neighbor-level 유도, 가장 큰 남은 작업), segment_id/실제 tx_size/palette 등 아예 안 읽는 신택스 요소들.
+**partition 실제 컨텍스트 완성(2026-08-11)**: "edge-index 트리, 큰 작업"이라 두 번 보류했던 항목 —
+rav1d 소스를 직접 대조해 재스코핑한 결과 **과대평가였음**을 확인 후 진행. rav1d의 `get_partition_ctx`
+(`src/env.rs`)는 런타임 트리 탐색이 아니라 `above_partition[x8]`/`left_partition[y8]`(8x8단위 바이트 배열)
+의 특정 비트를 `bl`(block level)로 읽는 것뿐이고, 심볼 결정 후 쓰는 값도 매 호출 계산이 아니라 컴파일타임
+상수 테이블 `DAV1D_AL_PART_CTX[dir][bl][bp]`(`src/tables.rs`, 5×10×2=100바이트) 룩업 — skip/kfym과
+정확히 같은 "above/left 배열 + write 시 footprint 채우기" 패턴이었음. `TileContext`에
+`above_partition`/`left_partition`(8x8단위) + `partition_context(x8,y8,bl)` + `set_partition(...)`
+추가(skip 대비 델타: 4x4→8x8 단위, bool→u8 비트마스크, 쓰는 값이 심볼 자체가 아니라 테이블 룩업). 실제
+CDF(rav1d `Default_Partition_W8/16/32/64/128_Cdf`, 5블록레벨×4컨텍스트, kfym보다 적은 ~150개 숫자)도
+같이 포팅 — 8x8은 4심볼, 128x128은 실제로 8심볼(HORZ_4/VERT_4 없음, 기존 코드가 10심볼로 잘못 가정하고
+있던 부분도 같이 수정), 16x16~64x64는 10심볼. `parse_partition_recursive`에 `tile_ctx: &mut TileContext`
+매개변수 추가해 배선(Split은 8x8 초과에서 자식이 대신 쓰므로 자신은 안 씀, 8x8 Split은 자식이 4x4라
+컨텍스트가 없어 자신이 씀 — rav1d와 동일 조건). **수정 직후 `real_fixture_delta_q_frame_changes_with_the_flag`
+가 "우연히 같은 결과로 수렴"하는 프레임에 걸려 실패** — 회귀가 아니라 이 테스트가 "적격 프레임 *전부*
+갈라져야 함"이라는 과도하게 엄격한 assert_ne를 for 루프 안에 두고 있었던 구조적 취약점(진짜 partition
+컨텍스트가 생기면서 어떤 프레임은 delta_q 유무와 무관하게 같은 파티션 경계로 수렴하는 게 실제로 가능해짐)
+— "적격 프레임 중 *하나라도* 갈라지면 충분"으로 완화(테스트의 실제 의도와 일치). 실제 fixture로 leaf
+블록 크기가 다양하게 나오는지 확인하는 회귀 테스트 추가(`real_fixture_partition_leaf_sizes_are_not_degenerate`).
+315/315(av1-codec lib) 통과, `cargo test --workspace --tests` 141개 스위트 클린, clippy/fmt 클린.
+`has_rows`/`has_cols`(프레임 경계 축소-알파벳 읽기)는 여전히 미구현으로 남음(스코프 유지, 별도 항목).
+
+- **다음 단계(로드맵, 아직 미착수)**: inter_mode/compound_mode 컨텍스트(refmvs 서브시스템 — 이번
+partition 재스코핑과 달리 진짜로 큼, 참조-MV 후보 스캔이라는 별도 서브시스템이 실제로 필요함), ref_frame
+브랜치 컨텍스트, partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, residual coefficient
+전체 컨텍스트(scan-order+neighbor-level 유도, 가장 큰 남은 작업), segment_id/실제 tx_size/palette 등
+아예 안 읽는 신택스 요소들.
 
 ---
 

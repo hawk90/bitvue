@@ -116,14 +116,19 @@ impl PartitionCdf {
 /// For MVP, we maintain simplified CDFs.
 /// Full implementation would have many more contexts based on neighbors.
 pub struct CdfContext {
-    /// Partition CDFs indexed by block size log2 (2..=7)
-    /// - block_size_log2 = 2 → 4x4 (1 symbol)
-    /// - block_size_log2 = 3 → 8x8 (4 symbols)
-    /// - block_size_log2 = 4 → 16x16 (10 symbols)
-    /// - block_size_log2 = 5 → 32x32 (10 symbols)
-    /// - block_size_log2 = 6 → 64x64 (10 symbols)
-    /// - block_size_log2 = 7 → 128x128 (10 symbols)
-    partition_cdfs: Vec<PartitionCdf>,
+    /// Partition CDFs indexed by `[block_size_log2 - 2][context 0..=3]` (context from
+    /// `crate::tile::TileContext::partition_context`, real above/left 8x8-granularity partition
+    /// bitmask -- see that method's doc). Real spec/rav1d default values (`memorysafety/rav1d`,
+    /// BSD-2-Clause, `src/cdf.rs`'s `partition` field) and real per-context adaptation, like
+    /// `skip_cdf`/`kfym` -- not the "representative" placeholder every other CDF in this struct
+    /// still is.
+    /// - index 0 (block_size_log2=2, 4x4): trivial 1-symbol placeholder, never actually read (no
+    ///   `BlockLevel` exists for 4x4 in the real spec -- partition recursion stops one level up).
+    /// - index 1 (log2=3, 8x8): 4 symbols (NONE/HORZ/VERT/SPLIT only -- no A/B/4-way splits).
+    /// - index 2..=5 (log2=4..=7, 16x16..=128x128): 10 symbols, except index 5 (128x128) is
+    ///   really only 8 real symbols (no HORZ_4/VERT_4) -- rav1d encodes this as 7 real CDF
+    ///   entries vs. the others' 9, both stored at their natural (non-padded) length here.
+    partition_cdfs: [[Vec<u16>; 4]; 6],
 
     /// Skip flag CDFs, one per context (0..=2, from `TileContext::skip_context` -- see
     /// `SymbolDecoder::read_skip`'s doc). Real spec/rav1d default values (`memorysafety/rav1d`,
@@ -250,30 +255,64 @@ fn to_descending(ascending: &[u16]) -> Vec<u16> {
 impl CdfContext {
     /// Create new CDF context with default values
     pub fn new() -> Self {
-        let mut partition_cdfs = Vec::new();
-
-        // Block size log2 = 2 (4x4): NONE only
-        partition_cdfs.push(PartitionCdf::biased_none(1));
-
-        // Block size log2 = 3 (8x8): NONE, HORZ, VERT, SPLIT
-        partition_cdfs.push(PartitionCdf::biased_none(4));
-
-        // Block size log2 = 4..=7 (16x16, 32x32, 64x64, 128x128): All 10 partitions
-        for _ in 4..=7 {
-            partition_cdfs.push(PartitionCdf::biased_none(10));
-        }
-        // `PartitionCdf::biased_none`/`uniform` build the ascending format (kept as-is -- their
-        // own unit tests exercise that constructor output directly); convert to the real
-        // spec/rav1d descending format `read_symbol` requires only here, at assembly time. This
-        // is the same mechanical, values-preserving conversion every other CDF in this struct
-        // gets -- NOT real per-context values or adaptation (still indexed only by
-        // `block_size_log2`, no above/left neighbor state) -- see `docs/DEVELOPMENT_PHASES.md`
-        // Phase 4's AV1 entropy-decoding note for why real partition context is a separate,
-        // deferred, considerably larger phase (dav1d's context derivation needs a per-8x8 bitmask
-        // tied to its edge-index tree, not a simple neighbor count).
-        for entry in &mut partition_cdfs {
-            entry.cdf = to_descending(&entry.cdf);
-        }
+        // Real spec/rav1d default CDFs for `partition`, per `[block_size_log2-2][context 0..=3]`.
+        // Source: rav1d `Default_Partition_W8/16/32/64/128_Cdf` (`src/cdf.rs`, `memorysafety/rav1d`,
+        // BSD-2-Clause). Each row's raw numbers are real spec probabilities needing the same
+        // `32768 - p` per-element conversion as `kfym` (not `to_descending`'s ascending-array
+        // transform -- these aren't cumulative ascending arrays, just a list of raw probs), with
+        // the last real symbol's implicit-0 entry and the adaptation-count slot appended
+        // explicitly. Context derivation: `crate::tile::TileContext::partition_context` (real
+        // above/left 8x8-unit partition bitmask, mirrors rav1d's `get_partition_ctx`).
+        let partition_cdfs: [[Vec<u16>; 4]; 6] = [
+            // 4x4: no partition symbol is ever read at this size (spec: 4x4 blocks cannot be
+            // split further); kept as a structurally-valid trivial 1-symbol placeholder.
+            [vec![0, 0], vec![0, 0], vec![0, 0], vec![0, 0]],
+            // 8x8 (rav1d BlockLevel 4)
+            [
+                vec![13636, 7258, 2376, 0, 0],
+                vec![18840, 12913, 4228, 0, 0],
+                vec![20246, 9089, 4139, 0, 0],
+                vec![22872, 13985, 6915, 0, 0],
+            ],
+            // 16x16 (rav1d BlockLevel 3)
+            [
+                vec![17171, 11839, 8197, 6062, 5104, 3947, 3167, 2197, 866, 0, 0],
+                vec![
+                    24843, 21725, 15983, 10298, 8797, 7725, 6117, 4067, 2934, 0, 0,
+                ],
+                vec![
+                    27354, 19499, 17657, 12280, 10408, 8268, 7231, 6432, 651, 0, 0,
+                ],
+                vec![
+                    30106, 26406, 24154, 11908, 9715, 7990, 6332, 4939, 1597, 0, 0,
+                ],
+            ],
+            // 32x32 (rav1d BlockLevel 2)
+            [
+                vec![14306, 11848, 9644, 5121, 4541, 3719, 3249, 2590, 1224, 0, 0],
+                vec![
+                    25079, 23708, 20712, 7776, 7108, 6586, 5817, 4727, 3716, 0, 0,
+                ],
+                vec![26753, 23759, 22706, 8224, 7359, 6223, 5697, 5242, 721, 0, 0],
+                vec![31374, 30560, 29972, 4154, 3707, 3302, 2928, 2583, 869, 0, 0],
+            ],
+            // 64x64 (rav1d BlockLevel 1)
+            [
+                vec![12631, 11221, 9690, 3202, 2931, 2507, 2244, 1876, 1044, 0, 0],
+                vec![
+                    26036, 25278, 23271, 4824, 4518, 4253, 3799, 3138, 2664, 0, 0,
+                ],
+                vec![26823, 25105, 24420, 4085, 3651, 3019, 2704, 2470, 530, 0, 0],
+                vec![31898, 31556, 31281, 1570, 1374, 1194, 1025, 887, 436, 0, 0],
+            ],
+            // 128x128 (rav1d BlockLevel 0) -- only 8 real symbols (no HORZ_4/VERT_4)
+            [
+                vec![4869, 4549, 4239, 284, 229, 149, 129, 0, 0],
+                vec![26161, 25778, 24500, 708, 549, 430, 397, 0, 0],
+                vec![27339, 26092, 25646, 741, 541, 237, 186, 0, 0],
+                vec![32057, 31802, 31596, 320, 230, 151, 104, 0, 0],
+            ],
+        ];
 
         // Skip flag CDFs, per context (0..=2 above/left-skip-neighbor count). Real spec/rav1d
         // default probabilities (`Default_Skip_Cdf`, `src/cdf.rs:4605`): raw probs 31671/16515/
@@ -661,7 +700,9 @@ impl CdfContext {
         }
     }
 
-    /// Get partition CDF for block size
+    /// Get mutable `partition` CDF for `(block_size_log2, context)` -- mutable because
+    /// `read_partition` adapts it in place via `update_cdf` after every read (see
+    /// `partition_cdfs`'s doc: this is real context, not a representative placeholder).
     ///
     /// Block size is log2 of actual size:
     /// - 2 → 4x4
@@ -670,11 +711,13 @@ impl CdfContext {
     /// - 5 → 32x32
     /// - 6 → 64x64
     /// - 7 → 128x128
-    pub fn get_partition_cdf(&self, block_size_log2: u8) -> &[u16] {
+    ///
+    /// Context is 0..=3, from `crate::tile::TileContext::partition_context`.
+    pub fn get_partition_cdf_mut(&mut self, block_size_log2: u8, ctx: u8) -> &mut [u16] {
         let index = (block_size_log2 as usize)
             .saturating_sub(2)
             .min(self.partition_cdfs.len() - 1);
-        self.partition_cdfs[index].as_slice()
+        self.partition_cdfs[index][(ctx as usize).min(3)].as_mut_slice()
     }
 
     /// Get mutable skip flag CDF for the given context (0..=2, from
@@ -901,23 +944,33 @@ mod tests {
 
     #[test]
     fn test_cdf_context_get_partition() {
-        let context = CdfContext::new();
+        let mut context = CdfContext::new();
 
-        // 4x4 block (log2 = 2): 1 symbol
-        let cdf_4x4 = context.get_partition_cdf(2);
-        assert_eq!(cdf_4x4.len(), 2); // 1 symbol + end marker
+        // 4x4 block (log2 = 2): trivial 1-symbol placeholder, never actually read
+        let cdf_4x4 = context.get_partition_cdf_mut(2, 0);
+        assert_eq!(cdf_4x4.len(), 2); // 1 symbol + count slot
 
-        // 8x8 block (log2 = 3): 4 symbols
-        let cdf_8x8 = context.get_partition_cdf(3);
-        assert_eq!(cdf_8x8.len(), 5); // 4 symbols + end marker
+        // 8x8 block (log2 = 3): 4 real symbols (NONE/HORZ/VERT/SPLIT only)
+        let cdf_8x8 = context.get_partition_cdf_mut(3, 0);
+        assert_eq!(cdf_8x8.len(), 5); // 4 symbols + count slot
 
-        // 16x16 block (log2 = 4): 10 symbols
-        let cdf_16x16 = context.get_partition_cdf(4);
-        assert_eq!(cdf_16x16.len(), 11); // 10 symbols + end marker
+        // 16x16 block (log2 = 4): 10 real symbols
+        let cdf_16x16 = context.get_partition_cdf_mut(4, 0);
+        assert_eq!(cdf_16x16.len(), 11); // 10 symbols + count slot
 
-        // 128x128 block (log2 = 7): 10 symbols
-        let cdf_128x128 = context.get_partition_cdf(7);
-        assert_eq!(cdf_128x128.len(), 11);
+        // 128x128 block (log2 = 7): only 8 real symbols (no HORZ_4/VERT_4)
+        let cdf_128x128 = context.get_partition_cdf_mut(7, 0);
+        assert_eq!(cdf_128x128.len(), 9); // 8 symbols + count slot
+
+        // Every context (0..=3) is independently addressable.
+        for ctx in 0..4 {
+            let cdf = context.get_partition_cdf_mut(4, ctx);
+            assert_eq!(
+                cdf.len(),
+                11,
+                "context {ctx} should have the same alphabet size"
+            );
+        }
     }
 
     #[test]
