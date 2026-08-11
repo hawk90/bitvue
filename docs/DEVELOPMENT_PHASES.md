@@ -1553,11 +1553,28 @@ raw 바이트를 "이웃이 얼마나 유의미한가" 신호로 취급하기 �
 전환(rav1d 기본값 이식, 41/21 컨텍스트), 둘 다 real adaptation(`read_symbol_adaptive`)으로 전환.
 380/380(신규 테스트 11개+잔차 에너지 non-degenerate 회귀테스트 1개), 워크스페이스 전체 클린.
 
-- **다음 단계(로드맵, 남은 것)**: (1) 크로마 잔차 전체 미read 버그 수정(별도 이슈, transform_type()과
-같은 계열이지만 luma-only 호출부 자체를 바꿔야 함). (2) 인터/IntraBC 실제 var-tx 재귀 읽기(CodingUnit
-스키마 변경 선행 필요) — 이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장 가능. (3) partition의
-`has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예 안 읽는 신택스 요소들.
-(4) inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전 세션에 재스코핑만 하고 보류).
+- **크로마 잔차 미read 버그 — 진짜 디싱크로 확인, 수정 시도 → 되돌림(2026-08-11, `ce90cdf`)**: 이 크레이트의
+실제 테스트 fixture가 4:2:0(비-모노크롬)임을 확인 — 즉 `HasChroma`인 non-skip CU마다 실인코더가 쓴
+크로마 잔차 비트를 지금까지 전혀 안 읽고 있었던 건 단순 누락이 아니라 타일 내 이후 모든 심볼을
+오염시키는 진짜 디싱크 버그. `mono_chrome`/`subsampling_x`/`subsampling_y`를 SequenceHeader→
+ParsedFrame→TxTypeFrameFlags로 소싱(정확함, 유지). "shape-only" 수정 시도(지배적 경우인 루마 양쪽
+차원 모두 >=8x8일 때만, 루마 CDF 테이블을 ctx=0 고정+마지막 루마 tx블록의 is_1d 재사용으로 크로마
+tx블록 개수만큼 읽기) → `real_fixture_key_frame_intra_modes_are_not_degenerate` 회귀 발견,
+새 코드경로 비활성화→통과/재활성화→실패로 원인 확정 후 완전 되돌림. **추정 근본원인**: 다른 곳에서
+용인되던 "고정 ctx=0" 근사(예: 인터 프레임 루마 txb_skip/dc_sign)와 달리, 적응형 range 디코더는
+가변길이 구성요소(eob_bin 추가비트, 골롬 확장)의 비트 소비량 자체가 디코드된 "값"에 의존하고 그 값은
+다시 컨텍스트/CDF에 의존함 — 컨텍스트가 틀리면 단순 오역이 아니라 실제 소비 비트 수 자체가 달라질 수
+있음, 크로마 계수 통계가 루마와 충분히 달라서 루마 형태의 근사가 실제로 어긋남. 실제 UV 변환크기
+매핑(`Max_Tx_Size_Rect`)과 정확한 `HasChroma` 조건도 별도 검증 안 됐음(둘 다 원인일 수 있음). 미검증
+코드 안 남김 — `read_residual_block` 문서에 여전히 열린 진짜 디싱크 버그로 기록(실제 크로마 CDF
+테이블 또는 검증된 안전한 shape-only 폴백 필요, 다음 세션 후보).
+
+- **다음 단계(로드맵, 남은 것)**: (1) 크로마 잔차 버그 재시도(위 되돌림에서 지목한 두 가지 미검증
+지점 — 실제 UV tx 크기 매핑, 정확한 HasChroma 조건 — 먼저 검증 후). (2) 인터/IntraBC 실제 var-tx
+재귀 읽기(CodingUnit 스키마 변경 선행 필요) — 이게 풀리면 txb_skip/dc_sign도 인터 프레임까지 확장
+가능. (3) partition의 `has_rows`/`has_cols` 프레임 경계 축소-알파벳 읽기, segment_id/palette 등 아예
+안 읽는 신택스 요소들. (4) inter_mode/compound_mode의 남은 refmvs 서브시스템 의존 컨텍스트(이전
+세션에 재스코핑만 하고 보류).
 
 ---
 
