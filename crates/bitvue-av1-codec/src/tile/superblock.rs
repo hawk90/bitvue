@@ -14,7 +14,8 @@
 
 use crate::symbol::SymbolDecoder;
 use crate::tile::{
-    parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode, TxTypeFrameFlags,
+    parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode, PartitionType,
+    TxTypeFrameFlags,
 };
 use bitvue_engine::Result;
 use serde::{Deserialize, Serialize};
@@ -87,6 +88,13 @@ impl Superblock {
 ///   superblock in the tile (see `crate::tile::TileContext`'s doc). Callers looping over
 ///   superblock rows should call `tile_ctx.start_superblock_row()` at the start of each row.
 /// * `tx_type_flags` - Frame header flags for `transform_type()` (see `parse_coding_unit`'s doc)
+/// * `mi_rows`, `mi_cols` - Frame extent in AV1 "MI" (4x4) units (`tile::partition::mi_units` of
+///   the real frame pixel width/height) -- drives `parse_partition_recursive`'s real `hasRows`/
+///   `hasCols` frame-edge partition legality (spec 5.11.4). Callers with a frame smaller than
+///   this superblock loop's `sb_cols * sb_size`/`sb_rows * sb_size` extent (i.e. any frame whose
+///   dimensions aren't an exact multiple of `sb_size`) need real values here -- passing the
+///   superblock-rounded extent instead would make `has_rows`/`has_cols` always true, silently
+///   defeating this parameter.
 ///
 /// # Returns
 ///
@@ -105,6 +113,8 @@ pub fn parse_superblock(
     allow_intrabc: bool,
     tile_ctx: &mut crate::tile::TileContext,
     tx_type_flags: TxTypeFrameFlags,
+    mi_rows: u32,
+    mi_cols: u32,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -114,13 +124,16 @@ pub fn parse_superblock(
     };
 
     // Parse partition tree -- see `tile::partition::parse_partition_recursive`'s doc for why this
-    // module no longer keeps its own copy.
+    // module no longer keeps its own copy. `None` (superblock origin fully outside the frame)
+    // can't happen for a real caller: superblock loops enumerate `sb_x < sb_cols =
+    // frame_width.div_ceil(sb_size)`, which guarantees every superblock's pixel origin is `<
+    // frame_width`/`frame_height` -- fall back to an empty superblock defensively rather than
+    // panic if that invariant is ever violated.
     let partition = crate::tile::partition::parse_partition_recursive(
-        decoder, x, y, block_size, true, // has_rows
-        true, // has_cols
-        0,    // depth
+        decoder, x, y, block_size, mi_rows, mi_cols, 0, // depth
         tile_ctx,
-    )?;
+    )?
+    .unwrap_or_else(|| PartitionNode::new(x, y, block_size, PartitionType::None));
 
     // Create superblock
     let mut sb = Superblock::new(x, y, sb_size, partition.clone());

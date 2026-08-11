@@ -29,6 +29,8 @@ pub fn parse_all_coding_units(
     let sb_size = parsed.dimensions.sb_size;
     let sb_cols = parsed.dimensions.sb_cols;
     let sb_rows = parsed.dimensions.sb_rows;
+    let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
+    let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
     let is_key_frame = parsed.frame_type.is_intra_only;
     let delta_q_enabled = parsed.delta_q_enabled;
     let reference_select = parsed.reference_select;
@@ -88,6 +90,8 @@ pub fn parse_all_coding_units(
                     allow_intrabc,
                     &mut tile_ctx,
                     tx_type_flags,
+                    mi_rows,
+                    mi_cols,
                 ) {
                     Ok((sb, new_qp)) => {
                         // Collect all coding units from this superblock
@@ -628,6 +632,62 @@ mod tests {
              units, got only {distinct_leaf_sizes:?} -- the real partition context/CDF wiring may \
              have regressed to a degenerate always-one-size decode (e.g. every superblock reading \
              PARTITION_NONE)"
+        );
+    }
+
+    /// Regression test for `parse_partition_recursive`'s real `hasRows`/`hasCols` frame-edge
+    /// handling (spec 5.11.4): the fixture is 320x240 with 128x128 superblocks (`sb_cols=3,
+    /// sb_rows=2`, i.e. a `384x256` superblock grid overhanging the real frame on both edges), so
+    /// every rightmost/bottommost superblock genuinely straddles `MiCols`/`MiRows` -- this is a
+    /// real, non-contrived condition in this fixture, not a synthetic one. Before this change,
+    /// `has_rows`/`has_cols` were hardcoded `true`, so these edge superblocks always read the full
+    /// partition alphabet regardless of position; asserts the reduced-alphabet path is genuinely
+    /// exercised (non-square leaf CU shapes, e.g. `64x128` from a `PARTITION_VERT`-only choice at
+    /// a column-truncated 128x128 superblock, appear in real output) rather than passing
+    /// vacuously -- same discipline as `real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`'s
+    /// doc (a prior gate on this same fixture, `is_key_frame`, turned out to never actually fire).
+    /// Landing this also exposed and fixed a dormant, pre-existing bug: this crate's partition-tree
+    /// walker used to recurse into `parse_partition_recursive` again for every non-`None`
+    /// partition's sub-blocks, including terminal ones (`HORZ`/`VERT`/etc, which per spec go
+    /// straight to `decode_block`, no further `partition` symbol) -- harmless while those were
+    /// rarely chosen, but real `has_rows`/`has_cols` making `VERT`-at-a-column-edge a common,
+    /// correct decode surfaced it as an outright decode error (a spurious symbol read against the
+    /// wrong CDF bucket for the resulting non-square block). Fixed in the same change (see
+    /// `parse_partition_recursive`'s doc).
+    #[test]
+    fn real_fixture_frame_edge_partitions_are_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut non_square_leaf_count = 0usize;
+        let mut total_cus = 0usize;
+
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            total_cus += cus.len();
+            non_square_leaf_count += cus.iter().filter(|cu| cu.width != cu.height).count();
+        }
+
+        assert!(
+            total_cus > 0,
+            "expected real coding units across the fixture"
+        );
+        assert!(
+            non_square_leaf_count > 0,
+            "expected at least one non-square leaf CU (from a real frame-edge HORZ/VERT choice) \
+             across {total_cus} real coding units -- the real hasRows/hasCols frame-edge gate may \
+             not be firing against this fixture's real 320x240-in-128x128-superblocks geometry, or \
+             may have regressed to always reading the full alphabet"
         );
     }
 }

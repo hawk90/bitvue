@@ -384,6 +384,67 @@ fn to_descending(ascending: &[u16]) -> Vec<u16> {
     out
 }
 
+/// Read a `partition` CDF slot as a real threshold, or `0` if `idx` falls outside this bucket's
+/// real alphabet (`partition_cdfs`' layout: indices `0..alphabet_size-1` are real descending
+/// thresholds -- the last of which, `alphabet_size-1`, is always exactly `0` by construction --
+/// and index `alphabet_size` is the adaptation count). This mirrors rav1d's own fixed 16-slot
+/// `[u16;16]` partition CDF array (`src/cdf.rs`), whose entries past a given block size's real
+/// alphabet are permanently `0` padding (`cdf0d`'s untouched tail) -- treating an out-of-range
+/// index as `0` here reproduces that padding without needing a fixed-size array of our own.
+///
+/// Used only by `split_or_horz_prob`/`split_or_vert_prob`: unlike those, do NOT use this to
+/// bounds-check away the `bl != BLOCK_128X128` guard those two need explicitly -- see their docs.
+fn partition_cdf_real_or_zero(cdf: &[u16], idx: usize) -> i32 {
+    if idx + 1 < cdf.len() {
+        cdf[idx] as i32
+    } else {
+        0
+    }
+}
+
+/// Aggregated probability for the `split_or_horz` symbol (spec 5.11.4: read when `hasCols &&
+/// !hasRows`, choosing between `PARTITION_HORZ` and `PARTITION_SPLIT`). Ported index-for-index
+/// from rav1d's `gather_top_partition_prob` (`src/env.rs`, `memorysafety/rav1d`, BSD-2-Clause):
+/// `out = cdf[HORZ] - cdf[HORZ_A] + cdf[HORZ_B]`, plus `cdf[HORZ_4] - cdf[VERT_B]` for the
+/// 10-symbol alphabet only (16x16/32x32/64x64 -- `cdf.len() == 11`). `PartitionType`'s numeric
+/// values (`None=0, Horz=1, Vert=2, Split=3, HorzA=4, HorzB=5, VertA=6, VertB=7, Horz4=8,
+/// Vert4=9`) match rav1d's `BlockPartition` enum exactly, so these are literal indices, not a
+/// reference to the enum (avoids a `tile` module dependency in this file).
+///
+/// The 128x128 bucket (`cdf.len() == 9`) has real, nonzero `VertB` (index 7) mass -- unlike the
+/// 8x8/4x4 buckets, `partition_cdf_real_or_zero`'s padding-as-zero can't stand in for rav1d's
+/// explicit `if bl != BLOCK_128X128` guard there, hence the explicit `cdf.len() == 11` check
+/// (only 16x16/32x32/64x64 have `HORZ_4`/`VERT_4` at all).
+///
+/// The returned value feeds a **non-adaptive** binary read (`ArithmeticDecoder::read_symbol`, not
+/// `_adaptive`) -- rav1d's `gather_*_partition_prob` results go straight to
+/// `rav1d_msac_decode_bool` (no CDF write-back), never to the general adaptive symbol path, so
+/// the real `partition_cdfs` entry this was computed from is left untouched.
+pub(crate) fn split_or_horz_prob(cdf: &[u16]) -> u16 {
+    let mut out = partition_cdf_real_or_zero(cdf, 1) - partition_cdf_real_or_zero(cdf, 4)
+        + partition_cdf_real_or_zero(cdf, 5);
+    if cdf.len() >= 11 {
+        out += partition_cdf_real_or_zero(cdf, 8) - partition_cdf_real_or_zero(cdf, 7);
+    }
+    out.clamp(0, CDF_SCALE as i32) as u16
+}
+
+/// Aggregated probability for the `split_or_vert` symbol (spec 5.11.4: read when `hasRows &&
+/// !hasCols`, choosing between `PARTITION_VERT` and `PARTITION_SPLIT`). Ported index-for-index
+/// from rav1d's `gather_left_partition_prob` (`src/env.rs`): `out = cdf[NONE] - cdf[HORZ] +
+/// cdf[VERT] - cdf[VERT_A]`, plus `cdf[VERT_B] - cdf[HORZ_4]` for the 10-symbol alphabet only --
+/// see `split_or_horz_prob`'s doc for the shared indexing/adaptation/128x128 notes (all apply
+/// here identically, mirrored).
+pub(crate) fn split_or_vert_prob(cdf: &[u16]) -> u16 {
+    let mut out = partition_cdf_real_or_zero(cdf, 0) - partition_cdf_real_or_zero(cdf, 1)
+        + partition_cdf_real_or_zero(cdf, 2)
+        - partition_cdf_real_or_zero(cdf, 6);
+    if cdf.len() >= 11 {
+        out += partition_cdf_real_or_zero(cdf, 7) - partition_cdf_real_or_zero(cdf, 8);
+    }
+    out.clamp(0, CDF_SCALE as i32) as u16
+}
+
 impl CdfContext {
     /// Create new CDF context with default values
     pub fn new() -> Self {
@@ -2064,6 +2125,39 @@ mod tests {
     fn test_cdf_scale() {
         assert_eq!(CDF_SCALE, 32768);
         assert_eq!(CDF_SCALE, 1 << 15);
+    }
+
+    #[test]
+    fn test_split_or_horz_vert_prob_8x8_no_tail_term() {
+        // 8x8/ctx0 real literal: [13636, 7258, 2376, 0, 0] (indices 4..8 don't exist for this
+        // 4-symbol alphabet -- HorzA/HorzB/Horz4/VertA/VertB all treated as 0).
+        let mut context = CdfContext::new();
+        let cdf = context.get_partition_cdf_mut(3, 0);
+        assert_eq!(split_or_horz_prob(cdf), 7258); // cdf[1] - 0 + 0
+        assert_eq!(split_or_vert_prob(cdf), 8754); // cdf[0] - cdf[1] + cdf[2] - 0
+    }
+
+    #[test]
+    fn test_split_or_horz_vert_prob_16x16_includes_tail_term() {
+        // 16x16/ctx0 real literal (10-symbol alphabet, has Horz4/Vert4):
+        // [17171, 11839, 8197, 6062, 5104, 3947, 3167, 2197, 866, 0, 0]
+        let mut context = CdfContext::new();
+        let cdf = context.get_partition_cdf_mut(4, 0);
+        assert_eq!(split_or_horz_prob(cdf), 9351); // 11839 - 5104 + 3947 + (866 - 2197)
+        assert_eq!(split_or_vert_prob(cdf), 11693); // 17171-11839+8197-3167 + (2197-866)
+    }
+
+    #[test]
+    fn test_split_or_horz_vert_prob_128x128_omits_tail_term() {
+        // 128x128/ctx0 real literal (8-symbol alphabet, no Horz4/Vert4 at all -- unlike 8x8, the
+        // real VertB/HorzB entries here are nonzero, so an unguarded read would wrongly include
+        // them in the tail term; the explicit `cdf.len() >= 11` check must skip it instead of
+        // relying on padding-as-zero (see `split_or_horz_prob`'s doc).
+        let mut context = CdfContext::new();
+        let cdf = context.get_partition_cdf_mut(7, 0);
+        assert_eq!(cdf, &[4869, 4549, 4239, 284, 229, 149, 129, 0, 0]);
+        assert_eq!(split_or_horz_prob(cdf), 4549 - 229 + 149); // no tail term
+        assert_eq!(split_or_vert_prob(cdf), 4869 - 4549 + 4239 - 129); // no tail term
     }
 
     #[test]

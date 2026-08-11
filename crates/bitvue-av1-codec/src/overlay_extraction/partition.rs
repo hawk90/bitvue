@@ -135,6 +135,8 @@ fn parse_partition_trees_from_tile_data(
         (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
         (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
     );
+    let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
+    let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
 
     // Parse each superblock
     for sb_y in 0..parsed.dimensions.sb_rows {
@@ -194,6 +196,8 @@ fn parse_partition_trees_from_tile_data(
                     subsampling_x: parsed.subsampling_x,
                     subsampling_y: parsed.subsampling_y,
                 },
+                mi_rows,
+                mi_cols,
             );
 
             match sb_result {
@@ -889,6 +893,8 @@ mod tests {
             (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
             (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
         );
+        let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
+        let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
         let mut current_qp = base_qp;
         let mut all_cus = Vec::new();
         for sb_y in 0..parsed.dimensions.sb_rows {
@@ -915,6 +921,8 @@ mod tests {
                         subsampling_x: parsed.subsampling_x,
                         subsampling_y: parsed.subsampling_y,
                     },
+                    mi_rows,
+                    mi_cols,
                 )?;
                 current_qp = new_qp;
                 all_cus.extend(sb.coding_units);

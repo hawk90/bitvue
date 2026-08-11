@@ -118,6 +118,9 @@ fn test_mv_extraction_with_spec_cdfs() {
         let sb_size = 64;
         let mut mv_ctx = MvPredictorContext::new(30, 17); // Typical 1920x1080 frame in 64x64 superblocks
         let mut tile_ctx = TileContext::new(30 * sb_size / 4, 17 * sb_size / 4);
+        // MiRows/MiCols (spec 5.9.5) for a 1920x1080 frame, matching the comment above.
+        let mi_rows = 2 * ((1080u32 + 7) >> 3);
+        let mi_cols = 2 * ((1920u32 + 7) >> 3);
         match parse_superblock(
             &mut decoder,
             0,
@@ -139,6 +142,8 @@ fn test_mv_extraction_with_spec_cdfs() {
                 subsampling_x: false,
                 subsampling_y: false,
             },
+            mi_rows,
+            mi_cols,
         ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(
