@@ -45,6 +45,17 @@ const PARTITION_CTX_TABLE: [[[u8; 10]; 5]; 2] = [
     ],
 ];
 
+/// `DAV1D_SKIP_CTX[min(la,4)][min(ll,4)]` -- `txb_skip`'s context table, indexed by the OR-reduced
+/// above/left `cul_level` values (see `TileContext::txb_skip_context`'s doc). Source: rav1d
+/// `dav1d_skip_ctx` (`memorysafety/rav1d`, BSD-2-Clause, `src/tables.rs`).
+const DAV1D_SKIP_CTX: [[u8; 5]; 5] = [
+    [1, 2, 2, 2, 3],
+    [2, 4, 4, 4, 5],
+    [2, 4, 4, 4, 5],
+    [2, 4, 4, 4, 5],
+    [3, 5, 5, 5, 6],
+];
+
 /// Maps `block_size_log2` (2..=7, this crate's CDF-lookup convention) to rav1d's `BlockLevel`
 /// (0=128x128..4=8x8 -- opposite numeric order). Only valid for `block_size_log2` in 3..=7 (8x8
 /// and up); 4x4 blocks (log2=2) never read a `partition` symbol at all, so have no `BlockLevel`.
@@ -358,6 +369,24 @@ pub struct TileContext {
     /// `above_mode`'s "default reads as a real class" shortcut.
     above_tx_class: Vec<i8>,
     left_tx_class: Vec<i8>,
+    /// `txb_skip`/`dc_sign` (spec 8.3.2 `get_txb_skip_ctx`/`get_dc_sign_ctx`) context state, one
+    /// entry per 4x4 unit -- unpacked equivalent of rav1d's single combined context byte
+    /// (`min(cul_level,63) | (dc_sign_category<<6)`, `memorysafety/rav1d`'s C predecessor
+    /// `src/recon_tmpl.c`'s `get_skip_ctx`/`get_dc_sign_ctx`/write side around `decode_coefs`).
+    /// `cul_level`: `min(63, sum of absolute coefficient levels)` for the last transform block
+    /// covering this position, defaulting to `0` (no coefficients seen). `dc_sign_category`:
+    /// `0`=negative DC sign, `1`=neutral (no DC coefficient, or an all-zero/`txb_skip` block),
+    /// `2`=positive DC sign -- defaults to `1`, matching rav1d's `0x40` tile/row-boundary reset
+    /// value (`>> 6 == 1`). Only ever written/read for key-frame, non-IntraBC coding units (see
+    /// `parse_coding_unit`) -- inter blocks and IntraBC still use a heuristic `tx_size`
+    /// (`TxSize::from_dimensions`), so their transform-block boundaries don't reliably match the
+    /// real encoder's; deriving neighbor context from them previously caused real decode
+    /// corruption (see `SymbolDecoder::read_residual_block`'s doc), so those CUs keep the older
+    /// fixed-context-0 fallback and never touch these arrays.
+    above_cul_level: Vec<u8>,
+    left_cul_level: Vec<u8>,
+    above_dc_sign_category: Vec<u8>,
+    left_dc_sign_category: Vec<u8>,
 }
 
 impl TileContext {
@@ -386,6 +415,10 @@ impl TileContext {
             spatial_ref: SpatialRefContext::new(tile_width_4x4, tile_height_4x4),
             above_tx_class: vec![-1; tile_width_4x4.max(1) as usize],
             left_tx_class: vec![-1; tile_height_4x4.max(1) as usize],
+            above_cul_level: vec![0; tile_width_4x4.max(1) as usize],
+            left_cul_level: vec![0; tile_height_4x4.max(1) as usize],
+            above_dc_sign_category: vec![1; tile_width_4x4.max(1) as usize],
+            left_dc_sign_category: vec![1; tile_height_4x4.max(1) as usize],
         }
     }
 
@@ -399,6 +432,8 @@ impl TileContext {
         self.left_ref0.iter_mut().for_each(|v| *v = 0);
         self.left_ref1.iter_mut().for_each(|v| *v = 0);
         self.left_tx_class.iter_mut().for_each(|v| *v = -1);
+        self.left_cul_level.iter_mut().for_each(|v| *v = 0);
+        self.left_dc_sign_category.iter_mut().for_each(|v| *v = 1);
     }
 
     /// `partition` context index (0..=3) for a block at absolute 8x8-unit position `(x8, y8)`,
@@ -484,6 +519,113 @@ impl TileContext {
         let y_end = (y4 + height_4x4).min(self.left_tx_class.len() as u32);
         for y in y4..y_end {
             self.left_tx_class[y as usize] = tx_class;
+        }
+    }
+
+    /// `txb_skip` (all_zero) context index for one transform block at absolute 4x4 position
+    /// `(x4, y4)`, `tx_w4`/`tx_h4` 4x4 units wide/tall -- per spec/rav1d `get_skip_ctx`'s luma
+    /// branch. `is_single_tx_block`: true when this transform block is the coding block's only
+    /// one (`tx_cols == 1 && tx_rows == 1`), matching rav1d's `b_dim[2] == t_dim->lw && b_dim[3]
+    /// == t_dim->lh` immediate-zero case -- no neighbor lookup needed there, context is always
+    /// `0`. Otherwise: OR-reduce `cul_level` across the `tx_w4` above-row / `tx_h4` left-column
+    /// positions this transform block's row/column spans (a real bitwise OR of the raw values,
+    /// not a boolean "any nonzero" -- see this method's own struct-field doc), then index
+    /// `DAV1D_SKIP_CTX[min(la,4)][min(ll,4)]`.
+    pub fn txb_skip_context(
+        &self,
+        x4: u32,
+        y4: u32,
+        tx_w4: u32,
+        tx_h4: u32,
+        is_single_tx_block: bool,
+    ) -> u8 {
+        if is_single_tx_block {
+            return 0;
+        }
+        let la = (0..tx_w4)
+            .map(|i| {
+                self.above_cul_level
+                    .get((x4 + i) as usize)
+                    .copied()
+                    .unwrap_or(0)
+            })
+            .fold(0u32, |acc, v| acc | v as u32);
+        let ll = (0..tx_h4)
+            .map(|i| {
+                self.left_cul_level
+                    .get((y4 + i) as usize)
+                    .copied()
+                    .unwrap_or(0)
+            })
+            .fold(0u32, |acc, v| acc | v as u32);
+        DAV1D_SKIP_CTX[la.min(4) as usize][ll.min(4) as usize]
+    }
+
+    /// `dc_sign` context index (0..=2) for one transform block at absolute 4x4 position
+    /// `(x4, y4)`, `tx_w4`/`tx_h4` 4x4 units wide/tall -- per spec/rav1d `get_dc_sign_ctx`'s luma
+    /// branch: sum `(dc_sign_category - 1)` across the above-row and left-column positions this
+    /// transform block spans (a real per-position sum, not an OR -- neutral positions contribute
+    /// `0`, negative `-1`, positive `+1`), then classify the sign of that sum into `{0,1,2}`.
+    pub fn dc_sign_context(&self, x4: u32, y4: u32, tx_w4: u32, tx_h4: u32) -> u8 {
+        let above_sum: i32 = (0..tx_w4)
+            .map(|i| {
+                self.above_dc_sign_category
+                    .get((x4 + i) as usize)
+                    .copied()
+                    .unwrap_or(1) as i32
+                    - 1
+            })
+            .sum();
+        let left_sum: i32 = (0..tx_h4)
+            .map(|i| {
+                self.left_dc_sign_category
+                    .get((y4 + i) as usize)
+                    .copied()
+                    .unwrap_or(1) as i32
+                    - 1
+            })
+            .sum();
+        let s = above_sum + left_sum;
+        if s < 0 {
+            0
+        } else if s == 0 {
+            1
+        } else {
+            2
+        }
+    }
+
+    /// Record one decoded transform block's `cul_level`/`dc_sign` state across its 4x4-unit
+    /// footprint, for future `txb_skip_context`/`dc_sign_context` lookups. `cul_level`: `min(63,
+    /// sum of absolute coefficient levels)` (already clamped by the caller). `dc_sign_symbol`:
+    /// the raw `dc_sign` bit read for this block's DC coefficient (`Some(1)`=negative,
+    /// `Some(0)`=positive), or `None` when no `dc_sign` bit was read at all -- an all-zero
+    /// (`txb_skip`) block, or a block whose DC position happened to decode to a zero level --
+    /// both cases mean "neutral" (category `1`), matching rav1d's `all_skip`/`dc_tok==0` paths
+    /// (see the struct field's doc).
+    pub fn set_residual_ctx(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        tx_w4: u32,
+        tx_h4: u32,
+        cul_level: u8,
+        dc_sign_symbol: Option<u8>,
+    ) {
+        let category = match dc_sign_symbol {
+            None => 1,
+            Some(1) => 0,
+            Some(_) => 2,
+        };
+        let x_end = (x4 + tx_w4).min(self.above_cul_level.len() as u32);
+        for x in x4..x_end {
+            self.above_cul_level[x as usize] = cul_level;
+            self.above_dc_sign_category[x as usize] = category;
+        }
+        let y_end = (y4 + tx_h4).min(self.left_cul_level.len() as u32);
+        for y in y4..y_end {
+            self.left_cul_level[y as usize] = cul_level;
+            self.left_dc_sign_category[y as usize] = category;
         }
     }
 
@@ -1339,6 +1481,108 @@ mod tests {
                 decoder.decoder.cnt
             ),
             before
+        );
+    }
+
+    #[test]
+    fn test_txb_skip_context_single_tx_block_is_always_zero() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 4, 4, 63, None);
+        assert_eq!(ctx.txb_skip_context(0, 0, 4, 4, true), 0);
+    }
+
+    #[test]
+    fn test_txb_skip_context_no_neighbors_is_table_zero_zero() {
+        let ctx = TileContext::new(16, 16);
+        assert_eq!(
+            ctx.txb_skip_context(0, 0, 2, 2, false),
+            DAV1D_SKIP_CTX[0][0]
+        );
+    }
+
+    #[test]
+    fn test_txb_skip_context_above_neighbor_ors_in() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 4, 4, 5, None);
+        // Query at (0, 5): above-only (left_cul_level[5] untouched by the write above).
+        assert_eq!(
+            ctx.txb_skip_context(0, 5, 2, 2, false),
+            DAV1D_SKIP_CTX[4][0]
+        );
+    }
+
+    #[test]
+    fn test_txb_skip_context_left_neighbor_ors_in() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 4, 4, 5, None);
+        // Query at (5, 0): left-only (above_cul_level[5] untouched by the write above).
+        assert_eq!(
+            ctx.txb_skip_context(5, 0, 2, 2, false),
+            DAV1D_SKIP_CTX[0][4]
+        );
+    }
+
+    #[test]
+    fn test_txb_skip_context_combines_above_and_left() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 2, 2, 5, None);
+        assert_eq!(
+            ctx.txb_skip_context(0, 0, 2, 2, false),
+            DAV1D_SKIP_CTX[4][4]
+        );
+    }
+
+    #[test]
+    fn test_dc_sign_context_no_neighbors_is_neutral() {
+        let ctx = TileContext::new(16, 16);
+        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 1);
+    }
+
+    #[test]
+    fn test_dc_sign_context_positive_neighbors_is_positive() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 2, 2, 10, Some(0)); // dc_sign=0 -> positive category
+        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 2);
+    }
+
+    #[test]
+    fn test_dc_sign_context_negative_neighbors_is_negative() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 2, 2, 10, Some(1)); // dc_sign=1 -> negative category
+        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 0);
+    }
+
+    #[test]
+    fn test_dc_sign_context_sums_both_neighbors_and_can_cancel() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(5, 0, 1, 1, 5, Some(0)); // above[5] positive
+        ctx.set_residual_ctx(0, 5, 1, 1, 5, Some(1)); // left[5] negative
+        assert_eq!(ctx.dc_sign_context(5, 5, 1, 1), 1); // +1 and -1 cancel to neutral
+    }
+
+    #[test]
+    fn test_set_residual_ctx_all_zero_block_writes_neutral_state() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 2, 2, 0, None);
+        assert_eq!(
+            ctx.txb_skip_context(0, 0, 2, 2, false),
+            DAV1D_SKIP_CTX[0][0]
+        );
+        assert_eq!(ctx.dc_sign_context(0, 0, 2, 2), 1);
+    }
+
+    #[test]
+    fn test_start_superblock_row_resets_left_residual_ctx_but_not_above() {
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_residual_ctx(0, 0, 2, 2, 20, Some(0));
+        assert_eq!(
+            ctx.txb_skip_context(0, 0, 2, 2, false),
+            DAV1D_SKIP_CTX[4][4]
+        );
+        ctx.start_superblock_row();
+        assert_eq!(
+            ctx.txb_skip_context(0, 0, 2, 2, false),
+            DAV1D_SKIP_CTX[4][0]
         );
     }
 }

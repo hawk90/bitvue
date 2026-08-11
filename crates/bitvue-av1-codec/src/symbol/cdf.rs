@@ -186,22 +186,24 @@ pub struct CdfContext {
     /// previous behavior of reading nothing at all. `eob_pt`/`coeff_base_eob` (below) are the
     /// exception: real per-context CDFs + adaptation, like `skip_cdf`/`ref_frame`'s CDFs.
     /// `txb_skip_cdf`: all_zero flag for one transform block (2 symbols), indexed
-    /// `[tx_size_class 0..=4][ctx]`. Real above/left neighbor context (`ctx` 0..=6) was attempted
-    /// and reverted -- see `SymbolDecoder::read_residual_block`'s doc for why; `ctx` is always
-    /// `0` for now, still giving a real per-tx-size default value (chroma axis fixed to 0,
-    /// luma-only). Source: rav1d `coef.skip` (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`),
-    /// first qindex-bucket variant only (see `eob_bin_16_cdf`'s doc).
+    /// `[tx_size_class 0..=4][ctx 0..=6]`. Real above/left neighbor context
+    /// (`TileContext::txb_skip_context`) is wired for key-frame, non-IntraBC coding units (where
+    /// transform-block boundaries are real, not heuristic) -- see `SymbolDecoder::
+    /// read_residual_block`'s doc; other callers pass a fixed `ctx = 0` (chroma axis fixed to 0,
+    /// luma-only regardless). Source: rav1d `coef.skip` (`memorysafety/rav1d`, BSD-2-Clause,
+    /// `src/cdf.rs`), first qindex-bucket variant only (see `eob_bin_16_cdf`'s doc).
     txb_skip_cdf: [[Vec<u16>; 7]; 5],
     /// `coeff_base` -- level (0..=3) for every other coefficient position (4 symbols).
     coeff_base_cdf: Vec<u16>,
     /// `coeff_br` -- range-extension increment (0..=3), read in a loop while extending a level
     /// past `NUM_BASE_LEVELS` (4 symbols).
     coeff_br_cdf: Vec<u16>,
-    /// `dc_sign` -- sign of the DC (position 0) coefficient (2 symbols), indexed `[ctx]`. Real
-    /// above/left neighbor context (`ctx` 0..=2) was attempted and reverted alongside
-    /// `txb_skip_cdf` -- see `SymbolDecoder::read_residual_block`'s doc; `ctx` is always `0` for
-    /// now (chroma axis fixed to 0). AC coefficient signs are read as literal (uniform) bits per
-    /// spec, not CDF-coded. Source: rav1d `coef.dc_sign`, first qindex-bucket variant only.
+    /// `dc_sign` -- sign of the DC (position 0) coefficient (2 symbols), indexed `[ctx 0..=2]`.
+    /// Real above/left neighbor context (`TileContext::dc_sign_context`) is wired alongside
+    /// `txb_skip_cdf` -- see `SymbolDecoder::read_residual_block`'s doc; other callers pass a
+    /// fixed `ctx = 0` (chroma axis fixed to 0). AC coefficient signs are read as literal
+    /// (uniform) bits per spec, not CDF-coded. Source: rav1d `coef.dc_sign`, first qindex-bucket
+    /// variant only.
     dc_sign_cdf: [Vec<u16>; 3],
 
     /// `eob_bin` (spec 5.11.39's `eob_pt_*`), real spec/rav1d default CDFs + real adaptation, one
@@ -1080,8 +1082,8 @@ impl CdfContext {
     }
 
     /// Get mutable `txb_skip` (all_zero) CDF for one transform block. `tx_size_class`: 0..=4 (see
-    /// `tx_size_class`). `ctx`: 0..=6, currently always called with `0` -- see
-    /// `SymbolDecoder::read_residual_block`'s doc.
+    /// `tx_size_class`). `ctx`: 0..=6 -- see `SymbolDecoder::read_residual_block`'s doc for when
+    /// callers pass a real neighbor-derived value vs. the `0` fallback.
     pub fn get_txb_skip_cdf_mut(&mut self, tx_size_class: usize, ctx: u8) -> &mut [u16] {
         &mut self.txb_skip_cdf[tx_size_class.min(4)][(ctx as usize).min(6)]
     }
@@ -1164,8 +1166,9 @@ impl CdfContext {
         &self.coeff_br_cdf
     }
 
-    /// Get mutable `dc_sign` CDF (sign of the DC coefficient). `ctx`: 0..=2, currently always
-    /// called with `0` -- see `SymbolDecoder::read_residual_block`'s doc.
+    /// Get mutable `dc_sign` CDF (sign of the DC coefficient). `ctx`: 0..=2 -- see
+    /// `SymbolDecoder::read_residual_block`'s doc for when callers pass a real neighbor-derived
+    /// value vs. the `0` fallback.
     pub fn get_dc_sign_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
         &mut self.dc_sign_cdf[(ctx as usize).min(2)]
     }

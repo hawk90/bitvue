@@ -754,22 +754,57 @@ pub fn parse_coding_unit(
         let tx_px = cu.tx_size.size();
         let tx_cols = width.div_ceil(tx_px).max(1);
         let tx_rows = height.div_ceil(tx_px).max(1);
+        let tx_wh4 = tx_px / 4;
+        // Real `txb_skip`/`dc_sign` neighbor context is only trustworthy where transform-block
+        // boundaries are real (key-frame, non-IntraBC -- same gate as the `tx_size()` read
+        // above); other CUs keep the fixed-context-0 fallback and never touch `tile_ctx`'s
+        // residual arrays, matching `SymbolDecoder::read_residual_block`'s doc.
+        let use_real_residual_ctx = is_key_frame && !cu.use_intrabc;
+        let is_single_tx_block = tx_cols == 1 && tx_rows == 1;
         let mut summary = ResidualBlockStats::default();
-        for _ in 0..(tx_cols * tx_rows) {
-            // transform_type() (spec 5.11.47) precedes coeffs() for every transform block --
-            // see `SymbolDecoder::read_transform_type_is_1d`'s doc.
-            let is_1d = decoder.read_transform_type_is_1d(
-                is_key_frame,
-                tx_type_flags.coded_lossless,
-                tx_type_flags.qidx_is_zero,
-                tx_type_flags.reduced_tx_set,
-                tx_px,
-                y_mode_raw,
-            )?;
-            let block = decoder.read_residual_block(tx_px, is_1d)?;
-            summary.nonzero_count += block.nonzero_count;
-            summary.sum_abs_level += block.sum_abs_level;
-            summary.max_level = summary.max_level.max(block.max_level);
+        for tx_row in 0..tx_rows {
+            for tx_col in 0..tx_cols {
+                let tx_x4 = x4 + tx_col * tx_wh4;
+                let tx_y4 = y4 + tx_row * tx_wh4;
+
+                // transform_type() (spec 5.11.47) precedes coeffs() for every transform block --
+                // see `SymbolDecoder::read_transform_type_is_1d`'s doc.
+                let is_1d = decoder.read_transform_type_is_1d(
+                    is_key_frame,
+                    tx_type_flags.coded_lossless,
+                    tx_type_flags.qidx_is_zero,
+                    tx_type_flags.reduced_tx_set,
+                    tx_px,
+                    y_mode_raw,
+                )?;
+
+                let (txb_skip_ctx, dc_sign_ctx) = if use_real_residual_ctx {
+                    (
+                        tile_ctx.txb_skip_context(tx_x4, tx_y4, tx_wh4, tx_wh4, is_single_tx_block),
+                        tile_ctx.dc_sign_context(tx_x4, tx_y4, tx_wh4, tx_wh4),
+                    )
+                } else {
+                    (0, 0)
+                };
+
+                let block = decoder.read_residual_block(tx_px, is_1d, txb_skip_ctx, dc_sign_ctx)?;
+
+                if use_real_residual_ctx {
+                    let cul_level = block.sum_abs_level.min(63) as u8;
+                    tile_ctx.set_residual_ctx(
+                        tx_x4,
+                        tx_y4,
+                        tx_wh4,
+                        tx_wh4,
+                        cul_level,
+                        block.dc_sign_value,
+                    );
+                }
+
+                summary.nonzero_count += block.nonzero_count;
+                summary.sum_abs_level += block.sum_abs_level;
+                summary.max_level = summary.max_level.max(block.max_level);
+            }
         }
         cu.residual = Some(summary);
     } else {

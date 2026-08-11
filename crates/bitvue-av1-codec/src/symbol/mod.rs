@@ -727,22 +727,23 @@ impl<'a> SymbolDecoder<'a> {
     ///
     /// # Known simplifications (see `symbol/cdf.rs`'s residual-CDF doc for the CDF side)
     ///
-    /// - **No neighbor/level context for `txb_skip`/`coeff_base`/`coeff_br`/`dc_sign`**: real AV1
-    ///   derives these from already-decoded neighbor coefficient levels and the above/left
-    ///   transform block state. `eob_bin`/`eob_hi_bit`/`coeff_base_eob` are the exception --
-    ///   real context, like `skip`/`intra_mode`/`inter_mode`/`ref_frame` (see `CdfContext::new`'s
-    ///   doc). `txb_skip`/`dc_sign` **were** attempted with real above/left neighbor context (a
-    ///   packed `res_ctx` byte + OR-reduce/sum formulas ported from rav1d's `get_skip_ctx`/
-    ///   `get_dc_sign_ctx`) but reverted after it caused real decode corruption on the real test
-    ///   fixture (`real_fixture_key_frame_intra_modes_are_not_degenerate` started failing) --
-    ///   root cause traced to this crate's `tx_size` being a dimension-based *heuristic*
-    ///   (`TxSize::from_dimensions`, see below), not a real bitstream read: neighbor context is
-    ///   only meaningful when transform-block *boundaries* are accurate, which they aren't here.
-    ///   The flat CDF this replaced didn't care about tx boundaries at all, so this gap silently
-    ///   never mattered before -- real per-context reads exposed it. Both now use a fixed context
-    ///   (`0`) with real per-tx-size default CDF values (still an improvement over the old single
-    ///   flat representative CDF), leaving real neighbor derivation for a future session once
-    ///   real `tx_size()` reading exists.
+    /// - **No neighbor/level context for `coeff_base`/`coeff_br`**: real AV1 derives these from
+    ///   already-decoded neighbor coefficient levels within the same transform block's scan
+    ///   order -- still deferred, the single largest remaining piece (see
+    ///   `coeff_base_eob_context`'s doc for the one piece of this that *is* real).
+    ///   `eob_bin`/`eob_hi_bit`/`coeff_base_eob` use real context, like
+    ///   `skip`/`intra_mode`/`inter_mode`/`ref_frame` (see `CdfContext::new`'s doc). `txb_skip`/
+    ///   `dc_sign` **were previously** attempted with real above/left neighbor context and
+    ///   reverted after real decode corruption -- root-caused to this crate's `tx_size` being a
+    ///   dimension-based *heuristic* (`TxSize::from_dimensions`) rather than a real bitstream
+    ///   read, meaning transform-block *boundaries* (and thus neighbor-array indexing) didn't
+    ///   reliably match the real encoder's. Since `SymbolDecoder::read_tx_size` now provides a
+    ///   real read for key-frame, non-IntraBC coding units, real `txb_skip`/`dc_sign` neighbor
+    ///   context (`TileContext::txb_skip_context`/`dc_sign_context`/`set_residual_ctx`, ported
+    ///   from rav1d's `get_skip_ctx`/`get_dc_sign_ctx`) is wired back in for exactly that subset
+    ///   -- callers must pass `txb_skip_ctx`/`dc_sign_ctx` computed from real neighbor state only
+    ///   when the transform boundaries are trustworthy, and `0` (the old safe fallback)
+    ///   otherwise; see `parse_coding_unit`'s `use_real_residual_ctx` gate.
     /// - **`eob_extra` bits after the first are uniform literal bits**, not spec-exact CDF-coded
     ///   -- the real spec only context-codes the *first* extra bit (`eob_hi_bit`, real here); the
     ///   rest are genuinely literal per spec too, so this isn't a simplification for those.
@@ -753,10 +754,10 @@ impl<'a> SymbolDecoder<'a> {
     /// - **Golomb extension is a bounded, always-terminating read** (capped at 20 length bits) --
     ///   not necessarily bit-exact against the spec's `read_golomb`, but always produces a real,
     ///   finite level value.
-    /// - **No real `tx_size()` bitstream reads**: this crate's `CodingUnit.tx_size` is a
-    ///   dimension-based heuristic (`TxSize::from_dimensions`), not read from the bitstream (see
-    ///   its own doc) -- residual reading here reuses that same heuristic size, inheriting the
-    ///   same pre-existing gap rather than introducing a new one.
+    /// - **`tx_size()` is still a dimension-based heuristic for inter/IntraBC blocks**
+    ///   (`TxSize::from_dimensions`) -- only key-frame, non-IntraBC coding units get a real
+    ///   `tx_size()` bitstream read (`SymbolDecoder::read_tx_size`'s doc); residual reading here
+    ///   reuses whichever size the caller resolved, real or heuristic.
     /// - **Chroma-plane residual is never read at all** -- callers only invoke this for luma
     ///   transform blocks (a separate, previously undocumented gap found while re-scoping this
     ///   work, not fixed here -- every real CDF/context added in this pass hardcodes the
@@ -772,12 +773,14 @@ impl<'a> SymbolDecoder<'a> {
         &mut self,
         tx_size_px: u32,
         is_1d: bool,
+        txb_skip_ctx: u8,
+        dc_sign_ctx: u8,
     ) -> Result<ResidualBlockStats> {
         let tx_class = cdf::tx_size_class(tx_size_px);
 
-        // Context fixed at 0 -- see this method's doc for why real above/left context is
-        // reverted for now.
-        let txb_skip_cdf = self.cdf_context.get_txb_skip_cdf_mut(tx_class, 0);
+        let txb_skip_cdf = self
+            .cdf_context
+            .get_txb_skip_cdf_mut(tx_class, txb_skip_ctx);
         let all_zero = self.decoder.read_symbol_adaptive(txb_skip_cdf)? == 1;
         if all_zero {
             return Ok(ResidualBlockStats {
@@ -809,9 +812,6 @@ impl<'a> SymbolDecoder<'a> {
             all_zero: false,
             ..Default::default()
         };
-        // Context fixed at 0 -- see this method's doc for why real above/left context is
-        // reverted for now.
-        let dc_sign_ctx = 0;
 
         for c in (0..eob).rev() {
             let base_level = if c == eob - 1 {
@@ -838,7 +838,8 @@ impl<'a> SymbolDecoder<'a> {
             if level > 0 {
                 if c == 0 {
                     let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf_mut(dc_sign_ctx);
-                    self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
+                    let sign = self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
+                    stats.dc_sign_value = Some(sign);
                 } else {
                     self.decoder.read_bool(16384)?;
                 }
@@ -894,6 +895,11 @@ pub struct ResidualBlockStats {
     pub sum_abs_level: u64,
     /// Largest single coefficient level read.
     pub max_level: u16,
+    /// The raw `dc_sign` bit read for this block's DC coefficient (`Some(1)`=negative,
+    /// `Some(0)`=positive), or `None` if no `dc_sign` bit was read at all (`all_zero`, or the DC
+    /// position's level decoded to `0`) -- feeds `TileContext::set_residual_ctx`'s
+    /// `dc_sign_symbol` param, see its doc for the "neutral" convention this maps to.
+    pub dc_sign_value: Option<u8>,
 }
 
 #[cfg(test)]
