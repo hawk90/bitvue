@@ -198,27 +198,33 @@ pub struct CdfContext {
     /// read as literal (uniform) bits per spec, not CDF-coded.
     dc_sign_cdf: Vec<u16>,
 
-    /// Reference-frame selection CDFs -- see `SymbolDecoder::read_ref_frames`' doc for why these
-    /// are (like every other CDF in this struct) context-*independent* representative values, not
-    /// the real spec's neighbor/`reference_select`-adaptive Section 9.24 tables. Naming mirrors
-    /// AV1 spec 5.11.25's syntax element names (`single_ref_p1`..`p6`, `comp_ref_type`, etc.) so
-    /// the decision-tree structure in `read_ref_frames` is easy to cross-check against the spec.
-    comp_mode_cdf: Vec<u16>,
-    single_ref_p1_cdf: Vec<u16>,
-    single_ref_p2_cdf: Vec<u16>,
-    single_ref_p3_cdf: Vec<u16>,
-    single_ref_p4_cdf: Vec<u16>,
-    single_ref_p5_cdf: Vec<u16>,
-    single_ref_p6_cdf: Vec<u16>,
-    comp_ref_type_cdf: Vec<u16>,
-    uni_comp_ref_cdf: Vec<u16>,
-    uni_comp_ref_p1_cdf: Vec<u16>,
-    uni_comp_ref_p2_cdf: Vec<u16>,
-    comp_ref_cdf: Vec<u16>,
-    comp_ref_p1_cdf: Vec<u16>,
-    comp_ref_p2_cdf: Vec<u16>,
-    comp_bwdref_cdf: Vec<u16>,
-    comp_bwdref_p1_cdf: Vec<u16>,
+    /// Reference-frame selection CDFs, indexed by real above/left neighbor context (see
+    /// `crate::tile::TileContext`'s `comp_mode_context`/`comp_ref_type_context`/
+    /// `single_ref_p*_context`/`uni_comp_ref_p1_context` methods). Real spec/rav1d default values
+    /// (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`'s `comp`/`comp_dir`/`r#ref`/
+    /// `comp_fwd_ref`/`comp_bwd_ref`/`comp_uni_ref` fields) and real per-context adaptation, like
+    /// `skip_cdf`/`kfym`/the `partition_cdfs` -- not a "representative" placeholder. Naming
+    /// mirrors AV1 spec 5.11.25's syntax element names (`single_ref_p1`..`p6`, `comp_ref_type`,
+    /// etc.) so the decision-tree structure in `read_ref_frames` is easy to cross-check against
+    /// the spec. `comp_mode`/`comp_ref_type` have 5 contexts (`get_comp_ctx`/`get_comp_dir_ctx`
+    /// return 0..=4); every other table here has 3 (the `cmp_counts`-derived context functions
+    /// return 0..=2).
+    comp_mode_cdf: [Vec<u16>; 5],
+    single_ref_p1_cdf: [Vec<u16>; 3],
+    single_ref_p2_cdf: [Vec<u16>; 3],
+    single_ref_p3_cdf: [Vec<u16>; 3],
+    single_ref_p4_cdf: [Vec<u16>; 3],
+    single_ref_p5_cdf: [Vec<u16>; 3],
+    single_ref_p6_cdf: [Vec<u16>; 3],
+    comp_ref_type_cdf: [Vec<u16>; 5],
+    uni_comp_ref_cdf: [Vec<u16>; 3],
+    uni_comp_ref_p1_cdf: [Vec<u16>; 3],
+    uni_comp_ref_p2_cdf: [Vec<u16>; 3],
+    comp_ref_cdf: [Vec<u16>; 3],
+    comp_ref_p1_cdf: [Vec<u16>; 3],
+    comp_ref_p2_cdf: [Vec<u16>; 3],
+    comp_bwdref_cdf: [Vec<u16>; 3],
+    comp_bwdref_p1_cdf: [Vec<u16>; 3],
 
     /// `use_intrabc` (spec 5.11.6) -- intra block copy flag, read for intra-frame blocks only
     /// when the frame header's `allow_intrabc` is set (rare, screen-content-coding use case).
@@ -230,6 +236,13 @@ pub struct CdfContext {
 /// hand-picked-bias style every other CDF in this file uses (see `skip_cdf`).
 fn binary_cdf(p0: f32) -> Vec<u16> {
     to_descending(&[0, (CDF_SCALE as f32 * p0) as u16, CDF_SCALE])
+}
+
+/// Build a 2-symbol CDF from a raw rav1d default probability (`0..=CDF_SCALE`, already the real
+/// spec value -- not a hand-picked fraction like `binary_cdf` takes). Same descending-threshold +
+/// adaptation-count-slot shape as `skip_cdf`'s per-context entries (see that field's doc).
+fn binary_ctx_cdf(raw_prob: u16) -> Vec<u16> {
+    vec![CDF_SCALE - raw_prob, 0, 0]
 }
 
 /// Convert an ascending CDF (this crate's older convention: `cdf[0]=0 .. cdf[n]=CDF_SCALE`, still
@@ -639,24 +652,29 @@ impl CdfContext {
         // dc_sign: uniform (no real reason to bias this).
         let dc_sign_cdf = to_descending(&[0, CDF_SCALE / 2, CDF_SCALE]);
 
-        // Reference-frame selection: biased toward the statistically common case (single-ref,
-        // recent LAST-group frames) at every branch -- see `read_ref_frames`' doc.
-        let comp_mode_cdf = binary_cdf(0.85); // single: 85%, compound: 15%
-        let single_ref_p1_cdf = binary_cdf(0.70); // forward group: 70%, backward group: 30%
-        let single_ref_p2_cdf = binary_cdf(0.50); // (backward) BWDREF/ALTREF2 group vs ALTREF
-        let single_ref_p3_cdf = binary_cdf(0.70); // (forward) LAST/LAST2 group vs LAST3/GOLDEN
-        let single_ref_p4_cdf = binary_cdf(0.80); // LAST vs LAST2
-        let single_ref_p5_cdf = binary_cdf(0.50); // LAST3 vs GOLDEN
-        let single_ref_p6_cdf = binary_cdf(0.50); // BWDREF vs ALTREF2
-        let comp_ref_type_cdf = binary_cdf(0.30); // unidirectional: 30%, bidirectional: 70%
-        let uni_comp_ref_cdf = binary_cdf(0.85); // LAST-group pair vs (BWDREF, ALTREF)
-        let uni_comp_ref_p1_cdf = binary_cdf(0.70); // (LAST, LAST2) vs (LAST, LAST3/GOLDEN)
-        let uni_comp_ref_p2_cdf = binary_cdf(0.50); // LAST3 vs GOLDEN
-        let comp_ref_cdf = binary_cdf(0.70); // forward ref: LAST/LAST2 group vs LAST3/GOLDEN
-        let comp_ref_p1_cdf = binary_cdf(0.80); // LAST vs LAST2
-        let comp_ref_p2_cdf = binary_cdf(0.50); // LAST3 vs GOLDEN
-        let comp_bwdref_cdf = binary_cdf(0.60); // backward ref: BWDREF/ALTREF2 group vs ALTREF
-        let comp_bwdref_p1_cdf = binary_cdf(0.50); // BWDREF vs ALTREF2
+        // Reference-frame selection: real spec/rav1d default probabilities (`memorysafety/rav1d`,
+        // BSD-2-Clause, `src/cdf.rs`'s `comp`/`comp_dir`/`r#ref`/`comp_fwd_ref`/`comp_bwd_ref`/
+        // `comp_uni_ref` fields), one raw prob per context -- same `32768 - p` transform as
+        // `skip_cdf` (see that field's doc), applied per-context via `binary_ctx_cdf`. Context
+        // derivation: `crate::tile::TileContext`'s `comp_mode_context`/`comp_ref_type_context`/
+        // `single_ref_p*_context`/`uni_comp_ref_p1_context` (mirrors rav1d's `get_comp_ctx`/
+        // `get_comp_dir_ctx`/`av1_get_*_ctx`/`av1_get_uni_p1_ctx`, `src/env.rs`).
+        let comp_mode_cdf = [26828, 24035, 12031, 10640, 2901].map(binary_ctx_cdf);
+        let comp_ref_type_cdf = [1198, 2070, 9166, 7499, 22475].map(binary_ctx_cdf);
+        let single_ref_p1_cdf = [4897, 16973, 29744].map(binary_ctx_cdf);
+        let single_ref_p2_cdf = [1555, 16751, 30279].map(binary_ctx_cdf);
+        let single_ref_p3_cdf = [4236, 19647, 31194].map(binary_ctx_cdf);
+        let single_ref_p4_cdf = [8650, 24773, 31895].map(binary_ctx_cdf);
+        let single_ref_p5_cdf = [904, 11014, 26875].map(binary_ctx_cdf);
+        let single_ref_p6_cdf = [1444, 15087, 30304].map(binary_ctx_cdf);
+        let comp_ref_cdf = [4946, 19891, 30731].map(binary_ctx_cdf);
+        let comp_ref_p1_cdf = [9468, 22441, 31059].map(binary_ctx_cdf);
+        let comp_ref_p2_cdf = [1503, 15160, 27544].map(binary_ctx_cdf);
+        let comp_bwdref_cdf = [2235, 17182, 30606].map(binary_ctx_cdf);
+        let comp_bwdref_p1_cdf = [1423, 15175, 30489].map(binary_ctx_cdf);
+        let uni_comp_ref_cdf = [5284, 23152, 31774].map(binary_ctx_cdf);
+        let uni_comp_ref_p1_cdf = [3865, 14173, 25120].map(binary_ctx_cdf);
+        let uni_comp_ref_p2_cdf = [3128, 15270, 26710].map(binary_ctx_cdf);
 
         // use_intrabc: rare (screen-content-coding only), heavily biased toward false.
         let use_intrabc_cdf = binary_cdf(0.97);
@@ -829,69 +847,81 @@ impl CdfContext {
         &self.dc_sign_cdf
     }
 
-    /// Get `comp_mode` CDF (single-reference vs compound prediction).
-    pub fn get_comp_mode_cdf(&self) -> &[u16] {
-        &self.comp_mode_cdf
+    /// Get `comp_mode` CDF (single-reference vs compound prediction), real context (0..=4, see
+    /// `crate::tile::TileContext::comp_mode_context`) + adaptation, like `get_skip_cdf_mut`.
+    pub fn get_comp_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.comp_mode_cdf[(ctx as usize).min(4)]
     }
-    /// Get `single_ref_p1` CDF (forward vs backward reference group).
-    pub fn get_single_ref_p1_cdf(&self) -> &[u16] {
-        &self.single_ref_p1_cdf
+    /// Get `single_ref_p1` CDF (forward vs backward reference group), real context (0..=2, see
+    /// `crate::tile::TileContext::single_ref_p1_context`) + adaptation.
+    pub fn get_single_ref_p1_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.single_ref_p1_cdf[(ctx as usize).min(2)]
     }
-    /// Get `single_ref_p2` CDF (BWDREF/ALTREF2 group vs ALTREF, backward branch).
-    pub fn get_single_ref_p2_cdf(&self) -> &[u16] {
-        &self.single_ref_p2_cdf
+    /// Get `single_ref_p2` CDF (BWDREF/ALTREF2 group vs ALTREF, backward branch), real context.
+    pub fn get_single_ref_p2_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.single_ref_p2_cdf[(ctx as usize).min(2)]
     }
-    /// Get `single_ref_p3` CDF (LAST/LAST2 group vs LAST3/GOLDEN group, forward branch).
-    pub fn get_single_ref_p3_cdf(&self) -> &[u16] {
-        &self.single_ref_p3_cdf
+    /// Get `single_ref_p3` CDF (LAST/LAST2 group vs LAST3/GOLDEN group, forward branch), real
+    /// context.
+    pub fn get_single_ref_p3_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.single_ref_p3_cdf[(ctx as usize).min(2)]
     }
-    /// Get `single_ref_p4` CDF (LAST vs LAST2).
-    pub fn get_single_ref_p4_cdf(&self) -> &[u16] {
-        &self.single_ref_p4_cdf
+    /// Get `single_ref_p4` CDF (LAST vs LAST2), real context.
+    pub fn get_single_ref_p4_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.single_ref_p4_cdf[(ctx as usize).min(2)]
     }
-    /// Get `single_ref_p5` CDF (LAST3 vs GOLDEN).
-    pub fn get_single_ref_p5_cdf(&self) -> &[u16] {
-        &self.single_ref_p5_cdf
+    /// Get `single_ref_p5` CDF (LAST3 vs GOLDEN), real context.
+    pub fn get_single_ref_p5_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.single_ref_p5_cdf[(ctx as usize).min(2)]
     }
-    /// Get `single_ref_p6` CDF (BWDREF vs ALTREF2).
-    pub fn get_single_ref_p6_cdf(&self) -> &[u16] {
-        &self.single_ref_p6_cdf
+    /// Get `single_ref_p6` CDF (BWDREF vs ALTREF2), real context.
+    pub fn get_single_ref_p6_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.single_ref_p6_cdf[(ctx as usize).min(2)]
     }
-    /// Get `comp_ref_type` CDF (unidirectional vs bidirectional compound reference).
-    pub fn get_comp_ref_type_cdf(&self) -> &[u16] {
-        &self.comp_ref_type_cdf
+    /// Get `comp_ref_type` CDF (unidirectional vs bidirectional compound reference), real context
+    /// (0..=4, see `crate::tile::TileContext::comp_ref_type_context`).
+    pub fn get_comp_ref_type_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.comp_ref_type_cdf[(ctx as usize).min(4)]
     }
-    /// Get `uni_comp_ref` CDF ((LAST,LAST2)/(LAST,LAST3-or-GOLDEN) pair vs (BWDREF,ALTREF)).
-    pub fn get_uni_comp_ref_cdf(&self) -> &[u16] {
-        &self.uni_comp_ref_cdf
+    /// Get `uni_comp_ref` CDF ((LAST,LAST2)/(LAST,LAST3-or-GOLDEN) pair vs (BWDREF,ALTREF)), real
+    /// context (reuses `single_ref_p1_context`'s formula per rav1d, see `read_ref_frames`).
+    pub fn get_uni_comp_ref_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.uni_comp_ref_cdf[(ctx as usize).min(2)]
     }
-    /// Get `uni_comp_ref_p1` CDF ((LAST,LAST2) vs (LAST,LAST3-or-GOLDEN)).
-    pub fn get_uni_comp_ref_p1_cdf(&self) -> &[u16] {
-        &self.uni_comp_ref_p1_cdf
+    /// Get `uni_comp_ref_p1` CDF ((LAST,LAST2) vs (LAST,LAST3-or-GOLDEN)), real context (see
+    /// `crate::tile::TileContext::uni_comp_ref_p1_context`).
+    pub fn get_uni_comp_ref_p1_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.uni_comp_ref_p1_cdf[(ctx as usize).min(2)]
     }
-    /// Get `uni_comp_ref_p2` CDF (LAST3 vs GOLDEN, second slot of the unidirectional pair).
-    pub fn get_uni_comp_ref_p2_cdf(&self) -> &[u16] {
-        &self.uni_comp_ref_p2_cdf
+    /// Get `uni_comp_ref_p2` CDF (LAST3 vs GOLDEN, second slot of the unidirectional pair), real
+    /// context (reuses `single_ref_p5_context`'s formula per rav1d).
+    pub fn get_uni_comp_ref_p2_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.uni_comp_ref_p2_cdf[(ctx as usize).min(2)]
     }
-    /// Get `comp_ref` CDF (forward group choice, bidirectional compound).
-    pub fn get_comp_ref_cdf(&self) -> &[u16] {
-        &self.comp_ref_cdf
+    /// Get `comp_ref` CDF (forward group choice, bidirectional compound), real context (reuses
+    /// `single_ref_p3_context`'s formula per rav1d).
+    pub fn get_comp_ref_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.comp_ref_cdf[(ctx as usize).min(2)]
     }
-    /// Get `comp_ref_p1` CDF (LAST vs LAST2, bidirectional compound forward ref).
-    pub fn get_comp_ref_p1_cdf(&self) -> &[u16] {
-        &self.comp_ref_p1_cdf
+    /// Get `comp_ref_p1` CDF (LAST vs LAST2, bidirectional compound forward ref), real context
+    /// (reuses `single_ref_p4_context`'s formula per rav1d).
+    pub fn get_comp_ref_p1_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.comp_ref_p1_cdf[(ctx as usize).min(2)]
     }
-    /// Get `comp_ref_p2` CDF (LAST3 vs GOLDEN, bidirectional compound forward ref).
-    pub fn get_comp_ref_p2_cdf(&self) -> &[u16] {
-        &self.comp_ref_p2_cdf
+    /// Get `comp_ref_p2` CDF (LAST3 vs GOLDEN, bidirectional compound forward ref), real context
+    /// (reuses `single_ref_p5_context`'s formula per rav1d).
+    pub fn get_comp_ref_p2_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.comp_ref_p2_cdf[(ctx as usize).min(2)]
     }
-    /// Get `comp_bwdref` CDF (backward group choice, bidirectional compound).
-    pub fn get_comp_bwdref_cdf(&self) -> &[u16] {
-        &self.comp_bwdref_cdf
+    /// Get `comp_bwdref` CDF (backward group choice, bidirectional compound), real context
+    /// (reuses `single_ref_p2_context`'s formula per rav1d).
+    pub fn get_comp_bwdref_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.comp_bwdref_cdf[(ctx as usize).min(2)]
     }
-    /// Get `comp_bwdref_p1` CDF (BWDREF vs ALTREF2, bidirectional compound backward ref).
-    pub fn get_comp_bwdref_p1_cdf(&self) -> &[u16] {
-        &self.comp_bwdref_p1_cdf
+    /// Get `comp_bwdref_p1` CDF (BWDREF vs ALTREF2, bidirectional compound backward ref), real
+    /// context (reuses `single_ref_p6_context`'s formula per rav1d).
+    pub fn get_comp_bwdref_p1_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.comp_bwdref_p1_cdf[(ctx as usize).min(2)]
     }
     /// Get `use_intrabc` CDF (intra block copy flag).
     pub fn get_use_intrabc_cdf(&self) -> &[u16] {

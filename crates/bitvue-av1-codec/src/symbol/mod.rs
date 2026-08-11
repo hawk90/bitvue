@@ -164,40 +164,55 @@ impl<'a> SymbolDecoder<'a> {
     /// additionally requires `Min(bw4, bh4) >= 2` per spec, i.e. at least 8px in the smaller
     /// dimension.
     ///
-    /// Uses representative (non-adaptive) CDFs like every other `read_*` method in this decoder
-    /// -- see `CdfContext`'s ref-frame CDF fields' doc. Real per-block *mode* reading for
-    /// compound blocks (`compound_mode`, a different/larger symbol alphabet than this decoder's
-    /// 4-way `read_inter_mode`) and compound motion-vector-difference reading are **not**
-    /// implemented -- callers still read a single-ref-shaped mode/MV for compound blocks
-    /// afterwards, an existing, unchanged approximation this method doesn't attempt to fix. Only
-    /// `ref_frame[0]`/`ref_frame[1]`'s categorical values (and the entropy-decoder bit
-    /// consumption needed to reach them correctly) are new.
+    /// Real per-context CDFs (`CdfContext`'s ref-frame CDF fields' doc) and real adaptation via
+    /// `read_symbol_adaptive`, matching `read_skip`/`read_intra_mode`/`read_partition`'s bar --
+    /// context comes from `tile_ctx` at absolute 4x4 position `(x4, y4)` (see
+    /// `crate::tile::TileContext`'s `comp_mode_context`/`comp_ref_type_context`/
+    /// `single_ref_p*_context`/`uni_comp_ref_p1_context` methods, ported from rav1d's
+    /// `get_comp_ctx`/`get_comp_dir_ctx`/`av1_get_*_ctx`/`av1_get_uni_p1_ctx`). The caller is
+    /// still responsible for writing the result back via `tile_ctx.set_ref_frames` -- this method
+    /// only reads, matching `read_skip`/`read_intra_mode`'s split (context lookup and context
+    /// write live in `TileContext`, not here).
+    ///
+    /// Real per-block *mode* reading for compound blocks (`compound_mode`, a different/larger
+    /// symbol alphabet than this decoder's 4-way `read_inter_mode`) and compound motion-vector-
+    /// difference reading are **not** implemented -- callers still read a single-ref-shaped
+    /// mode/MV for compound blocks afterwards, an existing, unchanged approximation this method
+    /// doesn't attempt to fix. Only `ref_frame[0]`/`ref_frame[1]`'s categorical values (and the
+    /// entropy-decoder bit consumption needed to reach them correctly) are real.
     pub fn read_ref_frames(
         &mut self,
+        tile_ctx: &crate::tile::TileContext,
+        x4: u32,
+        y4: u32,
         reference_select: bool,
         min_block_dim_px: u32,
     ) -> Result<[crate::tile::RefFrame; 2]> {
         use crate::tile::RefFrame;
 
         let is_compound = if reference_select && min_block_dim_px >= 8 {
-            let cdf = self.cdf_context.get_comp_mode_cdf();
-            self.decoder.read_symbol(cdf)? == 1
+            let ctx = tile_ctx.comp_mode_context(x4, y4);
+            let cdf = self.cdf_context.get_comp_mode_cdf_mut(ctx);
+            self.decoder.read_symbol_adaptive(cdf)? == 1
         } else {
             false
         };
 
         if !is_compound {
-            let cdf = self.cdf_context.get_single_ref_p1_cdf();
-            let backward = self.decoder.read_symbol(cdf)? == 1;
+            let ctx = tile_ctx.single_ref_p1_context(x4, y4);
+            let cdf = self.cdf_context.get_single_ref_p1_cdf_mut(ctx);
+            let backward = self.decoder.read_symbol_adaptive(cdf)? == 1;
 
             let ref0 = if backward {
-                let cdf = self.cdf_context.get_single_ref_p2_cdf();
-                let is_altref = self.decoder.read_symbol(cdf)? == 1;
+                let ctx = tile_ctx.single_ref_p2_context(x4, y4);
+                let cdf = self.cdf_context.get_single_ref_p2_cdf_mut(ctx);
+                let is_altref = self.decoder.read_symbol_adaptive(cdf)? == 1;
                 if is_altref {
                     RefFrame::AltRef
                 } else {
-                    let cdf = self.cdf_context.get_single_ref_p6_cdf();
-                    let is_altref2 = self.decoder.read_symbol(cdf)? == 1;
+                    let ctx = tile_ctx.single_ref_p6_context(x4, y4);
+                    let cdf = self.cdf_context.get_single_ref_p6_cdf_mut(ctx);
+                    let is_altref2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
                     if is_altref2 {
                         RefFrame::AltRef2
                     } else {
@@ -205,19 +220,22 @@ impl<'a> SymbolDecoder<'a> {
                     }
                 }
             } else {
-                let cdf = self.cdf_context.get_single_ref_p3_cdf();
-                let last3_or_golden = self.decoder.read_symbol(cdf)? == 1;
+                let ctx = tile_ctx.single_ref_p3_context(x4, y4);
+                let cdf = self.cdf_context.get_single_ref_p3_cdf_mut(ctx);
+                let last3_or_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
                 if last3_or_golden {
-                    let cdf = self.cdf_context.get_single_ref_p5_cdf();
-                    let is_golden = self.decoder.read_symbol(cdf)? == 1;
+                    let ctx = tile_ctx.single_ref_p5_context(x4, y4);
+                    let cdf = self.cdf_context.get_single_ref_p5_cdf_mut(ctx);
+                    let is_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
                     if is_golden {
                         RefFrame::Golden
                     } else {
                         RefFrame::Last3
                     }
                 } else {
-                    let cdf = self.cdf_context.get_single_ref_p4_cdf();
-                    let is_last2 = self.decoder.read_symbol(cdf)? == 1;
+                    let ctx = tile_ctx.single_ref_p4_context(x4, y4);
+                    let cdf = self.cdf_context.get_single_ref_p4_cdf_mut(ctx);
+                    let is_last2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
                     if is_last2 {
                         RefFrame::Last2
                     } else {
@@ -228,47 +246,60 @@ impl<'a> SymbolDecoder<'a> {
             return Ok([ref0, RefFrame::Intra]);
         }
 
-        let cdf = self.cdf_context.get_comp_ref_type_cdf();
-        let is_bidir = self.decoder.read_symbol(cdf)? == 1;
+        let ctx = tile_ctx.comp_ref_type_context(x4, y4);
+        let cdf = self.cdf_context.get_comp_ref_type_cdf_mut(ctx);
+        let is_bidir = self.decoder.read_symbol_adaptive(cdf)? == 1;
 
         if !is_bidir {
-            // Unidirectional compound: both references from the same "direction" group.
-            let cdf = self.cdf_context.get_uni_comp_ref_cdf();
-            let is_bwdref_altref = self.decoder.read_symbol(cdf)? == 1;
+            // Unidirectional compound: both references from the same "direction" group. Context
+            // functions are reused from the single-ref path (rav1d: `av1_get_ref_ctx` for
+            // `uni_comp_ref`, `av1_get_uni_p1_ctx` for `uni_comp_ref_p1`, `av1_get_fwd_ref_2_ctx`
+            // for `uni_comp_ref_p2`) even though the CDF storage is separate.
+            let ctx = tile_ctx.single_ref_p1_context(x4, y4);
+            let cdf = self.cdf_context.get_uni_comp_ref_cdf_mut(ctx);
+            let is_bwdref_altref = self.decoder.read_symbol_adaptive(cdf)? == 1;
             if is_bwdref_altref {
                 return Ok([RefFrame::BwdRef, RefFrame::AltRef]);
             }
-            let cdf = self.cdf_context.get_uni_comp_ref_p1_cdf();
-            let p1 = self.decoder.read_symbol(cdf)? == 1;
+            let ctx = tile_ctx.uni_comp_ref_p1_context(x4, y4);
+            let cdf = self.cdf_context.get_uni_comp_ref_p1_cdf_mut(ctx);
+            let p1 = self.decoder.read_symbol_adaptive(cdf)? == 1;
             if !p1 {
                 return Ok([RefFrame::Last, RefFrame::Last2]);
             }
-            let cdf = self.cdf_context.get_uni_comp_ref_p2_cdf();
-            let p2 = self.decoder.read_symbol(cdf)? == 1;
+            let ctx = tile_ctx.single_ref_p5_context(x4, y4);
+            let cdf = self.cdf_context.get_uni_comp_ref_p2_cdf_mut(ctx);
+            let is_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
             return Ok([
                 RefFrame::Last,
-                if p2 {
-                    RefFrame::Last3
-                } else {
+                if is_golden {
                     RefFrame::Golden
+                } else {
+                    RefFrame::Last3
                 },
             ]);
         }
 
-        // Bidirectional compound: independent forward + backward group choices.
-        let cdf = self.cdf_context.get_comp_ref_cdf();
-        let fwd_group_b = self.decoder.read_symbol(cdf)? == 1;
+        // Bidirectional compound: independent forward + backward group choices. Context functions
+        // reused from the single-ref path (rav1d: `av1_get_fwd_ref_ctx`/`_1_ctx`/`_2_ctx` for
+        // `comp_ref`/`comp_ref_p1`/`comp_ref_p2`, `av1_get_bwd_ref_ctx`/`_1_ctx` for
+        // `comp_bwdref`/`comp_bwdref_p1`).
+        let ctx = tile_ctx.single_ref_p3_context(x4, y4);
+        let cdf = self.cdf_context.get_comp_ref_cdf_mut(ctx);
+        let fwd_group_b = self.decoder.read_symbol_adaptive(cdf)? == 1;
         let ref0 = if !fwd_group_b {
-            let cdf = self.cdf_context.get_comp_ref_p1_cdf();
-            let is_last2 = self.decoder.read_symbol(cdf)? == 1;
+            let ctx = tile_ctx.single_ref_p4_context(x4, y4);
+            let cdf = self.cdf_context.get_comp_ref_p1_cdf_mut(ctx);
+            let is_last2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
             if is_last2 {
                 RefFrame::Last2
             } else {
                 RefFrame::Last
             }
         } else {
-            let cdf = self.cdf_context.get_comp_ref_p2_cdf();
-            let is_golden = self.decoder.read_symbol(cdf)? == 1;
+            let ctx = tile_ctx.single_ref_p5_context(x4, y4);
+            let cdf = self.cdf_context.get_comp_ref_p2_cdf_mut(ctx);
+            let is_golden = self.decoder.read_symbol_adaptive(cdf)? == 1;
             if is_golden {
                 RefFrame::Golden
             } else {
@@ -276,11 +307,13 @@ impl<'a> SymbolDecoder<'a> {
             }
         };
 
-        let cdf = self.cdf_context.get_comp_bwdref_cdf();
-        let bwd_group_b = self.decoder.read_symbol(cdf)? == 1;
+        let ctx = tile_ctx.single_ref_p2_context(x4, y4);
+        let cdf = self.cdf_context.get_comp_bwdref_cdf_mut(ctx);
+        let bwd_group_b = self.decoder.read_symbol_adaptive(cdf)? == 1;
         let ref1 = if !bwd_group_b {
-            let cdf = self.cdf_context.get_comp_bwdref_p1_cdf();
-            let is_altref2 = self.decoder.read_symbol(cdf)? == 1;
+            let ctx = tile_ctx.single_ref_p6_context(x4, y4);
+            let cdf = self.cdf_context.get_comp_bwdref_p1_cdf_mut(ctx);
+            let is_altref2 = self.decoder.read_symbol_adaptive(cdf)? == 1;
             if is_altref2 {
                 RefFrame::AltRef2
             } else {

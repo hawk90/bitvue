@@ -525,11 +525,25 @@ pub fn parse_coding_unit(
         cu.mode = intra_mode_from_symbol(mode_symbol)?;
         tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, mode_symbol);
     } else {
-        // ref_frame() (spec 5.11.25) -- read before mode, matching real spec order (this
-        // decoder's CDFs are all non-adaptive/representative, so unlike a real spec-exact
-        // decoder, this reordering doesn't affect correctness -- see read_ref_frames' doc).
-        cu.ref_frames = decoder.read_ref_frames(reference_select, width.min(height))?;
+        // ref_frame() (spec 5.11.25) -- real per-context CDF + adaptation, see
+        // `SymbolDecoder::read_ref_frames`'s doc.
+        cu.ref_frames =
+            decoder.read_ref_frames(tile_ctx, x4, y4, reference_select, width.min(height))?;
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
+        tile_ctx.set_ref_frames(
+            x4,
+            y4,
+            width_4x4,
+            height_4x4,
+            false, // never intra -- this decoder doesn't read intra blocks within inter frames
+            is_compound,
+            cu.ref_frames[0] as i8 - 1,
+            if is_compound {
+                cu.ref_frames[1] as i8 - 1
+            } else {
+                -1
+            },
+        );
 
         if is_compound {
             // compound_mode() (spec 5.11.24) -- a distinct 8-symbol alphabet from the single-ref
