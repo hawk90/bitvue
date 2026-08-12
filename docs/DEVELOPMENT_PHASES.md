@@ -1746,6 +1746,19 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
     var-tx(같은 스키마, 아직 안 걸림), 크로마의 비정사각 지원(루마만 이번에 확장, 크로마 잔차
     리더는 여전히 정사각 전용).
 
+- **IntraBC var-tx 배선 완료, 단 실측 미검증(2026-08-12, `4269a06`)**: 사용자 지시로 착수. rav1d
+  `src/decode.c`를 직접 대조해서 확인: `b->intra = !intrabc_flag`(1043행) — IntraBC 블록은
+  인트라 프레임 안에서 코딩됨에도 spec의 `read_block_tx_size()` 게이팅 목적으로는 `is_inter`로
+  분류되고, `read_vartx_tree`가 실제 인터 블록과 완전히 동일한 호출부(1352행)에서 호출됨을
+  확인 — 기존 크레이트 주석의 "spec이 인터처럼 재귀 트리로 라우팅한다"는 claim이 맞았음. 인터용
+  `compute_inter_tx_blocks`를 IntraBC 경로에 그대로 재사용(신규 파싱 로직 없음, 라우팅만 변경).
+  **검증 한계**: 유일한 실측 fixture(`test_data/av1_test.ivf`)가 `use_intrabc=true`인 CU를
+  0/1676개 가짐(재확인) — `allow_screen_content_tools`가 이 클립에서 한 번도 켜지지 않는 희귀
+  플래그라 segment_id/palette와 같은 급의 "실측 불가" 상황. 다만 이번 건은 이미 실측검증된
+  `compute_inter_tx_blocks`를 그대로 재사용하는 순수 라우팅 변경이라 신규 파싱 로직을 통째로
+  검증 없이 추가하는 것보다는 리스크가 낮다고 판단해 진행(사용자 지시). 코드/문서에 검증 한계
+  명시. 스크린 콘텐츠 테스트 클립이 생기면 최우선 재검증 대상.
+
 ---
 
 ## Phase 5: AVS3 지원 구현 🟡 (2026-08-10 재감사 — 크레이트/파서/렌더러 존재, 제품 미연결)
