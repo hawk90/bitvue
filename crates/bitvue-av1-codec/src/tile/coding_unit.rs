@@ -448,11 +448,12 @@ pub struct CodingUnit {
 
     /// Real per-leaf transform block breakdown from `read_var_tx_size` (spec 5.11.17/18), when
     /// available -- genuinely rectangular leaves supported (`TxBlock`'s doc), not just square.
-    /// `Some` only for non-`skip`, non-IntraBC INTER coding units (`compute_inter_tx_blocks`'s
-    /// doc for the exact width/height range). `None` elsewhere (intra, IntraBC, skip, or
-    /// oversized CUs): those still use the older uniform `tx_size`-tiled grid
-    /// (`width.div_ceil(tx_size.size())` etc, see `parse_coding_unit`'s residual loop) -- a
-    /// heuristic, not a real bitstream read, for exactly those CUs.
+    /// `Some` for non-`skip` INTER coding units *and* IntraBC coding units (real spec routes both
+    /// through the same recursive `read_var_tx_size()` tree, see `compute_inter_tx_blocks`'s doc)
+    /// within its width/height range. `None` elsewhere (regular intra, skip, or oversized CUs):
+    /// those still use the older uniform `tx_size`-tiled grid (`width.div_ceil(tx_size.size())`
+    /// etc, see `parse_coding_unit`'s residual loop) -- a heuristic, not a real bitstream read,
+    /// for exactly those CUs.
     pub tx_blocks: Option<Vec<TxBlock>>,
 
     /// QP value (quantization parameter)
@@ -599,10 +600,13 @@ pub fn parse_coding_unit(
         y_mode_raw = mode_symbol;
 
         // tx_size() (spec 5.11.15/16) -- real per-context CDF + adaptation, see
-        // `SymbolDecoder::read_tx_size`'s doc. IntraBC blocks are excluded: real spec routes
-        // them through the recursive `read_var_tx_size()` tree (like inter blocks), which this
-        // crate doesn't implement yet -- they keep the existing `TxSize::from_dimensions`
-        // heuristic unchanged, same as the `else` (inter) branch below.
+        // `SymbolDecoder::read_tx_size`'s doc. IntraBC is excluded from *this* single-size read:
+        // real spec's `read_block_tx_size()` gates the recursive `read_var_tx_size()` tree on
+        // `is_inter`, and dav1d's own block-mode dispatch (`b->intra = !intrabc_flag`, verified
+        // directly against `src/decode.c`, not assumed) confirms IntraBC blocks are classified
+        // `is_inter` for this purpose despite being coded within an intra frame -- real
+        // `read_vartx_tree` is called for them identically to real inter blocks (`compute_inter_
+        // tx_blocks`, below), not this heuristic-single-size path.
         if !cu.use_intrabc {
             let max_tx_class = cu.tx_size as u8; // from_dimensions's heuristic starting point
             let resolved_class = if tx_type_flags.coded_lossless {
@@ -619,6 +623,29 @@ pub fn parse_coding_unit(
             };
             cu.tx_size = TxSize::from_class(resolved_class);
             tile_ctx.set_tx_class(x4, y4, width_4x4, height_4x4, resolved_class);
+        } else {
+            // Verification caveat (unlike every other real-context piece landed this session):
+            // this crate's only real fixture (`test_data/av1_test.ivf`) has zero `use_intrabc`
+            // CUs (0/1676, confirmed) -- `allow_screen_content_tools` is a rare screen-content
+            // flag this clip never sets. This branch is spec/rav1d-verified (see above) but
+            // *not* real-fixture-verified like the rest of this crate's entropy-decode work; it
+            // reuses `compute_inter_tx_blocks` exactly as written for real inter CUs (already
+            // real-fixture-verified there), so the risk is narrower than a from-scratch parser,
+            // but genuinely exercising it needs a screen-content test clip this session doesn't
+            // have (same class of gap as segment_id/palette, see `DEVELOPMENT_PHASES.md`).
+            cu.tx_blocks = compute_inter_tx_blocks(
+                decoder,
+                tile_ctx,
+                x,
+                y,
+                width,
+                height,
+                cu.skip,
+                tx_type_flags.coded_lossless,
+                tx_type_flags.txfm_mode,
+                mi_rows,
+                mi_cols,
+            )?;
         }
     } else {
         // ref_frame() (spec 5.11.25) -- real per-context CDF + adaptation, see
@@ -834,7 +861,7 @@ pub fn parse_coding_unit(
                 .collect()
         };
         // Real `txb_skip`/`dc_sign` neighbor context is only trustworthy where transform-block
-        // boundaries are real (key-frame non-IntraBC via `tx_size()`, or inter via real
+        // boundaries are real (regular key-frame intra via `tx_size()`, or inter/IntraBC via real
         // `tx_blocks` -- both real bitstream-derived boundaries); other CUs keep the
         // fixed-context-0 fallback and never touch `tile_ctx`'s residual arrays, matching
         // `SymbolDecoder::read_residual_block`'s doc.
@@ -962,18 +989,17 @@ pub fn parse_coding_unit(
 }
 
 /// Compute the real (or, for non-`Switchable` `TxMode`s, deterministic-no-read) transform block
-/// breakdown for one INTER coding unit -- spec 5.11.16's `read_block_tx_size()`. Supports
-/// genuinely rectangular coding units (real `Max_Tx_Size_Rect`, not this crate's older
-/// square-only `TxSize::from_dimensions` heuristic) -- verified against rav1d's
-/// `dav1d_max_txfm_size_for_bs` table (`src/tables.c`) directly: for every real AV1 block size up
-/// to 64 in each axis, the natural starting max transform size is simply the block's own size
-/// (real var-tx recursion, not this table, is what performs any further splitting); only block
-/// sizes wider or taller than 64 (128-wide/tall) cap that axis at 64 (spec: no transform exceeds
-/// 64x64). Hence `max_ytx = (width.min(64), height.min(64))` -- no lookup table needed, unlike
-/// what an earlier pass expected. Not extended to IntraBC: IntraBC also uses this same recursive
-/// reader per spec, but this crate's intra-branch tx_size() handling (`755267d`) never routed
-/// IntraBC through it either (kept on the heuristic, "no schema decision needed yet" at the time)
-/// -- unifying both is a follow-up, not required for this pass.
+/// breakdown for one INTER **or IntraBC** coding unit -- spec 5.11.16's `read_block_tx_size()`
+/// (real spec gates the recursive var-tx tree on `is_inter`, and IntraBC blocks are classified
+/// `is_inter` for this purpose despite being coded within an intra frame -- see this function's
+/// call sites' docs). Supports genuinely rectangular coding units (real `Max_Tx_Size_Rect`, not
+/// this crate's older square-only `TxSize::from_dimensions` heuristic) -- verified against
+/// rav1d's `dav1d_max_txfm_size_for_bs` table (`src/tables.c`) directly: for every real AV1 block
+/// size up to 64 in each axis, the natural starting max transform size is simply the block's own
+/// size (real var-tx recursion, not this table, is what performs any further splitting); only
+/// block sizes wider or taller than 64 (128-wide/tall) cap that axis at 64 (spec: no transform
+/// exceeds 64x64). Hence `max_ytx = (width.min(64), height.min(64))` -- no lookup table needed,
+/// unlike what an earlier pass expected.
 ///
 /// Mirrors rav1d's `read_vartx_tree` (`src/decode.c`, `memorysafety/rav1d`/`videolan/dav1d`,
 /// BSD-2-Clause) dispatch order:
