@@ -381,22 +381,69 @@ fn read_tile_info(
     Ok(())
 }
 
-fn skip_segmentation_params(reader: &mut BitReader, primary_ref_frame: u32) -> Result<()> {
-    let segmentation_enabled = reader.read_bit()?;
-    if !segmentation_enabled {
-        return Ok(());
+/// `SEG_LVL_REF_FRAME` (spec's `Segmentation_Feature_Bits` index 5) -- features at or above this
+/// index gate `SegIdPreSkip` (`SegmentationInfo::seg_id_pre_skip`'s doc).
+const SEG_LVL_REF_FRAME: usize = 5;
+
+/// Real segmentation state exposed for `segment_id()` (spec 5.11.9/5.11.10) callers -- previously
+/// this crate read (for bitstream sync) then discarded every segmentation bit
+/// (`skip_segmentation_params`'s original name/doc). `enabled`/`update_map`/`temporal_update` are
+/// direct bitstream reads. `seg_id_pre_skip`/`last_active_seg_id` are spec 5.9.14's derived
+/// values (`SegIdPreSkip`/`LastActiveSegId`): computed from `FeatureEnabled[seg][feature]` across
+/// all `MAX_SEGMENTS`x`SEG_LVL_MAX` cells -- `seg_id_pre_skip` true if any segment has a feature
+/// at or above `SEG_LVL_REF_FRAME` enabled (real spec gate for *where* `segment_id()` gets called
+/// relative to `skip` -- see `parse_coding_unit`'s call sites), `last_active_seg_id` the highest
+/// segment index with any feature enabled (only affects `neg_deinterleave`'s numeric decode, not
+/// bitstream position -- verified against dav1d's `read_segment_id`, the symbol read itself is
+/// always a fixed 8-way alphabet regardless of this value).
+///
+/// **Known gap, matching `RefFrameState`'s same class of limitation**: when
+/// `segmentation_update_data` is `false` (only possible when `primary_ref_frame !=
+/// PRIMARY_REF_NONE` and the encoder explicitly doesn't resend feature data that frame), the real
+/// `FeatureEnabled` state carries over from a previous frame -- this crate's production call
+/// sites parse each frame independently (`ParsedFrame::parse`, see its `reference_select` field's
+/// doc for the same architectural limitation), so there's no real state to carry over. Falls back
+/// to `seg_id_pre_skip = false` (matches the common case: QP-only segmentation, e.g. `SEG_LVL_ALT_
+/// Q`-based cyclic refresh, never sets a `SEG_LVL_REF_FRAME`+ feature) and `last_active_seg_id =
+/// MAX_SEGMENTS - 1` (the safe/permissive bound, doesn't affect bitstream position either way).
+/// `seg_id_pre_skip` genuinely gates real bitstream position, so a wrong fallback here is a real
+/// (if narrow and documented) desync risk -- not verified against a real `update_data == false`
+/// stream, since generating one needs a specific encoder cooperation this session didn't
+/// reach.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SegmentationInfo {
+    pub enabled: bool,
+    pub update_map: bool,
+    pub temporal_update: bool,
+    pub seg_id_pre_skip: bool,
+    pub last_active_seg_id: u8,
+}
+
+fn parse_segmentation_params(
+    reader: &mut BitReader,
+    primary_ref_frame: u32,
+) -> Result<SegmentationInfo> {
+    let enabled = reader.read_bit()?;
+    if !enabled {
+        return Ok(SegmentationInfo::default());
     }
-    let segmentation_update_data = if primary_ref_frame == PRIMARY_REF_NONE {
-        true
+    let (update_map, temporal_update, update_data) = if primary_ref_frame == PRIMARY_REF_NONE {
+        (true, false, true)
     } else {
-        let segmentation_update_map = reader.read_bit()?;
-        if segmentation_update_map {
-            reader.read_bit()?; // segmentation_temporal_update
-        }
-        reader.read_bit()?
+        let update_map = reader.read_bit()?;
+        let temporal_update = if update_map {
+            reader.read_bit()?
+        } else {
+            false
+        };
+        let update_data = reader.read_bit()?;
+        (update_map, temporal_update, update_data)
     };
-    if segmentation_update_data {
-        for _seg in 0..MAX_SEGMENTS {
+    let mut seg_id_pre_skip = false;
+    let mut last_active_seg_id = (MAX_SEGMENTS - 1) as u8;
+    if update_data {
+        last_active_seg_id = 0;
+        for seg in 0..MAX_SEGMENTS {
             for feature in 0..SEG_LVL_MAX {
                 let feature_enabled = reader.read_bit()?;
                 if feature_enabled {
@@ -408,11 +455,21 @@ fn skip_segmentation_params(reader: &mut BitReader, primary_ref_frame: u32) -> R
                             reader.read_bits(bits)?;
                         }
                     }
+                    last_active_seg_id = seg as u8;
+                    if feature >= SEG_LVL_REF_FRAME {
+                        seg_id_pre_skip = true;
+                    }
                 }
             }
         }
     }
-    Ok(())
+    Ok(SegmentationInfo {
+        enabled,
+        update_map,
+        temporal_update,
+        seg_id_pre_skip,
+        last_active_seg_id,
+    })
 }
 
 fn skip_delta_lf_params(
@@ -903,6 +960,7 @@ pub fn parse_frame_header_full(
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
+            segmentation: SegmentationInfo::default(),
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -1102,7 +1160,7 @@ pub fn parse_frame_header_full(
         )?;
     let base_q_idx = base_q_idx_opt.unwrap_or(0);
 
-    skip_segmentation_params(&mut reader, primary_ref_frame)?;
+    let segmentation = parse_segmentation_params(&mut reader, primary_ref_frame)?;
 
     let delta_q_present = if base_q_idx > 0 {
         reader.read_bit()?
@@ -1205,6 +1263,7 @@ pub fn parse_frame_header_full(
         reduced_tx_set,
         txfm_mode,
         use_ref_frame_mvs,
+        segmentation,
         loop_filter,
         cdef_damping: cdef.clone(),
         cdef_y_primary_strength: cdef.y_primary_strength,

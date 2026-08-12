@@ -209,6 +209,10 @@ pub struct FrameHeader {
     /// it -- a strictly closer approximation than a hardcoded `false`, not a full implementation
     /// of the temporal subsystem itself. Same basic-vs-full caveat as `reference_select`.
     pub use_ref_frame_mvs: bool,
+    /// Real segmentation state (spec 5.9.14) -- see `crate::frame_header_full::SegmentationInfo`'s
+    /// doc for the exact fields and known gap. Always `SegmentationInfo::default()` (all-disabled)
+    /// from `parse_frame_header_basic` (same basic-vs-full caveat as `reference_select`).
+    pub segmentation: crate::frame_header_full::SegmentationInfo,
     /// Loop filter (deblocking) parameters
     pub loop_filter: LoopFilterInfo,
     /// CDEF parameters
@@ -557,6 +561,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
+            segmentation: crate::frame_header_full::SegmentationInfo::default(),
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
             cdef_y_primary_strength: 0,
@@ -728,6 +733,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,
+        segmentation: crate::frame_header_full::SegmentationInfo::default(),
         loop_filter: LoopFilterInfo::default(),
         cdef_damping: CdefInfo::default(),
         cdef_y_primary_strength: 0,

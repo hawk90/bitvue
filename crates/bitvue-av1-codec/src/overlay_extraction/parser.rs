@@ -44,8 +44,9 @@ pub struct ParsedFrame {
     /// sourcing/fallback story as `reference_select`.
     pub reduced_tx_set: bool,
     /// `CodedLossless` (spec 5.9.2/7.12.3): `base_q_idx == 0 && y_dc_delta_q == 0 &&
-    /// uv_dc_delta_q == 0`. This crate doesn't implement segmentation, so unlike the real spec's
-    /// per-segment `LosslessArray`, this is frame-wide only -- matches
+    /// uv_dc_delta_q == 0`. Doesn't factor in segmentation's per-segment `SEG_LVL_ALT_Q` override
+    /// (real spec's per-segment `LosslessArray`) even though `segmentation` (below) is now real --
+    /// frame-wide only, matches
     /// `frame_header_full.rs`'s own `coded_lossless` derivation (see that module's doc). `false`
     /// if `base_q_idx` wasn't parsed (same resilient-fallback precedent as `delta_q_enabled`).
     pub coded_lossless: bool,
@@ -55,6 +56,10 @@ pub struct ParsedFrame {
     /// `use_ref_frame_mvs` (spec 5.9.2) -- see `FrameHeader::use_ref_frame_mvs`'s doc. Same
     /// sourcing/fallback story as `reference_select`.
     pub use_ref_frame_mvs: bool,
+    /// Real segmentation state (spec 5.9.14) -- see `crate::frame_header_full::SegmentationInfo`'s
+    /// doc for the exact fields and known gap. Same sourcing/fallback story as `reference_select`
+    /// (`SegmentationInfo::default()`, all-disabled, if the full header wasn't parsed).
+    pub segmentation: crate::frame_header_full::SegmentationInfo,
     /// `mono_chrome` (spec sequence header `color_config()`) -- true means this stream has no
     /// chroma planes at all (`num_planes == 1`), sourced directly from the sequence header's
     /// `ColorConfig` (no `parse_frame_header_full` needed, unlike `reference_select`/etc.).
@@ -160,6 +165,7 @@ impl ParsedFrame {
                 coded_lossless: false,
                 txfm_mode: TxfmMode::default(),
                 use_ref_frame_mvs: false,
+                segmentation: crate::frame_header_full::SegmentationInfo::default(),
                 mono_chrome: true,
                 subsampling_x: false,
                 subsampling_y: false,
@@ -198,6 +204,7 @@ impl ParsedFrame {
         let mut coded_lossless = false;
         let mut txfm_mode = TxfmMode::default();
         let mut use_ref_frame_mvs = false;
+        let mut segmentation = crate::frame_header_full::SegmentationInfo::default();
         let mut mono_chrome = true;
         let mut subsampling_x = false;
         let mut subsampling_y = false;
@@ -278,6 +285,7 @@ impl ParsedFrame {
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            segmentation = full_hdr.segmentation;
                         }
                     }
                 }
@@ -301,6 +309,7 @@ impl ParsedFrame {
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            segmentation = full_hdr.segmentation;
                         }
                     }
                 }
@@ -332,6 +341,7 @@ impl ParsedFrame {
             coded_lossless,
             txfm_mode,
             use_ref_frame_mvs,
+            segmentation,
             mono_chrome,
             subsampling_x,
             subsampling_y,

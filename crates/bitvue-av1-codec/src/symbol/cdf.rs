@@ -136,6 +136,19 @@ pub struct CdfContext {
     /// unlike every other CDF in this struct, this one is not a "representative" placeholder.
     skip_cdf: [Vec<u16>; 3],
 
+    /// `seg_pred` (temporal segment-id prediction flag) CDFs, one per context (0..=2, from
+    /// `TileContext::seg_pred_context`, real spec/rav1d `above_seg_pred[x4] + left_seg_pred[y4]`)
+    /// -- real spec/rav1d default values (`memorysafety/rav1d`/`videolan/dav1d`, BSD-2-Clause,
+    /// `src/cdf.c`'s `default_cdf.m.seg_pred`, all-uniform `16384`) + real per-context adaptation.
+    seg_pred_cdf: [Vec<u16>; 3],
+    /// `segment_id` CDFs, one per context (0..=2, from `TileContext::segment_id_context`, real
+    /// spec/rav1d `get_cur_frame_segid`'s 3-way above/left/above-left match ctx) -- real spec/
+    /// rav1d default values (`src/cdf.c`'s `default_cdf.m.seg_id`) + real per-context adaptation.
+    /// 7-symbol alphabet (`DAV1D_MAX_SEGMENTS - 1`, i.e. 8 real segments 0..=7); the decoded
+    /// symbol is a `neg_deinterleave`-encoded diff against a predicted segment id, not the raw
+    /// segment id itself (`SymbolDecoder::read_segment_id`'s doc).
+    seg_id_cdf: [Vec<u16>; 3],
+
     /// `txfm_split` CDFs, `[cat 0..=6][ctx 0..=2]` -- real per-context values + adaptation, see
     /// its construction site's doc in `CdfContext::new`.
     txpart_cdf: [[Vec<u16>; 3]; 7],
@@ -543,6 +556,15 @@ impl CdfContext {
             vec![32768 - 31671, 0, 0], // context 0 (no skip neighbors): mostly not-skip
             vec![32768 - 16515, 0, 0], // context 1 (one skip neighbor)
             vec![32768 - 4576, 0, 0],  // context 2 (both neighbors skip): mostly skip
+        ];
+
+        // seg_pred/seg_id (spec 5.11.9/5.11.10 `segment_id()`): real spec/rav1d default CDFs
+        // (`default_cdf.m.seg_pred`/`.seg_id`, `src/cdf.c`).
+        let seg_pred_cdf: [Vec<u16>; 3] = [16384, 16384, 16384].map(binary_ctx_cdf);
+        let seg_id_cdf: [Vec<u16>; 3] = [
+            multi_ctx_cdf(&[5622, 7893, 16093, 18233, 27809, 28373, 32533]),
+            multi_ctx_cdf(&[14274, 18230, 22557, 24935, 29980, 30851, 32344]),
+            multi_ctx_cdf(&[27527, 28487, 28723, 28890, 32397, 32647, 32679]),
         ];
 
         // txfm_split (spec 5.11.18 `read_var_tx_size`'s `txfm_split` symbol) CDFs, per
@@ -1746,6 +1768,8 @@ impl CdfContext {
         Self {
             partition_cdfs,
             skip_cdf,
+            seg_pred_cdf,
+            seg_id_cdf,
             txpart_cdf,
             kfym,
             newmv_mode_cdf,
@@ -1837,6 +1861,18 @@ impl CdfContext {
     /// representative placeholder).
     pub fn get_skip_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
         &mut self.skip_cdf[(ctx as usize).min(2)]
+    }
+
+    /// Get mutable `seg_pred` CDF for context `ctx` (0..=2 -- `TileContext::seg_pred_context`'s
+    /// doc).
+    pub fn get_seg_pred_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.seg_pred_cdf[(ctx as usize).min(2)]
+    }
+
+    /// Get mutable `segment_id` CDF for context `ctx` (0..=2 -- `TileContext::
+    /// segment_id_context`'s doc).
+    pub fn get_seg_id_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.seg_id_cdf[(ctx as usize).min(2)]
     }
 
     /// Get mutable `txfm_split` CDF for `(cat, ctx)` (`cat` 0..=6, `ctx` 0..=2 -- see

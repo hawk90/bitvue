@@ -128,6 +128,25 @@ impl<'a> SymbolDecoder<'a> {
         Ok(symbol == 1)
     }
 
+    /// Read `seg_pred` (spec 5.11.9/5.11.10's temporal segment-id-prediction flag) -- real
+    /// per-`ctx` CDF + adaptation, matching `read_skip`'s bar. `ctx`:
+    /// `TileContext::seg_pred_context`'s doc.
+    pub fn read_seg_pred(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_seg_pred_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
+    /// Read the raw `segment_id` diff symbol (spec 5.11.9/5.11.10's `S()` read within
+    /// `read_segment_id()`) -- real per-`ctx` CDF + adaptation. `ctx`:
+    /// `TileContext::segment_id_context`'s doc. Returns the raw 0..=7 symbol -- callers must
+    /// still apply `neg_deinterleave` against the predicted segment id to get the real segment id
+    /// (see `crate::tile::coding_unit`'s `neg_deinterleave` and its call site's doc).
+    pub fn read_segment_id_diff(&mut self, ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_seg_id_cdf_mut(ctx);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
     /// Read `txfm_split` (spec 5.11.18's `read_var_tx_size`) -- real per-`(cat, ctx)` CDF +
     /// adaptation, matching `read_skip`'s bar. `cat`/`ctx` are `crate::tile::coding_unit::read_var_tx_size`'s
     /// packed category and `TileContext::var_tx_context`'s `a+l` sum, respectively. Returns

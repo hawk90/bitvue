@@ -201,6 +201,7 @@ mod tests {
             width: w,
             height: h,
             skip,
+            segment_id: 0,
             mode,
             ref_frames: [RefFrame::Intra, RefFrame::Intra],
             use_intrabc: false,

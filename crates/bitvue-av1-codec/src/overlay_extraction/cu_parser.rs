@@ -36,6 +36,7 @@ pub fn parse_all_coding_units(
     let reference_select = parsed.reference_select;
     let allow_intrabc = parsed.allow_intrabc;
     let use_ref_frame_mvs = parsed.use_ref_frame_mvs;
+    let segmentation = parsed.segmentation;
     let tx_type_flags = crate::tile::TxTypeFrameFlags {
         coded_lossless: parsed.coded_lossless,
         qidx_is_zero: parsed.frame_type.base_qp == Some(0),
@@ -90,6 +91,7 @@ pub fn parse_all_coding_units(
                     reference_select,
                     allow_intrabc,
                     use_ref_frame_mvs,
+                    segmentation,
                     &mut tile_ctx,
                     tx_type_flags,
                     mi_rows,
@@ -957,6 +959,54 @@ mod tests {
             "expected at least one genuinely rectangular (non-square) real leaf transform size, \
              got only {rect_leaf_sizes:?} -- the asymmetric split may be degenerating to \
              square-only leaves"
+        );
+    }
+
+    /// Regression test for real `segment_id()` (spec 5.11.9/5.11.10) plumbing -- the only
+    /// committed real fixture (`test_data/av1_test.ivf`) never enables segmentation, so this
+    /// can't be a non-vacuous "real segment_id values decoded" test the way most of this module's
+    /// real-context work is verified (see `DEVELOPMENT_PHASES.md` for the actual non-vacuous
+    /// verification: a locally-generated, scratchpad-only `aomenc --aq-mode=3 --end-usage=cbr`
+    /// clip showed 3 distinct real segment ids decoded across 478 CUs, zero parse errors). This
+    /// test instead guards the *disabled* path: confirms `segmentation.enabled` reads `false` for
+    /// this fixture (the plumbing didn't accidentally flip it) and every CU's `segment_id` stays
+    /// `0` (the correct value when disabled, and the same default as before this feature existed
+    /// -- catches a regression that would make `segmentation.enabled` spuriously `true` and start
+    /// consuming bits that were never there, which would show up as decode errors here).
+    #[test]
+    fn real_fixture_segmentation_disabled_and_segment_id_stays_zero() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let mut checked_frames = 0usize;
+
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let Ok(parsed) = super::super::parser::ParsedFrame::parse(&obu_data) else {
+                continue;
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            assert!(
+                !parsed.segmentation.enabled,
+                "expected this fixture to never enable segmentation -- if this regresses to \
+                 true, the segmentation bit is being misparsed"
+            );
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                panic!("frame failed to parse coding units -- possible segment_id-read desync");
+            };
+            for cu in cus.iter() {
+                assert_eq!(
+                    cu.segment_id, 0,
+                    "expected segment_id 0 when segmentation is disabled"
+                );
+            }
+            checked_frames += 1;
+        }
+
+        assert!(
+            checked_frames > 0,
+            "expected at least one real frame to check"
         );
     }
 }
