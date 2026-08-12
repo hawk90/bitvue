@@ -1797,6 +1797,32 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   줄급) 자체를 새로 구현해야 함 — 이건 "검증"이 아니라 "신규 기능 구현"이라 오라클 확보와는
   별개의 큰 작업, 사용자 확인 필요.
 
+- **`segment_id()` 신규 구현 완료(spec 5.11.9/5.11.10, 2026-08-12, `3886d3a`)**: 사용자 지시로
+  착수. `skip_segmentation_params`를 `parse_segmentation_params`로 개명해 프레임 헤더의
+  `segmentation_enabled`/`update_map`/`temporal_update`와 spec 5.9.14의 파생값(`SegIdPreSkip`
+  — 어떤 세그먼트든 `SEG_LVL_REF_FRAME`(5)/`SKIP`(6)/`GLOBALMV`(7) 피처가 켜져 있으면 true,
+  `LastActiveSegId` — 피처가 켜진 최대 세그먼트 인덱스)을 실제로 노출(`FrameHeader`→`ParsedFrame`,
+  `use_ref_frame_mvs`와 동일 배선 패턴). `seg_pred`/`seg_id` real CDF(dav1d `src/cdf.c`에서 포팅)
+  신규. **`segment_id`가 이 세션의 다른 컨텍스트들과 근본적으로 다른 점 발견**: dav1d의
+  `get_cur_frame_segid`(`src/env.h`)가 above-left 대각선 셀을 직접 조회하는데, 같은 행 안에서
+  왼쪽 이웃이 이미 처리되면 그 열의 "above" 슬롯을 자기 행 값으로 덮어써버려서 이 크레이트의
+  기존 "above/left 1D strip" 패턴(한 행씩 리셋)으로는 재현 불가능함을 확인 — dav1d처럼 실제
+  타일 전체 2D 그리드(`TileContext::seg_id_grid`)를 도입, 근사 없이 그대로 이식.
+  `parse_coding_unit`의 skip 읽기 전/후 두 지점에 실제 배선(dav1d `decode_b`의 `decode.c` 구조
+  그대로 — pre-skip은 skip을 아직 모르니 항상 실제 심볼 읽기, post-skip은 `skip=true`면 예측값을
+  비트 없이 그대로 사용하는 지름길 있음, 이 둘의 차이를 spec 의사코드만으론 못 잡아서 소스 직접
+  대조). `neg_deinterleave`(dav1d `decode.c`에서 그대로 포팅) 신규, hand-computed known-answer
+  테스트 4개로 검증. **알려진 갭**(`RefFrameState`와 같은 급): 이 크레이트는 프레임을 독립적으로
+  파싱해서 진짜 크로스프레임 상태가 없음 — `segmentation_update_data==false`(이전 프레임의
+  피처 설정 재사용)와 시간축 예측(`seg_pred==true`, 이전 프레임 세그먼트맵 필요) 둘 다 안전한
+  기본값(0, 비트스트림 위치엔 영향 없음)으로 근사. 실측: `aomenc --aq-mode=3 --end-usage=cbr`
+  (cyclic refresh, 스크래치패드 전용 자체 인코딩, 커밋 안 함)로 20프레임 중 18프레임
+  segmentation_enabled=true, 파싱 에러 0건, 478개 CU에 걸쳐 진짜 서로 다른 segment_id 3종(0,1,2)
+  디코드 확인 — degenerate 아님. 커밋된 실측 fixture(세그멘테이션 없음)엔 경량 회귀테스트만
+  추가(segmentation.enabled=false 유지 + segment_id=0 유지 확인). 397→402 lib 테스트, 워크스페이스
+  전체 clean. **남은 갭**: palette(별도 신규 파싱, 착수 안 함), 위에 적힌 크로스프레임 상태
+  한계, inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(재구성 자체가 범위 밖).
+
 ---
 
 ## Phase 5: AVS3 지원 구현 🟡 (2026-08-10 재감사 — 크레이트/파서/렌더러 존재, 제품 미연결)
