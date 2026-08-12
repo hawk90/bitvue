@@ -1659,6 +1659,32 @@ residual_block`가 위치를 안 받고 크로마 above/left 컨텍스트도 안
 연속 호출"하는 것 자체에 관련된 무언가(CDF 적응 상태 등) — 더 깊이 파고들진 못함, 다음 세션 후보로
 정밀 기록. `(8..=64)`로 프로덕션 게이트 유지.
 
+- **크로마 128x128 실제 원인 규명 + 수정 완료(2026-08-12)**: 사용자가 "그 사이즈를 에이브이1에서
+지원함?"이라 질문 → 먼저 확인: AV1은 128x128 변환을 지원하지 않음(`TxSize` enum 자체가 `Tx64x64`가
+최대, spec `TX_SIZES_ALL`도 동일) — 루마는 이미 `compute_inter_tx_blocks`가 128x128 CU를 64x64
+4타일로 올바르게 나눠 처리 중이었고, 크로마도 32x32 캡(스펙 `Max_Tx_Size_Rect`)이 정확히 스펙과
+일치함을 재확인 — 즉 지난 두 번의 시도가 세운 "타일 4개(2x2)" 모델 자체는 처음부터 맞았음. **진짜
+원인**: rav1d `recon_tmpl.c`의 `get_skip_ctx` 실제 소스를 직접 대조해서 찾음 — 크로마 `txb_skip`/
+`dc_sign`이 `tx_size_class`로만 인덱싱되는 완전 고정 CDF 슬롯이라 위치 컨텍스트가 전혀 없었음.
+64x64는 CU당 U/V 각 1회 호출이라 티가 안 났지만, 128x128은 U 4회+V 4회가 **동일한 전역 CDF
+슬롯**을 한 CU 안에서 4배 세게 adapt시켜, 프레임 전체가 공유하는 그 슬롯을 실제 인코더가 가정하는
+분포에서 이탈시킴 → 나중 슈퍼블록에서 desync. 지난 세션이 좁혀뒀던 "연속 호출 자체가 범인"이라는
+가설이 맞았음. **수정**: rav1d의 실제 `default_coef_cdf[0].skip[tx_size_class][7..=12]`(크로마 6개
+컨텍스트)/`.dc_sign[1]`(3개 컨텍스트) 기본값을 `src/cdf.c`에서 직접 소싱해 이식(`get_skip_ctx`의
+`7 + not_one_blk*3 + ca + cl` 공식을 로컬 0..=5로 리매핑), 루마의 `above_cul_level`/
+`left_cul_level`/`above_dc_sign_category`/`left_dc_sign_category`와 동일 패턴으로 U/V 평면별
+독립 above/left 컨텍스트 배열(`TileContext`)을 신규 구현, `read_chroma_residual_block`이 이제
+`ResidualBlockStats`(루마와 동일 반환 타입)를 반환하도록 변경해 호출부가 실제 컨텍스트를
+갱신하도록 배선. `parse_coding_unit`의 게이트를 `(8..=128)`로 재확장. 실측: 391/391 lib 테스트+
+워크스페이스 `--lib`(3853/3854, 무관한 `bitvue-engine` LRU 캐시 타이밍성 flaky 1건 제외 — 단독
+실행 시 통과 확인) + `bitvue-av1-codec --tests`(통합 바이너리) 전부 클린, 128x128 CU가 실제로
+존재하고 깨끗이 파싱됨을 확인하는 비-vacuous 검증(`saw_128x128`) 추가. 부수로 var-tx 회귀테스트가
+969/969이 아닌 961/969로 실패한 것도 조사 — 원인은 새 버그가 아니라 이제서야 처음으로 정확히 소비된
+크로마 비트 때문에 디코드 궤적이 바뀌면서 이전엔 도달 안 하던 4x4 인터 CU 2군데(8개)가 처음
+등장한 것(4x4는 `compute_inter_tx_blocks`의 원래 설계 범위 밖, spec도 var-tx 재귀가 8x8 밑으로는
+안 내려감) — 테스트의 eligibility 필터에 `width>=8` 추가해 정정. **남은 갭**: 비정사각 인터 CU +
+IntraBC의 var-tx(스키마는 있음, `TxSize` 정사각 제한이 근본 원인).
+
 - **segment_id/palette 스코핑 → 실측 오라클 부재로 착수 보류(2026-08-11)**: "다 해주세요" 위임의
 마지막 항목 조사. segment_id는 이전에 이미 "이 fixture가 segmentation_enabled=true인 프레임이
 전무"로 확인돼있었음. palette도 같은 문제 확인: palette와 IntraBC 둘 다 프레임 헤더의
@@ -1675,11 +1701,11 @@ QP/기능 파생, palette는 palette_mode_info()+컬러 캐시+palette 토큰까
 테스트 데이터는 이미 이 세션 초반에 "리포 편입 금지" 확정됨 — 임시 검증용으로도 새로 구하려면
 사용자 확인 필요.
 
-- **다음 단계(로드맵, 남은 것)**: (1) 크로마 128x128 재도전(이번 세션이 좁힌 "연속 호출" 단서부터
-시작). (2) 비정사각 인터 CU + IntraBC의 var-tx(스키마는 이미 있음, `TxSize` 정사각 제한이 근본
-원인이라 더 큰 리팩터 필요). (3) segment_id/palette — 실측 오라클(세그멘테이션 켠 클립 또는 스크린
-콘텐츠 클립) 확보가 선행 조건, 사용자 확인 필요. (4) inter_mode/compound_mode의 진짜 시간축
-모션필드 서브시스템(이 크레이트가 재구성을 구현하기 전엔 근본적으로 범위 밖).
+- **다음 단계(로드맵, 남은 것)**: (1) 비정사각 인터 CU + IntraBC의 var-tx(스키마는 이미 있음,
+`TxSize` 정사각 제한이 근본 원인이라 더 큰 리팩터 필요). (2) segment_id/palette — 실측 오라클
+(세그멘테이션 켠 클립 또는 스크린 콘텐츠 클립) 확보가 선행 조건, 사용자 확인 필요. (3)
+inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 크레이트가 재구성을 구현하기 전엔
+근본적으로 범위 밖). 크로마 128x128은 완료(위 항목 참고).
 
 ---
 
