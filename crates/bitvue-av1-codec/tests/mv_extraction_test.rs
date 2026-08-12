@@ -133,6 +133,8 @@ fn test_mv_extraction_with_spec_cdfs() {
             false,
             false,
             false,
+            false,
+            false,
             bitvue_av1_codec::frame_header_full::SegmentationInfo::default(),
             &mut tile_ctx,
             bitvue_av1_codec::tile::TxTypeFrameFlags {

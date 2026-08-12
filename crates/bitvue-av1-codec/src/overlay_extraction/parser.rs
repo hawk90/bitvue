@@ -40,6 +40,9 @@ pub struct ParsedFrame {
     /// `allow_intrabc` (spec 5.9.2) -- whether intra block copy is enabled for this (intra) frame.
     /// Same sourcing/fallback story as `reference_select`.
     pub allow_intrabc: bool,
+    /// `allow_screen_content_tools` (spec 5.9.2) -- see `FrameHeader::allow_screen_content_tools`'s
+    /// doc. Same sourcing/fallback story as `reference_select`.
+    pub allow_screen_content_tools: bool,
     /// `reduced_tx_set` (spec 5.9.2) -- see `FrameHeader::reduced_tx_set`'s doc. Same
     /// sourcing/fallback story as `reference_select`.
     pub reduced_tx_set: bool,
@@ -74,6 +77,12 @@ pub struct ParsedFrame {
     /// sourcing/fallback story as `mono_chrome` (irrelevant when `mono_chrome` is true).
     pub subsampling_x: bool,
     pub subsampling_y: bool,
+    /// `enable_filter_intra` (spec sequence header, `Sequence Header OBU syntax`) -- gates
+    /// `filter_intra_mode_info()`'s real eligibility (`read_palette_mode_info`'s call site doc).
+    /// Same sourcing story as `mono_chrome` (direct from the sequence header, no
+    /// `parse_frame_header_full` needed); defaults to `false` (conservatively "never read a
+    /// filter_intra bit") if the sequence header wasn't found.
+    pub enable_filter_intra: bool,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -161,6 +170,7 @@ impl ParsedFrame {
                 delta_q_enabled: false,
                 reference_select: false,
                 allow_intrabc: false,
+                allow_screen_content_tools: false,
                 reduced_tx_set: false,
                 coded_lossless: false,
                 txfm_mode: TxfmMode::default(),
@@ -169,6 +179,7 @@ impl ParsedFrame {
                 mono_chrome: true,
                 subsampling_x: false,
                 subsampling_y: false,
+                enable_filter_intra: false,
             });
         }
 
@@ -200,6 +211,7 @@ impl ParsedFrame {
         let mut delta_q_enabled = false; // Default to false
         let mut reference_select = false;
         let mut allow_intrabc = false;
+        let mut allow_screen_content_tools = false;
         let mut reduced_tx_set = false;
         let mut coded_lossless = false;
         let mut txfm_mode = TxfmMode::default();
@@ -208,6 +220,7 @@ impl ParsedFrame {
         let mut mono_chrome = true;
         let mut subsampling_x = false;
         let mut subsampling_y = false;
+        let mut enable_filter_intra = false;
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -240,6 +253,7 @@ impl ParsedFrame {
                         mono_chrome = seq_hdr.color_config.mono_chrome;
                         subsampling_x = seq_hdr.color_config.subsampling_x;
                         subsampling_y = seq_hdr.color_config.subsampling_y;
+                        enable_filter_intra = seq_hdr.enable_filter_intra;
                         seq_header = Some(seq_hdr);
                     }
                 }
@@ -279,6 +293,7 @@ impl ParsedFrame {
                         {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
+                            allow_screen_content_tools = full_hdr.allow_screen_content_tools;
                             reduced_tx_set = full_hdr.reduced_tx_set;
                             coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
@@ -303,6 +318,7 @@ impl ParsedFrame {
                         {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
+                            allow_screen_content_tools = full_hdr.allow_screen_content_tools;
                             reduced_tx_set = full_hdr.reduced_tx_set;
                             coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
@@ -337,6 +353,7 @@ impl ParsedFrame {
             delta_q_enabled,
             reference_select,
             allow_intrabc,
+            allow_screen_content_tools,
             reduced_tx_set,
             coded_lossless,
             txfm_mode,
@@ -345,6 +362,7 @@ impl ParsedFrame {
             mono_chrome,
             subsampling_x,
             subsampling_y,
+            enable_filter_intra,
         })
     }
 

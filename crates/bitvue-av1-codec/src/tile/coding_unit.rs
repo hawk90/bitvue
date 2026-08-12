@@ -473,6 +473,13 @@ pub struct CodingUnit {
     /// zero counts). See `SymbolDecoder::read_residual_block`'s doc for what this does and
     /// doesn't capture.
     pub residual: Option<ResidualBlockStats>,
+
+    /// Real `palette_mode_info()` result (spec 5.11.46) -- `y_size`/`uv_size` both `0` (the
+    /// default/common case) when this CU doesn't use palette mode for that plane. See
+    /// `read_palette_mode_info`'s doc; per-pixel color-index maps (`read_palette_tokens`) are read
+    /// for real bitstream sync but not retained here (matches `residual`'s aggregate-not-raw
+    /// precedent -- no per-pixel/per-coefficient data is exposed on `CodingUnit` elsewhere either).
+    pub palette: PaletteInfo,
 }
 
 /// One leaf transform block from a real `read_var_tx_size` walk (spec 5.11.17/18), in absolute
@@ -507,6 +514,7 @@ impl CodingUnit {
             tx_blocks: None,
             qp: None,
             residual: None,
+            palette: PaletteInfo::default(),
         }
     }
 
@@ -543,6 +551,11 @@ impl CodingUnit {
 /// * `reference_select` - Frame header's `reference_select` flag (compound prediction enabled
 ///   for this frame at all) -- see `ParsedFrame::reference_select`'s doc for how it's sourced.
 /// * `allow_intrabc` - Frame header's `allow_intrabc` flag (only meaningful when `is_key_frame`)
+/// * `allow_screen_content_tools` - Frame header's `allow_screen_content_tools` flag (spec 5.9.2,
+///   only meaningful when `is_key_frame` -- gates `palette_mode_info()`'s real eligibility
+///   independently of `allow_intrabc`, see `FrameHeader::allow_screen_content_tools`'s doc)
+/// * `enable_filter_intra` - Sequence header's `enable_filter_intra` flag (spec 5.5.1, gates
+///   `filter_intra_mode_info()`'s real eligibility)
 /// * `tile_ctx` - Above/left neighbor-state tracker for entropy context (currently only `skip`
 ///   uses it -- see `crate::tile::TileContext`'s doc)
 /// * `tx_type_flags` - Frame header flags for `transform_type()` -- see `TxTypeFrameFlags`'s doc.
@@ -563,6 +576,8 @@ pub fn parse_coding_unit(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    allow_screen_content_tools: bool,
+    enable_filter_intra: bool,
     use_ref_frame_mvs: bool,
     segmentation: crate::frame_header_full::SegmentationInfo,
     tile_ctx: &mut crate::tile::TileContext,
@@ -640,14 +655,6 @@ pub fn parse_coding_unit(
             false
         };
 
-        // Read INTRA prediction mode -- real per-context CDF + adaptation, see
-        // `SymbolDecoder::read_intra_mode`'s doc.
-        let (above_class, left_class) = tile_ctx.intra_mode_context(x4, y4);
-        let mode_symbol = decoder.read_intra_mode(above_class, left_class)?;
-        cu.mode = intra_mode_from_symbol(mode_symbol)?;
-        tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, mode_symbol);
-        y_mode_raw = mode_symbol;
-
         // tx_size() (spec 5.11.15/16) -- real per-context CDF + adaptation, see
         // `SymbolDecoder::read_tx_size`'s doc. IntraBC is excluded from *this* single-size read:
         // real spec's `read_block_tx_size()` gates the recursive `read_var_tx_size()` tree on
@@ -655,8 +662,114 @@ pub fn parse_coding_unit(
         // directly against `src/decode.c`, not assumed) confirms IntraBC blocks are classified
         // `is_inter` for this purpose despite being coded within an intra frame -- real
         // `read_vartx_tree` is called for them identically to real inter blocks (`compute_inter_
-        // tx_blocks`, below), not this heuristic-single-size path.
+        // tx_blocks`, below), not this heuristic-single-size path. The ENTIRE `b->intra` mode-info
+        // tail below (`y_mode` through the real per-pixel palette-token read) is likewise excluded
+        // for IntraBC: real dav1d dispatches `b->intra = !intrabc_flag`, so a true `use_intrabc`
+        // flag makes `b->intra == 0` and skips this whole block -- verified directly against
+        // `src/decode.c`'s `if (b->intra) { ... }` wrapper (2026-08-13, found while implementing
+        // palette: this crate previously read `y_mode` here UNCONDITIONALLY, a real desync bug on
+        // every IntraBC CU that predates this fix).
         if !cu.use_intrabc {
+            // Read INTRA prediction mode -- real per-context CDF + adaptation, see
+            // `SymbolDecoder::read_intra_mode`'s doc.
+            let (above_class, left_class) = tile_ctx.intra_mode_context(x4, y4);
+            let mode_symbol = decoder.read_intra_mode(above_class, left_class)?;
+            cu.mode = intra_mode_from_symbol(mode_symbol)?;
+            tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, mode_symbol);
+            y_mode_raw = mode_symbol;
+
+            // angle_delta_y (spec `intra_angle_info_y`) -- real per-mode CDF + adaptation. Real
+            // spec gate: block isn't the smallest class (`log2(bw4)+log2(bh4) >= 2`) AND the mode
+            // is directional (`V_PRED..=D67_PRED`, raw symbols `1..=8` -- see `intra_mode_from_
+            // symbol`'s exact numbering, verified to match dav1d's `VERT_PRED..VERT_LEFT_PRED`).
+            if width_4x4.ilog2() + height_4x4.ilog2() >= 2 && (1..=8).contains(&mode_symbol) {
+                decoder.read_angle_delta(mode_symbol - 1)?;
+            }
+
+            // Real spec `HasChroma` approximation -- deliberately the SAME expression as the
+            // chroma-residual site below (minus the always-true-here `!cu.use_intrabc` term), kept
+            // in sync by hand since it can't share a variable across that later, wider-scoped call
+            // site (reached by every CU kind, not just plain intra) -- see that site's doc for the
+            // approximation itself.
+            let has_chroma = !tx_type_flags.mono_chrome
+                && tx_type_flags.subsampling_x
+                && tx_type_flags.subsampling_y
+                && (8..=128).contains(&width)
+                && (8..=128).contains(&height);
+
+            // uv_mode / cfl_alpha / angle_delta_uv -- real per-context CDF + adaptation, only read
+            // at all when `has_chroma`. `cfl_allowed`: real spec `is_cfl_allowed()` (non-lossless:
+            // both dims `<=32`; lossless: chroma block is exactly 4x4, i.e. luma `8x8` in 4:2:0 --
+            // this crate only tracks frame-wide `coded_lossless`, not per-segment, same approximation
+            // as `tx_size`'s resolution just below).
+            let mut uv_mode_symbol: u8 = 0;
+            if has_chroma {
+                let cfl_allowed = if tx_type_flags.coded_lossless {
+                    width == 8 && height == 8
+                } else {
+                    width <= 32 && height <= 32
+                };
+                uv_mode_symbol = decoder.read_uv_mode(cfl_allowed, mode_symbol)?;
+                if uv_mode_symbol == 13 {
+                    decoder.read_cfl_alphas()?;
+                } else if width_4x4.ilog2() + height_4x4.ilog2() >= 2
+                    && (1..=8).contains(&uv_mode_symbol)
+                {
+                    decoder.read_angle_delta(uv_mode_symbol - 1)?;
+                }
+            }
+
+            // palette_mode_info (spec 5.11.46) -- real spec eligibility gate (`read_pal_indices`'s
+            // call site in dav1d's `decode_b`): `allow_screen_content_tools`, `max(bw4,bh4)<=16`
+            // (both dims `<=64px`), `bw4+bh4>=4` (excludes only 4x4/4x8/8x4).
+            let palette_eligible = allow_screen_content_tools
+                && width_4x4.max(height_4x4) <= 16
+                && width_4x4 + height_4x4 >= 4;
+            if palette_eligible {
+                let bsize_ctx = (width_4x4.ilog2() + height_4x4.ilog2()).saturating_sub(2) as u8;
+                cu.palette = read_palette_mode_info(
+                    decoder,
+                    tile_ctx,
+                    x4,
+                    y4,
+                    width_4x4,
+                    height_4x4,
+                    bsize_ctx,
+                    mode_symbol == 0,
+                    has_chroma,
+                    uv_mode_symbol == 0,
+                )?;
+            }
+
+            // filter_intra_mode_info -- real per-`BlockSize` CDF + adaptation. Real spec gate:
+            // `y_mode == DC_PRED`, no Y palette, both dims `<=32px`
+            // (`max(log2(bw4),log2(bh4))<=3`), and the sequence header enables it.
+            if mode_symbol == 0
+                && cu.palette.y_size == 0
+                && width_4x4.ilog2().max(height_4x4.ilog2()) <= 3
+                && enable_filter_intra
+                && decoder.read_use_filter_intra(block_size_for_dimensions(width, height))?
+            {
+                decoder.read_filter_intra_mode()?;
+            }
+
+            // Real per-pixel palette color-index map read (spec: right after the mode-info tail
+            // above, before `tx_size` -- `read_palette_mode_info`'s doc) -- required for bitstream
+            // sync whenever either plane actually selected palette mode.
+            if cu.palette.y_size > 0 || cu.palette.uv_size > 0 {
+                read_palette_tokens(
+                    decoder,
+                    x4,
+                    y4,
+                    width_4x4,
+                    height_4x4,
+                    has_chroma,
+                    &cu.palette,
+                    mi_rows,
+                    mi_cols,
+                )?;
+            }
+
             let max_tx_class = cu.tx_size as u8; // from_dimensions's heuristic starting point
             let resolved_class = if tx_type_flags.coded_lossless {
                 0
@@ -1483,6 +1596,478 @@ fn neg_deinterleave(diff: i32, ref_val: i32, max: i32) -> i32 {
     } else {
         max - (diff + 1)
     }
+}
+
+/// Map a CU's real pixel dimensions to this crate's `BlockSize` enum -- used only by
+/// `read_use_filter_intra`'s CDF lookup (the real spec table is indexed by exact block size, not
+/// by the coarser `bsize_ctx`/`tx_size` classes used elsewhere). Every dimension pair this crate's
+/// own partition tree can actually produce (`tile::partition::BlockSize`'s 22 variants) is
+/// covered; the fallback exists only for defensive safety (this crate's enum has no `Block4x16`/
+/// `Block16x4` variant at all -- see `CdfContext::use_filter_intra_cdf`'s doc -- but the partition
+/// tree that produces `width`/`height` here can't emit those sizes either, since it's built from
+/// the same enum).
+fn block_size_for_dimensions(width: u32, height: u32) -> crate::tile::BlockSize {
+    use crate::tile::BlockSize::*;
+    match (width, height) {
+        (4, 4) => Block4x4,
+        (4, 8) => Block4x8,
+        (8, 4) => Block8x4,
+        (8, 8) => Block8x8,
+        (8, 16) => Block8x16,
+        (16, 8) => Block16x8,
+        (16, 16) => Block16x16,
+        (16, 32) => Block16x32,
+        (32, 16) => Block32x16,
+        (32, 32) => Block32x32,
+        (32, 64) => Block32x64,
+        (64, 32) => Block64x32,
+        (64, 64) => Block64x64,
+        (64, 128) => Block64x128,
+        (128, 64) => Block128x64,
+        (128, 128) => Block128x128,
+        (32, 8) => Block32x8,
+        (64, 16) => Block64x16,
+        (128, 32) => Block128x32,
+        (8, 32) => Block8x32,
+        (16, 64) => Block16x64,
+        (32, 128) => Block32x128,
+        _ => Block4x4,
+    }
+}
+
+/// Real per-CU palette state from `read_palette_mode_info` (spec 5.11.46) -- `y_size`/`uv_size`
+/// `0` when that plane doesn't use palette mode (the common case).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaletteInfo {
+    pub y_size: u8,
+    pub y_colors: [u16; 8],
+    pub uv_size: u8,
+    pub u_colors: [u16; 8],
+    pub v_colors: [u16; 8],
+}
+
+/// `floor(log2(x))` for `x >= 1` (dav1d's `ulog2`, used by the palette new-color delta bit-width
+/// shrink -- `read_pal_plane_colors`'s doc).
+fn ulog2(x: u32) -> u32 {
+    31 - x.max(1).leading_zeros()
+}
+
+/// Real palette color-cache sorted merge (spec 5.11.46, ported from dav1d's `read_pal_plane`'s
+/// cache-building loop, `src/recon_tmpl.c`) -- merges the above/left neighbors' already-decoded
+/// palette colors into one deduplicated, ascending `cache` (real spec: this determines which
+/// colors are *offered* for reuse, not their bit cost -- the bit cost is exactly `n_cache`
+/// booleans read at the call site regardless of what's in the cache, so getting the cache
+/// *contents* wrong doesn't desync, only which colors get reused vs. re-signaled -- but see
+/// `read_pal_plane_colors`'s doc for why `n_cache` itself, and thus bit *position*, does depend on
+/// getting the SB64-boundary `above_count` masking right).
+fn build_pal_cache(
+    above_colors: [u16; 8],
+    above_count: u8,
+    left_colors: [u16; 8],
+    left_count: u8,
+) -> ([u16; 16], usize) {
+    let mut cache = [0u16; 16];
+    let mut n_cache = 0usize;
+    let (mut li, mut lc) = (0usize, left_count as usize);
+    let (mut ai, mut ac) = (0usize, above_count as usize);
+
+    while lc > 0 && ac > 0 {
+        let (lv, av) = (left_colors[li], above_colors[ai]);
+        if lv < av {
+            if n_cache == 0 || cache[n_cache - 1] != lv {
+                cache[n_cache] = lv;
+                n_cache += 1;
+            }
+            li += 1;
+            lc -= 1;
+        } else {
+            if av == lv {
+                li += 1;
+                lc -= 1;
+            }
+            if n_cache == 0 || cache[n_cache - 1] != av {
+                cache[n_cache] = av;
+                n_cache += 1;
+            }
+            ai += 1;
+            ac -= 1;
+        }
+    }
+    while lc > 0 {
+        let lv = left_colors[li];
+        if n_cache == 0 || cache[n_cache - 1] != lv {
+            cache[n_cache] = lv;
+            n_cache += 1;
+        }
+        li += 1;
+        lc -= 1;
+    }
+    while ac > 0 {
+        let av = above_colors[ai];
+        if n_cache == 0 || cache[n_cache - 1] != av {
+            cache[n_cache] = av;
+            n_cache += 1;
+        }
+        ai += 1;
+        ac -= 1;
+    }
+
+    (cache, n_cache)
+}
+
+/// Real palette color read for the Y or U plane (spec 5.11.46, ported from dav1d's
+/// `read_pal_plane`, `src/recon_tmpl.c`) -- V has its own separate encoding (`read_pal_v_colors`).
+/// Returns the real decoded `(pal_sz, colors)` (`colors[0..pal_sz]` valid ascending, rest `0`).
+///
+/// `above_count`'s real dav1d/spec quirk: cache reuse against the *above* neighbor is only
+/// allowed when this CU's `y4` isn't 64px-row-aligned ("don't reuse above palette outside SB64
+/// boundaries", verified against dav1d's source comment directly, not reinterpreted) -- ported
+/// exactly since this genuinely gates how many cache-reuse booleans get read (`n_cache`), i.e.
+/// real bitstream *position*, not just which colors get offered for reuse.
+#[allow(clippy::too_many_arguments)]
+fn read_pal_plane_colors(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut crate::tile::TileContext,
+    color_plane: usize,
+    size_plane: usize,
+    cdf_plane: usize,
+    x4: u32,
+    y4: u32,
+    bsize_ctx: u8,
+) -> Result<(u8, [u16; 8])> {
+    let pal_sz = decoder.read_pal_size(cdf_plane, bsize_ctx)?;
+
+    let (left_colors, left_count) = tile_ctx.pal_left(color_plane, size_plane, y4);
+    let (above_colors, above_count_raw) = tile_ctx.pal_above(color_plane, size_plane, x4);
+    let above_count = if y4 % 16 != 0 { above_count_raw } else { 0 };
+    let (cache, n_cache) = build_pal_cache(above_colors, above_count, left_colors, left_count);
+
+    let mut used_cache = [0u16; 8];
+    let mut n_used_cache = 0usize;
+    for &c in cache.iter().take(n_cache) {
+        if n_used_cache >= pal_sz as usize {
+            break;
+        }
+        if decoder.read_bool_equi()? {
+            used_cache[n_used_cache] = c;
+            n_used_cache += 1;
+        }
+    }
+
+    let mut new_entries = [0u16; 8];
+    let mut n_new = 0usize;
+    if n_used_cache < pal_sz as usize {
+        let not_pl = if color_plane == 0 { 1u32 } else { 0u32 };
+        let max = 255u32;
+        let mut prev = decoder.read_bools_n(8)?;
+        new_entries[0] = prev as u16;
+        n_new = 1;
+        if n_used_cache + n_new < pal_sz as usize {
+            let mut bits = 8 - 3 + decoder.read_bools_n(2)?;
+            loop {
+                let delta = decoder.read_bools_n(bits)?;
+                prev = (prev + delta + not_pl).min(max);
+                new_entries[n_new] = prev as u16;
+                n_new += 1;
+                if prev + not_pl >= max {
+                    for slot in new_entries
+                        .iter_mut()
+                        .take(pal_sz as usize - n_used_cache)
+                        .skip(n_new)
+                    {
+                        *slot = max as u16;
+                    }
+                    n_new = pal_sz as usize - n_used_cache;
+                    break;
+                }
+                if n_used_cache + n_new >= pal_sz as usize {
+                    break;
+                }
+                bits = bits.min(1 + ulog2(max - prev - not_pl));
+            }
+        }
+    }
+
+    let mut colors = [0u16; 8];
+    let (mut ci, mut ni) = (0usize, 0usize);
+    for slot in colors.iter_mut().take(pal_sz as usize) {
+        *slot = if ci < n_used_cache && (ni >= n_new || used_cache[ci] <= new_entries[ni]) {
+            let v = used_cache[ci];
+            ci += 1;
+            v
+        } else {
+            let v = new_entries[ni];
+            ni += 1;
+            v
+        };
+    }
+
+    Ok((pal_sz, colors))
+}
+
+/// Real V-plane palette color read (spec 5.11.46, ported from dav1d's `read_pal_uv`'s V-specific
+/// tail, `src/recon_tmpl.c`) -- genuinely different scheme from Y/U: no color cache, a real
+/// `delta_encode_palette_colors_v` flag choosing between a signed-delta chain (wrapping `& max`,
+/// not clamping -- unlike Y/U) or fully-literal per-entry colors.
+fn read_pal_v_colors(decoder: &mut SymbolDecoder, pal_sz: u8) -> Result<[u16; 8]> {
+    let mut colors = [0u16; 8];
+    let max = 255i32;
+    if decoder.read_bool_equi()? {
+        let bits = 8 - 4 + decoder.read_bools_n(2)?;
+        let mut prev = decoder.read_bools_n(8)? as i32;
+        colors[0] = prev as u16;
+        for slot in colors.iter_mut().take(pal_sz as usize).skip(1) {
+            let mut delta = decoder.read_bools_n(bits)? as i32;
+            if delta != 0 && decoder.read_bool_equi()? {
+                delta = -delta;
+            }
+            prev = (prev + delta) & max;
+            *slot = prev as u16;
+        }
+    } else {
+        for slot in colors.iter_mut().take(pal_sz as usize) {
+            *slot = decoder.read_bools_n(8)? as u16;
+        }
+    }
+    Ok(colors)
+}
+
+/// Real `palette_mode_info()` (spec 5.11.46) -- Y colors (only when `y_mode_is_dc`, real spec:
+/// palette only ever applies to `DC_PRED` blocks), then UV colors (`has_chroma && uv_mode_is_dc`).
+/// `bsize_ctx`: `Mi_Width_Log2 + Mi_Height_Log2 - 2` (real spec formula -- callers gate on the
+/// real eligibility range, block width/height both `8..=64`, which keeps `bsize_ctx` in the real
+/// `0..=6` CDF range). Always writes real (possibly all-zero) state to `tile_ctx`'s palette
+/// context arrays regardless of whether palette was actually used, matching dav1d's own
+/// unconditional `copy_pal_block_*` call sites.
+#[allow(clippy::too_many_arguments)]
+fn read_palette_mode_info(
+    decoder: &mut SymbolDecoder,
+    tile_ctx: &mut crate::tile::TileContext,
+    x4: u32,
+    y4: u32,
+    width_4x4: u32,
+    height_4x4: u32,
+    bsize_ctx: u8,
+    y_mode_is_dc: bool,
+    has_chroma: bool,
+    uv_mode_is_dc: bool,
+) -> Result<PaletteInfo> {
+    let mut info = PaletteInfo::default();
+
+    if y_mode_is_dc {
+        let ctx = tile_ctx.has_palette_y_context(x4, y4);
+        if decoder.read_has_palette_y(bsize_ctx, ctx)? {
+            let (sz, colors) =
+                read_pal_plane_colors(decoder, tile_ctx, 0, 0, 0, x4, y4, bsize_ctx)?;
+            info.y_size = sz;
+            info.y_colors = colors;
+        }
+    }
+    tile_ctx.set_pal_size(0, x4, y4, width_4x4, height_4x4, info.y_size);
+    tile_ctx.set_pal_colors(0, x4, y4, width_4x4, height_4x4, info.y_colors);
+
+    if has_chroma && uv_mode_is_dc {
+        let ctx = u8::from(info.y_size > 0);
+        if decoder.read_has_palette_uv(ctx)? {
+            let (sz, u_colors) =
+                read_pal_plane_colors(decoder, tile_ctx, 1, 1, 1, x4, y4, bsize_ctx)?;
+            info.uv_size = sz;
+            info.u_colors = u_colors;
+            info.v_colors = read_pal_v_colors(decoder, sz)?;
+        }
+    }
+    tile_ctx.set_pal_size(1, x4, y4, width_4x4, height_4x4, info.uv_size);
+    tile_ctx.set_pal_colors(1, x4, y4, width_4x4, height_4x4, info.u_colors);
+    tile_ctx.set_pal_colors(2, x4, y4, width_4x4, height_4x4, info.v_colors);
+
+    Ok(info)
+}
+
+/// Write one resolved color index into `row`/`o_idx`/`mask` -- shared by every branch of
+/// `order_palette`'s neighbor-agreement decision tree (spec/dav1d's `add()` macro,
+/// `src/decode.c`).
+fn push_pal_order_entry(v: u8, row: &mut [u8; 8], o_idx: &mut usize, mask: &mut u32) {
+    row[*o_idx] = v;
+    *o_idx += 1;
+    *mask |= 1 << v;
+}
+
+/// Real spec/dav1d `order_palette` (`src/decode.c`) -- for one anti-diagonal `i` of the wavefront
+/// scan (`i - j` = row, `j` = column, `j` ranging `last..=first`), derives each pixel's real
+/// above/left/above-left neighbor-agreement CONTEXT (0..=4) plus a real per-pixel 8-entry `order`
+/// permutation (already-seen neighbor colors first, by agreement rank, then every remaining color
+/// 0..=7 in ascending order) that the just-decoded `color_map` symbol indexes into to recover the
+/// real absolute color index. Ported exactly (including the specific iteration/increment order
+/// this depends on -- `pos` advances by `stride - 1` per step, not `stride`, since each step moves
+/// one row down AND one column left along the anti-diagonal), not reconstructed from spec
+/// pseudocode alone.
+fn order_palette(
+    pal_tmp: &[u8],
+    stride: usize,
+    i: usize,
+    first: usize,
+    last: usize,
+) -> (Vec<[u8; 8]>, Vec<u8>) {
+    let n = first - last + 1;
+    let mut order = vec![[0u8; 8]; n];
+    let mut ctx = vec![0u8; n];
+    let mut have_top = i > first;
+    let mut pos = first + (i - first) * stride;
+
+    for n_idx in 0..n {
+        let j = first - n_idx;
+        let have_left = j > 0;
+        let mut mask: u32 = 0;
+        let mut o_idx: usize = 0;
+        let row = &mut order[n_idx];
+
+        if !have_left {
+            ctx[n_idx] = 0;
+            push_pal_order_entry(pal_tmp[pos - stride], row, &mut o_idx, &mut mask);
+        } else if !have_top {
+            ctx[n_idx] = 0;
+            push_pal_order_entry(pal_tmp[pos - 1], row, &mut o_idx, &mut mask);
+        } else {
+            let l = pal_tmp[pos - 1];
+            let t = pal_tmp[pos - stride];
+            let tl = pal_tmp[pos - stride - 1];
+            let same_t_l = t == l;
+            let same_t_tl = t == tl;
+            let same_l_tl = l == tl;
+            if same_t_l && same_t_tl && same_l_tl {
+                ctx[n_idx] = 4;
+                push_pal_order_entry(t, row, &mut o_idx, &mut mask);
+            } else if same_t_l {
+                ctx[n_idx] = 3;
+                push_pal_order_entry(t, row, &mut o_idx, &mut mask);
+                push_pal_order_entry(tl, row, &mut o_idx, &mut mask);
+            } else if same_t_tl || same_l_tl {
+                ctx[n_idx] = 2;
+                push_pal_order_entry(tl, row, &mut o_idx, &mut mask);
+                push_pal_order_entry(if same_t_tl { l } else { t }, row, &mut o_idx, &mut mask);
+            } else {
+                ctx[n_idx] = 1;
+                push_pal_order_entry(l.min(t), row, &mut o_idx, &mut mask);
+                push_pal_order_entry(l.max(t), row, &mut o_idx, &mut mask);
+                push_pal_order_entry(tl, row, &mut o_idx, &mut mask);
+            }
+        }
+
+        for bit in 0..8u8 {
+            if mask & (1 << bit) == 0 {
+                row[o_idx] = bit;
+                o_idx += 1;
+            }
+        }
+        debug_assert_eq!(o_idx, 8);
+
+        have_top = true;
+        pos += stride - 1;
+    }
+    debug_assert!(have_top || n == 0);
+
+    (order, ctx)
+}
+
+/// Real spec/dav1d `read_pal_indices` (`src/decode.c`) -- reads the full per-pixel palette
+/// color-index map for one plane via the diagonal wavefront scan: the first pixel is a direct
+/// uniform `NS(pal_sz)` read (`SymbolDecoder::read_uniform`), every subsequent pixel is a
+/// real-context `color_map` symbol (`order_palette`'s doc) re-mapped through that diagonal's
+/// `order[]` permutation back into an absolute color index (0..pal_sz-1).
+///
+/// `w4`/`h4`: real spec/dav1d frame-edge-clamped VISIBLE width/height in 4-pixel units (this
+/// crate's `mi_rows`/`mi_cols` machinery -- already used by `compute_inter_tx_blocks` for the same
+/// reason -- NOT the CU's own nominal `width_4x4`/`height_4x4`, which can extend past the frame
+/// edge for an edge CU). `bw4`: the CU's own nominal width in 4-pixel units, used only for the
+/// scratch buffer's `stride` (dav1d: `t->scratch.pal_idx_{y,uv}`'s row stride is the nominal block
+/// width even though only the visible sub-rectangle is ever read/written).
+///
+/// Returns a `w4*4 x h4*4` row-major index map (stride `w4*4`, i.e. already cropped to the visible
+/// rectangle) -- for `plane=1` (chroma), this single map is shared by BOTH U and V (real spec: one
+/// index map indexes into two separate color palettes).
+fn read_pal_indices(
+    decoder: &mut SymbolDecoder,
+    plane: usize,
+    pal_sz: u8,
+    w4: u32,
+    h4: u32,
+    bw4: u32,
+) -> Result<Vec<u8>> {
+    let (w, h) = (w4 * 4, h4 * 4);
+    let stride = (bw4 * 4).max(w) as usize;
+    let mut pal_tmp = vec![0u8; stride * h as usize];
+
+    pal_tmp[0] = decoder.read_uniform(pal_sz as u32)? as u8;
+
+    let bound = 4 * (w4 as i64 + h4 as i64) - 1;
+    for i in 1..bound.max(1) {
+        let first = i.min(w as i64 - 1) as usize;
+        let last = (i - (h as i64 - 1)).max(0) as usize;
+        let (order, ctx) = order_palette(&pal_tmp, stride, i as usize, first, last);
+        for (m, j) in (last..=first).rev().enumerate() {
+            let color_idx = decoder.read_color_map_index(plane, pal_sz, ctx[m])?;
+            pal_tmp[(i as usize - j) * stride + j] = order[m][color_idx as usize];
+        }
+    }
+
+    let mut out = vec![0u8; (w * h) as usize];
+    for row in 0..h as usize {
+        out[row * w as usize..(row + 1) * w as usize]
+            .copy_from_slice(&pal_tmp[row * stride..row * stride + w as usize]);
+    }
+    Ok(out)
+}
+
+/// Real per-plane palette-token read for one CU (spec: `Y` when `PaletteSizeY > 0`, then `UV`
+/// -- shared U/V index map -- when `has_chroma && PaletteSizeUV > 0`) -- wraps `read_pal_indices`
+/// with the real frame-edge-clamped `w4`/`h4` computation (`mi_rows`/`mi_cols`, same reasoning as
+/// `compute_inter_tx_blocks`) for luma, then the real 4:2:0 chroma-subsampled equivalent
+/// (`cw4 = (w4+1)>>1` etc, dav1d's own formula for `ss_hor=ss_ver=1`) for chroma. Returns
+/// `(y_index_map, uv_index_map)`, each `None` when that plane's palette size is `0`.
+#[allow(clippy::too_many_arguments)]
+fn read_palette_tokens(
+    decoder: &mut SymbolDecoder,
+    x4: u32,
+    y4: u32,
+    width_4x4: u32,
+    height_4x4: u32,
+    has_chroma: bool,
+    palette: &PaletteInfo,
+    mi_rows: u32,
+    mi_cols: u32,
+) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
+    let w4 = width_4x4.min(mi_cols.saturating_sub(x4)).max(1);
+    let h4 = height_4x4.min(mi_rows.saturating_sub(y4)).max(1);
+
+    let y_map = if palette.y_size > 0 {
+        Some(read_pal_indices(
+            decoder,
+            0,
+            palette.y_size,
+            w4,
+            h4,
+            width_4x4,
+        )?)
+    } else {
+        None
+    };
+
+    let uv_map = if has_chroma && palette.uv_size > 0 {
+        let (cw4, ch4) = ((w4 + 1) / 2, (h4 + 1) / 2);
+        let cbw4 = (width_4x4 + 1) / 2;
+        Some(read_pal_indices(
+            decoder,
+            1,
+            palette.uv_size,
+            cw4,
+            ch4,
+            cbw4,
+        )?)
+    } else {
+        None
+    };
+
+    Ok((y_map, uv_map))
 }
 
 #[cfg(test)]

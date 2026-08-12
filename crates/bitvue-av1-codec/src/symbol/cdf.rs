@@ -149,6 +149,61 @@ pub struct CdfContext {
     /// segment id itself (`SymbolDecoder::read_segment_id`'s doc).
     seg_id_cdf: [Vec<u16>; 3],
 
+    /// `has_palette_y` CDFs, `[bsizeCtx 0..=6][ctx 0..=2]` (spec 5.11.46's `palette_mode_info()`,
+    /// `bsizeCtx = MiWidthLog2 + MiHeightLog2 - 2`, `ctx` from `TileContext::has_palette_context`
+    /// -- real spec/rav1d default values (`src/cdf.c`'s `default_cdf.m.pal_y`) + real per-context
+    /// adaptation.
+    pal_y_cdf: [[Vec<u16>; 3]; 7],
+    /// `has_palette_uv` CDFs, one per context (0..=1, `PaletteSizeY > 0`) -- real spec/rav1d
+    /// default values (`default_cdf.m.pal_uv`).
+    pal_uv_cdf: [Vec<u16>; 2],
+    /// `palette_size_y_minus_2`/`palette_size_uv_minus_2` CDFs, `[y_or_uv][bsizeCtx 0..=6]`
+    /// (6-symbol alphabet, `PaletteSize = symbol + 2` giving real sizes 2..=8) -- real spec/rav1d
+    /// default values (`default_cdf.m.pal_sz`).
+    pal_sz_cdf: [[Vec<u16>; 7]; 2],
+    /// `color_map` (palette per-pixel index) CDFs, `[y_or_uv][pal_sz - 2][ctx 0..=4]` -- alphabet
+    /// size `pal_sz - 1` per spec (fewer symbols for smaller palettes, real spec/rav1d shape, not
+    /// padded to a fixed width) -- real spec/rav1d default values (`default_cdf.m.color_map`).
+    /// Context is `TileContext`/`order_palette`'s real diagonal-wavefront rank derivation (see
+    /// `SymbolDecoder::read_palette_index_map`'s doc), not an above/left count like every other
+    /// context in this crate.
+    color_map_cdf: [[[Vec<u16>; 5]; 7]; 2],
+
+    /// `angle_delta_y`/`angle_delta_uv` CDFs (spec 5.11.??? `intra_angle_info_y`/`_uv`), one per
+    /// directional mode (`mode - V_PRED`, 0..=7 covering `V_PRED..=D67_PRED`, i.e. `VERT_PRED..
+    /// VERT_LEFT_PRED` in dav1d's naming) -- shared between Y and UV (real spec/dav1d: same table,
+    /// `ts->cdf.m.angle_delta[mode - VERT_PRED]`, indexed by whichever plane's mode is directional
+    /// at the call site). Real spec/rav1d default values (`default_cdf.m.angle_delta`,
+    /// `src/cdf.c`) + real per-context (per-mode) adaptation. 7-symbol alphabet (`2*MAX_ANGLE_DELTA
+    /// + 1 = 7`, decoded value `-3..=3`).
+    angle_delta_cdf: [Vec<u16>; 8],
+    /// `uv_mode` CDFs, `[cfl_allowed 0..=1][y_mode 0..=12]` -- real spec/rav1d default values
+    /// (`default_cdf.m.uv_mode`). `cfl_allowed=0` rows are a genuinely different (shorter,
+    /// 13-symbol) alphabet than `cfl_allowed=1` rows (14-symbol, `CFL_PRED` as an extra outcome) --
+    /// not the same values truncated, real distinct default probabilities per dav1d source.
+    uv_mode_cdf: [[Vec<u16>; 13]; 2],
+    /// `cfl_alpha_signs` CDF (spec 5.11.45, 8-symbol) -- real spec/rav1d default values
+    /// (`default_cdf.m.cfl_sign`), no context (single fixed slot, real spec: this symbol itself
+    /// selects U/V sign combination, not neighbor-derived).
+    cfl_sign_cdf: Vec<u16>,
+    /// `cfl_alpha_u`/`cfl_alpha_v` CDFs, one per context (0..=5, real spec: derived from the sign
+    /// combination just decoded via `cfl_sign_cdf` -- see `SymbolDecoder::read_cfl_alphas`'s doc
+    /// for the exact `(sign_u, sign_v) -> ctx` mapping) -- real spec/rav1d default values
+    /// (`default_cdf.m.cfl_alpha`). 16-symbol alphabet (decoded value `1..=16`, sign applied
+    /// separately).
+    cfl_alpha_cdf: [Vec<u16>; 6],
+    /// `use_filter_intra` CDFs, indexed by this crate's `BlockSize` discriminant (`bs as usize`,
+    /// 0..=21) -- real spec/rav1d default values (`default_cdf.m.use_filter_intra`), reordered from
+    /// dav1d's `BS_*` array order to match this crate's own `BlockSize` enum order (see the
+    /// construction site's doc for the mapping). `Block128x32`/`Block32x128` (not real dav1d/spec
+    /// block sizes -- see that doc) get the same harmless `16384` placeholder dav1d itself uses for
+    /// every size the real `filter_intra` gate (`max(bw4,bh4) <= 8`, i.e. both dims `<=32px`) can
+    /// never actually select.
+    use_filter_intra_cdf: [Vec<u16>; 22],
+    /// `filter_intra_mode` CDF (spec 5.11.??? `filter_intra_mode_info()`, 5-symbol) -- real
+    /// spec/rav1d default values (`default_cdf.m.filter_intra`), no context (single fixed slot).
+    filter_intra_mode_cdf: Vec<u16>,
+
     /// `txfm_split` CDFs, `[cat 0..=6][ctx 0..=2]` -- real per-context values + adaptation, see
     /// its construction site's doc in `CdfContext::new`.
     txpart_cdf: [[Vec<u16>; 3]; 7],
@@ -566,6 +621,330 @@ impl CdfContext {
             multi_ctx_cdf(&[14274, 18230, 22557, 24935, 29980, 30851, 32344]),
             multi_ctx_cdf(&[27527, 28487, 28723, 28890, 32397, 32647, 32679]),
         ];
+
+        // Palette (spec 5.11.46 `palette_mode_info()` + per-pixel color-index tokens): real
+        // spec/rav1d default CDFs (`default_cdf.m.pal_y`/`.pal_uv`/`.pal_sz`/`.color_map`,
+        // `src/cdf.c`), first qindex-bucket variant, same precedent as every table above.
+        let pal_y_cdf: [[Vec<u16>; 3]; 7] = [
+            [31676, 3419, 1261].map(binary_ctx_cdf),
+            [31912, 2859, 980].map(binary_ctx_cdf),
+            [31823, 3400, 781].map(binary_ctx_cdf),
+            [32030, 3561, 904].map(binary_ctx_cdf),
+            [32309, 7337, 1462].map(binary_ctx_cdf),
+            [32265, 4015, 1521].map(binary_ctx_cdf),
+            [32450, 7946, 129].map(binary_ctx_cdf),
+        ];
+        let pal_uv_cdf: [Vec<u16>; 2] = [32461, 21488].map(binary_ctx_cdf);
+        let pal_sz_cdf: [[Vec<u16>; 7]; 2] = [
+            [
+                multi_ctx_cdf(&[7952, 13000, 18149, 21478, 25527, 29241]),
+                multi_ctx_cdf(&[7139, 11421, 16195, 19544, 23666, 28073]),
+                multi_ctx_cdf(&[7788, 12741, 17325, 20500, 24315, 28530]),
+                multi_ctx_cdf(&[8271, 14064, 18246, 21564, 25071, 28533]),
+                multi_ctx_cdf(&[12725, 19180, 21863, 24839, 27535, 30120]),
+                multi_ctx_cdf(&[9711, 14888, 16923, 21052, 25661, 27875]),
+                multi_ctx_cdf(&[14940, 20797, 21678, 24186, 27033, 28999]),
+            ],
+            [
+                multi_ctx_cdf(&[8713, 19979, 27128, 29609, 31331, 32272]),
+                multi_ctx_cdf(&[5839, 15573, 23581, 26947, 29848, 31700]),
+                multi_ctx_cdf(&[4426, 11260, 17999, 21483, 25863, 29430]),
+                multi_ctx_cdf(&[3228, 9464, 14993, 18089, 22523, 27420]),
+                multi_ctx_cdf(&[3768, 8886, 13091, 17852, 22495, 27207]),
+                multi_ctx_cdf(&[2464, 8451, 12861, 21632, 25525, 28555]),
+                multi_ctx_cdf(&[1269, 5435, 10433, 18963, 21700, 25865]),
+            ],
+        ];
+        let color_map_cdf: [[[Vec<u16>; 5]; 7]; 2] = [
+            [
+                // y, pal_sz 2..=8
+                [28710, 16384, 10553, 27036, 31603].map(binary_ctx_cdf),
+                [
+                    multi_ctx_cdf(&[27877, 30490]),
+                    multi_ctx_cdf(&[11532, 25697]),
+                    multi_ctx_cdf(&[6544, 30234]),
+                    multi_ctx_cdf(&[23018, 28072]),
+                    multi_ctx_cdf(&[31915, 32385]),
+                ],
+                [
+                    multi_ctx_cdf(&[25572, 28046, 30045]),
+                    multi_ctx_cdf(&[9478, 21590, 27256]),
+                    multi_ctx_cdf(&[7248, 26837, 29824]),
+                    multi_ctx_cdf(&[19167, 24486, 28349]),
+                    multi_ctx_cdf(&[31400, 31825, 32250]),
+                ],
+                [
+                    multi_ctx_cdf(&[24779, 26955, 28576, 30282]),
+                    multi_ctx_cdf(&[8669, 20364, 24073, 28093]),
+                    multi_ctx_cdf(&[4255, 27565, 29377, 31067]),
+                    multi_ctx_cdf(&[19864, 23674, 26716, 29530]),
+                    multi_ctx_cdf(&[31646, 31893, 32147, 32426]),
+                ],
+                [
+                    multi_ctx_cdf(&[23132, 25407, 26970, 28435, 30073]),
+                    multi_ctx_cdf(&[7443, 17242, 20717, 24762, 27982]),
+                    multi_ctx_cdf(&[6300, 24862, 26944, 28784, 30671]),
+                    multi_ctx_cdf(&[18916, 22895, 25267, 27435, 29652]),
+                    multi_ctx_cdf(&[31270, 31550, 31808, 32059, 32353]),
+                ],
+                [
+                    multi_ctx_cdf(&[23105, 25199, 26464, 27684, 28931, 30318]),
+                    multi_ctx_cdf(&[6950, 15447, 18952, 22681, 25567, 28563]),
+                    multi_ctx_cdf(&[7560, 23474, 25490, 27203, 28921, 30708]),
+                    multi_ctx_cdf(&[18544, 22373, 24457, 26195, 28119, 30045]),
+                    multi_ctx_cdf(&[31198, 31451, 31670, 31882, 32123, 32391]),
+                ],
+                [
+                    multi_ctx_cdf(&[21689, 23883, 25163, 26352, 27506, 28827, 30195]),
+                    multi_ctx_cdf(&[6892, 15385, 17840, 21606, 24287, 26753, 29204]),
+                    multi_ctx_cdf(&[5651, 23182, 25042, 26518, 27982, 29392, 30900]),
+                    multi_ctx_cdf(&[19349, 22578, 24418, 25994, 27524, 29031, 30448]),
+                    multi_ctx_cdf(&[31028, 31270, 31504, 31705, 31927, 32153, 32392]),
+                ],
+            ],
+            [
+                // uv, pal_sz 2..=8
+                [29089, 16384, 8713, 29257, 31610].map(binary_ctx_cdf),
+                [
+                    multi_ctx_cdf(&[25257, 29145]),
+                    multi_ctx_cdf(&[12287, 27293]),
+                    multi_ctx_cdf(&[7033, 27960]),
+                    multi_ctx_cdf(&[20145, 25405]),
+                    multi_ctx_cdf(&[30608, 31639]),
+                ],
+                [
+                    multi_ctx_cdf(&[24210, 27175, 29903]),
+                    multi_ctx_cdf(&[9888, 22386, 27214]),
+                    multi_ctx_cdf(&[5901, 26053, 29293]),
+                    multi_ctx_cdf(&[18318, 22152, 28333]),
+                    multi_ctx_cdf(&[30459, 31136, 31926]),
+                ],
+                [
+                    multi_ctx_cdf(&[22980, 25479, 27781, 29986]),
+                    multi_ctx_cdf(&[8413, 21408, 24859, 28874]),
+                    multi_ctx_cdf(&[2257, 29449, 30594, 31598]),
+                    multi_ctx_cdf(&[19189, 21202, 25915, 28620]),
+                    multi_ctx_cdf(&[31844, 32044, 32281, 32518]),
+                ],
+                [
+                    multi_ctx_cdf(&[22217, 24567, 26637, 28683, 30548]),
+                    multi_ctx_cdf(&[7307, 16406, 19636, 24632, 28424]),
+                    multi_ctx_cdf(&[4441, 25064, 26879, 28942, 30919]),
+                    multi_ctx_cdf(&[17210, 20528, 23319, 26750, 29582]),
+                    multi_ctx_cdf(&[30674, 30953, 31396, 31735, 32207]),
+                ],
+                [
+                    multi_ctx_cdf(&[21239, 23168, 25044, 26962, 28705, 30506]),
+                    multi_ctx_cdf(&[6545, 15012, 18004, 21817, 25503, 28701]),
+                    multi_ctx_cdf(&[3448, 26295, 27437, 28704, 30126, 31442]),
+                    multi_ctx_cdf(&[15889, 18323, 21704, 24698, 26976, 29690]),
+                    multi_ctx_cdf(&[30988, 31204, 31479, 31734, 31983, 32325]),
+                ],
+                [
+                    multi_ctx_cdf(&[21442, 23288, 24758, 26246, 27649, 28980, 30563]),
+                    multi_ctx_cdf(&[5863, 14933, 17552, 20668, 23683, 26411, 29273]),
+                    multi_ctx_cdf(&[3415, 25810, 26877, 27990, 29223, 30394, 31618]),
+                    multi_ctx_cdf(&[17965, 20084, 22232, 23974, 26274, 28402, 30390]),
+                    multi_ctx_cdf(&[31190, 31329, 31516, 31679, 31825, 32026, 32322]),
+                ],
+            ],
+        ];
+
+        // angle_delta_y/angle_delta_uv (spec `intra_angle_info_y`/`_uv`) CDFs, one per directional
+        // mode: real spec/rav1d default values (`default_cdf.m.angle_delta`, `src/cdf.c`).
+        let angle_delta_cdf: [Vec<u16>; 8] = [
+            multi_ctx_cdf(&[2180, 5032, 7567, 22776, 26989, 30217]),
+            multi_ctx_cdf(&[2301, 5608, 8801, 23487, 26974, 30330]),
+            multi_ctx_cdf(&[3780, 11018, 13699, 19354, 23083, 31286]),
+            multi_ctx_cdf(&[4581, 11226, 15147, 17138, 21834, 28397]),
+            multi_ctx_cdf(&[1737, 10927, 14509, 19588, 22745, 28823]),
+            multi_ctx_cdf(&[2664, 10176, 12485, 17650, 21600, 30495]),
+            multi_ctx_cdf(&[2240, 11096, 15453, 20341, 22561, 28917]),
+            multi_ctx_cdf(&[3605, 10428, 12459, 17676, 21244, 30655]),
+        ];
+
+        // uv_mode CDFs, `[cfl_allowed][y_mode]` -- real spec/rav1d default values
+        // (`default_cdf.m.uv_mode`, `src/cdf.c`). `[0]` (13-symbol, no CFL outcome) and `[1]`
+        // (14-symbol, CFL_PRED as an extra outcome) are genuinely distinct default probability
+        // sets, not the same values truncated.
+        let uv_mode_cdf: [[Vec<u16>; 13]; 2] = [
+            [
+                multi_ctx_cdf(&[
+                    22631, 24152, 25378, 25661, 25986, 26520, 27055, 27923, 28244, 30059, 30941,
+                    31961,
+                ]),
+                multi_ctx_cdf(&[
+                    9513, 26881, 26973, 27046, 27118, 27664, 27739, 27824, 28359, 29505, 29800,
+                    31796,
+                ]),
+                multi_ctx_cdf(&[
+                    9845, 9915, 28663, 28704, 28757, 28780, 29198, 29822, 29854, 30764, 31777,
+                    32029,
+                ]),
+                multi_ctx_cdf(&[
+                    13639, 13897, 14171, 25331, 25606, 25727, 25953, 27148, 28577, 30612, 31355,
+                    32493,
+                ]),
+                multi_ctx_cdf(&[
+                    9764, 9835, 9930, 9954, 25386, 27053, 27958, 28148, 28243, 31101, 31744, 32363,
+                ]),
+                multi_ctx_cdf(&[
+                    11825, 13589, 13677, 13720, 15048, 29213, 29301, 29458, 29711, 31161, 31441,
+                    32550,
+                ]),
+                multi_ctx_cdf(&[
+                    14175, 14399, 16608, 16821, 17718, 17775, 28551, 30200, 30245, 31837, 32342,
+                    32667,
+                ]),
+                multi_ctx_cdf(&[
+                    12885, 13038, 14978, 15590, 15673, 15748, 16176, 29128, 29267, 30643, 31961,
+                    32461,
+                ]),
+                multi_ctx_cdf(&[
+                    12026, 13661, 13874, 15305, 15490, 15726, 15995, 16273, 28443, 30388, 30767,
+                    32416,
+                ]),
+                multi_ctx_cdf(&[
+                    19052, 19840, 20579, 20916, 21150, 21467, 21885, 22719, 23174, 28861, 30379,
+                    32175,
+                ]),
+                multi_ctx_cdf(&[
+                    18627, 19649, 20974, 21219, 21492, 21816, 22199, 23119, 23527, 27053, 31397,
+                    32148,
+                ]),
+                multi_ctx_cdf(&[
+                    17026, 19004, 19997, 20339, 20586, 21103, 21349, 21907, 22482, 25896, 26541,
+                    31819,
+                ]),
+                multi_ctx_cdf(&[
+                    12124, 13759, 14959, 14992, 15007, 15051, 15078, 15166, 15255, 15753, 16039,
+                    16606,
+                ]),
+            ],
+            [
+                multi_ctx_cdf(&[
+                    10407, 11208, 12900, 13181, 13823, 14175, 14899, 15656, 15986, 20086, 20995,
+                    22455, 24212,
+                ]),
+                multi_ctx_cdf(&[
+                    4532, 19780, 20057, 20215, 20428, 21071, 21199, 21451, 22099, 24228, 24693,
+                    27032, 29472,
+                ]),
+                multi_ctx_cdf(&[
+                    5273, 5379, 20177, 20270, 20385, 20439, 20949, 21695, 21774, 23138, 24256,
+                    24703, 26679,
+                ]),
+                multi_ctx_cdf(&[
+                    6740, 7167, 7662, 14152, 14536, 14785, 15034, 16741, 18371, 21520, 22206,
+                    23389, 24182,
+                ]),
+                multi_ctx_cdf(&[
+                    4987, 5368, 5928, 6068, 19114, 20315, 21857, 22253, 22411, 24911, 25380, 26027,
+                    26376,
+                ]),
+                multi_ctx_cdf(&[
+                    5370, 6889, 7247, 7393, 9498, 21114, 21402, 21753, 21981, 24780, 25386, 26517,
+                    27176,
+                ]),
+                multi_ctx_cdf(&[
+                    4816, 4961, 7204, 7326, 8765, 8930, 20169, 20682, 20803, 23188, 23763, 24455,
+                    24940,
+                ]),
+                multi_ctx_cdf(&[
+                    6608, 6740, 8529, 9049, 9257, 9356, 9735, 18827, 19059, 22336, 23204, 23964,
+                    24793,
+                ]),
+                multi_ctx_cdf(&[
+                    5998, 7419, 7781, 8933, 9255, 9549, 9753, 10417, 18898, 22494, 23139, 24764,
+                    25989,
+                ]),
+                multi_ctx_cdf(&[
+                    10660, 11298, 12550, 12957, 13322, 13624, 14040, 15004, 15534, 20714, 21789,
+                    23443, 24861,
+                ]),
+                multi_ctx_cdf(&[
+                    10522, 11530, 12552, 12963, 13378, 13779, 14245, 15235, 15902, 20102, 22696,
+                    23774, 25838,
+                ]),
+                multi_ctx_cdf(&[
+                    10099, 10691, 12639, 13049, 13386, 13665, 14125, 15163, 15636, 19676, 20474,
+                    23519, 25208,
+                ]),
+                multi_ctx_cdf(&[
+                    3144, 5087, 7382, 7504, 7593, 7690, 7801, 8064, 8232, 9248, 9875, 10521, 29048,
+                ]),
+            ],
+        ];
+
+        // cfl_alpha_signs (spec 5.11.45) CDF -- real spec/rav1d default values
+        // (`default_cdf.m.cfl_sign`).
+        let cfl_sign_cdf: Vec<u16> =
+            multi_ctx_cdf(&[1418, 2123, 13340, 18405, 26972, 28343, 32294]);
+        // cfl_alpha_u/cfl_alpha_v CDFs, one per context (0..=5) -- real spec/rav1d default values
+        // (`default_cdf.m.cfl_alpha`).
+        let cfl_alpha_cdf: [Vec<u16>; 6] = [
+            multi_ctx_cdf(&[
+                7637, 20719, 31401, 32481, 32657, 32688, 32692, 32696, 32700, 32704, 32708, 32712,
+                32716, 32720, 32724,
+            ]),
+            multi_ctx_cdf(&[
+                14365, 23603, 28135, 31168, 32167, 32395, 32487, 32573, 32620, 32647, 32668, 32672,
+                32676, 32680, 32684,
+            ]),
+            multi_ctx_cdf(&[
+                11532, 22380, 28445, 31360, 32349, 32523, 32584, 32649, 32673, 32677, 32681, 32685,
+                32689, 32693, 32697,
+            ]),
+            multi_ctx_cdf(&[
+                26990, 31402, 32282, 32571, 32692, 32696, 32700, 32704, 32708, 32712, 32716, 32720,
+                32724, 32728, 32732,
+            ]),
+            multi_ctx_cdf(&[
+                17248, 26058, 28904, 30608, 31305, 31877, 32126, 32321, 32394, 32464, 32516, 32560,
+                32576, 32593, 32622,
+            ]),
+            multi_ctx_cdf(&[
+                14738, 21678, 25779, 27901, 29024, 30302, 30980, 31843, 32144, 32413, 32520, 32594,
+                32622, 32656, 32660,
+            ]),
+        ];
+
+        // use_filter_intra (spec `filter_intra_mode_info()`) CDFs -- real spec/rav1d default
+        // values (`default_cdf.m.use_filter_intra`, `src/cdf.c`), reordered from dav1d's `BS_*`
+        // array order into this crate's own `BlockSize` discriminant order (`Block4x4=0,
+        // Block4x8=1, Block8x4=2, Block8x8=3, Block8x16=4, Block16x8=5, Block16x16=6, Block16x32=7,
+        // Block32x16=8, Block32x32=9, Block32x64=10, Block64x32=11, Block64x64=12, Block64x128=13,
+        // Block128x64=14, Block128x128=15, Block32x8=16, Block64x16=17, Block128x32=18,
+        // Block8x32=19, Block16x64=20, Block32x128=21` -- see `tile::partition::BlockSize`).
+        // `Block128x32`/`Block32x128` have no dav1d/spec counterpart (see field doc) -- given the
+        // same harmless `16384` dav1d itself uses for every size the real gate can't select.
+        let use_filter_intra_cdf: [Vec<u16>; 22] = [
+            binary_ctx_cdf(4621),  // Block4x4
+            binary_ctx_cdf(6743),  // Block4x8
+            binary_ctx_cdf(5893),  // Block8x4
+            binary_ctx_cdf(7866),  // Block8x8
+            binary_ctx_cdf(12551), // Block8x16
+            binary_ctx_cdf(9394),  // Block16x8
+            binary_ctx_cdf(12408), // Block16x16
+            binary_ctx_cdf(14301), // Block16x32
+            binary_ctx_cdf(12756), // Block32x16
+            binary_ctx_cdf(22343), // Block32x32
+            binary_ctx_cdf(16384), // Block32x64
+            binary_ctx_cdf(16384), // Block64x32
+            binary_ctx_cdf(16384), // Block64x64
+            binary_ctx_cdf(16384), // Block64x128
+            binary_ctx_cdf(16384), // Block128x64
+            binary_ctx_cdf(16384), // Block128x128
+            binary_ctx_cdf(18101), // Block32x8
+            binary_ctx_cdf(16384), // Block64x16
+            binary_ctx_cdf(16384), // Block128x32 (no dav1d/spec counterpart, see field doc)
+            binary_ctx_cdf(20229), // Block8x32
+            binary_ctx_cdf(16384), // Block16x64
+            binary_ctx_cdf(16384), // Block32x128 (no dav1d/spec counterpart, see field doc)
+        ];
+        // filter_intra_mode (5-symbol) CDF -- real spec/rav1d default values
+        // (`default_cdf.m.filter_intra`).
+        let filter_intra_mode_cdf: Vec<u16> = multi_ctx_cdf(&[8949, 12776, 17211, 29558]);
 
         // txfm_split (spec 5.11.18 `read_var_tx_size`'s `txfm_split` symbol) CDFs, per
         // `[cat 0..=6][ctx 0..=2]`. `cat` packs the candidate size class and recursion depth
@@ -1770,6 +2149,16 @@ impl CdfContext {
             skip_cdf,
             seg_pred_cdf,
             seg_id_cdf,
+            pal_y_cdf,
+            pal_uv_cdf,
+            pal_sz_cdf,
+            color_map_cdf,
+            angle_delta_cdf,
+            uv_mode_cdf,
+            cfl_sign_cdf,
+            cfl_alpha_cdf,
+            use_filter_intra_cdf,
+            filter_intra_mode_cdf,
             txpart_cdf,
             kfym,
             newmv_mode_cdf,
@@ -1873,6 +2262,62 @@ impl CdfContext {
     /// segment_id_context`'s doc).
     pub fn get_seg_id_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
         &mut self.seg_id_cdf[(ctx as usize).min(2)]
+    }
+
+    /// Get mutable `has_palette_y` CDF (`bsize_ctx` 0..=6, `ctx` 0..=2 -- see
+    /// `TileContext::has_palette_context`'s doc).
+    pub fn get_pal_y_cdf_mut(&mut self, bsize_ctx: u8, ctx: u8) -> &mut [u16] {
+        &mut self.pal_y_cdf[(bsize_ctx as usize).min(6)][(ctx as usize).min(2)]
+    }
+
+    /// Get mutable `has_palette_uv` CDF (`ctx` 0..=1, `PaletteSizeY > 0`).
+    pub fn get_pal_uv_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.pal_uv_cdf[(ctx as usize).min(1)]
+    }
+
+    /// Get mutable `palette_size_{y,uv}_minus_2` CDF (`plane` 0=y/1=uv, `bsize_ctx` 0..=6).
+    pub fn get_pal_sz_cdf_mut(&mut self, plane: usize, bsize_ctx: u8) -> &mut [u16] {
+        &mut self.pal_sz_cdf[plane.min(1)][(bsize_ctx as usize).min(6)]
+    }
+
+    /// Get mutable `color_map` CDF (`plane` 0=y/1=uv, `pal_sz` 2..=8, `ctx` 0..=4 -- see
+    /// `SymbolDecoder::read_palette_index_map`'s doc).
+    pub fn get_color_map_cdf_mut(&mut self, plane: usize, pal_sz: u8, ctx: u8) -> &mut [u16] {
+        let pal_sz_idx = (pal_sz.max(2) - 2).min(6) as usize;
+        &mut self.color_map_cdf[plane.min(1)][pal_sz_idx][(ctx as usize).min(4)]
+    }
+
+    /// Get mutable `angle_delta` CDF for a directional mode (`mode_minus_vert` 0..=7, i.e.
+    /// `mode - V_PRED` -- shared by both `angle_delta_y` and `angle_delta_uv`, see field doc).
+    pub fn get_angle_delta_cdf_mut(&mut self, mode_minus_vert: u8) -> &mut [u16] {
+        &mut self.angle_delta_cdf[(mode_minus_vert as usize).min(7)]
+    }
+
+    /// Get mutable `uv_mode` CDF for `(cfl_allowed, y_mode)` (`y_mode` 0..=12 -- see field doc for
+    /// why `cfl_allowed=0`/`1` are genuinely distinct alphabets, not the same table truncated).
+    pub fn get_uv_mode_cdf_mut(&mut self, cfl_allowed: bool, y_mode: u8) -> &mut [u16] {
+        &mut self.uv_mode_cdf[usize::from(cfl_allowed)][(y_mode as usize).min(12)]
+    }
+
+    /// Get mutable `cfl_alpha_signs` CDF (no context, see field doc).
+    pub fn get_cfl_sign_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.cfl_sign_cdf
+    }
+
+    /// Get mutable `cfl_alpha_u`/`cfl_alpha_v` CDF for the given context (0..=5, see field doc).
+    pub fn get_cfl_alpha_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.cfl_alpha_cdf[(ctx as usize).min(5)]
+    }
+
+    /// Get mutable `use_filter_intra` CDF for the given `BlockSize` (see field doc for the
+    /// discriminant-order mapping).
+    pub fn get_use_filter_intra_cdf_mut(&mut self, bs: crate::tile::BlockSize) -> &mut [u16] {
+        &mut self.use_filter_intra_cdf[(bs as usize).min(21)]
+    }
+
+    /// Get mutable `filter_intra_mode` CDF (no context, see field doc).
+    pub fn get_filter_intra_mode_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.filter_intra_mode_cdf
     }
 
     /// Get mutable `txfm_split` CDF for `(cat, ctx)` (`cat` 0..=6, `ctx` 0..=2 -- see

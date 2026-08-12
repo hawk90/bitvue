@@ -210,6 +210,7 @@ mod tests {
             tx_blocks: None,
             qp: None,
             residual: None,
+            palette: crate::tile::PaletteInfo::default(),
         }
     }
 

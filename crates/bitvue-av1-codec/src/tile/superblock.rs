@@ -84,6 +84,10 @@ impl Superblock {
 /// * `delta_q_enabled` - True if delta Q is enabled for this frame
 /// * `reference_select` - Frame header's `reference_select` flag (see `parse_coding_unit`'s doc)
 /// * `allow_intrabc` - Frame header's `allow_intrabc` flag (see `parse_coding_unit`'s doc)
+/// * `allow_screen_content_tools` - Frame header's `allow_screen_content_tools` flag (see
+///   `parse_coding_unit`'s doc)
+/// * `enable_filter_intra` - Sequence header's `enable_filter_intra` flag (see
+///   `parse_coding_unit`'s doc)
 /// * `use_ref_frame_mvs` - Frame header's `use_ref_frame_mvs` flag, used as `inter_mode`'s
 ///   `globalmv_ctx` (see `crate::tile::context::SpatialRefContext::inter_mode_context`'s doc)
 /// * `tile_ctx` - Above/left neighbor-state tracker for entropy context, shared across every
@@ -113,6 +117,8 @@ pub fn parse_superblock(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    allow_screen_content_tools: bool,
+    enable_filter_intra: bool,
     use_ref_frame_mvs: bool,
     segmentation: crate::frame_header_full::SegmentationInfo,
     tile_ctx: &mut crate::tile::TileContext,
@@ -152,6 +158,8 @@ pub fn parse_superblock(
         mv_ctx,
         reference_select,
         allow_intrabc,
+        allow_screen_content_tools,
+        enable_filter_intra,
         use_ref_frame_mvs,
         segmentation,
         tile_ctx,
@@ -185,6 +193,8 @@ fn parse_coding_units_recursive(
     mv_ctx: &mut crate::tile::MvPredictorContext,
     reference_select: bool,
     allow_intrabc: bool,
+    allow_screen_content_tools: bool,
+    enable_filter_intra: bool,
     use_ref_frame_mvs: bool,
     segmentation: crate::frame_header_full::SegmentationInfo,
     tile_ctx: &mut crate::tile::TileContext,
@@ -207,6 +217,8 @@ fn parse_coding_units_recursive(
             mv_ctx,
             reference_select,
             allow_intrabc,
+            allow_screen_content_tools,
+            enable_filter_intra,
             use_ref_frame_mvs,
             segmentation,
             tile_ctx,
@@ -230,6 +242,8 @@ fn parse_coding_units_recursive(
                 mv_ctx,
                 reference_select,
                 allow_intrabc,
+                allow_screen_content_tools,
+                enable_filter_intra,
                 use_ref_frame_mvs,
                 segmentation,
                 tile_ctx,

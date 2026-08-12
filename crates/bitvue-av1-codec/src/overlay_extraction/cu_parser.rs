@@ -35,6 +35,8 @@ pub fn parse_all_coding_units(
     let delta_q_enabled = parsed.delta_q_enabled;
     let reference_select = parsed.reference_select;
     let allow_intrabc = parsed.allow_intrabc;
+    let allow_screen_content_tools = parsed.allow_screen_content_tools;
+    let enable_filter_intra = parsed.enable_filter_intra;
     let use_ref_frame_mvs = parsed.use_ref_frame_mvs;
     let segmentation = parsed.segmentation;
     let tx_type_flags = crate::tile::TxTypeFrameFlags {
@@ -90,6 +92,8 @@ pub fn parse_all_coding_units(
                     &mut mv_ctx,
                     reference_select,
                     allow_intrabc,
+                    allow_screen_content_tools,
+                    enable_filter_intra,
                     use_ref_frame_mvs,
                     segmentation,
                     &mut tile_ctx,

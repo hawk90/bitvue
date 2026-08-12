@@ -190,6 +190,14 @@ pub struct FrameHeader {
     /// `allow_intrabc` (spec 5.9.2) -- whether intra block copy is enabled for this (intra) frame.
     /// Same basic-vs-full caveat as `reference_select`.
     pub allow_intrabc: bool,
+    /// `allow_screen_content_tools` (spec 5.9.2) -- gates `palette_mode_info()`'s real eligibility
+    /// (`crate::tile::coding_unit::read_palette_mode_info`'s doc) independently of `allow_intrabc`
+    /// (real spec: `allow_intrabc` implies this, but this can be `true` while `allow_intrabc` is
+    /// `false` -- palette-only screen content). Same basic-vs-full caveat as `reference_select`;
+    /// `parse_frame_header_basic` conservatively reports `false` (never attempts palette), which is
+    /// always bitstream-sync-safe here since nothing reads a `has_palette_y`/`_uv` bit unless this
+    /// is `true`.
+    pub allow_screen_content_tools: bool,
     /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
     /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
     /// basic-vs-full caveat as `reference_select`); real value only from
@@ -558,6 +566,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             upscaled_height: 0,
             reference_select: false,
             allow_intrabc: false,
+            allow_screen_content_tools: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -730,6 +739,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         upscaled_height: 0,
         reference_select: false,
         allow_intrabc: false,
+        allow_screen_content_tools: false,
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,

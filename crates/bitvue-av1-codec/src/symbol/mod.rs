@@ -147,6 +147,72 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.read_symbol_adaptive(cdf)
     }
 
+    /// Real `dav1d_msac_decode_bool_equi` -- a single raw equi-probable (50/50) bit, exposed
+    /// publicly for callers outside this module that need it directly (palette cache-reuse flags,
+    /// V-plane delta sign) rather than through `read_bools_n`'s loop.
+    pub fn read_bool_equi(&mut self) -> Result<bool> {
+        self.decoder.read_bool(16384)
+    }
+
+    /// Real `L(n)`/`dav1d_msac_decode_bools` -- `n` raw equi-probable (50/50) bits packed
+    /// MSB-first, matching the existing golomb/literal-extra-bits pattern used throughout
+    /// residual reading (`read_bool(16384)` in a loop), factored out here since palette color
+    /// values reuse it directly (ported from dav1d's `dav1d_msac_decode_bools`, `src/msac.h`).
+    pub fn read_bools_n(&mut self, n: u32) -> Result<u32> {
+        let mut v = 0u32;
+        for _ in 0..n {
+            let bit = self.read_bool_equi()? as u32;
+            v = (v << 1) | bit;
+        }
+        Ok(v)
+    }
+
+    /// Real `NS(n)` (spec 8.2.5) over the arithmetic decoder -- a non-power-of-2 uniform integer
+    /// read in `0..n`, used for the first pixel of a palette color-index map
+    /// (`SymbolDecoder::read_palette_index_map`'s doc). Ported index-for-index from dav1d's
+    /// `dav1d_msac_decode_uniform` (`src/msac.h`), not reconstructed from the spec's `NS(n)`
+    /// description alone, since the bit-count/threshold math is easy to get subtly wrong.
+    pub fn read_uniform(&mut self, n: u32) -> Result<u32> {
+        debug_assert!(n > 0);
+        let l = 32 - (n.max(1)).leading_zeros(); // floor(log2(n)) + 1, matches dav1d's ulog2(n)+1
+        let m = (1u32 << l) - n;
+        let v = self.read_bools_n(l - 1)?;
+        if v < m {
+            Ok(v)
+        } else {
+            let extra = self.read_bool_equi()? as u32;
+            Ok((v << 1) - m + extra)
+        }
+    }
+
+    /// Read `has_palette_y` (spec 5.11.46) -- real per-`(bsize_ctx, ctx)` CDF + adaptation.
+    /// `bsize_ctx`/`ctx`: `crate::tile::coding_unit::read_palette_mode_info`'s doc.
+    pub fn read_has_palette_y(&mut self, bsize_ctx: u8, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_pal_y_cdf_mut(bsize_ctx, ctx);
+        Ok(self.decoder.read_symbol_adaptive(cdf)? == 1)
+    }
+
+    /// Read `has_palette_uv` -- real per-`ctx` CDF + adaptation (`ctx`: `PaletteSizeY > 0`).
+    pub fn read_has_palette_uv(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_pal_uv_cdf_mut(ctx);
+        Ok(self.decoder.read_symbol_adaptive(cdf)? == 1)
+    }
+
+    /// Read `palette_size_{y,uv}_minus_2` -- real per-`(plane, bsize_ctx)` CDF + adaptation.
+    /// `plane`: 0=y/1=uv. Returns the real palette size (`symbol + 2`, range 2..=8).
+    pub fn read_pal_size(&mut self, plane: usize, bsize_ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_pal_sz_cdf_mut(plane, bsize_ctx);
+        Ok(self.decoder.read_symbol_adaptive(cdf)? + 2)
+    }
+
+    /// Read one `color_map` (palette pixel index) symbol -- real per-`(plane, pal_sz, ctx)` CDF +
+    /// adaptation (`SymbolDecoder::read_palette_index_map`'s doc for `ctx`'s real derivation).
+    /// `plane`: 0=y/1=uv. Alphabet size `pal_sz - 1` (real spec: `pal_sz` symbols, 0..=`pal_sz-1`).
+    pub fn read_color_map_index(&mut self, plane: usize, pal_sz: u8, ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_color_map_cdf_mut(plane, pal_sz, ctx);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
     /// Read `txfm_split` (spec 5.11.18's `read_var_tx_size`) -- real per-`(cat, ctx)` CDF +
     /// adaptation, matching `read_skip`'s bar. `cat`/`ctx` are `crate::tile::coding_unit::read_var_tx_size`'s
     /// packed category and `TileContext::var_tx_context`'s `a+l` sum, respectively. Returns
@@ -173,6 +239,79 @@ impl<'a> SymbolDecoder<'a> {
     /// - 3-12: Directional and smooth modes
     pub fn read_intra_mode(&mut self, above_class: u8, left_class: u8) -> Result<u8> {
         let cdf = self.cdf_context.get_kfym_cdf_mut(above_class, left_class);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
+    /// Read `angle_delta_y`/`angle_delta_uv` (spec `intra_angle_info_y`/`_uv`) -- real per-mode CDF
+    /// + adaptation, shared table for Y and UV (`CdfContext::angle_delta_cdf`'s doc).
+    /// `mode_minus_vert`: `mode - V_PRED` (0..=7). Returns the real signed delta, `-3..=3`.
+    pub fn read_angle_delta(&mut self, mode_minus_vert: u8) -> Result<i8> {
+        let cdf = self.cdf_context.get_angle_delta_cdf_mut(mode_minus_vert);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol as i8 - 3)
+    }
+
+    /// Read `uv_mode` -- real per-`(cfl_allowed, y_mode)` CDF + adaptation
+    /// (`CdfContext::uv_mode_cdf`'s doc). Returns the raw mode symbol: `0..=12` are the same 13
+    /// intra modes as `y_mode`; `13` (`UV_CFL_PRED`, only reachable when `cfl_allowed`) means
+    /// chroma-from-luma, handled by `read_cfl_alphas` at the call site.
+    pub fn read_uv_mode(&mut self, cfl_allowed: bool, y_mode: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_uv_mode_cdf_mut(cfl_allowed, y_mode);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
+    /// Read `cfl_alpha_signs` + `cfl_alpha_u`/`cfl_alpha_v` (spec 5.11.45) -- ported exactly from
+    /// dav1d's `read_pal_uv`-adjacent CFL block (`src/decode.c`), not the spec pseudocode alone:
+    /// the sign symbol (8 outcomes, `+1` giving `1..=8`) packs `(sign_u, sign_v)` as base-3 digits
+    /// (`sign_u = sign/3`, `sign_v = sign - sign_u*3`; `0`=zero/absent, `1`=negative, `2`=positive
+    /// -- the all-zero combination is unreachable by construction, real spec: CFL would never be
+    /// selected if both alphas were zero), each present component's alpha magnitude then read via
+    /// its own context (`(sign == 2) as u8 * 3 + other_sign`) and negated when that component's
+    /// sign was `1`. Returns `(alpha_u, alpha_v)`, each `-16..=16` with `0` meaning "not present".
+    pub fn read_cfl_alphas(&mut self) -> Result<(i8, i8)> {
+        let sign_cdf = self.cdf_context.get_cfl_sign_cdf_mut();
+        let sign = self.decoder.read_symbol_adaptive(sign_cdf)? + 1;
+        let sign_u = sign / 3;
+        let sign_v = sign - sign_u * 3;
+
+        let alpha_u = if sign_u != 0 {
+            let ctx = if sign_u == 2 { 3 } else { 0 } + sign_v;
+            let cdf = self.cdf_context.get_cfl_alpha_cdf_mut(ctx);
+            let magnitude = self.decoder.read_symbol_adaptive(cdf)? as i8 + 1;
+            if sign_u == 1 {
+                -magnitude
+            } else {
+                magnitude
+            }
+        } else {
+            0
+        };
+        let alpha_v = if sign_v != 0 {
+            let ctx = if sign_v == 2 { 3 } else { 0 } + sign_u;
+            let cdf = self.cdf_context.get_cfl_alpha_cdf_mut(ctx);
+            let magnitude = self.decoder.read_symbol_adaptive(cdf)? as i8 + 1;
+            if sign_v == 1 {
+                -magnitude
+            } else {
+                magnitude
+            }
+        } else {
+            0
+        };
+
+        Ok((alpha_u, alpha_v))
+    }
+
+    /// Read `use_filter_intra` (spec `filter_intra_mode_info()`) -- real per-`BlockSize` CDF +
+    /// adaptation.
+    pub fn read_use_filter_intra(&mut self, bs: crate::tile::BlockSize) -> Result<bool> {
+        let cdf = self.cdf_context.get_use_filter_intra_cdf_mut(bs);
+        Ok(self.decoder.read_symbol_adaptive(cdf)? == 1)
+    }
+
+    /// Read `filter_intra_mode` (5-symbol) -- real CDF + adaptation, no context.
+    pub fn read_filter_intra_mode(&mut self) -> Result<u8> {
+        let cdf = self.cdf_context.get_filter_intra_mode_cdf_mut();
         self.decoder.read_symbol_adaptive(cdf)
     }
 
@@ -1299,6 +1438,41 @@ mod tests {
     // state (`range`/`value`/`cnt`) before and after, since any real symbol read changes it.
     fn decoder_state(d: &SymbolDecoder) -> (u32, usize, i32) {
         (d.decoder.range, d.decoder.value, d.decoder.cnt)
+    }
+
+    #[test]
+    fn test_read_uniform_n_one_reads_zero_bits_and_returns_zero() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        let v = decoder.read_uniform(1).unwrap();
+        assert_eq!(v, 0);
+        assert_eq!(decoder_state(&decoder), before);
+    }
+
+    #[test]
+    fn test_read_uniform_all_results_in_range() {
+        // Property-style check across several synthetic byte streams and `n` values: every
+        // decoded value must land in `0..n` (matches this session's established
+        // `test_coeff_position_all_positions_unique_and_in_range` discipline).
+        for seed in 0u8..8 {
+            for n in [2u32, 3, 5, 7, 8, 33] {
+                let data = vec![0x40 ^ seed, seed, 0xFF, 0xFF, 0xAA ^ seed, 0xBB, 0x12, 0x34];
+                let mut decoder = SymbolDecoder::new(&data).unwrap();
+                let v = decoder.read_uniform(n).unwrap();
+                assert!(v < n, "read_uniform({n}) returned {v}, out of range");
+            }
+        }
+    }
+
+    #[test]
+    fn test_read_bools_n_zero_reads_zero_bits() {
+        let data = vec![0x80, 0x00, 0xFF, 0xFF, 0xAA, 0xBB];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let before = decoder_state(&decoder);
+        let v = decoder.read_bools_n(0).unwrap();
+        assert_eq!(v, 0);
+        assert_eq!(decoder_state(&decoder), before);
     }
 
     #[test]
