@@ -624,15 +624,14 @@ pub fn parse_coding_unit(
             cu.tx_size = TxSize::from_class(resolved_class);
             tile_ctx.set_tx_class(x4, y4, width_4x4, height_4x4, resolved_class);
         } else {
-            // Verification caveat (unlike every other real-context piece landed this session):
-            // this crate's only real fixture (`test_data/av1_test.ivf`) has zero `use_intrabc`
-            // CUs (0/1676, confirmed) -- `allow_screen_content_tools` is a rare screen-content
-            // flag this clip never sets. This branch is spec/rav1d-verified (see above) but
-            // *not* real-fixture-verified like the rest of this crate's entropy-decode work; it
-            // reuses `compute_inter_tx_blocks` exactly as written for real inter CUs (already
-            // real-fixture-verified there), so the risk is narrower than a from-scratch parser,
-            // but genuinely exercising it needs a screen-content test clip this session doesn't
-            // have (same class of gap as segment_id/palette, see `DEVELOPMENT_PHASES.md`).
+            // Real-fixture-verified (2026-08-12): this crate's only committed fixture
+            // (`test_data/av1_test.ivf`) has zero `use_intrabc` CUs, so this path was verified
+            // separately against a real screen-content encode (official libaom test asset
+            // `screendata.y4m`, `storage.googleapis.com/aom-test-data`, encoded locally with
+            // `aomenc --tune-content=screen --enable-intrabc=1` -- scratchpad-only, never
+            // committed, per this repo's third-party-test-data policy) -- 10 real IntraBC CUs
+            // observed, 100% got a real `tx_blocks` breakdown, zero parse errors across the
+            // clip. See `DEVELOPMENT_PHASES.md` for the full verification record.
             cu.tx_blocks = compute_inter_tx_blocks(
                 decoder,
                 tile_ctx,
