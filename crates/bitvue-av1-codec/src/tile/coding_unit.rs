@@ -38,6 +38,7 @@
 //! simplifications) now reads a real (if non-spec-exact) residual read sequence for every
 //! non-skip CU's transform blocks, closing the gap that caused this.
 
+use crate::symbol::cdf::tx_size_class;
 use crate::symbol::{ResidualBlockStats, SymbolDecoder};
 use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
@@ -446,12 +447,12 @@ pub struct CodingUnit {
     pub tx_size: TxSize,
 
     /// Real per-leaf transform block breakdown from `read_var_tx_size` (spec 5.11.17/18), when
-    /// available. `Some` only for non-`skip`, non-IntraBC INTER coding units whose width and
-    /// height are both square-transform-representable (this crate's `TxSize` is square-only, see
-    /// its doc) -- see `read_var_tx_size`'s doc for the exact scope and why. `None` elsewhere
-    /// (intra, IntraBC, skip, or non-square/oversized CUs): those still use the older uniform
-    /// `tx_size`-tiled grid (`width.div_ceil(tx_size.size())` etc, see `parse_coding_unit`'s
-    /// residual loop) -- a heuristic, not a real bitstream read, for exactly those CUs.
+    /// available -- genuinely rectangular leaves supported (`TxBlock`'s doc), not just square.
+    /// `Some` only for non-`skip`, non-IntraBC INTER coding units (`compute_inter_tx_blocks`'s
+    /// doc for the exact width/height range). `None` elsewhere (intra, IntraBC, skip, or
+    /// oversized CUs): those still use the older uniform `tx_size`-tiled grid
+    /// (`width.div_ceil(tx_size.size())` etc, see `parse_coding_unit`'s residual loop) -- a
+    /// heuristic, not a real bitstream read, for exactly those CUs.
     pub tx_blocks: Option<Vec<TxBlock>>,
 
     /// QP value (quantization parameter)
@@ -467,12 +468,16 @@ pub struct CodingUnit {
 }
 
 /// One leaf transform block from a real `read_var_tx_size` walk (spec 5.11.17/18), in absolute
-/// 4x4 ("MI") units -- see `CodingUnit::tx_blocks`'s doc.
+/// 4x4 ("MI") units for position, real pixel dimensions for size -- see `CodingUnit::tx_blocks`'s
+/// doc. `width_px`/`height_px` (rather than a single square `TxSize`, this crate's original
+/// square-only leaf representation) support genuinely rectangular leaves from non-square starting
+/// blocks (see `read_var_tx_size`'s doc) -- for a square leaf these are simply equal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TxBlock {
     pub x4: u32,
     pub y4: u32,
-    pub size: TxSize,
+    pub width_px: u32,
+    pub height_px: u32,
 }
 
 impl CodingUnit {
@@ -807,10 +812,14 @@ pub fn parse_coding_unit(
     // module's doc and `SymbolDecoder::read_residual_block`'s doc.
     if !cu.skip {
         // Real `tx_blocks` (var-tx, inter only -- see `compute_inter_tx_blocks`'s doc) gives the
-        // true per-leaf positions/sizes directly; everything else still tiles uniformly at
-        // `cu.tx_size` (a heuristic for those CUs, not a real bitstream-derived size).
-        let tx_positions: Vec<(u32, u32, u32)> = if let Some(blocks) = &cu.tx_blocks {
-            blocks.iter().map(|b| (b.x4, b.y4, b.size.size())).collect()
+        // true per-leaf positions/sizes directly, including genuinely rectangular leaves;
+        // everything else still tiles uniformly at `cu.tx_size` (a heuristic for those CUs, not a
+        // real bitstream-derived size, still square-only).
+        let tx_positions: Vec<(u32, u32, u32, u32)> = if let Some(blocks) = &cu.tx_blocks {
+            blocks
+                .iter()
+                .map(|b| (b.x4, b.y4, b.width_px, b.height_px))
+                .collect()
         } else {
             let tx_px = cu.tx_size.size();
             let tx_cols = width.div_ceil(tx_px).max(1);
@@ -818,8 +827,9 @@ pub fn parse_coding_unit(
             let tx_wh4 = tx_px / 4;
             (0..tx_rows)
                 .flat_map(|tx_row| {
-                    (0..tx_cols)
-                        .map(move |tx_col| (x4 + tx_col * tx_wh4, y4 + tx_row * tx_wh4, tx_px))
+                    (0..tx_cols).map(move |tx_col| {
+                        (x4 + tx_col * tx_wh4, y4 + tx_row * tx_wh4, tx_px, tx_px)
+                    })
                 })
                 .collect()
         };
@@ -831,38 +841,46 @@ pub fn parse_coding_unit(
         let use_real_residual_ctx = (is_key_frame && !cu.use_intrabc) || cu.tx_blocks.is_some();
         let is_single_tx_block = tx_positions.len() == 1;
         let mut summary = ResidualBlockStats::default();
-        for (tx_x4, tx_y4, tx_px) in tx_positions {
-            let tx_wh4 = tx_px / 4;
+        for (tx_x4, tx_y4, tx_w_px, tx_h_px) in tx_positions {
+            let (tx_w4, tx_h4) = (tx_w_px / 4, tx_h_px / 4);
 
-            // transform_type() (spec 5.11.47) precedes coeffs() for every transform block --
-            // see `SymbolDecoder::read_transform_type_is_1d`'s doc.
-            let is_1d = decoder.read_transform_type_is_1d(
+            // transform_type() (spec 5.11.47) precedes coeffs() for every transform block -- see
+            // `SymbolDecoder::read_transform_type_is_1d`'s doc. Its own `tx_size_px` param is the
+            // real spec square-up size (larger dimension), matching `read_residual_block`'s own
+            // `tx_class` derivation.
+            let tx_class_1d = decoder.read_transform_type_is_1d(
                 is_key_frame,
                 tx_type_flags.coded_lossless,
                 tx_type_flags.qidx_is_zero,
                 tx_type_flags.reduced_tx_set,
-                tx_px,
+                tx_w_px.max(tx_h_px),
                 y_mode_raw,
             )?;
 
             let (txb_skip_ctx, dc_sign_ctx) = if use_real_residual_ctx {
                 (
-                    tile_ctx.txb_skip_context(tx_x4, tx_y4, tx_wh4, tx_wh4, is_single_tx_block),
-                    tile_ctx.dc_sign_context(tx_x4, tx_y4, tx_wh4, tx_wh4),
+                    tile_ctx.txb_skip_context(tx_x4, tx_y4, tx_w4, tx_h4, is_single_tx_block),
+                    tile_ctx.dc_sign_context(tx_x4, tx_y4, tx_w4, tx_h4),
                 )
             } else {
                 (0, 0)
             };
 
-            let block = decoder.read_residual_block(tx_px, is_1d, txb_skip_ctx, dc_sign_ctx)?;
+            let block = decoder.read_residual_block(
+                tx_w_px,
+                tx_h_px,
+                tx_class_1d,
+                txb_skip_ctx,
+                dc_sign_ctx,
+            )?;
 
             if use_real_residual_ctx {
                 let cul_level = block.sum_abs_level.min(63) as u8;
                 tile_ctx.set_residual_ctx(
                     tx_x4,
                     tx_y4,
-                    tx_wh4,
-                    tx_wh4,
+                    tx_w4,
+                    tx_h4,
                     cul_level,
                     block.dc_sign_value,
                 );
@@ -944,16 +962,21 @@ pub fn parse_coding_unit(
 }
 
 /// Compute the real (or, for non-`Switchable` `TxMode`s, deterministic-no-read) transform block
-/// breakdown for one INTER coding unit -- spec 5.11.16's `read_block_tx_size()`, restricted to
-/// **square** coding units (`width == height`; this crate's `TxSize` is square-only, see its
-/// doc -- non-square inter CUs, which do occur here via `HORZ`/`VERT` partitions, keep the older
-/// `TxSize::from_dimensions` heuristic, `None` return). Not extended to IntraBC: IntraBC also
-/// uses this same recursive reader per spec, but this crate's intra-branch tx_size() handling
-/// (`755267d`) never routed IntraBC through it either (kept on the heuristic, "no schema
-/// decision needed yet" at the time) -- unifying both is a follow-up, not required for this pass.
+/// breakdown for one INTER coding unit -- spec 5.11.16's `read_block_tx_size()`. Supports
+/// genuinely rectangular coding units (real `Max_Tx_Size_Rect`, not this crate's older
+/// square-only `TxSize::from_dimensions` heuristic) -- verified against rav1d's
+/// `dav1d_max_txfm_size_for_bs` table (`src/tables.c`) directly: for every real AV1 block size up
+/// to 64 in each axis, the natural starting max transform size is simply the block's own size
+/// (real var-tx recursion, not this table, is what performs any further splitting); only block
+/// sizes wider or taller than 64 (128-wide/tall) cap that axis at 64 (spec: no transform exceeds
+/// 64x64). Hence `max_ytx = (width.min(64), height.min(64))` -- no lookup table needed, unlike
+/// what an earlier pass expected. Not extended to IntraBC: IntraBC also uses this same recursive
+/// reader per spec, but this crate's intra-branch tx_size() handling (`755267d`) never routed
+/// IntraBC through it either (kept on the heuristic, "no schema decision needed yet" at the time)
+/// -- unifying both is a follow-up, not required for this pass.
 ///
-/// Mirrors rav1d's `read_vartx_tree` (`src/decode.rs`, `memorysafety/rav1d`, BSD-2-Clause)
-/// dispatch order:
+/// Mirrors rav1d's `read_vartx_tree` (`src/decode.c`, `memorysafety/rav1d`/`videolan/dav1d`,
+/// BSD-2-Clause) dispatch order:
 /// 1. `skip` (spec: no bits read regardless of `TxMode` -- but `Switchable` still needs the
 ///    block's natural max size written into `var_tx_context`'s neighbor arrays for later blocks'
 ///    context, even though this CU's own leaf list is moot since `residual()` never runs for a
@@ -965,9 +988,9 @@ pub fn parse_coding_unit(
 ///    max size), no bits read -- `TxfmMode::Switchable` is the only case needing a real read.
 /// 4. `TxfmMode::Switchable`: real recursive `read_var_tx_size` walk.
 ///
-/// For CUs bigger than one max-size transform tile (only possible at 128x128, since
-/// `TxSize::from_dimensions` caps at 64x64), tiles the walk across each max-size block --
-/// matches rav1d's own `for y_off in 0..bh4/h { for x_off in 0..bw4/w { read_tx_tree(...) } }`.
+/// For CUs bigger than one max-size transform tile in either axis (>64 wide and/or tall), tiles
+/// the walk across each max-size block -- matches rav1d's own `for y_off in 0..bh4/h { for x_off
+/// in 0..bw4/w { read_tx_tree(...) } }`.
 #[allow(clippy::too_many_arguments)]
 fn compute_inter_tx_blocks(
     decoder: &mut SymbolDecoder,
@@ -982,31 +1005,39 @@ fn compute_inter_tx_blocks(
     mi_rows: u32,
     mi_cols: u32,
 ) -> Result<Option<Vec<TxBlock>>> {
-    if width != height || !(8..=128).contains(&width) {
+    if !(4..=128).contains(&width) || !(4..=128).contains(&height) {
         return Ok(None);
     }
     let (x4, y4) = (x / 4, y / 4);
     let (width_4x4, height_4x4) = (width / 4, height / 4);
-    let max_ytx = TxSize::from_dimensions(width, height);
+    let (max_ytx_w, max_ytx_h) = (width.min(64), height.min(64));
 
     if skip {
-        tile_ctx.set_var_tx_class(x4, y4, width_4x4, height_4x4, max_ytx as u8);
+        tile_ctx.set_var_tx_class(
+            x4,
+            y4,
+            width_4x4,
+            height_4x4,
+            tx_size_class(max_ytx_w) as u8,
+            tx_size_class(max_ytx_h) as u8,
+        );
         return Ok(None);
     }
 
     let uniform_size = if coded_lossless {
-        Some(TxSize::Tx4x4)
+        Some((4, 4))
     } else {
         match txfm_mode {
-            crate::frame_header::TxfmMode::Only4x4 => Some(TxSize::Tx4x4),
-            crate::frame_header::TxfmMode::Largest => Some(max_ytx),
+            crate::frame_header::TxfmMode::Only4x4 => Some((4, 4)),
+            crate::frame_header::TxfmMode::Largest => Some((max_ytx_w, max_ytx_h)),
             crate::frame_header::TxfmMode::Switchable => None,
         }
     };
 
     let mut leaves = Vec::new();
-    if let Some(uniform_size) = uniform_size {
-        let wh4 = uniform_size.size() / 4;
+    if let Some((uw, uh)) = uniform_size {
+        let (uw4, uh4) = (uw / 4, uh / 4);
+        let (uw_class, uh_class) = (tx_size_class(uw) as u8, tx_size_class(uh) as u8);
         let mut ly = y4;
         while ly < y4 + height_4x4 {
             let mut lx = x4;
@@ -1014,15 +1045,16 @@ fn compute_inter_tx_blocks(
                 leaves.push(TxBlock {
                     x4: lx,
                     y4: ly,
-                    size: uniform_size,
+                    width_px: uw,
+                    height_px: uh,
                 });
-                tile_ctx.set_var_tx_class(lx, ly, wh4, wh4, uniform_size as u8);
-                lx += wh4;
+                tile_ctx.set_var_tx_class(lx, ly, uw4, uh4, uw_class, uh_class);
+                lx += uw4;
             }
-            ly += wh4;
+            ly += uh4;
         }
     } else {
-        let tile_wh4 = max_ytx.size() / 4;
+        let (tile_w4, tile_h4) = (max_ytx_w / 4, max_ytx_h / 4);
         let mut ty = y4;
         while ty < y4 + height_4x4 {
             let mut tx = x4;
@@ -1032,38 +1064,50 @@ fn compute_inter_tx_blocks(
                     tile_ctx,
                     tx,
                     ty,
-                    max_ytx,
+                    max_ytx_w,
+                    max_ytx_h,
                     0,
                     mi_rows,
                     mi_cols,
                     &mut leaves,
                 )?;
-                tx += tile_wh4;
+                tx += tile_w4;
             }
-            ty += tile_wh4;
+            ty += tile_h4;
         }
     }
     Ok(Some(leaves))
 }
 
 /// Recursively read `read_var_tx_size()` (spec 5.11.17/18) for one max-size transform tile,
-/// square-starting-size only -- see `compute_inter_tx_blocks`'s doc. Ports rav1d's `read_tx_tree`
-/// (`src/decode.rs`, `memorysafety/rav1d`, BSD-2-Clause) index-for-index:
+/// genuinely rectangular starting sizes supported -- see `compute_inter_tx_blocks`'s doc. Ports
+/// rav1d's `read_tx_tree` (`src/decode.c`, `memorysafety/rav1d`/`videolan/dav1d`, BSD-2-Clause)
+/// index-for-index, including its real asymmetric-split branching (verified against the C
+/// directly, not assumed -- a naive square-only 4-way quad-split, this crate's original
+/// implementation, is provably wrong for non-square starting sizes):
 ///
-/// - Reads `txfm_split` only when `depth < 2 && from != Tx4x4` (spec: recursion caps at 2 levels
-///   below the tile's own starting size, and 4x4 is always terminal) -- `cat = 2*(4-from_class)
-///   -depth` selects the CDF row (`SymbolDecoder::read_txfm_split`'s doc), context from
-///   `TileContext::var_tx_context`.
-/// - If split and `from` is bigger than 8x8 (class > 1): recurse into 4 quadrant children at the
-///   next-smaller square class, skipping (early return, no read, no leaves) any child whose
-///   origin is `>= mi_rows`/`mi_cols` -- spec: transform blocks entirely outside the frame aren't
-///   separately coded (the same shape as, but distinct from,
+/// - Reads `txfm_split` only when `depth < 2 && (from_w, from_h) != (4, 4)` (spec: recursion caps
+///   at 2 levels below the tile's own starting size, and 4x4 is always terminal) -- `cat =
+///   2*(4-max_class)-depth` selects the CDF row (`SymbolDecoder::read_txfm_split`'s doc, `
+///   max_class` = the square-up class of the *larger* dimension, matching real `t_dim->max`),
+///   context from `TileContext::var_tx_context` (real per-axis width/height classes, not one
+///   shared class).
+/// - If split and `max_class > 1` (bigger than an 8x8-equivalent): recurse into 1, 2, or 4
+///   children at `sub` -- real spec's `sub` always halves only the *larger* dimension (or both,
+///   for a square starting size); the *count* of children read is asymmetric too: child `(0,0)`
+///   always, `(1,0)` only when `from_w >= from_h`, `(0,1)` only when `from_h >= from_w`, and
+///   `(1,1)` only when *both* hold (i.e. only ever for a square starting size) -- so a wide
+///   starting size (`from_w > from_h`) reads exactly 2 children side by side, a tall one reads 2
+///   stacked, and only a square one reads all 4. Skips (early return, no read, no leaves) any
+///   child whose origin is `>= mi_rows`/`mi_cols` -- spec: transform blocks entirely outside the
+///   frame aren't separately coded (the same shape as, but distinct from,
 ///   `tile::partition::parse_partition_recursive`'s own frame-edge check).
-/// - If split and `from` is exactly 8x8 (class == 1): no further symbol is read (an 8x8 split is
-///   always exactly four 4x4 leaves, spec-deterministic) -- the leaf loop below naturally produces
-///   all four since it always walks `from`'s full footprint at the resolved leaf granularity.
-/// - Otherwise (not split, or `depth`/`from` already forced no-read): `from` itself is the one
-///   leaf covering this node's whole footprint.
+/// - If split and `max_class <= 1` (an 8x8-or-smaller-max-class starting size, e.g. an 8x8, 4x8,
+///   or 8x4): no further symbol is read (spec-deterministic, always all-4x4) -- the leaf loop
+///   below naturally produces the right leaf count since it always walks `from`'s full footprint
+///   at 4x4 granularity in that case.
+/// - Otherwise (not split, or `depth`/`from` already forced no-read): `(from_w, from_h)` itself is
+///   the one leaf covering this node's whole footprint.
 ///
 /// Every leaf updates `TileContext::set_var_tx_class` across its own footprint before returning,
 /// matching rav1d's `case.set_disjoint(&dir.tx, tx)`.
@@ -1073,7 +1117,8 @@ fn read_var_tx_size(
     tile_ctx: &mut crate::tile::TileContext,
     x4: u32,
     y4: u32,
-    from: TxSize,
+    from_w: u32,
+    from_h: u32,
     depth: u8,
     mi_rows: u32,
     mi_cols: u32,
@@ -1082,81 +1127,100 @@ fn read_var_tx_size(
     if x4 >= mi_cols || y4 >= mi_rows {
         return Ok(());
     }
-    let from_class = from as u8;
-    let is_split = if depth < 2 && from != TxSize::Tx4x4 {
-        let cat = 2 * (4 - from_class) - depth;
-        let (a, l) = tile_ctx.var_tx_context(x4, y4, from_class);
+    let from_w_class = tx_size_class(from_w) as u8;
+    let from_h_class = tx_size_class(from_h) as u8;
+    let max_class = from_w_class.max(from_h_class);
+    let is_4x4 = from_w == 4 && from_h == 4;
+    let is_split = if depth < 2 && !is_4x4 {
+        let cat = 2 * (4 - max_class) - depth;
+        let (a, l) = tile_ctx.var_tx_context(x4, y4, from_w_class, from_h_class);
         decoder.read_txfm_split(cat, a + l)?
     } else {
         false
     };
 
-    if is_split && from_class > 1 {
-        let sub = TxSize::from_class(from_class - 1);
-        let half4 = from.size() / 8;
+    if is_split && max_class > 1 {
+        let (sub_w, sub_h) = match from_w.cmp(&from_h) {
+            std::cmp::Ordering::Greater => (from_w / 2, from_h),
+            std::cmp::Ordering::Less => (from_w, from_h / 2),
+            std::cmp::Ordering::Equal => (from_w / 2, from_h / 2),
+        };
+        let (half_w4, half_h4) = (sub_w / 4, sub_h / 4);
         read_var_tx_size(
             decoder,
             tile_ctx,
             x4,
             y4,
-            sub,
+            sub_w,
+            sub_h,
             depth + 1,
             mi_rows,
             mi_cols,
             out,
         )?;
-        read_var_tx_size(
-            decoder,
-            tile_ctx,
-            x4 + half4,
-            y4,
-            sub,
-            depth + 1,
-            mi_rows,
-            mi_cols,
-            out,
-        )?;
-        read_var_tx_size(
-            decoder,
-            tile_ctx,
-            x4,
-            y4 + half4,
-            sub,
-            depth + 1,
-            mi_rows,
-            mi_cols,
-            out,
-        )?;
-        read_var_tx_size(
-            decoder,
-            tile_ctx,
-            x4 + half4,
-            y4 + half4,
-            sub,
-            depth + 1,
-            mi_rows,
-            mi_cols,
-            out,
-        )?;
+        if from_w >= from_h {
+            read_var_tx_size(
+                decoder,
+                tile_ctx,
+                x4 + half_w4,
+                y4,
+                sub_w,
+                sub_h,
+                depth + 1,
+                mi_rows,
+                mi_cols,
+                out,
+            )?;
+        }
+        if from_h >= from_w {
+            read_var_tx_size(
+                decoder,
+                tile_ctx,
+                x4,
+                y4 + half_h4,
+                sub_w,
+                sub_h,
+                depth + 1,
+                mi_rows,
+                mi_cols,
+                out,
+            )?;
+            if from_w >= from_h {
+                read_var_tx_size(
+                    decoder,
+                    tile_ctx,
+                    x4 + half_w4,
+                    y4 + half_h4,
+                    sub_w,
+                    sub_h,
+                    depth + 1,
+                    mi_rows,
+                    mi_cols,
+                    out,
+                )?;
+            }
+        }
         return Ok(());
     }
 
-    let leaf_size = if is_split { TxSize::Tx4x4 } else { from };
-    let leaf_wh4 = leaf_size.size() / 4;
-    let wh4 = from.size() / 4;
+    let (leaf_w, leaf_h) = if is_split { (4, 4) } else { (from_w, from_h) };
+    let (leaf_w4, leaf_h4) = (leaf_w / 4, leaf_h / 4);
+    let (w4, h4) = (from_w / 4, from_h / 4);
+    let (leaf_w_class, leaf_h_class) = (tx_size_class(leaf_w) as u8, tx_size_class(leaf_h) as u8);
     let mut ly = y4;
-    while ly < y4 + wh4 {
+    while ly < y4 + h4 {
         let mut lx = x4;
-        while lx < x4 + wh4 {
+        while lx < x4 + w4 {
             out.push(TxBlock {
                 x4: lx,
                 y4: ly,
-                size: leaf_size,
+                width_px: leaf_w,
+                height_px: leaf_h,
             });
-            tile_ctx.set_var_tx_class(lx, ly, leaf_wh4, leaf_wh4, leaf_size as u8);
-            lx += leaf_wh4;
+            tile_ctx.set_var_tx_class(lx, ly, leaf_w4, leaf_h4, leaf_w_class, leaf_h_class);
+            lx += leaf_w4;
         }
-        ly += leaf_wh4;
+        ly += leaf_h4;
     }
     Ok(())
 }

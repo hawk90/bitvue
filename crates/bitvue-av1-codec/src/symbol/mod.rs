@@ -709,49 +709,62 @@ impl<'a> SymbolDecoder<'a> {
         reduced_tx_set: bool,
         tx_size_px: u32,
         y_mode_raw: u8,
-    ) -> Result<bool> {
+    ) -> Result<TxClass1d> {
         let tx_class = cdf::tx_size_class(tx_size_px);
         // `t_dim->max + intra >= TX_64X64`: intra additionally forces DCT_DCT (2D, no bits) one
         // tx-size class earlier than inter (at 32x32, not just 64x64) -- real spec asymmetry, not
         // a simplification.
         if coded_lossless || qidx_is_zero || tx_class + usize::from(is_intra) >= 4 {
-            return Ok(false);
+            return Ok(TxClass1d::TwoD);
         }
         if is_intra {
             if reduced_tx_set || tx_class == 2 {
                 // Intra2 alphabet (IDTX/DCT_DCT/ADST_ADST/ADST_DCT/DCT_ADST) is entirely
-                // TX_CLASS_2D -- no symbol value here can ever produce `is_1d = true`.
+                // TX_CLASS_2D -- no symbol value here can ever produce a 1D class.
                 let cdf = self
                     .cdf_context
                     .get_txtp_intra2_cdf_mut(tx_class, y_mode_raw);
                 self.decoder.read_symbol_adaptive(cdf)?;
-                Ok(false)
+                Ok(TxClass1d::TwoD)
             } else {
                 // Intra1 alphabet: IDTX, DCT_DCT, V_DCT, H_DCT, ADST_ADST, ADST_DCT, DCT_ADST.
                 let cdf = self
                     .cdf_context
                     .get_txtp_intra1_cdf_mut(tx_class, y_mode_raw);
                 let idx = self.decoder.read_symbol_adaptive(cdf)?;
-                Ok(idx == 2 || idx == 3) // V_DCT, H_DCT
+                Ok(match idx {
+                    2 => TxClass1d::Vertical,
+                    3 => TxClass1d::Horizontal,
+                    _ => TxClass1d::TwoD,
+                })
             }
         } else if reduced_tx_set || tx_class == 3 {
             // Inter3 alphabet is a single bit choosing between IDTX and DCT_DCT -- both 2D.
             let cdf = self.cdf_context.get_txtp_inter3_cdf_mut(tx_class);
             self.decoder.read_symbol_adaptive(cdf)?;
-            Ok(false)
+            Ok(TxClass1d::TwoD)
         } else if tx_class == 2 {
             // Inter2 alphabet: IDTX, V_DCT, H_DCT, DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT,
             // DCT_FLIPADST, ADST_ADST, FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST.
             let cdf = self.cdf_context.get_txtp_inter2_cdf_mut();
             let idx = self.decoder.read_symbol_adaptive(cdf)?;
-            Ok(idx == 1 || idx == 2) // V_DCT, H_DCT
+            Ok(match idx {
+                1 => TxClass1d::Vertical,
+                2 => TxClass1d::Horizontal,
+                _ => TxClass1d::TwoD,
+            })
         } else {
             // Inter1 alphabet: IDTX, V_DCT, H_DCT, V_ADST, H_ADST, V_FLIPADST, H_FLIPADST,
             // DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT, DCT_FLIPADST, ADST_ADST,
-            // FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST.
+            // FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST -- V_* at odd idx (1,3,5), H_* at
+            // even idx (2,4,6), everything else (0, 7..=15) 2D.
             let cdf = self.cdf_context.get_txtp_inter1_cdf_mut(tx_class);
             let idx = self.decoder.read_symbol_adaptive(cdf)?;
-            Ok((1..=6).contains(&idx)) // V_DCT, H_DCT, V_ADST, H_ADST, V_FLIPADST, H_FLIPADST
+            Ok(match idx {
+                1 | 3 | 5 => TxClass1d::Vertical,
+                2 | 4 | 6 => TxClass1d::Horizontal,
+                _ => TxClass1d::TwoD,
+            })
         }
     }
 
@@ -760,10 +773,12 @@ impl<'a> SymbolDecoder<'a> {
     /// crate has no dequantization/inverse-transform/pixel-reconstruction stage, so individual
     /// coefficient positions aren't independently useful, only their aggregate magnitude.
     ///
-    /// `tx_size_px` is the transform block's size in pixels per side (4/8/16/32/64). `is_1d` is
+    /// `width_px`/`height_px`: the transform block's real dimensions in pixels (previously a
+    /// single square `tx_size_px` -- generalized for rectangular var-tx, see `scan::coeff_position`
+    /// and `TxClass1d`'s docs; square callers just pass equal values). `class` is
     /// `read_transform_type_is_1d`'s result for this same transform block -- callers must read
-    /// `transform_type()` first (spec order) and pass its result here; only `eob_bin`'s context
-    /// depends on it (see `CdfContext`'s `eob_bin_16_cdf`/etc. doc).
+    /// `transform_type()` first (spec order) and pass its result here; it feeds both `eob_bin`'s
+    /// context and (for `Horizontal`/`Vertical`) real per-class coefficient positions.
     ///
     /// # Known simplifications (see `symbol/cdf.rs`'s residual-CDF doc for the CDF side)
     ///
@@ -813,9 +828,11 @@ impl<'a> SymbolDecoder<'a> {
     ///   CDF values** (rav1d's actual `[chroma=1]` axis, not luma's) instead of a from-scratch
     ///   context derivation -- verified via a dedicated research pass that rav1d's real chroma
     ///   transform-size mapping (`dav1d_max_txfm_size_for_bs`) and `HasChroma` condition exactly
-    ///   match this crate's restricted scope (square 8x8/16x16/32x32 luma blocks only -- see that
-    ///   method's doc for what's still not covered: non-square coding blocks and luma >=64x64,
-    ///   both a real, narrower, still-open version of this same gap).
+    ///   match this crate's scope (square luma coding blocks 8x8 through 128x128, since landed --
+    ///   see that method's doc). Still not covered: non-square luma coding blocks -- a real,
+    ///   narrower, still-open version of this same gap (luma's own residual reader now handles
+    ///   non-square via `read_residual_block`'s width/height split, but chroma's separate reader
+    ///   hasn't been extended to match).
     ///
     /// None of these change the *shape* of the read sequence (an `all_zero` check, then -- when
     /// not all-zero -- an `eob_bin` symbol, `eob` extra bits, and exactly `eob` per-position
@@ -825,12 +842,17 @@ impl<'a> SymbolDecoder<'a> {
     /// desync/crashes on real streams).
     pub fn read_residual_block(
         &mut self,
-        tx_size_px: u32,
-        is_1d: bool,
+        width_px: u32,
+        height_px: u32,
+        class: TxClass1d,
         txb_skip_ctx: u8,
         dc_sign_ctx: u8,
     ) -> Result<ResidualBlockStats> {
-        let tx_class = cdf::tx_size_class(tx_size_px);
+        // Real spec `txSzCtx` (`Tx_Size_Sqr_Up`, capped): CDF-family selection is by the
+        // square-up class of the *larger* dimension, not either axis alone -- for a square
+        // transform this is identical to the old single-scalar `tx_class`.
+        let tx_class = cdf::tx_size_class(width_px.max(height_px));
+        let is_1d = class.is_1d();
 
         let txb_skip_cdf = self
             .cdf_context
@@ -843,7 +865,18 @@ impl<'a> SymbolDecoder<'a> {
             });
         }
 
-        let eob_bin_cdf = self.cdf_context.get_eob_bin_cdf_mut(tx_size_px, is_1d);
+        // Real coefficient scan order + per-position neighbor context (spec 8.3.2's
+        // `get_coef_base_ctx`/`get_br_ctx`) -- see `symbol::scan`'s module doc. Each axis is
+        // independently capped at 32 (real AV1 never scans/contexts past the top-left 32-sample
+        // extent on either axis, even for a transform with a 64-sample side -- see
+        // `scan::scan_table`'s doc).
+        let capped_width = width_px.min(32);
+        let capped_height = height_px.min(32);
+        let capped_class = tx_class.min(3);
+
+        let eob_bin_cdf = self
+            .cdf_context
+            .get_eob_bin_cdf_mut(capped_width, capped_height, is_1d);
         let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
 
         let eob: u32 = if eob_bin > 1 {
@@ -867,15 +900,11 @@ impl<'a> SymbolDecoder<'a> {
             ..Default::default()
         };
 
-        // Real coefficient scan order + per-position neighbor context (spec 8.3.2's
-        // `get_coef_base_ctx`/`get_br_ctx`) -- see `symbol::scan`'s module doc. `capped_class`
-        // mirrors `eob_bin`/`coeff_base_eob_context`'s existing 32x32 scan/context cap (real AV1
-        // never scans/contexts past the top-left 32x32 sub-block, even for a 64x64 transform).
-        let capped_class = tx_class.min(3);
-        let mut levels = scan::LevelBuffer::new(4 << capped_class);
+        let mut levels = scan::LevelBuffer::new(capped_width as usize, capped_height as usize);
 
         for c in (0..eob).rev() {
-            let (x, y) = scan::coeff_position(capped_class, is_1d, c);
+            let (x, y) =
+                scan::coeff_position(capped_width, capped_height, is_1d, class.is_vertical(), c);
             let is_eob_pos = c == eob - 1;
 
             // `br_ctx`: `coeff_br`'s context if this position's token turns out to need
@@ -886,7 +915,7 @@ impl<'a> SymbolDecoder<'a> {
                 // No neighbors decoded yet (this is the first position visited) -- `coeff_br`'s
                 // context here is purely positional (spec: no magnitude bucket for the eob
                 // position specifically), unlike every other position below.
-                let ctx = coeff_base_eob_context(eob, tx_size_px);
+                let ctx = coeff_base_eob_context(eob, width_px.max(height_px));
                 let cdf = self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx);
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32 + 1;
                 let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
@@ -896,7 +925,8 @@ impl<'a> SymbolDecoder<'a> {
                 // `coeff_br`'s magnitude still comes from the same 3-neighbor sum `lo_ctx` would
                 // produce -- call it regardless of `is_1d` and only override the `coeff_base`
                 // context choice, matching dav1d's manual-recompute-for-2D special case.
-                let (lo_ctx_val, hi_mag) = scan::lo_ctx(&levels, 0, 0, is_1d);
+                let (lo_ctx_val, hi_mag) =
+                    scan::lo_ctx(&levels, 0, 0, is_1d, capped_width, capped_height);
                 let base_ctx = if is_1d { lo_ctx_val } else { 0 };
                 let cdf = self.cdf_context.get_coeff_base_cdf_mut(tx_class, base_ctx);
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
@@ -904,7 +934,7 @@ impl<'a> SymbolDecoder<'a> {
                 // DC's `coeff_br` context has no position-band offset (spec's lowest band).
                 (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
             } else {
-                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, is_1d);
+                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, is_1d, capped_width, capped_height);
                 let cdf = self.cdf_context.get_coeff_base_cdf_mut(tx_class, ctx);
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
                 let mag = hi_mag & 63;
@@ -1061,10 +1091,10 @@ impl<'a> SymbolDecoder<'a> {
             all_zero: false,
             ..Default::default()
         };
-        let mut levels = scan::LevelBuffer::new(4 << tx_class);
+        let mut levels = scan::LevelBuffer::new(chroma_tx_px as usize, chroma_tx_px as usize);
 
         for c in (0..eob).rev() {
-            let (x, y) = scan::coeff_position(tx_class, false, c);
+            let (x, y) = scan::coeff_position(chroma_tx_px, chroma_tx_px, false, false, c);
             let is_eob_pos = c == eob - 1;
 
             let (base_level, br_ctx) = if is_eob_pos {
@@ -1078,11 +1108,11 @@ impl<'a> SymbolDecoder<'a> {
             } else if c == 0 {
                 let cdf = self.cdf_context.get_coeff_base_cdf_chroma_mut(tx_class, 0);
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
-                let (_, hi_mag) = scan::lo_ctx(&levels, 0, 0, false);
+                let (_, hi_mag) = scan::lo_ctx(&levels, 0, 0, false, chroma_tx_px, chroma_tx_px);
                 let mag = hi_mag & 63;
                 (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
             } else {
-                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, false);
+                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, false, chroma_tx_px, chroma_tx_px);
                 let cdf = self
                     .cdf_context
                     .get_coeff_base_cdf_chroma_mut(tx_class, ctx);
@@ -1159,6 +1189,34 @@ fn coeff_base_eob_context(eob: u32, tx_size_px: u32) -> u8 {
     1 + u8::from(eob > (2 << tx2dszctx)) + u8::from(eob > (4 << tx2dszctx))
 }
 
+/// Real transform class for one transform block -- `TwoD` (default scan table), or `Horizontal` /
+/// `Vertical` (closed-form 1D position, spec `TX_CLASS_H`/`TX_CLASS_V`). Previously collapsed to a
+/// single `is_1d: bool` (both `V_DCT`/`H_DCT`-family types treated identically) since this crate's
+/// square-transform-only scope made the two indistinguishable in practice (see
+/// `scan::coeff_position`'s doc) -- kept distinct now that rectangular var-tx can produce
+/// transforms where `H` and `V` derive genuinely different coefficient positions (`H` uses the
+/// transform's height, `V` its width; verified against rav1d's `DECODE_COEFS_CLASS` macro,
+/// `src/recon_tmpl.c`, not assumed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TxClass1d {
+    TwoD,
+    Horizontal,
+    Vertical,
+}
+
+impl TxClass1d {
+    /// `true` for `Horizontal`/`Vertical` -- the CDF-selection axis (`eob_bin`'s `is_1d` param)
+    /// doesn't need the H/V distinction, only position derivation does (this type's doc).
+    pub fn is_1d(self) -> bool {
+        self != TxClass1d::TwoD
+    }
+
+    /// `true` for `Vertical` only -- meaningless (never read) when `!self.is_1d()`.
+    pub fn is_vertical(self) -> bool {
+        self == TxClass1d::Vertical
+    }
+}
+
 /// Summary statistics for one transform block's residual coefficients -- see
 /// `SymbolDecoder::read_residual_block`'s doc for what this deliberately does and doesn't capture
 /// (aggregate magnitude, not per-position values or real pixel-domain energy).
@@ -1217,7 +1275,7 @@ mod tests {
         let is_1d = decoder
             .read_transform_type_is_1d(true, true, false, false, 16, 0)
             .unwrap();
-        assert!(!is_1d);
+        assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
     }
 
@@ -1229,7 +1287,7 @@ mod tests {
         let is_1d = decoder
             .read_transform_type_is_1d(false, false, true, false, 16, 0)
             .unwrap();
-        assert!(!is_1d);
+        assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
     }
 
@@ -1242,7 +1300,7 @@ mod tests {
         let is_1d = decoder
             .read_transform_type_is_1d(false, false, false, false, 64, 0)
             .unwrap();
-        assert!(!is_1d);
+        assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
     }
 
@@ -1256,7 +1314,7 @@ mod tests {
         let is_1d = decoder
             .read_transform_type_is_1d(true, false, false, false, 32, 0)
             .unwrap();
-        assert!(!is_1d);
+        assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
     }
 
@@ -1284,7 +1342,7 @@ mod tests {
             let is_1d = decoder
                 .read_transform_type_is_1d(true, false, false, true, 4, 0)
                 .unwrap();
-            assert!(!is_1d);
+            assert!(!is_1d.is_1d());
         }
     }
 

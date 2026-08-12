@@ -230,8 +230,19 @@ pub struct CdfContext {
     /// here, not per-qindex tuning). `eob_bin_1024` has no `is_1d` axis in rav1d itself (only
     /// `chroma`), hence the plain `[Vec<u16>; 1]`-shaped (i.e. unindexed) field below.
     eob_bin_16_cdf: [Vec<u16>; 2],
+    /// Real `eob_bin` default for 4x8/8x4 (rc area 32) transforms -- see `eob_bin_16_cdf`'s doc
+    /// (same shape/source, `dav1d`'s `eob_bin_32`). Only reachable once rectangular var-tx feeds
+    /// `read_residual_block` a non-square transform (see that function's doc).
+    eob_bin_32_cdf: [Vec<u16>; 2],
     eob_bin_64_cdf: [Vec<u16>; 2],
+    /// Real `eob_bin` default for 8x16/16x8 (rc area 128) transforms -- see `eob_bin_16_cdf`'s
+    /// doc.
+    eob_bin_128_cdf: [Vec<u16>; 2],
     eob_bin_256_cdf: [Vec<u16>; 2],
+    /// Real `eob_bin` default for 16x32/32x16 (rc area 512) transforms -- no `is_1d` axis, same
+    /// reason as `eob_bin_1024_cdf` (these tx sizes structurally can't carry an H/V-only 1D
+    /// transform type per spec's transform-type-per-size restriction table).
+    eob_bin_512_cdf: Vec<u16>,
     eob_bin_1024_cdf: Vec<u16>,
     /// `eob_hi_bit` -- the single context-coded first bit of `eob`'s extra-bits suffix (spec
     /// 5.11.39), indexed `[tx_size_class 0..=4][eob_bin 0..=10]` (chroma axis fixed to 0, same
@@ -858,14 +869,24 @@ impl CdfContext {
             multi_ctx_cdf(&[840, 1039, 1980, 4895]),
             multi_ctx_cdf(&[370, 671, 1883, 4471]),
         ];
+        let eob_bin_32_cdf = [
+            multi_ctx_cdf(&[400, 520, 977, 2102, 6542]),
+            multi_ctx_cdf(&[210, 405, 1315, 3326, 7537]),
+        ];
         let eob_bin_64_cdf = [
             multi_ctx_cdf(&[329, 498, 1101, 1784, 3265, 7758]),
             multi_ctx_cdf(&[335, 730, 1459, 5494, 8755, 12997]),
+        ];
+        let eob_bin_128_cdf = [
+            multi_ctx_cdf(&[219, 482, 1140, 2091, 3680, 6028, 12586]),
+            multi_ctx_cdf(&[371, 699, 1254, 4830, 9479, 12562, 17497]),
         ];
         let eob_bin_256_cdf = [
             multi_ctx_cdf(&[310, 584, 1887, 3589, 6168, 8611, 11352, 15652]),
             multi_ctx_cdf(&[998, 1850, 2998, 5604, 17341, 19888, 22899, 25583]),
         ];
+        let eob_bin_512_cdf =
+            multi_ctx_cdf(&[641, 983, 3707, 5430, 10234, 14958, 18788, 23412, 26061]);
         let eob_bin_1024_cdf =
             multi_ctx_cdf(&[393, 421, 751, 1623, 3160, 6352, 13345, 18047, 22571, 25830]);
 
@@ -1730,8 +1751,11 @@ impl CdfContext {
             coeff_br_cdf,
             dc_sign_cdf,
             eob_bin_16_cdf,
+            eob_bin_32_cdf,
             eob_bin_64_cdf,
+            eob_bin_128_cdf,
             eob_bin_256_cdf,
+            eob_bin_512_cdf,
             eob_bin_1024_cdf,
             eob_hi_bit_cdf,
             coeff_base_eob_cdf,
@@ -1890,13 +1914,28 @@ impl CdfContext {
     /// top-left 32x32 sub-area for larger transforms) -- matches `tx_size_class`'s doc. The
     /// 1024-coefficient class has no real `is_1d` axis in rav1d (see `eob_bin_1024_cdf`'s doc),
     /// so `is_1d` is ignored there.
-    pub fn get_eob_bin_cdf_mut(&mut self, tx_size_px: u32, is_1d: bool) -> &mut [u16] {
+    /// `width_dim`/`height_dim`: transform dims in samples (already 32-capped by the caller, see
+    /// `scan::scan_table`'s doc) -- selection is by *total area* (`width_dim*height_dim`), not
+    /// either dim alone: real spec/dav1d select `eob_bin`'s default CDF row by total coefficient
+    /// count (`16/32/64/128/256/512/1024`), which is symmetric in width/height (a 4x8 and an 8x4
+    /// transform share the same row) -- verified against dav1d's `default_coef_cdf`'s
+    /// `eob_bin_16/32/64/128/256/512/1024` field names directly, not assumed. `eob_bin_512`/
+    /// `_1024` have no real `is_1d` axis (see their field docs).
+    pub fn get_eob_bin_cdf_mut(
+        &mut self,
+        width_dim: u32,
+        height_dim: u32,
+        is_1d: bool,
+    ) -> &mut [u16] {
         let is_1d = usize::from(is_1d);
-        match tx_size_px {
-            0..=4 => &mut self.eob_bin_16_cdf[is_1d],
-            5..=8 => &mut self.eob_bin_64_cdf[is_1d],
-            9..=16 => &mut self.eob_bin_256_cdf[is_1d],
-            _ => &mut self.eob_bin_1024_cdf, // 32 and 64
+        match width_dim * height_dim {
+            0..=16 => &mut self.eob_bin_16_cdf[is_1d],
+            17..=32 => &mut self.eob_bin_32_cdf[is_1d],
+            33..=64 => &mut self.eob_bin_64_cdf[is_1d],
+            65..=128 => &mut self.eob_bin_128_cdf[is_1d],
+            129..=256 => &mut self.eob_bin_256_cdf[is_1d],
+            257..=512 => &mut self.eob_bin_512_cdf,
+            _ => &mut self.eob_bin_1024_cdf,
         }
     }
 

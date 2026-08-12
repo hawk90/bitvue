@@ -203,12 +203,12 @@ impl BlockSize {
             | BlockSize::Block16x16
             | BlockSize::Block32x16
             | BlockSize::Block64x16 => 16,
-            BlockSize::Block16x32
+            BlockSize::Block8x32
+            | BlockSize::Block16x32
             | BlockSize::Block32x32
             | BlockSize::Block64x32
             | BlockSize::Block128x32 => 32,
-            BlockSize::Block8x32
-            | BlockSize::Block16x64
+            BlockSize::Block16x64
             | BlockSize::Block32x64
             | BlockSize::Block64x64
             | BlockSize::Block128x64 => 64,

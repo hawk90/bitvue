@@ -603,38 +603,52 @@ impl TileContext {
     }
 
     /// `read_txfm_split` context `(a, l)` pair (each `0` or `1`) at absolute 4x4 position
-    /// `(x4, y4)` for a candidate split of size class `candidate_class` (0..=4) -- per
-    /// spec/rav1d: `a = above_var_tx[x4] < candidate_class`, `l = left_var_tx[y4] <
-    /// candidate_class`. Caller sums `a + l` for the CDF's `0..=2` context index (see
-    /// `above_var_tx`'s doc for why `candidate_class` is never `0` in practice, and why the `0`
-    /// default is safe).
-    pub fn var_tx_context(&self, x4: u32, y4: u32, candidate_class: u8) -> (u8, u8) {
+    /// `(x4, y4)` for a candidate split of size `candidate_width_class`/`candidate_height_class`
+    /// (each 0..=4, `tx_size_class` of the candidate's width/height in pixels) -- per spec/rav1d
+    /// `read_tx_tree` (`src/decode.c`): `a = above_var_tx[x4] < candidate_width_class`, `l =
+    /// left_var_tx[y4] < candidate_height_class` -- **width for above, height for left**, verified
+    /// against the real C directly (`t->a->tx[bx4] < txw` / `t->l.tx[by4] < txh`), not assumed.
+    /// For a square candidate these two class values are equal, matching this function's pre-rect
+    /// single-`candidate_class` behavior exactly. Caller sums `a + l` for the CDF's `0..=2`
+    /// context index (see `above_var_tx`'s doc for why the `0` default is safe).
+    pub fn var_tx_context(
+        &self,
+        x4: u32,
+        y4: u32,
+        candidate_width_class: u8,
+        candidate_height_class: u8,
+    ) -> (u8, u8) {
         let above = self.above_var_tx.get(x4 as usize).copied().unwrap_or(0);
         let left = self.left_var_tx.get(y4 as usize).copied().unwrap_or(0);
         (
-            u8::from(above < candidate_class as i8),
-            u8::from(left < candidate_class as i8),
+            u8::from(above < candidate_width_class as i8),
+            u8::from(left < candidate_height_class as i8),
         )
     }
 
-    /// Record a var-tx leaf's size class across its own 4x4-unit footprint, for future
-    /// `var_tx_context` lookups -- see `above_var_tx`'s doc.
+    /// Record a var-tx leaf's size across its own 4x4-unit footprint, for future
+    /// `var_tx_context` lookups -- see `above_var_tx`'s doc. `width_class`/`height_class`: real
+    /// dav1d stores the leaf's own width-derived class into the above-context array and its own
+    /// height-derived class into the left-context array *separately* (not one shared class, see
+    /// `var_tx_context`'s doc) -- for a square leaf these are equal, matching pre-rect behavior.
     pub fn set_var_tx_class(
         &mut self,
         x4: u32,
         y4: u32,
         width_4x4: u32,
         height_4x4: u32,
-        tx_class: u8,
+        width_class: u8,
+        height_class: u8,
     ) {
-        let tx_class = tx_class as i8;
+        let width_class = width_class as i8;
+        let height_class = height_class as i8;
         let x_end = (x4 + width_4x4).min(self.above_var_tx.len() as u32);
         for x in x4..x_end {
-            self.above_var_tx[x as usize] = tx_class;
+            self.above_var_tx[x as usize] = width_class;
         }
         let y_end = (y4 + height_4x4).min(self.left_var_tx.len() as u32);
         for y in y4..y_end {
-            self.left_var_tx[y as usize] = tx_class;
+            self.left_var_tx[y as usize] = height_class;
         }
     }
 
@@ -1662,21 +1676,32 @@ mod tests {
     fn test_var_tx_context_no_neighbors_is_zero_zero() {
         let ctx = TileContext::new(16, 16);
         // Default `0` < any real candidate class > 0 -- both should contribute.
-        assert_eq!(ctx.var_tx_context(0, 0, 3), (1, 1));
+        assert_eq!(ctx.var_tx_context(0, 0, 3, 3), (1, 1));
     }
 
     #[test]
     fn test_var_tx_context_neighbor_at_least_as_large_does_not_contribute() {
         let mut ctx = TileContext::new(16, 16);
-        ctx.set_var_tx_class(0, 0, 1, 1, 3); // neighbor leaf class = Tx32x32 (3)
-        assert_eq!(ctx.var_tx_context(0, 1, 3), (0, 1)); // above: 3 < 3 false; left default 0<3 true
+        ctx.set_var_tx_class(0, 0, 1, 1, 3, 3); // neighbor leaf class = Tx32x32 (3)
+        assert_eq!(ctx.var_tx_context(0, 1, 3, 3), (0, 1)); // above: 3 < 3 false; left default 0<3 true
     }
 
     #[test]
     fn test_var_tx_context_neighbor_smaller_contributes() {
         let mut ctx = TileContext::new(16, 16);
-        ctx.set_var_tx_class(0, 0, 1, 1, 1); // neighbor leaf class = Tx8x8 (1)
-        assert_eq!(ctx.var_tx_context(0, 1, 3), (1, 1)); // above: 1 < 3 true
+        ctx.set_var_tx_class(0, 0, 1, 1, 1, 1); // neighbor leaf class = Tx8x8 (1)
+        assert_eq!(ctx.var_tx_context(0, 1, 3, 3), (1, 1)); // above: 1 < 3 true
+    }
+
+    #[test]
+    fn test_var_tx_context_width_and_height_classes_tracked_independently() {
+        // A rectangular neighbor (e.g. 32x16, width_class=3, height_class=2): above-context sees
+        // the wider dim, left-context sees the shorter one -- distinct from either alone.
+        let mut ctx = TileContext::new(16, 16);
+        ctx.set_var_tx_class(0, 0, 1, 1, 3, 2);
+        // above: candidate width_class=3, neighbor above=3 -> 3<3 false.
+        // left: candidate height_class=3, neighbor left=2 -> 2<3 true.
+        assert_eq!(ctx.var_tx_context(0, 0, 3, 3), (0, 1));
     }
 
     #[test]

@@ -792,7 +792,7 @@ mod tests {
                 if blocks.len() > 1 {
                     cus_with_a_real_split += 1;
                 }
-                distinct_leaf_sizes.extend(blocks.iter().map(|b| b.size.size()));
+                distinct_leaf_sizes.extend(blocks.iter().map(|b| b.width_px));
             }
         }
 
@@ -817,6 +817,91 @@ mod tests {
             distinct_leaf_sizes.len() > 2,
             "expected more than two distinct real leaf transform sizes across the fixture, got \
              only {distinct_leaf_sizes:?}"
+        );
+    }
+
+    /// Regression test for real **non-square** inter var-tx (`compute_inter_tx_blocks`/
+    /// `read_var_tx_size`'s rectangular generalization, spec 5.11.16/17/18) -- same non-vacuous
+    /// discipline as `real_fixture_inter_var_tx_is_not_degenerate`'s doc, extended to CUs where
+    /// `width != height` (previously entirely out of `compute_inter_tx_blocks`'s scope, kept on
+    /// the older `TxSize::from_dimensions` square heuristic). Finding this fixture actually
+    /// exercises non-square inter CUs is what surfaced a real, pre-existing, unrelated bug:
+    /// `BlockSize::Block8x32::height()` returned `64` instead of `32` (a copy-paste error in its
+    /// match arm grouping, `tile/partition.rs`) -- silently never caught before since nothing
+    /// previously read a non-square CU's real dimensions this precisely. Fixed alongside this
+    /// test landing.
+    #[test]
+    fn real_fixture_nonsquare_inter_var_tx_is_not_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut eligible_cu_count = 0usize;
+        let mut cus_with_tx_blocks = 0usize;
+        let mut cus_with_a_real_split = 0usize;
+        let mut rect_leaf_sizes: std::collections::HashSet<(u32, u32)> = Default::default();
+        let mut dims_seen: std::collections::HashSet<(u32, u32)> = Default::default();
+
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let Ok(parsed) = super::super::parser::ParsedFrame::parse(&obu_data) else {
+                continue;
+            };
+            if parsed.frame_type.is_intra_only || !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                continue;
+            };
+            for cu in cus.iter() {
+                if !(cu.is_inter() && cu.width != cu.height && !cu.skip) {
+                    continue;
+                }
+                dims_seen.insert((cu.width, cu.height));
+                eligible_cu_count += 1;
+                let Some(blocks) = &cu.tx_blocks else {
+                    continue;
+                };
+                cus_with_tx_blocks += 1;
+                if blocks.len() > 1 {
+                    cus_with_a_real_split += 1;
+                }
+                rect_leaf_sizes.extend(blocks.iter().map(|b| (b.width_px, b.height_px)));
+                // Every real AV1 block size is a valid `dav1d_max_txfm_size_for_bs` entry (spec:
+                // no transform exceeds 64 on either axis) -- catches the `Block8x32` class of bug
+                // (a wrong dimension flowing all the way to a leaf) even if some future change
+                // reintroduces something similar elsewhere.
+                for b in blocks {
+                    assert!(
+                        b.width_px <= 64 && b.height_px <= 64,
+                        "leaf {b:?} exceeds the real 64-per-axis transform cap"
+                    );
+                }
+            }
+        }
+
+        assert!(
+            eligible_cu_count > 0,
+            "expected real non-skip non-square inter coding units in the fixture"
+        );
+        assert!(
+            dims_seen.len() > 5,
+            "expected a real variety of non-square block dimensions, got only {dims_seen:?}"
+        );
+        assert_eq!(
+            cus_with_tx_blocks, eligible_cu_count,
+            "expected every eligible non-skip non-square inter CU to get a real tx_blocks \
+             breakdown ({cus_with_tx_blocks}/{eligible_cu_count} did)"
+        );
+        assert!(
+            cus_with_a_real_split * 2 > eligible_cu_count,
+            "expected a majority of eligible non-square CUs to show a real txfm_split, got only \
+             {cus_with_a_real_split}/{eligible_cu_count}"
+        );
+        assert!(
+            rect_leaf_sizes.iter().any(|(w, h)| w != h),
+            "expected at least one genuinely rectangular (non-square) real leaf transform size, \
+             got only {rect_leaf_sizes:?} -- the asymmetric split may be degenerating to \
+             square-only leaves"
         );
     }
 }
