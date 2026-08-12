@@ -43,6 +43,10 @@ pub struct ParsedFrame {
     /// `allow_screen_content_tools` (spec 5.9.2) -- see `FrameHeader::allow_screen_content_tools`'s
     /// doc. Same sourcing/fallback story as `reference_select`.
     pub allow_screen_content_tools: bool,
+    /// `delta_lf_present`/`delta_lf_multi` (spec 5.9.14) -- see `FrameHeader::delta_lf_present`'s
+    /// doc. Same sourcing/fallback story as `reference_select`.
+    pub delta_lf_present: bool,
+    pub delta_lf_multi: bool,
     /// `reduced_tx_set` (spec 5.9.2) -- see `FrameHeader::reduced_tx_set`'s doc. Same
     /// sourcing/fallback story as `reference_select`.
     pub reduced_tx_set: bool,
@@ -171,6 +175,8 @@ impl ParsedFrame {
                 reference_select: false,
                 allow_intrabc: false,
                 allow_screen_content_tools: false,
+                delta_lf_present: false,
+                delta_lf_multi: false,
                 reduced_tx_set: false,
                 coded_lossless: false,
                 txfm_mode: TxfmMode::default(),
@@ -212,6 +218,8 @@ impl ParsedFrame {
         let mut reference_select = false;
         let mut allow_intrabc = false;
         let mut allow_screen_content_tools = false;
+        let mut delta_lf_present = false;
+        let mut delta_lf_multi = false;
         let mut reduced_tx_set = false;
         let mut coded_lossless = false;
         let mut txfm_mode = TxfmMode::default();
@@ -294,6 +302,8 @@ impl ParsedFrame {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
                             allow_screen_content_tools = full_hdr.allow_screen_content_tools;
+                            delta_lf_present = full_hdr.delta_lf_present;
+                            delta_lf_multi = full_hdr.delta_lf_multi;
                             reduced_tx_set = full_hdr.reduced_tx_set;
                             coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
@@ -319,6 +329,8 @@ impl ParsedFrame {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
                             allow_screen_content_tools = full_hdr.allow_screen_content_tools;
+                            delta_lf_present = full_hdr.delta_lf_present;
+                            delta_lf_multi = full_hdr.delta_lf_multi;
                             reduced_tx_set = full_hdr.reduced_tx_set;
                             coded_lossless = full_hdr.base_q_idx == Some(0)
                                 && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
@@ -354,6 +366,8 @@ impl ParsedFrame {
             reference_select,
             allow_intrabc,
             allow_screen_content_tools,
+            delta_lf_present,
+            delta_lf_multi,
             reduced_tx_set,
             coded_lossless,
             txfm_mode,

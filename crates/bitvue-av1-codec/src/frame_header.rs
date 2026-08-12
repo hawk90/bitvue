@@ -198,6 +198,14 @@ pub struct FrameHeader {
     /// always bitstream-sync-safe here since nothing reads a `has_palette_y`/`_uv` bit unless this
     /// is `true`.
     pub allow_screen_content_tools: bool,
+    /// `delta_lf_present`/`delta_lf_multi` (spec 5.9.14 `delta_lf_params()`) -- gate
+    /// `parse_coding_unit`'s real `delta_lf` read (only reachable at all when `delta_q_present` is
+    /// also true -- real spec nests `delta_lf_params()`'s bits inside `delta_q_params()`'s). Same
+    /// basic-vs-full caveat as `reference_select`; both default `false` from
+    /// `parse_frame_header_basic` (never attempts a `delta_lf` read), which is bitstream-sync-safe
+    /// for the same reason `allow_screen_content_tools`'s doc gives.
+    pub delta_lf_present: bool,
+    pub delta_lf_multi: bool,
     /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
     /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
     /// basic-vs-full caveat as `reference_select`); real value only from
@@ -567,6 +575,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             reference_select: false,
             allow_intrabc: false,
             allow_screen_content_tools: false,
+            delta_lf_present: false,
+            delta_lf_multi: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -740,6 +750,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         reference_select: false,
         allow_intrabc: false,
         allow_screen_content_tools: false,
+        delta_lf_present: false,
+        delta_lf_multi: false,
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,

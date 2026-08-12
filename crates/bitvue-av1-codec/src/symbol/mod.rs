@@ -740,58 +740,53 @@ impl<'a> SymbolDecoder<'a> {
     /// let delta_q = decoder.read_delta_q()?;
     /// // delta_q could be: 0, +1, -1, +2, -2, ..., +63, -63
     /// ```
+    /// Real `read_delta_qindex()` (spec 5.11.38), ported exactly from dav1d's `decode_b`
+    /// delta-q block (`src/decode.c`), not the spec pseudocode's abstraction alone: a 4-outcome
+    /// adaptive symbol (`0..=2` used directly as the magnitude, `3` triggers a golomb-style
+    /// variable-length extension -- a real 3-bit `n_bits` selector followed by `n_bits` raw
+    /// equi-probable bits, NOT another adaptive symbol read), then -- only if the magnitude is
+    /// nonzero -- a single real equi-probable (50/50) sign bit (`dav1d_msac_decode_bool_equi`,
+    /// NOT an adaptive CDF, unlike `mv_sign`/`cfl_alpha`'s per-component signs). This crate's
+    /// previous implementation substituted a hand-picked single-symbol CDF for the golomb
+    /// extension and an adaptive CDF for the sign -- a real desync bug for any block whose delta
+    /// magnitude reached the extension (common for real content with meaningful QP variation).
     pub fn read_delta_q(&mut self) -> Result<i16> {
-        // First, read delta_q_abs (absolute value of delta Q)
-        let abs = self.read_delta_q_abs()?;
-
-        // If abs is 0, delta_q is 0 (no sign bit needed)
+        let cdf = self.cdf_context.get_delta_q_cdf_mut();
+        let base = self.decoder.read_symbol_adaptive(cdf)?;
+        let abs: i32 = if base < 3 {
+            base as i32
+        } else {
+            let n_bits = 1 + self.read_bools_n(3)?;
+            self.read_bools_n(n_bits)? as i32 + 1 + (1i32 << n_bits)
+        };
         if abs == 0 {
-            tracing::trace!("Delta Q: 0");
             return Ok(0);
         }
-
-        // Read sign bit (0 = positive, 1 = negative)
-        let sign_cdf = self.cdf_context.get_delta_q_sign_cdf_mut();
-        let sign = self.decoder.read_symbol_adaptive(sign_cdf)?;
-
-        let delta_q = if sign == 1 { -abs } else { abs };
-
-        tracing::debug!("Delta Q: {} (abs={}, sign={})", delta_q, abs, sign);
+        let negative = self.read_bool_equi()?;
+        let delta_q = if negative { -abs } else { abs } as i16;
+        tracing::debug!("Delta Q: {}", delta_q);
         Ok(delta_q)
     }
 
-    /// Read delta_q_abs (absolute value of delta Q)
-    ///
-    /// Per AV1 Spec Section 5.11.38:
-    /// - delta_q_abs is encoded using a variable-length code
-    /// - Small values (0-3) are encoded directly
-    /// - Values >= 4 use a diff-based encoding
-    ///
-    /// Returns absolute value in range 0..=63
-    fn read_delta_q_abs(&mut self) -> Result<i16> {
-        let delta_q_cdf = self.cdf_context.get_delta_q_cdf_mut();
-
-        // Read the base value (0-3, or 4+)
-        let base = self.decoder.read_symbol_adaptive(delta_q_cdf)?;
-
-        let abs = if base <= 3 {
-            // Small value: use directly
-            base as i16
+    /// Real `read_delta_lf()` (spec 5.11.38) -- same real golomb-extension + equi-probable-sign
+    /// shape as `read_delta_q`'s doc, over the separate `delta_lf` CDF family. `cdf_index`:
+    /// `0` for the single-component (`!delta_lf_multi`) case, `1..=4` for `delta_lf_multi`'s
+    /// per-plane components (`crate::tile::coding_unit::parse_coding_unit`'s doc for the real
+    /// `n_lfs`/index derivation).
+    pub fn read_delta_lf(&mut self, cdf_index: usize) -> Result<i16> {
+        let cdf = self.cdf_context.get_delta_lf_cdf_mut(cdf_index);
+        let base = self.decoder.read_symbol_adaptive(cdf)?;
+        let abs: i32 = if base < 3 {
+            base as i32
         } else {
-            // Large value (4+): use diff-based encoding
-            // Read additional diff value
-            let diff_cdf = self.cdf_context.get_diff_cdf_mut();
-            let diff = self.decoder.read_symbol_adaptive(diff_cdf)? as i16;
-
-            // Calculate: abs = 4 + diff
-            let result = 4 + diff;
-
-            // Clamp to MAX_DELTA_Q (63 per AV1 spec)
-            result.min(63)
+            let n_bits = 1 + self.read_bools_n(3)?;
+            self.read_bools_n(n_bits)? as i32 + 1 + (1i32 << n_bits)
         };
-
-        tracing::trace!("Delta Q abs: {}", abs);
-        Ok(abs)
+        if abs == 0 {
+            return Ok(0);
+        }
+        let negative = self.read_bool_equi()?;
+        Ok(if negative { -abs } else { abs } as i16)
     }
 
     /// Exit the decoder (for testing)

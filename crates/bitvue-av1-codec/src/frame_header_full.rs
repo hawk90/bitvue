@@ -472,24 +472,30 @@ fn parse_segmentation_params(
     })
 }
 
-fn skip_delta_lf_params(
+/// `delta_lf_params()` (spec 5.9.14) -- real `delta_lf_present`/`delta_lf_multi` (`delta_lf_res` is
+/// consumed for bitstream position but not retained: it only scales the *decoded* per-CU
+/// `delta_lf` magnitude, never affects tile-data bit position -- same reasoning as this crate not
+/// tracking `delta_q_res` either).
+fn parse_delta_lf_params(
     reader: &mut BitReader,
     delta_q_present: bool,
     allow_intrabc: bool,
-) -> Result<()> {
+) -> Result<(bool, bool)> {
     if !delta_q_present {
-        return Ok(());
+        return Ok((false, false));
     }
     let delta_lf_present = if !allow_intrabc {
         reader.read_bit()?
     } else {
         false
     };
-    if delta_lf_present {
+    let delta_lf_multi = if delta_lf_present {
         reader.read_bits(2)?; // delta_lf_res
-        reader.read_bit()?; // delta_lf_multi
-    }
-    Ok(())
+        reader.read_bit()?
+    } else {
+        false
+    };
+    Ok((delta_lf_present, delta_lf_multi))
 }
 
 /// Parse `loop_filter_params()` per AV1 spec Section 5.9.11. Unlike `skip_loop_filter_params`
@@ -958,6 +964,8 @@ pub fn parse_frame_header_full(
             reference_select: false,
             allow_intrabc: false,
             allow_screen_content_tools: false,
+            delta_lf_present: false,
+            delta_lf_multi: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -1171,7 +1179,8 @@ pub fn parse_frame_header_full(
     if delta_q_present {
         reader.read_bits(2)?; // delta_q_res
     }
-    skip_delta_lf_params(&mut reader, delta_q_present, allow_intrabc)?;
+    let (delta_lf_present, delta_lf_multi) =
+        parse_delta_lf_params(&mut reader, delta_q_present, allow_intrabc)?;
 
     // CodedLossless: real value needs every segment's per-segment qindex (base_q_idx adjusted by
     // segmentation's SEG_LVL_ALT_Q feature, which this parser doesn't retain -- see
@@ -1262,6 +1271,8 @@ pub fn parse_frame_header_full(
         reference_select,
         allow_intrabc,
         allow_screen_content_tools,
+        delta_lf_present,
+        delta_lf_multi,
         reduced_tx_set,
         txfm_mode,
         use_ref_frame_mvs,

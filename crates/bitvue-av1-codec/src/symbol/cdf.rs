@@ -237,18 +237,13 @@ pub struct CdfContext {
     /// MV bit CDFs for reading magnitude bits
     mv_bit_cdf: Vec<u16>,
 
-    /// Delta Q CDF (for quantization parameter deltas)
-    /// Per AV1 Spec Section 5.11.38 (Quantization Parameter Delta)
-    /// Delta Q values are in range [-MAX_DELTA_Q, MAX_DELTA_Q] where MAX_DELTA_Q = 63
-    /// We encode the absolute value (0..63) and sign separately
+    /// `delta_q` CDF (spec 5.11.38 `read_delta_qindex`) -- real 4-symbol alphabet, see the
+    /// construction site's doc. The sign bit is a real equi-probable (50/50) raw bit, not a CDF
+    /// (see `SymbolDecoder::read_delta_q`'s doc) -- no separate sign CDF field exists here.
     delta_q_cdf: Vec<u16>,
-
-    /// Delta Q sign CDF (2 symbols: positive, negative)
-    delta_q_sign_cdf: Vec<u16>,
-
-    /// General diff CDF for reading variable-length differences
-    /// Used for delta_q_abs when larger values are needed
-    diff_cdf: Vec<u16>,
+    /// `delta_lf` CDFs (spec 5.11.38 `read_delta_lf`), one per real spec index -- see
+    /// `SymbolDecoder::read_delta_lf`'s doc.
+    delta_lf_cdf: [Vec<u16>; 5],
 
     /// Residual coefficient CDFs -- see `residual` module doc (`symbol/mod.rs`) for why most of
     /// these are still deliberately context-*independent* (one representative CDF per symbol
@@ -1214,51 +1209,21 @@ impl CdfContext {
         ];
         let mv_bit_cdf = to_descending(&mv_bit_cdf);
 
-        // Delta Q CDF (for reading delta_q_abs)
-        // Per AV1 spec, delta_q_abs is encoded using a variable-length code
-        // Values are heavily biased toward 0 (most QP deltas are small)
-        // Default values from AV1 spec / rav1d reference implementation
-        let delta_q_counts: [u16; 5] = [
-            28672, // 0 (no change): ~87%
-            3488,  // 1: ~11%
-            448,   // 2: ~1.4%
-            96,    // 3: ~0.3%
-            64,    // 4+: ~0.2% (collapsed into "4+" for simplicity)
-        ];
-        let mut delta_q_cdf = Vec::with_capacity(delta_q_counts.len() + 1);
-        delta_q_cdf.push(0);
-        let mut cumulative = 0u16;
-        for &count in &delta_q_counts {
-            cumulative = cumulative.saturating_add(count);
-            delta_q_cdf.push(cumulative.min(CDF_SCALE));
-        }
-        // Ensure the last entry is exactly CDF_SCALE
-        if let Some(last) = delta_q_cdf.last_mut() {
-            *last = CDF_SCALE;
-        }
-        let delta_q_cdf = to_descending(&delta_q_cdf);
+        // delta_q (spec 5.11.38 `read_delta_qindex`) CDF -- real spec/rav1d default value
+        // (`default_cdf.m.delta_q`, `src/cdf.c`, `CDF3(28160, 32120, 32677)`). Real 4-symbol
+        // alphabet (`0..=2` used directly, `3` triggers `SymbolDecoder::read_delta_q`'s real
+        // golomb extension) -- this crate's previous 5-symbol hand-fabricated version collapsed
+        // a nonexistent "4+" outcome into the alphabet, a real shape mismatch (see that method's
+        // doc for the desync this caused).
+        let delta_q_cdf: Vec<u16> = multi_ctx_cdf(&[28160, 32120, 32677]);
 
-        // Delta Q sign CDF: Slightly biased toward positive
-        let delta_q_sign_cdf = vec![
-            0,                                // Start
-            (CDF_SCALE as f32 * 0.55) as u16, // Positive: 55%
-            CDF_SCALE,                        // Negative: 45%
-        ];
-        let delta_q_sign_cdf = to_descending(&delta_q_sign_cdf);
-
-        // General diff CDF for variable-length differences
-        // Used when delta_q_abs is >= 4
-        // Uses a geometric distribution (higher values less likely)
-        let diff_cdf = vec![
-            0,                                // Start
-            (CDF_SCALE as f32 * 0.50) as u16, // 0: 50%
-            (CDF_SCALE as f32 * 0.75) as u16, // 1: 25%
-            (CDF_SCALE as f32 * 0.90) as u16, // 2: 15%
-            (CDF_SCALE as f32 * 0.97) as u16, // 3: 7%
-            (CDF_SCALE as f32 * 0.99) as u16, // 4: 2%
-            CDF_SCALE,                        // 5+: 1%
-        ];
-        let diff_cdf = to_descending(&diff_cdf);
+        // delta_lf (spec 5.11.38 `read_delta_lf`) CDFs, one per real spec index (`0` for the
+        // single-component case, `1..=4` for `delta_lf_multi`'s per-plane components -- see
+        // `SymbolDecoder::read_delta_lf`'s doc) -- real spec/rav1d default value
+        // (`default_cdf.m.delta_lf`, all 5 entries share the identical default,
+        // `CDF3(28160, 32120, 32677)`, same as `delta_q`'s).
+        let delta_lf_cdf: [Vec<u16>; 5] =
+            std::array::from_fn(|_| multi_ctx_cdf(&[28160, 32120, 32677]));
 
         // txb_skip: real spec/rav1d default CDFs, indexed [tx_size_class][ctx 0..=6] (chroma=0
         // fixed -- see `txb_skip_cdf`'s doc). Source: rav1d `coef.skip`, first qindex-bucket
@@ -2170,8 +2135,7 @@ impl CdfContext {
             mv_class_cdf,
             mv_bit_cdf,
             delta_q_cdf,
-            delta_q_sign_cdf,
-            diff_cdf,
+            delta_lf_cdf,
             txb_skip_cdf,
             coeff_base_cdf,
             coeff_br_cdf,
@@ -2383,19 +2347,15 @@ impl CdfContext {
         &mut self.mv_bit_cdf
     }
 
-    /// Get mutable Delta Q CDF (`delta_q_abs`, spec 5.11.38) -- adapted after every read.
+    /// Get mutable `delta_q` CDF (spec 5.11.38) -- adapted after every read.
     pub fn get_delta_q_cdf_mut(&mut self) -> &mut [u16] {
         &mut self.delta_q_cdf
     }
 
-    /// Get mutable Delta Q sign CDF (2 symbols: positive, negative) -- adapted after every read.
-    pub fn get_delta_q_sign_cdf_mut(&mut self) -> &mut [u16] {
-        &mut self.delta_q_sign_cdf
-    }
-
-    /// Get mutable general diff CDF (used when `delta_q_abs` >= 4) -- adapted after every read.
-    pub fn get_diff_cdf_mut(&mut self) -> &mut [u16] {
-        &mut self.diff_cdf
+    /// Get mutable `delta_lf` CDF for the given real spec index (see
+    /// `SymbolDecoder::read_delta_lf`'s doc) -- adapted after every read.
+    pub fn get_delta_lf_cdf_mut(&mut self, cdf_index: usize) -> &mut [u16] {
+        &mut self.delta_lf_cdf[cdf_index.min(4)]
     }
 
     /// Get mutable `txb_skip` (all_zero) CDF for one transform block. `tx_size_class`: 0..=4 (see

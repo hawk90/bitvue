@@ -556,6 +556,13 @@ impl CodingUnit {
 ///   independently of `allow_intrabc`, see `FrameHeader::allow_screen_content_tools`'s doc)
 /// * `enable_filter_intra` - Sequence header's `enable_filter_intra` flag (spec 5.5.1, gates
 ///   `filter_intra_mode_info()`'s real eligibility)
+/// * `delta_lf_present`/`delta_lf_multi` - Frame header's `delta_lf_params()` flags (spec 5.9.14,
+///   see `FrameHeader::delta_lf_present`'s doc) -- gate the real `delta_lf` read alongside
+///   `delta_q_enabled`.
+/// * `sb_x4`/`sb_y4`/`sb_size4` - This CU's enclosing superblock's origin and size, all in 4x4
+///   ("MI") units -- real spec's `delta_q`/`delta_lf` are read only once per superblock, at
+///   whichever leaf sits at `(sb_x4, sb_y4)` (always the first leaf visited in partition-tree
+///   order, spec 5.11.4's decode order), not once per CU.
 /// * `tile_ctx` - Above/left neighbor-state tracker for entropy context (currently only `skip`
 ///   uses it -- see `crate::tile::TileContext`'s doc)
 /// * `tx_type_flags` - Frame header flags for `transform_type()` -- see `TxTypeFrameFlags`'s doc.
@@ -578,12 +585,17 @@ pub fn parse_coding_unit(
     allow_intrabc: bool,
     allow_screen_content_tools: bool,
     enable_filter_intra: bool,
+    delta_lf_present: bool,
+    delta_lf_multi: bool,
     use_ref_frame_mvs: bool,
     segmentation: crate::frame_header_full::SegmentationInfo,
     tile_ctx: &mut crate::tile::TileContext,
     tx_type_flags: TxTypeFrameFlags,
     mi_rows: u32,
     mi_cols: u32,
+    sb_x4: u32,
+    sb_y4: u32,
+    sb_size4: u32,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
     let (x4, y4) = (x / 4, y / 4);
@@ -959,9 +971,20 @@ pub fn parse_coding_unit(
     // Now uses zero-copy reference instead of cloning the entire CU
     mv_ctx.add_cu(&cu);
 
-    // Read delta Q if enabled
-    // Per AV1 Spec Section 5.11.38 (Quantization Parameter Delta)
-    let new_qp = if delta_q_enabled {
+    // Read delta_q/delta_lf (spec 5.11.38's `read_delta_qindex`/`read_delta_lf`) -- real spec
+    // gate (dav1d's `decode_b`, `src/decode.c`): only at the first leaf visited within each
+    // superblock (`x4/y4 == sb_x4/sb_y4`, always true for the top-left-most leaf given AV1's
+    // partition decode order), and -- when this leaf's own size happens to equal the *whole*
+    // superblock -- only when it isn't `skip` (a skipped full-superblock CU has nothing to
+    // dequantize, so the encoder never signals a delta for it at all). Previously this crate read
+    // `delta_q` unconditionally for every CU whenever `delta_q_enabled`, a real desync bug for any
+    // skipped full-superblock CU or any SB that partitions into more than one CU (extra/duplicate
+    // reads the real encoder never wrote).
+    let is_first_cu_in_sb = x4 == sb_x4 && y4 == sb_y4;
+    let is_full_sb_size = width_4x4 == sb_size4 && height_4x4 == sb_size4;
+    let have_delta = delta_q_enabled && is_first_cu_in_sb && (!is_full_sb_size || !cu.skip);
+
+    let new_qp = if have_delta {
         match decoder.read_delta_q() {
             Ok(delta_q) => {
                 // Apply delta Q to current QP
@@ -990,10 +1013,32 @@ pub fn parse_coding_unit(
             }
         }
     } else {
-        // Delta Q not enabled, use current QP
+        // Delta Q not read this CU, use current QP
         cu.qp = Some(current_qp);
         current_qp
     };
+
+    // delta_lf: real spec nests these bits inside `have_delta_q` (only reachable when a delta_q
+    // symbol was actually read above), then one component per plane when `delta_lf_multi` (4 for
+    // 4:2:0/4:4:4, 2 for monochrome), or a single shared component otherwise.
+    if have_delta && delta_lf_present {
+        let n_lfs = if delta_lf_multi {
+            if tx_type_flags.mono_chrome {
+                2
+            } else {
+                4
+            }
+        } else {
+            1
+        };
+        for i in 0..n_lfs {
+            let cdf_index = if delta_lf_multi { i + 1 } else { 0 };
+            if let Err(e) = decoder.read_delta_lf(cdf_index) {
+                tracing::warn!("Failed to read delta_lf[{}] at ({}, {}): {}", i, x, y, e);
+                break;
+            }
+        }
+    }
 
     // Read residual() for every transform block tiling this CU -- required for correct bitstream
     // alignment whenever skip == false, not just for producing residual statistics. See this
