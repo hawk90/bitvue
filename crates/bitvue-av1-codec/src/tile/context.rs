@@ -424,6 +424,22 @@ pub struct TileContext {
     /// affect bit-position sync, only which adaptive CDF entry gets selected), not a bug.
     above_var_tx: Vec<i8>,
     left_var_tx: Vec<i8>,
+    /// Chroma-plane (`[0]`=U, `[1]`=V, real separate arrays per `recon_tmpl.c`'s `t->a->ccoef[pl]`/
+    /// `t->l.ccoef[pl]`, not shared between planes) counterparts to `above_cul_level`/
+    /// `left_cul_level`/`above_dc_sign_category`/`left_dc_sign_category`, indexed at the same
+    /// coordinate scale as the luma arrays (a chroma tile's position is tracked as its luma-CU
+    /// origin's `x4/2`/`y4/2`, not a truly independent chroma-plane grid -- an approximation
+    /// consistent with this crate's other chroma simplifications, harmless here since only
+    /// relative above/left adjacency matters, not absolute physical distance). Added to fix a real
+    /// desync bug: `read_chroma_residual_block` previously had no `ctx` parameter at all, so every
+    /// chroma transform block in a CU (up to 4, for a 128x128 luma block's 2x2-tiled 64x64 chroma
+    /// plane) hit the exact same global CDF slot and over-adapted it relative to what a real
+    /// encoder (using real per-position context, spec/rav1d `get_skip_ctx`'s chroma branch)
+    /// assumes -- see `TileContext::txb_skip_context_chroma`'s doc.
+    above_cul_level_chroma: [Vec<u8>; 2],
+    left_cul_level_chroma: [Vec<u8>; 2],
+    above_dc_sign_category_chroma: [Vec<u8>; 2],
+    left_dc_sign_category_chroma: [Vec<u8>; 2],
 }
 
 impl TileContext {
@@ -458,6 +474,22 @@ impl TileContext {
             left_dc_sign_category: vec![1; tile_height_4x4.max(1) as usize],
             above_var_tx: vec![0; tile_width_4x4.max(1) as usize],
             left_var_tx: vec![0; tile_height_4x4.max(1) as usize],
+            above_cul_level_chroma: [
+                vec![0; tile_width_4x4.max(1) as usize],
+                vec![0; tile_width_4x4.max(1) as usize],
+            ],
+            left_cul_level_chroma: [
+                vec![0; tile_height_4x4.max(1) as usize],
+                vec![0; tile_height_4x4.max(1) as usize],
+            ],
+            above_dc_sign_category_chroma: [
+                vec![1; tile_width_4x4.max(1) as usize],
+                vec![1; tile_width_4x4.max(1) as usize],
+            ],
+            left_dc_sign_category_chroma: [
+                vec![1; tile_height_4x4.max(1) as usize],
+                vec![1; tile_height_4x4.max(1) as usize],
+            ],
         }
     }
 
@@ -474,6 +506,14 @@ impl TileContext {
         self.left_cul_level.iter_mut().for_each(|v| *v = 0);
         self.left_dc_sign_category.iter_mut().for_each(|v| *v = 1);
         self.left_var_tx.iter_mut().for_each(|v| *v = 0);
+        for plane in 0..2 {
+            self.left_cul_level_chroma[plane]
+                .iter_mut()
+                .for_each(|v| *v = 0);
+            self.left_dc_sign_category_chroma[plane]
+                .iter_mut()
+                .for_each(|v| *v = 1);
+        }
     }
 
     /// `partition` context index (0..=3) for a block at absolute 8x8-unit position `(x8, y8)`,
@@ -702,6 +742,85 @@ impl TileContext {
         for y in y4..y_end {
             self.left_cul_level[y as usize] = cul_level;
             self.left_dc_sign_category[y as usize] = category;
+        }
+    }
+
+    /// Chroma `txb_skip` context index -- local remap of spec/rav1d's real chroma branch of
+    /// `get_skip_ctx` (`recon_tmpl.c:68-100`, `memorysafety/rav1d`/`videolan/dav1d`,
+    /// BSD-2-Clause): real ctx there is `7 + not_one_blk*3 + ca + cl` (13-context table shared
+    /// with luma's 7); since this crate's chroma CDF table is a separate `[tx_size_class][0..=5]`
+    /// array (no shared luma/chroma axis), the `+7` is dropped and `ca`/`cl` are computed as a
+    /// plain boolean OR across the tx block's above/left footprint (`cul_level != 0` = "neighbor
+    /// wasn't all-zero") rather than dav1d's bit-packed `0x40`-sentinel trick -- same result,
+    /// simpler representation. `not_one_blk`: true when this CU's chroma plane needed more than
+    /// one chroma transform block (`chroma_tile_count > 1` at the call site) -- spec: whether the
+    /// chroma prediction block exceeds one max-chroma-tx-size tile.
+    pub fn txb_skip_context_chroma(
+        &self,
+        plane: usize,
+        cx4: u32,
+        cy4: u32,
+        tx_wh4: u32,
+        not_one_blk: bool,
+    ) -> u8 {
+        let above = &self.above_cul_level_chroma[plane.min(1)];
+        let left = &self.left_cul_level_chroma[plane.min(1)];
+        let ca = (0..tx_wh4).any(|i| above.get((cx4 + i) as usize).copied().unwrap_or(0) != 0);
+        let cl = (0..tx_wh4).any(|i| left.get((cy4 + i) as usize).copied().unwrap_or(0) != 0);
+        u8::from(not_one_blk) * 3 + u8::from(ca) + u8::from(cl)
+    }
+
+    /// Chroma `dc_sign` context -- identical algorithm to `dc_sign_context` (spec/rav1d's
+    /// `get_dc_sign_ctx` doesn't differ between luma/chroma except which above/left array it's
+    /// given), applied to `plane`'s own category arrays.
+    pub fn dc_sign_context_chroma(&self, plane: usize, cx4: u32, cy4: u32, tx_wh4: u32) -> u8 {
+        let above = &self.above_dc_sign_category_chroma[plane.min(1)];
+        let left = &self.left_dc_sign_category_chroma[plane.min(1)];
+        let above_sum: i32 = (0..tx_wh4)
+            .map(|i| above.get((cx4 + i) as usize).copied().unwrap_or(1) as i32 - 1)
+            .sum();
+        let left_sum: i32 = (0..tx_wh4)
+            .map(|i| left.get((cy4 + i) as usize).copied().unwrap_or(1) as i32 - 1)
+            .sum();
+        let s = above_sum + left_sum;
+        if s < 0 {
+            0
+        } else if s == 0 {
+            1
+        } else {
+            2
+        }
+    }
+
+    /// Chroma counterpart to `set_residual_ctx`, per plane (`0`=U, `1`=V).
+    pub fn set_residual_ctx_chroma(
+        &mut self,
+        plane: usize,
+        cx4: u32,
+        cy4: u32,
+        tx_wh4: u32,
+        cul_level: u8,
+        dc_sign_symbol: Option<u8>,
+    ) {
+        let category = match dc_sign_symbol {
+            None => 1,
+            Some(1) => 0,
+            Some(_) => 2,
+        };
+        let plane = plane.min(1);
+        let above = &mut self.above_cul_level_chroma[plane];
+        let above_cat = &mut self.above_dc_sign_category_chroma[plane];
+        let x_end = (cx4 + tx_wh4).min(above.len() as u32);
+        for x in cx4..x_end {
+            above[x as usize] = cul_level;
+            above_cat[x as usize] = category;
+        }
+        let left = &mut self.left_cul_level_chroma[plane];
+        let left_cat = &mut self.left_dc_sign_category_chroma[plane];
+        let y_end = (cy4 + tx_wh4).min(left.len() as u32);
+        for y in cy4..y_end {
+            left[y as usize] = cul_level;
+            left_cat[y as usize] = category;
         }
     }
 

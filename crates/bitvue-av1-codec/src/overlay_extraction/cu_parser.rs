@@ -465,6 +465,7 @@ mod tests {
 
         let mut square_chroma_eligible_cu_count = 0usize;
         let mut saw_64x64 = false;
+        let mut saw_128x128 = false;
 
         for frame in frames.iter() {
             let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
@@ -486,10 +487,11 @@ mod tests {
                 if !cu.skip
                     && !cu.use_intrabc
                     && cu.width == cu.height
-                    && (8..=64).contains(&cu.width)
+                    && (8..=128).contains(&cu.width)
                 {
                     square_chroma_eligible_cu_count += 1;
                     saw_64x64 |= cu.width == 64;
+                    saw_128x128 |= cu.width == 128;
                 }
             }
         }
@@ -504,6 +506,11 @@ mod tests {
             saw_64x64,
             "expected at least one real 64x64 CU -- if this regresses to 0, the 64x64 chroma \
              extension (single-tile, tx_size_class=3) is passing vacuously"
+        );
+        assert!(
+            saw_128x128,
+            "expected at least one real 128x128 CU -- if this regresses to 0, the 128x128 chroma \
+             extension (real 2x2-tiled, per-position context) is passing vacuously"
         );
     }
 
@@ -770,7 +777,11 @@ mod tests {
                 continue;
             };
             for cu in cus.iter() {
-                if !(cu.is_inter() && cu.width == cu.height && !cu.skip) {
+                // `compute_inter_tx_blocks`'s real gate is `width == height && (8..=128)`
+                // (`coding_unit.rs`) -- 4x4 inter CUs are legitimately out of its documented scope
+                // (var-tx's recursion always terminates at 8x8, never reads `txfm_split` below
+                // it), not a regression, so mirror that same width floor here.
+                if !(cu.is_inter() && cu.width == cu.height && cu.width >= 8 && !cu.skip) {
                     continue;
                 }
                 eligible_cu_count += 1;

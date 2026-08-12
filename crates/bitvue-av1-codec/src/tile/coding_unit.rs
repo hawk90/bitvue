@@ -875,47 +875,63 @@ pub fn parse_coding_unit(
 
         // Chroma (U/V) residual -- required for bitstream sync (spec 5.11.34's `residual()`
         // reads luma, then U, then V for every `HasChroma` block). Restricted to non-IntraBC,
-        // square luma coding blocks 8x8 through 64x64 (`tx_size_class` 0..=3) in a 4:2:0 stream --
-        // see `SymbolDecoder::read_chroma_residual_block`'s doc for the full scope. Not restricted
-        // to key frames: real fixture-verified on inter frames too (key-frame content here
-        // happens to only ever use unpartitioned 128x128 blocks, so an earlier key-frame-only
-        // version of this gate was accidentally *never exercised* by this fixture at all -- see
+        // square luma coding blocks 8x8 through 128x128 (`tx_size_class` 0..=3, chroma's real max
+        // transform size caps at 32x32 -- spec `Max_Tx_Size_Rect`, confirmed against rav1d's
+        // `DAV1D_MAX_TXFM_SIZE_FOR_BS` table -- regardless of luma size) in a 4:2:0 stream -- see
+        // `SymbolDecoder::read_chroma_residual_block`'s doc for the full scope and the 128x128
+        // desync-bug history/fix. Not restricted to key frames: real fixture-verified on inter
+        // frames too (key-frame content here happens to only ever use unpartitioned 128x128
+        // blocks, so an earlier key-frame-only version of this gate was accidentally *never
+        // exercised* by this fixture at all -- see
         // `real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`).
         //
-        // 64x64 (this pass): chroma's real max transform size is capped at 32x32 (spec
-        // `Max_Tx_Size_Rect`, confirmed against rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS` table)
-        // regardless of luma size, so a 64x64 luma block's 32x32 chroma plane is still exactly
-        // one chroma transform block (`chroma_area_px.min(32) == chroma_area_px` here) -- same
-        // shape as the already-working 8/16/32 cases, just reaching `tx_size_class` 3 for the
-        // first time. Confirmed real-fixture-verified (a real, non-vacuous set of 64x64 CUs
-        // parse cleanly).
-        //
-        // 128x128 (still excluded, still unresolved): a 128x128 luma block's 64x64 chroma plane
-        // needs *four* real 32x32 transform blocks (`num4x4W/H` stepped by the real chroma tx
-        // size), not one -- tiling this (`chroma_tiles_per_axis`-per-axis loop, tried both
-        // plane-outer -- all U then all V -- and interleaved U/V orderings, since
-        // `read_chroma_residual_block` takes no position and chroma's above/left context isn't
-        // tracked, so only call *count* and *order* could matter) still desyncs the very next
-        // superblock's decode, even though the tile count itself checks out against the same
-        // `Max_Tx_Size_Rect` table. Root cause not isolated in this pass either (matches the
-        // prior attempt's outcome) -- excluded via the `(8..=64)` bound below rather than shipped
-        // speculatively.
+        // Position tracking: chroma tile positions are tracked at the luma CU's `x4/2`/`y4/2`
+        // origin (a coordinate-scale approximation, not a truly independent chroma-plane grid --
+        // see `TileContext`'s chroma field doc) since only above/left *adjacency* matters for
+        // context selection here, not absolute physical distance.
         if !cu.use_intrabc
             && !tx_type_flags.mono_chrome
             && tx_type_flags.subsampling_x
             && tx_type_flags.subsampling_y
             && width == height
-            && (8..=64).contains(&width)
+            && (8..=128).contains(&width)
         {
             let chroma_area_px = width / 2;
             let chroma_tx_px = chroma_area_px.min(32);
+            let chroma_tx_wh4 = chroma_tx_px / 4;
             let chroma_tiles_per_axis = chroma_area_px.div_ceil(chroma_tx_px).max(1);
-            let chroma_tile_count = chroma_tiles_per_axis * chroma_tiles_per_axis;
-            for _ in 0..chroma_tile_count {
-                decoder.read_chroma_residual_block(chroma_tx_px)?; // U
-            }
-            for _ in 0..chroma_tile_count {
-                decoder.read_chroma_residual_block(chroma_tx_px)?; // V
+            let not_one_blk = chroma_tiles_per_axis > 1;
+            let (cx4_base, cy4_base) = (x4 / 2, y4 / 2);
+            for plane in 0..2usize {
+                for tile_row in 0..chroma_tiles_per_axis {
+                    for tile_col in 0..chroma_tiles_per_axis {
+                        let cx4 = cx4_base + tile_col * chroma_tx_wh4;
+                        let cy4 = cy4_base + tile_row * chroma_tx_wh4;
+                        let txb_skip_ctx = tile_ctx.txb_skip_context_chroma(
+                            plane,
+                            cx4,
+                            cy4,
+                            chroma_tx_wh4,
+                            not_one_blk,
+                        );
+                        let dc_sign_ctx =
+                            tile_ctx.dc_sign_context_chroma(plane, cx4, cy4, chroma_tx_wh4);
+                        let block = decoder.read_chroma_residual_block(
+                            chroma_tx_px,
+                            txb_skip_ctx,
+                            dc_sign_ctx,
+                        )?;
+                        let cul_level = block.sum_abs_level.min(63) as u8;
+                        tile_ctx.set_residual_ctx_chroma(
+                            plane,
+                            cx4,
+                            cy4,
+                            chroma_tx_wh4,
+                            cul_level,
+                            block.dc_sign_value,
+                        );
+                    }
+                }
             }
         }
 

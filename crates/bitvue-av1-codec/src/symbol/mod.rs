@@ -970,38 +970,32 @@ impl<'a> SymbolDecoder<'a> {
     /// history this closes (part of it) and the "Chroma-plane residual is never read at all"
     /// bullet for why this exists and what it deliberately doesn't cover yet.
     ///
-    /// **Scope, deliberately narrower than luma's, and empirically pinned down (not just
-    /// theorized)**: one call reads exactly one chroma transform block of `chroma_tx_px` pixels
-    /// per side (always `<= 32`, chroma's real `Max_Tx_Size_Rect` cap regardless of luma size --
-    /// confirmed against rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS` table). Callers must only invoke
-    /// this for *square*, *non-IntraBC* luma coding blocks 8x8 through 64x64 (`chroma_tx_px` =
-    /// `min(luma_width/2, 32)` = 4/8/16/32, one call per plane -- 64x64 luma's 32x32 chroma plane
-    /// is exactly one transform block, same shape as the smaller sizes just reaching
-    /// `tx_size_class` 3 for the first time), on *any* frame type -- see `parse_coding_unit`'s
-    /// call site for the exact gate and its tiling-loop shape (needed for 128x128, see below).
+    /// **Scope, deliberately narrower than luma's**: one call reads exactly one chroma transform
+    /// block of `chroma_tx_px` pixels per side (always `<= 32`, chroma's real `Max_Tx_Size_Rect`
+    /// cap regardless of luma size -- confirmed against rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS`
+    /// table). Callers must only invoke this for *square*, *non-IntraBC* luma coding blocks 8x8
+    /// through 128x128 (`chroma_tx_px` = `min(luma_width/2, 32)` = 4/8/16/32) on *any* frame type
+    /// -- see `parse_coding_unit`'s call site for the exact gate and its tiling-loop shape (a
+    /// 128x128 luma block's 64x64 chroma plane needs a real 2x2 tiling, 4 calls per plane).
     ///
-    /// **128x128 luma (chroma capped-at-32 needs a real 2x2 tiling, 4 chroma blocks per plane):
-    /// attempted twice now (this pass and an earlier one), still unresolved.** Both attempts
-    /// regressed `real_fixture_key_frame_intra_modes_are_not_degenerate` (128x128 is this
-    /// fixture's only key-frame CU size) despite the tile *count* checking out against the real
-    /// spec table both times. This pass additionally ruled out call *order* (tried both
-    /// plane-outer -- all U tiles then all V -- and interleaved U/V per tile; identical failure
-    /// either way, expected since `read_chroma_residual_block` takes no position and chroma's
-    /// above/left context isn't tracked) and, more usefully, **ruled out the earlier attempt's
-    /// leading suspect**: it guessed the fixed-representative `txb_skip`/`dc_sign` context
-    /// approximation (only ever exercised via this same buggy 128x128 path before) as the likely
-    /// culprit -- but this pass's working single-tile 64x64 case exercises that *exact* same
-    /// `tx_size_class` 3 fixed-context path (just once instead of four times) and is real-fixture
-    /// clean, which rules that out as a *sufficient* explanation. What's left: something specific
-    /// to calling this function *more than once in a row* for the same coding unit -- e.g. CDF
-    /// adaptation state carried across those calls behaving differently than a real encoder
-    /// assumes, though nothing in this function's own state (each call's `LevelBuffer` is a fresh
-    /// local, and CDF adaptation across repeated real transform blocks is the normal/expected
-    /// entropy-coding behavior, not obviously wrong) explains it either -- not isolated further in
-    /// this pass. Excluded via `parse_coding_unit`'s `(8..=64)` bound rather than shipped
-    /// speculatively. Also still untried: non-square luma coding blocks (common, e.g. `Horz`/
-    /// `Vert` partitions), a real, open, narrower version of the same desync gap (see
-    /// `read_residual_block`'s doc).
+    /// **128x128 luma: root-caused and fixed.** Two earlier passes shipped only the `(8..=64)`
+    /// range after the tile *count* checked out against the real spec table but decode still
+    /// desynced the next superblock. Root cause: `txb_skip`/`dc_sign` previously had **no** `ctx`
+    /// parameter at all -- a single fixed CDF slot per `tx_size_class`, unconditionally shared by
+    /// every call. A 64x64 luma block's single chroma tile per plane never exposed this (one call
+    /// = one adaptation step, indistinguishable from a real single-context CDF). A 128x128 luma
+    /// block's 4 tiles per plane, though, adapted that *same* shared global slot 4x more
+    /// aggressively than a real encoder's per-position context ever would, drifting it away from
+    /// the distribution real future superblocks' encoder-intended symbols assume -- eventual
+    /// desync, not from a wrong tile count or wrong call order (both were already ruled out; see
+    /// prior revisions of this doc in git history), but from over-adaptation of shared state.
+    /// Fixed by adding real per-position `txb_skip`/`dc_sign` chroma context
+    /// (`TileContext::txb_skip_context_chroma`/`dc_sign_context_chroma`, `(8..=128)` re-enabled at
+    /// `parse_coding_unit`'s call site, real-fixture-verified 128x128 CUs parse cleanly with no
+    /// regression to smaller sizes or later superblocks).
+    ///
+    /// Still open: non-square luma coding blocks (common, e.g. `Horz`/`Vert` partitions), a real,
+    /// narrower version of the same desync gap (see `read_residual_block`'s doc).
     ///
     /// An *earlier* attempt at the 8x8/16x16/32x32-only scope additionally required
     /// `is_key_frame` (misdiagnosing the tx_size_class-3 regression above as frame-type-specific,
@@ -1015,24 +1009,33 @@ impl<'a> SymbolDecoder<'a> {
     ///
     /// Unlike luma, `is_1d` is always `false` (2D) here -- chroma's real `transform_type()` isn't
     /// independently read at all (derived from luma's), and this crate doesn't attempt to derive
-    /// it; `false` is the common case. `txb_skip`/`dc_sign` use a single fixed real chroma
-    /// default CDF (`CdfContext::txb_skip_cdf_chroma`/`dc_sign_cdf_chroma`'s doc) rather than a
-    /// real context formula -- rav1d's chroma `get_skip_ctx`/`get_dc_sign_ctx` need a chroma-plane
-    /// above/left context array this crate doesn't track. `coeff_base`/`coeff_br` reuse
-    /// `symbol::scan::lo_ctx`'s real neighbor-context formula verbatim (it's plane-agnostic)
-    /// against chroma-specific default CDF values -- real context for these two, unlike
-    /// `txb_skip`/`dc_sign`.
+    /// it; `false` is the common case. `txb_skip`/`dc_sign` now use real per-position context
+    /// (`txb_skip_ctx`/`dc_sign_ctx` params -- see `TileContext::txb_skip_context_chroma`'s doc
+    /// for the desync bug this closes) against a real per-context default CDF
+    /// (`CdfContext::txb_skip_cdf_chroma`/`dc_sign_cdf_chroma`'s doc). `coeff_base`/`coeff_br`
+    /// reuse `symbol::scan::lo_ctx`'s real neighbor-context formula verbatim (it's plane-agnostic)
+    /// against chroma-specific default CDF values, same as before.
     ///
-    /// Returns nothing (unlike `read_residual_block`) -- this piece exists purely to keep the
-    /// shared `SymbolDecoder`'s bit position in sync with what the real encoder wrote; chroma
-    /// residual statistics aren't exposed anywhere yet (no consumer needs them).
-    pub fn read_chroma_residual_block(&mut self, chroma_tx_px: u32) -> Result<()> {
+    /// Returns `ResidualBlockStats` (mirrors `read_residual_block`) so the caller can feed
+    /// `TileContext::set_residual_ctx_chroma` -- unlike the old no-context version, chroma's
+    /// neighbor state must now be kept in sync for later chroma blocks' context lookups.
+    pub fn read_chroma_residual_block(
+        &mut self,
+        chroma_tx_px: u32,
+        txb_skip_ctx: u8,
+        dc_sign_ctx: u8,
+    ) -> Result<ResidualBlockStats> {
         let tx_class = cdf::tx_size_class(chroma_tx_px).min(3);
 
-        let txb_skip_cdf = self.cdf_context.get_txb_skip_cdf_chroma_mut(tx_class);
+        let txb_skip_cdf = self
+            .cdf_context
+            .get_txb_skip_cdf_chroma_mut(tx_class, txb_skip_ctx);
         let all_zero = self.decoder.read_symbol_adaptive(txb_skip_cdf)? == 1;
         if all_zero {
-            return Ok(());
+            return Ok(ResidualBlockStats {
+                all_zero: true,
+                ..Default::default()
+            });
         }
 
         let eob_bin_cdf = self.cdf_context.get_eob_bin_cdf_chroma_mut(chroma_tx_px);
@@ -1054,6 +1057,10 @@ impl<'a> SymbolDecoder<'a> {
             eob_bin
         };
 
+        let mut stats = ResidualBlockStats {
+            all_zero: false,
+            ..Default::default()
+        };
         let mut levels = scan::LevelBuffer::new(4 << tx_class);
 
         for c in (0..eob).rev() {
@@ -1107,8 +1114,9 @@ impl<'a> SymbolDecoder<'a> {
 
             if level > 0 {
                 if c == 0 {
-                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf_chroma_mut();
-                    self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
+                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf_chroma_mut(dc_sign_ctx);
+                    let sign = self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
+                    stats.dc_sign_value = Some(sign);
                 } else {
                     self.decoder.read_bool(16384)?;
                 }
@@ -1122,14 +1130,21 @@ impl<'a> SymbolDecoder<'a> {
                             break;
                         }
                     }
+                    let mut extra = 1u32;
                     for _ in 0..length.saturating_sub(1) {
-                        self.decoder.read_bool(16384)?;
+                        let bit = self.decoder.read_bool(16384)? as u32;
+                        extra = (extra << 1) | bit;
                     }
+                    level = extra + 14;
                 }
+
+                stats.nonzero_count += 1;
+                stats.sum_abs_level += level as u64;
+                stats.max_level = stats.max_level.max(level.min(u16::MAX as u32) as u16);
             }
         }
 
-        Ok(())
+        Ok(stats)
     }
 }
 

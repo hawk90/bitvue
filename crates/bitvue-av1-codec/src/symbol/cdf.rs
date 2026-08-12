@@ -254,16 +254,19 @@ pub struct CdfContext {
     /// size, per rav1d's `dav1d_max_txfm_size_for_bs` table for 4:2:0, so `tx_size_class` 3
     /// (32x32) is the largest chroma ever needs -- a 128x128 luma block's 64x64 chroma area tiles
     /// 4 real `TX_32X32` blocks, still this same size class), `is_1d` fixed `false` (2D).
-    /// `txb_skip`/`dc_sign` use a single *real* representative chroma
-    /// default (rav1d's chroma `get_skip_ctx`/`get_dc_sign_ctx` need a chroma-plane above/left
-    /// array this crate doesn't track -- not attempted, see this piece's revert-then-retry
-    /// history in `read_residual_block`'s doc) rather than a full context formula; `coeff_base`/
-    /// `coeff_br` reuse `symbol::scan::lo_ctx`'s real neighbor-context formula verbatim (it's
-    /// plane-agnostic) against these chroma-specific default values. All sourced from rav1d's
-    /// real `[chroma=1]` axis (`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.rs`), first
-    /// qindex-bucket variant only, same precedent as every luma table above.
-    txb_skip_cdf_chroma: [Vec<u16>; 4],
-    dc_sign_cdf_chroma: Vec<u16>,
+    /// `txb_skip`/`dc_sign` now use *real* per-position context (`TileContext::
+    /// txb_skip_context_chroma`/`dc_sign_context_chroma`) against a real 6-context (`txb_skip`)/
+    /// 3-context (`dc_sign`) default table -- fixes a real desync bug where a single shared CDF
+    /// slot per tx-size-class was over-adapted by repeated same-CU chroma tile calls (128x128
+    /// luma's 2x2-tiled chroma hit it 4x per plane per CU); see `TileContext::
+    /// txb_skip_context_chroma`'s doc. `coeff_base`/`coeff_br` reuse `symbol::scan::lo_ctx`'s real
+    /// neighbor-context formula verbatim (it's plane-agnostic) against these chroma-specific
+    /// default values. All sourced from rav1d/dav1d's real `[chroma=1]` axis
+    /// (`videolan/dav1d`/`memorysafety/rav1d`, BSD-2-Clause, `src/cdf.c`'s
+    /// `default_coef_cdf[0].skip`/`.dc_sign`), first qindex-bucket variant only, same precedent as
+    /// every luma table above.
+    txb_skip_cdf_chroma: [[Vec<u16>; 6]; 4],
+    dc_sign_cdf_chroma: [Vec<u16>; 3],
     eob_bin_16_cdf_chroma: Vec<u16>,
     eob_bin_64_cdf_chroma: Vec<u16>,
     eob_bin_256_cdf_chroma: Vec<u16>,
@@ -927,9 +930,18 @@ impl CdfContext {
         ];
 
         // Chroma-plane residual CDFs -- see `txb_skip_cdf_chroma`'s doc for scope. Real chroma
-        // (rav1d `[chroma=1]` axis) default values, first qindex-bucket variant.
-        let txb_skip_cdf_chroma: [Vec<u16>; 4] = [7654, 5403, 3778, 1366].map(binary_ctx_cdf);
-        let dc_sign_cdf_chroma: Vec<u16> = binary_ctx_cdf(15232);
+        // (rav1d/dav1d `[chroma=1]` axis) default values, first qindex-bucket variant. `txb_skip`
+        // indexed `[tx_size_class][ctx 0..=5]` -- ctx is the local remap (`TileContext::
+        // txb_skip_context_chroma`'s doc) of dav1d's real chroma ctx 7..=12 from the same
+        // `default_coef_cdf[0].skip[tx_size_class]` row luma's 0..=6 came from (`src/cdf.c`).
+        let txb_skip_cdf_chroma: [[Vec<u16>; 6]; 4] = [
+            [7654, 19473, 29984, 9961, 30242, 32117].map(binary_ctx_cdf),
+            [5403, 18096, 30003, 16384, 16384, 16384].map(binary_ctx_cdf),
+            [3778, 15336, 28981, 16384, 16384, 16384].map(binary_ctx_cdf),
+            [1366, 15628, 30462, 146, 5132, 31657].map(binary_ctx_cdf),
+        ];
+        // `dc_sign` chroma: real 3-context row (`default_coef_cdf[0].dc_sign[1]`, `src/cdf.c`).
+        let dc_sign_cdf_chroma: [Vec<u16>; 3] = [15232, 12928, 17280].map(binary_ctx_cdf);
         let eob_bin_16_cdf_chroma = multi_ctx_cdf(&[3247, 4950, 9688, 14563]);
         let eob_bin_64_cdf_chroma = multi_ctx_cdf(&[3505, 5304, 10086, 13814, 17684, 23370]);
         let eob_bin_256_cdf_chroma =
@@ -1903,16 +1915,15 @@ impl CdfContext {
     }
 
     /// Get mutable chroma `txb_skip` CDF -- see `txb_skip_cdf_chroma`'s doc for scope
-    /// (`tx_size_class` 0..=3 only). No `ctx` param: a single real representative chroma default
-    /// is used unconditionally (chroma's real above/left context isn't tracked).
-    pub fn get_txb_skip_cdf_chroma_mut(&mut self, tx_size_class: usize) -> &mut [u16] {
-        &mut self.txb_skip_cdf_chroma[tx_size_class.min(3)]
+    /// (`tx_size_class` 0..=3, `ctx` 0..=5 -- see `TileContext::txb_skip_context_chroma`'s doc).
+    pub fn get_txb_skip_cdf_chroma_mut(&mut self, tx_size_class: usize, ctx: u8) -> &mut [u16] {
+        &mut self.txb_skip_cdf_chroma[tx_size_class.min(3)][(ctx as usize).min(5)]
     }
 
-    /// Get mutable chroma `dc_sign` CDF -- single real representative chroma default (see
-    /// `dc_sign_cdf_chroma`'s doc), no `ctx` param for the same reason as `txb_skip`'s.
-    pub fn get_dc_sign_cdf_chroma_mut(&mut self) -> &mut [u16] {
-        &mut self.dc_sign_cdf_chroma
+    /// Get mutable chroma `dc_sign` CDF -- real 3-context chroma default (see
+    /// `dc_sign_cdf_chroma`'s doc), `ctx` 0..=2 (`TileContext::dc_sign_context_chroma`'s doc).
+    pub fn get_dc_sign_cdf_chroma_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.dc_sign_cdf_chroma[(ctx as usize).min(2)]
     }
 
     /// Get mutable chroma `eob_bin` CDF for a chroma transform block of `chroma_tx_px` pixels
