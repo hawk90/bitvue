@@ -1823,6 +1823,55 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   전체 clean. **남은 갭**: palette(별도 신규 파싱, 착수 안 함), 위에 적힌 크로스프레임 상태
   한계, inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(재구성 자체가 범위 밖).
 
+- **palette 신규 구현 완료(spec 5.11.46, 2026-08-13, `cc444aa`)**: 사용자 지시로 착수.
+  `palette_mode_info()`(Y/UV 컬러 읽기, dav1d `read_pal_plane`의 정렬-병합 above/left
+  컬러 캐시 그대로 포팅) + `palette_tokens()`(픽셀 단위 대각선 웨이브프론트 컬러-인덱스 맵,
+  `order_palette`의 순위 기반 컨텍스트 — 이 크레이트의 다른 모든 컨텍스트와 근본적으로 다른
+  above/left/above-left "값 자체" 기반 순위·순열 시스템) 신규. **작업 중 이 세션 전체를
+  소급 위협하는 진짜 desync 버그 발견**: `intra_frame_mode_info()`의 절반
+  (`angle_delta_y`/`uv_mode`/`cfl_alpha_signs`+`cfl_alpha`/`angle_delta_uv`)이 이 크레이트에
+  아예 구현된 적이 없었음 — 키프레임에서 Y모드가 directional이거나 UV모드가 DC가 아닌 모든
+  CU가 그 시점부터 desync 상태였는데 크래시가 안 나서 지금까지 아무도 못 잡음(residual/
+  ref_frame과 동일 패턴). palette 게이팅 자체가 uv_mode 값+비트 위치에 의존해서 따로 뗄 수
+  없었기 때문에 함께 구현(신규 CDF 테이블 6개, 전부 dav1d `default_cdf.m.*` 바이트 단위
+  재검증). `filter_intra_mode_info()`도 같은 이유로 함께 구현. `allow_screen_content_tools`
+  (allow_intrabc와 별개 프레임헤더 플래그 — screen content가 intrabc 없이도 켜질 수 있음)
+  /`enable_filter_intra`(시퀀스헤더) 신규 배선(parser→cu_parser/partition→superblock→
+  coding_unit). **부수 발견+수정**: `use_intrabc` CU가 y_mode를 무조건 읽고 있었음(real
+  dav1d `b->intra = !intrabc_flag`가 이 모드정보 구간 전체를 건너뛰는데 반영 안 돼있었음) —
+  모드정보 구간 전체를 `!cu.use_intrabc` 안으로 이동. 404/405 lib + 141개 `tests/` 스위트
+  클린(마지막 1개는 아래 참고).
+
+- **delta_q 게이팅 수정 + delta_q/delta_lf 실제 golomb 인코딩 구현(spec 5.11.38,
+  2026-08-13, `fd268b4`)**: 위 palette 세션 마무리 후 남은 1개 테스트 실패 근본원인을
+  추적하다가 발견한 별개의 진짜 버그 2건. (1) `delta_q`가 `delta_q_enabled`일 때 매 CU마다
+  무조건 읽히고 있었음 — real spec/dav1d는 슈퍼블록당 한 번(맨 처음 리프에서만) + 그 리프가
+  슈퍼블록 전체 크기이면서 skip이면 아예 안 읽음. `parse_superblock`의 자기 origin/size를
+  `sb_x4`/`sb_y4`/`sb_size4`(4x4 단위)로 `parse_coding_units_recursive`→`parse_coding_unit`
+  까지 배선해 "이 리프가 슈퍼블록의 첫 리프인가" 실제 판정 재구성. (2) `delta_q_abs`(그리고
+  한 번도 구현된 적 없던 `delta_lf_abs`)가 real spec의 golomb 스타일 가변길이 확장(3비트
+  n_bits 선택자 + n_bits 원시비트)을 손으로 만든 단일 심볼 CDF로 대체하고 있었고, 부호비트도
+  real spec의 고정 50/50 원시비트 대신 적응형 CDF를 쓰고 있었음(4-outcome 베이스 CDF 자체도
+  가짜 5-outcome이었음 — dav1d 실제값 `CDF3(28160,32120,32677)`으로 교체). `delta_lf`는
+  `delta_lf_present`/`delta_lf_multi`(신규 배선, `delta_q_present`와 같은 배선 경로) 안에
+  중첩된 real spec 구조 그대로 신규 구현. 404/405 lib + 141개 스위트 클린(변함없음).
+
+- **남은 1개 테스트(`real_fixture_key_frame_intra_modes_are_not_degenerate`) 근본원인
+  미해결 — 다음 세션으로 이월(2026-08-13)**: 이 fixture의 유일한 키프레임(320x240, SB 6개)이
+  위 두 커밋 각각 적용 전부터 이미 SB 6개 중 2개가 조용히 파싱 실패하는 상태였음(에러 스킵됨,
+  나머지 4개로 우연히 테스트 통과) — **클린 HEAD 워크트리에 아무 의미 없는 더미 비트 1개만
+  추가로 읽게 해도 똑같이 SB 1개만 성공**하는 것까지 재현 확인, 즉 이 프레임 디코드가 비트
+  위치 1개만 밀려도 무너질 만큼 이미 취약했음(회귀 아님, pre-existing). palette/delta_q 두
+  커밋 모두 "스펙대로 진짜 비트를 더 읽을 뿐"인데 그것만으로 이 취약점을 더 일찍 건드림(각각
+  적용 후 성공 SB 수: 4→1→0). **버퍼 고갈은 기각**(10594바이트 중 235바이트만 소비된 상태에서
+  에러 발생). 대신 발견한 단서: 첫 128x128 CU의 루마 32x32 잔차 타일(16개 중 11번째)에서
+  eob=596(1024칸 중 58% 비영점 밀도)이라는 실제 콘텐츠론 매우 드문 값이 나옴 — 이미 그
+  지점에서 desync된 정황. **같은 residual 코드가 이 fixture의 INTER 프레임들엔 문제없이
+  쓰이고 있어서**(관련 회귀테스트 다수 통과) residual 코드 자체보다는 이 유일한 키프레임에만
+  적용되는 무언가(`transform_type()`의 intra 전용 분기, 또는 아직 못 찾은 다른 intra 전용
+  신택스요소)가 원인일 가능성이 높음 — 계획서가 원래 추정했던 "residual 전체 컨텍스트는
+  자체로 몇 주급" 규모의 조사가 될 수 있어 다음 세션으로 이월, 착수 안 함.
+
 ---
 
 ## Phase 5: AVS3 지원 구현 🟡 (2026-08-10 재감사 — 크레이트/파서/렌더러 존재, 제품 미연결)
