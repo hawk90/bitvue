@@ -279,8 +279,16 @@ pub struct CdfContext {
     txb_skip_cdf_chroma: [[Vec<u16>; 6]; 4],
     dc_sign_cdf_chroma: [Vec<u16>; 3],
     eob_bin_16_cdf_chroma: Vec<u16>,
+    /// Real `eob_bin` default for a 4x8/8x4 chroma tile (rc area 32) -- only reachable once a
+    /// non-square luma coding block's chroma plane isn't itself square (e.g. luma 16x8 -> chroma
+    /// 8x4). See `eob_bin_16_cdf_chroma`'s doc for source/shape.
+    eob_bin_32_cdf_chroma: Vec<u16>,
     eob_bin_64_cdf_chroma: Vec<u16>,
+    /// Real `eob_bin` default for an 8x16/16x8 chroma tile (rc area 128).
+    eob_bin_128_cdf_chroma: Vec<u16>,
     eob_bin_256_cdf_chroma: Vec<u16>,
+    /// Real `eob_bin` default for a 16x32/32x16 chroma tile (rc area 512).
+    eob_bin_512_cdf_chroma: Vec<u16>,
     eob_bin_1024_cdf_chroma: Vec<u16>,
     eob_hi_bit_cdf_chroma: [[Vec<u16>; 11]; 4],
     coeff_base_eob_cdf_chroma: [[Vec<u16>; 4]; 4],
@@ -964,9 +972,14 @@ impl CdfContext {
         // `dc_sign` chroma: real 3-context row (`default_coef_cdf[0].dc_sign[1]`, `src/cdf.c`).
         let dc_sign_cdf_chroma: [Vec<u16>; 3] = [15232, 12928, 17280].map(binary_ctx_cdf);
         let eob_bin_16_cdf_chroma = multi_ctx_cdf(&[3247, 4950, 9688, 14563]);
+        let eob_bin_32_cdf_chroma = multi_ctx_cdf(&[2636, 4273, 7588, 11794, 20401]);
         let eob_bin_64_cdf_chroma = multi_ctx_cdf(&[3505, 5304, 10086, 13814, 17684, 23370]);
+        let eob_bin_128_cdf_chroma =
+            multi_ctx_cdf(&[5245, 7456, 12880, 15852, 20033, 23932, 27608]);
         let eob_bin_256_cdf_chroma =
             multi_ctx_cdf(&[2520, 3240, 5952, 8870, 12577, 17558, 19954, 24168]);
+        let eob_bin_512_cdf_chroma =
+            multi_ctx_cdf(&[5095, 6446, 9996, 13354, 16017, 17986, 20919, 26129, 29140]);
         let eob_bin_1024_cdf_chroma = multi_ctx_cdf(&[
             1865, 1988, 2930, 4242, 10533, 16538, 21354, 27255, 28546, 31784,
         ]);
@@ -1762,8 +1775,11 @@ impl CdfContext {
             txb_skip_cdf_chroma,
             dc_sign_cdf_chroma,
             eob_bin_16_cdf_chroma,
+            eob_bin_32_cdf_chroma,
             eob_bin_64_cdf_chroma,
+            eob_bin_128_cdf_chroma,
             eob_bin_256_cdf_chroma,
+            eob_bin_512_cdf_chroma,
             eob_bin_1024_cdf_chroma,
             eob_hi_bit_cdf_chroma,
             coeff_base_eob_cdf_chroma,
@@ -1965,15 +1981,20 @@ impl CdfContext {
         &mut self.dc_sign_cdf_chroma[(ctx as usize).min(2)]
     }
 
-    /// Get mutable chroma `eob_bin` CDF for a chroma transform block of `chroma_tx_px` pixels
-    /// per side (4/8/16/32 -- see `txb_skip_cdf_chroma`'s doc). `is_1d` is always `false` for
-    /// chroma in this crate's scope, so there's no axis for it (unlike `get_eob_bin_cdf_mut`).
-    pub fn get_eob_bin_cdf_chroma_mut(&mut self, chroma_tx_px: u32) -> &mut [u16] {
-        match chroma_tx_px {
-            0..=4 => &mut self.eob_bin_16_cdf_chroma,
-            5..=8 => &mut self.eob_bin_64_cdf_chroma,
-            9..=16 => &mut self.eob_bin_256_cdf_chroma,
-            _ => &mut self.eob_bin_1024_cdf_chroma, // 32, this crate's chroma scope max
+    /// Get mutable chroma `eob_bin` CDF for a `width_px`x`height_px` chroma transform tile (each
+    /// independently `<=32`, `txb_skip_cdf_chroma`'s doc) -- selection by *total area*, same
+    /// symmetric-in-width/height reasoning as `get_eob_bin_cdf_mut`'s doc. `is_1d` is always
+    /// `false` for chroma in this crate's scope, so there's no axis for it (unlike
+    /// `get_eob_bin_cdf_mut`).
+    pub fn get_eob_bin_cdf_chroma_mut(&mut self, width_px: u32, height_px: u32) -> &mut [u16] {
+        match width_px * height_px {
+            0..=16 => &mut self.eob_bin_16_cdf_chroma,
+            17..=32 => &mut self.eob_bin_32_cdf_chroma,
+            33..=64 => &mut self.eob_bin_64_cdf_chroma,
+            65..=128 => &mut self.eob_bin_128_cdf_chroma,
+            129..=256 => &mut self.eob_bin_256_cdf_chroma,
+            257..=512 => &mut self.eob_bin_512_cdf_chroma,
+            _ => &mut self.eob_bin_1024_cdf_chroma, // 1024, this crate's chroma scope max
         }
     }
 

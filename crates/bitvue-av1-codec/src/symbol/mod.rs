@@ -1000,13 +1000,15 @@ impl<'a> SymbolDecoder<'a> {
     /// history this closes (part of it) and the "Chroma-plane residual is never read at all"
     /// bullet for why this exists and what it deliberately doesn't cover yet.
     ///
-    /// **Scope, deliberately narrower than luma's**: one call reads exactly one chroma transform
-    /// block of `chroma_tx_px` pixels per side (always `<= 32`, chroma's real `Max_Tx_Size_Rect`
-    /// cap regardless of luma size -- confirmed against rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS`
-    /// table). Callers must only invoke this for *square*, *non-IntraBC* luma coding blocks 8x8
-    /// through 128x128 (`chroma_tx_px` = `min(luma_width/2, 32)` = 4/8/16/32) on *any* frame type
-    /// -- see `parse_coding_unit`'s call site for the exact gate and its tiling-loop shape (a
-    /// 128x128 luma block's 64x64 chroma plane needs a real 2x2 tiling, 4 calls per plane).
+    /// **Scope**: one call reads exactly one chroma transform block of `width_px`x`height_px`
+    /// samples (each independently `<= 32`, chroma's real `Max_Tx_Size_Rect` cap regardless of
+    /// luma size -- confirmed against rav1d's `DAV1D_MAX_TXFM_SIZE_FOR_BS` table). Callers must
+    /// only invoke this for *non-IntraBC* luma coding blocks 8x8 through 128x128 in either
+    /// dimension (`width_px`/`height_px` = `min(luma_dim/2, 32)` = 4/8/16/32 per axis, real
+    /// rectangular chroma tiles supported since the luma CU itself can be non-square) on *any*
+    /// frame type -- see `parse_coding_unit`'s call site for the exact gate and its tiling-loop
+    /// shape (a chroma plane bigger than one tile in either axis needs real tiling, potentially
+    /// asymmetric per axis).
     ///
     /// **128x128 luma: root-caused and fixed.** Two earlier passes shipped only the `(8..=64)`
     /// range after the tile *count* checked out against the real spec table but decode still
@@ -1024,8 +1026,15 @@ impl<'a> SymbolDecoder<'a> {
     /// `parse_coding_unit`'s call site, real-fixture-verified 128x128 CUs parse cleanly with no
     /// regression to smaller sizes or later superblocks).
     ///
-    /// Still open: non-square luma coding blocks (common, e.g. `Horz`/`Vert` partitions), a real,
-    /// narrower version of the same desync gap (see `read_residual_block`'s doc).
+    /// **Non-square luma coding blocks: real support landed.** Previously excluded entirely
+    /// (`width == height` gate at the call site) -- meaning every non-square `HasChroma` coding
+    /// block's chroma residual bits were never read at all, a real, live desync bug matching this
+    /// session's established pattern (silently wrong bits, not a crash) that only became common
+    /// once non-square inter var-tx landed (550/1676 real fixture CUs). Fixed by generalizing this
+    /// function and its CDF/context plumbing to independent width/height (mirrors
+    /// `read_residual_block`'s identical generalization); chroma stays 2D-only (`is_1d` hardcoded
+    /// `false`, unaffected by luma's H/V `TxClass1d` distinction since chroma's real
+    /// `transform_type()` is never independently read).
     ///
     /// An *earlier* attempt at the 8x8/16x16/32x32-only scope additionally required
     /// `is_key_frame` (misdiagnosing the tx_size_class-3 regression above as frame-type-specific,
@@ -1051,11 +1060,15 @@ impl<'a> SymbolDecoder<'a> {
     /// neighbor state must now be kept in sync for later chroma blocks' context lookups.
     pub fn read_chroma_residual_block(
         &mut self,
-        chroma_tx_px: u32,
+        width_px: u32,
+        height_px: u32,
         txb_skip_ctx: u8,
         dc_sign_ctx: u8,
     ) -> Result<ResidualBlockStats> {
-        let tx_class = cdf::tx_size_class(chroma_tx_px).min(3);
+        // Real spec `txSzCtx`: square-up class of the *larger* dimension (see
+        // `read_residual_block`'s identical derivation) -- for a square chroma tile these are the
+        // same value, matching this function's pre-rect behavior exactly.
+        let tx_class = cdf::tx_size_class(width_px.max(height_px)).min(3);
 
         let txb_skip_cdf = self
             .cdf_context
@@ -1068,7 +1081,9 @@ impl<'a> SymbolDecoder<'a> {
             });
         }
 
-        let eob_bin_cdf = self.cdf_context.get_eob_bin_cdf_chroma_mut(chroma_tx_px);
+        let eob_bin_cdf = self
+            .cdf_context
+            .get_eob_bin_cdf_chroma_mut(width_px, height_px);
         let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
 
         let eob: u32 = if eob_bin > 1 {
@@ -1091,14 +1106,14 @@ impl<'a> SymbolDecoder<'a> {
             all_zero: false,
             ..Default::default()
         };
-        let mut levels = scan::LevelBuffer::new(chroma_tx_px as usize, chroma_tx_px as usize);
+        let mut levels = scan::LevelBuffer::new(width_px as usize, height_px as usize);
 
         for c in (0..eob).rev() {
-            let (x, y) = scan::coeff_position(chroma_tx_px, chroma_tx_px, false, false, c);
+            let (x, y) = scan::coeff_position(width_px, height_px, false, false, c);
             let is_eob_pos = c == eob - 1;
 
             let (base_level, br_ctx) = if is_eob_pos {
-                let ctx = coeff_base_eob_context(eob, chroma_tx_px);
+                let ctx = coeff_base_eob_context(eob, width_px.max(height_px));
                 let cdf = self
                     .cdf_context
                     .get_coeff_base_eob_cdf_chroma_mut(tx_class, ctx);
@@ -1108,11 +1123,11 @@ impl<'a> SymbolDecoder<'a> {
             } else if c == 0 {
                 let cdf = self.cdf_context.get_coeff_base_cdf_chroma_mut(tx_class, 0);
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
-                let (_, hi_mag) = scan::lo_ctx(&levels, 0, 0, false, chroma_tx_px, chroma_tx_px);
+                let (_, hi_mag) = scan::lo_ctx(&levels, 0, 0, false, width_px, height_px);
                 let mag = hi_mag & 63;
                 (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
             } else {
-                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, false, chroma_tx_px, chroma_tx_px);
+                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, false, width_px, height_px);
                 let cdf = self
                     .cdf_context
                     .get_coeff_base_cdf_chroma_mut(tx_class, ctx);

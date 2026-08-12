@@ -514,6 +514,61 @@ mod tests {
         );
     }
 
+    /// Regression test for real **non-square** chroma residual reading (`read_chroma_residual_
+    /// block`'s width/height generalization) -- same non-vacuous discipline as
+    /// `real_fixture_square_chroma_eligible_blocks_exist_and_parse_cleanly`'s doc, extended to
+    /// `cu.width != cu.height`. Before this, every non-square `HasChroma` coding block's chroma
+    /// residual bits were never read at all (the gate required `width == height`) -- a real, live
+    /// desync bug that only became common once non-square inter var-tx made non-square CUs common
+    /// (550/1676 real fixture CUs, previous session). The full-fixture parse still succeeding here
+    /// (no panic/error) is itself part of the evidence this was fixed correctly, not just that the
+    /// gate now fires.
+    #[test]
+    fn real_fixture_nonsquare_chroma_eligible_blocks_exist_and_parse_cleanly() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut nonsquare_chroma_eligible_cu_count = 0usize;
+        let mut dims_seen: std::collections::HashSet<(u32, u32)> = Default::default();
+
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            let Ok(cus) = parse_all_coding_units(&parsed) else {
+                panic!("frame failed to parse coding units -- possible chroma-read desync");
+            };
+            for cu in cus.iter() {
+                if !cu.skip
+                    && !cu.use_intrabc
+                    && cu.width != cu.height
+                    && (8..=128).contains(&cu.width)
+                    && (8..=128).contains(&cu.height)
+                {
+                    nonsquare_chroma_eligible_cu_count += 1;
+                    dims_seen.insert((cu.width, cu.height));
+                }
+            }
+        }
+
+        assert!(
+            nonsquare_chroma_eligible_cu_count > 0,
+            "expected at least one non-skip, non-IntraBC, non-square coding unit (the non-square \
+             chroma residual read's gate condition) across the real fixture -- if this is ever 0, \
+             the gate has gone dead and non-square chroma bits are silently unread again"
+        );
+        assert!(
+            dims_seen.len() > 3,
+            "expected a real variety of non-square chroma-eligible dimensions, got only \
+             {dims_seen:?}"
+        );
+    }
+
     /// Regression test for the real key-frame `intra_mode` (`kfym`) context work: `read_intra_mode`
     /// now uses real per-context (`TileContext::intra_mode_context`, 5x5 above/left mode-class
     /// grid) default CDFs sourced from rav1d's `Default_Kf_Y_Mode_Cdf` and real adaptation,

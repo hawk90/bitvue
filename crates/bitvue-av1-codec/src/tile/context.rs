@@ -774,26 +774,34 @@ impl TileContext {
         plane: usize,
         cx4: u32,
         cy4: u32,
-        tx_wh4: u32,
+        tx_w4: u32,
+        tx_h4: u32,
         not_one_blk: bool,
     ) -> u8 {
         let above = &self.above_cul_level_chroma[plane.min(1)];
         let left = &self.left_cul_level_chroma[plane.min(1)];
-        let ca = (0..tx_wh4).any(|i| above.get((cx4 + i) as usize).copied().unwrap_or(0) != 0);
-        let cl = (0..tx_wh4).any(|i| left.get((cy4 + i) as usize).copied().unwrap_or(0) != 0);
+        let ca = (0..tx_w4).any(|i| above.get((cx4 + i) as usize).copied().unwrap_or(0) != 0);
+        let cl = (0..tx_h4).any(|i| left.get((cy4 + i) as usize).copied().unwrap_or(0) != 0);
         u8::from(not_one_blk) * 3 + u8::from(ca) + u8::from(cl)
     }
 
     /// Chroma `dc_sign` context -- identical algorithm to `dc_sign_context` (spec/rav1d's
     /// `get_dc_sign_ctx` doesn't differ between luma/chroma except which above/left array it's
     /// given), applied to `plane`'s own category arrays.
-    pub fn dc_sign_context_chroma(&self, plane: usize, cx4: u32, cy4: u32, tx_wh4: u32) -> u8 {
+    pub fn dc_sign_context_chroma(
+        &self,
+        plane: usize,
+        cx4: u32,
+        cy4: u32,
+        tx_w4: u32,
+        tx_h4: u32,
+    ) -> u8 {
         let above = &self.above_dc_sign_category_chroma[plane.min(1)];
         let left = &self.left_dc_sign_category_chroma[plane.min(1)];
-        let above_sum: i32 = (0..tx_wh4)
+        let above_sum: i32 = (0..tx_w4)
             .map(|i| above.get((cx4 + i) as usize).copied().unwrap_or(1) as i32 - 1)
             .sum();
-        let left_sum: i32 = (0..tx_wh4)
+        let left_sum: i32 = (0..tx_h4)
             .map(|i| left.get((cy4 + i) as usize).copied().unwrap_or(1) as i32 - 1)
             .sum();
         let s = above_sum + left_sum;
@@ -807,12 +815,14 @@ impl TileContext {
     }
 
     /// Chroma counterpart to `set_residual_ctx`, per plane (`0`=U, `1`=V).
+    #[allow(clippy::too_many_arguments)]
     pub fn set_residual_ctx_chroma(
         &mut self,
         plane: usize,
         cx4: u32,
         cy4: u32,
-        tx_wh4: u32,
+        tx_w4: u32,
+        tx_h4: u32,
         cul_level: u8,
         dc_sign_symbol: Option<u8>,
     ) {
@@ -824,14 +834,14 @@ impl TileContext {
         let plane = plane.min(1);
         let above = &mut self.above_cul_level_chroma[plane];
         let above_cat = &mut self.above_dc_sign_category_chroma[plane];
-        let x_end = (cx4 + tx_wh4).min(above.len() as u32);
+        let x_end = (cx4 + tx_w4).min(above.len() as u32);
         for x in cx4..x_end {
             above[x as usize] = cul_level;
             above_cat[x as usize] = category;
         }
         let left = &mut self.left_cul_level_chroma[plane];
         let left_cat = &mut self.left_dc_sign_category_chroma[plane];
-        let y_end = (cy4 + tx_wh4).min(left.len() as u32);
+        let y_end = (cy4 + tx_h4).min(left.len() as u32);
         for y in cy4..y_end {
             left[y as usize] = cul_level;
             left_cat[y as usize] = category;
