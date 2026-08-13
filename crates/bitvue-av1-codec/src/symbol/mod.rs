@@ -259,6 +259,18 @@ impl<'a> SymbolDecoder<'a> {
         self.decoder.read_symbol_adaptive(cdf)
     }
 
+    /// Read one `drl_bit` (spec 7.10.2.10's real DRL index-selection bit, single-ref -- see
+    /// `crate::tile::context::SpatialRefContext::single_ref_mv_stack`'s doc for the real weighted
+    /// candidate list this decides between, and its doc for the temporal/compound/sign_bias-
+    /// extension scope this crate omits) -- real per-`ctx` CDF + adaptation. `ctx`:
+    /// `crate::tile::context::get_drl_context`'s doc. `true` means "advance to the next DRL
+    /// position" (matches real spec's `b->drl_idx += bit` accumulation).
+    pub fn read_drl_bit(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_drl_bit_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
     /// Read `seg_pred` (spec 5.11.9/5.11.10's temporal segment-id-prediction flag) -- real
     /// per-`ctx` CDF + adaptation, matching `read_skip`'s bar. `ctx`:
     /// `TileContext::seg_pred_context`'s doc.

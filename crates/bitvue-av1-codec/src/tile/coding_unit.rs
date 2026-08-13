@@ -283,7 +283,7 @@ impl RefFrame {
 }
 
 /// Motion Vector (quarter-pel precision)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MotionVector {
     /// Horizontal component (quarter-pel units)
     pub x: i32,
@@ -1077,6 +1077,8 @@ pub fn parse_coding_unit(
                 rav1d_ref1,
                 cu.mode.l0_mv_kind() == Some(MvKind::New)
                     || cu.mode.l1_mv_kind() == Some(MvKind::New),
+                cu.mv[0],
+                cu.mv[1],
             );
 
             // compound_type() (spec 5.11.28: jnt_comp vs. segmentation-mask vs. wedge-mask) --
@@ -1130,13 +1132,28 @@ pub fn parse_coding_unit(
             let mode_symbol = decoder.read_inter_mode(ctx)?;
             cu.mode = inter_mode_from_symbol(mode_symbol)?;
 
-            // If NEWMV, read motion vectors
+            // DRL (spec 7.10.2.10's real `drl_idx` selection, single-ref only) -- real per-context
+            // CDF + adaptation, see `SymbolDecoder::read_drl_bit`'s doc for the desync this closes
+            // (this crate previously never read any DRL bits at all, always implicitly using
+            // index 0 -- `MvPredictorContext::predict_nearest_mv`'s single-neighbor heuristic).
+            // Not read for GLOBALMV (real spec: no DRL for that mode at all).
             if cu.mode == PredictionMode::NewMv {
-                // Read MV for L0 (forward reference)
                 let explicit_mv = read_explicit_mv(decoder)?;
-
-                // Get MV predictor and add to explicit MV
-                let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
+                let (stack, n_mvs) =
+                    tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0);
+                let mut drl_idx = 0usize;
+                if n_mvs > 1 {
+                    if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 0))? {
+                        drl_idx += 1;
+                    }
+                    if drl_idx == 1
+                        && n_mvs > 2
+                        && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))?
+                    {
+                        drl_idx += 1;
+                    }
+                }
+                let predictor = stack[drl_idx].mv;
                 cu.mv[0] =
                     MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
                 cu.mv[1] = MotionVector::zero();
@@ -1149,8 +1166,7 @@ pub fn parse_coding_unit(
                     predictor,
                     cu.mv[0]
                 );
-            } else {
-                // For NEARESTMV, NEARMV, GLOBALMV: use predictor directly
+            } else if cu.mode == PredictionMode::GlobalMv {
                 let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
                 cu.mv = [predictor, MotionVector::zero()];
 
@@ -1159,6 +1175,36 @@ pub fn parse_coding_unit(
                     cu.mode,
                     x,
                     y,
+                    cu.mv[0]
+                );
+            } else {
+                // NEARESTMV / NEARMV
+                let (stack, n_mvs) =
+                    tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0);
+                let mut drl_idx = if cu.mode == PredictionMode::NearMv {
+                    1usize
+                } else {
+                    0
+                };
+                if cu.mode == PredictionMode::NearMv && n_mvs > 2 {
+                    if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 1))? {
+                        drl_idx += 1;
+                    }
+                    if drl_idx == 2
+                        && n_mvs > 3
+                        && decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 2))?
+                    {
+                        drl_idx += 1;
+                    }
+                }
+                cu.mv = [stack[drl_idx].mv, MotionVector::zero()];
+
+                tracing::debug!(
+                    "Mode {:?} at ({}, {}): drl_idx={} mv={:?}",
+                    cu.mode,
+                    x,
+                    y,
+                    drl_idx,
                     cu.mv[0]
                 );
             }
@@ -1171,6 +1217,8 @@ pub fn parse_coding_unit(
                 rav1d_ref0,
                 rav1d_ref1,
                 cu.mode == PredictionMode::NewMv,
+                cu.mv[0],
+                cu.mv[1],
             );
 
             // interintra (spec 5.11.29) -- real per-context CDF + adaptation, see

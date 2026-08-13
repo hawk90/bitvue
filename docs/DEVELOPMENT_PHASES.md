@@ -2030,6 +2030,35 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   여전히 0/29(완전 해결 아님). 406/406 lib, `--tests`+워크스페이스 전체 클린, clippy/fmt
   무경고 변화 없음. **DRL(다음 세션 명시적 착수 지점)이 유력한 남은 근본원인** — 그 외에도
   아직 발견 못 한 갭이 더 있을 가능성 있음.
+- **후속(같은 세션, "다음 세션 시작"으로 이어감): DRL(dynamic reference list) 단일참조 전용
+  실제 구현** — rav1d `refmvs.rs`(1842줄) 규모 확인 후 사용자와 두 번 범위 재조정(처음 "공간
+  이웃만", 다시 "단일참조만, compound 확장 제외") 끝에 착수. 조사 중 이 크레이트가 이미
+  `SpatialRefContext`(`inter_mode_context`/`compound_mode_context`)에 real dav1d `rav1d_refmvs_
+  find`의 공간 스캔을 상당 부분 정확히 포팅해뒀던 걸 재확인(매치 카운트 기반 컨텍스트는 이미
+  진짜) — 빠진 건 구체적으로 (1) `get_drl_context`가 필요로 하는 실제 가중치 기반 후보
+  스택(`mvstack`, MV 값+weight)과 (2) `drl_bit` 자체 read였음. `SpatialRefCell`에 `mv0`/`mv1`/
+  `width_4x4`/`height_4x4` 필드 추가(기존 매치-카운트 스캔은 안 건드림, DRL 전용 신규 경로) +
+  real dav1d `scan_row`/`scan_col`의 이웃-폭-인식 스테핑을 포팅한 `single_ref_mv_stack`
+  신규(가중치 640 임계값 부여 로직까지 포함) + `get_drl_context` 신규(free fn) +
+  `drl_bit_cdf`(rav1d 원시값) + `read_drl_bit` 신규. `coding_unit.rs`의 NEWMV/NEARMV/NEARESTMV
+  분기를 실제 drl_idx 선택 후 `stack[drl_idx].mv`를 predictor로 쓰도록 재작성(기존
+  `MvPredictorContext`의 "가장 가까운 이웃 하나" 휴리스틱을 이 경로들에서 대체 — GLOBALMV는
+  변경 없음, DRL 자체가 없는 모드). **세 가지 의도적 생략(전부 문서화, "compound DRL 확장은
+  별도"에 이미 동의됨)**: temporal(시간축) 후보 — 이 fixture는 `use_ref_frame_mvs=true`가
+  인터 프레임 249/249 전부에서 켜져있어 실제로 관여하는데도 생략(cross-frame 모션필드 저장
+  자체가 이 크레이트에 없음, 남은 갭 중 가장 유력한 후보로 추정), compound DRL 확장
+  (`add_compound_extended_candidate`, `sign_bias` 필요), 단일참조 cnt<2일 때의 "non-self
+  reference" 확장 검색(`add_single_extended_candidate`, 이것도 sign_bias 필요 — 대신 이
+  크레이트의 기존 GLOBALMV=0 근사와 일관되게 0으로 채움). 2차(secondary, n=2,3) 스캔은 real
+  dav1d의 8x8-해상도 별도 인덱싱 대신 1차 스캔과 같은 4x4 스테핑으로 근사(640 임계값을 넘는
+  일이 없어 `get_drl_context`의 주 판정에는 영향 없음, 저가중치 후보끼리의 드문 tie-break
+  순서만 근사). **실측 검증**: byte_offset 재측정 성공/실패 비율 48%→**50%**(작은 개선,
+  temporal 누락이 남은 주 원인으로 추정). 406/406 lib + `--tests` + 워크스페이스 전체 클린,
+  clippy 신규 경고 2개 발견 즉시 수정(div_ceil 정리)해 13개 그대로 복귀, fmt 무경고. **부수:
+  `MotionVector`에 `Default` derive 추가**(0,0으로 `MvStackEntry`의 zero-fallback 슬롯 채우는
+  데 필요, 순수 기계적 파생 추가). 이걸로 이번 세션 "다음 세션 시작" 체인에서 스코핑됐던 DRL
+  작업(단일참조 한정) 완료 — temporal 후보 추가는 진짜 별개의 cross-frame 상태 관리가
+  필요해서 또 다른 큰 작업, 다음 세션 후보로 남김.
 
 ---
 

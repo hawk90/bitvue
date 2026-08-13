@@ -167,6 +167,9 @@ pub struct CdfContext {
     /// `filter` (subpel interpolation) CDFs, `[dir][ctx]` (`read_filter`'s doc). Real spec/rav1d
     /// default values + real per-context adaptation.
     filter_cdf: [[Vec<u16>; 8]; 2],
+    /// `drl_bit` CDFs, one per context (0..=2, `crate::tile::context::get_drl_context`'s doc).
+    /// Real spec/rav1d default values + real per-context adaptation.
+    drl_bit_cdf: [Vec<u16>; 3],
 
     /// `seg_pred` (temporal segment-id prediction flag) CDFs, one per context (0..=2, from
     /// `TileContext::seg_pred_context`, real spec/rav1d `above_seg_pred[x4] + left_seg_pred[y4]`)
@@ -799,6 +802,11 @@ impl CdfContext {
                 multi_ctx_cdf(&[14969, 21398]),
             ],
         ];
+
+        // `drl_bit` (spec 7.10.2.10's DRL index read, single-ref only -- `read_drl_bit`'s doc) --
+        // real spec/rav1d default CDFs (`default_cdf.m.drl_bit`, `src/cdf.c`), 3 contexts
+        // (`crate::tile::context::get_drl_context`'s doc). Raw probs 13104/24560/18945.
+        let drl_bit_cdf: [Vec<u16>; 3] = [13104, 24560, 18945].map(binary_ctx_cdf);
 
         // seg_pred/seg_id (spec 5.11.9/5.11.10 `segment_id()`): real spec/rav1d default CDFs
         // (`default_cdf.m.seg_pred`/`.seg_id`, `src/cdf.c`).
@@ -2317,6 +2325,7 @@ impl CdfContext {
             mask_comp_cdf,
             jnt_comp_cdf,
             filter_cdf,
+            drl_bit_cdf,
             seg_pred_cdf,
             seg_id_cdf,
             pal_y_cdf,
@@ -2495,6 +2504,12 @@ impl CdfContext {
     /// `TileContext::filter_context`).
     pub fn get_filter_cdf_mut(&mut self, dir: u8, ctx: u8) -> &mut [u16] {
         &mut self.filter_cdf[(dir as usize).min(1)][(ctx as usize).min(7)]
+    }
+
+    /// Get mutable `drl_bit` CDF for the given context (0..=2, from
+    /// `crate::tile::context::get_drl_context`).
+    pub fn get_drl_bit_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.drl_bit_cdf[(ctx as usize).min(2)]
     }
 
     /// Get mutable `seg_pred` CDF for context `ctx` (0..=2 -- `TileContext::seg_pred_context`'s

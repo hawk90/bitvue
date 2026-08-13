@@ -86,6 +86,18 @@ struct SpatialRefCell {
     /// for compound; matches this crate's `PredictionMode::l0_mv_kind`/`l1_mv_kind` returning
     /// `Some(MvKind::New)`).
     is_newmv: bool,
+    /// This block's own decoded MVs (rav1d `RefMvsBlock.mv.mv[0]/[1]`) -- only consumed by
+    /// `single_ref_mv_stack` (DRL's real candidate list, `SymbolDecoder::read_drl_bit`'s doc),
+    /// unused by the match-count-only `scan` this struct's other fields feed.
+    mv0: crate::tile::coding_unit::MotionVector,
+    mv1: crate::tile::coding_unit::MotionVector,
+    /// This block's own footprint (rav1d derives this from `RefMvsBlock.bs` via
+    /// `dav1d_block_dimensions`) -- needed by `single_ref_mv_stack`'s real neighbor-width-aware
+    /// row/col stepping (`scan_row`/`scan_col`'s doc), which -- unlike `scan`'s per-cell OR --
+    /// cannot get an equivalent result from per-cell iteration alone (candidate weight depends on
+    /// the actual overlap length with a neighbor, not just presence/absence of a match).
+    width_4x4: u8,
+    height_4x4: u8,
 }
 
 /// Real above/left/secondary-neighbor `inter_mode`/`compound_mode` context, per AV1 spec
@@ -147,6 +159,7 @@ impl SpatialRefContext {
     /// inter-block decode path (`decode.rs`), leaving intra-covered cells at their default
     /// `valid: false` for the lifetime of the tile (every cell is visited by exactly one coding
     /// block during a tile's decode, so "never written" and "written by an intra block" coincide).
+    #[allow(clippy::too_many_arguments)]
     pub fn set_block(
         &mut self,
         x4: u32,
@@ -156,12 +169,18 @@ impl SpatialRefContext {
         ref0: i8,
         ref1: i8,
         is_newmv: bool,
+        mv0: crate::tile::coding_unit::MotionVector,
+        mv1: crate::tile::coding_unit::MotionVector,
     ) {
         let cell = SpatialRefCell {
             valid: true,
             ref0,
             ref1,
             is_newmv,
+            mv0,
+            mv1,
+            width_4x4: width_4x4.min(255) as u8,
+            height_4x4: height_4x4.min(255) as u8,
         };
         let x_end = (x4 + width_4x4).min(self.width_4x4);
         let y_end = (y4 + height_4x4).min(self.height_4x4);
@@ -332,6 +351,308 @@ impl SpatialRefContext {
             1 => 1 + newmv_ctx.min(3),
             _ => (3 + newmv_ctx).clamp(4, 7),
         }
+    }
+
+    /// This position's single-ref candidate, if its stored ref matches `ref0` -- rav1d
+    /// `add_spatial_candidate`'s `for n in 0..2 { if b.ref.ref[n] == ref.ref[0] { ... } }`: checks
+    /// BOTH of the neighbor's own ref slots (a *compound* neighbor can still contribute to a
+    /// *single-ref* query, via whichever of its two refs happens to match).
+    fn single_ref_candidate_mv(
+        cell: &SpatialRefCell,
+        ref0: i8,
+    ) -> Option<crate::tile::coding_unit::MotionVector> {
+        if !cell.valid {
+            return None;
+        }
+        if cell.ref0 == ref0 {
+            Some(cell.mv0)
+        } else if cell.ref1 == ref0 {
+            Some(cell.mv1)
+        } else {
+            None
+        }
+    }
+
+    /// Merge-or-append one candidate into the real weighted DRL stack (rav1d
+    /// `add_spatial_candidate`'s single-ref branch): identical-MV candidates accumulate weight
+    /// instead of duplicating (matches by real MV *value*, not by which neighbor position found
+    /// it).
+    fn push_mv_candidate(
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+        weight: i32,
+        mv: crate::tile::coding_unit::MotionVector,
+    ) {
+        for cand in &mut stack[..*cnt] {
+            if cand.mv == mv {
+                cand.weight += weight;
+                return;
+            }
+        }
+        if *cnt < 8 {
+            stack[*cnt] = MvStackEntry { mv, weight };
+            *cnt += 1;
+        }
+    }
+
+    /// Real neighbor-width-aware row scan (rav1d `scan_row`, `src/refmvs.rs`) -- unlike `scan`'s
+    /// per-cell OR (sufficient for a boolean match-count, `SpatialRefContext`'s doc), DRL's real
+    /// weight needs the actual overlap length with each distinct neighbor along the row, so this
+    /// steps by each neighbor's own stored width instead of visiting every 4x4 cell independently.
+    #[allow(clippy::too_many_arguments)]
+    fn scan_row_weighted(
+        &self,
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+        ref0: i8,
+        row_y4: u32,
+        x4: u32,
+        bw4: u32,
+        w4: u32,
+        max_rows: i32,
+        step: u32,
+    ) {
+        let Some(first) = self.cell(x4, row_y4) else {
+            return;
+        };
+        let mut cand = *first;
+        let mut cand_bw4 = (cand.width_4x4 as u32).max(1);
+        let mut len = step.max(bw4.min(cand_bw4));
+
+        if bw4 <= cand_bw4 {
+            let weight = if bw4 == 1 {
+                2
+            } else {
+                (cand.height_4x4 as u32).clamp(2, (2 * max_rows.max(1)) as u32)
+            };
+            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
+                Self::push_mv_candidate(stack, cnt, (len * weight) as i32, mv);
+            }
+            return;
+        }
+
+        let mut x = 0u32;
+        loop {
+            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
+                Self::push_mv_candidate(stack, cnt, (len * 2) as i32, mv);
+            }
+            x += len;
+            if x >= w4 {
+                return;
+            }
+            let Some(next) = self.cell(x4 + x, row_y4) else {
+                return;
+            };
+            cand = *next;
+            cand_bw4 = (cand.width_4x4 as u32).max(1);
+            len = step.max(cand_bw4);
+        }
+    }
+
+    /// Real neighbor-height-aware column scan -- `scan_row_weighted`'s doc, transposed (rav1d
+    /// `scan_col`).
+    #[allow(clippy::too_many_arguments)]
+    fn scan_col_weighted(
+        &self,
+        stack: &mut [MvStackEntry; 8],
+        cnt: &mut usize,
+        ref0: i8,
+        col_x4: u32,
+        y4: u32,
+        bh4: u32,
+        h4: u32,
+        max_cols: i32,
+        step: u32,
+    ) {
+        let Some(first) = self.cell(col_x4, y4) else {
+            return;
+        };
+        let mut cand = *first;
+        let mut cand_bh4 = (cand.height_4x4 as u32).max(1);
+        let mut len = step.max(bh4.min(cand_bh4));
+
+        if bh4 <= cand_bh4 {
+            let weight = if bh4 == 1 {
+                2
+            } else {
+                (cand.width_4x4 as u32).clamp(2, (2 * max_cols.max(1)) as u32)
+            };
+            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
+                Self::push_mv_candidate(stack, cnt, (len * weight) as i32, mv);
+            }
+            return;
+        }
+
+        let mut y = 0u32;
+        loop {
+            if let Some(mv) = Self::single_ref_candidate_mv(&cand, ref0) {
+                Self::push_mv_candidate(stack, cnt, (len * 2) as i32, mv);
+            }
+            y += len;
+            if y >= h4 {
+                return;
+            }
+            let Some(next) = self.cell(col_x4, y4 + y) else {
+                return;
+            };
+            cand = *next;
+            cand_bh4 = (cand.height_4x4 as u32).max(1);
+            len = step.max(cand_bh4);
+        }
+    }
+
+    /// Real weighted single-ref DRL candidate stack (spec 7.10.2's `RefMvStack`, single-ref only
+    /// -- see `SymbolDecoder::read_drl_bit`'s doc for what this crate deliberately omits: temporal
+    /// candidates, compound extension, and the single-ref "non-self-reference" `sign_bias`
+    /// extension). Returns `(stack, cnt)` -- `cnt` (real spec's `NumMvFound`) gates whether DRL
+    /// bits are read at all; `stack[0]`/`stack[1]` are always safe to read as MV predictors
+    /// regardless of `cnt` (default-zero, matching this crate's existing GLOBALMV-as-zero
+    /// fallback -- `crate::tile::mv_prediction::MvPredictorContext::predict_global_mv`'s doc).
+    /// `get_drl_context`'s doc for how the real weight values this builds are consumed.
+    pub fn single_ref_mv_stack(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        ref0: i8,
+    ) -> ([MvStackEntry; 8], usize) {
+        let mut stack = [MvStackEntry::default(); 8];
+        let mut cnt = 0usize;
+        let w4 = bw4.clamp(1, 16);
+        let h4 = bh4.clamp(1, 16);
+
+        let have_top = y4 > 0;
+        let have_left = x4 > 0;
+        let max_rows = if have_top {
+            y4.div_ceil(2).min(2 + u32::from(bh4 > 1)) as i32
+        } else {
+            0
+        };
+        let max_cols = if have_left {
+            x4.div_ceil(2).min(2 + u32::from(bw4 > 1)) as i32
+        } else {
+            0
+        };
+
+        if have_top {
+            self.scan_row_weighted(
+                &mut stack,
+                &mut cnt,
+                ref0,
+                y4 - 1,
+                x4,
+                bw4,
+                w4,
+                max_rows,
+                if bw4 >= 16 { 4 } else { 1 },
+            );
+        }
+        if have_left {
+            self.scan_col_weighted(
+                &mut stack,
+                &mut cnt,
+                ref0,
+                x4 - 1,
+                y4,
+                bh4,
+                h4,
+                max_cols,
+                if bh4 >= 16 { 4 } else { 1 },
+            );
+        }
+        // Top-right corner.
+        if have_top {
+            if let Some(cell) = self.cell(x4 + bw4.max(1), y4 - 1) {
+                if let Some(mv) = Self::single_ref_candidate_mv(cell, ref0) {
+                    Self::push_mv_candidate(&mut stack, &mut cnt, 4, mv);
+                }
+            }
+        }
+
+        // Real spec bumps every candidate found so far (the "nearest" group: top row + left col +
+        // top-right) by a flat +640 -- `get_drl_context`'s `>= 640` threshold exists specifically
+        // to distinguish this group from the lower-weight "secondary" group added below, so the
+        // exact pre-bump weight magnitude stops mattering the moment this runs.
+        for cand in &mut stack[..cnt] {
+            cand.weight += 640;
+        }
+
+        // Top-left corner (secondary group).
+        if have_top && have_left {
+            if let Some(cell) = self.cell(x4 - 1, y4 - 1) {
+                if let Some(mv) = Self::single_ref_candidate_mv(cell, ref0) {
+                    Self::push_mv_candidate(&mut stack, &mut cnt, 4, mv);
+                }
+            }
+        }
+        // "Secondary" row/col scans 2-3 units further back -- approximated via this same
+        // neighbor-width-aware stepping at the real spec offsets, rather than porting rav1d's
+        // separate 8x8-resolution indexing for this specific sub-scan (`single_ref_mv_stack`'s
+        // doc: these entries stay well under the 640 threshold either way, so this only risks a
+        // rare tie-break-ordering difference among already-low-weight secondary candidates, never
+        // the primary-vs-secondary classification `get_drl_context` actually depends on).
+        for n in 2..=3u32 {
+            let back = 2 * n - 1;
+            if have_top && y4 >= back {
+                self.scan_row_weighted(
+                    &mut stack,
+                    &mut cnt,
+                    ref0,
+                    y4 - back,
+                    x4,
+                    bw4,
+                    w4,
+                    (1 + max_rows - n as i32).max(1),
+                    if bw4 >= 16 { 4 } else { 2 },
+                );
+            }
+            if have_left && x4 >= back {
+                self.scan_col_weighted(
+                    &mut stack,
+                    &mut cnt,
+                    ref0,
+                    x4 - back,
+                    y4,
+                    bh4,
+                    h4,
+                    (1 + max_cols - n as i32).max(1),
+                    if bh4 >= 16 { 4 } else { 2 },
+                );
+            }
+        }
+
+        // Sort each group (nearest, then secondary) by weight descending, matching real spec --
+        // `nearest_cnt` isn't tracked separately here since every "nearest" entry's weight is
+        // already `>= 640` (the bump above) and every "secondary" entry's is `< 640` (never
+        // bumped), so a single whole-stack sort by weight produces the identical grouped-and-
+        // ordered result without needing the boundary index.
+        stack[..cnt].sort_by_key(|c| -c.weight);
+
+        (stack, cnt)
+    }
+}
+
+/// One candidate in `SpatialRefContext::single_ref_mv_stack`'s real weighted DRL stack.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MvStackEntry {
+    pub mv: crate::tile::coding_unit::MotionVector,
+    weight: i32,
+}
+
+/// `drl_bit`'s real context (0..=2), spec 7.10.2.10's `DrlCtxStack` comparison -- source: rav1d
+/// `get_drl_context` (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`). `idx`: the DRL position
+/// being decided between (`0` when choosing NEAREST-vs-NEARER, `1` for NEARER-vs-NEAR, `2` for
+/// NEAR-vs-NEARISH) -- compares `stack[idx]`'s weight against `stack[idx+1]`'s.
+pub fn get_drl_context(stack: &[MvStackEntry; 8], idx: usize) -> u8 {
+    let w0 = stack[idx.min(7)].weight;
+    let w1 = stack[(idx + 1).min(7)].weight;
+    if w0 >= 640 {
+        u8::from(w1 < 640)
+    } else if w1 < 640 {
+        2
+    } else {
+        0
     }
 }
 
@@ -1721,6 +2042,7 @@ impl TileContext {
     /// Record a decoded **inter** block's ref/mode state for future `inter_mode`/`compound_mode`
     /// context lookups -- see `SpatialRefContext::set_block`'s doc (never call for intra blocks).
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn set_spatial_ref_block(
         &mut self,
         x4: u32,
@@ -1730,9 +2052,12 @@ impl TileContext {
         ref0: i8,
         ref1: i8,
         is_newmv: bool,
+        mv0: crate::tile::coding_unit::MotionVector,
+        mv1: crate::tile::coding_unit::MotionVector,
     ) {
-        self.spatial_ref
-            .set_block(x4, y4, width_4x4, height_4x4, ref0, ref1, is_newmv);
+        self.spatial_ref.set_block(
+            x4, y4, width_4x4, height_4x4, ref0, ref1, is_newmv, mv0, mv1,
+        );
     }
 
     /// Packed single-ref `inter_mode` context -- see `SpatialRefContext::inter_mode_context`.
@@ -1747,6 +2072,18 @@ impl TileContext {
     ) -> u16 {
         self.spatial_ref
             .inter_mode_context(x4, y4, bw4, bh4, ref0, use_ref_frame_mvs)
+    }
+
+    /// Real weighted single-ref DRL candidate stack -- see `SpatialRefContext::single_ref_mv_stack`.
+    pub fn single_ref_mv_stack(
+        &self,
+        x4: u32,
+        y4: u32,
+        bw4: u32,
+        bh4: u32,
+        ref0: i8,
+    ) -> ([MvStackEntry; 8], usize) {
+        self.spatial_ref.single_ref_mv_stack(x4, y4, bw4, bh4, ref0)
     }
 
     /// `compound_mode` context -- see `SpatialRefContext::compound_mode_context`.
@@ -1779,6 +2116,7 @@ fn cmp_counts(c1: u8, c2: u8) -> u8 {
 mod tests {
     use super::*;
     use crate::symbol::SymbolDecoder;
+    use crate::tile::coding_unit::MotionVector;
 
     #[test]
     fn test_skip_context_starts_at_zero_with_no_neighbors() {
@@ -2113,16 +2451,36 @@ mod tests {
     #[test]
     fn test_inter_mode_context_top_forward_match_not_newmv() {
         let mut ctx = SpatialRefContext::new(16, 16);
-        ctx.set_block(0, 0, 4, 4, 0, -1, false); // LAST, covers x4=0..4, y4=0..4
-                                                 // Query directly below: top row scan hits row y4=0, columns 0..4 -- a match.
-                                                 // nearest_match=1 -> refmv_ctx=min(1*3,4)=3, newmv_ctx=3-0=3 -> packed = 3<<4|3 = 51.
+        ctx.set_block(
+            0,
+            0,
+            4,
+            4,
+            0,
+            -1,
+            false,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        ); // LAST, covers x4=0..4, y4=0..4
+           // Query directly below: top row scan hits row y4=0, columns 0..4 -- a match.
+           // nearest_match=1 -> refmv_ctx=min(1*3,4)=3, newmv_ctx=3-0=3 -> packed = 3<<4|3 = 51.
         assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0, false), 51);
     }
 
     #[test]
     fn test_inter_mode_context_top_match_is_newmv_lowers_newmv_ctx() {
         let mut ctx = SpatialRefContext::new(16, 16);
-        ctx.set_block(0, 0, 4, 4, 0, -1, true);
+        ctx.set_block(
+            0,
+            0,
+            4,
+            4,
+            0,
+            -1,
+            true,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        );
         // Same as above but is_newmv=true -> newmv_ctx = 3-1=2 -> packed = 3<<4|2 = 50.
         assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0, false), 50);
     }
@@ -2130,16 +2488,36 @@ mod tests {
     #[test]
     fn test_inter_mode_context_no_ref_match_is_zero() {
         let mut ctx = SpatialRefContext::new(16, 16);
-        ctx.set_block(0, 0, 4, 4, 4, -1, false); // GOLDEN
-                                                 // Query for a different ref (LAST) -- no match at all.
+        ctx.set_block(
+            0,
+            0,
+            4,
+            4,
+            4,
+            -1,
+            false,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        ); // GOLDEN
+           // Query for a different ref (LAST) -- no match at all.
         assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 0, false), 0);
     }
 
     #[test]
     fn test_inter_mode_context_single_ref_matches_either_slot_of_compound_neighbor() {
         let mut ctx = SpatialRefContext::new(16, 16);
-        ctx.set_block(0, 0, 4, 4, 2, 5, false); // compound neighbor: LAST3 + ALTREF2
-                                                // Single-ref query for ref0=5 (ALTREF2) matches via the neighbor's ref1 slot.
+        ctx.set_block(
+            0,
+            0,
+            4,
+            4,
+            2,
+            5,
+            false,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        ); // compound neighbor: LAST3 + ALTREF2
+           // Single-ref query for ref0=5 (ALTREF2) matches via the neighbor's ref1 slot.
         assert_eq!(ctx.inter_mode_context(0, 1, 4, 4, 5, false), 51);
     }
 
@@ -2152,8 +2530,18 @@ mod tests {
     #[test]
     fn test_compound_mode_context_exact_pair_required() {
         let mut ctx = SpatialRefContext::new(16, 16);
-        ctx.set_block(0, 0, 4, 4, 0, 4, false); // compound (LAST, BWDREF)
-                                                // Swapped pair must NOT match (rav1d: exact `RefMvsRefPair` equality).
+        ctx.set_block(
+            0,
+            0,
+            4,
+            4,
+            0,
+            4,
+            false,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        ); // compound (LAST, BWDREF)
+           // Swapped pair must NOT match (rav1d: exact `RefMvsRefPair` equality).
         assert_eq!(ctx.compound_mode_context(0, 1, 4, 4, 4, 0), 0);
         // Exact pair matches: nearest_match=1 -> refmv_ctx=3, refmv_ctx>>1=1 -> 1+min(newmv_ctx,3).
         // newmv_ctx=3 (not newmv) -> 1+3=4.
@@ -2165,8 +2553,28 @@ mod tests {
         let mut ctx = SpatialRefContext::new(16, 16);
         // Isolated single-cell placements: row 4 (above the query row) and column 4 (left of the
         // query column), so both the top and left primary scans find exactly one match each.
-        ctx.set_block(5, 4, 4, 1, 0, 4, false);
-        ctx.set_block(4, 5, 1, 4, 0, 4, false);
+        ctx.set_block(
+            5,
+            4,
+            4,
+            1,
+            0,
+            4,
+            false,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        );
+        ctx.set_block(
+            4,
+            5,
+            1,
+            4,
+            0,
+            4,
+            false,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        );
         // nearest_match=2 -> refmv_ctx=5, refmv_ctx>>1=2 -> clamp(3+newmv_ctx,4,7).
         // newmv_ctx=5-0=5 -> clamp(8,4,7)=7.
         assert_eq!(ctx.compound_mode_context(5, 5, 4, 4, 0, 4), 7);
@@ -2177,7 +2585,17 @@ mod tests {
         let mut ctx = SpatialRefContext::new(16, 16);
         // Only the top-left corner cell (x4-1, y4-1) matches, and it's a newmv block -- rav1d
         // discards this candidate's newmv contribution (`have_dummy_newmv_match`).
-        ctx.set_block(4, 4, 1, 1, 0, -1, true);
+        ctx.set_block(
+            4,
+            4,
+            1,
+            1,
+            0,
+            -1,
+            true,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        );
         // nearest_match=0 (top-left isn't scanned until after nearest_match is computed) ->
         // refmv_ctx=min(ref_match_count,2), newmv_ctx=(ref_match_count>0).
         // ref_match_count=1 (top-left counted into have_row_mvs) -> refmv_ctx=1, newmv_ctx=1.
@@ -2190,7 +2608,17 @@ mod tests {
         let mut ctx = SpatialRefContext::new(16, 16);
         // 3 rows above the query, out of reach of the primary top scan (row y4-1) but within the
         // secondary n=2 scan's `back = 2*2-1 = 3` reach.
-        ctx.set_block(0, 2, 4, 1, 0, -1, false);
+        ctx.set_block(
+            0,
+            2,
+            4,
+            1,
+            0,
+            -1,
+            false,
+            MotionVector::zero(),
+            MotionVector::zero(),
+        );
         // Primary top scan (row 4) and top-right/top-left find nothing -> nearest_match=0.
         // Secondary scan finds the match -> ref_match_count=1 -> refmv_ctx=1, newmv_ctx=1.
         assert_eq!(ctx.inter_mode_context(0, 5, 4, 4, 0, false), 17);
