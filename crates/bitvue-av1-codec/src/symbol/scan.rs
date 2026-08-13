@@ -299,7 +299,7 @@ fn scan_table(width_dim: u32, height_dim: u32) -> &'static [u16] {
 
 /// Coefficient-grid `(x, y)` position for decode-order index `c` (spec's scan-order traversal,
 /// high-frequency to low-frequency -- matches `SymbolDecoder::read_residual_block`'s
-/// `for c in (0..eob).rev()` loop directly, no off-by-one adjustment needed). `width_dim`/
+/// `for c in (0..=eob).rev()` loop directly, no off-by-one adjustment needed). `width_dim`/
 /// `height_dim`: transform dimensions in samples (`4/8/16/32`, already 32-capped by the caller --
 /// see `scan_table`'s doc).
 ///

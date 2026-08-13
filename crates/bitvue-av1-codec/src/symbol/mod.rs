@@ -991,8 +991,9 @@ impl<'a> SymbolDecoder<'a> {
     ///   hasn't been extended to match).
     ///
     /// None of these change the *shape* of the read sequence (an `all_zero` check, then -- when
-    /// not all-zero -- an `eob_bin` symbol, `eob` extra bits, and exactly `eob` per-position
-    /// level/sign/golomb reads) -- which is what matters for keeping the shared arithmetic
+    /// not all-zero -- an `eob_bin` symbol, `eob` extra bits, and exactly `eob + 1` per-position
+    /// level/sign/golomb reads -- `eob` here is the raw last-scan-index value, not a count, see
+    /// `read_residual_block`'s doc) -- which is what matters for keeping the shared arithmetic
     /// decoder's position advancing by a plausible amount instead of not reading residual data at
     /// all (see `crate::tile::coding_unit`'s module doc for why that previously caused real
     /// desync/crashes on real streams).
@@ -1071,10 +1072,20 @@ impl<'a> SymbolDecoder<'a> {
 
         let mut levels = scan::LevelBuffer::new(capped_width as usize, capped_height as usize);
 
-        for c in (0..eob).rev() {
+        // `eob` (as computed above) is the raw last-scan-index value (rav1d's own local `eob`
+        // convention), NOT a coefficient count: real spec has `eob + 1` total positions to read
+        // (index `eob` itself down through `0`), with the top position (`c == eob`) using
+        // `coeff_base_eob`'s CDF and everything below it using ordinary `coeff_base` -- confirmed
+        // against rav1d's `decode_coefs`, whose "dc-only" branch (taken when this raw `eob` is
+        // `0`) still reads exactly one `coeff_base_eob`-family symbol for the single coefficient,
+        // never zero. Previously this looped `0..eob` (`eob` positions) with `is_eob_pos = c ==
+        // eob - 1`, silently dropping the true top coefficient (and for `eob == 0`, reading zero
+        // symbols instead of one) -- a real per-block desync, found while tracing this crate's
+        // persistent key-frame-intra fragility (see `docs/DEVELOPMENT_PHASES.md`).
+        for c in (0..=eob).rev() {
             let (x, y) =
                 scan::coeff_position(capped_width, capped_height, is_1d, class.is_vertical(), c);
-            let is_eob_pos = c == eob - 1;
+            let is_eob_pos = c == eob;
 
             // `br_ctx`: `coeff_br`'s context if this position's token turns out to need
             // extending (`base_level > 2`) -- computed alongside `base_level` since both draw
@@ -1277,9 +1288,11 @@ impl<'a> SymbolDecoder<'a> {
         };
         let mut levels = scan::LevelBuffer::new(width_px as usize, height_px as usize);
 
-        for c in (0..eob).rev() {
+        // Same raw-`eob`-is-a-last-index (not a count) fix as `read_residual_block` -- see that
+        // method's identical comment for the full derivation against rav1d's `decode_coefs`.
+        for c in (0..=eob).rev() {
             let (x, y) = scan::coeff_position(width_px, height_px, false, false, c);
-            let is_eob_pos = c == eob - 1;
+            let is_eob_pos = c == eob;
 
             let (base_level, br_ctx) = if is_eob_pos {
                 let ctx = coeff_base_eob_context(eob, width_px.max(height_px));
@@ -1362,13 +1375,20 @@ impl<'a> SymbolDecoder<'a> {
     }
 }
 
-/// `coeff_base_eob`'s context (1..=3): purely a function of `eob` and tx size, no neighbor/level
-/// state needed (unlike `coeff_base`/`coeff_br`, still deferred -- see `read_residual_block`'s
-/// doc). Source: rav1d's inline formula in `decode_coefs` (`memorysafety/rav1d`, BSD-2-Clause,
-/// `src/recon_tmpl.c`): `1 + (eob > 2<<tx2dszctx) + (eob > 4<<tx2dszctx)`, where `tx2dszctx` is
+/// `coeff_base_eob`'s context (0..=3): purely a function of `eob` (the raw last-scan-index value,
+/// see `read_residual_block`'s doc for why this is `real coefficient count - 1`, not a count) and
+/// tx size, no neighbor/level state needed (unlike `coeff_base`/`coeff_br`, still deferred -- see
+/// `read_residual_block`'s doc). Source: rav1d's `decode_coefs` (`memorysafety/rav1d`,
+/// BSD-2-Clause, `src/recon_tmpl.c`): the single-coefficient case (`eob == 0`) is a distinct
+/// "dc-only" branch that reads `eob_cdf[0]` -- context `0` hardcoded, NOT the generic formula
+/// (which would otherwise give `1`, since `0` is never `>` either positive threshold) -- only
+/// `eob >= 1` goes through `1 + (eob > 2<<tx2dszctx) + (eob > 4<<tx2dszctx)`, where `tx2dszctx` is
 /// `2 * min(tx_size_class, 3)` for a square transform (real AV1 caps the 2D coefficient scan's
 /// size class at 32x32).
 fn coeff_base_eob_context(eob: u32, tx_size_px: u32) -> u8 {
+    if eob == 0 {
+        return 0;
+    }
     let tx2dszctx = 2 * cdf::tx_size_class(tx_size_px).min(3) as u32;
     1 + u8::from(eob > (2 << tx2dszctx)) + u8::from(eob > (4 << tx2dszctx))
 }
@@ -1593,5 +1613,14 @@ mod tests {
             coeff_base_eob_context(500, 32),
             coeff_base_eob_context(500, 64)
         );
+    }
+
+    /// `eob == 0` (rav1d's "dc-only" branch, a single-coefficient transform block) is context `0`,
+    /// NOT the generic formula's result (`1`, since `0` is never `>` either positive threshold) --
+    /// see this function's doc for the desync this closes.
+    #[test]
+    fn test_coeff_base_eob_context_dc_only_is_context_zero() {
+        assert_eq!(coeff_base_eob_context(0, 16), 0);
+        assert_eq!(coeff_base_eob_context(0, 32), 0);
     }
 }

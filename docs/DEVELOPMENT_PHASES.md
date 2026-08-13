@@ -1905,6 +1905,31 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   lib + 141개 스위트 클린(변함없음). **eob=596(11번째 32x32 루마 타일, 58% 비영점 밀도)의
   진짜 원인은 여전히 미해결** — coeff_base/coeff_br 컨텍스트 자체의 정밀도 문제이거나 아직
   못 찾은 다른 intra 전용 신택스 순서 버그일 가능성이 남아있음, 다음 세션 계속.
+- **`read_residual_block`의 `eob` off-by-one 실버그 발견+수정(2026-08-13)**: coeff_base/
+  coeff_br 컨텍스트 정밀도 추적 재개 → dav1d `decode_coefs`(`recon_tmpl.c`)와 한 줄씩 대조.
+  eob_bin/eob_hi_bit/extra bits로 계산되는 raw 값은 spec의 "계수 개수"가 아니라 **마지막
+  스캔 인덱스(0-based, 계수 개수-1)** 인데(dav1d의 `scan[eob]` 직접 인덱싱 + `eob==0`일 때
+  "dc-only" 분기가 여전히 정확히 1개 심볼을 읽는다는 점으로 교차검증), 이 크레이트는 이
+  raw 값을 그대로 "개수"로 써서 `for c in (0..eob).rev()` + `is_eob_pos = c == eob-1`로
+  루프를 돌고 있었음 — 매 잔차 블록마다 실제 최상위(가장 고주파) 계수 심볼을 아예 안 읽고,
+  두 번째로 높은 위치를 마치 eob 위치인 것처럼 잘못된 CDF(`coeff_base_eob` 대신
+  `coeff_base`)로 읽던 **전체 잔차 디코드의 체계적 desync**(그리고 `eob==0`일 땐 아예
+  0개 심볼을 읽어 실제 1개 계수를 완전히 누락). `for c in (0..=eob).rev()` +
+  `is_eob_pos = c == eob`로 수정(루마/크로마 양쪽 사본 동일 적용) + `coeff_base_eob_context`
+  가 `eob==0`일 때 일반 공식(결과 1) 대신 dav1d처럼 하드코딩된 context 0을 반환하도록
+  특례 추가. **다만 타깃 테스트는 여전히 미해결** — 디버그 계측으로 추적한 결과, 이
+  fixture의 유일한 키프레임 데이터가 있는 superblock(0,0)은 파티션 트리 최상위(128x128)에서
+  `partition=None`으로 즉시 결정되어 CU가 단 1개(128x128 전체)뿐이고, 그 CU의 **첫 번째
+  잔차 읽기 호출(32x32 루마 타일)부터 이미 eob=596(58% 비영점) 이상치가 재현됨** — 즉
+  이번 eob 수정의 영향 범위(잔차 블록 내부) 자체가 실행되기도 전에, `skip` 판독 직후부터
+  이 CU의 mode-info 체인(`use_intrabc`/`tx_size()`/kfym/angle_delta/uv_mode/cfl/
+  angle_delta_uv/palette/filter_intra) 어딘가 또는 최상위 `partition` 심볼 자체에서 이미
+  desync가 시작됐을 가능성이 높음(baseline `e3a0ae0`과 이 수정 적용 후 모두 동일하게
+  frame 0의 superblock 6개 전부 파싱 실패로 확인 — 이 수정 자체는 회귀 없음, 단지 이
+  특정 CU에 도달하기도 전에 이미 망가져 있어서 효과를 검증할 수 없었을 뿐). 405/406 lib
+  (신규 `coeff_base_eob_context`의 `eob==0` 케이스 테스트 1개 추가) + 통합 스위트 전부
+  클린, clippy/fmt 무관 경고 13개 그대로. **범위가 "잔차 컨텍스트 정밀도"에서 "이 CU의
+  mode-info 체인 전체(또는 최상위 partition 심볼) 재감사"로 확장됨** — 다음 세션 계속.
 
 ---
 
