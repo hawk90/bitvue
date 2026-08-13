@@ -1998,6 +1998,38 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   `--tests` 전부 클린(무관 flaky LRU 1개 제외), clippy/fmt 무경고 변화 없음. 다음 세션: 남은
   인터 프레임 에러의 근본원인(motion_mode 등 Phase 6 잔여 신택스 vs 이번 구현의 잠복 버그)
   추적.
+- **후속(같은 세션, "다음 세션 시작"으로 이어감): Partition Vert4/Horz4 에러는 회귀 아님 확인 +
+  motion_mode/interintra/compound_type(wedge)/subpel_filter 4개 신규 신택스 구현** — 격리
+  worktree(`af611bd`)로 대조해 그 에러가 skip_mode/is_inter 수정 전에도 이미 존재했음(1건→3건
+  으로 더 노출됐을 뿐) 확인, 회귀 아님. dav1d `decode_b`를 계속 대조하다가 인터 블록에서
+  완전히 안 읽던 신택스 4개를 추가 발견: `compound_type`(jnt_comp/seg/wedge 선택), `interintra`
+  (모드+wedge), `motion_mode`(translation/OBMC/warp), `subpel_filter`. **DRL(dynamic reference
+  list) 인덱스 읽기는 사용자 확인 후 별도 세션으로 명시적 보류**(`MvPredictorContext`가 real
+  spec의 `mvstack`/`refmvs_find` 후보 리스트 구조 자체가 없어서, 제대로 하려면 MV 예측기
+  재작업이 필요함이 드러났고, 이번엔 그것 없이 가능한 4개만 진행). **실측으로 게이팅 조건이
+  이 fixture에서 실제로 매우 자주 켜져있음을 먼저 확인**(switchable_motion_mode=249/250,
+  allow_warped_motion=132/250, subpel_filter_switchable=149/250, interintra/masked_compound/
+  jnt_comp(시퀀스 레벨)=250/250 전부) — 구현 가치 있다고 판단 후 착수.
+  `skip_mode_present`/`cdef_bits`와 같은 패턴으로 `subpel_filter_switchable`/
+  `switchable_motion_mode`/`allow_warped_motion`(프레임 헤더, 기존에 비트만 소비하고 버려짐)
+  + `enable_interintra_compound`/`enable_masked_compound`/`enable_jnt_comp`/`enable_warped_motion`
+  (시퀀스 헤더, 이미 파싱만 돼있던 필드) 실제 노출. CDF 신규 10개 전부 rav1d `default_cdf` 원시값
+  이식(motion_mode/obmc/interintra/interintra_mode/interintra_wedge/wedge_comp/wedge_idx/
+  mask_comp/jnt_comp/filter). `TileContext`에 `comp_type`/`filter` above/left 배열 신규(둘 다
+  real dav1d의 같은 이름 필드와 동일 목적) + `mask_comp_context`/`jnt_comp_context`/
+  `filter_context`/`has_matching_single_ref`/`above_is_intra`/`left_is_intra` 신규 메서드.
+  **두 가지 의도적 근사**(둘 다 문서화됨, DRL과 같은 근본원인은 아님): (1) `motion_mode`의
+  warp 후보 판정(`find_matching_ref`)은 real dav1d가 above/left 엣지 전체를 서로 다른 크기의
+  이웃 블록별로 스캔하는데, 이 크레이트는 CU 원점의 단일 above/left 위치만 확인(기존
+  `above_ref0`/`left_ref0` 등 재사용) — 이웃이 이 CU의 엣지 전체를 덮는 일반적인 경우엔 정확,
+  더 작은 이웃이 엣지 일부만 덮는 경우만 근사(거짓 매치는 절대 없음, 놓칠 수만 있음). (2)
+  `jnt_comp_context`의 POC 기반 offset 항은 이 크레이트가 크로스프레임 OrderHint/POC 상태(진짜
+  DPB)를 안 갖고 있어 0으로 고정. `motion_mode`의 "warped global motion 예외"/`global_motion_
+  params()`도 이 크레이트가 안 갖고 있어 근사(항상 미제외로 취급). **실측 검증**: byte_offset
+  재측정 결과 성공/실패 슈퍼블록 비율이 다시 개선(31%→42%→**48%**), fully-clean 프레임은
+  여전히 0/29(완전 해결 아님). 406/406 lib, `--tests`+워크스페이스 전체 클린, clippy/fmt
+  무경고 변화 없음. **DRL(다음 세션 명시적 착수 지점)이 유력한 남은 근본원인** — 그 외에도
+  아직 발견 못 한 갭이 더 있을 가능성 있음.
 
 ---
 

@@ -382,6 +382,18 @@ pub struct TileContext {
     left_ref0: Vec<i8>,
     above_ref1: Vec<i8>,
     left_ref1: Vec<i8>,
+    /// `comp_type` (spec 5.11.28) above/left context, real dav1d `CompInterType` numeric encoding
+    /// (`NONE=0, WEIGHTED_AVG=1, AVG=2, SEG=3, WEDGE=4` -- verified via the `>=` comparisons
+    /// `get_mask_comp_ctx`/`get_jnt_comp_ctx` make against `COMP_INTER_AVG`/`COMP_INTER_SEG`, not
+    /// assumed) -- feeds `mask_comp_context`/`jnt_comp_context`. Default `0` (NONE), matching
+    /// dav1d's own tile-start reset.
+    above_comp_type: Vec<u8>,
+    left_comp_type: Vec<u8>,
+    /// `filter[dir]` (spec 5.11.30) above/left context -- last chosen subpel filter per direction
+    /// (`[0]`=horizontal, `[1]`=vertical), sentinel `3` (`DAV1D_N_SWITCHABLE_FILTERS`) = "no
+    /// filter recorded here" (matches real dav1d's own sentinel, `get_filter_ctx`'s doc).
+    above_filter: [Vec<u8>; 2],
+    left_filter: [Vec<u8>; 2],
     /// `inter_mode`/`compound_mode` context -- see `SpatialRefContext`'s doc (full-grid, not
     /// above/left arrays, and never reset per superblock row).
     spatial_ref: SpatialRefContext,
@@ -505,6 +517,16 @@ impl TileContext {
             left_ref0: vec![0; tile_height_4x4.max(1) as usize],
             above_ref1: vec![0; tile_width_4x4.max(1) as usize],
             left_ref1: vec![0; tile_height_4x4.max(1) as usize],
+            above_comp_type: vec![0; tile_width_4x4.max(1) as usize],
+            left_comp_type: vec![0; tile_height_4x4.max(1) as usize],
+            above_filter: [
+                vec![3; tile_width_4x4.max(1) as usize],
+                vec![3; tile_width_4x4.max(1) as usize],
+            ],
+            left_filter: [
+                vec![3; tile_height_4x4.max(1) as usize],
+                vec![3; tile_height_4x4.max(1) as usize],
+            ],
             spatial_ref: SpatialRefContext::new(tile_width_4x4, tile_height_4x4),
             above_tx_class: vec![-1; tile_width_4x4.max(1) as usize],
             left_tx_class: vec![-1; tile_height_4x4.max(1) as usize],
@@ -565,6 +587,10 @@ impl TileContext {
         self.left_ref_comp.iter_mut().for_each(|v| *v = false);
         self.left_ref0.iter_mut().for_each(|v| *v = 0);
         self.left_ref1.iter_mut().for_each(|v| *v = 0);
+        self.left_comp_type.iter_mut().for_each(|v| *v = 0);
+        for dir in 0..2 {
+            self.left_filter[dir].iter_mut().for_each(|v| *v = 3);
+        }
         self.left_tx_class.iter_mut().for_each(|v| *v = -1);
         self.left_cul_level.iter_mut().for_each(|v| *v = 0);
         self.left_dc_sign_category.iter_mut().for_each(|v| *v = 1);
@@ -1206,6 +1232,22 @@ impl TileContext {
         }
     }
 
+    /// Single-position `intra` reads (`above_ref_intra[x4]`/`left_ref_intra[y4]`) -- used by
+    /// `crate::tile::coding_unit::has_overlappable_neighbors`'s real above/left "any inter
+    /// neighbor" edge scan (spec 5.11.27's `findoddzero` over `t->a->intra`/`t->l.intra`).
+    pub fn above_is_intra(&self, x4: u32) -> bool {
+        self.above_ref_intra
+            .get(x4 as usize)
+            .copied()
+            .unwrap_or(true)
+    }
+    pub fn left_is_intra(&self, y4: u32) -> bool {
+        self.left_ref_intra
+            .get(y4 as usize)
+            .copied()
+            .unwrap_or(true)
+    }
+
     /// Record whether a block was intra-coded, for future `intra_ctx` lookups -- only touches
     /// `above_ref_intra`/`left_ref_intra` (NOT `above_ref_comp`/`above_ref0`/`above_ref1`, unlike
     /// `set_ref_frames`): real dav1d's entropy-pass context-set macro for a genuine intra CU
@@ -1262,6 +1304,168 @@ impl TileContext {
             self.left_ref0[y as usize] = ref0;
             self.left_ref1[y as usize] = ref1;
         }
+    }
+
+    /// Record a decoded `comp_type` (spec 5.11.28) across the block's 4x4-unit footprint --
+    /// `comp_type`'s doc for the real dav1d numeric encoding this expects.
+    pub fn set_comp_type(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        comp_type: u8,
+    ) {
+        let x_end = (x4 + width_4x4).min(self.above_comp_type.len() as u32);
+        for x in x4..x_end {
+            self.above_comp_type[x as usize] = comp_type;
+        }
+        let y_end = (y4 + height_4x4).min(self.left_comp_type.len() as u32);
+        for y in y4..y_end {
+            self.left_comp_type[y as usize] = comp_type;
+        }
+    }
+
+    /// `mask_comp` context (0..=5) -- is-this-compound-masked (seg/wedge) likelihood, source:
+    /// rav1d `get_mask_comp_ctx` (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`).
+    pub fn mask_comp_context(&self, x4: u32, y4: u32) -> u8 {
+        let a_comp_type = self.above_comp_type.get(x4 as usize).copied().unwrap_or(0);
+        let l_comp_type = self.left_comp_type.get(y4 as usize).copied().unwrap_or(0);
+        let a_ref0 = self.above_ref0.get(x4 as usize).copied().unwrap_or(0);
+        let l_ref0 = self.left_ref0.get(y4 as usize).copied().unwrap_or(0);
+        let a_ctx = if a_comp_type >= 3 {
+            1
+        } else if a_ref0 == 6 {
+            3
+        } else {
+            0
+        };
+        let l_ctx = if l_comp_type >= 3 {
+            1
+        } else if l_ref0 == 6 {
+            3
+        } else {
+            0
+        };
+        (a_ctx + l_ctx).min(5)
+    }
+
+    /// `jnt_comp` context (0..=5) -- source: rav1d `get_jnt_comp_ctx`. Real spec also factors a
+    /// POC-distance-derived `offset` term (`d0 == d1`, comparing the current frame's and both
+    /// references' display-order distance) this crate approximates as always `0` (`offset` term
+    /// omitted) -- this crate doesn't track cross-frame `OrderHint`/reference-frame POC state (no
+    /// real DPB), same scope limit as `crate::frame_header_full::SegmentationInfo`'s missing
+    /// per-segment feature data. A real, documented approximation, not a bug fix candidate without
+    /// building that state first.
+    pub fn jnt_comp_context(&self, x4: u32, y4: u32) -> u8 {
+        let a_comp_type = self.above_comp_type.get(x4 as usize).copied().unwrap_or(0);
+        let l_comp_type = self.left_comp_type.get(y4 as usize).copied().unwrap_or(0);
+        let a_ref0 = self.above_ref0.get(x4 as usize).copied().unwrap_or(0);
+        let l_ref0 = self.left_ref0.get(y4 as usize).copied().unwrap_or(0);
+        let a_ctx = u8::from(a_comp_type >= 2 || a_ref0 == 6);
+        let l_ctx = u8::from(l_comp_type >= 2 || l_ref0 == 6);
+        a_ctx + l_ctx
+    }
+
+    /// Record a decoded subpel `filter` across the block's 4x4-unit footprint, for the given
+    /// direction (`0`=horizontal, `1`=vertical).
+    pub fn set_filter(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        dir: usize,
+        filter: u8,
+    ) {
+        let dir = dir.min(1);
+        let x_end = (x4 + width_4x4).min(self.above_filter[dir].len() as u32);
+        for x in x4..x_end {
+            self.above_filter[dir][x as usize] = filter;
+        }
+        let y_end = (y4 + height_4x4).min(self.left_filter[dir].len() as u32);
+        for y in y4..y_end {
+            self.left_filter[dir][y as usize] = filter;
+        }
+    }
+
+    /// `filter` context (0..=7) -- source: rav1d `get_filter_ctx`. `comp`: whether this block is
+    /// compound. `dir`: `0`=horizontal, `1`=vertical. `ref0`: this block's own first reference
+    /// (rav1d 0..=6 encoding) -- a neighbor's recorded filter only counts if that neighbor
+    /// actually used this same reference (`sentinel 3` otherwise, matching real dav1d).
+    pub fn filter_context(&self, x4: u32, y4: u32, comp: bool, dir: usize, ref0: i8) -> u8 {
+        let dir = dir.min(1);
+        let xi = x4 as usize;
+        let yi = y4 as usize;
+        let a_matches = self.above_ref0.get(xi).copied().unwrap_or(-1) == ref0
+            || self.above_ref1.get(xi).copied().unwrap_or(-1) == ref0;
+        let l_matches = self.left_ref0.get(yi).copied().unwrap_or(-1) == ref0
+            || self.left_ref1.get(yi).copied().unwrap_or(-1) == ref0;
+        let a_filter = if a_matches {
+            self.above_filter[dir].get(xi).copied().unwrap_or(3)
+        } else {
+            3
+        };
+        let l_filter = if l_matches {
+            self.left_filter[dir].get(yi).copied().unwrap_or(3)
+        } else {
+            3
+        };
+        let comp = u8::from(comp);
+        if a_filter == l_filter {
+            comp * 4 + a_filter
+        } else if a_filter == 3 {
+            comp * 4 + l_filter
+        } else if l_filter == 3 {
+            comp * 4 + a_filter
+        } else {
+            comp * 4 + 3
+        }
+    }
+
+    /// Approximate `find_matching_ref` (spec/dav1d's real above/left scan for a matching-single-
+    /// reference neighbor, used to gate `motion_mode`'s warp eligibility) -- real dav1d scans
+    /// EVERY distinct neighbor block touching this CU's above/left edge (a real per-4x4-unit
+    /// `refmvs` grid this crate doesn't maintain, see `read_motion_mode`'s doc for why a full port
+    /// is deferred). This checks only the SINGLE above/left neighbor at this CU's own origin
+    /// (`above_ref0[x4]`/`left_ref0[y4]`, the same arrays `comp_mode_context` etc. already
+    /// maintain) instead of the full edge -- exact whenever the neighbor's block boundary aligns
+    /// with this CU's full edge (the common case), approximate (may miss a real match, never
+    /// invents a false one) when a neighbor is smaller and only partially covers the edge. A real,
+    /// documented approximation, not a bug.
+    pub fn has_matching_single_ref(
+        &self,
+        x4: u32,
+        y4: u32,
+        have_top: bool,
+        have_left: bool,
+        ref0: i8,
+    ) -> bool {
+        let above = have_top
+            && self.above_ref0.get(x4 as usize).copied().unwrap_or(-1) == ref0
+            && !self
+                .above_ref_comp
+                .get(x4 as usize)
+                .copied()
+                .unwrap_or(false)
+            && !self
+                .above_ref_intra
+                .get(x4 as usize)
+                .copied()
+                .unwrap_or(true);
+        let left = have_left
+            && self.left_ref0.get(y4 as usize).copied().unwrap_or(-1) == ref0
+            && !self
+                .left_ref_comp
+                .get(y4 as usize)
+                .copied()
+                .unwrap_or(false)
+            && !self
+                .left_ref_intra
+                .get(y4 as usize)
+                .copied()
+                .unwrap_or(true);
+        above || left
     }
 
     /// `comp_mode` context (0..=4) -- whether this block is likely single- or compound-reference,

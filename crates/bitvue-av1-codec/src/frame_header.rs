@@ -218,6 +218,17 @@ pub struct FrameHeader {
     /// default whenever `skip_mode_params()`'s derivation conditions aren't met, so treating an
     /// un-derivable value as "absent" is bitstream-sync-safe, not just a placeholder).
     pub skip_mode_present: bool,
+    /// `is_filter_switchable` (spec 5.9.10 `interpolation_filter()`) -- gates the real per-CU
+    /// `filter[]` (subpel interpolation filter) read (spec 5.11.30). Same basic-vs-full caveat
+    /// as `reference_select`.
+    pub subpel_filter_switchable: bool,
+    /// `is_motion_mode_switchable` (spec 5.9.2) -- gates the real per-CU `motion_mode` read (spec
+    /// 5.11.27, `read_motion_mode`'s doc). Same basic-vs-full caveat as `reference_select`.
+    pub switchable_motion_mode: bool,
+    /// `allow_warped_motion` (spec 5.9.2) -- one of `motion_mode`'s eligibility conditions (the
+    /// other being a real above/left matching-reference scan, `find_matching_ref`'s doc). Same
+    /// basic-vs-full caveat as `reference_select`.
+    pub allow_warped_motion: bool,
     /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
     /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
     /// basic-vs-full caveat as `reference_select`); real value only from
@@ -590,6 +601,9 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             delta_lf_present: false,
             delta_lf_multi: false,
             skip_mode_present: false,
+            subpel_filter_switchable: false,
+            switchable_motion_mode: false,
+            allow_warped_motion: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -766,6 +780,9 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         delta_lf_present: false,
         delta_lf_multi: false,
         skip_mode_present: false,
+        subpel_filter_switchable: false,
+        switchable_motion_mode: false,
+        allow_warped_motion: false,
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,

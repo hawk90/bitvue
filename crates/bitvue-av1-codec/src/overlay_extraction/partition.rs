@@ -206,6 +206,14 @@ fn parse_partition_trees_from_tile_data(
                 mi_cols,
                 parsed.cdef_bits,
                 parsed.skip_mode_present,
+                crate::tile::InterModeFlags {
+                    switchable_motion_mode: parsed.switchable_motion_mode,
+                    allow_warped_motion: parsed.allow_warped_motion,
+                    enable_interintra_compound: parsed.enable_interintra_compound,
+                    enable_masked_compound: parsed.enable_masked_compound,
+                    enable_jnt_comp: parsed.enable_jnt_comp,
+                    subpel_filter_switchable: parsed.subpel_filter_switchable,
+                },
             );
 
             match sb_result {
@@ -939,6 +947,14 @@ mod tests {
                     mi_cols,
                     parsed.cdef_bits,
                     parsed.skip_mode_present,
+                    crate::tile::InterModeFlags {
+                        switchable_motion_mode: parsed.switchable_motion_mode,
+                        allow_warped_motion: parsed.allow_warped_motion,
+                        enable_interintra_compound: parsed.enable_interintra_compound,
+                        enable_masked_compound: parsed.enable_masked_compound,
+                        enable_jnt_comp: parsed.enable_jnt_comp,
+                        subpel_filter_switchable: parsed.subpel_filter_switchable,
+                    },
                 )?;
                 current_qp = new_qp;
                 all_cus.extend(sb.coding_units);

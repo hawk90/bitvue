@@ -43,6 +43,14 @@ pub fn parse_all_coding_units(
     let segmentation = parsed.segmentation;
     let cdef_bits = parsed.cdef_bits;
     let skip_mode_present = parsed.skip_mode_present;
+    let inter_mode_flags = crate::tile::InterModeFlags {
+        switchable_motion_mode: parsed.switchable_motion_mode,
+        allow_warped_motion: parsed.allow_warped_motion,
+        enable_interintra_compound: parsed.enable_interintra_compound,
+        enable_masked_compound: parsed.enable_masked_compound,
+        enable_jnt_comp: parsed.enable_jnt_comp,
+        subpel_filter_switchable: parsed.subpel_filter_switchable,
+    };
     let tx_type_flags = crate::tile::TxTypeFrameFlags {
         coded_lossless: parsed.coded_lossless,
         qidx_is_zero: parsed.frame_type.base_qp == Some(0),
@@ -108,6 +116,7 @@ pub fn parse_all_coding_units(
                     mi_cols,
                     cdef_bits,
                     skip_mode_present,
+                    inter_mode_flags,
                 ) {
                     Ok((sb, new_qp)) => {
                         // Collect all coding units from this superblock

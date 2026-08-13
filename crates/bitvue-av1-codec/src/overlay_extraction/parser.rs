@@ -97,6 +97,21 @@ pub struct ParsedFrame {
     /// as `reference_select`; `false` (i.e. "`skip_mode` never reads any bits") if the full
     /// header wasn't parsed.
     pub skip_mode_present: bool,
+    /// `subpel_filter_switchable`/`switchable_motion_mode`/`allow_warped_motion` (spec 5.9.2/
+    /// 5.9.10) -- see `crate::frame_header::FrameHeader`'s matching fields' docs. Same sourcing/
+    /// fallback story as `reference_select`.
+    pub subpel_filter_switchable: bool,
+    pub switchable_motion_mode: bool,
+    pub allow_warped_motion: bool,
+    /// `enable_interintra_compound`/`enable_masked_compound`/`enable_jnt_comp`/
+    /// `enable_warped_motion` (sequence header) -- gate `interintra`/`compound_type`(wedge/seg)/
+    /// `motion_mode`'s real eligibility. Same sourcing story as `mono_chrome` (direct from the
+    /// sequence header, no `parse_frame_header_full` needed); default `false` (conservatively
+    /// "never read the corresponding bits") if the sequence header wasn't found.
+    pub enable_interintra_compound: bool,
+    pub enable_masked_compound: bool,
+    pub enable_jnt_comp: bool,
+    pub enable_warped_motion: bool,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -198,6 +213,13 @@ impl ParsedFrame {
                 enable_filter_intra: false,
                 cdef_bits: 0,
                 skip_mode_present: false,
+                subpel_filter_switchable: false,
+                switchable_motion_mode: false,
+                allow_warped_motion: false,
+                enable_interintra_compound: false,
+                enable_masked_compound: false,
+                enable_jnt_comp: false,
+                enable_warped_motion: false,
             });
         }
 
@@ -243,6 +265,13 @@ impl ParsedFrame {
         let mut enable_filter_intra = false;
         let mut cdef_bits = 0u8;
         let mut skip_mode_present = false;
+        let mut subpel_filter_switchable = false;
+        let mut switchable_motion_mode = false;
+        let mut allow_warped_motion = false;
+        let mut enable_interintra_compound = false;
+        let mut enable_masked_compound = false;
+        let mut enable_jnt_comp = false;
+        let mut enable_warped_motion = false;
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -276,6 +305,10 @@ impl ParsedFrame {
                         subsampling_x = seq_hdr.color_config.subsampling_x;
                         subsampling_y = seq_hdr.color_config.subsampling_y;
                         enable_filter_intra = seq_hdr.enable_filter_intra;
+                        enable_interintra_compound = seq_hdr.enable_interintra_compound;
+                        enable_masked_compound = seq_hdr.enable_masked_compound;
+                        enable_jnt_comp = seq_hdr.enable_jnt_comp;
+                        enable_warped_motion = seq_hdr.enable_warped_motion;
                         seq_header = Some(seq_hdr);
                     }
                 }
@@ -327,6 +360,9 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             skip_mode_present = full_hdr.skip_mode_present;
+                            subpel_filter_switchable = full_hdr.subpel_filter_switchable;
+                            switchable_motion_mode = full_hdr.switchable_motion_mode;
+                            allow_warped_motion = full_hdr.allow_warped_motion;
                         }
                     }
                 }
@@ -356,6 +392,9 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             skip_mode_present = full_hdr.skip_mode_present;
+                            subpel_filter_switchable = full_hdr.subpel_filter_switchable;
+                            switchable_motion_mode = full_hdr.switchable_motion_mode;
+                            allow_warped_motion = full_hdr.allow_warped_motion;
                         }
                     }
                 }
@@ -397,6 +436,13 @@ impl ParsedFrame {
             enable_filter_intra,
             cdef_bits,
             skip_mode_present,
+            subpel_filter_switchable,
+            switchable_motion_mode,
+            allow_warped_motion,
+            enable_interintra_compound,
+            enable_masked_compound,
+            enable_jnt_comp,
+            enable_warped_motion,
         })
     }
 

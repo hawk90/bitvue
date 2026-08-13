@@ -146,6 +146,27 @@ pub struct CdfContext {
     /// `crate::tile::coding_unit::y_mode_size_context`'s doc). Real spec/rav1d default values +
     /// real per-context adaptation.
     y_mode_cdf: [Vec<u16>; 4],
+    /// `motion_mode`/`obmc` CDFs, one per exact block size (17 real entries, `read_motion_mode`'s
+    /// doc). Real spec/rav1d default values + real per-context adaptation.
+    motion_mode_cdf: [Vec<u16>; 17],
+    obmc_cdf: [Vec<u16>; 17],
+    /// `interintra`/`interintra_mode`/`interintra_wedge` CDFs (`read_interintra`'s doc). Real
+    /// spec/rav1d default values + real per-context adaptation.
+    interintra_cdf: [Vec<u16>; 4],
+    interintra_mode_cdf: [Vec<u16>; 4],
+    interintra_wedge_cdf: [Vec<u16>; 7],
+    /// `wedge_comp`/`wedge_idx` CDFs (compound wedge, `read_wedge_comp`'s doc; `wedge_idx` shared
+    /// with `interintra_wedge`'s own index read). Real spec/rav1d default values + real
+    /// per-context adaptation.
+    wedge_comp_cdf: [Vec<u16>; 9],
+    wedge_idx_cdf: [Vec<u16>; 9],
+    /// `mask_comp`/`jnt_comp` CDFs (`read_mask_comp`/`read_jnt_comp`'s doc). Real spec/rav1d
+    /// default values + real per-context adaptation.
+    mask_comp_cdf: [Vec<u16>; 6],
+    jnt_comp_cdf: [Vec<u16>; 6],
+    /// `filter` (subpel interpolation) CDFs, `[dir][ctx]` (`read_filter`'s doc). Real spec/rav1d
+    /// default values + real per-context adaptation.
+    filter_cdf: [[Vec<u16>; 8]; 2],
 
     /// `seg_pred` (temporal segment-id prediction flag) CDFs, one per context (0..=2, from
     /// `TileContext::seg_pred_context`, real spec/rav1d `above_seg_pred[x4] + left_seg_pred[y4]`)
@@ -650,6 +671,133 @@ impl CdfContext {
             multi_ctx_cdf(&[
                 20155, 21301, 22838, 23178, 23261, 23533, 23703, 24804, 25352, 26575, 27016, 28049,
             ]),
+        ];
+
+        // `motion_mode` (spec 5.11.27, 3-symbol: translation/OBMC/warp) -- real spec/rav1d default
+        // CDFs (`default_cdf.m.motion_mode`, `src/cdf.c`), indexed by exact block size (17 real
+        // entries -- `motion_mode` is never read for a block smaller than 8x8 in either dimension,
+        // `min(bw4,bh4)>=2`'s real spec gate, see `read_motion_mode`'s doc). `obmc` (2-symbol) is
+        // the same real per-size indexing, used instead of `motion_mode` when this position's
+        // above/left neighbors don't have a real spec-eligible warp candidate
+        // (`find_matching_ref`'s doc).
+        let motion_mode_cdf: [Vec<u16>; 17] = [
+            multi_ctx_cdf(&[7651, 24760]),  // 8x8
+            multi_ctx_cdf(&[4738, 24765]),  // 8x16
+            multi_ctx_cdf(&[5391, 25528]),  // 16x8
+            multi_ctx_cdf(&[19419, 26810]), // 16x16
+            multi_ctx_cdf(&[5123, 23606]),  // 16x32
+            multi_ctx_cdf(&[11606, 24308]), // 32x16
+            multi_ctx_cdf(&[26260, 29116]), // 32x32
+            multi_ctx_cdf(&[20360, 28062]), // 32x64
+            multi_ctx_cdf(&[21679, 26830]), // 64x32
+            multi_ctx_cdf(&[29516, 30701]), // 64x64
+            multi_ctx_cdf(&[28898, 30397]), // 64x128
+            multi_ctx_cdf(&[30878, 31335]), // 128x64
+            multi_ctx_cdf(&[32507, 32558]), // 128x128
+            multi_ctx_cdf(&[28799, 31390]), // 8x32
+            multi_ctx_cdf(&[28973, 31594]), // 16x64
+            multi_ctx_cdf(&[26431, 30774]), // 32x8
+            multi_ctx_cdf(&[29742, 31203]), // 64x16
+        ];
+        let obmc_cdf: [Vec<u16>; 17] = [
+            10437, 9371, 9301, 17432, 14423, 15142, 25817, 22823, 22083, 30128, 31014, 31560,
+            32638, 23664, 24008, 20901, 26879,
+        ]
+        .map(binary_ctx_cdf);
+
+        // `interintra`/`interintra_mode`/`interintra_wedge` (spec 5.11.29) -- real spec/rav1d
+        // default CDFs. `interintra`: 4 contexts (`y_mode_size_context`'s block-size class,
+        // reused verbatim -- real dav1d indexes both by the SAME `dav1d_ymode_size_context[bs]`).
+        // `interintra_mode`: 4-symbol, same 4 contexts. `interintra_wedge`: 7 contexts (a REAL
+        // subset of the 9 compound-`wedge` contexts -- interintra is only allowed for 7 of the 9
+        // wedge-eligible sizes, excluding 8x32/32x8, see `wedge_ctx`'s doc).
+        let interintra_cdf: [Vec<u16>; 4] = [16384, 26887, 27597, 30237].map(binary_ctx_cdf);
+        let interintra_mode_cdf: [Vec<u16>; 4] = [
+            multi_ctx_cdf(&[8192, 16384, 24576]),
+            multi_ctx_cdf(&[1875, 11082, 27332]),
+            multi_ctx_cdf(&[2473, 9996, 26388]),
+            multi_ctx_cdf(&[4238, 11537, 25926]),
+        ];
+        let interintra_wedge_cdf: [Vec<u16>; 7] =
+            [20036, 24957, 26704, 27530, 29564, 29444, 26872].map(binary_ctx_cdf);
+
+        // `wedge_comp`/`wedge_idx` (spec 5.11.28, compound `wedge` selection) -- real spec/rav1d
+        // default CDFs, 9 contexts (`wedge_ctx`'s doc). `wedge_idx` (16-symbol) is shared verbatim
+        // between compound wedge and `interintra_wedge`'s own wedge-index read (real spec: same
+        // `wedge_idx()` syntax element either way).
+        let wedge_comp_cdf: [Vec<u16>; 9] =
+            [23431, 13171, 11470, 9770, 9100, 8233, 6172, 11820, 7701].map(binary_ctx_cdf);
+        let wedge_idx_cdf: [Vec<u16>; 9] = [
+            multi_ctx_cdf(&[
+                2438, 4440, 6599, 8663, 11005, 12874, 15751, 18094, 20359, 22362, 24127, 25702,
+                27752, 29450, 31171,
+            ]),
+            multi_ctx_cdf(&[
+                806, 3266, 6005, 6738, 7218, 7367, 7771, 14588, 16323, 17367, 18452, 19422, 22839,
+                26127, 29629,
+            ]),
+            multi_ctx_cdf(&[
+                2779, 3738, 4683, 7213, 7775, 8017, 8655, 14357, 17939, 21332, 24520, 27470, 29456,
+                30529, 31656,
+            ]),
+            multi_ctx_cdf(&[
+                1684, 3625, 5675, 7108, 9302, 11274, 14429, 17144, 19163, 20961, 22884, 24471,
+                26719, 28714, 30877,
+            ]),
+            multi_ctx_cdf(&[
+                1142, 3491, 6277, 7314, 8089, 8355, 9023, 13624, 15369, 16730, 18114, 19313, 22521,
+                26012, 29550,
+            ]),
+            multi_ctx_cdf(&[
+                2742, 4195, 5727, 8035, 8980, 9336, 10146, 14124, 17270, 20533, 23434, 25972,
+                27944, 29570, 31416,
+            ]),
+            multi_ctx_cdf(&[
+                1727, 3948, 6101, 7796, 9841, 12344, 15766, 18944, 20638, 22038, 23963, 25311,
+                26988, 28766, 31012,
+            ]),
+            multi_ctx_cdf(&[
+                154, 987, 1925, 2051, 2088, 2111, 2151, 23033, 23703, 24284, 24985, 25684, 27259,
+                28883, 30911,
+            ]),
+            multi_ctx_cdf(&[
+                1135, 1322, 1493, 2635, 2696, 2737, 2770, 21016, 22935, 25057, 27251, 29173, 30089,
+                30960, 31933,
+            ]),
+        ];
+
+        // `mask_comp`/`jnt_comp` (spec 5.11.28's jnt_comp-vs-seg/wedge selector and the
+        // weighted-average bit within the jnt_comp branch) -- real spec/rav1d default CDFs, 6
+        // contexts each (`TileContext::mask_comp_context`/`jnt_comp_context`'s doc).
+        let mask_comp_cdf: [Vec<u16>; 6] =
+            [26828, 24035, 12031, 10640, 2901, 16384].map(binary_ctx_cdf);
+        let jnt_comp_cdf: [Vec<u16>; 6] =
+            [18244, 12865, 7053, 13259, 9334, 4644].map(binary_ctx_cdf);
+
+        // `filter` (spec 5.11.30 subpel interpolation filter) -- real spec/rav1d default CDFs,
+        // `[dir 0..=1][ctx 0..=7]` (`TileContext::filter_context`'s doc), 3-symbol alphabet
+        // (`DAV1D_N_SWITCHABLE_FILTERS`).
+        let filter_cdf: [[Vec<u16>; 8]; 2] = [
+            [
+                multi_ctx_cdf(&[31935, 32720]),
+                multi_ctx_cdf(&[5568, 32719]),
+                multi_ctx_cdf(&[422, 2938]),
+                multi_ctx_cdf(&[28244, 32608]),
+                multi_ctx_cdf(&[31206, 31953]),
+                multi_ctx_cdf(&[4862, 32121]),
+                multi_ctx_cdf(&[770, 1152]),
+                multi_ctx_cdf(&[20889, 25637]),
+            ],
+            [
+                multi_ctx_cdf(&[31910, 32724]),
+                multi_ctx_cdf(&[4120, 32712]),
+                multi_ctx_cdf(&[305, 2247]),
+                multi_ctx_cdf(&[27403, 32636]),
+                multi_ctx_cdf(&[31022, 32009]),
+                multi_ctx_cdf(&[2963, 32093]),
+                multi_ctx_cdf(&[601, 943]),
+                multi_ctx_cdf(&[14969, 21398]),
+            ],
         ];
 
         // seg_pred/seg_id (spec 5.11.9/5.11.10 `segment_id()`): real spec/rav1d default CDFs
@@ -2159,6 +2307,16 @@ impl CdfContext {
             skip_mode_cdf,
             intra_cdf,
             y_mode_cdf,
+            motion_mode_cdf,
+            obmc_cdf,
+            interintra_cdf,
+            interintra_mode_cdf,
+            interintra_wedge_cdf,
+            wedge_comp_cdf,
+            wedge_idx_cdf,
+            mask_comp_cdf,
+            jnt_comp_cdf,
+            filter_cdf,
             seg_pred_cdf,
             seg_id_cdf,
             pal_y_cdf,
@@ -2278,6 +2436,65 @@ impl CdfContext {
     /// `crate::tile::coding_unit::y_mode_size_context`).
     pub fn get_y_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
         &mut self.y_mode_cdf[(ctx as usize).min(3)]
+    }
+
+    /// Get mutable `motion_mode` CDF for the given exact-block-size index (0..=16, from
+    /// `motion_mode_size_index`).
+    pub fn get_motion_mode_cdf_mut(&mut self, idx: u8) -> &mut [u16] {
+        &mut self.motion_mode_cdf[(idx as usize).min(16)]
+    }
+
+    /// Get mutable `obmc` CDF for the given exact-block-size index (same indexing as
+    /// `get_motion_mode_cdf_mut`).
+    pub fn get_obmc_cdf_mut(&mut self, idx: u8) -> &mut [u16] {
+        &mut self.obmc_cdf[(idx as usize).min(16)]
+    }
+
+    /// Get mutable `interintra` CDF for the given block-size-class context (0..=3, from
+    /// `crate::tile::coding_unit::y_mode_size_context`).
+    pub fn get_interintra_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.interintra_cdf[(ctx as usize).min(3)]
+    }
+
+    /// Get mutable `interintra_mode` CDF for the given context (same indexing as
+    /// `get_interintra_cdf_mut`).
+    pub fn get_interintra_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.interintra_mode_cdf[(ctx as usize).min(3)]
+    }
+
+    /// Get mutable `interintra_wedge` CDF for the given wedge context (0..=6, from `wedge_ctx`
+    /// capped to interintra's real 7-size-subset -- see that field's doc).
+    pub fn get_interintra_wedge_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.interintra_wedge_cdf[(ctx as usize).min(6)]
+    }
+
+    /// Get mutable `wedge_comp` CDF for the given wedge context (0..=8, from `wedge_ctx`).
+    pub fn get_wedge_comp_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.wedge_comp_cdf[(ctx as usize).min(8)]
+    }
+
+    /// Get mutable `wedge_idx` CDF for the given wedge context (0..=8, from `wedge_ctx`) --
+    /// shared verbatim between compound wedge and `interintra_wedge`'s own index read.
+    pub fn get_wedge_idx_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.wedge_idx_cdf[(ctx as usize).min(8)]
+    }
+
+    /// Get mutable `mask_comp` CDF for the given context (0..=5, from
+    /// `TileContext::mask_comp_context`).
+    pub fn get_mask_comp_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.mask_comp_cdf[(ctx as usize).min(5)]
+    }
+
+    /// Get mutable `jnt_comp` CDF for the given context (0..=5, from
+    /// `TileContext::jnt_comp_context`).
+    pub fn get_jnt_comp_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.jnt_comp_cdf[(ctx as usize).min(5)]
+    }
+
+    /// Get mutable `filter` CDF for the given direction (0/1) and context (0..=7, from
+    /// `TileContext::filter_context`).
+    pub fn get_filter_cdf_mut(&mut self, dir: u8, ctx: u8) -> &mut [u16] {
+        &mut self.filter_cdf[(dir as usize).min(1)][(ctx as usize).min(7)]
     }
 
     /// Get mutable `seg_pred` CDF for context `ctx` (0..=2 -- `TileContext::seg_pred_context`'s

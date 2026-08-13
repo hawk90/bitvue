@@ -152,6 +152,14 @@ fn test_mv_extraction_with_spec_cdfs() {
             mi_cols,
             0,
             false,
+            bitvue_av1_codec::tile::InterModeFlags {
+                switchable_motion_mode: false,
+                allow_warped_motion: false,
+                enable_interintra_compound: false,
+                enable_masked_compound: false,
+                enable_jnt_comp: false,
+                subpel_filter_switchable: false,
+            },
         ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(

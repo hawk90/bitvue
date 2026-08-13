@@ -65,6 +65,21 @@ pub struct TxTypeFrameFlags {
     pub subsampling_y: bool,
 }
 
+/// Frame-level flags gating the real `motion_mode`/`interintra`/`compound_type`(wedge/seg)/
+/// `filter` reads (spec 5.11.27-30) -- see `SymbolDecoder::read_motion_mode`/`read_interintra`/
+/// `read_mask_comp`/`read_filter`'s docs for what each gates. Bundled the same way
+/// `TxTypeFrameFlags` bundles its own frame-level gates, to avoid a further parameter-list
+/// explosion on `parse_coding_unit`.
+#[derive(Debug, Clone, Copy)]
+pub struct InterModeFlags {
+    pub switchable_motion_mode: bool,
+    pub allow_warped_motion: bool,
+    pub enable_interintra_compound: bool,
+    pub enable_masked_compound: bool,
+    pub enable_jnt_comp: bool,
+    pub subpel_filter_switchable: bool,
+}
+
 /// Prediction mode for intra and inter prediction
 ///
 /// # Intra Modes (DcPred through PaethPred)
@@ -604,6 +619,7 @@ pub fn parse_coding_unit(
     cdef_bits: u8,
     cdef_idx_state: &mut [i8; 4],
     skip_mode_present: bool,
+    inter_mode_flags: InterModeFlags,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
     let (x4, y4) = (x / 4, y / 4);
@@ -1063,6 +1079,36 @@ pub fn parse_coding_unit(
                     || cu.mode.l1_mv_kind() == Some(MvKind::New),
             );
 
+            // compound_type() (spec 5.11.28: jnt_comp vs. segmentation-mask vs. wedge-mask) --
+            // real per-context CDF + adaptation, see `SymbolDecoder::read_mask_comp`'s doc for
+            // the desync this closes (previously never read at all for ANY compound block).
+            let comp_type = if inter_mode_flags.enable_masked_compound
+                && decoder.read_mask_comp(tile_ctx.mask_comp_context(x4, y4))?
+            {
+                // seg/wedge branch
+                if let Some(wctx) = wedge_ctx(width_4x4, height_4x4) {
+                    let is_wedge = decoder.read_wedge_comp(wctx)?;
+                    if is_wedge {
+                        decoder.read_wedge_idx(wctx)?;
+                    }
+                    decoder.read_bool_equi()?; // mask_sign
+                    if is_wedge {
+                        4
+                    } else {
+                        3
+                    }
+                } else {
+                    decoder.read_bool_equi()?; // mask_sign
+                    3 // SEG (no wedge eligible at this size)
+                }
+            } else if inter_mode_flags.enable_jnt_comp {
+                let jctx = tile_ctx.jnt_comp_context(x4, y4);
+                1 + u8::from(decoder.read_jnt_comp(jctx)?)
+            } else {
+                2 // AVG
+            };
+            tile_ctx.set_comp_type(x4, y4, width_4x4, height_4x4, comp_type);
+
             tracing::debug!(
                 "Compound mode {:?} at ({}, {}): mv0={:?}, mv1={:?}",
                 cu.mode,
@@ -1126,6 +1172,72 @@ pub fn parse_coding_unit(
                 rav1d_ref1,
                 cu.mode == PredictionMode::NewMv,
             );
+
+            // interintra (spec 5.11.29) -- real per-context CDF + adaptation, see
+            // `SymbolDecoder::read_interintra`'s doc for the desync this closes (previously never
+            // read at all for any single-ref inter block).
+            let ii_sz_grp = y_mode_size_context(width_4x4, height_4x4);
+            let interintra_wedge_ctx = wedge_ctx(width_4x4, height_4x4).filter(|&c| c <= 6);
+            let is_interintra = inter_mode_flags.enable_interintra_compound
+                && interintra_wedge_ctx.is_some()
+                && decoder.read_interintra(ii_sz_grp)?;
+            if is_interintra {
+                decoder.read_interintra_mode(ii_sz_grp)?;
+                // `interintra_wedge_ctx` is real here (`is_interintra` only true when `Some`).
+                let wctx = interintra_wedge_ctx.unwrap_or(0);
+                if decoder.read_interintra_wedge(wctx)? {
+                    decoder.read_wedge_idx(wctx)?;
+                }
+            }
+
+            // motion_mode (spec 5.11.27) -- real per-exact-block-size CDF + adaptation, see
+            // `SymbolDecoder::read_motion_mode`'s doc for the desync this closes (previously
+            // never read at all). Real spec gate: switchable, not interintra, both dims >= 8px,
+            // not an excluded warped-global-motion case (approximated as never-excluded -- this
+            // crate doesn't parse `global_motion_params()`, a known scope gap, same story as
+            // `TileContext::jnt_comp_context`'s missing POC-offset term), and has a real
+            // overlappable (non-intra) above/left neighbor.
+            let have_top = y4 > 0;
+            let have_left = x4 > 0;
+            if inter_mode_flags.switchable_motion_mode
+                && !is_interintra
+                && width_4x4 >= 2
+                && height_4x4 >= 2
+                && has_overlappable_neighbors(tile_ctx, x4, y4, width_4x4, height_4x4)
+            {
+                // `allow_warp`: real spec also requires a real matching-single-reference above/
+                // left neighbor (`find_matching_ref`) -- approximated via
+                // `has_matching_single_ref` (single-position check, not the full multi-neighbor
+                // edge scan real dav1d does -- `TileContext::has_matching_single_ref`'s doc for
+                // why a full port is deferred). SVC reference scaling isn't modeled (assumed
+                // never scaled, matching this crate's existing no-SVC-support scope).
+                let allow_warp = inter_mode_flags.allow_warped_motion
+                    && tile_ctx.has_matching_single_ref(x4, y4, have_top, have_left, rav1d_ref0);
+                if allow_warp {
+                    if let Some(idx) = motion_mode_size_index(width_4x4, height_4x4) {
+                        decoder.read_motion_mode(idx)?;
+                    }
+                } else if let Some(idx) = motion_mode_size_index(width_4x4, height_4x4) {
+                    decoder.read_obmc(idx)?;
+                }
+            }
+        }
+
+        // filter (spec 5.11.30, subpel interpolation filter -- one symbol per axis) -- real
+        // per-`(dir, ctx)` CDF + adaptation, see `SymbolDecoder::read_filter`'s doc for the
+        // desync this closes (previously never read at all). Real spec's `has_subpel_filter`
+        // exclusion (skip_mode blocks, and single-ref GLOBALMV with a translation-only global
+        // motion) isn't modeled -- this crate doesn't reach a real `skip_mode == true` CU yet
+        // (`read_skip_mode`'s doc) and doesn't parse `global_motion_params()` (this function's
+        // `motion_mode` doc has the same gap) -- so this reads for every non-skip-mode inter CU,
+        // which is the real spec's common case anyway (GLOBALMV is comparatively rare).
+        if inter_mode_flags.subpel_filter_switchable {
+            let is_comp = is_compound;
+            for dir in 0..2u8 {
+                let fctx = tile_ctx.filter_context(x4, y4, is_comp, dir as usize, rav1d_ref0);
+                let filter = decoder.read_filter(dir, fctx)?;
+                tile_ctx.set_filter(x4, y4, width_4x4, height_4x4, dir as usize, filter);
+            }
         }
 
         // read_block_tx_size() (spec 5.11.16/17/18) for INTER blocks -- real recursive var-tx
@@ -1805,6 +1917,89 @@ fn y_mode_size_context(width_4x4: u32, height_4x4: u32) -> u8 {
         (16, 4) | (8, 4) | (4, 16) | (4, 8) | (4, 4) => 2,
         (8, 2) | (4, 2) | (2, 8) | (2, 4) | (2, 2) => 1,
         _ => 0,
+    }
+}
+
+/// `motion_mode`/`obmc`'s exact-block-size CDF index (0..=16) -- real spec/dav1d indexing order
+/// matches `CdfContext::motion_mode_cdf`'s literal table order (`read_motion_mode`'s doc); `None`
+/// for any size real spec never reads `motion_mode` for at all (`min(bw4,bh4) < 2`, i.e. either
+/// dimension `< 8px` -- ported as a direct dimension match rather than reusing
+/// `y_mode_size_context`'s coarser 4-class grouping, since `motion_mode` needs the real per-size
+/// table, not a class).
+fn motion_mode_size_index(width_4x4: u32, height_4x4: u32) -> Option<u8> {
+    match (width_4x4, height_4x4) {
+        (2, 2) => Some(0),    // 8x8
+        (2, 4) => Some(1),    // 8x16
+        (4, 2) => Some(2),    // 16x8
+        (4, 4) => Some(3),    // 16x16
+        (4, 8) => Some(4),    // 16x32
+        (8, 4) => Some(5),    // 32x16
+        (8, 8) => Some(6),    // 32x32
+        (8, 16) => Some(7),   // 32x64
+        (16, 8) => Some(8),   // 64x32
+        (16, 16) => Some(9),  // 64x64
+        (16, 32) => Some(10), // 64x128
+        (32, 16) => Some(11), // 128x64
+        (32, 32) => Some(12), // 128x128
+        (2, 8) => Some(13),   // 8x32
+        (4, 16) => Some(14),  // 16x64
+        (8, 2) => Some(15),   // 32x8
+        (16, 4) => Some(16),  // 64x16
+        _ => None,
+    }
+}
+
+/// `motion_mode`'s real "has overlappable neighbours" eligibility gate (spec 5.11.27) -- true
+/// when at least one ODD-offset 4x4 unit along this CU's own above or left edge belongs to a
+/// real INTER neighbor (source: rav1d's `findoddzero` scanning `t->a->intra`/`t->l.intra`,
+/// `memorysafety/rav1d`, BSD-2-Clause, `src/decode.c`) -- ported using this crate's own
+/// `above_ref_intra`/`left_ref_intra` arrays directly (same per-4x4-unit granularity real dav1d's
+/// `BlockContext.intra` tracks, no approximation needed here unlike `has_matching_single_ref`).
+fn has_overlappable_neighbors(
+    tile_ctx: &crate::tile::TileContext,
+    x4: u32,
+    y4: u32,
+    width_4x4: u32,
+    height_4x4: u32,
+) -> bool {
+    if x4 > 0 {
+        let len = height_4x4 / 2;
+        for n in 0..len {
+            if !tile_ctx.left_is_intra(y4 + 1 + n * 2) {
+                return true;
+            }
+        }
+    }
+    if y4 > 0 {
+        let len = width_4x4 / 2;
+        for n in 0..len {
+            if !tile_ctx.above_is_intra(x4 + 1 + n * 2) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Compound `wedge`'s real per-size context (0..=8), also compound-wedge/interintra-wedge
+/// eligibility gate -- real spec/dav1d `dav1d_wedge_ctx_lut` (`memorysafety/rav1d`,
+/// BSD-2-Clause, `src/tables.c`), literal per-size lookup covering exactly the 9 real
+/// wedge-eligible sizes (`None` = wedge/interintra not allowed at all for this size).
+/// `interintra`'s own eligibility is a REAL subset excluding `8x32`/`32x8` (ctx `7`/`8`) --
+/// confirmed via `CdfContext::interintra_wedge_cdf`'s real 7-entry table (not 9): callers gating
+/// interintra must additionally check `ctx <= 6`.
+fn wedge_ctx(width_4x4: u32, height_4x4: u32) -> Option<u8> {
+    match (width_4x4, height_4x4) {
+        (8, 8) => Some(6), // 32x32
+        (8, 4) => Some(5), // 32x16
+        (8, 2) => Some(8), // 32x8
+        (4, 8) => Some(4), // 16x32
+        (4, 4) => Some(3), // 16x16
+        (4, 2) => Some(2), // 16x8
+        (2, 8) => Some(7), // 8x32
+        (2, 4) => Some(1), // 8x16
+        (2, 2) => Some(0), // 8x8
+        _ => None,
     }
 }
 

@@ -164,6 +164,101 @@ impl<'a> SymbolDecoder<'a> {
         Ok(symbol == 1)
     }
 
+    /// Read `motion_mode` (spec 5.11.27) when warp is a real candidate at this position (real
+    /// spec: 3-symbol alphabet, `0`=SIMPLE/translation, `1`=OBMC, `2`=WARPED) -- real per-exact-
+    /// block-size CDF + adaptation. `size_idx`: `crate::tile::coding_unit::motion_mode_size_index`.
+    /// Callers must use `read_obmc` instead (a real 2-symbol alphabet) when warp isn't a candidate
+    /// (`TileContext::has_matching_single_ref`'s doc) -- reading the wrong arity here is a real
+    /// desync, not a value-only difference (see this crate's earlier `txb_skip`/`coeff_base_eob`
+    /// wrong-arity fixes this session for the same failure shape).
+    pub fn read_motion_mode(&mut self, size_idx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_motion_mode_cdf_mut(size_idx);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
+    /// Read `use_obmc` (spec 5.11.27's 2-symbol fallback when warp isn't a candidate) -- real
+    /// per-exact-block-size CDF + adaptation. Returns `true` for OBMC, `false` for SIMPLE/
+    /// translation (matches `motion_mode`'s own `0`/`1` values, so callers can treat both
+    /// functions' results uniformly by mapping this to `0`/`1`).
+    pub fn read_obmc(&mut self, size_idx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_obmc_cdf_mut(size_idx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
+    /// Read `interintra` (spec 5.11.29's real eligibility bit -- true means this block actually
+    /// uses interintra) -- real per-`ctx` CDF + adaptation. `ctx`:
+    /// `crate::tile::coding_unit::y_mode_size_context` (reused verbatim, real dav1d shares the
+    /// same block-size-class index between this and non-key-frame `y_mode`).
+    pub fn read_interintra(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_interintra_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
+    /// Read `interintra_mode` (4-symbol) -- real per-`ctx` CDF + adaptation, same `ctx` as
+    /// `read_interintra`.
+    pub fn read_interintra_mode(&mut self, ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_interintra_mode_cdf_mut(ctx);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
+    /// Read `wedge_interintra` (real per-`wedge_ctx` CDF + adaptation) -- `true` means this
+    /// interintra block additionally uses a wedge mask (vs. a plain blend). `wedge_ctx`:
+    /// `crate::tile::coding_unit::wedge_ctx`, capped to interintra's real 7-size subset (`<=6`,
+    /// `CdfContext::interintra_wedge_cdf`'s doc) -- callers must not call this for the 2 wedge-only
+    /// sizes (`wedge_ctx` `7`/`8`, 8x32/32x8) that aren't interintra-eligible at all.
+    pub fn read_interintra_wedge(&mut self, wedge_ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_interintra_wedge_cdf_mut(wedge_ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
+    /// Read `wedge_index` (spec 5.11.28, 16-symbol) -- real per-`wedge_ctx` CDF + adaptation
+    /// (`crate::tile::coding_unit::wedge_ctx`'s doc), shared verbatim between compound wedge and
+    /// interintra's own wedge-index read (real spec: the same `wedge_idx()` syntax element).
+    pub fn read_wedge_idx(&mut self, wedge_ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_wedge_idx_cdf_mut(wedge_ctx);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
+    /// Read `wedge_compound` (real per-`wedge_ctx` CDF + adaptation) -- within the masked-compound
+    /// branch (`read_mask_comp` returned `true`), `true` means wedge, `false` means the (simpler,
+    /// no wedge-index bits) segmentation mask variant.
+    pub fn read_wedge_comp(&mut self, wedge_ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_wedge_comp_cdf_mut(wedge_ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        // dav1d: `b->comp_type = COMP_INTER_WEDGE - decode_bool_adapt(...)` -- bit=0 => WEDGE,
+        // bit=1 => WEDGE-1 (SEG), i.e. the raw bit IS "not wedge" directly.
+        Ok(symbol == 0)
+    }
+
+    /// Read `mask_comp` (spec 5.11.28's jnt_comp-vs-masked selector) -- real per-`ctx` CDF +
+    /// adaptation, `ctx`: `TileContext::mask_comp_context`'s doc. `true` means this compound
+    /// block uses a mask (wedge or segmentation, see `read_wedge_comp`); `false` means the
+    /// simpler jnt_comp path (`read_jnt_comp`).
+    pub fn read_mask_comp(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_mask_comp_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
+    /// Read `jnt_comp` (spec 5.11.28's weighted-vs-plain-average bit) -- real per-`ctx` CDF +
+    /// adaptation, `ctx`: `TileContext::jnt_comp_context`'s doc.
+    pub fn read_jnt_comp(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_jnt_comp_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
+    /// Read `filter` (spec 5.11.30, one subpel-interpolation-filter symbol per direction) --
+    /// real per-`(dir, ctx)` CDF + adaptation. `dir`: `0`=horizontal, `1`=vertical. `ctx`:
+    /// `TileContext::filter_context`'s doc.
+    pub fn read_filter(&mut self, dir: u8, ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_filter_cdf_mut(dir, ctx);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
     /// Read `seg_pred` (spec 5.11.9/5.11.10's temporal segment-id-prediction flag) -- real
     /// per-`ctx` CDF + adaptation, matching `read_skip`'s bar. `ctx`:
     /// `TileContext::seg_pred_context`'s doc.

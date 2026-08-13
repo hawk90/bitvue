@@ -278,12 +278,12 @@ fn read_render_size(reader: &mut BitReader) -> Result<()> {
     Ok(())
 }
 
-fn read_interpolation_filter(reader: &mut BitReader) -> Result<()> {
+fn read_interpolation_filter(reader: &mut BitReader) -> Result<bool> {
     let is_filter_switchable = reader.read_bit()?;
     if !is_filter_switchable {
         reader.read_bits(2)?; // interpolation_filter
     }
-    Ok(())
+    Ok(is_filter_switchable)
 }
 
 fn read_tile_info(
@@ -970,6 +970,9 @@ pub fn parse_frame_header_full(
             delta_lf_present: false,
             delta_lf_multi: false,
             skip_mode_present: false,
+            subpel_filter_switchable: false,
+            switchable_motion_mode: false,
+            allow_warped_motion: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -1088,6 +1091,8 @@ pub fn parse_frame_header_full(
     let (width, height, upscaled_width, upscaled_height, use_superres, superres_denom);
     let mut allow_high_precision_mv = false;
     let mut use_ref_frame_mvs = false;
+    let mut subpel_filter_switchable = false;
+    let mut switchable_motion_mode = false;
     if frame_is_intra {
         let size = read_frame_size(&mut reader, seq, frame_size_override_flag)?;
         read_render_size(&mut reader)?;
@@ -1148,8 +1153,8 @@ pub fn parse_frame_header_full(
         } else {
             reader.read_bit()?
         };
-        read_interpolation_filter(&mut reader)?;
-        reader.read_bit()?; // is_motion_mode_switchable
+        subpel_filter_switchable = read_interpolation_filter(&mut reader)?;
+        switchable_motion_mode = reader.read_bit()?; // is_motion_mode_switchable
         use_ref_frame_mvs = if error_resilient_mode || !seq.enable_ref_frame_mvs {
             false
         } else {
@@ -1224,7 +1229,6 @@ pub fn parse_frame_header_full(
     } else {
         reader.read_bit()?
     };
-    let _ = allow_warped_motion;
     let reduced_tx_set = reader.read_bit()?;
 
     parse_global_motion_params(&mut reader, allow_high_precision_mv)?;
@@ -1278,6 +1282,9 @@ pub fn parse_frame_header_full(
         delta_lf_present,
         delta_lf_multi,
         skip_mode_present,
+        subpel_filter_switchable,
+        switchable_motion_mode,
+        allow_warped_motion,
         reduced_tx_set,
         txfm_mode,
         use_ref_frame_mvs,
