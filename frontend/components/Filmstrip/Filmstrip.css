@@ -45,6 +45,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 3px 8px;
   height: 24px;
   min-height: 24px;
@@ -61,16 +62,42 @@
   color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+
+  /* Flex items default to `min-width: auto` (their unshrinkable content width), which is why this
+     collided with `.filmstrip-info` (the frame counter + view-mode dropdown) on any window
+     narrower than both sides' combined natural width -- `justify-content: space-between`
+     positions items assuming they already fit, it doesn't shrink them. This is the *least*
+     important text in the header (a static label), so it's the one that should give way first. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .filmstrip-title .codicon {
+  flex-shrink: 0;
   font-size: 12px;
 }
 
 .filmstrip-count {
+  overflow: hidden;
   color: var(--text-secondary);
   font-weight: 400;
   margin-left: 3px;
+  text-overflow: ellipsis;
+}
+
+.filmstrip-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  /* Never shrink: the live frame counter and view-mode dropdown are actionable controls, not
+     decorative text -- `.filmstrip-title` gives way first (see its doc above). */
+  flex-shrink: 0;
+}
+
+.filmstrip-current {
+  white-space: nowrap;
 }
 
 .filmstrip-view-btn {

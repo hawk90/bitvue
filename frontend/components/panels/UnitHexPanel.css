@@ -386,19 +386,7 @@
   font-size: 12px;
 }
 
-/* Frame type colors */
-.frame-type-i,
-.frame-type-key {
-  color: var(--frame-i);
-}
-
-.frame-type-p {
-  color: var(--frame-p);
-}
-
-.frame-type-b {
-  color: var(--frame-b);
-}
+/* Frame type badge -- moved to components/common/FrameTypeBadge.css (single source of truth). */
 
 /* Empty State */
 .hex-empty {

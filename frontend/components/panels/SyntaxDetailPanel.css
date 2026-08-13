@@ -238,19 +238,7 @@
   font-size: 12px;
 }
 
-/* Frame type colors */
-.frame-type-i,
-.frame-type-key {
-  color: var(--frame-i);
-}
-
-.frame-type-p {
-  color: var(--frame-p);
-}
-
-.frame-type-b {
-  color: var(--frame-b);
-}
+/* Frame type badge -- moved to components/common/FrameTypeBadge.css (single source of truth). */
 
 /* Refs Tab Styles */
 .refs-list {
@@ -270,10 +258,8 @@
   border-radius: var(--radius-sm);
   font-size: 11px;
   transition: all var(--transition-fast) var(--ease-default);
-  /* Same fix as UnitHexPanel.css's `.frame-info-row`/`.dpb-row`: grid's default
-     `justify-items: stretch` blockifies `.ref-type`'s `.frame-type-*` badge (border+background,
-     defined in SelectionInfoPanel.css and shared globally) and stretches it to fill the 40px
-     column instead of shrinking to the single-letter content. */
+  /* Grid's default `justify-items: stretch` would blockify the `FrameTypeBadge` grid child and
+     stretch it to fill the 40px column instead of shrinking to the single-letter content. */
   justify-items: start;
 }
 
@@ -290,11 +276,6 @@
 .ref-frame {
   color: var(--text-primary);
   font-weight: 500;
-}
-
-.ref-type {
-  font-weight: 600;
-  text-transform: uppercase;
 }
 
 .ref-pts {
@@ -524,8 +505,8 @@
   font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast) var(--ease-default);
-  /* Same fix as `.ref-item` above -- `.search-result-type`'s `.frame-type-*` badge otherwise
-     stretches to fill its column instead of shrinking to its single-letter content. */
+  /* Same fix as `.ref-item` above -- the `FrameTypeBadge` grid child otherwise stretches to fill
+     its column instead of shrinking to its single-letter content. */
   justify-items: start;
 }
 
@@ -538,11 +519,6 @@
 .search-result-item.current {
   background: var(--bg-selected);
   border-color: var(--accent);
-}
-
-.search-result-type {
-  font-weight: 600;
-  text-transform: uppercase;
 }
 
 .search-result-index {

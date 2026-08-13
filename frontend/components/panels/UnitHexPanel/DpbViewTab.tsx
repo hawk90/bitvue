@@ -5,6 +5,7 @@
  */
 
 import { memo } from "react";
+import { FrameTypeBadge } from "../../common/FrameTypeBadge";
 
 interface FrameInfo {
   frame_index: number;
@@ -64,11 +65,7 @@ export const DpbViewTab = memo(function DpbViewTab({
         <div className="dpb-row dpb-current">
           <span>-</span>
           <span>{currentFrame.frame_index}</span>
-          <span
-            className={`frame-type-${currentFrame.frame_type.toLowerCase()}`}
-          >
-            {currentFrame.frame_type}
-          </span>
+          <FrameTypeBadge frameType={currentFrame.frame_type} />
           <span>{currentFrame.pts ?? "N/A"}</span>
           <span className="dpb-current">Current</span>
         </div>
@@ -82,11 +79,7 @@ export const DpbViewTab = memo(function DpbViewTab({
               <span>{refIdx}</span>
               {refFrame ? (
                 <>
-                  <span
-                    className={`frame-type-${refFrame.frame_type.toLowerCase()}`}
-                  >
-                    {refFrame.frame_type}
-                  </span>
+                  <FrameTypeBadge frameType={refFrame.frame_type} />
                   <span>{refFrame.pts ?? "N/A"}</span>
                 </>
               ) : (

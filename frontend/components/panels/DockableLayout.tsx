@@ -31,9 +31,12 @@ export const PANEL_SIZES = {
   /** Main content area width percentage (calculated) */
   MAIN_CONTENT: 75,
   /** YUV viewer height percentage */
-  YUV_VIEWER: 85,
-  /** Bottom panel default height percentage */
-  BOTTOM_PANEL: 15,
+  YUV_VIEWER: 78,
+  /** Bottom panel default height percentage -- 15 left Info/Details/Stats/Diagnostics' real
+      content (e.g. Info's File/Frames/Duration rows) clipped by the window edge on any window
+      close to the 1280x800 default, with no visible scroll affordance to signal there was more
+      below. 22 fits that real content without scrolling in the common case. */
+  BOTTOM_PANEL: 22,
 } as const;
 
 /**
@@ -43,7 +46,9 @@ export const PANEL_MIN_SIZES = {
   LEFT_SIDEBAR: 15,
   MAIN_CONTENT: 30,
   YUV_VIEWER: 20,
-  BOTTOM_PANEL: 10,
+  /** Same reasoning as `PANEL_SIZES.BOTTOM_PANEL` -- 10 let a user-driven resize shrink this to a
+      near-unusable sliver. */
+  BOTTOM_PANEL: 15,
 } as const;
 
 /**

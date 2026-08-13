@@ -11,6 +11,7 @@
 import { useFrameData } from "../../contexts/FrameDataContext";
 import { useCurrentFrame } from "../../contexts/CurrentFrameContext";
 import { memo } from "react";
+import { FrameTypeBadge } from "../common/FrameTypeBadge";
 import "./SelectionInfoPanel.css";
 
 interface SectionProps {
@@ -88,11 +89,7 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
             label="Frame Type"
             value={
               currentFrame ? (
-                <span
-                  className={`frame-type-badge frame-type-${currentFrame.frame_type.toLowerCase()}`}
-                >
-                  {currentFrame.frame_type}
-                </span>
+                <FrameTypeBadge frameType={currentFrame.frame_type} />
               ) : (
                 "N/A"
               )
@@ -157,11 +154,7 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
               label={type}
               value={
                 <span className="frame-type-count">
-                  <span
-                    className={`frame-type-badge frame-type-${type.toLowerCase()}`}
-                  >
-                    {type}
-                  </span>
+                  <FrameTypeBadge frameType={type} />
                   <span className="frame-count">{count}</span>
                   <span className="frame-percent">
                     ({((count / stats.totalFrames) * 100).toFixed(1)}%)

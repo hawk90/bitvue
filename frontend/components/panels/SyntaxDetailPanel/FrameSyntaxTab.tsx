@@ -7,6 +7,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
+import { FrameTypeBadge } from "../../common/FrameTypeBadge";
 import {
   getFrameSyntax,
   type BridgeSyntaxNode,
@@ -170,11 +171,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
         <span className="syntax-info-label" style={{ marginLeft: 16 }}>
           Type:
         </span>
-        <span
-          className={`syntax-value frame-type-${frame.frame_type.toLowerCase()}`}
-        >
-          {frame.frame_type}
-        </span>
+        <FrameTypeBadge frameType={frame.frame_type} />
       </div>
       <div className="panel-divider"></div>
       <div className="syntax-tree">

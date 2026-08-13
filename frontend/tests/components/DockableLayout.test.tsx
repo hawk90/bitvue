@@ -182,8 +182,8 @@ describe("PANEL_SIZES constants", () => {
   it("should have correct default values", () => {
     expect(PANEL_SIZES.LEFT_SIDEBAR).toBe(25);
     expect(PANEL_SIZES.MAIN_CONTENT).toBe(75);
-    expect(PANEL_SIZES.YUV_VIEWER).toBe(85);
-    expect(PANEL_SIZES.BOTTOM_PANEL).toBe(15);
+    expect(PANEL_SIZES.YUV_VIEWER).toBe(78);
+    expect(PANEL_SIZES.BOTTOM_PANEL).toBe(22);
   });
 });
 
