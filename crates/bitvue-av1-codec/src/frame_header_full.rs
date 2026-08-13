@@ -599,6 +599,7 @@ fn parse_cdef_params(
         y_secondary_strength,
         uv_primary_strength,
         uv_secondary_strength,
+        bits: cdef_bits as u8,
     })
 }
 

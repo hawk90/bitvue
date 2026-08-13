@@ -74,6 +74,12 @@ pub struct CdefInfo {
     pub y_secondary_strength: u8,
     pub uv_primary_strength: u8,
     pub uv_secondary_strength: u8,
+    /// `cdef_bits` (spec 5.9.19) -- the raw bit-width of each tile-data `cdef_idx()` symbol (spec
+    /// 5.11.56). `0` when CDEF is disabled for this frame (`!enabled`), matching real spec's own
+    /// `cdef_bits = 0` default for that case (`cdef_idx()` becomes a 0-bit no-op, not skipped
+    /// entirely -- see `tile::coding_unit::parse_coding_unit`'s doc for why this crate previously
+    /// never read `cdef_idx()` at all, a real per-superblock desync).
+    pub bits: u8,
 }
 
 /// Loop restoration info parsed from the frame header

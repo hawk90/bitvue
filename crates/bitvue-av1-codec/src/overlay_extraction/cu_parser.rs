@@ -41,6 +41,7 @@ pub fn parse_all_coding_units(
     let delta_lf_multi = parsed.delta_lf_multi;
     let use_ref_frame_mvs = parsed.use_ref_frame_mvs;
     let segmentation = parsed.segmentation;
+    let cdef_bits = parsed.cdef_bits;
     let tx_type_flags = crate::tile::TxTypeFrameFlags {
         coded_lossless: parsed.coded_lossless,
         qidx_is_zero: parsed.frame_type.base_qp == Some(0),
@@ -104,6 +105,7 @@ pub fn parse_all_coding_units(
                     tx_type_flags,
                     mi_rows,
                     mi_cols,
+                    cdef_bits,
                 ) {
                     Ok((sb, new_qp)) => {
                         // Collect all coding units from this superblock

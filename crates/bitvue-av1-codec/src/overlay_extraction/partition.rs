@@ -204,6 +204,7 @@ fn parse_partition_trees_from_tile_data(
                 },
                 mi_rows,
                 mi_cols,
+                parsed.cdef_bits,
             );
 
             match sb_result {
@@ -935,6 +936,7 @@ mod tests {
                     },
                     mi_rows,
                     mi_cols,
+                    parsed.cdef_bits,
                 )?;
                 current_qp = new_qp;
                 all_cus.extend(sb.coding_units);

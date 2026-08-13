@@ -1930,6 +1930,33 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   (신규 `coeff_base_eob_context`의 `eob==0` 케이스 테스트 1개 추가) + 통합 스위트 전부
   클린, clippy/fmt 무관 경고 13개 그대로. **범위가 "잔차 컨텍스트 정밀도"에서 "이 CU의
   mode-info 체인 전체(또는 최상위 partition 심볼) 재감사"로 확장됨** — 다음 세션 계속.
+- **🎉 근본원인 발견 + `real_fixture_key_frame_intra_modes_are_not_degenerate` 최종 해결
+  (2026-08-13)**: mode-info 체인 재감사 착수 → dav1d `decode_b`(`src/decode.c`)의 CU 신택스
+  순서를 처음부터 끝까지 한 줄씩 대조해 **두 개의 실제 버그**를 동시에 발견. (1) **`cdef_idx()`
+  (spec 5.11.56)가 이 크레이트 어디에도 전혀 구현돼있지 않았음** — `skip`이 아니고 슈퍼블록당
+  관련 64x64 유닛에 아직 안 읽었을 때만(dav1d의 `cur_sb_cdef_idx_ptr` 패턴) `cdef.n_bits`
+  비트를 읽는 완전히 누락된 신택스 요소. `CdefInfo`에 `bits: u8` 필드 신규 추가(기존엔 헤더
+  파싱 중 `cdef_bits`를 세다가 그냥 버렸음) + `ParsedFrame::cdef_bits`로 노출 +
+  `parse_coding_unit`에 `cdef_idx_state: &mut [i8; 4]`(슈퍼블록마다 리셋, `-1`=미독)로 실제
+  구현. (2) **더 심각한 버그: `delta_q`/`delta_lf` 읽는 위치 자체가 완전히 틀려있었음** — real
+  spec/dav1d는 `skip` → `segment_id`(postskip) → `cdef_idx()` → `delta_q`/`delta_lf` →
+  (비로소) mode-info 순서인데, 이 크레이트는 **mode-info 전체(y_mode/angle_delta/uv_mode/cfl/
+  palette/filter_intra/tx_size, 또는 inter의 ref_frame/mode/MV/var-tx) 를 다 읽은 다음에야**
+  delta_q/delta_lf를 읽고 있었음 — `delta_q_enabled`인 모든 실인코딩에서 슈퍼블록의 첫 non-skip
+  CU마다 큰 블록의 신택스가 통째로 잘못된 비트 위치에서 읽히던 셈. `delta_q`/`delta_lf` 읽기
+  블록을 통째로 mode-info 앞(segment_id postskip 직후, cdef_idx 다음)으로 이동, 로직 자체는
+  변경 없음(순수 위치 이동, `new_qp`가 함수 끝까지 안전하게 전달됨을 확인). **결과: 여러 세션에
+  걸쳐 4번의 독립적인 진짜 수정(팔레트/mode-info 꼬리, delta_q 게이팅, txb_skip 순서, eob
+  off-by-one)이 전부 못 고쳤던 타깃 테스트가 드디어 통과** — 406/406 lib **전부 통과**(실패 0),
+  `--tests` 전부 클린. 부수로 **`get_deblocking_analysis`의 frame=0 회귀도 같은 근본원인이라
+  함께 해결됨**(`get_deblocking_analysis_end_to_end_returns_real_edges` 재확인 — frame 0에서
+  real edge/`total_edges>0` 정상 리턴). `parse_superblock`/`parse_coding_units_recursive`/
+  `parse_coding_unit`의 시그니처에 `cdef_bits: u8`가 신규 파라미터로 추가돼 호출부 5곳(
+  `cu_parser.rs`, `partition.rs` 2곳, `mv_extraction_test.rs`) 전부 갱신. 워크스페이스
+  `--lib`(3853+ 통과, 무관 기존 flaky LRU 1개 제외) + `--tests` 클린, clippy/fmt 무경고 변화
+  없음. **이 세션 전체(그리고 몇 세션에 걸친) 근본원인 추적 완료** — 남은 것은 이번 발견으로
+  드러난 `cdef_idx`/`delta_q` 재배치가 다른 fixture/코덱 경로에 미치는 영향 재확인 정도, 별도
+  버그 남아있다는 증거는 없음.
 
 ---
 

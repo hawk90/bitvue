@@ -150,6 +150,7 @@ fn test_mv_extraction_with_spec_cdfs() {
             },
             mi_rows,
             mi_cols,
+            0,
         ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(

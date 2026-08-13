@@ -596,10 +596,13 @@ pub fn parse_coding_unit(
     sb_x4: u32,
     sb_y4: u32,
     sb_size4: u32,
+    cdef_bits: u8,
+    cdef_idx_state: &mut [i8; 4],
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
     let (x4, y4) = (x / 4, y / 4);
     let (width_4x4, height_4x4) = (width.div_ceil(4).max(1), height.div_ceil(4).max(1));
+    let sb128 = sb_size4 == 32;
 
     // segment_id() (spec 5.11.9/5.11.10), pre-skip position -- ported from dav1d's `decode_b`
     // (`src/decode.c`) call-site structure, not the spec pseudocode alone, to get the
@@ -646,6 +649,123 @@ pub fn parse_coding_unit(
             segmentation,
             Some(cu.skip),
         )?;
+    }
+
+    // cdef_idx() (spec 5.11.56) -- previously never read AT ALL anywhere in this crate, a
+    // completely missing syntax element (found 2026-08-13 while tracing why this fixture's sole
+    // key-frame CU's *first residual read* already reproduces the known `eob=596` desync anomaly
+    // -- every bit read between `skip` and the first transform block was suspect). Real spec/
+    // dav1d (`decode_b`, `src/decode.c`): gated only on `!skip` (NOT on whether CDEF is actually
+    // enabled -- `cdef.n_bits` is already `0` in that case, making the read a true no-op, same
+    // "attempt unconditionally, len 0 is a no-op" shape as this crate's own `read_bools_n`), and
+    // read at most once per relevant CDEF unit (64x64) within the superblock -- `cdef_idx_state`
+    // (reset once per superblock by the caller, `-1` sentinel = "not yet read") tracks that,
+    // mirroring dav1d's `cur_sb_cdef_idx_ptr`. `sb128` mode has 4 units (2x2 of 64x64) per
+    // superblock addressed by `idx`; `sb64` mode always uses unit `0` (dav1d's own explicit
+    // `sb128 ? ... : 0` -- NOT simply relying on `x4 & 16` staying `0`, which it wouldn't across
+    // successive 64-superblocks at frame-absolute MI coordinates). A CU spanning multiple units
+    // (width/height > 64px) propagates its single read value to every unit it covers, exactly
+    // like the gating `have_delta`/`is_full_sb_size` logic just below it reuses `width_4x4`/
+    // `height_4x4` for the same reason.
+    if !cu.skip {
+        let idx = if sb128 {
+            ((x4 & 16) >> 4) + ((y4 & 16) >> 3)
+        } else {
+            0
+        } as usize;
+        if cdef_idx_state[idx] == -1 {
+            let v = decoder.read_bools_n(cdef_bits as u32)? as i8;
+            cdef_idx_state[idx] = v;
+            if width_4x4 > 16 {
+                cdef_idx_state[idx + 1] = v;
+            }
+            if height_4x4 > 16 {
+                cdef_idx_state[idx + 2] = v;
+            }
+            if width_4x4 == 32 && height_4x4 == 32 {
+                cdef_idx_state[idx + 3] = v;
+            }
+        }
+    }
+
+    // Read delta_q/delta_lf (spec 5.11.38's `read_delta_qindex`/`read_delta_lf`) -- real spec
+    // gate (dav1d's `decode_b`, `src/decode.c`): only at the first leaf visited within each
+    // superblock (`x4/y4 == sb_x4/sb_y4`, always true for the top-left-most leaf given AV1's
+    // partition decode order), and -- when this leaf's own size happens to equal the *whole*
+    // superblock -- only when it isn't `skip` (a skipped full-superblock CU has nothing to
+    // dequantize, so the encoder never signals a delta for it at all). Previously this crate read
+    // `delta_q` unconditionally for every CU whenever `delta_q_enabled`, a real desync bug for any
+    // skipped full-superblock CU or any SB that partitions into more than one CU (extra/duplicate
+    // reads the real encoder never wrote).
+    //
+    // **Position** (moved 2026-08-13, found in the same pass as `cdef_idx()` above): real spec
+    // reads `cdef_idx()`/`delta_q`/`delta_lf` immediately after `skip`/`segment_id`, BEFORE any
+    // mode-info (`intra_frame_mode_info()`/`inter_frame_mode_info()`) -- verified directly against
+    // dav1d's `decode_b` call-site order, not assumed. This crate previously read the *entire*
+    // mode-info tail (`y_mode`/`angle_delta`/`uv_mode`/`cfl`/`palette`/`filter_intra`/`tx_size` for
+    // intra, or `ref_frame`/`inter_mode`/MV/var-tx for inter) BEFORE reaching this block -- a
+    // severe ordering bug affecting every superblock-first, non-skip CU whenever `delta_q_enabled`
+    // (i.e. every real encode that uses delta-Q at all): the real `cdef_idx`/`delta_q`/`delta_lf`
+    // bits were being consumed at entirely the wrong bitstream position, desyncing everything from
+    // that CU's `y_mode` read onward.
+    let is_first_cu_in_sb = x4 == sb_x4 && y4 == sb_y4;
+    let is_full_sb_size = width_4x4 == sb_size4 && height_4x4 == sb_size4;
+    let have_delta = delta_q_enabled && is_first_cu_in_sb && (!is_full_sb_size || !cu.skip);
+
+    let new_qp = if have_delta {
+        match decoder.read_delta_q() {
+            Ok(delta_q) => {
+                // Apply delta Q to current QP
+                // Clamp to valid range [0, 255]
+                let qp = (current_qp + delta_q).clamp(0, 255);
+                tracing::debug!(
+                    "Delta Q applied at ({}, {}): {} + {} = {}",
+                    x,
+                    y,
+                    current_qp,
+                    delta_q,
+                    qp
+                );
+                cu.qp = Some(qp);
+                qp
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to read delta Q at ({}, {}): {}, using current QP",
+                    x,
+                    y,
+                    e
+                );
+                cu.qp = Some(current_qp);
+                current_qp
+            }
+        }
+    } else {
+        // Delta Q not read this CU, use current QP
+        cu.qp = Some(current_qp);
+        current_qp
+    };
+
+    // delta_lf: real spec nests these bits inside `have_delta_q` (only reachable when a delta_q
+    // symbol was actually read above), then one component per plane when `delta_lf_multi` (4 for
+    // 4:2:0/4:4:4, 2 for monochrome), or a single shared component otherwise.
+    if have_delta && delta_lf_present {
+        let n_lfs = if delta_lf_multi {
+            if tx_type_flags.mono_chrome {
+                2
+            } else {
+                4
+            }
+        } else {
+            1
+        };
+        for i in 0..n_lfs {
+            let cdf_index = if delta_lf_multi { i + 1 } else { 0 };
+            if let Err(e) = decoder.read_delta_lf(cdf_index) {
+                tracing::warn!("Failed to read delta_lf[{}] at ({}, {}): {}", i, x, y, e);
+                break;
+            }
+        }
     }
 
     // Raw intra mode symbol (0..=12), captured below when `is_key_frame` -- only meaningful for
@@ -970,75 +1090,6 @@ pub fn parse_coding_unit(
     // Add this CU to the MV predictor context for future blocks
     // Now uses zero-copy reference instead of cloning the entire CU
     mv_ctx.add_cu(&cu);
-
-    // Read delta_q/delta_lf (spec 5.11.38's `read_delta_qindex`/`read_delta_lf`) -- real spec
-    // gate (dav1d's `decode_b`, `src/decode.c`): only at the first leaf visited within each
-    // superblock (`x4/y4 == sb_x4/sb_y4`, always true for the top-left-most leaf given AV1's
-    // partition decode order), and -- when this leaf's own size happens to equal the *whole*
-    // superblock -- only when it isn't `skip` (a skipped full-superblock CU has nothing to
-    // dequantize, so the encoder never signals a delta for it at all). Previously this crate read
-    // `delta_q` unconditionally for every CU whenever `delta_q_enabled`, a real desync bug for any
-    // skipped full-superblock CU or any SB that partitions into more than one CU (extra/duplicate
-    // reads the real encoder never wrote).
-    let is_first_cu_in_sb = x4 == sb_x4 && y4 == sb_y4;
-    let is_full_sb_size = width_4x4 == sb_size4 && height_4x4 == sb_size4;
-    let have_delta = delta_q_enabled && is_first_cu_in_sb && (!is_full_sb_size || !cu.skip);
-
-    let new_qp = if have_delta {
-        match decoder.read_delta_q() {
-            Ok(delta_q) => {
-                // Apply delta Q to current QP
-                // Clamp to valid range [0, 255]
-                let qp = (current_qp + delta_q).clamp(0, 255);
-                tracing::debug!(
-                    "Delta Q applied at ({}, {}): {} + {} = {}",
-                    x,
-                    y,
-                    current_qp,
-                    delta_q,
-                    qp
-                );
-                cu.qp = Some(qp);
-                qp
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to read delta Q at ({}, {}): {}, using current QP",
-                    x,
-                    y,
-                    e
-                );
-                cu.qp = Some(current_qp);
-                current_qp
-            }
-        }
-    } else {
-        // Delta Q not read this CU, use current QP
-        cu.qp = Some(current_qp);
-        current_qp
-    };
-
-    // delta_lf: real spec nests these bits inside `have_delta_q` (only reachable when a delta_q
-    // symbol was actually read above), then one component per plane when `delta_lf_multi` (4 for
-    // 4:2:0/4:4:4, 2 for monochrome), or a single shared component otherwise.
-    if have_delta && delta_lf_present {
-        let n_lfs = if delta_lf_multi {
-            if tx_type_flags.mono_chrome {
-                2
-            } else {
-                4
-            }
-        } else {
-            1
-        };
-        for i in 0..n_lfs {
-            let cdf_index = if delta_lf_multi { i + 1 } else { 0 };
-            if let Err(e) = decoder.read_delta_lf(cdf_index) {
-                tracing::warn!("Failed to read delta_lf[{}] at ({}, {}): {}", i, x, y, e);
-                break;
-            }
-        }
-    }
 
     // Read residual() for every transform block tiling this CU -- required for correct bitstream
     // alignment whenever skip == false, not just for producing residual statistics. See this

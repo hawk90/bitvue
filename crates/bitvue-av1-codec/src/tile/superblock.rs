@@ -127,6 +127,7 @@ pub fn parse_superblock(
     tx_type_flags: TxTypeFrameFlags,
     mi_rows: u32,
     mi_cols: u32,
+    cdef_bits: u8,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -134,6 +135,13 @@ pub fn parse_superblock(
         128 => BlockSize::Block128x128,
         _ => BlockSize::Block64x64, // Default
     };
+
+    // `cdef_idx()`'s per-superblock "already read" tracker (spec 5.11.56, see
+    // `crate::tile::coding_unit::parse_coding_unit`'s doc) -- reset fresh for every superblock,
+    // mirroring dav1d's `cur_sb_cdef_idx_ptr` (`decode_b`'s caller resets it per-superblock too).
+    // `-1` (real dav1d sentinel) = "not yet read"; up to 4 slots for `sb128`'s 2x2 grid of 64x64
+    // CDEF units (`sb64` only ever touches slot `0`).
+    let mut cdef_idx_state: [i8; 4] = [-1; 4];
 
     // Parse partition tree -- see `tile::partition::parse_partition_recursive`'s doc for why this
     // module no longer keeps its own copy. `None` (superblock origin fully outside the frame)
@@ -173,6 +181,8 @@ pub fn parse_superblock(
         x / 4,
         y / 4,
         sb_size / 4,
+        cdef_bits,
+        &mut cdef_idx_state,
         &mut sb.coding_units,
     )?;
 
@@ -213,6 +223,8 @@ fn parse_coding_units_recursive(
     sb_x4: u32,
     sb_y4: u32,
     sb_size4: u32,
+    cdef_bits: u8,
+    cdef_idx_state: &mut [i8; 4],
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
@@ -242,6 +254,8 @@ fn parse_coding_units_recursive(
             sb_x4,
             sb_y4,
             sb_size4,
+            cdef_bits,
+            cdef_idx_state,
         )?;
 
         coding_units.push(cu);
@@ -272,6 +286,8 @@ fn parse_coding_units_recursive(
                 sb_x4,
                 sb_y4,
                 sb_size4,
+                cdef_bits,
+                cdef_idx_state,
                 coding_units,
             )?;
         }

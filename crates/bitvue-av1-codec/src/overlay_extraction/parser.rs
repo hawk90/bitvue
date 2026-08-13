@@ -87,6 +87,11 @@ pub struct ParsedFrame {
     /// `parse_frame_header_full` needed); defaults to `false` (conservatively "never read a
     /// filter_intra bit") if the sequence header wasn't found.
     pub enable_filter_intra: bool,
+    /// `cdef.bits` (spec 5.9.19's `cdef_bits`) -- see `crate::frame_header::CdefInfo::bits`'s doc
+    /// for what this gates in tile data. Same sourcing/fallback story as `reference_select`; `0`
+    /// (i.e. "`cdef_idx()` never reads any bits") if the full header wasn't parsed -- the same
+    /// conservative default real spec itself uses when CDEF is disabled.
+    pub cdef_bits: u8,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -186,6 +191,7 @@ impl ParsedFrame {
                 subsampling_x: false,
                 subsampling_y: false,
                 enable_filter_intra: false,
+                cdef_bits: 0,
             });
         }
 
@@ -229,6 +235,7 @@ impl ParsedFrame {
         let mut subsampling_x = false;
         let mut subsampling_y = false;
         let mut enable_filter_intra = false;
+        let mut cdef_bits = 0u8;
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -311,6 +318,7 @@ impl ParsedFrame {
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
                             segmentation = full_hdr.segmentation;
+                            cdef_bits = full_hdr.cdef_damping.bits;
                         }
                     }
                 }
@@ -338,6 +346,7 @@ impl ParsedFrame {
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
                             segmentation = full_hdr.segmentation;
+                            cdef_bits = full_hdr.cdef_damping.bits;
                         }
                     }
                 }
@@ -377,6 +386,7 @@ impl ParsedFrame {
             subsampling_x,
             subsampling_y,
             enable_filter_intra,
+            cdef_bits,
         })
     }
 
