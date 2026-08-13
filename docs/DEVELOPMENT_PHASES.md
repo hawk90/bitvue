@@ -1883,6 +1883,29 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   사실만 기록(사용자 "알아서 해" 위임을 "UI 커밋 + 문서화까지만, 재조사는 다음 세션"으로
   해석해 진행).
 
+- **`transform_type()`/`txb_skip` 순서 버그 발견+수정(2026-08-13, 다음 세션)**: dav1d
+  `decode_coefs`(`src/recon_tmpl.c`)를 한 줄씩 대조하다가 실제 신택스 순서를 재확인 —
+  real spec은 `all_zero`(`txb_skip`)를 무조건 먼저 읽고, **그 결과가 false일 때만**
+  `transform_type()`을 읽음(`chroma`는 애초에 비트 없이 룩업으로만 유도됨: intra는
+  `dav1d_txtp_from_uvmode[uv_mode]`, inter는 luma txtp에서 유도). 그런데 이 크레이트는
+  **루마 트랜스폼 블록마다 `transform_type()`을 `txb_skip` 여부와 무관하게 항상 먼저
+  읽고 있었음** — all-zero(실제 콘텐츠에서 흔함) 블록마다 real 인코더가 안 쓴 유령 심볼을
+  읽는 진짜 desync 버그. `SymbolDecoder::read_txb_skip` 신규 분리(순수 `all_zero` 읽기만) +
+  `read_residual_block`에서 `txb_skip` 읽기 제거, `parse_coding_unit`의 루마 잔차 루프를
+  "먼저 `read_txb_skip` → false면 `transform_type()` → `read_residual_block`" 순서로
+  재구성. **다만 이 fixture의 취약한 키프레임 테스트 자체는 여전히 실패** — 원인 추적해보니
+  그 CU의 트랜스폼 블록이 전부 32x32(intra)라 `read_transform_type_is_1d`의 조기 반환 조건
+  (`tx_class + is_intra >= 4`, real spec `t_dim->max + intra >= TX_64X64`과 동일)이 항상
+  걸려서 애초에 순서 버그가 있든 없든 이 CU에선 비트 소비량이 동일했음(수정 전후 동일한
+  tx 타일에서 동일한 eob=596/168 재현 확인) — 즉 이 수정은 **진짜 버그고 다른 콘텐츠(작은
+  트랜스폼 크기·인터 블록)에선 실제로 유효하지만, 이 특정 테스트의 근본원인은 아님**.
+  부수로 `SymbolDecoder::read_residual_block`의 오래된 doc 주석이 "coeff_base/coeff_br는
+  아직 이웃 컨텍스트 없음"이라고 잘못 적혀있던 것도 발견+정정(실제로는 `6dc76ef`로 이미
+  real `scan::lo_ctx` 이웃 컨텍스트가 들어가 있었음, 코드와 문서가 어긋나 있었음). 404/405
+  lib + 141개 스위트 클린(변함없음). **eob=596(11번째 32x32 루마 타일, 58% 비영점 밀도)의
+  진짜 원인은 여전히 미해결** — coeff_base/coeff_br 컨텍스트 자체의 정밀도 문제이거나 아직
+  못 찾은 다른 intra 전용 신택스 순서 버그일 가능성이 남아있음, 다음 세션 계속.
+
 ---
 
 ## Phase 5: AVS3 지원 구현 🟡 (2026-08-10 재감사 — 크레이트/파서/렌더러 존재, 제품 미연결)

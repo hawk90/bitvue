@@ -1077,19 +1077,6 @@ pub fn parse_coding_unit(
         for (tx_x4, tx_y4, tx_w_px, tx_h_px) in tx_positions {
             let (tx_w4, tx_h4) = (tx_w_px / 4, tx_h_px / 4);
 
-            // transform_type() (spec 5.11.47) precedes coeffs() for every transform block -- see
-            // `SymbolDecoder::read_transform_type_is_1d`'s doc. Its own `tx_size_px` param is the
-            // real spec square-up size (larger dimension), matching `read_residual_block`'s own
-            // `tx_class` derivation.
-            let tx_class_1d = decoder.read_transform_type_is_1d(
-                is_key_frame,
-                tx_type_flags.coded_lossless,
-                tx_type_flags.qidx_is_zero,
-                tx_type_flags.reduced_tx_set,
-                tx_w_px.max(tx_h_px),
-                y_mode_raw,
-            )?;
-
             let (txb_skip_ctx, dc_sign_ctx) = if use_real_residual_ctx {
                 (
                     tile_ctx.txb_skip_context(tx_x4, tx_y4, tx_w4, tx_h4, is_single_tx_block),
@@ -1099,13 +1086,29 @@ pub fn parse_coding_unit(
                 (0, 0)
             };
 
-            let block = decoder.read_residual_block(
-                tx_w_px,
-                tx_h_px,
-                tx_class_1d,
-                txb_skip_ctx,
-                dc_sign_ctx,
-            )?;
+            // Real spec order (`decode_coefs`, dav1d `src/recon_tmpl.c`): `all_zero` (`txb_skip`)
+            // is read FIRST, unconditionally; `transform_type()` (spec 5.11.47) is read only when
+            // that comes back `false` -- NOT unconditionally before it. Getting this backwards
+            // was a real, confirmed desync bug: every all-zero transform block (common) previously
+            // read a phantom `transform_type` symbol the real encoder never wrote. See
+            // `SymbolDecoder::read_txb_skip`'s doc for the full story.
+            let all_zero = decoder.read_txb_skip(tx_w_px.max(tx_h_px), txb_skip_ctx)?;
+            let block = if all_zero {
+                ResidualBlockStats {
+                    all_zero: true,
+                    ..Default::default()
+                }
+            } else {
+                let tx_class_1d = decoder.read_transform_type_is_1d(
+                    is_key_frame,
+                    tx_type_flags.coded_lossless,
+                    tx_type_flags.qidx_is_zero,
+                    tx_type_flags.reduced_tx_set,
+                    tx_w_px.max(tx_h_px),
+                    y_mode_raw,
+                )?;
+                decoder.read_residual_block(tx_w_px, tx_h_px, tx_class_1d, dc_sign_ctx)?
+            };
 
             if use_real_residual_ctx {
                 let cul_level = block.sum_abs_level.min(63) as u8;

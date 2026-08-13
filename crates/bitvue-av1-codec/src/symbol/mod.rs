@@ -930,17 +930,20 @@ impl<'a> SymbolDecoder<'a> {
     /// single square `tx_size_px` -- generalized for rectangular var-tx, see `scan::coeff_position`
     /// and `TxClass1d`'s docs; square callers just pass equal values). `class` is
     /// `read_transform_type_is_1d`'s result for this same transform block -- callers must read
-    /// `transform_type()` first (spec order) and pass its result here; it feeds both `eob_bin`'s
-    /// context and (for `Horizontal`/`Vertical`) real per-class coefficient positions.
+    /// `read_txb_skip` first (real spec order: `all_zero`, then -- only if not all-zero --
+    /// `transform_type()`, see that method's doc), skip this call entirely when it returns `true`,
+    /// and otherwise read `transform_type()` next and pass its result here; it feeds both
+    /// `eob_bin`'s context and (for `Horizontal`/`Vertical`) real per-class coefficient positions.
     ///
     /// # Known simplifications (see `symbol/cdf.rs`'s residual-CDF doc for the CDF side)
     ///
-    /// - **No neighbor/level context for `coeff_base`/`coeff_br`**: real AV1 derives these from
-    ///   already-decoded neighbor coefficient levels within the same transform block's scan
-    ///   order -- still deferred, the single largest remaining piece (see
-    ///   `coeff_base_eob_context`'s doc for the one piece of this that *is* real).
-    ///   `eob_bin`/`eob_hi_bit`/`coeff_base_eob` use real context, like
-    ///   `skip`/`intra_mode`/`inter_mode`/`ref_frame` (see `CdfContext::new`'s doc). `txb_skip`/
+    /// - **`coeff_base`/`coeff_br` now have real neighbor/level context** (`scan::lo_ctx`, ported
+    ///   from rav1d's `get_lo_ctx`, real per-position magnitude-band derivation from
+    ///   already-decoded neighbor levels within the same transform block's scan order --
+    ///   `6dc76ef`, "real coeff_base/coeff_br neighbor context + scan order") -- this doc
+    ///   previously (incorrectly) still described these as context-independent placeholders after
+    ///   that landed; corrected. `eob_bin`/`eob_hi_bit`/`coeff_base_eob` also use real context,
+    ///   like `skip`/`intra_mode`/`inter_mode`/`ref_frame` (see `CdfContext::new`'s doc). `txb_skip`/
     ///   `dc_sign` **were previously** attempted with real above/left neighbor context and
     ///   reverted after real decode corruption -- root-caused to this crate's `tx_size` being a
     ///   dimension-based *heuristic* (`TxSize::from_dimensions`) rather than a real bitstream
@@ -949,9 +952,9 @@ impl<'a> SymbolDecoder<'a> {
     ///   real read for key-frame, non-IntraBC coding units, real `txb_skip`/`dc_sign` neighbor
     ///   context (`TileContext::txb_skip_context`/`dc_sign_context`/`set_residual_ctx`, ported
     ///   from rav1d's `get_skip_ctx`/`get_dc_sign_ctx`) is wired back in for exactly that subset
-    ///   -- callers must pass `txb_skip_ctx`/`dc_sign_ctx` computed from real neighbor state only
-    ///   when the transform boundaries are trustworthy, and `0` (the old safe fallback)
-    ///   otherwise; see `parse_coding_unit`'s `use_real_residual_ctx` gate.
+    ///   -- callers must pass `read_txb_skip`'s `txb_skip_ctx`/this method's `dc_sign_ctx` computed
+    ///   from real neighbor state only when the transform boundaries are trustworthy, and `0` (the
+    ///   old safe fallback) otherwise; see `parse_coding_unit`'s `use_real_residual_ctx` gate.
     /// - **`eob_extra` bits after the first are uniform literal bits**, not spec-exact CDF-coded
     ///   -- the real spec only context-codes the *first* extra bit (`eob_hi_bit`, real here); the
     ///   rest are genuinely literal per spec too, so this isn't a simplification for those.
@@ -993,12 +996,36 @@ impl<'a> SymbolDecoder<'a> {
     /// decoder's position advancing by a plausible amount instead of not reading residual data at
     /// all (see `crate::tile::coding_unit`'s module doc for why that previously caused real
     /// desync/crashes on real streams).
+    /// Real `txb_skip` (spec 5.11.39's `all_zero`) -- real per-context CDF + adaptation. Callers
+    /// MUST read this before `transform_type()` for a LUMA transform block and skip
+    /// `transform_type()`/`read_residual_block` entirely when it returns `true` -- ported from
+    /// dav1d's `decode_coefs` (`src/recon_tmpl.c`): `all_zero` is read first, unconditionally, and
+    /// only when it comes back `false` does the function go on to determine `transform_type`
+    /// (chroma: inferred, no bits; luma: real bits) and then coefficients. This crate previously
+    /// read `transform_type()` unconditionally for every transform block regardless of
+    /// `all_zero`, a real desync bug: every all-zero luma block (common for real content) read a
+    /// phantom `transform_type` symbol the real encoder never wrote, permanently shifting the
+    /// bitstream position for everything after it -- found while root-causing why this crate's
+    /// only committed key-frame fixture was fragile to any bit-position shift at all (see
+    /// `docs/DEVELOPMENT_PHASES.md`'s entropy-decoding notes).
+    pub fn read_txb_skip(&mut self, tx_size_px_max: u32, txb_skip_ctx: u8) -> Result<bool> {
+        let tx_class = cdf::tx_size_class(tx_size_px_max);
+        let cdf = self
+            .cdf_context
+            .get_txb_skip_cdf_mut(tx_class, txb_skip_ctx);
+        Ok(self.decoder.read_symbol_adaptive(cdf)? == 1)
+    }
+
+    /// Real luma transform-block coefficient read (spec 5.11.39 `coeffs()`), for a block ALREADY
+    /// confirmed non-all-zero via `read_txb_skip`. See that method's doc for the real call-site
+    /// ordering (`read_txb_skip` -> `transform_type()` -> this) and the desync it fixes -- this
+    /// method no longer reads `txb_skip` itself (moved to `read_txb_skip`, called separately
+    /// before `transform_type()`).
     pub fn read_residual_block(
         &mut self,
         width_px: u32,
         height_px: u32,
         class: TxClass1d,
-        txb_skip_ctx: u8,
         dc_sign_ctx: u8,
     ) -> Result<ResidualBlockStats> {
         // Real spec `txSzCtx` (`Tx_Size_Sqr_Up`, capped): CDF-family selection is by the
@@ -1006,17 +1033,6 @@ impl<'a> SymbolDecoder<'a> {
         // transform this is identical to the old single-scalar `tx_class`.
         let tx_class = cdf::tx_size_class(width_px.max(height_px));
         let is_1d = class.is_1d();
-
-        let txb_skip_cdf = self
-            .cdf_context
-            .get_txb_skip_cdf_mut(tx_class, txb_skip_ctx);
-        let all_zero = self.decoder.read_symbol_adaptive(txb_skip_cdf)? == 1;
-        if all_zero {
-            return Ok(ResidualBlockStats {
-                all_zero: true,
-                ..Default::default()
-            });
-        }
 
         // Real coefficient scan order + per-position neighbor context (spec 8.3.2's
         // `get_coef_base_ctx`/`get_br_ctx`) -- see `symbol::scan`'s module doc. Each axis is
