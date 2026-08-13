@@ -92,6 +92,11 @@ pub struct ParsedFrame {
     /// (i.e. "`cdef_idx()` never reads any bits") if the full header wasn't parsed -- the same
     /// conservative default real spec itself uses when CDEF is disabled.
     pub cdef_bits: u8,
+    /// `skip_mode_present` (spec 5.9.22) -- see `crate::frame_header::FrameHeader::
+    /// skip_mode_present`'s doc for what this gates in tile data. Same sourcing/fallback story
+    /// as `reference_select`; `false` (i.e. "`skip_mode` never reads any bits") if the full
+    /// header wasn't parsed.
+    pub skip_mode_present: bool,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -192,6 +197,7 @@ impl ParsedFrame {
                 subsampling_y: false,
                 enable_filter_intra: false,
                 cdef_bits: 0,
+                skip_mode_present: false,
             });
         }
 
@@ -236,6 +242,7 @@ impl ParsedFrame {
         let mut subsampling_y = false;
         let mut enable_filter_intra = false;
         let mut cdef_bits = 0u8;
+        let mut skip_mode_present = false;
         // Retained across the loop so the frame-header OBU (which comes after the sequence
         // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
         let mut seq_header: Option<crate::SequenceHeader> = None;
@@ -319,6 +326,7 @@ impl ParsedFrame {
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            skip_mode_present = full_hdr.skip_mode_present;
                         }
                     }
                 }
@@ -347,6 +355,7 @@ impl ParsedFrame {
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
+                            skip_mode_present = full_hdr.skip_mode_present;
                         }
                     }
                 }
@@ -387,6 +396,7 @@ impl ParsedFrame {
             subsampling_y,
             enable_filter_intra,
             cdef_bits,
+            skip_mode_present,
         })
     }
 

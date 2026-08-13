@@ -423,6 +423,10 @@ pub struct CodingUnit {
 
     /// Skip flag (true = skip encoding, use prediction only)
     pub skip: bool,
+    /// `skip_mode` (spec 5.11.5) -- true when this CU used implicit compound prediction with no
+    /// explicit ref_frame/mode/MV/residual signaling at all (forced `skip = true`). Always
+    /// `false` for key frames. See `SymbolDecoder::read_skip_mode`'s doc.
+    pub skip_mode: bool,
 
     /// Real `segment_id` (spec 5.11.9/5.11.10), `0` when segmentation is disabled/inactive for
     /// this CU or this crate's known gaps apply -- see `parse_coding_unit`'s segment_id wiring
@@ -505,6 +509,7 @@ impl CodingUnit {
             width,
             height,
             skip: false,
+            skip_mode: false,
             segment_id: 0,
             mode: PredictionMode::DcPred,
             ref_frames: [RefFrame::Intra, RefFrame::Intra],
@@ -598,6 +603,7 @@ pub fn parse_coding_unit(
     sb_size4: u32,
     cdef_bits: u8,
     cdef_idx_state: &mut [i8; 4],
+    skip_mode_present: bool,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
     let (x4, y4) = (x / 4, y / 4);
@@ -630,9 +636,31 @@ pub fn parse_coding_unit(
         }
     }
 
+    // skip_mode (spec 5.11.5) -- real per-context CDF + adaptation, read BEFORE `skip` (dav1d's
+    // `decode_b` order: skip_mode -> skip). Only for non-key frames (`skip_mode_present` is
+    // always `false` from a real intra-only frame's header, per spec's own `skip_mode_params()`
+    // derivation) and only for blocks with `min(bw4, bh4) > 1` (never 4-wide-or-tall). Previously
+    // never read at all -- see this function's doc for the desync this closes.
+    let min_dim4 = width_4x4.min(height_4x4);
+    cu.skip_mode = if !is_key_frame && skip_mode_present && min_dim4 > 1 {
+        let smctx = tile_ctx.skip_mode_context(x4, y4);
+        decoder.read_skip_mode(smctx)?
+    } else {
+        false
+    };
+    tile_ctx.set_skip_mode(x4, y4, width_4x4, height_4x4, cu.skip_mode);
+
     // Read skip flag -- real per-context CDF + adaptation, see `SymbolDecoder::read_skip`'s doc.
-    let skip_ctx = tile_ctx.skip_context(x4, y4);
-    cu.skip = decoder.read_skip(skip_ctx)?;
+    // `skip_mode` forces `skip = true` with NO bit read (spec: a skip_mode block has nothing to
+    // signal, real dav1d `if (b->skip_mode || (seg && seg->skip)) { b->skip = 1; } else { read }`
+    // -- this crate doesn't model the segmentation-forced-skip half, same known gap as
+    // `SymbolDecoder::read_is_inter`'s doc).
+    if cu.skip_mode {
+        cu.skip = true;
+    } else {
+        let skip_ctx = tile_ctx.skip_context(x4, y4);
+        cu.skip = decoder.read_skip(skip_ctx)?;
+    }
     tile_ctx.set_skip(x4, y4, width_4x4, height_4x4, cu.skip);
 
     // segment_id(), post-skip position -- the remaining `update_map && !seg_id_pre_skip` case
@@ -768,20 +796,43 @@ pub fn parse_coding_unit(
         }
     }
 
-    // Raw intra mode symbol (0..=12), captured below when `is_key_frame` -- only meaningful for
-    // `SymbolDecoder::read_transform_type_is_1d`'s `y_mode_raw` param when `is_intra` (this
-    // decoder never reads intra blocks within inter frames, so `is_key_frame` and "is this CU
-    // intra" coincide -- see `read_ref_frames`'s wiring above/below for the same equivalence).
+    // Raw intra mode symbol (0..=12), captured below for `is_intra` CUs -- only meaningful for
+    // `SymbolDecoder::read_transform_type_is_1d`'s `y_mode_raw` param.
     let mut y_mode_raw: u8 = 0;
 
+    // is_inter (spec 5.11.5) -- real per-CU intra/inter dispatch, see
+    // `SymbolDecoder::read_is_inter`'s doc for the desync this closes (this crate previously
+    // treated every non-key-frame CU as unconditionally inter, never reading this bit at all --
+    // a real intra-coded CU within an inter frame is a legal, common case real content uses,
+    // e.g. scene-change intra refresh). Key frames are always intra (no bit read, matches real
+    // spec: `IS_INTER_OR_SWITCH` is false for an intra-only frame so this branch of `decode_b`
+    // never runs at all). `skip_mode` forces inter with no bit read (spec: a skip_mode block is
+    // always inter by construction).
+    let is_inter = if is_key_frame {
+        false
+    } else if cu.skip_mode {
+        true
+    } else {
+        let ictx = tile_ctx.intra_ctx(x4, y4);
+        decoder.read_is_inter(ictx)?
+    };
+    tile_ctx.set_intra_flag(x4, y4, width_4x4, height_4x4, !is_inter);
+
     // Determine if INTRA or INTER
-    if is_key_frame {
-        // KEY frames are always INTRA
+    if !is_inter {
+        // Real INTRA CU -- either a key-frame CU (the only case before 2026-08-13) or a genuine
+        // intra-coded CU within an inter frame (new). Everything below (`y_mode` through the
+        // real per-pixel palette-token read and `tx_size()`) is the SAME unified code path real
+        // dav1d uses for both cases -- see `SymbolDecoder::read_intra_mode_inter_frame`'s doc for
+        // the one real difference (which CDF/context source `y_mode` draws from).
         cu.ref_frames = [RefFrame::Intra, RefFrame::Intra];
 
         // use_intrabc (spec 5.11.6) -- rare (screen-content-coding), only read at all when the
-        // frame header allows it.
-        cu.use_intrabc = if allow_intrabc {
+        // frame header allows it. Real spec: `allow_intrabc` is only ever true for an intra-only
+        // frame's own header (never for a genuine inter frame), so gating on `is_key_frame` here
+        // too is redundant with a well-formed `allow_intrabc` but kept explicit rather than
+        // assumed.
+        cu.use_intrabc = if is_key_frame && allow_intrabc {
             decoder.read_use_intrabc()?
         } else {
             false
@@ -802,10 +853,17 @@ pub fn parse_coding_unit(
         // palette: this crate previously read `y_mode` here UNCONDITIONALLY, a real desync bug on
         // every IntraBC CU that predates this fix).
         if !cu.use_intrabc {
-            // Read INTRA prediction mode -- real per-context CDF + adaptation, see
-            // `SymbolDecoder::read_intra_mode`'s doc.
-            let (above_class, left_class) = tile_ctx.intra_mode_context(x4, y4);
-            let mode_symbol = decoder.read_intra_mode(above_class, left_class)?;
+            // Read INTRA prediction mode -- real per-context CDF + adaptation. Key frames use
+            // `kfym` (real above/left neighbor-mode-class context, `read_intra_mode`'s doc);
+            // non-key-frame intra CUs use a real block-size-class context instead (`y_mode_cdf`,
+            // `read_intra_mode_inter_frame`'s doc) -- a real, deliberate CDF-source swap on the
+            // SAME unified intra mode-info path, not two independent implementations.
+            let mode_symbol = if is_key_frame {
+                let (above_class, left_class) = tile_ctx.intra_mode_context(x4, y4);
+                decoder.read_intra_mode(above_class, left_class)?
+            } else {
+                decoder.read_intra_mode_inter_frame(y_mode_size_context(width_4x4, height_4x4))?
+            };
             cu.mode = intra_mode_from_symbol(mode_symbol)?;
             tile_ctx.set_mode(x4, y4, width_4x4, height_4x4, mode_symbol);
             y_mode_raw = mode_symbol;
@@ -951,7 +1009,7 @@ pub fn parse_coding_unit(
             y4,
             width_4x4,
             height_4x4,
-            false, // never intra -- this decoder doesn't read intra blocks within inter frames
+            false, // real inter CU -- this branch is only reached when `is_inter` (see above)
             is_compound,
             cu.ref_frames[0] as i8 - 1,
             if is_compound {
@@ -1731,6 +1789,22 @@ fn block_size_for_dimensions(width: u32, height: u32) -> crate::tile::BlockSize 
         (16, 64) => Block16x64,
         (32, 128) => Block32x128,
         _ => Block4x4,
+    }
+}
+
+/// Non-key-frame `y_mode`'s block-size-class context (0..=3) -- real spec/dav1d
+/// `dav1d_ymode_size_context[bs]` (`memorysafety/rav1d`, BSD-2-Clause, `src/tables.c`), literal
+/// per-size lookup (not a formula -- porting the raw table avoids guessing at a closed form from
+/// the values, matching this crate's established precedent for lookup-shaped spec tables).
+/// `width_4x4`/`height_4x4`: CU dimensions in 4x4 units (matches every real AV1 block size,
+/// including `4x16`/`16x4` this crate's own `BlockSize` enum doesn't model as named variants --
+/// this function keys on the raw dimensions directly instead, so that gap doesn't apply here).
+fn y_mode_size_context(width_4x4: u32, height_4x4: u32) -> u8 {
+    match (width_4x4, height_4x4) {
+        (32, 32) | (32, 16) | (16, 32) | (16, 16) | (16, 8) | (8, 16) | (8, 8) => 3,
+        (16, 4) | (8, 4) | (4, 16) | (4, 8) | (4, 4) => 2,
+        (8, 2) | (4, 2) | (2, 8) | (2, 4) | (2, 2) => 1,
+        _ => 0,
     }
 }
 

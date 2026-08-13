@@ -128,6 +128,42 @@ impl<'a> SymbolDecoder<'a> {
         Ok(symbol == 1)
     }
 
+    /// Read `skip_mode` (spec 5.11.5) -- real per-`ctx` CDF + adaptation, matching `read_skip`'s
+    /// bar. Real spec gate (dav1d's `decode_b`): only read at all when the frame's
+    /// `skip_mode_present` is true AND `min(bw4, bh4) > 1` (never for 4-wide-or-tall blocks) --
+    /// callers must check both before calling this and default to `false` otherwise, matching
+    /// spec's own "absent means 0" convention (real spec never signals `skip_mode` for a frame/
+    /// block combination that doesn't qualify, not even an implicit always-0 bit). `ctx`:
+    /// `TileContext::skip_mode_context`'s doc. Previously never read at all -- see
+    /// `crate::tile::coding_unit::parse_coding_unit`'s doc for the desync this closes (this
+    /// crate treated every non-key-frame CU as unconditionally inter, matching real spec only
+    /// when every CU in every inter frame happens to skip both `skip_mode` and `is_inter`, which
+    /// isn't how AV1 works).
+    pub fn read_skip_mode(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_skip_mode_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        Ok(symbol == 1)
+    }
+
+    /// Read `is_inter` (spec 5.11.5's real per-CU intra/inter dispatch bit for non-intra-only
+    /// frames) -- real per-`ctx` CDF + adaptation. `ctx`: `TileContext::intra_ctx`'s doc. Returns
+    /// `true` for INTER (matches this crate's existing `is_key_frame`-implies-intra convention:
+    /// `!read_is_inter(...)` gives the real `b->intra` spec meaning directly). Real spec gate:
+    /// only called when NOT `skip_mode` (which forces inter with no bit read) and segmentation
+    /// doesn't force a value via a per-segment `SEG_LVL_REF_FRAME`/`SEG_LVL_GLOBALMV` override --
+    /// this crate doesn't model per-segment feature data (`SegmentationInfo`'s doc), so callers
+    /// gate on `!skip_mode` only; the segmentation-override case is a known, deliberately
+    /// undertested gap (this crate's committed fixture never enables segmentation at all --
+    /// [[feedback_no_third_party_test_data]]-equivalent caveat, matches `read_segment_id`'s own
+    /// existing scope limit).
+    pub fn read_is_inter(&mut self, ctx: u8) -> Result<bool> {
+        let cdf = self.cdf_context.get_intra_cdf_mut(ctx);
+        let symbol = self.decoder.read_symbol_adaptive(cdf)?;
+        // dav1d: `b->intra = !decode_bool_adapt(...)` -- the raw decoded bool IS `is_inter`
+        // directly (1 => intra=0 => inter; 0 => intra=1), not its complement.
+        Ok(symbol == 1)
+    }
+
     /// Read `seg_pred` (spec 5.11.9/5.11.10's temporal segment-id-prediction flag) -- real
     /// per-`ctx` CDF + adaptation, matching `read_skip`'s bar. `ctx`:
     /// `TileContext::seg_pred_context`'s doc.
@@ -239,6 +275,20 @@ impl<'a> SymbolDecoder<'a> {
     /// - 3-12: Directional and smooth modes
     pub fn read_intra_mode(&mut self, above_class: u8, left_class: u8) -> Result<u8> {
         let cdf = self.cdf_context.get_kfym_cdf_mut(above_class, left_class);
+        self.decoder.read_symbol_adaptive(cdf)
+    }
+
+    /// Read `y_mode` for an intra-coded CU within a NON-key frame (spec 5.11.7's
+    /// `intra_block_mode_info()`, distinct from `read_intra_mode`'s key-frame-only `kfym`) --
+    /// real per-block-size-class CDF + adaptation. `size_ctx`:
+    /// `crate::tile::coding_unit::y_mode_size_context`'s doc (NOT an above/left neighbor lookup,
+    /// unlike `kfym` -- verified against dav1d's `decode_b`: `IS_INTER_OR_SWITCH(f->frame_hdr) ?
+    /// cdf.m.y_mode[...] : cdf.kfym[...][...]`, a real, deliberate CDF-source swap on the SAME
+    /// unified intra mode-info code path, not two separate implementations -- everything after
+    /// `y_mode` (angle_delta/uv_mode/cfl/palette/filter_intra) is byte-for-byte identical between
+    /// key-frame and non-key-frame intra CUs).
+    pub fn read_intra_mode_inter_frame(&mut self, size_ctx: u8) -> Result<u8> {
+        let cdf = self.cdf_context.get_y_mode_cdf_mut(size_ctx);
         self.decoder.read_symbol_adaptive(cdf)
     }
 

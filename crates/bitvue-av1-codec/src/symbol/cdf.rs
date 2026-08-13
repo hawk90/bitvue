@@ -136,6 +136,17 @@ pub struct CdfContext {
     /// unlike every other CDF in this struct, this one is not a "representative" placeholder.
     skip_cdf: [Vec<u16>; 3],
 
+    /// `skip_mode` CDFs, one per context (0..=2, `TileContext::skip_mode_context`'s doc). Real
+    /// spec/rav1d default values + real per-context adaptation.
+    skip_mode_cdf: [Vec<u16>; 3],
+    /// `is_inter` CDFs, one per context (0..=3, `TileContext::intra_ctx`'s doc). Real spec/rav1d
+    /// default values + real per-context adaptation.
+    intra_cdf: [Vec<u16>; 4],
+    /// Non-key-frame `y_mode` CDFs, one per block-size-class context (0..=3,
+    /// `crate::tile::coding_unit::y_mode_size_context`'s doc). Real spec/rav1d default values +
+    /// real per-context adaptation.
+    y_mode_cdf: [Vec<u16>; 4],
+
     /// `seg_pred` (temporal segment-id prediction flag) CDFs, one per context (0..=2, from
     /// `TileContext::seg_pred_context`, real spec/rav1d `above_seg_pred[x4] + left_seg_pred[y4]`)
     /// -- real spec/rav1d default values (`memorysafety/rav1d`/`videolan/dav1d`, BSD-2-Clause,
@@ -606,6 +617,39 @@ impl CdfContext {
             vec![32768 - 31671, 0, 0], // context 0 (no skip neighbors): mostly not-skip
             vec![32768 - 16515, 0, 0], // context 1 (one skip neighbor)
             vec![32768 - 4576, 0, 0],  // context 2 (both neighbors skip): mostly skip
+        ];
+
+        // `skip_mode` (spec 5.11.5, per-CU gate before `skip`) -- real spec/rav1d default CDFs
+        // (`default_cdf.m.skip_mode`, `src/cdf.c`), context 0..=2 (`skip_mode_context`'s doc, same
+        // above+left-neighbor-count shape as `skip`). Raw probs 32621/20708/8127.
+        let skip_mode_cdf: [Vec<u16>; 3] = [32621, 20708, 8127].map(binary_ctx_cdf);
+
+        // `is_inter` (spec 5.11.5's `read_is_inter`, real per-CU intra/inter dispatch for
+        // non-key/non-switch... actually non-intra-only frames) -- real spec/rav1d default CDFs
+        // (`default_cdf.m.intra`, `src/cdf.c`), context 0..=3 (`TileContext::intra_ctx`'s doc).
+        // Raw probs 806/16662/20186/26538. Previously never read at all (see
+        // `SymbolDecoder::read_is_inter`'s doc for the desync this closes).
+        let intra_cdf: [Vec<u16>; 4] = [806, 16662, 20186, 26538].map(binary_ctx_cdf);
+
+        // `y_mode` (spec 5.11.7's non-key-frame `intra_block_mode_info()` Y-mode read -- distinct
+        // from `kfym`, key-frame-only) -- real spec/rav1d default CDFs (`default_cdf.m.y_mode`,
+        // `src/cdf.c`), context 0..=3 from `crate::tile::coding_unit::y_mode_size_context` (a
+        // block-size class, NOT an above/left neighbor lookup like `kfym`). 13-symbol alphabet
+        // (`N_INTRA_PRED_MODES`), same `multi_ctx_cdf` shape as every other real multi-symbol
+        // table here.
+        let y_mode_cdf: [Vec<u16>; 4] = [
+            multi_ctx_cdf(&[
+                22801, 23489, 24293, 24756, 25601, 26123, 26606, 27418, 27945, 29228, 29685, 30349,
+            ]),
+            multi_ctx_cdf(&[
+                18673, 19845, 22631, 23318, 23950, 24649, 25527, 27364, 28152, 29701, 29984, 30852,
+            ]),
+            multi_ctx_cdf(&[
+                19770, 20979, 23396, 23939, 24241, 24654, 25136, 27073, 27830, 29360, 29730, 30659,
+            ]),
+            multi_ctx_cdf(&[
+                20155, 21301, 22838, 23178, 23261, 23533, 23703, 24804, 25352, 26575, 27016, 28049,
+            ]),
         ];
 
         // seg_pred/seg_id (spec 5.11.9/5.11.10 `segment_id()`): real spec/rav1d default CDFs
@@ -2112,6 +2156,9 @@ impl CdfContext {
         Self {
             partition_cdfs,
             skip_cdf,
+            skip_mode_cdf,
+            intra_cdf,
+            y_mode_cdf,
             seg_pred_cdf,
             seg_id_cdf,
             pal_y_cdf,
@@ -2214,6 +2261,23 @@ impl CdfContext {
     /// representative placeholder).
     pub fn get_skip_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
         &mut self.skip_cdf[(ctx as usize).min(2)]
+    }
+
+    /// Get mutable `skip_mode` CDF for the given context (0..=2, from
+    /// `TileContext::skip_mode_context`).
+    pub fn get_skip_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.skip_mode_cdf[(ctx as usize).min(2)]
+    }
+
+    /// Get mutable `is_inter` CDF for the given context (0..=3, from `TileContext::intra_ctx`).
+    pub fn get_intra_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.intra_cdf[(ctx as usize).min(3)]
+    }
+
+    /// Get mutable non-key-frame `y_mode` CDF for the given block-size-class context (0..=3, from
+    /// `crate::tile::coding_unit::y_mode_size_context`).
+    pub fn get_y_mode_cdf_mut(&mut self, ctx: u8) -> &mut [u16] {
+        &mut self.y_mode_cdf[(ctx as usize).min(3)]
     }
 
     /// Get mutable `seg_pred` CDF for context `ctx` (0..=2 -- `TileContext::seg_pred_context`'s

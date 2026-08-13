@@ -128,6 +128,7 @@ pub fn parse_superblock(
     mi_rows: u32,
     mi_cols: u32,
     cdef_bits: u8,
+    skip_mode_present: bool,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -183,6 +184,7 @@ pub fn parse_superblock(
         sb_size / 4,
         cdef_bits,
         &mut cdef_idx_state,
+        skip_mode_present,
         &mut sb.coding_units,
     )?;
 
@@ -225,6 +227,7 @@ fn parse_coding_units_recursive(
     sb_size4: u32,
     cdef_bits: u8,
     cdef_idx_state: &mut [i8; 4],
+    skip_mode_present: bool,
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
@@ -256,6 +259,7 @@ fn parse_coding_units_recursive(
             sb_size4,
             cdef_bits,
             cdef_idx_state,
+            skip_mode_present,
         )?;
 
         coding_units.push(cu);
@@ -288,6 +292,7 @@ fn parse_coding_units_recursive(
                 sb_size4,
                 cdef_bits,
                 cdef_idx_state,
+                skip_mode_present,
                 coding_units,
             )?;
         }

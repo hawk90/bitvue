@@ -212,6 +212,12 @@ pub struct FrameHeader {
     /// for the same reason `allow_screen_content_tools`'s doc gives.
     pub delta_lf_present: bool,
     pub delta_lf_multi: bool,
+    /// `skip_mode_present` (spec 5.9.22 `skip_mode_params()`) -- gates the real per-CU
+    /// `skip_mode` read (spec 5.11.5). Same basic-vs-full caveat as `reference_select`; always
+    /// `false` from `parse_frame_header_basic` (matches real spec's own `skip_mode_present = 0`
+    /// default whenever `skip_mode_params()`'s derivation conditions aren't met, so treating an
+    /// un-derivable value as "absent" is bitstream-sync-safe, not just a placeholder).
+    pub skip_mode_present: bool,
     /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
     /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
     /// basic-vs-full caveat as `reference_select`); real value only from
@@ -583,6 +589,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             allow_screen_content_tools: false,
             delta_lf_present: false,
             delta_lf_multi: false,
+            skip_mode_present: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -758,6 +765,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         allow_screen_content_tools: false,
         delta_lf_present: false,
         delta_lf_multi: false,
+        skip_mode_present: false,
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,

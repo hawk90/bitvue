@@ -719,7 +719,7 @@ fn read_skip_mode_params(
     ref_state: &RefFrameState,
     ref_frame_idx: &[u32; REFS_PER_FRAME],
     order_hint: u32,
-) -> Result<()> {
+) -> Result<bool> {
     let order_hint_bits = seq
         .order_hint_bits_minus_1
         .map(|v| v as u32 + 1)
@@ -766,10 +766,12 @@ fn read_skip_mode_params(
             }
         }
     };
-    if skip_mode_allowed {
-        reader.read_bit()?; // skip_mode_present
-    }
-    Ok(())
+    let skip_mode_present = if skip_mode_allowed {
+        reader.read_bit()?
+    } else {
+        false
+    };
+    Ok(skip_mode_present)
 }
 
 fn parse_film_grain_params(
@@ -967,6 +969,7 @@ pub fn parse_frame_header_full(
             allow_screen_content_tools: false,
             delta_lf_present: false,
             delta_lf_multi: false,
+            skip_mode_present: false,
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -1205,7 +1208,7 @@ pub fn parse_frame_header_full(
 
     let txfm_mode = read_tx_mode(&mut reader, coded_lossless)?;
     let reference_select = read_frame_reference_mode(&mut reader, frame_is_intra)?;
-    read_skip_mode_params(
+    let skip_mode_present = read_skip_mode_params(
         &mut reader,
         frame_is_intra,
         reference_select,
@@ -1274,6 +1277,7 @@ pub fn parse_frame_header_full(
         allow_screen_content_tools,
         delta_lf_present,
         delta_lf_multi,
+        skip_mode_present,
         reduced_tx_set,
         txfm_mode,
         use_ref_frame_mvs,

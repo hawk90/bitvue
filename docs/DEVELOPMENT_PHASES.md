@@ -1972,6 +1972,32 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   결론. **미착수 이유**: `skip_mode`/`is_inter` 신규 구현 + `is_inter==false`일 때 키프레임
   인트라 mode-info 경로 재사용 배선까지 필요해 `cdef_idx` 급 신규 기능 작업 — 사용자가
   "다음 세션"으로 마무리, 다음 착수 지점으로 명시.
+- **`skip_mode`/`is_inter` 실제 구현 완료(2026-08-13, 같은 세션 "계속" 요청으로 착수)**: dav1d
+  `decode_b`를 계속 대조해 `skip_mode`(spec 5.11.5, `skip_mode_present` 프레임 플래그 +
+  `min(bw4,bh4)>1` 게이팅, `skip`보다 먼저 읽고 참이면 `skip`을 비트 없이 강제 1로)와
+  `is_inter`(`get_intra_ctx` 4-컨텍스트, `cdef_idx`/`delta_q`/`delta_lf` 다음·mode-info 전에
+  읽음) 신규 구현. `skip_mode_present`는 `read_skip_mode_params`가 비트만 소비하고 값을 버리던
+  것을 반환하도록 수정 + `FrameHeader`/`ParsedFrame`에 노출(cdef_bits와 동일 패턴).
+  `TileContext`에 `skip_mode_context`/`set_skip_mode`(신규 above/left 배열) +
+  `intra_ctx`/`set_intra_flag`(기존 `ref_frame()`용 `above_ref_intra`/`left_ref_intra` 배열
+  재사용 — 실제 dav1d도 `BlockContext.intra` 하나를 두 용도로 공유하는 걸 확인 후 재사용,
+  단 `set_ref_frames`와 달리 `ref0`/`ref1`/`comp`는 안 건드리도록 별도 setter 신규). `y_mode`도
+  키프레임(`kfym`, above/left 이웃 클래스)과 비키프레임 인트라(`y_mode_cdf`, 블록크기 클래스
+  `y_mode_size_context`, dav1d `dav1d_ymode_size_context` 테이블 그대로 포팅)가 다른 CDF/컨텍스트를
+  쓴다는 걸 dav1d 소스로 확인 후 분기 — 그 뒤(angle_delta/uv_mode/cfl/palette/filter_intra/
+  tx_size)는 완전히 동일한 코드 경로라 그대로 재사용. `is_inter` 판정 결과로 최상위 분기를
+  `is_key_frame`에서 `!is_inter`로 교체(인터 경로 자체 로직은 무변경, `is_inter`일 때만
+  진입하도록 조건만 교체). 새 CDF 3개(`skip_mode_cdf`/`intra_cdf`/`y_mode_cdf`) 전부 rav1d
+  `default_cdf`(`src/cdf.c`) 원시값 이식. **실측 검증**: 인터 프레임 30개 byte_offset 재측정 —
+  fully-clean(에러 0 + 90%+ 소비) 프레임은 여전히 0/29지만, 총 성공/실패 슈퍼블록 비율이
+  개선(대략 31%→42%)됐고 다수 프레임이 에러 발생 지점까지 tile_data를 거의 끝까지 소비하는
+  형태로 바뀜(이전엔 극초반 조기종료가 흔했음) — 유의미한 진전이지만 여전히 미해결. 새로 관찰된
+  에러 유형("Partition Vert4/Horz4 not allowed for Block16x16") 발견, 이 수정이 새로 만든 버그인지
+  또 다른 다운스트림 갭(motion_mode/interintra/compound_type/wedge — 원래 엔트로피 디코더 계획의
+  "Phase 6: 전혀 안 읽는 신택스" 목록에 이미 있던 항목들)의 증상인지는 미확인. 406/406 lib,
+  `--tests` 전부 클린(무관 flaky LRU 1개 제외), clippy/fmt 무경고 변화 없음. 다음 세션: 남은
+  인터 프레임 에러의 근본원인(motion_mode 등 Phase 6 잔여 신택스 vs 이번 구현의 잠복 버그)
+  추적.
 
 ---
 

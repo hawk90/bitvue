@@ -349,6 +349,11 @@ impl SpatialRefContext {
 pub struct TileContext {
     above_skip: Vec<bool>,
     left_skip: Vec<bool>,
+    /// `skip_mode` (spec 5.11.5) above/left context -- real dav1d `t->a->skip_mode[bx4]`/
+    /// `t->l.skip_mode[by4]`, same direct-sum-no-have-top/left-branch shape as `above_skip`/
+    /// `left_skip` (`skip_mode_context`'s doc).
+    above_skip_mode: Vec<bool>,
+    left_skip_mode: Vec<bool>,
     /// Raw intra-mode symbol (0..=12) of the last block covering this 4x4 position, defaulting
     /// to `0` (`DC_PRED`) -- matches dav1d's `BlockContext::mode` default/edge behavior (an
     /// unwritten position reads as `DC_PRED`'s context class, per spec `INTRA_MODE_CONTEXT[0]`).
@@ -481,6 +486,8 @@ impl TileContext {
         Self {
             above_skip: vec![false; tile_width_4x4.max(1) as usize],
             left_skip: vec![false; tile_height_4x4.max(1) as usize],
+            above_skip_mode: vec![false; tile_width_4x4.max(1) as usize],
+            left_skip_mode: vec![false; tile_height_4x4.max(1) as usize],
             above_mode: vec![0; tile_width_4x4.max(1) as usize],
             left_mode: vec![0; tile_height_4x4.max(1) as usize],
             above_partition: vec![0; tile_width_4x4.div_ceil(2).max(1) as usize],
@@ -551,6 +558,7 @@ impl TileContext {
     /// Reset the left-context arrays at the start of each new superblock row.
     pub fn start_superblock_row(&mut self) {
         self.left_skip.iter_mut().for_each(|v| *v = false);
+        self.left_skip_mode.iter_mut().for_each(|v| *v = false);
         self.left_mode.iter_mut().for_each(|v| *v = 0);
         self.left_partition.iter_mut().for_each(|v| *v = 0);
         self.left_ref_intra.iter_mut().for_each(|v| *v = true);
@@ -1119,6 +1127,109 @@ impl TileContext {
         let y_end = (y4 + height_4x4).min(self.left_skip.len() as u32);
         for y in y4..y_end {
             self.left_skip[y as usize] = skip;
+        }
+    }
+
+    /// `skip_mode` context index (0..=2) -- identical shape to `skip_context`, per dav1d
+    /// `smctx = t->a->skip_mode[bx4] + t->l.skip_mode[by4]` (no `have_top`/`have_left` branch,
+    /// unlike `intra_ctx`).
+    pub fn skip_mode_context(&self, x4: u32, y4: u32) -> u8 {
+        let above = self
+            .above_skip_mode
+            .get(x4 as usize)
+            .copied()
+            .unwrap_or(false);
+        let left = self
+            .left_skip_mode
+            .get(y4 as usize)
+            .copied()
+            .unwrap_or(false);
+        u8::from(above) + u8::from(left)
+    }
+
+    /// Record a decoded `skip_mode` flag across the block's 4x4-unit footprint -- mirrors
+    /// `set_skip` exactly, separate array (`skip_mode_context`'s doc).
+    pub fn set_skip_mode(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        skip_mode: bool,
+    ) {
+        let x_end = (x4 + width_4x4).min(self.above_skip_mode.len() as u32);
+        for x in x4..x_end {
+            self.above_skip_mode[x as usize] = skip_mode;
+        }
+        let y_end = (y4 + height_4x4).min(self.left_skip_mode.len() as u32);
+        for y in y4..y_end {
+            self.left_skip_mode[y as usize] = skip_mode;
+        }
+    }
+
+    /// `is_inter` context index (0..=3, real spec's `IsInterCtx`) -- whether the above/left
+    /// neighbors were themselves intra-coded, source: rav1d `get_intra_ctx` (`memorysafety/rav1d`,
+    /// BSD-2-Clause, `src/env.rs`). Reuses `above_ref_intra`/`left_ref_intra` (the same array
+    /// `ref_frame()`'s own context functions read -- real dav1d's `BlockContext.intra` is one
+    /// shared field serving both purposes, see that field's doc) rather than a dedicated array.
+    /// Unlike `skip_context`/`skip_mode_context`, this real spec formula explicitly branches on
+    /// `have_top`/`have_left` instead of a bare sum -- `have_left && have_top` folds `ctx==2` to
+    /// `3` (skipping `2`, which is otherwise reachable from the other branches), so a plain
+    /// `left+above` (that a "default array value" shortcut would produce for an unwritten neighbor)
+    /// is NOT behaviorally equivalent here.
+    pub fn intra_ctx(&self, x4: u32, y4: u32) -> u8 {
+        let have_left = x4 > 0;
+        let have_top = y4 > 0;
+        let above = u8::from(
+            self.above_ref_intra
+                .get(x4 as usize)
+                .copied()
+                .unwrap_or(true),
+        );
+        let left = u8::from(
+            self.left_ref_intra
+                .get(y4 as usize)
+                .copied()
+                .unwrap_or(true),
+        );
+        if have_left {
+            if have_top {
+                let ctx = left + above;
+                ctx + u8::from(ctx == 2)
+            } else {
+                left * 2
+            }
+        } else if have_top {
+            above * 2
+        } else {
+            0
+        }
+    }
+
+    /// Record whether a block was intra-coded, for future `intra_ctx` lookups -- only touches
+    /// `above_ref_intra`/`left_ref_intra` (NOT `above_ref_comp`/`above_ref0`/`above_ref1`, unlike
+    /// `set_ref_frames`): real dav1d's entropy-pass context-set macro for a genuine intra CU
+    /// within an inter frame writes only `edge->intra`/`edge->skip_mode` (`src/decode.c`,
+    /// `rep_macro(edge->intra, off, 1)` -- no `ref`/`comp_type` write at all, since an intra
+    /// block has no reference-frame data to record), so mirroring `set_ref_frames`'s full write
+    /// here would touch fields real spec never updates for this case. The inter path keeps using
+    /// `set_ref_frames(..., is_intra: false, ...)` for its own (correct, existing) write of all
+    /// four fields together.
+    pub fn set_intra_flag(
+        &mut self,
+        x4: u32,
+        y4: u32,
+        width_4x4: u32,
+        height_4x4: u32,
+        is_intra: bool,
+    ) {
+        let x_end = (x4 + width_4x4).min(self.above_ref_intra.len() as u32);
+        for x in x4..x_end {
+            self.above_ref_intra[x as usize] = is_intra;
+        }
+        let y_end = (y4 + height_4x4).min(self.left_ref_intra.len() as u32);
+        for y in y4..y_end {
+            self.left_ref_intra[y as usize] = is_intra;
         }
     }
 
