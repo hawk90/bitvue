@@ -110,8 +110,21 @@ impl PartitionType {
             PartitionType::VertA | PartitionType::VertB => {
                 block_size.width() >= 16 && block_size.height() >= 16
             }
-            PartitionType::Horz4 => block_size.width() >= 16 && block_size.height() >= 32,
-            PartitionType::Vert4 => block_size.width() >= 32 && block_size.height() >= 16,
+            // spec 5.11.4 / the real `partition_cdfs` alphabet shape (`CdfContext::new`'s doc):
+            // HORZ_4/VERT_4 are legal for exactly the square 16x16/32x32/64x64 block sizes (10-
+            // symbol partition alphabet) -- NOT 8x8 (4-symbol alphabet, no HORZ_4/VERT_4 at all)
+            // and NOT 128x128 (8-symbol alphabet: HORZ_A/B/VERT_A/B but no HORZ_4/VERT_4 either,
+            // `Default_Partition_W128_Cdf`'s 7-threshold/8-symbol shape). Previously an asymmetric
+            // `width>=16 && height>=32` (Horz4) / `width>=32 && height>=16` (Vert4) check -- wrong
+            // shape entirely, rejecting a real, correctly-decoded `Horz4` at a plain 16x16 (height
+            // 16, not >=32) as "not allowed" even though it's spec-legal. Found via a real dav1d
+            // oracle build cross-check surfacing this as a hard decode error on real fixture
+            // frames once tile_data finally started at the right byte offset (see this crate's
+            // `parser.rs` `ObuType::Frame` fix).
+            PartitionType::Horz4 | PartitionType::Vert4 => {
+                let w = block_size.width();
+                w == block_size.height() && (16..=64).contains(&w)
+            }
         }
     }
 }
@@ -151,17 +164,24 @@ pub enum BlockSize {
     Block128x64,
     /// 128x128 block
     Block128x128,
+    /// 16x4 block (HORZ_4 sub-block of a 16x16 -- the smallest HORZ_4 target, missing until this
+    /// crate's `BlockSize` was found to have no way to represent it at all despite `Horz4` being
+    /// spec-legal on 16x16; see `PartitionType::is_allowed`'s doc)
+    Block16x4,
     /// 32x8 block (HORZ_4 sub-block)
     Block32x8,
     /// 64x16 block (HORZ_4 sub-block)
     Block64x16,
-    /// 128x32 block (HORZ_4 sub-block)
+    /// 128x32 block (HORZ_4 sub-block) -- unreachable in practice (`Horz4`/`Vert4` aren't legal on
+    /// 128x128, see `is_allowed`'s doc), kept only for enum completeness/symmetry
     Block128x32,
+    /// 4x16 block (VERT_4 sub-block of a 16x16, `Block16x4`'s transpose)
+    Block4x16,
     /// 8x32 block (VERT_4 sub-block)
     Block8x32,
     /// 16x64 block (VERT_4 sub-block)
     Block16x64,
-    /// 32x128 block (VERT_4 sub-block)
+    /// 32x128 block (VERT_4 sub-block) -- unreachable in practice, see `Block128x32`'s doc
     Block32x128,
 }
 
@@ -169,12 +189,13 @@ impl BlockSize {
     /// Get block width in pixels
     pub fn width(&self) -> u32 {
         match self {
-            BlockSize::Block4x4 | BlockSize::Block4x8 => 4,
+            BlockSize::Block4x4 | BlockSize::Block4x8 | BlockSize::Block4x16 => 4,
             BlockSize::Block8x4
             | BlockSize::Block8x8
             | BlockSize::Block8x16
             | BlockSize::Block8x32 => 8,
-            BlockSize::Block16x8
+            BlockSize::Block16x4
+            | BlockSize::Block16x8
             | BlockSize::Block16x16
             | BlockSize::Block16x32
             | BlockSize::Block16x64 => 16,
@@ -194,12 +215,13 @@ impl BlockSize {
     /// Get block height in pixels
     pub fn height(&self) -> u32 {
         match self {
-            BlockSize::Block4x4 | BlockSize::Block8x4 => 4,
+            BlockSize::Block4x4 | BlockSize::Block8x4 | BlockSize::Block16x4 => 4,
             BlockSize::Block4x8
             | BlockSize::Block8x8
             | BlockSize::Block16x8
             | BlockSize::Block32x8 => 8,
-            BlockSize::Block8x16
+            BlockSize::Block4x16
+            | BlockSize::Block8x16
             | BlockSize::Block16x16
             | BlockSize::Block32x16
             | BlockSize::Block64x16 => 16,
@@ -366,22 +388,23 @@ impl BlockSize {
                 }
             }
             PartitionType::Horz4 => {
-                // Four equal horizontal strips, each at 1/4 height
+                // Four equal horizontal strips, each at 1/4 height -- only legal (`is_allowed`)
+                // for the square 16x16/32x32/64x64 sizes, so those are the only real arms; the
+                // rest fall back to `*self` (never reached in a real spec-legal parse).
                 match self {
-                    BlockSize::Block16x32 => vec![BlockSize::Block16x8; 4],
+                    BlockSize::Block16x16 => vec![BlockSize::Block16x4; 4],
                     BlockSize::Block32x32 => vec![BlockSize::Block32x8; 4],
                     BlockSize::Block64x64 => vec![BlockSize::Block64x16; 4],
-                    BlockSize::Block128x128 => vec![BlockSize::Block128x32; 4],
                     _ => vec![*self],
                 }
             }
             PartitionType::Vert4 => {
-                // Four equal vertical strips, each at 1/4 width
+                // Four equal vertical strips, each at 1/4 width -- same square-only legality as
+                // `Horz4` above.
                 match self {
-                    BlockSize::Block32x16 => vec![BlockSize::Block8x16; 4],
+                    BlockSize::Block16x16 => vec![BlockSize::Block4x16; 4],
                     BlockSize::Block32x32 => vec![BlockSize::Block8x32; 4],
                     BlockSize::Block64x64 => vec![BlockSize::Block16x64; 4],
-                    BlockSize::Block128x128 => vec![BlockSize::Block32x128; 4],
                     _ => vec![*self],
                 }
             }

@@ -885,11 +885,19 @@ mod tests {
              firing against this fixture, or may have regressed to the old dimension-only \
              heuristic"
         );
+        // NOT a "majority must split" bar -- a real dav1d oracle cross-check (`DEBUG_BLOCK_INFO`,
+        // 2026-08-13, see `docs/DEVELOPMENT_PHASES.md`'s Phase 4 entry) confirms real encoders
+        // favor NOT splitting for this fixture's content: frame 13's own superblock(0,0) has 3
+        // real `vartxtree` reads in the oracle trace, only 1 of which splits (~33%), matching this
+        // fixture-wide ratio almost exactly once the tile_data-offset/global_motion_params/
+        // Horz4-Vert4 bugs this session found were fixed. A prior "majority" threshold here was a
+        // guess calibrated against a since-fixed buggy decode, not a real spec/encoder property --
+        // the actual non-degenerate bar is just "some CUs split and some don't", not "most do".
         assert!(
-            cus_with_a_real_split * 2 > eligible_cu_count,
-            "expected a majority of eligible CUs to show a real txfm_split (more than one leaf), \
-             got only {cus_with_a_real_split}/{eligible_cu_count} -- the txfm_split reads may be \
-             degenerating to always-not-split"
+            cus_with_a_real_split > 0 && cus_with_a_real_split < eligible_cu_count,
+            "expected both split and not-split real txfm_split outcomes among eligible CUs \
+             (neither all-split nor all-not-split), got {cus_with_a_real_split}/{eligible_cu_count} \
+             -- the txfm_split reads may be degenerating to a fixed outcome"
         );
         assert!(
             distinct_leaf_sizes.len() > 2,
@@ -970,10 +978,13 @@ mod tests {
             "expected every eligible non-skip non-square inter CU to get a real tx_blocks \
              breakdown ({cus_with_tx_blocks}/{eligible_cu_count} did)"
         );
+        // See `real_fixture_inter_var_tx_is_not_degenerate`'s doc for why this isn't a "majority"
+        // bar -- a real dav1d oracle cross-check confirms ~1/3 split is the actual real ratio for
+        // this fixture's content, not a bug.
         assert!(
-            cus_with_a_real_split * 2 > eligible_cu_count,
-            "expected a majority of eligible non-square CUs to show a real txfm_split, got only \
-             {cus_with_a_real_split}/{eligible_cu_count}"
+            cus_with_a_real_split > 0 && cus_with_a_real_split < eligible_cu_count,
+            "expected both split and not-split real txfm_split outcomes among eligible non-square \
+             CUs, got {cus_with_a_real_split}/{eligible_cu_count}"
         );
         assert!(
             rect_leaf_sizes.iter().any(|(w, h)| w != h),

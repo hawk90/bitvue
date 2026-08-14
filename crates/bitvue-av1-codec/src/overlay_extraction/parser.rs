@@ -322,6 +322,25 @@ impl ParsedFrame {
                     // transform grids, deblocking boundary strength) silently falls back to
                     // scaffold data -- found via `get_deblocking_analysis` returning a decode
                     // error on real fixture frames that should have real tile data.
+                    //
+                    // `header_size_bytes` for the tile_data cut MUST come from `full_hdr`
+                    // (`parse_frame_header_full`), not `parse_frame_header_basic` -- confirmed via
+                    // a real dav1d oracle build (`DEBUG_BLOCK_INFO`) that `basic`'s value is
+                    // exactly what its own doc admits: an approximation for non-KEY frames that
+                    // skips `frame_size()`/`tile_info()`/`segmentation_params()`/
+                    // `loop_filter_params()`/`cdef_params()`/`lr_params()`/
+                    // `global_motion_params()`/etc. entirely. On the real fixture's frame 13 this
+                    // undershoots by 11 bytes (`basic`=8, `full`=19, oracle's independently-derived
+                    // true offset=19) -- every inter frame's `tile_data` has silently started 11+
+                    // bytes into what's still frame-header bits, handing the symbol decoder
+                    // garbage from its very first read. This was the actual root cause behind the
+                    // "compounding entropy desync" investigated over many sessions as a
+                    // coeff_base/coeff_br context-precision suspicion -- that suspicion was never
+                    // reached because the decoder was never even starting from real tile bytes for
+                    // inter frames. `basic` is kept only for `is_intra_only`/`base_qp`/
+                    // `delta_q_enabled` when `seq_header` isn't available yet (a Frame OBU can't
+                    // spec-legally precede a Sequence Header, so this fallback path is defensive,
+                    // not a real-stream case).
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
                         // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
                         // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
@@ -337,7 +356,7 @@ impl ParsedFrame {
                         frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
                         frame_type.base_qp = frame_hdr.base_q_idx;
                         delta_q_enabled = frame_hdr.delta_q_present;
-                        if frame_hdr.header_size_bytes < obu.payload.len() {
+                        if seq_header.is_none() && frame_hdr.header_size_bytes < obu.payload.len() {
                             tile_data
                                 .extend_from_slice(&obu.payload[frame_hdr.header_size_bytes..]);
                         }
@@ -363,6 +382,10 @@ impl ParsedFrame {
                             subpel_filter_switchable = full_hdr.subpel_filter_switchable;
                             switchable_motion_mode = full_hdr.switchable_motion_mode;
                             allow_warped_motion = full_hdr.allow_warped_motion;
+                            if full_hdr.header_size_bytes < obu.payload.len() {
+                                tile_data
+                                    .extend_from_slice(&obu.payload[full_hdr.header_size_bytes..]);
+                            }
                         }
                     }
                 }

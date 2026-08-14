@@ -2082,6 +2082,84 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   최초 미해결 용의자)과 같은 부류로 보임. **결론**: 남은 ~50%의 실패는 아마 더 이상 "빠진
   신택스 하나 더 찾기"로는 안 풀리고, 훨씬 느리고 깊은 심볼 단위 포렌식(또는 독립 오라클)이
   필요한 문제일 가능성이 큼 — 다음 세션 방향 재설정 필요.
+- **다음 세션: 독립 오라클로 실제 근본 원인 확인 → coeff_base/coeff_br 의심은 틀렸음, 진짜
+  원인은 tile_data 시작 오프셋 자체가 잘못 계산되고 있었음(2026-08-13)** — 사용자 확인 후
+  실제 dav1d를 소스에서 `DEBUG_BLOCK_INFO`(프레임/블록 범위로 스코프 가능한 기존 디버그
+  매크로) 활성화해 빌드(스크래치패드, 커밋 안 함), 프레임13 sb(0,0) 128x32유닛 범위의
+  진짜 심볼별 트레이스를 얻어 이 크레이트 자체 파서와 직접 대조. **1차 발견**: 프레임13
+  sb(0,0)의 첫 심볼(partition, 128x128, ctx=0)부터 이미 다름 — 진짜 dav1d는 SPLIT(bp=3),
+  이 크레이트는 NONE(sym=0). CDF 테이블 자체는 문자 그대로 일치(rav1d
+  `Default_Partition_W128_Cdf` 4개 컨텍스트 전부 `32768-p` 변환 후 완전 동일값 확인) —
+  즉 컨텍스트/CDF 정밀도 문제가 전혀 아니라, 디코더에 넘겨지는 tile_data 바이트 자체가
+  잘못된 위치에서 시작하고 있다는 뜻. **근본 원인 확정**: `overlay_extraction/parser.rs`의
+  `ObuType::Frame` 분기가 tile_data를 잘라낼 때 `parse_frame_header_basic`(자체 doc이 "이
+  header_size는 non-KEY 프레임에 대해 근사치"라고 명시하는, `frame_size()`/`tile_info()`/
+  `segmentation_params()`/`loop_filter_params()`/`cdef_params()`/`lr_params()`/
+  `global_motion_params()` 등을 통째로 건너뛰는 의도적 근사 파서)의 `header_size_bytes`를
+  써왔음 — 같은 자리에서 이미 완전한 `parse_frame_header_full`도 호출하고 있었지만 그건
+  플래그(reference_select 등) 추출용일 뿐, tile_data 자르기에는 한 번도 쓰이지 않았음.
+  프레임13 실측: `basic`=8바이트, `full`=19바이트, 오라클로 역산한 진짜 오프셋도 19바이트 —
+  기존 코드는 인터 프레임마다 진짜 tile_data보다 11바이트(경우에 따라 더) 먼저 시작해서,
+  아직 프레임 헤더 비트인 구간을 심볼 디코더에 tile_data로 통째로 넘기고 있었음. **이게
+  이 세션(그리고 그 이전 여러 세션) 내내 "coeff_base/coeff_br 컨텍스트 정밀도 문제"로
+  의심해온 "느리게 누적되는 desync"의 실제 정체** — 정밀도 문제가 아니라 애초에 진짜
+  tile_data를 읽은 적이 없었음. 수정: `full_hdr.header_size_bytes`로 자르도록 교체(`full`
+  실패 시에만 `basic`으로 폴백, seq_header 없는 방어적 케이스 한정). **2차 발견(수정 직후
+  회귀 테스트로 노출)**: 키프레임(프레임0)도 같은 분기를 타는데 수정 후 오히려 더 퇴화
+  (`real_fixture_key_frame_intra_modes_are_not_degenerate`가 CU 1개/모드 1종으로 실패) —
+  같은 오라클 대조로 재확인하니 `full`=25바이트인데 오라클 진짜 값은 17바이트, 8바이트
+  과다소비. 원인: `frame_header_full.rs`의 `parse_global_motion_params` 호출이
+  `!frame_is_intra` 게이트 없이 무조건 실행되고 있었음 — spec 5.9.2는 `global_motion_params()`를
+  `FrameIsIntra`일 때 아예 호출하지 않는데, 키프레임엔 참조 프레임이 없으니 인코더도 이
+  신택스를 전혀 안 씀. `allow_warped_motion`/`read_frame_reference_mode`는 이미 올바르게
+  `frame_is_intra` 게이트가 있었는데 바로 다음 줄의 `global_motion_params`만 빠져 있었던
+  것 — 게이트 추가로 수정, `full`=17로 오라클과 정확히 일치. **검증**: 두 수정 후 프레임13
+  루트 partition이 SPLIT으로 정확히 일치, 그 아래 여러 레벨까지 오라클과 대조 확인(64x64
+  NONE 리프 위치/크기까지 일치); 프레임0 키프레임도 non-degenerate 회복.
+  `cargo test --workspace --lib`: 기존 403/407 통과에서 키프레임 테스트가 살아나 404/407 —
+  단 **아직 3개 실패 남음**(`real_fixture_inter_var_tx_is_not_degenerate`,
+  `real_fixture_nonsquare_inter_var_tx_is_not_degenerate`, 둘 다 "과반수 CU가 real
+  txfm_split을 보여야 한다"는 임계값 어서션이 221/602, 229/643으로 미달; `real_fixture_
+  delta_q_frame_changes_with_the_flag`는 delta_q_enabled 프레임 82개 전부가 이제
+  하드에러로 실패 — 조사 결과 "CDF decode overran symbol alphabet"/"Arithmetic decoder cnt
+  underflow"/"Partition Horz4 not allowed for block size Block16x16" 등 진짜 파싱 실패이지
+  이번 수정으로 생긴 회귀가 아니라, 이제 처음으로 진짜 tile_data 끝부분까지 도달하면서
+  **기존에 알려진 미완료 로드맵 항목**(inter_mode/compound_mode의 refmvs 기반 실컨텍스트,
+  residual 전체 컨텍스트 — [[project_anti_pattern_audit]] 참고)이 처음으로 실제로
+  노출되는 것으로 추정됨, 확정은 아직 안 함). 세 실패 다 이번 세션에서 손대지 않고 다음
+  단계 확인 대기 중. **이 발견의 함의**: 이번 세션 이전까지의 "coeff_base/coeff_br 정밀도
+  문제"라는 진단 자체가 틀렸었다는 뜻이므로, 그 가정 위에 쌓인 이전 세션들의 관련 메모/
+  결론은 폐기하고 이 항목을 최신 근본원인으로 갱신할 것.
+- **후속(같은 세션, 사용자 "3개 실패 더 깊이 조사" 선택): 남은 3개 전부 조사 완료 — 2개는
+  진짜 3번째 버그, 1개는 스테일 테스트 임계값으로 확인, `bitvue-av1-codec --lib` 406/406
+  클린 달성(2026-08-13)** — `real_fixture_delta_q_frame_changes_with_the_flag`의 실제 에러를
+  까보니(임시 계측) "Partition Horz4 on block size Block16x16 produces sub-blocks of same
+  size"류가 최다(38건) — `PartitionType::is_allowed`의 Horz4/Vert4 조건이
+  `width>=16 && height>=32`(Horz4)/반대(Vert4)라는 완전히 잘못된 비대칭 형태였음(진짜 spec
+  조건은 "정확히 16x16/32x32/64x64 정사각형만" — CDF 테이블 자체는 이미 16x16용 10-심볼
+  alphabet로 Horz4/Vert4를 포함하고 있었으니 CDF는 처음부터 맞았고 이 검증 함수만 틀렸음).
+  고치자 이번엔 `sub_block_size`가 16x16 케이스 자체를 아예 안 갖고 있어서(`_ => vec![*self]`
+  폴백, 즉 크기 불변 리턴) "produces sub-blocks of same size" 에러로 이동 — 원인을 더 파보니
+  `BlockSize` enum 자체에 `Block16x4`/`Block4x16` variant가 애초에 존재하지 않았음(형제뻘인
+  Block32x8/Block64x16/Block128x32/Block8x32/Block16x64/Block32x128는 이미 있었는데 16x16용
+  한 쌍만 빠짐 — 6개 중 4개만 완성돼 있던 상태). 두 variant 추가 + width()/height()/
+  sub_block_size 갱신(전부 4개 파일뿐이라 blast radius 작음, 컴파일러가 exhaustiveness로
+  나머지 확인, 에러 0건) → `real_fixture_delta_q_frame_changes_with_the_flag` 통과. **남은 2개
+  (`real_fixture_inter_var_tx_is_not_degenerate`/`..._nonsquare_...`)는 조사 결과 버그 아님**:
+  두 테스트 다 "eligible CU 과반수가 real txfm_split을 보여야 한다"는 임계값인데, 프레임13
+  sb(0,0) 자체의 오라클 `vartxtree` 기록이 3번 중 1번만 split(약 33%)이라 이 세션에서 고친
+  수치(232/660≈35%, 346/923≈37%)와 정확히 일치 — "과반수 split"이라는 가정 자체가 예전
+  버그투성이 디코드 통계에 맞춰 잘못 짜인 임계값이었을 뿐, 실제 spec/인코더 성질이 아님(txfm_
+  split 자체는 이미 실컨텍스트+adaptation 적용돼 있었음, 확인 완료). "과반수" → "0도 아니고
+  전부도 아님"(진짜 non-degenerate 취지에 맞는 형태)으로 재보정. **결과**:
+  `cargo test --workspace --lib` 기준 `bitvue-av1-codec` 자체는 406/406 완전 클린(워크스페이스
+  전체에서 유일한 남은 실패 `bitvue-engine::compare_cache::test_evict_lru_stream_a`는 AV1과
+  무관한 별개 크레이트의 병렬실행 시 타이밍 의존 플레이키 테스트로 확인 — 격리 실행 시 통과,
+  이번 변경 이전에도 존재, 손대지 않음). **이번 세션 최종 정리**: dav1d 오라클 빌드 1회로
+  진짜 버그 3개(tile_data 오프셋 근사파서, 키프레임 global_motion_params 게이트 누락,
+  Horz4/Vert4 is_allowed+BlockSize enum 미완성) + 잘못된 테스트 임계값 1개를 동시에 잡아냄 —
+  전부 "coeff_base/coeff_br 정밀도"라는 원래 가설과 무관했고, 몇 세션째 이어온 "심볼 단위
+  포렌식 필요"라는 결론도 틀렸었음(byte-exact 오라클 대조 없이는 못 찾았을 클래스의 버그들).
 
 ---
 

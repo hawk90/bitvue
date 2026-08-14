@@ -1231,7 +1231,18 @@ pub fn parse_frame_header_full(
     };
     let reduced_tx_set = reader.read_bit()?;
 
-    parse_global_motion_params(&mut reader, allow_high_precision_mv)?;
+    // spec 5.9.2: `global_motion_params()` is only called when `!FrameIsIntra` -- a KEY_FRAME/
+    // INTRA_ONLY_FRAME has no reference frames to hold global motion against, so the encoder
+    // never emits this syntax for one at all. Previously called unconditionally here, which for
+    // a real key frame spuriously read `REFS_PER_FRAME` (7) `is_global` bits (plus whatever
+    // `is_rot_zoom`/`is_translation`/param bits those happened to gate on) that don't exist in
+    // the bitstream at that position -- found via a real dav1d oracle build (`DEBUG_BLOCK_INFO`)
+    // showing this crate's key-frame `header_size_bytes` (25) didn't match the oracle's
+    // independently-derived true tile-data offset (17) for the real fixture's frame 0, an 8-byte
+    // (64-bit) overshoot consistent with this exact miscount.
+    if !frame_is_intra {
+        parse_global_motion_params(&mut reader, allow_high_precision_mv)?;
+    }
 
     let film_grain =
         parse_film_grain_params(&mut reader, seq, show_frame, showable_frame, frame_type)?;
