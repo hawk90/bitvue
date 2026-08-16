@@ -63,6 +63,22 @@ pub struct ParsedFrame {
     /// `use_ref_frame_mvs` (spec 5.9.2) -- see `FrameHeader::use_ref_frame_mvs`'s doc. Same
     /// sourcing/fallback story as `reference_select`.
     pub use_ref_frame_mvs: bool,
+    /// `order_hint` (spec 5.9.2) -- this frame's own display-order hint. Same sourcing/fallback
+    /// story as `reference_select`; `0` if the full header wasn't parsed. Read *before*
+    /// `skip_mode_params` in bitstream order, so (like `use_ref_frame_mvs`) its value is correct
+    /// even from the throwaway fresh `RefFrameState::new()` this struct's own parse uses --
+    /// [`crate::tile::motion_field`]'s sequential test harness relies on this to avoid a second,
+    /// real-cross-frame-threaded header parse.
+    pub order_hint: u32,
+    /// `ref_frame_idx` (spec 5.9.2) -- this frame's own logical-ref (`0..=6`, LAST..ALTREF) to
+    /// physical-DPB-slot (`0..=7`) mapping. `None` for intra frames (spec: this syntax doesn't
+    /// exist for them) or if the full header wasn't parsed. Same bit-position-independence note as
+    /// `order_hint`.
+    pub ref_frame_idx: Option<[u8; 7]>,
+    /// `refresh_frame_flags` (spec 5.9.2) -- which of the 8 physical DPB slots this frame refreshes
+    /// once decoded. `0` if the full header wasn't parsed. Same bit-position-independence note as
+    /// `order_hint`.
+    pub refresh_frame_flags: u8,
     /// Real segmentation state (spec 5.9.14) -- see `crate::frame_header_full::SegmentationInfo`'s
     /// doc for the exact fields and known gap. Same sourcing/fallback story as `reference_select`
     /// (`SegmentationInfo::default()`, all-disabled, if the full header wasn't parsed).
@@ -206,6 +222,9 @@ impl ParsedFrame {
                 coded_lossless: false,
                 txfm_mode: TxfmMode::default(),
                 use_ref_frame_mvs: false,
+                order_hint: 0,
+                ref_frame_idx: None,
+                refresh_frame_flags: 0,
                 segmentation: crate::frame_header_full::SegmentationInfo::default(),
                 mono_chrome: true,
                 subsampling_x: false,
@@ -258,6 +277,9 @@ impl ParsedFrame {
         let mut coded_lossless = false;
         let mut txfm_mode = TxfmMode::default();
         let mut use_ref_frame_mvs = false;
+        let mut order_hint = 0u32;
+        let mut ref_frame_idx: Option<[u8; 7]> = None;
+        let mut refresh_frame_flags = 0u8;
         let mut segmentation = crate::frame_header_full::SegmentationInfo::default();
         let mut mono_chrome = true;
         let mut subsampling_x = false;
@@ -376,6 +398,9 @@ impl ParsedFrame {
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            order_hint = full_hdr.order_hint;
+                            ref_frame_idx = full_hdr.ref_frame_idx;
+                            refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             skip_mode_present = full_hdr.skip_mode_present;
@@ -412,6 +437,9 @@ impl ParsedFrame {
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            order_hint = full_hdr.order_hint;
+                            ref_frame_idx = full_hdr.ref_frame_idx;
+                            refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             skip_mode_present = full_hdr.skip_mode_present;
@@ -452,6 +480,9 @@ impl ParsedFrame {
             coded_lossless,
             txfm_mode,
             use_ref_frame_mvs,
+            order_hint,
+            ref_frame_idx,
+            refresh_frame_flags,
             segmentation,
             mono_chrome,
             subsampling_x,

@@ -23,8 +23,23 @@ pub fn parse_all_coding_units(
 ) -> Result<Arc<Vec<crate::tile::CodingUnit>>, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
+    get_or_parse_coding_units(cache_key, || {
+        parse_all_coding_units_with_temporal(parsed, None)
+    })
+}
 
-    // Arc-clone is cheap (just reference count increment, no data copy)
+/// Real temporal MV candidates (spec 7.9/7.10, [`crate::tile::motion_field`]) variant -- **not**
+/// cached (unlike [`parse_all_coding_units`]): the cache key is `(tile_data, base_qp)` only, which
+/// doesn't account for `temporal`'s content, so caching here would risk returning another frame's
+/// (or a temporal-disabled) stale result for identical `tile_data`. Only
+/// [`crate::tile::motion_field`]'s sequential test harness calls this with `Some(..)` today --
+/// every production call site goes through the cached, temporal-disabled `parse_all_coding_units`
+/// (which calls this with `None`).
+pub fn parse_all_coding_units_with_temporal(
+    parsed: &ParsedFrame,
+    temporal: Option<(&crate::tile::ProjectedMotionField, [i32; 7])>,
+) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
+    let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
     let tile_data = Arc::clone(&parsed.tile_data);
     let sb_size = parsed.dimensions.sb_size;
     let sb_cols = parsed.dimensions.sb_cols;
@@ -61,88 +76,88 @@ pub fn parse_all_coding_units(
         subsampling_y: parsed.subsampling_y,
     };
 
-    // Use get_or_parse helper for cache pattern
-    get_or_parse_coding_units(cache_key, || {
-        let mut all_cus = Vec::new();
+    let mut all_cus = Vec::new();
 
-        // Pre-allocate capacity based on superblock count
-        let estimated_cus = (sb_cols * sb_rows) as usize * 4;
-        all_cus.reserve(estimated_cus);
+    // Pre-allocate capacity based on superblock count
+    let estimated_cus = (sb_cols * sb_rows) as usize * 4;
+    all_cus.reserve(estimated_cus);
 
-        // Create SymbolDecoder for tile data
-        let mut decoder = crate::SymbolDecoder::new(&tile_data)?;
+    // Create SymbolDecoder for tile data
+    let mut decoder = crate::SymbolDecoder::new(&tile_data)?;
 
-        // Track running QP value across superblocks
-        let mut current_qp = base_qp;
+    // Track running QP value across superblocks
+    let mut current_qp = base_qp;
 
-        // Create MV predictor context
-        let mut mv_ctx = crate::tile::MvPredictorContext::new(sb_cols, sb_rows);
+    // Create MV predictor context
+    let mut mv_ctx = crate::tile::MvPredictorContext::new(sb_cols, sb_rows);
 
-        // Create entropy-context tracker (currently only `skip` uses it -- see
-        // `crate::tile::TileContext`'s doc), sized to the tile's full extent in 4x4 units.
-        let mut tile_ctx = crate::tile::TileContext::new(
-            (sb_cols * sb_size).div_ceil(4),
-            (sb_rows * sb_size).div_ceil(4),
-        );
+    // Create entropy-context tracker (currently only `skip` uses it -- see
+    // `crate::tile::TileContext`'s doc), sized to the tile's full extent in 4x4 units.
+    let mut tile_ctx = crate::tile::TileContext::new(
+        (sb_cols * sb_size).div_ceil(4),
+        (sb_rows * sb_size).div_ceil(4),
+    );
+    if let Some((projected, pocdiff)) = temporal {
+        tile_ctx.set_temporal_context(projected.clone(), pocdiff);
+    }
 
-        // Parse each superblock
-        for sb_y in 0..sb_rows {
-            tile_ctx.start_superblock_row();
-            for sb_x in 0..sb_cols {
-                let sb_pixel_x = sb_x * sb_size;
-                let sb_pixel_y = sb_y * sb_size;
+    // Parse each superblock
+    for sb_y in 0..sb_rows {
+        tile_ctx.start_superblock_row();
+        for sb_x in 0..sb_cols {
+            let sb_pixel_x = sb_x * sb_size;
+            let sb_pixel_y = sb_y * sb_size;
 
-                // Try to parse the superblock
-                match crate::parse_superblock(
-                    &mut decoder,
-                    sb_pixel_x,
-                    sb_pixel_y,
-                    sb_size,
-                    is_key_frame,
-                    current_qp,
-                    delta_q_enabled,
-                    &mut mv_ctx,
-                    reference_select,
-                    allow_intrabc,
-                    allow_screen_content_tools,
-                    enable_filter_intra,
-                    delta_lf_present,
-                    delta_lf_multi,
-                    use_ref_frame_mvs,
-                    segmentation,
-                    &mut tile_ctx,
-                    tx_type_flags,
-                    mi_rows,
-                    mi_cols,
-                    cdef_bits,
-                    skip_mode_present,
-                    inter_mode_flags,
-                ) {
-                    Ok((sb, new_qp)) => {
-                        // Collect all coding units from this superblock
-                        all_cus.extend(sb.coding_units);
-                        current_qp = new_qp;
-                    }
-                    Err(e) => {
-                        tracing::debug!(
-                            "Failed to parse superblock ({}, {}): {}, skipping",
-                            sb_pixel_x,
-                            sb_pixel_y,
-                            e
-                        );
-                        // Continue parsing other superblocks
-                    }
+            // Try to parse the superblock
+            match crate::parse_superblock(
+                &mut decoder,
+                sb_pixel_x,
+                sb_pixel_y,
+                sb_size,
+                is_key_frame,
+                current_qp,
+                delta_q_enabled,
+                &mut mv_ctx,
+                reference_select,
+                allow_intrabc,
+                allow_screen_content_tools,
+                enable_filter_intra,
+                delta_lf_present,
+                delta_lf_multi,
+                use_ref_frame_mvs,
+                segmentation,
+                &mut tile_ctx,
+                tx_type_flags,
+                mi_rows,
+                mi_cols,
+                cdef_bits,
+                skip_mode_present,
+                inter_mode_flags,
+            ) {
+                Ok((sb, new_qp)) => {
+                    // Collect all coding units from this superblock
+                    all_cus.extend(sb.coding_units);
+                    current_qp = new_qp;
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Failed to parse superblock ({}, {}): {}, skipping",
+                        sb_pixel_x,
+                        sb_pixel_y,
+                        e
+                    );
+                    // Continue parsing other superblocks
                 }
             }
         }
+    }
 
-        tracing::debug!(
-            "Parsed {} coding units from tile data (final QP: {})",
-            all_cus.len(),
-            current_qp
-        );
-        Ok(all_cus)
-    })
+    tracing::debug!(
+        "Parsed {} coding units from tile data (final QP: {})",
+        all_cus.len(),
+        current_qp
+    );
+    Ok(all_cus)
 }
 
 /// Spatial index for O(1) coding unit lookup by grid position
@@ -277,6 +292,140 @@ mod tests {
                 result.err()
             );
         }
+    }
+
+    /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential
+    /// full-fixture regression, threading one `MotionFieldState` across all 250 frames in decode
+    /// order (mirroring `bitvue-sidecar/src/av1_features.rs`'s own sequential
+    /// `parse_frame_header_full` scan pattern, but for real per-frame MV/ref data instead of just
+    /// header flags). No independent value oracle exists for decoded MV values in this environment
+    /// (every earlier phase of this multi-session effort shares this caveat -- see
+    /// `docs/DEVELOPMENT_PHASES.md`), so correctness here rests on: (1) self-consistency -- the
+    /// full sequential 250-frame decode with real temporal candidates wired into
+    /// `single_ref_mv_stack`/`inter_mode_context` completes without panics or hard errors: any
+    /// desync in the new source-selection/projection/storage logic would very likely surface as an
+    /// entropy-decoder crash the same way the residual()/ref_frame()/delta_q_enabled bugs earlier
+    /// in this effort did; (2) a non-degenerate check that real temporal sources actually get found
+    /// at least once (this fixture's inter frames are `use_ref_frame_mvs=true` per the DRL commit,
+    /// so a construction bug that always yields zero sources -- e.g. an inverted priority/sign
+    /// check -- would silently make the whole feature a no-op without ever failing a test).
+    #[test]
+    fn real_fixture_temporal_mv_candidates_are_wired_and_non_degenerate() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let seq_header = {
+            let mut iter = crate::obu::ObuIterator::new(&seq_bytes);
+            let found = iter
+                .next_obu_with_offset()
+                .expect("seq_bytes starts with the sequence header OBU")
+                .expect("sequence header OBU parses");
+            crate::parse_sequence_header(&found.obu.payload)
+                .expect("fixture sequence header parses")
+        };
+        let enable_order_hint = seq_header.enable_order_hint;
+        let order_hint_bits = seq_header
+            .order_hint_bits_minus_1
+            .map(|v| v as u32 + 1)
+            .unwrap_or(0);
+
+        let mut mf_state = crate::tile::MotionFieldState::new();
+        let mut total_cus = 0usize;
+        let mut frames_with_temporal_sources = 0usize;
+
+        for (idx, frame) in frames.iter().enumerate() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+            if !parsed.has_tile_data() {
+                continue;
+            }
+
+            let prev_ref_order_hint = *mf_state.ref_state.ref_order_hint();
+            let ref_frame_idx_if_temporal = if parsed.use_ref_frame_mvs {
+                parsed.ref_frame_idx
+            } else {
+                None
+            };
+            let temporal_input = ref_frame_idx_if_temporal.map(|ref_frame_idx| {
+                let sources = crate::tile::select_motion_field_sources(
+                    &mf_state,
+                    &prev_ref_order_hint,
+                    &ref_frame_idx,
+                    parsed.order_hint,
+                    enable_order_hint,
+                    order_hint_bits,
+                );
+                if !sources.is_empty() {
+                    frames_with_temporal_sources += 1;
+                }
+                let cols_8x8 = parsed.dimensions.width.div_ceil(8).max(1);
+                let rows_8x8 = parsed.dimensions.height.div_ceil(8).max(1);
+                let projected =
+                    crate::tile::project_motion_field(&sources, &mf_state, cols_8x8, rows_8x8);
+                let pocdiff: [i32; 7] = std::array::from_fn(|i| {
+                    let ref_poc = prev_ref_order_hint[ref_frame_idx[i] as usize];
+                    crate::frame_header_full::relative_dist(
+                        parsed.order_hint,
+                        ref_poc,
+                        enable_order_hint,
+                        order_hint_bits,
+                    )
+                    .clamp(-31, 31) as i32
+                });
+                (projected, pocdiff)
+            });
+
+            let result = parse_all_coding_units_with_temporal(
+                &parsed,
+                temporal_input.as_ref().map(|(p, d)| (p, *d)),
+            );
+            let cus = result.unwrap_or_else(|e| panic!("frame {idx} failed to parse: {e}"));
+            total_cus += cus.len();
+
+            // spec 7.9 storage, using this frame's real decoded CUs -- feeds future frames'
+            // temporal candidates.
+            let mfmv_sign: [bool; 7] = match parsed.ref_frame_idx {
+                Some(ref_frame_idx) => std::array::from_fn(|i| {
+                    let ref_poc = prev_ref_order_hint[ref_frame_idx[i] as usize];
+                    crate::frame_header_full::relative_dist(
+                        ref_poc,
+                        parsed.order_hint,
+                        enable_order_hint,
+                        order_hint_bits,
+                    ) < 0
+                }),
+                None => [false; 7],
+            };
+            let grid = crate::tile::store_motion_field(
+                &cus,
+                parsed.dimensions.width,
+                parsed.dimensions.height,
+                &mfmv_sign,
+            );
+            mf_state.update(
+                &prev_ref_order_hint,
+                parsed.refresh_frame_flags,
+                parsed.ref_frame_idx.as_ref(),
+                grid,
+            );
+        }
+
+        assert!(
+            total_cus > 0,
+            "expected at least some coding units across the fixture"
+        );
+        // Real measured value on this fixture: 119/250 frames find a source (~48%) -- early
+        // frames before any ref has a saved grid yet never do, matching real dav1d's own
+        // n_mfmvs==0 case. A >=10% bar catches "the priority/sign logic is essentially always
+        // wrong" (e.g. an inverted `dist(...) > 0` check) without being so tight that unrelated
+        // future changes to this exact ratio spuriously fail the test.
+        assert!(
+            frames_with_temporal_sources * 10 >= frames.len(),
+            "expected at least 10% of frames to find a valid temporal MV source in this fixture \
+             (all inter frames are use_ref_frame_mvs=true per the DRL commit; got {frames_with_temporal_sources}/{}) \
+             -- a near-zero count suggests the source-selection priority/sign logic is wrong, not \
+             just approximate",
+            frames.len()
+        );
     }
 
     /// Regression test for the ref_frame() desync fix (2026-08-11): `parse_coding_unit` used to

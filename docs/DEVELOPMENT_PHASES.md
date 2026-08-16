@@ -2160,6 +2160,54 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   Horz4/Vert4 is_allowed+BlockSize enum 미완성) + 잘못된 테스트 임계값 1개를 동시에 잡아냄 —
   전부 "coeff_base/coeff_br 정밀도"라는 원래 가설과 무관했고, 몇 세션째 이어온 "심볼 단위
   포렌식 필요"라는 결론도 틀렸었음(byte-exact 오라클 대조 없이는 못 찾았을 클래스의 버그들).
+- **실제 temporal MV candidate(spec 7.9/7.10) 구현 완료(2026-08-14)**: DRL 커밋이 "가장 큰
+  남은 갭"으로 명시적으로 미룬 항목 착수. 실측 Explore 결과 이 크레이트의 실제 프로덕션
+  호출부(`bitvue-sidecar`의 `get_frame_analysis`/`get_av1_features`/`get_deblocking_analysis`)는
+  전부 무상태·프레임 단위 랜덤 액세스라 프레임 간 MV 상태가 전혀 없었고, spec 7.9/7.10은
+  프레임 0..N을 순서대로 완전히 파싱해 참조 슬롯별 motion field 캐시를 쌓아야 함 — 사용자에게
+  "정합성만 우선, sidecar 캐싱/세션 계층은 별도 후속 단계로 미룸"으로 스코프 확정 확인
+  (EnterPlanMode). 계획 초안은 "슬롯 하나당 order-hint 델타로 한 번 프로젝션"으로 잘못
+  가정했으나, 스크래치패드에 남아있던 실제 dav1d 오라클 소스(`refmvs.c`, 이전 세션의 오라클
+  빌드에서 소스만 재사용, 빌드 불필요)를 직접 대조하자 실제 알고리즘은 훨씬 복잡함을 발견 —
+  최대 3개 소스 슬롯을 우선순위로 선택(`dav1d_refmvs_init_frame`) + 저장 시점엔 원본 MV를
+  그대로 두고 위치 오프셋만 계산해두었다가(`load_tmvs_c`) 실제 소비 시점(`add_temporal_
+  candidate`)에 현재 블록 자신의 ref pocdiff로 최종 리스케일하는 2단계 체인 구조임을 재확인,
+  사용자에게 "full fidelity로 재계획" 확인받고 진행(2번째 AskUserQuestion, 세션 내
+  scope-growth 시 재확인하는 기존 패턴 반복). **신규 모듈**
+  `crates/bitvue-av1-codec/src/tile/motion_field.rs`: `store_motion_field`(spec 7.9, CU 리스트→
+  8x8그리드, compound ref[1] 우선+sign/magnitude 게이팅, 8x8쌍의 우하단 4x4 서브위치 샘플링을
+  위해 4x4 해상도 `CuSpatialIndex` 재사용) + `select_motion_field_sources`(우선순위 소스 선택
+  +ref2cur/ref2ref 계산, 새 `[[u32;7];8]` ref_ref_order_hint 상태 필요 — 슬롯이 새로고침될 때
+  "그 프레임 자신의 7개 참조 order hint" 스냅샷) + `project_motion_field`(위치 오프셋만 계산,
+  원본 MV+ref2ref 분모를 `ProjectedMv`로 저장) + `add_temporal_candidates`(최종 리스케일,
+  `single_ref_mv_stack`이 소비). 단위 환산: 이 크레이트 `MotionVector`는 1/4-pel(dav1d는
+  1/8-pel) — 매직넘버(4096/0x3fff/`>>6`) 전부 절반(또는 `>>5`)로 스케일. `context.rs`:
+  `SpatialRefContext`에 `temporal: Option<TemporalMvContext>` 필드+`set_temporal_context`
+  추가, `single_ref_mv_stack`의 +640 가중치 부여 직후·top-left secondary 스캔 직전에 temporal
+  스캔 삽입(dav1d 순서 그대로, weight=2로 secondary와 동일 티어) — 기존 15개 호출부는 전부
+  `temporal: None`이라 동작 불변 확인(406/406→407/407 회귀 없음). 부수로 `inter_mode_context`의
+  `globalmv_ctx`도 완성 — 기존엔 "`use_ref_frame_mvs` 플래그를 그대로 근사값으로 사용"이라고
+  이 파일 자체 문서에 이미 "후속 과제"로 명시돼 있었는데, 이번에 만든 projected grid의 `!(x|y)`
+  위치 샘플을 재사용해 진짜 계산으로 교체(global motion 자체는 크레이트 전역의 기존
+  "0/invalid 근사" 유지, 별도 갭 아님). `ParsedFrame`에 `order_hint`/`ref_frame_idx`/
+  `refresh_frame_flags` 3개 필드 신규 노출(기존 `use_ref_frame_mvs`와 동일하게 skip_mode_params
+  이전 비트 위치라 fresh `RefFrameState::new()`로도 값이 정확 — 헤더 재파싱 없이 시퀀셜
+  테스트 하네스가 이 필드들만으로 상태를 이어갈 수 있음, `RefFrameState::apply_refresh` 신규
+  헬퍼로 `parse_frame_header_full` 재호출 없이 순수 갱신). `cu_parser.rs`의
+  `parse_all_coding_units`가 쓰던 캐시(`tile_data`+`base_qp` 키)는 temporal 입력을 반영 못하므로
+  `parse_all_coding_units_with_temporal`(캐시 안 함)을 분리해 프로덕션 경로는 그대로
+  `None`으로 캐시 경로 재사용, 테스트 하네스만 `Some`으로 비캐시 경로 사용. **범위 밖으로
+  명시 기록(축소 아님)**: dav1d의 여분 3개 코너 샘플(중간 크기 블록의 좌하/우하/우상단,
+  타일·SB 경계로 클램프)은 생략 — weight=2 저티어 후보만 늘리는 것이라 bit-position sync엔
+  영향 없음, 완전성만 살짝 줄어듦(문서화). **검증**: 250프레임 전체 순차 파싱(`MotionFieldState`
+  스레딩, `bitvue-sidecar`의 기존 `for frame in frames.iter().take(idx+1)` 순차 스캔 패턴과
+  동일 계열) 무크래시 확인 + 실측 119/250 프레임(~48%)이 실제로 유효한 temporal 소스를
+  찾아냄(신규 회귀 테스트 `real_fixture_temporal_mv_candidates_are_wired_and_non_degenerate`,
+  ≥10% 임계값 — 이 클래스 변경엔 독립 값 오라클이 없다는 기존 세션 전제 유지, self-consistency
+  +non-degenerate 체크로 대체). `bitvue-av1-codec --lib` 407/407, `--tests` 13개 바이너리 전부
+  클린, `cargo test --workspace --lib` 3854+ 전부 통과(0 실패, 이전에 봤던 `bitvue-engine` 플레이키도
+  이번엔 안 걸림). clippy: 유일한 error는 이 세션이 손댄 적 없는 `leb128_prop_tests.rs`의
+  기존 `absurd_extreme_comparisons`(무관 확인), fmt 클린.
 
 ---
 

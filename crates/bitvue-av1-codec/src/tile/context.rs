@@ -134,6 +134,22 @@ pub struct SpatialRefContext {
     width_4x4: u32,
     height_4x4: u32,
     cells: Vec<SpatialRefCell>,
+    /// Real temporal motion field for this frame (spec 7.9/7.10, [`crate::tile::motion_field`]),
+    /// set once via [`SpatialRefContext::set_temporal_context`] before any block is decoded --
+    /// `None` for every existing caller that doesn't opt in (the crate's stateless, single-frame
+    /// parse path), preserving this struct's prior spatial-only/`use_ref_frame_mvs`-flag-only
+    /// behavior exactly. See this struct's own doc for why this piece needs cross-frame state.
+    temporal: Option<TemporalMvContext>,
+}
+
+/// Per-frame temporal-candidate inputs, set once and read by every block's
+/// `single_ref_mv_stack`/`inter_mode_context` call -- see [`crate::tile::motion_field`]'s module
+/// doc for how these are produced.
+struct TemporalMvContext {
+    projected: crate::tile::motion_field::ProjectedMotionField,
+    /// This frame's own `pocdiff[0..=6]` (spec 7.9.2, this crate's 0..=6 `ref0` convention) --
+    /// `add_temporal_candidate`'s numerator (`refmvs.c:201`).
+    pocdiff: [i32; 7],
 }
 
 impl SpatialRefContext {
@@ -144,7 +160,20 @@ impl SpatialRefContext {
             width_4x4,
             height_4x4,
             cells: vec![SpatialRefCell::default(); (width_4x4 * height_4x4) as usize],
+            temporal: None,
         }
+    }
+
+    /// Opt this frame's parse into real temporal MV candidates -- see [`crate::tile::motion_field`]
+    /// for how `projected`/`pocdiff` are computed. Not called by any existing (stateless,
+    /// single-frame) production call site; only the sequential test harness that threads
+    /// [`crate::tile::motion_field::MotionFieldState`] across frames calls this.
+    pub fn set_temporal_context(
+        &mut self,
+        projected: crate::tile::motion_field::ProjectedMotionField,
+        pocdiff: [i32; 7],
+    ) {
+        self.temporal = Some(TemporalMvContext { projected, pocdiff });
     }
 
     fn cell(&self, x4: u32, y4: u32) -> Option<&SpatialRefCell> {
@@ -329,7 +358,32 @@ impl SpatialRefContext {
         use_ref_frame_mvs: bool,
     ) -> u16 {
         let (refmv_ctx, newmv_ctx) = self.refmv_newmv_ctx(x4, y4, bw4, bh4, ref0, -1);
-        let globalmv_ctx = use_ref_frame_mvs as u16;
+        // Real `globalmv_ctx` (rav1d `add_temporal_candidate`'s `!(x|y)` sample, `refmvs.c:206-
+        // 207`): the temporal candidate at this block's own top-left 8x8 cell, compared against
+        // the global-motion predictor -- approximated as always-invalid/zero (this crate's
+        // established `global_motion_params` bit-skip-only approximation, matching
+        // `single_ref_mv_stack`'s temporal scan doc), so the comparison reduces to `mv != zero`.
+        // Falls back to the pre-existing `use_ref_frame_mvs`-flag approximation when no temporal
+        // context was set (this struct's doc) -- unchanged behavior for every caller that doesn't
+        // opt in.
+        let globalmv_ctx = match &self.temporal {
+            Some(t) if use_ref_frame_mvs && ref0 >= 0 => {
+                let x8 = x4 >> 1;
+                let y8 = y4 >> 1;
+                match t.projected.get(x8, y8) {
+                    Some(cell) => {
+                        let mv = crate::tile::motion_field::mv_projection(
+                            cell.mv,
+                            t.pocdiff[ref0 as usize],
+                            cell.ref2ref,
+                        );
+                        u16::from(mv.x != 0 || mv.y != 0)
+                    }
+                    None => u16::from(use_ref_frame_mvs),
+                }
+            }
+            _ => u16::from(use_ref_frame_mvs),
+        };
         (refmv_ctx as u16) << 4 | globalmv_ctx << 3 | newmv_ctx as u16
     }
 
@@ -516,6 +570,7 @@ impl SpatialRefContext {
         bw4: u32,
         bh4: u32,
         ref0: i8,
+        use_ref_frame_mvs: bool,
     ) -> ([MvStackEntry; 8], usize) {
         let mut stack = [MvStackEntry::default(); 8];
         let mut cnt = 0usize;
@@ -576,6 +631,34 @@ impl SpatialRefContext {
         // exact pre-bump weight magnitude stops mattering the moment this runs.
         for cand in &mut stack[..cnt] {
             cand.weight += 640;
+        }
+
+        // Temporal candidates (spec 7.10, rav1d `add_temporal_candidate`'s call site,
+        // `refmvs.c:416-431` -- main grid scan only, see `crate::tile::motion_field::
+        // add_temporal_candidates`'s doc for the small extra-corner-samples simplification).
+        // Weight 2, same low tier as the secondary spatial group below -- both get sorted
+        // together by the final whole-stack sort, matching real dav1d's structural ordering.
+        if use_ref_frame_mvs && ref0 >= 0 {
+            if let Some(temporal) = &self.temporal {
+                let by8 = y4 >> 1;
+                let bx8 = x4 >> 1;
+                let w8 = ((w4 + 1) >> 1).min(8);
+                let h8 = ((h4 + 1) >> 1).min(8);
+                let step_h = if bw4 >= 16 { 2 } else { 1 };
+                let step_v = if bh4 >= 16 { 2 } else { 1 };
+                for mv in crate::tile::motion_field::add_temporal_candidates(
+                    &temporal.projected,
+                    temporal.pocdiff[ref0 as usize],
+                    bx8,
+                    by8,
+                    w8,
+                    h8,
+                    step_h,
+                    step_v,
+                ) {
+                    Self::push_mv_candidate(&mut stack, &mut cnt, 2, mv);
+                }
+            }
         }
 
         // Top-left corner (secondary group).
@@ -2082,8 +2165,20 @@ impl TileContext {
         bw4: u32,
         bh4: u32,
         ref0: i8,
+        use_ref_frame_mvs: bool,
     ) -> ([MvStackEntry; 8], usize) {
-        self.spatial_ref.single_ref_mv_stack(x4, y4, bw4, bh4, ref0)
+        self.spatial_ref
+            .single_ref_mv_stack(x4, y4, bw4, bh4, ref0, use_ref_frame_mvs)
+    }
+
+    /// Opt this frame's parse into real temporal MV candidates -- see
+    /// `SpatialRefContext::set_temporal_context`.
+    pub fn set_temporal_context(
+        &mut self,
+        projected: crate::tile::motion_field::ProjectedMotionField,
+        pocdiff: [i32; 7],
+    ) {
+        self.spatial_ref.set_temporal_context(projected, pocdiff);
     }
 
     /// `compound_mode` context -- see `SpatialRefContext::compound_mode_context`.

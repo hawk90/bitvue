@@ -35,7 +35,7 @@
 //! ```
 
 mod cache;
-mod cu_parser;
+pub(crate) mod cu_parser;
 mod deblocking;
 mod energy_extractor;
 mod mv_extractor;

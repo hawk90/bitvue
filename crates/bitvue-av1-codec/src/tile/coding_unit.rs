@@ -1139,8 +1139,14 @@ pub fn parse_coding_unit(
             // Not read for GLOBALMV (real spec: no DRL for that mode at all).
             if cu.mode == PredictionMode::NewMv {
                 let explicit_mv = read_explicit_mv(decoder)?;
-                let (stack, n_mvs) =
-                    tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0);
+                let (stack, n_mvs) = tile_ctx.single_ref_mv_stack(
+                    x4,
+                    y4,
+                    width_4x4,
+                    height_4x4,
+                    rav1d_ref0,
+                    use_ref_frame_mvs,
+                );
                 let mut drl_idx = 0usize;
                 if n_mvs > 1 {
                     if decoder.read_drl_bit(crate::tile::context::get_drl_context(&stack, 0))? {
@@ -1179,8 +1185,14 @@ pub fn parse_coding_unit(
                 );
             } else {
                 // NEARESTMV / NEARMV
-                let (stack, n_mvs) =
-                    tile_ctx.single_ref_mv_stack(x4, y4, width_4x4, height_4x4, rav1d_ref0);
+                let (stack, n_mvs) = tile_ctx.single_ref_mv_stack(
+                    x4,
+                    y4,
+                    width_4x4,
+                    height_4x4,
+                    rav1d_ref0,
+                    use_ref_frame_mvs,
+                );
                 let mut drl_idx = if cu.mode == PredictionMode::NearMv {
                     1usize
                 } else {

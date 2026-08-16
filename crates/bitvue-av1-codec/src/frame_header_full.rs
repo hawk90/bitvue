@@ -96,6 +96,29 @@ impl RefFrameState {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Read-only access to the per-slot order hints -- used by
+    /// [`crate::tile::motion_field`]'s sequential test harness to snapshot this state *before*
+    /// applying [`RefFrameState::apply_refresh`] for the frame just parsed (see
+    /// `MotionFieldState::update`'s doc for why the snapshot must be taken beforehand).
+    pub fn ref_order_hint(&self) -> &[u32; NUM_REF_FRAMES] {
+        &self.ref_order_hint
+    }
+
+    /// Apply one frame's `refresh_frame_flags`/`order_hint` update directly, without re-running
+    /// `parse_frame_header_full` -- mirrors this module's own internal per-frame update
+    /// (`ref_state.ref_order_hint[i] = order_hint` for each refreshed slot, see this function's
+    /// call site in `parse_frame_header_full`). [`ParsedFrame`](crate::overlay_extraction::
+    /// ParsedFrame)'s `order_hint`/`refresh_frame_flags` fields are sourced from the same
+    /// bit-position-independent header fields this update reads, so a caller with access to a
+    /// `ParsedFrame` never needs a second header parse just to keep this state current.
+    pub fn apply_refresh(&mut self, refresh_frame_flags: u8, order_hint: u32) {
+        for i in 0..NUM_REF_FRAMES {
+            if (refresh_frame_flags >> i) & 1 == 1 {
+                self.ref_order_hint[i] = order_hint;
+            }
+        }
+    }
 }
 
 fn err(msg: impl Into<String>) -> BitvueError {

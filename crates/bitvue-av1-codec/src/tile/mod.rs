@@ -23,6 +23,7 @@
 
 pub mod coding_unit;
 pub mod context;
+pub mod motion_field;
 pub mod mv_prediction;
 pub mod partition;
 pub mod superblock;
@@ -33,6 +34,10 @@ pub use coding_unit::{
     RefFrame, TxSize, TxTypeFrameFlags,
 };
 pub use context::TileContext;
+pub use motion_field::{
+    add_temporal_candidates, project_motion_field, select_motion_field_sources, store_motion_field,
+    MfmvSource, MotionFieldGrid, MotionFieldState, ProjectedMotionField, ProjectedMv, SavedMv,
+};
 pub use mv_prediction::MvPredictorContext;
 pub use partition::{
     parse_partition_tree, partition_tree_to_grid, BlockSize, PartitionNode, PartitionType,
