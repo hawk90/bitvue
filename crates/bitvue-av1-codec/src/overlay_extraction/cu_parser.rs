@@ -82,8 +82,11 @@ pub fn parse_all_coding_units_with_temporal(
     let estimated_cus = (sb_cols * sb_rows) as usize * 4;
     all_cus.reserve(estimated_cus);
 
-    // Create SymbolDecoder for tile data
-    let mut decoder = crate::SymbolDecoder::new(&tile_data)?;
+    // Create SymbolDecoder for tile data, seeded with the real per-frame qindex-bucket
+    // (`qcat`) residual-coefficient CDF defaults -- see `crate::symbol::cdf::CdfContext::
+    // new_with_qcat`'s doc for the real dav1d selection formula this mirrors.
+    let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+    let mut decoder = crate::SymbolDecoder::new_with_qcat(&tile_data, qcat)?;
 
     // Track running QP value across superblocks
     let mut current_qp = base_qp;
@@ -1188,6 +1191,79 @@ mod tests {
         assert!(
             checked_frames > 0,
             "expected at least one real frame to check"
+        );
+    }
+
+    /// Regression test for the real per-frame qindex-bucket (`qcat`) residual-coefficient CDF
+    /// selection (previously every frame's residual entropy decode started from dav1d's qindex
+    /// bucket 0 regardless of the frame's real `base_q_idx`; buckets 1-3 are now real, and
+    /// `parse_all_coding_units_with_temporal` derives `qcat` from `base_qp` via the same formula
+    /// as `CdfContext::new_with_qcat`'s doc). Threads the real per-frame `qcat` through the full
+    /// 250-frame fixture (mirroring `real_fixture_every_frame_parses_coding_units_without_
+    /// panicking_or_erroring`'s sequential scan) and reports the parse-success ratio as the
+    /// primary correctness signal (this crate's established precedent for changes to entropy-CDF
+    /// selection/context, since no independent value oracle exists for decoded coefficients in
+    /// this environment -- see `real_fixture_residual_energy_is_not_degenerate`'s doc).
+    ///
+    /// Unlike the earlier residual()/ref_frame()/delta_q_enabled bugs this session found (which
+    /// were *skipped syntax reads* -- true entropy-decoder desyncs that reliably crash), seeding
+    /// the *wrong-but-still-valid* qindex bucket doesn't by itself break arithmetic-decoder
+    /// framing: any complete, monotonic CDF keeps `read_symbol` returning some in-range symbol
+    /// and consuming a well-defined number of bits, so a parse that used to succeed with the
+    /// (wrong) bucket-0-always CDF was already expected to keep succeeding with the (right)
+    /// real-qcat CDF -- only the *values* decoded change, not whether parsing completes. The
+    /// real regression guard here is therefore two-fold: (1) the parse-success ratio must not
+    /// regress (100% before and after on this fixture, asserted below), and (2) the fixture must
+    /// actually exercise more than one `qcat` bucket, or this wiring would be untested by every
+    /// other test in this file too (they all go through the same `parse_all_coding_units`).
+    #[test]
+    fn real_fixture_real_qcat_selection_is_exercised_and_parses_cleanly() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut ok_count = 0usize;
+        let mut err_count = 0usize;
+        let mut distinct_qcats: std::collections::HashSet<u8> = Default::default();
+        let mut checked_frames = 0usize;
+
+        for (idx, frame) in frames.iter().enumerate() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            checked_frames += 1;
+
+            // Same formula `parse_all_coding_units_with_temporal` uses internally -- recomputed
+            // here (rather than exposed as a return value) purely to observe which buckets this
+            // fixture actually reaches; production behavior is exercised by the `parse_all_
+            // coding_units` call below either way.
+            let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
+            let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+            distinct_qcats.insert(qcat);
+
+            match parse_all_coding_units(&parsed) {
+                Ok(_) => ok_count += 1,
+                Err(e) => {
+                    err_count += 1;
+                    eprintln!("frame {idx} (qcat={qcat}) failed to parse: {e}");
+                }
+            }
+        }
+
+        assert!(checked_frames > 0, "expected real frames with tile data");
+        assert_eq!(
+            err_count, 0,
+            "expected 0 parse errors across {checked_frames} real frames with real per-frame \
+             qcat wired in (ok={ok_count}, err={err_count}) -- a wrong-but-still-valid CDF bucket \
+             shouldn't desync the arithmetic decoder; any error here suggests qcat computation or \
+             threading regressed, not just accuracy"
+        );
+        assert!(
+            distinct_qcats.len() > 1,
+            "expected this fixture to exercise more than one qcat bucket (got only {distinct_qcats:?} \
+             across {checked_frames} frames) -- if every frame's base_q_idx falls in the same \
+             bucket, buckets 1-3 are wired but never actually reached by this regression suite"
         );
     }
 }

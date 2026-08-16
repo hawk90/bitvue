@@ -115,8 +115,14 @@ fn parse_partition_trees_from_tile_data(
         parsed.dimensions.sb_size,
     );
 
-    // Create SymbolDecoder for tile data
-    let mut decoder = crate::SymbolDecoder::new(&parsed.tile_data)?;
+    // Note: For MVP, we use default QP=128 if the frame type doesn't carry a real one.
+    let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
+
+    // Create SymbolDecoder for tile data, seeded with the real per-frame qindex-bucket
+    // (`qcat`) residual-coefficient CDF defaults -- see `crate::symbol::cdf::CdfContext::
+    // new_with_qcat`'s doc for the real dav1d selection formula this mirrors.
+    let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+    let mut decoder = crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat)?;
 
     let sb_size = parsed.dimensions.sb_size;
     let block_size = if sb_size == 128 {
@@ -165,9 +171,8 @@ fn parse_partition_trees_from_tile_data(
                     block_size
                 };
 
-            // Try to parse the superblock
-            // Note: For MVP, we use default QP=128 if the frame type doesn't carry a real one.
-            let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
+            // Try to parse the superblock (base_qp computed once above, before the tile loop --
+            // it's a per-frame constant, not per-superblock).
 
             // Create MV predictor context (local for partition extraction)
             let mut mv_ctx = crate::tile::MvPredictorContext::new(

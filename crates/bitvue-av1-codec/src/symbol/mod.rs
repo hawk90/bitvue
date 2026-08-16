@@ -49,10 +49,21 @@ pub struct SymbolDecoder<'a> {
 }
 
 impl<'a> SymbolDecoder<'a> {
-    /// Create a new symbol decoder
+    /// Create a new symbol decoder, CDF context defaulted to dav1d's qindex bucket 0
+    /// (`qcat = 0`). Thin wrapper kept for every pre-existing caller that doesn't care about
+    /// real per-frame qindex-bucket selection -- see `new_with_qcat`'s doc.
     pub fn new(data: &'a [u8]) -> Result<Self> {
+        Self::new_with_qcat(data, 0)
+    }
+
+    /// Create a new symbol decoder with its residual-coefficient CDF family seeded from dav1d's
+    /// real per-frame qindex bucket (`qcat`, real formula
+    /// `(base_q_idx>20) + (base_q_idx>60) + (base_q_idx>120)`, see `CdfContext::new_with_qcat`'s
+    /// doc). Every other CDF family (partition/skip/intra-mode/ref-frame/MV/delta_q, etc.) is
+    /// qcat-independent, unaffected by this choice.
+    pub fn new_with_qcat(data: &'a [u8], qcat: u8) -> Result<Self> {
         let decoder = ArithmeticDecoder::new(data)?;
-        let cdf_context = CdfContext::new();
+        let cdf_context = CdfContext::new_with_qcat(qcat);
 
         Ok(Self {
             decoder,
