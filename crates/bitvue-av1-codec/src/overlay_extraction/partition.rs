@@ -981,10 +981,10 @@ mod tests {
     /// decoder past real tile data once the missing `delta_q` bits accumulate enough drift).
     ///
     /// Searches the whole fixture (not just an early prefix) for a frame where the `true` run
-    /// fully succeeds: most of this crate's CDFs (mode/ref_frame/compound_mode/residual) are
-    /// still representative approximations, not real per-context tables, so a given frame's tile
-    /// data can legitimately fail to parse end-to-end under either flag -- that's an expected
-    /// consequence of the still-incomplete entropy-context work (see
+    /// fully succeeds: residual's plane/qindex-bucket CDF axes (`coeff_base`/`coeff_br`/etc.,
+    /// still luma-only/first-bucket -- see `tile/context.rs`'s module doc) remain an approximation,
+    /// so a given frame's tile data can legitimately fail to parse end-to-end under either flag --
+    /// that's an expected consequence of the still-incomplete entropy-context work (see
     /// `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note), not evidence this
     /// specific fix is wrong.
     ///

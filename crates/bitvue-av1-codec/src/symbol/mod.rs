@@ -555,11 +555,12 @@ impl<'a> SymbolDecoder<'a> {
     /// write live in `TileContext`, not here).
     ///
     /// Real per-block *mode* reading for compound blocks (`compound_mode`, a different/larger
-    /// symbol alphabet than this decoder's 4-way `read_inter_mode`) and compound motion-vector-
-    /// difference reading are **not** implemented -- callers still read a single-ref-shaped
-    /// mode/MV for compound blocks afterwards, an existing, unchanged approximation this method
-    /// doesn't attempt to fix. Only `ref_frame[0]`/`ref_frame[1]`'s categorical values (and the
-    /// entropy-decoder bit consumption needed to reach them correctly) are real.
+    /// symbol alphabet than this decoder's 4-way `read_inter_mode`) and L1 motion-vector reading
+    /// are implemented one layer up, in `tile::coding_unit::parse_coding_unit` (real
+    /// `compound_mode()` + `MvKind`-based L0/L1 strategy split, `188d3ad`) -- this method only
+    /// reads `ref_frame[0]`/`ref_frame[1]`'s categorical values (and the entropy-decoder bit
+    /// consumption needed to reach them correctly); mode/MV reading for the resolved ref-frame
+    /// pair happens after this method returns, not inside it.
     pub fn read_ref_frames(
         &mut self,
         tile_ctx: &crate::tile::TileContext,

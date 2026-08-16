@@ -1,14 +1,15 @@
 //! Above/left neighbor-state tracking for entropy-context derivation.
 //!
 //! Per AV1 spec Section 9.3 (Function `get_ctx`) and rav1d's `BlockContext`
-//! (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`) -- currently covers the `skip` flag's
-//! context (see `SymbolDecoder::read_skip`'s doc) and key-frame `intra_mode`'s context (see
-//! `SymbolDecoder::read_intra_mode`'s doc). Real partition-context and inter/compound-mode
-//! context derivation both need considerably larger ports deferred to later phases -- partition
-//! needs a per-8x8 bitmask tied to dav1d's edge-index tree (`src/decode.rs`'s `decode_sb`);
-//! inter/compound mode context needs dav1d's reference-motion-vector-candidate subsystem
-//! (`src/refmvs.rs`, `rav1d_refmvs_find`) -- see `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1
-//! entropy-decoding note.
+//! (`memorysafety/rav1d`, BSD-2-Clause, `src/env.rs`) -- covers the `skip` flag's context (see
+//! `SymbolDecoder::read_skip`'s doc), key-frame `intra_mode`'s context (see
+//! `SymbolDecoder::read_intra_mode`'s doc), real partition-context (per-8x8 bitmask, ported from
+//! dav1d's edge-index tree), and the real spatial+temporal reference-motion-vector-candidate
+//! subsystem (`refmvs`, ported from `src/refmvs.c`) backing `inter_mode`/`compound_mode`/DRL
+//! context -- see `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding notes for the full
+//! history. Residual (`coeff_base`/`coeff_br`/etc.) context is real for neighbor/position axes
+//! but still approximates the plane (luma-only) and qindex-bucket (first-bucket-only) axes --
+//! see `SpatialRefContext`'s residual CDF selection and `symbol/cdf.rs`.
 //!
 //! Units throughout are 4x4 pixels (spec's context-array granularity).
 
@@ -343,11 +344,11 @@ impl SpatialRefContext {
     /// Packed single-ref `inter_mode` context (spec 5.11.23): `newmv_mode`'s CDF index is
     /// `ctx & 7`, `globalmv_mode`'s is `ctx >> 3 & 1`, `refmv_mode`'s is `ctx >> 4 & 15`. Source:
     /// rav1d `*ctx = refmv_ctx << 4 | globalmv_ctx << 3 | newmv_ctx` (`src/refmvs.rs`).
-    /// `globalmv_ctx` is the frame header's `use_ref_frame_mvs` flag directly (`rav1d_refmvs_find`
-    /// initializes its own `globalmv_ctx` local to exactly this value, then only ever overrides it
-    /// away when a real temporal motion-field candidate is found -- this crate doesn't save any
-    /// per-frame motion field, see this struct's doc, so it always takes rav1d's un-overridden
-    /// initial value).
+    /// `globalmv_ctx` is real when a temporal motion-field context was set on this struct (see
+    /// this function's body / `set_temporal_context`), falling back to the frame header's
+    /// `use_ref_frame_mvs` flag directly otherwise (`rav1d_refmvs_find` initializes its own
+    /// `globalmv_ctx` local to exactly this value before ever overriding it with a real temporal
+    /// candidate).
     pub fn inter_mode_context(
         &self,
         x4: u32,
