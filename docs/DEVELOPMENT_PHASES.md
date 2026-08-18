@@ -2305,6 +2305,34 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   좁은 잔여 갭으로 문서화). 합성 비트스트림 유닛테스트로 보존 확인. `--lib --tests` 419/419,
   `--workspace --lib` 3854/3854, clippy/fmt 클린. **다음 힌트**: skip_mode 전체 모드정보
   스킵이 유일한 남은 대형 후보(신규 서브시스템 필요, 시작 전 EnterPlanMode 필요).
+- **compound MV-stack + DRL 실구현 + skip_mode 전체 강제경로 완성(2026-08-18, `43c1755`,
+  이번 세션 최대 규모 단일 포팅)**: skip_mode_refs를 제대로 고치려다 발견한 "compound
+  MV/DRL이 여전히 원시 placeholder(`MvPredictorContext`: zero-MV 폴백, DRL 비트 아예 안 읽음)"
+  갭 -- 사용자에게 3택(지금 계획하기(큼)/작은 다른거/루프 종료) 확인 후 "지금 계획하기" 선택받아
+  EnterPlanMode 진행, dav1d `decode.c`/`refmvs.c` 직접 대조로 정밀 스코핑. **핵심**: real spec
+  5.11.24/7.10.2.10은 compound `NEAR_*`/`NEWMV_NEWMV`에도 single-ref와 동일하게 DRL 비트를
+  요구하는데 이 크레이트는 여태 0비트 읽었음 -- fixture에 실제 577개 compound CU가 있어 드문
+  엣지케이스가 아니라 상시 desync 위험이었음. `SpatialRefContext::compound_mv_stack`(context.rs)
+  신규 -- `single_ref_mv_stack`과 동일 구조(공간스캔+640가중치+temporal weight-2+secondary+정렬)를
+  페어 기준으로 미러링, 이웃의 저장 ref pair가 정확히 일치할 때만 후보 인정(real spec
+  `add_spatial_candidate`의 compound 분기, 부분매칭 없음 -- dav1d 소스로 확인). temporal 페어
+  투영은 `motion_field.rs`에 `add_temporal_compound_candidates` 신규(기존 `mv_projection`
+  재사용). **의도적 범위 밖 명시**: `cnt<2`일 때의 "compound extended candidate" 폴백(real
+  spec의 희귀 경로, 순수 값 계산이라 비트位치 영향 없음, 기존 "GLOBALMV 예측자 0 근사"와 동일
+  성격) -- 보류. `parse_coding_unit`의 compound 분기에 real DRL 3-way 분기(NewNewMv/either-
+  Near/그외) 배선, 기존 원시 `MvPredictorContext` 완전 대체. `read_skip_mode_params`의
+  forward-only 분기(두번째 forward를 bool만 추적하던 것)를 실제 인덱스로 고쳐 진짜
+  `SkipModeFrame[0]/[1]` 유도, `FrameHeader`→`ParsedFrame`→`parse_coding_unit`(`parse_superblock`
+  경유) 배선(gm_type/segmentation과 동일 패턴). skip_mode CU 전용 강제경로: ref_frame 최우선순위
+  강제 + compound 분기 진입 후 mode=NearestNearestMv 강제 + compound_mv_stack의 stack[0] 그대로
+  사용(DRL 없음) + comp_type=AVG 강제 + has_subpel_filter 강제 false -- dav1d의 완전 별개
+  top-level skip_mode 분기(모드정보 비트 전혀 안 읽음)와 일치. 신규 테스트 4개(exact 페어매칭/
+  중복병합/DRL 가중치 임계값/실 fixture 회귀 -- **577개 실 compound CU가 새 real DRL 경로를
+  타면서도 0 파싱에러**, skip_mode는 0/577로 미노출 확인). `--lib --tests` 423/423,
+  `--workspace --lib` 3854/3854, clippy/fmt 클린. 이번 세션 AV1 엔트로피 디코더의 마지막
+  "원시 placeholder"급 갭이 닫힘 -- 남은 건 compound extended-candidate 폴백(보류 문서화)과
+  compound temporal이 프로덕션 경로에선 여전히 미사용(single-ref와 동일 기존 구조 상속,
+  시퀀셜 테스트 하네스만 사용)뿐.
 
 ---
 
