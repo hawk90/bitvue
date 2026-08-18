@@ -2273,6 +2273,24 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   `needs_interp_filter` 순수함수로 추출해 직접 유닛테스트, `GM_TYPE_ROTZOOM`도 `pub(crate)`로
   노출. `--lib --tests` 416/416, `--workspace --lib` 3853/3854(기존 flaky만), clippy/fmt
   클린. 커밋된 fixture는 GmType 전부 IDENTITY라 이번에도 latent-bug 수정(실측 차이는 없음).
+- **segmentation feature_data(`SEG_LVL_REF_FRAME`/`SKIP`/`GLOBALMV`) 완성(2026-08-18,
+  `b592605`)**: 지난 Explore 스코핑의 마지막 남은 후보 착수. `parse_segmentation_params`가
+  `FeatureEnabled`/`FeatureData` 비트를 동기화 목적으로만 읽고 버려서 이 3개 feature가 전혀
+  모델링 안 돼있었음 -- 실 spec은 활성화 시 `is_inter`/`skip`/`ref_frame`를 세그먼트 데이터로
+  강제하고 비트를 안 읽는데, 이 크레이트는 항상 실제 비트를 읽으려 해서 세그먼트 기반 강제
+  skip/ref-frame/globalmv 컨텐츠(cyclic-refresh/ROI 인코드)에서 desync 위험이었음(QP-only
+  세그멘테이션만 이미 커버돼 있었음). `SegmentationInfo`에 `feature_enabled`/`feature_data`
+  배열 + `seg_feature_active`/`seg_feature_data` 헬퍼 추가, `parse_coding_unit`의 skip/
+  is_inter/ref_frame 3개 실호출부에 배선. `cu.segment_id`가 skip 읽는 시점에 안전함을 직접
+  증명(`SEG_LVL_SKIP`은 index>=`SEG_LVL_REF_FRAME`라서 활성화 자체가 `seg_id_pre_skip=true`를
+  강제하고, 그게 segment_id가 그 지점 이전에 해석되는 조건과 정확히 일치 -- 자기충족적
+  안전성). **부수 발견(플래그만, 안 고침)**: skip_mode 자체의 ref_frame 강제(`skip_mode_refs`)도
+  전혀 모델링 안 됨 -- `read_skip_mode_params`가 `skip_mode_present` bool만 리턴하고 파생 ref
+  인덱스는 버림, 별개의 선재 갭. 유닛테스트 2개 신규(직접 테스트 + 합성 비트스트림), 실
+  fixture는 segmentation을 전혀 안 써서 통합 레벨 실측 검증은 여전히 못 함(기존 한계와 동일).
+  `--lib --tests` 418/418, `--workspace --lib` 이번엔 3854/3854 전부 통과(flaky LRU도 안
+  걸림), clippy/fmt 클린. 지난 세션 Explore가 스코핑한 4후보(tx_size/GmType classification/
+  needs_interp_filter/segmentation feature_data) 전부 소진 -- 다음 방향 재스코핑 필요.
 
 ---
 
