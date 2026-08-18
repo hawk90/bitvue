@@ -190,12 +190,9 @@ fn test_ux_graph_node_click_traces_to_bit_offset() {
     let bit_range_1 = BitRange::new(5000, 12000);
     let bit_range_2 = BitRange::new(12000, 18000);
 
-    let node_0 =
-        manager.create_node_evidence(0, "I".to_string(), bit_range_0.clone(), 100.0, 200.0);
-    let node_1 =
-        manager.create_node_evidence(1, "P".to_string(), bit_range_1.clone(), 200.0, 200.0);
-    let node_2 =
-        manager.create_node_evidence(2, "B".to_string(), bit_range_2.clone(), 300.0, 200.0);
+    let node_0 = manager.create_node_evidence(0, "I".to_string(), bit_range_0, 100.0, 200.0);
+    let node_1 = manager.create_node_evidence(1, "P".to_string(), bit_range_1, 200.0, 200.0);
+    let node_2 = manager.create_node_evidence(2, "B".to_string(), bit_range_2, 300.0, 200.0);
 
     // UX Graph: Create reference edges: 1->0, 2->1, 2->0
     let edge_1_0 = ReferenceEdge {

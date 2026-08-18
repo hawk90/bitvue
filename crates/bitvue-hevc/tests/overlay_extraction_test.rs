@@ -293,12 +293,12 @@ fn test_grid_dimensions() {
     use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test various dimensions
-    let dimensions = vec![(640, 480), (1280, 720), (1920, 1080)];
+    let dimensions: Vec<(u32, u32)> = vec![(640, 480), (1280, 720), (1920, 1080)];
 
     for (width, height) in dimensions {
         let ctu_size = 64u32;
-        let grid_w = (width + ctu_size - 1) / ctu_size;
-        let grid_h = (height + ctu_size - 1) / ctu_size;
+        let grid_w = width.div_ceil(ctu_size);
+        let grid_h = height.div_ceil(ctu_size);
 
         let qp_grid = QPGrid::new(
             grid_w,
@@ -355,8 +355,8 @@ fn test_mv_grid_large() {
     let block_w = 64u32;
     let block_h = 64u32;
 
-    let grid_w = (coded_width + block_w - 1) / block_w;
-    let grid_h = (coded_height + block_h - 1) / block_h;
+    let grid_w = coded_width.div_ceil(block_w);
+    let grid_h = coded_height.div_ceil(block_h);
 
     let mv_l0 = vec![MotionVector::ZERO; (grid_w * grid_h) as usize];
     let mv_l1 = vec![MotionVector::MISSING; (grid_w * grid_h) as usize];

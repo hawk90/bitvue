@@ -538,10 +538,14 @@ mod hash_function_tests {
 
         // Act
         let hash = manager.hash_string("");
+        let hash_again = manager.hash_string("");
 
         // Assert
-        // Empty string should hash to some value
-        assert!(hash >= 0); // Just verify it doesn't panic
+        // Empty string should hash deterministically without panicking
+        assert_eq!(
+            hash, hash_again,
+            "Hashing the empty string should be deterministic"
+        );
     }
 }
 

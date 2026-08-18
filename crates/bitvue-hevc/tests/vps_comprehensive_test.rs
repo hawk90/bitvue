@@ -154,7 +154,7 @@ fn test_timing_info_default() {
 
     assert_eq!(timing.num_units_in_tick, 0);
     assert_eq!(timing.time_scale, 0);
-    assert_eq!(timing.poc_proportional_to_timing_flag, false);
+    assert!(!timing.poc_proportional_to_timing_flag);
     assert_eq!(timing.num_ticks_poc_diff_one_minus1, 0);
 }
 
@@ -167,13 +167,13 @@ fn test_profile_tier_level_default() {
     let ptl = VpsProfileTierLevel::default();
 
     assert_eq!(ptl.general_profile_space, 0);
-    assert_eq!(ptl.general_tier_flag, false);
+    assert!(!ptl.general_tier_flag);
     assert_eq!(ptl.general_profile_idc, 0);
     assert_eq!(ptl.general_profile_compatibility_flag, 0);
-    assert_eq!(ptl.general_progressive_source_flag, false);
-    assert_eq!(ptl.general_interlaced_source_flag, false);
-    assert_eq!(ptl.general_non_packed_constraint_flag, false);
-    assert_eq!(ptl.general_frame_only_constraint_flag, false);
+    assert!(!ptl.general_progressive_source_flag);
+    assert!(!ptl.general_interlaced_source_flag);
+    assert!(!ptl.general_non_packed_constraint_flag);
+    assert!(!ptl.general_frame_only_constraint_flag);
     assert_eq!(ptl.general_level_idc, 0);
     assert!(ptl.sub_layer_profile_tier_level.is_empty());
 }

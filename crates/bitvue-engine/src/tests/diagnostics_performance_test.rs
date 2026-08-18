@@ -141,7 +141,7 @@ fn test_performance_sort_10k_diagnostics() {
         state.diagnostics.clone()
     };
 
-    sorted.sort_by(|a, b| b.impact_score.cmp(&a.impact_score));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.impact_score));
 
     let duration = start.elapsed();
 
@@ -320,13 +320,7 @@ fn test_performance_timestamp_search() {
         state
             .diagnostics
             .iter()
-            .min_by_key(|d| {
-                if d.timestamp_ms > target_time {
-                    d.timestamp_ms - target_time
-                } else {
-                    target_time - d.timestamp_ms
-                }
-            })
+            .min_by_key(|d| d.timestamp_ms.abs_diff(target_time))
             .cloned()
     };
 
@@ -377,7 +371,7 @@ fn test_performance_frame_range_query() {
             .iter()
             .filter(|d| {
                 if let Some(frame) = d.frame_index {
-                    frame >= 4000 && frame <= 6000
+                    (4000..=6000).contains(&frame)
                 } else {
                     false
                 }
@@ -426,7 +420,7 @@ fn test_performance_impact_histogram() {
     let start = Instant::now();
 
     // Build histogram (10 bins)
-    let mut histogram = vec![0; 10];
+    let mut histogram = [0; 10];
 
     {
         let state = stream.read();

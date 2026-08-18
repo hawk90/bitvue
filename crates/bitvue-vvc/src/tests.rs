@@ -235,9 +235,7 @@ fn test_parse_vvc_filler_nal() {
     data[2] = 0x01;
     data[3] = 0x00; // layer_id=0
     data[4] = 0xD1; // nal_unit_type=26 (Filler) << 3 | 1
-    for i in 5..17 {
-        data[i] = 0xFF; // Filler bytes
-    }
+    data[5..17].fill(0xFF); // Filler bytes
 
     let result = parse_vvc(&data);
     assert!(result.is_ok());
@@ -290,7 +288,7 @@ fn test_parse_vvc_suffix_sei_nal() {
 #[test]
 fn test_parse_vvc_multiple_nal_units() {
     // Test multiple NAL units in stream
-    let mut data = vec![0u8; 128];
+    let mut data = [0u8; 128];
     let mut pos = 0;
 
     // SPS (5 bytes: 3 start code + 2 header) + some payload
@@ -1000,7 +998,7 @@ fn test_vvc_bit_depth_variations() {
 #[test]
 fn test_parse_vvc_quick_with_features() {
     // Test parse_vvc_quick with feature flags
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0] = 0x00;
     data[1] = 0x00;
     data[2] = 0x01;
@@ -1236,9 +1234,7 @@ fn test_parse_vvc_with_embedded_nulls() {
     data[2] = 0x01; // Start code
     data[3] = 0x00; // Embedded null in NAL header position
                     // Rest is nulls
-    for i in 4..100 {
-        data[i] = 0x00;
-    }
+    data[4..100].fill(0x00);
 
     let result = parse_vvc(&data);
     // Should handle without panic
@@ -1327,7 +1323,7 @@ fn test_parse_sps_chroma_format() {
     // Test SPS parsing with different chroma formats
     for _chroma_id in &[1u8, 2, 3] {
         // YUV420, YUV422, YUV444
-        let mut data = vec![0u8; 32];
+        let mut data = [0u8; 32];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x42]); // NAL header
         data[4] = 0x01; // sps_video_parameter_set_id
         data[14] = 1; // chroma_format_idc
@@ -1341,7 +1337,7 @@ fn test_parse_sps_chroma_format() {
 #[test]
 fn test_parse_pps_pic_parameter_set_id() {
     // Test PPS parsing extracts pic_parameter_set_id correctly
-    let mut data = vec![0u8; 16];
+    let mut data = [0u8; 16];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x44]); // NAL header
     data[4] = 5; // pps_pic_parameter_set_id
     data[5] = 0x00; // pps_seq_parameter_set_id

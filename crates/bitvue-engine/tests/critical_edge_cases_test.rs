@@ -41,7 +41,7 @@ mod division_by_zero_tests {
         let pixel_count = reference.len();
         if pixel_count == 0 {
             // Expected: error or safe return, not panic
-            assert!(true, "Zero pixel count handled gracefully");
+            assert_eq!(pixel_count, 0, "Zero pixel count handled gracefully");
         }
     }
 
@@ -68,11 +68,12 @@ mod division_by_zero_tests {
 
         // This pattern is used in plane extraction
         // Should not cause division by zero
-        if stride > 0 {
-            let _rows = height / stride;
-        } else {
-            // Handle zero stride case
-            assert!(true, "Zero stride handled without division");
+        match height.checked_div(stride) {
+            Some(_rows) => {}
+            None => {
+                // Handle zero stride case
+                assert_eq!(stride, 0, "Zero stride handled without division");
+            }
         }
     }
 
@@ -102,11 +103,7 @@ mod division_by_zero_tests {
         let segment_size = 0usize;
 
         // Pattern from ByteCache::new
-        let num_segments = if segment_size > 0 {
-            max_memory / segment_size
-        } else {
-            1 // Minimum segments
-        };
+        let num_segments = max_memory.checked_div(segment_size).unwrap_or(1); // 1 = minimum segments
 
         assert!(
             num_segments >= 1,
@@ -182,7 +179,11 @@ mod integer_overflow_tests {
             }
         }
 
-        assert!(frame_count <= u32::MAX, "Frame counter should not overflow");
+        assert_eq!(
+            frame_count,
+            u32::MAX,
+            "Frame counter should saturate at u32::MAX instead of overflowing"
+        );
     }
 
     /// Test SIMD accumulator overflow protection
@@ -253,7 +254,7 @@ mod negative_value_tests {
             let _ = data[negative_offset as usize];
         } else {
             // Handle negative offset
-            assert!(true, "Negative offset rejected");
+            assert!(negative_offset < 0, "Negative offset rejected");
         }
     }
 
@@ -312,7 +313,7 @@ mod negative_value_tests {
         // Pattern: check before conversion
         if timestamp_u64 > i64::MAX as u64 {
             // Reject or clamp
-            assert!(true, "Large timestamp rejected");
+            assert!(timestamp_u64 > i64::MAX as u64, "Large timestamp rejected");
         }
     }
 }
@@ -426,7 +427,7 @@ mod resource_limit_tests {
     /// Test frame count validation
     #[test]
     fn test_frame_count_validation() {
-        assert!(MAX_FRAMES_PER_FILE <= 100_000, "Frame count within limit");
+        const { assert!(MAX_FRAMES_PER_FILE <= 100_000, "Frame count within limit") };
 
         let over_limit = MAX_FRAMES_PER_FILE + 1;
         assert!(
@@ -649,14 +650,18 @@ mod boundary_value_tests {
     /// Test recursion depth boundary
     #[test]
     fn test_recursion_depth_boundary() {
-        assert!(
-            MAX_RECURSION_DEPTH >= 100,
-            "Recursion depth should be >= 100"
-        );
-        assert!(
-            MAX_RECURSION_DEPTH <= 1000,
-            "Recursion depth should be reasonable"
-        );
+        const {
+            assert!(
+                MAX_RECURSION_DEPTH >= 100,
+                "Recursion depth should be >= 100"
+            )
+        };
+        const {
+            assert!(
+                MAX_RECURSION_DEPTH <= 1000,
+                "Recursion depth should be reasonable"
+            )
+        };
     }
 }
 
@@ -759,7 +764,11 @@ mod error_recovery_tests {
 
         // Reader should still be usable for valid reads
         reader.byte_align();
-        assert!(true, "No crash after errors");
+        let result = reader.read_bits(8);
+        assert!(
+            result.is_ok(),
+            "Reader should remain usable for valid reads after prior failed reads"
+        );
     }
 }
 

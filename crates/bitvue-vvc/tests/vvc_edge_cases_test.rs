@@ -60,9 +60,7 @@ fn test_parse_nal_header_with_trailing_zeros() {
 fn test_parse_nal_header_with_trailing_ones() {
     let mut data = vec![0u8; 64];
     data[0] = 0x80;
-    for i in 1..64 {
-        data[i] = 0xFF;
-    }
+    data[1..64].fill(0xFF);
 
     let result = parse_nal_header(&data);
     assert!(result.is_ok() || result.is_err());
@@ -71,8 +69,8 @@ fn test_parse_nal_header_with_trailing_ones() {
 #[test]
 fn test_parse_nal_header_alternating_pattern() {
     let mut data = vec![0u8; 64];
-    for i in 0..64 {
-        data[i] = if i % 2 == 0 { 0xAA } else { 0x55 };
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte = if i % 2 == 0 { 0xAA } else { 0x55 };
     }
 
     let result = parse_nal_header(&data);
@@ -82,8 +80,8 @@ fn test_parse_nal_header_alternating_pattern() {
 #[test]
 fn test_parse_nal_header_incrementing_data() {
     let mut data = vec![0u8; 64];
-    for i in 0..64 {
-        data[i] = i as u8;
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte = i as u8;
     }
 
     let result = parse_nal_header(&data);
@@ -109,8 +107,11 @@ fn test_parse_vvc_no_start_codes() {
 fn test_parse_vvc_only_start_codes() {
     let data = [0x00, 0x00, 0x01, 0x00, 0x00, 0x01];
     let stream = parse_vvc(&data).unwrap();
-    // May or may not find NALs
-    assert!(stream.nal_units.len() >= 0);
+    // Back-to-back start codes with no payload between them: find_nal_units()
+    // locates the second start code immediately at the first NAL's start
+    // offset, producing a zero-length (start == end) span that
+    // parse_nal_units() then discards. So no NAL units should be produced.
+    assert_eq!(stream.nal_units.len(), 0);
 }
 
 #[test]
@@ -128,8 +129,8 @@ fn test_parse_vvc_very_long_nal() {
     let mut data = vec![0u8; 10000];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x20; // Slice NAL type
-    for i in 5..data.len() {
-        data[i] = (i % 256) as u8;
+    for (i, byte) in data.iter_mut().enumerate().skip(5) {
+        *byte = (i % 256) as u8;
     }
 
     let result = parse_vvc(&data);

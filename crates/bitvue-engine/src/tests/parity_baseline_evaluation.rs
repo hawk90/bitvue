@@ -336,7 +336,7 @@ fn test_baseline_parity_evaluation() {
 
     // Record all assessments
     for (item_id, (result, _reason)) in &assessments {
-        harness.record_result(item_id, result.clone());
+        harness.record_result(item_id, *result);
     }
 
     // Calculate score and generate report
@@ -387,7 +387,7 @@ fn test_baseline_parity_evaluation() {
     let mut pass_count = 0;
     let mut fail_count = 0;
     let mut not_tested = 0;
-    for (_, (result, _)) in &assessments {
+    for (result, _) in assessments.values() {
         match result {
             ParityResult::Pass => pass_count += 1,
             ParityResult::Fail => fail_count += 1,
@@ -492,7 +492,7 @@ fn test_baseline_summary_json() {
     let assessments = assess_implementation_status();
 
     for (item_id, (result, _)) in &assessments {
-        harness.record_result(item_id, result.clone());
+        harness.record_result(item_id, *result);
     }
 
     // TODO: Implement export_report_json method on ParityHarness

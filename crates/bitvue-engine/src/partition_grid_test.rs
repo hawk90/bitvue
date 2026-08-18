@@ -366,9 +366,11 @@ mod tests {
     #[test]
     fn test_partition_statistics_avg_depth() {
         // Arrange
-        let mut stats = PartitionStatistics::default();
-        stats.total_blocks = 4;
-        stats.depth_counts = vec![1, 2, 1]; // 1 block at depth 0, 2 at depth 1, 1 at depth 2
+        let stats = PartitionStatistics {
+            total_blocks: 4,
+            depth_counts: vec![1, 2, 1], // 1 block at depth 0, 2 at depth 1, 1 at depth 2
+            ..Default::default()
+        };
 
         // Act
         let avg = stats.avg_depth();
@@ -392,8 +394,10 @@ mod tests {
     #[test]
     fn test_partition_statistics_max_depth() {
         // Arrange
-        let mut stats = PartitionStatistics::default();
-        stats.depth_counts = vec![1, 2, 1, 0, 3]; // Max depth index is 4
+        let stats = PartitionStatistics {
+            depth_counts: vec![1, 2, 1, 0, 3], // Max depth index is 4
+            ..Default::default()
+        };
 
         // Act
         let max = stats.max_depth();
@@ -417,10 +421,12 @@ mod tests {
     #[test]
     fn test_partition_statistics_summary() {
         // Arrange
-        let mut stats = PartitionStatistics::default();
-        stats.total_blocks = 100;
-        stats.avg_block_area = 256.0;
-        stats.depth_counts = vec![10, 50, 40];
+        let stats = PartitionStatistics {
+            total_blocks: 100,
+            avg_block_area: 256.0,
+            depth_counts: vec![10, 50, 40],
+            ..Default::default()
+        };
 
         // Act
         let summary = stats.summary();

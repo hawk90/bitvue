@@ -160,7 +160,7 @@ fn test_clear() {
     tracker.record(PerfMetric::Parse, Duration::from_millis(100));
     tracker.record_cache_hit("cache");
 
-    assert!(tracker.events.len() > 0);
+    assert!(!tracker.events.is_empty());
 
     tracker.clear();
 

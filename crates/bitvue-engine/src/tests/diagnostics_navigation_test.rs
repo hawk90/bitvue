@@ -284,8 +284,7 @@ fn test_navigate_to_previous_error() {
             .diagnostics
             .iter()
             .filter(|d| d.severity == Severity::Error)
-            .filter(|d| d.frame_index.unwrap_or(999) < current_frame)
-            .last();
+            .rfind(|d| d.frame_index.unwrap_or(999) < current_frame);
 
         assert!(prev_error.is_some());
         assert_eq!(prev_error.unwrap().frame_index, Some(5));
@@ -468,14 +467,10 @@ fn test_navigate_by_timestamp() {
         let state = stream.read();
         let target_time = 2500;
 
-        let closest = state.diagnostics.iter().min_by_key(|d| {
-            let diff = if d.timestamp_ms > target_time {
-                d.timestamp_ms - target_time
-            } else {
-                target_time - d.timestamp_ms
-            };
-            diff
-        });
+        let closest = state
+            .diagnostics
+            .iter()
+            .min_by_key(|d| d.timestamp_ms.abs_diff(target_time));
 
         assert!(closest.is_some());
         // Closest should be either 2000ms or 3000ms
@@ -486,7 +481,7 @@ fn test_navigate_by_timestamp() {
 #[test]
 fn test_diagnostic_selection_state() {
     // Test tracking which diagnostic is currently selected
-    let diagnostics = vec![
+    let diagnostics = [
         Diagnostic {
             id: 1,
             severity: Severity::Error,

@@ -69,8 +69,8 @@ fn test_parse_vp9_with_superframe_index() {
 #[test]
 fn test_parse_vp9_alternating_pattern() {
     let mut data = vec![0u8; 64];
-    for i in 0..64 {
-        data[i] = if i % 2 == 0 { 0xAA } else { 0x55 };
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte = if i % 2 == 0 { 0xAA } else { 0x55 };
     }
 
     let result = parse_vp9(&data);
@@ -80,8 +80,8 @@ fn test_parse_vp9_alternating_pattern() {
 #[test]
 fn test_parse_vp9_incrementing_data() {
     let mut data = vec![0u8; 64];
-    for i in 0..64 {
-        data[i] = i as u8;
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte = i as u8;
     }
 
     let result = parse_vp9(&data);

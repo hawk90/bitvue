@@ -722,7 +722,10 @@ mod hrd_statistics_tests {
         assert_eq!(stats.overflow_count, 0);
         assert_eq!(stats.underflow_count, 0);
         // Buffer should have some bits in it after initialization and frames
-        assert!(stats.min_fullness_bits >= 0);
+        assert!(
+            stats.min_fullness_bits <= stats.max_fullness_bits,
+            "Min fullness should never exceed max fullness"
+        );
         assert!(stats.max_fullness_bits > 0);
         assert!(stats.avg_fullness_bits > 0.0);
         assert!(stats.is_conformant);

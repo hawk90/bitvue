@@ -139,11 +139,11 @@ mod tests {
     fn test_read_bits_lsb() {
         let data = [0b10110100, 0b11001010];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 0
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 1
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 2
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 3
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 4
+        assert!(!reader.read_bit().unwrap()); // bit 0
+        assert!(!reader.read_bit().unwrap()); // bit 1
+        assert!(reader.read_bit().unwrap()); // bit 2
+        assert!(!reader.read_bit().unwrap()); // bit 3
+        assert!(reader.read_bit().unwrap()); // bit 4
     }
 
     #[test]
@@ -160,9 +160,9 @@ mod tests {
     fn test_msb_reader() {
         let data = [0b10110100];
         let mut reader = MsbBitReader::new(&data);
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 7
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 6
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 5
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 4
+        assert!(reader.read_bit().unwrap()); // bit 7
+        assert!(!reader.read_bit().unwrap()); // bit 6
+        assert!(reader.read_bit().unwrap()); // bit 5
+        assert!(reader.read_bit().unwrap()); // bit 4
     }
 }

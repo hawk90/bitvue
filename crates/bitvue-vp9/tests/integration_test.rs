@@ -16,7 +16,7 @@
 //! - Superframe detection
 //! - Overlay data extraction
 
-use bitvue_vp9::parse_vp9;
+use bitvue_vp9::{extract_qp_grid, parse_vp9};
 
 #[test]
 fn test_parse_empty_vp9_stream() {
@@ -89,11 +89,16 @@ fn test_v0_5_overlay_extraction() {
         // Verify frames exist
         assert!(!stream.frames.is_empty(), "Should have frames");
 
-        // Test that overlay extraction functions exist
-        // (VP9 overlay extraction requires actual frame data)
+        // Test that overlay extraction functions actually work on parsed
+        // frame data (previously this only checked `if let Some(frame) = ...`
+        // and then asserted a hardcoded `true`, never calling the API it
+        // claimed to test).
         if let Some(frame) = stream.frames.first() {
-            // The overlay extraction API should be available
-            assert!(true, "VP9 overlay extraction API exists");
+            let qp_grid = extract_qp_grid(frame);
+            assert!(
+                qp_grid.is_ok(),
+                "VP9 QP grid extraction should succeed for a parsed frame"
+            );
         }
     }
 }

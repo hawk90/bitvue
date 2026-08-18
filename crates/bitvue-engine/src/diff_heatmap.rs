@@ -1058,10 +1058,13 @@ mod edge_case_tests {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn test_diff_heatmap_module_compiles() {
-        // Module-level test to ensure the file compiles
-        assert!(true);
+        // Module-level smoke test: construct the core overlay type and check
+        // a real default invariant instead of a tautological assertion.
+        let overlay = DiffHeatmapOverlay::new(1920, 1080);
+        assert!(overlay.enabled, "New overlay should be enabled by default");
     }
 }

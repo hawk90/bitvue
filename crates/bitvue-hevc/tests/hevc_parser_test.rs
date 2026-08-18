@@ -20,10 +20,10 @@ fn test_hevc_nal_types() {
         TRAIL_R = 1,
         IDR_W_RADL = 19,
         IDR_N_LP = 20,
-        VPS = 32,
-        SPS = 33,
-        PPS = 34,
-        AUD = 35,
+        Vps = 32,
+        Sps = 33,
+        Pps = 34,
+        Aud = 35,
         SEI_PREFIX = 39,
         SEI_SUFFIX = 40,
     }
@@ -33,9 +33,9 @@ fn test_hevc_nal_types() {
         (1, HevcNalType::TRAIL_R),
         (19, HevcNalType::IDR_W_RADL),
         (20, HevcNalType::IDR_N_LP),
-        (32, HevcNalType::VPS),
-        (33, HevcNalType::SPS),
-        (34, HevcNalType::PPS),
+        (32, HevcNalType::Vps),
+        (33, HevcNalType::Sps),
+        (34, HevcNalType::Pps),
     ];
 
     for (type_val, expected) in nal_types {
@@ -46,13 +46,13 @@ fn test_hevc_nal_types() {
 #[test]
 fn test_hevc_vps_parsing() {
     // Test VPS (Video Parameter Set) parsing
-    struct VPS {
+    struct Vps {
         vps_id: u8,
         max_layers: u8,
         max_sub_layers: u8,
     }
 
-    let vps = VPS {
+    let vps = Vps {
         vps_id: 0,
         max_layers: 1,
         max_sub_layers: 1,
@@ -65,7 +65,7 @@ fn test_hevc_vps_parsing() {
 #[test]
 fn test_hevc_sps_parsing() {
     // Test SPS (Sequence Parameter Set) parsing
-    struct SPS {
+    struct Sps {
         sps_id: u8,
         vps_id: u8,
         max_sub_layers: u8,
@@ -73,7 +73,7 @@ fn test_hevc_sps_parsing() {
         height: u32,
     }
 
-    let sps = SPS {
+    let sps = Sps {
         sps_id: 0,
         vps_id: 0,
         max_sub_layers: 1,
@@ -89,14 +89,14 @@ fn test_hevc_sps_parsing() {
 #[test]
 fn test_hevc_pps_parsing() {
     // Test PPS (Picture Parameter Set) parsing
-    struct PPS {
+    struct Pps {
         pps_id: u8,
         sps_id: u8,
         dependent_slice_segments_enabled: bool,
         output_flag_present: bool,
     }
 
-    let pps = PPS {
+    let pps = Pps {
         pps_id: 0,
         sps_id: 0,
         dependent_slice_segments_enabled: false,
@@ -117,7 +117,7 @@ fn test_hevc_slice_header() {
         I = 2,
     }
 
-    let slice_types = vec![SliceType::I, SliceType::P, SliceType::B];
+    let slice_types = [SliceType::I, SliceType::P, SliceType::B];
     assert_eq!(slice_types.len(), 3);
 }
 
@@ -139,7 +139,7 @@ fn test_hevc_idr_detection() {
         is_idr: bool,
     }
 
-    let frames = vec![
+    let frames = [
         Frame {
             nal_type: 19,
             is_idr: true,
@@ -163,7 +163,7 @@ fn test_hevc_ctb_sizes() {
     let ctb_sizes = vec![16u32, 32u32, 64u32];
 
     for size in ctb_sizes {
-        assert!(size >= 16 && size <= 64);
+        assert!((16..=64).contains(&size));
         assert!(size.is_power_of_two());
     }
 }
@@ -198,7 +198,7 @@ fn test_hevc_profile_tier_level() {
         MainStillPicture = 3,
     }
 
-    let profiles = vec![Profile::Main, Profile::Main10, Profile::MainStillPicture];
+    let profiles = [Profile::Main, Profile::Main10, Profile::MainStillPicture];
     assert_eq!(profiles.len(), 3);
 }
 
@@ -237,12 +237,12 @@ fn test_hevc_scaling_list() {
 #[test]
 fn test_hevc_reference_picture_set() {
     // Test RPS (Reference Picture Set)
-    struct RPS {
+    struct Rps {
         num_negative_pics: u8,
         num_positive_pics: u8,
     }
 
-    let rps = RPS {
+    let rps = Rps {
         num_negative_pics: 1,
         num_positive_pics: 0,
     };

@@ -172,7 +172,7 @@ fn test_severity_ordering() {
 #[test]
 fn test_timestamp_calculation() {
     // Test timestamp association (30fps = ~33ms per frame)
-    let diagnostics = vec![
+    let diagnostics = [
         Diagnostic {
             id: 1,
             severity: Severity::Error,
@@ -231,7 +231,7 @@ fn test_diagnostic_clone() {
 #[test]
 fn test_diagnostic_all_categories() {
     // Test all category types
-    let categories = vec![
+    let categories = [
         Category::Container,
         Category::Bitstream,
         Category::Decode,

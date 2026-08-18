@@ -372,7 +372,7 @@ fn test_h264_evidence_chain_navigation() {
     let mut data = Vec::new();
     for i in 0..5 {
         data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01, 0x65]);
-        data.extend_from_slice(&vec![i as u8; 10]);
+        data.extend_from_slice(&[i as u8; 10]);
     }
 
     let extractor = H264IndexExtractor::new();

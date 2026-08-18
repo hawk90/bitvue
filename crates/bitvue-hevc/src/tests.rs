@@ -206,8 +206,8 @@ fn test_parse_hevc_filler_nal() {
     data[1] = 0x00;
     data[2] = 0x01;
     data[3] = 0x4C; // nal_unit_type=38 (Filler)
-    for i in 4..16 {
-        data[i] = 0xFF; // Filler bytes
+    for byte in data.iter_mut().take(16).skip(4) {
+        *byte = 0xFF; // Filler bytes
     }
 
     let result = parse_hevc(&data);
@@ -261,7 +261,7 @@ fn test_parse_hevc_suffix_nal() {
 #[test]
 fn test_parse_hevc_multiple_nal_units() {
     // Test multiple NAL units in stream
-    let mut data = vec![0u8; 64];
+    let mut data = [0u8; 64];
     let mut pos = 0;
 
     // VPS (nal_unit_type=32)
@@ -570,9 +570,7 @@ fn test_extract_annex_b_frames() {
     pos += 1;
 
     // Add more padding to make the frames valid
-    for _ in 0..32 {
-        data.push(0x00);
-    }
+    data.extend(std::iter::repeat_n(0x00, 32));
 
     let frames = extract_annex_b_frames(&data[..pos]);
     assert!(frames.is_ok());
@@ -584,7 +582,7 @@ fn test_extract_annex_b_frames() {
 #[test]
 fn test_extract_frame_at_index() {
     // Test extracting specific frame by index
-    let mut data = vec![0u8; 128];
+    let mut data = [0u8; 128];
     let mut pos = 0;
 
     // First frame (IDR)
@@ -735,7 +733,7 @@ fn test_find_nal_units() {
     ];
 
     let nal_units = find_nal_units(&data);
-    assert!(nal_units.len() >= 1);
+    assert!(!nal_units.is_empty());
 }
 
 #[test]
@@ -901,7 +899,7 @@ fn test_remove_emulation_prevention_bytes_no_removal() {
 #[test]
 fn test_hevc_stream_frame_count() {
     // Test frame counting with actual parsing
-    let mut data = vec![0u8; 128];
+    let mut data = [0u8; 128];
     let mut pos = 0;
 
     // First frame (IDR)
@@ -967,7 +965,7 @@ fn test_chroma_format() {
 #[test]
 fn test_parse_hevc_quick_with_multiple_sps() {
     // Test parse_hevc_quick with multiple SPS
-    let mut data = vec![0u8; 128];
+    let mut data = [0u8; 128];
     let mut pos = 0;
 
     // First SPS
@@ -1008,7 +1006,7 @@ fn test_parse_hevc_quick_with_multiple_sps() {
 #[test]
 fn test_parse_hevc_quick_frame_counts() {
     // Test frame counting in parse_hevc_quick
-    let mut data = vec![0u8; 128];
+    let mut data = [0u8; 128];
     let mut pos = 0;
 
     // IDR (counts as frame)
@@ -1130,7 +1128,7 @@ fn test_parse_hevc_layer_id() {
 #[test]
 fn test_hevc_stream_idr_frames() {
     // Test IDR frame detection through parsing
-    let mut data = vec![0u8; 64];
+    let mut data = [0u8; 64];
     let mut pos = 0;
 
     // IDR frame
@@ -1168,7 +1166,7 @@ fn test_hevc_stream_idr_frames() {
 #[test]
 fn test_hevc_stream_irap_frames() {
     // Test IRAP frame detection through parsing
-    let mut data = vec![0u8; 64];
+    let mut data = [0u8; 64];
     let mut pos = 0;
 
     // CRA frame (IRAP)
@@ -1249,7 +1247,7 @@ fn test_parse_sps_chroma_format() {
     // Test SPS parsing with different chroma formats
     for chroma_id in &[1u8, 2, 3] {
         // YUV420, YUV422, YUV444
-        let mut data = vec![0u8; 32];
+        let mut data = [0u8; 32];
         data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x42]); // NAL header
         data[4] = 0x01; // sps_video_parameter_set_id
         data[14] = *chroma_id; // chroma_format_idc
@@ -1263,7 +1261,7 @@ fn test_parse_sps_chroma_format() {
 #[test]
 fn test_parse_pps_pic_parameter_set_id() {
     // Test PPS parsing extracts pic_parameter_set_id correctly
-    let mut data = vec![0u8; 16];
+    let mut data = [0u8; 16];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x44]); // NAL header
     data[4] = 5; // pps_pic_parameter_set_id
     data[5] = 0x00; // pps_seq_parameter_set_id
@@ -1519,8 +1517,8 @@ fn test_parse_hevc_with_embedded_nulls() {
     data[2] = 0x01; // Start code
     data[3] = 0x00; // Embedded null in NAL header position
                     // Rest is nulls
-    for i in 4..100 {
-        data[i] = 0x00;
+    for byte in data.iter_mut().take(100).skip(4) {
+        *byte = 0x00;
     }
 
     let result = parse_hevc(&data);

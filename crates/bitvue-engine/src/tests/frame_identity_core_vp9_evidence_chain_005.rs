@@ -301,7 +301,7 @@ fn test_vp9_evidence_005_show_existing_chain_roundtrip() {
 
     // Verify minimal bit range size
     assert_eq!(bit.bit_range.size_bits(), 100);
-    assert_eq!(bit.size_bytes, (100 + 7) / 8);
+    assert_eq!(bit.size_bytes, 100_usize.div_ceil(8));
 }
 
 #[test]

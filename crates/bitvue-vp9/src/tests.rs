@@ -308,12 +308,10 @@ fn test_vp9_quick_info_with_data() {
 fn test_vp9_superframe_index_detection() {
     // Test superframe index detection
     // A valid superframe has a marker at the end
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     // Frame data
     data[0] = 0x82; // Key frame
-    for i in 1..16 {
-        data[i] = 0;
-    }
+    data[1..16].fill(0);
     // Superframe marker
     let marker_pos = 16;
     data[marker_pos] = 0; // No marker in this test
@@ -497,7 +495,7 @@ fn test_vp9_frames_to_unit_nodes() {
 #[test]
 fn test_has_superframe_index() {
     // Test superframe index detection
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0] = 0x82; // Key frame
 
     // No superframe marker
@@ -509,7 +507,7 @@ fn test_has_superframe_index() {
 #[test]
 fn test_parse_superframe_index() {
     // Test superframe index parsing
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0] = 0x82; // Key frame
 
     let result = parse_superframe_index(&data[..16]);
@@ -673,7 +671,7 @@ fn test_parse_vp9_empty_data() {
 #[test]
 fn test_parse_vp9_quick_with_superframe() {
     // Test parse_vp9_quick with superframe data
-    let mut data = vec![0u8; 64];
+    let mut data = [0u8; 64];
     data[0] = 0x82; // Key frame
     data[1] = 0x49;
     data[2] = 0x83;
@@ -936,9 +934,7 @@ fn test_parse_vp9_with_embedded_nulls() {
     let mut data = vec![0u8; 100];
     data[0] = 0x82; // Frame marker
                     // Rest is nulls
-    for i in 1..100 {
-        data[i] = 0x00;
-    }
+    data[1..100].fill(0x00);
 
     let result = parse_vp9(&data);
     // Should handle without panic

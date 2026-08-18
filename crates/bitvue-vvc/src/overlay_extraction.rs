@@ -594,7 +594,7 @@ impl<'a> VvcCabac<'a> {
         if data.len() < 2 {
             return None;
         }
-        let cod_i_offset = ((data[0] as u32) << 1) | ((data[1] as u8 >> 7) as u32);
+        let cod_i_offset = ((data[0] as u32) << 1) | ((data[1] >> 7) as u32);
         Some(Self {
             data,
             byte_pos: 1,
@@ -1242,7 +1242,7 @@ mod tests {
         let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
 
         for base_qp in [0i16, 10, 26, 40, 51] {
-            let result = extract_qp_grid(&[nal.clone()], &sps, base_qp);
+            let result = extract_qp_grid(std::slice::from_ref(&nal), &sps, base_qp);
             assert!(result.is_ok(), "Failed for base_qp={}", base_qp);
         }
     }

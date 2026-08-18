@@ -20,9 +20,9 @@ use bitvue_vvc::bitreader::{remove_emulation_prevention_bytes, BitReader};
 fn test_read_bit_single_byte() {
     let data = vec![0b10110100];
     let mut reader = BitReader::new(&data);
-    assert_eq!(reader.read_bit().unwrap(), true);
-    assert_eq!(reader.read_bit().unwrap(), false);
-    assert_eq!(reader.read_bit().unwrap(), true);
+    assert!(reader.read_bit().unwrap());
+    assert!(!reader.read_bit().unwrap());
+    assert!(reader.read_bit().unwrap());
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn test_more_rbsp_data_true() {
 #[test]
 fn test_more_rbsp_data_empty() {
     let data: &[u8] = &[];
-    let reader = BitReader::new(&data);
+    let reader = BitReader::new(data);
     assert!(!reader.more_rbsp_data());
 }
 

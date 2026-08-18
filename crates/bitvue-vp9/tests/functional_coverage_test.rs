@@ -39,7 +39,11 @@ fn test_parse_vp9_single_frame() {
     data[2] = 0x83; // sync_code
 
     let stream = parse_vp9(&data).unwrap();
-    assert!(stream.frame_count() >= 0);
+    // data[3] is left at 0 (from the zeroed buffer) instead of the required
+    // 0x42, so the 24-bit sync_code reads as 0x498300 != 0x498342.
+    // parse_frame_header() rejects that and parse_vp9() silently skips
+    // frames whose header fails to parse, so frames stays empty.
+    assert_eq!(stream.frame_count(), 0);
 }
 
 #[test]
@@ -70,7 +74,11 @@ fn test_extract_vp9_frames_single_frame() {
     let result = extract_vp9_frames(&data);
     assert!(result.is_ok());
     let frames = result.unwrap();
-    assert!(frames.len() >= 0);
+    // Same malformed sync code as above (data[3] == 0 instead of 0x42):
+    // extract_vp9_frames() zips the raw frame chunks against
+    // parse_vp9()'s successfully-parsed headers, and since that header
+    // fails to parse, the zip produces zero elements.
+    assert_eq!(frames.len(), 0);
 }
 
 #[test]
@@ -142,8 +150,10 @@ fn test_loop_filter_default() {
 fn test_loop_filter_various_levels() {
     // Test different filter levels
     for level in 0..=64u8 {
-        let mut lf = LoopFilter::default();
-        lf.level = level;
+        let lf = LoopFilter {
+            level,
+            ..Default::default()
+        };
 
         assert_eq!(lf.level, level);
     }

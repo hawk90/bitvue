@@ -108,7 +108,7 @@ fn test_all_severity_types_displayed() {
     let stream = core.get_stream(StreamId::A);
     let mut state = stream.write();
 
-    let severities = vec![
+    let severities = [
         (Severity::Fatal, "FATAL"),
         (Severity::Error, "ERROR"),
         (Severity::Warn, "WARN"),
@@ -142,7 +142,7 @@ fn test_all_category_types_displayed() {
     let stream = core.get_stream(StreamId::A);
     let mut state = stream.write();
 
-    let categories = vec![
+    let categories = [
         (Category::Container, "CTB", "Container error"),
         (Category::Bitstream, "NAL", "Bitstream error"),
         (Category::Decode, "HRD", "Decode error"),
@@ -381,7 +381,7 @@ fn test_sorting_by_impact_score() {
     let mut state = stream.write();
 
     // Add diagnostics with various impact scores
-    let impacts = vec![50, 95, 30, 88, 65, 100, 45, 75];
+    let impacts = [50, 95, 30, 88, 65, 100, 45, 75];
     for (i, &impact) in impacts.iter().enumerate() {
         state.add_diagnostic(Diagnostic {
             id: i as u64,
@@ -435,7 +435,7 @@ fn test_filtering_by_frame_range() {
         .iter()
         .filter(|d| {
             if let Some(frame) = d.frame_index {
-                frame >= 20 && frame <= 30
+                (20..=30).contains(&frame)
             } else {
                 false
             }

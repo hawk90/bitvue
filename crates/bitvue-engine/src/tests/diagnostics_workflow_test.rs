@@ -154,7 +154,7 @@ fn test_workflow_filter_sort_navigate() {
 
     // Step 2: Sort filtered results by impact score (descending)
     let mut sorted = filtered;
-    sorted.sort_by(|a, b| b.impact_score.cmp(&a.impact_score));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.impact_score));
 
     assert_eq!(sorted[0].id, 9, "Highest impact error should be #9");
     assert_eq!(sorted[0].impact_score, 95);
@@ -509,8 +509,7 @@ fn test_workflow_jump_to_first_last_error() {
         state
             .diagnostics
             .iter()
-            .filter(|d| d.severity == Severity::Error)
-            .last()
+            .rfind(|d| d.severity == Severity::Error)
             .cloned()
     };
 

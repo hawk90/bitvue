@@ -376,9 +376,11 @@ mod tests {
 
     #[test]
     fn test_tile_config() {
-        let mut tile_config = TileConfig::default();
-        tile_config.num_tile_columns_minus1 = 3;
-        tile_config.num_tile_rows_minus1 = 2;
+        let tile_config = TileConfig {
+            num_tile_columns_minus1: 3,
+            num_tile_rows_minus1: 2,
+            ..Default::default()
+        };
 
         assert_eq!(tile_config.num_columns(), 4);
         assert_eq!(tile_config.num_rows(), 3);

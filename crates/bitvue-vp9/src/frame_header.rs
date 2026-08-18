@@ -437,7 +437,7 @@ pub fn parse_frame_header(data: &[u8]) -> Result<FrameHeader> {
 
     // Record how many bytes of the input were consumed by the uncompressed header.
     // reader.position() gives bits consumed; round up to the next byte boundary.
-    header.uncompressed_header_bytes = ((reader.position() + 7) / 8) as u32;
+    header.uncompressed_header_bytes = reader.position().div_ceil(8) as u32;
 
     Ok(header)
 }

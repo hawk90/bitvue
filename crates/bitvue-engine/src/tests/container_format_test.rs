@@ -75,7 +75,7 @@ fn test_mp4_box_types() {
         Stbl,
     }
 
-    let boxes = vec![Mp4BoxType::Ftyp, Mp4BoxType::Moov, Mp4BoxType::Mdat];
+    let boxes = [Mp4BoxType::Ftyp, Mp4BoxType::Moov, Mp4BoxType::Mdat];
 
     assert_eq!(boxes.len(), 3);
 }
@@ -96,7 +96,7 @@ fn test_mp4_ftyp_box() {
     };
 
     assert_eq!(&ftyp.major_brand, b"isom");
-    assert!(ftyp.compatible_brands.len() >= 1);
+    assert!(!ftyp.compatible_brands.is_empty());
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn test_mkv_element_ids() {
     const TRACKS: u32 = 0x1654AE6B;
     const CLUSTER: u32 = 0x1F43B675;
 
-    let ids = vec![EBML, SEGMENT, TRACKS, CLUSTER];
+    let ids = [EBML, SEGMENT, TRACKS, CLUSTER];
     assert_eq!(ids.len(), 4);
 }
 
@@ -227,7 +227,7 @@ fn test_ts_stream_types() {
     const STREAM_TYPE_HEVC: u8 = 0x24;
     const STREAM_TYPE_VVC: u8 = 0x33;
 
-    let stream_types = vec![STREAM_TYPE_H264, STREAM_TYPE_HEVC, STREAM_TYPE_VVC];
+    let stream_types = [STREAM_TYPE_H264, STREAM_TYPE_HEVC, STREAM_TYPE_VVC];
 
     assert_eq!(stream_types.len(), 3);
 }
@@ -277,7 +277,7 @@ fn test_container_seeking() {
         supported: bool,
     }
 
-    let capabilities = vec![
+    let capabilities = [
         SeekCapability {
             mode: SeekMode::Byte,
             supported: true,

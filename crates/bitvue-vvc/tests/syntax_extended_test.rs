@@ -50,7 +50,7 @@ fn test_syntax_node_type_copy() {
 #[test]
 fn test_syntax_node_type_clone() {
     let node_type = SyntaxNodeType::Structure;
-    let cloned = node_type.clone();
+    let cloned = node_type;
     assert_eq!(cloned, node_type);
 }
 
@@ -162,7 +162,7 @@ fn test_syntax_node_empty_children() {
     let node = SyntaxNode::new("Empty Children", SyntaxNodeType::Array);
     assert!(node.children.is_empty());
     assert_eq!(node.children.len(), 0);
-    assert!(node.children.first().is_none());
+    assert!(node.children.is_empty());
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn test_build_syntax_tree_with_nal_units() {
         .find(|n| n.name == "NAL Units")
         .expect("Should have NAL Units child");
 
-    assert!(nal_units_node.children.len() > 0);
+    assert!(!nal_units_node.children.is_empty());
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn test_syntax_node_various_node_types() {
 fn test_syntax_node_with_capacity() {
     // Create nodes with different expected capacities
     let field_node = SyntaxNode::field("test", "value");
-    assert!(field_node.children.capacity() >= 0);
+    assert!(field_node.children.capacity() >= 4); // SyntaxNode::field pre-allocates capacity 4
 
     let array_node = SyntaxNode::new("Array", SyntaxNodeType::Array);
     assert!(array_node.children.capacity() >= 8); // Pre-allocated capacity

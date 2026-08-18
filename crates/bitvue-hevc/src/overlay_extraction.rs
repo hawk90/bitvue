@@ -285,6 +285,11 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
     ))
 }
 
+/// Result of [`extract_prediction_mode_grid`]:
+/// `(coded_width, coded_height, block_w, block_h, modes)` where `modes` is a
+/// flat Vec (one entry per CTU) with values: 0 = Intra, 1 = Inter, 2 = Skip.
+type PredictionModeGridResult = Result<(u32, u32, u32, u32, Vec<Option<u8>>), BitvueError>;
+
 /// Extract Partition Grid from HEVC bitstream
 ///
 /// Parses CTUs from slice data and creates a partition grid.
@@ -293,10 +298,7 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
 /// Returns `(coded_width, coded_height, block_w, block_h, modes)` where
 /// `modes` is a flat Vec (one entry per CTU) with values:
 ///   0 = Intra, 1 = Inter, 2 = Skip
-pub fn extract_prediction_mode_grid(
-    nal_units: &[NalUnit],
-    sps: &Sps,
-) -> Result<(u32, u32, u32, u32, Vec<Option<u8>>), BitvueError> {
+pub fn extract_prediction_mode_grid(nal_units: &[NalUnit], sps: &Sps) -> PredictionModeGridResult {
     let base_qp = nal_units
         .iter()
         .find_map(|nal| {
@@ -1120,7 +1122,7 @@ mod tests {
         let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
 
         for base_qp in [0i16, 10, 26, 40, 51] {
-            let result = extract_qp_grid(&[nal.clone()], &sps, base_qp);
+            let result = extract_qp_grid(std::slice::from_ref(&nal), &sps, base_qp);
             assert!(result.is_ok(), "Failed for base_qp={}", base_qp);
         }
     }

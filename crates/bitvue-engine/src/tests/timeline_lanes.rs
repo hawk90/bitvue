@@ -259,7 +259,7 @@ fn test_timeline_lane_system_marker_clusters() {
     system.set_zoom_level(1.0, &markers);
 
     // At zoom 1.0, threshold should cluster some markers
-    assert!(system.marker_clusters.len() > 0);
+    assert!(!system.marker_clusters.is_empty());
 }
 
 #[test]

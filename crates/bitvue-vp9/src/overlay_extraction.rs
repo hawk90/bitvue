@@ -465,7 +465,7 @@ fn parse_super_blocks_inner(
         let qp = if seg.enabled && seg.feature_enabled[seg_id as usize][0] {
             let alt_q = seg.feature_data[seg_id as usize][0];
             if seg.abs_or_delta_update {
-                alt_q.clamp(0, 255) as i16
+                alt_q.clamp(0, 255)
             } else {
                 (base_qp + alt_q).clamp(0, 255)
             }

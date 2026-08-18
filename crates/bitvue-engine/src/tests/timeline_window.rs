@@ -36,11 +36,11 @@ fn test_window_policy_adaptive() {
 
     // High zoom (10 px/frame): fewer frames
     let size_high = policy.calculate_window_size(10.0, 100000);
-    assert!(size_high >= 100 && size_high <= 5000);
+    assert!((100..=5000).contains(&size_high));
 
     // Low zoom (0.1 px/frame): more frames
     let size_low = policy.calculate_window_size(0.1, 100000);
-    assert!(size_low >= 100 && size_low <= 5000);
+    assert!((100..=5000).contains(&size_low));
     assert!(size_low > size_high); // More frames at lower zoom
 }
 

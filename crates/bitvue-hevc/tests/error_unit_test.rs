@@ -169,7 +169,7 @@ fn test_hevc_error_source_none() {
 
 #[test]
 fn test_hevc_error_source_io() {
-    let io_err = std::io::Error::new(std::io::ErrorKind::Other, "io error");
+    let io_err = std::io::Error::other("io error");
     let err = HevcError::Io(io_err);
     assert!(err.source().is_some());
 }

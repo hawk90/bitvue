@@ -204,7 +204,7 @@ fn test_build_syntax_tree_with_nal() {
     let stream = result.unwrap();
     let tree = build_syntax_tree(&stream);
 
-    assert!(tree.children.len() > 0);
+    assert!(!tree.children.is_empty());
 
     // Should have "NAL Units" child node
     let nal_units_node = tree.children.iter().find(|n| n.name == "NAL Units");

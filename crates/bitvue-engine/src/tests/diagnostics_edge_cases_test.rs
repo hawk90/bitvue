@@ -419,7 +419,7 @@ fn test_interleaved_severity_filtering() {
     let mut state = stream.write();
 
     // Add interleaved severities
-    let pattern = vec![
+    let pattern = [
         Severity::Fatal,
         Severity::Error,
         Severity::Warn,

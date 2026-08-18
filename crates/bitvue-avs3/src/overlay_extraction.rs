@@ -59,8 +59,8 @@ pub struct CcsaoMap {
 const CTU_SIZE: u32 = 128;
 
 fn grid_dims(width: u32, height: u32) -> (u32, u32) {
-    let gw = (width + CTU_SIZE - 1) / CTU_SIZE;
-    let gh = (height + CTU_SIZE - 1) / CTU_SIZE;
+    let gw = width.div_ceil(CTU_SIZE);
+    let gh = height.div_ceil(CTU_SIZE);
     (gw, gh)
 }
 

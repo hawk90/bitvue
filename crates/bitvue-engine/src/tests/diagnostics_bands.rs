@@ -232,7 +232,7 @@ fn test_diagnostics_bands_error_count() {
 #[test]
 fn test_diagnostics_bands_select_burst() {
     let mut bands = DiagnosticsBands::new();
-    bands.detect_error_bursts(&vec![10, 11, 50, 51], 5);
+    bands.detect_error_bursts(&[10, 11, 50, 51], 5);
 
     bands.select_burst(1);
     assert_eq!(bands.selected_burst, Some(1));

@@ -61,9 +61,7 @@ fn test_parse_av3_sequence_header() {
     data[0] = (1 << 3) | 0x02; // obu_type=1 (SequenceHeader), has_size=1
     data[1] = 14; // size=14
                   // Fill with zeros (incomplete but tests detection)
-    for i in 2..16 {
-        data[i] = 0;
-    }
+    data[2..16].fill(0);
 
     let result = parse_av3(&data);
     assert!(result.is_ok());
@@ -124,9 +122,7 @@ fn test_parse_av3_padding_obu() {
     let mut data = vec![0u8; 16];
     data[0] = (15 << 3) | 0x02; // obu_type=15 (Padding), has_size=1
     data[1] = 14; // size=14
-    for i in 2..16 {
-        data[i] = 0; // Padding bytes
-    }
+    data[2..16].fill(0); // Padding bytes
 
     let result = parse_av3(&data);
     assert!(result.is_ok());
@@ -154,7 +150,7 @@ fn test_parse_av3_tile_group_obu() {
 #[test]
 fn test_parse_av3_multiple_obus() {
     // Test multiple OBU units
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     let mut pos = 0;
 
     // Temporal delimiter
@@ -186,7 +182,7 @@ fn test_parse_av3_multiple_obus() {
     let result = parse_av3(&data[..pos]);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.obu_units.len() >= 1);
+    assert!(!stream.obu_units.is_empty());
 }
 
 #[test]
@@ -583,7 +579,7 @@ fn test_av3_bit_depth_variations() {
 #[test]
 fn test_parse_av3_multiple_obu_types() {
     // Test parsing multiple OBU types in sequence
-    let mut data = vec![0u8; 64];
+    let mut data = [0u8; 64];
     let mut pos = 0;
 
     // Sequence Header
@@ -713,7 +709,7 @@ fn test_parse_av3_with_obu_extension() {
 #[test]
 fn test_parse_av3_with_large_obu_size() {
     // Test parsing OBU with large size field
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0] = (1 << 3) | 0x02; // obu_type=1, has_size=1
     data[1] = 0x80; // size continuation bit
     data[2] = 0x01; // size final byte
@@ -931,9 +927,7 @@ fn test_parse_av3_with_embedded_nulls() {
     let mut data = vec![0u8; 100];
     data[0] = (1 << 3) | 0x02; // Sequence header OBU
                                // Rest is nulls
-    for i in 1..100 {
-        data[i] = 0x00;
-    }
+    data[1..100].fill(0x00);
 
     let result = parse_av3(&data);
     // Should handle without panic
@@ -1155,7 +1149,7 @@ fn test_av3_with_multiple_sequence_headers() {
 #[test]
 fn test_parse_av3_with_temporal_delimiter_only() {
     // Test parse_av3 with only temporal delimiter OBU
-    let data = [(0 << 3) | 0x02, 0x00]; // Temporal delimiter with zero size
+    let data = [0x02, 0x00]; // Temporal delimiter with zero size
     let result = parse_av3(&data);
     // Should handle gracefully
     assert!(result.is_ok() || result.is_err());
@@ -1181,9 +1175,7 @@ fn test_parse_obu_header_with_max_size_field() {
     data[0] = (1 << 3) | 0x02; // Sequence header
     data[1] = 0xFF; // First byte of LEB128 (indicating large size)
                     // Fill rest with valid LEB128 continuation bytes
-    for i in 2..260 {
-        data[i] = 0x80; // More continuation bytes
-    }
+    data[2..260].fill(0x80); // More continuation bytes
 
     let result = parse_av3(&data);
     // Should handle gracefully without panic

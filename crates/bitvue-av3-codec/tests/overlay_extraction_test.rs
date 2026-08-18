@@ -519,12 +519,12 @@ fn test_grid_dimensions() {
     use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test various dimensions
-    let dimensions = vec![(640, 480), (1280, 720), (1920, 1080)];
+    let dimensions: Vec<(u32, u32)> = vec![(640, 480), (1280, 720), (1920, 1080)];
 
     for (width, height) in dimensions {
         // Use ceiling division to match overlay_extraction implementation
         let grid_w = width / 64;
-        let grid_h = (height + 64 - 1) / 64;
+        let grid_h = height.div_ceil(64);
         let qp_grid = QPGrid::new(
             grid_w,
             grid_h,
@@ -537,7 +537,7 @@ fn test_grid_dimensions() {
 
         // Use ceiling division for MV grid to match implementation
         let mv_grid_w = width / 16;
-        let mv_grid_h = (height + 16 - 1) / 16;
+        let mv_grid_h = height.div_ceil(16);
         let mv_l0 =
             vec![bitvue_engine::mv_overlay::MotionVector::ZERO; (mv_grid_w * mv_grid_h) as usize];
         let mv_l1 = vec![
@@ -576,7 +576,7 @@ fn test_large_grid() {
     // Test 4K resolution
     // Use ceiling division for height to match overlay_extraction implementation
     let width: u32 = 3840 / 64; // 60 SBs
-    let height: u32 = (2160 + 64 - 1) / 64; // 34 SBs (ceiling division)
+    let height: u32 = 2160_u32.div_ceil(64); // 34 SBs (ceiling division)
     let qp_values = vec![26i16; (width * height) as usize];
 
     let grid = QPGrid::new(width, height, 64, 64, qp_values, -1);
@@ -592,7 +592,7 @@ fn test_mv_grid_large() {
     // Test 4K resolution
     // Use ceiling division for height to match overlay_extraction implementation
     let grid_w = 3840 / 16;
-    let grid_h = (2160 + 16 - 1) / 16; // Ceiling division
+    let grid_h = 2160_u32.div_ceil(16); // Ceiling division
 
     let mv_l0 = vec![bitvue_engine::mv_overlay::MotionVector::ZERO; (grid_w * grid_h) as usize];
     let mv_l1 = vec![bitvue_engine::mv_overlay::MotionVector::MISSING; (grid_w * grid_h) as usize];

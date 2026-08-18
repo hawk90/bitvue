@@ -94,11 +94,7 @@ impl ReorderEntry {
 
     /// Get depth as frame count (assuming constant frame rate)
     pub fn depth_frames(&self, frame_duration_ms: u64) -> usize {
-        if frame_duration_ms == 0 {
-            0
-        } else {
-            (self.depth / frame_duration_ms) as usize
-        }
+        self.depth.checked_div(frame_duration_ms).unwrap_or(0) as usize
     }
 }
 

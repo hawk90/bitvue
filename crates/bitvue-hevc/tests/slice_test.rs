@@ -172,7 +172,7 @@ fn test_slice_header_default() {
     let header = SliceHeader::default();
     assert!(header.first_slice_segment_in_pic_flag);
     assert_eq!(header.slice_type, SliceType::I);
-    assert_eq!(header.pic_output_flag, true);
+    assert!(header.pic_output_flag);
     assert_eq!(header.slice_qp_delta, 0);
     assert_eq!(header.max_num_merge_cand(), 5);
 }

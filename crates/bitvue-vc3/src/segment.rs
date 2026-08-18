@@ -185,19 +185,16 @@ pub fn scan_segments(data: &[u8]) -> Vec<FrameHeader> {
     let mut i = 0;
     while i + 640 <= data.len() {
         if data[i..i + 4] == DNXHD_MAGIC {
-            match parse_frame_header(data, i) {
-                Ok(h) => {
-                    let advance = if h.frame_size > 640 {
-                        h.frame_size as usize
-                    } else {
-                        // Corrupt or unknown size — advance by minimum stride to avoid loop
-                        640
-                    };
-                    headers.push(h);
-                    i += advance;
-                    continue;
-                }
-                Err(_) => {}
+            if let Ok(h) = parse_frame_header(data, i) {
+                let advance = if h.frame_size > 640 {
+                    h.frame_size as usize
+                } else {
+                    // Corrupt or unknown size — advance by minimum stride to avoid loop
+                    640
+                };
+                headers.push(h);
+                i += advance;
+                continue;
             }
         }
         // Scan byte by byte for next magic

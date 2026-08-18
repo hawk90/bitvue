@@ -44,8 +44,8 @@ fn test_parse_hevc_large_input_100kb() {
 #[test]
 fn test_parse_hevc_random_pattern_1kb() {
     let mut data = vec![0u8; 1024];
-    for i in 0..1024 {
-        data[i] = ((i * 11 + 5) % 256) as u8;
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte = ((i * 11 + 5) % 256) as u8;
     }
 
     let result = parse_hevc(&data);

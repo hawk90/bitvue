@@ -20,9 +20,14 @@ fn create_test_frame(display_idx: usize) -> TimelineFrame {
     TimelineFrame::new(
         display_idx,
         1024,
-        if display_idx % 30 == 0 { "I" } else { "P" }.to_string(),
+        if display_idx.is_multiple_of(30) {
+            "I"
+        } else {
+            "P"
+        }
+        .to_string(),
     )
-    .with_marker(if display_idx % 30 == 0 {
+    .with_marker(if display_idx.is_multiple_of(30) {
         FrameMarker::Key
     } else {
         FrameMarker::None
@@ -101,7 +106,7 @@ fn test_get_frame_bit_range() {
     let frame = create_test_frame(0);
     let bit_range = BitRange::new(1000, 2000);
 
-    manager.create_frame_evidence(&frame, bit_range.clone(), 1024);
+    manager.create_frame_evidence(&frame, bit_range, 1024);
 
     let retrieved_range = manager.get_frame_bit_range(0);
     assert!(retrieved_range.is_some());

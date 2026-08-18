@@ -308,7 +308,7 @@ fn test_vector_index_safe() {
 fn test_vector_index_as_usize() {
     // Test that indices are correctly converted to usize
 
-    let data = vec![1u8, 2, 3, 4, 5];
+    let data = [1u8, 2, 3, 4, 5];
 
     // Use u32 as index (common in video codecs)
     let index_u32: u32 = 2;
@@ -665,7 +665,7 @@ fn test_struct_alignment() {
 fn test_slice_alignment() {
     // Test slice alignment requirements
 
-    let data = vec![0u8; 100];
+    let data = [0u8; 100];
 
     // Aligned slice
     let slice = &data[0..100];

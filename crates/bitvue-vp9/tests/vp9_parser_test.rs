@@ -20,7 +20,7 @@ fn test_vp9_frame_types() {
         InterFrame = 1,
     }
 
-    let frame_types = vec![VP9FrameType::KeyFrame, VP9FrameType::InterFrame];
+    let frame_types = [VP9FrameType::KeyFrame, VP9FrameType::InterFrame];
     assert_eq!(frame_types.len(), 2);
 }
 
@@ -157,7 +157,7 @@ fn test_vp9_transform_sizes() {
         TX_32x32,
     }
 
-    let sizes = vec![
+    let sizes = [
         TransformSize::TX_4x4,
         TransformSize::TX_8x8,
         TransformSize::TX_16x16,
@@ -178,7 +178,7 @@ fn test_vp9_interpolation_filter() {
         Bilinear,
     }
 
-    let filters = vec![
+    let filters = [
         InterpFilter::EightTap,
         InterpFilter::EightTapSmooth,
         InterpFilter::Bilinear,
@@ -198,7 +198,7 @@ fn test_vp9_partition_types() {
         PARTITION_SPLIT,
     }
 
-    let partitions = vec![
+    let partitions = [
         PartitionType::PARTITION_NONE,
         PartitionType::PARTITION_SPLIT,
     ];

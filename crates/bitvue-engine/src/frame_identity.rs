@@ -1837,7 +1837,8 @@ impl CursorSync {
     unreachable_code,
     non_camel_case_types,
     unused_parens,
-    unused_assignments
+    unused_assignments,
+    clippy::module_inception
 )]
 #[cfg(test)]
 mod tests {

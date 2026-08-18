@@ -307,7 +307,7 @@ fn test_diagnostic_frame_range_filtering() {
             .iter()
             .filter(|d| {
                 if let Some(frame) = d.frame_index {
-                    frame >= 10 && frame < 20
+                    (10..20).contains(&frame)
                 } else {
                     false
                 }
@@ -323,7 +323,7 @@ fn test_diagnostic_frame_range_filtering() {
         for diag in range_10_20 {
             let frame = diag.frame_index.unwrap();
             assert!(
-                frame >= 10 && frame < 20,
+                (10..20).contains(&frame),
                 "Frame {} should be in range [10, 20)",
                 frame
             );
@@ -383,7 +383,7 @@ fn test_diagnostic_sorting_by_impact() {
         let mut state = stream.write();
 
         // Add diagnostics with varying impact scores (not in order)
-        let impacts = vec![50, 90, 70, 100, 60, 85, 95, 55];
+        let impacts = [50, 90, 70, 100, 60, 85, 95, 55];
         for (i, impact) in impacts.iter().enumerate() {
             state.add_diagnostic(Diagnostic {
                 id: i as u64,
@@ -583,7 +583,7 @@ fn test_diagnostic_timestamp_calculation() {
 
         // Add diagnostics with timestamps at 30fps
         // Frame 0 = 0ms, Frame 30 = 1000ms, Frame 60 = 2000ms
-        for frame in vec![0, 30, 60, 90] {
+        for frame in [0, 30, 60, 90] {
             let timestamp_ms = (frame as u64 * 1000) / 30; // 30fps
 
             state.add_diagnostic(Diagnostic {

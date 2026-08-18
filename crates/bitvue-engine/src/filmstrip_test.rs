@@ -507,7 +507,7 @@ mod tests {
 
         // Assert - end should be clamped to total_frames - 1
         assert!(end < 5); // end is clamped to 4 (total_frames - 1)
-        assert!(start >= 0); // start can exceed total when scrolling far
+        assert!(start >= 5); // start can exceed total when scrolling far
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod tests {
 
         // Assert - Start should be clamped to 0
         assert_eq!(start, 0);
-        assert!(end >= 0);
+        assert_eq!(end, 9); // end covers the visible thumbnails, clamped to total_frames - 1
     }
 
     #[test]

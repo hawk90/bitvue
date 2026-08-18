@@ -37,10 +37,10 @@ fn create_test_frame_metadata(display_idx: usize) -> FrameMetadata {
         decode_idx: display_idx,
         byte_offset: display_idx as u64 * 1024,
         size: 512,
-        is_keyframe: display_idx % 5 == 0,
+        is_keyframe: display_idx.is_multiple_of(5),
         pts: Some(display_idx as u64 * 1000),
         dts: Some(display_idx as u64 * 1000),
-        frame_type: Some(if display_idx % 5 == 0 {
+        frame_type: Some(if display_idx.is_multiple_of(5) {
             "I".to_string()
         } else {
             "P".to_string()

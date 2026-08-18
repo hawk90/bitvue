@@ -715,11 +715,13 @@ mod tests {
     #[test]
     fn test_mv_statistics_summary() {
         // Arrange
-        let mut stats = MVStatistics::default();
-        stats.l0_present = 100;
-        stats.l0_avg_magnitude = 5.5;
-        stats.l1_present = 50;
-        stats.l1_avg_magnitude = 3.2;
+        let stats = MVStatistics {
+            l0_present: 100,
+            l0_avg_magnitude: 5.5,
+            l1_present: 50,
+            l1_avg_magnitude: 3.2,
+            ..Default::default()
+        };
 
         // Act
         let summary = stats.summary();
@@ -734,9 +736,11 @@ mod tests {
     #[test]
     fn test_mv_statistics_total_vectors() {
         // Arrange
-        let mut stats = MVStatistics::default();
-        stats.l0_present = 100;
-        stats.l1_present = 50;
+        let stats = MVStatistics {
+            l0_present: 100,
+            l1_present: 50,
+            ..Default::default()
+        };
 
         // Act
         let total = stats.total_vectors();

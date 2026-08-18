@@ -499,7 +499,10 @@ mod result_type_tests {
 
         // Assert
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 42);
+        match result {
+            Ok(v) => assert_eq!(v, 42),
+            Err(e) => panic!("Expected Ok(42), got Err({e:?})"),
+        }
     }
 
     #[test]
@@ -509,7 +512,10 @@ mod result_type_tests {
 
         // Assert
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), BitvueError::InvalidData(_)));
+        match result {
+            Err(BitvueError::InvalidData(_)) => {}
+            other => panic!("Expected Err(BitvueError::InvalidData(_)), got {other:?}"),
+        }
     }
 
     #[test]

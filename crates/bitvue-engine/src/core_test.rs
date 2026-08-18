@@ -674,7 +674,13 @@ mod handle_unknown_command_tests {
         // The actual test would require adding a test variant to Command
         // For now, we just verify the core doesn't panic
         let selection = core.get_selection();
-        let _ = selection.read();
+        // Bind (rather than `let _ = ...`) so the guard is held for the
+        // statement instead of being dropped immediately - this test only
+        // asserts that acquiring the read lock doesn't panic/deadlock, so
+        // an immediately-dropped guard would be fine too, but a named
+        // binding makes that intent explicit and satisfies
+        // `clippy::let_underscore_lock`.
+        let _guard = selection.read();
 
         // Assert - No panic occurred
     }

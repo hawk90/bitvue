@@ -450,12 +450,13 @@ mod tests {
 
     #[test]
     fn test_key_toggles_all_active() {
-        let mut toggles = KeyToggles::default();
-        toggles.grid = true;
-        toggles.qp_heatmap = true;
-        toggles.mv_overlay = true;
-        toggles.partition = true;
-        toggles.diff = true;
+        let toggles = KeyToggles {
+            grid: true,
+            qp_heatmap: true,
+            mv_overlay: true,
+            partition: true,
+            diff: true,
+        };
 
         let active = toggles.active_overlays();
         assert_eq!(active.len(), 5);

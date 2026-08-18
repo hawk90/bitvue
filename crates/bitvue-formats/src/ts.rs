@@ -498,7 +498,9 @@ fn extract_video_samples_for_pid<F>(
 where
     F: Fn(&[u8]) -> bool,
 {
-    let mut pes_buffers: HashMap<u16, (Vec<u8>, Option<u64>, Option<u64>)> = HashMap::new();
+    // (payload bytes, PTS, DTS)
+    type PesBuffer = (Vec<u8>, Option<u64>, Option<u64>);
+    let mut pes_buffers: HashMap<u16, PesBuffer> = HashMap::new();
     let mut samples: Vec<VideoSample> = Vec::new();
     let mut byte_offset: usize = 0;
 

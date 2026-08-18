@@ -214,7 +214,7 @@ fn test_clear() {
     for i in 0..5 {
         let pair = create_test_pair(i, i);
         let bit_range = BitRange::new(i as u64 * 1000, (i as u64 + 1) * 1000);
-        manager.create_pair_evidence(&pair, bit_range.clone(), bit_range, 1024, 1024);
+        manager.create_pair_evidence(&pair, bit_range, bit_range, 1024, 1024);
     }
 
     assert_eq!(manager.pair_count(), 5);
@@ -248,37 +248,13 @@ fn test_ux_compare_diff_heatmap_pixel_traces_to_both_bitstreams() {
     let bit_range_b4 = BitRange::new(20800, 26000);
 
     let ev_0 = manager
-        .create_pair_evidence(
-            &pair_0,
-            bit_range_a0.clone(),
-            bit_range_b0.clone(),
-            1024,
-            1100,
-        )
+        .create_pair_evidence(&pair_0, bit_range_a0, bit_range_b0, 1024, 1100)
         .unwrap();
-    let ev_1 = manager.create_pair_evidence(
-        &pair_1,
-        bit_range_a1.clone(),
-        bit_range_b1.clone(),
-        1024,
-        1150,
-    );
+    let ev_1 = manager.create_pair_evidence(&pair_1, bit_range_a1, bit_range_b1, 1024, 1150);
     let ev_2 = manager
-        .create_pair_evidence(
-            &pair_2,
-            bit_range_a2.clone(),
-            bit_range_b3.clone(),
-            1024,
-            1200,
-        )
+        .create_pair_evidence(&pair_2, bit_range_a2, bit_range_b3, 1024, 1200)
         .unwrap();
-    let ev_3 = manager.create_pair_evidence(
-        &pair_3,
-        bit_range_a3.clone(),
-        bit_range_b4.clone(),
-        1024,
-        1250,
-    );
+    let ev_3 = manager.create_pair_evidence(&pair_3, bit_range_a3, bit_range_b4, 1024, 1250);
 
     // UX Compare: User hovers over diff heatmap pixel at position (320, 240)
     // This pixel shows difference between frame 2 in A and frame 3 in B

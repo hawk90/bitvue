@@ -30,7 +30,7 @@ fn test_mp4_box_types() {
         Av01,
     }
 
-    let boxes = vec![BoxType::Ftyp, BoxType::Moov, BoxType::Mdat, BoxType::Av01];
+    let boxes = [BoxType::Ftyp, BoxType::Moov, BoxType::Mdat, BoxType::Av01];
 
     assert_eq!(boxes.len(), 4);
 }
@@ -83,7 +83,7 @@ fn test_mp4_sample_extraction() {
         is_sync: bool,
     }
 
-    let samples = vec![
+    let samples = [
         Sample {
             offset: 1000,
             size: 5000,
@@ -165,7 +165,20 @@ fn test_mkv_element_ids() {
 
     assert_eq!(EBML, 0x1A45DFA3);
     assert_eq!(SEGMENT, 0x18538067);
-    assert!(SIMPLEBLOCK < 0xFF);
+
+    // Per the EBML spec, SimpleBlock/Block use 1-byte element IDs, unlike the
+    // 4-byte EBML/Segment/Cluster IDs above. Route through black_box so this
+    // is checked at runtime instead of being compile-time constant-folded
+    // into a tautology.
+    let simpleblock_id = std::hint::black_box(SIMPLEBLOCK);
+    let block_id = std::hint::black_box(BLOCK);
+    let cluster_id = std::hint::black_box(CLUSTER);
+    assert!(
+        simpleblock_id < 0x100,
+        "SimpleBlock should be a 1-byte EBML ID"
+    );
+    assert!(block_id < 0x100, "Block should be a 1-byte EBML ID");
+    assert!(cluster_id > 0xFF_FFFF, "Cluster should be a 4-byte EBML ID");
 }
 
 #[test]
@@ -178,7 +191,7 @@ fn test_mkv_track_types() {
         Subtitle = 17,
     }
 
-    let tracks = vec![TrackType::Video, TrackType::Audio];
+    let tracks = [TrackType::Video, TrackType::Audio];
     assert_eq!(tracks[0], TrackType::Video);
     assert_eq!(TrackType::Video as u8, 1);
 }
@@ -256,7 +269,7 @@ fn test_ts_pmt_parsing() {
         elementary_pid: u16,
     }
 
-    let entries = vec![
+    let entries = [
         PmtEntry {
             stream_type: 0x1B,
             elementary_pid: 256,
@@ -337,7 +350,7 @@ fn test_ivf_frame_header() {
         timestamp: u64,
     }
 
-    let frames = vec![
+    let frames = [
         IvfFrameHeader {
             frame_size: 5000,
             timestamp: 0,
@@ -566,7 +579,7 @@ fn convert_length_prefixed_to_annex_b(sample_data: &[u8]) -> Vec<u8> {
 
     while pos
         .checked_add(HEADER_SIZE)
-        .map_or(false, |end| end <= sample_data.len())
+        .is_some_and(|end| end <= sample_data.len())
     {
         let len = u32::from_be_bytes([
             sample_data[pos],
@@ -623,7 +636,7 @@ fn test_hevc_mp4_tauri_flow() {
         eprintln!("\n--- Sample {} ({} bytes) ---", idx, sample_data.len());
 
         // Convert from length-prefixed to Annex B (what Tauri app does)
-        let annex_b_data = convert_length_prefixed_to_annex_b(&sample_data);
+        let annex_b_data = convert_length_prefixed_to_annex_b(sample_data);
         eprintln!("  Converted to AnnexB: {} bytes", annex_b_data.len());
 
         match bitvue_hevc::extract_annex_b_frames(&annex_b_data) {
@@ -696,7 +709,7 @@ fn test_avc_mp4_tauri_flow() {
         eprintln!("\n--- Sample {} ({} bytes) ---", idx, sample_data.len());
 
         // Convert from length-prefixed to Annex B (what Tauri app does)
-        let annex_b_data = convert_length_prefixed_to_annex_b(&sample_data);
+        let annex_b_data = convert_length_prefixed_to_annex_b(sample_data);
         eprintln!("  Converted to AnnexB: {} bytes", annex_b_data.len());
 
         match bitvue_hevc::extract_annex_b_frames(&annex_b_data) {

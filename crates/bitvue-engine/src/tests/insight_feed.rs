@@ -53,7 +53,7 @@ fn test_pts_quality_insight() {
 
     let feed = InsightFeed::generate(&frame_map, &diagnostics);
 
-    assert!(feed.insights.len() > 0);
+    assert!(!feed.insights.is_empty());
     let pts_insight = feed
         .insights
         .iter()
@@ -91,7 +91,7 @@ fn test_error_burst_insight() {
     let insight = burst_insight.unwrap();
     assert_eq!(insight.severity, InsightSeverity::Critical); // High severity
     assert_eq!(insight.frame_range, (50, 60));
-    assert!(insight.jump_targets.len() > 0);
+    assert!(!insight.jump_targets.is_empty());
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn test_filter_by_severity() {
 
     // Filter for Error and above
     let high_severity = feed.filter_by_severity(InsightSeverity::Error);
-    assert!(high_severity.len() > 0);
+    assert!(!high_severity.is_empty());
     assert!(high_severity
         .iter()
         .all(|i| i.severity.priority() >= InsightSeverity::Error.priority()));
@@ -277,7 +277,7 @@ fn test_ux_insight_feed_click_traces_to_evidence_chain() {
     let feed = InsightFeed::generate(&frame_map, &diagnostics);
 
     // UX InsightFeed: User views insight feed panel
-    assert!(feed.insights.len() > 0);
+    assert!(!feed.insights.is_empty());
 
     // UX InsightFeed: User clicks on error burst insight
     let burst_insight = feed
@@ -291,7 +291,7 @@ fn test_ux_insight_feed_click_traces_to_evidence_chain() {
     assert_eq!(burst_insight.frame_range, (10, 15));
 
     // UX InsightFeed: Insight has jump targets for navigation
-    assert!(burst_insight.jump_targets.len() > 0);
+    assert!(!burst_insight.jump_targets.is_empty());
     let timeline_target = burst_insight
         .jump_targets
         .iter()
@@ -314,14 +314,14 @@ fn test_ux_insight_feed_click_traces_to_evidence_chain() {
 
     // UX InsightFeed: User can filter feed by severity
     let critical_insights = feed.filter_by_severity(InsightSeverity::Critical);
-    assert!(critical_insights.len() > 0);
+    assert!(!critical_insights.is_empty());
     assert!(critical_insights
         .iter()
         .all(|i| i.severity == InsightSeverity::Critical));
 
     // UX InsightFeed: User can query insights in frame range
     let range_insights = feed.get_insights_in_range(10, 20);
-    assert!(range_insights.len() > 0);
+    assert!(!range_insights.is_empty());
     assert!(range_insights.iter().any(|i| i.frame_range.0 == 10));
 
     // UX InsightFeed: User views severity counts badge

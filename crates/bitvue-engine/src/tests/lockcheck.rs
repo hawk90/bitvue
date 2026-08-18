@@ -247,42 +247,24 @@ fn test_lockcheck_executor_run_lockcheck() {
 
     // Should have checks in all categories
     assert!(report.summary.total_checks > 0);
-    assert!(
-        report
-            .get_checks_by_category(LockCheckCategory::Workspace)
-            .len()
-            > 0
-    );
-    assert!(
-        report
-            .get_checks_by_category(LockCheckCategory::LodCache)
-            .len()
-            > 0
-    );
-    assert!(
-        report
-            .get_checks_by_category(LockCheckCategory::PlayerOverlays)
-            .len()
-            > 0
-    );
-    assert!(
-        report
-            .get_checks_by_category(LockCheckCategory::McpResources)
-            .len()
-            > 0
-    );
-    assert!(
-        report
-            .get_checks_by_category(LockCheckCategory::Degradation)
-            .len()
-            > 0
-    );
-    assert!(
-        report
-            .get_checks_by_category(LockCheckCategory::CacheCaps)
-            .len()
-            > 0
-    );
+    assert!(!report
+        .get_checks_by_category(LockCheckCategory::Workspace)
+        .is_empty());
+    assert!(!report
+        .get_checks_by_category(LockCheckCategory::LodCache)
+        .is_empty());
+    assert!(!report
+        .get_checks_by_category(LockCheckCategory::PlayerOverlays)
+        .is_empty());
+    assert!(!report
+        .get_checks_by_category(LockCheckCategory::McpResources)
+        .is_empty());
+    assert!(!report
+        .get_checks_by_category(LockCheckCategory::Degradation)
+        .is_empty());
+    assert!(!report
+        .get_checks_by_category(LockCheckCategory::CacheCaps)
+        .is_empty());
 
     // All checks should pass
     assert_eq!(report.summary.failed, 0);

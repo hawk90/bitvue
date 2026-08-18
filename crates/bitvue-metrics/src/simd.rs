@@ -535,138 +535,6 @@ pub fn psnr_simd(reference: &[u8], distorted: &[u8], width: usize, height: usize
     super::psnr(reference, distorted, width, height)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_compute_window_stats_identical() {
-        let reference = vec![128u8; 64];
-        let distorted = vec![128u8; 64];
-
-        let stats = compute_window_stats_simd(&reference, &distorted, 0, 64);
-
-        assert_eq!(stats.count, 64);
-        assert_eq!(stats.sum_x, 128 * 64);
-        assert_eq!(stats.sum_y, 128 * 64);
-        // For identical pixels: sum_xx = sum_yy = sum_xy = 128*128*64
-        assert_eq!(stats.sum_xx, 128 * 128 * 64);
-        assert_eq!(stats.sum_yy, 128 * 128 * 64);
-        assert_eq!(stats.sum_xy, 128 * 128 * 64);
-    }
-
-    #[test]
-    fn test_compute_window_stats_different() {
-        let reference = vec![100u8; 64];
-        let mut distorted = vec![100u8; 64];
-        distorted[32] = 120; // Change one pixel
-
-        let stats = compute_window_stats_simd(&reference, &distorted, 0, 64);
-
-        assert_eq!(stats.count, 64);
-        // sum_x = 100*64 = 6400
-        assert_eq!(stats.sum_x, 6400);
-        // sum_y = 100*63 + 120 = 6300 + 120 = 6420
-        assert_eq!(stats.sum_y, 6420);
-    }
-
-    #[test]
-    fn test_compute_window_stats_partial_window() {
-        let reference = vec![128u8; 100];
-        let distorted = vec![128u8; 100];
-
-        // Test partial range (not aligned to 32 bytes)
-        let stats = compute_window_stats_simd(&reference, &distorted, 10, 50);
-
-        assert_eq!(stats.count, 40);
-        assert_eq!(stats.sum_x, 128 * 40);
-        assert_eq!(stats.sum_y, 128 * 40);
-    }
-
-    #[test]
-    fn test_compute_window_stats_empty() {
-        let reference = vec![128u8; 64];
-        let distorted = vec![128u8; 64];
-
-        let stats = compute_window_stats_simd(&reference, &distorted, 10, 10);
-
-        assert_eq!(stats.count, 0);
-        assert_eq!(stats.sum_x, 0);
-        assert_eq!(stats.sum_y, 0);
-    }
-
-    #[test]
-    fn test_window_stats_vs_scalar() {
-        let reference = vec![100u8; 256];
-        let mut distorted = vec![100u8; 256];
-        // Add some noise
-        for i in (0..256).step_by(10) {
-            distorted[i] = distorted[i].wrapping_add((i % 20) as u8);
-        }
-
-        let simd_stats = compute_window_stats_simd(&reference, &distorted, 0, 256);
-        let scalar_stats = compute_window_stats_scalar(&reference, &distorted, 0, 256);
-
-        assert_eq!(simd_stats.count, scalar_stats.count);
-        assert_eq!(simd_stats.sum_x, scalar_stats.sum_x);
-        assert_eq!(simd_stats.sum_y, scalar_stats.sum_y);
-        assert_eq!(simd_stats.sum_xx, scalar_stats.sum_xx);
-        assert_eq!(simd_stats.sum_yy, scalar_stats.sum_yy);
-        assert_eq!(simd_stats.sum_xy, scalar_stats.sum_xy);
-    }
-
-    #[test]
-    fn test_psnr_simd_identical() {
-        let reference = vec![128u8; 1920 * 1080];
-        let distorted = vec![128u8; 1920 * 1080];
-
-        let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
-        assert!(result.is_infinite());
-    }
-
-    #[test]
-    fn test_psnr_simd_different() {
-        let reference = vec![128u8; 1920 * 1080];
-        let mut distorted = vec![128u8; 1920 * 1080];
-        distorted[50000] = 130;
-
-        let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
-        assert!(result.is_finite());
-        assert!(result > 40.0);
-    }
-
-    // Test SIMD implementation against scalar for correctness
-    // SIMD now properly computes squared differences for accurate MSE/PSNR
-    #[test]
-    fn test_psnr_simd_vs_scalar() {
-        let reference = vec![100u8; 640 * 480];
-        let mut distorted = vec![100u8; 640 * 480];
-        // Add some noise
-        for i in (0..640 * 480).step_by(100) {
-            distorted[i] = distorted[i].wrapping_add((i % 10) as u8);
-        }
-
-        let simd_result = psnr_simd(&reference, &distorted, 640, 480).unwrap();
-        let scalar_result = crate::psnr(&reference, &distorted, 640, 480).unwrap();
-
-        // Results should be very close (within 0.5 dB tolerance)
-        // SIMD may have minor numerical differences due to operation ordering
-        // Special case: both infinity (identical images) should match
-        if simd_result.is_infinite() && scalar_result.is_infinite() {
-            // Both are identical images (infinite PSNR)
-            assert_eq!(simd_result.is_infinite(), scalar_result.is_infinite());
-        } else {
-            assert!(
-                (simd_result - scalar_result).abs() < 0.5,
-                "SIMD={} vs Scalar={} diff={}",
-                simd_result,
-                scalar_result,
-                (simd_result - scalar_result).abs()
-            );
-        }
-    }
-}
-
 /// AVX2-optimized PSNR (Intel Haswell+, AMD Excavator+)
 ///
 /// Uses proper MSE (Mean Squared Error) calculation with SIMD:
@@ -971,4 +839,136 @@ unsafe fn psnr_neon(
     let psnr_value = 10.0 * (max_value * max_value / mse).log10();
 
     Ok(psnr_value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_window_stats_identical() {
+        let reference = vec![128u8; 64];
+        let distorted = vec![128u8; 64];
+
+        let stats = compute_window_stats_simd(&reference, &distorted, 0, 64);
+
+        assert_eq!(stats.count, 64);
+        assert_eq!(stats.sum_x, 128 * 64);
+        assert_eq!(stats.sum_y, 128 * 64);
+        // For identical pixels: sum_xx = sum_yy = sum_xy = 128*128*64
+        assert_eq!(stats.sum_xx, 128 * 128 * 64);
+        assert_eq!(stats.sum_yy, 128 * 128 * 64);
+        assert_eq!(stats.sum_xy, 128 * 128 * 64);
+    }
+
+    #[test]
+    fn test_compute_window_stats_different() {
+        let reference = vec![100u8; 64];
+        let mut distorted = vec![100u8; 64];
+        distorted[32] = 120; // Change one pixel
+
+        let stats = compute_window_stats_simd(&reference, &distorted, 0, 64);
+
+        assert_eq!(stats.count, 64);
+        // sum_x = 100*64 = 6400
+        assert_eq!(stats.sum_x, 6400);
+        // sum_y = 100*63 + 120 = 6300 + 120 = 6420
+        assert_eq!(stats.sum_y, 6420);
+    }
+
+    #[test]
+    fn test_compute_window_stats_partial_window() {
+        let reference = vec![128u8; 100];
+        let distorted = vec![128u8; 100];
+
+        // Test partial range (not aligned to 32 bytes)
+        let stats = compute_window_stats_simd(&reference, &distorted, 10, 50);
+
+        assert_eq!(stats.count, 40);
+        assert_eq!(stats.sum_x, 128 * 40);
+        assert_eq!(stats.sum_y, 128 * 40);
+    }
+
+    #[test]
+    fn test_compute_window_stats_empty() {
+        let reference = vec![128u8; 64];
+        let distorted = vec![128u8; 64];
+
+        let stats = compute_window_stats_simd(&reference, &distorted, 10, 10);
+
+        assert_eq!(stats.count, 0);
+        assert_eq!(stats.sum_x, 0);
+        assert_eq!(stats.sum_y, 0);
+    }
+
+    #[test]
+    fn test_window_stats_vs_scalar() {
+        let reference = vec![100u8; 256];
+        let mut distorted = vec![100u8; 256];
+        // Add some noise
+        for i in (0..256).step_by(10) {
+            distorted[i] = distorted[i].wrapping_add((i % 20) as u8);
+        }
+
+        let simd_stats = compute_window_stats_simd(&reference, &distorted, 0, 256);
+        let scalar_stats = compute_window_stats_scalar(&reference, &distorted, 0, 256);
+
+        assert_eq!(simd_stats.count, scalar_stats.count);
+        assert_eq!(simd_stats.sum_x, scalar_stats.sum_x);
+        assert_eq!(simd_stats.sum_y, scalar_stats.sum_y);
+        assert_eq!(simd_stats.sum_xx, scalar_stats.sum_xx);
+        assert_eq!(simd_stats.sum_yy, scalar_stats.sum_yy);
+        assert_eq!(simd_stats.sum_xy, scalar_stats.sum_xy);
+    }
+
+    #[test]
+    fn test_psnr_simd_identical() {
+        let reference = vec![128u8; 1920 * 1080];
+        let distorted = vec![128u8; 1920 * 1080];
+
+        let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
+        assert!(result.is_infinite());
+    }
+
+    #[test]
+    fn test_psnr_simd_different() {
+        let reference = vec![128u8; 1920 * 1080];
+        let mut distorted = vec![128u8; 1920 * 1080];
+        distorted[50000] = 130;
+
+        let result = psnr_simd(&reference, &distorted, 1920, 1080).unwrap();
+        assert!(result.is_finite());
+        assert!(result > 40.0);
+    }
+
+    // Test SIMD implementation against scalar for correctness
+    // SIMD now properly computes squared differences for accurate MSE/PSNR
+    #[test]
+    fn test_psnr_simd_vs_scalar() {
+        let reference = vec![100u8; 640 * 480];
+        let mut distorted = vec![100u8; 640 * 480];
+        // Add some noise
+        for i in (0..640 * 480).step_by(100) {
+            distorted[i] = distorted[i].wrapping_add((i % 10) as u8);
+        }
+
+        let simd_result = psnr_simd(&reference, &distorted, 640, 480).unwrap();
+        let scalar_result = crate::psnr(&reference, &distorted, 640, 480).unwrap();
+
+        // Results should be very close (within 0.5 dB tolerance)
+        // SIMD may have minor numerical differences due to operation ordering
+        // Special case: both infinity (identical images) should match
+        if simd_result.is_infinite() && scalar_result.is_infinite() {
+            // Both are identical images (infinite PSNR)
+            assert_eq!(simd_result.is_infinite(), scalar_result.is_infinite());
+        } else {
+            assert!(
+                (simd_result - scalar_result).abs() < 0.5,
+                "SIMD={} vs Scalar={} diff={}",
+                simd_result,
+                scalar_result,
+                (simd_result - scalar_result).abs()
+            );
+        }
+    }
 }
