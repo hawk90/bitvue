@@ -755,6 +755,234 @@ impl Leb128Reader for BitReader<'_> {
 }
 
 // ============================================================================
+// Generic Per-Codec-Crate Wrapper
+// ============================================================================
+//
+// Several codec crates (bitvue-avc, bitvue-hevc, bitvue-vvc, bitvue-av3-codec,
+// bitvue-mpeg2-codec) each define their own thin `BitReader` struct that does
+// nothing but hold a `BitReader<'a>` and translate `BitvueError` into that
+// crate's own domain error type. `WrappedBitReader<'a, E>` factors out that
+// boilerplate. The per-crate wrappers use one of two error-mapping conventions,
+// captured here as two traits so a crate only implements the one it needs:
+//
+// - `BlanketBitReaderError` ("blanket" convention, used by bitvue-avc,
+//   bitvue-mpeg2-codec, bitvue-av3-codec): every read failure, regardless of
+//   the underlying `BitvueError` variant, becomes a single "not enough data"
+//   error carrying only the number of bits/bytes that were requested.
+// - `EngineMappedBitReaderError` ("distinguishing" convention, used by
+//   bitvue-hevc, bitvue-vvc): `BitvueError::UnexpectedEof` maps to a dedicated
+//   EOF variant (preserving the bit offset); any other `BitvueError` maps to a
+//   generic "invalid data" variant carrying the error's message.
+//
+// Methods here are named `*_blanket` / `*_mapped` (rather than overloading a
+// single name) so each per-crate wrapper can call exactly the variant that
+// matches its pre-existing behavior; the per-crate wrapper then re-exposes the
+// result under its own original public method name.
+
+/// "Blanket" error-mapping convention: see the module-level docs above.
+pub trait BlanketBitReaderError: Sized {
+    /// Builds the domain error for any read failure, given the number of
+    /// bits/bytes that were requested (the underlying `BitvueError` variant,
+    /// e.g. EOF vs. malformed request, is not preserved).
+    fn not_enough_data(expected: usize) -> Self;
+}
+
+/// "Distinguishing" error-mapping convention: see the module-level docs above.
+pub trait EngineMappedBitReaderError: Sized {
+    /// Builds the domain error from the underlying `BitvueError`, typically
+    /// preserving `UnexpectedEof`'s bit offset and stringifying everything else.
+    fn from_engine_error(e: BitvueError) -> Self;
+}
+
+/// Generic thin wrapper around [`BitReader`], shared by per-codec-crate
+/// `BitReader` wrappers. See the module-level docs above for the two error
+/// mapping conventions.
+#[derive(Debug, Clone, Copy)]
+pub struct WrappedBitReader<'a, E> {
+    inner: BitReader<'a>,
+    _error: core::marker::PhantomData<E>,
+}
+
+impl<'a, E> WrappedBitReader<'a, E> {
+    /// Creates a new wrapper around a fresh [`BitReader`] over `data`.
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Self {
+        Self {
+            inner: BitReader::new(data),
+            _error: core::marker::PhantomData,
+        }
+    }
+
+    /// Get the inner reader.
+    #[inline]
+    pub fn inner(&self) -> &BitReader<'a> {
+        &self.inner
+    }
+
+    /// Get mutable access to the inner reader.
+    #[inline]
+    pub fn inner_mut(&mut self) -> &mut BitReader<'a> {
+        &mut self.inner
+    }
+
+    /// Current bit position from the start of the data.
+    #[inline]
+    pub fn position(&self) -> u64 {
+        self.inner.position()
+    }
+
+    /// Current byte offset.
+    #[inline]
+    pub fn byte_position(&self) -> usize {
+        self.inner.byte_position()
+    }
+
+    /// Number of remaining bits.
+    #[inline]
+    pub fn remaining_bits(&self) -> u64 {
+        self.inner.remaining_bits()
+    }
+
+    /// Number of remaining bytes (partial byte counts as 1).
+    #[inline]
+    pub fn remaining_bytes(&self) -> usize {
+        self.inner.remaining_bytes()
+    }
+
+    /// Remaining data as a byte-aligned slice.
+    #[inline]
+    pub fn remaining_data(&self) -> &'a [u8] {
+        self.inner.remaining_data()
+    }
+
+    /// True if there's more data to read.
+    #[inline]
+    pub fn has_more(&self) -> bool {
+        self.inner.has_more()
+    }
+
+    /// Aligns to the next byte boundary.
+    #[inline]
+    pub fn byte_align(&mut self) {
+        self.inner.byte_align()
+    }
+
+    /// True if currently byte-aligned.
+    #[inline]
+    pub fn is_byte_aligned(&self) -> bool {
+        self.inner.is_byte_aligned()
+    }
+}
+
+impl<'a, E: BlanketBitReaderError> WrappedBitReader<'a, E> {
+    /// Reads a single bit, using the blanket error-mapping convention.
+    #[inline]
+    pub fn read_bit_blanket(&mut self) -> std::result::Result<bool, E> {
+        self.inner.read_bit().map_err(|_| E::not_enough_data(1))
+    }
+
+    /// Reads n bits as a u32, using the blanket error-mapping convention.
+    #[inline]
+    pub fn read_bits_blanket(&mut self, n: u8) -> std::result::Result<u32, E> {
+        self.inner
+            .read_bits(n)
+            .map_err(|_| E::not_enough_data(n as usize))
+    }
+
+    /// Reads n bits as a u64, using the blanket error-mapping convention.
+    #[inline]
+    pub fn read_bits_u64_blanket(&mut self, n: u8) -> std::result::Result<u64, E> {
+        self.inner
+            .read_bits_u64(n)
+            .map_err(|_| E::not_enough_data(n as usize))
+    }
+
+    /// Skips n bits, using the blanket error-mapping convention.
+    #[inline]
+    pub fn skip_bits_blanket(&mut self, n: u64) -> std::result::Result<(), E> {
+        self.inner
+            .skip_bits(n)
+            .map_err(|_| E::not_enough_data(n as usize))
+    }
+
+    /// Reads an unsigned Exp-Golomb value, using the blanket error-mapping convention.
+    #[inline]
+    pub fn read_ue_blanket(&mut self) -> std::result::Result<u32, E> {
+        self.inner.read_ue().map_err(|_| E::not_enough_data(1))
+    }
+
+    /// Reads a signed Exp-Golomb value, using the blanket error-mapping convention.
+    #[inline]
+    pub fn read_se_blanket(&mut self) -> std::result::Result<i32, E> {
+        self.inner.read_se().map_err(|_| E::not_enough_data(1))
+    }
+
+    /// Reads an unsigned LEB128 value, using the blanket error-mapping convention.
+    #[inline]
+    pub fn read_leb128_blanket(&mut self) -> std::result::Result<u64, E> {
+        self.inner.read_leb128().map_err(|_| E::not_enough_data(1))
+    }
+
+    /// Reads a signed LEB128 value, using the blanket error-mapping convention.
+    #[inline]
+    pub fn read_leb128_i64_blanket(&mut self) -> std::result::Result<i64, E> {
+        self.inner
+            .read_leb128_i64()
+            .map_err(|_| E::not_enough_data(1))
+    }
+}
+
+impl<'a, E: EngineMappedBitReaderError> WrappedBitReader<'a, E> {
+    /// Reads a single bit, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn read_bit_mapped(&mut self) -> std::result::Result<bool, E> {
+        self.inner.read_bit().map_err(E::from_engine_error)
+    }
+
+    /// Reads n bits as a u32, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn read_bits_mapped(&mut self, n: u8) -> std::result::Result<u32, E> {
+        self.inner.read_bits(n).map_err(E::from_engine_error)
+    }
+
+    /// Reads n bits as a u64, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn read_bits_u64_mapped(&mut self, n: u8) -> std::result::Result<u64, E> {
+        self.inner.read_bits_u64(n).map_err(E::from_engine_error)
+    }
+
+    /// Reads a single byte, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn read_byte_mapped(&mut self) -> std::result::Result<u8, E> {
+        self.inner.read_byte().map_err(E::from_engine_error)
+    }
+
+    /// Skips n bits, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn skip_bits_mapped(&mut self, n: u64) -> std::result::Result<(), E> {
+        self.inner.skip_bits(n).map_err(E::from_engine_error)
+    }
+
+    /// Reads an unsigned Exp-Golomb value, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn read_ue_mapped(&mut self) -> std::result::Result<u32, E> {
+        self.inner.read_ue().map_err(E::from_engine_error)
+    }
+
+    /// Reads a signed Exp-Golomb value, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn read_se_mapped(&mut self) -> std::result::Result<i32, E> {
+        self.inner.read_se().map_err(E::from_engine_error)
+    }
+
+    /// Peeks n bits without consuming, using the distinguishing error-mapping convention.
+    #[inline]
+    pub fn peek_bits_mapped(&self, n: u8) -> std::result::Result<u32, E> {
+        self.inner.peek_bits(n).map_err(E::from_engine_error)
+    }
+}
+
+// ============================================================================
 // Emulation Prevention
 // ============================================================================
 
