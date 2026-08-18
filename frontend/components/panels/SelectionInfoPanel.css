@@ -11,13 +11,13 @@
   overflow: hidden;
 }
 
-.panel-header {
+.selection-info-panel .panel-header {
   padding: 8px 12px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
 }
 
-.panel-title {
+.selection-info-panel .panel-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
