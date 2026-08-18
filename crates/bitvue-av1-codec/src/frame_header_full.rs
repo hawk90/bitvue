@@ -199,8 +199,45 @@ fn skip_global_param(
     Ok(())
 }
 
-fn parse_global_motion_params(reader: &mut BitReader, allow_high_precision_mv: bool) -> Result<()> {
-    for _ref_frame in 0..REFS_PER_FRAME {
+/// `GmType` values (spec 5.9.24), in the real spec's numeric order (`GmType[ref] > TRANSLATION`
+/// comparisons elsewhere, e.g. `read_motion_mode`'s doc, rely on this exact ordering).
+pub(crate) const GM_TYPE_IDENTITY: u8 = 0;
+pub(crate) const GM_TYPE_TRANSLATION: u8 = 1;
+const GM_TYPE_ROTZOOM: u8 = 2;
+const GM_TYPE_AFFINE: u8 = 3;
+
+/// Pure classification (no bit reads): maps `global_motion_params()`'s 3 flag bits to a real
+/// `GmType` value (spec 5.9.24's `is_global`/`is_rot_zoom`/`is_translation` decision tree).
+/// Extracted from `parse_global_motion_params` so the mapping is directly unit-testable without
+/// needing to hand-encode `decode_subexp`'s variable-length `gm_params[]` bits.
+fn classify_gm_type(
+    is_global: bool,
+    gm_type_at_least_rotzoom: bool,
+    gm_type_is_translation: bool,
+) -> u8 {
+    if !is_global {
+        GM_TYPE_IDENTITY
+    } else if gm_type_at_least_rotzoom {
+        GM_TYPE_ROTZOOM
+    } else if gm_type_is_translation {
+        GM_TYPE_TRANSLATION
+    } else {
+        GM_TYPE_AFFINE
+    }
+}
+
+/// `global_motion_params()` (spec 5.9.24) -- returns the real `GmType[ref]` classification for
+/// each of the 8 `RefFrame` values (index 0/`RefFrame::Intra` unused, stays `GM_TYPE_IDENTITY`;
+/// indices 1..=7 filled by this loop, spec's `LAST_FRAME..=ALTREF_FRAME` matching this crate's own
+/// `RefFrame` enum numbering). `gm_params[]` values themselves are still only consumed for bit
+/// position (see `skip_global_param`'s doc) -- only the classification is needed by
+/// `read_motion_mode`'s real `GmType[RefFrame[0]] > TRANSLATION` exclusion.
+fn parse_global_motion_params(
+    reader: &mut BitReader,
+    allow_high_precision_mv: bool,
+) -> Result<[u8; 8]> {
+    let mut gm_type = [GM_TYPE_IDENTITY; 8];
+    for ref_frame in 0..REFS_PER_FRAME {
         let is_global = reader.read_bit()?;
         let (gm_type_is_translation, gm_type_at_least_rotzoom) = if is_global {
             let is_rot_zoom = reader.read_bit()?;
@@ -213,6 +250,10 @@ fn parse_global_motion_params(reader: &mut BitReader, allow_high_precision_mv: b
         } else {
             (false, false)
         };
+        // Loop index 0 is `LAST_FRAME` (`RefFrame::Last as usize == 1`), so `ref_frame + 1` is the
+        // real `RefFrame` index this classification belongs to.
+        gm_type[ref_frame + 1] =
+            classify_gm_type(is_global, gm_type_at_least_rotzoom, gm_type_is_translation);
 
         if gm_type_at_least_rotzoom {
             // ROTZOOM or AFFINE: idx 2,3 always; idx 4,5 only for AFFINE (is_rot_zoom path above
@@ -244,7 +285,7 @@ fn parse_global_motion_params(reader: &mut BitReader, allow_high_precision_mv: b
             )?;
         }
     }
-    Ok(())
+    Ok(gm_type)
 }
 
 struct FrameSize {
@@ -996,6 +1037,8 @@ pub fn parse_frame_header_full(
             subpel_filter_switchable: false,
             switchable_motion_mode: false,
             allow_warped_motion: false,
+            force_integer_mv: false,
+            gm_type: [0u8; 8],
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -1263,9 +1306,11 @@ pub fn parse_frame_header_full(
     // showing this crate's key-frame `header_size_bytes` (25) didn't match the oracle's
     // independently-derived true tile-data offset (17) for the real fixture's frame 0, an 8-byte
     // (64-bit) overshoot consistent with this exact miscount.
-    if !frame_is_intra {
-        parse_global_motion_params(&mut reader, allow_high_precision_mv)?;
-    }
+    let gm_type = if !frame_is_intra {
+        parse_global_motion_params(&mut reader, allow_high_precision_mv)?
+    } else {
+        [GM_TYPE_IDENTITY; 8]
+    };
 
     let film_grain =
         parse_film_grain_params(&mut reader, seq, show_frame, showable_frame, frame_type)?;
@@ -1319,6 +1364,8 @@ pub fn parse_frame_header_full(
         subpel_filter_switchable,
         switchable_motion_mode,
         allow_warped_motion,
+        force_integer_mv,
+        gm_type,
         reduced_tx_set,
         txfm_mode,
         use_ref_frame_mvs,
@@ -1665,6 +1712,58 @@ mod tests {
         // miscount always landing coded_lossless=true or enable_cdef=false).
         eprintln!(
             "real_fixture_parses_every_frame_without_error: {cdef_enabled_count}/{} frames had CDEF enabled",
+            frames.len()
+        );
+    }
+
+    #[test]
+    fn classify_gm_type_matches_spec_5_9_24_decision_tree() {
+        // !is_global => IDENTITY, regardless of the other (unread-in-this-case) flags.
+        assert_eq!(classify_gm_type(false, false, false), GM_TYPE_IDENTITY);
+        assert_eq!(classify_gm_type(false, true, true), GM_TYPE_IDENTITY);
+        // is_global && is_rot_zoom => ROTZOOM, regardless of is_translation (unread in this case).
+        assert_eq!(classify_gm_type(true, true, false), GM_TYPE_ROTZOOM);
+        assert_eq!(classify_gm_type(true, true, true), GM_TYPE_ROTZOOM);
+        // is_global && !is_rot_zoom && is_translation => TRANSLATION.
+        assert_eq!(classify_gm_type(true, false, true), GM_TYPE_TRANSLATION);
+        // is_global && !is_rot_zoom && !is_translation => AFFINE.
+        assert_eq!(classify_gm_type(true, false, false), GM_TYPE_AFFINE);
+        // The exact ordering `read_motion_mode`'s `GmType[ref] > TRANSLATION` exclusion relies on.
+        assert!(GM_TYPE_IDENTITY < GM_TYPE_TRANSLATION);
+        assert!(GM_TYPE_TRANSLATION < GM_TYPE_ROTZOOM);
+        assert!(GM_TYPE_ROTZOOM < GM_TYPE_AFFINE);
+    }
+
+    /// Real-fixture regression for `parse_global_motion_params`'s real `GmType[ref]` output
+    /// (previously discarded entirely -- see this function's doc). Confirms the real bitstream
+    /// still parses cleanly end-to-end with `gm_type` now a real return value threaded through
+    /// `FrameHeader`, and reports the classification distribution actually observed rather than
+    /// asserting a specific one -- this crate's committed fixture is ordinary (non-warped-motion)
+    /// content, so all-IDENTITY on every inter frame is an expected, not a failing, outcome (same
+    /// non-strong-assertion precedent as `real_fixture_parses_every_frame_without_error`'s CDEF
+    /// count just above).
+    #[test]
+    fn real_fixture_gm_type_is_real_and_frames_still_parse_cleanly() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_payload =
+            find_seq_header_in(&frames).expect("fixture should contain a real sequence header");
+        let seq = crate::sequence::parse_sequence_header(&seq_payload).unwrap();
+
+        let mut ref_state = RefFrameState::new();
+        let mut non_identity_count = 0;
+        for (i, frame) in frames.iter().enumerate() {
+            let Some(payload) = find_frame_header_payload(&frame.data) else {
+                continue;
+            };
+            let header = parse_frame_header_full(&payload, &seq, &mut ref_state)
+                .unwrap_or_else(|e| panic!("frame {i} failed to parse: {e}"));
+            if header.gm_type.iter().any(|&t| t != GM_TYPE_IDENTITY) {
+                non_identity_count += 1;
+            }
+        }
+        eprintln!(
+            "real_fixture_gm_type_is_real_and_frames_still_parse_cleanly: {non_identity_count}/{} \
+             frames had at least one non-IDENTITY GmType",
             frames.len()
         );
     }

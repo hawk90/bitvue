@@ -218,6 +218,8 @@ fn parse_partition_trees_from_tile_data(
                     enable_masked_compound: parsed.enable_masked_compound,
                     enable_jnt_comp: parsed.enable_jnt_comp,
                     subpel_filter_switchable: parsed.subpel_filter_switchable,
+                    force_integer_mv: parsed.force_integer_mv,
+                    gm_type: parsed.gm_type,
                 },
             );
 
@@ -959,6 +961,8 @@ mod tests {
                         enable_masked_compound: parsed.enable_masked_compound,
                         enable_jnt_comp: parsed.enable_jnt_comp,
                         subpel_filter_switchable: parsed.subpel_filter_switchable,
+                        force_integer_mv: parsed.force_integer_mv,
+                        gm_type: parsed.gm_type,
                     },
                 )?;
                 current_qp = new_qp;

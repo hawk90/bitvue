@@ -119,6 +119,11 @@ pub struct ParsedFrame {
     pub subpel_filter_switchable: bool,
     pub switchable_motion_mode: bool,
     pub allow_warped_motion: bool,
+    /// `force_integer_mv`/`gm_type` (spec 5.9.2/5.9.24) -- see
+    /// `crate::frame_header::FrameHeader`'s matching fields' docs. Same sourcing/fallback story as
+    /// `reference_select`.
+    pub force_integer_mv: bool,
+    pub gm_type: [u8; 8],
     /// `enable_interintra_compound`/`enable_masked_compound`/`enable_jnt_comp`/
     /// `enable_warped_motion` (sequence header) -- gate `interintra`/`compound_type`(wedge/seg)/
     /// `motion_mode`'s real eligibility. Same sourcing story as `mono_chrome` (direct from the
@@ -235,6 +240,8 @@ impl ParsedFrame {
                 subpel_filter_switchable: false,
                 switchable_motion_mode: false,
                 allow_warped_motion: false,
+                force_integer_mv: false,
+                gm_type: [0u8; 8],
                 enable_interintra_compound: false,
                 enable_masked_compound: false,
                 enable_jnt_comp: false,
@@ -290,6 +297,8 @@ impl ParsedFrame {
         let mut subpel_filter_switchable = false;
         let mut switchable_motion_mode = false;
         let mut allow_warped_motion = false;
+        let mut force_integer_mv = false;
+        let mut gm_type = [0u8; 8];
         let mut enable_interintra_compound = false;
         let mut enable_masked_compound = false;
         let mut enable_jnt_comp = false;
@@ -407,6 +416,8 @@ impl ParsedFrame {
                             subpel_filter_switchable = full_hdr.subpel_filter_switchable;
                             switchable_motion_mode = full_hdr.switchable_motion_mode;
                             allow_warped_motion = full_hdr.allow_warped_motion;
+                            force_integer_mv = full_hdr.force_integer_mv;
+                            gm_type = full_hdr.gm_type;
                             if full_hdr.header_size_bytes < obu.payload.len() {
                                 tile_data
                                     .extend_from_slice(&obu.payload[full_hdr.header_size_bytes..]);
@@ -446,6 +457,8 @@ impl ParsedFrame {
                             subpel_filter_switchable = full_hdr.subpel_filter_switchable;
                             switchable_motion_mode = full_hdr.switchable_motion_mode;
                             allow_warped_motion = full_hdr.allow_warped_motion;
+                            force_integer_mv = full_hdr.force_integer_mv;
+                            gm_type = full_hdr.gm_type;
                         }
                     }
                 }
@@ -493,6 +506,8 @@ impl ParsedFrame {
             subpel_filter_switchable,
             switchable_motion_mode,
             allow_warped_motion,
+            force_integer_mv,
+            gm_type,
             enable_interintra_compound,
             enable_masked_compound,
             enable_jnt_comp,

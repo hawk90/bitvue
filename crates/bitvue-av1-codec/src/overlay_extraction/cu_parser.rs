@@ -65,6 +65,8 @@ pub fn parse_all_coding_units_with_temporal(
         enable_masked_compound: parsed.enable_masked_compound,
         enable_jnt_comp: parsed.enable_jnt_comp,
         subpel_filter_switchable: parsed.subpel_filter_switchable,
+        force_integer_mv: parsed.force_integer_mv,
+        gm_type: parsed.gm_type,
     };
     let tx_type_flags = crate::tile::TxTypeFrameFlags {
         coded_lossless: parsed.coded_lossless,

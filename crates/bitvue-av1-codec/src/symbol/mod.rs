@@ -1134,10 +1134,10 @@ impl<'a> SymbolDecoder<'a> {
     /// - **Golomb extension is a bounded, always-terminating read** (capped at 20 length bits) --
     ///   not necessarily bit-exact against the spec's `read_golomb`, but always produces a real,
     ///   finite level value.
-    /// - **`tx_size()` is still a dimension-based heuristic for inter/IntraBC blocks**
-    ///   (`TxSize::from_dimensions`) -- only key-frame, non-IntraBC coding units get a real
-    ///   `tx_size()` bitstream read (`SymbolDecoder::read_tx_size`'s doc); residual reading here
-    ///   reuses whichever size the caller resolved, real or heuristic.
+    /// - **`tx_size()` is real for inter and IntraBC blocks too**, not just key-frame intra --
+    ///   `read_var_tx_size`/`read_txfm_split` (`coding_unit.rs`) recursively read the real
+    ///   variable-transform-size syntax for both, including non-square blocks; residual reading
+    ///   here just reuses whichever real size the caller resolved.
     /// - **Chroma-plane residual is read by a separate method, `read_chroma_residual_block`, and
     ///   only for a restricted subset of coding blocks** -- callers of *this* method only ever
     ///   handle luma. **Confirmed a real desync bug, not just missing data**: the real fixture is

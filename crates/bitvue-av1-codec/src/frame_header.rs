@@ -229,6 +229,22 @@ pub struct FrameHeader {
     /// other being a real above/left matching-reference scan, `find_matching_ref`'s doc). Same
     /// basic-vs-full caveat as `reference_select`.
     pub allow_warped_motion: bool,
+    /// `force_integer_mv` (spec 5.9.2) -- when true, `motion_mode`'s real spec-5.11.27
+    /// `GmType[RefFrame[0]] > TRANSLATION` exclusion (see `gm_type`'s doc) never applies (the
+    /// spec gates that whole check on `!force_integer_mv`). Always `false` from
+    /// `parse_frame_header_basic` (same basic-vs-full caveat as `reference_select` -- `false` is
+    /// the common case anyway, since it requires `allow_screen_content_tools`).
+    pub force_integer_mv: bool,
+    /// `GmType[ref]` (spec 5.9.24 `global_motion_params()`) for each of the 8 `RefFrame` values
+    /// (index 0/`RefFrame::Intra` unused, stays `IDENTITY`) -- `0`=IDENTITY, `1`=TRANSLATION,
+    /// `2`=ROTZOOM, `3`=AFFINE. Closes `read_motion_mode`'s documented gap: real spec forces
+    /// `motion_mode = SIMPLE` (no bits read) for a `GLOBALMV`/`GLOBAL_GLOBALMV` block whose
+    /// `GmType[RefFrame[0]]` is more complex than TRANSLATION, which this crate previously never
+    /// modeled (`global_motion_params()` bits were read for sync but the classification was
+    /// discarded). All-`IDENTITY` (`[0; 8]`) whenever `global_motion_params()` isn't parsed at all
+    /// (intra frames, or `parse_frame_header_basic`'s basic-vs-full caveat) -- correct, since real
+    /// spec's own default for an unparsed/intra frame is all-IDENTITY too.
+    pub gm_type: [u8; 8],
     /// `reduced_tx_set` (spec 5.9.2) -- restricts `transform_type()` (5.11.47) to a smaller
     /// symbol alphabet when set. Always `false` from `parse_frame_header_basic` (same
     /// basic-vs-full caveat as `reference_select`); real value only from
@@ -604,6 +620,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             subpel_filter_switchable: false,
             switchable_motion_mode: false,
             allow_warped_motion: false,
+            force_integer_mv: false,
+            gm_type: [0u8; 8],
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
@@ -783,6 +801,8 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         subpel_filter_switchable: false,
         switchable_motion_mode: false,
         allow_warped_motion: false,
+        force_integer_mv: false,
+        gm_type: [0u8; 8],
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,

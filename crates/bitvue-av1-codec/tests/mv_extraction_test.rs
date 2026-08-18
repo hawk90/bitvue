@@ -159,6 +159,8 @@ fn test_mv_extraction_with_spec_cdfs() {
                 enable_masked_compound: false,
                 enable_jnt_comp: false,
                 subpel_filter_switchable: false,
+                force_integer_mv: false,
+                gm_type: [0u8; 8],
             },
         ) {
             Ok((superblock, _final_qp)) => {

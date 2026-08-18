@@ -78,6 +78,11 @@ pub struct InterModeFlags {
     pub enable_masked_compound: bool,
     pub enable_jnt_comp: bool,
     pub subpel_filter_switchable: bool,
+    /// `force_integer_mv`/`gm_type` (spec 5.9.2/5.9.24) -- gate `read_motion_mode`'s real
+    /// `GmType[RefFrame[0]] > TRANSLATION` exclusion for `GLOBALMV`/`GLOBAL_GLOBALMV` blocks (see
+    /// the call site's doc). `gm_type` indexed by `RefFrame as usize` (0=Intra unused).
+    pub force_integer_mv: bool,
+    pub gm_type: [u8; 8],
 }
 
 /// Prediction mode for intra and inter prediction
@@ -1253,14 +1258,23 @@ pub fn parse_coding_unit(
             // motion_mode (spec 5.11.27) -- real per-exact-block-size CDF + adaptation, see
             // `SymbolDecoder::read_motion_mode`'s doc for the desync this closes (previously
             // never read at all). Real spec gate: switchable, not interintra, both dims >= 8px,
-            // not an excluded warped-global-motion case (approximated as never-excluded -- this
-            // crate doesn't parse `global_motion_params()`, a known scope gap, same story as
-            // `TileContext::jnt_comp_context`'s missing POC-offset term), and has a real
-            // overlappable (non-intra) above/left neighbor.
+            // not an excluded warped-global-motion case (real: a `GLOBALMV` block -- the only
+            // global-motion mode reachable in this single-ref branch, `GLOBAL_GLOBALMV` being
+            // compound-only -- whose `GmType[RefFrame[0]]` is more complex than TRANSLATION reads
+            // zero bits here, matching real spec's forced `motion_mode = SIMPLE`; `!force_integer_
+            // mv` gates the whole check per spec, same as `read_motion_mode`'s other real gates),
+            // and has a real overlappable (non-intra) above/left neighbor.
             let have_top = y4 > 0;
             let have_left = x4 > 0;
+            let gm_forces_simple = global_motion_forces_simple(
+                cu.mode,
+                inter_mode_flags.force_integer_mv,
+                &inter_mode_flags.gm_type,
+                cu.ref_frames[0],
+            );
             if inter_mode_flags.switchable_motion_mode
                 && !is_interintra
+                && !gm_forces_simple
                 && width_4x4 >= 2
                 && height_4x4 >= 2
                 && has_overlappable_neighbors(tile_ctx, x4, y4, width_4x4, height_4x4)
@@ -1285,12 +1299,14 @@ pub fn parse_coding_unit(
 
         // filter (spec 5.11.30, subpel interpolation filter -- one symbol per axis) -- real
         // per-`(dir, ctx)` CDF + adaptation, see `SymbolDecoder::read_filter`'s doc for the
-        // desync this closes (previously never read at all). Real spec's `has_subpel_filter`
-        // exclusion (skip_mode blocks, and single-ref GLOBALMV with a translation-only global
-        // motion) isn't modeled -- this crate doesn't reach a real `skip_mode == true` CU yet
-        // (`read_skip_mode`'s doc) and doesn't parse `global_motion_params()` (this function's
-        // `motion_mode` doc has the same gap) -- so this reads for every non-skip-mode inter CU,
-        // which is the real spec's common case anyway (GLOBALMV is comparatively rare).
+        // desync this closes (previously never read at all). Real spec's `needs_interp_filter()`
+        // exclusion (skip_mode blocks, and a `GmType`-dependent case for large GLOBALMV/GLOBAL_
+        // GLOBALMV blocks) isn't modeled -- this crate doesn't reach a real `skip_mode == true` CU
+        // yet (`read_skip_mode`'s doc). `gm_type` (`InterModeFlags`) is now real (this function's
+        // `motion_mode` gate uses it) but its exact `needs_interp_filter()` branching wasn't
+        // reproduced here without a verified oracle reference -- so this still reads for every
+        // non-skip-mode inter CU, which is the real spec's common case anyway (large-block GLOBALMV
+        // is comparatively rare).
         if inter_mode_flags.subpel_filter_switchable {
             let is_comp = is_compound;
             for dir in 0..2u8 {
@@ -1980,6 +1996,23 @@ fn y_mode_size_context(width_4x4: u32, height_4x4: u32) -> u8 {
     }
 }
 
+/// `read_motion_mode`'s real spec 5.11.27 `GmType`-dependent exclusion: `true` when a
+/// `GLOBALMV` block's global motion (`gm_type[ref0 as usize]`) is more complex than TRANSLATION,
+/// in which case real spec forces `motion_mode = SIMPLE` and reads zero bits (the whole check is
+/// itself gated on `!force_integer_mv`). `GLOBAL_GLOBALMV` never reaches this: it's compound-only,
+/// and this crate's `motion_mode` read only happens in the single-ref branch (`parse_coding_unit`'s
+/// call site doc).
+fn global_motion_forces_simple(
+    mode: PredictionMode,
+    force_integer_mv: bool,
+    gm_type: &[u8; 8],
+    ref0: RefFrame,
+) -> bool {
+    !force_integer_mv
+        && mode == PredictionMode::GlobalMv
+        && gm_type[ref0 as usize] > crate::frame_header_full::GM_TYPE_TRANSLATION
+}
+
 /// `motion_mode`/`obmc`'s exact-block-size CDF index (0..=16) -- real spec/dav1d indexing order
 /// matches `CdfContext::motion_mode_cdf`'s literal table order (`read_motion_mode`'s doc); `None`
 /// for any size real spec never reads `motion_mode` for at all (`min(bw4,bh4) < 2`, i.e. either
@@ -2501,6 +2534,58 @@ fn read_palette_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn global_motion_forces_simple_matches_spec_5_11_27_exclusion() {
+        use crate::frame_header_full::{GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION};
+        let rotzoom: [u8; 8] = [GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION + 1, 0, 0, 0, 0, 0, 0];
+        let translation_only: [u8; 8] = [GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION, 0, 0, 0, 0, 0, 0];
+        let identity: [u8; 8] = [GM_TYPE_IDENTITY; 8];
+
+        // GLOBALMV + GmType[ref0] > TRANSLATION + !force_integer_mv => excluded (forced SIMPLE).
+        assert!(global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &rotzoom,
+            RefFrame::Last
+        ));
+        // Same, but force_integer_mv=true => spec's outer gate disables the whole check.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            true,
+            &rotzoom,
+            RefFrame::Last
+        ));
+        // GmType[ref0] == TRANSLATION (not `>` TRANSLATION) => not excluded.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &translation_only,
+            RefFrame::Last
+        ));
+        // GmType[ref0] == IDENTITY => not excluded.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &identity,
+            RefFrame::Last
+        ));
+        // Any non-GLOBALMV mode => never excluded by this check, regardless of GmType.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::NewMv,
+            false,
+            &rotzoom,
+            RefFrame::Last
+        ));
+        // Indexed by the real ref0, not a fixed slot -- a ROTZOOM GmType on a *different* ref
+        // than the one this block actually uses must not trigger the exclusion.
+        assert!(!global_motion_forces_simple(
+            PredictionMode::GlobalMv,
+            false,
+            &rotzoom,
+            RefFrame::Last2
+        ));
+    }
 
     #[test]
     fn test_prediction_mode_is_intra() {
