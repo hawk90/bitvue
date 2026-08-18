@@ -66,15 +66,13 @@ fn print_ivf_info(data: &[u8]) {
                 // Try to extract sequence header info from AV1 OBUs
                 if &header.fourcc == b"AV01" {
                     for ivf_frame in frames.iter().take(10) {
-                        for obu in ObuIterator::new(&ivf_frame.data) {
-                            if let Ok(obu) = obu {
-                                if obu.header.obu_type == ObuType::SequenceHeader {
-                                    if let Ok(seq) = parse_sequence_header(&obu.payload) {
-                                        println!("Profile: {:?}", seq.profile);
-                                        println!("Bit depth: {}", seq.bit_depth());
-                                    }
-                                    break;
+                        for obu in ObuIterator::new(&ivf_frame.data).flatten() {
+                            if obu.header.obu_type == ObuType::SequenceHeader {
+                                if let Ok(seq) = parse_sequence_header(&obu.payload) {
+                                    println!("Profile: {:?}", seq.profile);
+                                    println!("Bit depth: {}", seq.bit_depth());
                                 }
+                                break;
                             }
                         }
                     }
@@ -86,19 +84,16 @@ fn print_ivf_info(data: &[u8]) {
                 let mut other = 0usize;
                 for ivf_frame in &frames {
                     let mut found = false;
-                    for obu in ObuIterator::new(&ivf_frame.data) {
-                        if let Ok(obu) = obu {
-                            if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader)
-                            {
-                                if let Some(ft) = obu.frame_type {
-                                    match ft.as_str() {
-                                        "I" => intra += 1,
-                                        "P" => inter += 1,
-                                        _ => other += 1,
-                                    }
-                                    found = true;
-                                    break;
+                    for obu in ObuIterator::new(&ivf_frame.data).flatten() {
+                        if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
+                            if let Some(ft) = obu.frame_type {
+                                match ft.as_str() {
+                                    "I" => intra += 1,
+                                    "P" => inter += 1,
+                                    _ => other += 1,
                                 }
+                                found = true;
+                                break;
                             }
                         }
                     }

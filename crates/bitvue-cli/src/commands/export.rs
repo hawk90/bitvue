@@ -176,37 +176,33 @@ fn resolve_mkv_frame_type(data: &[u8], codec: &str, key_frame: bool) -> String {
 
     // For H.264 / HEVC: first byte after any length prefix contains NAL type
     // MKV stores in AVCC/HVCC (length-prefixed) format with 4-byte length field
-    if codec.contains("AVC") || codec.contains("H264") {
-        if data.len() >= 5 {
-            let nal_type = data[4] & 0x1F; // H.264 NAL type (5 bits)
-            return match nal_type {
-                5 => "I".to_string(), // IDR
-                1 => "P".to_string(), // Non-IDR
-                _ => {
-                    if key_frame {
-                        "I".to_string()
-                    } else {
-                        "P".to_string()
-                    }
+    if (codec.contains("AVC") || codec.contains("H264")) && data.len() >= 5 {
+        let nal_type = data[4] & 0x1F; // H.264 NAL type (5 bits)
+        return match nal_type {
+            5 => "I".to_string(), // IDR
+            1 => "P".to_string(), // Non-IDR
+            _ => {
+                if key_frame {
+                    "I".to_string()
+                } else {
+                    "P".to_string()
                 }
-            };
-        }
+            }
+        };
     }
-    if codec.contains("HEVC") || codec.contains("H265") {
-        if data.len() >= 6 {
-            let nal_type = (data[4] >> 1) & 0x3F; // HEVC NAL type (6 bits)
-            return match nal_type {
-                19 | 20 | 21 => "I".to_string(), // IDR
-                1 | 2 | 3 => "P".to_string(),
-                _ => {
-                    if key_frame {
-                        "I".to_string()
-                    } else {
-                        "P".to_string()
-                    }
+    if (codec.contains("HEVC") || codec.contains("H265")) && data.len() >= 6 {
+        let nal_type = (data[4] >> 1) & 0x3F; // HEVC NAL type (6 bits)
+        return match nal_type {
+            19..=21 => "I".to_string(), // IDR
+            1..=3 => "P".to_string(),
+            _ => {
+                if key_frame {
+                    "I".to_string()
+                } else {
+                    "P".to_string()
                 }
-            };
-        }
+            }
+        };
     }
 
     if key_frame {
@@ -260,7 +256,7 @@ fn collect_annex_b_frames(data: &[u8]) -> Result<Vec<ExportFrame>> {
 
         let hevc_type = (nal_byte >> 1) & 0x3F;
         let is_slice_hevc = matches!(hevc_type, 1 | 19 | 20 | 21); // TRAIL_R, IDR types
-        let is_idr_hevc = matches!(hevc_type, 19 | 20 | 21);
+        let is_idr_hevc = matches!(hevc_type, 19..=21);
 
         if is_slice_h264 || is_slice_hevc {
             let key_frame = is_idr_h264 || is_idr_hevc;
@@ -304,15 +300,13 @@ fn resolve_av1_frame_type(frame_data: &[u8]) -> (String, Option<u8>) {
     let mut frame_type = "?".to_string();
     let mut temporal_id: Option<u8> = None;
 
-    for obu in ObuIterator::new(frame_data) {
-        if let Ok(obu) = obu {
-            if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
-                if let Some(ft) = obu.frame_type {
-                    frame_type = ft.as_str().to_string();
-                }
-                // temporal_id is in the OBU extension header (0 means no extension / base layer)
-                temporal_id = Some(obu.header.temporal_id);
+    for obu in ObuIterator::new(frame_data).flatten() {
+        if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
+            if let Some(ft) = obu.frame_type {
+                frame_type = ft.as_str().to_string();
             }
+            // temporal_id is in the OBU extension header (0 means no extension / base layer)
+            temporal_id = Some(obu.header.temporal_id);
         }
     }
 

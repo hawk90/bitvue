@@ -155,12 +155,10 @@ fn analyze_mp4(data: &[u8]) -> Result<(usize, usize, u64)> {
 }
 
 fn resolve_av1_frame_type(frame_data: &[u8]) -> String {
-    for obu in ObuIterator::new(frame_data) {
-        if let Ok(obu) = obu {
-            if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
-                if let Some(ft) = obu.frame_type {
-                    return ft.as_str().to_string();
-                }
+    for obu in ObuIterator::new(frame_data).flatten() {
+        if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
+            if let Some(ft) = obu.frame_type {
+                return ft.as_str().to_string();
             }
         }
     }

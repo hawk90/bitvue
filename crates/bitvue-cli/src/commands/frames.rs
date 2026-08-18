@@ -60,8 +60,8 @@ pub fn run(file_path: PathBuf, limit: usize, format: &str) -> Result<()> {
         _ => {
             // Text table
             println!(
-                "{:<6} {:<8} {:<10} {:<16} {:<12} {}",
-                "Index", "Type", "Size", "PTS", "Offset", "KeyFrame"
+                "{:<6} {:<8} {:<10} {:<16} {:<12} KeyFrame",
+                "Index", "Type", "Size", "PTS", "Offset"
             );
             println!("{}", "-".repeat(66));
             for r in &records {
@@ -147,12 +147,10 @@ fn collect_mp4_frames(data: &[u8], limit: usize) -> Result<Vec<FrameRecord>> {
 }
 
 fn resolve_av1_frame_type(frame_data: &[u8]) -> String {
-    for obu in ObuIterator::new(frame_data) {
-        if let Ok(obu) = obu {
-            if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
-                if let Some(ft) = obu.frame_type {
-                    return ft.as_str().to_string();
-                }
+    for obu in ObuIterator::new(frame_data).flatten() {
+        if matches!(obu.header.obu_type, ObuType::Frame | ObuType::FrameHeader) {
+            if let Some(ft) = obu.frame_type {
+                return ft.as_str().to_string();
             }
         }
     }

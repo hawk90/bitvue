@@ -222,7 +222,7 @@ pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) 
             );
         }
     } else if want_psnr {
-        println!("{:<8} {}", "Frame", "PSNR (dB)");
+        println!("{:<8} PSNR (dB)", "Frame");
         println!("{}", "-".repeat(20));
         for r in &results {
             println!(
@@ -232,7 +232,7 @@ pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) 
             );
         }
     } else {
-        println!("{:<8} {}", "Frame", "SSIM");
+        println!("{:<8} SSIM", "Frame");
         println!("{}", "-".repeat(16));
         for r in &results {
             println!(
@@ -262,19 +262,22 @@ pub fn run(reference: PathBuf, distorted: PathBuf, frames: &str, metrics: &str) 
     Ok(())
 }
 
+/// Decoded luma plane: (y_plane_8bit, width, height, timestamp).
+type LumaFrame = (Vec<u8>, usize, usize, i64);
+
 /// Decode all frames from an AV1 IVF file, returning (y_plane_8bit, width, height, timestamp)
 /// per frame.
 ///
 /// Only 8-bit luma planes are returned; 10/12-bit frames are downsampled by
 /// taking the top 8 bits of each 16-bit sample (see `downconvert_high_bitdepth_luma`).
-fn decode_ivf_frames(data: &[u8]) -> Result<Vec<(Vec<u8>, usize, usize, i64)>> {
+fn decode_ivf_frames(data: &[u8]) -> Result<Vec<LumaFrame>> {
     let (_header, ivf_frames) =
         parse_ivf_frames(data).map_err(|e| anyhow::anyhow!("IVF parse error: {}", e))?;
 
     let mut decoder =
         Av1Decoder::new().map_err(|e| anyhow::anyhow!("Decoder init error: {}", e))?;
 
-    let mut decoded: Vec<(Vec<u8>, usize, usize, i64)> = Vec::with_capacity(ivf_frames.len());
+    let mut decoded: Vec<LumaFrame> = Vec::with_capacity(ivf_frames.len());
 
     for frame in &ivf_frames {
         decoder
