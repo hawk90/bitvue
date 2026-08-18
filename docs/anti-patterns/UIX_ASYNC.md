@@ -51,7 +51,7 @@ enum AnalysisViewState<T> {
 - 시나리오 테스트: 버튼을 클릭한 직후(0~50ms) 스크린샷을 찍어 이전 프레임과 픽셀 diff가 있는지 확인.
 - Interaction 로그에서 동일 커맨드가 짧은 시간 내 중복 invoke 되는 빈도를 계측.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (재검증: Tauri→Electron 전환으로 `src-tauri`는 저장소에서 완전히 삭제됐고 실제 경로는 `frontend/services/electronBridgeService.ts`의 sidecar 브리지다. 이전 판정이 인용한 `src-tauri`/`invoke("open_file")` 경로는 이제 존재하지 않으므로 아래는 현재 코드로 재확인한 내용.) `frontend/hooks/useAppFileOperations.ts`의 `handleOpenFile`(213-249행, 내부적으로 `openFileAtPath`→`openStream`/`selectFrame`/`getStreamInfo` bridge 호출 체인)은 이 파일 전체(328행)에 `isLoading`/`isOpening` 류 상태 자체가 없어 로딩 상태를 아예 반환하지 않는다. `frontend/App.tsx:692`의 `<button onClick={handleOpenFile}>Open Different File</button>`에도 `disabled`나 인디케이터가 없다. 클릭 즉시 아무 시각적 반응 없이 파일 다이얼로그→`openStream`→`selectFrame`→`refreshFrames()`가 순차 실행되고, `setFileInfo`는 전체 체인이 끝난 뒤에야 갱신된다.
 
 ---
 
@@ -87,7 +87,7 @@ enum AnalysisViewState<T> {
 - Visual 감사: 앱 내 모든 로딩 상태를 스크린샷으로 수집해 spinner 컴포넌트 재사용 빈도와 라벨 유무를 표로 정리.
 - 코드에서 로딩 상태 타입을 grep해 boolean 단일 플래그 사용 빈도 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — (재검증, 현재 Electron+`bitvue-sidecar` 아키텍처 기준) 반쯤 뒤집힌 형태로 나타난다. 공유 `LoadingScreen`/`Spinner`(`frontend/components/Loading.tsx`, `title`/`message`/`progress` prop까지 갖춤)는 grep 결과 `vitest.config.ts` 외 앱 전체에서 단 한 곳도 사용되지 않는 죽은 코드이며, 대신 각 패널이 제각각 즉석 텍스트를 박아 넣는다(`YuvViewerPanel/index.tsx:579` "Loading frame N..." — 이건 실제 마운트되는 라이브 경로). `QualityMetricsPanel.tsx:193` "Calculating..."도 존재하지만 이 패널 자체가 `panels/index.ts` 배럴에서만 export되고 앱 어디서도 import/렌더링되지 않는 도달 불가 죽은 코드다(아래 008/009 판정 참고, 게다가 여전히 존재하지 않는 `@tauri-apps/api` invoke를 호출한다). 즉 "단일 spinner로 뭉개짐"은 아니지만, "작업 종류(`stage`)를 구조적으로 실어 나르는 채널이 없다"는 근본 원인은 라이브 경로 기준으로도 그대로다 — `bitvue-sidecar`의 wire 프로토콜에 `Event::WorkerProgress`(`crates/bitvue-engine/src/event.rs:28`, `crates/bitvue-sidecar/src/main.rs:1869`)라는 progress 이벤트 타입 자체는 정의돼 있지만, 이를 실제로 발행하는 커맨드 핸들러가 하나도 없다(자체 테스트에서만 구성됨, 아래 004 판정 참고).
 
 ---
 
@@ -123,7 +123,7 @@ UI 상태 모델이 "idle vs busy" 2단계로만 축소되어 있어서, 시작�
 - 시나리오 테스트: 시작 → 취소 클릭 → 백엔드 취소 완료까지 각 시점의 화면 상태를 캡처해 5개 국면이 실제로 구별되는지 확인.
 - Code 리뷰: 상태 타입 정의에서 enum variant 개수를 카운트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (재검증 결과 이전 판정의 "백엔드에 취소 개념 자체가 없다"는 결론은 틀렸다 — `src-tauri`는 삭제됐고, 현재 `bitvue-sidecar`에는 실제 `cancel_request` 와이어 커맨드가 있다: `crates/bitvue-sidecar/src/main.rs:137-150`(요청 파싱 즉시 특수 처리), `compute_cancel_response`(232행 이하)가 `correlation_id`→`AtomicBool` 레지스트리에 취소 플래그를 세팅한다. 그럼에도 이 항목은 여전히 Confirmed다: (1) `frontend/services/electronBridgeService.ts`에 `cancel_request`를 감싸는 wrapper가 전혀 없다 — 이 커맨드를 호출하는 프론트엔드 코드가 하나도 없어(grep 결과 export 함수 목록에 `cancel*` 없음) 사용자가 취소를 트리거할 UI 자체가 없다. (2) 프론트엔드는 예외 없이 `boolean isLoading`/`isCalculating` 패턴만 쓰고(`FileStateContext.tsx`의 `loading`, `QualityMetricsPanel.tsx:38`, `YuvDiffContext.tsx`의 `loading` 등) `Cancelling` 같은 중간 국면이나 5국면 enum이 어디에도 없다. 취소 프리미티브는 프로토콜 계층에 존재하지만 UI 표면까지 배선되지 않았다는 점이 핵심 결함(아래 006 판정도 참고 — 배선된다 해도 best-effort일 뿐).
 
 ---
 
@@ -158,7 +158,7 @@ UI 상태 모델이 "idle vs busy" 2단계로만 축소되어 있어서, 시작�
 - User test: 실제 대용량 파일로 전체 파이프라인을 실행하며 진행률 변화 곡선을 기록, 마지막 10% 구간의 실제 경과 시간 비율을 측정.
 - Performance: 각 단계별 progress 이벤트 발행 간격을 로깅해 "이벤트 공백 구간"을 자동 탐지.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증) 이 패턴이 성립하려면 먼저 숫자 진행률 바가 실제로 존재해야 하는데, 현재 배선된 프로덕션 경로(파일 열기 `useAppFileOperations.ts`, `electronBridgeService.ts`의 모든 sidecar 커맨드)에는 진행률 바 자체가 없다 — 있는 건 "Loading"/"Calculating..." 같은 정적 텍스트뿐이다(001, 002 판정 참고). `bitvue-engine`에 `Event::WorkerProgress`(`crates/bitvue-engine/src/event.rs:28`)와 이를 스케줄링할 수 있는 `AsyncJobManager`/`worker.rs`(last-wins 취소·최대 2-in-flight 모델까지 설계된 실제 잡 매니저)가 존재하지만, `grep -rln AsyncJobManager crates`로 확인한 결과 `worker.rs` 자신의 테스트 파일 외에는 `core.rs`나 `bitvue-sidecar`가 이를 전혀 호출하지 않는다 — 설계는 있지만 배선되지 않은 죽은 서브시스템이다. 단계별 progress 계산 로직을 담은 `frontend/utils/progressiveLoader.ts`도 여전히 어떤 컴포넌트에서도 호출되지 않는 죽은 코드라(005 판정), 99% 정체를 "관찰"할 화면 자체가 현재 없다.
 
 ---
 
@@ -193,7 +193,7 @@ UI 상태 모델이 "idle vs busy" 2단계로만 축소되어 있어서, 시작�
 - Code 리뷰: 백엔드에서 progress 이벤트를 발행하는 모든 지점을 찾아 단위(percent 산식)가 통일되어 있는지 확인.
 - 시나리오 테스트: 전체 파이프라인 실행 중 progress 값 시계열을 기록해 비단조 구간이 있는지 자동 검증.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — (재검증, 여전히 유효) `frontend/utils/progressiveLoader.ts`의 `ProgressiveFileLoader`가 `stage: "parsing"`(103-149행 부근)과 `stage: "thumbnails"`(213-219행 부근)를 각각 독립적으로 0→100%로 계산해 `onProgress` 콜백에 보고하는 구조라, 두 콜백을 하나의 progress bar에 순서대로 이어 붙이면 정확히 이 항목이 설명하는 "100%→0%로 역행" 버그가 재현된다. 다만 grep 결과 `loadFramesProgressive`/`loadThumbnailsProgressive`/`ProgressiveFileLoader`를 호출하는 컴포넌트가 현재 하나도 없어(tsconfig.json 타입체크 대상 외 아무도 참조 안 함, 완전 죽은 코드) 사용자가 실제로 이 버그를 관찰할 화면은 없다 — Tauri→Electron 전환(2026-08-08) 이후로도 여전히 미배선 상태. 향후 이 유틸을 실제 UI에 연결할 때 재발할 잠재적 결함으로 플래그.
 
 ---
 
@@ -229,7 +229,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Interaction: 취소 클릭 후 시스템 리소스(CPU, 스레드 수)를 모니터링해 실제로 감소하는지 확인.
 - 시나리오 테스트: 취소 직후 동일 파일로 새 작업을 시작해 결과가 오염되는지 검증.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (재검증) 이번엔 최상급 증거가 나왔다: `crates/bitvue-sidecar/src/main.rs`의 모듈 문서(51-58행)가 **이 안티패턴을 스스로 정확히 자백**하고 있다 — "`cancel_request` sets a per-request `AtomicBool` flag... **This is best-effort, not preemption**: none of today's handlers have a cooperative checkpoint mid-execution... cancelling a request that has already started executing has no effect; it only works for the (currently narrow, timing-dependent) window before the worker thread's check runs." 즉 취소 플래그는 워커 스레드가 "실행 시작 직전 딱 한 번" 검사할 뿐(`spawn_request`, 196-212행), 실행 중인 `Core::handle_command`/디코드 루프 안에는 체크포인트가 전혀 없다 — `grep -rn "CancellationToken\|tokio::select!" crates/bitvue-sidecar/src crates/bitvue-engine/src` 결과도 0건. 게다가 `frontend/services/electronBridgeService.ts`에 `cancel_request` wrapper 자체가 없어(003 판정 참고) 이 반쪽짜리 취소조차 프론트엔드에서 트리거할 방법이 없다 — 사용자 관점에서는 "취소 버튼"이 아예 존재하지 않는 것과 같은 상태이면서, 백엔드 설계 문서 자체가 "취소해도 이미 시작된 작업은 안 멈춘다"를 명시하고 있는 이중 확인.
 
 ---
 
@@ -265,7 +265,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Code 리뷰: 비동기 응답 핸들러마다 request_id 비교 로직이 있는지 grep으로 점검.
 - 시나리오 테스트: 의도적으로 응답 지연을 역전시켜(첫 요청을 느리게, 두 번째를 빠르게 mock) 최종 화면이 최신 요청 결과와 일치하는지 자동 검증.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (재검증, 이 항목은 프론트엔드 전용 패턴이라 Tauri→Electron 전환 영향이 적어 대부분 유효했다) `request_id`/`generation` 필드는 grep 결과 코드베이스 어디에도 없다(node_modules 제외). 구체적 사례: `frontend/contexts/YuvDiffContext.tsx`의 `fetchMetrics`(174-187행, 현재는 `getYuvDiffMetrics(frameIndex)` — `electronBridgeService.ts` bridge 함수, 옛 `invoke("get_yuv_diff_metrics")`가 아님)는 응답을 검증 없이 그대로 `setState((s) => ({ ...s, metrics }))`로 덮어쓴다. `frontend/components/panels/YuvDiffPanel.tsx`가 `currentFrameIndex`가 바뀔 때마다 가드 없이 재호출한다 — 빠른 프레임 이동 시 오래된 프레임의 응답이 늦게 도착하면 최신 프레임의 metrics를 덮어쓴다(단, `YuvDiffPanel.tsx:208`의 렌더링 쪽은 `metrics.frame_index === currentFrameIndex`로 화면 표시는 가드하므로 — 008 판정 참고 — 사용자가 "틀린 프레임 숫자"를 보는 것 자체는 막히지만, `state.metrics`엔 여전히 stale 값이 남아 다음 판정 로직 등에 영향을 줄 수 있다). 이 패턴이 전역적이진 않다: `YuvViewerPanel/index.tsx`, `SyntaxDetailPanel`의 각 탭(`ApsTab.tsx`/`QmTab.tsx`/`RefListTab.tsx`/`ProbsTab.tsx`), `UnitHexPanel/HexViewTab.tsx`는 effect-scope `let cancelled = false` 가드로 이 경합을 완화하고 있다(이번 재검증에서 라인 단위 재확인은 생략, 패턴 존재만 grep으로 재확인).
 
 ---
 
@@ -299,7 +299,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Interaction: 성공 → 실패를 유발하는 시나리오(예: 파일을 분석 중 삭제)를 재현해 실패 후 화면 상태를 스크린샷으로 검증.
 - User test: 실패 상태를 본 사용자에게 "지금 보이는 숫자가 최신 결과인지"를 질문해 오인률 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (재검증, 더 강한 라이브 사례로 교체) 원래 인용됐던 `QualityMetricsPanel.tsx`는 재확인 결과 `panels/index.ts` 배럴에서만 export되고 앱 어디서도 import/렌더링되지 않는 도달 불가 죽은 코드였다(게다가 존재하지 않는 `@tauri-apps/api` invoke와 `calculate_quality_metrics`라는, `bitvue-sidecar`에 없는 커맨드를 호출한다 — grep 결과 사이드카 커맨드 목록에 quality/vmaf/psnr/ssim 없음). 대신 실제로 마운트되는 `frontend/contexts/YuvDiffContext.tsx`의 `fetchMetrics`(174-187행)가 같은 패턴의 라이브 사례다: `getYuvDiffMetrics` 호출이 실패하면 `catch` 블록이 `logger.warn`만 하고 `return null`할 뿐 `state.metrics`를 지우거나 별도 실패 플래그를 세우지 않는다 — 실패 이전에 표시되던 PSNR/SSIM 값이 `frontend/components/panels/YuvDiffPanel.tsx:208-222`에 그대로 렌더링된 채 남고, 에러였다는 사실이 그 값에 부착되지 않는다(단, `metrics.frame_index === currentFrameIndex` 가드 덕에 "다른 프레임의 값"이 새 프레임인 척 보이는 최악의 경우는 막힘 — 007 판정 참고). `QualityMetricsPanel.tsx`(93-121행, `handleCalculate`)도 `catch`에서 `setError`만 하고 `metrics` state를 안 건드리는 동일 구조이나, 이쪽은 죽은 코드라 부차적 증거로만 남긴다.
 
 ---
 
@@ -335,7 +335,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Domain review: 순차 계산이 가능한 메트릭 파이프라인 목록을 만들고, 각각이 스트리밍 emit을 지원하는지 점검.
 - Performance: "첫 유의미한 데이터가 화면에 나타나기까지의 시간(TTFB에 해당하는 지표)"을 측정해 전체 완료 시간과 비교.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증, 이전 Confirmed 판정을 뒤집음) 이전 판정이 인용한 `src-tauri/src/commands/quality.rs::calculate_quality_metrics`는 2026-08-08 Tauri 삭제와 함께 코드베이스에서 완전히 사라졌다. 현재 `bitvue-sidecar`의 실제 커맨드 표면(`crates/bitvue-sidecar/src/main.rs`의 method match — `open_stream`/`select_*`/`get_hex_range`/`get_thumbnails`/`get_yuv_diff_metrics`/`get_frame_analysis`/`get_av1_features`/`get_coding_flow_analysis`/`get_deblocking_analysis`/`get_codec_extended_info`/`get_residual_analysis` 등)에는 배치 VMAF/PSNR/SSIM 계산 커맨드가 아예 없다(grep 결과 quality/vmaf/psnr/ssim 문자열이 `main.rs`/`decode_bridge.rs` 등 어디에도 없음). `get_yuv_diff_metrics`는 프레임 1개당 한 번 계산하는 즉시 반환 호출이라 "순차 계산인데 끝까지 대기" 패턴이 성립할 만큼 길지 않다. 유일하게 이 패턴이 서술하는 배치 계산 코드는 `frontend/components/panels/QualityMetricsPanel.tsx`(93-121행)에 남아있지만, 이 패널은 (a) 앱 어디서도 렌더링되지 않는 도달 불가 죽은 코드이고 (b) 호출하는 `calculate_quality_metrics` 커맨드 자체가 백엔드에 없어 실행하면 즉시 실패한다 — 살아있는 사용자 경로에 이 패턴이 적용될 대상 기능이 현재 존재하지 않는다.
 
 ---
 
@@ -371,7 +371,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - User test: 백그라운드 작업이 실행되는 동안 사용자에게 "지금 앱이 뭘 하고 있다고 생각하는지" 질문.
 - Performance: 사용자 조작이 없는데도 CPU/디스크 I/O가 튀는 구간을 프로파일링해 그 시점에 대응하는 UI 신호가 있었는지 대조.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증) `crates/bitvue-sidecar/src`에서 유일한 `thread::spawn`은 `main.rs`의 `spawn_request`(196행)인데, 이건 사용자가 직접 트리거한 요청 하나당 워커 스레드 하나를 띄워 응답을 계산하는 정상적인 요청-처리 모델이지 프리페치/자동저장/재인덱싱류 fire-and-forget 백그라운드 작업이 아니다(요청을 보낸 프론트엔드가 응답을 기다리므로 "사용자가 트리거하지 않은 작업"이 아님). `grep -rln prefetch frontend crates`로 확인한 결과 프리페치 관련 코드는 벤더 abseil 크레이트의 무관한 매치 1건뿐이고, 이전에 존재했던 `get_or_decode_frame_with_prefetch`류 코드는 `src-tauri` 삭제와 함께 사라졌다. `crates/bitvue-engine/src/worker.rs`에 `Job::DecodeThumbnails`/`Job::BuildPlotLOD` 등 개념적으로 백그라운드성인 잡 타입이 정의돼 있지만(004/009 판정 참고), `AsyncJobManager`는 `core.rs`/`bitvue-sidecar`에서 전혀 호출되지 않는 미배선 죽은 서브시스템이라 실제로 실행되는 백그라운드 작업이 아니다. 신고할 대상 자체가 없다.
 
 ---
 
@@ -407,7 +407,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Code 리뷰: progress 상태를 합산하는 reducer/selector를 찾아 개별 작업 식별자가 보존되는지 확인.
 - 시나리오 테스트: 여러 작업 중 하나만 의도적으로 느리게/실패하게 만들어 UI가 이를 구분해 보여주는지 검증.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — (재검증, 근거가 더 약해짐) 정확히 서술된 "여러 progress 값을 reduce하는 로직"은 없다(애초에 progress 값 자체가 없으므로, 004/009 판정 참고). 이전 판정이 유일한 증거로 삼았던 `QualityMetricsPanel.tsx`의 `handleCalculate`(PSNR+SSIM을 `calculate_quality_metrics` 단일 호출 뒤 `isCalculating` boolean 하나로 묶는 패턴)는 재확인 결과 앱 어디서도 렌더링되지 않는 도달 불가 죽은 코드이자, 호출 대상 커맨드 자체가 현재 `bitvue-sidecar`에 없다(009 판정 참고) — 라이브 경로에서의 증거는 아니다. 이번 재검증 범위에서 여러 독립 작업(예: 프레임 청크 로딩 + 썸네일 배치 로딩, `FileStateContext.tsx`의 `refreshFrames`)이 하나의 boolean/progress로 뭉개지는 라이브 사례를 새로 찾지는 못했다 — 다만 전체 프론트엔드를 전수조사한 것은 아니라 신호 부족으로 Suspected 유지, 확정도 배제도 하지 않는다.
 
 ---
 
@@ -441,7 +441,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Code 리뷰: 백엔드 재시도 루프를 찾아 progress/status 이벤트 emit 여부를 확인.
 - 시나리오 테스트: 의도적으로 일시적 실패를 주입(예: 파일에 짧은 lock을 걸어둠)해 재시도 중 UI 변화를 관찰.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증) 이전 판정이 인용한 `src-tauri/src/error.rs::BitvueError::is_retryable()`는 `src-tauri` 삭제와 함께 사라졌다(현재 `is_retryable` 문자열은 워크스페이스 전체 grep 결과 0건). 대신 `crates/bitvue-engine/src/command_chain.rs`에 exponential-backoff 재시도 스캐폴드(`_retry_delay`(563행)/`_should_retry`(570행), `with_retry(max_retries, base_delay_ms)`(740행))가 실제로 존재한다는 새 사실을 확인했다 — 다만 메서드명이 `_` 접두사(Rust의 "미사용" 관례)이고, 코드 주석 자체가 "for future use", "In a real scenario, you'd need async/await for actual retry logic"라고 명시해 미완성 스텁임을 자백한다. `grep -rln with_retry crates`로 확인한 결과 `lib.rs`의 re-export 외에는 아무도 `with_retry`/`RetryHandler`를 호출하지 않는다 — `core.rs`/`bitvue-sidecar` 어디서도 실제로 재시도가 수행되지 않으므로, "재시도 중임을 숨긴다"는 문제가 성립할 실행 경로 자체가 없다.
 
 ---
 
@@ -476,7 +476,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Code 리뷰: 에러 처리 경로에서 `Elapsed`/`timeout` 관련 에러가 문자열화되기 전 어디서 타입이 소실되는지 추적.
 - 시나리오 테스트: 의도적으로 매우 느린 입력(대형 파일, 인위적 지연 주입)으로 timeout을 유발해 사용자에게 노출되는 메시지를 검증.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증, 결론은 그대로) `src-tauri` 삭제 이후에도 여전히 유효: 워크스페이스 전체(`crates/`, `vendor` 제외)에 `tokio::time::timeout`/`time::Elapsed` 사용이 전혀 없다(grep 확인). 현재 프로토콜의 에러 표현인 `bitvue-protocol`의 `WireErrorCode` enum(`Io`/`Parse`/`InvalidObuType`/`UnexpectedEof`/`UnsupportedCodec`/`Decode`/`InsufficientData`/`InvalidData`/`InvalidFile`/`InvalidRange`/`FileModified`/`FrameNotFound`/`NotFound`/`Serialization`/`Cancelled`/`Internal`)에도 `Timeout` variant가 없다(참고로 `Cancelled`는 006/003 판정에서 확인한 `cancel_request` 전용 코드로 이미 존재함 — timeout과는 별개). 내부 timeout 메커니즘 자체가 아직 구현되어 있지 않으므로, 그것을 일반 에러로 뭉뚱그릴 코드 경로도 없다.
 
 ---
 
@@ -510,7 +510,7 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - User test: 캐시 히트/미스 상황을 각각 재현해 사용자가 그 차이를 인지할 수 있는지 질문.
 - Code 리뷰: 캐시 조회 반환 타입에 출처 메타데이터가 있는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증, 이전 Confirmed 판정을 뒤집음) 이전 판정이 인용한 `src-tauri/src/commands/thumbnails.rs`의 `cached: bool` 필드는 `src-tauri` 삭제와 함께 사라졌다. 현재 `bitvue-sidecar`의 `get_thumbnails`(`crates/bitvue-sidecar/src/main.rs:1479` → `decode_bridge::get_thumbnails`)를 직접 읽어보면, 이 함수는 호출될 때마다 `Av1Decoder::new()`로 완전히 새 디코더를 만들어 원본 바이트를 처음부터 다시 디코드한다(`decode_bridge.rs:160행 부근`) — 요청 간에 재사용되는 캐시 레이어 자체가 없다. 응답 JSON도 `frame_index`/`thumbnail_data`/`width`/`height`/`success`뿐, 캐시 출처를 나타내는 필드가 없다(main.rs:1533-1544). `getDecodedFrameYuv`도 `electronBridgeService.ts`의 모듈 문서가 "re-decodes from the stream start every call, no session caching yet"라고 명시한다. 즉 이 항목이 전제하는 "캐시 히트/미스를 구분 못 함"이라는 문제 자체가 성립하지 않는다 — 캐시 메커니즘이 아예 없으므로 모든 응답이 균일하게 "새로 계산됨"이고, 감출 캐시 출처 신호가 없다.
 
 ---
 
@@ -546,6 +546,6 @@ UI의 "취소"는 프론트엔드 상태만 초기화할 뿐, 백엔드 비동�
 - Visual 회귀 테스트: 연속 프레임 이동 시나리오를 녹화해 프레임 간 빈 화면(blank frame) 발생 여부를 자동 검출.
 - 시나리오 테스트: 매우 빠른 응답(mock으로 0ms 지연)에서도 로딩 UI가 최소 1프레임이라도 나타나는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — (재검증, 두 근거 모두 현재도 라이브 코드에서 재확인됨) 엇갈린 근거가 있다. 메인 프레임 뷰어(`frontend/components/panels/YuvViewerPanel/index.tsx`)는 프레임 전환 시 기존 이미지를 지우지 않고 그 위에 "Loading frame N..." 오버레이만 얹는 방식(579행)이라 이 항목이 우려하는 완전 초기화형 깜빡임은 피하고 있다(단, 150~300ms 최소 표시 시간 같은 디바운스는 없어 매우 빠른 응답에서도 오버레이가 최소 1프레임 끼어들 수 있음). 반면 `frontend/contexts/FileStateContext.tsx`의 `refreshFrames`(87-94행, `useAppFileOperations.ts`의 `openFileAtPath`가 실제로 호출하는 라이브 경로)는 새 파일을 불러오기 시작할 때 93행에서 `setFrames([])`를 먼저 호출해 이전 프레임 목록을 즉시 비운다(88행 `setLoading(true)`, 94행 `setStreamInfo(null)`도 동시에) — 파일 재적재 시나리오에서는 이 항목이 설명하는 깜빡임이 실제로 발생할 수 있다.
 </content>
 </invoke>

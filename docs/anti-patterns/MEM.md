@@ -65,7 +65,8 @@ fn analyze(path: &str) -> std::io::Result<()> {
 - 파일 크기가 항상 작다고 보장되는 메타데이터/사이드카 파일(JSON 설정, 인덱스 파일 등)은 `read_to_end`가 적절하다.
 - 테스트 픽스처처럼 크기가 통제된 경우도 허용.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — src-tauri/src/commands/file.rs:258-262(`open_file`)가 파일 전체를 `read_to_end`로 Vec에 로드; crates/bitvue-decode/src/decoder.rs:625-631의 AnnexB 폴백 경로도 동일. mmap 기반 ByteCache(crates/bitvue-core/src/byte_cache.rs)가 별도로 존재하지만 이 경로들에는 쓰이지 않음.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-002 참고.
 
 ---
 
@@ -116,7 +117,7 @@ fn extract_packets<'a>(mmap: &'a [u8], index: &[PacketIndex]) -> Vec<PacketView<
 **예외**:
 - 패킷을 다른 스레드/프로세스 경계로 넘겨야 해서 라이프타임을 끊어야 하는 경우 복사가 불가피하다. 이때는 `Bytes`(참조 카운트) 사용을 우선 고려.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-hevc/src/nal.rs:438-447 `parse_nal_units`가 NAL마다 `raw_payload = nal_data[2..].to_vec()`와 `payload = remove_emulation_prevention_bytes(...)`로 이중 Vec 복사(동일 패턴이 bitvue-avc/bitvue-vvc의 nal.rs에도 반복).
 
 ---
 
@@ -181,7 +182,7 @@ struct NalUnitInfo {
 - 파일명, 사용자 정의 메타데이터 등 실제로 임의 텍스트인 필드는 `String`이 맞다.
 - 값의 집합이 아직 코덱 표준에서 확정되지 않아 문자열로 남겨야 하는 실험적 필드(벤더 확장 등)는 예외로 허용 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-core/src/types.rs:521-526 `SyntaxNode.field_name: String`, `value: Option<String>`이 파싱되는 모든 syntax element(수십만 개까지 가능)마다 힙 String을 생성(개별 `profile_name() -> &'static str`류 헬퍼는 이미 좋은 패턴이지만 트리 자체는 전면 문자열화).
 
 ---
 
@@ -227,7 +228,7 @@ enum SyntaxNode {
 **예외**:
 - 트리 크기가 원래 작은 컨테이너 레벨 구조(box tree 등, 수백~수천 노드)라면 통합 타입으로 단순화하는 것이 유지보수상 더 나을 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-core/src/types.rs:514-536 `SyntaxNode`는 리프/브랜치 구분 없이 모든 노드가 `children: Vec<SyntaxNodeId>` 필드를 가짐(리프가 대다수인 HEVC/AV1 syntax tree에 그대로 적용).
 
 ---
 
@@ -291,7 +292,7 @@ struct CuNode {
 **예외**:
 - 트리 크기가 작고(파일 박스 트리, SPS/PPS 파라미터 셋 목록 등 수십~수백 노드) 생성 빈도가 낮다면 `Box` 기반이 코드 가독성 면에서 더 낫다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SyntaxTree는 `Box<Self>` 재귀가 아니라 `HashMap<SyntaxNodeId, SyntaxNode>`(id 기반 arena형) 구조(crates/bitvue-core/src/types.rs:572)를 사용. Box 기반 재귀 트리 정의는 발견되지 않음(다만 String id 기반이라 MEM-018 문제로 대체됨).
 
 ---
 
@@ -346,7 +347,7 @@ impl YuvPlane {
 **예외**:
 - 각 행의 길이가 실제로 가변적인 데이터(예: 가변 길이 엔트로피 코딩 중간 산출물을 행 단위로 저장하는 디버그 구조)라면 `Vec<Vec<T>>`가 정당할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 실제 픽셀 평면은 `Arc<[u8]>`/`Vec<u8>` + width/height/stride의 연속 버퍼로 설계됨(crates/bitvue-decode/src/decoder.rs:33-58 `DecodedFrame`, crates/bitvue-decode/src/plane_utils.rs). `Vec<Vec<u8>>`는 컨테이너 샘플 목록(가변 길이 패킷 모음, 예: bitvue-formats/src/mkv.rs:181)에만 쓰이며 이는 카탈로그의 정당한 예외 사례에 해당.
 
 ---
 
@@ -399,7 +400,7 @@ struct FrameMetadata {
 **예외**:
 - 사이드카 메타데이터, 사용자 주석, 플러그인 확장 필드처럼 스키마가 컴파일 타임에 고정될 수 없는 경우는 map이 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 대부분의 `HashMap<String,String>`은 metadata/context/evidence용으로 카탈로그가 인정하는 예외(사이드카 메타데이터)에 해당하지만, SyntaxTree의 `HashMap<SyntaxNodeId(=String), SyntaxNode>`(types.rs:572)는 정적으로 알려진 대량 구조를 문자열 키 map으로 다루는 더 심한 사례(MEM-018과 중복 근거).
 
 ---
 
@@ -447,7 +448,7 @@ fn collect_mvs(block_count: usize) -> Vec<MotionVector> {
 **예외**:
 - 크기가 크고 가변 길이인 variant를 다루는 enum(예: MEM-019)에서 특정 variant만 `Box`로 감싸 enum 전체 크기를 줄이는 것은 반대로 권장되는 패턴이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 발견된 `Vec<Box<dyn Trait>>` 사례(event_observer.rs:771, validation_strategy.rs:331, command_chain.rs:600, overlay_factory.rs:340)는 모두 트레이트 객체 다형성 목적으로, 카탈로그가 명시한 예외에 해당. 작은 값 타입을 개별 Box로 감싸는 패턴은 발견되지 않음.
 
 ---
 
@@ -497,7 +498,7 @@ fn collect_nal_units(data: &[u8], estimated_count: usize) -> Vec<NalUnit> {
 **예외**:
 - 결과 개수를 전혀 예측할 수 없고 데이터도 작은(수십 개 이하) 경우에는 굳이 예약할 필요가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-avc/src/frames.rs:457-462(및 bitvue-hevc/src/frames.rs 동일 패턴)에서 `nal_data = Vec::new()`에 `extend_from_slice`를 반복 호출해 프레임을 조립하면서도 총 크기를 사전 계산해 `with_capacity`를 쓰지 않음(다른 곳, 예: nal.rs의 `parse_nal_units`는 이미 `with_capacity` 적용).
 
 ---
 
@@ -558,7 +559,7 @@ impl StreamAnalyzer {
 **예외**:
 - 버퍼가 매우 짧게 살고 곧 drop된다면(함수 로컬 변수 등) 굳이 shrink할 필요가 없다 — 어차피 함수 종료 시 전체 해제된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `shrink_to`/`shrink_to_fit`이 Bitvue 자체 코드에서 전혀 쓰이지 않음(vendor/abseil의 미사용 유틸 함수 제외). ByteCache/CachedFrame처럼 가변 크기 프레임을 반복 처리하는 장수 구조체가 있어 구조적으로 발생 가능하나, capacity 누적을 직접 관측하는 런타임 근거는 확보하지 못함.
 
 ---
 
@@ -609,7 +610,7 @@ impl SyntaxTreeBuilder {
 **예외**:
 - clone 비용이 무시할 만큼 작은 소규모 트리(수십 노드 이하)라면 문제 삼을 필요는 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `.clear()` 이후 동일 필드를 `.clone()`해 반환하는 scratch-buffer 패턴은 grep으로 명확히 특정되지 않음. 판단에 충분한 근거를 찾지 못해 단정하지 않음.
 
 ---
 
@@ -669,7 +670,7 @@ fn decode_frame(cus: &[CodingUnit]) {
 **예외**:
 - 호출 빈도가 낮은 경로(파일 열기 시 1회, 설정 변경 시 등)라면 매번 할당해도 체감 비용이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Bitvue는 자체 픽셀 역변환/역양자화를 구현하지 않고 디코딩을 dav1d/vvdec 등 외부 FFI에 위임하는 비트스트림 분석기이므로, 블록 단위 hot-path에서 scratch 버퍼를 매번 새로 할당하는 코드 자체가 발견되지 않음.
 
 ---
 
@@ -728,7 +729,7 @@ impl RgbaConverter {
 **예외**:
 - 해상도가 자주 바뀌는(멀티 스트림 비교 뷰 등) 경우라면 재할당 자체는 불가피하지만, 그래도 "매 프레임"이 아니라 "해상도 변경 시"로 빈도를 낮추는 것이 핵심이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(frontend) — frontend/utils/yuv/renderer.ts:66 `yuvToImageData()`가 호출마다 `new ImageData(width,height)`를 새로 할당하고, 클래스형 `YUVRenderer.render()`(204행 `this.imageData` 재사용)조차 내부적으로 `yuvToImageData()`를 호출한 뒤 `this.imageData.data.set(...)`로 복사해 사실상 매 프레임 이중 할당. YUVCache가 일부 완화하지만 캐시 미스/신규 프레임마다 재현됨.
 
 ---
 
@@ -779,7 +780,7 @@ struct RgbaCache {
 **예외**:
 - 오버레이 합성 결과를 디스크로 내보내야 하는(스크린샷/익스포트) 기능이라면 그 순간에 한해 합성 버퍼를 만드는 것은 정당하다 — 문제는 "상시 보관"이지 "일시적 생성"이 아니다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-core/src/stream_state.rs:658-696 `CachedFrame`이 `rgb_data: Vec<u8>`(RGB 변환본)과 `y_plane/u_plane/v_plane`(원본 YUV, Arc)을 동시에 보관하며, 기본 32프레임 LRU(FrameModel, 585행)에 곱해져 프레임당 원본+RGB 두 형태가 상시 상주.
 
 ---
 
@@ -836,7 +837,7 @@ fn to_decoded(nal: &ParsedNal) -> DecodedFrame {
 **예외**:
 - 디코더가 원본 바이트를 변형(비트 반전, in-place 파싱 등)해야 하는 경우처럼 실제로 가변 소유권이 필요한 지점은 복사가 정당하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 디코드 단계 평면은 이미 `Arc<[u8]>`/`Arc<Vec<u8>>`로 공유되어 있어(decoder.rs DecodedFrame, stream_state.rs CachedFrame) 좋은 패턴이지만, NalUnit의 `payload`/`raw_payload`(MEM-002 참고)처럼 파싱 단계 바이트가 별도 Vec으로 복제되는 지점이 있어 파이프라인 전체가 일관되게 공유 타입을 쓰는 것은 아님.
 
 ---
 
@@ -898,7 +899,7 @@ impl FrameCache {
 **예외**:
 - 캐시에 들어가는 항목이 항상 고정 크기임이 보장되는 경우(예: 고정 해상도 썸네일 캐시)라면 개수 기반 제한도 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-core/src/stream_state.rs:585,594 `FrameModel`의 `lru::LruCache<usize, CachedFrame>`가 해상도와 무관하게 고정 32개 엔트리로 제한(바이트 예산 없음). 대조적으로 ByteCache(byte_cache.rs)는 세그먼트가 고정 크기라 바이트 기준 캐시로 정당함. filmstrip.rs의 `ThumbnailCache.max_cache_size`도 개수 기준.
 
 ---
 
@@ -948,7 +949,7 @@ fn tree_memory_footprint(node: &SyntaxNode) -> usize {
 **예외**:
 - 트리 크기가 애초에 좁은 범위로 고정되어 있다면(예: 항상 고정 깊이의 컨테이너 박스 트리) 고정 비용 근사가 실용적으로 충분할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재귀 구조에 대해 `size_of::<T>()`만으로 비용을 오판하는 잘못된 cost 함수 자체가 발견되지 않음(코드베이스가 애초에 비용 기반 축출을 시도하지 않고 단순 개수 제한만 사용 — 이는 MEM-016 사례).
 
 ---
 
@@ -996,7 +997,7 @@ fn build_syntax_table(elements: &[(SyntaxElementId, i64)]) -> HashMap<SyntaxElem
 **예외**:
 - 벤더 확장이나 실험적 SEI 메시지처럼 표준화되지 않아 키 집합이 사전에 닫혀 있지 않은 경우는 문자열 키가 불가피하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-core/src/types.rs:505 `type SyntaxNodeId = String;`와 572행 `nodes: HashMap<SyntaxNodeId, SyntaxNode>`로, 프레임당 수만~수십만 개까지 늘어날 수 있는 syntax tree 노드 전체가 힙 String 키의 HashMap으로 관리됨.
 
 ---
 
@@ -1045,7 +1046,7 @@ enum SeiMessage {
 **예외**:
 - enum이 애초에 소수(수십 개 이하)만 생성/보관되고 핫패스와 무관하다면(예: 설정 파싱 결과) 약간의 크기 낭비는 실질적 영향이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — CI(`.github/workflows/ci.yml:120`)가 `cargo clippy --workspace --lib -- -D warnings`로 기본 warn 레벨인 `clippy::large_enum_variant`를 오류로 취급해 구조적으로 차단. 코드 내 큰 배열을 인라인으로 갖는 SEI류 enum variant도 발견되지 않음.
 
 ---
 
@@ -1098,7 +1099,7 @@ struct MacroblockInfo {
 **예외**:
 - `repr(Rust)`(기본값)를 쓰는 대부분의 내부 구조체는 컴파일러가 알아서 필드를 재배치해 패딩을 최소화하므로, 원소 수가 적거나(수십 개 이하) 대량 배열로 쓰이지 않는다면 수동 최적화는 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Bitvue 자체 구조체는 기본 `repr(Rust)`를 사용해 컴파일러가 필드를 자동 재배치하며(카탈로그가 명시한 예외 케이스), 블록 단위 대량 배열에 `#[repr(C)]`를 강제하는 구조체가 발견되지 않음(예: crates/bitvue-avc/src/overlay_extraction.rs:87 `Macroblock`도 repr 지정 없음).
 
 ---
 
@@ -1161,7 +1162,7 @@ fn decode_frame(cus: &[CodingUnit]) {
 **예외**:
 - 로그 호출 빈도가 애초에 낮은 경로(파일 열기, 세션 시작/종료 등)에서는 문제가 되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — hot path에서 로그 문자열을 미리 만들어 반환하는 `debug_dump`류 헬퍼는 grep으로 확인되지 않았으나, 코드베이스 전반의 로깅 매크로 사용 전수 조사는 하지 못해 확정하기 어려움.
 
 ---
 
@@ -1219,7 +1220,7 @@ fn decode_stream(frames_data: &[&[u8]]) {
 **예외**:
 - 파싱 결과 대부분이 그대로 장기 보관되어야 해서(임시성이 낮아) arena reset 시점에 대부분의 데이터를 다시 복사해야 한다면 arena 도입 이득이 상쇄될 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 워크스페이스 어디에도 `bumpalo` 등 arena/bump allocator 의존성이 없음. MEM-003/004/018에서 확인된 대로 syntax tree 파싱이 노드마다 String/Vec을 다수 생성하는 구조라 arena 도입 시 이득이 클 것으로 구조적으로 보이나, 실측 프로파일링 근거는 없음.
 
 ---
 
@@ -1262,7 +1263,7 @@ fn extract_qp_values(cus: &[CodingUnit]) -> Vec<i32> {
 **예외**:
 - 결과 크기가 원래 작거나(수십 개 이하) 호출 빈도가 낮다면 재할당 비용은 무시할 수준이라 최적화가 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `filter`/`flat_map` 체인 뒤 크기 힌트 없이 `collect()`하는 통계 집계 함수가 있는지 전수 확인하지 못함. 판단에 충분한 근거를 찾지 못해 단정하지 않음.
 
 ---
 
@@ -1318,7 +1319,7 @@ impl PlaybackSession {
 **예외**:
 - 짧은 클립(수 초, 수십 프레임) 전용 분석 도구라면 전체를 메모리에 두는 것이 오히려 단순하고 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — src-tauri/src/commands/quality.rs의 `decode_samples_subset`(약 833-884행)과 `decode_all_frames`이 요청된 인덱스와 무관하게 `0..=max_idx`(또는 파일 전체)를 전부 디코드해 `Vec<Option<DecodedFrame>>`에 동시 보관한 뒤에야 필요한 프레임만 추려냄 — 늦은 프레임 하나만 요청해도 그 이전 전체가 순간적으로 메모리에 상주.
 
 ---
 
@@ -1362,7 +1363,7 @@ fn generate_thumbnail(full_frame: &YuvPlane, target_w: usize, target_h: usize) -
 **예외**:
 - 정확한 픽셀 품질 비교(원본 대비 축소 알고리즘 차이 검증)가 목적인 디버그/QA 도구에서는 풀해상도를 거치는 것이 의도적으로 필요할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — crates/bitvue-core/src/filmstrip.rs:54 `generate_thumbnail`이 이미 RGB로 변환된 `CachedFrame.rgb_data`(풀해상도)에서 다운샘플링하지만, 이 RGB 버퍼가 썸네일 전용으로 새로 만들어지는지 아니면 다른 표시 목적과 공유되는지는 확인하지 못해 낭비 여부가 명확하지 않음.
 
 ---
 
@@ -1417,7 +1418,7 @@ fn compute_frame_diffs(frames: &[YuvPlane]) -> Vec<f64> {
 **예외**:
 - 버퍼 크기가 실제로 반복마다 달라진다면(가변 해상도 프레임 비교 등) 호이스트가 불가능하므로 이 패턴이 정당하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 프레임 간 diff/씬 전환 감지처럼 루프마다 동일 크기 버퍼를 반복 재할당할 만한 기능(scene detection, frame diff) 자체가 코드베이스에서 발견되지 않음.
 
 ---
 
@@ -1465,7 +1466,7 @@ struct MotionVectorPredictor {
 **예외**:
 - 상한이 매우 크거나(수백 개 이상) 프로파일/레벨에 따라 크게 달라지는 경우는 `Vec`이 더 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — crates/bitvue-hevc/src/slice.rs:63-72 `RefPicListModification.list_entry_l0/l1: Vec<u8>`처럼 표준상 상한이 있는 소규모 리스트가 `Vec`으로 표현된 사례가 있으나, 슬라이스당 1회 생성이라 빈도가 낮아 카탈로그가 우려하는 블록당(수만 회) hot path와는 심각도 차이가 큼. `ArrayVec` 등 고정 상한 컨테이너 의존성은 없음.
 
 ---
 
@@ -1527,7 +1528,7 @@ impl VideoRenderer {
 **예외**:
 - 정지 이미지 뷰어처럼 초당 프레임 표시 빈도가 매우 낮은(사용자 조작에 의해서만 갱신되는) 경로라면 더블 버퍼링 도입 이득이 작다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Rust/Tauri 백엔드에 자체 GPU present 루프나 프레임버퍼 스왑 코드가 없고, 화면 렌더링은 브라우저 `<canvas>`(frontend/utils/yuv/renderer.ts)에 위임되어 더블 버퍼링은 브라우저 컴포지터가 담당. 이 안티패턴이 겨냥하는 Rust 측 커스텀 렌더 파이프라인 자체가 존재하지 않음.
 
 ---
 
@@ -1579,7 +1580,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 **예외**:
 - 애플리케이션이 짧게 실행되고 곧 종료되는 CLI 도구(1회성 배치 분석기)라면 프로세스 종료 시 OS가 전체 메모리를 회수하므로 이 문제는 무시해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 워크스페이스에 `jemalloc`/`mimalloc` 등 커스텀 글로벌 allocator 설정이 없어(`global_allocator` 미사용) 기본 시스템 allocator에 의존. ByteCache가 최대 256MB 세그먼트 캐시를 예약하는 등 대형 버퍼가 존재하나, 실제로 열기/닫기 후 RSS가 회수되지 않는지는 런타임 측정 없이는 확정할 수 없음.
 
 ---
 
@@ -1635,7 +1636,7 @@ struct TreeNode {
 **예외**:
 - 노드 수가 적고(수십~수백 개) 생명주기가 매우 명확한(생성 즉시 해제) 소규모 구조라면 순환 참조로 인한 실질적 누수 영향이 미미할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Bitvue 자체 코드에서 `Rc<RefCell<>>` 재귀 트리는 발견되지 않음(유일한 매치는 vendor/abseil의 무관한 유틸리티). 트리는 대신 MEM-018에서 지적된 String-키 HashMap arena 방식을 사용.
 
 ---
 
@@ -1682,7 +1683,7 @@ fn parse(mmap: &memmap2::Mmap) {
 **예외**:
 - 파일이 매우 작고(수 KB 이하) 짧게 쓰이는 경우라면 mmap 자체가 과할 수 있고, 이 경우 `.to_vec()`으로 인한 실질적 낭비도 미미하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Mmap...to_vec()`류 전체 복사 패턴은 grep으로 발견되지 않음. ByteCache(byte_cache.rs)는 mmap을 유지한 채 필요한 세그먼트만 LRU에 캐시하는 올바른 설계.
 
 ---
 
@@ -1730,7 +1731,7 @@ fn notify_ui(summary: &Arc<StreamSummary>, tx: &std::sync::mpsc::Sender<Arc<Stre
 **예외**:
 - 구조체가 작거나(수 필드, 스칼라 위주) clone 빈도가 매우 낮다면 `Arc`로 감싸는 것이 오히려 불필요한 간접 참조 복잡도를 더할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(부분) — crates/bitvue-core/src/stream_state.rs의 `impl Clone for FrameModel`(약 638-646행)이 LRU의 모든 `CachedFrame`을 순회하며 `v.clone()`을 호출하는데, `y/u/v_plane`은 `Arc`라 저렴하지만 `rgb_data: Vec<u8>`는 Arc로 감싸여 있지 않아 캐시 전체 clone 시 프레임마다 풀 RGB 버퍼가 deep-copy됨.
 
 ---
 
@@ -1786,7 +1787,7 @@ fn parse_box_header(data: &[u8]) -> BoxHeader {
 **예외**:
 - 정말 가변 길이이고 UTF-8 검증/정규화가 필요한 텍스트 필드(메타데이터 태그 값 등)는 `String`이 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — crates/bitvue-formats/src/mp4.rs:71 `BoxHeader.box_type: [u8; 4]`로 FourCC가 이미 고정 배열로 표현되고, 사람이 읽는 문자열은 `box_type_str()`에서 필요 시점에만 생성(권장 패턴과 일치). mkv/ts 등 다른 컨테이너 파서는 개별 확인하지 못함.
 
 ---
 
@@ -1845,7 +1846,7 @@ fn spawn_export_tasks(frames: Vec<YuvPlane>) {
 **예외**:
 - 태스크 수가 적고(수십 개 이하) 페이로드가 작다면 무제한 채널이라도 실질적 위험이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 워크스페이스 전체에서 `mpsc`/`crossbeam channel`/`tokio::sync::mpsc` 등 채널 사용 자체가 전혀 발견되지 않아, 클로저를 채널에 태워 워커 풀로 넘기는 구조(배치 익스포트 등)가 아직 존재하지 않음.
 
 ---
 
@@ -1915,4 +1916,4 @@ fn decode_frame(ctx: &mut DecodeContext, packet: &[u8]) -> Result<YuvPlane, Deco
 **예외**:
 - 에러가 세션당 최대 한 번만 발생할 수 있는 구조(예: 파일 열기 실패로 즉시 세션 자체가 종료됨)라면 상한을 두지 않아도 실질적 위험이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 에러 발생 시 프레임 스냅샷을 `last_error_frame` 등으로 보관하는 패턴은 grep으로 발견되지 않음.

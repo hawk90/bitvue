@@ -50,7 +50,7 @@ fn find_slice_headers(nalus: &[NalUnit]) -> Vec<&NalUnit> {
 - 실제로 두 스코프가 동시에 독립적으로 데이터를 소유해야 하는 경우(예: undo 스냅샷, diff 비교용 이전 프레임 보관)
 - 데이터가 작고(수십 바이트 이하) 핫패스가 아니라면 가독성을 위해 clone이 더 나을 수 있음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 원래 근거였던 `src-tauri/src/services/decode_service.rs`는 2026-08-08 Tauri 폐기 커밋(`e7194cc`)으로 저장소에서 완전히 삭제됨. 현재 픽셀 디코드 경로(`crates/bitvue-sidecar/src/decode_bridge.rs`)는 디코더 세션 캐싱 자체가 없다고 모듈 doc에 명시("no decoder-session caching")되어 있어 캐시 히트발 이중 clone이 구조적으로 발생 불가. 후속 캐시 계층(`CachedFrame`, crates/bitvue-engine/src/stream_state.rs:658-694)의 `rgb()`/`yuv()` 접근자는 단일 clone만 수행하며 호출부 자체가 grep상 0건(죽은 코드) — 이중 clone 인스턴스를 찾지 못함. 관련된 대형 버퍼 clone 위험은 OWN-013으로 재분류.
 
 ---
 
@@ -99,7 +99,7 @@ struct DecoderContext {
 - 실제로 여러 스레드(예: 병렬 프레임 디코딩 워커 풀)나 여러 장기 소유자가 동일 데이터를 참조해야 하는 경우
 - 향후 병렬화가 설계 문서에 명시된 로드맵이고, 이번 스프린트에 도입 예정이라면 선제 도입도 허용 가능(단 팀 합의 필요)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Arc<u8>|Arc<u16>|Arc<u32>|Arc<u64>|Arc<bool>|Arc<f32>|Arc<f64>` grep 전수 검색 결과 0건. `Core`(crates/bitvue-engine/src/core.rs:43-55, `bitvue-core`에서 `c2a0e44`로 개명)의 `Arc<RwLock<StreamState>>` 필드들은 `get_stream()`(225행)으로 sidecar의 요청별 워커 스레드(`bitvue-sidecar/src/main.rs`의 `spawn_request`)에 실제로 clone되어 동시 접근되므로 예외 조건(진짜 다중 소유자)에 해당.
 
 ---
 
@@ -163,7 +163,7 @@ fn get_playback_position(state: tauri::State<AppState>) -> Result<u64, String> {
 - 정말 독립적인 여러 백그라운드 워커(디코딩, VMAF 계산, 파일 인덱싱)가 서로 다른 자원을 동시에 갱신해야 하는 경우, 필드별 락 분리가 오히려 병렬성을 높일 수 있음
 - 락 범위가 명확히 분리되어 있고 락 순서 규칙이 문서화되어 있다면 다중 락도 정당화 가능
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 원 근거였던 Tauri `AppState`(src-tauri/src/commands/mod.rs)는 `e7194cc`로 삭제됐으나 동일 패턴이 현재 코드에도 남아있음: `IndexSession`(crates/bitvue-engine/src/index_session.rs:63-79, `bitvue-core`에서 개명)이 state/quick_index/full_index/evidence_manager 4개 필드를 각각 별도 `Arc<Mutex<>>`로 감싸 필드 단위 락을 남발(권장안의 통합 `Mutex<Inner>` 대신). 신규 sidecar 계층(`bitvue-sidecar/src/main.rs:96-108`)도 `CancelRegistry`/`DebugYuvSlot`/`writer`를 각각 독립 `Arc<Mutex<>>`로 top-level 분리하는 동일 계열 패턴이나, 이쪽은 서로 무관한 자원(취소 레지스트리·직렬 stdout 쓰기·디버그 세션)이라 예외 조건("독립적인 여러 워커가 서로 다른 자원을 동시에 갱신")에 더 부합해 Confirmed 근거에서 제외.
 
 ---
 
@@ -216,7 +216,7 @@ fn get_codec_tag(data: &[u8]) -> Cow<'_, str> {
 **예외**:
 - 지금은 항상 Owned지만, 캐싱/interning 레이어를 곧 추가할 계획이 명확히 있고 API 안정성을 위해 미리 Cow를 노출해두는 경우(단, TODO로 근거를 남길 것)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-formats/src/mp4.rs`의 `extract_av1_samples`/`extract_avc_samples`/`extract_hevc_samples`(189-360행 부근)는 실제로 원본 버퍼를 빌리는 `Cow::Borrowed` 경로와 emulation-prevention 제거가 필요한 `Cow::Owned` 경로가 모두 존재하는 정상적인 zero-copy 설계로, 안티패턴이 지적하는 "항상 Owned" 상황이 아님.
 
 ---
 
@@ -274,7 +274,7 @@ fn parse_nal_header<'a>(nalu: &'a [u8]) -> Vec<SyntaxElement<'a>> {
 - 파싱 결과가 원본 버퍼보다 오래 살아야 하는 경우(예: UI에 표시하기 위해 캐시에 저장, 비동기 채널로 다른 스레드에 전달)에는 소유 타입이 정답
 - 수명 파라미터가 3개 이상 얽혀 API가 실제로 쓰기 어려워지는 경우는 OWN-015 참고
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `SyntaxNode`(crates/bitvue-hevc/src/syntax/mod.rs:9-22, bitvue-vp9/bitvue-vvc 동일 구조)의 `name: String`은 상수 문자열임에도 `&'static str`이 아니지만, 이 타입에 `Serialize`/`Deserialize`가 붙어 있어 Tauri IPC로 프론트엔드에 전달되는 구조이므로 owned 타입이 실제로 필요할 수 있음(OWN-005의 예외 조건과 부합) — 습관적 소유 회피인지 IPC 요구사항 때문인지 히스토리 없이는 단정 불가.
 
 ---
 
@@ -344,7 +344,7 @@ fn pipeline(frame: &mut DecodedFrame) {
 - 구조체가 실제로 작고(수십 바이트 이하) `Copy`가 아니더라도 이동 비용이 무시할 만한 수준이면 값 전달이 더 읽기 쉬움
 - 소유권 이전 자체가 의미론적으로 중요한 경우(예: 프레임을 큐에 넣고 더 이상 로컬에서 쓰지 않음을 타입으로 보장)는 값 전달이 올바른 설계
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `DecodedFrame`을 값으로 받아 값으로 반환하는 함수(`fn foo(x: DecodedFrame ...)` 형태)를 grep으로 찾지 못함; 필터/파이프라인성 함수들은 참조 또는 `Arc<[u8]>`/`Arc<Vec<u8>>`로 감싼 plane 데이터를 사용해 대형 구조체 값 이동 자체가 관찰되지 않음.
 
 ---
 
@@ -404,7 +404,7 @@ fn mutate_frame(original: &DecodedFrame) -> DecodedFrame {
 **예외**:
 - 실측 결과 refcount가 대부분 1이고 드물게만 2 이상이 되는 워크로드(예: 짧게 스냅샷을 참조하는 undo 기능)에서는 CoW가 실제로 유효
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 앱 코드 전역에서 `Rc<RefCell<`/`Rc::make_mut`/`Arc::make_mut` 사용례 없음(유일한 `make_mut` 호출은 crates/vendor/abseil/src/absl_utility/identity.rs:101로 서드파티 벤더 유틸리티이며 Bitvue 도메인 캐시와 무관).
 
 ---
 
@@ -457,7 +457,7 @@ mod ui_bridge {
 **예외**:
 - 각 계층이 서로 다른 생명주기를 가지며 원본을 실제로 변형해야 하는 경우(예: 원본은 캐시에 유지, 브리지 계층은 변형된 복사본을 프론트로 전송)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 비테스트 앱 코드에서 `.to_owned()` 호출 0건(grep 전수 검색). 계층 간 중복 owned 변환 패턴이 관찰되지 않음.
 
 ---
 
@@ -515,7 +515,7 @@ fn spawn_decode_worker(window: tauri::Window, frame_source: FrameSource) {
 - `tauri::AppHandle`, `Window` 등 프레임워크 제공 핸들은 원래 저렴한 clone을 의도한 타입이므로 그대로 사용
 - 여러 워커 스레드가 동일 소스를 정말로 동시에 읽어야 하는 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-engine/src/worker.rs:255`의 `Arc<Mutex<[StreamQueue; 2]>>`은 제출 스레드와 워커 스레드가 실제로 동시에 참조하는 진짜 공유 상태. src-tauri 삭제 후 `thread::spawn`은 `bitvue-sidecar/src/main.rs:196`(`spawn_request`, 요청마다 워커 스레드 생성)과 2405행(동시성 테스트)에 존재하지만, 여기서 clone되는 `Arc<Core>`/`Arc<Mutex<io::Stdout>>`/`CancelRegistry`는 여러 in-flight 요청 스레드가 실제로 동시에 접근해야 하는 정당한 공유 상태(모듈 doc이 이 동시성 모델을 명시적으로 문서화)이며, 단일 소유값을 `'static` 경계 때문에 방어적으로 Arc로 감싼 사례는 확인되지 않음.
 
 ---
 
@@ -585,7 +585,7 @@ struct BitstreamView<'a> {
 - 검증된 crate(`ouroboros`, `self_cell`, `yoke`) 위에서 구현되어 안전성이 라이브러리 수준에서 보장되는 경우
 - 오프셋/인덱스 기반 설계가 성능상 불가능한 극히 예외적인 경우(거의 없음)에 한해 신중히 리뷰된 `unsafe` 블록으로 구현하고 Miri 테스트를 필수로 동반
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 앱 코드의 원시 포인터(`*const`/`*mut`) 필드는 모두 `crates/bitvue-decode/src/vvdec.rs`의 `mod ffi` 블록 내 C 구조체 미러(VvdecAccessUnit, VvdecPlane 등)뿐이며, 같은 구조체의 다른 필드를 자기참조하는 패턴은 발견되지 않음.
 
 ---
 
@@ -651,7 +651,7 @@ impl SyntaxTree {
 - 트리 노드가 정말로 서로 다른 생애주기를 가지고 개별적으로 공유/해제되어야 하는 드문 경우(예: 플러그인 시스템에서 노드를 외부에 장기 대여)
 - 노드 수가 적고(수십 개 이하) 트리가 프레임마다 재생성되지 않는 정적 설정 트리라면 Rc/RefCell의 비용이 무시할 만함
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — HEVC/VP9/VVC `SyntaxNode`, AV1 `PartitionNode`, `UnitNode`(crates/bitvue-engine/src/stream_state.rs:197-242, `bitvue-core`에서 개명) 등 트리 구조가 전부 `children: Vec<Self>` 형태의 단순 소유 재귀 구조를 사용하며 `Rc<RefCell<>>` 기반 트리는 코드베이스에 없음(벤더 abseil의 제네릭 `identity.rs`만 예외이며 도메인 트리와 무관).
 
 ---
 
@@ -720,7 +720,7 @@ impl Drop for Dav1dFrame<'_> {
 - FFI 라이브러리가 명시적으로 데이터를 복사해 반환하고(`out` 파라미터가 호출자 소유 버퍼) 별도 해제가 필요 없다고 문서화된 경우
 - 프로세스 전체 생애주기 동안 해제되지 않는 정말로 정적인 리소스(예: 코덱 이름 상수 테이블)라면 `'static`이 정당
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-decode/src/vvdec.rs:494-549`의 `convert_frame`은 FFI 포인터 유효성 요구사항을 주석으로 상세히 문서화하고 `plane_utils::extract_plane()`으로 즉시 owned `Vec<u8>`로 복사한 뒤에만 반환(raw slice가 함수 밖으로 탈출하지 않음); dav1d 경로는 safe wrapper crate(`dav1d::Picture`)를 통해서만 접근하며 `'static` 캐스팅이 발견되지 않음.
 
 ---
 
@@ -791,7 +791,7 @@ impl DecodedFrame {
 - 타입이 실제로 작거나(참조/핸들만 포함), clone이 드물게(예: 앱 시작 시 1회) 일어나는 것이 확실한 경우
 - 테스트 코드에서만 사용되는 타입이라 성능이 문제되지 않는 경우 — 이 경우 `#[cfg(test)]` 전용 `Clone` impl로 분리하는 것도 방법
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 원 근거(src-tauri decode_service.rs)는 삭제됐으나 동일 패턴이 현재 `CachedFrame`(crates/bitvue-engine/src/stream_state.rs:657-689)에서 뒤집힌 형태로 재현됨: `#[derive(Debug, Clone)]`이 붙어 있고 `y_plane`/`u_plane`/`v_plane`은 doc comment대로 "Arc-wrapped for cheap cloning"(679-685행, `Arc<Vec<u8>>`)인데 `rgb_data: Vec<u8>`(661-662행)만 Arc로 감싸지 않은 원본 그대로 남아있음 — 1920x1080 RGB8 기준 프레임당 약 6MB. 이 타입을 담는 `FrameModel`(576-585행, 32프레임 LRU)도 수동 `Clone` 구현(634-648행)에서 캐시 항목 전체(최대 32개)를 순회하며 `v.clone()`으로 복제해 위험이 증폭되고, `StreamState` 자체도 `#[derive(Clone)]`(53행). 다만 `CachedFrame::rgb()`/`FrameModel`/`StreamState`를 실제로 clone하는 호출부는 grep상 발견되지 않아(rgb()/yuv() 접근자 자체가 무호출 죽은 코드) 현재는 구조적 위험(타입 정의 자체가 안티패턴)이지 실측된 핫패스 clone은 아님.
 
 ---
 
@@ -845,7 +845,7 @@ fn decode_all_slices<'a>(bitstream: &'a [u8], slice_offsets: &[(usize, usize)]) 
 - 슬라이스가 이후 재정렬/병합/디코딩(예: emulation prevention byte 제거, RBSP 변환)이 필요해 어차피 새 버퍼를 만들어야 하는 경우는 소유 반환이 자연스러움
 - 반환값이 캐시에 장기 저장되어 원본 mmap보다 오래 살아야 하는 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 파서 핫패스의 `.to_vec()` 호출은 전체적으로 10건 정도로 제한적이며(bitvue-avc/vp9/hevc/vvc/av1-codec), 대부분 emulation-prevention 제거나 NalUnit 캐시 보존처럼 예외 조건에 해당하는 것으로 보이나(예: crates/bitvue-avc/src/nal.rs:280), 모든 지점을 개별적으로 "필요한 소유화"인지 "습관적 회피"인지 확정하지는 못함.
 
 ---
 
@@ -911,7 +911,7 @@ struct SliceHeader<'a> {
 - 수명이 실제로 서로 다른 시점에 해제되어야 하는 경우(예: 장기 캐시된 SPS/PPS와 매 호출마다 새로 오는 bitstream)는 파라미터 분리가 정당
 - 라이브러리의 공개 API로 노출되어 호출자에게 유연성을 줘야 하는 경우, 약간의 복잡도를 감수하고 참조 기반 API를 유지하는 것이 나을 수 있음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 수명 파라미터 3개 이상이 함께 선언된 구조체/함수를 grep(`<'[a-z]+,\s*'[a-z]+,\s*'[a-z]+`)으로 찾지 못함; 파서 컨텍스트 구조체들이 SPS/PPS/VPS를 참조 대신 값으로 들고 다니는 경우가 있으나 이는 수명 폭발 회피의 흔적이라기보다 구조 자체가 처음부터 owned로 설계된 것으로 보임(별도 git blame 확인 없이는 단정 불가).
 
 ---
 
@@ -969,7 +969,7 @@ fn make_codec_info(name: &str, profile: &[u8]) -> CodecInfo {
 - 해당 필드가 이후에도 `push_str`/`push` 등으로 변경되어야 하는 경우(불변이 아님)
 - 이미 `String`/`Vec<u8>`로 존재하는 값을 소유권만 옮기려는 임시 변환 과정에서는 성능 차이가 무시할 만함
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `Arc<Vec<u8>>` 패턴이 다수 발견됨(경로는 `bitvue-core`→`bitvue-engine` 개명 반영): crates/bitvue-engine/src/player/mod.rs:140,143(`yuv_data`, `rgba_data`), crates/bitvue-engine/src/stream_state.rs:679-685·862-868(y/u/v plane 6곳) — 전부 `Arc<[u8]>`이면 충분한데 이중 간접 참조(`Arc`→`Vec`→heap)를 그대로 사용. (원 근거 중 src-tauri/decode_service.rs 부분은 `e7194cc`로 삭제되어 제외.)
 
 ---
 
@@ -1032,7 +1032,7 @@ impl PluginRegistry {
 - 프로그램 시작 시 정확히 1회만 실행되며, 리로드/재초기화 경로가 설계상 존재하지 않는 전역 상수/설정 테이블 초기화
 - `once_cell`/`std::sync::OnceLock` 등으로 이미 "1회성"이 구조적으로 보장된 컨텍스트에서의 leak은 상대적으로 안전(그래도 가능하면 `OnceLock` 자체를 쓰는 것이 더 명확함)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Box::leak` 호출은 저장소 전체에 crates/vendor/abseil/src/absl_memory/tagged_ptr.rs:322 단 1건뿐이며 이는 서드파티 벤더 태그드포인터 구현의 일부로 Bitvue 자체 플러그인/레지스트리 코드가 아니고, 반복 호출 경로(설정 리로드 등)에 있지도 않음.
 
 ---
 
@@ -1085,7 +1085,7 @@ fn make_filter() -> Box<dyn FrameFilter> {
 **예외**:
 - 사실상 없음 — 이중 박싱이 의도적으로 필요한 경우는 거의 없으며, 필요하다고 느껴진다면 대개 설계 문제(예: 트레이트 객체를 담은 컨테이너 자체를 또 다른 트레이트 객체로 다뤄야 하는 과도한 추상화)의 신호
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Box<Box<`, `Box::new(Box::new`, `Rc<Rc<`, `Arc<Arc<` 패턴 전수 검색 결과 0건.
 
 ---
 
@@ -1145,7 +1145,7 @@ struct InvalidNalHeaderInfo {
 - 호출 빈도가 낮은(초기화, 설정 파싱 등 1회성) 함수라면 에러 크기가 커도 실질적 영향이 미미
 - 에러 payload를 Box로 감싸면 에러 발생 시점에 추가 할당이 필요해지는데, 에러가 매우 빈번하게 발생하는 정상 흐름의 일부(예: "찾을 수 없음"이 흔한 조회 함수)라면 오히려 Box가 손해일 수 있음 — 이런 경우는 애초에 에러 payload를 작게 설계하는 것이 정답
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 표본 조사한 에러 타입(`BitvueError`: crates/bitvue-engine/src/error.rs, `bitvue-core`에서 개명; sidecar 응답용 `WireError{code,message,offset}`: crates/bitvue-protocol/src/lib.rs:116)은 variant/필드가 `String`/`u64`/`Option<u64>` 등 소형 타입으로 구성됨(원 근거 중 삭제된 src-tauri/error.rs는 제외). 저장소 내 `[u8; N]`(N≥16) 배열은 SEI `UserDataUnregistered { uuid: [u8;16], .. }`나 상수 조회 테이블(TRANS_MPS 등)뿐으로 에러 variant에 통째로 박힌 대형 컨텍스트는 발견되지 않음.
 
 ---
 
@@ -1208,7 +1208,7 @@ fn scan_all_units<'a>(file: &'a BitstreamFile, offsets: &[(usize, usize)]) -> Ve
 - 유닛이 이후 mmap 파일이 닫히거나 재매핑된 뒤에도 유지되어야 하는 경우(예: 파일을 닫고 다음 파일을 열어야 하는 배치 처리)
 - 유닛에 대해 emulation prevention byte 제거 등 필연적으로 새 버퍼가 필요한 변환이 뒤따르는 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `ByteCache::read_range`(crates/bitvue-engine/src/byte_cache.rs:140, `bitvue-core`에서 개명)는 mmap에서 직접 `&[u8]` 슬라이스를 반환하는 zero-copy 경로이며, 소유 버퍼로 복사하는 유일한 경로(`get_segment`, 178행)는 LRU 세그먼트 캐싱이라는 명시적 목적을 위한 것으로 안티패턴이 지적하는 "유닛마다 무조건 to_vec()" 패턴이 아님.
 
 ---
 
@@ -1272,7 +1272,7 @@ fn get_frame_summary(state: tauri::State<Mutex<FrameInspectorState>>) -> FrameSu
 - 상태 자체가 원래 작고(수십 바이트~수 KB) DTO 설계 비용이 clone 비용보다 큰 경우
 - 프론트엔드가 실제로 전체 상태의 스냅샷(디버그 패널, 상태 덤프 기능)을 필요로 하는 경우는 전체 clone이 목적에 부합
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 원 근거였던 src-tauri/src/commands는 삭제됨; 대체된 sidecar 커맨드 계층(`bitvue-sidecar/src/main.rs`, 요청 핸들러 다수)을 조사한 결과 `.clone()` 대부분(38건)이 `request.params.clone()`(들어온 JSON 파라미터, 소형)이며 `state.clone()`/`core.clone()` 형태의 전체 상태 deep clone 패턴은 발견되지 않음 — `Arc<Core>`는 스레드 진입 시 포인터만 clone(`Arc::clone`)되어 저렴함.
 
 ---
 
@@ -1328,7 +1328,7 @@ fn link(a: &Rc<CacheEntry>, b: &Rc<CacheEntry>) {
 - 순환이 의도적이고 애플리케이션 생애주기 동안 딱 한 번만 만들어지며 해제될 필요가 없는 정적 구조(드묾)
 - `Weak`를 쓰면 매번 `upgrade()` 처리(실패 가능성 핸들링)가 필요해 코드가 복잡해지는데, 대신 애초에 인덱스 기반 arena로 재설계하는 것이 더 나은 경우가 많음 — 이 항목의 "권장"은 최소 수정안이고, 더 나은 해법은 OWN-011
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에 `Weak<` 사용례가 0건이며 `Rc<RefCell<>>` 기반 양방향 연결 구조 자체가 없음(OWN-011 조사와 동일한 결론) — 순환 참조가 발생할 구조가 애초에 존재하지 않음.
 
 ---
 
@@ -1397,4 +1397,4 @@ fn compute_scores(ctx: Arc<VmafContext>) -> Vec<f64> {
 - 해당 FFI 리소스가 참조 카운팅 기반이라 C API 자체에 "retain"에 해당하는 함수가 있고, 커스텀 `Clone` 구현이 그 retain 함수를 정확히 호출하도록 작성된 경우(derive가 아닌 수동 impl)
 - 리소스가 `Drop`을 구현하지 않는(해제할 것이 없는, 예: 순수 조회용 read-only 핸들) 경우라면 Clone derive가 안전할 수 있음 — 단, 이 경우도 "정말 Drop이 없어도 되는가"를 명확히 확인해야 함
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `impl Drop for` 4곳(vvdec.rs의 DecoderGuard/AccessUnitGuard/VvcDecoder, performance.rs의 PerfTimer) 전수 확인 결과 어느 것도 `#[derive(Clone)]`이 붙어있지 않음; FFI 리소스 핸들과 Clone 가능 값 타입이 명확히 분리되어 있음.

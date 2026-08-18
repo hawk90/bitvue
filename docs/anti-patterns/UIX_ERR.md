@@ -50,7 +50,7 @@ UI 계층에 "사용자 메시지로 변환"하는 전용 단계가 없어서, b
 - 의도적으로 손상시킨 파일을 열어 다이얼로그 텍스트를 비개발자에게 보여주고 이해 여부를 확인하는 사용자 테스트.
 - 에러 메시지 문자열에 Rust 타입 이름 패턴(CamelCase::snake_case, `0x` 16진수, `{ .. }` 구조체 리터럴)이 포함되는지 정적 검사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 이 항목은 프론트/백엔드 양쪽에서 확인됨. (1) 프론트: `frontend/hooks/useAppFileOperations.ts:197,242`의 `onError("Failed to Open File", toMessage(err))`가 `err.message`/`String(err)`를 그대로 다이얼로그 메시지로 바인딩. summary/details 분리를 구현한 전용 레이어 `frontend/errors/appError.ts`(`AppError`, `formatErrorForUI` 등)는 여전히 어떤 컴포넌트에서도 import되지 않는 죽은 코드(grep 결과 소비자 0곳). (2) 백엔드(더 심각): `crates/bitvue-sidecar/src/main.rs:1878-1880`의 `event_to_json`이 `Event::DiagnosticAdded`를 `format!("{diagnostic:?}")`로 직렬화 — `crates/bitvue-engine/src/event.rs`의 `Diagnostic` 구조체(severity/category/offset_bytes/frame_index/count/impact_score 필드 보유)를 Rust `Debug` 포맷 문자열 하나로 뭉개서 wire로 보냄. `frontend/services/electronBridgeService.ts:544-549`의 `openStream`이 이 문자열을 그대로 `error` 필드에 담아 UI까지 전달 — 이 카탈로그가 묘사한 정확한 패턴이 src-tauri 대신 새 sidecar 아키텍처에서 재현됨(`docs/anti-patterns/*`가 구 `src-tauri/src/commands/file.rs` 기준으로 작성됐던 원래 인용은 스테일 — 2026-08-08/11 Electron 마이그레이션으로 `src-tauri` 자체가 저장소에서 삭제됨, `git log -- src-tauri` 커밋 `e7194cc` 참고).
 
 ---
 
@@ -84,7 +84,7 @@ UI 계층에 "사용자 메시지로 변환"하는 전용 단계가 없어서, b
 **탐지**:
 - 5개 파일 중 3번째만 손상된 세트로 다중 열기를 시도해, 에러 메시지가 정확히 그 파일명을 포함하는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/hooks/useAppFileOperations.ts:310-313` `handleOpenDependentFile`의 catch에서 `setOpenError(toMessage(err))`가 실패한 파일(pathB)을 메시지에 전혀 포함하지 않고, `App.tsx:672`에서 `WelcomeScreen`의 일반 `error` prop으로만 렌더(경로 정보 없음). 단일 파일 open 경로(`openFileAtPath`, line 189-193)는 `onError("Failed to Open File", result.error, selected)`로 path를 전달하긴 하나 `showErrorDialog`의 3번째 인자(`details`, 접이식 섹션)로만 들어가고 주 메시지엔 없음. 단, `handleOpenDependentFile` 자체는 `createWorkspace` 호출 대상 sidecar 커맨드(`create_compare_workspace`)가 현재 저장소에 미구현(`crates/bitvue-sidecar/src/main.rs`의 유일한 매칭 결과가 "unknown method returns Internal error" 테스트) — 이 경로는 사실상 항상 실패하는 죽은 기능. Bitvue는 진짜 "배치" 오픈 기능은 없어 원래 시나리오(대량 배치)는 해당 없음, 대신 2-스트림 비교의 동일 패턴으로 확인.
 
 ---
 
@@ -116,7 +116,7 @@ UI 계층에 "사용자 메시지로 변환"하는 전용 단계가 없어서, b
 **탐지**:
 - 알려진 오프셋에 바이트 손상을 주입한 테스트 파일을 열어, 에러 다이얼로그에 그 오프셋/프레임 번호가 실제로 나타나는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (구 인용 `src-tauri/src/commands/file.rs`는 스테일: `src-tauri`는 Electron 마이그레이션으로 저장소에서 삭제됨, 아래는 현재 sidecar 기준 재확인) `crates/bitvue-engine/src/event.rs:70-86`의 `Diagnostic`이 `offset_bytes`(MANDATORY 주석), `frame_index`, `category`, `severity`, `count`, `impact_score`를 전부 갖고 있지만, `crates/bitvue-sidecar/src/main.rs:1878-1880`의 `event_to_json`이 이를 `format!("{diagnostic:?}")` 통짜 문자열로만 wire에 실음 — 구조화된 필드 단위 전송이 아예 없음. 이 구조화 Diagnostic을 필드 단위(JSON)로 그대로 노출하는 sidecar 커맨드는 존재하지 않음(grep 결과 전무), 프론트도 이 문자열에서 offset/frame을 파싱해 쓰는 코드가 없음.
 
 ---
 
@@ -148,7 +148,7 @@ UI 계층에 "사용자 메시지로 변환"하는 전용 단계가 없어서, b
 **탐지**:
 - 일부 프레임만 손상된 파일로 "부분 로드 후 계속 진행" 경로가 실제로 동작하는지 시나리오 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (구 인용 `src-tauri/src/error.rs`는 스테일, `src-tauri` 삭제됨) 현재 wire 계약인 `crates/bitvue-protocol/src/lib.rs:116-147`의 `WireError { code, message, offset }`/`WireErrorCode`(Io/Parse/UnexpectedEof/... /Internal)에 `recoverable` 필드나 부분 결과를 담는 타입이 없음. `openStream`(`electronBridgeService.ts:539-551`)도 `success: boolean` + `error?: string` 이진 모델뿐. `Diagnostic`의 `category` 주석(`crates/bitvue-engine/src/diagnostics.rs:25` "recoverable parsing issues")은 분류 텍스트일 뿐 실제 `recoverable: bool` 필드나 이를 소비하는 UI 분기는 없음.
 
 ---
 
@@ -180,7 +180,7 @@ error boundary가 애플리케이션 루트 한 곳에만 있고 파일/탭/패�
 **탐지**:
 - 정상 파일 3개를 열어둔 상태에서 4번째로 손상 파일을 열어, 나머지 3개 탭이 그대로 살아있는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(카탈로그가 묘사한 것보다 더 심함) — 두 겹으로 확인됨. (1) `frontend/App.tsx:723,753` `<ErrorBoundary>` 하나가 앱 전체 `<div className="app">` 트리를 통째로 감쌈(파일/탭/패널 단위 분리 없음). (2) 더 심각한 백엔드 계층: `crates/bitvue-sidecar`(Rust)는 워커 스레드 격리나 `catch_unwind` 없이 실행되고(grep 결과 `catch_unwind`는 무관한 `compatibility_32bit_test.rs`에만 존재), sidecar 프로세스가 죽으면 `bitvue-desktop/electron/main.ts:1275-1308`가 이를 감지해 **프로세스 자체를 재시작**하되 주석이 명시하듯("application state was lost") `bitvue_engine::Core`의 인메모리 상태(열린 스트림/선택 상태 전부)가 통째로 사라짐. 이 이벤트는 `bitvue:sidecar-restarted` IPC로 렌더러까지 실제로 전달되고(`preload.cjs:99-103`, `electronBridgeService.ts:519` `onSidecarRestarted`) 배선 자체는 완결돼 있지만, **정작 소비자가 없음** — 실제 앱 코드(App.tsx 등) 어디서도 `onSidecarRestarted`를 호출하지 않고 테스트 목(`electronBridgeService.test.ts:66`)에만 존재(grep 결과 전무). 즉 손상 파일 하나가 sidecar를 크래시시키면 세션 전체가 조용히(사용자 통보 없이) 리셋됨 — 카탈로그가 말한 "에러 후 전체 프로젝트를 닫음"이 실제로 일어나는데, 그 사실조차 UI에 드러나지 않아 사용자는 원인을 알 길이 없음.
 
 ---
 
@@ -212,7 +212,7 @@ UI 반응성이 저하되고, 진짜 유의미한 다른 오류가 반복 toast 
 **탐지**:
 - 반복 손상 패턴(예: 매 GOP마다 동일 필드 손상)을 가진 파일로 실제 toast 개수와 UI 반응성을 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `showErrorDialog`/`onError`를 프레임·패킷 루프 안에서 호출하는 코드가 없음(grep 결과 호출부는 `App.tsx`/`useAppFileOperations.ts`/`useAppDialogs.ts` 등 전부 단발성 이벤트, 루프 내부 호출 없음). `ErrorToast` 컴포넌트(`ErrorDialog.tsx:140`)는 여전히 정의만 되어 있고 어디서도 import되지 않는 죽은 코드(grep 결과 소비자 0곳). `useErrorDialog.ts`도 배열이 아닌 단일 상태 객체라 여러 에러가 쌓이는 구조 자체가 없음(마지막 에러가 이전 것을 덮어쓰는 별개 문제는 있음). 흥미롭게도 백엔드 `Diagnostic` 구조체(`crates/bitvue-engine/src/event.rs:83`)엔 반복 감지용 `count: u32` 필드가 이미 있으나, 현재 wire 직렬화(UIX-ERR-001 참고)가 통짜 Debug 문자열이라 이 필드도 UI에 도달하지 않음 — dedup 인프라 절반만 존재.
 
 ---
 
@@ -244,7 +244,7 @@ UI 반응성이 저하되고, 진짜 유의미한 다른 오류가 반복 toast 
 **탐지**:
 - 동일 화면에서 warning 5건과 fatal 1건을 동시에 발생시켜 fatal이 즉시 시각적으로 구별되는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/hooks/useErrorDialog.ts`의 `ErrorDialogState`에 severity 필드 자체가 없고, `ErrorDialog` 컴포넌트는 원인에 관계없이 항상 동일한 빨간 error 아이콘만 렌더(`ErrorDialog.tsx:51-52`). 이건 실제 file-open 에러(`showErrorDialog`, App.tsx:334)가 지나가는 주 경로. `DiagnosticsPanel.tsx`(line 169-187, `getSeverityIcon`/`getSeverityColor`)는 severity별 아이콘·색을 실제로 구분하는 코드를 갖고 있지만, UIX-ERR-008에서 확인했듯 실제 backend `Diagnostic`(severity 필드 보유)이 연결되지 않고 mock 데이터 위주로 채워져 있어 이 severity 구분 UI 자체가 실질적으로 도달 불가 — "구현은 있지만 실데이터가 없다"는 점에서 오히려 더 근본적인 배선 문제.
 
 ---
 
@@ -276,7 +276,7 @@ UI 반응성이 저하되고, 진짜 유의미한 다른 오류가 반복 toast 
 **탐지**:
 - 표준 위반이지만 대부분의 디코더가 관대하게 처리하는 파일(예: 잘못된 profile_idc)을 열어, UI 어디에도 경고가 노출되지 않는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (구 인용 `src-tauri/src/commands/file.rs`는 스테일, 삭제됨) 현재 sidecar 기준 재확인, 결론은 유지: `electronBridgeService.ts:539-551`의 `openStream`은 `events.find((e) => e.type === "DiagnosticAdded")`로 **첫 번째** DiagnosticAdded 이벤트 유무만으로 `success`를 이진 판정 — severity가 Warn/Info인 진단이 성공 경로에 섞여 나와도 이를 구분해 사용자에게 알리는 코드가 없음(severity 자체가 UIX-ERR-001에서 확인했듯 Debug 문자열에 묻혀 wire를 넘지도 못함). `DiagnosticsPanel.tsx`(line 40-105)도 실제 backend diagnostic을 구독하는 코드가 없음 — `propDiagnostics`를 넘기는 호출부가 저장소 전체에 0곳(`App.tsx:151`이 `<DiagnosticsPanel />`을 props 없이 렌더), 대신 `useFileState().error`(단일 문자열)를 "STREAM_ERROR" 한 건으로 감싸거나(line 56-66), 그마저 없으면 프레임 크기/참조 유무 기반 **가짜 mock 진단**(line 68-102, "Add mock diagnostics for demonstration")을 생성 — 실제 파서 warning은 UI 어디에도 도달하지 않음.
 
 ---
 
@@ -308,7 +308,8 @@ UI 에러 모델이 컨텍스트를 문자열 보간에만 사용하고, 네비�
 **탐지**:
 - 에러 다이얼로그의 "해당 위치로 이동" 클릭이 실제로 필름스트립/헥스뷰를 그 프레임/오프셋으로 이동시키는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/DiagnosticsPanel.tsx`: 진단 행 클릭은 `handleSelectDiagnostic`(line 131, onClick line 258)만 호출해 로컬 상세 패널을 열 뿐, frame index는 일반 텍스트/`<span>`으로만 표시되고(line 271-275 테이블 행, line 318-324 상세 패널) `setCurrentFrameIndex` 등 내비게이션 호출이 전혀 없음(해당 컴포넌트에서 `useCurrentFrame`은 읽기 전용 `currentFrameIndex`만 구독, setter는 import조차 안 함). `ErrorDialog`에도 위치 이동 어포던스가 없음. (참고로 UIX-ERR-008에서 확인했듯 실제 진단 데이터 자체가 대부분 mock이라, 이 항목은 실데이터가 흐르게 되더라도 여전히 막힐 자리.)
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-008 참고.
 
 ---
 
@@ -340,7 +341,7 @@ UI 에러 모델이 컨텍스트를 문자열 보간에만 사용하고, 네비�
 **탐지**:
 - 에러 발생 시 Cmd+C로 클립보드에 실제 유의미한 진단 텍스트가 들어가는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(부분) — 재확인 결과 동일: `ErrorDialog.tsx`에 "상세 정보 복사" 버튼이 없음(footer는 Dismiss/Close 뿐, `ErrorDialog.tsx:75-90`). 다만 canvas 렌더링이나 전역 `user-select: none`은 아님(`ErrorDialog.css`에는 summary/button류에만 `user-select: none`, 본문 텍스트는 선택 가능) — 카탈로그가 말하는 최악의 형태(완전 선택 불가)까지는 아니고 "복사 버튼 부재"만 해당. 참고로 `DiagnosticsPanel.tsx:156-167`의 컨텍스트 메뉴엔 `Copy.Selection`(코드+메시지를 클립보드로)이 실제 구현돼 있어 — 진단 패널 쪽엔 이 안티패턴이 없지만 그 패널의 데이터 자체가 UIX-ERR-008 확인대로 대부분 mock이라 실효는 제한적.
 
 ---
 
@@ -372,7 +373,7 @@ UI 에러 모델이 컨텍스트를 문자열 보간에만 사용하고, 네비�
 **탐지**:
 - 장시간 파싱/분석 작업을 시작 직후 취소해, UI에 오류 색상 알림이 뜨지 않는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(단, 재확인 결과 뉘앙스 있음) — 프로토콜 레벨의 취소 인프라는 실제로 존재함: `crates/bitvue-sidecar/src/main.rs:90-137`의 `cancel_request` 메서드가 요청별 `Arc<AtomicBool>` 레지스트리로 워커 스레드 취소를 지원하고, 완료 시 `WireErrorCode::Cancelled`(`bitvue-protocol/src/lib.rs:144`)라는 에러와 별개인 전용 코드까지 갖고 있음 — 즉 백엔드는 이미 이 항목의 "권장" 사항(Cancelled를 별도 채널로 분리)을 구현해 둔 상태. 하지만 이를 호출하는 프론트엔드 코드가 전혀 없음(grep 결과 `cancelRequest`/`cancel_request` 프론트/electron 쪽 소비자 0곳, `electronBridgeService.ts`에 래퍼조차 없음) — 사용자가 취소할 수 있는 "취소" 버튼이 UI 어디에도 없어(`useAppFileOperations.ts`의 "User cancelled"는 파일 선택 다이얼로그 취소일 뿐, 장시간 작업 취소 아님) 카탈로그가 묘사하는 실패 시나리오(취소를 오류로 표시) 자체가 발생할 수 없음. 즉 백엔드 인프라는 있으나 미배선이라 여전히 N/A.
 
 ---
 
@@ -403,7 +404,7 @@ UI 에러 모델이 컨텍스트를 문자열 보간에만 사용하고, 네비�
 **탐지**:
 - 의도적으로 panic을 유발하는 fuzz 케이스와 단순 truncated 파일을 각각 열어, 두 메시지의 title/CTA가 서로 다른지 비교.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(카탈로그가 묘사한 것보다 더 심함) — (구 인용 `src-tauri`는 스테일, 삭제됨) 현재 `crates/bitvue-sidecar`에도 `panic::set_hook`/`catch_unwind`가 전혀 없음(grep 결과 무관한 크레이트 테스트에만 존재). `WireErrorCode`(`bitvue-protocol/src/lib.rs:128-147`)에도 panic 전용 variant가 없어, `Internal`이 "엔진 에러 중 알려진 코드에 안 맞는 것들의 폴백"으로 진짜 panic과 평범한 미분류 에러를 똑같이 담음 — 구분 메커니즘 부재는 카탈로그 묘사와 동일. 다만 실제로는 이보다 심각함: `catch_unwind`가 없으므로 진짜 panic은 `WireError`로조차 변환되지 않고 **sidecar 프로세스 자체를 죽임** — UIX-ERR-005에서 확인한 대로 `bitvue-desktop/electron/main.ts`가 이를 감지해 프로세스를 재시작하지만 그 사실을 알리는 `bitvue:sidecar-restarted` 이벤트를 실제로 구독하는 프론트 코드가 없어(grep 결과 테스트 목 외 0곳), 사용자 입장에선 panic이 "버그 신고" CTA는커녕 아무 신호도 없이 이후 명령들이 알 수 없는 이유로 실패하는 것처럼만 보임 — attribution 부재가 아니라 attribution 자체가 완전히 침묵함.
 
 ---
 
@@ -435,7 +436,7 @@ partial/degraded support 경로가 별도로 모델링되지 않고, 첫 unsuppo
 **탐지**:
 - 지원 범위 경계에 있는 profile(예: HEVC RExt) 파일을 열어, 정확히 어떤 기능이 되고 안 되는지 메시지가 구분하는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (`bitvue-core`는 커밋 `c2a0e44`로 `bitvue-engine`로 개명됨, 구 인용 경로 스테일) 정확히 이 권장안을 구현한 `crates/bitvue-engine/src/disable_reason.rs`(`DisableReason` enum: MissingDependency/UnsupportedCodecFeature/InsufficientData 등 + `FeatureId` enum)가 존재하지만, 유일한 실제 소비자는 `crates/bitvue-engine/src/compare.rs`(compare-workspace 기능 게이팅)이고, 그 결과를 프론트가 받는 유일한 경로는 `frontend/components/CompareWorkspace/CompareWorkspace.tsx:168`의 `{workspace.disable_reason}`(단순 문자열 렌더)뿐인데 — 이 컴포넌트는 `App.tsx`에 마운트되지 않는 죽은 트리(grep 결과 import 0곳)이고, 그 배후 sidecar 커맨드 `create_compare_workspace`도 현재 `crates/bitvue-sidecar/src/main.rs`엔 존재하지 않음(유일한 매칭이 "unknown method → Internal error" 단위테스트). 즉 이 항목이 유일하게 구현한 degraded-support 모델은 사실상 이중으로 도달 불가능. 실제 코덱 지원 안내는 여전히 `useAppFileOperations.ts:38-41`의 `UNSUPPORTED_CODEC_EXTENSIONS` 하드코딩 맵(vvc/h266 2개 확장자만) 뿐이라, 그 외 코덱의 profile/feature 단위 부분 지원은 전혀 구분되지 않음.
 
 ---
 
@@ -467,7 +468,7 @@ partial/degraded support 경로가 별도로 모델링되지 않고, 첫 unsuppo
 **탐지**:
 - 항상 실패하는 손상 파일에서 재시도를 눌러도 진행이 없음을 확인하고, 애초에 그런 상황에서 "다시 시도" 버튼이 노출되지 않아야 함을 검증.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 재확인 결과 동일: `frontend/components/ErrorBoundary.tsx`의 `DefaultErrorFallback`의 "Try Again" 버튼(line 79, `onClick={resetError}`, `resetError` 정의는 line 145-151)은 로컬 boundary 상태만 초기화(`hasError: false`)하고 실제로 다른 조건(입력, 모드 등)을 바꾸지 않은 채 동일 트리를 재렌더 — 결정론적 에러라면 즉시 재현됨. `ErrorDialog` 자체에는 재시도 버튼이 없어(Dismiss/Close만) 이 패턴은 ErrorBoundary 경로에 한정.
 
 ---
 
@@ -499,7 +500,7 @@ UI가 `technical_details`를 인라인으로 표시하는 대신, 로그 파일�
 **탐지**:
 - 로그 파일에 접근할 권한/역량이 없는 사용자를 가정하고, 다이얼로그만으로 문제 파악이 가능한지 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재확인 결과 동일: `ErrorDialog.tsx:67-72`가 `details`를 `<details>`/"View Details" 접이식 섹션으로 다이얼로그 안에 이미 인라인 표시하고 있어, "로그 파일 확인하세요"류 안내로 대체하는 패턴 자체가 없음(grep 결과 그런 문자열이나 로그 파일 경로 안내 없음, sidecar/electron 쪽에도 없음). 앱 내 로그 뷰어는 없지만, 애초에 로그 파일로 유도하는 문구가 없어 이 항목이 묘사하는 실패 모드는 발생하지 않음.
 
 ---
 
@@ -531,7 +532,7 @@ UI가 `technical_details`를 인라인으로 표시하는 대신, 로그 파일�
 **탐지**:
 - 모든 에러 메시지 문자열을 수집해 "당신이/사용자가 ~했습니다" 패턴과 비난성 형용사를 정적으로 검사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — (구 인용 `file.rs`는 스테일, `src-tauri` 삭제됨) 현재 sidecar/프론트 경로에서 재샘플링한 메시지도 결론은 동일: `crates/bitvue-sidecar/src/main.rs:369,386`의 `format!("method not implemented yet: {other}")`/`format!("unknown stream id: {other} (expected \"A\" or \"B\")")`, `useAppFileOperations.ts`의 "Failed to Open File"/"Frame Load Warning" 등은 "you/your" 식 비난형이 아닌 중립적 기술 문구. 다만 전체 코드베이스(특히 `crates/bitvue-*` 각 코덱 파서의 `error.rs`들, ~15개 크레이트)의 모든 사용자向 문자열을 전수 검사하지는 못해, 다른 곳에 비난형 문구가 있을 가능성을 배제할 수 없음.
 
 ---
 
@@ -563,7 +564,7 @@ UI가 `technical_details`를 인라인으로 표시하는 대신, 로그 파일�
 **탐지**:
 - 의도적으로 backend를 deadlock시키는 테스트 케이스에서, UI가 일정 시간 후 hang을 능동적으로 알리는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(카탈로그가 묘사한 것보다 더 심함) — (구 인용 `src-tauri`는 스테일, 삭제됨) 현재 아키텍처에서 재확인해도 동일 결론, 오히려 인프라 절반만 있고 죽어있음이 더 명확해짐: `Event::WorkerProgress { job_id, progress }`(`crates/bitvue-engine/src/event.rs:28-31`)이라는 progress 이벤트 타입 자체는 정의돼 있고 `crates/bitvue-sidecar/src/main.rs:1869-1870`의 `event_to_json`도 이를 올바르게 직렬화하지만, **저장소 전체에서 이 variant를 실제로 생성(`Event::WorkerProgress { ... }`)하는 코드가 단 한 곳도 없음**(grep 결과 `event.rs`의 정의와 `event_test.rs`의 단위테스트뿐 — 즉 테스트만 존재를 검증하고 아무도 emit하지 않음). 프론트 쪽도 이 이벤트를 구독하는 코드가 없음(`electronBridgeService.ts`/`App.tsx`에 `onProgress`류 없음). `LoadingScreen`의 결정론적 `progress` prop(`Loading.tsx`)도 여전히 호출부 없는 죽은 기능. `openFileAtPath`가 `openStream`을 기다리는 동안 App.tsx는 스피너조차 띄우지 않음(InlineLoading/Spinner/LoadingScreen 사용처 없음) — indeterminate spinner조차 없어 liveness 신호가 전무.
 
 ---
 
@@ -594,4 +595,4 @@ UI가 `technical_details`를 인라인으로 표시하는 대신, 로그 파일�
 **탐지**:
 - 서로 다른 위치에 여러 손상을 주입한 파일을 열어, UI가 "1건"이라고만 말하는지 아니면 전체 개수를 정확히 보여주는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (구 인용 `src-tauri/src/commands/file.rs`는 스테일, 삭제됨) 현재 sidecar 기준으로도 동일 패턴이 재현됨, 단 위치가 프론트로 이동: `frontend/services/electronBridgeService.ts:539-551`의 `openStream`이 `events.find((e) => e.type === "DiagnosticAdded")`로 **첫 번째** DiagnosticAdded만 취하고 나머지는 버림(누적 `Vec`/집계 없음, 구 버전의 "덮어쓰기"와 결과적으로 동일 — 마지막 대신 첫 번째만 남는다는 차이뿐). N개의 diagnostic이 발생해도 하나만 `error` 필드/UI에 도달하고, 총 개수·유형별 집계는 어디에도 없음 — `DiagnosticsPanel`도(UIX-ERR-008 참고) 이 이벤트들을 구독하지 않아 개수 집계 UI 자체가 없음.

@@ -74,7 +74,7 @@ impl From<&Frame> for FrameExport {
 **예외**:
 - 완전히 휘발성인 디버그 덤프(`--debug-dump`, 버전 호환성 보장 없음을 명시)는 도메인 모델을 그대로 찍어도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 표본 조사(`crates/bitvue-cli/src/commands/export.rs`의 `ExportFrame`/`ExportDocument`, `crates/bitvue-engine/src/export/frames.rs`의 `FrameExportRow`, `crates/bitvue-engine/src/mcp.rs`의 `McpMetricsSummary`)는 모두 목적별 DTO를 따로 정의하고 있고, decoder_state/cache_hits류 내부 필드가 export 경로로 새는 사례는 grep으로 찾지 못함(구 감사가 인용했던 `bitvue-core`/`src-tauri`는 Electron 이관으로 각각 `bitvue-engine`/`bitvue-sidecar`로 이름이 바뀌었을 뿐, 결론은 재검증 후에도 동일)
 
 ---
 
@@ -137,7 +137,7 @@ pub fn load(bytes: &[u8]) -> Result<ExportFile, LoadError> {
 **예외**:
 - 프로세스 수명 내에서만 존재하고 디스크/네트워크로 나가지 않는 순수 IPC 응답(요청-응답이 같은 빌드에서만 발생)은 버전 필드 없이도 상대적으로 안전하다 — 다만 Tauri처럼 프런트/백엔드가 별도로 배포될 수 있는 경우는 예외에서 제외.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(제한적) — CLI export(`crates/bitvue-cli/src/commands/export.rs:25` `ExportDocument`/`ExportFrame`)와 timeline export DTO(`crates/bitvue-engine/src/export/frames.rs:11` `FrameExportRow`)는 디스크에 쓰는 JSON에 버전 필드가 없음. 다만 Evidence Bundle 포맷(`crates/bitvue-engine/src/export/evidence.rs:26` `CURRENT_BUNDLE_SCHEMA_VERSION`/`bundle_version` 필드)은 예외로, 실제 schema_version과 호환성 정책 문서(같은 파일 9-25행)까지 갖추고 있음 — 즉 "전무"가 아니라 export 경로별로 편차가 큼
 
 ---
 
@@ -196,7 +196,7 @@ pub enum MotionVectorExport {
 **예외**:
 - 진짜로 코덱에 무관하게 "있을 수도 없을 수도" 있는 부가 정보(예: 사용자 주석, 선택적 메타데이터)는 `Option`이 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — CLI export DTO(`ExportFrame`)류는 schema_version이 없어(SER-002) 스키마 진화 정책 자체가 약하지만, 실제로 코덱별 배타적 의미가 뭉개진 `Option` 필드 사례는 코드에서 직접 확인하지 못함. Evidence Bundle(`crates/bitvue-engine/src/export/evidence.rs`)은 반대로 additions를 `#[serde(default)]`로 명시 처리하는 문서화된 정책이 있어 이 항목의 위험이 낮음
 
 ---
 
@@ -251,7 +251,7 @@ pub struct QpStats {
 **예외**:
 - 시각화 전용(오버레이 렌더링에만 쓰이고 재계산/비교에 쓰이지 않는) 값은 `f32`로도 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 크기가 큰 값(bitrate/byte 총량)은 일관되게 `u64`/`f64`로 저장됨(`crates/bitvue-engine/src/picture_stats.rs:220-234` `SequenceStats.total_size_bytes: u64`, `avg_size_bytes: f64`); 발견된 `f32` 통계 필드들(`FrameExportRow.qp_avg`, `timeline_lane_types.rs`/`spatial_hierarchy.rs`의 `avg_qp: f32`)은 전부 0~255 범위 QP값으로 문서가 인정하는 "0~1 정규화 값급" 예외 케이스에 해당, 큰 값에 f32를 쓰는 사례는 없음
 
 ---
 
@@ -324,7 +324,7 @@ mod string_u64 {
 **예외**:
 - 값의 상한이 도메인적으로 2^32 이내로 보장되는 필드(예: 프레임 인덱스, NAL 개수)는 일반 number로 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (Tauri 이관 후 경로 갱신) `crates/bitvue-sidecar/src/main.rs:509` 등에서 `start_bit: u64`가 그대로 JSON-RPC 응답에 실리고, `frontend/services/electronBridgeService.ts:313`가 `bit_range: { start_bit: number; end_bit: number }`로, `frontend/components/panels/SyntaxDetailPanel/FrameSyntaxTab.tsx:29,42`가 `byte_offset?: number`(= `start_bit / 8`)로 그대로 수신 — 프런트엔드 전체에서 `BigInt` 사용처 0건(grep). 바이트가 아니라 비트 오프셋이라 2^53 문턱이 8배 늘어나 실사용 위험은 더 낮지만, 문자열/BigInt 인코딩 안전장치는 여전히 전혀 없음
 
 ---
 
@@ -383,7 +383,7 @@ impl From<f64> for PsnrValue {
 **예외**:
 - 내부 전용 디버그 로그(구조화 로깅이 아닌 텍스트 로그)는 `{:.2}` 포맷팅으로 `inf`/`NaN`을 그대로 찍어도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-metrics/src/lib.rs:77`/`simd.rs:765,870`이 동일 프레임 비교 시 실제로 `f64::INFINITY`를 반환하고, 이 값을 JSON으로 내보내는 실제 경로(`crates/bitvue-sidecar/src/debug_yuv.rs:544-556`, `get_yuv_diff_metrics` 응답)가 정확히 "나쁜 예"가 경고하는 패턴을 구현: `PSNR_INFINITY_SENTINEL = 100.0`으로 무손실 값을 클램프해 실제 매우 높은(하지만 유한한) PSNR과 "완전 무손실"을 같은 100.0 값으로 뭉갬. 다만 이 sentinel은 프런트엔드 `fmt()` 헬퍼의 ">=99.99 dB → ∞ 표시" 규칙과 명시적으로 맞춰 문서화된 의도적 설계(주석 544-547행)라, "조용한 은폐"라기보다 "합의된 근사"에 가까움 — CLI 경로(`bitvue-cli/quality.rs`)는 텍스트 stdout이라 이 문제가 없음
 
 ---
 
@@ -436,7 +436,7 @@ pub struct HexDumpExport {
 **예외**:
 - 수 KB 이내의 작은 바이너리 조각(썸네일, 짧은 헤더 덤프)은 base64 오버헤드가 무시할 만하므로 실용적으로 허용된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(구 판정 뒤집힘) — Tauri 시절 `YUVFrameData`(base64 평면)는 Electron 이관 과정에서 제거됨. 현재 `get_decoded_frame_yuv`/`get_hex_range`(`crates/bitvue-sidecar/src/decode_bridge.rs:22-38`, `main.rs:1302` 등)는 "Control 프레임 + raw bytes Data 프레임" 2-프레임 바이너리 와이어 패턴을 명시적으로 채택해 대용량 YUV 평면·hex 바이트에 base64를 쓰지 않음(주석에 "no base64" 명시). base64가 실제로 쓰이는 곳은 PNG 스크린샷(Evidence Bundle, `evidence_export.rs`)과 필름스트립 썸네일(`decode_bridge.rs:128-132`)뿐이며, 두 곳 다 코드 주석이 "작은 바이너리라 base64가 합리적"이라고 명시 — 이 항목의 예외 조항에 해당하는 사례로 이미 스스로 전환됨
 
 ---
 
@@ -494,7 +494,7 @@ pub fn export_streaming(path: &Path, frames: impl Iterator<Item = FrameExport>) 
 **예외**:
 - 짧은 클립(수백 프레임 이내)이나 요약 통계만 담는 export는 단일 JSON으로도 문제가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-cli/src/commands/export.rs::run()`(32-72행)이 전체 스트림의 `Vec<ExportFrame>`을 `ExportDocument` 하나에 담아 `serde_json::to_string_pretty(&doc)` 한 번으로 직렬화 — NDJSON/청크 분리 옵션 없음. 재검증 시점(2026-08-18, Electron 이관 이후)에도 이 파일·함수는 그대로 존재해 결론 불변
 
 ---
 
@@ -550,7 +550,7 @@ pub fn write_export(path: &Path, frames: impl Iterator<Item = Frame>) -> std::io
 **예외**:
 - 결과 크기가 애초에 작다고 보장되는 요약/통계 export(프레임당이 아니라 스트림당 하나)는 버퍼링해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 같은 함수(`crates/bitvue-cli/src/commands/export.rs::run()`, 37행 `std::fs::read`)가 입력 파일 전체를 메모리에 올리고, 프레임 전체를 `Vec<ExportFrame>`으로 모은 뒤 `to_string_pretty`(67행)로 완성된 JSON 문자열을 만들고 나서야 `std::fs::write`(71행) 한 번으로 씀 — `to_writer` 스트리밍 사용처 없음, 경로 재검증 완료
 
 ---
 
@@ -611,7 +611,7 @@ pub struct NalTypeCount {
 **예외**:
 - 진짜로 사용자가 정의한 임의 문자열 키(예: 사용자 커스텀 태그/주석)를 담는 맵은 이 패턴에 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(제한적) — `crates/bitvue-engine/src/picture_stats.rs:225,228`의 `SequenceStats.frame_type_counts`/`frame_type_percentages`가 `HashMap<String, _>`로 프레임 타입 문자열을 키로 사용. "frame_N" 순번 키는 아니지만(그 변형은 없음), `HashMap` 순회 순서가 보장되지 않아 동일 입력 재실행 시 바이트 동일성이 깨질 수 있음(`BTreeMap` 미사용)
 
 ---
 
@@ -667,7 +667,7 @@ pub enum FrameType {
 **예외**:
 - 아직 한 번도 릴리스되지 않은(외부에 파일이 존재하지 않는) 개발 중 스키마는 자유롭게 리네임해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(구조적, 예외 있음) — `crates/bitvue-engine/src/timeline.rs:14` `FrameMarker` 등 대다수 enum이 `#[serde(rename_all)]`/`rename` 없이 derive 기본 이름에 의존; 저장소 전체에서 실제 `#[serde(alias = ...)]` 적용 사례는 0건(grep). 단 Evidence Bundle 모듈(`crates/bitvue-engine/src/export/evidence.rs:24-25`)은 "리네임 시 최소 2개 MINOR 버전 동안 `#[serde(alias = "old_name")]` 유지"라는 정책을 문서화해뒀음(아직 실제 리네임 사례가 없어 정책만 존재, 강제하는 코드/CI 검증은 없음) — 다른 export 타입들은 이 정책조차 없어 안전장치가 여전히 없음
 
 ---
 
@@ -725,7 +725,7 @@ pub enum BlockInfo {
 **예외**:
 - 필드 수가 적고(2~3개) 코덱 간 겹침이 실질적으로 큰 경우(예: 모든 코덱 공통 QP 범위)는 flatten이 실용적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(구 판정 뒤집힘) — 구 감사가 인용한 `src-tauri/src/commands/mod.rs`의 `FrameAnalysisData`(Option 필드 flatten struct)는 Electron 이관 후 폐기됨. 현재 `get_frame_analysis`(`crates/bitvue-sidecar/src/frame_analysis.rs:75-90`)는 named struct가 아니라 `serde_json::json!({"qp_grid": ..., "mv_grid": ..., "partition_grid": ...})`로 각 그리드를 무조건(Option 아님) 채워 응답을 구성 — Option flatten 패턴 자체가 없음. `BlockInfo`(`crates/bitvue-engine/src/types.rs:364`)도 여전히 코덱 공통 필드(`qp`/`bits`/`motion_vector`만 Option)만 가져 이 패턴에 해당하지 않음
 
 ---
 
@@ -782,7 +782,7 @@ impl FrameId {
 **예외**:
 - 단일 실행(단발 CLI 호출) 내에서만 소비되고 저장되지 않는 임시 참조는 인덱스를 ID로 써도 실질적 위험이 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-cli/src/commands/export.rs:91`(`collect_ivf_frames`, `for (idx, frame) in frames.iter().enumerate()`)이 `.enumerate()`의 `idx`를 그대로 `ExportFrame.index`로 씀. 정작 이 문제를 풀기 위해 만들어진 `crates/bitvue-engine/src/frame_identity.rs`의 `FrameIndexMap`/`display_idx`(세션 간 안정성을 문서화된 불변식으로 명시, 16-21행)가 있고 `bitvue-cli`가 `bitvue-engine`을 의존성으로 갖고 있는데도(`crates/bitvue-cli/Cargo.toml:20`), `export.rs`는 이를 import하지 않고 `bitvue-av1-codec`을 직접 파싱해 `.enumerate()` 인덱스를 씀 — 우회가 아니라 단순 미사용
 
 ---
 
@@ -841,7 +841,7 @@ pub struct AnalysisConfig {
 **예외**:
 - 설정이 사실상 하나뿐(고정 파이프라인)이라 재현에 모호함이 없는 경우는 생략해도 실질적 위험이 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected(구 판정 재평가) — 구 감사가 인용한 Tauri `BatchQualityMetrics`/`calculate_quality_metrics`는 Electron 이관 후 폐기되어 현재 코드에 없음(grep 0건). 현재 품질 비교는 `crates/bitvue-cli/src/commands/quality.rs::run()`이 담당하는데, 이는 구조화 JSON export가 아니라 텍스트 stdout(`println!`)이고 그 출력에 reference/distorted 파일 경로·metrics 옵션이 그대로 찍힘(118-131행) — "export 파일에 설정 누락"이라는 이 항목의 정확한 형태는 성립하지 않음(애초에 그런 구조화 export가 없음). 다만 향후 `--format json` 류 구조화 출력이 추가되면 지금처럼 config가 안 실릴 위험은 구조적으로 남아있어 Suspected로 남김
 
 ---
 
@@ -895,7 +895,7 @@ pub struct AnalysisExport {
 **예외**:
 - 외부 모델에 의존하지 않는 순수 결정적 계산(비트 카운트, NAL 개수 등)은 버전 기록의 필요성이 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-metrics/src/vmaf.rs`의 `VmafConfig.model_path: Option<String>`은 계산 입력으로만 쓰이고, VMAF 점수를 반환하는 경로 어디에도 사용된 모델 경로/버전을 함께 돌려주는 필드가 없음(`toolchain`/`model_version` 계열 필드 저장소 전체 grep 0건, 재검증 시점에도 동일). VMAF는 CMP-06 기준 옵션 Cargo feature로 미배선 상태(`PARITY_CHECKLIST.md`)라 실제 소비 경로 자체가 아직 얕음
 
 ---
 
@@ -955,7 +955,7 @@ pub enum Endian { Little, Big }
 **예외**:
 - 항상 8bit BT.601로 고정된 내부 디버그 전용 덤프이며 문서에 그 고정 가정이 명시된 경우는 필드 생략이 실용적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (경로 갱신) 현재 YUV 와이어 타입인 `DecodedYuvFrame`(`crates/bitvue-sidecar/src/decode_bridge.rs:26-38`)은 `width`/`height`/`bit_depth`/`chroma_subsampling`/스트라이드만 있고 `color_space`/`color_range`/endian 필드가 없음. 코덱 파서(`crates/bitvue-vp9/src/frame_header.rs:190,196`의 `color_space: ColorSpace`/`color_range: bool`)는 실제로 이 값을 파싱하는데도 sidecar 응답 구조체에 도달하기 전에 버려짐 — 구 감사가 지적한 문제가 Tauri→Electron 이관 후에도 그대로 재현됨
 
 ---
 
@@ -1020,7 +1020,7 @@ impl From<&Frame> for FrameExport { /* 안정적 필드만 채움 */ }
 **예외**:
 - 내부 전용 디버그 덤프이며 UI 상태 포함이 의도된 경우(세션 복원용 스냅샷 등)는 공유해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 반례를 확인함: `crates/bitvue-engine/src/timeline.rs:69`의 `TimelineFrame`은 UI 상태(`is_selected: bool`)를 포함하지만, export DTO인 `FrameExportRow::from_timeline_frame`(`crates/bitvue-engine/src/export/frames.rs:24-36`)이 `is_selected`를 명시적으로 제외하고 안정 필드만 옮겨 담음 — 의도적으로 분리되어 있음(경로만 `bitvue-core`→`bitvue-engine`으로 갱신, 결론 불변)
 
 ---
 
@@ -1077,7 +1077,7 @@ pub enum PartialReason { Cancelled, Timeout, Crashed }
 **예외**:
 - 애초에 취소·타임아웃이 불가능한 짧고 원자적인 연산(단일 프레임 파싱 등)은 이 구분이 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(구 판정보다 더 강하게 성립) — 구 감사는 "취소 API 자체가 없다"고 판정했지만, 현재 sidecar는 실제 `cancel_request` 메커니즘을 갖추고 있음(`crates/bitvue-sidecar/src/main.rs:96` `CancelRegistry`, 178-224행 `spawn_request`). 취소된 요청은 성공 응답과 같은 모양의 partial 데이터가 아니라 `WireErrorCode::Cancelled`를 담은 별개의 `Response::failure`로 구분되어 반환됨(206-207행) — 실행 시작 전에만 취소를 체크하므로("cancelled before execution started", 200행) 계산 도중 부분 완료 데이터가 성공 응답에 섞여 나가는 경로 자체가 없어, 이 항목이 경고하는 실패 모드가 구조적으로 발생 불가
 
 ---
 
@@ -1133,7 +1133,7 @@ struct McpToolRequest { /* 엄격 검증이 필요한 단발성 요청 */ }
 **예외**:
 - 정확히 하나의 빌드/버전에서만 소비되는 게 보장된 임시 IPC/요청 스키마는 엄격 검증이 이득이 더 크다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에서 `deny_unknown_fields` 사용처 0건(grep, 재검증 시점에도 동일) — Evidence Bundle 모듈은 이를 명시적 설계 결정으로 문서화하기까지 함(`crates/bitvue-engine/src/export/evidence.rs:19` "no `deny_unknown_fields`"), 이 항목이 경고하는 "무조건 거부"가 실제로 일어날 코드가 없음
 
 ---
 
@@ -1198,7 +1198,7 @@ pub fn load_project(bytes: &[u8]) -> Result<ProjectFile, LoadError> {
 **예외**:
 - 아직 v1만 존재하고 한 번도 릴리스되지 않은 스키마는 마이그레이션이 필요 없다(아직 "과거"가 없다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(구 판정 근거는 낡았으나 결론은 유지) — 구 감사는 "schema_version도 마이그레이션 코드도 전무"라 판정했지만 이제는 Evidence Bundle에 실제 버전 필드·정책이 존재함(SER-002/SER-011 참고: `CURRENT_BUNDLE_SCHEMA_VERSION`, `check_bundle_schema_compatibility`, `crates/bitvue-engine/src/export/evidence.rs:9-26`). 다만 이 항목이 요구하는 "N→N+1 마이그레이션 체인"(`migrate_v1_to_v2`류 변환 함수)은 여전히 없음 — 단, 번들이 아직 1.0에서 한 번도 breaking 변경을 겪지 않아 마이그레이션할 대상 자체가 없고, 정책상 필드 추가는 `#[serde(default)]`로 자동 흡수되므로 지금까지는 실질적으로 마이그레이션이 필요했던 적이 없음. "옛 파일을 영구히 못 연다"는 이 항목의 나쁜 예가 실제로 재현되는 코드 경로는 없어 N/A 유지, 다만 근거는 SER-002/011과 함께 갱신 필요
 
 ---
 
@@ -1269,7 +1269,7 @@ pub fn to_mcp_response(s: &FrameSummary) -> serde_json::Value {
 **예외**:
 - 인터페이스별 소비자 요구가 근본적으로 다른 필드(예: MCP 전용 자연어 설명 필드)는 공유 DTO에 억지로 넣지 않고 별도로 둔다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(경로 갱신) — 구 감사가 인용한 Tauri `QualityMetrics`는 폐기됐지만, 동일한 "품질 지표" 개념에 대해 여전히 세 개의 독립 타입이 존재: CLI `FrameMetrics{frame,psnr_db,ssim}`(`crates/bitvue-cli/src/commands/quality.rs:15-19`, ref-vs-distorted 전체 비교), Electron sidecar `DiffMetrics{frame_index,psnr_y,psnr_u,psnr_v,psnr_avg,ssim_y,max_diff_y,has_mismatch}`(`crates/bitvue-sidecar/src/debug_yuv.rs:484-493`, Debug YUV 세션 비교 전용), MCP `McpMetricsSummary{metric_type,stats,histogram_bins,worst_frames:Vec<(usize,f32)>}`(`crates/bitvue-engine/src/mcp.rs:319`) — 필드명·타입·구조 모두 제각각이고 공유 DTO 계층 없음(용도가 미묘하게 다르긴 하나 — "psnr" 값을 각기 다른 이름/타입/스코프로 표현하는 세 벌의 독립 정의라는 핵심 문제는 동일)
 
 ---
 
@@ -1332,5 +1332,5 @@ pub fn resolve(raw: FrameExportRaw, source_version: u32) -> Result<FrameExport, 
 **예외**:
 - 정말로 "없으면 이 값"이 도메인적으로 항상 옳은 필드(예: 신규 boolean 플래그의 `false` 기본값)는 `#[serde(default)]`가 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(경로·건수 갱신) — 구 감사는 4곳(그 중 `syntax.rs`는 Electron 이관 후 파일 자체가 사라짐)을 인용했으나, 재검증 시점 저장소 전체에서 `#[serde(default)]` 사용처는 테스트 제외 약 15곳(`bitvue-sidecar/{debug_yuv,main,context_menu,evidence_export}.rs`, `bitvue-engine/{insight_feed,stream_state,parity_harness/mod,export/evidence}.rs`, `bitvue-protocol/lib.rs`)으로 늘어남. 전부 확인한 결과 `Option<T>`/`Vec<T>`/`bool`/`serde_json::Value`(+ Evidence Bundle의 문서화된 struct-level default) 필드뿐이며, 유일한 스칼라 예외인 `debug_yuv.rs:73`의 `picture_offset: i64`도 디스크에 영구 저장되는 export가 아니라 세션 내 IPC 요청 파라미터(0=오프셋 없음이 항상 유효한 기본값)라 이 항목이 경고하는 "손상 은폐"에 해당하지 않음
 </content>

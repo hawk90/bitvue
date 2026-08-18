@@ -69,7 +69,7 @@ fn compare_streams(reference: &Stream, distorted: &Stream) -> Result<QualityRepo
 **예외**:
 - 두 스트림이 의도적으로 서로 다른 색역이며, 비교 목적이 정확히 "이 색역 변환이 얼마나 지각적으로 차이나는가"를 측정하는 것이라면 gamut mapping 후 비교가 곧 목적이다. 이 경우도 원시 plane 값을 그대로 diff하는 것이 아니라 공통 색공간을 거쳐야 한다는 점은 동일하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체) — `crates/bitvue-metrics/src/lib.rs`의 `psnr`/`ssim`/`psnr_yuv`/`ssim_yuv`는 원시 plane만 받고 색공간 파라미터가 없다. 실제 호출부인 `crates/bitvue-sidecar/src/debug_yuv.rs::compute_frame_metrics`와 `crates/bitvue-cli/src/commands/quality.rs::compute_frame_metrics` 둘 다 폭/높이 일치만 검사하고 바로 plane을 diff한다 — `reference.color`류 비교 없음. 이전 판정이 인용한 `src-tauri`(Tauri 이관 `e7194cc`로 전체 삭제)는 더 이상 존재하지 않아 현재 경로로 교체.
 
 ---
 
@@ -125,7 +125,7 @@ fn compute_ssim(
 **예외**:
 - 두 스트림이 처음부터 동일한 transfer로 태깅되어 있음이 파이프라인 상에서 보장된 경우(예: 같은 마스터에서 파생된 A/B 인코딩 실험)라면 별도 변환 없이 코드값 비교가 정확하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체) — 동일 근거: `crates/bitvue-metrics/src/lib.rs`의 SSIM/PSNR 구현은 `TransferCharacteristics` 파라미터를 받지 않고, `TransferCharacteristics::Pq`/`Hlg` 값은 `crates/bitvue-engine/src/metadata.rs`(표시용 메타데이터, 옛 `bitvue-core`는 삭제되고 이 크레이트로 재편됨)에만 존재할 뿐 quality 비교 경로(`crates/bitvue-sidecar/src/debug_yuv.rs`, `crates/bitvue-cli/src/commands/quality.rs`)에서는 전혀 참조되지 않는다.
 
 ---
 
@@ -181,7 +181,7 @@ fn diff_frame(reference: &YuvFrame, distorted: &YuvFrame) -> Result<FrameDiff, C
 **예외**:
 - 파이프라인이 처음부터 단일 matrix만 지원하도록 설계되어 있고 입력 검증에서 이를 강제한다면(다른 matrix는 애초에 거부), 런타임 비교 단계에서 별도 확인은 생략할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체) — `crates/bitvue-metrics/src/lib.rs`의 `psnr_yuv`/`ssim_yuv`는 Y/U/V plane을 그대로 diff하며 `MatrixCoefficients`를 받거나 비교하지 않는다. `MatrixCoefficients` enum(`crates/bitvue-engine/src/metadata.rs`, 옛 `bitvue-core`는 삭제됨)은 표시용 SEI/VUI 파싱 결과로만 존재하고 quality 비교 코드(`bitvue-sidecar/src/debug_yuv.rs`, `bitvue-cli/src/commands/quality.rs`)와는 연결되어 있지 않다.
 
 ---
 
@@ -244,7 +244,7 @@ fn normalize_to_signal_range(plane: &Plane<u8>, range: ColorRange) -> Vec<f64> {
 **예외**:
 - 두 스트림이 파이프라인 계약상 항상 동일 range로 강제된다면(예: 내부 인코딩 실험이 모두 full range 고정) 정규화를 생략해도 무방하지만, 이 가정이 깨지는 순간(외부 소스 도입 등) 조용히 틀린 값을 낼 위험이 있으므로 최소한 assert로 가정을 강제해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체) — `psnr`/`ssim`(`crates/bitvue-metrics/src/lib.rs`)은 `ColorRange`를 파라미터로 받지 않고 코드값을 바로 뺀다. `video_full_range_flag`/`color_range`는 `crates/bitvue-engine/src/metadata.rs`와 코덱별 VUI/시퀀스헤더 파서(`crates/bitvue-hevc/src/sps.rs:93`, `crates/bitvue-avc/src/sps.rs:168`, `crates/bitvue-av1-codec/src/sequence.rs:210` — 이 세 경로는 여전히 유효)에 파싱되어 있지만 quality 비교 경로(`crates/bitvue-sidecar/src/debug_yuv.rs`, `crates/bitvue-cli/src/commands/quality.rs`, 옛 `src-tauri`는 삭제됨)는 이를 전혀 조회하지 않고 폭/높이만 검사한다.
 
 ---
 
@@ -307,7 +307,7 @@ fn compute_psnr_cross_depth(
 **예외**:
 - 두 신호가 이미 동일한 정규화 파이프라인을 거쳐 공통 스케일의 float 버퍼로 전달된 이후 단계라면, 추가 스케일 보정 없이 직접 비교가 맞다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (이전 Suspected에서 상향, 재검증 중 구체적 버그 확인) — `DecodedFrame`는 프레임별 `bit_depth`(8/10/12)를 갖는다(`crates/bitvue-decode/src/decoder.rs:39`). 두 실호출 경로가 이를 다르게 다룬다: `crates/bitvue-cli/src/commands/quality.rs::decoded_frame_to_luma`(228-239행)는 10/12-bit LE 16-bit 샘플을 8-bit로 내릴 때 `f.y_plane.chunks(2).map(|c| c[0]).collect()`로 **하위 바이트**만 취한다 — LE 인코딩에서 `c[0]`은 유효 비트가 실린 하위 8비트이고 `c[1]`(상위 바이트, 10-bit면 0~3)이 버려지므로, 이는 doc-comment("taking the high byte")와도 모순되는 구현 버그이며 10/12-bit 콘텐츠의 PSNR/SSIM을 사실상 무의미하게 만든다. 대조적으로 `crates/bitvue-sidecar/src/debug_yuv.rs::decoded_to_planes8`(326-338행)는 `(c[0] as u16)|((c[1] as u16)<<8)`로 올바르게 재조합 후 `>>downshift`로 처리한다 — 동일 저장소 내 같은 문제를 한 경로는 맞게, 한 경로는 틀리게 구현.
 
 ---
 
@@ -368,7 +368,7 @@ fn normalize_to_10bit(sample: u16, source_bit_depth: u8) -> u16 {
 **예외**:
 - 두 스트림 모두 shift 방식으로 동일하게 늘린 값이며, 비교 목적이 "정확한 절대 정밀도"가 아니라 "동일한 변환을 거친 두 결과의 상대적 차이"라면(예: 같은 8-bit 소스를 다른 인코더로 인코딩한 결과를 비교) shift 방식이 두 쪽 모두에 일관되게 적용되는 한 상대 비교는 유효할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증, 문서 전제와 불일치 확인) — 문서가 전제하는 "shift 기반 bit-depth 정규화 함수"는 실제로 존재한다(`crates/bitvue-sidecar/src/debug_yuv.rs`의 `decoded_to_planes8`/`read_reference_frame`이 `sample >> downshift`로 10/12→8bit 다운시프트) — 이전 판정이 "정규화 함수 자체가 없다"고 한 부분은 옛 `plane_utils.rs` 범위만 본 결과로 부정확했다. 다만 이는 문서가 나쁜 예로 드는 **좌측시프트 업스케일**(8→10bit)이 아니라 **우측시프트 다운스케일**(10/12→8bit, 반올림 없는 절삭 편향은 있지만 표준적인 방식)이라 이 항목이 정확히 겨냥하는 패턴은 아니다. `crates/bitvue-cli/src/commands/quality.rs`는 shift조차 아닌 하위 바이트 절취(COLOR-005 참고)로 이 항목보다 더 나쁜 별개의 버그 — 결론상 이 항목이 지목하는 정확한 안티패턴("업스케일 shift를 정규화로 오인")은 코드베이스에 없어 N/A 유지.
 
 ---
 
@@ -421,7 +421,7 @@ fn compute_hdr_quality(
 **예외**:
 - 파이프라인이 명시적으로 "코드값 정확도 검증"(예: 무손실 전송 여부 확인, 비트 단위 재현성 테스트)을 목적으로 한다면 표준 PSNR/코드값 비교가 적절하다 — 이때는 "지각 품질"이 아니라 "비트 정확성"을 재는 것이라는 목적을 명확히 구분해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체) — `crates/bitvue-sidecar/src/debug_yuv.rs`와 `crates/bitvue-cli/src/commands/quality.rs`는 transfer characteristics를 전혀 조회하지 않고 모든 콘텐츠에 동일한 `bitvue_metrics::psnr`/`ssim`를 호출한다(옛 `src-tauri`는 삭제됨). 저장소 전체에서 PU21/HDR-VDP/PU-PSNR 등 HDR 전용 지표나 `tonemap`/`eotf`/`ST2084`/`pq_eotf` 관련 실제 변환 코드가 전무함(grep 0건, `TransferCharacteristics::Pq`는 라벨 문자열로만 존재) — HDR 전용 경로 자체가 없어 SDR 지표가 HDR 콘텐츠에도 그대로 쓰인다.
 
 ---
 
@@ -493,7 +493,7 @@ fn compute_linear_light_metric(reference: &Plane<u16>, distorted: &Plane<u16>, b
 **예외**:
 - 지표가 의도적으로 "코드값 압축 도메인에서의 오차"(즉 PQ 자체의 지각 균등화 특성을 활용하는 지표, 예: 단순 PQ 코드값 PSNR을 "근사 지각 지표"로 명시적으로 채택하는 경우)를 재는 것이 목적이라면 EOTF를 적용하지 않는 것이 오히려 의도된 설계다. 이 경우 지표 이름에 "linear"를 붙이지 않아야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증 결과 동일) — 저장소 전체에서 PQ EOTF/ST 2084 상수(m1/m2/c1/c2/c3)나 "linear light" 변환 함수가 전혀 구현되어 있지 않다(grep 0건 — `crates/bitvue-engine/src/metadata.rs`와 `crates/bitvue-test-data/src/generators.rs`의 `SmpteSt2084`/`Pq` 히트는 전부 라벨/열거값일 뿐 실제 EOTF 수식 아님). 이 항목이 전제하는 "linear라고 주장하지만 실제로는 EOTF를 안 거치는 함수" 자체가 아직 존재하지 않으므로, 이 특정 버그가 발생할 코드 경로가 없다.
 
 ---
 
@@ -546,7 +546,7 @@ fn compute_overall_psnr_from_mse(y_mse: f64, y_pixels: usize, u_mse: f64, u_pixe
 **예외**:
 - 리포트가 "채널별 점수"를 그대로 나열하고 단일 스칼라로 합치지 않는다면(예: `y_psnr`, `u_psnr`, `v_psnr`를 별도 필드로 노출) 이 문제는 발생하지 않는다 — 합산 자체를 피하는 것도 유효한 해법이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (이전 Confirmed에서 하향, 재검증) — 인용됐던 `src-tauri/src/commands/quality.rs`의 `(psnr_y+psnr_u+psnr_v)/3.0`은 Tauri 이관(`e7194cc`)으로 삭제됐다. 현재 실경로인 `crates/bitvue-sidecar/src/debug_yuv.rs:559`는 문서의 권장안과 사실상 동일한 `let psnr_avg = (6.0 * psnr_y + psnr_u + psnr_v) / 8.0;`(6:1:1 가중평균, 주석에도 "standard video-quality convention" 명시)을 쓰고, SSIM은 `ssim_y`만 리포트에 노출하며 u/v는 `_ssim_u`/`_ssim_v`로 명시적으로 폐기해 평균에 섞지 않는다. `crates/bitvue-cli/src/commands/quality.rs`는 애초에 luma-only 비교(`decode_ivf_frames`가 Y plane만 추출)라 채널 평균 자체가 없다. 문서가 지적하는 균등가중 평균 안티패턴은 현재 코드 어디에도 없음.
 
 ---
 
@@ -603,7 +603,7 @@ fn compute_rgb_metric(reference: &YuvFrame, distorted: &YuvFrame, converter: &dy
 **예외**:
 - 변환기가 표준 규격(예: 특정 SIMD 명령어 집합에 대해 IEEE 754 정확도가 보증된 구현)이고 두 스트림에 항상 동일하게 적용됨이 빌드 시스템 레벨에서 보증된다면, 별도의 왕복 오차 측정 없이도 신뢰할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증, 인용 경로 교체) — VQ-Probe 품질 지표(`crates/bitvue-metrics`)는 YUV plane을 직접 diff하며 RGB로 변환하는 단계가 없다(`psnr_yuv`/`ssim_yuv`). `yuv_to_rgb` 구현(`crates/bitvue-decode/src/yuv.rs`)은 Electron sidecar의 화면 표시 경로(`crates/bitvue-sidecar/src/decode_bridge.rs`, `crates/bitvue-sidecar/src/debug_yuv.rs`의 RGB 미리보기용 export)에서만 쓰이며, 문서 서두가 명시한 대로 bitstream-analyzer의 §3.3 표시 영역에 속해 이 카테고리(VQ-Probe 측정값) 범위 밖이다. 옛 `src-tauri`는 삭제됨.
 
 ---
 
@@ -661,7 +661,7 @@ fn build_comparator() -> Comparator {
 **예외**:
 - 두 변환기의 rounding 차이가 지표의 유효숫자보다 훨씬 작다는 것이 정량적으로 증명된 경우(예: 지표가 애초에 ±0.5dB 이상의 노이즈를 갖는 성긴 비교 용도)라면 엄격한 통일이 실익이 적을 수 있다 — 다만 이 판단은 반드시 문서화되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증 결과 동일) — COLOR-010과 동일한 이유로 VQ-Probe 지표 경로에 YUV→RGB 변환 자체가 없어 "서로 다른 변환 라이브러리의 rounding 정책"이 섞일 지점이 존재하지 않는다(`crates/bitvue-metrics`는 단일 crate 내부 함수만 사용; `crates/bitvue-decode/src/yuv.rs`의 `yuv_to_rgb`도 단일 구현이라 레퍼런스/distorted가 다른 변환기를 탈 여지가 없다).
 
 ---
 
@@ -711,7 +711,7 @@ fn tone_curve_to_linear(pq_code_value: f64) -> f64 {
 **예외**:
 - 함수가 내부 스크래치 계산에서만 쓰이고, 호출부가 이미 입력 범위를 엄격히 보증하며 그 보증이 타입 시스템(예: `NormalizedF64` 뉴타입)으로 강제된다면 매 호출마다 clamp를 반복할 필요는 없다 — 다만 그 타입의 생성자 자체에는 clamp/검증이 있어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증 결과 동일) — 톤커브/EOTF 변환 함수(`powf` 기반 PQ 변환 등) 자체가 저장소에 존재하지 않는다(COLOR-008과 동일 근거, grep 0건). clamp 누락이 발생할 색공간 변환 파이프라인이 아직 구현되어 있지 않다.
 
 ---
 
@@ -796,7 +796,7 @@ fn aggregate_frame_scores(scores: &[FrameScore]) -> AggregateReport {
 **예외**:
 - 애초에 완전 일치 프레임을 시퀀스에서 제외하고 집계하는 것이 파이프라인의 명시적 정책이라면(예: "인코딩 손실이 있는 프레임만 채점"), PerfectMatch를 finite 평균에서 제외하는 것 자체가 의도된 동작이다 — 다만 이 정책은 문서화되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체 — 동일 패턴이 다른 파일에 남아있음을 재확인) — `crates/bitvue-metrics/src/lib.rs`의 `psnr`는 문서화된 대로 동일 프레임에서 `Ok(f64::INFINITY)`를 반환한다. `crates/bitvue-cli/src/commands/quality.rs::run`(약 171-178행)의 요약 집계는 `psnr(...).ok()`로 얻은 `Vec<f64>`를 `is_nan()`/`is_infinite()` 필터 없이 그대로 `sum()/len()` 평균한다 — 완전 일치 프레임 하나가 CLI의 avg PSNR 전체를 오염시킨다. 대조적으로 같은 저장소의 `crates/bitvue-sidecar/src/debug_yuv.rs:548-556`는 `clamp_psnr` 유한 sentinel(100.0)로 명시적으로 Inf를 처리하고, `crates/bitvue-metrics/src/bd_rate.rs:74`("filtering NaN/Inf/non-positive")도 명시적으로 필터링한다 — 세 경로 중 `bitvue-cli`만 이 문제를 놓치는 일관성 결여가 여전히 재현된다(옛 `src-tauri`는 삭제됐지만 같은 버그 패턴이 CLI에 남아 있음).
 
 ---
 
@@ -860,7 +860,7 @@ fn compare_streams(reference: &Stream, distorted: &Stream) -> Result<ComparisonP
 **예외**:
 - 두 스트림이 원래 같은 pixel format이라 변환이 아예 필요 없는 경우, 또는 변환 오차가 목표 지표 해상도(예: 0.1dB 단위)보다 최소 한 자릿수 이상 작다는 것이 사전에 검증된 안정된 파이프라인이라면 매번 재검증할 필요는 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증, 인용 경로 교체) — `crates/bitvue-decode`/`bitvue-metrics`에 서로 다른 chroma subsampling/bit depth를 공통 포맷으로 강제 변환하는 `convert_to_common_format`류 함수가 없다. `crates/bitvue-cli/src/commands/quality.rs`(85-91행)와 `crates/bitvue-sidecar/src/debug_yuv.rs`(514-520행)는 둘 다 폭/높이가 다르면 그냥 해당 프레임을 스킵/에러 처리할 뿐("dimension mismatch, skipping" / "load a matching-resolution reference") 공통 포맷 변환을 시도하지 않으므로, 이 항목이 전제하는 "변환은 하되 오차를 검증하지 않는다"는 코드 경로 자체가 없다. 옛 `src-tauri`는 삭제됨.
 
 ---
 
@@ -933,7 +933,7 @@ fn compare_streams(reference: &Stream, distorted: &Stream) -> Result<QualityRepo
 **예외**:
 - 파이프라인이 다루는 콘텐츠 소스가 항상 단일하고 검증된 소스(예: 사내에서 항상 BT.709로 캡처/마스터링하는 스튜디오 전용 도구)로 제한되어 있어 "메타데이터 누락 = 항상 BT.709가 맞다"는 것이 운영상 보증된다면, 경고 없이 기본값을 써도 실무적으로 안전할 수 있다 — 다만 이 가정이 깨지는 외부 소스가 유입되는 순간 위험해진다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증, 인용 경로 교체 — 결론 동일) — `crates/bitvue-engine/src/metadata.rs`(옛 `bitvue-core`는 삭제됨)의 `ColorPrimaries`/`TransferCharacteristics`/`MatrixCoefficients`는 인식 못 한 코드값을 `Unknown(u8)`으로 명시적으로 보존하며 BT.709로 조용히 대체하는 `unwrap_or(default)`류 패턴이 grep 결과 없음(`impl Default for Color*` 정의 자체도 없음). 다만 이 메타데이터 자체가 quality 비교 경로와 연결되어 있지 않으므로(COLOR-001~004), "기본값 대체" 버그가 나타날 지점이 애초에 없다 — 결함이 없다기보다 상위 문제(메타데이터 자체를 안 씀)로 이미 흡수된다.
 
 ---
 
@@ -993,7 +993,7 @@ fn compute_hdr_score(reference: &HdrFrame, distorted: &HdrFrame, ctx: &HdrCompar
 **예외**:
 - 두 스트림이 동일한 마스터링 파라미터(같은 MaxCLL/MaxFALL)로 태깅되어 있음이 사전에 보증된 A/B 인코더 비교(같은 HDR 마스터를 다른 인코더 설정으로만 인코딩)라면 이 검증은 생략 가능하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체) — `ContentLightLevel`(MaxCLL/MaxFALL)은 `crates/bitvue-engine/src/metadata.rs:89`(옛 `bitvue-core`는 삭제됨)에 파싱/보관되지만, `compute_hdr_score`에 해당하는 HDR 전용 지표 함수 자체가 코드베이스에 없고 `crates/bitvue-sidecar/src/debug_yuv.rs`의 `DiffMetrics`/`compute_frame_metrics`도, `crates/bitvue-cli/src/commands/quality.rs`의 `FrameMetrics`도 이 값을 파라미터로 받지 않는다 — COLOR-007과 동일하게 HDR 인지 자체가 비교 경로에 없다.
 
 ---
 
@@ -1061,7 +1061,7 @@ fn build_report(reference: &Stream, distorted: &Stream) -> QualityReport {
 **예외**:
 - 리포트가 순수 SDR 콘텐츠 전용으로 스코프가 명확히 제한되어 있고, HDR 지원 계획이 없는 도구라면 이 필드 자체가 불필요할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (재검증, 인용 경로 교체) — `MasteringDisplayMetadata` 구조체는 `crates/bitvue-engine/src/metadata.rs:21`(옛 `bitvue-core`는 삭제됨)에 정의·파싱되어 있으나, 현재 리포트 구조체인 `DiffMetrics`(`crates/bitvue-sidecar/src/debug_yuv.rs:484-493`, 필드: frame_index/psnr_y/u/v/avg/ssim_y/max_diff_y/has_mismatch)와 `FrameMetrics`(`crates/bitvue-cli/src/commands/quality.rs:14-18`, 필드: frame/psnr_db/ssim)에는 이에 대응하는 필드가 전혀 없다 — 문서의 나쁜 예("파싱 단계에서는 읽었지만 최종 리포트 구조체에는 필드가 없어 버려짐")와 정확히 일치하는 구조.
 
 ---
 
@@ -1119,7 +1119,7 @@ fn compare_hdr(reference_hdr: &HdrFrame, distorted_hdr: &HdrFrame, domain: Compa
 **예외**:
 - 비교 목적이 정확히 "이 톤매핑 연산자가 원본 HDR 대비 얼마나 정보를 압축하는가"를 재는 것이라면(즉 톤매핑 자체가 평가 대상), HDR과 톤매핑된 SDR을 나란히 두고 차이를 보고하는 것이 목적에 부합한다 — 다만 이 경우도 결과를 "인코딩 손실"이 아니라 "톤매핑 손실"로 명확히 라벨링해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증 결과 동일) — `tonemap`/`tone_map` 함수가 저장소 어디에도 존재하지 않는다(grep 0건, COLOR-007/008과 동일 근거). 톤매핑 자체가 구현되어 있지 않으므로 톤매핑된 결과와 원본 HDR을 섞어 비교하는 코드 경로가 있을 수 없다.
 
 ---
 
@@ -1181,7 +1181,7 @@ fn compute_rgba_metric(reference: &RgbaFrame, distorted: &RgbaFrame, config: &Al
 **예외**:
 - 파이프라인이 다루는 콘텐츠가 전부 알파 없는 포맷(YUV 4:2:0 등)으로 제한되어 있다면 이 항목 자체가 적용되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증 결과 동일) — 저장소 전체(`bitvue-decode`, `bitvue-metrics`, `bitvue-engine`, `bitvue-sidecar`)에 alpha plane/RGBA 타입이나 `premultiplied` 관련 코드가 전혀 없다(grep 0건, `RgbaFrame`/`alpha_plane` 히트 없음). `YuvFrame`/`DecodedFrame` 모두 Y/U/V 3-plane만 다루므로 이 항목의 전제(alpha 채널 지원 코덱 처리)가 아직 해당 사항 없음.
 
 ---
 
@@ -1244,4 +1244,4 @@ fn align_for_comparison(reference: &Plane<u8>, distorted: &Plane<u8>) -> (Plane<
 **예외**:
 - 실시간 미리보기처럼 지표 정확도보다 속도가 절대적으로 중요한 경로에서는 nearest-neighbor가 허용될 수 있다 — 다만 이 결과를 정식 품질 비교 리포트에 재사용해서는 안 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (재검증, 인용 경로 교체) — chroma 해상도를 정렬하는 리샘플링 함수(nearest든 bilinear든) 자체가 quality 비교 경로에 없다. `crates/bitvue-engine/src/diff_heatmap.rs`에 `experimental_resample`/`toggle_resample`이 있지만 이는 두 스트림의 해상도 불일치(ALIGN/SPATIAL 도메인) 대응용 bool 플래그일 뿐 구현 본체가 없고 기본 꺼짐 상태이며, chroma subsampling 정렬과는 무관하다. `crates/bitvue-sidecar/src/debug_yuv.rs`와 `crates/bitvue-cli/src/commands/quality.rs`는 애초에 폭/높이가 다르면 프레임을 스킵/에러 처리하므로 이 항목이 전제하는 정렬 로직 자체가 없다(COLOR-014와 동일 근거). 옛 `src-tauri`/`bitvue-core`는 삭제됨.

@@ -121,7 +121,7 @@ pub fn compute_all_metrics(
 **예외**:
 - 서로 다른 metric이 서로 다른 프레임 서브샘플링(예: PSNR은 전체 프레임, VMAF는 1초 간격 샘플링)을 요구해 애초에 같은 디코드 순회를 공유할 수 없는 경우. 이때도 "디코드 자체"는 공유 캐시(PIPE-008 참고)를 통해 재사용을 시도하는 편이 낫다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (구 `src-tauri`는 2026-08-08 Electron 전환으로 삭제됨, 이하 전 항목 현재 sidecar/CLI 아키텍처 기준으로 재감사) `crates/bitvue-sidecar/src/debug_yuv.rs`의 `compute_frame_metrics`(498-543행)는 프레임 하나당 디코드를 한 번만 수행한 뒤(`decode_stream_a_frame`/`read_reference_frame`, 510-512행) 동일 `YuvFrame` 쌍에서 `psnr_yuv`와 `ssim_yuv`를 모두 계산한다(540-543행). CLI 경로(`crates/bitvue-cli/src/commands/quality.rs`)의 `compute_frame_metrics`(24-116행)도 reference/distorted를 `decode_ivf_frames`로 각각 한 번씩만 디코드하고(60-62행) 그 결과 `Vec`에서 프레임마다 `psnr()`/`ssim()`을 함께 호출한다(96-106행). metric마다 재디코드하는 경로는 발견되지 않음.
 
 ---
 
@@ -189,7 +189,7 @@ fn compute_all(pair: &FramePair) -> (f64, f64) {
 **예외**:
 - metric마다 요구하는 정밀도/색공간이 근본적으로 다르고(예: 8bit sRGB vs 16bit 선형 라이트) 공유 가능한 중간 단계가 실질적으로 없는 경우. 이때도 "각 표현을 프레임당 한 번만" 만드는 것은 지켜야 한다(문제는 표현 공유가 아니라 반복 계산이다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `psnr_yuv`/`ssim_yuv`(crates/bitvue-metrics/src/lib.rs 267-303행)와 CLI가 쓰는 `psnr`/`ssim`(84-140행)은 디코드된 YUV/luma 평면을 그대로 받아 계산하며 색공간 변환이 없다. `yuv_to_rgb`(crates/bitvue-decode/src/yuv.rs)는 crates/bitvue-sidecar/src/debug_yuv.rs에서 실제로 호출되지 않고 모듈 최상단 doc 주석(16행, "프런트엔드 렌더링 파이프라인" 설명용)에만 등장한다 — quality/diff-metric 코드 경로와 교집합 없음(grep 확인).
 
 ---
 
@@ -256,7 +256,7 @@ fn build_inputs(pair: &NormalizedFramePair, display_size: Option<(u32, u32)>) ->
 
 **관련**: `CACHE.md` CACHE-012 참고 — 이쪽은 metric마다 동일 목표 크기로 리사이즈를 반복 계산하는 문제이고, CACHE-012는 썸네일을 원본과 별도로 중복 저장하는 캐시 설계 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — quality 파이프라인에 리사이즈 단계가 아예 없다. CLI 경로는 reference/distorted 해상도가 다르면 리사이즈하지 않고 그 프레임 쌍을 건너뛴다(crates/bitvue-cli/src/commands/quality.rs 85-91행, 경고 로그 후 continue). sidecar `compute_frame_metrics`도 크기가 다르면 에러를 반환할 뿐 리사이즈하지 않는다(crates/bitvue-sidecar/src/debug_yuv.rs 514-520행). `resize_to*` 계열 함수 호출은 metric 경로 어디에도 없음.
 
 ---
 
@@ -321,7 +321,7 @@ pub fn build_pipeline(reference: &[DecodedFrame], distorted: &[DecodedFrame]) ->
 **예외**:
 - 없음에 가깝다. 프레임 정렬은 metric과 무관한 순수 시간축 연산이므로 공유하지 않을 이유가 거의 없다. 굳이 예외를 든다면 metric마다 정렬 허용 오차(tolerance)가 근본적으로 다른 특수 경우 정도다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `AlignmentEngine::new`(crates/bitvue-engine/src/alignment.rs 44행)는 `CompareWorkspace::new`(crates/bitvue-engine/src/compare.rs 61행)에서 워크스페이스당 단 한 번만 호출되어 정렬을 계산한다; metric마다 재계산하는 구조가 아니다. 다만 PSNR/SSIM을 실제로 계산하는 두 경로(CLI quality.rs, sidecar debug_yuv.rs) 모두 이 `AlignmentEngine`을 전혀 사용하지 않고 원시 인덱스(+ debug_yuv.rs의 수동 `picture_offset`)로만 프레임을 매칭한다 — "정렬이 metric 계산 경로에 통합되지 않았다"는 별개 이슈이며, PIPE-004가 지적하는 "metric마다 정렬 반복 계산"과는 다른 문제.
 
 ---
 
@@ -374,7 +374,7 @@ pub fn compute_all_metrics_parallel(pair: &FramePair) -> QualityReport {
 **예외**:
 - 단일 코어 환경이거나, metric 간 데이터 의존성이 있어 순서 실행이 불가피한 경우(예: heatmap이 SSIM의 중간 맵을 입력으로 요구 — PIPE-017 참조). 이때는 병렬화 대신 의존성 그래프에 따른 파이프라이닝을 고려한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-cli/src/commands/quality.rs의 프레임 루프(77-113행)는 각 프레임에서 `psnr()`(96-97행) 다음 `ssim()`(102-103행)을 순차 호출하며 `rayon`/`par_iter` 없이 완전 순차다. crates/bitvue-metrics/src/lib.rs의 `batch_psnr_parallel`/`batch_ssim_parallel`(329-387행)이 rayon 기반 병렬 처리를 제공하지만 opt-in Cargo feature `parallel` 뒤에 있고(crates/bitvue-metrics/Cargo.toml `default = []`, 26행), repo 전체에서 호출부가 전무하다(grep 확인) — 병렬 처리 수단은 존재하나 실제 파이프라인에 연결되어 있지 않다. VMAF는 `vmaf` feature 자체가 기본 비활성이고 sidecar/CLI 어디에도 배선되지 않아(grep 결과 없음) "느린 VMAF가 PSNR/SSIM을 막는" 구체적 시나리오는 아직 실현되지 않지만, 구조 자체(순차 나열, 병렬화 없음)는 이 안티패턴과 일치한다.
 
 ---
 
@@ -446,7 +446,7 @@ pub fn analyze_streaming(pairs: &[FramePair], sink: &dyn Fn(MetricUpdate)) {
 **예외**:
 - 배치 오프라인 분석(사용자가 결과를 기다리지 않고 나중에 리포트를 확인하는 경우)처럼 실시간 피드백이 불필요한 워크로드는 스트리밍 없이도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 현재 UI가 실제로 도달하는 metric 엔드포인트인 sidecar `get_yuv_diff_metrics`(→`debug_yuv::compute_frame_metrics`, crates/bitvue-sidecar/src/debug_yuv.rs 498-578행)는 프레임 하나당 IPC 요청/응답 하나라서 애초에 "모든 프레임이 끝나야 반환"하는 구조가 아니다(프런트엔드가 스크러빙하며 프레임별로 호출). 옛 `calculate_quality_metrics`(`BatchQualityMetrics` 반환)에 대응하는 sidecar 커맨드는 grep 결과 존재하지 않는다 — 이를 호출하던 frontend/components/panels/QualityMetricsPanel.tsx·QualityComparisonPanel.tsx는 여전히 `@tauri-apps/api/core`의 `invoke`를 쓰는 죽은 Tauri 잔재이고(101-102행), App.tsx 등 어디에도 마운트되지 않아(grep 확인) 실도달 불가능하다 — 이 항목이 겨냥하는 "블로킹 배치 응답"이 라이브 코드에는 없다. CLI(`crates/bitvue-cli/src/commands/quality.rs` `run()`)는 요청된 프레임을 모두 계산한 뒤 한 번에 출력하지만(118-190행) 오프라인 배치 워크플로우로 이 항목의 예외 조항에 해당.
 
 ---
 
@@ -513,7 +513,7 @@ impl NormalizedFramePair {
 
 **관련**: `CACHE.md` CACHE-002 참고 — 이쪽은 metric별 정밀도 요구에 맞춰 중간 표현을 분리하는 문제이고, CACHE-002는 재취득 비용이 다른 데이터를 캐시 티어로 분리하는 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 강제된 단일 중간 표현 자체가 없다. PSNR/SSIM은 디코드된 YUV/luma 평면을 그대로 사용하고(PIPE-002 판정 참고), VMAF는 `VmafFrame`(crates/bitvue-metrics/src/vmaf.rs)이라는 별도 타입을 받아 `to_vmaf_picture()`(57행)에서 필요한 형식으로만 변환한다(71/82/93행 `write_plane`) — 다만 VMAF 자체가 어느 파이프라인에도 배선되지 않았음(PIPE-005 판정 참고). "모든 metric에게 8bit sRGB를 강제"하는 정규화 단계가 없으므로 이 안티패턴의 전제 자체가 성립하지 않음.
 
 ---
 
@@ -578,7 +578,7 @@ pub fn spawn_pipeline(capacity: usize) -> (SyncSender<FramePair>, JoinHandle<()>
 
 **관련**: `CACHE.md` CACHE-001 참고 — 이쪽은 디코드/metric 파이프라인 큐의 backpressure(bounded channel) 문제이고, CACHE-001은 프레임 캐시의 byte-budget 축출 정책 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 디코드↔metric을 잇는 채널/스레드 기반 producer-consumer 구조 자체가 존재하지 않는다. `rg "mpsc::channel|sync_channel|crossbeam_channel"`을 crates/bitvue-metrics, crates/bitvue-engine, crates/bitvue-sidecar, crates/bitvue-cli에 돌려도 매치 없음. CLI 경로는 `decode_ivf_frames`(quality.rs 192-229행)로 스트림 전체를 `Vec`에 미리 다 디코드해두는 방식이라 무제한 큐가 쌓일 여지 자체가 없다(다만 이는 "클립 전체를 한 번에 메모리에 올린다"는 별개 성격의 메모리 문제로 이어질 수 있음 — PIPE-013 판정 참고).
 
 ---
 
@@ -635,7 +635,7 @@ fn dispatch_to_workers(pair: &FramePair, workers: &[Sender<FramePair>]) {
 **예외**:
 - worker가 정말로 독립적인 가변 버퍼가 필요하고(예: in-place로 다운샘플링해도 되는 스크래치), 그 비용이 실측상 무시할 수준(작은 해상도, 적은 worker 수)이라면 deep copy도 허용 가능하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `DecodedFrame`의 평면 필드가 `Arc<[u8]>`로 설계되어 있다(`y_plane`/`u_plane`/`v_plane`, crates/bitvue-decode/src/decoder.rs 41/45/49행) — 이미 권장 예제 형태. CLI의 `decoded_frame_to_luma`(quality.rs 232행)가 `Arc<[u8]>`를 `Vec<u8>`로 한 번 복사해 풀지만, worker별 fan-out 없이 단일 스레드 순차 루프(PIPE-005 판정 참고) 안에서 프레임당 한 번만 일어나므로 이 안티패턴이 지적하는 "worker 개수만큼 복제"에 해당하지 않는다.
 
 ---
 
@@ -717,7 +717,7 @@ impl MetricPipeline {
 
 **관련**: `CACHE.md` CACHE-009 참고 — 이쪽은 Arc clone을 소유권 설계 없이 여기저기 보관해 해제 시점이 불명확해지는 문제이고, CACHE-009는 강한 참조 순환으로 인한 명시적 메모리 누수다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — metric 계산 경로(CLI quality.rs, sidecar debug_yuv.rs)에 `Arc<FramePair>`를 여러 컬렉션이 장기 보관하는 구조가 없다. crates/bitvue-engine/src/alignment.rs의 `FramePair`류 타입은 인덱스/PTS 델타 같은 가벼운 메타데이터만 담고 픽셀 버퍼가 없으며, CLI의 `Vec<(Vec<u8>, usize, usize)>`(`decode_ivf_frames`)는 함수 로컬 변수로 반환 시 drop된다 — "pending" 류의 별도 보관 컬렉션이 없음.
 
 ---
 
@@ -778,7 +778,7 @@ pub fn analyze(pairs: &[FramePair]) -> QualityReport {
 **예외**:
 - 전체 프레임 세트가 CPU 캐시에 애초에 다 들어가지 않을 만큼 크다면(대용량 배치) metric-major/frame-major 차이가 캐시 지역성보다 디스크/디코드 I/O 패턴에 더 크게 좌우될 수 있어 이 문제의 우선순위가 낮아진다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 실제 루프는 이미 frame-major다. crates/bitvue-cli/src/commands/quality.rs의 프레임 루프(77-113행)는 프레임 하나마다 psnr/ssim을 그 자리에서 모두 계산한 뒤 다음 프레임으로 넘어가고, sidecar `compute_frame_metrics`도 요청 하나당 프레임 하나를 통째로 처리한다 — "나쁜 예"에서 지적하는 metric별 전체 스트림 재순회 패턴은 없음.
 
 ---
 
@@ -842,7 +842,7 @@ fn compute_ssim(pair: &FramePair) -> f64 {
 **예외**:
 - 스크래치 버퍼가 애초에 병렬 실행되지 않는(항상 순차 실행되는) 경로에서만 쓰인다면 락 오버헤드가 무시할 수준일 수 있다. 다만 이 경우 애초에 락 자체가 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — crates/bitvue-metrics/src, crates/bitvue-cli/src/commands/quality.rs, crates/bitvue-sidecar/src/debug_yuv.rs 어디에도 `Mutex<`/`thread_local!`/`RefCell<` 패턴이 없다(grep 결과 전무). crates/bitvue-engine/src에 `Mutex` 사용처가 여럿 있지만(event_observer.rs, index_session.rs, worker.rs 등) 전부 인덱싱/이벤트버스/작업큐용이고 PSNR/SSIM/VMAF가 공유하는 scratch 버퍼가 아니다.
 
 ---
 
@@ -902,7 +902,7 @@ impl AnalysisSession {
 **예외**:
 - 짧은 클립(수십~수백 프레임)만 다루는 워크로드로 전체 프레임을 메모리에 유지해도 실측상 문제가 없다고 확인된 경우. 이 경우에도 상한을 두는 것이 안전하지만 심각도는 낮아진다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — metric 계산 경로에 세션 전체에 걸쳐 프레임을 누적 보관하는 `history`류 구조가 없다. CLI의 `Vec<(Vec<u8>, usize, usize)>`(`ref_decoded`/`dist_decoded`, quality.rs 60-62행)는 `run()`/`compute_frame_metrics` 호출 하나에 스코프된 로컬 변수로 반환 시 drop된다. 참고로 UI 비교(diff overlay) 캐시인 `CompareCacheManager`(crates/bitvue-engine/src/compare_cache.rs 43행)는 이미 `evict_lru_stream`/`evict_lru_diff`(385/402행) 기반 bounded LRU 축출을 갖추고 있다 — CACHE-001과 같은 byte-budget 정책이 다른 서브시스템엔 이미 존재. (다만 CLI가 클립 전체를 한 번에 `Vec`로 미리 다 디코드해두는 것 자체는 PIPE-008에서 언급한 별개의 "무제한 사전 로드" 성격 이슈.)
 
 ---
 
@@ -974,7 +974,7 @@ fn run_pipeline(reference_path: &Path, distorted_path: &Path, in_flight_budget: 
 
 **관련**: `CACHE.md` CACHE-023 참고 — 이쪽은 파이프라인 큐의 in-flight budget을 프레임 크기 기반으로 산정하는 backpressure 문제이고, CACHE-023은 프레임 캐시 예산을 해상도에 비례해 산정하는 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — PIPE-008과 동일한 근거: 디코드와 metric 계산을 잇는 별도 스레드/채널이 없어 "디코드가 metric보다 앞서가는" 생산자-소비자 구조 자체가 존재하지 않는다(CLI는 디코드 완료 후 동기적으로 metric 계산, sidecar는 프레임 1개당 IPC 요청 1개). backpressure 메커니즘이 필요할 producer/consumer 분리가 아직 도입되지 않았다는 뜻이지, 이미 있는데 배압이 빠졌다는 뜻은 아니다.
 
 ---
 
@@ -1040,7 +1040,7 @@ pub struct QualityReport {
 **예외**:
 - 배치 내 클립들이 서로 강하게 의존적인 경우(예: 이전 클립의 결과를 다음 클립 정규화에 사용하는 파이프라인)라면 조기 중단이 오히려 올바른 동작일 수 있다. 이때는 "부분 실패 허용"이 아니라 "의존성 있는 단계에서의 명확한 실패 전파"가 목표가 되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 여러 클립을 한 번에 도는 배치 기능 자체가 코드베이스에 없다(현재 "batch"는 quality.rs에서 단일 파일 쌍의 "여러 프레임" 배치만 지칭). 오히려 단일 파이프라인 내부에서는 이미 이 항목의 권장안과 같은 원칙을 프레임 단위로 따른다 — 해상도가 안 맞는 프레임은 경고 후 skip하고(crates/bitvue-cli/src/commands/quality.rs 85-91행) 그 프레임의 다른 metric이나 이후 프레임 처리를 막지 않는다.
 
 ---
 
@@ -1112,7 +1112,7 @@ impl MetricEngine {
 **예외**:
 - metric마다 우선순위/QoS가 근본적으로 다르고 이를 OS 스케줄링 클래스나 cgroup으로 분리해야 하는 특수 배포 환경이라면 의도적으로 별도 풀을 둘 수 있다. 이 경우에도 풀별 스레드 수의 합이 코어 수를 크게 넘지 않도록 조정해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `ThreadPoolBuilder`/수동 스레드 풀 생성 코드가 crates/bitvue-metrics, crates/bitvue-engine, crates/bitvue-sidecar, crates/bitvue-cli 어디에도 없다(grep 결과 전무). 유일한 rayon 사용처(`batch_psnr_parallel`/`batch_ssim_parallel`의 `par_iter`, crates/bitvue-metrics/src/lib.rs 329-387행)는 rayon 전역 공유 풀에 의존하고, opt-in feature 뒤에 있으며 호출부가 없는 dead code다(PIPE-005 판정 참고) — 풀 오버서브스크립션을 일으킬 여러 풀이 아예 만들어지지 않는다.
 
 ---
 
@@ -1184,7 +1184,7 @@ fn compute_heatmap(ssim: &SsimResult) -> HeatmapTile {
 **예외**:
 - heatmap이 SSIM이 아니라 단순 픽셀 차분(절대값 차이)만 시각화하는 등, 실제로 슬라이딩 윈도우 통계를 요구하지 않는 경우라면 이 항목은 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 정확히 위 예외 조항에 해당한다. `DiffHeatmapData::from_luma_planes`(crates/bitvue-engine/src/diff_heatmap.rs 103행)는 SSIM 슬라이딩 윈도우 통계가 아니라 단순 픽셀 차분만 계산한다. `DiffMode::Metric`은 "실제 metric 델타"용으로 설계돼 있지만 구현이 없어 signed diff로 fallback하는 스텁이다(144행 주석 "Fallback to signed if no metric"). `bitvue_metrics::ssim()`(crates/bitvue-metrics/src/lib.rs 140행)은 local SSIM map을 반환/노출하지 않으므로(f64 스칼라만 반환) heatmap이 재사용할 대상 자체가 없다 — 공유할 계산이 존재하지 않는 상태.
 
 ---
 
@@ -1251,4 +1251,4 @@ fn compute_ssim(pair: &FramePair) -> f64 {
 - metric이 자신만을 위해 새로 할당한 버퍼(다른 metric과 공유되지 않는 로컬 복사본)를 변형하는 것은 문제가 아니다. 이 항목은 어디까지나 "여러 metric이 공유하는 버퍼"에 대한 변형에 한정된다.
 - 파이프라인이 애초에 metric을 항상 고정된 순서로만 순차 실행하고, 그 순서가 의도적으로 "VMAF의 감마 보정 결과를 이후 metric의 입력으로 삼는다"고 설계 문서에 명시된 경우라면 in-place 변형이 아니라 의도된 단계적 변환일 수 있다. 이 경우 PIPE-007의 원칙(중간 표현을 명시적으로 다루기)을 따르는 것으로 재분류한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — PSNR/SSIM/VMAF 모두 공유 프레임 데이터를 불변 참조로만 다룬다. `psnr`/`ssim`(crates/bitvue-metrics/src/lib.rs)과 SIMD 구현(simd.rs)은 전부 `&[u8]` 불변 슬라이스를 받고, simd.rs의 `unsafe` 블록들(49/93/232/372행 등)도 CPU-feature 인트린식용일 뿐 버퍼를 쓰기 변형하지 않는다. `VmafFrame::to_vmaf_picture`(vmaf.rs 57행)는 `&self`를 받아 새 `VmafPicture`에 `write_plane`으로 복사할 뿐(71/82/93행) self를 변형하지 않는다. 공유 버퍼에 대한 `as_mut_ptr`/non-const FFI 전달 패턴은 발견되지 않음.

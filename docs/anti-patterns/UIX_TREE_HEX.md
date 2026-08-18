@@ -39,7 +39,7 @@
 - 대형 합성 파일로 콜드 스타트 렌더 시간을 측정한다.
 - 신규 사용자 온보딩 테스트에서 "특정 필드까지 도달하는 클릭 수"를 측정한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 반대로 구현됨: `StreamTreePanel.tsx`와 `SyntaxDetailPanel/index.tsx` 모두 `expandedNodes`를 빈 `Set()`으로 초기화해 기본적으로 전부 접힌 상태로 시작한다(마운트 시 재귀 전개 로직 없음).
 
 ---
 
@@ -75,7 +75,7 @@
 - 10만+ 노드 합성 트리로 스크롤 FPS를 프로파일링한다.
 - Chrome/WebView 성능 탭에서 layout·paint 비용을 측정한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `StreamTreePanel.tsx`의 `renderChildren`(292-308행)이 windowing 없이 자식 배열 전체를 재귀 `.map()`으로 렌더링하고, `frontend/package.json`에 `react-window`/`react-virtualized` 의존성이 전혀 없다. 단, `FrameSyntaxTab.tsx`의 별도 필드 트리는 120노드 초과 시 자체 `VirtualSyntaxTree`(190-328행)로 windowing을 적용해 이 패턴을 완화하고 있어 전면 적용은 아님.
 
 ---
 
@@ -110,7 +110,7 @@
 - 무작위 신택스 노드 20개를 뽑아 설명 커버리지 비율을 측정한다.
 - 신규 사용자에게 "이 필드가 무엇을 뜻하는지 30초 안에 알아내라" 과제를 부여해 관찰한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 인프라는 존재한다: `SyntaxNode.description`이 `title` 툴팁으로 렌더되고(`FrameSyntaxTab.tsx` 284, 356행) 백엔드 `syntax.rs`가 다수 노드에 설명을 채워 넣는다(예: "H.264 profile (Baseline, Main, High)", 663행). 다만 `build_avc_syntax_tree`(608행~)가 실제 비트스트림을 파싱하지 않고 하드코딩된 소수 필드만 생성하므로, 실제 코덱 신택스 전반(수백 개 필드)에 대한 설명 커버리지는 확인 불가 — 미구현 상태로 추정.
 
 ---
 
@@ -145,7 +145,7 @@
 - 코드 리뷰에서 파서 출력 타입에 raw 필드가 살아있는지 확인한다.
 - 스펙 밖 값을 의도적으로 가진 합성 스트림으로 회귀 테스트를 수행한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `src-tauri/src/commands/syntax.rs` 660-667행에서 `profile` 필드가 `SyntaxValue::String("High")`처럼 해석된 값만 저장하고 원본 `profile_idc` 정수는 어디에도 보존되지 않는다. `SyntaxValue` enum(String/Number/Float/Boolean/Array) 자체에 raw+interpreted 쌍을 담는 필드가 없다.
 
 ---
 
@@ -180,7 +180,7 @@
 - 임의 노드 10개를 골라 offset/length 표시 여부 체크리스트를 만든다.
 - exp-golomb 필드가 많은 SPS/PPS 등으로 회귀 테스트를 수행한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 프론트/백엔드 어디에도 `bit_offset`/`bit_length` 개념이 없다(`node_modules` 외 검색 결과 0건). `SyntaxNode`(`FrameSyntaxTab.tsx` 20-26행)와 백엔드 `syntax.rs`는 `byte_offset: Option<u64>`만 갖는데, 실제로는 파일 전체에서 `byte_offset: Some(...)`으로 설정되는 곳이 단 한 곳도 없다(`byte_offset: None`이 58회 등장, `Some`은 0회) — hex-jump 링크 자체가 사실상 죽어있다.
 
 ---
 
@@ -213,7 +213,7 @@
 **탐지**:
 - 검색 → 결과 클릭 → 조상 경로 파악까지 걸리는 클릭 수/시간을 사용자 테스트로 측정한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `StreamTreePanel.tsx`의 `flattenUnits`(253-266행)가 필터 활성화 시 매치된 노드를 조상 체인 없이 평탄한 배열로 만들고, 렌더링도 전부 `depth={0}`으로 표시된다(387-400행). breadcrumb 컴포넌트는 코드베이스 어디에도 없다.
 
 ---
 
@@ -247,7 +247,7 @@
 **탐지**:
 - 전부 접은 상태에서 검색을 실행해 배지 표시 여부를 확인하는 회귀 테스트를 수행한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `StreamTreePanel.tsx`의 검색은 접힌 조상 뒤에 매치를 숨기는 방식이 아니라, 매치된 노드를 `flattenUnits`로 아예 평탄화해 depth 0에 직접 노출한다(UIX-TREE-006 참조). 즉 "접힌 노드가 매치를 숨긴다"는 이 항목의 전제 자체가 현재 구현과 다르며(다른 문제로 귀결), 필드 단위 트리(`FrameSyntaxTab`)에는 검색 기능 자체가 없다.
 
 ---
 
@@ -281,7 +281,7 @@
 - 두 프레임 간 의도적으로 값이 다른 합성 스트림으로 diff 정확도를 검증한다.
 - 실사용자 인터뷰에서 "프레임을 어떻게 비교하시나요"를 질문한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `diffFrame`/`compareFrame`/구조적 diff 관련 코드가 frontend·src-tauri 어디에도 없다(grep 0건). 트리/신택스 뷰는 항상 단일 프레임만 표시하며 프레임 간 비교 기능이 로드맵상 미구현 상태로 확인됨.
 
 ---
 
@@ -314,7 +314,7 @@
 **탐지**:
 - 반복 구조 비율이 높은 실제 스트림(정적 배경 등)으로 "이상치를 찾는 데 걸리는 시간"을 측정한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `StreamTreePanel.tsx`/`FrameSyntaxTab.tsx` 어디에도 최빈값 요약, run-length 압축, 이상치 강조 로직이 없다(grep으로 outlier/run-length/최빈값 관련 코드 미발견). 노드는 `getUnitColor`(unit_type 기준 고정 색상표, 50-63행)로만 스타일링되어 반복 여부와 무관하게 모두 동일한 시각적 무게로 렌더링된다.
 
 ---
 
@@ -347,7 +347,7 @@ virtualized 리스트가 DOM 노드를 재사용(recycle)할 때 컴포넌트 ke
 **탐지**:
 - 노드 선택 후 빠르게 스크롤 다운/업을 반복하며 선택 하이라이트가 동일 노드에 유지되는지 확인하는 자동화 테스트(대형 트리 기준)를 수행한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `TreeNode`/`SyntaxTreeNode`는 안정적 식별자(`child.key`, `path`)를 React `key`로 사용하고(`StreamTreePanel.tsx` 296행, `FrameSyntaxTab.tsx` 282/393행) 선택 상태도 같은 키로 비교한다. 실제 windowing이 구현된 유일한 곳인 `VirtualSyntaxTree`(`FrameSyntaxTab.tsx` 233-328행)도 안정 키 기반 `flatNodes` 배열에 절대 인덱스로 슬라이싱할 뿐 index-as-key 재사용 방식이 아니라 이 증상이 적용되지 않는다.
 
 ---
 
@@ -383,7 +383,7 @@ exp-golomb 등 가변 비트 필드가 지배적인 코덱(H.264/HEVC)에서 hex
 - 3비트 미만 필드를 가진 합성 스트림으로 선택 정확도를 시각 검증한다.
 - 픽셀 단위 스크린샷 비교 회귀 테스트를 수행한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `HexViewTab.tsx`의 선택 상태는 `selectedByte: number | null` 하나뿐이고(36행), `onClick={() => setSelectedByte(byteOffset)}`(245행)로 byte 단위 클릭만 지원한다. sub-cell 하이라이트나 bit ruler를 그리는 로직이 없다.
 
 ---
 
@@ -417,7 +417,7 @@ hex view가 전체 바이트 배열을 한 번에 문자열/DOM으로 변환해 
 **탐지**:
 - 수십 MB payload로 초기 렌더 시간과 스크롤 FPS를 측정한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 렌더 경로 자체는 windowing 없이 전체를 `Array.from({length: lines}, ...)`로 한 번에 mount한다(`HexViewTab.tsx` 219-269행). 다만 프론트가 `invoke("get_frame_hex_data", { maxBytes: 2048 })`로 하드코딩 호출해(60행) 현재는 DOM이 128줄로 제한되어 체감 문제가 가려져 있다. 반면 백엔드 `MAX_HEX_BYTES`는 1MB까지 허용하므로(`src-tauri/src/constants.rs:42`), 향후 이 하드코딩된 2048 제한만 올라가도 windowing 부재로 인한 정체가 그대로 재현될 구조.
 
 ---
 
@@ -449,7 +449,7 @@ hex view가 전체 바이트 배열을 한 번에 문자열/DOM으로 변환해 
 - 설정 패널에 offset 표기 토글이 존재하는지 확인한다.
 - 두 표기가 hover 텍스트에 동시 노출되는지 시각 확인한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `HexViewTab.tsx`의 offset 표기는 `offset.toString(16).padStart(8, "0").toUpperCase()`(230-231행)와 byte-info 패널(283행)에서 모두 16진수로 하드코딩되어 있고, 토글 UI나 설정값이 없다.
 
 ---
 
@@ -483,7 +483,7 @@ endian/bit order가 파서 내부에서는 코덱 스펙에 따라 올바르게 
 - 멀티바이트 필드 10개 샘플에서 endian 표시 존재 여부를 체크한다.
 - 사용자 인터뷰에서 "이 값이 어떻게 계산됐는지 설명해달라"고 요청한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `HexViewTab.tsx`에는 endian/byte-order 라벨이나 범례가 전혀 없다. 애초에 멀티바이트 값 조합(`bytes[0..4] → u32`) 자체를 만들지 않고 byte 단위로만 표시하므로(219-269행), endian 모호성을 설명할 지점 자체가 UI에 존재하지 않는다.
 
 ---
 
@@ -517,7 +517,7 @@ endian/bit order가 파서 내부에서는 코덱 스펙에 따라 올바르게 
 - 색상 대비/색맹 시뮬레이션 도구로 하이라이트 구분 가능성을 검증한다.
 - 여러 하이라이트가 동시 활성화되는 시나리오로 시각 회귀 테스트를 수행한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `getByteStyle`(`HexViewTab.tsx` 144-161행)이 selected(주황)/start-code(빨강)/OBU header(파랑) 색을 컴포넌트 내부에 인라인으로 하드코딩하고, 중앙 디자인 토큰 파일이나 범례 UI가 없다(`UnitHexPanel.css`에도 highlight-legend 클래스 없음). 겹침 시 우선순위 규칙도 if-else 순서로만 암묵 결정된다.
 
 ---
 
@@ -551,7 +551,7 @@ endian/bit order가 파서 내부에서는 코덱 스펙에 따라 올바르게 
 - 여러 행에 걸친 범위 선택 시나리오로 시각 회귀 테스트를 수행한다.
 - 사용자 테스트에서 "이 필드의 정확한 마지막 바이트 offset을 찾아달라" 과제 시간을 측정한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `HexViewTab.tsx`에는 다중 바이트 범위 선택 기능 자체가 없다(`selectedByte: number | null` 단일 값만 존재, 36행). 여러 행에 걸친 범위 하이라이트라는 전제 조건이 아직 구현되지 않아 start/end 구분 여부를 논할 대상이 없음.
 
 ---
 
@@ -585,7 +585,7 @@ hover 이벤트마다 프론트엔드가 Tauri IPC를 통해 백엔드에 "이 o
 - 빠른 마우스 이동 시 초당 IPC 호출 횟수를 계측한다.
 - 네트워크/IPC 탭에서 stale response 도착 여부를 확인한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `HexViewTab.tsx`에 `onMouseMove`/hover 핸들러가 없다. `invoke("get_frame_hex_data", ...)`는 `frameIndex` 변경 시 한 번만 호출되고(48-93행), byte 정보는 클릭 시 로컬 상태(`selectedByte`)만 갱신한다(245행) — hover마다 IPC를 쏘는 코드 경로 자체가 없다.
 
 ---
 
@@ -620,7 +620,7 @@ hover 이벤트마다 프론트엔드가 Tauri IPC를 통해 백엔드에 "이 o
 - 반복 복사(예: 100회) 후 메모리 사용량 추이를 프로파일링한다.
 - 대형 범위(수 MB) 복사 시 UI freeze 시간을 측정한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `UnitHexPanel` 디렉터리 전체에 clipboard/copy/writeText 관련 코드가 없다(grep 0건). 복사 기능 자체가 아직 구현되지 않아 이 버그가 발생할 수 없음.
 
 ---
 
@@ -654,7 +654,7 @@ hex view가 파서의 성공/실패 상태와 독립적으로 동작한다 — �
 - 의도적으로 잘리거나 손상된 스트림을 로드해 hex view가 실패 구간을 시각적으로 구분하는지 확인하는 회귀 테스트를 수행한다.
 - 코드 리뷰에서 파서 에러 상태가 hex 렌더링 props까지 전달되는 경로를 추적한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `get_frame_hex_data`(`src-tauri/src/commands/frame.rs` 480-558행)는 프레임 전체 단위의 `success`/`error`와 단일 `truncated` 플래그만 반환하고, 바이트별 "파싱 안 됨/무효" 상태 개념이 없다. `HexViewTab.tsx`도 이에 대응하는 스타일 분기가 없어(`getByteStyle`, 144-161행), 부분적으로 파싱 실패했거나 손상된 프레임의 바이트는 정상 데이터와 동일하게 렌더링된다.
 
 ---
 
@@ -689,4 +689,4 @@ hex 표시에 흔한 hex 에디터 UI 패턴(등폭 그리드, 클릭 시 커서
 - 신규 사용자에게 "이 값을 바꿔보세요"라고 요청했을 때 실제로 편집을 시도하는지 관찰하는 사용성 테스트를 수행한다.
 - 접근성 감사에서 `contenteditable`/`input` 요소 존재 여부를 스캔한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — hex 셀은 `<span className="hex-byte">`로 구현되어 있고(`HexViewTab.tsx` 241-251행) `<input>`/`contentEditable` 요소가 `UnitHexPanel` 전체에 없다(grep 0건). caret이나 편집 어포던스가 생길 여지가 없음.

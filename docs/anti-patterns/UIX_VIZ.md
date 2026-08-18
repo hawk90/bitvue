@@ -46,7 +46,7 @@
 
 **관련**: `HEAT.md` HEAT-009 참고 — 동일한 per-frame auto-normalize 패턴이나 QP heatmap(Bitvue)과 VQ-Probe 품질-score heatmap은 별도 서브시스템.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — per-frame auto min/max: `qpToColor(qpVal, qp_min, qp_max)` in QPMapRenderer.tsx:39 uses `qp_min`/`qp_max` taken directly from `frame.qp_grid` (per-frame values set in src-tauri/src/commands/analysis/extractors.rs:59-60 from each codec's `extract_qp_grid`); no fixed/sequence-wide range option exists in the codebase.
 
 ---
 
@@ -82,7 +82,7 @@ HEVC 등 일부 코덱은 bit depth에 따라 QP에 offset이 존재한다(예: 
 
 **관련**: `PIXEL.md` PIXEL-006 참고 — bit-depth 의존 정규화 상수를 빠뜨리는 동일 패턴이나, 대상이 QP 값의 legend 표시(여기)와 raw 픽셀 샘플 정규화(PIXEL-006)로 다름.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — bit depth is parsed (e.g. `bit_depth_luma_minus8` in crates/bitvue-hevc/src/sps.rs:133-135) but never consulted anywhere QP grids are built or colored; `extract_qp_grid` (crates/bitvue-hevc/src/overlay_extraction.rs:157-206) and `qpToColor()` (frontend/components/panels/OverlayRenderer/utils/helpers.ts:24) take no bit-depth parameter, so 8-bit/10-bit QP maps to the same color scale unadjusted.
 
 ---
 
@@ -117,7 +117,7 @@ HEVC 등 일부 코덱은 bit depth에 따라 QP에 offset이 존재한다(예: 
 
 **관련**: `HEAT.md` HEAT-016 참고 — sequential/diverging 팔레트 구분 필요성은 동일하나 대상이 QP delta(Bitvue)와 VQ-Probe 스트림 간 delta score로 다름.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (adjacent form) — absolute QP uses the sequential blue→cyan→yellow→red `QP_COLOR_STOPS` ramp (frontend/components/panels/OverlayRenderer/utils/colors.ts:14-19); the only delta view, `diffColor()` in frontend/components/CompareWorkspace/DiffOverlay.tsx:22-34, computes `t = Math.abs(delta)/maxDelta` — a magnitude-only scale with no zero-centered diverging palette, so a zero-delta block gets the same low/blue treatment as a genuinely low absolute value.
 
 ---
 
@@ -153,7 +153,7 @@ legend를 "보조 UI"로 취급해 초기 구현에서 생략했거나, 반응�
 
 **관련**: `HEAT.md` HEAT-010 참고 — legend가 실제 값을 반영하지 못하는 문제이나, HEAT-010은 legend 컴포넌트 부재가 아니라 backend가 사용된 range를 응답에 포함하지 않아 legend 자체가 정확할 수 없는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — QPMapRenderer.tsx (renderers/QPMapRenderer.tsx:45-51) draws only a text box ("QP: min - max") with no gradient/color-bar legend at all (no `drawLegend` call, unlike categorical overlays such as AvcRefIdxRenderer.tsx:70-109); no hover tooltip surfaces a block's exact QP either (no such handler in YuvViewerPanel/VideoCanvas.tsx). Worse than the item's "hidden on narrow screens" framing — it is never rendered.
 
 ---
 
@@ -188,7 +188,7 @@ heatmap 데이터 구조가 `Option<u8>` 대신 plain `u8`을 사용해 sentinel
 
 **관련**: `HEAT.md` HEAT-012 참고 — invalid/NaN 데이터를 유효 극단값(0)으로 치환해 오인시키는 동일 패턴. QP=0은 "최상"으로, score=0은 "최하"로 위장돼 방향은 반대.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — QPMapRenderer.tsx:37 explicitly does `if (qpVal === -1) continue;`, skipping missing blocks rather than coloring them as QP=0; DiffOverlay.tsx:154 does the equivalent (`qpValA < 0 || qpValB < 0` → skip). Sentinel handling is correct.
 
 ---
 
@@ -223,7 +223,7 @@ heatmap을 코덱 native partition tree가 아니라 고정 grid(예: 16×16 고
 
 **관련**: `PIXEL.md` PIXEL-015 참고 — overlay 좌표가 실제 프레임 지오메트리와 어긋나는 문제이나, 이쪽은 heatmap grid/CU 정합, PIXEL-015는 crop/coded-size 오프셋이 원인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — per-codec `extract_qp_grid` hardcodes a fixed native unit (HEVC: `let ctu_size = 64u32;`, crates/bitvue-hevc/src/overlay_extraction.rs:163) and collapses each CTU to a single QP via `ctu.coding_units.first().map(|cu| cu.qp)` (overlay_extraction.rs:185) rather than the actual variable-size CU partition, so sub-CTU QP variation is lost before the frontend even draws the fixed-size grid cells (QPMapRenderer.tsx:31-43).
 
 ---
 
@@ -256,7 +256,7 @@ opacity를 사용자 조절 가능한 값으로 노출하지 않고 "잘 보이�
 **탐지**:
 - 텍스처가 풍부한 참조 프레임에 heatmap을 최대 강도로 씌운 뒤 원본 에지가 육안으로 식별 가능한지 시각 검사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — opacity is hardcoded, not user-adjustable: `qpToColor` fixes `alpha = 0.63` (utils/helpers.ts:39) and `renderInfoOverlay` fixes `INFO_OVERLAY_ALPHA = 0.72` (OverlayRenderer/index.tsx:200-211); repo-wide search found no opacity slider/control tied to any overlay renderer.
 
 ---
 
@@ -290,7 +290,7 @@ opacity를 사용자 조절 가능한 값으로 노출하지 않고 "잘 보이�
 
 **관련**: `HEAT.md` HEAT-018 참고 — 이산적 block-grid 값을 보간으로 매끄럽게 렌더링해 정밀도를 과장하는 동일 패턴. QP heatmap(Bitvue) vs VQ-Probe 품질-score heatmap.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — the overlay canvas has `image-rendering: pixelated` (frontend/components/panels/YuvViewerPanel/YuvViewerPanel.css:296) on the exact `.yuv-canvas` element overlays draw to (VideoCanvas.tsx:238), and zoom is a single CSS `transform: scale(zoom)` on that element (VideoCanvas.tsx:131) — forcing nearest-neighbor scaling. No `imageSmoothingEnabled` usage exists anywhere in frontend/ (grep found none outside node_modules type defs), consistent with blocks being drawn as vector `fillRect`s rather than a scaled bitmap.
 
 ---
 
@@ -326,7 +326,7 @@ opacity를 사용자 조절 가능한 값으로 노출하지 않고 "잘 보이�
 **탐지**:
 - 고밀도 모션 시퀀스(스포츠, 파티클)에서 화살표 밀도와 개별 벡터 식별 가능 여부를 시각 검사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — MVFieldRenderer.tsx:62-67 implements explicit density control: stride subsampling capped at `maxVectors = 8000`, plus a WebGL fast path (`WEBGL_MV_THRESHOLD = 300`, webgl/mv-webgl.ts:16) for denser grids. Not zoom-aware LOD, but the described "draw every block unconditionally" saturation bug is not present.
 
 ---
 
@@ -357,7 +357,7 @@ MV의 실제 크기(픽셀 단위 이동량, quarter/eighth-pel 정밀도 포함
 **탐지**:
 - 알려진 크기의 합성 MV(예: 정확히 4.0px)를 여러 줌 레벨에서 렌더링 후 화면 픽셀 자로 측정해 zoom factor에 비례하는지 검증.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — MV components keep fractional pixel precision (`mv.dx_qpel / 4`, MVFieldRenderer.tsx:87-88, no rounding) and are drawn directly into the same canvas whose zoom is one uniform CSS `transform: scale(zoom)` (VideoCanvas.tsx:131) — so arrow length in screen space scales proportionally and consistently with zoom by construction; no separate/inconsistent coordinate-transform bug found.
 
 ---
 
@@ -391,7 +391,7 @@ MV의 실제 크기(픽셀 단위 이동량, quarter/eighth-pel 정밀도 포함
 - 색맹 시뮬레이터(Deuteranopia/Protanopia)로 스크린샷 검사.
 - 3개 이상 참조 프레임을 갖는 B-frame 테스트 스트림에서 구분 가능 여부 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — AvcRefIdxRenderer.tsx:21-30 defines a hardcoded 8-entry `REF_COLORS` array as the sole encoding of L0 reference index (color swatches only in the legend too, lines 70-109), with no line-style/pattern redundancy and no colorblind-safe palette; only `ref_idx_l0` is read — `ref_idx_l1` (present in frontend/types/video.ts:524) is never used by this renderer.
 
 ---
 
@@ -424,7 +424,7 @@ MV 시각화가 raw motion vector만 그릴 뿐, 전역 모션 모델(affine/tra
 - 순수 패닝 합성 시퀀스(카메라만 이동, 피사체 없음)에서 residual 벡터가 0에 가깝게 나오는지 검증.
 - 배경+국소 이동 피사체 합성 테스트로 이상치 강조 여부 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — AV1/AV3 global motion parameters are parsed backend-side (crates/bitvue-av1-codec/src/tile/mv_prediction.rs, crates/bitvue-av3-codec/src/frame_header.rs) but `grep -rl global_motion frontend/` returns no hits; MVFieldRenderer.tsx draws raw per-block `mv_l0` only, with no global-motion subtraction/toggle/summary anywhere in the UI.
 
 ---
 
@@ -457,7 +457,7 @@ MV 시각화가 raw motion vector만 그릴 뿐, 전역 모션 모델(affine/tra
 - 완전 정지 화면 테스트 스트림에서 오버레이가 비어 있는지 확인.
 - 렌더링 프로파일러로 zero-vector 렌더 호출 수 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — MVFieldRenderer.tsx's render loop (lines 78-96) only skips the missing-data sentinel (`dx_qpel === 2147483647`), not zero vectors; `drawArrow()` (utils/drawing.ts:65-96) still strokes a line and fills an arrowhead even when dx=dy=0, so every static block gets a rendered marker.
 
 ---
 
@@ -487,7 +487,7 @@ UIX-VIZ-001의 auto-normalize 함정이 벡터 길이 도메인에서 반복된�
 **탐지**:
 - 동일 MV 크기를 가진 블록을 여러 프레임/줌 레벨에서 화면 측정해 zoom factor에 비례하는 일관된 비율을 유지하는지 회귀 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no per-frame/per-viewport auto-scale factor (e.g. `viewportSize / maxMvInFrame`) exists for MV arrow length anywhere in the renderers; zoom is the single uniform CSS transform described under UIX-VIZ-010, so this specific inconsistent-rescaling bug is not present.
 
 ---
 
@@ -520,7 +520,7 @@ compound prediction은 종종 두 참조가 서로 다른 방향/크기를 가�
 **탐지**:
 - 서로 반대 방향의 L0/L1 벡터를 갖는 합성 compound 블록 테스트 케이스로 렌더링 결과가 "무벡터"로 오인되지 않는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — the Canvas2D path used for typical/small grids (≤300 blocks, below `WEBGL_MV_THRESHOLD`) destructures only `mv_l0` and never reads `mv_l1` (MVFieldRenderer.tsx:48,81), silently dropping the second compound-prediction vector rather than drawing or averaging it. The WebGL path used only for dense grids (mv-webgl.ts:186,224-225) does draw both L0/L1, so the defect is specific to the common-case fallback renderer.
 
 ---
 
@@ -557,7 +557,7 @@ VMAF/PSNR/SSIM 등 품질 지표의 프레임별 시계열을 보여주는 차�
 **탐지**:
 - 평균은 높지만 국소 dip이 있는 합성 데이터로 대시보드를 렌더링해 사용자가 dip을 발견하는 데 걸리는 시간을 user test로 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed, and more severe than described — QualityMetricsPanel.tsx and QualityComparisonPanel.tsx (near-duplicate components) render only three large average numbers (PSNR/SSIM/VMAF, lines ~196-220) with zero per-frame chart of any kind; a repo-wide search found no time-series chart component for quality metrics anywhere in frontend/components (the only chart infra, frontend/components/charts/LineChart.tsx, is used solely by RDCurvesPanel.tsx for rate-distortion curves).
 
 ---
 
@@ -591,7 +591,7 @@ VMAF/PSNR/SSIM 등 품질 지표의 프레임별 시계열을 보여주는 차�
 - lower-is-better 지표를 higher-is-better 지표와 나란히 배치한 대시보드에서 색상-의미 일치 여부 코드/시각 검사.
 - 도메인 리뷰: 각 지표의 방향성이 metric 정의에 명시됐는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no VMAF/PSNR/SSIM time-series chart exists in the codebase (see UIX-VIZ-016 finding), so an axis-direction inconsistency between metrics cannot currently manifest; the only quality-metric UI is the single-value display in QualityMetricsPanel.tsx/QualityComparisonPanel.tsx.
 
 ---
 
@@ -622,7 +622,7 @@ VMAF와 PSNR처럼 스케일이 다른 지표를 함께 보며 상관관계를 �
 **탐지**:
 - VMAF+PSNR을 동시에 그린 뒤 두 곡선의 시각적 변동폭이 실제 수치 변동폭과 비례하는지 축 스케일 검사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no multi-series metric chart exists to share (or fail to share) a Y-axis; QualityMetricsPanel.tsx/QualityComparisonPanel.tsx show PSNR/SSIM/VMAF as three separate static numbers, not an overlaid chart.
 
 ---
 
@@ -654,7 +654,7 @@ UIX-VIZ-018과 인접하지만, 여기서는 축을 분리했더라도 "겹쳐 �
 **탐지**:
 - 도메인 리뷰(비디오 품질 전문가)로, 같은 인코딩 열화에 대해 VMAF/PSNR/SSIM이 서로 다르게 반응하는 실제 사례를 재현해 차트가 오해를 유발하는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — same root cause: there is no chart overlaying VMAF/PSNR/SSIM curves at all, so the normalization-free overlay comparison this item describes cannot occur yet.
 
 ---
 
@@ -687,7 +687,7 @@ UIX-VIZ-018과 인접하지만, 여기서는 축을 분리했더라도 "겹쳐 �
 - 의도적으로 프레임을 드롭한 테스트 시퀀스로 차트에 데이터 갭이 시각적으로 드러나는지 확인.
 - `spanGaps` 유사 옵션 코드 검색.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no per-frame metric time series exists to interpolate across gaps; nothing in frontend/ builds a line chart from `calculate_quality_metrics`'s per-frame `frames[]` array.
 
 ---
 
@@ -720,7 +720,7 @@ alignment 알고리즘이 내부적으로 confidence score를 계산하지만 �
 - 낮은 alignment confidence를 유발하는 테스트 케이스(프레임레이트 불일치, 심한 드롭)에서 UI가 이를 구분해 보여주는지 확인.
 - Phase 2 ALIGN 카테고리 산출물과의 연동 여부를 도메인 리뷰로 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (adjacent feature noted) — no metric chart exists to encode confidence visually. A related but distinct piece does exist: alignment confidence (crates/bitvue-core/src/alignment.rs) is surfaced in frontend/components/CompareWorkspace/CompareWorkspace.tsx:117-234 and CompareControls.tsx:109-112, but only as a single workspace-level badge/text (e.g. `{workspace.alignment.confidence}`), not encoded per-frame/segment in any timeline or chart.
 
 ---
 
@@ -751,7 +751,7 @@ scene detection 결과(키프레임 위치 또는 별도 씬 컷 감지 알고�
 **탐지**:
 - 여러 씬 컷이 포함된 테스트 시퀀스로 차트-타임라인 간 씬 경계 위치 일치 여부를 시각 검사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (adjacent feature noted) — no metric chart exists to mark scene boundaries on. Scene-change data does exist elsewhere (`is_scene_change` referenced in frontend/components/EnhancedView.tsx) but is not wired to any quality-metric visualization.
 
 ---
 
@@ -784,7 +784,7 @@ scene detection 결과(키프레임 위치 또는 별도 씬 컷 감지 알고�
 
 **관련**: `HEAT.md` HEAT-011 참고 — outlier가 autoscale 범위를 왜곡하는 동일 문제이나, 이쪽은 시계열 차트 Y축, HEAT-011은 heatmap color range 대상.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no Y-axis auto-range chart for quality metrics exists in the codebase to exhibit this outlier-flattening behavior.
 
 ---
 
@@ -817,7 +817,7 @@ scene detection 결과(키프레임 위치 또는 별도 씬 컷 감지 알고�
 - 단일 프레임 스파이크가 포함된 합성 데이터로 스무딩 적용 전/후 차트를 비교해 스파이크가 시각적으로 사라지는지 확인.
 - UI에 smoothing indicator 존재 여부 코드 검사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no smoothing/moving-average code was found anywhere relevant (`grep -rl movingAverage|smoothing|rollingAverage` across frontend/ and crates/bitvue-core/src returned no hits), and no chart exists to mislabel raw-vs-smoothed data in the first place.
 
 ---
 
@@ -850,4 +850,4 @@ scene detection 결과(키프레임 위치 또는 별도 씬 컷 감지 알고�
 **탐지**:
 - 알려진 프레임 번호에 고유 식별자(워터마크, 프레임 번호 burn-in)를 삽입한 테스트 시퀀스로 hover된 프레임과 실제 표시 프레임의 워터마크가 일치하는지 자동화 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no hover-synced quality-metric chart exists in the codebase; the closest analogue, BitrateGraphPanel.tsx, indexes hover state directly into its `displayFrames` array by position (lines 38,179-207) rather than via a separate time↔frame mapping, so the specific dual-implementation desync this item describes doesn't have a component to occur in yet.

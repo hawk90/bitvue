@@ -2,6 +2,8 @@
 
 이 문서는 Bitvue 안티패턴 카탈로그의 한 분류이며, 전체 목록은 `docs/anti-patterns/INDEX.md`(별도 작성)를 참고한다.
 
+> **2026-08-18 재감사 노트**: 이 파일의 이전 판정들은 전부 `src-tauri/src/services/decode_service.rs` 등 2026-08-08 `e7194cc`("retire src-tauri")로 이미 삭제된 경로를 근거로 인용하고 있었다 — 코드가 실재할 때 검증된 게 아니라 stale한 상태였다. 아래 판정은 현재 아키텍처(`crates/bitvue-sidecar`, `crates/bitvue-engine`, `crates/bitvue-av1-codec::overlay_extraction`, `bitvue-desktop/electron`)를 직접 grep/read해 전면 재검증한 결과다. 핵심 아키텍처 변화: (1) `bitvue-sidecar/src/decode_bridge.rs`는 디코드 프레임 캐시가 전혀 없이 매 요청마다 스트림 시작부터 재디코드한다(자체 문서화된 의도적 갭), (2) 바이트 레벨 캐시는 `crates/bitvue-engine/src/byte_cache.rs`의 `ByteCache`(mmap 기반)로 대체됐고 스트림 A/B 각각 독립 인스턴스를 가진다, (3) `ThumbnailCache`(구 `filmstrip.rs`)의 실제 LRU insert/get 로직은 프로덕션에서 인스턴스화되지 않고 `generate_thumbnail` 정적 함수만 재사용된다.
+
 ---
 
 ### CACHE-001: entry-count LRU
@@ -86,7 +88,7 @@ impl ByteBudgetCache {
 
 **관련**: `PIPE.md` PIPE-008 참고 — 이쪽은 프레임 캐시 축출 정책(바이트 기반 LRU)의 문제이고, PIPE-008은 파이프라인 큐의 backpressure(bounded channel) 설계 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-av1-codec/src/overlay_extraction/cache.rs:39,44` `CODING_UNIT_CACHE`가 프레임/타일마다 크기가 크게 다른 파싱 결과를 `MAX_CACHE_ENTRIES=64`라는 순수 entry-count로 제한한다(바이트 비용 계산 없음, `get_or_parse_coding_units` 121-122행에서 초과 시 `remove_count = MAX_CACHE_ENTRIES/4`개를 무조건 제거). 이 크레이트는 2026-08-08 src-tauri 삭제와 무관하게 그대로 남아있고, 현재는 `crates/bitvue-sidecar/src/frame_analysis.rs`(`overlay_extraction` import) → `cu_parser.rs`(`use super::cache::{compute_cache_key, get_or_parse_coding_units}`)를 통해 `get_frame_analysis` 커맨드에서 실제로 도달 가능하다. 현재 아키텍처엔 이와 별개의 바이트 예산 기반 디코드 프레임 캐시 자체가 존재하지 않는다(§CACHE-002/017 참고).
 
 ---
 
@@ -143,7 +145,7 @@ impl TieredCache {
 
 **관련**: `PIPE.md` PIPE-007 참고 — 이쪽은 재취득 비용이 다른 데이터(압축 패킷 vs 디코드 프레임)를 캐시 티어로 분리하는 문제이고, PIPE-007은 정밀도 요구가 다른 metric들을 위한 중간 표현을 분리하는 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이 문제가 적용될 대상 자체가 없다: 현재 아키텍처에는 디코드된 프레임을 저장하는 캐시가 어디에도 없다(`crates/bitvue-sidecar/src/decode_bridge.rs` 1-14행 모듈 doc: "No decoder-session caching"). 유일하게 살아있는 영속 캐시는 압축 바이트만 다루는 `ByteCache`(`crates/bitvue-engine/src/byte_cache.rs`)뿐이라 압축/디코드 데이터가 같은 캐시에 섞일 여지가 구조적으로 없다. §CACHE-017 참고 — "캐시 하나로 통일" 문제가 아니라 "디코드 캐시가 아예 없음"이라는 더 근본적인 갭임.
 
 ---
 
@@ -215,7 +217,8 @@ pub fn render_overlay(cache: &mut LruCache<OverlayCacheKey, Arc<RgbaImage>>,
 **예외**:
 - 옵션이 렌더링 결과에 전혀 영향을 주지 않는 순수 UI 힌트(예: 툴팁 표시 여부)라면 key에서 제외해도 안전하다 — 단, 이 판단은 명시적 주석으로 남겨야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 실제로 도달 가능한 오버레이 파싱 캐시(`crates/bitvue-av1-codec/src/overlay_extraction/cache.rs:59` `compute_cache_key(tile_data, base_qp)`, 현재 `crates/bitvue-sidecar/src/frame_analysis.rs`를 통해 도달)는 콘텐츠 자체(타일 바이트+QP)를 해시하는 content-addressed 키라 결과에 영향을 주는 입력이 구조적으로 키에 반영된다. 프론트엔드 `OverlayRenderer`(`frontend/components/panels/OverlayRenderer/index.tsx`)에는 자체 캐시 레이어가 없어 이 패턴이 적용될 대상 자체가 없음. `crates/bitvue-engine/src/cache_provenance.rs`(옵션별 `CacheKey` variant 설계)는 이 문제를 인지하고 설계됐지만 여전히 `bitvue-sidecar`에서 미사용(grep 0건, src-tauri 삭제 후에도 이 미배선 상태는 그대로 이어짐).
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-007 참고.
 
 ---
 
@@ -281,7 +284,7 @@ impl AnalysisCache {
 **예외**:
 - 세션 동안 절대 재로드/설정 변경이 없는 단발성 CLI 도구라면 generation 개념이 불필요할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-engine/src/core.rs`의 `handle_open_file`(약 142-172행)이 파일을 열 때마다 `state.byte_cache`를 새 `Arc<ByteCache>`로 교체하고 `state.file_invalidated = false`로 리셋하며, `handle_close_file`(약 199-215행)은 `*state = StreamState::new(stream)`로 스트림 상태 전체를 교체한다 — 세대 개념 없이도 매번 완전 교체라 stale 세대가 남을 수 없다. 디코드된 프레임을 저장하는 캐시 자체가 없어(§CACHE-002/017) 그쪽엔 애초에 "세대"가 존재하지 않는다. 다만 "디코더 설정 변경"(색공간/HDR 토글 등) 기능은 여전히 없어 그 경로는 검증 대상 자체가 없음.
 
 ---
 
@@ -349,7 +352,7 @@ pub fn get_frame(cache: &mut FileFrameCache, frame_idx: u64) -> std::io::Result<
 **예외**:
 - 앱이 파일을 열 때 배타적 락을 걸어 외부 수정이 원천적으로 불가능한 설계라면(read-only 마운트, 임시 복사본 사용) 무효화 검사를 생략해도 안전 — 단 이 가정을 코드에 명시해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(부분적) — `crates/bitvue-engine/src/byte_cache.rs:140-150` `ByteCache::read_range()`는 매 호출마다 `mmap.len()`을 `original_size`와 비교하는 TOCTOU 검증을 실제로 수행하며(`get_decoded_frame_yuv` 등 `bitvue-sidecar/src/main.rs`의 모든 바이트 접근 커맨드가 이 경로를 씀, 예: 1397-1425행), 파일이 truncate/replace되면 그 요청은 `FileModified` 에러로 실패한다 — 이 부분은 잘 방어돼 있다. 하지만 무효화가 그 한 번의 read 호출로 끝난다: `StreamState`(`stream_state.rs:54-86`)의 `units`/`syntax`/`timeline`/`frames`/`metrics` 등 이미 파싱된 상위 모델은 파일 변경이 감지돼도 자동으로 지워지지 않는다. `file_invalidated` 필드(`stream_state.rs:86,103`)가 정확히 이 목적으로 존재하는 것으로 보이지만, 저장소 전체에서 `false`로 초기화/리셋되는 두 곳(`core.rs:168`, `stream_state.rs:103`)뿐 — `true`로 설정하는 코드가 한 곳도 없다(grep 확인). 즉 죽은 무효화 신호.
 
 ---
 
@@ -399,7 +402,7 @@ pub struct FrameCache {
 **예외**:
 - 외부 API 경계에서 timestamp가 유일한 식별자로 주어지고, 그 API가 timestamp 유일성을 명세로 보장하는 경우(예: 컨테이너 스펙상 PTS 유일성이 강제됨)라면 허용 가능 — 단 문서화 필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — grep 결과 `crates/bitvue-engine`, `crates/bitvue-av1-codec`, `crates/bitvue-sidecar` 전체에서 캐시 키로 `f64`/`to_bits()`를 사용하는 곳이 없다. 실제 키 타입(`crates/bitvue-engine/src/selection.rs:23-27`의 `FrameKey { stream: StreamId, frame_index: usize, pts: Option<u64> }` — `pts`도 이미 정수, `overlay_extraction/cache.rs`의 콘텐츠 해시)은 모두 정수/해시 기반.
 
 ---
 
@@ -443,7 +446,7 @@ pub struct FrameKey {
 **예외**:
 - 단일 스트림, 단일 세션, PTS 단조 증가가 파서 레벨에서 이미 보장되는 좁은 시나리오라면 생략 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — CACHE-006과 동일 이유로 PTS 자체를 캐시 키로 쓰는 곳이 없어 다중 스트림 PTS 충돌도 발생하지 않는다. 게다가 `FrameKey`(`selection.rs:23-27`)가 `stream: StreamId` 필드를 명시적으로 포함하고, A/B 스트림은 애초에 `Core::stream_a`/`stream_b`(`crates/bitvue-engine/src/core.rs`)로 완전히 분리된 `StreamState` 인스턴스라 캐시 슬롯 자체가 스트림별로 격리돼 있다(§CACHE-021 참고).
 
 ---
 
@@ -505,7 +508,8 @@ pub fn get_frame_for_timeline(
 **예외**:
 - All-Intra 전용 스트림만 지원하는 모듈(예: 정지 이미지 시퀀스 분석기)이라면 decode order == display order가 항상 성립하므로 구분이 불필요할 수 있다 — 단, 다른 코덱 지원이 추가될 가능성이 있다면 애초에 분리해두는 편이 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `crates/bitvue-engine/src/frame_identity.rs`(1845줄, `TimelineMapper` 등 decode/display index 분리를 다루는 대형 모듈)가 존재하지만, `crates/bitvue-sidecar/src`에서는 doc 주석 한 줄(`main.rs:17`, "timeline built from already-indexed units via `bitvue_engine::frame_identity::TimelineMapper`")로만 언급될 뿐 실제 `use`/호출이 전무하다(grep 0건) — 즉 이 모듈은 여전히 미배선. 한편 실제 디코드 경로(`crates/bitvue-sidecar/src/decode_bridge.rs::get_decoded_frame_yuv`)는 `dec.get_frame()`이 리턴하는 순서를 그대로 `decoded_count`로 순차 인덱싱하는데, dav1d의 `get_picture` API는 내부적으로 이미 출력(표시) 순서로 프레임을 내보내는 것으로 알려져 있어(디코드 순서 재정렬은 dav1d 내부에서 처리됨) 이 특정 아키텍처에서 decode/display 혼용 버그가 실제로 발생하는지는 불확실 — B-frame이 포함된 실제 스트림으로 직접 검증하지 않았다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-007 참고.
 
 ---
 
@@ -564,7 +568,7 @@ impl DecodedFrame {
 
 **관련**: `PIPE.md` PIPE-010 참고 — 이쪽은 강한 참조 순환으로 인한 명시적 누수이고, PIPE-010은 순환 없이도 소유권/해제 시점을 설계하지 않아 참조가 예상보다 오래 살아남는 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체(`crates/`)에서 `std::sync::Weak` 사용이 전무하며(grep 0건, src-tauri 삭제 이후에도 동일), 이는 그런 역참조가 필요한 구조 자체가 없기 때문이다. 현재 살아있는 캐시 엔트리 타입(`overlay_extraction`의 `Arc<Vec<CodingUnit>>`, `ByteCache`의 `Bytes` 세그먼트)도 모두 소유 캐시를 가리키는 필드가 없는 단순 데이터 구조체다.
 
 ---
 
@@ -617,7 +621,7 @@ async fn get_frame_thumbnail(state: tauri::State<'_, AppState>, frame_idx: u64) 
 **예외**:
 - 캐시 value의 drop 비용이 무시할 수준(단순 `Vec<u8>` 등, 대형 GPU 리소스 아님)이면 동기 호출도 허용 가능. 다만 이 경우도 값 크기가 커지면 재검토가 필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 아키텍처 자체가 바뀌어 이 실패 모드가 구조적으로 성립하지 않는다. (1) Electron 메인 프로세스의 IPC 핸들러(`bitvue-desktop/electron/main.ts`, `ipcMain.handle("bitvue:...", async (...) => ...)`)는 전부 `async`다. (2) 실제 디코드는 별도 OS 프로세스(`bitvue-sidecar`)에서 이뤄지고, 그 프로세스도 요청마다 `thread::spawn`으로 전용 워커 스레드를 띄운다(`crates/bitvue-sidecar/src/main.rs:196`) — 단일 공유 스레드가 캐시 축출까지 동기 실행해 다른 요청을 막을 여지가 없다. (3) `decode_bridge.rs`에는 애초에 축출이 일어날 캐시 자체가 없다(§CACHE-002/017). 프로세스 경계 + 요청별 스레드 모델이라 "Tauri command 핸들러가 UI 이벤트 루프를 막는다"는 원래 시나리오는 지금 재현될 수 없다.
 
 ---
 
@@ -664,7 +668,7 @@ pub fn on_file_closed(state: &mut AppState) {
 **예외**:
 - 프로세스 자체가 종료되는 경로(앱 quit)에서는 OS가 프로세스 전체 메모리를 일괄 회수하므로 명시적 drop 페이싱이 불필요하다 — `std::process::exit()` 등으로 우회 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `crates/bitvue-engine/src/core.rs` `handle_close_file`(약 199-215행)이 `*state = StreamState::new(stream)`으로 `ByteCache`(mmap)를 포함한 스트림 상태 전체를 한 문장에서 동기적으로 교체·drop한다(백그라운드 이전이나 페이싱 없음 — 구조는 옛 `close_file`과 동일한 패턴). 다만 실제 비용은 이전 감사가 가정한 것보다 훨씬 작을 가능성이 높다: `ByteCache::read_range`(`byte_cache.rs:167-170`)가 세그먼트 LRU를 우회하고 mmap을 직접 슬라이스하는 "fast path"라서(주석에 명시), 라이브 경로에서 실제로 세그먼트 캐시(`cache: RwLock<LruCache<u64,Bytes>>`)에 데이터가 거의 쌓이지 않는다 — drop 비용은 대부분 `munmap` 하나이지 수백MB의 힙 버퍼 free가 아니다. 현재 디코드 프레임 캐시 자체가 없어(§CACHE-002) 옛 감사가 지목한 "512MB를 한 번에 drop" 시나리오도 더 이상 성립하지 않는다.
 
 ---
 
@@ -722,7 +726,7 @@ pub fn get_thumbnail(cache: &mut FrameCache, thumb_cache: &mut LruCache<u64, Arc
 
 **관련**: `PIPE.md` PIPE-003 참고 — 이쪽은 썸네일을 원본과 별도로 중복 저장하는 캐시 설계 문제이고, PIPE-003은 metric마다 동일 크기로 반복 리사이즈하는 계산 중복 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-sidecar/src/decode_bridge.rs:184` `get_thumbnails`가 `ThumbnailCache::generate_thumbnail(&cached, target_width)`(기본 120px, `crates/bitvue-engine/src/filmstrip.rs:54-98`)를 호출해 실제 박스필터 다운샘플링을 거친 별도 크기 버퍼를 만들며, 원본 RGBA와 동일/유사 해상도로 재저장하는 코드는 발견되지 않았다. 참고로 `ThumbnailCache`의 stateful LRU(`insert`/`get`/`touch`, 100-136행)는 이 정적 `generate_thumbnail` 호출부에서 인스턴스화되지 않아 실제로 캐시로서 동작하진 않음(§CACHE-017/025 참고) — 다운스케일 자체는 매번 제대로 수행됨.
 
 ---
 
@@ -792,7 +796,7 @@ pub fn get_frame(cache: &mut LruCache<u64, CacheEntry>, frame_idx: u64) -> Resul
 **예외**:
 - 실패가 극히 드물고(스트림이 대부분 건강함) 재시도 비용이 무시할 수준이라면 negative caching의 복잡도를 감수하지 않아도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이 항목이 다루는 "positive는 캐싱하는데 negative만 안 함"이라는 비대칭 자체가 지금은 존재하지 않는다: `crates/bitvue-sidecar/src/decode_bridge.rs`는 성공한 디코드 결과도 전혀 캐싱하지 않으므로(모듈 doc 1-14행, "No decoder-session caching"), 손상 프레임이든 정상 프레임이든 반복 조회 시 똑같이 매번 처음부터 재디코드한다 — negative caching 부재가 아니라 caching 자체의 완전한 부재. 더 근본적인 성능 문제는 §CACHE-017에서 다룸.
 
 ---
 
@@ -868,7 +872,7 @@ pub fn get_frame(cache: &mut LruCache<u64, CacheEntry>, frame_idx: u64) -> Resul
 **예외**:
 - 애초에 일시적 오류가 발생할 수 없는 폐쇄 환경(로컬 디스크의 읽기 전용 파일만 다루는 배치 도구)이라면 구분 없이 단순 영구 캐싱해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — CACHE-013에서 확인했듯 캐싱(positive든 negative든) 자체가 `decode_bridge.rs`에 존재하지 않으므로, "영구/일시 오류를 구분 없이 캐싱"하는 이 특정 버그는 발생할 수 없다. (다만 향후 negative caching을 추가한다면 이 항목의 권장안을 함께 적용해야 함 — 판단은 여전히 유효.)
 
 ---
 
@@ -926,7 +930,7 @@ pub fn get_syntax_tree(cache: &mut SyntaxCache, frame_idx: u64, source: &ParsedG
 **예외**:
 - 배치 분석 도구처럼 "모든 프레임의 신택스 통계를 항상 필요로 하는" 워크로드라면 전량 캐싱이 오히려 의도된 동작이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-sidecar/src/main.rs:835-855` `get_frame_syntax`는 `bitvue_indexer::get_frame_syntax(core, stream, params.frame_index)`를 호출해 사용자가 요청한 그 프레임 하나에 대해서만 빌드한다 — GOP/스트림 파싱 완료 시 전체 프레임의 신택스 트리를 미리 캐싱하는 콜백은 발견되지 않았다. 결과 자체를 캐싱하지 않고 매 호출 재계산하므로(재요청 시 재계산 비용은 있으나) 이 항목이 우려하는 "과다 캐싱" 방향의 문제는 아니다.
 
 ---
 
@@ -978,7 +982,7 @@ pub fn on_frame_parsed(index: &mut SeekIndex, frame_idx: u64, offset: u64, decod
 **예외**:
 - 초단편 클립(수 초 이내)이나 GOP 길이가 원래 매우 짧은 스트림(All-Intra에 가까운 구조)이라면 촘촘한 체크포인트의 상대적 비용이 작아 문제되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에 `checkpoint`/`SeekIndex`류 구조가 존재하지 않는다(grep 0건). `crates/bitvue-sidecar/src/decode_bridge.rs`의 `get_decoded_frame_yuv`는 매 요청마다 새 `Av1Decoder`를 만들어 스트림 처음부터 target까지 전부 순차 전송하는 방식이라(§CACHE-017) 체크포인트 개념 자체가 적용되는 아키텍처가 아니다 — "너무 촘촘함"을 논할 대상이 없음(오히려 정반대인 "전혀 없음"이 문제, §CACHE-017 참고).
 
 ---
 
@@ -1032,7 +1036,7 @@ pub fn seek_to(decoder: &mut Decoder, index: &SeekIndex, target_frame: u64) -> A
 **예외**:
 - GOP 길이가 매우 짧거나(예: 저지연 스트리밍용 GOP=1~4) 순차 재생만 지원하는 제한된 기능 범위라면 체크포인트 없이도 seek 비용이 무시할 만하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 그것도 이 항목이 상정하는 "seek 시에만" 발생하는 문제보다 더 심하다. `crates/bitvue-sidecar/src/decode_bridge.rs` 모듈 doc(1-14행)이 스스로 명시: `get_decoded_frame_yuv`는 "re-decodes from the start of the stream up to the target frame **on every call**"이며 "repeatedly scrubbing a long stream is O(n) in frame index per request"라고 밝힌다. 실제 구현(40-77행)도 이를 그대로 따른다 — 매 프레임 요청마다 새 `Av1Decoder`를 만들어 프레임 0부터 target까지 전부 재전송한다. 체크포인트가 "부족"한 게 아니라 아예 없어서, seek뿐 아니라 순차 재생 중 다음 프레임 하나를 보는 것조차 이전 프레임 전부를 다시 디코드한다(체크포인트가 있었다면 마지막 위치에서 이어갈 수 있었을 프레임까지도). 코드 주석에 "flagged here for a later perf pass"로 이미 알려진 채무로 기록돼 있음.
 
 ---
 
@@ -1094,7 +1098,7 @@ impl CacheStats {
 **예외**:
 - 프로토타입/실험 단계에서 대략적인 신호만 필요하다면 적중률만으로 시작해도 무방하다 — 단, 제품화 전에는 반드시 비용 기반 지표를 추가해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이 항목은 "적중률만 보고되는" 상황을 전제로 하는데, 현재 캐시(`crates/bitvue-engine/src/byte_cache.rs`의 `ByteCache::stats()`, 250-259행)는 세그먼트 개수/메모리량만 보고할 뿐 hit/miss 카운터 자체가 없어 적중률조차 계산되지 않는다(grep으로 hit/miss 카운터 미발견). 이는 CACHE-018보다 CACHE-025(관측성 완전 부재)에 정확히 해당하는 상황 — `cache_provenance.rs`에 hit_rate+eviction+peak_bytes를 함께 다루는 더 나은 설계가 있지만 `bitvue-sidecar`에서 여전히 미사용(grep 0건).
 
 ---
 
@@ -1157,7 +1161,7 @@ impl CostAwareCache {
 **예외**:
 - 모든 항목의 재계산 비용이 사실상 균일한 경우(예: 모든 프레임이 키프레임인 All-Intra 스트림)에는 순수 LRU로도 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 현재 디코드된 프레임을 저장하는 캐시가 아예 없어(§CACHE-002/017) "축출 정책이 비용을 반영하는지" 자체를 논할 대상이 없다. `ByteCache`의 세그먼트 `LruCache`(`byte_cache.rs:44`)는 recency만 반영하는 구조이긴 하지만, 라이브 경로인 `read_range`가 이 LRU를 아예 우회해 mmap을 직접 슬라이스하므로(167-170행 "Fast path") 실제로 축출이 거의 일어나지 않는다 — 평가할 실제 동작이 없음.
 
 ---
 
@@ -1217,7 +1221,7 @@ impl FrameCache {
 **예외**:
 - 캐시 예산이 시스템 전체 메모리 대비 매우 작게(예: 수십 MB 이내) 하드캡되어 있어 애초에 압박을 유발할 수 없는 규모라면 생략 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 저장소 전체에서 `memory_pressure`/`PressureLevel`/`sysinfo` 등 OS 메모리 압박 구독·폴링 코드가 없다(grep 0건; `crates/bitvue-engine/src/cache_debug_overlay.rs`의 `MemoryPressure`는 열거형 라벨일 뿐 실제 신호원과 연결 안 됨, `cache_provenance.rs` 테스트에도 동일 패턴). `byte_cache.rs:58`의 `DEFAULT_MAX_MEMORY = 256MB`는 런타임에 절대 바뀌지 않는 `const`(`AtomicUsize` 아님)이며, `core.rs`의 `handle_open_file`도 이 상수를 그대로 전달한다.
 
 ---
 
@@ -1274,7 +1278,7 @@ impl AppState {
 **예외**:
 - 애초에 한 번에 파일 하나만 열 수 있는 단일 문서 인터페이스(SDI)라면 파일 네임스페이스 없이 전역 캐시로 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 현재 아키텍처는 고정된 2개 슬롯(`StreamId::A`/`B`) 모델이고, 각 슬롯은 완전히 독립된 `StreamState`(자체 `byte_cache: Option<Arc<ByteCache>>` 포함)를 갖는다(`crates/bitvue-engine/src/core.rs`의 `Core::stream_a`/`stream_b` 필드, `handle_open_file`이 요청받은 `stream`에 해당하는 슬롯만 갱신). 모든 커맨드가 `stream` 파라미터를 요구해 어느 슬롯을 다루는지 명시적으로 구분한다(`main.rs`의 `SelectFrameParams`/`GetDecodedFrameYuvParams` 등). 파일 하나만 열 수 있는 SDI는 아니지만(A/B 비교가 핵심 기능), 슬롯 자체가 격리돼 있어 이 항목이 우려하는 "키만으로 파일이 구분 안 됨" 문제는 발생하지 않는다. 프론트엔드에도 A/B 외의 임의 개수 멀티탭/멀티윈도우 기능은 없음(grep 확인).
 
 ---
 
@@ -1332,7 +1336,7 @@ async fn open_file(path: String, state: tauri::State<'_, AppState>) -> Result<Fi
 **예외**:
 - 매우 낮은 사양 환경에서 warm-up 자체가 파일 열기 응답성이나 다른 백그라운드 작업(인덱싱 등)과 자원을 다투어 역효과를 낼 수 있다면, warm-up 범위를 더 줄이거나 생략하는 편이 나을 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 저장소 전체에서 `warm_up`/`warmup` 관련 코드가 없다(grep 0건). `crates/bitvue-engine/src/core.rs`의 `handle_open_file`(약 142-172행)은 `ByteCache`를 열고 `Event::ModelUpdated`를 반환할 뿐, 첫 N프레임/썸네일을 백그라운드로 미리 디코드하지 않는다 — `decode_bridge.rs`에 캐시 자체가 없다는 점(§CACHE-017)까지 겹쳐, 파일을 연 직후 첫 스크럽은 항상 스트림 처음부터의 완전 콜드 디코드다.
 
 ---
 
@@ -1379,7 +1383,7 @@ pub fn compute_frame_cache_budget(stream_info: &StreamInfo, system_available_byt
 
 **관련**: `PIPE.md` PIPE-014 참고 — 이쪽은 프레임 캐시 예산을 해상도에 비례해 산정하는 문제이고, PIPE-014는 파이프라인 큐의 in-flight budget을 프레임 크기 기반으로 산정하는 backpressure 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-engine/src/byte_cache.rs:55,58` `DEFAULT_SEGMENT_SIZE = 256 * 1024`/`DEFAULT_MAX_MEMORY = 256 * 1024 * 1024` 모두 스트림 해상도나 시스템 가용 메모리를 입력받지 않는 하드코딩된 상수이며, `core.rs`의 `handle_open_file`이 파일 해상도와 무관하게 이 상수 그대로 `ByteCache::new()`를 호출한다. `compute_frame_cache_budget` 류의 적응형 산정 함수는 저장소에 존재하지 않는다.
 
 ---
 
@@ -1433,7 +1437,7 @@ pub fn on_frame_displayed(cache: &mut FrameCache, decoder: &mut Decoder,
 **예외**:
 - 재생 전용(순수 forward playback) UI만 지원하고 되감기/스크럽 기능이 없다면 단방향 프리페치로 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체(`crates/bitvue-sidecar`, `crates/bitvue-engine`)에서 `prefetch` 관련 코드가 전혀 없다(grep 0건). 이전 감사가 지목했던 forward-only 프리페처(`decode_service.rs::get_or_decode_frame_with_prefetch`)는 그 파일 자체가 2026-08-08 src-tauri 삭제로 사라졌다. 현재는 프리페치 시도 자체가 없어(요청받은 프레임만 정확히 디코드) 이 항목의 "방향을 무시하는 프리페치"라는 구체적 결함은 재현될 수 없다 — 다만 프리페치 부재 자체는 §CACHE-017/022의 성능 문제와 겹친다.
 
 ---
 
@@ -1496,5 +1500,5 @@ impl FrameCacheMetrics {
 **예외**:
 - 매우 초기 단계의 프로토타입이거나 캐시 자체가 실험적 기능이라 아직 정식 계측 투자가 이르다고 판단되는 경우, 최소한 개발자 로그 수준의 임시 계측만으로 시작해도 된다 — 단, 정식 기능화 전에는 반드시 보강해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 실제로 실행되는 캐시(`ByteCache`, `overlay_extraction::cache`)에는 hit/miss/eviction/peak-memory 카운터가 전혀 없다(grep으로 확인; `ByteCache::stats()`(`byte_cache.rs:250-259`)는 세그먼트 개수·설정된 용량만 반환하고, 그마저도 라이브 경로가 세그먼트 LRU를 우회해 값이 실제 사용량을 반영하지 못함 — §CACHE-011/019 참고). `crates/bitvue-engine/src/cache_provenance.rs`에 이 항목이 요구하는 것과 거의 동일한 설계(hit/miss/eviction/peak_bytes 카운터, `tracing` 연동 가능한 구조)가 이미 구현·테스트되어 있으나, `bitvue-sidecar` 어디에서도 import되지 않아(grep 0건, src-tauri 삭제 이후로도 이 미배선 상태는 그대로 이어짐) 실제 프로덕션 캐시에는 여전히 연결되어 있지 않다.
 </content>

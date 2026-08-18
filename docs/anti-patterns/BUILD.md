@@ -62,7 +62,7 @@ pub struct Av1Decoder { backend: DecodeBackend }
 **예외**:
 - feature가 순수히 optional 모듈 추가(예: `serde` 지원 추가)이고 서로 다른 feature가 동일 타입/함수를 재정의하지 않는다면 문제없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 실제 feature(`ffmpeg`/`vvdec`/`vmaf`/`vmaf-cuda`/`parallel`)는 모두 additive이며 동일 타입 재정의 충돌 사례를 찾지 못함(`crates/bitvue-decode/src/lib.rs`, `crates/bitvue-metrics/src/lib.rs`). 다만 CI가 `--all-features`를 검증하는 job이 없어(docs job만 `cargo doc --all-features || true`로 실패를 무시, `.github/workflows/ci.yml:395`) 향후 충돌이 생겨도 못 잡을 위험은 남아있음.
 
 ---
 
@@ -108,7 +108,7 @@ full = ["av1", "hevc", "avc", "vp9", "vvc", "vmaf", "ssim"]
 **예외**:
 - crate가 애초에 "올인원 CLI 배포판" 역할이라면(예: `bitvue-cli`) default가 풍부해도 목적에 맞는다 — 단, 이 경우 라이브러리 crate와 명확히 분리돼야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 핵심 라이브러리 crate(`bitvue-core`, `bitvue-decode`, `bitvue-metrics`, `bitvue-av1-codec`)는 모두 `default = []`(각 Cargo.toml `[features]` 섹션 확인). 무거운 조합을 끌어안는 쪽은 `bitvue-cli`/`bitvue-codecs`인데 이는 문서가 인정하는 "올인원 배포판" 예외에 해당.
 
 ---
 
@@ -159,7 +159,7 @@ vp9 = ["dep:vpx-sys"]
 **예외**:
 - 컨테이너 파싱(MP4/MKV demux)처럼 모든 codec 처리에 공통으로 필요한 최소 유틸은 예외 — 이건 애초에 codec-specific이 아니다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `crates/bitvue-decode/Cargo.toml`에서 `dav1d = { workspace = true }`가 `optional`이 아닌 필수 의존성(반면 `ffmpeg-next`는 `optional = true`로 올바르게 gate됨). AV1 디코드가 필요 없는 소비자도 native `libdav1d` 링크를 피할 수 없음. 다만 순수 파서 crate(`bitvue-avc`/`-hevc`/`-vp9`/`-vvc`)는 native dependency가 전혀 없어(구조상 확인) 문서가 우려하는 "4개 codec C 툴체인 전부" 시나리오보다는 범위가 훨씬 좁음.
 
 ---
 
@@ -218,7 +218,7 @@ overflow-checks = true  # 신뢰 불가 입력을 다루는 파서 crate에서�
 **예외**:
 - 순수 성능 계측용 assertion(예: 캐시 히트율 sanity check)처럼 실패해도 안전에 영향이 없는 경우는 debug 전용이어도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 루트 `Cargo.toml`의 `[profile.release]`에 `overflow-checks`가 명시돼 있지 않아 release는 Cargo 기본값(overflow-checks off)을 따름. 동시에 신뢰 불가 입력(비트스트림)을 다루는 엔트로피 디코더가 `debug_assert!`에 안전성 검증을 의존: `crates/bitvue-av1-codec/src/symbol/arithmetic.rs:314,337,354,397` (cnt 상하한 검증)와 `crates/bitvue-av1-codec/src/tile/partition.rs:455` (BlockSize 최소값 검증) — release 빌드에서는 이 체크들이 사라짐.
 
 ---
 
@@ -276,7 +276,7 @@ fn main() {
 **예외**:
 - 이미 시스템에 널리 배포된 라이브러리(예: OpenSSL)에 대해 vendored 옵션도 함께 제공하며, 시스템 라이브러리 사용이 문서화되고 CI에서 두 경로 모두 검증된다면 허용.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `Cargo.lock`에서 `dav1d-sys`는 `system-deps`에, `libvmaf-sys`는 `pkg-config`에 의존(vendored 옵션 없음). `.github/workflows/ci.yml`이 이를 우회하려고 매 OS마다 수동 설치를 함: Linux `apt-get install libdav1d-dev`, macOS `brew install dav1d`, Windows `vcpkg install dav1d`(각 job에 반복). 시스템에 libdav1d/libvmaf가 없는 신규 기여자 머신은 `cargo build`부터 실패하는 구조.
 
 ---
 
@@ -340,7 +340,7 @@ fn main() {
 **예외**:
 - 헤더가 자주 바뀌는 활발한 개발 단계(vendored 라이브러리를 자주 업데이트)에서는 항상 bindgen을 도는 편이 drift 방지에 낫다 — 이 경우 캐싱 대신 시간 단축(예: `--no-layout-tests`)에 집중.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 내 자체 `build.rs`가 전혀 없음(`find . -name build.rs -not -path "*/target/*"` 결과 0건; 유일하게 있었던 `src-tauri/build.rs`도 2026-08-08 Electron 전환으로 `src-tauri` 자체가 retire되며 사라짐, `Cargo.toml:3` 주석 "src-tauri retired 2026-08-08"). bindgen은 외부 `-sys` crate(`dav1d-sys`, `libvmaf-sys`)에서만 transitively 쓰이며 우리가 고칠 수 있는 build.rs가 아님.
 
 ---
 
@@ -394,7 +394,7 @@ git add Cargo.lock  # src-tauri, cli 등 [[bin]] crate
 **예외**:
 - 순수 라이브러리 crate(다운스트림이 자체 버전 범위를 결정해야 하는 경우)는 `Cargo.lock` 미커밋이 정상 관례다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `.gitignore:7`이 `Cargo.lock`을 전면 제외하고 있고, `git ls-files | grep Cargo.lock`은 0건. 그런데 `bitvue-sidecar`(Electron 데스크톱 앱의 백엔드 프로세스, `.github/workflows/build-electron-app.yml:83` `cargo build --release -p bitvue-sidecar`, `scripts/package_electron.sh:23`도 동일)와 `bitvue-cli`(`.github/workflows/publish-packages.yml:202` `cargo build --release -p bitvue-cli -p bitvue-gui`)는 실제 배포되는 바이너리 crate — lockfile 미커밋은 재현 불가능한 릴리스 빌드로 이어짐. (구 `src-tauri`도 동일 사례였으나 2026-08-08 Electron 전환으로 retire됨.)
 
 ---
 
@@ -445,7 +445,7 @@ edition.workspace = true
 **예외**:
 - 진짜 독립적으로 versioning/배포되어야 하는 범용 유틸 crate(다른 프로젝트에서도 재사용)는 lockstep에서 제외하는 것이 맞다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 루트 `Cargo.toml`이 `[workspace.package] version = "0.12.0"`을 선언하고, 검사한 19개 crate 전부 `version.workspace = true`로 참조(예: `crates/bitvue-core/Cargo.toml`, `crates/bitvue-decode/Cargo.toml`). lockstep이 이미 강제되고 있음. 예외는 `bitvue-benchmarks`(`publish = false`, 독립 `0.1.0`)와 워크스페이스 밖 `src-tauri`(`0.10.0`, 별도 앱)뿐이며 둘 다 합리적 예외.
 
 ---
 
@@ -497,7 +497,7 @@ thiserror.workspace = true
 **예외**:
 - 서로 다른 major 버전이 실제로 호환 불가능한 두 개의 독립적인 외부 라이브러리(예: `windows` crate의 세대 차이)를 각각 요구하고, 그 비용(중복 컴파일)이 마이그레이션 비용보다 낮다고 명시적으로 판단했다면 임시로 허용.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `Cargo.lock` 분석 결과 28개 crate가 중복 major 버전으로 공존: `thiserror` 1.0.69 & 2.0.18, `bitflags` 1.3.2 & 2.10.0, `syn` 1.0.109 & 2.0.114, `rand` 0.8.5 & 0.9.2, `windows-sys` 0.59/0.60/0.61 등. 문서의 나쁜 예(`thiserror`/`bitflags` 이중 버전)와 정확히 일치하는 사례가 실제로 존재.
 
 ---
 
@@ -546,7 +546,7 @@ thiserror.workspace = true
 **예외**:
 - 특정 crate 하나만 실험적으로 다른 버전을 검증해야 하는 과도기(마이그레이션 중)에는 일시적 예외를 허용하되 TODO/이슈로 추적한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 루트 `[workspace.dependencies]`가 존재함에도 일부 crate가 이를 우회: `crates/bitvue-decode/Cargo.toml`의 `rayon = "1.10"`(workspace에 이미 선언된 값을 `.workspace = true` 대신 재입력), `crates/bitvue-av1-codec/Cargo.toml`의 `twox-hash = "1"`, 그리고 `crates/bitvue-mcp/Cargo.toml`은 `serde`/`serde_json`/`tokio`/`anyhow`/`tracing`/`tracing-subscriber`를 전부 workspace 참조 없이 직접 버전 명시 — 정책이 선언만 되고 강제되지 않음.
 
 ---
 
@@ -613,7 +613,7 @@ members = [
 **예외**:
 - `src-tauri`가 정말로 얇은 wiring 레이어(Tauri command → 워크스페이스 crate 함수 호출 1줄)뿐이고 자체 로직/테스트가 없다면 커버리지 공백의 실질적 위험은 낮다 — 다만 이 경우에도 "테스트가 없음"이 의도된 것인지 CI 설정만 봐서는 구분이 안 되므로, 최소한 `cargo check --manifest-path src-tauri/Cargo.toml`은 CI에 있어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 재감사 결과 원래 근거(구 `src-tauri`가 `[workspace] exclude`돼 CI에서 스킵)는 stale함: `src-tauri`는 2026-08-08 Electron 전환으로 저장소에서 완전히 삭제됐고, 현재 `exclude = ["fuzz"]`뿐(`Cargo.toml:3`). 하지만 문서가 경고하는 **바로 그 패턴이 다른 대상으로 재발**해 있음 — `.github/workflows/ci.yml`의 `test` job matrix(`crate:` 목록, ci.yml:132 부근)에는 17개 crate만 나열돼 있는데, 루트 `Cargo.toml`의 `[workspace] members`에는 23개가 등록돼 있음. 매트릭스에서 빠진 6개 중 `bitvue-sidecar`(테스트 보유 12개 파일), `bitvue-protocol`(1개 파일), `bitvue-indexer`(2개 파일)는 실제 테스트 코드를 갖고 있는데도 `cargo test -p <crate>`가 CI에서 한 번도 실행되지 않음(`bitvue`/`bitvue-codecs`/`bitvue-benchmarks`는 테스트 자체가 없어 실질 영향 낮음). 특히 `bitvue-sidecar`는 Electron 앱의 실제 백엔드 프로세스(BUILD-007 참고)라 커버리지 공백의 실질 위험이 큼.
 
 ---
 
@@ -679,7 +679,7 @@ use platform::current::preferred_thread_count;
 **예외**:
 - 파일 하나에서만 쓰이는 매우 지역적인 플랫폼 차이(예: 특정 OS 전용 API를 감싸는 wrapper 함수 내부)는 추상화 계층까지 만들 필요 없이 그 자리에 둬도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `#[cfg(target_os = "macos")]`가 `crates/bitvue-decode/src/strategy/{mod.rs:15, registry.rs:40,133,197, metal.rs:105}`에 흩어져 있고(전체 저장소에서 이 패턴이 등장하는 유일한 프로덕션 코드 지점), `#[cfg(unix)]`/`#[cfg(windows)]`는 테스트 파일(`bitvue-decode/tests/edge_cases_test.rs`, `bitvue-formats/tests/container_edge_cases_test.rs`)에도 흩어져 있음. 저장소 전체에 `platform` 전용 모듈(`grep -r platform`/`find *platform*.rs`)이 존재하지 않아 중앙 추상화 계층이 없음. (구 `src-tauri/src/commands/file.rs`도 같은 패턴이었으나 2026-08-08 Electron 전환으로 파일 자체가 삭제됨.) 규모는 문서가 말하는 "파일 수십 개"보다 작은 5개 파일 수준.
 
 ---
 
@@ -741,7 +741,7 @@ impl From<windows::core::Error> for WatchError { /* 변환 */ }
 **예외**:
 - 애초에 플랫폼 전용 기능임을 crate/모듈 이름으로 명시하고(예: `bitvue-windows-integration`), 다운스트림도 그 사실을 알고 조건부로만 사용한다면 오염이 아니라 의도된 설계다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 전체 Cargo.toml/Cargo.lock을 확인했을 때 `windows`/`libc`/`nix`가 워크스페이스 crate의 **직접** 의존성으로는 어디에도 없음(`target.'cfg(windows)'.dependencies` 검색 결과 0건; `windows-sys`/`libc`는 `tokio`/`tempfile`/`rustix` 등을 통한 transitive 의존일 뿐). 플랫폼 분기가 존재하는 유일한 프로덕션 지점(`bitvue-decode/src/strategy`)도 공통 타입(`String` 에러, trait 기반 `StrategyType`)만 노출하며 플랫폼 전용 타입이 public 시그니처에 새어나오지 않음. (구 `src-tauri/src/commands/file.rs`도 같은 결론이었으나 2026-08-08 Electron 전환으로 파일 자체가 삭제됨.)
 
 ---
 
@@ -796,7 +796,7 @@ fn main() {
 **예외**:
 - 프록시/사내 아티팩트 서버에서 이미 검증된 내부 패키지 레지스트리를 통해 받아오는 경우(일반 `cargo`가 crates.io에서 받아오는 것과 동일한 신뢰 모델)는 예외로 볼 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에 자체 `build.rs`가 하나도 없음(BUILD-006 참조; 유일하게 있었던 `src-tauri/build.rs`도 2026-08-08 Electron 전환으로 삭제됨). `curl`/`wget`/`git clone`/`reqwest` 등 네트워크 호출이 어떤 build.rs에도 없음.
 
 ---
 
@@ -853,7 +853,7 @@ xtask/regen-bindings.rs        # 헤더 변경 시 수동 실행해 스냅샷 �
 **예외**:
 - 매 빌드마다 결정론적으로 동일하게 재생성되고 ABI에 영향이 없는 순수 내부용 codegen(예: enum-to-string 매핑 테이블)은 커밋 없이 `OUT_DIR`에만 둬도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — BUILD-006과 동일 근거: 저장소 자체에 bindgen/codegen을 수행하는 build.rs가 전혀 없으므로(BUILD-006 참조) 추적해야 할 generated code 산출물 자체가 존재하지 않음.
 
 ---
 
@@ -910,7 +910,7 @@ cargo build --profile dist      # 태그 push 시 배포 빌드
 **예외**:
 - 워크스페이스가 작고(수 crate) 빌드 시간이 애초에 수 초 단위라 LTO 오버헤드가 체감되지 않는다면, 프로파일을 굳이 세분화하지 않아도 실용적 문제는 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 루트 `Cargo.toml`의 `[profile.release]`는 `lto = "thin"`(fat 아님) + `codegen-units = 1`만 설정하고, `[profile.dev]`는 별도 LTO 오버라이드가 전혀 없어 Cargo 기본값(lto=false)을 그대로 씀 — 문서가 권장하는 패턴과 이미 일치.
 
 ---
 
@@ -958,7 +958,7 @@ panic = "abort"
 **예외**:
 - 워크스페이스에 라이브러리 재사용/FFI 경계가 전혀 없고 오직 단일 최종 바이너리만 만드는 소규모 프로젝트라면 전역 `panic = "abort"`도 실질적 위험이 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(잠재적) — 루트 `Cargo.toml:131`의 `[profile.release] panic = "abort"`가 워크스페이스 전체(모든 라이브러리 crate 포함)에 적용됨 — 나쁜 예와 구조적으로 동일. 다만 현재는 실질 피해가 latent 상태: 워크스페이스 멤버 중 `cdylib`/`dylib` crate-type을 가진 crate가 없고(`crate-type` grep 결과 0건 — 구 `src-tauri`가 유일한 `cdylib`였으나 2026-08-08 Electron 전환으로 저장소에서 삭제됨), CI도 `cargo test --release`를 쓰지 않아(`ci.yml` test job은 release 플래그 없음) 테스트 격리 문제도 아직 발현되지 않음. 하지만 향후 워크스페이스 crate가 cdylib를 노출하거나 CI가 release 테스트를 추가하는 순간 문서가 설명하는 문제가 그대로 재현될 구조.
 
 ---
 
@@ -1014,7 +1014,7 @@ const PRODUCTION_FEATURES: &[&str] = &["simd", "hw-accel"];
 **예외**:
 - 의도적으로 "SIMD 없는 스칼라 경로만 따로 추적하고 싶다"는 별도 벤치 스위트(fallback 회귀 감시용)라면 이름과 목적을 명확히 구분해 `bench_scalar_fallback` 같은 이름으로 분리한다 — 이 경우는 의도된 것이므로 문제가 아니다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `crates/bitvue-benchmarks/Cargo.toml`은 `bitvue-metrics`에 `parallel` feature를 요청하지 않는 반면, 프로덕션 빌드인 `src-tauri/Cargo.toml`은 `bitvue-metrics = { features = ["parallel"] }`로 명시 활성화. 실제로 `bitvue-metrics`를 쓰는 유일한 벤치(`frame_parsing.rs`)는 `parallel` 게이트가 걸린 `batch_psnr_parallel`이 아닌 비-병렬 `psnr` 함수만 호출 — 병렬 경로 회귀는 벤치에 안 잡힘. Confirmed로 올리지 않은 이유: CI 어디에도 `cargo bench` 실행 step이 없어(전체 워크플로 grep 결과 0건) 이 불일치가 실제로 "그릇된 확신"을 만들어내는 살아있는 파이프라인 자체가 없음.
 
 ---
 
@@ -1082,7 +1082,7 @@ pub fn all_decoders() -> Vec<Box<dyn Decoder>> {
 **예외**:
 - 코드 크기가 애초에 목표가 아니고(예: 데스크톱 앱, 디스크 여유 충분) 오직 "컴파일 시간 단축"만이 feature gate의 목적이라면, 바이너리 크기 불변 자체는 실패 기준이 아닐 수 있다 — 다만 이 경우 목적을 문서에 명시해야 혼란이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소에서 발견된 유일한 codec 레지스트리 패턴인 `DecoderFactory`(`crates/bitvue-decode/src/traits.rs`)는 각 codec 등록/매치 분기마다 정확히 대응하는 `#[cfg(feature = "ffmpeg")]`/`#[cfg(feature = "vvdec")]`로 감싸져 있어(traits.rs:216-386) 권장 패턴과 일치, 장식용 feature가 아님. `bitvue-codecs`가 7개 codec parser crate를 feature 없이 통째로 재노출하는 것은 별개 사안(BUILD-002/003 영역)이며, 애초에 feature gate를 시도조차 안 한 것이라 "약속을 어긴" 이 항목의 패턴과는 다름.
 
 ---
 
@@ -1136,4 +1136,4 @@ steps:
 **예외**:
 - 아직 MSRV 정책 자체를 공식화하지 않은 초기 프로젝트(0.x, 내부 전용)라면 `rust-version` 필드를 아예 생략하는 편이 "검증 안 되는 거짓 약속"보다 낫다 — 이 경우 이 항목은 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재감사 결과 원래 근거(`src-tauri/Cargo.toml:9`의 `rust-version = "1.77.2"`)가 stale함: `src-tauri`는 2026-08-08 Electron 전환으로 저장소에서 완전히 삭제됨. `rust-version`/`workspace.rust-version` 선언은 저장소 전체(`grep -rn rust-version --include=Cargo.toml .`)에 현재 0건 — 루트 `[workspace.package]`에도 어떤 개별 crate에도 MSRV 선언이 없음. 위 예외 조항("MSRV 정책을 아예 공식화하지 않은 프로젝트는 `rust-version` 생략이 낫다")에 정확히 해당해 이 항목 자체가 적용되지 않음.

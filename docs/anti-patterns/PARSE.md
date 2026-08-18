@@ -45,7 +45,7 @@ fn read_nal_payload(data: &[u8], offset: usize, length: usize) -> Result<&[u8], 
 **예외**:
 - 이미 상위에서 `offset + length <= data.len()`을 검증한 직후, 같은 함수 스코프 내 재검증은 과잉일 수 있다(단, 그 경우도 `debug_assert!`로 불변식을 문서화하는 것이 좋다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-08-01) — 핵심 저수준 유틸리티는 안전한 패턴을 일관되게 사용: `crates/bitvue-core/src/bitreader.rs`의 `BitReader::read_bits()`는 슬라이싱 전에 `remaining_bits()` 검증(라인 173) 후에만 바이트 접근, `crates/bitvue-formats/src/mp4.rs`의 box 순회 루프(라인 379-386)와 sample offset 계산(라인 276-291)은 `checked_add` + `data.len()` 대조 검증을 명시적으로 수행, `crates/bitvue-hevc/src/nal.rs`의 `find_nal_units`/`parse_nal_units`도 `data[start..end]` 슬라이싱 전에 `start+2 > data.len()` 등 경계 가드가 있음. 다만 10개 코덱 크레이트 전반에 흩어진 수백 개의 `data[a..b]` 슬라이싱 지점을 전수 확인하지는 못했고, 확인한 코드들은 전부 "자체 스캔으로 얻은 내부적으로 bound된 위치"에 대한 슬라이싱이라 안전해 보이지만 예외 사례가 남아있을 수 있어 Suspected로 표기.
 
 ---
 
@@ -112,7 +112,7 @@ impl<'a> BitReader<'a> {
 **예외**:
 - 이미 길이가 고정된 헤더(예: NAL 헤더 첫 2바이트처럼 최소 크기가 상위에서 보장된 영역)를 읽는 경우, 상위에서 최소 길이를 이미 검증했다면 내부에서 `debug_assert`만으로 충분할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `BitReader::read_bits()`(라인 160-216)는 실제 비트 읽기 전에 `if self.remaining_bits() < bits_needed { return Err(BitvueError::UnexpectedEof(...)) }`(라인 172-175)로 남은 비트를 먼저 검증하고 `Result`를 반환. `read_bit()`(라인 129)도 동일하게 EOF에서 `Err`를 반환. 이 구현은 HEVC/AVC/VVC/VP9/MPEG2/AV3/AV1 코덱 크레이트가 얇은 wrapper(`self.inner.read_bits(...)`)로 공유하므로, 이 항목의 "나쁜 예"(남은 비트 검증 없이 인덱싱) 패턴은 존재하지 않음. AVS3만 별도 구현(`crates/bitvue-avs3/src/bitreader.rs`)을 갖지만 거기서도 `bits_remaining() < n` 검증 후 `Err` 반환(라인 37-39)으로 동일 원칙을 따름.
 
 ---
 
@@ -159,7 +159,7 @@ fn read_bits_u32(reader: &mut BitReader, n: u32) -> Result<u32, ParseError> {
 **예외**:
 - shift width가 컴파일타임 상수이고 타입 크기 이하임이 자명한 경우(`x << 4` on `u32`)는 문제 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `read_bits()`/`read_bits_u64()`가 shift 연산 전에 `if n > 32 { return Err(...) }`(라인 164-169) / `if n > 64 { return Err(...) }`(라인 236-241)로 폭 상한을 명시적으로 검증한 뒤에만 `(1u32 << bits_to_read) - 1`류 마스크 연산을 수행(라인 195-199, 266-270)하며, `bits_to_read == 8`(또는 64) 경계값도 별도 분기로 처리해 이 문서의 "권장" 코드와 동일한 형태. AVS3 독립 구현(`crates/bitvue-avs3/src/bitreader.rs`)도 `debug_assert!(n <= 32)` + 비트 단위 루프라 shift overflow 자체가 발생하지 않는 구조.
 
 ---
 
@@ -221,7 +221,7 @@ fn read_leb128(reader: &mut ByteReader) -> Result<u64, ParseError> {
 **예외**:
 - 표준이 정한 varint가 원래 무제한 길이를 허용하는 경우는 없지만, 만약 그런 포맷이라면 최소한 "파서가 허용할 실용적 상한"을 별도로 정책화해야 한다(무제한은 곧 DoS 벡터).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-07-31) — `crates/bitvue-av1-codec/src/leb128.rs`가 `decode_uleb128()` 구현: `MAX_LEB128_BYTES: usize = 8` 상수로 `.iter().take(MAX_LEB128_BYTES)`를 사용해 루프 자체가 상한을 가짐(무제한 루프 불가), 8바이트를 다 읽고도 continuation bit이 서 있으면 `"LEB128 exceeded maximum 8 bytes"` 에러 반환. Shift overflow도 `shift >= MAX_LEB128_BITS || (shift > 0 && data_bits > (u64::MAX >> shift))` 체크로 별도 방지 — 나쁜 예의 무한루프/shift-overflow 패턴과 반대로 정확히 이 문서의 "권장" 코드와 같은 형태로 이미 구현되어 있음. 다른 코덱 크레이트(HEVC/AVC의 Exp-Golomb, VP9 등 자체 varint 형식이 있다면)는 미확인 — leb128은 AV1 전용이라 이 판정은 AV1 크레이트에 한정.
 
 ---
 
@@ -279,7 +279,7 @@ fn read_ue(reader: &mut BitReader) -> Result<u32, ParseError> {
 **예외**:
 - 없음 — Exp-Golomb 계열 디코더는 항상 prefix 상한과 EOF 처리를 함께 가져야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `ExpGolombReader::read_ue()`가 HEVC(`bitvue-hevc`)와 AVC(`bitvue-avc`) 둘 다 공유하는 구현. `MAX_EXP_GOLOMB_ZEROS: u32 = 31`(H.264 스펙상 2^32-1의 최대 leading zero 수) 상한이 두 경로 모두에 적용됨: (1) 32비트 이상 남았을 때의 fast path는 처리 전에 `leading_zeros > MAX_EXP_GOLOMB_ZEROS` 체크("Check BEFORE any processing to prevent bypass" 주석 있음 — 과거에 우회 취약점을 의식적으로 막은 흔적으로 보임), (2) bit-by-bit fallback도 `while leading_zeros <= MAX_EXP_GOLOMB_ZEROS` 루프 상한 + 종료 후 재검증. 나쁜 예의 무한 루프 패턴과 반대로 이미 하드닝되어 있음. 공유 구현이라 CODEC-010(코덱별 BitReader 전체 복제) 안티패턴도 동시에 피해가는 좋은 사례.
 
 ---
 
@@ -329,7 +329,11 @@ fn parse_sps(data: &[u8]) -> Result<SpsData, ParseError> {
 **예외**:
 - 애플리케이션 시작 시 정적 설정(예: 하드코딩된 상수 테이블)에 대한 `unwrap()`처럼, 입력 데이터와 무관하게 항상 성립하는 불변식에는 예외를 둘 수 있다(다만 `expect("이유")`로 근거를 남길 것).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-07-31) — `bitvue-av1-codec` 크레이트 직접 감사(가장 위험도 높아 보이던 크레이트, 전체 10개 코덱 크레이트 중 1개만 확인). 단순 `grep '.unwrap()'` 원시 카운트는 195건으로 위협적이었으나, 실제로는 대부분 `tests.rs`(전용 테스트 파일, `#[cfg(test)]` 파일 내부 마커 없이도 테스트 전용)와 doc-comment 예제였음 — grep만으로는 과대평가된다는 걸 이 크레이트에서 직접 확인. 프로덕션 코드에 남는 실제 후보 4건을 전부 문맥 확인:
+  - `symbol/cdf.rs:238,280`의 `panic!()` 2건 — 하드코딩 상수 배열(`mv_joint_counts` 등)의 자기 검증용, 입력 데이터로 도달 불가 → N/A
+  - `symbol/arithmetic.rs:193`의 `cdf.last().unwrap()` — 바로 위 `if cdf.len() < 2 { return Err(...) }` 가드로 인해 panic 불가능 → 안전
+  - `tile/tile_group.rs:167`의 `tile_sb_dimensions(0, 0).unwrap()` — 처음엔 malformed bitstream으로 트리거 가능해 보였으나, `tile_count() == 1`이면 `tile_cols.saturating_mul(tile_rows) == 1`이 성립하고 이는 `tile_cols == 1 && tile_rows == 1`을 강제하므로(둘 다 u32, 곱이 1이려면 둘 다 1) `tile_sb_dimensions(0,0)`의 bounds check(`tile_col >= tile_cols`)를 항상 통과 → 안전
+  - **나머지 9개 코덱 크레이트(HEVC 33/AVC 26/VP9 29/VVC 32 등 원시 unwrap 카운트) 미확인** — av1-codec 결과가 좋다고 다른 크레이트도 그렇다고 가정하면 안 됨. Suspected로 남기는 이유.
 
 ---
 
@@ -377,7 +381,7 @@ fn parse_scaling_list(data: &[u8], offset: usize) -> Result<[u8; 16], ParseError
 **예외**:
 - 이미 `.get()`으로 범위를 검증한 직후, 같은 스코프에서 검증된 서브슬라이스에 대한 고정 상수 인덱싱(`slice[0]`, 길이가 이미 보장된 경우)은 허용 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-08-01) — PARSE-001과 근본 원인 동일. 확인한 핵심 경로(bitreader.rs, mp4.rs box 파싱, hevc/avc/vvc nal.rs의 NAL 분리)는 `checked_add`/사전 경계 검증 후 슬라이싱하는 패턴을 일관되게 사용하지만, 10개 코덱 크레이트에 각각 독립적으로 존재하는 파서 코드 전체에서 습관적 `[]` 인덱싱 스타일 자체를 전수 조사하지는 못함. `#![deny(clippy::indexing_slicing)]` 같은 워크스페이스 전역 lint가 Cargo.toml에 걸려있는지는 미확인.
 
 ---
 
@@ -432,7 +436,7 @@ fn read_sample(file: &mut File, entry: &SampleEntry) -> io::Result<Vec<u8>> {
 **예외**:
 - 이미 메모리에 로드된 `&[u8]` 버퍼 내부의 상대 offset(파일 전체가 아니라 이미 읽어들인 슬라이스 기준)은 `usize`가 자연스럽고 올바르다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-formats/src/mp4.rs`의 `BoxHeader.size`/`data_offset`, `Mp4Info.sample_offsets` 등 파일 오프셋 관련 필드는 전부 `u64`로 저장되고, 실제 메모리 슬라이스 접근 직전에만 `usize::try_from(**offset_ptr).map_err(...)`(라인 276-282)로 명시적 실패 처리하며 변환. `crates/bitvue-av1-codec/src/ivf.rs`도 `offset: usize`를 쓰지만 이는 이미 전체가 메모리에 로드된 `&[u8]` 버퍼 내 상대 오프셋이라 이 항목의 "예외" 조항에 해당.
 
 ---
 
@@ -487,7 +491,7 @@ struct BitReader<'a> {
 **예외**:
 - 성능이 극도로 중요한 hot loop 내부에서, 이미 충분히 테스트된 단일 함수 안에서만 원시 정수로 비트/바이트를 다루는 것은 허용 가능(단, 함수 경계를 벗어나지 않아야 함).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `BitReader` 구조체는 `byte_offset: usize`와 `bit_offset: u8`(0-7, MSB first 명시 주석)를 별도 필드로 분리해 보관(라인 53-60), 완전한 newtype 패턴(`BitPos`/`BytePos`)은 아니지만 필드명과 타입이 명확히 단위를 구분하고, 이 단일 구현을 HEVC/AVC/VVC/VP9/MPEG2/AV3/AV1이 wrapper로 공유하므로 크레이트마다 관례가 갈릴 여지가 구조적으로 차단됨. AVS3 독립 구현도 동일하게 `byte_pos`/`bit_pos`를 분리.
 
 ---
 
@@ -558,7 +562,7 @@ fn parse_sps(reader: &mut BitReader) -> Result<Sps, ParseError> {
 **예외**:
 - 애초에 "부분적으로 파싱된 결과라도 최대한 보존"하는 것이 명시적 요구사항(예: 손상 파일 복구 도구)이라면, `vui_present`와 `vui_partial: PartialVui` 같은 필드를 분리해 "부분 상태"임을 타입으로 명확히 구분해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-hevc/src/sps.rs`의 VUI 파싱(라인 433-437)은 `vui_parameters = if flag { Some(parse_vui_parameters(&mut reader)?) } else { None }` 형태로, `parse_vui_parameters`가 실패하면 `?`가 `parse_sps` 전체를 즉시 `Err`로 종료시켜 "미리 상태를 바꾼 뒤 부분 실패"가 반환되는 경로 자체가 없음(이 문서의 나쁜 예처럼 `vui_present`를 먼저 true로 설정해두는 패턴이 아님). 다만 이는 "롤백 후 관대하게 계속 진행"이 아니라 "VUI 실패 시 SPS 전체 실패"라는 엄격한 정책이라, PARSE-019가 권장하는 관대한 파싱과는 다른 트레이드오프.
 
 ---
 
@@ -618,7 +622,7 @@ impl DecoderContext {
 **예외**:
 - 통계/로깅 목적의 state(에러 카운트 등)는 실패 시에도 갱신되는 것이 오히려 의도된 동작이다 — 다만 "디코딩에 영향을 주는 state"와 "관찰용 state"를 구분해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (미확인) — `static mut` 등 전역 mutable 컨텍스트는 없음(PARSE-012 참고)이라 이 항목이 우려하는 최악의 형태(전역 DPB/파라미터셋 캐시 오염)는 구조적으로 발생하기 어려워 보이나, SPS/PPS 파라미터셋 캐시나 다중 NAL 순차 처리 루프에서 "i번째 실패가 i+1번째 파싱 컨텍스트를 오염시키는지"를 직접 재현/코드 추적하지는 못함. 시간 제약으로 깊이 있는 확인을 하지 못해 Suspected로 남김.
 
 ---
 
@@ -674,7 +678,7 @@ impl DecoderContext {
 **예외**:
 - 프로세스 전체에서 단 하나만 존재해야 하는 순수 설정값(예: 로그 레벨)은 `OnceLock`/`lazy_static` 같은 안전한 전역 초기화 패턴으로 허용 가능 — 단, 이는 "파싱 상태"가 아니라 "설정"이어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `grep -rn "static mut" crates --include="*.rs"` 결과 bitvue 코드 전체에서 `static mut`는 전무하고, 유일한 매치는 `crates/vendor/abseil/src/absl_base/call_once.rs`의 벤더링된 서드파티 코드(주석/테스트 예제)뿐. 코덱 크레이트들은 `DecoderContext`류 구조체나 함수 인자로 상태를 명시적으로 전달하는 구조(예: `ParserFactory::create(CodecType)`, `AV1ParserStrategy` 등)를 사용해 이 항목이 우려하는 전역 mutable state 패턴이 근본적으로 존재하지 않음.
 
 ---
 
@@ -736,7 +740,7 @@ fn parse_coding_tree(reader: &mut BitReader, depth: u32) -> Result<CodingTree, P
 **예외**:
 - 스펙이 재귀 깊이를 명시적으로 무제한 허용하지 않는 한(그런 경우는 실질적으로 없음) 예외 없음. 반복문으로 변환 가능한 경우 항상 반복문을 우선한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — 컨테이너 레벨: `crates/bitvue-formats/src/mp4.rs`가 `MAX_BOX_DEPTH: u8 = 16` 상수와 함께 `parse_moov`/`parse_trak`/`parse_mdia`/`parse_minf`/`parse_stbl` 각 함수 진입부에서 "SECURITY: Check box nesting depth to prevent stack overflow" 주석과 함께 `if depth >= MAX_BOX_DEPTH { return Err(...) }`를 명시적으로 검증(라인 452-461 등). 코덱 레벨: `crates/bitvue-av1-codec/src/tile/partition.rs`의 `parse_partition_recursive`가 `MAX_PARTITION_DEPTH: u8 = 10` 상수로 재귀 깊이를 검증(라인 549, 562). HEVC/AVC/VP9/AVS3 크레이트는 실제 CU quadtree/split_cu_flag를 재귀적으로 디코딩하는 파서가 존재하지 않아(overlay_extraction은 단순 반복 루프) 이 항목이 우려하는 무제한 재귀 위험 자체가 구조적으로 부재. VVC도 CTU당 flat loop만 사용하고 진짜 MTT 재귀 파서는 없음.
 
 ---
 
@@ -796,7 +800,7 @@ fn parse_ref_pic_list(reader: &mut BitReader) -> Result<Vec<RefPic>, ParseError>
 **예외**:
 - count의 실제 상한이 "남은 파일 크기"로만 자연스럽게 제한되는 가변 개수 구조(예: 개별 원소 최소 크기가 크고 남은 바이트 수로 최대 개수가 이미 작게 제한되는 경우)는, 스펙 상한이 없어도 `remaining_bytes / min_element_size`를 상한으로 사용할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-formats/src/mp4.rs`의 `parse_stsz`가 `sample_count > MAX_ENTRY_COUNT`(10,000,000, 라인 793-798)를 할당 전에 검증; `crates/bitvue-av1-codec/src/tile/tile_group.rs`의 `TileInfo::new`가 `MAX_TILE_COLS`/`MAX_TILE_ROWS`/`MAX_TOTAL_TILES` 검증 후에만 구조체 생성(라인 55-79); HEVC/AVC/VVC/VP9/AV1의 `overlay_extraction.rs` 내 `Vec::with_capacity(total_blocks)`류 호출은 전부 SPS의 검증된 pic_width/height(PARSE-015 참고)로부터 `checked_mul`을 거쳐 유도된 값을 사용(예: `crates/bitvue-hevc/src/overlay_extraction.rs:170-174`). `crates/bitvue-av1-codec/src/ivf.rs`도 `IVF_MAX_FRAME_SIZE` 상한을 할당 전 검증. 확인한 범위 내에서 이 항목의 나쁜 예(검증 없이 즉시 `with_capacity`) 패턴을 발견하지 못함.
 
 ---
 
@@ -850,7 +854,7 @@ fn compute_frame_buffer_size(width: u32, height: u32, bytes_per_pixel: u32) -> R
 **예외**:
 - 이미 컨테이너 레벨에서 해상도가 검증된 뒤, 같은 함수 내부의 로컬 재계산이라면 중복 검증은 생략 가능(단, 신뢰 경계를 넘나드는 지점 — 컨테이너→코덱 파서 — 에서는 반드시 재검증).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — HEVC(`crates/bitvue-hevc/src/sps.rs:335-347`, `MAX_PIC_DIMENSION=16384`), MPEG2(`crates/bitvue-mpeg2-codec/src/sequence.rs:156-168`, `MIN/MAX_MPEG2_DIMENSION` 범위 검증), AVC/VVC/AV1/AV3(각 sps.rs/sequence.rs/sequence_header.rs에 유사한 `MAX_.*DIMENSION`/`MAX_WIDTH` 상수 존재, grep으로 확인)까지 폭넓게 해상도 필드를 파싱 직후 상한 검증. HEVC의 `extract_qp_grid`도 `grid_w.checked_mul(grid_h)`(overlay_extraction.rs:170)로 곱셈 자체를 checked 연산으로 수행. 단, AVS3(`crates/bitvue-avs3/src/sequence_header.rs:135-136`)는 width/height를 14비트 필드로 읽어 상한 검증 코드가 별도로 없으나, 14비트 필드 자체가 최대 16383으로 자연히 bound되어 있어 u32 곱셈 overflow 위험은 없음(0 값에 대한 명시적 거부만 없음, overlay_extraction.rs:72에서 0 체크는 존재).
 
 ---
 
@@ -913,7 +917,7 @@ fn parse_tile_info(reader: &mut BitReader, frame_width_sb: u32, frame_height_sb:
 **예외**:
 - 없음 — 교차 필드 제약이 있는 필드는 항상 관련 컨텍스트와 함께 검증해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-08-01) — `crates/bitvue-av1-codec/src/tile/tile_group.rs`의 `TileInfo::new()`는 `MAX_TILE_COLS`/`MAX_TILE_ROWS`(64)와 `MAX_TOTAL_TILES`(1024) 절대 상한으로 DoS는 방지하지만, 실제 AV1 스펙의 `tile_info()` 신택스(비트스트림에서 `tile_cols_log2`/`tile_rows_log2`를 읽어 `frame_width_sb`/`frame_height_sb`와 교차검증하는 부분)를 구현한 코드를 찾지 못했고 주석에 "For MVP, we'll use simplified defaults"라고 명시되어 있어(tile_group.rs:21) 이 항목이 지적하는 교차 필드 검증 자체가 아직 구현되지 않은 것으로 보임. HEVC/VVC의 타일 경계 배열 검증은 미확인.
 
 ---
 
@@ -961,7 +965,7 @@ fn compute_presentation_time(base_pts: i64, timescale: u32, duration_units: u32)
 **예외**:
 - 이미 컨테이너 파싱 단계에서 `timescale > 0`이 스키마 수준으로 보장된 구조(예: 강타입 non-zero 타입을 사용하는 경우)라면 반복 검증은 생략 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (확인, 2026-08-01) — `crates/bitvue-formats/src/mp4.rs`의 `calculate_timestamps()`(라인 971-978)가 `timestamp += *duration as u64;`로 DTS를 누적할 때 checked/saturating 연산 없이 원시 `+=`를 사용 — 이 문서의 나쁜 예와 동일 패턴. 바로 다음 함수인 `calculate_presentation_timestamps()`(라인 981-999)는 대조적으로 `dts.saturating_add(offset as u64)`/`saturating_sub`를 사용해 동일 파일 내에서도 방어 수준이 일관되지 않음. 다만 `sample_durations`가 `MAX_ENTRY_COUNT`(1000만) 이하로 제한되고 각 duration이 u32이므로 실제 u64 오버플로우 도달은 사실상 불가능(최대 약 4.3×10^16 << u64::MAX)해 실질 익스플로잇 가능성은 낮음. `timescale == 0` 가드는 mp4.rs 내에서 발견하지 못함.
 
 ---
 
@@ -1019,7 +1023,7 @@ fn apply_qp_delta(base_qp: u8, delta: i32) -> Result<u8, ParseError> {
 **예외**:
 - 캐스팅 전후 값의 범위가 타입 정의상 이미 안전함이 자명한 경우(예: `u8 as u32`처럼 항상 값 손실이 없는 확장 캐스팅)는 문제 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `ExpGolombReader::read_se()`(라인 609-613)는 `ue.div_ceil(2) as i32` 캐스팅을 사용하지만, 같은 트레이트의 `read_ue()`가 `MAX_EXP_GOLOMB_ZEROS=31` 상한을 강제하므로 `ue`의 최댓값은 2^32-2(4294967294)로 제한되고 `div_ceil(2)`의 최댓값은 정확히 `i32::MAX`(2147483647)와 일치 — 즉 `as i32` 캐스팅이 수학적으로 절대 overflow하지 않는 구조. 모든 `apply_qp_delta`류 다른 캐스팅 지점을 전수 확인하지는 못했으나, 핵심 `se(v)` 구현은 이 항목이 우려하는 버그로부터 안전함이 증명 가능.
 
 ---
 
@@ -1075,7 +1079,7 @@ fn parse_nal_unit(nal_type: u8, data: &[u8]) -> Result<NalUnit, ParseError> {
 **예외**:
 - 보안이 최우선인 컨텍스트(예: 디코딩 파이프라인 자체)에서는 unknown syntax를 관대하게 처리하는 것이 오히려 위험할 수 있다 — 다만 이 카탈로그의 대상은 "분석 도구"이므로 관대한 처리가 기본 원칙이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-hevc/src/nal.rs`의 `NalUnitType`은 알 수 없는 값을 `Unspec63`(catch-all "RESERVED/UNSPEC") variant로 매핑(라인 144, 244)해 fatal error 없이 보존; `crates/bitvue-formats/src/mp4.rs`의 최상위 box 순회 루프도 알 수 없는 box type을 `_ => { /* Skip unknown box */ }`(라인 407-410)로 건너뛰고 전체 파싱을 계속 진행. 이 항목이 우려하는 "즉시 fatal" 패턴은 확인한 두 경로 모두에서 발견되지 않음.
 
 ---
 
@@ -1134,7 +1138,7 @@ fn parse_nal_header(reader: &mut BitReader) -> Result<NalHeader, ParseError> {
 **예외**:
 - 정말로 스펙이 "값과 무관하게 완전히 무시"라고 명시한 필드는 경고조차 남기지 않고 버려도 무방하다 — 다만 그 사실을 주석으로 남기는 것은 여전히 권장된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (미확인) — reserved bit 필드가 "MUST be 0"과 "MUST ignore"로 구분되어 처리되는지, 혹은 처리 정책이 주석으로 문서화되어 있는지를 직접 확인하지 못함. `read_forbidden_zero_bit` vs `read_reserved_bits_ignored` 같은 이름이 구분된 헬퍼 함수는 grep으로 찾지 못했으나, 이는 이 항목의 심각도(Low)에 비해 조사 우선순위를 낮춘 결과이지 부재를 확정한 것은 아님.
 
 ---
 
@@ -1196,7 +1200,7 @@ impl<'a> BitReader<'a> {
 **예외**:
 - Trailing bits 개념이 없는 신택스 구조(길이 접두사가 명시적으로 있는 OBU/박스 등)에는 해당하지 않는다 — 대신 PARSE-025(substream 경계) 원칙이 적용된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (확인, 2026-08-01) — `crates/bitvue-hevc/src/bitreader.rs`와 `crates/bitvue-vvc/src/bitreader.rs`에 `read_rbsp_trailing_bits()` 함수가 각각 정의되어 있으나(hevc 라인 145, vvc 라인 142), `grep -rn "read_rbsp_trailing_bits(" crates/bitvue-hevc/src crates/bitvue-vvc/src`로 실제 호출부를 찾은 결과 자기 자신의 정의 외에는 호출하는 곳이 전혀 없음 — `crates/bitvue-hevc/src/sps.rs`의 `parse_sps`도 마지막 필드 파싱 후 바로 `Ok(Sps{...})`로 반환하며 trailing bits 검증을 거치지 않음. 안전 장치가 구현되어 있음에도 배선(wiring)되지 않아 자체 검증(self-check) 효과가 실질적으로 작동하지 않는 죽은 코드(dead code) 상태.
 
 ---
 
@@ -1257,7 +1261,7 @@ fn parse_slice_data(reader: &mut BitReader) -> Result<SliceData, ParseError> {
 **예외**:
 - 스펙이 "단순 스킵"만 요구하는 정렬 지점(값 검증 없이 그냥 바이트 경계 이동)이라면 검증 없는 스킵도 정당하다 — 각 지점마다 스펙 문구를 확인해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `byte_align()`(라인 336-341)은 이 항목의 나쁜 예와 동일하게 정렬 비트 패턴을 검증하지 않는 단순 스킵 구현이지만, `grep -rn "\.byte_align()"`으로 확인한 결과 HEVC/AVC/VVC 어느 코덱 크레이트의 실제 파싱 로직에서도 이 메서드가 호출되지 않음(wrapper 정의 내부 위임 호출만 존재) — 즉 슬라이스 헤더→슬라이스 데이터 경계처럼 이 항목이 우려하는 지점 자체가 현재 구현에서 실행되지 않아(관련 CABAC 슬라이스 데이터 디코딩이 헤더 레벨까지만 구현됨) 위험이 발동하지 않음.
 
 ---
 
@@ -1332,7 +1336,7 @@ fn parse_all_nals(nals: &[&[u8]]) -> Result<Vec<Sps>, ParseError> {
 **예외**:
 - 파일 전체가 아니라 사용자가 명시적으로 선택한 소수의 NAL만 온디맨드로 변환하는 경로라면, 이 최적화의 이득이 작아 우선순위가 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `remove_emulation_prevention_bytes()`(라인 790-818)가 `Vec::with_capacity(data.len())`(라인 802)로 원본 크기를 상한으로 사전 예약해 이 문서가 지적하는 "Vec::new() 후 반복 push로 인한 재할당 누적" 문제를 이미 회피. 다만 버퍼 재사용(`_into` 스타일 API)까지는 구현되어 있지 않아 NAL마다 새 `Vec`을 할당하긴 함(PARSE-024/030과 연관).
 
 ---
 
@@ -1386,7 +1390,7 @@ fn parse_obu(data: &[u8]) -> Result<Obu<'_>, ParseError> {
 **예외**:
 - 원본 버퍼가 파싱 도중 해제되거나 재사용될 수 있는 스트리밍 파이프라인(예: 네트워크 청크 단위 파싱)에서는 참조 대신 소유권 있는 복사가 오히려 올바른 선택일 수 있다 — zero-copy는 "원본이 파싱 결과의 라이프타임보다 오래 살아있음을 보장할 수 있을 때"만 유효하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (확인, 2026-08-01) — `crates/bitvue-hevc/src/nal.rs`, `crates/bitvue-avc/src/nal.rs`, `crates/bitvue-vvc/src/nal.rs`의 `NalUnit` 구조체가 `payload: Vec<u8>`와 `raw_payload: Vec<u8>` 둘 다 소유(hevc 라인 275-278 등) — 즉 NAL 하나당 원본 버퍼로부터 두 벌의 owned 복사본을 만듦. `parse_nal_units()`(hevc 라인 425-449, avc/vvc도 동일 구조)가 파일 전체의 모든 NAL에 대해 `nal_data[2..].to_vec()` + `remove_emulation_prevention_bytes()`를 즉시 수행해 `&'a [u8]` 기반 zero-copy 구조체는 채택되지 않음. AV1(`crates/bitvue-av1-codec/src/obu.rs:146,316`)은 `payload: Arc<[u8]>`를 사용해 최초 1회 복사 이후 clone 비용은 낮지만, 원본 파일 버퍼로부터의 최초 복사 자체는 여전히 발생해 완전한 zero-copy는 아님.
 
 ---
 
@@ -1441,7 +1445,7 @@ fn parse_tile_group(reader: &mut BitReader, tile_size_bytes: u32) -> Result<Tile
 **예외**:
 - 서브스트림 경계가 스펙상 명시되지 않고 "다음 구조가 시작되는 지점까지"로만 암묵적으로 정의되는 경우(경계 자체를 파싱으로 알아내야 하는 구조)는 이 패턴을 그대로 적용하기 어렵다 — 이런 구조는 애초에 파서 설계 단계에서 별도로 신중히 다뤄야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-av1-codec/src/tile/tile_group.rs`의 `parse_tile_group_full()`(라인 194-249)이 이 항목의 "권장" 코드와 거의 동일한 패턴: 각 타일마다 `tile_size`를 LEB128로 읽어 `if offset + tile_size > data.len() { return Err(...) }`로 경계를 검증한 뒤 `data[offset..offset+tile_size].to_vec()`로 완전히 독립된 슬라이스를 만들고, `offset += tile_size`로 자식 파서의 실제 소비량과 무관하게 항상 선언된 크기만큼 전진(라인 244-248). 컨테이너 레벨에서도 `crates/bitvue-formats/src/mp4.rs`의 각 box 순회 루프가 자식 박스 파싱 결과와 무관하게 항상 `cursor.seek(SeekFrom::Start(child_end))`로 선언된 경계까지 전진(라인 487 등)해 동일 원칙을 적용.
 
 ---
 
@@ -1496,7 +1500,7 @@ impl<'a> BitReader<'a> {
 **예외**:
 - 없음 — bit-reader의 EOF는 항상 명시적으로 구분되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `read_bit()`(라인 129-144)이 `if self.byte_offset >= self.data.len() { return Err(BitvueError::UnexpectedEof(self.position())) }`로 EOF를 명시적 `Err`로 반환하며 `0`을 반환하지 않음. 이 구현을 HEVC/AVC/VVC/VP9/MPEG2/AV3/AV1이 공유하고, AVS3 독립 구현(`crates/bitvue-avs3/src/bitreader.rs:37-39`)도 동일하게 `bits_remaining() < n`이면 `Err(Avs3Error::UnexpectedEof)`를 반환. 이 문서가 우려하는 "EOF를 0비트로 취급" 패턴은 확인한 범위에서 발견되지 않음.
 
 ---
 
@@ -1560,7 +1564,7 @@ fn read_ue(reader: &mut BitReader, field_path: &FieldPath) -> Result<u32, ParseE
 **예외**:
 - 파일 레벨보다 상위(예: "이 파일 확장자가 지원되지 않습니다")의 에러는 바이트 위치 개념 자체가 없으므로 이 필드를 `Option`으로 두거나 별도 에러 카테고리로 분리한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-08-01) — `crates/bitvue-core/src/error.rs`의 `BitvueError::Parse { offset: u64, message: String }`와 `UnexpectedEof(u64)`는 위치 정보(비트 오프셋)를 구조적으로 포함하지만, 코덱별 상위 에러 타입(예: `HevcError::InvalidData(String)`, HEVC SPS의 `MAX_PIC_DIMENSION` 검증 실패 등 다수의 semantic validation 에러)은 `String` 메시지만 담고 별도의 byte/bit offset 필드가 없어 낮은 레벨(비트 리더)과 높은 레벨(의미 검증)의 에러 위치 정보 보존 수준이 일관되지 않음. hex view 하이라이트 등 UI 연동까지 실제로 이어지는지는 미확인.
 
 ---
 
@@ -1621,7 +1625,7 @@ fn parse_hrd_parameters(reader: &mut BitReader, path: &FieldPath) -> Result<HrdP
 **예외**:
 - 에러가 실제로 발생한 이후(즉 이미 느린 경로에 들어선 뒤)의 최종 메시지 조립 단계에서는 `format!()`을 자유롭게 써도 성능에 영향이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (기능 부재, 2026-08-01) — `FieldPath`/`field_path`/`with_context(format!(...))` 같은 구조화된 필드 경로 개념 자체를 코드베이스 전체에서 찾지 못함(grep 결과 무관한 매치 1건뿐). 이 항목이 지적하는 "문자열 concatenation으로 필드 경로를 만드는" 안티패턴이 성립하려면 애초에 필드 경로 추적 기능이 존재해야 하는데, 현재는 그 기능 자체가 구현되어 있지 않아 이 특정 안티패턴이 나타날 수조차 없음(PARSE-027의 위치 정보 부재와 연결되는 상위 기능 격차).
 
 ---
 
@@ -1678,7 +1682,7 @@ fn format_profile_level(sps: &Sps) -> String {
 **예외**:
 - 파싱 결과 구조체에 `#[derive(Serialize)]`로 프론트엔드 직렬화를 위한 애너테이션을 다는 것 자체는 문제가 아니다(직렬화 가능성은 UI 종속이 아님) — 문제는 "표시를 위해 가공된 값"을 저장하는 것이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (확인, 2026-08-01) — `crates/bitvue-hevc/src/syntax/mod.rs`, `crates/bitvue-vvc/src/syntax/mod.rs`, `crates/bitvue-vp9/src/syntax/mod.rs` 각각에 정의된 `SyntaxNode` 구조체가 `pub value: Option<String>` 필드(hevc/vp9 라인 15, vvc 라인 11)로 UI 트리 표시용으로 포맷된 문자열 값을 파서 결과 구조체에 직접 포함. 이 "시각화용 신택스 트리" 모듈이 코덱마다 독립적으로 중복 구현되어 있어, 이 문서가 우려하는 "파서가 UI 관심사를 알고 있다"는 결합이 구조적으로 존재. 다만 이는 우발적 결합이라기보다 "신택스 트리 탐색기"라는 이 도구의 핵심 기능을 위해 의도적으로 설계된 것으로 보이며, `tree_expanded: bool` 같은 순수 UI 상태 필드는 발견되지 않음(순도 낮은 결합이지 최악의 형태는 아님).
 
 ---
 
@@ -1737,7 +1741,7 @@ fn parse_frame_detail(data: &[u8], index: &FrameIndex) -> Result<Frame, ParseErr
 **예외**:
 - 파일 크기가 처음부터 작다고 보장되는 컨텍스트(예: 단일 SPS/PPS만 추출해 보여주는 작은 유틸리티 커맨드)에서는 eager materialization이 오히려 더 단순하고 적절한 선택일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (확인, 2026-08-01) — `crates/bitvue-hevc/src/nal.rs`, `crates/bitvue-avc/src/nal.rs`, `crates/bitvue-vvc/src/nal.rs`의 `parse_nal_units(data)`가 파일 전체를 스캔해 모든 NAL 유닛에 대해 즉시 헤더 파싱 + payload 복사(`to_vec()`) + emulation prevention 제거를 수행하고 `Vec<NalUnit>`으로 완전히 반환(PARSE-024와 동일 코드 지점). "가벼운 인덱싱(오프셋/크기/타입만)"과 "온디맨드 상세 파싱"을 분리하는 2단계 구조(`FrameIndex`/`scan_file`류)는 이 함수들에서 발견되지 않아, 이 문서의 나쁜 예와 구조적으로 일치.
 
 ---
 
@@ -1794,7 +1798,7 @@ fn compute_sample_offsets(chunk_offset: u64, sample_sizes: &[u32], file_len: u64
 **예외**:
 - 없음 — 파일 오프셋을 다루는 누적 산술은 항상 checked 연산이어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (확인, 2026-08-01) — `crates/bitvue-formats/src/mp4.rs:237`의 샘플 오프셋 누적 계산 `current_offset += size as u64;`가 checked_add 없이 원시 `+=`를 사용 — 이 문서의 나쁜 예와 정확히 동일한 패턴. 다만 (1) `stsz`의 `sample_count`가 `MAX_ENTRY_COUNT`(1000만)로 상한 검증되고 각 size가 u32이므로 이론상 최대 누적값이 u64 범위에 크게 못 미쳐 실제 overflow는 도달 불가능하고, (2) 이후 실제 샘플 읽기 직전에는 별도로 `offset.checked_add(size)` + `end > data.len()` 검증(라인 276-291)이 다시 수행되어 다운스트림에서 이중으로 방어됨. 패턴 자체는 존재하나 실질 위험도는 낮음.
 
 ---
 
@@ -1850,7 +1854,7 @@ fn validate_level_constraints(sps: &Sps) -> Vec<ParseWarning> {
 **예외**:
 - 순수 구문 파싱(syntax parsing)만을 목표로 하는 저수준 파서 계층에서는 이 검증을 생략하고, 상위 semantic validation 계층에만 책임을 두는 계층 분리도 합리적이다 — 다만 그 계층이 실제로 존재하고 호출되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (부재 확인, 2026-08-01) — `level_max_luma_samples`/`LevelConstraint`/`validate_level` 등의 함수나 프로파일·레벨별 해상도 상한 테이블을 HEVC/AVC/VVC/AV1 크레이트 전체에서 grep으로 찾지 못함. 각 SPS 파서가 `profile_idc`/`level_idc`와 `pic_width`/`pic_height`를 각각 읽어 구조체에 저장만 할 뿐, 이 둘을 교차검증해 레벨 제약 위반을 경고하는 semantic validation 계층이 구현되어 있지 않음.
 
 ---
 
@@ -1913,7 +1917,7 @@ fn strip_emulation_prevention(ebsp: &[u8]) -> Vec<u8> {
 **예외**:
 - 없음 — 이 변환은 모든 코덱에서 스펙이 동일하게 규정하므로 공통 구현으로 통일하지 않을 이유가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-core/src/bitreader.rs`의 `remove_emulation_prevention_bytes()`(라인 790-818)가 HEVC/AVC/VVC 세 크레이트 모두에서 `crate::bitreader::remove_emulation_prevention_bytes`로 import되어 공유되는 단일 구현(이 문서가 우려하는 "코덱마다 독립 재구현" 패턴이 아님). 경계 조건도 `if i + 2 < data.len() && ...`로 `data[i+2]`가 항상 유효 인덱스임을 보장(off-by-one 없음) — 이 문서의 나쁜 예 코드가 스스로 인정하듯 "이 특정 코드는 실제로는 안전한" 형태와 일치.
 
 ---
 
@@ -1974,7 +1978,7 @@ impl<'a> BitReader<'a> {
 **예외**:
 - 컨테이너 포맷 중 일부(예: 특정 필드가 리틀엔디안 바이트 순서를 쓰는 MKV의 일부 정수 필드)는 비트스트림 자체와 다른 관례를 가질 수 있다 — 이는 "예외"가 아니라 애초에 다른 관례이므로, 코덱 비트리더와 컨테이너 바이트리더를 애초에 별개 유틸리티로 명확히 분리해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — HEVC/AVC/VVC/VP9/MPEG2/AV3/AV1 7개 코덱 크레이트의 `bitreader.rs`는 전부 `bitvue_core::BitReader`(MSB-first, 라인 58 주석 명시)를 `self.inner`로 감싸는 얇은 wrapper로, 비트 순서 관례가 단일 지점에서 결정되어 크레이트 간 불일치가 구조적으로 차단됨. 다만 AVS3(`crates/bitvue-avs3/src/bitreader.rs`)는 이 공유 구현을 쓰지 않고 독립적으로 재구현(파일 최상단 주석 "Simple MSB-first bit reader")했으며, 확인 결과 그 자체는 올바르게 MSB-first로 구현되어 있어 이 항목이 우려하는 구체적 버그(LSB/MSB 불일치)는 발생하지 않았지만, "새 코덱 추가 시 독립 재구현"이라는 이 항목의 발생 조건 자체는 AVS3에서 실제로 일어났음.
 
 ---
 
@@ -2043,7 +2047,7 @@ fn reconcile_resolution(container: Option<(u32, u32)>, codec_coded: (u32, u32), 
 **예외**:
 - 컨테이너 메타데이터가 아예 없는 raw 비트스트림(Annex B `.264`/`.265`, IVF 등)을 직접 여는 경로에서는 이 항목이 자연히 해당하지 않는다 — 코덱 선언 값만이 유일한 소스가 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (부재 확인, 2026-08-01) — `ResolutionMismatch`/`reconcile_resolution`/컨테이너 해상도와 코덱 해상도를 비교하는 로직을 `crates/bitvue-formats/src/mp4.rs`와 `src-tauri/src/commands` 전체에서 grep으로 찾지 못함. `tkhd`(컨테이너 width/height)와 SPS의 coded/display 해상도를 각각 별도로 파싱은 하지만 이 둘을 대조해 불일치를 경고하는 코드는 확인되지 않음.
 
 ---
 
@@ -2105,7 +2109,7 @@ fn read_box(reader: &mut ByteReader) -> Result<Box, ParseError> {
 **예외**:
 - 없음 — 컨테이너 최상위 파싱 진입점의 길이 검증은 예외 없이 항상 적용되어야 한다(이 프로젝트가 지원하는 모든 컨테이너: MP4/MOV, MKV/WebM, IVF, AVI 등 공통 원칙).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-formats/src/mp4.rs`의 최상위 박스 순회 루프(라인 374-415)가 `box_end = box_start.checked_add(header.data_size())` 후 `if box_end > data.len() as u64 { return Err(...) }`(라인 383-389)로 이 문서의 "권장" 코드와 동일한 검증을 수행하며, `BoxHeader::parse()`(라인 80-110)도 `size < header_size`를 별도 검증해 0/1 sentinel 값 처리 시 언더플로우를 방지. `crates/bitvue-av1-codec/src/ivf.rs`도 `frame_end = offset.checked_add(frame_size)` + `frame_end > data.len()` 검증과 `IVF_MAX_FRAME_SIZE` 상한을 함께 적용(라인 261-300).
 
 ---
 
@@ -2166,7 +2170,7 @@ fn decode_coeff_level(reader: &mut CabacReader, code_num: usize) -> Result<i32, 
 **예외**:
 - hot path에서 인덱스가 비트 마스크 연산(`idx & 0x1F`)으로 구조적으로 테이블 크기 내로 보장되는 경우, 매번 `.get()`을 쓰는 대신 그 사실을 명시하는 `debug_assert!`와 주석으로 대체할 수 있다 — 단, 마스크 연산 자체가 스펙과 일치하는지는 여전히 검증되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-08-01) — `crates/bitvue-vvc/src/overlay_extraction.rs`의 `skip_ctx[skip_ctx_idx]`(라인 890)는 `skip_ctx_idx = left_skip as usize + above_skip as usize`로 항상 0..=2 범위임이 지역적으로 보장되어 raw `[]` 인덱싱이지만 구조적으로 안전(단, `.get()`/`debug_assert!` 명시는 없음). AV1의 `symbol/cdf.rs`에서는 비트스트림에서 유도된 값으로 고정 테이블을 직접 인덱싱하는 위험 패턴을 찾지 못함. 다만 VVC/AV1 외 나머지 코덱(HEVC/AVC 등)의 CABAC/VLC 관련 코드는 깊이 조사하지 못했고, 확인한 두 크레이트도 전수 검토는 아니라 Suspected로 남김.
 
 ---
 
@@ -2221,7 +2225,7 @@ fn find_next_start_code(data: &[u8], start: usize) -> Option<StartCode> {
 **예외**:
 - OBU/박스처럼 자체 길이 필드로 경계가 명시되는 포맷(AV1, ISOBMFF)에는 start code 스캔 자체가 필요 없다 — 이 항목은 Annex B 계열(AVC/HEVC/VVC raw 스트림) 및 유사 포맷에 한정된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (확인, 2026-08-01) — `crates/bitvue-hevc/src/nal.rs`의 `find_nal_units()`(라인 359-417)가 매 인덱싱 전에 `i + 2 < data.len()`, `i + 3 < data.len()`, `j + 2 < max_scan` 등 경계 조건을 명시적으로 검증하고, 루프 종료 후에도 "Defense in depth" 주석과 함께 `nal_start >= data.len() || nal_end > data.len() || nal_end <= nal_start` 최종 재검증(라인 399-410)까지 수행. 추가로 `MAX_SCAN_DISTANCE`(100MB) 상한으로 O(n²) DoS까지 방지(라인 361-362, 이 카탈로그가 명시하지 않은 보너스 방어). 표준 라이브러리 `windows()` 대신 수동 인덱스 루프를 쓰지만 경계 안전성 자체는 확인됨.
 
 ---
 
@@ -2282,7 +2286,7 @@ fn compute_pixel_buffer_layout(sps: &Sps) -> Result<PixelBufferLayout, ParseErro
 **예외**:
 - 애플리케이션이 명시적으로 "4:2:0 8bit만 지원"을 스코프로 선언하고, 다른 조합의 파일은 파싱 단계에서 조기에 명확히 거부(에러로)하는 정책이라면, 하드코딩 자체보다는 "그 가정이 깨지는 입력을 fatal로 처리하는 명시적 가드"가 있는지가 중요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-08-01) — SPS 파싱 단계에서 `bit_depth_luma`/`bit_depth_chroma`와 `chroma_format_idc`를 프로파일별로 교차검증하는 `validate_bit_depth_for_profile`류 함수는 코덱 크레이트에서 찾지 못함(부재). 다만 디코드 후단인 `crates/bitvue-decode/src/decoder.rs`의 `ChromaFormat::from_frame_data()`(라인 88-139)는 실제 U/V 플레인 크기를 `checked_mul`로 계산한 기댓값과 비교해 4:2:0/4:2:2/4:4:4를 동적으로 판별(하드코딩된 `* 3 / 2` 가정이 아님)해 이 문서가 우려하는 버퍼 오버런의 핵심 위험은 실질적으로 완화되어 있음. 단, 판별 실패 시 "assuming 4:2:0"으로 조용히 폴백(라인 130-138)하는 지점은 이 문서가 지적하는 위험과 유사한 잔여 리스크.
 
 ---
 
@@ -2346,7 +2350,7 @@ fn detect_and_parse(data: &[u8]) -> Result<ParsedStream, ParseError> {
 **예외**:
 - 컨테이너가 코덱을 명시적이고 신뢰 가능하게 선언하는 경우(MP4의 `stsd` 내 codec FourCC 등)는 이런 휴리스틱 자체가 필요 없다 — 이 항목은 코덱 정보가 없는 raw/컨테이너리스 스트림에만 해당한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (부분 확인, 2026-08-01) — 이 문서의 나쁜 예가 지적하는 구체적 버그("00 00 01" 3바이트만으로 AVC로 단정)는 `src-tauri/src/commands/analysis/mod.rs`의 `detect_codec_from_data()`에서 발견되지 않음(Annex B 스타트코드 자체를 이 함수가 별도 처리하지 않고 "unknown" 처리). 대신 `detect_codec_from_path()`(라인 293-310)가 파일 확장자를 우선 신뢰(예: `.264`→avc, `.265`→hevc)하고 실패 시에만 `detect_codec_from_content()`로 폴백하는 구조라, 확장자가 실제 내용과 다르면(사용자가 리네임한 파일 등) 오디스패치 위험이 남아있음 — 이는 이 항목이 우려하는 근본 문제(신뢰할 수 없는 약한 신호로 파서를 결정)의 다른 변형. 또한 `detect_codec_from_data()`가 MP4 `ftyp` 박스에서 코덱 FourCC(`vvc1`/`hvc1`/`avc1`/`av01`/`av03`)를 못 찾으면 `return "vvc".to_string()`으로 근거 없이 VVC를 기본값으로 반환(라인 361-362 부근)하는 것도 위험한 blind fallback으로 보임.
 
 ---
 

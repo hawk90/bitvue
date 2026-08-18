@@ -1,8 +1,8 @@
 # Anti-Pattern Catalog — CONC: Async와 병렬 처리
 
-이 문서는 Bitvue(Tauri + Rust + React 기반 비디오 비트스트림 분석기) 안티패턴 카탈로그의 일부입니다. 전체 카탈로그 목록은 `docs/anti-patterns/INDEX.md`(별도 작성 예정)를 참고하세요. 본 문서는 1단계(범용 참조 카탈로그)이며, 실제 저장소 코드 감사는 2단계에서 수행합니다.
+이 문서는 Bitvue(Electron + Rust + React 기반 비디오 비트스트림 분석기) 안티패턴 카탈로그의 일부입니다. 전체 카탈로그 목록은 `docs/anti-patterns/INDEX.md`(별도 작성 예정)를 참고하세요. 본 문서는 1단계(범용 참조 카탈로그)이며, 실제 저장소 코드 감사는 2단계에서 수행합니다.
 
-Bitvue의 동시성 모델을 전제로 작성되었습니다: Tokio 멀티스레드 런타임(Tauri IPC/커맨드 처리) + Rayon(메트릭 병렬 계산) + FFI 디코더(dav1d, libvmaf 등, 자체 내부 스레드 보유)가 한 프로세스 안에서 공존합니다.
+**2단계 감사 시점 아키텍처 노트(2026-08-18)**: 카탈로그 원문(아래)은 Tauri 시절(Tokio 멀티스레드 런타임 + Tauri IPC 커맨드) 동시성 모델을 전제로 작성되었으나, src-tauri는 2026-08-08(`e7194cc`)에 폐기되었고 현재 백엔드는 `crates/bitvue-sidecar`(Electron main과 stdio로 통신하는 별도 프로세스)입니다. 실제 동시성 모델은 **Tokio 없이 요청마다 전용 `std::thread`를 스폰**하는 방식(`bitvue-sidecar/src/main.rs`의 모듈 문서에 설계 근거 명시)이며, Rayon(메트릭 계산, `bitvue-metrics`)과 FFI 디코더(dav1d 경유 `bitvue-decode`)는 여전히 공존합니다. 아래 각 항목의 **Bitvue 판정**은 이 현재 아키텍처를 기준으로 채워졌습니다 — 카탈로그 본문(나쁜 예/권장 예시의 Tauri `#[tauri::command]` 코드)은 여전히 일반 참고용 원문 그대로이니 실제 코드와 직접 비교하지 마세요.
 
 ---
 
@@ -55,7 +55,7 @@ async fn parse_nal_units(path: String) -> Result<Vec<NalUnit>, String> {
 - 파일이 매우 작다고 보장되는 경우(예: 수 KB의 설정 파일)라면 blocking 호출을 async 함수 안에 그대로 두어도 실질적 영향이 없다.
 - 애초에 single-threaded 런타임(`#[tokio::main(flavor = "current_thread")]`)을 의도적으로 쓰는 CLI 도구라면 다른 트레이드오프가 적용된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 아키텍처 자체가 async 런타임을 쓰지 않음. bitvue-sidecar는 Tokio 대신 요청마다 전용 `std::thread`를 스폰하는 모델을 의도적으로 채택했다고 모듈 문서에 명시(main.rs:35-44, "pulling in an async runtime would just mean wrapping every Core call in spawn_blocking anyway") — `async fn` 안 blocking parse라는 실패 양상 자체가 성립하지 않음. (구 판정은 지금은 없는 src-tauri 코드를 근거로 들었음 — src-tauri는 2026-08-08 e7194cc로 폐기됨.)
 
 ---
 
@@ -105,7 +105,7 @@ async fn decode_frame(state: tauri::State<'_, AppState>, frame_idx: u64) -> Resu
 **예외**:
 - 디코더가 이미 자체적으로 논블로킹 콜백 기반 API를 제공하고 Rust 바인딩이 `Future`를 반환하는 경우는 예외.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 위와 동일한 이유로 Tokio worker thread 자체가 없음. `get_decoded_frame_yuv`/`get_thumbnails`의 동기 디코드(decode_bridge.rs:40-72)는 이미 요청 전용 OS 스레드(main.rs:196-224, `spawn_request`) 위에서 실행되어, 공유 Tokio pool을 점유해 다른 요청을 지연시키는 문제가 구조적으로 발생하지 않음.
 
 ---
 
@@ -166,7 +166,7 @@ async fn compute_all_metrics(frames: Arc<Vec<Frame>>) -> Vec<MetricResult> {
 **예외**:
 - Rayon pool 크기를 아주 작게(예: 2) 고정하고 사용 빈도가 낮다면 실질적 경쟁은 미미할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 워크스페이스에서 tokio는 무관한 `crates/bitvue-mcp`(MCP 서버)에만 의존성으로 존재하고, bitvue-sidecar/bitvue-engine/bitvue-decode/bitvue-metrics 어디에도 tokio가 없음. `bitvue-metrics`의 `par_iter`(lib.rs:345,382,405,428)가 Tokio 컨텍스트 안에서 호출되는 경로 자체가 없음.
 
 ---
 
@@ -221,7 +221,7 @@ for idx in frame_indices {
 **예외**:
 - 디코더가 단일 스레드 모드(`n_threads=1`)로 고정되어 있고, 외부 병렬화가 유일한 병렬성 원천이라면 문제가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — vvdec.rs는 여전히 `threads=0`(auto-detect) 설정을 가짐(crates/bitvue-decode/src/vvdec.rs:328)이지만, `VvcDecoder`를 실제로 호출하는 코드가 bitvue-sidecar 어디에도 없음(grep 0건) — VVC 디코드가 아직 어떤 라이브 요청 경로에도 배선되지 않아, 이 오버서브스크립션 시나리오를 트리거할 호출자가 현재는 없음.
 
 ---
 
@@ -279,7 +279,7 @@ tokio::spawn(async move {
 **예외**:
 - 메시지가 극히 작고(수 바이트) 발생 빈도가 낮음이 보장되는 제어 채널(예: 앱 종료 신호)이라면 unbounded도 실용적으로 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `unbounded_channel`/`mpsc`/`watch` 등 채널 사용처가 crates/ 전체(실제 소스, stale target/ 커버리지 리포트 제외)에 0건.
 
 ---
 
@@ -339,7 +339,7 @@ async fn dispatcher(mut hi: mpsc::Receiver<WorkItem>, mut lo: mpsc::Receiver<Wor
 **예외**:
 - 이벤트 종류가 하나뿐이거나, 모든 이벤트가 실제로 동일한 긴급도를 갖는 단순한 도구라면 우선순위 분리가 과설계일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — bitvue-sidecar에는 공유 작업 큐 자체가 없음. 각 요청이 도착 즉시 전용 OS 스레드로 분리되므로(main.rs:196, `spawn_request`), interactive/background 항목이 하나의 FIFO 큐에서 경쟁할 자료구조가 존재하지 않음.
 
 ---
 
@@ -399,7 +399,7 @@ fn request_scrub(state: tauri::State<'_, AppState>, frame_idx: u64) {
 **예외**:
 - 정지 이미지 미세 탐색(방향키로 1프레임씩 이동)처럼 요청 빈도가 낮고 각 요청이 실제로 다 필요한 경우는 예외.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/YuvViewerPanel/index.tsx:163-257`의 `useEffect`가 `currentFrameIndex`가 바뀔 때마다 debounce/throttle 없이 프레임 로드를 재요청하며, 각 호출은 sidecar에서 새 OS 스레드 + 처음부터 전체 재디코드(decode_bridge.rs:8-13, "re-decodes from the start of the stream up to the target frame on every call")를 유발함.
 
 ---
 
@@ -462,7 +462,8 @@ fn cancel_metrics(cancel: tauri::State<'_, CancellationToken>) {
 **예외**:
 - 작업이 항상 수십 ms 이내로 끝난다고 보장되면(단일 프레임 디코드 등) 취소 토큰 없이도 실질적 문제가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 현재 어떤 sidecar 커맨드도 여러 반복에 걸친 장시간 루프를 수행하지 않음(모듈 문서 main.rs:39-40, "nothing today is slow enough to matter"). 대신 향후를 대비한 best-effort `cancel_request`/`AtomicBool` 인프라가 이미 마련돼 있음(main.rs:51-58, 94-96).
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-012 참고.
 
 ---
 
@@ -515,7 +516,7 @@ async fn compute_vmaf_full_video(cancel: CancellationToken, frames: Vec<Frame>) 
 **예외**:
 - 작업 단위가 이미 매우 작아(수 ms) 상위 레벨 취소만으로도 체감 지연이 무시할 수준이라면 내부 루프까지 토큰을 전달하지 않아도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — CONC-008과 동일 근거: 전파할 내부 루프 자체가 아직 없음. 문서화된 유일한 체크포인트("핸들러 실행 직전 딱 한 번 플래그 확인", main.rs:52-58)는 의도적으로 범위를 좁힌 설계이지 발견되지 않은 결함이 아님.
 
 ---
 
@@ -567,7 +568,7 @@ for (idx, frame) in frames.iter().enumerate() {
 **예외**:
 - 전체 작업이 짧아(예: 총 프레임 수 20개 이하) 이벤트 총량이 애초에 적다면 throttle이 불필요할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — wire 프로토콜에 `FrameKind::Event`가 정의돼 있으나(bitvue-protocol/src/lib.rs:26) bitvue-sidecar 어디에서도 실제로 emit되지 않음(grep 0건) — 진행률 이벤트 메커니즘 자체가 배선되어 있지 않아 과다 전송도 성립하지 않음.
 
 ---
 
@@ -630,7 +631,7 @@ async fn get_ui_prefs(state: tauri::State<'_, AppState>) -> Result<UiPreferences
 **예외**:
 - 애플리케이션 규모가 작고 상태 필드가 소수(2~3개)이며 접근 패턴이 거의 항상 전체 상태를 함께 다뤄야 한다면 단일 Mutex도 실용적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Core`(crates/bitvue-engine/src/core.rs:43-55)는 이미 stream_a/stream_b/selection/job_manager를 독립된 `Arc<RwLock<_>>`로 분리해두었고, bitvue-sidecar는 이를 별도 래핑 없이 그냥 `Arc<Core>`로 보관함(main.rs:105). 구 판정이 지적한 `Arc<Mutex<Core>>` 이중 래핑은 src-tauri 폐기(2026-08-08, e7194cc)와 함께 사라짐.
 
 ---
 
@@ -683,7 +684,7 @@ async fn export_frame_png(state: tauri::State<'_, AppState>, path: String) -> Re
 **예외**:
 - 메모리 매핑된 파일(`mmap`)에 대한 쓰기처럼 사실상 메모리 연산에 가깝고 지연이 무시할 수준이라면 예외로 볼 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 유일한 파일쓰기 커맨드인 `export_evidence_bundle`(main.rs:364)은 `stream_fingerprint()`(evidence_export.rs:81-91) 안에서만 짧게 `read()` 락을 잡고 함수가 끝나며 반환하고, 실제 디스크 쓰기(`export_evidence_bundle(...)`, evidence_export.rs:126)는 락이 이미 해제된 뒤에 실행됨.
 
 ---
 
@@ -737,7 +738,7 @@ async fn decode_and_cache_frame(state: tauri::State<'_, AppState>, idx: u64) -> 
 **예외**:
 - 디코더가 원천적으로 단일 스레드에서만 호출 가능하고 이미 그 사실을 명확히 문서화·격리했다면, "직렬화"는 버그가 아니라 설계다. 다만 이 경우에도 전역 앱 상태 락과는 분리되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `get_decoded_frame_yuv`/`get_thumbnails` 둘 다 스트림 상태 락을 읽어 byte_cache Arc만 clone한 뒤 명시적으로 `drop(state)`하고(main.rs:1409 및 동일 패턴) 그 이후에 `decode_bridge`의 동기 디코드를 호출함 — 디코드 구간 동안 락이 유지되지 않음. (구 판정이 인용한 `decode_service.lock()`/frame.rs는 폐기된 src-tauri 코드.)
 
 ---
 
@@ -788,7 +789,7 @@ async fn update_progress_and_notify(state: &Arc<tokio::sync::Mutex<AppState>>, i
 **예외**:
 - 없음에 가깝다 — 락을 쥔 채 await하는 것이 의도적으로 안전한 경우는 극히 드물며(예: 그 자체가 유일한 동시 접근자임이 구조적으로 보장될 때), 대부분은 리팩터링 대상이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드베이스에 `tokio::sync::Mutex`도, `.await` 지점 자체도 없음(async fn이 존재하지 않음) — 이 항목이 설명하는 실패 양상이 구조적으로 발생 불가능.
 
 ---
 
@@ -852,7 +853,7 @@ async fn get_or_decode(state: Arc<AppState>, idx: u64) -> FrameBuf {
 **예외**:
 - 임계 구역이 항상 순수 동기 연산이고 `.await`가 원천적으로 들어갈 수 없음이 타입 시스템으로 보장된다면(위 권장 예처럼), `std::sync::Mutex`를 async 코드베이스에서 쓰는 것 자체는 정상적이고 오히려 권장된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — bitvue-sidecar/bitvue-engine/bitvue-decode 어디에도 `async fn`/`.await`가 없음. `std::sync::Mutex`(vvdec.rs의 `Mutex<*mut ...>`, main.rs의 writer/registry Mutex)는 순수 동기 OS-스레드 코드에서만 쓰여 "await 경계에서 Send 위반"이라는 실패 양상 자체가 성립하지 않음.
 
 ---
 
@@ -917,7 +918,7 @@ for panel in panels {
 **예외**:
 - 임계 구역이 실제로 복잡한 자료구조(해시맵, 벡터)를 다루고 read가 write보다 압도적으로 많으며 write 빈도가 낮다면(예: 설정값, 캐시 테이블), RwLock은 정확히 의도된 사용처다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `RwLock`은 모두 복잡한 구조체(`StreamState`, `SelectionState`, `LruCache<u64, Bytes>` — core.rs:45-51, byte_cache.rs:44)를 감싸는 데만 쓰이고, 단일 값/플래그류에 RwLock을 오용한 사례는 발견되지 않음.
 
 ---
 
@@ -970,7 +971,7 @@ fn submit_work(pool: &PriorityPool, priority: Priority, job: Job) {
 **예외**:
 - 애플리케이션에 배치성 백그라운드 작업이 애초에 없거나(모든 작업이 사용자 트리거 즉시 처리) 작업량이 워커 수를 절대 넘지 않는다면 우선순위 분리가 불필요할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 모든 커맨드가 도착 순서대로 동일하게 전용 스레드를 받는 구조(main.rs:182-224)이며 interactive/background 구분이 없음. `crates/bitvue-engine/src/worker.rs`의 `JobPriority`(Low/Normal/High) 설계는 여전히 자기 모듈/테스트 밖에서 참조되지 않는 dead code(grep 확인).
 
 ---
 
@@ -1026,7 +1027,7 @@ async fn generate_filmstrip_thumbnails(pool: Arc<DecoderPool>, frame_count: u64,
 **예외**:
 - 비디오가 짧거나(수백 프레임 이하) 썸네일 생성이 순식간에 끝난다면 별도 격리 없이도 체감 문제가 없을 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `get_thumbnails`와 `get_decoded_frame_yuv`는 각각 별도의 요청 전용 OS 스레드에서 돌기 때문에(main.rs 모델) 공유 pool이 요청을 직렬화하는 이 항목의 구체적 메커니즘은 성립하지 않지만, 두 커맨드가 동일한 `bitvue_decode::Av1Decoder` 경로를 스레드/자원 상한 없이 동시에 호출할 수 있어 다수의 동시 썸네일+재생 요청이 실제 CPU 코어를 두고 경쟁할 가능성은 구조적으로 남아있음(우선순위 격리 없음, CONC-017과 연결).
 
 ---
 
@@ -1080,7 +1081,8 @@ async fn compute_all_metrics(state: tauri::State<'_, AppState>) -> Result<Vec<Me
 **예외**:
 - 메트릭 계산이 "백그라운드 전용 배치 모드"로 명시되어 있고, 그동안 사용자가 앱을 조작하지 않을 것이 UX상 보장된다면(예: 진행 중 UI를 잠그고 진행률만 표시) 코어 전체를 사용하는 것이 합리적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — bitvue-sidecar에 전체 영상/배치 단위 메트릭 커맨드 자체가 없음(grep으로 다중 프레임 루프 기반 품질 계산 미발견). `compute_frame_metrics`(debug_yuv.rs:497-546)는 호출당 정확히 한 프레임 쌍의 PSNR/SSIM만 계산함.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-003 참고.
 
 ---
 
@@ -1152,7 +1154,7 @@ async fn decode_frame_coordinated(coord: Arc<DecodeCoordinator>, decoder: Arc<De
 **예외**:
 - 디코드 비용이 매우 낮거나(캐시가 오히려 메모리 오버헤드를 정당화하지 못하는 초경량 코덱), 패널이 하나뿐인 애플리케이션이라면 중복 제거 인프라가 과설계일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — decode_bridge.rs 자신의 모듈 문서가 캐싱 부재를 명시("Correctness-first, not perf-first: re-decodes from the start of the stream up to the target frame on every call... No decoder-session caching", decode_bridge.rs:8-11) — 두 패널이 같은 프레임을 요청하면 각각 독립적으로 처음부터 전체 재디코드가 발생하며, in-flight 병합/LRU 캐시가 어디에도 없음.
 
 ---
 
@@ -1216,7 +1218,7 @@ async fn seek_and_decode(state: tauri::State<'_, AppState>, idx: u64) -> Result<
 **예외**:
 - 요청이 항상 순차적으로 하나씩만 진행되도록 이미 직렬화되어 있다면(다음 요청 시작 전 이전 요청 완료를 기다림) generation ID가 불필요할 수 있다. 다만 이 경우 응답성이 떨어질 수 있으니 트레이드오프를 인지해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 전송 계층이 fire-and-forget 이벤트가 아니라 correlationId 기반 request/response임(Node 측 `pending = Map<number, PendingRequest>`, bitvue-desktop/src/sidecarClient.ts:118,237-248). 각 요청의 결과는 그 요청을 발행한 특정 Promise에게만 정확히 한 번 전달되므로, 오래된 결과가 최신 상태를 덮어쓸 경로 자체가 없음.
 
 ---
 
@@ -1273,7 +1275,7 @@ let results: Vec<Result<MetricResult, DecodeError>> = frames.par_iter()
 **예외**:
 - 완전히 신뢰된 입력만 다루는 내부 도구이고 panic 발생 시 프로세스 전체를 재시작하는 것이 허용되는 배치 파이프라인이라면, poison 복구 로직 없이 "panic하면 프로세스가 죽고 상위 오케스트레이터가 재시작"하는 것도 유효한 전략이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(변형) — `spawn_request`(main.rs:196-224)에서 `compute_frames` 실행 중 panic이 발생하면 스레드가 `registry.lock().unwrap().remove(&correlation_id)`(212행)와 응답 프레임 작성 전에 죽어, `CancelRegistry`에 항목이 영구히 leak되고 프론트엔드의 해당 Promise는 영원히 미해결 상태로 남음(sidecarClient.ts의 `request()`에 타임아웃 없음) — 원 항목의 Mutex poisoning과는 메커니즘이 다르지만 "panic 후 시스템 상태 불명확"이라는 동일 부류의 문제.
 
 ---
 
@@ -1336,7 +1338,7 @@ fn main() {
 **예외**:
 - 순수 메모리 연산만 수행하고 디스크 상태를 변경하지 않는 백그라운드 작업(예: 캐시 워밍업)은 종료 시 그냥 버려져도 데이터 손상 위험이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(모범 사례 확인) — main.rs가 모든 요청의 `JoinHandle`을 명시적으로 수집해 종료 직전 join함(main.rs:109-114, "Rust does NOT wait for detached thread::spawn'ed threads when main() returns... Joined below, right before exit").
 
 ---
 
@@ -1393,7 +1395,7 @@ struct SafeDecoder {
 **예외**:
 - 라이브러리가 명시적으로 "컨텍스트는 스레드 안전(재진입 가능)"이라고 문서화했고, 이를 검증하는 테스트(TSan 등)를 통과했다면 `unsafe impl Sync`는 정당하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(모범 사례 확인) — `VvcDecoder`는 여전히 raw FFI 포인터를 `unsafe impl Sync` 대신 `Mutex`로 감싸 직렬화하고(crates/bitvue-decode/src/vvdec.rs:262-264), 유일한 `unsafe impl Send`(`SafeScaler`, crates/bitvue-decode/src/ffmpeg.rs:44)도 안전성 근거 주석을 동반함(ffmpeg.rs:26-32).
 
 ---
 
@@ -1455,7 +1457,7 @@ let rayon_pool = rayon::ThreadPoolBuilder::new()
 **예외**:
 - 애플리케이션이 항상 단일 사용자의 데스크톱 환경에서만 실행되고 컨테이너/클라우드 배포 계획이 없다면, 위험은 CONC-003/004의 오버서브스크립션 문제로 국한되며 cgroup 인식은 불필요할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(변형, 더 심각함) — `ThreadPoolBuilder`/스레드 예산 조정 로직이 코드베이스 어디에도 없음(grep 0건)에 더해, bitvue-sidecar는 CPU 수 상한조차 두지 않고 요청마다 무제한으로 `std::thread::spawn`함(main.rs:196) — "논리 CPU 수로 설정"이 아니라 "상한 자체가 없음"이라 원 항목보다 더 나쁜 변형.
 
 ---
 
@@ -1521,7 +1523,7 @@ fn on_zoom_change(state: tauri::State<'_, DebouncedZoom>, zoom: f32) {
 **예외**:
 - 이벤트 발생 빈도가 본질적으로 낮은(버튼 클릭 등) 경우라면 매번 spawn해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(변형) — 이제는 연속 UI 이벤트뿐 아니라 sidecar의 모든 요청이 기본적으로 이 패턴임: `spawn_request`(main.rs:182-224)가 들어오는 프레임마다 coalescing/backpressure 없이 새 `std::thread`를 생성하므로, 빠른 스크러빙(CONC-007)이 그대로 동시 OS 스레드 수로 직결됨.
 
 ---
 
@@ -1579,7 +1581,7 @@ async fn export_with_metrics(state: tauri::State<'_, AppState>) -> Result<(), St
 **예외**:
 - `main()` 같은 최상위 동기 진입점에서 런타임을 시작하기 위해 `Runtime::block_on`을 호출하는 것은 정상적인 용법이며 이 안티패턴과 무관하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 워크스페이스 전체(bitvue-mcp 제외 경로)에 `block_on`/`Handle::block_on` 사용처가 0건이고, 애초에 이 실패 양상이 적용될 async 런타임 자체가 sidecar/decode 경로에 없음.
 
 ---
 
@@ -1640,7 +1642,7 @@ async fn decode_worker(mut frame_rx: mpsc::Receiver<u64>, mut shutdown_rx: watch
 **예외**:
 - 모든 브랜치의 발생 빈도가 비슷하거나, 브랜치 하나가 지연되어도 기능적으로 문제가 없는(둘 다 저빈도이거나 둘 다 즉시 처리가 필수는 아닌) 경우라면 fairness 문제를 신경 쓰지 않아도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `tokio::select!` 사용처가 없음(grep 0건, bitvue-mcp 무관). bitvue-sidecar의 리더 루프는 단순 blocking `read_frame` 루프이지 다중 브랜치 select가 아님.
 
 ---
 
@@ -1712,7 +1714,7 @@ impl Drop for DecoderSession {
 **예외**:
 - 정리 작업이 순수 동기적(메모리 해제, 동기 FFI 호출)이라면 일반적인 `Drop` 구현은 전혀 문제가 없으며 오히려 권장된다. 이 항목은 "비동기 작업이 필요한 정리"에 한정된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 발견된 `Drop` 구현(crates/bitvue-decode/src/vvdec.rs, crates/bitvue-engine/src/performance.rs) 모두 순수 동기 정리만 수행하며, 어떤 `Drop::drop`에도 `block_on`/`Handle::current()`가 없음(grep 0건).
 
 ---
 
@@ -1767,4 +1769,4 @@ async fn analyze_frame_batch(state: tauri::State<'_, AppState>, indices: Vec<u64
 **예외**:
 - 작업이 마이크로초 단위로 매우 짧고 반복 횟수도 적어(예: 몇 개의 헤더 필드 파싱) 실질적으로 executor에 영향이 없다면 `spawn_blocking`의 컨텍스트 전환 오버헤드가 오히려 손해일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — CONC-001/002와 동일 근거로 애초에 굶주릴 Tokio executor가 없음. bitvue-sidecar의 요청당 `std::thread::spawn` 모델(main.rs:182-224)은 CPU-bound 작업을 공유 executor 밖에서 돌리는 대가로 무제한 스레드 생성 문제를 낳음(CONC-025/026 참고).

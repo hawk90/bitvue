@@ -51,7 +51,8 @@ fn load_video(path: &Path) -> std::io::Result<Mmap> {
 - 파일이 명백히 작다고 보장되는 경우(설정 파일, 프로젝트 메타데이터 JSON, 수 KB의 사이드카 파일).
 - 전체 파일을 어차피 네트워크로 재전송해야 하는 등 지연 로딩이 의미 없는 워크로드.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — Tauri 폐지(2026-08-08, `e7194cc`) 후 재감사: `bitvue-cli`의 거의 모든 서브커맨드(`analyze.rs:20`, `quality.rs:41,43`, `info.rs:19`, `validate.rs:14`, `decode.rs:645,647`, `frames.rs:26`, `export.rs:37`, `batch.rs:100`, `bd_rate.rs:107`)가 `std::fs::read()`로 입력 파일 전체를 `Vec<u8>`에 로드한다. 다만 GUI hot path(`bitvue-sidecar`)는 `Core::handle_open_file`(core.rs:156)이 `ByteCache::new`로 mmap을 쓰므로 이 패턴을 피한다 — CLI 전용 문제로 재확인.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-002 참고.
 
 ---
 
@@ -111,7 +112,7 @@ impl MappedFile {
 - 매우 작은 고정 크기 헤더(수십 바이트)를 파싱 편의를 위해 스택 배열이나 작은 `Vec`으로 복사하는 것은 성능에 영향이 없다.
 - 복사된 버퍼가 mmap보다 훨씬 오래 살아야 하고(파일이 닫힌 뒤에도 캐시), 재파일오픈 비용이 복사 비용보다 클 때.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재감사(`decode_service.rs`는 더 이상 존재하지 않음): `ByteCache::read_range()`(byte_cache.rs:140)가 반환하는 zero-copy `&[u8]`는 `bitvue-sidecar/src/main.rs`의 9곳 호출부(예: 957, 1019, 1081행)에서 `frame_analysis::get_frame_analysis(data, ...)` 등에 그대로 전달되며 즉시 `to_vec()`되지 않는다. 별개로 이미 디코딩된 프레임 바이트에 대한 `bytes.to_vec()`(main.rs:1351) 1건이 있으나 raw mmap 슬라이스가 아니라 이 항목이 지목하는 패턴과는 무관하다.
 
 ---
 
@@ -176,7 +177,7 @@ impl FileBackedBuffer {
 - FFI 경계를 넘어 C 라이브러리에 버퍼를 넘겨야 해서 어차피 소유권이 분리된 복사본이 필요한 경우.
 - 원본 mmap이 곧 unmap될 예정이라 데이터를 반드시 독립시켜야 하는 짧은 순간(예: 파일 교체 직전 스냅샷).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (도달 불가능한 코드) — 위치만 갱신, 결론은 동일: `crates/bitvue-engine/src/byte_cache.rs:200`의 `get_segment()`가 여전히 `Bytes::copy_from_slice(data)`를 쓰지만 함수 자체가 여전히 `#[allow(dead_code)]`이며, 워크스페이스 전체에서 자기 자신의 정의 외에 호출부가 0건이다(grep 확인). Tauri→Electron 전환을 넘어 살아남은 동일한 죽은 코드.
 
 ---
 
@@ -243,7 +244,7 @@ impl Decoder {
 - 파이프라인 단계 사이에 실제로 데이터 변환(디코딩, 색공간 변환 등)이 일어나 원본과 무관한 새 버퍼가 필요한 지점은 복사가 아니라 "생성"이므로 해당 없음.
 - 별도 프로세스/스레드로 격리되어 메모리 공유가 안전상 금지된 플러그인 경계(FFI, sandbox).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 재감사, 새 위치: `Av1Decoder::send_data_owned`(bitvue-decode/src/decoder.rs:331-333)가 이미 owned인 `Vec<u8>` 인자를 받고도 `self.last_obu_data = Some(data.clone())`로 한 번 더 복사하고, 같은 파일의 호출부(795행)는 프레임마다 소스 버퍼에서 `data[frame_header.offset..frame_end].to_vec()`로 슬라이스를 잘라낸다 — 프레임 페이로드가 파이프라인 경계마다 최소 두 번(추출 1회 + 디코더 내부 캐시 1회) 복사된다.
 
 ---
 
@@ -306,7 +307,7 @@ fn scan_all_nal_headers(mmap: &Mmap, offsets: &[u64]) -> Vec<[u8; 4]> {
 - 접근 빈도가 극히 낮은 경로(사용자가 한 번 클릭했을 때만 실행)에서는 syscall 오버헤드가 체감되지 않는다.
 - 파일이 이미 정렬된 순차 접근 패턴이라 각 read가 사실상 연속적인 경우(=이 안티패턴에 해당하지 않음).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재확인, 결론 동일: `parse_mp4`(mp4.rs:356)/`parse_mkv`(mkv.rs:270)와 AV1 IVF/OBU 파서 전부 `&[u8]` 인메모리 버퍼(내부적으로 `Cursor` 경유) 위에서 동작하며, hot path에 NAL 단위 `File::seek`+`read` 반복 루프가 없다.
 
 ---
 
@@ -368,7 +369,7 @@ fn worker_mmap(mmap: &memmap2::Mmap, offset: usize, len: usize) -> &[u8] {
 - 단일 스레드에서만 파일에 접근하도록 아키텍처가 보장되어 있는 경우(예: 전용 I/O 스레드 + 채널로 요청을 직렬화).
 - 플랫폼이 `pread`/`seek_read`를 지원하지 않는 특수 환경(드물지만 일부 임베디드 타깃)에서는 명시적 뮤텍스 직렬화가 유일한 대안일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재확인, 결론 동일: 워크스페이스 전체에서 `Mutex<File>`/`RwLock<File>` 공유 패턴이 grep 0건. 파일 접근은 전부 `Arc<Mmap>` 기반 `ByteCache`를 경유하며(`Sync`, 커서 없음), `bitvue-sidecar`의 요청별 스레드 모델(main.rs 상단 doc)도 이 항목이 우려하는 공유 커서 경쟁과는 무관한 구조다.
 
 ---
 
@@ -434,7 +435,7 @@ impl SharedFile {
 - 파일이 매우 작고 접근 빈도가 낮아 경합이 사실상 발생하지 않는 보조 파일(설정, 메타데이터 사이드카).
 - 쓰기 작업이 대부분이라 어차피 직렬화가 정확성을 위해 필요한 경우(단일 export 파일에 대한 순차 append).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재확인, 결론 동일: `Mutex<File>` 공유 자체가 없다. `bitvue-sidecar`는 요청마다 독립 `std::thread`를 스폰하며(main.rs "Concurrency model" 문서 주석), 재생/썸네일/hex view/export가 경쟁할 단일 I/O 락이 아키텍처상 존재하지 않는다 — `Core`의 스트림별 `RwLock<StreamState>`(core.rs:44-48)는 `Arc<ByteCache>`를 잠깐 clone하는 용도일 뿐 I/O 자체를 감싸지 않는다.
 
 ---
 
@@ -488,7 +489,7 @@ async fn get_frame_bytes(state: tauri::State<'_, AppState>, offset: usize, len: 
 - 파일이 이미 애플리케이션 시작 시점에 전체 프리로드(`madvise(WILLNEED)` 등)되어 콜드 페이지가 사실상 없다고 보장되는 경우.
 - 매우 작은 파일이라 page fault 비용이 프레임 예산(16ms) 내에서 무시 가능한 수준일 때.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (설계로 완화됨) — Tauri가 없어져 "async command 핸들러가 mmap 첫 접근으로 블로킹"이라는 원 시나리오 자체가 성립하지 않는다. `bitvue-sidecar`는 요청마다 별도 `std::thread::spawn`으로 처리하고(main.rs, "Concurrency model" 문서 주석이 명시적으로 "pulling in an async runtime would just mean wrapping every `Core` call in `spawn_blocking` anyway"라고 밝힘), 최종 쓰기만 `Mutex<Stdout>`으로 짧게 직렬화한다 — 한 요청의 mmap page fault/CPU 바운드 디코딩이 리더 루프나 다른 요청을 막지 않는다.
 
 ---
 
@@ -565,7 +566,7 @@ impl VideoSource {
 - 파일이 애플리케이션 자체 제어하에 있고 읽기 전용으로만 열리며, 삭제/수정 권한이 원천적으로 차단된 샌드박스 환경.
 - 매핑 직후 즉시 처리하고 매핑을 짧게 유지하는 일회성 배치 작업(장시간 세션이 아닌 경우 위험도가 낮음).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (완화됨) — 재감사 결과 완전히 뒤바뀜: `read_range`가 이제 프로덕션 라이브 경로이며(main.rs 9개 호출부), 카탈로그의 권장안과 거의 동일한 방어를 이미 구현하고 있다 — `ByteCache::read_range`(byte_cache.rs:140-171)는 슬라이싱 전 `current_size != original_size` 검사로 truncate를 감지해 `BitvueError::FileModified`를 반환하고, `validate()`(217-232)는 `fs::metadata`로 별도 재검증도 제공한다. 잔여 위험: 검사와 실제 슬라이스 접근 사이 좁은 TOCTOU 창은 여전히 이론상 존재하고 SIGBUS 핸들러는 설치돼 있지 않다(mmap 기반 접근 전반의 공통 한계).
 
 ---
 
@@ -620,7 +621,7 @@ fn map_file(path: &Path) -> std::io::Result<MappedRegion> {
 **예외**:
 - 프로젝트가 명시적으로 64비트 데스크톱(Tauri 데스크톱 앱 등)만 지원 대상으로 선언하고 32비트 빌드를 아예 지원하지 않는 경우, 이 항목은 낮은 우선순위로 강등 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재확인, 결론 동일(경로만 갱신): CI 매트릭스(`.github/workflows/ci.yml`, `build-electron-app.yml`)는 ubuntu-latest/macos-latest/windows-latest만 빌드하며 전부 64비트 타깃이다. i686/arm32/wasm32 타깃이 전혀 없다.
 
 ---
 
@@ -688,7 +689,7 @@ fn choose_io_strategy(kind: &StorageKind) -> IoStrategy {
 - 애플리케이션이 로컬 파일만 지원한다고 명시적으로 제한하고(오픈 다이얼로그에서 네트워크 경로를 사전 차단), 이를 문서화한 경우.
 - 네트워크 스토리지가 사실상 로컬만큼 빠른 전용 고속 SAN 환경으로 배포 대상이 한정된 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 재확인, 결론 동일: 워크스페이스 전체에서 `statfs`/마운트 종류 감지/네트워크 전용 I/O 전략이 전혀 없다(grep: statfs/is_network/smb/nfs/webdav 전부 0건). `ByteCache::new`(byte_cache.rs:79)는 로컬이든 원격 마운트든 완전히 동일한 `Mmap::map` 경로를 탄다.
 
 ---
 
@@ -753,7 +754,7 @@ fn prefetch_worker(mmap: &memmap2::Mmap, rx: mpsc::Receiver<usize>, index: &Fram
 - 사용자가 완전히 무작위로 프레임을 탐색하는 워크플로(예: 특정 조건을 만족하는 프레임을 검색하는 분석 도구)에서는 예측이 무의미해 prefetch 이득이 적다.
 - 파일이 이미 전량 로컬 캐시에 적재되어(작은 파일, 반복 재생) 콜드 미스가 사실상 없는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (absence) — 재감사: `decode_service.rs`가 통째로 사라져 예전에 있던 dead-code prefetch 함수도 함께 없어졌다. 현재 워크스페이스 전체에서 prefetch/readahead 관련 로직이 grep으로 전혀 발견되지 않는다(유일한 매치는 무관한 vendor abseil 심볼명). `bitvue-decode`/`bitvue-engine`/`bitvue-sidecar` 어디에도 순차 재생/스크러빙을 위한 프리페치 메커니즘이 없다.
 
 ---
 
@@ -821,7 +822,7 @@ impl FrameIndex {
 - 파일이 매우 작아(수백 프레임 이하) 선형 스캔 비용이 체감되지 않는 경우.
 - 스트리밍 파싱이 목적이라 애초에 임의 접근이 요구사항에 없는 워크플로(순수 순차 처리 배치 도구).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 재감사 결과 뒤바뀜: `get_frame_analysis(data, frame_index)`(bitvue-sidecar/src/frame_analysis.rs:55)가 프레임 하나를 조회할 때마다 `parse_ivf_frames(data)`로 파일 byte 0부터 전체 프레임 테이블을 다시 구축한다 — 영속 인덱스를 캐싱하지 않고 매 호출 재스캔(게다가 이 데이터 자체도 매 커맨드마다 `byte_cache.read_range(0, full_len)`로 전체 파일을 다시 읽어 넘겨받음, main.rs). `bitvue-indexer`가 다른 커맨드(`index_stream`/`get_frames_chunk`/`get_frame_syntax`)를 위한 영속 인덱스를 이미 구축해두고 있음에도 `get_frame_analysis`/`get_av1_features` 등은 이를 거치지 않는다.
 
 ---
 
@@ -877,7 +878,7 @@ fn export_clip(source: &Arc<Mmap>, start: usize, end: usize, out_path: &Path, in
 - export 대상 구간이 매우 짧아(수 프레임) 락 보유 시간이 무시할 수 있는 수준인 경우.
 - 애플리케이션이 애초에 "export 중에는 다른 작업 불가"를 의도된 UX로 명시하고 진행률 모달로 이를 사용자에게 알리는 설계라면 판단이 달라질 수 있다(단, 이 경우도 취소 가능성은 보장해야 한다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재감사 결과 뒤바뀜: 전체 순회/쓰기 루프를 감싸는 장기 락이 발견되지 않는다. `bitvue-cli`의 export(export.rs)는 공유 상태가 없는 단발성 독립 프로세스이고, `bitvue-sidecar`의 evidence export(evidence_export.rs:85-89)는 `byte_cache.len()`을 읽기 위해 `StreamState`를 아주 짧게 read-lock한 뒤 즉시 drop하고 나서 파일을 쓴다 — 쓰기 루프 자체는 락 밖에서 실행된다.
 
 ---
 
@@ -939,7 +940,7 @@ fn transcode_for_preview(source: &[u8]) -> std::io::Result<memmap2::Mmap> {
 - 중간 산출물의 크기가 설계상 명확한 상한(예: 단일 프레임의 썸네일, 수백 KB)을 가지며 절대 커지지 않는 경우.
 - 극도로 빠른 지연시간이 필요하고 임시 디스크 쓰기 자체가 병목이 되는 초저지연 경로(단, 이 경우 메모리 상한을 별도로 강제해야 한다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 재감사, 새 위치: `decode_ivf_frames`(bitvue-cli/src/commands/quality.rs:192-222, `quality`/`bd-rate` 서브커맨드 공용)가 reference/distorted 두 파일 모두를 raw luma-plane `Vec<(Vec<u8>, usize, usize)>`로 전량 디코딩해 동시에 메모리에 보관한다 — `--frames` 필터는 디코드가 끝난 뒤(quality.rs:~70) 적용되므로 프레임 1개만 요청해도 파일 전체가 먼저 디코딩된다. `tempfile`/`NamedTempFile`은 이 경로 어디에도 쓰이지 않는다.
 
 ---
 
@@ -1011,7 +1012,7 @@ fn open_for_sequential_decode(path: &Path) -> std::io::Result<memmap2::Mmap> {
 - 파일이 매우 작아 어차피 전체가 캐시에 상주하는 경우 힌트의 실질적 효과가 없다.
 - `madvise` 미지원 플랫폼/파일시스템(일부 FUSE 구현)에서는 호출이 무시되거나 에러를 반환할 수 있으므로 실패를 치명적으로 다루지 않아야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (absence) — 재확인, 결론 동일: 워크스페이스 전체에서 `madvise`/`.advise(`/`posix_fadvise`/`PrefetchVirtualMemory` 호출이 0건이다. `ByteCache`는 순차 전체읽기(`read_range(0, full_len)`)와 임의접근 양쪽 다 `Mmap::advise`를 전혀 쓰지 않는다.
 
 ---
 
@@ -1071,7 +1072,7 @@ impl FrameReader {
 - 접근 빈도가 극히 낮은 일회성 작업(파일 정보 조회 다이얼로그 등)에서는 오픈 오버헤드가 무의미한 수준.
 - 파일 핸들을 장기 보관하는 것이 오히려 문제(다른 프로세스의 파일 교체를 감지해야 하는 워치 로직)인 특수한 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재감사 결과 뒤바뀜(`file.rs`/`open_file`은 더 이상 존재하지 않음): `ByteCache`는 스트림당 정확히 한 번만 `Core::handle_open_file`(core.rs:156)에서 열리고 `Arc<ByteCache>`로 `StreamState`에 저장되며, 이후 모든 커맨드는 매번 새로 여는 대신 이 `Arc`를 clone한다(예: main.rs:941-942). 프레임/커맨드 단위 재오픈 루프는 발견되지 않았다.
 
 ---
 
@@ -1129,7 +1130,7 @@ fn verify_entire_file_checksum(path: &Path) -> std::io::Result<u64> {
 - 시스템에 페이지 캐시로 쓸 여유 메모리가 넉넉하고(파일 크기 대비 RAM이 충분), 캐시 압박이 실질적으로 발생하지 않는 배포 환경.
 - 배치 작업이 항상 유휴 시간(사용자가 다른 파일을 열지 않는 시점)에만 실행되도록 이미 스케줄링되어 있는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재확인, 결론 동일: 전체 파일 체크섬/무결성 검증/백업처럼 1회성 순차 스캔을 수행하는 기능 자체가 코드베이스에 없다(`bitvue-cli decode --md5`는 프레임 단위 MD5이지 전체 파일 해시가 아님; whole-file crc64/sha256 유틸리티는 발견되지 않음).
 
 ---
 
@@ -1206,7 +1207,7 @@ impl IngestSource {
 **예외**:
 - 파일이 열린 이후 절대 크기가 변하지 않는다고 보장되는 워크플로(사후 분석 전용, 캡처가 이미 완료된 파일만 다룸)에서는 이 문제가 아예 발생하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재확인, 결론 동일: 실시간 캡처/ingest/tail-follow 기능이 존재하지 않는다(live_capture/tail_file/ingest/notify:: 등 grep 전부 0건). Bitvue는 이미 완결된 정적 파일만 연다.
 
 ---
 
@@ -1270,4 +1271,4 @@ fn replace_source_with_export(original: &Path, exported: &Path, mmap_guard: &mut
 **예외**:
 - 배포 대상이 단일 플랫폼으로 확정되어 있고 이를 명시적으로 문서화한 프로젝트(예: 리눅스 서버 전용 백엔드 도구)라면 우선순위가 낮아질 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 재확인, 결론 유지(경로만 갱신): CI는 windows-latest/macos-latest/ubuntu-latest 전부에서 빌드·테스트하지만(ci.yml, build-electron-app.yml), `byte_cache_test.rs`는 read_range/bounds/validate/stats만 다루고 "매핑된 파일 삭제/rename"이나 "0바이트 파일 mmap" 같은 플랫폼별 시나리오는 검증하지 않는다. `bitvue-engine`/`bitvue-sidecar` 어디에도 mmap 관련 `#[cfg(windows)]`/`#[cfg(unix)]` 분기가 없다. 다만 `bitvue-cli` export와 `bitvue-sidecar` evidence export 모두 항상 별도 output 경로에 쓰고 열려있는 원본을 `rename`/`remove_file`하는 코드가 워크스페이스에 전혀 없어(grep 0건), 카탈로그가 지목하는 가장 날카로운 실패 모드(Windows sharing violation)를 유발할 시나리오 자체가 현재 기능 범위에 없다.

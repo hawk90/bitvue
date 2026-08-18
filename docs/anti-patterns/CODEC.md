@@ -55,7 +55,7 @@ pub fn is_keyframe(sample: &[u8]) -> bool {
 **예외**:
 - 컨테이너 자체가 코덱을 전제하는 포맷(IVF는 사실상 VP8/VP9/AV1 전용)이라면 최소한의 "코덱 힌트 태그"만 읽는 것은 허용되지만, 신택스 파싱까지 넘어가면 안 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `bitvue-formats/src/ts.rs:465-486`의 `is_avc_keyframe`/`is_hevc_keyframe`가 TS 컨테이너 파서 내부에서 NAL type 비트(`& 0x1F`, IRAP 범위 16..=23)를 직접 해석해 키프레임을 판정한다.
 
 ---
 
@@ -102,7 +102,7 @@ pub fn to_absolute(container_base: u64, unit: &NalUnit) -> std::ops::Range<u64> 
 **예외**:
 - 없음 — offset 합성은 항상 상위 레이어의 책임이며, 코덱 파서가 컨테이너 오프셋 정책을 알아야 하는 정당한 이유는 사실상 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-hevc`/`bitvue-avc`/`bitvue-vp9`/`bitvue-av1-codec` 파서 함수 시그니처에서 `file_offset`/`chunk_offset`/`mp4_*` 류 컨테이너 오프셋 파라미터를 grep했으나 발견되지 않음; 오프셋 합성은 코덱 크레이트 밖(`bitvue-core`/UnitNode 조립부)에서 처리되는 것으로 보임.
 
 ---
 
@@ -153,7 +153,7 @@ pub struct DecodedFrame<'s> {
 **예외**:
 - 참조 디코더처럼 신택스와 재구성이 1:1로 강결합되어 있고 분석 전용 경로가 애초에 존재하지 않는 도구라면 분리 비용이 이득보다 클 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-decode/src/decoder.rs:33` `DecodedFrame`은 픽셀 플레인(y/u/v_plane)만 갖는 순수 디코드 결과 타입이고, 신택스 필드와 `Option<PixelBuffer>`가 한 struct에 섞인 사례를 찾지 못함.
 
 ---
 
@@ -219,7 +219,7 @@ impl SyntaxUnit for HevcSps {
 **예외**:
 - variant 수가 적고(2~3개) 향후 확장 계획이 없는 닫힌 도메인(예: "컨테이너 종류 4가지 고정")이라면 enum이 트레이트보다 단순하고 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `HevcSps(...)`/`AvcSps(...)` 같은 코덱별 owned 타입을 나열한 거대 flat enum을 전체 크레이트에서 찾지 못함; `bitvue-core/src/evidence.rs`의 `SyntaxNodeType`은 `Custom(String)` 탈출구가 있는 얕은 라벨 enum으로, 권장안(트레이트/좁은 공통 인터페이스)에 더 가까움.
 
 ---
 
@@ -281,7 +281,7 @@ pub enum CodecSpecificFrame {
 **예외**:
 - 다루는 코덱이 2개뿐이고 공통 필드가 압도적으로 많다면(예: AVC와 HEVC만 지원) 단일 struct + 소수의 Option이 실용적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (설계는 존재하나 미사용) — `bitvue-core/src/frame.rs`의 `VideoFrame`/`CodecMetadata`가 정확히 권장 패턴(코덱별 enum variant)으로 구현되어 있지만 grep 결과 다른 크레이트에서 전혀 소비되지 않는 죽은 코드이고, 실제로는 각 코덱 크레이트가 `AvcFrame`/`HevcFrame`/`Vp9Frame` 등 독립 타입을 따로 소유해 god-struct가 실사용 경로에는 없음.
 
 ---
 
@@ -340,7 +340,7 @@ pub enum CodecSpecificFrame {
 **예외**:
 - 정말 스키마가 없는 확장 메타데이터(사용자 정의 SEI payload, 벤더 사설 확장 등)를 "그대로 통과시키는" 용도라면 타입화 자체가 불가능하므로 맵이 적절하다 — 단, 이 경우 필드명에 "unknown/vendor" 등으로 명시해 알려진 필드와 섞이지 않게 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `HashMap<String, serde_json::Value>`는 `bitvue-core/src/performance.rs:313`의 `PerfEvent.extra`(성능 이벤트 확장 필드) 한 곳뿐이며, 코덱 신택스 필드 저장 용도로 쓰이는 사례는 발견되지 않음(문서의 예외 조항에 해당하는 범용 확장 메타데이터에 가까움).
 
 ---
 
@@ -409,7 +409,7 @@ pub fn parse_bitstream(codec: CodecId, data: &[u8]) -> Result<ParsedUnit, ParseE
 **예외**:
 - 외부 설정 파일/CLI 인자처럼 원래 문자열로 들어오는 최초 입력 지점에서 파싱하는 것은 당연히 필요하다 — 문제는 그 문자열이 내부 로직 전체로 전파되는 것이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `src-tauri/src/commands/frame.rs:694-713`의 `is_hevc_codec`/`is_avc_codec`가 `codec.to_lowercase().contains("265")`/`.contains("264")` 같은 느슨한 부분 문자열 매칭으로 dispatch하며, `bitvue-core`에 `Codec` enum이 `codec_error.rs`/`semantic_evidence.rs`/`player/extractor.rs` 세 곳에 중복 정의되어 있어 단일 닫힌 enum 경계가 지켜지지 않음.
 
 ---
 
@@ -471,7 +471,7 @@ pub fn parse_slice_header<R: BitSource>(reader: &mut R) -> SliceHeader {
 **예외**:
 - 비트리더가 아니라 "파일당 한 번" 수준으로 호출되는 상위 계층(코덱 선택, 컨테이너 데먹서 선택)이라면 `dyn Trait`의 오버헤드는 무시할 수 있는 수준이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `dyn BitSource`/`Box<dyn BitReader>` 류 trait object를 어떤 코덱 크레이트에서도 찾지 못함; 비트리더는 전부 구체 타입(concrete struct)으로 구현되어 있음.
 
 ---
 
@@ -535,7 +535,7 @@ impl DecodePipeline {
 **예외**:
 - 실제로 여러 구현체가 빈번히 교체되며 그 교체가 성능에 결정적인 경로(예: 여러 픽셀 포맷에 대한 SIMD 커널)라면 제네릭이 정당하다 — 이때도 파이프라인 전체가 아니라 커널 함수 단위로 국소화한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 제네릭 파라미터 3개 이상의 대형 파이프라인 struct를 찾지 못함; `bitvue-core/src/player/pipeline.rs`의 `PlayerPipeline`은 비제네릭 struct임.
 
 ---
 
@@ -598,7 +598,7 @@ use bitvue_codecs::bitreader::EmulationPreventionBitReader;
 **예외**:
 - AV1의 leb128과 HEVC의 exp-golomb처럼 근본적으로 다른 인코딩을 억지로 하나의 함수로 합치는 것은 오히려 CODEC-012와 같은 과잉 추상화가 된다 — "정말 같은 알고리즘"인 것만 공유한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-avc`/`bitvue-hevc`/`bitvue-vvc`/`bitvue-mpeg2-codec`의 `bitreader.rs`가 모두 `bitvue_core::BitReader` + `ExpGolombReader` 트레이트 + `remove_emulation_prevention_bytes`를 감싸는 얇은 wrapper로 구현되어 있어, 문서가 권장하는 '공통 저수준 구현 공유' 패턴을 그대로 따름(전체 복제가 아님).
 
 ---
 
@@ -670,7 +670,7 @@ match parse_sps(data) {
 **예외**:
 - 정말 일회성 디버그 로그나 CLI 진단 출력처럼, 구조적으로 분기할 필요가 전혀 없는 말단 소비처라면 단순 문자열 에러도 실용적이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-hevc`의 핵심 파싱 경로(`parse_sps`/`parse_pps`)는 `thiserror` 기반 `HevcError` enum을 리턴함; `Result<_, String>`은 `frames.rs`의 빌더 검증 헬퍼 등 지엽적인 곳에서만 발견됨.
 
 ---
 
@@ -735,7 +735,7 @@ impl ReferenceView for Av1RefFrames { /* virtual_buffer를 순회하며 매핑 *
 **예외**:
 - 정말로 표시/통계 목적의 얕은 뷰(예: "이 프레임이 참조하는 프레임이 몇 개인가" 카운트)라면 공통 인터페이스가 적절하다 — 문제는 "재구성에 필요한 정확한 규칙"까지 공통 모델에 밀어넣을 때다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(단, 문서의 예외 조항 해당 가능) — `bitvue-core/src/temporal_state.rs:94` `ReferenceSlot`이 AV1의 8-slot, H.264의 slot 수, VP9 전용 참조 이름(`Vp9Last`/`Vp9Golden`/`Vp9Altref`), short/long-term 플래그를 하나의 struct/enum(`TemporalRefType`)에 뭉쳐 담고 있음; 다만 필드 구성(slot_idx, usage_count, age 등)으로 볼 때 DPB 디버그/시각화용 얕은 뷰로 보여 문서의 '표시 목적' 예외에 해당할 가능성이 있음.
 
 ---
 
@@ -799,7 +799,7 @@ for_display.sort_by_key(|e| e.display_order);
 **예외**:
 - 저지연/올인트라 전용 도구처럼 B-frame을 애초에 지원하지 않는다고 명시적으로 스펙에 박아둔 경우, 두 순서가 항상 같으므로 단일 필드로 단순화하는 것이 정당할 수 있다 — 단 이 가정을 코드에 주석/타입으로 명시해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-core/src/frame_identity.rs`의 `FrameIndexMap`이 `decode_idx`↔`display_idx`를 PTS 기준으로 정렬해 양방향으로 명시적으로 보존하는 구조로, 권장 패턴(두 순서를 별도 필드로 유지)을 그대로 구현함.
 
 ---
 
@@ -858,7 +858,7 @@ pub fn resolve_display_time(t: &FrameTiming, fallback_fps: f64, frame_idx: u32) 
 **예외**:
 - 컨테이너가 없는 raw 코덱 스트림만 지원하는 도구라면 애초에 "트랙 타임스케일"이라는 개념이 없으므로 이 구분이 무의미하다 — 이 경우 코덱 타이밍 힌트만 다루면 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `bitvue-core`에 `container_dts`/`container_pts`/`codec_timing_hint` 같은 출처 구분 타입이 없고, HEVC/AV1 VUI `timing_info`/`num_units_in_tick`은 파싱은 되지만(`bitvue-hevc/src/sps.rs`, `bitvue-av1-codec/src/sequence.rs`) 이를 컨테이너 타임스케일과 명시적 우선순위로 합성하는 코드를 찾지 못함; 실제 결함까지는 확인하지 못해 Suspected로 남김.
 
 ---
 
@@ -919,7 +919,7 @@ pub struct OutputFrame {       // 실제로 화면에 표시되는 최종 픽처
 **예외**:
 - 하나의 코덱/컨테이너 조합만 다루고 그 조합에서 "1 sample = 1 access unit = 1 output frame"이 항상 참임이 스펙상 보장된다면(예: 순수 progressive, scalability 없는 baseline profile) 단일 개념으로 단순화해도 무방하다 — 다만 다중 코덱 지원이 목표라면 이 가정은 오래 유지되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `bitvue-core`에 서로 다른 필드 구성의 `TimelineFrame` struct가 `stream_state.rs:531`과 `timeline.rs:49` 두 곳에 중복 정의되어 있고, 각 코덱 크레이트가 `AvcFrame`/`HevcFrame`/`Vp9Frame` 등 별도 `*Frame` 타입을 독립적으로 소유해 'Frame'이라는 이름이 컨테이너/코덱/타임라인 레이어마다 다른 개념으로 쓰임.
 
 ---
 
@@ -971,7 +971,7 @@ pub fn read_temporal_id(low_nibble: u8) -> Result<u8, NalHeaderError> {
 **예외**:
 - 코덱 신택스가 스펙상 우연히 비슷해 보일 뿐 독립적으로 진화할 것으로 예상된다면(예: 서로 다른 표준화 기구), 처음부터 공통화를 시도하지 않고 각자 구현하는 편이 오히려 더 정직한 설계다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `bitvue-hevc/src/nal.rs`와 `bitvue-vvc/src/nal.rs`가 구조적으로 유사한 NAL 헤더 파서를 각자 독립 구현하고 있고(공유 모듈 없음, forked-from 추적 주석도 없음) 드리프트 위험은 구조적으로 존재하나, 두 구현 모두 `nuh_temporal_id_plus1.saturating_sub(1)`로 동일하게 언더플로를 안전하게 처리하고 있어 실제 드리프트 버그는 확인되지 않음.
 
 ---
 
@@ -1029,7 +1029,7 @@ fn frames_from_packet(packet: &[u8]) -> Vec<&[u8]> {
 **예외**:
 - 컨테이너별로 superframe 표현 규칙 자체가 다르다면(예: 어떤 컨테이너는 이미 분해된 상태로 저장) 그 컨테이너 고유의 재조립 로직은 정당하게 컨테이너 레이어에 있어야 한다 — 다만 "분해된 이후 조각 하나를 해석하는" 코덱 로직 자체는 여전히 코덱 크레이트에 있어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — VP9 superframe 분해는 `bitvue-vp9/src/superframe.rs`가 단독 소유하며, `bitvue-formats`(ivf.rs/mkv.rs)에 중복 구현된 사례를 찾지 못해 권장 패턴을 따르고 있음.
 
 ---
 
@@ -1090,7 +1090,7 @@ impl Av1SequenceHeader {
 **예외**:
 - 파싱 없이 컨테이너 메타데이터(코덱 태그, 프로파일 박스)만으로도 스펙상 100% 결정되는 성질(예: "이 프로파일 자체가 특정 도구를 아예 배제한다"는 스펙 레벨 제약)이라면 이름/프로파일 기반 판단이 정확할 수 있다 — 이 경우도 그 근거를 주석으로 스펙 조항과 함께 남긴다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `has_film_grain`(`bitvue-core/src/frame_identity.rs`)과 `film_grain_params_present`(`bitvue-av1-codec/src/sequence.rs:301`)는 실제 파싱된 신택스 값에서 유도되며, `FrameExtractor` capability 메서드도 코덱별 trait impl로 구현되어 있어 코덱 이름/프로파일 문자열 추정 패턴은 발견되지 않음.
 
 ---
 
@@ -1147,7 +1147,7 @@ pub struct Substream {
 **예외**:
 - 도구의 스코프가 명시적으로 "단일 레이어/단일 트랙 분석"으로 한정되어 있고 로드맵에도 다중 레이어 지원이 없다면, 이 복잡도를 미리 감당할 필요는 없다 — 다만 이 경우 "다중 레이어는 지원 범위 밖"이라는 결정을 문서화해 향후 오해를 막는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SHVC/VVC 다중 레이어, AV1 다중 operating point 관련 개념(`Substream`/`OperatingPoint`/`EnhancementLayer`/`SHVC`)이 코드베이스 전체에 전혀 존재하지 않아, 아직 깨질 '단일 트랙 가정'조차 없음(범위 밖 기능이며 이 결정이 문서화되어 있는지는 별도 확인 필요).
 
 ---
 
@@ -1209,7 +1209,7 @@ pub fn resolve_seek_target(container_hint: u32, parsed_units: &[ParsedUnit]) -> 
 **예외**:
 - 컨테이너가 sync sample을 신뢰할 수 있게 생성한다고 보장되는 폐쇄된 파이프라인(자체 인코더로만 생성된 파일만 다루는 경우)이라면 이 이중 검증을 생략하는 실용적 타협이 가능하다 — 다만 범용 분석 도구라면 이 가정이 위험하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `bitvue-core/src/indexing.rs`의 `SeekPoint`가 IRAP 종류 구분 없는 단일 `is_keyframe: bool` 필드만 가지며, `bitvue-formats/src/ts.rs`의 `is_hevc_keyframe`은 BLA/IDR/CRA(16..=23)를 RASL 구분 없이 동일하게 키프레임으로 취급하고, MP4 경로(`mp4.rs` key_frames)도 `stss`를 코덱 레벨 검증 없이 그대로 신뢰함.
 
 ---
 
@@ -1265,7 +1265,7 @@ pub fn decode_hvcc_box(box_bytes: &[u8]) -> HevcSps {
 **예외**:
 - 없음 — 레이어 역전은 아키텍처 규칙 위반이며 예외를 두면 워크스페이스 전체 레이어링이 무의미해진다. 정말 공유가 필요한 타입이 있다면 더 하위의 공통 크레이트(`bitvue-core`)로 내려야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-av1-codec/Cargo.toml`이 `bitvue-formats`에 의존하고, `bitvue-av1-codec/src/lib.rs:194-243`가 `bitvue_formats::mp4/mkv/ts::extract_av1_samples`를 직접 호출해 코덱 크레이트가 컨테이너 크레이트를 참조하는 레이어 역전이 실재함(트랜지티브하게 `bitvue-codecs`도 영향받음).
 
 ---
 
@@ -1324,7 +1324,7 @@ fn extract_pes_payload_units(pes_payload: &[u8]) -> Vec<&[u8]> {
 **예외**:
 - 컨테이너 포맷 자체의 스펙이 델리미터 스캔을 컨테이너 레벨에서 요구하는 극히 드문 경우(예: 컨테이너가 자체적으로 별도의 스타트코드 규약을 정의)라면 예외일 수 있으나, TS/MP4/MKV의 일반적인 코덱 임베딩에는 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `bitvue-formats/src/ts.rs:421`의 `split_annex_b_nal_units`가 TS 컨테이너 파서 내부에서 Annex-B start code 스캔을 직접 구현하고 있으며, 공유 `bitvue-codecs` 유틸리티로 위임하지 않음.
 
 ---
 
@@ -1380,7 +1380,7 @@ pub fn parse_nal_unit(unit: &[u8]) -> NalUnit { /* framing에 대한 지식 전�
 **예외**:
 - 코덱 자체가 표준으로 두 가지 이하의 고정된 byte-stream 포맷만 가지며 향후 변형이 늘어날 가능성이 없다고 확신할 수 있다면 간단한 enum 파라미터 정도는 실용적 타협으로 남을 수 있다 — 다만 이 경우도 "framing"과 "신택스 파싱"의 함수 분리는 유지하는 것이 좋다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-hevc`/`bitvue-avc`/`bitvue-vvc` 파서 함수 시그니처에서 `is_mp4`/`is_annexb`/`container: &str` 류 파라미터를 찾지 못함; byte-stream framing 분리가 코덱 크레이트 밖에서 처리되는 것으로 보임.
 
 ---
 
@@ -1436,7 +1436,7 @@ pub fn resolve_pps<'a>(pps: &HevcPps, sps_table: &'a SpsTable) -> Result<Resolve
 **예외**:
 - 항상 완전한 파일 전체를 한 번에 메모리에 올려 처음부터 끝까지만 분석하는 배치 전용 도구라면, 2-패스(먼저 모든 파라미터 셋 수집, 이후 해석)를 강제해도 실용적 문제가 없을 수 있다 — 다만 이 경우도 "즉시 panic"보다는 "수집 단계에서 순서를 보장"하는 명시적 설계가 낫다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(패닉은 회피) — `bitvue-hevc/src/slice.rs:262,290`의 `parse_slice_header`가 `sps_map`/`pps_map`을 필수 인자로 받아 SPS/PPS 없이는 부분 결과를 낼 수 없는 구조적 결합이 존재함; 다만 `.expect()`/`.unwrap()` 대신 `ok_or_else(HevcError::InvalidData)`로 `Result`를 반환해 문서가 지적한 '즉시 panic' 증상 자체는 회피하고 있음.
 
 ---
 
@@ -1491,4 +1491,4 @@ pub fn read_hvcc_box(box_bytes: &[u8]) -> Result<HvccConfig, HvccError> {
 **예외**:
 - 컨테이너가 필요로 하는 정보가 "코덱 타입 하나 식별" 수준으로 극히 얕다면(예: 첫 바이트의 `configurationVersion`만 읽으면 됨) 전체 파서를 공유할 필요 없이 컨테이너가 그 한 필드만 직접 읽는 것은 실용적이다 — 문제는 SPS/PPS 바이트 추출처럼 실질적인 코덱 신택스 해석까지 중복될 때다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `hvcC`/`avcC` 등 decoder-config-record(extradata) 파싱 코드가 `bitvue-formats`와 코덱 크레이트 어디에도 존재하지 않음(grep 무결과); MP4/MKV 샘플 추출은 in-band NAL 유닛에 의존하므로 '두 곳에서 각자 해석' 시나리오 자체가 아직 발생할 수 없음.

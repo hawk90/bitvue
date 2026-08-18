@@ -58,7 +58,7 @@ pub fn parse_unit(codec: CodecId, data: &[u8]) -> Result<Box<dyn ParsedUnit>, Pa
 **예외**:
 - 코덱 개수가 명확히 유한하고(예: 정확히 표준화된 5~6종만 영구히 지원) 향후 추가 계획이 없다면, 레지스트리 추상화 자체가 과설계일 수 있다. 이 경우 명시적 exhaustive match가 오히려 "빠진 코덱을 컴파일 타임에 잡아준다"는 장점이 크다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (2026-08-18 Electron 전환 후 재검증, 구 `src-tauri`/`bitvue-core` 인용은 폐기) 실사용 경로는 `crates/bitvue-cli/src/commands/decode.rs:207`(`resolve_codec`)와 `:248`(`extract_frames`, `main.rs:348`에서 실제 호출됨) — 코덱 하나 추가할 때마다 이 두 match를 고쳐야 하는 정확히 나쁜 예 패턴. `crates/bitvue-engine/src/index_extractor.rs:663`(`ExtractorFactory::create`, 옛 `bitvue-core`가 `bitvue-engine`으로 개명된 동일 코드)도 동일 패턴이지만 이건 자체 테스트 외 호출자가 없는 사실상 죽은 코드(grep 결과 `index_extractor_test.rs`/`tests/index_extractor.rs`뿐). "HEVC/VP9/VVC indexers are disabled due to cyclic dependency" 주석은 여전히 남아있음.
 
 ---
 
@@ -117,7 +117,7 @@ impl CodecPlugin for HevcPlugin {
 **예외**:
 - hex-view/syntax-tree 인스펙터처럼 "raw 구조를 있는 그대로 보여주는 것"이 기능 요구사항 자체인 도구에서는 raw 노출이 버그가 아니라 의도다. 다만 이 경우도 "다른 모듈이 그 raw 타입에 의존하는 것"과 "UI가 read-only로 보여주기만 하는 것"은 구분해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (2026-08-18 재검증, 경로 불변) `crates/bitvue-hevc/src/lib.rs:54`가 `pub use slice::{SliceHeader, SliceType}`로 재노출하고, `crates/bitvue-hevc/src/slice.rs:101` `SliceHeader`는 표준서 필드 30여 개가 전부 `pub`인 raw struct(나쁜 예와 거의 동일). `SliceHeader` 식별자를 grep하면 다른 코덱 크레이트(avc/mpeg2/vvc)가 각자 자기 자신의 동명 타입을 갖고 있을 뿐, `bitvue-hevc`의 것을 crate 밖(core/CLI/UI)에서 쓰는 코드는 여전히 없어 실질 피해는 아직 발현 전.
 
 ---
 
@@ -181,7 +181,7 @@ pub extern "C" fn parse_frame(data: *const u8, len: usize, out: *mut FfiParsedFr
 **예외**:
 - 컴파일 타임에 정적 링크되는 워크스페이스 크레이트(Bitvue 현재 상태)에는 이 항목이 적용되지 않는다 — Rust ABI가 동일 빌드 내에서는 안정적이기 때문.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증, Electron 전환 후에도 불변) 문서 자체가 명시한 예외에 정확히 해당. 워크스페이스 어떤 `Cargo.toml`에도 `libloading`/`dlopen`/`wasmtime` 의존성이 없음(grep 0건) — 모든 코덱 크레이트가 컴파일 타임 workspace path 의존성으로 정적 링크됨. Electron 마이그레이션으로 `bitvue-sidecar`가 별도 프로세스(stdio IPC)가 됐지만 이는 코덱 dylib 격리가 아니라 Rust 엔진 전체 대 Electron 렌더러 격리이므로 이 항목과 무관.
 
 ---
 
@@ -231,7 +231,7 @@ pub fn parse_unit(codec: CodecId, data: &[u8]) -> Result<Box<dyn ParsedUnit>, Pa
 **예외**:
 - 배치/CLI 도구처럼 "한 파일이 깨지면 그 파일만 실패로 표시하고 프로세스는 종료해도 무방한" 짧은 수명의 단발성 실행에서는 panic=abort로 두고 프로세스 자체를 재시작 단위로 삼는 것이 오히려 단순하다. 장시간 떠 있는 GUI 세션에는 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (2026-08-18 재검증) 루트 `Cargo.toml:131` `[profile.release]`에 `panic = "abort"`가 여전히 설정되어 있고(구 인용 125행은 Electron 전환 과정에서 밀린 것), 코덱 dispatch/파싱 경로(`bitvue-sidecar/src/*.rs`, `bitvue-cli/src/commands/decode.rs`, `bitvue-avc`/`bitvue-hevc` 등) 어디에도 `catch_unwind` 호출이 없음(전체 grep 결과 테스트 코드 2건과 `vendor/abseil`에만 존재). 특히 `bitvue-sidecar`는 이제 장시간 떠 있는 별도 프로세스(stdio IPC)라 panic=abort로 죽으면 Electron 메인 프로세스와의 세션 전체가 끊김 — 격리 없이 위험이 그대로 이전됨. 손상된 비트스트림이 코덱 파서에서 panic을 내면 release 빌드에서 sidecar 프로세스 전체가 abort됨.
 
 ---
 
@@ -300,7 +300,7 @@ fn available_overlays(plugin: &dyn CodecPlugin) -> Vec<OverlayKind> {
 **예외**:
 - codec 수가 아주 적고(2~3개) capability 축도 거의 겹치지 않는 초기 프로토타입 단계에서는 명시적 bitflags 도입이 과설계일 수 있다. 다만 코덱이 4개를 넘어가는 시점부터는 이 항목의 비용이 빠르게 이익을 넘어선다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (2026-08-18 재검증) Rust 백엔드에는 capability 질의 API가 전혀 없음(`IndexExtractor` trait은 `is_supported() -> bool` 이진 플래그뿐, `crates/bitvue-engine/src/index_extractor.rs`, 구 `bitvue-core`에서 개명). 프런트엔드는 `frontend/utils/codecModeRegistry.ts`(`CODEC_MODE_REGISTRY`, `getModesForCodec()` 등)라는 단일 소스가 있어 부분적으로 해결했지만, `frontend/components/panels/SyntaxDetailPanel/index.tsx:85-90`·`frontend/components/Player/views/DeblockingView.tsx:318-343`는 이 registry를 우회해 여전히 코덱 하드코딩 분기를 쓴다(PLUGIN-012와 동일 코드, 경로 둘 다 현재도 유효).
 
 ---
 
@@ -362,7 +362,7 @@ impl std::str::FromStr for CodecId {
 **예외**:
 - 로깅/디버그 출력, 사용자에게 보여줄 display name 등 "보여주기 전용" 경로에서는 문자열이 자연스럽다 — 문제는 문자열이 *비교/분기 로직*의 근거가 될 때다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (2026-08-18 재검증, `src-tauri` 경로는 Electron 전환으로 소멸해 폐기) 현재 실사용 경로 기준: `crates/bitvue-engine/src/index_extractor.rs:663`(`ExtractorFactory::create`)와 `:681`(`from_extension`)이 `codec.to_lowercase().as_str()`/`ext.to_lowercase().as_str()` match+별칭 리스트("h264"|"h.264"|"avc" 등). `bitvue-cli/src/commands/decode.rs`는 오히려 권장 패턴에 가까운 `ForceCodec` enum(라인 19-29)을 쓰지만, `resolve_codec()`(라인 207)이 IVF FourCC 바이트를 파싱해 이 enum으로 변환하는 지점 자체는 여전히 raw byte-string 매칭. 프런트엔드는 동명의 `CodecType` 타입이 두 곳에서 다른 대소문자 컨벤션으로 정의됨(`frontend/types/video.ts:254` UPPERCASE enum vs `frontend/hooks/useFileOperations.ts:29` lowercase union), 게다가 `SyntaxDetailPanel/index.tsx:32`는 셋 중 어느 것도 아닌 자체 `detectCodecFromPath(): string`(lowercase)을 씀 — 나쁜 예가 그대로 재현됨.
 
 ---
 
@@ -426,7 +426,7 @@ pub fn register(plugin: &'static dyn CodecPlugin) -> Result<(), RegistryError> {
 **예외**:
 - 워크스페이스 내부에서만 쓰이고 host/plugin이 항상 동시에 컴파일·배포되는 구조(현재 Bitvue처럼)에서는, 컴파일러의 exhaustive trait 구현 검증 자체가 사실상 버전 negotiation 역할을 한다 — 별도의 런타임 버전 필드는 과설계일 수 있다. 다만 직렬화 스키마 버전은 이 경우에도 여전히 유효한 관심사다(코드는 동시 배포되지만 저장된 옛 세션 파일은 그렇지 않으므로).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) `crates/bitvue-codecs-parser/src/parser_strategy.rs:222` `trait ParserStrategy`(+ `ParserFactory::create`, 라인 804)가 문서의 가상 `CodecPlugin`과 정확히 같은 모양으로 실존하긴 하지만, `api_version` 유사 필드 없음은 동일하고 무엇보다 이 trait/factory를 소비하는 코드가 자기 자신의 테스트 외에 워크스페이스 어디에도 없음(`bitvue-sidecar`/`bitvue-cli` 전부 개별 코덱 크레이트에 직접 의존, 이 crate를 감싸는 상위 facade crate `crates/bitvue/src/lib.rs`도 그 자체를 의존하는 크레이트가 전무) — 사실상 죽은 스캐폴드(각 코덱의 `parse_frame`도 `bytes_consumed: min(len,100)` placeholder 뿐, 실제 파싱 없음)라 trait이 "진화"할 대상 자체가 없어 버전 negotiation 문제가 발현될 여지가 없음.
 
 ---
 
@@ -487,7 +487,7 @@ pub enum ThreadingModel {
 **예외**:
 - 워크스페이스에 단 하나의 전역 병렬화 지점만 있고(예: 최상위 프레임 루프에서만 `par_iter`, 그 아래로는 모두 순차) 모든 코덱 크레이트가 이 컨벤션을 코드 리뷰로 강제한다면, 명시적 `ThreadingModel` API 없이도 문제가 발생하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) 코덱 파서 크레이트(bitvue-avc/hevc/vp9/vvc/av1-codec/av3-codec/mpeg2-codec/avs3/jpegxs/vc3) `src/` 어디에도 `rayon`/`ThreadPoolBuilder`/`thread::spawn`이 없음(grep 0건) — 코덱 파서들은 사실상 전부 순차 실행. `rayon`은 host 레벨(`bitvue-cli`, `--md5` 배치 처리용, `Cargo.toml`에 명시)에만 등장하고 코덱 크레이트 내부로 스며들지 않아 중첩 스레드풀 문제가 발생할 여지 자체가 없음.
 
 ---
 
@@ -563,7 +563,7 @@ if let Some(av1) = unit.as_any().downcast_ref::<Av1Frame>() {
 **예외**:
 - consumer가 정말로 코덱별 처리가 근본적으로 다를 수밖에 없는 경우(예: 코덱마다 완전히 다른 렌더링 UI가 필요한 overlay 패널)라면, giant enum이나 trait object보다 명시적 match가 오히려 "이 코드가 코덱별로 분기한다"는 사실을 더 정직하게 드러낸다. 이 경우엔 PLUGIN-012(코덱별 UI 하드코딩)와의 경계를 신중히 그어야 한다 — 문제는 giant enum 자체가 아니라 "공통 동작까지 강제로 giant enum을 거치게 만드는 것"이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (2026-08-18 재검증, 경로만 `bitvue-core`→`bitvue-engine` 개명, 내용 불변) `crates/bitvue-engine/src/frame.rs:226` `pub enum CodecMetadata { None, Avc{..}, Hevc{..}, Vp9{..}, Av1{..} }`가 나쁜 예와 동일 패턴이며, 여전히 Vvc/Av3/Mpeg2/Avs3/JpegXs/Vc3 variant가 누락되어 있음(코덱 크레이트는 10개인데 4개만 커버) — "코덱 늘 때 잊고 안 고침"이 실물로 확인됨. 다만 이 enum을 소비하는 곳이 아직 없어(정의부 `frame.rs` 자신 외 grep 0건) consumer 폭발 피해 자체는 미발현.
 
 ---
 
@@ -626,7 +626,7 @@ pub fn parse_slice(data: &[u8]) -> SliceSummary { // 'a 라이프타임이 시�
 **예외**:
 - 아레나가 함수 호출 하나의 스코프 안에서 생성되고 소비되며 절대 함수 경계를 넘어가지 않는다면(가장 흔하고 안전한 사용법) 문제 없다. 이 항목이 경고하는 것은 "아레나 참조가 함수 경계, 특히 plugin-host 경계를 넘어가는" 경우다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) 워크스페이스 어떤 `Cargo.toml`에도 `bumpalo` 의존성이 없음(grep 0건). `mem::transmute` 사용은 `crates/bitvue-metrics/src/simd.rs`(SIMD 레지스터 재해석)와 테스트 코드(`bitvue-engine/src/tests/endianness_edge_cases_test.rs`) 뿐 — host/plugin 경계를 넘는 라이프타임 연장 사례 없음.
 
 ---
 
@@ -692,7 +692,7 @@ impl Drop for PluginHandle {
 **예외**:
 - 정적 링크된 컴파일 타임 크레이트(현재 Bitvue)에는 적용되지 않는다 — "언로드"라는 이벤트가 프로세스 종료와 같으므로 dangling 참조 문제 자체가 발생하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) PLUGIN-003과 동일 근거로 dynamic loading/unloading 개념 자체가 없음(`libloading`/`dlopen`/`wasmtime` 의존성 0건) — "언로드" 이벤트가 존재하지 않으므로 dangling callback 위험이 발생할 여지가 없음. Electron sidecar 프로세스(`bitvue-sidecar`) 자체의 생명주기는 OS 프로세스 단위이지 코덱 plugin 단위 unload가 아니므로 이 항목과 무관.
 
 ---
 
@@ -757,7 +757,7 @@ function OverlayPanel({ codec, frame }: Props) {
 **예외**:
 - 코덱별 UI 차이가 극히 사소하고(라벨 텍스트 한두 개 차이) 코덱 수가 적게 고정되어 있다면, registry 인프라를 만드는 비용이 if/else 몇 줄을 유지하는 비용보다 클 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/SyntaxDetailPanel/index.tsx:85-90`(`codec === "hevc"/"vp9"/"vvc"`)와 `frontend/components/Player/views/DeblockingView.tsx:338-365`(`codec === "AV1"/"HEVC"/"VVC"/"AVC"/"VP9"`)가 core UI 컴포넌트 안에서 코덱별 분기를 직접 하드코딩— 정작 같은 저장소에 이미 있는 `frontend/utils/codecModeRegistry.ts` 중앙 registry를 우회함.
 
 ---
 
@@ -826,7 +826,7 @@ fn plan_execution(requested: &[MetricId], enabled: &HashSet<MetricId>) -> Result
 **예외**:
 - 모든 사전 분석이 항상 무조건 함께 실행되는 아키텍처(선택적 비활성화 자체가 불가능)라면 의존성 선언이 실질적 가치가 낮을 수 있다. 다만 이 경우도 문서화 목적으로는 여전히 유용하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) `bitvue-metrics`는 PSNR/SSIM/VMAF 계산 함수 모음일 뿐 Metric plugin/의존성 그래프 시스템이 없음(`trait Metric`/`depends_on`/`MetricId` grep 0건, 워크스페이스 전체). `crates/bitvue-engine/src/cache_validation.rs`/`cache_provenance.rs`(구 인용은 `bitvue-metrics` 소속으로 잘못 표기돼 있었음, 실제로는 `bitvue-engine`)는 캐시 무효화 추적이지 분석 패스 간 암묵적 데이터 의존성 문제와는 다른 관심사.
 
 ---
 
@@ -893,7 +893,7 @@ gpu-accel = ["dep:wgpu"]
 **예외**:
 - feature flag가 순수하게 "이 코덱 크레이트를 링크할지 말지"만 결정하고 core 코드에는 전혀 `cfg`가 없다면, 조합 폭발이 있어도 각 조합이 "포함된 코덱 집합"이라는 단일 축으로만 달라지므로 실질적 위험이 크지 않다. 문제는 여러 독립적인 축(코덱 x 가속 방식 x 플랫폼)이 core 코드의 `cfg` 안에서 서로 교차할 때다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) 루트 `Cargo.toml`의 workspace members는 코덱 크레이트 전부(현재 `bitvue-avc/hevc/vp9/vvc/av1-codec/av3-codec/mpeg2-codec/avs3/jpegxs/vc3` 10개)를 무조건 컴파일에 포함(코덱별 feature flag 자체가 없음). `bitvue-decode/Cargo.toml`의 `ffmpeg`/`vvdec` 2개만 실제 feature이고, `bitvue-engine`/`bitvue-sidecar`/`bitvue-cli` 어디에도 `#[cfg(feature=...)]` 코덱 분기가 없어(grep 0건) 조합 폭발이 일어날 축이 없음.
 
 ---
 
@@ -943,7 +943,7 @@ vvc = ["dep:bitvue-vvc"]                # 무거운 코덱은 opt-in
 **예외**:
 - 타깃 사용자 전원이 항상 모든 코덱을 필요로 하는 배포 형태(예: 사내 전용 풀-피처 빌드 하나만 배포)라면 바이너리 크기 최적화의 우선순위가 낮을 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) `bitvue-vvc`/`bitvue-av3-codec`/`bitvue-mpeg2-codec`/`bitvue-avs3`/`bitvue-jpegxs`/`bitvue-vc3`의 `Cargo.toml`은 전부 `bitvue-engine`(구 `bitvue-core`)/`abseil`/`thiserror`/`tracing`/`serde`만 의존(무거운 C 레퍼런스 디코더 없음). 유일하게 무거운 `ffmpeg-next`/`vvdec`(`bitvue-decode/Cargo.toml`)는 여전히 `optional = true` + non-default feature(`ffmpeg`/`vvdec`)로 opt-in 처리되어 있어 권장 사항을 이미 따르고 있음.
 
 ---
 
@@ -1005,7 +1005,7 @@ pub trait CodecPlugin {
 **예외**:
 - 설정 항목이 1~2개뿐이고 절대 늘어날 계획이 없는 극히 단순한 플러그인이라면 강타입 스키마 인프라가 과할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) `fn configure(`/`PluginConfig`/`CodecConfig` 류의 API가 코드베이스 어디에도 없음(grep 0건, `bitvue-codecs-parser`의 `ParserStrategy` trait에도 설정 메서드 없음) — 코덱별 튜닝 옵션 시스템 자체가(좋든 나쁘든) 아직 구축되지 않음.
 
 ---
 
@@ -1058,7 +1058,7 @@ impl PluginRegistry {
 **예외**:
 - 초기화 비용이 무시할 만큼 작은(단순 struct 생성 수준) 플러그인이라면 캐싱의 이득이 별로 없고, 오히려 상태 없는(stateless) 단순함을 유지하는 편이 나을 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(범위 확장) — (2026-08-18 재검증, `src-tauri`는 Electron 전환으로 소멸해 폐기, 후속 IPC 커맨드 레이어인 `bitvue-sidecar`에서 동일 패턴 재확인) `crates/bitvue-sidecar/src/decode_bridge.rs:49`(`get_decoded_frame_yuv`)와 `:162`(`get_thumbnails`), `crates/bitvue-sidecar/src/debug_yuv.rs:604`까지 총 3개 호출부가 프레임/썸네일 요청마다 `Av1Decoder::new()`로 디코더를 처음부터 새로 생성함(`OnceLock`/`static`/`DecoderCache` 류가 `bitvue-sidecar` 어디에도 없음, grep 0건) — 문서가 말하는 "실패만 재시도"보다 넓게, 성공/실패 무관하게 매 요청마다 비용이 큰 초기화가 반복됨. sidecar가 이제 장시간 떠 있는 별도 프로세스가 된 만큼(PLUGIN-004 참고) 이 비용은 세션 내내 누적됨.
 
 ---
 
@@ -1121,7 +1121,7 @@ fn can_decode(codec: CodecId) -> bool {
 **예외**:
 - 프로젝트의 모든 코덱이 실제로 parse와 decode를 항상 함께 지원하고 그럴 계획이 확고하다면(예: 순수 인코더/디코더 프로젝트로, 분석 전용 코덱이 존재하지 않는다면) 단일 trait이 오히려 단순하다. Bitvue처럼 "비트스트림 분석기"가 주 목적이고 픽셀 디코딩이 부가 기능인 프로젝트에서는 분리가 거의 항상 유리하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(오히려 권장 패턴을 따름) — (2026-08-18 재검증, 경로 불변) parse(구조 분석)와 decode(픽셀 복원)가 이미 별도 계층: 코덱 크레이트(bitvue-avc/hevc/vp9/vvc/av1-codec/av3-codec/mpeg2-codec/avs3/jpegxs/vc3)는 구문 분석만 담당하고, 픽셀 디코딩은 `bitvue-decode`의 별도 `Decoder` trait(`crates/bitvue-decode/src/traits.rs:127`, 여전히 같은 위치)이 전담(현재 실제로는 AV1만 `Av1Decoder`로 구현) — 대부분의 코덱 크레이트는 decode 능력 자체가 없고 이를 강제하는 통합 trait도 없음(`unimplemented!()` 스텁 grep 0건).
 
 ---
 
@@ -1184,7 +1184,7 @@ pub struct SavedSession {
 **예외**:
 - 순수히 휘발성인 런타임 전용 데이터(디스크에 저장되지 않고 프로세스 재시작 시 사라지는 캐시)라면 display name을 key로 써도 하위 호환성 문제가 생기지 않는다 — 다만 이 경우도 등가성 버그(대소문자 등) 위험은 남는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — (2026-08-18 재검증, `bitvue-core`→`bitvue-engine` 개명 후 라인번호만 소폭 이동) `crates/bitvue-engine/src/qp_heatmap.rs:385` `QPHeatmapCacheKey.codec: String`가 캐시 키에 쓰이고, `stream_state.rs:146`/`types.rs:88`/`event_observer.rs:262`/`index_extractor.rs:700`/`diagnostics.rs:184`(`with_codec(codec: String)`) 등에도 `codec: String` 필드가 여전히 산재 — 코덱 식별에 안정적 enum(CodecId)이 단 하나도 통일되어 있지 않아, PLUGIN-006에서 확인된 대소문자/별칭 불일치가 캐시 키/조회 키 레벨까지 그대로 전파됨.
 
 ---
 
@@ -1246,4 +1246,4 @@ fn run_untrusted_plugin(wasm_bytes: &[u8], data: &[u8]) -> Result<ParsedUnit, Pa
 **예외**:
 - 모든 코덱 크레이트가 100% 사내에서 작성·리뷰되고 서드파티/커뮤니티 기여를 받지 않는 동안은, 신뢰 경계가 조직 경계와 일치하므로 샌드박싱 인프라를 미리 구축하는 것이 우선순위가 낮을 수 있다. 다만 이 경우도 "실수로 인한 버그"(공급망 공격이 아니라 단순 실수)에 대한 최소 방어(trait 시그니처를 좁게 유지)는 비용이 낮으므로 여전히 권장된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (2026-08-18 재검증) PLUGIN-003/011과 동일 근거(서드파티/동적 로딩 플러그인 시스템 자체가 없음, 모든 코덱 크레이트가 사내 작성·정적 링크) — 문서가 스스로 명시한 예외("사내에서 전부 직접 작성/리뷰하는 코덱 크레이트만 있는 동안은…")에 정확히 해당. Electron sidecar 분리(`bitvue-sidecar`가 별도 OS 프로세스로 stdio IPC)도 신뢰 경계 완화가 아니라 프로세스 통신 방식 변경일 뿐이라 결론에 영향 없음.

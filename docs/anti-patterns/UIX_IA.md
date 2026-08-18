@@ -46,7 +46,7 @@ Bitvue와 VQ-Probe 두 축 모두 "사용자가 문제를 좁혀가는 순서"�
 - 최상위 탭 개수를 세어 7±2 원칙을 넘는지 확인.
 - 신규 사용자 대상 "처음 3분 안에 프레임 하나의 문제를 찾아보라" 과업 테스트에서 탭 탐색에 걸리는 시간 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 최상위가 평면 탭 바가 아니라 VS Code류 도킹 패널 레이아웃(`frontend/App.tsx`의 `LEFT_PANELS`(5)/`TOP_PANELS`(1)/`BOTTOM_ROW_PANELS`(3), 영역별 그룹화). Mode 메뉴도 이미 1차/2차 분리(주요 모드 목록 + "Extended Modes" 서브메뉴, `frontend/components/TitleBar.tsx:110-122`)를 구현해 이 안티패턴의 권장안에 해당하는 구조를 이미 갖춤.
 
 ---
 
@@ -81,7 +81,7 @@ IA를 화면 설계자가 아니라 각 모듈 담당 개발자가 "내 모듈�
 - 메뉴 라벨 목록과 백엔드 모듈/crate 이름 목록을 나란히 놓고 문자열 유사도를 비교 — 높은 겹침은 경고 신호.
 - "이 화면은 어떤 사용자 질문에 답하는가"를 각 메뉴 항목에 대해 한 문장으로 쓸 수 없다면 재설계 대상.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 최상위 메뉴가 File/Mode/YUVDiff/Options/Export/View/Help처럼 사용자 작업 단위로 명명되어 있고 (`frontend/components/TitleBar.tsx:61-251`), `/demux` `/decode` 식 라우트나 crate 이름을 그대로 노출한 메뉴는 발견되지 않음.
 
 ---
 
@@ -116,7 +116,7 @@ IA를 화면 설계자가 아니라 각 모듈 담당 개발자가 "내 모듈�
 - 전체 프론트엔드에서 라벨 문자열을 추출해 동일 데이터 필드에 매핑되는 라벨 이형(異形) 개수를 센다.
 - 동일 프레임을 여러 패널에서 동시에 열어놓고 같은 값을 가리키는 라벨이 일치하는지 스크린샷 대조.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `FilmstripTooltip`은 같은 프레임 필드를 "POC"로 표시하는데(`frontend/components/FilmstripTooltip.tsx:56`), `DetailsPanel`/`UnitHexPanel`/`StatisticsTab`/`ThumbnailsView`는 형제 필드를 "Display Order"로 표시함(`frontend/components/panels/DetailsPanel.tsx:56`, `frontend/components/panels/UnitHexPanel/FrameViewTab.tsx:74`) — 같은 Filmstrip 기능 영역 안에서도 라벨이 갈림.
 
 ---
 
@@ -152,7 +152,7 @@ IA를 화면 설계자가 아니라 각 모듈 담당 개발자가 "내 모듈�
 - B-프레임이 많은 샘플 스트림으로 타임라인 클릭 → 프레임 인스펙터 → 신택스 뷰까지 인덱스가 끝까지 일치하는지 회귀 테스트.
 - 코드에서 `frame_number`, `frameIndex` 등 모호한 이름의 필드를 검색해 도메인(sample/decode/display)이 타입이나 이름에 명시되어 있는지 점검.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `FrameInfo`는 `poc`/`display_order`/`coding_order`/`frame_index`를 별도 필드로 이미 분리해두고 라벨도 대체로 일관되게 사용되지만(`frontend/types/video.ts:121-130`), `frame_index` 자체는 컨테이너 샘플 인덱스와 코덱 인덱스 양쪽에 재사용되는 단순 숫자 타입이고 nominal 타입 구분은 없음(TS·Rust 양쪽 다, 예: `src-tauri/src/commands/frame.rs`의 `frame_index: usize`). 실제 인덱스 불일치 버그는 재현/확인하지 못해 Confirmed로 올리지 않음.
 
 ---
 
@@ -187,7 +187,7 @@ IA를 화면 설계자가 아니라 각 모듈 담당 개발자가 "내 모듈�
 - 코덱을 전환해가며 같은 패널을 열어 비활성화된 필드 비율을 측정 — 비율이 높으면 공통화 과잉 신호.
 - 코덱 전문가 리뷰: "이 필드가 이 코덱 스펙에 실제로 존재하는가"를 항목별로 체크.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — TitleBar의 "Mode" 메뉴가 deprecated·비코덱인지 고정 상수 `MODES`를 그대로 사용해(`frontend/contexts/ModeContext.tsx:336`, 사용처 `frontend/components/TitleBar.tsx:115-120`) 실제 코덱과 무관하게 항상 같은 모드 목록(Overview/Coding Flow/Prediction/Transform/QP Map...)을 노출함 — 정작 F-key/오버레이 토글 경로는 코덱 인지형 `getMainModesForCodec`를 올바르게 사용 중이라 대비됨. 부가로 Options→Codec Settings도 HEVC/VVC 전용 토글을 활성 코덱과 무관하게 항상 나열(`frontend/components/TitleBar.tsx:188-199`).
 
 ---
 
@@ -222,7 +222,8 @@ IA를 화면 설계자가 아니라 각 모듈 담당 개발자가 "내 모듈�
 - 5초 노출 테스트(사용자에게 화면을 5초만 보여주고 "문제가 있었는지"를 묻는 방식)로 치명적 상태의 시각적 두드러짐을 측정.
 - 색상 대비(WCAG) 및 상대적 폰트 크기를 심각도 등급별로 감사.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (범위 수정, 2026-08-18 재확인) — `DiagnosticsPanel`은 이제 `BOTTOM_ROW_PANELS`에 실제로 마운트되어 있고(`frontend/App.tsx:239-244`) 심각도별 아이콘·색상·카운트도 구현되어 있음(`frontend/components/panels/DiagnosticsPanel.tsx:169-186` getSeverityIcon/getSeverityColor) — 이전 판정(패널 자체가 미마운트)은 [[project_anti_pattern_audit]] 2026-08-10 배선 작업(`7b8bfc9`)으로 이미 낡음. 다만 원래 안티패턴이 요구하는 "상시 고정 요약 배너"는 여전히 없음: `StatusBar`는 파일 경로/프레임 수만 보여주고 최고 심각도 상태를 반영하지 않음(`frontend/components/StatusBar.tsx`) — 사용자가 Diagnostics 패널을 직접 열어야만 심각도를 알 수 있어, 화면을 훑어보는 것만으로 문제 유무를 즉시 판단할 수 없다는 핵심 증상은 아직 남아있음.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-008 참고.
 
 ---
 
@@ -253,7 +254,7 @@ IA를 화면 설계자가 아니라 각 모듈 담당 개발자가 "내 모듈�
 - 파일 열기 → 첫 화면이 무엇인지 스크린샷으로 확인하는 스모크 테스트.
 - 신규 사용자 대상 "이 파일에 문제가 있는지 30초 안에 판단하라" 과업에서 실패율 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 파일 로드 후 기본 모드는 "yuv"(원본 디코드 프레임)이고, "overview" 모드는 주석상 "No-codec default (welcome / no file loaded)"로만 정의되어 있음(`frontend/utils/codecModeRegistry.ts:17,62,722-723`). 프레임을 훑기 전에 전체 구간 문제 지점을 보여주는 별도 Overview/요약 화면 자체가 없음.
 
 ---
 
@@ -288,7 +289,7 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - Overview의 모든 시각적 이상치 마커에 대해 클릭 시 상태 변화가 있는지 체크리스트로 순회.
 - Interaction 테스트: 히트맵 클릭 → 프레임 인스펙터 인덱스 변경까지의 엔드투엔드 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — Filmstrip 썸네일 클릭과 YuvDiffPanel의 "Find first diff" 버튼(`frontend/components/panels/YuvDiffPanel.tsx:107-110`)은 실제로 해당 프레임으로 이동하지만, StatisticsPanel이 쓰는 `BarChart`/`LineChart`(`frontend/components/charts/*`)와 BitrateGraphPanel 그래프에는 onClick 핸들러 자체가 없어 요약 시각화 전반이 균일하게 클릭 가능하지는 않음.
 
 ---
 
@@ -323,7 +324,7 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - 세부 화면으로 4단계 이상 진입한 뒤 "지금 어느 파일, 어느 프레임을 보고 있는가"를 사용자에게 묻는 정지 테스트.
 - 계층 전환 경로를 그래프로 그려 breadcrumb 부재 화면 수를 카운트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `frontend/components` 전체에 breadcrumb 컴포넌트가 존재하지 않음(검색 결과 0건). 다만 이 앱은 순차적 드릴다운 화면이 아니라 도킹 패널을 동시에 띄우는 구조라 문서가 가정하는 file→GOP→CTU→CU 6~7단계 시나리오 자체가 그대로 적용되는지는 불확실 — `SelectionInfoPanel`(`frontend/components/panels/SelectionInfoPanel.tsx`)도 현재 프레임 정보는 보여주지만 경로 형태의 계층 표시는 없음.
 
 ---
 
@@ -358,7 +359,7 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - 검색 결과 클릭 → 실제 화면 이동 여부를 모든 검색 유형(syntax 검색, 메타데이터 검색, 품질 이상치 검색)에 대해 점검.
 - 검색 결과 데이터 스키마에 구조화된 위치 필드가 있는지 코드 리뷰.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `SearchTab`의 결과 항목은 클릭 시 실제로 `onNavigateToFrame(idx)`를 호출해 프레임 이동으로 이어짐(`frontend/components/panels/SyntaxDetailPanel/SearchTab.tsx:36-39,97`). 다만 현재 존재하는 검색은 프레임 타입/번호/PTS 검색뿐이고 문서가 예로 든 syntax 값 임계치 검색(`qp_delta` 등)은 아직 없어, 있는 기능 범위 안에서는 이 안티패턴이 나타나지 않음.
 
 ---
 
@@ -393,7 +394,7 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - 필터를 건 상태로 여러 패널을 오가며 필터 적용 범위가 일관되는지 수동 점검.
 - 데이터가 0건으로 보이는 화면마다 "필터 때문인지 실제 데이터 없음인지"를 시각적으로 구분할 수 있는지 체크.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `StreamTreePanel`의 `filterEnabled`/`frameFilter`는 해당 컴포넌트 로컬 `useState`일 뿐(`frontend/components/panels/StreamTreePanel.tsx:149-150`) 전역 필터 스토어나 다른 패널(Syntax/Hex)로의 전파가 없음. 패널 내부에 "Showing X of Y units" 카운트는 있지만(같은 파일 371-373행) 필터 적용 범위를 알려주는 전역 표시는 없음.
 
 ---
 
@@ -428,7 +429,7 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - 설정 변경 → 다른 탭/뷰에서 실제로 반영되는 범위를 표로 정리해 문서화된 의도와 대조.
 - 설정 스토어 구조를 코드 리뷰해 스코프 필드가 명시적으로 존재하는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 설정이 스코프 구분 없이 여러 개의 독립된 flat localStorage 키에 흩어져 저장됨: `bitvue:cpu-avx2`/`bitvue:auto-save-layout`(`frontend/App.tsx:502-520`), `bitvue-layout`(`frontend/contexts/LayoutContext.tsx:207`), overlay prefs(`frontend/contexts/ModeContext.tsx:86-96`), `bitvue-tooltips`, 북마크, 최근 파일 목록 등. 앱/프로젝트/뷰 스코프를 구분하는 필드나 UI 배지가 없음.
 
 ---
 
@@ -463,7 +464,8 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - 파일 2개, 트랙 2개 이상을 열어놓고 각 패널이 "현재 선택"을 일관되게 반영하는지 상호작용 테스트.
 - 비교 모드에서 좌/우 슬롯 전환 시 모든 하위 패널(신택스, hex, metric)이 함께 전환되는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (가장 심각) — `FileStateContext`는 `filePath: string | null` 단일 파일만 모델링함(`frontend/contexts/FileStateContext.tsx:34,56`). `CompareContext`는 pathA/pathB/currentFrameA/currentFrameB를 추적하는 "dependent bitstream" 비교 워크스페이스 상태를 갖고 있지만(`frontend/contexts/CompareContext.tsx`), `useCompare()`를 호출하는 마운트된 컴포넌트가 `App.tsx`를 포함해 어디에도 없고 `frontend/components/CompareWorkspace/*` 전체가 고아 코드임을 확인함. 즉 `handleOpenDependentFile`(`frontend/hooks/useAppFileOperations.ts:175-234`)이 비교 워크스페이스를 생성해도 실제 화면에는 좌/우 파일 표시가 전혀 나타나지 않음 — "헷갈린다" 수준이 아니라 표시 자체가 없음.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-009 참고.
 
 ---
 
@@ -498,7 +500,8 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - 다양한 코덱/파일 조합으로 열어보며 빈 패널 비율을 카운트.
 - 로딩 상태를 인위적으로 지연시켜 로딩 중 화면과 데이터 없음 화면이 실제로 다르게 렌더링되는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 로딩/빈 데이터/에러를 구분하도록 만들어진 재사용 `EmptyState` 컴포넌트(사전 구성 변형 포함, `frontend/components/common/EmptyState.tsx`)가 존재하지만, 자기 자신의 정의/테스트 파일 외 어디에서도 import되지 않음(`import.*EmptyState` 검색 결과 0건) — 만들어졌지만 실제 패널에는 연결되지 않아 빈 패널이 구분 없이 그대로 노출됨.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-008 참고.
 
 ---
 
@@ -533,4 +536,4 @@ Overview가 문제를 "보여주기"는 하지만 "가리키기"는 못해서, �
 - 파일 열기 직후 네트워크/IPC 호출 타임라인을 프로파일링해 아직 열지 않은 탭에 대한 요청이 있는지 확인.
 - 번들 분석 도구로 초기 번들 크기에 미사용 탭 컴포넌트가 포함되어 있는지 점검.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 다이얼로그(KeyboardShortcutsDialog/ErrorDialog/ExportDialog/LoadDebugYuvDialog)는 `React.lazy`로 코드 스플리팅되지만(`frontend/App.tsx:50-72`), 도킹 패널(StreamTreePanel/SyntaxDetailPanel/UnitHexPanel/StatisticsPanel 등)은 전부 정적 import되어 동시에 마운트되고 `DockableLayout.tsx`에 지연 마운트 로직이 없음. 프레임 메타데이터 자체는 파일 오픈 시 한 번만 불러오는 구조(`FrameDataContext`)라 합리적이지만, 패널 단위 코드 스플리팅은 일관되지 않음 — 실제 중복 IPC 호출 여부는 런타임 프로파일링 없이는 확정 못함.

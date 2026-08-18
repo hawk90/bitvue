@@ -50,7 +50,7 @@ unsafe extern "C" fn on_frame_ready(pic: *mut Dav1dPicture, user_data: *mut c_vo
 **예외**:
 - 라이브러리가 ABI 문서에서 "이 콜백은 절대 null로 호출되지 않는다"를 명시하고, 해당 보장이 fuzzing/CI로 지속 검증되는 경우에도 최소한 `debug_assert!`는 남기는 것이 바람직
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 내 유일한 raw picture pointer 역참조는 `crates/bitvue-decode/src/vvdec.rs:378`의 `let vf = &*frame;`이며, 직전 `frame.is_null()` 체크(vvdec.rs:374)를 통과한 뒤에만 실행됨. dav1d/FFmpeg 경로는 safe wrapper crate(`dav1d`, `ffmpeg-next`)의 안전 API(`Picture::plane()` 등, decoder.rs/ffmpeg.rs)만 사용해 raw pointer 역참조 자체가 없음
 
 ---
 
@@ -108,7 +108,7 @@ fn decode_frame(ctx: *mut Dav1dContext) -> Result<Dav1dPicture, DecodeError> {
 **예외**:
 - 함수 시그니처 자체가 절대 실패하지 않음을 문서로 보장하는 단순 getter류(예: 상수 반환)는 예외로 둘 수 있으나, 이 경우도 주석으로 근거를 남긴다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — vvdec 호출부는 반환값/null을 매번 체크: `vvdec_decoder_open` null 체크(vvdec.rs:334), `vvdec_accessUnit_alloc` null 체크(vvdec.rs:345), `vvdec_accessUnit_alloc_payload` ret 체크(vvdec.rs:602), `vvdec_decode`/`vvdec_flush` 결과는 `ret == VVDEC_OK`로 분기 후에만 frame_ptr 사용(vvdec.rs:710-717). dav1d/libvmaf-rs는 wrapper crate가 `Result`로 이미 강제
 
 ---
 
@@ -174,7 +174,7 @@ impl Drop for DecodedFrame {
 **예외**:
 - slice의 소비가 unref 호출 이전, 같은 함수 스코프 내에서 완전히 끝나고 다른 스레드로 넘어가지 않는 경우는 정적으로도 안전을 논증하기 쉬움(단, 이 경우도 명시적 주석 권장)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `extract_plane`이 만든 raw slice(vvdec.rs:546)는 decoder+access_unit 뮤텍스가 잡힌 채로 즉시 `plane_utils::extract_plane`을 통해 소유 `Vec<u8>`로 복사된 뒤에만 반환됨. vvdec.rs:508-545에 이 불변조건을 명시한 상세 SAFETY 주석 존재
 
 ---
 
@@ -238,7 +238,7 @@ impl FrameCache {
 **예외**:
 - 없음 — 해제된 decoder-owned 객체에 대한 dangling reference 보관은 항상 버그로 취급한다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이전 프레임의 raw pointer를 구조체 필드에 캐시하는 코드가 없음(grep 결과 없음); `convert_frame` 직후 성공/실패 무관하게 항상 `vvdec_frame_unref` 호출(vvdec.rs:717)
 
 ---
 
@@ -295,7 +295,7 @@ fn copy_luma(pic: &Dav1dPicture, out: &mut Vec<u8>) {
 **예외**:
 - 이미 stride == width가 보장된 API(예: 라이브러리가 명시적으로 "output은 항상 tightly packed"라고 문서화한 특정 output 모드)를 사용한다면 예외이나, 이 가정 자체를 `debug_assert!(stride == width * bpp)`로 코드에 박아둘 것
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `plane_utils::extract_plane`(plane_utils.rs:223-287)이 이미 stride를 인지한 row-by-row 복사(contiguous fast-path + strided fallback)를 구현하고 있어 권장안과 동일한 패턴이 적용되어 있음; vvdec.rs/ffmpeg.rs 양쪽 모두 이 유틸리티를 통해서만 plane을 추출함
 
 ---
 
@@ -339,7 +339,7 @@ fn row_ptr(pic: &Dav1dPicture, row: usize) -> *const u8 {
 **예외**:
 - 사용하는 C 라이브러리가 ABI 문서에서 "stride는 항상 양수"임을 명시적으로 보장하는 경우, 캐스팅 지점에 `debug_assert!(stride > 0)`을 남기고 넘어갈 수 있다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — vvdec 쪽 stride는 `c_uint`(vvdec.rs:79)라 구조적으로 무관하지만, `ffmpeg.rs`는 `frame.stride(N) as usize`를 부호 체크 없이 캐스팅하는 지점이 여럿(ffmpeg.rs:209,219,229,287,291,295). `ffmpeg-next` 6.1.1 소스가 로컬 캐시에 없어 `stride()`가 실제로 음수를 반환할 수 있는 경로(예: 특정 필터 체인 출력)가 있는지 직접 확인하지 못함 — 일반 디코딩 출력에서는 발생 가능성이 낮지만 방어 코드는 없음
 
 ---
 
@@ -391,7 +391,7 @@ fn feed_frames(ctx: *mut VmafContext, frame_count: usize) -> Result<(), FfiError
 **예외**:
 - 값의 범위가 타입 정의상 항상 좁음이 보장되는 경우(예: NAL 헤더의 2비트 필드를 담는 값)는 `as`를 써도 안전하지만, 이 경우도 리뷰어가 판단할 수 있도록 근처에 범위 주석을 남긴다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 위험한 큰 값(payload 크기)에는 이미 `try_from`이 적용(vvdec.rs:592 `i32::try_from(data.len())`)되어 있지만, 검증 후 동일 값을 재차 `as i32`로 캐스팅하는 지점(vvdec.rs:612)과 프레임 인덱스를 무검증 `as u32`로 캐스팅하는 지점(bitvue-metrics/src/vmaf.rs:199,261)이 남아 있음. 실질 위험은 낮음(수십억 단위가 되어야 트리거)이나 패턴 자체는 잔존
 
 ---
 
@@ -462,7 +462,7 @@ fn layout_of(pic: &Dav1dPicture) -> Result<PixelLayout, UnknownPixelLayout> {
 **예외**:
 - 없음 — C enum을 신뢰할 수 없는 정수로 취급하고 항상 명시적으로 검증하는 것이 이 카테고리에서는 예외 없는 규칙에 가깝다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 명시적 `mem::transmute` 호출은 없으나, `VvdecColorFormat`/`VvdecFrameType`이 `#[repr(C)]` Rust enum으로 선언되어(vvdec.rs:84-103) vvdec C 라이브러리가 채워주는 `VvdecFrame` 구조체 메모리에서 `TryFrom` 없이 그대로 읽힘(vvdec.rs:410-433, catch-all match arm은 있어 매칭 자체는 안전). 라이브러리가 새 discriminant를 추가하면 이 필드가 존재하는 시점부터 UB가 될 수 있는 구조이나, vvdec feature 자체가 컴파일되지 않는 상태(FFI-011 참고)라 실제로 트리거된 적은 없음
 
 ---
 
@@ -514,7 +514,7 @@ unsafe extern "C" fn vmaf_log_callback(level: c_int, msg: *const c_char) {
 **예외**:
 - 콜백이 `panic = "abort"` 빌드 설정이고, "panic 시 프로세스 전체가 즉시 죽어도 무방하다(오히려 원한다)"는 명시적 설계 결정이 있는 경우는 `catch_unwind` 생략이 정당화될 수 있으나, 이 경우도 왜 그런지 주석으로 남긴다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에 `extern "C" fn` 콜백을 C 라이브러리에 함수 포인터로 등록하는 코드가 없음(grep 결과 0건); dav1d/libvmaf-rs/ffmpeg-next 모두 콜백 기반 API가 아닌 polling 스타일(`get_picture`/`receive_frame`/`read_pictures`)로만 사용됨
 
 ---
 
@@ -574,7 +574,7 @@ fn map_dav1d_error(ret: c_int) -> DecodeError {
 **예외**:
 - 최종 사용자에게 보여줄 로그 메시지 문자열 자체는 평탄화되어도 무방하지만, 그 문자열은 구조화된 에러 값으로부터 `Display`로 파생되어야 하며 판단 로직이 문자열 매칭에 의존해서는 안 된다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/src/decoder.rs:341-353`에서 dav1d crate가 제공하는 구조화된 `Error::is_again()`(`~/.cargo/registry/.../dav1d-0.10.4/src/lib.rs:55-56`에서 확인)을 쓰지 않고 `err_str.contains("EAGAIN") || err_str.contains("Try again")`로 `Display` 문자열을 파싱해 재시도 여부를 판정 — 정확히 이 항목이 경고하는 "판단 로직이 문자열 매칭에 의존" 사례. 부차적으로 vvdec.rs:739-746도 `VVDEC_TRY_AGAIN`과 `VVDEC_EOF`를 동일한 `DecodeError::NoFrame`으로 뭉개 "재시도 필요"와 "정상 종료"를 구분하지 못함
 
 ---
 
@@ -623,7 +623,7 @@ unsafe impl Send for DecoderHandle {}
 **예외**:
 - 라이브러리가 명시적으로 "컨텍스트는 내부적으로 완전히 스레드 안전하다"고 문서화하고, 그 근거(내부 락, 스레드-로컬 상태 없음)를 소스 레벨에서 확인한 경우에만 `Sync`도 정당화된다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `Decoder` 트레이트가 `Send` 슈퍼트레이트를 요구(`crates/bitvue-decode/src/traits.rs:127` `pub trait Decoder: Send`)하지만, `VvcDecoder`는 raw pointer 필드(`Mutex<*mut ffi::VvdecDecoder>`, `Mutex<*mut ffi::VvdecAccessUnit>`) 때문에 자동으로 `!Send`이고, 코드 주석은 "vvdec may have race conditions" 때문에 `Send` impl을 의도적으로 생략했다고 명시(vvdec.rs:258-259) — 그 결과 `impl Decoder for VvcDecoder`가 컴파일되지 않음. 직접 `cargo check -p bitvue-decode --features vvdec` 실행 결과 `*mut c_void`/`*mut VvdecAccessUnit`/`*mut VvdecFrame`에 대해 "cannot be sent between threads safely" E0277가 vvdec.rs:566,638,673,760에서 발생함을 확인(총 12개 컴파일 에러, DecodedFrame 필드 타입 불일치 E0308 3건 포함) — 이 파일은 vvdec feature로 빌드된 적이 사실상 없는 상태(CI에도 vvdec 관련 언급 없음)
 
 ---
 
@@ -684,7 +684,7 @@ impl Drop for FramePicture {
 **예외**:
 - struct가 native 리소스에 대한 포인터를 전혀 담고 있지 않고 순수 값(치수, 플래그 등)만 담는다면 derive Clone/Copy는 안전하다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `DecodedFrame`(decoder.rs:32-61)은 `#[derive(Clone)]`이지만 plane 데이터가 `Arc<[u8]>`(Rust 자체 refcount)일 뿐 C library refcount 포인터를 필드로 갖지 않음; vvdec의 `VvdecFrame`/`VvdecPlane`류 raw FFI 구조체에는 `Clone`/`Copy`가 derive되어 있지 않음
 
 ---
 
@@ -727,7 +727,7 @@ fn open_log_file(path: &str) -> Result<*mut Dav1dContext, OpenError> {
 **예외**:
 - 문자열이 컴파일 타임 상수이거나 프로그램 내부에서 완전히 통제되는 값(NUL 포함 가능성이 구조적으로 없음)이라면 `.expect("no interior nul in constant")`로 의도를 명시하고 넘어갈 수 있다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에 `CString::new` 호출이 없음(grep 결과 0건); vvdec/dav1d/ffmpeg-next/libvmaf-rs 어느 경로도 문자열을 C API에 CString으로 전달하지 않음(파일 경로 등은 모두 Rust `Path`/`&str` 기반 API로 처리)
 
 ---
 
@@ -786,7 +786,7 @@ fn submit(ctx: *mut VmafContext, pic: VmafPicture) -> Result<(), FeedError> {
 **예외**:
 - 없음 — 소유권 계약이 불명확한 채로 코드를 작성하는 것 자체가 이 카테고리의 핵심 위험이므로, 확인 전에는 최소한 `ManuallyDrop` + 명시적 TODO로 리스크를 표시해 둔다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — vvdec 쪽은 소유권 규칙이 명확히 지켜짐: `convert_frame` 성공/실패 무관 항상 `vvdec_frame_unref` 호출(vvdec.rs:708-722, 주석으로 근거 명시); dav1d/libvmaf-rs는 wrapper crate가 소유권을 안전하게 캡슐화해 Bitvue 코드에서 소유권 판단이 필요한 raw pointer 인자가 없음
 
 ---
 
@@ -847,7 +847,7 @@ fn make_extra_data(codec_params: &[u8]) -> (*const u8, *mut c_void) {
 **예외**:
 - 없음 — allocator 대칭성은 항상 지켜야 하는 불변 조건이다. 다만 플랫폼의 시스템 allocator만 사용하고(커스텀 global allocator 미사용) libc `malloc`/`free`와 실제로 동일 구현을 공유하는 것이 보장되는 특수 환경이라면 실무적 위험은 낮아지지만, 여전히 명시적으로 문서화할 것을 권장한다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 어디에도 `#[global_allocator]` 커스텀 설정이 없음(grep 결과 0건, 기본 시스템 allocator만 사용); vvdec 버퍼는 항상 vvdec 자체 alloc/free 쌍(`vvdec_accessUnit_alloc_payload`/`vvdec_accessUnit_free_payload`)으로만 관리되고 Rust `Box`로 할당한 메모리를 C free 콜백에 넘기는 코드가 없음
 
 ---
 
@@ -908,7 +908,7 @@ fn spawn_vmaf_worker() -> (JoinHandle<()>, Sender<VmafJob>) {
 **예외**:
 - 라이브러리가 명시적으로 "컨텍스트당 임의 스레드에서 호출 가능"이라고 문서화하고, 내부적으로 스레드 풀/TLS를 쓰지 않음이 확인된 경우는 예외로 async 컨텍스트에서 직접 호출해도 안전하다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `run_decode_with_timeout`(vvdec.rs:285-317)가 decode/flush 호출마다 새 OS 스레드를 `thread::spawn`으로 생성해 그 안에서 raw pointer로 FFI를 호출함(vvdec.rs:673-681). vvdec가 실제 thread-affinity를 요구하는지 업스트림 문서를 직접 확인하지 못했고(소프트웨어 디코더라 가능성은 낮음), 무엇보다 이 파일은 FFI-011의 Send 컴파일 에러 때문에 vvdec feature로 빌드 자체가 되지 않아 런타임에서 검증된 적이 없음
 
 ---
 
@@ -970,7 +970,7 @@ fn create_decoder() -> *mut Dav1dContext {
 **예외**:
 - 라이브러리가 초기화 함수의 멱등성을 명시적으로 보장하는 경우(문서에 "여러 번 호출해도 안전"이라고 명시) 예외이나, 이 경우도 `Once`를 쓰는 편이 의도를 더 명확히 드러내므로 굳이 반복 호출을 유지할 이유는 적다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `FfmpegDecoder::new()`가 호출될 때마다 `ffmpeg::init()`을 호출(ffmpeg.rs:70)하고, `reset()`은 `*self = Self::new(...)`로 전체 재생성(ffmpeg.rs:388-392)해 init을 반복 호출함; Bitvue 코드에는 `Once`/`OnceLock` 가드가 없음. `ffmpeg-next` 6.1.1 소스가 로컬 캐시에 없어 crate 내부에 자체 Once 가드가 있는지 직접 확인하지 못함 — 있다면 실무 위험은 낮고, 없다면 병렬 테스트(`cargo test` 기본 동작)에서 레이스 가능
 
 ---
 
@@ -1034,7 +1034,7 @@ impl Drop for AppState {
 **예외**:
 - 콜백이 완전히 동기적으로만 호출되고(라이브러리가 별도 스레드/큐를 쓰지 않음이 확인됨) close 함수가 반환되는 순간 콜백 호출 가능성이 완전히 사라짐이 보장된 경우는 Drop 순서만으로 충분할 수 있다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 등록된 콜백이 없으므로(FFI-009 참고) shutdown-vs-콜백 순서 문제 자체가 성립하지 않음; `VvcDecoder`/`FfmpegDecoder`의 `Drop`은 모두 동기적 close/free 호출만 수행(vvdec.rs:855-893)
 
 ---
 
@@ -1094,7 +1094,7 @@ impl Decoder {
 **예외**:
 - 매우 작고 내부용으로만 쓰이는 유틸리티(예: 사내 CLI 도구, 실험용 벤치마크 바이너리)로 외부에 노출되지 않고 unsafe 사용 범위가 한 파일에 국한된다면, 완전한 wrapper 계층 없이 진행하는 실용적 타협도 가능하다 — 다만 이 경우도 unsafe 사용처를 한 모듈로 모으는 최소한의 격리는 유지한다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — vvdec의 raw FFI 바인딩은 비공개 `mod ffi { ... }`(vvdec.rs:53)로 캡슐화되어 있고 `pub use vvdec::VvcDecoder`(lib.rs:37)만 외부에 노출됨; 애플리케이션 코드는 `Decoder` 트레이트(traits.rs)만 사용하고 raw pointer/`ffi::*` 타입을 직접 보지 않음. dav1d/libvmaf-rs/ffmpeg-next는 애초에 안전한 wrapper crate이므로 이 문제가 발생할 여지가 없음
 
 ---
 
@@ -1186,7 +1186,7 @@ fn luma_plane(pic: &Dav1dPicture) -> &[u8] {
 **예외**:
 - unsafe 연산들이 서로 강하게 얽혀 있어(예: 포인터 계산 결과가 바로 다음 unsafe 호출의 불변조건이 되는 경우) 분리하면 오히려 불변조건을 눈으로 추적하기 더 어려워지는 경우는, 블록을 유지하되 각 unsafe 연산 앞에 불변조건을 설명하는 주석을 촘촘히 남기는 것으로 대체할 수 있다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `convert_frame`(vvdec.rs:372-462) 전체가 단일 `unsafe { }` 블록으로 감싸여 있고, 그 안에 frame_type 매칭(426-433)·chroma_format 계산(438-444)·`DecodedFrame` 구조체 생성(446-460) 같은 순수 안전 로직이 실제 unsafe 연산(`&*frame` 역참조, raw pointer 기반 plane 추출)과 물리적으로 분리되지 않고 섞여 있음
 
 ---
 
@@ -1241,7 +1241,7 @@ fn main() {
 **예외**:
 - 완전히 정적 링킹된 바이너리(라이브러리 소스가 vendored되어 프로젝트와 함께 빌드됨)는 이 문제에서 원천적으로 자유롭다 — 가능하다면 이것이 가장 확실한 예방책이다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — vvdec.rs:157 `#[link(name = "vvdec")]`로 시스템에 설치된 공유 라이브러리에 동적 링크하면서 `pkg-config` 버전 고정이나 exact-version 강제가 전혀 없음; `bitvue-decode/Cargo.toml:27-29` 주석도 "brew install vvdec" / "Build from source"처럼 버전 미고정 설치를 전제로 함. `vvdec_get_version()` 함수는 존재하지만(vvdec.rs:177) 테스트에서만 호출되고(vvdec.rs:934-947) `VvcDecoder::new()` 초기화 경로(vvdec.rs:321-369)에는 런타임 버전 검증이 없음
 
 ---
 
@@ -1305,4 +1305,4 @@ extern "C" fn on_frame(meta: *const FrameMeta) {
 **예외**:
 - struct가 순수하게 Rust ↔ Rust 통신에만 쓰이고 FFI 경계를 전혀 넘지 않는다면 `repr(Rust)` 기본값이 오히려 컴파일러 최적화(필드 재배치로 패딩 최소화) 혜택을 준다 — `#[repr(C)]`를 FFI와 무관한 모든 struct에 습관적으로 붙이는 것은 이 카테고리의 반대 방향 안티패턴(불필요한 제약)이므로, 정말 경계를 넘는 타입에만 선택적으로 적용한다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — vvdec ffi 모듈의 모든 FFI 경계 구조체(`VvdecAccessUnit`, `VvdecPlane`, `VvdecComponentType`, `VvdecFrameType`, `VvdecColorFormat`, `VvdecFrame`, `VvdecParams`)에 `#[repr(C)]`가 정확히 적용되어 있음(vvdec.rs:61-141); 콜백 함수 포인터도 없음(FFI-009 참고)

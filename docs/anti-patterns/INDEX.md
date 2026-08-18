@@ -1,17 +1,23 @@
 # Bitvue — Rust Video-Analysis Anti-Pattern Catalog (INDEX)
 
-> Reference catalog, not yet an audit. Every item's `Bitvue 판정` (verdict) field reads "미정" — this is
-> Phase 1 of the plan (build the catalog); Phase 2 is a separate later pass that scans the actual repo and
-> fills in Confirmed/Suspected/N/A per item with file:line evidence, via `.claude/workflows/anti-pattern-scan.js`
-> (built 2026-07-31, not yet run — see "Running the audit" below).
+> Reference catalog **and** audit result. Phase 2 (the repo audit that fills each item's `Bitvue 판정` with
+> Confirmed/Suspected/N/A + file:line evidence, via `.claude/workflows/anti-pattern-scan.js`) completed
+> 2026-08-04 across all 47 Wave 1-4 files — 364 Confirmed / rest Suspected or N/A. Wave 5 (`WIRING.md`,
+> `SUPPLY.md`) was added after that audit, see below.
 > See also: `CLAUDE.md` (repo doc map), `docs/DEVELOPMENT_PHASES.md` §Phase 7.5 (the Analyzer/VQ-Probe
 > architecture-separation rule this catalog's structure mirrors).
 
-**Total: 970 items across 47 files, four domain waves.** This exceeds the user's own working estimate of
+**Total: 1015 items across 50 files, five domain waves.** This exceeds the user's own working estimate of
 700-900 raw candidates compressing to a 350-500 operational catalog. A targeted dedup pass (3 file-pairs
 checked, not a full sweep) found genuinely little true duplication — see "Dedup pass results" below — so the
 excess is mostly real breadth, not redundancy, but a fuller consolidation read-through is still recommended
-before treating every item as equally load-bearing.
+before treating every item as equally load-bearing. Wave 5 (45 items, 3 files) is qualitatively different from
+Waves 1-4: `WIRING.md`/`SUPPLY.md` added post-audit (2026-08-04), directly evidence-backed from the
+just-finished Phase 2 audit; `SIMD.md` added 2026-08-05 to close a real coverage gap (hand-written SIMD in
+`bitvue-metrics`/`bitvue-decode` had no owning file) — a coverage cross-check against the catalog's original
+design brainstorm found no other genuine gaps. One verdict from this pass (SIMD-003) was independently
+re-verified and downgraded from Confirmed to Suspected after tracing the actual call path — a reminder that
+even filled-in verdicts need spot-checking, not just blind trust.
 
 ## Dedup pass results (2026-07-31, 3 targeted pairs, not a full sweep)
 
@@ -114,12 +120,23 @@ concrete examples in; revisit if/when that changes.
 | `OBS.md` | 관측성·진단·프로파일링 | 20 |
 | `SEC.md` | Security & Untrusted Input (the closing category — untrusted file handling) | 15 |
 
+## Wave 5 — Cross-Cutting & Meta (3 files, 45 items)
+
+`WIRING.md`/`SUPPLY.md` added post-audit (2026-08-04), not speculative-then-audited like Waves 1-4 — see
+summary line above. `SIMD.md` added 2026-08-05, speculative-then-partially-self-verified (see its own intro).
+
+| File | Category | Items |
+|---|---|---|
+| `WIRING.md` | 배선 문제 (meta-pattern: correct implementation exists but never wired into the production path) | 12 |
+| `SUPPLY.md` | 라이선스·의존성·공급망 리스크 (dual-license AGPL/commercial compliance, license-gate CI, signing, SBOM) | 16 |
+| `SIMD.md` | SIMD/CPU 벡터화 (runtime feature detection, tail handling, cross-ISA consistency — `bitvue-metrics`/`bitvue-decode`) | 17 |
+
 ## ID prefix reference
 
 `OWN` `MEM` `LAYOUT` `PARSE` `CODEC` `IO` `CONC` `CACHE` `IPC` `PIXEL` `ERR` `PERF` `API` `FE` (Wave 1) ·
 `ALIGN` `SPATIAL` `COLOR` `METRIC-PSNR/SSIM/VMAF` `PIPE` `HEAT` `STAT` (Wave 2) · `UIX-IA/SYNC/ASYNC/TIME/
 TREE/HEX/VIZ/INPUT/LAYOUT/ERR/A11Y` `TAURI-CMD/EVT/WEB` `FRONT-STATE/RENDER` `UX-SCENARIO` (Wave 3) ·
-`FFI` `DEC` `RPERF` `SER` `PLUGIN` `MCP` `BUILD` `PLAT` `TEST` `OBS` `SEC` (Wave 4)
+`FFI` `DEC` `RPERF` `SER` `PLUGIN` `MCP` `BUILD` `PLAT` `TEST` `OBS` `SEC` (Wave 4) · `WIRE` `SUPPLY` `SIMD` (Wave 5)
 
 ## Every item's record shape
 
@@ -134,4 +151,6 @@ User test/Domain review), 사용자 목표, 증상, 원인, 구현 냄새, 영�
 grep/read the relevant code area, classify each item Confirmed/Suspected/N/A with evidence, write the verdict
 back into the file's `Bitvue 판정` line. `Workflow({scriptPath: '.claude/workflows/anti-pattern-scan.js', args: {files: ['PARSE','MEM']}})`
 to scope it, or omit `args` to audit all 47 files (expensive — one agent per file, run deliberately, not by
-default). Not yet run as of this catalog's completion (2026-07-31).
+default). Run in full 2026-08-04 — all 47 Wave 1-4 files verdicted (364 Confirmed). Wave 5 files (`WIRING.md`,
+`SUPPLY.md`) were written post-audit, mostly pre-verdicted from that same audit's evidence rather than via
+this workflow — see each file's own intro for its provenance.

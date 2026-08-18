@@ -55,7 +55,7 @@ fn decode_frame(session_id: &str, frame_idx: u32, nal_type: u8) -> Result<Frame,
 - 일회성 디버그 프린트(`dbg!`, 개발자 로컬 트러블슈팅)는 구조화할 필요 없음 — 커밋되지 않는 것이 전제.
 - 로그 소비자가 영구적으로 사람뿐이고(예: 단발성 CLI 도구의 stderr) 자동 분석 요구가 전혀 없는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — bitvue-engine(옛 bitvue-core) 전체 tracing 호출 구조화 필드(%/?/key=value) 사용 0건, 전부 문자열 보간("...{}", arg) 방식(예: crates/bitvue-engine/src/worker.rs:330, crates/bitvue-engine/src/core.rs:144); 신규 IPC 계층인 bitvue-sidecar는 tracing조차 쓰지 않고 전부 eprintln!(crates/bitvue-sidecar/src/main.rs) — 오히려 더 심함.
 
 ---
 
@@ -112,7 +112,7 @@ async fn parse_bitstream(path: String) -> Result<ParseResult, String> {
 **예외**:
 - 앱 시작 시 1회만 실행되는 초기화 로그(설정 로드 등)는 상관관계 ID가 불필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(수정) — Tauri 폐기 후 IPC 계층은 bitvue-sidecar(stdio 프로토콜)로 교체됐고, 여기엔 실제로 프론트↔백엔드 전체를 관통하는 `correlation_id: u32`가 와이어 프로토콜 자체에 존재함(bitvue-desktop/src/protocol.ts, sidecarClient.ts, crates/bitvue-sidecar/src/main.rs) — 카탈로그가 말하는 "상관관계 ID 자체가 없음"은 더 이상 사실이 아님. 다만 그 ID는 요청/응답 매칭과 취소용으로만 쓰이고 **로그에는 거의 노출되지 않음**: sidecar는 성공 경로(compute_frames)에서 로그를 전혀 안 남기고, 실패 경로 eprintln! 몇 곳(main.rs:132,147,165)도 correlation_id 없이 메서드명/에러만 찍음 — "로그를 correlation_id로 필터링"이 여전히 불가능해 안티패턴의 핵심 문제는 그대로 남음(별도 경로: bitvue-engine의 Job::request_id는 여전히 stale-result 폐기 전용, worker.rs).
 
 ---
 
@@ -162,7 +162,7 @@ metrics::histogram!("stage_ms", "stage" => "metric").record(metric_start.elapsed
 **예외**:
 - 정말 하나의 원자적 연산으로 취급해야 하는 경우(예: 서드파티 SDK 호출이 파싱+디코드를 블랙박스로 묶어 제공)는 합산이 불가피 — 이때는 최소한 블랙박스임을 지표 이름에 명시(`vendor_sdk_total_ms`).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — crates/bitvue-engine/src/performance.rs에 단계별 PerfMetric(Parse/Decode/Convert/Overlay* 등 분리)·PerfTimer 설계가 이미 존재해 이 안티패턴을 구조적으로 막아주지만, 정작 그 코드는 자신의 테스트(performance_test.rs, tests/performance.rs)에서만 호출되고 실제 decode/parse 파이프라인 어디에서도 사용되지 않는 죽은 코드 — 프로덕션 경로엔 단계별이든 합산이든 타이머 자체가 없어 '합쳐서 기록' 사례를 직접 확인할 수 없음.
 
 ---
 
@@ -215,7 +215,7 @@ async fn submit_decode_job(job: DecodeJob, pool: &WorkerPool) -> DecodeResult {
 **예외**:
 - 워커 풀이 없는 단순 동기 호출(큐가 애초에 존재하지 않음)에는 해당 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-engine/src/worker.rs의 submit/spawn/complete_job 경로에 큐 대기·실행 시간을 구분하는 계측이 전혀 없음(게이지/히스토그램 없음, in-flight 카운트만 debug! 로그로 남김).
 
 ---
 
@@ -285,7 +285,7 @@ impl FrameCache {
 **예외**:
 - 엔트리 크기가 완전히 균일한 캐시(예: 고정 크기 해시 결과만 캐싱)는 count만으로 충분.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-engine/src/performance.rs CacheStats(라인 ~411-430)는 requests/hits/misses 카운트만 있고 byte 필드가 없음; crates/bitvue-engine/src/byte_cache.rs의 CacheStats(라인 ~268-)는 반대로 byte 점유율만 있고 hit/miss 카운트 자체가 없음 — 두 캐시 모두 카운트+byte를 동시에 갖추지 못함.
 
 ---
 
@@ -352,7 +352,7 @@ fn decode_gop(nal_units: &[NalUnit], tracker: &PeakTracker) -> Result<Vec<Frame>
 **예외**:
 - 메모리 사용량이 입력 크기에 선형적이고 상한이 명확히 낮은 소규모 유틸리티(예: 헤더 몇 바이트만 읽는 프로브 커맨드)는 peak 추적이 과잉일 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — GlobalAlloc 훅, PeakTracker류 구조체, 주기적 RSS 샘플링 어디에도 없음(grep 0건); index_dev_hud.rs는 현재값 추정만 하고, crates/bitvue-cli/src/commands/decode.rs:83 주석이 'peak RSS spike' 우려를 언급만 할 뿐 실제 추적 코드는 없음.
 
 ---
 
@@ -415,7 +415,7 @@ async fn on_seek(new_frame_idx: u32, state: Arc<PlayerState>) {
 **예외**:
 - 완전히 동기적이고 취소 개념 자체가 없는 짧은 연산(수 마이크로초 내 완료)에는 불필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — worker.rs의 complete_job이 request_id 불일치로 late result를 버릴 때('Discarding late result', 약 400번째 줄) tracing::debug! 로그만 남기고 취소/만료/실패 카운터가 전혀 없음(저장소에 metrics crate 의존성 자체가 없음).
 
 ---
 
@@ -464,7 +464,7 @@ async fn get_frame_hex_data(session_id: String, offset: u64, size: u64) -> Resul
 **예외**:
 - 응답이 항상 몇 바이트 이내로 고정된 커맨드(단순 boolean/enum 반환)는 측정 불필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — Tauri 폐기로 IPC는 bitvue-sidecar의 stdio 프로토콜로 교체됐음. 카탈로그와 동일한 성격의 데이터-플레인 커맨드 get_hex_range(crates/bitvue-sidecar/src/main.rs:1304)는 `bytes.len()`을 응답 메타에 담아 돌려줄 뿐(라인 1339) 어디에도 로깅/히스토그램/경고 임계값이 없고, 옛 src-tauri 시절 있었던 `limits::MAX_HEX_BYTES` 같은 크기 상한 자체도 이 함수엔 없음(grep 0건) — get_decoded_frame_yuv/get_thumbnails 등 다른 Data 프레임 커맨드도 동일하게 payload 크기 계측이 전무.
 
 ---
 
@@ -535,7 +535,7 @@ async fn get_frame(idx: u32, request_id: String) -> Result<FrameData, String> {
 **예외**:
 - 완전히 동기적이고 항상 1ms 미만인 IPC 커맨드(단순 getter)는 상관관계 계측이 과잉.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(악화) — frontend/services/tauriCommandService.ts(performance.now()로 IPC 왕복 지연만 측정하던 옛 코드)는 이제 죽은 코드이고, 실제 사용 중인 frontend/services/electronBridgeService.ts(881줄)에는 performance.now()/latency/elapsed 계측이 단 한 줄도 없음(grep 0건) — 상관관계 부재는 그대로이고 왕복 지연 측정 자체가 퇴행함. 백엔드(bitvue-sidecar)도 어떤 응답에도 backend_elapsed_ms류 필드가 없음(grep 0건) — 프론트/백엔드 시간 상관관계 지점이 전무.
 
 ---
 
@@ -604,7 +604,7 @@ fn parse_sps(bits: &mut BitReader, ctx: &ParseState) -> Result<Sps, ParseError> 
 **예외**:
 - 상태가 전혀 없는 무상태(stateless) 검증(예: 매직 넘버 체크)은 오프셋 정도만 있으면 충분, 파라미터셋 히스토리는 불필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(부분) — CodecError/HevcError(crates/bitvue-engine/src/codec_error.rs, crates/bitvue-hevc/src/error.rs)는 Parse{offset,..}/UnexpectedEof{position}으로 바이트 오프셋은 담지만, NAL 유닛 인덱스나 직전 유효 SPS/PPS ID 같은 파서 상태 이력은 어떤 에러 타입에도 없음 — 재현 정보가 절반만 확보됨.
 
 ---
 
@@ -659,7 +659,7 @@ async fn decode_pipeline(job: DecodeJob) -> Result<Frame, DecodeError> {
 **예외**:
 - fire-and-forget으로 의도적으로 부모와 무관하게 실행되어야 하는 백그라운드 유지보수 task(예: 주기적 캐시 정리)는 독립 span이 오히려 맞음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체(bitvue-engine, bitvue-sidecar 포함)에 info_span!/.instrument(/.in_current_span() 등 tracing span 사용이 0건이고, 디코드 파이프라인·bitvue-sidecar의 요청 처리 모두 tokio::spawn이 아니라 std::thread::spawn(bitvue-engine/src/worker.rs, bitvue-sidecar/src/main.rs spawn_request)만 사용 — 애초에 끊길 span 자체가 없어 이 특정 실패 양상은 발생할 수 없음(근본 원인은 OBS-001/OBS-002로 이미 반영).
 
 ---
 
@@ -714,7 +714,7 @@ fn set_log_level(handle: tauri::State<reload::Handle<EnvFilter, Registry>>, leve
 **예외**:
 - 매우 짧게 실행되고 끝나는 CLI 유틸리티(1회 파싱 후 종료)는 재시작 비용이 사실상 0이라 불필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — bitvue-cli/src/main.rs:294·bitvue-mcp/src/main.rs:1184가 tracing_subscriber::fmt().init()으로 1회성 초기화만 함(레벨은 각각 -v 카운트/하드코딩 "bitvue_mcp=debug,info"). Tauri 폐기 후 데스크톱 앱은 Electron 메인 프로세스(bitvue-desktop/electron/main.ts)와 sidecar(crates/bitvue-sidecar)로 교체됐는데, 이쪽은 로그 레벨 개념 자체가 없음 — main.ts는 console.log/console.warn/console.error를 조건 없이 항상 출력하고(grep으로 LOG_LEVEL/logLevel/setLevel 0건), sidecar는 eprintln!만 씀 — reload::Layer나 런타임 레벨 변경 커맨드는 저장소 어디에도 없고, 애초에 낮출 "레벨"이라는 개념조차 없어 원안보다 더 원시적인 상태.
 
 ---
 
@@ -771,7 +771,7 @@ fn decode_macroblock(mb: &Macroblock, ctx: &DecodeContext) -> Result<(), DecodeE
 **예외**:
 - 이미 명확히 저빈도인 경로(세션 시작/종료, 파일 열기)의 verbose 로그는 오버헤드가 무시할 수준.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — crates/bitvue-av1-codec/src/symbol/mod.rs의 per-bit/per-symbol 디코드 루프 안에 event_enabled! 가드 없는 tracing::trace! 호출이 15건 있어 구조적으로 패턴과 일치하지만, 필드가 카탈로그 예시(Vec 전체 Debug 포맷)와 달리 u8/u64 등 값싼 스칼라라 실제 성능 영향은 벤치마크로 확인되지 않음.
 
 ---
 
@@ -816,7 +816,7 @@ tracing::error!(file_ref = %redact_path(&path), error = %err, "failed to parse")
 **예외**:
 - 완전히 로컬에만 남고 절대 전송/공유되지 않는 것이 코드 수준에서 보장된 개발자 전용 디버그 빌드 로그는 원문 경로가 진단에 더 유용할 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-engine/src/core.rs:144가 tracing::info!("Opening file: {:?}...")로 원본 PathBuf를 그대로 로깅하고, bitvue-mcp/src/main.rs:640도 .display()로 전체 경로를 로깅; redact_path류 유틸리티가 저장소 어디에도 없음(grep 0건).
 
 ---
 
@@ -879,7 +879,7 @@ fn install_panic_hook(activity: Arc<Mutex<ActivitySnapshot>>) {
 **예외**:
 - 상태가 전혀 없는 순수 함수형 유틸리티 프로세스(입력 1개 받아 출력 1개 내는 CLI)는 스냅샷이 오버엔지니어링일 수 있음 — 인자 자체가 이미 재현 정보.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — std::panic::set_hook 호출이 저장소 전체에 0건 — 크래시 시점의 활동 스냅샷(현재 파일/세션/프레임/코덱)을 남길 메커니즘이 전혀 없음.
 
 ---
 
@@ -935,7 +935,7 @@ macro_rules! perf_counter_detailed {
 **예외**:
 - 컴파일러가 최적화로 제거하지 못할 만큼 무거운 계측(예: 프레임마다 전체 프레임 버퍼 체크섬 계산)은 release에서 기본 비활성이 합리적 — 다만 옵트인 스위치는 반드시 존재해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(수정, 이전 Confirmed 근거는 소멸) — 카탈로그가 지목하는 정확한 실패양상(cfg!(debug_assertions)로 로그/카운터 매크로 자체를 release에서 제거)의 근거였던 src-tauri/src/lib.rs가 저장소에서 완전히 삭제됨(retire 커밋 e7194cc). 현재 저장소 전체(crates/**, bitvue-desktop/electron/**, vendor 제외)를 grep해도 로깅·계측 매크로를 cfg(debug_assertions)로 게이팅하는 코드는 0건 — Electron(console.log)·sidecar(eprintln!)·CLI/MCP(tracing) 전부 디버그/릴리스 빌드에서 동일하게 항상 출력됨. 관련 문제(성능 계측 인프라 자체가 프로덕션 경로 어디에도 안 쓰임)는 이미 OBS-003/004/007에 반영돼 있고 그건 빌드 타입과 무관한 별개 이슈.
 
 ---
 
@@ -985,7 +985,7 @@ async fn export_diagnostic_bundle(app: tauri::AppHandle) -> Result<PathBuf, Stri
 **예외**:
 - 내부 개발팀만 사용하는 도구(외부 사용자가 없는 사내 전용 빌드)는 개발자가 직접 로그 위치를 알고 있으므로 우선순위가 낮음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 시스템 정보/로그 내보내기/크래시 리포트를 묶는 '진단 번들' 커맨드가 없음(bitvue-sidecar에도 diagnostic-bundle류 커맨드 없음); 유일하게 존재하는 crates/bitvue-engine/src/export/diagnostics.rs는 비트스트림 파싱 진단(심각도/오프셋/frame_idx) CSV 내보내기로 전혀 다른 기능.
 
 ---
 
@@ -1037,7 +1037,7 @@ fn log_event_timestamp() {
 **예외**:
 - "이벤트가 실제로 몇 시 몇 분에 일어났는가"를 사람이 읽는 로그 타임스탬프로 남기는 용도는 wall clock이 정답 — duration 계산에만 쓰지 않으면 문제 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-engine/src/cache_provenance.rs의 age()/time_since_access()(약 165-178번째 줄)가 SystemTime::now().duration_since(...).unwrap_or(Duration::from_secs(0))로 non-monotonic 시계로 duration을 계산 — 카탈로그의 정확한 안티패턴(다만 프레임 지연이 아니라 캐시 엔트리 age 용도).
 
 ---
 
@@ -1088,7 +1088,7 @@ std::thread::Builder::new()
 **예외**:
 - 매우 짧게 존재하고 즉시 join되는 일회성 헬퍼 스레드(수 밀리초 내 종료)는 이름 없이도 진단 부담이 적음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-engine/src/worker.rs:371,433이 std::thread::spawn(move || {...})을 이름 없이 호출; 저장소 전체에 Builder::new().name(/thread_name( 사용이 0건(vendor 코드 제외).
 
 ---
 
@@ -1140,5 +1140,5 @@ strip = false
 **예외**:
 - 바이너리 크기가 배포 채널(예: 매우 제한적인 다운로드 대역폭)의 하드 제약인 경우 최종 배포판은 strip하되, 반드시 심볼 파일을 별도 보관하는 것으로 절충.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 루트 Cargo.toml의 [profile.release](라인 120-125)가 strip = true, panic = "abort"로 카탈로그의 나쁜 예와 동일; 다만 [profile.release-with-debug](strip=false, debug=true) 프로파일이 별도로 존재해 권장안의 절반은 이미 갖춰져 있음.
 </content>

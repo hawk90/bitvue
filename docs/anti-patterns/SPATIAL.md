@@ -59,7 +59,7 @@ fn align_for_metric(reference: &Frame, distorted: &Frame) -> Result<(Frame, Fram
 - 명시적으로 "ABR 래더 비교 모드"로 동작하도록 설계된 기능에서, 문서화된 업스케일 정책 하에 자동 리사이즈하는 것은 정상 동작
 - 프로토타입/디버그 도구에서 즉시성이 정확성보다 중요한 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `psnr()`/`ssim()`(crates/bitvue-metrics/src/lib.rs) 및 `check_compatibility`(crates/bitvue-engine/src/compare_strategy.rs:215-236)는 크기 불일치 시 에러를 반환할 뿐 리사이즈하지 않으며, `compute_frame_metrics`(crates/bitvue-cli/src/commands/quality.rs:85-91, `bitvue quality` CLI — src-tauri는 Electron 전환으로 제거됨, 2026-08-08)는 해상도가 다른 프레임 쌍을 `eprintln!` 경고 후 조용히 skip한다. 파이프라인 전체에 `resize()` 호출 자체가 없다.
 
 ---
 
@@ -116,7 +116,7 @@ struct SsimReport {
 **예외**:
 - 내부 디버그/스크래치 용도로 즉석에서 만든 일회성 비교 도구는 기록을 생략해도 무방(단, 결과를 정식 리포트로 승격하지 않는다는 전제)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SPATIAL-001에서 확인했듯 메트릭 파이프라인에 resize 단계 자체가 없어(크기 불일치는 skip 처리) 기록할 필터가 존재하지 않는다.
 
 ---
 
@@ -167,7 +167,7 @@ fn preprocess(frame: &Frame, crop: CropInSourceSpace, target: Size, filter: Resi
 **예외**:
 - crop 영역이 리사이즈 배율과 무관하게 항상 정수 배율 경계에 정렬되어 순서가 결과에 영향을 주지 않는 특수 케이스(드묾, 명시적으로 증명 가능할 때만)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에서 `crop_to_region`/`crop_plane`류 crop 함수가 전혀 존재하지 않는다(비교/메트릭 경로에 crop 자체가 없음). crop-resize 순서 문제가 성립할 전제가 없다.
 
 ---
 
@@ -220,7 +220,7 @@ fn extract_luma_plane(decoded: &DecodedFrame) -> Vec<u8> {
 **예외**:
 - 해상도가 이미 16/64의 배수라 coded size == display size인 콘텐츠만 다루는 것이 문서로 보장된 도구(단, 향후 콘텐츠 확장 시 재검토 필요)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `DecodedFrame`(crates/bitvue-decode/src/decoder.rs:33-61)은 coded_size/conformance_window 구분 없이 단일 width/height만 갖는다. FFmpeg 경로(ffmpeg.rs, AVFrame 기본 crop 적용)와 dav1d 경로(decoder.rs:506, Picture가 이미 display 크기 반환)는 문제 소지가 적어 보이지만, vvdec/mpeg2/avs3 등 다른 디코더 경로는 추적하지 못했고 타입 자체에 padding 유출을 막을 필드가 없어 구조적으로 재발 가능.
 
 ---
 
@@ -273,7 +273,7 @@ fn compute_frame_metric(reference: &Frame, distorted: &Frame, region: ContentReg
 **예외**:
 - 여백을 포함한 "전체 프레임 압축 효율"을 의도적으로 평가하는 모드(예: 여백까지 포함한 실제 전송 비트 대비 품질 평가)에서는 여백 포함이 올바른 선택 — 단 이 경우 모드임을 리포트에 명시해야 한다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에서 letterbox/pillarbox/black_threshold 관련 코드가 전혀 없다(`grep -rli letterbox|pillarbox|black_threshold` 결과 0건). 여백 감지 기능 자체가 구현되어 있지 않다.
 
 ---
 
@@ -322,7 +322,7 @@ fn load_frame_for_comparison(path: &Path, frame_index: u64) -> Frame {
 **예외**:
 - 두 입력 모두 회전 메타데이터가 이미 픽셀에 베이크되어 있고 메타데이터 필드가 항상 0(또는 identity matrix)임이 파이프라인 계약으로 보장된 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 컨테이너 파서(crates/bitvue-formats/src/container.rs, grep 결과 rotation/tkhd/matrix/orientation 0건)에 MP4 `tkhd`/matrix, SEI display-orientation 등 회전 메타데이터 파싱이 전혀 없고, `bitvue quality` CLI(crates/bitvue-cli/src/commands/quality.rs)는 디코드된 프레임을 `psnr()`/`ssim()`(crates/bitvue-metrics/src/lib.rs)에 그대로 전달해 orientation 정규화 단계 자체가 존재하지 않는다. 단, 현재 프레임 단위 디코드 경로는 AV1 IVF만 지원해(quality.rs:50-57) 회전 메타데이터를 신호할 컨테이너(MP4 등) 자체가 이 경로에 아직 들어오지 않는다는 점도 함께 기록.
 
 ---
 
@@ -380,7 +380,7 @@ fn resolutions_are_comparable(a: &StreamInfo, b: &StreamInfo) -> SpatialCompat {
 **예외**:
 - 웹/모바일 전용 파이프라인으로 SAR가 항상 1:1임이 계약으로 보장된 콘텐츠만 다루는 경우(단, 입력 검증에서 이를 강제해야 함)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `sar_width`/`sar_height`는 SPS VUI에서 파싱되지만(crates/bitvue-avc/src/sps.rs:155-158,580-581; crates/bitvue-hevc/src/sps.rs:87-88,492-493), `ResolutionInfo::is_compatible()`(crates/bitvue-engine/src/compare.rs:225-245)는 raw 픽셀 width/height의 mismatch_percentage만으로 호환성을 판정하며 SAR를 전혀 참조하지 않는다.
 
 ---
 
@@ -435,7 +435,7 @@ fn align_chroma_siting(reference: &Yuv420Frame, distorted: &Yuv420Frame) -> (Chr
 **예외**:
 - luma 전용 메트릭만 계산하는 파이프라인(색차 채널을 아예 다루지 않는 경우)은 이 이슈의 영향을 받지 않음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `chroma_sample_loc_type`은 파싱되지만 HEVC 쪽은 결과를 `_`로 버린다(crates/bitvue-hevc/src/sps.rs:516-517). 다만 저장소에 4:2:0→4:4:4 업샘플/위상 필터 함수가 전혀 없고(`upsample`/`Yuv444` 변환 grep 0건), PSNR/SSIM은 원본 서브샘플링 상태의 U/V 평면을 그대로 비교하므로(bitvue-metrics/src/lib.rs psnr_yuv/ssim_yuv) 안티패턴이 전제하는 "siting 무시한 업샘플" 코드 경로 자체가 없다.
 
 ---
 
@@ -493,7 +493,7 @@ fn align_pair(reference: &Frame, distorted: &Frame, policy: AlignmentDirection, 
 **예외**:
 - reference가 항상 distorted와 동일 해상도임이 파이프라인 계약으로 보장되는 경우(리사이즈 자체가 발생하지 않음)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SPATIAL-001과 동일 근거: 메트릭 파이프라인에 resize 호출이 전혀 없어(해상도 불일치는 skip) 비대칭 리사이즈 방향 문제가 발생할 코드 경로가 없다.
 
 ---
 
@@ -562,7 +562,7 @@ fn compute_all_metrics(pair: &AlignedFramePair) -> MetricSet {
 **예외**:
 - 서로 다른 메트릭이 원천적으로 다른 해상도/색공간을 요구하도록 표준에 정의되어 있는 경우(예: 특정 메트릭이 항상 특정 해상도로 다운샘플링하도록 규격화됨) — 이 경우도 차이를 명시적으로 문서화해야 함
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `PsnrComparisonStrategy`/`SsimComparisonStrategy`(crates/bitvue-engine/src/compare_strategy.rs)는 트레이트 기본 구현인 동일한 `check_compatibility`(라인 215-236)를 공유하고 둘 다 crop/resize를 하지 않는다. bitvue-metrics의 psnr/ssim도 동일한 exact-size 검증만 수행해 메트릭 간 전처리 분기가 없다.
 
 ---
 
@@ -621,7 +621,7 @@ fn compute_metric(region: &AlignedRegion) -> f64 {
 **예외**:
 - 이동량이 서브픽셀 수준으로 매우 작아(1픽셀 미만) 가장자리 손실이 무시 가능한 수준이고, 그 사실이 정량적으로 검증된 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `AlignmentEngine`(crates/bitvue-engine/src/alignment.rs)은 PTS/frame-index 기반 시간축 정렬만 수행한다. 저장소 어디에도 픽셀 평행이동/모션보상 정렬 코드가 없어 패딩 채움 문제가 성립할 전제가 없다.
 
 ---
 
@@ -669,7 +669,7 @@ fn align_frames(reference: &Frame, distorted: &Frame) -> (Frame, Frame, Subpixel
 **예외**:
 - 두 스트림이 완전히 동일한 인코딩 파이프라인의 산출물로 서브픽셀 이동이 발생할 여지가 없음이 보장된 경우(예: 동일 소스의 서로 다른 비트레이트 인코딩만 비교하는 파이프라인)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SPATIAL-011과 동일 근거: `AlignmentEngine`은 시간축(PTS) 정렬만 하며 정수/서브픽셀 픽셀 이동 추정 코드 자체가 없다(alignment.rs).
 
 ---
 
@@ -720,7 +720,7 @@ fn compute_frame_scores(reference: &Frame, distorted: &Frame, expected_transform
 **예외**:
 - 두 스트림 모두 안정화가 적용되지 않았거나, 동일한 안정화 알고리즘/강도로 처리되었음이 파이프라인 계약으로 보장된 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소에 전역 기하 변환(affine/homography) 추정이나 안정화 보정 코드가 전혀 없다. "정렬"은 alignment.rs의 시간축 PTS 매칭이 유일하다.
 
 ---
 
@@ -773,7 +773,7 @@ fn crop_content_region(frame: &Frame, region: &ContentRegion) -> Frame {
 **예외**:
 - 콘텐츠 자체가 편집으로 종횡비/여백을 프레임마다 바꾸는 특수한 경우(뮤직비디오 등)에는 프레임별(또는 장면별) 재탐지가 실제로 필요 — 이 경우 재탐지 경계를 장면 전환 지점으로 한정해 흔들림을 최소화해야 한다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SPATIAL-005에서 확인했듯 letterbox/콘텐츠 영역 감지 자체가 구현되어 있지 않아 프레임별 재탐지 흔들림 문제가 성립하지 않는다.
 
 ---
 
@@ -835,7 +835,7 @@ struct ComparisonReport {
 **예외**:
 - 완전히 동일한 해상도/색공간/방향의 두 스트림만 다루도록 입력이 사전 검증되어 전처리가 원천적으로 발생하지 않는 파이프라인(그래도 "전처리 없음"이라는 사실 자체는 기록하는 편이 안전)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `FrameMetrics`(crates/bitvue-cli/src/commands/quality.rs:13-18)는 `frame`/`psnr_db`/`ssim` 점수만 담고 전처리 이력 필드가 없다. 해상도 불일치로 스킵된 프레임은 `eprintln!` 경고(quality.rs:86-89)로만 남고 `Vec<FrameMetrics>` 반환값에는 어떤 프레임이 몇 개 제외됐는지 전혀 기록되지 않는다(호출부가 stderr를 버리면 완전히 소실).
 
 ---
 
@@ -889,7 +889,7 @@ fn deinterlace_and_compare(reference: &InterlacedFrame, distorted: &InterlacedFr
 **예외**:
 - 프로그레시브 콘텐츠만 다루는 파이프라인은 이 항목과 무관(입력 검증에서 인터레이스 콘텐츠를 명시적으로 거부하는 것이 안전)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `field_order`/`top_field_first` 등은 HEVC/AVC/MPEG2 비트스트림 파서에서 syntax 표시 목적으로만 파싱된다. `player/h264_quirks.rs`는 DPB/POC용 시간축 field/frame quirk만 다루며, 저장소 어디에도 field weave/deinterlace로 픽셀을 합성해 비교하는 코드가 없다(grep weave/TFF/BFF 0건).
 
 ---
 
@@ -949,7 +949,7 @@ fn crop_to_region(frame: &Yuv420Frame, region: &ContentRegion) -> Result<Yuv420F
 **예외**:
 - crop 영역이 항상 짝수 그리드에 정렬되도록 상류(letterbox 감지, UI 입력 검증)에서 이미 보장하는 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SPATIAL-003/017 전제인 crop 함수 자체가 저장소에 없어(luma→chroma 좌표 절반 계산 코드 없음) 홀수 좌표로 인한 위상 붕괴 문제가 발생할 수 없다.
 
 ---
 
@@ -1002,4 +1002,4 @@ fn compare_ladder_rung(reference: &Frame, distorted: &Frame, upscale: &UpscaleRe
 **예외**:
 - 업계 표준 벤치마크(예: 특정 표준 기구의 고정 평가 프로토콜)를 그대로 재현하는 것이 목적인 경우, 표준이 지정한 필터를 그대로 쓰는 것이 올바르다 — 단 그 표준을 명시해야 한다
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `compute_vmaf`도 해상도 불일치 시 리사이즈 대신 에러를 반환한다(crates/bitvue-metrics/src/vmaf.rs:177-190). ABR 래더 업스케일 비교 기능 자체가 구현되어 있지 않다.

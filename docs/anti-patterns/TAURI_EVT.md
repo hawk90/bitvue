@@ -62,7 +62,7 @@ async function goToFrame(index: number) {
 **예외**:
 - 여러 윈도우가 동일한 상태를 실시간으로 반영해야 하는 진짜 broadcast 요구(멀티 모니터에서 같은 프레임을 보는 detached 뷰)는 이벤트가 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사)**: `src-tauri`는 커밋 `e7194cc`("refactor: retire src-tauri, the working Tauri fallback app")로 완전히 삭제됐고 저장소는 Electron으로 이관됐다(`CLAUDE.md` "Migrated off Tauri 2026-08-08"). 이 항목에 이전에 적혀 있던 판정(`App.tsx:373/591/450`, `src-tauri/src/commands/file.rs` 인용)은 이관 이전 상태를 감사한 것으로 현재 `App.tsx`와 전혀 일치하지 않는다 — 재확인 결과 `onReloadFile`(현재 `App.tsx:393-395`)과 `handleOpenRecent`(`App.tsx:576-579`) 둘 다 `useAppFileOperations`의 `openFileAtPath()`를 직접 호출해 결과를 즉시 받으며, 이벤트 왕복이 전혀 없다. 실제 IPC 계층(`bitvue-desktop/electron/preload.cjs`의 `window.bitvue.*`, `ipcMain.handle`/`ipcRenderer.invoke` 35개 채널)은 전부 요청-응답이며, 진짜 broadcast 이벤트는 `bitvue:sidecar-restarted`(`main.ts:1308`) 단 하나뿐 — 이는 "모든 상태 변경을 broadcast"가 아니라 "백엔드 프로세스가 죽었다 재시작됨"이라는 좁은 1회성 알림이라 이 안티패턴 자체가 적용되지 않는다(단 이 이벤트를 실제로 구독하는 프런트 코드가 없다는 별개 문제는 TAURI-EVT-010에서 다룸).
 
 ---
 
@@ -127,7 +127,7 @@ listen<FrameReadyPayload>("frame-ready", (e) => {
 **예외**:
 - 백엔드가 단일 순차 큐/단일 워커 스레드로 이벤트를 직렬화해서 내보내는 구조라면 순서 보장이 실제로 성립하므로 문제되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사, Electron 이관 후 기준)**: fire-and-forget emit 자체가 없으므로(EVT-001 참고) 순서 비보장 경합도 성립하지 않는다. 다만 진짜 request/response 경쟁 시나리오(빠른 프레임 탐색으로 `getDecodedFrameYuv` invoke가 겹쳐 나갈 때)는 별도로 안전하게 처리돼 있다: `bitvue-desktop/src/sidecarClient.ts`가 `pending: Map<number, PendingRequest>`로 모든 요청/응답을 `correlationId`로 상호 연관시켜(`sidecarClient.ts:118, 237-248`) 응답이 어느 순서로 와도 올바른 호출자에게만 매칭되고, 프런트도 `YuvViewerPanel/index.tsx:164-189`에서 표준 React `cancelled` 플래그로 오래된 응답을 폐기한다 — 카탈로그가 권장하는 "시퀀스로 최신성 판단" 원칙이 이미 구조적으로 지켜지고 있다.
 
 ---
 
@@ -196,7 +196,7 @@ function ProgressPanel() {
 **예외**:
 - 작업 자체가 매우 짧아(수십 ms) 리스너가 창 렌더링 완료 전에 이미 등록되는 것이 구조적으로 보장되는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사)**: 델타-스트림 형태의 progress 이벤트는 현재 Electron 브리지에도 존재하지 않는다 — 대용량 로딩/인덱싱은 `getFramesChunk`/`indexStream` 같은 요청-응답 invoke 폴링으로 구현되어(`electronBridgeService.ts`) 이 패턴 자체가 우회된다(이 결론은 이전 감사와 동일하되, `src-tauri`가 아니라 현재의 `bitvue-desktop` sidecar 브리지 기준으로 재확인). 단, 관련은 있지만 이 항목이 다루는 "델타 스트림"과는 다른 별개의 진짜 유실 문제가 EVT-010에 있다 — `bitvue:sidecar-restarted`(유일한 push 이벤트)를 구독하는 프런트 코드가 아예 없다.
 
 ---
 
@@ -253,7 +253,7 @@ fn parse_bitstream(app: &tauri::AppHandle, nal_units: &[NalUnit]) {
 **예외**:
 - 진행 단계 수가 원래 적은 작업(예: 10단계 파이프라인의 단계 전환 알림)은 스로틀링이 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사)**: 현재 Electron 브리지(`bitvue-desktop/electron/main.ts`, `ipcMain.handle` 35개 채널)에도 "progress"성 emit이나 스로틀링 로직이 없다. 대용량 스트림 파싱/디코드 진행률은 여전히 이벤트가 아니라 `getFramesChunk` 같은 chunked invoke 폴링으로 처리되어, 단위별 emit 폭주가 발생할 코드 경로 자체가 없다(결론은 이전 감사와 동일, 근거만 `src-tauri`에서 현재 sidecar 브리지로 교체).
 
 ---
 
@@ -315,7 +315,7 @@ function FrameInspector() {
 **예외**:
 - 앱 전체 생명주기 동안 한 번만 등록되고 절대 언마운트되지 않는 최상위 컴포넌트(`App.tsx` 루트)의 전역 리스너는 정리 로직이 없어도 실질적 위험이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사)**: `App.tsx`에는 이제 `listen()` 호출이 전혀 없다(EVT-001 참고 — 재작성되어 이벤트 왕복 없이 `openFileAtPath()` 직접 호출로 바뀜). 저장소 전체에서 `@tauri-apps/api/event`의 `listen`을 실제로 쓰는 곳은 `hooks/useFileOperations.ts:22` 단 한 곳뿐이며(cleanup 자체는 갖추고 있음, `:248-266`), grep 결과 이 훅은 자기 테스트(`tests/hooks/useFileOperations.test.ts`) 외에는 어디서도 import되지 않는 죽은 코드다(실제 경로는 `useAppFileOperations`) — 즉 리스너가 살아서 등록되는 경로 자체가 현재 앱에 없다. Electron 쪽의 유일한 push 채널 `onSidecarRestarted`(`preload.cjs:99-101`)도 타입 선언과 테스트 mock 외에는 아무도 호출하지 않아 등록/해제 자체가 발생하지 않는다.
 
 ---
 
@@ -375,7 +375,7 @@ function Filmstrip() {
 **예외**:
 - 핸들러가 진짜로 순수하고 비용이 무시할 만한 수준(단순 상태 플래그 반영)이라면 중복 등록이 실질적 해는 없다 — 다만 구조적 확장성을 위해 여전히 지양할 가치는 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사)**: 이전 판정이 인용한 `App.tsx:450`의 `listen<FileOpenedEvent>(...)`는 더 이상 존재하지 않는다(EVT-001/005 참고 — `App.tsx`는 이제 `listen()`을 전혀 쓰지 않고 `openFileAtPath()`를 직접 호출). 따라서 "두 곳이 동일 이벤트를 각자 구독"하는 상황 자체가 재현되지 않는다 — 살아있는 구독자가 하나도 없다(EVT-005 참고). 다만 이전 판정이 지적한 잠재 위험 구조는 형태를 바꿔 여전히 유효하다: `hooks/useFileOperations.ts`(죽은 훅, `"file-opened"` 구독)와 `hooks/useAppFileOperations.ts`(실제 사용 경로)가 병렬로 공존하는 것 자체가 향후 실수로 죽은 훅이 다시 연결되면 중복 구독이 실현될 수 있는 구조 — `feedback` 메모리에도 "ThumbnailContext/useThumbnail은 죽은 병렬 구현"이라는 동일 패턴이 기록돼 있어, Bitvue 저장소에 반복되는 습관으로 보인다.
 
 ---
 
@@ -429,7 +429,7 @@ fn update_hex_cursor(app: tauri::AppHandle, window_label: String, offset: u64) {
 **예외**:
 - 테마 변경, 앱 종료 알림, 전역 설정 변경처럼 정의상 모든 창이 알아야 하는 이벤트는 broadcast가 맞다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사, 근거를 현재 Electron 코드로 교체)**: `bitvue-desktop/electron/main.ts`는 `createWindow()`를 정확히 1회만 호출한다(`main.ts:1301`) — 단일 `BrowserWindow` 아키텍처로, 멀티 윈도우/detached 패널이 없다. `webContents.send`도 저장소 전체에 `bitvue:sidecar-restarted`(`main.ts:1308`) 단 한 번만 쓰이며 이는 유일한 창에 보내는 것이라 "무관한 창까지 broadcast"할 대상 자체가 없다. hex view/waveform을 별도 창으로 분리하는 기능은 여전히 미구현 — 결론은 이전 감사와 동일.
 
 ---
 
@@ -488,7 +488,7 @@ listen<number>("frame-decoded", async (e) => {
 **예외**:
 - 이미 충분히 축소된 썸네일(필름스트립용 64×64 등)처럼 원래도 작은 데이터는 이벤트에 인라인으로 포함해도 실질적 문제가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사, 근거를 현재 Electron 브리지로 교체)**: 디코드된 프레임(YUV/RGB), 썸네일, hex 바이트는 전부 `ipcRenderer.invoke()` 반환값(`getDecodedFrameYuv`, `getThumbnails`, `getHexRange` — `preload.cjs`)으로 요청-응답 경로를 통해서만 전달되고, event payload로 나가는 대형 바이너리는 없다(broadcast emit 자체가 없음). 오히려 `sidecarClient.ts`의 `getHexRange`/`getDecodedFrameYuv`는 메타데이터(JSON)와 raw 바이트를 `dataPromise`/`metadataPromise`로 분리해 base64 팽창을 피하는, 카탈로그가 권장하는 방향과 정확히 일치하는 설계다.
 
 ---
 
@@ -548,7 +548,7 @@ function useTaskProgress(taskId: string) {
 **예외**:
 - 앱 구조상 특정 작업 종류가 항상 단일 인스턴스로만 존재한다는 것이 보장되면(예: 파일을 한 번에 하나만 열 수 있는 모드) id 없이도 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **정정(재감사)**: broadcast 이벤트가 전무하므로 이름 공유로 섞일 코드 경로 자체가 없다(EVT-001 참고). A/B 비교 모드 커맨드(`openStream`, `getFramesChunk`, `selectFrame`, `getDecodedFrameYuv` 등)는 전부 `stream: "A"|"B"` 매개변수를 명시적으로 받고, `sidecarClient.ts`의 `correlationId`로 호출별 상호 연관까지 보장돼(EVT-002 참고) 동시 작업이 요청-응답 계층에서부터 이미 구조적으로 구분된다. 단, 이를 실제로 소비하는 `CompareWorkspace.tsx`(및 `StreamPlayer.tsx`/`DiffOverlay.tsx`)는 grep 확인 결과 자기 디렉터리 밖 어디서도 import되지 않는 죽은 트리라 이 경로는 현재 앱에서 도달 불가 — 이론상으로만 유효한 N/A.
 
 ---
 
@@ -612,7 +612,7 @@ useEffect(() => {
 **예외**:
 - 상태가 없는(stateless) 단일 화면 워크플로(파일을 고르기 전 초기 랜딩 화면 등)는 새로고침 시 처음부터 시작하는 것이 자연스러운 동작이라 재동기화가 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — **정정(재감사, src-tauri 대신 현재 sidecar 아키텍처로 재확인, 동일 결론이 더 강하게 재확인됨)**: 이제 상태를 들고 있는 것은 Tauri `AppState`가 아니라 별도 프로세스인 `bitvue-sidecar`(`bitvue_engine::Core`)이며, `bitvue-desktop/electron/main.ts`의 주석(~1276-1280줄)이 이를 직접 인정한다 — "이건 프로세스를 재시작하는 것이지 `Core`의 인메모리 상태를 재시작하는 게 아니다: 크래시에서 살아남는 열린 스트림/선택 상태는 없다"(원문 요지). 이 사실을 알리는 유일한 통로가 `bitvue:sidecar-restarted` push 이벤트인데, (1) 저장소 전체에서 이 이벤트를 실제로 구독하는 프런트 코드가 전무하다(`onSidecarRestarted`는 `electronBridgeService.ts`의 타입 선언과 테스트 mock에만 존재, 호출부 0건 — grep으로 확인) — `main.ts` 자신도 "실제 UI가 반응할 게 아직 없어서 이 셸은 그렇게 안 한다"고 명시. (2) 설령 리스너가 있어도 되돌려 받을 스냅샷 쿼리 자체가 브리지 API에 없다 — `electronBridgeService.ts` 전체에 `getSessionState`/`SessionSnapshot`류 함수가 0건. `App.tsx`의 어떤 `useEffect`도 마운트 시점에 "지금 뭐가 열려있나"를 되묻지 않는다(`getStreamInfo`는 오직 `utils/progressiveLoader.ts`의 활성 로딩 흐름 중에만 호출됨). 따라서 sidecar 크래시+자동재시작이든 renderer 새로고침(Cmd+R)이든, 카탈로그가 경고하는 "이벤트만이 유일한 진실 원천이라 재동기화 불가" 상태가 이전보다 더 명확하게(코드 주석으로 자인된 채) 재현된다.
 
 ---
 

@@ -63,7 +63,7 @@ fn test_parse_av1_matrix(#[case] fixture: &str) {
 **예외**:
 - 유닛 레벨에서 특정 함수 하나의 로직만 검증하는 테스트는 작은 샘플이 적절하다 — 이 안티패턴은 "이것이 스위트 전체의 유일한 검증 방식"일 때 해당한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `crates/bitvue-test-data/src/generators.rs`가 profile/tile/interlace/film-grain/해상도 극단값을 합성 생성해 다수의 `*_edge_cases_test.rs`에서 쓰이므로 구조적 편향은 완화되어 있으나, 실제 인코딩 픽스처(`samples/README.md`)는 전부 FFmpeg(libx264/libx265/libvpx) 단일 인코더 계열만 사용 — 다중 인코더(libaom/SVT-AV1/rav1e) 습관 차이는 커버되지 않음.
 
 ---
 
@@ -124,7 +124,7 @@ fn test_declared_size_exceeds_buffer() {
 **예외**:
 - 파서 레이어가 아니라 이미 검증된 내부 데이터 구조를 다루는 상위 레이어(예: 이미 파싱된 프레임 리스트를 정렬하는 함수)는 malformed 바이트 테스트가 불필요하다 — 신뢰 경계 안쪽이기 때문이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 반대 사례가 풍부함: 전용 `crates/bitvue-test-data/src/corruption.rs`(TruncatedHeader/TruncatedFrame/InvalidMagic/FrameSizeOverflow/BitFlip 등 `CorruptionType` enum), 저장소 전체에 malformed/truncat/corrupt/invalid 이름의 테스트 함수 81개, 여러 테스트 파일에서 `catch_unwind` 사용 확인.
 
 ---
 
@@ -196,7 +196,7 @@ fn test_mv_matches_ffmpeg_reference() {
 **예외**:
 - 순수 회귀 테스트(golden output이 "정답"이 아니라 "이전 실행 결과와 달라지지 않았음"을 확인하는 용도로 명시된 경우)는 이 패턴이 아니다 — 단, 그 경우 테스트 이름과 문서에 "correctness가 아니라 stability를 검증한다"는 점을 명확히 해야 한다(TEST-009 참고).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — grep으로 "동일 함수를 두 번 호출해 자기 자신과 비교"하는 리터럴 패턴은 발견되지 않음; MV/오버레이 테스트(예: `crates/bitvue-avc/tests/overlay_extraction_real_test.rs`)는 합성 입력에 대해 수기로 계산한 상수 기대값을 사용함. 다만 외부 오라클(FFmpeg 등)과의 교차검증 자체가 전무하다는 잔여 리스크는 TEST-015 참고.
 
 ---
 
@@ -251,7 +251,7 @@ fn test_golden_tile_layout() {
 **예외**:
 - end-to-end smoke test로 "전체 파이프라인이 어쨌든 끝까지 도는가"만 확인하는 목적이라면 하나의 큰 골든도 괜찮다 — 단, 이 경우 세밀한 회귀 원인 분석은 다른 세분화된 테스트에 위임한다는 전제가 필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체(Rust/frontend)에 golden-file/snapshot 인프라 자체가 없음 (`insta` 미사용, `golden.json` 패턴 없음, `toMatchSnapshot`/`__snapshots__` 없음) — 패턴이 적용될 대상이 없음.
 
 ---
 
@@ -303,7 +303,7 @@ purpose = "truncation at SPS boundary regression (issue #482)"
 **예외**:
 - CI에서만 다운로드하고 리포지토리에는 커밋하지 않는 대용량 corpus(예: 외부 스토리지에서 캐시로 받아오는 fuzz corpus)는 라이선스 조건이 다운로드 스크립트/CI 설정에 명시되어 있으면 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (일부) — `test_data/{avc,hevc,vp9,av1}_test.*` 4개 파일은 README/매니페스트 없이 무관한 커밋("fix(vp9): IVF container strip + MSB-first frame header parsing")에 묻어 추가됨(`git log --follow -- test_data/avc_test.h264`), 나쁜 예와 거의 동일. 반면 `samples/README.md`는 출처(Xiph.org DERF)·라이선스(public domain)·정확한 ffmpeg 생성 커맨드까지 문서화되어 있어 대비됨 — 갭은 `test_data/`에 국한.
 
 ---
 
@@ -361,7 +361,7 @@ fn test_av1_qindex_boundary_values() {
 **예외**:
 - 정말로 스펙에서 deprecated/미사용으로 명시된 조합(향후 버전에서 제거 예정)은 우선순위를 낮춰도 된다 — 단, "무시해도 되는 이유"를 문서화해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 저장소 전역에 `*_edge_cases_test.rs` 파일이 다수 존재하고 스펙 조항을 직접 언급하는 케이스도 있음(예: HEVC `separate_colour_plane_flag`, `crates/bitvue-hevc/tests/sps_parsing_test.rs:442`)이나, 그 테스트는 수동으로 채운 구조체 필드가 그대로 반환되는지만 확인할 뿐 실제 `chroma_format_idc==3` 비트스트림을 파싱해 파생된 `chroma_array_type`을 검증하지 않음 — 폭은 있으나 깊이는 불확실.
 
 ---
 
@@ -415,7 +415,7 @@ fn test_timestamp_and_reordering(#[case] fixture: &str) {
 **예외**:
 - 컨테이너를 다루지 않고 순수 엘리멘터리 스트림 파싱만 담당하는 모듈은 컨테이너 레벨 timestamp(edit list 등) 테스트가 범위 밖이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — POC wraparound(`crates/bitvue-core/src/tests/compare_h264_quirk_poc_wrap_001.rs`)와 VFR 감지(계수변동 휴리스틱, `crates/bitvue-core/src/frame_identity.rs`)는 실제로 테스트됨. 하지만 MP4 edit-list/negative-composition-offset 테스트는 `#[ignore = "MP4 parser module needed"]` 스텁 상태(`crates/bitvue-formats/tests/container_edge_cases_test.rs:69,77`)라 컨테이너 레벨 타임스탬프 edge case는 사실상 미검증.
 
 ---
 
@@ -485,7 +485,7 @@ fn test_frame_cache_eviction_order_deterministic_scheduling() {
 **예외**:
 - 순서가 스펙/계약으로 보장된 경우(예: 단일 스레드 실행 경로, 또는 명시적으로 FIFO를 보장하는 자료구조)라면 순서 단언이 정당하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `thread::spawn`을 쓰는 테스트(`bitvue-core/tests/critical_edge_cases_test.rs`, `bitvue-metrics/tests/edge_cases_test.rs`, `bitvue-decode/tests/edge_cases_test.rs`)를 모두 확인했으나, 전부 순서 무관 불변식(최종 카운트, 모든 결과 동일, 데드락 없음)만 단언하고 특정 실행 순서를 하드코딩한 `assert_eq!`는 발견되지 않음.
 
 ---
 
@@ -548,7 +548,7 @@ fn test_sps_semantic_values_unaffected_by_refactor() {
 **예외**:
 - 정말로 "출력이 안정적으로 유지되는가"만 확인하면 충분한 저위험 영역(예: 디버그 전용 로그 포맷)은 전체 구조 snapshot이 실용적이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Rust/frontend 어디에도 snapshot-testing 라이브러리(`insta` 등)가 사용되지 않음 — 패턴이 적용될 대상이 없음.
 
 ---
 
@@ -604,7 +604,7 @@ test('overlay renders correctly under large file loading state', async ({ page }
 **예외**:
 - 순수 렌더링 로직(캔버스에 픽셀을 정확히 그리는가)을 검증하는 것이 테스트의 유일한 목적이라면 스크린샷 비교만으로 충분하다 — 상호작용은 그 컴포넌트의 관심사가 아닐 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Playwright/E2E 스크린샷 테스트 인프라 자체가 없음(`playwright` 설정 없음, `toHaveScreenshot` 호출 없음); frontend 테스트는 vitest 컴포넌트 테스트뿐이라 "스크린샷만으로 검증"이라는 패턴이 성립하지 않음 (다만 이는 "E2E 커버리지 자체가 없다"는 별개의, 이 항목 범위 밖의 갭을 드러냄).
 
 ---
 
@@ -661,7 +661,7 @@ fuzz_target!(|data: &[u8]| {
 **예외**:
 - 초기 단계에서 파서가 아직 크래시를 자주 일으키는 상태라면, 우선 크래시 제거에 집중하고 semantic assertion은 다음 단계로 미루는 것이 합리적인 우선순위 판단일 수 있다 — 단, 이 경우 "다음 단계"가 실제로 계획되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `fuzz/fuzz_targets/`의 5개 타깃 전부(`av1_decode.rs`, `ivf_parser.rs`, `obu_parser.rs`, `leb128.rs`, `fuzz_target_1.rs`) panic 여부만 체크; `av1_decode.rs`/`ivf_parser.rs`/`obu_parser.rs`는 파싱 결과를 `let _ = ...`로 버리고 semantic assertion이 전무함.
 
 ---
 
@@ -708,7 +708,7 @@ cp fuzz/artifacts/parse_av1/minimized-from-crash-abcd1234 \
 **예외**:
 - corpus 크기가 작고(수백 개 이하) CI 실행 시간에 실질적 영향이 없는 초기 단계 fuzz 타깃은 minimization 자동화 우선순위가 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `fuzz/corpus/` 디렉터리 자체가 저장소에 커밋되어 있지 않음(fuzz는 로컬/수동 실행 전제, `fuzz/README.md` 참고) — corpus가 아직 존재하지 않으므로 "누적된 대용량 corpus" 문제가 성립하지 않음. cmin/tmin 자동화도 없으나 축적 규모가 0인 현재로선 시급성 낮음.
 
 ---
 
@@ -778,7 +778,7 @@ proptest! {
 **예외**:
 - 강건성(패닉 없음)이 유일한 관심사인 하위 레벨 유틸리티(예: 순수 bit-reader)에는 "panic 안 함" 수준의 property test도 그 자체로 유효하다 — 다만 그 위 레이어(파서 전체)에서는 더 강한 invariant가 필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-av1-codec/tests/{leb128,bitreader,ivf}_prop_tests.rs` 3개 파일 모두 완전 무작위 바이트 strategy에 "never panics"가 주력 invariant; `ivf_prop_tests.rs:60-62`의 `prop_frame_count_never_negative`는 `frame_idx`를 `0i64..` 범위로 생성해놓고 `frame_idx >= 0`을 단언하는 항진명제(tautology)임.
 
 ---
 
@@ -843,7 +843,7 @@ fn test_gpu_pixel_pipeline_matches_cpu_within_tolerance(){
 **예외**:
 - bit-exact 일치가 spec 요구사항이 아니고 애초에 근사 알고리즘(예: 특정 품질 향상 필터)이라면, differential test보다 "결과가 시각적으로 허용 가능한 범위인가"를 검증하는 지각 품질 메트릭(SSIM 등)이 더 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-metrics/src/simd.rs`에 실제 SIMD-vs-scalar differential test(`test_psnr_simd_vs_scalar`, `test_window_stats_vs_scalar`, 허용오차 포함)가 존재하고, CI test matrix가 ubuntu/macos/windows(macos-latest = ARM64라 NEON 경로도 실제 실행됨)를 커버함; GPU/컴퓨트 셰이더 렌더링 파이프라인 자체가 코드베이스에 없어 그 부분은 애초에 해당 없음.
 
 ---
 
@@ -911,7 +911,7 @@ fn test_matches_jvt_conformance_vector_expected_md5() {
 **예외**:
 - 아직 업계 표준 참조 구현이 없는 신규/실험적 코덱, 또는 non-standard 확장 기능(자체 메타데이터 오버레이 등)은 애초에 비교 대상이 없으므로 이 패턴이 적용되지 않는다 — 이 경우 conformance vector가 나오는 대로 채택한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/tests/ffmpeg_test.rs`("Tests for FFmpeg integration")는 실제 FFmpeg나 `bitvue_decode::ffmpeg` 모듈을 전혀 호출하지 않고, 테스트 파일 안에서 직접 정의한 가짜 mock 구조체(`FFmpegDecoder`, `AVPacket`, `AVFrame`, `SwsContext` 등)만 테스트함; 실제 `ffmpeg.rs` 모듈에는 테스트가 0개. 저장소 전체에 ffprobe/conformance-vector MD5 비교 코드가 전무.
 
 ---
 
@@ -968,7 +968,7 @@ jobs:
 **예외**:
 - feature가 1~2개뿐이고 서로 독립적(상호작용 없음)이라면 `--all-features`와 `--no-default-features` 두 지점만으로도 충분할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `.github/workflows/ci.yml`의 `test` job은 `cargo test -p ${{ matrix.crate }} --no-fail-fast`만 실행, `--features`/`--no-default-features` 변주가 전혀 없음; `bitvue-decode`(`ffmpeg`, `vvdec`)와 `bitvue-metrics`(`vmaf`, `vmaf-cuda`, `parallel`) feature는 모두 `default = []`라 CI에서 컴파일조차 되지 않음.
 
 ---
 
@@ -1025,7 +1025,7 @@ fn test_parse_4gb_multitrack_mkv() { /* ... */ }
 **예외**:
 - 실제로 더 이상 의미가 없어진(deprecated 기능에 대한) 테스트라면 `#[ignore]`보다 삭제가 맞다 — ignore는 "지금은 못 돌리지만 언젠가 돌려야 한다"는 의도를 표현하는 것이지 삭제의 대체재가 아니다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 저장소 전역에 `#[ignore]` 테스트 수십 개(`bitvue-avc`, `bitvue-formats`, `bitvue-vp9`, `bitvue-metrics`, `bitvue-core` 등, 대부분 이유 문자열은 있음)가 있으나 `.github/`와 `scripts/`를 grep해도 `--ignored`를 실행하는 곳이 전무 — 전부 어떤 CI에서도 영구히 실행되지 않는 죽은 테스트.
 
 ---
 
@@ -1087,7 +1087,7 @@ test('cancelled decode does not leak into frame cache', async () => {
 **예외**:
 - 요청이 항상 순차적으로 하나씩만 발생하도록 UI 레벨에서 이미 직렬화되어 있는 경우(예: 버튼이 요청 중 비활성화됨)라면 race 자체가 발생할 수 없으므로 이 테스트의 우선순위가 낮다 — 단, 그 직렬화 보장 자체는 테스트되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 실제 취소/최신성 메커니즘은 존재함: `src-tauri/src/services/decode_service.rs`에 `cache_generation: AtomicU64` 기반 stale-cache 방지 로직(286번 줄에서 generation 비교)과 프런트엔드 `frontend/utils/progressiveLoader.ts`의 `AbortController`. 그러나 `decode_service.rs` 자체는 유닛 테스트가 0개이고, frontend 테스트 어디에도 응답 지연을 역전시켜 stale response가 실제로 폐기되는지 검증하는 race 시나리오 테스트가 없음 — 메커니즘은 있으나 검증되지 않음.
 
 ---
 
@@ -1146,7 +1146,7 @@ fn test_memory_does_not_regress_across_versions() {
 **예외**:
 - 메모리 사용량이 설계상 파일 크기에 비례하는 것이 의도된 컴포넌트(예: 전체 파일을 랜덤 액세스해야 하는 non-streaming 분석 도구)라면 상한선 테스트 대신 "비례 계수가 합리적인 범위인가"를 검증하는 것이 더 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 저장소 전체를 grep해도 `measure_peak_rss`, `dhat`, `/proc/self/status`, `getrusage` 등 피크 메모리 측정 코드가 전혀 없음; 대용량 파일 파싱 경로에 대한 메모리 예산/회귀 테스트가 하나도 없음.
 
 ---
 
@@ -1209,4 +1209,4 @@ fn bench_decode_1080p(c: &mut Criterion) {
 **예외**:
 - 벤치마크 도입 극초기, 아직 기준선의 변동 폭(노이즈)조차 파악되지 않은 단계에서는 일시적으로 non-blocking으로 운영하며 데이터를 축적하는 것이 합리적이다 — 단, 이는 "영구 상태"가 아니라 "게이팅 활성화 이전의 준비 단계"로 명시적으로 취급되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — criterion 벤치마크가 실제로 존재함(`bitvue-benchmarks` 크레이트, `bitvue-av1-codec/benches`)에도 `.github/workflows/*.yml` 어디에도 벤치마크 job 자체가 없음(`continue-on-error`조차 아니라 아예 부재) — 성능 회귀는 CI에서 어떤 형태로도 게이팅되지 않음.

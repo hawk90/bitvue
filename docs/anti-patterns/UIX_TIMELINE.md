@@ -36,7 +36,7 @@
 - 시나리오 테스트: 창을 리사이즈한 뒤 같은 화면 좌표를 클릭해 결과 프레임이 바뀌는지 확인.
 - 좌표 변환 로직이 여러 파일에 중복 존재하는지 grep.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (2026-08-18 재감사, 직전 커밋에서 수정됨) — 가장 최근 커밋 `f9e672e`("make Timeline bar strip responsive")가 이 항목을 정확히 겨냥해 고쳤다. `getFrameIndexFromEvent`/드래그 핸들러는 이제 `document.elementFromPoint(...).closest(".timeline-thumb")`로 실제 클릭된 DOM 엘리먼트의 `data-frame-index`를 직접 읽는 `frameIndexFromPoint`를 우선 사용하고(frontend/components/Timeline.tsx:132-176, 209-176 부근), 순수 `percent * frames.length` 나눗셈은 `elementFromPoint`가 없는 jsdom 테스트 환경에서만 쓰이는 폴백으로 강등됐다(코드 주석이 이 설계를 명시). CSS도 `.timeline-thumb{width:2px}` 고정폭 대신 `flex:1 1 0; min-width:2px; max-width:14px`로 grow-to-fill하고, 다 채워도 안 들어가면 `overflow-x:auto`로 스크롤하도록 바뀌었다(Timeline.css:100-145) — 이전 버전에서 존재했던 "리사이즈 시 같은 좌표가 다른 프레임을 가리키는" 실패 유형은 더 이상 재현되지 않는다. VFR 이진탐색(누적시간 기반)은 여전히 없지만 그건 UIX-TIME-002가 다루는 별개 항목이다.
 
 ---
 
@@ -71,7 +71,7 @@
 - 도메인 리뷰: VFR 샘플(가변 프레임레이트 녹화본, 캡처 도중 fps가 바뀐 스트림)을 로드해 타임라인 간격과 실제 PTS 간격을 비교.
 - 코드에서 PTS/timestamp 필드 사용 여부 검색.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (2026-08-18 재감사, 경로 갱신 — Tauri 제거로 원 인용문 `src-tauri/src/commands/file.rs`는 더 이상 존재하지 않음) — 현재 프레임 데이터 경로는 `bitvue-sidecar`의 `get_frames_chunk`가 `UnitNode`를 그대로 직렬화해 보내는 것인데(crates/bitvue-sidecar/src/main.rs:756-798), `UnitNode`(crates/bitvue-engine/src/stream_state.rs:197-260)에는 `pts`/`dts`만 있고 `duration` 필드 자체가 없다. `Timeline.tsx`/`TimelineThumbnails.tsx`는 `frame.pts`를 전혀 참조하지 않고 `.timeline-thumb{flex:1 1 0}`으로 프레임을 항상 동일 폭으로 배치한다(frontend/components/Timeline.css:142-147). 참고: `bitvue-engine::frame_identity::TimelineMapper` 기반의 실제 PTS 정렬 타임라인(`get_timeline` IPC, crates/bitvue-indexer/src/lib.rs:247)이 최근 새로 만들어졌지만 "no live UI consumer yet"(frontend/services/electronBridgeService.ts:794)로 Timeline 컴포넌트는 아직 이를 쓰지 않는다.
 
 ---
 
@@ -107,7 +107,7 @@
 - 도메인 리뷰: B프레임이 많은 GOP 구조(예: hierarchical B)를 가진 샘플로 타임라인 순서와 실제 재생 순서를 프레임 단위로 대조.
 - 코드에서 정렬 없이 디코더 output을 그대로 리스트에 사용하는 경로 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (2026-08-18 재감사, 경로 갱신) — 원 인용 `src-tauri/src/commands/file.rs`는 Tauri 제거로 사라졌다. 현재도 동일한 문제가 다른 형태로 존재: Timeline이 실제로 소비하는 `get_frames_chunk`(crates/bitvue-sidecar/src/main.rs:756)가 반환하는 `UnitNode`(crates/bitvue-engine/src/stream_state.rs:197-260)에는 `display_order`/`coding_order`/`poc` 필드가 아예 없고 `frame_index`(디코드/유닛 순서) 하나뿐이다. 프론트엔드 `FrameInfo` 타입(frontend/types/video.ts:128-131)은 `poc?`/`display_order?`/`coding_order?`를 옵셔널로 선언해두었지만 wire에서 채워주는 값이 없어 항상 undefined다. **흥미로운 발견**: `bitvue-engine::frame_identity::TimelineMapper`(POC/PTS 기반 실제 재정렬 로직, decode↔display 분리를 정확히 이 항목이 요구하는 방식으로 구현)가 최근 `bitvue-indexer::get_timeline`(crates/bitvue-indexer/src/lib.rs:247, AV1 전용)을 통해 처음으로 실제 호출자를 얻었으나(주석: "had zero production callers before this"), `getTimeline` IPC는 "no live UI consumer yet"(frontend/services/electronBridgeService.ts:794) — 즉 올바른 수정 재료는 백엔드에 이미 있는데 Timeline UI에는 아직 배선되지 않았다.
 
 ---
 
@@ -142,7 +142,7 @@
 - 인터랙션 테스트: 이상값(급격한 프레임 크기 스파이크)이 있는 구간을 최대로 줌인했을 때 실제 개별 프레임 값이 표시되는지 확인.
 - 줌 레벨 변경 시 네트워크/IPC 요청이나 재계산이 트리거되는지 프로파일링.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Timeline.tsx`에는 줌 기능 자체가 없다(zoom state/핸들러 grep 결과 없음). `VirtualizedThumbnailsView.tsx`(45,66-73행)에 ctrl+wheel `zoom` state가 있지만 전체 스트립에 `scaleX` CSS transform만 적용하는 순수 시각적 확대이며 데이터 재요청/LOD 전환은 없다 — 다만 이는 애초에 다운샘플 요약 티어 자체가 없어서 발생하는 문제이므로 이 항목이 말하는 실패 유형과는 다르다.
 
 ---
 
@@ -178,7 +178,7 @@
 - 성능 테스트: 100만 프레임급 합성 데이터로 초기 렌더링 시간, 스크롤 FPS, DOM 노드 수를 측정.
 - 프레임 수를 10배씩 늘려가며 렌더링 시간이 선형/초선형으로 증가하는지 벤치마크.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (2026-08-18 재감사, 경로 갱신 — `Filmstrip/views/TimelineView.tsx`는 최근 리팩터로 삭제됨) — `TimelineThumbnails.tsx` 90행이 `frames.map(...)`로 프레임마다 `<div className="timeline-thumb">`를 무조건 생성하며 가상화 코드가 전혀 없다(grep 결과: 이 파일에 virtualize/react-window 등 없음). `TimelineThumbnails`는 이제 `Filmstrip`이 아니라 최상단 `Timeline.tsx`(항상 마운트되는 하단 스크러버 바로 보임, frontend/components/Timeline.tsx:11)의 직속 자식이며, `Filmstrip.tsx`가 별도로 `VIRTUALIZATION_THRESHOLD=200`(constants/ui.ts:172) 기준 `VirtualizedThumbnailsView`를 조건부로 쓰는 것(Filmstrip.tsx:64, 255)과 대조적으로 이쪽엔 프레임 수 상한 가드가 전혀 없다.
 
 ---
 
@@ -212,7 +212,7 @@
 - 성능 테스트: 마커 밀도를 높인 합성 데이터로 줌 레벨별 프레임 타임 측정.
 - 렌더 루프 프로파일링으로 뷰포트 밖 마커에 소요되는 시간 비중 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Timeline/Filmstrip 어디에도 씬 전환·에러·GOP 경계 같은 마커 오버레이 기능 자체가 없다(grep 결과 SVG 화살표 정의용 `<marker>` 태그 외 도메인 마커 없음). 컬링할 마커 목록이 존재하지 않으므로 이 안티패턴이 적용될 대상이 없다.
 
 ---
 
@@ -247,7 +247,7 @@
 - 시각 검수: 마커 밀도가 높은 구간을 축소해 겹침·가림 여부 스크린샷 비교.
 - 동일 좌표에 서로 다른 타입의 마커 2개 이상을 배치한 합성 데이터로 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — UIX-TIME-006과 동일한 이유로 씬 전환/에러/GOP 경계 마커 시스템 자체가 아직 구현되어 있지 않다(frame-type 색상 칠만 존재).
 
 ---
 
@@ -282,7 +282,7 @@
 - 성능 테스트: 빠른 드래그 스크럽 동안 프레임 타임/입력 지연을 측정.
 - 스크럽 중 호출되는 함수 프로파일링으로 정밀 디코드 경로가 매 이벤트마다 실행되는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Timeline.tsx`의 `handleDragMove`(140-160행)는 드래그 중 로컬 상태(`highlightedFrameIndex`, `hoverPosition`)만 갱신하고, `setFrameSelection`(다른 패널에 전파되는 유일한 트리거)은 `handleDragUp`(162-171행)에서 마우스업 시점에만 호출한다. 즉 스크럽 도중 매 이벤트마다 정밀 분석을 재실행하지 않는다.
 
 ---
 
@@ -316,7 +316,7 @@
 **탐지**:
 - 인터랙션 테스트: 재생 중 다른 프레임을 클릭한 뒤 상세 패널이 클릭한 프레임을 유지하는지, 재생 head는 계속 움직이는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (반대 방향의 실패) — 실제로는 재생 위치와 선택 프레임이 하나의 변수가 아니라 서로 완전히 분리된 두 상태 저장소다: `CurrentFrameContext`(App.tsx:118, YuvViewerPanel 재생/스텝 담당)와 `SelectionContext.selection.frame.frameIndex`(Timeline.tsx:22 `useSelection()`, Filmstrip 담당). 두 훅을 동시에 import하는 파일이 코드베이스에 하나도 없어(grep 확인) 둘을 잇는 동기화 로직이 존재하지 않는다 — 즉 YUV 뷰어에서 재생해도 Timeline 커서가 움직이지 않고, Timeline 클릭도 YUV 뷰어를 이동시키지 않는다.
 
 ---
 
@@ -351,7 +351,7 @@
 - 인터랙션 테스트: 클릭(단일)과 드래그(범위) 각각에서 하위 패널이 올바른 데이터를 보여주는지 확인.
 - 선택 상태 타입 정의를 코드에서 검색해 범위 표현이 가능한지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `TemporalSelection.type`은 "range"와 `rangeStart`/`rangeEnd` 필드를 타입에 정의하고 있지만(frontend/types/selection.ts:17-24), 이 필드들을 실제로 읽거나 쓰는 코드가 타입 정의 외에는 전무하다(grep 결과 없음). Timeline/Filmstrip은 항상 `setFrameSelection`으로 단일 `frameIndex`만 설정하며 드래그 범위 선택 UI가 구현되어 있지 않다.
 
 ---
 
@@ -383,7 +383,7 @@
 **탐지**:
 - 인터랙션 테스트: 특정 마커 위에 커서를 두고 휠을 굴렸을 때 해당 마커가 화면상 같은 x좌표 근처에 유지되는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — UIX-TIME-004와 동일하게 Timeline.tsx에 줌 기능이 없어 이 버그가 존재할 대상 자체가 없다.
 
 ---
 
@@ -416,7 +416,7 @@
 **탐지**:
 - 인터랙션 테스트: 프레임 선택 후 스크롤로 멀리 이동한 뒤, 선택 위치로 돌아가는 조작이 존재하는지, 몇 단계가 필요한지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (Timeline 기준) — `Timeline.tsx`는 항상 전체 프레임 배열을 컨테이너 폭 안에 나열할 뿐 독립적인 스크롤/팬 뷰포트가 없어 "스크롤로 선택이 화면 밖으로 사라지는" 시나리오 자체가 성립하지 않는다. 참고로 Filmstrip의 thumbnails 뷰는 현재 프레임으로 자동 스크롤하는 효과가 이미 있다(Filmstrip.tsx:163-176).
 
 ---
 
@@ -451,7 +451,7 @@
 - 시각 검수: 에러/씬 전환/GOP 경계가 같은 위치에 겹치는 합성 데이터로 어떤 마커가 최종적으로 보이는지 확인.
 - 디자인 리뷰: 마커 스타일 가이드에 우선순위 정의가 문서화되어 있는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — UIX-TIME-006/007과 동일하게 GOP/씬/에러 마커 시스템 자체가 구현되어 있지 않아 우선순위를 정의할 대상이 없다.
 
 ---
 
@@ -486,7 +486,7 @@
 - 시각 검수: 느린 네트워크/디스크 조건을 시뮬레이션해 스크롤 중 레이아웃 시프트가 발생하는지 확인.
 - 빠른 스크롤 후 정지했을 때 표시된 썸네일이 현재 위치와 실제로 일치하는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 썸네일 요청(useFilmstripState.ts의 `loadThumbnails`)에 AbortController/요청 세대 번호가 전혀 없다(grep 확인). 다만 결과가 `Map<frameIndex, dataUrl>`에 인덱스 키로 저장되므로(62-101행) 응답 순서가 뒤바뀌어도 잘못된 위치에 잘못된 썸네일이 붙는 레이스는 구조적으로 발생하기 어렵다. 플레이스홀더가 로딩 중에도 동일 크기 슬롯을 차지하는지는 CSS까지 확인하지 못해 레이아웃 시프트 여부는 미확정.
 
 ---
 
@@ -520,7 +520,7 @@
 **탐지**:
 - 사용자 테스트: 방송/QC 배경의 사용자에게 특정 타임코드의 프레임을 찾아보게 하고 소요 시간과 실수를 관찰.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `TimelineHeader.tsx`는 `{currentFrame + 1} / {totalFrames}`(프레임 번호)만 렌더링하며(19-27행), 코드베이스 전체에서 Timeline/Filmstrip 쪽에 타임코드 포맷팅이나 단위 전환 토글을 찾을 수 없었다(grep 결과 없음).
 
 ---
 
@@ -555,7 +555,7 @@
 - 인터랙션 테스트: 마우스 없이 키보드만으로 특정 프레임/마커에 도달할 수 있는지 시나리오 테스트.
 - 접근성 감사 도구로 타임라인의 포커스 가능 여부, ARIA role 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (2026-08-18 재감사, 라인 번호 갱신 — 최근 커밋으로 파일 앞부분에 컨텍스트 메뉴 코드가 추가돼 라인이 밀림) — `Timeline.tsx`는 포커스 시 ArrowLeft/Right로 ±1프레임 이동을 지원하고(handleKeyDown, 267행~), 앱 레벨 `useKeyboardNavigation`(hooks/useKeyboardNavigation.ts)도 prev/next frame과 prev/next keyframe 단축키를 제공한다. UIX-TIME-009 재확인 결과 App.tsx는 여전히 `useCurrentFrame`만 쓰고 `useSelection`은 전혀 호출하지 않는 반면 Timeline은 `useSelection`(SelectionContext)만 읽으므로, 두 키보드 경로가 서로 다른 상태를 움직여 실제로는 앱 레벨 단축키로 Timeline 커서를 이동시키지 못하는 경우가 여전히 존재한다. GOP/씬/에러 마커 점프는 해당 기능이 없어 애초에 불가능.
 
 ---
 
@@ -589,7 +589,7 @@
 **탐지**:
 - 인터랙션 테스트: 다른 줌 레벨에서 동일한 드래그 거리(픽셀)가 실제로 이동하는 프레임 수를 측정해 비례 관계 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected (2026-08-18 재감사, 최근 커밋으로 드래그 구현 변경됨) — 키보드(1프레임, handleKeyDown 267행~)와 드래그(handleMouseDown 193행~)는 이미 서로 다른 코드 경로라 완전히 동일한 조작은 아니다. UIX-TIME-001 수정으로 드래그가 이제 `Math.floor(percent*frames.length)` 나눗셈 대신 실제 DOM 엘리먼트 hit-test로 바뀌었지만, 각 프레임 바가 `min-width:2px`(Timeline.css:143)까지 줄어들 수 있어 프레임 수가 많아지면 여전히 마우스로 특정 1프레임을 정확히 겨냥하기 어렵다(줌 레벨 개념 자체가 없는 것은 UIX-TIME-004/011과 동일). 즉 근본 원인은 "선형 나눗셈"에서 "줌 없는 고정 픽셀 폭 하한"으로 바뀌었을 뿐 핵심 증상(많은 프레임 수에서 마우스 정밀 조정이 어려움)은 유사하게 남아있다 — 실측 인터랙션 테스트 없이는 확정하기 어려워 Suspected 유지.
 
 ---
 
@@ -624,7 +624,7 @@
 - 도메인 리뷰: 의도적으로 일부만 분석한 스트림을 로드해 미분석 구간과 정상 구간이 시각적으로 구분되는지 확인.
 - 코드에서 상태 필드의 기본값과 "정상" 값이 동일한지 점검.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `FrameInfo` 타입(frontend/types/video.ts:121-160)에 분석 진행 상태(`unanalyzed`/`analyzing`/`ok`/`failed` 등) 필드가 전혀 없고, Timeline/Filmstrip 어디에도 이를 구분해 그리는 로직이 없다(grep 결과 없음). 도구에 이 개념 자체가 아직 존재하지 않는다.
 
 ---
 
@@ -659,7 +659,7 @@
 - 도메인 리뷰: 의도적으로 프레임을 제거/중복시킨 합성 스트림으로 타임라인이 이를 표시하는지 확인.
 - 파싱 파이프라인에서 PTS 연속성 검증 코드 유무 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (2026-08-18 재감사, 경로 갱신) — Timeline UI 자체는 여전히 gap/duplicate/discontinuity를 표시하지 않는다(frontend 쪽 grep 결과 없음). 다만 원 인용 백엔드 경로(`src-tauri`)는 Tauri 제거로 사라졌고, 대신 **관련 검증 로직 자체는 이미 존재**한다는 게 확인됐다: `bitvue-engine::frame_identity`가 PTS 중복/비단조 증가를 감지해 `BAD`/`GOOD` 신뢰도로 분류하는 코드를 갖고 있다(crates/bitvue-engine/src/frame_identity.rs:117-163, 272-310, "Check for duplicates using HashSet" 등). 하지만 이는 최근에야 `bitvue-indexer::get_timeline`을 통해 첫 호출자를 얻었을 뿐(UIX-TIME-003 참고) `getTimeline` IPC가 프론트 어디서도 소비되지 않아, 실제 Timeline이 그리는 `get_frames_chunk` 경로에는 gap/duplicate 신호가 전혀 흘러들어가지 않는다 — "검사 로직 부재"가 아니라 "검사 로직은 있는데 UI에 배선 안 됨"에 가깝다.
 
 ---
 
@@ -695,7 +695,7 @@ UIX-TIME-008(스크럽 중 정밀 분석)과 유사하지만 더 근본적인 �
 - 성능 테스트: 빠른 드래그 후 정지했을 때 UI가 즉시 최신 상태로 안정화되는지, 지연된 갱신이 계속 이어지는지 측정.
 - IPC 요청 큐 길이를 드래그 도중 모니터링해 무한정 증가하는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `Timeline.tsx` 자체의 스크럽은 드래그 중 IPC를 호출하지 않아(UIX-TIME-008 참고) 이 항목의 핵심 증상은 발생하지 않는다. 다만 `useFilmstripState.ts`의 썸네일 로딩(IntersectionObserver 기반)은 AbortController/요청 취소가 없어(그레프 확인) 빠른 스크롤 시 동시 in-flight 요청 수에 상한이 없다 — 이미 로딩 중인 인덱스는 재요청하지 않는 최소한의 dedup만 존재.
 
 ---
 
@@ -730,7 +730,7 @@ frame size, QP, bitrate처럼 단위와 값 범위가 다른 여러 지표를 �
 - 시각 검수: 값 범위가 크게 다른 두 지표를 동시에 표시했을 때 작은 값 지표의 변화가 식별 가능한지 확인.
 - 툴팁/호버에서 원본 단위 값이 노출되는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `FrameSizesView.tsx`는 이미 왼쪽(Bitrate/KB)과 오른쪽(QP 0-51) 축을 단위와 함께 분리해 표시한다(127-137행, 242-248행). 정규화해 억지로 한 축에 겹치는 안티패턴은 피해져 있다. 다만 `showBlockMinQP`/`showBlockMaxQP` 토글은 정의만 되어 있고(SizeMetrics 인터페이스) 실제로 렌더링에 쓰이지 않는 죽은 코드다(별개 이슈).
 
 ---
 
@@ -765,7 +765,7 @@ frame size, QP, bitrate처럼 단위와 값 범위가 다른 여러 지표를 �
 - 인터랙션 테스트: 필터 적용 후 화면만 보고 "필터가 걸려 있는지, 얼마나 걸러졌는지"를 즉시 알 수 있는지 확인.
 - 필터링 전후 프레임 간 원본 간격 정보가 유지되는지 코드 검토.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `FrameSizesView.tsx`의 `filteredFrames`(117-119행)는 `frames.filter(...)`로 만든 배열이고, 이후 x좌표 계산이 `idx/(filteredFrames.length-1)`(175, 201행)로 필터링된 배열 인덱스를 기준으로 재분배해 원본 간격 정보를 버린다. 다만 `Filmstrip.tsx`에서 `visibleFrameTypes`가 `["I","P","B"]`로 하드코딩되어 있어(67행) 실제로 필터를 바꾸는 UI가 현재 노출되어 있지 않으므로 이 경로는 아직 사용자가 도달할 수 없는 잠재적 결함이다.
 
 ---
 

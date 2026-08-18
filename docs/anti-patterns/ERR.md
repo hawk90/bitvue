@@ -73,6 +73,8 @@ fn parse_sps(reader: &mut BitReader) -> Result<Sps, ParseError> {
 - 상수 리터럴이나 컴파일 타임에 유효성이 보장된 값(`Regex::new(r"^\d+$").unwrap()` 같은 정적 패턴 컴파일)
 - 프로세스 시작 시 1회만 실행되는 설정 로딩 코드(단, 사용자 입력이 아닌 경우에 한함)
 
+**Bitvue 판정**: N/A — **재감사(2026-08-18, Electron/sidecar 아키텍처 기준)**: 이 문서의 기존 판정은 2026-08-08 Tauri→Electron 마이그레이션(`src-tauri` 완전 삭제, `bitvue-core`→`bitvue-engine` 리네임, commit `e7194cc`) 이전 스냅샷을 근거로 작성돼 있었다 — `src-tauri/src/commands/`, `crates/bitvue-core`는 현재 저장소에 존재하지 않는다(재감사 계기: CLAUDE.md 지시대로 존재하지 않는 경로를 인용하고 있음을 grep으로 확인). 현재 코드 기준 재검증: `#[cfg(test)]`/doc-comment 블록을 걸러내는 스크립트로 표본 크레이트(`bitvue-av1-codec`, `bitvue-avc`, `bitvue-hevc`, `bitvue-vp9`, `bitvue-vvc`, `bitvue-formats`)를 재검사한 결과 프로덕션 코드의 unwrap/expect는 극소수였다 — 예외는 `crates/bitvue-hevc/src/frames.rs:181-190`(`HevcFrameBuilder::build()`가 필드별 `.expect("X is required")` 사용)인데, 바로 위 doc comment(174-176행)에 `# Panics`로 문서화된 빌더 계약 위반(호출자가 setter를 안 부름) 시 패닉이지 원시 바이트스트림 읽기 실패가 아니다. 표본 크레이트 전체에서 `BitReader`/파싱 결과에 직접 `.unwrap()`을 건 사례는 발견되지 않았다. 다만 `bitvue-av1-codec` 한 크레이트에만 287건(대부분 doc-comment/`#[cfg(test)]`)이 있어 전수 검사는 아니다.
+
 ---
 
 ### ERR-002: malformed input을 unreachable로 처리
@@ -128,6 +130,8 @@ fn nal_unit_type_name(nal_type: u8) -> &'static str {
 **예외**:
 - 이미 `match`가 타입 레벨에서 exhaustive함이 보장된 경우(예: 이전 단계에서 `enum`으로 변환을 마친 뒤의 재-match)
 - 함수 진입 시 `debug_assert!`로 사전조건을 문서화하는 용도(단, release 빌드에서 이 경로가 도달 불가능함을 별도로 증명한 경우에 한함)
+
+**Bitvue 판정**: N/A — **재감사(2026-08-18)**: 현재 워크스페이스(`src-tauri` 삭제 후) 기준 `unreachable!`/`unimplemented!`/`todo!`는 non-test 코드에 30건이며, 그중 26건은 `crates/bitvue-av1-codec/src/symbol/cdf.rs`(예: 1480, 1503, 1522행 등)에 몰려 있다 — 전부 `match qcat.min(3) { 0 => .., 1 => .., 2 => .., 3 => .., _ => unreachable!() }` 형태로, `.min(3)` 클램프 직후의 match라 컴파일러가 증명 가능한 도달불가 분기다(스펙 CDF 테이블 조회용 quantizer-category 버킷). 나머지는 `crates/bitvue-avc/src/overlay_extraction.rs:963,975,986`(비트 조합 exhaustive match, 파일 경로/행 번호 이전 판정과 동일)과 `crates/bitvue-decode/src/decoder.rs:634`(직전 `match format`으로 이미 필터링된 뒤의 재-match)로 이전 판정과 동일한 근거다. 손상된 입력값이 직접 도달 가능한 `unreachable!`은 이번에도 발견되지 않았다.
 
 ---
 
@@ -207,6 +211,9 @@ fn get_frame_info(path: String, index: u32) -> Result<FrameInfo, AppErrorDto> {
 - CLI 툴의 `main()` 최상위 레벨에서 다양한 하위 시스템 에러를 모아 종료 코드/메시지로만 출력할 때
 - 프로토타입/스파이크 코드에서 임시로 사용하되, 정식 병합 전 구조화 타입으로 교체하기로 명시적으로 트래킹된 경우
 
+**Bitvue 판정**: Confirmed — **재감사(2026-08-18)**: Electron 마이그레이션 이후 아키텍처가 크게 바뀌어 이전 판정(Tauri `Result<T,String>` 161곳, 죽은 `BitvueError`)은 더 이상 실재하는 경로를 가리키지 않는다(`src-tauri` 삭제됨). 현재는 오히려 이 항목의 "권장"에 가까운 인프라가 새로 생겼다: `crates/bitvue-protocol/src/lib.rs`가 `WireError`/`WireErrorCode`(Parse/Decode/NotFound/Cancelled/Internal 등, `BitvueError`의 variant를 의도적으로 미러링한 "안정된 wire 계약"이라고 문서화됨, 116-145행)를 정의하고, `bitvue-desktop/src/sidecarClient.ts:54-57`의 `SidecarRequestError`는 이 `error.code`를 타입 필드로 보존한다. 다만 실제 사용에서 여전히 이 항목이 경고하는 손실이 두 지점에서 재발한다: (1) `crates/bitvue-sidecar/src/main.rs`의 `get_coding_flow_analysis`(1095-1104행)/`get_deblocking_analysis`(1157-1165행)/`get_codec_extended_info`(1219-1227행) 세 핸들러 모두, 내부 `Result<Value, String>`의 실패 원인과 무관하게 무조건 `WireErrorCode::FrameNotFound`로 하드코딩해 응답한다 — 즉 파싱 실패든 코덱 미지원이든 진짜 "프레임 없음"이든 프론트는 전부 같은 코드로 받는다. (2) 그렇게 보존된 `error.code`조차 `frontend/services/electronBridgeService.ts`(현재 활성 커맨드 계층, 881줄)가 일반 `Error`로 던지기만 해서(예: 526행) UI까지 전달되지 않는다 — non-test 프런트엔드 코드 전체에서 `error.code`/`WireErrorCode`를 참조하는 곳이 전무하다(grep 무결과). 참고로 이전 판정이 인용한 `isNonRetriableError` 문자열매칭 패턴은 `frontend/services/tauriCommandService.ts`에 여전히 코드로 남아있지만 `@tauri-apps/api/core`를 import하는 죽은 파일이고(자기 테스트 파일 외 참조처 없음), 실제 앱은 `electronBridgeService.ts`를 쓴다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-005 참고(현행화 필요할 수 있음 — 미확인).
+
 ---
 
 ### ERR-004: 오류에 file offset 없음
@@ -271,6 +278,8 @@ fn parse_pps(reader: &mut BitReader) -> Result<Pps, ParseError> {
 **예외**:
 - 파일 전체에 대한 전역적 실패(예: "이 파일은 지원하지 않는 컨테이너 포맷입니다")처럼 특정 바이트 위치가 의미 없는 경우
 - 사용자 입력 검증(예: CLI 인자 파싱)처럼 파일 offset 개념 자체가 없는 에러
+
+**Bitvue 판정**: Confirmed — **재검증(2026-08-18)**: `crates/bitvue-hevc/src/error.rs`, `crates/bitvue-avc/src/error.rs`, `crates/bitvue-decode/src/decoder.rs`는 마이그레이션 대상이 아니었던(`src-tauri`가 아닌) 크레이트라 이전 판정 내용이 그대로 재확인된다. `HevcError`는 `UnexpectedEof(u64)`/`Parse{offset, message}`처럼 일부 variant에 offset을 담지만, `AvcError`는 `InvalidSps(String)`/`InvalidPps(String)`/`InvalidSliceHeader(String)`/`InvalidSei(String)` 등 대부분의 variant가 offset 없는 순수 문자열이다(`NotEnoughData{expected, got}`도 byte 개수일 뿐 위치는 아님, error.rs:7-30). `crates/bitvue-decode/src/decoder.rs:12-24`의 `DecodeError::Decode(String)`도 offset이 전혀 없다(파일/행 번호까지 이전 판정과 동일 — bitvue-decode는 이번 마이그레이션에서 이동/개명되지 않았다).
 
 ---
 
@@ -340,6 +349,8 @@ fn predict_mv(ctx: &MbContext) -> Result<MotionVector, DecodeError> {
 - 컨테이너 레벨(코덱 판별 이전) 에러처럼 아직 codec/frame 개념이 성립하지 않는 단계
 - 순수 유틸리티 함수(비트 리더 등)에서 발생하는 에러는 프레임 컨텍스트를 모를 수 있으며, 이 경우 호출자가 감싸는 책임을 진다(단, 반드시 감싸야 함)
 
+**Bitvue 판정**: Confirmed — **재검증(2026-08-18)**: `crates/bitvue-decode/src/decoder.rs:12-24`의 `DecodeError`(`Init(String)`/`Decode(String)`/`NoFrame`/`UnsupportedFormat`)는 이번 마이그레이션과 무관한 크레이트라 그대로 재확인된다 — codec 종류, frame_index, field 등 어떤 컨텍스트 필드도 없다. `crates/bitvue-decode/src/vvdec.rs`(dav1d/vvdec/ffmpeg 백엔드 모두)의 모든 디코드 실패가 이 평평한 문자열 하나로 귀결되어, `bitvue-sidecar`가 어떤 코덱·몇 번째 프레임에서 실패했는지 에러 타입만으로는 알 수 없다. (반면 `bitvue_core::CodecError`는 `bitvue-core`→`bitvue-engine` 리네임을 거쳐 `crates/bitvue-engine/src/codec_error.rs`로 이동했으며 `codec: Codec` 필드는 유지된다 — `UnexpectedEof{codec, position}` 등, 44행 이하 — 컨테이너/코덱 파서 레벨은 부분적으로 이 항목을 지킨다는 결론도 그대로 유효.)
+
 ---
 
 ### ERR-006: recoverable warning을 fatal 처리
@@ -406,6 +417,8 @@ fn parse_slice_header(
 - 필드가 이후 파싱의 좌표계(길이, 오프셋, 카운트)를 결정하는 경우 clamp 자체가 위험할 수 있으므로 fatal 처리가 맞다
 - 보안 강화가 목적인 엄격 모드(strict mode)가 명시적으로 요청된 경우(예: conformance 검사 도구로 사용할 때)
 
+**Bitvue 판정**: Suspected — **재검증(2026-08-18)**: `Diagnostic`/`Severity` 인프라는 `bitvue-core`→`bitvue-engine` 리네임을 거쳐 `crates/bitvue-engine/src/event.rs`로 이동해 여전히 존재하고, `crates/bitvue-av1-codec/src/obu.rs`의 `parse_all_obus_resilient`(362행)도 그대로 남아있다. 다만 이 인프라가 AV1 이외 코덱(HEVC/AVC/VP9/VVC)에도 동일하게 적용되는지, 필드별 fatal/recoverable 분류가 스펙상 clamp 가능한 필드 기준을 실제로 따르는지는 여전히 코덱별 전수 검증을 하지 못했다(이전 판정과 결론 동일, 경로만 갱신).
+
 ---
 
 ### ERR-007: fatal corruption을 warning 처리
@@ -461,6 +474,8 @@ fn parse_slice_data_offset(reader: &mut BitReader) -> Result<u64, ParseError> {
 **예외**:
 - 필드가 순수하게 정보성(예: 디스플레이용 메타데이터 문자열 길이)이고 이후 바이트 오프셋 계산에 전혀 관여하지 않는 경우 warning으로 유지 가능
 - 명시적으로 "best-effort 복구 모드"를 사용자가 선택했을 때(예: "손상된 파일이라도 최대한 보여주기" 옵션) — 단, 이 경우에도 결과에 "이 지점부터는 추정치"라는 표식이 UI에 남아야 한다
+
+**Bitvue 판정**: Suspected — **재검증(2026-08-18)**: 현재 워크스페이스 기준으로도 길이/오프셋/카운트 필드를 조용히 clamp한 뒤 warning만 남기고 계속 진행하는 명시적 패턴은 타겟 grep으로 찾지 못했다. ERR-006과 마찬가지로 fatal/recoverable 분류가 코덱별로 일관되게 적용되는지 전수 검증은 못 했으므로 부재를 확정하기는 어렵다(결론 이전과 동일).
 
 ---
 
@@ -528,6 +543,8 @@ fn analyze_file(path: &Path) -> AnalysisResult {
 **예외**:
 - 컨테이너 헤더 자체를 파싱할 수 없어 프레임 경계를 하나도 찾을 수 없는 경우(반복 시작 전 실패) — 이때는 partial의 의미가 없으므로 전체 실패가 맞다
 - 메모리/리소스 제약으로 partial 결과 보존 자체가 비용이 크다고 명시적으로 판단된 극단적 케이스(예: 수십 GB 파일의 전체 프레임 메타데이터를 메모리에 유지할 수 없는 경우) — 이 경우 스트리밍 방식으로 부분 결과를 순차 방출하는 대안을 검토해야 한다
+
+**Bitvue 판정**: N/A — **재감사 결과 이전 Confirmed 판정을 뒤집음(2026-08-18)**: 이전 판정이 인용한 `src-tauri/src/commands/quality.rs`/`analysis/views.rs`는 Tauri→Electron 마이그레이션으로 완전히 삭제됐다. 현재 실사용 경로(`bitvue-sidecar`)를 재확인한 결과, 이 항목이 경고하는 "실패 시 전부 폐기" 패턴은 더 이상 존재하지 않는다: (1) `get_frame_analysis`가 의존하는 `crates/bitvue-av1-codec/src/overlay_extraction/parser.rs:259-271`은 fail-fast `parse_all_obus`를 먼저 시도하고, 실패 시 `ObuIterator::new(&obu_data).filter_map(|r| r.ok()).collect()`로 폴백해 성공적으로 파싱된 OBU만 모아 계속 진행한다(주석: "collect whatever OBUs parse successfully"). (2) `crates/bitvue-sidecar/src/{residual_analysis,coding_flow,deblocking,codec_extended_info}.rs`는 애초에 fail-fast `parse_all_obus().collect::<Result<_>>()`가 아니라 `ObuIterator`를 직접 순회하는 구조라 "OBU 하나 실패 시 전체 Err" 자체가 성립하지 않는다. 다만 이 폴백들이 개별 OBU 실패를 진단 정보 없이 그냥 건너뛴다는 점(ERR-020과 겹치는 더 경미한 별개 이슈)은 남아있다 — "부분 결과를 모두 폐기"라는 이 항목의 핵심 패턴만 놓고 보면 현재 코드에서 발견되지 않는다.
 
 ---
 
@@ -615,6 +632,8 @@ useEffect(() => {
 **예외**:
 - 워커가 실패해도 UI에 아무 영향이 없는 순수 백그라운드 작업(예: 캐시 워밍, 텔레메트리 전송)은 로깅만으로 충분할 수 있다 — 단, 이 경우도 "사용자에게 영향 없음"이 실제로 참인지 검증되어야 한다
 
+**Bitvue 판정**: Confirmed — **재검증(2026-08-18), 경로 갱신 + 새 아키텍처 함의 추가**: `bitvue-core`→`bitvue-engine` 리네임으로 파일은 `crates/bitvue-engine/src/worker.rs`로 이동했지만 문제의 코드는 그대로다. `AsyncJobManager::spawn`(371-373행)과 `complete_job`이 다음 큐 작업을 이어 실행하는 부분(433-435행) 모두 `std::thread::spawn(move || { f(); this.complete_job(&job_clone); })` 형태로 `catch_unwind`도 `JoinHandle` 보관도 없다. **다만 Electron 마이그레이션으로 이 버그의 실제 영향은 빌드 프로파일에 따라 달라진다**: 이 크레이트를 링크하는 `bitvue-sidecar`는 루트 `Cargo.toml:131`의 워크스페이스 전역 `panic = "abort"`를 상속하므로(ERR-016 참고), release 빌드에서는 `f()`가 panic하면 스레드가 조용히 죽는 게 아니라 **sidecar 프로세스 전체가 abort**한다 — `bitvue-desktop/src/sidecarClient.ts`가 이를 감지해 자동 재시작하지만(`sidecar.on("exit", ...)`, `restart_failed` 이벤트도 존재), 그 스트림에 물려있던 세션 상태는 전부 유실된다("nothing to replay them from"이 코드 주석에 명시). dev/debug 빌드(panic=unwind 기본값)에서는 원래 판정대로 해당 스레드만 조용히 죽어 `complete_job`이 안 불리고 in-flight 슬롯이 영구 누수된다.
+
 ---
 
 ### ERR-010: FFI 오류 코드를 문자열만으로 변환
@@ -690,6 +709,8 @@ fn decode_frame(ctx: &mut DecoderCtx, out: &mut FrameBuf) -> Result<(), DecodeEr
 - 프로토타입 단계에서 FFI 바인딩을 처음 연결할 때 임시로 raw code만 넘기되, 정식 매핑 작업을 별도 이슈로 추적하는 경우
 - 에러 코드가 단 하나(성공/실패 이진)뿐이고 향후에도 세분화될 가능성이 없다고 라이브러리 문서에 명시된 경우
 
+**Bitvue 판정**: Suspected — **재검증(2026-08-18)**: `crates/bitvue-decode/src/vvdec.rs`는 이번 마이그레이션과 무관해 그대로 재확인된다(파일 성장으로 행 번호만 725-751로 소폭 이동). `VVDEC_OK`/`VVDEC_TRY_AGAIN`/`VVDEC_EOF`를 명시적으로 구분해 재시도 가능/스트림 종료를 구분하는 등 부분적으로 이 항목의 권장안을 따르지만, 그 외 모든 vvdec 에러 코드는 `_ => Err(DecodeError::Decode(Self::error_message(ret)))`(751행)로 단일 문자열에 뭉쳐진다(완전한 `DecoderErrorCode` enum 매핑은 없음). dav1d/ffmpeg-next 바인딩은 Rust 크레이트가 이미 에러를 감싸므로 이 항목이 직접 적용되는 raw FFI 코드 경로는 vvdec.rs가 여전히 유일하다.
+
 ---
 
 ### ERR-011: panic hook만 설치하고 실제 복구 없음
@@ -759,6 +780,8 @@ fn get_frame_info(path: String, index: u32) -> Result<FrameInfo, AppErrorDto> {
 **예외**:
 - CLI 원샷 툴처럼 panic 시 프로세스가 종료되어도 무방한 산출물에서는 hook을 로깅 전용으로만 두고 catch_unwind를 생략해도 된다(ERR-016 참고)
 - 이미 `catch_unwind`로 감싸진 경계 내부의 하위 호출은 다시 감쌀 필요 없다(중첩 catch_unwind는 대개 불필요한 복잡도)
+
+**Bitvue 판정**: N/A — **재검증(2026-08-18)**: `src-tauri`는 삭제됐지만 결론은 동일하다 — 현재 워크스페이스(`crates/bitvue-sidecar/src/main.rs` 포함, Electron `bitvue-desktop/electron/*.ts`도 함께 확인) 전체에서 `std::panic::set_hook` 호출은 어디에도 없다(grep 무결과). "hook은 설치했지만 실제 복구가 없다"는 정확한 패턴은 hook 자체가 부재하므로 성립하지 않는다. 실질적으로 더 심각한 문제(hook도 catch_unwind도 전혀 없음)는 여전히 ERR-009에서 확인된다 — `crates/bitvue-engine/src/worker.rs`의 스레드 panic이 어디에도 포착되지 않는다.
 
 ---
 
@@ -834,6 +857,8 @@ impl StreamingParser {
 - 프레임/NAL 단위가 이미 컨테이너 레벨에서 명확한 바이트 경계로 분리되어 있어 각 파싱이 처음부터 독립적인 경우(위 "권장" 예시처럼) — 이 경우 재동기화 문제 자체가 구조적으로 발생하지 않는다
 - 실패 시 즉시 전체 파싱을 중단하는 정책(ERR-007의 fatal 케이스)에서는 "재사용"이 아예 일어나지 않으므로 해당 없음
 
+**Bitvue 판정**: N/A — **재검증(2026-08-18)**: `crates/bitvue-av1-codec/src/obu.rs`의 `parse_all_obus_resilient`(경로/내용 변경 없음)는 실패 시 reader를 그 자리에 방치하지 않고 1바이트씩 전진하며 다음 유효 OBU 헤더를 재탐색하는 명시적 resync를 수행한다(10회 연속 실패 시 Fatal로 중단) — "권장" 예시의 취지와 일치, 이전 판정 그대로 유효. 추가로, ERR-008 재감사에서 확인했듯 현재 `bitvue-sidecar`의 여러 핸들러(`residual_analysis.rs`/`coding_flow.rs`/`deblocking.rs`/`codec_extended_info.rs`)가 쓰는 `ObuIterator` 직접 순회도 각 OBU를 독립적으로 처리해 실패한 OBU의 오염된 커서 상태가 다음 OBU로 전파되지 않는 구조다.
+
 ---
 
 ### ERR-013: 오류 종류별 retry 정책 없음
@@ -899,6 +924,8 @@ fn decode_with_policy(ctx: &mut HwDecoderCtx, packet: &Packet) -> Result<Frame, 
 **예외**:
 - 순수 파싱(비트스트림 신택스 해석) 단계에는 대개 재시도 개념 자체가 성립하지 않는다(같은 바이트를 다시 읽어도 같은 결과) — 이 항목은 주로 IO, FFI, 하드웨어 리소스 경계에 적용된다
 - 사용자가 명시적으로 "재시도 없이 즉시 실패 보고"를 선택하는 진단/디버그 모드에서는 정책을 의도적으로 `Never`로 고정할 수 있다
+
+**Bitvue 판정**: Suspected — **재검증(2026-08-18)**: `crates/bitvue-decode/src/vvdec.rs`는 마이그레이션과 무관해 그대로 재확인된다. `MAX_TIMEOUT_RETRIES`(40행)/`DECODE_TIMEOUT`(46행)/`poisoned` 원자 플래그(268행) 기반의 타임아웃 재시도 로직이 존재해(get_frame 주변, 306-365행 및 621행 이후) 이 항목이 요구하는 것과 유사한 재시도 정책이 타임아웃 실패에 대해 부분적으로 구현되어 있다. 다만 에러 variant별 재시도 정책을 표(table)로 명문화한 구조는 아니고, HW→SW 폴백 같은 별도 경로가 실제로 존재/동작하는지는 여전히 확인하지 못했다.
 
 ---
 
@@ -968,6 +995,8 @@ async fn analyze_file(path: String, cancel: State<'_, CancelToken>) -> Result<An
 
 **예외**:
 - 취소 요청 자체의 처리 과정에서 별도 실패가 발생한 경우(예: 취소했는데 리소스 정리 중 IO 에러 발생)는 그 자체로는 정당한 에러이므로 별도 `Err`로 보고해도 된다 — 다만 "취소됨"과 "취소 처리 중 발생한 에러"를 구분해서 보고해야 한다
+
+**Bitvue 판정**: N/A — **재검증(2026-08-18), 경로 갱신**: `bitvue-core`→`bitvue-engine` 리네임으로 파일 경로만 바뀌었다. 취소는 이미 전용 enum variant로 모델링되어 있다: `crates/bitvue-engine/src/worker.rs:128-132`의 `JobState::Cancelled`, `crates/bitvue-engine/src/index_session.rs`의 `IndexingState::Cancelled`가 `Error`와 별개 variant로 존재하며, `Result`의 `Err` 채널에 취소를 욱여넣는 코드는 이번에도 발견되지 않았다.
 
 ---
 
@@ -1047,6 +1076,8 @@ fn analyze_with_cancel(path: &Path, cancel: &CancelToken) -> AnalysisResult2 {
 **예외**:
 - 없음 — 취소와 파싱 실패는 발생 원인, 사용자에게 보여줄 메시지, 통계적 취급이 모두 달라야 하므로 이 둘을 같은 타입으로 표현하는 것이 합리적인 상황은 사실상 없다. 다만 매우 단순한 CLI 툴에서 두 경우 모두 "종료 코드 1"로 귀결되는 최종 표현 단계에서는 합쳐도 무방하다(그 이전 단계까지 구분을 유지한 뒤 마지막에만 합치는 것이 핵심).
 
+**Bitvue 판정**: N/A — **재검증(2026-08-18)**: ERR-014와 동일한 근거(경로는 `crates/bitvue-engine/src/worker.rs`, `index_session.rs`로 갱신). `JobState::Cancelled`/`IndexingState::Cancelled`가 `ParseError`/`DecodeError` variant로 재사용되는 사례를 찾지 못했으며, 취소는 처음부터 파싱/디코딩 에러 타입과 분리된 별도 상태 enum으로 설계되어 있다.
+
 ---
 
 ### ERR-016: panic = "abort"를 모든 바이너리에 획일 적용
@@ -1098,6 +1129,8 @@ panic = "abort"   # 원샷 프로세스: 종료가 곧 실패 신호이므로 ab
 **예외**:
 - 데스크톱 앱이라도 "패닉이 발생하면 상태 정합성을 신뢰할 수 없으니 차라리 즉시 종료 후 재시작하는 것이 낫다"는 명시적 제품 결정을 내린 경우 — 단, 이 경우 세션 상태를 주기적으로 자동 저장하는 보완책이 함께 있어야 사용자 경험이 허용 가능한 수준이 된다
 - 라이브러리 크레이트에는 애초에 `panic` profile 키가 적용되지 않으므로(최종 바이너리/cdylib 링크 시점에만 유효) 이 항목은 해당하지 않는다
+
+**Bitvue 판정**: Confirmed — **재감사(2026-08-18), 대상 자체가 바뀜**: 이전 판정이 우회 근거로 삼은 "Tauri 데스크톱 앱은 `exclude`로 제외돼 영향 밖"이라는 구조는 사라졌다 — `src-tauri`가 완전히 삭제됐고(`exclude = ["fuzz"]`만 남음, Cargo.toml:3), 데스크톱 앱은 이제 Electron(`bitvue-desktop/`, Node.js 프로세스, Rust `panic` 설정과 무관)이 담당한다. 루트 `Cargo.toml:131`은 여전히 `[profile.release]`에 `panic = "abort"`를 워크스페이스 전역으로 지정하며, 이는 원샷 CLI(`bitvue-cli`)뿐 아니라 **지금은 워크스페이스 멤버가 된 상시 구동 프로세스 두 개**(`bitvue-sidecar` — Electron이 자식 프로세스로 spawn해 데이터/렌더링 요청을 계속 처리하는 엔진, `bitvue-mcp` MCP 서버)에도 동일하게 적용된다. `bitvue-sidecar`는 이 카탈로그가 경고하는 문제(하나의 요청 처리 중 panic이 서버 프로세스 전체를 abort)를 그대로 안고 있지만, **완전히 무방비는 아니다** — `bitvue-desktop/src/sidecarClient.ts`가 sidecar의 예기치 않은 종료를 감지해 프로세스를 자동 재시작하는 워치독을 이미 구현하고 있다(`sidecar.on("exit", ...)`, 재시도 실패 시 `restart_failed` 이벤트). 다만 재시작 시 진행 중이던 스트림/세션 상태는 재생 없이 유실된다고 코드 주석에 명시돼 있어("nothing to replay them from"), 이 카탈로그가 우려하는 "세션 상태 전체 소실"이 여전히 실제로 발생한다 — 다만 그 반경이 "Electron 앱 전체 즉사"가 아니라 "sidecar 프로세스 재시작 + 열려있던 스트림 재오픈 필요"로 축소됐다는 점이 Tauri 시절과의 핵심 차이다.
 
 ---
 
@@ -1166,6 +1199,8 @@ fn decode_frame_preview(path: String, frame_index: u32) -> Result<Vec<u8>, AppEr
 **예외**:
 - 디코더 라이브러리가 자체적으로 강력한 fuzzing 이력과 보안 감사를 거쳐 신뢰도가 높다고 팀이 판단한 경우(예: 널리 쓰이는 성숙한 오픈소스 디코더) 격리 비용 대비 이득이 낮을 수 있다 — 단, 이 판단 근거를 문서로 남겨야 한다
 - 개발/디버그 빌드에서 크래시 재현을 위해 의도적으로 in-process 호출을 사용하는 경우(재현 편의가 격리보다 우선)
+
+**Bitvue 판정**: Confirmed — **재감사(2026-08-18), 심각도 실질적으로 완화됨**: `crates/bitvue-decode/src/vvdec.rs`(vvdec)/`decoder.rs`(dav1d)/`ffmpeg.rs`(ffmpeg-next)는 여전히 `extern "C"` FFI로 서드파티 C 디코더를 in-process로 호출하고, 이들을 부르는 `crates/bitvue-sidecar/src/decode_bridge.rs` 안에서도 추가적인 프로세스/스레드 격리는 없다(`std::process::Command` 사용처는 `vvdec.rs:937`의 `pkg-config` 빌드 감지뿐, 이전과 동일). **다만 아키텍처 자체가 바뀌어 이 항목이 우려하는 최악의 결과(전체 GUI 프로세스 즉사)는 이미 구조적으로 상당 부분 해소돼 있다**: `bitvue-sidecar`는 Electron 메인 프로세스가 `bitvue-desktop/electron/main.ts`에서 별도 OS 프로세스로 spawn하며(`SidecarClient`, `sidecarBinaryPath`), 두 프로세스는 stdio 기반 wire 프로토콜로만 통신한다 — 즉 손상된 파일이 vvdec/dav1d의 세그폴트/abort를 유발해도 죽는 것은 sidecar 프로세스 하나뿐이고, Electron 메인+렌더러(윈도우 UI 자체)는 별도 프로세스라 생존하며 `sidecar.on("exit", ...)` 핸들러가 이를 감지해 자동 재시작한다. 이는 이 카탈로그의 "권장" 예시가 요구하는 프로세스 경계 격리를 (개별 디코드 호출 단위는 아니지만) 엔진 전체 단위로 이미 확보한 것이다. 남은 갭: sidecar 프로세스 하나가 모든 스트림/디코더 호출을 공유하므로 한 파일의 크래시가 그 순간 sidecar가 처리 중이던 다른 스트림의 작업까지 함께 앗아가며(ERR-016 참고, 세션 상태 유실), 디코더 호출 단위의 더 세밀한 격리(타임아웃 있는 자식 프로세스 등)는 없다.
 
 ---
 
@@ -1257,6 +1292,9 @@ fn parse_av1_obu(data: &[u8]) -> Result<Obu, AppError> {
 - 프로토타입/실험 단계 코드에서 아직 기능 경계가 확정되지 않아 세 카테고리 구분이 시기상조인 경우(단, 정식 기능으로 승격되기 전에는 반드시 구조화해야 함)
 - 매우 지역적인 유틸리티 함수(예: 순수 산술 헬퍼)처럼애초에 "입력 문제"라는 개념이 성립하지 않는 경우
 
+**Bitvue 판정**: Confirmed — **재감사(2026-08-18), 근거는 바뀌었지만 결론 동일**: `src-tauri/src/error.rs`는 삭제됐지만, 정확히 이 항목이 요구하는 구조화 타입이 이제 백엔드 쪽에 새로 존재한다 — `crates/bitvue-protocol/src/lib.rs`의 `WireErrorCode`(Parse/Decode/NotFound/Internal 등, ERR-003 참고)와 `crates/bitvue-engine/src/error.rs`의 `BitvueError`. 문제는 프런트엔드가 이를 전혀 소비하지 않는다는 점이다: `frontend/errors/appError.ts`의 `ErrorCategory`(Validation/NotFound/Permission/Parse/Io/Network/Codec/Internal/**NotImplemented** — 정확히 이 항목이 요구하는 "손상된 입력/미구현/내부버그" 3분류에 대응하는 카테고리가 이미 다 정의돼 있음, 18-70행)를 실제로 `ErrorCategory.X` 형태로 사용하는 non-test 프런트엔드 파일은 `appError.ts` 자기 자신 말고 전무하다(grep 무결과) — 즉 이 분류 타입은 정의만 되고 백엔드에서 넘어온 에러를 분류하는 데 배선된 적이 없는 죽은 taxonomy다. Rust 쪽 `WireErrorCode`가 프런트까지 도달하지 못하는 것도 ERR-003에서 확인한 그대로다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-005 참고(재확인 필요 — 참조 대상이 옛 경로일 수 있음).
+
 ---
 
 ### ERR-019: 에러 체인(source)이 변환 과정에서 유실됨
@@ -1315,6 +1353,8 @@ fn load_sample(path: &Path) -> Result<Bitstream, LoadError> {
 **예외**:
 - 원인 정보가 보안/개인정보상 노출되면 안 되는 극히 예외적인 경우(예: 파일 경로 자체가 민감 정보를 포함) — 이 경우도 완전 폐기보다는 내부 로그에는 보존하고 사용자 노출 메시지에서만 마스킹하는 것이 낫다
 - 원인이 정말로 의미가 없는 경우(예: `Option::None`을 에러로 변환하는 지점처럼 애초에 하위 에러 객체가 존재하지 않는 경우)
+
+**Bitvue 판정**: Confirmed — **재검증(2026-08-18)**: `bitvue-formats`/`bitvue-decode`는 마이그레이션과 무관해 인용된 지점이 그대로 재확인된다. 현재 워크스페이스 전체(테스트 제외)에서 `map_err(|_| ...)` 패턴은 60건으로 집계된다(이전 77건에서 소폭 감소 — 정확한 원인은 미조사, 다른 리팩터의 부수효과로 추정). `crates/bitvue-formats/src/mp4.rs:36,45,54,63`은 여전히 실제 `io`/파싱 실패를 `BitvueError::UnexpectedEof(cursor.position())`로 변환하며 원본 에러를 완전히 버리고, `crates/bitvue-decode/src/decoder.rs:841,848,881,894`도 IVF 헤더 필드 파싱 실패(`TryFromSliceError`)를 `DecodeError::Decode("IVF ... bytes invalid")` 문자열로 뭉개 원인을 유실한다(행 번호까지 이전 판정과 동일). 같은 저장소의 `HevcError`가 `#[from]`/`#[source]`로 원인을 보존하는 것과 대조적으로 일관성이 없다는 결론도 유효.
 
 ---
 
@@ -1390,5 +1430,7 @@ struct FrameAnalysis {
 **예외**:
 - 정말로 부가적이고 사용자가 그 존재 여부를 인지할 필요가 없는 내부 최적화 경로(예: 캐시 워밍 실패, 백그라운드 prefetch 실패로 인한 단순 재계산)는 로그만으로 충분하다
 - 반복적으로 매우 자주 발생하며 개별 알림이 오히려 사용자 경험을 해치는 경우(예: 초당 수십 번 호출되는 경로) — 이 경우 집계된 요약(예: "이번 세션에서 N개 항목 로드 실패")으로 대체하는 것이 낫다
+
+**Bitvue 판정**: Suspected — **재감사(2026-08-18)**: `src-tauri`는 삭제됐으므로 현재 경로(`crates/bitvue-sidecar/src`, `crates/bitvue-engine/src`)로 다시 훑었다. ERR-008 재감사에서 이미 확인했듯, `bitvue-sidecar`의 여러 AV1 분석 핸들러가 쓰는 `ObuIterator` 순회/`overlay_extraction/parser.rs`의 resilient 폴백은 개별 OBU 파싱 실패를 `filter_map(|r| r.ok())` 등으로 조용히 건너뛰며, 이 실패가 결과 구조체("이 프레임은 정상 분석됨" vs "일부 OBU 스킵됨")에 흔적을 남기는지, 그리고 프런트가 이를 구분해 표시하는지는 확인하지 못했다 — 이 항목이 정확히 지적하는 "값이 원래 없음"과 "실패해서 없음"의 구분 불가 사례에 해당할 가능성이 있으나 UI 도달 여부까지 추적하지 못해 Suspected로 남긴다.
 
 ---

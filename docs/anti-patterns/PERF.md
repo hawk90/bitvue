@@ -42,7 +42,7 @@ cargo run --bin bitstream_parser -- sample.hevc
 **예외**:
 - 디버그 어서션 자체의 비용을 측정하려는 목적(예: "assert 오버헤드가 얼마나 되는가")일 때는 debug 빌드 비교가 의도된 것.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — CI에 `cargo bench`/성능 비교 잡 자체가 없음(.github/workflows/*.yml grep 결과 bench 언급 0건, release.yml/publish-extended.yml은 `cargo build --release`만 수행), 즉 자동화된 debug/release 혼동 지점은 없지만 로컬 ad-hoc 비교를 막는 장치도 없음.
 
 ---
 
@@ -93,7 +93,7 @@ c.bench_function("parse_mp4_container_only", |b| {
 **예외**:
 - 반복적으로 같은 파일을 여러 번 여는 워크플로(예: 타임라인 스크러빙 재파싱)가 실제 사용 패턴이라면 warm cache 측정이 오히려 대표성 있음 — 단, 그렇다고 명시해야 함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — crates/bitvue-benchmarks/benches/*.rs (bitreader, export, magic_bytes, frame_parsing) 및 crates/bitvue-av1-codec/benches/overlay_extraction.rs 전부 `b.iter()` 밖에서 메모리 내 합성 데이터를 1회 생성하고 파일 I/O를 아예 하지 않음 — warm cache 왜곡이 발생할 파일 읽기 벤치마크 자체가 없음.
 
 ---
 
@@ -129,7 +129,7 @@ time ./target/release/bitvue_cli sample.ivf
 **예외**:
 - "앱을 처음 켜고 첫 파일을 여는" 시나리오가 제품 요구사항의 핵심 지표(예: 첫 인상 latency SLA)라면 cold-cache 전용 측정이 정당함 — 단 CPU 최적화 검증용으로 재사용하면 안 됨.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — PERF-002와 동일한 이유로 벤치마크에 파일 I/O가 전혀 없어 cold-cache 시나리오도 구조적으로 발생하지 않음.
 
 ---
 
@@ -181,7 +181,7 @@ group.finish();
 **예외**:
 - 특정 버그(예: "이 한 파일에서만 크래시 직전까지 느려짐")를 재현하는 회귀 테스트라면 단일 샘플이 목적에 맞음 — 일반화된 성능 주장과는 구분해서 보고.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-av1-codec/benches/overlay_extraction.rs:16-30 `create_test_obu_data()`는 ~110바이트짜리 손으로 만든 단일 합성 OBU만 사용해 모든 grid 벤치마크에 재사용하고, frame_parsing.rs:64-72의 `bench_av1_obu_iterator`도 10바이트 단일 합성 블롭 하나뿐 — 해상도/길이/프로파일 다양화 없음.
 
 ---
 
@@ -225,7 +225,7 @@ fn bench_obu_parse(c: &mut Criterion) {
 **예외**:
 - 파서의 경계값 처리(최대 길이 필드, 특정 신택스 조합의 유무)를 의도적으로 스트레스 테스트하려는 fuzzing/edge-case 벤치마크는 합성 데이터가 적절 — 단 "일반적 성능"으로 일반화하지 않는다는 전제.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — frame_parsing.rs:64-72 및 overlay_extraction.rs:16-30의 `create_test_obu_data()`/`obu_data`는 실제 인코더 산출물이 아니라 0으로 채운/손으로 조립한 가짜 OBU 바이트(주석조차 "파싱 에러가 날 수 있지만 iteration만 벤치마크"라고 명시)를 사용.
 
 ---
 
@@ -261,7 +261,7 @@ println!("decode took: {:?}", start.elapsed());
 **예외**:
 - 사용자 체감 지표(예: "버튼을 눌러서 프레임이 뜨기까지 걸리는 시간")는 정의상 wall time이 맞는 지표 — 이 경우엔 wall time만으로 충분하며 CPU time은 부가 정보.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-engine/src/performance.rs(구 bitvue-core, 크레이트 리네임 반영해 경로 갱신)의 `PerfTracker`는 `Instant::now()`(L372, L384)만 사용하고 `MetricSummary`(L573-608)는 avg_ms/min/max/total_ms만 집계 — 저장소 전체에 CPU-time/getrusage 계측이 전무(grep 0건).
 
 ---
 
@@ -316,7 +316,7 @@ fn parse_nal_units_allocation_budget() {
 **예외**:
 - 초기화(setup) 단계나 드물게 호출되는 경로(파일 열기 1회)의 할당은 반복당 비용이 아니므로 엄격한 예산 적용 대상이 아님.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 저장소 전체에 dhat/heaptrack 등 할당 프로파일링 의존성이 전혀 없음(grep 0건)이라는 구조적 증거는 있으나, 특정 핫패스의 실제 과도한 할당을 직접 측정해 확인하지는 못함.
 
 ---
 
@@ -352,7 +352,7 @@ fn parse_nal_units_allocation_budget() {
 **예외**:
 - 메모리가 풍부하다고 명시적으로 가정된 데스크톱 전용 "고성능 모드" 옵션이 사용자 opt-in이라면 peak RSS 상한을 느슨하게 둘 수 있음 — 단 기본 모드와는 분리.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `/usr/bin/time`, heaptrack, massif 등 peak RSS 계측이 CI/scripts 어디에도 없음(grep 0건)이며 ByteCache(256MB 예산)와 달리 dav1d/ffmpeg/vvdec 디코드 경로의 프레임 버퍼 메모리 상한을 검증하는 테스트/게이트가 안 보임 — 다만 실제 OOM 사례를 직접 확인하지는 못함.
 
 ---
 
@@ -395,7 +395,8 @@ fn get_frame_hex_data(offset: u64, size: u32) -> Vec<u8> {
 **예외**:
 - 순수 백엔드 배치 작업(파일 인덱싱, 백그라운드 프리페치)처럼 사용자가 직접 기다리지 않는 경로는 UI latency보다 처리량이 더 적절한 지표.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — Playwright 등 E2E 프레임워크가 저장소에 전혀 없고(find 0건) CI에도 UI latency 게이트가 없음; frontend/services/tauriCommandService.ts:78-99(파일명은 Tauri 시절 이름 그대로지만 실제로는 Electron IPC 브리지 — 재확인함)의 `performance.now()` 기반 invoke latency 로깅은 존재하지만 콘솔 디버그 로그일 뿐 CI에 통합되거나 회귀 게이트로 쓰이지 않음.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-011 참고.
 
 ---
 
@@ -433,7 +434,8 @@ c.bench_function("seek_to_frame", |b| {
 **예외**:
 - 입력 분산이 거의 없는 순수 CPU 바운드 루프(예: 고정 크기 버퍼 CRC 계산)는 p50과 p99가 실질적으로 같으므로 단일 값 보고로 충분.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-engine/src/performance.rs(구 bitvue-core, 경로 갱신)의 `MetricSummary`(avg/min/max만, L587)와 frontend/services/tauriCommandService.ts의 `getLatencyStats()`(L209 기준 avg/min/max만) 둘 다 p50/p95/p99 등 분위수를 전혀 계산하지 않음.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-011 참고.
 
 ---
 
@@ -469,7 +471,7 @@ c.bench_function("seek_to_frame", |b| {
 **예외**:
 - 배치 크기 1로 고정된 파이프라인(파이프라이닝이 없는 단순 순차 처리)이라면 throughput의 역수가 latency와 사실상 같으므로 혼용해도 무방.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — bitreader.rs/export.rs는 `Throughput::Bytes`/`Throughput::Elements`로 처리량을 보고하지만 동일 연산에 대한 단일 아이템 latency 벤치마크가 별도로 없어 두 지표가 뒤섞여 보고될 위험이 구조적으로 존재하나, 실제로 처리량 수치가 latency 주장으로 재인용된 사례는 찾지 못함.
 
 ---
 
@@ -525,7 +527,7 @@ c.bench_function("decode_100_frames_steady_state", |b| {
 **예외**:
 - "스트림 하나를 열어서 한 번만 처리하고 끝나는" 워크로드(예: 배치 변환 CLI에서 파일마다 새 프로세스)가 실사용 패턴이라면 초기화 비용을 포함한 end-to-end 측정이 오히려 정확함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소에 다중 프레임을 반복 디코드하며 매 반복 `Decoder::new()`를 호출하는 형태의 벤치마크가 아예 없음(frame_parsing.rs/overlay_extraction.rs는 단일 헤더/단일 프레임 1회 파싱만 측정).
 
 ---
 
@@ -570,7 +572,7 @@ fn bench_parse_bitstream(c: &mut Criterion) {
 **예외**:
 - 프로젝트 목표가 애초에 "end-to-end 디코드 성능"이라면 파싱+디코드를 합쳐 측정하는 것이 맞음 — 이름을 `decode_full` 등으로 명확히 하면 문제없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 현재 벤치마크(bitreader, frame_parsing, overlay_extraction)는 신택스 파싱(`ObuIterator`, `ParsedFrame::parse`, grid 추출)만 호출하고 픽셀 재구성/CABAC 디코드를 수행하는 bitvue-decode(dav1d/ffmpeg/vvdec)는 어떤 벤치마크에서도 호출되지 않음.
 
 ---
 
@@ -615,7 +617,7 @@ fn get_frame_hex_data(offset: u64, size: u32) -> Result<Vec<u8>, String> {
 **예외**:
 - 리턴 데이터가 원래 작은 스칼라/짧은 구조체(수 바이트~수백 바이트)라면 직렬화 비용이 무시할 만한 수준이므로 Rust 내부 시간만으로도 충분.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(재확인, 이전 판정 폐기) — 원 인용 경로 `src-tauri/src/commands/frame.rs`는 Tauri→Electron sidecar 전환 완료로 저장소에서 완전히 삭제됨(src-tauri 디렉터리 자체가 없음). 후속 아키텍처(crates/bitvue-sidecar/src/main.rs)의 `get_hex_range`(L1304-1358)와 `get_decoded_frame_yuv`(L1376-)는 대용량 바이트 데이터를 "Control 메타 프레임 + Data 프레임(raw bytes, JSON 배열도 base64도 아님)"으로 명시적으로 분리 반환하도록 설계 주석(L9-10, L1373)에서 이 안티패턴을 의도적으로 피했다고 밝힘 — 즉 지적된 패턴이 현재 코드베이스에서 구조적으로 해소됨. 예외: `get_thumbnails`(L1479-)는 여전히 base64-in-JSON을 쓰지만 PNG 썸네일 크기가 작아 의도적 선택이라고 코드 주석(L1476 부근)에 명시됨 — 대용량 페이로드가 아니라 이 항목의 대상이 아님.
 
 ---
 
@@ -662,7 +664,7 @@ c.bench_function("parallel_frame_decode_4threads", |b| {
 **예외**:
 - 단일 스레드 전용 코드 경로(의도적으로 병렬화하지 않은 로직)를 비교할 때는 스레드 수가 애초에 변수가 아니므로 해당 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(재확인, src-tauri 인용 제거) — crates/bitvue-metrics/src/lib.rs:345-346,382, crates/bitvue-cli/src/commands/decode.rs:133, crates/bitvue-decode/src/decoder.rs:448 모두 `par_iter`/`rayon::join`을 사용하지만 저장소 전체에 `ThreadPoolBuilder`/`num_threads`/`RAYON_NUM_THREADS` 사용이 0건(재검색으로 확인) — 항상 기본(논리 코어 수) 풀에 의존. 이전 판정이 인용한 `src-tauri/src/commands/thumbnails.rs`는 Tauri→Electron 전환으로 삭제됐고, 현재 썸네일 경로(crates/bitvue-sidecar/src/decode_bridge.rs)는 par_iter를 쓰지 않아 해당 인용은 제거 — 나머지 3곳만으로도 판정은 그대로 유효.
 
 ---
 
@@ -702,7 +704,7 @@ cargo bench --bench decode_bench  # 결과: 6.8ms
 **예외**:
 - 서버급 CI 러너(안정적 냉각, 일정한 부하)에서 짧은 벤치마크만 도는 경우는 열 편향의 영향이 미미할 수 있음 — 그래도 장시간 스위트에서는 재확인 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 벤치마크 방법론 문서/interleaved A/B 절차, 열 상태 로깅이 전혀 없어 통제 장치가 없다는 것은 확인했으나, 실제 열 스로틀링으로 인한 잘못된 회귀 판정 사례를 직접 확인하지는 못함.
 
 ---
 
@@ -753,7 +755,7 @@ fn bench_index_seek(c: &mut Criterion) {
 **예외**:
 - 측정하려는 대상이 바로 "파일 열기 자체의 비용"이라면 클로저 안에 `File::open`이 있는 것이 맞음 — 이 경우 벤치마크 이름을 `file_open_cost` 등으로 명확히 구분.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 5개 벤치 파일(bitreader/export/magic_bytes/frame_parsing/overlay_extraction) 전부 `File::open`/`fs::read`가 `b.iter()` 클로저 밖, setup 단계에서 1회만 호출되거나 애초에 파일 I/O가 없음 — 클로저 내부 setup 혼입 사례 없음.
 
 ---
 
@@ -793,7 +795,7 @@ parse_hevc_nal: 3.2 ms
 **예외**:
 - 정확히 반대로 "이 컴파일러 업그레이드가 우리 코드에 어떤 성능 영향을 주는지" 알아보려는 목적이라면 컴파일러 버전 차이가 바로 측정 대상 — 이 경우 코드는 고정하고 툴체인만 바꿔야 함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 저장소에 `rust-toolchain.toml`/`rust-toolchain` 파일이 전혀 없고(find 0건) CI 워크플로도 특정 rustc 버전을 고정하지 않음 — 툴체인이 러너/개발 머신의 "stable"에 그대로 의존.
 
 ---
 
@@ -833,7 +835,7 @@ cargo bench -p bitvue-benchmarks --all-features
 **예외**:
 - 애초에 "feature가 성능에 미치는 영향"을 측정하는 것이 벤치마크의 목적이라면(예: "simd on/off 비교") feature 조합 차이가 바로 측정 대상이므로 문제 아님 — 이 경우 결과 표에 두 조합을 나란히 놓고 명시하면 됨.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — crates/bitvue-benchmarks/Cargo.toml에는 `[features]` 섹션 자체가 없고 4개 벤치는 bitvue-decode/bitvue-metrics의 `ffmpeg`/`vvdec`/`vmaf`/`parallel` feature로 게이트된 코드를 전혀 호출하지 않음 — feature 조합을 비교하는 벤치마크가 애초에 존재하지 않음.
 
 ---
 
@@ -878,7 +880,7 @@ fn get_pixel(frame: &[u8], x: u32, y: u32, stride: u32) -> u8 {
 **예외**:
 - 정확성에 영향을 줄 수 없는 변경(예: 순수 메모리 레이아웃 재배치로 로직 동일, 컴파일러 힌트 추가)이라도 회귀 스위트가 이미 자동으로 도는 CI 구조라면 별도 수동 검증은 생략 가능 — 단, CI 자체가 반드시 존재해야 함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — dhat 등 할당 프로파일러나 별도 bitstream conformance 코퍼스는 못 찾았지만(문서상 parity 자료만 존재: docs/PARITY_CHECKLIST.md, scripts/parity_check.sh), crates/bitvue-metrics/src/simd.rs:599의 `test_window_stats_vs_scalar`처럼 unsafe SIMD 결과를 scalar와 비교하는 differential test가 실제로 존재 — 관행이 일부는 있으나 성능 PR 전반에 강제되는 게이트인지는 불명.
 
 ---
 
@@ -917,7 +919,7 @@ frames.par_iter_mut().for_each(|frame| {
 **예외**:
 - 작업 단위가 명확히 크고(수 ms 이상) 독립적이며 공유 자원 접근이 없는 embarrassingly parallel 워크로드(예: 서로 다른 파일을 각각 파싱)는 병렬화 효과가 상식적으로 예측 가능 — 그래도 최소한 1회는 실측 검증 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `par_iter()`가 bitvue-metrics(PSNR/SSIM), bitvue-decode(plane 추출), thumbnails.rs 등 프로덕션 핫패스에 쓰이지만 이들 중 어느 것도 bitvue-benchmarks의 5개 벤치에서 스레드 수별 스케일링으로 측정되지 않음 — 구조적으로 패턴에 부합하나 실제 "N배 빨라짐" 주장을 텍스트로 확인하지는 못함.
 
 ---
 
@@ -963,7 +965,7 @@ fn parse_nal_units(mmap: &Mmap) -> Vec<NalUnit> {
 **예외**:
 - 파싱 결과를 스레드 경계를 넘겨야 하거나 mmap의 수명보다 오래 살아야 하는 구조적 요구가 있다면 의도적으로 복사하는 것이 올바른 설계 — 이 경우 애초에 "zero-copy"를 목표/주장으로 내세우지 않으면 문제없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — crates/bitvue-formats/src/mp4.rs:314,323-347의 `extract_av1/avc/hevc_samples`는 실제로 `Cow::Borrowed`를 반환해 zero-copy 주장이 구현과 일치하며, ByteCache(crates/bitvue-engine/src/byte_cache.rs, 구 bitvue-core — 경로 갱신)의 `Bytes` 세그먼트 캐시는 LRU 중복제거를 위해 의도적으로 소유 복사본을 두는 설계로 zero-copy를 표방하지 않음.
 
 ---
 
@@ -1009,7 +1011,7 @@ struct Frame {
 **예외**:
 - 프로파일링으로 이미 명령어 수준 병목(인라이닝 실패, 벡터화 실패)이 확인된 상태에서 opt-level/LTO 조정이 타겟 최적화로 적용되는 경우는 정당 — 이때는 "구조 문제를 덮으려는 착각"이 아니라 근거 있는 조치.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 워크스페이스 Cargo.toml이 opt-level=3/lto=thin/codegen-units=1을 이미 설정했고 flamegraph/perf/samply 등 프로파일링 도구·문서가 저장소 어디에도 없어(grep 0건) 구조적으로 패턴에 부합하나, 이를 대체 근거로 내세운 PR/커밋 텍스트는 직접 확인하지 못함.
 
 ---
 
@@ -1063,5 +1065,5 @@ async fn parse_large_container(path: String) -> Result<ContainerInfo, String> {
 **예외**:
 - Tokio current-thread 런타임이 아니라 전용 블로킹 전용 스레드에서 실행되는 커맨드이거나, 작업 시간이 마이크로초 단위로 매우 짧아 워커 점유가 실질적으로 무해한 경우는 `spawn_blocking` 없이도 문제가 되지 않음 — 단, "짧다"는 것 자체를 실측해야 함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(재확인, 이전 판정 폐기) — 원 인용 경로 `src-tauri/src/commands/compare.rs`는 Tauri→Electron sidecar 전환 완료로 저장소에서 완전히 삭제됨. 후속 아키텍처(crates/bitvue-sidecar/src/main.rs)는 애초에 async/Tokio를 쓰지 않음(`grep "async fn"` 0건) — 요청마다 `std::thread::spawn`으로 전용 OS 스레드를 띄우고 메인 리더 루프는 절대 블로킹하지 않는 설계를 모듈 문서(L28-37)에서 "Tokio 대신 OS 스레드를 의도적으로 선택 — Core의 작업은 I/O 대기가 아니라 CPU-바운드 동기 코드라 스레드가 더 단순한 fit"이라고 명시적으로 정당화함. 즉 이 항목이 겨냥하는 "async로 포장했지만 워커를 점유"하는 실패 모드 자체가 현재 아키텍처에 구조적으로 존재하지 않음.
 </content>

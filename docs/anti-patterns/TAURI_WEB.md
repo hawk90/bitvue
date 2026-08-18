@@ -68,7 +68,7 @@ fn resolve_sibling(path: String, name: String) -> Result<String, String> {
 **예외**:
 - 표시 전용으로 이미 native 측에서 정규화되어 내려온 "짧은 파일명" 필드를 UI에 그대로 렌더링하는 것은 문제없다(재분해하지 않는 한).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/QualityComparisonPanel.tsx:149-150`와 `QualityMetricsPanel.tsx:150-151,173-174`가 백엔드에서 받은 경로를 `referencePath.split("/").pop() || referencePath.split("\\").pop()`로 프런트에서 직접 분해한다(Electron 이관 이후에도 그대로 남아있는 코드). 백엔드(`crates/bitvue-sidecar/src/main.rs:399-422`의 `open_stream`)는 경로를 `PathBuf::from(params.path)`로 받기만 할 뿐 파일명/부모 디렉터리를 계산해 내려주는 커맨드 자체가 없어, 이 두 패널이 표시용 파일명을 프런트 문자열 연산으로 재구현할 수밖에 없는 구조다.
 
 ---
 
@@ -125,7 +125,7 @@ fn normalize_for_platform(path: &str) -> PathBuf {
 **예외**:
 - 애초에 배포 대상이 단일 OS(예: 사내 리눅스 워크스테이션 전용 빌드)로 한정된 경우 우선순위를 낮출 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — Electron 이관으로 Tauri 시절 있었던 최소한의 안전장치(`validate_file_path`의 `PathBuf::canonicalize()`)조차 사라졌다: 현재 파일 열기 경로인 `crates/bitvue-sidecar/src/main.rs:417-419`(`open_stream`)는 `PathBuf::from(params.path)`를 아무 정규화 없이 그대로 쓰고, `crates/bitvue-engine`/`crates/bitvue-sidecar` 전체에서 `canonicalize`/`dunce`/`cfg(windows)`를 grep해도 0건이다. Electron 쪽 `dialog.showOpenDialog`(`bitvue-desktop/electron/main.ts:402-424`)도 OS가 반환한 경로를 그대로 IPC로 넘길 뿐 가공하지 않는다. `path.rsplit('\\')` 류의 OS 구분자 하드코딩은 여전히 없지만, MAX_PATH/UNC/NFC 대응 자체가 전무하다는 것만 확인했고 실제 Windows/UNC 환경에서 깨지는지는 재현하지 못했다.
 
 ---
 
@@ -184,7 +184,7 @@ const unlisten = await listen<string[]>('tauri://file-drop', async (event) => {
 **예외**:
 - 웹 빌드와 데스크톱 빌드를 동시에 지원해야 하는 경우, 플랫폼 감지 후 조건부로 한쪽만 활성화하는 것은 정당한 분기다(중복 등록이 아니라면).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Electron 이관 후에도 drag-and-drop 처리 코드 자체가 없다. `ondrop`/`dataTransfer`/`addEventListener('drop'`을 프런트 전체에서, `will-navigate` 류 드롭 방지 핸들러를 `bitvue-desktop/electron/main.ts`에서 각각 grep했지만 0건이다. 파일 열기는 native `dialog.showOpenDialog`(`bitvue-desktop/electron/main.ts:402-424`) → `showOpenDialog` 브리지(`frontend/hooks/useAppFileOperations.ts:29,216`) 단일 경로뿐이라 중복 처리 패턴 자체가 성립하지 않는다. (단, `handleOpenDependentFile`(같은 파일 265행)은 여전히 죽은 `@tauri-apps/plugin-dialog`의 `open()`을 호출하는 미이관 코드로 남아있다 — TAURI-WEB-004 참고.)
 
 ---
 
@@ -234,7 +234,7 @@ async function pickExportPath() {
 **예외**:
 - 복잡한 폼 입력(내보내기 옵션 여러 개 선택 등)은 native dialog의 표현력이 부족하므로 web 모달이 정당하다. 이때는 최소한 진입 트리거와 키보드 동작 일관성만 지키면 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — Electron 이관 후에도 분업 구조는 유지된다: 파일 열기는 native(`dialog.showOpenDialog`, `bitvue-desktop/electron/main.ts:402-424`, 프런트에선 `showOpenDialog` 브리지 — `frontend/hooks/useAppFileOperations.ts:29,216`), 나머지(Export/GoToFrame/Crop/Error/KeyboardShortcuts)는 전용 web 모달(`frontend/components/{ExportDialog,GoToFrameDialog,ErrorDialog,KeyboardShortcutsDialog}.tsx`, `frontend/components/panels/CropDialog.tsx`)로 분리되어 있다. 웹 모달 간 접근성 구현은 여전히 들쭉날쭉하다 — `GoToFrameDialog.tsx:69-70`는 `role="dialog"`/`aria-modal="true"`를 갖췄지만 `ErrorDialog.tsx`엔 `role`/`aria-modal`이 없다. 미저장 세션 확인 같은 "단순 confirm"류 다이얼로그 자체가 없어(TAURI-WEB-006 참고) 문서가 지적하는 정확한 충돌 시나리오는 여전히 관측되지 않는다.
 
 ---
 
@@ -296,7 +296,7 @@ useEffect(() => {
 **예외**:
 - 메뉴 항목이 순수 네비게이션(예: "About", "Documentation")이라 프런트 상태와 무관하다면 동기화가 필요 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — Tauri 시절엔 native 메뉴 자체가 없어 N/A였지만, Electron 이관 후 macOS 전용 native 메뉴가 신설되며 이 안티패턴이 실제로 발생했다: `installNativeMacMenu`(`bitvue-desktop/electron/main.ts:521-737`, `Menu.setApplicationMenu` 호출은 736행)의 템플릿 항목은 전부 `click: () => dispatch(event)`만 갖고 `checked`/`enabled` 필드가 단 하나도 없다(grep 0건). "Show PSNR Map"/"QP Map" 같은 토글형 오버레이 메뉴 항목이나, 파일이 열려 있어야만 의미 있는 "Export..."/"Close bitstream" 항목이 실제 프런트 상태(오버레이 on/off, 파일 열림 여부)와 무관하게 항상 미체크·항상 활성 상태로 고정된다 — 나쁜 예시와 정확히 같은 모양. 단 Windows/Linux는 이 native 메뉴가 아예 없고(darwin 전용 가드, 522행) 대신 in-webview `TitleBar.tsx`(순수 React state 기반, 상태 드리프트 여지가 구조적으로 없음)를 쓰므로 이 문제는 macOS 빌드에만 해당한다.
 
 ---
 
@@ -358,7 +358,7 @@ window.on_window_event(move |event| {
 **예외**:
 - 세션이 매 변경마다 즉시 디스크에 자동 저장되어 "미저장 상태"가 원천적으로 존재하지 않는 설계라면 확인 다이얼로그가 오히려 불필요한 마찰이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — Electron 이관 후에도 동일한 결함이 그대로 이어진다. `bitvue-desktop/electron/main.ts:459-461`의 `bitvue:closeWindow` 핸들러는 조건 없이 바로 `app.quit()`을 호출하고(주석 자체가 "window.close()가 아니라 app.quit()"이라고 명시할 뿐 확인 절차는 언급 없음), `createWindow()`(`main.ts:739-790`)에는 `win.on('close', ...)`류 핸들러가 전혀 없어 `event.preventDefault()`로 종료를 막는 로직 자체가 없다. 프런트 전체에서 `beforeunload`/`unsaved`/`isDirty`/`confirmClose` grep도 0건 — 나쁜 예시 코드와 사실상 동일한 상태다.
 
 ---
 
@@ -422,7 +422,7 @@ fn seek_frame(state: tauri::State<AppState>, window: tauri::Window, index: u32) 
 **예외**:
 - 앱 설정, 라이선스 상태, 전역 캐시(디코더 바이너리 자체 등)처럼 창과 무관하게 진짜 전역이어야 하는 상태는 공유가 맞다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — Electron 이관 후 상태가 오히려 더 전역화됐다: `crates/bitvue-engine/src/core.rs:43-65`의 `Core`는 `stream_a`/`stream_b`(`StreamId::A`/`B`) 고정 두 슬롯 + 전역 `selection` 상태로, 창/세션 단위 스코프가 전혀 없다. 게다가 이 상태를 쥐고 있는 게 이제 같은 프로세스 안의 `Mutex`가 아니라 완전히 별도의 OS 자식 프로세스(sidecar, `bitvue-desktop/electron/main.ts`가 1회 spawn)라 창별 분리는 더더욱 고려돼 있지 않다. 다만 `main.ts`에는 `new BrowserWindow` 정의(740행)와 호출(1301행) 단 한 곳뿐이라 현재는 단일 창 앱이고, 이 구조가 당장 버그를 유발하진 않는다. 다중 창(비교 뷰어 등)을 실제로 추가하는 순간 그대로 재현될 구조적 위험으로 분류(직접 관측된 버그는 아님).
 
 ---
 
@@ -479,7 +479,7 @@ useEffect(() => {
 **예외**:
 - reload가 곧 "세션 초기화"를 의미하도록 의도적으로 설계했고 native 쪽도 reload 시점에 세션을 함께 정리하는 계약이 명시되어 있다면(즉 고아가 아니라 확실히 정리됨) 문제가 아니다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 세션 복구용 커맨드(`getActiveSession`/`SessionSnapshot`/`restoreFromSnapshot` 류)가 프런트/`crates/bitvue-sidecar`/`bitvue-desktop/electron/main.ts` 어디에도 없다(grep 0건). 프런트 상태(`frontend/contexts/CurrentFrameContext.tsx` 등)는 순수 React state/context에만 존재한다. 반면 백엔드는 Electron 이관으로 아예 별도의 OS 자식 프로세스가 됐다 — sidecar는 `main.ts`가 앱 시작 시 1회 spawn하고 `before-quit`/`window-all-closed`(1330-1343행)에서만 종료하므로, 렌더러(WebView) reload로는 절대 같이 죽지 않고 `Core`의 stream A/B 상태를 계속 쥐고 있다. WebView가 reload되면 정확히 나쁜 예시가 설명하는 "프런트는 초기화, 백엔드는 이전 파일을 물고 있는" 불일치가 발생하는 구조 — Tauri 시절보다 오히려 프로세스 경계가 명확해져 이 패턴이 더 확실하게 성립한다.
 
 ---
 
@@ -546,7 +546,7 @@ function toFrameCoords(offsetX: number, offsetY: number, viewScale: number): Fra
 **예외**:
 - 순수 텍스트/DOM 기반 UI(캔버스 없이 CSS로만 그려지는 패널)는 브라우저가 DPI를 자동 처리하므로 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — Electron 이관과 무관하게(순수 프런트 코드) 처리가 패널마다 여전히 다르다. `frontend/components/panels/HRDBufferPanel.tsx:102`는 `window.devicePixelRatio`를 명시적으로 반영해 캔버스를 설정하는(권장 패턴과 동일한) 반면, 메인 비디오 캔버스(`frontend/components/panels/YuvViewerPanel/VideoCanvas.tsx:182-183`)는 `canvas.width`/`canvas.height`를 프레임의 실제 픽셀 해상도로만 설정하고 `devicePixelRatio`는 어디서도 참조하지 않으며, 오버레이 캔버스(`OverlayRenderer/index.tsx:57-58,256-257`)도 그 크기를 그대로 읽어 쓴다. 다만 이 캔버스들은 CSS `transform: scale(zoom)`으로 표시되고 QP/MV 오버레이 좌표도 프레임 픽셀 좌표계로 그려지므로, "CSS clientWidth 기반 렌더링"이라는 나쁜 예시와 완전히 같은 모양은 아니다 — 실제 HiDPI 화면에서 격자선이 흐려지거나 클릭 히트테스트가 어긋나는지는 시각적으로 확인하지 못했다.
 
 ---
 
@@ -625,4 +625,4 @@ fn build_menu() -> Menu {
 **예외**:
 - 사내 전용 도구처럼 배포 대상 OS가 하나로 고정되어 있고 앞으로도 확장 계획이 없다면 해당 OS 관례만 따르는 것으로 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(부분) — 단축키 모디파이어 처리 자체는 여전히 권장 패턴에 가깝다: `frontend/utils/keyboardShortcuts.ts`는 각 단축키가 `ctrl`/`meta`를 별도 필드로 선언하고 매칭 시 둘 다 검사하며(234-235행 `!!event.ctrlKey === !!shortcut.ctrl && !!event.metaKey === !!shortcut.meta`), `isMac()`(`navigator.platform` 기반, 272-277행)으로 분기해 힌트 표시를 `⌘/⌥/⇧` vs `Ctrl/Win/Alt/Shift`로 다르게 렌더링한다(249-252행). 하지만 TAURI-WEB-005에서 확인했듯 Electron 이관으로 macOS native 메뉴가 실제로 생겼고, 그 메뉴 구조 자체가 macOS 관례를 어긴다 — `installNativeMacMenu`(`bitvue-desktop/electron/main.ts:521-737`)에서 "Quit" 항목이 앱 메뉴가 아니라 "File" 서브메뉴 안에 있고(579행), 코드 주석(511-514행)이 명시하듯 모든 항목에 `accelerator`를 의도적으로 생략해 native 메뉴 자체엔 단축키 힌트가 전혀 표시되지 않는다(대신 프런트 `keydown` 리스너가 전담). "OS 단축키 인식"은 잘 되어 있지만 "메뉴 관례 준수"는 새로 생긴 native 메뉴에서 부분적으로 깨져 있다 — Tauri 시절엔 native 메뉴가 없어 N/A였던 항목이 이관 후 Confirmed로 바뀐 사례.

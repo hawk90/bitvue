@@ -54,7 +54,7 @@ pub struct SyntaxArena {
 **예외**:
 - 트리가 파싱 후 즉시 한 번만 순회되고 버려지는 소규모 구조(예: 헤더 몇십 개 필드)라면 포인터 트리도 무방 — arena 전환의 이득이 구현 복잡도를 못 넘음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — HEVC/VP9/VVC 신택스 트리는 재귀적 `Vec<SyntaxNode>`로 구성되고(crates/bitvue-hevc/src/syntax/mod.rs:9-24 등), core의 `SyntaxModel`은 `HashMap<String, SyntaxNode>` + String parent/children ID로 트리를 표현(crates/bitvue-core/src/types.rs:514-579) — arena/인덱스 대신 노드별 힙 할당과 문자열 키 조회에 의존.
 
 ---
 
@@ -111,7 +111,7 @@ pub struct MvFieldSoA {
 **예외**:
 - 항목이 항상 "레코드 전체"로 함께 쓰이는 경우(예: 블록 하나를 통째로 직렬화) AoS가 더 단순하고 빠름.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `Macroblock`/`CodingUnit` 구조체가 mb_addr/x/y/mb_type/qp/mv/ref_idx를 한 레코드에 AoS로 보관(crates/bitvue-avc/src/overlay_extraction.rs:87-106, crates/bitvue-hevc/src/overlay_extraction.rs:74-99); `extract_qp_grid`는 전체 `Vec<Macroblock>`을 파싱해 `.qp` 필드 하나만 사용(같은 파일 154-197줄).
 
 ---
 
@@ -171,7 +171,7 @@ pub struct BlockOverlayMapSoA {
 **예외**:
 - 오버레이 레이어가 항상 "QP+MV+skip을 동시에 합성"하는 단일 패스로만 그려진다면 AoS가 더 단순하고 성능 차이도 작을 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 위 LAYOUT-002와 동일 근거: `extract_qp_grid`/`extract_mv_grid`/`extract_partition_grid`/`extract_mb_type_grid`(crates/bitvue-avc/src/overlay_extraction.rs:154-1637)가 각각 매크로블록 전체를 재파싱해 필드 하나만 추출. 단, 최종 그리드 표현(QPGrid/MVGrid/BlockMetricsGrid)은 이미 SoA(flat Vec)로 잘 설계되어 있어 문제는 파싱 중간 단계에 국한.
 
 ---
 
@@ -223,7 +223,7 @@ pub struct BlockFlags {
 **예외**:
 - 인스턴스 수가 적은(수십~수백 개) 설정/헤더 구조체는 패딩이 실질적 영향이 없으므로 가독성 우선 배치도 괜찮음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — HEVC `Pps`(crates/bitvue-hevc/src/pps.rs:12, bool 26개), AVC `Sps`(16개) 등 bool 다수 구조체가 존재하지만 모두 시퀀스/파라미터셋 단위(인스턴스 소수)로, 카탈로그가 전제하는 '블록당 수만 개' 스케일과는 다름 — 패딩 낭비의 실질 영향은 제한적.
 
 ---
 
@@ -269,7 +269,7 @@ pub struct RefPicEntry {
 **예외**:
 - 실제로 "있을 수도 없을 수도" 있는 의미이고 인스턴스 수가 적다면(코덱 전역 설정 등) `Option`이 명확성 면에서 낫다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — AVC/HEVC/VVC/AV3 overlay_extraction.rs의 CU/Macroblock 구조체마다 `Option<MotionVector>`×2 + `Option<i8>`×2가 반복(예: crates/bitvue-avc/src/overlay_extraction.rs:101-105), 블록 단위로 대량 인스턴스화됨.
 
 ---
 
@@ -317,7 +317,7 @@ pub enum SyntaxElement {
 **예외**:
 - 모든 variant 크기가 비슷하거나, enum 인스턴스 수가 애초에 적다면(설정값 enum 등) 문제되지 않음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `SyntaxElement`류 범용 enum이나, 큰 고정 배열 variant가 작은 variant들과 섞인 사례를 찾지 못함; 배열을 가진 유일한 enum(`SeiData`, crates/bitvue-core/src/metadata.rs:452)은 variant 크기가 비교적 균형 있고 인스턴스 수도 적음.
 
 ---
 
@@ -366,7 +366,7 @@ pub struct Block {
 **예외**:
 - 타임스탬프(PTS/DTS), 바이트 오프셋, 파일 크기처럼 실제로 64비트 범위가 필요한 필드는 `u64`가 맞음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 좌표/QP/skip류 필드에 `u64`/`i64`를 쓰는 사례를 찾지 못함(`x: u64` 등 grep 无결과); CU 좌표는 `u32`(HEVC: crates/bitvue-hevc/src/overlay_extraction.rs:77-78)로, 카탈로그가 지적하는 `u64`보다는 완화된 형태.
 
 ---
 
@@ -432,7 +432,7 @@ pub struct FrameMetrics {
 **예외**:
 - 소규모 툴/스크립트성 코드에서 프레임 수가 적고(<수십) 성능이 중요치 않다면 단일 구조체가 개발 편의상 낫다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 프레임 데이터가 이미 `FrameInfo`/`FrameAnalysis`/`FrameMetadata`/`FrameRgbData`/`FrameYuvData`로 분리되어 인덱스로 조인됨(crates/bitvue-core/src/stream_state.rs:326-860, `CachedFrame::from_components`) — 단일 god Frame 구조체 없음.
 
 ---
 
@@ -487,7 +487,7 @@ pub struct BlockDebugInfo {
 **예외**:
 - 구조체 인스턴스 수가 적거나(프레임당 1개 수준의 헤더), hot loop 자체가 없다면 분리 이득이 작음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — hot 루프에서 도는 블록/CU 구조체에 String/Vec<u8> 같은 cold 디버그 필드가 섞인 사례를 찾지 못함; CU/Macroblock 구조체는 숫자/enum 필드로만 구성.
 
 ---
 
@@ -535,7 +535,7 @@ pub struct DecodedPictureBuffer {
 **예외**:
 - 프레임을 순서 없이 임의 접근하는 use case가 지배적이고(예: 사용자가 임의 프레임으로 점프하는 뷰어) 순차 스캔이 드물다면 HashMap 방식의 단순함이 더 유리.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 디코드 프레임 캐시가 `lru::LruCache<usize, CachedFrame>`(crates/bitvue-core/src/stream_state.rs:583-591)로 해시 기반이라 순차 지역성은 보장되지 않지만, 캡a 32의 seek용 캐시라는 용도 자체가 카탈로그가 명시한 '임의 프레임 점프 뷰어' 예외에 해당할 가능성이 높음.
 
 ---
 
@@ -585,7 +585,7 @@ pub struct Rect { pub x: i32, pub y: i32, pub w: i32, pub h: i32 }
 **예외**:
 - 좌표에 방대한 메타데이터(단위 변환 히스토리, 좌표계 체인 등)가 실제로 붙어야 하는 특수 케이스라면 계층 구조가 정당화될 수 있음 — 다만 hot path와는 분리해야 함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Point`/`Coordinate`/`Rect` 식의 좌표 객체 계층이 crates 어디에도 없음; 좌표는 항상 구조체에 직접 박힌 `x`/`y`/`width`/`height` 필드로 표현됨.
 
 ---
 
@@ -630,7 +630,7 @@ pub struct RefFrameGraph {
 **예외**:
 - 그래프 크기가 매우 작고(GOP 내 수십 개 프레임 수준) 순회 빈도가 낮다면 `Rc` 그래프도 실질적 문제가 되지 않을 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 참조 프레임 그래프가 이미 권장 패턴(플랫 edge list)으로 구현됨: `ReferenceEdge{from_idx,to_idx}` + `GraphNode`(crates/bitvue-core/src/reference_graph.rs:42-90); `Rc`/`RefCell`/`Weak`는 crates 전체에서 전혀 발견되지 않음.
 
 ---
 
@@ -678,7 +678,7 @@ pub struct Cu {
 **예외**:
 - FFI 경계(디코더 네이티브 라이브러리와의 상호운용)에서는 실제 포인터가 필요할 수 있음 — 이 경우 unsafe 경계를 명확히 문서화.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 발견된 원시 포인터 필드는 vvdec FFI 바인딩(crates/bitvue-decode/src/vvdec.rs)뿐이며 이는 카탈로그 자체가 예외로 인정하는 경우; CU 이웃 캐싱을 위한 내부 포인터 패턴은 없음.
 
 ---
 
@@ -733,7 +733,7 @@ pub fn classify_nal_unit(nal_type: NalType) -> NalCategory {
 **예외**:
 - 사용자 입력(CLI 옵션, 설정 파일 파싱)이나 호출 빈도가 낮은 API 경계에서는 문자열 비교가 자연스럽고 문제 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `unit_type == "FRAME"` 문자열 비교가 존재하지만(src-tauri/src/services/frame_service.rs:132,149) UI 메타데이터 조립 시 유닛당 1회 호출이며 카탈로그가 말하는 블록/NALU 단위 hot loop은 아님; 다른 곳(crates/bitvue-hevc/src/nal.rs)의 NAL 타입 분류는 이미 enum 기반.
 
 ---
 
@@ -789,7 +789,7 @@ fn average_qp(map: &QpMap) -> f64 {
 **예외**:
 - 실제로 희소한 오버레이(예: 사용자가 클릭해서 주석 단 특정 블록만 표시하는 annotation layer)라면 HashMap이 적절.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `sb_index: HashMap<(u32, u32), Vec<usize>>`가 dense 그리드 블록마다(모든 슈퍼블록에 값 존재) 조회됨(crates/bitvue-av1-codec/src/overlay_extraction/partition.rs:684-705) — flat `Vec` 인덱싱으로 대체 가능한 구조.
 
 ---
 
@@ -839,7 +839,7 @@ pub struct DecoderState {
 **예외**:
 - 구조체가 작아서(캐시라인 1~2개 이내) 그룹핑 이득이 미미한 경우 실익이 적음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — hot per-block 필드와 cold per-sequence 필드가 뒤섞인 'DecoderState'류 구조체를 찾지 못함; 비교 가능한 유일한 구조체(`ParserState`, crates/bitvue-codecs-parser/src/parser_strategy.rs:194-203)는 작고 파서 인스턴스당 1개.
 
 ---
 
@@ -890,7 +890,7 @@ pub struct FrameMeta {
 **예외**:
 - FFI/직렬화 경계와 무관한 순수 내부 구조체는 `#[repr(Rust)]` 기본값이 오히려 컴파일러 최적화(자동 필드 재배열)의 이점을 살릴 수 있어 더 낫다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 유일한 FFI 경계(crates/bitvue-decode/src/vvdec.rs)의 모든 교환 구조체가 `#[repr(C)]`로 명시적으로 선언되어 있음.
 
 ---
 
@@ -938,7 +938,7 @@ pub struct MvGrid {
 **예외**:
 - 해당 배열을 다루는 코드에 SIMD 최적화 계획이 전혀 없다면(단순 스칼라 순회로 충분한 저빈도 연산) stride 정렬 투자는 불필요한 복잡도.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — row-major MV/QP 그리드에 대해 stride 정렬을 고려하는 SIMD 코드가 없음; 기존 SIMD(crates/bitvue-metrics/src/simd.rs)는 row 경계 없는 flat 1차원 픽셀 버퍼만 처리.
 
 ---
 
@@ -988,7 +988,7 @@ pub struct PuMapSoA {
 **예외**:
 - variant 종류가 항상 함께 처리되고(예: 렌더링 시 모든 PU를 한 번씩 그리기만 함) 필터링/통계 연산이 없다면 AoS enum이 더 단순하고 충분히 빠름.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `PredUnit`류 payload-불균형 tagged enum을 대량 배열에 저장하고 필터링하는 패턴을 찾지 못함; 블록 타입 enum(MbType, PredMode)은 payload 없는 균일한 variant로 구성.
 
 ---
 
@@ -1035,7 +1035,7 @@ pub struct ParallelDecodeStats {
 **예외**:
 - 카운터 갱신 빈도가 낮거나(예: 프레임당 1회) 스레드 수가 1~2개뿐이라면 false sharing 영향이 미미해 패딩 투자가 불필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 스레드/타일별 원자적 카운터 배열 패턴을 찾지 못함; 유일한 소형 원자 배열(`Arc<[AtomicU64; 2]>`, crates/bitvue-core/src/worker.rs:252)은 false sharing이 문제될 규모가 아니며 병렬 타일 디코드 카운터도 존재하지 않음.
 
 ---
 
@@ -1077,7 +1077,7 @@ pub struct Cu {
 **예외**:
 - 원소 개수가 예측 불가능하게 크게 튈 수 있는 컬렉션(예: 매우 긴 CABAC 잔차 리스트)이라면 `SmallVec`의 인라인 버퍼가 오히려 구조체 크기만 키우는 역효과가 날 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `smallvec` 의존성이 없고, CU당 merge/AMVP 후보 리스트 같은 소형 컬렉션 필드도 없음 — Bitvue는 전체 모션보상 디코더가 아니라 오버레이 데이터 추출기.
 
 ---
 
@@ -1120,7 +1120,7 @@ pub struct SliceRefLists {
 **예외**:
 - 세 계층이 실제로 서로 다른 의미(파싱 안 됨 / 파싱됐지만 빈 리스트 / 리스트는 있지만 개별 항목이 아직 결정 안 됨)를 가지며 모두 구분이 필요한 드문 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Option<Vec<Option<T>>>` 중첩 패턴을 어디서도 찾지 못함; 참조 리스트류 구조체는 명시적 플래그와 함께 단순 `Vec<u8>`/`Vec<i16>` 사용(예: crates/bitvue-hevc/src/slice.rs:61-71).
 
 ---
 
@@ -1176,7 +1176,7 @@ bitflags::bitflags! {
 **예외**:
 - 플래그 각각이 서로 다른 시점에 독립적으로, 매우 드물게(구조체 인스턴스 수가 적게) 갱신된다면 bool 필드의 가독성이 비트 연산보다 유지보수에 유리할 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — LAYOUT-004와 동일 근거(bool 다수 구조체 존재, `bitflags` 크레이트 미사용)이지만 인스턴스가 시퀀스/프레임 단위라 카탈로그의 블록 단위 심각도 논리가 그대로 적용되지 않음.
 
 ---
 
@@ -1221,7 +1221,7 @@ pub struct MergeCandidate2 {
 **예외**:
 - 값 자체가 크고(예: 서브구조체) 복사 비용이 부담스러운 경우엔 `Box`가 정당화될 수 있음 — 다만 이 경우도 `Option<Box<T>>`이 니치 최적화로 포인터 크기 그대로 유지됨을 활용하면 됨.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `Option<Box<primitive>>` 패턴을 찾지 못함; 오히려 sentinel 값을 이미 활용 중(`MISSING_MV`, crates/bitvue-core/src/mv_overlay.rs:11; `QPGrid.missing: i16`).
 
 ---
 
@@ -1269,7 +1269,7 @@ pub struct FrameCuMap {
 **예외**:
 - 각 레벨의 크기가 극히 작고(예: 타일 수 2~4개, 인스턴스 수명도 짧은 일회성 임시 구조) 성능이 중요하지 않은 스크립트성 코드라면 중첩 Vec의 단순함이 더 나을 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 3단계 이상 중첩된 `Vec<Vec<Vec<...>>>`을 찾지 못함; 존재하는 `Vec<Vec<u8>>`은 가변 길이 NAL/샘플 페이로드 목록으로 정당한 용례이며, CU 컬렉션은 이미 flat `Vec<CodingUnit>` + 공간 인덱스로 구현됨.
 
 ---
 
@@ -1334,7 +1334,7 @@ pub struct FrameBlocksSoA {
 **예외**:
 - 통계/열 단위 스캔이 애초에 없고 항상 레코드 전체를 다루는 워크로드라면 AoS가 더 단순함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — LAYOUT-002/003과 동일 근거: `Macroblock`/`CodingUnit` 레코드(Option 필드 포함 40바이트 이상 추정)를 그리드 추출마다 전부 순회하며 필드 하나만 읽음(crates/bitvue-avc/src/overlay_extraction.rs:176-181).
 
 ---
 
@@ -1387,7 +1387,7 @@ fn read_timestamp(h: &RawFrameHeader) -> u64 {
 **예외**:
 - 파일 포맷 자체가 byte-packed이고, 필드 접근을 항상 `read_unaligned`/`from_le_bytes`로 안전하게 하는 규율이 코드베이스 전체에 일관되게 적용된 경우엔 `packed` 사용이 정당함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드베이스 전체에서 `#[repr(packed)]` 사용처를 찾지 못함.
 
 ---
 
@@ -1440,7 +1440,7 @@ fn process_ctus(ctus: &[CtuSummary]) -> Vec<&CtuSummary> {
 **예외**:
 - 구조체가 실제로 작고(≤32바이트 수준) 대입/전달 빈도가 매우 높다면 `Copy`가 참조 카운팅/수명 관리보다 오히려 저렴하고 단순함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 128바이트를 넘는 `#[derive(Copy)]` 구조체를 찾지 못함; 확인된 Copy 구조체(SummaryStats, WindowStats, CpbState)는 48~64바이트 수준의 작은 통계 집계형.
 
 ---
 
@@ -1501,7 +1501,7 @@ fn blend_over_frame(layer: &OverlayLayer, frame_rgb: &mut [u8], width: usize, he
 **예외**:
 - 블렌딩 연산에도 SIMD 셔플/디인터리브 명령(예: `vld4`/AVX의 unpack 계열)을 활용해 SoA를 유지한 채 고성능을 낼 수 있는 경우 — 다만 구현 복잡도가 상당히 올라감.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 오버레이 블렌딩은 프론트엔드 Canvas2D/WebGL에 위임됨(frontend/components/panels/OverlayRenderer/*); Rust나 TS 어디에도 채널별 r/g/b/a Vec을 수동으로 블렌딩하는 루프가 없음.
 
 ---
 
@@ -1550,4 +1550,4 @@ fn find_with_parent_stack(root: &CuNode, target_pred: impl Fn(&CuNode) -> bool)
 **예외**:
 - 상향 탐색이 트리 순회 코드의 대다수를 차지하는 워크로드(예: leaf-to-root 누적 통계를 프레임마다 반복 계산)라면 parent 포인터를 상시 유지하는 편이 매번 스택을 재구성하는 것보다 나을 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — parent 링크가 있는 유일한 트리(`SyntaxNode.parent: Option<SyntaxNodeId>`, crates/bitvue-core/src/types.rs:528)는 원시 포인터가 아닌 String ID이고(댕글링 위험 없음), 실제로 hex↔syntax 역매핑이라는 실사용처가 있어 카탈로그가 인정하는 예외(상향 탐색이 실질적으로 필요한 경우)에 해당.

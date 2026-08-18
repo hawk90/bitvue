@@ -56,7 +56,7 @@ fn prepare_for_display(decoded: &DecodedFrame) -> RgbaBuffer {
 **예외**:
 - 분석 로직이 정말로 색상 인지 지표(예: 사람 눈에 보이는 색차 기반 메트릭, CIEDE2000류)를 요구한다면 RGB/Lab 변환이 불가피할 수 있다. 이 경우에도 표시용 RGBA와는 별도의 변환 경로를 둔다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-metrics/src/lib.rs`의 `psnr_yuv`/`ssim_yuv`는 `YuvFrame`(Y/U/V raw plane)을 직접 받아 계산하고, `src-tauri/src/commands/quality.rs:249-269`도 `DecodedFrame.y_plane`을 그대로 넘겨 호출한다 — RGBA 변환을 선행하지 않음. (표시 경로의 `yuv_to_rgb`는 실제로 화면에 그릴 때만 호출되어 이 안티패턴에 해당하지 않음)
 
 ---
 
@@ -108,7 +108,7 @@ impl FrameCache {
 **예외**:
 - 오프라인 트랜스코딩/썸네일 일괄 생성 배치 작업처럼 "모든 프레임을 결국 다 써야 하는" 경우는 예외. 다만 이 경우도 스트리밍 방식(생성 즉시 소비 후 해제)이 낫다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `src-tauri/src/services/decode_service.rs:94-161`은 512MB 상한의 HashMap 기반 LRU 캐시로 프레임을 요청 시점에만 디코드/캐시하며, 스트림 전체를 미리 RGBA로 프리로드하는 코드는 발견되지 않음.
 
 ---
 
@@ -169,7 +169,7 @@ fn render_frame_to_rgba(decoded: &DecodedFrame, out: &mut RgbaFrameBuffer) {
 **예외**:
 - 해상도가 프레임마다 바뀌는(어댑티브 스트리밍 등) 극히 드문 경우는 재할당이 불가피하지만, 이때도 "이전 버퍼보다 크면만 재할당" 전략(capacity 재사용)은 여전히 유효하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/src/yuv.rs:84` `yuv_to_rgb()`가 호출마다 `let mut rgb = vec![0u8; required_size];`로 새 힙 버퍼를 할당하며, 재사용 가능한 scratch buffer/버퍼 풀 패턴은 발견되지 않음.
 
 ---
 
@@ -218,7 +218,7 @@ fn copy_y_plane(decoded: &DecodedFrame, out: &mut [u8]) {
 **예외**:
 - 디코더가 항상 tightly-packed 버퍼만 반환한다고 문서로 보장하는 경우는 없다고 봐야 한다(dav1d는 항상 정렬 stride를 반환). 예외는 사실상 없음 — 반드시 stride를 다뤄야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/src/decoder.rs`는 `plane_utils::extract_plane`(stride를 올바르게 처리하는 row-by-row 복사, `plane_utils.rs:223-287`)로 dav1d picture를 stride-strip된 packed 버퍼로 추출하지만, `DecodedFrame.y_stride`(decoder.rs:397,511)에는 packed 후의 실제 row 폭이 아니라 dav1d의 **원본 stride 값**을 그대로 저장한다. 이 값이 `src-tauri/src/commands/frame.rs:1078` 등을 거쳐 프런트엔드로 전달되고, `frontend/utils/yuv/renderer.ts:77`의 `getYIndex(px, py, yStride)`가 이 stale stride로 packed 배열을 인덱싱한다 — dav1d의 실제 stride가 width와 다른 해상도(비정렬 폭)에서 이미지가 밀리는(shearing) 버그로 이어짐.
 
 ---
 
@@ -272,7 +272,7 @@ fn compute_histogram(plane: PlaneData, bit_depth: u8) -> Histogram {
 **예외**:
 - 최종 화면 표시(SDR 디스플레이 대상 RGBA)는 8비트로 귀결되는 것이 정상이며, 이 경우는 축소가 아니라 "표시 변환"이다. 문제는 분석/중간 처리 단계에서의 조기 축소다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-metrics/src/lib.rs`의 `psnr()`/`ssim()`/`YuvFrame`은 전부 `&[u8]`만 받고 `bit_depth` 파라미터가 아예 없다(`simd.rs`도 `max_value = 255.0` 하드코딩, `simd.rs:769,873,970`). `src-tauri/src/commands/quality.rs:249-269`가 `DecodedFrame.y_plane`(10/12bit는 바이트 길이가 `width*height*2`)을 그대로 `width*height` 크기로 넘기므로, `psnr()`의 크기 검증(`lib.rs:98`)에서 불일치로 실패해 `.ok()?`에 의해 조용히 `None`이 된다 — 10/12bit 콘텐츠에서 품질 지표 자체가 계산되지 않음(비트 심도가 분석 파이프라인에서 완전히 무시됨).
 
 ---
 
@@ -319,7 +319,7 @@ fn psnr_max_i(bit_depth: u8) -> f64 {
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-002 참고 — bit-depth 의존 정규화 상수를 빠뜨리는 동일 패턴이나, 대상이 raw 픽셀 샘플 정규화(여기)와 QP 값의 legend 표시(UIX-VIZ-002)로 다름.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `65535`/`65535.0` 하드코딩 정규화는 grep으로 실제 코드 경로에서 발견되지 않음. 오히려 `crates/bitvue-decode/src/yuv.rs:389-404`의 `read_sample`(표시용 8bit 축소)과 `crates/bitvue-core/src/metrics_distribution.rs:663` `max_value = ((1u32 << bit_depth) - 1)`는 이미 올바르게 bit_depth 기반 계산을 사용함. (다만 PIXEL-005에서 확인했듯 `bitvue-metrics` 크레이트의 PSNR/SSIM 자체는 10/12bit 입력을 아예 처리하지 못함 — 별개 이슈)
 
 ---
 
@@ -382,7 +382,7 @@ fn convert(decoded: &DecodedFrame) -> Vec<u8> {
 **예외**:
 - monochrome(4:0:0)처럼 로직이 근본적으로 다른(크로마 자체가 없는) 케이스는 완전히 별도 경로로 두는 것이 오히려 명확할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/src/strategy/{scalar,avx2,neon}.rs` 각각에 `convert_yuv420_to_rgb`/`convert_yuv422_to_rgb`/`convert_yuv444_to_rgb`가 별도 함수로 거의 중복 구현되어 있음(전략별×포맷별 = 최대 9개 유사 함수). trait 기반 dispatch(`yuv.rs`)는 이미 적용되어 있으나, 권장안처럼 "업샘플링 부분만" 분리되어 있지 않고 각 함수가 색공간 변환/packing 로직 전체를 포맷별로 복제하고 있음(예: `scalar.rs:33-85` YUV420 vs `scalar.rs:87` 이후 YUV422).
 
 ---
 
@@ -438,7 +438,7 @@ fn yuv_to_rgb(y: u16, u: u16, v: u16, bit_depth: u8, info: &ColorInfo) -> (f32, 
 **예외**:
 - 코덱이 색공간 정보를 아예 시그널링하지 않는 레거시 스트림에서는 코덱별 관례적 기본값(예: SD는 BT.601, HD는 BT.709)으로 폴백하는 것이 합리적이다 — 다만 이는 명시적 "기본값 추정" 로직으로 문서화해야 하며, 하드코딩과는 구분된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/src/yuv.rs:420-435`, `strategy/scalar.rs`, `strategy/avx2.rs`(`v_coeff=181, u_g_coeff=44, v_g_coeff=91, u_b_coeff=227` 등, avx2.rs:442-445)가 모두 BT.601 계수를 하드코딩하고 range(full/limited)나 transfer function 구분이 전혀 없음. `ColorInfo`/`color_range`/`matrix_coefficients`/`transfer_characteristics` 등은 `bitvue-hevc`/`bitvue-avc`/`bitvue-av1-codec`의 SPS/시퀀스 헤더 파서에서는 파싱되지만(`grep`으로 확인), `bitvue-decode` 크레이트(실제 픽셀 변환 경로)에는 이 값들에 대한 참조가 전혀 없어 파싱된 색공간 메타데이터가 변환 단계까지 전달되지 않음.
 
 ---
 
@@ -491,7 +491,7 @@ fn render(video: &VideoTexture, overlay: Option<&OverlayTexture>, gpu: &mut GpuC
 **예외**:
 - GPU 레이어 합성이 불가능한 환경(순수 CPU 렌더링, 서버사이드 프레임 덤프 생성 등)에서는 CPU 합성이 유일한 선택지일 수 있다. 이 경우도 "영상 캐시 + 오버레이만 재합성"으로 최소한 재변환은 피해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/YuvViewerPanel/VideoCanvas.tsx`는 영상용 `<canvas>` 하나만 사용하며, 같은 2D context(`ctx`)에 먼저 프레임을 그린 뒤(line 194-199) 바로 이어서 `renderModeOverlay(overlayOpts)`(line 212)로 오버레이를 같은 캔버스에 직접 그린다 — 영상과 오버레이가 별도 텍스처/레이어로 분리되어 있지 않음. (WebGL 오버레이 캔버스는 MV 필드 전용으로만 별도 존재)
 
 ---
 
@@ -537,7 +537,7 @@ fn on_overlay_toggle(app: &mut AppState, kind: OverlayKind, enabled: bool) {
 **예외**:
 - 오버레이가 픽셀 값 자체에 의존하는 경우(예: "오버레이 색상을 픽셀 밝기에 따라 다르게" 같은 데이터 종속 오버레이)는 영상 데이터 접근이 필요하지만, 이 경우도 재디코드가 아니라 이미 디코드되어 캐시된 YUV를 재사용하면 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/YuvViewerPanel/VideoCanvas.tsx:213-222`의 `useEffect` 의존성 배열에 `activeOverlays`/`av1Features`가 포함되어 있어, 오버레이 토글만으로도 이 effect가 재실행되고 `rendererRef.current.render(frameToRender, colorspace)`(line 196, 내부적으로 `yuvToImageData`의 전체 YUV→RGBA 픽셀 변환 수행)가 다시 호출된다 — PIXEL-009와 동일 근본 원인.
 
 ---
 
@@ -582,7 +582,7 @@ fn generate_thumbnail(decoded: &DecodedFrame, thumb_size: (u32, u32)) -> RgbaBuf
 **예외**:
 - 썸네일 크기가 원본과 큰 차이가 없는 경우(예: 2x 축소)는 다운샘플링 단계 분리의 이득이 작으므로 단순 구현이 허용될 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `src-tauri/src/services/thumbnail_service.rs:266-270` `decode_av1_thumbnails`가 `bitvue_decode::yuv_to_rgb(frame)`을 원본 `frame.width/height`(디코드된 원해상도) 그대로 호출한 뒤 `resize_rgb(&rgb_data, frame.width, frame.height, width, height)`로 사후 축소한다 — 기본 썸네일 크기가 80x45(`thumbnail_service.rs:77-78`)임에도 원본 해상도 전체를 RGB로 변환 후 버림.
 
 ---
 
@@ -635,7 +635,7 @@ fn convert_row_simd(y_row: &[u8], out_row: &mut [u8]) {
 **예외**:
 - 버퍼를 직접 정렬 할당자로 생성하고 오프셋 연산이 전혀 없는 내부 스크래치 버퍼라면 aligned load를 안전하게 상수처럼 사용할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-decode/src/strategy/avx2.rs`와 `crates/bitvue-metrics/src/simd.rs` 전체를 grep한 결과 `_mm256_load_si256`(정렬 요구) 호출은 전혀 없고 전부 `_mm256_loadu_si256`(비정렬 로드)만 사용됨 — 정렬 크래시 위험이 구조적으로 배제되어 있음.
 
 ---
 
@@ -690,7 +690,7 @@ fn yuv_to_rgb_scalar(y: i32, u: i32, v: i32) -> (i32, i32, i32) {
 **예외**:
 - 애초에 근사 연산(예: fast-path 미리보기용 저정밀 변환)임을 인지하고 허용 오차 범위를 명시적으로 문서화한 경우는 완전 일치를 요구하지 않아도 된다 — 단, 품질 지표 계산 경로에는 이 예외를 적용하면 안 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/src/strategy/avx2.rs`는 AVX2 커널의 "행 나머지(width%8) fallback" 처리에서 `yuv_to_rgb_pixel(y: f32, u: f32, v: f32)`(avx2.rs:417-422, `1.402`/`0.344136`/`0.714136`/`1.772` 부동소수점 계수, truncate)를 쓰는 반면, 같은 파일의 AVX2 벌크 SIMD 블록과 `strategy/scalar.rs`의 공식 `ScalarStrategy`는 정수 고정소수점(181/44/91/227, `>>7`)을 사용한다 — 같은 AVX2 빌드 안에서도 "8의 배수" 픽셀과 "나머지" 픽셀이 서로 다른 산술 경로를 타 ±1 LSB 불일치가 발생할 수 있고, scalar-only 빌드와도 다른 결과가 나올 수 있음.
 
 ---
 
@@ -748,7 +748,7 @@ struct DecodedFrame {
 **예외**:
 - 프레임이 극도로 작거나(예: 아이콘 크기 분석), 성능이 전혀 중요하지 않은 프로토타입/테스트 코드에서는 단순함을 위해 허용될 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-decode/src/decoder.rs:33-61` `DecodedFrame`은 `y_plane: Arc<[u8]>` 등 단일 연속 버퍼 + 별도 `stride` 필드 구조를 사용하며, `Vec<Vec<_>>` 형태의 plane 저장은 코드베이스에서 발견되지 않음(단, PIXEL-004에서 지적했듯 stride 필드 값 자체는 부정확함).
 
 ---
 
@@ -809,7 +809,7 @@ fn get_display_dimensions(decoded: &DecodedFrame) -> (u32, u32) {
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-006 참고 — overlay 좌표가 실제 프레임 지오메트리와 어긋나는 문제이나, 이쪽은 crop/coded-size 오프셋, UIX-VIZ-006은 heatmap grid/CU 정합이 원인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `DecodedFrame`에는 `coded_width`/`crop_*` 필드가 전혀 없고 dav1d/ffmpeg/vvdec 각 백엔드가 반환하는 `picture.width()`/`frame.width()`(이미 display size로 가정)를 그대로 사용한다(`decoder.rs:375-376`, `ffmpeg.rs:155-156`). 구조적으로 이 패턴이 나타날 여지가 없어 보이지만, crop이 있는 실제 스트림(coded≠display)에 대한 회귀 테스트를 찾지 못해 하위 디코더 라이브러리들이 실제로 crop-적용 크기를 보장하는지 직접 검증하지는 못함.
 
 ---
 
@@ -867,7 +867,7 @@ fn compute_psnr(decoded: &DecodedFrame, reference: &DecodedFrame) -> f64 {
 **예외**:
 - 인코더 패딩 정책 자체를 분석/검증하는 것이 목적인 도구(예: 패딩 아티팩트 탐지기)라면 의도적으로 coded size 전체를 다뤄야 하며, 이 경우는 예외로 명확히 문서화한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `psnr_yuv`/`ssim_yuv`(`crates/bitvue-metrics/src/lib.rs:266-303`)는 `YuvFrame.width/height`를 그대로 순회 범위로 쓰는데, 이 값은 `DecodedFrame.width/height`(디코더가 보고하는 값)와 동일하다. PIXEL-015 판정처럼 이 코드베이스에 별도의 coded-size 개념이 없으므로, 디코더가 실제로 crop을 반영한 크기를 주는 한 이 항목도 자연히 해당 없음 — 다만 PIXEL-015와 동일한 이유로 실증 검증은 못함.
 
 ---
 
@@ -921,7 +921,7 @@ fn psnr_plane(a: &Plane, b: &Plane, bit_depth: u8) -> f64 {
 **예외**:
 - 지표 자체가 "화면에 실제로 표시되는 RGB 색상 차이"를 의도적으로 측정하려는 지각 기반 지표(예: RGB/Lab 공간에서의 색차 ΔE)라면 RGB 변환이 계산 정의의 일부이므로 예외다. 이 경우도 매 프레임 재변환이 아니라 필요한 만큼만 변환해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-metrics/src/lib.rs`의 `psnr_yuv`/`ssim_yuv`와 `src-tauri/src/commands/quality.rs:249-269`는 `DecodedFrame`의 Y/U/V plane을 직접 넘겨 계산하며 RGBA 변환 경로를 전혀 거치지 않음 — PIXEL-001과 동일 근거.
 
 ---
 
@@ -976,7 +976,8 @@ fn compute_all_metrics(frames: &[DecodedFrame], references: &[DecodedFrame]) -> 
 **예외**:
 - 프레임 수가 적고(예: 단일 프레임 diff) 코어 수도 적은 워크로드에서는 병렬화 오버튜닝의 실익이 적어 단순 `par_iter()` 사용이 실용적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-metrics/src/lib.rs:328-353`(`batch_psnr_parallel`), `:365-387`(`batch_ssim_parallel`)이 `par_iter()`를 스레드 수 제한 없이(전역 Rayon 풀) 사용하고, PSNR/SSIM을 각각 완전히 별도의 전체 순회 함수로 계산해(fused kernel 없음) 같은 데이터를 여러 번 재순회한다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-003 참고.
 
 ---
 
@@ -1031,7 +1032,7 @@ impl OwnedFrame {
 **예외**:
 - 없음에 가깝다 — FFI 버퍼 생명주기 관리는 항상 명시적이어야 하며, "보통은 안전하니 괜찮다"는 가정은 이 카테고리에서 특히 위험하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-decode/src/decoder.rs`의 `picture_to_frame`은 dav1d picture에서 얻은 참조를 `plane_utils::extract_plane`으로 즉시 소유 `Vec`에 deep copy한 뒤 `DecodedFrame`을 반환한다(decoder.rs:397-475). dav1d 내부 버퍼를 가리키는 raw pointer/slice가 함수 밖으로 노출되는 경로는 발견되지 않아 이 형태의 UAF 위험은 구조적으로 없음.
 
 ---
 
@@ -1086,4 +1087,4 @@ fn get_current_frame_for_cache(decoder: &mut Dav1dDecoder) -> DecodedFrame {
 **예외**:
 - 백그라운드 분석 워커로 프레임을 넘겨야 하거나, 여러 프레임을 동시에 비교해야 하는(PSNR 등) 경우처럼 디코더의 버퍼 재사용 시점보다 오래 데이터를 들고 있어야 한다면 deep copy가 정당하고 필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `decoder.rs`의 `picture_to_frame`은 borrowed/RAII 짧은-스코프 변형 없이 매 디코드마다 항상 전체 plane을 deep copy한다(PIXEL-019 참고). 다만 그 결과가 `decode_service.rs`의 LRU 캐시에 저장되어 재사용되므로(예외 조항의 "여러 프레임을 동시에 비교"/캐시 목적과 부합) 이 설계가 실제로 낭비인지, 재생 hot path에서 체감되는 성능 이슈인지는 프로파일링 없이 단정하기 어려움.

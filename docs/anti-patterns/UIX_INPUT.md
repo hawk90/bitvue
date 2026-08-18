@@ -39,7 +39,7 @@
 - 마우스를 물리적으로 뽑고 Tab/화살표/Enter만으로 프레임 100개를 순회해 목표 프레임에 도달할 수 있는지 시나리오 테스트.
 - 접근성 린터(axe, eslint-plugin-jsx-a11y)로 `tabIndex` 누락, 클릭 전용 인터랙티브 요소를 스캔.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/StreamTreePanel.tsx:120,128`의 트리/리스트 항목은 `onClick`만 있고 `onKeyDown`/`tabIndex`/`role` 없음(순수 클릭형 `<div>`). 화살표 이동·펼치기/접기 키보드 지원 전무.
 
 ---
 
@@ -75,7 +75,7 @@
 - 전역 단축키 레지스트리를 키 코드 기준으로 그룹핑해 같은 키가 서로 다른 동작 카테고리에 매핑되는 항목을 정적으로 나열.
 - 사용자 테스트: 패널 A에서 학습한 단축키를 패널 B에서 그대로 눌러보게 하고 오조작 빈도 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/Timeline.tsx:25`가 완전히 독립된 로컬 `highlightedFrameIndex` state를 두고 자체 ArrowLeft/Right 핸들러(`Timeline.tsx:192-210`)로 `setFrameSelection`을 호출하는데, `stopPropagation` 없이 이벤트가 `window`로 계속 버블링되어 `useKeyboardNavigation.ts:125-148`의 전역 핸들러도 같은 키에 대해 별도 state(`CurrentFrameContext`의 `currentFrameIndex`)를 동시에 갱신한다 — 같은 ArrowLeft가 두 개의 서로 다른 "현재 프레임" 소스를 어긋나게 움직일 수 있음.
 
 ---
 
@@ -111,7 +111,7 @@
 - 모든 텍스트 입력 필드에 포커스를 두고 알파벳/숫자/Backspace/Delete를 눌러 전역 단축키가 함께 발동하는지 전수 테스트.
 - 코드 스캔: `document.addEventListener('keydown'`, `window.addEventListener('keydown'` 호출부에서 target 검사 유무 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `frontend/utils/keyboardShortcuts.ts:321-331`의 `KeyboardShortcutHandler.handle()`이 `target.tagName === "INPUT"/"TEXTAREA"`·`isContentEditable`을 명시적으로 가드해 조기 반환하며, `GoToFrameDialog.tsx`·`FrameNavigationToolbar.tsx:317-323` 검색창 모두 네이티브 `<input>`이라 가드가 정상 적용됨. 이 항목이 우려하는 결함은 이미 올바르게 방지되어 있음.
 
 ---
 
@@ -147,7 +147,7 @@
 - 10,000프레임 이상의 테스트 시퀀스에서 "500번째 결함 프레임까지 도달하는 데 필요한 키 입력 횟수"를 측정하는 시나리오 테스트.
 - modifier 조합(Shift/Ctrl/Alt + 방향키) 전수 입력 후 이동 폭 로그 기록.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 방향키는 ±1프레임(`useKeyboardNavigation.ts:125-148`), Ctrl/Cmd+←→와 `[`/`]`만 I-frame 점프로 구현됨(`useKeyboardNavigation.ts:162-188`). "PageUp/PageDown = 10프레임 이동"은 `utils/keyboardShortcuts.ts:71-72`(치트시트 문서)에는 있지만 `useKeyboardNavigation.ts`에 `reg({key:"PageUp"...})` 호출이 전혀 없어 실제로는 동작하지 않는 죽은 문서 항목. Shift 등 다른 modifier 기반 큰 폭 이동도 없음.
 
 ---
 
@@ -183,7 +183,7 @@
 - Domain review: 에러 로그 100건이 있는 테스트 시퀀스에서 첫 번째 오류부터 마지막 오류까지 키보드만으로 순회 가능한지 확인.
 - 코드 스캔: 에러 리스트 데이터 구조와 현재 프레임 상태 간 연결(구독/콜백) 존재 여부.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `DiagnosticsPanel.tsx:125-127`의 `handleSelectDiagnostic`은 로컬 `selectedDiagnostic` state만 설정하고 `setCurrentFrameIndex`나 어떤 프레임 내비게이션도 호출하지 않아, 에러 항목 클릭이 타임라인/뷰어를 이동시키지 않는다. "다음/이전 이슈" 단축키도 `keyboardShortcuts.ts` 레지스트리 어디에도 없음. 참고로 이 패널의 진단 데이터 자체가 대부분 데모용 mock(`DiagnosticsPanel.tsx:62` 주석 "Add mock diagnostics for demonstration")이라 실제 이슈 내비게이션 요구가 아직 완성되지 않은 기능 위에 얹혀 있음.
 
 ---
 
@@ -219,7 +219,7 @@
 - 시나리오 테스트: 3단계 이상 참조 프레임을 따라간 뒤 Alt+←를 3번 눌러 정확히 원점(같은 프레임, 같은 블록 선택)으로 복귀하는지 확인.
 - 코드 스캔: 선택 상태 관리 훅에 스택 자료구조 존재 여부.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/contexts/SelectionContext.tsx:60`는 선택을 단일 `useState<SelectionState|null>`로만 관리하고(스택 없음), `setFrameSelection`/`setUnitSelection` 등이 이전 값을 그대로 덮어씀. "Undo selection" 단축키(Ctrl/Cmd+Z)의 실제 구현은 `App.tsx:411-412`에서 `CustomEvent("undo-selection")`을 dispatch하는 게 전부이며, 이 이벤트를 리스닝하는 코드가 저장소 어디에도 없음(죽은 스텁) — 참조 프레임 점프 후 되돌아가는 기능 자체가 없음.
 
 ---
 
@@ -255,7 +255,7 @@
 - 사용자 테스트: 툴바를 보지 않고 커서 모양만으로 현재 모드를 맞힐 수 있는지 확인.
 - Interaction: 모드 전환 후 첫 드래그 제스처의 오조작률(의도한 동작과 실제 동작 불일치 비율) 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `useCanvasInteraction.ts:131-145`의 `onMouseDown`은 좌/중클릭 시 항상 pan만 시작하고, YuvViewerPanel/OverlayRenderer 어디에도 드래그 기반 영역 선택이나 zoom 드래그 툴이 구현되어 있지 않음(`OverlayRenderer/index.tsx`에 마우스 핸들러 자체가 없음). 경쟁하는 모드가 아직 없어 이 항목이 우려하는 모드 혼동 자체가 발생할 수 없음 — 다만 향후 블록 드래그 선택 기능을 추가할 때 재검토 필요.
 
 ---
 
@@ -291,7 +291,7 @@
 - Interaction: 리사이즈 경계/핸들에 커서를 올려 드래그가 시작되는 실제 픽셀 범위를 측정.
 - 사용자 테스트: 특정 시야각/디스플레이 배율에서 드래그 시도 성공률 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 확인된 유일한 리사이즈 핸들 구현(`DockableLayout.css:9-11,371-378`)은 시각적 두께 4px에 `--resize-handle-hit-area: 8px`만큼 투명 히트 영역을 `inset` 의사요소로 확장해두어 이 항목이 지적하는 1~2px 히트 타겟 문제가 없음. 타임라인의 프레임 바(`Timeline.css:120-127`, 2px)는 리사이즈/트림 핸들이 아니라 클릭 가능한 표시 막대이며 트림 인/아웃 마커 기능 자체가 저장소에 없음.
 
 ---
 
@@ -327,7 +327,7 @@
 - 코드 스캔: 컨텍스트 메뉴 정의 파일에서만 참조되는 핸들러 함수(다른 곳에서 import되지 않는 함수) 목록화.
 - 사용자 테스트: 우클릭을 금지한 상태로 전체 기능을 사용할 수 있는지 확인하는 시나리오.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소 전체에 `onContextMenu`/커스텀 컨텍스트 메뉴 컴포넌트가 하나도 없음(grep 결과 0건). Bitvue는 아직 우클릭 메뉴 패러다임 자체를 사용하지 않으므로 "기능이 컨텍스트 메뉴에만 존재" 실패 양상이 발생할 수 없음.
 
 ---
 
@@ -363,7 +363,7 @@
 - Interaction: 블록에 hover한 뒤 마우스를 치우고 정보가 화면 어딘가에 남아있는지 확인.
 - 사용자 테스트: "두 블록의 QP 값을 비교해 보고하라"는 과제를 hover 전용 UI로 수행시켜 소요 시간/오류율 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — QP/MV 등 블록 단위 값을 hover로 보여주는 인스펙터 기능 자체가 아직 구현되어 있지 않음(`hoveredBlock` 류 state, 좌표→값 매핑 훅 없음). 유일한 툴팁 시스템(`utils/interactiveTooltips/`)은 기능 발견용 온보딩 코치마크이며 데이터 조사와 무관.
 
 ---
 
@@ -400,7 +400,7 @@ macOS 사용자 비중이 높은 크리에이티브/미디어 툴 시장에서 �
 - 크로스플랫폼 CI 매트릭스에서 동일 단축키 시나리오를 macOS/Windows/Linux 각각 실행해 결과 비교.
 - 코드 스캔: `ctrlKey`와 `metaKey` 사용 빈도/위치 대조, 단일 추상화 함수 경유 여부 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (심각) — `useKeyboardNavigation.ts`의 Open/Close/Export/Save/Go-to-frame/Reload/Undo/Copy 단축키가 전부 `ctrl: true, meta: true`를 동시에 요구하도록 등록됨(예: 191-218행, 270-283행). `keyboardShortcuts.ts:371-389`의 `getShortcutKey`/`getEventKey`는 `ctrlKey`와 `metaKey` 둘 다 정확히 일치해야 매치되는데, 실제 키 이벤트는 Windows/Linux에서 Ctrl+O 시 `ctrlKey=true,metaKey=false`, macOS에서 Cmd+O 시 `metaKey=true,ctrlKey=false`로 둘 중 하나만 켜진다 — 즉 이 단축키들은 어느 플랫폼에서도 정상적인 한 손 입력으로는 절대 발동하지 않는다(Ctrl과 Cmd를 동시에 눌러야만 매치). 플랫폼별 분기 헬퍼(`isPrimaryModifier` 등)가 전무하고, `platform.ts`/`keyboardShortcuts.ts`의 `isMac()`은 표시 문자열 생성에만 쓰이고 실제 매칭 로직과 분리되어 있음. `docs/PARITY_CHECKLIST.md` Layer 4 단축키 표와 교차 검증 시 이 불일치를 반드시 반영해야 함.
 
 ---
 
@@ -436,7 +436,7 @@ Tauri 앱은 네이티브 메뉴(Rust 쪽, OS 레벨 accelerator)와 WebView 내
 - 빌드 타임 린트: 네이티브 accelerator 목록과 WebView 단축키 레지스트리를 파싱해 키 조합 교집합을 검출하는 스크립트.
 - Interaction: 앱의 모든 화면에서 네이티브 메뉴에 등록된 단축키를 눌러 기대한 WebView 동작이 실행되는지 전수 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/utils/menu/creators/modeMenu.ts:30-84`가 macOS 네이티브 메뉴 accelerator로 F1~F7(모드 전환)을 등록하는 동시에, `useKeyboardNavigation.ts:321-328`가 웹뷰 로컬 keydown 핸들러로 F1~F12를 동일 목적(모드 전환)에 독립적으로 등록함 — 두 시스템이 서로 다른 파일에서 교차검증 없이 같은 키를 중복 정의(항목이 지적한 "구현 냄새"와 정확히 일치). `fileMenu.ts`의 `cmd+o`/`cmd+w` 네이티브 accelerator도 웹뷰 쪽 `ctrl+meta+o`/`w`(UIX-INPUT-011에서 확인된 대로 사실상 죽은 바인딩)와 같은 의도로 중복 정의되어 있어 소스가 하나로 통합되어 있지 않음.
 
 ---
 
@@ -472,7 +472,7 @@ Tauri 앱은 네이티브 메뉴(Rust 쪽, OS 레벨 accelerator)와 WebView 내
 - Performance: 방향키를 2초간 길게 누른 뒤 backend에 실제로 도달한 IPC 요청 수와 최종 표시 프레임의 반영 지연을 측정.
 - 코드 스캔: `onKeyDown` 핸들러 내부에서 `invoke`/`emit` 호출 직전에 디바운스/스로틀 래퍼가 존재하는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (심각) — `YuvViewerPanel/index.tsx:172-319`의 프레임 로드 `useEffect`가 `currentFrameIndex` 변경마다 `get_decoded_frame_yuv`/`get_decoded_frame`(폴백)/`get_frame_analysis` 최대 3개의 IPC `invoke`를 디바운스/스로틀 없이 호출한다(`cancelled` 플래그는 stale 결과 무시용일 뿐 실제 취소나 스로틀이 아님). `useKeyboardNavigation.ts:125-148`의 ArrowLeft/Right 핸들러는 `event.repeat`을 어디서도 검사하지 않고 매 keydown마다 즉시 `onPreviousFrame`/`onNextFrame`을 호출하므로, 방향키를 길게 눌러 OS auto-repeat이 발생하면 매 반복 이벤트마다 백엔드 디코드+분석 요청이 발생한다.
 
 ---
 
@@ -508,7 +508,7 @@ Ctrl+Z(Undo)를 누르면 "내가 만든 변경(마커 추가, 주석, 필터 �
 - 시나리오 테스트: 프레임 이동 5회 + 마커 추가 2회를 수행한 뒤 Ctrl+Z를 2번 눌러 마커 2개만 정확히 취소되는지 확인.
 - 코드 스캔: undo 스택 push 호출부를 전수 조사해 내비게이션성 액션이 섞여 있는지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 편집(데이터 변경)과 내비게이션(선택/화면 이동)을 뒤섞은 단일 undo 스택 자체가 존재하지 않음. UIX-INPUT-006에서 확인했듯 "undo selection" 기능은 리스너 없는 죽은 `CustomEvent` 스텁이고, `SelectionContext.tsx`에도 히스토리 자료구조가 없다 — 이 항목이 지적하는 "같은 스택에 카테고리 없이 섞임" 버그가 성립하려면 애초에 스택이 있어야 하는데 그게 없다. 다만 향후 실제 undo 시스템을 만들 때 카테고리 태깅 없이 설계하면 이 패턴이 그대로 재현될 위험은 있음(플래그).
 
 ---
 
@@ -546,7 +546,7 @@ Tauri WebView가 본질적으로 브라우저 엔진이라는 사실을 잊고, 
 - Interaction: 입력 필드 밖에서 Backspace, Ctrl+F, Ctrl+P, 우클릭, 이미지 영역 드래그, 핀치줌을 전수 실행해 브라우저 기본 동작이 발동하는지 확인.
 - 코드/설정 스캔: Tauri WebView 설정에서 컨텍스트 메뉴/줌 비활성화 플래그 존재 여부, 전역 리스너에서 `preventDefault` 커버리지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 코드 스캔 결과 `contextmenu`/`dragstart`/`wheel`/pinch-zoom에 대한 전역 `preventDefault()`가 프런트엔드 어디에도 없고, `src-tauri/tauri.conf.json`에도 네이티브 컨텍스트 메뉴·페이지 줌을 비활성화하는 설정이 없음(grep 0건) — 구조적으로 이 항목의 증상이 나올 여지가 있다. 다만 Tauri v2의 WRY(WKWebView/WebView2) 기본 동작이 완전한 브라우저 크롬(뒤로가기/페이지찾기 팝업 등)과 다를 수 있어, 실제 런타임에서 Backspace 뒤로가기나 Ctrl+F 팝업이 발동하는지는 이번 정적 감사로 확정할 수 없음 — 실기 확인 필요. (UIX-INPUT-011에서 확인된 버그로 인해 Ctrl+F는 애초에 앱 단축키로도 가로채지지 않으므로 실제로 브라우저 기본 동작에 노출될 가능성은 더 높다.)
 
 ---
 
@@ -582,7 +582,7 @@ Tauri WebView가 본질적으로 브라우저 엔진이라는 사실을 잊고, 
 - User test: 신규 사용자에게 "다음 오류로 이동하는 방법을 찾아보라"는 과제를 주고 앱 내부 UI만으로 발견 가능한지 관찰.
 - 코드 스캔: 단축키 레지스트리 항목 수와 도움말/팔레트 컴포넌트에 렌더링되는 항목 수를 대조해 누락 검출.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (부분) — `KeyboardShortcutsDialog.tsx`가 실제로 존재하고 `useKeyboardNavigation.ts:237-241`에서 `?` 키에 바인딩되어 치트시트 요구사항은 충족됨. 그러나 이름으로 검색해 실행하는 커맨드 팔레트는 저장소 전체에 존재하지 않음("CommandPalette"/"command palette" grep 0건) — 항목이 말하는 두 경로(치트시트+팔레트) 중 팔레트 쪽만 부재가 확인됨.
 
 ---
 
@@ -618,7 +618,7 @@ Tauri WebView가 본질적으로 브라우저 엔진이라는 사실을 잊고, 
 - Interaction: 비교 뷰를 열고 한쪽에서 줌/팬/스크럽을 수행한 뒤 다른 쪽에 반영되는지, 반영 여부를 토글할 수 있는지 확인.
 - 코드 스캔: 뷰어 컴포넌트의 줌/팬/프레임 상태가 로컬 state인지 공유 store 구독인지 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `CompareWorkspace/CompareControls.tsx:37-51`가 Off/Playhead/Full 3단계 동기화 토글을 제공하고, `CompareWorkspace.tsx:74-106`의 `handleFrameChange`가 sync_mode가 켜져 있으면 `getAlignedFrame`으로 B 스트림 프레임을 실제로 맞춰 이동시킨다 — 이 항목이 우려하는 "동기화 토글 자체가 없음/수동 맞춤 필요" 실패 양상과 정반대로 이미 잘 구현되어 있다. Zoom/pan 동기화는 `StreamPlayer.tsx`에 zoom/pan state 자체가 아직 없어(기능 미구현) 해당 부분은 판단 대상이 아님.
 
 ---
 
@@ -654,4 +654,4 @@ Tauri WebView가 본질적으로 브라우저 엔진이라는 사실을 잊고, 
 - Interaction: 프레임 번호/줌 배율/좌표 표시 요소를 클릭했을 때 편집 가능한 입력으로 바뀌는지 전수 확인.
 - User test: "정확히 프레임 4231, 블록 (96, 64)로 이동하라"는 과제를 마우스만으로 수행시켜 소요 시간과 정확도 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (부분) — 프레임 번호는 `GoToFrameDialog.tsx`(Ctrl/Cmd+G,F)로 직접 입력 가능해 이 케이스는 해결되어 있다. 그러나 줌 배율은 `ZoomControls.tsx`가 +/-/reset 버튼과 읽기 전용 `%` 라벨만 제공하고 편집 가능한 입력 필드가 없으며(`useCanvasInteraction.ts`의 `setZoom(percent)` 절대값 API는 존재하지만 어떤 UI에도 연결되지 않음), 블록/좌표를 직접 입력해 이동하는 `selectBlockAt`류 기능도 저장소 전체에 없음(grep 0건) — 3가지 유스케이스 중 프레임 번호만 정밀 입력이 해결된 상태.

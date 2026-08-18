@@ -72,7 +72,7 @@ impl FrameHeatmap {
 **예외**:
 - score가 존재하는 픽셀이 극히 희소한 경우(예: 임계값 초과 outlier만 표시)라면 sparse 표현(`(x, y, score)` 목록)이 오히려 dense 배열보다 효율적이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이미 권장안대로 구현됨. `DiffHeatmapData.values: Vec<f32>`(diff_heatmap.rs:87)와 `BlockMetricsGrid.values: Vec<f32>`(block_metrics.rs:127) 모두 row-major flat 배열. `BlockMetricValue{x,y,value,metric_type}` 구조체(block_metrics.rs:73)가 존재하지만 `Vec<BlockMetricValue>`로 대량 저장하는 곳은 없고 단일 값 전달/테스트용으로만 쓰인다.
 
 ---
 
@@ -120,7 +120,7 @@ fn compute_frame_heatmap(a: &YPlane, b: &YPlane, target_resolution: HeatmapResol
 **예외**:
 - 내보내기(export) 또는 리포트 생성처럼 최종적으로 풀 해상도가 필요한 배치 작업에서는 항상 풀 해상도로 계산하는 것이 맞다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `DiffHeatmapData::from_luma_planes`(diff_heatmap.rs:103-175)는 뷰포트/줌 파라미터를 전혀 받지 않고 항상 고정 2x2 다운샘플(half-res)로 계산한다("Half-res default" 주석, line 6). "항상 풀 해상도"는 아니지만 "실제 필요 해상도와 무관하게 계산 해상도가 하드코딩되어 있다"는 핵심 구조는 동일하게 present. 다만 이 파이프라인 자체가 어떤 `#[tauri::command]`에서도 호출되지 않아(아래 HEAT-003/004 참고) 실사용 스크러빙 시나리오에서 체감되는지는 검증 불가.
 
 ---
 
@@ -170,7 +170,7 @@ fn get_quality_heatmap(frame_index: u32, zoom: ZoomLevel) -> HeatmapPayload {
 **예외**:
 - 원본 해상도 자체가 이미 작은 콘텐츠(SD급)라면 다운샘플링 경로를 별도로 둘 필요가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `diff_heatmap.rs`/`block_metrics.rs`를 실제로 프론트엔드에 노출하는 `#[tauri::command]`가 코드베이스 어디에도 없다(`src-tauri/src/commands`에 `DiffHeatmap`/`BlockMetric` 참조 0건). 따라서 "줌과 무관하게 원본 해상도 전송"이 실제로 일어나는지 확인할 IPC 경로 자체가 아직 존재하지 않는다. `cache_provenance.rs`의 `CacheKey::QpHeatmap{ hm_res, scale_mode, .. }` 설계는 해상도별 캐시 분리 의도를 보이지만, diff/quality heatmap 쪽은 그 설계조차 실사용 커맨드로 이어지지 않은 상태.
 
 ---
 
@@ -223,7 +223,7 @@ fn get_quality_heatmap(frame_index: u32) -> tauri::ipc::Response {
 **예외**:
 - 개발/디버그 빌드에서 사람이 읽기 쉬운 형태로 검사해야 하는 소규모(수십 개 이하) score만 다룰 때는 JSON도 허용된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 코드베이스 전체(`src-tauri/src`)에 `tauri::ipc::Response`/raw 바이너리 IPC 사용례가 0건이고, 모든 `#[tauri::command]`는 표준 serde(JSON) 직렬화 경로를 쓴다. `DiffHeatmapData`/`BlockMetricsGrid`는 `#[derive(Serialize, Deserialize)]`로 `Vec<f32>` 필드를 그대로 노출하므로, 만약 이 구조체가 향후 tauri command로 반환되면 기본 경로는 JSON float 배열이 될 것이다. 다만 현재 이 구조체를 반환하는 커맨드가 아예 없어(HEAT-003 참고) 실제 발생 여부는 확인 불가.
 
 ---
 
@@ -272,7 +272,7 @@ function applyColormap(scores: Float32Array, min: number, max: number, palette: 
 **예외**:
 - 정적 리포트/이미지 내보내기처럼 최종 산출물이 고정된 컬러 이미지여야 하는 경우는 backend(또는 export 전용 경로)에서 색을 입혀도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — backend에서 컬러맵을 적용하는 코드는 `export::overlay::create_diff_heatmap_export`(export/overlay.rs:299-330) 하나뿐이며, 이는 정확히 이 항목의 "예외"에 해당하는 export 전용 경로다. 인터랙티브 표시용으로 backend가 매 프레임 색을 입히는 라이브 커맨드는 존재하지 않는다(애초에 diff/quality heatmap을 노출하는 커맨드 자체가 없음).
 
 ---
 
@@ -321,7 +321,7 @@ fn render_view(scores: &[f32], colormap: &Colormap, range: (f32, f32)) -> Vec<u8
 **예외**:
 - 아카이브/내보내기용 최종 이미지처럼 이후 수치 조회가 애초에 불필요한 산출물이라면 색상만 저장해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `DiffHeatmapData`는 원본 `values: Vec<f32>`(diff_heatmap.rs:87)를 항상 보존하고, RGBA는 `export::create_diff_heatmap_export`가 그때그때 파생시켜 별도의 `OverlayExportData`로 만들 뿐 원본을 덮어쓰지 않는다. `BlockMetricsOverlay`도 `grid`(raw f32)와 파생 `to_rgba()`가 분리되어 있다(block_metrics.rs:538-597).
 
 ---
 
@@ -391,7 +391,7 @@ fn aggregate_scores(blocks: &[(BlockRect, f32)]) -> f32 {
 **예외**:
 - 프레임 해상도가 항상 block size의 배수로 고정된 파이프라인(예: 인코더가 이미 패딩된 해상도로만 출력)이라면 부분 블록 처리 자체가 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `BlockMetricsGrid`(block_metrics.rs:130-152)는 `div_ceil`로 경계 블록을 만들고 `block_to_pixel_range`(block_metrics.rs:196-203)가 프레임 경계로 clamp하지만 `is_partial` 플래그가 없고, 집계 함수 `BlockMetricsStatistics::from_grid`(block_metrics.rs:231-272)와 `MultiFrameBlockMetrics::aggregate_statistics`(block_metrics.rs:640-680)는 전부 `values.iter().sum()/values.len()` 식 단순 평균으로, 잘린 경계 블록과 완전 블록을 동일 가중치로 섞는다(면적 가중 없음). 다만 실제 plane 데이터에서 블록을 잘라 `BlockMetricsCalculator::calculate_block`을 호출하는 driver 코드가 코드베이스 어디에도 없어(`BlockMetricsGrid::new`/`BlockMetricsCalculator` 호출부가 block_metrics.rs 자체 테스트 외에 없음), 이 경계 처리가 실제 프레임에서 발동하는지는 구조적 증거로만 확인됨.
 
 ---
 
@@ -447,7 +447,7 @@ struct FrameHeatmap {
 **예외**:
 - window/stride가 애플리케이션 전역에서 상수로 고정되어 절대 바뀌지 않는다면 매 결과마다 반복 기록하는 대신 전역 문서화만으로 충분할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이미 권장안대로 구현됨. `BlockMetricsGrid`는 `block_size`/`metric_type`/`frame_width`/`frame_height`를 결과 구조체 자체에 항상 동반한다(block_metrics.rs:111-128). `DiffHeatmapData`도 `mode`와 `heatmap_width/height` 대 `frame_width/height` 비율(다운샘플 배율을 항상 역산 가능)을 함께 저장한다(diff_heatmap.rs:73-97). 두 구조체 모두 window==block_size(비겹침, 별도 stride 개념 없음)라 "window/stride가 결과에 없는" 문제 자체가 발생하지 않는다.
 
 ---
 
@@ -498,7 +498,7 @@ fn compute_global_range(all_frame_scores: &[Vec<f32>]) -> (f32, f32) {
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-001 참고 — 동일한 per-frame auto-normalize 패턴이나 VQ-Probe 품질-score heatmap(여기)과 QP heatmap(Bitvue, UIX-VIZ-001)은 별도 서브시스템.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `DiffHeatmapData::from_luma_planes`는 매 호출마다 그 프레임 자신의 `min_value`/`max_value`를 로컬로 계산해 저장하고(diff_heatmap.rs:118-119, 160-161), `get_normalized`(diff_heatmap.rs:187-201)는 항상 `self.min_value`/`self.max_value`만 사용한다 — 시퀀스 전체나 metric의 이론적 고정 범위를 받는 파라미터가 전혀 없다. 다만 `BlockMetricsGrid`/`BlockMetricValue::normalized()`(block_metrics.rs:94-102, 174-184)는 반대로 `metric_type.typical_range()`라는 metric별 고정 범위를 쓰고 있어 이 문제가 없다 — 같은 도메인 안에서 두 heatmap 구현의 정규화 전략이 서로 다르다는 점 자체도 주목할 만하다.
 
 ---
 
@@ -548,7 +548,7 @@ fn get_heatmap_for_display(frame_index: u32, range: Option<(f32, f32)>) -> Heatm
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-004 참고 — legend가 실제 값을 반영하지 못하는 문제이나, 여기는 backend가 사용된 range를 응답에 포함하지 않는 것이 원인, UIX-VIZ-004는 legend 컴포넌트 자체의 부재/은닉이 원인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (부분) — `DiffHeatmapData`는 `min_value`/`max_value`를 public 필드로 직렬화해 반환하므로(diff_heatmap.rs:92-96) "범위를 아예 안 알려줌"이라는 최악의 경우는 피했지만, 사용자가 범위를 고정 지정할 옵션 자체가 없다(`from_luma_planes` 시그니처에 range 파라미터 없음, diff_heatmap.rs:103-109) — auto-range가 항상 강제된다. dual-stream 비교 시 스트림 A/B 히트맵이 각자 다른 auto-range를 갖게 될지 검증할 IPC 경로가 없어(HEAT-003 참고) 실사용 영향은 미확인.
 
 ---
 
@@ -596,7 +596,7 @@ fn compute_display_range(scores: &[f32], percentile_clip: (f32, f32)) -> (f32, f
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-023 참고 — outlier가 autoscale 범위를 왜곡하는 동일 문제이나, 여기는 heatmap color range, UIX-VIZ-023은 시계열 차트 Y축 대상.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `DiffHeatmapData::from_luma_planes`/`get_normalized`는 순수 min/max만 사용하고(diff_heatmap.rs:118-119, 191-200) percentile clipping 로직이 없다. 흥미롭게도 코드베이스에 `percentile()` 유틸리티 자체는 이미 존재하지만(`metrics_distribution.rs:179`, 5th/50th/95th percentile 계산용) diff heatmap 정규화 경로와는 연결되어 있지 않다. `BlockMetricsGrid`는 metric별 고정 `typical_range()`를 쓰므로(block_metrics.rs:52-59) outlier에 의한 스케일 왜곡 자체가 구조적으로 발생하지 않는다.
 
 ---
 
@@ -665,7 +665,7 @@ fn aggregate_mean(scores: &[ScoreCell]) -> f32 {
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-005 참고 — invalid/NaN 데이터를 유효 극단값(0)으로 치환해 오인시키는 동일 패턴. score=0은 "최하"로, QP=0은 "최상"으로 위장돼 방향은 반대.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `diff_heatmap.rs`/`block_metrics.rs` 전체에 `is_nan()` 체크나 NaN 관련 처리가 0건(grep 결과 없음). `values`/`scores` 필드는 어디서도 `Option<f32>`나 undefined-reason enum으로 감싸지지 않은 순수 `f32`다. 실제 NaN 발생 경로도 존재한다: `calculate_ssim_block`(block_metrics.rs:380-416)은 `var_s /= n - 1.0`을 수행하는데 block이 픽셀 1개(n=1)면 `0.0/0.0`으로 NaN이 나온다(block_metrics.rs:404-406, 가드 없음). 이 NaN이 `normalized()`/`map_color()`(block_metrics.rs:499-520)를 거치면 Rust의 `f32 as u8` 캐스트가 NaN을 0으로 saturate시켜 픽셀이 조용히 검정/투명이 되며, `BlockMetricsStatistics::from_grid`의 `values.iter().sum()`(block_metrics.rs:249)은 NaN 하나로 전체 평균을 NaN으로 오염시킨다 — 원안의 "NaN→0점으로 치환" 정확히 그 형태는 아니지만 "유효/무효를 구분하는 명시적 타입이 전혀 없어 NaN이 조용히 전파·오염된다"는 핵심 문제는 동일하게 present.
 
 ---
 
@@ -714,7 +714,7 @@ fn compute_roi_mean_score(heatmap: &FrameHeatmap, roi: &Rect) -> f32 {
 **예외**:
 - ROI가 명시적으로 "전체 프레임"으로 지정된 경우(기본값)라면 전체 평균과 동일한 것이 당연히 맞다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `diff_heatmap.rs`/`block_metrics.rs`에 ROI 개념(사각형 선택, `compute_roi_mean_score`류 함수) 자체가 존재하지 않는다. 코드베이스 전체에서 "roi"로 검색되는 유일한 결과는 `bitvue-vp9/src/overlay_extraction.rs`의 VP9 인코더 ROI(적응형 비트레이트 영역 인코딩) 언급뿐으로 이 항목과 무관하다. 아직 구현되지 않은 기능이라 해당 anti-pattern이 적용될 대상이 없다.
 
 ---
 
@@ -769,7 +769,7 @@ fn compute_tiled_heatmap(a: &YPlane, b: &YPlane, tile_size: u32, window: u32) ->
 **예외**:
 - 타일 간 완전 독립이 의도된 non-overlapping block metric(윈도우가 없는 단순 블록 평균 등)이라면 halo가 애초에 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `block_metrics.rs`의 SSIM/PSNR/MSE/MAD 계산은 처음부터 sliding-window가 아니라 넘겨받은 block 슬라이스 내부만으로 통계를 내는 non-overlapping block metric으로 설계되어 halo가 필요 없다. `diff_heatmap.rs`의 2x2 다운샘플도 단일 패스 nested loop(diff_heatmap.rs:122-163)로 전체 plane을 한 번에 처리하며 타일 분할/병렬화가 없다. 두 파일 모두 `par_iter`/`rayon`/`tile` 관련 코드가 0건이라 "타일을 독립적으로 잘라 병렬 처리"하는 경로 자체가 존재하지 않는다.
 
 ---
 
@@ -821,7 +821,7 @@ fn get_heatmap_for_zoom(frame_index: u32, zoom: ZoomLevel) -> FrameHeatmap {
 **예외**:
 - 애초에 다운샘플 경로 자체를 두지 않고 항상 raw만 계산하는 단순한 파이프라인이라면 이 혼용 문제 자체가 발생하지 않는다(대신 HEAT-002의 연산 낭비 트레이드오프를 감수해야 한다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `DiffHeatmapData::from_luma_planes`가 만드는 해상도는 고정 2x2 half-res 하나뿐이고(diff_heatmap.rs:113-115) "raw(1:1)"로 계산하는 경로 자체가 코드베이스에 없어 raw/downsampled를 혼동할 여지가 없다. `CacheKey::DiffHeatmap`(cache_provenance.rs:63-69)도 `hm_res` 필드를 캐시 키에 포함시켜 해상도별 분리 의도를 갖추고 있다. 다만 `diff_heatmap.rs` 자체의 `DiffHeatmapData::cache_key()`(문자열 포맷, diff_heatmap.rs:228-240)와 `cache_provenance.rs`의 `CacheKey::DiffHeatmap`(enum, 필드 구성이 다름 — 전자는 `codec`/파일해시/`opacity_bucket` 포함, 후자는 `ab_mapping` 포함하고 opacity는 없음)이 서로 겹치는 두 개의 별도 캐시 키 체계로 존재해 향후 실제 caching을 연결할 때 둘 중 어느 것을 신뢰할지 혼선의 소지는 있다(HEAT-017 참고).
 
 ---
 
@@ -876,7 +876,7 @@ fn compute_delta_heatmap(a: &FrameHeatmap, b: &FrameHeatmap) -> FrameHeatmap {
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-003 참고 — sequential/diverging 팔레트 구분 필요성은 동일하나 대상이 VQ-Probe 스트림 간 delta score(여기)와 QP delta(UIX-VIZ-003)로 다름.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `export::overlay::create_diff_heatmap_export`(export/overlay.rs:299-330)는 `diff_data.mode`(Abs/Signed/Metric)를 전혀 분기하지 않고 항상 동일한 4-stop 순차 램프(blue→cyan→yellow→red)를 `get_normalized()`의 0..1 값에 적용한다. `DiffMode::Signed`는 부호 있는 `a - b` 값을 만드는데(diff_heatmap.rs:143) 이 값이 정규화되면 "diff 없음(0)"이 램프의 어디에 오는지는 그 프레임의 min/max 분포에 따라 달라져 고정된 중립색(흰색/회색)으로 보장되지 않는다. 코드베이스 전체(`crates`, `src-tauri`)에 diverging/RdBu류 팔레트는 0건(grep 결과 없음) — `HeatmapKind::Absolute/Delta` 같은 구분도 없다. 참고로 frontend `VvcInverseMapRenderer.tsx`에는 blue→grey→orange 발산형 팔레트가 이미 존재하지만 완전히 다른 기능(VVC inverse mapping)용이며 diff/quality heatmap과는 무관하다.
 
 ---
 
@@ -946,7 +946,7 @@ impl HeatmapCache {
 **예외**:
 - 애플리케이션에서 metric/window가 세션 전체에 걸쳐 고정 상수이고 런타임 변경 UI가 아예 없다면 `frame_index` 단일 키로도 안전하다(단, 그 가정이 깨지는 순간 이 항목이 즉시 재발한다는 점을 문서화해 둘 것).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `MultiFrameBlockMetrics.frames: HashMap<usize, BlockMetricsGrid>`(block_metrics.rs:608)가 정확히 이 안티패턴 모양이다: 키가 `display_idx`(frame index) 하나뿐이고, `add_frame()`(block_metrics.rs:625-627)은 삽입되는 `grid.metric_type`/`grid.block_size`가 `self.metric_type`/`self.block_size`(구조체 생성 시 고정 선언)와 일치하는지 전혀 검증하지 않는다. metric이나 block_size를 바꿔 다시 계산한 `BlockMetricsGrid`를 같은 인스턴스에 `add_frame`으로 넣으면 조용히 섞여 들어가고, `aggregate_statistics()`(block_metrics.rs:640-680)는 이 뒤섞인 값들을 하나의 min/max/avg로 집계한다. 한편 `CacheKey::DiffHeatmap`(cache_provenance.rs:63-69)은 `mode`/`hm_res`를 키에 포함시켜 이 문제를 피하고 있어, diff heatmap 캐시와 block metrics 컬렉션 사이에 설계 일관성이 없다는 점도 드러난다.
 
 ---
 
@@ -993,4 +993,4 @@ fn render_heatmap_canvas(scores: &[f32], grid_w: u32, grid_h: u32, canvas_w: u32
 
 **관련**: `UIX_VIZ.md` UIX-VIZ-008 참고 — 이산적 block-grid 값을 보간으로 매끄럽게 렌더링해 정밀도를 과장하는 동일 패턴. VQ-Probe 품질-score heatmap(여기) vs QP heatmap(Bitvue).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `BlockMetricsOverlay::to_rgba()`(block_metrics.rs:571-597)는 각 block의 색을 `block_to_pixel_range`가 반환하는 픽셀 사각형 전체에 그대로 채워 넣는 방식이라 애초에 nearest-neighbor(계단식) 렌더링이며 보간이 없다. `frontend/components/panels/OverlayRenderer` 어디에도 `bicubic`/`bilinear`/`imageSmoothingEnabled`/`drawImage` 기반 업스케일 코드가 없고(grep 결과 0건), diff/quality-score heatmap 전용 프론트엔드 렌더러 자체가 아직 없다(HEAT-003/004 참고). 따라서 이 anti-pattern이 실현될 렌더링 경로가 현재 존재하지 않는다.

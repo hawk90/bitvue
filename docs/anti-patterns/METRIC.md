@@ -47,7 +47,7 @@ fn psnr(mse: f64, max_val: f64) -> f64 {
 **예외**:
 - 내부 계산 파이프라인에서 `f64::INFINITY`를 특수값으로 명시적으로 취급하고 이후 모든 소비자(집계/직렬화/UI)가 이를 안전하게 처리하도록 타입으로 보장했다면 상수 클램프 대신 `INFINITY`를 유지해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — mse==0.0 시 f64::INFINITY를 그대로 반환(crates/bitvue-metrics/src/simd.rs:765,870,967)하며 라이브러리 자체엔 클램프 없음. 라이브 소비자 둘 중: crates/bitvue-cli/src/commands/quality.rs:171-177(avg 계산)는 is_finite 필터가 없어 self-compare 프레임이 섞이면 avg가 그대로 inf로 오염됨(실사용 가능한 회귀); 반면 crates/bitvue-sidecar/src/debug_yuv.rs:549-559(compute_frame_metrics)는 `PSNR_INFINITY_SENTINEL=100.0`으로 명시적 clamp를 이미 구현해 이 안티패턴을 정확히 회피 — 두 소비자 중 하나만 고쳐진 상태 (이전 판정은 마이그레이션으로 삭제된 src-tauri/src/commands/quality.rs를 인용한 오판정이었음, 재조사로 교체)
 
 ---
 
@@ -92,7 +92,7 @@ fn compute_psnr(mse: f64, bit_depth: u8) -> f64 {
 **예외**:
 - 8bit 전용으로 명시적으로 스코프를 제한한 레거시 경로(예: 썸네일 프리뷰용 근사치)라면, 함수명에 `_8bit` 접미사를 붙이고 10bit 입력이 들어오면 패닉/에러로 방어하는 조건 하에 허용 가능.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(API 레벨) — crates/bitvue-metrics/src/lib.rs:167, simd.rs:769,873,970 전부 max_value=255.0 하드코딩, bit_depth 파라미터 자체가 없음. 단 재조사 결과 현재 두 라이브 호출부는 진입 전 이미 8bit로 정규화해서 넘김: sidecar debug_yuv.rs의 read_reference_frame(256,270)·decoded_to_planes8(328,337) 둘 다 `(sample >> downshift) as u8`로 올바르게 다운시프트; CLI quality.rs의 decoded_frame_to_luma(237)는 `c[0]`(LE 16bit의 low byte)만 취해 다운샘플 — 이건 하위 8비트만 남기는 별개의 변환 버그(이 카탈로그 항목 범위 밖)이지만 결과적으로 여기서도 8bit 값이 psnr()에 들어감. 즉 max_value=255 하드코딩 자체는 두 라이브 경로 모두에서 현재 활성 버그로 관측되진 않으나, bit_depth를 안 받는 API 설계는 여전히 취약(향후 raw 10/12bit 버퍼를 직접 넘기는 새 호출자가 생기면 즉시 재현). tests/video_quality_metrics_test.rs:332-340의 test_bit_depth_scaling은 실제 psnr()과 무관한 로컬 헬퍼만 검증하는 형식적 테스트 (이전 판정의 src-tauri 인용은 삭제된 파일이라 오판정, 교체)
 
 ---
 
@@ -134,7 +134,7 @@ fn pixel_diff_sq(a: u16, b: u16) -> u32 {
 **예외**:
 - 두 값의 대소관계가 호출 시점에 이미 불변식으로 보장된 경우(예: 항상 `a >= b`임이 타입/구조로 증명됨)라면 일반 뺄셈이 허용될 수 있으나, 이런 불변식은 주석과 `debug_assert!`로 명시해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — psnr/ssim 전체가 &[u8] 8비트 버퍼만 다루며(u16 경로 자체가 없음), diff 계산은 i32/i16 signed 캐스팅 후 수행(simd.rs 예: 751, AVX2의 _mm256_sub_epi16 등)되어 unsigned subtraction underflow가 구조적으로 발생하지 않음
 
 ---
 
@@ -186,7 +186,7 @@ fn frame_sse(reference: &[u16], distorted: &[u16]) -> u64 {
 **예외**:
 - SIMD 커널에서 의도적으로 좁은 타입을 쓰고 별도의 오버플로우 방지 로직(saturating 연산, 중간 스케일 조정)을 갖춘 경우는 성능상 허용될 수 있으나, 그 경우도 정확성 회귀 테스트가 반드시 있어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 제곱합은 i64(원격 remainder, simd.rs:749-753)·i32 SIMD lane 후 u64로 합산되며, 8bit 전용 스코프(diff 최대 255, diff²=65025)에서 overflow 여유가 충분함 — 권장 패턴과 일치
 
 ---
 
@@ -238,7 +238,7 @@ fn frame_psnr_from_combined_mse(y_mse: f64, u_mse: f64, v_mse: f64,
 **예외**:
 - 4:4:4 소스(크로마 서브샘플링 없음)이고 애초에 픽셀 수가 동일하다면, 단순 평균과 픽셀 가중 평균의 차이가 작아질 수 있다(그래도 완전히 같지는 않음 — MSE를 평균하는지 dB를 평균하는지에 따라 다름).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이전 판정(quality.rs:270의 단순 1/3평균)은 Electron 이전 삭제된 src-tauri 코드 기준 오판정. 현재 라이브 경로 재확인: crates/bitvue-sidecar/src/debug_yuv.rs:559 `psnr_avg = (6.0*psnr_y+psnr_u+psnr_v)/8.0` — 나쁜 예가 아닌 '권장' 절의 6:1:1 가중평균을 이미 구현(주석에 근거 명시); crates/bitvue-cli/src/commands/quality.rs는 애초에 psnr()을 Y-plane에만 호출(U/V 자체를 계산하지 않아 평균 문제가 발생할 지점이 없음). 두 라이브 소비자 모두 나쁜 예의 균등(1/3) 평균 패턴을 쓰지 않음 — 단 6:1:1 고정 가중치의 크로마 포맷 비의존성 문제는 METRIC-PSNR-006 참고
 
 ---
 
@@ -280,7 +280,7 @@ fn combine_planes(y_mse: f64, u_mse: f64, v_mse: f64,
 **예외**:
 - 항상 고정된 단일 크로마 포맷(예: 4:2:0)만 지원하기로 명시적으로 스코프를 제한한 초기 버전이라면 상수 가중치를 임시로 허용할 수 있으나, 다른 포맷 입력 시 명확히 에러를 내야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-sidecar/src/debug_yuv.rs:559의 `psnr_avg = (6.0*psnr_y+psnr_u+psnr_v)/8.0`는 session.format(YuvFormat: I420/NV12/NV21/I422/I444, chroma_ratio는 (2,2)/(2,1)/(1,1)로 전부 다름, debug_yuv.rs:29-45)과 무관하게 항상 고정 6:1:1 상수를 사용 — I422/I444처럼 실제 플레인 픽셀비가 6:1:1과 크게 다른 포맷에서도 동일 가중치가 그대로 적용됨, 픽셀 수 기반 재계산 로직 없음 (이전 판정의 src-tauri 인용은 오판정이었으나, 재조사로 debug_yuv.rs에서 동일 패턴을 실제로 확인)
 
 ---
 
@@ -336,7 +336,7 @@ fn frame_mse(reference: &Plane, distorted: &Plane) -> f64 {
 **예외**:
 - coded 크기와 display 크기가 항상 동일함이 컨테이너/코덱 레벨에서 보장되는 특수한 내부 포맷이라면 구분이 불필요할 수 있으나, 이런 가정은 매우 취약하므로 권장하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — crates/bitvue-decode/src/plane_utils.rs:293-302 extract_y_plane가 PlaneConfig(width,height,stride)로 stride 제거 후 정확히 width*height 크기 버퍼를 반환 — psnr()에 padding이 포함될 수 없는 구조
 
 ---
 
@@ -387,7 +387,7 @@ fn compare_frames(reference: &DecodedFrame, distorted: &DecodedFrame) -> Result<
 **예외**:
 - 애플리케이션이 애초에 crop 정렬을 상위 레이어(ALIGN 카테고리의 정렬 파이프라인)에서 보장하고, 이 함수에 들어올 때는 이미 동일 crop_rect임이 타입/계약으로 보증된다면 내부 검증을 생략할 수 있다(단, 이 경우도 `debug_assert!`는 남기는 것이 안전).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이전 판정은 삭제된 src-tauri 코드 인용(오판정), 재조사 결과 현재 두 라이브 경로 모두 이 시나리오 자체가 구조적으로 성립하지 않음. CLI quality.rs:85-91은 디코더가 보고하는 display width/height(conformance window 적용 후 값)만 비교해 불일치 시 skip; sidecar debug_yuv.rs의 compute_frame_metrics(514-518)도 동일하게 하드 에러(자동 정렬 없음, min(w,h)로 얼버무리지 않음). 다만 이 두 경로 모두 "압축 스트림 각자의 conformance window"를 비교하는 게 아니라, debug_yuv는 사용자가 지정한 단일 Crop을 참조/디코드 양쪽에 동일하게 적용하는 구조(session.crop, debug_yuv.rs:8)라 애초에 "서로 다른 두 conformance window"라는 개념 자체가 없음 — 나쁜 예가 가정하는 아키텍처(양쪽이 독립적 crop 메타데이터를 가짐)가 이 코드베이스에 존재하지 않음
 
 ---
 
@@ -445,7 +445,7 @@ fn sequence_psnr(frame_mse: &[f64], frame_pixel_counts: &[usize], max_val: f64) 
 **예외**:
 - 애플리케이션이 "average PSNR"만을 공식 지표로 채택하기로 명시적으로 결정하고 그 사실을 UI/문서에 일관되게 표기했다면 global PSNR을 생략해도 된다. 단, 이때도 내부 이름과 API 필드명에 반드시 `average`를 명시해 나중에 global과 혼동되지 않게 해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-cli/src/commands/quality.rs:174-177 `let avg = psnr_vals.iter().sum::<f64>() / psnr_vals.len() as f64;`(프레임별 dB 단순 평균, "PSNR avg=...dB"로 출력)만 존재하고 global(전체 SSE 합산 후 한 번에 dB 변환) PSNR 계산 경로는 코드베이스 어디에도 없음 — 이 CLI 출력이 사실상 유일한 "sequence PSNR" 개념(이전 판정의 src-tauri 인용은 삭제된 파일이라 오판정이었으나 결론 자체는 재확인됨, 새 위치로 교체)
 
 ---
 
@@ -513,7 +513,7 @@ fn build_report(frame_mse: &[f64], frame_pixel_counts: &[usize], max_val: f64) -
 **예외**:
 - 코드베이스 전체에서 오직 하나의 정의(예: average만)만 존재하도록 아키텍처 차원에서 강제하고 있다면(즉 global PSNR 계산 코드 자체가 존재하지 않는다면) 이런 혼동은 구조적으로 발생할 수 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — average/global 두 정의가 애초에 공존하지 않고(PSNR-009 참조), CLI quality.rs::run()과 sidecar compute_frame_metrics 둘 다 캐시 없이 매 호출 전체 재계산(디코드부터 재수행)해 두 정의가 뒤섞일 코드 경로가 구조적으로 존재하지 않음 (이전 판정의 "calculate_quality_metrics" 인용은 삭제된 src-tauri 함수명이라 오판정, 결론은 재확인)
 
 ---
 
@@ -574,7 +574,7 @@ fn ssim_map(reference: &Plane, distorted: &Plane, window: usize, policy: BorderP
 **예외**:
 - 윈도우가 이미지 대비 매우 작고(예: 8×8 윈도우, 4K 이미지) 경계 제외로 인한 오차가 무시할 수준(<0.01%)임을 실측으로 확인했다면, 단순 제외 정책을 성능상 이유로 채택해도 된다. 단, 이 경우도 정책은 명시해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — lib.rs의 ssim()은 8x8 비중첩 블록 타일링(step_by 8, lib.rs:175-179)이며 경계는 win_width=min(8,width-x)로 축소된 부분윈도우를 포함(스킵하지 않음)해 '나쁜 예'와 정확히 일치하진 않지만, 이 경계정책이 named policy/문서화 없이 암묵적으로 결정되어 있어 유사한 리스크가 있음
 
 ---
 
@@ -620,7 +620,7 @@ fn weighted_variance(samples: &[f64], weights: &[f64], weighted_mean: f64) -> f6
 **예외**:
 - 없음 — SSIM 정의 자체가 population variance를 요구하므로, 다른 선택을 정당화할 도메인상의 이유는 없다. (다른 통계 목적의 분산 계산과 코드를 공유하다가 실수로 섞이지 않도록 별도 함수로 분리하는 것을 권장.)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — lib.rs:227-229 var_x=(sum_xx/n)-mean_x², cov_xy도 동일하게 n(population)으로 나눔 — n-1 보정 없이 이미 올바르게 population variance 사용
 
 ---
 
@@ -674,7 +674,7 @@ fn gaussian_kernel(size: usize, sigma: f64) -> Vec<f64> {
 **예외**:
 - 없음 — 정규화되지 않은 커널을 의도적으로 쓸 이유는 SSIM 맥락에서는 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드베이스에 Gaussian 커널 생성 함수 자체가 없음(8x8 uniform block 평균만 사용) — 정규화 대상인 Gaussian 가중치 로직이 존재하지 않음
 
 ---
 
@@ -722,7 +722,7 @@ fn windowed_sum_sq_f64(window: &[u16]) -> f64 {
 **예외**:
 - 8bit 전용, 작은 윈도우(예: 4×4)로 스코프가 명확히 제한되어 있고 최악의 경우 값이 타입 범위 내에 안전하게 들어옴을 계산으로 증명했다면 좁은 타입을 유지해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — compute_window_stats_simd(simd.rs)는 sum_xx/sum_yy/sum_xy를 u64로 누적(scalar: simd.rs:81-83, AVX2/SSE2/NEON도 u32 lane 후 u64 합산)하며, 실사용 윈도우가 8x8=64픽셀로 고정되어 있어 overflow 여유가 큼 — 권장 패턴과 일치
 
 ---
 
@@ -777,7 +777,7 @@ fn ssim_component(mean_x: f64, mean_y: f64, var_x: f64, var_y: f64, cov_xy: f64,
 **예외**:
 - 애플리케이션이 8bit 콘텐츠만 지원하도록 명시적으로 스코프를 제한하고 다른 bit depth 입력을 사전에 거부한다면 상수 고정이 허용될 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — lib.rs:166 `let l = 255.0; // Dynamic range for 8-bit`로 C1/C2가 bit_depth 무관 상수로 고정, bit_depth 파라미터 없음
 
 ---
 
@@ -823,7 +823,7 @@ fn preferred_ssim(y_plane_ssim: f64) -> f64 {
 **예외**:
 - 원본 콘텐츠가 애초에 RGB 네이티브(예: 스크린 캡처, 그래픽 원본)이고 YUV 변환이 불필요하거나 오히려 손실을 유발하는 경우, RGB 기반 계산이 더 적절할 수 있다. 이 경우도 단순 평균보다는 가중 평균을 권장한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — RGB 기반 SSIM 경로 자체가 코드베이스에 없음(YUV plane만 존재, ssim_yuv는 RGB가 아닌 Y/U/V)
 
 ---
 
@@ -880,7 +880,7 @@ fn ms_ssim_downsample(plane: &Plane) -> Plane {
 **예외**:
 - 성능이 극도로 중요한 근사 경로(예: 실시간 프리뷰용 "대략적인" MS-SSIM 근사치)에서 의도적으로 더 빠른 필터를 쓰고 "근사치"임을 명확히 라벨링한다면 허용 가능하나, 정밀 분석/리포트 경로에는 절대 사용하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — MS-SSIM(멀티스케일) 구현 자체가 코드베이스에 없음 — 단일 스케일 SSIM만 존재, 다운샘플링 단계 없음
 
 ---
 
@@ -925,7 +925,7 @@ fn compute_ssim(reference: &Plane, distorted: &Plane, params: &SsimParams) -> f6
 **예외**:
 - 표준 레퍼런스가 존재하지 않는 완전히 새로운 지표(SSIM의 변형이 아닌 독자 개발 지표)라면 이 항목은 적용되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — lib.rs의 ssim() 독스트링(112-138)에 공식만 적혀 있을 뿐 어떤 레퍼런스 구현(libvmaf/scikit-image/원논문)을 따르는지, 8x8 비중첩 블록 방식이 표준 11x11 슬라이딩 윈도우와 다르다는 점도 전혀 문서화되지 않음
 
 ---
 
@@ -981,7 +981,7 @@ mod parity_tests {
 **예외**:
 - SIMD와 scalar가 알고리즘적으로 완전히 동일한 연산 순서를 강제하도록(예: 명시적 순차 reduction) 작성되어 부동소수점 오차가 이론적으로도 발생하지 않음을 증명한 경우는 별도 허용 오차 없이 정확히 일치해야 하며, 이는 이 항목의 예외이자 이상적인 목표.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — simd.rs:598-616 test_window_stats_vs_scalar(정확 일치 assert)와 simd.rs:640-667 test_psnr_simd_vs_scalar(0.5dB 허용오차)로 SIMD/scalar parity 테스트가 이미 CI 테스트로 존재함
 
 ---
 
@@ -1043,7 +1043,7 @@ fn parallel_ssim(reference: &Plane, distorted: &Plane, window: usize, num_tiles:
 **예외**:
 - 윈도우 연산이 아닌 픽셀 단위 독립 연산(예: 단순 MSE)을 타일 병렬화하는 경우는 이 문제가 원천적으로 발생하지 않는다 — 이 항목은 슬라이딩 윈도우를 쓰는 SSIM류에 특화된 문제다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — batch_ssim_parallel(lib.rs:364-387)은 프레임 단위로만 par_iter 병렬화하며 단일 프레임 내부의 타일 분할·halo 처리 로직 자체가 없음 — 프레임 내 슬라이딩 윈도우 타일 병렬화 코드가 존재하지 않아 해당 안티패턴이 발생할 여지가 없음
 
 ---
 
@@ -1104,7 +1104,7 @@ fn compute_vmaf(reference: &Frame, distorted: &Frame, model: &VmafModel) -> Vmaf
 **예외**:
 - 애플리케이션이 오직 단일 고정 모델만 영구적으로 지원하기로(다른 모델 선택 UI 자체가 없고, 향후에도 추가 계획이 없음을 아키텍처 문서에 명시) 결정했다면 필드를 생략하고 전역 상수/문서로만 명시해도 된다. 다만 이 가정은 매우 깨지기 쉬우므로 권장하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — compute_vmaf(crates/bitvue-metrics/src/vmaf.rs:130-212)는 f64 score만 반환하고 VmafConfig.model_path/버전/해시를 결과에 전혀 기록하지 않음(feature=vmaf일 때만 컴파일되며 기본 빌드/워크스페이스 어디서도 활성화되지 않음, Cargo.toml default=[])
 
 ---
 
@@ -1168,7 +1168,7 @@ fn batch_compute(sessions: &[Session]) -> Result<Vec<VmafResult>, MetricError> {
 **예외**:
 - 애플리케이션이 phone 모델 지원을 아예 제공하지 않기로 결정했다면(단일 모델만 지원) 이 문제 자체가 발생하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — phone model 선택 로직 자체가 코드베이스에 없음(VmafModel::phone() 등 미존재, VmafConfig에 model_path 수동 지정만 존재)
 
 ---
 
@@ -1223,7 +1223,7 @@ fn sequence_vmaf(raw_frame_scores: &[f64], policy: ClipPolicy) -> f64 {
 **예외**:
 - libvmaf 자체가 옵션으로 내부 클리핑을 제공하고 애플리케이션이 이를 그대로 신뢰하기로 결정했다면, 상위 레이어에서 별도 클리핑 로직을 두지 않아도 된다 — 단, 이 경우도 "libvmaf가 클리핑한다"는 사실과 조건을 문서화해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — compute_vmaf(vmaf.rs:207-211)가 vmaf.score()의 raw 값을 clamp 없이 그대로 반환 — ClipPolicy 등 클리핑 로직 부재
 
 ---
 
@@ -1271,7 +1271,7 @@ fn select_vmaf_model(width: u32, height: u32, user_override: Option<VmafModelKin
 **예외**:
 - 애플리케이션이 HD 콘텐츠만 지원 범위로 명시하고 4K 입력을 사전에 거부/경고한다면 자동 선택 로직 자체가 불필요할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 해상도 기반 자동 모델 선택 로직 자체가 없음(select_vmaf_model 류 함수 미존재) — VmafConfig.model_path는 항상 수동/None
 
 ---
 
@@ -1323,7 +1323,7 @@ fn compute_sequence_vmaf(frames: &[FramePair], config: &VmafConfig) -> VmafResul
 **예외**:
 - 애플리케이션이 서브샘플링 기능을 아예 지원하지 않고 항상 전체 프레임을 계산하기로 결정했다면, 이 설정을 노출할 필요 없이 상수 1로 고정해도 된다(단, 이 결정도 문서화 권장).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — VmafConfig(vmaf.rs:13-22)에 n_subsample 필드가 존재하지 않아 서브샘플링 설정 자체를 노출할 수 없는 구조
 
 ---
 
@@ -1380,7 +1380,7 @@ fn analyze_all_sessions(sessions: &[Session], total_cores: usize) -> Vec<f64> {
 **예외**:
 - 배치 크기가 항상 1(세션을 순차적으로만 처리)이라면 이 문제는 발생하지 않으며, libvmaf의 `n_threads`를 최대치로 설정해도 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — VmafConfig.n_threads 필드가 정의만 되어 있고 compute_vmaf 본문에서 실제 Vmaf 인스턴스에 전달되지 않으며(vmaf.rs:155-168 어디에도 config.n_threads 미사용), 세션 단위 rayon par_iter로 compute_vmaf를 호출하는 코드도 코드베이스에 없어 중첩이 발생할 경로가 없음
 
 ---
 
@@ -1444,7 +1444,7 @@ impl VmafSession {
 **예외**:
 - 세션 길이가 항상 짧음(예: 수 초, 수백 프레임 이내)이 애플리케이션 설계로 보장되고 메모리 예산이 충분하다면, 편의를 위해 전체 피처를 보존해도 실질적 위험이 낮을 수 있다. 이 경우도 상한을 두는 것이 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — compute_vmaf(vmaf.rs)가 &[VmafFrame] 전체를 파라미터로 요구해 호출자가 시퀀스 전체를 미리 메모리에 들고 있어야 하는 구조이며, libvmaf 내부 서브피처 보존 여부는 FFI 경계 너머라 직접 확인 불가 — 세션 상태에 프레임별 서브피처를 쌓는 자체 구현 코드는 없음
 
 ---
 
@@ -1498,7 +1498,7 @@ impl VmafEngine {
 **예외**:
 - 프레임당 한 번만 호출되는 극히 짧은 CLI 유틸리티(예: "이미지 두 장 비교"용 일회성 도구)라면 매번 로딩해도 실질적 성능 영향이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — compute_vmaf/compute_vmaf_per_frame(vmaf.rs) 둘 다 모델을 루프 진입 전 1회만 로딩(vmaf.rs:159-168, 241-250)하여 프레임마다 반복 로딩하지 않음 — 이 항목이 지적하는 안티패턴이 코드에 없음. 다만 이 함수를 반복 호출하는 상위 caller 자체가 존재하지 않아(feature 미사용) 실사용 시나리오 검증은 불가
 
 ---
 
@@ -1573,7 +1573,7 @@ fn compute_quality_score_with_explicit_fallback(
 **예외**:
 - 폴백이 발생했다는 사실이 반환 타입/로그/UI 모두에 명확히 드러나고, 호출자가 이를 의도적으로 요청한 경우(예: "VMAF 우선, 불가하면 PSNR이라도" 옵션을 사용자가 명시적으로 켠 경우)라면 허용 가능하다. 핵심은 "조용히"가 아니라 "명시적으로"다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — crates/bitvue-cli/src/main.rs:192는 `-m`(metrics) 도움말에 "psnr, ssim, vmaf"라고 vmaf를 언급하지만, crates/bitvue-cli/src/commands/quality.rs::run()(119-123)은 `metrics.contains("psnr")`/`"ssim"`만 검사하고 vmaf를 요청하면 조용히 PSNR로 대체하는 게 아니라 `anyhow::bail!("Unknown metrics ...")`로 명시적으로 에러 처리 — VMAF 계산 시도 자체가 없고 조용한 대체 로직도 없음(이전 판정의 src-tauri 인용은 삭제된 파일이라 오판정, 결론은 재확인 후 정확한 위치로 교체)
 
 ---
 
@@ -1623,4 +1623,4 @@ struct VmafResult {
 **예외**:
 - 라이브러리 버전이 빌드 시점에 완전히 고정되어(vendored, 정적 링크, 버전 핀 고정) 애플리케이션 생애주기 동안 절대 바뀌지 않음이 빌드 시스템으로 보증된다면, 버전을 캐시 키에 매번 포함하지 않아도 실질적 위험은 낮다. 다만 결과 메타데이터에는 여전히 기록해두는 것이 감사(audit) 목적에서 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — VMAF 결과에 대한 캐시 키 생성 로직 자체가 코드베이스에 존재하지 않음(캐싱 미구현)

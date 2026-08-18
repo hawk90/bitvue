@@ -66,7 +66,7 @@ fn compare_streams(
 **예외**:
 - 동일 인코더·동일 설정으로 생성되어 프레임 수·순서가 bit 단위로 보장된 lossless 파이프라인 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-cli/src/commands/quality.rs::compute_frame_metrics`(24-116행, `bitvue quality`/`bitvue bd-rate`가 공유하는 실제 디코드+비교 경로)가 72행 `let total_pairs = ref_decoded.len().min(dist_decoded.len())`로 길이를 자른 뒤 77-91행에서 동일 `idx`로 `ref_decoded[idx]`/`dist_decoded[idx]`를 그대로 짝짓는다 — PTS 비교나 `bitvue_engine::AlignmentEngine` 호출이 전혀 없다. PTS 기반 `AlignmentEngine`(`crates/bitvue-engine/src/alignment.rs`)은 `CompareWorkspace::new`(`crates/bitvue-engine/src/compare.rs:61`, sidecar의 `create_compare_workspace` 커맨드에서만 도달)를 통해서만 쓰이고, 실제 PSNR/SSIM 계산 경로에는 연결돼 있지 않다. `crates/bitvue-metrics/src/lib.rs`의 `batch_psnr_parallel`/`batch_ssim_parallel`(329-390행, `#[cfg(feature = "parallel")]`)도 동일하게 `.zip()`으로 원시 index만 짝짓지만, 이 함수들 자체를 호출하는 코드가 저장소 어디에도 없어(자기 자신의 doc-comment 예시 제외) 죽은 API다. **경로 정정**: 이전 판정이 인용한 `src-tauri/src/commands/quality.rs`와 `crates/bitvue-core`는 Tauri→Electron 마이그레이션(CLAUDE.md 참고) 이후 저장소에 더 이상 존재하지 않는다 — `bitvue-core`는 `bitvue-engine`으로 개명, 품질 비교 커맨드는 Tauri 커맨드가 아니라 `bitvue-cli`의 CLI 서브커맨드로 이관되었다. 결론(Confirmed)은 재확인 후에도 동일.
 
 ---
 
@@ -111,7 +111,7 @@ fn pts_matches(a_pts: i64, a_tb: (i64, i64), b_pts: i64, b_tb: (i64, i64), tol_t
 **예외**:
 - 수 초 내외의 짧은 클립을 다루는 디버깅/프로토타입 도구로, 스코어링에는 쓰이지 않는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-engine/src/alignment.rs::align_by_pts`(106-150행)는 PTS를 끝까지 `u64`/`i64` 정수로 유지하고 141행 `(a_pts as i64 - b_pts as i64).unsigned_abs()`로 정수 델타 비교만 수행한다. 프로덕션 코드 전반(grep `pts.*as f64`, `crates/bitvue-engine`·`bitvue-cli`·`bitvue-formats` 포함)에서 PTS를 float 초 단위로 변환해 비교하는 코드는 발견되지 않았다. (경로 정정: `bitvue-core`→`bitvue-engine`, 결론 동일.)
 
 ---
 
@@ -160,7 +160,7 @@ fn rescale_pts_rnd(pts: i64, from_tb: (i64, i64), to_tb: (i64, i64), mode: Round
 **예외**:
 - 두 스트림이 이미 동일한 timebase를 공유하여 rescale이 아예 필요 없는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `FrameIndexMap`/`AlignmentEngine`은 스트림별 timebase 필드 자체가 없고 PTS를 단일 `u64` 틱 단위로만 다루므로 rescale 함수가 프로덕션에 존재하지 않는다(따라서 이 특정 버그는 현재 발현 불가). 절단형 정수 나눗셈 헬퍼(`pts_to_milliseconds`, `(pts * timebase_num as i64 * 1000) / timebase_den as i64`)가 `crates/bitvue-engine/src/tests/container_format_test.rs:255-256`에 테스트 전용으로 여전히 존재해, 향후 서로 다른 timebase를 다루는 rescale이 추가될 경우 동일한 편향 오차 패턴이 재현될 여지가 구조적으로 있다. **별개 실사례**: `IvfHeader::framerate_num`/`framerate_den` 필드명이 디스크상 실제 의미와 뒤바뀌어 있던 진짜 버그가 `crates/bitvue-cli/src/commands/info.rs:116-123`와 `bd_rate.rs:111-117`에 발견·수정된 이력이 있다(주석으로 문서화됨) — 이는 두 스트림 간 timebase rescale이 아니라 단일 파일의 fps/duration 계산 버그로 ALIGN-003이 다루는 대상과는 다르지만, "정수 오차가 방향성 있게 누적되어 조용히 틀린다"는 이 카탈로그의 핵심 우려가 이 코드베이스에서 실제로 발생했었음을 보여주는 인접 증거다. (경로 정정: `bitvue-core`→`bitvue-engine`, 결론 동일.)
 
 ---
 
@@ -208,7 +208,7 @@ fn score_all(pairs: &[(DecodedFrame, DecodedFrame)], dup_flags: &[bool]) -> Vec<
 **예외**:
 - 프리즈 프레임처럼 두 스트림 모두에서 의도적으로 동일 프레임이 반복되는 컨텐츠를 검증하는 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 저장소 전체에 `frame_hash`/`is_duplicate`/`DuplicateFrame` 등 중복 프레임 탐지·태깅 코드가 전혀 없다(grep 무결과). ALIGN-001에서 확인된 대로 `crates/bitvue-cli/src/commands/quality.rs::compute_frame_metrics`의 PSNR/SSIM 계산이 원시 index로만 프레임을 짝짓기 때문에, 텔레시네/VFR→CFR 중복 프레임이 존재하는 입력이 들어오면 이를 구분 없이 그대로 채점하게 될 것으로 구조적으로 추정되나, 이를 직접 재현하는 테스트나 코드는 확인하지 못했다. (경로 정정: `quality.rs`가 `bitvue-cli` 소속으로 이관, 결론 동일.)
 
 ---
 
@@ -264,7 +264,7 @@ fn align_with_resync(reference: &[DecodedFrame], distorted: &[DecodedFrame]) -> 
 **예외**:
 - 동일 소스의 무손실 리먹스처럼 드롭이 구조적으로 불가능하다고 증명된 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (실제 메트릭 파이프라인) — `crates/bitvue-cli/src/commands/quality.rs::compute_frame_metrics`는 전역/로컬 offset 개념 자체가 없는 순수 index 짝짓기이므로, 한쪽 스트림에 드롭이 하나라도 있으면 그 지점 이후 모든 인덱스 쌍이 밀린 채 비교된다(재동기화 로직 없음). 반대로 `crates/bitvue-engine/src/alignment.rs::align_by_pts`(106-150행)는 각 프레임을 매번 독립적으로 최근접 PTS와 매칭하고(133-150행) 매치 실패 시 `FramePair::has_gap`으로 개별 표시하므로 이 안티패턴의 "권장" 형태에 가깝다 — 다만 이 엔진은 `CompareWorkspace`(UI 동기화 재생용)에만 연결되어 있고 메트릭 계산에는 쓰이지 않는다(ALIGN-001 참고). (경로 정정: `bitvue-core`→`bitvue-engine`, `quality.rs`가 `bitvue-cli` 소속으로 이관, 결론 동일.)
 
 ---
 
@@ -309,7 +309,7 @@ fn initial_alignment(reference: &StreamInfo, distorted: &StreamInfo) -> Alignmen
 **예외**:
 - B-frame이 전혀 없는 all-I 인코딩처럼 delay가 0으로 보장되는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `encoder_delay`/`EncoderDelay` 등 인코더 지연 관련 개념이 저장소 어디에도 존재하지 않는다(grep 무결과). `compute_frame_metrics`(`crates/bitvue-cli/src/commands/quality.rs`) 파이프라인은 PTS 자체를 아예 쓰지 않으므로(ALIGN-001) B-frame lookahead delay가 있어도 아무 보정 없이 그대로 index로 짝지어져 결과가 왜곡될 것으로 구조적으로 추정되지만, 이를 직접 노출하는 delay 계산/오계산 코드는 확인되지 않았다. (경로 정정, 결론 동일.)
 
 ---
 
@@ -355,7 +355,7 @@ fn collect_frames_in_display_order(decoder: &mut Decoder) -> Vec<DecodedFrame> {
 **예외**:
 - all-I 인코딩, 또는 디코더 API가 표시 순서를 명시적으로 보장함을 검증한 경우(가정이 아니라 검증 필요).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `crates/bitvue-cli/src/commands/quality.rs::decode_ivf_frames`(192-229행)는 루프에서 `decoder.get_frame()`(206-214행)과 `drain_decoder_frames`(220-226행)가 반환하는 순서를 그대로 `decoded: Vec<...>`에 push하고 그 위치(index)를 그대로 프레임 순서로 사용하며, `crates/bitvue-engine/src/frame_identity.rs`의 `FrameIndexMap`(PTS 기반 display_idx 정렬, "권장" 패턴과 동일한 구현 사상)을 전혀 거치지 않는다. dav1d 기반 `Av1Decoder`가 이미 표시 순서로 프레임을 내놓는다는 전제에 암묵적으로 의존하고 있으나, 이 전제가 이 함수 안에서 명시적으로 검증(예: pts로 재정렬/assert)되지는 않는다. (참고로 `frame_identity.rs`에는 올바른 PTS 정렬 로직이 구현돼 있지만, 실제 품질 비교 CLI 경로는 그 경로를 쓰지 않는다 — ALIGN-001과 동일한 이관 원인. 경로 정정, 결론 동일.)
 
 ---
 
@@ -402,7 +402,7 @@ fn actual_pts(frame_idx: usize, demuxed_frames: &[DemuxedFrame]) -> i64 {
 **예외**:
 - 캡처 장비/인코더 스펙상 엄격한 CFR임이 확인되고, 실측 pts 델타 분산도 이를 검증한 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-engine/src/frame_identity.rs::assess_pts_quality`(123-198행)가 PTS 델타의 분산(Welford's algorithm, 168-190행)을 계산해 변동계수(std_dev/mean) > 0.3이면 `PtsQuality::Warn`으로 명시적으로 VFR을 탐지한다(193행). `AlignmentEngine`/`FrameIndexMap::get_pts()`도 항상 저장된 실측 PTS 값만 반환하며, 명목 fps로부터 pts를 역산하는 코드는 어디에도 없다. (경로 정정: `bitvue-core`→`bitvue-engine`, 결론 동일.)
 
 ---
 
@@ -452,7 +452,7 @@ fn sample_at(target_pts: i64, demuxer: &mut Demuxer, decoder: &mut Decoder, tole
 **예외**:
 - 프레임 인덱스 테이블이 있는 무손실/all-I 포맷처럼 프레임 정확 seek이 보장되고 검증된 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소에서 PTS 타겟 기반 압축 스트림 seek 코드를 찾지 못했다. 유일한 `seek_to_frame` 구현(`crates/bitvue-decode/src/yuv_loader.rs:405-430`)은 비압축 raw YUV/Y4M 파일에 대한 것으로, 프레임 인덱스로 직접 바이트 오프셋을 계산(raw YUV는 O(1)) 하거나 순차 read로 정확히 도달하는 구조이며 키프레임/B-frame 재정렬이 개입할 여지가 없다. 압축 스트림(IVF/AV1)에 대한 품질 비교 경로(`crates/bitvue-cli/src/commands/quality.rs::decode_ivf_frames`)는 seek 없이 처음부터 순차 디코딩만 수행한다. (경로 정정, 결론 동일.)
 
 ---
 
@@ -500,7 +500,8 @@ fn align(reference: &[DecodedFrame], distorted: &[DecodedFrame]) -> AlignmentRes
 **예외**:
 - 완전 수동으로 사람이 검증한 정렬(암묵적 confidence = 1.0이지만, 이 경우에도 생략보다는 명시적으로 기록하는 편이 낫다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (실제 메트릭 파이프라인) — `crates/bitvue-cli/src/commands/quality.rs`의 `FrameMetrics`(13-18행, `frame`/`psnr_db`/`ssim`만 보유)에는 alignment confidence나 gap 비율 필드가 전혀 없다. `crates/bitvue-engine/src/alignment.rs`의 `AlignmentEngine`은 `confidence`(`AlignmentConfidence` High/Medium/Low)와 `gap_percentage()`를 잘 계산하지만, 이 타입은 `quality.rs`/`compute_frame_metrics`에서 전혀 참조(import조차 안 됨)되지 않으므로, `bitvue quality`/`bitvue bd-rate` 사용자가 보는 PSNR/SSIM 수치에는 정렬 신뢰도가 붙지 않는다. (경로 정정: `bitvue-core`→`bitvue-engine`, Tauri 커맨드→CLI 서브커맨드, 결론 동일.)
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-001 참고.
 
 ---
 
@@ -547,7 +548,7 @@ fn align_via_scene_cuts(reference: &[DecodedFrame], distorted: &[DecodedFrame]) 
 **예외**:
 - 단일 소스에서 나온 인코딩 작업처럼 상대 PTS 오프셋이 이미 고신뢰로 알려진 경우 — 이때 scene-cut 앵커링은 불필요한 연산이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `AlignmentEngine`/`CompareWorkspace`(`crates/bitvue-engine/src/alignment.rs`, `compare.rs`)는 PTS만을 유일한 정렬 근거로 사용하며, 스트림 간 정렬 앵커로서의 scene-cut 탐지 코드는 없다. 다만 재확인 중 `histogram_diff`라는 문자열이 `crates/bitvue-engine/src/insight_feed.rs:194`(`generate_scene_change_insight`)에서 실제로 발견됐다 — 이는 **단일 스트림** 내 장면전환을 사용자에게 알려주는 UX 인사이트 기능(`SceneChange` 이벤트를 소비만 함)이며, 두 스트림을 정렬하는 데는 전혀 쓰이지 않는다. 따라서 이 안티패턴("정렬 근거로 scene-cut을 활용하지 않음")에 대한 판정은 여전히 N/A. (재확인 결과 결론 동일, 인접 코드 존재는 신규 확인.)
 
 ---
 
@@ -593,7 +594,7 @@ fn coarse_prealign_from_audio(reference: &StreamInfo, distorted: &StreamInfo) ->
 **예외**:
 - 오디오 기반 대략적 사전 정렬을 의도적으로 사용하되, 이후 비디오 컨텐츠로 명시적으로 검증하는 설계.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-engine/src/alignment.rs`/`compare.rs`에는 오디오 트랙 관련 필드나 참조가 전혀 없다(grep `audio_track`/`audio_start_time` 무결과). `AlignmentEngine`은 순수히 비디오 `FrameIndexMap`의 PTS만으로 정렬을 계산하며, 오디오/컨테이너 타이밍과 혼용하는 코드 경로는 존재하지 않는다(오디오 처리 자체가 이 크레이트 범위 밖). (경로 정정: `bitvue-core`→`bitvue-engine`, 결론 동일.)
 
 ---
 
@@ -638,7 +639,7 @@ fn run_comparison(reference: &[DecodedFrame], distorted: &[DecodedFrame]) -> Res
 **예외**:
 - bit-exact 리먹스 검증처럼 설계상 프레임 수 일치가 하드 요구사항인 파이프라인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `crates/bitvue-metrics/src/lib.rs`의 `batch_psnr_parallel`(335행), `batch_ssim_parallel`(372행), `batch_psnr_yuv_parallel`(396행), `batch_ssim_yuv_parallel`(419행) 모두 `reference_frames.len() != distorted_frames.len()`이면 정렬 시도 없이 즉시 `Err`를 반환해 이 안티패턴의 "나쁜 예"와 정확히 일치한다. 다만 **이 함수들을 호출하는 코드가 저장소 어디에도 없다**(자기 자신의 doc-comment 예시 제외, `#[cfg(feature = "parallel")]`로 게이트됨) — 실제 프로덕션 경로인 `crates/bitvue-cli/src/commands/quality.rs::compute_frame_metrics`는 반대로 실패 대신 `ref_decoded.len().min(dist_decoded.len())`로 조용히 잘라내는 다른(더 나쁜) 문제를 갖고 있다(ALIGN-001 참고). 즉 이 카탈로그 항목이 묘사하는 실패 모드 자체는 현재 아무 도달 가능한 경로에도 나타나지 않아 Confirmed에서 Suspected로 하향 — "즉시 실패" 코드가 존재는 하지만(그 자체로 검증 가능) 죽은 코드라 사용자가 실제로 겪는 문제가 아니다. (경로 정정: `src-tauri`는 더 이상 존재하지 않음.)
 
 ---
 
@@ -688,7 +689,7 @@ fn find_best_offset(reference: &[DecodedFrame], distorted: &[DecodedFrame], sear
 **예외**:
 - 수 초 이내의 짧은 클립처럼 brute force의 비용이 무시할 만하고 단순함이 더 가치 있는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소에 offset 탐색/cross-correlation 코드 자체가 존재하지 않는다(`cross_correlate`/`find_best_offset`/`find_initial_offset` 등 grep 무결과). `AlignmentEngine`은 offset을 "탐색"하지 않고 각 프레임의 PTS를 직접 비교해 최근접 매칭을 계산하므로(`crates/bitvue-engine/src/alignment.rs::align_by_pts`, 106-150행) 이 안티패턴이 적용될 대상 코드가 없다. (경로 정정, 결론 동일.)
 
 ---
 
@@ -740,7 +741,7 @@ fn register_spatially(
 **예외**:
 - 동일 해상도, 크롭 없음, 프레이밍이 픽셀 단위로 동일함이 검증된 파이프라인(예: 기하 변화 없는 내부 무손실 포맷 래더).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-cli/src/commands/quality.rs::compute_frame_metrics`(85-91행)는 `ref_w != dist_w || ref_h != dist_h`일 때 해당 프레임을 경고 출력 후 그냥 건너뛸 뿐, 크롭 검출·해상도 정규화·서브픽셀 정합은 전혀 시도하지 않는다. `CompareWorkspace`의 `ResolutionInfo`(`crates/bitvue-engine/src/compare.rs:204-243`)도 픽셀 수 차이 비율(`mismatch_percentage`, 기본 허용치 `tolerance`)만 계산해 diff overlay를 켤지 말지(`is_compatible`) 판단할 뿐, 실제 공간 정합(registration)은 수행하지 않는다. 저장소 전체에 `crop`/`register_spatially`/`normalize_resolution` 같은 공간 정합 코드가 존재하지 않는다. (경로 정정: Tauri 커맨드→CLI, `bitvue-core`→`bitvue-engine`, 결론 동일.)
 
 ---
 
@@ -795,7 +796,7 @@ fn align_segmented(reference: &[DecodedFrame], distorted: &[DecodedFrame]) -> Se
 **예외**:
 - 스플라이싱 없이 한 번에 인코딩된 단일 연속 VOD 자산.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `AlignmentEngine::align_by_pts`(`crates/bitvue-engine/src/alignment.rs:106-150`)는 전역 offset 하나를 계산해 재사용하는 구조가 아니라 프레임마다 독립적으로 최근접 PTS를 찾으므로 이 안티패턴이 묘사하는 "단일 offset 고정" 실패 모드는 구조적으로 피해간다. 다만 `detect_discontinuities`에 해당하는 명시적 스플라이스/불연속 탐지 로직이나 `SegmentedAlignment` 같은 구간별 정렬 표현은 존재하지 않아(grep 무결과), 중간에 PTS가 크게 점프하는 스트림에서 실제로 어떻게 동작하는지는 검증되지 않았다. 이 엔진 자체도 실제 메트릭 파이프라인(`bitvue-cli`의 quality/bd-rate)에는 연결돼 있지 않다(ALIGN-001). (경로 정정, 결론 동일.)
 
 ---
 
@@ -845,7 +846,7 @@ fn align_with_periodic_revalidation(
 **예외**:
 - 짧은 클립, 또는 단일 하드웨어 클록/마스터 타임라인을 공유함이 검증되어 드리프트 가능성이 없는 스트림.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `AlignmentEngine::align_by_pts`는 스트림 시작부 일부 샘플만으로 offset을 구해 전체에 재사용하는 구조가 아니라, `AlignmentEngine::new()` 호출 시 스트림 전체의 `a_frames`/`b_frames`를 순회하며(`crates/bitvue-engine/src/alignment.rs:114-119, 133-150`) 모든 프레임 쌍을 매번 새로 매칭한다 — 즉 "초기 샘플 → 전체 재사용" 패턴 자체가 없다. 다만 주기적 재검증이라는 개념도 없으므로 이는 애초에 필요하지 않은 구조라기보다 해당 실패 모드가 적용되지 않는 설계에 가깝다. (경로 정정, 결론 동일.)
 
 ---
 
@@ -894,4 +895,4 @@ fn gop_structure_as_metadata(stream: &StreamInfo) -> GopInfo {
 **예외**:
 - 동일 인코더/설정/GOP 구조가 보장된 경우(예: 재인코딩 없는 리먹스 전용 파이프라인).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소에 키프레임 위치를 정렬 앵커로 사용하는 코드가 없다(`keyframe_positions` 기반 정렬 grep 무결과). `AlignmentEngine`(`crates/bitvue-engine/src/alignment.rs`)은 순수 PTS 매칭만 사용하고 GOP 구조/오픈-클로즈드 GOP를 정렬 근거로 삼지 않는다 — 다만 이는 GOP 인식 정렬 자체가 구현되지 않았기 때문이며, scene-cut(ALIGN-011)과 마찬가지로 더 나은 컨텐츠 기반 앵커링도 아직 없다. (경로 정정, 결론 동일.)

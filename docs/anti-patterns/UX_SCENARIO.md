@@ -61,6 +61,8 @@
 **relates to**:
 TAURI_CMD, UIX_ASYNC, Phase 1 IO/MEM
 
+**Bitvue 판정**: Confirmed — `src-tauri/src/commands/file.rs`의 `open_file`은 `MAX_FILE_SIZE = 2_147_483_648`(2GB, file.rs:172)로 10GB 파일을 애초에 거부하며, 그 한도 내 파일이라도 전체를 `read_to_end`로 메모리에 한 번에 로드한 뒤(file.rs:257-262) 파싱한다 — 스트리밍/청크 인덱싱이 아니다. `invoke("open_file")` 호출 동안 별도 로딩 인디케이터 상태가 없어(`useAppFileOperations.ts:125` 전후에 `setLoading` 계열 호출 없음) 100ms 반응 요구도 충족 못 하고, 취소 버튼도 없다. 진행률/취소를 지원하는 `IndexSession`(`crates/bitvue-core/src/index_session.rs:62-149`, `cancel()` 포함)이 이미 구현돼 있지만 `src-tauri/src/commands` 어디에서도 참조되지 않는다(grep 무결과) — ALIGN-001의 "구현은 있으나 배선 안 됨" 패턴과 동일.
+
 ---
 
 ### UX-SCENARIO-002: timeline 1,000프레임 빠르게 scrub
@@ -78,6 +80,8 @@ TAURI_CMD, UIX_ASYNC, Phase 1 IO/MEM
 **relates to**:
 UIX_TIMELINE, UIX_ASYNC, FRONT_REACT
 
+**Bitvue 판정**: Suspected — `Timeline.tsx`의 드래그 핸들러(`handleDragMove`)는 프레임 인덱스가 바뀔 때만 `setHighlightedFrameIndex`를 호출하지만 `setHoverPosition`은 매 네이티브 `mousemove`마다 throttle/rAF 없이 그대로 호출된다(Timeline.tsx:159) — 5초 스크럽 동안 롱태스크를 유발할 개연성 있는 코드 패턴. 반대로 "최종 선택 프레임만 정밀 분석"에 해당하는 `setFrameSelection`은 `mouseup`(`handleDragUp`, Timeline.tsx:165-168) 시점에만 호출되어 이 부분은 권장 패턴에 부합한다. 다만 선택 변경에 반응해 백엔드를 호출하는 코드 자체를 찾지 못했고(패널/훅/컨텍스트 전체에서 `invoke(` 사용처는 4개 파일뿐), stale-response 가드(requestId/generation)도 확인되지 않았다. p95/롱태스크를 실측하는 계측이나 테스트가 없어 실제 통과/실패 여부는 판정 불가.
+
 ---
 
 ### UX-SCENARIO-003: syntax와 hex를 반복 이동
@@ -93,6 +97,8 @@ syntax tree의 특정 노드를 선택해 대응하는 hex view 위치로 점프
 
 **relates to**:
 UIX_TREE_HEX, FRONT_REACT
+
+**Bitvue 판정**: N/A (리스너 누수 관점) / Suspected (virtualization 관점) — syntax↔hex 연결은 `SyntaxHexLinkContext.tsx`(41줄, `useState` 하나)로 구현되어 수동 이벤트 리스너 등록이 전혀 없고, hex 쪽은 `HexViewTab.tsx:96-103`의 `useEffect`가 offset 변경 시 스크롤만 수행한다 — 이 경로 자체에는 "왕복 반복 시 리스너 누적" 여지가 구조적으로 없다. 다만 `HexViewTab.tsx:219-229`는 hex 라인을 windowing 라이브러리 없이 전부 렌더링해(1절 정적 검사 #5와 동일 패턴) 대형 데이터라면 문제가 되겠지만, 백엔드가 프레임당 hex를 이미 잘라 보낸다(`truncated`/`totalSize` 필드, HexViewTab.tsx:41,68,271-273)는 점에서 20회 왕복에 따른 DOM 누적 위험은 낮아 보인다 — 실측(DOM 노드 수)은 하지 않음.
 
 ---
 
@@ -110,6 +116,8 @@ UIX_TREE_HEX, FRONT_REACT
 **relates to**:
 TAURI_CMD, TAURI_EVT, UIX_ASYNC, UIX_ERR
 
+**Bitvue 판정**: Confirmed — `src-tauri/src/commands/quality.rs`와 `src-tauri/src/commands/analysis/*.rs`에 취소/AtomicBool 관련 코드가 전혀 없다(grep 무결과). 진행 중인 분석 작업이라는 개념 자체가 백엔드 커맨드 레이어에 없으므로 "이전 작업 취소" 신호도, "새 파일 로드와 독립적으로 안전하게 처리"할 구분 로직도 존재하지 않는다. 프론트엔드에도 stale 응답을 걸러내는 requestId/generation 가드가 `CurrentFrameContext`/`FrameDataContext`에서 확인되지 않아, 이론상 이전 파일 컨텍스트의 응답이 새 파일 상태를 덮어쓸 수 있는 구조다. "취소/중단 피드백" UI도 대응하는 코드가 없다.
+
 ---
 
 ### UX-SCENARIO-005: 작업 중 취소 후 재시작
@@ -125,6 +133,8 @@ TAURI_CMD, TAURI_EVT, UIX_ASYNC, UIX_ERR
 
 **relates to**:
 TAURI_CMD, UIX_ASYNC, Phase 1 CONC
+
+**Bitvue 판정**: Confirmed — 분석 커맨드(`quality.rs`, `analysis/*.rs`)에는 취소 메커니즘이 전혀 없고(UX-SCENARIO-004와 동일 grep 결과), 프론트엔드에서도 진행 중인 분석 작업을 취소하는 버튼/invoke 호출을 찾지 못했다(발견된 "cancel" 관련 코드는 모두 GoToFrameDialog/ExportDialog 등 단순 모달 닫기용). 저장소에 유일하게 존재하는 취소 프리미티브인 `IndexSession::cancel()`(`crates/bitvue-core/src/index_session.rs:138`)조차 `src-tauri/src` 어디서도 호출되지 않는다(grep 무결과) — 구현은 있으나 배선되지 않은 상태. 따라서 "취소 후 즉시 idle 복귀", "재시작 시 결과 오염 없음", "cancellation latency" 항목 모두 검증할 실제 코드 경로가 없다.
 
 ---
 
@@ -142,6 +152,8 @@ TAURI_CMD, UIX_ASYNC, Phase 1 CONC
 **relates to**:
 UIX_ERR, Phase 1 PARSE
 
+**Bitvue 판정**: Suspected (부분 Confirmed) — `parse_mp4_container`/`parse_mkv_container`(file.rs:916-1120)는 모든 코덱 시도가 실패하면 `None`과 `"extraction failed"` 같은 뭉뚱그린 문자열만 남기고(file.rs:960-1016), 어느 byte offset/구조에서 실패했는지는 `FileInfo.error`에 전혀 포함되지 않는다 — "다음 행동 가능한 offset/구조 정보 포함" 요구를 충족하지 못함(Confirmed). 반면 손상된 파일 처리 경로가 실제로 크래시하는지, 손상 지점 이전까지는 정상 표시되는지는 모든 파싱 함수가 `Result`/`Option` 기반이라 패닉 가능성은 낮아 보이나 실제 손상 fixture로 검증하지 않아 Suspected로 남긴다.
+
 ---
 
 ### UX-SCENARIO-007: 4K/8K 프레임 overlay 전환
@@ -158,6 +170,8 @@ UIX_ERR, Phase 1 PARSE
 **relates to**:
 UIX_VIZ, Phase 1 PIXEL/PERF
 
+**Bitvue 판정**: Suspected — `VideoCanvas.tsx`의 `useEffect`(약 157-218행)가 `mode`/`activeOverlays` 변경 시 `renderModeOverlay`를 동기적으로 호출해 캔버스를 다시 그리며, 이 호출 자체는 `requestAnimationFrame`으로 스케줄링/코얼레싱되지 않는다(고밀도 MV 전용 WebGL 경로만 별도 존재, `OverlayRenderer/index.tsx:45`). 8K 프레임에서 QP heatmap/MV 오버레이 재계산이 16.6ms 예산을 넘는지 측정하는 계측(canvas redraw time)이나 테스트가 저장소에 없어, 리스크는 구조적으로 있어 보이나 실측으로 확인되지 않았다.
+
 ---
 
 ### UX-SCENARIO-008: VFR 파일 탐색
@@ -172,6 +186,8 @@ Variable Frame Rate 파일에서 timeline을 프레임 단위로 이동하며 PT
 
 **relates to**:
 UIX_TIMELINE, Phase 1 CODEC
+
+**Bitvue 판정**: Confirmed — `Timeline.tsx`는 프레임 위치를 순수 배열 인덱스/`frames.length` 비율로만 계산하고(`getFrameIndexFromEvent`, Timeline.tsx:104; `handleDragMove`, Timeline.tsx:148-151), `frame.pts`를 전혀 참조하지 않는다 — `FrameInfo.pts` 필드 자체는 타입에 존재하지만(`frontend/types/video.ts:128`) 이 컴포넌트가 읽지 않는다. 즉 VFR 스트림의 실제 presentation 간격이 timeline 시각화에 전혀 반영되지 않아 "간격 왜곡이 시각화됨" 요구를 충족하지 못한다. 백엔드에는 PTS 분산 기반 VFR 감지(`assess_pts_quality`, `crates/bitvue-core/src/frame_identity.rs:172-196`)가 구현돼 있지만 이 UI 경로로 연결되지 않는다.
 
 ---
 
@@ -188,6 +204,8 @@ UIX_TIMELINE, Phase 1 CODEC
 **relates to**:
 TAURI_EVT, UIX_ASYNC
 
+**Bitvue 판정**: Suspected — 프론트엔드에 window minimize/restore나 `visibilitychange`에 반응하는 코드가 없다(grep 결과 `TitleBar.tsx`의 minimize *버튼* 호출 하나뿐, 리스너 아님). 백엔드에도 창 상태에 연동된 일시정지/재개 로직이 없다. Tauri 아키텍처상 Rust 백엔드 프로세스는 webview 가시성과 무관하게 독립 실행되므로 "작업이 계속 진행됨" 쪽 조건은 기본적으로 충족될 개연성이 높지만, 최소화 중 이벤트 유실 여부나 복원 시 canvas 재렌더링 정상 동작은 이를 직접 검증하는 코드/테스트가 없어 확인 불가.
+
 ---
 
 ### UX-SCENARIO-010: backend 작업 중 WebView reload
@@ -202,6 +220,8 @@ TAURI_EVT, UIX_ASYNC
 
 **relates to**:
 TAURI_CMD, TAURI_EVT, UIX_ERR
+
+**Bitvue 판정**: Suspected (부분 Confirmed) — `src-tauri/src/commands/*.rs` 전체에 진행 중인 작업의 상태/진행률을 조회하는 커맨드가 없다(grep 결과 "status"/"progress"는 주석 텍스트뿐, 실제 쿼리 커맨드 없음) — reload 후 진행 중이던 작업 상태를 재조회할 경로도, 명확한 실패 처리도 없이 그냥 아무 데이터도 없는 상태가 됨(Confirmed 갭). 반면 앱에 유일하게 존재하는 이벤트 리스너(`file-opened`, `App.tsx:450-472`)는 effect cleanup에서 `unlisten`을 정상 호출해 중복 등록 문제는 없다. Rust 프로세스가 webview reload에서도 살아남는 것은 Tauri 아키텍처 자체의 보장이라 앱 코드로 확인할 사항은 아니다.
 
 ---
 
@@ -219,6 +239,8 @@ TAURI_CMD, TAURI_EVT, UIX_ERR
 **relates to**:
 UIX_TIMELINE, UIX_VIZ, Phase 1 MEM
 
+**Bitvue 판정**: Suspected — dual-stream compare 기능 자체는 실재한다(`frontend/contexts/CompareContext.tsx`, `src-tauri/src/commands/compare.rs` 419줄, `set_sync_mode`/`set_manual_offset` 커맨드 등) — 따라서 N/A는 아니다. 다만 이번 조사에서는 `CompareWorkspace`/`StreamPlayer` 내부까지 깊이 들어가 메모리 선형 증가나 overlay 교차 오염 여부를 직접 확인하지 못했다 — 확인하려면 별도의 집중 조사가 필요하다.
+
 ---
 
 ### UX-SCENARIO-012: 키보드만으로 전체 워크플로우 수행
@@ -235,6 +257,8 @@ UIX_TIMELINE, UIX_VIZ, Phase 1 MEM
 **relates to**:
 UIX_A11Y, UIX_INPUT
 
+**Bitvue 판정**: Confirmed (부분) — 여러 인터랙티브 요소의 CSS에서 `outline: none`이 대체 스타일 없이 사용된다(예: `FrameNavigationToolbar.css:42,237,265`, `ErrorDialog.css:183`, `PanelBase.css:166,189` 등 9개 파일; `FrameNavigationToolbar.css`에는 `:focus-visible` 규칙이 아예 없음을 확인) — "focus indicator 누락 없음" 요구 위반. `aria-live`는 저장소 전체에서 `Filmstrip.tsx`/`TimelineHeader.tsx` 2곳에만 존재하고 `ErrorDialog.tsx`/`StatusBar.tsx`/`Loading.tsx`에는 없어 로딩/에러 등 상태 변경이 스크린 리더에 공지되지 않는다. 반면 단축키는 `KeyboardShortcutsDialog.tsx`로 문서화되어 있어 그 항목은 충족하는 것으로 보인다.
+
 ---
 
 ### UX-SCENARIO-013: 장시간 세션 메모리 누수 감지
@@ -250,3 +274,5 @@ UIX_A11Y, UIX_INPUT
 
 **relates to**:
 TAURI_EVT, FRONT_REACT, Phase 1 MEM
+
+**Bitvue 판정**: Suspected — 200회 반복 soak-test 스크립트나 메모리 계측 하네스는 저장소 어디에도 없다(`scripts/`에 관련 항목 없음). 다만 표본 점검한 개별 정리 로직은 양호하다: `FrameDataContext.tsx`의 Web Worker는 unmount/재사용 시 신중하게 `terminate()`되고(79-120행), 유일한 Tauri 이벤트 리스너(`App.tsx:450-472`)도 effect cleanup에서 `unlisten`되며, `close_file`은 썸네일/디코드 서비스 캐시를 모두 비운다(`file.rs:383-399`) — 명백한 누수 지점은 발견되지 않았으나, 실제 8시간 세션을 재현하는 계측이 없어 peak memory/DOM/리스너 수가 실제로 baseline 회귀하는지는 검증되지 않았다.

@@ -77,7 +77,7 @@ find_nal_start(&data, bit_pos); // 컴파일 에러: BitOffset은 FileOffset이 
 - 크레이트 내부(비공개) 핫 루프에서 newtype 래핑/언래핑 오버헤드가 프로파일링으로 실측 확인된 경우, 내부 전용으로만 primitive 사용 가능 (경계에서는 반드시 변환)
 - 단발성 CLI 유틸리티 등 API 안정성이 중요하지 않은 코드
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 파일 전역에서 offset/index/id가 전부 bare `usize`/`u64`, byte-offset과 bit-offset 구분 타입 없음 (crates/bitvue-formats/src/mp4.rs:69-75 `BoxHeader.data_offset: u64`; crates/bitvue-avc/src/nal.rs:166 `NalUnit.offset: usize`; crates/bitvue-core/src/frame_identity.rs:23-34 `FrameIndexMap`가 display/decode index를 전부 `Vec<usize>`로 보관)
 
 ---
 
@@ -160,7 +160,7 @@ pub fn create_parser(kind: CodecKind) -> Box<dyn CodecParser> {
 - 진짜 신뢰 경계(CLI 파싱, 설정 파일 역직렬화, HTTP 헤더) 그 자체에서는 문자열을 받는 것이 당연하며 안티패턴이 아님 — 문제는 그 문자열을 enum으로 즉시 변환하지 않고 내부까지 전파시키는 것
 - 플러그인처럼 컴파일 타임에 전체 집합을 알 수 없는 동적 확장 지점(외부 코덱 플러그인 로딩 등)은 문자열/레지스트리 방식이 불가피
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (문서 근거 stale) — 인용된 `src-tauri`는 2026-08-08 Electron 이관으로 저장소에서 완전히 삭제됨(현재 `find`로 존재 확인 불가). 후속 아키텍처(`crates/bitvue-sidecar`, `crates/bitvue-codecs-parser`)에서 codec dispatch를 재확인한 결과 전부 typed enum 사용 중 — `CodecType`(crates/bitvue-codecs-parser/src/parser_strategy.rs:19), `ForceCodec`(crates/bitvue-cli/src/commands/decode.rs:254 `match codec {`) — String 기반 codec match/HashMap 레지스트리는 grep으로 못 찾음
 
 ---
 
@@ -232,7 +232,7 @@ pub trait CodecParser {
 - 파서가 실제로 다양한 입력 소스(파일, 메모리, 네트워크 스트림)를 런타임에 스위칭해야 하고, 비트 파싱 자체가 성능 크리티컬하지 않은 경로(예: 헤더 몇 바이트만 읽는 컨테이너 파서)라면 trait object도 허용 가능
 - 초기 프로토타입 단계에서 정확성 검증이 우선이고 성능은 나중에 최적화할 계획이 명시된 경우 (단, 반드시 후속 작업으로 추적)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 각 코덱 크레이트의 `BitReader`는 concrete struct(제네릭 라이프타임만 사용)이며 `dyn BitReader`는 어디에도 없음 (crates/bitvue-avc/src/bitreader.rs:16, crates/bitvue-hevc/src/bitreader.rs 등); `dyn ReadSeek`은 프레임당 1회 수준인 컨테이너 인덱스 추출부(crates/bitvue-core/src/index_extractor.rs)에서만 쓰여 예외 조건에 해당
 
 ---
 
@@ -290,7 +290,7 @@ pub mod metrics {
 - 워크스페이스가 2~3개 크레이트로 작고 API 표면이 안정적이며, 파사드가 명시적으로 "convenience re-export only, no independent API design" 문서화된 경우는 허용 가능
 - 내부(비공개) 전용 파사드로 workspace 안에서만 쓰이고 외부에 배포되지 않는 크레이트
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 루트 파사드(crates/bitvue/src/lib.rs)와 crates/bitvue-codecs/src/lib.rs는 이름 지정 재수출(`pub use X as name`)로 안전하지만, crates/bitvue-codecs-parser/src/lib.rs:12에서 `pub use bitvue_av1_codec::*;` 글롭 재수출을 사용 중
 
 ---
 
@@ -378,7 +378,7 @@ pub fn parse(sample: &EncodedSample) -> Result<ParsedFrame, ParseError> {
 - 워크스페이스 초기 단계에서 향후 분리를 예정하고 임시로 얇은 어댑터 크레이트를 둔 경우(단, TODO/이슈로 추적)
 - 코덱별 크레이트를 정말 독립 배포(crates.io 공개, 서드파티가 코덱 하나만 의존)할 계획이 있다면 각 코덱 크레이트 분리 자체는 정당함 — 문제는 core/formats가 그 방향을 거슬러 의존하는 것
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — crates/bitvue-codecs/src/lib.rs(24줄, 순수 재수출 shim)와 사실상 플레이스홀더인 crates/bitvue-codecs-parser/src/lib.rs가 API-005 예시와 일치; crates/bitvue-core/Cargo.toml:24-29 주석이 core가 코덱 인덱서 feature를 가지려다 순환 의존이 생겨 비활성화했음을 명시적으로 기록
 
 ---
 
@@ -448,7 +448,7 @@ pub struct AnyDemuxer {
 - 실제로 hot path에서 반복 호출되어 정적 디스패치·인라이닝 이득이 벤치마크로 확인된 제네릭(예: `BitReader<R>`, API-003 참고)은 정당한 사용
 - 조합 수가 적고(2~3개) 고정되어 있어 바이너리 크기 증가가 무시할 수준인 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 공개 struct/fn 중 제네릭 타입 파라미터 3개 이상인 것을 찾지 못함 (LruCache<K,V>, StateMachine<S,E> 등 2개 이하만 존재, crates/bitvue-core/src/state_machine.rs:64-338)
 
 ---
 
@@ -519,7 +519,7 @@ let region = FrameRegion::new(0, 0, 1920, 1080); // 컴파일 타임에 필드 �
 - 선택적 필드가 많고 서로 배타적/의존적인 조합 검증이 필요한 경우(예: 인코더 옵션 수십 개) 빌더가 정당
 - typestate 빌더로 컴파일 타임에 필수 필드 설정을 강제하는 고급 패턴은 이 안티패턴에 해당하지 않음(API-016 참고)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — AvcFrameBuilder/HevcFrameBuilder/Vp9FrameBuilder가 12~14개 필드 대부분을 `.ok_or_else(...)?`로 필수 처리하면서 `build()`가 `Result<_, String>`을 반환, 생성자로 대체 가능한 필드 누락 검증이 런타임으로 지연됨 (crates/bitvue-avc/src/frames.rs:67-172)
 
 ---
 
@@ -586,7 +586,7 @@ impl DecodeSession {
 - 소프트웨어 fallback처럼 항상 성공하고 비용이 상수 시간인 초기화라면 무거워 보여도 `Default`가 적절할 수 있음
 - 테스트 전용 mock 타입의 `Default`는 테스트 코드에 한정된다면 허용
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (근거 갱신) — 인용된 src-tauri/src/services/decode_service.rs는 삭제됨; 현재 아키텍처(crates/bitvue-decode/src/strategy/*, crates/bitvue-engine 전역 50+ `impl Default`)를 재확인해도 하드웨어 프로빙/대용량 사전할당/panic이 있는 `impl Default`는 없음 — 하드웨어 가속 후보(MetalStrategy::new(), crates/bitvue-decode/src/strategy/metal.rs:27-29)조차 zero-sized `Self` 반환뿐, 실제 GPU 디바이스 획득(`MTLCreateSystemDefaultDevice`, metal.rs:122-124)은 별도의 실패 가능한 `fn new() -> Option<Self>`로 분리돼 있어 원 판정과 동일 결론 유지
 
 ---
 
@@ -653,7 +653,7 @@ impl ParsedFrame {
 - 워크스페이스 내부에서만 쓰이고 외부에 배포되지 않는 크레이트는 semver 부담이 없으므로 자유롭게 필드를 공개해도 무방
 - 성능이 극도로 중요해 접근자 호출조차(인라인되지 않을 경우) 부담되는 극히 좁은 hot path 타입은 필드 공개가 실용적일 수 있음(단, `#[inline]` 접근자로 대부분 해결됨을 먼저 확인)
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 전 크레이트가 `version.workspace = true`로 lockstep 버전 관리되고 crates.io에 배포되지 않는 내부 모노레포(bitvue-benchmarks만 명시적 `publish = false`)라 문서 자체의 예외 조항(워크스페이스 내부 전용 크레이트)에 해당
 
 ---
 
@@ -730,7 +730,7 @@ match parse_mp4(&data) {
 - `bitvue-cli`의 `main()`처럼 에러를 프로그램적으로 구분할 필요 없이 사용자에게 출력만 하면 되는 최종 소비 지점에서는 `anyhow::Error`가 적절
 - 내부 전용(비공개) 헬퍼 함수의 에러는 문자열이어도 파급이 제한적
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 대다수 코덱 크레이트는 thiserror 기반 에러(AvcError, HevcError 등)를 쓰지만 일부 공개 API는 `Result<_, String>`으로 남아있음 (crates/bitvue-decode/src/traits.rs:79,291의 `Decoder` trait; crates/bitvue-avc/src/frames.rs:158; crates/bitvue-vp9/src/frames.rs:129)
 
 ---
 
@@ -800,7 +800,7 @@ pub fn parse_into<T: FromFrame>(
 **예외**:
 - 처음부터 제네릭 바운드(`fn f<P: CodecParser>(p: &mut P)`)로만 쓸 계획이고 `dyn`이 전혀 필요 없는 trait이라면 object-safety를 신경 쓸 필요 없음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `ParserStrategy` trait(crates/bitvue-codecs-parser/src/parser_strategy.rs:222)은 object-safe하게 설계되어 실제로 `Box<dyn ParserStrategy>`(같은 파일 804행)로 쓰이고 있으며, 제네릭 메서드나 `Self` 반환 위반을 찾지 못함
 
 ---
 
@@ -876,7 +876,7 @@ impl MetricPipeline {
 - 라이브러리 내부(비공개) 구현에서 성능이 검증된 제네릭 파이프라인은 문제 없음 — 공개 API로 그 복잡도가 새어나가는 것이 문제
 - 제네릭 파라미터에 합리적 기본값(`= DefaultAggregator`)이 있어 대부분의 호출부가 타입을 명시할 필요가 없는 경우
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 공개 API에서 제네릭 파라미터 3개 이상인 struct/fn을 찾지 못함(API-006과 동일 근거)
 
 ---
 
@@ -948,7 +948,7 @@ pub enum CodecKind {
 - 워크스페이스 내부에서만 쓰이고 항상 모든 크레이트가 동시에 재컴파일/재배포되는(lockstep 버전) 경우, `#[non_exhaustive]`의 이점이 크지 않을 수 있음
 - 성능이 극도로 중요한 hot path의 enum에서 `#[non_exhaustive]`로 인한 catch-all 분기가 최적화를 방해한다면(드문 경우) 예외 검토
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 코드베이스 전체에 `#[non_exhaustive]`가 한 곳도 없고 `Codec`/`CodecType`/`VideoCodec` 등 코덱 enum이 계속 늘어나는 중(crates/bitvue-core/src/codec_error.rs:11, crates/bitvue-codecs-parser/src/parser_strategy.rs:19)이라 구조적으로는 해당하나, lockstep 버전의 내부 모노레포라 문서가 언급한 breaking-change 리스크가 실제로 발현되는지는 확인 못함
 
 ---
 
@@ -1032,7 +1032,7 @@ let opts = DecodeOptions {
 - 필드 수가 적고(10개 미만) 서로 독립적이며 상호 의존 관계가 전혀 없는 경우는 평면 `Option` 구조체도 무방
 - 외부 라이브러리/FFI 옵션 구조체를 그대로 미러링해야 하는 바인딩 레이어는 원본 구조를 유지하는 것이 오히려 유지보수에 유리할 수 있음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Option 필드 비율이 높고 필드 10개 이상인 설정 struct를 찾지 못함; 디코더 가속 백엔드 선택은 Option 나열이 아니라 strategy 패턴(crates/bitvue-decode/src/strategy/)으로 구현됨
 
 ---
 
@@ -1097,7 +1097,7 @@ pub fn parse(data: &[u8]) -> Result<HevcBitstream, ParseError> { ... }
 - 워크스페이스 내부 크레이트 간 공유가 실제로 빈번하고 의도된 경우(`bitvue-core`의 공통 타입)는 `pub`이 정당
 - 테스트 전용 헬퍼를 `#[cfg(test)] pub`으로 노출하는 것은 테스트 크레이트 경계 안에서는 무방
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `#![warn(unreachable_pub)]` 린트가 워크스페이스 어디에도 설정되어 있지 않아 구조적으로는 가능하지만, 예시로 든 CABAC 상태(crates/bitvue-avc/src/overlay_extraction.rs:1158, crates/bitvue-hevc/src/overlay_extraction.rs:546)는 실제로는 `pub` 없이 올바르게 비공개 처리되어 있음
 
 ---
 
@@ -1160,7 +1160,7 @@ pub fn get_frame_info(payload: GetFrameInfoRequest) -> Result<GetFrameInfoRespon
 **예외**:
 - 정말 스키마가 동적인(플러그인이 임의 JSON을 주고받는) 극소수 command는 `Value`가 불가피할 수 있음 — 이 경우 별도로 런타임 스키마 검증(예: `jsonschema`)을 추가
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (부분, 근거 갱신) — 인용된 `src-tauri`는 삭제됨; 후속 IPC 경계는 `crates/bitvue-protocol`(Electron main ↔ sidecar stdio)로, `Request.params`가 여전히 raw `serde_json::Value`(crates/bitvue-protocol/src/lib.rs:79)라 요청 측 나쁜 예는 그대로 존재. 다만 응답 에러는 문서가 가정한 flat `String`이 아니라 구조화된 `WireError{code: WireErrorCode, message, offset}`(lib.rs:113-146, 17개 variant)로 이미 개선돼 있어 API-010 문제가 응답 측에는 해당 안 됨 — 내부 함수들의 `Result<_, String>`(예: crates/bitvue-sidecar/src/frame_analysis.rs:55)이 main.rs에서 대부분 `WireErrorCode::InvalidData`로 뭉뚱그려 매핑되는 것(main.rs:246-260 등)이 남은 갭
 
 ---
 
@@ -1247,7 +1247,7 @@ fn main() -> anyhow::Result<()> { run()?; Ok(()) }
 **예외**:
 - `bitvue-cli`, `bitvue-mcp`처럼 최종 사용자에게 직접 에러를 보고하고 프로그램적 매칭이 필요 없는 애플리케이션 크레이트는 `anyhow` 사용이 적절
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (근거 갱신) — 인용된 src-tauri/src/commands/frame.rs는 삭제됨; 같은 패턴이 후속 크레이트에 그대로 이전돼 있음을 재확인 — crates/bitvue-sidecar/src/*.rs 전역에 `Result<_, String>` 14곳 + `.map_err(...to_string())` 계열 25회(frame_analysis.rs 7회, debug_yuv.rs 5회 등), 각 크레이트가 자체 에러 타입(AvcError/HevcError 등 thiserror)을 갖고도 sidecar 레이어에서 전부 String으로 뭉개진 뒤 main.rs가 대부분 `WireErrorCode::InvalidData`로 재매핑 — `#[from]` 체이닝 없이 두 번 정보 손실. bitvue-codecs-parser는 여전히 Cargo.toml:17에 `anyhow = { workspace = true }` 의존을 선언 중(라이브러리 크레이트에 anyhow 오염, 원 판정과 동일하게 유효)
 
 ---
 
@@ -1306,7 +1306,7 @@ pub struct SliceHeaderUnit {
 - Hex view, raw dump 같은 명시적으로 "원시 바이트를 보여주는" 기능의 API는 raw bytes 노출이 목적 자체이므로 해당하지 않음
 - 파싱되지 않은 vendor-specific/reserved 필드처럼 의미를 알 수 없는 데이터는 raw bytes로 남기는 것이 유일한 선택지일 수 있음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `SliceHeader`(crates/bitvue-avc/src/slice.rs:88)는 raw bytes가 아닌 완전히 파싱된 의미 필드로 구성되어 문서의 '권장' 상태와 일치; `NalUnit.raw_payload`(crates/bitvue-avc/src/nal.rs:172)는 하위 파서/hex view가 실제로 소비하는 정당한 중간 표현이지 파싱 결과를 대신 버리는 사례가 아님
 
 ---
 
@@ -1367,7 +1367,7 @@ for i in frame_range(total_frames) { process(i); }
 **예외**:
 - FFI 경계처럼 newtype이 `#[repr(transparent)]`로만 존재하고 실제 산술은 항상 언랩 후 primitive로 수행하는 것이 명확한 지점에서는 최소 구현으로 충분
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 전제 조건 불충족: API-001에서 확인했듯 offset/index newtype 자체가 아직 도입되지 않아 '인체공학 부족한 newtype' 문제가 성립할 대상이 없음
 
 ---
 
@@ -1429,7 +1429,7 @@ impl TryFrom<Frame> for bitvue_avc::AvcFrame {
 - 뉴타입 wrap/unwrap처럼 명백히 무손실이고 대칭적인 변환은 `From`/`Into`가 정확히 맞는 도구
 - 같은 정보를 다른 표현으로만 바꾸는 변환(예: `BitOffset -> ByteOffset` 근사가 아니라 정확한 단위 변환)은 무손실이면 허용
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코덱 간(AvcFrame→HevcFrame 등) `From`/`Into` 구현을 찾지 못함
 
 ---
 
@@ -1499,7 +1499,7 @@ impl From<&AnalysisState> for AnalysisStateDto {
 **예외**:
 - 정말 단순하고(필드가 전부 원시 타입/String) 향후에도 두 문맥이 갈라질 가능성이 낮은 작은 enum이라면 분리 비용이 이득보다 클 수 있음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `Obu`(crates/bitvue-av1-codec/src/obu.rs:128-150)가 `Serialize`와 `Deserialize`를 함께 derive하면서 `payload: Arc<[u8]>`와 `frame_header`에 `#[serde(skip)]`를 붙여, 역직렬화 시 payload/frame_header가 조용히 빈 상태가 되는 함정이 실존함
 
 ---
 
@@ -1567,7 +1567,7 @@ let all: Vec<_> = iter_frames(&data).collect::<Result<_, _>>()?; // 의도가 �
 - 반환 항목 수가 파일 크기와 무관하게 작다고 보장되는 경우(예: 트랙 목록, 파라미터 셋 목록)는 `Vec` 반환이 적절하고 오히려 이터레이터가 과설계
 - 이미 메모리에 전체가 있어야만 의미 있는 연산(예: 전역 정렬, 통계 집계)의 결과 자체를 반환하는 API는 `Vec`/`HashMap`이 자연스러움
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — '메모리 효율적'이라고 문서화된 `decode_from_file`(crates/bitvue-decode/src/decoder.rs:556, 스트리밍 I/O 설명은 524-556행 주석)조차 최종적으로 `Result<Vec<DecodedFrame>>`을 반환해 전체 프레임을 메모리에 모음; 코드베이스 전체에 이터레이터 기반 프레임 API가 전혀 없음
 
 ---
 
@@ -1630,7 +1630,7 @@ impl ConformanceValidator for bitvue_hevc::HevcParser { ... }
 **예외**:
 - 메서드들이 실제로 강하게 응집되어 있고(같은 내부 상태를 공유해야만 구현 가능) 분리 시 오히려 상태를 중복 보관해야 하는 경우는 하나의 trait이 정당할 수 있음
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 발견된 trait(ParserStrategy, Decoder 등)은 각자의 도메인에 응집되어 있고 파싱과 렌더링/직렬화/메트릭/hex-dump를 한 trait에 섞은 사례를 찾지 못함
 
 ---
 
@@ -1701,4 +1701,4 @@ pub struct AnalysisSession {
 - 파싱 함수 호출과 그 결과 소비가 같은 동기 스코프 안에서 끝나는 경우(예: CLI에서 파일을 읽어 즉시 순회하고 끝내는 일회성 처리) 라이프타임 전파는 문제가 되지 않고 오히려 최선의 선택
 - 성능이 검증된 hot path(예: 프레임 단위 반복 파싱)에서 호출자가 매 반복마다 명시적으로 짧은 수명 안에서만 결과를 쓰는 것이 문서화되어 있다면 허용
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 라이프타임을 가진 타입(BitReader<'a>, avs3 NalUnit<'a>, FrameEvidence<'a>)은 모두 짧은 함수/로컬 스코프에 한정되어 있고, AppState/Core 같은 세션 수준 구조체 필드로 전파되는 사례를 찾지 못함

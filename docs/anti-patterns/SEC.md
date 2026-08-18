@@ -65,7 +65,7 @@ fn read_picture_buffer(sps: &SequenceParameterSet) -> Result<Vec<u8>, ParseError
 **예외**:
 - 완전히 신뢰된 내부 생성 파일(자체 인코더 출력 등)만 다루는 오프라인 배치 파이프라인이라면 상한을 완화할 수 있다. 단, Bitvue는 사용자가 임의 파일을 여는 것이 핵심 기능이므로 이 예외에 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이미 권장 패턴대로 방어됨(순수 Rust 코덱 크레이트라 2026-08 Tauri→Electron 이관과 무관, 재검증 결과 불변). HEVC(`crates/bitvue-hevc/src/sps.rs:335-347`, `MAX_PIC_DIMENSION=16384`), AVC(`crates/bitvue-avc/src/sps.rs:465-477`), VP9(`crates/bitvue-vp9/src/frame_header.rs:495-505`, `MAX_FRAME_WIDTH/HEIGHT=16384`), VVC(`crates/bitvue-vvc/src/sps.rs:371-383`, `MAX_WIDTH=7680`/`MAX_HEIGHT=4320`) 모두 SPS 파싱 시점에 차원 상한 검증을 하며, grid 계산도 `checked_mul`+`ok_or_else`로 오버플로를 막는다(`crates/bitvue-hevc/src/overlay_extraction.rs:171,199,234`; VP9는 `MAX_GRID_DIMENSION`/`MAX_GRID_BLOCKS`로 별도 캡, `crates/bitvue-vp9/src/overlay_extraction.rs:104-118`). **주의**: `src-tauri`가 이관으로 완전히 삭제되어 옛 PNG 인코딩 크기검사(`create_png_base64`)는 더 이상 존재하지 않는다 — 후속 썸네일 인코딩(`crates/bitvue-sidecar/src/decode_bridge.rs:219-230`, `thumbnail_to_png_data_url`)은 `checked_mul` 재검증 없이 `.expect()`로 "rgb_data는 항상 width*height*3바이트"라는 불변식을 가정한다. 다만 그 불변식 자체는 위 SPS 단계 상한으로 이미 보장되므로(디코더가 애초에 16K 초과 프레임을 만들 수 없음) 실질 위험 증가는 아니고 panic vs graceful-error 차이일 뿐. AV1 `max_frame_width`(`crates/bitvue-av1-codec/src/sequence.rs:429`)는 여전히 명시적 MAX 상수 없이 비트필드 폭으로만 암묵 제한 — 기존과 동일한 잔여 위험.
 
 ---
 
@@ -144,7 +144,7 @@ fn decompress_bounded(input: &[u8], limit: u64) -> Result<Vec<u8>, ParseError> {
 **예외**:
 - 컨테이너 표준 자체가 중첩 깊이를 엄격히 제한하고 파서가 표준을 벗어난 값을 이미 별도로 거부하는 경우, depth 파라미터가 사실상 형식적일 수 있다. 그래도 방어 비용이 낮으므로 생략을 권장하지는 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 재귀 측면은 방어됨, 압축해제 측면은 기능 자체가 없음(순수 Rust 컨테이너 파서라 Electron 이관과 무관, 재검증 결과 불변). MP4 box 파서는 명시적 `depth: u8` 파라미터와 `MAX_BOX_DEPTH=16` 검사를 모든 재귀 호출 지점에서 수행한다(`crates/bitvue-formats/src/mp4.rs:26`, 재귀 호출부 455/502/543/591/631 등). MKV/EBML 파서는 범용 재귀 대신 스키마별 고정 함수 체인(`parse_mkv`→`parse_tracks`→`parse_track_entry`→...)이라 깊이가 코드 구조로 유한하며, 각 레벨에 `MAX_ELEMENTS_PER_LEVEL=10_000` 원소 수 캡도 있다(`crates/bitvue-formats/src/mkv.rs:311-534` 대역). zstd/gzip 등 압축 해제 의존성은 어느 `Cargo.toml`에도 없음(grep 0건) — decompression-bomb 서브케이스는 현재도 공격 표면이 존재하지 않는다.
 
 ---
 
@@ -207,7 +207,7 @@ async fn export_frame_png(export_dir: String, file_name: String, frame_data: Vec
 **예외**:
 - 파일명을 애플리케이션이 전적으로 생성하고(예: `frame_{index:06}.png`처럼 숫자만 삽입) 외부 입력이 전혀 섞이지 않는 경로는 이 위험에서 자유롭다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **재감사 필요했던 항목**: 이전 판정이 인용한 `src-tauri/src/commands/export.rs`(`validate_output_path`)는 2026-08-08 Tauri→Electron 이관으로 `src-tauri` 디렉토리 전체가 삭제되며 함께 사라졌다(파일 자체가 이제 존재하지 않음, 옛 판정은 무효). 현재 코드베이스에서 실제 도달 가능한 export 커맨드는 `export_evidence_bundle` 하나뿐이며(`crates/bitvue-sidecar/src/evidence_export.rs:96` → `crates/bitvue-engine/src/export/evidence.rs:243-250`), 번들 디렉토리명은 사용자 입력이 아니라 앱이 생성하는 타임스탬프 문자열(`format!("bitvue_evidence_{}", timestamp)`, evidence.rs:248)이고, `output_dir`는 네이티브 OS 디렉토리 선택창에서만 온다(`frontend/hooks/useExportEvidenceBundle.ts:23`의 `showDirectoryDialog()` → `bitvue-desktop/electron/main.ts:426-440`의 `dialog.showOpenDialog({properties:["openDirectory"]})`) — 카탈로그가 명시한 예외("파일명을 애플리케이션이 전적으로 생성하고 외부 입력이 섞이지 않음")에 정확히 해당해 path traversal 벡터가 없다. 옛 CSV/리포트 export와 동급인 `crates/bitvue-engine/src/export/{frames,diagnostics,summary,overlay,metrics}.rs`의 함수들은 `bitvue-sidecar`의 커맨드 디스패치 어디에도 연결돼 있지 않다(grep 0건) — 아직 미배선 상태라 현재는 공격 표면이 아니지만, 배선 시 파일명 인자 유래를 반드시 재검토해야 한다.
 
 ---
 
@@ -259,7 +259,7 @@ fn probe_with_ffprobe(input_path: &Path) -> Result<String, std::io::Error> {
 **예외**:
 - 실행할 명령과 모든 인자가 애플리케이션 코드에 하드코딩되어 있고 사용자/파일 유래 데이터가 인자로 전혀 들어가지 않는다면 위험이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 해당 기능(ffprobe/외부 decoder 서브프로세스 호출) 자체가 없음(재검증 결과 불변, 인용만 Electron 이관 반영해 갱신). 저장소 전체에서 `std::process::Command::new` 사용처는 여전히 `crates/bitvue-decode/src/vvdec.rs:937`(빌드 시 `pkg-config` 존재 확인, 사용자 입력 없음)뿐이다. Electron 이관으로 새로 생긴 유일한 서브프로세스 실행은 메인 프로세스가 `bitvue-sidecar` 바이너리를 띄우는 지점(`bitvue-desktop/src/sidecarClient.ts:145`, `spawn(this.binaryPath, this.spawnArgs, ...)`)인데, `child_process.spawn`을 배열 인자 형태로 직접 호출해 쉘을 거치지 않고, `binaryPath`도 `repoRoot` 기준으로 앱이 계산하는 경로(`bitvue-desktop/electron/main.ts`의 `defaultBinaryName`)라 사용자/파일 유래 문자열이 아니다. `sh -c`/문자열 조립 패턴은 어디에도 없다.
 
 ---
 
@@ -319,7 +319,7 @@ fn write_decoded_scratch(data: &[u8]) -> std::io::Result<tempfile::NamedTempFile
 **예외**:
 - 완전히 격리된 단일 사용자 sandbox(예: 컨테이너 하나에 사용자 하나)에서만 실행된다고 문서화되어 보장되는 경우 위험이 크게 줄어든다. 다만 데스크톱 앱은 이 가정을 보장할 수 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 디코딩 중간 결과를 디스크 임시 파일로 스풀하는 프로덕션 코드가 여전히 존재하지 않음(재검증, 인용을 Electron 이관 후 구조로 갱신). `bitvue-sidecar/src/main.rs`, `debug_yuv.rs`의 `tempfile::NamedTempFile` 사용은 전부 `#[cfg(test)] mod tests` 안이다(예: `main.rs:1971/2253/2314/2434/3046/3266`, `debug_yuv.rs:672-822`). Electron 메인 프로세스가 신규로 갖게 된 `mkdtempSync(tmpdir(), ...)`/`writeFileSync`(`bitvue-desktop/electron/main.ts:798`)도 `BITVUE_ELECTRON_SELFTEST`/`BITVUE_ELECTRON_SCREENSHOT` 환경변수로만 켜지는 dev/CI 셀프테스트 전용 경로라 정상 사용자 플로우에서는 도달 불가. 향후 대용량 프레임을 디스크에 스풀하는 프로덕션 기능이 추가되면 재평가 필요.
 
 ---
 
@@ -373,7 +373,7 @@ fn load_quality_metric_plugin(path: &Path, trust_store: &TrustStore) -> Result<L
 **예외**:
 - plugin 시스템 자체가 없거나, model 파일이 애플리케이션 번들에 포함되어 사용자가 교체할 수 없는 경우는 해당 없음. 이 경우도 향후 plugin 기능이 추가되면 즉시 재검토가 필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 결론 불변(재검증). 동적 라이브러리(.so/.dll/.dylib) 로딩 plugin 시스템은 여전히 없음(`libloading`/`Library::new`/`dlopen` grep 0건; `crates/bitvue-core/src/future_plugin.rs`는 트레이트/레지스트리 스캐폴딩일 뿐 실제 로딩 코드가 없음). `crates/bitvue-metrics/src/vmaf.rs:15`의 `VmafConfig.model_path`는 여전히 임의 경로의 모델 파일을 서명/해시 검증 없이 `VmafModel::from_path`로 로드한다(`~159-163`, `~241-245`) — `vmaf` Cargo feature 뒤에 있고, `src-tauri` 삭제 이후의 신규 백엔드인 `crates/bitvue-sidecar/src/main.rs` 커맨드 디스패치에도 `vmaf`/`Vmaf` 참조가 전혀 없다(grep 0건) — Tauri 시절과 마찬가지로 Electron IPC를 통한 사용자 도달 경로가 없음. VMAF가 배선되면 즉시 재검토 필요.
 
 ---
 
@@ -426,7 +426,7 @@ fn write_export_output(path: &Path, data: &[u8]) -> std::io::Result<()> {
 **예외**:
 - 애플리케이션 전용 디렉토리(생성 시점에 앱이 소유권과 권한을 확정한 디렉토리) 내부에서만 쓰기가 일어나고 그 디렉토리에 다른 주체의 쓰기 권한이 전혀 없다면 위험이 크게 낮아진다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — **하향 재판정 필요**: 이전 Confirmed 판정이 인용한 `src-tauri/src/commands/export.rs`는 Tauri→Electron 이관으로 완전히 삭제되어 더 이상 존재하지 않는다(옛 판정 무효). SEC-003에서 확인한 대로 현재 유일하게 도달 가능한 쓰기 경로는 `export_evidence_bundle`(`crates/bitvue-engine/src/export/evidence.rs:253` `create_dir_all(&bundle_dir)`, `:418`/`:501` `fs::write`)이며, 이 역시 `create_new`/`O_NOFOLLOW` 없이 일반 `fs::write`/`create_dir_all`을 쓴다. 다만 `bundle_dir` 이름이 초 단위 타임스탬프로 매 실행 새로 생성되므로(SEC-003 참고), 공격자가 정확히 그 초에 심링크를 미리 심어둬야 하는 좁은 race다 — 이론상 output 디렉토리에 쓰기권한을 가진 로컬 공격자가 향후 24시간의 모든 초 단위 타임스탬프 이름으로 심링크를 미리 뿌려두면 성공 확률을 사실상 100%로 높일 수 있어 완전히 비현실적이지는 않지만, 이미 같은 사용자 권한의 로컬 공격자를 전제해야 하는 낮은 실익의 벡터다. `create_new`+(유닉스에서) `O_NOFOLLOW` 적용 비용이 낮으므로 고쳐서 나쁠 것은 없다.
 
 ---
 
@@ -483,7 +483,7 @@ fn upload_frame_texture(gl: &GlContext, width: u32, height: u32, pixels: &[u8]) 
 **예외**:
 - 프레임 버퍼가 애플리케이션 내부 디코더가 직접 할당하고 크기를 스스로 계산한 것이라면(외부에서 크기/버퍼가 별도로 전달되지 않는 구조) 정합성 불일치 자체가 발생하기 어렵다. 다만 그 디코더 내부 계산이 SEC-001과 같은 문제를 가지지 않는다는 전제가 필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 결론 불변(재검증, 인용을 Electron 이관 후 구조로 갱신). 이 아키텍처에는 디코더 출력을 직접 GPU 텍스처로 업로드하는 경로가 여전히 없음(`texImage2D`/`texSubImage2D` 사용은 `frontend/node_modules`의 TS 표준 lib 정의뿐, 실제 앱 코드에서는 0건; `frontend/components/panels/YuvViewerPanel/VideoCanvas.tsx`는 WebGL 캔버스 크기만 동기화). 프레임 미리보기는 이제 `bitvue-sidecar`가 PNG data URL로 인코딩해 정식 Electron IPC 반환값으로 전달한다(`crates/bitvue-sidecar/src/decode_bridge.rs:219-230`, `thumbnail_to_png_data_url`) — 단, `src-tauri` 삭제로 옛 `create_png_base64`의 `checked_mul` 기반 size-mismatch 재검증은 사라지고 지금은 `.expect()`(SEC-001 참고)로 대체돼 있다; 그 불변식이 SEC-001의 SPS 단계 상한으로 보장되므로 이 항목이 우려하는 "GPU에 넘기는 선언된 크기 vs 실제 버퍼 불일치"라는 위협 자체는 여전히 발생하지 않는다(애초에 GPU 텍스처 업로드 경로가 없으므로). MV 오버레이 WebGL 렌더러(`frontend/components/panels/OverlayRenderer/webgl/mv-webgl.ts`)는 여전히 backend가 `MAX_GRID_DIMENSION`/`MAX_GRID_BLOCKS`로 캡한 grid 크기만 받는다(예: `crates/bitvue-vp9/src/overlay_extraction.rs:104-118`).
 
 ---
 
@@ -544,7 +544,7 @@ fn upload_frame_texture(gl: &GlContext, width: u32, height: u32, pixels: &[u8]) 
 **예외**:
 - 완전히 오프라인, 완전히 신뢰된 콘텐츠만 렌더링하고 사용자 입력을 전혀 받지 않는 정적 창(예: About 다이얼로그)이라면 권한을 사실상 0으로 둘 수 있고, 그 반대로 좁힐 이유가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — **재감사 필요했던 항목**: 이전 판정이 인용한 `src-tauri/capabilities/default.json`(Tauri capabilities 모델)은 이관으로 완전히 사라졌고, 이 항목이 원래 겨냥하던 "과도한 fs/shell 권한 선언"이라는 구체적 위협 자체가 Electron에는 그 형태로 존재하지 않는다. 대체 아키텍처는 원칙상 준수: `bitvue-desktop/electron/main.ts:746-749`가 `contextIsolation: true`/`nodeIntegration: false`를 설정하고, `electron/preload.cjs`(105줄)는 범용 `ipcRenderer.invoke(channel, ...)` 패스스루 없이 36개의 명명된 `contextBridge.exposeInMainWorld` 채널만 노출한다(카탈로그가 권장하는 "프론트엔드가 정해진 동작 하나를 요청" 구조와 부합, `require("fs")` 등 렌더러 직접 노출도 preload.cjs에 없음). 다만 같은 파일 상단 모듈 주석이 스스로 `sandbox: false`를 인정하며 "revisit before shipping"라고 명시적으로 플래그해 두었다 — Electron이 제공하는 최고 수준의 OS 프로세스 격리(sandboxed preload)를 의도적으로 우회한 상태라, preload/렌더러가 뚫릴 경우의 방어 심도가 카탈로그가 이상적으로 요구하는 수준보다 한 단계 약하다. 출시 전 재검토가 필요하다고 코드 자체에 이미 기록돼 있어 Suspected로 판정.
 
 ---
 
@@ -596,7 +596,7 @@ async fn seek_to_frame(frame_index: i64, stream_handle: StreamHandle) -> Result<
 **예외**:
 - command 인자가 애초에 검증이 불필요한 타입(예: `bool` 토글, 이미 Rust enum으로 타입 안전하게 역직렬화되는 값)이라면 별도 검증이 필요 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 결론 불변, 이관 후 오히려 신뢰 경계가 한 겹 더 좁아짐(재검증, 인용은 `src-tauri` 삭제로 전면 갱신 필요했음). `frame_index`는 `usize`로 sidecar 함수 시그니처에 선언되어(`crates/bitvue-sidecar/src/av1_features.rs:48`, `coding_flow.rs:111`, `codec_extended_info.rs:124` 등) JSON 역직렬화 단계에서 음수가 자체 거부되고, 각 함수 진입부가 `if frame_index >= frames.len()` 명시적 재검증 후 에러 문자열을 반환한다(예: `av1_features.rs:51-55`, `coding_flow.rs:114-118`, `codec_extended_info.rs:127-131`). 또한 Tauri 시절과 달리 렌더러는 sidecar의 wire 프로토콜에 전혀 직접 접근할 수 없다 — `contextBridge`가 노출하는 36개 타입드 채널을 거쳐야만 `ipcMain.handle`이 stdio로 sidecar에 요청을 전달하므로(`bitvue-desktop/electron/main.ts`의 `registerIpcHandlers`), devtools에서 `window.__TAURI__.invoke`처럼 임의 인자를 백엔드에 직접 꽂아 넣던 옛 위협 모델보다 노출 표면이 줄었다. (참고: `main.ts` 모듈 상단 주석이 스스로 "No input validation on the IPC handler params beyond what the sidecar itself rejects"라고 적어 두었는데, 위에서 확인한 대로 그 sidecar 측 거부 로직 자체는 실제로 존재하고 이 항목의 위협에는 충분하다.)
 
 ---
 
@@ -648,7 +648,7 @@ async fn seek_to_frame(frame_index: i64, stream_handle: StreamHandle) -> Result<
 **예외**:
 - 없음에 가깝다. 특정 서드파티 라이브러리가 `unsafe-eval` 없이는 동작하지 않는 것이 확인되었고 대안이 없다면, 완화 범위를 그 라이브러리가 필요한 최소 지시어로 좁히고 사유를 명시적으로 문서화해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — **재판정(N/A→Confirmed)**: 이전 판정이 인용한 `src-tauri/tauri.conf.json`의 CSP 설정 자체가 Tauri→Electron 이관으로 완전히 사라졌고, 그 자리를 대체하는 CSP가 새 아키텍처 어디에도 구성되지 않았다. 실제 프로덕션 렌더러가 로드하는 빌드 산출물의 소스인 `frontend/index.html`과, 프론트 미빌드 시 폴백되는 `bitvue-desktop/electron/index.html` 둘 다 `<meta http-equiv="Content-Security-Policy">` 태그가 없으며(직접 확인), `bitvue-desktop/electron/main.ts`에도 `session.defaultSession.webRequest.onHeadersReceived`로 CSP 헤더를 주입하는 코드가 없다(grep 0건) — Electron에서 CSP를 적용하는 두 표준 방법(meta 태그, 응답 헤더 주입) 모두 미사용. 코드 스스로도 이를 인지하고 있다: `createWindow()`의 `console-message` 핸들러 주석(`main.ts:762-764`)이 "the CSP notice under file:// (expected in this dev-mode shell), noisy but not indicative of a real bug"라고 명시해, CSP 부재로 인한 devtools 경고를 알면서 무시하도록 분류해 두었다. `unsafe-inline`/`unsafe-eval` 허용(완화)과는 형태가 다르지만, 방어선 자체가 통째로 없다는 점에서 이 카탈로그 항목이 우려하는 상황의 더 극단적인 버전으로 판단해 Confirmed.
 
 ---
 
@@ -702,7 +702,7 @@ imgElement.src = convertFileSrc(url);
 **예외**:
 - 애플리케이션 번들에 포함된 정적 리소스(아이콘, 폰트 등 사용자 파일이 아닌 것)를 asset으로 노출하는 것은 원본 파일 노출 문제와 무관하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 결론 불변(재검증, 인용은 Electron 이관 후 구조로 갱신). `asset://`/`convertFileSrc`/`window.eval` 자체가 이제 존재할 수 없는 Tauri 전용 API고(grep 0건 재확인), Electron 쪽 등가물인 커스텀 프로토콜 등록(`protocol.registerFileProtocol` 등)도 `bitvue-desktop/electron/main.ts`에 없다(grep 0건). 프로덕션 렌더러는 `file://`로 앱 자신의 번들 산출물만 로드한다(`frontend/dist/index.html`, `resolveRendererTarget()`, `main.ts:481-492`) — 사용자가 연 원본 영상 파일의 절대경로를 WebView URL로 노출하는 경로가 없다. 썸네일/프레임 미리보기는 `bitvue-sidecar/src/decode_bridge.rs:219-230`(`thumbnail_to_png_data_url`)이 만든 base64 data URL을 정식 Electron IPC 반환값으로 프론트엔드에 전달한다(SEC-008 참고).
 
 ---
 
@@ -760,7 +760,7 @@ fn anonymize_path_for_telemetry(path: &Path) -> String {
 **예외**:
 - 순수 로컬 전용, 사용자 명시적 요청 시에만 생성되는 디버그 로그(원격 전송·자동 첨부 경로가 전혀 없음이 코드로 보장됨)는 전체 경로를 남겨도 실질 위험이 낮다 — 다만 그 보장이 실제로 유지되는지는 주기적으로 재검증해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — **재감사 필요했던 항목**: 이전 판정이 인용한 `src-tauri/src/commands/file.rs`/`recent_files.rs`(SECURITY 주석, `sanitize_path`)는 이관으로 완전히 삭제돼 더 이상 존재하지 않는다(옛 판정 자체는 무효, 결론은 재확인 결과 동일). 그 자리를 대체하는 Electron 메인 프로세스의 파일 열기/디렉토리 선택 핸들러(`bitvue-desktop/electron/main.ts:402-440`, `showOpenDialog`/`showDirectoryDialog`)에도 선택된 절대경로를 `console.log`/`console.error`로 남기는 코드가 전혀 없다(path 관련 로그 매칭 grep 0건). `crates/bitvue-sidecar/src/main.rs`에도 경로를 로그 매크로/`println!`에 넣는 패턴이 없다. 원격 텔레메트리/자동 크래시 업로드 기능 자체도 여전히 없음.
 
 ---
 
@@ -827,7 +827,7 @@ fn apply_update(update: Update) -> Result<(), UpdaterError> {
 **예외**:
 - 자동 업데이트 기능 자체가 없고 사용자가 매번 공식 배포 채널(앱스토어 등 별도 서명/검증 체계를 가진 채널)에서 수동으로 재설치하는 배포 방식이라면, 이 항목은 그 채널의 검증 체계로 대체된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 결론 불변(재검증, `src-tauri` 삭제로 인용을 Electron 빌드로 갱신). `tauri-plugin-updater`를 인용한 이전 판정의 근거 파일은 이관으로 사라졌지만, 그 대체품인 `electron-updater`도 `bitvue-desktop/package.json`에 의존성으로 없고(grep 0건) `bitvue-desktop/electron/main.ts`에도 `autoUpdater` 참조가 없다. 자동 업데이트 기능 자체가 Electron 이관 후에도 계속 존재하지 않아, 이 항목이 전제하는 위협(서명 미검증 자동 업데이트)이 발생할 코드 경로가 없다.
 
 ---
 
@@ -895,4 +895,4 @@ def write_analysis_report(path: str, content: str) -> None:
 **예외**:
 - MCP 서버가 애초에 파일시스템 도구를 노출하지 않거나(순수 계산/조회 도구만 제공), 이미 OS 레벨 sandbox(컨테이너, 제한된 서비스 계정)로 감싸여 있어 도구 자체의 경로 접근 범위가 물리적으로 제한된 경우는 애플리케이션 레벨 검증의 우선순위가 낮아질 수 있다 — 다만 다층 방어 원칙상 완전히 생략할 이유는 되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-mcp`는 Tauri→Electron 이관과 무관한 별도 크레이트/바이너리라 재검증해도 결론·인용 위치 그대로 유효. `crates/bitvue-mcp/src/main.rs`가 이미 권장 패턴을 구현: `validate_path()`(line 36-53)가 `canonicalize()` 후 `allowed_paths`(기본값은 `current_dir`, line ~68) 내부인지 `starts_with`로 검증하고, 파일을 실제로 여는 유일한 진입점 `load_file`(line ~599-608)이 이 검증을 통과한 `validated_path`만 사용한다. 쓰기 도구(`fs::write`/`File::create`) 자체가 이 MCP 서버에 없음(grep 0건) — 나쁜 예의 `write_analysis_report` 같은 임의 쓰기 도구는 구현되어 있지 않다.

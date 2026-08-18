@@ -56,7 +56,8 @@ pub struct SequenceReport {
 **예외**:
 - 실시간 미리보기처럼 지연시간이 극히 중요하고, 상세 분포는 별도 백그라운드 계산으로 나중에 채워지는 구조라면 1차 응답에서 평균만 먼저 주는 것은 허용된다 — 단, 상세 분포가 "나중에 채워진다"는 사실 자체가 API 계약에 명시되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 주의: `src-tauri/`는 2026-08-08 Electron 이관으로 저장소에서 완전히 삭제됐고 `bitvue-core`도 `bitvue-engine`으로 개명됐음(이전 판정의 인용 경로 둘 다 현재 존재하지 않음, 재검증). 실제로 지금 동작하는 경로는 `crates/bitvue-cli/src/commands/quality.rs`(`bitvue quality`/`bitvue bd-rate` CLI)뿐인데, 여기 174-183행은 metric당 avg+min만 stdout에 찍고 std_dev/percentile은 아예 없다. 죽은 프론트엔드 쪽 `BatchQualityMetrics` 인터페이스(`frontend/components/panels/QualityMetricsPanel.tsx:27-30`, `QualityComparisonPanel.tsx:28-31`)는 `average_psnr`/`average_ssim`/`average_vmaf`만 있어 나쁜 예와 완전히 일치하지만, 이 두 패널은 `@tauri-apps/api` `invoke("calculate_quality_metrics", ...)`를 호출하는데 그 백엔드 커맨드 자체가 삭제된 `src-tauri`에만 있었고 Electron sidecar엔 이관되지 않았다(App.tsx 어디에도 마운트 안 됨, 완전 도달불가). 분포를 포함한 `SummaryStats`(`crates/bitvue-engine/src/metrics_distribution.rs:118-176`)는 존재하지만 CLI/sidecar 어디서도 호출되지 않는 죽은 코드(유일한 소비자 `mcp.rs`도 그 자체가 외부에서 호출되지 않음).
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-004 참고.
 
 ---
 
@@ -108,7 +109,8 @@ impl QualityDistribution {
 **예외**:
 - 표본 수가 매우 적은 경우(수십 프레임 이하) p1 percentile은 통계적으로 무의미할 수 있으므로, 이런 경우 min/max로 대체하고 표본 수가 부족하다는 사실을 명시한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 위 STAT-001과 동일한 경로(경로 정정: `bitvue-core`→`bitvue-engine`, `src-tauri` 삭제됨). 실제 동작하는 `crates/bitvue-cli/src/commands/quality.rs`는 min까지만 보고하고 p1/p5/worst-frame 정보는 어디에도 없다. `WorstFrames`(crates/bitvue-engine/src/metrics_distribution.rs:279-317)가 구현돼 있지만 CLI/sidecar 어디서도 호출되지 않아(grep 결과 자기 자신의 테스트/`mcp.rs` 외부 참조 0건, `mcp.rs`도 외부 호출자 없음) 최악 구간이 실제 사용자에게 전달되지 않는다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-004 참고.
 
 ---
 
@@ -163,7 +165,8 @@ pub struct MetricDefinition {
 **예외**:
 - 단일 metric 전용으로 처음부터 끝까지 하드코딩된 내부 유틸(다른 metric에 절대 재사용되지 않음이 타입 시스템으로 보장된 경우)이라면 극성 파라미터 없이 방향을 고정해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 경로 정정: `crates/bitvue-engine/src/metrics_distribution.rs:294-307`(`bitvue-core`는 현재 존재하지 않음). `WorstFrames::new`가 "Sort by value ascending (worst first for quality metrics)"라는 주석과 함께 오름차순=worst를 하드코딩하고, `MetricPolarity` 같은 극성 타입이 코드베이스 어디에도 없다(전체 grep 0건). 현재 지원 metric(PSNR/SSIM/VMAF)이 전부 higher-is-better라 당장 값이 뒤집히진 않지만, 이 구조체 자체가 어디서도 호출되지 않는 죽은 코드라 실증은 불가능하다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-004 참고.
 
 ---
 
@@ -221,7 +224,7 @@ pub fn sequence_mean(scenes: &[SceneScore]) -> f64 {
 **예외**:
 - Scene 경계가 항상 고정 길이(예: 1초 GOP 단위로만 분할)로 설계가 보장된 시스템이라면 frame_count가 상수이므로 생략해도 무방하지만, 그 가정이 깨지는 순간(가변 GOP, scene-cut 기반 분할 도입) 이 필드가 반드시 필요해진다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — scene 단위 quality score 집계(SceneScore류 구조체) 자체가 코드베이스에 없다. `SceneChange`(crates/bitvue-engine/src/diagnostics_bands.rs:45행, 경로 정정: `bitvue-core`→`bitvue-engine`)는 타임라인 마커+confidence일 뿐 frame_count/score 페어링 대상이 아니다.
 
 ---
 
@@ -266,7 +269,7 @@ pub fn sequence_summary(scene_scores: &[SceneScore]) -> f64 {
 **예외**:
 - 모든 scene의 frame_count가 사실상 동일하다는 것이 도메인 제약으로 보장된 경우(예: 고정 GOP 길이 스트림만 다루는 도구)라면 mean-of-means와 가중 평균이 수렴하므로 실질적 차이가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — STAT-004와 동일한 이유로 scene별 1차 집계 자체가 없어 mean-of-means로 재집계할 대상도 없다. (재검증 시에도 변동 없음.)
 
 ---
 
@@ -322,7 +325,7 @@ pub struct FrameMetric {
 **예외**:
 - 소스가 컨테이너 레벨에서 CFR임이 보장되고(고정 timebase, 프레임 드롭/듀플리케이션 없음) 그 보장이 파이프라인 계약에 명시되어 있다면, 개수 기반 집계와 duration 기반 집계는 수학적으로 동일하므로 개수 기반 구현을 유지해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — PTS/duration 가중 metric 집계가 존재하지 않는다. 경로 정정: `calculate_quality_metrics`가 있던 `src-tauri/`는 Electron 이관으로 삭제됐고, 현재 실제로 동작하는 `compute_frame_metrics`(crates/bitvue-cli/src/commands/quality.rs:13-18의 `FrameMetrics` 구조체)도 `frame: usize` 인덱스만 갖고 duration_ns/PTS 필드 자체가 없이 순수 인덱스 기반으로만 순회한다.
 
 ---
 
@@ -377,7 +380,8 @@ pub fn align_and_score(reference: &[Frame], distorted: &[Frame]) -> AlignmentRes
 **예외**:
 - reference와 distorted가 프레임 단위로 1:1 대응이 프로토콜상 보장되는 파이프라인(예: 동일 인코더의 무손실 리사이즈 비교처럼 프레임 드롭이 원천적으로 불가능한 경우)이라면 별도 정렬 단계 없이 zip을 써도 되지만, 그 전제가 문서화되어 있어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 경로 정정 후 재검증: 인용됐던 `src-tauri/`는 Electron 이관(2026-08-08)으로 삭제됐지만, 동일한 패턴이 현재 실제로 살아 있는 `crates/bitvue-cli/src/commands/quality.rs:72`에 그대로 있다 — `let total_pairs = ref_decoded.len().min(dist_decoded.len());`로 두 스트림 중 짧은 쪽에 맞춰 조용히 잘리고(`bitvue quality`/`bitvue bd-rate` CLI가 실제로 이 경로를 탄다), `FrameMetrics`/CLI 출력 어디에도 dropped_frame_count/ratio가 없다. gap_count/confidence를 정식으로 추적하는 `AlignmentEngine`(crates/bitvue-engine/src/alignment.rs:24-75, `compare.rs`가 소비)이 저장소에 존재하지만, `bitvue-sidecar`/`bitvue-cli` 어디에서도 호출되지 않는 죽은 코드라(STAT-011 참고) 이 quality-metrics 파이프라인은 그것을 전혀 쓰지 않고 인덱스 zip과 동일한 방식으로 동작한다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-001 참고.
 
 ---
 
@@ -434,7 +438,7 @@ pub fn aggregate(scores: &[FrameScore]) -> (f64, usize /* invalid_count */) {
 **예외**:
 - 해당 metric의 정의상 "계산 불가 = 최악"이 도메인적으로 참인 극히 드문 경우(예: "이 프레임이 존재하는가" 자체가 metric인 completeness 지표)라면 0점 처리가 정당화될 수 있다 — 단, 이 경우도 명시적으로 문서화되어야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 경로 정정: 인용됐던 `src-tauri/`는 삭제됐지만 결론은 동일하게 유지된다. 실제 라이브 경로 `crates/bitvue-cli/src/commands/quality.rs:96-106`에서 `psnr(...).ok()`/`ssim(...).ok()`로 `Result`를 `Option<f64>`로 변환해 실패 시 `None`을 반환하며, 0.0 같은 sentinel 값으로 대체하지 않는다.
 
 ---
 
@@ -498,7 +502,7 @@ pub fn aggregate(raw_scores: &[(u32, f64)]) -> AggregationResult {
 **예외**:
 - 프로토타입/디버그 전용 스크립트에서 빠르게 값을 확인하는 용도라면 조용한 필터링이 허용되지만, 리포트나 회귀 테스트 경로에는 절대 이 패턴을 두지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 경로 정정 후 재검증: 삭제된 `src-tauri/`가 아니라 현재 실제로 동작하는 `crates/bitvue-cli/src/commands/quality.rs:85-91`에서 동일 패턴을 확인 — 크기 불일치 프레임을 `eprintln!("Warning: ... skipping")` 후 `continue`로 건너뛰지만(완전 무음은 아님, stderr 경고는 남음), 몇 개가 왜 걸러졌는지는 최종 리포트/CLI 출력(171-183행의 avg/min 요약)에 전혀 집계되지 않는다. `crates/bitvue-cli/src/commands/bd_rate.rs:82-88`의 `build_curve`도 이 결과를 `values.iter().sum()/values.len()`으로 한 번 더 풀링하면서 상류에서 몇 프레임이 걸러졌는지 전혀 참조하지 않는다.
 
 ---
 
@@ -553,7 +557,7 @@ impl MetricSummary {
 **예외**:
 - 모든 metric이 동일한 사전 필터링된 프레임 집합에서만 계산되도록 파이프라인이 구조적으로 보장하는 경우(단일 valid_frame_mask를 모든 metric 계산 전에 공유), 개별 metric마다 카운트를 반복 표시할 필요는 없고 공유 마스크의 크기 하나만 표시해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 경로 정정: 삭제된 `src-tauri/`가 아니라 실제 라이브 경로 `crates/bitvue-cli/src/commands/quality.rs:171-172`에서 확인 — `psnr_vals`/`ssim_vals`가 `results.iter().filter_map(|r| r.psnr_db)`/`filter_map(|r| r.ssim)`로 각각 독립적으로 필터링되므로 한쪽만 실패(`psnr()`/`ssim()` 개별 `Err`)해도 두 벡터 길이가 달라질 수 있는데, 177/182행 출력에는 `avg`/`min`만 찍히고 valid_frame_count/total_frame_count는 어디에도 노출되지 않는다.
 
 ---
 
@@ -618,7 +622,7 @@ fn run_comparison(reference: &[Frame], distorted: &[Frame]) -> ComparisonResult 
 **예외**:
 - alignment가 결정론적이고 confidence 개념 자체가 없는 방식(예: 컨테이너 타임스탬프가 완벽히 신뢰되는 controlled 환경에서 프레임 인덱스 직접 매핑)이라면 confidence 필드를 상수로 생략해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (이전 판정 뒤집힘, 재검증 후) — 이전 판정이 인용한 `src-tauri/src/commands/compare.rs`는 Electron 이관으로 삭제됐고, 그 기능은 현재 sidecar로 재배선되지 않았다: `create_compare_workspace`는 `crates/bitvue-sidecar/src/main.rs`의 dispatch 테이블에 아예 없다(오히려 1954행 근처 `unknown_method_returns_internal_error` 테스트의 "존재하지 않는 메서드" 예시로 이 이름이 쓰인다). 프론트엔드 `frontend/contexts/CompareContext.tsx:65-66`도 여전히 죽은 `@tauri-apps/api` `invoke("create_compare_workspace", ...)`를 호출한다. confidence를 정식으로 계산하는 `AlignmentEngine`/`AlignmentConfidence`(crates/bitvue-engine/src/alignment.rs:24-75, `compare.rs`가 소비)는 저장소에 존재하지만 `bitvue-sidecar`/`bitvue-cli` 어디에서도 호출되지 않는 완전한 죽은 코드다(grep 결과 자기 자신의 lib.rs 재노출과 테스트 외 호출자 0건). 현재 사용자가 실제로 도달 가능한 유일한 비교 경로인 `bitvue-cli quality`/`bitvue-cli bd-rate`(quality.rs)는 STAT-007에서 확인했듯 정렬 단계 자체가 없는 raw 인덱스 zip이므로, confidence는 "누락"이 아니라 애초에 "이 개념 자체가 라이브 경로에 존재하지 않는다" — 원래 안티패턴이 우려하는 결과(낮은 점수를 화질 문제로 오독)가 그대로 발생할 수 있다.
 
 ---
 
@@ -672,7 +676,7 @@ pub fn find_worst_frames(scores: &[FrameMetric], n: usize) -> WorstFramesReport 
 **예외**:
 - scene cut 자체의 화질(즉 전환이 얼마나 매끄러운지)을 평가하는 것이 분석 목적이라면, 오히려 scene cut 인접 프레임만 별도로 모아서 분석하는 것이 맞는 접근이다 — 이 경우 "동일하게 해석하지 않는다"는 원칙이 반대 방향으로 적용된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — worst-frame 랭킹 기능 자체가 실제 사용자 경로에 존재하지 않는다(`WorstFrames`는 crates/bitvue-engine/src/metrics_distribution.rs의 죽은 코드, 실제 라이브 경로인 crates/bitvue-cli/src/commands/quality.rs에는 avg/min만 있고 worst-frame 리스트 자체가 없음). scene cut 인접 여부를 다룰 대상 기능이 없다.
 
 ---
 
@@ -723,7 +727,7 @@ pub fn encoder_verdict(scores: &[FrameMetric], floor: f64) -> RobustWorstCaseVer
 **예외**:
 - 안전 필수 도메인(예: 의료 영상, 특정 규제 준수 검증)에서 "단 한 프레임이라도 절대적 최저 기준을 위반하면 무조건 실패"가 명시적 요구사항인 경우, min 기반 하드 게이트가 의도적으로 맞는 설계다 — 단, 이 경우도 그 최저 프레임이 무엇인지 사용자가 검증할 수 있도록 frame_index/timestamp를 반드시 함께 제공해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 단일 min 프레임으로 pass/fail을 가르는 QA 게이트/encoder_verdict류 로직이 코드베이스에 없다(재검증: grep으로 pass_fail/verdict/gate/floor 패턴 검색, 나온 것은 `crates/bitvue-engine/src/parity_harness/gates.rs`뿐인데 이는 경쟁제품 대비 자체 기능 패리티를 채점하는 내부 회귀 하네스로 video-quality 도메인과 무관 — 실제 quality.rs/bd_rate.rs는 min을 출력만 하고 어떤 pass/fail 판정에도 쓰지 않는다).
 
 ---
 
@@ -790,7 +794,7 @@ pub fn pool(frame_scores: &[f64], method: PoolingMethod) -> f64 {
 **예외**:
 - 시스템 전체에서 pooling 방식이 단 하나로 고정되어 있고 그 사실이 시스템 설계 문서/버전 정책으로 강하게 보장되는 경우, 매 리포트마다 상수를 반복 기록하는 대신 스키마 버전 하나로 대체할 수 있다 — 단, 스키마 버전이 바뀌면 pooling 방식도 바뀔 수 있다는 점을 릴리스 노트에 명시해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 산술평균 외의 pooling 방식(조화평균, percentile pooling, min-pooling)이나 `PoolingMethod` 같은 타입이 코드베이스에 없다(재검증). 유일한 집계가 산술평균 하나뿐이다 — `crates/bitvue-cli/src/commands/quality.rs:175/180`(avg 출력)과 `crates/bitvue-cli/src/commands/bd_rate.rs:87`(`build_curve`의 파일당 평균)가 둘 다 동일한 `sum()/len()`을 쓴다 — 이라 "여러 방식 중 무엇을 썼는지 기록 누락"이라는 상황 자체가 성립하지 않는다.
 
 ---
 
@@ -851,7 +855,7 @@ pub fn render_trend_chart(history: &[SequenceReport]) -> Vec<ChartSeries> {
 **예외**:
 - metric 구현/모델/설정이 이번 비교 목적상 변경되지 않았음이 배포 파이프라인 수준에서 보장되는 짧은 기간의 대시보드(예: 단일 CI 실행 내 A/B 비교)라면 버전 분리 로직 없이 단순 비교해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — metric 구현/모델 버전을 태깅해 시계열로 비교하는 트렌드 차트나 `MetricRunMetadata`류 개념이 코드베이스에 없다(재검증, grep 결과 0건).
 
 ---
 
@@ -900,7 +904,7 @@ pub fn composite_score(scores: &HashMap<String, f64>, weights: &CompositeWeights
 **예외**:
 - 업계 표준으로 이미 고정되어 있고 임의 변경이 오히려 비교 가능성을 해치는 합성 지표(예: 특정 표준 기구가 정의한 공식 가중치)를 그대로 구현하는 경우, 가중치를 상수로 두되 출처(표준 문서/버전)를 주석으로 남기는 것으로 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 여러 metric을 하나의 합성 점수로 묶는 composite_score류 함수가 코드베이스에 없다(재검증, grep 결과 0건).
 
 ---
 
@@ -958,7 +962,7 @@ pub fn compare_encoders(a_scores: &[f64], b_scores: &[f64]) -> ComparisonVerdict
 **예외**:
 - 표본 수가 충분히 크고(전체 프레임 수천 개 이상) 관측된 차이가 표준오차 대비 압도적으로 클 때는, 굳이 정식 유의성 검정을 리포트에 노출하지 않아도 실질적 결론이 흔들리지 않는다 — 다만 이 경우도 내부적으로는 검정을 수행해 조건을 만족하는지 확인하는 것이 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (미사용 코드) — 경로 정정: `MetricComparisonSummary::compare`(crates/bitvue-engine/src/metrics_distribution.rs:852-919, `bitvue-core`가 아니라 `bitvue-engine`)가 정확히 이 나쁜 예와 같은 모양이다: 평균 차이와 tolerance 임계값만으로 frames_a_better/b_better/equal을 집계하고 분산/신뢰구간/유의성 검정이 전혀 없다. 다만 이 struct는 `bitvue-sidecar`/`bitvue-cli` 어디에서도 호출되지 않아(재검증, grep 결과 자기 자신의 lib.rs 재노출·테스트 외 0건) 현재 사용자에게 영향은 없다. 반대로 실제 라이브 경로인 `bd_rate.rs`(BD-rate CLI)는 "A가 낫다" 식의 단정적 문자열 대신 부호 있는 `bd_rate_percent`/`bd_quality` 수치를 그대로 보고해 이 안티패턴을 피하고 있다 — 향후 `MetricComparisonSummary`를 연결한다면 반드시 수정이 필요하다.
 
 ---
 
@@ -1022,7 +1026,7 @@ pub fn aggregate_with_provenance(scores: &[(f64, FrameProvenance)]) -> (f64 /* o
 **예외**:
 - 두 스트림이 사실상 동일 프레임레이트이고 아주 드문 지터(예: 타임스탬프 반올림 오차로 인한 1프레임 미만 보정)만 있는 경우, 그 정도의 미세 보간은 최종 통계에 미치는 영향이 무시할 만하므로 provenance 추적을 생략해도 실질적 문제가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 서로 다른 프레임레이트의 두 스트림을 보간/리샘플링해 정합하는 기능이 코드베이스에 없다(재검증, `align_framerates`/`FrameProvenance` 없음, grep 결과 0건). 듀얼 스트림 비교는 STAT-007에서 확인한 대로 동일 인덱스 기준(`ref_decoded.len().min(dist_decoded.len())`)으로만 동작해, 프레임레이트 차이 자체를 다루지 않는다.
 
 ---
 

@@ -64,7 +64,7 @@ async fn tool_get_syntax_node(
 **예외**:
 - 스트림 자체가 매우 작은 경우(수 프레임, 테스트용 클립)는 전체 반환이 실용적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-mcp`/`bitvue-core/src/mcp.rs` 어디에도 syntax tree API 자체가 없다. 실제 파싱은 `bitvue-av1-codec::parse_frame_header_basic` 수준의 평면적 프레임 요약(frame_index/size/qp/pts)뿐이고, NAL/OBU 재귀 트리를 구성·직렬화하는 코드가 없다.
 
 ---
 
@@ -112,7 +112,7 @@ async fn tool_get_frame_summary(ctx: &AnalyzerContext, stream_id: StreamId, fram
 **예외**:
 - 명시적으로 "바이트 비교" 목적의 개발자 전용 디버그 도구이며, 모델이 아닌 사람이 직접 호출·검토하는 채널이라면 예외.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-mcp/src/main.rs`의 10개 등록 도구(`get_tools()`, L130-308) 중 raw byte/base64 dump를 반환하는 도구가 없다. 프레임 관련 도구는 모두 크기·오프셋·QP 등 요약 필드만 반환.
 
 ---
 
@@ -167,7 +167,7 @@ async fn tool_analyze_quality_drop(ctx: &AnalyzerContext, stream_id: StreamId) -
 **예외**:
 - 프레임 단위가 아닌 스트림 전체 요약(코덱 종류, 컨테이너 정보 등)처럼 본질적으로 위치가 없는 질의는 예외.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 반대로 잘 되어 있다: `analyze_frame`/`get_qp_map`/`get_gop_structure`/`search_syntax`/`compare_streams`(main.rs) 응답 모두 `frame_index` 필드를 필수로 포함하며, 자유 텍스트만 반환하는 도구가 없다.
 
 ---
 
@@ -222,7 +222,7 @@ function FrameInfoPanel({ fact, aiExplanation }: { fact: ParsedFrameInfo; aiExpl
 **예외**:
 - 내부 개발자 전용 디버그 뷰로, 명시적으로 "raw MCP response"라고 표기된 화면이라면 구분 없이 표시해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — Bitvue 자체가 LLM을 호출하는 코드가 없다(grep 결과 `llm_client`/`openai`/`anthropic_sdk`/`chatgpt` 관련 실제 클라이언트 코드 없음). `frontend/`에도 `aiExplanation`/`AiNote`/`ai_summary` 계열 컴포넌트가 전혀 없다 — AI 설명을 표시하는 기능 자체가 아직 없다.
 
 ---
 
@@ -272,7 +272,7 @@ struct EvidenceRef {
 **예외**:
 - 순수 deterministic 계산 결과(파서가 직접 뽑은 QP 값 등)에는 confidence 개념이 필요 없다 — 이 항목은 AI 생성 콘텐츠에만 적용.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드베이스에 AI가 생성하는 "finding" 타입 자체가 없다. `confidence` 필드 grep 결과는 전부 `AlignmentConfidence`(`crates/bitvue-core/src/alignment.rs`)나 `SceneChange.confidence`(`diagnostics_bands.rs`) 등 deterministic 신뢰도 지표였고 AI 산출물과 무관.
 
 ---
 
@@ -320,7 +320,7 @@ async fn tool_apply_seek(ctx: &mut AnalyzerContext, ai_suggested_offset: u64) ->
 **예외**:
 - offset이 이미 deterministic 파서가 생성한 값(모델이 그대로 반환만 하는 경우)이라면 재검증 비용이 낮아 생략 가능하지만, 여전히 range check는 유지해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 모델이 생성한 offset을 그대로 seek에 적용하는 도구가 없다. 비교 가능한 유일한 사용자 입력 경로인 `load_file`의 `path` 인자는 `validate_path()`(main.rs:36-57)로 canonicalize + allowlist 검증을 거친다.
 
 ---
 
@@ -380,7 +380,7 @@ async fn handle_tool_call(name: &str, args: serde_json::Value) -> McpToolResult 
 **예외**:
 - 내부 전용, 입력이 없는(no-arg) 도구는 입력 스키마 검증이 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `get_tools()`(main.rs:130-308)의 `input_schema`는 클라이언트에 보여주는 문서용 JSON일 뿐, 실제 인자 파싱은 `args["frame_index"].as_u64()...` 식의 수동 `serde_json::Value` 인덱싱(예: main.rs:727, 761, 804)이라 `JsonSchema` derive 기반 검증은 없다. 다만 확인된 추출부는 전부 `.ok_or_else(...)?`/`.unwrap_or(...)`를 쓰고 있어(예: main.rs:379 `params["name"].as_str().unwrap_or("")`) 나쁜 예의 `.unwrap()` 패닉 경로 자체는 실증되지 않았다 — "스키마 미선언" 부분은 확인, "패닉" 부분은 미확인.
 
 ---
 
@@ -427,7 +427,7 @@ async fn tool_summarize_stream(ctx: &AnalyzerContext, stream_id: StreamId) -> Mc
 **예외**:
 - 스트림이 라이브 캡처처럼 계속 변하는 소스라면 매번 재계산이 정당하다 — 이 경우 캐시 무효화 전략이 핵심이지 캐시 부재 자체가 문제는 아니다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (변형) — `get_stream_model()`(main.rs:699-724)이 매 도구 호출마다 파싱된 `UnitModel` 전체(`units.clone()`, L723)를 복제한다. `analyze_frame`/`get_qp_map`/`get_motion_vectors`는 프레임 하나만 필요한데도 매번 전체 벡터를 clone하며, 캐시 레이어가 어디에도 없다. 원문의 "전체 재계산"과는 결이 다르지만(재분석이 아니라 전체 복제) 캐시 부재로 인한 반복 비용이라는 동일한 문제.
 
 ---
 
@@ -479,7 +479,7 @@ async fn tool_get_stream_info(ctx: &AnalyzerContext, stream_id: StreamId) -> Mcp
 **예외**:
 - 완전히 로컬에서만 동작하는 온디바이스 모델(네트워크 전송이 전혀 없는 구성)이라면 위험도가 낮아지지만, 로그 파일에 남는 문제는 여전히 남는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 캐노니컬 절대 경로가 allowlist 없이 그대로 반환된다: `analyze_frame`(main.rs:746 `"file": path.to_string_lossy()`), `get_stream_info`(L1052), `get_gop_structure`(L964), `find_decoding_issues`(L1026), `compare_streams`(L852, 884, 891), `list_files`(L1172). 파일명만 노출하는 allowlist 처리가 전혀 없어 카탈로그의 나쁜 예("절대 경로 그대로 노출")와 정확히 일치.
 
 ---
 
@@ -540,7 +540,7 @@ async fn tool_get_sei_messages(ctx: &AnalyzerContext, stream_id: StreamId) -> Mc
 **예외**:
 - 표준화된 SEI(예: HDR10+ 동적 메타데이터처럼 스키마가 고정된 필드)는 자유 텍스트가 아니므로 이 항목의 대상이 아니다 — `user_data_unregistered`류의 임의 바이트 필드에 한정된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — SEI/`user_data_unregistered`/컨테이너 메타데이터 추출 기능 자체가 없다(`sei`/`user_data_unregistered` grep 결과 없음). `bitvue-mcp`는 IVF/OBU 프레임 헤더에서 타입·크기·QP만 파싱하며 자유 텍스트 필드를 다루지 않는다.
 
 ---
 
@@ -601,7 +601,7 @@ async fn tool_explain_parse_error(ctx: &AnalyzerContext, stream_id: StreamId, er
 **예외**:
 - 에러가 사용자 의도(예: 의도적으로 잘라낸 스트림)로 알려진 경우, AI가 "왜 이 에러가 났는지" 원인을 설명하는 것은 유효하다 — 다만 이때도 에러 사실 자체를 지우면 안 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 파서 에러를 LLM에 넘겨 "정상 구조로 보정 설명"시키는 코드 자체가 없다. `bitvue-mcp`/`bitvue-core`에 LLM 클라이언트 호출이 전무하므로 이 패턴이 성립할 여지가 없다.
 
 ---
 
@@ -652,7 +652,7 @@ struct AiProvenance {
 **예외**:
 - 프로토타입/실험 단계의 내부 전용 도구로, 정식 릴리스 전이라 추적성 요구사항이 아직 없는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — AI가 생성하는 결과 자체가 없으므로 model_id/prompt_version provenance가 필요한 대상이 존재하지 않는다.
 
 ---
 
@@ -706,7 +706,7 @@ struct AiInterpretation { perceived_quality: String, provenance: AiProvenance, c
 **예외**:
 - AI 해석이 deterministic 값에 대한 순수 텍스트 포맷팅(예: "QP 32는 상대적으로 높은 편입니다"처럼 값 자체의 재진술)에 불과하고 원본 값이 그대로 노출되어 있다면 위험도가 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-mcp`의 모든 도구 응답 필드는 파서/스토어에서 온 deterministic 값뿐이다(예: `find_decoding_issues`의 `"note"` 문자열도 정적 상수이지 AI 생성이 아님). AI 해석 필드가 섞여 있는 응답 자체가 없다.
 
 ---
 
@@ -762,7 +762,7 @@ fn apply_approved_fix(ctx: &mut AnalyzerContext, proposal_id: FixProposalId) -> 
 **예외**:
 - 되돌리기 쉬운 작업(예: 임시 미리보기 파일 생성처럼 원본을 건드리지 않는 부작용)은 자동 실행이 허용될 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `get_tools()`(main.rs:130-308)의 10개 도구는 전부 읽기 전용 질의이며, `load_file`조차 파일을 메모리로 읽어들일 뿐 디스크에 쓰거나 덮어쓰지 않는다(`overwrite`/`apply_fix`/`std::fs::write` grep 결과 없음). mutating 도구가 존재하지 않으므로 자동 실행 승인 문제 자체가 발생하지 않는다.
 
 ---
 
@@ -816,7 +816,7 @@ async fn tool_list_frames(
 **예외**:
 - 결과 개수가 구조적으로 작다고 보장되는 도구(예: "코덱 프로파일 목록"처럼 열거형 개수가 고정)는 페이지네이션이 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `get_gop_structure`(main.rs:934-976)는 `max_frames`(기본 100)만 받고 `offset`이 없으며, `search_syntax`(main.rs:1067-1132)도 `limit`(기본 50)만 받고 `offset`이 없다. 두 곳 모두 `MAX_PAGE_SIZE` 같은 서버 측 상한 clamp가 없어 클라이언트가 임의로 큰 `max_frames`/`limit`을 요청할 수 있다(단, `parse_ivf_file`이 프레임 10,000개에서 강제 중단하므로(main.rs:590-592) 최악의 경우도 그 한도 내로 제한되긴 한다).
 
 ---
 
@@ -875,7 +875,7 @@ impl AiResultCache {
 **예외**:
 - 캐시 TTL이 매우 짧아(예: 세션 내에서만 유효, 수 분 이하) 버전 드리프트가 사실상 발생할 수 없는 구조라면 상대적으로 위험이 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — AI 결과 캐시 자체가 존재하지 않는다(MCP-008 참조: 캐시 레이어가 아예 없음). 캐시가 없으니 캐시 키에 버전이 빠지는 문제도 성립하지 않는다 — 참고로 `crates/bitvue-core/src/cache_provenance.rs`의 `CacheProvenanceTracker`는 deterministic 캐시(디코더/렌더러 출력)용이며 AI 관련 캐시가 아니다.
 
 ---
 
@@ -925,7 +925,7 @@ async fn tool_get_frame_report(ctx: &AnalyzerContext, stream_id: StreamId, frame
 **예외**:
 - 도구 자체가 "AI 전용" 기능(예: 자연어 요약만이 목적인 도구)이라면 AI 실패 시 도구 실패를 반환하는 것이 맞다 — 이 항목은 deterministic 결과와 AI 결과가 섞인 복합 도구에 해당한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 어떤 도구 핸들러도 AI 호출을 포함하지 않으므로(전체가 deterministic) `?`로 AI 에러를 전파해 core workflow를 중단시키는 경로 자체가 없다.
 
 ---
 
@@ -986,7 +986,7 @@ function CodecProfileBadge({ profile, aiExplanation }: { profile: HevcProfile; a
 **예외**:
 - 뱃지 옆에 붙는 순수 설명 텍스트(예: "Main10은 10비트 색심도를 지원합니다")처럼 열거값 자체가 아니라 그에 대한 부연 설명이라면 AI가 생성해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코덱/프레임타입 필드는 전부 `bitvue-av1-codec::parse_frame_header_basic`이 결정론적으로 계산한 값이며(main.rs:544-562), 이를 LLM에 위임하는 경로가 없다. 프론트엔드에도 AI 코덱 뱃지 컴포넌트가 없다.
 
 ---
 
@@ -1041,7 +1041,7 @@ async fn tool_compare_to_reference(
 **예외**:
 - 도구가 처음부터 "일반적인 업계 기준값과의 정성적 추정"임을 이름과 문서에 명시하고, 정량적 비교 도구와 구분되어 있다면 예외로 허용 가능하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `compare_streams`(main.rs:830-932)는 실제로 로드된 Stream A/B 두 데이터를 모두 사용해 size/QP 차이를 deterministic하게 계산한다. VMAF는 아니지만 "레퍼런스 없이 AI가 추측"하는 패턴은 아니며, Stream B 미로드 시에도 명시적으로 "Stream B not loaded" 메시지를 반환하지 가짜 비교값을 지어내지 않는다.
 
 ---
 
@@ -1098,4 +1098,4 @@ fn test_frame_report_ai_field_shape_only() {
 **예외**:
 - 모델 호출을 목(mock)으로 완전히 대체해 결정론적으로 고정된 응답을 반환하는 단위 테스트(도구 로직 자체를 검증하려는 목적)라면, 그 목 응답과의 golden 비교는 문제없다 — 실제 모델 출력이 아니기 때문이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-core/src/mcp_test.rs`/`src/tests/mcp.rs`는 `McpIntegration`의 deterministic 리소스 변환 로직(selection_state/diagnostics 등)만 검증한다. AI가 생성한 텍스트를 golden fixture로 비교하는 테스트는 없다(golden/fixture grep 결과 `mcp_test.rs`의 "// Fixtures" 주석 하나뿐이며 AI와 무관).

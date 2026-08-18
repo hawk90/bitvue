@@ -77,7 +77,7 @@ fn serialize_path_lossless(p: &Path) -> String {
 **예외**:
 - 배포 대상이 UTF-8 로케일을 강제하는 사내 리눅스 워크스테이션 전용이고, 파일명 생성 규칙 자체가 앱에 의해 통제된다면 우선순위를 낮출 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `src-tauri/src/commands/recent_files.rs:46` persists `RecentFileEntry { path: String, .. }` via tauri-plugin-store (String, not PathBuf/OsString); however other `to_str()` conversions (`file.rs`, `decode_service.rs:251`, `analysis/views.rs:49`) correctly use `.ok_or()` instead of `unwrap()`.
 
 ---
 
@@ -143,7 +143,7 @@ fn same_file(a: &Path, b: &Path) -> std::io::Result<bool> {
 **예외**:
 - 앱이 파일명 생성 자체를 완전히 통제하고 항상 소문자 규칙을 강제하는 내부 저장소(예: 자동 생성된 캐시 파일명)라면 해당 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (partial) — extension matching is done correctly (`file.rs:564` uses `to_lowercase()`), but `recent_files.rs:112` dedups recent files via case-sensitive string compare (`e.path != sanitized_path`), not same-file/case-insensitive identity.
 
 ---
 
@@ -219,7 +219,7 @@ fn scan_dir(dir: &Path, visited: &mut HashSet<(u64, u64)>, out: &mut Vec<std::pa
 **예외**:
 - 심볼릭 링크를 아예 지원하지 않는다고 명시하고, 발견 시 단순 거부만 하는 앱이라면 별도의 순환 감지 로직 없이 `symlink_metadata()`로 스킵하는 것만으로 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no recursive directory-tree scanning exists anywhere in `src-tauri` (`read_dir`/`WalkDir` grep is empty); the app only opens single files via `canonicalize()` (`file.rs:41`), which safely resolves one symlink hop with no cycle risk and no `.lnk`/alias handling need.
 
 ---
 
@@ -283,7 +283,7 @@ async fn open_bitstream(path: String) -> Result<FileInfo, String> {
 **예외**:
 - 로컬 SSD 전용 워크스테이션 배포가 확정되어 있고 네트워크 드라이브 접근을 제품 정책상 지원하지 않는다면 우선순위를 낮출 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — no `spawn_blocking` or `tokio::time::timeout` usage anywhere in `src-tauri/src`; `open_file`/`validate_and_open_file` (`file.rs:143,75`) and `get_file_data_arc` (`decode_service.rs:247`) run synchronous `std::fs` I/O directly inside `async fn` command handlers with no timeout or cancellation.
 
 ---
 
@@ -343,7 +343,7 @@ fn write_with_retry(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> 
 **예외**:
 - 읽기 전용으로만 접근하고 쓰기/삭제/이름변경을 절대 수행하지 않는 기능에는 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — no atomic tmp+rename+retry write pattern exists anywhere (`export.rs:123,235,269` call `File::create` directly on the final path with no retry on transient lock errors); however no code path was found that writes back to the same file that still has an open read handle, so the specific "overwrite original while open" scenario is plausible but unconfirmed.
 
 ---
 
@@ -407,7 +407,7 @@ fn resolve_and_access(bookmark: &[u8]) -> Result<std::path::PathBuf, String> {
 **예외**:
 - sandbox가 적용되지 않는 direct-distribution(비 App Store) notarized 빌드만 지원한다면 해당 없음(다만 향후 App Store 배포를 고려한다면 미리 대비할 가치가 있다).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — app is not sandboxed/App Store-distributed (no entitlements or sandbox config in `tauri.conf.json`); `recent_files.rs`'s plain path-string storage would need bookmarks only if App Store distribution is added later.
 
 ---
 
@@ -474,7 +474,7 @@ fn display_path(path: &std::path::Path) -> String {
 **예외**:
 - 항상 짧은 경로만 다루는 것이 조직 표준으로 강제된 사내 환경이라면 우선순위를 낮출 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — no hardcoded `MAX_PATH`/260 check exists in app code (`recent_files.rs:13`'s 4096 constant is unrelated DoS protection), but `tauri.conf.json`'s `bundle.windows` config is empty — no `longPathAware` manifest is declared, so deep Windows paths could still hit the OS-level 260 limit unmitigated.
 
 ---
 
@@ -551,7 +551,7 @@ fn load_decoder(lib_name: &str) -> Result<libloading::Library, String> {
 **예외**:
 - 모든 native 의존성을 정적 링크해 외부 라이브러리 검색 자체가 필요 없는 빌드라면 해당 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no `libloading`/`dlopen`/`LoadLibrary` runtime dynamic loading with hardcoded paths found; native codec deps (`dav1d`, `ffmpeg-next`, `libvmaf-rs`) are linked as Rust crates at build time, not loaded via runtime path strings.
 
 ---
 
@@ -618,7 +618,7 @@ fn monitor_scale(window: &NSWindow) -> f64 {
 **예외**:
 - 배율 1.0(100%) 디스플레이만 공식 지원 대상으로 명시한 초기 프로토타입 단계라면 우선순위를 낮출 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — no DPI-awareness manifest declaration found in `tauri.conf.json`/`src-tauri`; `HRDBufferPanel.tsx:102` reads `devicePixelRatio` for canvas scaling but the main render path (`VideoCanvas.tsx`, `OverlayRenderer/webgl/mv-webgl.ts`) never references it, suggesting inconsistent HiDPI handling — plausible but no direct click-misalignment repro found.
 
 ---
 
@@ -689,7 +689,7 @@ unsafe fn read_u32_unaligned(ptr: *const u8) -> u32 {
 **예외**:
 - 파싱 코드가 처음부터 바이트 단위 파서(nom, bytes crate)만 사용하고 raw 포인터 캐스팅이 코드베이스에 전혀 없다면 해당 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — bitstream parsers (`bitvue-avc`/`bitvue-hevc`/`bitvue-av1-codec` `nal.rs`/`slice.rs`) use bit-level readers, not raw struct-pointer casts; all SIMD code (`bitvue-metrics/src/simd.rs`, `bitvue-decode/src/strategy/avx2.rs`) correctly uses unaligned `loadu`/`storeu` intrinsics, never the aligned variants.
 
 ---
 
@@ -762,7 +762,7 @@ fn sum_abs_diff(a: &[u8], b: &[u8]) -> u32 {
 **예외**:
 - 앱 설치/실행 시점에 최소 CPU 요구사항(AVX2 필수)을 명시적으로 검증하고 미달 시 설치를 막는 정책이라면 hot loop 내 런타임 분기는 생략할 수 있으나, 이 경우도 설치 단계의 검증 자체는 반드시 필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bitvue-metrics/src/simd.rs:46-60` already implements the recommended pattern: runtime `is_x86_feature_detected!`/`is_aarch64_feature_detected!` checks with AVX2→SSE2 and NEON→scalar fallback chains, plus a dedicated `bitvue-decode/src/strategy/neon.rs`.
 
 ---
 
@@ -817,7 +817,7 @@ lipo -info target/aarch64-apple-darwin/release/deps/libavcodec.dylib
 **예외**:
 - 특정 서드파티 코덱 라이브러리가 x86 전용이라 당분간 Rosetta 경유가 의도된 임시 조치라면, 그 사실과 예상 성능 영향을 문서화한 뒤 허용할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — CI (`.github/workflows/build-tauri-app.yml:41`) builds the macOS release exclusively for `aarch64-apple-darwin` (native Apple Silicon), not an x86_64-only build that would force Rosetta.
 
 ---
 
@@ -877,7 +877,7 @@ fn save_window_position(x: i32, y: i32) {
 **예외**:
 - 배포 대상이 X11 전용으로 고정된 사내 Linux 워크스테이션이고 Wayland 지원 계획이 없다면 우선순위를 낮출 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no window-position persistence, global-shortcut plugin, or screen-capture feature exists (`src-tauri/Cargo.toml` has no such plugin); nothing yet exhibits Wayland/X11 divergence.
 
 ---
 
@@ -931,7 +931,7 @@ fn normalize_unicode(path: &std::path::Path) -> std::path::PathBuf {
 **예외**:
 - 앱이 드래그앤드롭을 지원하지 않고 항상 native 파일 다이얼로그로만 경로를 얻는다면 해당 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no drag-and-drop file handling is implemented anywhere in frontend or `src-tauri` (no `onDrop`/`file-drop` listeners found); feature doesn't exist yet.
 
 ---
 
@@ -990,7 +990,7 @@ fn render_frame_to_screen(rgb: &[u8], tag: ColorTag, width: u32, height: u32) {
 **예외**:
 - 픽셀 값의 수치 비교(히스토그램, PSNR/SSIM 등)만 수행하고 화면 표시 자체는 참고용이라고 명시된 기능은 디스플레이 색 관리와 무관하므로 예외로 둘 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `bitvue-decode/src/yuv.rs:409` hardcodes fixed BT.601 conversion coefficients regardless of the stream's actual VUI `color_primaries`/`transfer_characteristics` (which `metadata.rs` does parse and expose), and no OS ColorSync/WCS integration exists anywhere; HDR/BT.2020 content is never tone-mapped for SDR display.
 
 ---
 
@@ -1048,7 +1048,7 @@ fn scratch_dir_for_session() -> std::path::PathBuf {
 **예외**:
 - 앱 세션 내에서만 사용하고 앱 종료 시 명시적으로 정리하는 순수 스크래치 파일에는 `temp_dir()`이 올바른 선택이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no decoded-frame disk cache is written to `std::env::temp_dir()` and persisted for reuse across restarts; the only `tempfile::TempDir` usage found is in test fixtures (auto-cleaned on drop).
 
 ---
 
@@ -1106,7 +1106,7 @@ fn display_path(path: &Path) -> String {
 **예외**:
 - 완전한 파일시스템 경로가 아니라 순수 표시용 짧은 레이블 문자열(경로가 아닌 단순 이름)을 다루는 경우는 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — zero `.replace(` calls on path strings anywhere in `src-tauri/src`; no separator-swap logic exists.
 
 ---
 
@@ -1170,7 +1170,7 @@ async fn on_update_available(app: &AppHandle, has_unsaved: bool) {
 **예외**:
 - 프로젝트가 매 변경마다 즉시 원자적으로 자동 저장되어 "미저장 상태"가 설계상 존재하지 않고, 업데이트 재시작도 항상 확인 절차를 거친다면 위험이 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no auto-updater plugin is configured (`src-tauri/Cargo.toml` has no `tauri-plugin-updater`) and no persistent project-file save/load feature exists yet to corrupt.
 
 ---
 
@@ -1225,7 +1225,7 @@ fn crash_report_hint() -> String {
 **예외**:
 - 크래시 리포팅을 자동화하지 않고 사용자에게 재현 스텝만 받는 지원 정책이라면 덤프 위치 문제의 우선순위는 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — no crash-reporting/dump handling code (breakpad/sentry-native or similar) exists in the codebase; feature not yet built.
 
 ---
 
@@ -1281,5 +1281,5 @@ fn add_to_recent(dialog_result_path: &std::path::Path, recent: &mut Vec<RecentEn
 **예외**:
 - 다이얼로그 결과를 그 세션 내에서 1회성으로만 사용하고 저장·비교하지 않는다면 canonicalization 부담 없이 그대로 사용해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `recent_files.rs:112` uses the raw dialog-returned path string as the dedup key (`e.path != sanitized_path`) with no `canonicalize()`/same-file check, matching the anti-pattern exactly; contrast with `file.rs:41,79` which does canonicalize, but only for security validation, not identity/dedup.
 </content>

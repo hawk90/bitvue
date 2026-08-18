@@ -2,6 +2,8 @@
 
 이 문서는 Bitvue 안티패턴 카탈로그의 한 갈래이며, 전체 카탈로그의 색인은 별도로 작성 중인 `docs/anti-patterns/INDEX.md`를 참고한다. UI/UX+Tauri Phase 3 물결(wave)에 속하며, 같은 물결의 `TAURI_EVT.md`(이벤트/구독 설계), `TAURI_WEB.md`(webview/window 경계)와 형제 문서다. Phase 1의 `IPC.md`가 커맨드 하나의 **페이로드 크기·직렬화 형식**을 다뤘다면, 이 문서는 그보다 한 단계 위 — **커맨드를 몇 개로 얼마나 잘게 나누고, 누가 그 호출 순서를 조립하며, 실패와 지연을 어떻게 다룰지**, 즉 command granularity와 orchestration을 다룬다. 개별 커맨드의 응답 바이트 형식은 이 문서의 관심사가 아니다.
 
+> **2단계 감사 기준 경로 (2026-08-18 갱신)**: `src-tauri/`(구 `#[tauri::command]` 백엔드)는 커밋 `e7194cc`(2026-08-08, "retire src-tauri")로 저장소에서 완전히 삭제되었고 현재 `main` 트리에는 존재하지 않는다(HEAD 기준 160커밋 이후). 이 파일의 판정은 이전에 한 차례 `src-tauri/src/commands/*.rs` 경로를 인용해 채워져 있었으나, 그 경로들은 삭제된 지 오래된 코드(3월 워크트리 스냅샷 추정)를 가리키고 있어 무효였다 — 이번 판정은 현재 실제 IPC 계층인 `crates/bitvue-sidecar`(stdin/stdout `correlation_id` 기반 프로토콜, `bitvue-protocol` 사용)와 `frontend/services/electronBridgeService.ts` + `bitvue-desktop/electron/`을 기준으로 다시 작성했다. "Tauri command" 자체는 더 이상 존재하지 않지만, 이 카탈로그가 다루는 command granularity/orchestration 관심사는 새 아키텍처에도 그대로 적용되므로 항목 자체는 유지한다.
+
 ---
 
 ### TAURI-CMD-001: UI 동작 하나당 세세한 command 여러 개 호출
@@ -51,7 +53,7 @@ const filterState = await invoke<FilterState>("toggle_frame_type_filter", { fram
 **예외**:
 - 각 단계가 독립적으로 취소 가능해야 하거나(예: 사용자가 중간에 다른 동작으로 전환), 단계별로 진행률 UI를 보여줘야 하는 경우에는 의도적인 분리가 정당하다. 이때는 TAURI-CMD-007의 트랜잭션/롤백 설계와 함께 고려해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `frontend/services/electronBridgeService.ts`와 그 소비처(hooks/contexts)를 확인, 하나의 세분화된 UI 토글/클릭 핸들러 안에서 브리지 호출이 `set_x`/`recompute_x`/`update_x_badge`류로 순차 2회 이상 쪼개지는 패턴은 발견되지 않음. `open_stream → select_frame → refresh_frames` 다단계 호출은 존재하지만 이는 "파일 열기"라는 별개의 다단계 의도 오케스트레이션이라 TAURI-CMD-006으로 분류(그쪽은 Confirmed).
 
 ---
 
@@ -114,7 +116,7 @@ const svg = renderMvOverlaySvg(mvs, { zoom, theme }); // presentation은 프런�
 **예외**:
 - 서버사이드 렌더링이 필수인 export 기능(예: "PNG로 내보내기" 커맨드가 실제로 이미지 바이트를 생성해야 하는 경우)은 backend가 최종 픽셀을 만드는 것이 목적 자체이므로 이 패턴에 해당하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 구 Tauri 시절 `thumbnail_service.rs`의 `create_svg_thumbnail`(frame_type→색상 매핑 + SVG 마크업을 backend가 생성)은 `src-tauri` 자체와 함께 삭제됨. 현재 `get_thumbnails`(`crates/bitvue-sidecar/src/decode_bridge.rs:144`, `thumbnail_to_png_data_url`:219)는 실제 디코드된 픽셀을 PNG로 인코딩해 반환할 뿐 색상 임계값·마크업 같은 표시 로직을 갖지 않으며, 이는 카탈로그가 명시한 예외("최종 픽셀을 만드는 것이 목적인 export/썸네일")에 해당. 오버레이 렌더링(MV/QP 등, `frontend/components/panels/OverlayRenderer/`)도 여전히 도메인 데이터만 반환받아 프런트에서 색상·zoom을 계산.
 
 ---
 
@@ -159,7 +161,7 @@ fn get_motion_vectors(state: tauri::State<AppState>, frame_index: u32) -> Vec<Mo
 **예외**:
 - 특정 화면 전용으로 설계 의도가 명확하고 재사용 가능성이 실질적으로 없는 export/디버그 커맨드(예: `dump_debug_overlay_state_for_screenshot_test`)는 이름에 용도를 명시하는 편이 오히려 명확할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `crates/bitvue-sidecar/src/main.rs`의 dispatch 테이블(약 30개 커맨드: `open_stream`/`select_frame`/`get_frame_analysis`/`get_thumbnails`/`get_av1_features`/`get_codec_extended_info` 등)을 전수 grep, `panel`/`sidebar`/`modal`/`tab`/`view` 등 레이아웃 어휘를 포함한 커맨드명 없음. 모두 도메인 명사 기반 네이밍.
 
 ---
 
@@ -222,7 +224,7 @@ fn get_frame_thumbnail(state: tauri::State<AppState>, frame_index: u32) -> Optio
 
 **중복 참고**: `IPC.md` IPC-015와 거의 동일한 관심사 — 감사 시 하나로 취급 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 구 Tauri `AppState.core: Arc<Mutex<Core>>` 단일락 패턴(export CSV/JSON이 lock을 잡은 채 동기 파일 I/O를 수행하던 구조)은 `src-tauri` 삭제와 함께 사라짐. 현재 `Core`(`crates/bitvue-engine/src/core.rs:43-55`)는 `stream_a`/`stream_b`/`selection`/`job_manager`를 각각 독립된 `Arc<RwLock<...>>`로 분리해 카탈로그의 "권장" 예시와 사실상 동형이고, sidecar 자체(`crates/bitvue-sidecar/src/main.rs` 모듈 문서 30-49행)도 요청당 `std::thread` 스폰 + 계산은 완전 무잠금 병렬 + 최종 응답 쓰기만 짧게 `Mutex<Stdout>`을 잡는 설계로, 무거운 연산이 다른 가벼운 조회를 블로킹하는 구조가 아님.
 
 ---
 
@@ -281,7 +283,7 @@ const filterState = await invoke<FilterState>("get_filter_state");
 
 **중복 참고**: `IPC.md` IPC-005와 거의 동일한 관심사 — 감사 시 하나로 취급 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — sidecar 커맨드 목록(`crates/bitvue-sidecar/src/main.rs`)에 `get_app_snapshot` 류의 전체-상태 커맨드 없음. 전부 좁은 query(`get_stream_info`, `get_frames_chunk`, `get_frame_analysis`, `get_timeline` 등)로 특정 스트림·프레임 범위에 한정된 응답을 반환.
 
 ---
 
@@ -333,7 +335,7 @@ async fn open_project(state: tauri::State<'_, AppState>, path: String, options: 
 - 반대쪽 극단도 안티패턴이다: 하나의 커맨드가 "파일 열기 + 전체 트랙 파싱 + 인덱스 구축 + 초기 분석"까지 모두 끝날 때까지 blocking하도록 만들면, 대용량 파일에서 UI가 그 전체 시간 동안 완전히 응답 불가 상태가 된다. 올바른 절충은 `open_project`가 즉시 세션 핸들(또는 진행 상태를 추적할 수 있는 ID)을 반환하고, 이후 진행 상황은 TAURI_EVT.md가 다루는 이벤트로 스트리밍하거나 `get_open_progress(session_id)` 같은 좁은 query로 폴링하는 구조다. 즉, 순서 조립은 backend가 갖되, 그 실행은 프런트를 막지 않아야 한다.
 - 각 단계가 사용자에게 독립적으로 유의미하고(예: "트랙만 먼저 보고 인덱싱은 나중에") 취소·재시도가 단계별로 필요한 디버깅/개발자 도구 성격의 화면이라면, 단계별 커맨드 노출이 오히려 의도적으로 맞는 설계일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 구 Tauri `open_file` 단일 커맨드(검증→파싱→썸네일 캐시까지 backend가 원자적으로 처리)는 `src-tauri` 삭제로 사라졌고, 그 자리를 대체한 `frontend/hooks/useAppFileOperations.ts:108-166`의 `openFileAtPath`가 "파일 열기"라는 하나의 사용자 의도를 `openStream("A", path)` → `selectFrame("A", 0)` → `refreshFrames()`(내부적으로 `indexStream`/`getStreamInfo` 등 추가 호출 포함) 3단계로 프런트 코드 안에서 직접 순서대로 조립한다. 각 단계가 독립 `try/catch`로 감싸여 있어("Non-blocking" 주석, 141-166행) 완전한 무방비 부분 실패는 아니지만, 순서 자체(연 뒤 선택 뒤 새로고침)가 backend 단일 커맨드가 아니라 프런트 코드(및 주석 "openStream -> selectFrame -> refreshFrames chain")에만 명시적으로 존재해 카탈로그가 지적하는 구조 그대로.
 
 ---
 
@@ -387,7 +389,7 @@ fn apply_overlay_preset(state: tauri::State<AppState>, preset: OverlayPreset) ->
 **예외**:
 - 각 하위 설정이 서로 완전히 독립적이고 사용자가 그중 일부만 적용되어도 명확히 인지·수용 가능한 UI(예: 개별 체크박스에 개별 저장 버튼이 있는 설정 화면)라면 부분 적용이 오히려 자연스러운 설계다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — "overlay preset 일괄 적용" 같은 기능 자체가 여전히 없음(`grep -rl preset frontend` 0건). 존재하는 개별 setter 커맨드들(`set_debug_yuv_offset`/`set_debug_yuv_crop` 등)은 각각 독립된 사용자 행위 하나에 대응해 호출됨. TAURI-CMD-006에서 지적한 `openStream → selectFrame → refreshFrames` 체인은 이 항목과 인접하지만, 각 단계가 명시적으로 독립 `try/catch`로 개별 실패를 용인하도록 설계되어 있어("Non-blocking" 주석) 이 항목이 지적하는 "부분 적용이 사용자에게 안 보이게 조용히 남는" 문제와는 다름 — 006 참고.
 
 ---
 
@@ -437,7 +439,7 @@ async function onFrameScrub(frameIndex: number) {
 
 **중복 참고**: `IPC.md` IPC-017과 거의 동일한 관심사 — 감사 시 하나로 취급 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(구조적으로 해소) — 구 Tauri `invoke()` 시절 request-id 부재 문제와 달리, 현재 sidecar 프로토콜(`bitvue-protocol::Request`/`Response`, `crates/bitvue-sidecar/src/main.rs`)은 모든 요청/응답에 `correlation_id`를 1급으로 부여하며 `cancel_request` 커맨드도 동일 id로 진행 중인 요청을 지목해 취소 플래그를 세팅하는 구조(모듈 문서 30-49행)라, 카탈로그가 권장하는 "request ID로 stale 응답 판별" 장치가 프로토콜 레벨에 이미 내장돼 있음. 다만 `frontend/services/electronBridgeService.ts`가 응답 도착 시 실제로 "이것이 아직 최신 요청인가"를 correlation_id로 재검증해 stale 응답을 스스로 버리는지까지는 코드 전수로 확인하지 못함 — 프레임 스크럽 경로(`frontend/components/panels/YuvViewerPanel/index.tsx`)는 `useEffect` cleanup의 `cancelled` 플래그로 별도 방어하고 있는 것은 확인(관행적 회피). 프로토콜 자체는 N/A, 프런트 소비 측 완전성은 Suspected로 남겨둠.
 
 ---
 
@@ -511,7 +513,7 @@ try {
 
 **관련**: `IPC.md` IPC-018 참고 — IPC-018은 도메인 오류 종류(파일 없음/파싱 실패 등)를 구조화하는 문제를 다루고, 이 항목은 그와 달리 "실패 원인이 직렬화 단계였다"는 사실 자체가 프런트에서 식별 가능한가를 다뤄 관심사가 다르다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(이미 방어됨) — `bitvue_metrics::psnr_yuv`는 여전히 "동일 이미지면 `f64::INFINITY` 반환"이 명시된 계약(`crates/bitvue-metrics/src/lib.rs:77`)이지만, 현재 유일한 소비처인 sidecar의 `get_yuv_diff_metrics`(`crates/bitvue-sidecar/src/debug_yuv.rs:540-559`)는 반환 직후 `clamp_psnr`(544-556행)로 non-finite 값을 100dB 센티널로 명시적으로 치환하고, 주석이 정확히 "serde_json silently turns it into null"이라는 이 카탈로그 항목과 동일한 실패 모드를 인용하며 그 이유를 설명한다 — 즉 문서가 우려하는 조용한 데이터 손상이 이미 실측·문서화되어 고쳐진 사례. `serde_json` 1.0.149가 non-finite f64를 에러 없이 `null`로 치환하는 동작 자체는 여전히 유효하므로, 향후 새 f64/f32 필드를 sidecar 응답에 추가할 때는 같은 방어(finite 체크/센티널/문자열화)를 반복해야 한다는 점은 유효한 재발 위험으로 남음.
 
 ---
 
@@ -570,7 +572,7 @@ async function timedInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 **예외**:
 - 호출 빈도가 극히 낮고(예: 앱 시작 시 한 번뿐인 초기화 커맨드) 이미 명백히 빠른 커맨드까지 일괄 계측하는 것은 코드 잡음 대비 이득이 적을 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-sidecar/src/*.rs` 전체에 타이머/계측 코드(`Instant::now`, `elapsed()`, `metrics::` 등) 0건, `frontend/services/electronBridgeService.ts`(구 `invoke` 계층의 명시된 대체품)에도 왕복 지연시간을 기록하는 코드 없음. 구 Tauri 시절 만들어졌던 `TauriCommandService`(`frontend/services/tauriCommandService.ts` — `trackLatency`/`getLatencyStats`)는 여전히 파일로 존재하지만 실제 브리지 호출부 어디서도 쓰이지 않는 죽은 코드로 남아있음(`grep -rl invokeCommand`가 자기 테스트 파일 하나뿐, electronBridgeService.ts가 이를 대체·계승하지 않음). sidecar가 요청당 스레드로 계산하는 구조(TAURI-CMD-004 참고)라 커맨드별 P95를 재구성할 데이터가 backend/frontend 양쪽 모두에 없다는 문서의 문제가 아키텍처 교체 후에도 그대로 재현됨.
 
 ---
 

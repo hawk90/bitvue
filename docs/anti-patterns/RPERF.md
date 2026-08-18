@@ -73,7 +73,7 @@ fn decode_frame<P: MotionVectorPredictorImpl>(p: &P, mbs: &[MbContext]) -> Vec<M
 - 프레임/패킷/파일 단위처럼 호출 빈도가 초당 수십~수백 회 이하인 경계에서는 dyn 디스패치 비용이 무시할 수준이며, 코드 단순성·바이너리 크기 이득이 더 크다.
 - 코덱 종류가 런타임 플러그인으로 무한히 확장 가능해야 하는 설계 요구가 있는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 발견된 모든 `Box<dyn`/`Arc<dyn` 사용(`parser_strategy.rs:804`, `overlay_factory.rs:275-287`, `index_extractor.rs:662`, `command_chain.rs`)은 파일/세션/팩토리 경계에서 1회성으로만 호출됨; 실제 per-block 처리부(`bitvue-av1-codec/src/tile/mv_prediction.rs`, `coding_unit.rs`)에는 dyn/trait object 자체가 없음(grep 0건).
 
 ---
 
@@ -121,7 +121,7 @@ fn collect_ref_frame_ids(gop: &[FrameHeader]) -> Vec<u32> {
 **예외**:
 - GOP/프레임 헤더 목록처럼 호출 빈도가 낮고(파일 열기 시 1회 등) 데이터 크기도 작은 경로에서는 가독성이 우선이며 최적화가 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — evidence 기록 코드에서 `.map(|x| x.field.clone())` 형태 체인 다수 확인(`core.rs:111`, `reference_graph_evidence.rs:180,196`, `index_session_evidence.rs:137,218`, `player_evidence.rs:330`); 다만 to_string()→parse() 왕복이나 다단 collect는 grep 0건이라 원문 예시만큼 심각하진 않고 호출 빈도(hot path 여부)도 미확인.
 
 ---
 
@@ -169,7 +169,7 @@ fn compute_frame_stats(nals: &[NalUnit]) -> FrameStats {
 **예외**:
 - 정렬, 중복 제거, 인덱스 접근 등 컬렉션 형태 자체가 필요한 연산이 섞여 있다면 `collect()` 후 재순회가 불가피하며 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-core/src/block_metrics.rs:247-260` `BlockMetricsStatistics::from_grid`가 동일한 `values: Vec<f32>`(프레임당 블록 그리드)를 min/max/sum/variance(map+sum 재순회)/threshold-filter까지 5회 별도 순회. 단일 fold로 대체 가능한 정확히 이 패턴.
 
 ---
 
@@ -228,7 +228,7 @@ fn apply_lut_u8(samples: &mut [u8], lut: &[u8]) {
 **예외**:
 - 호출 지점이 매우 많고 타입 종류도 많아 코드 중복이 오히려 유지보수 부담이 되는 경우, 또는 hot loop이 아닌 초기화/설정 코드에서는 제네릭의 유지보수 이점이 코드 크기 비용을 상회한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코덱 크레이트(`bitvue-hevc`/`bitvue-avc`/`bitvue-av1-codec`) 내에 픽셀/샘플 처리용 제네릭 유틸 함수(`fn ... <T: ... Copy>` 류) grep 0건. 저수준 샘플 처리는 구체 타입으로 작성되어 있어 이 패턴이 발생할 표면 자체가 아직 없음.
 
 ---
 
@@ -297,7 +297,7 @@ fn get_mb_overlay(frame_idx: usize) -> Vec<MbOverlayRow> {
 **예외**:
 - 설정, 프로젝트 파일, 세션 메타데이터처럼 저빈도·소용량 데이터는 편의상 derive를 붙이는 것이 합리적이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (변형) — 원문의 "MacroblockInfo 대량 직렬화"는 grep상 없지만, 같은 근본 문제(대용량 바이너리를 JSON 경계로 강제 통과)는 존재: `src-tauri/src/commands/frame.rs:16-47`의 `DecodedFrameData`/`YUVFrameData`가 풀해상도 프레임/YUV 플레인 전체를 base64 `String` 필드로 감싸 `#[derive(Serialize)]`된 채 IPC로 전송(base64 오버헤드 + JSON 문자열 이스케이핑 비용 추가).
 
 ---
 
@@ -359,7 +359,7 @@ struct RefPicCacheDense {
 **예외**:
 - 조회 빈도가 낮은 설정 맵, 사용자 입력 기반 키(외부 공격자가 키를 조작해 해시 충돌을 유발할 수 있는 경로)에는 기본 SipHash 유지가 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 코드베이스 전체에 `FxHashMap`/`ahash`/`rustc_hash` 의존성/사용 grep 0건. 재생/탐색 중 조회되는 내부 프레임 인덱스 맵(`player/frame_mapper.rs:76,79 display_to_decode/decode_to_display`, `player/h264_quirks.rs:33`, `player/av1_quirks.rs:102,280`)이 전부 표준 `HashMap`(SipHash) 사용. 다만 조회 빈도는 원문의 "초당 수천~수만"보다는 재생 프레임레이트(수십 Hz) 수준으로 낮음.
 
 ---
 
@@ -423,7 +423,7 @@ fn log_every_nal(nal: &NalUnit) {
 **예외**:
 - 에러 경로, 파일 열기 시 1회 생성되는 메타데이터 요약처럼 호출 빈도가 낮은 곳에서는 가독성이 우선이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `player_evidence.rs:75,127,178,230,286`, `reference_graph_evidence.rs:105,138` 등에서 블록/노드 단위 `format!` 라벨 생성이 존재하나 호출 빈도(전체 블록 vs 화면 표시분만)를 확인하지 못함. `log::debug!("{}", format!(...))` 이중 래핑 패턴은 grep 0건으로 로깅 쪽 절반은 N/A.
 
 ---
 
@@ -489,7 +489,7 @@ fn process(headers: &[FrameHeader]) -> Vec<Summary> {
 **예외**:
 - 컬렉션에 대량으로 담기지 않고 단발성으로만 쓰이는 enum(예: 함수 반환값 1개)은 크기 편차가 있어도 실질 영향이 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 유일하게 발견된 코덱-교차 enum `CodecMetadata`(`crates/bitvue-core/src/frame.rs:226`)는 variant 내부에 "simplified" `AvcSliceInfo`/`HevcSliceInfo`(String+소형 필드 1~2개)만 담아 크기 편차가 미미함. 실제 풀사이즈 슬라이스 헤더를 한 enum에 모아 대량 컬렉션에 담는 사례는 grep상 없음.
 
 ---
 
@@ -553,7 +553,7 @@ fn use_it(nals: &[NalUnit]) -> Result<(), SpsError> {
 **예외**:
 - "없음"과 "실패"가 호출부마다 명확히 다른 처리(재시도 vs 즉시 중단 등)를 요구하고, 이 구분이 도메인상 핵심 정보인 경우에는 유지가 타당하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 유일한 사례 `bitvue-av1-codec/src/obu.rs:477 next_obu_with_offset`는 같은 파일의 `Iterator` impl(`Item = Result<Obu>`)과 동일한 관용적 시그니처(`Option`=스트림 끝, `Result`=파싱 실패)로, 표준 Rust Iterator 컨벤션과 일치 — 문서 자체가 명시한 예외("None/Err가 실제로 다르게 처리돼야 하는 경우")에 해당.
 
 ---
 
@@ -610,7 +610,7 @@ fn switch_codec(state: &mut AppState, new_codec: CodecKind, disposer: &DisposerH
 **예외**:
 - `Drop` 비용이 마이크로초 이하로 무시 가능한 타입(단순 `Vec`/`String` 해제 등)은 이 패턴을 적용할 필요가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `src-tauri/src/commands/file.rs:310` (`open_file`)에서 `stream_a.units = Some(UnitModel { units, ... })`가 `stream_a_lock.write()`(RwLock write guard)를 쥔 채로 직접 대입되어, 이미 파일이 열려 있는 상태에서 새 파일을 열면 이전 `UnitModel`(수천 개 unit 보유 가능)이 락 보유 중 그 자리에서 동기 drop됨 — RPERF-010/019가 지적하는 정확한 형태(`std::mem::replace` + 별도 스레드 이관 없음).
 
 ---
 
@@ -677,7 +677,7 @@ fn spawn_render_workers(cache: &Arc<FrameCache>, tiles: &[usize]) {
 **예외**:
 - 호출 빈도가 낮은 경로(세션 생성, 설정 변경)에서는 `Arc::clone` 비용이 무시할 수준이며 명확성이 더 중요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 발견된 `Arc::clone` 호출(`index_session.rs:134,281`)은 백그라운드 인덱싱 잡/스레드 스폰 경계에서 1회성으로만 발생. Rust 측에 per-tile/per-block 렌더 루프 자체가 없음(렌더링은 프론트엔드 Canvas가 IPC로 받은 YUV 데이터를 그리는 구조) — 이 패턴이 나타날 hot path가 현재 아키텍처에 없음.
 
 ---
 
@@ -737,7 +737,7 @@ fn process_frame(state: &mut AnalysisState, idx: usize) {
 **예외**:
 - 콜백 기반 UI 프레임워크(GTK/Tauri 이벤트 핸들러 등)와의 상호운용을 위해 어쩔 수 없이 공유 가변 상태가 필요한 경계 지점에서는 `RefCell`이 실용적 타협이다. 이 경우 borrow 범위를 최대한 좁게 유지한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `RefCell` 자체는 테스트 코드에서만 사용됨(프로덕션 grep 0건, N/A). 다만 탐지 기준으로 제시된 "필드 3개 이상 lock" 냄새는 `RwLock`/`Mutex`로 실제 존재: `core.rs:45,48,51`(`stream_a`/`stream_b`/`selection` 각각 별도 `Arc<RwLock<...>>`), `index_session.rs:65,68,71,74`(4개의 별도 `Arc<Mutex<...>>` 필드) — 원자성 버그가 확인된 건 아니지만 구조적으로 재검토 대상 패턴과 일치.
 
 ---
 
@@ -788,7 +788,7 @@ struct MbContext {
 **예외**:
 - 실측 결과 대부분(예: 99.9%)이 인라인 용량 이내이고, 해당 구조체가 대량 컬렉션에 담기지 않는(개별적으로만 존재하는) 경우에는 이 패턴이 실제로 유효한 최적화다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `SmallVec`/`smallvec` 크레이트 사용 grep 0건(의존성으로도 채택되지 않음). 이 패턴이 발생할 코드 자체가 없음.
 
 ---
 
@@ -844,7 +844,7 @@ fn dedup_frame_payload(buf: &Bytes) -> Bytes {
 **예외**:
 - 네트워크 경계, FFI 경계처럼 원본 버퍼의 수명을 보장할 수 없어 반드시 소유 복사가 필요한 지점은 정당한 예외다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `bytes::Bytes` 사용처는 `byte_cache.rs` 1곳뿐. `Bytes::copy_from_slice`가 등장하는 유일한 함수 `get_segment`(line 178-209)는 `#[allow(dead_code)]`로 미사용 상태이며, mmap→소유 버퍼 경계에서의 1회 복사는 정당한 예외에 해당. 캐시 히트 경로는 `bytes.clone()`(refcount만 증가)으로 올바르게 구현됨.
 
 ---
 
@@ -922,7 +922,7 @@ fn handle(result: Result<Obu, ObuParseError>) {
 **예외**:
 - 애플리케이션 최상위/CLI 경계, 또는 에러 발생 빈도가 극히 낮은 초기화 경로에서는 `anyhow`/`Box<dyn Error>`의 단순함이 이점이 더 크다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 유일한 실사용처 `crates/bitvue-core/src/export/probes.rs:220 export_results`는 저빈도 최상위 export 호출(문서 자체가 명시한 예외)이고, `bitvue-metrics/src/lib.rs:41`은 doc-comment 예시일 뿐 실제 코드 아님. 파서/디코드 hot path에서의 사용 grep 0건.
 
 ---
 
@@ -974,7 +974,7 @@ impl FrameBuffer {
 **예외**:
 - 갱신 빈도가 낮거나 버퍼 크기가 매번 달라 어차피 재할당이 불가피한 경우에는 단순 대입이 더 명확하고 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 디코드 경로에서 plane 버퍼 `.to_vec()` 호출 다수 확인(`bitvue-decode/src/ffmpeg.rs:286,290,294`, `decoder.rs:795`)이 매번 재할당하는 형태이나, 이 함수들이 재생 중 매 프레임(동일 크기 반복) 호출되는 hot path인지, 아니면 프레임당 1회성 변환인지는 확인하지 못함.
 
 ---
 
@@ -1045,7 +1045,7 @@ struct FrameWindow {
 **예외**:
 - 재생 버퍼, 디코드 순서 큐처럼 실제로 양 끝 push/pop이 지배적인 워크로드에서는 `VecDeque`가 정확한 선택이며 가끔의 인덱스 접근은 무시할 수준이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 발견된 모든 `VecDeque` 사용(`ffmpeg.rs:60 frame_buffer`, `timeline_window.rs:113 pending_loads`, `index_dev_hud_window.rs:77 recent_pattern`, `index_session_window.rs:94 lru_queue`)이 push_back/pop_front/retain 위주이며 랜덤 인덱스 접근 grep 0건. `ffmpeg.rs:131,376`은 "O(1) instead of O(n)" 주석까지 남기며 의도적으로 올바르게 사용됨.
 
 ---
 
@@ -1110,7 +1110,7 @@ impl DecodeQueue {
 **예외**:
 - 큐 길이가 작게(수십 개 이하) 유지되도록 상한이 보장되어 있다면 `retain`의 O(n) 비용이 실질적으로 무시할 수준이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `.retain()` 호출 다수 확인(`index_session_window.rs:195,210,244,258 lru_queue`, `worker.rs:194,216 in_flight`, `compare_cache.rs:417`)하나 대상 컬렉션이 대부분 `usize`/job-id 등 작은 값이고 윈도우 크기로 상한이 있어 보여, 원문이 우려하는 "대형 페이로드 원소·수천개 누적" 시나리오보다는 영향이 작을 가능성이 높음 — 확정하려면 각 컬렉션의 실제 최대 길이 확인 필요.
 
 ---
 
@@ -1169,7 +1169,7 @@ fn open_project(path: String, state: tauri::State<Mutex<Option<ProjectState>>>) 
 **예외**:
 - 상태 크기가 작아(수십 KB 이하) drop 비용이 프레임 예산(예: 16ms) 대비 무시할 수준이면 별도 스레드 이관은 과설계다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — RPERF-010과 동일 근거(`src-tauri/src/commands/file.rs:305-336 open_file`): `state.core.lock()` → `stream_a_lock.write()`를 쥔 채 이전 `UnitModel`을 직접 대입으로 교체·동기 drop. 다만 `open_file`이 `async fn`이라 엄밀한 "UI 스레드"는 아니고 Tauri 커맨드 스레드/tokio 워커 블로킹에 해당 — 원문의 "UI thread" 표현과는 약간 다르지만 본질적으로 같은 문제(락 보유 중 무거운 동기 작업).
 
 ---
 
@@ -1240,4 +1240,4 @@ fn fast_inner_loop(mbs: &[Macroblock], idx: usize) -> &Macroblock {
 **예외**:
 - hot path 내부에서, 이미 함수 진입 시점에 `Result`/`assert!`로 명시적으로 검증을 마친 값을 그 이후 내부 루프에서 다시 훑을 때 "이미 검증됨"을 문서화하는 용도의 `debug_assert!`는 정확히 이 패턴이 의도하는 올바른 사용이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 파싱된 데이터에 관련된 실사용 `debug_assert!` 2건(`bitvue-av1-codec/src/types.rs:98,127 Qp::as_u8/From<u8>`, `bitvue-avs3/src/bitreader.rs:36 read_bits`)이 전부 문서가 권장하는 "이미 검증됨" 패턴에 해당: `Qp::new`(types.rs:52)가 0..=255 범위를 `Result`로 먼저 검증하고, `read_ue`(bitreader.rs:60-74)가 `leading_zeros<=31`을 `Err`로 먼저 걸러낸 뒤에만 `read_bits`를 호출함. 안티패턴이 우려하는 "신뢰 경계 데이터를 debug_assert로만 검증" 사례는 grep 범위 내에서 발견되지 않음.

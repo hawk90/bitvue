@@ -58,7 +58,7 @@ async function loadBitstream(path: string) {
 **예외**:
 - 도메인 자체가 작은 설정값 몇 개(예: 사용자 환경설정)라면 통째로 저장해도 무방.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이미 반대 방향으로 리팩터링됨: `StreamDataContext.tsx`가 명시적으로 "deprecated ... split into multiple focused contexts for better performance"라 적고 FrameDataContext(프레임 메타데이터)/FileStateContext(로딩)/CurrentFrameContext(인덱스)로 분리했다 — `invoke<T>` 응답을 그대로 store 스키마로 쓰는 지점 없음.
 
 ---
 
@@ -107,7 +107,7 @@ const avgQp = useMemo(() => computeAvg(blocks), [blocks]); // 저장하지 않�
 **예외**:
 - 계산이 매우 무겁고 소스 변경 지점이 구조적으로 단 하나뿐이며 무효화 로직이 명시적으로 문서화되어 있다면 저장이 허용될 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 통계/파생값은 일관되게 `useMemo`로 렌더 시점 계산됨(StatisticsPanel.tsx:45,48,64,91의 stats/effectiveFrameRate/frameSizes/maxSizeRange, BitrateGraphPanel.tsx:59-75의 smoothedSizes/maxSize/totalSize) — 짝을 이뤄야 하는 별도 `set*` 호출 쌍을 찾지 못함.
 
 ---
 
@@ -163,7 +163,7 @@ function FrameCounterBadge() {
 **예외**:
 - 컴포넌트 트리가 작고(패널 3개 이하) 리렌더 비용이 무시할 만한 초기 프로토타입 단계.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — CurrentFrameContext.tsx가 이미 인덱스(가벼움, ValueCtx)와 setter를 분리했고, 무거운 프레임 데이터는 FrameDataContext(메타데이터만, 픽셀 없음)에 별도로 있어 "currentFrame이 무거운 페이로드와 한 덩어리"인 구조 자체가 없음. 파일 헤더에 "Separated ... to prevent unnecessary re-renders"라고 명시.
 
 ---
 
@@ -216,7 +216,7 @@ function OverlayToolbar() {
 **예외**:
 - store 자체가 작고(필드 5개 이하) 모든 소비자가 사실상 전체를 다 쓰는 경우 selector 도입 비용이 더 클 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — zustand류 selector store는 없지만 동일 증상이 Context에서 재현: SelectionContext.tsx:194-204와 LayoutContext.tsx:284-292는 `value`를 `useMemo` 없이 매 렌더 새 객체로 만들고(다른 대부분 컨텍스트는 useMemo 사용, 이 둘만 예외), `useSelection()`/`useLayout()` 소비자는 필드 선택 없이 객체 전체를 받아 무관한 필드 변경에도 리렌더된다.
 
 ---
 
@@ -276,7 +276,7 @@ function useFramePixelsRef(frameIndex: number) {
 **예외**:
 - 매우 작은 버퍼(수백 바이트 이하, 팔레트/작은 룩업 테이블 등)는 state로 둬도 실질적 문제가 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — YuvViewerPanel/index.tsx:90 `useState<YUVFrame | null>`(decodedFrame)가 프레임 전환마다(index.tsx:179,191, `bridgeYuvToFrame()`으로 세팅) Y/U/V 평면 원본 `Uint8Array` 전체를 React state로 담아 갱신함(타입 정의: types/yuv.ts:57-66) — 수백 KB~수 MB급 raw 픽셀 버퍼가 그대로 state에 상주. 부수적으로 UnitHexPanel/HexViewTab.tsx:37의 `useState<Uint8Array>`도 있으나 `maxBytes: 2048`로 캡(HexViewTab.tsx:60)되어 있어 항목이 언급한 예외(수백 바이트~수KB 이하)에 더 가깝다.
 
 ---
 
@@ -326,7 +326,7 @@ const useUiStore = create<{ sidebarCollapsed: boolean; activeTool: 'select' | 'z
 **예외**:
 - 극소 규모 앱, 상태 슬라이스 자체가 1~2개뿐이라 분리 이득이 거의 없는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 핵심 스트림 컨텍스트(FileStateContext=서버상태, CurrentFrameContext=네비게이션, LayoutContext/ModeContext=순수 UI 토글)는 깔끔히 분리되어 있으나, CompareContext.tsx:56-62는 workspace/isLoading/error(서버성)와 pathA·pathB·currentFrameA·currentFrameB를 한 컨텍스트에 함께 둔다 — 다만 이는 Compare 기능 하나로 스코프된 것이라 카탈로그가 말하는 "전역 store가 기능마다 계속 불어나는" 성장형 문제와는 규모가 다르다.
 
 ---
 
@@ -386,7 +386,7 @@ async function loadSyntaxTree(i: number) {
 **예외**:
 - 요청이 애초에 순차적이고 절대 동시 진행되지 않는 것이 구조적으로 보장된 단일 파이프라인이라면 공유 플래그로 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 여러 독립 요청이 boolean 하나를 공유하는 사례를 찾지 못함: SyntaxDetailPanel의 각 탭(ApsTab/ProbsTab/QmTab/RefListTab)과 HexViewTab이 각자 자기 `loading` state를 소유하고, ThumbnailContext.tsx:54는 아예 `Set<number>`로 항목별 로딩을 추적해 이 안티패턴을 구조적으로 피해간다.
 
 ---
 
@@ -444,7 +444,7 @@ function useCancellableInvoke<T>(cmd: string, args: Record<string, unknown>, dep
 **예외**:
 - 매우 빠르게 끝나는(수 ms) 로컬 조회는 취소 인프라가 과설계일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 실사용 코드 경로에는 `AbortController` 사용이 전무하고(유일한 예외인 `utils/progressiveLoader.ts`는 Tauri-era `@tauri-apps/api/core`를 import하는 죽은 코드로, 어디에서도 import되지 않음 — grep 결과 tsconfig.json 외 참조 없음), 대신 `cancelled` 불리언 클로저 가드가 10곳 가까이 반복된다(YuvViewerPanel/index.tsx:174, SyntaxDetailPanel/{Aps,Probs,Qm,RefList}Tab.tsx, UnitHexPanel/HexViewTab.tsx:51, hooks/useAv1Features.ts:45, CompareWorkspace/{DiffOverlay,StreamPlayer}.tsx). 이 가드는 화면 반영만 막을 뿐, 실제 `invoke()` 자체를 멈추는 back-end `cancel_request` 커맨드는 `src-tauri/src`에 전혀 없음(grep 무결과) — 항목이 지적한 정확한 간극.
 
 ---
 
@@ -489,7 +489,7 @@ useEffect(() => {
 **예외**:
 - 없음 — 안정화가 항상 가능하거나(값을 memo화), deps 배열 자체가 필요 없는 구조(effect 밖으로 로직 이동)로 재설계하는 것이 항상 더 나은 대안이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — deps 배열에 객체/배열 리터럴이 인라인으로 들어간 지점을 grep으로 찾지 못했고, 저장소 전체에서 `react-hooks/exhaustive-deps` 경고는 단 1건(FileStateContext.tsx, setFrames 누락 — 사실상 무해)뿐이며 규칙 자체는 .eslintrc.cjs에서 억제 없이 활성화되어 있다.
 
 ---
 
@@ -545,7 +545,7 @@ useEffect(() => {
 **예외**:
 - 한쪽이 명백히 idempotent하고 동일 값이면 즉시 종료되는 가드가 이미 존재한다면 양방향 구조 자체는 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 프런트→백엔드→프런트로 되돌아오는 값 왕복 구조 자체가 없음. zoom은 useCanvasInteraction의 순수 로컬 state로 backend invoke가 없고, 프런트 전체에서 `listen()` 호출은 App.tsx와 useFileOperations.ts 단 2곳뿐인데 둘 다 단방향 `file-opened` OS 이벤트이지 프런트가 보낸 값의 확인 응답이 아니다.
 
 ---
 
@@ -611,7 +611,7 @@ function PlayheadCanvas() {
 **예외**:
 - 저빈도(초당 1~2회 이하) 갱신이거나, 캔버스가 아닌 실제 DOM/텍스트 표시를 위한 값이라면 state 경로가 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 캔버스 좌표를 매 프레임 setState로 갱신하는 rAF 루프를 찾지 못함. 유일한 rAF 사용처인 VirtualizedFilmstrip.tsx:53-65는 스크롤 이벤트를 rAF 1회로 스로틀링하는 용도(이벤트 기반)이고, 재생 프레임 전환은 setTimeout으로 frameIndex를 바꾸는 것(YuvViewerPanel/index.tsx:358)이라 재렌더가 의도된 정상 상태 변경이다.
 
 ---
 
@@ -665,7 +665,7 @@ const usePointerStore = create<{ hoveredBlockId: string | null }>((set) => ({
 **예외**:
 - store 구독자가 1~2개뿐이고 전체 재평가 비용이 무시할 만한 소규모 화면.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 전역 store 자체가 없고(zustand 미사용), 마우스 이동 핸들러는 지역 컴포넌트 state만 갱신한다(Timeline.tsx:23,117의 hoverPosition). 공유되는 SelectionContext는 클릭/키보드로 프레임이 바뀔 때만 갱신되며(Filmstrip.tsx:180, Timeline.tsx:165-206) mousemove에서 호출되는 지점은 찾지 못함.
 
 ---
 
@@ -713,7 +713,7 @@ function BitrateChart({ frames }: { frames: FrameMeta[] }) {
 **예외**:
 - 프레임 수가 매우 적어(수십 개 이하) 매핑 비용이 무시 가능하고, 트랜지션 재생이 오히려 의도된 시각 효과인 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 차트가 Recharts/D3 같은 참조-동일성 기반 트랜지션 라이브러리가 아니라 자체 제작 SVG 컴포넌트(BarChart.tsx, LineChart.tsx)이고, 그 데이터 가공은 이미 `useMemo`로 감싸져 있다(RDCurvesPanel.tsx의 chartSeries, BitrateGraphPanel.tsx의 smoothedSizes/maxSize) — 라이브러리발 트랜지션 재생/깜빡임 증상 자체가 발생할 여지가 없는 구조.
 
 ---
 
@@ -761,7 +761,7 @@ function Panel({ frame }: { frame: FrameData }) {
 **예외**:
 - 자식이 애초에 memo화되어 있지 않거나 렌더 비용이 낮은 리프 컴포넌트라면 무효화 자체가 문제되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — StatisticsPanel.tsx:137이 `memo()`로 감싼 BarChart(components/charts/BarChart.tsx:51)에 인라인 `colors={{...}}` 객체 리터럴을 매 렌더 새로 만들어 넘겨, 해당 컴포넌트의 memo 비교를 무력화한다.
 
 ---
 
@@ -813,7 +813,7 @@ function useSharedTooltip() {
 **예외**:
 - 항목 수가 애초에 적은(수십 개 이하) 화면이라면 굳이 공유 툴팁으로 리팩터링할 이득이 작다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 항목 수만큼 `.tooltip` 노드가 상주하는 패턴을 찾지 못함. FilmstripTooltip.tsx는 Filmstrip.tsx에서 단 1곳(hover 대상 1개)만 렌더되고, utils/interactiveTooltips/TooltipManager.ts는 애초에 싱글턴 DOM 노드 하나(`currentTooltip`)만 관리하는 구조.
 
 ---
 
@@ -872,7 +872,7 @@ useEffect(() => {
 **예외**:
 - 관찰 대상이 하나뿐이고 다른 레이아웃에 영향을 주지 않는 독립적인 위젯이라면 단순한 구현으로도 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — SyntaxDetailPanel/FrameSyntaxTab.tsx:258-259가 ResizeObserver 콜백 안에서 문턱값/rAF 배치 없이 `setContainerHeight(entry.contentRect.height)`를 즉시 호출해 나쁜 예와 거의 동일하다. 반대로 HRDBufferPanel.tsx:279가 같은 상황에서 setState 대신 imperative `drawCanvas()`를 직접 호출해 이 문제를 피해간다 — 같은 저장소 안에 안티패턴과 권장 패턴이 공존.
 
 ---
 
@@ -924,7 +924,7 @@ function useActiveTabEffect(isActiveTab: boolean, tick: () => void) {
 **예외**:
 - 탭 전환 시 상태를 완전히 잃으면 안 되는 매우 가벼운 위젯(입력 폼 등)은 계속 마운트해도 비용이 무시할 만하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A (반대 패턴 확인) — DockableLayout.tsx:111,184는 활성 패널 컴포넌트 하나만 `{ActivePanel && <ActivePanel />}`로 렌더하고, TabContent(common/TabContainer.tsx:123)는 비활성일 때 `return null`로 언마운트한다 — `display:none`으로 전부 마운트 유지하는 코드는 grep(`display:.*none`)으로도 전혀 발견되지 않음.
 
 ---
 
@@ -974,4 +974,4 @@ useEffect(() => {
 **예외**:
 - 텍스처 크기가 프레임마다 실제로 달라지는 가변 해상도 스트림, 또는 텍스처 수명이 애초에 짧고 재사용 가치가 없는 원샷 내보내기 경로.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 저장소에 유일한 WebGL 코드(OverlayRenderer/webgl/mv-webgl.ts)는 MV 라인을 WeakMap에 캐시된 program/buffer로 그리며 텍스처 자체를 아예 쓰지 않는다. 실제 비디오 프레임 렌더링은 Canvas2D `putImageData`/`drawImage`(utils/yuv/renderer.ts:136-157, YuvViewerPanel/VideoCanvas.tsx:161-199) 기반이라 `createTexture`/`deleteTexture` 호출 자체가 저장소 어디에도 없다.

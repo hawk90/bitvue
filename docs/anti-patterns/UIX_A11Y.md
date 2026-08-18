@@ -38,7 +38,7 @@ Bitvue 같은 전문 비트스트림 분석 도구에서 접근성은 법적 컴
 - Chrome DevTools의 vision deficiency emulation(protanopia/deuteranopia/tritanopia)으로 QP 히트맵·MV 오버레이·필름스트립 오류 표시를 렌더링해 색만으로 구분되는 요소가 있는지 스캔
 - 그레이스케일로 변환한 스크린샷에서도 상태 구분이 가능한지 육안 검토
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `QP_COLOR_STOPS`(blue→cyan→yellow→red, `frontend/components/panels/OverlayRenderer/utils/colors.ts:14-19`)가 `QPMapRenderer.tsx`(`frontend/components/panels/OverlayRenderer/renderers/QPMapRenderer.tsx:33-39`)에서 hue 하나로만 QP 값을 인코딩하고 패턴/해칭/숫자 라벨 병기가 없음(전체 min/max 텍스트만 canvas에 그려짐, 블록별 값 없음). 단, 필름스트립 오류 표시는 이미 아이콘("!") + `role="alert"` + `aria-label`을 병행하므로(`frontend/components/Filmstrip/views/ThumbnailsView.tsx:269-276`) 그 증상은 해당 안 됨; MV forward/backward 색 구분도 현재 `MVFieldRenderer.tsx`가 단일 색상(`mvColor`)만 사용해 방향 구분 자체가 아직 구현되어 있지 않음(N/A에 가까움).
 
 ---
 
@@ -74,7 +74,7 @@ Bitvue 같은 전문 비트스트림 분석 도구에서 접근성은 법적 컴
 - 마우스를 치우고 Tab/Shift+Tab/화살표 키만으로 전체 화면을 순회하며, 매 순간 "스크린샷만으로 지금 포커스가 어디에 있는지 알 수 있는가"를 검증하는 시나리오 테스트
 - axe-core 등 자동 접근성 린터로 `outline: none` 사용처와 `:focus-visible` 대응 여부 교차 검사
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A(DOM 컨트롤) / Confirmed(canvas 컨트롤) — DOM 기반 버튼/탭/드롭다운은 `outline: none`이 항상 `:focus-visible` 대체(고대비 outline, `forced-colors` 모드 포함)와 짝지어 구현됨(`frontend/App.css:308-384`, `frontend/theme/buttons.css:174-186`, `frontend/components/common/TabContainer.css:82-85`) — 이 패턴은 부재. 그러나 순수 canvas 기반 커스텀 컨트롤(`frontend/components/panels/HRDBufferPanel.tsx:339-344`의 HRD 버퍼 차트)은 `tabIndex`/`role`/focus 전용 draw call이 전혀 없어 애초에 키보드로 포커스조차 안 됨 — 이 부분은 Confirmed.
 
 ---
 
@@ -110,7 +110,7 @@ canvas/WebGL은 픽셀만 그리고 접근성 트리(accessibility tree)에 아�
 - VoiceOver/NVDA 등 스크린리더를 켜고 QP 히트맵/MV 오버레이 패널에 진입했을 때 무엇이 낭독되는지 시나리오 테스트
 - canvas 렌더링 컴포넌트마다 대응하는 접근 가능한 데이터 경로(DOM/ARIA)가 존재하는지 코드 검사
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 메인 비디오 canvas는 `role="img"` + `aria-label`이 있지만 라벨이 `Video frame ${currentFrameIndex}` 뿐이라(`frontend/components/panels/YuvViewerPanel/VideoCanvas.tsx:236-239`) 그 위에 그려지는 QP 히트맵/MV 오버레이 값은 전혀 노출되지 않음. QP 블록 값은 `qp[idx]`가 `QPMapRenderer.tsx`(`frontend/components/panels/OverlayRenderer/renderers/QPMapRenderer.tsx:29-39`) 내부 지역 변수로만 존재하고 순회 가능한 DOM/ARIA 미러가 없음. `HRDBufferPanel.tsx`의 `<canvas>`(`:339`)는 `role`/`aria-label` 자체가 없음.
 
 ---
 
@@ -146,7 +146,7 @@ canvas/WebGL은 픽셀만 그리고 접근성 트리(accessibility tree)에 아�
 - 컨트롤별 실제 클릭 가능 영역을 측정해 24x24px 미만인 항목을 코드/스타일 검사로 나열
 - 고밀도 필름스트립에서 인접 항목을 빠르게 연속 클릭하는 시나리오로 오클릭률 측정
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `.frame-ref-badge`(레퍼런스 프레임 클릭 배지)가 기본 상태에서 14x14px 원형(`frontend/components/Filmstrip/views/ThumbnailsView.css:365-386`, `cursor: pointer` 포함)이고, `.frame-nav-search-clear` 버튼도 20x20px(`frontend/components/FrameNavigationToolbar.css:251-254`)로 WCAG 권장 24x24px 미만. 둘 다 히트박스를 시각 크기보다 넓히는 padding/스냅 처리가 없음.
 
 ---
 
@@ -182,7 +182,7 @@ canvas/WebGL은 픽셀만 그리고 접근성 트리(accessibility tree)에 아�
 - axe-core/Lighthouse 등 자동 대비 검사 도구로 전체 UI 스캔
 - 실제 저조도 사무 환경(창가 반사광 등)에서 그래프 축/그리드선을 읽는 사용자 테스트
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 대비비를 검증하는 빌드 단계/린트가 저장소 어디에도 없음(axe-core/stylelint-a11y 등 부재, `frontend/package.json` grep 결과 無). 디자인 토큰이 절대색이 아닌 알파 투명도(`--text-disabled: rgb(255 255 255 / 30%)`, `--text-tertiary: rgb(255 255 255 / 50%)`, `frontend/theme/colors.css:163-166`)로 정의되어 실제 대비비가 배경 토큰 조합별로 달라지는데 이를 자동 계산/검증하는 절차가 없음 — "구현 냄새" 항목("자동 검증 린트 없음")이 정확히 확인됨. 개별 조합의 실측 대비비 실패 여부까지는 미검증.
 
 ---
 
@@ -218,7 +218,7 @@ canvas/WebGL은 픽셀만 그리고 접근성 트리(accessibility tree)에 아�
 - 모든 상태 조합(hover+선택, 오류+재생중 등)을 동시에 렌더링한 스크린샷을 만들어 육안 및 색차(ΔE) 측정으로 구분 가능성 검증
 - "지금 어떤 상태의 프레임을 보고 있는지" 빠르게 답하게 하는 사용자 테스트 시나리오
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 실제로는 hover=`transform: scale(1.02)`(색상 아님), selected=배경색 교체(`--thumb-selected: #3c3c50`), 프레임 타입=테두리 색(`--frame-i/p/b`)으로 서로 다른 채널을 이미 사용 중(`frontend/components/Filmstrip/views/ThumbnailsView.css:62-64, 132-133`, `frontend/theme/colors.css:289-290`). "hover/selected/compare가 전부 동일 계열 blue" 라는 항목의 전제(`--hover-blue`/`--selected-blue`/`--compare-blue` 류 변수)를 뒷받침하는 코드를 찾지 못함 — CompareWorkspace 쪽도 별도 blue 계열 compare 색상 토큰이 없음.
 
 ---
 
@@ -254,7 +254,7 @@ canvas/WebGL은 픽셀만 그리고 접근성 트리(accessibility tree)에 아�
 - 마우스를 사용하지 않고 키보드/터치만으로 각 데이터 포인트의 수치 정보에 도달 가능한지 시나리오 테스트
 - 스크린리더로 tooltip이 발생 시점에 낭독되는지 확인
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(일부) — 공용 `Tooltip.tsx`는 `onMouseEnter`+`onFocus`, `onMouseLeave`+`onBlur`, `role="tooltip"`을 모두 갖춰 이 패턴이 없음(`frontend/components/Tooltip.tsx:48-53`). 그러나 `FilmstripTooltip`/`TimelineTooltip`을 트리거하는 `ThumbnailsView.tsx:193-195`, `Timeline.tsx` hover 핸들러는 `onMouseEnter`/`onMouseLeave`만 바인딩되고 `onFocus`/`onBlur` 대응이 없음. `HRDBufferPanel.tsx`의 버퍼 점유율 tooltip(`:339-343`)도 `onMouseMove`/`onMouseLeave`뿐, 키보드/터치 경로가 없음. 단, QP 블록별 값은 애초에 hover tooltip 자체가 구현되어 있지 않음(canvas에 min/max만 정적으로 그려짐) — 그 특정 서브케이스는 N/A.
 
 ---
 
@@ -290,7 +290,7 @@ OS/브라우저 텍스트 확대(125%~200%) 또는 저시력 보조 확대 기�
 - 브라우저 확대 100/150/200/400%에서 각 패널을 스크린샷으로 비교해 겹침/잘림 여부 확인
 - OS 텍스트 크기 설정을 최대로 올린 상태에서 전체 워크플로(프레임 탐색→히트맵 확인→값 조회)를 끝까지 수행 가능한지 시나리오 테스트
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 레이아웃 자체는 상당 부분 flex/grid + `rem`/`%`이지만, YUV 뷰어 툴바/범례 영역은 `position: absolute` + px 고정폭이 다수 존재(`frontend/components/panels/YuvViewerPanel/YuvViewerPanel.css:73,87,120,249,274,346`)하고 QP 범례 자체가 canvas `fillText`로 그려져(`QPMapRenderer.tsx:44-49`) OS 텍스트 확대의 영향을 전혀 받지 않는 구조. 200%/400% 확대 시 실제로 겹치는지는 브라우저 렌더링 확인 없이는 단정 불가 — 구조적으로 개연성 있는 정도.
 
 ---
 
@@ -326,7 +326,7 @@ OS/브라우저 텍스트 확대(125%~200%) 또는 저시력 보조 확대 기�
 - axe-core/eslint-plugin-jsx-a11y로 라벨 누락 컴포넌트 자동 스캔
 - 실제 스크린리더(VoiceOver, NVDA)로 툴바 전체를 순회하며 각 컨트롤의 낭독 내용이 기능을 명확히 설명하는지 확인
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(일부) — 전반적으로 우수한 부분도 있음: `TimelineThumbnails.tsx:66-79`는 `role="slider"`+`aria-valuenow/min/max/text`를 완비했고, `FilmstripDropdown.tsx:82-150`은 `role="listbox"`/`role="option"`/`aria-selected`를 갖췄고, `ZoomControls.tsx:25-38`·`PlaybackControls.tsx:27,39`는 `aria-label`이 있음. 그러나 `FrameNavigationToolbar.tsx`의 아이콘 전용 버튼들(첫/끝 프레임, 키프레임 이동, 검색 등, `:226-311`)은 `aria-label` 없이 `title`에만 의존하고, 검색창의 clear 버튼(`:326-332`)은 `title`도 `aria-label`도 전혀 없어 접근 가능한 이름이 없음 — 아이콘 버튼 라벨링이 컴포넌트마다 일관되지 않음.
 
 ---
 
@@ -362,7 +362,7 @@ OS/브라우저 텍스트 확대(125%~200%) 또는 저시력 보조 확대 기�
 - 신규 사용자 대상으로 "이 도구에 단축키가 있는지, 있다면 어떻게 확인하는지" 질문하는 사용자 테스트
 - 코드베이스에서 키 이벤트 리스너 등록 지점 전체를 grep해, 그중 도움말 UI/문서에 실제로 나열된 것이 몇 개인지 대조
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이 안티패턴이 이미 해결되어 있음: 중앙 레지스트리 `KEYBOARD_SHORTCUTS`(`frontend/utils/keyboardShortcuts.ts`)를 소스로 `KeyboardShortcutsDialog.tsx`가 자동 생성되고, `?` 키(`frontend/hooks/useKeyboardNavigation.ts:238`)와 Help 메뉴(`frontend/utils/menu/creators/helpMenu.ts:30-32`) 양쪽에서 업계 관용대로 열림. 버튼 tooltip에도 단축키가 병기됨(예: `PlaybackControls.tsx:26` `"Pause (Space)"`). 권장안이 이미 구현된 상태.
 
 ---
 
@@ -398,7 +398,7 @@ QP/MV/품질 편차 같은 연속값을 컬러맵으로 표시할 때, 색각 �
 - Coblis/Chrome DevTools 색각이상 시뮬레이션으로 모든 heatmap/diverging 팔레트를 렌더링해 값의 상대적 순서가 유지되는지 확인
 - 팔레트의 지각 균일성을 CIE L*a*b* 공간에서 명도(L*) 단조 증가 여부로 정량 검증
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `QP_COLOR_STOPS`(`frontend/components/panels/OverlayRenderer/utils/colors.ts:14-19`)가 정확히 "jet류" 파랑→청록→노랑→빨강 4-stop RGB 정지점을 임의 하드코딩한 것이며, viridis/cividis 같은 검증된 지각 균일 팔레트가 아님. 색각이상 시뮬레이션 검증 기록도, `docs`/코드 어디에도 없음. diverging(A/B 비교) 전용 별도 팔레트는 코드에서 확인되지 않아 그 부분은 아직 미구현(N/A에 가까움) — 확인된 것은 sequential QP 히트맵 컬러맵 자체의 결함.
 
 ---
 
@@ -434,4 +434,4 @@ anomaly 강조 깜빡임, 자동 재생 애니메이션, 실시간 갱신 그래
 - 브라우저 개발자 도구의 CSS media feature emulation으로 `prefers-reduced-motion: reduce` 상태에서 앱이 실제로 애니메이션을 줄이는지 확인
 - 강조 효과의 초당 점멸 횟수를 프레임 캡처로 측정해 WCAG 2.3.1 임계값(초당 3회) 준수 여부 검증
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 저장소 전체에서 `prefers-reduced-motion`이 쓰이는 곳은 `frontend/components/panels/DockableLayout.css:387-392` 단 한 곳뿐이며, 그마저도 `scroll-behavior: smooth` 토글용이지 반복 애니메이션 감쇠용이 아님. `referencedPulse`(`ThumbnailsView.css:240`), `pulse-arrow`(`CodingFlowView.css:153`), `subtlePulse`(`App.css:496`), `progress-pulse`(`Loading.css:184`) 등 무한 반복 pulse 애니메이션은 전부 `prefers-reduced-motion` 분기 없이 하드코딩됨. 다만 주기가 1.5~2s(0.5~0.67Hz)로 WCAG 2.3.1의 초당 3회 임계값보다 훨씬 느려 발작 위험 자체는 낮고, 전정기관 불편/모션 감쇠 제어 부재 쪽이 실제 위반 지점.

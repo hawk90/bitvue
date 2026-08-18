@@ -36,7 +36,7 @@
 - 최초 설치 후 앱을 열어 화면에 동시에 보이는 패널 수를 센다. 스크린샷을 찍어 각 패널의 픽셀 면적을 측정, 특정 임계치(예: 5개 이상 동시 표시) 초과 여부 확인.
 - 신규 사용자 대상 5분 사용성 테스트에서 "지금 화면에서 뭘 봐야 할지 모르겠다"는 발화가 나오는지 관찰.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — Left sidebar (Stream/Syntax/Selection/Hex/YUV-Diff)는 탭으로 묶여 있어 완화되었지만(`frontend/components/panels/DockableLayout.tsx` TabbedPanelContainer), Bottom row 3패널(Info/Details/Stats)은 `BottomRowPanelBar`가 항상 동시 렌더링하며 개별 표시/숨김 토글이 없다(`frontend/App.tsx:215-234`, `DockableLayout.tsx:325-360`). 카탈로그가 묘사한 "7개 전부 상시 노출"만큼 심하지 않아 구조적 정황만으로 판단.
 
 ---
 
@@ -72,7 +72,7 @@
 - 창을 1024px, 1280px, 1920px, 2560px 폭으로 각각 리사이즈하며 스크린샷 비교, 콘텐츠 잘림/음수 폭 여부 확인.
 - 자동화 테스트로 뷰포트 폭을 스윕하며 각 패널의 `getBoundingClientRect().width`가 0 이하가 되는 지점을 탐지.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 패널 크기가 픽셀 고정이 아니라 퍼센트 기반(`PANEL_SIZES`/`PANEL_MIN_SIZES`, `frontend/components/panels/DockableLayout.tsx:28-47`)이고 `react-resizable-panels`의 `Panel defaultSize/minSize`(%)로 구현되어 있어 "고정 폭 하드코딩" 구현 냄새가 반증됨. 단, Tauri 창 자체의 `minWidth` 설정은 `tauri.conf.json`에 없음(별도 사안).
 
 ---
 
@@ -108,7 +108,8 @@
 - 스플리터를 임의 위치로 옮긴 뒤 앱 재시작 → 위치 비교 회귀 테스트.
 - 파일 A 열기 → 레이아웃 조정 → 파일 B 열기 → 레이아웃 유지 여부 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `LayoutContext`(`frontend/contexts/LayoutContext.tsx`)에 debounce 저장/복원 로직이 있어 겉보기엔 구현된 듯 보이지만, `updateLeftPanel`/`updateTopPanel`/`updateBottomPanel`은 정의만 되어 있을 뿐 앱 어디에서도 호출되지 않는다(전체 grep 결과 정의부 외 호출 0건). 실제 스플리터(`DockableLayout.tsx`의 `Group`/`Panel`/`Separator`, `react-resizable-panels`)는 `autoSaveId`도 없고 `onResize` 콜백도 LayoutContext에 연결되어 있지 않아, 사용자가 드래그한 크기는 `layoutState`에 절대 반영되지 않고 재시작 시 유실된다 — 저장 인프라만 있고 배선이 끊긴 죽은 코드.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-010 참고.
 
 ---
 
@@ -144,7 +145,7 @@
 - 각 패널을 1px까지 강제로 드래그해보는 시각 회귀 테스트, 겹침/잘림 스크린샷 diff.
 - 최소 크기 도달 시 자동으로 접힘 상태로 전환되는지 인터랙션 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `PANEL_MIN_SIZES`(left 15%/main 30%/yuv 20%/bottom 10%)와 bottom-row 패널별 `panel.minSize || 10`이 명시적으로 정의되어 `react-resizable-panels`가 이를 하드 제약으로 강제한다(`frontend/components/panels/DockableLayout.tsx:42-47,337-339`). "minSize가 없거나 0"이라는 구현 냄새가 반증됨.
 
 ---
 
@@ -180,7 +181,7 @@
 - 최초 실행 화면 스크린샷에서 각 패널의 픽셀 면적 비율 측정, Player가 최대 면적 패널인지 확인.
 - 사용자 테스트에서 "이 화면에서 가장 먼저 보라고 만든 곳이 어디 같냐"는 질문에 대한 응답과 실제 의도 일치 여부.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 기본 레이아웃에서 YUV Viewer(Player)가 main-area의 75%(width, `MAIN_CONTENT`) × 85%(height, `YUV_VIEWER`)를 차지해(`PANEL_SIZES`, `DockableLayout.tsx:28-37`) 전체 화면의 과반 이상을 이미 확보하고 있다. "모든 패널 균등 분할"이라는 구현 냄새와 반대.
 
 ---
 
@@ -215,7 +216,7 @@
 - 각 패널을 하나씩 닫아본 뒤 메뉴에서 다시 열 수 있는지 전수 점검하는 시나리오 테스트.
 - `docs/UX_PARITY_MATRIX.md` §10의 패널/오버레이 목록과 실제 View 메뉴 항목을 대조하는 체크리스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — View 메뉴가 "Stream Tree"/"Player"/"Diagnostics" 토글 항목을 두어 `menu-toggle-stream-tree`/`menu-toggle-player`/`menu-toggle-diagnostics` 이벤트를 디스패치하지만(`frontend/utils/menu/creators/viewMenu.ts:124-141`), `frontend/App.tsx`의 이벤트 리스너 목록 어디에도 이 세 이벤트에 대한 핸들러가 없다(전체 grep 결과 0건) — 즉 메뉴는 존재하나 클릭해도 아무 일도 일어나지 않는 죽은 UI로, 패널을 닫은 뒤 되찾을 발견 가능한 경로가 사실상 없다.
 
 ---
 
@@ -250,7 +251,7 @@
 - 프리셋 저장 → 레이아웃 변경 → 프리셋 재적용 → 원래 상태로 정확히 복원되는지 회귀 테스트.
 - 코덱 전환 시나리오에서 프리셋 제안 UI 노출 여부 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 저장소 전체에서 "preset"/"workspace" 관련 앱 코드가 전혀 없다(grep 결과 node_modules 잡음만 매칭). `LayoutToolbar`(`frontend/components/LayoutToolbar.tsx`)는 "Reset Layout" 버튼 하나뿐이고, `LayoutState`는 이름 붙은 여러 프리셋이 아니라 단일 가변 객체(`DEFAULT_LAYOUT`)로만 존재한다(`LayoutContext.tsx:147-170`). 코덱 전환(Mode 메뉴) 시 프리셋 제안 로직도 없다.
 
 ---
 
@@ -286,7 +287,7 @@ UI 컴포넌트 트리가 코덱 문맥(codec context)을 인지하지 못하고
 - 코덱별(AVC/HEVC/VP9/AV1/VVC)로 스트림을 열어보며 Mode 메뉴/Selection Info에 노출되는 항목을 `docs/UX_PARITY_MATRIX.md` §10 매핑표와 대조.
 - 비활성 코덱 전용 토글을 강제로 클릭했을 때의 동작(무반응/에러/크래시) 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `createInfoOverlaysSubmenu`(`frontend/utils/menu/creators/viewMenu.ts:20-105`)는 QP Map/Heat Map/MV Field/PU Type/MB Type/Ref Indices/Block Type/Efficiency Map 등 전체 오버레이를 코덱 조건 없이 정적으로 나열하며, 메뉴 setup 코드 어디에도 `setEnabled`/활성화 분기가 없다(grep 0건). 실제 코덱별 필터링은 `ModeContext.toggleOverlay`(`frontend/contexts/ModeContext.tsx:125-140`)의 `if (!isAvailable) return;`로만 처리되어, 지원 안 하는 코덱에서 클릭하면 메뉴 항목은 그대로 활성 상태로 보이되 조용히 아무 반응이 없다 — 카탈로그의 "구현 냄새" 서술과 정확히 일치.
 
 ---
 
@@ -322,7 +323,7 @@ UI 컴포넌트 트리가 코덱 문맥(codec context)을 인지하지 못하고
 - 스플리터를 빠르게 드래그하며 프레임레이트/입력 지연을 프로파일링(Chrome DevTools Performance 탭 등).
 - 대용량 스트림(4K, 긴 GOP) 로드 상태에서 드래그 시 CPU 사용률과 프레임 드롭 측정.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 리사이즈 경로에 디바운스/스로틀/`requestAnimationFrame`이 전혀 없어 구현 냄새 자체는 존재하지만, 직접 확인한 두 무거운 후보 패널을 보면 실제 재계산 트리거는 확인되지 않음: Syntax 트리 가상 스크롤(`FrameSyntaxTab.tsx:243-251`)의 `ResizeObserver`는 높이 변화에만 반응해 폭(스플리터) 변경으로는 재렌더가 안 됨, Hex 뷰(`UnitHexPanel/HexViewTab.tsx`)도 폭 기반 컬럼 재계산 코드가 없음. 프로파일링 없이는 확정 불가.
 
 ---
 
@@ -358,7 +359,7 @@ UI 컴포넌트 트리가 코덱 문맥(codec context)을 인지하지 못하고
 - 각 패널 안에서 스크롤 끝까지 이동한 뒤 계속 휠을 굴려 상위 컨테이너가 반응하는지 확인.
 - 트랙패드 관성 스크롤 시나리오를 수동 QA에 포함.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components` 전체 CSS에서 `overscroll-behavior`를 사용하는 곳이 0건인 반면, `DockableLayout.css`만 해도 `overflow: auto`/`overflow: hidden auto` 컨테이너가 여러 겹 중첩되어 있다(예: 63행 `sidebar-content`, 131행, 230행, 287행 등, 전체 33곳). 구현 냄새("overscroll-behavior: contain 부재")가 그대로 확인됨.
 
 ---
 
@@ -394,7 +395,7 @@ Hex/Syntax처럼 긴 목록을 스크롤할 때 컬럼 헤더(오프셋, 필드�
 - 패널을 최소 높이까지 좁혀가며 sticky 헤더가 차지하는 비율(%)을 측정, 특정 임계치(예: 30%) 초과 여부 확인.
 - 스크롤 시 헤더 바로 아래 행이 실제로 클릭/선택 가능한지(가려서 히트박스가 어긋나지 않는지) 인터랙션 테스트.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드베이스 전체에서 `position: sticky`를 쓰는 곳은 `DiagnosticsPanel.css:118-123`의 단일 `<thead>` 하나뿐이며 그마저 1줄 높이 헤더로 다단 스택 구조가 아니다. Hex/Syntax 패널에는 sticky 헤더 자체가 없어 카탈로그가 묘사하는 "겹겹이 쌓여 화면 15~20% 잠식" 문제가 성립하지 않음.
 
 ---
 
@@ -430,7 +431,7 @@ Hex/Syntax처럼 긴 목록을 스크롤할 때 컬럼 헤더(오프셋, 필드�
 - 대용량 스트림으로 프레임 추출을 실행하는 동안 다른 패널(Player 재생, Timeline 스크럽)을 조작해 응답하는지 확인.
 - 진행 중 취소 버튼을 눌렀을 때 실제로 파일 쓰기가 중단되는지(디스크 I/O 모니터링) 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — 별도의 "Extract Frames" 기능은 아직 없지만 동일 패턴이 `ExportDialog`(`frontend/components/ExportDialog.tsx`)에 그대로 있다: 화면 전체를 덮는 `position: fixed` 오버레이(`ExportDialog.css:3-9`)이고, `status === "exporting"` 동안 닫기 버튼·Cancel 버튼·바깥 클릭(`handleCancel`)이 전부 비활성화/무시된다(`ExportDialog.tsx:120-136, 267-282`). 진행 중 실제로 백엔드 작업을 중단시키는 취소 경로도 없다.
 
 ---
 
@@ -466,7 +467,7 @@ Hex/Syntax처럼 긴 목록을 스크롤할 때 컬럼 헤더(오프셋, 필드�
 - 화면 네 모서리 근처에서 각각 호버해 툴팁이 화면 밖으로 나가거나 다른 패널을 가리는지 스크린샷 비교.
 - 여러 플로팅 요소가 동시에 활성화되는 시나리오(줌인 + 호버 + 범례 표시)를 재현해 겹침 여부 확인.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 프레임 위 블록 호버 시 뜨는 상세 툴팁 기능 자체가 아직 없다(YUV Viewer/VideoCanvas에 tooltip 코드 없음). 실제 존재하는 툴팁 시스템(`TooltipManager.ts:240-306`, 온보딩용)은 오히려 `auto` 위치 감지 + `requestAnimationFrame` 뷰포트 클램핑으로 충돌 회피를 이미 구현하고 있어 카탈로그가 우려하는 것과 반대다. 오버레이 범례(`OverlayRenderer/utils/drawing.ts:125-131`)는 캔버스 우하단 고정 오프셋이지만 캔버스 경계 내부로 한정되어 화면 밖으로 나가거나 다른 패널을 덮는 시나리오는 아니다.
 
 ---
 
@@ -502,7 +503,7 @@ Canvas의 실제 픽셀 버퍼 크기(`canvas.width/height`)와 CSS 표시 크�
 - 100%, 150%, 200% 스케일 디스플레이에서 동일 프레임을 렌더링해 오버레이 텍스트와 블록 경계 정렬을 스크린샷 비교.
 - 창을 스케일이 다른 두 모니터 사이로 드래그하며 어긋남 발생 여부 실시간 관찰.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `VideoCanvas.tsx:177-179`가 `canvas.width/height`를 `devicePixelRatio` 보정 없이 프레임 원본 해상도로만 설정하고(`devicePixelRatio` 사용처는 저장소 전체에서 `HRDBufferPanel.tsx` 한 곳뿐), `devicePixelRatio` 변경 리스너도 없어 HiDPI에서 블러/부정확 렌더링 위험은 구조적으로 실재한다. 다만 오버레이 숫자(`OverlayRenderer/utils/drawing.ts`의 `fillText`)는 별도 DOM 레이어가 아니라 블록과 동일한 캔버스 좌표계에 직접 그려지므로, 카탈로그가 묘사하는 "DOM 텍스트 vs canvas 블록의 상호 어긋남"과는 다른 형태의 문제일 수 있음 — 실측 없이는 확정 불가.
 
 ---
 
@@ -538,4 +539,4 @@ Tauri 앱의 커스텀 타이틀바(또는 타이틀바 오버레이) 구현 시
 - macOS와 Windows 각각에서 동일 빌드를 실행해 상단 타이틀바 영역 스크린샷 비교.
 - 창 최대화/복원을 반복하며 상단 콘텐츠 위치가 흔들리는지(레이아웃 시프트) 관찰.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `shouldShowTitleBar()`(`frontend/utils/platform.ts:69-71`)가 macOS에서는 `false`를 반환해 커스텀 `TitleBar`를 아예 렌더링하지 않고 네이티브 시스템 메뉴/타이틀바를 그대로 쓴다(`App.tsx:731`, `TitleBar.tsx:6` 주석에도 명시). Windows/Linux 전용 커스텀 바에서도 `paddingLeft`/`78px` 같은 macOS 전용 하드코딩은 발견되지 않음(grep 0건) — 트래픽라이트 충돌 문제 자체를 아키텍처로 회피.

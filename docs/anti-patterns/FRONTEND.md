@@ -78,7 +78,7 @@ function FrameCanvasStack({ frame, overlayMode, zoom, pan, hoveredBlock, selecti
 **예외**:
 - 오버레이가 없는 단순 뷰어(원본 프레임만 표시)이거나 정적 스냅샷 내보내기 용도라면 단일 캔버스로 충분.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/YuvViewerPanel/VideoCanvas.tsx:157-222`. 단일 `<canvas>`(`canvasRef`)의 동일 `ctx`에 YUV 프레임 렌더(`rendererRef.current.render`)와 모드 오버레이(`renderModeOverlay`)를 하나의 `useEffect`(deps: `frameImage, yuvData, currentMode, currentFrame, activeOverlays, av1Features, colorspace, channelMode`)에서 순서대로 그린다. 별도 WebGL 캔버스(`webglCanvasRef`)가 있지만 이는 MV 필드 전용 고밀도 경로일 뿐, 프레임/오버레이 분리 레이어는 아니다. 다만 현재 hover/selection 상태가 이 캔버스 렌더링에 연결돼 있지 않아(코드베이스에 `hoveredBlock`류 픽셀 단위 호버가 프레임 뷰어에 없음) 원문이 지적하는 "호버마다 전체 재드로우" 체감 문제는 아직 실증되지 않음.
 
 ---
 
@@ -142,7 +142,7 @@ function FrameCanvas({ frameIndex }: { frameIndex: number }) {
 **예외**:
 - 프레임 하나짜리 정적 썸네일(파일 저장/내보내기, 공유 링크 미리보기)처럼 실시간성이 필요 없는 경로는 base64도 무방.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/YuvViewerPanel/index.tsx:223-248`. YUV 경로가 실패했을 때 폴백으로 `get_decoded_frame`이 반환한 PNG를 `img.src = \`data:image/png;base64,${result.frame_data}\`` 형태로 그대로 `<img>`에 흘려보내는, 문서의 나쁜 예와 정확히 일치하는 코드가 존재. 같은 파일 `:56-64`의 `base64ToUint8`(`atob` + 1바이트씩 `charCodeAt` 루프)도 YUV Y/U/V 평면을 매 프레임 base64 문자열로 받아 수동 디코드하는 동일 계열 패턴.
 
 ---
 
@@ -208,7 +208,7 @@ const SyntaxNodeRow = React.memo(function SyntaxNodeRow({ id }: { id: string }) 
 **예외**:
 - 노드 수가 수십~수백 개로 작은 컨테이너(MP4 box 트리 등)라면 굳이 정규화하지 않아도 체감 문제 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/SyntaxDetailPanel/index.tsx:100`에서 `setExpandedNodes(prev => new Set(prev)...)`로 토글마다 새 `Set` 참조를 만들고, 이 `expandedNodes` 전체 Set을 `FrameSyntaxTab.tsx`의 `SyntaxTreeNode`(`React.memo`, `:342`)/`VirtualSyntaxTree`(`:233`)에 통째로 prop으로 내려준다. 자식이 `memo`로 감싸져 있어도 prop이 매번 새 참조라 얕은 비교가 무력화되는, 문서가 지적한 정확한 패턴. 다만 노드 자체(`nodesById`류 정규화 맵)는 없지만 대신 아래 FE-04처럼 가시 범위만 평탄화하는 자체 가상화(`flattenVisible`)가 있어 실제 DOM 재조정 규모는 제한적.
 
 ---
 
@@ -279,7 +279,7 @@ function HexView({ bytes }: { bytes: Uint8Array }) {
 **예외**:
 - 리스트 길이가 항상 작다는 것이 도메인상 보장되는 경우(예: SPS/PPS 개수처럼 본질적으로 적은 개수)는 가상화가 과설계.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 세 대상 모두 이미 완화되어 있음: (1) 필름스트립은 `frontend/components/Filmstrip.tsx:65,255`의 `useVirtualizedView = frames.length >= VIRTUALIZATION_THRESHOLD` 분기로 `VirtualizedThumbnailsView`를 사용. (2) 신택스 트리는 `FrameSyntaxTab.tsx:190-328`에 자체 windowing(`VIRTUALIZATION_THRESHOLD=120`, `scrollTop`/`containerHeight` 기반 슬라이스)이 구현됨. (3) 헥스 뷰는 `HexViewTab.tsx:60`의 `get_frame_hex_data` 호출이 `maxBytes: 2048`로 백엔드에서 미리 잘라 최대 ~128줄만 렌더 — 라이브러리 기반 가상화는 아니지만 DOM 노드 폭증 문제 자체가 발생하지 않음.
 
 ---
 
@@ -325,7 +325,7 @@ function QpHeatmapOverlay({ frame, colorScale }: { frame: FrameData; colorScale:
 **예외**:
 - 계산이 충분히 저렴(수십 개 이하 항목, O(1)에 가까운 변환)하면 메모이제이션 자체의 오버헤드(의존성 비교)가 더 클 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `frontend/components/panels/YuvViewerPanel/index.tsx:505-508`에서 `convertedYuvFrame`을 `useMemo(..., [yuvData])`로 명시적으로 감싸고 주석까지 "avoid re-running on every render"로 남겨둠. 오버레이 계산(QP/MV 등)도 렌더 본문이 아니라 `VideoCanvas.tsx`의 `useEffect`(안정적 deps) 내부에서 명령형으로 실행되므로 부모의 무관한 리렌더에 반응하지 않음.
 
 ---
 
@@ -381,7 +381,7 @@ function HexRow({ offset }: { offset: number }) {
 **예외**:
 - 패널 수가 적고(2~3개) 트리 깊이가 얕아 리렌더 비용이 무시할 만한 초기 프로토타입 단계.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `frontend/contexts/SyntaxHexLinkContext.tsx`가 selector 없는 일반 React Context로 `highlightedByteOffset`을 관리하고 `SyntaxDetailPanel`/`HexViewTab` 등 여러 소비자가 구독하는 구조는 형태상 원문과 같다. 다만 현재는 신택스 노드 "클릭" 시에만 값이 바뀌고(`onJumpToHex`) `mousemove` 같은 고빈도 이벤트에 연결돼 있지 않아, 원문이 지적하는 초당 수십 회 리렌더 체감 문제가 실제로 발생하는지는 확인하지 못함.
 
 ---
 
@@ -441,7 +441,7 @@ function Timeline({ totalFrames }: { totalFrames: number }) {
 **예외**:
 - IPC 커맨드가 즉시 반환되는 순수 로컬 캐시 조회(디코드를 트리거하지 않는 조회)라면 throttle 없이도 부담이 적을 수 있음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `frontend/components/Timeline.tsx:140-171`의 드래그 스크럽(`handleDragMove`)은 `mousemove`마다 로컬 state(`setHighlightedFrameIndex`, `setHoverPosition`)만 갱신하고, 실제 프레임 선택/디코드를 트리거하는 `setFrameSelection` 호출은 `handleDragUp`(mouseup)에서 단 한 번만 실행된다. 즉 IPC 자체가 스크럽 중에는 발생하지 않도록 설계돼 있어 throttle이 불필요. 코드베이스 전체에서 `onMouseMove`/`onPointerMove` 핸들러 내부에 직접 `invoke(...)`가 있는 지점은 찾지 못함.
 
 ---
 
@@ -501,7 +501,7 @@ function OverlayCanvas({ pixels, width, height }: Props) {
 **예외**:
 - 캔버스가 조건부로 완전히 언마운트/재마운트되는 것이 의도된 설계(예: 모드 전환 시 캔버스 자체를 갈아끼우는 구조)라면 재획득이 자연스러움.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `grep`으로 인라인 콜백 `ref={(el) => { ... getContext ... }}` 패턴을 찾지 못함. `getContext('2d')`가 호출되는 지점(`VideoCanvas.tsx:161`, `utils/yuv/renderer.ts:136,185`, `HRDBufferPanel.tsx:98`, `mv-webgl.ts:90`)은 모두 `useEffect`/전용 클래스 메서드 내부에서 데이터 변경 시에만 실행되며, WebGL 경로(`mv-webgl.ts:47`)는 `WeakMap<canvas, state>` 캐시로 컨텍스트/프로그램/버퍼를 마운트 1회만 생성해 재사용한다.
 
 ---
 
@@ -562,7 +562,7 @@ function useFrameTexture(gl: WebGL2RenderingContext, frame: FrameData) {
 **예외**:
 - 저해상도 프리뷰/썸네일처럼 텍스처가 작아(수십 KB 이하) 업로드 비용이 무시 가능한 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(변형) — 코드베이스의 메인 프레임 렌더 경로는 WebGL `texImage2D`가 아니라 2D 캔버스지만, 동일한 근본 문제(대용량 픽셀 처리가 메인 스레드 동기 실행)가 그대로 존재한다: `utils/yuv/renderer.ts:210-221`의 `YUVRenderer.render()`가 `yuvToImageData`(프레임 전체 YUV→RGBA 변환, 4K면 830만 픽셀)를 호출한 뒤 `ctx.putImageData`로 그리는데, 이는 `VideoCanvas.tsx`의 프레임 전환 `useEffect`에서 매번 동기 호출된다. 코드베이스 전체에서 Web Worker는 `workers/frameStatsWorker.ts` 하나뿐이고(FE-14 참고) 픽셀 변환/오버레이 계산에는 워커가 전혀 쓰이지 않는다.
 
 ---
 
@@ -619,7 +619,7 @@ function frameToScreen(p: PixelCoord, view: ViewTransform): ScreenCoord {
 **예외**:
 - 프레임 전체를 덮는 단일 오버레이(블록 단위 세분화가 없는 히트맵 등)는 좌표계가 프레임과 1:1이라 이 문제에서 자유로움.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `QPMapRenderer.tsx:38` 등 오버레이 렌더러들은 백엔드가 준 `block_w`/`block_h`(픽셀 단위)로 `col * block_w`를 그대로 사용해 캔버스 버퍼(=프레임 원본 해상도) 좌표계에 그린다. `zoom`/`pan`은 렌더러 내부에서 곱해지지 않고 `VideoCanvas.tsx:129-135`의 `canvasStyle`(`transform: scale(zoom) translate(...)`) CSS 변환 하나로만 적용되므로, 프레임 드로잉과 오버레이 드로잉이 "같은 변환 함수(사실상 변환 없음 + 단일 CSS transform)"를 공유해 원문이 우려하는 이중 스케일링 불일치가 구조적으로 발생하기 어렵다. 다만 마우스 좌표 → 블록 좌표 역변환이 필요한 호버/클릭-투-셀렉트 블록 기능 자체가 아직 존재하지 않아(`useCanvasInteraction.ts`에 pan/zoom만 있고 블록 피킹 없음) 이 절반의 시나리오는 검증 대상이 없음.
 
 ---
 
@@ -675,7 +675,7 @@ function PlaybackController({ frameIndex, onFrameChange }: Props) {
 **예외**:
 - 클로저가 캡처하는 값이 컴포넌트 라이프사이클 동안 절대 안 바뀌는 상수(예: `frameCount` 총합)라면 문제 없음.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `YuvViewerPanel/index.tsx:348-380`의 재생 타이머는 `setTimeout`을 매번 재등록하는 `useEffect`이며 의존성 배열에 `currentFrameIndex`가 포함돼 있어(“1회만 등록” 시도가 아니라 프레임이 바뀔 때마다 재스케줄) stale closure가 구조적으로 발생하지 않는다. 키보드 단축키 핸들러(`:429-492`)도 `togglePlay`/`goToPrevFrame` 등 관련 콜백을 의존성 배열에 모두 나열하고 cleanup에서 `removeEventListener`한다.
 
 ---
 
@@ -734,7 +734,7 @@ function MotionVectorOverlay({ frame }: { frame: FrameData }) {
 **예외**:
 - 컴포넌트/effect가 앱 생명주기 전체에서 단 한 번만 마운트되고 절대 재실행되지 않는 것이 구조적으로 보장된 최상위 루프(예: 앱 전역 렌더 루프)라면 매 프레임 정리가 불필요할 수 있음 — 다만 이 경우도 언마운트 정리는 반드시 필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드베이스에서 `requestAnimationFrame`을 쓰는 곳은 `components/VirtualizedFilmstrip.tsx`뿐이며 `cancelAnimationFrame`으로 일관되게 정리한다(`:57,71`). Tauri `listen()` 구독도 `App.tsx:449-470`, `hooks/useFileOperations.ts:247-263`에서 반환된 unlisten 함수를 `useEffect` cleanup에서 호출한다.
 
 ---
 
@@ -798,7 +798,7 @@ function BlockOverlay({ blocks, selectedBlockId }: Props) {
 **예외**:
 - 블록 수가 적어(수십 개 이하) 전체 재계산 비용이 무시할 만한 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 현재 `VideoCanvas`/`OverlayRenderer` 경로에 블록 단위 `selectedBlockId`가 오버레이 재계산 의존성으로 연결된 코드가 없음(블록 클릭 선택 기능 자체가 아직 프레임 뷰어에 없음). 필름스트립 쪽 선택(`selectedFrameIndex`)은 별도 리스트 아이템 단위라 이 안티패턴의 "선택 하나 바뀔 때 블록 수천 개 재계산"과는 성격이 다름.
 
 ---
 
@@ -860,7 +860,7 @@ function MvFieldOverlay({ frame }: { frame: FrameData }) {
 **예외**:
 - 계산이 수 ms 이내로 끝나는 경량 연산이거나, 결과가 이미 백엔드(Rust)에서 계산되어 프런트는 단순 매핑만 하는 경우 워커 도입은 과설계.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `components/panels/OverlayRenderer/renderers/*.tsx`의 오버레이 렌더러들은 전부 메인 스레드의 `useEffect` 내부에서 O(grid_w×grid_h) 이중 루프로 `fillRect`를 직접 호출하며(예: `QPMapRenderer.tsx:29-40`) Web Worker offload는 어디에도 없다(`workers/frameStatsWorker.ts`가 유일한 워커지만 통계용이지 오버레이 렌더링용이 아님). 다만 실제 연산이 원문 예시(인접 블록 보간을 포함하는 MV 스무딩)만큼 무겁지 않고 단순 색상 매핑+`fillRect`라, MV 필드만 밀도 300블록 초과 시 WebGL 경로(`mv-webgl.ts`)로 전환하는 것 외에는 다른 오버레이가 실제로 Long Task를 유발하는지는 프로파일링 없이 확인하지 못함.
 
 ---
 
@@ -923,7 +923,7 @@ function useTimelineFrameList() {
 **예외**:
 - 서로 다른 store가 같은 이벤트에서 "의도적으로 다른 파생 데이터"(예: 하나는 원본, 하나는 집계 통계)를 만드는 것은 문제가 아님 — 원본 자체가 중복 보관되는 경우만 해당.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `frontend/contexts/ThumbnailContext.tsx`가 `frontend/components/useFilmstripState.ts`와 별개로 독립된 썸네일 캐시/로딩 로직을 구현하고 있어 원본 데이터가 두 곳에 중복 보관될 수 있는 구조이지만, `ThumbnailContext`는 `contexts/index.ts`에서 export만 되고 `App.tsx`나 실제 컴포넌트 트리 어디에서도 `ThumbnailProvider`/`useThumbnails`를 소비하는 지점을 찾지 못했다(테스트에서만 사용). 즉 현재는 죽은 코드라 실사용 중 상태 불일치가 관측되지는 않지만, 두 저장소가 병존하는 구조 자체는 향후 재도입 시 SSOT 위반으로 이어질 위험이 있음.
 
 ---
 
@@ -973,7 +973,7 @@ function FilmstripThumbnails({ thumbnails }: { thumbnails: Thumbnail[] }) {
 **예외**:
 - 목록이 절대 재정렬/필터링되지 않고 항상 끝에만 추가되는 append-only 리스트라면 index key도 실질적으로 안전.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `components/Filmstrip/views/ThumbnailsView.tsx:187`와 `VirtualizedThumbnailsView.tsx:95` 모두 `key={frame.frame_index}`를 사용해 배열 위치가 아닌 안정적 식별자로 key를 부여한다. 코드베이스 전체에서 캔버스/썸네일류 반복 렌더에 `key={i}`/`key={idx}`/`key={index}`를 쓰는 지점은 발견하지 못함.
 
 ---
 
@@ -1032,7 +1032,7 @@ function FrameViewer() {
 **예외**:
 - IPC 커맨드가 항상 프레임 인덱스를 함께 반환하고, 컴포넌트가 응답의 인덱스와 현재 `frameIndex`를 비교해 다르면 버리는 방식(암묵적 가드)을 이미 채택했다면 별도 토큰 없이도 안전.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `frontend/components/panels/SyntaxDetailPanel/FrameSyntaxTab.tsx:67-87`의 `get_frame_syntax` 요청은 `invoke(...).then(setSyntaxTree).catch(...).finally(...)`만 있고 `cancelled` 플래그도, `useEffect` cleanup 함수도 없다. 같은 디렉터리의 `ApsTab.tsx`, `RefListTab.tsx`, `QmTab.tsx`, `ProbsTab.tsx`는 전부 `let cancelled = false` + `return () => { cancelled = true }` 가드를 일관되게 사용하는 것과 대조적 — `FrameSyntaxTab`만 이 가드가 빠져 있어, 빠른 프레임 전환 시 느리게 끝난 이전 프레임의 신택스 트리가 최신 프레임 화면을 덮어쓸 수 있는 실질적 레이스 컨디션. `YuvViewerPanel/index.tsx:174-263`(프레임/YUV 로드)와 `HexViewTab.tsx:48-93`은 정상적으로 `cancelled` 가드를 사용 중.
 
 ---
 
@@ -1096,4 +1096,4 @@ function toCanvasCoord(e: React.MouseEvent, canvas: HTMLCanvasElement) {
 **예외**:
 - 서버사이드 렌더링/헤드리스 캡처(스크린샷 내보내기용 오프스크린 캔버스)처럼 물리 디스플레이와 무관하게 고정 해상도로만 출력하는 경로는 dpr 처리가 불필요.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `VideoCanvas.tsx`는 캔버스 버퍼 크기를 `devicePixelRatio` 없이 프레임 원본 해상도(`yuvData.width/height`)로 고정하고 오버레이 텍스트/선도 같은 버퍼에 그린다 — `ctx.setTransform(dpr,...)` 류 처리가 코드에 없음. 반면 같은 코드베이스의 `HRDBufferPanel.tsx:99-106`은 `window.devicePixelRatio`를 명시적으로 곱해 캔버스를 그린다 — 처리 방식이 일관되지 않음. 다만 `VideoCanvas`는 CSS 표시 크기가 아니라 "비디오 원본 픽셀 1:1 버퍼 + CSS transform으로 줌"을 의도한 설계로 보여, 이것이 실수인지 의도적 트레이드오프인지는 코드만으로 단정하기 어려움.

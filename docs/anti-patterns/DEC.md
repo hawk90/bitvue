@@ -74,7 +74,7 @@ unsafe fn decode_packet(ctx: *mut AVCodecContext, pkt: *mut AVPacket, out: &mut 
 **예외**:
 - 진짜 프레임 단위 무손실 인코딩이나 all-intra(모든 프레임 keyframe, no reorder, no delay) 스트림에서는 실질적으로 1:1에 가깝지만, 그래도 루프 형태를 유지하는 것이 안전하며 성능 비용은 무시할 만하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증, 이전 판정은 stale) 이전 Confirmed 근거였던 `decode_ivf_frame_generic`(src-tauri/src/commands/frame.rs)는 Tauri→Electron 전환의 일부로 `src-tauri` 자체가 삭제되며(`e7194cc`, 현재 HEAD의 조상 커밋) 더 이상 존재하지 않는다. 그 자리를 대체한 현재 커맨드들 — `get_decoded_frame_yuv`/`get_thumbnails`(crates/bitvue-sidecar/src/decode_bridge.rs:52-59,193-203), `decode_av1_luma`(crates/bitvue-cli/src/commands/decode.rs:815-817), `decode_ivf_frames`(crates/bitvue-cli/src/commands/quality.rs:200-213), `find_first_diff` 계열(crates/bitvue-sidecar/src/debug_yuv.rs:637-641), `decode_ivf`/`decode_ivf_streaming`(crates/bitvue-decode/src/decoder.rs:761-764,805-808) — 는 전부 `send_data_owned` 1회 뒤 `while let Ok(frame) = dec.get_frame()`로 EAGAIN까지 소진하는 루프를 쓴다. `FfmpegDecoder::decode_packet`(crates/bitvue-decode/src/ffmpeg.rs:114-151)도 여전히 올바른 루프 패턴. 코드베이스 전체에서 1패킷=1프레임 가정 위반 사례를 찾지 못했다.
 
 ---
 
@@ -133,7 +133,7 @@ unsafe fn send_packet_retrying(
 **예외**:
 - 완전히 동기적인 stateless 유틸(예: 단일 프레임 썸네일 디코더로 GOP 하나만 처리)에서는 EAGAIN이 실질적으로 발생하지 않을 수 있으나, 그래도 방어적으로 분기해두는 비용은 거의 없다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `Av1Decoder::send_data_owned`(crates/bitvue-decode/src/decoder.rs:331-337)와 `FfmpegDecoder::decode_packet`의 `send_packet` 호출(crates/bitvue-decode/src/ffmpeg.rs:116-118) 모두 반환값을 `.map_err`로 그대로 fatal `DecodeError`로 승격시키며, EAGAIN을 별도 분기하거나 재시도(drain 후 재전송)하는 코드가 크레이트 전체에 없다. 다만 실사용 경로는 전부 "send 1회 → get_frame을 EAGAIN까지 소진" 순서로 매 반복마다 드레인하므로 실제로 EAGAIN이 send 단계에서 터질 조건(드레인 안 된 채 연속 send)은 거의 발생하지 않아 이론적 결함에 가깝다. 또한 `FfmpegDecoder`(H264/HEVC/VP9 픽셀 디코드)는 `crates/bitvue-decode/src/lib.rs:34`에서 재노출만 될 뿐 sidecar/cli 등 하위 크레이트 어디에서도 호출되지 않는 죽은 코드로 확인됨(grep 결과 0건) — 현재 실도달 가능한 것은 `Av1Decoder` 경로뿐.
 
 ---
 
@@ -187,7 +187,7 @@ fn decode_stream(ctx: *mut AVCodecContext, packets: &[Packet]) -> Vec<Frame> {
 **예외**:
 - reorder delay가 0인 구성(all-intra, low-delay B 없음)에서는 flush 누락의 영향이 없거나 미미할 수 있지만, 코덱/설정이 바뀌면 조용히 재발하므로 항상 flush를 호출하는 편이 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증, 이전 판정은 stale) 근거였던 src-tauri/src/commands/quality.rs 전체가 `src-tauri` 삭제(`e7194cc`)로 더 이상 존재하지 않는다. 현재 코드는 정반대로 일관되게 올바르다: `get_decoded_frame_yuv`(decode_bridge.rs:60-67), `get_thumbnails`(decode_bridge.rs:204-214), `decode_av1_luma`(cli/decode.rs:817-823), `decode_ivf_frames`(cli/quality.rs:216-221), `find_first_diff`(debug_yuv.rs:648-651) 전부 EOF에서 `flush()` 대신 명시적으로 `drain_decoder_frames()`를 호출하며, 각 파일에 "flush()는 seek용으로 내부 상태를 지울 뿐 버퍼링된 프레임을 비우지 않아 짧은 스트림에서 프레임이 누락됐었다"는 동일한 경고 주석이 반복된다(2026-08-10 dav1d flush() 버그 수정의 정착된 패턴). placeholder/회색 프레임 합성 코드는 grep 결과 0건 — DEC-016 참고.
 
 ---
 
@@ -248,7 +248,7 @@ fn decode_with_delay_awareness(ctx: *mut AVCodecContext, packets: &[Packet]) -> 
 **예외**:
 - delay가 0으로 보고되는 구성(저지연 인코딩 프로파일)에서는 패킷=프레임 가정이 실제로 성립하지만, 이는 디코더가 보고한 값을 확인한 결과여야지 임의 가정이어서는 안 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증, 이전 판정은 stale) 근거였던 `decode_container_h26x_frame_yuv`/`decode_annexb_frame_yuv`(src-tauri/src/commands/frame.rs)는 `src-tauri` 삭제(`e7194cc`)로 더 이상 존재하지 않는다. 현재 `get_decoded_frame_yuv`(crates/bitvue-sidecar/src/decode_bridge.rs:40-77)는 "마지막으로 나온 프레임"이 아니라, 스트림 처음부터 방출되는 모든 프레임을 순서대로 `decoded: Vec<DecodedFrame>`에 누적하고 그중 `decoded[frame_index]`를 반환한다(60-74행) — 패킷 인덱스가 아니라 실제 출력 순번으로 인덱싱하므로 이 안티패턴이 기술한 오프바이 문제가 구조적으로 발생하지 않는다.
 
 ---
 
@@ -301,7 +301,7 @@ fn decode_and_collect(ctx: *mut AVCodecContext, pkt: *mut AVPacket, out: &mut Ve
 **예외**:
 - 컨테이너가 pts를 아예 제공하지 않고(pts == AV_NOPTS_VALUE) dts만 있는 극히 예외적인 raw 스트림에서는 별도의 fallback 로직(DEC-006 참고)이 필요하며, 이 경우도 "패킷 pts를 그대로 복사"가 아니라 명시적 fallback 규칙으로 처리해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `FfmpegDecoder::ffmpeg_frame_to_decoded`(crates/bitvue-decode/src/ffmpeg.rs:246)는 `frame.timestamp()`(프레임 자체 필드)를 우선 사용하고 값이 없을 때만 `self.timestamp`(마지막으로 보낸 패킷의 캐시된 ts)로 폴백하므로 "패킷 pts를 무조건 복사"하는 나쁜 예와는 다르지만, 폴백 경로에서는 여전히 재정렬된 프레임에 stale한 패킷 타임스탬프가 붙을 수 있다. AV1(dav1d) 경로는 `picture.timestamp()`(decoder.rs:516)만 사용해 이 문제가 없어 보인다.
 
 ---
 
@@ -345,7 +345,7 @@ fn frame_display_time(frame: &AVFrame, time_base: AVRational) -> Option<f64> {
 **예외**:
 - dav1d처럼 애초에 컨테이너 pts를 다루지 않고 호출자가 직접 프레임-타임스탬프 매핑을 관리하는 raw 디코더 API를 쓸 때는 `best_effort_timestamp` 개념 자체가 없으므로, 호출자가 own 매핑 테이블(패킷→pts)을 프레임 방출 순서에 맞춰 재정렬하는 자체 로직으로 대체해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — `ffmpeg-next`의 `Frame::timestamp()`가 내부적으로 `best_effort_timestamp`를 쓰는지 raw `pts`를 쓰는지 로컬 소스로 확인할 수 없었다(크레이트 소스가 오프라인 캐시에 없음). 이 코드베이스 자체에는 `best_effort_timestamp`/`AV_NOPTS_VALUE`를 명시적으로 다루는 코드가 없다. dav1d 경로는 카탈로그가 명시한 예외(컨테이너 pts 개념 자체가 없음)에 해당해 그쪽은 N/A에 가깝다.
 
 ---
 
@@ -397,7 +397,7 @@ unsafe fn ensure_sw_frame(hw_frame: *mut AVFrame) -> Result<*mut AVFrame, Decode
 **예외**:
 - 순수 sw 디코드 전용으로 빌드/설정된 경로(hwaccel 비활성)에서는 이 문제가 발생하지 않지만, 향후 hwaccel을 추가할 가능성이 있다면 처음부터 `format` 분기를 두는 편이 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드베이스에 hwaccel 경로 자체가 없다. `FfmpegDecoder::capabilities()`가 `hw_accel: false`를 하드코딩(crates/bitvue-decode/src/ffmpeg.rs:342)하고, VAAPI/VideoToolbox/CUDA/`hw_frames_ctx` 관련 참조가 bitvue-decode 어디에도 없다(grep 결과 0건).
 
 ---
 
@@ -452,7 +452,7 @@ impl BoundedFrameCache {
 **예외**:
 - 짧은 클립(수 초~수십 초) 전용 분석 도구처럼 전체 프레임 수가 애초에 풀 크기보다 훨씬 작음이 보장된 경우는 무제한 캐시가 실용적으로 문제되지 않을 수 있다. 다만 파일 크기 제한이 바뀌면 재발하므로 상한을 두는 편이 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A/absent — 발견된 프레임 캐시는 모두 명시적 상한 + LRU 축출을 갖춘다: `FfmpegDecoder::frame_buffer`(`MAX_FRAME_BUFFER_SIZE=16`, ffmpeg.rs:17,126-131), `ThumbnailService`(`MAX_CACHE_SIZE=200`, thumbnail_service.rs:17,154-159), `DecodeService`의 rgb/yuv 캐시(바이트 예산 기반 LRU, decode_service.rs:320-322 등). 무제한 캐시 패턴은 확인되지 않았다.
 
 ---
 
@@ -503,7 +503,7 @@ fn seek_and_decode(ctx: *mut AVCodecContext, fmt: *mut AVFormatContext, target_p
 **예외**:
 - keyframe-only 스트림(all-intra)에서 seek이 항상 keyframe 경계와 정확히 일치한다면 실질적 영향은 적을 수 있으나, 디코더 내부 reorder 큐 상태는 여전히 리셋해주는 편이 안전하고 비용도 낮다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 이 코드베이스는 열린 `AVFormatContext`+디코더 세션을 계속 들고 있다가 seek하는 구조 자체가 없다. "N번째 프레임 요청"마다 매번 새 디코더를 만들어 처음부터(또는 DEC-011처럼 해당 샘플 단독으로) 다시 디코드하므로 `av_seek_frame` 이후 flush를 빼먹는 경로가 존재하지 않는다. 유일한 실제 `seek_to_frame`(crates/bitvue-decode/src/yuv_loader.rs:405)은 압축 스트림이 아닌 raw YUV/Y4M 전용이라 디코더 상태 자체가 없다.
 
 ---
 
@@ -559,7 +559,7 @@ fn get_frame_at(fmt: *mut AVFormatContext, ctx: *mut AVCodecContext, target_pts:
 **예외**:
 - "가장 가까운 keyframe으로 빠르게 미리보기"가 기능 자체의 요구사항(예: 타임라인 썸네일 스크러빙에서 정밀도보다 반응성이 중요한 경우)이라면 이 동작이 의도된 것일 수 있다. 이 경우 UI에 "근사치"임을 명시하는 것으로 충분하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — DEC-009와 동일한 이유(라이브 seek 가능한 디코더 세션이 없음)로 "seek 지점 = target frame" 가정 자체가 성립할 여지가 없다. 다만 이 아키텍처는 그 대신 DEC-011에서 지적하는, seek보다 더 심각한 문제(단일 프레임만 디코드)를 갖고 있다.
 
 ---
 
@@ -618,7 +618,7 @@ fn decode_from_index(fmt: *mut AVFormatContext, ctx: *mut AVCodecContext, hint_i
 **예외**:
 - 항상 전체 파일을 처음(첫 keyframe)부터 순차 디코드하고 임의 오프셋 시작을 지원하지 않는 단순 배치 분석 도구라면 이 문제는 구조적으로 발생하지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — (재검증, 이전 판정은 stale) 근거였던 `decode_ivf_frame_generic`/`decode_container_frame_yuv_with_samples`(src-tauri/src/commands/frame.rs)는 `src-tauri` 삭제(`e7194cc`)로 더 이상 존재하지 않는다. 현재 `get_decoded_frame_yuv`(crates/bitvue-sidecar/src/decode_bridge.rs:40-77)는 정확히 이 안티패턴을 피하도록 설계돼 있다 — 모듈 상단 doc comment가 "re-decodes from the start of the stream up to the target frame on every call"이라고 명시하고, 실제로 `for f in &frames`가 스트림 맨 앞(프레임 0)부터 target까지 전부 디코더에 순서대로 투입한다(52-59행). 참조 프레임 체인이 항상 완전하므로 non-keyframe 단독 디코드 문제가 발생하지 않는다(대신 매 요청마다 O(frame_index) 재디코드하는 성능 트레이드오프가 있으나 이는 별개 카테고리인 PERF/RPERF 소관).
 
 ---
 
@@ -679,7 +679,7 @@ impl DecoderPool {
 **예외**:
 - 완전히 단일 스레드·단일 목적(예: 배치 CLI 도구가 파일 하나를 순차 디코드만 하는 경우)에서는 공유 자체가 문제되지 않는다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A/absent — 공유되는 영속 디코더 인스턴스를 찾지 못했다. frame.rs/quality.rs/thumbnail_service.rs의 모든 커맨드 핸들러가 호출마다 로컬 `Av1Decoder`/`FfmpegDecoder`를 새로 만들고 함수 종료 시 drop한다(`DecodeService`에도 디코더 필드 없음, decode_service.rs:115 구조체 정의 확인). 따라서 재생용/썸네일용 작업이 같은 컨텍스트를 두고 경합할 여지가 없다(다만 DEC-011처럼 매번 새로 만드는 대가로 다른 문제가 생긴다).
 
 ---
 
@@ -750,7 +750,7 @@ impl RgbConverter {
 **예외**:
 - 프레임마다 실제로 해상도나 픽셀 포맷이 바뀌는 스트림(적응형 해상도, mid-stream 포맷 변경)이라면 재생성이 불가피하다. 이 경우에도 "바뀔 때만" 재생성하도록 캐시 키 비교는 유지해야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A/absent — `FfmpegDecoder`의 `SafeScaler`는 `src_format`/`width`/`height`가 바뀔 때만 재생성하도록 캐시되어 있다(crates/bitvue-decode/src/ffmpeg.rs:178-198, `needs_new_scaler` 체크). 나쁜 예가 아니라 권장 패턴과 동일하게 구현되어 있다.
 
 ---
 
@@ -801,7 +801,7 @@ fn read_luma_plane(frame: &AVFrame) -> PlaneView<'_> {
 **예외**:
 - 애플리케이션이 의도적으로 특정 포맷만 지원 범위로 못박고(예: "8비트 4:2:0만 지원") 그 외 포맷은 디코드 파이프라인 진입 전에 명시적으로 거부하는 설계라면, 이후 코드에서 고정 가정을 쓰는 것이 오히려 의도된 단순화일 수 있다. 이 경우 거부 로직이 실제로 모든 진입점에서 강제되는지가 핵심이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed(단, 현재 죽은 코드 한정) — `FfmpegDecoder::ffmpeg_frame_to_decoded`는 `bit_depth: 8, // FFmpeg typically outputs 8-bit`를 하드코딩한다(crates/bitvue-decode/src/ffmpeg.rs:258,315). 게다가 `Pixel::YUV420P`가 아닌 모든 출력(10/12비트, 4:2:2/4:4:4, HDR 등)을 실제 포맷을 조회해 보존하는 대신 스케일러로 강제로 8비트 `YUV420P`까지 다운컨버트한다(ffmpeg.rs:176-202). AV1(dav1d) 경로는 `picture.bit_depth()`를 실제로 조회해(decoder.rs:377) 이 문제가 없다. 단, DEC-002에서 확인했듯 `FfmpegDecoder`(H.264/HEVC/VP9 경로)는 현재 어떤 sidecar/cli 커맨드에서도 호출되지 않는 죽은 코드라(grep 결과 0건) 지금 당장 사용자에게 도달하는 버그는 아니다 — 향후 해당 코덱들의 픽셀 디코드를 배선하는 순간 그대로 재현될 잠복 결함으로 이해해야 한다.
 
 ---
 
@@ -866,7 +866,7 @@ fn spawn_decoders_for_batch(files: &[PathBuf]) -> Vec<JoinHandle<()>> {
 **예외**:
 - 파일을 정말 하나씩만 순차 처리하는(외부 병렬도 = 1) 도구라면 디코더 내부 스레드 수를 전체 CPU로 설정하는 것이 맞다. 문제는 "외부 병렬도가 1보다 클 수 있는데도 내부 스레드 수 계산이 그 사실을 모른다"는 점이다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — bitvue-decode 어디에도 `thread_count`/`n_threads`류 디코더 스레드 수 설정이 없다(grep 결과 0건). 외부 병렬도와 내부 디코더 스레드 수를 동시에 최대치로 설정해 과다구독을 일으키는 패턴 자체가 존재하지 않는다.
 
 ---
 
@@ -919,7 +919,7 @@ fn aggregate_report(results: &[Option<f64>]) -> Report {
 **예외**:
 - 손상 은닉 자체를 연구/시각화하려는 도구(에러 은닉 품질 비교 도구)라면 손상 프레임을 의도적으로 포함해 분석하는 것이 목적일 수 있다. 이 경우도 "이 프레임은 손상되었다"는 사실 자체는 명시적으로 드러나야 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — (재검증, 이전 판정은 stale) 근거였던 `calculate_frame_psnr`/`calculate_frame_ssim`/`decode_frames_up_to`(src-tauri/src/commands/quality.rs)는 `src-tauri` 삭제(`e7194cc`)로 더 이상 존재하지 않는다. 현재 PSNR/SSIM 경로(`decode_ivf_frames`, crates/bitvue-cli/src/commands/quality.rs:200-222)는 placeholder/회색 프레임 합성 코드가 없고(grep 결과 0건), `Err(NoFrame) => break`로 정상 처리한다 — DEC-001/003이 지적한 문제는 사라졌다. 다만 `DecodedFrame`(crates/bitvue-decode/src/decoder.rs:33-)에 corrupt/error-concealment 플래그 필드 자체가 없고, dav1d가 FFmpeg의 `AV_FRAME_FLAG_CORRUPT`에 해당하는 값을 노출하는지, 노출한다면 그것을 조회하는 코드가 있는지 확인하지 못했다 — 손상 스트림에 대한 실측 테스트 없이는 Confirmed/N/A를 가릴 수 없어 Suspected로 유지.
 
 ---
 
@@ -962,7 +962,7 @@ fn build_playback_buffer(ctx: &AVCodecContext) -> PlaybackBuffer {
 **예외**:
 - 애플리케이션이 오직 하나의 알려진 인코딩 프리셋(예: 자체 캡처 파이프라인에서 항상 동일 설정으로 인코딩)만 다룬다면 정적 가정이 실용적으로 안전할 수 있다. 다만 외부에서 온 파일을 열 수 있는 기능이 조금이라도 있다면 이 가정은 깨진다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 코드명/코덱 이름 기반으로 reorder depth나 low-delay 여부를 결정하는 정적 테이블/휴리스틱이 코드베이스에 없다(관련 상수는 `MAX_FRAME_BUFFER_SIZE=16`뿐이며 이는 캐시 크기 상한이지 low-delay 판정 로직이 아니다). 이 패턴 자체가 존재하지 않는다.
 
 ---
 
@@ -1018,7 +1018,7 @@ fn to_render_frame(frame: &AVFrame) -> RenderFrame {
 **예외**:
 - 순수 픽셀 비교(예: 두 디코더의 픽셀 정확도만 비교하는 conformance 테스트)가 목적인 좁은 유틸이라면 side data를 의도적으로 무시하는 것이 맞다. 이 경우 함수 이름/문서에 "픽셀 전용"임을 명시해 다른 용도로 오용되지 않게 한다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — 디코드 프레임 경로에는 `side_data`/film grain/HDR-SEI 추출이 없다(`DecodedFrame`에 side_data 필드 없음, `Av1Decoder`는 dav1d가 내부에서 적용하는 `apply_grain` 토글만 노출, decoder.rs:311-320). 다만 HDR/SEI류 메타데이터는 bitvue-hevc/sps.rs, bitvue-av1-codec/sequence.rs 같은 별도 비트스트림 파서 크레이트가 파싱하는 것으로 보여, 프레임 side_data 경유가 아닌 의도된 아키텍처 분리일 수도 있다 — UI까지 실제로 연결되는지는 확인하지 못했다.
 
 ---
 
@@ -1065,7 +1065,7 @@ fn frame_to_srgb(frame: &AVFrame) -> Vec<u8> {
 **예외**:
 - 입력이 단일하고 검증된 파이프라인에서만 생성되는(예: 항상 BT.709 limited로만 인코딩하는 자체 캡처 도구) 경우 고정 가정이 실용적으로 안전할 수 있으나, 외부 파일을 여는 기능이 있다면 이 가정은 반드시 깨진다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `crates/bitvue-decode/src/yuv.rs`의 `yuv_to_rgb_pixel`(406-434)이 BT.601 계수를 무조건 하드코딩하며, `color_primaries`/`color_trc`/`colorspace`/`color_range`를 조회하는 코드가 bitvue-decode 어디에도 없다(grep 결과 0건). `DecodedFrame` 구조체 자체에도 색공간 필드가 없다. SPS/시퀀스 헤더 파서(bitvue-hevc, bitvue-av1-codec)는 이 값들을 별도로 파싱하지만 변환 함수로 전달되지 않는다.
 
 ---
 
@@ -1124,4 +1124,4 @@ fn init_decoder(codec_id: AVCodecID) -> DecoderInit {
 **예외**:
 - 화질 수치의 절대적 재현성이 중요하지 않은 용도(단순 미리보기 재생)라면 조용한 폴백이 사용자 경험상 오히려 바람직할 수 있다. 다만 이 경우도 최소한 디버그 로그에는 남겨 문제 발생 시 추적 가능하게 하는 것이 안전하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — DEC-007과 동일한 이유로 hwaccel 경로 자체가 코드베이스에 없으므로 hw→sw 조용한 폴백이라는 시나리오가 성립하지 않는다.

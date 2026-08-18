@@ -62,7 +62,7 @@ fn get_qp_map(state: tauri::State<AppState>, frame_index: u32, viewport: Rect) -
 **예외**:
 - 프레임 수가 적고(예: 정지 이미지 분석 도구) 패널이 항상 전부 열려 있는 워크플로라면 통합 반환이 요청 왕복 수를 줄여 오히려 유리할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `get_frame_analysis`(src-tauri/src/commands/analysis/mod.rs:256-288)은 매 호출마다 `FrameAnalysisData`의 qp/mv/partition/prediction_mode/transform/mb_type/ref_idx grid를 전부 채워 반환한다(extractors.rs의 `extract_*_analysis` 함수들이 모든 grid를 무조건 계산). `tauri::ipc::Response` 바이너리 경로는 코드베이스 전체에서 사용된 적이 없다(grep 0건).
 
 ---
 
@@ -143,7 +143,7 @@ fn get_block_grid_binary(
 **예외**:
 - 노드 수가 수백 개 이하로 확정된(SD 해상도, 큰 블록 크기 강제) 상황이거나 프로토타입 단계에서는 JSON `Vec<BlockInfo>`로도 충분할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `MVGridData.mv_l0/mv_l1: Vec<MotionVectorData>`, `PartitionGridData.blocks: Vec<PartitionBlockData>` 등(src-tauri/src/commands/mod.rs:167-272)이 AoS 그대로 표준 JSON(Result<T,String>)으로 직렬화되며, viewport 필터링이나 고정폭 바이너리 레코드 인코딩이 전혀 없다.
 
 ---
 
@@ -195,7 +195,7 @@ fn get_hex_chunk_binary(
 **예외**:
 - 바이트 수가 매우 작고(수십 바이트 이하) 빈도도 낮은 경우(예: 헤더의 4바이트 magic number)는 가독성을 위해 JSON 숫자 배열이나 hex 문자열로 두어도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `FrameHexData.data: Vec<u8>`(src-tauri/src/commands/frame.rs:467)가 `tauri::ipc::Response`가 아닌 일반 serde_json 경로로 반환되며, 요청당 최대 `limits::MAX_HEX_BYTES` = 1MB(src-tauri/src/constants.rs:42)까지 숫자 배열 텍스트로 직렬화된다.
 
 ---
 
@@ -256,7 +256,7 @@ img.src = URL.createObjectURL(blob);
 - 웹뷰 `<img src="data:image/png;base64,...">`처럼 base64 자체가 목적지 API의 요구사항인 경우.
 - 데이터 크기가 매우 작고(아이콘, 1KB 미만) 인코딩 비용이 무시 가능한 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `get_decoded_frame`/`get_decoded_frame_yuv`(src-tauri/src/commands/frame.rs:14-45, "Base64 encoded PNG (full resolution)")와 `get_thumbnails`(src-tauri/src/commands/thumbnails.rs:312-313, src-tauri/src/services/thumbnail_service.rs:272-273)가 항상 base64 data URL로 인코딩한다. 필름스트립 대량 썸네일 로딩이라는 문서의 발생 조건과 정확히 일치한다.
 
 ---
 
@@ -319,7 +319,7 @@ fn seek_frame(state: tauri::State<AppState>, frame_index: u32) -> SeekResult {
 
 **중복 참고**: `TAURI_CMD.md` TAURI-CMD-005와 거의 동일한 관심사 — 감사 시 하나로 취급 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `seek_frame`류 커맨드나 `ProjectState` 전체 스냅샷 반환 패턴이 코드베이스에 없다. 프레임 탐색용 커맨드(`get_frame_analysis`, `get_decoded_frame_yuv`, `get_frame_hex_data` 등)는 모두 frame_index 하나에 대한 데이터만 반환한다.
 
 ---
 
@@ -384,7 +384,7 @@ function onToggleMv(checked: boolean) {
 **예외**:
 - 표시 설정 변경이 실제로 새로운 계산을 요구하는 경우(예: QP 컬러 스케일의 min/max를 데이터 기반으로 재계산해야 하는 통계 오버레이)는 재계산이 정당할 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 오버레이 표시/숨김 토글(frontend/components/panels/OverlayRenderer/index.tsx 및 renderers)은 invoke() 호출이 전혀 없는 순수 프런트 로컬 상태다. 단, 이는 IPC-001에서 확인된 대로 `get_frame_analysis`가 이미 모든 grid를 한꺼번에 내려주기 때문에 가능한 것이며 근본 문제는 해소되지 않는다.
 
 ---
 
@@ -435,7 +435,8 @@ fn list_nal_units(state: tauri::State<AppState>, page: Page) -> Vec<NalUnitInfo>
 **예외**:
 - 목록 크기의 상한이 설계상 보장되는 경우(예: 프레임당 최대 8개의 reference picture 목록)는 페이지네이션이 불필요하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `get_frames_chunk`(src-tauri/src/commands/file.rs:498-540, offset/limit)로 페이지네이션을 구현해뒀음에도, 페이지네이션이 없는 `get_frames`(file.rs:453-490, 전체 `Vec<FrameData>` 반환)가 여전히 존재하며 frontend/contexts/LegacyStreamDataContext.tsx:57, frontend/utils/progressiveLoader.ts:128, frontend/utils/exportData.ts:286, ReferenceGraphPanel.tsx:57, BitrateGraphPanel.tsx:45에서 그대로 호출된다.
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-006 참고.
 
 ---
 
@@ -488,7 +489,7 @@ fn get_mv_field(
 **예외**:
 - 오버레이 데이터 총량이 애초에 작아(저해상도 스트림, 큰 블록 크기) 전체 계산·전송 비용이 무시할 만한 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — src-tauri/src/commands 전체에서 `viewport`/`Rect` 파라미터가 전혀 없다(grep 0건). `get_frame_analysis`와 내부 `extract_*_grid` 함수들은 항상 프레임 전체(coded_width x coded_height)에 대해 grid를 계산한다.
 
 ---
 
@@ -542,7 +543,7 @@ fn get_frame_analysis(state: tauri::State<AppState>, frame_index: u32) -> FrameS
 **예외**:
 - 데이터가 작고(수백 KB 이하) 변경 빈도가 낮다면 단순성을 위해 프런트 전체 캐싱이 합리적일 수 있다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Suspected — frontend의 `frames` 배열(frontend/contexts/FileStateContext.tsx, YuvViewerPanel/index.tsx:271-291에서 qp/mv/partition 등 grid를 merge)이 방문한 프레임마다 무한정 누적되는 것으로 보이나(eviction 로직 미발견), 백엔드 AppState가 동일 grid를 캐싱해 이중 보유하는지는 확인하지 못했다(`get_frame_analysis`는 호출마다 재계산하는 것으로 보임). 완전한 이중 대형 사본이라는 근거까지는 아니다.
 
 ---
 
@@ -601,7 +602,7 @@ export enum PredictionMode { Intra4x4 = 0, Intra16x16 = 1, InterSkip = 2 /* ... 
 - 값의 종류가 3~4개 이하이고 등장 빈도가 낮은(예: 파일 헤더의 container format 이름) 필드는 가독성을 위해 문자열로 두어도 무방하다.
 - 외부 API/플러그인과의 호환을 위해 안정적인 문자열 식별자가 계약으로 요구되는 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `FrameData.frame_type: String`(src-tauri/src/commands/mod.rs:78, syntax.rs:90)이 "I"/"P"/"B" 문자열로 스트림 전체 프레임 수만큼 반복 직렬화된다(`get_frames`가 반환하는 `Vec<FrameData>`). 다만 block 단위 필드(mode/mb_types/tx_sizes, mod.rs:176,234,246,258)는 이미 u8 정수로 인코딩되어 있어 물량이 큰 부분은 이 안티패턴을 피했다.
 
 ---
 
@@ -664,7 +665,7 @@ struct BlockInfo {
 **예외**:
 - 확장 필드가 항상 하나의 고정된 타입이고(버저닝 목적의 단순 추가 필드) discriminated union이 과설계인 경우.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — `#[serde(flatten)]` 사용처가 src-tauri/src 전체에서 발견되지 않는다(grep 0건).
 
 ---
 
@@ -727,7 +728,7 @@ struct BlockInfo {
 **예외**:
 - 진짜로 선택적인(코덱과 무관하게 항상 있을 수도 없을 수도 있는) 필드, 예: "이 블록에 대한 사용자 주석" 같은 부가 정보는 Option이 적절하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `FrameAnalysisData`(src-tauri/src/commands/mod.rs:276-287)에 codec별로 상호 배타적인 `Option<...GridData>` 필드가 7개(qp/mv/partition/prediction_mode/transform/mb_type/ref_idx) 존재하며, mb_type_grid/ref_idx_grid처럼 특정 코덱(AVC) 전용 필드가 공통 구조체에 계속 추가되는 형태다.
 
 ---
 
@@ -796,7 +797,7 @@ fn get_cu_tree(state: tauri::State<AppState>, frame_index: u32) -> Vec<CuNodeDto
 **예외**:
 - 내부 모델이 애초에 IPC 경계를 염두에 두고 설계된 작은 값 타입(예: `Point { x: u16, y: u16 }`)이라면 별도 DTO 없이 재사용해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — 내부 파서 타입(`bitvue_core::UnitNode`, `bitvue_decode::DecodedFrame`, 각 코덱 crate의 grid 타입)이 `#[tauri::command]` 반환 타입으로 직접 노출되는 사례를 찾지 못했다. `extractors.rs`와 `frame.rs`의 커맨드들은 모두 필드를 수동으로 매핑한 전용 DTO(QPGridData, DecodedFrameData 등)로 변환 후 반환한다.
 
 ---
 
@@ -854,7 +855,7 @@ fn get_frame_summary_v2(state: tauri::State<AppState>, frame_index: u32) -> Fram
 **예외**:
 - 프런트와 백엔드가 반드시 단일 아티팩트로 함께 빌드·배포되어 버전 불일치가 구조적으로 불가능한 경우(예: 완전히 정적 링크된 단일 바이너리 + 자동 업데이트로 항상 동기화).
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — src-tauri/src 및 frontend 전체에서 `schema_version`/`api_version`류 필드나 커맨드 버저닝(`_v2` 접미어 등)이 전혀 발견되지 않는다(grep 0건). `FrameAnalysisData`, `FrameData` 등 핵심 DTO에 버전 마커가 없다.
 
 ---
 
@@ -924,7 +925,7 @@ async fn get_hex_chunk(state: tauri::State<'_, AppState>, offset: u64, len: u32)
 
 **중복 참고**: `TAURI_CMD.md` TAURI-CMD-004와 거의 동일한 관심사 — 감사 시 하나로 취급 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — `AppState.core: Arc<Mutex<Core>>`(src-tauri/src/commands/mod.rs:104)를 `state.core.lock()`으로 잠그는 지점이 file.rs/frame.rs/thumbnails.rs/quality.rs/analysis/{mod,views}.rs/export.rs/debug_yuv.rs 등 21곳에 달한다. `Core` 내부는 stream_a/stream_b/selection이 이미 개별 `RwLock`으로 세분화되어 있는데(crates/bitvue-core/src/core.rs:43-55), 바깥의 단일 `Mutex<Core>`가 hex/QP/MV/썸네일/품질 커맨드를 서로 직렬화시켜 세분화 효과를 무력화한다.
 
 ---
 
@@ -983,7 +984,7 @@ fn analyze_stream(app: tauri::AppHandle, state: tauri::State<AppState>) {
 **예외**:
 - 반복 횟수가 작다고 보장되는 경우(예: 최대 10개 파일 배치 임포트)는 매 항목마다 emit해도 무방하다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — src-tauri/src 전체에서 `emit`/`emit_all` 호출이 전혀 없다(grep 0건). 장시간 분석에 대한 progress 이벤트 스트리밍 자체가 아직 구현되어 있지 않다.
 
 ---
 
@@ -1054,7 +1055,7 @@ async fn analyze_frame(
 
 **중복 참고**: `TAURI_CMD.md` TAURI-CMD-008과 거의 동일한 관심사 — 감사 시 하나로 취급 권장.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed (일부) — frontend/components/panels/SyntaxDetailPanel/FrameSyntaxTab.tsx:67-85는 `frame` 변경 시 `invoke("get_frame_syntax", ...)`을 호출하며 취소/request-id 가드 없이 `.then(setSyntaxTree)`로 바로 상태를 덮어써, 빠른 프레임 이동 시 오래된 응답이 최신 화면을 덮어쓸 수 있다. 반면 frontend/components/panels/YuvViewerPanel/index.tsx:171-318은 `cancelled` 플래그로 동일 문제를 방어하고 있어 코드베이스 내 일관성이 없다.
 
 ---
 
@@ -1138,7 +1139,8 @@ try {
 
 **관련**: `TAURI_CMD.md` TAURI-CMD-009 참고 — 이쪽은 에러 종류(도메인 오류 taxonomy)를 다루고, TAURI-CMD-009는 "실패 지점이 직렬화 단계였는지" 자체를 프런트가 식별할 수 있는가를 다뤄 관심사가 다르다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — src-tauri/src/commands/*.rs 전반에 `Result<_, String>` 시그니처가 88건 존재하며(예: file.rs:407 `get_stream_info`), 전부 `.map_err(|e| e.to_string())` 패턴이다. 태그가 있는 구조화 에러 enum은 어디에도 없다(`#[serde(tag=...)]` grep 0건).
+**관련**: 배선 문제 관점은 `WIRING.md`의 WIRE-005 참고.
 
 ---
 
@@ -1191,7 +1193,7 @@ fn get_qp_map(state: tauri::State<AppState>, frame_index: u32, viewport: Rect) -
 **예외**:
 - payload 크기가 항상 크다고 보장되는 커맨드(예: 항상 수 MB인 전체 hex dump)라면 조건 분기 없이 항상 압축해도 된다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: N/A — src-tauri Cargo.toml 및 소스 전체에서 zstd/flate2/lz4 등 압축 라이브러리 사용이 발견되지 않는다. 압축을 과도하게도, 적절하게도 적용하지 않는 상태라 이 안티패턴 자체가 성립하지 않는다.
 
 ---
 
@@ -1263,4 +1265,4 @@ fn get_frame_summary(state: tauri::State<AppState>, frame_index: u32) -> FrameSu
 - 순수하게 표시 목적의 가벼운 변환(단위 환산, 반올림, 색상 스케일 매핑)은 프런트에서 하는 것이 자연스럽고 중복이라 보기 어렵다.
 - 사용자가 프런트에서만 국소적으로 필터링/정렬한 부분집합에 대한 통계처럼, 백엔드가 애초에 알 수 없는 범위의 계산은 프런트에서 하는 것이 맞다.
 
-**Bitvue 판정**: 미정 — 2단계(저장소 감사)에서 채움
+**Bitvue 판정**: Confirmed — src-tauri/src/commands/export.rs:342가 `export_analysis_report`용으로 평균 프레임 크기(avg_size)를 Rust에서 계산하는 한편, frontend/components/Filmstrip/views/FrameSizesView.tsx:82-92가 동일한 원시 `size` 값들로부터 평균/최소/최대 프레임 크기를 TypeScript에서 별도로 재계산한다 — 동일 통계의 이중 구현.
