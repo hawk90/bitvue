@@ -426,7 +426,22 @@ fn parse_slice_macroblocks(
 
     let pps = match pps_map.get(&header.pic_parameter_set_id) {
         Some(p) => p,
-        None => return Ok(build_scaffold_mbs(nal_type, fallback_sps, fallback_qp)),
+        None => {
+            // Unlike the slice-header-parse-failure fallback above, the header (and its real
+            // slice_type) is already known here -- build_typed_mbs uses it to distinguish
+            // B-slices (B16x16) from P-slices (PLuma), which build_scaffold_mbs can't do (it
+            // only sees nal_type, which conflates every non-IDR slice into PLuma regardless of
+            // whether it's actually a B slice).
+            let pic_width_in_mbs = fallback_sps.pic_width_in_mbs_minus1 + 1;
+            let total_mbs = pic_width_in_mbs * (fallback_sps.pic_height_in_map_units_minus1 + 1);
+            return Ok(build_typed_mbs(
+                header.slice_type,
+                0,
+                total_mbs,
+                pic_width_in_mbs,
+                fallback_qp,
+            ));
+        }
     };
     let sps = match sps_map.get(&pps.seq_parameter_set_id) {
         Some(s) => s,
@@ -1277,25 +1292,6 @@ impl<'a> CabacDecoder<'a> {
         };
         let sign = self.decode_bypass()?;
         Some(if sign == 1 { -abs_val } else { abs_val })
-    }
-}
-
-/// Return (m, n) init params for mb_skip_flag context (H.264 Table 9-12).
-/// `cond_sum` = condTermFlagA + condTermFlagB (0, 1, or 2).
-fn mb_skip_ctx_mn(is_b: bool, cond_sum: u32) -> (i32, i32) {
-    // P/SP slice: ctxIdx 11–13; B slice: ctxIdx 24–26
-    if is_b {
-        match cond_sum {
-            0 => (-3, 71),
-            1 => (-3, 70),
-            _ => (-3, 70),
-        }
-    } else {
-        match cond_sum {
-            0 => (0, 26),
-            1 => (0, 31),
-            _ => (0, 28),
-        }
     }
 }
 

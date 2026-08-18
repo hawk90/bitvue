@@ -7,7 +7,6 @@
 //! - Super Resolution
 
 use crate::frame_header::{FrameHeader, LoopRestorationType as FrameLoopRestorationType};
-use crate::tile::Superblock;
 use serde::{Deserialize, Serialize};
 
 /// CDEF (Constrained Directional Enhancement Filter) data for a frame
