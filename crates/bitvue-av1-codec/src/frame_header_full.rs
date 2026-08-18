@@ -1301,7 +1301,7 @@ pub fn parse_frame_header_full(
 
     read_tile_info(&mut reader, seq, width, height)?;
 
-    let (base_q_idx_opt, y_dc_delta_q, uv_dc_delta_q) =
+    let (base_q_idx_opt, y_dc_delta_q, uv_dc_delta_q, uv_ac_delta_q) =
         crate::frame_header::parse_quantization_params(
             &mut reader,
             seq.color_config.separate_uv_delta_q,
@@ -1321,15 +1321,28 @@ pub fn parse_frame_header_full(
     let (delta_lf_present, delta_lf_multi) =
         parse_delta_lf_params(&mut reader, delta_q_present, allow_intrabc)?;
 
-    // CodedLossless: real value needs every segment's per-segment qindex (base_q_idx adjusted by
-    // segmentation's SEG_LVL_ALT_Q feature, which this parser doesn't retain -- see
-    // skip_segmentation_params). Approximated via the frame-level q/delta values only, matching
-    // this crate's `Qp`-based QP-grid extraction's own "no per-segment override" scope. This
-    // slightly under-detects lossless frames (segmentation could still make some segments
-    // lossless even when this approximation says false) -- affects only whether loop_filter/cdef/
-    // lr sections get skipped, not their VALUES when they don't.
-    let coded_lossless =
-        base_q_idx == 0 && y_dc_delta_q.unwrap_or(0) == 0 && uv_dc_delta_q.unwrap_or(0) == 0;
+    // CodedLossless: real spec needs every segment's per-segment qindex (base_q_idx adjusted by
+    // segmentation's SEG_LVL_ALT_Q feature, which `SegmentationInfo` now retains but this
+    // computation doesn't yet consult -- see below) AND every real delta-Q term
+    // (DeltaQYDc/DeltaQUDc/DeltaQUAc/DeltaQVDc/DeltaQVAc). `uv_ac_delta_q` (`DeltaQUAc`, and its
+    // implicit V mirror when `!separate_uv_delta_q`) is now real -- previously omitted entirely,
+    // which wasn't just an "under-detects" approximation (this function's original doc claimed):
+    // a real encoder using `base_q_idx=0` + zero Y/UV-DC deltas but a *nonzero* `DeltaQUAc` is
+    // NOT lossless, and this crate would have wrongly said `coded_lossless=true`, causing it to
+    // skip real `loop_filter_params`/`cdef_params`/`lr_params` bits the encoder actually wrote --
+    // a genuine desync, not a benign approximation, for that (unusual but spec-legal) case. Two
+    // narrower gaps remain, still approximated: (1) segmentation's SEG_LVL_ALT_Q isn't folded in
+    // (matches this crate's `Qp`-grid extraction's own "no per-segment override" scope; only
+    // under-detects, since a segment-specific override can only ever make a *subset* of segments
+    // lossless, never all of them when the frame-wide check already says false) -- affects only
+    // whether loop_filter/cdef/lr sections get skipped, not their VALUES when they don't; (2)
+    // `separate_uv_delta_q`'s separate V deltas aren't retained (`parse_quantization_params`'s
+    // doc), so a frame using that rarer path with V deltas differing from U's could still be
+    // mis-classified either direction.
+    let coded_lossless = base_q_idx == 0
+        && y_dc_delta_q.unwrap_or(0) == 0
+        && uv_dc_delta_q.unwrap_or(0) == 0
+        && uv_ac_delta_q.unwrap_or(0) == 0;
     let all_lossless = coded_lossless && width == upscaled_width;
 
     let loop_filter = parse_loop_filter_params(

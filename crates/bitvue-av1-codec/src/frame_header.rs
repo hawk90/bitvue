@@ -307,37 +307,44 @@ fn read_delta_q(reader: &mut BitReader) -> Result<Option<i8>, BitvueError> {
 
 /// Parse quantization_params() per AV1 spec Section 5.9.14.
 ///
-/// Returns (base_q_idx, y_dc_delta_q, uv_dc_delta_q).
+/// Returns `(base_q_idx, y_dc_delta_q, uv_dc_delta_q, uv_ac_delta_q)`. `uv_ac_delta_q` is
+/// `DeltaQUAc` -- previously read for bit-position sync only, then discarded, even though real
+/// spec's `CodedLossless` derivation needs it (`parse_frame_header_full`'s `coded_lossless`
+/// doc). When `separate_uv_delta_q`, V's own separate `DeltaQVDc`/`DeltaQVAc` are still read (for
+/// sync) but not retained -- a narrower, still-open version of the same gap (real spec's
+/// `CodedLossless` also needs those two whenever they can legally differ from U's), left
+/// undertested/unfixed here since `separate_uv_delta_q` is itself the rarer path.
 ///
 /// `separate_uv_delta_q` comes from the sequence header color config.
 /// We assume false (the most common case) when no sequence header is available.
+#[allow(clippy::type_complexity)]
 pub(crate) fn parse_quantization_params(
     reader: &mut BitReader,
     separate_uv_delta_q: bool,
-) -> Result<(Option<u8>, Option<i8>, Option<i8>), BitvueError> {
+) -> Result<(Option<u8>, Option<i8>, Option<i8>, Option<i8>), BitvueError> {
     // base_q_idx  u(8)
     let base_q_idx = reader.read_bits(8)? as u8;
 
     // DeltaQYDc  read_delta_q()
     let y_dc = read_delta_q(reader)?;
 
-    let uv_dc = if !separate_uv_delta_q {
+    let (uv_dc, uv_ac) = if !separate_uv_delta_q {
         // DeltaQUDc  read_delta_q()
         let uv_dc = read_delta_q(reader)?;
         // DeltaQUAc  read_delta_q()
-        let _uv_ac = read_delta_q(reader)?;
+        let uv_ac = read_delta_q(reader)?;
         // DeltaQVDc = DeltaQUDc, DeltaQVAc = DeltaQUAc (implicit)
-        uv_dc
+        (uv_dc, uv_ac)
     } else {
         // DeltaQUDc  read_delta_q()
         let udc = read_delta_q(reader)?;
         // DeltaQUAc  read_delta_q()
-        let _uac = read_delta_q(reader)?;
+        let uac = read_delta_q(reader)?;
         // DeltaQVDc  read_delta_q()
         let _vdc = read_delta_q(reader)?;
         // DeltaQVAc  read_delta_q()
         let _vac = read_delta_q(reader)?;
-        udc
+        (udc, uac)
     };
 
     // using_qmatrix (1 bit)
@@ -351,7 +358,7 @@ pub(crate) fn parse_quantization_params(
         reader.read_bits(4)?;
     }
 
-    Ok((Some(base_q_idx), y_dc, uv_dc))
+    Ok((Some(base_q_idx), y_dc, uv_dc, uv_ac))
 }
 
 /// Parse delta_q_params() per AV1 spec Section 5.9.17.
@@ -761,7 +768,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 
     let (base_q_idx_opt, y_dc_delta_q, uv_dc_delta_q, delta_q_present) =
         match parse_quantization_params(&mut reader, false) {
-            Ok((base, y_dc, uv_dc)) => {
+            Ok((base, y_dc, uv_dc, _uv_ac)) => {
                 let base_val = base.unwrap_or(0);
                 let dq = parse_delta_q_params(&mut reader, base_val).unwrap_or(false);
                 (base, y_dc, uv_dc, dq)
@@ -822,6 +829,45 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bits_writer() -> (Vec<u8>, impl FnMut(&mut Vec<u8>, u32, u8)) {
+        (Vec::new(), |bits: &mut Vec<u8>, v: u32, n: u8| {
+            for i in (0..n).rev() {
+                bits.push(((v >> i) & 1) as u8);
+            }
+        })
+    }
+
+    fn pack(bits: &[u8]) -> Vec<u8> {
+        let mut out = vec![0u8; bits.len().div_ceil(8)];
+        for (i, bit) in bits.iter().enumerate() {
+            if *bit != 0 {
+                out[i / 8] |= 1 << (7 - (i % 8));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn parse_quantization_params_retains_real_uv_ac_delta_q() {
+        let (mut bits, mut push) = bits_writer();
+        push(&mut bits, 0, 8); // base_q_idx = 0
+        push(&mut bits, 0, 1); // DeltaQYDc: not coded => 0
+        push(&mut bits, 0, 1); // DeltaQUDc: not coded => 0
+        push(&mut bits, 1, 1); // DeltaQUAc: coded
+        push(&mut bits, 3, 7); // DeltaQUAc value = 3 (su(7), positive)
+        push(&mut bits, 0, 1); // using_qmatrix = 0
+        let payload = pack(&bits);
+        let mut reader = BitReader::new(&payload);
+
+        let (base_q_idx, y_dc, uv_dc, uv_ac) =
+            parse_quantization_params(&mut reader, false).unwrap();
+
+        assert_eq!(base_q_idx, Some(0));
+        assert_eq!(y_dc, Some(0));
+        assert_eq!(uv_dc, Some(0));
+        assert_eq!(uv_ac, Some(3), "DeltaQUAc must be retained, not discarded");
+    }
 
     #[test]
     fn test_frame_type_from_bits() {
