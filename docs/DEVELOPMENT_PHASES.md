@@ -2208,6 +2208,42 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   클린, `cargo test --workspace --lib` 3854+ 전부 통과(0 실패, 이전에 봤던 `bitvue-engine` 플레이키도
   이번엔 안 걸림). clippy: 유일한 error는 이 세션이 손댄 적 없는 `leb128_prop_tests.rs`의
   기존 `absurd_extreme_comparisons`(무관 확인), fmt 클린.
+- **낡은 문서 주석 정리(2026-08-17, `b2d509f`)**: temporal MV 커밋 직후 다음 갭을 Explore로
+  스코핑하다가, 메모리에 "남은 갭"으로 기록돼 있던 항목 5개 중 4개가 이미 이전 세션 커밋으로
+  닫혔는데 그 커밋들이 닫힌 지점의 문서 주석은 갱신하지 않은 걸 발견 — `tile/context.rs` 모듈
+  헤더(실제 partition-context/spatial+temporal refmvs 서브시스템이 이미 완성됐다고 정정,
+  잔차 plane/qindex-bucket 축만 진짜 남은 갭이라고 명시), `symbol/mod.rs`의 `read_ref_frames`
+  문서(compound mode/L1 MV "미구현" → 실제로는 `parse_coding_unit`에 이미 구현돼 있다고 정정,
+  `188d3ad` 참고), `overlay_extraction/partition.rs` 테스트 문서(mode/ref_frame/compound_mode도
+  근사치라던 설명 → 잔차의 plane/qindex-bucket 축만 근사치로 정정) 3곳 수정. 코드 변경 없음,
+  `cargo check`/`fmt --check` 클린만 확인.
+- **잔차 엔트로피 CDF의 qindex-bucket 축 완성(2026-08-17, `5a017c9`)**: 위 정리 과정에서 드러난
+  진짜 남은 갭 착수 — `txb_skip`/`dc_sign`/`eob_bin_16..1024`/`eob_hi_bit`/`coeff_base_eob`/
+  `coeff_base`/`coeff_br`(루마+크로마 26필드) 전부 dav1d의 실제 4-bucket qindex 분기
+  (`qcat=(base_q_idx>20)+(base_q_idx>60)+(base_q_idx>120)`) 중 **bucket 0 하나만** 초기값으로
+  써왔던 것 — QP가 최저 구간이 아닌 모든 프레임이 잘못된 prior로 잔차 심볼 adaptation을
+  시작하고 있었음. Explore로 스코핑 후 두 옵션(이 작업 vs 더 작은 `tx_size()` 실비트스트림
+  읽기) 중 사용자가 큰 쪽을 명시 선택, EnterPlanMode로 계획 승인 후 general-purpose 서브에이전트에
+  위임 — 기존 bucket-0 리터럴과 정확히 일치해야만 통과하는 자체 검증 게이트(필드별로 파서의
+  bucket-0 추출 결과가 이미 손검증된 기존 Rust 리터럴과 byte-exact로 맞아야 bucket 1-3 출력을
+  신뢰) 방식으로 dav1d 소스(`cdf.c`) 26필드×4버킷을 전사. `CdfContext::new()` → `new_with_qcat
+  (qcat: u8)`로 재구성(잔차 CDF 26개 필드만 `match qcat.min(3) {0..=3}`으로 감싸고 나머지
+  CDF 패밀리는 그대로, 실제 AV1도 잔차 계열만 qindex-bucket됨), `new()`는 `new_with_qcat(0)`
+  얇은 래퍼로 하위호환 유지. `SymbolDecoder::new_with_qcat(data, qcat)` 신규(기존 `new`는
+  qcat=0 그대로), 실 프로덕션 호출부 2곳(`cu_parser.rs`의 `parse_all_coding_units`/
+  `_with_temporal`, `partition.rs`의 `parse_partition_trees_from_tile_data`, 둘 다 이미
+  스코프에 있던 `base_qp`에서 qcat 계산)만 실제 qcat 스레딩, 테스트 호출부와 실호출자
+  없는 `tile/partition.rs::parse_partition_tree`는 의도적으로 미변경. `dc_sign`은 dav1d
+  실제 기본값이 4버킷 전부 동일해서 "버킷마다 달라야 함" 비퇴화 테스트에 예외 처리(포팅
+  버그 아니라 알고리즘 자체 성질, `cdf.c` 4곳 직접 대조로 확인). 계획 당시 가정했던
+  `SymbolDecoder::byte_offset()` ok/err 비율 전례는 위임받은 에이전트가 실제론 미사용
+  dead code(`#[allow(dead_code)]`)임을 발견 → 이 세션 기존 실전례인 프레임 단위 Ok/Err
+  카운트(`real_fixture_*` 패턴)로 대체, 신규 `real_fixture_real_qcat_selection_is_exercised_
+  and_parses_cleanly` 테스트로 실제 fixture가 qcat∈{1,3} 등 복수 버킷을 실제로 거치는지
+  확인. **독립 재검증**: 에이전트 자체 보고를 그대로 믿지 않고 직접 `--lib --tests`(412+147
+  테스트 0실패)/`cargo test --workspace --lib`/clippy(무관한 기존 `leb128_prop_tests.rs`
+  예외만)/fmt 재실행 + dav1d `cdf.c`에서 bucket-1 `.skip` 실제 숫자를 직접 grep해 생성된
+  Rust 리터럴과 byte-exact 일치 확인(`[30371, 7570, 13155, 20751, 20969, 27067, 32013]` 등).
 
 ---
 
