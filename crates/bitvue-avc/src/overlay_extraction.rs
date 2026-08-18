@@ -32,6 +32,11 @@ use bitvue_engine::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// (grid_x, grid_y, block_w, block_h, values) for a single-plane u8 overlay grid.
+type U8GridResult = Result<(u32, u32, u32, u32, Vec<Option<u8>>), BitvueError>;
+/// (grid_x, grid_y, block_w, block_h, l0_values, l1_values) for a dual-plane i8 overlay grid.
+type I8DualGridResult = Result<(u32, u32, u32, u32, Vec<Option<i8>>, Vec<Option<i8>>), BitvueError>;
+
 /// Macroblock type for H.264
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MbType {
@@ -284,10 +289,7 @@ pub fn extract_mv_grid(nal_units: &[NalUnit], sps: &Sps) -> Result<MVGrid, Bitvu
 ///   0 = Intra (I4×4, I16×16, IPCM)
 ///   1 = Inter (P/B non-skip)
 ///   2 = Skip  (P_Skip, B_Skip)
-pub fn extract_prediction_mode_grid(
-    nal_units: &[NalUnit],
-    sps: &Sps,
-) -> Result<(u32, u32, u32, u32, Vec<Option<u8>>), BitvueError> {
+pub fn extract_prediction_mode_grid(nal_units: &[NalUnit], sps: &Sps) -> U8GridResult {
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
     let grid_w = pic_width_in_mbs;
@@ -302,20 +304,17 @@ pub fn extract_prediction_mode_grid(
 
     for nal in nal_units {
         if nal.header.nal_unit_type.is_slice() {
-            match parse_slice_macroblocks(nal, &sps_map, &pps_map, sps, 26) {
-                Ok(mbs) => {
-                    for mb in &mbs {
-                        let mode = if mb.mb_type.is_skip() {
-                            2u8 // Skip
-                        } else if mb.mb_type.is_intra() {
-                            0u8 // Intra
-                        } else {
-                            1u8 // Inter
-                        };
-                        modes.push(Some(mode));
-                    }
+            if let Ok(mbs) = parse_slice_macroblocks(nal, &sps_map, &pps_map, sps, 26) {
+                for mb in &mbs {
+                    let mode = if mb.mb_type.is_skip() {
+                        2u8 // Skip
+                    } else if mb.mb_type.is_intra() {
+                        0u8 // Intra
+                    } else {
+                        1u8 // Inter
+                    };
+                    modes.push(Some(mode));
                 }
-                Err(_) => {}
             }
         }
     }
@@ -1098,8 +1097,7 @@ fn decode_p_mb_type(raw: u32, slice_type: SliceType) -> MbType {
         return match raw {
             0 => MbType::BDirect,
             1 => MbType::B16x16,
-            2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19
-            | 20 | 21 | 22 => MbType::B16x8,
+            2..=22 => MbType::B16x8,
             23 => MbType::B8x8,
             _ => MbType::I16x16,
         };
@@ -1630,10 +1628,7 @@ impl NalUnitTypeExt for crate::NalUnitType {
 /// numeric index of the MbType enum value (or None for missing blocks):
 ///   I4x4=0, I16x16=1, IPCM=2, PLuma=3, P8x8=4, BDirect=5,
 ///   B16x16=6, B16x8=7, B8x16=8, B8x8=9, PSkip=10, BSkip=11
-pub fn extract_mb_type_grid(
-    nal_units: &[NalUnit],
-    sps: &Sps,
-) -> Result<(u32, u32, u32, u32, Vec<Option<u8>>), BitvueError> {
+pub fn extract_mb_type_grid(nal_units: &[NalUnit], sps: &Sps) -> U8GridResult {
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
     let grid_w = pic_width_in_mbs;
@@ -1689,10 +1684,7 @@ pub fn extract_mb_type_grid(
 /// Returns a 16×16 macroblock-resolution grid with L0 and L1 reference frame
 /// indices per block.  None means the macroblock is intra or the list is
 /// not used.
-pub fn extract_ref_idx_grid(
-    nal_units: &[NalUnit],
-    sps: &Sps,
-) -> Result<(u32, u32, u32, u32, Vec<Option<i8>>, Vec<Option<i8>>), BitvueError> {
+pub fn extract_ref_idx_grid(nal_units: &[NalUnit], sps: &Sps) -> I8DualGridResult {
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
     let grid_w = pic_width_in_mbs;
@@ -1879,7 +1871,7 @@ mod tests {
         let nal = create_test_nal_unit(crate::NalUnitType::IdrSlice);
 
         for base_qp in [0i16, 10, 26, 40, 51] {
-            let result = extract_qp_grid(&[nal.clone()], &sps, base_qp);
+            let result = extract_qp_grid(std::slice::from_ref(&nal), &sps, base_qp);
             assert!(result.is_ok());
         }
     }

@@ -1149,7 +1149,7 @@ mod tests {
 
     #[test]
     fn test_neon_default() {
-        let strategy = NeonStrategy::default();
+        let strategy = NeonStrategy;
         assert_eq!(strategy.name(), "NEON");
     }
 

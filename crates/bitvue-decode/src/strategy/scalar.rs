@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_scalar_default() {
-        let strategy = ScalarStrategy::default();
+        let strategy = ScalarStrategy;
         assert_eq!(strategy.name(), "Scalar");
     }
 }

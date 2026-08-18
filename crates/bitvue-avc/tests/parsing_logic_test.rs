@@ -204,12 +204,12 @@ fn test_bitreader_read_flag() {
     // Read first bit (1)
     let result = reader.read_bit();
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), true);
+    assert!(result.unwrap());
 
     // Read second bit (0)
     let result = reader.read_bit();
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), false);
+    assert!(!result.unwrap());
 }
 
 #[test]

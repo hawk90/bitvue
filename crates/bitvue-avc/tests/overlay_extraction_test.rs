@@ -70,7 +70,8 @@ fn test_extract_qp_grid_basic() {
     assert!(result.is_ok());
 
     let grid = result.unwrap();
-    assert!(grid.grid_w >= 0);
+    // grid_w is derived from sps.pic_width_in_mbs_minus1 (119) + 1 = 120 macroblocks wide.
+    assert_eq!(grid.grid_w, 120);
 }
 
 #[test]
@@ -83,7 +84,8 @@ fn test_extract_mv_grid_basic() {
     assert!(result.is_ok());
 
     let grid = result.unwrap();
-    assert!(grid.grid_w >= 0);
+    // grid_w is derived from sps.pic_width_in_mbs_minus1 (119) + 1 = 120 macroblocks wide.
+    assert_eq!(grid.grid_w, 120);
 }
 
 #[test]
@@ -96,7 +98,8 @@ fn test_extract_partition_grid_basic() {
     assert!(result.is_ok());
 
     let grid = result.unwrap();
-    assert!(grid.coded_width >= 0);
+    // coded_width = pic_width_in_mbs (120) * 16 = 1920 pixels.
+    assert_eq!(grid.coded_width, 1920);
 }
 
 #[test]
@@ -697,7 +700,7 @@ fn test_overlay_extraction_with_idr_frame() {
     use bitvue_avc::{extract_mv_grid, extract_partition_grid, extract_qp_grid};
 
     // Create a minimal AVC stream with IDR slice
-    let mut data = vec![0u8; 128];
+    let mut data = [0u8; 128];
     let mut pos = 0;
 
     // SPS (simplified)
@@ -755,7 +758,7 @@ fn test_overlay_extraction_with_inter_frame() {
     // Test overlay extraction with inter (P or B) frame
     use bitvue_avc::parse_avc;
 
-    let mut data = vec![0u8; 128];
+    let mut data = [0u8; 128];
     let mut pos = 0;
 
     // SPS

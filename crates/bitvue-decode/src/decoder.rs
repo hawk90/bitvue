@@ -501,7 +501,7 @@ impl Av1Decoder {
         let qp_avg = self
             .last_obu_data
             .as_deref()
-            .and_then(|obu_data| extract_qp_from_obu_data(obu_data));
+            .and_then(extract_qp_from_obu_data);
 
         Ok(DecodedFrame {
             width,
@@ -1117,7 +1117,7 @@ mod tests {
 
         // Frame count depends on test data - accept any non-zero count
         // (test file may have 2, 250, or other frame count depending on version)
-        assert!(frames.len() > 0, "Expected at least 1 frame");
+        assert!(!frames.is_empty(), "Expected at least 1 frame");
 
         // Check first frame has valid dimensions (320x288 and 352x288 are common test resolutions)
         let first = &frames[0];

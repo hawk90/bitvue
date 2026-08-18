@@ -617,7 +617,7 @@ fn test_frames_to_unit_nodes_single() {
         .build()
         .unwrap();
 
-    let unit_nodes = avc_frames_to_unit_nodes(&[frame.clone()]);
+    let unit_nodes = avc_frames_to_unit_nodes(std::slice::from_ref(&frame));
     assert_eq!(unit_nodes.len(), 1);
     assert_eq!(unit_nodes[0].frame_index, Some(0));
 }

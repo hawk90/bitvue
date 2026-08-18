@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_metal_default() {
-        let strategy = MetalStrategy::default();
+        let strategy = MetalStrategy;
         assert_eq!(strategy.name(), "Metal");
     }
 

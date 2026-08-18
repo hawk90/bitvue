@@ -781,8 +781,7 @@ fn test_parse_pps_zero_id() {
     let result = parse_pps(&data);
 
     // May fail due to insufficient data
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert_eq!(pps.pic_parameter_set_id, 0);
     }
 }
@@ -793,10 +792,8 @@ fn test_parse_pps_with_single_byte() {
     let data = vec![0x80]; // 0b10000000
     let result = parse_pps(&data);
 
-    // Likely to fail with insufficient data
-    if result.is_ok() {
-        let _pps = result.unwrap();
-    }
+    // Likely to fail with insufficient data; just confirm no panic.
+    let _ = result;
 }
 
 // ============================================================================
@@ -827,8 +824,7 @@ fn test_parse_pps_baseline_no_slice_groups() {
     let data = vec![0xE8, 0x7E, 0x00]; // 0xE8 = 11101000, 0x7E = 01111110
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert_eq!(pps.pic_parameter_set_id, 0);
         assert_eq!(pps.seq_parameter_set_id, 0);
         assert!(!pps.entropy_coding_mode_flag);
@@ -843,8 +839,7 @@ fn test_parse_pps_cabac_enabled() {
     let data = vec![0xE8, 0x7E, 0x80]; // entropy_coding_mode_flag = 1
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.entropy_coding_mode_flag);
     }
 }
@@ -856,8 +851,7 @@ fn test_parse_pps_with_qp_delta() {
     let data = vec![0xE8, 0x7D, 0x15]; // pic_init_qp_minus26 = SE(-5)
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert_eq!(pps.pic_init_qp_minus26, -5);
         assert_eq!(pps.initial_qp(), 21);
     }
@@ -871,8 +865,7 @@ fn test_parse_pps_with_reference_indices() {
     let data = vec![0xE9, 0x1C, 0x80]; // Modified for ref indices
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         // Check if parsed correctly
         let _ = pps.num_ref_idx_l0_default_active_minus1;
     }
@@ -885,8 +878,7 @@ fn test_parse_pps_with_deblocking_enabled() {
     let data = vec![0xE8, 0x7F, 0xC0]; // deblocking flag set
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.deblocking_filter_control_present_flag);
     }
 }
@@ -898,8 +890,7 @@ fn test_parse_pps_with_constrained_intra() {
     let data = vec![0xE8, 0x7F, 0x40]; // constrained_intra flag set
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.constrained_intra_pred_flag);
     }
 }
@@ -914,8 +905,7 @@ fn test_parse_pps_high_profile_with_transform_8x8() {
     let data = vec![0xE8, 0x7E, 0x00, 0x80]; // transform_8x8_mode_flag = 1
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.transform_8x8_mode_flag);
         assert!(!pps.pic_scaling_matrix_present_flag);
     }
@@ -930,8 +920,7 @@ fn test_parse_pps_with_scaling_matrix_flag() {
     let result = parse_pps(&data);
 
     // May fail due to missing scaling list data
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.transform_8x8_mode_flag);
         assert!(pps.pic_scaling_matrix_present_flag);
     }
@@ -944,8 +933,7 @@ fn test_parse_pps_different_ids() {
     let data = vec![0x80, 0x60, 0x00]; // pic_parameter_set_id = 5
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert_eq!(pps.pic_parameter_set_id, 5);
     }
 }
@@ -957,8 +945,7 @@ fn test_parse_pps_with_chroma_qp_offset() {
     let data = vec![0xE8, 0x7E, 0x05]; // chroma_qp_index_offset = -3
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert_eq!(pps.chroma_qp_index_offset, -3);
     }
 }
@@ -969,8 +956,7 @@ fn test_parse_pps_with_second_chroma_qp_offset() {
     let data = vec![0xE8, 0x7E, 0x00, 0x80, 0x04]; // transform_8x8, second_chroma offset
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.transform_8x8_mode_flag);
         assert_eq!(pps.second_chroma_qp_index_offset, 2);
     }
@@ -984,8 +970,7 @@ fn test_parse_pps_weighted_prediction() {
     let data = vec![0xEA, 0xFE, 0x00]; // weighted_pred = 1, weighted_bipred_idc = 3 (actual parsed value)
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.weighted_pred_flag);
         // weighted_bipred_idc is a 2-bit field (0-3), actual value is 3 based on bit positions
         assert_eq!(pps.weighted_bipred_idc, 3);
@@ -998,8 +983,7 @@ fn test_parse_pps_mixed_flags() {
     let data = vec![0xE8, 0x7F, 0xF0]; // Many flags enabled
     let result = parse_pps(&data);
 
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         assert!(pps.deblocking_filter_control_present_flag);
         assert!(pps.constrained_intra_pred_flag);
         assert!(pps.redundant_pic_cnt_present_flag);
@@ -1013,8 +997,7 @@ fn test_parse_pps_invalid_zero_data() {
     let result = parse_pps(&data);
 
     // Should fail or return minimal PPS
-    if result.is_ok() {
-        let pps = result.unwrap();
+    if let Ok(pps) = result {
         // Verify it parsed something
         let _ = pps.pic_parameter_set_id;
     }
@@ -1039,10 +1022,8 @@ fn test_parse_pps_single_byte_variants() {
         let data = vec![byte];
         let result = parse_pps(&data);
 
-        // Most will fail due to insufficient data, but shouldn't crash
-        if result.is_ok() {
-            let _pps = result.unwrap();
-        }
+        // Most will fail due to insufficient data, but shouldn't crash.
+        let _ = result;
     }
 }
 
@@ -1075,7 +1056,7 @@ fn test_pps_with_all_ref_indices() {
             };
 
             let qp = pps.initial_qp();
-            assert!(qp >= 0 && qp <= 51);
+            assert!((0..=51).contains(&qp));
         }
     }
 }

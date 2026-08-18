@@ -275,7 +275,7 @@ fn test_frame_extraction_count() {
     // All extracted frames should have valid offsets
     for frame in &frames {
         assert!(
-            frame.offset as usize <= data.len(),
+            frame.offset <= data.len(),
             "Frame offset should be within data"
         );
         assert!(frame.size > 0, "Frame should have non-zero size");

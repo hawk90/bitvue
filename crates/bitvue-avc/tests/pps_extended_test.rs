@@ -108,9 +108,9 @@ fn test_pps_pic_init_qp_values() {
     // Test various pic_init_qp_minus26 values
     for qp_delta in -26i32..=25i32 {
         let encoded = if qp_delta <= 0 {
-            ((-qp_delta * 2) as u8) & 0xFF
+            (-qp_delta * 2) as u8
         } else {
-            ((qp_delta * 2 - 1) as u8) & 0xFF
+            (qp_delta * 2 - 1) as u8
         };
 
         let data = [
@@ -126,10 +126,9 @@ fn test_pps_pic_init_qp_values() {
         ];
 
         let result = parse_pps(&data);
-        if result.is_ok() {
-            let pps = result.unwrap();
+        if let Ok(pps) = result {
             let qp = pps.initial_qp();
-            assert!(qp >= 0 && qp <= 51);
+            assert!((0..=51).contains(&qp));
         }
     }
 }
@@ -140,9 +139,9 @@ fn test_pps_chroma_qp_offsets() {
     // Test chroma_qp_index_offset values
     for offset in -12i32..=11i32 {
         let encoded = if offset <= 0 {
-            ((-offset * 2) as u8) & 0xFF
+            (-offset * 2) as u8
         } else {
-            ((offset * 2 - 1) as u8) & 0xFF
+            (offset * 2 - 1) as u8
         };
 
         let data = [
@@ -175,8 +174,8 @@ fn test_pps_deblocking_filter_control_present_flag() {
             0x00,
             0x00,                           // up to chroma_qp_index_offset
             if flag { 0x80 } else { 0x00 }, // deblocking_filter_control_present_flag
-            if flag { 0x00 } else { 0x00 }, // deblocking_filter_override_enabled_flag
-            if flag { 0x00 } else { 0x00 }, // deblocking_filter_override_flag
+            0x00, // deblocking_filter_override_enabled_flag (unused by parser encoding in this test)
+            0x00, // deblocking_filter_override_flag (unused by parser encoding in this test)
         ];
 
         let result = parse_pps(&data);

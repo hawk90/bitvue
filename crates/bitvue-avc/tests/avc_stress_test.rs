@@ -45,8 +45,8 @@ fn test_parse_avc_large_input_100kb() {
 fn test_parse_avc_random_pattern_1kb() {
     let mut data = vec![0u8; 1024];
     // Fill with random-looking pattern
-    for i in 0..1024 {
-        data[i] = ((i * 7 + 3) % 256) as u8;
+    for (i, byte) in data.iter_mut().enumerate().take(1024) {
+        *byte = ((i * 7 + 3) % 256) as u8;
     }
 
     let result = parse_avc(&data);
@@ -325,8 +325,8 @@ fn test_parse_avc_with_filler_data() {
     data[68] = 0x25;
 
     // Add filler data
-    for i in 128..256 {
-        data[i] = 0xFF;
+    for byte in data.iter_mut().take(256).skip(128) {
+        *byte = 0xFF;
     }
 
     let result = parse_avc(&data);

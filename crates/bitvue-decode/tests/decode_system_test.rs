@@ -75,7 +75,7 @@ fn test_decode_pts_dts() {
         dts: i64, // Decode timestamp
     }
 
-    let timestamps = vec![
+    let timestamps = [
         Timestamp { pts: 0, dts: 0 },
         Timestamp { pts: 3, dts: 1 },
         Timestamp { pts: 1, dts: 2 },
@@ -100,7 +100,7 @@ fn test_decode_pixel_formats() {
         YUV422P10LE,
     }
 
-    let formats = vec![PixelFormat::YUV420P, PixelFormat::YUV420P10LE];
+    let formats = [PixelFormat::YUV420P, PixelFormat::YUV420P10LE];
 
     assert_eq!(formats.len(), 2);
 }
@@ -177,7 +177,7 @@ fn test_decode_sei_parsing() {
         RecoveryPoint = 6,
     }
 
-    let sei_types = vec![
+    let sei_types = [
         SeiPayloadType::BufferingPeriod,
         SeiPayloadType::PicTiming,
         SeiPayloadType::RecoveryPoint,
@@ -211,13 +211,13 @@ fn test_ffmpeg_codec_selection() {
     #[derive(Debug, PartialEq)]
     enum FfmpegCodec {
         H264,
-        HEVC,
+        Hevc,
         VP9,
         AV1,
         MPEG2,
     }
 
-    let codecs = vec![FfmpegCodec::H264, FfmpegCodec::HEVC, FfmpegCodec::VP9];
+    let codecs = [FfmpegCodec::H264, FfmpegCodec::Hevc, FfmpegCodec::VP9];
 
     assert_eq!(codecs.len(), 3);
 }

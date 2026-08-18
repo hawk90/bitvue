@@ -83,14 +83,14 @@ fn test_read_bit_single_byte() {
     let data = vec![0b10101010]; // MSB first: 1,0,1,0,1,0,1,0
     let mut reader = BitReader::new(&data);
 
-    assert_eq!(reader.read_bit().unwrap(), true);
-    assert_eq!(reader.read_bit().unwrap(), false);
-    assert_eq!(reader.read_bit().unwrap(), true);
-    assert_eq!(reader.read_bit().unwrap(), false);
-    assert_eq!(reader.read_bit().unwrap(), true);
-    assert_eq!(reader.read_bit().unwrap(), false);
-    assert_eq!(reader.read_bit().unwrap(), true);
-    assert_eq!(reader.read_bit().unwrap(), false);
+    assert!(reader.read_bit().unwrap());
+    assert!(!reader.read_bit().unwrap());
+    assert!(reader.read_bit().unwrap());
+    assert!(!reader.read_bit().unwrap());
+    assert!(reader.read_bit().unwrap());
+    assert!(!reader.read_bit().unwrap());
+    assert!(reader.read_bit().unwrap());
+    assert!(!reader.read_bit().unwrap());
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn test_read_bit_all_zeros() {
     let mut reader = BitReader::new(&data);
 
     for _ in 0..8 {
-        assert_eq!(reader.read_bit().unwrap(), false);
+        assert!(!reader.read_bit().unwrap());
     }
 }
 
@@ -109,7 +109,7 @@ fn test_read_bit_all_ones() {
     let mut reader = BitReader::new(&data);
 
     for _ in 0..8 {
-        assert_eq!(reader.read_bit().unwrap(), true);
+        assert!(reader.read_bit().unwrap());
     }
 }
 
@@ -124,7 +124,7 @@ fn test_read_bit_across_byte_boundary() {
     }
 
     // Now read first bit of second byte
-    assert_eq!(reader.read_bit().unwrap(), true);
+    assert!(reader.read_bit().unwrap());
 }
 
 #[test]
@@ -231,7 +231,7 @@ fn test_read_flag_true() {
     let data = vec![0b10000000];
     let mut reader = BitReader::new(&data);
 
-    assert_eq!(reader.read_flag().unwrap(), true);
+    assert!(reader.read_flag().unwrap());
 }
 
 #[test]
@@ -239,7 +239,7 @@ fn test_read_flag_false() {
     let data = vec![0b00000000];
     let mut reader = BitReader::new(&data);
 
-    assert_eq!(reader.read_flag().unwrap(), false);
+    assert!(!reader.read_flag().unwrap());
 }
 
 // ============================================================================
