@@ -203,7 +203,7 @@ fn skip_global_param(
 /// comparisons elsewhere, e.g. `read_motion_mode`'s doc, rely on this exact ordering).
 pub(crate) const GM_TYPE_IDENTITY: u8 = 0;
 pub(crate) const GM_TYPE_TRANSLATION: u8 = 1;
-const GM_TYPE_ROTZOOM: u8 = 2;
+pub(crate) const GM_TYPE_ROTZOOM: u8 = 2;
 const GM_TYPE_AFFINE: u8 = 3;
 
 /// Pure classification (no bit reads): maps `global_motion_params()`'s 3 flag bits to a real

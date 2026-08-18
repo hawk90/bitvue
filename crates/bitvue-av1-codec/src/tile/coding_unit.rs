@@ -1300,18 +1300,36 @@ pub fn parse_coding_unit(
         // filter (spec 5.11.30, subpel interpolation filter -- one symbol per axis) -- real
         // per-`(dir, ctx)` CDF + adaptation, see `SymbolDecoder::read_filter`'s doc for the
         // desync this closes (previously never read at all). Real spec's `needs_interp_filter()`
-        // exclusion (skip_mode blocks, and a `GmType`-dependent case for large GLOBALMV/GLOBAL_
-        // GLOBALMV blocks) isn't modeled -- this crate doesn't reach a real `skip_mode == true` CU
-        // yet (`read_skip_mode`'s doc). `gm_type` (`InterModeFlags`) is now real (this function's
-        // `motion_mode` gate uses it) but its exact `needs_interp_filter()` branching wasn't
-        // reproduced here without a verified oracle reference -- so this still reads for every
-        // non-skip-mode inter CU, which is the real spec's common case anyway (large-block GLOBALMV
-        // is comparatively rare).
+        // exclusion is now modeled for the `GmType`-dependent GLOBALMV/GLOBAL_GLOBALMV case
+        // (verified against dav1d's `decode.c` `has_subpel_filter` computation, source-only
+        // re-clone): unconditionally read for NEARESTMV/NEARMV/NEWMV and any compound mode other
+        // than GLOBAL_GLOBALMV; for GLOBALMV/GLOBAL_GLOBALMV, only read when the block is minimal
+        // size (`min(width_4x4, height_4x4) == 1`) or the relevant ref's `GmType` is exactly
+        // TRANSLATION (not `>` -- IDENTITY/ROTZOOM/AFFINE all suppress the read). skip_mode's
+        // separate exclusion isn't modeled -- this crate doesn't reach a real `skip_mode == true`
+        // CU yet (`read_skip_mode`'s doc).
+        let has_subpel_filter = needs_interp_filter(
+            cu.mode,
+            width_4x4,
+            height_4x4,
+            &inter_mode_flags.gm_type,
+            cu.ref_frames[0],
+            cu.ref_frames[1],
+        );
         if inter_mode_flags.subpel_filter_switchable {
             let is_comp = is_compound;
             for dir in 0..2u8 {
-                let fctx = tile_ctx.filter_context(x4, y4, is_comp, dir as usize, rav1d_ref0);
-                let filter = decoder.read_filter(dir, fctx)?;
+                // Real dav1d always records the resulting filter into neighbor context
+                // regardless of whether it was actually read -- `0` (`EIGHTTAP_REGULAR`) is the
+                // real default `read_filter` never returns via the CDF path (its symbols start
+                // at the crate's own regular-tap index), matching dav1d's own
+                // `filter[i] = DAV1D_FILTER_8TAP_REGULAR` fallback.
+                let filter = if has_subpel_filter {
+                    let fctx = tile_ctx.filter_context(x4, y4, is_comp, dir as usize, rav1d_ref0);
+                    decoder.read_filter(dir, fctx)?
+                } else {
+                    0
+                };
                 tile_ctx.set_filter(x4, y4, width_4x4, height_4x4, dir as usize, filter);
             }
         }
@@ -2013,6 +2031,32 @@ fn global_motion_forces_simple(
         && gm_type[ref0 as usize] > crate::frame_header_full::GM_TYPE_TRANSLATION
 }
 
+/// `needs_interp_filter()` (spec 5.11.30) -- verified against dav1d's `decode.c`
+/// `has_subpel_filter` computation (source-only re-clone, no build), which the `filter` read's
+/// call site doc explains. `true` unconditionally for every mode except GLOBALMV/GLOBAL_GLOBALMV,
+/// where it's `true` only for a minimal-size block (`min(width_4x4, height_4x4) == 1`) or when
+/// the relevant ref's `gm_type` is exactly TRANSLATION -- IDENTITY/ROTZOOM/AFFINE all suppress the
+/// read (real spec forces `EIGHTTAP_REGULAR` in that case, not a bit read).
+fn needs_interp_filter(
+    mode: PredictionMode,
+    width_4x4: u32,
+    height_4x4: u32,
+    gm_type: &[u8; 8],
+    ref0: RefFrame,
+    ref1: RefFrame,
+) -> bool {
+    let is_minimal = width_4x4.min(height_4x4) == 1;
+    let is_translation =
+        |r: RefFrame| gm_type[r as usize] == crate::frame_header_full::GM_TYPE_TRANSLATION;
+    match mode {
+        PredictionMode::GlobalMv => is_minimal || is_translation(ref0),
+        PredictionMode::GlobalGlobalMv => {
+            is_minimal || is_translation(ref0) || is_translation(ref1)
+        }
+        _ => true,
+    }
+}
+
 /// `motion_mode`/`obmc`'s exact-block-size CDF index (0..=16) -- real spec/dav1d indexing order
 /// matches `CdfContext::motion_mode_cdf`'s literal table order (`read_motion_mode`'s doc); `None`
 /// for any size real spec never reads `motion_mode` for at all (`min(bw4,bh4) < 2`, i.e. either
@@ -2584,6 +2628,88 @@ mod tests {
             false,
             &rotzoom,
             RefFrame::Last2
+        ));
+    }
+
+    #[test]
+    fn needs_interp_filter_matches_dav1d_has_subpel_filter() {
+        use crate::frame_header_full::{GM_TYPE_IDENTITY, GM_TYPE_ROTZOOM, GM_TYPE_TRANSLATION};
+        let translation: [u8; 8] = [GM_TYPE_IDENTITY, GM_TYPE_TRANSLATION, 0, 0, 0, 0, 0, 0];
+        let identity: [u8; 8] = [GM_TYPE_IDENTITY; 8];
+        let rotzoom_ref2: [u8; 8] = [
+            GM_TYPE_IDENTITY,
+            GM_TYPE_IDENTITY,
+            GM_TYPE_ROTZOOM,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
+
+        // Non-global modes always need the filter read, regardless of size/GmType.
+        assert!(needs_interp_filter(
+            PredictionMode::NewMv,
+            16,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+        assert!(needs_interp_filter(
+            PredictionMode::NearestNearestMv,
+            16,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Last2
+        ));
+
+        // GLOBALMV, large block, GmType==TRANSLATION => read.
+        assert!(needs_interp_filter(
+            PredictionMode::GlobalMv,
+            16,
+            16,
+            &translation,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+        // GLOBALMV, large block, GmType==IDENTITY => suppressed (forced EIGHTTAP).
+        assert!(!needs_interp_filter(
+            PredictionMode::GlobalMv,
+            16,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+        // GLOBALMV, minimal-size block (min dim == 1, i.e. 4px) => always read regardless of GmType.
+        assert!(needs_interp_filter(
+            PredictionMode::GlobalMv,
+            1,
+            16,
+            &identity,
+            RefFrame::Last,
+            RefFrame::Intra
+        ));
+
+        // GLOBAL_GLOBALMV: either ref being TRANSLATION is enough.
+        assert!(needs_interp_filter(
+            PredictionMode::GlobalGlobalMv,
+            16,
+            16,
+            &translation,
+            RefFrame::Last2,
+            RefFrame::Last
+        ));
+        // GLOBAL_GLOBALMV: neither ref TRANSLATION => suppressed.
+        assert!(!needs_interp_filter(
+            PredictionMode::GlobalGlobalMv,
+            16,
+            16,
+            &rotzoom_ref2,
+            RefFrame::Last,
+            RefFrame::Golden
         ));
     }
 
