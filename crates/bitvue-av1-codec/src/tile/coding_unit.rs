@@ -673,10 +673,16 @@ pub fn parse_coding_unit(
 
     // Read skip flag -- real per-context CDF + adaptation, see `SymbolDecoder::read_skip`'s doc.
     // `skip_mode` forces `skip = true` with NO bit read (spec: a skip_mode block has nothing to
-    // signal, real dav1d `if (b->skip_mode || (seg && seg->skip)) { b->skip = 1; } else { read }`
-    // -- this crate doesn't model the segmentation-forced-skip half, same known gap as
-    // `SymbolDecoder::read_is_inter`'s doc).
-    if cu.skip_mode {
+    // signal), real dav1d `if (b->skip_mode || (seg && seg->skip)) { b->skip = 1; } else { read }`
+    // -- the segmentation-forced-skip half (`SEG_LVL_SKIP`) is now real too. `cu.segment_id` is
+    // safe to use here even though the general `update_map && !seg_id_pre_skip` case resolves
+    // segment_id AFTER this point (below): `SEG_LVL_SKIP` is index `SEG_LVL_REF_FRAME..` (`>= 5`),
+    // so if it's active for ANY segment this frame, `segmentation.seg_id_pre_skip` is
+    // unconditionally `true` too (`SegmentationInfo`'s doc) -- meaning `cu.segment_id` was already
+    // resolved by the pre-skip block above whenever this check could possibly fire.
+    if cu.skip_mode
+        || segmentation.seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_SKIP)
+    {
         cu.skip = true;
     } else {
         let skip_ctx = tile_ctx.skip_context(x4, y4);
@@ -828,10 +834,21 @@ pub fn parse_coding_unit(
     // e.g. scene-change intra refresh). Key frames are always intra (no bit read, matches real
     // spec: `IS_INTER_OR_SWITCH` is false for an intra-only frame so this branch of `decode_b`
     // never runs at all). `skip_mode` forces inter with no bit read (spec: a skip_mode block is
-    // always inter by construction).
+    // always inter by construction). Segmentation's two real overrides (spec priority order,
+    // after `skip_mode`, before the real bit read): `SEG_LVL_REF_FRAME` forces `is_inter` from
+    // its `FeatureData` (an actual `RefFrame` value; `!= Intra` means inter), `SEG_LVL_GLOBALMV`
+    // (only checked when `SEG_LVL_REF_FRAME` isn't active) unconditionally forces inter.
+    let seg_ref_frame_feature = crate::frame_header_full::SEG_LVL_REF_FRAME;
     let is_inter = if is_key_frame {
         false
     } else if cu.skip_mode {
+        true
+    } else if segmentation.seg_feature_active(cu.segment_id, seg_ref_frame_feature) {
+        segmentation.seg_feature_data(cu.segment_id, seg_ref_frame_feature)
+            != RefFrame::Intra as i16
+    } else if segmentation
+        .seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_GLOBALMV)
+    {
         true
     } else {
         let ictx = tile_ctx.intra_ctx(x4, y4);
@@ -1021,9 +1038,33 @@ pub fn parse_coding_unit(
         }
     } else {
         // ref_frame() (spec 5.11.25) -- real per-context CDF + adaptation, see
-        // `SymbolDecoder::read_ref_frames`'s doc.
-        cu.ref_frames =
-            decoder.read_ref_frames(tile_ctx, x4, y4, reference_select, width.min(height))?;
+        // `SymbolDecoder::read_ref_frames`'s doc. Real spec's `skip_mode` branch (forces
+        // `RefFrame` from `skip_mode_refs`, no bits read) isn't modeled -- this crate doesn't
+        // track `skip_mode_params()`'s derived ref indices anywhere (`read_skip_mode_params`
+        // only returns the `skip_mode_present` bool), a separate pre-existing gap found while
+        // adding the segmentation overrides just below, not fixed here (undertested like the
+        // segmentation gap: needs a real `skip_mode == true` CU, which the committed fixture may
+        // not exercise either). Segmentation's two real overrides ARE modeled: `SEG_LVL_REF_FRAME`
+        // forces `RefFrame[0]` from its `FeatureData` (`RefFrame[1] = Intra`, i.e. never
+        // compound); when that's inactive, `SEG_LVL_SKIP` or `SEG_LVL_GLOBALMV` (either one)
+        // forces `RefFrame[0] = Last`, `RefFrame[1] = Intra` (real spec: same `LAST_FRAME`
+        // fallback for both).
+        let seg_ref_frame_feature = crate::frame_header_full::SEG_LVL_REF_FRAME;
+        cu.ref_frames = if segmentation.seg_feature_active(cu.segment_id, seg_ref_frame_feature) {
+            let raw = segmentation.seg_feature_data(cu.segment_id, seg_ref_frame_feature);
+            [
+                RefFrame::from_u8(raw.clamp(0, 7) as u8).unwrap_or(RefFrame::Last),
+                RefFrame::Intra,
+            ]
+        } else if segmentation
+            .seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_SKIP)
+            || segmentation
+                .seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_GLOBALMV)
+        {
+            [RefFrame::Last, RefFrame::Intra]
+        } else {
+            decoder.read_ref_frames(tile_ctx, x4, y4, reference_select, width.min(height))?
+        };
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
         tile_ctx.set_ref_frames(
             x4,

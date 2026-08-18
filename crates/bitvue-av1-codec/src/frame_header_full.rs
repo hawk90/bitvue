@@ -447,7 +447,14 @@ fn read_tile_info(
 
 /// `SEG_LVL_REF_FRAME` (spec's `Segmentation_Feature_Bits` index 5) -- features at or above this
 /// index gate `SegIdPreSkip` (`SegmentationInfo::seg_id_pre_skip`'s doc).
-const SEG_LVL_REF_FRAME: usize = 5;
+pub(crate) const SEG_LVL_REF_FRAME: usize = 5;
+/// `SEG_LVL_SKIP` (spec index 6) -- forces `skip = 1`/`RefFrame[0] = LAST_FRAME` with no bits
+/// read when active for a CU's segment (`SymbolDecoder::read_is_inter`'s doc,
+/// `crate::tile::coding_unit::parse_coding_unit`'s `skip`/`ref_frame` call sites).
+pub(crate) const SEG_LVL_SKIP: usize = 6;
+/// `SEG_LVL_GLOBALMV` (spec index 7) -- forces `is_inter = 1`/`RefFrame[0] = LAST_FRAME` with no
+/// bits read when active (same call sites as `SEG_LVL_SKIP`).
+pub(crate) const SEG_LVL_GLOBALMV: usize = 7;
 
 /// Real segmentation state exposed for `segment_id()` (spec 5.11.9/5.11.10) callers -- previously
 /// this crate read (for bitstream sync) then discarded every segmentation bit
@@ -473,14 +480,65 @@ const SEG_LVL_REF_FRAME: usize = 5;
 /// `seg_id_pre_skip` genuinely gates real bitstream position, so a wrong fallback here is a real
 /// (if narrow and documented) desync risk -- not verified against a real `update_data == false`
 /// stream, since generating one needs a specific encoder cooperation this session didn't
-/// reach.
-#[derive(Debug, Clone, Copy, Default)]
+/// reach. `feature_enabled`/`feature_data` inherit the exact same `update_data == false` gap
+/// (all-disabled/all-zero fallback in that case, same as `seg_id_pre_skip`'s).
+#[derive(Debug, Clone, Copy)]
 pub struct SegmentationInfo {
     pub enabled: bool,
     pub update_map: bool,
     pub temporal_update: bool,
     pub seg_id_pre_skip: bool,
     pub last_active_seg_id: u8,
+    /// `FeatureEnabled[segment][feature]` (spec 5.9.14) -- previously read for bit-position sync
+    /// only, then discarded (this struct's original gap, closed alongside `feature_data`). Real
+    /// spec's `seg_feature_active(feature)` for a given `segment_id` is
+    /// `enabled && feature_enabled[segment_id][feature]` -- see `seg_feature_active`.
+    pub feature_enabled: [[bool; SEG_LVL_MAX]; MAX_SEGMENTS],
+    /// `FeatureData[segment][feature]` (spec 5.9.14) -- only meaningful where the matching
+    /// `feature_enabled` cell is `true` (real spec's own convention; an inactive feature's data is
+    /// never read at all, so this stays `0` there, not a real "zero override"). See
+    /// `seg_feature_data`.
+    pub feature_data: [[i16; SEG_LVL_MAX]; MAX_SEGMENTS],
+}
+
+impl Default for SegmentationInfo {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            update_map: false,
+            temporal_update: false,
+            seg_id_pre_skip: false,
+            last_active_seg_id: 0,
+            feature_enabled: [[false; SEG_LVL_MAX]; MAX_SEGMENTS],
+            feature_data: [[0; SEG_LVL_MAX]; MAX_SEGMENTS],
+        }
+    }
+}
+
+impl SegmentationInfo {
+    /// `seg_feature_active_idx(segment_id, feature)` (spec 5.9.14 / used throughout 5.11.5-25) --
+    /// `false` whenever segmentation itself is off, matching real spec's `enabled` gate being
+    /// implicit in every `seg_feature_active` call site (this crate makes it explicit here so
+    /// callers don't need to separately check `self.enabled`).
+    pub fn seg_feature_active(&self, segment_id: u8, feature: usize) -> bool {
+        self.enabled
+            && self
+                .feature_enabled
+                .get(segment_id as usize)
+                .is_some_and(|f| f[feature])
+    }
+
+    /// `FeatureData[segment_id][feature]` -- `0` if segmentation is off or the feature isn't
+    /// active for this segment (real spec never reads a value in that case either).
+    pub fn seg_feature_data(&self, segment_id: u8, feature: usize) -> i16 {
+        if !self.seg_feature_active(segment_id, feature) {
+            return 0;
+        }
+        self.feature_data
+            .get(segment_id as usize)
+            .map(|f| f[feature])
+            .unwrap_or(0)
+    }
 }
 
 fn parse_segmentation_params(
@@ -505,19 +563,23 @@ fn parse_segmentation_params(
     };
     let mut seg_id_pre_skip = false;
     let mut last_active_seg_id = (MAX_SEGMENTS - 1) as u8;
+    let mut feature_enabled = [[false; SEG_LVL_MAX]; MAX_SEGMENTS];
+    let mut feature_data = [[0i16; SEG_LVL_MAX]; MAX_SEGMENTS];
     if update_data {
         last_active_seg_id = 0;
         for seg in 0..MAX_SEGMENTS {
             for feature in 0..SEG_LVL_MAX {
-                let feature_enabled = reader.read_bit()?;
-                if feature_enabled {
+                let this_feature_enabled = reader.read_bit()?;
+                feature_enabled[seg][feature] = this_feature_enabled;
+                if this_feature_enabled {
                     let bits = SEGMENTATION_FEATURE_BITS[feature];
                     if bits > 0 {
-                        if SEGMENTATION_FEATURE_SIGNED[feature] {
-                            reader.read_su(bits + 1)?;
+                        let value = if SEGMENTATION_FEATURE_SIGNED[feature] {
+                            reader.read_su(bits + 1)?
                         } else {
-                            reader.read_bits(bits)?;
-                        }
+                            reader.read_bits(bits)? as i32
+                        };
+                        feature_data[seg][feature] = value as i16;
                     }
                     last_active_seg_id = seg as u8;
                     if feature >= SEG_LVL_REF_FRAME {
@@ -533,6 +595,8 @@ fn parse_segmentation_params(
         temporal_update,
         seg_id_pre_skip,
         last_active_seg_id,
+        feature_enabled,
+        feature_data,
     })
 }
 
@@ -1714,6 +1778,72 @@ mod tests {
             "real_fixture_parses_every_frame_without_error: {cdef_enabled_count}/{} frames had CDEF enabled",
             frames.len()
         );
+    }
+
+    #[test]
+    fn seg_feature_active_and_data_match_spec_semantics() {
+        let mut seg = SegmentationInfo {
+            enabled: true,
+            ..SegmentationInfo::default()
+        };
+        seg.feature_enabled[2][SEG_LVL_REF_FRAME] = true;
+        seg.feature_data[2][SEG_LVL_REF_FRAME] = 3;
+
+        assert!(seg.seg_feature_active(2, SEG_LVL_REF_FRAME));
+        assert_eq!(seg.seg_feature_data(2, SEG_LVL_REF_FRAME), 3);
+        // A different segment with the same feature never enabled => inactive, data 0.
+        assert!(!seg.seg_feature_active(0, SEG_LVL_REF_FRAME));
+        assert_eq!(seg.seg_feature_data(0, SEG_LVL_REF_FRAME), 0);
+        // A different feature on the *same* segment that was never enabled => inactive, data 0
+        // (spec: an inactive feature's data is never read, `0` isn't a "real zero override").
+        assert!(!seg.seg_feature_active(2, SEG_LVL_SKIP));
+        assert_eq!(seg.seg_feature_data(2, SEG_LVL_SKIP), 0);
+        // `enabled=false` (segmentation off entirely) => nothing is ever active, regardless of
+        // what feature_enabled/feature_data happen to hold.
+        seg.enabled = false;
+        assert!(!seg.seg_feature_active(2, SEG_LVL_REF_FRAME));
+        assert_eq!(seg.seg_feature_data(2, SEG_LVL_REF_FRAME), 0);
+    }
+
+    #[test]
+    fn parse_segmentation_params_retains_real_feature_enabled_and_data() {
+        let (mut bits, mut push) = bits_writer();
+        push(&mut bits, 1, 1); // enabled = 1
+                               // primary_ref_frame == PRIMARY_REF_NONE => update_map/temporal_update/update_data are
+                               // all implicit (no bits read), straight into the 8x8 feature loop.
+        for seg in 0..MAX_SEGMENTS {
+            for feature in 0..SEG_LVL_MAX {
+                if seg == 0 && feature == 0 {
+                    // SEG_LVL_ALT_Q: 8 signed bits (su(9)), value = 5.
+                    push(&mut bits, 1, 1);
+                    push(&mut bits, 5, 9);
+                } else if seg == 1 && feature == SEG_LVL_REF_FRAME {
+                    // SEG_LVL_REF_FRAME: 3 unsigned bits, value = 3 (RefFrame::Last3).
+                    push(&mut bits, 1, 1);
+                    push(&mut bits, 3, 3);
+                } else {
+                    push(&mut bits, 0, 1);
+                }
+            }
+        }
+        let payload = pack(&bits);
+        let mut reader = BitReader::new(&payload);
+        let info = parse_segmentation_params(&mut reader, PRIMARY_REF_NONE).unwrap();
+
+        assert!(info.enabled);
+        assert!(info.update_map);
+        assert!(!info.temporal_update);
+        assert!(info.seg_feature_active(0, 0));
+        assert_eq!(info.seg_feature_data(0, 0), 5);
+        assert!(info.seg_feature_active(1, SEG_LVL_REF_FRAME));
+        assert_eq!(info.seg_feature_data(1, SEG_LVL_REF_FRAME), 3);
+        // seg_id_pre_skip: true because SEG_LVL_REF_FRAME (index 5, >= SEG_LVL_REF_FRAME) is
+        // active for segment 1 -- matches this struct's existing derivation.
+        assert!(info.seg_id_pre_skip);
+        assert_eq!(info.last_active_seg_id, 1);
+        // Nothing else was ever enabled.
+        assert!(!info.seg_feature_active(0, SEG_LVL_REF_FRAME));
+        assert!(!info.seg_feature_active(2, 0));
     }
 
     #[test]
