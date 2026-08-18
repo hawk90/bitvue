@@ -2263,6 +2263,16 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   `needs_interp_filter()`도 GmType 의존 조건이 있음을 발견했으나 정확한 조건식이 불확실해
   손대지 않고 문서만 정정(추후 스코핑 대상). `--lib --tests` 415/415(+3 신규), `--workspace
   --lib` 3853/3854(기존 flaky `bitvue-engine` LRU만 실패, 무관 확인), clippy/fmt 클린.
+- **`needs_interp_filter()` GmType 제외 조건 완성(2026-08-18, `d3888de`)**: 바로 위에서
+  "불확실해 보류"한 항목을 같은 세션에서 이어서 완성 -- 이전 세션의 dav1d 스크래치 클론이
+  세션 임시디렉토리라 사라져있어 재클론(source-only, 빌드 안 함) 후 `decode.c`의 실제
+  `has_subpel_filter` 계산을 직접 읽어 확인. 기억에 의존한 최초 추측(TRANSLATION이면 배제)은
+  틀렸고, 실제로는 정반대(GmType==TRANSLATION일 때만 필터 비트 읽음, IDENTITY/ROTZOOM/AFFINE은
+  전부 배제 → `EIGHTTAP_REGULAR` 강제, 단 이웃 컨텍스트엔 이 기본값도 무조건 기록됨, dav1d와
+  동일) -- "불확실하면 새 desync 위험이니 보류"했던 판단이 옳았음을 재확인시켜준 사례.
+  `needs_interp_filter` 순수함수로 추출해 직접 유닛테스트, `GM_TYPE_ROTZOOM`도 `pub(crate)`로
+  노출. `--lib --tests` 416/416, `--workspace --lib` 3853/3854(기존 flaky만), clippy/fmt
+  클린. 커밋된 fixture는 GmType 전부 IDENTITY라 이번에도 latent-bug 수정(실측 차이는 없음).
 
 ---
 
