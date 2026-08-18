@@ -2291,6 +2291,20 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   `--lib --tests` 418/418, `--workspace --lib` 이번엔 3854/3854 전부 통과(flaky LRU도 안
   걸림), clippy/fmt 클린. 지난 세션 Explore가 스코핑한 4후보(tx_size/GmType classification/
   needs_interp_filter/segmentation feature_data) 전부 소진 -- 다음 방향 재스코핑 필요.
+- **skip_mode_refs 스코프 재조사 → 보류, `DeltaQUAc` 미보존 버그로 전환(2026-08-18,
+  `57f6db1`)**: 직전 커밋에서 플래그만 해둔 skip_mode ref_frame 강제 갭을 dav1d `decode.c`
+  재확인 → 실제로는 ref_frame뿐 아니라 compound_mode/DRL/MV잔차/motion_mode/filter **전부**를
+  스킵하고 `dav1d_refmvs_find`로 MV를 직접 유도하는 훨씬 큰 서브시스템임을 발견, "ref_frame만
+  고치면" 오히려 새 desync를 만들 위험이 있어 이번엔 보류(별도 계획 필요). 대신 grep 재탐색 중
+  `coded_lossless` 공식이 `DeltaQUAc`(및 `separate_uv_delta_q`일 때 V의 별도 델타)를 전혀
+  안 보던 걸 발견 -- 기존 문서는 "under-detects, 안전한 근사"라고 적혀있었지만 실제로는
+  **반대 방향(over-detection)도 가능**한 잘못된 문서화였음: `base_q_idx=0`+Y/UV-DC 델타=0인데
+  `DeltaQUAc`≠0인 프레임을 lossless로 오판하면 실제 존재하는
+  `loop_filter_params`/`cdef_params`/`lr_params` 비트를 건너뛰는 진짜 desync. `parse_quantization_
+  params`가 버리던 `DeltaQUAc`를 4번째 리턴값으로 보존해 반영(V 별도 델타는 여전히 미보존, 더
+  좁은 잔여 갭으로 문서화). 합성 비트스트림 유닛테스트로 보존 확인. `--lib --tests` 419/419,
+  `--workspace --lib` 3854/3854, clippy/fmt 클린. **다음 힌트**: skip_mode 전체 모드정보
+  스킵이 유일한 남은 대형 후보(신규 서브시스템 필요, 시작 전 EnterPlanMode 필요).
 
 ---
 
