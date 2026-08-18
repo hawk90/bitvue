@@ -97,10 +97,14 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
-const { closeWindow } = vi.hoisted(() => ({
+const { closeWindow, setHasOpenFile } = vi.hoisted(() => ({
   closeWindow: vi.fn(),
+  setHasOpenFile: vi.fn(),
 }));
-vi.mock("@/services/electronBridgeService", () => ({ closeWindow }));
+vi.mock("@/services/electronBridgeService", () => ({
+  closeWindow,
+  setHasOpenFile,
+}));
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),

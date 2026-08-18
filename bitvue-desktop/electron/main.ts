@@ -23,6 +23,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  session,
   type MenuItemConstructorOptions,
 } from "electron";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -31,6 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SidecarClient } from "../src/sidecarClient.js";
+import { isQuitConfirmed, requestQuit, setMainWindow } from "./quitGuard.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // dist/electron/main.js -> dist/electron -> dist -> bitvue-desktop -> repo root
@@ -63,6 +65,60 @@ let shuttingDown = false;
  * ("영상 디코딩도 제대로 안되는구만") is what surfaced it, not this test suite.
  */
 const consoleErrors: string[] = [];
+
+/**
+ * Content-Security-Policy (SEC-011): no CSP existed anywhere post-Electron-migration -- Tauri's
+ * built-in CSP was dropped and never replaced, so Electron prints its own "Electron Security
+ * Warning (Insecure Content-Security-Policy)" on every launch. Applied via
+ * `session.defaultSession.webRequest.onHeadersReceived` (main()'s registration, below) rather
+ * than a `<meta http-equiv="Content-Security-Policy">` tag, because it's the one place that
+ * covers every way the renderer's document actually gets loaded: packaged `file://`
+ * (win.loadFile against resources/frontend/index.html), the repo-checkout dev flow (also
+ * `file://`, same code path, just frontend/dist/index.html -- see `resolveRendererTarget`), and
+ * the `BITVUE_FRONTEND_URL` override (a live Vite dev server, win.loadURL). A <meta> tag would
+ * have to be duplicated across this package's own placeholder index.html *and* frontend's built
+ * dist/index.html (regenerated on every `vite build`, so anything checked into
+ * frontend/index.html wouldn't survive into the shipped artifact anyway), and couldn't apply at
+ * all to the BITVUE_FRONTEND_URL case since that document's <head> comes from Vite's dev server,
+ * not this repo.
+ *
+ * The renderer never does fetch/XHR to a remote origin -- all real data comes over Electron IPC
+ * via `window.bitvue` (see electronBridgeService.ts's module doc) -- and never loads remote
+ * images or fonts (codicon.ttf is bundled under frontend/public/fonts; thumbnails/screenshots
+ * are `data:` URLs, see e.g. useFilmstripState.ts and captureScreenshot's doc below). So this is
+ * a real, restrictive policy, not a rubber-stamped `default-src *`.
+ *
+ * `style-src` needs 'unsafe-inline': React's `style={{...}}` prop compiles to a DOM `style`
+ * attribute, which CSP's style-src covers (not just <style> tags/<link rel=stylesheet>) -- this
+ * codebase uses inline styles pervasively (e.g. App.tsx's noFramesError block), so disallowing
+ * it would break large parts of the UI, not just an edge case. There's no user-controlled HTML
+ * ever injected this way (no dangerouslySetInnerHTML in the tree, verified by grep), so the XSS
+ * risk 'unsafe-inline' style normally carries doesn't apply here the way it would for
+ * script-src, which stays locked down.
+ *
+ * `script-src`/`connect-src` are relaxed (`'unsafe-eval'`, `ws:`/`wss:`) only when
+ * `BITVUE_FRONTEND_URL` is set -- Vite's dev-server client/HMR runtime needs both (module
+ * transform eval, and a WebSocket back to the dev server for live reload). The packaged and
+ * default repo-checkout dev flows (both `file://`) never hit this branch, so production and the
+ * normal `scripts/dev.sh` flow both get the strict policy.
+ */
+function contentSecurityPolicy(): string {
+  const devServerUrl = process.env.BITVUE_FRONTEND_URL;
+  const scriptSrc = devServerUrl ? "'self' 'unsafe-eval'" : "'self'";
+  const connectSrc = devServerUrl ? "'self' ws: wss:" : "'self'";
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    `connect-src ${connectSrc}`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-src 'none'",
+  ].join("; ");
+}
 
 function requireSidecar(): SidecarClient {
   if (!sidecar)
@@ -454,11 +510,12 @@ function registerIpcHandlers(): void {
     return `data:image/png;base64,${image.toPNG().toString("base64")}`;
   });
 
-  // Quit menu item / TitleBar's Quit button -- app.quit() (not window.close()) so this means
-  // "quit the app" cross-platform, not just "close the current window" (which on macOS
-  // wouldn't actually terminate the process). before-quit already handles sidecar cleanup.
+  // Quit menu item / TitleBar's Quit button / TitleBar's in-window close (X) button. Routed
+  // through requestQuit() (TAURI_WEB-006) instead of calling app.quit() directly -- see its doc
+  // for why (confirms first when a real bitstream is open) and for how this stays "quit the app"
+  // cross-platform, not just "close the current window", same as before this fix.
   ipcMain.handle("bitvue:closeWindow", async () => {
-    app.quit();
+    await requestQuit();
   });
 }
 
@@ -758,9 +815,10 @@ function createWindow(): BrowserWindow {
     (_event, level, message, line, sourceId) => {
       console.log(`[renderer console] ${sourceId}:${line} ${message}`);
       // level: 0=verbose, 1=info, 2=warning, 3=error (Electron's MessageDetails.level) -- only
-      // error-level fails the selftest; warnings (e.g. the CSP notice under file://, expected in
-      // this dev-mode shell) are noisy but not indicative of a real bug the way an uncaught
-      // exception or unhandled rejection is.
+      // error-level fails the selftest; warnings are noisy but not indicative of a real bug the
+      // way an uncaught exception or unhandled rejection is. (Used to also catch Electron's own
+      // "Insecure Content-Security-Policy" warning here pre-SEC-011 fix -- contentSecurityPolicy()
+      // above means that warning shouldn't fire anymore.)
       if (level >= 3) {
         consoleErrors.push(`${sourceId}:${line} ${message}`);
       }
@@ -774,6 +832,21 @@ function createWindow(): BrowserWindow {
       );
     },
   );
+
+  // TAURI_WEB-006: the OS-native window-chrome close button (the red traffic light on macOS, the
+  // title-bar X on Windows/Linux) fires this event directly -- it never goes through
+  // `bitvue:closeWindow`'s IPC path at all, so without this listener it bypassed
+  // requestQuit()'s confirmation entirely. Prevent the default close and route through the same
+  // choke point every other quit trigger uses; once requestQuit() actually confirms, it calls
+  // app.quit() itself, which re-fires this same 'close' event with quitConfirmed already true,
+  // letting it through for real (no infinite loop).
+  win.on("close", (event) => {
+    if (isQuitConfirmed()) return;
+    event.preventDefault();
+    void requestQuit();
+  });
+
+  setMainWindow(win);
 
   const renderer = resolveRendererTarget();
   console.log(
@@ -1297,6 +1370,18 @@ async function main(): Promise<void> {
     `[bitvue-desktop] sidecar handshake ok, protocol_version=${hello.protocol_version}, pid=${sidecar.pid}`,
   );
 
+  // See contentSecurityPolicy's doc above -- must be registered before createWindow()'s
+  // loadFile/loadURL call so the very first document response already carries the header.
+  const csp = contentSecurityPolicy();
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [csp],
+      },
+    });
+  });
+
   registerIpcHandlers();
   const win = createWindow();
   installNativeMacMenu(win);
@@ -1333,12 +1418,29 @@ app
   });
 
 app.on("window-all-closed", () => {
+  // Only reached once a window has actually closed for real -- with the TAURI_WEB-006 gate in
+  // createWindow()'s 'close' listener, that only happens after requestQuit() has confirmed (or
+  // decided confirmation wasn't needed), so this cleanup can't fire while a "Quit Bitvue?" dialog
+  // is still pending / could still be cancelled.
   shuttingDown = true;
   sidecar?.close();
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
-  shuttingDown = true;
-  sidecar?.close();
+// TAURI_WEB-006: the other half of requestQuit()'s choke point (alongside createWindow()'s
+// 'close' listener) -- catches every app.quit() call, including `bitvue:closeWindow`'s IPC
+// handler and the native macOS menu's "Quit" item (installNativeMacMenu's `menu-quit` dispatch,
+// via App.tsx's closeWindow() -> requestQuit() -> app.quit()). Before this fix, `before-quit`
+// closed the sidecar unconditionally and immediately, which -- once requestQuit() could
+// legitimately delay or cancel a quit -- would have killed the sidecar out from under a still-
+// running app if the user hit Cancel in the confirmation dialog. Now it only ever runs cleanup
+// once quitConfirmed is true (i.e. after requestQuit() already decided to actually quit);
+// otherwise it defers to requestQuit() the same way the window 'close' listener does.
+app.on("before-quit", (event) => {
+  if (isQuitConfirmed()) {
+    shuttingDown = true;
+    return;
+  }
+  event.preventDefault();
+  void requestQuit();
 });

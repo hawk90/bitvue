@@ -1,5 +1,6 @@
 import { useEffect, memo, lazy, Suspense, useCallback, useState } from "react";
 import { closeWindow } from "./services/electronBridgeService";
+import { useOpenFileStatus } from "./hooks/useOpenFileStatus";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
 import { WelcomeScreen } from "./components/WelcomeScreen";
@@ -337,6 +338,10 @@ function AppContent() {
   });
 
   const exportEvidenceBundle = useExportEvidenceBundle();
+
+  // Same condition `mainContent` below uses to decide whether to render the real UI vs. the
+  // welcome screen -- see useOpenFileStatus's doc for why the main process needs to know this.
+  useOpenFileStatus(Boolean(fileInfo?.success) && frames.length > 0);
 
   // ── Frame navigation callbacks ────────────────────────────────────────
   const onPreviousFrame = useCallback(() => {

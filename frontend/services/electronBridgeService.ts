@@ -518,6 +518,15 @@ declare global {
       ) => Promise<{ events: BridgeEvent[] }>;
       onSidecarRestarted: (callback: () => void) => () => void;
     };
+    /** Set by App.tsx whenever `fileInfo?.success && frames.length > 0` changes -- the same
+     *  condition that already gates rendering the main content (see App.tsx's `mainContent`).
+     *  Read synchronously by the main process (`bitvue-desktop/electron/main.ts`'s
+     *  `requestQuit`/`hasOpenFileInRenderer`, via `executeJavaScript`) to decide whether closing
+     *  the window is worth a confirmation dialog -- there's no tracked "export in progress" or
+     *  "unsaved compare workspace" signal anywhere in the frontend/sidecar yet (CompareWorkspace
+     *  is dead UI), so this is deliberately the one *real* signal available today rather than a
+     *  fabricated one. */
+    __BITVUE_HAS_OPEN_FILE__?: boolean;
   }
 }
 
@@ -534,6 +543,16 @@ function requireBridge(): NonNullable<Window["bitvue"]> {
 /** Whether the Electron bridge is available at all — for callers that want to branch/skip. */
 export function hasElectronBridge(): boolean {
   return typeof window !== "undefined" && Boolean(window.bitvue);
+}
+
+/** Records whether there's a real open bitstream right now, for the main process's
+ *  quit-confirmation gate (`bitvue-desktop/electron/main.ts`'s `requestQuit`) to read via
+ *  `executeJavaScript` before closing the window. See `window.__BITVUE_HAS_OPEN_FILE__`'s doc
+ *  above for why this is the signal used instead of a fabricated "unsaved work" flag. Safe to
+ *  call outside Electron (plain browser tab / tests) -- just a no-op `window` property write. */
+export function setHasOpenFile(hasOpenFile: boolean): void {
+  if (typeof window === "undefined") return;
+  window.__BITVUE_HAS_OPEN_FILE__ = hasOpenFile;
 }
 
 export async function openStream(
