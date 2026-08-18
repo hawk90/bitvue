@@ -164,7 +164,7 @@ fn test_parse_av1_temporal_delimiter_only() {
     // Temporal delimiter OBU (type 2) with minimal header
     // OBU header: obu_forbidden_bit=0, obu_type=2 (TemporalDelimiter), has_size=0
     let mut td_obu = vec![0u8; 2];
-    td_obu[0] = (2 << 1) | 0x00; // obu_type=2, has_size=0
+    td_obu[0] = 2 << 1; // obu_type=2, has_size=0 (bit already 0, no `| 0x00` needed)
     let result = parse_av1(&td_obu);
     assert!(result.is_ok());
     let info = result.unwrap();
@@ -255,7 +255,7 @@ fn test_av1_info_methods() {
 #[test]
 fn test_parse_av1_multiple_obus() {
     // Create multiple OBUs: temporal delimiter + padding
-    let mut data = vec![0u8; 20];
+    let mut data = [0u8; 20];
     // First OBU: Temporal delimiter
     data[0] = (2 << 1) | 0x01; // type=2, has_size
     data[1] = 0; // size=0
@@ -263,9 +263,7 @@ fn test_parse_av1_multiple_obus() {
     data[2] = (15 << 1) | 0x01; // type=15, has_size
     data[3] = 5; // size=5
                  // Fill padding with zeros
-    for i in 4..10 {
-        data[i] = 0;
-    }
+    data[4..10].fill(0);
     // Third OBU: Temporal delimiter
     data[10] = (2 << 1) | 0x01;
     data[11] = 0;
@@ -301,9 +299,7 @@ fn test_parse_av1_frame_header_obu() {
     data[0] = (3 << 1) | 0x01; // obu_type=3 (FrameHeader), has_size=1
     data[1] = 14; // size=14
                   // Fill with zeros (invalid but won't panic)
-    for i in 2..16 {
-        data[i] = 0;
-    }
+    data[2..16].fill(0);
 
     let result = parse_av1(&data);
     // Should handle gracefully
@@ -451,9 +447,7 @@ fn test_parse_av1_single_obu() {
     let mut data = vec![0u8; 16];
     data[0] = (1 << 3) | 0x02; // OBU type 1 (TemporalDelimiter)
     data[1] = 10; // size
-    for i in 2..12 {
-        data[i] = 0;
-    }
+    data[2..12].fill(0);
 
     let result = parse_av1(&data);
     assert!(result.is_ok());
@@ -589,7 +583,7 @@ fn test_large_input_handling() {
 #[test]
 fn test_parse_av1_with_multiple_obus() {
     // Test parsing multiple OBUs - verify no panic occurs
-    let mut data = vec![0u8; 64];
+    let mut data = [0u8; 64];
     let mut pos = 0;
 
     // OBU 1: Temporal delimiter
@@ -653,9 +647,7 @@ fn test_parse_av1_with_annex_b_obu() {
     let mut data = vec![0u8; 32];
     data[0] = (2 << 3) | 0x02; // OBU type 2 (sequence header)
     data[1] = 10;
-    for i in 2..12 {
-        data[i] = 0;
-    }
+    data[2..12].fill(0);
 
     let result = parse_av1(&data);
     assert!(result.is_ok());
@@ -667,9 +659,7 @@ fn test_parse_av1_with_frame_header_obu() {
     let mut data = vec![0u8; 32];
     data[0] = (3 << 3) | 0x02; // OBU type 3 (frame header)
     data[1] = 10;
-    for i in 2..12 {
-        data[i] = 0;
-    }
+    data[2..12].fill(0);
 
     let result = parse_av1(&data);
     assert!(result.is_ok());
@@ -681,9 +671,7 @@ fn test_parse_av1_with_tile_group_obu() {
     let mut data = vec![0u8; 32];
     data[0] = (5 << 3) | 0x02; // OBU type 5 (tile group)
     data[1] = 10;
-    for i in 2..12 {
-        data[i] = 0;
-    }
+    data[2..12].fill(0);
 
     let result = parse_av1(&data);
     assert!(result.is_ok());
@@ -695,9 +683,7 @@ fn test_parse_av1_with_metadata_obu() {
     let mut data = vec![0u8; 32];
     data[0] = (4 << 3) | 0x02; // OBU type 4 (metadata)
     data[1] = 10;
-    for i in 2..12 {
-        data[i] = 0;
-    }
+    data[2..12].fill(0);
 
     let result = parse_av1(&data);
     assert!(result.is_ok());
@@ -934,15 +920,11 @@ fn test_extract_obu_data_from_mp4_with_mdat() {
     // Add OBU sequence in mdat
     data[20] = (2 << 3) | 0x02; // sequence header
     data[21] = 20; // size
-    for i in 22..42 {
-        data[i] = 0;
-    }
+    data[22..42].fill(0);
     // Add another OBU
     data[42] = (3 << 3) | 0x02; // frame header
     data[43] = 15;
-    for i in 44..59 {
-        data[i] = 0;
-    }
+    data[44..59].fill(0);
 
     let result = extract_obu_data_from_mp4(&data);
     // May fail on malformed MP4 - just check it doesn't panic
@@ -987,9 +969,7 @@ fn test_extract_obu_data_from_mkv_with_cluster() {
     // Segment header with OBU data
     data[20] = (2 << 3) | 0x02; // sequence header
     data[21] = 10;
-    for i in 22..32 {
-        data[i] = 0;
-    }
+    data[22..32].fill(0);
 
     let result = extract_obu_data_from_mkv(&data);
     // May fail on malformed MKV - just check it doesn't panic
@@ -1017,9 +997,7 @@ fn test_extract_obu_data_from_ts_with_pes() {
                       // Add OBU data somewhere in the middle
     data[100] = (2 << 3) | 0x02; // sequence header
     data[101] = 10;
-    for i in 102..112 {
-        data[i] = 0;
-    }
+    data[102..112].fill(0);
 
     let result = extract_obu_data_from_ts(&data);
     // May fail on malformed TS - just check it doesn't panic
@@ -1072,9 +1050,7 @@ fn test_parse_av1_with_maximum_obu_size() {
     data[1] = 0xFF; // large size (will be parsed as leb128)
     data[2] = 0x80; // size extension
     data[3] = 0x01; // more size
-    for i in 4..512 {
-        data[i] = 0;
-    }
+    data[4..512].fill(0);
 
     let result = parse_av1(&data);
     // Should handle large size gracefully
@@ -1143,9 +1119,7 @@ fn test_obu_size_variations() {
         let mut data = vec![0u8; size + 4];
         data[0] = (1 << 3) | 0x02; // temporal delimiter
         data[1] = (size - 2) as u8;
-        for i in 2..size + 2 {
-            data[i] = 0;
-        }
+        data[2..size + 2].fill(0);
 
         let result = parse_av1(&data);
         assert!(
@@ -1476,9 +1450,7 @@ fn test_parse_av1_with_corrupted_obu_chain() {
     data[24..28].copy_from_slice(&0u32.to_le_bytes());
     data[28..32].copy_from_slice(&0u32.to_le_bytes());
     // Add corrupted OBU data (invalid size fields, etc.)
-    for i in 32..100 {
-        data[i] = 0xFF;
-    }
+    data[32..100].fill(0xFF);
 
     let result = parse_av1(&data);
     // Should handle corruption gracefully
@@ -1512,9 +1484,7 @@ fn test_extract_functions_with_embedded_nulls() {
     data[6] = 0x00; // Embedded null
     data[7] = b'p';
     // Rest is nulls
-    for i in 8..100 {
-        data[i] = 0x00;
-    }
+    data[8..100].fill(0x00);
 
     let result = extract_obu_data_from_mp4(&data);
     // Should handle without panic

@@ -2376,7 +2376,11 @@ fn read_pal_plane_colors(
 
     let (left_colors, left_count) = tile_ctx.pal_left(color_plane, size_plane, y4);
     let (above_colors, above_count_raw) = tile_ctx.pal_above(color_plane, size_plane, x4);
-    let above_count = if y4 % 16 != 0 { above_count_raw } else { 0 };
+    let above_count = if !y4.is_multiple_of(16) {
+        above_count_raw
+    } else {
+        0
+    };
     let (cache, n_cache) = build_pal_cache(above_colors, above_count, left_colors, left_count);
 
     let mut used_cache = [0u16; 8];
@@ -2661,6 +2665,10 @@ fn read_pal_indices(
 /// `compute_inter_tx_blocks`) for luma, then the real 4:2:0 chroma-subsampled equivalent
 /// (`cw4 = (w4+1)>>1` etc, dav1d's own formula for `ss_hor=ss_ver=1`) for chroma. Returns
 /// `(y_index_map, uv_index_map)`, each `None` when that plane's palette size is `0`.
+/// `(y_index_map, uv_index_map)` returned by [`read_palette_tokens`]; each entry is `None` when
+/// that plane's palette size is `0`.
+type PaletteTokenMaps = (Option<Vec<u8>>, Option<Vec<u8>>);
+
 #[allow(clippy::too_many_arguments)]
 fn read_palette_tokens(
     decoder: &mut SymbolDecoder,
@@ -2672,7 +2680,7 @@ fn read_palette_tokens(
     palette: &PaletteInfo,
     mi_rows: u32,
     mi_cols: u32,
-) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
+) -> Result<PaletteTokenMaps> {
     let w4 = width_4x4.min(mi_cols.saturating_sub(x4)).max(1);
     let h4 = height_4x4.min(mi_rows.saturating_sub(y4)).max(1);
 
@@ -2690,8 +2698,8 @@ fn read_palette_tokens(
     };
 
     let uv_map = if has_chroma && palette.uv_size > 0 {
-        let (cw4, ch4) = ((w4 + 1) / 2, (h4 + 1) / 2);
-        let cbw4 = (width_4x4 + 1) / 2;
+        let (cw4, ch4) = (w4.div_ceil(2), h4.div_ceil(2));
+        let cbw4 = width_4x4.div_ceil(2);
         Some(read_pal_indices(
             decoder,
             1,

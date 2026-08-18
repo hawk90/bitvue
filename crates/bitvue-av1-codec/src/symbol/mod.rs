@@ -412,6 +412,7 @@ impl<'a> SymbolDecoder<'a> {
 
     /// Read `angle_delta_y`/`angle_delta_uv` (spec `intra_angle_info_y`/`_uv`) -- real per-mode CDF
     /// + adaptation, shared table for Y and UV (`CdfContext::angle_delta_cdf`'s doc).
+    ///
     /// `mode_minus_vert`: `mode - V_PRED` (0..=7). Returns the real signed delta, `-3..=3`.
     pub fn read_angle_delta(&mut self, mode_minus_vert: u8) -> Result<i8> {
         let cdf = self.cdf_context.get_angle_delta_cdf_mut(mode_minus_vert);

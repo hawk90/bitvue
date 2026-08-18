@@ -222,7 +222,7 @@ fn test_symbol_decoder_multiple_reads() {
     let mut decoder = SymbolDecoder::new(&data).expect("Failed to create decoder");
 
     // Read multiple partition symbols for different block sizes
-    let block_sizes = vec![6, 5, 4, 3]; // 64x64, 32x32, 16x16, 8x8
+    let block_sizes = [6, 5, 4, 3]; // 64x64, 32x32, 16x16, 8x8
 
     for (i, &block_size_log2) in block_sizes.iter().enumerate() {
         let result = decoder.read_partition(block_size_log2, 0, true, true);

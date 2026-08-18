@@ -190,8 +190,8 @@ mod tests {
         let grid = result.unwrap();
         assert_eq!(grid.block_w, OVERLAY_BLOCK_SIZE);
         assert_eq!(grid.block_h, OVERLAY_BLOCK_SIZE);
-        assert!(grid.mv_l0.len() > 0, "MV grid should have L0 vectors");
-        assert!(grid.mv_l1.len() > 0, "MV grid should have L1 vectors");
+        assert!(!grid.mv_l0.is_empty(), "MV grid should have L0 vectors");
+        assert!(!grid.mv_l1.is_empty(), "MV grid should have L1 vectors");
     }
 
     #[test]
@@ -227,8 +227,8 @@ mod tests {
 
         // Assert
         let stats = grid.statistics();
-        assert_eq!(stats.total_blocks, (grid_w * grid_h) as usize);
-        assert_eq!(stats.intra_count, (grid_w * grid_h - 10) as usize);
+        assert_eq!(stats.total_blocks, grid_w * grid_h);
+        assert_eq!(stats.intra_count, grid_w * grid_h - 10);
         assert_eq!(stats.inter_count, 10);
     }
 

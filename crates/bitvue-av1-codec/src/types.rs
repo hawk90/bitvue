@@ -177,6 +177,10 @@ mod tests {
         let qp = Qp::new(50).unwrap();
         let qp_copy = qp;
         assert_eq!(qp, qp_copy);
+        // Intentionally call `.clone()` explicitly (not just rely on Copy's implicit bitwise
+        // copy) -- this test's name promises to cover both traits, and `Copy` requires `Clone`
+        // to exist regardless of whether callers ever invoke it explicitly.
+        #[allow(clippy::clone_on_copy)]
         let qp_clone = qp_copy.clone();
         assert_eq!(qp, qp_clone);
     }
@@ -504,6 +508,8 @@ mod quarter_pel_tests {
         let mv = QuarterPel::from_qpel(20);
         let mv_copy = mv;
         assert_eq!(mv, mv_copy);
+        // See the matching comment in `test_qp_copy_clone`: explicit `.clone()` is deliberate.
+        #[allow(clippy::clone_on_copy)]
         let mv_clone = mv_copy.clone();
         assert_eq!(mv, mv_clone);
     }
@@ -557,6 +563,8 @@ mod timestamp_pts_tests {
         let pts = TimestampPts::new(1000).unwrap();
         let pts_copy = pts;
         assert_eq!(pts, pts_copy);
+        // See the matching comment in `test_qp_copy_clone`: explicit `.clone()` is deliberate.
+        #[allow(clippy::clone_on_copy)]
         let pts_clone = pts_copy.clone();
         assert_eq!(pts, pts_clone);
     }

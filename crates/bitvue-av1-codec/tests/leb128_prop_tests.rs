@@ -15,6 +15,7 @@
 //! possible byte sequences without panicking.
 
 use bitvue_av1_codec::decode_uleb128;
+use bitvue_av1_codec::leb128::MAX_LEB128_BYTES;
 use proptest::prelude::*;
 
 /// Property: LEB128 decoder should never panic on any input
@@ -31,17 +32,37 @@ proptest! {
     }
 }
 
-/// Property: LEB128 decoded values should be non-negative
+/// Property: successfully decoded LEB128 values must fit within the
+/// spec-mandated bit width (MAX_LEB128_BYTES * 7 = 56 bits).
 ///
-/// Unsigned LEB128 should always produce non-negative values.
+/// `decode_uleb128` returns `u64`, so `value >= 0` is a tautology (a `u64`
+/// can never be negative) and doesn't actually exercise the decoder's
+/// overflow handling. The real invariant is that the parser reads at most
+/// `MAX_LEB128_BYTES` continuation bytes, so any successfully decoded value
+/// must be representable in `MAX_LEB128_BYTES * 7` bits; anything wider
+/// should have been rejected as an overflow error instead.
 proptest! {
     #[test]
-    fn prop_uleb128_never_negative(data in prop::collection::vec(any::<u8>(), 0..20)) {
+    fn prop_uleb128_within_max_bit_width(data in prop::collection::vec(any::<u8>(), 0..20)) {
         let result = decode_uleb128(&data);
 
-        if let Ok((value, _)) = result {
-            // Unsigned decoding should never produce negative values
-            prop_assert!(value >= 0);
+        if let Ok((value, bytes_read)) = result {
+            prop_assert!(
+                bytes_read <= MAX_LEB128_BYTES,
+                "decoder consumed {} bytes, exceeding MAX_LEB128_BYTES ({})",
+                bytes_read,
+                MAX_LEB128_BYTES
+            );
+
+            let max_bits = (MAX_LEB128_BYTES as u32) * 7;
+            // max_bits is 56 here, so this shift is well within u64 range.
+            let upper_bound = 1u64 << max_bits;
+            prop_assert!(
+                value < upper_bound,
+                "decoded value {} exceeds the {}-bit LEB128 limit",
+                value,
+                max_bits
+            );
         }
     }
 }

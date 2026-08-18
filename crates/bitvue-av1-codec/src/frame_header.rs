@@ -433,7 +433,7 @@ fn skip_segmentation_params(reader: &mut BitReader) -> Result<(), BitvueError> {
                         // 6=SKIP(0), 7=GLOBALMV(0)
                         let (bits, signed) = match feature {
                             0 => (8u8, true),
-                            1 | 2 | 3 | 4 => (6u8, true),
+                            1..=4 => (6u8, true),
                             5 => (3u8, false),
                             _ => (0u8, false),
                         };
@@ -699,8 +699,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     // primary_ref_frame (3 bits) per AV1 spec 5.9.2:
     // present when error_resilient_mode == 0 AND NOT (KEY_FRAME AND show_frame)
     // AND NOT SWITCH_FRAME
-    let needs_primary_ref = !error_resilient_mode
-        && !(frame_type == FrameType::Key && show_frame)
+    let needs_primary_ref = !(error_resilient_mode || (frame_type == FrameType::Key && show_frame))
         && frame_type != FrameType::Switch;
     if needs_primary_ref {
         reader.read_bits(3)?;

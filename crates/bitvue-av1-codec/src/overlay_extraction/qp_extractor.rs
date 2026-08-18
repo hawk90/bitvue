@@ -220,7 +220,7 @@ mod tests {
         let grid = result.unwrap();
         assert_eq!(grid.block_w, 64);
         assert_eq!(grid.block_h, 64);
-        assert!(grid.qp.len() > 0, "QP grid should have values");
+        assert!(!grid.qp.is_empty(), "QP grid should have values");
         assert_eq!(grid.qp[0], base_qp, "First block should have base QP");
 
         // Also test with invalid QP to ensure validation works

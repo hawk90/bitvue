@@ -41,7 +41,7 @@ fn test_phase0_real_file_parsing() {
 
     // Verify we got multiple OBUs
     assert!(
-        models.len() > 0,
+        !models.is_empty(),
         "Expected at least one OBU, got {}",
         models.len()
     );
@@ -120,7 +120,7 @@ fn test_phase0_real_file_parsing() {
             .iter()
             .find(|id| {
                 model
-                    .get_node(*id)
+                    .get_node(id)
                     .map(|n| n.field_name == "sequence_header")
                     .unwrap_or(false)
             })
@@ -171,7 +171,7 @@ fn test_phase0_real_file_parsing() {
             .iter()
             .find(|id| {
                 model
-                    .get_node(*id)
+                    .get_node(id)
                     .map(|n| n.field_name == "frame_header")
                     .unwrap_or(false)
             })
@@ -223,7 +223,7 @@ fn test_phase0_bit_range_accuracy() {
         .iter()
         .find(|id| {
             model
-                .get_node(*id)
+                .get_node(id)
                 .map(|n| n.field_name == "obu_header")
                 .unwrap_or(false)
         })

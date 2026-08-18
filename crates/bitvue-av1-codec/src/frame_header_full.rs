@@ -1894,9 +1894,11 @@ mod tests {
         // is_global && !is_rot_zoom && !is_translation => AFFINE.
         assert_eq!(classify_gm_type(true, false, false), GM_TYPE_AFFINE);
         // The exact ordering `read_motion_mode`'s `GmType[ref] > TRANSLATION` exclusion relies on.
-        assert!(GM_TYPE_IDENTITY < GM_TYPE_TRANSLATION);
-        assert!(GM_TYPE_TRANSLATION < GM_TYPE_ROTZOOM);
-        assert!(GM_TYPE_ROTZOOM < GM_TYPE_AFFINE);
+        // These are compile-time constants, so check them in a const block: a regression here
+        // fails the build itself rather than only a test run.
+        const { assert!(GM_TYPE_IDENTITY < GM_TYPE_TRANSLATION) };
+        const { assert!(GM_TYPE_TRANSLATION < GM_TYPE_ROTZOOM) };
+        const { assert!(GM_TYPE_ROTZOOM < GM_TYPE_AFFINE) };
     }
 
     /// Real-fixture regression for `parse_global_motion_params`'s real `GmType[ref]` output

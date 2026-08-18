@@ -850,7 +850,7 @@ mod tests {
             "Partition grid extraction should succeed with fallback"
         );
         let grid = result.unwrap();
-        assert!(grid.blocks.len() > 0, "Grid should have scaffold blocks");
+        assert!(!grid.blocks.is_empty(), "Grid should have scaffold blocks");
     }
 
     #[test]

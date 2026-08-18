@@ -327,7 +327,7 @@ fn test_grid_dimensions() {
         assert_eq!(qp_grid.grid_w * 64, width);
 
         // MVGrid uses ceiling division for height, so calculate size separately
-        let mv_grid_h = (height + 64 - 1) / 64; // ceiling division
+        let mv_grid_h = height.div_ceil(64); // ceiling division
         let mv_grid_size = (grid_w * mv_grid_h) as usize;
         let mv_l0 = vec![MotionVector::ZERO; mv_grid_size];
         let mv_l1 = vec![MotionVector::MISSING; mv_grid_size];
@@ -541,7 +541,7 @@ fn test_mv_grid_large() {
     // Test 4K resolution
     // MVGrid uses ceiling division for height
     let width: u32 = 3840 / 64; // 60
-    let height: u32 = (2160 + 64 - 1) / 64; // 34 (ceiling division)
+    let height: u32 = 2160_u32.div_ceil(64); // 34 (ceiling division)
     let mv_l0 = vec![MotionVector::ZERO; (width * height) as usize];
     let mv_l1 = vec![MotionVector::MISSING; (width * height) as usize];
 

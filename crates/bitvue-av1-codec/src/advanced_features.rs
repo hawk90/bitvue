@@ -190,14 +190,13 @@ pub fn extract_loop_restoration_data(frame_header: &FrameHeader) -> Option<LoopR
     let height = frame_header.height;
     let unit_size = frame_header.loop_restoration.unit_size;
 
-    let grid_w = (width + unit_size - 1) / unit_size;
-    let grid_h = (height + unit_size - 1) / unit_size;
+    let grid_w = width.div_ceil(unit_size);
+    let grid_h = height.div_ceil(unit_size);
 
     // Use frame-level restoration type for all units (per-unit type requires tile decoding)
     let y_type: LoopRestorationType = frame_header.loop_restoration.y_type.into();
     let units: Vec<RestorationUnit> = (0..grid_h)
         .flat_map(|y| {
-            let y_type = y_type;
             (0..grid_w).map(move |x| RestorationUnit {
                 x: x * unit_size,
                 y: y * unit_size,
