@@ -152,6 +152,7 @@ fn test_mv_extraction_with_spec_cdfs() {
             mi_cols,
             0,
             false,
+            [0u8, 0u8],
             bitvue_av1_codec::tile::InterModeFlags {
                 switchable_motion_mode: false,
                 allow_warped_motion: false,

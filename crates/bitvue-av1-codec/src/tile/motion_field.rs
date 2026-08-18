@@ -428,3 +428,38 @@ pub fn add_temporal_candidates(
     }
     out
 }
+
+/// Compound counterpart of [`add_temporal_candidates`] -- dav1d `add_temporal_candidate`'s
+/// `ref.ref[1] != -1` branch (`refmvs.c:216-232`): the *same* grid cell is projected against
+/// **both** refs' `pocdiff` (via the same [`mv_projection`] this crate already uses for the
+/// single-ref case) and pushed as one joint pair, not two independent single MVs. Same scope note
+/// as [`add_temporal_candidates`] (main grid scan only, no extra corner samples) and same
+/// weight-2/caller-dedups-by-value contract.
+pub fn add_temporal_compound_candidates(
+    projected: &ProjectedMotionField,
+    pocdiff_ref0: i32,
+    pocdiff_ref1: i32,
+    x8_start: u32,
+    y8_start: u32,
+    w8: u32,
+    h8: u32,
+    step_h: u32,
+    step_v: u32,
+) -> Vec<[MotionVector; 2]> {
+    let mut out = Vec::new();
+    let mut y = 0;
+    while y < h8 {
+        let mut x = 0;
+        while x < w8 {
+            if let Some(cell) = projected.get(x8_start + x, y8_start + y) {
+                out.push([
+                    mv_projection(cell.mv, pocdiff_ref0, cell.ref2ref),
+                    mv_projection(cell.mv, pocdiff_ref1, cell.ref2ref),
+                ]);
+            }
+            x += step_h;
+        }
+        y += step_v;
+    }
+    out
+}

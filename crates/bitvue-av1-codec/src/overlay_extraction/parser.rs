@@ -113,6 +113,9 @@ pub struct ParsedFrame {
     /// as `reference_select`; `false` (i.e. "`skip_mode` never reads any bits") if the full
     /// header wasn't parsed.
     pub skip_mode_present: bool,
+    /// `SkipModeFrame[0]/[1]` (spec 5.9.22) -- see `crate::frame_header::FrameHeader::
+    /// skip_mode_refs`'s doc. Same sourcing/fallback story as `skip_mode_present`.
+    pub skip_mode_refs: [u8; 2],
     /// `subpel_filter_switchable`/`switchable_motion_mode`/`allow_warped_motion` (spec 5.9.2/
     /// 5.9.10) -- see `crate::frame_header::FrameHeader`'s matching fields' docs. Same sourcing/
     /// fallback story as `reference_select`.
@@ -237,6 +240,7 @@ impl ParsedFrame {
                 enable_filter_intra: false,
                 cdef_bits: 0,
                 skip_mode_present: false,
+                skip_mode_refs: [0, 0],
                 subpel_filter_switchable: false,
                 switchable_motion_mode: false,
                 allow_warped_motion: false,
@@ -294,6 +298,7 @@ impl ParsedFrame {
         let mut enable_filter_intra = false;
         let mut cdef_bits = 0u8;
         let mut skip_mode_present = false;
+        let mut skip_mode_refs = [0u8, 0u8];
         let mut subpel_filter_switchable = false;
         let mut switchable_motion_mode = false;
         let mut allow_warped_motion = false;
@@ -413,6 +418,7 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             skip_mode_present = full_hdr.skip_mode_present;
+                            skip_mode_refs = full_hdr.skip_mode_refs;
                             subpel_filter_switchable = full_hdr.subpel_filter_switchable;
                             switchable_motion_mode = full_hdr.switchable_motion_mode;
                             allow_warped_motion = full_hdr.allow_warped_motion;
@@ -454,6 +460,7 @@ impl ParsedFrame {
                             segmentation = full_hdr.segmentation;
                             cdef_bits = full_hdr.cdef_damping.bits;
                             skip_mode_present = full_hdr.skip_mode_present;
+                            skip_mode_refs = full_hdr.skip_mode_refs;
                             subpel_filter_switchable = full_hdr.subpel_filter_switchable;
                             switchable_motion_mode = full_hdr.switchable_motion_mode;
                             allow_warped_motion = full_hdr.allow_warped_motion;
@@ -503,6 +510,7 @@ impl ParsedFrame {
             enable_filter_intra,
             cdef_bits,
             skip_mode_present,
+            skip_mode_refs,
             subpel_filter_switchable,
             switchable_motion_mode,
             allow_warped_motion,

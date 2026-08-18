@@ -58,6 +58,7 @@ pub fn parse_all_coding_units_with_temporal(
     let segmentation = parsed.segmentation;
     let cdef_bits = parsed.cdef_bits;
     let skip_mode_present = parsed.skip_mode_present;
+    let skip_mode_refs = parsed.skip_mode_refs;
     let inter_mode_flags = crate::tile::InterModeFlags {
         switchable_motion_mode: parsed.switchable_motion_mode,
         allow_warped_motion: parsed.allow_warped_motion,
@@ -137,6 +138,7 @@ pub fn parse_all_coding_units_with_temporal(
                 mi_cols,
                 cdef_bits,
                 skip_mode_present,
+                skip_mode_refs,
                 inter_mode_flags,
             ) {
                 Ok((sb, new_qp)) => {
@@ -1266,6 +1268,70 @@ mod tests {
             "expected this fixture to exercise more than one qcat bucket (got only {distinct_qcats:?} \
              across {checked_frames} frames) -- if every frame's base_q_idx falls in the same \
              bucket, buckets 1-3 are wired but never actually reached by this regression suite"
+        );
+    }
+
+    /// Regression test for the real compound MV-stack/DRL port (`SpatialRefContext::
+    /// compound_mv_stack`, replacing the old `MvPredictorContext` placeholder + zero DRL bits for
+    /// every compound CU). `real_fixture_ref_frame_values_are_not_degenerate` already confirms
+    /// this fixture has real compound blocks with non-zero L1 MVs; this test's own value is the
+    /// **0-error assertion**: compound DRL is now a real bit-consuming read (previously zero bits
+    /// were ever read for compound blocks at all), so a wrong weight/context/branch-selection
+    /// implementation would desync the shared arithmetic decoder and surface as a parse error on
+    /// a *later* CU/frame, not necessarily the compound block itself -- same class of "silent
+    /// desync only visible via a full-fixture parse-error count" this session has repeatedly
+    /// relied on (e.g. `real_fixture_real_qcat_selection_is_exercised_and_parses_cleanly` above).
+    /// Also reports (doesn't assert -- this fixture may simply never trigger `skip_mode`, same
+    /// documented caveat as the segmentation/GmType/DeltaQUAc work) whether any CU ever used the
+    /// new `skip_mode` forced-path.
+    #[test]
+    fn real_fixture_compound_drl_wiring_parses_cleanly() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut ok_count = 0usize;
+        let mut err_count = 0usize;
+        let mut compound_count = 0usize;
+        let mut skip_mode_count = 0usize;
+
+        for (idx, frame) in frames.iter().enumerate() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+            if !parsed.has_tile_data() {
+                continue;
+            }
+            match parse_all_coding_units(&parsed) {
+                Ok(cus) => {
+                    ok_count += 1;
+                    for cu in cus.iter() {
+                        if cu.skip_mode {
+                            skip_mode_count += 1;
+                        }
+                        if cu.is_inter() && cu.ref_frames[1] != crate::tile::RefFrame::Intra {
+                            compound_count += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    err_count += 1;
+                    eprintln!("frame {idx} failed to parse: {e}");
+                }
+            }
+        }
+
+        assert_eq!(
+            err_count, 0,
+            "expected 0 parse errors across all frames with real compound DRL bits wired in \
+             (ok={ok_count}, err={err_count}, {compound_count} compound CUs seen) -- a wrong DRL \
+             weight/context/branch computation would desync the shared arithmetic decoder"
+        );
+        assert!(
+            compound_count > 0,
+            "expected at least one compound CU to exercise the new compound_mv_stack path"
+        );
+        eprintln!(
+            "real_fixture_compound_drl_wiring_parses_cleanly: {skip_mode_count}/{compound_count} \
+             compound CUs had skip_mode=true"
         );
     }
 }

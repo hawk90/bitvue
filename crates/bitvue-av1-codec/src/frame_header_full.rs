@@ -847,15 +847,23 @@ fn read_skip_mode_params(
     ref_state: &RefFrameState,
     ref_frame_idx: &[u32; REFS_PER_FRAME],
     order_hint: u32,
-) -> Result<bool> {
+) -> Result<(bool, Option<[u8; 2]>)> {
     let order_hint_bits = seq
         .order_hint_bits_minus_1
         .map(|v| v as u32 + 1)
         .unwrap_or(0);
     let enable_order_hint = seq.enable_order_hint;
 
-    let skip_mode_allowed = if frame_is_intra || !reference_select || !enable_order_hint {
-        false
+    // `SkipModeFrame[0]/[1]` (spec 5.9.22) -- previously only a `skip_mode_allowed` bool was kept
+    // (the derived ref indices discarded), leaving `skip_mode`'s real forced `ref_frame()`/`mv[]`
+    // derivation (spec 5.11.25, dav1d `decode.c:1401-1423`) with nothing to force from. Real spec:
+    // when both a forward and backward ref exist, use the closest of each (`min`/`max` of their
+    // `ref_frame_idx[]` positions, `+1` for `LAST_FRAME`-relative `RefFrame` numbering); when only
+    // a forward ref exists, fall back to the two closest forward refs instead (same "maximize
+    // `relative_dist` against the already-found one" search pattern as the primary forward search,
+    // just restricted to refs strictly closer than it).
+    let skip_mode_refs = if frame_is_intra || !reference_select || !enable_order_hint {
+        None
     } else {
         let mut forward_idx: Option<usize> = None;
         let mut forward_hint = 0u32;
@@ -880,26 +888,37 @@ fn read_skip_mode_params(
             }
         }
         match (forward_idx, backward_idx) {
-            (None, _) => false,
-            (Some(_), Some(_)) => true,
-            (Some(_), None) => {
-                let mut second_forward_found = false;
-                for &idx in ref_frame_idx.iter() {
+            (None, _) => None,
+            (Some(fwd), Some(bwd)) => Some([fwd.min(bwd) as u8 + 1, fwd.max(bwd) as u8 + 1]),
+            (Some(fwd), None) => {
+                let mut second_forward_idx: Option<usize> = None;
+                let mut second_forward_hint = 0u32;
+                for (i, &idx) in ref_frame_idx.iter().enumerate() {
                     let hint = ref_state.ref_order_hint[idx as usize];
-                    if relative_dist(hint, forward_hint, enable_order_hint, order_hint_bits) < 0 {
-                        second_forward_found = true;
+                    if relative_dist(hint, forward_hint, enable_order_hint, order_hint_bits) < 0
+                        && (second_forward_idx.is_none()
+                            || relative_dist(
+                                hint,
+                                second_forward_hint,
+                                enable_order_hint,
+                                order_hint_bits,
+                            ) > 0)
+                    {
+                        second_forward_idx = Some(i);
+                        second_forward_hint = hint;
                     }
                 }
-                second_forward_found
+                second_forward_idx
+                    .map(|second| [fwd.min(second) as u8 + 1, fwd.max(second) as u8 + 1])
             }
         }
     };
-    let skip_mode_present = if skip_mode_allowed {
+    let skip_mode_present = if skip_mode_refs.is_some() {
         reader.read_bit()?
     } else {
         false
     };
-    Ok(skip_mode_present)
+    Ok((skip_mode_present, skip_mode_refs))
 }
 
 fn parse_film_grain_params(
@@ -1098,6 +1117,7 @@ pub fn parse_frame_header_full(
             delta_lf_present: false,
             delta_lf_multi: false,
             skip_mode_present: false,
+            skip_mode_refs: [0, 0],
             subpel_filter_switchable: false,
             switchable_motion_mode: false,
             allow_warped_motion: false,
@@ -1356,7 +1376,7 @@ pub fn parse_frame_header_full(
 
     let txfm_mode = read_tx_mode(&mut reader, coded_lossless)?;
     let reference_select = read_frame_reference_mode(&mut reader, frame_is_intra)?;
-    let skip_mode_present = read_skip_mode_params(
+    let (skip_mode_present, skip_mode_refs) = read_skip_mode_params(
         &mut reader,
         frame_is_intra,
         reference_select,
@@ -1365,6 +1385,7 @@ pub fn parse_frame_header_full(
         &ref_frame_idx,
         order_hint,
     )?;
+    let skip_mode_refs = skip_mode_refs.unwrap_or([0, 0]);
 
     let allow_warped_motion = if frame_is_intra || error_resilient_mode || !seq.enable_warped_motion
     {
@@ -1438,6 +1459,7 @@ pub fn parse_frame_header_full(
         delta_lf_present,
         delta_lf_multi,
         skip_mode_present,
+        skip_mode_refs,
         subpel_filter_switchable,
         switchable_motion_mode,
         allow_warped_motion,

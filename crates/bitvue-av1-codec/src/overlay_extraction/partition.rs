@@ -211,6 +211,7 @@ fn parse_partition_trees_from_tile_data(
                 mi_cols,
                 parsed.cdef_bits,
                 parsed.skip_mode_present,
+                parsed.skip_mode_refs,
                 crate::tile::InterModeFlags {
                     switchable_motion_mode: parsed.switchable_motion_mode,
                     allow_warped_motion: parsed.allow_warped_motion,
@@ -954,6 +955,7 @@ mod tests {
                     mi_cols,
                     parsed.cdef_bits,
                     parsed.skip_mode_present,
+                    parsed.skip_mode_refs,
                     crate::tile::InterModeFlags {
                         switchable_motion_mode: parsed.switchable_motion_mode,
                         allow_warped_motion: parsed.allow_warped_motion,

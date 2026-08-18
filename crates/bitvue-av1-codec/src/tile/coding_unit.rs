@@ -624,6 +624,7 @@ pub fn parse_coding_unit(
     cdef_bits: u8,
     cdef_idx_state: &mut [i8; 4],
     skip_mode_present: bool,
+    skip_mode_refs: [u8; 2],
     inter_mode_flags: InterModeFlags,
 ) -> Result<(CodingUnit, i16)> {
     let mut cu = CodingUnit::new(x, y, width, height);
@@ -1038,19 +1039,23 @@ pub fn parse_coding_unit(
         }
     } else {
         // ref_frame() (spec 5.11.25) -- real per-context CDF + adaptation, see
-        // `SymbolDecoder::read_ref_frames`'s doc. Real spec's `skip_mode` branch (forces
-        // `RefFrame` from `skip_mode_refs`, no bits read) isn't modeled -- this crate doesn't
-        // track `skip_mode_params()`'s derived ref indices anywhere (`read_skip_mode_params`
-        // only returns the `skip_mode_present` bool), a separate pre-existing gap found while
-        // adding the segmentation overrides just below, not fixed here (undertested like the
-        // segmentation gap: needs a real `skip_mode == true` CU, which the committed fixture may
-        // not exercise either). Segmentation's two real overrides ARE modeled: `SEG_LVL_REF_FRAME`
-        // forces `RefFrame[0]` from its `FeatureData` (`RefFrame[1] = Intra`, i.e. never
-        // compound); when that's inactive, `SEG_LVL_SKIP` or `SEG_LVL_GLOBALMV` (either one)
-        // forces `RefFrame[0] = Last`, `RefFrame[1] = Intra` (real spec: same `LAST_FRAME`
-        // fallback for both).
+        // `SymbolDecoder::read_ref_frames`'s doc. Real spec priority order (dav1d `decode.c:1401`
+        // vs `1424`): `skip_mode` beats everything else, forcing `RefFrame` from the real
+        // `skip_mode_refs` (spec's `SkipModeFrame[0]/[1]`, `read_skip_mode_params`'s doc) with no
+        // bits read -- always a genuine compound pair (`skip_mode` can only be true when
+        // `skip_mode_present`, which itself requires deriving 2 distinct refs, `read_skip_mode_
+        // params`'s doc). Segmentation's two real overrides come next when not `skip_mode`:
+        // `SEG_LVL_REF_FRAME` forces `RefFrame[0]` from its `FeatureData` (`RefFrame[1] = Intra`,
+        // i.e. never compound); when that's inactive, `SEG_LVL_SKIP` or `SEG_LVL_GLOBALMV`
+        // (either one) forces `RefFrame[0] = Last`, `RefFrame[1] = Intra` (real spec: same
+        // `LAST_FRAME` fallback for both).
         let seg_ref_frame_feature = crate::frame_header_full::SEG_LVL_REF_FRAME;
-        cu.ref_frames = if segmentation.seg_feature_active(cu.segment_id, seg_ref_frame_feature) {
+        cu.ref_frames = if cu.skip_mode {
+            [
+                RefFrame::from_u8(skip_mode_refs[0]).unwrap_or(RefFrame::Last),
+                RefFrame::from_u8(skip_mode_refs[1]).unwrap_or(RefFrame::Intra),
+            ]
+        } else if segmentation.seg_feature_active(cu.segment_id, seg_ref_frame_feature) {
             let raw = segmentation.seg_feature_data(cu.segment_id, seg_ref_frame_feature);
             [
                 RefFrame::from_u8(raw.clamp(0, 7) as u8).unwrap_or(RefFrame::Last),
@@ -1088,30 +1093,142 @@ pub fn parse_coding_unit(
         };
 
         if is_compound {
-            // compound_mode() (spec 5.11.24) -- a distinct 8-symbol alphabet from the single-ref
-            // 4-way `inter_mode`, see `SymbolDecoder::read_compound_mode`'s doc.
-            let ctx = tile_ctx
-                .compound_mode_context(x4, y4, width_4x4, height_4x4, rav1d_ref0, rav1d_ref1);
-            let mode_symbol = decoder.read_compound_mode(ctx)?;
-            cu.mode = compound_mode_from_symbol(mode_symbol)?;
+            // skip_mode (spec 5.11.5/5.11.24, dav1d `decode.c:1401-1423`) forces the ENTIRE
+            // mode-info tail with zero bits read: `inter_mode = NEARESTMV_NEARESTMV`, `drl_idx =
+            // NEAREST` (index 0, no DRL bits), `mv[]` straight from `compound_mv_stack`'s
+            // `stack[0]`, `comp_type = AVG`. Real spec never reads `compound_mode()`/DRL/MV-
+            // residual/`compound_type()` bits for a skip_mode CU at all -- this crate previously
+            // (before this branch existed) fell through to the real-read path below even for
+            // skip_mode CUs, a real desync (reading bits a real encoder never wrote).
+            let comp_type = if cu.skip_mode {
+                cu.mode = PredictionMode::NearestNearestMv;
+                let (stack, _n_mvs) = tile_ctx.compound_mv_stack(
+                    x4,
+                    y4,
+                    width_4x4,
+                    height_4x4,
+                    rav1d_ref0,
+                    rav1d_ref1,
+                    use_ref_frame_mvs,
+                );
+                cu.mv = stack[0].mv;
+                2 // AVG, matches dav1d's `b->comp_type = COMP_INTER_AVG`
+            } else {
+                // compound_mode() (spec 5.11.24) -- a distinct 8-symbol alphabet from the
+                // single-ref 4-way `inter_mode`, see `SymbolDecoder::read_compound_mode`'s doc.
+                let ctx = tile_ctx
+                    .compound_mode_context(x4, y4, width_4x4, height_4x4, rav1d_ref0, rav1d_ref1);
+                let mode_symbol = decoder.read_compound_mode(ctx)?;
+                cu.mode = compound_mode_from_symbol(mode_symbol)?;
 
-            cu.mv[0] = match cu.mode.l0_mv_kind() {
-                Some(MvKind::New) => {
-                    let explicit_mv = read_explicit_mv(decoder)?;
-                    let predictor = mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0]);
-                    explicit_mv.add(predictor)
+                // Real compound DRL (spec 7.10.2.10, joint L0/L1 candidate stack) -- see
+                // `SpatialRefContext::compound_mv_stack`'s doc for the real weighted
+                // spatial+temporal search this replaces (previously: independent, zero-fallback
+                // per-direction lookups via `MvPredictorContext`, and no DRL bits read at all --
+                // a real desync for any compound CU whose candidate list has more than 1 entry,
+                // not a rare edge case). Real spec's exact 3-way branch (dav1d
+                // `decode.c:1502-1532`): `NewNewMv` reads up to 2 bits from `stack[0]`/`[1]`;
+                // else if either direction is `Near`, drl starts at index 1 with up to 1 more
+                // bit from `stack[1]`; otherwise (`NearestNearestMv`/`GlobalGlobalMv`/any
+                // Nearest+New/Nearest+Global/etc. combination not involving `Near`) index 0, no
+                // bits at all.
+                let (stack, n_mvs) = tile_ctx.compound_mv_stack(
+                    x4,
+                    y4,
+                    width_4x4,
+                    height_4x4,
+                    rav1d_ref0,
+                    rav1d_ref1,
+                    use_ref_frame_mvs,
+                );
+                let l0_kind = cu.mode.l0_mv_kind();
+                let l1_kind = cu.mode.l1_mv_kind();
+                let mut drl_idx = 0usize;
+                if l0_kind == Some(MvKind::New) && l1_kind == Some(MvKind::New) {
+                    if n_mvs > 1 {
+                        if decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(
+                            &stack, 0,
+                        ))? {
+                            drl_idx += 1;
+                        }
+                        if drl_idx == 1
+                            && n_mvs > 2
+                            && decoder.read_drl_bit(
+                                crate::tile::context::get_compound_drl_context(&stack, 1),
+                            )?
+                        {
+                            drl_idx += 1;
+                        }
+                    }
+                } else if l0_kind == Some(MvKind::Near) || l1_kind == Some(MvKind::Near) {
+                    drl_idx = 1;
+                    if n_mvs > 2
+                        && decoder.read_drl_bit(crate::tile::context::get_compound_drl_context(
+                            &stack, 1,
+                        ))?
+                    {
+                        drl_idx += 1;
+                    }
                 }
-                Some(kind) => mv_ctx.predict_by_kind(kind, x, y, cu.ref_frames[0]),
-                None => MotionVector::zero(),
-            };
-            cu.mv[1] = match cu.mode.l1_mv_kind() {
-                Some(MvKind::New) => {
-                    let explicit_mv = read_explicit_mv(decoder)?;
-                    let predictor = mv_ctx.get_mv_predictor_l1(cu.mode, x, y, cu.ref_frames[1]);
-                    explicit_mv.add(predictor)
+
+                // Per-direction value: `Nearest`/`Near` read straight from the real stack;
+                // `New` uses `stack[drl_idx]` as predictor with the explicit residual added on
+                // top (unchanged shape from the single-direction version this replaces);
+                // `Global` keeps today's `mv_ctx`-sourced zero approximation unchanged (real
+                // `gm_params` values still aren't stored, same already-documented gap as
+                // single-ref `GlobalMv` below).
+                cu.mv[0] = match l0_kind {
+                    Some(MvKind::New) => {
+                        let explicit_mv = read_explicit_mv(decoder)?;
+                        explicit_mv.add(stack[drl_idx].mv[0])
+                    }
+                    Some(MvKind::Nearest) | Some(MvKind::Near) => stack[drl_idx].mv[0],
+                    Some(MvKind::Global) => {
+                        mv_ctx.get_mv_predictor(cu.mode, x, y, cu.ref_frames[0])
+                    }
+                    None => MotionVector::zero(),
+                };
+                cu.mv[1] = match l1_kind {
+                    Some(MvKind::New) => {
+                        let explicit_mv = read_explicit_mv(decoder)?;
+                        explicit_mv.add(stack[drl_idx].mv[1])
+                    }
+                    Some(MvKind::Nearest) | Some(MvKind::Near) => stack[drl_idx].mv[1],
+                    Some(MvKind::Global) => {
+                        mv_ctx.get_mv_predictor_l1(cu.mode, x, y, cu.ref_frames[1])
+                    }
+                    None => MotionVector::zero(),
+                };
+
+                // compound_type() (spec 5.11.28: jnt_comp vs. segmentation-mask vs. wedge-mask)
+                // -- real per-context CDF + adaptation, see `SymbolDecoder::read_mask_comp`'s
+                // doc for the desync this closes (previously never read at all for ANY compound
+                // block).
+                if inter_mode_flags.enable_masked_compound
+                    && decoder.read_mask_comp(tile_ctx.mask_comp_context(x4, y4))?
+                {
+                    // seg/wedge branch
+                    if let Some(wctx) = wedge_ctx(width_4x4, height_4x4) {
+                        let is_wedge = decoder.read_wedge_comp(wctx)?;
+                        if is_wedge {
+                            decoder.read_wedge_idx(wctx)?;
+                        }
+                        decoder.read_bool_equi()?; // mask_sign
+                        if is_wedge {
+                            4
+                        } else {
+                            3
+                        }
+                    } else {
+                        decoder.read_bool_equi()?; // mask_sign
+                        3 // SEG (no wedge eligible at this size)
+                    }
+                } else if inter_mode_flags.enable_jnt_comp {
+                    let jctx = tile_ctx.jnt_comp_context(x4, y4);
+                    1 + u8::from(decoder.read_jnt_comp(jctx)?)
+                } else {
+                    2 // AVG
                 }
-                Some(kind) => mv_ctx.predict_by_kind(kind, x, y, cu.ref_frames[1]),
-                None => MotionVector::zero(),
             };
 
             tile_ctx.set_spatial_ref_block(
@@ -1126,35 +1243,6 @@ pub fn parse_coding_unit(
                 cu.mv[0],
                 cu.mv[1],
             );
-
-            // compound_type() (spec 5.11.28: jnt_comp vs. segmentation-mask vs. wedge-mask) --
-            // real per-context CDF + adaptation, see `SymbolDecoder::read_mask_comp`'s doc for
-            // the desync this closes (previously never read at all for ANY compound block).
-            let comp_type = if inter_mode_flags.enable_masked_compound
-                && decoder.read_mask_comp(tile_ctx.mask_comp_context(x4, y4))?
-            {
-                // seg/wedge branch
-                if let Some(wctx) = wedge_ctx(width_4x4, height_4x4) {
-                    let is_wedge = decoder.read_wedge_comp(wctx)?;
-                    if is_wedge {
-                        decoder.read_wedge_idx(wctx)?;
-                    }
-                    decoder.read_bool_equi()?; // mask_sign
-                    if is_wedge {
-                        4
-                    } else {
-                        3
-                    }
-                } else {
-                    decoder.read_bool_equi()?; // mask_sign
-                    3 // SEG (no wedge eligible at this size)
-                }
-            } else if inter_mode_flags.enable_jnt_comp {
-                let jctx = tile_ctx.jnt_comp_context(x4, y4);
-                1 + u8::from(decoder.read_jnt_comp(jctx)?)
-            } else {
-                2 // AVG
-            };
             tile_ctx.set_comp_type(x4, y4, width_4x4, height_4x4, comp_type);
 
             tracing::debug!(
@@ -1341,22 +1429,25 @@ pub fn parse_coding_unit(
         // filter (spec 5.11.30, subpel interpolation filter -- one symbol per axis) -- real
         // per-`(dir, ctx)` CDF + adaptation, see `SymbolDecoder::read_filter`'s doc for the
         // desync this closes (previously never read at all). Real spec's `needs_interp_filter()`
-        // exclusion is now modeled for the `GmType`-dependent GLOBALMV/GLOBAL_GLOBALMV case
-        // (verified against dav1d's `decode.c` `has_subpel_filter` computation, source-only
-        // re-clone): unconditionally read for NEARESTMV/NEARMV/NEWMV and any compound mode other
-        // than GLOBAL_GLOBALMV; for GLOBALMV/GLOBAL_GLOBALMV, only read when the block is minimal
-        // size (`min(width_4x4, height_4x4) == 1`) or the relevant ref's `GmType` is exactly
-        // TRANSLATION (not `>` -- IDENTITY/ROTZOOM/AFFINE all suppress the read). skip_mode's
-        // separate exclusion isn't modeled -- this crate doesn't reach a real `skip_mode == true`
-        // CU yet (`read_skip_mode`'s doc).
-        let has_subpel_filter = needs_interp_filter(
-            cu.mode,
-            width_4x4,
-            height_4x4,
-            &inter_mode_flags.gm_type,
-            cu.ref_frames[0],
-            cu.ref_frames[1],
-        );
+        // exclusion is modeled for both real cases now: `skip_mode` forces `false`
+        // unconditionally (dav1d `decode.c:1407`, `has_subpel_filter = 0`, checked first since
+        // `cu.mode` is always `NearestNearestMv` there -- `needs_interp_filter`'s own `_ => true`
+        // catch-all would otherwise wrongly read bits for it), and the `GmType`-dependent
+        // GLOBALMV/GLOBAL_GLOBALMV case (verified against dav1d's `decode.c` `has_subpel_filter`
+        // computation, source-only re-clone): unconditionally read for NEARESTMV/NEARMV/NEWMV
+        // and any compound mode other than GLOBAL_GLOBALMV; for GLOBALMV/GLOBAL_GLOBALMV, only
+        // read when the block is minimal size (`min(width_4x4, height_4x4) == 1`) or the
+        // relevant ref's `GmType` is exactly TRANSLATION (not `>` -- IDENTITY/ROTZOOM/AFFINE all
+        // suppress the read).
+        let has_subpel_filter = !cu.skip_mode
+            && needs_interp_filter(
+                cu.mode,
+                width_4x4,
+                height_4x4,
+                &inter_mode_flags.gm_type,
+                cu.ref_frames[0],
+                cu.ref_frames[1],
+            );
         if inter_mode_flags.subpel_filter_switchable {
             let is_comp = is_compound;
             for dir in 0..2u8 {

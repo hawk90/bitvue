@@ -218,6 +218,11 @@ pub struct FrameHeader {
     /// default whenever `skip_mode_params()`'s derivation conditions aren't met, so treating an
     /// un-derivable value as "absent" is bitstream-sync-safe, not just a placeholder).
     pub skip_mode_present: bool,
+    /// `SkipModeFrame[0]/[1]` (spec 5.9.22) -- the two real `RefFrame` values a `skip_mode` CU's
+    /// `ref_frame()`/`mv[]` are forced from (spec 5.11.25, no bits read). Only meaningful when
+    /// `skip_mode_present`; `[0, 0]` (both `RefFrame::Intra`-numbered, never a real ref pair)
+    /// otherwise -- same "un-derivable means absent" convention as `skip_mode_present` itself.
+    pub skip_mode_refs: [u8; 2],
     /// `is_filter_switchable` (spec 5.9.10 `interpolation_filter()`) -- gates the real per-CU
     /// `filter[]` (subpel interpolation filter) read (spec 5.11.30). Same basic-vs-full caveat
     /// as `reference_select`.
@@ -624,6 +629,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             delta_lf_present: false,
             delta_lf_multi: false,
             skip_mode_present: false,
+            skip_mode_refs: [0, 0],
             subpel_filter_switchable: false,
             switchable_motion_mode: false,
             allow_warped_motion: false,
@@ -805,6 +811,7 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         delta_lf_present: false,
         delta_lf_multi: false,
         skip_mode_present: false,
+        skip_mode_refs: [0, 0],
         subpel_filter_switchable: false,
         switchable_motion_mode: false,
         allow_warped_motion: false,
