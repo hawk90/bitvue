@@ -67,17 +67,41 @@ fn diagnostic_event(stream: StreamId, message: String) -> bitvue_engine::Event {
 /// `ContainerModel`/`UnitModel` into `StreamState`. Returns the resulting events (mirrors
 /// `Core::handle_command`'s convention of reporting failures as `DiagnosticAdded` events rather
 /// than a `Result`, since that's what every other stream-mutating operation in this codebase does).
+///
+/// Not cancellable -- convenience wrapper over [`index_stream_with_cancel`] with a flag that's
+/// never set, for callers (all of this crate's own tests) that have no cancellation context.
 pub fn index_stream(core: &Core, stream: StreamId) -> Vec<bitvue_engine::Event> {
+    index_stream_with_cancel(core, stream, &std::sync::atomic::AtomicBool::new(false)).0
+}
+
+/// Same as [`index_stream`], but cooperatively cancellable: `cancel_flag` is checked once per
+/// parsed IVF frame inside [`index_ivf_av1`], the only genuinely long-running loop in this crate
+/// (a whole stream's worth of per-frame OBU header parses, no pixel decode but still real work on
+/// a long stream). `bitvue-sidecar`'s `index_stream` command handler is the real caller -- see its
+/// module doc's "Concurrency model" section.
+///
+/// Returns `(events, cancelled)`. When `cancelled` is `true`, `events` is empty and
+/// `StreamState.container`/`.units` are deliberately left untouched -- a cancelled index run
+/// writes no partial state, matching "an aborted request has no observable effect other than not
+/// completing" for every other command in this codebase.
+pub fn index_stream_with_cancel(
+    core: &Core,
+    stream: StreamId,
+    cancel_flag: &std::sync::atomic::AtomicBool,
+) -> (Vec<bitvue_engine::Event>, bool) {
     let byte_cache = {
         let stream_state = core.get_stream(stream);
         let state = stream_state.read();
         match state.byte_cache.clone() {
             Some(cache) => cache,
             None => {
-                return vec![diagnostic_event(
-                    stream,
-                    "No file open for this stream".to_string(),
-                )]
+                return (
+                    vec![diagnostic_event(
+                        stream,
+                        "No file open for this stream".to_string(),
+                    )],
+                    false,
+                )
             }
         }
     };
@@ -86,28 +110,38 @@ pub fn index_stream(core: &Core, stream: StreamId) -> Vec<bitvue_engine::Event> 
     let data = match byte_cache.read_range(0, len) {
         Ok(d) => d,
         Err(e) => {
-            return vec![diagnostic_event(
-                stream,
-                format!("Failed to read file: {e}"),
-            )]
+            return (
+                vec![diagnostic_event(
+                    stream,
+                    format!("Failed to read file: {e}"),
+                )],
+                false,
+            )
         }
     };
 
     if data.len() < 4 || &data[0..4] != b"DKIF" {
         // Honest scope limit: MP4/MKV/TS containers and non-AV1 codecs aren't indexed yet.
-        return vec![diagnostic_event(
-            stream,
-            "Indexing is only implemented for IVF/AV1 streams so far".to_string(),
-        )];
+        return (
+            vec![diagnostic_event(
+                stream,
+                "Indexing is only implemented for IVF/AV1 streams so far".to_string(),
+            )],
+            false,
+        );
     }
 
-    let (ivf_header, units) = match index_ivf_av1(data, stream) {
-        Ok(result) => result,
+    let (ivf_header, units) = match index_ivf_av1(data, stream, cancel_flag) {
+        Ok(Some(result)) => result,
+        Ok(None) => return (Vec::new(), true),
         Err(e) => {
-            return vec![diagnostic_event(
-                stream,
-                format!("Failed to parse IVF stream: {e}"),
-            )]
+            return (
+                vec![diagnostic_event(
+                    stream,
+                    format!("Failed to parse IVF stream: {e}"),
+                )],
+                false,
+            )
         }
     };
 
@@ -135,16 +169,19 @@ pub fn index_stream(core: &Core, stream: StreamId) -> Vec<bitvue_engine::Event> 
         state.units = Some(unit_model);
     }
 
-    vec![
-        bitvue_engine::Event::ModelUpdated {
-            kind: bitvue_engine::event::ModelKind::Container,
-            stream,
-        },
-        bitvue_engine::Event::ModelUpdated {
-            kind: bitvue_engine::event::ModelKind::Units,
-            stream,
-        },
-    ]
+    (
+        vec![
+            bitvue_engine::Event::ModelUpdated {
+                kind: bitvue_engine::event::ModelKind::Container,
+                stream,
+            },
+            bitvue_engine::Event::ModelUpdated {
+                kind: bitvue_engine::event::ModelKind::Units,
+                stream,
+            },
+        ],
+        false,
+    )
 }
 
 /// Parses one unit's syntax tree on demand (AV1 only, matching [`index_stream`]'s scope) and
@@ -330,16 +367,26 @@ fn find_frame_obu(chunk_data: &[u8]) -> Option<bitvue_av1_codec::obu::ObuWithOff
 /// `bitvue-mcp`'s `parse_ivf_file` (proven working there) for the container-level walk, adapted
 /// to operate on an in-memory slice (via `ByteCache`) instead of re-reading the file, and to
 /// compute byte offsets manually since `parse_ivf_frames` doesn't expose them.
+/// Returns `Ok(None)` if `cancel_flag` was set before the per-frame loop finished -- checked once
+/// per frame, which is coarse enough to not matter perf-wise on the common case (a stream that
+/// finishes) while still bailing out promptly on a long stream that gets cancelled.
 fn index_ivf_av1(
     data: &[u8],
     stream: StreamId,
-) -> Result<(bitvue_av1_codec::ivf::IvfHeader, Vec<UnitNode>), bitvue_engine::error::BitvueError> {
+    cancel_flag: &std::sync::atomic::AtomicBool,
+) -> Result<
+    Option<(bitvue_av1_codec::ivf::IvfHeader, Vec<UnitNode>)>,
+    bitvue_engine::error::BitvueError,
+> {
     let (header, frames) = parse_ivf_frames(data)?;
 
     let mut units = Vec::with_capacity(frames.len());
     let mut offset = header.header_size as u64;
 
     for (frame_index, frame) in frames.iter().enumerate() {
+        if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok(None);
+        }
         let chunk_size = 12u64 + frame.size as u64;
         let frame_start = offset;
 
@@ -385,7 +432,7 @@ fn index_ivf_av1(
         offset += chunk_size;
     }
 
-    Ok((header, units))
+    Ok(Some((header, units)))
 }
 
 #[cfg(test)]

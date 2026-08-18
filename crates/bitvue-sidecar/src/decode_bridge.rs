@@ -18,6 +18,18 @@ use bitvue_decode::decoder::ChromaFormat;
 use bitvue_decode::{Av1Decoder, DecodedFrame};
 use bitvue_engine::{CachedFrame, Thumbnail, ThumbnailCache};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// [`get_thumbnails`]'s error type -- distinguishes a genuine failure (bad data, out-of-range
+/// index) from a cooperative mid-decode cancellation, so `bitvue-sidecar`'s handler can report
+/// `WireErrorCode::Cancelled` instead of a generic failure. See the module doc on `main.rs`'s
+/// "Concurrency model" section for why this handler is cancellable in the first place (it can
+/// decode an arbitrarily large batch of frames from the start of the stream).
+#[derive(Debug)]
+pub enum GetThumbnailsError {
+    Cancelled,
+    Other(String),
+}
 
 /// Wire-ready decoded frame: metadata fields plus the concatenated Y+U+V byte buffer sent as
 /// the `Data` frame that follows this command's `Control` response (see `get_hex_range` for the
@@ -145,21 +157,24 @@ pub fn get_thumbnails(
     data: &[u8],
     frame_indices: &[usize],
     target_width: u32,
-) -> Result<Vec<ThumbnailResult>, String> {
-    let (_hdr, frames) = parse_ivf_frames(data).map_err(|e| format!("IVF parse error: {e}"))?;
+    cancel_flag: &AtomicBool,
+) -> Result<Vec<ThumbnailResult>, GetThumbnailsError> {
+    let (_hdr, frames) = parse_ivf_frames(data)
+        .map_err(|e| GetThumbnailsError::Other(format!("IVF parse error: {e}")))?;
     let wanted: HashSet<usize> = frame_indices.iter().copied().collect();
     let max_wanted = match wanted.iter().max() {
         Some(&m) => m,
         None => return Ok(Vec::new()),
     };
     if max_wanted >= frames.len() {
-        return Err(format!(
+        return Err(GetThumbnailsError::Other(format!(
             "frame_index {max_wanted} out of range (stream has {} frames)",
             frames.len()
-        ));
+        )));
     }
 
-    let mut dec = Av1Decoder::new().map_err(|e| format!("decoder init: {e}"))?;
+    let mut dec =
+        Av1Decoder::new().map_err(|e| GetThumbnailsError::Other(format!("decoder init: {e}")))?;
     let mut results = Vec::with_capacity(wanted.len());
     let mut decoded_count = 0usize;
 
@@ -191,8 +206,15 @@ pub fn get_thumbnails(
     };
 
     for f in &frames {
+        // Checked once per encoded packet -- each iteration does a real AV1 decode, so this is a
+        // per-frame checkpoint, not a per-instruction one. `frame_indices` batches can be large
+        // (a full filmstrip), and this loop re-decodes from the start of the stream every call
+        // (see module doc), so it's worth being cancellable mid-batch.
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Err(GetThumbnailsError::Cancelled);
+        }
         dec.send_data_owned(f.data.clone(), f.timestamp as i64)
-            .map_err(|e| format!("decode send: {e}"))?;
+            .map_err(|e| GetThumbnailsError::Other(format!("decode send: {e}")))?;
         while let Ok(frame) = dec.get_frame() {
             capture(&frame, decoded_count, &mut results);
             decoded_count += 1;
@@ -202,11 +224,14 @@ pub fn get_thumbnails(
         }
     }
     if decoded_count <= max_wanted {
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Err(GetThumbnailsError::Cancelled);
+        }
         // See get_decoded_frame_yuv's comment -- flush() would discard buffered frames instead
         // of draining them.
         let mut remaining = Vec::new();
         dec.drain_decoder_frames(&mut remaining)
-            .map_err(|e| format!("decode drain: {e}"))?;
+            .map_err(|e| GetThumbnailsError::Other(format!("decode drain: {e}")))?;
         for frame in &remaining {
             capture(frame, decoded_count, &mut results);
             decoded_count += 1;
@@ -275,7 +300,8 @@ mod tests {
 
     #[test]
     fn get_thumbnails_returns_one_real_decodable_png_per_requested_index() {
-        let results = get_thumbnails(AV1_IVF_FIXTURE, &[0, 5, 10], 120).unwrap();
+        let results =
+            get_thumbnails(AV1_IVF_FIXTURE, &[0, 5, 10], 120, &AtomicBool::new(false)).unwrap();
         assert_eq!(results.len(), 3);
 
         let mut by_index: Vec<&ThumbnailResult> = results.iter().collect();
@@ -307,13 +333,24 @@ mod tests {
 
     #[test]
     fn get_thumbnails_empty_request_returns_empty_not_an_error() {
-        let results = get_thumbnails(AV1_IVF_FIXTURE, &[], 120).unwrap();
+        let results = get_thumbnails(AV1_IVF_FIXTURE, &[], 120, &AtomicBool::new(false)).unwrap();
         assert!(results.is_empty());
     }
 
     #[test]
     fn get_thumbnails_out_of_range_index_is_a_real_error() {
-        let result = get_thumbnails(AV1_IVF_FIXTURE, &[0, 999_999], 120);
-        assert!(result.is_err());
+        let result = get_thumbnails(AV1_IVF_FIXTURE, &[0, 999_999], 120, &AtomicBool::new(false));
+        assert!(matches!(result, Err(GetThumbnailsError::Other(_))));
+    }
+
+    #[test]
+    fn get_thumbnails_stops_early_when_already_cancelled() {
+        // Real cancellation-checkpoint test (UIX-ASYNC-006 regression guard): a flag that's
+        // already set before the call starts must make the very first per-packet checkpoint bail
+        // out instead of decoding the whole batch, and it must be reported as `Cancelled`, not a
+        // generic failure.
+        let cancelled = AtomicBool::new(true);
+        let result = get_thumbnails(AV1_IVF_FIXTURE, &[0, 5, 10], 120, &cancelled);
+        assert!(matches!(result, Err(GetThumbnailsError::Cancelled)));
     }
 }

@@ -23,6 +23,18 @@ use crate::decode_bridge::{self, DecodedYuvFrame};
 use bitvue_engine::{Core, StreamId};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// [`find_first_diff`]'s error type -- distinguishes a genuine failure from a cooperative
+/// mid-decode cancellation, so the caller can report `WireErrorCode::Cancelled` instead of a
+/// generic internal error. See `main.rs`'s "Concurrency model" doc: this scans the stream frame
+/// by frame from the start until it finds a mismatch (or runs out of frames), so it can take real
+/// time on a long stream.
+#[derive(Debug)]
+pub enum FindFirstDiffError {
+    Cancelled,
+    Other(String),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -585,23 +597,28 @@ pub fn compute_frame_metrics(
 /// applied to "keep decoding until a mismatch instead of until every requested index is hit."
 /// Returns `(first_mismatched_frame_index, frames_actually_compared)` -- comparison stops early
 /// (without an error) once the reference file runs out of frames to compare against.
-pub fn find_first_diff(core: &Core, session: &Session) -> Result<(Option<usize>, usize), String> {
+pub fn find_first_diff(
+    core: &Core,
+    session: &Session,
+    cancel_flag: &AtomicBool,
+) -> Result<(Option<usize>, usize), FindFirstDiffError> {
     let stream_state = core.get_stream(StreamId::A);
     let state = stream_state.read();
     let byte_cache = state
         .byte_cache
         .as_ref()
-        .ok_or_else(|| "stream A not open".to_string())?
+        .ok_or_else(|| FindFirstDiffError::Other("stream A not open".to_string()))?
         .clone();
     drop(state);
     let full_len = byte_cache.len() as usize;
     let data = byte_cache
         .read_range(0, full_len)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| FindFirstDiffError::Other(e.to_string()))?;
 
     let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(data)
-        .map_err(|e| format!("IVF parse error: {e}"))?;
-    let mut dec = bitvue_decode::Av1Decoder::new().map_err(|e| format!("decoder init: {e}"))?;
+        .map_err(|e| FindFirstDiffError::Other(format!("IVF parse error: {e}")))?;
+    let mut dec = bitvue_decode::Av1Decoder::new()
+        .map_err(|e| FindFirstDiffError::Other(format!("decoder init: {e}")))?;
     let mut decoded_count = 0usize;
     let mut checked = 0usize;
     let mut found: Option<usize> = None;
@@ -636,9 +653,19 @@ pub fn find_first_diff(core: &Core, session: &Session) -> Result<(Option<usize>,
     };
 
     'outer: for f in &frames {
+        // Checked once per encoded packet and once per decoded frame below -- each is a real
+        // decode/compare, not a cheap instruction, so per-frame is the right granularity. This
+        // loop can walk the *entire* stream (worst case: no mismatch exists), so it's one of the
+        // handlers worth making cancellable mid-scan rather than only before it starts.
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Err(FindFirstDiffError::Cancelled);
+        }
         dec.send_data_owned(f.data.clone(), f.timestamp as i64)
-            .map_err(|e| format!("decode send: {e}"))?;
+            .map_err(|e| FindFirstDiffError::Other(format!("decode send: {e}")))?;
         while let Ok(decoded) = dec.get_frame() {
+            if cancel_flag.load(Ordering::SeqCst) {
+                return Err(FindFirstDiffError::Cancelled);
+            }
             let index = decoded_count;
             decoded_count += 1;
             if check_one(&decoded, index, &mut checked, &mut found) {
@@ -647,12 +674,18 @@ pub fn find_first_diff(core: &Core, session: &Session) -> Result<(Option<usize>,
         }
     }
     if found.is_none() {
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Err(FindFirstDiffError::Cancelled);
+        }
         // Not dec.flush() -- see decode_bridge::get_decoded_frame_yuv's comment: flush() clears
         // dav1d's internal state instead of draining buffered frames.
         let mut remaining = Vec::new();
         dec.drain_decoder_frames(&mut remaining)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| FindFirstDiffError::Other(e.to_string()))?;
         for decoded in &remaining {
+            if cancel_flag.load(Ordering::SeqCst) {
+                return Err(FindFirstDiffError::Cancelled);
+            }
             let index = decoded_count;
             decoded_count += 1;
             if check_one(decoded, index, &mut checked, &mut found) {

@@ -128,7 +128,12 @@ opt-level = 3           # Maximum optimization
 lto = "thin"            # Link-time optimization (thin for faster builds)
 codegen-units = 1       # Better optimization at cost of compile time
 strip = true            # Strip symbols from binary
-panic = "abort"         # Abort on panic (smaller binary)
+# panic = "unwind" (the default) -- NOT "abort". bitvue-sidecar's per-request worker threads rely
+# on std::panic::catch_unwind to survive a handler panic (malformed frame, decoder bug, etc.)
+# without taking the whole sidecar process down; panic="abort" makes that unwind point
+# unreachable (abort happens before any unwinding runs), which would silently turn "one bad
+# request" back into "the whole sidecar dies, every in-flight request hangs" -- exactly what the
+# catch_unwind guard in main.rs's spawn_request exists to prevent. See CONC-022 in the anti-pattern audit.
 
 # Release with debug info (for profiling)
 [profile.release-with-debug]

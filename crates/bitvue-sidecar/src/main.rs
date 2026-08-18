@@ -49,13 +49,26 @@
 //! locking around *computation* would silently re-serialize everything and defeat the point.
 //!
 //! `cancel_request` sets a per-request `AtomicBool` flag in a shared registry
-//! (`correlation_id` → flag). A worker thread checks its own flag exactly once, immediately
-//! before running its handler. **This is best-effort, not preemption**: none of today's handlers
-//! have a cooperative checkpoint mid-execution (they're all fast synchronous calls — a file mmap,
-//! a selection-state write, one `ByteCache::read_range`), so cancelling a request that has already
-//! started executing has no effect; it only works for the (currently narrow, timing-dependent)
-//! window before the worker thread's check runs. Once a genuinely slow command exists, it will
-//! need to add its own checkpoints against the flag — this mechanism doesn't do that for free.
+//! (`correlation_id` → flag). A worker thread checks its own flag once, immediately before
+//! running its handler (still cancellable at that first window even for otherwise-uninstrumented
+//! handlers), *and* the genuinely long-running, per-frame-loopy handlers cooperatively re-check it
+//! mid-execution so a request that's already started can still bail out early instead of running
+//! to completion regardless: `index_stream` (`bitvue_indexer::index_stream_with_cancel`, checked
+//! once per parsed IVF frame), `get_thumbnails` (`decode_bridge::get_thumbnails`, checked once per
+//! encoded packet and once per decoded frame), and `find_first_diff_frame`
+//! (`debug_yuv::find_first_diff`, same per-packet/per-decoded-frame checkpoints). A cancelled
+//! mid-execution handler returns a real `WireErrorCode::Cancelled` failure response, not a silent
+//! partial success. Every other handler here is a fast synchronous call (a file mmap, a
+//! selection-state write, one `ByteCache::read_range`) where the only cancellation window that
+//! matters is that first before-handler check — adding mid-loop checkpoints to those would be
+//! checking on effectively every instruction for no benefit.
+//!
+//! A worker thread panicking mid-request (malformed frame, decoder bug, etc.) is also handled:
+//! `spawn_request` runs the handler inside `std::panic::catch_unwind`, so a panic can't skip the
+//! registry cleanup or leave the client's request hanging forever with no response — it's turned
+//! into a real `WireErrorCode::Internal` failure response instead. This requires the workspace's
+//! `[profile.release]` to use `panic = "unwind"` (the default), not `"abort"` — see the comment on
+//! that profile in the root `Cargo.toml`.
 //!
 //! `Command`/`Event` (bitvue-engine) don't derive `Serialize`/`Deserialize` — they're the
 //! internal UI↔Core bus, not a wire contract. Params/results for the commands above are
@@ -178,7 +191,7 @@ fn main() {
 /// Registers a cancel flag for `correlation_id`, then spawns a worker thread that computes the
 /// response (unlocked — no I/O, no shared-writer contention while it runs) and writes whatever
 /// frames the computation produces under a brief writer-lock. See module doc for the concurrency
-/// model and its cancellation limitations.
+/// model, the mid-execution cancellation checkpoints, and the panic guard below.
 fn spawn_request(
     core: Arc<Core>,
     debug_yuv_state: DebugYuvSlot,
@@ -208,7 +221,7 @@ fn spawn_request(
                 serde_json::to_vec(&response).expect("Response always serializes"),
             )]
         } else {
-            compute_frames(&core, &debug_yuv_state, &request)
+            compute_frames_with_panic_guard(&core, &debug_yuv_state, &request, &cancel_flag)
         };
 
         registry.lock().unwrap().remove(&correlation_id);
@@ -224,6 +237,59 @@ fn spawn_request(
             }
         }
     })
+}
+
+/// Runs `compute_frames` behind a panic guard (CONC-022): without this, a handler that panics
+/// (malformed frame, decoder bug, etc.) would kill the worker thread before `spawn_request`'s
+/// `registry.remove` runs and before any response is written — the client's Promise for that
+/// `correlation_id` would then hang forever with no error. `catch_unwind` lets execution continue
+/// past the panic with a real failure response instead, so cleanup and a reply both still happen.
+///
+/// Requires `panic = "unwind"` in `[profile.release]` (see the root `Cargo.toml`) — with
+/// `"abort"` the process dies before unwinding ever reaches this catch, so the guard would be a
+/// no-op in a release build specifically, defeating the point.
+///
+/// `AssertUnwindSafe` is safe here: `Core`'s internal state uses `parking_lot::RwLock`/`Mutex`,
+/// neither of which poisons on panic (unlike `std::sync`'s), so a handler panicking mid-lock
+/// doesn't leave shared state in a form other threads would observe as "poisoned" — the lock is
+/// simply released, and the (possibly partially-written) data is the same risk any panic leaves
+/// behind, not a new hazard `catch_unwind` introduces.
+///
+/// Split out from `spawn_request` so it's testable directly without a real thread/writer --
+/// see `compute_frames`'s `#[cfg(test)]`-only `__test_trigger_panic__` method.
+fn compute_frames_with_panic_guard(
+    core: &Core,
+    debug_yuv_state: &DebugYuvSlot,
+    request: &Request,
+    cancel_flag: &AtomicBool,
+) -> Vec<(FrameKind, Vec<u8>)> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compute_frames(core, debug_yuv_state, request, cancel_flag)
+    })) {
+        Ok(frames) => frames,
+        Err(panic_payload) => {
+            // `&*panic_payload`, not `&panic_payload` -- `panic_payload` is a `Box<dyn Any +
+            // Send>`, and `Box<dyn Any + Send>` itself also satisfies `Any` (blanket impl for
+            // any `T: 'static`), so an un-derefed `&panic_payload` coerces to `&dyn Any` *over
+            // the Box*, not its contents -- every downcast in `panic_payload_message` would then
+            // silently miss and always fall through to "non-string panic payload", even for an
+            // ordinary `panic!("literal")`. Caught by this fix's own regression test.
+            let message = panic_payload_message(&*panic_payload);
+            eprintln!(
+                "bitvue-sidecar: handler for '{}' panicked: {message}",
+                request.method
+            );
+            let response = Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::Internal,
+                    message: format!("internal error: handler panicked: {message}"),
+                    offset: None,
+                },
+            );
+            single_control_frame(response)
+        }
+    }
 }
 
 /// Pure compute for `cancel_request` — sets the target's flag (if it's still registered) and
@@ -285,10 +351,17 @@ fn write_frame<W: Write>(
 /// Pure compute: turns a request into the frame(s) that should be written for it. No I/O, no
 /// locking — safe (and intended) to run concurrently across worker threads, which is the whole
 /// point of the concurrency model above.
+///
+/// `cancel_flag` is this request's own cancellation flag (see module doc) — threaded down to the
+/// handful of handlers below whose work is genuinely long-running/loopy (`index_stream`,
+/// `get_thumbnails`, `find_first_diff_frame`) so they can bail out mid-execution instead of
+/// running to completion regardless of a `cancel_request`. Everything else ignores it; a fast
+/// single-lookup handler has nothing meaningful to check mid-execution.
 fn compute_frames(
     core: &Core,
     debug_yuv_state: &DebugYuvSlot,
     request: &Request,
+    cancel_flag: &AtomicBool,
 ) -> Vec<(FrameKind, Vec<u8>)> {
     match request.method.as_str() {
         "get_hex_range" => return get_hex_range(core, request),
@@ -308,8 +381,24 @@ fn compute_frames(
             return single_control_frame(get_yuv_diff_metrics(core, debug_yuv_state, request))
         }
         "find_first_diff_frame" => {
-            return single_control_frame(find_first_diff_frame(core, debug_yuv_state, request))
+            return single_control_frame(find_first_diff_frame(
+                core,
+                debug_yuv_state,
+                request,
+                cancel_flag,
+            ))
         }
+        "index_stream" => return single_control_frame(index_stream(core, request, cancel_flag)),
+        "get_thumbnails" => {
+            return single_control_frame(get_thumbnails(core, request, cancel_flag))
+        }
+        // Test-only escape hatch (not reachable outside `cfg(test)`, so zero cost/risk in a real
+        // build): lets a test drive a real handler panic through the *actual* dispatch path
+        // rather than calling `panic!()` inline, so `compute_frames_with_panic_guard`'s
+        // catch_unwind is exercised the same way a real malformed-frame/decoder-bug panic would
+        // be. See CONC-022's regression test.
+        #[cfg(test)]
+        "__test_trigger_panic__" => panic!("intentional test panic"),
         _ => {}
     }
     let response = dispatch(core, request);
@@ -348,12 +437,16 @@ fn dispatch(core: &Core, request: &Request) -> Response {
         "select_bit_range" => select_bit_range(core, request),
         "select_spatial_block" => select_spatial_block(core, request),
         "close_stream" => close_stream(core, request),
-        "index_stream" => index_stream(core, request),
+        // These two are also reachable through `compute_frames`'s early-return match with the
+        // real per-request `cancel_flag` (see there) -- that's the path `spawn_request` actually
+        // uses. This arm only serves direct `dispatch()` callers (tests), which have no
+        // cancellation context, so it passes a flag that's never set.
+        "index_stream" => index_stream(core, request, &AtomicBool::new(false)),
         "get_stream_info" => get_stream_info(core, request),
         "get_frames_chunk" => get_frames_chunk(core, request),
         "get_frame_syntax" => get_frame_syntax(core, request),
         "get_timeline" => get_timeline(core, request),
-        "get_thumbnails" => get_thumbnails(core, request),
+        "get_thumbnails" => get_thumbnails(core, request, &AtomicBool::new(false)),
         "get_frame_analysis" => get_frame_analysis(core, request),
         "get_av1_features" => get_av1_features(core, request),
         "get_coding_flow_analysis" => get_coding_flow_analysis(core, request),
@@ -665,7 +758,7 @@ struct IndexStreamParams {
 /// decode). See that crate's module doc for exactly what is and isn't populated. Not a
 /// `Core::handle_command` variant: `Command::RunFullAnalysis` stays unused, this bypasses it
 /// entirely by calling the indexer directly against `Core::get_stream()`/`get_job_manager()`.
-fn index_stream(core: &Core, request: &Request) -> Response {
+fn index_stream(core: &Core, request: &Request, cancel_flag: &AtomicBool) -> Response {
     let params: IndexStreamParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
         Err(err) => {
@@ -684,7 +777,19 @@ fn index_stream(core: &Core, request: &Request) -> Response {
         Err(response) => return response,
     };
 
-    let events = bitvue_indexer::index_stream(core, stream);
+    // Whole-stream, per-frame loop -- can take real time on a long stream, so it's one of the
+    // handlers cooperatively cancellable mid-execution (see module doc / `compute_frames`).
+    let (events, cancelled) = bitvue_indexer::index_stream_with_cancel(core, stream, cancel_flag);
+    if cancelled {
+        return Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::Cancelled,
+                message: "cancelled".to_string(),
+                offset: None,
+            },
+        );
+    }
     let events_json: Vec<serde_json::Value> = events.iter().map(event_to_json).collect();
     Response::success(request.id, serde_json::json!({ "events": events_json }))
 }
@@ -1476,7 +1581,7 @@ const DEFAULT_THUMBNAIL_WIDTH: u32 = 120;
 /// that base64-in-JSON is a reasonable choice, and the frontend already expects a `data:` URL
 /// string per thumbnail (feeds straight into an `<img src>`), not raw bytes. Business logic in
 /// `decode_bridge::get_thumbnails` decodes once per batch, not once per requested index.
-fn get_thumbnails(core: &Core, request: &Request) -> Response {
+fn get_thumbnails(core: &Core, request: &Request, cancel_flag: &AtomicBool) -> Response {
     let params: GetThumbnailsParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
         Err(err) => {
@@ -1528,7 +1633,7 @@ fn get_thumbnails(core: &Core, request: &Request) -> Response {
     };
 
     let target_width = params.target_width.unwrap_or(DEFAULT_THUMBNAIL_WIDTH);
-    match decode_bridge::get_thumbnails(data, &params.frame_indices, target_width) {
+    match decode_bridge::get_thumbnails(data, &params.frame_indices, target_width, cancel_flag) {
         Ok(results) => {
             let json_results: Vec<serde_json::Value> = results
                 .into_iter()
@@ -1544,7 +1649,15 @@ fn get_thumbnails(core: &Core, request: &Request) -> Response {
                 .collect();
             Response::success(request.id, serde_json::json!(json_results))
         }
-        Err(message) => Response::failure(
+        Err(decode_bridge::GetThumbnailsError::Cancelled) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::Cancelled,
+                message: "cancelled".to_string(),
+                offset: None,
+            },
+        ),
+        Err(decode_bridge::GetThumbnailsError::Other(message)) => Response::failure(
             request.id,
             WireError {
                 code: WireErrorCode::FrameNotFound,
@@ -1722,13 +1835,18 @@ fn get_yuv_diff_metrics(core: &Core, state: &DebugYuvSlot, request: &Request) ->
     }
 }
 
-fn find_first_diff_frame(core: &Core, state: &DebugYuvSlot, request: &Request) -> Response {
+fn find_first_diff_frame(
+    core: &Core,
+    state: &DebugYuvSlot,
+    request: &Request,
+    cancel_flag: &AtomicBool,
+) -> Response {
     let guard = state.lock().unwrap();
     let session = match guard.as_ref() {
         Some(s) => s,
         None => return no_debug_yuv_loaded(request.id),
     };
-    match debug_yuv::find_first_diff(core, session) {
+    match debug_yuv::find_first_diff(core, session, cancel_flag) {
         Ok((frame_index, total_checked)) => Response::success(
             request.id,
             serde_json::json!({
@@ -1736,7 +1854,15 @@ fn find_first_diff_frame(core: &Core, state: &DebugYuvSlot, request: &Request) -
                 "total_checked": total_checked,
             }),
         ),
-        Err(message) => Response::failure(
+        Err(debug_yuv::FindFirstDiffError::Cancelled) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::Cancelled,
+                message: "cancelled".to_string(),
+                offset: None,
+            },
+        ),
+        Err(debug_yuv::FindFirstDiffError::Other(message)) => Response::failure(
             request.id,
             WireError {
                 code: WireErrorCode::Internal,
@@ -1819,6 +1945,20 @@ fn get_debug_yuv_frame(
                 offset: None,
             },
         )),
+    }
+}
+
+/// Extracts a human-readable message from a `catch_unwind` payload. `panic!("literal")` yields
+/// `&'static str`, `panic!("{}", x)`/`.expect(...)`/`.unwrap()` yield `String` -- those two cover
+/// the overwhelming majority of real panics; anything else (a custom payload type from
+/// `panic_any`) falls back to a generic message rather than failing to report at all.
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
     }
 }
 
@@ -1935,7 +2075,7 @@ mod tests {
 
         let core = Core::new();
         let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
-        let frames = compute_frames(&core, &debug_yuv_state, &parsed);
+        let frames = compute_frames(&core, &debug_yuv_state, &parsed, &AtomicBool::new(false));
         let output = encode_frames(header.correlation_id, &frames);
 
         let out_header =
@@ -2409,7 +2549,8 @@ mod tests {
                     method: "select_frame".to_string(),
                     params: serde_json::json!({"stream": stream, "frame_index": i as usize}),
                 };
-                let frames = compute_frames(&core, &debug_yuv_state, &request);
+                let frames =
+                    compute_frames(&core, &debug_yuv_state, &request, &AtomicBool::new(false));
                 assert_eq!(frames.len(), 1);
                 let (kind, payload) = &frames[0];
                 assert_eq!(*kind, FrameKind::Control);
@@ -2422,6 +2563,65 @@ mod tests {
         let mut seen_ids: Vec<u32> = handles.into_iter().map(|h| h.join().unwrap()).collect();
         seen_ids.sort_unstable();
         assert_eq!(seen_ids, (0..16u32).collect::<Vec<_>>());
+    }
+
+    /// Real regression test for CONC-022: a handler that panics mid-request must not skip
+    /// cancel-registry cleanup or leave the client hanging with no response. Drives an actual
+    /// panic through `compute_frames`'s real dispatch (`__test_trigger_panic__`, a `cfg(test)`
+    /// only method -- see its match arm) rather than calling `panic!()` inline, so this exercises
+    /// the same `catch_unwind` boundary `spawn_request` uses in production, not a hand-rolled
+    /// substitute. Mirrors `spawn_request`'s exact registry-insert / guarded-compute /
+    /// registry-remove sequence (minus the real thread + stdout writer, which aren't needed to
+    /// prove this contract and would need a non-trivial writer-abstraction refactor to fake --
+    /// see this test's sibling for why that trade-off was made).
+    #[test]
+    fn panicking_handler_still_cleans_up_the_registry_and_returns_a_real_error_response() {
+        let core = Core::new();
+        let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
+        let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let correlation_id = 999;
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        registry
+            .lock()
+            .unwrap()
+            .insert(correlation_id, Arc::clone(&cancel_flag));
+
+        let request = Request {
+            id: 42,
+            method: "__test_trigger_panic__".to_string(),
+            params: serde_json::json!({}),
+        };
+
+        // Same shape as spawn_request's worker body: guarded compute, then registry cleanup.
+        let frames =
+            compute_frames_with_panic_guard(&core, &debug_yuv_state, &request, &cancel_flag);
+        registry.lock().unwrap().remove(&correlation_id);
+
+        assert!(
+            !registry.lock().unwrap().contains_key(&correlation_id),
+            "the registry entry must be cleaned up even though the handler panicked -- a leaked \
+             entry here is exactly the CONC-022 bug (a future cancel_request for a reused/replayed \
+             id would silently target stale state)"
+        );
+
+        assert_eq!(
+            frames.len(),
+            1,
+            "a panicking handler must still produce exactly one response frame, not zero (which \
+             would hang the client's Promise forever)"
+        );
+        let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        assert!(
+            !response.ok,
+            "a panicking handler must produce a failure response, not hang: {response:?}"
+        );
+        let error = response.error.unwrap();
+        assert_eq!(error.code, WireErrorCode::Internal);
+        assert!(
+            error.message.contains("intentional test panic"),
+            "the real panic message should be surfaced, not swallowed: {}",
+            error.message
+        );
     }
 
     // -- index_stream / get_stream_info / get_frames_chunk --------------------------------
@@ -2463,6 +2663,45 @@ mod tests {
         assert_eq!(events[0]["type"], "ModelUpdated");
         assert_eq!(events[0]["kind"], "Container");
         assert_eq!(events[1]["kind"], "Units");
+    }
+
+    /// Real cancellation-checkpoint regression test for UIX-ASYNC-006, mirroring
+    /// `find_first_diff_frame_stops_early_when_already_cancelled`: an already-set flag must make
+    /// `index_stream` bail out of `index_ivf_av1`'s per-frame loop instead of indexing the whole
+    /// fixture, must report `Cancelled` rather than a silent success, and -- since a cancelled
+    /// index run is documented to write no partial state -- must leave `StreamState.container`
+    /// unset so a later real `index_stream` call isn't shadowed by a half-finished one.
+    #[test]
+    fn index_stream_stops_early_when_already_cancelled() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let request = Request {
+            id: 111,
+            method: "index_stream".to_string(),
+            params: serde_json::json!({"stream": "A"}),
+        };
+        let response = index_stream(&core, &request, &AtomicBool::new(true));
+        assert!(
+            !response.ok,
+            "expected a failure response, got {response:?}"
+        );
+        assert_eq!(response.error.unwrap().code, WireErrorCode::Cancelled);
+
+        let info_response = dispatch(
+            &core,
+            &Request {
+                id: 112,
+                method: "get_stream_info".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+        assert!(info_response.ok);
+        assert_eq!(
+            info_response.result.unwrap()["indexed"],
+            false,
+            "a cancelled index run must not write partial container/units state"
+        );
     }
 
     #[test]
@@ -3417,6 +3656,7 @@ mod tests {
                 method: "find_first_diff_frame".to_string(),
                 params: serde_json::json!({}),
             },
+            &AtomicBool::new(false),
         );
         assert!(response.ok, "expected ok response, got {response:?}");
         let result = response.result.unwrap();
@@ -3425,6 +3665,52 @@ mod tests {
             "the only reference frame -- and the only one with an injected mismatch -- is index 0"
         );
         assert_eq!(result["total_checked"], 1);
+    }
+
+    /// Real cancellation-checkpoint regression test for UIX-ASYNC-006: proves
+    /// `find_first_diff_frame` actually stops (and reports `Cancelled`, not a silent success)
+    /// instead of scanning to completion when its flag is already set. Before this fix, the
+    /// worker thread only ever checked the flag once *before* calling the handler at all
+    /// (`spawn_request`'s "cancelled before execution started" branch); this test exercises the
+    /// handler's own mid-execution checkpoint directly, which didn't exist at all previously --
+    /// the same fixture/mismatch setup as the "locates the injected mismatch" test above would
+    /// have returned `frame_index: 0` regardless of cancellation with the old code.
+    #[test]
+    fn find_first_diff_frame_stops_early_when_already_cancelled() {
+        let core = Core::new();
+        let (file, width, height) = load_reference_matching_real_fixture_frame_zero(&core);
+        let mut bytes = std::fs::read(file.path()).unwrap();
+        bytes[0] = bytes[0].wrapping_add(100);
+        std::fs::write(file.path(), &bytes).unwrap();
+
+        let debug_yuv_state = fresh_debug_yuv_state();
+        load_debug_yuv(
+            &debug_yuv_state,
+            &Request {
+                id: 350,
+                method: "load_debug_yuv".to_string(),
+                params: serde_json::json!({
+                    "path": file.path().to_str().unwrap(), "width": width, "height": height,
+                    "format": "i420", "bitdepth": 8,
+                }),
+            },
+        );
+
+        let response = find_first_diff_frame(
+            &core,
+            &debug_yuv_state,
+            &Request {
+                id: 351,
+                method: "find_first_diff_frame".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(true),
+        );
+        assert!(
+            !response.ok,
+            "expected a failure response, got {response:?}"
+        );
+        assert_eq!(response.error.unwrap().code, WireErrorCode::Cancelled);
     }
 
     #[test]
@@ -3439,6 +3725,7 @@ mod tests {
                 method: "find_first_diff_frame".to_string(),
                 params: serde_json::json!({}),
             },
+            &AtomicBool::new(false),
         );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
