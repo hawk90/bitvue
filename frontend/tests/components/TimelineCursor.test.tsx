@@ -9,17 +9,17 @@ import { TimelineCursor } from "@/components/TimelineCursor";
 describe("TimelineCursor", () => {
   it("should render with correct position", () => {
     const { container } = render(
-      <TimelineCursor positionPercent={50} frameIndex={42} />,
+      <TimelineCursor positionPx={50} frameIndex={42} />,
     );
 
     const cursor = container.querySelector(".timeline-cursor") as HTMLElement;
     expect(cursor).toBeInTheDocument();
-    expect(cursor.style.left).toBe("50%");
+    expect(cursor.style.left).toBe("50px");
   });
 
   it("should have correct title attribute", () => {
     const { container } = render(
-      <TimelineCursor positionPercent={25} frameIndex={100} />,
+      <TimelineCursor positionPx={25} frameIndex={100} />,
     );
 
     const cursor = container.querySelector(".timeline-cursor");
@@ -28,7 +28,7 @@ describe("TimelineCursor", () => {
 
   it("should have aria-hidden attribute", () => {
     const { container } = render(
-      <TimelineCursor positionPercent={50} frameIndex={0} />,
+      <TimelineCursor positionPx={50} frameIndex={0} />,
     );
 
     const cursor = container.querySelector(".timeline-cursor");
@@ -37,10 +37,10 @@ describe("TimelineCursor", () => {
 
   it("should handle edge positions", () => {
     const { container: startContainer } = render(
-      <TimelineCursor positionPercent={0} frameIndex={0} />,
+      <TimelineCursor positionPx={0} frameIndex={0} />,
     );
     const { container: endContainer } = render(
-      <TimelineCursor positionPercent={100} frameIndex={999} />,
+      <TimelineCursor positionPx={999} frameIndex={999} />,
     );
 
     const startCursor = startContainer.querySelector(
@@ -50,7 +50,7 @@ describe("TimelineCursor", () => {
       ".timeline-cursor",
     ) as HTMLElement;
 
-    expect(startCursor.style.left).toBe("0%");
-    expect(endCursor.style.left).toBe("100%");
+    expect(startCursor.style.left).toBe("0px");
+    expect(endCursor.style.left).toBe("999px");
   });
 });

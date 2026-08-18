@@ -114,11 +114,35 @@
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 8%),
     0 1px 3px rgb(0 0 0 / 40%);
-  overflow: hidden;
+  /* Bars grow to fill the row when there's room (`.timeline-thumb`'s `flex: 1 1 0`) and shrink
+     down to their `min-width` floor when there isn't -- once every bar hits that floor and the
+     row still doesn't fit, this scrolls horizontally instead of squashing bars past legibility
+     (previously `overflow: hidden` silently clipped/over-compressed instead of scrolling). */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline-thumbnails::-webkit-scrollbar {
+  height: 4px;
+}
+
+.timeline-thumbnails::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timeline-thumbnails::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.timeline-thumbnails::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 .timeline-thumb {
-  width: 2px;
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 14px;
   height: 100%;
   border-radius: 2px;
   transition: none;
