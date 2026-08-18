@@ -2244,6 +2244,25 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   테스트 0실패)/`cargo test --workspace --lib`/clippy(무관한 기존 `leb128_prop_tests.rs`
   예외만)/fmt 재실행 + dav1d `cdf.c`에서 bucket-1 `.skip` 실제 숫자를 직접 grep해 생성된
   Rust 리터럴과 byte-exact 일치 확인(`[30371, 7570, 13155, 20751, 20969, 27067, 32013]` 등).
+- **warped global motion GmType 분류 완성 + tx_size 낡은 문서 재수정(2026-08-18, `dbedf42`)**:
+  Explore로 다음 갭 3후보(tx_size() inter/IntraBC, segmentation feature_data, warped global
+  motion) 스코핑 → tx_size()는 이미 닫혀있었음(`613e0e8`/`8ad7337`/`4269a06`/`8850134`에서
+  실구현, 문서만 안 갱신) → 문서만 수정. segmentation feature_data(`SEG_LVL_REF_FRAME`/`SKIP`/
+  `GLOBALMV` 미모델링)는 실제 갭이지만 AQ-mode 전용이라 트리거가 드묾, warped global motion이
+  더 심각 판단 — `parse_global_motion_params`가 `GmType[ref]` 분류를 비트 동기화 목적으로만
+  읽고 버려서, spec 5.11.27 `read_motion_mode`의 실제 조건("GLOBALMV 블록의
+  `GmType[RefFrame[0]]`가 TRANSLATION보다 복잡하면 `motion_mode=SIMPLE` 강제, 비트 안 읽음")을
+  전혀 모델링 못 함 — 실제 패닝/줌 컨텐츠에서 인코더가 안 쓴 `motion_mode`/`obmc` 심볼을
+  스퓨리어스하게 읽는 desync 위험(segmentation 갭보다 흔한 트리거). `FrameHeader`(`gm_type:
+  [u8;8]`, `force_integer_mv: bool` 신규) → `ParsedFrame` → `InterModeFlags` 3단 배선,
+  `classify_gm_type`/`global_motion_forces_simple` 순수함수 추출로 직접 유닛테스트
+  (`decode_subexp`의 가변길이 `gm_params` 비트를 합성테스트용으로 손인코딩하는 건 너무 위험/
+  복잡하다고 판단해 회피, 로직만 분리 테스트). 실 fixture 회귀 테스트 추가했지만 250프레임 전부
+  `GmType=IDENTITY`(0/250)로 확인 — 커밋된 fixture에 warped motion이 없어 exclusion의
+  non-degenerate 케이스는 검증 안 됨, segmentation 갭과 동일한 한계. `filter`(spec 5.11.30)의
+  `needs_interp_filter()`도 GmType 의존 조건이 있음을 발견했으나 정확한 조건식이 불확실해
+  손대지 않고 문서만 정정(추후 스코핑 대상). `--lib --tests` 415/415(+3 신규), `--workspace
+  --lib` 3853/3854(기존 flaky `bitvue-engine` LRU만 실패, 무관 확인), clippy/fmt 클린.
 
 ---
 
