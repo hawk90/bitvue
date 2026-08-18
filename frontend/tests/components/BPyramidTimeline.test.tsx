@@ -483,6 +483,80 @@ describe("BPyramidTimeline SVG arrows", () => {
     // Arrow is hidden via visibility attribute when current frame doesn't match
     expect(path).toHaveAttribute("visibility", "hidden");
   });
+
+  it("should show all arrows (dimmed for non-selected sources) when showAllArrows is true", () => {
+    vi.mocked(usePreRenderedArrows).mockReturnValue({
+      allArrowData: [
+        {
+          sourceFrameIndex: 4,
+          targetFrameIndex: 0,
+          slotIndex: 0,
+          label: "L0",
+          color: "#4444ff",
+          pathData: "M0,0 L10,10",
+          sourceX: 100,
+          sourceY: 50,
+          labelY: 45,
+        },
+        {
+          sourceFrameIndex: 2,
+          targetFrameIndex: 0,
+          slotIndex: 0,
+          label: "L0",
+          color: "#4444ff",
+          pathData: "M0,0 L20,20",
+          sourceX: 60,
+          sourceY: 30,
+          labelY: 25,
+        },
+      ],
+      svgWidth: 1000,
+    });
+
+    render(
+      <BPyramidTimeline
+        {...defaultProps}
+        currentFrameIndex={4}
+        showAllArrows
+      />,
+    );
+
+    const paths = document.querySelectorAll(
+      ".bpyramid-arrows-overlay > g > path",
+    );
+    expect(paths.length).toBe(2);
+    // Both arrows are visible when showAllArrows is set...
+    paths.forEach((path) => {
+      expect(path).toHaveAttribute("visibility", "visible");
+    });
+    // ...but the non-selected source (frame 2) is dimmer than the selected one (frame 4).
+    expect(paths[0]).toHaveAttribute("stroke-opacity", "0.7");
+    expect(paths[1]).toHaveAttribute("stroke-opacity", "0.25");
+  });
+
+  it("should default showAllArrows to false (unchanged per-selection behavior)", () => {
+    vi.mocked(usePreRenderedArrows).mockReturnValue({
+      allArrowData: [
+        {
+          sourceFrameIndex: 2,
+          targetFrameIndex: 0,
+          slotIndex: 0,
+          label: "L0",
+          color: "#4444ff",
+          pathData: "M0,0 L10,10",
+          sourceX: 100,
+          sourceY: 50,
+          labelY: 45,
+        },
+      ],
+      svgWidth: 1000,
+    });
+
+    render(<BPyramidTimeline {...defaultProps} currentFrameIndex={4} />);
+
+    const path = document.querySelector(".bpyramid-arrows-overlay > g > path");
+    expect(path).toHaveAttribute("visibility", "hidden");
+  });
 });
 
 describe("analyzeTemporalLevels", () => {

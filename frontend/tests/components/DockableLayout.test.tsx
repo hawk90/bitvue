@@ -178,6 +178,86 @@ describe("DockableLayout", () => {
   });
 });
 
+describe("DockableLayout pinned left panel", () => {
+  const leftPanels = [
+    { id: "panel1", title: "Panel 1", component: MockPanel1, icon: "icon-1" },
+    { id: "panel2", title: "Panel 2", component: MockPanel2, icon: "icon-2" },
+  ];
+  const pinnedLeftPanel = {
+    id: "stream",
+    title: "Stream",
+    component: MockPanel3,
+    icon: "symbol-tree",
+  };
+
+  it("renders the pinned panel's content alongside the inspectors dropdown, not as an option", () => {
+    render(
+      <DockableLayout
+        pinnedLeftPanel={pinnedLeftPanel}
+        leftPanels={leftPanels}
+        mainView={MockMainView}
+      />,
+    );
+
+    // Pinned content is always rendered...
+    expect(screen.getByTestId("panel-3")).toBeInTheDocument();
+    // ...and it's not one of the dropdown's switchable options (only the 2 real panels are, once
+    // the dropdown is opened).
+    fireEvent.mouseDown(screen.getByRole("button", { name: /inspectors/i }));
+    const options = screen.queryAllByRole("option");
+    expect(options.length).toBe(2);
+    expect(
+      options.some((option) => option.textContent?.includes("Stream")),
+    ).toBe(false);
+  });
+
+  it("shows the pinned panel's title as a static header", () => {
+    render(
+      <DockableLayout
+        pinnedLeftPanel={pinnedLeftPanel}
+        leftPanels={leftPanels}
+        mainView={MockMainView}
+      />,
+    );
+
+    expect(
+      document.querySelector(".left-sidebar-pinned-header"),
+    ).toHaveTextContent("Stream");
+  });
+
+  it("switches inspector content by selecting a dropdown option", () => {
+    render(
+      <DockableLayout
+        pinnedLeftPanel={pinnedLeftPanel}
+        leftPanels={leftPanels}
+        mainView={MockMainView}
+      />,
+    );
+
+    expect(screen.getByTestId("panel-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("panel-2")).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: /inspectors/i }));
+    fireEvent.click(screen.getByRole("option", { name: /panel 2/i }));
+
+    expect(screen.getByTestId("panel-2")).toBeInTheDocument();
+    expect(screen.queryByTestId("panel-1")).not.toBeInTheDocument();
+    // Dropdown closes after selection
+    expect(screen.queryAllByRole("option").length).toBe(0);
+  });
+
+  it("falls back to the plain single tab strip when no pinned panel is given", () => {
+    const { container } = render(
+      <DockableLayout leftPanels={leftPanels} mainView={MockMainView} />,
+    );
+
+    expect(
+      container.querySelector(".left-sidebar-pinned"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("tab").length).toBe(2);
+  });
+});
+
 describe("PANEL_SIZES constants", () => {
   it("should have correct default values", () => {
     expect(PANEL_SIZES.LEFT_SIDEBAR).toBe(25);

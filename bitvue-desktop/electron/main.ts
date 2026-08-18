@@ -1165,6 +1165,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * in order, waiting for each to render before the next -- the left dock's tabs (`App.tsx`'s
  * `LEFT_PANELS`) default to whichever was active last, so this is the only way to reliably
  * screenshot a non-default (or nested) tab instead of guessing at prior state.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_CLICK_SELECTOR=<css selector>[,<css selector>...]` (optional):
+ * same idea as CLICK_TAB but for elements that aren't `<button>`s with matchable text (e.g. a
+ * specific filmstrip thumbnail, which is a `<div data-frame-index="N">`) -- runs after all
+ * CLICK_TAB clicks, in order, one `document.querySelector(selector)` + mousedown/click per
+ * entry, waiting for each to render before the next.
  */
 async function runScreenshotAndExit(
   win: BrowserWindow,
@@ -1207,6 +1213,23 @@ async function runScreenshotAndExit(
           // conventions without needing to know which one a given button uses.
           button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
           button.click();
+        })()
+      `);
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
+    }
+    const clickSelectors =
+      process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_SELECTOR?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    for (const selector of clickSelectors ?? []) {
+      await win.webContents.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) throw new Error(${JSON.stringify(`selector not found: ${selector}`)});
+          el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+          el.click();
         })()
       `);
       await win.webContents.executeJavaScript(

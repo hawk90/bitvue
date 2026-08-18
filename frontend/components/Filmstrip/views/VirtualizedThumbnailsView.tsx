@@ -10,8 +10,15 @@
  * - Smoother scrolling with constant memory footprint
  */
 
-import { useRef, useCallback, useState, memo } from "react";
+import { useRef, useCallback, useState, useEffect, memo } from "react";
 import type { FrameInfo } from "../../../types/video";
+import {
+  usePreRenderedArrows,
+  ArrowPosition,
+  PathCalculator,
+  FrameInfoBase,
+} from "../../usePreRenderedArrows";
+import { getFrameTypeColor } from "../../../types/video";
 
 interface VirtualizedThumbnailsViewProps {
   frames: FrameInfo[];
@@ -24,6 +31,12 @@ interface VirtualizedThumbnailsViewProps {
   onToggleReferenceExpansion: (frameIndex: number, e: React.MouseEvent) => void;
   onHoverFrame: (frame: FrameInfo | null, x: number, y: number) => void;
   getFrameTypeColorClass: (frameType: string) => string;
+  /** Requests thumbnails for the given frame indices be loaded (no-ops for ones already
+   * loaded/loading). Needed here because, unlike the non-virtualized view, this component's own
+   * scroll/visible-range changes are the only signal that new frames need thumbnails -- the
+   * parent's IntersectionObserver-based lazy loader is intentionally skipped for virtualized
+   * filmstrips (see Filmstrip.tsx), since elements outside the visible window never mount. */
+  loadThumbnails: (indices: number[]) => void;
 }
 
 // Constants for virtual scrolling - must match CSS
@@ -40,6 +53,7 @@ function VirtualizedThumbnailsView({
   onToggleReferenceExpansion,
   onHoverFrame,
   getFrameTypeColorClass,
+  loadThumbnails,
 }: VirtualizedThumbnailsViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -53,6 +67,48 @@ function VirtualizedThumbnailsView({
 
   const { start, end } = getVisibleRange();
   const visibleFrames = frames.slice(start, end);
+
+  // Load thumbnails for whatever's currently in the visible window -- the batch loaded on
+  // initial mount (useFilmstripState) only covers the first THUMBNAIL_BATCH_SIZE frames, and the
+  // parent's IntersectionObserver lazy-loader never runs for virtualized filmstrips, so without
+  // this, thumbnails permanently freeze at the initial batch once the user scrolls/plays past it.
+  useEffect(() => {
+    loadThumbnails(visibleFrames.map((f) => f.frame_index));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start, end, loadThumbnails]);
+
+  // Path calculator for ㄷ-shaped arrows (down, horizontal, up) -- identical shape to
+  // ThumbnailsView's, duplicated rather than shared since the two views' DOM structure/zoom
+  // handling differ enough that a shared abstraction would need its own prop surface.
+  const calculateThumbnailPath: PathCalculator = useCallback(
+    (
+      sourcePos: ArrowPosition,
+      targetPos: ArrowPosition,
+      _sourceFrame: FrameInfoBase,
+      _targetFrame: FrameInfoBase,
+      slotIndex: number,
+    ) => {
+      const baseOffset = 30;
+      const spacingPerSlot = 12;
+      const verticalOffset = baseOffset + slotIndex * spacingPerSlot;
+      const sourceBottom = sourcePos.bottom ?? 0;
+      const targetBottom = targetPos.bottom ?? 0;
+      return `M ${sourcePos.centerX} ${sourceBottom} L ${sourcePos.centerX} ${sourceBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom}`;
+    },
+    [],
+  );
+
+  // Arrows must be recalculated whenever the visible window shifts (recalcKey), not just once at
+  // mount -- only frames within [start, end) are actually in the DOM, so a mount-once measurement
+  // would only ever see whatever happened to be visible at that instant.
+  const { allArrowData, svgWidth } = usePreRenderedArrows({
+    containerRef,
+    frames: visibleFrames,
+    getFrameTypeColor,
+    calculatePath: calculateThumbnailPath,
+    enabled: true,
+    recalcKey: `${start}-${end}`,
+  });
 
   const handleMouseEnter = (frame: FrameInfo, e: React.MouseEvent) => {
     onHoverFrame(frame, e.clientX, e.clientY);
@@ -85,6 +141,72 @@ function VirtualizedThumbnailsView({
         onWheel={handleWheel}
         style={{ transform: `scaleX(${zoom})`, transformOrigin: "left center" }}
       >
+        {/* Reference arrows SVG overlay - scrolls with thumbnails */}
+        {allArrowData.length > 0 && svgWidth > 0 && (
+          <svg
+            className="thumbnail-arrows-overlay"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: `${svgWidth}px`,
+              height: "100%",
+              pointerEvents: "none",
+              zIndex: 10,
+              transform: `scaleX(${zoom})`,
+              transformOrigin: "left",
+            }}
+          >
+            <defs>
+              <marker
+                id="virtualized-thumbnail-arrowhead"
+                markerWidth="6"
+                markerHeight="6"
+                refX="5"
+                refY="3"
+                orient="auto"
+              >
+                <path d="M 0 0 L 6 3 L 0 6 z" fill="currentColor" />
+              </marker>
+            </defs>
+            {allArrowData.map((arrow) => {
+              const isVisible = arrow.sourceFrameIndex === currentFrameIndex;
+              const opacity = isVisible ? 0.7 : 0;
+              const renderVisibility = isVisible ? "visible" : "hidden";
+
+              return (
+                <g
+                  key={`${arrow.sourceFrameIndex}-${arrow.targetFrameIndex}-${arrow.slotIndex}`}
+                >
+                  <path
+                    d={arrow.pathData}
+                    fill="none"
+                    stroke={arrow.color}
+                    strokeWidth="2"
+                    strokeOpacity={opacity}
+                    visibility={renderVisibility}
+                    markerEnd="url(#virtualized-thumbnail-arrowhead)"
+                  />
+                  <text
+                    x={arrow.sourceX}
+                    y={arrow.labelY}
+                    fill={arrow.color}
+                    fontSize="9"
+                    fontFamily="monospace"
+                    fontWeight="600"
+                    opacity={opacity}
+                    visibility={renderVisibility}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                  >
+                    {arrow.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
         {visibleFrames.map((frame) => {
           const layer = frame.temporal_id?.toString() ?? "A";
           const isSelected = frame.frame_index === currentFrameIndex;

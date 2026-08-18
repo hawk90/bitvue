@@ -103,6 +103,9 @@ interface BPyramidTimelineProps {
   levels: TemporalLevel[];
   frameMap: Map<number, FrameWithLevel>;
   gopBoundaries: number[];
+  /** See BPyramidViewProps.showAllArrows -- shows every frame's arrows at once (dimmed for
+   * non-selected sources) instead of gating to only the currently-selected frame. */
+  showAllArrows?: boolean;
 }
 
 export const BPyramidTimeline = forwardRef<
@@ -118,6 +121,7 @@ export const BPyramidTimeline = forwardRef<
       levels,
       frameMap,
       gopBoundaries,
+      showAllArrows = false,
     }: BPyramidTimelineProps,
     forwardedRef: ForwardedRef<HTMLDivElement>,
   ) => {
@@ -165,12 +169,38 @@ export const BPyramidTimeline = forwardRef<
       [],
     );
 
+    // Path calculator for showAllArrows (Structure view): routes below the frame row instead of
+    // straight through circle centers. calculateStraightPath's near-zero vertical offset is fine
+    // when only one frame's 1-2 arrows are visible at a time (the original B-Pyramid behavior),
+    // but with every frame's arrows shown at once, most single-ref frames all land on slotIndex 0
+    // -- i.e. the same near-zero offset -- and the resulting pile of overlapping horizontal lines
+    // draws straight through the frame circles themselves rather than around them. Dropping below
+    // the row (down -> across -> up, matching ThumbnailsView/VirtualizedThumbnailsView's shape)
+    // keeps arrows visually clear of frame boundaries regardless of how many stack up.
+    const calculateBelowPath: PathCalculator = useCallback(
+      (
+        sourcePos: ArrowPosition,
+        targetPos: ArrowPosition,
+        _sourceFrame: FrameInfoBase,
+        _targetFrame: FrameInfoBase,
+        slotIndex: number,
+      ) => {
+        const baseOffset = 16;
+        const spacingPerSlot = 8;
+        const verticalOffset = baseOffset + slotIndex * spacingPerSlot;
+        const sourceBottom = sourcePos.bottom ?? sourcePos.top;
+        const targetBottom = targetPos.bottom ?? targetPos.top;
+        return `M ${sourcePos.centerX} ${sourceBottom} L ${sourcePos.centerX} ${sourceBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom}`;
+      },
+      [],
+    );
+
     // Use shared hook for pre-rendered arrows
     const { allArrowData, svgWidth } = usePreRenderedArrows({
       containerRef,
       frames,
       getFrameTypeColor,
-      calculatePath: calculateStraightPath,
+      calculatePath: showAllArrows ? calculateBelowPath : calculateStraightPath,
       enabled: true,
     });
 
@@ -185,7 +215,10 @@ export const BPyramidTimeline = forwardRef<
 
     return (
       <div className="bpyramid-timeline-container" ref={containerRef}>
-        <div className="bpyramid-levels" style={{ position: "relative" }}>
+        <div
+          className={`bpyramid-levels ${showAllArrows ? "bpyramid-levels--with-graph" : ""}`}
+          style={{ position: "relative" }}
+        >
           {levels.map((levelData) => (
             <div key={levelData.level} className="bpyramid-level-row">
               <div className="bpyramid-level-label">L{levelData.level}</div>
@@ -266,8 +299,20 @@ export const BPyramidTimeline = forwardRef<
                 </marker>
               </defs>
               {allArrowData.map((arrow) => {
-                const isVisible = arrow.sourceFrameIndex === currentFrameIndex;
-                const opacity = isVisible ? 0.7 : 0;
+                const isSelectedSource =
+                  arrow.sourceFrameIndex === currentFrameIndex;
+                const isVisible = showAllArrows || isSelectedSource;
+                const opacity = !isVisible
+                  ? 0
+                  : showAllArrows && !isSelectedSource
+                    ? 0.25
+                    : 0.7;
+                // With every frame's arrows shown at once (showAllArrows), rendering every
+                // dimmed arrow's slot label too just tiles hundreds of overlapping "REF0"/"REF1"
+                // strings into solid noise bands with no per-frame info at that density -- keep
+                // labels only for the frame the user actually selected.
+                const showLabel =
+                  isVisible && (!showAllArrows || isSelectedSource);
 
                 return (
                   <g
@@ -291,7 +336,7 @@ export const BPyramidTimeline = forwardRef<
                       fontFamily="monospace"
                       fontWeight="600"
                       opacity={opacity}
-                      visibility={isVisible ? "visible" : "hidden"}
+                      visibility={showLabel ? "visible" : "hidden"}
                       textAnchor="start"
                       dominantBaseline="middle"
                     >

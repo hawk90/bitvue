@@ -21,7 +21,10 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: auto hidden;
+  /* Structure view (showAllArrows) routes every frame's arrows below the row at once, which can
+     need much more vertical room than the per-selection B-Pyramid view ever did -- scroll instead
+     of clipping (previously `auto hidden`) so that graph is reachable rather than cut off. */
+  overflow: auto;
 }
 
 .bpyramid-levels {
@@ -29,6 +32,12 @@
   flex-direction: column;
   gap: 4px;
   padding-bottom: 24px;
+}
+
+/* Structure view: extra room below the frame row for the "below-row" arrow graph
+   (BPyramidTimeline's calculateBelowPath) so it doesn't need to rely on scrolling alone. */
+.bpyramid-levels--with-graph {
+  padding-bottom: 160px;
 }
 
 .bpyramid-level-row {

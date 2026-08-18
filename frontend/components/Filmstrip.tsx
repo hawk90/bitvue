@@ -15,7 +15,6 @@ import ThumbnailsView from "./Filmstrip/views/ThumbnailsView";
 import VirtualizedThumbnailsView from "./Filmstrip/views/VirtualizedThumbnailsView";
 import FrameSizesView from "./Filmstrip/views/FrameSizesView";
 import BPyramidView from "./Filmstrip/views/BPyramidView";
-import { TimelineView } from "./Filmstrip/views/TimelineView";
 import { MinimapView } from "./MinimapView";
 import { FilmstripTooltip } from "./FilmstripTooltip";
 import { EnhancedView } from "./EnhancedView";
@@ -199,7 +198,7 @@ function Filmstrip({
 
   return (
     <div
-      className={`filmstrip ${className} ${showingReferences ? "showing-references" : ""} ${displayView === "timeline" ? "timeline-view-mode" : ""}`}
+      className={`filmstrip ${className} ${showingReferences ? "showing-references" : ""} ${displayView === "structure" ? "structure-view-mode" : ""} ${displayView === "enhanced" ? "enhanced-view-mode" : ""} ${displayView === "hrdbuffer" ? "hrdbuffer-view-mode" : ""}`}
     >
       {/* Filmstrip Header */}
       <div
@@ -264,6 +263,7 @@ function Filmstrip({
               onToggleReferenceExpansion={handleToggleExpansion}
               onHoverFrame={handleHoverFrame}
               getFrameTypeColorClass={getFrameTypeColorClass}
+              loadThumbnails={loadThumbnails}
             />
           ) : (
             <ThumbnailsView
@@ -294,6 +294,7 @@ function Filmstrip({
               <FrameSizesLegend
                 sizeMetrics={sizeMetrics}
                 onToggleMetric={toggleMetric}
+                anchorRef={filmstripContentRef}
               />,
               document.body,
             )}
@@ -305,12 +306,13 @@ function Filmstrip({
             onFrameClick={handleFrameClick}
             getFrameTypeColorClass={getFrameTypeColorClass}
           />
-        ) : displayView === "timeline" ? (
-          <TimelineView
+        ) : displayView === "structure" ? (
+          <BPyramidView
             frames={frames}
             currentFrameIndex={currentFrameIndex}
             onFrameClick={handleFrameClick}
             getFrameTypeColorClass={getFrameTypeColorClass}
+            showAllArrows
           />
         ) : displayView === "hrdbuffer" ? (
           <HRDBufferPanel
