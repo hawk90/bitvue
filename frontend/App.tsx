@@ -7,6 +7,7 @@ import { TitleBar } from "./components/TitleBar";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SelectionProvider } from "./contexts/SelectionContext";
+import { FrameSyncBridge } from "./contexts/FrameSyncBridge";
 import { ModeProvider, useMode } from "./contexts/ModeContext";
 import {
   FrameDataProvider,
@@ -244,13 +245,18 @@ const BOTTOM_ROW_PANELS = [
 ];
 
 // Stable left panels config — never changes
+// Stream Tree is pinned (always visible) rather than a tab -- per the UX_PARITY_MATRIX.md W0
+// wireframe spec, Tree and Inspectors are separate simultaneous regions, not one single-select
+// tab strip. The other four (Syntax/Selection/Unit HEX/YUV Diff) are genuinely interchangeable
+// "inspect the current selection" views and stay tabbed below it.
+const STREAM_PANEL = {
+  id: "stream",
+  title: "Stream",
+  component: StreamTreePanelWrapper,
+  icon: "symbol-tree",
+};
+
 const LEFT_PANELS = [
-  {
-    id: "stream",
-    title: "Stream",
-    component: StreamTreePanelWrapper,
-    icon: "symbol-tree",
-  },
   {
     id: "syntax",
     title: "Syntax",
@@ -703,6 +709,7 @@ function AppContent() {
   const mainContent =
     frames.length > 0 ? (
       <DockableLayout
+        pinnedLeftPanel={STREAM_PANEL}
         leftPanels={leftPanels}
         mainView={mainView}
         topPanels={topPanels}
@@ -712,6 +719,7 @@ function AppContent() {
 
   return (
     <SelectionProvider>
+      <FrameSyncBridge />
       <ErrorBoundary>
         <div className="app">
           {/* Custom TitleBar for Windows/Linux only */}

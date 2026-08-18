@@ -23,6 +23,7 @@ import { useFileState, useCurrentFrame } from "../contexts/StreamDataContext";
 import { useCompare } from "../contexts/CompareContext";
 import {
   closeStream,
+  getStreamInfo,
   openStream,
   selectFrame,
   showOpenDialog,
@@ -163,6 +164,27 @@ export function useAppFileOperations(
               toMessage(refreshErr),
             );
           }
+
+          // Drive the codec-aware mode registry (CodecBadge, F-key mode list, etc.) --
+          // `refreshFrames` above already indexes the stream and fetches this same info
+          // internally, but keeps it local to `FileStateContext`'s own `streamInfo` state
+          // rather than returning it, so it's fetched again here (cheap: stream is already
+          // indexed by this point) rather than threading a new return value through
+          // `refreshFrames`'s public `FrameInfo[]`-returning contract. Previously nothing ever
+          // called `onCodecChange` with a real codec (only ever with `null`, on close), so
+          // `activeCodec` stayed `null` for the app's entire lifetime and `CodecBadge` never
+          // rendered.
+          try {
+            const info = await getStreamInfo("A");
+            onCodecChange?.(
+              info.indexed && info.container ? info.container.codec : null,
+            );
+          } catch (codecErr) {
+            logger.error(
+              "Failed to fetch stream info for codec badge:",
+              codecErr,
+            );
+          }
         } else {
           onError(
             "Failed to Open File",
@@ -175,7 +197,14 @@ export function useAppFileOperations(
         onError("Failed to Open File", toMessage(err));
       }
     },
-    [refreshFrames, setFilePath, setCurrentFrameIndex, onError, onFileOpened],
+    [
+      refreshFrames,
+      setFilePath,
+      setCurrentFrameIndex,
+      onError,
+      onFileOpened,
+      onCodecChange,
+    ],
   );
 
   /**

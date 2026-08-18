@@ -178,12 +178,18 @@ vi.mock("@/components/StatusBar", () => ({
 
 vi.mock("@/components/panels", () => ({
   DockableLayout: ({
+    pinnedLeftPanel,
     leftPanels,
     mainView,
     topPanels,
     bottomRowPanels,
   }: any) => (
     <div className="dockable-layout" data-testid="dockable-layout">
+      {pinnedLeftPanel && (
+        <div className={`panel-${pinnedLeftPanel.id}`}>
+          {pinnedLeftPanel.component()}
+        </div>
+      )}
       {leftPanels?.map((panel: any) => (
         <div key={panel.id} className={`panel-${panel.id}`}>
           {panel.component()}

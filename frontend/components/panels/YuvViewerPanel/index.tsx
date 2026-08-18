@@ -468,7 +468,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onFrameChange={onFrameChange}
         />
 
-        <div className="yuv-toolbar-spacer"></div>
+        <div className="yuv-toolbar-divider"></div>
 
         <PlaybackControls
           isPlaying={isPlaying}
@@ -477,7 +477,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onSpeedChange={setPlaybackSpeed}
         />
 
-        <div className="yuv-toolbar-spacer"></div>
+        <div className="yuv-toolbar-divider"></div>
 
         <CodecBadge codec={activeCodec} />
 
@@ -493,6 +493,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onToggle={toggleOverlay}
         />
 
+        {/* Single growing spacer -- previously 3 independent `flex:1` spacers sat between every
+            group, so whenever a middle group rendered empty (e.g. OverlayToggleBar has nothing
+            for modes with no overlays, or CodecBadge before a file was ever opened -- see its own
+            fix note), the remaining spacers still split 100% of the leftover width evenly between
+            them, producing huge dead gaps between the few groups that *did* render. Pushing only
+            ZoomControls to the right with one spacer keeps everything else in a single left-
+            aligned cluster regardless of which optional groups are present. */}
         <div className="yuv-toolbar-spacer"></div>
 
         <ZoomControls

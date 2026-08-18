@@ -49,6 +49,17 @@
   flex: 1;
 }
 
+/* Thin separator between logical toolbar groups -- replaces what used to be additional `flex: 1`
+   spacers (see the JSX comment at the toolbar's single remaining spacer for why those produced
+   huge dead gaps whenever a middle group rendered empty). */
+.yuv-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background: var(--bitvue-border, #3c3c3c);
+  margin: 0 2px;
+}
+
 /* Toolbar buttons - Polished */
 .yuv-toolbar button {
   display: flex;
