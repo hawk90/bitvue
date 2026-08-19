@@ -277,6 +277,12 @@ function registerIpcHandlers(): void {
     },
   );
 
+  // PARITY_CHECKLIST.md CMP-04 -- distinct wire method name from bitvue:findFirstDiffFrame
+  // above (that one is the debug-YUV single-stream-vs-reference-file command).
+  ipcMain.handle("bitvue:findFirstDiffFrameAb", async () => {
+    return requireSidecar().request("find_first_diff_frame_ab");
+  });
+
   ipcMain.handle(
     "bitvue:getFrameAnalysis",
     async (_event, frameIndex: number) => {

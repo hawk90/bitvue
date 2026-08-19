@@ -50,8 +50,14 @@ function CompareWorkspace({
   onFrameChangeA,
   onFrameChangeB,
 }: CompareWorkspaceProps) {
-  const { workspace, setSyncMode, setManualOffset, getAlignedFrame } =
-    useCompare();
+  const {
+    workspace,
+    setSyncMode,
+    setManualOffset,
+    getAlignedFrame,
+    findFirstDiffFrame,
+    isScanningDiff,
+  } = useCompare();
 
   const [showDiff, setShowDiff] = useState(workspace?.diff_enabled ?? false);
   const [diffMode, setDiffMode] = useState<DiffMode>("abs");
@@ -59,6 +65,7 @@ function CompareWorkspace({
     bIdx: number | null;
     quality: AlignmentQuality | null;
   }>({ bIdx: null, quality: null });
+  const [diffScanStatus, setDiffScanStatus] = useState<string | null>(null);
 
   // Real aligned-B lookup for the current stream A frame (server-side, PTS-based) -- replaces
   // the old synchronous `workspace.alignment.frame_pairs.find(...)` scan.
@@ -102,6 +109,23 @@ function CompareWorkspace({
     },
     [onFrameChangeA, onFrameChangeB, workspace, getAlignedFrame],
   );
+
+  // PARITY_CHECKLIST.md CMP-04 -- scans, then jumps both players to the first real difference
+  // (same sync-aware jump handleFrameChangeA already does, so this respects the current sync
+  // mode instead of moving A without B).
+  const handleFindFirstDiff = useCallback(() => {
+    setDiffScanStatus(null);
+    findFirstDiffFrame().then(({ frameIndex, totalChecked }) => {
+      if (frameIndex === null) {
+        setDiffScanStatus(
+          `No differences found (${totalChecked} frames checked)`,
+        );
+        return;
+      }
+      setDiffScanStatus(null);
+      handleFrameChangeA(frameIndex);
+    });
+  }, [findFirstDiffFrame, handleFrameChangeA]);
 
   if (!workspace) {
     return null;
@@ -157,6 +181,20 @@ function CompareWorkspace({
               <option value="signed">Subtraction</option>
               <option value="abs">Temperature</option>
             </select>
+          )}
+          {workspace.diff_enabled && (
+            <button
+              type="button"
+              className="find-first-diff-button"
+              onClick={handleFindFirstDiff}
+              disabled={isScanningDiff}
+              title="Scan stream A for the first frame that genuinely differs from its aligned stream B frame"
+            >
+              {isScanningDiff ? "Scanning…" : "Find First Diff"}
+            </button>
+          )}
+          {diffScanStatus && (
+            <span className="find-first-diff-status">{diffScanStatus}</span>
           )}
         </div>
       </div>

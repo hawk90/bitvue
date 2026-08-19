@@ -17,6 +17,7 @@
 
 use bitvue_engine::{CompareWorkspace, Core, DiffHeatmapData, DiffMode, StreamId, SyncMode};
 use bitvue_protocol::{Request, Response, WireError, WireErrorCode};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::decode_bridge;
@@ -272,91 +273,176 @@ pub fn reset_offset(slot: &CompareSlot, request: &Request) -> Response {
     }
 }
 
-#[derive(serde::Deserialize)]
-pub struct GetDiffFrameParams {
-    stream_a_frame_idx: usize,
-    mode: DiffMode,
+/// Why [`resolve_diff_heatmap`] couldn't produce a heatmap for one frame -- shared between
+/// [`get_diff_frame`] (maps each variant to a wire error) and [`find_first_diff_frame`] (treats
+/// [`NoAlignedFrame`](DiffFrameError::NoAlignedFrame) as a skippable per-frame gap, everything
+/// else as a real scan-aborting failure -- see that function's doc).
+enum DiffFrameError {
+    DiffDisabled(String),
+    NoAlignedFrame,
+    ResolutionMismatch { a: (u32, u32), b: (u32, u32) },
+    Other(String),
+}
+
+impl DiffFrameError {
+    fn into_response(self, id: u32) -> Response {
+        match self {
+            DiffFrameError::DiffDisabled(reason) => failure(id, WireErrorCode::InvalidData, reason),
+            DiffFrameError::NoAlignedFrame => failure(
+                id,
+                WireErrorCode::FrameNotFound,
+                "no aligned stream B frame for this stream A frame",
+            ),
+            DiffFrameError::ResolutionMismatch { a, b } => failure(
+                id,
+                WireErrorCode::InvalidData,
+                format!(
+                    "diff frame requires an exact resolution match (A={}x{}, B={}x{}) -- small \
+                     tolerance-based resolution differences aren't supported by this pass",
+                    a.0, a.1, b.0, b.1
+                ),
+            ),
+            DiffFrameError::Other(message) => failure(id, WireErrorCode::FrameNotFound, message),
+        }
+    }
 }
 
 /// Resolves the aligned B frame for `stream_a_frame_idx`, fetches both streams' decoded luma
 /// planes (via the existing `decode_bridge::get_decoded_frame_yuv` path -- no new decode logic),
-/// and returns a real `DiffHeatmapData` (half-res, per `diff_heatmap.rs`'s existing spec). A
-/// structured JSON grid, same reasoning as `get_frame_analysis`/`get_diff_frame`'s sibling
-/// commands -- not raw pixel bytes, so no data-plane binary framing needed.
-pub fn get_diff_frame(core: &Core, slot: &CompareSlot, request: &Request) -> Response {
-    let params: GetDiffFrameParams = match serde_json::from_value(request.params.clone()) {
-        Ok(p) => p,
-        Err(err) => return failure(request.id, WireErrorCode::InvalidData, err.to_string()),
-    };
-
-    let workspace_check = with_workspace(slot, request.id, |workspace| {
-        if !workspace.is_diff_enabled() {
-            return Err(workspace
+/// and returns a real `DiffHeatmapData` (half-res, per `diff_heatmap.rs`'s existing spec).
+/// `is_diff_enabled()` only guards a *tolerance-based* "compatible" resolution check
+/// (`ResolutionInfo::is_compatible`, this module's doc) -- `DiffHeatmapData::from_luma_planes`
+/// asserts an EXACT `width * height` match on both planes, so a compatible-but-not-identical pair
+/// would panic there instead of returning a clean error; this guards the stricter exact-match
+/// requirement explicitly rather than letting that assert fire.
+fn resolve_diff_heatmap(
+    core: &Core,
+    workspace: &CompareWorkspace,
+    stream_a_frame_idx: usize,
+    mode: DiffMode,
+) -> Result<DiffHeatmapData, DiffFrameError> {
+    if !workspace.is_diff_enabled() {
+        return Err(DiffFrameError::DiffDisabled(
+            workspace
                 .disable_reason()
                 .unwrap_or("diff overlays disabled")
-                .to_string());
-        }
-        Ok(workspace.get_aligned_frame(params.stream_a_frame_idx))
-    });
-    let aligned = match workspace_check {
-        Ok(Ok(aligned)) => aligned,
-        Ok(Err(reason)) => return failure(request.id, WireErrorCode::InvalidData, reason),
-        Err(response) => return response,
-    };
-    let Some((stream_b_frame_idx, _quality)) = aligned else {
-        return failure(
-            request.id,
-            WireErrorCode::FrameNotFound,
-            format!(
-                "no aligned stream B frame for stream A frame {}",
-                params.stream_a_frame_idx
-            ),
-        );
+                .to_string(),
+        ));
+    }
+    let Some((stream_b_frame_idx, _quality)) = workspace.get_aligned_frame(stream_a_frame_idx)
+    else {
+        return Err(DiffFrameError::NoAlignedFrame);
     };
 
-    let (width, height) = match stream_dimensions(core, StreamId::A) {
-        Ok(dims) => dims,
-        Err(message) => return failure(request.id, WireErrorCode::NotFound, message),
-    };
-    let resolution_b = match stream_dimensions(core, StreamId::B) {
-        Ok(dims) => dims,
-        Err(message) => return failure(request.id, WireErrorCode::NotFound, message),
-    };
-    // `is_diff_enabled()` above only guards a *tolerance-based* "compatible" resolution check
-    // (`ResolutionInfo::is_compatible`, `compare.rs`'s doc) -- `DiffHeatmapData::from_luma_planes`
-    // asserts an EXACT `width * height` match on both planes, so a compatible-but-not-identical
-    // pair would panic there instead of returning a clean error. Guard the stricter exact-match
-    // requirement explicitly rather than letting that assert fire.
+    let (width, height) = stream_dimensions(core, StreamId::A).map_err(DiffFrameError::Other)?;
+    let resolution_b = stream_dimensions(core, StreamId::B).map_err(DiffFrameError::Other)?;
     if (width, height) != resolution_b {
-        return failure(
-            request.id,
-            WireErrorCode::InvalidData,
-            format!(
-                "diff frame requires an exact resolution match (A={width}x{height}, \
-                 B={}x{}) -- small tolerance-based resolution differences aren't supported by \
-                 this pass",
-                resolution_b.0, resolution_b.1
-            ),
-        );
+        return Err(DiffFrameError::ResolutionMismatch {
+            a: (width, height),
+            b: resolution_b,
+        });
     }
 
-    let luma_a = match decoded_luma(core, StreamId::A, params.stream_a_frame_idx) {
-        Ok(bytes) => bytes,
-        Err(message) => return failure(request.id, WireErrorCode::FrameNotFound, message),
-    };
-    let luma_b = match decoded_luma(core, StreamId::B, stream_b_frame_idx) {
-        Ok(bytes) => bytes,
-        Err(message) => return failure(request.id, WireErrorCode::FrameNotFound, message),
-    };
+    let luma_a =
+        decoded_luma(core, StreamId::A, stream_a_frame_idx).map_err(DiffFrameError::Other)?;
+    let luma_b =
+        decoded_luma(core, StreamId::B, stream_b_frame_idx).map_err(DiffFrameError::Other)?;
     debug_assert_eq!(
         luma_a.len(),
         luma_b.len(),
         "exact resolution match was just checked above"
     );
 
-    let heatmap = DiffHeatmapData::from_luma_planes(&luma_a, &luma_b, width, height, params.mode);
+    Ok(DiffHeatmapData::from_luma_planes(
+        &luma_a, &luma_b, width, height, mode,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+pub struct GetDiffFrameParams {
+    stream_a_frame_idx: usize,
+    mode: DiffMode,
+}
+
+/// A structured JSON grid, same reasoning as `get_frame_analysis`'s sibling commands -- not raw
+/// pixel bytes, so no data-plane binary framing needed.
+pub fn get_diff_frame(core: &Core, slot: &CompareSlot, request: &Request) -> Response {
+    let params: GetDiffFrameParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => return failure(request.id, WireErrorCode::InvalidData, err.to_string()),
+    };
+
+    match with_workspace(slot, request.id, |workspace| {
+        resolve_diff_heatmap(core, workspace, params.stream_a_frame_idx, params.mode)
+    }) {
+        Ok(Ok(heatmap)) => Response::success(
+            request.id,
+            serde_json::to_value(&heatmap).expect("DiffHeatmapData always serializes"),
+        ),
+        Ok(Err(err)) => err.into_response(request.id),
+        Err(response) => response,
+    }
+}
+
+/// PARITY_CHECKLIST.md CMP-04 -- scans stream A frame by frame (0..`total_frames`) for the first
+/// one whose real diff heatmap (`resolve_diff_heatmap`, `DiffMode::Abs`) has ANY non-zero value.
+/// `Abs` mode's per-heatmap-cell average is `sum(|lumaA - lumaB|) / 4` over each 2x2 source pixel
+/// block (`DiffHeatmapData::from_luma_planes`'s doc) -- since every term is non-negative, that
+/// average is exactly zero if and only if all 4 source pixels are identical, so "heatmap max > 0"
+/// is an exact (not approximate) test for "at least one pixel differs somewhere in this frame",
+/// reusing the existing half-res heatmap rather than a separate full-res byte-equality pass.
+///
+/// A per-frame `NoAlignedFrame` gap (`DiffFrameError`'s doc) is skipped, not fatal -- expected
+/// near stream boundaries when PTS alignment has real gaps. Every other error (diff disabled,
+/// resolution mismatch, decode failure) is a workspace-wide or otherwise real condition that
+/// won't get better by continuing the scan, so it aborts immediately as a failure response
+/// instead of silently skipping up to `total_frames` frames' worth of the same error.
+///
+/// This is a real per-frame-loopy scan (up to `total_frames` full decodes on each stream), same
+/// cancellation-cost class as `index_stream`/`get_thumbnails`/debug-YUV's `find_first_diff_frame`
+/// -- cooperatively checks `cancel_flag` once per frame (see `main.rs`'s "Concurrency model" doc).
+pub fn find_first_diff_frame(
+    core: &Core,
+    slot: &CompareSlot,
+    request: &Request,
+    cancel_flag: &AtomicBool,
+) -> Response {
+    let total_frames = match with_workspace(slot, request.id, |workspace| workspace.total_frames())
+    {
+        Ok(n) => n,
+        Err(response) => return response,
+    };
+
+    let mut checked = 0usize;
+    for stream_a_frame_idx in 0..total_frames {
+        if cancel_flag.load(Ordering::SeqCst) {
+            return failure(request.id, WireErrorCode::Cancelled, "cancelled");
+        }
+
+        let result = with_workspace(slot, request.id, |workspace| {
+            resolve_diff_heatmap(core, workspace, stream_a_frame_idx, DiffMode::Abs)
+        });
+        let heatmap = match result {
+            Ok(Ok(heatmap)) => heatmap,
+            Ok(Err(DiffFrameError::NoAlignedFrame)) => continue,
+            Ok(Err(err)) => return err.into_response(request.id),
+            Err(response) => return response,
+        };
+        checked += 1;
+
+        if heatmap.max_value > 0.0 {
+            return Response::success(
+                request.id,
+                serde_json::json!({
+                    "frame_index": stream_a_frame_idx,
+                    "total_checked": checked,
+                }),
+            );
+        }
+    }
+
     Response::success(
         request.id,
-        serde_json::to_value(&heatmap).expect("DiffHeatmapData always serializes"),
+        serde_json::json!({ "frame_index": null, "total_checked": checked }),
     )
 }

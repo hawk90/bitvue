@@ -426,6 +426,14 @@ fn compute_frames(
         "get_diff_frame" => {
             return single_control_frame(compare::get_diff_frame(core, compare_state, request))
         }
+        "find_first_diff_frame_ab" => {
+            return single_control_frame(compare::find_first_diff_frame(
+                core,
+                compare_state,
+                request,
+                cancel_flag,
+            ))
+        }
         // Test-only escape hatch (not reachable outside `cfg(test)`, so zero cost/risk in a real
         // build): lets a test drive a real handler panic through the *actual* dispatch path
         // rather than calling `panic!()` inline, so `compute_frames_with_panic_guard`'s
@@ -2688,8 +2696,12 @@ mod tests {
     /// Real fixture, not a fake file -- these commands need actual IVF/AV1 bytes to produce
     /// anything, unlike `open_stream`'s tests above which only need *a* file to exist.
     fn open_real_fixture(core: &Core, stream: &str) {
+        open_fixture_bytes(core, stream, AV1_IVF_FIXTURE);
+    }
+
+    fn open_fixture_bytes(core: &Core, stream: &str, bytes: &[u8]) {
         let mut file = tempfile::NamedTempFile::new().unwrap();
-        file.write_all(AV1_IVF_FIXTURE).unwrap();
+        file.write_all(bytes).unwrap();
         let request = Request {
             id: 100,
             method: "open_stream".to_string(),
@@ -4062,5 +4074,144 @@ mod tests {
         );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_identical_streams_finds_no_diff() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 540,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = compare::find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 541,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(false),
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert!(
+            result["frame_index"].is_null(),
+            "identical A/B streams must report no diff frame: {result:?}"
+        );
+        assert_eq!(result["total_checked"], 250);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_genuinely_misaligned_content_finds_a_real_diff() {
+        // Same fixture opened as both A and B (no second same-resolution-but-different-content
+        // AV1 IVF fixture exists in this repo, and this project's own convention is to not add
+        // third-party test data just to manufacture one -- see project memory on that). Instead,
+        // `set_manual_offset` deliberately misaligns A against B: since both streams share
+        // identical PTS values 1:1, offsetting by +5 pairs stream A frame N against stream B
+        // frame N+5 -- genuinely different content (this is a real, changing test-pattern video,
+        // not a static image), so this exercises the real "found a diff" path without needing a
+        // second fixture.
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 543,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        let offset_response = compare::set_manual_offset(
+            &compare_state,
+            &Request {
+                id: 544,
+                method: "set_manual_offset".to_string(),
+                params: serde_json::json!({"offset": 5}),
+            },
+        );
+        assert!(
+            offset_response.ok,
+            "expected ok response, got {offset_response:?}"
+        );
+
+        let response = compare::find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 545,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(false),
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(
+            result["frame_index"], 0,
+            "a +5 manual offset against a real changing video must be caught immediately, not \
+             silently reported as no diff: {result:?}"
+        );
+        assert_eq!(result["total_checked"], 1);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_without_a_workspace_is_not_found() {
+        let core = Core::new();
+        let compare_state = fresh_compare_state();
+        let response = compare::find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 545,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(false),
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_stops_early_when_already_cancelled() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 546,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = compare::find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 547,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(true),
+        );
+        assert!(
+            !response.ok,
+            "expected a failure response, got {response:?}"
+        );
+        assert_eq!(response.error.unwrap().code, WireErrorCode::Cancelled);
     }
 }

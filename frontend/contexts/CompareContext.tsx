@@ -26,6 +26,7 @@ import {
   setSyncMode as bridgeSetSyncMode,
   setManualOffset as bridgeSetManualOffset,
   resetOffset as bridgeResetOffset,
+  findFirstDiffFrameAb,
   getFramesChunk,
   type CompareWorkspaceSummary,
 } from "../services/electronBridgeService";
@@ -60,6 +61,10 @@ interface CompareContextType {
   isLoading: boolean;
   error: string | null;
 
+  // CMP-04: true while findFirstDiffFrame's frame-by-frame scan is in flight (can take real
+  // time on a long stream -- separate from `isLoading`, which is workspace-creation-scoped).
+  isScanningDiff: boolean;
+
   // Stream B's frame metadata (stream A's already lives in FileStateContext/FrameDataContext)
   framesB: FrameInfo[];
 
@@ -78,6 +83,12 @@ interface CompareContextType {
   getAlignedFrame: (
     streamAIdx: number,
   ) => Promise<{ bIdx: number | null; quality: AlignmentQuality | null }>;
+  /** PARITY_CHECKLIST.md CMP-04. Returns the first stream A frame index with a real pixel
+   *  difference against its aligned B frame, or `null` if none was found. */
+  findFirstDiffFrame: () => Promise<{
+    frameIndex: number | null;
+    totalChecked: number;
+  }>;
 }
 
 const CompareContext = createContext<CompareContextType | null>(null);
@@ -87,6 +98,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isScanningDiff, setIsScanningDiff] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [framesB, setFramesB] = useState<FrameInfo[]>([]);
   const [currentFrameA, setCurrentFrameA] = useState(0);
@@ -184,11 +196,30 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const findFirstDiffFrame = useCallback(async () => {
+    setIsScanningDiff(true);
+    setError(null);
+    try {
+      const result = await findFirstDiffFrameAb();
+      return {
+        frameIndex: result.frame_index,
+        totalChecked: result.total_checked,
+      };
+    } catch (err) {
+      setError(toMessage(err));
+      console.error("Failed to find first diff frame:", err);
+      return { frameIndex: null, totalChecked: 0 };
+    } finally {
+      setIsScanningDiff(false);
+    }
+  }, []);
+
   // Memoize context value to prevent unnecessary re-renders in consumers
   const value = useMemo<CompareContextType>(
     () => ({
       workspace,
       isLoading,
+      isScanningDiff,
       error,
       framesB,
       currentFrameA,
@@ -201,10 +232,12 @@ export function CompareProvider({ children }: { children: ReactNode }) {
       setManualOffset,
       resetOffset,
       getAlignedFrame,
+      findFirstDiffFrame,
     }),
     [
       workspace,
       isLoading,
+      isScanningDiff,
       error,
       framesB,
       currentFrameA,
@@ -217,6 +250,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
       setManualOffset,
       resetOffset,
       getAlignedFrame,
+      findFirstDiffFrame,
     ],
   );
 

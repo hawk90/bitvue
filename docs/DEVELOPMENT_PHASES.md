@@ -2516,8 +2516,8 @@ VQ-*(Probe 전용)를 분리된 하위 카탈로그로 유지한다 — 문서 �
       Subtraction·Temperature(2026-08-19 실동작, diff_heatmap 엔진 재사용) 전환 버튼
 - [ ] RD-curve 패널에 BD-rate 계산 추가 — BD-rate 자체는 CLI로 완료(CMP-05), UI 패널은 미착수
 - [ ] VMAF 통합: `libvmaf-sys` 연결 (이미 optional feature로 존재 — spec §1.2), pooled score + per-frame score + ADM2/VIF/motion2 서브스코어
-- [ ] "Find First Difference" (두 스트림 간) — `get_aligned_frame`/`get_diff_frame`(2026-08-19) 위에
-      프레임 루프+임계값 체크만 추가하면 되는 작은 후속 작업으로 스코핑됨
+- [x] "Find First Difference" (두 스트림 간) (2026-08-19) — `find_first_diff_frame_ab` 신규,
+      `get_diff_frame`의 `resolve_diff_heatmap` 재사용. 상세는 `PARITY_CHECKLIST.md` CMP-04 참조
 - [ ] CLI: `bitvue compare --stream-a --stream-b --vmaf` 서브커맨드
 - [ ] ROI 기반 메트릭 (선택 영역 한정 PSNR/SSIM/VMAF) — `COMPETITOR_FEATURE_MATRIX.md` §3/§6 "Metrics-in-ROI" (신규 2026-07-31)
 - [ ] 추가 메트릭 (APSNR/DELTA/MSE/MSAD/VQM/NQI/EPSNR/VIF) — SE 소스, 우선순위 낮음, `COMPETITOR_FEATURE_MATRIX.md` §3 (신규 2026-07-31)

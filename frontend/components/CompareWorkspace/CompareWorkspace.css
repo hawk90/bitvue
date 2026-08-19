@@ -61,6 +61,26 @@
   font-size: 12px;
 }
 
+.find-first-diff-button {
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.find-first-diff-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.find-first-diff-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* Warning */
 .compare-warning {
   display: flex;

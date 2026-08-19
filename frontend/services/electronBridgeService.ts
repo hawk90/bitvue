@@ -502,6 +502,7 @@ declare global {
         streamAFrameIdx: number,
         mode: DiffMode,
       ) => Promise<DiffHeatmapResult>;
+      findFirstDiffFrameAb: () => Promise<FindFirstDiffFrameResult>;
       getDebugYuvFrame: (
         frameIndex: number,
         mode: DebugYuvDisplayMode,
@@ -751,6 +752,14 @@ export async function getDiffFrame(
   mode: DiffMode,
 ): Promise<DiffHeatmapResult> {
   return requireBridge().getDiffFrame(streamAFrameIdx, mode);
+}
+
+/** PARITY_CHECKLIST.md CMP-04 -- scans stream A frame by frame for the first real pixel
+ *  difference against its aligned stream B frame. Reuses `FindFirstDiffFrameResult`'s shape
+ *  (`{ frame_index, total_checked }`) from the debug-YUV single-stream sibling command -- same
+ *  contract, different comparison target (stream B instead of an on-disk reference file). */
+export async function findFirstDiffFrameAb(): Promise<FindFirstDiffFrameResult> {
+  return requireBridge().findFirstDiffFrameAb();
 }
 
 /** Decoded/reference/diff/amplified pixel data for one display-index frame -- see
