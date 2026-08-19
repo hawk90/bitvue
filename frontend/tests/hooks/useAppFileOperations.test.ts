@@ -6,8 +6,9 @@
  * arguments and manage local state correctly, without needing a real Electron process (that's
  * covered separately by
  * `bitvue-desktop/electron/main.ts`'s selftest, which drives the real renderer/preload/sidecar
- * chain). `handleOpenDependentFile` (compare workspaces) is untouched by this migration and not
- * covered here.
+ * chain). `handleOpenDependentFile` (compare workspaces, docs/DEVELOPMENT_PHASES.md Phase 7.5)
+ * was rewired for real 2026-08-19 -- `handleCloseFile` also calls `closeWorkspace()` now so an
+ * active compare workspace doesn't keep rendering against a just-closed stream A.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -19,6 +20,7 @@ const mockRefreshFrames = vi.fn().mockResolvedValue([]);
 const mockClearData = vi.fn();
 const mockSetCurrentFrameIndex = vi.fn();
 const mockCreateWorkspace = vi.fn();
+const mockCloseWorkspace = vi.fn();
 
 vi.mock("@/contexts/StreamDataContext", () => ({
   useFileState: () => ({
@@ -33,7 +35,10 @@ vi.mock("@/contexts/StreamDataContext", () => ({
 }));
 
 vi.mock("@/contexts/CompareContext", () => ({
-  useCompare: () => ({ createWorkspace: mockCreateWorkspace }),
+  useCompare: () => ({
+    createWorkspace: mockCreateWorkspace,
+    closeWorkspace: mockCloseWorkspace,
+  }),
 }));
 
 const { openStream, closeStream, selectFrame, showOpenDialog } = vi.hoisted(
@@ -267,6 +272,7 @@ describe("useAppFileOperations", () => {
       expect(mockSetFilePath).toHaveBeenCalledWith(null);
       expect(mockSetCurrentFrameIndex).toHaveBeenCalledWith(0);
       expect(mockClearData).toHaveBeenCalled();
+      expect(mockCloseWorkspace).toHaveBeenCalled();
       expect(onCodecChange).toHaveBeenCalledWith(null);
     });
 

@@ -2,26 +2,26 @@
  * Diff Overlay Styles
  */
 
+/* A third side-by-side column next to Stream A/B (`.compare-content`'s other flex children,
+ * `CompareWorkspace.css`), not a floating modal -- this used to be `position: absolute; top/left:
+ * 50%`, a centered overlay that covered both stream panels underneath it (found 2026-08-19 via a
+ * real screenshot: it looked like Stream A and B were rendering different content, when they were
+ * actually identical and just obscured in the middle by this box). Never caught before because
+ * this whole component was dead/unmounted code until this session. */
 .diff-overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: var(--shadow-lg);
-  z-index: 100;
-  min-width: 400px;
-  max-width: 90vw;
+  border-left: 1px solid var(--border-color);
 }
 
 .diff-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--border-color);
   font-size: 13px;
@@ -77,6 +77,8 @@
 }
 
 .diff-canvas {
+  flex: 1;
+  min-height: 0;
   padding: 16px;
   background: var(--bg-tertiary);
 }

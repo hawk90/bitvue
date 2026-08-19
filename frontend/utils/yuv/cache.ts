@@ -36,11 +36,51 @@ interface YUVCacheKey {
   uvLength: number;
 }
 
+/** Bytes sampled (evenly strided) from the Y plane to make the cache key content-sensitive --
+ *  `hashPlaneSample`'s doc. U/V get a quarter as many samples (they're smaller planes and less
+ *  visually significant for collision purposes, luma dominates perceived difference). */
+const Y_CONTENT_SAMPLE_COUNT = 256;
+const CHROMA_CONTENT_SAMPLE_COUNT = 64;
+
+/**
+ * Folds an evenly-strided sample of `data`'s bytes into `hash` (same FNV-1a-style fold as the
+ * rest of `createYUVCacheKey`). Sampling instead of hashing every byte keeps a cache HIT cheap
+ * (bounded cost, not O(frame size)) while still being sensitive to real content differences --
+ * two genuinely different video frames essentially never produce identical strided samples,
+ * unlike the two matching-dimension/format frames this is built to distinguish.
+ */
+function hashPlaneSample(
+  data: Uint8Array,
+  sampleCount: number,
+  hash: number,
+): number {
+  if (data.length === 0) {
+    return hash;
+  }
+  const stride = Math.max(1, Math.floor(data.length / sampleCount));
+  for (let i = 0; i < data.length; i += stride) {
+    hash = Math.imul(hash, 0x01000193) ^ data[i];
+  }
+  return hash;
+}
+
 /**
  * Create a cache key from YUV frame data and colorspace
  *
  * Uses a numeric hash function instead of JSON.stringify for better performance.
  * The key is a 64-bit integer computed from the frame properties.
+ *
+ * **Must include real pixel content, not just dimensions/format** -- a real cross-frame
+ * collision bug (found 2026-08-19 while investigating a black-screen report in the new dual-
+ * stream compare view) had this key derived ONLY from width/height/chromaSubsampling/colorspace/
+ * plane lengths. Since this cache is a single global singleton (`yuvCache` below) shared by
+ * every `YUVRenderer` instance in the app, ANY two frames sharing those properties -- which is
+ * the *common* case, not an edge case: every frame within one video shares them, and two
+ * different streams at the same resolution/format (exactly what dual-stream compare usually is)
+ * do too -- silently rendered whichever content got cached *first*, regardless of which frame
+ * was actually requested. Confirmed via a direct unit test (two 4x4 frames, same dims/format,
+ * different fill values -- the second call returned the first's cached pixels verbatim) before
+ * this fix; see `tests/utils/yuv/cache.test.ts`'s regression test for the same scenario.
  */
 function createYUVCacheKey(frame: YUVFrame, colorspace: Colorspace): string {
   const key: YUVCacheKey = {
@@ -71,6 +111,11 @@ function createYUVCacheKey(frame: YUVFrame, colorspace: Colorspace): string {
   hash = Math.imul(hash, 0x01000193) ^ key.height;
   hash = Math.imul(hash, 0x01000193) ^ key.yLength;
   hash = Math.imul(hash, 0x01000193) ^ key.uvLength;
+
+  // Content sample -- the actual fix, see this function's own doc.
+  hash = hashPlaneSample(frame.y, Y_CONTENT_SAMPLE_COUNT, hash);
+  hash = hashPlaneSample(frame.u, CHROMA_CONTENT_SAMPLE_COUNT, hash);
+  hash = hashPlaneSample(frame.v, CHROMA_CONTENT_SAMPLE_COUNT, hash);
 
   // Use composite key to prevent hash collisions between frames with different dimensions
   // but an identical hash (e.g. two frames where width/height/yLength happen to produce
