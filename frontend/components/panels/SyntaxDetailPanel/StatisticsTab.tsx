@@ -413,6 +413,21 @@ export const StatisticsTab = memo(function StatisticsTab({
                 </span>
               </>
             )}
+            {currentFrame.coding_order !== undefined && (
+              <>
+                <span className="stats-label">Coding Order:</span>
+                <span className="stats-value">{currentFrame.coding_order}</span>
+              </>
+            )}
+            {currentFrame.ref_frames !== undefined &&
+              currentFrame.ref_frames.length > 0 && (
+                <>
+                  <span className="stats-label">References:</span>
+                  <span className="stats-value">
+                    {currentFrame.ref_frames.length}
+                  </span>
+                </>
+              )}
           </div>
         </div>
       )}

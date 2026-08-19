@@ -34,8 +34,11 @@ describe("KeyboardShortcutsDialog", () => {
   it("should render frame navigation shortcuts", () => {
     render(<KeyboardShortcutsDialog isOpen={true} onClose={vi.fn()} />);
 
-    expect(screen.getByText(/Jump to next keyframe/)).toBeInTheDocument();
-    expect(screen.getByText(/Jump to previous keyframe/)).toBeInTheDocument();
+    // "Next I-frame"/"Previous I-frame" each appear twice (two real, distinct key bindings
+    // share the same description -- see KEYBOARD_SHORTCUTS), so use queryAllByText rather than
+    // getByText.
+    expect(screen.queryAllByText(/Next I-frame/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/Previous I-frame/).length).toBeGreaterThan(0);
   });
 
   it("should render frame type navigation", () => {
