@@ -1,9 +1,11 @@
 //! `export_evidence_bundle` command backing -- writes a diagnostic evidence bundle (manifest,
-//! env/version info, selection state, order type, backend fingerprint, warnings) to disk for one
-//! of the 4 documented entry points (MainMenu, BottomBar, ContextMenu; CompareWorkspace's is
-//! unreachable until that UI is un-excluded -- see `docs/DEVELOPMENT_PHASES.md`'s Phase 7.6
-//! section). Feeds `frontend/utils/menu/creators/exportMenu.ts`'s already-defined but previously
-//! dead `menu-export-evidence` item.
+//! env/version info, selection state, order type, backend fingerprint, warnings) to disk for all
+//! 4 documented entry points (MainMenu, BottomBar's stand-in context menus, ContextMenu, and
+//! CompareWorkspace's toolbar "Export Diff Bundle" button, wired 2026-08-19 once that UI stopped
+//! being dead/excluded -- see `docs/DEVELOPMENT_PHASES.md`'s Phase 7.5/7.6 sections). Feeds
+//! `frontend/utils/menu/creators/exportMenu.ts`'s already-defined but previously dead
+//! `menu-export-evidence` item, plus `frontend/hooks/useExportEvidenceBundle.ts`'s per-caller
+//! `workspace`/`mode` metadata (e.g. CompareWorkspace passes `"compare"`/`"diff"`).
 //!
 //! `bitvue_engine::export_evidence_bundle` (`export::evidence`) already writes real files -- this
 //! is orchestration (sourcing `EvidenceBundleExportRequest`'s fields from `Core`/`StreamState`

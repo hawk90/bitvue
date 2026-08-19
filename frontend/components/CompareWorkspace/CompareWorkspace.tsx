@@ -32,6 +32,7 @@ import DiffOverlay from "./DiffOverlay";
 import SplitView, { type SplitOrientation } from "./SplitView";
 import { useCompare } from "../../contexts/CompareContext";
 import type { DiffMode } from "../../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../../hooks/useExportEvidenceBundle";
 import "./CompareWorkspace.css";
 
 /** PARITY_CHECKLIST.md CMP-02 -- "Side-by-side" (two independent panels, optional diff column)
@@ -75,6 +76,17 @@ function CompareWorkspace({
     quality: AlignmentQuality | null;
   }>({ bIdx: null, quality: null });
   const [diffScanStatus, setDiffScanStatus] = useState<string | null>(null);
+
+  // Toolbar "Export Diff Bundle" entrypoint (docs/UX_PARITY_MATRIX.md §7, PARITY_CHECKLIST.md
+  // EVB-01's 4th entrypoint) -- same `Export.EvidenceBundle` command and bridge call as the
+  // Player/HexView/Timeline/DiagnosticsPanel context-menu entries, just with "compare" workspace
+  // metadata so the exported bundle_manifest.json records it came from here, and "diff" mode when
+  // the diff overlay is actually on screen (matches what's visible in the accompanying
+  // screenshot).
+  const exportEvidence = useExportEvidenceBundle({
+    workspace: "compare",
+    mode: showDiff ? "diff" : "normal",
+  });
 
   // Real aligned-B lookup for the current stream A frame (server-side, PTS-based) -- replaces
   // the old synchronous `workspace.alignment.frame_pairs.find(...)` scan.
@@ -255,6 +267,14 @@ function CompareWorkspace({
           {diffScanStatus && (
             <span className="find-first-diff-status">{diffScanStatus}</span>
           )}
+          <button
+            type="button"
+            className="export-diff-bundle-button"
+            onClick={() => void exportEvidence()}
+            title="Export a diagnostic evidence bundle (manifest, env/version info, selection state, screenshot) for this A/B comparison"
+          >
+            Export Diff Bundle
+          </button>
         </div>
       </div>
 

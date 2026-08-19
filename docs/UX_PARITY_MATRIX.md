@@ -177,7 +177,8 @@ the source) — treat per-panel rows in §3 above as the fuller target once buil
 ## 7. Evidence bundle export contract (from `evidence_bundle_diff_contracts.json` + `export_entrypoints.json`)
 
 Previously flagged as a gap ("no equivalent in Bitvue — closest is `bitvue export --json`"). The harness defines
-a concrete one-click bundle contract; still a real gap (not built), but now spec'd instead of vague.
+a concrete one-click bundle contract; real and complete as of 2026-08-19 (`PARITY_CHECKLIST.md` EVB-01 `[x]`,
+all 4 entrypoints below wired to the same `Export.EvidenceBundle` command).
 
 **Bundle must include:** `bundle_manifest.json`, `env.json`, `version.json`, `selection_state.json`,
 `order_type.json`, `backend_fingerprint.json`, `plugin_versions.json`, `warnings.json`, `screenshots/*`.

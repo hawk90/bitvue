@@ -2691,6 +2691,51 @@ starter 슬라이스만 통과 — 전체 통과는 위 미완료 항목들에 �
 **예상 소요**: 원래 추정 중급 2~3주 → 실측은 반나절(사전 존재하던 엔진 로직 덕분, "배선만" 패턴). 남은 잔여
 항목(스크린샷 캡처, ABI 정책, diff 계약, 나머지 4스코프+2진입점 연결)은 여전히 별도 작업.
 
+**CompareWorkspace 툴바 4번째 진입점 완성 (2026-08-19)**: `PARITY_CHECKLIST.md` EVB-01의 마지막 잔여 항목("3/4
+entrypoints")을 마무리 — Phase 7.5가 그새 CompareWorkspace를 죽은 트리에서 실제 동작 UI로 되살려놔서(위 Phase
+7.5 로그), 이전에 이 항목을 막고 있던 진짜 블로커(마운트 안 된 UI)가 이미 사라져 있었다. 백엔드 조사부터
+시작: `export::context_menu`의 5-스코프 `ContextMenuScope`(Player/HexView/StreamView/Timeline/
+DiagnosticsPanel)가 CompareWorkspace에 맞는 6번째 스코프가 필요한지 확인했으나, 이 enum은 우클릭 메뉴 항목
+가드 카탈로그 전용이고 `export_evidence_bundle`의 `workspace`/`mode` 파라미터와는 애초에 무관한 자유 문자열
+(`EvidenceBundleManifest.workspace: String`)이었다 — `UX_PARITY_MATRIX.md` §7의 4-entrypoint 표도 4개 전부
+동일한 `Export.EvidenceBundle` 커맨드로 명시돼 있어 신규 백엔드 스코프 설계 없이 순수 프론트엔드 배선만으로
+충분함을 확인(가짜로 안 맞는 스코프를 우겨넣지 않고, 실제로 필요 없다는 걸 코드로 검증한 뒤 진행).
+
+`useExportEvidenceBundle.ts`가 `workspace: "player"`를 하드코딩하고 있어 모든 호출자가 같은 값을 쓰던 걸
+`{workspace?, mode?}` 옵션으로 확장(기존 4개 호출자는 인자 없이 호출해 동작 불변). `CompareWorkspace.tsx`가
+`workspace: "compare"`/`mode: showDiff ? "diff" : "normal"`로 호출하는 "Export Diff Bundle" 버튼을
+`.compare-actions`(Show Diff/Find First Diff와 같은 위치)에 추가 — `CompareControls.tsx`는 sync/offset/
+alignment만 다루고 diff 상태(`showDiff`/`diffMode`)를 모르므로, 상태를 억지로 끌어올리는 대신 실제로 diff
+상태를 이미 갖고 있는 `CompareWorkspace.tsx` 쪽에 배치(작업 지시에서 제안한 위치와 다른 판단, 근거는 코드
+구조).
+
+실제 Electron 앱으로 종단 검증(코드 읽기만으로 끝내지 말라는 프로젝트 규칙): `test_data/av1_test.ivf`를 A/B
+양쪽에 연 뒤(`BITVUE_ELECTRON_SCREENSHOT_OPEN_DEPENDENT=1`) 새 버튼을 실제로 클릭(`BITVUE_ELECTRON_SCREENSHOT_
+CLICK_SELECTOR=".export-diff-bundle-button"`)해 `test_data/bitvue_evidence_<timestamp>/`가 실제로 디스크에
+쓰이는 것, `bundle_manifest.json`에 `workspace: "compare"`/`mode: "diff"`가 실제로 기록되는 것, 진짜 스크린샷
+(2560x1536 PNG, 실제 윈도우 크기와 일치)이 `screenshots/screenshot_0000.png`로 들어가는 것까지 확인(검증 후
+디렉터리 삭제, 커밋 안 함). 이 과정에서 이 세션과 무관한 진짜 자동화 갭 발견+수정: 4개 진입점 모두가 쓰는
+`window.alert(...)`(성공/실패 알림)가 진짜 동기 블로킹 네이티브 다이얼로그라 `BITVUE_ELECTRON_SCREENSHOT_
+CLICK_SELECTOR`로 이 버튼을 클릭하면 렌더러 JS 스레드가 멈춰 스크린샷 하네스가 영원히 걸림(다른 3개 진입점은
+우클릭 메뉴라서 지금까지 이 CLICK_SELECTOR 경로로 우연히 검증된 적이 없었음) — `runScreenshotAndExit`
+(`bitvue-desktop/electron/main.ts`)이 클릭 시퀀스 전에 `window.alert`를 콘솔 로그로 스텁하도록 수정(스크린샷
+모드 한정, 프로덕션 동작 불변). 부수로 `executeJavaScript`에 대입식(`window.alert = ...`)을 그대로 넘기면
+완료값이 함수 자체가 돼 "An object could not be cloned" 에러로 실패하는 것도 발견 — `void 0`으로 완료값을
+undefined로 만들어 해결.
+
+검증 중 무관한 기존 실패 하나 재확인: `BITVUE_ELECTRON_SELFTEST=1` 전체 라운드에서 `get_residual_analysis`가
+빈 `block_residuals`를 반환(이번 세션 변경 파일 5개 중 어느 것도 residual 분석 경로를 건드리지 않았고,
+`cargo test -p bitvue-engine`의 `get_residual_analysis_end_to_end_returns_real_blocks` 단위테스트는 별도로
+통과 — E2E 시퀀스 안에서만 재현되는 기존 이슈로 보이며, 이번 작업 범위 밖이라 원인 조사·수정 없이 있는
+그대로 기록만 함). `evidenceBundleScreenshotOk` 등 나머지 셀프테스트 체크는 전부 그대로 통과.
+
+검증: `cargo build --workspace`/`cargo test -p bitvue-sidecar`(131+2 통과)/`cargo test -p bitvue-engine`
+(export 관련 112 통과)/`cargo clippy -p bitvue-sidecar --tests --bins`(기존 vendor abseil 경고 1개만)/
+`cargo fmt --all -- --check` 전부 클린. `npm run typecheck` 클린. `npx vitest run`은 기존 베이스라인과 동일
+(36실패/9파일, `git stash`로 직접 재확인 — Phase 7.6 로그의 같은 베이스라인과 정확히 일치, codicon 폰트
+렌더링 플레이키니스류로 이번 변경과 무관). `PARITY_CHECKLIST.md` EVB-01을 `[x]`(4/4 entrypoints)로,
+`UX_PARITY_MATRIX.md` §7의 "still a real gap (not built)" 낡은 문구도 갱신.
+
 ---
 
 ## Phase 8: Syntax 패널 완성 (코덱별 탭 상세화) 🟡

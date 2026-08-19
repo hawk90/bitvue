@@ -1309,6 +1309,21 @@ async function runScreenshotAndExit(
     await win.webContents.executeJavaScript(
       "new Promise((r) => setTimeout(r, 50))",
     ); // let preload settle
+    // `window.alert(...)` (e.g. useExportEvidenceBundle's success/failure notice) is a real
+    // synchronous, blocking native dialog -- it freezes the renderer's JS thread until dismissed,
+    // which nothing in this harness can do, so any `BITVUE_ELECTRON_SCREENSHOT_CLICK_SELECTOR`
+    // that lands on a button triggering one would hang the whole run forever. Stub it to a
+    // console log instead, same idea as the dialog bypasses this function already relies on
+    // (`BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH` for open/save dialogs) -- screenshot mode is
+    // automation, not a human who could click "OK".
+    await win.webContents.executeJavaScript(
+      // The trailing `void 0` matters: an assignment expression's completion value is the
+      // function itself, and `executeJavaScript` tries to structured-clone whatever the script
+      // evaluates to back across IPC to the main process -- a function isn't cloneable, so
+      // without this the call rejects with "An object could not be cloned" before the stub is
+      // even installed.
+      'window.alert = (msg) => console.log("[screenshot] window.alert suppressed:", msg); void 0;',
+    );
     await win.webContents.executeJavaScript(
       'window.dispatchEvent(new CustomEvent("menu-open-bitstream"))',
     );
