@@ -2333,6 +2333,27 @@ inter_mode/compound_mode의 진짜 시간축 모션필드 서브시스템(이 �
   "원시 placeholder"급 갭이 닫힘 -- 남은 건 compound extended-candidate 폴백(보류 문서화)과
   compound temporal이 프로덕션 경로에선 여전히 미사용(single-ref와 동일 기존 구조 상속,
   시퀀셜 테스트 하네스만 사용)뿐.
+- **compound extended-candidate 폴백 부분 구현(2026-08-19)**: 위 두 후보 중 "compound temporal
+  프로덕션 배선"은 재조사 결과 예상보다 훨씬 큼을 확인 후 보류 유지 -- `parse_all_coding_units`
+  (유일한 실제 진입점)는 항상 `temporal: None`으로 호출되고, 실제로 `set_temporal_context`를
+  호출하는 건 프레임 간 `MotionFieldState`를 수동으로 이어가는 시퀀셜 테스트 하네스뿐. 프로덕션
+  배선은 이 크레이트의 "상태 없는 단일 프레임 파싱" 아키텍처 자체를 바꿔야 해서(순차 디코드 +
+  프레임 간 모션필드 상태 공유 + 캐시 전략 재설계) 사용자 확인 후 보류, 대신 진짜 작은 쪽인
+  extended-candidate 폴백만 진행. rav1d `add_compound_extended_candidate`(`refmvs.c:769-`)를
+  부분 포팅 -- `cnt<2`일 때 top-row/left-col 이웃 중 자기 ref 페어 전체가 아니라 `ref0`/
+  `ref1` 중 하나만 일치하는 것도 개별 컴포넌트 기준으로 최대 2개씩 재활용
+  (`fill_compound_extended_candidates`, `accumulate_extended_match`). **rav1d보다 좁은 범위**:
+  rav1d는 완전히 다른 ref를 가진 이웃도 `ref_frame_sign_bias`(spec 5.9.14)로 부호 반전해
+  재활용하는 "diff" 티어가 있는데, 이 sign_bias 자체가 cross-frame `RefOrderHint` 상태에서
+  파생되는 값이라(이 크레이트가 안 갖고 있음, temporal MV와 동일한 근본 원인) 이 diff 티어는
+  생략 -- same-ref 매칭에서 바로 global-motion 폴백(기존 `predict_global_mv`와 동일하게 0
+  근사, `gm_params` 실값 미보존)으로 건너뜀. 비트스트림 위치엔 영향 없는 순수 값-계산이라
+  desync 위험 없음. 기존 합성 유닛테스트 2개가 "cnt<2면 폴백 없이 그대로"를 검증하고
+  있었는데 이제 실제로 폴백이 발동해 cnt가 2가 되므로 stale해짐 -- 실제 값을 디버그 출력으로
+  직접 확인 후(추측 대신) 새 실제 동작에 맞게 재작성(cross-component 재구성/중복회피 로직까지
+  검증). 기존 `real_fixture_compound_drl_wiring_parses_cleanly`(전체 fixture 0 파싱에러 검증)가
+  이 새 코드도 자동으로 커버. `--lib` 423/423, `--workspace --lib --tests` 141/141 스위트,
+  clippy/fmt 클린.
 
 ---
 

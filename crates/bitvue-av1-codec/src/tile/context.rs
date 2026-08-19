@@ -453,8 +453,8 @@ impl SpatialRefContext {
     /// This position's compound candidate, if its stored ref PAIR exactly matches `(ref0, ref1)`
     /// -- rav1d `add_spatial_candidate`'s compound branch (`refmvs.c:73`, `b->ref.pair ==
     /// ref.pair`): unlike the single-ref lookup above, there is no partial/either-slot fallback
-    /// here at the spatial-scan stage (that only happens in the separate, deliberately-omitted
-    /// `add_compound_extended_candidate` fallback -- `compound_mv_stack`'s doc).
+    /// here at the spatial-scan stage (that only happens in the separate `cnt<2` fallback --
+    /// `fill_compound_extended_candidates`'s doc).
     fn compound_candidate_mv(
         cell: &SpatialRefCell,
         ref0: i8,
@@ -864,15 +864,9 @@ impl SpatialRefContext {
     /// Real weighted compound DRL candidate stack (spec 7.10.2's `RefMvStack`, compound pairs --
     /// `single_ref_mv_stack`'s doc for the shared spatial/temporal weight structure this mirrors).
     /// Candidates are joint `[MotionVector; 2]` pairs from neighbors whose stored ref PAIR exactly
-    /// matches `(ref0, ref1)` (`compound_candidate_mv`'s doc) -- real spec's separate, deliberately
-    /// **not implemented** `add_compound_extended_candidate` fallback (rav1d `refmvs.c:239-`, only
-    /// triggered when `cnt < 2` after this scan) would additionally pad from non-self-reference
-    /// neighbors and finally from the global-motion predictor; omitting it means a compound CU with
-    /// fewer than 2 exact-pair-matching neighbors gets `CompoundMvStackEntry::default()` (zero MV)
-    /// for the missing slot(s) instead of that real fallback value -- doesn't affect bitstream
-    /// position (pure value computation, spec's own fallback reads no extra bits either), matches
-    /// this crate's existing "GLOBALMV predictor approximated as zero" precedent
-    /// (`crate::tile::mv_prediction::MvPredictorContext::predict_global_mv`'s doc).
+    /// matches `(ref0, ref1)` (`compound_candidate_mv`'s doc); if fewer than 2 such exact-pair
+    /// matches are found, `fill_compound_extended_candidates` pads the rest -- see that function's
+    /// doc for the (partial, sign-bias-less) extended-candidate fallback this runs.
     pub fn compound_mv_stack(
         &self,
         x4: u32,
@@ -1018,7 +1012,136 @@ impl SpatialRefContext {
         // `single_ref_mv_stack`'s doc.
         stack[..cnt].sort_by_key(|c| -c.weight);
 
+        if cnt < 2 {
+            self.fill_compound_extended_candidates(
+                x4, y4, w4, h4, have_top, have_left, ref0, ref1, &mut stack, &mut cnt,
+            );
+        }
+
         (stack, cnt)
+    }
+
+    /// Partial port of rav1d's `add_compound_extended_candidate` (`refmvs.c:769-`) -- the cnt<2
+    /// fallback `compound_mv_stack`'s doc describes. Scans the same top-row/left-col neighbor
+    /// footprint as the main scan above, but (unlike `compound_candidate_mv`, which requires an
+    /// EXACT ref-pair match) accepts any neighbor whose ref matches just ONE of our two refs
+    /// individually -- e.g. a single-ref neighbor referencing only `ref0` still contributes its
+    /// one MV to component 0's fill list even with `ref1` empty. Each of the two missing stack
+    /// components is filled independently (up to 2 matches each), matching real spec/rav1d.
+    ///
+    /// **Narrower than rav1d**: rav1d also recycles a genuinely non-matching-ref neighbor's MV as
+    /// a sign-flipped last-resort "diff" source (`ref_frame_sign_bias`, spec 5.9.14) before
+    /// falling back to global motion. `ref_frame_sign_bias` is *derived* from cross-frame
+    /// `RefOrderHint` state (`sign(relative_dist(RefOrderHint[ref], OrderHint))`) that this
+    /// stateless single-frame parser doesn't carry -- same cross-frame-state gap as
+    /// `crate::tile::motion_field`'s doc, not something a per-block fallback can source on its
+    /// own. This omits that "diff" tier entirely and goes straight from same-ref matches to the
+    /// global-motion fallback, which -- like `crate::tile::mv_prediction::MvPredictorContext::
+    /// predict_global_mv`'s doc -- is approximated as zero (`gm_params` values are parsed for
+    /// bit-position only, never stored by this crate). Pure value computation either way: doesn't
+    /// affect bitstream position, only how close an already-under-populated (cnt<2, itself a rare
+    /// edge case) stack slot's displayed/DRL-context-feeding MV is to the real decoder's.
+    #[allow(clippy::too_many_arguments)]
+    fn fill_compound_extended_candidates(
+        &self,
+        x4: u32,
+        y4: u32,
+        w4: u32,
+        h4: u32,
+        have_top: bool,
+        have_left: bool,
+        ref0: i8,
+        ref1: i8,
+        stack: &mut [CompoundMvStackEntry; 8],
+        cnt: &mut usize,
+    ) {
+        let sz4 = w4.min(h4);
+        let mut same = [[crate::tile::coding_unit::MotionVector::zero(); 2]; 2];
+        let mut same_cnt = [0usize; 2];
+
+        if have_top {
+            let mut x = 0u32;
+            while x < sz4 {
+                let Some(cell) = self.cell(x4 + x, y4 - 1) else {
+                    break;
+                };
+                Self::accumulate_extended_match(cell, ref0, ref1, &mut same, &mut same_cnt);
+                x += (cell.width_4x4 as u32).max(1);
+            }
+        }
+        if have_left {
+            let mut y = 0u32;
+            while y < sz4 {
+                let Some(cell) = self.cell(x4 - 1, y4 + y) else {
+                    break;
+                };
+                Self::accumulate_extended_match(cell, ref0, ref1, &mut same, &mut same_cnt);
+                y += (cell.height_4x4 as u32).max(1);
+            }
+        }
+
+        // Global-motion fallback (approximated as zero -- this function's own doc) for any
+        // component that still has fewer than 2 same-ref matches.
+        let ext0 = [same[0][0], same[1][0]];
+        let ext1 = [same[0][1], same[1][1]];
+
+        match *cnt {
+            0 => {
+                stack[0] = CompoundMvStackEntry {
+                    mv: ext0,
+                    weight: 2,
+                };
+                stack[1] = CompoundMvStackEntry {
+                    mv: ext1,
+                    weight: 2,
+                };
+                *cnt = 2;
+            }
+            1 => {
+                // If the first extended candidate duplicates the already-real stack[0], use the
+                // second extended candidate instead (rav1d: "if the first extended was the same
+                // as the non-extended one, then replace it with the second extended one").
+                let second = if stack[0].mv == ext0 { ext1 } else { ext0 };
+                stack[1] = CompoundMvStackEntry {
+                    mv: second,
+                    weight: 2,
+                };
+                *cnt = 2;
+            }
+            _ => {}
+        }
+    }
+
+    /// One neighbor cell's contribution to `fill_compound_extended_candidates`'s per-component
+    /// same-ref fill lists -- see that function's doc.
+    fn accumulate_extended_match(
+        cell: &SpatialRefCell,
+        ref0: i8,
+        ref1: i8,
+        same: &mut [[crate::tile::coding_unit::MotionVector; 2]; 2],
+        same_cnt: &mut [usize; 2],
+    ) {
+        if !cell.valid {
+            return;
+        }
+        if cell.ref0 == ref0 && same_cnt[0] < 2 {
+            same[0][same_cnt[0]] = cell.mv0;
+            same_cnt[0] += 1;
+        }
+        if cell.ref0 == ref1 && same_cnt[1] < 2 {
+            same[1][same_cnt[1]] = cell.mv0;
+            same_cnt[1] += 1;
+        }
+        if cell.ref1 >= 0 {
+            if cell.ref1 == ref0 && same_cnt[0] < 2 {
+                same[0][same_cnt[0]] = cell.mv1;
+                same_cnt[0] += 1;
+            }
+            if cell.ref1 == ref1 && same_cnt[1] < 2 {
+                same[1][same_cnt[1]] = cell.mv1;
+                same_cnt[1] += 1;
+            }
+        }
     }
 }
 
@@ -3028,20 +3151,31 @@ mod tests {
         let mv_a = MotionVector::new(4, 8);
         let mv_b = MotionVector::new(-2, 6);
         // A neighbor with the SWAPPED pair (BWDREF, LAST) at the query's (LAST, BWDREF) position
-        // must not contribute at all -- real spec's exact `RefMvsRefPair` equality (no partial
-        // single-slot fallback at the spatial-scan stage, `compound_candidate_mv`'s doc).
+        // must not contribute to the EXACT-pair main scan -- real spec's exact `RefMvsRefPair`
+        // equality, no partial single-slot fallback at that stage (`compound_candidate_mv`'s
+        // doc). It's still cnt<2 afterward though, so `fill_compound_extended_candidates`'s
+        // per-component fallback picks the swapped neighbor back up: its `ref1`(=LAST) matches
+        // our `ref0`, contributing `mv_b` to component 0, and its `ref0`(=BWDREF) matches our
+        // `ref1`, contributing `mv_a` to component 1 -- a cross-component reconstruction from a
+        // single neighbor whose full pair never matched.
         ctx.set_block(0, 0, 4, 4, 4, 0, false, mv_a, mv_b);
         let (stack, cnt) = ctx.compound_mv_stack(0, 1, 4, 4, 0, 4, false);
-        assert_eq!(cnt, 0, "swapped ref pair must not match");
-        assert_eq!(stack[0], CompoundMvStackEntry::default());
+        assert_eq!(cnt, 2);
+        assert_eq!(stack[0].mv, [mv_b, mv_a]);
+        assert_eq!(stack[1].mv, [MotionVector::zero(), MotionVector::zero()]);
 
-        // The exact pair DOES contribute, with both MVs preserved as a joint pair (not
-        // independently re-derived).
+        // The exact pair DOES contribute at the main-scan stage, with both MVs preserved as a
+        // joint pair (not independently re-derived) -- `stack2[0]` is real. `cnt2` still ends up 2
+        // (not 1): the same cnt<2 fallback runs afterward, finds this exact neighbor's
+        // per-component matches equal `stack2[0]` exactly, and (per the "avoid duplicating the
+        // real entry" rule) falls through to its second extended candidate, which has no further
+        // same-ref matches left to draw on and so is the zero-MV global-motion approximation.
         let mut ctx2 = SpatialRefContext::new(16, 16);
         ctx2.set_block(0, 0, 4, 4, 0, 4, false, mv_a, mv_b);
         let (stack2, cnt2) = ctx2.compound_mv_stack(0, 1, 4, 4, 0, 4, false);
-        assert_eq!(cnt2, 1);
+        assert_eq!(cnt2, 2);
         assert_eq!(stack2[0].mv, [mv_a, mv_b]);
+        assert_eq!(stack2[1].mv, [MotionVector::zero(), MotionVector::zero()]);
     }
 
     #[test]
@@ -3054,11 +3188,25 @@ mod tests {
         ctx.set_block(0, 0, 1, 1, 0, 4, false, mv_pair[0], mv_pair[1]);
         ctx.set_block(1, 0, 1, 1, 0, 4, false, mv_pair[0], mv_pair[1]);
         let (stack, cnt) = ctx.compound_mv_stack(0, 1, 2, 4, 0, 4, false);
-        assert_eq!(
-            cnt, 1,
-            "identical pairs must merge into a single stack entry"
-        );
+        // The real dedup happens at the main-scan stage: both 1x1 neighbors merge into ONE
+        // weighted entry (`stack[0]`, weight = 640 base-bump + 4(top-right corner rescan of the
+        // same 1x1 cell) = 644) instead of two separate stack slots -- this is what this test
+        // actually exercises. `cnt` itself is 2, not 1, because the same cnt<2 fallback that
+        // `test_compound_mv_stack_requires_exact_pair_match` covers runs afterward regardless: it
+        // finds the identical pair again via both neighbors' per-component matches and pads a
+        // second stack slot with that same value (weight 2, the fallback's fixed weight -- clearly
+        // distinguishable from a real match's `>= 640` "nearest" tier).
+        assert_eq!(cnt, 2);
         assert_eq!(stack[0].mv, mv_pair);
+        assert!(
+            stack[0].weight >= 640,
+            "real match must be in the nearest tier"
+        );
+        assert_eq!(stack[1].mv, mv_pair);
+        assert_eq!(
+            stack[1].weight, 2,
+            "fallback-padded slot uses the fixed weight"
+        );
     }
 
     #[test]
