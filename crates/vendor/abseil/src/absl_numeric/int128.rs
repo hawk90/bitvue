@@ -205,10 +205,9 @@ impl int128 {
     /// ```
     #[inline]
     pub const fn checked_div(&self, other: Self) -> Result<Self, DivisionError> {
-        if other.0 == 0 {
-            Err(DivisionError::DivisionByZero)
-        } else {
-            Ok(Self(self.0 / other.0))
+        match self.0.checked_div(other.0) {
+            Some(result) => Ok(Self(result)),
+            None => Err(DivisionError::DivisionByZero),
         }
     }
 
@@ -331,10 +330,9 @@ impl uint128 {
     /// ```
     #[inline]
     pub const fn checked_div(&self, other: Self) -> Result<Self, DivisionError> {
-        if other.0 == 0 {
-            Err(DivisionError::DivisionByZero)
-        } else {
-            Ok(Self(self.0 / other.0))
+        match self.0.checked_div(other.0) {
+            Some(result) => Ok(Self(result)),
+            None => Err(DivisionError::DivisionByZero),
         }
     }
 
