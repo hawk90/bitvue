@@ -9,6 +9,7 @@
 
 import { Component, ReactNode } from "react";
 import { logger } from "../utils/logger";
+import "./ErrorBoundary.css";
 
 interface ErrorBoundaryProps {
   children: ReactNode;

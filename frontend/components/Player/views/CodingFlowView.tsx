@@ -10,6 +10,7 @@
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 import { getCodingFlowAnalysis } from "../../../services/electronBridgeService";
+import "./CodingFlowView.css";
 
 type CodingStage =
   | "input"

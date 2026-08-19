@@ -11,6 +11,7 @@
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 import { getAv1Features } from "../../../services/electronBridgeService";
+import "./AV1FeaturesView.css";
 
 interface AV1FeaturesViewProps {
   frame: FrameInfo | null;

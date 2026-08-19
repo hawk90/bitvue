@@ -11,6 +11,7 @@
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 import { getResidualAnalysis } from "../../../services/electronBridgeService";
+import "./ResidualsView.css";
 
 interface ResidualsViewProps {
   frame: FrameInfo | null;

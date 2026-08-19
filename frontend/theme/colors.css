@@ -345,6 +345,20 @@
   --bitvue-input-hover-bg: var(--bg-input-hover);
   --bitvue-badge-bg: var(--accent-primary-bg);
   --bitvue-badge-fg: var(--text-link);
+
+  /* Legacy aliases used only by the Player analysis views' CSS (CodingFlowView/
+     DeblockingView/ResidualsView/AV1FeaturesView) and ErrorBoundary.css. Those five
+     stylesheets were never imported by their components, so nothing ever resolved these
+     names and the views rendered fully unstyled; adding the imports without these
+     definitions would leave every color/background here invalid-at-computed-value-time. */
+  --bitvue-fg-primary: var(--text-primary);
+  --bitvue-fg-secondary: var(--text-secondary);
+  --bitvue-fg-tertiary: var(--text-tertiary);
+  --bitvue-bg-primary: var(--bg-app);
+  --bitvue-bg-tertiary: var(--bg-panel);
+  --bitvue-accent-dim: var(--accent-primary-bg);
+  --bg-primary: var(--bg-app);
+  --error-bg: var(--color-error-bg);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════

@@ -11,6 +11,7 @@
 import { memo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 import { getDeblockingAnalysis } from "../../../services/electronBridgeService";
+import "./DeblockingView.css";
 
 interface DeblockingViewProps {
   frame: FrameInfo | null;
