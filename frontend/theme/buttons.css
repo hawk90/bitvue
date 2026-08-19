@@ -34,47 +34,19 @@ button {
   overflow: hidden;
 }
 
-/* Button Ripple Effect */
-.btn::before,
-button::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 15%);
-  transform: translate(-50%, -50%);
-  transition:
-    width 0.4s ease,
-    height 0.4s ease;
-  pointer-events: none;
-}
-
-.btn:active::before,
-button:active::before {
-  width: 40px;
-  height: 40px;
-}
-
-/* Primary Button */
+/* Primary Button — flat solid fill, no gradient/glow/ripple (VS Code buttons never use those) */
 .btn-primary {
-  background: var(--gradient-primary);
+  background: var(--accent-primary);
   color: var(--text-bright);
   border-color: transparent;
-  box-shadow: var(--shadow-md), var(--shadow-glow-sm);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--gradient-primary-hover);
-  box-shadow: var(--shadow-lg), var(--shadow-glow-md);
-  transform: translateY(-1px);
+  background: var(--accent-primary-hover);
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: var(--shadow-sm), var(--shadow-glow-sm);
+  background: var(--accent-primary);
 }
 
 /* Secondary Button */
@@ -87,11 +59,10 @@ button:active::before {
 .btn-secondary:hover:not(:disabled) {
   background: var(--bg-button-hover);
   border-color: var(--border-light);
-  transform: translateY(-1px);
 }
 
 .btn-secondary:active:not(:disabled) {
-  transform: translateY(0);
+  background: var(--bg-button-active);
 }
 
 /* Ghost Button */
@@ -121,11 +92,10 @@ button:active::before {
 
 .btn-icon:hover:not(:disabled) {
   background: var(--bg-button);
-  transform: scale(1.05);
 }
 
 .btn-icon:active:not(:disabled) {
-  transform: scale(0.95);
+  background: var(--bg-button-active);
 }
 
 /* Small Button */
@@ -168,7 +138,6 @@ button.active {
   background: var(--accent-primary-bg-hover) !important;
   border-color: var(--accent-primary-border) !important;
   color: var(--accent-primary-light) !important;
-  box-shadow: var(--shadow-glow-sm);
 }
 
 /* Focus State */

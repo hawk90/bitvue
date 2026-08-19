@@ -15,7 +15,7 @@
 
 .export-dialog {
   background: var(--bitvue-bg-primary);
-  border-radius: 12px;
+  border-radius: 6px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
   width: 90%;
   max-width: 500px;
@@ -215,9 +215,7 @@
 }
 
 .export-dialog-button-primary:hover:not(:disabled) {
-  background: var(--bitvue-accent-dark);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px var(--bitvue-accent-dim);
+  background: var(--accent-primary-hover);
 }
 
 /* Dark theme adjustments */
