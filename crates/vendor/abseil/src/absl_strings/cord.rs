@@ -392,11 +392,9 @@ impl<'a> Iterator for CharsIter<'a> {
             }
 
             // Move to next chunk
-            match self.chunks.next() {
-                Some(chunk) => {
-                    self.current = Some(chunk.chars());
-                }
-                None => return None,
+            {
+                let chunk = self.chunks.next()?;
+                self.current = Some(chunk.chars());
             }
         }
     }
@@ -428,11 +426,9 @@ impl<'a> Iterator for BytesIter<'a> {
                 }
             }
 
-            match self.chunks.next() {
-                Some(chunk) => {
-                    self.current = Some(chunk.as_bytes().iter());
-                }
-                None => return None,
+            {
+                let chunk = self.chunks.next()?;
+                self.current = Some(chunk.as_bytes().iter());
             }
         }
     }
