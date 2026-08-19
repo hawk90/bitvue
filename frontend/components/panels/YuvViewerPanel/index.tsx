@@ -616,6 +616,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         zoom={zoom}
         isPlaying={isPlaying}
         playbackSpeed={playbackSpeed}
+        availableModes={availableModes}
       />
     </div>
   );
