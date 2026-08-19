@@ -535,13 +535,35 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             height={frameImage?.height ?? 1080}
           />
         </div>
-      ) : currentMode === "av1-features" ? (
+      ) : currentMode === "av1-features" ||
+        currentMode === "cdef-filter" ||
+        currentMode === "loop-restoration" ||
+        currentMode === "film-grain" ||
+        currentMode === "super-res" ? (
         <div className="yuv-analysis-view-container">
+          {/* AV1FeaturesView already has real, complete CDEF/LoopRestoration/FilmGrain/SuperRes
+              sections (its show* props gate each independently) -- the individual per-feature
+              F-keys (cdef-filter/loop-restoration/film-grain/super-res) used to fall through to
+              the plain VideoCanvas below with no analysis rendered at all, despite the data
+              already being fetched (see useAv1Features's mode gate above). "av1-features" (the
+              catch-all, reachable via the info-overlay menu, not an F-key) still shows all four. */}
           <AV1FeaturesView
             frame={currentFrame}
             width={frameImage?.width ?? 1920}
             height={frameImage?.height ?? 1080}
-            subMode={currentMode}
+            showCdef={
+              currentMode === "av1-features" || currentMode === "cdef-filter"
+            }
+            showLoopRestoration={
+              currentMode === "av1-features" ||
+              currentMode === "loop-restoration"
+            }
+            showFilmGrain={
+              currentMode === "av1-features" || currentMode === "film-grain"
+            }
+            showSuperRes={
+              currentMode === "av1-features" || currentMode === "super-res"
+            }
           />
         </div>
       ) : (

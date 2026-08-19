@@ -16,9 +16,6 @@ interface AV1FeaturesViewProps {
   frame: FrameInfo | null;
   width: number;
   height: number;
-  /** Specific sub-mode from the codec mode registry (optional). When set,
-   *  only that feature panel is shown; when absent all panels are shown. */
-  subMode?: string;
   showCdef?: boolean;
   showLoopRestoration?: boolean;
   showFilmGrain?: boolean;
@@ -362,37 +359,52 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
         </div>
       )}
 
-      {/* Legend */}
-      <div className="av1-features-legend">
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "linear-gradient(to right, red, yellow)" }}
-          ></div>
-          <span>CDEF Direction/Strength</span>
+      {/* Legend -- scoped to the sections actually visible. Used to render unconditionally
+          (CDEF + Loop Restoration swatches even in Film-Grain-only or SuperRes-only mode, where
+          neither of those sections is shown at all), found while wiring the individual AV1
+          per-feature F-keys (cdef-filter/loop-restoration/film-grain/super-res) to this component
+          for the first time -- previously only reachable via the "av1-features" catch-all, where
+          showing every swatch happened to always be correct. */}
+      {(showCdef || showLoopRestoration) && (
+        <div className="av1-features-legend">
+          {showCdef && (
+            <div className="av1-features-legend-item">
+              <div
+                className="av1-features-legend-box"
+                style={{
+                  background: "linear-gradient(to right, red, yellow)",
+                }}
+              ></div>
+              <span>CDEF Direction/Strength</span>
+            </div>
+          )}
+          {showLoopRestoration && (
+            <>
+              <div className="av1-features-legend-item">
+                <div
+                  className="av1-features-legend-box"
+                  style={{ background: "rgba(255, 100, 100, 0.6)" }}
+                ></div>
+                <span>Wiener Filter</span>
+              </div>
+              <div className="av1-features-legend-item">
+                <div
+                  className="av1-features-legend-box"
+                  style={{ background: "rgba(100, 255, 100, 0.6)" }}
+                ></div>
+                <span>SgrProj Filter</span>
+              </div>
+              <div className="av1-features-legend-item">
+                <div
+                  className="av1-features-legend-box"
+                  style={{ background: "rgba(128, 128, 128, 0.3)" }}
+                ></div>
+                <span>No Filter</span>
+              </div>
+            </>
+          )}
         </div>
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "rgba(255, 100, 100, 0.6)" }}
-          ></div>
-          <span>Wiener Filter</span>
-        </div>
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "rgba(100, 255, 100, 0.6)" }}
-          ></div>
-          <span>SgrProj Filter</span>
-        </div>
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "rgba(128, 128, 128, 0.3)" }}
-          ></div>
-          <span>No Filter</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 });
