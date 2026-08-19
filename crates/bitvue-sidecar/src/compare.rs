@@ -446,3 +446,395 @@ pub fn find_first_diff_frame(
         serde_json::json!({ "frame_index": null, "total_checked": checked }),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{
+        fresh_compare_state, open_and_index_real_fixture_as_both_streams, open_real_fixture,
+    };
+
+    #[test]
+    fn create_compare_workspace_end_to_end_builds_a_real_workspace() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+
+        let response = create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 501,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert!(result["total_frames"].as_u64().unwrap() > 0);
+        assert_eq!(
+            result["diff_enabled"], true,
+            "identical-resolution streams must have diff overlays enabled: {result:?}"
+        );
+        assert!(result["disable_reason"].is_null());
+        assert_eq!(
+            result["resolution_info"]["is_compatible"], true,
+            "identical streams must report resolution-compatible: {result:?}"
+        );
+        assert_eq!(result["resolution_info"]["is_exact_match"], true);
+        assert_eq!(result["resolution_info"]["mismatch_percentage"], 0.0);
+        assert_eq!(
+            result["alignment"]["method"], "PtsExact",
+            "identical streams' PTS values must align exactly: {result:?}"
+        );
+        assert_eq!(result["alignment"]["gap_count"], 0);
+        assert!(result["alignment"]["total_pairs"].as_u64().unwrap() > 0);
+        assert!(compare_state.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn create_compare_workspace_without_indexing_is_not_found() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        open_real_fixture(&core, "B");
+        // Deliberately no index_stream calls -- build_frame_index_map requires indexed units.
+        let compare_state = fresh_compare_state();
+
+        let response = create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 502,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+        assert!(compare_state.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn get_aligned_frame_end_to_end_returns_a_real_exact_pair() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 510,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = get_aligned_frame(
+            &compare_state,
+            &Request {
+                id: 511,
+                method: "get_aligned_frame".to_string(),
+                params: serde_json::json!({"stream_a_frame_idx": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(
+            result["stream_b_frame_idx"], 0,
+            "identical streams' frame 0 must align to frame 0: {result:?}"
+        );
+        assert_eq!(result["quality"], "Exact");
+    }
+
+    #[test]
+    fn get_aligned_frame_without_a_workspace_is_not_found() {
+        let compare_state = fresh_compare_state();
+        let response = get_aligned_frame(
+            &compare_state,
+            &Request {
+                id: 512,
+                method: "get_aligned_frame".to_string(),
+                params: serde_json::json!({"stream_a_frame_idx": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    #[test]
+    fn set_sync_mode_and_manual_offset_and_reset_offset_round_trip() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 520,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = set_sync_mode(
+            &compare_state,
+            &Request {
+                id: 521,
+                method: "set_sync_mode".to_string(),
+                params: serde_json::json!({"mode": "Playhead"}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        assert_eq!(response.result.unwrap()["sync_mode"], "Playhead");
+        assert_eq!(
+            compare_state.lock().unwrap().as_ref().unwrap().sync_mode(),
+            bitvue_engine::SyncMode::Playhead
+        );
+
+        let response = set_manual_offset(
+            &compare_state,
+            &Request {
+                id: 522,
+                method: "set_manual_offset".to_string(),
+                params: serde_json::json!({"offset": 5}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        assert_eq!(response.result.unwrap()["manual_offset"], 5);
+        assert_eq!(
+            compare_state
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .manual_offset(),
+            5
+        );
+
+        let response = reset_offset(
+            &compare_state,
+            &Request {
+                id: 523,
+                method: "reset_offset".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        assert_eq!(response.result.unwrap()["manual_offset"], 0);
+        assert_eq!(
+            compare_state
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .manual_offset(),
+            0
+        );
+    }
+
+    #[test]
+    fn get_diff_frame_identical_streams_is_an_all_zero_heatmap() {
+        // A real, non-degenerate check of the actual de-stride + diff math -- if
+        // `destride_luma`'s row-pitch handling were wrong (the exact "stride metadata pollution"
+        // bug class this module's doc warns about), diffing a stream against ITSELF would NOT
+        // come back all-zero (misaligned rows would show spurious diffs), so this genuinely
+        // exercises the risky part, not just "did it return 200 OK".
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 530,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        for mode in ["abs", "signed"] {
+            let response = get_diff_frame(
+                &core,
+                &compare_state,
+                &Request {
+                    id: 531,
+                    method: "get_diff_frame".to_string(),
+                    params: serde_json::json!({"stream_a_frame_idx": 0, "mode": mode}),
+                },
+            );
+            assert!(
+                response.ok,
+                "expected ok response for mode {mode}, got {response:?}"
+            );
+            let result = response.result.unwrap();
+            assert!(result["heatmap_width"].as_u64().unwrap() > 0);
+            assert!(result["heatmap_height"].as_u64().unwrap() > 0);
+            assert_eq!(
+                result["min_value"], 0.0,
+                "identical streams (mode {mode}) must have zero min diff: {result:?}"
+            );
+            assert_eq!(
+                result["max_value"], 0.0,
+                "identical streams (mode {mode}) must have zero max diff: {result:?}"
+            );
+            let values = result["values"].as_array().unwrap();
+            assert!(values.iter().all(|v| v.as_f64().unwrap() == 0.0));
+        }
+    }
+
+    #[test]
+    fn get_diff_frame_without_a_workspace_is_not_found() {
+        let core = Core::new();
+        let compare_state = fresh_compare_state();
+        let response = get_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 532,
+                method: "get_diff_frame".to_string(),
+                params: serde_json::json!({"stream_a_frame_idx": 0, "mode": "abs"}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_identical_streams_finds_no_diff() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 540,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 541,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(false),
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert!(
+            result["frame_index"].is_null(),
+            "identical A/B streams must report no diff frame: {result:?}"
+        );
+        assert_eq!(result["total_checked"], 250);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_genuinely_misaligned_content_finds_a_real_diff() {
+        // Same fixture opened as both A and B (no second same-resolution-but-different-content
+        // AV1 IVF fixture exists in this repo, and this project's own convention is to not add
+        // third-party test data just to manufacture one -- see project memory on that). Instead,
+        // `set_manual_offset` deliberately misaligns A against B: since both streams share
+        // identical PTS values 1:1, offsetting by +5 pairs stream A frame N against stream B
+        // frame N+5 -- genuinely different content (this is a real, changing test-pattern video,
+        // not a static image), so this exercises the real "found a diff" path without needing a
+        // second fixture.
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 543,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        let offset_response = set_manual_offset(
+            &compare_state,
+            &Request {
+                id: 544,
+                method: "set_manual_offset".to_string(),
+                params: serde_json::json!({"offset": 5}),
+            },
+        );
+        assert!(
+            offset_response.ok,
+            "expected ok response, got {offset_response:?}"
+        );
+
+        let response = find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 545,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(false),
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(
+            result["frame_index"], 0,
+            "a +5 manual offset against a real changing video must be caught immediately, not \
+             silently reported as no diff: {result:?}"
+        );
+        assert_eq!(result["total_checked"], 1);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_without_a_workspace_is_not_found() {
+        let core = Core::new();
+        let compare_state = fresh_compare_state();
+        let response = find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 545,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(false),
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    #[test]
+    fn find_first_diff_frame_ab_stops_early_when_already_cancelled() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 546,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = find_first_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 547,
+                method: "find_first_diff_frame_ab".to_string(),
+                params: serde_json::json!({}),
+            },
+            &AtomicBool::new(true),
+        );
+        assert!(
+            !response.ok,
+            "expected a failure response, got {response:?}"
+        );
+        assert_eq!(response.error.unwrap().code, WireErrorCode::Cancelled);
+    }
+}

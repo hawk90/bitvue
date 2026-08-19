@@ -183,9 +183,85 @@ pub fn get_coding_flow_analysis(data: &[u8], frame_index: usize) -> Result<Value
     }))
 }
 
+#[derive(serde::Deserialize)]
+struct GetCodingFlowAnalysisParams {
+    frame_index: usize,
+}
+
+/// Encoder/decoder pipeline stage completion + real codec features for one frame of stream A --
+/// see this module's doc. Control-only, same reasoning as
+/// `frame_analysis::get_frame_analysis_command`.
+pub fn get_coding_flow_analysis_command(
+    core: &bitvue_engine::Core,
+    request: &bitvue_protocol::Request,
+) -> bitvue_protocol::Response {
+    use bitvue_protocol::{Response, WireError, WireErrorCode};
+
+    let params: GetCodingFlowAnalysisParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    let stream_state = core.get_stream(bitvue_engine::StreamId::A);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: crate::command_support::wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    match get_coding_flow_analysis(data, params.frame_index) {
+        Ok(value) => Response::success(request.id, value),
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::open_real_fixture;
+    use bitvue_engine::Core;
+    use bitvue_protocol::{Request, WireErrorCode};
 
     const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
 
@@ -228,5 +304,41 @@ mod tests {
     #[test]
     fn get_coding_flow_analysis_out_of_range_frame_index_is_a_real_error() {
         assert!(get_coding_flow_analysis(AV1_IVF_FIXTURE, 999_999).is_err());
+    }
+
+    #[test]
+    fn get_coding_flow_analysis_command_end_to_end_reaches_quantization() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 225,
+                method: "get_coding_flow_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(result["frame_index"], 0);
+        assert_eq!(result["current_stage"], "quantization");
+        assert_eq!(result["stages"].as_array().unwrap().len(), 6);
+        assert!(!result["codec_features"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn get_coding_flow_analysis_command_stream_not_open_returns_not_found() {
+        let core = Core::new();
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 226,
+                method: "get_coding_flow_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
     }
 }

@@ -222,9 +222,86 @@ fn transform_grid_to_json(g: &TransformGrid) -> Value {
     })
 }
 
+#[derive(serde::Deserialize)]
+struct GetFrameAnalysisParams {
+    frame_index: usize,
+}
+
+/// QP/MV/partition/prediction-mode/transform-size grids for one frame of stream A -- see this
+/// module's doc. Control-only (unlike `get_decoded_frame_yuv`) -- these are structured grids, not
+/// raw pixel bytes, so a single JSON response is the right shape, same as `get_frame_syntax`/
+/// `get_timeline`.
+pub fn get_frame_analysis_command(
+    core: &bitvue_engine::Core,
+    request: &bitvue_protocol::Request,
+) -> bitvue_protocol::Response {
+    use bitvue_protocol::{Response, WireError, WireErrorCode};
+
+    let params: GetFrameAnalysisParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    let stream_state = core.get_stream(bitvue_engine::StreamId::A);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: crate::command_support::wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    match get_frame_analysis(data, params.frame_index) {
+        Ok(value) => Response::success(request.id, value),
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::open_real_fixture;
+    use bitvue_engine::Core;
+    use bitvue_protocol::{Request, WireErrorCode};
 
     const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
 
@@ -321,5 +398,97 @@ mod tests {
             seq.is_some(),
             "expected a real sequence header OBU in the fixture"
         );
+    }
+
+    #[test]
+    fn get_frame_analysis_end_to_end_returns_real_grids() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 220,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(result["frame_index"], 0);
+        assert_eq!(result["width"], 320);
+        assert_eq!(result["height"], 240);
+        assert!(!result["qp_grid"]["qp"].as_array().unwrap().is_empty());
+        assert!(!result["partition_grid"]["blocks"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        let energy = result["energy_grid"]["energy_bpp"].as_array().unwrap();
+        assert!(!energy.is_empty());
+        assert_eq!(
+            energy.len(),
+            result["qp_grid"]["qp"].as_array().unwrap().len()
+        );
+    }
+
+    #[test]
+    fn get_frame_analysis_energy_grid_reflects_real_residual_data() {
+        // Not the QP-only proxy this replaced: an all-zero energy grid would mean the fallback
+        // (no-tile-data/parse-failure) path was hit instead of real per-CU residual magnitude.
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 222,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        let energy = result["energy_grid"]["energy_bpp"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect::<Vec<_>>();
+        assert!(
+            energy.iter().any(|&v| v > 0.0),
+            "expected at least one block with real residual energy on a real I-frame, got all zeros: {energy:?}"
+        );
+    }
+
+    #[test]
+    fn get_frame_analysis_out_of_range_frame_index_is_a_wire_error() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 221,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 999_999}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    #[test]
+    fn get_frame_analysis_stream_not_open_returns_not_found() {
+        let core = Core::new();
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 222,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
     }
 }

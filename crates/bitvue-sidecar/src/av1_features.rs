@@ -132,9 +132,84 @@ fn super_resolution_to_json(d: &SuperResolutionData) -> Value {
     })
 }
 
+#[derive(serde::Deserialize)]
+struct GetAv1FeaturesParams {
+    frame_index: usize,
+}
+
+/// CDEF/loop-restoration/film-grain/super-resolution data for one frame of stream A -- see this
+/// module's doc. Control-only, same reasoning as `frame_analysis::get_frame_analysis_command`.
+pub fn get_av1_features_command(
+    core: &bitvue_engine::Core,
+    request: &bitvue_protocol::Request,
+) -> bitvue_protocol::Response {
+    use bitvue_protocol::{Response, WireError, WireErrorCode};
+
+    let params: GetAv1FeaturesParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::InvalidData,
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    let stream_state = core.get_stream(bitvue_engine::StreamId::A);
+    let state = stream_state.read();
+    let byte_cache = match state.byte_cache.as_ref() {
+        Some(cache) => std::sync::Arc::clone(cache),
+        None => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::NotFound,
+                    message: "stream not open".to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+    drop(state);
+
+    let full_len = byte_cache.len() as usize;
+    let data = match byte_cache.read_range(0, full_len) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Response::failure(
+                request.id,
+                WireError {
+                    code: crate::command_support::wire_error_code_for(&err),
+                    message: err.to_string(),
+                    offset: None,
+                },
+            )
+        }
+    };
+
+    match get_av1_features(data, params.frame_index) {
+        Ok(value) => Response::success(request.id, value),
+        Err(message) => Response::failure(
+            request.id,
+            WireError {
+                code: WireErrorCode::FrameNotFound,
+                message,
+                offset: None,
+            },
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::open_real_fixture;
+    use bitvue_engine::Core;
+    use bitvue_protocol::{Request, WireErrorCode};
 
     const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
 
@@ -177,5 +252,41 @@ mod tests {
         let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
         let result = get_av1_features(AV1_IVF_FIXTURE, frames.len() - 1).unwrap();
         assert_eq!(result["frame_index"], frames.len() - 1);
+    }
+
+    #[test]
+    fn get_av1_features_command_end_to_end_returns_real_cdef_data() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 223,
+                method: "get_av1_features".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(result["frame_index"], 0);
+        assert!(!result["cdef"].is_null());
+        assert_eq!(result["cdef"]["width"], 320);
+        assert_eq!(result["cdef"]["height"], 240);
+    }
+
+    #[test]
+    fn get_av1_features_command_stream_not_open_returns_not_found() {
+        let core = Core::new();
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 224,
+                method: "get_av1_features".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
     }
 }
