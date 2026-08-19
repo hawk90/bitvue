@@ -513,7 +513,10 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       {/* Canvas Area or Analysis View */}
       {currentMode === "coding-flow" ? (
         <div className="yuv-analysis-view-container">
-          <CodingFlowView frame={currentFrame} />
+          <CodingFlowView
+            frame={currentFrame}
+            codec={activeCodec ?? undefined}
+          />
         </div>
       ) : currentMode === "deblocking" || currentMode === "loop-filter" ? (
         <div className="yuv-analysis-view-container">
@@ -521,6 +524,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             frame={currentFrame}
             width={frameImage?.width ?? 1920}
             height={frameImage?.height ?? 1080}
+            codec={activeCodec ?? undefined}
           />
         </div>
       ) : currentMode === "residuals" ? (

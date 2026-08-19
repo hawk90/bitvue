@@ -126,12 +126,24 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       }
 
       const firstChunk = await getFramesChunk("A", 0, CHUNK_SIZE);
-      let allFrames = firstChunk.units.map(unitNodeToFrameInfo);
+      const allFrames = firstChunk.units.map(unitNodeToFrameInfo);
       currentOffsetRef.current = allFrames.length;
       setHasMoreFrames(currentOffsetRef.current < firstChunk.total_count);
       setTotalFrames(firstChunk.total_count);
-      setFrames(allFrames);
+      setFrames([...allFrames]);
 
+      // Flushing every chunk to React state (100 frames at a time) made `setFrames` re-render
+      // Timeline's unvirtualized per-frame DOM list once per chunk -- for a long video (many
+      // thousands of frames -> hundreds of chunks), that's hundreds of increasingly expensive
+      // re-renders of an ever-growing list, turning a sub-3-second backend load (measured: 60k
+      // frames / 600 chunks in ~2.4s end to end) into a many-times-slower "looks frozen" UI
+      // experience. Batching the state flush every FLUSH_EVERY_N_CHUNKS chunks instead cuts the
+      // re-render count proportionally while still showing real progressive-load feedback (not
+      // one big flush at the very end) -- `allFrames.push` (mutate in place) also avoids
+      // `[...allFrames, ...nextFrames]`'s per-iteration full-array copy, which was separately
+      // O(total frames) per chunk on its own regardless of React.
+      const FLUSH_EVERY_N_CHUNKS = 10;
+      let chunksSinceFlush = 0;
       while (currentOffsetRef.current < firstChunk.total_count) {
         const nextChunk = await getFramesChunk(
           "A",
@@ -140,11 +152,18 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
         );
         if (nextChunk.units.length === 0) break;
         const nextFrames = nextChunk.units.map(unitNodeToFrameInfo);
-        allFrames = [...allFrames, ...nextFrames];
+        allFrames.push(...nextFrames);
         currentOffsetRef.current += nextFrames.length;
         setHasMoreFrames(currentOffsetRef.current < nextChunk.total_count);
         setTotalFrames(nextChunk.total_count);
-        setFrames(allFrames);
+        chunksSinceFlush++;
+        if (
+          chunksSinceFlush >= FLUSH_EVERY_N_CHUNKS ||
+          currentOffsetRef.current >= nextChunk.total_count
+        ) {
+          setFrames([...allFrames]);
+          chunksSinceFlush = 0;
+        }
       }
 
       const elapsed = performance.now() - startTime;

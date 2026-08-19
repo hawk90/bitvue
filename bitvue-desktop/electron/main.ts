@@ -1300,6 +1300,24 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * dependent bitstream..." menu item) -- `BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH` answers this
  * second dialog too, so the resulting compare workspace is the same fixture opened as both A
  * and B (a real, useful state: exact resolution match, `diff_enabled: true`).
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_KEY=<key>[,<key>...]` (optional): runs after CLICK_SELECTOR --
+ * dispatches a real `keydown` (bubbling, on `window`) for each key, e.g. `"F5"` to switch the
+ * player mode or `"F1"` with a `Ctrl` prefix written as `"ctrl+F1"` for an overlay toggle. This
+ * is the only way to reach most `ModeContext`/`useKeyboardNavigation` states -- the F-key mode
+ * switcher and Ctrl+F-key overlay toggles have no clickable button, only a real keyboard event.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_DISPATCH=<event>[:<detail>][,<event>[:<detail>]...]` (optional):
+ * runs after KEY -- dispatches `window.dispatchEvent(new CustomEvent(event, {detail}))` for each
+ * entry (detail omitted if no `:` present). This is how every native-menu-only state is reached
+ * (menu items don't exist as DOM elements to click -- see `installNativeMacMenu`'s `dispatch`
+ * helper, which does exactly this from the real menu), e.g.
+ * `"menu-toggle-overlay:qp-map,menu-clear-overlays"`.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_CONTEXT_MENU=<css selector>[,<css selector>...]` (optional): runs
+ * last, right before capture -- dispatches a real `contextmenu` `MouseEvent` (bubbling,
+ * cancelable) at the matched element's center, for right-click-only UI (context menus on
+ * HexView/StreamView/Timeline/DiagnosticsPanel/Player) that a plain `click()` can't reach.
  */
 async function runScreenshotAndExit(
   win: BrowserWindow,
@@ -1388,6 +1406,69 @@ async function runScreenshotAndExit(
           if (!el) throw new Error(${JSON.stringify(`selector not found: ${selector}`)});
           el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
           el.click();
+        })()
+      `);
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
+    }
+    const keys = process.env.BITVUE_ELECTRON_SCREENSHOT_KEY?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const rawKey of keys ?? []) {
+      const parts = rawKey.split("+");
+      const key = parts.pop() as string;
+      const ctrlKey = parts.some((p) => p.toLowerCase() === "ctrl");
+      const shiftKey = parts.some((p) => p.toLowerCase() === "shift");
+      const altKey = parts.some((p) => p.toLowerCase() === "alt");
+      const metaKey = parts.some((p) => p.toLowerCase() === "meta");
+      await win.webContents.executeJavaScript(`
+        (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", {
+          key: ${JSON.stringify(key)},
+          ctrlKey: ${ctrlKey},
+          shiftKey: ${shiftKey},
+          altKey: ${altKey},
+          metaKey: ${metaKey},
+          bubbles: true,
+          cancelable: true,
+        }));
+      `);
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
+    }
+    const dispatches = process.env.BITVUE_ELECTRON_SCREENSHOT_DISPATCH?.split(
+      ",",
+    )
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const entry of dispatches ?? []) {
+      const sepIndex = entry.indexOf(":");
+      const eventName = sepIndex === -1 ? entry : entry.slice(0, sepIndex);
+      const detail = sepIndex === -1 ? undefined : entry.slice(sepIndex + 1);
+      await win.webContents.executeJavaScript(
+        `window.dispatchEvent(new CustomEvent(${JSON.stringify(eventName)}, { detail: ${JSON.stringify(detail)} }));`,
+      );
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
+    }
+    const contextMenuSelectors =
+      process.env.BITVUE_ELECTRON_SCREENSHOT_CONTEXT_MENU?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    for (const selector of contextMenuSelectors ?? []) {
+      await win.webContents.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) throw new Error(${JSON.stringify(`selector not found: ${selector}`)});
+          const rect = el.getBoundingClientRect();
+          el.dispatchEvent(new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+          }));
         })()
       `);
       await win.webContents.executeJavaScript(
