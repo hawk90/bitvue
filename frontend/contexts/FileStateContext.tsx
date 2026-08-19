@@ -9,8 +9,12 @@
  * `index_stream`/`get_frames_chunk`) as of the 2026-08-08 migration, not Tauri's `invoke()`.
  * `bitvue-indexer` only supports IVF/AV1 so far -- other formats/codecs surface as an error here
  * (via a `DiagnosticAdded` event from `indexStream`, or an empty `indexed: false` chunk), same as
- * any other unsupported-input case. Only stream "A" is wired (matches `useAppFileOperations.ts`'s
- * single-primary-stream assumption -- compare/stream B isn't migrated).
+ * any other unsupported-input case. Only stream "A" is wired here (matches
+ * `useAppFileOperations.ts`'s single-primary-stream assumption) -- stream B's frames (compare
+ * workspace, docs/DEVELOPMENT_PHASES.md Phase 7.5) are loaded separately by
+ * `CompareContext.tsx`, which reuses this file's `unitNodeToFrameInfo` but not its chunked-
+ * progressive-loading state machine (stream B doesn't need the same large-file UX as the
+ * primary stream for an MVP compare view).
  */
 
 import {
@@ -36,8 +40,10 @@ const logger = createLogger("FileStateContext");
 
 /** `bitvue_engine::UnitNode` -> `FrameInfo`. Only fields the sidecar actually provides are
  *  populated -- poc/display_order/coding_order/spatial_id/thumbnail/duration/ref_slot_info have
- *  no bitvue-indexer equivalent yet, left undefined rather than fabricated. */
-function unitNodeToFrameInfo(unit: BridgeUnitNode): FrameInfo {
+ *  no bitvue-indexer equivalent yet, left undefined rather than fabricated. Exported for
+ *  `CompareContext.tsx`'s stream-B frame loading (docs/DEVELOPMENT_PHASES.md Phase 7.5) -- same
+ *  wire shape, no need for a second copy of this mapping. */
+export function unitNodeToFrameInfo(unit: BridgeUnitNode): FrameInfo {
   return {
     frame_index: unit.frame_index ?? 0,
     frame_type: unit.frame_type ?? "?",

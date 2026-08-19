@@ -6,23 +6,34 @@
  * - Sync controls (Off/Playhead/Full)
  * - Manual offset UI for alignment adjustment
  * - Resolution mismatch detection
+ *
+ * Wired to the real backend (docs/DEVELOPMENT_PHASES.md Phase 7.5) as of this pass -- previously
+ * this took the FULL raw `CompareWorkspace` engine struct (including `alignment.frame_pairs`, a
+ * bulk per-frame array) as a prop and did its own client-side scan through it for
+ * `getAlignedFrame`, duplicating what the real `get_aligned_frame` sidecar command already does
+ * server-side. Now pulls the lean `CompareWorkspaceSummary` from `useCompare()`'s context
+ * directly (same as `setSyncMode`/`setManualOffset` already did) instead of requiring it as a
+ * prop, and calls the context's async `getAlignedFrame` instead of a local reimplementation.
+ * Also fixes three named-vs-default import bugs (`CompareControls`/`StreamPlayer`/`DiffOverlay`
+ * are all `export default`, but were imported as `{ X }`) that went unnoticed because this whole
+ * directory was excluded from `tsc` while unmounted (`frontend/tsconfig.json`'s `exclude` -- now
+ * removed as part of mounting this for real).
  */
 
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import {
-  CompareWorkspace as CompareWorkspaceType,
   SyncMode,
-  AlignmentQuality,
   type FrameInfo,
+  type AlignmentQuality,
 } from "../../types/video";
-import { CompareControls } from "./CompareControls";
-import { StreamPlayer } from "./StreamPlayer";
-import { DiffOverlay } from "./DiffOverlay";
+import CompareControls from "./CompareControls";
+import StreamPlayer from "./StreamPlayer";
+import DiffOverlay from "./DiffOverlay";
 import { useCompare } from "../../contexts/CompareContext";
+import type { DiffMode } from "../../services/electronBridgeService";
 import "./CompareWorkspace.css";
 
 interface CompareWorkspaceProps {
-  workspace: CompareWorkspaceType;
   framesA: FrameInfo[];
   framesB: FrameInfo[];
   currentFrameA: number;
@@ -32,7 +43,6 @@ interface CompareWorkspaceProps {
 }
 
 function CompareWorkspace({
-  workspace,
   framesA,
   framesB,
   currentFrameA,
@@ -40,38 +50,28 @@ function CompareWorkspace({
   onFrameChangeA,
   onFrameChangeB,
 }: CompareWorkspaceProps) {
-  const { setSyncMode, setManualOffset } = useCompare();
-  const [showDiff, setShowDiff] = useState(workspace.diff_enabled);
-  const [diffMode, setDiffMode] = useState<"difference" | "psnr" | "ssim">(
-    "difference",
-  );
+  const { workspace, setSyncMode, setManualOffset, getAlignedFrame } =
+    useCompare();
 
-  // Get aligned frame for stream A
-  const getAlignedFrame = useCallback(
-    (aIdx: number): { bIdx: number | null; quality: AlignmentQuality } => {
-      // Apply manual offset
-      const adjustedAIdx = Math.max(0, aIdx + workspace.manual_offset);
+  const [showDiff, setShowDiff] = useState(workspace?.diff_enabled ?? false);
+  const [diffMode, setDiffMode] = useState<DiffMode>("abs");
+  const [alignedB, setAlignedB] = useState<{
+    bIdx: number | null;
+    quality: AlignmentQuality | null;
+  }>({ bIdx: null, quality: null });
 
-      // Find alignment pair
-      const pair = workspace.alignment.frame_pairs.find(
-        (p) => p.stream_a_idx === adjustedAIdx,
-      );
+  // Real aligned-B lookup for the current stream A frame (server-side, PTS-based) -- replaces
+  // the old synchronous `workspace.alignment.frame_pairs.find(...)` scan.
+  useEffect(() => {
+    let cancelled = false;
+    getAlignedFrame(currentFrameA).then((result) => {
+      if (!cancelled) setAlignedB(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFrameA, getAlignedFrame]);
 
-      if (pair && pair.stream_b_idx !== null) {
-        const quality = pair.has_gap
-          ? AlignmentQuality.Gap
-          : pair.pts_delta === 0
-            ? AlignmentQuality.Exact
-            : AlignmentQuality.Nearest;
-        return { bIdx: pair.stream_b_idx, quality };
-      }
-
-      return { bIdx: null, quality: AlignmentQuality.Gap };
-    },
-    [workspace.alignment.frame_pairs, workspace.manual_offset],
-  );
-
-  // Handle sync mode change
   const handleSyncModeChange = useCallback(
     (mode: SyncMode) => {
       setSyncMode(mode).catch(() => {});
@@ -79,29 +79,33 @@ function CompareWorkspace({
     [setSyncMode],
   );
 
-  // Handle manual offset change
   const handleOffsetChange = useCallback(
     (delta: number) => {
+      if (!workspace) return;
       setManualOffset(workspace.manual_offset + delta).catch(() => {});
     },
-    [setManualOffset, workspace.manual_offset],
+    [setManualOffset, workspace],
   );
 
-  // Handle frame change with sync
   const handleFrameChangeA = useCallback(
     (index: number) => {
       onFrameChangeA(index);
 
       // Sync to B if enabled
-      if (workspace.sync_mode !== SyncMode.Off) {
-        const { bIdx } = getAlignedFrame(index);
-        if (bIdx !== null) {
-          onFrameChangeB(bIdx);
-        }
+      if (workspace && workspace.sync_mode !== SyncMode.Off) {
+        getAlignedFrame(index)
+          .then(({ bIdx }) => {
+            if (bIdx !== null) onFrameChangeB(bIdx);
+          })
+          .catch(() => {});
       }
     },
-    [onFrameChangeA, onFrameChangeB, workspace.sync_mode, getAlignedFrame],
+    [onFrameChangeA, onFrameChangeB, workspace, getAlignedFrame],
   );
+
+  if (!workspace) {
+    return null;
+  }
 
   const currentFrameAData = framesA[currentFrameA] || null;
   const currentFrameBData = framesB[currentFrameB] || null;
@@ -113,8 +117,8 @@ function CompareWorkspace({
         <div className="compare-title">
           <h2>A/B Compare</h2>
           <span className="compare-subtitle">
-            {workspace.alignment?.method ?? "Unknown"} •{" "}
-            {workspace.alignment?.confidence ?? 0} confidence
+            {workspace.alignment.method} • {workspace.alignment.confidence}{" "}
+            confidence
           </span>
         </div>
 
@@ -124,13 +128,9 @@ function CompareWorkspace({
           onSyncModeChange={handleSyncModeChange}
           onOffsetChange={handleOffsetChange}
           alignmentInfo={{
-            method: workspace.alignment?.method ?? "Unknown",
-            confidence: workspace.alignment?.confidence ?? 0,
-            gapPercentage: workspace.alignment?.frame_pairs
-              ? (workspace.alignment.gap_count /
-                  Math.max(workspace.alignment.frame_pairs.length, 1)) *
-                100
-              : 0,
+            method: workspace.alignment.method,
+            confidence: workspace.alignment.confidence,
+            gapPercentage: workspace.alignment.gap_percentage,
           }}
         />
 
@@ -148,14 +148,14 @@ function CompareWorkspace({
           {showDiff && (
             <select
               value={diffMode}
-              onChange={(e) =>
-                setDiffMode(e.target.value as "difference" | "psnr" | "ssim")
-              }
+              onChange={(e) => setDiffMode(e.target.value as DiffMode)}
               className="diff-mode-select"
             >
-              <option value="difference">Difference</option>
-              <option value="psnr">PSNR</option>
-              <option value="ssim">SSIM</option>
+              {/* VQ-Analyzer-parity naming (PARITY_CHECKLIST.md CMP-03) -- both real, implemented
+                  DiffMode variants; no psnr/ssim/metric options (unimplemented in the engine,
+                  would be fake controls -- see this file's own doc). */}
+              <option value="signed">Subtraction</option>
+              <option value="abs">Temperature</option>
             </select>
           )}
         </div>
@@ -202,8 +202,8 @@ function CompareWorkspace({
             currentFrame={currentFrameB}
             onFrameChange={onFrameChangeB}
             streamLabel="B"
-            alignedFrame={getAlignedFrame(currentFrameA).bIdx}
-            alignmentQuality={getAlignedFrame(currentFrameA).quality}
+            alignedFrame={alignedB.bIdx}
+            alignmentQuality={alignedB.quality ?? undefined}
           />
         </div>
 

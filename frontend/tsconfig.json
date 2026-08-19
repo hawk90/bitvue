@@ -47,7 +47,12 @@
     // grep 2026-08-09 while restoring this typecheck config) -- excluded rather than fixed, so
     // this stays an honest "out of scope" marker instead of polishing code nothing reaches.
     // Re-verify liveness before ever removing an entry here.
-    "components/CompareWorkspace/**",
+    //
+    // components/CompareWorkspace/** -- REMOVED 2026-08-19 (Phase 7.5 revival): this directory is
+    // now mounted for real from App.tsx, so it needs real typecheck coverage. Its exclusion had
+    // let three named-vs-default import bugs (CompareControls/StreamPlayer/DiffOverlay are all
+    // `export default`, imported as `{ X }`) go completely uncaught -- exactly the kind of thing
+    // this exclude list is supposed to prevent from happening again per the note above.
     "components/GraphUtils.tsx",
     "components/panels/QualityComparisonPanel.tsx",
     "components/panels/RDCurvesPanel.tsx",

@@ -88,6 +88,7 @@ use std::thread;
 mod av1_features;
 mod codec_extended_info;
 mod coding_flow;
+mod compare;
 mod context_menu;
 mod deblocking;
 mod debug_yuv;
@@ -117,6 +118,7 @@ type DebugYuvSlot = Arc<Mutex<Option<debug_yuv::Session>>>;
 fn main() {
     let core = Arc::new(Core::new());
     let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
+    let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
     let writer = Arc::new(Mutex::new(io::stdout()));
     let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
     // In-flight worker handles. Rust does NOT wait for detached `thread::spawn`ed threads when
@@ -166,6 +168,7 @@ fn main() {
                 handles.push(spawn_request(
                     Arc::clone(&core),
                     Arc::clone(&debug_yuv_state),
+                    Arc::clone(&compare_state),
                     Arc::clone(&writer),
                     Arc::clone(&registry),
                     header.correlation_id,
@@ -195,6 +198,7 @@ fn main() {
 fn spawn_request(
     core: Arc<Core>,
     debug_yuv_state: DebugYuvSlot,
+    compare_state: compare::CompareSlot,
     writer: Arc<Mutex<io::Stdout>>,
     registry: CancelRegistry,
     correlation_id: u32,
@@ -221,7 +225,13 @@ fn spawn_request(
                 serde_json::to_vec(&response).expect("Response always serializes"),
             )]
         } else {
-            compute_frames_with_panic_guard(&core, &debug_yuv_state, &request, &cancel_flag)
+            compute_frames_with_panic_guard(
+                &core,
+                &debug_yuv_state,
+                &compare_state,
+                &request,
+                &cancel_flag,
+            )
         };
 
         registry.lock().unwrap().remove(&correlation_id);
@@ -260,11 +270,12 @@ fn spawn_request(
 fn compute_frames_with_panic_guard(
     core: &Core,
     debug_yuv_state: &DebugYuvSlot,
+    compare_state: &compare::CompareSlot,
     request: &Request,
     cancel_flag: &AtomicBool,
 ) -> Vec<(FrameKind, Vec<u8>)> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compute_frames(core, debug_yuv_state, request, cancel_flag)
+        compute_frames(core, debug_yuv_state, compare_state, request, cancel_flag)
     })) {
         Ok(frames) => frames,
         Err(panic_payload) => {
@@ -360,6 +371,7 @@ fn write_frame<W: Write>(
 fn compute_frames(
     core: &Core,
     debug_yuv_state: &DebugYuvSlot,
+    compare_state: &compare::CompareSlot,
     request: &Request,
     cancel_flag: &AtomicBool,
 ) -> Vec<(FrameKind, Vec<u8>)> {
@@ -391,6 +403,28 @@ fn compute_frames(
         "index_stream" => return single_control_frame(index_stream(core, request, cancel_flag)),
         "get_thumbnails" => {
             return single_control_frame(get_thumbnails(core, request, cancel_flag))
+        }
+        "create_compare_workspace" => {
+            return single_control_frame(compare::create_compare_workspace(
+                core,
+                compare_state,
+                request,
+            ))
+        }
+        "get_aligned_frame" => {
+            return single_control_frame(compare::get_aligned_frame(compare_state, request))
+        }
+        "set_sync_mode" => {
+            return single_control_frame(compare::set_sync_mode(compare_state, request))
+        }
+        "set_manual_offset" => {
+            return single_control_frame(compare::set_manual_offset(compare_state, request))
+        }
+        "reset_offset" => {
+            return single_control_frame(compare::reset_offset(compare_state, request))
+        }
+        "get_diff_frame" => {
+            return single_control_frame(compare::get_diff_frame(core, compare_state, request))
         }
         // Test-only escape hatch (not reachable outside `cfg(test)`, so zero cost/risk in a real
         // build): lets a test drive a real handler panic through the *actual* dispatch path
@@ -2075,7 +2109,14 @@ mod tests {
 
         let core = Core::new();
         let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
-        let frames = compute_frames(&core, &debug_yuv_state, &parsed, &AtomicBool::new(false));
+        let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
+        let frames = compute_frames(
+            &core,
+            &debug_yuv_state,
+            &compare_state,
+            &parsed,
+            &AtomicBool::new(false),
+        );
         let output = encode_frames(header.correlation_id, &frames);
 
         let out_header =
@@ -2092,7 +2133,10 @@ mod tests {
         let core = Core::new();
         let request = Request {
             id: 7,
-            method: "create_compare_workspace".to_string(),
+            // `dispatch` alone (not `compute_frames`) doesn't know about anything routed through
+            // `compute_frames`'s own match arms (e.g. `create_compare_workspace`) -- a genuinely
+            // nonexistent method name, so this test still means what it says.
+            method: "totally_not_a_real_method".to_string(),
             params: serde_json::json!({}),
         };
         let response = dispatch(&core, &request);
@@ -2537,11 +2581,13 @@ mod tests {
     fn concurrent_requests_on_shared_core_do_not_panic_or_corrupt_state() {
         let core = Arc::new(Core::new());
         let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
+        let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
         let mut handles = Vec::new();
 
         for i in 0..16u32 {
             let core = Arc::clone(&core);
             let debug_yuv_state = Arc::clone(&debug_yuv_state);
+            let compare_state = Arc::clone(&compare_state);
             handles.push(thread::spawn(move || {
                 let stream = if i % 2 == 0 { "A" } else { "B" };
                 let request = Request {
@@ -2549,8 +2595,13 @@ mod tests {
                     method: "select_frame".to_string(),
                     params: serde_json::json!({"stream": stream, "frame_index": i as usize}),
                 };
-                let frames =
-                    compute_frames(&core, &debug_yuv_state, &request, &AtomicBool::new(false));
+                let frames = compute_frames(
+                    &core,
+                    &debug_yuv_state,
+                    &compare_state,
+                    &request,
+                    &AtomicBool::new(false),
+                );
                 assert_eq!(frames.len(), 1);
                 let (kind, payload) = &frames[0];
                 assert_eq!(*kind, FrameKind::Control);
@@ -2578,6 +2629,7 @@ mod tests {
     fn panicking_handler_still_cleans_up_the_registry_and_returns_a_real_error_response() {
         let core = Core::new();
         let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
+        let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
         let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
         let correlation_id = 999;
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -2593,8 +2645,13 @@ mod tests {
         };
 
         // Same shape as spawn_request's worker body: guarded compute, then registry cleanup.
-        let frames =
-            compute_frames_with_panic_guard(&core, &debug_yuv_state, &request, &cancel_flag);
+        let frames = compute_frames_with_panic_guard(
+            &core,
+            &debug_yuv_state,
+            &compare_state,
+            &request,
+            &cancel_flag,
+        );
         registry.lock().unwrap().remove(&correlation_id);
 
         assert!(
@@ -3276,6 +3333,10 @@ mod tests {
         Arc::new(Mutex::new(None))
     }
 
+    fn fresh_compare_state() -> compare::CompareSlot {
+        Arc::new(Mutex::new(None))
+    }
+
     fn write_i420_frame(
         width: u32,
         height: u32,
@@ -3726,6 +3787,278 @@ mod tests {
                 params: serde_json::json!({}),
             },
             &AtomicBool::new(false),
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    // -- compare workspace commands (create_compare_workspace/get_aligned_frame/set_sync_mode/
+    //    set_manual_offset/reset_offset/get_diff_frame) --
+
+    /// Opens the same real fixture as BOTH stream A and stream B, and indexes both -- gives a
+    /// deterministic "identical streams" baseline (frame N of A aligns exactly to frame N of B,
+    /// same PTS, same decoded content) that's genuinely useful for the alignment/diff tests below,
+    /// not just a smoke test: an all-zero diff or a non-1:1 alignment on identical content would
+    /// be a real bug, not a fixture artifact.
+    fn open_and_index_real_fixture_as_both_streams(core: &Core) {
+        open_real_fixture(core, "A");
+        open_real_fixture(core, "B");
+        for stream in ["A", "B"] {
+            let response = dispatch(
+                core,
+                &Request {
+                    id: 500,
+                    method: "index_stream".to_string(),
+                    params: serde_json::json!({"stream": stream}),
+                },
+            );
+            assert!(
+                response.ok,
+                "expected index_stream({stream}) to succeed: {response:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn create_compare_workspace_end_to_end_builds_a_real_workspace() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+
+        let response = compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 501,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert!(result["total_frames"].as_u64().unwrap() > 0);
+        assert_eq!(
+            result["diff_enabled"], true,
+            "identical-resolution streams must have diff overlays enabled: {result:?}"
+        );
+        assert!(result["disable_reason"].is_null());
+        assert_eq!(
+            result["resolution_info"]["is_compatible"], true,
+            "identical streams must report resolution-compatible: {result:?}"
+        );
+        assert_eq!(result["resolution_info"]["is_exact_match"], true);
+        assert_eq!(result["resolution_info"]["mismatch_percentage"], 0.0);
+        assert_eq!(
+            result["alignment"]["method"], "PtsExact",
+            "identical streams' PTS values must align exactly: {result:?}"
+        );
+        assert_eq!(result["alignment"]["gap_count"], 0);
+        assert!(result["alignment"]["total_pairs"].as_u64().unwrap() > 0);
+        assert!(compare_state.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn create_compare_workspace_without_indexing_is_not_found() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        open_real_fixture(&core, "B");
+        // Deliberately no index_stream calls -- build_frame_index_map requires indexed units.
+        let compare_state = fresh_compare_state();
+
+        let response = compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 502,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+        assert!(compare_state.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn get_aligned_frame_end_to_end_returns_a_real_exact_pair() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 510,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = compare::get_aligned_frame(
+            &compare_state,
+            &Request {
+                id: 511,
+                method: "get_aligned_frame".to_string(),
+                params: serde_json::json!({"stream_a_frame_idx": 0}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(
+            result["stream_b_frame_idx"], 0,
+            "identical streams' frame 0 must align to frame 0: {result:?}"
+        );
+        assert_eq!(result["quality"], "Exact");
+    }
+
+    #[test]
+    fn get_aligned_frame_without_a_workspace_is_not_found() {
+        let compare_state = fresh_compare_state();
+        let response = compare::get_aligned_frame(
+            &compare_state,
+            &Request {
+                id: 512,
+                method: "get_aligned_frame".to_string(),
+                params: serde_json::json!({"stream_a_frame_idx": 0}),
+            },
+        );
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    #[test]
+    fn set_sync_mode_and_manual_offset_and_reset_offset_round_trip() {
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 520,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        let response = compare::set_sync_mode(
+            &compare_state,
+            &Request {
+                id: 521,
+                method: "set_sync_mode".to_string(),
+                params: serde_json::json!({"mode": "Playhead"}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        assert_eq!(response.result.unwrap()["sync_mode"], "Playhead");
+        assert_eq!(
+            compare_state.lock().unwrap().as_ref().unwrap().sync_mode(),
+            bitvue_engine::SyncMode::Playhead
+        );
+
+        let response = compare::set_manual_offset(
+            &compare_state,
+            &Request {
+                id: 522,
+                method: "set_manual_offset".to_string(),
+                params: serde_json::json!({"offset": 5}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        assert_eq!(response.result.unwrap()["manual_offset"], 5);
+        assert_eq!(
+            compare_state
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .manual_offset(),
+            5
+        );
+
+        let response = compare::reset_offset(
+            &compare_state,
+            &Request {
+                id: 523,
+                method: "reset_offset".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        assert_eq!(response.result.unwrap()["manual_offset"], 0);
+        assert_eq!(
+            compare_state
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .manual_offset(),
+            0
+        );
+    }
+
+    #[test]
+    fn get_diff_frame_identical_streams_is_an_all_zero_heatmap() {
+        // A real, non-degenerate check of the actual de-stride + diff math -- if
+        // `destride_luma`'s row-pitch handling were wrong (the exact "stride metadata pollution"
+        // bug class this module's doc warns about), diffing a stream against ITSELF would NOT
+        // come back all-zero (misaligned rows would show spurious diffs), so this genuinely
+        // exercises the risky part, not just "did it return 200 OK".
+        let core = Core::new();
+        open_and_index_real_fixture_as_both_streams(&core);
+        let compare_state = fresh_compare_state();
+        compare::create_compare_workspace(
+            &core,
+            &compare_state,
+            &Request {
+                id: 530,
+                method: "create_compare_workspace".to_string(),
+                params: serde_json::json!({}),
+            },
+        );
+
+        for mode in ["abs", "signed"] {
+            let response = compare::get_diff_frame(
+                &core,
+                &compare_state,
+                &Request {
+                    id: 531,
+                    method: "get_diff_frame".to_string(),
+                    params: serde_json::json!({"stream_a_frame_idx": 0, "mode": mode}),
+                },
+            );
+            assert!(
+                response.ok,
+                "expected ok response for mode {mode}, got {response:?}"
+            );
+            let result = response.result.unwrap();
+            assert!(result["heatmap_width"].as_u64().unwrap() > 0);
+            assert!(result["heatmap_height"].as_u64().unwrap() > 0);
+            assert_eq!(
+                result["min_value"], 0.0,
+                "identical streams (mode {mode}) must have zero min diff: {result:?}"
+            );
+            assert_eq!(
+                result["max_value"], 0.0,
+                "identical streams (mode {mode}) must have zero max diff: {result:?}"
+            );
+            let values = result["values"].as_array().unwrap();
+            assert!(values.iter().all(|v| v.as_f64().unwrap() == 0.0));
+        }
+    }
+
+    #[test]
+    fn get_diff_frame_without_a_workspace_is_not_found() {
+        let core = Core::new();
+        let compare_state = fresh_compare_state();
+        let response = compare::get_diff_frame(
+            &core,
+            &compare_state,
+            &Request {
+                id: 532,
+                method: "get_diff_frame".to_string(),
+                params: serde_json::json!({"stream_a_frame_idx": 0, "mode": "abs"}),
+            },
         );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);

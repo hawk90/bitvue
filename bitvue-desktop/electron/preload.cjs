@@ -36,6 +36,18 @@ contextBridge.exposeInMainWorld("bitvue", {
   getYuvDiffMetrics: (frameIndex) =>
     ipcRenderer.invoke("bitvue:getYuvDiffMetrics", frameIndex),
   findFirstDiffFrame: () => ipcRenderer.invoke("bitvue:findFirstDiffFrame"),
+  // Dual-stream compare workspace (docs/DEVELOPMENT_PHASES.md Phase 7.5) -- PTS-based A/B
+  // alignment + real diff/heatmap overlay.
+  createCompareWorkspace: () =>
+    ipcRenderer.invoke("bitvue:createCompareWorkspace"),
+  getAlignedFrame: (streamAFrameIdx) =>
+    ipcRenderer.invoke("bitvue:getAlignedFrame", streamAFrameIdx),
+  setSyncMode: (mode) => ipcRenderer.invoke("bitvue:setSyncMode", mode),
+  setManualOffset: (offset) =>
+    ipcRenderer.invoke("bitvue:setManualOffset", offset),
+  resetOffset: () => ipcRenderer.invoke("bitvue:resetOffset"),
+  getDiffFrame: (streamAFrameIdx, mode) =>
+    ipcRenderer.invoke("bitvue:getDiffFrame", streamAFrameIdx, mode),
   getDebugYuvFrame: (frameIndex, mode, amplify) =>
     ipcRenderer.invoke("bitvue:getDebugYuvFrame", frameIndex, mode, amplify),
   getFrameAnalysis: (frameIndex) =>

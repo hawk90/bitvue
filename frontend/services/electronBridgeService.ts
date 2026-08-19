@@ -30,7 +30,14 @@
  */
 
 import type { YUVFrame } from "../types/yuv";
-import type { FrameAnalysisData } from "../types/video";
+import type {
+  FrameAnalysisData,
+  ResolutionInfo,
+  SyncMode,
+  AlignmentQuality,
+  AlignmentMethod,
+  AlignmentConfidence,
+} from "../types/video";
 
 // -- get_av1_features wire shapes ----------------------------------------------------------------
 //
@@ -412,6 +419,50 @@ export interface FindFirstDiffFrameResult {
   total_checked: number;
 }
 
+/** `create_compare_workspace`'s response -- a purpose-built summary, not a raw dump of the
+ *  engine's internal `CompareWorkspace` struct (see `bitvue-sidecar/src/compare.rs`'s doc).
+ *  `resolution_info` includes `ResolutionInfo`'s derived getters (`is_compatible`/
+ *  `mismatch_percentage`/`is_exact_match`/`scale_indicator`) explicitly computed server-side,
+ *  not just the raw struct fields. */
+export interface CompareAlignmentSummary {
+  method: AlignmentMethod;
+  confidence: AlignmentConfidence;
+  gap_count: number;
+  gap_percentage: number;
+  total_pairs: number;
+}
+
+export interface CompareWorkspaceSummary {
+  total_frames: number;
+  diff_enabled: boolean;
+  disable_reason: string | null;
+  sync_mode: SyncMode;
+  manual_offset: number;
+  resolution_info: ResolutionInfo;
+  alignment: CompareAlignmentSummary;
+}
+
+/** `get_aligned_frame`'s response -- `null` fields when there's no aligned B frame. */
+export interface AlignedFrameResult {
+  stream_b_frame_idx: number | null;
+  quality: AlignmentQuality | null;
+}
+
+export type DiffMode = "abs" | "signed";
+
+/** `bitvue_engine::diff_heatmap::DiffHeatmapData`'s wire shape (`get_diff_frame`). Half-res
+ *  (`heatmap_width/height` ≈ `frame_width/height` / 2), row-major `values`. */
+export interface DiffHeatmapResult {
+  frame_width: number;
+  frame_height: number;
+  heatmap_width: number;
+  heatmap_height: number;
+  values: number[];
+  mode: DiffMode;
+  min_value: number;
+  max_value: number;
+}
+
 declare global {
   interface Window {
     bitvue?: {
@@ -442,6 +493,15 @@ declare global {
       setDebugYuvCrop: (crop: DebugYuvCrop) => Promise<void>;
       getYuvDiffMetrics: (frameIndex: number) => Promise<YuvDiffMetricsResult>;
       findFirstDiffFrame: () => Promise<FindFirstDiffFrameResult>;
+      createCompareWorkspace: () => Promise<CompareWorkspaceSummary>;
+      getAlignedFrame: (streamAFrameIdx: number) => Promise<AlignedFrameResult>;
+      setSyncMode: (mode: SyncMode) => Promise<{ sync_mode: SyncMode }>;
+      setManualOffset: (offset: number) => Promise<{ manual_offset: number }>;
+      resetOffset: () => Promise<{ manual_offset: number }>;
+      getDiffFrame: (
+        streamAFrameIdx: number,
+        mode: DiffMode,
+      ) => Promise<DiffHeatmapResult>;
       getDebugYuvFrame: (
         frameIndex: number,
         mode: DebugYuvDisplayMode,
@@ -524,8 +584,9 @@ declare global {
      *  `requestQuit`/`hasOpenFileInRenderer`, via `executeJavaScript`) to decide whether closing
      *  the window is worth a confirmation dialog -- there's no tracked "export in progress" or
      *  "unsaved compare workspace" signal anywhere in the frontend/sidecar yet (CompareWorkspace
-     *  is dead UI), so this is deliberately the one *real* signal available today rather than a
-     *  fabricated one. */
+     *  is real UI as of docs/DEVELOPMENT_PHASES.md Phase 7.5, but still has no "close without
+     *  saving" concept of its own -- it's just two open streams, not a persisted session), so
+     *  this is deliberately the one *real* signal available today rather than a fabricated one. */
     __BITVUE_HAS_OPEN_FILE__?: boolean;
   }
 }
@@ -654,6 +715,42 @@ export async function getYuvDiffMetrics(
 
 export async function findFirstDiffFrame(): Promise<FindFirstDiffFrameResult> {
   return requireBridge().findFirstDiffFrame();
+}
+
+/** Dual-stream compare workspace (docs/DEVELOPMENT_PHASES.md Phase 7.5) -- builds a real
+ *  PTS-based alignment between whichever streams are currently open as A/B. Requires both to be
+ *  open AND indexed first. */
+export async function createCompareWorkspace(): Promise<CompareWorkspaceSummary> {
+  return requireBridge().createCompareWorkspace();
+}
+
+export async function getAlignedFrame(
+  streamAFrameIdx: number,
+): Promise<AlignedFrameResult> {
+  return requireBridge().getAlignedFrame(streamAFrameIdx);
+}
+
+export async function setSyncMode(
+  mode: SyncMode,
+): Promise<{ sync_mode: SyncMode }> {
+  return requireBridge().setSyncMode(mode);
+}
+
+export async function setManualOffset(
+  offset: number,
+): Promise<{ manual_offset: number }> {
+  return requireBridge().setManualOffset(offset);
+}
+
+export async function resetOffset(): Promise<{ manual_offset: number }> {
+  return requireBridge().resetOffset();
+}
+
+export async function getDiffFrame(
+  streamAFrameIdx: number,
+  mode: DiffMode,
+): Promise<DiffHeatmapResult> {
+  return requireBridge().getDiffFrame(streamAFrameIdx, mode);
 }
 
 /** Decoded/reference/diff/amplified pixel data for one display-index frame -- see

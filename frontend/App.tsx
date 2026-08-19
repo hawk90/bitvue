@@ -18,7 +18,8 @@ import {
   useCurrentFrame,
   useFileState,
 } from "./contexts/StreamDataContext";
-import { CompareProvider } from "./contexts/CompareContext";
+import { CompareProvider, useCompare } from "./contexts/CompareContext";
+import CompareWorkspace from "./components/CompareWorkspace/CompareWorkspace";
 import { YuvDiffProvider, useYuvDiff } from "./contexts/YuvDiffContext";
 import { SyntaxHexLinkProvider } from "./contexts/SyntaxHexLinkContext";
 import { useTheme } from "./contexts/ThemeContext";
@@ -168,6 +169,28 @@ const MainViewFromContext = memo(function MainViewFromContext() {
   );
 });
 
+/** Stable compare workspace — reads workspace/frame state from CompareContext + the main
+ *  stream's own frame position (stream A IS the primary stream the rest of the app already
+ *  tracks, so frame-A navigation here drives the same `currentFrameIndex` everything else uses,
+ *  not a disconnected second position). */
+const CompareWorkspaceFromContext = memo(
+  function CompareWorkspaceFromContext() {
+    const { frames } = useFrameData();
+    const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
+    const { framesB, currentFrameB, setFrameB } = useCompare();
+    return (
+      <CompareWorkspace
+        framesA={frames}
+        framesB={framesB}
+        currentFrameA={currentFrameIndex}
+        currentFrameB={currentFrameB}
+        onFrameChangeA={setCurrentFrameIndex}
+        onFrameChangeB={setFrameB}
+      />
+    );
+  },
+);
+
 /** Stable filmstrip panel — reads frames from context */
 const FilmstripPanelFromContext = memo(function FilmstripPanelFromContext() {
   const { frames } = useFrameData();
@@ -292,6 +315,7 @@ function AppContent() {
   const { frames } = useFrameData();
   const { loading, error, filePath } = useFileState();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
+  const { workspace: compareWorkspace } = useCompare();
 
   // GoToFrame dialog state
   const [showGoToFrame, setShowGoToFrame] = useState(false);
@@ -741,11 +765,15 @@ function AppContent() {
           )}
 
           <div className="app-container">
-            {fileInfo?.success && frames.length > 0
-              ? mainContent
-              : fileInfo?.success && frames.length === 0
-                ? noFramesError
-                : welcomeScreen}
+            {compareWorkspace ? (
+              <CompareWorkspaceFromContext />
+            ) : fileInfo?.success && frames.length > 0 ? (
+              mainContent
+            ) : fileInfo?.success && frames.length === 0 ? (
+              noFramesError
+            ) : (
+              welcomeScreen
+            )}
           </div>
 
           {/* Status Bar */}

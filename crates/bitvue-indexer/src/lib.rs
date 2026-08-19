@@ -282,6 +282,23 @@ pub fn get_frame_syntax(
 /// `bitvue-engine`-internal cleanup, out of scope for this crate (which only ever adds data
 /// through `Core`'s already-public accessors, never changes `bitvue-engine` itself).
 pub fn get_timeline(core: &Core, stream: StreamId) -> Result<TimelineBase, String> {
+    Ok(build_timeline_mapper(core, stream)?.build_timeline_av1())
+}
+
+/// Builds a real `bitvue_engine::frame_identity::FrameIndexMap` (PTS-based display/decode-order
+/// mapping) from an already-indexed stream's units -- the one piece [`crate::compare`]-adjacent
+/// callers (e.g. `bitvue-sidecar`'s `create_compare_workspace`) need but can't build themselves
+/// (`bitvue-engine` is a leaf crate, see this module's doc). Shared with [`get_timeline`] so the
+/// `units` → `Vec<FrameMetadata>` extraction (and its `frame_type` string-translation subtlety,
+/// documented below) only exists in one place.
+pub fn build_frame_index_map(
+    core: &Core,
+    stream: StreamId,
+) -> Result<bitvue_engine::frame_identity::FrameIndexMap, String> {
+    Ok(build_timeline_mapper(core, stream)?.index_map().clone())
+}
+
+fn build_timeline_mapper(core: &Core, stream: StreamId) -> Result<TimelineMapper, String> {
     let (units, codec) = {
         let stream_state = core.get_stream(stream);
         let state = stream_state.read();
@@ -335,8 +352,12 @@ pub fn get_timeline(core: &Core, stream: StreamId) -> Result<TimelineBase, Strin
         .map(String::from)
         .collect();
 
-    let mapper = TimelineMapper::new(format!("{stream:?}"), frames, sizes, types);
-    Ok(mapper.build_timeline_av1())
+    Ok(TimelineMapper::new(
+        format!("{stream:?}"),
+        frames,
+        sizes,
+        types,
+    ))
 }
 
 /// Finds the Frame/FrameHeader OBU within one IVF chunk's OBU-container bytes. An IVF chunk is

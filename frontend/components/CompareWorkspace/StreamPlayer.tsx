@@ -4,7 +4,7 @@
  * Displays a single video stream with frame navigation.
  */
 
-import { memo, useMemo, useState, useEffect } from "react";
+import { memo, useCallback, useMemo, useState, useEffect } from "react";
 import { type FrameInfo, AlignmentQuality } from "../../types/video";
 import { VideoCanvas } from "../panels/YuvViewerPanel/VideoCanvas";
 import { FrameNavigationControls } from "../panels/YuvViewerPanel/FrameNavigationControls";
@@ -70,15 +70,25 @@ function StreamPlayer({
     [],
   );
 
+  const noop = useCallback(() => {}, []);
+
   return (
     <div className={`stream-player stream-${streamLabel.toLowerCase()}`}>
       {/* Frame display */}
       <div className="player-viewport">
         {currentFrameData ? (
           <VideoCanvas
-            width={currentFrameData.width || 1920}
-            height={currentFrameData.height || 1080}
-            frameData={currentFrameData}
+            frameImage={null}
+            currentFrameIndex={currentFrame}
+            currentFrame={currentFrameData}
+            currentMode="overview"
+            zoom={1}
+            pan={{ x: 0, y: 0 }}
+            onWheel={noop}
+            onMouseDown={noop}
+            onMouseMove={noop}
+            onMouseUp={noop}
+            isDragging={false}
             yuvData={yuvFrame ?? undefined}
           />
         ) : (
@@ -127,10 +137,15 @@ function StreamPlayer({
       {/* Frame navigation */}
       <div className="player-controls">
         <FrameNavigationControls
-          currentFrame={currentFrame}
+          currentFrameIndex={currentFrame}
           totalFrames={frames.length}
+          onFirstFrame={() => onFrameChange(0)}
+          onPrevFrame={() => onFrameChange(Math.max(0, currentFrame - 1))}
+          onNextFrame={() =>
+            onFrameChange(Math.min(frames.length - 1, currentFrame + 1))
+          }
+          onLastFrame={() => onFrameChange(frames.length - 1)}
           onFrameChange={onFrameChange}
-          compact
         />
       </div>
     </div>

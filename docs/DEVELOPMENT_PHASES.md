@@ -2510,14 +2510,22 @@ FrameBuffer/Pool, Timeline, Job scheduler, Cache budget)이지 **분석 결과 �
 구현 착수 전 확인할 것. `docs/anti-patterns/`(작성 중)의 카탈로그도 이 경계를 그대로 따라 BIT-*(Analyzer 전용)와
 VQ-*(Probe 전용)를 분리된 하위 카탈로그로 유지한다 — 문서 구조와 실제 코드 구조가 어긋나면 이 원칙이 무의미해짐.
 
-- [ ] Stream B 로딩 인프라 완성 (Phase 3 진행 상황 메모 P1-4와 통합)
-- [ ] Compare 모드 UI: Side-by-side / Split(H/V) / Subtraction / Temperature 전환 버튼
-- [ ] RD-curve 패널에 BD-rate 계산 추가
+- [x] Stream B 로딩 인프라 완성 (2026-08-19) — `open_stream("B",...)`/`index_stream("B")`는 이미 sidecar에
+      있었고(`StreamId::A`/`B` 둘 다 지원), `handleOpenDependentFile`이 이제 실제로 호출함
+- [-] Compare 모드 UI: Side-by-side(2026-08-19 실동작) / Split(H/V)(미구현, 별개 렌더링 기능이라 범위 밖) /
+      Subtraction·Temperature(2026-08-19 실동작, diff_heatmap 엔진 재사용) 전환 버튼
+- [ ] RD-curve 패널에 BD-rate 계산 추가 — BD-rate 자체는 CLI로 완료(CMP-05), UI 패널은 미착수
 - [ ] VMAF 통합: `libvmaf-sys` 연결 (이미 optional feature로 존재 — spec §1.2), pooled score + per-frame score + ADM2/VIF/motion2 서브스코어
-- [ ] "Find First Difference" (두 스트림 간)
+- [ ] "Find First Difference" (두 스트림 간) — `get_aligned_frame`/`get_diff_frame`(2026-08-19) 위에
+      프레임 루프+임계값 체크만 추가하면 되는 작은 후속 작업으로 스코핑됨
 - [ ] CLI: `bitvue compare --stream-a --stream-b --vmaf` 서브커맨드
 - [ ] ROI 기반 메트릭 (선택 영역 한정 PSNR/SSIM/VMAF) — `COMPETITOR_FEATURE_MATRIX.md` §3/§6 "Metrics-in-ROI" (신규 2026-07-31)
 - [ ] 추가 메트릭 (APSNR/DELTA/MSE/MSAD/VQM/NQI/EPSNR/VIF) — SE 소스, 우선순위 낮음, `COMPETITOR_FEATURE_MATRIX.md` §3 (신규 2026-07-31)
+
+**Compare MVP 실구현 완료 (2026-08-19)**: Stream A/B 로딩+정렬+side-by-side+real diff heatmap(Subtraction/
+Temperature)까지 이번 세션에서 완결 — 상세는 `PARITY_CHECKLIST.md` CMP-01/02/03과 아래 세션 로그 참조. 남은
+건 Split(H/V) 와이프 뷰, Find First Difference, VMAF/RD-curve UI/CLI 서브커맨드/ROI 메트릭(전부 별개 후속
+작업으로 명시적으로 범위 밖에 남김).
 
 **Parity 검증:** `VQA_PARITY_SPEC_V3.md` §4.9 참조.
 
@@ -2541,7 +2549,64 @@ CMP-01/02를 `[ ]`(미시작)으로 표시하지만 실제로는 이미 부분 �
 이미 존재하는 `crates/bitvue-engine/src/diff_heatmap.rs`(YUVDiff §4.7용)를 Compare A/B 컨텍스트로 재사용 가능한지 확인 필요 —
 현재 diff_heatmap.rs가 단일 스트림 YUVDiff용인지 A/B 두 스트림용인지 구현 시 확인.
 
-**예상 소요:** 중급 3~4주
+**Compare MVP 실구현(2026-08-19)**: AV1 엔트로피 디코더 작업(compound extended-candidate 폴백)을 마친 뒤
+사용자가 이 항목을 다음 작업으로 선택. Explore로 먼저 현재 상태를 정밀 조사한 결과, 예상보다 좋은 점과 나쁜
+점이 섞여있었음 -- **좋은 점**: `crates/bitvue-engine/src/compare.rs`(`CompareWorkspace`/`SyncControls`/
+`ResolutionInfo`/`AlignmentQuality`)와 `diff_heatmap.rs`(`DiffHeatmapData::from_luma_planes`/`DiffMode`/
+`DiffHeatmapOverlay`)는 완전히 구현·테스트까지 돼있는 stream-agnostic 로직이었음(스텁 아님). `Core`가 이미
+`stream_a`/`stream_b` 두 독립 `StreamState`를 갖고 있고 `open_stream`/`get_decoded_frame_yuv`는 이미
+`stream: "A"|"B"`를 실제로 지원. **나쁜 점**: sidecar IPC 배선이 전무했음(`create_compare_workspace`는
+"존재하지 않음"을 검증하는 테스트 안에만 있었음), `CompareContext.tsx`는 100% 죽은 `@tauri-apps/api`
+`invoke()`, `DiffOverlay.tsx`는 엔진을 안 쓰고 자체 client-side 16x16 픽셀 diff를 재구현하고 있었음.
+
+핵심 신규 코드는 `bitvue_indexer::build_frame_index_map`(기존 `get_timeline`에서 `units → FrameMetadata →
+TimelineMapper` 추출 로직을 재사용 가능하게 분리, AV1 전용 제약 그대로 상속) 하나뿐 -- 나머지는 전부 이미
+있던 엔진 로직을 호출하는 얇은 배선. `crates/bitvue-sidecar/src/compare.rs` 신규(6개 커맨드:
+`create_compare_workspace`/`get_aligned_frame`/`set_sync_mode`/`set_manual_offset`/`reset_offset`/
+`get_diff_frame`, `DebugYuvSlot`과 동일 패턴의 `CompareSlot` 상태). `get_diff_frame`은 두 스트림의 디코드된
+luma plane을 `decode_bridge`로 가져와 `destride_luma`(y_stride 패딩 제거 -- YuvViewerPanel에서 이미 한 번
+발견됐던 "stride metadata 오염" 버그 클래스와 정확히 같은 함정이라 신중히 처리)로 정렬한 뒤
+`DiffHeatmapData::from_luma_planes` 호출. 해상도가 `is_diff_enabled()`의 허용오차 기준으론 "호환"이지만
+정확히 같지 않은 경우 `from_luma_planes`의 `assert_eq!`가 패닉할 위험을 발견해 명시적 exact-match 가드 추가.
+동일 스트림을 A/B 양쪽에 열어 실제 diff=all-zero를 검증하는 회귀 테스트로 destride 로직 자체를 검증(스트라이드
+처리가 틀렸으면 이 테스트가 실패했을 것).
+
+프론트엔드: `CompareContext.tsx` 전면 재작성(경로 인자 제거 -- 실제 백엔드는 항상 현재 열려있는 A/B 스트림에
+대해 동작), `DiffOverlay.tsx`의 client-side diff를 `get_diff_frame` 호출로 교체(QP-grid/size-approx 폴백
+체인은 유지), diff mode를 `PARITY_CHECKLIST.md` CMP-03 명명(Subtraction=Signed/Temperature=Abs)에 맞춰
+정리(미구현 psnr/ssim/metric은 fake 컨트롤이라 제외). **`CompareWorkspace.tsx` 마운트 시도 중 예상 밖의 발견**:
+이 디렉터리 전체가 `frontend/tsconfig.json`의 `exclude`에 "확인된 죽은 코드"로 등재돼 있어서 타입체크가
+전혀 안 되고 있었음 -- 제거하고 실제 타입체크를 돌리자 `CompareControls`/`StreamPlayer`/`DiffOverlay` 세
+컴포넌트 전부가 `export default`인데 named import(`import { X }`)로 가져오던 진짜 버그, 그리고
+`StreamPlayer.tsx`가 `VideoCanvas`/`FrameNavigationControls`의 예전(더 이상 존재하지 않는) prop 인터페이스를
+쓰고 있던 버그까지 한 번에 드러남(둘 다 이 컴포넌트들이 실제로 컴파일된 적이 언젠가부터 없었다는 뜻) -- 전부
+실제 현재 인터페이스에 맞춰 수정. `CompareWorkspace.tsx` 자체도 `workspace`를 prop으로 받아 client-side로
+`alignment.frame_pairs`를 직접 스캔하던 구조였는데, 이는 서버가 이미 제공하는 `get_aligned_frame`을 중복
+구현하는 것이었어서 `useCompare()` 컨텍스트에서 직접 읽고 실제 비동기 `getAlignedFrame` 호출로 교체.
+`CompareWorkspaceSummary`(신규 lean 응답 타입)에 `alignment` 요약(method/confidence/gap_count/
+gap_percentage, `frame_pairs` 전체는 제외)을 추가해 프론트가 필요로 하던 정렬 요약 표시를 지원.
+
+**마운트 지점은 이미 절반쯤 준비돼 있었음**: `App.tsx`의 "Open dependent bitstream..." 네이티브 메뉴 항목(
+`menu-open-dependent`)과 `useAppFileOperations.ts`의 `handleOpenDependentFile`은 이미 실제로 연결돼
+있었으나 죽은 Tauri `open()`+`createWorkspace(pathA,pathB)` 호출이라 무동작이었을 뿐 -- `showOpenDialog`+
+`openStream("B",...)`+`indexStream("B")`+인자 없는 `createWorkspace()`로 교체해 실제로 동작하게 만듦.
+`App.tsx`에 `<CompareWorkspace>` 조건부 렌더(`useCompare().workspace`가 non-null일 때 `mainContent` 대신)
+신규 추가, `handleCloseFile`이 `closeWorkspace()`도 호출하도록 수정(안 하면 stream A를 닫아도 compare 뷰가
+빈 상태로 계속 렌더링됐을 것). 스트림 B의 프레임 메타데이터는 `FileStateContext.tsx`의 `unitNodeToFrameInfo`를
+export해 재사용하는 단순 non-chunked 로더로 `CompareContext.tsx`에 신규 추가(스트림 B는 메인 스트림급 대용량
+progressive-loading UX가 필요 없다고 판단).
+
+Rust: `cargo build --workspace`/`--tests` 전체 클린, 8개 신규 통합테스트(create_compare_workspace 성공/실패,
+get_aligned_frame 성공/실패, sync_mode+offset round-trip, get_diff_frame 동일스트림 all-zero 검증 x2 모드,
+get_diff_frame 워크스페이스 없음) 전부 통과, clippy(vendor 제외)/fmt 클린. 프론트엔드: `npm run typecheck`
+클린(CompareWorkspace 디렉터리 포함, 이번에 처음으로 실제 검사됨), vitest 전체 스위트 기존 베이스라인과 동일
+(9-10개 파일의 codicon 폰트 렌더링 플레이키니스, 이번 변경과 무관 -- git stash로 직접 재확인).
+
+**의도적으로 범위 밖에 남긴 것**: Split(H/V) 와이프 뷰(별개 렌더링 기능), Find First Difference(작은 후속
+작업으로 스코핑), `DiffMode::Metric`/VMAF/RD-curve UI/CLI 서브커맨드/ROI 메트릭(전부 엔진에 미구현이거나
+별도로 추적되는 더 큰 작업).
+
+**예상 소요:** 중급 3~4주 (MVP 슬라이스는 위에서 완료, 나머지는 여전히 유효)
 
 ---
 

@@ -233,6 +233,50 @@ function registerIpcHandlers(): void {
     return requireSidecar().request("find_first_diff_frame");
   });
 
+  // Dual-stream compare workspace (docs/DEVELOPMENT_PHASES.md Phase 7.5) -- PTS-based A/B
+  // alignment + real diff/heatmap overlay. All plain JSON control-frame commands (no raw-Buffer
+  // payload), unlike getDecodedFrameYuv/getHexRange above.
+  ipcMain.handle("bitvue:createCompareWorkspace", async () => {
+    return requireSidecar().request("create_compare_workspace");
+  });
+
+  ipcMain.handle(
+    "bitvue:getAlignedFrame",
+    async (_event, streamAFrameIdx: number) => {
+      return requireSidecar().request("get_aligned_frame", {
+        stream_a_frame_idx: streamAFrameIdx,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "bitvue:setSyncMode",
+    async (_event, mode: "Off" | "Playhead" | "Full") => {
+      return requireSidecar().request("set_sync_mode", { mode });
+    },
+  );
+
+  ipcMain.handle(
+    "bitvue:setManualOffset",
+    async (_event, offset: number) => {
+      return requireSidecar().request("set_manual_offset", { offset });
+    },
+  );
+
+  ipcMain.handle("bitvue:resetOffset", async () => {
+    return requireSidecar().request("reset_offset");
+  });
+
+  ipcMain.handle(
+    "bitvue:getDiffFrame",
+    async (_event, streamAFrameIdx: number, mode: "abs" | "signed") => {
+      return requireSidecar().request("get_diff_frame", {
+        stream_a_frame_idx: streamAFrameIdx,
+        mode,
+      });
+    },
+  );
+
   ipcMain.handle(
     "bitvue:getFrameAnalysis",
     async (_event, frameIndex: number) => {
@@ -1244,6 +1288,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * specific filmstrip thumbnail, which is a `<div data-frame-index="N">`) -- runs after all
  * CLICK_TAB clicks, in order, one `document.querySelector(selector)` + mousedown/click per
  * entry, waiting for each to render before the next.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_OPEN_DEPENDENT=1` (optional, Phase 7.5 compare workspace): after
+ * stream A settles, also dispatches `"menu-open-dependent"` (same real code path as the "Open
+ * dependent bitstream..." menu item) -- `BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH` answers this
+ * second dialog too, so the resulting compare workspace is the same fixture opened as both A
+ * and B (a real, useful state: exact resolution match, `diff_enabled: true`).
  */
 async function runScreenshotAndExit(
   win: BrowserWindow,
@@ -1262,6 +1312,20 @@ async function runScreenshotAndExit(
     await win.webContents.executeJavaScript(
       "new Promise((r) => setTimeout(r, 3000))",
     );
+    // `BITVUE_ELECTRON_SCREENSHOT_OPEN_DEPENDENT=1` (optional, Phase 7.5 compare workspace):
+    // dispatches "menu-open-dependent" the same way -- `showOpenDialog`'s
+    // `BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH` bypass answers this second dialog too (same path
+    // as stream A, which is fine: opening a stream against itself as A/B is a real, useful
+    // compare-workspace state -- exact resolution match, `diff_enabled: true`), so this needs no
+    // separate env var for a second path.
+    if (process.env.BITVUE_ELECTRON_SCREENSHOT_OPEN_DEPENDENT) {
+      await win.webContents.executeJavaScript(
+        'window.dispatchEvent(new CustomEvent("menu-open-dependent"))',
+      );
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 3000))",
+      );
+    }
     const clickTabs = process.env.BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB?.split(
       ",",
     )

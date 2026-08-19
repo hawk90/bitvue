@@ -10,13 +10,14 @@
  * post-dialog logic pulled out so App.tsx's "reload current file" / "open recent file" actions
  * (2026-08-09) can reuse the real bridge chain (openStream -> selectFrame -> refreshFrames)
  * instead of a path that no longer exists (`invoke("open_file", ...)`).
- * `handleOpenDependentFile` (compare workspaces) still calls the old Tauri `open()` dialog +
- * `createWorkspace` — there's no sidecar equivalent for compare yet, so this path is currently
- * non-functional (left as-is rather than half-migrated).
+ * `handleOpenDependentFile` (compare workspaces, docs/DEVELOPMENT_PHASES.md Phase 7.5) opens the
+ * selected file as stream B, indexes it, then calls `useCompare()`'s `createWorkspace()` -- the
+ * real backend always operates on whichever streams are currently open as A/B (see
+ * `bitvue-sidecar/src/compare.rs`'s doc), it doesn't take paths directly; stream A is already
+ * open+indexed by the time this runs (that's `fileInfo`'s own precondition below).
  */
 
 import { useState, useCallback } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { createLogger } from "../utils/logger";
 import type { FileInfo } from "../types/video";
 import { useFileState, useCurrentFrame } from "../contexts/StreamDataContext";
@@ -24,6 +25,7 @@ import { useCompare } from "../contexts/CompareContext";
 import {
   closeStream,
   getStreamInfo,
+  indexStream,
   openStream,
   selectFrame,
   showOpenDialog,
@@ -77,7 +79,7 @@ export function useAppFileOperations(
   const { onError, onCodecChange, onFileOpened } = callbacks;
   const { setFilePath, refreshFrames, clearData } = useFileState();
   const { setCurrentFrameIndex } = useCurrentFrame();
-  const { createWorkspace } = useCompare();
+  const { createWorkspace, closeWorkspace } = useCompare();
 
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -92,12 +94,24 @@ export function useAppFileOperations(
       setFilePath(null);
       setCurrentFrameIndex(0);
       clearData();
+      // Closing stream A invalidates any active compare workspace (it's built against A's
+      // FrameIndexMap/decoded frames) -- without this, App.tsx would keep rendering
+      // CompareWorkspaceFromContext against an empty stream A instead of falling back to
+      // welcomeScreen.
+      closeWorkspace();
       onCodecChange?.(null);
     } catch (err) {
       logger.error("Failed to close file:", err);
       onError("Failed to Close File", toMessage(err));
     }
-  }, [setFilePath, setCurrentFrameIndex, clearData, onError, onCodecChange]);
+  }, [
+    setFilePath,
+    setCurrentFrameIndex,
+    clearData,
+    closeWorkspace,
+    onError,
+    onCodecChange,
+  ]);
 
   /**
    * Open a known path directly (no file dialog) -- shared by handleOpenFile (after the dialog
@@ -262,35 +276,32 @@ export function useAppFileOperations(
         return;
       }
 
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: "Video Files",
-            extensions: [
-              "ivf",
-              "av1",
-              "hevc",
-              "h265",
-              "265",
-              "h264",
-              "264",
-              "vvc",
-              "h266",
-              "mp4",
-              "mkv",
-              "webm",
-              "ts",
-            ],
-          },
-        ],
-      });
+      const selected = await showOpenDialog([
+        {
+          name: "Video Files",
+          extensions: [
+            "ivf",
+            "av1",
+            "hevc",
+            "h265",
+            "265",
+            "h264",
+            "264",
+            "vvc",
+            "h266",
+            "mp4",
+            "mkv",
+            "webm",
+            "ts",
+          ],
+        },
+      ]);
 
       if (selected === null) {
         return; // User cancelled
       }
 
-      const pathB = selected as string;
+      const pathB = selected;
 
       logger.info(`Opening dependent bitstream: ${pathB}`);
 
@@ -301,8 +312,24 @@ export function useAppFileOperations(
         setOpenError(`Limited support for .${extB}: ${unsupportedMsgB}`);
       }
 
-      // Create compare workspace with current file as Stream A and selected file as Stream B
-      await createWorkspace(fileInfo.path, pathB);
+      const openResult = await openStream("B", pathB);
+      if (!openResult.success) {
+        setOpenError(openResult.error ?? "Failed to open dependent bitstream");
+        return;
+      }
+
+      const indexEvents = await indexStream("B");
+      const indexDiagnostic = indexEvents.find(
+        (e) => e.type === "DiagnosticAdded",
+      );
+      if (indexDiagnostic) {
+        setOpenError(String(indexDiagnostic.diagnostic));
+        return;
+      }
+
+      // Create compare workspace -- always operates on whichever streams are open as A/B, see
+      // this function's own doc.
+      await createWorkspace();
 
       logger.info(
         `Compare workspace created successfully: ${fileInfo.path} vs ${pathB}`,
