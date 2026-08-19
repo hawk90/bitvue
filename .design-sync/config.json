@@ -1,0 +1,339 @@
+{
+  "projectId": "b396b3dc-b54f-4f64-a50a-b0f16c772126",
+  "shape": "package",
+  "pkg": "bitvue",
+  "globalName": "Bitvue",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": ".design-sync-dist.css",
+  "buildCmd": "npm run build && cat dist/assets/*.css > .design-sync-dist.css",
+  "extraEntries": [
+    "./contexts/ThemeContext.tsx",
+    "./contexts/LayoutContext.tsx",
+    "./contexts/StreamDataContext.tsx",
+    "./contexts/SelectionContext.tsx",
+    "./contexts/ModeContext.tsx",
+    "./contexts/YuvDiffContext.tsx"
+  ],
+  "extraFonts": [
+    "public/fonts/codicon.ttf"
+  ],
+  "componentSrcMap": {
+    "MemoizedPlaceholderPanel": null,
+    "StatusBar": null
+  },
+  "overrides": {
+    "DebugPanelToggle": {
+      "cardMode": "single",
+      "primaryStory": "Open"
+    },
+    "TimelineCursor": {
+      "cardMode": "column"
+    },
+    "ContextMenu": {
+      "cardMode": "single",
+      "primaryStory": "HexViewScopeWithDisabledItems"
+    },
+    "Tooltip": {
+      "cardMode": "column"
+    },
+    "Av1BlockTypeOverlay": {
+      "cardMode": "column"
+    },
+    "Av1EfficiencyMapOverlay": {
+      "cardMode": "column"
+    },
+    "AvcMbTypeOverlay": {
+      "cardMode": "column"
+    },
+    "AvcRefIdxOverlay": {
+      "cardMode": "column"
+    },
+    "CodingFlowOverlay": {
+      "cardMode": "column"
+    },
+    "MVFieldOverlay": {
+      "cardMode": "column"
+    },
+    "PredictionOverlay": {
+      "cardMode": "column"
+    },
+    "QPMapOverlay": {
+      "cardMode": "column"
+    },
+    "ReferenceLinesOverlay": {
+      "cardMode": "column"
+    },
+    "ReferenceOverlay": {
+      "cardMode": "column"
+    },
+    "TransformOverlay": {
+      "cardMode": "column"
+    },
+    "ErrorDialog": {
+      "cardMode": "single",
+      "primaryStory": "NoDetails"
+    },
+    "ExportDialog": {
+      "cardMode": "single",
+      "primaryStory": "AnalysisReport"
+    },
+    "GoToFrameDialog": {
+      "cardMode": "single",
+      "primaryStory": "Default"
+    },
+    "KeyboardShortcutsDialog": {
+      "cardMode": "single",
+      "primaryStory": "Default"
+    },
+    "ErrorBoundary": {
+      "cardMode": "single",
+      "primaryStory": "CaughtErrorFallback"
+    },
+    "CropDialog": {
+      "cardMode": "single",
+      "primaryStory": "Default"
+    },
+    "HRDBufferPanel": {
+      "cardMode": "column"
+    },
+    "LoadDebugYuvDialog": {
+      "cardMode": "single",
+      "primaryStory": "Detected420_8bit"
+    },
+    "YuvDiffPanel": {
+      "cardMode": "column"
+    },
+    "YuvViewerPanel": {
+      "cardMode": "column"
+    },
+    "Av1CdefRenderer": {
+      "cardMode": "column"
+    },
+    "Av1FilmGrainRenderer": {
+      "cardMode": "column"
+    },
+    "Av1LoopRestorationRenderer": {
+      "cardMode": "column"
+    },
+    "Av1SuperResRenderer": {
+      "cardMode": "column"
+    },
+    "Avs3CcsaoRenderer": {
+      "cardMode": "column"
+    },
+    "Avs3EsaoRenderer": {
+      "cardMode": "column"
+    },
+    "JpegXsDequantRenderer": {
+      "cardMode": "column"
+    },
+    "JpegXsMctRenderer": {
+      "cardMode": "column"
+    },
+    "JpegXsNltRenderer": {
+      "cardMode": "column"
+    },
+    "JpegXsPrecinctRenderer": {
+      "cardMode": "column"
+    },
+    "JpegXsTransformRenderer": {
+      "cardMode": "column"
+    },
+    "Vc3SegmentRenderer": {
+      "cardMode": "column"
+    },
+    "VvcAdaptiveFilterRenderer": {
+      "cardMode": "column"
+    },
+    "VvcDualTreeRenderer": {
+      "cardMode": "column"
+    },
+    "VvcInverseMapRenderer": {
+      "cardMode": "column"
+    },
+    "Graph": {
+      "cardMode": "column"
+    },
+    "FilmstripTooltip": {
+      "cardMode": "single",
+      "primaryStory": "LeftPlacement"
+    },
+    "FrameSizesLegend": {
+      "cardMode": "single",
+      "primaryStory": "AllMetricsEnabled"
+    },
+    "TimelineTooltip": {
+      "cardMode": "column"
+    },
+    "VirtualizedFilmstrip": {
+      "cardMode": "column"
+    },
+    "DebugPanel": {
+      "cardMode": "single",
+      "primaryStory": "Default"
+    },
+    "HexViewTab": {
+      "cardMode": "column"
+    },
+    "VideoCanvas": {
+      "cardMode": "column"
+    }
+  },
+  "provider": {
+    "component": "ThemeProvider",
+    "props": {
+      "defaultTheme": "dark"
+    },
+    "inner": {
+      "component": "LayoutProvider",
+      "inner": {
+        "component": "FrameDataProvider",
+        "inner": {
+          "component": "FileStateProvider",
+          "inner": {
+            "component": "CurrentFrameProvider",
+            "inner": {
+              "component": "SelectionProvider",
+              "inner": {
+                "component": "ModeProvider",
+                "inner": {
+                  "component": "YuvDiffProvider"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "docsMap": {
+    "Filmstrip": "../.design-sync/category-stubs/Filmstrip.md",
+    "FilmstripDropdown": "../.design-sync/category-stubs/FilmstripDropdown.md",
+    "FilmstripTooltip": "../.design-sync/category-stubs/FilmstripTooltip.md",
+    "TimelineCursor": "../.design-sync/category-stubs/TimelineCursor.md",
+    "TimelineFilmstrip": "../.design-sync/category-stubs/TimelineFilmstrip.md",
+    "TimelineHeader": "../.design-sync/category-stubs/TimelineHeader.md",
+    "TimelineThumbnails": "../.design-sync/category-stubs/TimelineThumbnails.md",
+    "TimelineTooltip": "../.design-sync/category-stubs/TimelineTooltip.md",
+    "MemoizedTimeline": "../.design-sync/category-stubs/MemoizedTimeline.md",
+    "MinimapView": "../.design-sync/category-stubs/MinimapView.md",
+    "VirtualizedFilmstrip": "../.design-sync/category-stubs/VirtualizedFilmstrip.md",
+    "FrameSizesLegend": "../.design-sync/category-stubs/FrameSizesLegend.md",
+    "EnhancedView": "../.design-sync/category-stubs/EnhancedView.md",
+    "Av1BlockTypeOverlay": "../.design-sync/category-stubs/Av1BlockTypeOverlay.md",
+    "Av1EfficiencyMapOverlay": "../.design-sync/category-stubs/Av1EfficiencyMapOverlay.md",
+    "AvcMbTypeOverlay": "../.design-sync/category-stubs/AvcMbTypeOverlay.md",
+    "AvcRefIdxOverlay": "../.design-sync/category-stubs/AvcRefIdxOverlay.md",
+    "CodingFlowOverlay": "../.design-sync/category-stubs/CodingFlowOverlay.md",
+    "MVFieldOverlay": "../.design-sync/category-stubs/MVFieldOverlay.md",
+    "PredictionOverlay": "../.design-sync/category-stubs/PredictionOverlay.md",
+    "QPMapOverlay": "../.design-sync/category-stubs/QPMapOverlay.md",
+    "ReferenceLinesOverlay": "../.design-sync/category-stubs/ReferenceLinesOverlay.md",
+    "ReferenceOverlay": "../.design-sync/category-stubs/ReferenceOverlay.md",
+    "TransformOverlay": "../.design-sync/category-stubs/TransformOverlay.md",
+    "ErrorDialog": "../.design-sync/category-stubs/ErrorDialog.md",
+    "ExportDialog": "../.design-sync/category-stubs/ExportDialog.md",
+    "GoToFrameDialog": "../.design-sync/category-stubs/GoToFrameDialog.md",
+    "KeyboardShortcutsDialog": "../.design-sync/category-stubs/KeyboardShortcutsDialog.md",
+    "CropDialog": "../.design-sync/category-stubs/CropDialog.md",
+    "LoadDebugYuvDialog": "../.design-sync/category-stubs/LoadDebugYuvDialog.md",
+    "FrameNavigationToolbar": "../.design-sync/category-stubs/FrameNavigationToolbar.md",
+    "LayoutToolbar": "../.design-sync/category-stubs/LayoutToolbar.md",
+    "DebugPanel": "../.design-sync/category-stubs/DebugPanel.md",
+    "DebugPanelToggle": "../.design-sync/category-stubs/DebugPanelToggle.md",
+    "ErrorBoundary": "../.design-sync/category-stubs/ErrorBoundary.md",
+    "ErrorToast": "../.design-sync/category-stubs/ErrorToast.md",
+    "InlineLoading": "../.design-sync/category-stubs/InlineLoading.md",
+    "LoadingScreen": "../.design-sync/category-stubs/LoadingScreen.md",
+    "Skeleton": "../.design-sync/category-stubs/Skeleton.md",
+    "SkeletonBlock": "../.design-sync/category-stubs/SkeletonBlock.md",
+    "Spinner": "../.design-sync/category-stubs/Spinner.md",
+    "WarningBanner": "../.design-sync/category-stubs/WarningBanner.md",
+    "NoFileLoaded": "../.design-sync/category-stubs/NoFileLoaded.md",
+    "NoFramesFound": "../.design-sync/category-stubs/NoFramesFound.md",
+    "NoFramesSelected": "../.design-sync/category-stubs/NoFramesSelected.md",
+    "NoReferenceFrames": "../.design-sync/category-stubs/NoReferenceFrames.md",
+    "NoResultsFound": "../.design-sync/category-stubs/NoResultsFound.md",
+    "NoSearchResults": "../.design-sync/category-stubs/NoSearchResults.md",
+    "NoSelection": "../.design-sync/category-stubs/NoSelection.md",
+    "PanelEmpty": "../.design-sync/category-stubs/PanelEmpty.md",
+    "PanelEmptyState": "../.design-sync/category-stubs/PanelEmptyState.md",
+    "PanelInfoRow": "../.design-sync/category-stubs/PanelInfoRow.md",
+    "PanelLoading": "../.design-sync/category-stubs/PanelLoading.md",
+    "PanelSection": "../.design-sync/category-stubs/PanelSection.md",
+    "EmptyState": "../.design-sync/category-stubs/EmptyState.md",
+    "TitleBar": "../.design-sync/category-stubs/TitleBar.md",
+    "WelcomeScreen": "../.design-sync/category-stubs/WelcomeScreen.md",
+    "ContextMenu": "../.design-sync/category-stubs/ContextMenu.md",
+    "Tooltip": "../.design-sync/category-stubs/Tooltip.md",
+    "BookmarksPanel": "../.design-sync/category-stubs/BookmarksPanel.md",
+    "TabContent": "../.design-sync/category-stubs/TabContent.md",
+    "TabsWithContent": "../.design-sync/category-stubs/TabsWithContent.md",
+    "TabContainer": "../.design-sync/category-stubs/TabContainer.md",
+    "Graph": "../.design-sync/category-stubs/Graph.md",
+    "CodecBadge": "../.design-sync/category-stubs/CodecBadge.md",
+    "FrameTypeBadge": "../.design-sync/category-stubs/FrameTypeBadge.md",
+    "BitViewPanel": "../.design-sync/category-stubs/BitViewPanel.md",
+    "BitrateGraphPanel": "../.design-sync/category-stubs/BitrateGraphPanel.md",
+    "DetailsPanel": "../.design-sync/category-stubs/DetailsPanel.md",
+    "DiagnosticsPanel": "../.design-sync/category-stubs/DiagnosticsPanel.md",
+    "DockableLayout": "../.design-sync/category-stubs/DockableLayout.md",
+    "FilmstripPanel": "../.design-sync/category-stubs/FilmstripPanel.md",
+    "HRDBufferPanel": "../.design-sync/category-stubs/HRDBufferPanel.md",
+    "InfoPanel": "../.design-sync/category-stubs/InfoPanel.md",
+    "PanelBase": "../.design-sync/category-stubs/PanelBase.md",
+    "PlaceholderPanel": "../.design-sync/category-stubs/PlaceholderPanel.md",
+    "QualityComparisonPanel": "../.design-sync/category-stubs/QualityComparisonPanel.md",
+    "QualityMetricsPanel": "../.design-sync/category-stubs/QualityMetricsPanel.md",
+    "RDCurvesPanel": "../.design-sync/category-stubs/RDCurvesPanel.md",
+    "ReferenceGraphPanel": "../.design-sync/category-stubs/ReferenceGraphPanel.md",
+    "SelectionInfoPanel": "../.design-sync/category-stubs/SelectionInfoPanel.md",
+    "StatisticsPanel": "../.design-sync/category-stubs/StatisticsPanel.md",
+    "StreamTreePanel": "../.design-sync/category-stubs/StreamTreePanel.md",
+    "SyntaxDetailPanel": "../.design-sync/category-stubs/SyntaxDetailPanel.md",
+    "UnitHexPanel": "../.design-sync/category-stubs/UnitHexPanel.md",
+    "YuvDiffPanel": "../.design-sync/category-stubs/YuvDiffPanel.md",
+    "YuvViewerPanel": "../.design-sync/category-stubs/YuvViewerPanel.md",
+    "Av1CdefRenderer": "../.design-sync/category-stubs/Av1CdefRenderer.md",
+    "Av1FilmGrainRenderer": "../.design-sync/category-stubs/Av1FilmGrainRenderer.md",
+    "Av1LoopRestorationRenderer": "../.design-sync/category-stubs/Av1LoopRestorationRenderer.md",
+    "Av1SuperResRenderer": "../.design-sync/category-stubs/Av1SuperResRenderer.md",
+    "Avs3CcsaoRenderer": "../.design-sync/category-stubs/Avs3CcsaoRenderer.md",
+    "Avs3EsaoRenderer": "../.design-sync/category-stubs/Avs3EsaoRenderer.md",
+    "JpegXsDequantRenderer": "../.design-sync/category-stubs/JpegXsDequantRenderer.md",
+    "JpegXsMctRenderer": "../.design-sync/category-stubs/JpegXsMctRenderer.md",
+    "JpegXsNltRenderer": "../.design-sync/category-stubs/JpegXsNltRenderer.md",
+    "JpegXsPrecinctRenderer": "../.design-sync/category-stubs/JpegXsPrecinctRenderer.md",
+    "JpegXsTransformRenderer": "../.design-sync/category-stubs/JpegXsTransformRenderer.md",
+    "Vc3SegmentRenderer": "../.design-sync/category-stubs/Vc3SegmentRenderer.md",
+    "VvcAdaptiveFilterRenderer": "../.design-sync/category-stubs/VvcAdaptiveFilterRenderer.md",
+    "VvcDualTreeRenderer": "../.design-sync/category-stubs/VvcDualTreeRenderer.md",
+    "VvcInverseMapRenderer": "../.design-sync/category-stubs/VvcInverseMapRenderer.md",
+    "ApsTab": "../.design-sync/category-stubs/ApsTab.md",
+    "FrameSyntaxTab": "../.design-sync/category-stubs/FrameSyntaxTab.md",
+    "ProbsTab": "../.design-sync/category-stubs/ProbsTab.md",
+    "QmTab": "../.design-sync/category-stubs/QmTab.md",
+    "RefListTab": "../.design-sync/category-stubs/RefListTab.md",
+    "ReferencesTab": "../.design-sync/category-stubs/ReferencesTab.md",
+    "SearchTab": "../.design-sync/category-stubs/SearchTab.md",
+    "StatisticsTab": "../.design-sync/category-stubs/StatisticsTab.md",
+    "DpbViewTab": "../.design-sync/category-stubs/DpbViewTab.md",
+    "FrameViewTab": "../.design-sync/category-stubs/FrameViewTab.md",
+    "HexViewTab": "../.design-sync/category-stubs/HexViewTab.md",
+    "AV1FeaturesView": "../.design-sync/category-stubs/AV1FeaturesView.md",
+    "BPyramidTimeline": "../.design-sync/category-stubs/BPyramidTimeline.md",
+    "BPyramidView": "../.design-sync/category-stubs/BPyramidView.md",
+    "CodingFlowView": "../.design-sync/category-stubs/CodingFlowView.md",
+    "DeblockingView": "../.design-sync/category-stubs/DeblockingView.md",
+    "DualVideoView": "../.design-sync/category-stubs/DualVideoView.md",
+    "ResidualsView": "../.design-sync/category-stubs/ResidualsView.md",
+    "FrameNavigationControls": "../.design-sync/category-stubs/FrameNavigationControls.md",
+    "ModeSelector": "../.design-sync/category-stubs/ModeSelector.md",
+    "OverlayToggleBar": "../.design-sync/category-stubs/OverlayToggleBar.md",
+    "PlaybackControls": "../.design-sync/category-stubs/PlaybackControls.md",
+    "VideoCanvas": "../.design-sync/category-stubs/VideoCanvas.md",
+    "ZoomControls": "../.design-sync/category-stubs/ZoomControls.md",
+    "BarChart": "../.design-sync/category-stubs/BarChart.md",
+    "LineChart": "../.design-sync/category-stubs/LineChart.md"
+  }
+}

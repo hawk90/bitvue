@@ -1,0 +1,3 @@
+---
+category: Syntax Detail Panel
+---
