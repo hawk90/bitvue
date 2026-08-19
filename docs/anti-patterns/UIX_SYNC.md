@@ -1,0 +1,563 @@
+# Anti-Pattern Catalog — UIX_SYNC: 선택과 동기화
+
+이 문서는 더 큰 Anti-Pattern Catalog(`docs/anti-patterns/INDEX.md`, 별도 작성 예정)의 일부이며, UI/UX + Tauri Phase 3 웨이브(Phase 1 = Rust/미디어 엔지니어링, Phase 2 = VQ-Probe 도메인)에 속한다. Tri-sync(Timeline ⇄ Player ⇄ Syntax-tree ⇄ Hex-view 선택 일관성)는 Bitvue의 정체성을 정의하는 핵심 기능이므로, 이 카테고리는 Phase 3 웨이브 전체에서 사실상 가장 심각도가 높은 카테고리로 취급한다 — 다른 카테고리의 결함은 특정 기능을 저하시키지만, 이 카테고리의 결함은 "지금 화면에 보이는 것이 실제로 분석되는 대상과 같다"는 도구의 근본 신뢰를 무너뜨린다.
+
+이 문서는 1단계(일반 참조 카탈로그)이며, 2단계에서 Bitvue 저장소를 실제로 감사해 각 항목의 "Bitvue 판정"을 채운다.
+
+---
+
+## 참조 설계: SelectionState
+
+이 카테고리의 항목들이 공통으로 참조하는 선택 상태 구조는 다음과 같다.
+
+```rust
+struct SelectionState {
+    frame: Option<FrameId>,
+    syntax_node: Option<SyntaxNodeId>,
+    byte_range: Option<ByteRange>,
+    block: Option<BlockId>,
+    roi: Option<Roi>,
+    source: SelectionSource,
+    generation: u64,
+}
+```
+
+다만 **단일 전역 selection 구조체만으로는 충분하지 않다**. 구조체는 "지금 무엇이 선택되어 있는가"만 표현할 뿐, "어떤 종류의 선택이 다른 어떤 필드를 바꾸고 어떤 필드는 건드리지 않아야 하는가"라는 전이 규칙(transition rule)은 별도로 설계해야 한다. 아래 세 가지가 대표적인 전이 규칙 예시이며, 이 문서의 여러 항목(특히 003, 004, 011)이 이 규칙의 부재 또는 오적용을 다룬다.
+
+- **Timeline frame 선택** → `frame`은 변경, `syntax_node`·`block`은 초기화, viewport(줌/팬)는 사용자 설정에 따라 유지/재중앙화.
+- **Syntax field 선택** → `frame`은 유지, `byte_range` 변경, hex view는 해당 위치로 scroll, player의 zoom은 강제로 변경하지 않음.
+- **Block hover** → 임시 highlight만 변경, 영구 선택(`selected` 상태)과 history는 변경하지 않음.
+
+구조체 설계와 전이 규칙 설계는 별개의 작업이며, 후자를 생략하면 구조체가 아무리 정교해도 이 문서의 항목들이 그대로 재현된다.
+
+---
+
+### UIX-SYNC-001: 패널마다 선택 상태를 독립 보관
+
+**분류**: State Architecture · **심각도**: Critical · **탐지**: Code
+
+**사용자 목표**:
+타임라인에서 프레임을 클릭하면 신택스 트리·헥스뷰·플레이어가 모두 같은 프레임을 가리켜야 한다.
+
+**증상**:
+- 타임라인에서 프레임 200을 선택했는데 신택스 트리는 여전히 프레임 199의 NALU를 보여준다.
+- 새로고침/패널 재마운트 시 각 패널이 서로 다른 "마지막 선택"을 복원한다.
+- 두 패널을 나란히 띄워놓고 하나를 조작하면 다른 패널이 반응하지 않거나, 반응이 몇 프레임 뒤처진다.
+
+**원인**:
+각 패널 컴포넌트가 자체 로컬 상태로 selection을 보관하고, 전역 selection이라는 단일 진실 공급원(single source of truth)이 없다. "패널 = 독립 위젯"이라는 컴포넌트 설계 관성이 tri-sync 요구사항과 정면으로 충돌한다.
+
+**구현 냄새**:
+- `FrameViewer`, `SyntaxTreePanel`, `HexViewPanel` 등에 각각 `const [selectedFrame, setSelectedFrame] = useState(...)`가 존재.
+- 패널 간 동기화가 props drilling이나 ad-hoc 이벤트(`window.dispatchEvent` 등)로 땜질됨.
+- "이 패널이 selection의 주인인가"를 판단하는 코드가 없어 모든 패널이 동등한 쓰기 권한을 가짐.
+
+**영향**:
+사용자가 화면에서 보는 4개 패널이 실제로는 4개의 서로 다른 프레임/지점을 가리키는 상태로 분석 결과를 오독한다. 코덱 버그 리포트에 잘못된 프레임 번호가 기록될 위험도 크다.
+
+**권장**:
+- 전역 SelectionState를 단일 store(예: Zustand/Redux/Context)로 승격하고 모든 패널은 이를 구독만 함.
+- 패널은 selection을 직접 변경하지 않고 액션(예: `selectFrame(id, source)`)을 dispatch.
+- 초기 마운트 시 각 패널이 독자적인 로컬 fallback 상태를 만들지 않도록, store가 준비되기 전 렌더를 막거나 로딩 상태로 대체.
+
+**탐지**:
+- 코드 리뷰: 패널 컴포넌트 안에서 selection 관련 `useState` grep.
+- 인터랙션 테스트: 4개 패널을 동시에 띄우고 각 패널에서 번갈아 클릭하며 나머지 3개가 즉시 일치하는지 확인.
+
+**Bitvue 판정**: Confirmed — Timeline/Filmstrip/BookmarksPanel/DebugPanel은 `frontend/contexts/SelectionContext.tsx`(`selection.frame`)를 쓰고, Player(`YuvViewerPanel`)·`SyntaxDetailPanel`·`UnitHexPanel`·`InfoPanel`·`DetailsPanel`은 완전히 별도인 `CurrentFrameContext`(`currentFrameIndex`)를 쓴다 — 둘을 잇는 브릿지가 전혀 없다. 근거: `frontend/App.tsx:153-199`(`MainViewFromContext`/`InfoPanelFromContext`가 `useCurrentFrame`만 사용), `frontend/components/Timeline.tsx:22,165-206`(`setFrameSelection`만 호출, `setCurrentFrameIndex`는 호출 안 함), `frontend/components/panels/UnitHexPanel/index.tsx:13,29`·`SyntaxDetailPanel/index.tsx:15,65`(`useCurrentFrame`만 사용). 결과: Timeline에서 프레임을 클릭해도 Syntax/Hex/Player는 그대로다 — 카탈로그의 001 증상이 문자 그대로 재현됨. (덧붙여, Rust 쪽 `bitvue-core::SelectionState`/`SelectionReducer`(`crates/bitvue-core/src/selection.rs`)는 정교하게 설계돼 있으나 `src-tauri/src/commands`에 이를 노출하는 커맨드가 전혀 없어 — grep 결과 0건 — 실제로는 죽은 코드이고, 프런트엔드가 별도로 재구현한 위 3-way 분절 상태가 진짜 런타임 동작이다.)
+
+---
+
+### UIX-SYNC-002: frame index와 display index 혼용
+
+**분류**: Data Semantics · **심각도**: High · **탐지**: Domain review
+
+**사용자 목표**:
+사용자가 타임라인에서 "153번째로 보이는 프레임"을 클릭하면, 실제 디코드 순서상 몇 번째인지와 무관하게 신택스 트리도 같은 프레임을 가리켜야 한다.
+
+**증상**:
+- B-frame이 섞인 스트림에서 타임라인 클릭 위치와 신택스 트리가 가리키는 NALU가 어긋난다.
+- reorder(POC 재정렬)가 있는 구간에서만 간헐적으로 발생하고, IDR 근처는 정상으로 보인다.
+- 프레임 총 개수는 맞는데 특정 인덱스로 점프하면 다른 프레임이 나온다.
+
+**원인**:
+display order(POC/PTS 기준 재생 순서)와 decode order(비트스트림 등장 순서)는 서로 다른 정수 인덱스 공간인데, UI 코드 여러 곳에서 "frame index"라는 이름 하나로 뭉뚱그려 섞어 쓴다. 타임라인은 display order를 쓰고, 신택스 트리/헥스뷰는 decode order(NALU 등장 순서)를 쓰는 것이 자연스러운데, 그 사이의 변환 지점이 코드에 없다.
+
+**구현 냄새**:
+- 함수 시그니처가 `frameIndex: number` 하나뿐이고 decode/display 구분이 타입 수준에 없음.
+- decode↔display 매핑 테이블(POC 정렬 결과)이 프레임 파싱 시점에만 잠깐 쓰이고 버려짐.
+- selection 전달 시 "이 인덱스가 어느 좌표계인지"를 호출부 주석에만 의존.
+
+**영향**:
+B-frame이 포함된 실사용 스트림(사실상 대다수)에서 tri-sync가 구조적으로 깨진다. 데모/단순 스트림에서만 통과하는 테스트로는 이 결함을 잡을 수 없다.
+
+**권장**:
+- `DecodeOrderIndex`와 `DisplayOrderIndex`를 별도 nominal 타입(브랜드 타입)으로 분리.
+- 두 좌표계 사이 변환은 반드시 명시적 함수(`decodeToDisplay`, `displayToDecode`)를 거치도록 강제.
+- SelectionState에는 하나의 정규 좌표계(예: decode order 기준 FrameId)만 저장하고, 타임라인 표시용 변환은 렌더 시점에만 적용.
+
+**탐지**:
+- Domain review: B-frame이 포함된 hierarchical-B GOP 픽스처로만 재현 가능 — IDR-only 테스트로는 검출되지 않음.
+- 코드 리뷰: `frameIndex`/`frame_idx` 타입 정의에 decode/display 구분 여부 확인.
+
+**Bitvue 판정**: N/A — `frontend/types/video.ts:122,129-130`에 `display_order`/`coding_order` 필드가 존재하지만, Timeline/Filmstrip/TimelineThumbnails 어디에도 이 필드로 정렬하거나 재인덱싱하는 코드가 없다(grep 결과 없음). 모든 패널이 동일한 `frames` 배열을 동일한 정수 인덱스(디코드 등장 순서로 추정)로 참조하므로, 현재 UI에는 "두 개의 서로 다른 좌표계"가 실제로 노출되어 있지 않아 이 항목이 묘사하는 혼동은 구조적으로 발생하지 않는다. 다만 두 필드가 타입 수준에서 구분되지 않은 채 방치되어 있어(브랜드 타입 없음), 향후 display-order 기반 타임라인 뷰가 추가되면 잠재 위험이 될 수 있음은 남겨둔다.
+
+---
+
+### UIX-SYNC-003: 패널 A 선택이 패널 B를 무조건 강제 이동
+
+**분류**: Interaction Design · **심각도**: Medium · **탐지**: Interaction
+
+**사용자 목표**:
+신택스 트리에서 특정 필드를 살펴보는 동안 플레이어 화면의 확대/이동 상태를 유지하고 싶다.
+
+**증상**:
+- 신택스 트리에서 residual coefficient 노드를 클릭할 때마다 플레이어 뷰가 매번 리셋되어 확대/팬 위치를 잃는다.
+- 헥스뷰에서 바이트를 스크롤만 했는데 신택스 트리가 강제로 해당 위치까지 스크롤/펼쳐진다.
+- 사용자가 그저 둘러보려 해도 패널들이 서로를 끌어당겨 원하는 뷰를 유지할 수 없다.
+
+**원인**:
+"선택이 바뀌면 관련된 모든 패널을 그 지점으로 강제 이동시킨다"는 단일 규칙을 모든 selection 종류에 동일하게 적용한다. 실제로는 selection 종류별로 강제 이동해야 할 패널과 그대로 둬야 할 패널이 다르다(본 문서 상단 전이 규칙 참조).
+
+**구현 냄새**:
+- selection 변경 핸들러 하나가 `scrollIntoView`/`setZoom`/`setPan`을 조건 없이 항상 같이 호출.
+- "이 패널은 지금 사용자가 수동으로 조작 중"이라는 상태(occupied/locked)가 없음.
+- selection 종류(frame/field/block/roi)에 따른 분기 없이 동일한 sync 로직을 재사용.
+
+**영향**:
+세밀한 분석(특정 매크로블록 확대 후 여러 필드 비교) 작업 흐름이 매 클릭마다 끊겨 전문가 사용자의 생산성을 크게 해친다 — 경쟁 툴 대비 체감 열등 요소가 되기 쉽다.
+
+**권장**:
+- selection 종류별 전이 규칙을 명시(본 문서 상단 참조): syntax field 선택은 hex 스크롤만 하고 player zoom/pan은 건드리지 않음.
+- 사용자가 특정 패널을 수동 조작 중이면 해당 패널만 일시적으로 auto-sync에서 제외(soft lock)하고, 명시적 "sync 복귀" 액션을 제공.
+- 강제 이동을 opt-in 설정(예: "탐색 시 뷰 자동 추종")으로 노출.
+
+**탐지**:
+- 인터랙션 테스트: 플레이어를 특정 배율로 확대한 뒤 신택스 트리에서 임의 필드 5개를 연속 클릭, 배율/팬이 유지되는지 확인.
+
+**Bitvue 판정**: N/A — `frontend/hooks/useCanvasInteraction.ts`(zoom/pan)는 `YuvViewerPanel`에 완전히 로컬인 `useState`이고, 어떤 외부 prop(`currentFrameIndex`, `selection` 등)에도 의존하지 않는다(`frontend/components/panels/YuvViewerPanel/index.tsx:139-153` 참조 — 프레임 로딩 effect의 의존성 배열에 zoom/pan이 없고, 그 반대도 없음). `SyntaxDetailPanel`/`UnitHexPanel`은 Player와 아예 다른 컴포넌트 트리라 zoom/pan setter에 접근 자체가 불가능하다. 즉 이 항목이 우려하는 "강제 리셋"은 현재 코드베이스에는 없다 — 다만 이는 001에서 확인된 패널 간 완전 단절의 부작용(우연한 안전)이지, 의도적으로 설계된 전이 규칙 때문이 아니다.
+
+---
+
+### UIX-SYNC-004: hover와 selection의 의미를 혼용
+
+**분류**: Interaction Semantics · **심각도**: High · **탐지**: Interaction
+
+**사용자 목표**:
+마우스를 옮겨 여러 블록을 훑어보다가 원하는 블록에서 클릭해 "확정 선택"하면, 그 확정 선택은 마우스가 다른 곳으로 이동해도 유지되어야 한다.
+
+**증상**:
+- 오버레이에서 블록 위로 마우스를 올렸다가 떼면 방금까지 열려 있던 신택스 트리 노드가 닫혀버린다.
+- hover만 했을 뿐인데 selection history/breadcrumb에 항목이 쌓인다.
+- 마우스가 패널 밖으로 나가는 순간 애써 골라둔 선택이 사라진 것처럼 보인다.
+
+**원인**:
+hover(일시적, 비영속적 미리보기)와 click/selection(영속적, 사용자 의도의 확정)을 같은 상태 변수 하나로 표현한다. "마지막으로 마우스가 닿은 지점"과 "사용자가 확정한 지점"을 구분하지 않는다.
+
+**구현 냄새**:
+- `activeBlock` 같은 단일 필드가 `onMouseEnter`와 `onClick` 모두에서 동일하게 set됨.
+- hover 핸들러가 selection store의 setter를 직접 호출.
+- `mouseleave`에서 상태를 null로 되돌리는 로직이 확정 선택까지 지워버림.
+
+**영향**:
+사용자가 "선택했다"고 믿었던 상태가 실은 hover 잔상이었던 경우 분석 결과 해석 오류로 이어진다. 특히 스크린샷/리포트 캡처 시점에 선택이 사라져 있는 사고가 빈번하게 발생한다.
+
+**권장**:
+- SelectionState에 `hover`(임시)와 확정 selection(영속)을 분리해서 보관 — 상단 참조 구조의 `block`/`roi`는 confirmed selection 전용, hover는 별도 ephemeral 필드로 관리.
+- hover는 시각적 하이라이트만 갱신하고 history/breadcrumb/영속 store에는 절대 기록하지 않음.
+- 확정 선택은 click/keyboard 등 명시적 사용자 동작에서만 발생하도록 경로를 분리.
+
+**탐지**:
+- 인터랙션 테스트: 블록 클릭 후 마우스를 빈 영역으로 이동 → 선택 하이라이트/신택스 트리 펼침 상태가 유지되는지 확인.
+- 코드 리뷰: `onMouseEnter`/`onMouseMove` 핸들러가 selection store의 쓰기 액션을 직접 호출하는지 grep.
+
+**Bitvue 판정**: N/A — 오버레이 블록 hover→선택 인터랙션 자체가 아직 구현되지 않았다: `frontend/components/panels/OverlayRenderer/index.tsx`(280줄)는 순수 canvas 그리기 디스패처일 뿐 `onClick`/`onMouseEnter`/`onMouseMove` 핸들러가 전혀 없고(grep 결과 없음), `VideoCanvas.tsx`의 `onMouseDown`은 `useCanvasInteraction`의 pan 핸들러에만 연결된다. 실제로 존재하는 hover 상태(Timeline의 `hoverPosition`/`hoverFrameIndex` — `frontend/components/Timeline.tsx:23,213-216`, Filmstrip의 `hoveredFrame` — `useFilmstripState` 훅)는 툴팁 표시 전용으로만 쓰이고 `setFrameSelection` 등 selection 쓰기 액션을 호출하지 않아 이미 올바르게 분리되어 있다. 따라서 이 항목이 묘사하는 hover/selection 혼용 버그가 성립할 지점이 현재는 없다.
+
+---
+
+### UIX-SYNC-005: 임시 preview가 영구 selection을 덮어씀
+
+**분류**: State Architecture · **심각도**: High · **탐지**: Interaction
+
+**사용자 목표**:
+필터/검색 결과를 미리보기(preview)로 훑어보다가 취소하면 원래 선택으로 정확히 돌아가야 한다.
+
+**증상**:
+- 신택스 필터 드롭다운에서 옵션을 하이라이트(아직 확정 안 함)만 했는데 실제 선택이 바뀐다.
+- "검색 결과 미리보기"에서 Esc를 눌러 취소해도 원래 선택이 복원되지 않는다.
+- Undo를 눌러도 preview 이전 상태로 돌아가지 않는다(애초에 preview가 영구 상태를 덮어써서 이전 값 자체가 소실됨).
+
+**원인**:
+preview(확정 전 미리보기) 로직이 별도 상태 레이어 없이 영구 selection 변수에 직접 값을 대입한다. "확정"이라는 개념(commit)이 코드 상에 존재하지 않아 preview와 실제 선택이 같은 저장소를 공유한다.
+
+**구현 냄새**:
+- `previewFrame(id)` 함수가 내부적으로 `setSelection({ frame: id })`를 그대로 호출.
+- 확정/취소 시 되돌릴 "이전 값 스냅샷"을 따로 보관하지 않음.
+- preview 종료(mouseup, blur, Esc) 경로 중 일부에서만 롤백 코드가 존재하고 나머지 경로는 누락.
+
+**영향**:
+사용자가 탐색적으로 여러 옵션을 훑어보는 전형적인 "둘러보기" 워크플로우 도중 실수로 실제 분석 상태가 변경되어, 이후 export/캡처 결과가 사용자 의도와 달라진다.
+
+**권장**:
+- preview 전용 필드(예: `previewSelection: SelectionState | null`)를 확정 selection과 분리.
+- 렌더 시 `previewSelection ?? selection`을 사용해 화면에는 preview를 보여주되 store의 확정 값은 그대로 둠.
+- 확정은 명시적 commit 액션에서만 일어나게 하고, 모든 취소 경로(Esc, blur, 바깥 클릭, 라우트 이탈)에서 preview를 null로 되돌리는 단일 헬퍼를 사용.
+
+**탐지**:
+- 인터랙션 테스트: 필터 드롭다운을 열고 옵션 3개를 순서대로 hover한 뒤 Esc → 원래 selection과 정확히 동일한지 diff.
+
+**Bitvue 판정**: N/A — 코드베이스 전체에 preview 개념 자체가 없다(grep으로 "preview" 관련 selection 상태 없음 확인). `SearchTab.tsx`의 검색 결과 등 모든 선택형 리스트는 `onClick`으로만 확정되며 hover 시 미리보기를 적용하는 경로가 존재하지 않는다 — 즉 이 항목이 전제하는 "확정 전 preview가 영구 상태를 공유"하는 메커니즘 자체가 아직 만들어지지 않았으므로 해당 결함이 발생할 수 없다.
+
+---
+
+### UIX-SYNC-006: 선택 변경의 origin을 보존하지 않음
+
+**분류**: State Architecture · **심각도**: Medium · **탐지**: Code
+
+**사용자 목표**:
+특정 패널에서 선택을 변경했을 때, 그 변경을 유발한 패널 자신은 자기 sync 로직 때문에 다시 흔들리지 않아야 한다.
+
+**증상**:
+- 사용자가 헥스뷰에서 바이트를 클릭했는데, 그 결과로 헥스뷰 자신도 스크롤 애니메이션이 실행되어 클릭 지점이 화면에서 미묘하게 튄다.
+- 어느 패널에서 선택이 시작되었는지 로그/디버깅으로 알 수 없어 버그 재현이 어렵다.
+- 여러 패널이 동시에 "내가 이 selection의 주체"라고 착각해 각자 자기 뷰를 강제 정렬하려 한다.
+
+**원인**:
+SelectionState 갱신 시 "누가(source) 이 변경을 일으켰는가"를 기록하지 않는다. 모든 구독자가 변경 이벤트를 동일하게 취급해 origin 패널까지 자기 자신의 sync 이펙트를 재실행한다.
+
+**구현 냄새**:
+- selection 업데이트 액션에 `source` 파라미터가 없거나 optional로 방치되어 실제로는 채워지지 않음.
+- 각 패널의 `useEffect(() => { scrollTo(...) }, [selection])`가 origin 여부와 무관하게 항상 실행.
+- 로깅/텔레메트리에 selection 변경 원인 패널이 기록되지 않아 사후 분석이 불가능.
+
+**영향**:
+불필요한 재렌더/재스크롤로 인한 시각적 떨림(jitter), 성능 낭비, 그리고 버그 리포트 시 재현 경로 추적 곤란으로 이어진다.
+
+**권장**:
+- 상단 SelectionState 구조의 `source: SelectionSource` 필드를 모든 갱신 경로에서 필수로 채움(예: enum Timeline/SyntaxTree/HexView/Player/Programmatic).
+- 각 패널의 sync effect는 `selection.source !== 자기자신` 조건에서만 자기 뷰를 조정.
+- 디버그 오버레이/로그에 최근 selection 변경의 source 이력을 노출.
+
+**탐지**:
+- 코드 리뷰: selection 갱신 액션 호출부에서 `source` 인자 누락 여부 grep.
+- 인터랙션 테스트: 각 패널에서 선택을 발생시켰을 때 해당 패널 자신에 불필요한 스크롤/애니메이션이 없는지 확인.
+
+**Bitvue 판정**: Confirmed — `SelectionState`에 `source: {panel, timestamp}` 필드가 실제로 존재하고 채워지는데도(`frontend/types/selection.ts:62-65`, `frontend/utils/selectionSync.ts:91-98`), 이를 구독하는 effect가 origin 검사를 하지 않는다. 예: `frontend/components/Timeline.tsx:62-66`의 sync effect는 `[selection?.frame?.frameIndex]`에만 의존할 뿐 `selection.source.panel !== "timeline"` 같은 가드가 없다 — "구현 냄새" 항목의 "origin 여부와 무관하게 항상 실행"과 정확히 일치.
+
+---
+
+### UIX-SYNC-007: 양방향 동기화가 이벤트 루프를 만듦
+
+**분류**: State Architecture · **심각도**: Critical · **탐지**: Code
+
+**사용자 목표**:
+어떤 패널을 조작해도 매끄럽게 다른 패널이 따라오길 원하지, 화면이 멈추거나 앱이 느려지길 원하지 않는다.
+
+**증상**:
+- 특정 조합의 클릭 후 UI가 순간적으로 멈추거나 CPU 사용률이 튄다.
+- "신택스 트리 선택 → 헥스뷰 갱신 → 신택스 트리 재갱신 → ..."이 무한 반복되며 렌더 카운트가 폭증한다.
+- React의 "Maximum update depth exceeded" 경고, 혹은 상태 라이브러리의 순환 구독 경고가 콘솔에 나타난다.
+
+**원인**:
+A 패널의 selection 변경이 B 패널의 selection을 갱신하고, B의 갱신이 다시 A의 selection을(같은 값이 아니라 재계산된 파생값으로) 갱신하는 양방향 구독 체인이 존재하며, 이 체인을 끊는 동일성 검사(equality check)나 사이클 차단 장치가 없다.
+
+**구현 냄새**:
+- 두 패널이 서로의 store를 구독하며 각자의 `useEffect`에서 상대 store의 setter를 호출.
+- selection 갱신 시 "값이 실제로 달라졌는가" 비교 없이 매번 새 객체를 생성해 set(참조 동등성 실패로 항상 변경으로 인식).
+- generation/사이클 카운터 없이 이벤트 체인 깊이를 제한하는 안전장치가 전무.
+
+**영향**:
+최악의 경우 앱 프리즈, 최선의 경우에도 불필요한 재계산으로 CPU/배터리 낭비 및 간헐적 프레임 드롭이 발생한다.
+
+**권장**:
+- selection 갱신을 단방향 데이터 흐름(action → central store → 구독자)으로 통일하고, 패널이 다른 패널의 store를 직접 쓰지 않도록 아키텍처로 강제.
+- 갱신 전 deep-equal 비교로 실제 변경이 없으면 no-op 처리.
+- generation 카운터(상단 구조 참조)로 같은 generation 내 재진입을 차단하는 가드를 추가.
+
+**탐지**:
+- Runtime: 개발 모드에서 동일 selection 갱신 함수의 초당 호출 횟수를 카운트해 임계치 초과 시 경고.
+- 코드 리뷰: 두 패널이 서로의 store/setter를 상호 참조하는 구조인지 의존성 그래프 확인.
+
+**Bitvue 판정**: N/A — 001에서 확인했듯 `SelectionContext`와 `CurrentFrameContext`는 서로를 구독하지 않는 완전히 독립된 store이며, 상호 참조하는 `useEffect`도 발견되지 않았다(grep으로 두 컨텍스트가 서로의 setter를 호출하는 지점 없음 확인) — 즉 순환할 "고리" 자체가 없다. 다만 이 무순환은 001의 결함(두 store가 애초에 연결되어 있지 않음)의 반작용일 뿐, 의도적으로 사이클을 차단하는 장치(deep-equal, generation guard 등)가 설계되어서가 아니다 — 두 store를 나중에 이어 붙이면(001 수정 시) 이 항목이 곧바로 현실화될 위험이 크다.
+
+---
+
+### UIX-SYNC-008: 패널마다 다른 시점의 분석 결과 표시
+
+**분류**: Async Consistency · **심각도**: Critical · **탐지**: Performance
+
+**사용자 목표**:
+타임라인을 빠르게 scrub(드래그)해도, 멈췄을 때 모든 패널이 정확히 같은 최신 프레임의 분석 결과를 보여줘야 한다.
+
+**증상**:
+- player는 frame 151, syntax tree는 frame 149, hex view는 frame 150을 표시한다 — 빠르게 scrub할 때 간헐적으로 발생.
+
+**원인**:
+비동기 요청의 완료 순서를 최신 상태로 오해한다.
+
+**구현 냄새**:
+- request/generation ID 없음.
+- response 적용 전 현재 selection 검증 없음.
+- 패널마다 독립 요청 수행.
+
+**영향**:
+사용자가 scrub을 멈춘 시점에 화면에 보이는 프레임 번호들이 패널마다 제각각이 되어, 실제로는 아무도 신뢰할 수 없는 "짬뽕 상태"의 분석 결과를 정상인 것처럼 보게 된다 — tri-sync가 표방하는 핵심 신뢰성이 가장 흔한 사용 패턴(빠른 탐색)에서 깨지는 사례다.
+
+**권장**:
+- selection generation 부여.
+- backend 응답에 generation 포함.
+- 적용 직전 현재 generation 검증.
+- frame analysis snapshot을 원자적으로 게시.
+
+**탐지**:
+- 1,000개 역순 응답에서도 마지막 frame만 표시되는지 검증(예: 응답 지연을 무작위로 섞은 mock으로 fuzzing).
+
+**Bitvue 판정**: Confirmed — 공유 generation/request-id가 어디에도 없고(`selection.rs`/`SelectionContext` grep 결과 없음), 패널마다 race 방지 수준이 제각각이다: `YuvViewerPanel`의 프레임 로딩 effect(`frontend/components/panels/YuvViewerPanel/index.tsx:173-263`)와 `HexViewTab`의 hex 로딩 effect(`frontend/components/panels/UnitHexPanel/HexViewTab.tsx:48-93`)는 로컬 `cancelled` 플래그로 스스로를 보호하지만, `FrameSyntaxTab`의 `get_frame_syntax` 호출(`frontend/components/panels/SyntaxDetailPanel/FrameSyntaxTab.tsx:67-87`)은 그런 가드가 전혀 없이 `.then(setSyntaxTree)`로 바로 반영한다 — 빠른 scrub 시 신택스 트리만 stale 응답으로 덮어써질 수 있다. "각 패널이 독립 요청 수행"이라는 원인 서술과 정확히 일치.
+
+---
+
+### UIX-SYNC-009: 현재 선택이 화면 밖으로 사라져도 표시 없음
+
+**분류**: Visual Feedback · **심각도**: Medium · **탐지**: Visual
+
+**사용자 목표**:
+스크롤/줌으로 현재 선택된 지점이 화면 밖으로 나가더라도, 그 사실과 대략적인 방향을 알 수 있어야 한다.
+
+**증상**:
+- 헥스뷰를 스크롤해서 선택된 바이트가 화면 밖으로 나가면 아무 표시도 없어 "선택이 사라졌나?" 혼란이 생긴다.
+- 신택스 트리에서 다른 노드를 펼치다 보면 선택된 필드가 접힌 서브트리 안에 묻혀 어디 있는지 알 수 없다.
+- 타임라인을 축소해서 보다가 선택된 프레임 마커가 다른 마커에 가려져 보이지 않는다.
+
+**원인**:
+선택 하이라이트를 뷰포트 내부 요소에만 그리고, 뷰포트 밖에 있을 때를 위한 별도 인디케이터(가장자리 화살표, 미니맵 마커 등)를 구현하지 않았다.
+
+**구현 냄새**:
+- 선택 하이라이트 렌더링이 가상 스크롤(virtualized list)의 렌더 윈도우 내부 아이템에서만 조건부로 실행되고, 윈도우 밖일 때의 fallback UI가 없음.
+- "현재 선택이 뷰포트 안에 있는가"를 계산하는 로직 자체가 존재하지 않음.
+
+**영향**:
+사용자가 선택을 잃어버렸다고 오인해 재탐색하거나, 반대로 선택이 없어졌는데 있다고 착각해 다음 조작(예: export)이 엉뚱한 대상에 적용된다.
+
+**권장**:
+- 뷰포트 밖 선택에 대해 스크롤바/가장자리에 방향 인디케이터(화살표 또는 미니맵 dot)를 표시.
+- "현재 선택으로 이동" 단축키/버튼을 모든 패널에 상시 노출.
+- 신택스 트리는 선택된 노드의 조상 경로를 자동으로 펼쳐 유지(접힌 서브트리에 선택이 묻히지 않도록).
+
+**탐지**:
+- Visual: 선택 후 스크롤/줌을 극단으로 이동시켜 인디케이터 존재 여부를 스크린샷으로 비교.
+
+**Bitvue 판정**: Confirmed(부분) — `frontend/components/MinimapView.tsx:33`가 `currentFrameIndex === frame.frame_index`로 "selected" 클래스를 표시해 Filmstrip 레벨에서는 미니맵형 인디케이터가 존재한다. 그러나 이 항목이 더 문제 삼는 `HexViewTab.tsx`(가상화 없는 긴 hex 덤프)와 `FrameSyntaxTab.tsx`(가상 스크롤 트리, `VirtualSyntaxTree` 포함)에는 뷰포트 밖 선택을 위한 인디케이터나 "현재 선택으로 이동" 기능이 전혀 없다(`scrollIntoView`/인디케이터 관련 코드 grep 결과 없음) — 신택스 트리는 조상 경로 자동 펼침도 구현되어 있지 않다.
+
+---
+
+### UIX-SYNC-010: 필터 후 selection이 무효화되지만 그대로 유지
+
+**분류**: State Validity · **심각도**: High · **탐지**: Code
+
+**사용자 목표**:
+신택스 트리에 필터(예: "residual만 보기")를 적용했을 때, 필터 결과에 더 이상 존재하지 않는 선택은 명확히 처리되어야 한다(해제되거나, 무효 표시되거나).
+
+**증상**:
+- 필터를 켜서 선택된 노드가 화면에서 사라졌는데도 다른 패널(헥스뷰 등)은 여전히 그 노드를 가리키며 동기화된 것처럼 동작한다.
+- 필터를 껐다 켰다 반복하면, 이미 무효해진 selection을 기준으로 한 연산(예: byte range 계산)이 stale 데이터로 실행된다.
+- selection 관련 API가 필터링된 뷰의 좌표계로 index를 요청해 범위를 벗어나 예외/빈 화면이 발생한다.
+
+**원인**:
+필터는 "표시 목록"만 바꾸는 것으로 취급되고, selection의 유효성(현재 selection이 필터링된 결과 집합에 속하는지)을 재검증하는 로직이 없다.
+
+**구현 냄새**:
+- 필터 적용 액션이 `visibleNodes`만 갱신하고 `selection`은 건드리지 않음.
+- selection 참조 무결성을 검사하는 코드(예: `isSelectionStillValid(selection, currentFilter)`)가 존재하지 않음.
+- 필터링된 데이터를 기준으로 한 index 접근에 bounds check가 없어 조용히 wrong-item을 반환하거나 크래시.
+
+**영향**:
+필터를 애용하는 숙련 사용자일수록 stale selection에 더 자주 노출되어 분석 신뢰도가 떨어진다. 최악의 경우 존재하지 않는 데이터를 기준으로 리포트가 생성된다.
+
+**권장**:
+- 필터 적용/해제 시마다 현재 selection이 새 필터 결과 집합에 속하는지 검증하고, 속하지 않으면 명시적으로 "선택 해제됨 + 사유" 상태로 전환하거나 가장 가까운 유효 항목으로 재조정(사용자에게 알림과 함께).
+- id 기반 selection(순번이 아닌 안정적 식별자)을 사용해 필터 전후에도 동일 요소를 추적 가능하게 함.
+
+**탐지**:
+- 인터랙션 테스트: 노드 선택 → 해당 노드를 제외하는 필터 적용 → selection 상태와 연관 패널이 모두 "무효" 처리되는지 확인.
+- 코드 리뷰: 필터 액션 리듀서가 selection 필드를 재검증하는지 확인.
+
+**Bitvue 판정**: N/A — 신택스 트리/헥스뷰에 노드를 걸러내는 필터 기능 자체가 아직 없다. `frontend/components/panels/SyntaxDetailPanel/SearchTab.tsx`는 프레임 번호/타입/PTS로 "검색+점프"만 하고 트리 노드를 가리거나 뷰를 재구성하지 않는다(필터링된 표시 목록이라는 개념이 없음) — 따라서 "필터링된 결과에서 사라진 selection"이라는 상황 자체가 발생할 수 없다.
+
+---
+
+### UIX-SYNC-011: 프레임 변경 후 이전 syntax node ID 재사용
+
+**분류**: Identity Management · **심각도**: Critical · **탐지**: Code
+
+**사용자 목표**:
+프레임을 바꾸면 신택스 트리도 새 프레임의 구조로 완전히 갱신되어야 하고, 이전 프레임의 노드를 새 프레임의 노드인 것처럼 잘못 표시하면 안 된다.
+
+**증상**:
+- 프레임을 전환한 직후 짧게(또는 특정 조건에서 영구적으로) 이전 프레임의 신택스 트리 노드에 해당하는 하이라이트가 새 프레임 위에 남아있다.
+- 동일한 노드 ID(예: 트리 내 순번 기반 ID)가 다른 프레임에서 완전히 다른 syntax element를 가리켜 잘못된 값이 표시된다.
+- 특정 필드를 클릭했을 때 실제로 하이라이트되는 바이트 범위가 현재 프레임이 아니라 이전 프레임의 것이다.
+
+**원인**:
+syntax node ID를 프레임마다 0부터 재시작하는 순번(예: DFS 방문 순서 index)으로 부여한다. 프레임이 바뀌어도 ID 공간이 재사용되기 때문에, 이전 selection의 ID가 우연히 새 트리에서도 "유효한" ID로 해석되어 완전히 다른 노드를 가리키게 된다.
+
+**구현 냄새**:
+- `SyntaxNodeId`가 `frame_id`를 포함하지 않는 단순 `number`/순번.
+- 프레임 전환 시 selection의 `syntax_node`를 명시적으로 초기화하지 않고 "다음 트리에 그대로 재적용".
+- 노드 ID 생성 로직이 파싱마다 독립적으로 0부터 카운트업.
+
+**영향**:
+가장 위험한 부류의 tri-sync 버그다 — 에러 없이 "그럴듯하게 틀린" 값을 보여주기 때문에 사용자가 오류를 알아채지 못하고 잘못된 결론(예: 존재하지 않는 코덱 버그)을 낼 수 있다.
+
+**권장**:
+- SyntaxNodeId를 `(frame_id, local_index)` 복합키 또는 프레임 경계를 넘어 절대 재사용되지 않는 전역 유니크 ID로 설계.
+- 상단 전이 규칙대로, frame 선택 변경 시 `syntax_node`/`block`은 반드시 초기화(carry-over 금지).
+- ID 비교 시 frame_id 불일치를 감지하면 즉시 selection을 무효화하는 assertion을 개발 빌드에 삽입.
+
+**탐지**:
+- 코드 리뷰: `SyntaxNodeId` 타입 정의에 frame 구분자가 포함되어 있는지 확인.
+- 인터랙션 테스트: 노드 선택 → 프레임 전환 → 이전 ID를 강제로 재적용해보는 fuzzing으로 오탐 발생 여부 확인.
+
+**Bitvue 판정**: Confirmed — Rust/TS 양쪽에서 동일한 결함이 재현된다. Rust `SelectionState::select_point/select_block/select_range/select_marker`(`crates/bitvue-core/src/selection.rs:229-270`)는 `temporal`/`cursor`만 갱신하고 `syntax_node`/`bit_range`/`unit`은 건드리지 않는다 — 오직 `select_unit`(280-287행)만 `syntax_node`/`bit_range`를 초기화한다. TS도 그대로다: `setFrameSelection`(`frontend/contexts/SelectionContext.tsx:112-131`)이 호출하는 `mergeSelectionUpdates`(`frontend/utils/selectionSync.ts:103-120`)는 이전 상태를 스프레드한 뒤 `frame`/`streamId`/`temporal`만 덮어써서, 프레임을 바꿔도 이전 프레임의 `syntaxNode`/`bitRange`가 그대로 carry-over된다 — "구현 냄새"에 적힌 시나리오와 정확히 일치. 게다가 `SyntaxNodeId`는 `crates/bitvue-core/src/types.rs:505`에서 `pub type SyntaxNodeId = String`(경로 문자열)로 정의되어 frame 구분자를 전혀 포함하지 않아, carry-over된 ID가 새 트리에서 이름은 같지만 의미가 다른 노드에 우연히 재적용될 위험이 있다.
+
+---
+
+### UIX-SYNC-012: 같은 좌표라도 zoom level에 따라 다른 block을 선택
+
+**분류**: Coordinate Mapping · **심각도**: High · **탐지**: Interaction
+
+**사용자 목표**:
+플레이어 화면에서 특정 픽셀 위치를 클릭하면 줌 배율과 무관하게 항상 같은(올바른) 매크로블록/CU가 선택되어야 한다.
+
+**증상**:
+- 100% 배율에서 클릭한 지점과 200% 배율에서 동일 화면 위치를 클릭했을 때 다른 블록이 선택된다.
+- 확대한 채로 클릭하면 선택된 블록의 경계가 오버레이 사각형과 미묘하게 어긋난다.
+- pan(이동) 후 클릭하면 오프셋이 어긋나 엉뚱한 블록이 잡힌다.
+
+**원인**:
+화면 좌표(screen/CSS px) → 비디오 좌표(원본 프레임 픽셀) 변환 시 zoom과 pan을 함께 반영해야 하는데, 일부 경로가 zoom=1 가정의 구식 변환식을 쓰거나, pan 오프셋 부호/단위(CSS px vs devicePixelRatio 보정)를 누락한다.
+
+**구현 냄새**:
+- 좌표 변환 함수가 여러 곳에 중복 구현되어 있고(오버레이 렌더러용 1개, 클릭 핸들러용 1개) 서로 미묘하게 다름.
+- `devicePixelRatio`/캔버스 backing store 크기와 CSS 크기 차이를 무시.
+- zoom/pan 상태가 변경돼도 클릭 핸들러가 클로저에 캡처된 이전 zoom 값을 참조(stale closure).
+
+**영향**:
+확대해서 정밀 분석하려는 바로 그 순간(고배율 작업) 선택 정확도가 떨어져, tri-sync의 핵심 가치인 "화면에서 본 것 = 분석되는 것"이 무너진다.
+
+**권장**:
+- 화면좌표→비디오좌표 변환을 단일 유틸(`screenToVideoCoord(zoom, pan, dpr)`)로 통합하고, 오버레이 렌더러와 클릭 핸들러가 동일 함수를 공유.
+- 변환 함수를 순수 함수로 만들고 단위 테스트로 다양한 (zoom, pan, dpr) 조합에서 왕복 변환(video→screen→video) 정확도를 검증.
+- 클릭 핸들러는 항상 최신 zoom/pan을 ref 또는 store 구독으로 읽어 stale closure를 방지.
+
+**탐지**:
+- 인터랙션 테스트: 동일 블록을 zoom 50%/100%/400%에서 각각 클릭해 동일 block ID가 선택되는지 스크립트로 검증.
+- 코드 리뷰: 좌표 변환 로직 중복 구현 여부 grep.
+
+**Bitvue 판정**: N/A — 화면 좌표를 클릭해 spatial block을 선택하는 인터랙션 자체가 프런트엔드에 아직 없다. `OverlayRenderer/index.tsx`는 캔버스 렌더링 디스패처일 뿐 클릭 핸들러가 없고, `VideoCanvas.tsx`의 `onMouseDown`은 `useCanvasInteraction`의 팬(pan) 핸들러에만 연결되어 있다. `SpatialBlock`/`select_spatial_block`은 `frontend/types/selection.ts`와 `SelectionContext.tsx`의 타입 재export로만 존재하고 이를 실제로 호출하는 UI 컴포넌트는 전무하다(grep 확인). 좌표 변환 버그가 발생할 기능 자체가 아직 배선되지 않았다.
+
+---
+
+### UIX-SYNC-013: hex offset과 bit offset 변환 오류를 UI가 숨김
+
+**분류**: Data Correctness · **심각도**: Critical · **탐지**: Domain review
+
+**사용자 목표**:
+신택스 트리에서 필드를 선택하면 헥스뷰가 정확히 그 필드가 시작하는 바이트/비트 위치를 하이라이트해야 한다 — bit-packed 필드(예: ue(v)/se(v) exp-golomb, 정렬되지 않은 비트필드)에서도 마찬가지다.
+
+**증상**:
+- 바이트 경계에 정렬된 필드는 정확한데, 4비트/6비트처럼 바이트 경계를 넘나드는 필드를 선택하면 헥스뷰 하이라이트가 한 바이트 앞/뒤로 밀린다.
+- exp-golomb 등 가변 길이 필드에서 하이라이트 폭이 실제 필드 크기와 다르게 표시된다(고정 1바이트로 뭉뚱그림).
+- 에러 없이 "그냥 옆 바이트"가 강조되어 사용자가 눈치채지 못한다.
+
+**원인**:
+신택스 파서 내부에서는 정확한 bit offset(비트 단위 시작/길이)을 알고 있지만, UI 레이어로 selection을 넘길 때 byte offset으로 반올림/절단하면서 정보가 손실된다. 혹은 반대로 byte offset만 있고 bit offset이 파싱 단계에서부터 애초에 보존되지 않는다.
+
+**구현 냄새**:
+- SelectionState의 `byte_range`가 정수 바이트만 표현하고 시작/끝 비트 오프셋 필드가 없음.
+- 파서가 필드 파싱 직후 bit position을 버리고 byte position만 selection에 기록.
+- 헥스뷰 하이라이트 렌더러가 항상 바이트 단위 사각형만 그릴 수 있어, bit 단위 부분 강조(반투명 비트 마스크 등) 자체가 UI로 표현 불가능.
+
+**영향**:
+비트 단위 분석이 핵심인 코덱 디버깅(정렬되지 않은 헤더 필드, exp-golomb 값 등)에서 신뢰할 수 없는 하이라이트로 사용자가 잘못된 바이트를 오원인으로 지목할 위험이 있다 — 조용히 틀리기 때문에 특히 위험도가 높다.
+
+**권장**:
+- SelectionState의 byte_range를 `(byte_offset, bit_offset, bit_length)` 또는 절대 bit position 기반으로 재설계해 sub-byte 정밀도를 1급 시민으로 취급.
+- 헥스뷰 렌더러에 바이트 내 부분 비트 강조(예: 바이트 셀 안에서 특정 비트 구간만 음영) 지원을 추가.
+- 파서 출력과 UI selection 사이 bit↔byte 변환 지점에 라운드트립 단위 테스트를 추가.
+
+**탐지**:
+- Domain review: exp-golomb/정렬되지 않은 필드가 포함된 실제 헤더(예: HEVC VUI, slice header)를 선택해 하이라이트 바이트/비트 범위를 스펙과 수동 대조.
+- 코드 리뷰: byte_range 타입에 sub-byte 정밀도가 있는지 확인.
+
+**Bitvue 판정**: Confirmed — 타입 설계 자체는 bit 단위를 갖춘다: `BitRange {startBit, endBit}`(`frontend/types/selection.ts:46-49`)와 `estimateBitSize`/`applyTriSyncRules`(`frontend/utils/selectionSync.ts:14-31,71-83`)는 u4/u6 등 실제 bit 개수를 반영한다. 하지만 실제 렌더러인 `HexViewTab.tsx`는 이 `bitRange`/`SelectionContext`를 아예 구독하지 않는다 — 대신 완전히 별도의, 더 단순한 `SyntaxHexLinkContext`(`highlightedByteOffset: number` 하나뿐, `frontend/contexts/SyntaxHexLinkContext.tsx:12-14`)에서 값을 받고, `onJumpToHex(node.byte_offset!)`(`SyntaxDetailPanel/FrameSyntaxTab.tsx:313-318`)도 정수 byte_offset 하나만 넘긴다. `getByteStyle`/`selectedByte` 비교(`HexViewTab.tsx:36,144-161`)는 정확히 한 바이트 전체만 강조할 수 있을 뿐 sub-byte 폭이나 여러 바이트에 걸친 필드 강조를 표현할 방법이 없다 — "고정 1바이트로 뭉뚱그림" 증상과 정확히 일치.
+
+---
+
+### UIX-SYNC-014: selection history가 없어 탐색을 되돌릴 수 없음
+
+**분류**: Navigation · **심각도**: Medium · **탐지**: Interaction
+
+**사용자 목표**:
+여러 프레임/필드를 오가며 탐색하다가 "방금 보던 곳"으로 브라우저 뒤로가기처럼 돌아가고 싶다.
+
+**증상**:
+- 여러 단계 탐색(프레임 A → 필드 B → 다른 프레임 C) 후 "뒤로" 갈 방법이 없어 수동으로 처음부터 다시 찾아야 한다.
+- 뒤로가기 단축키가 selection과 무관하게(라우트만 바뀌거나 아예 무반응) 동작한다.
+- 비교 작업(프레임 A와 B를 번갈아 보며 비교)이 매번 수동 재탐색을 요구해 피로도가 크다.
+
+**원인**:
+selection 변경을 순간의 상태 대입으로만 처리하고, 시간 축에 따른 이력(history stack)을 별도로 기록하지 않는다.
+
+**구현 냄새**:
+- selection store에 undo/history 관련 필드나 미들웨어가 전무.
+- selection 변경이 History API/앱 자체 history stack 어디에도 push되지 않음.
+- "뒤로" 단축키(예: Alt+←)가 selection 레이어에 연결되어 있지 않음.
+
+**영향**:
+반복적인 비교/탐색 워크플로우(코덱 분석의 일상적 패턴)에서 불필요한 수작업이 누적되어 전문가 사용자 경험이 저하된다.
+
+**권장**:
+- selection 변경을 유한 크기(예: 최근 50개) history stack에 기록하고 Undo/Redo 단축키로 이동을 지원.
+- "즐겨찾기/북마크"처럼 history와 별개로 명시적으로 고정할 수 있는 기능도 함께 고려.
+- history 항목에는 selection 전체 스냅샷(frame/node/byte_range 등)을 저장해 부분 상태로 복원되지 않도록 함.
+
+**탐지**:
+- 인터랙션 테스트: 5단계 탐색 후 Undo 단축키로 각 단계가 정확히 역순 복원되는지 확인.
+
+**Bitvue 판정**: Confirmed — selection 이력/undo 스택이 어디에도 없다. `frontend/contexts/SelectionContext.tsx`는 단일 `selection` 값만 보관하고 history 배열이나 미들웨어가 없으며, `frontend`/`components` 전체에서 "history"/"undo"/"redo" grep 결과는 무관한 `HRDBufferPanel.tsx`(HRD 버퍼 레벨 차트) 하나뿐이었다. 뒤로가기 단축키(Alt+←)나 `goBack`류 로직도 검색되지 않았다 — 반복 탐색/비교 워크플로우에서 되돌아갈 방법이 정말로 없다.
+
+---
+
+### UIX-SYNC-015: 사용자의 수동 scroll을 자동 sync가 계속 빼앗음
+
+**분류**: Interaction Design · **심각도**: High · **탐지**: Interaction
+
+**사용자 목표**:
+헥스뷰나 신택스 트리를 손으로 스크롤해서 주변 맥락(예: 다음 NALU들)을 훑어보고 싶을 때, 다른 패널의 selection 갱신이 그 스크롤을 방해하면 안 된다.
+
+**증상**:
+- 헥스뷰를 아래로 스크롤해 다음 데이터를 보려는 순간, player가 프레임을 자동 재생/전환하면서 헥스뷰가 강제로 현재 selection 위치로 다시 튀어 오른다.
+- 스크롤 중 손을 떼자마자 화면이 원래 위치로 "튕겨" 사용자가 방향감각을 잃는다.
+- 신택스 트리를 펼쳐가며 구조를 살펴보는 중에 배경에서 재생 중인 플레이어의 프레임 변경이 트리를 계속 강제로 리셋한다.
+
+**원인**:
+auto-sync 로직이 "사용자가 지금 이 패널을 능동적으로 스크롤/조작 중인가"를 감지하지 않고, selection이 바뀔 때마다 무조건 모든 패널을 강제로 스크롤시킨다. UIX-SYNC-003/006과 근본 원인은 겹치지만, 특히 "연속 재생 중 자동 selection 갱신"과 "사용자 수동 스크롤"이 경합하는 시나리오에 특화된 증상이다.
+
+**구현 냄새**:
+- 스크롤 컨테이너의 `useEffect(() => scrollTo(selection), [selection])`가 사용자의 스크롤 상호작용 여부와 무관하게 항상 실행.
+- 사용자 스크롤 이벤트와 프로그래매틱 스크롤 이벤트를 구분하는 플래그(`isUserScrolling`)가 없어 서로 오인됨.
+- 재생 중(플레이어 재생 상태) auto-sync를 일시 정지하는 옵션이 없음.
+
+**영향**:
+연속 재생 중 다른 패널을 참고 자료로 스크롤하는 것 자체가 불가능해져, "재생하면서 헥스뷰/신택스를 훑어본다"는 이 도구의 핵심 사용 시나리오가 근본적으로 막힌다.
+
+**권장**:
+- 스크롤 컨테이너에 "사용자가 최근 N초 내 수동 스크롤했는가" 상태를 두고, 그 기간 동안은 auto-sync에 의한 강제 스크롤을 억제(단, selection 하이라이트 자체는 갱신).
+- 재생 중에는 기본적으로 auto-follow를 끄고, 명시적 "따라가기" 토글을 사용자가 켤 수 있게 함.
+- 프로그래매틱 스크롤 호출에는 별도 플래그를 세팅해 scroll 이벤트 핸들러가 이를 사용자 스크롤로 오인하지 않게 구분.
+
+**탐지**:
+- 인터랙션 테스트: 재생 중 헥스뷰를 수동 스크롤 → selection이 계속 갱신되는 동안에도 스크롤 위치가 사용자 의도대로 유지되는지 확인.
+- 코드 리뷰: 스크롤 컨테이너의 sync effect에 사용자 상호작용 여부 가드가 있는지 확인.
+
+**Bitvue 판정**: Suspected — 재생 중 다른 패널을 강제로 재-스크롤시키는 명시적 코드(`scrollIntoView` 등)는 발견되지 않았다. 다만 `FrameSyntaxTab.tsx:67-87`와 `HexViewTab.tsx:48-93`는 프레임이 바뀔 때마다 콘텐츠 전체를 새로 fetch해 완전히 새로 렌더링하며, 이전 스크롤 위치를 보존/복원하는 로직이 없다 — `isUserScrolling` 같은 플래그도 없다. 즉 이 항목이 말하는 "경쟁하는 auto-sync가 스크롤을 강탈"하는 것과 정확히 같은 코드는 아니지만, 재생 중 매 프레임 콘텐츠 전면 교체가 실질적으로 같은 사용자 경험(스크롤 위치 소실)을 유발할 개연성이 있다 — 직접 관측/재현하지는 못했으므로 Suspected로 남긴다.

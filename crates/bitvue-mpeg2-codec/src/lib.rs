@@ -224,24 +224,22 @@ pub fn parse_mpeg2(data: &[u8]) -> Result<Mpeg2Stream> {
                     });
                 }
             }
-            StartCodeType::Extension => {
-                if !payload.is_empty() {
-                    let ext_id = payload[0] >> 4;
+            StartCodeType::Extension if !payload.is_empty() => {
+                let ext_id = payload[0] >> 4;
 
-                    // Sequence extension
-                    if ext_id == 1 {
-                        if let Some(ref mut seq) = pending_sequence {
-                            if let Ok(ext) = sequence::parse_sequence_extension(payload) {
-                                seq.extension = Some(ext);
-                            }
+                // Sequence extension
+                if ext_id == 1 {
+                    if let Some(ref mut seq) = pending_sequence {
+                        if let Ok(ext) = sequence::parse_sequence_extension(payload) {
+                            seq.extension = Some(ext);
                         }
                     }
-                    // Picture coding extension
-                    else if ext_id == 8 {
-                        if let Some(ref mut pic) = current_picture {
-                            if let Ok(ext) = picture::parse_picture_coding_extension(payload) {
-                                pic.coding_extension = Some(ext);
-                            }
+                }
+                // Picture coding extension
+                else if ext_id == 8 {
+                    if let Some(ref mut pic) = current_picture {
+                        if let Ok(ext) = picture::parse_picture_coding_extension(payload) {
+                            pic.coding_extension = Some(ext);
                         }
                     }
                 }
@@ -366,14 +364,17 @@ pub fn parse_mpeg2_quick(data: &[u8]) -> Result<Mpeg2QuickInfo> {
                     found_sequence = true;
                 }
             }
-            StartCodeType::Extension if found_sequence && !info.is_mpeg2 => {
-                if !payload.is_empty() && (payload[0] >> 4) == 1 {
-                    info.is_mpeg2 = true;
-                    if let Ok(ext) = sequence::parse_sequence_extension(payload) {
-                        if let (Some(w), Some(h)) = (info.width, info.height) {
-                            info.width = Some(w | ((ext.horizontal_size_extension as u32) << 12));
-                            info.height = Some(h | ((ext.vertical_size_extension as u32) << 12));
-                        }
+            StartCodeType::Extension
+                if found_sequence
+                    && !info.is_mpeg2
+                    && !payload.is_empty()
+                    && (payload[0] >> 4) == 1 =>
+            {
+                info.is_mpeg2 = true;
+                if let Ok(ext) = sequence::parse_sequence_extension(payload) {
+                    if let (Some(w), Some(h)) = (info.width, info.height) {
+                        info.width = Some(w | ((ext.horizontal_size_extension as u32) << 12));
+                        info.height = Some(h | ((ext.vertical_size_extension as u32) << 12));
                     }
                 }
             }

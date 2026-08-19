@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use bitvue_core::Result;
+use bitvue_engine::Result;
 
 use crate::bitreader::BitReader;
 

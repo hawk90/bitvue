@@ -312,7 +312,7 @@ fn test_parse_sei_mastering_display_colour_volume() {
     assert!(result.is_ok());
 
     let messages = result.unwrap();
-    assert!(messages.len() >= 1);
+    assert!(!messages.is_empty());
 
     // Check the first message has the correct type
     assert_eq!(messages[0].payload_type_raw, 137);
@@ -480,7 +480,7 @@ fn test_parse_sei_large_payload_size() {
     data.extend_from_slice(&large_size);
 
     // Payload data (90 bytes)
-    data.extend_from_slice(&vec![0xAAu8; 90]);
+    data.extend_from_slice(&[0xAAu8; 90]);
 
     let result = parse_sei(&data);
     // SECURITY: Large payloads with many 0xFF bytes should be rejected

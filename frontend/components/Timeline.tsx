@@ -7,9 +7,14 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { useSelection } from "../contexts/SelectionContext";
 import { TimelineHeader } from "./TimelineHeader";
-import { TimelineCursor } from "./TimelineCursor";
 import { TimelineTooltip } from "./TimelineTooltip";
 import { TimelineThumbnails } from "./TimelineThumbnails";
+import {
+  getContextMenuItems,
+  type ContextMenuItemWire,
+} from "../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../hooks/useExportEvidenceBundle";
+import { ContextMenu } from "./ContextMenu";
 import type { FrameInfo } from "../types/video";
 import "./Timeline.css";
 
@@ -35,24 +40,65 @@ function Timeline({ frames, className = "" }: TimelineProps) {
   // Cache for timeline bounding rect to avoid repeated getBoundingClientRect calls
   const rectCache = useRef<DOMRect | null>(null);
 
-  // Calculate cursor position based on actual DOM element position (memoized)
+  // Right-click context menu (Phase 7.6, "Timeline" scope) -- see ContextMenu component doc.
+  const exportEvidence = useExportEvidenceBundle();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleTimelineContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      const hasSelection = selection?.frame?.frameIndex !== undefined;
+      const x = event.clientX;
+      const y = event.clientY;
+      getContextMenuItems("Timeline", hasSelection, false)
+        .then((items) => setContextMenu({ x, y, items }))
+        .catch(() => setContextMenu(null));
+    },
+    [selection?.frame?.frameIndex],
+  );
+
+  const handleContextMenuSelect = useCallback(
+    (command: string) => {
+      if (command === "Export.EvidenceBundle") {
+        void exportEvidence();
+      } else if (
+        command === "Copy.Selection" &&
+        selection?.frame?.frameIndex !== undefined
+      ) {
+        const frame = frames[selection.frame.frameIndex];
+        const text = frame
+          ? `Frame ${frame.frame_index} (pts=${frame.pts})`
+          : `Frame ${selection.frame.frameIndex}`;
+        void navigator.clipboard.writeText(text);
+      }
+    },
+    [exportEvidence, selection?.frame?.frameIndex, frames],
+  );
+
+  // Calculate cursor position based on actual DOM element position (memoized). Pixel-based
+  // (`offsetLeft`, relative to `.timeline-thumbnails`' own content box -- the frame bars'
+  // `offsetParent`, since that's their nearest `position: relative` ancestor), NOT a percentage
+  // of the outer container's width: `.timeline-thumbnails` can now scroll horizontally on its
+  // own (see Timeline.css's doc on that selector), and `offsetLeft` stays valid regardless of
+  // current scroll position -- a percent-of-viewport-width value computed here would go stale
+  // the moment the user scrolls without changing `highlightedFrameIndex` (this `useMemo` only
+  // re-runs on that dependency). See TimelineCursor's doc for the other half of this fix
+  // (rendering the cursor as a scroll-following DOM child instead of a percent-positioned
+  // sibling).
   const cursorPosition = useMemo(() => {
     // Add bounds check to prevent array index out of bounds
     if (
-      timelineRef.current &&
       highlightedFrameIndex >= 0 &&
       highlightedFrameIndex < frameRefs.current.length &&
       frameRefs.current[highlightedFrameIndex]
     ) {
       const frameEl = frameRefs.current[highlightedFrameIndex];
-      const containerEl = timelineRef.current;
-      if (frameEl && containerEl) {
-        const frameRect = frameEl.getBoundingClientRect();
-        const containerRect = containerEl.getBoundingClientRect();
-        // Calculate the center of the frame relative to the container
-        const frameCenter =
-          frameRect.left - containerRect.left + frameRect.width / 2;
-        return (frameCenter / containerRect.width) * 100;
+      if (frameEl) {
+        return frameEl.offsetLeft + frameEl.offsetWidth / 2;
       }
     }
     return 0;
@@ -81,9 +127,37 @@ function Timeline({ frames, className = "" }: TimelineProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Real DOM hit-testing (`document.elementFromPoint`) accounts for `.timeline-thumbnails`'
+  // current horizontal scroll position automatically -- unlike the plain `(clientX -
+  // containerRect.left) / containerRect.width * frameCount` percent math this falls back to,
+  // which silently assumes every frame's bar is evenly spread across the *container's* full
+  // width, an assumption that stops holding the moment the strip can scroll (Timeline.css's doc
+  // on `.timeline-thumbnails`). `elementFromPoint` isn't implemented in jsdom (this repo's test
+  // environment) -- guarded so tests still exercise the percent fallback exactly as before.
+  const frameIndexFromPoint = useCallback(
+    (clientX: number, clientY: number, containerRect: DOMRect): number => {
+      if (typeof document.elementFromPoint === "function") {
+        const hit = document
+          .elementFromPoint(clientX, clientY)
+          ?.closest(".timeline-thumb");
+        if (hit) {
+          const idx = parseInt(hit.getAttribute("data-frame-index") ?? "", 10);
+          if (!Number.isNaN(idx)) return idx;
+        }
+      }
+      const percent = Math.max(
+        0,
+        Math.min(1, (clientX - containerRect.left) / containerRect.width),
+      );
+      return Math.min(Math.floor(percent * frames.length), frames.length - 1);
+    },
+    [frames.length],
+  );
+
   const getFrameIndexFromEvent = useCallback(
     (e: React.MouseEvent<HTMLDivElement>): number => {
-      // First check if we clicked directly on a frame element
+      // First check if we clicked directly on a frame element (covers the vast majority of
+      // real clicks -- bars only have a 1px gap between them).
       const target = e.target as HTMLElement;
       const frameElement = target.closest(".timeline-thumb");
       if (frameElement) {
@@ -94,16 +168,13 @@ function Timeline({ frames, className = "" }: TimelineProps) {
         return frameIndex;
       }
 
-      // Otherwise calculate from position (use cached rect)
+      // Otherwise (clicked a gap) -- real hit-testing, falls back to percent math only when
+      // unavailable (frameIndexFromPoint's doc).
       const rect = getTimelineRect();
       if (!rect) return 0;
-      const percent = Math.max(
-        0,
-        Math.min(1, (e.clientX - rect.left) / rect.width),
-      );
-      return Math.min(Math.floor(percent * frames.length), frames.length - 1);
+      return frameIndexFromPoint(e.clientX, e.clientY, rect);
     },
-    [frames.length, getTimelineRect],
+    [getTimelineRect, frameIndexFromPoint],
   );
 
   const handleMouseMove = useCallback(
@@ -138,16 +209,20 @@ function Timeline({ frames, className = "" }: TimelineProps) {
 
       // Set up drag handlers
       const handleDragMove = (moveEvent: MouseEvent) => {
+        // Real hit-testing (scroll-safe, frameIndexFromPoint's doc) -- the plain percent-of-
+        // timelineRect math this used to rely on exclusively would silently desync from the
+        // visible bars the moment `.timeline-thumbnails` is scrolled.
+        const dragFrameIndex = frameIndexFromPoint(
+          moveEvent.clientX,
+          moveEvent.clientY,
+          timelineRect,
+        );
         const dragPercent = Math.max(
           0,
           Math.min(
             1,
             (moveEvent.clientX - timelineRect.left) / timelineRect.width,
           ),
-        );
-        const dragFrameIndex = Math.min(
-          Math.floor(dragPercent * frames.length),
-          frames.length - 1,
         );
 
         // Only update if frame actually changed
@@ -248,22 +323,22 @@ function Timeline({ frames, className = "" }: TimelineProps) {
         totalFrames={frames.length}
       />
       {/* Timeline Content */}
-      <div className="timeline-content" ref={timelineRef}>
-        {/* Compressed thumbnails (Touch Bar style) */}
+      <div
+        className="timeline-content"
+        ref={timelineRef}
+        onContextMenu={handleTimelineContextMenu}
+      >
+        {/* Compressed thumbnails (Touch Bar style) -- renders the cursor internally as its own
+            scroll-following child, see TimelineCursor's doc. */}
         <TimelineThumbnails
           frames={frames}
           highlightedFrameIndex={highlightedFrameIndex}
+          cursorPositionPx={cursorPosition}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onKeyDown={handleKeyDown}
           onFrameRefsChange={handleFrameRefsChange}
-        />
-
-        {/* Current Position Cursor */}
-        <TimelineCursor
-          positionPercent={cursorPosition}
-          frameIndex={highlightedFrameIndex}
         />
       </div>
 
@@ -276,6 +351,16 @@ function Timeline({ frames, className = "" }: TimelineProps) {
             positionPercent={hoverPercent}
           />
         )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

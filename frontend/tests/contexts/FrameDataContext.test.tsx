@@ -383,6 +383,53 @@ describe("FrameDataContext worker error fallback", () => {
   });
 });
 
+describe("FrameDataContext streamInfo", () => {
+  it("starts null (no fabricated 1920x1080/AV1 default)", () => {
+    const { result } = renderHook(() => useFrameData(), { wrapper });
+
+    expect(result.current.streamInfo).toBeNull();
+  });
+
+  it("setStreamInfo updates the real container-sourced width/height/codec/bitDepth", () => {
+    const { result } = renderHook(() => useFrameData(), { wrapper });
+
+    act(() => {
+      result.current.setStreamInfo({
+        width: 320,
+        height: 240,
+        codec: "AV1",
+        bitDepth: 8,
+      });
+    });
+
+    expect(result.current.streamInfo).toEqual({
+      width: 320,
+      height: 240,
+      codec: "AV1",
+      bitDepth: 8,
+    });
+  });
+
+  it("setStreamInfo(null) resets it (e.g. on file close)", () => {
+    const { result } = renderHook(() => useFrameData(), { wrapper });
+
+    act(() => {
+      result.current.setStreamInfo({
+        width: 1920,
+        height: 1080,
+        codec: "HEVC",
+        bitDepth: 10,
+      });
+    });
+    expect(result.current.streamInfo).not.toBeNull();
+
+    act(() => {
+      result.current.setStreamInfo(null);
+    });
+    expect(result.current.streamInfo).toBeNull();
+  });
+});
+
 describe("FrameDataContext useFrameData hook", () => {
   it("throws when used outside of FrameDataProvider", () => {
     // Suppress the React error boundary console output

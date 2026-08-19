@@ -13,7 +13,7 @@
 //!
 //! Comprehensive tests for HEVC overlay data extraction.
 
-use bitvue_core::{partition_grid::PartitionType, BlockMode};
+use bitvue_engine::{partition_grid::PartitionType, BlockMode};
 use bitvue_hevc::overlay_extraction;
 use bitvue_hevc::sps::{ChromaFormat, Profile, ProfileTierLevel, Sps};
 
@@ -289,16 +289,16 @@ fn test_super_block_modes() {
 
 #[test]
 fn test_grid_dimensions() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test various dimensions
-    let dimensions = vec![(640, 480), (1280, 720), (1920, 1080)];
+    let dimensions: Vec<(u32, u32)> = vec![(640, 480), (1280, 720), (1920, 1080)];
 
     for (width, height) in dimensions {
         let ctu_size = 64u32;
-        let grid_w = (width + ctu_size - 1) / ctu_size;
-        let grid_h = (height + ctu_size - 1) / ctu_size;
+        let grid_w = width.div_ceil(ctu_size);
+        let grid_h = height.div_ceil(ctu_size);
 
         let qp_grid = QPGrid::new(
             grid_w,
@@ -319,8 +319,8 @@ fn test_grid_dimensions() {
 
 #[test]
 fn test_grid_with_zero_dimensions() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Zero dimensions should be handled
     let qp_grid = QPGrid::new(0, 0, 64, 64, vec![], -1);
@@ -332,7 +332,7 @@ fn test_grid_with_zero_dimensions() {
 
 #[test]
 fn test_large_grid() {
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     // Test 4K resolution
     let width: u32 = 3840 / 64; // 60 CTUs
@@ -347,7 +347,7 @@ fn test_large_grid() {
 
 #[test]
 fn test_mv_grid_large() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 
     // Test 4K resolution with dimensions that divide evenly
     let coded_width = 3840u32;
@@ -355,8 +355,8 @@ fn test_mv_grid_large() {
     let block_w = 64u32;
     let block_h = 64u32;
 
-    let grid_w = (coded_width + block_w - 1) / block_w;
-    let grid_h = (coded_height + block_h - 1) / block_h;
+    let grid_w = coded_width.div_ceil(block_w);
+    let grid_h = coded_height.div_ceil(block_h);
 
     let mv_l0 = vec![MotionVector::ZERO; (grid_w * grid_h) as usize];
     let mv_l1 = vec![MotionVector::MISSING; (grid_w * grid_h) as usize];
@@ -437,9 +437,9 @@ fn test_ctu_coverage_128() {
 
 #[test]
 fn test_grid_dimensions_consistency() {
-    use bitvue_core::mv_overlay::{MVGrid, MotionVector};
-    use bitvue_core::partition_grid::PartitionGrid;
-    use bitvue_core::qp_heatmap::QPGrid;
+    use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
+    use bitvue_engine::partition_grid::PartitionGrid;
+    use bitvue_engine::qp_heatmap::QPGrid;
 
     let width = 1920;
     let height = 1080;
@@ -458,7 +458,7 @@ fn test_grid_dimensions_consistency() {
 
 #[test]
 fn test_partition_type_from_u8() {
-    use bitvue_core::partition_grid::PartitionType;
+    use bitvue_engine::partition_grid::PartitionType;
 
     // Test conversion from u8
     assert_eq!(PartitionType::from(0u8), PartitionType::None);

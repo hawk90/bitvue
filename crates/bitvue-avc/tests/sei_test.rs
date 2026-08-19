@@ -254,7 +254,7 @@ fn test_parse_sei_mastering_display_colour_volume() {
     assert!(result.is_ok());
 
     let messages = result.unwrap();
-    assert!(messages.len() >= 1);
+    assert!(!messages.is_empty());
     assert_eq!(
         messages[0].payload_type,
         sei::SeiPayloadType::MasteringDisplayColourVolume

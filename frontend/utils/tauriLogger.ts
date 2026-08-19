@@ -6,9 +6,12 @@ import { invoke } from "@tauri-apps/api/core";
 
 let isTauri = false;
 
-// Check if we're running in Tauri
+// Check if we're running in Tauri. `__TAURI__` is a runtime-injected global with no type
+// declaration (never present under Electron -- this always evaluates false there, so the
+// frontend_log path below is already correctly a no-op in the real app; native console
+// logging is the actual, always-active path).
 try {
-  isTauri = !!window.__TAURI__;
+  isTauri = !!(window as Window & { __TAURI__?: unknown }).__TAURI__;
 } catch {
   isTauri = false;
 }

@@ -122,6 +122,7 @@ export interface FrameInfo {
   frame_index: number; // Sequential frame index in the stream
   frame_type: string; // Frame type (I, P, B, KEY, etc.)
   size: number; // Frame size in bytes
+  offset?: number; // Byte offset of this frame's unit within the file
 
   // Display and coding order
   poc?: number; // Picture Order Count
@@ -147,10 +148,13 @@ export interface FrameInfo {
 
   // Analysis data (QP heatmap, MV field, partition grid, prediction mode, transform)
   qp_grid?: QPGrid; // QP grid data for heatmap visualization
+  energy_grid?: EnergyGrid; // Real per-block residual energy for the Efficiency Map overlay
   mv_grid?: MVGrid; // MV grid data for motion vector field
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction visualization
   transform_grid?: TransformGrid; // Transform grid for transform visualization
+  mb_type_grid?: MbTypeGrid; // AVC macroblock type grid for MB Type overlay
+  ref_idx_grid?: RefIdxGrid; // AVC reference frame index grid
 
   // Frame dimensions
   width?: number; // Frame width in pixels
@@ -268,7 +272,10 @@ export type VisualizationMode =
   | "transform" // Transform block sizes
   | "qp-map" // QP heatmap
   | "mv-field" // Motion vector field
-  | "reference"; // Reference frame relationships
+  | "reference" // Reference frame relationships
+  | "deblocking" // Deblocking filter boundary visualization
+  | "residuals" // Residual energy heatmap
+  | "av1-features"; // AV1 CDEF/Loop Restoration/Film Grain
 
 /**
  * Filmstrip display view
@@ -382,6 +389,21 @@ export interface QPGrid {
 }
 
 /**
+ * Per-block residual "energy" grid -- real, data-driven Efficiency Map input.
+ * Same grid_w/grid_h/block_w/block_h layout as QPGrid. Backed by real decoded per-CU residual
+ * magnitude (sum_abs_level / block area), not a QP-derived heuristic -- see
+ * `bitvue_av1_codec::overlay_extraction::EnergyGrid`'s doc for what this does and doesn't
+ * capture (still not literal entropy-coded bit count).
+ */
+export interface EnergyGrid {
+  grid_w: number;
+  grid_h: number;
+  block_w: number;
+  block_h: number;
+  energy_bpp: number[]; // Bits-per-pixel-like value per cell (row-major), 0 = no residual/skip
+}
+
+/**
  * Motion Vector data for a single block
  */
 export interface MotionVectorBlock {
@@ -398,6 +420,10 @@ export enum BlockMode {
   Inter = 1,
   Intra = 2,
   Skip = 3,
+  /** Intra block copy (spec 5.11.6) -- always a subset of Intra blocks. */
+  IntraBc = 4,
+  /** Compound (2-reference) inter prediction. */
+  Compound = 5,
 }
 
 /**
@@ -443,6 +469,8 @@ export interface PartitionBlock {
   height: number; // Block height in pixels
   partition: PartitionType; // How this block was created
   depth: number; // Nesting depth (0 = superblock)
+  /** VVC dual-tree type: 0=single/luma, 1=dual-tree luma, 2=dual-tree chroma. Absent for non-VVC. */
+  tree_type?: number;
 }
 
 /**
@@ -482,6 +510,39 @@ export interface TransformGrid {
   grid_w: number; // Grid width in blocks
   grid_h: number; // Grid height in blocks
   tx_sizes: (number | null)[]; // Transform size for each block (u8 value or null, 0=4x4, 1=8x8, 2=16x16, 3=32x32, 4=64x64)
+}
+
+/**
+ * AVC Macroblock Type Grid data
+ * Per-macroblock type data for MB Type overlay visualization.
+ * Type index: I4x4=0, I16x16=1, IPCM=2, PLuma=3, P8x8=4,
+ *             BDirect=5, B16x16=6, B16x8=7, B8x16=8, B8x8=9,
+ *             PSkip=10, BSkip=11
+ */
+export interface MbTypeGrid {
+  coded_width: number;
+  coded_height: number;
+  block_w: number;
+  block_h: number;
+  grid_w: number;
+  grid_h: number;
+  mb_types: (number | null)[]; // MbType index for each macroblock, or null
+}
+
+/**
+ * AVC Reference Frame Index Grid data
+ * Per-macroblock reference frame indices (L0 and L1 lists).
+ * null means intra or list not used.
+ */
+export interface RefIdxGrid {
+  coded_width: number;
+  coded_height: number;
+  block_w: number;
+  block_h: number;
+  grid_w: number;
+  grid_h: number;
+  ref_idx_l0: (number | null)[]; // L0 reference index per macroblock
+  ref_idx_l1: (number | null)[]; // L1 reference index per macroblock
 }
 
 /**
@@ -525,10 +586,13 @@ export interface FrameAnalysisData {
   width: number;
   height: number;
   qp_grid?: QPGrid;
+  energy_grid?: EnergyGrid; // Real per-block residual energy for the Efficiency Map overlay
   mv_grid?: MVGrid;
   partition_grid?: PartitionGrid; // Partition grid for coding flow
   prediction_mode_grid?: PredictionModeGrid; // Prediction mode grid for prediction overlay
   transform_grid?: TransformGrid; // Transform grid for transform overlay
+  mb_type_grid?: MbTypeGrid; // AVC macroblock type grid
+  ref_idx_grid?: RefIdxGrid; // AVC reference frame index grid
 }
 
 /**

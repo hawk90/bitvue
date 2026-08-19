@@ -17,32 +17,17 @@ use bitvue_avc::sps::{parse_sps, ChromaFormat, ProfileIdc, Sps};
 
 // Helper to build minimal SPS data
 fn build_minimal_sps_bytes(profile_idc: u8, level_idc: u8) -> Vec<u8> {
-    let mut data = Vec::new();
-
-    // profile_idc (8 bits)
-    data.push(profile_idc);
-
-    // constraint_set flags (6 bits) + reserved_zero_2bits (2 bits)
-    data.push(0x00); // All flags = 0, reserved = 00
-
-    // level_idc (8 bits)
-    data.push(level_idc);
-
-    // seq_parameter_set_id (UE = 0)
-    data.push(0x80); // "1"
-
-    // Rest of minimal SPS (simplified)
-    // log2_max_frame_num_minus4 (UE = 0)
-    data.push(0x80); // "1"
-
-    // pic_order_cnt_type (UE = 0)
-    data.push(0x80); // "1"
-
-    // log2_max_pic_order_cnt_lsb_minus4 (UE = 0)
-    data.push(0x80); // "1"
-
-    // max_num_ref_frames (UE = 1)
-    data.push(0x40); // "01"
+    let mut data = vec![
+        profile_idc, // profile_idc (8 bits)
+        0x00,        // constraint_set flags (6 bits) + reserved_zero_2bits (2 bits): all 0
+        level_idc,   // level_idc (8 bits)
+        0x80,        // seq_parameter_set_id (UE = 0): "1"
+        // Rest of minimal SPS (simplified)
+        0x80, // log2_max_frame_num_minus4 (UE = 0): "1"
+        0x80, // pic_order_cnt_type (UE = 0): "1"
+        0x80, // log2_max_pic_order_cnt_lsb_minus4 (UE = 0): "1"
+        0x40, // max_num_ref_frames (UE = 1): "01"
+    ];
 
     // gaps_in_frame_num_value_allowed_flag (1 bit = 0)
     // pic_width_in_mbs_minus1 (UE = 119 for 1920 width)
@@ -323,27 +308,18 @@ fn test_parse_sps_with_various_seq_parameter_set_id() {
 
 #[test]
 fn test_parse_sps_high_profile_with_chroma_yuv420() {
-    let mut data = Vec::new();
-
-    // profile_idc (High = 100)
-    data.push(100);
-    // constraint flags
-    data.push(0x00);
-    // level_idc
-    data.push(40);
-    // seq_parameter_set_id
-    data.push(0x80);
-
-    // chroma_format_idc for Yuv420 = 1 (UE)
-    data.push(0x40); // "01"
-
-    // bit_depth_luma_minus8 = 0 (UE)
-    data.push(0x80);
-    // bit_depth_chroma_minus8 = 0 (UE)
-    data.push(0x80);
-    // qpprime_y_zero_transform_bypass_flag = 0
-    // seq_scaling_matrix_present_flag = 0
-    data.push(0x40); // "00" + padding
+    let mut data = vec![
+        100,  // profile_idc (High = 100)
+        0x00, // constraint flags
+        40,   // level_idc
+        0x80, // seq_parameter_set_id
+        0x40, // chroma_format_idc for Yuv420 = 1 (UE): "01"
+        0x80, // bit_depth_luma_minus8 = 0 (UE)
+        0x80, // bit_depth_chroma_minus8 = 0 (UE)
+        // qpprime_y_zero_transform_bypass_flag = 0
+        // seq_scaling_matrix_present_flag = 0
+        0x40, // "00" + padding
+    ];
 
     // Rest of minimal SPS
     data.extend_from_slice(&[
@@ -356,23 +332,16 @@ fn test_parse_sps_high_profile_with_chroma_yuv420() {
 
 #[test]
 fn test_parse_sps_high_profile_with_chroma_yuv422() {
-    let mut data = Vec::new();
-
-    // profile_idc (High = 100)
-    data.push(100);
-    data.push(0x00);
-    data.push(40);
-    data.push(0x80);
-
-    // chroma_format_idc for Yuv422 = 2 (UE)
-    data.push(0x00); // "001"
-
-    // bit_depth_luma_minus8 = 0
-    data.push(0x80);
-    // bit_depth_chroma_minus8 = 0
-    data.push(0x80);
-    // qpprime and scaling flags
-    data.push(0x40);
+    let mut data = vec![
+        100,  // profile_idc (High = 100)
+        0x00, // constraint flags
+        40,   // level_idc
+        0x80, // seq_parameter_set_id
+        0x00, // chroma_format_idc for Yuv422 = 2 (UE): "001"
+        0x80, // bit_depth_luma_minus8 = 0
+        0x80, // bit_depth_chroma_minus8 = 0
+        0x40, // qpprime and scaling flags
+    ];
 
     // Rest of SPS
     data.extend_from_slice(&[
@@ -385,26 +354,17 @@ fn test_parse_sps_high_profile_with_chroma_yuv422() {
 
 #[test]
 fn test_parse_sps_high_profile_with_chroma_yuv444() {
-    let mut data = Vec::new();
-
-    // profile_idc (High = 100)
-    data.push(100);
-    data.push(0x00);
-    data.push(40);
-    data.push(0x80);
-
-    // chroma_format_idc for Yuv444 = 3 (UE)
-    data.push(0xC0); // "011"
-
-    // separate_colour_plane_flag = 0
-    data.push(0x40); // "0" + padding
-
-    // bit_depth_luma_minus8 = 0
-    data.push(0x80);
-    // bit_depth_chroma_minus8 = 0
-    data.push(0x80);
-    // qpprime and scaling flags
-    data.push(0x40);
+    let mut data = vec![
+        100,  // profile_idc (High = 100)
+        0x00, // constraint flags
+        40,   // level_idc
+        0x80, // seq_parameter_set_id
+        0xC0, // chroma_format_idc for Yuv444 = 3 (UE): "011"
+        0x40, // separate_colour_plane_flag = 0: "0" + padding
+        0x80, // bit_depth_luma_minus8 = 0
+        0x80, // bit_depth_chroma_minus8 = 0
+        0x40, // qpprime and scaling flags
+    ];
 
     // Rest of SPS
     data.extend_from_slice(&[
@@ -417,16 +377,13 @@ fn test_parse_sps_high_profile_with_chroma_yuv444() {
 
 #[test]
 fn test_parse_sps_with_scaling_matrix() {
-    let mut data = Vec::new();
-
-    // profile_idc (High = 100)
-    data.push(100);
-    data.push(0x00);
-    data.push(40);
-    data.push(0x80);
-
-    // chroma_format_idc = 1 (Yuv420)
-    data.push(0x40);
+    let mut data = vec![
+        100,  // profile_idc (High = 100)
+        0x00, // constraint flags
+        40,   // level_idc
+        0x80, // seq_parameter_set_id
+        0x40, // chroma_format_idc = 1 (Yuv420)
+    ];
 
     // bit_depth values
     data.extend_from_slice(&[0x80, 0x80]);
@@ -438,9 +395,7 @@ fn test_parse_sps_with_scaling_matrix() {
     // Add 8 scaling lists for Yuv420
     // Each has scaling_list_present_flag (1 bit)
     // Simplified: all flags = 0
-    for _ in 0..8 {
-        data.push(0x40); // scaling_list_present_flag = 0
-    }
+    data.extend(std::iter::repeat_n(0x40, 8)); // scaling_list_present_flag = 0
 
     // Rest of SPS
     data.extend_from_slice(&[

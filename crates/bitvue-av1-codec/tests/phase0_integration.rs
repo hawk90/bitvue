@@ -41,7 +41,7 @@ fn test_phase0_real_file_parsing() {
 
     // Verify we got multiple OBUs
     assert!(
-        models.len() > 0,
+        !models.is_empty(),
         "Expected at least one OBU, got {}",
         models.len()
     );
@@ -120,7 +120,7 @@ fn test_phase0_real_file_parsing() {
             .iter()
             .find(|id| {
                 model
-                    .get_node(*id)
+                    .get_node(id)
                     .map(|n| n.field_name == "sequence_header")
                     .unwrap_or(false)
             })
@@ -171,7 +171,7 @@ fn test_phase0_real_file_parsing() {
             .iter()
             .find(|id| {
                 model
-                    .get_node(*id)
+                    .get_node(id)
                     .map(|n| n.field_name == "frame_header")
                     .unwrap_or(false)
             })
@@ -223,7 +223,7 @@ fn test_phase0_bit_range_accuracy() {
         .iter()
         .find(|id| {
             model
-                .get_node(*id)
+                .get_node(id)
                 .map(|n| n.field_name == "obu_header")
                 .unwrap_or(false)
         })
@@ -296,7 +296,7 @@ fn test_phase0_bidirectional_trisync() {
     let model = &models[0];
 
     // Test 1: Find node containing bits 1-5 (obu_type field)
-    let test_range = bitvue_core::BitRange::new(1, 5);
+    let test_range = bitvue_engine::BitRange::new(1, 5);
     let found_node = model
         .find_nearest_node(&test_range)
         .expect("Should find node for bits 1-5");
@@ -317,7 +317,7 @@ fn test_phase0_bidirectional_trisync() {
     );
 
     // Test 2: Find node containing a single bit (bit 3 is in obu_type)
-    let single_bit = bitvue_core::BitRange::new(3, 4);
+    let single_bit = bitvue_engine::BitRange::new(3, 4);
     let found_node = model
         .find_nearest_node(&single_bit)
         .expect("Should find node for bit 3");
@@ -330,7 +330,7 @@ fn test_phase0_bidirectional_trisync() {
     println!("✅ Tri-sync: Bit [3] → Found '{}'", found_node.field_name);
 
     // Test 3: Find node for obu_has_size_field (bit 6)
-    let has_size_bit = bitvue_core::BitRange::new(6, 7);
+    let has_size_bit = bitvue_engine::BitRange::new(6, 7);
     let found_node = model
         .find_nearest_node(&has_size_bit)
         .expect("Should find node for bit 6");
@@ -343,7 +343,7 @@ fn test_phase0_bidirectional_trisync() {
     println!("✅ Tri-sync: Bit [6] → Found '{}'", found_node.field_name);
 
     // Test 4: Find container node (obu_header spans bits 0-8)
-    let header_range = bitvue_core::BitRange::new(0, 8);
+    let header_range = bitvue_engine::BitRange::new(0, 8);
     let found_node = model
         .find_nearest_node(&header_range)
         .expect("Should find obu_header container");
@@ -360,7 +360,7 @@ fn test_phase0_bidirectional_trisync() {
 
     // Test 5: Verify tightest node selection
     // Clicking anywhere in bits 1-5 should select obu_type, not obu_header
-    let mid_bit = bitvue_core::BitRange::new(3, 4);
+    let mid_bit = bitvue_engine::BitRange::new(3, 4);
     let tightest = model.find_nearest_node(&mid_bit).unwrap();
 
     assert_eq!(

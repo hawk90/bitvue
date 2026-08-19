@@ -1,19 +1,57 @@
 /**
  * Hex View Tab Component Tests
+ *
+ * Covers the 2026-08-09 rewiring off Tauri's get_frame_hex_data invoke() to the already-proven
+ * getHexRange bridge call (no new backend work needed -- HexViewTab now resolves a frame's real
+ * on-disk offset via FrameInfo.offset, added in an earlier round, then reuses getHexRange
+ * exactly as get_hex_range's own byte-exact tests already established it works).
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
-import { invoke } from "@tauri-apps/api/core";
 import { HexViewTab } from "../HexViewTab";
 
+const { getHexRange } = vi.hoisted(() => ({
+  getHexRange: vi.fn(),
+}));
+
+vi.mock("@/services/electronBridgeService", () => ({ getHexRange }));
+
+/** Deterministic bytes varying by offset, mirroring the old Tauri mock's frame_index-based
+ *  variation closely enough for the "different frames produce different bytes" test below --
+ *  not a real decoder, just needs a start-code-shaped, offset-dependent pattern. */
+function generateMockBytes(offset: number, len: number): Uint8Array {
+  const data = new Uint8Array(len);
+  data[0] = 0x00;
+  data[1] = 0x00;
+  data[2] = 0x01;
+  for (let i = 3; i < len; i++) {
+    if (i === 3) {
+      data[i] = 0x10 + (offset % 8);
+    } else if (i < 20) {
+      data[i] = 0x20 + ((i + offset) % 64);
+    } else {
+      data[i] = (i * 7 + offset * 13) % 256;
+    }
+  }
+  return data;
+}
+
 const mockFrames = [
-  { frame_index: 0, size: 100 },
-  { frame_index: 1, size: 200 },
-  { frame_index: 2, size: 150 },
+  { frame_index: 0, size: 100, offset: 1000 },
+  { frame_index: 1, size: 200, offset: 2000 },
+  { frame_index: 2, size: 150, offset: 3000 },
 ];
 
 describe("HexViewTab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getHexRange.mockImplementation(
+      (_stream: string, offset: number, len: number) =>
+        Promise.resolve({ offset, len, bytes: generateMockBytes(offset, len) }),
+    );
+  });
+
   it("should render empty state when no frames available", () => {
     render(<HexViewTab frameIndex={0} frames={[]} />);
 
@@ -30,6 +68,26 @@ describe("HexViewTab", () => {
     render(<HexViewTab frameIndex={99} frames={mockFrames} />);
 
     expect(screen.getByText("No frame selected")).toBeInTheDocument();
+  });
+
+  it("fetches the frame's real on-disk byte range, not a frame index", async () => {
+    render(<HexViewTab frameIndex={0} frames={mockFrames} />);
+
+    await waitFor(() => {
+      expect(getHexRange).toHaveBeenCalledWith("A", 1000, 100);
+    });
+  });
+
+  it("shows an honest error when the frame has no on-disk offset", async () => {
+    const frameWithoutOffset = { frame_index: 0, size: 100 };
+    render(<HexViewTab frameIndex={0} frames={[frameWithoutOffset]} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No on-disk offset available/),
+      ).toBeInTheDocument();
+    });
+    expect(getHexRange).not.toHaveBeenCalled();
   });
 
   it("should render hex dump content for valid frame", async () => {
@@ -122,16 +180,15 @@ describe("HexViewTab", () => {
     });
   });
 
-  it("should show truncated message for large frames", () => {
-    // This test is skipped because the mock doesn't simulate truncation
-    // In real scenario, if frameSize > maxBytes, truncation would occur
-    // For now, we'll test with a frame size that causes truncation in the mock
-    const largeFrame = { frame_index: 0, size: 3000 }; // Larger than default maxBytes
+  it("should show truncated message for frames larger than MAX_HEX_BYTES", async () => {
+    const largeFrame = { frame_index: 0, size: 3000, offset: 5000 };
     render(<HexViewTab frameIndex={0} frames={[largeFrame]} />);
 
-    // The mock should show truncation for frames larger than what it loads
-    // Since mock uses frameSize from args or defaults to 100, this test won't show truncation
-    // We'll need to update the test approach or the mock
+    await waitFor(() => {
+      expect(screen.getByText(/\(\d+ more bytes\)/)).toBeInTheDocument();
+    });
+    // MAX_HEX_BYTES caps the request length even though the frame itself is bigger.
+    expect(getHexRange).toHaveBeenCalledWith("A", 5000, 2048);
   });
 
   it("should handle byte selection", async () => {
@@ -203,7 +260,7 @@ describe("HexViewTab", () => {
   });
 
   it("should handle frames smaller than 512 bytes", async () => {
-    const smallFrame = { frame_index: 0, size: 50 };
+    const smallFrame = { frame_index: 0, size: 50, offset: 1000 };
     const { container } = render(
       <HexViewTab frameIndex={0} frames={[smallFrame]} />,
     );
@@ -217,7 +274,7 @@ describe("HexViewTab", () => {
     expect(screen.queryByText(/\(\d+ more bytes\)/)).not.toBeInTheDocument();
   });
 
-  it("should use frame_index for mock data generation", async () => {
+  it("should use frame offset for mock data generation", async () => {
     // Render frame 0 and capture first hex byte
     const { container: container1, unmount: unmount1 } = render(
       <HexViewTab frameIndex={0} frames={mockFrames} />,
@@ -227,7 +284,7 @@ describe("HexViewTab", () => {
     await waitFor(() => {
       const bytes = container1.querySelectorAll(".hex-byte");
       expect(bytes.length).toBeGreaterThan(3);
-      // Join all byte values - frame index affects byte at position 3+
+      // Join all byte values - offset affects byte at position 3+
       hexBytes1 = Array.from(bytes)
         .map((b) => b.textContent)
         .join("");
@@ -246,13 +303,13 @@ describe("HexViewTab", () => {
       const hexBytes2 = Array.from(bytes)
         .map((b) => b.textContent)
         .join("");
-      // Different frame indices should generate different mock data
+      // Different frame offsets should generate different mock data
       expect(hexBytes2).not.toBe(hexBytes1!);
     });
   });
 
   it("should handle frame size exactly 512 bytes", async () => {
-    const exactFrame = { frame_index: 0, size: 512 };
+    const exactFrame = { frame_index: 0, size: 512, offset: 1000 };
     render(<HexViewTab frameIndex={0} frames={[exactFrame]} />);
 
     // Should not show truncated message when exactly 512
@@ -276,12 +333,12 @@ describe("HexViewTab", () => {
   });
 
   it("should show loading state initially", () => {
-    // Make invoke never resolve so we can observe the loading state
-    vi.mocked(invoke).mockImplementationOnce(() => new Promise(() => {}));
+    // Make the bridge call never resolve so we can observe the loading state
+    getHexRange.mockImplementationOnce(() => new Promise(() => {}));
 
     render(<HexViewTab frameIndex={0} frames={mockFrames} />);
 
-    // Should show loading initially (effect sets loading=true before awaiting invoke)
+    // Should show loading initially (effect sets loading=true before awaiting the bridge call)
     expect(screen.getByText("Loading hex data...")).toBeInTheDocument();
   });
 });

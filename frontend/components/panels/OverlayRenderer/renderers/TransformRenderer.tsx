@@ -30,8 +30,6 @@ export function TransformOverlay({
   }
 
   const { tx_sizes, block_w, block_h, grid_w, grid_h } = frame.transform_grid;
-  const _borderColor =
-    getCssVar("--border-light") || "rgba(255, 255, 255, 0.1)";
 
   // Count transform sizes for legend
   const txCounts = new Map<number, number>();

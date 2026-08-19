@@ -11,14 +11,14 @@
   overflow: hidden;
 }
 
-.panel-header {
+.syntax-detail-panel .panel-header {
   padding: 8px 12px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.panel-title {
+.syntax-detail-panel .panel-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -238,19 +238,7 @@
   font-size: 12px;
 }
 
-/* Frame type colors */
-.frame-type-i,
-.frame-type-key {
-  color: var(--frame-i);
-}
-
-.frame-type-p {
-  color: var(--frame-p);
-}
-
-.frame-type-b {
-  color: var(--frame-b);
-}
+/* Frame type badge -- moved to components/common/FrameTypeBadge.css (single source of truth). */
 
 /* Refs Tab Styles */
 .refs-list {
@@ -270,6 +258,9 @@
   border-radius: var(--radius-sm);
   font-size: 11px;
   transition: all var(--transition-fast) var(--ease-default);
+  /* Grid's default `justify-items: stretch` would blockify the `FrameTypeBadge` grid child and
+     stretch it to fill the 40px column instead of shrinking to the single-letter content. */
+  justify-items: start;
 }
 
 .ref-item:hover {
@@ -285,11 +276,6 @@
 .ref-frame {
   color: var(--text-primary);
   font-weight: 500;
-}
-
-.ref-type {
-  font-weight: 600;
-  text-transform: uppercase;
 }
 
 .ref-pts {
@@ -332,6 +318,89 @@
 .syntax-detail-panel .stats-value {
   color: var(--text-primary);
   font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+}
+
+/* Stats Tab — chart components */
+.stats-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stats-chart-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px 4px;
+}
+
+.stats-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stats-legend-item {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+
+.stats-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stats-legend-type {
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats-legend-count {
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  text-align: right;
+  min-width: 24px;
+}
+
+.stats-legend-pct {
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  text-align: right;
+  min-width: 38px;
+}
+
+.stats-chart-bar {
+  padding: 4px 4px 0;
+  background: var(--bg-panel-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.stats-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px;
+  font-size: 9px;
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+}
+
+.stats-chart-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* Search Tab Styles */
@@ -436,6 +505,9 @@
   font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast) var(--ease-default);
+  /* Same fix as `.ref-item` above -- the `FrameTypeBadge` grid child otherwise stretches to fill
+     its column instead of shrinking to its single-letter content. */
+  justify-items: start;
 }
 
 .search-result-item:hover {
@@ -447,11 +519,6 @@
 .search-result-item.current {
   background: var(--bg-selected);
   border-color: var(--accent);
-}
-
-.search-result-type {
-  font-weight: 600;
-  text-transform: uppercase;
 }
 
 .search-result-index {
@@ -468,4 +535,438 @@
   color: var(--text-secondary);
   font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   text-align: right;
+}
+
+/* ── QM Tab ─────────────────────────────────────────────────────────── */
+.qm-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 11px;
+}
+
+.qm-status {
+  color: var(--text-secondary);
+}
+
+.qm-filter-row {
+  display: flex;
+  gap: 4px;
+}
+
+.qm-filter-btn {
+  padding: 2px 8px;
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.qm-filter-btn.active,
+.qm-filter-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.qm-filter-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.qm-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.qm-legend-bar {
+  flex: 1;
+  height: 8px;
+  display: flex;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.qm-legend-label {
+  flex-shrink: 0;
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+}
+
+.qm-matrices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.qm-matrix-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.qm-matrix-name {
+  font-size: 9px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qm-matrix-flat {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.qm-matrix-grid {
+  display: grid;
+  gap: 1px;
+}
+
+/* ── Probs Tab ──────────────────────────────────────────────────────── */
+.probs-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.probs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 4px 0;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.probs-hint {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.probs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.probs-group-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 4px 6px;
+  background: var(--bg-panel-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.probs-entry {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+.probs-label {
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.probs-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prob-bar-wrap {
+  position: relative;
+  height: 12px;
+  background: var(--bg-panel-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: default;
+}
+
+.prob-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.2s;
+}
+
+.prob-bar-label {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+}
+
+/* ── APS Tab ────────────────────────────────────────────────────────── */
+.aps-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.aps-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aps-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--border);
+  background: var(--bg-panel-secondary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.aps-type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #000;
+}
+
+.aps-section-count {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.aps-entry {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.aps-entry--disabled {
+  opacity: 0.55;
+}
+
+.aps-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.aps-id {
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  color: var(--text-primary);
+}
+
+.aps-status {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.aps-status--on {
+  background: rgba(102, 187, 106, 0.25);
+  color: #66bb6a;
+}
+
+.aps-status--off {
+  background: rgba(120, 144, 156, 0.2);
+  color: var(--text-secondary);
+}
+
+.aps-summary {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* ── RefList Tab ────────────────────────────────────────────────────── */
+.reflist-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.reflist-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reflist-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.reflist-list-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.reflist-list-l0 {
+  background: rgba(79, 195, 247, 0.2);
+  color: #4fc3f7;
+}
+
+.reflist-list-l1 {
+  background: rgba(255, 167, 38, 0.2);
+  color: #ffa726;
+}
+
+.reflist-count {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.reflist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  transition: background var(--transition-fast);
+}
+
+.reflist-row:hover {
+  background: var(--bg-hover);
+}
+
+.reflist-slot {
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  min-width: 24px;
+}
+
+.reflist-frame {
+  color: var(--text-primary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  min-width: 48px;
+}
+
+.reflist-type {
+  font-weight: 600;
+  min-width: 24px;
+  text-transform: uppercase;
+}
+
+.reflist-poc {
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+  flex: 1;
+}
+
+.reflist-lt {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 4px;
+  background: rgba(171, 71, 188, 0.2);
+  color: #ab47bc;
+  border-radius: 3px;
+}
+
+.reflist-weight,
+.reflist-offset {
+  font-size: 9px;
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
+}
+
+/* ── Syntax → HEX jump ──────────────────────────────────────────────── */
+.syntax-hex-jump {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0.7;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.syntax-hex-jump:hover {
+  opacity: 1;
+}
+
+/* ── Stats QP button ─────────────────────────────────────────────────── */
+.stats-header {
+  display: flex;
+  align-items: center;
+}
+
+.stats-qp-btn {
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 1px 6px;
+  transition: all var(--transition-fast);
+}
+
+.stats-qp-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.stats-qp-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ─── Virtual syntax tree scroll container ──────────────────────────────── */
+.syntax-virtual-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Fill the remaining height inside .syntax-tree */
+  height: 100%;
+  min-height: 0;
+}
+
+.syntax-virtual-scroll .syntax-node {
+  /* Fixed height kept in sync with ITEM_HEIGHT const (24px) */
+  height: 24px;
+  overflow: hidden;
 }

@@ -158,7 +158,7 @@ impl SliceHeader {
     }
 }
 
-/// Parse slice header.
+/// Parse slice header from raw bytes.
 pub fn parse_slice_header(
     data: &[u8],
     sps_map: &HashMap<u8, Sps>,
@@ -167,7 +167,18 @@ pub fn parse_slice_header(
     nal_ref_idc: u8,
 ) -> Result<SliceHeader> {
     let mut reader = BitReader::new(data);
+    parse_slice_header_reader(&mut reader, sps_map, pps_map, nal_type, nal_ref_idc)
+}
 
+/// Parse slice header from an existing BitReader, leaving the reader positioned
+/// immediately after the slice header (i.e., at the start of slice_data()).
+pub fn parse_slice_header_reader(
+    reader: &mut BitReader<'_>,
+    sps_map: &HashMap<u8, Sps>,
+    pps_map: &HashMap<u8, Pps>,
+    nal_type: NalUnitType,
+    nal_ref_idc: u8,
+) -> Result<SliceHeader> {
     let first_mb_in_slice = reader.read_ue()?;
     let slice_type_raw = reader.read_ue()?;
     let slice_type = SliceType::from_u32(slice_type_raw);
@@ -260,14 +271,14 @@ pub fn parse_slice_header(
     if !slice_type.is_intra() {
         ref_pic_list_modification_flag_l0 = reader.read_flag()?;
         if ref_pic_list_modification_flag_l0 {
-            ref_pic_list_modification_l0 = parse_ref_pic_list_modification(&mut reader)?;
+            ref_pic_list_modification_l0 = parse_ref_pic_list_modification(reader)?;
         }
     }
 
     if slice_type.is_b() {
         ref_pic_list_modification_flag_l1 = reader.read_flag()?;
         if ref_pic_list_modification_flag_l1 {
-            ref_pic_list_modification_l1 = parse_ref_pic_list_modification(&mut reader)?;
+            ref_pic_list_modification_l1 = parse_ref_pic_list_modification(reader)?;
         }
     }
 
@@ -276,7 +287,7 @@ pub fn parse_slice_header(
         || (pps.weighted_bipred_idc == 1 && slice_type.is_b())
     {
         skip_pred_weight_table(
-            &mut reader,
+            reader,
             slice_type,
             num_ref_idx_l0_active_minus1,
             num_ref_idx_l1_active_minus1,
@@ -287,7 +298,7 @@ pub fn parse_slice_header(
     // Dec ref pic marking
     let mut dec_ref_pic_marking = DecRefPicMarking::default();
     if nal_ref_idc != 0 {
-        dec_ref_pic_marking = parse_dec_ref_pic_marking(&mut reader, nal_type)?;
+        dec_ref_pic_marking = parse_dec_ref_pic_marking(reader, nal_type)?;
     }
 
     let mut cabac_init_idc = 0;

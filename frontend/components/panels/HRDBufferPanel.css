@@ -56,6 +56,15 @@
 
 .hrd-canvas-container {
   flex: 1;
+
+  /* The canvas draws its Y-axis labels (see HRDBufferPanel.tsx's `yLabelCount`) sized to this
+     element's actual rendered height -- inside the filmstrip's ~140-180px total panel height,
+     `flex:1` alone let this shrink to ~40px after the header/legend rows, which crammed the
+     0KB/max-KB labels into a handful of pixels and made them overlap. A flex item won't shrink
+     below an explicit min-height by default, so this forces `.hrd-buffer-panel` to overflow its
+     own `height: 100%` -- paired with `.filmstrip.hrdbuffer-view-mode`'s scroll opt-in below
+     (Filmstrip.css), same pattern as the Structure/Enhanced views. */
+  min-height: 140px;
   position: relative;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);

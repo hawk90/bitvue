@@ -11,13 +11,13 @@
   overflow: hidden;
 }
 
-.panel-header {
+.selection-info-panel .panel-header {
   padding: 8px 12px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
 }
 
-.panel-title {
+.selection-info-panel .panel-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -76,7 +76,7 @@
   gap: 2px;
 }
 
-.info-row {
+.selection-info-panel .info-row {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 8px;
@@ -86,24 +86,24 @@
   transition: background var(--transition-fast) var(--ease-default);
 }
 
-.info-row:hover {
+.selection-info-panel .info-row:hover {
   background: var(--bg-hover);
 }
 
-.info-row.highlight {
+.selection-info-panel .info-row.highlight {
   background: rgb(0 122 204 / 15%);
 }
 
-.info-row.highlight:hover {
+.selection-info-panel .info-row.highlight:hover {
   background: rgb(0 122 204 / 20%);
 }
 
-.info-label {
+.selection-info-panel .info-label {
   color: var(--text-secondary);
   font-weight: 500;
 }
 
-.info-value {
+.selection-info-panel .info-value {
   color: var(--text-primary);
   font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
   text-align: right;
@@ -113,34 +113,8 @@
   gap: 4px;
 }
 
-/* Frame Type Badge */
-.frame-type-badge {
-  padding: 1px 6px;
-  border-radius: 2px;
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.frame-type-i,
-.frame-type-key {
-  background: rgb(208 64 64 / 20%);
-  color: var(--frame-i);
-  border: 1px solid rgb(208 64 64 / 30%);
-}
-
-.frame-type-p {
-  background: rgb(80 192 80 / 20%);
-  color: var(--frame-p);
-  border: 1px solid rgb(80 192 80 / 30%);
-}
-
-.frame-type-b {
-  background: rgb(80 144 208 / 20%);
-  color: var(--frame-b);
-  border: 1px solid rgb(80 144 208 / 30%);
-}
+/* Frame Type Badge -- moved to components/common/FrameTypeBadge.css (single source of truth,
+   see that file's doc) -- this file only styles the count/percent layout around the badge. */
 
 /* Frame Type Count */
 .frame-type-count {

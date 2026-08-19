@@ -1630,7 +1630,7 @@ fn test_slice_type_from_nal_unit_types() {
         let header = NalUnitHeader {
             forbidden_zero_bit: false,
             nal_ref_idc,
-            nal_unit_type: expected_unit_type.clone(),
+            nal_unit_type: expected_unit_type,
         };
         let _ = header;
     }
@@ -1747,9 +1747,9 @@ fn test_parse_slice_header_all_ref_idc_values() {
 fn test_parse_slice_header_various_slice_qp_values() {
     for qp_delta in -26i32..=25i32 {
         let se = if qp_delta <= 0 {
-            ((-qp_delta * 2) as u8) & 0xFF
+            (-qp_delta * 2) as u8
         } else {
-            ((qp_delta * 2 - 1) as u8) & 0xFF
+            (qp_delta * 2 - 1) as u8
         };
 
         let data = [0x80, 0x40, 0x80, 0x80, se, 0x80];
@@ -1863,9 +1863,9 @@ fn test_ref_pic_list_modification_negative_values() {
     // Test list modification with negative values
     for list_idx in [-1i32, -2, 0, 1, 2] {
         let se_val = if list_idx <= 0 {
-            ((-list_idx * 2) as u8) & 0xFF
+            (-list_idx * 2) as u8
         } else {
-            ((list_idx * 2 - 1) as u8) & 0xFF
+            (list_idx * 2 - 1) as u8
         };
         let _ = se_val;
     }

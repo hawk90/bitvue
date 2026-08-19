@@ -22,13 +22,21 @@
 //! - ⏳ Transform coefficient parsing
 
 pub mod coding_unit;
+pub mod context;
+pub mod motion_field;
 pub mod mv_prediction;
 pub mod partition;
 pub mod superblock;
 pub mod tile_group;
 
 pub use coding_unit::{
-    parse_coding_unit, CodingUnit, MotionVector, PredictionMode, RefFrame, TxSize,
+    parse_coding_unit, CodingUnit, InterModeFlags, MotionVector, PaletteInfo, PredictionMode,
+    RefFrame, TxSize, TxTypeFrameFlags,
+};
+pub use context::TileContext;
+pub use motion_field::{
+    add_temporal_candidates, project_motion_field, select_motion_field_sources, store_motion_field,
+    MfmvSource, MotionFieldGrid, MotionFieldState, ProjectedMotionField, ProjectedMv, SavedMv,
 };
 pub use mv_prediction::MvPredictorContext;
 pub use partition::{

@@ -16,7 +16,7 @@
 
 use super::{SyntaxBuilder, TrackedBitReader};
 use crate::frame_header::FrameType;
-use bitvue_core::Result;
+use bitvue_engine::Result;
 
 /// Parse Frame Header OBU payload with bit-level tracking (simplified)
 ///
@@ -107,7 +107,7 @@ pub fn parse_frame_header_syntax(
             // Add virtual node for clarity
             builder.add_field(
                 "error_resilient_mode",
-                bitvue_core::types::BitRange::new(reader.position(), reader.position()),
+                bitvue_engine::types::BitRange::new(reader.position(), reader.position()),
                 "1 (implicit)".to_string(),
             );
             true
@@ -160,7 +160,7 @@ pub fn parse_frame_header_syntax(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitvue_core::types::BitRange;
+    use bitvue_engine::types::BitRange;
 
     #[test]
     fn test_parse_show_existing_frame() {

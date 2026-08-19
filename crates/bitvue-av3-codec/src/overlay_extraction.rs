@@ -20,7 +20,7 @@
 //! - Super-resolution with scaling
 
 use crate::frame_header::FrameHeader;
-use bitvue_core::{
+use bitvue_engine::{
     limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
@@ -241,7 +241,14 @@ pub fn extract_mv_grid(frame_header: &FrameHeader) -> Result<MVGrid, BitvueError
                     mv_l1.push(CoreMV::MISSING);
                     modes.push(BlockMode::Intra);
                 }
-                BlockMode::Skip | BlockMode::Inter | BlockMode::None => {
+                // IntraBc/Compound are AV1-only categories (this AV3 parser never produces
+                // them) -- grouped into the same catch-all as the pre-existing Skip/Inter/None
+                // arm for exhaustiveness, matching what None already did.
+                BlockMode::Skip
+                | BlockMode::Inter
+                | BlockMode::None
+                | BlockMode::IntraBc
+                | BlockMode::Compound => {
                     if let Some(ref mv) = sb.mv_l0 {
                         mv_l0.push(CoreMV::new(mv.x, mv.y));
                     } else {

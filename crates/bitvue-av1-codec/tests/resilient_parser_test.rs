@@ -12,8 +12,8 @@
 //! Tests for resilient OBU parser with diagnostic generation
 
 use bitvue_av1_codec::{parse_all_obus_resilient, parse_ivf_frames};
-use bitvue_core::event::{Category, Severity};
-use bitvue_core::StreamId;
+use bitvue_engine::event::{Category, Severity};
+use bitvue_engine::StreamId;
 
 #[test]
 fn test_resilient_parser_valid_file() {
@@ -30,34 +30,31 @@ fn test_resilient_parser_valid_file() {
     let (obus, diagnostics) = parse_all_obus_resilient(&obu_data, StreamId::A);
 
     // Valid file should parse successfully with no errors
-    assert!(obus.len() > 0, "Should parse some OBUs");
+    assert!(!obus.is_empty(), "Should parse some OBUs");
     assert_eq!(diagnostics.len(), 0, "Valid file should have 0 diagnostics");
 }
 
 #[test]
 fn test_resilient_parser_invalid_obu_type() {
     // Create data with invalid OBU type (> 15)
-    let mut data = Vec::new();
-
-    // Valid OBU header first (TEMPORAL_DELIMITER)
-    data.push(0x12); // type=2, has_size=1
-    data.push(0x00); // size=0 (leb128)
-
-    // Invalid OBU type (16)
-    data.push(0x82); // type=16 (invalid), has_size=1
-    data.push(0x00); // size=0
+    let data = vec![
+        0x12, // type=2, has_size=1 (valid OBU header first: TEMPORAL_DELIMITER)
+        0x00, // size=0 (leb128)
+        0x82, // type=16 (invalid), has_size=1
+        0x00, // size=0
+    ];
 
     let (obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should parse first OBU successfully (might parse more due to recovery)
     assert!(
-        obus.len() >= 1,
+        !obus.is_empty(),
         "Should parse at least 1 valid OBU before error"
     );
 
     // Should generate diagnostic for invalid OBU type
     assert!(
-        diagnostics.len() >= 1,
+        !diagnostics.is_empty(),
         "Should have at least 1 diagnostic for invalid type"
     );
 
@@ -79,18 +76,14 @@ fn test_resilient_parser_invalid_obu_type() {
 #[test]
 fn test_resilient_parser_unexpected_eof() {
     // Create OBU header claiming more data than available
-    let mut data = Vec::new();
-
-    // OBU header: type=1 (SEQUENCE_HEADER), has_size=1
-    data.push(0x0A);
-    // Size: 100 bytes (but we won't provide them)
-    data.push(100);
-    // Missing 100 bytes of payload
+    // OBU header: type=1 (SEQUENCE_HEADER), has_size=1; size=100 bytes (but we won't provide
+    // them) -- missing 100 bytes of payload.
+    let data = vec![0x0A, 100];
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should generate diagnostic for unexpected EOF
-    assert!(diagnostics.len() > 0, "Should have diagnostic for EOF");
+    assert!(!diagnostics.is_empty(), "Should have diagnostic for EOF");
 
     // Check for EOF diagnostic
     let has_eof = diagnostics
@@ -102,17 +95,16 @@ fn test_resilient_parser_unexpected_eof() {
 #[test]
 fn test_resilient_parser_forbidden_bit_set() {
     // Create OBU with forbidden bit set
-    let mut data = Vec::new();
-
-    // OBU header with forbidden bit = 1 (0x8A = 10001010)
-    data.push(0x8A); // forbidden=1, type=1, has_extension=0, has_size=1
-    data.push(0x00); // size=0
+    let data = vec![
+        0x8A, // forbidden=1, type=1, has_extension=0, has_size=1 (0x8A = 10001010)
+        0x00, // size=0
+    ];
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should generate diagnostic for forbidden bit
     assert!(
-        diagnostics.len() > 0,
+        !diagnostics.is_empty(),
         "Should have diagnostic for forbidden bit"
     );
 
@@ -125,26 +117,20 @@ fn test_resilient_parser_forbidden_bit_set() {
 #[test]
 fn test_resilient_parser_multiple_errors() {
     // Create data with multiple errors
-    let mut data = Vec::new();
-
-    // Error 1: Invalid type
-    data.push(0x82); // type=16 (invalid)
-    data.push(0x00);
-
-    // Error 2: Another invalid type
-    data.push(0x8A); // forbidden bit set
-    data.push(0x00);
-
-    // Error 3: Truncated
-    data.push(0x0A); // Valid header
-    data.push(0x64); // Claims 100 bytes
-                     // Missing payload
+    let data = vec![
+        0x82, // Error 1: type=16 (invalid)
+        0x00, //
+        0x8A, // Error 2: forbidden bit set
+        0x00, //
+        0x0A, // Error 3: valid header,
+        0x64, // claims 100 bytes -- truncated, missing payload
+    ];
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should generate diagnostics (might be fewer due to recovery finding valid data)
     assert!(
-        diagnostics.len() >= 1,
+        !diagnostics.is_empty(),
         "Should have at least 1 diagnostic for errors"
     );
 
@@ -164,13 +150,8 @@ fn test_resilient_parser_multiple_errors() {
 
 #[test]
 fn test_resilient_parser_error_limit() {
-    // Create data that will trigger 15 consecutive errors
-    let mut data = Vec::new();
-
-    for _ in 0..15 {
-        // Invalid OBU type
-        data.push(0x82); // type=16 (invalid)
-    }
+    // Create data that will trigger 15 consecutive errors (invalid OBU type 0x82 repeated)
+    let data = vec![0x82u8; 15];
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
@@ -181,7 +162,7 @@ fn test_resilient_parser_error_limit() {
     );
 
     // Last diagnostic should be fatal "too many errors"
-    if diagnostics.len() > 0 {
+    if !diagnostics.is_empty() {
         let last = &diagnostics[diagnostics.len() - 1];
         if last.severity == Severity::Fatal {
             assert!(last.message.contains("Too many") || last.message.contains("stopping"));
@@ -193,30 +174,23 @@ fn test_resilient_parser_error_limit() {
 #[test]
 fn test_resilient_parser_frame_index_approximation() {
     // Create valid OBUs followed by error
-    let mut data = Vec::new();
-
-    // OBU 1: TEMPORAL_DELIMITER (not a frame)
-    data.push(0x12); // type=2
-    data.push(0x00);
-
-    // OBU 2: FRAME (has frame data)
-    data.push(0x32); // type=6
-    data.push(0x00);
-
-    // OBU 3: FRAME
-    data.push(0x32);
-    data.push(0x00);
-
-    // Error after 3 OBUs
-    data.push(0x82); // Invalid type
-    data.push(0x00);
+    let data = vec![
+        0x12, // OBU 1: TEMPORAL_DELIMITER (not a frame), type=2
+        0x00, //
+        0x32, // OBU 2: FRAME (has frame data), type=6
+        0x00, //
+        0x32, // OBU 3: FRAME
+        0x00, //
+        0x82, // Error after 3 OBUs: invalid type
+        0x00,
+    ];
 
     let (obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Recovery might parse more OBUs (valid data might be found after errors)
     assert!(obus.len() >= 3, "Should parse at least 3 valid OBUs");
     assert!(
-        diagnostics.len() >= 1,
+        !diagnostics.is_empty(),
         "Should have at least 1 error diagnostic"
     );
 
@@ -232,15 +206,12 @@ fn test_resilient_parser_frame_index_approximation() {
 #[test]
 fn test_resilient_parser_offset_tracking() {
     // Create OBUs at known offsets
-    let mut data = Vec::new();
-
-    // OBU 1 at offset 0
-    data.push(0x12); // type=2, offset=0
-    data.push(0x00);
-
-    // OBU 2 at offset 2
-    data.push(0x12); // type=2, offset=2
-    data.push(0x00);
+    let mut data = vec![
+        0x12, // OBU 1 at offset 0: type=2
+        0x00, //
+        0x12, // OBU 2 at offset 2: type=2
+        0x00,
+    ];
 
     // Error at offset 4
     let error_offset = data.len() as u64;
@@ -263,20 +234,14 @@ fn test_resilient_parser_offset_tracking() {
 #[test]
 fn test_resilient_parser_all_severity_levels() {
     // Create errors that trigger different severity levels
-    let mut data = Vec::new();
-
-    // Parse error (Severity::Error)
-    data.push(0x8A); // forbidden bit
-    data.push(0x00);
-
-    // Invalid type (Severity::Error)
-    data.push(0x82);
-    data.push(0x00);
-
-    // Unexpected EOF (Severity::Fatal)
-    data.push(0x0A);
-    data.push(0xFF); // Claims 255 bytes
-                     // Missing payload triggers EOF
+    let data = vec![
+        0x8A, // Parse error (Severity::Error): forbidden bit
+        0x00, //
+        0x82, // Invalid type (Severity::Error)
+        0x00, //
+        0x0A, // Unexpected EOF (Severity::Fatal)
+        0xFF, // Claims 255 bytes -- missing payload triggers EOF
+    ];
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
@@ -293,11 +258,7 @@ fn test_resilient_parser_all_severity_levels() {
 #[test]
 fn test_resilient_parser_impact_scores() {
     // Verify impact scores are set correctly for different error types
-    let mut data = Vec::new();
-
-    // Invalid OBU type (impact 90)
-    data.push(0x82);
-    data.push(0x00);
+    let data = vec![0x82, 0x00]; // Invalid OBU type (impact 90)
 
     let (_obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
@@ -326,24 +287,19 @@ fn test_resilient_parser_stream_id_preserved() {
 #[test]
 fn test_resilient_parser_recovery_after_error() {
     // Test that parser can recover and continue after error
-    let mut data = Vec::new();
-
-    // Valid OBU
-    data.push(0x12);
-    data.push(0x00);
-
-    // Error
-    data.push(0x82);
-
-    // Another valid OBU after error
-    data.push(0x12);
-    data.push(0x00);
+    let data = vec![
+        0x12, // Valid OBU
+        0x00, //
+        0x82, // Error
+        0x12, // Another valid OBU after error
+        0x00,
+    ];
 
     let (obus, diagnostics) = parse_all_obus_resilient(&data, StreamId::A);
 
     // Should recover and parse OBUs after error
-    assert!(obus.len() >= 1, "Should parse at least 1 OBU");
-    assert!(diagnostics.len() >= 1, "Should have at least 1 diagnostic");
+    assert!(!obus.is_empty(), "Should parse at least 1 OBU");
+    assert!(!diagnostics.is_empty(), "Should have at least 1 diagnostic");
 }
 
 #[test]

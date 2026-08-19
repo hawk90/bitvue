@@ -18,7 +18,6 @@ export { FileStateProvider, useFileState } from "./FileStateContext";
 export type { FileStateContextType } from "./FileStateContext";
 
 export { CurrentFrameProvider, useCurrentFrame } from "./CurrentFrameContext";
-export type { CurrentFrameContextType } from "./CurrentFrameContext";
 
 // Re-export types
 export type { FrameStats } from "./FrameDataContext";

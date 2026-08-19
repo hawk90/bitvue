@@ -44,9 +44,12 @@ describe("StatisticsTab", () => {
   });
 
   it("should display frame type", () => {
-    render(<StatisticsTab {...defaultProps} />);
+    const { container } = render(<StatisticsTab {...defaultProps} />);
 
-    expect(screen.getByText("P")).toBeInTheDocument();
+    // "P" also appears in the frame-type-distribution pie chart's legend, so scope to the
+    // Current Frame section specifically.
+    const currentFrameSection = container.querySelector(".stats-section");
+    expect(currentFrameSection?.textContent).toContain("P");
   });
 
   it("should display frame size in KB", () => {
@@ -149,11 +152,13 @@ describe("StatisticsTab frame info", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 
-  it("should show N/A for missing frame", () => {
+  it("should hide the Current Frame section entirely when no frame is selected", () => {
     render(<StatisticsTab currentFrame={null} frames={[]} />);
 
-    expect(screen.getByText("Index:")).toBeInTheDocument();
-    expect(screen.getAllByText("N/A").length).toBeGreaterThan(0);
+    // The whole "Current Frame" section is conditional on `currentFrame` -- no N/A placeholder
+    // fallback, it's simply absent (Stream Statistics still renders unconditionally below it).
+    expect(screen.queryByText("Current Frame")).not.toBeInTheDocument();
+    expect(screen.getByText("Stream Statistics")).toBeInTheDocument();
   });
 });
 

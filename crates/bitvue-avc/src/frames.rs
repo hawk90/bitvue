@@ -5,7 +5,7 @@
 use crate::nal::{find_nal_units, parse_nal_header, NalUnitType};
 use crate::parse_avc;
 use crate::slice::{SliceHeader, SliceType};
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use serde::{Deserialize, Serialize};
 
 /// H.264 frame data extracted from the bitstream
@@ -31,6 +31,10 @@ pub struct AvcFrame {
     pub is_ref: bool,
     /// Slice header (if available)
     pub slice_header: Option<SliceHeader>,
+    /// Frame width in luma samples (0 if unknown)
+    pub width: u32,
+    /// Frame height in luma samples (0 if unknown)
+    pub height: u32,
 }
 
 impl AvcFrame {
@@ -71,6 +75,8 @@ pub struct AvcFrameBuilder {
     is_idr: Option<bool>,
     is_ref: Option<bool>,
     slice_header: Option<SliceHeader>,
+    width: Option<u32>,
+    height: Option<u32>,
 }
 
 impl AvcFrameBuilder {
@@ -134,6 +140,18 @@ impl AvcFrameBuilder {
         self
     }
 
+    /// Set the frame width in luma samples
+    pub fn width(mut self, value: u32) -> Self {
+        self.width = Some(value);
+        self
+    }
+
+    /// Set the frame height in luma samples
+    pub fn height(mut self, value: u32) -> Self {
+        self.height = Some(value);
+        self
+    }
+
     /// Build the AvcFrame
     ///
     /// Returns an error if required fields are not set.
@@ -161,6 +179,8 @@ impl AvcFrameBuilder {
                 .is_ref
                 .ok_or_else(|| "is_ref is required".to_string())?,
             slice_header: self.slice_header,
+            width: self.width.unwrap_or(0),
+            height: self.height.unwrap_or(0),
         })
     }
 }
@@ -217,6 +237,14 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
         offset: 0,
         message: e.to_string(),
     })?;
+
+    // Extract frame dimensions from the first SPS in the stream
+    let (stream_width, stream_height) = stream
+        .sps_map
+        .values()
+        .next()
+        .map(|sps| (sps.pic_width(), sps.pic_height()))
+        .unwrap_or((0, 0));
 
     // Find all NAL unit start positions
     let nal_positions = find_nal_units(data);
@@ -316,6 +344,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_is_ref,
                     current_frame_type,
                     slice_header,
+                    stream_width,
+                    stream_height,
                 ) {
                     frames.push(frame);
                 }
@@ -362,6 +392,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
                     current_is_ref,
                     current_frame_type,
                     slice_header,
+                    stream_width,
+                    stream_height,
                 ) {
                     frames.push(frame);
                 }
@@ -392,6 +424,8 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
             current_is_ref,
             current_frame_type,
             slice_header,
+            stream_width,
+            stream_height,
         ) {
             frames.push(frame);
         }
@@ -401,6 +435,7 @@ pub fn extract_annex_b_frames(data: &[u8]) -> Result<Vec<AvcFrame>, BitvueError>
 }
 
 /// Build a frame from collected NAL unit positions
+#[allow(clippy::too_many_arguments)]
 fn build_frame_from_nals(
     frame_index: usize,
     nal_positions: &[(usize, usize)],
@@ -411,6 +446,8 @@ fn build_frame_from_nals(
     is_ref: bool,
     frame_type: AvcFrameType,
     slice_header: Option<SliceHeader>,
+    width: u32,
+    height: u32,
 ) -> Option<AvcFrame> {
     if nal_positions.is_empty() {
         return None;
@@ -436,6 +473,8 @@ fn build_frame_from_nals(
         is_idr,
         is_ref,
         slice_header,
+        width,
+        height,
     })
 }
 
@@ -445,9 +484,64 @@ pub fn extract_frame_at_index(data: &[u8], frame_index: usize) -> Option<AvcFram
     frames.get(frame_index).cloned()
 }
 
-/// Convert AvcFrame to UnitNode format for bitvue-core
-pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::UnitNode {
-    use bitvue_core::qp_extraction::QpData;
+/// Build a minimal AVC Sps with only the dimension fields populated.
+/// Used for overlay extraction when only the frame's stored dimensions are available.
+fn build_minimal_avc_sps(width: u32, height: u32) -> crate::sps::Sps {
+    use crate::sps::{ChromaFormat, ProfileIdc};
+    // Derive MB counts from luma sample dimensions (each MB is 16x16).
+    // Fall back to 1920x1080 (119, 67) when dimensions are unknown.
+    let (pic_width_in_mbs_minus1, pic_height_in_map_units_minus1) = if width > 0 && height > 0 {
+        (
+            (width / 16).saturating_sub(1),
+            (height / 16).saturating_sub(1),
+        )
+    } else {
+        (119, 67) // 1920x1080 fallback
+    };
+    crate::sps::Sps {
+        profile_idc: ProfileIdc::High,
+        constraint_set0_flag: false,
+        constraint_set1_flag: false,
+        constraint_set2_flag: false,
+        constraint_set3_flag: false,
+        constraint_set4_flag: false,
+        constraint_set5_flag: false,
+        level_idc: 40,
+        seq_parameter_set_id: 0,
+        chroma_format_idc: ChromaFormat::Yuv420,
+        separate_colour_plane_flag: false,
+        bit_depth_luma_minus8: 0,
+        bit_depth_chroma_minus8: 0,
+        qpprime_y_zero_transform_bypass_flag: false,
+        seq_scaling_matrix_present_flag: false,
+        log2_max_frame_num_minus4: 0,
+        pic_order_cnt_type: 0,
+        log2_max_pic_order_cnt_lsb_minus4: 0,
+        delta_pic_order_always_zero_flag: false,
+        offset_for_non_ref_pic: 0,
+        offset_for_top_to_bottom_field: 0,
+        num_ref_frames_in_pic_order_cnt_cycle: 0,
+        offset_for_ref_frame: vec![],
+        max_num_ref_frames: 2,
+        gaps_in_frame_num_value_allowed_flag: false,
+        pic_width_in_mbs_minus1,
+        pic_height_in_map_units_minus1,
+        frame_mbs_only_flag: true,
+        mb_adaptive_frame_field_flag: false,
+        direct_8x8_inference_flag: true,
+        frame_cropping_flag: false,
+        frame_crop_left_offset: 0,
+        frame_crop_right_offset: 0,
+        frame_crop_top_offset: 0,
+        frame_crop_bottom_offset: 0,
+        vui_parameters_present_flag: false,
+        vui_parameters: None,
+    }
+}
+
+/// Convert AvcFrame to UnitNode format for bitvue-engine
+pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_engine::UnitNode {
+    use bitvue_engine::qp_extraction::QpData;
 
     // Extract QP from slice header if available
     let qp_avg = frame
@@ -455,9 +549,37 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
         .as_ref()
         .and_then(|header| QpData::from_avc_slice(26, header.slice_qp_delta).qp_avg);
 
-    bitvue_core::UnitNode {
-        key: bitvue_core::UnitKey {
-            stream: bitvue_core::StreamId::A,
+    // Motion vector grid: parse the frame's NAL units and use extract_mv_grid to get
+    // per-macroblock motion vectors and prediction modes. A minimal Sps is synthesized
+    // from the frame's stored dimensions (populated from the real SPS during extraction).
+    let mv_grid = frame.slice_header.as_ref().and_then(|header| {
+        if !header.slice_type.is_intra() {
+            let sps = build_minimal_avc_sps(frame.width, frame.height);
+            let nal_units = crate::nal::parse_nal_units(&frame.nal_data).unwrap_or_default();
+            crate::overlay_extraction::extract_mv_grid(&nal_units, &sps).ok()
+        } else {
+            None
+        }
+    });
+
+    // Derive reference frame slot indices from slice header
+    let ref_frames = frame.slice_header.as_ref().and_then(|header| {
+        if !header.slice_type.is_intra() {
+            let l0 = header.num_ref_idx_l0_active_minus1 as usize + 1;
+            let l1 = if header.slice_type.is_b() {
+                header.num_ref_idx_l1_active_minus1 as usize + 1
+            } else {
+                0
+            };
+            Some((0..(l0 + l1)).collect::<Vec<usize>>())
+        } else {
+            None
+        }
+    });
+
+    bitvue_engine::UnitNode {
+        key: bitvue_engine::UnitKey {
+            stream: bitvue_engine::StreamId::A,
             unit_type: "FRAME".to_string(),
             offset: frame.offset as u64,
             size: frame.size,
@@ -476,15 +598,15 @@ pub fn avc_frame_to_unit_node(frame: &AvcFrame, _stream_id: u8) -> bitvue_core::
         )),
         children: Vec::new(),
         qp_avg,
-        mv_grid: None, // TODO: Extract from slice data
+        mv_grid,
         temporal_id: None,
-        ref_frames: None, // TODO: Calculate from slice header
+        ref_frames,
         ref_slots: None,
     }
 }
 
 /// Convert multiple AvcFrames to UnitNode format
-pub fn avc_frames_to_unit_nodes(frames: &[AvcFrame]) -> Vec<bitvue_core::UnitNode> {
+pub fn avc_frames_to_unit_nodes(frames: &[AvcFrame]) -> Vec<bitvue_engine::UnitNode> {
     frames
         .iter()
         .map(|f| avc_frame_to_unit_node(f, 0))

@@ -37,8 +37,10 @@ fn test_extract_annex_b_frames_only_start_codes() {
     // Consecutive start codes may be interpreted as a zero-length frame
     assert!(result.is_ok() || result.is_err());
     if let Ok(frames) = result {
-        // May find zero-length frames or some interpretation
-        assert!(frames.len() >= 0);
+        // The first start code opens a zero-length frame that ends at the second
+        // start code; there is no payload after the second start code, so it does
+        // not open another frame. Net result: exactly one (empty) frame.
+        assert_eq!(frames.len(), 1);
     }
 }
 
@@ -76,8 +78,8 @@ fn test_extract_annex_b_frames_very_long_nal() {
     let mut data = vec![0u8; 10000];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x67;
-    for i in 5..data.len() {
-        data[i] = (i % 256) as u8;
+    for (i, byte) in data.iter_mut().enumerate().skip(5) {
+        *byte = (i % 256) as u8;
     }
 
     let result = extract_annex_b_frames(&data);
@@ -112,8 +114,8 @@ fn test_extract_annex_b_frames_all_ones() {
 #[test]
 fn test_extract_annex_b_frames_alternating_pattern() {
     let mut data = vec![0u8; 64];
-    for i in 0..64 {
-        data[i] = if i % 2 == 0 { 0xAA } else { 0x55 };
+    for (i, byte) in data.iter_mut().enumerate().take(64) {
+        *byte = if i % 2 == 0 { 0xAA } else { 0x55 };
     }
 
     let result = extract_annex_b_frames(&data);
@@ -123,7 +125,7 @@ fn test_extract_annex_b_frames_alternating_pattern() {
 #[test]
 fn test_extract_frame_at_index_empty_data() {
     let data: &[u8] = &[];
-    let result = extract_frame_at_index(&data, 0);
+    let result = extract_frame_at_index(data, 0);
     assert!(result.is_none());
 }
 
@@ -192,8 +194,8 @@ fn test_extract_annex_b_frames_trailing_ones() {
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x67;
     // Fill rest with 0xFF
-    for i in 5..64 {
-        data[i] = 0xFF;
+    for byte in data.iter_mut().take(64).skip(5) {
+        *byte = 0xFF;
     }
 
     let result = extract_annex_b_frames(&data);

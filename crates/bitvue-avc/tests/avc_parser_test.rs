@@ -19,17 +19,17 @@ fn test_avc_nal_types() {
         Unspecified = 0,
         CodedSliceNonIDR = 1,
         CodedSliceIDR = 5,
-        SEI = 6,
-        SPS = 7,
-        PPS = 8,
-        AUD = 9,
+        Sei = 6,
+        Sps = 7,
+        Pps = 8,
+        Aud = 9,
     }
 
     let nal_types = vec![
         (1, AvcNalType::CodedSliceNonIDR),
         (5, AvcNalType::CodedSliceIDR),
-        (7, AvcNalType::SPS),
-        (8, AvcNalType::PPS),
+        (7, AvcNalType::Sps),
+        (8, AvcNalType::Pps),
     ];
 
     for (type_val, expected) in nal_types {
@@ -51,7 +51,7 @@ fn test_avc_profiles() {
         High444 = 244,
     }
 
-    let profiles = vec![
+    let profiles = [
         AvcProfile::Baseline,
         AvcProfile::Main,
         AvcProfile::High,
@@ -69,14 +69,14 @@ fn test_avc_levels() {
     ];
 
     for level in levels {
-        assert!(level >= 10 && level <= 52);
+        assert!((10..=52).contains(&level));
     }
 }
 
 #[test]
 fn test_avc_sps_parsing() {
     // Test SPS parsing
-    struct SPS {
+    struct Sps {
         profile_idc: u8,
         level_idc: u8,
         sps_id: u8,
@@ -84,7 +84,7 @@ fn test_avc_sps_parsing() {
         height: u32,
     }
 
-    let sps = SPS {
+    let sps = Sps {
         profile_idc: 100, // High profile
         level_idc: 41,    // Level 4.1
         sps_id: 0,
@@ -99,13 +99,13 @@ fn test_avc_sps_parsing() {
 #[test]
 fn test_avc_pps_parsing() {
     // Test PPS parsing
-    struct PPS {
+    struct Pps {
         pps_id: u8,
         sps_id: u8,
         entropy_coding_mode: bool, // CAVLC=false, CABAC=true
     }
 
-    let pps = PPS {
+    let pps = Pps {
         pps_id: 0,
         sps_id: 0,
         entropy_coding_mode: true, // CABAC
@@ -127,7 +127,7 @@ fn test_avc_slice_types() {
         SI = 4,
     }
 
-    let slice_types = vec![SliceType::I, SliceType::P, SliceType::B];
+    let slice_types = [SliceType::I, SliceType::P, SliceType::B];
     assert_eq!(slice_types.len(), 3);
 }
 
@@ -162,12 +162,12 @@ fn test_avc_qp_range() {
 #[test]
 fn test_avc_reference_frames() {
     // Test reference frame management
-    struct DPB {
+    struct Dpb {
         max_num_ref_frames: u8,
         current_refs: Vec<usize>,
     }
 
-    let dpb = DPB {
+    let dpb = Dpb {
         max_num_ref_frames: 4,
         current_refs: vec![0, 1, 2],
     };
@@ -178,7 +178,7 @@ fn test_avc_reference_frames() {
 #[test]
 fn test_avc_idr_detection() {
     // Test IDR frame detection
-    let nal_types = vec![1, 1, 5, 1, 1]; // 5 = IDR
+    let nal_types = [1, 1, 5, 1, 1]; // 5 = IDR
     let idr_count = nal_types.iter().filter(|&&t| t == 5).count();
 
     assert_eq!(idr_count, 1);
@@ -189,22 +189,22 @@ fn test_avc_cabac_cavlc() {
     // Test entropy coding modes
     #[derive(Debug, PartialEq)]
     enum EntropyCoding {
-        CAVLC,
-        CABAC,
+        Cavlc,
+        Cabac,
     }
 
-    let modes = vec![EntropyCoding::CAVLC, EntropyCoding::CABAC];
+    let modes = [EntropyCoding::Cavlc, EntropyCoding::Cabac];
     assert_eq!(modes.len(), 2);
 }
 
 #[test]
 fn test_avc_frame_mbs_only() {
     // Test frame vs field coding
-    struct SPS {
+    struct Sps {
         frame_mbs_only_flag: bool,
     }
 
-    let sps = SPS {
+    let sps = Sps {
         frame_mbs_only_flag: true, // Frame coding
     };
 
@@ -229,13 +229,13 @@ fn test_avc_chroma_format() {
 #[test]
 fn test_avc_aspect_ratio() {
     // Test aspect ratio information
-    struct VUI {
+    struct Vui {
         aspect_ratio_idc: u8,
         sar_width: u16,
         sar_height: u16,
     }
 
-    let vui = VUI {
+    let vui = Vui {
         aspect_ratio_idc: 1, // 1:1 (Square)
         sar_width: 1,
         sar_height: 1,

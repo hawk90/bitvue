@@ -22,7 +22,7 @@ import "./theme/dropdowns.css";
 import "./theme/forms.css";
 import "./theme/tabs.css";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { initializeSystemMenu } from "./utils/menu";
+import { LayoutProvider } from "./contexts/LayoutContext";
 import { createLogger } from "./utils/logger";
 import { tauriLog } from "./utils/tauriLogger";
 
@@ -113,15 +113,13 @@ if (!bitvueWindow[CONSOLE_OVERRIDE_KEY]) {
 
 logger.info("Starting app...");
 
-// Initialize system menu (macOS only)
-initializeSystemMenu()
-  .then(() => {
-    logger.info("System menu initialized");
-  })
-  .catch((err) => {
-    logger.error("System menu init failed:", err);
-    console.error("[main] System menu init failed:", err);
-  });
+// macOS's native menu bar is now built in the main process (bitvue-desktop/electron/main.ts's
+// installNativeMacMenu) via real Electron APIs. The renderer-side initializeSystemMenu() used to
+// live here, but it called @tauri-apps/api/menu -- a runtime that no longer exists post-Electron-
+// migration (src-tauri was deleted 2026-08-08) -- so it threw an unhandled rejection on every
+// single launch and never actually built a working menu. See installNativeMacMenu's doc for the
+// full story (found because macOS had *no* working menu at all as a result -- File, Export, Mode
+// switching, all silently unreachable).
 
 logger.info("Rendering App...");
 
@@ -131,7 +129,9 @@ if (!rootElement) throw new Error("Root element #root not found");
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <ThemeProvider defaultTheme="dark">
-      <App />
+      <LayoutProvider>
+        <App />
+      </LayoutProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

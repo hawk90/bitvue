@@ -7,18 +7,34 @@
  * - Current stage highlighting based on analysis mode
  */
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
+import { getCodingFlowAnalysis } from "../../../services/electronBridgeService";
+
+type CodingStage =
+  | "input"
+  | "prediction"
+  | "transform"
+  | "quantization"
+  | "entropy"
+  | "reconstruction";
+
+const CODING_STAGES: readonly CodingStage[] = [
+  "input",
+  "prediction",
+  "transform",
+  "quantization",
+  "entropy",
+  "reconstruction",
+];
+
+function isCodingStage(value: string): value is CodingStage {
+  return (CODING_STAGES as readonly string[]).includes(value);
+}
 
 interface CodingFlowViewProps {
   frame: FrameInfo | null;
-  currentStage?:
-    | "input"
-    | "prediction"
-    | "transform"
-    | "quantization"
-    | "entropy"
-    | "reconstruction";
+  currentStage?: CodingStage;
   codec?: string;
 }
 
@@ -94,12 +110,32 @@ const CODEC_FEATURES: Record<string, string[]> = {
 
 export const CodingFlowView = memo(function CodingFlowView({
   frame,
-  currentStage = "prediction",
+  currentStage: _currentStageProp = "prediction",
   codec = "Unknown",
 }: CodingFlowViewProps) {
+  const [currentStage, setCurrentStage] = useState(_currentStageProp);
+  const [backendCodecFeatures, setBackendCodecFeatures] = useState<
+    string[] | null
+  >(null);
+
+  useEffect(() => {
+    if (!frame) return;
+    getCodingFlowAnalysis(frame.frame_index)
+      .then((data) => {
+        // Backend data is untrusted at the type level (plain string) -- validate against the
+        // real stage union rather than casting blindly.
+        if (isCodingStage(data.current_stage)) {
+          setCurrentStage(data.current_stage);
+        }
+        setBackendCodecFeatures(data.codec_features);
+      })
+      .catch(() => {});
+  }, [frame]);
+
   const codecFeatures = useMemo(() => {
+    if (backendCodecFeatures) return backendCodecFeatures;
     return CODEC_FEATURES[codec.toUpperCase()] || ["Standard Features"];
-  }, [codec]);
+  }, [codec, backendCodecFeatures]);
 
   const getStageClass = (stageId: string) => {
     const isActive = stageId === currentStage;

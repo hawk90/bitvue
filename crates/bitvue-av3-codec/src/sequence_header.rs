@@ -114,6 +114,30 @@ pub struct ColorConfig {
     pub separate_uv_delta_q: bool,
 }
 
+/// Read unsigned variable-length code (uvlc) per AV3/AV1 spec §4.10.3.
+///
+/// Reads leading zeros followed by a '1' stop bit, then that many
+/// additional value bits. Returns the decoded value.
+fn read_uvlc(reader: &mut BitReader<'_>) -> Result<u64> {
+    let mut leading_bits: u8 = 0;
+    loop {
+        let done = reader.read_bit()?;
+        if done {
+            break;
+        }
+        leading_bits += 1;
+        if leading_bits >= 32 {
+            // All-ones sentinel: value = 2^32 - 1
+            return Ok((1u64 << 32) - 1);
+        }
+    }
+    if leading_bits == 0 {
+        return Ok(0);
+    }
+    let value = reader.read_bits(leading_bits)?;
+    Ok((1u64 << leading_bits) - 1 + value)
+}
+
 /// Parse sequence header from OBU payload.
 pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
     let mut reader = BitReader::new(data);
@@ -122,12 +146,25 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
     let _still_picture = reader.read_bit()?;
     let reduced_still_picture_header = reader.read_bit()?;
 
+    let mut timing_info_present = false;
+    let mut parsed_num_units: u32 = 0;
+    let mut parsed_time_scale: u32 = 0;
+
     if reduced_still_picture_header {
         reader.read_bits(5)?; // seq_level_idx
     } else {
         reader.read_bits(5)?; // seq_level_idx
-        let _timing_info_present_flag = reader.read_bit()?;
-        // TODO: parse timing info
+        timing_info_present = reader.read_bit()?;
+        if timing_info_present {
+            // timing_info() per AV3/AV1 spec §5.5.3
+            parsed_num_units = reader.read_bits(32)? as u32;
+            parsed_time_scale = reader.read_bits(32)? as u32;
+            let equal_picture_interval = reader.read_bit()?;
+            if equal_picture_interval {
+                // num_ticks_per_picture_minus_1: uvlc()
+                read_uvlc(&mut reader)?;
+            }
+        }
     }
 
     let seq_tier = reader.read_bits(1)? as u8;
@@ -193,9 +230,9 @@ pub fn parse_sequence_header(data: &[u8]) -> Result<SequenceHeader> {
         enable_restoration: true,
         enable_post_process_overlay: false, // AV3 addition
         enable_large_scale_tile: false,
-        timing_info_present_flag: false,
-        time_scale: 0,
-        num_units_in_display_tick: 0,
+        timing_info_present_flag: timing_info_present,
+        time_scale: parsed_time_scale,
+        num_units_in_display_tick: parsed_num_units,
         buffer_removal_delay: 0,
         operating_points: Vec::new(),
         color_config: ColorConfig {

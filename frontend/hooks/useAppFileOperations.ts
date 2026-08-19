@@ -3,23 +3,59 @@
  *
  * Manages file operations specific to App.tsx including frame loading
  * and dependent file opening for comparison mode.
+ *
+ * `handleOpenFile`/`openFileAtPath`/`handleCloseFile` go through `electronBridgeService`
+ * (bitvue-sidecar), not Tauri, as of the 2026-08-08 migration — see that file's module doc for
+ * exactly what is and isn't backed by the new engine yet. `openFileAtPath` is `handleOpenFile`'s
+ * post-dialog logic pulled out so App.tsx's "reload current file" / "open recent file" actions
+ * (2026-08-09) can reuse the real bridge chain (openStream -> selectFrame -> refreshFrames)
+ * instead of a path that no longer exists (`invoke("open_file", ...)`).
+ * `handleOpenDependentFile` (compare workspaces, docs/DEVELOPMENT_PHASES.md Phase 7.5) opens the
+ * selected file as stream B, indexes it, then calls `useCompare()`'s `createWorkspace()` -- the
+ * real backend always operates on whichever streams are currently open as A/B (see
+ * `bitvue-sidecar/src/compare.rs`'s doc), it doesn't take paths directly; stream A is already
+ * open+indexed by the time this runs (that's `fileInfo`'s own precondition below).
  */
 
 import { useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { createLogger } from "../utils/logger";
 import type { FileInfo } from "../types/video";
-import { useFileState, useFrameData } from "../contexts/StreamDataContext";
+import { useFileState, useCurrentFrame } from "../contexts/StreamDataContext";
 import { useCompare } from "../contexts/CompareContext";
+import {
+  closeStream,
+  getStreamInfo,
+  indexStream,
+  openStream,
+  selectFrame,
+  showOpenDialog,
+} from "../services/electronBridgeService";
 
 const logger = createLogger("useAppFileOperations");
 
 const toMessage = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
 
+/** Extensions that are shown in the file picker but not yet fully supported. */
+const UNSUPPORTED_CODEC_EXTENSIONS: Record<string, string> = {
+  vvc: "VVC (H.266) analysis is not yet implemented. File structure can be opened, but frame-level analysis, QP heatmap, and motion vector overlays are unavailable.",
+  h266: "VVC (H.266) analysis is not yet implemented. File structure can be opened, but frame-level analysis, QP heatmap, and motion vector overlays are unavailable.",
+};
+
+/** Get the file extension (lowercase, no dot) from a path. */
+const getExtension = (path: string): string =>
+  path.split(".").pop()?.toLowerCase() ?? "";
+
 export interface AppFileOperationsCallbacks {
   onError: (title: string, message: string, details?: string) => void;
+  /** Called with the detected codec string when a file is opened successfully,
+   *  or null when the file is closed. Drives the codec-aware mode registry. */
+  onCodecChange?: (codec: string | null) => void;
+  /** Called with the path when a file opens successfully -- e.g. to record it in the recent-files
+   *  list. Previously done by App.tsx listening for Tauri's "file-opened" event, which no longer
+   *  exists post-Electron-migration (unhandled rejection on every launch, unrelated to this hook
+   *  -- see bitvue-desktop/electron/main.ts's installNativeMacMenu doc for the fuller story). */
+  onFileOpened?: (path: string) => void;
 }
 
 export interface AppFileOperationsReturn {
@@ -28,6 +64,8 @@ export interface AppFileOperationsReturn {
   openError: string | null;
   setOpenError: (error: string | null) => void;
   handleOpenFile: () => Promise<void>;
+  /** Opens a known path directly, no dialog -- for "reload" and "open recent file". */
+  openFileAtPath: (path: string) => Promise<void>;
   handleCloseFile: () => Promise<void>;
   handleOpenDependentFile: () => Promise<void>;
 }
@@ -38,10 +76,10 @@ export interface AppFileOperationsReturn {
 export function useAppFileOperations(
   callbacks: AppFileOperationsCallbacks,
 ): AppFileOperationsReturn {
-  const { onError } = callbacks;
+  const { onError, onCodecChange, onFileOpened } = callbacks;
   const { setFilePath, refreshFrames, clearData } = useFileState();
-  const { setFrames } = useFrameData();
-  const { createWorkspace } = useCompare();
+  const { setCurrentFrameIndex } = useCurrentFrame();
+  const { createWorkspace, closeWorkspace } = useCompare();
 
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -51,66 +89,83 @@ export function useAppFileOperations(
    */
   const handleCloseFile = useCallback(async () => {
     try {
-      await invoke("close_file");
+      await closeStream("A");
       setFileInfo(null);
       setFilePath(null);
+      setCurrentFrameIndex(0);
       clearData();
+      // Closing stream A invalidates any active compare workspace (it's built against A's
+      // FrameIndexMap/decoded frames) -- without this, App.tsx would keep rendering
+      // CompareWorkspaceFromContext against an empty stream A instead of falling back to
+      // welcomeScreen.
+      closeWorkspace();
+      onCodecChange?.(null);
     } catch (err) {
       logger.error("Failed to close file:", err);
       onError("Failed to Close File", toMessage(err));
     }
-  }, [setFilePath, clearData, onError]);
+  }, [
+    setFilePath,
+    setCurrentFrameIndex,
+    clearData,
+    closeWorkspace,
+    onError,
+    onCodecChange,
+  ]);
 
   /**
-   * Handle opening a file
+   * Open a known path directly (no file dialog) -- shared by handleOpenFile (after the dialog
+   * resolves), a "reload the current file" action, and "open recent file", so all three go
+   * through the same real bridge chain (openStream -> selectFrame -> refreshFrames) instead of
+   * duplicating it or falling back to a dead Tauri open_file() call.
    */
-  const handleOpenFile = useCallback(async () => {
-    try {
-      setOpenError(null);
-
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: "Video Files",
-            extensions: [
-              "ivf",
-              "av1",
-              "hevc",
-              "h265",
-              "265",
-              "h264",
-              "264",
-              "vvc",
-              "h266",
-              "mp4",
-              "mkv",
-              "webm",
-              "ts",
-            ],
-          },
-          {
-            name: "All Files",
-            extensions: ["*"],
-          },
-        ],
-      });
-
-      if (selected && typeof selected === "string") {
+  const openFileAtPath = useCallback(
+    async (selected: string) => {
+      try {
+        setOpenError(null);
         logger.debug("Opening file:", selected);
 
-        // Call the Tauri command to open the file
-        const result = await invoke<FileInfo>("open_file", { path: selected });
+        // Pre-flight: warn user about codecs with limited support
+        const ext = getExtension(selected);
+        const unsupportedMsg = UNSUPPORTED_CODEC_EXTENSIONS[ext];
+        if (unsupportedMsg) {
+          onError("Limited Support", unsupportedMsg, selected);
+        }
+
+        const bridgeResult = await openStream("A", selected);
+        // bitvue-sidecar's open_stream doesn't return codec/dimensions/frameCount itself (unlike
+        // the old Tauri open_file) -- only success/path are populated honestly here. That data IS
+        // available for real, though (this comment used to say otherwise -- stale as of this fix):
+        // `getStreamInfo` (`get_stream_info`, real + tested) exposes it once `indexStream` has run,
+        // which `FileStateContext.refreshFrames` now calls and stores in `FrameDataContext`'s
+        // `streamInfo` -- see `SelectionInfoPanel`'s "Video Properties" section, which used to
+        // render hardcoded 1920x1080/AV1 placeholders for every file because nothing populated
+        // this `FileInfo.width/height/codec` and nothing else called `getStreamInfo` either.
+        const result: FileInfo = {
+          success: bridgeResult.success,
+          path: bridgeResult.path,
+          error: bridgeResult.error,
+        };
 
         setFileInfo(result);
         setFilePath(result.success ? selected : null);
 
         if (result.success) {
           logger.info("File opened successfully");
+          onFileOpened?.(selected);
+          setCurrentFrameIndex(0);
+          try {
+            await selectFrame("A", 0);
+          } catch (selectErr) {
+            // Non-blocking: the file opened, tri-sync just didn't get the initial selection.
+            logger.error(
+              "Failed to select initial frame after opening file:",
+              selectErr,
+            );
+          }
           // Refresh frames after opening file
           try {
-            const loadedFrames = await refreshFrames();
-            setFrames(loadedFrames);
+            await refreshFrames();
           } catch (refreshErr) {
             logger.error(
               "Failed to refresh frames after opening file:",
@@ -123,6 +178,27 @@ export function useAppFileOperations(
               toMessage(refreshErr),
             );
           }
+
+          // Drive the codec-aware mode registry (CodecBadge, F-key mode list, etc.) --
+          // `refreshFrames` above already indexes the stream and fetches this same info
+          // internally, but keeps it local to `FileStateContext`'s own `streamInfo` state
+          // rather than returning it, so it's fetched again here (cheap: stream is already
+          // indexed by this point) rather than threading a new return value through
+          // `refreshFrames`'s public `FrameInfo[]`-returning contract. Previously nothing ever
+          // called `onCodecChange` with a real codec (only ever with `null`, on close), so
+          // `activeCodec` stayed `null` for the app's entire lifetime and `CodecBadge` never
+          // rendered.
+          try {
+            const info = await getStreamInfo("A");
+            onCodecChange?.(
+              info.indexed && info.container ? info.container.codec : null,
+            );
+          } catch (codecErr) {
+            logger.error(
+              "Failed to fetch stream info for codec badge:",
+              codecErr,
+            );
+          }
         } else {
           onError(
             "Failed to Open File",
@@ -130,12 +206,61 @@ export function useAppFileOperations(
             selected,
           );
         }
+      } catch (err) {
+        logger.error("Failed to open file:", err);
+        onError("Failed to Open File", toMessage(err));
       }
+    },
+    [
+      refreshFrames,
+      setFilePath,
+      setCurrentFrameIndex,
+      onError,
+      onFileOpened,
+      onCodecChange,
+    ],
+  );
+
+  /**
+   * Handle opening a file
+   */
+  const handleOpenFile = useCallback(async () => {
+    let selected: string | null;
+    try {
+      selected = await showOpenDialog([
+        {
+          name: "Video Files",
+          extensions: [
+            "ivf",
+            "av1",
+            "hevc",
+            "h265",
+            "265",
+            "h264",
+            "264",
+            "vvc",
+            "h266",
+            "mp4",
+            "mkv",
+            "webm",
+            "ts",
+          ],
+        },
+        {
+          name: "All Files",
+          extensions: ["*"],
+        },
+      ]);
     } catch (err) {
-      logger.error("Failed to open file:", err);
+      logger.error("Failed to open file dialog:", err);
       onError("Failed to Open File", toMessage(err));
+      return;
     }
-  }, [refreshFrames, setFilePath, onError, setFrames]);
+
+    if (selected && typeof selected === "string") {
+      await openFileAtPath(selected);
+    }
+  }, [openFileAtPath, onError]);
 
   /**
    * Handle opening dependent bitstream for comparison
@@ -144,47 +269,67 @@ export function useAppFileOperations(
     try {
       setOpenError(null);
 
-      if (!fileInfo?.success) {
+      if (!fileInfo?.success || !fileInfo.path) {
         setOpenError(
           "Please open a primary bitstream first before opening a dependent bitstream for comparison.",
         );
         return;
       }
 
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: "Video Files",
-            extensions: [
-              "ivf",
-              "av1",
-              "hevc",
-              "h265",
-              "265",
-              "h264",
-              "264",
-              "vvc",
-              "h266",
-              "mp4",
-              "mkv",
-              "webm",
-              "ts",
-            ],
-          },
-        ],
-      });
+      const selected = await showOpenDialog([
+        {
+          name: "Video Files",
+          extensions: [
+            "ivf",
+            "av1",
+            "hevc",
+            "h265",
+            "265",
+            "h264",
+            "264",
+            "vvc",
+            "h266",
+            "mp4",
+            "mkv",
+            "webm",
+            "ts",
+          ],
+        },
+      ]);
 
       if (selected === null) {
         return; // User cancelled
       }
 
-      const pathB = typeof selected === "string" ? selected : selected.path;
+      const pathB = selected;
 
       logger.info(`Opening dependent bitstream: ${pathB}`);
 
-      // Create compare workspace with current file as Stream A and selected file as Stream B
-      await createWorkspace(fileInfo.path, pathB);
+      // Pre-flight: warn user about codecs with limited support
+      const extB = getExtension(pathB);
+      const unsupportedMsgB = UNSUPPORTED_CODEC_EXTENSIONS[extB];
+      if (unsupportedMsgB) {
+        setOpenError(`Limited support for .${extB}: ${unsupportedMsgB}`);
+      }
+
+      const openResult = await openStream("B", pathB);
+      if (!openResult.success) {
+        setOpenError(openResult.error ?? "Failed to open dependent bitstream");
+        return;
+      }
+
+      const indexEvents = await indexStream("B");
+      const indexDiagnostic = indexEvents.find(
+        (e) => e.type === "DiagnosticAdded",
+      );
+      if (indexDiagnostic) {
+        setOpenError(String(indexDiagnostic.diagnostic));
+        return;
+      }
+
+      // Create compare workspace -- always operates on whichever streams are open as A/B, see
+      // this function's own doc.
+      await createWorkspace();
 
       logger.info(
         `Compare workspace created successfully: ${fileInfo.path} vs ${pathB}`,
@@ -201,6 +346,7 @@ export function useAppFileOperations(
     openError,
     setOpenError,
     handleOpenFile,
+    openFileAtPath,
     handleCloseFile,
     handleOpenDependentFile,
   };

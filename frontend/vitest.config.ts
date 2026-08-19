@@ -120,6 +120,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^\.\.\/VirtualizedThumbnailsView$/,
+        replacement: path.resolve(
+          __dirname,
+          "components/Filmstrip/views/VirtualizedThumbnailsView",
+        ),
+      },
+      {
         find: /^\.\.\/FrameSizesView$/,
         replacement: path.resolve(
           __dirname,

@@ -1,29 +1,38 @@
 //! Bit reader for AV3 OBU parsing.
 //!
-//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! This module provides a wrapper around the shared BitReader from bitvue_engine
 //! with AV3-specific error mapping and LEB128 support.
 
-use bitvue_core::{BitReader as CoreBitReader, Leb128Reader};
+use bitvue_engine::{BitReader as CoreBitReader, BlanketBitReaderError, WrappedBitReader};
 
 use crate::error::{Av3Error, Result};
 
+impl BlanketBitReaderError for Av3Error {
+    fn not_enough_data(expected: usize) -> Self {
+        Av3Error::InsufficientData {
+            expected,
+            actual: 0,
+        }
+    }
+}
+
 /// AV3-specific bit reader wrapper
 pub struct BitReader<'a> {
-    inner: CoreBitReader<'a>,
+    inner: WrappedBitReader<'a, Av3Error>,
 }
 
 impl<'a> BitReader<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         Self {
-            inner: CoreBitReader::new(data),
+            inner: WrappedBitReader::new(data),
         }
     }
 
     pub fn inner(&self) -> &CoreBitReader<'a> {
-        &self.inner
+        self.inner.inner()
     }
     pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> {
-        &mut self.inner
+        self.inner.inner_mut()
     }
 
     pub fn has_more(&self) -> bool {
@@ -31,21 +40,11 @@ impl<'a> BitReader<'a> {
     }
 
     pub fn read_bit(&mut self) -> Result<bool> {
-        self.inner
-            .read_bit()
-            .map_err(|_| Av3Error::InsufficientData {
-                expected: 1,
-                actual: 0,
-            })
+        self.inner.read_bit_blanket()
     }
 
     pub fn read_bits(&mut self, n: u8) -> Result<u64> {
-        self.inner
-            .read_bits_u64(n)
-            .map_err(|_| Av3Error::InsufficientData {
-                expected: n as usize,
-                actual: 0,
-            })
+        self.inner.read_bits_u64_blanket(n)
     }
 
     pub fn read_bits_usize(&mut self, n: u8) -> Result<usize> {
@@ -53,17 +52,11 @@ impl<'a> BitReader<'a> {
     }
 
     pub fn read_leb128(&mut self) -> Result<u64> {
-        Leb128Reader::read_leb128(&mut self.inner).map_err(|_| Av3Error::InsufficientData {
-            expected: 1,
-            actual: 0,
-        })
+        self.inner.read_leb128_blanket()
     }
 
     pub fn read_leb128_i64(&mut self) -> Result<i64> {
-        Leb128Reader::read_leb128_i64(&mut self.inner).map_err(|_| Av3Error::InsufficientData {
-            expected: 1,
-            actual: 0,
-        })
+        self.inner.read_leb128_i64_blanket()
     }
 
     pub fn byte_pos(&self) -> usize {
@@ -91,10 +84,10 @@ mod tests {
     fn test_read_bit() {
         let data = [0b10101010];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_bit().unwrap(), true);
-        assert_eq!(reader.read_bit().unwrap(), false);
-        assert_eq!(reader.read_bit().unwrap(), true);
-        assert_eq!(reader.read_bit().unwrap(), false);
+        assert!(reader.read_bit().unwrap());
+        assert!(!reader.read_bit().unwrap());
+        assert!(reader.read_bit().unwrap());
+        assert!(!reader.read_bit().unwrap());
     }
 
     #[test]

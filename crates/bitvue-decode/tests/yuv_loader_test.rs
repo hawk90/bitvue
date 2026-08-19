@@ -124,11 +124,11 @@ fn test_yuv_format_detection() {
         let yuv422_size = width * height * 2;
         let yuv444_size = width * height * 3;
 
-        if file_size % yuv420_size == 0 {
+        if file_size.is_multiple_of(yuv420_size) {
             YuvFormat::Yuv420p
-        } else if file_size % yuv422_size == 0 {
+        } else if file_size.is_multiple_of(yuv422_size) {
             YuvFormat::Yuv422p
-        } else if file_size % yuv444_size == 0 {
+        } else if file_size.is_multiple_of(yuv444_size) {
             YuvFormat::Yuv444p
         } else {
             YuvFormat::Unknown

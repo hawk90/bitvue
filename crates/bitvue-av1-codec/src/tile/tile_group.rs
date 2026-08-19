@@ -8,7 +8,7 @@
 use crate::bitreader::BitReader;
 use crate::leb128::decode_uleb128;
 use crate::tile::Tile;
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
 // SECURITY: Maximum tile counts to prevent DoS via excessive tiles

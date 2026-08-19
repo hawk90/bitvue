@@ -210,8 +210,12 @@ describe("FilmstripTooltip", () => {
         <FilmstripTooltip frame={frame} x={100} y={100} placement="right" />,
       );
 
-      const typeBadge = container.querySelector(".frame-type");
-      expect(typeBadge).toHaveClass(`type-${frameType.toLowerCase()}`);
+      // `FrameTypeBadge` component (`.frame-type-badge`, see
+      // components/common/FrameTypeBadge.tsx) -- the single source of truth for this badge,
+      // same as SelectionInfoPanel/ReferencesTab (SelectionInfoPanel.test.tsx's own assertion).
+      const typeBadge = container.querySelector(".frame-type-badge");
+      expect(typeBadge).toHaveClass(`frame-type-${frameType.toLowerCase()}`);
+      expect(typeBadge?.textContent).toBe(frameType);
       unmount();
     });
   });

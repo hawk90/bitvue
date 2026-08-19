@@ -22,7 +22,7 @@ fn test_mpeg2_picture_types() {
         B = 3,
     }
 
-    let types = vec![PictureType::I, PictureType::P, PictureType::B];
+    let types = [PictureType::I, PictureType::P, PictureType::B];
     assert_eq!(types.len(), 3);
 }
 
@@ -59,7 +59,7 @@ fn test_mpeg2_profiles() {
         High = 1,
     }
 
-    let profiles = vec![Profile::Simple, Profile::Main, Profile::High];
+    let profiles = [Profile::Simple, Profile::Main, Profile::High];
     assert_eq!(profiles.len(), 3);
 }
 
@@ -73,20 +73,20 @@ fn test_mpeg2_levels() {
         High = 4,
     }
 
-    let levels = vec![Level::Low, Level::Main, Level::High];
+    let levels = [Level::Low, Level::Main, Level::High];
     assert_eq!(levels.len(), 3);
 }
 
 #[test]
 fn test_mpeg2_gop_structure() {
     // Test GOP (Group of Pictures) structure
-    struct GOP {
+    struct Gop {
         time_code: u32,
         closed_gop: bool,
         broken_link: bool,
     }
 
-    let gop = GOP {
+    let gop = Gop {
         time_code: 0,
         closed_gop: true,
         broken_link: false,
@@ -119,7 +119,7 @@ fn test_mpeg2_quantizer_scale() {
     let q_scales = vec![2, 4, 8, 16, 31];
 
     for q in q_scales {
-        assert!(q >= 1 && q <= 31, "Q scale should be 1-31");
+        assert!((1..=31).contains(&q), "Q scale should be 1-31");
     }
 }
 

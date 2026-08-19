@@ -13,80 +13,46 @@
  * - StatusBar: Bottom status bar with info
  */
 
-import { useState, useRef, useEffect, useCallback, memo, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState, useRef, useEffect, useCallback, memo } from "react";
+import {
+  getDecodedFrameYuv,
+  getDebugYuvFrame,
+  getFrameAnalysis,
+  bridgeYuvToFrame,
+  getContextMenuItems,
+  type ContextMenuItemWire,
+} from "../../../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../../../hooks/useExportEvidenceBundle";
+import { ContextMenu } from "../../ContextMenu";
 import { useMode } from "../../../contexts/ModeContext";
+import { CodecBadge } from "./ModeSelector";
+import { OverlayToggleBar } from "./OverlayToggleBar";
+import { CodingFlowView } from "../../Player/views/CodingFlowView";
+import { DeblockingView } from "../../Player/views/DeblockingView";
+import { ResidualsView } from "../../Player/views/ResidualsView";
+import { AV1FeaturesView } from "../../Player/views/AV1FeaturesView";
 import { useFrameData } from "../../../contexts/FrameDataContext";
 import { createLogger } from "../../../utils/logger";
 import { useCanvasInteraction } from "../../../hooks/useCanvasInteraction";
+import { useAv1Features } from "../../../hooks/useAv1Features";
 import { ZOOM, TIMING } from "../../../constants/ui";
 import { VideoCanvas } from "./VideoCanvas";
-import { YUVFrame } from "../../../utils/yuvRenderer";
+import {
+  YUVFrame,
+  Colorspace,
+  type ChannelMode,
+} from "../../../utils/yuvRenderer";
+import { useYuvDiff } from "../../../contexts/YuvDiffContext";
 import { FrameNavigationControls } from "./FrameNavigationControls";
 import { PlaybackControls } from "./PlaybackControls";
 import { ModeSelector } from "./ModeSelector";
 import { ZoomControls } from "./ZoomControls";
 import { StatusBar } from "./StatusBar";
-import type {
-  DecodedFrameData,
-  FrameAnalysisData,
-  YUVFrameData,
-} from "../../../types/video";
+import type { FrameAnalysisData } from "../../../types/video";
 
 import "./YuvViewerPanel.css";
 
 const logger = createLogger("YuvViewerPanel");
-
-/**
- * Convert YUVFrameData from backend to YUVFrame for renderer
- * Decodes base64 strings to Uint8Array
- */
-function convertYUVDataToYUVFrame(data: YUVFrameData): YUVFrame {
-  const base64ToUint8 = (base64: string): Uint8Array => {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  };
-
-  // Extract chroma subsampling from data (default to '420' if not provided)
-  const chromaSubsampling: "420" | "422" | "444" =
-    (data as YUVFrameData & { chroma_subsampling?: "420" | "422" | "444" })
-      .chroma_subsampling || "420";
-
-  // Handle null U/V planes - create empty arrays instead of null
-  const uPlane = data.u_plane ? base64ToUint8(data.u_plane) : new Uint8Array(0);
-  const vPlane = data.v_plane ? base64ToUint8(data.v_plane) : new Uint8Array(0);
-
-  const frame: YUVFrame = {
-    width: data.width,
-    height: data.height,
-    y: base64ToUint8(data.y_plane),
-    u: uPlane,
-    v: vPlane,
-    yStride: data.y_stride,
-    uStride: data.u_stride,
-    vStride: data.v_stride,
-    chromaSubsampling,
-  };
-
-  logger.debug("convertYUVDataToYUVFrame:", {
-    width: frame.width,
-    height: frame.height,
-    yLength: frame.y.length,
-    uLength: frame.u.length,
-    vLength: frame.v.length,
-    yStride: frame.yStride,
-    uStride: frame.uStride,
-    vStride: frame.vStride,
-    chromaSubsampling: frame.chromaSubsampling,
-    bitDepth: data.bit_depth,
-  });
-
-  return frame;
-}
 
 interface YuvViewerPanelProps {
   currentFrameIndex: number;
@@ -99,7 +65,16 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   totalFrames,
   onFrameChange,
 }: YuvViewerPanelProps) {
-  const { currentMode, setMode } = useMode();
+  const {
+    currentMode,
+    setMode,
+    availableModes,
+    availableOverlays,
+    activeOverlays,
+    toggleOverlay,
+    activeCodec,
+    handleFKey,
+  } = useMode();
   const { frames, setFrames } = useFrameData();
 
   // Image and loading state
@@ -109,8 +84,10 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   // Retry counter — incrementing triggers a reload via useEffect
   const [retryCount, setRetryCount] = useState(0);
 
-  // YUV data state (more efficient than RGB conversion)
-  const [yuvData, setYuvData] = useState<YUVFrameData | null>(null);
+  // Decoded-pixel state, via the Electron bridge (no base64) -- getDecodedFrameYuv for the real
+  // stream, or getDebugYuvFrame when a debug YUV reference is loaded (see the debugYuvLoaded
+  // branch below); both converge on the same bridgeYuvToFrame conversion.
+  const [decodedFrame, setDecodedFrame] = useState<YUVFrame | null>(null);
 
   // Analysis data state
   const [, setFrameAnalysis] = useState<FrameAnalysisData | null>(null);
@@ -133,8 +110,54 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const playbackTimerRef = useRef<number | null>(null);
+
+  // Color space and channel display
+  const [colorspace, setColorspace] = useState<Colorspace>(Colorspace.BT709);
+  const [channelMode, setChannelMode] = useState<ChannelMode>("all");
+
+  // Debug YUV diff state
+  const {
+    isLoaded: debugYuvLoaded,
+    displayMode: debugDisplayMode,
+    amplifyFactor: debugAmplifyFactor,
+  } = useYuvDiff();
+
+  // Right-click context menu (Phase 7.6, "Player" scope) -- see ContextMenu component doc.
+  const exportEvidence = useExportEvidenceBundle();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleCanvasContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    // TODO(Phase 7.6 follow-up): thread real selection state in (SelectionContext isn't
+    // currently a dependency of this component, and this is the only place that would need it --
+    // deferred rather than adding a hard context dependency here for one guard on one item
+    // (Player's "toggle_detail") that isn't wired to a real action yet anyway).
+    const hasSelection = false;
+    const hasByteRange = false;
+    const x = event.clientX;
+    const y = event.clientY;
+    getContextMenuItems("Player", hasSelection, hasByteRange)
+      .then((items) => setContextMenu({ x, y, items }))
+      .catch(() => setContextMenu(null));
+  }, []);
+
+  const handleContextMenuSelect = useCallback(
+    (command: string) => {
+      if (command === "Export.EvidenceBundle") {
+        void exportEvidence();
+      }
+      // Other Player-scope commands (Toggle.DetailMode, Copy.Selection) aren't wired to a real
+      // action yet -- deliberately out of scope for this pass (see Phase 7.6 doc).
+    },
+    [exportEvidence],
+  );
 
   // Load frame and analysis data when currentFrameIndex changes
   useEffect(() => {
@@ -144,61 +167,37 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       setIsLoading(true);
       setLoadError(null);
       try {
-        // Try YUV first (more efficient)
-        const yuvResult = await invoke<YUVFrameData>("get_decoded_frame_yuv", {
-          frameIndex,
-        });
+        // When debug YUV is loaded, fetch via the bridge's getDebugYuvFrame instead -- same
+        // raw-bytes wire shape as getDecodedFrameYuv, so both paths converge on bridgeYuvToFrame.
+        if (debugYuvLoaded) {
+          const debugFrame = await getDebugYuvFrame(
+            frameIndex,
+            debugDisplayMode,
+            debugDisplayMode === "amplified" ? debugAmplifyFactor : undefined,
+          );
+          if (cancelled) return;
+          setDecodedFrame(bridgeYuvToFrame(debugFrame));
+          setFrameImage(null);
+          setIsLoading(false);
+          return;
+        }
+
+        // Real decode path, via the Electron bridge -- AV1/IVF only, matches this app's stream
+        // "A" convention (see FileStateContext/electronBridgeService callers).
+        const decoded = await getDecodedFrameYuv("A", frameIndex);
 
         if (cancelled) return;
 
-        if (yuvResult && yuvResult.success && yuvResult.y_plane) {
-          // Successfully got YUV data
-          setYuvData(yuvResult);
-          setFrameImage(null); // Clear RGB image
-          logger.debug(
-            "Loaded YUV frame:",
-            frameIndex,
-            "size:",
-            yuvResult.width,
-            "x",
-            yuvResult.height,
-          );
-        } else {
-          // Fallback to RGB
-          logger.debug("YUV not available, falling back to RGB");
-          const result = await invoke<DecodedFrameData>("get_decoded_frame", {
-            frameIndex,
-          });
-
-          if (cancelled) return;
-
-          if (result && result.success && result.frame_data) {
-            const img = new Image();
-            img.onload = () => {
-              if (!cancelled) {
-                setFrameImage(img);
-                setIsLoading(false);
-              }
-            };
-            img.onerror = () => {
-              if (!cancelled) {
-                logger.error(
-                  "Failed to decode frame image for frame:",
-                  frameIndex,
-                );
-                setIsLoading(false);
-                setFrameImage(null);
-                setLoadError("Failed to decode frame image");
-              }
-            };
-            img.src = `data:image/png;base64,${result.frame_data}`;
-            // Return early — isLoading will be cleared in img callbacks
-            return;
-          } else {
-            logger.error("Failed to load frame:", result.error);
-            setLoadError(result.error || "Failed to load frame");
-          }
-        }
+        setDecodedFrame(bridgeYuvToFrame(decoded));
+        setFrameImage(null);
+        logger.debug(
+          "Loaded YUV frame:",
+          frameIndex,
+          "size:",
+          decoded.width,
+          "x",
+          decoded.height,
+        );
       } catch (error) {
         if (cancelled) return;
         logger.error("Failed to load frame:", error);
@@ -210,9 +209,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
     const loadFrameAnalysis = async (frameIndex: number) => {
       try {
-        const result = await invoke<FrameAnalysisData>("get_frame_analysis", {
-          frameIndex,
-        });
+        const result = await getFrameAnalysis(frameIndex);
 
         if (cancelled) return;
 
@@ -226,10 +223,13 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             newFrames[frameIndex] = {
               ...newFrames[frameIndex],
               qp_grid: result.qp_grid,
+              energy_grid: result.energy_grid,
               mv_grid: result.mv_grid,
               partition_grid: result.partition_grid,
               prediction_mode_grid: result.prediction_mode_grid,
               transform_grid: result.transform_grid,
+              mb_type_grid: result.mb_type_grid,
+              ref_idx_grid: result.ref_idx_grid,
               width: result.width,
               height: result.height,
             };
@@ -253,7 +253,14 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     return () => {
       cancelled = true;
     };
-  }, [currentFrameIndex, retryCount, setFrames]);
+  }, [
+    currentFrameIndex,
+    retryCount,
+    setFrames,
+    debugYuvLoaded,
+    debugDisplayMode,
+    debugAmplifyFactor,
+  ]);
 
   // Frame navigation callbacks
   const goToPrevFrame = useCallback(() => {
@@ -295,6 +302,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     playbackTimerRef.current = setTimeout(() => {
       if (currentFrameIndex < totalFrames - 1) {
         onFrameChange(currentFrameIndex + 1);
+      } else if (isLooping) {
+        onFrameChange(0);
       } else {
         setIsPlaying(false);
       }
@@ -305,7 +314,14 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         clearTimeout(playbackTimerRef.current);
       }
     };
-  }, [isPlaying, currentFrameIndex, totalFrames, playbackSpeed, onFrameChange]);
+  }, [
+    isPlaying,
+    isLooping,
+    currentFrameIndex,
+    totalFrames,
+    playbackSpeed,
+    onFrameChange,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -313,6 +329,43 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       if (playbackTimerRef.current) {
         clearTimeout(playbackTimerRef.current);
       }
+    };
+  }, []);
+
+  // Color space, channel mode, and loop events from menus/keyboard
+  useEffect(() => {
+    const onColorBT601 = () => setColorspace(Colorspace.BT601);
+    const onColorBT709 = () => setColorspace(Colorspace.BT709);
+    const onColorBT2020 = () => setColorspace(Colorspace.BT2020);
+    const onColorYuvRgb = () => setColorspace(Colorspace.BT709); // YUV-as-RGB: same matrix but skip offset
+    const onColorYuvGbr = () => setColorspace(Colorspace.BT709); // placeholder
+    const onChannelY = () => setChannelMode((m) => (m === "Y" ? "all" : "Y"));
+    const onChannelU = () => setChannelMode((m) => (m === "U" ? "all" : "U"));
+    const onChannelV = () => setChannelMode((m) => (m === "V" ? "all" : "V"));
+    const onChannelAll = () => setChannelMode("all");
+    const onLoopPlayback = () => setIsLooping((v) => !v);
+
+    window.addEventListener("menu-color-bt601", onColorBT601);
+    window.addEventListener("menu-color-bt709", onColorBT709);
+    window.addEventListener("menu-color-bt2020", onColorBT2020);
+    window.addEventListener("menu-color-yuv-rgb", onColorYuvRgb);
+    window.addEventListener("menu-color-yuv-gbr", onColorYuvGbr);
+    window.addEventListener("viewer-channel-y", onChannelY);
+    window.addEventListener("viewer-channel-u", onChannelU);
+    window.addEventListener("viewer-channel-v", onChannelV);
+    window.addEventListener("viewer-channel-all", onChannelAll);
+    window.addEventListener("menu-loop-playback", onLoopPlayback);
+    return () => {
+      window.removeEventListener("menu-color-bt601", onColorBT601);
+      window.removeEventListener("menu-color-bt709", onColorBT709);
+      window.removeEventListener("menu-color-bt2020", onColorBT2020);
+      window.removeEventListener("menu-color-yuv-rgb", onColorYuvRgb);
+      window.removeEventListener("menu-color-yuv-gbr", onColorYuvGbr);
+      window.removeEventListener("viewer-channel-y", onChannelY);
+      window.removeEventListener("viewer-channel-u", onChannelU);
+      window.removeEventListener("viewer-channel-v", onChannelV);
+      window.removeEventListener("viewer-channel-all", onChannelAll);
+      window.removeEventListener("menu-loop-playback", onLoopPlayback);
     };
   }, []);
 
@@ -360,33 +413,21 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           }
           break;
         case "F1":
-          e.preventDefault();
-          setMode("overview");
-          break;
         case "F2":
-          e.preventDefault();
-          setMode("coding-flow");
-          break;
         case "F3":
-          e.preventDefault();
-          setMode("prediction");
-          break;
         case "F4":
-          e.preventDefault();
-          setMode("transform");
-          break;
         case "F5":
-          e.preventDefault();
-          setMode("qp-map");
-          break;
         case "F6":
-          e.preventDefault();
-          setMode("mv-field");
-          break;
         case "F7":
-          e.preventDefault();
-          setMode("reference");
+        case "F8":
+        case "F9":
+        case "F10":
+        case "F11":
+        case "F12": {
+          const fNum = parseInt(e.key.slice(1), 10);
+          if (handleFKey(fNum)) e.preventDefault();
           break;
+        }
       }
     };
 
@@ -401,16 +442,17 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     zoomIn,
     zoomOut,
     resetZoom,
-    setMode,
+    handleFKey,
   ]);
 
-  // Memoize YUV conversion to avoid re-running on every render
-  const convertedYuvFrame = useMemo(
-    () => (yuvData ? convertYUVDataToYUVFrame(yuvData) : undefined),
-    [yuvData],
-  );
-
   const currentFrame = frames[currentFrameIndex] || null;
+
+  // Fetch AV1 advanced features when in an AV1-specific mode
+  const { av1Features } = useAv1Features(
+    currentFrameIndex,
+    activeCodec,
+    currentMode,
+  );
 
   return (
     <div className="yuv-viewer">
@@ -426,7 +468,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onFrameChange={onFrameChange}
         />
 
-        <div className="yuv-toolbar-spacer"></div>
+        <div className="yuv-toolbar-divider"></div>
 
         <PlaybackControls
           isPlaying={isPlaying}
@@ -435,10 +477,29 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onSpeedChange={setPlaybackSpeed}
         />
 
-        <div className="yuv-toolbar-spacer"></div>
+        <div className="yuv-toolbar-divider"></div>
 
-        <ModeSelector currentMode={currentMode} onModeChange={setMode} />
+        <CodecBadge codec={activeCodec} />
 
+        <ModeSelector
+          currentMode={currentMode}
+          onModeChange={setMode}
+          availableModes={availableModes}
+        />
+
+        <OverlayToggleBar
+          availableOverlays={availableOverlays}
+          activeOverlays={activeOverlays}
+          onToggle={toggleOverlay}
+        />
+
+        {/* Single growing spacer -- previously 3 independent `flex:1` spacers sat between every
+            group, so whenever a middle group rendered empty (e.g. OverlayToggleBar has nothing
+            for modes with no overlays, or CodecBadge before a file was ever opened -- see its own
+            fix note), the remaining spacers still split 100% of the leftover width evenly between
+            them, producing huge dead gaps between the few groups that *did* render. Pushing only
+            ZoomControls to the right with one spacer keeps everything else in a single left-
+            aligned cluster regardless of which optional groups are present. */}
         <div className="yuv-toolbar-spacer"></div>
 
         <ZoomControls
@@ -449,21 +510,93 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         />
       </div>
 
-      {/* Canvas Area */}
-      <VideoCanvas
-        frameImage={frameImage}
-        currentFrameIndex={currentFrameIndex}
-        currentFrame={currentFrame}
-        currentMode={currentMode}
-        zoom={zoom}
-        pan={pan}
-        onWheel={canvasHandlers.onWheel}
-        onMouseDown={canvasHandlers.onMouseDown}
-        onMouseMove={canvasHandlers.onMouseMove}
-        onMouseUp={canvasHandlers.onMouseUp}
-        isDragging={isDragging}
-        yuvData={convertedYuvFrame}
-      />
+      {/* Canvas Area or Analysis View */}
+      {currentMode === "coding-flow" ? (
+        <div className="yuv-analysis-view-container">
+          <CodingFlowView
+            frame={currentFrame}
+            codec={activeCodec ?? undefined}
+          />
+        </div>
+      ) : currentMode === "deblocking" || currentMode === "loop-filter" ? (
+        <div className="yuv-analysis-view-container">
+          <DeblockingView
+            frame={currentFrame}
+            width={frameImage?.width ?? 1920}
+            height={frameImage?.height ?? 1080}
+            codec={activeCodec ?? undefined}
+          />
+        </div>
+      ) : currentMode === "residuals" ? (
+        <div className="yuv-analysis-view-container">
+          <ResidualsView
+            frame={currentFrame}
+            width={frameImage?.width ?? 1920}
+            height={frameImage?.height ?? 1080}
+          />
+        </div>
+      ) : currentMode === "av1-features" ||
+        currentMode === "cdef-filter" ||
+        currentMode === "loop-restoration" ||
+        currentMode === "film-grain" ||
+        currentMode === "super-res" ? (
+        <div className="yuv-analysis-view-container">
+          {/* AV1FeaturesView already has real, complete CDEF/LoopRestoration/FilmGrain/SuperRes
+              sections (its show* props gate each independently) -- the individual per-feature
+              F-keys (cdef-filter/loop-restoration/film-grain/super-res) used to fall through to
+              the plain VideoCanvas below with no analysis rendered at all, despite the data
+              already being fetched (see useAv1Features's mode gate above). "av1-features" (the
+              catch-all, reachable via the info-overlay menu, not an F-key) still shows all four. */}
+          <AV1FeaturesView
+            frame={currentFrame}
+            width={frameImage?.width ?? 1920}
+            height={frameImage?.height ?? 1080}
+            showCdef={
+              currentMode === "av1-features" || currentMode === "cdef-filter"
+            }
+            showLoopRestoration={
+              currentMode === "av1-features" ||
+              currentMode === "loop-restoration"
+            }
+            showFilmGrain={
+              currentMode === "av1-features" || currentMode === "film-grain"
+            }
+            showSuperRes={
+              currentMode === "av1-features" || currentMode === "super-res"
+            }
+          />
+        </div>
+      ) : (
+        <VideoCanvas
+          frameImage={frameImage}
+          currentFrameIndex={currentFrameIndex}
+          currentFrame={currentFrame}
+          currentMode={currentMode}
+          zoom={zoom}
+          pan={pan}
+          onWheel={canvasHandlers.onWheel}
+          onMouseDown={canvasHandlers.onMouseDown}
+          onMouseMove={canvasHandlers.onMouseMove}
+          onMouseUp={canvasHandlers.onMouseUp}
+          onContextMenu={handleCanvasContextMenu}
+          isDragging={isDragging}
+          yuvData={decodedFrame ?? undefined}
+          activeOverlays={activeOverlays}
+          av1Features={av1Features ?? undefined}
+          colorspace={colorspace}
+          channelMode={channelMode}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* Loading and Placeholder States */}
       {isLoading && (
@@ -487,7 +620,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         </div>
       )}
 
-      {!frameImage && !yuvData && !isLoading && !loadError && (
+      {!frameImage && !decodedFrame && !isLoading && !loadError && (
         <div className="yuv-placeholder-overlay">
           <span className="codicon codicon-device-camera"></span>
           <span>No frame loaded</span>
@@ -505,6 +638,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         zoom={zoom}
         isPlaying={isPlaying}
         playbackSpeed={playbackSpeed}
+        availableModes={availableModes}
       />
     </div>
   );

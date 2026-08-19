@@ -90,8 +90,8 @@ fn test_parse_sei_all_ones() {
 #[test]
 fn test_parse_sei_alternating_pattern() {
     let mut data = vec![0u8; 32];
-    for i in 0..32 {
-        data[i] = if i % 2 == 0 { 0xAA } else { 0x55 };
+    for (i, byte) in data.iter_mut().enumerate().take(32) {
+        *byte = if i % 2 == 0 { 0xAA } else { 0x55 };
     }
 
     let result = parse_sei(&data);
@@ -101,8 +101,8 @@ fn test_parse_sei_alternating_pattern() {
 #[test]
 fn test_parse_sei_incrementing_pattern() {
     let mut data = vec![0u8; 32];
-    for i in 0..32 {
-        data[i] = i as u8;
+    for (i, byte) in data.iter_mut().enumerate().take(32) {
+        *byte = i as u8;
     }
 
     let result = parse_sei(&data);

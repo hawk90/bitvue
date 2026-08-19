@@ -3,15 +3,13 @@
 //! Provides functions to extract partition trees, prediction modes,
 //! and transform sizes from AV1 bitstreams.
 
-use std::sync::Arc;
-
-use bitvue_core::{
+use bitvue_engine::{
     limits::{AV1_BLOCK_SIZE, MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     partition_grid::{PartitionGrid, PartitionType},
     BitvueError,
 };
 
-use super::cache::{compute_cache_key, get_or_parse_coding_units};
+use super::cu_parser::parse_all_coding_units;
 use super::parser::ParsedFrame;
 use crate::tile::{BlockSize, PredictionMode, TxSize};
 
@@ -91,7 +89,7 @@ pub fn extract_partition_grid_from_parsed(
                 .sb_size
                 .saturating_sub(parsed.dimensions.height.saturating_sub(sb_pixel_y));
 
-            grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
+            grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
                 sb_pixel_x,
                 sb_pixel_y,
                 remaining_w,
@@ -117,8 +115,14 @@ fn parse_partition_trees_from_tile_data(
         parsed.dimensions.sb_size,
     );
 
-    // Create SymbolDecoder for tile data
-    let mut decoder = crate::SymbolDecoder::new(&parsed.tile_data)?;
+    // Note: For MVP, we use default QP=128 if the frame type doesn't carry a real one.
+    let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
+
+    // Create SymbolDecoder for tile data, seeded with the real per-frame qindex-bucket
+    // (`qcat`) residual-coefficient CDF defaults -- see `crate::symbol::cdf::CdfContext::
+    // new_with_qcat`'s doc for the real dav1d selection formula this mirrors.
+    let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+    let mut decoder = crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat)?;
 
     let sb_size = parsed.dimensions.sb_size;
     let block_size = if sb_size == 128 {
@@ -129,8 +133,20 @@ fn parse_partition_trees_from_tile_data(
 
     let is_key_frame = parsed.frame_type.is_intra_only;
 
+    // Entropy-context tracker (currently only `skip` uses it -- see `crate::tile::TileContext`'s
+    // doc). Created once for the whole tile, unlike `mv_ctx` below (which -- pre-existing, not
+    // touched here -- is recreated fresh every superblock instead of persisting across the tile);
+    // `tile_ctx` must persist across superblocks or every context lookup would degenerate to 0.
+    let mut tile_ctx = crate::tile::TileContext::new(
+        (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
+        (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
+    );
+    let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
+    let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
+
     // Parse each superblock
     for sb_y in 0..parsed.dimensions.sb_rows {
+        tile_ctx.start_superblock_row();
         for sb_x in 0..parsed.dimensions.sb_cols {
             let sb_pixel_x = sb_x * sb_size;
             let sb_pixel_y = sb_y * sb_size;
@@ -155,9 +171,8 @@ fn parse_partition_trees_from_tile_data(
                     block_size
                 };
 
-            // Try to parse the superblock
-            // Note: For MVP, we use default QP=128 and delta_q_enabled=false
-            let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
+            // Try to parse the superblock (base_qp computed once above, before the tile loop --
+            // it's a per-frame constant, not per-superblock).
 
             // Create MV predictor context (local for partition extraction)
             let mut mv_ctx = crate::tile::MvPredictorContext::new(
@@ -172,15 +187,48 @@ fn parse_partition_trees_from_tile_data(
                 actual_block_size.width(),
                 is_key_frame,
                 base_qp,
-                false, // delta_q_enabled - not implemented for MVP
+                parsed.delta_q_enabled,
                 &mut mv_ctx,
+                parsed.reference_select,
+                parsed.allow_intrabc,
+                parsed.allow_screen_content_tools,
+                parsed.enable_filter_intra,
+                parsed.delta_lf_present,
+                parsed.delta_lf_multi,
+                parsed.use_ref_frame_mvs,
+                parsed.segmentation,
+                &mut tile_ctx,
+                crate::tile::TxTypeFrameFlags {
+                    coded_lossless: parsed.coded_lossless,
+                    qidx_is_zero: parsed.frame_type.base_qp == Some(0),
+                    reduced_tx_set: parsed.reduced_tx_set,
+                    txfm_mode: parsed.txfm_mode,
+                    mono_chrome: parsed.mono_chrome,
+                    subsampling_x: parsed.subsampling_x,
+                    subsampling_y: parsed.subsampling_y,
+                },
+                mi_rows,
+                mi_cols,
+                parsed.cdef_bits,
+                parsed.skip_mode_present,
+                parsed.skip_mode_refs,
+                crate::tile::InterModeFlags {
+                    switchable_motion_mode: parsed.switchable_motion_mode,
+                    allow_warped_motion: parsed.allow_warped_motion,
+                    enable_interintra_compound: parsed.enable_interintra_compound,
+                    enable_masked_compound: parsed.enable_masked_compound,
+                    enable_jnt_comp: parsed.enable_jnt_comp,
+                    subpel_filter_switchable: parsed.subpel_filter_switchable,
+                    force_integer_mv: parsed.force_integer_mv,
+                    gm_type: parsed.gm_type,
+                },
             );
 
             match sb_result {
                 Ok((sb, _final_qp)) => {
                     // Convert partition tree to grid blocks
                     for cu in &sb.coding_units {
-                        grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
+                        grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
                             cu.x,
                             cu.y,
                             cu.width,
@@ -198,7 +246,7 @@ fn parse_partition_trees_from_tile_data(
                         sb_pixel_y,
                         e
                     );
-                    grid.add_block(bitvue_core::partition_grid::PartitionBlock::new(
+                    grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
                         sb_pixel_x,
                         sb_pixel_y,
                         remaining_w,
@@ -679,6 +727,17 @@ where
     let grid_w = parsed.dimensions.width.div_ceil(block_w);
     let grid_h = parsed.dimensions.height.div_ceil(block_h);
 
+    // Callers pass `Vec::with_capacity(total_blocks)` (length 0, only reserved capacity) --
+    // every write below is a direct `output[idx] = ...` index assignment, which the `idx <
+    // output.len()` guards silently skip entirely on a zero-length vec. Pre-fill to the real
+    // length here so writes actually land (this path never actually ran before `ParsedFrame::
+    // parse`'s OBU_FRAME tile-data bug was fixed -- has_tile_data() was always false, so this
+    // function was never reached; the bug was latent, not a regression from that fix).
+    let total = (grid_w as usize).saturating_mul(grid_h as usize);
+    if output.len() < total {
+        output.resize_with(total, || None);
+    }
+
     // Build spatial index: map superblock position to relevant CUs
     // This allows O(1) lookup of which CUs to check for each grid block
     use std::collections::HashMap;
@@ -736,89 +795,6 @@ where
     Ok(())
 }
 
-/// Parse all coding units from tile data
-///
-/// Per optimize-code skill: Uses thread-safe LRU cache to avoid re-parsing
-/// the same tile data when extracting multiple overlays.
-///
-/// Returns `Arc<Vec<CodingUnit>>` for O(1) cloning on cache hits.
-/// Use `&*result` or `result.as_ref()` to access the slice of coding units.
-/// This is used by prediction mode and transform grid extraction.
-fn parse_all_coding_units(
-    parsed: &ParsedFrame,
-) -> Result<std::sync::Arc<Vec<crate::tile::CodingUnit>>, BitvueError> {
-    let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-    let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
-
-    // Clone data needed for parsing (move into closure)
-    let tile_data = Arc::clone(&parsed.tile_data);
-    let sb_size = parsed.dimensions.sb_size;
-    let sb_cols = parsed.dimensions.sb_cols;
-    let sb_rows = parsed.dimensions.sb_rows;
-    let is_key_frame = parsed.frame_type.is_intra_only;
-    let delta_q_enabled = parsed.delta_q_enabled;
-
-    // Per optimize-code skill: Use get_or_parse helper for cache pattern
-    get_or_parse_coding_units(cache_key, || {
-        let mut all_cus = Vec::new();
-
-        // Pre-allocate capacity based on superblock count (per optimize-code)
-        let estimated_cus = (sb_cols * sb_rows) as usize * 4;
-        all_cus.reserve(estimated_cus);
-
-        // Create SymbolDecoder for tile data
-        let mut decoder = crate::SymbolDecoder::new(&tile_data)?;
-
-        // Track running QP value across superblocks
-        let mut current_qp = base_qp;
-
-        // Create MV predictor context
-        let mut mv_ctx = crate::tile::MvPredictorContext::new(sb_cols, sb_rows);
-
-        // Parse each superblock
-        for sb_y in 0..sb_rows {
-            for sb_x in 0..sb_cols {
-                let sb_pixel_x = sb_x * sb_size;
-                let sb_pixel_y = sb_y * sb_size;
-
-                // Try to parse the superblock
-                match crate::parse_superblock(
-                    &mut decoder,
-                    sb_pixel_x,
-                    sb_pixel_y,
-                    sb_size,
-                    is_key_frame,
-                    current_qp,
-                    delta_q_enabled,
-                    &mut mv_ctx,
-                ) {
-                    Ok((sb, new_qp)) => {
-                        // Collect all coding units from this superblock
-                        all_cus.extend(sb.coding_units);
-                        current_qp = new_qp;
-                    }
-                    Err(e) => {
-                        tracing::debug!(
-                            "Failed to parse superblock ({}, {}): {}, skipping",
-                            sb_pixel_x,
-                            sb_pixel_y,
-                            e
-                        );
-                        // Continue parsing other superblocks
-                    }
-                }
-            }
-        }
-
-        tracing::debug!(
-            "Parsed {} coding units from tile data (final QP: {})",
-            all_cus.len(),
-            current_qp
-        );
-        Ok(all_cus)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -874,7 +850,7 @@ mod tests {
             "Partition grid extraction should succeed with fallback"
         );
         let grid = result.unwrap();
-        assert!(grid.blocks.len() > 0, "Grid should have scaffold blocks");
+        assert!(!grid.blocks.is_empty(), "Grid should have scaffold blocks");
     }
 
     #[test]
@@ -894,5 +870,196 @@ mod tests {
         // Out of bounds
         assert!(grid.get(120, 0).is_none());
         assert!(grid.get(0, 68).is_none());
+    }
+
+    const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../../test_data/av1_test.ivf");
+
+    fn find_seq_header_bytes(frames: &[crate::ivf::IvfFrame]) -> Option<Vec<u8>> {
+        for frame in frames.iter().take(8) {
+            let mut iter = crate::obu::ObuIterator::new(&frame.data);
+            while let Some(Ok(found)) = iter.next_obu_with_offset() {
+                if found.obu.header.obu_type == crate::obu::ObuType::SequenceHeader {
+                    return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
+                }
+            }
+        }
+        None
+    }
+
+    /// Regression test for the `delta_q_enabled` hardcoded-`false` bug: this module's own
+    /// superblock parse (`extract_partition_grid_from_parsed`, the real path `get_frame_analysis`
+    /// uses for `partition_grid`) used to always pass `false` regardless of the real frame
+    /// header's `delta_q_present`, instead of the already-correctly-sourced
+    /// `parsed.delta_q_enabled` that `cu_parser::parse_all_coding_units` (the QP/MV/prediction
+    /// grid path) already used. Since `delta_q` reads real bits from the shared `SymbolDecoder`
+    /// whenever the frame has `delta_q_enabled=true`, skipping them desyncs every subsequent
+    /// syntax element in that superblock -- the same "syntax element completely unread" bug shape
+    /// as the earlier `residual()`/`ref_frame()` fixes.
+    ///
+    /// Parses every superblock of `parsed.tile_data` with `delta_q_enabled` forced to the given
+    /// value (bypassing `parsed.delta_q_enabled` entirely), mirroring
+    /// `cu_parser::parse_all_coding_units`'s loop structure. Used to reconstruct the pre-fix
+    /// hardcoded-`false` behavior for `real_fixture_delta_q_frame_changes_with_the_flag`.
+    fn parse_all_coding_units_with_delta_q_flag(
+        parsed: &super::super::parser::ParsedFrame,
+        delta_q_enabled: bool,
+    ) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
+        let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
+        let is_key_frame = parsed.frame_type.is_intra_only;
+        let sb_size = parsed.dimensions.sb_size;
+
+        let mut decoder = crate::SymbolDecoder::new(&parsed.tile_data)?;
+        let mut mv_ctx = crate::tile::MvPredictorContext::new(
+            parsed.dimensions.sb_cols,
+            parsed.dimensions.sb_rows,
+        );
+        let mut tile_ctx = crate::tile::TileContext::new(
+            (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
+            (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
+        );
+        let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
+        let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
+        let mut current_qp = base_qp;
+        let mut all_cus = Vec::new();
+        for sb_y in 0..parsed.dimensions.sb_rows {
+            tile_ctx.start_superblock_row();
+            for sb_x in 0..parsed.dimensions.sb_cols {
+                let (sb, new_qp) = crate::parse_superblock(
+                    &mut decoder,
+                    sb_x * sb_size,
+                    sb_y * sb_size,
+                    sb_size,
+                    is_key_frame,
+                    current_qp,
+                    delta_q_enabled,
+                    &mut mv_ctx,
+                    parsed.reference_select,
+                    parsed.allow_intrabc,
+                    parsed.allow_screen_content_tools,
+                    parsed.enable_filter_intra,
+                    parsed.delta_lf_present,
+                    parsed.delta_lf_multi,
+                    parsed.use_ref_frame_mvs,
+                    parsed.segmentation,
+                    &mut tile_ctx,
+                    crate::tile::TxTypeFrameFlags {
+                        coded_lossless: parsed.coded_lossless,
+                        qidx_is_zero: parsed.frame_type.base_qp == Some(0),
+                        reduced_tx_set: parsed.reduced_tx_set,
+                        txfm_mode: parsed.txfm_mode,
+                        mono_chrome: parsed.mono_chrome,
+                        subsampling_x: parsed.subsampling_x,
+                        subsampling_y: parsed.subsampling_y,
+                    },
+                    mi_rows,
+                    mi_cols,
+                    parsed.cdef_bits,
+                    parsed.skip_mode_present,
+                    parsed.skip_mode_refs,
+                    crate::tile::InterModeFlags {
+                        switchable_motion_mode: parsed.switchable_motion_mode,
+                        allow_warped_motion: parsed.allow_warped_motion,
+                        enable_interintra_compound: parsed.enable_interintra_compound,
+                        enable_masked_compound: parsed.enable_masked_compound,
+                        enable_jnt_comp: parsed.enable_jnt_comp,
+                        subpel_filter_switchable: parsed.subpel_filter_switchable,
+                        force_integer_mv: parsed.force_integer_mv,
+                        gm_type: parsed.gm_type,
+                    },
+                )?;
+                current_qp = new_qp;
+                all_cus.extend(sb.coding_units);
+            }
+        }
+        Ok(all_cus)
+    }
+
+    /// Regression test for the `delta_q_enabled` hardcoded-`false` bug: this module's own
+    /// superblock parse (`extract_partition_grid_from_parsed`, the real path `get_frame_analysis`
+    /// uses for `partition_grid`) used to always pass `false` regardless of the real frame
+    /// header's `delta_q_present`, instead of the already-correctly-sourced
+    /// `parsed.delta_q_enabled` that `cu_parser::parse_all_coding_units` (the QP/MV/prediction
+    /// grid path) already used. Since `delta_q` reads real bits from the shared `SymbolDecoder`
+    /// whenever the frame has `delta_q_enabled=true`, skipping them desyncs every subsequent
+    /// syntax element in that tile -- the same "syntax element completely unread" bug shape as
+    /// the earlier `residual()`/`ref_frame()` fixes.
+    ///
+    /// Proves the flag is causally consequential on real bits: parses a real
+    /// `delta_q_enabled=true` frame's entire tile data twice with `parse_all_coding_units_with_delta_q_flag`
+    /// (same superblock-loop shape as both real callers) -- once `true` (correct), once `false`
+    /// (the old hardcoded bug) -- and asserts the two runs diverge (either a different CU list, or
+    /// the old-flag run erroring where the correct one doesn't, from running the arithmetic
+    /// decoder past real tile data once the missing `delta_q` bits accumulate enough drift).
+    ///
+    /// Searches the whole fixture (not just an early prefix) for a frame where the `true` run
+    /// fully succeeds: residual's plane/qindex-bucket CDF axes (`coeff_base`/`coeff_br`/etc.,
+    /// still luma-only/first-bucket -- see `tile/context.rs`'s module doc) remain an approximation,
+    /// so a given frame's tile data can legitimately fail to parse end-to-end under either flag --
+    /// that's an expected consequence of the still-incomplete entropy-context work (see
+    /// `docs/DEVELOPMENT_PHASES.md` Phase 4's AV1 entropy-decoding note), not evidence this
+    /// specific fix is wrong.
+    ///
+    /// Asserts divergence on *at least one* qualifying frame, not *every* one: `partition` now
+    /// has real context+adaptation (also this session), so it's legitimately possible for one
+    /// specific frame's missing-`delta_q`-bits drift to coincidentally still land on the same
+    /// decoded partition boundaries as the correct run (found in practice -- the first
+    /// successfully-parsing frame in this fixture happens to be exactly such a case). A single
+    /// coincidental match on one frame isn't evidence the flag stopped mattering; requiring every
+    /// qualifying frame to diverge is a stricter claim than the test needs to make its point.
+    #[test]
+    fn real_fixture_delta_q_frame_changes_with_the_flag() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+
+        let mut checked_a_delta_q_frame = false;
+        let mut saw_divergence = false;
+        for frame in frames.iter() {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let parsed = match super::super::parser::ParsedFrame::parse(&obu_data) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !parsed.delta_q_enabled || !parsed.has_tile_data() {
+                continue;
+            }
+
+            let Ok(real_cus) = parse_all_coding_units_with_delta_q_flag(&parsed, true) else {
+                // Nothing to compare against for this frame if even the correct run fails.
+                continue;
+            };
+            checked_a_delta_q_frame = true;
+
+            let real_positions: Vec<(u32, u32, u32, u32)> = real_cus
+                .iter()
+                .map(|cu| (cu.x, cu.y, cu.width, cu.height))
+                .collect();
+            let old_buggy_positions: Option<Vec<(u32, u32, u32, u32)>> =
+                parse_all_coding_units_with_delta_q_flag(&parsed, false)
+                    .ok()
+                    .map(|cus| {
+                        cus.iter()
+                            .map(|cu| (cu.x, cu.y, cu.width, cu.height))
+                            .collect()
+                    });
+
+            if Some(real_positions) != old_buggy_positions {
+                saw_divergence = true;
+                break;
+            }
+        }
+
+        assert!(
+            checked_a_delta_q_frame,
+            "expected at least one delta_q_enabled=true frame in the fixture whose tile data \
+             parses successfully with the correct flag -- if this fails, the fixture changed (or \
+             enough of the still-representative, non-context CDF tables shifted) and this test \
+             needs a different approach to exercise the bug"
+        );
+        assert!(
+            saw_divergence,
+            "expected at least one delta_q_enabled=true frame to decode a different (or outright \
+             failing) coding-unit list under the old hardcoded delta_q_enabled=false behavior -- \
+             if none diverge, the flag isn't actually affecting bitstream consumption anymore"
+        );
     }
 }

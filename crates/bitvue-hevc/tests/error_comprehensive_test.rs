@@ -13,7 +13,7 @@
 //! Targeting 95%+ line coverage for error handling.
 
 use bitvue_hevc::{HevcError, Result};
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 
 // ============================================================================
 // HevcError Variant Tests
@@ -48,7 +48,7 @@ fn test_hevc_error_insufficient_data() {
 
 #[test]
 fn test_hevc_error_io_error() {
-    let io_err = Error::new(ErrorKind::Other, "test error");
+    let io_err = Error::other("test error");
     let err = HevcError::Io(io_err);
     assert!(matches!(err, HevcError::Io(_)));
 }
@@ -97,7 +97,10 @@ fn test_result_ok() {
     let result: Result<u32> = Result::Ok(value);
 
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 42);
+    match result {
+        Ok(v) => assert_eq!(v, 42),
+        Err(_) => panic!("expected Ok(42)"),
+    }
 }
 
 #[test]
@@ -106,7 +109,10 @@ fn test_result_err() {
     let result: Result<u32> = Result::Err(err);
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("error"));
+    match result {
+        Err(e) => assert!(e.to_string().contains("error")),
+        Ok(_) => panic!("expected an Err containing \"error\""),
+    }
 }
 
 // ============================================================================
@@ -149,7 +155,7 @@ fn test_error_display_parse_error() {
 
 #[test]
 fn test_error_display_io_error() {
-    let io_err = Error::new(ErrorKind::Other, "io error");
+    let io_err = Error::other("io error");
     let err = HevcError::Io(io_err);
     let display = format!("{:?}", err);
     assert!(display.contains("io error") || display.contains("IO error"));

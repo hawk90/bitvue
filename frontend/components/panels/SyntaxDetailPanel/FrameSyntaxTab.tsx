@@ -5,8 +5,13 @@
  * Shows frame properties in expandable tree format
  */
 
-import { memo, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
+import { FrameTypeBadge } from "../../common/FrameTypeBadge";
+import {
+  getFrameSyntax,
+  type BridgeSyntaxNode,
+} from "../../../services/electronBridgeService";
 
 export interface SyntaxValue {
   String?: string;
@@ -21,6 +26,21 @@ export interface SyntaxNode {
   value?: SyntaxValue;
   children?: SyntaxNode[];
   description?: string;
+  byte_offset?: number;
+}
+
+/** `BridgeSyntaxNode` (sidecar's JSON shape, flat `value: string | null`) -> this tab's local
+ *  `SyntaxNode` (discriminated `SyntaxValue` union). `byte_offset` is a real derived value
+ *  (`bit_range.start_bit / 8`), not fabricated -- `bit_range` is itself a real absolute
+ *  file-bit-offset (see bitvue-indexer's `get_frame_syntax` doc on why that's not just the raw
+ *  byte offset passed in). `description` has no sidecar equivalent, left undefined. */
+function bridgeNodeToLocal(node: BridgeSyntaxNode): SyntaxNode {
+  return {
+    name: node.name,
+    value: node.value !== null ? { String: node.value } : undefined,
+    children: node.children.map(bridgeNodeToLocal),
+    byte_offset: Math.floor(node.bit_range.start_bit / 8),
+  };
 }
 
 // Helper to get display value from SyntaxValue
@@ -29,7 +49,7 @@ function getDisplayValue(value?: SyntaxValue): string | number | undefined {
   if (value.String !== undefined) return value.String;
   if (value.Number !== undefined) return value.Number;
   if (value.Float !== undefined) return value.Float.toFixed(2);
-  if (value.Boolean !== undefined) return value.Boolean;
+  if (value.Boolean !== undefined) return String(value.Boolean);
   if (value.Array !== undefined) return `[${value.Array.join(", ")}]`;
   return undefined;
 }
@@ -59,6 +79,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
   const [syntaxTree, setSyntaxTree] = useState<SyntaxNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { setHighlightedByteOffset } = useSyntaxHexLink();
 
   // Fetch real syntax tree from backend
   useEffect(() => {
@@ -71,11 +92,8 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
     setLoading(true);
     setError(null);
 
-    invoke<SyntaxNode>("get_frame_syntax", {
-      path: filePath,
-      frameIndex: frame.frame_index,
-    })
-      .then(setSyntaxTree)
+    getFrameSyntax("A", frame.frame_index)
+      .then((node) => setSyntaxTree(bridgeNodeToLocal(node)))
       .catch((err) => {
         console.error("Failed to fetch frame syntax:", err);
         setError(err?.toString?.() || "Failed to load syntax data");
@@ -135,7 +153,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
       },
       {
         name: "ref_frames",
-        value: { Array: frame.ref_frames ?? [] },
+        value: { Array: (frame.ref_frames ?? []).map(String) },
         description: "Reference frame indices",
         children: (frame.ref_frames ?? []).map((ref, idx) => ({
           name: `ref[${idx}]`,
@@ -153,21 +171,168 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
         <span className="syntax-info-label" style={{ marginLeft: 16 }}>
           Type:
         </span>
-        <span
-          className={`syntax-value frame-type-${frame.frame_type.toLowerCase()}`}
-        >
-          {frame.frame_type}
-        </span>
+        <FrameTypeBadge frameType={frame.frame_type} />
       </div>
       <div className="panel-divider"></div>
       <div className="syntax-tree">
-        <SyntaxTreeNode
-          node={frameSyntax}
-          path=""
-          depth={0}
-          expandedNodes={expandedNodes}
-          onToggle={onToggleNode}
-        />
+        {flattenVisible(frameSyntax, "", 0, expandedNodes).length >
+        VIRTUALIZATION_THRESHOLD ? (
+          <VirtualSyntaxTree
+            rootNode={frameSyntax}
+            expandedNodes={expandedNodes}
+            onToggle={onToggleNode}
+            onJumpToHex={setHighlightedByteOffset}
+          />
+        ) : (
+          <SyntaxTreeNode
+            node={frameSyntax}
+            path=""
+            depth={0}
+            expandedNodes={expandedNodes}
+            onToggle={onToggleNode}
+            onJumpToHex={setHighlightedByteOffset}
+          />
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ─── Virtual list for large syntax trees ─────────────────────────────────────
+
+const ITEM_HEIGHT = 24; // px per visible row
+const OVERSCAN = 15; // extra rows rendered above and below the visible window
+/** Below this threshold we use the plain recursive renderer (faster for small trees). */
+const VIRTUALIZATION_THRESHOLD = 120;
+
+interface FlatNode {
+  node: SyntaxNode;
+  path: string;
+  depth: number;
+}
+
+/** Flatten the tree respecting the current expand/collapse state. */
+function flattenVisible(
+  node: SyntaxNode,
+  path: string,
+  depth: number,
+  expandedNodes: Set<string>,
+  out: FlatNode[] = [],
+): FlatNode[] {
+  const currentPath = path ? `${path}/${node.name}` : node.name;
+  out.push({ node, path: currentPath, depth });
+  if (
+    node.children &&
+    node.children.length > 0 &&
+    expandedNodes.has(currentPath)
+  ) {
+    for (const child of node.children) {
+      flattenVisible(child, currentPath, depth + 1, expandedNodes, out);
+    }
+  }
+  return out;
+}
+
+interface VirtualSyntaxTreeProps {
+  rootNode: SyntaxNode;
+  expandedNodes: Set<string>;
+  onToggle: (path: string) => void;
+  onJumpToHex?: (offset: number) => void;
+}
+
+/** Virtual-scroll tree renderer — only mounts DOM nodes for the visible window. */
+const VirtualSyntaxTree = memo(function VirtualSyntaxTree({
+  rootNode,
+  expandedNodes,
+  onToggle,
+  onJumpToHex,
+}: VirtualSyntaxTreeProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(400);
+
+  // Keep container height in sync with ResizeObserver
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  const flatNodes = flattenVisible(rootNode, "", 0, expandedNodes);
+  const totalHeight = flatNodes.length * ITEM_HEIGHT;
+  const startIdx = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
+  const endIdx = Math.min(
+    flatNodes.length,
+    Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + OVERSCAN,
+  );
+  const paddingTop = startIdx * ITEM_HEIGHT;
+  const visibleSlice = flatNodes.slice(startIdx, endIdx);
+
+  return (
+    <div
+      ref={containerRef}
+      className="syntax-virtual-scroll"
+      onScroll={handleScroll}
+    >
+      <div style={{ height: totalHeight, position: "relative" }}>
+        <div style={{ position: "absolute", top: paddingTop, width: "100%" }}>
+          {visibleSlice.map(({ node, path, depth }) => {
+            const hasChildren = !!node.children && node.children.length > 0;
+            const isExpanded = expandedNodes.has(path);
+            const displayValue = getDisplayValue(node.value);
+            return (
+              <div
+                key={path}
+                className="syntax-node"
+                title={node.description}
+                style={{ height: ITEM_HEIGHT }}
+              >
+                <div
+                  className="syntax-node-item"
+                  style={{ paddingLeft: `${depth * 12 + 8}px` }}
+                >
+                  {hasChildren ? (
+                    <span
+                      className={`codicon codicon-${isExpanded ? "chevron-down" : "chevron-right"} expand-toggle`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(path);
+                      }}
+                    />
+                  ) : (
+                    <span className="expand-placeholder">▪</span>
+                  )}
+                  <span className="syntax-label">{node.name}</span>
+                  {displayValue !== undefined && (
+                    <span className="syntax-value">
+                      = {String(displayValue)}
+                    </span>
+                  )}
+                  {node.byte_offset !== undefined && onJumpToHex && (
+                    <span
+                      className="syntax-hex-jump"
+                      title={`Jump to byte 0x${node.byte_offset.toString(16).toUpperCase()}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onJumpToHex(node.byte_offset!);
+                      }}
+                    >
+                      ⇥
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -182,6 +347,7 @@ interface SyntaxTreeNodeProps {
   depth: number;
   expandedNodes: Set<string>;
   onToggle: (path: string) => void;
+  onJumpToHex?: (offset: number) => void;
 }
 
 const SyntaxTreeNode = memo(function SyntaxTreeNode({
@@ -190,6 +356,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
   depth,
   expandedNodes,
   onToggle,
+  onJumpToHex,
 }: SyntaxTreeNodeProps) {
   const currentPath = path ? `${path}/${node.name}` : node.name;
   const isExpanded = expandedNodes.has(currentPath);
@@ -217,6 +384,18 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
         {displayValue !== undefined && (
           <span className="syntax-value">= {String(displayValue)}</span>
         )}
+        {node.byte_offset !== undefined && onJumpToHex && (
+          <span
+            className="syntax-hex-jump"
+            title={`Jump to byte 0x${node.byte_offset.toString(16).toUpperCase()} in HEX view`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onJumpToHex(node.byte_offset!);
+            }}
+          >
+            ⇥
+          </span>
+        )}
       </div>
       {hasChildren && isExpanded && (
         <div className="syntax-children">
@@ -228,6 +407,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
               depth={depth + 1}
               expandedNodes={expandedNodes}
               onToggle={onToggle}
+              onJumpToHex={onJumpToHex}
             />
           ))}
         </div>

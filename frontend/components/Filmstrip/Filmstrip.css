@@ -11,7 +11,6 @@
 @import url("./views/ThumbnailsView.css");
 @import url("./views/FrameSizesView.css");
 @import url("./views/BPyramidView.css");
-@import url("./views/EnhancedView.css");
 
 /* Main Filmstrip Container */
 .filmstrip {
@@ -26,16 +25,19 @@
   transition: min-height var(--transition-normal) var(--ease-default);
 }
 
-/* Timeline view is shorter */
-.filmstrip.timeline-view-mode {
-  min-height: 60px;
-  max-height: 80px;
-}
-
 /* Expand filmstrip when showing reference lines */
 .filmstrip.showing-references {
   min-height: 280px;
 }
+
+/* Structure view draws every frame's reference arrows below the row at once (BPyramidTimeline's
+   showAllArrows path), which needs more vertical room than a single row of circles ever did.
+   Tried growing .filmstrip's own min/max-height for this (like .showing-references does below),
+   but this panel sits in a fixed (non-resizable-Panel) flex slot -- see .filmstrip-bar in
+   DockableLayout.css -- growing it left a large dead gap before the panels below rather than
+   cleanly reflowing them, a real layout bug in that flex chain not worth chasing here. Scrolling
+   the existing box (via .filmstrip-content's overflow-y override below) is the safe fix instead:
+   same available height as every other view, just no longer hard-clipped. */
 
 /* ═════════════════════════════════════════════════════════════════════════
    Filmstrip Header
@@ -45,6 +47,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 3px 8px;
   height: 24px;
   min-height: 24px;
@@ -61,16 +64,42 @@
   color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+
+  /* Flex items default to `min-width: auto` (their unshrinkable content width), which is why this
+     collided with `.filmstrip-info` (the frame counter + view-mode dropdown) on any window
+     narrower than both sides' combined natural width -- `justify-content: space-between`
+     positions items assuming they already fit, it doesn't shrink them. This is the *least*
+     important text in the header (a static label), so it's the one that should give way first. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .filmstrip-title .codicon {
+  flex-shrink: 0;
   font-size: 12px;
 }
 
 .filmstrip-count {
+  overflow: hidden;
   color: var(--text-secondary);
   font-weight: 400;
   margin-left: 3px;
+  text-overflow: ellipsis;
+}
+
+.filmstrip-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  /* Never shrink: the live frame counter and view-mode dropdown are actionable controls, not
+     decorative text -- `.filmstrip-title` gives way first (see its doc above). */
+  flex-shrink: 0;
+}
+
+.filmstrip-current {
+  white-space: nowrap;
 }
 
 .filmstrip-view-btn {
@@ -131,99 +160,6 @@
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   Filmstrip Dropdown
-   ═════════════════════════════════════════════════════════════════════════ */
-
-.filmstrip-dropdown {
-  position: relative;
-  display: inline-block;
-  align-self: center;
-}
-
-.filmstrip-dropdown-trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: rgb(255 255 255 / 6%);
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.filmstrip-dropdown-trigger:hover {
-  background: rgb(255 255 255 / 10%);
-  border-color: rgb(255 255 255 / 18%);
-}
-
-.filmstrip-dropdown-trigger .codicon {
-  font-size: 12px;
-}
-
-.filmstrip-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  min-width: 160px;
-  background: rgb(30 30 35 / 98%);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgb(255 255 255 / 15%);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgb(0 0 0 / 50%);
-  padding: 4px;
-  z-index: 1000;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-8px);
-  transition: all 0.2s ease;
-}
-
-.filmstrip-dropdown.open .filmstrip-dropdown-menu {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.filmstrip-dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.filmstrip-dropdown-item:hover {
-  background: rgb(255 255 255 / 8%);
-}
-
-.filmstrip-dropdown-item.active {
-  background: rgb(0 122 204 / 20%);
-  color: #75beff;
-}
-
-.filmstrip-dropdown-item .codicon {
-  font-size: 14px;
-}
-
-.filmstrip-dropdown-item-text {
-  flex: 1;
-}
-
-.filmstrip-dropdown-item-shortcut {
-  color: var(--text-secondary);
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-/* ═════════════════════════════════════════════════════════════════════════
    Filmstrip Content
    ═════════════════════════════════════════════════════════════════════════ */
 
@@ -275,6 +211,26 @@
 /* Allow reference arrows to extend beyond filmstrip content */
 .filmstrip-content.showing-reference-lines {
   overflow-y: visible;
+}
+
+/* Structure view: let the (now taller, see .filmstrip.structure-view-mode) panel actually scroll
+   vertically instead of clipping -- the default `auto hidden` here hides the y-axis outright. */
+.filmstrip.structure-view-mode .filmstrip-content {
+  overflow-y: auto;
+}
+
+/* Enhanced view's nav bar (components/EnhancedView.css's `.enhanced-nav-bar`) wraps its GOP/Scene
+   sections onto two lines in the filmstrip's default width, and without this the fixed-height
+   panel's `auto hidden` clips the wrapped-away first line entirely instead of scrolling to it. */
+.filmstrip.enhanced-view-mode .filmstrip-content {
+  overflow-y: auto;
+}
+
+/* HRD Buffer view: pairs with .hrd-canvas-container's min-height (HRDBufferPanel.css) -- that
+   min-height makes the panel overflow this box instead of shrinking the canvas down to
+   illegible axis labels, so this box needs to actually scroll instead of clipping it. */
+.filmstrip.hrdbuffer-view-mode .filmstrip-content {
+  overflow-y: auto;
 }
 
 .reference-lines-overlay path {

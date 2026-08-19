@@ -1,38 +1,44 @@
 //! Bit-level reader for H.264/AVC parsing.
 //!
-//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! This module provides a wrapper around the shared BitReader from bitvue_engine
 //! with AVC-specific error mapping and Exp-Golomb support.
 
-use bitvue_core::{BitReader as CoreBitReader, ExpGolombReader};
+use bitvue_engine::{BitReader as CoreBitReader, BlanketBitReaderError, WrappedBitReader};
 
-// Re-export emulation prevention function from bitvue_core for convenience
-pub use bitvue_core::remove_emulation_prevention_bytes;
+// Re-export emulation prevention function from bitvue_engine for convenience
+pub use bitvue_engine::remove_emulation_prevention_bytes;
 
 use crate::error::{AvcError, Result};
+
+impl BlanketBitReaderError for AvcError {
+    fn not_enough_data(expected: usize) -> Self {
+        AvcError::NotEnoughData { expected, got: 0 }
+    }
+}
 
 /// AVC-specific bit reader wrapper
 ///
 /// This wraps the core BitReader and provides AVC-specific error mapping.
 pub struct BitReader<'a> {
-    inner: CoreBitReader<'a>,
+    inner: WrappedBitReader<'a, AvcError>,
 }
 
 impl<'a> BitReader<'a> {
     /// Create a new bit reader.
     pub fn new(data: &'a [u8]) -> Self {
         Self {
-            inner: CoreBitReader::new(data),
+            inner: WrappedBitReader::new(data),
         }
     }
 
     /// Get the inner reader
     pub fn inner(&self) -> &CoreBitReader<'a> {
-        &self.inner
+        self.inner.inner()
     }
 
     /// Get mutable access to the inner reader
     pub fn inner_mut(&mut self) -> &mut CoreBitReader<'a> {
-        &mut self.inner
+        self.inner.inner_mut()
     }
 
     /// Check if more data is available.
@@ -57,50 +63,31 @@ impl<'a> BitReader<'a> {
 
     /// Read a single bit.
     pub fn read_bit(&mut self) -> Result<bool> {
-        self.inner.read_bit().map_err(|_| AvcError::NotEnoughData {
-            expected: 1,
-            got: 0,
-        })
+        self.inner.read_bit_blanket()
     }
 
     /// Read n bits as u32.
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
-        self.inner
-            .read_bits(n)
-            .map_err(|_| AvcError::NotEnoughData {
-                expected: n as usize,
-                got: 0,
-            })
+        self.inner.read_bits_blanket(n)
     }
 
     /// Read n bits as u64.
     pub fn read_bits_u64(&mut self, n: u8) -> Result<u64> {
-        self.inner
-            .read_bits_u64(n)
-            .map_err(|_| AvcError::NotEnoughData {
-                expected: n as usize,
-                got: 0,
-            })
+        self.inner.read_bits_u64_blanket(n)
     }
 
     /// Read unsigned Exp-Golomb coded value.
     ///
-    /// This uses the ExpGolombReader trait from bitvue_core.
+    /// This uses the ExpGolombReader trait from bitvue_engine.
     pub fn read_ue(&mut self) -> Result<u32> {
-        ExpGolombReader::read_ue(&mut self.inner).map_err(|_| AvcError::NotEnoughData {
-            expected: 1,
-            got: 0,
-        })
+        self.inner.read_ue_blanket()
     }
 
     /// Read signed Exp-Golomb coded value.
     ///
-    /// This uses the ExpGolombReader trait from bitvue_core.
+    /// This uses the ExpGolombReader trait from bitvue_engine.
     pub fn read_se(&mut self) -> Result<i32> {
-        ExpGolombReader::read_se(&mut self.inner).map_err(|_| AvcError::NotEnoughData {
-            expected: 1,
-            got: 0,
-        })
+        self.inner.read_se_blanket()
     }
 
     /// Read a flag (single bit as bool).
@@ -110,12 +97,7 @@ impl<'a> BitReader<'a> {
 
     /// Skip n bits.
     pub fn skip_bits(&mut self, n: usize) -> Result<()> {
-        self.inner
-            .skip_bits(n as u64)
-            .map_err(|_| AvcError::NotEnoughData {
-                expected: n,
-                got: 0,
-            })
+        self.inner.skip_bits_blanket(n as u64)
     }
 
     /// Align to byte boundary.

@@ -143,6 +143,22 @@ if (typeof ClipboardItem === "undefined") {
   } as unknown as typeof ClipboardItem;
 }
 
+// Mock ImageData for jsdom (no real Canvas API implementation) -- needed by any test exercising
+// frontend/utils/yuv/renderer.ts's yuvToImageData/YUVRenderer (real Electron/Chromium has a
+// real ImageData, this is jsdom-only).
+if (typeof ImageData === "undefined") {
+  global.ImageData = class MockImageData {
+    data: Uint8ClampedArray;
+    width: number;
+    height: number;
+    constructor(width: number, height: number) {
+      this.width = width;
+      this.height = height;
+      this.data = new Uint8ClampedArray(width * height * 4);
+    }
+  } as unknown as typeof ImageData;
+}
+
 // Mock IntersectionObserver for components that use it
 const mockIntersectionObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),

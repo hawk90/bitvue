@@ -32,9 +32,9 @@
 - **Multi-Codec Support** — Parse AV1, VVC/H.266, HEVC/H.265, VP9, AVC/H.264, and experimental AV3
 - **Visual Analysis** — 7 analysis modes (F1-F7) with overlaid visualization on decoded frames
 - **Filmstrip Views** — 5 visualization modes including GOP structure, frame sizes, and HRD buffer
-- **Quality Metrics** — PSNR, SSIM, VMAF calculation with BD-rate analysis for codec comparison
+- **Quality Metrics** — PSNR/SSIM built-in; VMAF behind an opt-in build feature; BD-rate curves in progress (see [Quality Metrics](#quality-metrics))
 - **Syntax Navigation** — Full bitstream syntax tree with hex view and semantic highlighting
-- **Cross-Platform** — Native desktop apps for Windows, macOS, and Linux
+- **Cross-Platform** — Native desktop apps for Windows, macOS, and Linux (Electron + Rust sidecar)
 
 ---
 
@@ -47,28 +47,37 @@
 git clone https://github.com/hawk90/bitvue.git
 cd bitvue
 
-# Install frontend dependencies
-cd frontend && npm install
+# One-time setup: installs Rust + Node dependencies for the frontend and the
+# Electron shell (bitvue-desktop)
+./scripts/setup.sh
 
-# Run in development mode
-npm run tauri:dev
+# Run in development mode: builds the bitvue-sidecar Rust binary, then
+# launches the Electron shell (spawns the sidecar, loads the frontend)
+./scripts/dev.sh
 
-# Build for production
-npm run tauri:build
+# Build a distributable package for your platform
+./scripts/package_electron.sh mac    # or: linux | win
 ```
+
+Bitvue is a **desktop app split across two processes**: a React/TypeScript
+frontend running inside Electron, talking over stdio to `bitvue-sidecar` — a
+Rust binary that owns codec parsing, decoding, and all analysis logic. See
+`docs/DEVELOPMENT_PHASES.md` for the full architecture writeup (migrated off
+Tauri in August 2026).
 
 ### Prerequisites
 
 | Platform | Dependencies |
 |----------|--------------|
+| **All platforms** | [Rust](https://rustup.rs/) (stable), [Node.js](https://nodejs.org/) 18+ |
 | **macOS** | `brew install dav1d` |
-| **Ubuntu/Debian** | `sudo apt install libdav1d-dev libwebkit2gtk-4.1-dev build-essential` |
-| **Fedora** | `sudo dnf install dav1d-devel webkit2gtk4.1-devel` |
-| **Windows** | [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
+| **Ubuntu/Debian** | `sudo apt install libdav1d-dev build-essential` |
+| **Fedora** | `sudo dnf install dav1d-devel` |
+| **Windows** | dav1d via [vcpkg](https://vcpkg.io/) or a prebuilt binary on `PATH` |
 
 ### Basic Usage
 
-1. **Launch Bitvue** — Double-click the application or run `npm run tauri:dev`
+1. **Launch Bitvue** — run `./scripts/dev.sh`, or double-click the packaged app once built
 2. **Open a video** — Click "Open Bitstream" or press `Ctrl/Cmd+O`
 3. **Navigate frames** — Use arrow keys or click on filmstrip thumbnails
 4. **Switch modes** — Press F1-F7 for different analysis views
@@ -78,14 +87,20 @@ npm run tauri:build
 
 ## Supported Codecs
 
-| Codec | Status | Format Support |
-|-------|--------|----------------|
-| **AV1** | ✅ Full | `.ivf`, `.webm`, `.mkv`, `.mp4` |
-| **VVC/H.266** | ✅ Full | `.mkv`, `.mp4`, `.vvc`, `.h266` |
-| **HEVC/H.265** | ✅ Full | `.mkv`, `.mp4`, `.hevc`, `.h265` |
-| **VP9** | ✅ Full | `.ivf`, `.webm`, `.mkv` |
-| **AVC/H.264** | ✅ Full | `.mp4`, `.mkv`, `.avc`, `.h264` |
-| **AV3** | ⚠️ Experimental | `.ivf` |
+Bitstream analysis (stream tree, syntax detail, hex view, QP/MV/partition extraction) works for
+every codec below. Frame-accurate **video preview** (actual pixel decode) currently ships for AV1
+only, via [dav1d](https://code.videolan.org/videolan/dav1d); HEVC/VP9/AVC preview goes through an
+optional ffmpeg backend and VVC through an optional [vvdec](https://github.com/fraunhoferhhi/vvdec)
+backend, both present in the codebase but not yet wired into the running app.
+
+| Codec | Bitstream Analysis | Video Preview | Format Support |
+|-------|---------------------|----------------|----------------|
+| **AV1** | ✅ | ✅ (dav1d) | `.ivf`, `.webm`, `.mkv`, `.mp4` |
+| **VVC/H.266** | ✅ | ❌ not yet wired | `.mkv`, `.mp4`, `.vvc`, `.h266` |
+| **HEVC/H.265** | ✅ | ❌ not yet wired | `.mkv`, `.mp4`, `.hevc`, `.h265` |
+| **VP9** | ✅ | ❌ not yet wired | `.ivf`, `.webm`, `.mkv` |
+| **AVC/H.264** | ✅ | ❌ not yet wired | `.mp4`, `.mkv`, `.avc`, `.h264` |
+| **AV3** | ⚠️ Experimental | ❌ | `.ivf` |
 
 ---
 
@@ -117,62 +132,63 @@ npm run tauri:build
 
 ## Quality Metrics
 
-Bitvue includes comprehensive quality metrics for codec comparison:
-
-- **PSNR** — Peak Signal-to-Noise Ratio (Y, U, V, Average)
-- **SSIM** — Structural Similarity Index (Y, U, V, Average)
-- **VMAF** — Netflix's Video Multimethod Assessment Fusion
-- **BD-Rate** — Bjøntegaard-Delta rate for RD curve comparison
-
-```
-Usage:
-1. Open reference video (original)
-2. Open distorted video (encoded)
-3. Click "Calculate Metrics"
-4. View frame-by-frame and averaged results
-5. Export as CSV/JSON for further analysis
-```
+| Metric | Status |
+|--------|--------|
+| **PSNR** — Peak Signal-to-Noise Ratio (Y, U, V, Average) | ✅ Built in |
+| **SSIM** — Structural Similarity Index (Y, U, V, Average) | ✅ Built in |
+| **VMAF** — Netflix's Video Multimethod Assessment Fusion | ⚠️ Implemented behind the optional `vmaf` Cargo feature (requires libvmaf installed on the system); not enabled in default builds |
+| **BD-Rate** — Bjøntegaard-Delta rate for RD-curve comparison | ❌ Not yet implemented (an RD-curve panel exists in the codebase, but the calculation itself isn't wired up) |
 
 ---
 
 ## Architecture
 
+Bitvue runs as **two processes**: an Electron shell hosting the React frontend, and
+`bitvue-sidecar` — a standalone Rust binary owning all codec/decode/analysis logic — talking over a
+stdio wire protocol (`bitvue-protocol`). This replaced a Tauri-based single-process architecture in
+August 2026; see `docs/DEVELOPMENT_PHASES.md` for the full rationale and wire-protocol spec.
+
 ```
 bitvue/
 ├── crates/
 │   ├── bitvue/               # Main library facade (re-exports all)
+│   ├── bitvue-engine/        # Core types, SelectionState, Command/Event bus, caches
+│   ├── bitvue-protocol/      # Electron<->sidecar wire protocol (control/data plane framing)
+│   ├── bitvue-sidecar/       # Standalone process hosting the engine, speaks bitvue-protocol
+│   ├── bitvue-formats/       # Container parsers (IVF, MP4, MKV, TS)
 │   ├── bitvue-codecs/        # Unified codec interface
-│   ├── bitvue-core/         # Core types, state, caching
-│   ├── bitvue-formats/      # Container parsers (IVF, MP4, MKV, TS)
-│   ├── bitvue-decode/       # Decoder bindings (dav1d for AV1)
-│   ├── bitvue-metrics/      # Quality metrics (PSNR, SSIM, VMAF)
-│   ├── bitvue-cli/          # CLI tool
-│   ├── bitvue-codecs-parser/ # Codec integration layer
-│   ├── bitvue-mcp/          # Model Context Protocol server
-│   ├── bitvue-benchmarks/   # Performance benchmarks
-│   │   # Codec parsers
-│   ├── bitvue-av1-codec/    # AV1 OBU parser
-│   ├── bitvue-avc/          # AVC/H.264 parser
-│   ├── bitvue-hevc/         # HEVC/H.265 parser
-│   ├── bitvue-vp9/          # VP9 parser
-│   ├── bitvue-vvc/          # VVC/H.266 parser
-│   ├── bitvue-av3-codec/    # AV3 parser
-│   ├── bitvue-mpeg2-codec/  # MPEG-2 parser
-│   └── vendor/              # Third-party dependencies
-│       └── abseil/          # Abseil logging library (private fork)
-├── frontend/                # React application
-│   ├── src/                 # Application source
-│   ├── tests/               # Consolidated test files
-│   ├── public/              # Static assets
+│   ├── bitvue-codecs-parser/ # Codec parsers integration layer
+│   ├── bitvue-decode/        # Pixel decoders (dav1d for AV1; ffmpeg/vvdec backends unwired)
+│   ├── bitvue-metrics/       # Quality metrics (PSNR, SSIM; VMAF behind opt-in feature)
+│   ├── bitvue-indexer/       # Metadata-indexing pipeline (container/units)
+│   ├── bitvue-cli/           # CLI tool
+│   ├── bitvue-mcp/           # Model Context Protocol server
+│   ├── bitvue-benchmarks/    # Criterion-based performance benchmarks
+│   │   # Codec parsers (pure Rust, bitstream syntax only)
+│   ├── bitvue-av1-codec/     # AV1 OBU parser
+│   ├── bitvue-avc/           # AVC/H.264 parser
+│   ├── bitvue-hevc/          # HEVC/H.265 parser
+│   ├── bitvue-vp9/           # VP9 parser
+│   ├── bitvue-vvc/           # VVC/H.266 parser
+│   ├── bitvue-av3-codec/     # AV3 parser
+│   ├── bitvue-mpeg2-codec/   # MPEG-2 Video parser
+│   ├── bitvue-avs3/          # AVS3/IEEE 1857.10 parser
+│   ├── bitvue-jpegxs/        # JPEG XS (ISO 21122) parser
+│   ├── bitvue-vc3/           # VC-3/DNxHD parser
+│   └── vendor/               # Third-party dependencies
+│       └── abseil/           # Abseil logging library (private fork)
+├── frontend/                 # React application (Electron renderer)
+│   ├── components/, hooks/, contexts/, services/, utils/
+│   ├── tests/                # Consolidated test files
 │   └── index.html
-├── src-tauri/               # Tauri backend (Rust)
-│   ├── src/commands/        # Tauri IPC commands
-│   └── src/services/        # Backend services
-├── scripts/                 # Development scripts
-│   ├── setup.sh
-│   ├── dev.sh
-│   └── clean.sh
-└── config/                  # Tool configurations
+├── bitvue-desktop/           # Electron shell
+│   ├── electron/             # Main process (window, native menu, sidecar lifecycle, IPC)
+│   └── src/                  # Sidecar client, protocol codec
+├── scripts/                  # Development scripts
+│   ├── setup.sh, dev.sh, clean.sh
+│   ├── parity_check.sh, run_regression_suite.sh
+│   └── package_electron.sh   # Builds + packages the Electron app
+└── config/                   # Tool configurations
     ├── clippy.toml
     ├── deny.toml
     └── codecov.yml
@@ -189,8 +205,8 @@ bitvue/
 
 ### Backend
 - **Rust 1.70+** - Systems programming
-- **Tauri 2.0** - Desktop framework
-- **dav1d 1.4.0** - AV1 decoder
+- **Electron** - Desktop shell (frontend host + native menu/window)
+- **dav1d** - AV1 decoder (via system package, e.g. Homebrew/apt)
 
 ### Infrastructure
 - **GitHub Actions** - CI/CD
@@ -308,8 +324,8 @@ Get the latest release for your platform:
 | **VP9 Support** | ✅ | ❌ | ❌ |
 | **Open Source** | ✅ AGPL-3.0 | ❌ Proprietary | ✅ GPL-3.0 |
 | **Cross-Platform** | ✅ Win/Mac/Linux | ✅ Win/Mac/Linux | ❌ Windows only |
-| **Quality Metrics** | ✅ PSNR/SSIM/VMAF | ✅ | ✅ PSNR/SSIM |
-| **Modern UI** | ✅ React/Tauri | ⚠️ Qt | ⚠️ Qt |
+| **Quality Metrics** | ✅ PSNR/SSIM, ⚠️ VMAF opt-in | ✅ | ✅ PSNR/SSIM |
+| **Modern UI** | ✅ React/Electron | ⚠️ Qt | ⚠️ Qt |
 | **Active Development** | ✅ | ✅ | ⚠️ Limited |
 
 ---
@@ -354,4 +370,3 @@ This project is licensed under **GNU Affero General Public License v3.0** — se
   [![Back to Top](https://img.shields.io/badge/⬆%20Back%20to%20Top-lightgrey?style=flat-square)](#readme-top)
 
 </div>
-# Test hook

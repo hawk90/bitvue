@@ -39,7 +39,7 @@ pub use sequence::parse_sequence_header_syntax;
 pub use tracked_bitreader::TrackedBitReader;
 
 use crate::obu::{ObuIterator, ObuWithOffset};
-use bitvue_core::{
+use bitvue_engine::{
     types::{BitRange, SyntaxModel, SyntaxNode, SyntaxNodeId},
     Result,
 };
@@ -311,24 +311,21 @@ mod tests {
         // 2. Sequence Header (OBU type 1)
         // 3. Frame Header (OBU type 3)
 
-        let mut bitstream = Vec::new();
-
         // OBU 1: Temporal Delimiter
         // Header: 0x12 (type=2, has_size=1)
         // Size: 0 (leb128)
-        bitstream.push(0x12);
-        bitstream.push(0x00);
-
+        //
         // OBU 2: Sequence Header
         // Header: 0x0A (type=1, has_size=1)
         // Size: 10 (leb128)
         // Payload: minimal sequence header (10 bytes)
-        bitstream.push(0x0A);
-        bitstream.push(0x0A); // size = 10
-                              // Profile=0, still=0, reduced=1, level=4
-        bitstream.push(0b00001001); // profile=0, still=0, reduced=1, level[4:2]=001
-        bitstream.push(0b00000000); // level[1:0]=00 + padding
-                                    // Add 8 more bytes for remaining fields
+        // Profile=0, still=0, reduced=1, level=4
+        let mut bitstream = vec![
+            0x12, 0x00, 0x0A, 0x0A,       // size = 10
+            0b00001001, // profile=0, still=0, reduced=1, level[4:2]=001
+            0b00000000, // level[1:0]=00 + padding
+        ];
+        // Add 8 more bytes for remaining fields
         bitstream.extend_from_slice(&[0u8; 8]);
 
         // OBU 3: Frame Header
@@ -433,6 +430,6 @@ mod tests {
 
         // Verify parent-child relationships
         assert_eq!(header.parent, Some("obu[0]".to_string()));
-        assert!(header.children.len() > 0, "Header should have children");
+        assert!(!header.children.is_empty(), "Header should have children");
     }
 }

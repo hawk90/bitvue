@@ -1,5 +1,15 @@
 /**
  * Compare Context - Manages A/B compare workspace state
+ *
+ * Wired to the real `bitvue-sidecar` compare commands (docs/DEVELOPMENT_PHASES.md Phase 7.5) as
+ * of this pass -- previously this called `@tauri-apps/api/core`'s `invoke()` with method names
+ * (`create_compare_workspace`/`set_sync_mode`/etc.) that never existed anywhere post-Electron-
+ * migration, so this context was 100% dead plumbing. `createWorkspace` no longer takes stream
+ * paths: the real backend always operates on whichever streams are currently open as A/B (see
+ * `bitvue-sidecar/src/compare.rs`'s doc) -- opening stream B (and indexing both streams) is the
+ * caller's job before calling this, same as it already is for stream A via the normal
+ * open-file flow (`FileStateContext.tsx`). See `hooks/useAppFileOperations.ts`'s
+ * `handleOpenDependentFile` for the real caller.
  */
 
 import {
@@ -10,35 +20,60 @@ import {
   ReactNode,
   useMemo,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import {
+  createCompareWorkspace,
+  getAlignedFrame as bridgeGetAlignedFrame,
+  setSyncMode as bridgeSetSyncMode,
+  setManualOffset as bridgeSetManualOffset,
+  resetOffset as bridgeResetOffset,
+  findFirstDiffFrameAb,
+  getFramesChunk,
+  type CompareWorkspaceSummary,
+} from "../services/electronBridgeService";
+import { unitNodeToFrameInfo } from "./FileStateContext";
+import type { SyncMode, AlignmentQuality, FrameInfo } from "../types/video";
 
-/**
- * Extract a string message from an unknown caught value
- */
+const FRAMES_B_CHUNK_SIZE = 200;
+
+/** Fetches all of stream B's frame metadata in one go (no chunked-progressive-loading UX --
+ *  `FileStateContext.tsx`'s doc for why stream B doesn't need that here). Stream B must already
+ *  be open + indexed (`handleOpenDependentFile`'s job) by the time this runs. */
+async function loadAllFramesB(): Promise<FrameInfo[]> {
+  const first = await getFramesChunk("B", 0, FRAMES_B_CHUNK_SIZE);
+  let allFrames = first.units.map(unitNodeToFrameInfo);
+  let offset = allFrames.length;
+  while (offset < first.total_count) {
+    const next = await getFramesChunk("B", offset, FRAMES_B_CHUNK_SIZE);
+    if (next.units.length === 0) break;
+    const nextFrames = next.units.map(unitNodeToFrameInfo);
+    allFrames = [...allFrames, ...nextFrames];
+    offset += nextFrames.length;
+  }
+  return allFrames;
+}
+
 const toMessage = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
-import type {
-  CompareWorkspace,
-  SyncMode,
-  AlignmentQuality,
-} from "../types/video";
 
 interface CompareContextType {
   // Compare workspace state
-  workspace: CompareWorkspace | null;
+  workspace: CompareWorkspaceSummary | null;
   isLoading: boolean;
   error: string | null;
 
-  // Stream paths
-  pathA: string | null;
-  pathB: string | null;
+  // CMP-04: true while findFirstDiffFrame's frame-by-frame scan is in flight (can take real
+  // time on a long stream -- separate from `isLoading`, which is workspace-creation-scoped).
+  isScanningDiff: boolean;
+
+  // Stream B's frame metadata (stream A's already lives in FileStateContext/FrameDataContext)
+  framesB: FrameInfo[];
 
   // Current frames for each stream
   currentFrameA: number;
   currentFrameB: number;
 
   // Actions
-  createWorkspace: (pathA: string, pathB: string) => Promise<void>;
+  createWorkspace: () => Promise<void>;
   closeWorkspace: () => void;
   setFrameA: (index: number) => void;
   setFrameB: (index: number) => void;
@@ -47,34 +82,38 @@ interface CompareContextType {
   resetOffset: () => Promise<void>;
   getAlignedFrame: (
     streamAIdx: number,
-  ) => Promise<{ bIdx: number | null; quality: AlignmentQuality }>;
+  ) => Promise<{ bIdx: number | null; quality: AlignmentQuality | null }>;
+  /** PARITY_CHECKLIST.md CMP-04. Returns the first stream A frame index with a real pixel
+   *  difference against its aligned B frame, or `null` if none was found. */
+  findFirstDiffFrame: () => Promise<{
+    frameIndex: number | null;
+    totalChecked: number;
+  }>;
 }
 
 const CompareContext = createContext<CompareContextType | null>(null);
 
 export function CompareProvider({ children }: { children: ReactNode }) {
-  const [workspace, setWorkspace] = useState<CompareWorkspace | null>(null);
+  const [workspace, setWorkspace] = useState<CompareWorkspaceSummary | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const [isScanningDiff, setIsScanningDiff] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pathA, setPathA] = useState<string | null>(null);
-  const [pathB, setPathB] = useState<string | null>(null);
+  const [framesB, setFramesB] = useState<FrameInfo[]>([]);
   const [currentFrameA, setCurrentFrameA] = useState(0);
   const [currentFrameB, setCurrentFrameB] = useState(0);
 
-  const createWorkspace = useCallback(async (pA: string, pB: string) => {
+  const createWorkspace = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await invoke<CompareWorkspace>(
-        "create_compare_workspace",
-        {
-          pathA: pA,
-          pathB: pB,
-        },
-      );
+      const [result, loadedFramesB] = await Promise.all([
+        createCompareWorkspace(),
+        loadAllFramesB(),
+      ]);
       setWorkspace(result);
-      setPathA(pA);
-      setPathB(pB);
+      setFramesB(loadedFramesB);
       setCurrentFrameA(0);
       setCurrentFrameB(0);
     } catch (err) {
@@ -87,8 +126,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
 
   const closeWorkspace = useCallback(() => {
     setWorkspace(null);
-    setPathA(null);
-    setPathB(null);
+    setFramesB([]);
     setCurrentFrameA(0);
     setCurrentFrameB(0);
     setError(null);
@@ -105,7 +143,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
   const setSyncMode = useCallback(
     async (mode: SyncMode) => {
       try {
-        await invoke("set_sync_mode", { mode });
+        await bridgeSetSyncMode(mode);
         if (workspace) {
           setWorkspace({ ...workspace, sync_mode: mode });
         }
@@ -120,7 +158,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
   const setManualOffset = useCallback(
     async (offset: number) => {
       try {
-        await invoke("set_manual_offset", { offset });
+        await bridgeSetManualOffset(offset);
         if (workspace) {
           setWorkspace({ ...workspace, manual_offset: offset });
         }
@@ -134,7 +172,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
 
   const resetOffset = useCallback(async () => {
     try {
-      await invoke("reset_offset");
+      await bridgeResetOffset();
       if (workspace) {
         setWorkspace({ ...workspace, manual_offset: 0 });
       }
@@ -146,17 +184,33 @@ export function CompareProvider({ children }: { children: ReactNode }) {
 
   const getAlignedFrame = useCallback(async (streamAIdx: number) => {
     try {
-      const result = await invoke<[number, string]>("get_aligned_frame", {
-        streamAIdx,
-      });
+      const result = await bridgeGetAlignedFrame(streamAIdx);
       return {
-        bIdx: result[0],
-        quality: result[1] as AlignmentQuality,
+        bIdx: result.stream_b_frame_idx,
+        quality: result.quality,
       };
     } catch (err) {
       setError(toMessage(err));
       console.error("Failed to get aligned frame:", err);
-      return { bIdx: null, quality: AlignmentQuality.Gap };
+      return { bIdx: null, quality: null };
+    }
+  }, []);
+
+  const findFirstDiffFrame = useCallback(async () => {
+    setIsScanningDiff(true);
+    setError(null);
+    try {
+      const result = await findFirstDiffFrameAb();
+      return {
+        frameIndex: result.frame_index,
+        totalChecked: result.total_checked,
+      };
+    } catch (err) {
+      setError(toMessage(err));
+      console.error("Failed to find first diff frame:", err);
+      return { frameIndex: null, totalChecked: 0 };
+    } finally {
+      setIsScanningDiff(false);
     }
   }, []);
 
@@ -165,9 +219,9 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     () => ({
       workspace,
       isLoading,
+      isScanningDiff,
       error,
-      pathA,
-      pathB,
+      framesB,
       currentFrameA,
       currentFrameB,
       createWorkspace,
@@ -178,13 +232,14 @@ export function CompareProvider({ children }: { children: ReactNode }) {
       setManualOffset,
       resetOffset,
       getAlignedFrame,
+      findFirstDiffFrame,
     }),
     [
       workspace,
       isLoading,
+      isScanningDiff,
       error,
-      pathA,
-      pathB,
+      framesB,
       currentFrameA,
       currentFrameB,
       createWorkspace,
@@ -195,6 +250,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
       setManualOffset,
       resetOffset,
       getAlignedFrame,
+      findFirstDiffFrame,
     ],
   );
 

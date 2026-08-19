@@ -4,7 +4,7 @@
 
 use crate::decoder::DecodedFrame;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -175,8 +175,12 @@ fn validate_path(path: &Path, must_exist: bool) -> Result<PathBuf> {
 pub struct YuvLoader {
     params: YuvFileParams,
     file: BufReader<File>,
+    /// Validated, canonical path — used to reopen the file when seeking backward
+    path: PathBuf,
     is_y4m: bool,
     current_frame: usize,
+    /// Byte offset of the first frame's data (after Y4M global header, or 0 for raw YUV)
+    first_frame_offset: u64,
 }
 
 impl YuvLoader {
@@ -208,11 +212,17 @@ impl YuvLoader {
             params.ok_or(YuvLoaderError::InvalidFormat)?
         };
 
+        // Record the byte position after any global header so seek_to_frame can rewind
+        // to the first frame without needing to re-parse the header.
+        let first_frame_offset = reader.stream_position().unwrap_or(0);
+
         Ok(Self {
             params,
             file: reader,
+            path: validated_path,
             is_y4m,
             current_frame: 0,
+            first_frame_offset,
         })
     }
 
@@ -384,18 +394,50 @@ impl YuvLoader {
         self.current_frame
     }
 
-    /// Seek to a specific frame (by skipping)
+    /// Seek to a specific frame
+    ///
+    /// For raw YUV files the seek is O(1): all frames are the same size so the target
+    /// byte offset is computed directly and `Seek` is used on the underlying file.
+    ///
+    /// For Y4M files, frame headers have variable length, so seeking backward requires
+    /// reopening the file from the beginning and reading forward to the target frame.
+    /// Seeking forward within a Y4M file still reads and discards frames one by one.
     pub fn seek_to_frame(&mut self, frame_index: usize) -> Result<()> {
-        // Simple implementation: restart and skip frames
-        // For a production implementation, you'd want to use File::seek()
-        if frame_index < self.current_frame {
-            // Need to restart
-            return Err(YuvLoaderError::InvalidFormat); // TODO: implement seek backward
+        if frame_index == self.current_frame {
+            return Ok(());
         }
 
-        while self.current_frame < frame_index {
-            if self.read_frame()?.is_none() {
-                return Err(YuvLoaderError::InvalidFormat); // EOF before target frame
+        if frame_index < self.current_frame {
+            // Seek backward: we must restart from the beginning.
+            if self.is_y4m {
+                // Y4M has variable-length frame headers — reopen the file and skip the
+                // global header, then read forward to the target frame below.
+                let file = File::open(&self.path)?;
+                let mut reader = BufReader::new(file);
+                // Re-parse and discard the global Y4M header to position after it.
+                Self::parse_y4m_header(&mut reader)?;
+                self.file = reader;
+            } else {
+                // Raw YUV: seek directly to frame 0 (start of data).
+                self.file.seek(SeekFrom::Start(self.first_frame_offset))?;
+            }
+            self.current_frame = 0;
+        }
+
+        // At this point current_frame <= frame_index.
+        if !self.is_y4m && frame_index > self.current_frame {
+            // Raw YUV: O(1) seek — all frames are identical in size.
+            let frame_size = self.params.frame_size_bytes() as u64;
+            let target_offset = self.first_frame_offset + (frame_index as u64) * frame_size;
+            self.file.seek(SeekFrom::Start(target_offset))?;
+            self.current_frame = frame_index;
+        } else {
+            // Y4M (or raw YUV when already positioned at the right starting point):
+            // read and discard frames until we reach the target.
+            while self.current_frame < frame_index {
+                if self.read_frame()?.is_none() {
+                    return Err(YuvLoaderError::InvalidFormat); // EOF before target frame
+                }
             }
         }
 

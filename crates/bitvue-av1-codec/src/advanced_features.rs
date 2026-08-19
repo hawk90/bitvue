@@ -6,9 +6,8 @@
 //! - Film Grain synthesis
 //! - Super Resolution
 
+use crate::frame_header::{FrameHeader, LoopRestorationType as FrameLoopRestorationType};
 use serde::{Deserialize, Serialize};
-use crate::frame_header::FrameHeader;
-use crate::tile::Superblock;
 
 /// CDEF (Constrained Directional Enhancement Filter) data for a frame
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,13 +64,24 @@ pub struct LoopRestorationData {
     pub units: Vec<RestorationUnit>,
 }
 
-/// Loop restoration type
+/// Loop restoration type (re-exported from frame_header for serialization)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoopRestorationType {
     None = 0,
     Wiener = 1,
     SgrProj = 2,
     Dual = 3,
+}
+
+impl From<FrameLoopRestorationType> for LoopRestorationType {
+    fn from(t: FrameLoopRestorationType) -> Self {
+        match t {
+            FrameLoopRestorationType::None => Self::None,
+            FrameLoopRestorationType::Wiener => Self::Wiener,
+            FrameLoopRestorationType::SgrProj => Self::SgrProj,
+            FrameLoopRestorationType::Dual => Self::Dual,
+        }
+    }
 }
 
 /// Restoration unit data
@@ -139,30 +149,29 @@ pub fn extract_cdef_data(frame_header: &FrameHeader) -> Option<CdefData> {
 
     let width = frame_header.width;
     let height = frame_header.height;
-    let block_size = 8;
-    let grid_w = (width + block_size - 1) / block_size;
-    let grid_h = (height + block_size - 1) / block_size;
+    let block_size = 8u32;
+    let grid_w = width.div_ceil(block_size);
+    let grid_h = height.div_ceil(block_size);
 
-    let mut block_strengths = Vec::new();
-
-    // Generate mock CDEF block data
-    for y in 0..grid_h {
-        for x in 0..grid_w {
-            block_strengths.push(CdefBlock {
+    // Use frame-level strengths for all blocks (per-CTU direction requires tile decoding)
+    let strength = frame_header.cdef_y_primary_strength;
+    let block_strengths = (0..grid_h)
+        .flat_map(|y| {
+            (0..grid_w).map(move |x| CdefBlock {
                 x: x * block_size,
                 y: y * block_size,
                 size: block_size,
-                direction: (rand::random::<u8>() % 8),
-                strength: (rand::random::<u8>() % 16),
-            });
-        }
-    }
+                direction: 0, // direction is per-CTU; not available without tile decoding
+                strength,
+            })
+        })
+        .collect();
 
     Some(CdefData {
         width,
         height,
         block_strengths,
-        damping: frame_header.cdef_damping.value,
+        damping: frame_header.cdef_damping.damping,
         cdef_bits: 3,
         y_primary_strength: frame_header.cdef_y_primary_strength,
         y_secondary_strength: frame_header.cdef_y_secondary_strength,
@@ -181,46 +190,29 @@ pub fn extract_loop_restoration_data(frame_header: &FrameHeader) -> Option<LoopR
     let height = frame_header.height;
     let unit_size = frame_header.loop_restoration.unit_size;
 
-    let grid_w = (width + unit_size - 1) / unit_size;
-    let grid_h = (height + unit_size - 1) / unit_size;
+    let grid_w = width.div_ceil(unit_size);
+    let grid_h = height.div_ceil(unit_size);
 
-    let mut units = Vec::new();
-
-    // Generate mock restoration units
-    for y in 0..grid_h {
-        for x in 0..grid_w {
-            let restoration_type = match rand::random::<u8>() % 3 {
-                0 => LoopRestorationType::Wiener,
-                1 => LoopRestorationType::SgrProj,
-                _ => LoopRestorationType::None,
-            };
-
-            let filter_data = if restoration_type != LoopRestorationType::None {
-                Some(vec![
-                    (rand::random::<i16>() % 8) - 4,
-                    (rand::random::<i16>() % 8) - 4,
-                    (rand::random::<i16>() % 8) - 4,
-                ])
-            } else {
-                None
-            };
-
-            units.push(RestorationUnit {
+    // Use frame-level restoration type for all units (per-unit type requires tile decoding)
+    let y_type: LoopRestorationType = frame_header.loop_restoration.y_type.into();
+    let units: Vec<RestorationUnit> = (0..grid_h)
+        .flat_map(|y| {
+            (0..grid_w).map(move |x| RestorationUnit {
                 x: x * unit_size,
                 y: y * unit_size,
                 size: unit_size,
-                restoration_type,
-                filter_data,
-            });
-        }
-    }
+                restoration_type: y_type,
+                filter_data: None, // filter coefficients require tile decoding
+            })
+        })
+        .collect();
 
     Some(LoopRestorationData {
         width,
         height,
-        y_restoration_type: frame_header.loop_restoration.y_type,
-        u_restoration_type: frame_header.loop_restoration.u_type,
-        v_restoration_type: frame_header.loop_restoration.v_type,
+        y_restoration_type: frame_header.loop_restoration.y_type.into(),
+        u_restoration_type: frame_header.loop_restoration.u_type.into(),
+        v_restoration_type: frame_header.loop_restoration.v_type.into(),
         unit_size,
         units,
     })

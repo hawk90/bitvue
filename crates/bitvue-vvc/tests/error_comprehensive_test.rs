@@ -13,7 +13,7 @@
 //!
 //! Tests VvcError enum variants and From<CodecError> implementation
 
-use bitvue_core::codec_error::{Codec, CodecError};
+use bitvue_engine::codec_error::{Codec, CodecError};
 use bitvue_vvc::error::{Result, VvcError};
 use std::io;
 
@@ -180,7 +180,14 @@ fn test_error_std_error_trait() {
 
 #[test]
 fn test_result_ok_variant() {
-    let result: Result<u32> = Ok(42);
+    // Route the literal through a function boundary so this genuinely
+    // exercises Result::is_ok()/unwrap() on the crate's `Result` type
+    // alias, rather than tripping clippy::unnecessary_literal_unwrap on a
+    // compile-time-visible `Ok(42)`.
+    fn make_result(v: u32) -> Result<u32> {
+        Ok(v)
+    }
+    let result = make_result(42);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 42);
 }
@@ -404,7 +411,7 @@ fn test_error_large_offset() {
 
 #[test]
 fn test_all_error_variants_are_distinct() {
-    let errors = vec![
+    let errors = [
         VvcError::UnexpectedEof(0),
         VvcError::InvalidData("a".to_string()),
         VvcError::InsufficientData {

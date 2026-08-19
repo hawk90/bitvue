@@ -17,7 +17,7 @@ name = "overlay_extraction"
 harness = false
 
 [dependencies]
-bitvue-core = { workspace = true }
+bitvue-engine = { workspace = true }
 bitvue-formats = { workspace = true }
 abseil = { workspace = true }
 serde = { workspace = true }

@@ -47,9 +47,11 @@
 }
 
 .filmstrip-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
+  /* position/top/right are set inline (FilmstripDropdown.tsx) -- the menu is portalled to
+     document.body and positioned at a fixed viewport coordinate computed from the trigger
+     button's real position, so it isn't clipped by the filmstrip panel's own overflow:hidden
+     ancestors (TimelineFilmstrip.css's `.timeline-filmstrip`, DockableLayout.css's
+     `.dockable-layout`) the way `position: absolute` nested inside them was. */
   min-width: 160px;
   background: rgb(30 30 35 / 98%);
   backdrop-filter: blur(16px);

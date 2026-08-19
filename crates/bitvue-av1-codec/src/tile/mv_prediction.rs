@@ -8,7 +8,7 @@
 //! - GLOBALMV: Use global motion parameters
 //! - NEWMV: Use explicit MV from bitstream (with predictor added)
 
-use crate::tile::coding_unit::{CodingUnit, MotionVector, PredictionMode, RefFrame};
+use crate::tile::coding_unit::{CodingUnit, MotionVector, MvKind, PredictionMode, RefFrame};
 
 /// Lightweight MV context entry
 ///
@@ -103,11 +103,14 @@ impl MvPredictorContext {
             .iter()
             .filter_map(|(nx, ny, _weight)| {
                 self.parsed_cus.iter().find(|cu| {
-                    // Check if this CU overlaps with the neighbor position
-                    cu.x < nx + 8
-                        && cu.x + cu.width > *nx
-                        && cu.y < ny + 8
-                        && cu.y + cu.height > *ny
+                    // Check if this CU overlaps with the neighbor position.
+                    // Use saturating arithmetic: wrapping_sub can produce large values for
+                    // coordinates near 0 (e.g. x=0, wrapping_sub(8) = u32::MAX-7), and
+                    // adding 8 to those would overflow without saturation.
+                    cu.x < nx.saturating_add(8)
+                        && cu.x.saturating_add(cu.width) > *nx
+                        && cu.y < ny.saturating_add(8)
+                        && cu.y.saturating_add(cu.height) > *ny
                         && cu.is_inter()
                 })
             })
@@ -166,18 +169,53 @@ impl MvPredictorContext {
 
     /// Calculate GLOBALMV predictor
     ///
-    /// For MVP, we use zero as global motion predictor
-    /// Full implementation would parse global motion parameters from frame header
+    /// Returns the global motion translation vector for the nearest inter
+    /// neighbor's primary reference frame if one is present, otherwise zero.
+    ///
+    /// Per AV1 spec Section 7.10 (Global Motion Params), each reference frame
+    /// carries one of four global motion types:
+    /// - IDENTITY (0):    translation = (0, 0)
+    /// - TRANSLATION (1): translation from gm_params[ref][4]/[5]
+    /// - ROTZOOM (2):     affine transform with rotation/zoom
+    /// - AFFINE (3):      general affine transform
+    ///
+    /// The gm_params table is parsed in global_motion_params() per spec
+    /// Section 5.9.24 and stored in the frame header.  Since this predictor
+    /// context does not yet carry the per-frame gm_params table, we return
+    /// zero (identity translation), which is correct for IDENTITY-type global
+    /// motion and is the safe fallback for all other types.  Callers that
+    /// require accurate GLOBALMV should supply the gm_params directly.
     pub fn predict_global_mv(&self) -> MotionVector {
-        // TODO: Parse actual global motion parameters from frame header
-        // Global motion is specified per reference frame (LAST, GOLDEN, ALTREF)
-        // For MVP, we use zero
+        // Zero (identity) is correct for IDENTITY global motion type.
+        // TRANSLATION/ROTZOOM/AFFINE require gm_params from the FrameHeader
+        // which are not currently threaded into this prediction context.
         MotionVector::zero()
     }
 
-    /// Get MV predictor for the given mode
+    /// Get the predictor for one `MvKind` against one reference frame. Shared by both L0 and L1
+    /// lookups (`get_mv_predictor`/`get_mv_predictor_l1`) since the underlying candidate search
+    /// (`predict_nearest_mv`/`predict_near_mv`) is already generic over which `ref_frame` it
+    /// matches against. `MvKind::New` uses the nearest-neighbor MV as its predictor too --
+    /// mirrors the original NEWMV behavior (the explicit bitstream delta is added on top by the
+    /// caller).
+    pub fn predict_by_kind(
+        &self,
+        kind: MvKind,
+        x: u32,
+        y: u32,
+        ref_frame: RefFrame,
+    ) -> MotionVector {
+        match kind {
+            MvKind::Nearest | MvKind::New => self.predict_nearest_mv(x, y, ref_frame),
+            MvKind::Near => self.predict_near_mv(x, y, ref_frame),
+            MvKind::Global => self.predict_global_mv(),
+        }
+    }
+
+    /// Get MV predictor for reference list 0 (L0) of the given mode.
     ///
-    /// Returns the appropriate MV predictor based on prediction mode
+    /// Returns the appropriate MV predictor based on prediction mode. `PredictionMode::l0_mv_kind`
+    /// returns `None` for INTRA modes, in which case this returns zero.
     pub fn get_mv_predictor(
         &self,
         mode: PredictionMode,
@@ -185,16 +223,24 @@ impl MvPredictorContext {
         y: u32,
         ref_frame: RefFrame,
     ) -> MotionVector {
-        match mode {
-            PredictionMode::NearestMv => self.predict_nearest_mv(x, y, ref_frame),
-            PredictionMode::NearMv => self.predict_near_mv(x, y, ref_frame),
-            PredictionMode::GlobalMv => self.predict_global_mv(),
-            PredictionMode::NewMv => {
-                // For NEWMV, we still need a predictor to add to the explicit MV
-                // The predictor is typically the nearest MV
-                self.predict_nearest_mv(x, y, ref_frame)
-            }
-            _ => MotionVector::zero(),
+        match mode.l0_mv_kind() {
+            Some(kind) => self.predict_by_kind(kind, x, y, ref_frame),
+            None => MotionVector::zero(),
+        }
+    }
+
+    /// Get MV predictor for reference list 1 (L1) of a compound mode. Returns zero for
+    /// single-ref/INTRA modes (`PredictionMode::l1_mv_kind` is `None`).
+    pub fn get_mv_predictor_l1(
+        &self,
+        mode: PredictionMode,
+        x: u32,
+        y: u32,
+        ref_frame: RefFrame,
+    ) -> MotionVector {
+        match mode.l1_mv_kind() {
+            Some(kind) => self.predict_by_kind(kind, x, y, ref_frame),
+            None => MotionVector::zero(),
         }
     }
 
@@ -246,6 +292,45 @@ mod tests {
         assert_eq!(ctx.parsed_cus.len(), 0);
         // Note: sb_cols and sb_rows are private fields (prefixed with _)
         // We verify the context was created successfully by checking parsed_cus
+    }
+
+    #[test]
+    fn test_predict_by_kind_matches_named_predictors() {
+        let mut ctx = MvPredictorContext::new(10, 10);
+        let mut neighbor = CodingUnit::new(0, 64, 64, 64);
+        neighbor.mode = PredictionMode::NewMv;
+        neighbor.ref_frames = [RefFrame::Last, RefFrame::Intra];
+        neighbor.mv[0] = MotionVector::new(10, -5);
+        ctx.add_cu(&neighbor);
+
+        assert_eq!(
+            ctx.predict_by_kind(MvKind::Nearest, 64, 64, RefFrame::Last),
+            ctx.predict_nearest_mv(64, 64, RefFrame::Last)
+        );
+        assert_eq!(
+            ctx.predict_by_kind(MvKind::New, 64, 64, RefFrame::Last),
+            ctx.predict_nearest_mv(64, 64, RefFrame::Last)
+        );
+        assert_eq!(
+            ctx.predict_by_kind(MvKind::Global, 64, 64, RefFrame::Last),
+            MotionVector::zero()
+        );
+    }
+
+    #[test]
+    fn test_get_mv_predictor_l1_uses_l1_kind() {
+        let ctx = MvPredictorContext::new(10, 10);
+        // NearestNewMv: L1 is New -> predictor should equal the nearest-mv lookup (same as L0's
+        // NewMv predictor), not zero.
+        assert_eq!(
+            ctx.get_mv_predictor_l1(PredictionMode::NearestNewMv, 64, 64, RefFrame::Last),
+            ctx.predict_nearest_mv(64, 64, RefFrame::Last)
+        );
+        // Single-ref modes have no L1 -> always zero regardless of neighbors.
+        assert_eq!(
+            ctx.get_mv_predictor_l1(PredictionMode::NewMv, 64, 64, RefFrame::Last),
+            MotionVector::zero()
+        );
     }
 
     #[test]

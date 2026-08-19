@@ -6,8 +6,8 @@ use crate::bitreader::BitReader;
 use crate::error::{HevcError, Result};
 use serde::{Deserialize, Serialize};
 
-// Re-export ChromaFormat from bitvue_core for backward compatibility
-pub use bitvue_core::ChromaFormat;
+// Re-export ChromaFormat from bitvue_engine for backward compatibility
+pub use bitvue_engine::ChromaFormat;
 
 /// HEVC Profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

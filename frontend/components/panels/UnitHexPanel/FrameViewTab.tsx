@@ -5,6 +5,7 @@
  */
 
 import { memo } from "react";
+import { FrameTypeBadge } from "../../common/FrameTypeBadge";
 
 interface FrameViewTabProps {
   frame: {
@@ -45,11 +46,7 @@ export const FrameViewTab = memo(function FrameViewTab({
         </div>
         <div className="frame-info-row">
           <span className="frame-info-label">Frame Type:</span>
-          <span
-            className={`frame-info-value frame-type-${frame.frame_type.toLowerCase()}`}
-          >
-            {frame.frame_type}
-          </span>
+          <FrameTypeBadge frameType={frame.frame_type} />
         </div>
         <div className="frame-info-row">
           <span className="frame-info-label">Size:</span>

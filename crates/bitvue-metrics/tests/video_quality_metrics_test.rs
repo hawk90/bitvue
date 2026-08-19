@@ -15,7 +15,7 @@
 fn test_psnr_range() {
     // Test PSNR value ranges
     fn is_valid_psnr(psnr: f64) -> bool {
-        psnr.is_infinite() || (psnr >= 0.0 && psnr <= 100.0)
+        psnr.is_infinite() || (0.0..=100.0).contains(&psnr)
     }
 
     assert!(is_valid_psnr(f64::INFINITY)); // Identical images
@@ -76,7 +76,7 @@ fn test_mse_calculation() {
 fn test_ssim_range() {
     // Test SSIM value ranges
     fn is_valid_ssim(ssim: f64) -> bool {
-        ssim >= -1.0 && ssim <= 1.0
+        (-1.0..=1.0).contains(&ssim)
     }
 
     assert!(is_valid_ssim(1.0)); // Perfect similarity
@@ -115,7 +115,7 @@ fn test_ssim_components() {
 fn test_vmaf_score_range() {
     // Test VMAF score ranges
     fn is_valid_vmaf(vmaf: f64) -> bool {
-        vmaf >= 0.0 && vmaf <= 100.0
+        (0.0..=100.0).contains(&vmaf)
     }
 
     assert!(is_valid_vmaf(95.0)); // Excellent
@@ -240,7 +240,7 @@ fn test_batch_metrics_aggregation() {
 fn test_parallel_processing_partitioning() {
     // Test frame partitioning for parallel processing
     fn partition_frames(total_frames: usize, num_threads: usize) -> Vec<(usize, usize)> {
-        let frames_per_thread = (total_frames + num_threads - 1) / num_threads;
+        let frames_per_thread = total_frames.div_ceil(num_threads);
         (0..num_threads)
             .map(|i| {
                 let start = i * frames_per_thread;

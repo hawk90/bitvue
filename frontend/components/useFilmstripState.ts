@@ -6,24 +6,12 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { getThumbnails } from "../services/electronBridgeService";
 import type { FrameInfo } from "../types/video";
 import { createLogger } from "../utils/logger";
 import { THUMBNAIL_BATCH_SIZE } from "../constants/ui";
 
 const logger = createLogger("useFilmstripState");
-
-/**
- * Result from the get_thumbnails Tauri command
- */
-interface ThumbnailResult {
-  frame_index: number;
-  thumbnail_data: string;
-  width: number;
-  height: number;
-  success: boolean;
-  error?: string;
-}
 
 interface UseFilmstripStateProps {
   frames: FrameInfo[];
@@ -75,15 +63,13 @@ export function useFilmstripState({
     });
 
     try {
-      const results = await invoke<ThumbnailResult[]>("get_thumbnails", {
-        frameIndices: indicesToLoad,
-      });
+      const results = await getThumbnails("A", indicesToLoad);
 
       setThumbnails((prev) => {
         const newMap = new Map(prev);
-        results.forEach((result: ThumbnailResult) => {
+        results.forEach((result) => {
           if (result.success && result.thumbnail_data) {
-            // Backend already returns data URLs (e.g., "data:image/png;base64,...")
+            // Bridge already returns data URLs (e.g., "data:image/png;base64,...")
             newMap.set(result.frame_index, result.thumbnail_data);
           }
         });

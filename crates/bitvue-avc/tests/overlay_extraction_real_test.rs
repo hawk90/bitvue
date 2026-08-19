@@ -18,7 +18,7 @@ use bitvue_avc::overlay_extraction::{
     extract_mv_grid, extract_partition_grid, extract_qp_grid, Macroblock, MbType, MotionVector,
 };
 use bitvue_avc::sps::{ChromaFormat, ProfileIdc, Sps};
-use bitvue_core::partition_grid::PartitionType;
+use bitvue_engine::partition_grid::PartitionType;
 
 /// Create a minimal SPS for testing
 fn create_test_sps() -> Sps {
@@ -212,8 +212,8 @@ fn test_extract_partition_grid_dimensions() {
     let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
     let pic_height_in_mbs = sps.pic_height_in_map_units_minus1 + 1;
 
-    assert_eq!(grid.coded_width, pic_width_in_mbs as u32 * 16);
-    assert_eq!(grid.coded_height, pic_height_in_mbs as u32 * 16);
+    assert_eq!(grid.coded_width, pic_width_in_mbs * 16);
+    assert_eq!(grid.coded_height, pic_height_in_mbs * 16);
 }
 
 #[test]
@@ -394,8 +394,8 @@ fn test_extract_mv_grid_small_resolution() {
     assert!(result.is_ok());
 
     let grid = result.unwrap();
-    let pic_width = (sps.pic_width_in_mbs_minus1 + 1) as u32 * 16;
-    let pic_height = (sps.pic_height_in_map_units_minus1 + 1) as u32 * 16;
+    let pic_width = (sps.pic_width_in_mbs_minus1 + 1) * 16;
+    let pic_height = (sps.pic_height_in_map_units_minus1 + 1) * 16;
     assert_eq!(grid.coded_width, pic_width);
     assert_eq!(grid.coded_height, pic_height);
 }
@@ -412,8 +412,8 @@ fn test_extract_partition_grid_small_resolution() {
     assert!(result.is_ok());
 
     let grid = result.unwrap();
-    let pic_width = (sps.pic_width_in_mbs_minus1 + 1) as u32 * 16;
-    let pic_height = (sps.pic_height_in_map_units_minus1 + 1) as u32 * 16;
+    let pic_width = (sps.pic_width_in_mbs_minus1 + 1) * 16;
+    let pic_height = (sps.pic_height_in_map_units_minus1 + 1) * 16;
     assert_eq!(grid.coded_width, pic_width);
     assert_eq!(grid.coded_height, pic_height);
 }

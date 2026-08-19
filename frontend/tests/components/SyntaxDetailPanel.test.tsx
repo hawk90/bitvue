@@ -97,7 +97,9 @@ describe("SyntaxDetailPanel", () => {
       const { container } = render(<SyntaxDetailPanel />);
 
       expect(container.querySelector(".codicon-file")).toBeInTheDocument();
-      expect(container.querySelector(".codicon-database")).toBeInTheDocument();
+      // "Refs" tab's icon was renamed from "database" to "list-tree" (still lives at the same
+      // tab position, see this component's tab list) since this test was written.
+      expect(container.querySelector(".codicon-list-tree")).toBeInTheDocument();
       expect(container.querySelector(".codicon-graph")).toBeInTheDocument();
       expect(container.querySelector(".codicon-search")).toBeInTheDocument();
     });

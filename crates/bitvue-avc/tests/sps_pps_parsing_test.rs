@@ -254,7 +254,7 @@ fn test_pps_creation() {
 
     assert_eq!(pps.pic_parameter_set_id, 0);
     assert_eq!(pps.seq_parameter_set_id, 0);
-    assert_eq!(pps.entropy_coding_mode_flag, true);
+    assert!(pps.entropy_coding_mode_flag);
 }
 
 #[test]
@@ -1097,7 +1097,7 @@ fn test_sps_profile_variants_all() {
 
     for profile in profiles {
         let mut sps = create_minimal_sps();
-        sps.profile_idc = profile.clone();
+        sps.profile_idc = profile;
 
         assert_eq!(sps.profile_idc, profile);
     }

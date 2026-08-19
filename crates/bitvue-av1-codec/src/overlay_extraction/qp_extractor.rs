@@ -2,8 +2,8 @@
 //!
 //! Provides functions to extract QP heatmap data from AV1 bitstreams.
 
-use bitvue_core::qp_heatmap::QPGrid;
-use bitvue_core::BitvueError;
+use bitvue_engine::qp_heatmap::QPGrid;
+use bitvue_engine::BitvueError;
 
 use super::cu_parser::{parse_all_coding_units, CuSpatialIndex};
 use super::parser::ParsedFrame;
@@ -220,7 +220,7 @@ mod tests {
         let grid = result.unwrap();
         assert_eq!(grid.block_w, 64);
         assert_eq!(grid.block_h, 64);
-        assert!(grid.qp.len() > 0, "QP grid should have values");
+        assert!(!grid.qp.is_empty(), "QP grid should have values");
         assert_eq!(grid.qp[0], base_qp, "First block should have base QP");
 
         // Also test with invalid QP to ensure validation works

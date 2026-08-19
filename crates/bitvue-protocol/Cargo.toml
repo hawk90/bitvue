@@ -1,0 +1,11 @@
+[package]
+name = "bitvue-protocol"
+description = "Wire protocol (control/data plane) between bitvue-desktop (Electron main) and the bitvue-engine sidecar process"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

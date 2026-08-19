@@ -1,17 +1,20 @@
 [workspace]
 resolver = "2"
-exclude = ["src-tauri", "fuzz"]  # Tauri app and fuzz targets have their own Cargo.toml
+exclude = ["fuzz"]  # Fuzz targets have their own Cargo.toml. src-tauri retired 2026-08-08 (Electron migration).
 members = [
     # Main library
     "crates/bitvue",            # Unified library interface (re-exports all)
 
     # Core architecture
-    "crates/bitvue-core",       # SelectionState, Command/Event bus, Worker runtime, Caches
+    "crates/bitvue-engine",     # SelectionState, Command/Event bus, Worker runtime, Caches
+    "crates/bitvue-protocol",   # Electron sidecar wire protocol (control/data plane framing, DEVELOPMENT_PHASES.md)
+    "crates/bitvue-sidecar",    # Standalone process hosting the engine, speaks bitvue-protocol over stdio (skeleton)
     "crates/bitvue-formats",    # Container parsers (IVF, MP4, MKV, TS)
     "crates/bitvue-codecs",     # Unified codec interface (re-exports all codec parsers)
     "crates/bitvue-codecs-parser",  # Codec parsers integration layer
     "crates/bitvue-decode",     # Decoders (dav1d for AV1)
     "crates/bitvue-metrics",    # Quality metrics (PSNR, SSIM, VMAF)
+    "crates/bitvue-indexer",    # Metadata-indexing pipeline (container/units, IVF/AV1 only so far)
 
     # CLI and tools
     "crates/bitvue-cli",        # CLI tool (terminal interface)
@@ -26,6 +29,9 @@ members = [
     "crates/bitvue-av1-codec",  # AV1 OBU parser
     "crates/bitvue-av3-codec",  # AV3 parser
     "crates/bitvue-mpeg2-codec", # MPEG-2 Video parser
+    "crates/bitvue-avs3",       # AVS3/IEEE 1857.10 parser
+    "crates/bitvue-jpegxs",     # JPEG XS (ISO 21122) parser
+    "crates/bitvue-vc3",        # VC-3/DNxHD parser
 
     # Third-party dependencies (vendor/private)
     "crates/vendor/abseil",     # Abseil logging library (private fork)
@@ -43,12 +49,14 @@ authors = ["bitvue contributors"]
 bitvue = { path = "crates/bitvue" }
 
 # Core architecture
-bitvue-core = { path = "crates/bitvue-core" }
+bitvue-engine = { path = "crates/bitvue-engine" }
+bitvue-protocol = { path = "crates/bitvue-protocol" }
 bitvue-formats = { path = "crates/bitvue-formats" }
 bitvue-codecs = { path = "crates/bitvue-codecs" }
 bitvue-codecs-parser = { path = "crates/bitvue-codecs-parser" }
 bitvue-decode = { path = "crates/bitvue-decode" }
 bitvue-metrics = { path = "crates/bitvue-metrics" }
+bitvue-indexer = { path = "crates/bitvue-indexer" }
 
 # CLI and tools
 bitvue-cli = { path = "crates/bitvue-cli" }
@@ -65,10 +73,14 @@ bitvue-vvc = { path = "crates/bitvue-vvc" }
 bitvue-av1-codec = { path = "crates/bitvue-av1-codec" }
 bitvue-av3-codec = { path = "crates/bitvue-av3-codec" }
 bitvue-mpeg2-codec = { path = "crates/bitvue-mpeg2-codec" }
+bitvue-avs3 = { path = "crates/bitvue-avs3" }
+bitvue-jpegxs = { path = "crates/bitvue-jpegxs" }
+bitvue-vc3 = { path = "crates/bitvue-vc3" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+base64 = "0.23"
 
 # Time/Date
 chrono = { version = "0.4", features = ["serde"] }
@@ -116,7 +128,12 @@ opt-level = 3           # Maximum optimization
 lto = "thin"            # Link-time optimization (thin for faster builds)
 codegen-units = 1       # Better optimization at cost of compile time
 strip = true            # Strip symbols from binary
-panic = "abort"         # Abort on panic (smaller binary)
+# panic = "unwind" (the default) -- NOT "abort". bitvue-sidecar's per-request worker threads rely
+# on std::panic::catch_unwind to survive a handler panic (malformed frame, decoder bug, etc.)
+# without taking the whole sidecar process down; panic="abort" makes that unwind point
+# unreachable (abort happens before any unwinding runs), which would silently turn "one bad
+# request" back into "the whole sidecar dies, every in-flight request hangs" -- exactly what the
+# catch_unwind guard in main.rs's spawn_request exists to prevent. See CONC-022 in the anti-pattern audit.
 
 # Release with debug info (for profiling)
 [profile.release-with-debug]

@@ -519,7 +519,7 @@ mod tests {
     fn test_detect_container_format_empty_file() {
         let temp_dir = std::env::temp_dir();
         let test_file = temp_dir.join("empty.mp4");
-        std::fs::write(&test_file, &[]).unwrap();
+        std::fs::write(&test_file, []).unwrap();
 
         let result = detect_container_format(&test_file);
         assert!(result.is_ok());

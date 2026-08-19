@@ -14,7 +14,7 @@
 //! - Uses 16-bit → 32-bit widening to avoid overflow
 //! - Accumulates squared differences in 32-bit lanes
 
-use bitvue_core::Result;
+use bitvue_engine::Result;
 
 /// Window statistics for SSIM computation
 #[derive(Debug, Default, Copy, Clone)]
@@ -535,6 +535,312 @@ pub fn psnr_simd(reference: &[u8], distorted: &[u8], width: usize, height: usize
     super::psnr(reference, distorted, width, height)
 }
 
+/// AVX2-optimized PSNR (Intel Haswell+, AMD Excavator+)
+///
+/// Uses proper MSE (Mean Squared Error) calculation with SIMD:
+/// 1. Compute differences (reference - distorted)
+/// 2. Square the differences
+/// 3. Accumulate in 32-bit to avoid overflow
+/// 4. Sum and divide by pixel count
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn psnr_avx2(
+    reference: &[u8],
+    distorted: &[u8],
+    _width: usize,
+    _height: usize,
+) -> Result<f64> {
+    use std::arch::x86_64::*;
+
+    let size = reference.len();
+    let mut mse: f64 = 0.0;
+
+    // Process 32 bytes at a time with AVX2
+    let chunks = size / 32;
+
+    // Use 32-bit accumulation to avoid overflow (max diff: 255, max squared: 65025)
+    // Accumulator for 4 lanes of 32-bit sums
+    let mut mse_lo = _mm256_setzero_si256();
+    let mut mse_hi = _mm256_setzero_si256();
+
+    for i in 0..chunks {
+        let offset = i * 32;
+
+        // Security: Explicit bounds check to prevent buffer overflow
+        // when size is not a multiple of 32
+        if offset + 32 > reference.len() || offset + 32 > distorted.len() {
+            return Err(bitvue_engine::BitvueError::InvalidData(
+                "SIMD buffer overflow: insufficient data for 32-byte read".to_string(),
+            ));
+        }
+
+        // Load 32 bytes
+        let ref_vec = _mm256_loadu_si256(reference.as_ptr().add(offset) as *const __m256i);
+        let dist_vec = _mm256_loadu_si256(distorted.as_ptr().add(offset) as *const __m256i);
+
+        // Expand to 16-bit (unsigned to signed conversion with subtraction)
+        let ref_lo = _mm256_unpacklo_epi8(ref_vec, _mm256_setzero_si256());
+        let ref_hi = _mm256_unpackhi_epi8(ref_vec, _mm256_setzero_si256());
+        let dist_lo = _mm256_unpacklo_epi8(dist_vec, _mm256_setzero_si256());
+        let dist_hi = _mm256_unpackhi_epi8(dist_vec, _mm256_setzero_si256());
+
+        // Compute differences (16-bit)
+        let diff_lo = _mm256_sub_epi16(ref_lo, dist_lo);
+        let diff_hi = _mm256_sub_epi16(ref_hi, dist_hi);
+
+        // Square the differences (16-bit * 16-bit = 32-bit)
+        let sq_lo = _mm256_mullo_epi16(diff_lo, diff_lo);
+        let sq_hi = _mm256_mullo_epi16(diff_hi, diff_hi);
+
+        // Unpack to 32-bit and accumulate
+        // Extract low 16 bits of each 32-bit result
+        let sq_lo_lo = _mm256_unpacklo_epi16(sq_lo, _mm256_setzero_si256());
+        let sq_lo_hi = _mm256_unpackhi_epi16(sq_lo, _mm256_setzero_si256());
+        let sq_hi_lo = _mm256_unpacklo_epi16(sq_hi, _mm256_setzero_si256());
+        let sq_hi_hi = _mm256_unpackhi_epi16(sq_hi, _mm256_setzero_si256());
+
+        mse_lo = _mm256_add_epi32(mse_lo, sq_lo_lo);
+        mse_lo = _mm256_add_epi32(mse_lo, sq_lo_hi);
+        mse_hi = _mm256_add_epi32(mse_hi, sq_hi_lo);
+        mse_hi = _mm256_add_epi32(mse_hi, sq_hi_hi);
+    }
+
+    // Extract and sum all 32-bit values
+    let mut mse_array = [0i32; 16];
+    _mm256_storeu_si256(mse_array[0..8].as_mut_ptr() as *mut __m256i, mse_lo);
+    _mm256_storeu_si256(mse_array[8..16].as_mut_ptr() as *mut __m256i, mse_hi);
+
+    // Process remainder with scalar code
+    // Use i64 accumulation to prevent precision loss from repeated f64 additions
+    // Max diff: 255, max squared: 65025, max remainder: 31 pixels
+    // Max remainder sum: 31 * 65025 = 2,015,775 fits easily in i64
+    let mut remainder_mse: i64 = 0;
+    for i in (chunks * 32)..size {
+        let diff = (reference[i] as i32) - (distorted[i] as i32);
+        remainder_mse += (diff * diff) as i64;
+    }
+    mse += remainder_mse as f64;
+
+    // Add SIMD contribution (sum of 16 32-bit values)
+    // Security: Use u64 with saturating add to prevent overflow
+    // when processing extremely large frames with high contrast
+    let simd_sum: u64 = mse_array.iter().map(|&x| x as u32 as u64).sum();
+    mse += simd_sum as f64;
+    mse /= size as f64;
+
+    // Handle identical images
+    if mse == 0.0 {
+        return Ok(f64::INFINITY);
+    }
+
+    // Calculate PSNR
+    let max_value = 255.0;
+    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
+
+    Ok(psnr_value)
+}
+
+/// AVX-optimized PSNR (Intel Sandy Bridge+, AMD Bulldozer+)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx")]
+unsafe fn psnr_avx(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> Result<f64> {
+    // For simplicity, fallback to SSE2 for now
+    psnr_sse2(reference, distorted, width, height)
+}
+
+/// SSE2-optimized PSNR (baseline x86_64)
+///
+/// Uses proper MSE (Mean Squared Error) calculation with SIMD.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+unsafe fn psnr_sse2(
+    reference: &[u8],
+    distorted: &[u8],
+    _width: usize,
+    _height: usize,
+) -> Result<f64> {
+    use std::arch::x86_64::*;
+
+    let size = reference.len();
+    let mut mse: f64 = 0.0;
+
+    // Process 16 bytes at a time with SSE2
+    let chunks = size / 16;
+
+    // Accumulators for 32-bit squared differences
+    let mut mse_accum_lo = _mm_setzero_si128();
+    let mut mse_accum_hi = _mm_setzero_si128();
+
+    for i in 0..chunks {
+        let offset = i * 16;
+
+        // Security: Explicit bounds check to prevent buffer overflow
+        // when size is not a multiple of 16
+        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
+            return Err(bitvue_engine::BitvueError::InvalidData(
+                "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
+            ));
+        }
+
+        // Load 16 bytes
+        let ref_vec = _mm_loadu_si128(reference.as_ptr().add(offset) as *const __m128i);
+        let dist_vec = _mm_loadu_si128(distorted.as_ptr().add(offset) as *const __m128i);
+
+        // Expand to 16-bit
+        let ref_lo = _mm_unpacklo_epi8(ref_vec, _mm_setzero_si128());
+        let ref_hi = _mm_unpackhi_epi8(ref_vec, _mm_setzero_si128());
+        let dist_lo = _mm_unpacklo_epi8(dist_vec, _mm_setzero_si128());
+        let dist_hi = _mm_unpackhi_epi8(dist_vec, _mm_setzero_si128());
+
+        // Compute differences (16-bit)
+        let diff_lo = _mm_sub_epi16(ref_lo, dist_lo);
+        let diff_hi = _mm_sub_epi16(ref_hi, dist_hi);
+
+        // Square the differences (16-bit * 16-bit = 32-bit)
+        let sq_lo = _mm_mullo_epi16(diff_lo, diff_lo);
+        let sq_hi = _mm_mullo_epi16(diff_hi, diff_hi);
+
+        // Unpack to 32-bit and accumulate
+        let sq_lo_lo = _mm_unpacklo_epi16(sq_lo, _mm_setzero_si128());
+        let sq_lo_hi = _mm_unpackhi_epi16(sq_lo, _mm_setzero_si128());
+        let sq_hi_lo = _mm_unpacklo_epi16(sq_hi, _mm_setzero_si128());
+        let sq_hi_hi = _mm_unpackhi_epi16(sq_hi, _mm_setzero_si128());
+
+        mse_accum_lo = _mm_add_epi32(mse_accum_lo, sq_lo_lo);
+        mse_accum_lo = _mm_add_epi32(mse_accum_lo, sq_lo_hi);
+        mse_accum_hi = _mm_add_epi32(mse_accum_hi, sq_hi_lo);
+        mse_accum_hi = _mm_add_epi32(mse_accum_hi, sq_hi_hi);
+    }
+
+    // Extract and sum all 32-bit values (8 values total)
+    let mut mse_array = [0i32; 8];
+    _mm_storeu_si128(mse_array[0..4].as_mut_ptr() as *mut __m128i, mse_accum_lo);
+    _mm_storeu_si128(mse_array[4..8].as_mut_ptr() as *mut __m128i, mse_accum_hi);
+
+    // Process remainder
+    // Use i64 accumulation to prevent precision loss from repeated f64 additions
+    // Max diff: 255, max squared: 65025, max remainder: 15 pixels
+    // Max remainder sum: 15 * 65025 = 975,375 fits easily in i64
+    let mut remainder_mse: i64 = 0;
+    for i in (chunks * 16)..size {
+        let diff = (reference[i] as i32) - (distorted[i] as i32);
+        remainder_mse += (diff * diff) as i64;
+    }
+    mse += remainder_mse as f64;
+
+    // Add SIMD contribution
+    // Security: Use u64 to prevent overflow when processing large frames
+    let simd_sum: u64 = mse_array.iter().map(|&x| x as u32 as u64).sum();
+    mse += simd_sum as f64;
+    mse /= size as f64;
+
+    if mse == 0.0 {
+        return Ok(f64::INFINITY);
+    }
+
+    let max_value = 255.0;
+    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
+
+    Ok(psnr_value)
+}
+
+/// NEON-optimized PSNR for ARM (Apple Silicon, etc.)
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+#[allow(dead_code)]
+unsafe fn psnr_neon(
+    reference: &[u8],
+    distorted: &[u8],
+    _width: usize,
+    _height: usize,
+) -> Result<f64> {
+    use std::arch::aarch64::*;
+
+    let size = reference.len();
+    let mut mse: f64 = 0.0;
+
+    // Process 16 bytes at a time with NEON
+    let chunks = size / 16;
+
+    let mut mse_accumulator = vdupq_n_u32(0);
+
+    for i in 0..chunks {
+        let offset = i * 16;
+
+        // Security: Explicit bounds check to prevent buffer overflow
+        // when size is not a multiple of 16
+        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
+            return Err(bitvue_engine::BitvueError::InvalidData(
+                "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
+            ));
+        }
+
+        // Load 16 bytes
+        let ref_vec = vld1q_u8(reference.as_ptr().add(offset));
+        let dist_vec = vld1q_u8(distorted.as_ptr().add(offset));
+
+        // Fix: Calculate squared differences (not absolute differences)
+        // For proper MSE/PSNR, we need (ref - dist)^2, not |ref - dist|^2
+        // This requires signed subtraction to get correct negative values
+        let ref_lo = vmovl_u8(vget_low_u8(ref_vec));
+        let ref_hi = vmovl_u8(vget_high_u8(ref_vec));
+        let dist_lo = vmovl_u8(vget_low_u8(dist_vec));
+        let dist_hi = vmovl_u8(vget_high_u8(dist_vec));
+
+        // Signed subtraction to get (ref - dist)
+        let diff_lo = vsubq_s16(
+            vreinterpretq_s16_u16(ref_lo),
+            vreinterpretq_s16_u16(dist_lo),
+        );
+        let diff_hi = vsubq_s16(
+            vreinterpretq_s16_u16(ref_hi),
+            vreinterpretq_s16_u16(dist_hi),
+        );
+
+        // Square the differences: (ref - dist)^2
+        let sq_lo = vmull_s16(vget_low_s16(diff_lo), vget_low_s16(diff_lo));
+        let sq_hi = vmull_s16(vget_high_s16(diff_lo), vget_high_s16(diff_lo));
+
+        // Accumulate (convert from s32 to u32 for accumulation)
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_lo));
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi));
+
+        let sq_lo2 = vmull_s16(vget_low_s16(diff_hi), vget_low_s16(diff_hi));
+        let sq_hi2 = vmull_s16(vget_high_s16(diff_hi), vget_high_s16(diff_hi));
+
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_lo2));
+        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi2));
+    }
+
+    // Extract sum (use u64 to prevent overflow for large images)
+    let mut mse_array = [0u32; 4];
+    vst1q_u32(mse_array.as_mut_ptr(), mse_accumulator);
+    let simd_sum: u64 = mse_array.iter().map(|&x| x as u64).sum();
+
+    // Process remainder
+    // Use i64 accumulation to prevent precision loss from repeated f64 additions
+    // Max diff: 255, max squared: 65025, max remainder: 15 pixels
+    // Max remainder sum: 15 * 65025 = 975,375 fits easily in i64
+    let mut remainder_mse: i64 = 0;
+    for i in (chunks * 16)..size {
+        let diff = (reference[i] as i32) - (distorted[i] as i32);
+        remainder_mse += (diff * diff) as i64;
+    }
+    mse += remainder_mse as f64;
+
+    mse += simd_sum as f64;
+    mse /= size as f64;
+
+    if mse == 0.0 {
+        return Ok(f64::INFINITY);
+    }
+
+    let max_value = 255.0;
+    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
+
+    Ok(psnr_value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,310 +971,4 @@ mod tests {
             );
         }
     }
-}
-
-/// AVX2-optimized PSNR (Intel Haswell+, AMD Excavator+)
-///
-/// Uses proper MSE (Mean Squared Error) calculation with SIMD:
-/// 1. Compute differences (reference - distorted)
-/// 2. Square the differences
-/// 3. Accumulate in 32-bit to avoid overflow
-/// 4. Sum and divide by pixel count
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx2")]
-unsafe fn psnr_avx2(
-    reference: &[u8],
-    distorted: &[u8],
-    _width: usize,
-    _height: usize,
-) -> Result<f64> {
-    use std::arch::x86_64::*;
-
-    let size = reference.len();
-    let mut mse: f64 = 0.0;
-
-    // Process 32 bytes at a time with AVX2
-    let chunks = size / 32;
-
-    // Use 32-bit accumulation to avoid overflow (max diff: 255, max squared: 65025)
-    // Accumulator for 4 lanes of 32-bit sums
-    let mut mse_lo = _mm256_setzero_si256();
-    let mut mse_hi = _mm256_setzero_si256();
-
-    for i in 0..chunks {
-        let offset = i * 32;
-
-        // Security: Explicit bounds check to prevent buffer overflow
-        // when size is not a multiple of 32
-        if offset + 32 > reference.len() || offset + 32 > distorted.len() {
-            return Err(bitvue_core::BitvueError::InvalidData(
-                "SIMD buffer overflow: insufficient data for 32-byte read".to_string(),
-            ));
-        }
-
-        // Load 32 bytes
-        let ref_vec = _mm256_loadu_si256(reference.as_ptr().add(offset) as *const __m256i);
-        let dist_vec = _mm256_loadu_si256(distorted.as_ptr().add(offset) as *const __m256i);
-
-        // Expand to 16-bit (unsigned to signed conversion with subtraction)
-        let ref_lo = _mm256_unpacklo_epi8(ref_vec, _mm256_setzero_si256());
-        let ref_hi = _mm256_unpackhi_epi8(ref_vec, _mm256_setzero_si256());
-        let dist_lo = _mm256_unpacklo_epi8(dist_vec, _mm256_setzero_si256());
-        let dist_hi = _mm256_unpackhi_epi8(dist_vec, _mm256_setzero_si256());
-
-        // Compute differences (16-bit)
-        let diff_lo = _mm256_sub_epi16(ref_lo, dist_lo);
-        let diff_hi = _mm256_sub_epi16(ref_hi, dist_hi);
-
-        // Square the differences (16-bit * 16-bit = 32-bit)
-        let sq_lo = _mm256_mullo_epi16(diff_lo, diff_lo);
-        let sq_hi = _mm256_mullo_epi16(diff_hi, diff_hi);
-
-        // Unpack to 32-bit and accumulate
-        // Extract low 16 bits of each 32-bit result
-        let sq_lo_lo = _mm256_unpacklo_epi16(sq_lo, _mm256_setzero_si256());
-        let sq_lo_hi = _mm256_unpackhi_epi16(sq_lo, _mm256_setzero_si256());
-        let sq_hi_lo = _mm256_unpacklo_epi16(sq_hi, _mm256_setzero_si256());
-        let sq_hi_hi = _mm256_unpackhi_epi16(sq_hi, _mm256_setzero_si256());
-
-        mse_lo = _mm256_add_epi32(mse_lo, sq_lo_lo);
-        mse_lo = _mm256_add_epi32(mse_lo, sq_lo_hi);
-        mse_hi = _mm256_add_epi32(mse_hi, sq_hi_lo);
-        mse_hi = _mm256_add_epi32(mse_hi, sq_hi_hi);
-    }
-
-    // Extract and sum all 32-bit values
-    let mut mse_array = [0i32; 16];
-    _mm256_storeu_si256(mse_array[0..8].as_mut_ptr() as *mut __m256i, mse_lo);
-    _mm256_storeu_si256(mse_array[8..16].as_mut_ptr() as *mut __m256i, mse_hi);
-
-    // Process remainder with scalar code
-    // Use i64 accumulation to prevent precision loss from repeated f64 additions
-    // Max diff: 255, max squared: 65025, max remainder: 31 pixels
-    // Max remainder sum: 31 * 65025 = 2,015,775 fits easily in i64
-    let mut remainder_mse: i64 = 0;
-    for i in (chunks * 32)..size {
-        let diff = (reference[i] as i32) - (distorted[i] as i32);
-        remainder_mse += (diff * diff) as i64;
-    }
-    mse += remainder_mse as f64;
-
-    // Add SIMD contribution (sum of 16 32-bit values)
-    // Security: Use u64 with saturating add to prevent overflow
-    // when processing extremely large frames with high contrast
-    let simd_sum: u64 = mse_array.iter().map(|&x| x as u32 as u64).sum();
-    mse += simd_sum as f64;
-    mse /= size as f64;
-
-    // Handle identical images
-    if mse == 0.0 {
-        return Ok(f64::INFINITY);
-    }
-
-    // Calculate PSNR
-    let max_value = 255.0;
-    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
-
-    Ok(psnr_value)
-}
-
-/// AVX-optimized PSNR (Intel Sandy Bridge+, AMD Bulldozer+)
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx")]
-unsafe fn psnr_avx(reference: &[u8], distorted: &[u8], width: usize, height: usize) -> Result<f64> {
-    // For simplicity, fallback to SSE2 for now
-    psnr_sse2(reference, distorted, width, height)
-}
-
-/// SSE2-optimized PSNR (baseline x86_64)
-///
-/// Uses proper MSE (Mean Squared Error) calculation with SIMD.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "sse2")]
-unsafe fn psnr_sse2(
-    reference: &[u8],
-    distorted: &[u8],
-    _width: usize,
-    _height: usize,
-) -> Result<f64> {
-    use std::arch::x86_64::*;
-
-    let size = reference.len();
-    let mut mse: f64 = 0.0;
-
-    // Process 16 bytes at a time with SSE2
-    let chunks = size / 16;
-
-    // Accumulators for 32-bit squared differences
-    let mut mse_accum_lo = _mm_setzero_si128();
-    let mut mse_accum_hi = _mm_setzero_si128();
-
-    for i in 0..chunks {
-        let offset = i * 16;
-
-        // Security: Explicit bounds check to prevent buffer overflow
-        // when size is not a multiple of 16
-        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
-            return Err(bitvue_core::BitvueError::InvalidData(
-                "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
-            ));
-        }
-
-        // Load 16 bytes
-        let ref_vec = _mm_loadu_si128(reference.as_ptr().add(offset) as *const __m128i);
-        let dist_vec = _mm_loadu_si128(distorted.as_ptr().add(offset) as *const __m128i);
-
-        // Expand to 16-bit
-        let ref_lo = _mm_unpacklo_epi8(ref_vec, _mm_setzero_si128());
-        let ref_hi = _mm_unpackhi_epi8(ref_vec, _mm_setzero_si128());
-        let dist_lo = _mm_unpacklo_epi8(dist_vec, _mm_setzero_si128());
-        let dist_hi = _mm_unpackhi_epi8(dist_vec, _mm_setzero_si128());
-
-        // Compute differences (16-bit)
-        let diff_lo = _mm_sub_epi16(ref_lo, dist_lo);
-        let diff_hi = _mm_sub_epi16(ref_hi, dist_hi);
-
-        // Square the differences (16-bit * 16-bit = 32-bit)
-        let sq_lo = _mm_mullo_epi16(diff_lo, diff_lo);
-        let sq_hi = _mm_mullo_epi16(diff_hi, diff_hi);
-
-        // Unpack to 32-bit and accumulate
-        let sq_lo_lo = _mm_unpacklo_epi16(sq_lo, _mm_setzero_si128());
-        let sq_lo_hi = _mm_unpackhi_epi16(sq_lo, _mm_setzero_si128());
-        let sq_hi_lo = _mm_unpacklo_epi16(sq_hi, _mm_setzero_si128());
-        let sq_hi_hi = _mm_unpackhi_epi16(sq_hi, _mm_setzero_si128());
-
-        mse_accum_lo = _mm_add_epi32(mse_accum_lo, sq_lo_lo);
-        mse_accum_lo = _mm_add_epi32(mse_accum_lo, sq_lo_hi);
-        mse_accum_hi = _mm_add_epi32(mse_accum_hi, sq_hi_lo);
-        mse_accum_hi = _mm_add_epi32(mse_accum_hi, sq_hi_hi);
-    }
-
-    // Extract and sum all 32-bit values (8 values total)
-    let mut mse_array = [0i32; 8];
-    _mm_storeu_si128(mse_array[0..4].as_mut_ptr() as *mut __m128i, mse_accum_lo);
-    _mm_storeu_si128(mse_array[4..8].as_mut_ptr() as *mut __m128i, mse_accum_hi);
-
-    // Process remainder
-    // Use i64 accumulation to prevent precision loss from repeated f64 additions
-    // Max diff: 255, max squared: 65025, max remainder: 15 pixels
-    // Max remainder sum: 15 * 65025 = 975,375 fits easily in i64
-    let mut remainder_mse: i64 = 0;
-    for i in (chunks * 16)..size {
-        let diff = (reference[i] as i32) - (distorted[i] as i32);
-        remainder_mse += (diff * diff) as i64;
-    }
-    mse += remainder_mse as f64;
-
-    // Add SIMD contribution
-    // Security: Use u64 to prevent overflow when processing large frames
-    let simd_sum: u64 = mse_array.iter().map(|&x| x as u32 as u64).sum();
-    mse += simd_sum as f64;
-    mse /= size as f64;
-
-    if mse == 0.0 {
-        return Ok(f64::INFINITY);
-    }
-
-    let max_value = 255.0;
-    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
-
-    Ok(psnr_value)
-}
-
-/// NEON-optimized PSNR for ARM (Apple Silicon, etc.)
-#[cfg(target_arch = "aarch64")]
-#[target_feature(enable = "neon")]
-#[allow(dead_code)]
-unsafe fn psnr_neon(
-    reference: &[u8],
-    distorted: &[u8],
-    _width: usize,
-    _height: usize,
-) -> Result<f64> {
-    use std::arch::aarch64::*;
-
-    let size = reference.len();
-    let mut mse: f64 = 0.0;
-
-    // Process 16 bytes at a time with NEON
-    let chunks = size / 16;
-
-    let mut mse_accumulator = vdupq_n_u32(0);
-
-    for i in 0..chunks {
-        let offset = i * 16;
-
-        // Security: Explicit bounds check to prevent buffer overflow
-        // when size is not a multiple of 16
-        if offset + 16 > reference.len() || offset + 16 > distorted.len() {
-            return Err(bitvue_core::BitvueError::InvalidData(
-                "SIMD buffer overflow: insufficient data for 16-byte read".to_string(),
-            ));
-        }
-
-        // Load 16 bytes
-        let ref_vec = vld1q_u8(reference.as_ptr().add(offset));
-        let dist_vec = vld1q_u8(distorted.as_ptr().add(offset));
-
-        // Fix: Calculate squared differences (not absolute differences)
-        // For proper MSE/PSNR, we need (ref - dist)^2, not |ref - dist|^2
-        // This requires signed subtraction to get correct negative values
-        let ref_lo = vmovl_u8(vget_low_u8(ref_vec));
-        let ref_hi = vmovl_u8(vget_high_u8(ref_vec));
-        let dist_lo = vmovl_u8(vget_low_u8(dist_vec));
-        let dist_hi = vmovl_u8(vget_high_u8(dist_vec));
-
-        // Signed subtraction to get (ref - dist)
-        let diff_lo = vsubq_s16(
-            vreinterpretq_s16_u16(ref_lo),
-            vreinterpretq_s16_u16(dist_lo),
-        );
-        let diff_hi = vsubq_s16(
-            vreinterpretq_s16_u16(ref_hi),
-            vreinterpretq_s16_u16(dist_hi),
-        );
-
-        // Square the differences: (ref - dist)^2
-        let sq_lo = vmull_s16(vget_low_s16(diff_lo), vget_low_s16(diff_lo));
-        let sq_hi = vmull_s16(vget_high_s16(diff_lo), vget_high_s16(diff_lo));
-
-        // Accumulate (convert from s32 to u32 for accumulation)
-        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_lo));
-        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi));
-
-        let sq_lo2 = vmull_s16(vget_low_s16(diff_hi), vget_low_s16(diff_hi));
-        let sq_hi2 = vmull_s16(vget_high_s16(diff_hi), vget_high_s16(diff_hi));
-
-        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_lo2));
-        mse_accumulator = vaddq_u32(mse_accumulator, vreinterpretq_u32_s32(sq_hi2));
-    }
-
-    // Extract sum (use u64 to prevent overflow for large images)
-    let mut mse_array = [0u32; 4];
-    vst1q_u32(mse_array.as_mut_ptr(), mse_accumulator);
-    let simd_sum: u64 = mse_array.iter().map(|&x| x as u64).sum();
-
-    // Process remainder
-    // Use i64 accumulation to prevent precision loss from repeated f64 additions
-    // Max diff: 255, max squared: 65025, max remainder: 15 pixels
-    // Max remainder sum: 15 * 65025 = 975,375 fits easily in i64
-    let mut remainder_mse: i64 = 0;
-    for i in (chunks * 16)..size {
-        let diff = (reference[i] as i32) - (distorted[i] as i32);
-        remainder_mse += (diff * diff) as i64;
-    }
-    mse += remainder_mse as f64;
-
-    mse += simd_sum as f64;
-    mse /= size as f64;
-
-    if mse == 0.0 {
-        return Ok(f64::INFINITY);
-    }
-
-    let max_value = 255.0;
-    let psnr_value = 10.0 * (max_value * max_value / mse).log10();
-
-    Ok(psnr_value)
 }

@@ -58,6 +58,17 @@ vi.mock("@/contexts/SelectionContext", () => ({
   useSelection: vi.fn(),
 }));
 
+vi.mock("@/contexts/LayoutContext", () => ({
+  LayoutProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useLayout: vi.fn(() => ({
+    saveLayout: vi.fn(),
+    loadLayout: vi.fn(),
+    resetLayout: vi.fn(),
+  })),
+}));
+
 vi.mock("@/contexts/CompareContext", () => ({
   CompareProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -86,6 +97,15 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+const { closeWindow, setHasOpenFile } = vi.hoisted(() => ({
+  closeWindow: vi.fn(),
+  setHasOpenFile: vi.fn(),
+}));
+vi.mock("@/services/electronBridgeService", () => ({
+  closeWindow,
+  setHasOpenFile,
+}));
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));
@@ -112,10 +132,11 @@ vi.mock("@/components/WelcomeScreen", () => ({
 }));
 
 vi.mock("@/components/TitleBar", () => ({
-  TitleBar: ({ fileName, onOpenFile }: any) => (
+  TitleBar: ({ fileName, onOpenFile, onQuit }: any) => (
     <div className="title-bar" data-testid="title-bar">
       <span>{fileName}</span>
       <button onClick={onOpenFile}>Open</button>
+      <button onClick={onQuit}>Quit</button>
     </div>
   ),
 }));
@@ -161,12 +182,18 @@ vi.mock("@/components/StatusBar", () => ({
 
 vi.mock("@/components/panels", () => ({
   DockableLayout: ({
+    pinnedLeftPanel,
     leftPanels,
     mainView,
     topPanels,
     bottomRowPanels,
   }: any) => (
     <div className="dockable-layout" data-testid="dockable-layout">
+      {pinnedLeftPanel && (
+        <div className={`panel-${pinnedLeftPanel.id}`}>
+          {pinnedLeftPanel.component()}
+        </div>
+      )}
       {leftPanels?.map((panel: any) => (
         <div key={panel.id} className={`panel-${panel.id}`}>
           {panel.component()}
@@ -1032,6 +1059,17 @@ describe("AppContent - TitleBar", () => {
     const titleBar = screen.getByTestId("title-bar");
     expect(titleBar.textContent).toContain("Bitvue");
   });
+
+  it("should call the Electron bridge's closeWindow when the Quit button is clicked", () => {
+    vi.mocked(shouldShowTitleBar).mockReturnValue(true);
+    closeWindow.mockClear();
+
+    render(<App />);
+
+    fireEvent.click(screen.getByText("Quit"));
+
+    expect(closeWindow).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("AppContent - StatusBar", () => {
@@ -1224,6 +1262,24 @@ describe("AppContent - menu event listeners", () => {
     expect(() => window.dispatchEvent(closeEvent)).not.toThrow();
   });
 
+  it("should call the Electron bridge's closeWindow on a menu-quit event", () => {
+    closeWindow.mockClear();
+    render(<App />);
+
+    window.dispatchEvent(new CustomEvent("menu-quit"));
+
+    expect(closeWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("should handle menu-open-recent-file event (openFileAtPath, not dead Tauri open_file)", () => {
+    render(<App />);
+
+    const recentEvent = new CustomEvent("menu-open-recent-file", {
+      detail: "/tmp/recent-clip.ivf",
+    });
+    expect(() => window.dispatchEvent(recentEvent)).not.toThrow();
+  });
+
   it("should cleanup menu event listeners on unmount", () => {
     const { unmount } = render(<App />);
 
@@ -1299,15 +1355,6 @@ describe("AppContent - Tauri event listeners", () => {
     });
 
     mockListen.mockResolvedValue(() => {});
-  });
-
-  it("should listen for file-opened events", () => {
-    render(<App />);
-
-    expect(mockListen).toHaveBeenCalledWith(
-      "file-opened",
-      expect.any(Function),
-    );
   });
 
   it("should cleanup Tauri listeners on unmount", () => {

@@ -49,6 +49,17 @@
   flex: 1;
 }
 
+/* Thin separator between logical toolbar groups -- replaces what used to be additional `flex: 1`
+   spacers (see the JSX comment at the toolbar's single remaining spacer for why those produced
+   huge dead gaps whenever a middle group rendered empty). */
+.yuv-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background: var(--bitvue-border, #3c3c3c);
+  margin: 0 2px;
+}
+
 /* Toolbar buttons - Polished */
 .yuv-toolbar button {
   display: flex;
@@ -236,9 +247,14 @@
 /* Canvas container - Polished */
 .yuv-canvas-container {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* Grid (not flex) so the main and WebGL-overlay canvases stack in the exact same cell --
+     both get centered identically. Previously the overlay canvas was pulled out of the flex
+     flow with position:absolute;top:0;left:0 while the main canvas stayed flex-centered, so
+     whenever the video didn't fill the container (letterboxed at 100% zoom), the two canvases'
+     origins diverged and the overlay's opaque black background masked part of the real frame
+     in an L-shaped notch (found via a real AOM conformance clip, 2026-08-10). */
+  display: grid;
+  place-items: center;
   overflow: hidden;
   background: #000;
   position: relative;
@@ -292,11 +308,21 @@
 
 .yuv-canvas {
   display: block;
+  grid-area: 1 / 1; /* stack both canvases in the same grid cell, see .yuv-canvas-container */
   background: #000;
   image-rendering: pixelated;
   max-width: 100%;
   max-height: 100%;
   transition: opacity 0.2s ease;
+}
+
+/* Now correctly aligned with the main canvas (see .yuv-canvas-container), the overlay canvas
+   would otherwise fully mask the real frame with its own opaque black background whenever
+   nothing is drawn on it (e.g. "F1 -- Overview" mode paints nothing here at all, see
+   OverlayRenderer's renderMainModeOverlay) -- transparent so an unpainted overlay is a no-op
+   visually, not an opaque cover. */
+.yuv-canvas--webgl {
+  background: transparent;
 }
 
 /* Status bar - Polished */
@@ -401,4 +427,69 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* Analysis view container (Deblocking, Residuals, AV1 Features) */
+.yuv-analysis-view-container {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+/* ── Codec badge ─────────────────────────────────────────────── */
+.yuv-codec-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vscode-badge-foreground, #fff);
+  background: var(--vscode-badge-background, #4d4d4d);
+  user-select: none;
+}
+
+/* ── Overlay toggle bar ──────────────────────────────────────── */
+.yuv-overlay-toggles {
+  gap: 2px;
+}
+
+.yuv-overlay-label {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-right: 2px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.yuv-overlay-btn {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #3c3c3c);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  transition:
+    background 0.1s,
+    color 0.1s;
+  white-space: nowrap;
+}
+
+.yuv-overlay-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #505050);
+  color: var(--vscode-button-secondaryForeground, #fff);
+}
+
+.yuv-overlay-btn--active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.yuv-overlay-btn--active:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
 }

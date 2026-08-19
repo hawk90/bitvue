@@ -15,9 +15,10 @@ import ThumbnailsView from "./Filmstrip/views/ThumbnailsView";
 import VirtualizedThumbnailsView from "./Filmstrip/views/VirtualizedThumbnailsView";
 import FrameSizesView from "./Filmstrip/views/FrameSizesView";
 import BPyramidView from "./Filmstrip/views/BPyramidView";
-import { TimelineView } from "./Filmstrip/views/TimelineView";
 import { MinimapView } from "./MinimapView";
 import { FilmstripTooltip } from "./FilmstripTooltip";
+import { EnhancedView } from "./EnhancedView";
+import { HRDBufferPanel } from "./panels/HRDBufferPanel";
 import { useFilmstripState } from "./useFilmstripState";
 import {
   getFrameTypeColorClass,
@@ -197,7 +198,7 @@ function Filmstrip({
 
   return (
     <div
-      className={`filmstrip ${className} ${showingReferences ? "showing-references" : ""} ${displayView === "timeline" ? "timeline-view-mode" : ""}`}
+      className={`filmstrip ${className} ${showingReferences ? "showing-references" : ""} ${displayView === "structure" ? "structure-view-mode" : ""} ${displayView === "enhanced" ? "enhanced-view-mode" : ""} ${displayView === "hrdbuffer" ? "hrdbuffer-view-mode" : ""}`}
     >
       {/* Filmstrip Header */}
       <div
@@ -262,6 +263,7 @@ function Filmstrip({
               onToggleReferenceExpansion={handleToggleExpansion}
               onHoverFrame={handleHoverFrame}
               getFrameTypeColorClass={getFrameTypeColorClass}
+              loadThumbnails={loadThumbnails}
             />
           ) : (
             <ThumbnailsView
@@ -292,6 +294,7 @@ function Filmstrip({
               <FrameSizesLegend
                 sizeMetrics={sizeMetrics}
                 onToggleMetric={toggleMetric}
+                anchorRef={filmstripContentRef}
               />,
               document.body,
             )}
@@ -303,28 +306,29 @@ function Filmstrip({
             onFrameClick={handleFrameClick}
             getFrameTypeColorClass={getFrameTypeColorClass}
           />
-        ) : displayView === "timeline" ? (
-          <TimelineView
+        ) : displayView === "structure" ? (
+          <BPyramidView
             frames={frames}
             currentFrameIndex={currentFrameIndex}
             onFrameClick={handleFrameClick}
             getFrameTypeColorClass={getFrameTypeColorClass}
+            showAllArrows
           />
         ) : displayView === "hrdbuffer" ? (
-          <div className="filmstrip-empty">
-            <span
-              className="codicon codicon-database"
-              aria-hidden="true"
-            ></span>
-            <p>HRD Buffer View</p>
-            <p className="hint">Coming soon</p>
-          </div>
+          <HRDBufferPanel
+            frames={frames}
+            currentFrameIndex={currentFrameIndex}
+            frameRate={30}
+          />
         ) : displayView === "enhanced" ? (
-          <div className="filmstrip-empty">
-            <span className="codicon codicon-sparkle" aria-hidden="true"></span>
-            <p>Enhanced View</p>
-            <p className="hint">Coming soon</p>
-          </div>
+          <EnhancedView
+            frames={frames}
+            currentFrameIndex={currentFrameIndex}
+            thumbnails={thumbnails}
+            loadingThumbnails={loadingThumbnails}
+            onFrameClick={handleFrameClick}
+            onHoverFrame={handleHoverFrame}
+          />
         ) : (
           <MinimapView
             frames={frames}

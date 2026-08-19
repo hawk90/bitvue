@@ -1,9 +1,9 @@
 //! Bit-level reader for VP9 parsing.
 //!
-//! This module provides wrappers around the shared BitReader types from bitvue_core
+//! This module provides wrappers around the shared BitReader types from bitvue_engine
 //! with VP9-specific error mapping.
 
-use bitvue_core::{BitReader as CoreMsbReader, LsbBitReader as CoreLsbReader};
+use bitvue_engine::{BitReader as CoreMsbReader, LsbBitReader as CoreLsbReader};
 
 use crate::error::{Result, Vp9Error};
 
@@ -38,21 +38,21 @@ impl<'a> BitReader<'a> {
 
     pub fn read_bit(&mut self) -> Result<bool> {
         self.inner.read_bit().map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
             _ => Vp9Error::InvalidData(e.to_string()),
         })
     }
 
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
         self.inner.read_bits(n).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
             _ => Vp9Error::InvalidData(e.to_string()),
         })
     }
 
     pub fn skip_bits(&mut self, n: u64) -> Result<()> {
         self.inner.skip_bits(n).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
             _ => Vp9Error::InvalidData(e.to_string()),
         })
     }
@@ -99,16 +99,35 @@ impl<'a> MsbBitReader<'a> {
 
     pub fn read_bit(&mut self) -> Result<bool> {
         self.inner.read_bit().map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
             _ => Vp9Error::InvalidData(e.to_string()),
         })
     }
 
     pub fn read_bits(&mut self, n: u8) -> Result<u32> {
         self.inner.read_bits(n).map_err(|e| match e {
-            bitvue_core::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
+            bitvue_engine::BitvueError::UnexpectedEof(pos) => Vp9Error::UnexpectedEof(pos),
             _ => Vp9Error::InvalidData(e.to_string()),
         })
+    }
+
+    /// Read `n` bits MSB-first and return as a u32 value.
+    /// Identical to `read_bits` but mirrors the `BitReader::read_literal` API
+    /// so that `parse_frame_header` can be used with either reader type.
+    pub fn read_literal(&mut self, n: u8) -> Result<u32> {
+        if n == 0 {
+            return Ok(0);
+        }
+        if n > 32 {
+            return Err(Vp9Error::InvalidData(
+                "Cannot read more than 32 bits at once".to_string(),
+            ));
+        }
+        let mut result: u32 = 0;
+        for _ in 0..n {
+            result = (result << 1) | (self.read_bit()? as u32);
+        }
+        Ok(result)
     }
 }
 
@@ -120,11 +139,11 @@ mod tests {
     fn test_read_bits_lsb() {
         let data = [0b10110100, 0b11001010];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 0
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 1
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 2
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 3
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 4
+        assert!(!reader.read_bit().unwrap()); // bit 0
+        assert!(!reader.read_bit().unwrap()); // bit 1
+        assert!(reader.read_bit().unwrap()); // bit 2
+        assert!(!reader.read_bit().unwrap()); // bit 3
+        assert!(reader.read_bit().unwrap()); // bit 4
     }
 
     #[test]
@@ -141,9 +160,9 @@ mod tests {
     fn test_msb_reader() {
         let data = [0b10110100];
         let mut reader = MsbBitReader::new(&data);
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 7
-        assert_eq!(reader.read_bit().unwrap(), false); // bit 6
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 5
-        assert_eq!(reader.read_bit().unwrap(), true); // bit 4
+        assert!(reader.read_bit().unwrap()); // bit 7
+        assert!(!reader.read_bit().unwrap()); // bit 6
+        assert!(reader.read_bit().unwrap()); // bit 5
+        assert!(reader.read_bit().unwrap()); // bit 4
     }
 }

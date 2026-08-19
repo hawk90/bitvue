@@ -2,7 +2,7 @@
 //!
 //! Provides functions to extract motion vector data from AV1 bitstreams.
 
-use bitvue_core::{
+use bitvue_engine::{
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     BitvueError,
 };
@@ -64,11 +64,33 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
                             let cu = &coding_units[cu_idx];
 
                             // This CU overlaps our block - use its MV
-                            if cu.is_inter() {
+                            if cu.use_intrabc {
+                                // Always a subset of intra (ref_frame[0] == Intra) -- see
+                                // BlockMode::IntraBc's doc.
+                                mv_l0.push(CoreMV::MISSING);
+                                mv_l1.push(CoreMV::MISSING);
+                                mode.push(BlockMode::IntraBc);
+                            } else if cu.is_inter() {
                                 // Use quarter-pel precision motion vector directly
                                 mv_l0.push(CoreMV::new(cu.mv[0].x, cu.mv[0].y));
-                                mv_l1.push(CoreMV::MISSING);
-                                mode.push(BlockMode::Inter);
+                                let is_compound = cu.ref_frames[1] != crate::tile::RefFrame::Intra;
+                                // L1 (backward reference MV) is only meaningful for compound
+                                // blocks -- `cu.mv[1]` is always zero for single-ref blocks (see
+                                // `parse_coding_unit`), so reporting it as MISSING there (rather
+                                // than a misleading real-looking zero) matches how intra/no-CU
+                                // blocks already report MISSING for both planes.
+                                mv_l1.push(if is_compound {
+                                    CoreMV::new(cu.mv[1].x, cu.mv[1].y)
+                                } else {
+                                    CoreMV::MISSING
+                                });
+                                mode.push(if cu.skip {
+                                    BlockMode::Skip
+                                } else if is_compound {
+                                    BlockMode::Compound
+                                } else {
+                                    BlockMode::Inter
+                                });
                             } else {
                                 mv_l0.push(CoreMV::MISSING);
                                 mv_l1.push(CoreMV::MISSING);
@@ -168,8 +190,8 @@ mod tests {
         let grid = result.unwrap();
         assert_eq!(grid.block_w, OVERLAY_BLOCK_SIZE);
         assert_eq!(grid.block_h, OVERLAY_BLOCK_SIZE);
-        assert!(grid.mv_l0.len() > 0, "MV grid should have L0 vectors");
-        assert!(grid.mv_l1.len() > 0, "MV grid should have L1 vectors");
+        assert!(!grid.mv_l0.is_empty(), "MV grid should have L0 vectors");
+        assert!(!grid.mv_l1.is_empty(), "MV grid should have L1 vectors");
     }
 
     #[test]
@@ -205,8 +227,8 @@ mod tests {
 
         // Assert
         let stats = grid.statistics();
-        assert_eq!(stats.total_blocks, (grid_w * grid_h) as usize);
-        assert_eq!(stats.intra_count, (grid_w * grid_h - 10) as usize);
+        assert_eq!(stats.total_blocks, grid_w * grid_h);
+        assert_eq!(stats.intra_count, grid_w * grid_h - 10);
         assert_eq!(stats.inter_count, 10);
     }
 

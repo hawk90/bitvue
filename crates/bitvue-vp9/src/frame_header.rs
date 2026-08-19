@@ -6,10 +6,10 @@
 //!
 //! This module parses the uncompressed header.
 
-use crate::bitreader::BitReader;
+use crate::bitreader::MsbBitReader as BitReader;
 use crate::error::{Result, Vp9Error};
 // Re-export FrameType for other modules in this crate
-pub use bitvue_core::FrameType;
+pub use bitvue_engine::FrameType;
 use serde::{Deserialize, Serialize};
 
 /// VP9 color space.
@@ -179,8 +179,11 @@ pub struct FrameHeader {
     pub tile_cols_log2: u8,
     /// Tile rows log2.
     pub tile_rows_log2: u8,
-    /// Header size in bytes.
+    /// Header size in bytes (compressed header size).
     pub header_size_in_bytes: u16,
+    /// Uncompressed header size in bytes (byte-aligned).
+    /// This is the byte offset where the compressed header begins.
+    pub uncompressed_header_bytes: u32,
     /// Bit depth (8, 10, or 12).
     pub bit_depth: u8,
     /// Color space.
@@ -219,6 +222,7 @@ impl Default for FrameHeader {
             tile_cols_log2: 0,
             tile_rows_log2: 0,
             header_size_in_bytes: 0,
+            uncompressed_header_bytes: 0,
             bit_depth: 8,
             color_space: ColorSpace::Unknown,
             subsampling_x: true,
@@ -430,6 +434,10 @@ pub fn parse_frame_header(data: &[u8]) -> Result<FrameHeader> {
 
     // header_size_in_bytes (16 bits)
     header.header_size_in_bytes = reader.read_literal(16)? as u16;
+
+    // Record how many bytes of the input were consumed by the uncompressed header.
+    // reader.position() gives bits consumed; round up to the next byte boundary.
+    header.uncompressed_header_bytes = reader.position().div_ceil(8) as u32;
 
     Ok(header)
 }

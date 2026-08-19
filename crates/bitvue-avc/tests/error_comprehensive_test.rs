@@ -14,7 +14,7 @@
 //! Tests AvcError enum variants and From<CodecError> implementation
 
 use bitvue_avc::error::{AvcError, Result};
-use bitvue_core::codec_error::{Codec, CodecError};
+use bitvue_engine::codec_error::{Codec, CodecError};
 
 // ============================================================================
 // AvcError Variant Tests
@@ -146,6 +146,10 @@ fn test_error_clone_via_debug() {
 // ============================================================================
 
 #[test]
+// Smoke-tests that the crate's `Result<T>` alias behaves like `std::result::Result`
+// (is_ok()/unwrap() round-trip an Ok value) -- the literal `Ok(42)` is intentional,
+// not a tautology, so the "unnecessary literal unwrap" suggestion doesn't apply here.
+#[allow(clippy::unnecessary_literal_unwrap)]
 fn test_result_ok_variant() {
     let result: Result<u32> = Ok(42);
     assert!(result.is_ok());

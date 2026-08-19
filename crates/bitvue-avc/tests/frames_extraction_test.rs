@@ -17,7 +17,7 @@ use bitvue_avc::frames::{
     avc_frame_to_unit_node, avc_frames_to_unit_nodes, extract_annex_b_frames,
     extract_frame_at_index, AvcFrame, AvcFrameType,
 };
-use bitvue_core::{StreamId, UnitNode};
+use bitvue_engine::{StreamId, UnitNode};
 use std::sync::Arc;
 
 #[test]
@@ -77,9 +77,7 @@ fn test_extract_two_nal_units() {
     let result = extract_annex_b_frames(&data);
 
     // May fail with minimal data
-    if result.is_ok() {
-        let _frames = result.unwrap();
-    }
+    let _ = result;
 }
 
 #[test]
@@ -94,7 +92,9 @@ fn test_extract_three_byte_start_codes() {
 
     assert!(result.is_ok());
     let frames = result.unwrap();
-    assert!(frames.len() >= 0);
+    // Each NAL unit here is a single incomplete byte (no valid slice/frame
+    // structure), so no complete frame can be assembled from them.
+    assert_eq!(frames.len(), 0);
 }
 
 #[test]
@@ -109,7 +109,9 @@ fn test_extract_mixed_start_codes() {
 
     assert!(result.is_ok());
     let frames = result.unwrap();
-    assert!(frames.len() >= 0);
+    // Each NAL unit here is a single incomplete byte (no valid slice/frame
+    // structure), so no complete frame can be assembled from them.
+    assert_eq!(frames.len(), 0);
 }
 
 #[test]
@@ -186,6 +188,8 @@ fn test_frame_structure() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert_eq!(frame.offset, 0);
@@ -216,6 +220,8 @@ fn test_frame_type_variants() {
             is_idr: matches!(frame_type, AvcFrameType::I),
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         };
 
         let _ = format!("{:?}", frame_type);
@@ -236,6 +242,8 @@ fn test_frame_with_nal_data() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert_eq!(frame.nal_data.len(), 3);
@@ -289,7 +297,7 @@ fn test_extract_sequential_frames() {
 
     assert!(result.is_ok());
     let frames = result.unwrap();
-    assert!(frames.len() >= 1);
+    assert!(!frames.is_empty());
 }
 
 #[test]
@@ -308,6 +316,8 @@ fn test_frame_size_calculation() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert_eq!(frame.offset, offset);
@@ -330,6 +340,8 @@ fn test_frame_poc_values() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         };
 
         assert_eq!(frame.poc, poc);
@@ -352,6 +364,8 @@ fn test_frame_num_values() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         };
 
         assert_eq!(frame.frame_num, frame_num);
@@ -403,9 +417,7 @@ fn test_extract_frames_with_garbage_at_end() {
 
     let result = extract_annex_b_frames(&data);
     // May fail with garbage data
-    if result.is_ok() {
-        let _frames = result.unwrap();
-    }
+    let _ = result;
 }
 
 #[test]
@@ -525,14 +537,11 @@ fn test_extract_frame_size_calculation() {
     let mut data = Vec::new();
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     // 100 bytes of payload
-    for _ in 0..100 {
-        data.push(0x42);
-    }
+    data.extend(std::iter::repeat_n(0x42, 100));
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
 
     let result = extract_annex_b_frames(&data);
-    if result.is_ok() {
-        let frames = result.unwrap();
+    if let Ok(frames) = result {
         for frame in &frames {
             // Frame size should include the NAL data
             assert!(frame.size > 0 || frame.nal_data.is_empty());
@@ -551,8 +560,7 @@ fn test_extract_frame_offset_tracking() {
     data.extend_from_slice(&[0x68, 0xCE]);
 
     let result = extract_annex_b_frames(&data);
-    if result.is_ok() {
-        let frames = result.unwrap();
+    if let Ok(frames) = result {
         for (i, frame) in frames.iter().enumerate() {
             // Frame offset should be tracked
             assert_eq!(frame.frame_index, i);
@@ -569,8 +577,7 @@ fn test_extract_frame_poc_values() {
     data.extend_from_slice(&[0x68, 0xCE]);
 
     let result = extract_annex_b_frames(&data);
-    if result.is_ok() {
-        let frames = result.unwrap();
+    if let Ok(frames) = result {
         // POC values should be initialized
         for frame in &frames {
             let _ = frame.poc;
@@ -587,8 +594,7 @@ fn test_extract_frame_num_values() {
     data.extend_from_slice(&[0x68, 0xCE]);
 
     let result = extract_annex_b_frames(&data);
-    if result.is_ok() {
-        let frames = result.unwrap();
+    if let Ok(frames) = result {
         // frame_num should be initialized
         for frame in &frames {
             let _ = frame.frame_num;
@@ -605,8 +611,7 @@ fn test_extract_frame_reference_properties() {
     data.extend_from_slice(&[0x65, 0x80]); // IDR with reference
 
     let result = extract_annex_b_frames(&data);
-    if result.is_ok() {
-        let frames = result.unwrap();
+    if let Ok(frames) = result {
         for frame in &frames {
             // Check is_idr and is_ref properties
             let _ = frame.is_idr;
@@ -621,9 +626,7 @@ fn test_extract_frame_with_large_gap_between_frames() {
     data.extend_from_slice(&[0x00, 0x00, 0x01]);
     data.extend_from_slice(&[0x67, 0x42]);
     // Large gap (100 bytes of zeros)
-    for _ in 0..100 {
-        data.push(0x00);
-    }
+    data.extend(std::iter::repeat_n(0x00, 100));
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data.extend_from_slice(&[0x68, 0xCE]);
 
@@ -652,8 +655,7 @@ fn test_extract_frames_nal_data_content() {
     data.extend_from_slice(&payload);
 
     let result = extract_annex_b_frames(&data);
-    if result.is_ok() {
-        let frames = result.unwrap();
+    if let Ok(frames) = result {
         if !frames.is_empty() {
             // NAL data should contain the payload (possibly without start code)
             assert!(!frames[0].nal_data.is_empty() || frames[0].nal_data.len() <= payload.len());
@@ -695,10 +697,8 @@ fn test_extract_with_garbage_data() {
     let result = extract_annex_b_frames(&data);
 
     // May fail with garbage data
-    if result.is_ok() {
-        let _frames = result.unwrap();
-        // Should handle garbage gracefully
-    }
+    // Should handle garbage gracefully
+    let _ = result;
 }
 
 #[test]
@@ -715,6 +715,8 @@ fn test_frame_is_idr_detection() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert!(idr_frame.is_idr);
@@ -734,6 +736,8 @@ fn test_frame_reference_property() {
         is_idr: false,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert!(reference_frame.is_ref);
@@ -750,6 +754,8 @@ fn test_frame_reference_property() {
         is_idr: false,
         is_ref: false,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     assert!(!non_ref_frame.is_ref);
@@ -757,7 +763,7 @@ fn test_frame_reference_property() {
 
 #[test]
 fn test_frame_index_sequence() {
-    let frames = vec![
+    let frames = [
         AvcFrame {
             frame_index: 0,
             frame_type: AvcFrameType::I,
@@ -769,6 +775,8 @@ fn test_frame_index_sequence() {
             is_idr: true,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
         AvcFrame {
             frame_index: 1,
@@ -781,6 +789,8 @@ fn test_frame_index_sequence() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
     ];
 
@@ -829,6 +839,8 @@ fn test_avc_frame_to_unit_node_i_frame() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 0);
@@ -860,6 +872,8 @@ fn test_avc_frame_to_unit_node_p_frame() {
         is_idr: false,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 1);
@@ -884,6 +898,8 @@ fn test_avc_frame_to_unit_node_b_frame() {
         is_idr: false,
         is_ref: false,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 2);
@@ -906,6 +922,8 @@ fn test_avc_frame_to_unit_node_display_name() {
         is_idr: true,
         is_ref: true,
         slice_header: None,
+        width: 0,
+        height: 0,
     };
 
     let unit_node = avc_frame_to_unit_node(&frame, 0);
@@ -926,6 +944,8 @@ fn test_avc_frames_to_unit_nodes() {
             is_idr: true,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
         AvcFrame {
             frame_index: 1,
@@ -938,6 +958,8 @@ fn test_avc_frames_to_unit_nodes() {
             is_idr: false,
             is_ref: true,
             slice_header: None,
+            width: 0,
+            height: 0,
         },
     ];
 
@@ -1135,15 +1157,11 @@ fn test_extract_with_lots_of_garbage_bytes() {
     // Test stream with lots of garbage bytes
     let mut data = Vec::new();
     // Add garbage before first valid start code
-    for _ in 0..100 {
-        data.push(0xFF);
-    }
+    data.extend(std::iter::repeat_n(0xFF, 100));
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data.extend_from_slice(&[0x67, 0x42]);
     // More garbage
-    for _ in 0..200 {
-        data.push(0xAA);
-    }
+    data.extend(std::iter::repeat_n(0xAA, 200));
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data.extend_from_slice(&[0x68, 0xCE]);
 
@@ -1171,7 +1189,7 @@ fn test_extract_with_minimal_idr_frame() {
 
     if !frames.is_empty() {
         // Should detect IDR frame
-        assert_eq!(frames[0].is_idr, true);
+        assert!(frames[0].is_idr);
         assert_eq!(frames[0].frame_type, AvcFrameType::I);
     }
 }
@@ -1194,7 +1212,7 @@ fn test_extract_with_minimal_b_frame() {
         // Should detect B frame
         assert_eq!(frames[0].frame_type, AvcFrameType::B);
         // B frames are typically not reference frames
-        assert_eq!(frames[0].is_ref, false);
+        assert!(!frames[0].is_ref);
     }
 }
 

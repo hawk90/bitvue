@@ -1230,7 +1230,11 @@ fn test_parse_avc_with_sei_message() {
     assert!(result.is_ok());
 
     let stream = result.unwrap();
-    assert!(!stream.sei_messages.is_empty() || stream.sei_messages.len() == 0);
+    // This SEI NAL is truncated (no size field, no rbsp trailing bits), so it doesn't
+    // carry enough data to form a valid SEI message -- parsing should not panic and
+    // should correctly yield zero extracted messages, while still recording the NAL units.
+    assert_eq!(stream.sei_messages.len(), 0);
+    assert!(!stream.nal_units.is_empty());
 }
 
 #[test]
@@ -1247,10 +1251,9 @@ fn test_parse_avc_with_idr_slice() {
     data.extend_from_slice(&[0x65, 0x00, 0x80]); // Partial IDR slice with non-zero end
 
     let result = parse_avc(&data);
-    if result.is_ok() {
-        let stream = result.unwrap();
+    if let Ok(stream) = result {
         // Should find at least the IDR NAL unit
-        assert!(stream.nal_units.len() >= 1);
+        assert!(!stream.nal_units.is_empty());
     }
     // May fail due to incomplete SPS/PPS data
 }
@@ -1317,8 +1320,7 @@ fn test_parse_avc_with_partial_slice_data() {
 
     let result = parse_avc(&data);
     // May fail with partial slice data, but shouldn't panic
-    if result.is_ok() {
-        let stream = result.unwrap();
+    if let Ok(stream) = result {
         assert!(!stream.nal_units.is_empty());
     }
 }
@@ -1349,7 +1351,7 @@ fn test_parse_avc_consecutive_start_codes() {
 
     let stream = result.unwrap();
     // May or may not count the empty NAL unit
-    assert!(stream.nal_units.len() >= 1);
+    assert!(!stream.nal_units.is_empty());
 }
 
 #[test]
@@ -1403,12 +1405,10 @@ fn test_parse_avc_dimensions_from_sps() {
     data.extend_from_slice(&[0x0A, 0xFF]); // High profile, level 4.0
 
     let result = parse_avc(&data);
-    if result.is_ok() {
-        let stream = result.unwrap();
+    if let Ok(stream) = result {
         let dims = stream.dimensions();
         // If SPS was parsed successfully, dimensions should be available
-        if dims.is_some() {
-            let (width, height) = dims.unwrap();
+        if let Some((width, height)) = dims {
             assert!(width > 0);
             assert!(height > 0);
         }
@@ -1484,11 +1484,11 @@ fn test_parse_avc_end_of_sequence_stream() {
 
     // Add EndOfSequence
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.push((0 << 5) | 10); // ref_idc=0, type=EndOfSequence
+    data.push(10); // ref_idc=0, type=EndOfSequence
 
     // Add EndOfStream
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.push((0 << 5) | 11); // ref_idc=0, type=EndOfStream
+    data.push(11); // ref_idc=0, type=EndOfStream
 
     let result = parse_avc(&data);
     let _ = result;
@@ -1498,7 +1498,7 @@ fn test_parse_avc_end_of_sequence_stream() {
 fn test_parse_avc_filler_data() {
     let mut data = Vec::new();
     data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-    data.push((0 << 5) | 12); // FillerData
+    data.push(12); // ref_idc=0, type=FillerData
     data.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
 
     let result = parse_avc(&data);
@@ -1535,7 +1535,7 @@ fn test_parse_avc_with_various_sps_ids() {
         data.extend_from_slice(&[0x67]); // SPS
                                          // Add some minimal SPS data with different ID
         data.extend_from_slice(&[0x42, 0x80, 0x0A, 0xFF]);
-        data.extend_from_slice(&[sps_id & 0xFF]);
+        data.extend_from_slice(&[sps_id]);
 
         let result = parse_avc(&data);
         let _ = result;
@@ -1674,7 +1674,7 @@ fn test_parse_avc_aud_various_types() {
     for pic_type in 0u8..3u8 {
         let mut data = Vec::new();
         data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        data.push((0 << 5) | 9); // AUD
+        data.push(9); // ref_idc=0, type=AUD
         data.push(pic_type);
         data.extend_from_slice(&[0xFF]);
 

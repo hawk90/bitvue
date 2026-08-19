@@ -5,6 +5,7 @@
  */
 
 import { forwardRef, useEffect, useRef } from "react";
+import { TimelineCursor } from "./TimelineCursor";
 
 interface FrameInfo {
   frame_index: number;
@@ -23,6 +24,11 @@ interface FrameInfo {
 interface TimelineThumbnailsProps {
   frames: FrameInfo[];
   highlightedFrameIndex: number;
+  /** Pixel offset for the cursor, relative to this component's own root -- see
+   * `TimelineCursor`'s doc for why this must be a DOM child of that (potentially scrolled) root
+   * rather than a sibling positioned by percentage. `0` (same fallback the previous
+   * percent-based calc used) while it can't yet be measured. */
+  cursorPositionPx: number;
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave: () => void;
@@ -38,6 +44,7 @@ export const TimelineThumbnails = forwardRef<
     {
       frames,
       highlightedFrameIndex,
+      cursorPositionPx,
       onMouseDown,
       onMouseMove,
       onMouseLeave,
@@ -99,6 +106,13 @@ export const TimelineThumbnails = forwardRef<
             />
           );
         })}
+
+        {/* Rendered as a child of this (potentially horizontally-scrolled) strip, not a sibling
+            positioned by percentage of the outer container -- see TimelineCursor's doc. */}
+        <TimelineCursor
+          positionPx={cursorPositionPx}
+          frameIndex={highlightedFrameIndex}
+        />
       </div>
     );
   },

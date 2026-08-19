@@ -6,6 +6,8 @@
 
 import type { FrameInfo } from "../types/video";
 import { memo } from "react";
+import { FrameTypeBadge } from "./common/FrameTypeBadge";
+import "./FilmstripTooltip.css";
 
 interface FilmstripTooltipProps {
   frame: FrameInfo;
@@ -34,9 +36,7 @@ export const FilmstripTooltip = memo(function FilmstripTooltip({
     >
       <div className="filmstrip-tooltip-header">
         <span className="frame-number">#{frame.frame_index}</span>
-        <span className={`frame-type type-${frame.frame_type.toLowerCase()}`}>
-          {frame.frame_type}
-        </span>
+        <FrameTypeBadge frameType={frame.frame_type} />
       </div>
       <div className="filmstrip-tooltip-body">
         <span className="filmstrip-tooltip-label">Size</span>

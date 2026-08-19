@@ -9,6 +9,12 @@ import { useState, useMemo, memo, useCallback } from "react";
 import { useFrameData } from "../../contexts/FrameDataContext";
 import { useCurrentFrame } from "../../contexts/CurrentFrameContext";
 import { useFileState } from "../../contexts/FileStateContext";
+import {
+  getContextMenuItems,
+  type ContextMenuItemWire,
+} from "../../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../../hooks/useExportEvidenceBundle";
+import { ContextMenu } from "../ContextMenu";
 import "./DiagnosticsPanel.css";
 
 export type DiagnosticSeverity = "error" | "warning" | "info" | "hint";
@@ -126,6 +132,40 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({
     setSelectedDiagnostic(diag);
   }, []);
 
+  // Right-click context menu (Phase 7.6, "DiagnosticsPanel" scope) -- see ContextMenu component doc.
+  const exportEvidence = useExportEvidenceBundle();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleDiagnosticsContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      const hasSelection = selectedDiagnostic !== null;
+      const x = event.clientX;
+      const y = event.clientY;
+      getContextMenuItems("DiagnosticsPanel", hasSelection, false)
+        .then((items) => setContextMenu({ x, y, items }))
+        .catch(() => setContextMenu(null));
+    },
+    [selectedDiagnostic],
+  );
+
+  const handleContextMenuSelect = useCallback(
+    (command: string) => {
+      if (command === "Export.EvidenceBundle") {
+        void exportEvidence();
+      } else if (command === "Copy.Selection" && selectedDiagnostic) {
+        void navigator.clipboard.writeText(
+          `${selectedDiagnostic.code}: ${selectedDiagnostic.message}`,
+        );
+      }
+    },
+    [exportEvidence, selectedDiagnostic],
+  );
+
   const getSeverityIcon = (severity: DiagnosticSeverity) => {
     const icons = {
       error: "codicon-error",
@@ -187,7 +227,10 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({
       </div>
 
       {/* Diagnostics table */}
-      <div className="diagnostics-content">
+      <div
+        className="diagnostics-content"
+        onContextMenu={handleDiagnosticsContextMenu}
+      >
         {filteredDiagnostics.length === 0 ? (
           <div className="diagnostics-empty">
             <i className="codicon codicon-check" />
@@ -291,6 +334,16 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

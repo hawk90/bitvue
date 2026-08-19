@@ -14,6 +14,7 @@ function BPyramidView({
   currentFrameIndex,
   onFrameClick,
   getFrameTypeColorClass,
+  showAllArrows = false,
 }: BPyramidViewProps) {
   const { levels, gopBoundaries, frameMap } = useMemo(
     () => analyzeTemporalLevels(frames),
@@ -45,6 +46,7 @@ function BPyramidView({
         levels={levels}
         frameMap={frameMap}
         gopBoundaries={gopBoundaries}
+        showAllArrows={showAllArrows}
       />
     </div>
   );
@@ -57,6 +59,7 @@ export { BPyramidView };
 export default memo(BPyramidView, (prevProps, nextProps) => {
   return (
     prevProps.frames === nextProps.frames &&
-    prevProps.currentFrameIndex === nextProps.currentFrameIndex
+    prevProps.currentFrameIndex === nextProps.currentFrameIndex &&
+    prevProps.showAllArrows === nextProps.showAllArrows
   );
 });

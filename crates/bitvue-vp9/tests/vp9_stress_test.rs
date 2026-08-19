@@ -43,8 +43,8 @@ fn test_parse_vp9_large_input_100kb() {
 #[test]
 fn test_parse_vp9_random_pattern_1kb() {
     let mut data = vec![0u8; 1024];
-    for i in 0..1024 {
-        data[i] = ((i * 13 + 7) % 256) as u8;
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte = ((i * 13 + 7) % 256) as u8;
     }
 
     let result = parse_vp9(&data);
@@ -71,7 +71,12 @@ fn test_parse_vp9_all_frame_types() {
 
     for frame_type in frame_types {
         let mut data = vec![0u8; 16];
-        data[0] = (2 << 6) | (0 << 3) | 0x01; // profile=0, show_existing=0, frame_type
+        // Previously this hardcoded `(0 << 3)` instead of using `frame_type`,
+        // so all 3 loop iterations exercised byte-for-byte identical data
+        // and the loop variable was dead. Thread it through so each
+        // iteration actually varies (mirrors the `profile` pattern used in
+        // test_parse_vp9_all_profile_types above).
+        data[0] = (2 << 6) | (frame_type << 3) | 0x01; // profile=0, frame_type varies
         data[1] = 0x49;
 
         let result = parse_vp9(&data);
@@ -82,7 +87,7 @@ fn test_parse_vp9_all_frame_types() {
 #[test]
 fn test_parse_vp9_show_existing_frame() {
     let mut data = vec![0u8; 16];
-    data[0] = (2 << 6) | (0 << 3) | 0x11; // show_existing=1
+    data[0] = (2 << 6) | 0x11; // show_existing=1
     data[1] = 0x49;
 
     let result = parse_vp9(&data);

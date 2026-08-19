@@ -71,6 +71,9 @@ src-tauri/target/
 crates/*/target/
 src-tauri/WixTools/
 
+# electron-builder packaging output (bitvue-desktop/package.json "build".directories.output)
+bitvue-desktop/release/
+
 # =============================================================================
 # Backup files
 # =============================================================================
@@ -84,3 +87,6 @@ src-tauri/WixTools/
 # Note: archive/ is kept in git for project archival purposes
 # To ignore: uncomment the line below
 # archive/
+
+# Raw V14 research pack import (compacted into docs/, not tracked)
+docs/_import_v14/

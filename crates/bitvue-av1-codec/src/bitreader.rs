@@ -3,10 +3,10 @@
 //! Provides bit-accurate reading operations required for parsing AV1 OBU headers
 //! and syntax elements.
 //!
-//! This module provides a wrapper around the shared BitReader from bitvue_core
+//! This module provides a wrapper around the shared BitReader from bitvue_engine
 //! with AV1-specific extensions.
 
-use bitvue_core::{BitReader as CoreBitReader, Result, UvlcReader};
+use bitvue_engine::{BitReader as CoreBitReader, Result, UvlcReader};
 
 /// AV1-specific bit reader wrapper
 ///
@@ -110,7 +110,7 @@ impl<'a> BitReader<'a> {
     ///
     /// AV1 spec: uvlc() reads leadingZeros, then value
     ///
-    /// This uses the UvlcReader trait from bitvue_core.
+    /// This uses the UvlcReader trait from bitvue_engine.
     pub fn read_uvlc(&mut self) -> Result<u32> {
         UvlcReader::read_uvlc(&mut self.inner)
     }

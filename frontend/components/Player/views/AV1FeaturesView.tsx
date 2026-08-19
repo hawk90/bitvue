@@ -10,6 +10,7 @@
 
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
+import { getAv1Features } from "../../../services/electronBridgeService";
 
 interface AV1FeaturesViewProps {
   frame: FrameInfo | null;
@@ -76,7 +77,7 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
   const [superRes, setSuperRes] = useState<SuperResParams | null>(null);
 
   useEffect(() => {
-    if (!frame || width === 0 || height === 0) {
+    if (!frame) {
       setCdefBlocks([]);
       setRestorationUnits([]);
       setFilmGrain(null);
@@ -84,76 +85,60 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
       return;
     }
 
-    // Generate mock CDEF blocks
-    const blockSize = 8;
-    const gridW = Math.ceil(width / blockSize);
-    const gridH = Math.ceil(height / blockSize);
-
-    const blocks: CdefBlock[] = [];
-    for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        blocks.push({
-          x: x * blockSize,
-          y: y * blockSize,
-          size: blockSize,
-          direction: Math.floor(Math.random() * 8),
-          strength: Math.floor(Math.random() * 16),
-        });
-      }
-    }
-    setCdefBlocks(blocks);
-
-    // Generate mock restoration units
-    const unitSize = 64;
-    const restorationGridW = Math.ceil(width / unitSize);
-    const restorationGridH = Math.ceil(height / unitSize);
-
-    const units: RestorationUnit[] = [];
-    for (let y = 0; y < restorationGridH; y++) {
-      for (let x = 0; x < restorationGridW; x++) {
-        const type = Math.floor(Math.random() * 3);
-        units.push({
-          x: x * unitSize,
-          y: y * unitSize,
-          size: unitSize,
-          restorationType: type,
-          filterData:
-            type > 0
-              ? [
-                  Math.floor(Math.random() * 8) - 4,
-                  Math.floor(Math.random() * 8) - 4,
-                  Math.floor(Math.random() * 8) - 4,
-                ]
-              : undefined,
-        });
-      }
-    }
-    setRestorationUnits(units);
-
-    // Mock film grain params
-    setFilmGrain({
-      enabled: true,
-      updateOffset: 0,
-      seed: Math.floor(Math.random() * 10000),
-      scalingShift: 11,
-      arCoeffLag: 3,
-      arCoeffsY: [0, 1, -1, 0],
-      arCoeffsUV: [0, 1, 0],
-      arCoeffShift: 6,
-      grainScaleShift: 0,
-      chromaScalingFromLuma: false,
-      overlap: true,
-      clipToRestrictedRange: true,
-    });
-
-    // Mock super res
-    setSuperRes({
-      enabled: false,
-      scaleDenominator: 8,
-      upscaledWidth: width,
-      upscaledHeight: height,
-    });
-  }, [frame, width, height]);
+    getAv1Features(frame.frame_index)
+      .then((data) => {
+        if (data.cdef) {
+          setCdefBlocks(
+            data.cdef.blocks.map((b) => ({
+              x: b.x,
+              y: b.y,
+              size: b.size,
+              direction: b.direction,
+              strength: b.strength,
+            })),
+          );
+        }
+        if (data.loop_restoration) {
+          setRestorationUnits(
+            data.loop_restoration.units.map((u) => ({
+              x: u.x,
+              y: u.y,
+              size: u.size,
+              restorationType: u.restoration_type,
+              filterData: undefined,
+            })),
+          );
+        }
+        if (data.film_grain) {
+          setFilmGrain({
+            enabled: data.film_grain.enabled,
+            updateOffset: 0,
+            seed: data.film_grain.seed,
+            scalingShift: data.film_grain.scaling_shift,
+            arCoeffLag: data.film_grain.ar_coeff_lag,
+            arCoeffsY: [],
+            arCoeffsUV: [],
+            arCoeffShift: 6,
+            grainScaleShift: 0,
+            chromaScalingFromLuma: data.film_grain.chroma_scaling_from_luma,
+            overlap: data.film_grain.overlap,
+            clipToRestrictedRange: true,
+          });
+        }
+        if (data.super_resolution) {
+          setSuperRes({
+            enabled: data.super_resolution.enabled,
+            scaleDenominator: data.super_resolution.scale_denominator,
+            upscaledWidth: data.super_resolution.upscaled_width,
+            upscaledHeight: data.super_resolution.upscaled_height,
+          });
+        }
+      })
+      .catch(() => {
+        setCdefBlocks([]);
+        setRestorationUnits([]);
+      });
+  }, [frame]);
 
   const cdefColors = useMemo(() => {
     return cdefBlocks.map((block) => {
@@ -374,37 +359,52 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
         </div>
       )}
 
-      {/* Legend */}
-      <div className="av1-features-legend">
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "linear-gradient(to right, red, yellow)" }}
-          ></div>
-          <span>CDEF Direction/Strength</span>
+      {/* Legend -- scoped to the sections actually visible. Used to render unconditionally
+          (CDEF + Loop Restoration swatches even in Film-Grain-only or SuperRes-only mode, where
+          neither of those sections is shown at all), found while wiring the individual AV1
+          per-feature F-keys (cdef-filter/loop-restoration/film-grain/super-res) to this component
+          for the first time -- previously only reachable via the "av1-features" catch-all, where
+          showing every swatch happened to always be correct. */}
+      {(showCdef || showLoopRestoration) && (
+        <div className="av1-features-legend">
+          {showCdef && (
+            <div className="av1-features-legend-item">
+              <div
+                className="av1-features-legend-box"
+                style={{
+                  background: "linear-gradient(to right, red, yellow)",
+                }}
+              ></div>
+              <span>CDEF Direction/Strength</span>
+            </div>
+          )}
+          {showLoopRestoration && (
+            <>
+              <div className="av1-features-legend-item">
+                <div
+                  className="av1-features-legend-box"
+                  style={{ background: "rgba(255, 100, 100, 0.6)" }}
+                ></div>
+                <span>Wiener Filter</span>
+              </div>
+              <div className="av1-features-legend-item">
+                <div
+                  className="av1-features-legend-box"
+                  style={{ background: "rgba(100, 255, 100, 0.6)" }}
+                ></div>
+                <span>SgrProj Filter</span>
+              </div>
+              <div className="av1-features-legend-item">
+                <div
+                  className="av1-features-legend-box"
+                  style={{ background: "rgba(128, 128, 128, 0.3)" }}
+                ></div>
+                <span>No Filter</span>
+              </div>
+            </>
+          )}
         </div>
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "rgba(255, 100, 100, 0.6)" }}
-          ></div>
-          <span>Wiener Filter</span>
-        </div>
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "rgba(100, 255, 100, 0.6)" }}
-          ></div>
-          <span>SgrProj Filter</span>
-        </div>
-        <div className="av1-features-legend-item">
-          <div
-            className="av1-features-legend-box"
-            style={{ background: "rgba(128, 128, 128, 0.3)" }}
-          ></div>
-          <span>No Filter</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 });

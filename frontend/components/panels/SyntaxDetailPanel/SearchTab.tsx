@@ -7,6 +7,7 @@
  */
 
 import { memo, useCallback } from "react";
+import { FrameTypeBadge } from "../../common/FrameTypeBadge";
 
 interface SearchResult {
   frame_index: number;
@@ -96,11 +97,7 @@ export const SearchTab = memo(function SearchTab({
                 className={`search-result-item ${idx === currentFrameIndex ? "current" : ""}`}
                 onClick={() => handleNavigateToFrame(idx)}
               >
-                <span
-                  className={`search-result-type frame-type-${frame.frame_type.toLowerCase()}`}
-                >
-                  {frame.frame_type}
-                </span>
+                <FrameTypeBadge frameType={frame.frame_type} />
                 <span className="search-result-index">
                   #{frame.frame_index}
                 </span>

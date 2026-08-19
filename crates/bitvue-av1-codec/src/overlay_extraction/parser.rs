@@ -2,8 +2,10 @@
 //!
 //! Provides ParsedFrame struct and related types for caching parsed OBU data.
 
+use crate::frame_header::TxfmMode;
+use crate::frame_header_full::{parse_frame_header_full, RefFrameState};
 use crate::{parse_all_obus, parse_frame_header_basic, ObuType};
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use std::sync::Arc;
 
 /// Cached frame data to avoid re-parsing
@@ -25,6 +27,115 @@ pub struct ParsedFrame {
     pub tile_data: Arc<[u8]>,
     /// Whether delta Q is enabled for this frame
     pub delta_q_enabled: bool,
+    /// `reference_select` (spec 5.9.23) -- whether compound (2-reference) prediction is enabled
+    /// for this frame. Computed via `parse_frame_header_full` (needs a real `SequenceHeader`,
+    /// unlike `parse_frame_header_basic` which can't reach this field's bit position at all --
+    /// see that function's doc) with a *fresh* `RefFrameState::new()` rather than real
+    /// accumulated cross-frame state: `reference_select`'s bit position doesn't depend on
+    /// `ref_state`'s stored values (only `read_skip_mode_params`, which runs *after* it, does) --
+    /// see `parse_coding_unit`'s doc for the full reasoning. `false` (i.e. "no compound
+    /// prediction, safe to assume single-ref") if the sequence header wasn't found or the frame
+    /// header failed to parse (same resilient-fallback precedent as `delta_q_enabled`).
+    pub reference_select: bool,
+    /// `allow_intrabc` (spec 5.9.2) -- whether intra block copy is enabled for this (intra) frame.
+    /// Same sourcing/fallback story as `reference_select`.
+    pub allow_intrabc: bool,
+    /// `allow_screen_content_tools` (spec 5.9.2) -- see `FrameHeader::allow_screen_content_tools`'s
+    /// doc. Same sourcing/fallback story as `reference_select`.
+    pub allow_screen_content_tools: bool,
+    /// `delta_lf_present`/`delta_lf_multi` (spec 5.9.14) -- see `FrameHeader::delta_lf_present`'s
+    /// doc. Same sourcing/fallback story as `reference_select`.
+    pub delta_lf_present: bool,
+    pub delta_lf_multi: bool,
+    /// `reduced_tx_set` (spec 5.9.2) -- see `FrameHeader::reduced_tx_set`'s doc. Same
+    /// sourcing/fallback story as `reference_select`.
+    pub reduced_tx_set: bool,
+    /// `CodedLossless` (spec 5.9.2/7.12.3): `base_q_idx == 0 && y_dc_delta_q == 0 &&
+    /// uv_dc_delta_q == 0`. Doesn't factor in segmentation's per-segment `SEG_LVL_ALT_Q` override
+    /// (real spec's per-segment `LosslessArray`) even though `segmentation` (below) is now real --
+    /// frame-wide only, matches
+    /// `frame_header_full.rs`'s own `coded_lossless` derivation (see that module's doc). `false`
+    /// if `base_q_idx` wasn't parsed (same resilient-fallback precedent as `delta_q_enabled`).
+    pub coded_lossless: bool,
+    /// `TxMode` (spec 5.9.21) -- see `TxfmMode`'s doc. Same sourcing/fallback story as
+    /// `reference_select`.
+    pub txfm_mode: TxfmMode,
+    /// `use_ref_frame_mvs` (spec 5.9.2) -- see `FrameHeader::use_ref_frame_mvs`'s doc. Same
+    /// sourcing/fallback story as `reference_select`.
+    pub use_ref_frame_mvs: bool,
+    /// `order_hint` (spec 5.9.2) -- this frame's own display-order hint. Same sourcing/fallback
+    /// story as `reference_select`; `0` if the full header wasn't parsed. Read *before*
+    /// `skip_mode_params` in bitstream order, so (like `use_ref_frame_mvs`) its value is correct
+    /// even from the throwaway fresh `RefFrameState::new()` this struct's own parse uses --
+    /// [`crate::tile::motion_field`]'s sequential test harness relies on this to avoid a second,
+    /// real-cross-frame-threaded header parse.
+    pub order_hint: u32,
+    /// `ref_frame_idx` (spec 5.9.2) -- this frame's own logical-ref (`0..=6`, LAST..ALTREF) to
+    /// physical-DPB-slot (`0..=7`) mapping. `None` for intra frames (spec: this syntax doesn't
+    /// exist for them) or if the full header wasn't parsed. Same bit-position-independence note as
+    /// `order_hint`.
+    pub ref_frame_idx: Option<[u8; 7]>,
+    /// `refresh_frame_flags` (spec 5.9.2) -- which of the 8 physical DPB slots this frame refreshes
+    /// once decoded. `0` if the full header wasn't parsed. Same bit-position-independence note as
+    /// `order_hint`.
+    pub refresh_frame_flags: u8,
+    /// Real segmentation state (spec 5.9.14) -- see `crate::frame_header_full::SegmentationInfo`'s
+    /// doc for the exact fields and known gap. Same sourcing/fallback story as `reference_select`
+    /// (`SegmentationInfo::default()`, all-disabled, if the full header wasn't parsed).
+    pub segmentation: crate::frame_header_full::SegmentationInfo,
+    /// `mono_chrome` (spec sequence header `color_config()`) -- true means this stream has no
+    /// chroma planes at all (`num_planes == 1`), sourced directly from the sequence header's
+    /// `ColorConfig` (no `parse_frame_header_full` needed, unlike `reference_select`/etc.).
+    /// Defaults to `true` (conservatively "no chroma") if the sequence header wasn't found --
+    /// this crate can't derive `subsampling_x`/`subsampling_y` without it, and guessing chroma
+    /// geometry wrong would be worse than the existing luma-only gap (see
+    /// `crate::tile::coding_unit`'s module doc for why this gap was a real desync bug, not just
+    /// missing data).
+    pub mono_chrome: bool,
+    /// `subsampling_x`/`subsampling_y` (spec sequence header `color_config()`) -- chroma plane
+    /// dimensions are `luma_dim >> subsampling_{x,y}` (spec `get_plane_residual_size`). Same
+    /// sourcing/fallback story as `mono_chrome` (irrelevant when `mono_chrome` is true).
+    pub subsampling_x: bool,
+    pub subsampling_y: bool,
+    /// `enable_filter_intra` (spec sequence header, `Sequence Header OBU syntax`) -- gates
+    /// `filter_intra_mode_info()`'s real eligibility (`read_palette_mode_info`'s call site doc).
+    /// Same sourcing story as `mono_chrome` (direct from the sequence header, no
+    /// `parse_frame_header_full` needed); defaults to `false` (conservatively "never read a
+    /// filter_intra bit") if the sequence header wasn't found.
+    pub enable_filter_intra: bool,
+    /// `cdef.bits` (spec 5.9.19's `cdef_bits`) -- see `crate::frame_header::CdefInfo::bits`'s doc
+    /// for what this gates in tile data. Same sourcing/fallback story as `reference_select`; `0`
+    /// (i.e. "`cdef_idx()` never reads any bits") if the full header wasn't parsed -- the same
+    /// conservative default real spec itself uses when CDEF is disabled.
+    pub cdef_bits: u8,
+    /// `skip_mode_present` (spec 5.9.22) -- see `crate::frame_header::FrameHeader::
+    /// skip_mode_present`'s doc for what this gates in tile data. Same sourcing/fallback story
+    /// as `reference_select`; `false` (i.e. "`skip_mode` never reads any bits") if the full
+    /// header wasn't parsed.
+    pub skip_mode_present: bool,
+    /// `SkipModeFrame[0]/[1]` (spec 5.9.22) -- see `crate::frame_header::FrameHeader::
+    /// skip_mode_refs`'s doc. Same sourcing/fallback story as `skip_mode_present`.
+    pub skip_mode_refs: [u8; 2],
+    /// `subpel_filter_switchable`/`switchable_motion_mode`/`allow_warped_motion` (spec 5.9.2/
+    /// 5.9.10) -- see `crate::frame_header::FrameHeader`'s matching fields' docs. Same sourcing/
+    /// fallback story as `reference_select`.
+    pub subpel_filter_switchable: bool,
+    pub switchable_motion_mode: bool,
+    pub allow_warped_motion: bool,
+    /// `force_integer_mv`/`gm_type` (spec 5.9.2/5.9.24) -- see
+    /// `crate::frame_header::FrameHeader`'s matching fields' docs. Same sourcing/fallback story as
+    /// `reference_select`.
+    pub force_integer_mv: bool,
+    pub gm_type: [u8; 8],
+    /// `enable_interintra_compound`/`enable_masked_compound`/`enable_jnt_comp`/
+    /// `enable_warped_motion` (sequence header) -- gate `interintra`/`compound_type`(wedge/seg)/
+    /// `motion_mode`'s real eligibility. Same sourcing story as `mono_chrome` (direct from the
+    /// sequence header, no `parse_frame_header_full` needed); default `false` (conservatively
+    /// "never read the corresponding bits") if the sequence header wasn't found.
+    pub enable_interintra_compound: bool,
+    pub enable_masked_compound: bool,
+    pub enable_jnt_comp: bool,
+    pub enable_warped_motion: bool,
 }
 
 /// Frame dimensions extracted from sequence header
@@ -99,12 +210,67 @@ impl ParsedFrame {
     pub fn parse(obu_data: &[u8]) -> Result<Self, BitvueError> {
         let obu_data: Arc<[u8]> = Arc::from(obu_data);
 
-        // Parse OBUs, propagating errors instead of silently defaulting
-        // The original code used unwrap_or_default() which masked parse errors
-        let obus_vec = parse_all_obus(&obu_data).map_err(|e| {
-            tracing::warn!("Failed to parse OBUs in ParsedFrame::parse: {}", e);
-            e
-        })?;
+        // Handle empty data: return a default ParsedFrame immediately.
+        // Callers that extract grids from empty data receive the default 1920x1080
+        // scaffold, which is the documented behaviour for this module.
+        if obu_data.is_empty() {
+            return Ok(Self {
+                obu_data,
+                obus: Vec::new(),
+                dimensions: FrameDimensions::default(),
+                frame_type: FrameTypeInfo::default(),
+                tile_data: Arc::from([]),
+                delta_q_enabled: false,
+                reference_select: false,
+                allow_intrabc: false,
+                allow_screen_content_tools: false,
+                delta_lf_present: false,
+                delta_lf_multi: false,
+                reduced_tx_set: false,
+                coded_lossless: false,
+                txfm_mode: TxfmMode::default(),
+                use_ref_frame_mvs: false,
+                order_hint: 0,
+                ref_frame_idx: None,
+                refresh_frame_flags: 0,
+                segmentation: crate::frame_header_full::SegmentationInfo::default(),
+                mono_chrome: true,
+                subsampling_x: false,
+                subsampling_y: false,
+                enable_filter_intra: false,
+                cdef_bits: 0,
+                skip_mode_present: false,
+                skip_mode_refs: [0, 0],
+                subpel_filter_switchable: false,
+                switchable_motion_mode: false,
+                allow_warped_motion: false,
+                force_integer_mv: false,
+                gm_type: [0u8; 8],
+                enable_interintra_compound: false,
+                enable_masked_compound: false,
+                enable_jnt_comp: false,
+                enable_warped_motion: false,
+            });
+        }
+
+        // Use resilient parsing: collect whatever OBUs parse successfully and
+        // log (but do not propagate) any individual OBU parse errors.
+        // This allows overlay extraction to work on truncated or minimal test
+        // data without failing the whole operation.
+        let obus_vec = match parse_all_obus(&obu_data) {
+            Ok(obus) => obus,
+            Err(e) => {
+                tracing::warn!(
+                    "parse_all_obus failed ({}), falling back to resilient OBU iteration",
+                    e
+                );
+                // Collect successfully-parsed OBUs, silently dropping errors
+                use crate::ObuIterator;
+                ObuIterator::new(&obu_data)
+                    .filter_map(|result| result.ok())
+                    .collect::<Vec<_>>()
+            }
+        };
 
         // Build lightweight OBU references
         let mut offset = 0;
@@ -113,6 +279,38 @@ impl ParsedFrame {
         let mut frame_type = FrameTypeInfo::default();
         let mut tile_data = Vec::new();
         let mut delta_q_enabled = false; // Default to false
+        let mut reference_select = false;
+        let mut allow_intrabc = false;
+        let mut allow_screen_content_tools = false;
+        let mut delta_lf_present = false;
+        let mut delta_lf_multi = false;
+        let mut reduced_tx_set = false;
+        let mut coded_lossless = false;
+        let mut txfm_mode = TxfmMode::default();
+        let mut use_ref_frame_mvs = false;
+        let mut order_hint = 0u32;
+        let mut ref_frame_idx: Option<[u8; 7]> = None;
+        let mut refresh_frame_flags = 0u8;
+        let mut segmentation = crate::frame_header_full::SegmentationInfo::default();
+        let mut mono_chrome = true;
+        let mut subsampling_x = false;
+        let mut subsampling_y = false;
+        let mut enable_filter_intra = false;
+        let mut cdef_bits = 0u8;
+        let mut skip_mode_present = false;
+        let mut skip_mode_refs = [0u8, 0u8];
+        let mut subpel_filter_switchable = false;
+        let mut switchable_motion_mode = false;
+        let mut allow_warped_motion = false;
+        let mut force_integer_mv = false;
+        let mut gm_type = [0u8; 8];
+        let mut enable_interintra_compound = false;
+        let mut enable_masked_compound = false;
+        let mut enable_jnt_comp = false;
+        let mut enable_warped_motion = false;
+        // Retained across the loop so the frame-header OBU (which comes after the sequence
+        // header in every real stream) can use it -- see reference_select/allow_intrabc's doc.
+        let mut seq_header: Option<crate::SequenceHeader> = None;
 
         for obu in &obus_vec {
             let payload_start = offset + obu.header.header_size;
@@ -139,13 +337,136 @@ impl ParsedFrame {
                             sb_cols: 0,
                             sb_rows: 0,
                         };
+                        mono_chrome = seq_hdr.color_config.mono_chrome;
+                        subsampling_x = seq_hdr.color_config.subsampling_x;
+                        subsampling_y = seq_hdr.color_config.subsampling_y;
+                        enable_filter_intra = seq_hdr.enable_filter_intra;
+                        enable_interintra_compound = seq_hdr.enable_interintra_compound;
+                        enable_masked_compound = seq_hdr.enable_masked_compound;
+                        enable_jnt_comp = seq_hdr.enable_jnt_comp;
+                        enable_warped_motion = seq_hdr.enable_warped_motion;
+                        seq_header = Some(seq_hdr);
                     }
                 }
-                ObuType::Frame | ObuType::FrameHeader => {
+                ObuType::Frame => {
+                    // OBU_FRAME packs frame_header() + byte_alignment() + tile_group() into one
+                    // payload (spec 5.10) -- unlike a standalone FrameHeader OBU, the tile bytes
+                    // live right here, after header_size_bytes. Most real encoders (including
+                    // this crate's own IVF test fixture) emit this combined form rather than
+                    // separate FrameHeader+TileGroup OBUs, so without this split, tile_data stays
+                    // empty and every real-CU-parsing consumer (QP/MV/partition/prediction-mode/
+                    // transform grids, deblocking boundary strength) silently falls back to
+                    // scaffold data -- found via `get_deblocking_analysis` returning a decode
+                    // error on real fixture frames that should have real tile data.
+                    //
+                    // `header_size_bytes` for the tile_data cut MUST come from `full_hdr`
+                    // (`parse_frame_header_full`), not `parse_frame_header_basic` -- confirmed via
+                    // a real dav1d oracle build (`DEBUG_BLOCK_INFO`) that `basic`'s value is
+                    // exactly what its own doc admits: an approximation for non-KEY frames that
+                    // skips `frame_size()`/`tile_info()`/`segmentation_params()`/
+                    // `loop_filter_params()`/`cdef_params()`/`lr_params()`/
+                    // `global_motion_params()`/etc. entirely. On the real fixture's frame 13 this
+                    // undershoots by 11 bytes (`basic`=8, `full`=19, oracle's independently-derived
+                    // true offset=19) -- every inter frame's `tile_data` has silently started 11+
+                    // bytes into what's still frame-header bits, handing the symbol decoder
+                    // garbage from its very first read. This was the actual root cause behind the
+                    // "compounding entropy desync" investigated over many sessions as a
+                    // coeff_base/coeff_br context-precision suspicion -- that suspicion was never
+                    // reached because the decoder was never even starting from real tile bytes for
+                    // inter frames. `basic` is kept only for `is_intra_only`/`base_qp`/
+                    // `delta_q_enabled` when `seq_header` isn't available yet (a Frame OBU can't
+                    // spec-legally precede a Sequence Header, so this fallback path is defensive,
+                    // not a real-stream case).
                     if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
-                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra_only();
+                        // `FrameTypeInfo::is_intra_only`'s doc says "key/intra-only" -- i.e. spec
+                        // 5.9.2's `FrameIsIntra` (`frame_type == KEY_FRAME || frame_type ==
+                        // INTRA_ONLY_FRAME`), which is `FrameType::is_intra()`, NOT
+                        // `FrameType::is_intra_only()` (`bitvue-engine`'s codec-agnostic type --
+                        // that method only matches AV1's literal, rare INTRA_ONLY_FRAME type,
+                        // excluding ordinary KEY_FRAME). Using the narrower method meant every
+                        // real KEY_FRAME in every fixture this session ever parsed was silently
+                        // routed through `parse_coding_unit`'s INTER branch instead of its INTRA
+                        // one -- found while verifying the new key-frame `intra_mode`/`kfym`
+                        // context work (`SymbolDecoder::read_intra_mode`) had zero real frames to
+                        // exercise it on.
+                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
                         frame_type.base_qp = frame_hdr.base_q_idx;
                         delta_q_enabled = frame_hdr.delta_q_present;
+                        if seq_header.is_none() && frame_hdr.header_size_bytes < obu.payload.len() {
+                            tile_data
+                                .extend_from_slice(&obu.payload[frame_hdr.header_size_bytes..]);
+                        }
+                    }
+                    if let Some(seq) = &seq_header {
+                        if let Ok(full_hdr) =
+                            parse_frame_header_full(&obu.payload, seq, &mut RefFrameState::new())
+                        {
+                            reference_select = full_hdr.reference_select;
+                            allow_intrabc = full_hdr.allow_intrabc;
+                            allow_screen_content_tools = full_hdr.allow_screen_content_tools;
+                            delta_lf_present = full_hdr.delta_lf_present;
+                            delta_lf_multi = full_hdr.delta_lf_multi;
+                            reduced_tx_set = full_hdr.reduced_tx_set;
+                            coded_lossless = full_hdr.base_q_idx == Some(0)
+                                && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
+                                && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
+                            txfm_mode = full_hdr.txfm_mode;
+                            use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            order_hint = full_hdr.order_hint;
+                            ref_frame_idx = full_hdr.ref_frame_idx;
+                            refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
+                            segmentation = full_hdr.segmentation;
+                            cdef_bits = full_hdr.cdef_damping.bits;
+                            skip_mode_present = full_hdr.skip_mode_present;
+                            skip_mode_refs = full_hdr.skip_mode_refs;
+                            subpel_filter_switchable = full_hdr.subpel_filter_switchable;
+                            switchable_motion_mode = full_hdr.switchable_motion_mode;
+                            allow_warped_motion = full_hdr.allow_warped_motion;
+                            force_integer_mv = full_hdr.force_integer_mv;
+                            gm_type = full_hdr.gm_type;
+                            if full_hdr.header_size_bytes < obu.payload.len() {
+                                tile_data
+                                    .extend_from_slice(&obu.payload[full_hdr.header_size_bytes..]);
+                            }
+                        }
+                    }
+                }
+                ObuType::FrameHeader => {
+                    if let Ok(frame_hdr) = parse_frame_header_basic(&obu.payload) {
+                        // See the `ObuType::Frame` branch above for why this is `is_intra()`, not
+                        // `is_intra_only()`.
+                        frame_type.is_intra_only = frame_hdr.frame_type.is_intra();
+                        frame_type.base_qp = frame_hdr.base_q_idx;
+                        delta_q_enabled = frame_hdr.delta_q_present;
+                    }
+                    if let Some(seq) = &seq_header {
+                        if let Ok(full_hdr) =
+                            parse_frame_header_full(&obu.payload, seq, &mut RefFrameState::new())
+                        {
+                            reference_select = full_hdr.reference_select;
+                            allow_intrabc = full_hdr.allow_intrabc;
+                            allow_screen_content_tools = full_hdr.allow_screen_content_tools;
+                            delta_lf_present = full_hdr.delta_lf_present;
+                            delta_lf_multi = full_hdr.delta_lf_multi;
+                            reduced_tx_set = full_hdr.reduced_tx_set;
+                            coded_lossless = full_hdr.base_q_idx == Some(0)
+                                && full_hdr.y_dc_delta_q.unwrap_or(0) == 0
+                                && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
+                            txfm_mode = full_hdr.txfm_mode;
+                            use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            order_hint = full_hdr.order_hint;
+                            ref_frame_idx = full_hdr.ref_frame_idx;
+                            refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
+                            segmentation = full_hdr.segmentation;
+                            cdef_bits = full_hdr.cdef_damping.bits;
+                            skip_mode_present = full_hdr.skip_mode_present;
+                            skip_mode_refs = full_hdr.skip_mode_refs;
+                            subpel_filter_switchable = full_hdr.subpel_filter_switchable;
+                            switchable_motion_mode = full_hdr.switchable_motion_mode;
+                            allow_warped_motion = full_hdr.allow_warped_motion;
+                            force_integer_mv = full_hdr.force_integer_mv;
+                            gm_type = full_hdr.gm_type;
+                        }
                     }
                 }
                 ObuType::TileGroup => {
@@ -170,6 +491,35 @@ impl ParsedFrame {
             frame_type,
             tile_data: Arc::from(tile_data),
             delta_q_enabled,
+            reference_select,
+            allow_intrabc,
+            allow_screen_content_tools,
+            delta_lf_present,
+            delta_lf_multi,
+            reduced_tx_set,
+            coded_lossless,
+            txfm_mode,
+            use_ref_frame_mvs,
+            order_hint,
+            ref_frame_idx,
+            refresh_frame_flags,
+            segmentation,
+            mono_chrome,
+            subsampling_x,
+            subsampling_y,
+            enable_filter_intra,
+            cdef_bits,
+            skip_mode_present,
+            skip_mode_refs,
+            subpel_filter_switchable,
+            switchable_motion_mode,
+            allow_warped_motion,
+            force_integer_mv,
+            gm_type,
+            enable_interintra_compound,
+            enable_masked_compound,
+            enable_jnt_comp,
+            enable_warped_motion,
         })
     }
 

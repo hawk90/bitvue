@@ -23,6 +23,7 @@
 //! ```
 
 pub mod bitreader;
+pub mod bool_decoder;
 pub mod error;
 pub mod frame_header;
 pub mod frames;
@@ -31,10 +32,11 @@ pub mod superframe;
 pub mod syntax;
 
 pub use bitreader::BitReader;
+pub use bool_decoder::{Vp9BoolDecoder, BIASED_SEG_TREE_PROBS, DEFAULT_SEG_TREE_PROBS};
 pub use error::{Result, Vp9Error};
 pub use frame_header::{
-    ColorSpace, FrameHeader, FrameType, InterpolationFilter, LoopFilter, Quantization, RefFrame,
-    SegmentFeature, Segmentation,
+    parse_frame_header, ColorSpace, FrameHeader, FrameType, InterpolationFilter, LoopFilter,
+    Quantization, RefFrame, SegmentFeature, Segmentation,
 };
 pub use frames::{
     extract_frame_at_index, extract_vp9_frames, vp9_frame_to_unit_node, vp9_frames_to_unit_nodes,
@@ -56,6 +58,9 @@ pub struct Vp9Stream {
     pub superframe_index: SuperframeIndex,
     /// Parsed frame headers.
     pub frames: Vec<FrameHeader>,
+    /// Raw bytes for each frame (parallel to `frames`).
+    /// Enables boolean decoding of compressed header and tile data.
+    pub frame_payloads: Vec<Vec<u8>>,
 }
 
 impl Vp9Stream {
@@ -122,10 +127,14 @@ pub fn parse_vp9(data: &[u8]) -> Result<Vp9Stream> {
 
     // Parse each frame header
     let mut frames = Vec::with_capacity(frame_data.len());
+    let mut frame_payloads: Vec<Vec<u8>> = Vec::with_capacity(frame_data.len());
 
     for (i, frame_bytes) in frame_data.iter().enumerate() {
         match frame_header::parse_frame_header(frame_bytes) {
-            Ok(header) => frames.push(header),
+            Ok(header) => {
+                frame_payloads.push(frame_bytes.to_vec());
+                frames.push(header);
+            }
             Err(e) => {
                 abseil::vlog!(1, "Failed to parse frame {}: {}", i, e);
                 // Continue with other frames
@@ -136,6 +145,7 @@ pub fn parse_vp9(data: &[u8]) -> Result<Vp9Stream> {
     Ok(Vp9Stream {
         superframe_index,
         frames,
+        frame_payloads,
     })
 }
 

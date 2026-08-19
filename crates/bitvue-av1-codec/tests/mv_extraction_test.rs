@@ -15,14 +15,14 @@
 // correctly decode motion vectors from real AV1 bitstreams.
 
 use bitvue_av1_codec::{
-    parse_all_obus, parse_frame_header_basic, parse_superblock, tile::MvPredictorContext,
+    parse_all_obus, parse_frame_header_basic, parse_superblock,
+    tile::{MvPredictorContext, TileContext},
     FrameType, SymbolDecoder,
 };
 
-// TODO: Re-enable after fixing overflow bug in src/tile/mv_prediction.rs:107
-// The parsing code panics with "attempt to add with overflow" when parsing certain IVF files
+// Overflow bug in src/tile/mv_prediction.rs fixed: saturating arithmetic now used for
+// neighbor position checks and MotionVector add/sub operations.
 #[test]
-#[ignore]
 fn test_mv_extraction_with_spec_cdfs() {
     // Load test IVF file
     let test_file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -117,7 +117,53 @@ fn test_mv_extraction_with_spec_cdfs() {
         // Parse first superblock (at 0, 0)
         let sb_size = 64;
         let mut mv_ctx = MvPredictorContext::new(30, 17); // Typical 1920x1080 frame in 64x64 superblocks
-        match parse_superblock(&mut decoder, 0, 0, sb_size, false, 128, false, &mut mv_ctx) {
+        let mut tile_ctx = TileContext::new(30 * sb_size / 4, 17 * sb_size / 4);
+        // MiRows/MiCols (spec 5.9.5) for a 1920x1080 frame, matching the comment above.
+        let mi_rows = 2 * ((1080u32 + 7) >> 3);
+        let mi_cols = 2 * ((1920u32 + 7) >> 3);
+        match parse_superblock(
+            &mut decoder,
+            0,
+            0,
+            sb_size,
+            false,
+            128,
+            false,
+            &mut mv_ctx,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            bitvue_av1_codec::frame_header_full::SegmentationInfo::default(),
+            &mut tile_ctx,
+            bitvue_av1_codec::tile::TxTypeFrameFlags {
+                coded_lossless: false,
+                qidx_is_zero: false,
+                reduced_tx_set: false,
+                txfm_mode: bitvue_av1_codec::frame_header::TxfmMode::default(),
+                mono_chrome: true,
+                subsampling_x: false,
+                subsampling_y: false,
+            },
+            mi_rows,
+            mi_cols,
+            0,
+            false,
+            [0u8, 0u8],
+            bitvue_av1_codec::tile::InterModeFlags {
+                switchable_motion_mode: false,
+                allow_warped_motion: false,
+                enable_interintra_compound: false,
+                enable_masked_compound: false,
+                enable_jnt_comp: false,
+                subpel_filter_switchable: false,
+                force_integer_mv: false,
+                gm_type: [0u8; 8],
+            },
+        ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(
                     "  Superblock has {} coding units",

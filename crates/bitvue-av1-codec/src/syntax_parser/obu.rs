@@ -4,7 +4,7 @@
 
 use super::{SyntaxBuilder, TrackedBitReader};
 use crate::obu::ObuType;
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 
 /// Maximum bytes for a valid LEB128 in AV1 (8 bytes = 56 bits max)
 const MAX_LEB128_BYTES: usize = 8;
@@ -41,7 +41,7 @@ pub fn parse_obu_header_syntax(
 
     // Validate forbidden bit
     if forbidden {
-        return Err(bitvue_core::BitvueError::Parse {
+        return Err(bitvue_engine::BitvueError::Parse {
             offset: range.start_bit,
             message: "obu_forbidden_bit must be 0".to_string(),
         });
@@ -183,7 +183,7 @@ pub fn parse_leb128_size_syntax(
     builder.pop_container(end);
 
     // Add a summary field showing the decoded size value
-    let summary_range = bitvue_core::types::BitRange::new(start, end);
+    let summary_range = bitvue_engine::types::BitRange::new(start, end);
     builder.add_field("obu_size_value", summary_range, format!("{} bytes", value));
 
     Ok(value)
@@ -192,7 +192,7 @@ pub fn parse_leb128_size_syntax(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitvue_core::types::BitRange;
+    use bitvue_engine::types::BitRange;
 
     #[test]
     fn test_parse_temporal_delimiter_header() {

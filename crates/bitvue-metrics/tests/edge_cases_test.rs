@@ -100,7 +100,7 @@ fn test_minimum_psnr_values() {
     // MSE = 255^2 = 65025
     // PSNR = 10 * log10(255^2 / 65025) = 10 * log10(1) = 0 dB
     assert!(
-        result >= 0.0 && result < 10.0,
+        (0.0..10.0).contains(&result),
         "PSNR should be near 0 dB for max distortion"
     );
 }

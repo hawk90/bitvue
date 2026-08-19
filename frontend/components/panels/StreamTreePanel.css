@@ -11,14 +11,14 @@
   overflow: hidden;
 }
 
-.panel-header {
+.stream-tree-panel .panel-header {
   padding: 8px 12px;
   background: var(--bitvue-panel-header-bg, #252526);
   border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
   flex-shrink: 0;
 }
 
-.panel-title {
+.stream-tree-panel .panel-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--bitvue-fg, #ccc);
@@ -109,7 +109,7 @@
   font-size: 12px;
 }
 
-.panel-divider {
+.stream-tree-panel .panel-divider {
   height: 1px;
   background: var(--bitvue-border, #3c3c3c);
 }

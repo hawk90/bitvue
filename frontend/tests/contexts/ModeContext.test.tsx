@@ -71,6 +71,10 @@ describe("ModeContext mode management", () => {
   it("should set mode", () => {
     const { result } = renderHook(() => useMode(), { wrapper });
 
+    // Codec must be set before codec-specific modes become available
+    act(() => {
+      result.current.setActiveCodec("HEVC");
+    });
     act(() => {
       result.current.setMode("prediction");
     });
@@ -81,73 +85,89 @@ describe("ModeContext mode management", () => {
   it("should support all visualization modes", () => {
     const { result } = renderHook(() => useMode(), { wrapper });
 
-    const modes: VisualizationMode[] = [
-      "overview",
+    act(() => {
+      result.current.setActiveCodec("HEVC");
+    });
+
+    // Codec-specific HEVC modes
+    const hevcModes: VisualizationMode[] = [
       "coding-flow",
       "prediction",
       "transform",
       "qp-map",
       "mv-field",
-      "reference",
     ];
 
-    modes.forEach((mode) => {
+    hevcModes.forEach((mode) => {
       act(() => {
         result.current.setMode(mode);
       });
 
       expect(result.current.currentMode).toBe(mode);
     });
+
+    // "overview" is always settable as a legacy mode
+    act(() => {
+      result.current.setMode("overview");
+    });
+    expect(result.current.currentMode).toBe("overview");
   });
 
   it("should cycle to next mode", () => {
     const { result } = renderHook(() => useMode(), { wrapper });
 
-    expect(result.current.currentMode).toBe("overview");
+    // After setting HEVC, mode auto-switches to first HEVC mode ("coding-flow")
+    act(() => {
+      result.current.setActiveCodec("HEVC");
+    });
+    expect(result.current.currentMode).toBe("coding-flow");
 
     act(() => {
       result.current.cycleMode();
     });
 
-    expect(result.current.currentMode).toBe("coding-flow");
+    expect(result.current.currentMode).toBe("prediction");
   });
 
   it("should cycle through all modes in order", () => {
     const { result } = renderHook(() => useMode(), { wrapper });
 
-    const modes: VisualizationMode[] = [
-      "overview",
-      "coding-flow",
-      "prediction",
-      "transform",
-      "qp-map",
-      "mv-field",
-      "reference",
-    ];
+    act(() => {
+      result.current.setActiveCodec("HEVC");
+    });
 
-    // Start at overview
-    expect(result.current.currentMode).toBe("overview");
+    // Start at first HEVC mode
+    expect(result.current.currentMode).toBe("coding-flow");
 
-    // Cycle through all modes
-    for (let i = 0; i < modes.length - 1; i++) {
-      act(() => {
-        result.current.cycleMode();
-      });
-    }
-
-    expect(result.current.currentMode).toBe("reference");
-
-    // Next cycle should wrap around to overview
+    // Cycle: coding-flow → prediction → transform
     act(() => {
       result.current.cycleMode();
     });
+    expect(result.current.currentMode).toBe("prediction");
 
-    expect(result.current.currentMode).toBe("overview");
+    act(() => {
+      result.current.cycleMode();
+    });
+    expect(result.current.currentMode).toBe("transform");
+
+    // Jump to last HEVC mode and verify wrap
+    act(() => {
+      result.current.setMode("ssim-overlay");
+    });
+    expect(result.current.currentMode).toBe("ssim-overlay");
+
+    act(() => {
+      result.current.cycleMode();
+    });
+    expect(result.current.currentMode).toBe("coding-flow");
   });
 
   it("should handle setting same mode", () => {
     const { result } = renderHook(() => useMode(), { wrapper });
 
+    act(() => {
+      result.current.setActiveCodec("HEVC");
+    });
     act(() => {
       result.current.setMode("transform");
       result.current.setMode("transform");
@@ -486,8 +506,10 @@ describe("ModeContext complex workflows", () => {
   it("should handle mode switching workflow", () => {
     const { result } = renderHook(() => useMode(), { wrapper });
 
-    // Start with overview
-    expect(result.current.currentMode).toBe("overview");
+    // Load HEVC so codec-specific modes become available
+    act(() => {
+      result.current.setActiveCodec("HEVC");
+    });
 
     // Switch to prediction mode
     act(() => {
@@ -581,27 +603,23 @@ describe("ModeContext complex workflows", () => {
   it("should handle mode cycling through all modes", () => {
     const { result } = renderHook(() => useMode(), { wrapper });
 
-    const modes: VisualizationMode[] = [
-      "overview",
-      "coding-flow",
+    act(() => {
+      result.current.setActiveCodec("HEVC");
+    });
+
+    // HEVC starts at "coding-flow"
+    expect(result.current.currentMode).toBe("coding-flow");
+
+    const first3: VisualizationMode[] = [
       "prediction",
       "transform",
-      "qp-map",
-      "mv-field",
-      "reference",
+      "reconstruction",
     ];
 
-    // Start at overview
-    expect(result.current.currentMode).toBe("overview");
-
-    // Cycle through all modes
-    modes.forEach((expectedMode, index) => {
-      if (index > 0) {
-        act(() => {
-          result.current.cycleMode();
-        });
-      }
-
+    first3.forEach((expectedMode) => {
+      act(() => {
+        result.current.cycleMode();
+      });
       expect(result.current.currentMode).toBe(expectedMode);
     });
   });

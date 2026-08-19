@@ -183,7 +183,7 @@ fn test_vvdec_nal_unit() {
         }
 
         fn is_irap(&self) -> bool {
-            matches!(self.nal_unit_type, 7 | 8 | 9) // IDR, CRA, GDR
+            matches!(self.nal_unit_type, 7..=9) // IDR, CRA, GDR
         }
     }
 

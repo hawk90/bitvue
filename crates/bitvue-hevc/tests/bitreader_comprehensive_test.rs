@@ -17,7 +17,7 @@ use bitvue_hevc::bitreader::{remove_emulation_prevention_bytes, BitReader};
 fn test_read_bit_single_byte() {
     let data = vec![0b10110010];
     let mut reader = BitReader::new(&data);
-    assert_eq!(reader.read_bit().unwrap(), true);
+    assert!(reader.read_bit().unwrap());
 }
 
 #[test]

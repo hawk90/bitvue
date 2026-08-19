@@ -502,7 +502,7 @@ fn test_parse_nal_units_zero_byte_before_four_byte_start_code() {
     assert!(result.is_ok());
     let nal_units = result.unwrap();
     // Should find at least one NAL
-    assert!(nal_units.len() >= 1);
+    assert!(!nal_units.is_empty());
 }
 
 #[test]

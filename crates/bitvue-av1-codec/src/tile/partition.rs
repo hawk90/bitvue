@@ -37,7 +37,7 @@
 //! ```
 
 use crate::symbol::SymbolDecoder;
-use bitvue_core::{BitvueError, Result};
+use bitvue_engine::{BitvueError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Partition type (AV1 Spec Section 5.11.4)
@@ -110,8 +110,21 @@ impl PartitionType {
             PartitionType::VertA | PartitionType::VertB => {
                 block_size.width() >= 16 && block_size.height() >= 16
             }
-            PartitionType::Horz4 => block_size.width() >= 16 && block_size.height() >= 32,
-            PartitionType::Vert4 => block_size.width() >= 32 && block_size.height() >= 16,
+            // spec 5.11.4 / the real `partition_cdfs` alphabet shape (`CdfContext::new`'s doc):
+            // HORZ_4/VERT_4 are legal for exactly the square 16x16/32x32/64x64 block sizes (10-
+            // symbol partition alphabet) -- NOT 8x8 (4-symbol alphabet, no HORZ_4/VERT_4 at all)
+            // and NOT 128x128 (8-symbol alphabet: HORZ_A/B/VERT_A/B but no HORZ_4/VERT_4 either,
+            // `Default_Partition_W128_Cdf`'s 7-threshold/8-symbol shape). Previously an asymmetric
+            // `width>=16 && height>=32` (Horz4) / `width>=32 && height>=16` (Vert4) check -- wrong
+            // shape entirely, rejecting a real, correctly-decoded `Horz4` at a plain 16x16 (height
+            // 16, not >=32) as "not allowed" even though it's spec-legal. Found via a real dav1d
+            // oracle build cross-check surfacing this as a hard decode error on real fixture
+            // frames once tile_data finally started at the right byte offset (see this crate's
+            // `parser.rs` `ObuType::Frame` fix).
+            PartitionType::Horz4 | PartitionType::Vert4 => {
+                let w = block_size.width();
+                w == block_size.height() && (16..=64).contains(&w)
+            }
         }
     }
 }
@@ -151,30 +164,77 @@ pub enum BlockSize {
     Block128x64,
     /// 128x128 block
     Block128x128,
+    /// 16x4 block (HORZ_4 sub-block of a 16x16 -- the smallest HORZ_4 target, missing until this
+    /// crate's `BlockSize` was found to have no way to represent it at all despite `Horz4` being
+    /// spec-legal on 16x16; see `PartitionType::is_allowed`'s doc)
+    Block16x4,
+    /// 32x8 block (HORZ_4 sub-block)
+    Block32x8,
+    /// 64x16 block (HORZ_4 sub-block)
+    Block64x16,
+    /// 128x32 block (HORZ_4 sub-block) -- unreachable in practice (`Horz4`/`Vert4` aren't legal on
+    /// 128x128, see `is_allowed`'s doc), kept only for enum completeness/symmetry
+    Block128x32,
+    /// 4x16 block (VERT_4 sub-block of a 16x16, `Block16x4`'s transpose)
+    Block4x16,
+    /// 8x32 block (VERT_4 sub-block)
+    Block8x32,
+    /// 16x64 block (VERT_4 sub-block)
+    Block16x64,
+    /// 32x128 block (VERT_4 sub-block) -- unreachable in practice, see `Block128x32`'s doc
+    Block32x128,
 }
 
 impl BlockSize {
     /// Get block width in pixels
     pub fn width(&self) -> u32 {
         match self {
-            BlockSize::Block4x4 | BlockSize::Block4x8 => 4,
-            BlockSize::Block8x4 | BlockSize::Block8x8 | BlockSize::Block8x16 => 8,
-            BlockSize::Block16x8 | BlockSize::Block16x16 | BlockSize::Block16x32 => 16,
-            BlockSize::Block32x16 | BlockSize::Block32x32 | BlockSize::Block32x64 => 32,
-            BlockSize::Block64x32 | BlockSize::Block64x64 | BlockSize::Block64x128 => 64,
-            BlockSize::Block128x64 | BlockSize::Block128x128 => 128,
+            BlockSize::Block4x4 | BlockSize::Block4x8 | BlockSize::Block4x16 => 4,
+            BlockSize::Block8x4
+            | BlockSize::Block8x8
+            | BlockSize::Block8x16
+            | BlockSize::Block8x32 => 8,
+            BlockSize::Block16x4
+            | BlockSize::Block16x8
+            | BlockSize::Block16x16
+            | BlockSize::Block16x32
+            | BlockSize::Block16x64 => 16,
+            BlockSize::Block32x8
+            | BlockSize::Block32x16
+            | BlockSize::Block32x32
+            | BlockSize::Block32x64
+            | BlockSize::Block32x128 => 32,
+            BlockSize::Block64x16
+            | BlockSize::Block64x32
+            | BlockSize::Block64x64
+            | BlockSize::Block64x128 => 64,
+            BlockSize::Block128x32 | BlockSize::Block128x64 | BlockSize::Block128x128 => 128,
         }
     }
 
     /// Get block height in pixels
     pub fn height(&self) -> u32 {
         match self {
-            BlockSize::Block4x4 | BlockSize::Block8x4 => 4,
-            BlockSize::Block4x8 | BlockSize::Block8x8 | BlockSize::Block16x8 => 8,
-            BlockSize::Block8x16 | BlockSize::Block16x16 | BlockSize::Block32x16 => 16,
-            BlockSize::Block16x32 | BlockSize::Block32x32 | BlockSize::Block64x32 => 32,
-            BlockSize::Block32x64 | BlockSize::Block64x64 | BlockSize::Block128x64 => 64,
-            BlockSize::Block64x128 | BlockSize::Block128x128 => 128,
+            BlockSize::Block4x4 | BlockSize::Block8x4 | BlockSize::Block16x4 => 4,
+            BlockSize::Block4x8
+            | BlockSize::Block8x8
+            | BlockSize::Block16x8
+            | BlockSize::Block32x8 => 8,
+            BlockSize::Block4x16
+            | BlockSize::Block8x16
+            | BlockSize::Block16x16
+            | BlockSize::Block32x16
+            | BlockSize::Block64x16 => 16,
+            BlockSize::Block8x32
+            | BlockSize::Block16x32
+            | BlockSize::Block32x32
+            | BlockSize::Block64x32
+            | BlockSize::Block128x32 => 32,
+            BlockSize::Block16x64
+            | BlockSize::Block32x64
+            | BlockSize::Block64x64
+            | BlockSize::Block128x64 => 64,
+            BlockSize::Block32x128 | BlockSize::Block64x128 | BlockSize::Block128x128 => 128,
         }
     }
 
@@ -215,9 +275,138 @@ impl BlockSize {
                     _ => vec![*self], // Fallback
                 }
             }
-            _ => {
-                // Complex partitions - TODO: implement
-                vec![*self]
+            PartitionType::HorzA => {
+                // Top row: full-width block at half height
+                // Bottom row: left half + right half, each at half height
+                // sub-block sizes: [top-full, bottom-left-half, bottom-right-half]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block16x8,
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block32x16,
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block64x32,
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block128x64,
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::HorzB => {
+                // Top row: left half + right half, each at half height
+                // Bottom row: full-width block at half height
+                // sub-block sizes: [top-left-half, top-right-half, bottom-full]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                        BlockSize::Block16x8,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                        BlockSize::Block32x16,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                        BlockSize::Block64x32,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                        BlockSize::Block128x64,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::VertA => {
+                // Left column: full-height block at half width
+                // Right column: top half + bottom half, each at half width
+                // sub-block sizes: [left-full, top-right-half, bottom-right-half]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block8x16,
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block16x32,
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block32x64,
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block64x128,
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::VertB => {
+                // Left column: top half + bottom half, each at half width
+                // Right column: full-height block at half width
+                // sub-block sizes: [top-left-half, bottom-left-half, right-full]
+                match self {
+                    BlockSize::Block16x16 => vec![
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x8,
+                        BlockSize::Block8x16,
+                    ],
+                    BlockSize::Block32x32 => vec![
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x16,
+                        BlockSize::Block16x32,
+                    ],
+                    BlockSize::Block64x64 => vec![
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x32,
+                        BlockSize::Block32x64,
+                    ],
+                    BlockSize::Block128x128 => vec![
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x64,
+                        BlockSize::Block64x128,
+                    ],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::Horz4 => {
+                // Four equal horizontal strips, each at 1/4 height -- only legal (`is_allowed`)
+                // for the square 16x16/32x32/64x64 sizes, so those are the only real arms; the
+                // rest fall back to `*self` (never reached in a real spec-legal parse).
+                match self {
+                    BlockSize::Block16x16 => vec![BlockSize::Block16x4; 4],
+                    BlockSize::Block32x32 => vec![BlockSize::Block32x8; 4],
+                    BlockSize::Block64x64 => vec![BlockSize::Block64x16; 4],
+                    _ => vec![*self],
+                }
+            }
+            PartitionType::Vert4 => {
+                // Four equal vertical strips, each at 1/4 width -- same square-only legality as
+                // `Horz4` above.
+                match self {
+                    BlockSize::Block16x16 => vec![BlockSize::Block4x16; 4],
+                    BlockSize::Block32x32 => vec![BlockSize::Block8x32; 4],
+                    BlockSize::Block64x64 => vec![BlockSize::Block16x64; 4],
+                    _ => vec![*self],
+                }
             }
         }
     }
@@ -330,9 +519,49 @@ fn child_position(
                 _ => (parent_x, parent_y),
             }
         }
-        _ => {
-            // Complex partitions - for MVP, just return parent position
-            (parent_x, parent_y)
+        PartitionType::HorzA => {
+            // sub-blocks: [0]=top-full-width, [1]=bottom-left, [2]=bottom-right
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x, parent_y + h / 2),
+                2 => (parent_x + w / 2, parent_y + h / 2),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::HorzB => {
+            // sub-blocks: [0]=top-left, [1]=top-right, [2]=bottom-full-width
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x + w / 2, parent_y),
+                2 => (parent_x, parent_y + h / 2),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::VertA => {
+            // sub-blocks: [0]=left-full-height, [1]=top-right, [2]=bottom-right
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x + w / 2, parent_y),
+                2 => (parent_x + w / 2, parent_y + h / 2),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::VertB => {
+            // sub-blocks: [0]=top-left, [1]=bottom-left, [2]=right-full-height
+            match child_index {
+                0 => (parent_x, parent_y),
+                1 => (parent_x, parent_y + h / 2),
+                2 => (parent_x + w / 2, parent_y),
+                _ => (parent_x, parent_y),
+            }
+        }
+        PartitionType::Horz4 => {
+            // Four equal horizontal strips at offsets 0, h/4, h/2, 3h/4
+            (parent_x, parent_y + (child_index as u32) * (h / 4))
+        }
+        PartitionType::Vert4 => {
+            // Four equal vertical strips at offsets 0, w/4, w/2, 3w/4
+            (parent_x + (child_index as u32) * (w / 4), parent_y)
         }
     }
 }
@@ -342,16 +571,62 @@ fn child_position(
 /// Set to 10 to provide safety margin while allowing valid deep recursion
 const MAX_PARTITION_DEPTH: u8 = 10;
 
-/// Recursively parse partition tree using symbol decoder
-fn parse_partition_recursive(
+/// Convert a pixel dimension to AV1 "MI" (4x4 mode-info) units, per spec 5.9.5's
+/// `MiCols = 2 * ((FrameWidth + 7) >> 3)` / `MiRows` (same formula on height) -- NOT simply
+/// `ceil(pixels / 4)`: the extra `>>3`-then-`*2` rounds up to an 8-pixel boundary first, so
+/// `MiCols`/`MiRows` are always even. Used by `parse_partition_recursive`'s real `hasRows`/
+/// `hasCols` (spec 5.11.4) frame-edge check.
+pub(crate) fn mi_units(pixels: u32) -> u32 {
+    2 * ((pixels + 7) >> 3)
+}
+
+/// Recursively parse partition tree using symbol decoder.
+///
+/// This is the sole partition-tree walker in the crate (a duplicate, weaker copy used to live in
+/// `tile/superblock.rs` -- no depth guard, no partition-legality validation, and a `child_position`
+/// that silently returned the parent's own position for 6 of the 10 partition types (`HorzA`/
+/// `HorzB`/`VertA`/`VertB`/`Horz4`/`Vert4`) instead of erroring or computing real child offsets --
+/// consolidated onto this implementation instead of fixing the weaker one in place).
+///
+/// Returns `Ok(None)` when `(x, y)` (converted to MI units) falls entirely outside the frame
+/// (`r >= mi_rows || c >= mi_cols`, spec 5.11.4's very first check) -- per spec this position
+/// contributes nothing at all (no symbol read, no coded block), so the caller must drop it rather
+/// than emit a placeholder leaf (a placeholder would desync `parse_coding_unit`, which expects
+/// every leaf it's handed to have real bitstream-coded syntax). Reached whenever a `SPLIT` at a
+/// frame-edge superblock recurses into a quadrant that's now fully beyond `MiRows`/`MiCols` (a
+/// straddling-but-not-fully-outside quadrant instead gets `has_rows`/`has_cols`'s reduced
+/// alphabet -- see `SymbolDecoder::read_partition`'s doc -- which still reads a real symbol).
+///
+/// `mi_rows`/`mi_cols` (`mi_units`'s output for the frame's real pixel width/height) are
+/// frame-global constants threaded down unchanged through the recursion; `has_rows`/`has_cols`
+/// are recomputed at every call from the CURRENT `(x, y, block_size)`, per spec -- they are not
+/// inherited from the parent (a block can straddle the edge while its parent didn't, or vice
+/// versa, depending on which quadrant of a `SPLIT` it is).
+///
+/// Per spec, only `PARTITION_SPLIT` recurses into another `decode_partition` call -- `HORZ`/
+/// `VERT`/the `_A`/`_B`/`_4` variants are terminal (their sub-blocks go straight to
+/// `decode_block`, no further partition symbol read); this function's children loop branches on
+/// exactly that distinction (see its body). This was NOT always true here: until this change, the
+/// loop recursed into `parse_partition_recursive` again for every non-`None` type, including
+/// terminal ones -- which are often non-square (e.g. a `HORZ`-split 64x64's two 64x32 halves) --
+/// and `block_size_log2` still resolved a real CDF bucket for them via their larger dimension, so
+/// that read a second, spec-nonexistent `partition` symbol at that position. Dormant for most of
+/// this crate's history (the spurious symbol usually decoded to `None`, terminating recursion
+/// there with a plausible-but-wrong leaf size) until real `has_rows`/`has_cols` (this same change)
+/// started actually forcing HORZ/VERT choices at frame edges, where the spurious read's bucket
+/// mismatch surfaced as outright decode errors -- found and fixed in the same pass rather than
+/// worked around, since real `has_rows`/`has_cols` is what makes these terminal choices reachable
+/// at all.
+pub(crate) fn parse_partition_recursive(
     decoder: &mut SymbolDecoder,
     x: u32,
     y: u32,
     block_size: BlockSize,
-    has_rows: bool,
-    has_cols: bool,
+    mi_rows: u32,
+    mi_cols: u32,
     depth: u8,
-) -> Result<PartitionNode> {
+    tile_ctx: &mut crate::tile::TileContext,
+) -> Result<Option<PartitionNode>> {
     // Prevent infinite recursion from malformed bitstreams
     if depth >= MAX_PARTITION_DEPTH {
         return Err(BitvueError::InvalidData(format!(
@@ -360,11 +635,37 @@ fn parse_partition_recursive(
         )));
     }
 
+    let r = y / 4;
+    let c = x / 4;
+    if r >= mi_rows || c >= mi_cols {
+        return Ok(None);
+    }
+
+    // spec 5.11.4: hasRows/hasCols from the CURRENT block's own extent -- num4x4 uses `width()`
+    // since decode_partition is only ever spec-invoked on square blocks (this fn's one known
+    // exception, terminal-partition children, is documented above; width()==height() for every
+    // other caller).
+    let num4x4 = block_size.width() / 4;
+    let half_block4x4 = num4x4 >> 1;
+    let has_rows = r + half_block4x4 < mi_rows;
+    let has_cols = c + half_block4x4 < mi_cols;
+
     // Get block size log2 for CDF lookup
     let bsize_log2 = block_size_log2(block_size);
 
+    // Real context (spec 9.3, `crate::tile::TileContext::partition_context`) only exists for
+    // block sizes >= 8x8 (log2 >= 3) -- 4x4 blocks (log2 == 2) never read a real `partition`
+    // symbol at all (see `partition_cdfs`' doc), so `ctx` is a don't-care 0 there.
+    let x8 = x / 8;
+    let y8 = y / 8;
+    let ctx = if bsize_log2 >= 3 {
+        tile_ctx.partition_context(x8, y8, crate::tile::context::partition_bl(bsize_log2))
+    } else {
+        0
+    };
+
     // Read partition symbol from bitstream
-    let partition_symbol = decoder.read_partition(bsize_log2, has_rows, has_cols)?;
+    let partition_symbol = decoder.read_partition(bsize_log2, ctx, has_rows, has_cols)?;
 
     // Convert symbol to partition type
     let partition = PartitionType::from_u8(partition_symbol).ok_or_else(|| {
@@ -394,37 +695,76 @@ fn parse_partition_recursive(
         }
     }
 
+    // Record this node's own context footprint for future above/left lookups -- per spec/rav1d,
+    // skipped only for `Split` above 8x8, since in that case each recursively-parsed child (which
+    // exists at real `BlockLevel`s down to 8x8) writes its own footprint instead; at 8x8 `Split`
+    // the children are 4x4 (no context tracked there per `partition_cdfs`' doc), so the 8x8 level
+    // itself must still write. See `crate::tile::context::PARTITION_CTX_TABLE`'s doc.
+    if bsize_log2 >= 3 && (partition != PartitionType::Split || bsize_log2 == 3) {
+        let bl = crate::tile::context::partition_bl(bsize_log2);
+        let hsz8 = 1u32 << (bsize_log2 - 3);
+        tile_ctx.set_partition(x8, y8, hsz8, bl, partition as u8);
+    }
+
     // Create node
     let mut node = PartitionNode::new(x, y, block_size, partition);
 
-    // If not NONE, recursively parse children
-    if partition != PartitionType::None {
+    if partition == PartitionType::Split {
+        // spec 5.11.4: only SPLIT recurses into another decode_partition call -- its children are
+        // always half-size squares, so `block_size_log2`/`read_partition`'s bucket lookup stays
+        // meaningful for them too.
         let sub_sizes = block_size.sub_block_size(partition);
-
         for (i, sub_size) in sub_sizes.iter().enumerate() {
             let (child_x, child_y) = child_position(x, y, i, partition, block_size);
 
-            // Check if child blocks are at frame boundaries
-            // For MVP, we assume all blocks are within frame
-            let child_has_rows = has_rows;
-            let child_has_cols = has_cols;
-
-            // Recursively parse child with incremented depth
+            // Recursively parse child with incremented depth -- `mi_rows`/`mi_cols` pass through
+            // unchanged (frame-global); `None` means the child is fully outside the frame and
+            // contributes no node at all (see this fn's doc).
             let child = parse_partition_recursive(
                 decoder,
                 child_x,
                 child_y,
                 *sub_size,
-                child_has_rows,
-                child_has_cols,
+                mi_rows,
+                mi_cols,
                 depth + 1,
+                tile_ctx,
             )?;
 
-            node.children.push(child);
+            if let Some(child) = child {
+                node.children.push(child);
+            }
+        }
+    } else if partition != PartitionType::None {
+        // spec 5.11.4: HORZ/VERT/the `_A`/`_B`/`_4` variants are terminal -- their sub-blocks go
+        // straight to `decode_block` (a `parse_coding_unit` leaf here), with NO further
+        // `partition` symbol read. Previously this recursed into `parse_partition_recursive`
+        // again for every non-`None` type, including these (often non-square) sub-blocks --
+        // `block_size_log2` still resolved a real CDF bucket for them via their larger dimension,
+        // so that read a second, spec-nonexistent `partition` symbol at that position. Dormant for
+        // most of this crate's history (the spurious symbol usually decoded to `None`, terminating
+        // recursion there with a plausible-but-wrong leaf size) until real `has_rows`/`has_cols`
+        // made HORZ/VERT actually get chosen at frame edges, where the spurious read's bucket
+        // mismatch (e.g. reading against the 128x128 bucket for a `Block64x128` half) surfaced as
+        // outright decode errors -- fixed here rather than worked around, since the whole point of
+        // real `has_rows`/`has_cols` is to make these terminal choices reachable.
+        let sub_sizes = block_size.sub_block_size(partition);
+        for (i, sub_size) in sub_sizes.iter().enumerate() {
+            let (child_x, child_y) = child_position(x, y, i, partition, block_size);
+            let child_r = child_y / 4;
+            let child_c = child_x / 4;
+            if child_r < mi_rows && child_c < mi_cols {
+                node.children.push(PartitionNode::new(
+                    child_x,
+                    child_y,
+                    *sub_size,
+                    PartitionType::None,
+                ));
+            }
         }
     }
 
-    Ok(node)
+    Ok(Some(node))
 }
 
 /// Parse partition tree from tile data
@@ -451,9 +791,30 @@ pub fn parse_partition_tree(
     // Create symbol decoder for tile data
     let mut decoder = SymbolDecoder::new(tile_data)?;
 
-    // Recursively parse partition tree starting at depth 0
-    // For MVP, assume all blocks are within frame boundaries
-    parse_partition_recursive(&mut decoder, x, y, block_size, true, true, 0)
+    // Throwaway context sized to just this one block -- this function has no real caller (see
+    // `parse_partition_recursive`'s doc; production code goes through `parse_superblock`, which
+    // threads a real tile-wide `TileContext` shared across the whole tile).
+    let extent_4x4 = (block_size.width().max(block_size.height()) / 4).max(1);
+    let mut tile_ctx = crate::tile::TileContext::new(extent_4x4, extent_4x4);
+
+    // Recursively parse partition tree starting at depth 0. No real frame extent is known here
+    // (see this fn's doc -- no real caller), so treat `block_size` itself as exactly filling the
+    // frame (mi_rows/mi_cols derived from its own dimensions): every position within it is then
+    // unconditionally in-bounds, matching this fn's pre-existing "assume all blocks are within
+    // frame boundaries" MVP semantics.
+    let mi_rows = mi_units(block_size.height());
+    let mi_cols = mi_units(block_size.width());
+    parse_partition_recursive(
+        &mut decoder,
+        x,
+        y,
+        block_size,
+        mi_rows,
+        mi_cols,
+        0,
+        &mut tile_ctx,
+    )
+    .map(|node| node.unwrap_or_else(|| PartitionNode::new(x, y, block_size, PartitionType::None)))
 }
 
 /// Flatten partition tree to list of leaf blocks
@@ -492,8 +853,8 @@ pub fn partition_tree_to_grid(
     coded_width: u32,
     coded_height: u32,
     sb_size: u32,
-) -> bitvue_core::PartitionGrid {
-    let mut grid = bitvue_core::PartitionGrid::new(coded_width, coded_height, sb_size);
+) -> bitvue_engine::PartitionGrid {
+    let mut grid = bitvue_engine::PartitionGrid::new(coded_width, coded_height, sb_size);
 
     // Flatten tree to list of blocks
     let mut blocks = Vec::new();
@@ -501,8 +862,8 @@ pub fn partition_tree_to_grid(
 
     // Convert to PartitionGrid blocks
     for (x, y, width, height, partition, depth) in blocks {
-        let partition_type = bitvue_core::partition_grid::PartitionType::from(partition);
-        let block = bitvue_core::partition_grid::PartitionBlock::new(
+        let partition_type = bitvue_engine::partition_grid::PartitionType::from(partition);
+        let block = bitvue_engine::partition_grid::PartitionBlock::new(
             x,
             y,
             width,

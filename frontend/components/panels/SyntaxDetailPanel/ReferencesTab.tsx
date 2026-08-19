@@ -6,6 +6,7 @@
  */
 
 import { memo } from "react";
+import { FrameTypeBadge } from "../../common/FrameTypeBadge";
 
 interface ReferencesTabProps {
   currentFrame: {
@@ -58,11 +59,7 @@ export const ReferencesTab = memo(function ReferencesTab({
                 <span className="ref-frame">Frame {refIdx}</span>
                 {refFrame && (
                   <>
-                    <span
-                      className={`ref-type frame-type-${refFrame.frame_type.toLowerCase()}`}
-                    >
-                      {refFrame.frame_type}
-                    </span>
+                    <FrameTypeBadge frameType={refFrame.frame_type} />
                     <span className="ref-pts">
                       PTS: {refFrame.pts ?? "N/A"}
                     </span>

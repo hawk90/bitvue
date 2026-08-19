@@ -7,7 +7,7 @@
 //! - Matroska specification: <https://www.matroska.org/technical/elements.html>
 //! - EBML specification: <https://github.com/ietf-wg-cellar/ebml-specification>
 
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 /// EBML Element IDs (in hex)

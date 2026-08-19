@@ -12,6 +12,11 @@
 
 import { useState, useCallback, useMemo, memo, Fragment } from "react";
 import { useFrameData } from "../../contexts/FrameDataContext";
+import {
+  getContextMenuItems,
+  type ContextMenuItemWire,
+} from "../../services/electronBridgeService";
+import { ContextMenu } from "../ContextMenu";
 import "./StreamTreePanel.css";
 
 export interface UnitNode {
@@ -151,6 +156,28 @@ export const StreamTreePanel = memo(function StreamTreePanel({
   const [search, setSearch] = useState("");
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
+  // Right-click context menu (Phase 7.6, "StreamView" scope) -- see ContextMenu component doc.
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleTreeContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    const x = event.clientX;
+    const y = event.clientY;
+    getContextMenuItems("StreamView", false, false)
+      .then((items) => setContextMenu({ x, y, items }))
+      .catch(() => setContextMenu(null));
+  }, []);
+
+  const handleContextMenuSelect = useCallback((_command: string) => {
+    // Set.OrderType.Display / Set.OrderType.Decode aren't wired to a real action yet --
+    // no display/decode-order state exists anywhere in the frontend yet (deliberately out of
+    // scope for this pass, see Phase 7.6 doc).
+  }, []);
+
   // Toggle node expansion
   const toggleNode = useCallback((key: string) => {
     setExpandedNodes((prev) => {
@@ -272,7 +299,7 @@ export const StreamTreePanel = memo(function StreamTreePanel({
         ({
           key: `frame-${frame.frame_index}`,
           unit_type: frame.frame_type,
-          offset: 0,
+          offset: frame.offset ?? 0,
           size: frame.size,
           frame_index: frame.frame_index,
           pts: frame.pts,
@@ -375,7 +402,10 @@ export const StreamTreePanel = memo(function StreamTreePanel({
       )}
 
       {/* Tree */}
-      <div className="stream-tree-content">
+      <div
+        className="stream-tree-content"
+        onContextMenu={handleTreeContextMenu}
+      >
         {displayUnits.length === 0 ? (
           <div className="stream-tree-empty">
             <span className="codicon codicon-symbol-tree"></span>
@@ -405,6 +435,16 @@ export const StreamTreePanel = memo(function StreamTreePanel({
           </div>
         )}
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 });

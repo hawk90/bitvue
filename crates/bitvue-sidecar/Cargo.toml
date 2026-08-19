@@ -1,0 +1,25 @@
+[package]
+name = "bitvue-sidecar"
+description = "Standalone process hosting the bitvue engine, speaking bitvue-protocol over stdio to bitvue-desktop (Electron main)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "bitvue-sidecar"
+path = "src/main.rs"
+
+[dependencies]
+bitvue-protocol = { workspace = true }
+bitvue-engine = { workspace = true }
+bitvue-indexer = { workspace = true }
+bitvue-av1-codec = { workspace = true }
+bitvue-decode = { workspace = true }
+bitvue-metrics = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true }
+image = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

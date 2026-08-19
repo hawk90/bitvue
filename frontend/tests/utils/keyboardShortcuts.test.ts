@@ -29,7 +29,7 @@ describe("KEYBOARD_SHORTCUTS", () => {
   it("should have navigation shortcuts", () => {
     const nav = KEYBOARD_SHORTCUTS.find((c) => c.name === "Navigation");
     expect(nav).toBeDefined();
-    expect(nav?.shortcuts).toHaveLength(12);
+    expect(nav?.shortcuts).toHaveLength(13);
   });
 
   it("should have playback shortcuts", () => {

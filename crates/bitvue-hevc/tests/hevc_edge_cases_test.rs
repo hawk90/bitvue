@@ -31,8 +31,11 @@ fn test_parse_hevc_no_start_codes() {
 fn test_parse_hevc_only_start_codes() {
     let data = [0x00, 0x00, 0x01, 0x00, 0x00, 0x01];
     let stream = parse_hevc(&data).unwrap();
-    // May or may not find NALs
-    assert!(stream.nal_units.len() >= 0);
+    // Every start code here is immediately followed by another start code
+    // (no payload bytes between them), so each candidate NAL unit has a
+    // zero-length range and is rejected by the defense-in-depth range check
+    // in `find_nal_units`. No NAL units should be produced.
+    assert_eq!(stream.nal_units.len(), 0);
 }
 
 #[test]
@@ -50,8 +53,8 @@ fn test_parse_hevc_very_long_nal() {
     let mut data = vec![0u8; 10000];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
     data[4] = 0x40; // VPS NAL type
-    for i in 5..data.len() {
-        data[i] = (i % 256) as u8;
+    for (i, byte) in data.iter_mut().enumerate().skip(5) {
+        *byte = (i % 256) as u8;
     }
 
     let result = parse_hevc(&data);

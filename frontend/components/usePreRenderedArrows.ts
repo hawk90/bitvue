@@ -57,6 +57,12 @@ interface UsePreRenderedArrowsProps {
   getFrameTypeColor: (frameType: string) => string;
   calculatePath: PathCalculator;
   enabled: boolean;
+  /** Value that, when changed, forces arrows to be recalculated even though `frames` itself is
+   * the same reference -- needed for virtualized views where only a sliding window of frames is
+   * actually mounted in the DOM at any given time, so a one-time-at-mount measurement goes stale
+   * as the window scrolls (previously-measured elements unmount, newly-visible ones never get
+   * measured). Omit for non-virtualized views, which keep the original mount-once behavior. */
+  recalcKey?: string | number;
 }
 
 /**
@@ -91,10 +97,12 @@ export function usePreRenderedArrows({
   getFrameTypeColor,
   calculatePath,
   enabled,
+  recalcKey,
 }: UsePreRenderedArrowsProps) {
   const [allArrowData, setAllArrowData] = useState<ArrowData[]>([]);
   const [svgWidth, setSvgWidth] = useState(0);
   const arrowsCalculatedRef = useRef(false);
+  const lastRecalcKeyRef = useRef(recalcKey);
 
   /**
    * Calculate all arrow paths from DOM positions
@@ -178,7 +186,13 @@ export function usePreRenderedArrows({
    * One-time calculation of arrow paths from DOM positions
    */
   useEffect(() => {
-    if (arrowsCalculatedRef.current || !enabled || frames.length === 0) return;
+    const keyChanged = recalcKey !== lastRecalcKeyRef.current;
+    if (
+      (arrowsCalculatedRef.current && !keyChanged) ||
+      !enabled ||
+      frames.length === 0
+    )
+      return;
 
     const timer = setTimeout(() => {
       const container = containerRef.current;
@@ -188,6 +202,7 @@ export function usePreRenderedArrows({
 
       setAllArrowData(arrows);
       arrowsCalculatedRef.current = true;
+      lastRecalcKeyRef.current = recalcKey;
 
       // Set SVG width to cover entire scrollable content
       if (container.scrollWidth > 0) {
@@ -196,7 +211,7 @@ export function usePreRenderedArrows({
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [frames, enabled, calculateArrows, containerRef]);
+  }, [frames, enabled, calculateArrows, containerRef, recalcKey]);
 
   /**
    * Update SVG width on resize

@@ -23,6 +23,11 @@ export enum Colorspace {
 }
 
 /**
+ * Channel display mode — isolate a single YUV plane as grayscale
+ */
+export type ChannelMode = "all" | "Y" | "U" | "V";
+
+/**
  * Colorspace conversion matrix coefficients
  *
  * Contains the matrix coefficients for YUV to RGB conversion

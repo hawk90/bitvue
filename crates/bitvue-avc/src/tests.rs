@@ -970,7 +970,7 @@ fn test_parse_avc_with_4byte_start_code() {
 #[test]
 fn test_parse_avc_multiple_nal_units() {
     // Test multiple NAL units in stream
-    let mut data = vec![0u8; 64];
+    let mut data = [0u8; 64];
     let mut pos = 0;
 
     // First NAL: SPS (nal_unit_type=7)
@@ -1112,8 +1112,8 @@ fn test_parse_avc_filler_data() {
     data[1] = 0x00;
     data[2] = 0x01;
     data[3] = 0x0C; // nal_ref_idc=0, nal_unit_type=12 (Filler)
-    for i in 4..16 {
-        data[i] = 0xFF; // Filler bytes
+    for byte in data.iter_mut().take(16).skip(4) {
+        *byte = 0xFF; // Filler bytes
     }
 
     let result = parse_avc(&data);
@@ -1252,7 +1252,7 @@ fn test_avc_stream_profile_string() {
         sps_map.insert(
             0,
             Sps {
-                profile_idc: profile_idc.clone(),
+                profile_idc,
                 constraint_set0_flag: false,
                 constraint_set1_flag: false,
                 constraint_set2_flag: false,
@@ -1429,7 +1429,7 @@ fn test_parse_avc_with_sps_only() {
     let result = parse_avc(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.nal_units.len() >= 1);
+    assert!(!stream.nal_units.is_empty());
 }
 
 #[test]
@@ -1446,7 +1446,7 @@ fn test_parse_avc_with_pps_only() {
     let result = parse_avc(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.nal_units.len() >= 1);
+    assert!(!stream.nal_units.is_empty());
 }
 
 #[test]
@@ -1462,7 +1462,7 @@ fn test_parse_avc_with_sei() {
     let result = parse_avc(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.nal_units.len() >= 1);
+    assert!(!stream.nal_units.is_empty());
 }
 
 #[test]
@@ -1758,7 +1758,7 @@ fn test_parse_avc_with_4byte_start_codes() {
     let result = parse_avc(&data);
     assert!(result.is_ok());
     let stream = result.unwrap();
-    assert!(stream.nal_units.len() >= 1);
+    assert!(!stream.nal_units.is_empty());
 }
 
 #[test]
@@ -1926,7 +1926,7 @@ fn test_parse_avc_with_frame_cropping() {
 #[test]
 fn test_parse_sps_with_baseline_profile() {
     // Test SPS parsing with baseline profile (profile_idc = 66)
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x67]); // NAL header
     data[4] = 66; // profile_idc = Baseline (66)
     data[5] = 0; // constraint_set0_flag
@@ -1944,7 +1944,7 @@ fn test_parse_sps_with_baseline_profile() {
 #[test]
 fn test_parse_sps_with_high_profile() {
     // Test SPS parsing with high profile (profile_idc = 100)
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x67]); // NAL header
     data[4] = 100; // profile_idc = High
     data[5] = 0x64; // constraint_set flags
@@ -1962,7 +1962,7 @@ fn test_parse_sps_with_high_profile() {
 #[test]
 fn test_parse_sps_dimensions() {
     // Test SPS parsing extracts correct dimensions
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x67]); // NAL header
     data[4] = 66; // profile_idc
     data[5] = 0; // constraint_set0_flag
@@ -1979,7 +1979,7 @@ fn test_parse_sps_dimensions() {
 #[test]
 fn test_parse_pps_pic_parameter_set_id() {
     // Test PPS parsing extracts pic_parameter_set_id correctly
-    let mut data = vec![0u8; 16];
+    let mut data = [0u8; 16];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x68]); // NAL header
     data[4] = 5; // pic_parameter_set_id
 
@@ -1995,7 +1995,7 @@ fn test_parse_pps_pic_parameter_set_id() {
 #[test]
 fn test_parse_pps_with_cabac_enabled() {
     // Test PPS parsing with CABAC enabled
-    let mut data = vec![0u8; 16];
+    let mut data = [0u8; 16];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x68]); // NAL header
     data[4] = 0; // pic_parameter_set_id
     data[5] = 0; // seq_parameter_set_id
@@ -2099,7 +2099,7 @@ fn test_parse_sei_messages_buffering_period() {
 #[test]
 fn test_parse_slice_header_default_values() {
     // Test slice header parsing extracts default values correctly
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     data[0..4].copy_from_slice(&[0x00, 0x00, 0x01, 0x25]); // NAL header (non-IDR)
     data[4] = 0x88; // first_mb_in_slice + slice_type
     data[5] = 0x00; // pic_parameter_set_id
@@ -2231,8 +2231,8 @@ fn test_parse_avc_with_embedded_nulls() {
     data[2] = 0x01; // Start code
     data[3] = 0x00; // Embedded null in NAL header position
                     // Rest is nulls
-    for i in 4..100 {
-        data[i] = 0x00;
+    for byte in data.iter_mut().take(100).skip(4) {
+        *byte = 0x00;
     }
 
     let result = parse_avc(&data);

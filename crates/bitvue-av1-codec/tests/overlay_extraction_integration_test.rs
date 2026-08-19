@@ -86,7 +86,7 @@ fn test_qp_grid_extraction_with_real_av1() {
     // Verify QP values are within valid range [0, 255]
     for &qp in &qp_grid.qp {
         assert!(
-            qp >= 0 && qp <= 255,
+            (0..=255).contains(&qp),
             "QP value {} should be in [0, 255]",
             qp
         );
@@ -118,13 +118,13 @@ fn test_mv_grid_extraction_with_real_av1() {
         .mode
         .iter()
         .flat_map(|m| m.iter())
-        .filter(|m| **m == bitvue_core::mv_overlay::BlockMode::Intra)
+        .filter(|m| **m == bitvue_engine::mv_overlay::BlockMode::Intra)
         .count();
     let inter_count = mv_grid
         .mode
         .iter()
         .flat_map(|m| m.iter())
-        .filter(|m| **m == bitvue_core::mv_overlay::BlockMode::Inter)
+        .filter(|m| **m == bitvue_engine::mv_overlay::BlockMode::Inter)
         .count();
 
     println!(

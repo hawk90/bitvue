@@ -24,7 +24,7 @@
 
 use crate::nal::NalUnit;
 use crate::sps::Sps;
-use bitvue_core::{
+use bitvue_engine::{
     limits::{MAX_GRID_BLOCKS, MAX_GRID_DIMENSION},
     mv_overlay::{BlockMode, MVGrid, MotionVector as CoreMV},
     partition_grid::{PartitionBlock, PartitionGrid, PartitionType},
@@ -328,13 +328,14 @@ pub fn extract_partition_grid(
                                 SplitMode::HorzT | SplitMode::VertT => PartitionType::Split,
                             };
 
-                            grid.add_block(PartitionBlock::new(
+                            grid.add_block(PartitionBlock::new_vvc(
                                 cu.x,
                                 cu.y,
                                 cu.size as u32,
                                 cu.size as u32,
                                 partition_type,
                                 cu.depth,
+                                cu.tree_type,
                             ));
                         }
                     }
@@ -471,11 +472,247 @@ fn expand_cu_to_blocks(
     }
 }
 
+// ---------------------------------------------------------------------------
+// CABAC decoder for VVC (spec ITU-T H.266 / HEVC-compatible tables)
+// ---------------------------------------------------------------------------
+
+/// RANGE_LPS table — HEVC/VVC spec Table 9-45.
+/// Indexed by [pState][qRangeIdx] where qRangeIdx = (codIRange >> 6) & 3.
+static VVC_RANGE_LPS: [[u8; 4]; 64] = [
+    [128, 176, 208, 240],
+    [128, 167, 197, 227],
+    [128, 158, 187, 216],
+    [123, 150, 178, 205],
+    [116, 142, 169, 195],
+    [111, 135, 160, 185],
+    [105, 128, 152, 175],
+    [100, 122, 144, 166],
+    [95, 116, 137, 158],
+    [90, 110, 130, 150],
+    [85, 104, 123, 142],
+    [81, 99, 117, 135],
+    [77, 94, 111, 128],
+    [73, 89, 105, 122],
+    [69, 85, 100, 116],
+    [66, 80, 95, 110],
+    [62, 76, 90, 104],
+    [59, 72, 86, 99],
+    [56, 69, 81, 94],
+    [53, 65, 77, 89],
+    [51, 62, 73, 85],
+    [48, 59, 69, 80],
+    [46, 56, 66, 76],
+    [43, 53, 63, 72],
+    [41, 50, 59, 69],
+    [39, 48, 56, 65],
+    [37, 45, 54, 62],
+    [35, 43, 51, 59],
+    [33, 41, 48, 56],
+    [32, 39, 46, 53],
+    [30, 37, 43, 50],
+    [29, 35, 41, 48],
+    [27, 33, 39, 45],
+    [26, 31, 37, 43],
+    [24, 30, 35, 41],
+    [23, 28, 33, 39],
+    [22, 27, 32, 37],
+    [21, 26, 30, 35],
+    [20, 24, 29, 33],
+    [19, 23, 27, 31],
+    [18, 22, 26, 30],
+    [17, 21, 25, 28],
+    [16, 20, 23, 27],
+    [15, 19, 22, 25],
+    [14, 18, 21, 24],
+    [14, 17, 20, 23],
+    [13, 16, 19, 22],
+    [12, 15, 18, 21],
+    [12, 14, 17, 20],
+    [11, 14, 16, 19],
+    [11, 13, 15, 18],
+    [10, 12, 15, 17],
+    [10, 12, 14, 16],
+    [9, 11, 13, 15],
+    [9, 11, 12, 14],
+    [8, 10, 12, 14],
+    [8, 9, 11, 13],
+    [7, 9, 11, 12],
+    [7, 9, 10, 12],
+    [7, 8, 10, 11],
+    [6, 8, 9, 11],
+    [6, 7, 9, 10],
+    [6, 7, 8, 9],
+    [2, 2, 2, 2],
+];
+
+static VVC_TRANS_MPS: [u8; 64] = [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+    27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+    51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 62, 63,
+];
+
+static VVC_TRANS_LPS: [u8; 64] = [
+    0, 0, 1, 2, 2, 4, 4, 5, 6, 7, 8, 9, 9, 11, 11, 12, 13, 13, 15, 15, 16, 16, 18, 18, 19, 19, 21,
+    21, 22, 22, 23, 24, 24, 25, 26, 26, 27, 27, 28, 29, 29, 30, 30, 30, 31, 32, 32, 33, 33, 33, 34,
+    34, 35, 35, 35, 36, 36, 36, 37, 37, 37, 38, 38, 63,
+];
+
+// VVC Table 9-17 approximate init values for slice contexts.
+const VVC_CU_SKIP_INIT: [u8; 3] = [197, 185, 201];
+const VVC_PRED_MODE_INIT_P: u8 = 149;
+const VVC_PRED_MODE_INIT_B: u8 = 134;
+const VVC_MERGE_FLAG_INIT: u8 = 110;
+const VVC_ABS_MVD_GREATER0_INIT: [u8; 2] = [104, 168];
+const VVC_ABS_MVD_GREATER1_INIT: [u8; 2] = [71, 71];
+
+/// Initialise a CABAC context from a VVC init_value byte and slice QP.
+/// Formula from HEVC/VVC spec 9.3.2.2.
+fn vvc_init_ctx(init_value: u8, qp: i32) -> (u8, u8) {
+    let m = (5 * (init_value >> 4) as i32) - 45;
+    let n = ((init_value & 15) as i32 * 8) - 16;
+    let pre = ((m * qp) >> 4) + n;
+    let pre = pre.clamp(1, 126);
+    if pre <= 63 {
+        ((63 - pre) as u8, 0)
+    } else {
+        ((pre - 64) as u8, 1)
+    }
+}
+
+/// CABAC arithmetic decoder compatible with HEVC/VVC.
+struct VvcCabac<'a> {
+    data: &'a [u8],
+    byte_pos: usize,
+    bit_pos: i8,
+    cod_i_range: u32,
+    cod_i_offset: u32,
+}
+
+impl<'a> VvcCabac<'a> {
+    /// Initialise the engine from raw slice payload bytes (after the 2-byte NAL header).
+    fn new(data: &'a [u8]) -> Option<Self> {
+        if data.len() < 2 {
+            return None;
+        }
+        let cod_i_offset = ((data[0] as u32) << 1) | ((data[1] >> 7) as u32);
+        Some(Self {
+            data,
+            byte_pos: 1,
+            bit_pos: 6, // bits 6..0 of byte 1 remain
+            cod_i_range: 510,
+            cod_i_offset,
+        })
+    }
+
+    /// Read one raw bit from the byte stream.
+    fn read_raw_bit(&mut self) -> Option<u32> {
+        if self.byte_pos >= self.data.len() {
+            return None;
+        }
+        let bit = ((self.data[self.byte_pos] >> self.bit_pos) & 1) as u32;
+        if self.bit_pos == 0 {
+            self.byte_pos += 1;
+            self.bit_pos = 7;
+        } else {
+            self.bit_pos -= 1;
+        }
+        Some(bit)
+    }
+
+    /// Standard regular CABAC bin decode.
+    /// `p_state` and `mps` are the context state/MPS fields (updated in place).
+    fn decode_bin(&mut self, p_state: &mut u8, mps: &mut u8) -> Option<u32> {
+        let q_range_idx = ((self.cod_i_range >> 6) & 3) as usize;
+        let range_lps = VVC_RANGE_LPS[*p_state as usize][q_range_idx] as u32;
+        self.cod_i_range -= range_lps;
+
+        let bin_val;
+        if self.cod_i_offset >= self.cod_i_range {
+            // LPS
+            bin_val = 1 - *mps as u32;
+            self.cod_i_offset -= self.cod_i_range;
+            self.cod_i_range = range_lps;
+            if *p_state == 0 {
+                *mps = 1 - *mps;
+            }
+            *p_state = VVC_TRANS_LPS[*p_state as usize];
+        } else {
+            // MPS
+            bin_val = *mps as u32;
+            *p_state = VVC_TRANS_MPS[*p_state as usize];
+        }
+
+        // Renormalise
+        while self.cod_i_range < 256 {
+            self.cod_i_range <<= 1;
+            self.cod_i_offset = (self.cod_i_offset << 1) | self.read_raw_bit()?;
+        }
+
+        Some(bin_val)
+    }
+
+    /// Bypass bin decode (equal probability, no context update).
+    fn decode_bypass(&mut self) -> Option<u32> {
+        self.cod_i_offset = (self.cod_i_offset << 1) | self.read_raw_bit()?;
+        if self.cod_i_offset >= self.cod_i_range {
+            self.cod_i_offset -= self.cod_i_range;
+            Some(1)
+        } else {
+            Some(0)
+        }
+    }
+
+    /// Exp-Golomb order-k bypass decode.
+    fn decode_eg_bypass(&mut self, k: u32) -> Option<i32> {
+        let mut symbol = 0i32;
+        let mut i = k;
+        // Unary prefix: count leading 1s
+        loop {
+            let bit = self.decode_bypass()?;
+            if bit == 0 {
+                break;
+            }
+            symbol += 1 << i;
+            i += 1;
+        }
+        // Binary suffix of length i
+        let mut j = i;
+        while j > 0 {
+            j -= 1;
+            symbol += (self.decode_bypass()? as i32) << j;
+        }
+        Some(symbol)
+    }
+
+    /// Decode one signed MVD component.
+    /// Syntax: abs_mvd_greater0_flag, [abs_mvd_greater1_flag], [abs_mvd_minus2 EG0], sign_flag
+    fn decode_mvd_component(
+        &mut self,
+        ps0: &mut u8,
+        ms0: &mut u8, // context for abs_mvd_greater0
+        ps1: &mut u8,
+        ms1: &mut u8, // context for abs_mvd_greater1
+    ) -> Option<i32> {
+        let greater0 = self.decode_bin(ps0, ms0)?;
+        if greater0 == 0 {
+            return Some(0);
+        }
+        let greater1 = self.decode_bin(ps1, ms1)?;
+        let abs_val = if greater1 == 1 {
+            2 + self.decode_eg_bypass(1)?
+        } else {
+            1
+        };
+        let sign = self.decode_bypass()?;
+        Some(if sign == 1 { -abs_val } else { abs_val })
+    }
+}
+
 /// Parse CTUs from slice data
 ///
-/// This is a simplified implementation that extracts basic CTU
-/// information with MTT partitioning support.
-/// Full implementation would parse coding_tree_unit() syntax.
+/// For intra slices each CTU gets a single Intra CU (correct).
+/// For inter slices a CABAC decoder is attempted; on failure the scaffold
+/// (alternating H/V binary splits) is used as fallback.
 fn parse_slice_ctus(
     nal: &NalUnit,
     sps: &Sps,
@@ -499,38 +736,337 @@ fn parse_slice_ctus(
 
     let is_intra = nal.header.nal_unit_type.is_idr() || nal.header.nal_unit_type.is_cra();
 
+    if is_intra {
+        // -----------------------------------------------------------------
+        // Intra slice: one Intra CU per CTU — no CABAC needed.
+        // -----------------------------------------------------------------
+        for ctu_idx in 0..total_ctus {
+            let ctu_x = (ctu_idx % ctu_cols) * ctu_size;
+            let ctu_y = (ctu_idx / ctu_cols) * ctu_size;
+            let mut ctu = CodingTreeUnit::new(ctu_x, ctu_y, ctu_size as u8);
+            ctu.add_cu(CodingUnit {
+                x: ctu_x,
+                y: ctu_y,
+                size: ctu_size as u8,
+                pred_mode: PredMode::Intra,
+                split_mode: SplitMode::None,
+                depth: 0,
+                tree_type: 0,
+                qp: base_qp,
+                mv_l0: None,
+                mv_l1: None,
+                ref_idx_l0: None,
+                ref_idx_l1: None,
+                transform_size: 4,
+                sbt_flag: false,
+                isp_flag: false,
+            });
+            ctus.push(ctu);
+        }
+        return Ok(ctus);
+    }
+
+    // -----------------------------------------------------------------
+    // Inter slice: attempt CABAC-based CU classification.
+    // Payload bytes 0..1 are the 2-byte VVC NAL header; CABAC data
+    // starts at byte 2.
+    // -----------------------------------------------------------------
+    let payload = nal.rbsp();
+    // Skip the 2-byte NAL header that is included in payload for VVC
+    let cabac_data = if payload.len() > 2 {
+        &payload[2..]
+    } else {
+        payload
+    };
+
+    // Determine B-slice vs P-slice for pred_mode_flag init value.
+    // VVC TRAIL/STAP/RADL/RASL can be B or P; we treat IDR/CRA as intra
+    // (already handled above). For non-intra frames we default to B-slice
+    // init since B-slices are more common in practice.
+    let is_b_slice = !matches!(
+        nal.header.nal_unit_type,
+        crate::nal::NalUnitType::TrailNut | crate::nal::NalUnitType::StapNut
+    );
+    let pred_mode_init = if is_b_slice {
+        VVC_PRED_MODE_INIT_B
+    } else {
+        VVC_PRED_MODE_INIT_P
+    };
+
+    let qp = base_qp as i32;
+
+    // Initialise contexts
+    let mut skip_ctx: [(u8, u8); 3] = [
+        vvc_init_ctx(VVC_CU_SKIP_INIT[0], qp),
+        vvc_init_ctx(VVC_CU_SKIP_INIT[1], qp),
+        vvc_init_ctx(VVC_CU_SKIP_INIT[2], qp),
+    ];
+    let (mut pred_ps, mut pred_ms) = vvc_init_ctx(pred_mode_init, qp);
+    let (mut merge_ps, mut merge_ms) = vvc_init_ctx(VVC_MERGE_FLAG_INIT, qp);
+    let mut mvd_g0: [(u8, u8); 2] = [
+        vvc_init_ctx(VVC_ABS_MVD_GREATER0_INIT[0], qp),
+        vvc_init_ctx(VVC_ABS_MVD_GREATER0_INIT[1], qp),
+    ];
+    let mut mvd_g1: [(u8, u8); 2] = [
+        vvc_init_ctx(VVC_ABS_MVD_GREATER1_INIT[0], qp),
+        vvc_init_ctx(VVC_ABS_MVD_GREATER1_INIT[1], qp),
+    ];
+
+    let mut cabac_opt = VvcCabac::new(cabac_data);
+    let mut cabac_failed = cabac_opt.is_none();
+
+    // Track skip counts for left/above neighbours (for ctxIdx selection).
+    // We use a flat array indexed by CTU raster position.
+    let mut skip_flags: Vec<bool> = vec![false; total_ctus as usize];
+
     for ctu_idx in 0..total_ctus {
         let ctu_x = (ctu_idx % ctu_cols) * ctu_size;
         let ctu_y = (ctu_idx / ctu_cols) * ctu_size;
-
         let mut ctu = CodingTreeUnit::new(ctu_x, ctu_y, ctu_size as u8);
 
-        // Add a single CU covering the entire CTU (simplified)
-        let pred_mode = if is_intra {
-            PredMode::Intra
+        if cabac_failed {
+            // Fallback scaffold: alternating H/V binary splits with Inter mode.
+            let cu_size = 32u32.min(ctu_size);
+            let sub_cols = ctu_size.div_ceil(cu_size);
+            let sub_rows = ctu_size.div_ceil(cu_size);
+            let qt_depth = (ctu_size / cu_size).ilog2() as u8;
+            for row in 0..sub_rows {
+                for col in 0..sub_cols {
+                    let cu_x = ctu_x + col * cu_size;
+                    let cu_y = ctu_y + row * cu_size;
+                    let split = if (col + row) % 4 == 0 {
+                        SplitMode::HorzB
+                    } else if (col + row) % 4 == 2 {
+                        SplitMode::VertB
+                    } else {
+                        SplitMode::None
+                    };
+                    ctu.add_cu(CodingUnit {
+                        x: cu_x,
+                        y: cu_y,
+                        size: cu_size as u8,
+                        pred_mode: PredMode::Inter,
+                        split_mode: split,
+                        depth: qt_depth,
+                        tree_type: 0,
+                        qp: base_qp,
+                        mv_l0: None,
+                        mv_l1: None,
+                        ref_idx_l0: None,
+                        ref_idx_l1: None,
+                        transform_size: 4,
+                        sbt_flag: false,
+                        isp_flag: false,
+                    });
+                }
+            }
+            ctus.push(ctu);
+            continue;
+        }
+
+        // -----------------------------------------------------------------
+        // CABAC decode for this CTU.
+        // -----------------------------------------------------------------
+        // Determine cu_skip_flag ctxIdx from left and above neighbours.
+        let left_skip = if ctu_idx % ctu_cols > 0 {
+            skip_flags[(ctu_idx - 1) as usize]
         } else {
-            PredMode::Inter
+            false
+        };
+        let above_skip = if ctu_idx >= ctu_cols {
+            skip_flags[(ctu_idx - ctu_cols) as usize]
+        } else {
+            false
+        };
+        let skip_ctx_idx = (left_skip as usize) + (above_skip as usize);
+
+        // All CABAC decodes for this CTU happen in a single block so the
+        // borrow of cabac_opt does not conflict with skip_ctx borrows (NLL
+        // keeps each ref scoped to its use).
+        let cabac = cabac_opt.as_mut().unwrap();
+
+        // cu_skip_flag — context selected by left/above skip neighbour count.
+        let cu_skip_flag = {
+            let (ref mut skip_ps, ref mut skip_ms) = skip_ctx[skip_ctx_idx];
+            cabac.decode_bin(skip_ps, skip_ms)
+        };
+        let cu_skip_flag = match cu_skip_flag {
+            Some(v) => v,
+            None => {
+                cabac_failed = true;
+                ctu.add_cu(CodingUnit {
+                    x: ctu_x,
+                    y: ctu_y,
+                    size: ctu_size as u8,
+                    pred_mode: PredMode::Inter,
+                    split_mode: SplitMode::None,
+                    depth: 0,
+                    tree_type: 0,
+                    qp: base_qp,
+                    mv_l0: None,
+                    mv_l1: None,
+                    ref_idx_l0: None,
+                    ref_idx_l1: None,
+                    transform_size: 4,
+                    sbt_flag: false,
+                    isp_flag: false,
+                });
+                ctus.push(ctu);
+                continue;
+            }
         };
 
-        let cu = CodingUnit {
+        if cu_skip_flag == 1 {
+            skip_flags[ctu_idx as usize] = true;
+            ctu.add_cu(CodingUnit {
+                x: ctu_x,
+                y: ctu_y,
+                size: ctu_size as u8,
+                pred_mode: PredMode::Skip,
+                split_mode: SplitMode::None,
+                depth: 0,
+                tree_type: 0,
+                qp: base_qp,
+                mv_l0: None,
+                mv_l1: None,
+                ref_idx_l0: None,
+                ref_idx_l1: None,
+                transform_size: 4,
+                sbt_flag: false,
+                isp_flag: false,
+            });
+            ctus.push(ctu);
+            continue;
+        }
+
+        // Non-skip: decode pred_mode_flag (1 = Intra, 0 = Inter)
+        let pred_mode_bit = match cabac.decode_bin(&mut pred_ps, &mut pred_ms) {
+            Some(v) => v,
+            None => {
+                cabac_failed = true;
+                ctu.add_cu(CodingUnit {
+                    x: ctu_x,
+                    y: ctu_y,
+                    size: ctu_size as u8,
+                    pred_mode: PredMode::Inter,
+                    split_mode: SplitMode::None,
+                    depth: 0,
+                    tree_type: 0,
+                    qp: base_qp,
+                    mv_l0: None,
+                    mv_l1: None,
+                    ref_idx_l0: None,
+                    ref_idx_l1: None,
+                    transform_size: 4,
+                    sbt_flag: false,
+                    isp_flag: false,
+                });
+                ctus.push(ctu);
+                continue;
+            }
+        };
+
+        if pred_mode_bit == 1 {
+            // Intra CU
+            ctu.add_cu(CodingUnit {
+                x: ctu_x,
+                y: ctu_y,
+                size: ctu_size as u8,
+                pred_mode: PredMode::Intra,
+                split_mode: SplitMode::None,
+                depth: 0,
+                tree_type: 0,
+                qp: base_qp,
+                mv_l0: None,
+                mv_l1: None,
+                ref_idx_l0: None,
+                ref_idx_l1: None,
+                transform_size: 4,
+                sbt_flag: false,
+                isp_flag: false,
+            });
+            ctus.push(ctu);
+            continue;
+        }
+
+        // Inter CU: decode general_merge_flag
+        let merge_flag = match cabac.decode_bin(&mut merge_ps, &mut merge_ms) {
+            Some(v) => v,
+            None => {
+                cabac_failed = true;
+                ctu.add_cu(CodingUnit {
+                    x: ctu_x,
+                    y: ctu_y,
+                    size: ctu_size as u8,
+                    pred_mode: PredMode::Inter,
+                    split_mode: SplitMode::None,
+                    depth: 0,
+                    tree_type: 0,
+                    qp: base_qp,
+                    mv_l0: None,
+                    mv_l1: None,
+                    ref_idx_l0: None,
+                    ref_idx_l1: None,
+                    transform_size: 4,
+                    sbt_flag: false,
+                    isp_flag: false,
+                });
+                ctus.push(ctu);
+                continue;
+            }
+        };
+
+        let mv_l0 = if merge_flag == 0 {
+            // Non-merge Inter: decode MVD x then y (short-circuit on failure).
+            let mvd_x = cabac.decode_mvd_component(
+                &mut mvd_g0[0].0,
+                &mut mvd_g0[0].1,
+                &mut mvd_g1[0].0,
+                &mut mvd_g1[0].1,
+            );
+            match mvd_x {
+                None => {
+                    cabac_failed = true;
+                    None
+                }
+                Some(x) => {
+                    let mvd_y = cabac.decode_mvd_component(
+                        &mut mvd_g0[1].0,
+                        &mut mvd_g0[1].1,
+                        &mut mvd_g1[1].0,
+                        &mut mvd_g1[1].1,
+                    );
+                    match mvd_y {
+                        None => {
+                            cabac_failed = true;
+                            None
+                        }
+                        Some(y) => Some(MotionVector::new(x, y)),
+                    }
+                }
+            }
+        } else {
+            // Merge: zero MV placeholder
+            Some(MotionVector::zero())
+        };
+
+        ctu.add_cu(CodingUnit {
             x: ctu_x,
             y: ctu_y,
             size: ctu_size as u8,
-            pred_mode,
+            pred_mode: PredMode::Inter,
             split_mode: SplitMode::None,
             depth: 0,
             tree_type: 0,
             qp: base_qp,
-            mv_l0: None,
+            mv_l0,
             mv_l1: None,
             ref_idx_l0: None,
             ref_idx_l1: None,
-            transform_size: 4, // 4x4 transform base
+            transform_size: 4,
             sbt_flag: false,
             isp_flag: false,
-        };
-
-        ctu.add_cu(cu);
+        });
         ctus.push(ctu);
     }
 
@@ -706,7 +1242,7 @@ mod tests {
         let nal = create_test_nal_unit(crate::NalUnitType::IdrWRadl);
 
         for base_qp in [0i16, 10, 26, 40, 51] {
-            let result = extract_qp_grid(&[nal.clone()], &sps, base_qp);
+            let result = extract_qp_grid(std::slice::from_ref(&nal), &sps, base_qp);
             assert!(result.is_ok(), "Failed for base_qp={}", base_qp);
         }
     }

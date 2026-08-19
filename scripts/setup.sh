@@ -28,12 +28,11 @@ cd frontend
 npm install
 cd ..
 
-# Install Tauri CLI (if not already installed)
-echo "📦 Checking Tauri CLI..."
-if ! command -v cargo-tauri &> /dev/null; then
-    echo "Installing Tauri CLI..."
-    cargo install tauri-cli --version "^2.0.0"
-fi
+# Install bitvue-desktop (Electron shell) dependencies
+echo "📦 Installing bitvue-desktop dependencies..."
+cd bitvue-desktop
+npm install
+cd ..
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
@@ -50,11 +49,12 @@ echo "✅ Setup complete!"
 echo ""
 echo "To start development:"
 echo "  npm run dev        - Start frontend dev server"
-echo "  npm run tauri:dev  - Start Tauri dev server (includes frontend)"
+echo "  npm run electron   - Start the Electron shell (spawns bitvue-sidecar)"
+echo "  ./scripts/dev.sh   - Build the sidecar + start the Electron shell in one step"
 echo ""
 echo "To build:"
 echo "  npm run build      - Build frontend"
-echo "  npm run tauri:build - Build Tauri app"
+echo "  cargo build -p bitvue-sidecar - Build the sidecar binary"
 echo ""
 echo "To run tests:"
 echo "  npm run test       - Run frontend tests"

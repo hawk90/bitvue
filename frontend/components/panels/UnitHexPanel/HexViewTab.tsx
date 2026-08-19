@@ -4,27 +4,30 @@
  * Displays hex dump of frame bytes with highlighting
  */
 
-import { memo, useCallback, useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { memo, useCallback, useState, useEffect, useRef } from "react";
+import {
+  getHexRange,
+  getContextMenuItems,
+  type ContextMenuItemWire,
+} from "../../../services/electronBridgeService";
+import { useExportEvidenceBundle } from "../../../hooks/useExportEvidenceBundle";
+import { ContextMenu } from "../../ContextMenu";
 import { createLogger } from "../../../utils/logger";
+import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
 
 const logger = createLogger("HexViewTab");
 const BYTES_PER_LINE = 16;
-
-interface FrameHexData {
-  frame_index: number;
-  data: number[];
-  size: number;
-  truncated: boolean;
-  success: boolean;
-  error?: string;
-}
+const MAX_HEX_BYTES = 2048;
 
 interface HexViewTabProps {
   frameIndex: number;
   frames: Array<{
     frame_index: number;
     size: number;
+    /** Real on-disk unit offset (see FrameInfo.offset) -- required to fetch this frame's raw
+     *  bytes. Frames sourced from anywhere but FileStateContext's real bridge data won't have
+     *  this, so it's optional and the fetch below handles its absence honestly. */
+    offset?: number;
   }>;
 }
 
@@ -38,6 +41,44 @@ export const HexViewTab = memo(function HexViewTab({
   const [error, setError] = useState<string | null>(null);
   const [totalSize, setTotalSize] = useState<number>(0);
   const [truncated, setTruncated] = useState<boolean>(false);
+  const { highlightedByteOffset } = useSyntaxHexLink();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Right-click context menu (Phase 7.6, "HexView" scope) -- see ContextMenu component doc.
+  const exportEvidence = useExportEvidenceBundle();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItemWire[];
+  } | null>(null);
+
+  const handleHexContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      const hasByteRange = selectedByte !== null;
+      const x = event.clientX;
+      const y = event.clientY;
+      getContextMenuItems("HexView", false, hasByteRange)
+        .then((items) => setContextMenu({ x, y, items }))
+        .catch(() => setContextMenu(null));
+    },
+    [selectedByte],
+  );
+
+  const handleContextMenuSelect = useCallback(
+    (command: string) => {
+      if (command === "Export.EvidenceBundle") {
+        void exportEvidence();
+      } else if (command === "Copy.Bytes" && selectedByte !== null) {
+        const hex = hexData[selectedByte]
+          .toString(16)
+          .padStart(2, "0")
+          .toUpperCase();
+        void navigator.clipboard.writeText(hex);
+      }
+    },
+    [exportEvidence, selectedByte, hexData],
+  );
 
   const currentFrame = frames[frameIndex];
 
@@ -52,23 +93,21 @@ export const HexViewTab = memo(function HexViewTab({
       setError(null);
 
       try {
-        const result = await invoke<FrameHexData>("get_frame_hex_data", {
-          frameIndex,
-          maxBytes: 2048,
-        });
+        if (currentFrame.offset === undefined) {
+          setError("No on-disk offset available for this frame");
+          return;
+        }
+        const len = Math.min(currentFrame.size, MAX_HEX_BYTES);
+        const result = await getHexRange("A", currentFrame.offset, len);
 
         if (cancelled) return;
 
-        if (result.success && result.data) {
-          setHexData(new Uint8Array(result.data));
-          setTotalSize(result.size);
-          setTruncated(result.truncated);
-          logger.info(
-            `Loaded ${result.data.length} bytes for frame ${frameIndex} (total: ${result.size})`,
-          );
-        } else {
-          setError(result.error || "Failed to load hex data");
-        }
+        setHexData(result.bytes);
+        setTotalSize(currentFrame.size);
+        setTruncated(currentFrame.size > MAX_HEX_BYTES);
+        logger.info(
+          `Loaded ${result.bytes.length} bytes for frame ${frameIndex} (total: ${currentFrame.size})`,
+        );
       } catch (err) {
         if (!cancelled) {
           const errorMsg = err instanceof Error ? err.message : String(err);
@@ -88,6 +127,16 @@ export const HexViewTab = memo(function HexViewTab({
       cancelled = true;
     };
   }, [frameIndex, currentFrame]);
+
+  // Scroll to and select byte when driven by SyntaxHexLink
+  useEffect(() => {
+    if (highlightedByteOffset === null || !containerRef.current) return;
+    setSelectedByte(highlightedByteOffset);
+    // Scroll: each hex line is ~20px tall
+    const lineIdx = Math.floor(highlightedByteOffset / BYTES_PER_LINE);
+    const lineHeight = 20;
+    containerRef.current.scrollTop = Math.max(0, lineIdx * lineHeight - 40);
+  }, [highlightedByteOffset]);
 
   // Convert byte to ASCII character
   const byteToAscii = useCallback((byte: number): string => {
@@ -186,7 +235,11 @@ export const HexViewTab = memo(function HexViewTab({
   const lines = Math.ceil(hexData.length / BYTES_PER_LINE);
 
   return (
-    <div className="hex-dump-content">
+    <div
+      className="hex-dump-content"
+      ref={containerRef}
+      onContextMenu={handleHexContextMenu}
+    >
       <div className="hex-info-bar">
         <span className="hex-info-item">
           <span className="hex-info-label">Data:</span>
@@ -290,6 +343,16 @@ export const HexViewTab = memo(function HexViewTab({
             </span>
           </div>
         </div>
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onSelect={handleContextMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

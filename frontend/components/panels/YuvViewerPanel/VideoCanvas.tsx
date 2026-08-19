@@ -9,15 +9,75 @@
 import { useRef, useEffect, memo, useMemo } from "react";
 import { renderModeOverlay } from "../OverlayRenderer";
 import type { VisualizationMode } from "../../../contexts/ModeContext";
+import type { OverlayRenderOptionsExtended } from "../OverlayRenderer";
+import type { Av1FeaturesData } from "../OverlayRenderer";
 import type { FrameInfo } from "../../../types/video";
 import {
   YUVRenderer,
   type YUVFrame,
   Colorspace,
+  type ChannelMode,
 } from "../../../utils/yuvRenderer";
 import { createLogger } from "../../../utils/logger";
 
 const logger = createLogger("VideoCanvas");
+
+/** Apply channel isolation by zeroing out the unused planes (neutral chroma = 128). */
+function applyChannelMode(frame: YUVFrame, mode: ChannelMode): YUVFrame {
+  if (mode === "all") return frame;
+  const neutral128 = (len: number) => new Uint8Array(len).fill(128);
+  switch (mode) {
+    case "Y":
+      return {
+        ...frame,
+        u: neutral128(frame.u.length),
+        v: neutral128(frame.v.length),
+      };
+    case "U": {
+      // Upscale U plane to luma size and display as luminance (grayscale)
+      const yFromU = new Uint8Array(frame.y.length);
+      const scaleX =
+        frame.chromaSubsampling === "420" || frame.chromaSubsampling === "422"
+          ? 2
+          : 1;
+      const scaleY = frame.chromaSubsampling === "420" ? 2 : 1;
+      for (let py = 0; py < frame.height; py++) {
+        for (let px = 0; px < frame.width; px++) {
+          const cu = Math.floor(px / scaleX);
+          const cv = Math.floor(py / scaleY);
+          yFromU[py * frame.yStride + px] = frame.u[cv * frame.uStride + cu];
+        }
+      }
+      return {
+        ...frame,
+        y: yFromU,
+        u: neutral128(frame.u.length),
+        v: neutral128(frame.v.length),
+      };
+    }
+    case "V": {
+      const yFromV = new Uint8Array(frame.y.length);
+      const scaleX =
+        frame.chromaSubsampling === "420" || frame.chromaSubsampling === "422"
+          ? 2
+          : 1;
+      const scaleY = frame.chromaSubsampling === "420" ? 2 : 1;
+      for (let py = 0; py < frame.height; py++) {
+        for (let px = 0; px < frame.width; px++) {
+          const cu = Math.floor(px / scaleX);
+          const cv = Math.floor(py / scaleY);
+          yFromV[py * frame.yStride + px] = frame.v[cv * frame.vStride + cu];
+        }
+      }
+      return {
+        ...frame,
+        y: yFromV,
+        u: neutral128(frame.u.length),
+        v: neutral128(frame.v.length),
+      };
+    }
+  }
+}
 
 interface VideoCanvasProps {
   frameImage: HTMLImageElement | null;
@@ -30,9 +90,18 @@ interface VideoCanvasProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   isDragging: boolean;
   /** Raw YUV data if available (overrides frameImage when present) */
   yuvData?: YUVFrame;
+  /** Active info overlays drawn on top of the main mode overlay. */
+  activeOverlays?: ReadonlySet<VisualizationMode>;
+  /** AV1 advanced feature data for CDEF / LR / film-grain / super-res modes. */
+  av1Features?: Av1FeaturesData;
+  /** Colorspace for YUV→RGB conversion (default BT.709) */
+  colorspace?: Colorspace;
+  /** Channel isolation mode (default "all") */
+  channelMode?: ChannelMode;
 }
 
 export const VideoCanvas = memo(function VideoCanvas({
@@ -46,10 +115,16 @@ export const VideoCanvas = memo(function VideoCanvas({
   onMouseDown,
   onMouseMove,
   onMouseUp,
+  onContextMenu,
   isDragging,
   yuvData,
+  activeOverlays,
+  av1Features,
+  colorspace = Colorspace.BT709,
+  channelMode = "all",
 }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const webglCanvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<YUVRenderer | null>(null);
 
   // Memoize canvas style to avoid creating new object on every render
@@ -69,13 +144,15 @@ export const VideoCanvas = memo(function VideoCanvas({
     [isDragging],
   );
 
-  // Initialize YUV renderer
+  // Initialize YUV renderer. No explicit teardown needed on unmount -- YUVRenderer only holds
+  // canvas/context/ImageData references (no timers, listeners, or GPU handles), so it's plain
+  // garbage-collected; the previous `.dispose?.()` call here referenced a method that never
+  // existed on the class (silently absorbed by the optional call, a real but harmless bug).
   useEffect(() => {
     if (canvasRef.current) {
       rendererRef.current = new YUVRenderer(canvasRef.current);
     }
     return () => {
-      rendererRef.current?.dispose?.();
       rendererRef.current = null;
     };
   }, []);
@@ -106,27 +183,47 @@ export const VideoCanvas = memo(function VideoCanvas({
       canvas.height = height;
     }
 
+    // Keep WebGL overlay canvas in sync with the main canvas size
+    const wgl = webglCanvasRef.current;
+    if (wgl && (wgl.width !== width || wgl.height !== height)) {
+      wgl.width = width;
+      wgl.height = height;
+    }
+
     // Clear canvas
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Render source
     if (useYUV && yuvData && rendererRef.current) {
-      // Render YUV data using the renderer
-      rendererRef.current.render(yuvData, Colorspace.BT709);
+      const frameToRender = applyChannelMode(yuvData, channelMode);
+      rendererRef.current.render(frameToRender, colorspace);
     } else if (frameImage) {
       // Render image as fallback
       ctx.drawImage(frameImage, 0, 0);
     }
 
-    // Render mode overlay on top
-    renderModeOverlay({
+    // Render mode overlay + active info overlays on top
+    const overlayOpts: OverlayRenderOptionsExtended = {
       mode: currentMode,
       frame: currentFrame,
       canvas,
       ctx,
-    });
-  }, [frameImage, yuvData, currentMode, currentFrame]);
+      activeOverlays,
+      av1Features,
+      webglCanvas: webglCanvasRef.current ?? undefined,
+    };
+    renderModeOverlay(overlayOpts);
+  }, [
+    frameImage,
+    yuvData,
+    currentMode,
+    currentFrame,
+    activeOverlays,
+    av1Features,
+    colorspace,
+    channelMode,
+  ]);
 
   return (
     <div
@@ -136,6 +233,7 @@ export const VideoCanvas = memo(function VideoCanvas({
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
+      onContextMenu={onContextMenu}
       style={containerStyle}
     >
       <canvas
@@ -146,6 +244,17 @@ export const VideoCanvas = memo(function VideoCanvas({
         style={canvasStyle}
         role="img"
         aria-label={`Video frame ${currentFrameIndex}`}
+      />
+      <canvas
+        ref={webglCanvasRef}
+        width={yuvData?.width ?? frameImage?.width ?? 640}
+        height={yuvData?.height ?? frameImage?.height ?? 360}
+        className="yuv-canvas yuv-canvas--webgl"
+        style={{
+          ...canvasStyle,
+          pointerEvents: "none",
+        }}
+        aria-hidden
       />
     </div>
   );

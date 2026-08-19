@@ -6,6 +6,21 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@/test/test-utils";
 import { StatusBar } from "../YuvViewerPanel/StatusBar";
+import type { CodecModeEntry } from "../../utils/codecModeRegistry";
+
+// Mirrors the shape ModeSelector/YuvViewerPanel already pass in from `useMode().availableModes`
+// (per-codec, see codecModeRegistry.ts) -- StatusBar used to read a separate, stale, non-per-codec
+// `MODES` list that fell out of sync with real F-key assignments (e.g. AV1's actual F6/F9 modes
+// had no entry there at all), so tests must exercise the same codec-aware list the app uses.
+const testModes: CodecModeEntry[] = [
+  { fKey: 1, mode: "overview", label: "Overview", description: "" },
+  { fKey: 2, mode: "coding-flow", label: "Coding Flow", description: "" },
+  { fKey: 3, mode: "prediction", label: "Prediction", description: "" },
+  { fKey: 4, mode: "transform", label: "Transform", description: "" },
+  { fKey: 5, mode: "qp-map", label: "QP Map", description: "" },
+  { fKey: 6, mode: "mv-field", label: "MV Field", description: "" },
+  { fKey: 7, mode: "reference", label: "Reference Frames", description: "" },
+];
 
 const defaultProps = {
   currentFrameIndex: 42,
@@ -14,6 +29,7 @@ const defaultProps = {
   zoom: 1.5,
   isPlaying: true,
   playbackSpeed: 2,
+  availableModes: testModes,
 };
 
 describe("StatusBar", () => {

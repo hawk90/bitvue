@@ -4,7 +4,7 @@
 //! re-parsing when extracting multiple overlays from the same frame.
 
 use crate::Qp;
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -164,6 +164,60 @@ pub fn cu_cache_size() -> usize {
     cache.len()
 }
 
+/// A self-contained, non-global coding unit cache for use in tests.
+///
+/// Using this type avoids the shared-state problems of `CODING_UNIT_CACHE`
+/// when tests run in parallel: each test owns its own cache instance and
+/// there is no contention or state leakage between tests.
+#[cfg(test)]
+pub struct LocalCodingUnitCache {
+    inner: CodingUnitCache,
+}
+
+#[cfg(test)]
+impl LocalCodingUnitCache {
+    /// Create a fresh, empty local cache.
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::with_capacity(16),
+        }
+    }
+
+    /// Return the number of entries currently in this local cache.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Get cached coding units or parse and cache them (local, non-global).
+    pub fn get_or_parse<F>(
+        &mut self,
+        cache_key: u64,
+        parse_fn: F,
+    ) -> Result<Arc<Vec<crate::tile::CodingUnit>>, BitvueError>
+    where
+        F: FnOnce() -> Result<Vec<crate::tile::CodingUnit>, BitvueError>,
+    {
+        if let Some(cached) = self.inner.get(&cache_key) {
+            return Ok(Arc::clone(cached));
+        }
+
+        let units = parse_fn()?;
+
+        // Enforce cache size limit (same policy as global cache)
+        if self.inner.len() >= MAX_CACHE_ENTRIES {
+            let remove_count = MAX_CACHE_ENTRIES / 4;
+            let keys_to_remove: Vec<u64> = self.inner.keys().take(remove_count).copied().collect();
+            for key in keys_to_remove {
+                self.inner.remove(&key);
+            }
+        }
+
+        let units_arc = Arc::new(units);
+        self.inner.insert(cache_key, Arc::clone(&units_arc));
+        Ok(units_arc)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,21 +271,18 @@ mod tests {
         assert_eq!(cu_cache_size(), 0);
     }
 
-    // TODO: Fix test isolation - cache state pollution from other tests
-    // when running in parallel. Run with --test-threads=1 to test.
+    // Previously ignored due to shared global cache state pollution during parallel test
+    // execution. Now uses LocalCodingUnitCache which provides complete test isolation:
+    // each test owns its own HashMap so parallel tests cannot interfere.
     #[test]
-    #[ignore]
     fn test_cache_size_limit() {
-        // Note: This test uses shared static cache state.
-        // Run with --test-threads=1 if this test flakes in parallel execution.
-        clear_cu_cache();
+        // Use a local cache to avoid shared-state interference from parallel tests.
+        let mut cache = LocalCodingUnitCache::new();
 
-        // Add entries up to limit (use unique data with sufficient entropy)
-        let mut added = 0;
+        // Fill the cache up to MAX_CACHE_ENTRIES using unique tile data
+        let mut added = 0usize;
         let mut i = 0u32;
         while added < MAX_CACHE_ENTRIES && i < (MAX_CACHE_ENTRIES * 10) as u32 {
-            // Use more unique data to avoid hash collisions
-            // Use different patterns for each iteration
             let tile_data = vec![
                 (i >> 24) as u8,
                 (i >> 16) as u8,
@@ -240,17 +291,18 @@ mod tests {
                 (i.wrapping_mul(31)) as u8,
                 (i.wrapping_mul(37)) as u8,
             ];
-            let cache_key = compute_cache_key(&tile_data, 32); // Use fixed base_qp
-            let _ = get_or_parse_coding_units(cache_key, || {
+            let cache_key = compute_cache_key(&tile_data, 32);
+            let result = cache.get_or_parse(cache_key, || {
                 added += 1;
                 Ok(vec![])
             });
+            assert!(result.is_ok());
             i += 1;
         }
 
-        let size_at_limit = cu_cache_size();
-        // Due to hash collisions, we may not reach exactly MAX_CACHE_ENTRIES
-        // As long as we have enough entries to test eviction behavior, the test is valid
+        // Due to hash collisions we may not reach exactly MAX_CACHE_ENTRIES, but
+        // we should have added at least 75% of the maximum.
+        let size_at_limit = cache.len();
         assert!(
             size_at_limit >= MAX_CACHE_ENTRIES * 3 / 4,
             "Should add most entries to cache: {} >= {}",
@@ -258,20 +310,17 @@ mod tests {
             MAX_CACHE_ENTRIES * 3 / 4
         );
 
-        // Cache should be smaller due to eviction (but may not shrink much if already below limit)
-        let _size_after = cu_cache_size();
-        // If we were at or near capacity, eviction should have occurred
-        if size_at_limit >= MAX_CACHE_ENTRIES * 3 / 4 {
-            // Add another entry to trigger eviction
-            let tile_data = vec![9u8, 9u8, 9u8, 9u8, 9u8, 9u8];
-            let cache_key = compute_cache_key(&tile_data, 33);
-            let _ = get_or_parse_coding_units(cache_key, || Ok(vec![]));
+        // Adding one more entry should trigger eviction so the cache size does
+        // not grow unboundedly.
+        if size_at_limit >= MAX_CACHE_ENTRIES {
+            let extra_tile = vec![9u8, 9u8, 9u8, 9u8, 9u8, 9u8];
+            let extra_key = compute_cache_key(&extra_tile, 33);
+            let _ = cache.get_or_parse(extra_key, || Ok(vec![]));
 
-            let size_after_eviction = cu_cache_size();
-            // After adding one more entry, cache should have performed eviction
+            let size_after_eviction = cache.len();
             assert!(
                 size_after_eviction <= size_at_limit,
-                "Cache should not grow after eviction: {} <= {}",
+                "Cache should not grow beyond MAX_CACHE_ENTRIES after eviction: {} <= {}",
                 size_after_eviction,
                 size_at_limit
             );

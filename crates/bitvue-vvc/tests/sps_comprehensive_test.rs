@@ -92,7 +92,7 @@ fn test_profile_copy() {
 #[test]
 fn test_profile_clone() {
     let profile = Profile::Multilayer;
-    let cloned = profile.clone();
+    let cloned = profile;
     assert_eq!(cloned, profile);
 }
 
@@ -155,13 +155,15 @@ fn test_profile_tier_level_default() {
 
 #[test]
 fn test_profile_tier_level_clone() {
-    let mut ptl = ProfileTierLevel::default();
-    ptl.general_level_idc = 51;
-    ptl.general_tier_flag = true;
+    let ptl = ProfileTierLevel {
+        general_level_idc: 51,
+        general_tier_flag: true,
+        ..Default::default()
+    };
 
     let cloned = ptl.clone();
     assert_eq!(cloned.general_level_idc, 51);
-    assert_eq!(cloned.general_tier_flag, true);
+    assert!(cloned.general_tier_flag);
 }
 
 // ============================================================================
@@ -279,8 +281,10 @@ fn test_sps_default() {
 
 #[test]
 fn test_sps_bit_depth() {
-    let mut sps = Sps::default();
-    sps.sps_bitdepth_minus8 = 2;
+    let mut sps = Sps {
+        sps_bitdepth_minus8: 2,
+        ..Default::default()
+    };
     assert_eq!(sps.bit_depth(), 10); // 8 + 2
 
     sps.sps_bitdepth_minus8 = 4;
@@ -289,8 +293,10 @@ fn test_sps_bit_depth() {
 
 #[test]
 fn test_sps_ctu_size() {
-    let mut sps = Sps::default();
-    sps.sps_log2_ctu_size_minus5 = 2;
+    let mut sps = Sps {
+        sps_log2_ctu_size_minus5: 2,
+        ..Default::default()
+    };
     assert_eq!(sps.ctu_size(), 128); // 2^(2+5) = 128
 
     sps.sps_log2_ctu_size_minus5 = 3;
@@ -299,8 +305,10 @@ fn test_sps_ctu_size() {
 
 #[test]
 fn test_sps_min_cb_size() {
-    let mut sps = Sps::default();
-    sps.sps_log2_min_luma_coding_block_size_minus2 = 0;
+    let mut sps = Sps {
+        sps_log2_min_luma_coding_block_size_minus2: 0,
+        ..Default::default()
+    };
     assert_eq!(sps.min_cb_size(), 4); // 2^(0+2) = 4
 
     sps.sps_log2_min_luma_coding_block_size_minus2 = 1;
@@ -309,9 +317,11 @@ fn test_sps_min_cb_size() {
 
 #[test]
 fn test_sps_pic_width_in_ctus() {
-    let mut sps = Sps::default();
-    sps.sps_log2_ctu_size_minus5 = 2; // CTU size = 128
-    sps.sps_pic_width_max_in_luma_samples = 1920;
+    let sps = Sps {
+        sps_log2_ctu_size_minus5: 2, // CTU size = 128
+        sps_pic_width_max_in_luma_samples: 1920,
+        ..Default::default()
+    };
 
     // (1920 + 128 - 1) / 128 = 2047 / 128 = 15.99... = 15
     assert_eq!(sps.pic_width_in_ctus(), 15);
@@ -319,9 +329,11 @@ fn test_sps_pic_width_in_ctus() {
 
 #[test]
 fn test_sps_pic_height_in_ctus() {
-    let mut sps = Sps::default();
-    sps.sps_log2_ctu_size_minus5 = 2; // CTU size = 128
-    sps.sps_pic_height_max_in_luma_samples = 1080;
+    let sps = Sps {
+        sps_log2_ctu_size_minus5: 2, // CTU size = 128
+        sps_pic_height_max_in_luma_samples: 1080,
+        ..Default::default()
+    };
 
     // (1080 + 128 - 1) / 128 = 1207 / 128 = 9.43... = 9
     assert_eq!(sps.pic_height_in_ctus(), 9);
@@ -329,8 +341,10 @@ fn test_sps_pic_height_in_ctus() {
 
 #[test]
 fn test_sps_max_poc_lsb() {
-    let mut sps = Sps::default();
-    sps.sps_log2_max_pic_order_cnt_lsb_minus4 = 4;
+    let sps = Sps {
+        sps_log2_max_pic_order_cnt_lsb_minus4: 4,
+        ..Default::default()
+    };
     assert_eq!(sps.max_poc_lsb(), 256); // 2^(4+4) = 256
 }
 
@@ -387,11 +401,13 @@ fn test_sps_level() {
 
 #[test]
 fn test_sps_display_width_420() {
-    let mut sps = Sps::default();
-    sps.sps_pic_width_max_in_luma_samples = 1920;
-    sps.sps_chroma_format_idc = ChromaFormat::Chroma420;
-    sps.sps_conf_win_left_offset = 0;
-    sps.sps_conf_win_right_offset = 0;
+    let sps = Sps {
+        sps_pic_width_max_in_luma_samples: 1920,
+        sps_chroma_format_idc: ChromaFormat::Chroma420,
+        sps_conf_win_left_offset: 0,
+        sps_conf_win_right_offset: 0,
+        ..Default::default()
+    };
 
     // 1920 - 2 * (0 + 0) = 1920
     assert_eq!(sps.display_width(), 1920);
@@ -399,11 +415,13 @@ fn test_sps_display_width_420() {
 
 #[test]
 fn test_sps_display_height_420() {
-    let mut sps = Sps::default();
-    sps.sps_pic_height_max_in_luma_samples = 1080;
-    sps.sps_chroma_format_idc = ChromaFormat::Chroma420;
-    sps.sps_conf_win_top_offset = 0;
-    sps.sps_conf_win_bottom_offset = 0;
+    let sps = Sps {
+        sps_pic_height_max_in_luma_samples: 1080,
+        sps_chroma_format_idc: ChromaFormat::Chroma420,
+        sps_conf_win_top_offset: 0,
+        sps_conf_win_bottom_offset: 0,
+        ..Default::default()
+    };
 
     // 1080 - 2 * (0 + 0) = 1080
     assert_eq!(sps.display_height(), 1080);
@@ -411,11 +429,13 @@ fn test_sps_display_height_420() {
 
 #[test]
 fn test_sps_display_width_422() {
-    let mut sps = Sps::default();
-    sps.sps_pic_width_max_in_luma_samples = 1920;
-    sps.sps_chroma_format_idc = ChromaFormat::Chroma422;
-    sps.sps_conf_win_left_offset = 0;
-    sps.sps_conf_win_right_offset = 0;
+    let sps = Sps {
+        sps_pic_width_max_in_luma_samples: 1920,
+        sps_chroma_format_idc: ChromaFormat::Chroma422,
+        sps_conf_win_left_offset: 0,
+        sps_conf_win_right_offset: 0,
+        ..Default::default()
+    };
 
     // 1920 - 1 * (0 + 0) = 1920
     assert_eq!(sps.display_width(), 1920);
@@ -423,11 +443,13 @@ fn test_sps_display_width_422() {
 
 #[test]
 fn test_sps_display_width_444() {
-    let mut sps = Sps::default();
-    sps.sps_pic_width_max_in_luma_samples = 1920;
-    sps.sps_chroma_format_idc = ChromaFormat::Chroma444;
-    sps.sps_conf_win_left_offset = 0;
-    sps.sps_conf_win_right_offset = 0;
+    let sps = Sps {
+        sps_pic_width_max_in_luma_samples: 1920,
+        sps_chroma_format_idc: ChromaFormat::Chroma444,
+        sps_conf_win_left_offset: 0,
+        sps_conf_win_right_offset: 0,
+        ..Default::default()
+    };
 
     // 1920 - 1 * (0 + 0) = 1920
     assert_eq!(sps.display_width(), 1920);
@@ -435,9 +457,11 @@ fn test_sps_display_width_444() {
 
 #[test]
 fn test_sps_clone() {
-    let mut sps = Sps::default();
-    sps.sps_pic_width_max_in_luma_samples = 1920;
-    sps.sps_pic_height_max_in_luma_samples = 1080;
+    let sps = Sps {
+        sps_pic_width_max_in_luma_samples: 1920,
+        sps_pic_height_max_in_luma_samples: 1080,
+        ..Default::default()
+    };
 
     let cloned = sps.clone();
     assert_eq!(cloned.sps_pic_width_max_in_luma_samples, 1920);

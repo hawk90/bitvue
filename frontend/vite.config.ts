@@ -4,6 +4,11 @@ import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Relative asset paths -- required for Electron's `file://`-loaded renderer (win.loadFile()).
+  // Vite's default `base: "/"` produces absolute paths like "/assets/index-*.js" that resolve
+  // fine on a web server but 404 under file:// (Electron looks for them at the filesystem root).
+  // Doesn't affect `npm run dev`'s dev server (still served over http://, base is a no-op there).
+  base: "./",
   plugins: [react()],
   resolve: {
     alias: {

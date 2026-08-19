@@ -4,7 +4,7 @@
 //! compared to the scalar baseline.
 
 use super::{ConversionError, ConversionResult, StrategyCapabilities, YuvConversionStrategy};
-use bitvue_core::limits::YUV_CHROMA_OFFSET;
+use bitvue_engine::limits::YUV_CHROMA_OFFSET;
 use std::arch::x86_64::*;
 
 /// AVX2 strategy - x86_64 SIMD implementation

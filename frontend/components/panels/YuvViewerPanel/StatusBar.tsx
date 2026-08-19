@@ -5,7 +5,8 @@
  */
 
 import { memo } from "react";
-import { MODES, type VisualizationMode } from "../../../contexts/ModeContext";
+import type { VisualizationMode } from "../../../contexts/ModeContext";
+import type { CodecModeEntry } from "../../../utils/codecModeRegistry";
 
 interface StatusBarProps {
   currentFrameIndex: number;
@@ -14,6 +15,12 @@ interface StatusBarProps {
   zoom: number;
   isPlaying: boolean;
   playbackSpeed: number;
+  /** Injected from YuvViewerPanel — same codec-aware list ModeSelector uses, so the label/
+   *  shortcut shown here always matches what's actually selected. The old `MODES` import (a
+   *  single hardcoded, non-per-codec list from before `codecModeRegistry.ts` existed) fell out
+   *  of sync with per-codec F-key assignments -- e.g. AV1's F6 (cdef-filter) and F9 (film-grain)
+   *  have no entry in that list at all, silently showing "overview ()" instead. */
+  availableModes: CodecModeEntry[];
 }
 
 export const StatusBar = memo(function StatusBar({
@@ -23,8 +30,9 @@ export const StatusBar = memo(function StatusBar({
   zoom,
   isPlaying,
   playbackSpeed,
+  availableModes,
 }: StatusBarProps) {
-  const currentModeData = MODES.find((m) => m.key === currentMode);
+  const currentModeData = availableModes.find((m) => m.mode === currentMode);
 
   // Format playback speed - show decimals for values less than 1
   const formattedSpeed = Number.isInteger(playbackSpeed)
@@ -39,7 +47,7 @@ export const StatusBar = memo(function StatusBar({
       <span className="status-section">Zoom: {Math.round(zoom * 100)}%</span>
       <span className="status-section yuv-mode-indicator">
         {currentModeData?.label.toLowerCase() || "overview"} (
-        {currentModeData?.shortcut})
+        {currentModeData?.fKey != null ? `F${currentModeData.fKey}` : ""})
       </span>
       <span className="status-section">
         {isPlaying ? (

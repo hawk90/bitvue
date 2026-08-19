@@ -4,12 +4,24 @@
  * Draggable floating panel for metrics toggle
  */
 
-import { useState, useRef, useCallback, useEffect, memo } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  memo,
+  type RefObject,
+} from "react";
 import type { SizeMetrics } from "./Filmstrip/views/FrameSizesView";
 
 interface FrameSizesLegendProps {
   sizeMetrics: SizeMetrics;
   onToggleMetric: (metric: keyof SizeMetrics) => void;
+  /** The filmstrip content element the chart itself renders inside. Used to default this
+   * draggable panel just *below* the chart instead of a `window.innerWidth`-relative guess --
+   * the old default (top-right of the whole viewport) landed squarely on top of the chart's own
+   * right-edge QP axis labels on first open, every time, regardless of window size. */
+  anchorRef?: RefObject<HTMLElement>;
 }
 
 interface Position {
@@ -57,6 +69,7 @@ const METRICS: MetricItem[] = [
 export const FrameSizesLegend = memo(function FrameSizesLegend({
   sizeMetrics,
   onToggleMetric,
+  anchorRef,
 }: FrameSizesLegendProps) {
   const [position, setPosition] = useState<Position>({
     x: window.innerWidth - 220,
@@ -64,6 +77,30 @@ export const FrameSizesLegend = memo(function FrameSizesLegend({
   });
   const [isDragging, setIsDragging] = useState(false);
   const dragOffset = useRef<Position>({ x: 0, y: 0 });
+
+  // Re-anchor once, right after the portal mounts, now that anchorRef's element actually has a
+  // measurable position (it's rendered by the same parent this component is portalled out of).
+  // A plain useLayoutEffect fires too early here: anchorRef points at an *ancestor* host node
+  // (`.filmstrip-content`) whose own ref callback attaches during the same commit, and React
+  // commits refs/layout-effects bottom-up -- this (portalled, but still a descendant in the
+  // fiber tree) child's layout effect runs before that ancestor's ref callback has set
+  // `.current`. Deferring past the current commit with a macrotask (same fix shape as
+  // usePreRenderedArrows' `setTimeout` for the analogous "wait for the DOM to settle" problem)
+  // sidesteps the ordering race entirely.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const rect = anchorRef?.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPosition({
+        x: Math.max(8, rect.right - 220),
+        y: rect.bottom + 8,
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+    // Anchor only on mount -- this is a starting position for a user-draggable panel, not a
+    // pin that should fight the user's own drag or jump around as the chart scrolls/resizes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {

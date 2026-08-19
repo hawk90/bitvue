@@ -35,7 +35,9 @@
 //! ```
 
 mod cache;
-mod cu_parser;
+pub(crate) mod cu_parser;
+mod deblocking;
+mod energy_extractor;
 mod mv_extractor;
 mod parser;
 mod partition;
@@ -73,6 +75,9 @@ pub fn strict_mode_enabled() -> bool {
 }
 
 // Re-export public API
+pub use cu_parser::parse_all_coding_units;
+pub use deblocking::{extract_deblocking_data_from_parsed, DeblockingData, DeblockingEdge};
+pub use energy_extractor::{extract_energy_grid_from_parsed, EnergyGrid};
 pub use mv_extractor::{extract_mv_grid, extract_mv_grid_from_parsed};
 pub use parser::{
     extract_pixel_info, FrameDimensions, FrameTypeInfo, ObuRef, ParsedFrame, PixelInfo,

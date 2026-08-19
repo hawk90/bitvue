@@ -57,7 +57,9 @@ describe("ReferencesTab", () => {
   it("should show frame types with badges", () => {
     render(<ReferencesTab {...defaultProps} />);
 
-    const typeBadges = document.querySelectorAll(".ref-type");
+    // `.ref-type` was ReferencesTab's own ad-hoc badge span, replaced by the shared
+    // `FrameTypeBadge` component (`.frame-type-badge`, see components/common/FrameTypeBadge.tsx).
+    const typeBadges = document.querySelectorAll(".frame-type-badge");
     expect(typeBadges.length).toBeGreaterThan(0);
   });
 

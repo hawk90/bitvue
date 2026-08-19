@@ -7,8 +7,8 @@ use crate::bitreader::BitReader;
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
-// Re-export ChromaFormat from bitvue_core for backward compatibility
-pub use bitvue_core::ChromaFormat;
+// Re-export ChromaFormat from bitvue_engine for backward compatibility
+pub use bitvue_engine::ChromaFormat;
 
 /// VVC Profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

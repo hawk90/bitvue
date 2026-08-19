@@ -4,7 +4,7 @@
 
 use crate::frame_header::{FrameHeader, FrameType};
 use crate::parse_vp9;
-use bitvue_core::BitvueError;
+use bitvue_engine::BitvueError;
 use serde::{Deserialize, Serialize};
 
 /// VP9 frame data extracted from the bitstream
@@ -232,9 +232,9 @@ pub fn extract_frame_at_index(data: &[u8], frame_index: usize) -> Option<Vp9Fram
     frames.get(frame_index).cloned()
 }
 
-/// Convert Vp9Frame to UnitNode format for bitvue-core
-pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
-    use bitvue_core::qp_extraction::QpData;
+/// Convert Vp9Frame to UnitNode format for bitvue-engine
+pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_engine::UnitNode {
+    use bitvue_engine::qp_extraction::QpData;
 
     // Extract QP from frame header quantization index
     let qp_avg = frame
@@ -242,9 +242,9 @@ pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
         .as_ref()
         .and_then(|h| QpData::from_vp9_qindex(h.quantization.base_q_idx).qp_avg);
 
-    bitvue_core::UnitNode {
-        key: bitvue_core::UnitKey {
-            stream: bitvue_core::StreamId::A,
+    bitvue_engine::UnitNode {
+        key: bitvue_engine::UnitKey {
+            stream: bitvue_engine::StreamId::A,
             unit_type: "FRAME".to_string(),
             offset: frame.offset as u64,
             size: frame.size,
@@ -271,7 +271,7 @@ pub fn vp9_frame_to_unit_node(frame: &Vp9Frame) -> bitvue_core::UnitNode {
 }
 
 /// Convert multiple Vp9Frames to UnitNode format
-pub fn vp9_frames_to_unit_nodes(frames: &[Vp9Frame]) -> Vec<bitvue_core::UnitNode> {
+pub fn vp9_frames_to_unit_nodes(frames: &[Vp9Frame]) -> Vec<bitvue_engine::UnitNode> {
     frames.iter().map(vp9_frame_to_unit_node).collect()
 }
 

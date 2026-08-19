@@ -46,8 +46,8 @@ pub use nal::{
     find_nal_units, parse_nal_header, parse_nal_units, NalUnit, NalUnitHeader, NalUnitType,
 };
 pub use overlay_extraction::{
-    extract_mv_grid, extract_partition_grid, extract_qp_grid, CodingTreeUnit, CodingUnit,
-    IntraMode, MotionVector, PartMode, PredMode,
+    extract_mv_grid, extract_partition_grid, extract_prediction_mode_grid, extract_qp_grid,
+    CodingTreeUnit, CodingUnit, IntraMode, MotionVector, PartMode, PredMode,
 };
 pub use pps::{parse_pps, Pps};
 use serde::{Deserialize, Serialize};
@@ -55,8 +55,8 @@ pub use slice::{SliceHeader, SliceType};
 pub use sps::{parse_sps, ProfileTierLevel, Sps};
 use std::collections::HashMap;
 
-// Re-export ChromaFormat from bitvue_core for backward compatibility
-pub use bitvue_core::ChromaFormat;
+// Re-export ChromaFormat from bitvue_engine for backward compatibility
+pub use bitvue_engine::ChromaFormat;
 pub use vps::Vps;
 
 /// Parsed HEVC bitstream.

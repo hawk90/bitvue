@@ -11,6 +11,7 @@
 import { useFrameData } from "../../contexts/FrameDataContext";
 import { useCurrentFrame } from "../../contexts/CurrentFrameContext";
 import { memo } from "react";
+import { FrameTypeBadge } from "../common/FrameTypeBadge";
 import "./SelectionInfoPanel.css";
 
 interface SectionProps {
@@ -49,14 +50,27 @@ interface SelectionInfoPanelProps {
 }
 
 export const SelectionInfoPanel = memo(function SelectionInfoPanel({
-  width = 1920,
-  height = 1080,
-  codec = "AV1",
+  width,
+  height,
+  codec,
 }: SelectionInfoPanelProps) {
-  const { frames, getFrameStats } = useFrameData();
+  const { frames, getFrameStats, streamInfo } = useFrameData();
   const { currentFrameIndex } = useCurrentFrame();
   const stats = getFrameStats();
   const currentFrame = frames[currentFrameIndex] || null;
+  // Explicit props win (callers that already know the real values), then the real
+  // `getStreamInfo`-sourced container metadata, then "--" -- never a fabricated placeholder like
+  // the previous hardcoded 1920x1080/AV1 defaults, which rendered for every file regardless of
+  // its actual dimensions (nothing ever passed these props in).
+  const displayWidth = width ?? streamInfo?.width ?? "--";
+  const displayHeight = height ?? streamInfo?.height ?? "--";
+  // `streamInfo.codec` mirrors `bitvue_engine::ContainerModel.codec`, whose values are lowercase
+  // internal identifiers ("av1", "hevc", ...) used as cache/comparison keys throughout the
+  // backend -- not a display string. Upper-cased here, at the display boundary, rather than
+  // changing the backend's convention (which many other places key off of).
+  const displayCodec = (codec ?? streamInfo?.codec ?? "--").toUpperCase();
+  const displayBitDepth =
+    streamInfo?.bitDepth != null ? `${streamInfo.bitDepth}-bit` : "--";
 
   return (
     <div className="selection-info-panel">
@@ -75,11 +89,7 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
             label="Frame Type"
             value={
               currentFrame ? (
-                <span
-                  className={`frame-type-badge frame-type-${currentFrame.frame_type.toLowerCase()}`}
-                >
-                  {currentFrame.frame_type}
-                </span>
+                <FrameTypeBadge frameType={currentFrame.frame_type} />
               ) : (
                 "N/A"
               )
@@ -107,10 +117,18 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
 
         {/* Video Properties Section */}
         <InfoSection title="Video Properties">
-          <InfoRow label="Resolution" value={`${width}x${height}`} />
-          <InfoRow label="Codec" value={codec} />
+          <InfoRow
+            label="Resolution"
+            value={`${displayWidth}x${displayHeight}`}
+          />
+          <InfoRow label="Codec" value={displayCodec} />
+          {/* Color Format/Frame Rate: `bitvue_engine::ContainerModel` (the `getStreamInfo` source
+              for the rest of this section) has no chroma-subsampling or frame-rate fields yet --
+              still hardcoded placeholders, unlike Resolution/Codec/Bit Depth above which are real
+              as of this fix. Not filling these in with fabricated values; a real fix needs a
+              backend field added first. */}
           <InfoRow label="Color Format" value="4:2:0" />
-          <InfoRow label="Bit Depth" value="8-bit" />
+          <InfoRow label="Bit Depth" value={displayBitDepth} />
           <InfoRow label="Frame Rate" value="30 fps" />
         </InfoSection>
 
@@ -136,11 +154,7 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
               label={type}
               value={
                 <span className="frame-type-count">
-                  <span
-                    className={`frame-type-badge frame-type-${type.toLowerCase()}`}
-                  >
-                    {type}
-                  </span>
+                  <FrameTypeBadge frameType={type} />
                   <span className="frame-count">{count}</span>
                   <span className="frame-percent">
                     ({((count / stats.totalFrames) * 100).toFixed(1)}%)

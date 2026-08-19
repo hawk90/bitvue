@@ -57,7 +57,8 @@ export type SelectionPanel =
   | "reference-lists"
   | "keyboard"
   | "minimap"
-  | "bookmarks";
+  | "bookmarks"
+  | "sync";
 
 export interface SelectionSource {
   panel: SelectionPanel;

@@ -13,7 +13,6 @@ coverage:
         informational: true
 
 ignore:
-  - "src-tauri/**"  # Tauri glue code
   - "src/**"         # Frontend (separate coverage)
   - "**/tests/**"
   - "**/test_*.rs"

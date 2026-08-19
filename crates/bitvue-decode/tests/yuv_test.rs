@@ -96,11 +96,11 @@ fn test_yuv_to_rgb_conversion() {
         (r, g, b)
     }
 
+    // Mid-gray input (u/v offsets cancel to 0) should round-trip to mid-gray RGB with no color
+    // shift -- `<= 255` was a no-op assertion (r/g/b are already u8, so always true; the real
+    // clamping happens inside yuv_to_rgb before the u8 cast) that verified nothing.
     let (r, g, b) = yuv_to_rgb(128, 128, 128);
-    // Verify output is valid RGB
-    assert!(r <= 255);
-    assert!(g <= 255);
-    assert!(b <= 255);
+    assert_eq!((r, g, b), (128, 128, 128));
 }
 
 #[test]
@@ -236,7 +236,7 @@ fn test_planar_to_packed() {
 #[test]
 fn test_yuv_alignment() {
     fn align_dimension(size: usize, alignment: usize) -> usize {
-        (size + alignment - 1) / alignment * alignment
+        size.div_ceil(alignment) * alignment
     }
 
     assert_eq!(align_dimension(1920, 16), 1920);

@@ -265,7 +265,7 @@ fn test_build_syntax_tree_with_nal_unit() {
     let tree = build_syntax_tree(&stream);
 
     assert_eq!(tree.name, "VVC Bitstream");
-    assert!(tree.children.len() > 0);
+    assert!(!tree.children.is_empty());
 }
 
 // ============================================================================

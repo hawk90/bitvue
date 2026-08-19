@@ -25,7 +25,7 @@ fn test_codec_types() {
         Mpeg2,
     }
 
-    let codecs = vec![
+    let codecs = [
         CodecType::Av1,
         CodecType::Hevc,
         CodecType::Avc,

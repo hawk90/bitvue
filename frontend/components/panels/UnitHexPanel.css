@@ -11,14 +11,14 @@
   overflow: hidden;
 }
 
-.panel-header {
+.unit-hex-panel .panel-header {
   padding: 8px 12px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.panel-title {
+.unit-hex-panel .panel-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -85,7 +85,7 @@
   font-weight: 500;
 }
 
-.panel-divider {
+.unit-hex-panel .panel-divider {
   height: 1px;
   background: var(--border);
 }
@@ -153,6 +153,12 @@
   grid-template-columns: auto 1fr;
   gap: 16px;
   align-items: center;
+  /* Grid's default `justify-items: stretch` blockifies each value `<span>` and stretches it to
+     fill the `1fr` column -- invisible for plain-color text values, but the Frame Type row's
+     value also gets a `.frame-type-*` border+background (a badge, meant to be pill-sized like
+     the equivalent in SelectionInfoPanel's flex-based layout), which then visibly stretches into
+     a near-full-width box instead of a tight badge. */
+  justify-items: start;
 }
 
 .frame-info-label {
@@ -320,6 +326,12 @@
   padding: 4px 8px;
   font-size: 10px;
   color: var(--text-primary);
+  /* Same fix as `.frame-info-row` above: grid's default `justify-items: stretch` blockifies the
+     Type column's `.frame-type-*` span (a border+background badge, defined in
+     SelectionInfoPanel.css and shared globally since these aren't CSS-modules-scoped) and
+     stretches it to fill the whole 40px column instead of shrinking to the single-letter
+     content. */
+  justify-items: start;
 }
 
 .dpb-row.dpb-header-row {
@@ -374,19 +386,7 @@
   font-size: 12px;
 }
 
-/* Frame type colors */
-.frame-type-i,
-.frame-type-key {
-  color: var(--frame-i);
-}
-
-.frame-type-p {
-  color: var(--frame-p);
-}
-
-.frame-type-b {
-  color: var(--frame-b);
-}
+/* Frame type badge -- moved to components/common/FrameTypeBadge.css (single source of truth). */
 
 /* Empty State */
 .hex-empty {

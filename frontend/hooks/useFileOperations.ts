@@ -243,6 +243,14 @@ export function useFileOperations(): UseFileOperationsResult {
     };
   }, []); // Empty deps - listeners are set up once and use refs for callbacks
 
+  // WARNING: this hook is currently unused by any component (superseded by
+  // useAppFileOperations.ts, which uses electronBridgeService instead) -- do NOT re-adopt it as-is.
+  // This useEffect calls @tauri-apps/api/event's listen() unconditionally on mount with no gating
+  // condition. Under Electron, that runtime doesn't exist, so this throws an unhandled rejection
+  // on every single mount -- this is the exact same "unconditional-at-mount" pattern that broke
+  // macOS's menu system and the file-opened listener in App.tsx for an entire multi-day session
+  // (2026-08-10, see bitvue-desktop/electron/main.ts's installNativeMacMenu doc). If this hook is
+  // ever wired back up, this effect needs to go first, replaced with the real IPC bridge.
   // Listen for file-opened events from Tauri
   useEffect(() => {
     const unlisten = listen<FileOpenedEvent>("file-opened", async (event) => {

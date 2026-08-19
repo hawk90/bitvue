@@ -208,12 +208,21 @@ export class YUVRenderer {
    * Render YUV frame efficiently
    */
   render(frame: YUVFrame, colorspace: Colorspace = Colorspace.BT709): void {
-    if (!this.ctx || !this.imageData) {
+    if (!this.ctx) {
       return;
     }
 
+    // imageData starts out null and is only ever created inside resize() -- must run resize
+    // (lazily, on the first call) before the imageData guard below, not after. This ordering
+    // bug meant render() always returned before resize() got a chance to run, so nothing was
+    // ever actually painted -- see 2026-08-08's screenshot-verification investigation for how
+    // this was found (canvas stayed solid black even with real, correct decoded pixel data).
     if (frame.width !== this.width || frame.height !== this.height) {
       this.resize(frame.width, frame.height);
+    }
+
+    if (!this.imageData) {
+      return;
     }
 
     const converted = yuvToImageData(frame, colorspace);

@@ -7,7 +7,7 @@ pub type Result<T> = std::result::Result<T, Vp9Error>;
 
 /// VP9 parsing errors.
 ///
-/// This now uses the shared `CodecError` from bitvue-core for consistency
+/// This now uses the shared `CodecError` from bitvue-engine for consistency
 /// across all codec parsers, maintaining backward compatibility with existing code.
 #[derive(Error, Debug)]
 pub enum Vp9Error {
@@ -32,34 +32,34 @@ pub enum Vp9Error {
     Parse { offset: u64, message: String },
 }
 
-impl From<bitvue_core::CodecError> for Vp9Error {
-    fn from(err: bitvue_core::CodecError) -> Self {
+impl From<bitvue_engine::CodecError> for Vp9Error {
+    fn from(err: bitvue_engine::CodecError) -> Self {
         match err {
-            bitvue_core::CodecError::UnexpectedEof { codec: _, position } => {
+            bitvue_engine::CodecError::UnexpectedEof { codec: _, position } => {
                 Vp9Error::UnexpectedEof(position)
             }
-            bitvue_core::CodecError::InvalidData { codec: _, message } => {
+            bitvue_engine::CodecError::InvalidData { codec: _, message } => {
                 Vp9Error::InvalidData(message)
             }
-            bitvue_core::CodecError::InsufficientData {
+            bitvue_engine::CodecError::InsufficientData {
                 codec: _,
                 expected,
                 actual,
             } => Vp9Error::InsufficientData { expected, actual },
-            bitvue_core::CodecError::Io { codec: _, source } => Vp9Error::Io(source),
-            bitvue_core::CodecError::Parse {
+            bitvue_engine::CodecError::Io { codec: _, source } => Vp9Error::Io(source),
+            bitvue_engine::CodecError::Parse {
                 codec: _,
                 offset,
                 message,
             } => Vp9Error::Parse { offset, message },
-            bitvue_core::CodecError::Unsupported { codec: _, feature } => {
+            bitvue_engine::CodecError::Unsupported { codec: _, feature } => {
                 Vp9Error::InvalidData(format!("Unsupported: {}", feature))
             }
-            bitvue_core::CodecError::MissingParameter {
+            bitvue_engine::CodecError::MissingParameter {
                 codec: _,
                 parameter,
             } => Vp9Error::InvalidData(format!("Missing parameter: {}", parameter)),
-            bitvue_core::CodecError::CodecSpecific { codec: _, message } => {
+            bitvue_engine::CodecError::CodecSpecific { codec: _, message } => {
                 Vp9Error::InvalidData(message)
             }
         }

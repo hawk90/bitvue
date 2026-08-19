@@ -76,10 +76,10 @@ describe("DeblockingView", () => {
       />,
     );
 
-    expect(screen.getByText("Deblocking Parameters")).toBeInTheDocument();
-    expect(screen.getByText(/β Offset:/)).toBeInTheDocument();
-    expect(screen.getByText(/tc Offset:/)).toBeInTheDocument();
-    expect(screen.getByText(/Filter Strength:/)).toBeInTheDocument();
+    expect(screen.getByText("Loop Filter Parameters")).toBeInTheDocument();
+    expect(screen.getByText(/Level \(Y vert\/horz\):/)).toBeInTheDocument();
+    expect(screen.getByText(/Level \(U \/ V\):/)).toBeInTheDocument();
+    expect(screen.getByText(/Sharpness:/)).toBeInTheDocument();
   });
 
   it("displays codec-specific notes for AV1", () => {
@@ -120,8 +120,10 @@ describe("DeblockingView", () => {
       />,
     );
 
-    expect(screen.getByText("Strong Boundary (BS 3-4)")).toBeInTheDocument();
-    expect(screen.getByText("Weak Boundary (BS 1-2)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Strong Boundary (BS 2, intra)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Weak Boundary (BS 1, inter)")).toBeInTheDocument();
     expect(screen.getByText("Not Filtered")).toBeInTheDocument();
   });
 

@@ -18,7 +18,7 @@ fn test_parse_slice_header_empty_data() {
     let sps_map = HashMap::new();
     let pps_map = HashMap::new();
     let data: &[u8] = &[];
-    let result = parse_slice_header(&data, &sps_map, &pps_map, NalUnitType::IdrSlice, 0);
+    let result = parse_slice_header(data, &sps_map, &pps_map, NalUnitType::IdrSlice, 0);
     // Empty data should be handled gracefully
     assert!(result.is_err());
 }
@@ -129,8 +129,8 @@ fn test_parse_slice_header_patterned_data() {
     let pps_map = HashMap::new();
     let mut data = vec![0u8; 64];
     // Create alternating pattern
-    for i in 0..64 {
-        data[i] = if i % 2 == 0 { 0xAA } else { 0x55 };
+    for (i, byte) in data.iter_mut().enumerate().take(64) {
+        *byte = if i % 2 == 0 { 0xAA } else { 0x55 };
     }
     let result = parse_slice_header(&data, &sps_map, &pps_map, NalUnitType::NonIdrSlice, 10);
     // Should handle gracefully
@@ -143,8 +143,8 @@ fn test_parse_slice_header_incrementing_data() {
     let pps_map = HashMap::new();
     let mut data = vec![0u8; 64];
     // Create incrementing pattern
-    for i in 0..64 {
-        data[i] = i as u8;
+    for (i, byte) in data.iter_mut().enumerate().take(64) {
+        *byte = i as u8;
     }
     let result = parse_slice_header(&data, &sps_map, &pps_map, NalUnitType::IdrSlice, 1);
     // Should handle gracefully

@@ -23,6 +23,7 @@ const mockFrames = [
 const defaultProps = {
   frames: mockFrames,
   highlightedFrameIndex: 0,
+  cursorPositionPx: 0,
   onMouseDown: vi.fn(),
   onMouseMove: vi.fn(),
   onMouseLeave: vi.fn(),

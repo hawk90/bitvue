@@ -46,7 +46,7 @@ fn test_extract_av1_from_mp4_theater_square() {
                 println!("Sample {}: {} bytes", i, sample.len());
 
                 // Verify sample has reasonable size
-                assert!(sample.len() > 0, "Sample should not be empty");
+                assert!(!sample.is_empty(), "Sample should not be empty");
                 assert!(
                     sample.len() < 10_000_000,
                     "Sample size too large: {}",
@@ -64,7 +64,7 @@ fn test_extract_av1_from_mp4_theater_square() {
             // The file might not be AV1 codec - that's okay for this test
             // We're testing that the function works correctly
             match e {
-                bitvue_core::BitvueError::InvalidData(msg) if msg.contains("Not an AV1 file") => {
+                bitvue_engine::BitvueError::InvalidData(msg) if msg.contains("Not an AV1 file") => {
                     println!("File is not AV1 codec - this is expected for test files");
                 }
                 _ => panic!("Unexpected error: {:?}", e),
@@ -97,7 +97,7 @@ fn test_extract_av1_from_mp4_tsu() {
             println!("  Sample count: {}", info.sample_count);
 
             // If codec is AV1, extract samples
-            if info.codec.as_ref().map(|s| s.as_str()) == Some("av01") {
+            if info.codec.as_deref() == Some("av01") {
                 let samples =
                     mp4::extract_av1_samples(&data).expect("Failed to extract AV1 samples");
 
