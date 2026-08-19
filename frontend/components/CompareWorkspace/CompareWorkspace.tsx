@@ -29,9 +29,15 @@ import {
 import CompareControls from "./CompareControls";
 import StreamPlayer from "./StreamPlayer";
 import DiffOverlay from "./DiffOverlay";
+import SplitView, { type SplitOrientation } from "./SplitView";
 import { useCompare } from "../../contexts/CompareContext";
 import type { DiffMode } from "../../services/electronBridgeService";
 import "./CompareWorkspace.css";
+
+/** PARITY_CHECKLIST.md CMP-02 -- "Side-by-side" (two independent panels, optional diff column)
+ *  vs "Split" (single canvas, draggable H/V wipe divider, SplitView.tsx). Mutually exclusive,
+ *  same pattern as the diff-mode `<select>` below. */
+type ViewMode = "side-by-side" | "split";
 
 interface CompareWorkspaceProps {
   framesA: FrameInfo[];
@@ -61,6 +67,9 @@ function CompareWorkspace({
 
   const [showDiff, setShowDiff] = useState(workspace?.diff_enabled ?? false);
   const [diffMode, setDiffMode] = useState<DiffMode>("abs");
+  const [viewMode, setViewMode] = useState<ViewMode>("side-by-side");
+  const [splitOrientation, setSplitOrientation] =
+    useState<SplitOrientation>("vertical");
   const [alignedB, setAlignedB] = useState<{
     bIdx: number | null;
     quality: AlignmentQuality | null;
@@ -159,7 +168,57 @@ function CompareWorkspace({
         />
 
         <div className="compare-actions">
-          {workspace.diff_enabled && (
+          {/* CMP-02 -- Side-by-side (two panels) vs Split (single-canvas H/V wipe divider,
+              SplitView.tsx). Mirrors StreamEye's Compare view-mode switch. */}
+          <div
+            className="view-mode-toggle"
+            role="group"
+            aria-label="Compare view mode"
+          >
+            <button
+              type="button"
+              className={`view-mode-btn${viewMode === "side-by-side" ? " active" : ""}`}
+              onClick={() => setViewMode("side-by-side")}
+              aria-pressed={viewMode === "side-by-side"}
+            >
+              Side-by-Side
+            </button>
+            <button
+              type="button"
+              className={`view-mode-btn${viewMode === "split" ? " active" : ""}`}
+              onClick={() => setViewMode("split")}
+              aria-pressed={viewMode === "split"}
+            >
+              Split
+            </button>
+          </div>
+          {viewMode === "split" && (
+            <div
+              className="split-orientation-toggle"
+              role="group"
+              aria-label="Split orientation"
+            >
+              <button
+                type="button"
+                className={`view-mode-btn${splitOrientation === "vertical" ? " active" : ""}`}
+                onClick={() => setSplitOrientation("vertical")}
+                aria-pressed={splitOrientation === "vertical"}
+                title="Vertical split (left/right)"
+              >
+                V
+              </button>
+              <button
+                type="button"
+                className={`view-mode-btn${splitOrientation === "horizontal" ? " active" : ""}`}
+                onClick={() => setSplitOrientation("horizontal")}
+                aria-pressed={splitOrientation === "horizontal"}
+                title="Horizontal split (top/bottom)"
+              >
+                H
+              </button>
+            </div>
+          )}
+          {viewMode === "side-by-side" && workspace.diff_enabled && (
             <label className="diff-toggle">
               <input
                 type="checkbox"
@@ -169,7 +228,7 @@ function CompareWorkspace({
               Show Diff
             </label>
           )}
-          {showDiff && (
+          {viewMode === "side-by-side" && showDiff && (
             <select
               value={diffMode}
               onChange={(e) => setDiffMode(e.target.value as DiffMode)}
@@ -207,55 +266,70 @@ function CompareWorkspace({
         </div>
       )}
 
-      {/* Side-by-side players */}
+      {/* Main content: Side-by-side (two panels + optional diff column) or Split (single
+          canvas, draggable H/V wipe divider) -- mutually exclusive per `viewMode`. */}
       <div className="compare-content">
-        <div className="compare-stream">
-          <div className="stream-header stream-a">
-            <h3>Stream A</h3>
-            <span className="stream-info">
-              {workspace.resolution_info.stream_a[0]}x
-              {workspace.resolution_info.stream_a[1]} • {framesA.length} frames
-            </span>
-          </div>
-          <StreamPlayer
-            frames={framesA}
-            currentFrame={currentFrameA}
-            onFrameChange={handleFrameChangeA}
-            streamLabel="A"
+        {viewMode === "side-by-side" ? (
+          <>
+            <div className="compare-stream">
+              <div className="stream-header stream-a">
+                <h3>Stream A</h3>
+                <span className="stream-info">
+                  {workspace.resolution_info.stream_a[0]}x
+                  {workspace.resolution_info.stream_a[1]} • {framesA.length}{" "}
+                  frames
+                </span>
+              </div>
+              <StreamPlayer
+                frames={framesA}
+                currentFrame={currentFrameA}
+                onFrameChange={handleFrameChangeA}
+                streamLabel="A"
+              />
+            </div>
+
+            <div className="compare-divider" />
+
+            <div className="compare-stream">
+              <div className="stream-header stream-b">
+                <h3>Stream B</h3>
+                <span className="stream-info">
+                  {workspace.resolution_info.stream_b[0]}x
+                  {workspace.resolution_info.stream_b[1]} • {framesB.length}{" "}
+                  frames
+                </span>
+              </div>
+              <StreamPlayer
+                frames={framesB}
+                currentFrame={currentFrameB}
+                onFrameChange={onFrameChangeB}
+                streamLabel="B"
+                alignedFrame={alignedB.bIdx}
+                alignmentQuality={alignedB.quality ?? undefined}
+              />
+            </div>
+
+            {/* Diff overlay */}
+            {showDiff &&
+              workspace.diff_enabled &&
+              currentFrameAData &&
+              currentFrameBData && (
+                <DiffOverlay
+                  frameA={currentFrameAData}
+                  frameB={currentFrameBData}
+                  mode={diffMode}
+                />
+              )}
+          </>
+        ) : (
+          <SplitView
+            framesA={framesA}
+            framesB={framesB}
+            currentFrameA={currentFrameA}
+            currentFrameB={currentFrameB}
+            orientation={splitOrientation}
           />
-        </div>
-
-        <div className="compare-divider" />
-
-        <div className="compare-stream">
-          <div className="stream-header stream-b">
-            <h3>Stream B</h3>
-            <span className="stream-info">
-              {workspace.resolution_info.stream_b[0]}x
-              {workspace.resolution_info.stream_b[1]} • {framesB.length} frames
-            </span>
-          </div>
-          <StreamPlayer
-            frames={framesB}
-            currentFrame={currentFrameB}
-            onFrameChange={onFrameChangeB}
-            streamLabel="B"
-            alignedFrame={alignedB.bIdx}
-            alignmentQuality={alignedB.quality ?? undefined}
-          />
-        </div>
-
-        {/* Diff overlay */}
-        {showDiff &&
-          workspace.diff_enabled &&
-          currentFrameAData &&
-          currentFrameBData && (
-            <DiffOverlay
-              frameA={currentFrameAData}
-              frameB={currentFrameBData}
-              mode={diffMode}
-            />
-          )}
+        )}
       </div>
 
       {/* Alignment info footer */}

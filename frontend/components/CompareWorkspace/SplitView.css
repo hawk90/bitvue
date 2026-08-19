@@ -1,0 +1,76 @@
+/**
+ * Split View Styles
+ *
+ * Class names prefixed `split-view-` -- plain .css imports (no CSS Modules) mean these are
+ * globally scoped across the whole frontend, so this prefix avoids collisions with other panels'
+ * `.label`/`.placeholder`/`.canvas`-style generic class names.
+ */
+
+.split-view {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-tertiary);
+}
+
+.split-view-labels {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+
+.split-view-label-a {
+  color: var(--frame-i);
+}
+
+.split-view-label-b {
+  color: var(--frame-p);
+}
+
+.split-view-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.split-view-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  cursor: ew-resize;
+  background: #000;
+}
+
+.split-view--horizontal .split-view-canvas {
+  cursor: ns-resize;
+}
+
+.split-view-canvas--dragging {
+  cursor: grabbing;
+}
+
+.split-view-canvas:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.split-view-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

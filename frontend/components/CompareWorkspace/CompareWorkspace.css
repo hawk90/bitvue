@@ -39,6 +39,42 @@
   gap: 12px;
 }
 
+/* View mode toggle (Side-by-Side / Split) + Split orientation (V/H) */
+.view-mode-toggle,
+.split-orientation-toggle {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-mode-btn {
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: none;
+  border-right: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.view-mode-btn:last-child {
+  border-right: none;
+}
+
+.view-mode-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.view-mode-btn.active {
+  background: var(--accent-primary-bg);
+  color: var(--accent-primary-light);
+  font-weight: 600;
+}
+
 .diff-toggle {
   display: flex;
   align-items: center;

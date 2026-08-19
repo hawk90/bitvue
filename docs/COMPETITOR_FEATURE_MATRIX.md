@@ -190,7 +190,7 @@ conformance reports (SPS/PPS/VPS/SEI/Slice) — broadcast-conformance focus, mos
 | Feature | Source | Bitvue status |
 |---|---|---|
 | Side-by-side sync playback (2 streams) | VQA (Dual View), VQP, VEGA (Comparison Viewer), SE (Compare) | ❌ CMP-01/02 |
-| Split view H/V w/ slider | SE (Horizontal/Vertical Split) | ❌ CMP-02 |
+| Split view H/V w/ slider | SE (Horizontal/Vertical Split) | ✅ CMP-02 (2026-08-19, `SplitView.tsx`) |
 | Overlapped / Independent view | VQP | ❌ CMP-02 variant |
 | Subtraction (\|A−B\| pixel diff) | SE (Subtraction), VQP (B&W diff) | ❌ CMP-03 |
 | Temperature / heatmap diff | SE (Temperature), VQP (Heat Map diff) | ❌ CMP-03 |

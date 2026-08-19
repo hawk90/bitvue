@@ -2512,7 +2512,7 @@ VQ-*(Probe 전용)를 분리된 하위 카탈로그로 유지한다 — 문서 �
 
 - [x] Stream B 로딩 인프라 완성 (2026-08-19) — `open_stream("B",...)`/`index_stream("B")`는 이미 sidecar에
       있었고(`StreamId::A`/`B` 둘 다 지원), `handleOpenDependentFile`이 이제 실제로 호출함
-- [-] Compare 모드 UI: Side-by-side(2026-08-19 실동작) / Split(H/V)(미구현, 별개 렌더링 기능이라 범위 밖) /
+- [x] Compare 모드 UI: Side-by-side(2026-08-19 실동작) / Split(H/V)(2026-08-19 실동작, 아래 세션 로그 참조) /
       Subtraction·Temperature(2026-08-19 실동작, diff_heatmap 엔진 재사용) 전환 버튼
 - [ ] RD-curve 패널에 BD-rate 계산 추가 — BD-rate 자체는 CLI로 완료(CMP-05), UI 패널은 미착수
 - [ ] VMAF 통합: `libvmaf-sys` 연결 (이미 optional feature로 존재 — spec §1.2), pooled score + per-frame score + ADM2/VIF/motion2 서브스코어
@@ -2602,11 +2602,43 @@ get_diff_frame 워크스페이스 없음) 전부 통과, clippy(vendor 제외)/f
 클린(CompareWorkspace 디렉터리 포함, 이번에 처음으로 실제 검사됨), vitest 전체 스위트 기존 베이스라인과 동일
 (9-10개 파일의 codicon 폰트 렌더링 플레이키니스, 이번 변경과 무관 -- git stash로 직접 재확인).
 
-**의도적으로 범위 밖에 남긴 것**: Split(H/V) 와이프 뷰(별개 렌더링 기능), Find First Difference(작은 후속
-작업으로 스코핑), `DiffMode::Metric`/VMAF/RD-curve UI/CLI 서브커맨드/ROI 메트릭(전부 엔진에 미구현이거나
-별도로 추적되는 더 큰 작업).
+**의도적으로 범위 밖에 남긴 것 (당시 기준)**: Split(H/V) 와이프 뷰(별개 렌더링 기능), Find First
+Difference(작은 후속 작업으로 스코핑) — **둘 다 이후 세션에서 완료**(Find First Difference는 바로 위
+체크리스트 CMP-04, Split(H/V)는 아래 "후속" 항목 참조). 여전히 미착수인 것: `DiffMode::Metric`/VMAF/
+RD-curve UI/CLI 서브커맨드/ROI 메트릭(전부 엔진에 미구현이거나 별도로 추적되는 더 큰 작업).
 
 **예상 소요:** 중급 3~4주 (MVP 슬라이스는 위에서 완료, 나머지는 여전히 유효)
+
+**후속: Split(H/V) 와이프 뷰 실구현 완료 (2026-08-19)** — 위에서 "별개의 단일 캔버스 렌더링 기능이라 범위
+밖"으로 명시적으로 미룬 CMP-02의 마지막 조각. StreamEye의 Horizontal/Vertical Split(드래그 가능한 슬라이더로
+A/B를 한 캔버스 안에서 반반 나눠 보여주는 "before/after" 방식)를 그대로 구현 — `COMPETITOR_FEATURE_MATRIX.md`
+§4/`UX_PARITY_MATRIX.md`엔 이 인터랙션의 세부 계약(정확한 hover/tooltip 규격 등)까지는 없어서, 업계 표준
+관행(디바이더 근처가 아니라 캔버스 아무 곳이나 드래그해도 반응, 손잡이 노브로 시각적 어포던스)을 그대로 따름.
+
+신규 `frontend/components/CompareWorkspace/SplitView.tsx` — 픽셀 파이프라인은 100% 재사용, 새로 만든 건
+없음: `StreamPlayer.tsx`와 동일하게 `getDecodedFrameYuv("A"/"B", frameIdx)` + `bridgeYuvToFrame`으로 두
+스트림의 디코드된 YUV를 각각 가져오고, `VideoCanvas.tsx`가 쓰는 것과 같은 `YUVRenderer`(`putImageData`
+경로)로 각각 독립된 오프스크린(DOM에 안 붙는) `<canvas>`에 렌더링한 뒤, 화면에 보이는 캔버스에
+`ctx.clip()`으로 분할 위치 기준 사각형을 잘라 각 절반을 합성 — A/B 해상도가 다르면 `drawImage`의 dest
+크기를 A 해상도로 맞춰 스케일. 디바이더 드래그는 `Timeline.tsx`의 스크러버가 이미 쓰던
+`onMouseDown`→`window.addEventListener("mousemove"/"mouseup")` 패턴 그대로(새 드래그 프리미티브 없음).
+V/H 방향 전환 + 키보드 방향키로 1%(Shift+5%) nudge(접근성, `role="slider"`+`aria-valuenow`).
+`CompareWorkspace.tsx`에 Side-by-Side/Split 뷰모드 토글(버튼 그룹) 신규 추가 — 기존엔 "side-by-side +
+선택적 diff 컬럼"만 있었고 진짜 뷰모드 개념이 없었음; diff 토글/모드 셀렉트는 side-by-side 전용으로 유지
+(split 뷰와 diff 컬럼을 동시에 보여주는 건 혼란스러워 의도적으로 배제).
+
+**클래스명 충돌 사전 확인**: 이 코드베이스는 CSS Modules 없이 plain `.css` import라 클래스명이 프론트엔드
+전체에 전역 적용됨(`feedback_css_classes_shared_globally` 패턴) — `SplitView.css`/`.view-mode-toggle` 등
+신규 클래스 전부 도입 전 `grep -rl`으로 기존 미사용 확인 후 추가, `split-view-` 접두사로 재확인.
+
+**검증**: `npm run typecheck` 클린, `npx vitest run` 기존 베이스라인과 동일(9파일/36개 pre-existing 실패,
+codicon 폰트 플레이키니스 — 이번 변경과 무관, 실패 목록에 Compare/Split 관련 파일 없음 확인). 실제 Electron
+스크린샷 2장(`test_data/av1_test.ivf`를 A/B 양쪽에 열고 `BITVUE_ELECTRON_SCREENSHOT_CLICK_TAB="Split"` /
+`"Split,H"`로 V/H 각각 캡처) — 분할선+원형 손잡이 노브가 정확한 위치(기본 50%)에 그려지고, 두 절반 모두
+동일한 디코드된 테스트 패턴("Bip!" 볼+타임코드+컬러바)이 이어져 보임을 육안 확인, 렌더러 콘솔 에러 0건
+(exit code 0). 세션 시작 시 이 작업용 워크트리가 electron-migration 브랜치보다 한참 뒤처진 조상 커밋(Tauri
+시대, CompareWorkspace 부활 이전)에 멈춰 있던 걸 발견 — `git merge --ff-only`로 순정 fast-forward(분기 커밋
+없음, 히스토리 손실 없음)해 실제 최신 상태로 맞춘 뒤 작업.
 
 ---
 
