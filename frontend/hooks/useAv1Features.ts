@@ -89,8 +89,14 @@ export function useAv1Features(
   const [av1Features, setAv1Features] = useState<Av1FeaturesData | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // `activeCodec` comes straight from the sidecar's `get_stream_info` (real value is lowercase
+  // "av1", not "AV1") -- codecModeRegistry.ts already normalizes via toUpperCase() before
+  // comparing; this needs the same normalization, or shouldFetch is always false and this hook's
+  // fetch never runs, leaving every AV1-advanced-feature overlay (CDEF/loop-restoration/film-grain
+  // /super-res) permanently without data (confirmed via a diagnostic probe: activeCodec was "av1"
+  // at every render, so `activeCodec === "AV1"` never matched).
   const shouldFetch =
-    activeCodec === "AV1" && AV1_FEATURE_MODES.has(currentMode);
+    activeCodec?.toUpperCase() === "AV1" && AV1_FEATURE_MODES.has(currentMode);
 
   useEffect(() => {
     if (!shouldFetch) {

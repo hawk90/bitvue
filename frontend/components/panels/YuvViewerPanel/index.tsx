@@ -538,35 +538,23 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             height={frameImage?.height ?? 1080}
           />
         </div>
-      ) : currentMode === "av1-features" ||
-        currentMode === "cdef-filter" ||
-        currentMode === "loop-restoration" ||
-        currentMode === "film-grain" ||
-        currentMode === "super-res" ? (
+      ) : currentMode === "av1-features" ? (
         <div className="yuv-analysis-view-container">
-          {/* AV1FeaturesView already has real, complete CDEF/LoopRestoration/FilmGrain/SuperRes
-              sections (its show* props gate each independently) -- the individual per-feature
-              F-keys (cdef-filter/loop-restoration/film-grain/super-res) used to fall through to
-              the plain VideoCanvas below with no analysis rendered at all, despite the data
-              already being fetched (see useAv1Features's mode gate above). "av1-features" (the
-              catch-all, reachable via the info-overlay menu, not an F-key) still shows all four. */}
+          {/* "av1-features" is the legacy catch-all (reachable via the info-overlay menu, not an
+              F-key -- see codecModeRegistry.ts) that shows all four sections side by side. The
+              individual per-feature F-keys (cdef-filter/loop-restoration/film-grain/super-res)
+              used to route here too, showing only their one section -- but each of those already
+              has a real, data-driven video overlay in OverlayRenderer (Av1CdefRenderer/
+              Av1LoopRestorationRenderer/Av1FilmGrainRenderer/Av1SuperResRenderer, matching
+              codecModeRegistry.ts's per-key descriptions exactly), which this branch was
+              permanently shadowing -- same bug as "coding-flow" (see that fix's commit). Now only
+              the true catch-all stays here; the individual F-keys fall through to VideoCanvas
+              below, which already receives `av1Features` and reaches OverlayRenderer's real
+              per-mode cases. */}
           <AV1FeaturesView
             frame={currentFrame}
             width={frameImage?.width ?? 1920}
             height={frameImage?.height ?? 1080}
-            showCdef={
-              currentMode === "av1-features" || currentMode === "cdef-filter"
-            }
-            showLoopRestoration={
-              currentMode === "av1-features" ||
-              currentMode === "loop-restoration"
-            }
-            showFilmGrain={
-              currentMode === "av1-features" || currentMode === "film-grain"
-            }
-            showSuperRes={
-              currentMode === "av1-features" || currentMode === "super-res"
-            }
           />
         </div>
       ) : (

@@ -20,7 +20,7 @@ interface Av1CdefRendererProps {
   width: number;
   height: number;
   frame: FrameInfo;
-  cdef: Av1CdefData;
+  cdef: Av1CdefData | undefined;
 }
 
 /** Map a CDEF strength value (0–255) to an RGBA fill color string. */
@@ -88,12 +88,32 @@ function drawDirectionArrow(
 
 export function Av1CdefRenderer({
   ctx,
-  width: _width,
+  width,
   height,
   frame: _frame,
   cdef,
 }: Av1CdefRendererProps): void {
   ctx.save();
+
+  if (!cdef) {
+    // Absent -- backend's extract_cdef_data returns None when the stream doesn't carry
+    // cdef_params at all (distinct from a real block having strength 0), same "disabled"
+    // convention as the sibling AV1-feature renderers.
+    const msg = "CDEF: disabled";
+    ctx.font = "14px monospace";
+    const measured = ctx.measureText(msg);
+    const boxW = measured.width + 24;
+    const boxH = 32;
+    const boxX = (width - boxW) / 2;
+    const boxY = (height - boxH) / 2;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.70)";
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = "#888888";
+    ctx.fillText(msg, boxX + 12, boxY + 21);
+    ctx.restore();
+    return;
+  }
 
   // ── Pass 1: block strength heatmap ────────────────────────────────────────
   ctx.lineWidth = 0.5;

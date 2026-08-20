@@ -17,7 +17,7 @@ interface Av1LoopRestorationRendererProps {
   width: number;
   height: number;
   frame: FrameInfo;
-  loopRestoration: Av1LoopRestorationData;
+  loopRestoration: Av1LoopRestorationData | undefined;
 }
 
 /** Fill color by restoration unit type. */
@@ -37,12 +37,33 @@ const LEGEND_ITEMS = [
 
 export function Av1LoopRestorationRenderer({
   ctx,
-  width: _width,
-  height: _height,
+  width,
+  height,
   frame: _frame,
   loopRestoration,
 }: Av1LoopRestorationRendererProps): void {
   ctx.save();
+
+  if (!loopRestoration) {
+    // Absent (not just empty units) -- backend's extract_loop_restoration_data returns None
+    // when the stream doesn't carry loop_restoration_params, same "disabled" convention as
+    // Av1FilmGrainRenderer/Av1SuperResRenderer's centered notice, rather than silently drawing
+    // nothing at all.
+    const msg = "Loop Restoration: disabled";
+    ctx.font = "14px monospace";
+    const measured = ctx.measureText(msg);
+    const boxW = measured.width + 24;
+    const boxH = 32;
+    const boxX = (width - boxW) / 2;
+    const boxY = (height - boxH) / 2;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.70)";
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = "#888888";
+    ctx.fillText(msg, boxX + 12, boxY + 21);
+    ctx.restore();
+    return;
+  }
 
   // ── Draw restoration units ────────────────────────────────────────────────
   for (const unit of loopRestoration.units) {

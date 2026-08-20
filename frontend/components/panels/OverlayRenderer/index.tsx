@@ -87,24 +87,20 @@ function renderMainModeOverlay(
       break;
     // ── AV1 advanced modes ─────────────────────────────────────────────────
     case "cdef-filter":
-      if (av1Features?.cdef) {
-        ctx.save();
-        Av1CdefRenderer({ ctx, width, height, frame, cdef: av1Features.cdef });
-        ctx.restore();
-      }
+      ctx.save();
+      Av1CdefRenderer({ ctx, width, height, frame, cdef: av1Features?.cdef });
+      ctx.restore();
       break;
     case "loop-restoration":
-      if (av1Features?.loopRestoration) {
-        ctx.save();
-        Av1LoopRestorationRenderer({
-          ctx,
-          width,
-          height,
-          frame,
-          loopRestoration: av1Features.loopRestoration,
-        });
-        ctx.restore();
-      }
+      ctx.save();
+      Av1LoopRestorationRenderer({
+        ctx,
+        width,
+        height,
+        frame,
+        loopRestoration: av1Features?.loopRestoration,
+      });
+      ctx.restore();
       break;
     case "film-grain":
       ctx.save();
