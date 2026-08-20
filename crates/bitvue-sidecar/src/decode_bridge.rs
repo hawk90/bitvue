@@ -35,6 +35,7 @@ pub enum GetThumbnailsError {
 /// the `Data` frame that follows this command's `Control` response (see `get_hex_range` for the
 /// established no-base64 two-frame pattern this mirrors). The TS side slices `bytes` back into
 /// three planes using `y_len`/`u_len`/`v_len`.
+#[derive(Debug)]
 pub struct DecodedYuvFrame {
     pub width: u32,
     pub height: u32,

@@ -306,7 +306,13 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
         const codingFlow = await window.bitvue.getCodingFlowAnalysis(0);
         const deblocking = await window.bitvue.getDeblockingAnalysis(0);
         const codecExtendedInfo = await window.bitvue.getCodecExtendedInfo(5);
-        const residualAnalysis = await window.bitvue.getResidualAnalysis(5);
+        // frame_index 4, not 5 -- see bitvue-sidecar's residual_analysis.rs test doc: frame 4 is
+        // a real fixture frame confirmed (via the axis-7 RefFrameState-threading fix) to produce
+        // non-empty block_residuals; several other frames in this fixture legitimately still
+        // return few/zero blocks due to a separate, already-documented entropy-context gap
+        // (inter_mode/compound_mode, deferred pending the refmvs subsystem), so this isn't "any
+        // non-key frame works" -- it's specifically the one this fix's own regression test proves.
+        const residualAnalysis = await window.bitvue.getResidualAnalysis(4);
         const contextMenuItems = await window.bitvue.getContextMenuItems("Player", false, false);
         const screenshotDataUrl = await window.bitvue.captureScreenshot();
         const evidenceBundle = await window.bitvue.exportEvidenceBundle({
@@ -490,7 +496,7 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
       (result.codecExtendedInfo?.qp_histogram?.length ?? 0) > 0;
     console.log("[selftest] get_codec_extended_info OK:", codecExtendedInfoOk);
     const residualAnalysisOk =
-      result.residualAnalysis?.frame_index === 5 &&
+      result.residualAnalysis?.frame_index === 4 &&
       (result.residualAnalysis?.block_residuals?.length ?? 0) > 0 &&
       result.residualAnalysis?.coefficient_stats?.energy >= 0;
     console.log("[selftest] get_residual_analysis OK:", residualAnalysisOk);

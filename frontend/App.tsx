@@ -53,6 +53,7 @@ import { useFileMenuEvents } from "./hooks/useFileMenuEvents";
 import { useLayoutMenuEvents } from "./hooks/useLayoutMenuEvents";
 import { useOptionsMenuEvents } from "./hooks/useOptionsMenuEvents";
 import { useOverlayMenuEvents } from "./hooks/useOverlayMenuEvents";
+import { useSidecarLifecycleEvents } from "./hooks/useSidecarLifecycleEvents";
 
 // Lazy load dialog components - only loaded when needed
 const KeyboardShortcutsDialog = lazy(() =>
@@ -502,6 +503,7 @@ function AppContent() {
   useLayoutMenuEvents(saveLayout, loadLayout, resetLayout);
   useOptionsMenuEvents();
   useOverlayMenuEvents(toggleOverlay, clearOverlays);
+  useSidecarLifecycleEvents({ showErrorDialog });
   useFileMenuEvents({
     openFileAtPath,
     handleOpenFile,

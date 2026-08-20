@@ -104,6 +104,7 @@ const { closeWindow, setHasOpenFile } = vi.hoisted(() => ({
 vi.mock("@/services/electronBridgeService", () => ({
   closeWindow,
   setHasOpenFile,
+  onSidecarRestarted: vi.fn(() => () => {}),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({

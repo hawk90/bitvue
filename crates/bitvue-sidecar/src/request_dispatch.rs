@@ -30,14 +30,26 @@ pub type CancelRegistry = Arc<Mutex<HashMap<u32, Arc<AtomicBool>>>>;
 /// workflow only ever has one reference loaded at a time.
 pub type DebugYuvSlot = Arc<Mutex<Option<debug_yuv::Session>>>;
 
+/// Per-stream `Av1Decoder` sessions backing `get_decoded_frame_yuv` (see `decode_session`'s module
+/// doc). Unlike `DebugYuvSlot`/`CompareSlot`, no outer `Mutex<Option<_>>` wrapper is needed --
+/// `DecodeSessions` already holds its own per-stream `Mutex`es internally, so `Arc` alone is enough
+/// to share it across worker threads.
+pub type DecodeSessionsSlot = Arc<crate::decode_session::DecodeSessions>;
+
 /// Registers a cancel flag for `correlation_id`, then spawns a worker thread that computes the
 /// response (unlocked — no I/O, no shared-writer contention while it runs) and writes whatever
 /// frames the computation produces under a brief writer-lock. See module doc for the concurrency
 /// model, the mid-execution cancellation checkpoints, and the panic guard below.
+///
+/// Each param past `core` is a distinct shared-state slot for one command family
+/// (`debug_yuv`/`compare`/`decode_session`) -- flagged by clippy at 8 args, but bundling them into
+/// a struct would just move the same list one level down for no real clarity gain at this size.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_request(
     core: Arc<Core>,
     debug_yuv_state: DebugYuvSlot,
     compare_state: compare::CompareSlot,
+    decode_sessions: DecodeSessionsSlot,
     writer: Arc<Mutex<io::Stdout>>,
     registry: CancelRegistry,
     correlation_id: u32,
@@ -68,6 +80,7 @@ pub fn spawn_request(
                 &core,
                 &debug_yuv_state,
                 &compare_state,
+                &decode_sessions,
                 &request,
                 &cancel_flag,
             )
@@ -110,11 +123,19 @@ fn compute_frames_with_panic_guard(
     core: &Core,
     debug_yuv_state: &DebugYuvSlot,
     compare_state: &compare::CompareSlot,
+    decode_sessions: &DecodeSessionsSlot,
     request: &Request,
     cancel_flag: &AtomicBool,
 ) -> Vec<(FrameKind, Vec<u8>)> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compute_frames(core, debug_yuv_state, compare_state, request, cancel_flag)
+        compute_frames(
+            core,
+            debug_yuv_state,
+            compare_state,
+            decode_sessions,
+            request,
+            cancel_flag,
+        )
     })) {
         Ok(frames) => frames,
         Err(panic_payload) => {
@@ -181,13 +202,19 @@ pub fn compute_frames(
     core: &Core,
     debug_yuv_state: &DebugYuvSlot,
     compare_state: &compare::CompareSlot,
+    decode_sessions: &DecodeSessionsSlot,
     request: &Request,
     cancel_flag: &AtomicBool,
 ) -> Vec<(FrameKind, Vec<u8>)> {
     match request.method.as_str() {
         "get_hex_range" => return commands::data_plane::get_hex_range(core, request),
         "get_decoded_frame_yuv" => {
-            return commands::data_plane::get_decoded_frame_yuv(core, request)
+            return commands::data_plane::get_decoded_frame_yuv(
+                core,
+                decode_sessions,
+                request,
+                cancel_flag,
+            )
         }
         "get_frame_analysis" => return frame_analysis::get_frame_analysis_command(core, request),
         "get_debug_yuv_frame" => {
@@ -459,12 +486,15 @@ mod tests {
         let core = Arc::new(Core::new());
         let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
         let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
+        let decode_sessions: DecodeSessionsSlot =
+            Arc::new(crate::decode_session::DecodeSessions::new());
         let mut handles = Vec::new();
 
         for i in 0..16u32 {
             let core = Arc::clone(&core);
             let debug_yuv_state = Arc::clone(&debug_yuv_state);
             let compare_state = Arc::clone(&compare_state);
+            let decode_sessions = Arc::clone(&decode_sessions);
             handles.push(thread::spawn(move || {
                 let stream = if i % 2 == 0 { "A" } else { "B" };
                 let request = Request {
@@ -476,6 +506,7 @@ mod tests {
                     &core,
                     &debug_yuv_state,
                     &compare_state,
+                    &decode_sessions,
                     &request,
                     &AtomicBool::new(false),
                 );
@@ -507,6 +538,8 @@ mod tests {
         let core = Core::new();
         let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
         let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
+        let decode_sessions: DecodeSessionsSlot =
+            Arc::new(crate::decode_session::DecodeSessions::new());
         let registry: CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
         let correlation_id = 999;
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -526,6 +559,7 @@ mod tests {
             &core,
             &debug_yuv_state,
             &compare_state,
+            &decode_sessions,
             &request,
             &cancel_flag,
         );

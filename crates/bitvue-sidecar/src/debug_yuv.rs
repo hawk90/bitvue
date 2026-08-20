@@ -1459,7 +1459,13 @@ mod tests {
             method: "get_decoded_frame_yuv".to_string(),
             params: serde_json::json!({"stream": "A", "frame_index": 0}),
         };
-        let frames = crate::commands::data_plane::get_decoded_frame_yuv(core, &decode_request);
+        let decode_sessions = crate::decode_session::DecodeSessions::new();
+        let frames = crate::commands::data_plane::get_decoded_frame_yuv(
+            core,
+            &decode_sessions,
+            &decode_request,
+            &std::sync::atomic::AtomicBool::new(false),
+        );
         let ctrl: Response = serde_json::from_slice(&frames[0].1).unwrap();
         let meta = ctrl.result.unwrap();
         let width = meta["width"].as_u64().unwrap() as u32;

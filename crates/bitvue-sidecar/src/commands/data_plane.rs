@@ -4,7 +4,6 @@
 //! as part of an SRP pass.
 
 use crate::command_support::{parse_stream_id, single_control_frame, wire_error_code_for};
-use crate::decode_bridge;
 use bitvue_engine::Core;
 use bitvue_protocol::{FrameKind, Request, Response, WireError, WireErrorCode};
 
@@ -87,10 +86,16 @@ struct GetDecodedFrameYuvParams {
 
 /// Second data-plane command (after `get_hex_range`): a `Control` metadata frame (width/height/
 /// strides/chroma format) followed by a `Data` frame of raw concatenated Y+U+V bytes -- same
-/// no-base64 wire pattern as `get_hex_range`. Business logic lives in `decode_bridge`, not
+/// no-base64 wire pattern as `get_hex_range`. Business logic lives in `decode_bridge`
+/// (from-scratch fallback) and `decode_session` (persistent-session fast path), not
 /// `bitvue-indexer` (which is explicitly pixel-decode-free by design, see its crate doc) --
 /// `bitvue-sidecar` is the orchestration layer allowed to depend on `bitvue-decode` directly.
-pub fn get_decoded_frame_yuv(core: &Core, request: &Request) -> Vec<(FrameKind, Vec<u8>)> {
+pub fn get_decoded_frame_yuv(
+    core: &Core,
+    decode_sessions: &crate::decode_session::DecodeSessions,
+    request: &Request,
+    cancel_flag: &std::sync::atomic::AtomicBool,
+) -> Vec<(FrameKind, Vec<u8>)> {
     let params: GetDecodedFrameYuvParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
         Err(err) => {
@@ -126,6 +131,10 @@ pub fn get_decoded_frame_yuv(core: &Core, request: &Request) -> Vec<(FrameKind, 
     };
     drop(state);
 
+    // Arc pointer identity, not StreamState::file_path -- see decode_session's module doc for
+    // why (a close+reopen of the *same* path still needs to invalidate the old session).
+    let byte_cache_identity = std::sync::Arc::as_ptr(&byte_cache) as usize;
+
     let full_len = byte_cache.len() as usize;
     let data = match byte_cache.read_range(0, full_len) {
         Ok(bytes) => bytes,
@@ -141,7 +150,13 @@ pub fn get_decoded_frame_yuv(core: &Core, request: &Request) -> Vec<(FrameKind, 
         }
     };
 
-    match decode_bridge::get_decoded_frame_yuv(data, params.frame_index) {
+    match decode_sessions.get_decoded_frame_yuv(
+        stream,
+        byte_cache_identity,
+        data,
+        params.frame_index,
+        cancel_flag,
+    ) {
         Ok(frame) => {
             let meta = Response::success(
                 request.id,
@@ -166,14 +181,26 @@ pub fn get_decoded_frame_yuv(core: &Core, request: &Request) -> Vec<(FrameKind, 
                 (FrameKind::Data, frame.bytes),
             ]
         }
-        Err(message) => single_control_frame(Response::failure(
-            request.id,
-            WireError {
-                code: WireErrorCode::FrameNotFound,
-                message,
-                offset: None,
-            },
-        )),
+        Err(crate::decode_session::DecodeSessionError::Cancelled) => {
+            single_control_frame(Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::Cancelled,
+                    message: "cancelled".to_string(),
+                    offset: None,
+                },
+            ))
+        }
+        Err(crate::decode_session::DecodeSessionError::Other(message)) => {
+            single_control_frame(Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::FrameNotFound,
+                    message,
+                    offset: None,
+                },
+            ))
+        }
     }
 }
 
@@ -312,7 +339,13 @@ mod tests {
             method: "get_decoded_frame_yuv".to_string(),
             params: serde_json::json!({"stream": "A", "frame_index": 0}),
         };
-        let frames = get_decoded_frame_yuv(&core, &request);
+        let sessions = crate::decode_session::DecodeSessions::new();
+        let frames = get_decoded_frame_yuv(
+            &core,
+            &sessions,
+            &request,
+            &std::sync::atomic::AtomicBool::new(false),
+        );
         assert_eq!(
             frames.len(),
             2,
@@ -351,11 +384,48 @@ mod tests {
             method: "get_decoded_frame_yuv".to_string(),
             params: serde_json::json!({"stream": "A", "frame_index": 999_999}),
         };
-        let frames = get_decoded_frame_yuv(&core, &request);
+        let sessions = crate::decode_session::DecodeSessions::new();
+        let frames = get_decoded_frame_yuv(
+            &core,
+            &sessions,
+            &request,
+            &std::sync::atomic::AtomicBool::new(false),
+        );
         assert_eq!(frames.len(), 1, "error path should not emit a Data frame");
         let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
+    }
+
+    /// Real regression coverage for the axis-6 cancellation wiring (JS side calls
+    /// `cancel_request` against a stale filmstrip-scrub request's correlation id -- see
+    /// `SidecarClient.getDecodedFrameYuvCancellable`). A flag already set before the handler
+    /// runs must produce a real `WireErrorCode::Cancelled` response, not a generic error and not
+    /// a silently-completed decode.
+    #[test]
+    fn get_decoded_frame_yuv_cancelled_before_start_reports_cancelled() {
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+        let request = Request {
+            id: 203,
+            method: "get_decoded_frame_yuv".to_string(),
+            params: serde_json::json!({"stream": "A", "frame_index": 5}),
+        };
+        let sessions = crate::decode_session::DecodeSessions::new();
+        let frames = get_decoded_frame_yuv(
+            &core,
+            &sessions,
+            &request,
+            &std::sync::atomic::AtomicBool::new(true),
+        );
+        assert_eq!(
+            frames.len(),
+            1,
+            "cancelled path should not emit a Data frame"
+        );
+        let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        assert!(!response.ok);
+        assert_eq!(response.error.unwrap().code, WireErrorCode::Cancelled);
     }
 
     #[test]
@@ -366,7 +436,13 @@ mod tests {
             method: "get_decoded_frame_yuv".to_string(),
             params: serde_json::json!({"stream": "A", "frame_index": 0}),
         };
-        let frames = get_decoded_frame_yuv(&core, &request);
+        let sessions = crate::decode_session::DecodeSessions::new();
+        let frames = get_decoded_frame_yuv(
+            &core,
+            &sessions,
+            &request,
+            &std::sync::atomic::AtomicBool::new(false),
+        );
         assert_eq!(frames.len(), 1);
         let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
         assert!(!response.ok);

@@ -25,14 +25,39 @@ export interface BridgeDecodedYuvFrame {
   bytes: Uint8Array;
 }
 
-/** Decodes (dav1d, via `bitvue-decode`) the stream from its start up to and including
- *  `frameIndex`, returning that frame's real YUV planes. AV1/IVF only, no session caching yet --
- *  see `bitvue-sidecar`'s `decode_bridge` module doc for the current O(frameIndex) perf caveat. */
+/** Decodes (dav1d, via `bitvue-decode`) the stream up to and including `frameIndex`, returning
+ *  that frame's real YUV planes. AV1/IVF only. Backed by `bitvue-sidecar`'s per-stream decode
+ *  session (`decode_session.rs`) when the request continues forward from where the session left
+ *  off; falls back to a from-scratch decode on a backward seek or a different underlying file. */
 export async function getDecodedFrameYuv(
   stream: StreamId,
   frameIndex: number,
 ): Promise<BridgeDecodedYuvFrame> {
   return requireBridge().getDecodedFrameYuv(stream, frameIndex);
+}
+
+let nextCancellableRequestId = 1;
+
+/** Cancellable variant of `getDecodedFrameYuv` for the filmstrip-scrub hot path -- callers that
+ *  supersede their own in-flight request (the user moved to a different frame before this one
+ *  resolved) should call `cancel()` so `bitvue-sidecar` stops decoding for a frame nobody wants
+ *  anymore, instead of just discarding the result once it arrives. See
+ *  `SidecarClient.getDecodedFrameYuvCancellable`'s doc for the full cancellation contract
+ *  (`cancel()` is fire-and-forget and safe to call after the promise already settled). */
+export function getDecodedFrameYuvCancellable(
+  stream: StreamId,
+  frameIndex: number,
+): { promise: Promise<BridgeDecodedYuvFrame>; cancel: () => void } {
+  const requestId = `decode-${nextCancellableRequestId++}`;
+  const promise = requireBridge().getDecodedFrameYuvCancellable(
+    requestId,
+    stream,
+    frameIndex,
+  );
+  const cancel = () => {
+    void requireBridge().cancelDecodedFrameYuv(requestId);
+  };
+  return { promise, cancel };
 }
 
 /** Slices a `BridgeDecodedYuvFrame`'s single concatenated `bytes` buffer into the

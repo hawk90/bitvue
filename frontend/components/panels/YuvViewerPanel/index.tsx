@@ -15,7 +15,7 @@
 
 import { useState, useRef, useEffect, useCallback, memo } from "react";
 import {
-  getDecodedFrameYuv,
+  getDecodedFrameYuvCancellable,
   getDebugYuvFrame,
   getFrameAnalysis,
   bridgeYuvToFrame,
@@ -162,6 +162,11 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
   // Load frame and analysis data when currentFrameIndex changes
   useEffect(() => {
     let cancelled = false;
+    // Set only while a real (non-debug-YUV) decode is in flight -- calling this on cleanup tells
+    // bitvue-sidecar to stop decoding a frame the user already scrubbed past, instead of just
+    // discarding the result client-side once it eventually arrives (see decode_session.rs's
+    // cancel_flag wiring and SidecarClient.getDecodedFrameYuvCancellable's doc).
+    let cancelDecode: (() => void) | null = null;
 
     const loadFrame = async (frameIndex: number) => {
       setIsLoading(true);
@@ -184,7 +189,12 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
         // Real decode path, via the Electron bridge -- AV1/IVF only, matches this app's stream
         // "A" convention (see FileStateContext/electronBridgeService callers).
-        const decoded = await getDecodedFrameYuv("A", frameIndex);
+        const { promise, cancel } = getDecodedFrameYuvCancellable(
+          "A",
+          frameIndex,
+        );
+        cancelDecode = cancel;
+        const decoded = await promise;
 
         if (cancelled) return;
 
@@ -252,6 +262,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
     return () => {
       cancelled = true;
+      cancelDecode?.();
     };
   }, [
     currentFrameIndex,

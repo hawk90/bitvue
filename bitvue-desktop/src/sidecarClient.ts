@@ -67,6 +67,21 @@ export class SidecarExitedError extends Error {
   }
 }
 
+/** Return shape shared by `getDecodedFrameYuv` and `getDecodedFrameYuvCancellable`. */
+export interface DecodedFrameYuvResult {
+  width: number;
+  height: number;
+  bitDepth: number;
+  chromaSubsampling: "420" | "422" | "444";
+  yStride: number;
+  uStride: number;
+  vStride: number;
+  yLen: number;
+  uLen: number;
+  vLen: number;
+  bytes: Buffer;
+}
+
 interface PendingRequest {
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
@@ -376,19 +391,7 @@ export class SidecarClient extends EventEmitter {
   async getDecodedFrameYuv(params: {
     stream: string;
     frameIndex: number;
-  }): Promise<{
-    width: number;
-    height: number;
-    bitDepth: number;
-    chromaSubsampling: "420" | "422" | "444";
-    yStride: number;
-    uStride: number;
-    vStride: number;
-    yLen: number;
-    uLen: number;
-    vLen: number;
-    bytes: Buffer;
-  }> {
+  }): Promise<DecodedFrameYuvResult> {
     if (this.exited) {
       return Promise.reject(
         new SidecarExitedError(
@@ -397,6 +400,49 @@ export class SidecarClient extends EventEmitter {
       );
     }
     const id = this.nextCorrelationId++;
+    return this.getDecodedFrameYuvById(id, params);
+  }
+
+  /**
+   * Cancellable variant of `getDecodedFrameYuv`, for the filmstrip-scrub hot path (the one
+   * `get_decoded_frame_yuv`-backed command that's genuinely slow enough for a stale in-flight
+   * request to matter -- see `decode_session.rs`'s cancel_flag wiring). Returns the correlation
+   * id's handle synchronously so `cancel()` is available before the request settles; `cancel()`
+   * is fire-and-forget (`cancel_request` always gets its own normal response, but callers only
+   * care that `promise` ends up rejecting with a `Cancelled` `SidecarRequestError`, not about
+   * `cancel_request`'s own round trip) and safe to call after the promise already settled (the
+   * sidecar's `CancelRegistry` entry is removed once a request finishes, so a late cancel is a
+   * harmless no-op there).
+   */
+  getDecodedFrameYuvCancellable(params: {
+    stream: string;
+    frameIndex: number;
+  }): { promise: Promise<DecodedFrameYuvResult>; cancel: () => void } {
+    if (this.exited) {
+      return {
+        promise: Promise.reject(
+          new SidecarExitedError(
+            "getDecodedFrameYuvCancellable() called after process exit",
+          ),
+        ),
+        cancel: () => {},
+      };
+    }
+    const id = this.nextCorrelationId++;
+    const promise = this.getDecodedFrameYuvById(id, params);
+    const cancel = () => {
+      void this.request("cancel_request", { target_id: id }).catch(() => {
+        // Best-effort -- if the sidecar is already gone, `promise` above is (or will be)
+        // rejected with a SidecarExitedError anyway, which is the signal callers actually need.
+      });
+    };
+    return { promise, cancel };
+  }
+
+  private async getDecodedFrameYuvById(
+    id: number,
+    params: { stream: string; frameIndex: number },
+  ): Promise<DecodedFrameYuvResult> {
     const body = Buffer.from(
       JSON.stringify({
         id,

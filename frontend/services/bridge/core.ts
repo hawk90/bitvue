@@ -86,6 +86,12 @@ declare global {
         stream: StreamId,
         frameIndex: number,
       ) => Promise<BridgeDecodedYuvFrame>;
+      getDecodedFrameYuvCancellable: (
+        requestId: string,
+        stream: StreamId,
+        frameIndex: number,
+      ) => Promise<BridgeDecodedYuvFrame>;
+      cancelDecodedFrameYuv: (requestId: string) => Promise<void>;
       loadDebugYuv: (params: LoadDebugYuvParams) => Promise<LoadDebugYuvResult>;
       unloadDebugYuv: () => Promise<void>;
       setDebugYuvOffset: (offset: number) => Promise<void>;

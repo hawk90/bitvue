@@ -70,6 +70,7 @@ mod context_menu;
 mod deblocking;
 mod debug_yuv;
 mod decode_bridge;
+mod decode_session;
 mod evidence_export;
 mod frame_analysis;
 mod request_dispatch;
@@ -85,11 +86,13 @@ pub(crate) use request_dispatch::{dispatch, DebugYuvSlot};
 
 use bitvue_engine::Core;
 use bitvue_protocol::{FrameHeader, FrameKind, Request, FRAME_HEADER_LEN};
+use request_dispatch::DecodeSessionsSlot;
 
 fn main() {
     let core = Arc::new(Core::new());
     let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
     let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
+    let decode_sessions: DecodeSessionsSlot = Arc::new(decode_session::DecodeSessions::new());
     let writer = Arc::new(Mutex::new(io::stdout()));
     let registry: request_dispatch::CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
     // In-flight worker handles. Rust does NOT wait for detached `thread::spawn`ed threads when
@@ -140,6 +143,7 @@ fn main() {
                     Arc::clone(&core),
                     Arc::clone(&debug_yuv_state),
                     Arc::clone(&compare_state),
+                    Arc::clone(&decode_sessions),
                     Arc::clone(&writer),
                     Arc::clone(&registry),
                     header.correlation_id,
@@ -231,10 +235,12 @@ mod tests {
         let core = Core::new();
         let debug_yuv_state: DebugYuvSlot = Arc::new(Mutex::new(None));
         let compare_state: compare::CompareSlot = Arc::new(Mutex::new(None));
+        let decode_sessions: DecodeSessionsSlot = Arc::new(decode_session::DecodeSessions::new());
         let frames = request_dispatch::compute_frames(
             &core,
             &debug_yuv_state,
             &compare_state,
+            &decode_sessions,
             &parsed,
             &AtomicBool::new(false),
         );

@@ -26,6 +26,18 @@ contextBridge.exposeInMainWorld("bitvue", {
     ipcRenderer.invoke("bitvue:getHexRange", stream, offset, len),
   getDecodedFrameYuv: (stream, frameIndex) =>
     ipcRenderer.invoke("bitvue:getDecodedFrameYuv", stream, frameIndex),
+  // Cancellable pair backing the filmstrip-scrub path -- see
+  // `electron/ipc/frameDecode.ts`'s doc for why this is two channels (invoke/handle is
+  // request-response only, so a synchronous cancel handle can't cross the boundary directly).
+  getDecodedFrameYuvCancellable: (requestId, stream, frameIndex) =>
+    ipcRenderer.invoke(
+      "bitvue:getDecodedFrameYuvCancellable",
+      requestId,
+      stream,
+      frameIndex,
+    ),
+  cancelDecodedFrameYuv: (requestId) =>
+    ipcRenderer.invoke("bitvue:cancelDecodedFrameYuv", requestId),
   // Debug YUV (VQ Analyzer "Load Reference YUV" workflow) -- one global reference-file session,
   // not per-stream. See bitvue-sidecar's debug_yuv module doc.
   loadDebugYuv: (params) => ipcRenderer.invoke("bitvue:loadDebugYuv", params),

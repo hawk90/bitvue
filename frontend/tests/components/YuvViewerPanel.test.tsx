@@ -75,10 +75,25 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 // Mock the Electron bridge's getDecodedFrameYuv — the real decode path (2026-08-08 migration
-// off Tauri's get_decoded_frame_yuv).
-vi.mock("@/services/electronBridgeService", () => ({
-  getDecodedFrameYuv: vi.fn(() => Promise.reject(new Error("Test mode"))),
-}));
+// off Tauri's get_decoded_frame_yuv). The component actually calls the cancellable variant
+// (axis-6 cancellation wiring) -- that's implemented here as a thin wrapper around the same
+// `getDecodedFrameYuv` mock so every existing `sharedGetDecodedFrameYuvMock.mockResolvedValue/
+// mockRejectedValue(...)` call below keeps controlling the resolved/rejected frame data, just
+// via one extra layer of `{promise, cancel}` indirection matching the real bridge shape.
+vi.mock("@/services/electronBridgeService", () => {
+  const getDecodedFrameYuv = vi.fn(() =>
+    Promise.reject(new Error("Test mode")),
+  );
+  return {
+    getDecodedFrameYuv,
+    getDecodedFrameYuvCancellable: vi.fn(
+      (stream: string, frameIndex: number) => ({
+        promise: getDecodedFrameYuv(stream, frameIndex),
+        cancel: vi.fn(),
+      }),
+    ),
+  };
+});
 
 // Mock Image constructor
 global.Image = class {

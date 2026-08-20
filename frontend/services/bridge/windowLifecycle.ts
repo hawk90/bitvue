@@ -34,3 +34,11 @@ export async function minimizeWindow(): Promise<void> {
 export async function toggleMaximizeWindow(): Promise<void> {
   return requireBridge().toggleMaximizeWindow();
 }
+
+/** Subscribes to the sidecar-process-crashed-and-was-respawned notification (see
+ *  `preload.cjs`'s own doc on `onSidecarRestarted`) -- `bitvue_engine::Core`'s in-memory state
+ *  (open streams, selection) does NOT survive a restart, so callers should treat this as "prompt
+ *  the user to re-open whatever they had open." Returns an unsubscribe function. */
+export function onSidecarRestarted(callback: () => void): () => void {
+  return requireBridge().onSidecarRestarted(callback);
+}

@@ -88,4 +88,48 @@ describe("SidecarClient <-> real bitvue-sidecar binary", () => {
 
     await expect(pending).rejects.toThrow(/exited/i);
   });
+
+  it("cancelling a getDecodedFrameYuvCancellable() request rejects it with a Cancelled error (real cancel_request round trip)", async () => {
+    client = new SidecarClient(binaryPath);
+    await client.hello("bitvue-desktop-integration-test/0.0.1");
+
+    const fixturePath = path.join(repoRoot, "test_data", "av1_test.ivf");
+    await client.request("open_stream", { stream: "A", path: fixturePath });
+
+    // Real axis-6 scrub scenario: request a far-away frame_index (forces the session to feed
+    // many packets, giving `decode_session.rs`'s per-packet cancel_flag check a real chance to
+    // fire before the decode finishes), cancel immediately, and confirm the promise actually
+    // rejects with the sidecar's real `WireErrorCode::Cancelled` -- not a timeout, not a
+    // successfully-completed decode racing the cancel.
+    const { promise, cancel } = client.getDecodedFrameYuvCancellable({
+      stream: "A",
+      frameIndex: 249,
+    });
+    cancel();
+
+    await expect(promise).rejects.toMatchObject({ code: "CANCELLED" });
+  });
+
+  it("a fresh getDecodedFrameYuvCancellable() request after cancelling an earlier one still resolves normally (cancellation doesn't poison the session)", async () => {
+    client = new SidecarClient(binaryPath);
+    await client.hello("bitvue-desktop-integration-test/0.0.1");
+
+    const fixturePath = path.join(repoRoot, "test_data", "av1_test.ivf");
+    await client.request("open_stream", { stream: "A", path: fixturePath });
+
+    const stale = client.getDecodedFrameYuvCancellable({
+      stream: "A",
+      frameIndex: 249,
+    });
+    stale.cancel();
+    await expect(stale.promise).rejects.toBeTruthy();
+
+    // The scrub pattern this backs: the user lands on a new frame after cancelling the old
+    // request -- the next real request must still succeed, proving cancellation tore down (or
+    // never corrupted) the shared per-stream decode session rather than leaving it wedged.
+    const fresh = await client.getDecodedFrameYuv({ stream: "A", frameIndex: 0 });
+    expect(fresh.width).toBeGreaterThan(0);
+    expect(fresh.height).toBeGreaterThan(0);
+    expect(fresh.bytes.length).toBe(fresh.yLen + fresh.uLen + fresh.vLen);
+  });
 });
