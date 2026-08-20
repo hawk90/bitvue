@@ -15,7 +15,7 @@
 //! frame's real `FrameHeader`.
 
 use bitvue_av1_codec::frame_header_full::{
-    find_frame_header_payload, parse_frame_header_full, RefFrameState,
+    find_frame_header_payload, parse_frame_header_full, thread_ref_state_before,
 };
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
@@ -62,22 +62,26 @@ pub fn get_deblocking_analysis(data: &[u8], frame_index: usize) -> Result<Value,
     let seq = find_sequence_header(&frames)
         .ok_or_else(|| "no sequence header found in the first few frames".to_string())?;
 
-    let mut ref_state = RefFrameState::new();
-    let mut header = None;
-    for frame in frames.iter().take(frame_index + 1) {
-        let payload = find_frame_header_payload(&frame.data)
-            .ok_or_else(|| "frame has no Frame/FrameHeader OBU".to_string())?;
-        header = Some(
-            parse_frame_header_full(&payload, &seq, &mut ref_state).map_err(|e| e.to_string())?,
-        );
-    }
-    let header = header.expect("frame_index < frames.len() guarantees at least one iteration");
+    // `ref_state` reflects frames `[0, frame_index)` -- exactly what both this frame's own
+    // header parse (below) and `ParsedFrame::parse_with_ref_state`'s `tile_data` extraction need
+    // as their starting state (see that method's doc: a fresh state silently desyncs `tile_data`
+    // for any frame needing real `skip_mode_params` state). Cloned before the header parse
+    // mutates it with frame_index's own contribution, since `parse_with_ref_state` below needs
+    // the pre-frame_index state, not the post-frame_index one.
+    let mut ref_state =
+        thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
+    let mut header_ref_state = ref_state.clone();
+    let payload = find_frame_header_payload(&frames[frame_index].data)
+        .ok_or_else(|| "frame has no Frame/FrameHeader OBU".to_string())?;
+    let header = parse_frame_header_full(&payload, &seq, &mut header_ref_state)
+        .map_err(|e| e.to_string())?;
 
     let obu_data: Vec<u8> = match find_sequence_header_bytes(&frames) {
         Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
         None => frames[frame_index].data.clone(),
     };
-    let parsed = ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?;
+    let parsed =
+        ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state).map_err(|e| e.to_string())?;
 
     let deblocking = extract_deblocking_data_from_parsed(&parsed, &header.loop_filter)
         .map_err(|e| e.to_string())?;

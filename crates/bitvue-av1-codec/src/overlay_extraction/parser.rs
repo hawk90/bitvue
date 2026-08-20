@@ -23,7 +23,13 @@ pub struct ParsedFrame {
     pub dimensions: FrameDimensions,
     /// Frame type information
     pub frame_type: FrameTypeInfo,
-    /// Tile group data (shared reference to avoid copies in QP/MV extraction)
+    /// Tile group data (shared reference to avoid copies in QP/MV extraction). **Not**
+    /// bit-position-independent of `ref_state` like the fields below (`reference_select` etc.) --
+    /// its start offset (`header_size_bytes`) is downstream of `skip_mode_params()`'s
+    /// presence bit, which DOES depend on real cross-frame ref-order-hint state. See
+    /// [`ParsedFrame::parse`]'s doc: this field is only correct for frame 0 (or another frame
+    /// that happens not to need `skip_mode_params`'s real state) when built via `parse`'s
+    /// fresh-state default -- use [`ParsedFrame::parse_with_ref_state`] for any other frame.
     pub tile_data: Arc<[u8]>,
     /// Whether delta Q is enabled for this frame
     pub delta_q_enabled: bool,
@@ -207,7 +213,38 @@ impl ParsedFrame {
     /// let qp_grid = extract_qp_grid_from_parsed(&parsed, frame_idx, base_qp)?;
     /// let mv_grid = extract_mv_grid_from_parsed(&parsed, frame_idx)?;
     /// ```
+    ///
+    /// **Correctness note (axis-7 fix, 2026-08-20):** this parses `obu_data` against a *fresh*
+    /// `RefFrameState` (`RefFrameState::new()`), which is only correct for `obu_data`'s frame if
+    /// it's frame 0 (or otherwise doesn't need real cross-frame ref-order-hint state to interpret
+    /// its own header -- e.g. `skip_mode_params()`'s presence bit, spec 5.9.22). For any other
+    /// frame, a real fixture's `header_size_bytes` can come out wrong under a fresh state, which
+    /// silently shifts `tile_data`'s start into what's still frame-header bits -- the entropy
+    /// decoder then desyncs from its very first read, and every superblock in the frame fails to
+    /// parse (caught per-superblock, so the *symptom* is a silently near-empty coding-unit list,
+    /// not a propagated error). Confirmed via a real fixture: frames needing `skip_mode_params`'s
+    /// real state return 0 coding units this way despite non-trivial `tile_data` length. Callers
+    /// that need correct `tile_data`/coding-units for anything other than frame 0 (i.e. every
+    /// `bitvue-sidecar` command backing a per-frame grid) MUST use
+    /// [`ParsedFrame::parse_with_ref_state`] with a `RefFrameState` threaded from frame 0, not
+    /// this method.
     pub fn parse(obu_data: &[u8]) -> Result<Self, BitvueError> {
+        Self::parse_with_ref_state(obu_data, &mut RefFrameState::new())
+    }
+
+    /// Same as [`ParsedFrame::parse`], but threads a caller-supplied `RefFrameState` into the
+    /// frame-header parse used to locate `tile_data`'s real start (`header_size_bytes`), instead
+    /// of assuming a fresh/default state. `ref_state` should reflect every frame from 0 up to
+    /// (but not including) `obu_data`'s own frame -- see [`RefFrameState`]'s doc and this
+    /// method's callers (`bitvue-sidecar`'s `frame_analysis`/`deblocking`/`residual_analysis`/
+    /// `codec_extended_info`/`coding_flow` modules) for the standard sequential-scan pattern that
+    /// builds it. Mutates `ref_state` in place with this frame's own contribution as a side
+    /// effect (matching [`crate::frame_header_full::parse_frame_header_full`]'s own contract),
+    /// so callers that need the pre-this-frame state again afterward should clone it first.
+    pub fn parse_with_ref_state(
+        obu_data: &[u8],
+        ref_state: &mut RefFrameState,
+    ) -> Result<Self, BitvueError> {
         let obu_data: Arc<[u8]> = Arc::from(obu_data);
 
         // Handle empty data: return a default ParsedFrame immediately.
@@ -398,8 +435,7 @@ impl ParsedFrame {
                         }
                     }
                     if let Some(seq) = &seq_header {
-                        if let Ok(full_hdr) =
-                            parse_frame_header_full(&obu.payload, seq, &mut RefFrameState::new())
+                        if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
                         {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;
@@ -440,8 +476,7 @@ impl ParsedFrame {
                         delta_q_enabled = frame_hdr.delta_q_present;
                     }
                     if let Some(seq) = &seq_header {
-                        if let Ok(full_hdr) =
-                            parse_frame_header_full(&obu.payload, seq, &mut RefFrameState::new())
+                        if let Ok(full_hdr) = parse_frame_header_full(&obu.payload, seq, ref_state)
                         {
                             reference_select = full_hdr.reference_select;
                             allow_intrabc = full_hdr.allow_intrabc;

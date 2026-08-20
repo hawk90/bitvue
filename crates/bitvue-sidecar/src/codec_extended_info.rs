@@ -27,7 +27,8 @@ use std::collections::HashMap;
 
 use bitvue_av1_codec::frame_header::FrameType;
 use bitvue_av1_codec::frame_header_full::{
-    find_frame_header_payload, parse_frame_header_full, relative_dist, RefFrameState,
+    find_frame_header_payload, parse_frame_header_full, relative_dist, thread_ref_state_before,
+    RefFrameState,
 };
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{extract_qp_grid_from_parsed, ParsedFrame};
@@ -177,7 +178,16 @@ pub fn get_codec_extended_info(data: &[u8], frame_index: usize) -> Result<Value,
         Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
         None => frames[frame_index].data.clone(),
     };
-    let parsed = ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?;
+    // A second, header-only scan up to (not including) frame_index -- `ref_state` above already
+    // threaded through frame_index itself (needed for `slots`/L0/L1 resolution above), so it no
+    // longer reflects the pre-frame_index state `ParsedFrame::parse_with_ref_state` needs for
+    // correct `tile_data` extraction (see that method's doc). Redoing this cheap header-only
+    // pass is simpler and safer than trying to snapshot `ref_state` mid-loop above without
+    // risking the already-correct L0/L1 logic.
+    let mut tile_ref_state =
+        thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
+    let parsed = ParsedFrame::parse_with_ref_state(&obu_data, &mut tile_ref_state)
+        .map_err(|e| e.to_string())?;
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
     let qp_grid =
         extract_qp_grid_from_parsed(&parsed, frame_index, base_qp).map_err(|e| e.to_string())?;

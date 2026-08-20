@@ -19,6 +19,7 @@
 //! at all). Every grid here is hand-mapped to JSON explicitly for this reason -- same reasoning
 //! `main.rs`'s module doc gives for hand-mapping `bitvue-engine` types generally.
 
+use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_energy_grid_from_parsed, extract_mv_grid_from_parsed,
@@ -26,6 +27,7 @@ use bitvue_av1_codec::overlay_extraction::{
     extract_qp_grid_from_parsed, extract_transform_grid_from_parsed, EnergyGrid, ParsedFrame,
     PredictionModeGrid, TransformGrid,
 };
+use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use bitvue_av1_codec::tile::PredictionMode;
 use bitvue_engine::mv_overlay::{MVGrid, MotionVector};
 use bitvue_engine::partition_grid::{PartitionBlock, PartitionGrid};
@@ -52,6 +54,21 @@ fn find_sequence_header_bytes(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Opt
     None
 }
 
+/// Parsed variant of `find_sequence_header_bytes`, needed for `thread_ref_state_before`'s real
+/// `SequenceHeader` parameter (`av1_features`/`deblocking`/`codec_extended_info`'s existing
+/// pattern).
+fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
+    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
+        let mut iter = ObuIterator::new(&frame.data);
+        while let Some(Ok(found)) = iter.next_obu_with_offset() {
+            if found.obu.header.obu_type == ObuType::SequenceHeader {
+                return parse_sequence_header(&found.obu.payload).ok();
+            }
+        }
+    }
+    None
+}
+
 pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, String> {
     let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(data)
         .map_err(|e| format!("IVF parse error: {e}"))?;
@@ -69,7 +86,22 @@ pub fn get_frame_analysis(data: &[u8], frame_index: usize) -> Result<Value, Stri
         None => frames[frame_index].data.clone(),
     };
 
-    let parsed = ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?;
+    // Real cross-frame ref-order-hint state (threaded from frame 0) is what
+    // `ParsedFrame::parse_with_ref_state` needs to correctly locate `tile_data` for any frame
+    // other than 0 -- see that method's doc. Falls back to the old fresh-state `parse` only when
+    // no sequence header could be found at all (this function's existing lenient-degrade
+    // behavior, unlike `deblocking`/`av1_features`'s hard error -- preserved here rather than
+    // widened, since frame_analysis's scaffold-dimension fallback for a missing seq header is a
+    // real, tested contract).
+    let parsed = match find_sequence_header(&frames) {
+        Some(seq) => {
+            let mut ref_state =
+                thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
+            ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state)
+                .map_err(|e| e.to_string())?
+        }
+        None => ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?,
+    };
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
 
     let qp_grid =

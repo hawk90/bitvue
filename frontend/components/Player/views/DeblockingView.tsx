@@ -11,7 +11,10 @@
 import { memo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 import { getDeblockingAnalysis } from "../../../services/electronBridgeService";
+import { createLogger } from "../../../utils/logger";
 import "./DeblockingView.css";
+
+const logger = createLogger("DeblockingView");
 
 interface DeblockingViewProps {
   frame: FrameInfo | null;
@@ -69,8 +72,11 @@ export const DeblockingView = memo(function DeblockingView({
       return;
     }
 
+    let cancelled = false;
+
     getDeblockingAnalysis(frame.frame_index)
       .then((data) => {
+        if (cancelled) return;
         setBoundaries(
           data.edges.map((e) => ({
             x: e.x,
@@ -96,9 +102,19 @@ export const DeblockingView = memo(function DeblockingView({
           weakBoundaries: data.stats.weak_edges,
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        if (cancelled) return;
+        logger.warn(
+          "Failed to fetch deblocking analysis for frame",
+          frame.frame_index,
+          err,
+        );
         setBoundaries([]);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [frame]);
 
   const getEdgeColor = (edge: BoundaryEdge) => {

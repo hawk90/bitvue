@@ -10,7 +10,10 @@
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 import { getCodingFlowAnalysis } from "../../../services/electronBridgeService";
+import { createLogger } from "../../../utils/logger";
 import "./CodingFlowView.css";
+
+const logger = createLogger("CodingFlowView");
 
 type CodingStage =
   | "input"
@@ -121,8 +124,12 @@ export const CodingFlowView = memo(function CodingFlowView({
 
   useEffect(() => {
     if (!frame) return;
+
+    let cancelled = false;
+
     getCodingFlowAnalysis(frame.frame_index)
       .then((data) => {
+        if (cancelled) return;
         // Backend data is untrusted at the type level (plain string) -- validate against the
         // real stage union rather than casting blindly.
         if (isCodingStage(data.current_stage)) {
@@ -130,7 +137,18 @@ export const CodingFlowView = memo(function CodingFlowView({
         }
         setBackendCodecFeatures(data.codec_features);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (cancelled) return;
+        logger.warn(
+          "Failed to fetch coding flow analysis for frame",
+          frame.frame_index,
+          err,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [frame]);
 
   const codecFeatures = useMemo(() => {

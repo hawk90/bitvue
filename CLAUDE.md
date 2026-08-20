@@ -40,6 +40,11 @@ Don't create a 5th parity doc; extend one of the four above.
   has outpaced stale progress notes more than once.
 - Verify before citing: grep for the actual code/file when a doc claims something is implemented — several
   `COMPETITOR_FEATURE_MATRIX.md` rows were only correctly marked ✅ after a code grep confirmed them.
+- **Never run `cargo test -p <crate> --lib` alone as a "did I break anything" check** — it skips every
+  `tests/` integration binary in that crate. A real infinite-loop bug in `ObuIterator` sat undetected for an
+  entire session because of exactly this (2026-08-11, see `bitvue-sidecar`'s `tests/subprocess_smoke.rs`).
+  Use `cargo test --workspace --exclude abseil --lib --tests` (or `scripts/run_regression_suite.sh`, which
+  already does this correctly) for any change that isn't obviously scoped to one file's inline unit tests.
 
 ## Key scripts
 

@@ -11,7 +11,10 @@
 import { memo, useMemo, useEffect, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
 import { getResidualAnalysis } from "../../../services/electronBridgeService";
+import { createLogger } from "../../../utils/logger";
 import "./ResidualsView.css";
+
+const logger = createLogger("ResidualsView");
 
 interface ResidualsViewProps {
   frame: FrameInfo | null;
@@ -59,8 +62,11 @@ export const ResidualsView = memo(function ResidualsView({
       return;
     }
 
+    let cancelled = false;
+
     getResidualAnalysis(frame.frame_index)
       .then((data) => {
+        if (cancelled) return;
         setBlockResiduals(
           data.block_residuals.map((b) => ({
             x: b.x,
@@ -82,10 +88,20 @@ export const ResidualsView = memo(function ResidualsView({
           nonZeroCount: data.coefficient_stats.non_zero_count,
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        if (cancelled) return;
+        logger.warn(
+          "Failed to fetch residual analysis for frame",
+          frame.frame_index,
+          err,
+        );
         setBlockResiduals([]);
         setCoefficientStats(null);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [frame]);
 
   const heatmapColors = useMemo(() => {

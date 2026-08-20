@@ -11,6 +11,7 @@
 //! reconstruction step in the analysis path (the debug-YUV / `get_decoded_frame_yuv` commands
 //! decode real pixels via `dav1d`, a separate code path this command doesn't touch).
 
+use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_prediction_mode_grid_from_parsed, extract_qp_grid_from_parsed,
@@ -124,7 +125,12 @@ pub fn get_coding_flow_analysis(data: &[u8], frame_index: usize) -> Result<Value
         Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
         None => frames[frame_index].data.clone(),
     };
-    let parsed = ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?;
+    // See `residual_analysis`/`frame_analysis`'s identical comment: a fresh-state parse silently
+    // desyncs `tile_data` extraction for any frame needing real `skip_mode_params` state.
+    let mut ref_state =
+        thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
+    let parsed =
+        ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state).map_err(|e| e.to_string())?;
     let base_qp = parsed.frame_type.base_qp.unwrap_or(0) as i16;
 
     let prediction_mode_grid =

@@ -16,8 +16,10 @@
 //! monotonic-with-actual-residual-magnitude quantity, not a spatial-domain energy metric (that
 //! would require the inverse transform this crate doesn't implement).
 
+use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{parse_all_coding_units, ParsedFrame};
+use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
 
 const SEQUENCE_HEADER_SCAN_LIMIT: usize = 8;
@@ -28,6 +30,20 @@ fn find_sequence_header_bytes(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Opt
         while let Some(Ok(found)) = iter.next_obu_with_offset() {
             if found.obu.header.obu_type == ObuType::SequenceHeader {
                 return Some(frame.data[found.offset..found.offset + found.consumed].to_vec());
+            }
+        }
+    }
+    None
+}
+
+/// Parsed variant of `find_sequence_header_bytes`, needed for `thread_ref_state_before`'s real
+/// `SequenceHeader` parameter.
+fn find_sequence_header(frames: &[bitvue_av1_codec::ivf::IvfFrame]) -> Option<SequenceHeader> {
+    for frame in frames.iter().take(SEQUENCE_HEADER_SCAN_LIMIT) {
+        let mut iter = ObuIterator::new(&frame.data);
+        while let Some(Ok(found)) = iter.next_obu_with_offset() {
+            if found.obu.header.obu_type == ObuType::SequenceHeader {
+                return parse_sequence_header(&found.obu.payload).ok();
             }
         }
     }
@@ -48,7 +64,20 @@ pub fn get_residual_analysis(data: &[u8], frame_index: usize) -> Result<Value, S
         Some(seq_bytes) => [seq_bytes.as_slice(), frames[frame_index].data.as_slice()].concat(),
         None => frames[frame_index].data.clone(),
     };
-    let parsed = ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?;
+    // Real cross-frame ref-order-hint state (threaded from frame 0) is what
+    // `ParsedFrame::parse_with_ref_state` needs to correctly locate `tile_data` for any frame
+    // other than 0 -- see that method's doc. A fresh-state parse silently desyncs the entropy
+    // decoder from its first read on frames whose header needs real `skip_mode_params` state,
+    // producing a near-empty (not erroring) coding-unit list -- the actual axis-7 bug this fixes.
+    let parsed = match find_sequence_header(&frames) {
+        Some(seq) => {
+            let mut ref_state =
+                thread_ref_state_before(&frames, &seq, frame_index).map_err(|e| e.to_string())?;
+            ParsedFrame::parse_with_ref_state(&obu_data, &mut ref_state)
+                .map_err(|e| e.to_string())?
+        }
+        None => ParsedFrame::parse(&obu_data).map_err(|e| e.to_string())?,
+    };
     let coding_units = parse_all_coding_units(&parsed).map_err(|e| e.to_string())?;
 
     let mut block_residuals = Vec::with_capacity(coding_units.len());
@@ -220,5 +249,28 @@ mod tests {
     #[test]
     fn get_residual_analysis_out_of_range_frame_index_is_a_real_error() {
         assert!(get_residual_analysis(AV1_IVF_FIXTURE, 999_999).is_err());
+    }
+
+    /// Real regression coverage for the axis-7 `RefFrameState` fix: `ParsedFrame::parse` used to
+    /// thread a *fresh* `RefFrameState` internally for every frame (see its doc), which silently
+    /// desyncs `tile_data` extraction for any frame whose header needs real `skip_mode_params`
+    /// state -- symptom was a near-empty (not erroring) `block_residuals` array, not a
+    /// propagated `Err`, which is exactly why `get_residual_analysis_all_250_frames_parse_
+    /// without_error` above never caught it (only checks `.is_ok()`). Frame 4 confirmed via a
+    /// real before/after fixture probe: 0 blocks before this fix, 8 after -- a real,
+    /// independently-verified improvement, not a hypothesis. (Some other frames in this fixture
+    /// still legitimately return few/zero blocks -- AV1's `inter_mode`/`compound_mode` symbol
+    /// contexts are a separate, already-documented gap in this crate's entropy decoder, deferred
+    /// pending the `refmvs` subsystem -- so this asserts against frame 4 specifically, not "every
+    /// non-key frame has blocks".)
+    #[test]
+    fn get_residual_analysis_frame_4_has_real_blocks_after_ref_state_threading_fix() {
+        let result = get_residual_analysis(AV1_IVF_FIXTURE, 4).unwrap();
+        let blocks = result["block_residuals"].as_array().unwrap();
+        assert!(
+            !blocks.is_empty(),
+            "frame 4 should have real per-CU blocks once tile_data is sliced using the real \
+             threaded RefFrameState instead of a fresh one"
+        );
     }
 }

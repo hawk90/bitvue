@@ -1065,6 +1065,31 @@ pub fn find_frame_header_payload(chunk_data: &[u8]) -> Option<std::sync::Arc<[u8
     None
 }
 
+/// Threads `RefFrameState` sequentially across frames `[0, frame_index)` -- NOT including
+/// `frame_index` itself -- returning the state as it stood immediately before `frame_index`'s
+/// own header would be parsed. This is the state every `bitvue-sidecar` per-frame command needs
+/// to correctly reach `frame_index` via [`crate::overlay_extraction::ParsedFrame::
+/// parse_with_ref_state`] (its `tile_data` slicing depends on `skip_mode_params()`'s presence
+/// bit, spec 5.9.22, which in turn depends on real per-slot order hints -- see that method's
+/// doc) or via a direct [`parse_frame_header_full`] call for `frame_index`'s own header fields
+/// (the `av1_features`/`codec_extended_info`/`deblocking` sidecar modules' existing pattern).
+/// Shared here instead of duplicated per-module since five sidecar command modules all need
+/// exactly this recipe.
+pub fn thread_ref_state_before(
+    frames: &[crate::ivf::IvfFrame],
+    seq: &SequenceHeader,
+    frame_index: usize,
+) -> std::result::Result<RefFrameState, BitvueError> {
+    let mut ref_state = RefFrameState::new();
+    for frame in frames.iter().take(frame_index) {
+        let payload = find_frame_header_payload(&frame.data).ok_or_else(|| {
+            BitvueError::InvalidData("frame has no Frame/FrameHeader OBU".to_string())
+        })?;
+        parse_frame_header_full(&payload, seq, &mut ref_state)?;
+    }
+    Ok(ref_state)
+}
+
 /// Parses one frame header OBU payload completely (through `film_grain_params()`), given real
 /// sequence-header context and the reference-slot state accumulated from every earlier frame in
 /// decode order. See module doc for the cross-frame state requirement and the short
