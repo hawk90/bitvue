@@ -15,6 +15,7 @@ function BPyramidView({
   onFrameClick,
   getFrameTypeColorClass,
   showAllArrows = false,
+  onToggleShowAllArrows,
 }: BPyramidViewProps) {
   const { levels, gopBoundaries, frameMap } = useMemo(
     () => analyzeTemporalLevels(frames),
@@ -38,6 +39,23 @@ function BPyramidView({
 
   return (
     <div className="bpyramid-view" role="region" aria-label="B-Pyramid">
+      {onToggleShowAllArrows && (
+        <div className="bpyramid-toolbar">
+          <button
+            type="button"
+            className={`btn btn-ghost bpyramid-show-all-toggle ${showAllArrows ? "active" : ""}`}
+            onClick={onToggleShowAllArrows}
+            aria-pressed={showAllArrows}
+            title="Show every frame's reference arrows at once instead of only the selected frame's"
+          >
+            <span
+              className="codicon codicon-type-hierarchy"
+              aria-hidden="true"
+            ></span>
+            <span>Show All Refs</span>
+          </button>
+        </div>
+      )}
       <BPyramidTimeline
         frames={frames}
         currentFrameIndex={currentFrameIndex}

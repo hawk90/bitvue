@@ -169,7 +169,7 @@ export const BPyramidTimeline = forwardRef<
       [],
     );
 
-    // Path calculator for showAllArrows (Structure view): routes below the frame row instead of
+    // Path calculator for showAllArrows ("Show All Refs" toggle): routes below the frame row instead of
     // straight through circle centers. calculateStraightPath's near-zero vertical offset is fine
     // when only one frame's 1-2 arrows are visible at a time (the original B-Pyramid behavior),
     // but with every frame's arrows shown at once, most single-ref frames all land on slotIndex 0

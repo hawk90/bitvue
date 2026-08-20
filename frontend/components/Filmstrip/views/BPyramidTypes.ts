@@ -13,10 +13,13 @@ export interface BPyramidViewProps {
   onFrameClick: (frameIndex: number) => void;
   getFrameTypeColorClass: (frameType: string) => string;
   /** When true, renders every frame's reference arrows simultaneously (dimmed), instead of only
-   * the currently-selected frame's -- used by the "Structure" view to show the whole GOP
-   * dependency graph at a glance. Defaults to false (B-Pyramid view's original per-selection
-   * behavior, kept because full-graph rendering gets visually noisy at high frame counts). */
+   * the currently-selected frame's -- lets the "Show All Refs" toggle reveal the whole GOP
+   * dependency graph at a glance. Defaults to false (original per-selection behavior, kept
+   * because full-graph rendering gets visually noisy at high frame counts). */
   showAllArrows?: boolean;
+  /** Called when the user clicks the view's "Show All Refs" toggle. Omit to hide the toggle
+   * (e.g. when a caller wants a fixed showAllArrows value with no user control). */
+  onToggleShowAllArrows?: () => void;
 }
 
 /** Frame with temporal level information */

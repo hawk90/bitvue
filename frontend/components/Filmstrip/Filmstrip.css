@@ -30,14 +30,15 @@
   min-height: 280px;
 }
 
-/* Structure view draws every frame's reference arrows below the row at once (BPyramidTimeline's
-   showAllArrows path), which needs more vertical room than a single row of circles ever did.
-   Tried growing .filmstrip's own min/max-height for this (like .showing-references does below),
-   but this panel sits in a fixed (non-resizable-Panel) flex slot -- see .filmstrip-bar in
-   DockableLayout.css -- growing it left a large dead gap before the panels below rather than
-   cleanly reflowing them, a real layout bug in that flex chain not worth chasing here. Scrolling
-   the existing box (via .filmstrip-content's overflow-y override below) is the safe fix instead:
-   same available height as every other view, just no longer hard-clipped. */
+/* B-Pyramid's "Show All Refs" toggle draws every frame's reference arrows below the row at once
+   (BPyramidTimeline's showAllArrows path), which needs more vertical room than a single row of
+   circles ever did. Tried growing .filmstrip's own min/max-height for this (like
+   .showing-references does below), but this panel sits in a fixed (non-resizable-Panel) flex
+   slot -- see .filmstrip-bar in DockableLayout.css -- growing it left a large dead gap before the
+   panels below rather than cleanly reflowing them, a real layout bug in that flex chain not worth
+   chasing here. Scrolling the existing box (via .filmstrip-content's overflow-y override below)
+   is the safe fix instead: same available height as every other view, just no longer
+   hard-clipped. */
 
 /* ═════════════════════════════════════════════════════════════════════════
    Filmstrip Header
@@ -213,9 +214,10 @@
   overflow-y: visible;
 }
 
-/* Structure view: let the (now taller, see .filmstrip.structure-view-mode) panel actually scroll
-   vertically instead of clipping -- the default `auto hidden` here hides the y-axis outright. */
-.filmstrip.structure-view-mode .filmstrip-content {
+/* B-Pyramid "Show All Refs" mode: let the (now taller, see .filmstrip.bpyramid-all-arrows-mode)
+   panel actually scroll vertically instead of clipping -- the default `auto hidden` here hides
+   the y-axis outright. */
+.filmstrip.bpyramid-all-arrows-mode .filmstrip-content {
   overflow-y: auto;
 }
 

@@ -12,7 +12,6 @@ export type DisplayView =
   | "thumbnails"
   | "sizes"
   | "bpyramid"
-  | "structure"
   | "hrdbuffer"
   | "enhanced";
 
@@ -88,8 +87,6 @@ export const FilmstripDropdown = memo(function FilmstripDropdown({
         return "Frame Sizes";
       case "bpyramid":
         return "B-Pyramid";
-      case "structure":
-        return "Structure";
       case "hrdbuffer":
         return "HRD Buffer";
       case "enhanced":
@@ -156,16 +153,6 @@ export const FilmstripDropdown = memo(function FilmstripDropdown({
                 aria-selected={displayView === "bpyramid"}
               >
                 <span>B-Pyramid</span>
-              </button>
-            </li>
-            <li>
-              <button
-                className={displayView === "structure" ? "active" : ""}
-                onClick={() => handleSelectView("structure")}
-                role="option"
-                aria-selected={displayView === "structure"}
-              >
-                <span>Structure</span>
               </button>
             </li>
             <li>

@@ -60,6 +60,7 @@ function Filmstrip({
   const [displayView, setDisplayView] = useState<DisplayView>("thumbnails");
   const [scrollRef, setScrollRef] = useState<HTMLDivElement | null>(null);
   const [showingReferences, setShowingReferences] = useState(false);
+  const [bpyramidShowAllArrows, setBpyramidShowAllArrows] = useState(false);
 
   const useVirtualizedView = frames.length >= VIRTUALIZATION_THRESHOLD;
 
@@ -181,6 +182,10 @@ function Filmstrip({
     [setFrameSelection],
   );
 
+  const handleToggleBpyramidShowAllArrows = useCallback(() => {
+    setBpyramidShowAllArrows((prev) => !prev);
+  }, []);
+
   const toggleMetric = useCallback((metric: keyof typeof sizeMetrics) => {
     setSizeMetrics((prev) => ({
       ...prev,
@@ -198,7 +203,7 @@ function Filmstrip({
 
   return (
     <div
-      className={`filmstrip ${className} ${showingReferences ? "showing-references" : ""} ${displayView === "structure" ? "structure-view-mode" : ""} ${displayView === "enhanced" ? "enhanced-view-mode" : ""} ${displayView === "hrdbuffer" ? "hrdbuffer-view-mode" : ""}`}
+      className={`filmstrip ${className} ${showingReferences ? "showing-references" : ""} ${displayView === "bpyramid" && bpyramidShowAllArrows ? "bpyramid-all-arrows-mode" : ""} ${displayView === "enhanced" ? "enhanced-view-mode" : ""} ${displayView === "hrdbuffer" ? "hrdbuffer-view-mode" : ""}`}
     >
       {/* Filmstrip Header */}
       <div
@@ -305,14 +310,8 @@ function Filmstrip({
             currentFrameIndex={currentFrameIndex}
             onFrameClick={handleFrameClick}
             getFrameTypeColorClass={getFrameTypeColorClass}
-          />
-        ) : displayView === "structure" ? (
-          <BPyramidView
-            frames={frames}
-            currentFrameIndex={currentFrameIndex}
-            onFrameClick={handleFrameClick}
-            getFrameTypeColorClass={getFrameTypeColorClass}
-            showAllArrows
+            showAllArrows={bpyramidShowAllArrows}
+            onToggleShowAllArrows={handleToggleBpyramidShowAllArrows}
           />
         ) : displayView === "hrdbuffer" ? (
           <HRDBufferPanel

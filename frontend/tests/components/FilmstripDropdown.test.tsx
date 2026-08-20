@@ -38,12 +38,11 @@ describe("FilmstripDropdown", () => {
 
     expect(screen.getByText("Frame Sizes")).toBeInTheDocument();
     expect(screen.getByText("B-Pyramid")).toBeInTheDocument();
-    expect(screen.getByText("Structure")).toBeInTheDocument();
     expect(screen.getByText("HRD Buffer")).toBeInTheDocument();
     expect(screen.getByText("Enhanced")).toBeInTheDocument();
   });
 
-  it("should call onViewChange with 'structure' when selecting the Structure view", () => {
+  it("should call onViewChange with 'bpyramid' when selecting the B-Pyramid view", () => {
     render(
       <FilmstripDropdown
         displayView="thumbnails"
@@ -52,9 +51,9 @@ describe("FilmstripDropdown", () => {
     );
 
     fireEvent.mouseDown(screen.getByRole("button", { name: /view mode/i }));
-    fireEvent.click(screen.getByText("Structure"));
+    fireEvent.click(screen.getByText("B-Pyramid"));
 
-    expect(mockOnViewChange).toHaveBeenCalledWith("structure");
+    expect(mockOnViewChange).toHaveBeenCalledWith("bpyramid");
   });
 
   it("should open dropdown on click", () => {

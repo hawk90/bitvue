@@ -17,13 +17,32 @@
   overflow: hidden;
 }
 
+.bpyramid-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.bpyramid-show-all-toggle {
+  font-size: 11px;
+  padding: 4px 8px;
+  height: auto;
+}
+
+.bpyramid-show-all-toggle.active {
+  background: var(--accent-primary-bg);
+  color: var(--accent-primary-light);
+}
+
 .bpyramid-timeline-container {
   flex: 1;
   display: flex;
   flex-direction: column;
-  /* Structure view (showAllArrows) routes every frame's arrows below the row at once, which can
-     need much more vertical room than the per-selection B-Pyramid view ever did -- scroll instead
-     of clipping (previously `auto hidden`) so that graph is reachable rather than cut off. */
+  /* "Show All Refs" mode (showAllArrows) routes every frame's arrows below the row at once, which
+     can need much more vertical room than the per-selection B-Pyramid view ever did -- scroll
+     instead of clipping (previously `auto hidden`) so that graph is reachable rather than cut
+     off. */
   overflow: auto;
 }
 
@@ -34,7 +53,7 @@
   padding-bottom: 24px;
 }
 
-/* Structure view: extra room below the frame row for the "below-row" arrow graph
+/* "Show All Refs" mode: extra room below the frame row for the "below-row" arrow graph
    (BPyramidTimeline's calculateBelowPath) so it doesn't need to rely on scrolling alone. */
 .bpyramid-levels--with-graph {
   padding-bottom: 160px;

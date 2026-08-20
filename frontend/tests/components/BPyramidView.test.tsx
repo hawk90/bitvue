@@ -178,6 +178,62 @@ describe("BPyramidView", () => {
   });
 });
 
+describe("BPyramidView show-all-refs toggle", () => {
+  it("should not render the toggle when onToggleShowAllArrows is omitted", () => {
+    render(<BPyramidView {...defaultProps} />);
+
+    expect(
+      document.querySelector(".bpyramid-show-all-toggle"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should render the toggle when onToggleShowAllArrows is provided", () => {
+    render(<BPyramidView {...defaultProps} onToggleShowAllArrows={vi.fn()} />);
+
+    expect(screen.getByText("Show All Refs")).toBeInTheDocument();
+  });
+
+  it("should call onToggleShowAllArrows when clicked", () => {
+    const onToggleShowAllArrows = vi.fn();
+    render(
+      <BPyramidView
+        {...defaultProps}
+        onToggleShowAllArrows={onToggleShowAllArrows}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Show All Refs"));
+
+    expect(onToggleShowAllArrows).toHaveBeenCalledTimes(1);
+  });
+
+  it("should reflect showAllArrows in aria-pressed and active class", () => {
+    const { rerender } = render(
+      <BPyramidView
+        {...defaultProps}
+        showAllArrows={false}
+        onToggleShowAllArrows={vi.fn()}
+      />,
+    );
+
+    let toggle = document.querySelector(".bpyramid-show-all-toggle");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).not.toHaveClass("active");
+
+    rerender(
+      <BPyramidView
+        {...defaultProps}
+        showAllArrows
+        onToggleShowAllArrows={vi.fn()}
+      />,
+    );
+
+    toggle = document.querySelector(".bpyramid-show-all-toggle");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(toggle).toHaveClass("active");
+  });
+});
+
 describe("BPyramidView empty state", () => {
   it("should show empty state when no frames", () => {
     const props = { ...defaultProps, frames: [] };
