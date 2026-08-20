@@ -27,7 +27,6 @@ import { ContextMenu } from "../../ContextMenu";
 import { useMode } from "../../../contexts/ModeContext";
 import { CodecBadge } from "./ModeSelector";
 import { OverlayToggleBar } from "./OverlayToggleBar";
-import { CodingFlowView } from "../../Player/views/CodingFlowView";
 import { DeblockingView } from "../../Player/views/DeblockingView";
 import { ResidualsView } from "../../Player/views/ResidualsView";
 import { AV1FeaturesView } from "../../Player/views/AV1FeaturesView";
@@ -522,14 +521,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
       </div>
 
       {/* Canvas Area or Analysis View */}
-      {currentMode === "coding-flow" ? (
-        <div className="yuv-analysis-view-container">
-          <CodingFlowView
-            frame={currentFrame}
-            codec={activeCodec ?? undefined}
-          />
-        </div>
-      ) : currentMode === "deblocking" || currentMode === "loop-filter" ? (
+      {currentMode === "deblocking" || currentMode === "loop-filter" ? (
         <div className="yuv-analysis-view-container">
           <DeblockingView
             frame={currentFrame}
