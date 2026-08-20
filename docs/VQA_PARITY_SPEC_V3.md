@@ -116,7 +116,7 @@ VQ Analyzer 외 4개 제품(VQ Probe, VEGA, StreamEye, Codecian) 추가 조사. 
 | 🔴 Must | RD 곡선 + BD-rate | VQ Probe 핵심 오프라인 QC 기능; RDCurvesPanel 존재하나 BD-rate 로직 미확인 | Layer 6 CMP-05 |
 | 🟡 Check | CABAC range/state 시각화 | VQ Analyzer(v6.1+)·VEGA 공통 제공, Bitvue 현황 미확인 | Layer 6 CMP-10 |
 | 🟡 Check | APV 코덱 지원 | ViCueSoft v7.7/7.8 추가, Bitvue 코덱 매트릭스에 없음 | §3.1, Layer 6 CMP-08 |
-| 🟡 Check | AVM 네이밍 대조 | VQ Analyzer "AVM" vs Bitvue "AV3(실험적)" — 동일 코덱 여부 확인 필요 | §3.1, Layer 6 CMP-09 |
+| ✅ Resolved | AVM 네이밍 대조 | 동일 코덱 아님 — Bitvue "AV3"는 실제 AV2/AVM 스펙 구현이 아님(OBU 타입 체계가 전혀 다름, sidecar/CLI 미배선, 합성 바이트로만 자체 테스트). 근거는 `PARITY_CHECKLIST.md` CMP-09 참고 (2026-08-20) | §3.1, Layer 6 CMP-09 |
 | 🟢 Out-of-scope 후보 | 방송 컨포먼스/자막/오디오 코덱 | "비트스트림 분석기" 스코프 밖 (아래 근거 참조) | — |
 | ⚪ 미확인 | VEGA "AI/ML 이상 탐지" | 마케팅 문구, 스펙 비공개 | — |
 
@@ -206,8 +206,8 @@ VQ Probe/VEGA의 라이브 TS 컨포먼스·자막·오디오 라우드니스 �
 | **JPEG XS** | ❌ | ❌ | Precinct, NLT, MCT, wavelet | ❌ 미구현 |
 | **VC-3 / DNxHD** | ❌ | ❌ | Intra-only, segment structure | ❌ 미구현 |
 | **APV** | ❌ | ❌ | Advanced Professional Video (Apple ProRes 대응 신규 포맷). ViCueSoft VQ Analyzer v7.7/7.8에서 이미 지원 — QP map, Qmatrix 서브모드, 타일 경계까지 구현됨 | ❌ 미구현 (Layer 6 CMP-08) |
-| **AVM** | ❌ | ❌ | AOM 차세대 실험 코덱의 **공식 명칭이 "AVM"** (VQ Analyzer v7.5+ 표기 기준). Bitvue의 "AV3(실험적)" 항목과 동일 코덱을 가리키는지 확인 필요 | ⚠️ 네이밍 확인 필요 (Layer 6 CMP-09) |
-| **AV3** | ⚠️ (실험적) | ❌ | 차세대 AOM 코덱 — 아래 AVM 행 참조, 중복 여부 확인 | ⚠️ 실험적 |
+| **AVM** | ❌ | ❌ | AOM 차세대 실험 코덱의 **공식 명칭이 "AVM"**(현재는 AV2로 정식 스펙화, v13-public 기준). Bitvue "AV3"는 별개 — 아래 행 참조 | ❌ 미구현 (Layer 6 CMP-09 resolved) |
+| **AV3** | ❌ | ❌ | `bitvue-av3-codec` 크레이트 존재하나 실제 AV2/AVM 스펙과 무관한 합성 OBU 체계(AV1형 목록 + 존재하지 않는 "OverheadInfo" 타입), sidecar/CLI 미배선, 자체 테스트도 합성 바이트만 사용 — 실질적으로 죽은 코드에 가까움 | ❌ 미구현, 스펙 불일치 (Layer 6 CMP-09 resolved 2026-08-20) |
 
 ### 3.2 컨테이너 지원 매트릭스
 

@@ -424,7 +424,7 @@ MV 시각화가 raw motion vector만 그릴 뿐, 전역 모션 모델(affine/tra
 - 순수 패닝 합성 시퀀스(카메라만 이동, 피사체 없음)에서 residual 벡터가 0에 가깝게 나오는지 검증.
 - 배경+국소 이동 피사체 합성 테스트로 이상치 강조 여부 확인.
 
-**Bitvue 판정**: Confirmed — AV1/AV3 global motion parameters are parsed backend-side (crates/bitvue-av1-codec/src/tile/mv_prediction.rs, crates/bitvue-av3-codec/src/frame_header.rs) but `grep -rl global_motion frontend/` returns no hits; MVFieldRenderer.tsx draws raw per-block `mv_l0` only, with no global-motion subtraction/toggle/summary anywhere in the UI.
+**Bitvue 판정**: Confirmed — AV1 global motion parameters are parsed backend-side (crates/bitvue-av1-codec/src/tile/mv_prediction.rs) but `grep -rl global_motion frontend/` returns no hits; MVFieldRenderer.tsx draws raw per-block `mv_l0` only, with no global-motion subtraction/toggle/summary anywhere in the UI. (Was previously cited as "AV1/AV3"; `bitvue-av3-codec` was removed 2026-08-20 -- see `PARITY_CHECKLIST.md` CMP-09 -- it was a synthetic OBU parser unrelated to any real codec spec, not a second real consumer of this finding.)
 
 ---
 

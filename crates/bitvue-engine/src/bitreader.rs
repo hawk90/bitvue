@@ -758,17 +758,17 @@ impl Leb128Reader for BitReader<'_> {
 // Generic Per-Codec-Crate Wrapper
 // ============================================================================
 //
-// Several codec crates (bitvue-avc, bitvue-hevc, bitvue-vvc, bitvue-av3-codec,
-// bitvue-mpeg2-codec) each define their own thin `BitReader` struct that does
-// nothing but hold a `BitReader<'a>` and translate `BitvueError` into that
-// crate's own domain error type. `WrappedBitReader<'a, E>` factors out that
-// boilerplate. The per-crate wrappers use one of two error-mapping conventions,
-// captured here as two traits so a crate only implements the one it needs:
+// Several codec crates (bitvue-avc, bitvue-hevc, bitvue-vvc, bitvue-mpeg2-codec)
+// each define their own thin `BitReader` struct that does nothing but hold a
+// `BitReader<'a>` and translate `BitvueError` into that crate's own domain
+// error type. `WrappedBitReader<'a, E>` factors out that boilerplate. The
+// per-crate wrappers use one of two error-mapping conventions, captured here
+// as two traits so a crate only implements the one it needs:
 //
 // - `BlanketBitReaderError` ("blanket" convention, used by bitvue-avc,
-//   bitvue-mpeg2-codec, bitvue-av3-codec): every read failure, regardless of
-//   the underlying `BitvueError` variant, becomes a single "not enough data"
-//   error carrying only the number of bits/bytes that were requested.
+//   bitvue-mpeg2-codec): every read failure, regardless of the underlying
+//   `BitvueError` variant, becomes a single "not enough data" error carrying
+//   only the number of bits/bytes that were requested.
 // - `EngineMappedBitReaderError` ("distinguishing" convention, used by
 //   bitvue-hevc, bitvue-vvc): `BitvueError::UnexpectedEof` maps to a dedicated
 //   EOF variant (preserving the bit offset); any other `BitvueError` maps to a

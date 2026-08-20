@@ -118,7 +118,7 @@ StreamEye, **CV**=Codecian CodecVisa/Pelscope.
 | JPEG XS | Precinct, Dequant, Transform, MCT, NLT, YUV | ❌ codec unimplemented |
 | APV | decode support added VQA v7.7/7.8, no published named-overlay list (gated) | ❌ codec unimplemented (CMP-08) |
 | VC-3 / DNxHD | decode support added VQA v7.5+, macroblock/QSF/ACF params | ❌ codec unimplemented |
-| AVM | VQA official name for AOM next-gen experimental codec (v7.5+) | ⚠️ naming reconciliation vs Bitvue "AV3" unresolved (CMP-09); phased as one-line audit in `DEVELOPMENT_PHASES.md` Phase 12 (2026-07-31) |
+| AVM | VQA official name for AOM next-gen experimental codec (v7.5+) | ❌ not the same as Bitvue "AV3" -- `bitvue-av3-codec`'s OBU taxonomy doesn't match the real AV2/AVM spec at all, unwired into sidecar/CLI, self-tested only against synthetic bytes (CMP-09, resolved 2026-08-20; see `PARITY_CHECKLIST.md` for full evidence) |
 
 ### Global cross-codec
 | Feature | Source | Bitvue status |

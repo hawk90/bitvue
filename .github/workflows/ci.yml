@@ -139,7 +139,6 @@ jobs:
           - bitvue-vp9
           - bitvue-vvc
           - bitvue-av1-codec
-          - bitvue-av3-codec
           - bitvue-mpeg2-codec
           - bitvue-avs3
           - bitvue-jpegxs

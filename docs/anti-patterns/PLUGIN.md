@@ -203,7 +203,7 @@ pub fn parse_unit(codec: CodecId, data: &[u8]) -> Result<Box<dyn ParsedUnit>, Pa
 **문제**:
 - 조작되었거나 손상된(fuzzed, truncated) 비트스트림 하나 때문에 분석기 전체가 죽으면, 사용자는 "어느 코덱의 어느 유닛이 문제였는지"조차 알 수 없이 세션을 통째로 잃는다.
 - `panic = "abort"`로 빌드된 바이너리에서는 `catch_unwind`조차 무력하므로, panic 경계 설계는 반드시 빌드 설정과 함께 검토해야 한다.
-- 코덱 크레이트가 10개인 워크스페이스에서 이 문제는 "어느 한 코덱 파서의 버그가 다른 9개 코덱을 보던 세션까지 끌고 내려간다"는 형태로 나타난다 — 플러그인 격리가 없다는 것의 직접적 대가.
+- 코덱 크레이트가 9개인 워크스페이스에서 이 문제는 "어느 한 코덱 파서의 버그가 다른 8개 코덱을 보던 세션까지 끌고 내려간다"는 형태로 나타난다 — 플러그인 격리가 없다는 것의 직접적 대가.
 
 **발생 조건**:
 - **Bitvue 현재 상태와의 구분**: dynamic plugin 여부와 무관하게, in-process로 링크된 컴파일 타임 크레이트라도 panic 경계가 없으면 동일하게 프로세스/스레드가 죽는다 — 이 문제 자체는 지금도 유효하다. 다만 진짜 격리(별도 프로세스로 plugin을 격리해 panic이 host와 무관해지는 구조)는 dynamic/out-of-process plugin 시스템을 전제로 하므로, "완전한 해법"은 forward-looking이고 "최소한의 방어선(`catch_unwind`)"은 지금 바로 적용 가능하다.
@@ -487,7 +487,7 @@ pub enum ThreadingModel {
 **예외**:
 - 워크스페이스에 단 하나의 전역 병렬화 지점만 있고(예: 최상위 프레임 루프에서만 `par_iter`, 그 아래로는 모두 순차) 모든 코덱 크레이트가 이 컨벤션을 코드 리뷰로 강제한다면, 명시적 `ThreadingModel` API 없이도 문제가 발생하지 않는다.
 
-**Bitvue 판정**: N/A — (2026-08-18 재검증) 코덱 파서 크레이트(bitvue-avc/hevc/vp9/vvc/av1-codec/av3-codec/mpeg2-codec/avs3/jpegxs/vc3) `src/` 어디에도 `rayon`/`ThreadPoolBuilder`/`thread::spawn`이 없음(grep 0건) — 코덱 파서들은 사실상 전부 순차 실행. `rayon`은 host 레벨(`bitvue-cli`, `--md5` 배치 처리용, `Cargo.toml`에 명시)에만 등장하고 코덱 크레이트 내부로 스며들지 않아 중첩 스레드풀 문제가 발생할 여지 자체가 없음.
+**Bitvue 판정**: N/A — (2026-08-18 재검증) 코덱 파서 크레이트(bitvue-avc/hevc/vp9/vvc/av1-codec/mpeg2-codec/avs3/jpegxs/vc3) `src/` 어디에도 `rayon`/`ThreadPoolBuilder`/`thread::spawn`이 없음(grep 0건) — 코덱 파서들은 사실상 전부 순차 실행. `rayon`은 host 레벨(`bitvue-cli`, `--md5` 배치 처리용, `Cargo.toml`에 명시)에만 등장하고 코덱 크레이트 내부로 스며들지 않아 중첩 스레드풀 문제가 발생할 여지 자체가 없음.
 
 ---
 
@@ -563,7 +563,7 @@ if let Some(av1) = unit.as_any().downcast_ref::<Av1Frame>() {
 **예외**:
 - consumer가 정말로 코덱별 처리가 근본적으로 다를 수밖에 없는 경우(예: 코덱마다 완전히 다른 렌더링 UI가 필요한 overlay 패널)라면, giant enum이나 trait object보다 명시적 match가 오히려 "이 코드가 코덱별로 분기한다"는 사실을 더 정직하게 드러낸다. 이 경우엔 PLUGIN-012(코덱별 UI 하드코딩)와의 경계를 신중히 그어야 한다 — 문제는 giant enum 자체가 아니라 "공통 동작까지 강제로 giant enum을 거치게 만드는 것"이다.
 
-**Bitvue 판정**: Confirmed — (2026-08-18 재검증, 경로만 `bitvue-core`→`bitvue-engine` 개명, 내용 불변) `crates/bitvue-engine/src/frame.rs:226` `pub enum CodecMetadata { None, Avc{..}, Hevc{..}, Vp9{..}, Av1{..} }`가 나쁜 예와 동일 패턴이며, 여전히 Vvc/Av3/Mpeg2/Avs3/JpegXs/Vc3 variant가 누락되어 있음(코덱 크레이트는 10개인데 4개만 커버) — "코덱 늘 때 잊고 안 고침"이 실물로 확인됨. 다만 이 enum을 소비하는 곳이 아직 없어(정의부 `frame.rs` 자신 외 grep 0건) consumer 폭발 피해 자체는 미발현.
+**Bitvue 판정**: Confirmed — (2026-08-18 재검증, 경로만 `bitvue-core`→`bitvue-engine` 개명, 내용 불변) `crates/bitvue-engine/src/frame.rs:226` `pub enum CodecMetadata { None, Avc{..}, Hevc{..}, Vp9{..}, Av1{..} }`가 나쁜 예와 동일 패턴이며, 여전히 Vvc/Mpeg2/Avs3/JpegXs/Vc3 variant가 누락되어 있음(코덱 크레이트는 9개인데 4개만 커버) — "코덱 늘 때 잊고 안 고침"이 실물로 확인됨. 다만 이 enum을 소비하는 곳이 아직 없어(정의부 `frame.rs` 자신 외 grep 0건) consumer 폭발 피해 자체는 미발현.
 
 ---
 
@@ -893,7 +893,7 @@ gpu-accel = ["dep:wgpu"]
 **예외**:
 - feature flag가 순수하게 "이 코덱 크레이트를 링크할지 말지"만 결정하고 core 코드에는 전혀 `cfg`가 없다면, 조합 폭발이 있어도 각 조합이 "포함된 코덱 집합"이라는 단일 축으로만 달라지므로 실질적 위험이 크지 않다. 문제는 여러 독립적인 축(코덱 x 가속 방식 x 플랫폼)이 core 코드의 `cfg` 안에서 서로 교차할 때다.
 
-**Bitvue 판정**: N/A — (2026-08-18 재검증) 루트 `Cargo.toml`의 workspace members는 코덱 크레이트 전부(현재 `bitvue-avc/hevc/vp9/vvc/av1-codec/av3-codec/mpeg2-codec/avs3/jpegxs/vc3` 10개)를 무조건 컴파일에 포함(코덱별 feature flag 자체가 없음). `bitvue-decode/Cargo.toml`의 `ffmpeg`/`vvdec` 2개만 실제 feature이고, `bitvue-engine`/`bitvue-sidecar`/`bitvue-cli` 어디에도 `#[cfg(feature=...)]` 코덱 분기가 없어(grep 0건) 조합 폭발이 일어날 축이 없음.
+**Bitvue 판정**: N/A — (2026-08-18 재검증) 루트 `Cargo.toml`의 workspace members는 코덱 크레이트 전부(현재 `bitvue-avc/hevc/vp9/vvc/av1-codec/mpeg2-codec/avs3/jpegxs/vc3` 9개)를 무조건 컴파일에 포함(코덱별 feature flag 자체가 없음). `bitvue-decode/Cargo.toml`의 `ffmpeg`/`vvdec` 2개만 실제 feature이고, `bitvue-engine`/`bitvue-sidecar`/`bitvue-cli` 어디에도 `#[cfg(feature=...)]` 코덱 분기가 없어(grep 0건) 조합 폭발이 일어날 축이 없음.
 
 ---
 
@@ -943,7 +943,7 @@ vvc = ["dep:bitvue-vvc"]                # 무거운 코덱은 opt-in
 **예외**:
 - 타깃 사용자 전원이 항상 모든 코덱을 필요로 하는 배포 형태(예: 사내 전용 풀-피처 빌드 하나만 배포)라면 바이너리 크기 최적화의 우선순위가 낮을 수 있다.
 
-**Bitvue 판정**: N/A — (2026-08-18 재검증) `bitvue-vvc`/`bitvue-av3-codec`/`bitvue-mpeg2-codec`/`bitvue-avs3`/`bitvue-jpegxs`/`bitvue-vc3`의 `Cargo.toml`은 전부 `bitvue-engine`(구 `bitvue-core`)/`abseil`/`thiserror`/`tracing`/`serde`만 의존(무거운 C 레퍼런스 디코더 없음). 유일하게 무거운 `ffmpeg-next`/`vvdec`(`bitvue-decode/Cargo.toml`)는 여전히 `optional = true` + non-default feature(`ffmpeg`/`vvdec`)로 opt-in 처리되어 있어 권장 사항을 이미 따르고 있음.
+**Bitvue 판정**: N/A — (2026-08-18 재검증) `bitvue-vvc`/`bitvue-mpeg2-codec`/`bitvue-avs3`/`bitvue-jpegxs`/`bitvue-vc3`의 `Cargo.toml`은 전부 `bitvue-engine`(구 `bitvue-core`)/`abseil`/`thiserror`/`tracing`/`serde`만 의존(무거운 C 레퍼런스 디코더 없음). 유일하게 무거운 `ffmpeg-next`/`vvdec`(`bitvue-decode/Cargo.toml`)는 여전히 `optional = true` + non-default feature(`ffmpeg`/`vvdec`)로 opt-in 처리되어 있어 권장 사항을 이미 따르고 있음.
 
 ---
 
@@ -1121,7 +1121,7 @@ fn can_decode(codec: CodecId) -> bool {
 **예외**:
 - 프로젝트의 모든 코덱이 실제로 parse와 decode를 항상 함께 지원하고 그럴 계획이 확고하다면(예: 순수 인코더/디코더 프로젝트로, 분석 전용 코덱이 존재하지 않는다면) 단일 trait이 오히려 단순하다. Bitvue처럼 "비트스트림 분석기"가 주 목적이고 픽셀 디코딩이 부가 기능인 프로젝트에서는 분리가 거의 항상 유리하다.
 
-**Bitvue 판정**: N/A(오히려 권장 패턴을 따름) — (2026-08-18 재검증, 경로 불변) parse(구조 분석)와 decode(픽셀 복원)가 이미 별도 계층: 코덱 크레이트(bitvue-avc/hevc/vp9/vvc/av1-codec/av3-codec/mpeg2-codec/avs3/jpegxs/vc3)는 구문 분석만 담당하고, 픽셀 디코딩은 `bitvue-decode`의 별도 `Decoder` trait(`crates/bitvue-decode/src/traits.rs:127`, 여전히 같은 위치)이 전담(현재 실제로는 AV1만 `Av1Decoder`로 구현) — 대부분의 코덱 크레이트는 decode 능력 자체가 없고 이를 강제하는 통합 trait도 없음(`unimplemented!()` 스텁 grep 0건).
+**Bitvue 판정**: N/A(오히려 권장 패턴을 따름) — (2026-08-18 재검증, 경로 불변) parse(구조 분석)와 decode(픽셀 복원)가 이미 별도 계층: 코덱 크레이트(bitvue-avc/hevc/vp9/vvc/av1-codec/mpeg2-codec/avs3/jpegxs/vc3)는 구문 분석만 담당하고, 픽셀 디코딩은 `bitvue-decode`의 별도 `Decoder` trait(`crates/bitvue-decode/src/traits.rs:127`, 여전히 같은 위치)이 전담(현재 실제로는 AV1만 `Av1Decoder`로 구현) — 대부분의 코덱 크레이트는 decode 능력 자체가 없고 이를 강제하는 통합 trait도 없음(`unimplemented!()` 스텁 grep 0건).
 
 ---
 

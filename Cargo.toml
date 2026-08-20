@@ -27,7 +27,6 @@ members = [
     "crates/bitvue-vp9",        # VP9 parser
     "crates/bitvue-vvc",        # VVC/H.266 parser
     "crates/bitvue-av1-codec",  # AV1 OBU parser
-    "crates/bitvue-av3-codec",  # AV3 parser
     "crates/bitvue-mpeg2-codec", # MPEG-2 Video parser
     "crates/bitvue-avs3",       # AVS3/IEEE 1857.10 parser
     "crates/bitvue-jpegxs",     # JPEG XS (ISO 21122) parser
@@ -71,7 +70,6 @@ bitvue-hevc = { path = "crates/bitvue-hevc" }
 bitvue-vp9 = { path = "crates/bitvue-vp9" }
 bitvue-vvc = { path = "crates/bitvue-vvc" }
 bitvue-av1-codec = { path = "crates/bitvue-av1-codec" }
-bitvue-av3-codec = { path = "crates/bitvue-av3-codec" }
 bitvue-mpeg2-codec = { path = "crates/bitvue-mpeg2-codec" }
 bitvue-avs3 = { path = "crates/bitvue-avs3" }
 bitvue-jpegxs = { path = "crates/bitvue-jpegxs" }

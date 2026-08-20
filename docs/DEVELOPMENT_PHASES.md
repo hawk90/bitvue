@@ -2870,9 +2870,11 @@ undefined로 만들어 해결.
 - [ ] 자동화 스크린샷 비교 테스트
 - [ ] 신택스 값 비교 테스트
 - [ ] 회귀 테스트 스위트 구축
-- [ ] **AV3/AVM 명명 정리 감사** (`PARITY_CHECKLIST.md` Layer 6 CMP-09) — Bitvue의 "AV3"와 VQ Analyzer v7.5+의
-      "AVM"(AOM 차세대 실험 코덱 공식 명칭)이 동일 코덱을 가리키는지 1회성 감사로 확정하고, 다르면 명칭을 분리,
-      같으면 문서/코드 전반의 명칭을 통일 (신규 2026-07-31 — 별도 phase가 아니라 한 줄짜리 감사 작업으로 스코프)
+- [x] **AV3/AVM 명명 정리 감사** (`PARITY_CHECKLIST.md` Layer 6 CMP-09, 2026-08-20) — 동일 코덱 아님으로 확정.
+      `bitvue-av3-codec`의 OBU 타입 체계가 AOM 공식 AV2/AVM 스펙(`av2.aomedia.org`)과 전혀 다르고(AV1형 목록에
+      존재하지 않는 "OverheadInfo" 타입만 추가한 합성 구조), sidecar/CLI 어디에도 배선 안 돼있으며 자체 테스트도
+      합성 바이트만 사용 — 실질적으로 이번 세션 axis 8에서 정리한 "Monster Pack" 죽은 코드 패턴과 동일. 크레이트
+      삭제 여부는 별도 결정 사항으로 남김(문서 정리만 완료)
 
 **예상 소요:** 중급 2~3주
 

@@ -11,7 +11,7 @@ const AREA_HINTS = {
   OWN: 'crates/',
   MEM: 'crates/',
   LAYOUT: 'crates/',
-  PARSE: 'crates/bitvue-avc crates/bitvue-hevc crates/bitvue-vp9 crates/bitvue-vvc crates/bitvue-av1-codec crates/bitvue-av3-codec crates/bitvue-mpeg2-codec crates/bitvue-avs3 crates/bitvue-jpegxs crates/bitvue-vc3',
+  PARSE: 'crates/bitvue-avc crates/bitvue-hevc crates/bitvue-vp9 crates/bitvue-vvc crates/bitvue-av1-codec crates/bitvue-mpeg2-codec crates/bitvue-avs3 crates/bitvue-jpegxs crates/bitvue-vc3',
   CODEC: 'crates/bitvue-codecs crates/bitvue-codecs-parser crates/bitvue-formats',
   IO: 'crates/bitvue-formats crates/bitvue-core',
   CONC: 'crates/bitvue-core crates/bitvue-sidecar/src',

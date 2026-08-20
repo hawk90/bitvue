@@ -170,7 +170,6 @@ bitvue/
 │   ├── bitvue-hevc/          # HEVC/H.265 parser
 │   ├── bitvue-vp9/           # VP9 parser
 │   ├── bitvue-vvc/           # VVC/H.266 parser
-│   ├── bitvue-av3-codec/     # AV3 parser
 │   ├── bitvue-mpeg2-codec/   # MPEG-2 Video parser
 │   ├── bitvue-avs3/          # AVS3/IEEE 1857.10 parser
 │   ├── bitvue-jpegxs/        # JPEG XS (ISO 21122) parser
