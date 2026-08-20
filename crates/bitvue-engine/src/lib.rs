@@ -20,9 +20,7 @@ pub mod types;
 pub mod app_error;
 pub mod command;
 pub mod command_builder; // Builder pattern for Command construction
-pub mod command_chain; // Chain of Responsibility pattern for command processing
 pub mod event;
-pub mod event_observer; // Observer pattern for event handling
 pub mod selection;
 pub mod state_machine; // State Machine pattern for unified state management
 pub mod validation_strategy; // Strategy pattern for validation logic
@@ -135,7 +133,6 @@ pub use cache_provenance::*;
 pub use cache_validation::*;
 pub use command::*;
 pub use command_builder::*;
-pub use command_chain::*;
 pub use compare::*;
 pub use compare_cache::*;
 pub use compare_evidence::*;
@@ -148,7 +145,6 @@ pub use disable_reason::*;
 pub use discoverability::*;
 pub use error::*;
 pub use event::*;
-pub use event_observer::*;
 pub use evidence::*;
 pub use export::*;
 pub use filmstrip::*;
