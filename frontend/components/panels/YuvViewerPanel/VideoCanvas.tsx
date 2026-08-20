@@ -136,6 +136,21 @@ export const VideoCanvas = memo(function VideoCanvas({
     [zoom, pan.x, pan.y],
   );
 
+  // Logical (frame-native) display size -- same value the render effect below sizes the canvas's
+  // *pixel buffer* from (scaled by devicePixelRatio there). Pinning the element's CSS size to
+  // this, separately from that larger buffer, is what keeps the on-screen size unchanged while
+  // the internal resolution goes up for a sharp (non-blurry) render on high-DPI displays.
+  const logicalWidth = yuvData?.width ?? frameImage?.width ?? 640;
+  const logicalHeight = yuvData?.height ?? frameImage?.height ?? 360;
+  const mainCanvasStyle = useMemo(
+    () => ({
+      ...canvasStyle,
+      width: `${logicalWidth}px`,
+      height: `${logicalHeight}px`,
+    }),
+    [canvasStyle, logicalWidth, logicalHeight],
+  );
+
   // Memoize container cursor style
   const containerStyle = useMemo(
     () => ({
@@ -174,23 +189,41 @@ export const VideoCanvas = memo(function VideoCanvas({
 
     if (!source) return;
 
-    // Set canvas size
+    // Logical (frame-native) size -- what every overlay renderer's coordinate math already
+    // assumes (frame.partition_grid/prediction_mode_grid/etc. blocks are in this space), and
+    // what the canvas element's own CSS size stays pinned to below so it doesn't visually grow.
     const width = useYUV ? yuvData.width : (frameImage?.width ?? 0);
     const height = useYUV ? yuvData.height : (frameImage?.height ?? 0);
 
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
+    // Size the canvas's actual pixel buffer for the display's real pixel density -- a plain
+    // `canvas.width = width` buffer stays crisp only at 1 device pixel per buffer pixel; on a
+    // 2x/3x (Retina) display the browser has to upscale that low-res buffer to cover 2x/3x as
+    // many physical pixels, which is what made every overlay's block/boundary lines (and the
+    // decoded picture itself) look blurry and thick -- confirmed by a real before/after
+    // screenshot comparison. `canvasStyle` below sets explicit CSS width/height back to the
+    // logical size so the element's on-screen size is unchanged; only its internal resolution
+    // goes up.
+    const dpr = window.devicePixelRatio || 1;
+    const bufferWidth = Math.round(width * dpr);
+    const bufferHeight = Math.round(height * dpr);
+    if (canvas.width !== bufferWidth || canvas.height !== bufferHeight) {
+      canvas.width = bufferWidth;
+      canvas.height = bufferHeight;
     }
 
-    // Keep WebGL overlay canvas in sync with the main canvas size
+    // WebGL overlay canvas (MVFieldOverlay's high-density path only) stays at logical size for
+    // now -- out of scope for this pass, it has its own GL viewport/coordinate handling that
+    // needs separate verification before scaling it too.
     const wgl = webglCanvasRef.current;
     if (wgl && (wgl.width !== width || wgl.height !== height)) {
       wgl.width = width;
       wgl.height = height;
     }
 
-    // Clear canvas
+    // Identity transform for the buffer-resolution clear/video draw below -- both explicitly
+    // target canvas.width/canvas.height (physical, already dpr-scaled), so no additional
+    // transform scaling should apply here (that would double-scale them).
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -199,11 +232,17 @@ export const VideoCanvas = memo(function VideoCanvas({
       const frameToRender = applyChannelMode(yuvData, channelMode);
       rendererRef.current.render(frameToRender, colorspace);
     } else if (frameImage) {
-      // Render image as fallback
-      ctx.drawImage(frameImage, 0, 0);
+      // Render image as fallback -- explicit destination size (canvas.width/height, physical)
+      // now that they may differ from the image's own native pixel size.
+      ctx.drawImage(frameImage, 0, 0, canvas.width, canvas.height);
     }
 
-    // Render mode overlay + active info overlays on top
+    // Render mode overlay + active info overlays on top. Scaled by dpr so every renderer's
+    // existing frame-native coordinate math (fillRect/strokeRect/fillText, all vector draws --
+    // unlike the video's putImageData-based path above, these *do* respect the canvas transform)
+    // fills the higher-res buffer automatically, with no changes needed in any individual
+    // renderer file.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const overlayOpts: OverlayRenderOptionsExtended = {
       mode: currentMode,
       frame: currentFrame,
@@ -212,6 +251,7 @@ export const VideoCanvas = memo(function VideoCanvas({
       activeOverlays,
       av1Features,
       webglCanvas: webglCanvasRef.current ?? undefined,
+      dpr,
     };
     renderModeOverlay(overlayOpts);
   }, [
@@ -241,7 +281,7 @@ export const VideoCanvas = memo(function VideoCanvas({
         width={yuvData?.width ?? frameImage?.width ?? 640}
         height={yuvData?.height ?? frameImage?.height ?? 360}
         className="yuv-canvas"
-        style={canvasStyle}
+        style={mainCanvasStyle}
         role="img"
         aria-label={`Video frame ${currentFrameIndex}`}
       />

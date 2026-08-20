@@ -35,17 +35,29 @@ function createMockCanvas(
 ): {
   canvas: HTMLCanvasElement;
   putImageData: ReturnType<typeof vi.fn>;
+  drawImage: ReturnType<typeof vi.fn>;
 } {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const putImageData = vi.fn();
+  const drawImage = vi.fn();
   const mockCtx = {
     putImageData,
+    drawImage,
   };
+  // Mocked on the *prototype*, not just this one `canvas` instance -- YUVRenderer now paints
+  // decoded pixels onto an internal same-resolution offscreen canvas (via `document.
+  // createElement("canvas")`, invisible to the test) and `drawImage`-scales that onto the real
+  // display canvas, so a real `putImageData` call only becomes observable this way, not via
+  // spying on `canvas` alone (see renderer.ts's own doc comment on why: putImageData ignores the
+  // canvas transform entirely, so painting straight onto a devicePixelRatio-scaled display canvas
+  // would only fill its top-left corner).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.spyOn(canvas, "getContext").mockReturnValue(mockCtx as any);
-  return { canvas, putImageData };
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+    mockCtx as any,
+  );
+  return { canvas, putImageData, drawImage };
 }
 
 function makeFrame(width: number, height: number): YUVFrame {
@@ -68,12 +80,15 @@ describe("YUVRenderer.render", () => {
   });
 
   it("paints on the very first call, not just on subsequent ones", () => {
-    const { canvas, putImageData } = createMockCanvas(4, 4);
+    const { canvas, putImageData, drawImage } = createMockCanvas(4, 4);
     const renderer = new YUVRenderer(canvas);
 
     renderer.render(makeFrame(4, 4));
 
     expect(putImageData).toHaveBeenCalledTimes(1);
+    // ...and it actually reaches the real display canvas (offscreen -> drawImage), not just the
+    // internal offscreen buffer.
+    expect(drawImage).toHaveBeenCalledTimes(1);
   });
 
   it("paints real (non-empty) pixel data, not a blank buffer", () => {
@@ -88,7 +103,7 @@ describe("YUVRenderer.render", () => {
   });
 
   it("continues to paint on repeated calls at the same size", () => {
-    const { canvas, putImageData } = createMockCanvas(4, 4);
+    const { canvas, putImageData, drawImage } = createMockCanvas(4, 4);
     const renderer = new YUVRenderer(canvas);
 
     renderer.render(makeFrame(4, 4));
@@ -96,6 +111,7 @@ describe("YUVRenderer.render", () => {
     renderer.render(makeFrame(4, 4));
 
     expect(putImageData).toHaveBeenCalledTimes(3);
+    expect(drawImage).toHaveBeenCalledTimes(3);
   });
 
   it("does nothing (no throw) when no canvas was ever attached", () => {

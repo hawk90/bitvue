@@ -49,13 +49,16 @@ export interface OverlayRenderOptionsExtended extends OverlayRenderOptions {
 // ─── Main mode rendering ──────────────────────────────────────────────────────
 
 function renderMainModeOverlay(
-  { mode, frame, canvas, ctx, av1Features }: OverlayRenderOptions,
+  { mode, frame, canvas, ctx, av1Features, dpr = 1 }: OverlayRenderOptions,
   webglCanvas?: HTMLCanvasElement,
 ): void {
   if (!frame) return;
 
-  const width = canvas.width;
-  const height = canvas.height;
+  // Logical (frame-native) size -- canvas.width/height are the *physical* buffer, scaled by
+  // `dpr` (see VideoCanvas.tsx's render effect); ctx's transform is already dpr-scaled too, so
+  // every renderer below keeps using plain frame-native coordinates unchanged.
+  const width = canvas.width / dpr;
+  const height = canvas.height / dpr;
 
   switch (mode) {
     case "coding-flow":
@@ -245,15 +248,27 @@ function renderInfoOverlay(
  *                  optional `av1Features` for AV1-specific modes.
  */
 export function renderModeOverlay(options: OverlayRenderOptionsExtended): void {
-  const { mode, frame, canvas, ctx, activeOverlays, av1Features, webglCanvas } =
-    options;
+  const {
+    mode,
+    frame,
+    canvas,
+    ctx,
+    activeOverlays,
+    av1Features,
+    webglCanvas,
+    dpr = 1,
+  } = options;
   if (!frame) return;
 
-  const width = canvas.width;
-  const height = canvas.height;
+  // Logical (frame-native) size -- see renderMainModeOverlay's matching comment.
+  const width = canvas.width / dpr;
+  const height = canvas.height / dpr;
 
   // Pass 1 — main mode
-  renderMainModeOverlay({ mode, frame, canvas, ctx, av1Features }, webglCanvas);
+  renderMainModeOverlay(
+    { mode, frame, canvas, ctx, av1Features, dpr },
+    webglCanvas,
+  );
 
   // Pass 2 — info overlays (only when a set is provided and non-empty)
   if (activeOverlays && activeOverlays.size > 0) {

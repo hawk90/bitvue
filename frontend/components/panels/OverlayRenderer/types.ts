@@ -107,6 +107,12 @@ export interface OverlayRenderOptions {
   ctx: CanvasRenderingContext2D;
   /** AV1 advanced feature data (CDEF, LR, film-grain, super-res) */
   av1Features?: Av1FeaturesData;
+  /** devicePixelRatio the caller sized `canvas`'s pixel buffer by (and pre-scaled `ctx`'s
+   *  transform by) for a sharp high-DPI render -- `canvas.width`/`canvas.height` are the
+   *  *physical* buffer size, `canvas.width / dpr` is the logical (frame-native) size every
+   *  renderer's block/edge coordinates are actually in. Defaults to 1 (no scaling) for callers
+   *  that don't pass it. */
+  dpr?: number;
 }
 
 /**

@@ -170,6 +170,17 @@ export class YUVRenderer {
   private imageData: ImageData | null = null;
   private width = 0;
   private height = 0;
+  // `putImageData` writes at the canvas's *native pixel buffer* 1:1, ignoring any CSS size or
+  // devicePixelRatio scaling entirely (unlike drawImage/fillRect, which respect the current
+  // transform) -- so painting decoded pixels straight onto the display canvas, as this used to,
+  // only ever fills its top-left frame.width x frame.height corner even when the display canvas
+  // is sized larger for a sharp high-DPI buffer, leaving the rest black. Painting into this
+  // same-resolution-as-the-source offscreen buffer instead, then `drawImage`-scaling it onto the
+  // display canvas, respects whatever size the caller (VideoCanvas) has set the display canvas
+  // to -- letting VideoCanvas size that canvas for devicePixelRatio without this class needing to
+  // know or care.
+  private offscreen: HTMLCanvasElement | null = null;
+  private offscreenCtx: CanvasRenderingContext2D | null = null;
 
   constructor(canvas?: HTMLCanvasElement) {
     if (canvas) {
@@ -196,10 +207,12 @@ export class YUVRenderer {
     this.width = width;
     this.height = height;
 
-    if (this.canvas) {
-      this.canvas.width = width;
-      this.canvas.height = height;
+    if (!this.offscreen) {
+      this.offscreen = document.createElement("canvas");
+      this.offscreenCtx = this.offscreen.getContext("2d");
     }
+    this.offscreen.width = width;
+    this.offscreen.height = height;
 
     this.imageData = new ImageData(width, height);
   }
@@ -208,7 +221,7 @@ export class YUVRenderer {
    * Render YUV frame efficiently
    */
   render(frame: YUVFrame, colorspace: Colorspace = Colorspace.BT709): void {
-    if (!this.ctx) {
+    if (!this.ctx || !this.canvas) {
       return;
     }
 
@@ -221,13 +234,20 @@ export class YUVRenderer {
       this.resize(frame.width, frame.height);
     }
 
-    if (!this.imageData) {
+    if (!this.imageData || !this.offscreenCtx || !this.offscreen) {
       return;
     }
 
     const converted = yuvToImageData(frame, colorspace);
     this.imageData.data.set(converted.data);
-    this.ctx.putImageData(this.imageData, 0, 0);
+    this.offscreenCtx.putImageData(this.imageData, 0, 0);
+    this.ctx.drawImage(
+      this.offscreen,
+      0,
+      0,
+      this.canvas.width,
+      this.canvas.height,
+    );
   }
 
   /**
