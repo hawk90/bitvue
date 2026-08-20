@@ -346,8 +346,14 @@ function AppContent() {
   } = useAppDialogs();
 
   // Use custom hooks for app logic
-  const { setMode, setActiveCodec, handleFKey, toggleOverlay, clearOverlays } =
-    useMode();
+  const {
+    setMode,
+    setActiveCodec,
+    handleFKey,
+    toggleOverlay,
+    clearOverlays,
+    availableOverlays,
+  } = useMode();
   const { loadFile: loadDebugYuv } = useYuvDiff();
 
   // Pending YUV path — set when user picks a file, cleared after dialog confirm/cancel
@@ -502,7 +508,7 @@ function AppContent() {
 
   useLayoutMenuEvents(saveLayout, loadLayout, resetLayout);
   useOptionsMenuEvents();
-  useOverlayMenuEvents(toggleOverlay, clearOverlays);
+  useOverlayMenuEvents(toggleOverlay, clearOverlays, availableOverlays);
   useSidecarLifecycleEvents({ showErrorDialog });
   useFileMenuEvents({
     openFileAtPath,
