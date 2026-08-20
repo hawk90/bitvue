@@ -525,17 +525,19 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
         <div className="yuv-analysis-view-container">
           <DeblockingView
             frame={currentFrame}
-            width={frameImage?.width ?? 1920}
-            height={frameImage?.height ?? 1080}
+            width={decodedFrame?.width ?? frameImage?.width ?? 1920}
+            height={decodedFrame?.height ?? frameImage?.height ?? 1080}
             codec={activeCodec ?? undefined}
+            yuvData={decodedFrame ?? undefined}
+            colorspace={colorspace}
           />
         </div>
       ) : currentMode === "residuals" ? (
         <div className="yuv-analysis-view-container">
           <ResidualsView
             frame={currentFrame}
-            width={frameImage?.width ?? 1920}
-            height={frameImage?.height ?? 1080}
+            width={decodedFrame?.width ?? frameImage?.width ?? 1920}
+            height={decodedFrame?.height ?? frameImage?.height ?? 1080}
           />
         </div>
       ) : currentMode === "av1-features" ? (
@@ -553,8 +555,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
               per-mode cases. */}
           <AV1FeaturesView
             frame={currentFrame}
-            width={frameImage?.width ?? 1920}
-            height={frameImage?.height ?? 1080}
+            width={decodedFrame?.width ?? frameImage?.width ?? 1920}
+            height={decodedFrame?.height ?? frameImage?.height ?? 1080}
           />
         </div>
       ) : (

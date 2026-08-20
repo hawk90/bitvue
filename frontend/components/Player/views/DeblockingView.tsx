@@ -8,8 +8,11 @@
  * - Codec-specific deblocking parameters
  */
 
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { FrameInfo } from "../../../types/video";
+import type { YUVFrame } from "../../../types/yuv";
+import { Colorspace } from "../../../types/yuv";
+import { yuvToImageData } from "../../../utils/yuv";
 import { getDeblockingAnalysis } from "../../../services/electronBridgeService";
 import { createLogger } from "../../../utils/logger";
 import "./DeblockingView.css";
@@ -21,6 +24,32 @@ interface DeblockingViewProps {
   width: number;
   height: number;
   codec?: string;
+  /** Decoded YUV pixels for the same frame -- drawn as the boundary visualization's background so
+   *  boundaries are shown over the real picture instead of a flat theme-color rect. Optional: the
+   *  visualization still renders (just without a picture underneath) if decode hasn't landed yet. */
+  yuvData?: YUVFrame;
+  colorspace?: Colorspace;
+}
+
+/** Converts `yuvData` to a data URL for the SVG `<image>` background -- `yuvToImageData` returns a
+ *  plain `ImageData`, which SVG can't reference directly, so this draws it onto a scratch canvas
+ *  once and reuses the canvas across calls (this view's frames are always sized within the video's
+ *  native resolution, resized as needed). */
+let scratchCanvas: HTMLCanvasElement | null = null;
+function yuvFrameToDataUrl(
+  frame: YUVFrame,
+  colorspace: Colorspace,
+): string | null {
+  const imageData = yuvToImageData(frame, colorspace);
+  if (!scratchCanvas) {
+    scratchCanvas = document.createElement("canvas");
+  }
+  scratchCanvas.width = imageData.width;
+  scratchCanvas.height = imageData.height;
+  const ctx = scratchCanvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.putImageData(imageData, 0, 0);
+  return scratchCanvas.toDataURL();
 }
 
 interface BoundaryEdge {
@@ -56,7 +85,24 @@ export const DeblockingView = memo(function DeblockingView({
   width,
   height,
   codec = "Unknown",
+  yuvData,
+  colorspace = Colorspace.BT709,
 }: DeblockingViewProps) {
+  const backgroundImageUrl = useMemo(() => {
+    if (!yuvData) return null;
+    try {
+      return yuvFrameToDataUrl(yuvData, colorspace);
+    } catch (err) {
+      logger.warn("Failed to render YUV background for deblocking view:", err);
+      return null;
+    }
+  }, [yuvData, colorspace]);
+
+  // `codec` is `activeCodec` as-is from the sidecar (real value is lowercase, e.g. "av1"), not the
+  // uppercase display convention the "Codec-Specific Notes" section below compares against --
+  // same case-sensitivity gap as useAv1Features.ts's `activeCodec === "AV1"` bug, just lower
+  // impact (one explanatory paragraph silently never showing, not a whole missing overlay).
+  const normalizedCodec = codec.toUpperCase();
   const [boundaries, setBoundaries] = useState<BoundaryEdge[]>([]);
   const [params, setParams] = useState<DeblockingParams>(DEFAULT_PARAMS);
   const [stats, setStats] = useState({
@@ -240,12 +286,23 @@ export const DeblockingView = memo(function DeblockingView({
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="xMidYMid meet"
           >
-            {/* Background */}
-            <rect
-              width={width}
-              height={height}
-              fill="var(--bitvue-bg-primary)"
-            />
+            {/* Background: the real decoded picture, so boundaries are shown over actual content
+                instead of a flat theme-color rect -- falls back to the rect while decode hasn't
+                landed yet (or on a codec this backend doesn't decode). */}
+            {backgroundImageUrl ? (
+              <image
+                href={backgroundImageUrl}
+                width={width}
+                height={height}
+                preserveAspectRatio="xMidYMid slice"
+              />
+            ) : (
+              <rect
+                width={width}
+                height={height}
+                fill="var(--bitvue-bg-primary)"
+              />
+            )}
 
             {/* Draw edges */}
             {boundaries.map((edge, index) => {
@@ -332,32 +389,32 @@ export const DeblockingView = memo(function DeblockingView({
       <div className="deblocking-notes">
         <h4>Codec-Specific Notes</h4>
         <div className="deblocking-notes-content">
-          {codec === "AV1" && (
+          {normalizedCodec === "AV1" && (
             <p>
               AV1 uses loop restoration filters including deblocking, CDEF, and
               loop restoration. Deblocking is applied to all block boundaries.
             </p>
           )}
-          {codec === "HEVC" && (
+          {normalizedCodec === "HEVC" && (
             <p>
               HEVC deblocking filter operates on 8x8 block boundaries. Boundary
               strength (BS) depends on prediction mode, motion vectors, and
               reference indices.
             </p>
           )}
-          {codec === "VVC" && (
+          {normalizedCodec === "VVC" && (
             <p>
               VVC includes enhanced deblocking with adaptive filter strength and
               supports both luma and chroma filtering.
             </p>
           )}
-          {codec === "AVC" && (
+          {normalizedCodec === "AVC" && (
             <p>
               H.264/AVC deblocking filter operates on 4x4 block boundaries with
               adaptive strength based on QP and boundary conditions.
             </p>
           )}
-          {codec === "VP9" && (
+          {normalizedCodec === "VP9" && (
             <p>
               VP9 deblocking filter operates on 8x8 block boundaries for luma
               and 4x4 for chroma (when enabled).

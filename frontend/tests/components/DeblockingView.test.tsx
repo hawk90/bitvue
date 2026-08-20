@@ -110,6 +110,19 @@ describe("DeblockingView", () => {
     expect(screen.getByText(/HEVC.*8x8 block boundaries/i)).toBeInTheDocument();
   });
 
+  it("displays codec-specific notes for lowercase codec strings too (real activeCodec value from the sidecar is lowercase, e.g. 'hevc' not 'HEVC')", () => {
+    render(
+      <DeblockingView
+        frame={mockFrame}
+        width={TEST_WIDTH}
+        height={TEST_HEIGHT}
+        codec="hevc"
+      />,
+    );
+
+    expect(screen.getByText(/HEVC.*8x8 block boundaries/i)).toBeInTheDocument();
+  });
+
   it("displays legend", () => {
     render(
       <DeblockingView
