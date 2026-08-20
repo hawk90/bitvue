@@ -292,7 +292,18 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
         </div>
       )}
 
-      {/* Film Grain Section */}
+      {/* Film Grain Section -- unlike CDEF/LoopRestoration above, this stays entirely absent
+          (not just zeroed) when the stream doesn't carry film_grain_params, so a real "not used
+          here" message is needed instead of silently rendering nothing. */}
+      {showFilmGrain && !filmGrain && (
+        <div className="av1-features-section">
+          <h4>Film Grain Synthesis</h4>
+          <p className="av1-features-empty">
+            This stream does not use film grain synthesis (no film_grain_params
+            in the bitstream).
+          </p>
+        </div>
+      )}
       {showFilmGrain && filmGrain && (
         <div className="av1-features-section">
           <h4>Film Grain Synthesis</h4>
@@ -327,7 +338,16 @@ export const AV1FeaturesView = memo(function AV1FeaturesView({
         </div>
       )}
 
-      {/* Super Resolution Section */}
+      {/* Super Resolution Section -- same "absent, not zeroed" gap as Film Grain above. */}
+      {showSuperRes && !superRes && (
+        <div className="av1-features-section">
+          <h4>Super Resolution</h4>
+          <p className="av1-features-empty">
+            This stream does not use super-resolution (use_superres is false for
+            this frame).
+          </p>
+        </div>
+      )}
       {showSuperRes && superRes && (
         <div className="av1-features-section">
           <h4>Super Resolution</h4>

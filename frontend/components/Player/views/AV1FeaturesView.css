@@ -56,6 +56,12 @@
   color: var(--bitvue-fg-primary);
 }
 
+.av1-features-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bitvue-fg-tertiary);
+}
+
 .av1-features-stats {
   display: flex;
   flex-wrap: wrap;

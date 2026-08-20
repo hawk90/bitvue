@@ -57,6 +57,26 @@ export function unitNodeToFrameInfo(unit: BridgeUnitNode): FrameInfo {
   };
 }
 
+/** Merges freshly-indexed base frame metadata (`nextFrames`, from `unitNodeToFrameInfo`) over
+ *  `prevFrames`, preserving any per-frame analysis fields (`qp_grid`/`prediction_mode_grid`/etc.)
+ *  `YuvViewerPanel.loadFrameAnalysis` may have already merged into `prevFrames[i]` -- indexing
+ *  runs in progressive chunks (`CHUNK_SIZE` at a time) and re-flushes the *entire* frames array
+ *  on every flush, so a naive `setFrames([...allFrames])` silently wipes out any analysis grid
+ *  data merged in during the window between flushes (real, reproducible bug: fetch a frame's
+ *  analysis while a >100-frame stream is still progressively indexing, and the next chunk flush
+ *  discards it -- `unitNodeToFrameInfo` never sets grid fields at all, so they'd otherwise just
+ *  vanish from the merged object). `nextFrames`' own fields always win (indexing is the source of
+ *  truth for frame_type/pts/size/etc.); only fields `nextFrames` doesn't set are preserved from
+ *  `prevFrames`. */
+function mergePreservingAnalysis(
+  prevFrames: FrameInfo[],
+  nextFrames: FrameInfo[],
+): FrameInfo[] {
+  return nextFrames.map((f, i) =>
+    prevFrames[i] ? { ...prevFrames[i], ...f } : f,
+  );
+}
+
 interface FileStateContextType {
   filePath: string | null;
   loading: boolean;
@@ -130,7 +150,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       currentOffsetRef.current = allFrames.length;
       setHasMoreFrames(currentOffsetRef.current < firstChunk.total_count);
       setTotalFrames(firstChunk.total_count);
-      setFrames([...allFrames]);
+      setFrames((prev) => mergePreservingAnalysis(prev, allFrames));
 
       // Flushing every chunk to React state (100 frames at a time) made `setFrames` re-render
       // Timeline's unvirtualized per-frame DOM list once per chunk -- for a long video (many
@@ -161,7 +181,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
           chunksSinceFlush >= FLUSH_EVERY_N_CHUNKS ||
           currentOffsetRef.current >= nextChunk.total_count
         ) {
-          setFrames([...allFrames]);
+          setFrames((prev) => mergePreservingAnalysis(prev, allFrames));
           chunksSinceFlush = 0;
         }
       }
