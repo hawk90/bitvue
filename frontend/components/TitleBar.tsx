@@ -8,7 +8,10 @@
  */
 
 import { useState, useRef, memo, useCallback, useMemo } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  minimizeWindow,
+  toggleMaximizeWindow,
+} from "../services/electronBridgeService";
 import { MODES, type VisualizationMode } from "../contexts/ModeContext";
 import "./TitleBar.css";
 
@@ -385,7 +388,7 @@ export const TitleBar = memo(function TitleBar({
         <button
           className="title-bar-button"
           title="Minimize"
-          onClick={() => getCurrentWindow().minimize()}
+          onClick={() => void minimizeWindow()}
         >
           <svg width="12" height="12" viewBox="0 0 12 12">
             <rect x="0" y="5" width="12" height="2" fill="currentColor" />
@@ -394,7 +397,7 @@ export const TitleBar = memo(function TitleBar({
         <button
           className="title-bar-button"
           title="Maximize"
-          onClick={() => getCurrentWindow().toggleMaximize()}
+          onClick={() => void toggleMaximizeWindow()}
         >
           <svg width="12" height="12" viewBox="0 0 12 12">
             <rect

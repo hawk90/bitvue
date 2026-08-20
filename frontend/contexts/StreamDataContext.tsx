@@ -7,7 +7,11 @@
  * - FileStateContext for file operations (useFileState)
  * - CurrentFrameContext for navigation (useCurrentFrame)
  *
- * This file now re-exports the split contexts and provides a backward-compatible wrapper.
+ * This file now re-exports the split contexts. Still a real, live indirection layer -- App.tsx,
+ * BitViewPanel.tsx, and useAppFileOperations.ts import through this file rather than the split
+ * contexts directly, so it can't be deleted outright (verified 2026-08-20: removing it broke
+ * typecheck). Collapsing those callers onto direct imports is axis-2 (Context ownership) scope,
+ * not this cleanup pass.
  */
 
 // Re-export the split contexts for easy migration
@@ -21,6 +25,3 @@ export { CurrentFrameProvider, useCurrentFrame } from "./CurrentFrameContext";
 
 // Re-export types
 export type { FrameStats } from "./FrameDataContext";
-
-// Backward-compatible combined context
-export { StreamDataProvider, useStreamData } from "./LegacyStreamDataContext";

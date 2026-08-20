@@ -1,5 +1,5 @@
 import { useEffect, memo, lazy, Suspense, useCallback, useState } from "react";
-import { closeWindow } from "./services/electronBridgeService";
+import { closeWindow, showOpenDialog } from "./services/electronBridgeService";
 import { useOpenFileStatus } from "./hooks/useOpenFileStatus";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
@@ -619,13 +619,10 @@ function AppContent() {
       void handleOpenFile();
     };
     const handleOpenDebugYuv = async () => {
-      const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
-      const selected = await openDialog({
-        title: "Load Reference YUV File",
-        filters: [{ name: "Raw YUV", extensions: ["yuv", "raw", "y4m"] }],
-        multiple: false,
-      });
-      if (!selected || typeof selected !== "string") return;
+      const selected = await showOpenDialog([
+        { name: "Raw YUV", extensions: ["yuv", "raw", "y4m"] },
+      ]);
+      if (!selected) return;
       // Show the load dialog for the user to confirm resolution / format / bitdepth
       setPendingYuvPath(selected);
     };

@@ -3,6 +3,19 @@
  *
  * Utilities for exporting frame data, analysis results, and reports
  * in various formats (CSV, JSON, PDF).
+ *
+ * WARNING (2026-08-20 Tauri-leftover audit): `exportFramesToCsv`/`exportFramesToJson`/
+ * `exportAnalysisReport` below are live (reachable from ExportDialog.tsx, a real File > Export
+ * menu dialog) but broken under Electron -- `save()`/`invoke()` come from `@tauri-apps/*`, which
+ * doesn't exist post-migration. This is NOT a simple bridge rewiring job like most other
+ * Tauri-leftover fixes in this codebase: the Rust side (`export_frames_csv`/`export_frames_json`/
+ * `export_analysis_report`, originally in the old `crates/app` package) was deleted along with
+ * the rest of the Tauri command layer (2026-08-08) and never re-implemented in `bitvue-sidecar`.
+ * Fixing this for real means writing new sidecar commands + Rust export logic, not just swapping
+ * the transport -- out of scope for a cleanup pass, needs its own scoping. ExportDialog.tsx
+ * already catches the resulting throw and shows an error state, so this is a broken feature, not
+ * a crash. `exportToPdf`/`generateHtmlReport`/`generateAnalysisReport` below don't touch
+ * @tauri-apps at all (pure client-side `window.open()` + HTML) and already work correctly.
  */
 
 import { invoke } from "@tauri-apps/api/core";

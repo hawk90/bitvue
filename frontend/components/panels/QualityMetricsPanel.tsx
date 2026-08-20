@@ -31,6 +31,14 @@ interface BatchQualityMetrics {
   average_vmaf?: number;
 }
 
+// WARNING: not currently rendered anywhere in App.tsx's panel lists (dead code, kept for its
+// tests + panels/index.ts barrel export -- same status as BitrateGraphPanel/ReferenceGraphPanel
+// in this file's directory, see those files' own warning comments, 2026-08-10). If this panel is
+// ever mounted for real, note that invoke() below (both the reference/distorted file dialogs and
+// the metrics computation call) uses @tauri-apps/api/core and @tauri-apps/plugin-dialog -- that
+// runtime doesn't exist under Electron post-migration, so every one of these calls will always
+// throw. Rewire to electronBridgeService first (see how other panels do it, e.g.
+// StreamTreePanel/UnitHexPanel) before re-adopting.
 export const QualityMetricsPanel = memo(function QualityMetricsPanel() {
   const [referencePath, setReferencePath] = useState<string | null>(null);
   const [distortedPath, setDistortedPath] = useState<string | null>(null);
