@@ -46,6 +46,40 @@ pub(crate) fn fresh_compare_state() -> crate::compare::CompareSlot {
     std::sync::Arc::new(std::sync::Mutex::new(None))
 }
 
+/// Writes `frames.len()` consecutive I420 frames at `width`x`height`, each filled with the
+/// corresponding byte in `frames` -- a cheap way to build a multi-frame debug-YUV reference file
+/// without caring about real pixel content, just distinguishable per-frame fill values.
+pub(crate) fn write_i420_fixture(
+    width: u32,
+    height: u32,
+    frames: &[u8],
+) -> tempfile::NamedTempFile {
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    let frame_size =
+        crate::debug_yuv::frame_byte_size(width, height, crate::debug_yuv::YuvFormat::I420, 8);
+    for &fill in frames {
+        file.write_all(&vec![fill; frame_size]).unwrap();
+    }
+    file
+}
+
+/// Writes a single I420 frame from explicit Y/U/V plane bytes -- for debug-YUV tests that need
+/// real, distinguishable per-plane content rather than a uniform fill.
+pub(crate) fn write_i420_frame(
+    width: u32,
+    height: u32,
+    y: &[u8],
+    u: &[u8],
+    v: &[u8],
+) -> tempfile::NamedTempFile {
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    assert_eq!(y.len(), (width * height) as usize);
+    file.write_all(y).unwrap();
+    file.write_all(u).unwrap();
+    file.write_all(v).unwrap();
+    file
+}
+
 /// Opens the same real fixture as BOTH stream A and stream B, and indexes both -- gives a
 /// deterministic "identical streams" baseline (frame N of A aligns exactly to frame N of B,
 /// same PTS, same decoded content) that's genuinely useful for alignment/diff tests, not just a

@@ -788,7 +788,7 @@ mod tests {
 
         // Assert
         assert_eq!(cursor.position(), None);
-        assert_eq!(cursor.visibility, CursorVisibility::Hidden);
+        assert_eq!(cursor.visibility(), CursorVisibility::Hidden);
         assert_eq!(cursor.total_frames(), 10);
     }
 
@@ -802,7 +802,7 @@ mod tests {
 
         // Assert
         assert_eq!(cursor.position(), Some(5));
-        assert_eq!(cursor.visibility, CursorVisibility::Visible);
+        assert_eq!(cursor.visibility(), CursorVisibility::Visible);
     }
 
     #[test]
@@ -827,7 +827,7 @@ mod tests {
 
         // Assert - Empty stream
         assert_eq!(cursor.position(), None);
-        assert_eq!(cursor.visibility, CursorVisibility::Hidden);
+        assert_eq!(cursor.visibility(), CursorVisibility::Hidden);
     }
 
     #[test]
@@ -841,7 +841,7 @@ mod tests {
 
         // Assert
         assert_eq!(cursor.position(), None);
-        assert_eq!(cursor.visibility, CursorVisibility::Hidden);
+        assert_eq!(cursor.visibility(), CursorVisibility::Hidden);
     }
 
     #[test]
