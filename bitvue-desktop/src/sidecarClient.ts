@@ -159,7 +159,10 @@ export class SidecarClient extends EventEmitter {
     return child;
   }
 
-  private maybeRestart(code: number | null, signal: NodeJS.Signals | null): void {
+  private maybeRestart(
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
     if (this.manualClose || !this.restartConfig) return;
     if (this.restartAttempts >= this.restartConfig.maxAttempts) {
       console.error(
@@ -191,7 +194,9 @@ export class SidecarClient extends EventEmitter {
           // The new child's own 'exit' handler will trigger another maybeRestart if it also
           // dies; if it's alive but hello() itself failed for some other reason, we don't spin
           // retrying hello() specifically — that's an unexpected-enough state to just surface.
-          console.error(`[bitvue-sidecar] restart attempt ${attempt}: post-restart hello() failed: ${err}`);
+          console.error(
+            `[bitvue-sidecar] restart attempt ${attempt}: post-restart hello() failed: ${err}`,
+          );
         });
     }, this.restartConfig.backoffMs);
   }
@@ -203,7 +208,9 @@ export class SidecarClient extends EventEmitter {
       frames = this.decoder.push(chunk);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[bitvue-sidecar] protocol framing error, dropping connection: ${message}`);
+      console.error(
+        `[bitvue-sidecar] protocol framing error, dropping connection: ${message}`,
+      );
       this.onChildGone(`protocol framing error: ${message}`);
       return;
     }
@@ -245,7 +252,11 @@ export class SidecarClient extends EventEmitter {
     if (response.ok) {
       pending.resolve(response.result);
     } else {
-      pending.reject(new SidecarRequestError(response.error ?? { code: "INTERNAL", message: "unknown error" }));
+      pending.reject(
+        new SidecarRequestError(
+          response.error ?? { code: "INTERNAL", message: "unknown error" },
+        ),
+      );
     }
   }
 
@@ -274,7 +285,9 @@ export class SidecarClient extends EventEmitter {
    */
   request(method: string, params: unknown = {}): Promise<unknown> {
     if (this.exited) {
-      return Promise.reject(new SidecarExitedError("request() called after process exit"));
+      return Promise.reject(
+        new SidecarExitedError("request() called after process exit"),
+      );
     }
     const id = this.nextCorrelationId++;
     const body = Buffer.from(JSON.stringify({ id, method, params }), "utf8");
@@ -305,10 +318,15 @@ export class SidecarClient extends EventEmitter {
     len: number;
   }): Promise<{ offset: number; len: number; bytes: Buffer }> {
     if (this.exited) {
-      return Promise.reject(new SidecarExitedError("getHexRange() called after process exit"));
+      return Promise.reject(
+        new SidecarExitedError("getHexRange() called after process exit"),
+      );
     }
     const id = this.nextCorrelationId++;
-    const body = Buffer.from(JSON.stringify({ id, method: "get_hex_range", params }), "utf8");
+    const body = Buffer.from(
+      JSON.stringify({ id, method: "get_hex_range", params }),
+      "utf8",
+    );
     const frame = encodeFrame(FrameKind.Control, id, body);
 
     let onData: (correlationId: number, payload: Buffer) => void = () => {};
@@ -321,18 +339,26 @@ export class SidecarClient extends EventEmitter {
       this.on("data", onData);
     });
 
-    const metadataPromise = new Promise<{ offset: number; len: number }>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject });
-      this.child.stdin.write(frame, (err) => {
-        if (err) {
-          this.pending.delete(id);
-          reject(err);
-        }
-      });
-    });
+    const metadataPromise = new Promise<{ offset: number; len: number }>(
+      (resolve, reject) => {
+        this.pending.set(id, {
+          resolve: resolve as (result: unknown) => void,
+          reject,
+        });
+        this.child.stdin.write(frame, (err) => {
+          if (err) {
+            this.pending.delete(id);
+            reject(err);
+          }
+        });
+      },
+    );
 
     try {
-      const [metadata, bytes] = await Promise.all([metadataPromise, dataPromise]);
+      const [metadata, bytes] = await Promise.all([
+        metadataPromise,
+        dataPromise,
+      ]);
       return { offset: metadata.offset, len: metadata.len, bytes };
     } catch (err) {
       // Error path (e.g. NotFound/InvalidRange): no Data frame follows, so the listener would
@@ -365,7 +391,9 @@ export class SidecarClient extends EventEmitter {
   }> {
     if (this.exited) {
       return Promise.reject(
-        new SidecarExitedError("getDecodedFrameYuv() called after process exit"),
+        new SidecarExitedError(
+          "getDecodedFrameYuv() called after process exit",
+        ),
       );
     }
     const id = this.nextCorrelationId++;
@@ -401,18 +429,26 @@ export class SidecarClient extends EventEmitter {
       u_len: number;
       v_len: number;
     };
-    const metadataPromise = new Promise<DecodedFrameYuvMetadata>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject });
-      this.child.stdin.write(frame, (err) => {
-        if (err) {
-          this.pending.delete(id);
-          reject(err);
-        }
-      });
-    });
+    const metadataPromise = new Promise<DecodedFrameYuvMetadata>(
+      (resolve, reject) => {
+        this.pending.set(id, {
+          resolve: resolve as (result: unknown) => void,
+          reject,
+        });
+        this.child.stdin.write(frame, (err) => {
+          if (err) {
+            this.pending.delete(id);
+            reject(err);
+          }
+        });
+      },
+    );
 
     try {
-      const [metadata, bytes] = await Promise.all([metadataPromise, dataPromise]);
+      const [metadata, bytes] = await Promise.all([
+        metadataPromise,
+        dataPromise,
+      ]);
       return {
         width: metadata.width,
         height: metadata.height,
@@ -427,6 +463,74 @@ export class SidecarClient extends EventEmitter {
         bytes,
       };
     } catch (err) {
+      this.off("data", onData);
+      throw err;
+    }
+  }
+
+  /**
+   * Convenience wrapper for `get_frame_analysis` — fourth data-plane command, but a partial one:
+   * only `qp_grid.qp` (a flat per-block `Vec<i16>`, potentially 100k+ values at 4K) moves to the
+   * `Data` frame; every other field (grid dimensions, mv/partition/prediction/transform/energy
+   * grids -- all genuinely tree-shaped, not flat arrays) stays in the JSON `Control` metadata, so
+   * `metadata` here is typed loosely (`Record<string, unknown>`) rather than duplicating
+   * `FrameAnalysisData`'s full shape at this transport layer -- that typing lives at the frontend
+   * bridge boundary (`frontend/services/bridge/frameAnalysis.ts`), same as every JSON-only
+   * command already does via the generic `request()` above.
+   */
+  async getFrameAnalysis(params: {
+    frameIndex: number;
+  }): Promise<{ metadata: Record<string, unknown>; qpBytes: Buffer }> {
+    if (this.exited) {
+      return Promise.reject(
+        new SidecarExitedError("getFrameAnalysis() called after process exit"),
+      );
+    }
+    const id = this.nextCorrelationId++;
+    const body = Buffer.from(
+      JSON.stringify({
+        id,
+        method: "get_frame_analysis",
+        params: { frame_index: params.frameIndex },
+      }),
+      "utf8",
+    );
+    const frame = encodeFrame(FrameKind.Control, id, body);
+
+    let onData: (correlationId: number, payload: Buffer) => void = () => {};
+    const dataPromise = new Promise<Buffer>((resolve) => {
+      onData = (correlationId, payload) => {
+        if (correlationId !== id) return;
+        this.off("data", onData);
+        resolve(payload);
+      };
+      this.on("data", onData);
+    });
+
+    const metadataPromise = new Promise<Record<string, unknown>>(
+      (resolve, reject) => {
+        this.pending.set(id, {
+          resolve: resolve as (result: unknown) => void,
+          reject,
+        });
+        this.child.stdin.write(frame, (err) => {
+          if (err) {
+            this.pending.delete(id);
+            reject(err);
+          }
+        });
+      },
+    );
+
+    try {
+      const [metadata, qpBytes] = await Promise.all([
+        metadataPromise,
+        dataPromise,
+      ]);
+      return { metadata, qpBytes };
+    } catch (err) {
+      // Error path (frame out of range, stream not open): no Data frame follows, matching
+      // getHexRange/getDecodedFrameYuv's error-path shape above.
       this.off("data", onData);
       throw err;
     }
@@ -455,14 +559,20 @@ export class SidecarClient extends EventEmitter {
     bytes: Buffer;
   }> {
     if (this.exited) {
-      return Promise.reject(new SidecarExitedError("getDebugYuvFrame() called after process exit"));
+      return Promise.reject(
+        new SidecarExitedError("getDebugYuvFrame() called after process exit"),
+      );
     }
     const id = this.nextCorrelationId++;
     const body = Buffer.from(
       JSON.stringify({
         id,
         method: "get_debug_yuv_frame",
-        params: { frame_index: params.frameIndex, mode: params.mode, amplify: params.amplify },
+        params: {
+          frame_index: params.frameIndex,
+          mode: params.mode,
+          amplify: params.amplify,
+        },
       }),
       "utf8",
     );
@@ -490,18 +600,26 @@ export class SidecarClient extends EventEmitter {
       u_len: number;
       v_len: number;
     };
-    const metadataPromise = new Promise<DebugYuvFrameMetadata>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject });
-      this.child.stdin.write(frame, (err) => {
-        if (err) {
-          this.pending.delete(id);
-          reject(err);
-        }
-      });
-    });
+    const metadataPromise = new Promise<DebugYuvFrameMetadata>(
+      (resolve, reject) => {
+        this.pending.set(id, {
+          resolve: resolve as (result: unknown) => void,
+          reject,
+        });
+        this.child.stdin.write(frame, (err) => {
+          if (err) {
+            this.pending.delete(id);
+            reject(err);
+          }
+        });
+      },
+    );
 
     try {
-      const [metadata, bytes] = await Promise.all([metadataPromise, dataPromise]);
+      const [metadata, bytes] = await Promise.all([
+        metadataPromise,
+        dataPromise,
+      ]);
       return {
         width: metadata.width,
         height: metadata.height,
@@ -523,7 +641,9 @@ export class SidecarClient extends EventEmitter {
 
   /** Convenience wrapper for the startup handshake described in the protocol spec. */
   async hello(clientVersion = "bitvue-desktop/0.0.0"): Promise<HelloResult> {
-    const result = (await this.request("hello", { client_version: clientVersion })) as HelloResult;
+    const result = (await this.request("hello", {
+      client_version: clientVersion,
+    })) as HelloResult;
     if (result.protocol_version !== PROTOCOL_VERSION) {
       console.error(
         `[bitvue-sidecar] protocol version mismatch: client expects ${PROTOCOL_VERSION}, sidecar reports ${result.protocol_version}`,

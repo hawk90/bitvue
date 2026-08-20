@@ -175,7 +175,6 @@ function resolveRendererTarget(): { kind: "url" | "file"; target: string } {
   return { kind: "file", target: path.join(here, "index.html") };
 }
 
-
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -447,10 +446,20 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
     const debugYuvFindFirstDiffOk =
       debugYuvResult.firstDiff?.frame_index === null &&
       debugYuvResult.firstDiff?.total_checked === 1;
+    // qp_grid.qp moved to a separate qp_bytes buffer (little-endian i16 per value, see
+    // frame_analysis.rs's get_frame_analysis_command doc) -- this checks the raw window.bitvue
+    // wire shape directly (bypassing the compiled app bundle's frontend/services/bridge/
+    // frameAnalysis.ts, which is what reconstructs qp_grid.qp for real UI consumers), so it has
+    // to know about qp_bytes rather than qp_grid.qp.
+    const qpGrid = result.frameAnalysis?.qp_grid as
+      | { grid_w?: number; grid_h?: number }
+      | undefined;
+    const qpBytesLength = result.frameAnalysis?.qp_bytes?.length ?? 0;
     const frameAnalysisOk =
       result.frameAnalysis?.width === 320 &&
       result.frameAnalysis?.height === 240 &&
-      (result.frameAnalysis?.qp_grid?.qp?.length ?? 0) > 0 &&
+      qpBytesLength > 0 &&
+      qpBytesLength === (qpGrid?.grid_w ?? 0) * (qpGrid?.grid_h ?? 0) * 2 &&
       (result.frameAnalysis?.partition_grid?.blocks?.length ?? 0) > 0;
     console.log("[selftest] get_frame_analysis OK:", frameAnalysisOk);
     const av1FeaturesOk =

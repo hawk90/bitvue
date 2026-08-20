@@ -228,26 +228,36 @@ struct GetFrameAnalysisParams {
 }
 
 /// QP/MV/partition/prediction-mode/transform-size grids for one frame of stream A -- see this
-/// module's doc. Control-only (unlike `get_decoded_frame_yuv`) -- these are structured grids, not
-/// raw pixel bytes, so a single JSON response is the right shape, same as `get_frame_syntax`/
-/// `get_timeline`.
+/// module's doc. Two-frame response (Control metadata + a Data frame of raw `qp_grid.qp` bytes),
+/// unlike the rest of this module's grids: `qp_grid.qp` is a flat `Vec<i16>`, one value per block
+/// -- structurally the same "big flat numeric array" shape as `get_decoded_frame_yuv`'s pixel
+/// planes, not a tree/struct like `mv_grid`/`partition_grid`/`get_frame_syntax`/`get_timeline`
+/// (those stay single-JSON; carve-outs are per-grid, not "make this whole command binary"). At
+/// 4K with 8px blocks that's 480x270 = 129,600 values -- JSON-encoding each as ASCII digits+comma
+/// costs both more CPU (serialize/parse) and more wire bytes than 2 raw bytes/value. Split out
+/// 2026-08-20 (axis-3 cleanup); `qp_grid`'s other fields (grid_w/h, block_w/h, qp_min/max) stay
+/// small ints in the Control JSON, same shape as before -- only the `qp` array itself moves.
+/// `qp_bytes` is little-endian `i16` per value, row-major (matches `qp`'s existing layout); the
+/// TS side (`frontend/services/bridge/frameAnalysis.ts`) reconstructs `qp: number[]` from it so
+/// every consumer above the bridge layer sees the exact same `FrameAnalysisData` shape as before.
 pub fn get_frame_analysis_command(
     core: &bitvue_engine::Core,
     request: &bitvue_protocol::Request,
-) -> bitvue_protocol::Response {
-    use bitvue_protocol::{Response, WireError, WireErrorCode};
+) -> Vec<(bitvue_protocol::FrameKind, Vec<u8>)> {
+    use crate::command_support::single_control_frame;
+    use bitvue_protocol::{FrameKind, Response, WireError, WireErrorCode};
 
     let params: GetFrameAnalysisParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
         Err(err) => {
-            return Response::failure(
+            return single_control_frame(Response::failure(
                 request.id,
                 WireError {
                     code: WireErrorCode::InvalidData,
                     message: err.to_string(),
                     offset: None,
                 },
-            )
+            ))
         }
     };
 
@@ -256,14 +266,14 @@ pub fn get_frame_analysis_command(
     let byte_cache = match state.byte_cache.as_ref() {
         Some(cache) => std::sync::Arc::clone(cache),
         None => {
-            return Response::failure(
+            return single_control_frame(Response::failure(
                 request.id,
                 WireError {
                     code: WireErrorCode::NotFound,
                     message: "stream not open".to_string(),
                     offset: None,
                 },
-            )
+            ))
         }
     };
     drop(state);
@@ -272,28 +282,61 @@ pub fn get_frame_analysis_command(
     let data = match byte_cache.read_range(0, full_len) {
         Ok(bytes) => bytes,
         Err(err) => {
-            return Response::failure(
+            return single_control_frame(Response::failure(
                 request.id,
                 WireError {
                     code: crate::command_support::wire_error_code_for(&err),
                     message: err.to_string(),
                     offset: None,
                 },
-            )
+            ))
         }
     };
 
-    match get_frame_analysis(data, params.frame_index) {
-        Ok(value) => Response::success(request.id, value),
-        Err(message) => Response::failure(
-            request.id,
-            WireError {
-                code: WireErrorCode::FrameNotFound,
-                message,
-                offset: None,
-            },
-        ),
+    let mut value = match get_frame_analysis(data, params.frame_index) {
+        Ok(value) => value,
+        Err(message) => {
+            return single_control_frame(Response::failure(
+                request.id,
+                WireError {
+                    code: WireErrorCode::FrameNotFound,
+                    message,
+                    offset: None,
+                },
+            ))
+        }
+    };
+
+    // Pull qp_grid.qp out of the JSON before serializing the Control frame -- see this fn's doc.
+    // Falls back to an empty Data frame (rather than failing the whole response) if qp_grid or
+    // qp is somehow absent -- extraction always populates it in practice (extract_qp_grid_from_
+    // parsed has its own scaffold-fallback, never omits the field), so this is defensive, not a
+    // real expected path.
+    let qp_values: Vec<i16> = value
+        .get_mut("qp_grid")
+        .and_then(|g| g.get_mut("qp"))
+        .map(|qp| std::mem::replace(qp, Value::Null))
+        .and_then(|qp| qp.as_array().cloned())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_i64())
+                .map(|v| v as i16)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut qp_bytes = Vec::with_capacity(qp_values.len() * 2);
+    for v in &qp_values {
+        qp_bytes.extend_from_slice(&v.to_le_bytes());
     }
+
+    let meta = Response::success(request.id, value);
+    vec![
+        (
+            FrameKind::Control,
+            serde_json::to_vec(&meta).expect("Response always serializes"),
+        ),
+        (FrameKind::Data, qp_bytes),
+    ]
 }
 
 #[cfg(test)]
@@ -301,7 +344,7 @@ mod tests {
     use super::*;
     use crate::test_support::open_real_fixture;
     use bitvue_engine::Core;
-    use bitvue_protocol::{Request, WireErrorCode};
+    use bitvue_protocol::{Request, Response, WireErrorCode};
 
     const AV1_IVF_FIXTURE: &[u8] = include_bytes!("../../../test_data/av1_test.ivf");
 
@@ -400,12 +443,29 @@ mod tests {
         );
     }
 
+    /// Decodes a `get_frame_analysis_command` two-frame response into (Control `Response`, raw
+    /// qp_grid.qp bytes), asserting the frame kinds/count along the way -- shared by every test
+    /// below instead of repeating the FrameKind/index bookkeeping in each one.
+    fn decode_frame_analysis_response(
+        frames: Vec<(bitvue_protocol::FrameKind, Vec<u8>)>,
+    ) -> (Response, Vec<u8>) {
+        assert_eq!(
+            frames.len(),
+            2,
+            "expected Control metadata + Data qp bytes, got {frames:?}"
+        );
+        assert_eq!(frames[0].0, bitvue_protocol::FrameKind::Control);
+        assert_eq!(frames[1].0, bitvue_protocol::FrameKind::Data);
+        let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
+        (response, frames[1].1.clone())
+    }
+
     #[test]
     fn get_frame_analysis_end_to_end_returns_real_grids() {
         let core = Core::new();
         open_real_fixture(&core, "A");
 
-        let response = crate::dispatch(
+        let frames = get_frame_analysis_command(
             &core,
             &Request {
                 id: 220,
@@ -413,21 +473,66 @@ mod tests {
                 params: serde_json::json!({"frame_index": 0}),
             },
         );
+        let (response, qp_bytes) = decode_frame_analysis_response(frames);
         assert!(response.ok, "expected ok response, got {response:?}");
         let result = response.result.unwrap();
         assert_eq!(result["frame_index"], 0);
         assert_eq!(result["width"], 320);
         assert_eq!(result["height"], 240);
-        assert!(!result["qp_grid"]["qp"].as_array().unwrap().is_empty());
+        // qp_grid.qp itself moved to the Data frame (see this command's doc) -- Control still
+        // carries the grid dimensions.
+        assert!(result["qp_grid"]["grid_w"].as_u64().unwrap() > 0);
+        assert!(result["qp_grid"]["grid_h"].as_u64().unwrap() > 0);
+        assert!(!qp_bytes.is_empty());
+        assert_eq!(qp_bytes.len() % 2, 0, "qp values are 2 bytes (i16) each");
         assert!(!result["partition_grid"]["blocks"]
             .as_array()
             .unwrap()
             .is_empty());
         let energy = result["energy_grid"]["energy_bpp"].as_array().unwrap();
         assert!(!energy.is_empty());
+        assert_eq!(energy.len(), qp_bytes.len() / 2);
+    }
+
+    #[test]
+    fn get_frame_analysis_qp_bytes_exactly_match_the_pre_wire_qp_array() {
+        // Independent-oracle check for the wire encoding step specifically: get_frame_analysis
+        // (the pure function, unchanged by the qp_bytes split) still returns the full `qp` array
+        // in its JSON `Value` -- decode qp_bytes back to i16 and assert every value matches it
+        // exactly, not just that the byte count is plausible (the other end-to-end test above
+        // only checks length/parity). Catches encode-order bugs (e.g. column-major vs row-major)
+        // and truncation/overflow that a length-only check would miss.
+        let core = Core::new();
+        open_real_fixture(&core, "A");
+
+        let ground_truth = get_frame_analysis(crate::test_support::AV1_IVF_FIXTURE, 0)
+            .expect("pure function should succeed for a real fixture frame");
+        let expected_qp: Vec<i64> = ground_truth["qp_grid"]["qp"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_i64().unwrap())
+            .collect();
+        assert!(!expected_qp.is_empty());
+
+        let frames = get_frame_analysis_command(
+            &core,
+            &Request {
+                id: 223,
+                method: "get_frame_analysis".to_string(),
+                params: serde_json::json!({"frame_index": 0}),
+            },
+        );
+        let (_response, qp_bytes) = decode_frame_analysis_response(frames);
+        let decoded_qp: Vec<i64> = qp_bytes
+            .chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]) as i64)
+            .collect();
+
         assert_eq!(
-            energy.len(),
-            result["qp_grid"]["qp"].as_array().unwrap().len()
+            decoded_qp, expected_qp,
+            "qp_bytes should decode to exactly the same values get_frame_analysis's own JSON \
+             qp array has, in the same order"
         );
     }
 
@@ -438,7 +543,7 @@ mod tests {
         let core = Core::new();
         open_real_fixture(&core, "A");
 
-        let response = crate::dispatch(
+        let frames = get_frame_analysis_command(
             &core,
             &Request {
                 id: 222,
@@ -446,6 +551,7 @@ mod tests {
                 params: serde_json::json!({"frame_index": 0}),
             },
         );
+        let (response, _qp_bytes) = decode_frame_analysis_response(frames);
         assert!(response.ok, "expected ok response, got {response:?}");
         let result = response.result.unwrap();
         let energy = result["energy_grid"]["energy_bpp"]
@@ -465,7 +571,7 @@ mod tests {
         let core = Core::new();
         open_real_fixture(&core, "A");
 
-        let response = crate::dispatch(
+        let frames = get_frame_analysis_command(
             &core,
             &Request {
                 id: 221,
@@ -473,6 +579,12 @@ mod tests {
                 params: serde_json::json!({"frame_index": 999_999}),
             },
         );
+        assert_eq!(
+            frames.len(),
+            1,
+            "error path is Control-only, got {frames:?}"
+        );
+        let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::FrameNotFound);
     }
@@ -480,7 +592,7 @@ mod tests {
     #[test]
     fn get_frame_analysis_stream_not_open_returns_not_found() {
         let core = Core::new();
-        let response = crate::dispatch(
+        let frames = get_frame_analysis_command(
             &core,
             &Request {
                 id: 222,
@@ -488,6 +600,12 @@ mod tests {
                 params: serde_json::json!({"frame_index": 0}),
             },
         );
+        assert_eq!(
+            frames.len(),
+            1,
+            "error path is Control-only, got {frames:?}"
+        );
+        let response: Response = serde_json::from_slice(&frames[0].1).unwrap();
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
     }

@@ -11,12 +11,17 @@ import type { SidecarClient } from "../../src/sidecarClient.js";
 export function registerFrameAnalysisIpcHandlers(
   requireSidecar: () => SidecarClient,
 ): void {
+  // Two-frame command (see sidecarClient.ts's getFrameAnalysis doc) -- qp_bytes is raw
+  // little-endian i16 per value, merged alongside the JSON metadata rather than reassembled into
+  // a `qp` array here so the renderer's structured-clone IPC transfer stays a real Buffer, not a
+  // JSON array of numbers (that reassembly happens at frontend/services/bridge/frameAnalysis.ts).
   ipcMain.handle(
     "bitvue:getFrameAnalysis",
     async (_event, frameIndex: number) => {
-      return requireSidecar().request("get_frame_analysis", {
-        frame_index: frameIndex,
+      const { metadata, qpBytes } = await requireSidecar().getFrameAnalysis({
+        frameIndex,
       });
+      return { ...metadata, qp_bytes: qpBytes };
     },
   );
 

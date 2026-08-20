@@ -22,7 +22,7 @@ import type { CodingFlowAnalysisWireResult } from "./frameAnalysis";
 import type { DeblockingAnalysisWireResult } from "./frameAnalysis";
 import type { CodecExtendedInfoWireResult } from "./frameAnalysis";
 import type { ResidualAnalysisWireResult } from "./frameAnalysis";
-import type { FrameAnalysisData } from "../../types/video";
+import type { FrameAnalysisWireResult } from "./frameAnalysis";
 import type { BridgeDecodedYuvFrame } from "./frameDecode";
 import type {
   StreamInfoResult,
@@ -107,7 +107,9 @@ declare global {
         mode: DebugYuvDisplayMode,
         amplify?: number,
       ) => Promise<BridgeDecodedYuvFrame>;
-      getFrameAnalysis: (frameIndex: number) => Promise<FrameAnalysisData>;
+      getFrameAnalysis: (
+        frameIndex: number,
+      ) => Promise<FrameAnalysisWireResult>;
       getAv1Features: (frameIndex: number) => Promise<Av1FeaturesWireResult>;
       getCodingFlowAnalysis: (
         frameIndex: number,

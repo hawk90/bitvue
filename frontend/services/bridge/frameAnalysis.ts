@@ -7,7 +7,20 @@
  */
 
 import { requireBridge } from "./core";
-import type { FrameAnalysisData } from "../../types/video";
+import type { FrameAnalysisData, QPGrid } from "../../types/video";
+
+/** Wire shape of `get_frame_analysis`'s response: identical to `FrameAnalysisData` except
+ *  `qp_grid.qp` (a flat per-block `Vec<i16>`, up to 129,600 values at 4K/8px-blocks) moves to a
+ *  raw `qp_bytes` buffer instead of a JSON number array -- see `bitvue-sidecar`'s
+ *  `frame_analysis.rs::get_frame_analysis_command` doc for why (JSON-encoding that many numbers
+ *  costs real CPU + wire bytes for no benefit, the same "big flat array" reasoning
+ *  `getDecodedFrameYuv`/`getHexRange` already apply to pixel/byte data). `qp_bytes` is
+ *  little-endian `i16` per value, row-major -- `getFrameAnalysis` below reconstructs `qp_grid.qp`
+ *  from it so every caller of the public function still sees a plain `FrameAnalysisData`. */
+export type FrameAnalysisWireResult = Omit<FrameAnalysisData, "qp_grid"> & {
+  qp_grid?: Omit<QPGrid, "qp">;
+  qp_bytes: Uint8Array;
+};
 
 // -- get_av1_features wire shapes ----------------------------------------------------------------
 //
@@ -179,13 +192,31 @@ export interface ResidualAnalysisWireResult {
   block_residuals: BlockResidualWire[];
 }
 
+/** Decodes `FrameAnalysisWireResult.qp_bytes` (little-endian `i16` per value) back into the
+ *  plain `number[]` `QPGrid.qp` expects. Uses `DataView.getInt16` rather than an `Int16Array`
+ *  view over the same buffer -- structured-clone IPC doesn't guarantee `qp_bytes.byteOffset` is
+ *  even, and an unaligned `Int16Array` view would throw. */
+function decodeQpBytes(bytes: Uint8Array): number[] {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const qp: number[] = new Array(bytes.byteLength / 2);
+  for (let i = 0; i < qp.length; i++) {
+    qp[i] = view.getInt16(i * 2, true);
+  }
+  return qp;
+}
+
 /** QP/MV/partition/prediction-mode/transform-size grids for one frame of stream A -- feeds the
  *  main viewer's overlay renderers. AV1/IVF only. Throws on failure (frame out of range, stream
  *  not open) -- no meaningful partial result, same reasoning as getFrameSyntax/getTimeline. */
 export async function getFrameAnalysis(
   frameIndex: number,
 ): Promise<FrameAnalysisData> {
-  return requireBridge().getFrameAnalysis(frameIndex);
+  const wire = await requireBridge().getFrameAnalysis(frameIndex);
+  const { qp_bytes, qp_grid, ...rest } = wire;
+  return {
+    ...rest,
+    qp_grid: qp_grid && { ...qp_grid, qp: decodeQpBytes(qp_bytes) },
+  };
 }
 
 /** CDEF/loop-restoration/film-grain/super-resolution data for one frame of stream A. AV1/IVF

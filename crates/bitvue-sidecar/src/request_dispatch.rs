@@ -189,6 +189,7 @@ pub fn compute_frames(
         "get_decoded_frame_yuv" => {
             return commands::data_plane::get_decoded_frame_yuv(core, request)
         }
+        "get_frame_analysis" => return frame_analysis::get_frame_analysis_command(core, request),
         "get_debug_yuv_frame" => {
             return debug_yuv::get_debug_yuv_frame(core, debug_yuv_state, request)
         }
@@ -314,7 +315,6 @@ pub fn dispatch(core: &Core, request: &Request) -> Response {
         "get_thumbnails" => {
             decode_bridge::get_thumbnails_command(core, request, &AtomicBool::new(false))
         }
-        "get_frame_analysis" => frame_analysis::get_frame_analysis_command(core, request),
         "get_av1_features" => av1_features::get_av1_features_command(core, request),
         "get_coding_flow_analysis" => coding_flow::get_coding_flow_analysis_command(core, request),
         "get_deblocking_analysis" => deblocking::get_deblocking_analysis_command(core, request),
