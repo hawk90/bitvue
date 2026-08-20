@@ -19,14 +19,10 @@ pub mod types;
 // Monster Pack v9: Core state management
 pub mod app_error;
 pub mod command;
-pub mod command_builder; // Builder pattern for Command construction
 pub mod event;
 pub mod selection;
-pub mod state_machine; // State Machine pattern for unified state management
-pub mod validation_strategy; // Strategy pattern for validation logic
 pub mod worker;
 pub mod workspace;
-pub mod workspace_template; // Template Method pattern for workspace rendering
 
 // Monster Pack v9: File I/O
 pub mod byte_cache;
@@ -132,7 +128,6 @@ pub use cache_debug_overlay::*;
 pub use cache_provenance::*;
 pub use cache_validation::*;
 pub use command::*;
-pub use command_builder::*;
 pub use compare::*;
 pub use compare_cache::*;
 pub use compare_evidence::*;
@@ -179,7 +174,6 @@ pub use reference_graph_evidence::*;
 pub use selection::*;
 pub use semantic_evidence::*;
 pub use spatial_hierarchy::*;
-pub use state_machine::*;
 pub use stream_state::*;
 pub use temporal_state::*;
 pub use timeline::*;
@@ -189,8 +183,6 @@ pub use timeline_lanes::*;
 pub use timeline_window::*;
 pub use tooltip::*;
 pub use types::*;
-pub use validation_strategy::*;
-pub use workspace_template::*;
 // Export commonly used types at crate root for convenience
 pub use types::ChromaFormat;
 pub use types::FrameType;
