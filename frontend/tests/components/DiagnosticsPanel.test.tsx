@@ -21,9 +21,9 @@ vi.mock("@/contexts/FrameDataContext", () => ({
   ),
 }));
 
-vi.mock("@/contexts/CurrentFrameContext", () => ({
+vi.mock("@/contexts/SelectionContext", () => ({
   useCurrentFrame: vi.fn(),
-  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+  SelectionProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
 }));
@@ -55,7 +55,7 @@ vi.mock("@/contexts/StreamDataContext", () => ({
 }));
 
 import { useFrameData } from "@/contexts/FrameDataContext";
-import { useCurrentFrame } from "@/contexts/CurrentFrameContext";
+import { useCurrentFrame } from "@/contexts/SelectionContext";
 import { useFileState } from "@/contexts/FileStateContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

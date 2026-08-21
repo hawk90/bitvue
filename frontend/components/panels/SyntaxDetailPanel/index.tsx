@@ -12,7 +12,7 @@
 
 import { useState, useCallback, useMemo, memo } from "react";
 import { useFrameData } from "../../../contexts/FrameDataContext";
-import { useCurrentFrame } from "../../../contexts/CurrentFrameContext";
+import { useCurrentFrame } from "../../../contexts/SelectionContext";
 import { useFileState } from "../../../contexts/FileStateContext";
 import { FrameSyntaxTab } from "./FrameSyntaxTab";
 import { StatisticsTab } from "./StatisticsTab";

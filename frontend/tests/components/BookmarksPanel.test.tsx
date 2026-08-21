@@ -32,16 +32,6 @@ vi.mock("@/contexts/FrameDataContext", () => ({
   ),
 }));
 
-vi.mock("@/contexts/CurrentFrameContext", () => ({
-  useCurrentFrame: () => ({
-    currentFrameIndex: 5,
-    setCurrentFrameIndex: () => {},
-  }),
-  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-}));
-
 vi.mock("@/contexts/FileStateContext", () => ({
   useFileState: () => ({
     filePath: null,

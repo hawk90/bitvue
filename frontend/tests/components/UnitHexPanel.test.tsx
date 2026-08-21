@@ -71,12 +71,12 @@ vi.mock("@/contexts/FrameDataContext", () => ({
   ),
 }));
 
-vi.mock("@/contexts/CurrentFrameContext", () => ({
+vi.mock("@/contexts/SelectionContext", () => ({
   useCurrentFrame: () => ({
     currentFrameIndex: 1,
     setCurrentFrameIndex: () => {},
   }),
-  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
+  SelectionProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
 }));

@@ -9,7 +9,7 @@
  */
 
 import { useFrameData } from "../../contexts/FrameDataContext";
-import { useCurrentFrame } from "../../contexts/CurrentFrameContext";
+import { useCurrentFrame } from "../../contexts/SelectionContext";
 import { memo } from "react";
 import { FrameTypeBadge } from "../common/FrameTypeBadge";
 import "./SelectionInfoPanel.css";

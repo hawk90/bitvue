@@ -5,7 +5,6 @@ import { SelectionProvider } from "../contexts/SelectionContext";
 import {
   FrameDataProvider,
   FileStateProvider,
-  CurrentFrameProvider,
 } from "../contexts/StreamDataContext";
 import { LayoutProvider } from "../contexts/LayoutContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
@@ -19,11 +18,9 @@ function AllTheProviders({ children }: { children: React.ReactNode }) {
       <LayoutProvider>
         <FrameDataProvider>
           <FileStateProvider>
-            <CurrentFrameProvider>
-              <SelectionProvider>
-                <ModeProvider>{children}</ModeProvider>
-              </SelectionProvider>
-            </CurrentFrameProvider>
+            <SelectionProvider>
+              <ModeProvider>{children}</ModeProvider>
+            </SelectionProvider>
           </FileStateProvider>
         </FrameDataProvider>
       </LayoutProvider>

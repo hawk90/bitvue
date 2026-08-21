@@ -10,7 +10,7 @@
 
 import { useState, memo, useCallback } from "react";
 import { useFrameData } from "../../../contexts/FrameDataContext";
-import { useCurrentFrame } from "../../../contexts/CurrentFrameContext";
+import { useCurrentFrame } from "../../../contexts/SelectionContext";
 import { FrameViewTab } from "./FrameViewTab";
 import { HexViewTab } from "./HexViewTab";
 import { DpbViewTab } from "./DpbViewTab";

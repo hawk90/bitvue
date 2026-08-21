@@ -44,12 +44,6 @@ vi.mock("@/contexts/FileStateContext", () => ({
     <>{children}</>
   ),
 }));
-vi.mock("@/contexts/CurrentFrameContext", () => ({
-  useCurrentFrame: vi.fn(),
-  CurrentFrameProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-}));
 vi.mock("@/hooks/useCanvasInteraction");
 vi.mock("@/contexts/YuvDiffContext", () => ({
   YuvDiffProvider: ({ children }: { children: React.ReactNode }) => (

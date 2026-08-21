@@ -8,12 +8,10 @@ import { TitleBar } from "./components/TitleBar";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SelectionProvider } from "./contexts/SelectionContext";
-import { FrameSyncBridge } from "./contexts/FrameSyncBridge";
 import { ModeProvider, useMode } from "./contexts/ModeContext";
 import {
   FrameDataProvider,
   FileStateProvider,
-  CurrentFrameProvider,
   useFrameData,
   useCurrentFrame,
   useFileState,
@@ -124,13 +122,13 @@ function App() {
       <ModeProvider>
         <FrameDataProvider>
           <FileStateProvider>
-            <CurrentFrameProvider>
+            <SelectionProvider>
               <CompareProvider>
                 <YuvDiffProvider>
                   <AppContent />
                 </YuvDiffProvider>
               </CompareProvider>
-            </CurrentFrameProvider>
+            </SelectionProvider>
           </FileStateProvider>
         </FrameDataProvider>
       </ModeProvider>
@@ -576,8 +574,7 @@ function AppContent() {
     ) : null;
 
   return (
-    <SelectionProvider>
-      <FrameSyncBridge />
+    <>
       <ErrorBoundary>
         <div className="app">
           {/* macOS: no custom TitleBar (native menu + native traffic-light window controls are
@@ -676,7 +673,7 @@ function AppContent() {
           />
         </Suspense>
       )}
-    </SelectionProvider>
+    </>
   );
 }
 

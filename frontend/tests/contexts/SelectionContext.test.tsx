@@ -4,11 +4,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, render } from "@testing-library/react";
 import {
   SelectionProvider,
   useSelection,
   useSelectionSubscribe,
+  useActiveFrame,
 } from "@/contexts/SelectionContext";
 import type {
   TemporalSelection,
@@ -586,11 +587,19 @@ describe("SelectionContext clearAll", () => {
         { stream: "A", frameIndex: 5 },
         "timeline",
       );
+    });
+    act(() => {
       result.current.clearAll();
     });
 
-    // clearAll doesn't notify since it sets to null directly
-    expect(callback).toHaveBeenCalledTimes(1);
+    // clearAll notifies too (fixed 2026-08-21, axis-2 cleanup) -- once for the frame selection,
+    // once for the clear. Previously it set selection to null without notifying at all, a real
+    // gap that only mattered once useActiveFrame became a real subscriber that needs to hear
+    // about a clear to reset back to null.
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selection: null }),
+    );
   });
 });
 
@@ -1013,5 +1022,141 @@ describe("SelectionContext field type size estimation", () => {
       startBit: 500,
       endBit: 500,
     });
+  });
+});
+
+describe("useActiveFrame", () => {
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <SelectionProvider>{children}</SelectionProvider>
+  );
+
+  it("returns null before any frame selection", () => {
+    const { result } = renderHook(() => useActiveFrame(), { wrapper });
+    expect(result.current).toBeNull();
+  });
+
+  it("returns the active frame after setFrameSelection", () => {
+    const { result } = renderHook(
+      () => ({ active: useActiveFrame(), selection: useSelection() }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.selection.setFrameSelection(
+        { stream: "A", frameIndex: 7 },
+        "timeline",
+      );
+    });
+
+    expect(result.current.active).toEqual({ stream: "A", frameIndex: 7 });
+  });
+
+  it("throws when used outside SelectionProvider", () => {
+    expect(() => renderHook(() => useActiveFrame())).toThrow(
+      /useActiveFrame must be used within SelectionProvider/,
+    );
+  });
+
+  it("returns null again after clearAll", () => {
+    const { result } = renderHook(
+      () => ({ active: useActiveFrame(), selection: useSelection() }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.selection.setFrameSelection(
+        { stream: "A", frameIndex: 3 },
+        "timeline",
+      );
+    });
+    expect(result.current.active).not.toBeNull();
+
+    act(() => {
+      result.current.selection.clearAll();
+    });
+    expect(result.current.active).toBeNull();
+  });
+
+  // The actual point of this hook over `useSelection().selection.frame`: a component that only
+  // reads the active frame must not re-render just because an unrelated unit/bitRange/syntax
+  // selection changed elsewhere. Isolated via two separate components under one Provider --
+  // ActiveFrameProbe only calls useActiveFrame(), Driver only calls useSelection() to get
+  // setters -- so Driver re-rendering on every change (it does, useSelection() subscribes to
+  // everything) can't contaminate ActiveFrameProbe's own render count.
+  it("does not re-render when only unit/bitRange/syntax selection changes", () => {
+    const onProbeRender = vi.fn();
+    let setters: ReturnType<typeof useSelection> | undefined;
+
+    function ActiveFrameProbe() {
+      useActiveFrame();
+      onProbeRender();
+      return null;
+    }
+
+    function Driver() {
+      setters = useSelection();
+      return null;
+    }
+
+    render(
+      <SelectionProvider>
+        <ActiveFrameProbe />
+        <Driver />
+      </SelectionProvider>,
+    );
+
+    act(() => {
+      setters!.setFrameSelection({ stream: "A", frameIndex: 1 }, "timeline");
+    });
+    const countAfterFrame = onProbeRender.mock.calls.length;
+
+    act(() => {
+      setters!.setUnitSelection(
+        { stream: "A", unitType: "obu", offset: 0, size: 10 },
+        "hex",
+      );
+    });
+    act(() => {
+      setters!.setBitRangeSelection({ startBit: 0, endBit: 80 }, "hex");
+    });
+    act(() => {
+      setters!.setSyntaxSelection({ path: ["x"], offset: 0 }, "syntax");
+    });
+
+    expect(onProbeRender.mock.calls.length).toBe(countAfterFrame);
+  });
+
+  it("does re-render when the frame actually changes again", () => {
+    const onProbeRender = vi.fn();
+    let setters: ReturnType<typeof useSelection> | undefined;
+
+    function ActiveFrameProbe() {
+      useActiveFrame();
+      onProbeRender();
+      return null;
+    }
+
+    function Driver() {
+      setters = useSelection();
+      return null;
+    }
+
+    render(
+      <SelectionProvider>
+        <ActiveFrameProbe />
+        <Driver />
+      </SelectionProvider>,
+    );
+
+    act(() => {
+      setters!.setFrameSelection({ stream: "A", frameIndex: 1 }, "timeline");
+    });
+    const countAfterFirst = onProbeRender.mock.calls.length;
+
+    act(() => {
+      setters!.setFrameSelection({ stream: "A", frameIndex: 2 }, "timeline");
+    });
+
+    expect(onProbeRender.mock.calls.length).toBeGreaterThan(countAfterFirst);
   });
 });

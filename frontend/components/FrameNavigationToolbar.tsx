@@ -11,7 +11,7 @@
 
 import { useReducer, useCallback, memo, useEffect } from "react";
 import { useFrameData } from "../contexts/FrameDataContext";
-import { useCurrentFrame } from "../contexts/CurrentFrameContext";
+import { useCurrentFrame } from "../contexts/SelectionContext";
 import {
   findNextKeyframe,
   findPrevKeyframe,

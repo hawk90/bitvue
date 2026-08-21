@@ -13,8 +13,10 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   ReactNode,
   useRef,
+  useSyncExternalStore,
 } from "react";
 
 // Import extracted types and utilities
@@ -22,6 +24,7 @@ import type {
   SelectionState,
   SelectionContextType,
   SelectionChangeEvent,
+  FrameKey,
 } from "../types/selection";
 import {
   applyTriSyncRules,
@@ -49,6 +52,83 @@ export type {
 const SelectionContext = createContext<SelectionContextType | null>(null);
 
 // ════════════════════════════════════════════════════════════════════════════════
+// Active-frame store (useSyncExternalStore) -- see types/selection.ts's SelectionState doc,
+// invariant 1
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Separate from SelectionContext itself: useContext(SelectionContext) re-renders on ANY
+// selection change (it's one useState<SelectionState>, see the module doc above), which is
+// exactly the "unit/bitRange selection wakes up the frame preview" problem this store exists to
+// avoid. This context's own value never changes reference across renders (see the useMemo below,
+// both deps are stable-forever useCallbacks), so subscribing to it costs nothing -- all the real
+// re-render gating happens inside useSyncExternalStore itself, via getFrameSnapshot returning a
+// referentially stable FrameKey whenever `frame` itself didn't change (mergeSelectionUpdates
+// spreads the previous SelectionState, so untouched keys -- including `frame` -- keep their old
+// object identity; only an update that actually touches `frame` produces a new one).
+interface SelectionStore {
+  subscribe: (onStoreChange: () => void) => () => void;
+  getFrameSnapshot: () => FrameKey | null;
+  // Dispatch, carried on this same stable object rather than a second context: every setter
+  // below is already a stable-forever useCallback (empty deps, or deps on another stable-forever
+  // callback), so reading them from here -- instead of useSelection(), which forces a re-render
+  // on every selection change just by being read via useContext -- costs nothing. This is the
+  // "useNavigationDispatch()" half of the design; useActiveFrame is the "useActiveFrame()" half.
+  setFrameSelection: SelectionContextType["setFrameSelection"];
+}
+
+const SelectionStoreContext = createContext<SelectionStore | null>(null);
+
+/** The active frame -- see types/selection.ts's SelectionState doc, invariant 1. Re-renders only
+ *  when `frame` itself changes, not on unrelated unit/syntax/bitRange selection updates (unlike
+ *  `useSelection().selection.frame`, which re-renders on every selection change). */
+export function useActiveFrame(): FrameKey | null {
+  const store = useContext(SelectionStoreContext);
+  if (!store) {
+    throw new Error("useActiveFrame must be used within SelectionProvider");
+  }
+  return useSyncExternalStore(store.subscribe, store.getFrameSnapshot);
+}
+
+/**
+ * Compatibility shim for the old `contexts/CurrentFrameContext.tsx` (removed 2026-08-21,
+ * axis-2 Context-ownership cleanup) -- same `{currentFrameIndex, setCurrentFrameIndex}` shape,
+ * backed by SelectionContext's `frame` instead of a second independent `useState`. Existing
+ * consumers (App.tsx's `*FromContext` wrappers, BitViewPanel, DiagnosticsPanel,
+ * SelectionInfoPanel, SyntaxDetailPanel, UnitHexPanel) needed only an import-path change to pick
+ * this up -- see types/selection.ts's SelectionState doc, invariant 1, for why this exists
+ * instead of two pieces of state kept equal by a bridge (`FrameSyncBridge.tsx`, also removed).
+ *
+ * Always addresses stream "A" -- matches what the old CurrentFrameContext always implicitly
+ * meant (it never tracked a stream at all); stream B's position is tracked separately by
+ * CompareContext (`currentFrameB`/`setFrameB`), untouched by this. New code should prefer
+ * useActiveFrame() directly instead: unlike this wrapper, it doesn't need useSelection() (whose
+ * re-render-on-any-change is exactly what useActiveFrame exists to avoid).
+ */
+export function useCurrentFrame(): {
+  currentFrameIndex: number;
+  setCurrentFrameIndex: (frameIndex: number) => void;
+} {
+  const store = useContext(SelectionStoreContext);
+  if (!store) {
+    throw new Error("useCurrentFrame must be used within SelectionProvider");
+  }
+  const activeFrame = useSyncExternalStore(
+    store.subscribe,
+    store.getFrameSnapshot,
+  );
+  const setCurrentFrameIndex = useCallback(
+    (frameIndex: number) => {
+      store.setFrameSelection({ stream: "A", frameIndex }, "main");
+    },
+    [store],
+  );
+  return {
+    currentFrameIndex: activeFrame?.frameIndex ?? 0,
+    setCurrentFrameIndex,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // Provider
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -60,6 +140,13 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const listenersRef = useRef(new Set<(event: SelectionChangeEvent) => void>());
 
+  // Kept in sync during render (not an effect -- useSyncExternalStore's getFrameSnapshot must be
+  // correct synchronously, including on the very render that changed `selection`, not one tick
+  // later). Only ever read imperatively by getFrameSnapshot below, never used to drive this
+  // component's own render output -- the one case React's docs sanction mutating a ref mid-render.
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+
   // Cleanup all listeners when provider unmounts
   useEffect(() => {
     const listeners = listenersRef.current;
@@ -68,13 +155,21 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     };
   }, []);
 
-  const notifyListeners = useCallback((newSelection: SelectionState) => {
+  // Notifies listeners (including useActiveFrame's useSyncExternalStore subscribers) from an
+  // effect, never from inside a setSelection updater -- an updater function is supposed to be
+  // pure, and a subscriber calling setState in response to notifyListeners (useSyncExternalStore
+  // does exactly this) triggered a real "Cannot update a component while rendering a different
+  // component" warning + a double-fire when it *was* called from inside the updater (caught by
+  // this file's useActiveFrame regression tests the same day this store was added -- dormant
+  // until then because nothing real subscribed before). Effects run after commit, which is the
+  // React-sanctioned place for this.
+  useEffect(() => {
     const event: SelectionChangeEvent = {
-      selection: newSelection,
-      source: newSelection.source,
+      selection,
+      source: selection?.source ?? { panel: "sync", timestamp: Date.now() },
     };
     listenersRef.current.forEach((callback) => callback(event));
-  }, []);
+  }, [selection]);
 
   const updateSelection = useCallback(
     (
@@ -90,13 +185,10 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
         );
 
         // Apply Tri-Sync propagation rules
-        const syncedSelection = applyTriSyncRules(mergedSelection);
-
-        notifyListeners(syncedSelection);
-        return syncedSelection;
+        return applyTriSyncRules(mergedSelection);
       });
     },
-    [notifyListeners],
+    [],
   );
 
   const setTemporalSelection = useCallback(
@@ -164,7 +256,7 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   const clearTemporal = useCallback(() => {
     setSelection((prev) => {
       if (!prev) return null;
-      const newSelection: SelectionState = {
+      return {
         ...prev,
         temporal: null,
         source: {
@@ -172,10 +264,8 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
           timestamp: Date.now(),
         },
       };
-      notifyListeners(newSelection);
-      return newSelection;
     });
-  }, [notifyListeners]);
+  }, []);
 
   const clearAll = useCallback(() => {
     setSelection(null);
@@ -203,9 +293,23 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     subscribe,
   };
 
+  // Stable forever: `subscribe` and `setFrameSelection` are both stable-forever useCallbacks
+  // (see their own definitions above), so this object is created once and never changes
+  // reference -- see useActiveFrame's doc above for why that matters.
+  const storeValue = useMemo<SelectionStore>(
+    () => ({
+      subscribe: (onStoreChange) => subscribe(() => onStoreChange()),
+      getFrameSnapshot: () => selectionRef.current?.frame ?? null,
+      setFrameSelection,
+    }),
+    [subscribe, setFrameSelection],
+  );
+
   return (
     <SelectionContext.Provider value={value}>
-      {children}
+      <SelectionStoreContext.Provider value={storeValue}>
+        {children}
+      </SelectionStoreContext.Provider>
     </SelectionContext.Provider>
   );
 }

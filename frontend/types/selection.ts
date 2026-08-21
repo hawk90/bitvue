@@ -65,6 +65,27 @@ export interface SelectionSource {
   timestamp: number;
 }
 
+/**
+ * Invariants (axis-2 Context-ownership cleanup, see contexts/FrameSyncBridge.tsx's doc for the
+ * problem this is fixing):
+ *
+ * 1. `frame` (+ `temporal.frameIndex` when `temporal.type === "point"`, kept equal by
+ *    `applyTriSyncRules` Rule 1) is the SINGLE source of truth for "the active frame" -- the one
+ *    `contexts/CurrentFrameContext.tsx` and `FrameSyncBridge` currently duplicate into a second,
+ *    independently-`useState`'d `currentFrameIndex`. Read it via `useActiveFrame()`
+ *    (contexts/SelectionContext.tsx), not a second piece of state.
+ * 2. `unit`/`syntaxNode`/`bitRange` are independent "rich selection" facets. Setting any of them
+ *    (`setUnitSelection`/`setSyntaxSelection`/`setBitRangeSelection`) must NEVER overwrite
+ *    `frame` -- verified true today (`applyTriSyncRules`' Rules 2/3 only ever touch `bitRange`).
+ *    Only `setFrameSelection`/`setTemporalSelection` (and Rule 1) may change `frame`.
+ * 3. `streamId` is meant to track `frame.stream`, but nothing currently enforces that --
+ *    `setUnitSelection` sets `streamId: unit.stream` without touching `frame.stream`, so a unit
+ *    selected on a different stream than the active frame can silently desync the two. Currently
+ *    low-risk only because `selection.streamId` has zero real (non-test) consumers as of this
+ *    writing (grepped) -- flagged here rather than silently "fixed" because reconciling it is a
+ *    product decision (should selecting a stream-B unit move the active frame to stream B?), not
+ *    a pure plumbing bug. Don't add a new real consumer of `streamId` without resolving this.
+ */
 export interface SelectionState {
   streamId: StreamId;
   temporal: TemporalSelection | null;
@@ -76,7 +97,8 @@ export interface SelectionState {
 }
 
 export interface SelectionChangeEvent {
-  selection: SelectionState;
+  /** null for a clearAll() -- there's no SelectionState left to report. */
+  selection: SelectionState | null;
   source: SelectionSource;
 }
 
