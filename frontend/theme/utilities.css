@@ -77,23 +77,6 @@
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   Card Hover Effects
-   ═════════════════════════════════════════════════════════════════════════ */
-
-.card {
-  transition: all var(--transition-normal) var(--ease-default);
-}
-
-.card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-
-.card:active {
-  transform: translateY(0);
-}
-
-/* ═════════════════════════════════════════════════════════════════════════
    Fade In/Out Animations
    ═════════════════════════════════════════════════════════════════════════ */
 
@@ -245,21 +228,6 @@
 
   50% {
     opacity: 0.6;
-  }
-}
-
-.pulse-glow {
-  animation: pulseGlow 2s ease-in-out infinite;
-}
-
-@keyframes pulseGlow {
-  0%,
-  100% {
-    box-shadow: var(--shadow-glow-sm);
-  }
-
-  50% {
-    box-shadow: var(--shadow-glow-lg);
   }
 }
 

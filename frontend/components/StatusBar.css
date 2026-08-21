@@ -7,8 +7,12 @@
 /* Status Bar - Polished for subtle appearance */
 .status-bar {
   height: 24px;
-  background: var(--bg-secondary, rgb(30 30 35 / 95%));
-  backdrop-filter: blur(10px);
+  /* Flat opaque fill, no backdrop-filter -- VS Code's real status bar has neither, and a
+     translucent+blurred bar here was letting welcome-screen content clip-straddling the
+     app-container/status-bar boundary visibly bleed through unblurred (real compositing
+     artifact, confirmed via getBoundingClientRect: a .format-item row was found straddling
+     that exact y-coordinate, fully legible through the "blurred" bar -- not just a look nit). */
+  background: var(--bg-secondary, #2d2d30);
   color: var(--text-secondary);
   display: flex;
   align-items: center;

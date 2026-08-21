@@ -80,9 +80,6 @@
   --shadow-xl: 0 12px 24px rgb(0 0 0 / 40%);
   --shadow-2xl: 0 20px 40px rgb(0 0 0 / 50%);
   --shadow-inner: inset 0 2px 4px rgb(0 0 0 / 15%);
-  --shadow-glow-sm: 0 0 4px rgb(0 122 204 / 40%);
-  --shadow-glow-md: 0 0 8px rgb(0 122 204 / 50%);
-  --shadow-glow-lg: 0 0 16px rgb(0 122 204 / 60%);
 
   /* Dialog shadow with outline effect */
   --shadow-dialog: 0 12px 40px rgb(0 0 0 / 50%), 0 0 0 1px rgb(0 0 0 / 20%);
@@ -195,10 +192,6 @@
   --accent-primary-bg: rgb(0 122 204 / 15%);
   --accent-primary-bg-hover: rgb(0 122 204 / 25%);
   --accent-primary-border: rgb(0 122 204 / 40%);
-
-  /* Gradient for primary buttons */
-  --gradient-primary: linear-gradient(135deg, #007acc 0%, #4a9eff 100%);
-  --gradient-primary-hover: linear-gradient(135deg, #1a8cdb 0%, #5aadff 100%);
 
   /* ═════════════════════════════════════════════════════════════════════════
      Semantic Status Colors
@@ -456,10 +449,6 @@
   --accent-primary-bg: rgb(0 102 184 / 10%);
   --accent-primary-bg-hover: rgb(0 102 184 / 15%);
   --accent-primary-border: rgb(0 102 184 / 30%);
-
-  /* Gradient for primary buttons */
-  --gradient-primary: linear-gradient(135deg, #0066b8 0%, #39f 100%);
-  --gradient-primary-hover: linear-gradient(135deg, #0078cc 0%, #4aa9ff 100%);
 
   /* Semantic Status Colors */
   --color-error: #d13438;

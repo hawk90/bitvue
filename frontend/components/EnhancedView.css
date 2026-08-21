@@ -49,7 +49,6 @@
   background: var(--bitvue-accent);
   border-color: var(--bitvue-accent);
   color: white;
-  transform: translateY(-1px);
 }
 
 .enhanced-nav-btn:disabled {

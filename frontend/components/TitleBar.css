@@ -1,6 +1,5 @@
 /**
  * TitleBar Styles
- * Uses unified component styles from theme/components.css
  *
  * Menu bar with File, Mode, YUVDiff, Options, Help menus
  */
@@ -11,7 +10,6 @@
   justify-content: space-between;
   height: 24px;
   background: rgb(30 30 35 / 95%);
-  backdrop-filter: blur(10px);
   border-bottom: 1px solid rgb(255 255 255 / 8%);
   -webkit-app-region: drag;
   user-select: none;
@@ -61,7 +59,6 @@
   left: 0;
   min-width: 200px;
   background: rgb(25 25 30 / 98%);
-  backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 8px;
   box-shadow:
@@ -166,7 +163,6 @@
   top: 0;
   min-width: 200px;
   background: rgb(25 25 30 / 98%);
-  backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 8px;
   box-shadow:

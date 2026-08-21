@@ -115,40 +115,14 @@
   color: var(--text-primary);
   cursor: pointer;
   transition: all var(--transition-fast) var(--ease-out);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Ripple effect container */
-.filmstrip-view-btn::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 20%);
-  transform: translate(-50%, -50%);
-  transition:
-    width 0.4s ease,
-    height 0.4s ease;
-}
-
-.filmstrip-view-btn:active::before {
-  width: 60px;
-  height: 60px;
 }
 
 .filmstrip-view-btn:hover {
   background: var(--bg-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-xs);
 }
 
 .filmstrip-view-btn:active {
-  transform: translateY(0);
-  box-shadow: none;
+  background: var(--bg-button-active);
 }
 
 .filmstrip-view-btn.active {

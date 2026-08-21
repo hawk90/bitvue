@@ -1,6 +1,5 @@
 /**
  * Frame Navigation Toolbar Styles
- * Uses unified component styles from theme/components.css
  */
 
 .frame-nav-toolbar {
@@ -168,7 +167,7 @@
 .frame-nav-search-btn.active {
   background: rgb(0 122 204 / 20%);
   border-color: rgb(0 122 204 / 40%);
-  color: #75beff;
+  color: var(--color-info);
 }
 
 .frame-nav-search-dropdown {
@@ -178,7 +177,6 @@
   min-width: 100%;
   max-height: 280px;
   background: rgb(25 25 30 / 98%);
-  backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 8px;
   box-shadow:

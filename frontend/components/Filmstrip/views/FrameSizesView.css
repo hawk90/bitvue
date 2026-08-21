@@ -192,7 +192,6 @@
   padding: 8px 10px;
   margin-left: auto;
   background: rgb(30 30 35 / 90%);
-  backdrop-filter: blur(12px);
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 6px;
   max-height: 100%;
@@ -261,21 +260,20 @@
 }
 
 .frame-sizes-legend .legend-color.type-i {
-  background: linear-gradient(to bottom, #e03131 0%, #c92a2a 100%);
+  background: #e03131;
 }
 
 .frame-sizes-legend .legend-color.type-p {
-  background: linear-gradient(to bottom, #2da44e 0%, #238636 100%);
+  background: #2da44e;
 }
 
 .frame-sizes-legend .legend-color.type-b {
-  background: linear-gradient(to bottom, #1f77b4 0%, #1971c2 100%);
+  background: #1f77b4;
 }
 
 /* Floating Legend */
 .frame-sizes-legend.floating {
   background: rgb(30 30 35 / 95%);
-  backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 15%);
   border-radius: 8px;
   box-shadow:

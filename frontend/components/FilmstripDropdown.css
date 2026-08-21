@@ -54,7 +54,6 @@
      `.dockable-layout`) the way `position: absolute` nested inside them was. */
   min-width: 160px;
   background: rgb(30 30 35 / 98%);
-  backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 15%);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgb(0 0 0 / 50%);
@@ -102,8 +101,8 @@
 }
 
 .filmstrip-dropdown-menu button.active {
-  background: rgb(117 190 255 / 15%);
-  color: #75beff;
+  background: var(--color-info-bg);
+  color: var(--color-info);
 }
 
 .filmstrip-dropdown-menu button span {
