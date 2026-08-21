@@ -55,18 +55,24 @@ export const KeyboardShortcutsDialog = memo(function KeyboardShortcutsDialog({
           {KEYBOARD_SHORTCUTS.map((category) => (
             <div key={category.name} className="shortcuts-category">
               <h3 className="shortcuts-category-title">{category.name}</h3>
-              <div className="shortcuts-list">
-                {category.shortcuts.map((shortcut) => (
-                  <div key={shortcut.description} className="shortcuts-item">
-                    <span className="shortcuts-description">
-                      {shortcut.description}
-                    </span>
-                    <kbd className="shortcuts-key">
-                      {getShortcutDisplay(shortcut)}
-                    </kbd>
-                  </div>
-                ))}
-              </div>
+              <table className="shortcuts-table">
+                <tbody>
+                  {category.shortcuts.map((shortcut) => (
+                    <tr
+                      key={`${shortcut.key}-${shortcut.ctrl}-${shortcut.meta}-${shortcut.shift}-${shortcut.alt}-${shortcut.description}`}
+                    >
+                      <td className="shortcuts-description">
+                        {shortcut.description}
+                      </td>
+                      <td className="shortcuts-key-cell">
+                        <kbd className="shortcuts-key">
+                          {getShortcutDisplay(shortcut)}
+                        </kbd>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ))}
         </div>
