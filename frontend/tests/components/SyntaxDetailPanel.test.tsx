@@ -43,6 +43,11 @@ vi.mock("@/contexts/SelectionContext", () => ({
     currentFrameIndex: 1,
     setCurrentFrameIndex: vi.fn(),
   }),
+  useSelection: () => ({
+    selection: null,
+    setSyntaxSelection: vi.fn(),
+    setBitRangeSelection: vi.fn(),
+  }),
   SelectionProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),

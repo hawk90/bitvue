@@ -10,6 +10,20 @@ import { LayoutProvider } from "../contexts/LayoutContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
 
 /**
+ * Re-export testing library utilities. MUST come before this file's own `render` declaration
+ * below -- found 2026-08-21 (axis-2 Tri-Sync completion) that with it declared *after* (as it
+ * used to be), the star re-export's own `render` silently won over this file's wrapped one for
+ * every consumer of `@/test/test-utils`'s `render` (verified: `utilsRender === rtlRenderRaw`
+ * was `true`), meaning `AllTheProviders` was NEVER actually applied by any test -- it happened
+ * not to matter until now because every test exercising a real context mocked that context
+ * module directly instead of relying on this wrapper. Local named exports are supposed to take
+ * precedence over a same-named star re-export per the ES module spec regardless of declaration
+ * order, but this project's actual bundler pipeline evidently didn't honor that -- declaring this
+ * first sidesteps the question rather than depending on it.
+ */
+export * from "@testing-library/react";
+
+/**
  * All-in-one provider wrapper for tests
  */
 function AllTheProviders({ children }: { children: React.ReactNode }) {
@@ -49,10 +63,6 @@ export function renderWithoutProviders(
   return rtlRender(ui, options);
 }
 
-/**
- * Re-export testing library utilities
- */
-export * from "@testing-library/react";
 export { default as userEvent } from "@testing-library/user-event";
 
 /**

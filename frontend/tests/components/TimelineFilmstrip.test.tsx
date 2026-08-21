@@ -12,6 +12,9 @@ import { useSelection } from "@/contexts/SelectionContext";
 // Mock SelectionContext
 vi.mock("@/contexts/SelectionContext", () => ({
   useSelection: vi.fn(),
+  SelectionProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
 const mockFrames: FrameInfo[] = [

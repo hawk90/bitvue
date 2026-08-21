@@ -17,6 +17,15 @@ vi.mock("../../contexts/StreamDataContext", () => ({
     currentFrameIndex: 0,
     setCurrentFrameIndex: vi.fn(),
   }),
+  // AllTheProviders (test-utils.tsx) genuinely renders these now (2026-08-21 fix -- see its own
+  // doc comment: this file's export* ordering bug used to make that wrapper a silent no-op, so
+  // this mock's real-vs-passthrough distinction never mattered before).
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  FileStateProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
 describe("BitViewPanel", () => {
