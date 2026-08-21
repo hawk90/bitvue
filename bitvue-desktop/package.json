@@ -6,6 +6,7 @@
   "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {
+    "postinstall": "node scripts/patch-electron-app-name.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "test:unit": "vitest run tests/protocol.test.ts",
@@ -28,6 +29,7 @@
   "build": {
     "appId": "com.bitvue.desktop",
     "productName": "Bitvue",
+    "icon": "../resources/bitvue-icon.png",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -38,6 +40,10 @@
       "!**/*.map"
     ],
     "extraResources": [
+      {
+        "from": "../samples",
+        "to": "samples"
+      },
       {
         "from": "../frontend/dist",
         "to": "frontend"

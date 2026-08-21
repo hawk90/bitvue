@@ -17,7 +17,7 @@
  *  - Single global `SidecarClient` instance, no multi-window/multi-stream-session story yet.
  */
 
-import { app, BrowserWindow, session } from "electron";
+import { app, BrowserWindow, session, shell } from "electron";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -143,7 +143,7 @@ function registerIpcHandlers(): void {
   registerSyntaxHexIpcHandlers(requireSidecar);
   registerCompareDiffIpcHandlers(requireSidecar);
   registerEvidenceExportIpcHandlers(requireSidecar);
-  registerWindowLifecycleIpcHandlers();
+  registerWindowLifecycleIpcHandlers(samplesDir);
 }
 
 // Packaged builds ship the built frontend under resources/frontend/ (extraResources, see
@@ -151,6 +151,17 @@ function registerIpcHandlers(): void {
 const frontendDistIndex = app.isPackaged
   ? path.join(process.resourcesPath, "frontend", "index.html")
   : path.join(repoRoot, "frontend", "dist", "index.html");
+
+// Welcome screen's "Samples" quick-open list (frontend/components/welcome/sampleCatalog.ts).
+// Packaged builds already bundle `samples/` via package.json's `build.extraResources`
+// ({from: "../samples", to: "samples"}) -- this just mirrors that same resourcesPath/repoRoot
+// split every other path in this file uses. `bitvue:getSamplePath` doesn't check existence
+// itself (matches `bitvue:pathExists`'s split responsibility), the renderer already has
+// `pathExists` for that -- relevant regardless of packaging, since the catalog currently lists
+// several filenames that don't exist as real files yet either way (see sampleCatalog.ts).
+const samplesDir = app.isPackaged
+  ? path.join(process.resourcesPath, "samples")
+  : path.join(repoRoot, "samples");
 
 /**
  * Where to load the renderer content from, in priority order:
@@ -179,7 +190,25 @@ function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    title: "Bitvue",
+    // Use the same Bitvue mark during `npm run electron` development launches. Packaged builds
+    // use the electron-builder icon configured in bitvue-desktop/package.json.
+    icon: path.join(repoRoot, "resources", "bitvue-icon.png"),
+    // A hard floor instead of letting the window (and WelcomeScreen's now-removed `@media`
+    // breakpoints) fight to stay responsive all the way down to near-zero width -- the main
+    // analyzer layout (pinned stream tree + inspectors + bottom panels) doesn't hold together
+    // below this anyway, so there's nothing to gain from allowing it. Matches the common desktop-
+    // app pattern (VS Code does the same) of a minimum window size rather than infinite reflow.
+    minWidth: 900,
+    minHeight: 600,
     show: process.env.BITVUE_ELECTRON_OFFSCREEN !== "1",
+    // Matches the app's dark theme instead of flashing white before the renderer paints.
+    backgroundColor: "#2d2d30",
+    // macOS only: floats the native traffic lights over App.tsx's `.mac-titlebar-spacer` (colored
+    // to match the status bar) instead of drawing Electron's own separate, unstyled white title
+    // bar above the app content. Windows/Linux use the custom `TitleBar.tsx` component instead
+    // (see `shouldShowTitleBar`) and are unaffected by this.
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
     webPreferences: {
       preload: path.join(here, "preload.cjs"),
       contextIsolation: true,
@@ -226,6 +255,17 @@ function createWindow(): BrowserWindow {
     if (isQuitConfirmed()) return;
     event.preventDefault();
     void requestQuit();
+  });
+
+  // Without this, Electron's default handling of target="_blank"/window.open() (e.g. WelcomeScreen's
+  // GitHub footer link) opens the URL in a brand-new in-app Chromium window rendering the external
+  // page INSIDE Bitvue, not the user's actual default browser -- confusing (looks like part of the
+  // app broke) and a real security surface (arbitrary external content would run under Bitvue's own
+  // window, unconstrained by anything this app controls). Hand every such request off to the OS's
+  // real browser instead and deny Electron's own window creation.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
+    return { action: "deny" };
   });
 
   setMainWindow(win);
@@ -851,6 +891,15 @@ async function runScreenshotAndExit(
 }
 
 async function main(): Promise<void> {
+  // macOS dock icon in dev mode -- `npx electron .`/`npm run electron` run the *generic*
+  // Electron.app binary from node_modules (that's just what an unpackaged dev launch is), so the
+  // dock shows Electron's own default icon regardless of app.setName() below, unless explicitly
+  // overridden here. Packaged builds don't need this: electron-builder bakes the real icon
+  // (`build.icon` in package.json) into the .app bundle's Info.plist at build time.
+  if (!app.isPackaged && process.platform === "darwin") {
+    app.dock?.setIcon(path.join(here, "..", "..", "build", "icon.png"));
+  }
+
   if (!existsSync(sidecarBinaryPath)) {
     throw new Error(
       `bitvue-sidecar binary not found at ${sidecarBinaryPath}.\n` +
@@ -923,13 +972,56 @@ async function main(): Promise<void> {
   }
 }
 
-app
-  .whenReady()
-  .then(main)
-  .catch((err) => {
-    console.error("[bitvue-desktop] fatal startup error:", err);
-    app.exit(1);
+// Keep Electron's native application identity aligned with the packaged product name. Without
+// this, development launches expose the npm package name (`bitvue-desktop`) -- or just
+// "Electron" -- in the macOS menu bar/app switcher even though electron-builder is configured
+// for `Bitvue`. Must run before app.whenReady(): macOS reads the menu-bar app name at launch, a
+// post-ready app.setName() call (where this used to live, inside main()) is too late to change
+// what's already been drawn.
+app.setName("Bitvue");
+
+// Test/screenshot/selftest runs each need their own isolated profile. Sharing the real user's
+// `userData` dir with a concurrently-running dev instance (or with each other, across repeated
+// automated runs) lets two processes fight over the same Chromium LevelDB-backed localStorage,
+// which silently corrupts/empties it under concurrent access -- found 2026-08-21 via a real
+// dev-session collision (running `scripts/dev.sh` and a second `npx electron .` at once): the
+// second instance rendered a totally blank welcome screen, and separately the FIRST instance's
+// `bitvue-recent-files` localStorage entry was wiped out from under it. Isolating test-mode runs
+// to a fresh temp directory also makes them properly reproducible (no dependency on leftover
+// state from an unrelated earlier run) -- see `feedback_no_neon_ai_dashboard_look.md`'s
+// WelcomeScreen redesign notes for how that leftover-state dependency wasted a long debugging
+// detour before this was found to be the real cause.
+if (process.env.BITVUE_ELECTRON_SCREENSHOT || process.env.BITVUE_ELECTRON_SELFTEST === "1") {
+  app.setPath(
+    "userData",
+    mkdtempSync(path.join(tmpdir(), "bitvue-electron-test-")),
+  );
+}
+
+// Prevents the same corruption/blank-window failure mode for real (non-test) launches too: only
+// one real Bitvue instance should ever hold a given userData dir's Chromium profile at a time.
+// Standard Electron single-instance pattern -- a second launch attempt just focuses the first
+// instance's window instead of starting its own (broken) second copy.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const existingWindow = BrowserWindow.getAllWindows()[0];
+    if (existingWindow) {
+      if (existingWindow.isMinimized()) existingWindow.restore();
+      existingWindow.focus();
+    }
   });
+
+  app
+    .whenReady()
+    .then(main)
+    .catch((err) => {
+      console.error("[bitvue-desktop] fatal startup error:", err);
+      app.exit(1);
+    });
+}
 
 app.on("window-all-closed", () => {
   // Only reached once a window has actually closed for real -- with the TAURI_WEB-006 gate in

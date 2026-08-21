@@ -19,6 +19,18 @@ export async function showOpenDialog(
   return requireBridge().showOpenDialog(filters);
 }
 
+/** Whether `path` exists on disk right now. Used to prune stale entries out of the welcome
+ *  screen's Recent Files list. */
+export async function pathExists(path: string): Promise<boolean> {
+  return requireBridge().pathExists(path);
+}
+
+/** Resolves a bundled sample's filename (e.g. "foreman_av1.ivf") to its real absolute path.
+ *  Used by the welcome screen's "Samples" quick-open list. */
+export async function getSamplePath(filename: string): Promise<string> {
+  return requireBridge().getSamplePath(filename);
+}
+
 /** Quits the whole app (not just the current window) -- the "Quit" menu item / TitleBar button's
  *  intent, matches cross-platform app.quit() semantics in the main process. */
 export async function closeWindow(): Promise<void> {

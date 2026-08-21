@@ -6,9 +6,11 @@
  */
 
 import { BrowserWindow, ipcMain, dialog } from "electron";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { requestQuit } from "../quitGuard.js";
 
-export function registerWindowLifecycleIpcHandlers(): void {
+export function registerWindowLifecycleIpcHandlers(samplesDir: string): void {
   ipcMain.handle(
     "bitvue:showOpenDialog",
     async (event, filters?: Array<{ name: string; extensions: string[] }>) => {
@@ -32,6 +34,20 @@ export function registerWindowLifecycleIpcHandlers(): void {
       return result.filePaths[0];
     },
   );
+
+  // Welcome screen's Recent Files list -- prunes entries whose file no longer exists (deleted,
+  // moved, or a cleaned-up temp/worktree path). Plain fs check, no dialog/sidecar involved.
+  ipcMain.handle("bitvue:pathExists", (_event, path: string) => {
+    return existsSync(path);
+  });
+
+  // Welcome screen's "Samples" quick-open list (frontend/components/welcome/sampleCatalog.ts) --
+  // resolves a bundled sample's filename to its real absolute path. Doesn't check existence
+  // itself (see samplesDir's doc in main.ts); the renderer already has bitvue:pathExists for
+  // that, matching the Recent Files split of concerns.
+  ipcMain.handle("bitvue:getSamplePath", (_event, filename: string) => {
+    return path.join(samplesDir, filename);
+  });
 
   // Quit menu item / TitleBar's Quit button / TitleBar's in-window close (X) button. Routed
   // through requestQuit() (TAURI_WEB-006) instead of calling app.quit() directly -- see its doc

@@ -142,6 +142,8 @@ declare global {
         filters?: OpenFileDialogFilter[],
       ) => Promise<string | null>;
       showDirectoryDialog: () => Promise<string | null>;
+      pathExists: (path: string) => Promise<boolean>;
+      getSamplePath: (filename: string) => Promise<string>;
       closeWindow: () => Promise<void>;
       minimizeWindow: () => Promise<void>;
       toggleMaximizeWindow: () => Promise<void>;
