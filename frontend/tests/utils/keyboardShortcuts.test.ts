@@ -44,6 +44,25 @@ describe("KEYBOARD_SHORTCUTS", () => {
     );
     expect(modes?.shortcuts).toHaveLength(10);
   });
+
+  // Regression test for a real bug found via screenshot verification (2026-08-20): several
+  // entries (Go to frame, Open/Close/Reload/Export/Save file, Undo/Copy, I-frame jump, Reset
+  // zoom, Toggle frame sizes) set both `ctrl: true` and `meta: true` together -- the intent was
+  // "Ctrl on Windows/Linux, Cmd on Mac" (a single modifier, picked per-platform), but as written
+  // it required both held simultaneously to match the real registration in
+  // useKeyboardNavigation.ts, and made getShortcutDisplay render a doubled "⌘⌘g" badge in the
+  // Keyboard Shortcuts dialog on Mac (confirmed via a real Electron screenshot). No entry should
+  // have both flags set -- each platform's shortcut uses exactly one of ctrl/meta.
+  it("never requires both ctrl and meta held together", () => {
+    for (const category of KEYBOARD_SHORTCUTS) {
+      for (const shortcut of category.shortcuts) {
+        expect(
+          !!(shortcut.ctrl && shortcut.meta),
+          `${category.name} > ${shortcut.description} requires both ctrl and meta`,
+        ).toBe(false);
+      }
+    }
+  });
 });
 
 describe("matchesShortcut", () => {

@@ -8,6 +8,7 @@
 import { useEffect, useRef } from "react";
 import {
   globalShortcutHandler,
+  isMac,
   type ShortcutConfig,
 } from "../utils/keyboardShortcuts";
 
@@ -162,15 +163,19 @@ export function useKeyboardNavigation({
     // Ctrl+← / Ctrl+→  — jump to previous/next I-frame
     reg({
       key: "ArrowLeft",
-      ctrl: true,
-      meta: true,
+      // Cross-platform single modifier -- not both at once (`ctrl: true, meta: true` together
+      // requires literally holding Ctrl AND Cmd/Meta simultaneously, an unreachable chord no user
+      // would press; confirmed via a real screenshot that plain ctrl+g left "Go to Frame" dead
+      // while ctrl+meta+g opened it). isMac() picks the one modifier each platform actually uses.
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Previous I-frame",
       action: () => cbRef.current.onPreviousKeyFrame?.(),
     });
     reg({
       key: "ArrowRight",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Next I-frame",
       action: () => cbRef.current.onNextKeyFrame?.(),
     });
@@ -190,29 +195,29 @@ export function useKeyboardNavigation({
     // ── File operations ───────────────────────────────────────────────────
     reg({
       key: "o",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Open file",
       action: () => cbRef.current.onOpenFile?.(),
     });
     reg({
       key: "w",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Close file",
       action: () => cbRef.current.onCloseFile?.(),
     });
     reg({
       key: "e",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Export",
       action: () => cbRef.current.onShowExport?.(),
     });
     reg({
       key: "s",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Save frame PNG",
       action: () => cbRef.current.onSaveFrame?.(),
     });
@@ -220,15 +225,15 @@ export function useKeyboardNavigation({
     // ── Go to frame ───────────────────────────────────────────────────────
     reg({
       key: "g",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Go to frame",
       action: () => cbRef.current.onGoToFrame?.(),
     });
     reg({
       key: "f",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Go to frame",
       action: () => cbRef.current.onGoToFrame?.(),
     });
@@ -243,8 +248,8 @@ export function useKeyboardNavigation({
     // ── File reload ───────────────────────────────────────────────────────
     reg({
       key: "r",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Reload file",
       action: () => cbRef.current.onReloadFile?.(),
     });
@@ -269,15 +274,15 @@ export function useKeyboardNavigation({
     // ── Selection ─────────────────────────────────────────────────────────
     reg({
       key: "z",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Undo selection",
       action: () => cbRef.current.onUndoSelection?.(),
     });
     reg({
       key: "c",
-      ctrl: true,
-      meta: true,
+      ctrl: !isMac(),
+      meta: isMac(),
       description: "Copy block info",
       action: () => cbRef.current.onCopyBlockInfo?.(),
     });
