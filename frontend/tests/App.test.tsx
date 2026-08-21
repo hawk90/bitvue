@@ -122,11 +122,15 @@ vi.mock("@/components/ErrorBoundary", () => ({
   ),
 }));
 
-vi.mock("@/components/WelcomeScreen", () => ({
-  WelcomeScreen: ({ onOpenFile, loading, error }: any) => (
+// App.tsx renders <WelcomeContainer>, which owns Welcome-specific derived state (recent-file
+// validation, open-in-flight guarding via useWelcomeActions) -- App.test.tsx's job is verifying
+// App.tsx wires the *raw* pieces (onOpenFile/openFileAtPath/error/onShowShortcuts/recentFiles/
+// removeRecentFile) into it correctly, not re-testing that derived state itself (see
+// useWelcomeActions.test.ts / useValidatedRecentFiles.test.ts / WelcomeScreen.test.tsx for that).
+vi.mock("@/components/WelcomeContainer", () => ({
+  WelcomeContainer: ({ onOpenFile, error }: any) => (
     <div className="welcome-screen" data-testid="welcome-screen">
       <button onClick={onOpenFile}>Open File</button>
-      {loading && <span>Loading...</span>}
       {error && <span>Error: {error}</span>}
     </div>
   ),
@@ -266,6 +270,7 @@ vi.mock("@/components/panels", () => ({
 
 vi.mock("@/utils/platform", () => ({
   shouldShowTitleBar: vi.fn(() => false),
+  isMacOS: vi.fn(() => false),
 }));
 
 vi.mock("@/utils/keyboardShortcuts", () => ({
@@ -273,6 +278,7 @@ vi.mock("@/utils/keyboardShortcuts", () => ({
     register: vi.fn(() => vi.fn()),
     handle: vi.fn(),
   },
+  isMac: vi.fn(() => false),
 }));
 
 vi.mock("@/utils/logger", () => ({
@@ -486,36 +492,12 @@ describe("AppContent - welcome screen state", () => {
     expect(screen.queryByTestId("dockable-layout")).not.toBeInTheDocument();
   });
 
-  it("should display loading state in welcome screen", () => {
-    vi.mocked(useStreamData).mockReturnValue({
-      frames: [],
-      filePath: null,
-      currentFrameIndex: 0,
-      loading: true,
-      error: null,
-      setCurrentFrameIndex: vi.fn(),
-      refreshFrames: vi.fn(),
-      clearData: vi.fn(),
-      getFrameStats: vi.fn(),
-      setFilePath: vi.fn(),
-      setFrames: vi.fn(),
-    });
-    vi.mocked(useFileState).mockReturnValue({
-      filePath: null,
-      loading: true,
-      error: null,
-      setFilePath: vi.fn(),
-      refreshFrames: vi.fn().mockResolvedValue([]),
-      loadMoreFrames: vi.fn().mockResolvedValue([]),
-      hasMoreFrames: false,
-      totalFrames: 0,
-      clearData: vi.fn(),
-    } as any);
-
-    render(<App />);
-
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
-  });
+  // "loading" no longer flows from useFileState() into the welcome screen at all -- WelcomeContainer
+  // computes its own "is an open in flight" state (useWelcomeActions' isOpening) spanning the
+  // whole open operation, not just FileStateContext's frame-loading sub-step. That's covered by
+  // useWelcomeActions.test.ts directly; there's nothing left for App.tsx-level mocking to exercise
+  // here (a real click-through test would mean not mocking WelcomeContainer, a much bigger and
+  // separately-scoped integration test).
 
   it("should display error state in welcome screen", () => {
     const errorMessage = "Failed to load file";

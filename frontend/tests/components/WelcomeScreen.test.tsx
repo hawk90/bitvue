@@ -1,162 +1,194 @@
 /**
  * WelcomeScreen Component Tests
+ *
+ * WelcomeScreen is pure presentation now (see its own module doc) -- these tests only exercise
+ * render + callback wiring. Recent-file validation/pruning lives in
+ * useValidatedRecentFiles.test.ts; open-in-flight guarding lives in useWelcomeActions.test.ts.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@/test/test-utils";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 
+function renderWelcome(
+  overrides: Partial<Parameters<typeof WelcomeScreen>[0]> = {},
+) {
+  return render(
+    <WelcomeScreen
+      onOpenFile={vi.fn()}
+      loading={false}
+      error={null}
+      onShowShortcuts={vi.fn()}
+      recentFiles={[]}
+      onOpenRecent={vi.fn()}
+      sampleResolvedPaths={{}}
+      onOpenSample={vi.fn()}
+      {...overrides}
+    />,
+  );
+}
+
 describe("WelcomeScreen", () => {
-  const mockOnOpenFile = vi.fn();
+  let mockOnOpenFile: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    mockOnOpenFile.mockClear();
+    mockOnOpenFile = vi.fn();
   });
 
-  it("should render welcome content", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
-    );
-
+  it("renders the header", () => {
+    renderWelcome();
     expect(screen.getByText("Bitvue")).toBeInTheDocument();
     expect(screen.getByText("Video Bitstream Analyzer")).toBeInTheDocument();
-    expect(screen.getByText("Feature Complete")).toBeInTheDocument();
   });
 
-  it("should render open button", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
-    );
-
-    const button = screen.getByRole("button", { name: /open bitstream file/i });
+  it("renders the Open Bitstream File action with its shortcut badge", () => {
+    renderWelcome({ onOpenFile: mockOnOpenFile });
+    const button = screen.getByRole("button", {
+      name: /open bitstream file/i,
+    });
     expect(button).toBeInTheDocument();
+    expect(button.querySelectorAll("kbd").length).toBeGreaterThan(0);
   });
 
-  it("should call onOpenFile when button clicked", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
+  it("calls onOpenFile when the Open row is clicked", () => {
+    renderWelcome({ onOpenFile: mockOnOpenFile });
+    fireEvent.click(
+      screen.getByRole("button", { name: /open bitstream file/i }),
     );
-
-    const button = screen.getByRole("button", { name: /open bitstream file/i });
-    fireEvent.click(button);
-
     expect(mockOnOpenFile).toHaveBeenCalledTimes(1);
   });
 
-  it("should show loading state", () => {
-    render(
-      <WelcomeScreen onOpenFile={mockOnOpenFile} loading={true} error={null} />,
-    );
-
-    expect(screen.getByText("Opening...")).toBeInTheDocument();
+  it("shows the Opening state and hides the shortcut badge while loading", () => {
+    renderWelcome({ loading: true });
     const button = screen.getByRole("button", { name: /opening/i });
     expect(button).toBeDisabled();
+    expect(button.querySelectorAll("kbd").length).toBe(0);
   });
 
-  it("should show error state", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error="Failed to open file"
-      />,
-    );
-
-    expect(screen.getByText("Failed to open file")).toBeInTheDocument();
+  it("shows the error message with role=alert", () => {
+    renderWelcome({ error: "Failed to open file" });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Failed to open file");
   });
 
-  it("should render feature cards", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
+  it("renders Keyboard Shortcuts and calls onShowShortcuts when clicked", () => {
+    const onShowShortcuts = vi.fn();
+    renderWelcome({ onShowShortcuts });
+    fireEvent.click(
+      screen.getByRole("button", { name: /keyboard shortcuts/i }),
     );
-
-    expect(screen.getByText("Multi-Codec Support")).toBeInTheDocument();
-    expect(screen.getByText("Visualization Modes")).toBeInTheDocument();
-    expect(screen.getByText("Frame Analysis")).toBeInTheDocument();
-    expect(screen.getByText("Reference Tracking")).toBeInTheDocument();
+    expect(onShowShortcuts).toHaveBeenCalledTimes(1);
   });
 
-  it("should render supported codecs", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
-    );
-
-    expect(screen.getByText("VVC")).toBeInTheDocument();
-    expect(screen.getByText("HEVC")).toBeInTheDocument();
-    expect(screen.getByText("AV1")).toBeInTheDocument();
-    expect(screen.getByText("VP9")).toBeInTheDocument();
-    expect(screen.getByText("AVC")).toBeInTheDocument();
-    expect(screen.getByText("MPEG-2")).toBeInTheDocument();
+  it("does not render a Recent section when there are no recent files", () => {
+    renderWelcome({ recentFiles: [] });
+    expect(screen.queryByText("Recent")).not.toBeInTheDocument();
   });
 
-  it("should render keyboard shortcut hint", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
-    );
-
-    // Check for shortcuts container
-    const shortcutsContainer = document.querySelector(".welcome-shortcuts");
-    expect(shortcutsContainer).toBeInTheDocument();
-
-    // Check for kbd elements within shortcuts
-    const kbds = shortcutsContainer?.querySelectorAll("kbd");
-    expect(kbds).toBeDefined();
-    expect(kbds?.length).toBeGreaterThan(0);
+  it("renders recent files with name and directory split out", () => {
+    // Deliberately not foreman_av1.ivf -- that name also appears in the Samples section (see
+    // sampleCatalog.ts), which would make the getByText queries below ambiguous.
+    renderWelcome({
+      recentFiles: ["/Users/hawk/Workspaces/projects/my_capture.ivf"],
+    });
+    expect(screen.getByText("Recent")).toBeInTheDocument();
+    expect(screen.getByText("my_capture.ivf")).toBeInTheDocument();
+    expect(
+      screen.getByText("/Users/hawk/Workspaces/projects"),
+    ).toBeInTheDocument();
   });
 
-  it("should render footer links", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
-    );
+  it("calls onOpenRecent with the full path when a recent file is clicked", () => {
+    const onOpenRecent = vi.fn();
+    renderWelcome({ recentFiles: ["/a/b/clip.ivf"], onOpenRecent });
+    fireEvent.click(screen.getByText("clip.ivf"));
+    expect(onOpenRecent).toHaveBeenCalledWith("/a/b/clip.ivf");
+  });
 
+  it("calls onRemoveRecent (not onOpenRecent) when a recent file's remove button is clicked", () => {
+    const onOpenRecent = vi.fn();
+    const onRemoveRecent = vi.fn();
+    renderWelcome({
+      recentFiles: ["/a/b/clip.ivf"],
+      onOpenRecent,
+      onRemoveRecent,
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /remove clip.ivf from recent/i }),
+    );
+    expect(onRemoveRecent).toHaveBeenCalledWith("/a/b/clip.ivf");
+    expect(onOpenRecent).not.toHaveBeenCalled();
+  });
+
+  it("does not render a remove button when onRemoveRecent is absent", () => {
+    renderWelcome({
+      recentFiles: ["/a/b/clip.ivf"],
+      onRemoveRecent: undefined,
+    });
+    expect(
+      screen.queryByRole("button", { name: /remove/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("disables the recent-file open and remove buttons while loading", () => {
+    renderWelcome({
+      recentFiles: ["/a/b/clip.ivf"],
+      onRemoveRecent: vi.fn(),
+      loading: true,
+    });
+    expect(screen.getByText("clip.ivf").closest("button")).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /remove clip.ivf from recent/i }),
+    ).toBeDisabled();
+  });
+
+  it("renders the GitHub footer link", () => {
+    renderWelcome();
     expect(screen.getByText("GitHub")).toBeInTheDocument();
-    expect(screen.getByText("Shortcuts")).toBeInTheDocument();
   });
 
-  it("should trigger keyboard shortcuts event", () => {
-    render(
-      <WelcomeScreen
-        onOpenFile={mockOnOpenFile}
-        loading={false}
-        error={null}
-      />,
-    );
+  describe("Samples", () => {
+    it("renders the section with the AV1 group expanded by default", () => {
+      const onOpenSample = vi.fn();
+      renderWelcome({
+        sampleResolvedPaths: { "foreman_av1.ivf": "/samples/foreman_av1.ivf" },
+        onOpenSample,
+      });
 
-    const shortcutsLink = screen.getByText("Shortcuts").closest("a");
-    expect(shortcutsLink).toBeInTheDocument();
+      expect(screen.getByText("Samples")).toBeInTheDocument();
+      const av1Row = screen.getByRole("button", {
+        name: /ivf.*foreman_av1\.ivf/i,
+      });
+      expect(av1Row).not.toBeDisabled();
 
-    // Simulate click
-    fireEvent.click(shortcutsLink!);
+      fireEvent.click(av1Row);
+      expect(onOpenSample).toHaveBeenCalledWith("/samples/foreman_av1.ivf");
+    });
 
-    // Should dispatch event (this would need actual event listener verification)
-    expect(shortcutsLink).toBeInTheDocument();
+    it("disables the AV1/IVF row until its path has resolved", () => {
+      renderWelcome({ sampleResolvedPaths: {} });
+      const av1Row = screen.getByRole("button", {
+        name: /ivf.*foreman_av1\.ivf/i,
+      });
+      expect(av1Row).toBeDisabled();
+    });
+
+    it("collapses other codec groups by default, expanding on click", () => {
+      renderWelcome({
+        sampleResolvedPaths: { "foreman_av1.ivf": "/samples/foreman_av1.ivf" },
+      });
+
+      expect(
+        screen.queryByRole("button", { name: /foreman_hevc\.mp4/i }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /^hevc/i }));
+
+      const hevcMp4Row = screen.getByRole("button", {
+        name: /mp4.*foreman_hevc\.mp4.*coming soon/i,
+      });
+      expect(hevcMp4Row).toBeInTheDocument();
+      expect(hevcMp4Row).toBeDisabled();
+    });
   });
 });

@@ -70,6 +70,27 @@ describe("useRecentFiles", () => {
     expect(result.current.recentFiles).toHaveLength(0);
   });
 
+  it("treats the same path with different separators as one entry (dedup)", () => {
+    const { result } = renderHook(() => useRecentFiles());
+    act(() => {
+      result.current.addRecentFile("C:/Users/hawk/clip.ivf");
+      result.current.addRecentFile("C:\\Users\\hawk\\clip.ivf"); // same file, backslashes
+    });
+    expect(result.current.recentFiles).toHaveLength(1);
+    // Moved-to-front semantics: the most recently added spelling wins, matching the existing
+    // "re-add moves to front" behavior above.
+    expect(result.current.recentFiles[0]).toBe("C:\\Users\\hawk\\clip.ivf");
+  });
+
+  it("removes a path regardless of which separator style is used to remove it", () => {
+    const { result } = renderHook(() => useRecentFiles());
+    act(() => {
+      result.current.addRecentFile("C:/Users/hawk/clip.ivf");
+      result.current.removeRecentFile("C:\\Users\\hawk\\clip.ivf");
+    });
+    expect(result.current.recentFiles).toHaveLength(0);
+  });
+
   it("persists to and loads from localStorage", () => {
     const { result: r1 } = renderHook(() => useRecentFiles());
     act(() => {

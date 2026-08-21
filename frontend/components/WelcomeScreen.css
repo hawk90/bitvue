@@ -1,159 +1,138 @@
 /**
- * WelcomeScreen Styles - Beautiful Modern Design
- * Uses unified component styles from theme/components.css
+ * WelcomeScreen Styles
+ *
+ * VS Code's own Start page is a plain, left-aligned, top-anchored page (no centered card, no
+ * background panel) -- content flows from the top and scrolls vertically if it doesn't fit,
+ * rather than fighting a fixed viewport height. The whole column is horizontally centered in the
+ * window (not pinned to the left edge), but rows stay left-aligned *within* that column.
+ *
+ * `.welcome-row`/`.welcome-row-icon`/`.welcome-row-label`/`.welcome-row-shortcut` are the shared
+ * row shape used by both Start actions (WelcomeActionRow) and Recent items
+ * (WelcomeRecentItem's open link) -- icon, label, right-aligned keycap/shortcut. No filled button
+ * chrome anywhere (see 66efea8 -- VS Code buttons never use gradient/glow chrome).
  */
 
 .welcome-screen {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: var(--bg-app);
-  overflow: hidden;
+  overflow-y: auto;
+  padding: 64px 56px 40px;
 }
 
 .welcome-content {
-  position: relative;
-  z-index: 1;
-  max-width: 800px;
-  width: 90%;
-  padding: 60px 50px;
-  background: rgb(20 20 20 / 85%);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 16px;
-  box-shadow:
-    0 12px 40px rgb(0 0 0 / 40%),
-    0 0 0 1px rgb(0 0 0 / 20%);
+  max-width: 560px;
+  margin: 0 auto;
 }
 
 /* Header */
 .welcome-header {
-  text-align: center;
-  margin-bottom: 40px;
-}
-
-.welcome-logo {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 20px;
-}
-
-.welcome-logo svg {
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(0 4px 12px rgb(117 190 255 / 30%));
-}
-
-.welcome-title {
-  font-size: 40px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 8px;
-  letter-spacing: -0.5px;
-}
-
-.welcome-subtitle {
-  font-size: 15px;
-  color: var(--text-secondary);
-  margin: 0 0 12px;
-  font-weight: 500;
-}
-
-.welcome-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  background: rgb(117 190 255 / 15%);
-  border: 1px solid rgb(117 190 255 / 30%);
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #75beff;
-  letter-spacing: 0.5px;
-}
-
-/* Actions */
-.welcome-actions {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 16px;
   margin-bottom: 40px;
 }
 
-/* Welcome open button - matches unified button-primary styles */
-.welcome-open-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 14px 32px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  line-height: 1.4;
-  color: #fff;
-  background: linear-gradient(135deg, #007acc 0%, #4a9eff 100%);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgb(0 122 204 / 30%);
-  min-height: 40px;
+.welcome-logo {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
 }
 
-.welcome-open-btn::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 20%);
-  transform: translate(-50%, -50%);
-  transition:
-    width 0.4s ease,
-    height 0.4s ease;
-  pointer-events: none;
-}
-
-.welcome-open-btn:active::before {
-  width: 60px;
-  height: 60px;
-}
-
-.welcome-open-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgb(0 122 204 / 40%);
-}
-
-.welcome-open-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.welcome-open-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.btn-icon {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon svg {
+.welcome-logo svg {
   width: 100%;
   height: 100%;
 }
 
-.spinner {
+.welcome-header-text {
+  min-width: 0;
+}
+
+.welcome-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.welcome-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+}
+
+/* Sections (Start / Recent) -- headers are sized above the row content they introduce, not
+   below it as a small muted "eyebrow" label. */
+.welcome-section {
+  margin-bottom: 32px;
+}
+
+.welcome-section-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.welcome-action-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Shared row shape: icon, label, shortcut badge. No highlight box on hover -- with nothing to
+   underline either, the blue label color + pointer cursor are the only (and sufficient) "this is
+   clickable" affordance. */
+.welcome-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-link);
+  text-align: left;
+  cursor: pointer;
+}
+
+.welcome-row:hover:not(:disabled) {
+  color: var(--text-link-hover);
+}
+
+.welcome-row:hover:not(:disabled) .welcome-row-icon {
+  color: var(--text-link-hover);
+}
+
+.welcome-row:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.welcome-row:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.welcome-row-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-link);
+}
+
+.welcome-row-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.welcome-row-icon.spinner {
   animation: spin 1s linear infinite;
 }
 
@@ -161,21 +140,26 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
 }
 
-.welcome-shortcuts {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-tertiary);
+.welcome-row-label {
+  flex: 1;
+  white-space: nowrap;
 }
 
-.welcome-shortcuts kbd {
-  padding: 4px 8px;
+.welcome-row-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.welcome-row-shortcut kbd {
+  padding: 2px 6px;
   background: var(--bg-button);
   border: 1px solid var(--border-light);
   border-radius: 4px;
@@ -189,132 +173,192 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
+  margin-top: 12px;
+  padding: 10px 14px;
   background: rgb(241 76 76 / 15%);
   border: 1px solid rgb(241 76 76 / 30%);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 13px;
   color: #ff6b6b;
 }
 
-/* Feature cards */
-.welcome-features {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-bottom: 32px;
+/* Recent files list -- .welcome-recent-link reuses .welcome-row (see WelcomeRecentItem.tsx),
+   these are just the Recent-specific extras layered on top of it. */
+.welcome-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.feature-card {
+.welcome-recent-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  background: rgb(255 255 255 / 3%);
-  border: 1px solid rgb(255 255 255 / 6%);
-  border-radius: 10px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Fixed, deliberate distance between the link and its remove (X) button -- independent of how
+     much of .welcome-recent-link's own flex:1 width the visible text actually fills. */
+  gap: 12px;
 }
 
-.feature-card:hover {
-  background: rgb(255 255 255 / 6%);
-  border-color: rgb(255 255 255 / 10%);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+.welcome-recent-link {
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  /* theme/buttons.css's global `button {}` reset sets `justify-content: center` -- .welcome-row
+     never declares the property so that leaked through unopposed (cascade is per-property, not
+     per-rule) -- explicit override needed. */
+  justify-content: flex-start;
 }
 
-.feature-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
+/* Shared "primary label / secondary detail" text pair -- used by Recent items (filename / dir)
+   and Sample items (codec+container / filename). */
+.welcome-row-name {
+  color: var(--text-link);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.welcome-row:hover:not(:disabled) .welcome-row-name {
+  color: var(--text-link-hover);
+}
+
+.welcome-row-secondary {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.welcome-recent-remove {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  background: rgb(117 190 255 / 15%);
-  border: 1px solid rgb(117 190 255 / 25%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-bright);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  opacity: 0;
 }
 
-.feature-icon .codicon {
-  font-size: 20px;
-  color: #75beff;
+.welcome-recent-item:hover .welcome-recent-remove,
+.welcome-recent-remove:focus-visible {
+  opacity: 1;
 }
 
-.feature-text {
-  flex: 1;
-  min-width: 0;
+/* The row itself has no hover highlight (see .welcome-row above) -- only the remove button gets
+   one, and only when it's the thing actually being hovered/focused. */
+.welcome-recent-remove:hover,
+.welcome-recent-remove:focus-visible {
+  background: var(--bg-button-hover);
 }
 
-.feature-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 2px;
+.welcome-recent-remove:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
-.feature-desc {
-  font-size: 11px;
-  color: var(--text-tertiary);
+.welcome-recent-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-/* Formats */
-.welcome-formats {
-  margin-bottom: 24px;
+/* Sample bitstreams -- grouped by codec, collapsed by default except AV1 (the only one with a
+   real end-to-end path today, see sampleCatalog.ts). Collapsing keeps the page from defaulting
+   to an 18-row wall for 17 rows that all just say "Coming soon" anyway. */
+.welcome-sample-group {
+  margin-bottom: 4px;
 }
 
-.formats-title {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 12px;
-}
-
-.formats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.format-item {
+.welcome-sample-group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  background: rgb(255 255 255 / 2%);
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.format-item:hover {
-  background: rgb(255 255 255 / 5%);
-}
-
-.format-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--format-color);
-  flex-shrink: 0;
-  box-shadow: 0 0 8px var(--format-color);
-}
-
-.format-codec {
-  font-size: 11px;
+  width: 100%;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.welcome-sample-group-header:hover {
   color: var(--text-primary);
+}
+
+.welcome-sample-group-header:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.welcome-sample-group-chevron {
+  font-size: 12px;
   flex-shrink: 0;
+  transition: transform 0.1s ease;
 }
 
-.format-extensions {
-  font-size: 10px;
-  color: var(--text-muted);
+.welcome-sample-group-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.welcome-sample-group-count {
   margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
-/* Footer */
+/* .welcome-sample-link reuses .welcome-row/.welcome-row-name/.welcome-row-secondary the same
+   way Recent items do. Most rows are `disabled` (not yet supported by the analysis backend) --
+   .welcome-row:disabled already dims them, this just adds the "Coming soon" badge. */
+.welcome-sample-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px 22px;
+}
+
+.welcome-sample-item {
+  display: flex;
+}
+
+.welcome-sample-link {
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: flex-start;
+}
+
+.welcome-sample-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px 7px;
+  background: var(--bg-button);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+/* Footer -- flows normally after Samples now. Used to be pinned to the bottom of the viewport
+   (position: absolute) so its position stayed stable regardless of Recent's length, but once
+   Samples made the page long enough to genuinely need scrolling, an absolutely-positioned footer
+   permanently overlaps whatever content is scrolled to that same screen position -- looks broken
+   (confirmed via a real screenshot: "GitHub" rendering on top of a mid-list Samples row). A
+   normal footer at the true end of a long, scrollable page is the standard pattern here, not a
+   fixed corner icon (that analogy only held while the page was short). */
 .welcome-footer {
+  margin-top: 8px;
   padding-top: 20px;
   border-top: 1px solid rgb(255 255 255 / 6%);
 }
@@ -322,7 +366,6 @@
 .footer-links {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 14px;
   font-size: 12px;
   color: var(--text-muted);
@@ -334,7 +377,6 @@
   gap: 6px;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: color 0.2s ease;
 }
 
 .footer-links a:hover {
@@ -343,29 +385,4 @@
 
 .footer-divider {
   color: var(--border-lighter);
-}
-
-/* Responsive */
-@media (width <= 600px) {
-  .welcome-content {
-    padding: 40px 24px;
-  }
-
-  .welcome-title {
-    font-size: 32px;
-  }
-
-  .welcome-features {
-    grid-template-columns: 1fr;
-  }
-
-  .formats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (width <= 480px) {
-  .formats-grid {
-    grid-template-columns: 1fr;
-  }
 }

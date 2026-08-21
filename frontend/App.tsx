@@ -3,7 +3,7 @@ import { closeWindow } from "./services/electronBridgeService";
 import { useOpenFileStatus } from "./hooks/useOpenFileStatus";
 import "./App.css";
 import "./components/TimelineFilmstrip.css";
-import { WelcomeScreen } from "./components/WelcomeScreen";
+import { WelcomeContainer } from "./components/WelcomeContainer";
 import { TitleBar } from "./components/TitleBar";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -24,7 +24,7 @@ import { YuvDiffProvider, useYuvDiff } from "./contexts/YuvDiffContext";
 import { SyntaxHexLinkProvider } from "./contexts/SyntaxHexLinkContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { useLayout } from "./contexts/LayoutContext";
-import { shouldShowTitleBar } from "./utils/platform";
+import { isMacOS, shouldShowTitleBar } from "./utils/platform";
 import type { ThemeChangeEvent } from "./types/video";
 import { isKeyframe } from "./types/video";
 import {
@@ -318,7 +318,7 @@ const LEFT_PANELS = [
  */
 function AppContent() {
   const { frames } = useFrameData();
-  const { loading, error, filePath } = useFileState();
+  const { error, filePath } = useFileState();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
   const { workspace: compareWorkspace } = useCompare();
 
@@ -328,11 +328,9 @@ function AppContent() {
   // Layout context for save/load/reset
   const { saveLayout, loadLayout, resetLayout } = useLayout();
 
-  // Recent files
-  // recentFiles itself isn't consumed here -- nothing currently syncs it to a native "Recent
-  // Files" menu or any UI; pre-existing gap, not something this typecheck-restoration pass
-  // implements. addRecentFile is called below whenever a file opens successfully.
-  const { addRecentFile } = useRecentFiles();
+  // Recent files -- addRecentFile is called below whenever a file opens successfully;
+  // recentFiles/removeRecentFile feed the welcome screen's Recent Files list.
+  const { recentFiles, addRecentFile, removeRecentFile } = useRecentFiles();
 
   // Get error dialog first
   const {
@@ -523,10 +521,13 @@ function AppContent() {
 
   // Welcome screen
   const welcomeScreen = (
-    <WelcomeScreen
+    <WelcomeContainer
       onOpenFile={handleOpenFile}
-      loading={loading}
+      openFileAtPath={openFileAtPath}
       error={openError || error}
+      onShowShortcuts={onShowShortcuts}
+      recentFiles={recentFiles}
+      removeRecentFile={removeRecentFile}
     />
   );
 
@@ -579,6 +580,14 @@ function AppContent() {
       <FrameSyncBridge />
       <ErrorBoundary>
         <div className="app">
+          {/* macOS: no custom TitleBar (native menu + native traffic-light window controls are
+              used instead, see shouldShowTitleBar's doc) -- this is just a bare drag region behind
+              the traffic lights, colored to match the status bar instead of Electron's unstyled
+              default (white) title bar. `main.ts`'s `titleBarStyle: "hiddenInset"` is what makes
+              the traffic lights float over this instead of drawing their own separate white bar. */}
+          {isMacOS() && !shouldShowTitleBar() && (
+            <div className="mac-titlebar-spacer" />
+          )}
           {/* Custom TitleBar for Windows/Linux only */}
           {shouldShowTitleBar() && (
             <TitleBar
