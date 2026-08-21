@@ -75,8 +75,20 @@ pub fn event_to_json(event: &Event) -> serde_json::Value {
         Event::ModelUpdated { kind, stream } => {
             serde_json::json!({"type": "ModelUpdated", "kind": format!("{kind:?}"), "stream": format!("{stream:?}")})
         }
-        Event::SelectionUpdated { stream } => {
-            serde_json::json!({"type": "SelectionUpdated", "stream": format!("{stream:?}")})
+        Event::SelectionUpdated {
+            stream,
+            syntax_node,
+            bit_range,
+        } => {
+            serde_json::json!({
+                "type": "SelectionUpdated",
+                "stream": format!("{stream:?}"),
+                "syntax_node": syntax_node,
+                "bit_range": bit_range.map(|r| serde_json::json!({
+                    "start_bit": r.start_bit,
+                    "end_bit": r.end_bit,
+                })),
+            })
         }
         Event::FrameDecoded {
             stream,

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act, render } from "@testing-library/react";
+import { renderHook, act, render, waitFor } from "@testing-library/react";
 import {
   SelectionProvider,
   useSelection,
@@ -18,6 +18,16 @@ import type {
   SyntaxNodeId,
   BitRange,
 } from "@/contexts/SelectionContext";
+import { selectBitRange } from "@/services/electronBridgeService";
+
+// setBitRangeSelection calls the real select_bit_range bridge round trip (see
+// SelectionContext.tsx's doc) -- mocked here so tests control what it resolves to instead of
+// hitting the real (absent in jsdom) window.bitvue. Tests that don't care about the resolved
+// syntax_node just let it reject (the default unmocked behavior would too, via requireBridge()),
+// which setBitRangeSelection already catches and logs, not a test failure.
+vi.mock("@/services/electronBridgeService", () => ({
+  selectBitRange: vi.fn().mockRejectedValue(new Error("no bridge in tests")),
+}));
 
 describe("SelectionContext", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -274,72 +284,51 @@ describe("SelectionContext syntax node selection", () => {
     <SelectionProvider>{children}</SelectionProvider>
   );
 
-  it("should set syntax node selection", () => {
+  // SyntaxNodeId is a flat string matching the backend's bitvue_engine::SyntaxNodeId exactly
+  // (e.g. "obu_header.obu_type") -- see types/selection.ts's doc for why this used to be a
+  // {path, fieldType, offset} struct that never matched the real wire shape.
+  it("should set syntax node selection with its bitRange atomically", () => {
     const { result } = renderHook(() => useSelection(), { wrapper });
 
-    const node: SyntaxNodeId = {
-      path: ["root", "sequence_header", "profile_tier_level"],
-      fieldType: "u8",
-    };
+    const node: SyntaxNodeId = "root.sequence_header.profile_tier_level";
+    const bitRange: BitRange = { startBit: 1000, endBit: 1008 };
 
     act(() => {
-      result.current.setSyntaxSelection(node, "syntax");
+      result.current.setSyntaxSelection(node, bitRange, "syntax");
     });
 
     expect(result.current.selection?.syntaxNode).toEqual(node);
+    expect(result.current.selection?.bitRange).toEqual(bitRange);
   });
 
-  it("should auto-create bitRange from syntax node with offset (tri-sync rule 3)", () => {
+  it("should handle an empty-string node id", () => {
     const { result } = renderHook(() => useSelection(), { wrapper });
 
-    const node: SyntaxNodeId = {
-      path: ["root", "frame_header"],
-      fieldType: "u4",
-      offset: 1000,
-    };
-
     act(() => {
-      result.current.setSyntaxSelection(node, "reference-lists");
+      result.current.setSyntaxSelection(
+        "",
+        { startBit: 0, endBit: 0 },
+        "syntax",
+      );
     });
 
-    expect(result.current.selection?.bitRange).toEqual({
-      startBit: 1000,
-      endBit: 1004,
-    });
+    expect(result.current.selection?.syntaxNode).toBe("");
   });
 
-  it("should use default size for unknown field types", () => {
+  it("should handle a long dotted node id", () => {
     const { result } = renderHook(() => useSelection(), { wrapper });
 
-    const node: SyntaxNodeId = {
-      path: ["root", "unknown_field"],
-      fieldType: "unknown_type",
-      offset: 500,
-    };
+    const deepId = Array.from({ length: 20 }, (_, i) => `level${i}`).join(".");
 
     act(() => {
-      result.current.setSyntaxSelection(node, "syntax");
+      result.current.setSyntaxSelection(
+        deepId,
+        { startBit: 0, endBit: 8 },
+        "syntax",
+      );
     });
 
-    expect(result.current.selection?.bitRange).toEqual({
-      startBit: 500,
-      endBit: 532,
-    });
-  });
-
-  it("should handle syntax node without offset", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    const node: SyntaxNodeId = {
-      path: ["root", "header"],
-    };
-
-    act(() => {
-      result.current.setSyntaxSelection(node, "syntax");
-    });
-
-    expect(result.current.selection?.syntaxNode).toEqual(node);
-    expect(result.current.selection?.bitRange).toBeNull();
+    expect(result.current.selection?.syntaxNode).toBe(deepId);
   });
 });
 
@@ -388,6 +377,61 @@ describe("SelectionContext bitRange selection", () => {
       startBit: 500,
       endBit: 1000,
     });
+  });
+
+  it("sets bitRange immediately, then patches in the resolved syntaxNode once the real select_bit_range round trip resolves", async () => {
+    vi.mocked(selectBitRange).mockResolvedValueOnce([
+      {
+        type: "SelectionUpdated",
+        stream: "A",
+        syntax_node: "obu_header.obu_type",
+        bit_range: { start_bit: 100, end_bit: 108 },
+      },
+    ]);
+    const { result } = renderHook(() => useSelection(), { wrapper });
+
+    act(() => {
+      result.current.setBitRangeSelection(
+        { startBit: 100, endBit: 108 },
+        "hex",
+      );
+    });
+
+    // Immediate/optimistic: bitRange is set synchronously, syntaxNode isn't resolved yet.
+    expect(result.current.selection?.bitRange).toEqual({
+      startBit: 100,
+      endBit: 108,
+    });
+    expect(result.current.selection?.syntaxNode).toBeNull();
+
+    await waitFor(() => {
+      expect(result.current.selection?.syntaxNode).toBe("obu_header.obu_type");
+    });
+    expect(selectBitRange).toHaveBeenCalledWith("A", 100, 108);
+  });
+
+  it("leaves syntaxNode alone when select_bit_range resolves with no match", async () => {
+    vi.mocked(selectBitRange).mockResolvedValueOnce([
+      {
+        type: "SelectionUpdated",
+        stream: "A",
+        syntax_node: null,
+        bit_range: { start_bit: 999999, end_bit: 1000000 },
+      },
+    ]);
+    const { result } = renderHook(() => useSelection(), { wrapper });
+
+    act(() => {
+      result.current.setBitRangeSelection(
+        { startBit: 999999, endBit: 1000000 },
+        "hex",
+      );
+    });
+
+    await waitFor(() => {
+      expect(selectBitRange).toHaveBeenCalled();
+    });
+    expect(result.current.selection?.syntaxNode).toBeNull();
   });
 });
 
@@ -443,16 +487,18 @@ describe("SelectionContext tri-sync rules", () => {
     });
   });
 
-  it("should propagate syntax node with offset to bitRange (rule 3)", () => {
+  it("sets syntaxNode and bitRange together atomically (no longer a separate propagation rule -- see setSyntaxSelection's doc)", () => {
     const { result } = renderHook(() => useSelection(), { wrapper });
 
     act(() => {
       result.current.setSyntaxSelection(
-        { path: ["test"], fieldType: "u8", offset: 200 },
+        "test.field",
+        { startBit: 200, endBit: 208 },
         "syntax",
       );
     });
 
+    expect(result.current.selection?.syntaxNode).toBe("test.field");
     expect(result.current.selection?.bitRange).toEqual({
       startBit: 200,
       endBit: 208,
@@ -709,7 +755,8 @@ describe("SelectionContext complex workflows", () => {
     // User clicks on syntax tree node
     act(() => {
       result.current.setSyntaxSelection(
-        { path: ["root", "frame_header"], fieldType: "u8", offset: 500 },
+        "root.frame_header",
+        { startBit: 500, endBit: 508 },
         "syntax",
       );
     });
@@ -915,115 +962,14 @@ describe("SelectionContext edge cases", () => {
     expect(result.current.selection?.temporal?.frameIndex).toBe(-1);
   });
 
-  it("should handle empty syntax node path", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    act(() => {
-      result.current.setSyntaxSelection({ path: [] }, "syntax");
-    });
-
-    expect(result.current.selection?.syntaxNode).toEqual({ path: [] });
-  });
-
-  it("should handle deeply nested syntax node path", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    const deepPath = Array.from({ length: 20 }, (_, i) => `level${i}`);
-
-    act(() => {
-      result.current.setSyntaxSelection({ path: deepPath }, "syntax");
-    });
-
-    expect(result.current.selection?.syntaxNode?.path).toHaveLength(20);
-  });
+  // Empty-string/long node ids are covered by "SelectionContext syntax node selection" above.
 });
 
-describe("SelectionContext field type size estimation", () => {
-  const wrapper = ({ children }: { children: React.ReactNode }) => {
-    return <SelectionProvider>{children}</SelectionProvider>;
-  };
-
-  it("should estimate correct size for u1 field", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    act(() => {
-      result.current.setSyntaxSelection(
-        { path: ["test"], fieldType: "u1", offset: 100 },
-        "syntax",
-      );
-    });
-
-    expect(result.current.selection?.bitRange).toEqual({
-      startBit: 100,
-      endBit: 101,
-    });
-  });
-
-  it("should estimate correct size for u4 field", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    act(() => {
-      result.current.setSyntaxSelection(
-        { path: ["test"], fieldType: "u4", offset: 200 },
-        "syntax",
-      );
-    });
-
-    expect(result.current.selection?.bitRange).toEqual({
-      startBit: 200,
-      endBit: 204,
-    });
-  });
-
-  it("should estimate correct size for u8 field", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    act(() => {
-      result.current.setSyntaxSelection(
-        { path: ["test"], fieldType: "u8", offset: 300 },
-        "syntax",
-      );
-    });
-
-    expect(result.current.selection?.bitRange).toEqual({
-      startBit: 300,
-      endBit: 308,
-    });
-  });
-
-  it("should handle variable length fields", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    act(() => {
-      result.current.setSyntaxSelection(
-        { path: ["test"], fieldType: "ue(v)", offset: 400 },
-        "syntax",
-      );
-    });
-
-    // Variable length fields should default to 0 or minimal size
-    expect(result.current.selection?.bitRange).toEqual({
-      startBit: 400,
-      endBit: 400,
-    });
-  });
-
-  it("should handle leb128 field type", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    act(() => {
-      result.current.setSyntaxSelection(
-        { path: ["test"], fieldType: "leb128", offset: 500 },
-        "syntax",
-      );
-    });
-
-    expect(result.current.selection?.bitRange).toEqual({
-      startBit: 500,
-      endBit: 500,
-    });
-  });
-});
+// Former "field type size estimation" describe block removed 2026-08-21: it tested
+// applyTriSyncRules' old Rule 3 (deriving a bitRange from a syntaxNode's fieldType via a
+// heuristic size table), which was removed along with the struct-shaped SyntaxNodeId it depended
+// on -- setSyntaxSelection now always takes a real, explicit bitRange (see its doc in
+// SelectionContext.tsx), so there's nothing left to estimate.
 
 describe("useActiveFrame", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -1120,7 +1066,7 @@ describe("useActiveFrame", () => {
       setters!.setBitRangeSelection({ startBit: 0, endBit: 80 }, "hex");
     });
     act(() => {
-      setters!.setSyntaxSelection({ path: ["x"], offset: 0 }, "syntax");
+      setters!.setSyntaxSelection("x", { startBit: 0, endBit: 8 }, "syntax");
     });
 
     expect(onProbeRender.mock.calls.length).toBe(countAfterFrame);

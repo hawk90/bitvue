@@ -37,11 +37,12 @@ export interface UnitKey {
   size: number;
 }
 
-export interface SyntaxNodeId {
-  path: string[];
-  fieldType?: string;
-  offset?: number;
-}
+/** Flat dotted-path string (e.g. "obu_header.obu_type"), matching the backend's actual
+ *  `bitvue_engine::SyntaxNodeId = String` exactly -- this used to be a `{path, fieldType, offset}`
+ *  struct that never matched the real wire shape (nothing had ever round-tripped a real one
+ *  through it to notice). See types/selection.ts's SelectionState doc for the broader Tri-Sync
+ *  completion this is part of. */
+export type SyntaxNodeId = string;
 
 export interface BitRange {
   startBit: number;
@@ -110,7 +111,16 @@ export interface SelectionContextType {
   ) => void;
   setFrameSelection: (frame: FrameKey, source: SelectionPanel) => void;
   setUnitSelection: (unit: UnitKey, source: SelectionPanel) => void;
-  setSyntaxSelection: (node: SyntaxNodeId, source: SelectionPanel) => void;
+  /** `bitRange` is required (not derived/estimated) -- matches the backend's
+   *  `Command::SelectSyntax { node_id, bit_range }` exactly, which needs both together. Callers
+   *  (e.g. FrameSyntaxTab) already have the real bit_range from the fetched syntax tree data. */
+  setSyntaxSelection: (
+    node: SyntaxNodeId,
+    bitRange: BitRange,
+    source: SelectionPanel,
+  ) => void;
+  /** Also calls the real backend `select_bit_range` round trip and merges the resolved
+   *  `syntaxNode` back in once it resolves -- see contexts/SelectionContext.tsx's doc. */
   setBitRangeSelection: (range: BitRange, source: SelectionPanel) => void;
   clearTemporal: () => void;
   clearAll: () => void;

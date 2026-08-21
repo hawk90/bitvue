@@ -13,7 +13,7 @@ import {
 import { useExportEvidenceBundle } from "../../../hooks/useExportEvidenceBundle";
 import { ContextMenu } from "../../ContextMenu";
 import { createLogger } from "../../../utils/logger";
-import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
+import { useSelection } from "../../../contexts/SelectionContext";
 
 const logger = createLogger("HexViewTab");
 const BYTES_PER_LINE = 16;
@@ -41,7 +41,7 @@ export const HexViewTab = memo(function HexViewTab({
   const [error, setError] = useState<string | null>(null);
   const [totalSize, setTotalSize] = useState<number>(0);
   const [truncated, setTruncated] = useState<boolean>(false);
-  const { highlightedByteOffset } = useSyntaxHexLink();
+  const { selection, setBitRangeSelection } = useSelection();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Right-click context menu (Phase 7.6, "HexView" scope) -- see ContextMenu component doc.
@@ -128,15 +128,20 @@ export const HexViewTab = memo(function HexViewTab({
     };
   }, [frameIndex, currentFrame]);
 
-  // Scroll to and select byte when driven by SyntaxHexLink
+  // Syntax -> Hex: scroll to and select the byte when a real selection.bitRange arrives (from
+  // FrameSyntaxTab's jump-to-hex click, or a byte selected here re-confirming itself -- see this
+  // component's module context in the axis-2 Tri-Sync completion plan). bitRange is in bits;
+  // this view works in bytes.
+  const resolvedBitRange = selection?.bitRange;
   useEffect(() => {
-    if (highlightedByteOffset === null || !containerRef.current) return;
-    setSelectedByte(highlightedByteOffset);
+    if (!resolvedBitRange || !containerRef.current) return;
+    const byteOffset = Math.floor(resolvedBitRange.startBit / 8);
+    setSelectedByte(byteOffset);
     // Scroll: each hex line is ~20px tall
-    const lineIdx = Math.floor(highlightedByteOffset / BYTES_PER_LINE);
+    const lineIdx = Math.floor(byteOffset / BYTES_PER_LINE);
     const lineHeight = 20;
     containerRef.current.scrollTop = Math.max(0, lineIdx * lineHeight - 40);
-  }, [highlightedByteOffset]);
+  }, [resolvedBitRange]);
 
   // Convert byte to ASCII character
   const byteToAscii = useCallback((byte: number): string => {
@@ -282,7 +287,19 @@ export const HexViewTab = memo(function HexViewTab({
                     key={i}
                     className="hex-byte"
                     style={style}
-                    onClick={() => setSelectedByte(byteOffset)}
+                    onClick={() => {
+                      setSelectedByte(byteOffset);
+                      // Hex -> Syntax: drives the real select_bit_range round trip so
+                      // FrameSyntaxTab can expand/scroll to whatever syntax node contains this
+                      // byte (Core::handle_command's find_nearest_node reverse mapping).
+                      setBitRangeSelection(
+                        {
+                          startBit: byteOffset * 8,
+                          endBit: byteOffset * 8 + 8,
+                        },
+                        "hex",
+                      );
+                    }}
                     title={`Offset: 0x${byteOffset.toString(16).toUpperCase()}, Value: 0x${byte.toString(16).toUpperCase()}`}
                   >
                     {byte.toString(16).padStart(2, "0").toUpperCase()}

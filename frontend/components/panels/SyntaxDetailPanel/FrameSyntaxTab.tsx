@@ -6,7 +6,7 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { useSyntaxHexLink } from "../../../contexts/SyntaxHexLinkContext";
+import { useSelection } from "../../../contexts/SelectionContext";
 import { FrameTypeBadge } from "../../common/FrameTypeBadge";
 import {
   getFrameSyntax,
@@ -27,6 +27,17 @@ export interface SyntaxNode {
   children?: SyntaxNode[];
   description?: string;
   byte_offset?: number;
+  /** Real backend-assigned id (e.g. "obu_header.obu_type") -- what a resolved hex->syntax match
+   *  (SelectionContext's setBitRangeSelection) reports back as `syntaxNode`, and what this tab
+   *  passes to `setSyntaxSelection` on the syntax->hex direction. Distinct from `path` below,
+   *  which is a locally-derived, name-based, `expandedNodes`-keying string -- see
+   *  `findPathChainToNodeId`'s doc for why both exist. Optional: absent for the synthetic
+   *  fallback tree (no real backend syntax tree available, e.g. non-AV1) built further down --
+   *  that display-only data has no real hex correspondence to link to. */
+  node_id?: string;
+  /** Real bit range (not the byte-floored `byte_offset` above) -- what setSyntaxSelection needs
+   *  to drive the real backend round trip precisely. Same optionality as `node_id`. */
+  bitRange?: { startBit: number; endBit: number };
 }
 
 /** `BridgeSyntaxNode` (sidecar's JSON shape, flat `value: string | null`) -> this tab's local
@@ -40,7 +51,35 @@ function bridgeNodeToLocal(node: BridgeSyntaxNode): SyntaxNode {
     value: node.value !== null ? { String: node.value } : undefined,
     children: node.children.map(bridgeNodeToLocal),
     byte_offset: Math.floor(node.bit_range.start_bit / 8),
+    node_id: node.node_id,
+    bitRange: {
+      startBit: node.bit_range.start_bit,
+      endBit: node.bit_range.end_bit,
+    },
   };
+}
+
+/** Walks the tree looking for `targetNodeId`, returning every ancestor's locally-derived `path`
+ *  (root-to-target, target's own path last) so the caller can expand exactly the chain needed to
+ *  reveal it -- or `null` if this tree doesn't contain that id. Needed because `expandedNodes`
+ *  (owned by the parent SyntaxDetailPanel, shared with the toggle UI) is keyed on that
+ *  locally-derived `name`-joined path, not the backend's real `node_id`; this is the bridge
+ *  between the two. Independent of current expand state (unlike `flattenVisible`) since it must
+ *  find a target regardless of whether its ancestors are collapsed right now. */
+function findPathChainToNodeId(
+  node: SyntaxNode,
+  targetNodeId: string,
+  path = "",
+): string[] | null {
+  const currentPath = path ? `${path}/${node.name}` : node.name;
+  if (node.node_id === targetNodeId) return [currentPath];
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findPathChainToNodeId(child, targetNodeId, currentPath);
+      if (found) return [currentPath, ...found];
+    }
+  }
+  return null;
 }
 
 // Helper to get display value from SyntaxValue
@@ -79,7 +118,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
   const [syntaxTree, setSyntaxTree] = useState<SyntaxNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { setHighlightedByteOffset } = useSyntaxHexLink();
+  const { selection, setSyntaxSelection } = useSelection();
 
   // Fetch real syntax tree from backend
   useEffect(() => {
@@ -100,6 +139,48 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
       })
       .finally(() => setLoading(false));
   }, [frame, filePath]);
+
+  // Syntax -> Hex: user clicks a tree node's jump icon.
+  const handleJumpToHex = useCallback(
+    (node: SyntaxNode) => {
+      if (!node.node_id || !node.bitRange) return;
+      setSyntaxSelection(node.node_id, node.bitRange, "syntax");
+    },
+    [setSyntaxSelection],
+  );
+
+  // Hex -> Syntax (the actual reverse direction this tab used to have no way to receive at all --
+  // see this component's module context in the axis-2 Tri-Sync completion plan): when a hex
+  // click resolves to a syntax_node id elsewhere, expand every ancestor and scroll to it.
+  const resolvedSyntaxNodeId = selection?.syntaxNode;
+  useEffect(() => {
+    if (!resolvedSyntaxNodeId || !syntaxTree) return;
+    const pathChain = findPathChainToNodeId(syntaxTree, resolvedSyntaxNodeId);
+    if (!pathChain) return;
+    const needsExpand = pathChain.some((p) => !expandedNodes.has(p));
+    if (needsExpand) {
+      pathChain.forEach((p) => {
+        if (!expandedNodes.has(p)) onToggleNode(p);
+      });
+    }
+    // Scroll after the expand state above has had a chance to render -- a plain DOM query,
+    // which only works for rows that actually exist in the DOM. Correct for the (default,
+    // common) non-virtualized recursive render; the virtualized path (>120 visible nodes, see
+    // VIRTUALIZATION_THRESHOLD) only mounts DOM for its current scroll window, so a target that
+    // was off-window before this expand may not be queryable on the very next frame -- known,
+    // narrow gap (large trees only), not attempted here (would need lifting VirtualSyntaxTree's
+    // scrollTop to compute an index-based scroll position instead of a DOM query).
+    const targetPath = pathChain[pathChain.length - 1];
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-syntax-path="${CSS.escape(targetPath)}"]`)
+        ?.scrollIntoView({ block: "center" });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- expandedNodes/onToggleNode
+    // intentionally excluded: this effect's own onToggleNode calls change expandedNodes, and
+    // re-running on every resulting expandedNodes change would re-scroll on every manual
+    // expand/collapse the user does afterward, not just on a new resolved selection.
+  }, [resolvedSyntaxNodeId, syntaxTree]);
 
   if (!frame) {
     return (
@@ -181,7 +262,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
             rootNode={frameSyntax}
             expandedNodes={expandedNodes}
             onToggle={onToggleNode}
-            onJumpToHex={setHighlightedByteOffset}
+            onJumpToHex={handleJumpToHex}
           />
         ) : (
           <SyntaxTreeNode
@@ -190,7 +271,7 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
             depth={0}
             expandedNodes={expandedNodes}
             onToggle={onToggleNode}
-            onJumpToHex={setHighlightedByteOffset}
+            onJumpToHex={handleJumpToHex}
           />
         )}
       </div>
@@ -237,7 +318,7 @@ interface VirtualSyntaxTreeProps {
   rootNode: SyntaxNode;
   expandedNodes: Set<string>;
   onToggle: (path: string) => void;
-  onJumpToHex?: (offset: number) => void;
+  onJumpToHex?: (node: SyntaxNode) => void;
 }
 
 /** Virtual-scroll tree renderer — only mounts DOM nodes for the visible window. */
@@ -294,6 +375,7 @@ const VirtualSyntaxTree = memo(function VirtualSyntaxTree({
                 className="syntax-node"
                 title={node.description}
                 style={{ height: ITEM_HEIGHT }}
+                data-syntax-path={path}
               >
                 <div
                   className="syntax-node-item"
@@ -322,7 +404,7 @@ const VirtualSyntaxTree = memo(function VirtualSyntaxTree({
                       title={`Jump to byte 0x${node.byte_offset.toString(16).toUpperCase()}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onJumpToHex(node.byte_offset!);
+                        onJumpToHex(node);
                       }}
                     >
                       ⇥
@@ -347,7 +429,7 @@ interface SyntaxTreeNodeProps {
   depth: number;
   expandedNodes: Set<string>;
   onToggle: (path: string) => void;
-  onJumpToHex?: (offset: number) => void;
+  onJumpToHex?: (node: SyntaxNode) => void;
 }
 
 const SyntaxTreeNode = memo(function SyntaxTreeNode({
@@ -364,7 +446,11 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
   const displayValue = getDisplayValue(node.value);
 
   return (
-    <div className="syntax-node" title={node.description}>
+    <div
+      className="syntax-node"
+      title={node.description}
+      data-syntax-path={currentPath}
+    >
       <div
         className="syntax-node-item"
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
@@ -390,7 +476,7 @@ const SyntaxTreeNode = memo(function SyntaxTreeNode({
             title={`Jump to byte 0x${node.byte_offset.toString(16).toUpperCase()} in HEX view`}
             onClick={(e) => {
               e.stopPropagation();
-              onJumpToHex(node.byte_offset!);
+              onJumpToHex(node);
             }}
           >
             ⇥

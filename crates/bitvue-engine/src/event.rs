@@ -3,6 +3,7 @@
 //! Monster Pack v3: ARCHITECTURE.md §3.3
 
 use crate::selection::StreamId;
+use crate::types::{BitRange, SyntaxNodeId};
 use std::path::PathBuf;
 
 /// Events published by Core to UI
@@ -14,8 +15,17 @@ pub enum Event {
         stream: StreamId,
     },
 
+    /// `syntax_node`/`bit_range` carry the *resolved* selection state a `Select*` command just
+    /// computed (e.g. `SelectBitRange`'s hex->syntax reverse mapping via `find_nearest_node`) --
+    /// `None` for commands that don't produce one (`SelectFrame`/`SelectUnit`/
+    /// `SelectSpatialBlock`). Without this the caller only learns "something changed on this
+    /// stream", not what -- see docs/DEVELOPMENT_PHASES.md's Tri-Sync section for why this
+    /// mattered (the resolution logic itself was already correct; only its wire readback wasn't
+    /// exposed).
     SelectionUpdated {
         stream: StreamId,
+        syntax_node: Option<SyntaxNodeId>,
+        bit_range: Option<BitRange>,
     },
 
     // Frame decoding (Phase 2)

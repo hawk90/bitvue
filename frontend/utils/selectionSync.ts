@@ -8,35 +8,16 @@
 import type { SelectionState } from "../types/selection";
 
 /**
- * Estimate bit size for a given field type
- * Used for calculating bit ranges from syntax node selections
- */
-export function estimateBitSize(fieldType: string): number {
-  // Rough estimate for common field types
-  const bits: Record<string, number> = {
-    u1: 1,
-    u2: 2,
-    u3: 3,
-    u4: 4,
-    u5: 5,
-    u6: 6,
-    u7: 7,
-    u8: 8,
-    "ue(v)": 0, // Variable, need actual parsing
-    leb128: 0,
-    bytes: 32, // Default
-  };
-
-  return bits[fieldType] ?? 32;
-}
-
-/**
  * Apply Tri-Sync propagation rules to selection state
  *
  * Tri-Sync Rules:
  * 1. Temporal selection → Frame selection
  * 2. Unit selection → BitRange selection
- * 3. SyntaxNode selection → BitRange selection
+ *
+ * (A former Rule 3, SyntaxNode → BitRange via a `fieldType`-keyed size *estimate*, was removed
+ * 2026-08-21: `SyntaxNodeId` is now a flat backend-matching string with no embedded offset/
+ * fieldType to estimate from -- real callers now provide the real `bitRange` directly alongside
+ * the node id, see `setSyntaxSelection`'s signature in types/selection.ts.)
  *
  * @param sel - Current selection state
  * @returns Synced selection state with propagated values
@@ -64,20 +45,6 @@ export function applyTriSyncRules(sel: SelectionState): SelectionState {
       bitRange: {
         startBit: sel.unit.offset * 8,
         endBit: (sel.unit.offset + sel.unit.size) * 8,
-      },
-    };
-  }
-
-  // Rule 3: SyntaxNode selection → BitRange selection
-  if (sel.syntaxNode?.offset !== undefined && !sel.bitRange) {
-    const size = sel.syntaxNode.fieldType
-      ? estimateBitSize(sel.syntaxNode.fieldType)
-      : 32;
-    return {
-      ...sel,
-      bitRange: {
-        startBit: sel.syntaxNode.offset,
-        endBit: sel.syntaxNode.offset + size,
       },
     };
   }

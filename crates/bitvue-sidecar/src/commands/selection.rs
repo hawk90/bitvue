@@ -341,6 +341,79 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0]["type"], "SelectionUpdated");
         assert_eq!(events[0]["stream"], "A");
+        // bit_range is always echoed back regardless of whether a syntax tree exists yet.
+        assert_eq!(events[0]["bit_range"]["start_bit"], 100);
+        assert_eq!(events[0]["bit_range"]["end_bit"], 200);
+        // No stream open (bare Core::new()) -- no syntax tree to resolve against, so the reverse
+        // mapping correctly finds nothing rather than fabricating a match.
+        assert!(events[0]["syntax_node"].is_null());
+    }
+
+    /// The actual point of this event enrichment: a real hex click resolves to a real syntax
+    /// node id the frontend can look up in its own tree data (see stream_query.rs's
+    /// `get_frame_syntax_end_to_end_returns_a_real_nested_tree` for the matching node_id-on-the-
+    /// tree-response half of this). Needs a real fixture + index + a `get_frame_syntax` call
+    /// first -- that's what populates `stream_state.syntax`, per its own doc comment in
+    /// bitvue-indexer ("what actually makes that lookup meaningful instead of always empty").
+    #[test]
+    fn select_bit_range_resolves_a_real_syntax_node_once_indexed() {
+        let core = Core::new();
+        crate::test_support::open_real_fixture(&core, "A");
+        crate::dispatch(
+            &core,
+            &Request {
+                id: 20,
+                method: "index_stream".to_string(),
+                params: serde_json::json!({"stream": "A"}),
+            },
+        );
+        let syntax_response = crate::dispatch(
+            &core,
+            &Request {
+                id: 21,
+                method: "get_frame_syntax".to_string(),
+                params: serde_json::json!({"stream": "A", "frame_index": 0}),
+            },
+        );
+        assert!(
+            syntax_response.ok,
+            "expected get_frame_syntax to populate the tree: {syntax_response:?}"
+        );
+        let tree = syntax_response.result.unwrap();
+        // A leaf (no children) is unambiguous: since nothing nests inside it, it's always the
+        // tightest containing node for a bit position within its own range -- picking a non-leaf
+        // node here would make the expected match depend on the fixture's exact nesting shape.
+        fn find_a_leaf(node: &serde_json::Value) -> Option<&serde_json::Value> {
+            let children = node["children"].as_array()?;
+            if children.is_empty() {
+                return Some(node);
+            }
+            children.iter().find_map(find_a_leaf)
+        }
+        let leaf = find_a_leaf(&tree).expect("expected at least one leaf node in a real tree");
+        let target_start_bit = leaf["bit_range"]["start_bit"].as_u64().unwrap();
+        let expected_node_id = leaf["node_id"].as_str().unwrap().to_string();
+
+        let response = crate::dispatch(
+            &core,
+            &Request {
+                id: 22,
+                method: "select_bit_range".to_string(),
+                params: serde_json::json!({
+                    "stream": "A",
+                    "start_bit": target_start_bit,
+                    "end_bit": target_start_bit + 1,
+                }),
+            },
+        );
+        assert!(response.ok, "expected ok response, got {response:?}");
+        let events = response.result.unwrap()["events"].clone();
+        assert_eq!(
+            events[0]["syntax_node"].as_str(),
+            Some(expected_node_id.as_str()),
+            "expected the bit range inside the first child's range to resolve back to that \
+             child's node_id, got {events:?}"
+        );
     }
 
     #[test]

@@ -113,6 +113,8 @@ mod event_selection_updated_tests {
         // Arrange & Act
         let event = Event::SelectionUpdated {
             stream: test_stream_a(),
+            syntax_node: None,
+            bit_range: None,
         };
 
         // Assert
@@ -124,6 +126,8 @@ mod event_selection_updated_tests {
         // Arrange
         let event = Event::SelectionUpdated {
             stream: test_stream_b(),
+            syntax_node: None,
+            bit_range: None,
         };
 
         // Act
@@ -589,6 +593,8 @@ mod integration_tests {
             },
             Event::SelectionUpdated {
                 stream: test_stream_b(),
+                syntax_node: None,
+                bit_range: None,
             },
             Event::FrameDecoded {
                 stream: test_stream_a(),

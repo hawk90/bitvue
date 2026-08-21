@@ -9,12 +9,15 @@ import { requireBridge, type StreamId, type BridgeEvent } from "./core";
 /** Mirrors `bitvue-sidecar`'s `syntax_node_to_json` -- a nested tree built from
  *  `bitvue_engine::SyntaxModel`'s flat node map. `value` is a plain string (or null for
  *  container/non-leaf fields), not a discriminated union -- unlike `bitvue_engine::UnitNode`,
- *  `SyntaxNode`'s `value` field is already just a display string in the Rust type. */
+ *  `SyntaxNode`'s `value` field is already just a display string in the Rust type. `node_id` is
+ *  the same flat dotted-path string `SelectBitRange`'s reverse mapping resolves to (see
+ *  `SelectionUpdatedEvent` below) -- needed to look a resolved match up against this tree. */
 export interface BridgeSyntaxNode {
   type: string;
   name: string;
   value: string | null;
   bit_range: { start_bit: number; end_bit: number };
+  node_id: string;
   children: BridgeSyntaxNode[];
 }
 
@@ -41,11 +44,25 @@ export async function getFrameSyntax(
 //
 // These four map onto bitvue_engine::Command's "Tri-sync" selection variants -- independent of
 // selectFrame's temporal cursor (a unit/syntax-node/bit-range/spatial-block selection can exist
-// without a frame selection, and vice versa). No frontend component calls these yet as of
-// 2026-08-08 -- they're wired here because the sidecar-side capability is real and tested
-// (bitvue-sidecar's select_unit/select_syntax/select_bit_range/select_spatial_block, wired
-// earlier this migration), not because a specific UI interaction needs them right now. Don't
-// treat their existence as proof any cross-view sync feature is wired up end to end.
+// without a frame selection, and vice versa).
+//
+// Update 2026-08-21: selectSyntax/selectBitRange are now real callers -- SelectionContext.tsx
+// uses them to back the Syntax<->Hex tri-sync pair (FrameSyntaxTab/HexViewTab), replacing the
+// one-directional SyntaxHexLinkContext stopgap. selectUnit/selectSpatialBlock are still
+// unconsumed (Unit-tree and spatial-block/QP-heatmap tri-sync are a separate, larger follow-up --
+// see docs/DEVELOPMENT_PHASES.md's Architecture appendix for which multi-sync views still have no
+// SelectionState fields at all). Originally wired 2026-08-08 with this note: "the sidecar-side
+// capability is real and tested..., not because a specific UI interaction needs them right now.
+// Don't treat their existence as proof any cross-view sync feature is wired up end to end" -- keep
+// that caution in mind for selectUnit/selectSpatialBlock specifically.
+
+/** `Event::SelectionUpdated`'s resolved-state fields (added 2026-08-21) -- `syntax_node`/
+ *  `bit_range` carry whatever a `select*` command just resolved (e.g. `selectBitRange`'s hex ->
+ *  syntax reverse mapping), `null` when the command in question doesn't produce one. */
+export interface SelectionUpdatedEvent extends BridgeEvent {
+  syntax_node?: string | null;
+  bit_range?: { start_bit: number; end_bit: number } | null;
+}
 
 export async function selectUnit(
   stream: StreamId,

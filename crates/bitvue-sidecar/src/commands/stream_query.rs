@@ -135,6 +135,7 @@ fn syntax_node_to_json(model: &bitvue_engine::SyntaxModel, node_id: &str) -> ser
         "name": node.field_name,
         "value": node.value,
         "bit_range": { "start_bit": node.bit_range.start_bit, "end_bit": node.bit_range.end_bit },
+        "node_id": node.node_id,
         "children": children,
     })
 }
@@ -374,6 +375,21 @@ mod tests {
             "expected real syntax fields under the root, got {tree:?}"
         );
         assert!(tree["name"].as_str().is_some());
+        // node_id is what the frontend needs to look a resolved SelectBitRange match up against
+        // its local tree data (see SelectionUpdated's new syntax_node field) -- must be a real,
+        // non-empty id, not just present-but-null.
+        let root_node_id = tree["node_id"]
+            .as_str()
+            .expect("root should have a node_id string");
+        assert!(!root_node_id.is_empty());
+        let child_node_id = children[0]["node_id"]
+            .as_str()
+            .expect("child should have a node_id string too, not just the root");
+        assert!(!child_node_id.is_empty());
+        assert_ne!(
+            root_node_id, child_node_id,
+            "root and child must have distinct ids"
+        );
     }
 
     #[test]

@@ -30,6 +30,10 @@ import {
   applyTriSyncRules,
   mergeSelectionUpdates,
 } from "../utils/selectionSync";
+import {
+  selectBitRange,
+  type SelectionUpdatedEvent,
+} from "../services/electronBridgeService";
 
 // Re-export commonly used types for convenience
 export type {
@@ -233,22 +237,45 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     [updateSelection],
   );
 
+  // No backend round trip -- the caller (FrameSyntaxTab) already has the real bitRange from the
+  // syntax tree data it fetched via getFrameSyntax, so there's nothing to resolve. Contrast with
+  // setBitRangeSelection below, which goes the other direction (a bit range with no known node)
+  // and genuinely needs the backend's find_nearest_node reverse mapping.
   const setSyntaxSelection = useCallback(
     (
       node: SelectionState["syntaxNode"],
+      bitRange: SelectionState["bitRange"],
       source: SelectionState["source"]["panel"],
     ) => {
-      updateSelection({ syntaxNode: node }, source);
+      updateSelection({ syntaxNode: node, bitRange }, source);
     },
     [updateSelection],
   );
 
+  // Sets `bitRange` immediately (optimistic -- the click itself always has a real bit range to
+  // show right away), then calls the real select_bit_range round trip and patches in whatever
+  // syntax_node it resolves to (Core::handle_command's find_nearest_node reverse mapping,
+  // crates/bitvue-engine/src/core.rs) once it comes back. `null` if nothing resolved (e.g. no
+  // syntax tree cached yet for this stream/frame) -- not treated as an error, just "no match".
   const setBitRangeSelection = useCallback(
     (
       range: SelectionState["bitRange"],
       source: SelectionState["source"]["panel"],
     ) => {
       updateSelection({ bitRange: range }, source);
+      if (!range) return;
+      const stream = selectionRef.current?.streamId ?? "A";
+      selectBitRange(stream, range.startBit, range.endBit)
+        .then((events) => {
+          const resolved = events[0] as SelectionUpdatedEvent | undefined;
+          const syntaxNode = resolved?.syntax_node ?? null;
+          if (syntaxNode) {
+            updateSelection({ syntaxNode }, "sync");
+          }
+        })
+        .catch((err) => {
+          console.error("[SelectionContext] selectBitRange failed:", err);
+        });
     },
     [updateSelection],
   );

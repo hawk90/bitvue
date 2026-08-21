@@ -19,7 +19,6 @@ import {
 import { CompareProvider, useCompare } from "./contexts/CompareContext";
 import CompareWorkspace from "./components/CompareWorkspace/CompareWorkspace";
 import { YuvDiffProvider, useYuvDiff } from "./contexts/YuvDiffContext";
-import { SyntaxHexLinkProvider } from "./contexts/SyntaxHexLinkContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { useLayout } from "./contexts/LayoutContext";
 import { isMacOS, shouldShowTitleBar } from "./utils/platform";
@@ -118,21 +117,19 @@ function App() {
     };
   }, [setTheme]);
   return (
-    <SyntaxHexLinkProvider>
-      <ModeProvider>
-        <FrameDataProvider>
-          <FileStateProvider>
-            <SelectionProvider>
-              <CompareProvider>
-                <YuvDiffProvider>
-                  <AppContent />
-                </YuvDiffProvider>
-              </CompareProvider>
-            </SelectionProvider>
-          </FileStateProvider>
-        </FrameDataProvider>
-      </ModeProvider>
-    </SyntaxHexLinkProvider>
+    <ModeProvider>
+      <FrameDataProvider>
+        <FileStateProvider>
+          <SelectionProvider>
+            <CompareProvider>
+              <YuvDiffProvider>
+                <AppContent />
+              </YuvDiffProvider>
+            </CompareProvider>
+          </SelectionProvider>
+        </FileStateProvider>
+      </FrameDataProvider>
+    </ModeProvider>
   );
 }
 

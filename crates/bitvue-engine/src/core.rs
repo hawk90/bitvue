@@ -78,13 +78,21 @@ impl Core {
             Command::SelectFrame { stream, frame_key } => {
                 let mut selection = self.selection.write();
                 selection.select_point(frame_key.frame_index);
-                vec![Event::SelectionUpdated { stream }]
+                vec![Event::SelectionUpdated {
+                    stream,
+                    syntax_node: None,
+                    bit_range: None,
+                }]
             }
 
             Command::SelectUnit { stream, unit_key } => {
                 let mut selection = self.selection.write();
                 selection.select_unit(unit_key);
-                vec![Event::SelectionUpdated { stream }]
+                vec![Event::SelectionUpdated {
+                    stream,
+                    syntax_node: None,
+                    bit_range: None,
+                }]
             }
 
             Command::SelectSyntax {
@@ -93,8 +101,12 @@ impl Core {
                 bit_range,
             } => {
                 let mut selection = self.selection.write();
-                selection.select_syntax(node_id, bit_range);
-                vec![Event::SelectionUpdated { stream }]
+                selection.select_syntax(node_id.clone(), bit_range);
+                vec![Event::SelectionUpdated {
+                    stream,
+                    syntax_node: Some(node_id),
+                    bit_range: Some(bit_range),
+                }]
             }
 
             Command::SelectBitRange { stream, bit_range } => {
@@ -116,11 +128,15 @@ impl Core {
                 selection.select_bit_range(bit_range);
 
                 // If we found a matching syntax node, update it
-                if let Some(node_id) = nearest_node {
-                    selection.syntax_node = Some(node_id);
+                if let Some(ref node_id) = nearest_node {
+                    selection.syntax_node = Some(node_id.clone());
                 }
 
-                vec![Event::SelectionUpdated { stream }]
+                vec![Event::SelectionUpdated {
+                    stream,
+                    syntax_node: nearest_node,
+                    bit_range: Some(bit_range),
+                }]
             }
 
             Command::SelectSpatialBlock { stream, block } => {
@@ -128,7 +144,11 @@ impl Core {
                 // Get current frame index from cursor, or default to 0
                 let frame_index = selection.current_frame().unwrap_or(0);
                 selection.select_spatial_block(frame_index, block);
-                vec![Event::SelectionUpdated { stream }]
+                vec![Event::SelectionUpdated {
+                    stream,
+                    syntax_node: None,
+                    bit_range: None,
+                }]
             }
 
             _ => {

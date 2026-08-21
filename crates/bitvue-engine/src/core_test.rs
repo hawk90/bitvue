@@ -647,7 +647,7 @@ mod handle_select_spatial_block_tests {
             assert_eq!(frame_index, 10);
         }
 
-        if let Some(Event::SelectionUpdated { stream: s }) = events.first() {
+        if let Some(Event::SelectionUpdated { stream: s, .. }) = events.first() {
             assert_eq!(*s, crate::StreamId::A);
         }
     }
