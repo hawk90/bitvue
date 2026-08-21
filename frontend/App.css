@@ -1,10 +1,5 @@
 /* Bitvue App Styles */
 
-@font-face {
-  font-family: "codicon";
-  src: url("/fonts/codicon.ttf") format("truetype");
-}
-
 * {
   margin: 0;
   padding: 0;
@@ -55,6 +50,16 @@ body {
   color: var(--text-primary);
 }
 
+/* macOS only -- bare drag region behind the native traffic lights (main.ts's
+   titleBarStyle: "hiddenInset" floats them over this instead of drawing their own separate,
+   unstyled white bar). Matches the status bar's color, no title text or other content. */
+.mac-titlebar-spacer {
+  height: 38px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  -webkit-app-region: drag;
+}
+
 .app-container {
   flex: 1;
   display: flex;
@@ -76,22 +81,6 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
-}
-
-/* Status Bar - Polished for subtle appearance */
-.status-bar {
-  height: 24px;
-  background: var(--bg-secondary, rgb(30 30 35 / 95%));
-  backdrop-filter: blur(10px);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  font-size: 11px;
-  border-top: 1px solid var(--border, rgb(255 255 255 / 8%));
-  flex-shrink: 0;
-  transition: all var(--transition-fast) var(--ease-default);
 }
 
 .status-bar-left,
@@ -166,9 +155,10 @@ body {
   font-size: 13px;
 }
 
-/* Icons (codicon font) */
-.codicon {
-  font-family: "codicon", sans-serif;
+/* Icons (codicon font). Selector matches @vscode/codicons' own `.codicon[class*='codicon-']`
+   base rule's specificity so this 14px override reliably wins regardless of import order (that
+   package's default is 16px). */
+.codicon[class*="codicon-"] {
   font-size: 14px;
   line-height: 1;
 }
@@ -218,11 +208,7 @@ body {
   right: 2px;
   width: 24px;
   height: 24px;
-  background: linear-gradient(
-    to bottom,
-    var(--bg-collapse-top, #3a3a3a) 0%,
-    var(--bg-collapse-bottom, #2a2a2a) 100%
-  );
+  background: var(--bg-collapse-top, #3a3a3a);
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 6px;
   display: flex;
@@ -232,29 +218,15 @@ body {
   z-index: 1000;
   transition: all var(--transition-fast) var(--ease-out);
   color: var(--text-primary);
-  box-shadow:
-    0 2px 6px rgb(0 0 0 / 40%),
-    inset 0 1px 0 rgb(255 255 255 / 10%);
 }
 
 .panel-collapse-btn:hover {
-  background: linear-gradient(
-    to bottom,
-    var(--bg-collapse-hover-top, #4a4a4a) 0%,
-    var(--bg-collapse-top, #3a3a3a) 100%
-  );
+  background: var(--bg-collapse-hover-top, #4a4a4a);
   border-color: rgb(255 255 255 / 20%);
-  box-shadow:
-    0 2px 8px rgb(0 0 0 / 50%),
-    inset 0 1px 0 rgb(255 255 255 / 15%);
-  transform: translateY(-1px);
 }
 
 .panel-collapse-btn:active {
-  transform: translateY(1px);
-  box-shadow:
-    0 1px 3px rgb(0 0 0 / 40%),
-    inset 0 1px 2px rgb(0 0 0 / 20%);
+  background: var(--bg-collapse-top, #3a3a3a);
 }
 
 .panel-collapse-btn .codicon {
@@ -272,12 +244,7 @@ body {
 
 .allotment-separator:hover,
 .allotment-separator:active {
-  background: linear-gradient(
-    to bottom,
-    rgb(255 255 255 / 15%) 0%,
-    rgb(255 255 255 / 5%) 50%,
-    rgb(0 0 0 / 10%) 100%
-  ) !important;
+  background-color: rgb(255 255 255 / 15%) !important;
   border-top: 1px solid rgb(255 255 255 / 20%);
   border-bottom: 1px solid rgb(0 0 0 / 30%);
 }

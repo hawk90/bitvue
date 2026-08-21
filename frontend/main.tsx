@@ -1,5 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+// Real @vscode/codicons stylesheet -- provides every `.codicon-<name>::before { content: "\eXXX" }`
+// glyph mapping. App.css previously only had a bespoke `@font-face` + bare `.codicon` sizing rule
+// with NO glyph mappings at all, so every codicon icon in the app (close buttons, GitHub icon,
+// keyboard icon, etc.) rendered as an empty invisible box -- found 2026-08-21 via a WelcomeScreen
+// screenshot showing one icon slot rendering blank next to a working inline-SVG icon. Imported
+// first so App.css's `.codicon[class*='codicon-']` font-size override (kept at 14px, this
+// package's own default is 16px) still wins via source order.
+import "@vscode/codicons/dist/codicon.css";
 import App from "./App";
 
 // Extend Window to allow custom console override guard and stored originals
