@@ -6,7 +6,7 @@
  * Supports both image-based and YUV-based rendering
  */
 
-import { useRef, useEffect, memo, useMemo } from "react";
+import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { renderModeOverlay } from "../OverlayRenderer";
 import type { VisualizationMode } from "../../../contexts/ModeContext";
 import type { OverlayRenderOptionsExtended } from "../OverlayRenderer";
@@ -18,6 +18,8 @@ import {
   Colorspace,
   type ChannelMode,
 } from "../../../utils/yuvRenderer";
+import { WebGpuFrameRenderer } from "../../../utils/gpu/frameRenderer";
+import { isWebGpuDisabledByFlag } from "../../../utils/gpu/featureFlag";
 import { createLogger } from "../../../utils/logger";
 
 const logger = createLogger("VideoCanvas");
@@ -125,7 +127,14 @@ export const VideoCanvas = memo(function VideoCanvas({
 }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const webglCanvasRef = useRef<HTMLCanvasElement>(null);
+  const webgpuCanvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<YUVRenderer | null>(null);
+  const gpuRendererRef = useRef<WebGpuFrameRenderer | null>(null);
+  // Decided once at mount (see the attach effect below); starts "canvas2d" so the very first
+  // frame never blocks on the async GPU device request, and flips to "webgpu" only once a real
+  // device + configured canvas context are confirmed. Never flips back at runtime -- a device
+  // lost mid-session is logged (device.ts) but Phase 1 doesn't attempt live backend recovery.
+  const [backend, setBackend] = useState<"canvas2d" | "webgpu">("canvas2d");
 
   // Memoize canvas style to avoid creating new object on every render
   const canvasStyle = useMemo(
@@ -169,6 +178,31 @@ export const VideoCanvas = memo(function VideoCanvas({
     }
     return () => {
       rendererRef.current = null;
+    };
+  }, []);
+
+  // Attempt the WebGPU backend once at mount. Kept behind a kill switch
+  // (isWebGpuDisabledByFlag) since WebGPU support in Electron/Chromium is confirmed flaky on
+  // Linux -- a failed/declined attach silently leaves `backend` at "canvas2d", which the render
+  // effect below treats identically to today's pre-WebGPU behavior.
+  useEffect(() => {
+    if (isWebGpuDisabledByFlag()) return;
+    const canvas = webgpuCanvasRef.current;
+    if (!canvas) return;
+
+    let cancelled = false;
+    const renderer = new WebGpuFrameRenderer();
+    gpuRendererRef.current = renderer;
+    void renderer.attachCanvas(canvas).then((ok) => {
+      if (!cancelled && ok) {
+        setBackend("webgpu");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      renderer.destroy();
+      gpuRendererRef.current = null;
     };
   }, []);
 
@@ -220,15 +254,38 @@ export const VideoCanvas = memo(function VideoCanvas({
       wgl.height = height;
     }
 
+    // WebGPU base-layer canvas -- same dpr-scaled buffer size as the 2D canvas above it (both
+    // occupy the same grid cell; see YuvViewerPanel.css's .yuv-canvas-container), sized
+    // unconditionally so it's ready the moment the mount effect's attach resolves.
+    const gpu = webgpuCanvasRef.current;
+    if (gpu && (gpu.width !== bufferWidth || gpu.height !== bufferHeight)) {
+      gpu.width = bufferWidth;
+      gpu.height = bufferHeight;
+    }
+
+    const useGpuForThisFrame =
+      useYUV &&
+      backend === "webgpu" &&
+      (gpuRendererRef.current?.isReady() ?? false);
+
     // Identity transform for the buffer-resolution clear/video draw below -- both explicitly
     // target canvas.width/canvas.height (physical, already dpr-scaled), so no additional
     // transform scaling should apply here (that would double-scale them).
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (useGpuForThisFrame) {
+      // The WebGPU canvas underneath (same grid cell) draws the opaque base frame -- this
+      // context now only needs to be transparent so that layer shows through, not painted over.
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     // Render source
-    if (useYUV && yuvData && rendererRef.current) {
+    if (useGpuForThisFrame && yuvData) {
+      const frameToRender = applyChannelMode(yuvData, channelMode);
+      gpuRendererRef.current?.render(frameToRender, colorspace);
+    } else if (useYUV && yuvData && rendererRef.current) {
       const frameToRender = applyChannelMode(yuvData, channelMode);
       rendererRef.current.render(frameToRender, colorspace);
     } else if (frameImage) {
@@ -263,6 +320,7 @@ export const VideoCanvas = memo(function VideoCanvas({
     av1Features,
     colorspace,
     channelMode,
+    backend,
   ]);
 
   return (
@@ -276,6 +334,14 @@ export const VideoCanvas = memo(function VideoCanvas({
       onContextMenu={onContextMenu}
       style={containerStyle}
     >
+      <canvas
+        ref={webgpuCanvasRef}
+        width={yuvData?.width ?? frameImage?.width ?? 640}
+        height={yuvData?.height ?? frameImage?.height ?? 360}
+        className="yuv-canvas yuv-canvas--webgpu"
+        style={mainCanvasStyle}
+        aria-hidden
+      />
       <canvas
         ref={canvasRef}
         width={yuvData?.width ?? frameImage?.width ?? 640}

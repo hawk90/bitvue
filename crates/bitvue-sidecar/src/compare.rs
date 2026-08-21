@@ -88,12 +88,12 @@ fn decoded_luma(core: &Core, stream: StreamId, frame_index: usize) -> Result<Vec
         .map_err(|e| e.to_string())?;
 
     let frame = decode_bridge::get_decoded_frame_yuv(data, frame_index)?;
-    let y_bytes = &frame.bytes[..frame.y_len];
+    let y_bytes = &frame.bytes[..frame.descriptor.y_len];
     Ok(destride_luma(
         y_bytes,
-        frame.y_stride,
-        frame.width,
-        frame.height,
+        frame.descriptor.y_stride,
+        frame.descriptor.width,
+        frame.descriptor.height,
     ))
 }
 

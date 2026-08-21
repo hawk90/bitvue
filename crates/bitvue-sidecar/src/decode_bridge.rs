@@ -31,12 +31,15 @@ pub enum GetThumbnailsError {
     Other(String),
 }
 
-/// Wire-ready decoded frame: metadata fields plus the concatenated Y+U+V byte buffer sent as
-/// the `Data` frame that follows this command's `Control` response (see `get_hex_range` for the
-/// established no-base64 two-frame pattern this mirrors). The TS side slices `bytes` back into
-/// three planes using `y_len`/`u_len`/`v_len`.
-#[derive(Debug)]
-pub struct DecodedYuvFrame {
+/// The frame-shape contract, independent of where its bytes live -- Phase 1 of an eventual
+/// FrameDescriptor/FrameStorage split for the GPU-native rendering pipeline (see
+/// docs/DEVELOPMENT_PHASES.md). Deliberately just metadata: bytes stay a plain `Vec<u8>` on
+/// `DecodedYuvFrame` below rather than behind a `FrameStorage` abstraction, since only a second
+/// real storage backend (e.g. shared memory, not yet built) would justify one -- an enum with a
+/// single variant is exactly the premature-abstraction case this project's conventions warn
+/// against.
+#[derive(Debug, Clone, Copy)]
+pub struct FrameDescriptor {
     pub width: u32,
     pub height: u32,
     pub bit_depth: u8,
@@ -47,6 +50,15 @@ pub struct DecodedYuvFrame {
     pub y_len: usize,
     pub u_len: usize,
     pub v_len: usize,
+}
+
+/// Wire-ready decoded frame: [`FrameDescriptor`] plus the concatenated Y+U+V byte buffer sent as
+/// the `Data` frame that follows this command's `Control` response (see `get_hex_range` for the
+/// established no-base64 two-frame pattern this mirrors). The TS side slices `bytes` back into
+/// three planes using `descriptor.y_len`/`u_len`/`v_len`.
+#[derive(Debug)]
+pub struct DecodedYuvFrame {
+    pub descriptor: FrameDescriptor,
     pub bytes: Vec<u8>,
 }
 
@@ -124,16 +136,18 @@ pub(crate) fn to_wire(frame: &DecodedFrame) -> DecodedYuvFrame {
     bytes.extend_from_slice(v_bytes);
 
     DecodedYuvFrame {
-        width: frame.width,
-        height: frame.height,
-        bit_depth: frame.bit_depth,
-        chroma_subsampling,
-        y_stride: frame.width as usize,
-        u_stride: chroma_width,
-        v_stride: chroma_width,
-        y_len: frame.y_plane.len(),
-        u_len: u_bytes.len(),
-        v_len: v_bytes.len(),
+        descriptor: FrameDescriptor {
+            width: frame.width,
+            height: frame.height,
+            bit_depth: frame.bit_depth,
+            chroma_subsampling,
+            y_stride: frame.width as usize,
+            u_stride: chroma_width,
+            v_stride: chroma_width,
+            y_len: frame.y_plane.len(),
+            u_len: u_bytes.len(),
+            v_len: v_bytes.len(),
+        },
         bytes,
     }
 }
@@ -387,16 +401,19 @@ mod tests {
     fn frame_zero_matches_cli_ground_truth_and_uses_a_tightly_packed_stride() {
         let frame = get_decoded_frame_yuv(AV1_IVF_FIXTURE, 0).unwrap();
 
-        assert_eq!(frame.width, 320);
-        assert_eq!(frame.height, 240);
+        assert_eq!(frame.descriptor.width, 320);
+        assert_eq!(frame.descriptor.height, 240);
         assert_eq!(
-            frame.y_stride, frame.width as usize,
+            frame.descriptor.y_stride, frame.descriptor.width as usize,
             "y_plane is tightly packed (no dav1d row padding survives extraction) -- \
              y_stride must equal width, not dav1d's source picture stride"
         );
-        assert_eq!(frame.y_len, frame.width as usize * frame.height as usize);
+        assert_eq!(
+            frame.descriptor.y_len,
+            frame.descriptor.width as usize * frame.descriptor.height as usize
+        );
 
-        let y = &frame.bytes[..frame.y_len];
+        let y = &frame.bytes[..frame.descriptor.y_len];
         assert_eq!(
             &y[..16],
             &[15, 16, 16, 16, 213, 213, 214, 214, 17, 17, 17, 17, 212, 212, 212, 212],

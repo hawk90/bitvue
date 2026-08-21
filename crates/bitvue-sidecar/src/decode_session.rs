@@ -258,8 +258,8 @@ mod tests {
                 via_session.bytes, via_scratch.bytes,
                 "frame {i}: session-continued decode should byte-for-byte match a from-scratch decode"
             );
-            assert_eq!(via_session.width, via_scratch.width);
-            assert_eq!(via_session.height, via_scratch.height);
+            assert_eq!(via_session.descriptor.width, via_scratch.descriptor.width);
+            assert_eq!(via_session.descriptor.height, via_scratch.descriptor.height);
         }
     }
 

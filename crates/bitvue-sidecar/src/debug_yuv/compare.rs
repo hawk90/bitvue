@@ -104,16 +104,18 @@ pub fn get_frame(
     let v = vec![128u8; chroma_len];
 
     Ok(DecodedYuvFrame {
-        width: decoded_planes.width,
-        height: decoded_planes.height,
-        bit_depth: 8,
-        chroma_subsampling: session.format.chroma_subsampling_str(),
-        y_stride: decoded_planes.width as usize,
-        u_stride: decoded_planes.chroma_width as usize,
-        v_stride: decoded_planes.chroma_width as usize,
-        y_len: y.len(),
-        u_len: u.len(),
-        v_len: v.len(),
+        descriptor: crate::decode_bridge::FrameDescriptor {
+            width: decoded_planes.width,
+            height: decoded_planes.height,
+            bit_depth: 8,
+            chroma_subsampling: session.format.chroma_subsampling_str(),
+            y_stride: decoded_planes.width as usize,
+            u_stride: decoded_planes.chroma_width as usize,
+            v_stride: decoded_planes.chroma_width as usize,
+            y_len: y.len(),
+            u_len: u.len(),
+            v_len: v.len(),
+        },
         bytes: [y.as_slice(), u.as_slice(), v.as_slice()].concat(),
     })
 }
@@ -343,9 +345,11 @@ mod tests {
         .unwrap();
         let core = Core::new(); // no stream opened at all
         let frame = get_frame(&core, &session, 0, "reference", None).unwrap();
-        assert_eq!(frame.width, 4);
-        assert_eq!(frame.height, 4);
-        assert!(frame.bytes[..frame.y_len].iter().all(|&b| b == 42));
+        assert_eq!(frame.descriptor.width, 4);
+        assert_eq!(frame.descriptor.height, 4);
+        assert!(frame.bytes[..frame.descriptor.y_len]
+            .iter()
+            .all(|&b| b == 42));
     }
 
     #[test]

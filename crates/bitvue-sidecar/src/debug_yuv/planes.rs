@@ -213,8 +213,9 @@ pub(super) fn read_reference_frame(session: &Session, index: usize) -> Result<Pl
 /// declared format -- they're expected to match for a meaningful diff, but crop math should use
 /// whichever frame it's actually cropping).
 pub(super) fn decoded_to_planes8(frame: &DecodedYuvFrame, crop: Crop) -> Planes8 {
-    let bps = bytes_per_sample(frame.bit_depth);
-    let downshift = frame.bit_depth.saturating_sub(8);
+    let d = &frame.descriptor;
+    let bps = bytes_per_sample(d.bit_depth);
+    let downshift = d.bit_depth.saturating_sub(8);
     let unpack = |bytes: &[u8]| -> Vec<u8> {
         if bps == 1 {
             bytes.to_vec()
@@ -228,20 +229,19 @@ pub(super) fn decoded_to_planes8(frame: &DecodedYuvFrame, crop: Crop) -> Planes8
                 .collect()
         }
     };
-    let y = unpack(&frame.bytes[..frame.y_len]);
-    let u = unpack(&frame.bytes[frame.y_len..frame.y_len + frame.u_len]);
-    let v =
-        unpack(&frame.bytes[frame.y_len + frame.u_len..frame.y_len + frame.u_len + frame.v_len]);
-    let (h_ratio, v_ratio) = match frame.chroma_subsampling {
+    let y = unpack(&frame.bytes[..d.y_len]);
+    let u = unpack(&frame.bytes[d.y_len..d.y_len + d.u_len]);
+    let v = unpack(&frame.bytes[d.y_len + d.u_len..d.y_len + d.u_len + d.v_len]);
+    let (h_ratio, v_ratio) = match d.chroma_subsampling {
         "422" => (2, 1),
         "444" => (1, 1),
         _ => (2, 2), // "420" and any unrecognized value
     };
-    let chroma_height = frame.u_len.checked_div(frame.u_stride).unwrap_or(0) as u32;
+    let chroma_height = d.u_len.checked_div(d.u_stride).unwrap_or(0) as u32;
     let planes = Planes8 {
-        width: frame.width,
-        height: frame.height,
-        chroma_width: frame.u_stride as u32,
+        width: d.width,
+        height: d.height,
+        chroma_width: d.u_stride as u32,
         chroma_height,
         y,
         u,
@@ -255,16 +255,18 @@ pub(super) fn planes_to_wire(
     chroma_subsampling: &'static str,
 ) -> DecodedYuvFrame {
     DecodedYuvFrame {
-        width: planes.width,
-        height: planes.height,
-        bit_depth: 8,
-        chroma_subsampling,
-        y_stride: planes.width as usize,
-        u_stride: planes.chroma_width as usize,
-        v_stride: planes.chroma_width as usize,
-        y_len: planes.y.len(),
-        u_len: planes.u.len(),
-        v_len: planes.v.len(),
+        descriptor: crate::decode_bridge::FrameDescriptor {
+            width: planes.width,
+            height: planes.height,
+            bit_depth: 8,
+            chroma_subsampling,
+            y_stride: planes.width as usize,
+            u_stride: planes.chroma_width as usize,
+            v_stride: planes.chroma_width as usize,
+            y_len: planes.y.len(),
+            u_len: planes.u.len(),
+            v_len: planes.v.len(),
+        },
         bytes: [
             planes.y.as_slice(),
             planes.u.as_slice(),

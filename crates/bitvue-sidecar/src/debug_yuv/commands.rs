@@ -262,16 +262,16 @@ pub fn get_debug_yuv_frame(
             let meta = Response::success(
                 request.id,
                 serde_json::json!({
-                    "width": frame.width,
-                    "height": frame.height,
-                    "bit_depth": frame.bit_depth,
-                    "chroma_subsampling": frame.chroma_subsampling,
-                    "y_stride": frame.y_stride,
-                    "u_stride": frame.u_stride,
-                    "v_stride": frame.v_stride,
-                    "y_len": frame.y_len,
-                    "u_len": frame.u_len,
-                    "v_len": frame.v_len,
+                    "width": frame.descriptor.width,
+                    "height": frame.descriptor.height,
+                    "bit_depth": frame.descriptor.bit_depth,
+                    "chroma_subsampling": frame.descriptor.chroma_subsampling,
+                    "y_stride": frame.descriptor.y_stride,
+                    "u_stride": frame.descriptor.u_stride,
+                    "v_stride": frame.descriptor.v_stride,
+                    "y_len": frame.descriptor.y_len,
+                    "u_len": frame.descriptor.u_len,
+                    "v_len": frame.descriptor.v_len,
                 }),
             );
             vec![
