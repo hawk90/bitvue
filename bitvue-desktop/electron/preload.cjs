@@ -116,6 +116,13 @@ contextBridge.exposeInMainWorld("bitvue", {
   // Electron's `dialog.showOpenDialog` FileFilter shape: [{name, extensions}].
   showOpenDialog: (filters) =>
     ipcRenderer.invoke("bitvue:showOpenDialog", filters),
+  // Used to prune stale entries (deleted files, cleaned-up temp dirs) out of the welcome screen's
+  // Recent Files list -- a plain fs.existsSync check in main, no dialog/sidecar involved.
+  pathExists: (path) => ipcRenderer.invoke("bitvue:pathExists", path),
+  // Welcome screen's "Samples" quick-open list -- resolves a bundled sample filename to its
+  // real absolute path (dev: repo checkout's samples/, packaged: extraResources-bundled samples/).
+  getSamplePath: (filename) =>
+    ipcRenderer.invoke("bitvue:getSamplePath", filename),
   closeWindow: () => ipcRenderer.invoke("bitvue:closeWindow"),
   minimizeWindow: () => ipcRenderer.invoke("bitvue:minimizeWindow"),
   toggleMaximizeWindow: () =>
