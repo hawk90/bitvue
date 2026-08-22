@@ -148,7 +148,7 @@ describe("WelcomeScreen", () => {
   });
 
   describe("Samples", () => {
-    it("renders the section with the AV1 group expanded by default", () => {
+    it("renders all codec groups collapsed by default, expanding AV1 on click", () => {
       const onOpenSample = vi.fn();
       renderWelcome({
         sampleResolvedPaths: { "foreman_av1.ivf": "/samples/foreman_av1.ivf" },
@@ -156,6 +156,11 @@ describe("WelcomeScreen", () => {
       });
 
       expect(screen.getByText("Samples")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /ivf.*foreman_av1\.ivf/i }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /^av1/i }));
       const av1Row = screen.getByRole("button", {
         name: /ivf.*foreman_av1\.ivf/i,
       });
@@ -167,6 +172,7 @@ describe("WelcomeScreen", () => {
 
     it("disables the AV1/IVF row until its path has resolved", () => {
       renderWelcome({ sampleResolvedPaths: {} });
+      fireEvent.click(screen.getByRole("button", { name: /^av1/i }));
       const av1Row = screen.getByRole("button", {
         name: /ivf.*foreman_av1\.ivf/i,
       });

@@ -1,3 +1,5 @@
+import "./WelcomeHeader.css";
+
 /**
  * Welcome screen header -- logo, app name, tagline. Pure presentation.
  */

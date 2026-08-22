@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import "./welcomeShared.css";
 
 interface WelcomeActionRowProps {
   icon: ReactNode;
@@ -14,7 +15,7 @@ interface WelcomeActionRowProps {
 
 /**
  * A single "Start" row: icon, label, optional keyboard-shortcut badge. Plain row, not a filled
- * button -- matches VS Code's own Start page list style (see WelcomeScreen.css's module doc).
+ * button -- matches VS Code's own Start page list style (see welcomeShared.css's module doc).
  */
 export function WelcomeActionRow({
   icon,

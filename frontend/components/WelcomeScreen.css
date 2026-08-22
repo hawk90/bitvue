@@ -6,10 +6,11 @@
  * rather than fighting a fixed viewport height. The whole column is horizontally centered in the
  * window (not pinned to the left edge), but rows stay left-aligned *within* that column.
  *
- * `.welcome-row`/`.welcome-row-icon`/`.welcome-row-label`/`.welcome-row-shortcut` are the shared
- * row shape used by both Start actions (WelcomeActionRow) and Recent items
- * (WelcomeRecentItem's open link) -- icon, label, right-aligned keycap/shortcut. No filled button
- * chrome anywhere (see 66efea8 -- VS Code buttons never use gradient/glow chrome).
+ * Owns only the screen-level scaffold (viewport wrapper, two-column grid) and the "Start" block
+ * that lives directly in WelcomeScreen.tsx (action list + error banner) -- everything else here
+ * has its own component with its own colocated CSS file (WelcomeHeader.css, welcomeShared.css
+ * for the shared row shape, WelcomeRecentList.css, WelcomeSampleList.css,
+ * WelcomePracticeList.css, WelcomeFooter.css).
  */
 
 .welcome-screen {
@@ -21,152 +22,33 @@
 }
 
 .welcome-content {
-  max-width: 560px;
+  max-width: 920px;
   margin: 0 auto;
 }
 
-/* Header */
-.welcome-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 40px;
+/* Two-column split (VS Code Start-page pattern): Start+Recent left, Samples right, sharing the
+   header's left edge -- not two independently centered stacks. Collapses to one column below
+   760px so the layout stays readable in a narrow window instead of squeezing two columns thin. */
+.welcome-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
 }
 
-.welcome-logo {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-}
-
-.welcome-logo svg {
-  width: 100%;
-  height: 100%;
-}
-
-.welcome-header-text {
+.welcome-column {
   min-width: 0;
 }
 
-.welcome-title {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-  letter-spacing: -0.3px;
-}
-
-.welcome-subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin: 2px 0 0;
-}
-
-/* Sections (Start / Recent) -- headers are sized above the row content they introduce, not
-   below it as a small muted "eyebrow" label. */
-.welcome-section {
-  margin-bottom: 32px;
-}
-
-.welcome-section-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 8px;
+@media (max-width: 760px) {
+  .welcome-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 
 .welcome-action-list {
   display: flex;
   flex-direction: column;
-}
-
-/* Shared row shape: icon, label, shortcut badge. No highlight box on hover -- with nothing to
-   underline either, the blue label color + pointer cursor are the only (and sufficient) "this is
-   clickable" affordance. */
-.welcome-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
-  margin: 0 -8px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-md);
-  font-family: inherit;
-  font-size: 14px;
-  color: var(--text-link);
-  text-align: left;
-  cursor: pointer;
-}
-
-.welcome-row:hover:not(:disabled) {
-  color: var(--text-link-hover);
-}
-
-.welcome-row:hover:not(:disabled) .welcome-row-icon {
-  color: var(--text-link-hover);
-}
-
-.welcome-row:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -2px;
-}
-
-.welcome-row:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.welcome-row-icon {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--text-link);
-}
-
-.welcome-row-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
-.welcome-row-icon.spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.welcome-row-label {
-  flex: 1;
-  white-space: nowrap;
-}
-
-.welcome-row-shortcut {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.welcome-row-shortcut kbd {
-  padding: 2px 6px;
-  background: var(--bg-button);
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
 }
 
 .welcome-error {
@@ -180,209 +62,4 @@
   border-radius: var(--radius-md);
   font-size: 13px;
   color: #ff6b6b;
-}
-
-/* Recent files list -- .welcome-recent-link reuses .welcome-row (see WelcomeRecentItem.tsx),
-   these are just the Recent-specific extras layered on top of it. */
-.welcome-recent-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.welcome-recent-item {
-  display: flex;
-  align-items: center;
-  /* Fixed, deliberate distance between the link and its remove (X) button -- independent of how
-     much of .welcome-recent-link's own flex:1 width the visible text actually fills. */
-  gap: 12px;
-}
-
-.welcome-recent-link {
-  flex: 1;
-  min-width: 0;
-  align-items: baseline;
-  /* theme/buttons.css's global `button {}` reset sets `justify-content: center` -- .welcome-row
-     never declares the property so that leaked through unopposed (cascade is per-property, not
-     per-rule) -- explicit override needed. */
-  justify-content: flex-start;
-}
-
-/* Shared "primary label / secondary detail" text pair -- used by Recent items (filename / dir)
-   and Sample items (codec+container / filename). */
-.welcome-row-name {
-  color: var(--text-link);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.welcome-row:hover:not(:disabled) .welcome-row-name {
-  color: var(--text-link-hover);
-}
-
-.welcome-row-secondary {
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.welcome-recent-remove {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-bright);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  opacity: 0;
-}
-
-.welcome-recent-item:hover .welcome-recent-remove,
-.welcome-recent-remove:focus-visible {
-  opacity: 1;
-}
-
-/* The row itself has no hover highlight (see .welcome-row above) -- only the remove button gets
-   one, and only when it's the thing actually being hovered/focused. */
-.welcome-recent-remove:hover,
-.welcome-recent-remove:focus-visible {
-  background: var(--bg-button-hover);
-}
-
-.welcome-recent-remove:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -2px;
-}
-
-.welcome-recent-remove:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Sample bitstreams -- grouped by codec, collapsed by default except AV1 (the only one with a
-   real end-to-end path today, see sampleCatalog.ts). Collapsing keeps the page from defaulting
-   to an 18-row wall for 17 rows that all just say "Coming soon" anyway. */
-.welcome-sample-group {
-  margin-bottom: 4px;
-}
-
-.welcome-sample-group-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  margin: 0 -8px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-md);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-align: left;
-  cursor: pointer;
-}
-
-.welcome-sample-group-header:hover {
-  color: var(--text-primary);
-}
-
-.welcome-sample-group-header:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -2px;
-}
-
-.welcome-sample-group-chevron {
-  font-size: 12px;
-  flex-shrink: 0;
-  transition: transform 0.1s ease;
-}
-
-.welcome-sample-group-chevron.expanded {
-  transform: rotate(90deg);
-}
-
-.welcome-sample-group-count {
-  margin-left: auto;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
-/* .welcome-sample-link reuses .welcome-row/.welcome-row-name/.welcome-row-secondary the same
-   way Recent items do. Most rows are `disabled` (not yet supported by the analysis backend) --
-   .welcome-row:disabled already dims them, this just adds the "Coming soon" badge. */
-.welcome-sample-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 4px 22px;
-}
-
-.welcome-sample-item {
-  display: flex;
-}
-
-.welcome-sample-link {
-  flex: 1;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: flex-start;
-}
-
-.welcome-sample-badge {
-  flex-shrink: 0;
-  margin-left: auto;
-  padding: 2px 7px;
-  background: var(--bg-button);
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--text-muted);
-}
-
-/* Footer -- flows normally after Samples now. Used to be pinned to the bottom of the viewport
-   (position: absolute) so its position stayed stable regardless of Recent's length, but once
-   Samples made the page long enough to genuinely need scrolling, an absolutely-positioned footer
-   permanently overlaps whatever content is scrolled to that same screen position -- looks broken
-   (confirmed via a real screenshot: "GitHub" rendering on top of a mid-list Samples row). A
-   normal footer at the true end of a long, scrollable page is the standard pattern here, not a
-   fixed corner icon (that analogy only held while the page was short). */
-.welcome-footer {
-  margin-top: 8px;
-  padding-top: 20px;
-  border-top: 1px solid rgb(255 255 255 / 6%);
-}
-
-.footer-links {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.footer-links a {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  text-decoration: none;
-}
-
-.footer-links a:hover {
-  color: var(--text-link);
-}
-
-.footer-divider {
-  color: var(--border-lighter);
 }

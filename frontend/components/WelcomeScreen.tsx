@@ -13,6 +13,8 @@ import { WelcomeHeader } from "./welcome/WelcomeHeader";
 import { WelcomeActionRow } from "./welcome/WelcomeActionRow";
 import { WelcomeRecentList } from "./welcome/WelcomeRecentList";
 import { WelcomeSampleList } from "./welcome/WelcomeSampleList";
+import { WelcomePracticeList } from "./welcome/WelcomePracticeList";
+import { PRACTICE_SAMPLE_FILENAME } from "./welcome/sampleCatalog";
 import { WelcomeFooter } from "./welcome/WelcomeFooter";
 import "./WelcomeScreen.css";
 
@@ -64,46 +66,58 @@ export const WelcomeScreen = memo(function WelcomeScreen({
       <div className="welcome-content">
         <WelcomeHeader />
 
-        <div className="welcome-section">
-          <div className="welcome-section-title">Start</div>
-          <div className="welcome-action-list">
-            <WelcomeActionRow
-              icon={loading ? SpinnerIcon : OpenIcon}
-              iconSpinning={loading}
-              label={loading ? "Opening..." : "Open Bitstream File"}
-              shortcut={loading ? undefined : [modKey, "O"]}
-              onClick={onOpenFile}
-              disabled={loading}
-            />
-            <WelcomeActionRow
-              icon={<span className="codicon codicon-keyboard" />}
-              label="Keyboard Shortcuts"
-              shortcut={["?"]}
-              onClick={onShowShortcuts}
+        <div className="welcome-columns">
+          <div className="welcome-column">
+            <div className="welcome-section">
+              <div className="welcome-section-title">Start</div>
+              <div className="welcome-action-list">
+                <WelcomeActionRow
+                  icon={loading ? SpinnerIcon : OpenIcon}
+                  iconSpinning={loading}
+                  label={loading ? "Opening..." : "Open Bitstream File"}
+                  shortcut={loading ? undefined : [modKey, "O"]}
+                  onClick={onOpenFile}
+                  disabled={loading}
+                />
+                <WelcomeActionRow
+                  icon={<span className="codicon codicon-keyboard" />}
+                  label="Keyboard Shortcuts"
+                  shortcut={["?"]}
+                  onClick={onShowShortcuts}
+                  disabled={loading}
+                />
+              </div>
+
+              {error && (
+                <div className="welcome-error" role="alert">
+                  <span className="codicon codicon-error" aria-hidden="true" />
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <WelcomeRecentList
+              files={recentFiles}
+              onOpen={onOpenRecent}
+              onRemove={onRemoveRecent}
               disabled={loading}
             />
           </div>
 
-          {error && (
-            <div className="welcome-error" role="alert">
-              <span className="codicon codicon-error" aria-hidden="true" />
-              {error}
-            </div>
-          )}
+          <div className="welcome-column">
+            <WelcomeSampleList
+              resolvedPaths={sampleResolvedPaths}
+              onOpen={onOpenSample}
+              disabled={loading}
+            />
+
+            <WelcomePracticeList
+              samplePath={sampleResolvedPaths[PRACTICE_SAMPLE_FILENAME] ?? null}
+              onOpen={onOpenSample}
+              disabled={loading}
+            />
+          </div>
         </div>
-
-        <WelcomeRecentList
-          files={recentFiles}
-          onOpen={onOpenRecent}
-          onRemove={onRemoveRecent}
-          disabled={loading}
-        />
-
-        <WelcomeSampleList
-          resolvedPaths={sampleResolvedPaths}
-          onOpen={onOpenSample}
-          disabled={loading}
-        />
 
         <WelcomeFooter />
       </div>

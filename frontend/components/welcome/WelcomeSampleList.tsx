@@ -1,5 +1,7 @@
 import { WELCOME_SAMPLE_GROUPS } from "./sampleCatalog";
 import { WelcomeSampleGroup } from "./WelcomeSampleGroup";
+import "./welcomeShared.css";
+import "./WelcomeSampleList.css";
 
 interface WelcomeSampleListProps {
   /** Resolved absolute paths for the `available` subset of the catalog, keyed by filename (see

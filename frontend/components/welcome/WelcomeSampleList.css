@@ -1,0 +1,84 @@
+/* Sample bitstreams -- grouped by codec, all collapsed by default (see sampleCatalog.ts;
+   Practice, not Samples, is the "start here" default entry point). Collapsing keeps the page
+   from defaulting to an 18-row wall for 17 rows that all just say "Coming soon" anyway. */
+.welcome-sample-group {
+  margin-bottom: 4px;
+}
+
+.welcome-sample-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.welcome-sample-group-header:hover {
+  color: var(--text-primary);
+}
+
+.welcome-sample-group-header:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.welcome-sample-group-chevron {
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+
+.welcome-sample-group-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.welcome-sample-group-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* .welcome-sample-link reuses .welcome-row/.welcome-row-name/.welcome-row-secondary (see
+   welcomeShared.css) the same way Recent items do. Most rows are `disabled` (not yet supported
+   by the analysis backend) -- .welcome-row:disabled already dims them, this just adds the
+   "Coming soon" badge. */
+.welcome-sample-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px 22px;
+}
+
+.welcome-sample-item {
+  display: flex;
+}
+
+.welcome-sample-link {
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: flex-start;
+}
+
+.welcome-sample-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px 7px;
+  background: var(--bg-button);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}

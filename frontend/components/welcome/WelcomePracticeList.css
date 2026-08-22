@@ -1,0 +1,38 @@
+/* Practice -- sits below Samples in the right column, a handful of codec-agnostic entry points
+   into what the GUI already does (see practiceCatalog.ts's doc). Rows are taller than
+   .welcome-row's other uses (Start/Recent/Sample, see welcomeShared.css) since each one carries
+   a title + description pair instead of a single line, so the shared row shape needs its own
+   text layout on top. */
+.welcome-practice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.welcome-practice-link {
+  align-items: flex-start;
+  padding: 8px;
+}
+
+.welcome-practice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.welcome-practice-title {
+  color: var(--text-link);
+}
+
+.welcome-row:hover:not(:disabled) .welcome-practice-title {
+  color: var(--text-link-hover);
+}
+
+.welcome-practice-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  white-space: normal;
+}

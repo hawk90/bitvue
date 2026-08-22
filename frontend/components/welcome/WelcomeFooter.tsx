@@ -1,6 +1,8 @@
+import "./WelcomeFooter.css";
+
 /** GitHub link -- Keyboard Shortcuts lives in the Start action list as a real action row now,
- *  so this footer is just the one external link. Pinned to the bottom-left of the viewport via
- *  WelcomeScreen.css, not flowing after Recent (see that file's doc). */
+ *  so this footer is just the one external link. Flows after Samples/Practice, not pinned to
+ *  the viewport (see WelcomeFooter.css's module doc). */
 export function WelcomeFooter() {
   return (
     <div className="welcome-footer">

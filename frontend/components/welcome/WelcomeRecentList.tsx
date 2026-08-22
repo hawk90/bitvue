@@ -1,4 +1,6 @@
 import { WelcomeRecentItem } from "./WelcomeRecentItem";
+import "./welcomeShared.css";
+import "./WelcomeRecentList.css";
 
 interface WelcomeRecentListProps {
   files: string[];

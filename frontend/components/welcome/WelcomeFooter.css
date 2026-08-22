@@ -1,0 +1,36 @@
+/* Flows normally after Samples/Practice now. Used to be pinned to the bottom of the viewport
+   (position: absolute) so its position stayed stable regardless of Recent's length, but once
+   Samples made the page long enough to genuinely need scrolling, an absolutely-positioned footer
+   permanently overlaps whatever content is scrolled to that same screen position -- looks broken
+   (confirmed via a real screenshot: "GitHub" rendering on top of a mid-list Samples row). A
+   normal footer at the true end of a long, scrollable page is the standard pattern here, not a
+   fixed corner icon (that analogy only held while the page was short). */
+.welcome-footer {
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid rgb(255 255 255 / 6%);
+}
+
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.footer-links a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--text-link);
+}
+
+.footer-divider {
+  color: var(--border-lighter);
+}

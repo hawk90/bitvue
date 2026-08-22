@@ -30,7 +30,9 @@ export interface WelcomeSampleEntry {
 
 export interface WelcomeSampleGroup {
   codec: string;
-  /** Expanded by default -- only AV1 is currently worth seeing without an extra click. */
+  /** All groups start collapsed -- Samples now sits next to Practice (see
+   *  WelcomePracticeList), which is the actual "start here" entry point, so Samples doesn't
+   *  need to force one codec open by default anymore. */
   defaultExpanded: boolean;
   entries: WelcomeSampleEntry[];
 }
@@ -38,7 +40,7 @@ export interface WelcomeSampleGroup {
 export const WELCOME_SAMPLE_GROUPS: WelcomeSampleGroup[] = [
   {
     codec: "AV1",
-    defaultExpanded: true,
+    defaultExpanded: false,
     entries: [
       { container: "IVF", filename: "foreman_av1.ivf", available: true },
       { container: "MP4", filename: "foreman_av1.mp4", available: false },
@@ -103,3 +105,8 @@ export const WELCOME_SAMPLE_GROUPS: WelcomeSampleGroup[] = [
 export const AVAILABLE_SAMPLE_FILENAMES = WELCOME_SAMPLE_GROUPS.flatMap((g) =>
   g.entries.filter((e) => e.available).map((e) => e.filename),
 );
+
+/** The sample WelcomePracticeList's rows open -- AV1/IVF is the only combination with a real
+ *  end-to-end analysis path today (see file doc above), so it's the only honest target for a
+ *  "try this workflow" entry point. */
+export const PRACTICE_SAMPLE_FILENAME = "foreman_av1.ivf";

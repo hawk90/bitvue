@@ -1,0 +1,63 @@
+/* .welcome-recent-link reuses .welcome-row/.welcome-row-name/.welcome-row-secondary (see
+   welcomeShared.css) -- these are just the Recent-specific extras layered on top of it. */
+.welcome-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.welcome-recent-item {
+  display: flex;
+  align-items: center;
+  /* Fixed, deliberate distance between the link and its remove (X) button -- independent of how
+     much of .welcome-recent-link's own flex:1 width the visible text actually fills. */
+  gap: 12px;
+}
+
+.welcome-recent-link {
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  /* theme/buttons.css's global `button {}` reset sets `justify-content: center` -- .welcome-row
+     never declares the property so that leaked through unopposed (cascade is per-property, not
+     per-rule) -- explicit override needed. */
+  justify-content: flex-start;
+}
+
+.welcome-recent-remove {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-bright);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.welcome-recent-item:hover .welcome-recent-remove,
+.welcome-recent-remove:focus-visible {
+  opacity: 1;
+}
+
+/* The row itself has no hover highlight (see .welcome-row in welcomeShared.css) -- only the
+   remove button gets one, and only when it's the thing actually being hovered/focused. */
+.welcome-recent-remove:hover,
+.welcome-recent-remove:focus-visible {
+  background: var(--bg-button-hover);
+}
+
+.welcome-recent-remove:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.welcome-recent-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
