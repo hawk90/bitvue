@@ -706,6 +706,12 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * last, right before capture -- dispatches a real `contextmenu` `MouseEvent` (bubbling,
  * cancelable) at the matched element's center, for right-click-only UI (context menus on
  * HexView/StreamView/Timeline/DiagnosticsPanel/Player) that a plain `click()` can't reach.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_SKIP_OPEN=1` (optional): skips the automatic
+ * `"menu-open-bitstream"` dispatch (and its settle wait) entirely, capturing whatever the app
+ * renders on first load instead -- the Welcome screen, since nothing has been opened. All the
+ * CLICK_TAB/CLICK_SELECTOR/KEY/DISPATCH/CONTEXT_MENU hooks below still run afterward against
+ * that state, so this also reaches Welcome-screen-only UI (e.g. its own dialogs).
  */
 async function runScreenshotAndExit(
   win: BrowserWindow,
@@ -730,15 +736,22 @@ async function runScreenshotAndExit(
       // even installed.
       'window.alert = (msg) => console.log("[screenshot] window.alert suppressed:", msg); void 0;',
     );
-    await win.webContents.executeJavaScript(
-      'window.dispatchEvent(new CustomEvent("menu-open-bitstream"))',
-    );
-    // Real IPC round-trips here have all been sub-second in prior selftest runs -- a generous
-    // fixed wait for the open -> index -> refreshFrames chain + React re-render to settle,
-    // rather than guessing at a DOM-text heuristic that could false-positive on unrelated text.
-    await win.webContents.executeJavaScript(
-      "new Promise((r) => setTimeout(r, 3000))",
-    );
+    if (process.env.BITVUE_ELECTRON_SCREENSHOT_SKIP_OPEN) {
+      // Still give the initial React mount a moment to settle instead of racing it.
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
+    } else {
+      await win.webContents.executeJavaScript(
+        'window.dispatchEvent(new CustomEvent("menu-open-bitstream"))',
+      );
+      // Real IPC round-trips here have all been sub-second in prior selftest runs -- a generous
+      // fixed wait for the open -> index -> refreshFrames chain + React re-render to settle,
+      // rather than guessing at a DOM-text heuristic that could false-positive on unrelated text.
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 3000))",
+      );
+    }
     // `BITVUE_ELECTRON_SCREENSHOT_OPEN_DEPENDENT=1` (optional, Phase 7.5 compare workspace):
     // dispatches "menu-open-dependent" the same way -- `showOpenDialog`'s
     // `BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH` bypass answers this second dialog too (same path
