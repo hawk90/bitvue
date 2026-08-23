@@ -12,6 +12,9 @@ const MockMainView = () => <div data-testid="main-view">Main View</div>;
 const MockPanel1 = () => <div data-testid="panel-1">Panel 1</div>;
 const MockPanel2 = () => <div data-testid="panel-2">Panel 2</div>;
 const MockPanel3 = () => <div data-testid="panel-3">Panel 3</div>;
+const MockFilmstripBar = () => (
+  <div data-testid="filmstrip-bar-content">Filmstrip</div>
+);
 
 describe("DockableLayout", () => {
   const leftPanels = [
@@ -262,8 +265,80 @@ describe("PANEL_SIZES constants", () => {
   it("should have correct default values", () => {
     expect(PANEL_SIZES.LEFT_SIDEBAR).toBe(25);
     expect(PANEL_SIZES.MAIN_CONTENT).toBe(75);
-    expect(PANEL_SIZES.YUV_VIEWER).toBe(78);
+    expect(PANEL_SIZES.FILMSTRIP_BAR).toBe(34);
+    expect(PANEL_SIZES.YUV_VIEWER).toBe(44);
     expect(PANEL_SIZES.BOTTOM_PANEL).toBe(22);
+    // Filmstrip + YUV viewer + Bottom row default sizes should sum to 100% of the vertical Group.
+    expect(
+      PANEL_SIZES.FILMSTRIP_BAR +
+        PANEL_SIZES.YUV_VIEWER +
+        PANEL_SIZES.BOTTOM_PANEL,
+    ).toBe(100);
+  });
+});
+
+// The filmstrip/timeline bar was previously a fixed-height div OUTSIDE the resizable Group --
+// found during a real UI/UX parity pass that every *other* panel boundary was drag-resizable
+// except this one. Now a real Panel inside the same vertical Group as main-area/bottom-row.
+describe("DockableLayout filmstrip bar resizing", () => {
+  const leftPanels = [
+    { id: "panel1", title: "Panel 1", component: MockPanel1, icon: "icon-1" },
+  ];
+  const topPanels = [
+    {
+      id: "filmstrip",
+      title: "Filmstrip",
+      component: MockFilmstripBar,
+    },
+  ];
+
+  it("renders the filmstrip bar content inside a real Panel, not a plain fixed div", () => {
+    const { container } = render(
+      <DockableLayout
+        leftPanels={leftPanels}
+        mainView={MockMainView}
+        topPanels={topPanels}
+      />,
+    );
+
+    expect(screen.getByTestId("filmstrip-bar-content")).toBeInTheDocument();
+    const filmstripPanel = container.querySelector(".filmstrip-bar-panel");
+    expect(filmstripPanel).toBeInTheDocument();
+    // The old implementation rendered a plain `.filmstrip-bar` div outside any Panel -- assert
+    // that's gone, not just that the new class is present.
+    expect(container.querySelector(".filmstrip-bar")).not.toBeInTheDocument();
+  });
+
+  it("renders a resize-handle-vertical separator between the filmstrip bar and the main area", () => {
+    const { container } = render(
+      <DockableLayout
+        leftPanels={leftPanels}
+        mainView={MockMainView}
+        topPanels={topPanels}
+      />,
+    );
+
+    const filmstripPanel = container.querySelector(".filmstrip-bar-panel");
+    const mainAreaPanel = container.querySelector(".main-area-panel");
+    expect(filmstripPanel).toBeInTheDocument();
+    expect(mainAreaPanel).toBeInTheDocument();
+
+    // The separator sits between them as a sibling in the vertical Group.
+    const verticalGroup = container.querySelector(".layout-vertical");
+    const separators = verticalGroup
+      ? Array.from(verticalGroup.querySelectorAll(".resize-handle-vertical"))
+      : [];
+    expect(separators.length).toBeGreaterThan(0);
+  });
+
+  it("does not render a filmstrip bar panel when topPanels is omitted", () => {
+    const { container } = render(
+      <DockableLayout leftPanels={leftPanels} mainView={MockMainView} />,
+    );
+
+    expect(
+      container.querySelector(".filmstrip-bar-panel"),
+    ).not.toBeInTheDocument();
   });
 });
 

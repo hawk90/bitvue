@@ -7,7 +7,8 @@
  * ┌─────────────────────────────────────────────────────────────────────────┐
  * │ Menu Bar                                                                  │
  * ├─────────────────────────────────────────────────────────────────────────┤
- * │ Filmstrip/Timeline Area                                                   │
+ * │ Filmstrip/Timeline Area (resizable against Main View, like every other    │
+ * │ boundary here)                                                            │
  * ├──────────┬──────────────────────────────────────────────────────────────┤
  * │  Left    │  Main View Area (YUV Player)                                  │
  * │  Panel   │                                                              │
@@ -30,8 +31,23 @@ export const PANEL_SIZES = {
   LEFT_SIDEBAR: 25,
   /** Main content area width percentage (calculated) */
   MAIN_CONTENT: 75,
-  /** YUV viewer height percentage */
-  YUV_VIEWER: 78,
+  /** Filmstrip/Timeline bar default height percentage -- previously a CSS-fixed, non-resizable
+      bar (`~220px` at the 800px default window height, `git log` shows the "outside Group so
+      height is CSS-controlled" comment was a deliberate original choice, not an oversight); moved
+      into the vertical Group so it resizes against the main view like every other panel boundary
+      (found missing during a real UI/UX parity pass). 22% of the default 800px window ≈ 176px,
+      close to the old fixed height. */
+  FILMSTRIP_BAR: 34,
+  /** YUV viewer height percentage -- reduced from the pre-Filmstrip-Panel 78 by the same amount
+      FILMSTRIP_BAR now takes, so the vertical Group's defaults still sum to 100. FILMSTRIP_BAR's
+      own +12 over its original ~22 leaves real slack below the Thumbnails view's frame cards for
+      reference arrows to draw into (see ThumbnailsView.css's `padding-bottom` reservation) --
+      previously that padding had nowhere to go since the panel was CSS-fixed at the cards'
+      own height, clipping every reference arrow to an invisible 1px stub. Sized for AV1's real
+      worst case (up to 7 reference slots, deduped -- `ThumbnailsView.css`'s doc), verified via a
+      real Electron screenshot; the boundary is drag-resizable now regardless (see this file's own
+      DockableLayout fix), so a user who doesn't care about reference arrows can always shrink it. */
+  YUV_VIEWER: 44,
   /** Bottom panel default height percentage -- 15 left Info/Details/Stats/Diagnostics' real
       content (e.g. Info's File/Frames/Duration rows) clipped by the window edge on any window
       close to the 1280x800 default, with no visible scroll affordance to signal there was more
@@ -45,6 +61,12 @@ export const PANEL_SIZES = {
 export const PANEL_MIN_SIZES = {
   LEFT_SIDEBAR: 15,
   MAIN_CONTENT: 30,
+  /** `TimelineFilmstrip.css`'s own floor is a 120px `min-height` (36px Timeline + 80px Filmstrip
+      content) -- 12% of the 800px default window is ~96px, intentionally a bit under that CSS
+      floor so the CSS min-height (not this percentage) is what actually stops the drag, same
+      "real floor is the child's own min-height" relationship `YUV_VIEWER`/`BOTTOM_PANEL` already
+      have with their content. */
+  FILMSTRIP_BAR: 12,
   YUV_VIEWER: 20,
   /** Same reasoning as `PANEL_SIZES.BOTTOM_PANEL` -- 10 let a user-driven resize shrink this to a
       near-unusable sliver. */
@@ -302,18 +324,29 @@ export const DockableLayout = memo(function DockableLayout({
 
   return (
     <div className="dockable-layout" data-testid="dockable-layout">
-      {/* Filmstrip/Timeline fixed bar — outside Group so height is CSS-controlled, not draggable */}
-      {topPanels && topPanels.length > 0 && (
-        <div className="filmstrip-bar">
-          {FilmstripBar ? (
-            <FilmstripBar />
-          ) : (
-            <BottomPanelBar panels={topPanels} />
-          )}
-        </div>
-      )}
-
       <Group orientation="vertical" className="layout-vertical">
+        {/* Filmstrip/Timeline bar -- a real resizable Panel (found missing 2026-08-23, a real
+            UI/UX gap: every other panel boundary in this layout is drag-resizable, this one
+            wasn't) instead of a fixed-height div outside the Group. */}
+        {topPanels && topPanels.length > 0 && (
+          <>
+            <Panel
+              defaultSize={PANEL_SIZES.FILMSTRIP_BAR}
+              minSize={PANEL_MIN_SIZES.FILMSTRIP_BAR}
+              collapsible={true}
+              id="filmstrip-bar"
+              className="filmstrip-bar-panel"
+            >
+              {FilmstripBar ? (
+                <FilmstripBar />
+              ) : (
+                <BottomPanelBar panels={topPanels} />
+              )}
+            </Panel>
+            <Separator className="resize-handle-vertical" />
+          </>
+        )}
+
         {/* Main content area with left sidebar */}
         <Panel
           defaultSize={PANEL_SIZES.YUV_VIEWER}

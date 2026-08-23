@@ -187,9 +187,17 @@ function resolveRendererTarget(): { kind: "url" | "file"; target: string } {
 }
 
 function createWindow(): BrowserWindow {
+  // BITVUE_ELECTRON_WINDOW_SIZE=<width>x<height> (optional, screenshot/selftest only): overrides
+  // the default 1280x800 launch size, e.g. to screenshot-verify the app at its own documented
+  // hard floor (minWidth/minHeight below) instead of only ever at the roomy default.
+  const sizeOverride = process.env.BITVUE_ELECTRON_WINDOW_SIZE;
+  const [overrideWidth, overrideHeight] = sizeOverride
+    ? sizeOverride.split("x").map((n) => parseInt(n, 10))
+    : [undefined, undefined];
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: overrideWidth || 1280,
+    height: overrideHeight || 800,
     title: "Bitvue",
     // Use the same Bitvue mark during `npm run electron` development launches. Packaged builds
     // use the electron-builder icon configured in bitvue-desktop/package.json.
@@ -722,6 +730,11 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * renders on first load instead -- the Welcome screen, since nothing has been opened. All the
  * CLICK_TAB/CLICK_SELECTOR/KEY/DISPATCH/CONTEXT_MENU hooks below still run afterward against
  * that state, so this also reaches Welcome-screen-only UI (e.g. its own dialogs).
+ *
+ * `BITVUE_ELECTRON_WINDOW_SIZE=<width>x<height>` (optional, read once at window creation, not a
+ * per-hook step): launches at this size instead of the 1280x800 default -- e.g.
+ * `900x600` to verify real layout at the app's own documented hard floor
+ * (`createWindow`'s `minWidth`/`minHeight`), not just the roomy default.
  */
 async function runScreenshotAndExit(
   win: BrowserWindow,

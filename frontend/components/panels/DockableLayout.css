@@ -25,16 +25,18 @@
   width: 100%;
 }
 
-/* Vertical group fills remaining space after the fixed filmstrip-bar */
+/* Vertical group fills the whole layout, filmstrip-bar/main-area/bottom-row panels all live
+   inside it now (all three boundaries resizable). */
 .layout-vertical {
   flex: 1;
   width: 100%;
   min-height: 0;
 }
 
-/* Fixed filmstrip/timeline bar — CSS pixel height, not a resizable Panel */
-.filmstrip-bar {
-  flex-shrink: 0;
+/* Filmstrip/Timeline bar -- a real resizable Panel (see DockableLayout.tsx's doc). Height comes
+   from the Panel's own flex-basis now, not a fixed CSS value. */
+.filmstrip-bar-panel {
+  overflow: hidden;
   border-bottom: 1px solid var(--bitvue-border, #3c3c3c);
 }
 
@@ -279,8 +281,6 @@
   background: var(--bitvue-bg, #1e1e1e);
   overflow: hidden;
 }
-
-/* .top-panel removed — filmstrip is now a plain .filmstrip-bar div, not a Panel */
 
 .bottom-panel-bar {
   display: flex;
