@@ -56,6 +56,18 @@ pub fn build_context_menu(
         ContextMenuScope::HexView => vec![
             ("copy_bytes", "Copy Bytes", "Copy.Bytes", "has_byte_range"),
             (
+                "copy_offset",
+                "Copy Offset",
+                "Copy.Offset",
+                "has_byte_range",
+            ),
+            (
+                "copy_bit_range",
+                "Copy Bit Range",
+                "Copy.BitRange",
+                "has_byte_range",
+            ),
+            (
                 "export_bundle",
                 "Export Evidence Bundle",
                 "Export.EvidenceBundle",

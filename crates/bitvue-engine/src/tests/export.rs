@@ -534,8 +534,8 @@ fn test_build_context_menu_hex_view() {
     let context = GuardEvalContext::default();
     let items = build_context_menu(ContextMenuScope::HexView, &context);
 
-    // HexView menu should have 2 items
-    assert_eq!(items.len(), 2);
+    // HexView menu should have 4 items: Copy Bytes, Copy Offset, Copy Bit Range, Export Bundle.
+    assert_eq!(items.len(), 4);
 
     // Copy bytes requires byte range
     let copy_item = items.iter().find(|i| i.id == "copy_bytes").unwrap();
@@ -544,6 +544,12 @@ fn test_build_context_menu_hex_view() {
         copy_item.disabled_reason,
         Some("No byte range selected.".to_string())
     );
+
+    // Copy Offset / Copy Bit Range are gated the same way as Copy Bytes.
+    let copy_offset = items.iter().find(|i| i.id == "copy_offset").unwrap();
+    assert!(!copy_offset.enabled);
+    let copy_bit_range = items.iter().find(|i| i.id == "copy_bit_range").unwrap();
+    assert!(!copy_bit_range.enabled);
 }
 
 #[test]

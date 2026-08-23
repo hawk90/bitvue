@@ -651,6 +651,12 @@ mod context_menu_tests {
         // Should have copy_bytes with has_byte_range guard
         let copy_bytes = items.iter().find(|i| i.id == "copy_bytes");
         assert!(copy_bytes.is_some());
+
+        // Copy Offset / Copy Bit Range are enabled once a byte range exists too.
+        let copy_offset = items.iter().find(|i| i.id == "copy_offset").unwrap();
+        assert!(copy_offset.enabled);
+        let copy_bit_range = items.iter().find(|i| i.id == "copy_bit_range").unwrap();
+        assert!(copy_bit_range.enabled);
     }
 }
 

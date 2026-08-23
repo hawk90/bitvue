@@ -120,9 +120,13 @@ mod tests {
         let response = get_context_menu_items(&request);
         let result = response.result.unwrap();
         let items = result["items"].as_array().unwrap();
-        assert_eq!(items.len(), 2);
+        assert_eq!(items.len(), 4);
         let copy_bytes = items.iter().find(|i| i["id"] == "copy_bytes").unwrap();
         assert_eq!(copy_bytes["enabled"], true);
+        let copy_offset = items.iter().find(|i| i["id"] == "copy_offset").unwrap();
+        assert_eq!(copy_offset["enabled"], true);
+        let copy_bit_range = items.iter().find(|i| i["id"] == "copy_bit_range").unwrap();
+        assert_eq!(copy_bit_range["enabled"], true);
     }
 
     #[test]

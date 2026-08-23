@@ -35,7 +35,12 @@ export const HexViewTab = memo(function HexViewTab({
   frameIndex,
   frames,
 }: HexViewTabProps) {
+  // INT-03: selectedByte/selectionEnd together represent a [min,max] byte range -- a plain click
+  // sets both to the same byte (the pre-existing single-byte behavior), a real drag extends
+  // selectionEnd live as the pointer moves. Kept as two values (not one {start,end} object) so
+  // the single-byte case stays a trivial, cheap comparison in the hot getByteStyle path below.
   const [selectedByte, setSelectedByte] = useState<number | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
   const [hexData, setHexData] = useState<Uint8Array>(new Uint8Array(0));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +48,20 @@ export const HexViewTab = memo(function HexViewTab({
   const [truncated, setTruncated] = useState<boolean>(false);
   const { selection, setBitRangeSelection } = useSelection();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Real [start, end] byte range (inclusive), derived from the two raw state values above.
+  const rangeStart =
+    selectedByte !== null && selectionEnd !== null
+      ? Math.min(selectedByte, selectionEnd)
+      : null;
+  const rangeEndInclusive =
+    selectedByte !== null && selectionEnd !== null
+      ? Math.max(selectedByte, selectionEnd)
+      : null;
+  const isMultiByteRange =
+    rangeStart !== null &&
+    rangeEndInclusive !== null &&
+    rangeStart !== rangeEndInclusive;
 
   // Right-click context menu (Phase 7.6, "HexView" scope) -- see ContextMenu component doc.
   const exportEvidence = useExportEvidenceBundle();
@@ -55,29 +74,51 @@ export const HexViewTab = memo(function HexViewTab({
   const handleHexContextMenu = useCallback(
     (event: React.MouseEvent) => {
       event.preventDefault();
-      const hasByteRange = selectedByte !== null;
+      const hasByteRange = rangeStart !== null;
       const x = event.clientX;
       const y = event.clientY;
       getContextMenuItems("HexView", false, hasByteRange)
         .then((items) => setContextMenu({ x, y, items }))
         .catch(() => setContextMenu(null));
     },
-    [selectedByte],
+    [rangeStart],
   );
 
   const handleContextMenuSelect = useCallback(
     (command: string) => {
       if (command === "Export.EvidenceBundle") {
         void exportEvidence();
-      } else if (command === "Copy.Bytes" && selectedByte !== null) {
-        const hex = hexData[selectedByte]
-          .toString(16)
-          .padStart(2, "0")
-          .toUpperCase();
+      } else if (
+        command === "Copy.Bytes" &&
+        rangeStart !== null &&
+        rangeEndInclusive !== null
+      ) {
+        // INT-03: copies the whole selected range, not just one byte -- clamped to what's
+        // actually loaded (a selection can technically extend past hexData when it arrived via
+        // a Syntax->Hex jump into a truncated frame's untruncated tail).
+        const clampedEnd = Math.min(rangeEndInclusive, hexData.length - 1);
+        const hex = Array.from(hexData.slice(rangeStart, clampedEnd + 1))
+          .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
+          .join(" ");
         void navigator.clipboard.writeText(hex);
+      } else if (command === "Copy.Offset" && rangeStart !== null) {
+        void navigator.clipboard.writeText(`0x${rangeStart.toString(16)}`);
+      } else if (
+        command === "Copy.BitRange" &&
+        rangeStart !== null &&
+        rangeEndInclusive !== null
+      ) {
+        // Derived directly from the local byte range (not `selection.bitRange`, which only
+        // reflects the last range that finished its async `select_bit_range` round trip and can
+        // be stale for a selection made moments ago) -- same [startBit, endBit) convention the
+        // Syntax->Hex sync effect above already assumes (endBit is one past the last included
+        // bit).
+        const startBit = rangeStart * 8;
+        const endBit = (rangeEndInclusive + 1) * 8;
+        void navigator.clipboard.writeText(`${startBit}-${endBit}`);
       }
     },
-    [exportEvidence, selectedByte, hexData],
+    [exportEvidence, rangeStart, rangeEndInclusive, hexData],
   );
 
   const currentFrame = frames[frameIndex];
@@ -135,13 +176,66 @@ export const HexViewTab = memo(function HexViewTab({
   const resolvedBitRange = selection?.bitRange;
   useEffect(() => {
     if (!resolvedBitRange || !containerRef.current) return;
-    const byteOffset = Math.floor(resolvedBitRange.startBit / 8);
-    setSelectedByte(byteOffset);
+    const startByte = Math.floor(resolvedBitRange.startBit / 8);
+    // endBit is exclusive (matches setBitRangeSelection's own convention below); a syntax node
+    // can span multiple bytes, so highlight its whole span, not just its first byte.
+    const endByte = Math.max(
+      startByte,
+      Math.floor((resolvedBitRange.endBit - 1) / 8),
+    );
+    setSelectedByte(startByte);
+    setSelectionEnd(endByte);
     // Scroll: each hex line is ~20px tall
-    const lineIdx = Math.floor(byteOffset / BYTES_PER_LINE);
+    const lineIdx = Math.floor(startByte / BYTES_PER_LINE);
     const lineHeight = 20;
     containerRef.current.scrollTop = Math.max(0, lineIdx * lineHeight - 40);
   }, [resolvedBitRange]);
+
+  // INT-03: real multi-byte drag-select. mousedown on a byte starts a drag and commits an
+  // immediate 1-byte selection (so a plain click, with no following mousemove, still works
+  // exactly as before); mouseenter on a later byte while dragging live-extends the visual
+  // range (no backend call per pixel of drag -- cheap); mouseup (global, since the drag can end
+  // outside any byte span or even outside the window) commits the final range with exactly one
+  // real select_bit_range round trip, mirroring VideoCanvas.tsx's click-vs-drag pattern (INT-01).
+  const isDraggingRef = useRef(false);
+  const dragStartByteRef = useRef<number | null>(null);
+  const dragCurrentByteRef = useRef<number | null>(null);
+
+  const handleByteMouseDown = useCallback((byteOffset: number) => {
+    isDraggingRef.current = true;
+    dragStartByteRef.current = byteOffset;
+    dragCurrentByteRef.current = byteOffset;
+    setSelectedByte(byteOffset);
+    setSelectionEnd(byteOffset);
+  }, []);
+
+  const handleByteMouseEnter = useCallback((byteOffset: number) => {
+    if (!isDraggingRef.current || dragStartByteRef.current === null) return;
+    dragCurrentByteRef.current = byteOffset;
+    setSelectedByte(Math.min(dragStartByteRef.current, byteOffset));
+    setSelectionEnd(Math.max(dragStartByteRef.current, byteOffset));
+  }, []);
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (!isDraggingRef.current || dragStartByteRef.current === null) return;
+      isDraggingRef.current = false;
+      const start = dragStartByteRef.current;
+      const end = dragCurrentByteRef.current ?? start;
+      dragStartByteRef.current = null;
+      dragCurrentByteRef.current = null;
+      const finalStart = Math.min(start, end);
+      const finalEnd = Math.max(start, end);
+      // Hex -> Syntax: drives the real select_bit_range round trip so FrameSyntaxTab can
+      // expand/scroll to whatever syntax node(s) this byte range overlaps.
+      setBitRangeSelection(
+        { startBit: finalStart * 8, endBit: (finalEnd + 1) * 8 },
+        "hex",
+      );
+    };
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, [setBitRangeSelection]);
 
   // Convert byte to ASCII character
   const byteToAscii = useCallback((byte: number): string => {
@@ -184,7 +278,12 @@ export const HexViewTab = memo(function HexViewTab({
   // Get byte style based on position and value
   const getByteStyle = useCallback(
     (offset: number): React.CSSProperties => {
-      if (selectedByte === offset) {
+      if (
+        rangeStart !== null &&
+        rangeEndInclusive !== null &&
+        offset >= rangeStart &&
+        offset <= rangeEndInclusive
+      ) {
         return { color: "#ffb450", backgroundColor: "rgba(255, 180, 80, 0.2)" };
       }
       if (isStartCode(offset)) {
@@ -198,7 +297,7 @@ export const HexViewTab = memo(function HexViewTab({
       }
       return { color: "var(--text-primary)" };
     },
-    [selectedByte, isStartCode, isObuHeader],
+    [rangeStart, rangeEndInclusive, isStartCode, isObuHeader],
   );
 
   if (!currentFrame) {
@@ -287,19 +386,8 @@ export const HexViewTab = memo(function HexViewTab({
                     key={i}
                     className="hex-byte"
                     style={style}
-                    onClick={() => {
-                      setSelectedByte(byteOffset);
-                      // Hex -> Syntax: drives the real select_bit_range round trip so
-                      // FrameSyntaxTab can expand/scroll to whatever syntax node contains this
-                      // byte (Core::handle_command's find_nearest_node reverse mapping).
-                      setBitRangeSelection(
-                        {
-                          startBit: byteOffset * 8,
-                          endBit: byteOffset * 8 + 8,
-                        },
-                        "hex",
-                      );
-                    }}
+                    onMouseDown={() => handleByteMouseDown(byteOffset)}
+                    onMouseEnter={() => handleByteMouseEnter(byteOffset)}
                     title={`Offset: 0x${byteOffset.toString(16).toUpperCase()}, Value: 0x${byte.toString(16).toUpperCase()}`}
                   >
                     {byte.toString(16).padStart(2, "0").toUpperCase()}
@@ -331,36 +419,61 @@ export const HexViewTab = memo(function HexViewTab({
         </div>
       )}
 
-      {/* Byte info panel */}
-      {selectedByte !== null && selectedByte < hexData.length && (
-        <div className="hex-byte-info">
-          <div className="hex-byte-info-row">
-            <span className="hex-byte-info-label">Offset:</span>
-            <span className="hex-byte-info-value">
-              0x{selectedByte.toString(16).toUpperCase()} ({selectedByte})
-            </span>
+      {/* Byte info panel -- a real multi-byte range (INT-03) shows a range summary instead of
+          the single-byte Value/ASCII/Binary breakdown, which only makes sense for one byte. */}
+      {rangeStart !== null &&
+        rangeEndInclusive !== null &&
+        rangeStart < hexData.length &&
+        (isMultiByteRange ? (
+          <div className="hex-byte-info">
+            <div className="hex-byte-info-row">
+              <span className="hex-byte-info-label">Range:</span>
+              <span className="hex-byte-info-value">
+                0x{rangeStart.toString(16).toUpperCase()} - 0x
+                {Math.min(rangeEndInclusive, hexData.length - 1)
+                  .toString(16)
+                  .toUpperCase()}
+              </span>
+            </div>
+            <div className="hex-byte-info-row">
+              <span className="hex-byte-info-label">Length:</span>
+              <span className="hex-byte-info-value">
+                {Math.min(rangeEndInclusive, hexData.length - 1) -
+                  rangeStart +
+                  1}{" "}
+                bytes
+              </span>
+            </div>
           </div>
-          <div className="hex-byte-info-row">
-            <span className="hex-byte-info-label">Value:</span>
-            <span className="hex-byte-info-value">
-              0x{hexData[selectedByte].toString(16).toUpperCase()} (
-              {hexData[selectedByte]})
-            </span>
+        ) : (
+          <div className="hex-byte-info">
+            <div className="hex-byte-info-row">
+              <span className="hex-byte-info-label">Offset:</span>
+              <span className="hex-byte-info-value">
+                0x{rangeStart.toString(16).toUpperCase()} ({rangeStart})
+              </span>
+            </div>
+            <div className="hex-byte-info-row">
+              <span className="hex-byte-info-label">Value:</span>
+              <span className="hex-byte-info-value">
+                0x{hexData[rangeStart].toString(16).toUpperCase()} (
+                {hexData[rangeStart]})
+              </span>
+            </div>
+            <div className="hex-byte-info-row">
+              <span className="hex-byte-info-label">ASCII:</span>
+              <span className="hex-byte-info-value">
+                {byteToAscii(hexData[rangeStart])}
+              </span>
+            </div>
+            <div className="hex-byte-info-row">
+              <span className="hex-byte-info-label">Binary:</span>
+              <span className="hex-byte-info-value">
+                {hexData[rangeStart].toString(2).padStart(8, "0")}
+              </span>
+            </div>
           </div>
-          <div className="hex-byte-info-row">
-            <span className="hex-byte-info-label">ASCII:</span>
-            <span className="hex-byte-info-value">
-              {byteToAscii(hexData[selectedByte])}
-            </span>
-          </div>
-          <div className="hex-byte-info-row">
-            <span className="hex-byte-info-label">Binary:</span>
-            <span className="hex-byte-info-value">
-              {hexData[selectedByte].toString(2).padStart(8, "0")}
-            </span>
-          </div>
-        </div>
-      )}
+        ))}
 
       {contextMenu && (
         <ContextMenu

@@ -11,11 +11,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
 import { HexViewTab } from "../HexViewTab";
 
-const { getHexRange } = vi.hoisted(() => ({
+const { getHexRange, getContextMenuItems } = vi.hoisted(() => ({
   getHexRange: vi.fn(),
+  getContextMenuItems: vi.fn(),
 }));
 
-vi.mock("@/services/electronBridgeService", () => ({ getHexRange }));
+// selectBitRange is a real dependency of SelectionContext.tsx's setBitRangeSelection (called by
+// HexViewTab's drag-select commit) -- keep the real implementation via importOriginal so it can
+// genuinely reject in jsdom (no window.bitvue), which setBitRangeSelection already catches and
+// logs, rather than mocking only getHexRange and leaving selectBitRange undefined (a hard throw
+// vitest can't tell apart from a real bug, unlike a real rejected promise).
+vi.mock("@/services/electronBridgeService", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/services/electronBridgeService")>();
+  return { ...actual, getHexRange, getContextMenuItems };
+});
 
 /** Deterministic bytes varying by offset, mirroring the old Tauri mock's frame_index-based
  *  variation closely enough for the "different frames produce different bytes" test below --
@@ -191,20 +201,22 @@ describe("HexViewTab", () => {
     expect(getHexRange).toHaveBeenCalledWith("A", 5000, 2048);
   });
 
-  it("should handle byte selection", async () => {
+  it("should handle byte selection (mousedown+mouseup on one byte -- a plain click)", async () => {
     const { container } = render(
       <HexViewTab frameIndex={0} frames={mockFrames} />,
     );
 
-    await waitFor(async () => {
-      const firstByte = await waitFor(() =>
-        container.querySelector(".hex-byte"),
-      );
-      if (firstByte) {
-        fireEvent.click(firstByte);
-        // Click should not error - internal state updates
-        expect(firstByte).toBeInTheDocument();
-      }
+    const firstByte = await waitFor(() => {
+      const el = container.querySelector(".hex-byte");
+      expect(el).toBeInTheDocument();
+      return el as HTMLElement;
+    });
+
+    fireEvent.mouseDown(firstByte);
+    fireEvent.mouseUp(firstByte);
+
+    await waitFor(() => {
+      expect(firstByte.style.backgroundColor).toBe("rgba(255, 180, 80, 0.2)");
     });
   });
 
@@ -229,14 +241,151 @@ describe("HexViewTab", () => {
       <HexViewTab frameIndex={0} frames={mockFrames} />,
     );
 
-    await waitFor(async () => {
-      const bytes = await waitFor(() =>
-        container.querySelectorAll(".hex-byte"),
+    const bytes = await waitFor(() => {
+      const els = container.querySelectorAll(".hex-byte");
+      expect(els.length).toBeGreaterThan(0);
+      return els;
+    });
+
+    fireEvent.mouseDown(bytes[0]);
+    fireEvent.mouseUp(bytes[0]);
+
+    await waitFor(() => {
+      expect((bytes[0] as HTMLElement).style.backgroundColor).toBe(
+        "rgba(255, 180, 80, 0.2)",
       );
-      if (bytes.length > 0) {
-        fireEvent.click(bytes[0]);
-        expect(bytes[0]).toBeInTheDocument();
-      }
+    });
+  });
+
+  // INT-03: real multi-byte drag-select
+  describe("multi-byte drag-select", () => {
+    it("highlights every byte in the dragged range, not just the endpoints", async () => {
+      const { container } = render(
+        <HexViewTab frameIndex={0} frames={mockFrames} />,
+      );
+
+      const bytes = await waitFor(() => {
+        const els = container.querySelectorAll(".hex-byte:not(.hex-padding)");
+        expect(els.length).toBeGreaterThan(5);
+        return els;
+      });
+
+      fireEvent.mouseDown(bytes[2]);
+      fireEvent.mouseEnter(bytes[3]);
+      fireEvent.mouseEnter(bytes[4]);
+      fireEvent.mouseUp(bytes[4]);
+
+      await waitFor(() => {
+        for (const i of [2, 3, 4]) {
+          expect((bytes[i] as HTMLElement).style.backgroundColor).toBe(
+            "rgba(255, 180, 80, 0.2)",
+          );
+        }
+        expect((bytes[1] as HTMLElement).style.backgroundColor).not.toBe(
+          "rgba(255, 180, 80, 0.2)",
+        );
+        expect((bytes[5] as HTMLElement).style.backgroundColor).not.toBe(
+          "rgba(255, 180, 80, 0.2)",
+        );
+      });
+    });
+
+    it("supports dragging backwards (mouseup byte offset is before mousedown byte offset)", async () => {
+      const { container } = render(
+        <HexViewTab frameIndex={0} frames={mockFrames} />,
+      );
+
+      const bytes = await waitFor(() => {
+        const els = container.querySelectorAll(".hex-byte:not(.hex-padding)");
+        expect(els.length).toBeGreaterThan(5);
+        return els;
+      });
+
+      fireEvent.mouseDown(bytes[4]);
+      fireEvent.mouseEnter(bytes[3]);
+      fireEvent.mouseEnter(bytes[2]);
+      fireEvent.mouseUp(bytes[2]);
+
+      await waitFor(() => {
+        for (const i of [2, 3, 4]) {
+          expect((bytes[i] as HTMLElement).style.backgroundColor).toBe(
+            "rgba(255, 180, 80, 0.2)",
+          );
+        }
+      });
+    });
+
+    it("shows a Range/Length summary in the info panel for a multi-byte selection", async () => {
+      const { container } = render(
+        <HexViewTab frameIndex={0} frames={mockFrames} />,
+      );
+
+      const bytes = await waitFor(() => {
+        const els = container.querySelectorAll(".hex-byte:not(.hex-padding)");
+        expect(els.length).toBeGreaterThan(3);
+        return els;
+      });
+
+      fireEvent.mouseDown(bytes[0]);
+      fireEvent.mouseEnter(bytes[3]);
+      fireEvent.mouseUp(bytes[3]);
+
+      await waitFor(() => {
+        expect(screen.getByText("Range:")).toBeInTheDocument();
+        expect(screen.getByText("0x0 - 0x3")).toBeInTheDocument();
+        expect(screen.getByText("Length:")).toBeInTheDocument();
+        expect(screen.getByText("4 bytes")).toBeInTheDocument();
+      });
+      // The single-byte-only fields must not appear for a multi-byte selection.
+      expect(screen.queryByText("ASCII:")).not.toBeInTheDocument();
+      expect(screen.queryByText("Binary:")).not.toBeInTheDocument();
+    });
+
+    it("still shows the single-byte Value/ASCII/Binary panel for a 1-byte selection", async () => {
+      const { container } = render(
+        <HexViewTab frameIndex={0} frames={mockFrames} />,
+      );
+
+      const bytes = await waitFor(() => {
+        const els = container.querySelectorAll(".hex-byte:not(.hex-padding)");
+        expect(els.length).toBeGreaterThan(0);
+        return els;
+      });
+
+      fireEvent.mouseDown(bytes[0]);
+      fireEvent.mouseUp(bytes[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText("Value:")).toBeInTheDocument();
+        expect(screen.getByText("ASCII:")).toBeInTheDocument();
+        expect(screen.getByText("Binary:")).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Range:")).not.toBeInTheDocument();
+    });
+
+    it("a mouseup outside any byte still commits the in-progress drag range (global listener)", async () => {
+      const { container } = render(
+        <HexViewTab frameIndex={0} frames={mockFrames} />,
+      );
+
+      const bytes = await waitFor(() => {
+        const els = container.querySelectorAll(".hex-byte:not(.hex-padding)");
+        expect(els.length).toBeGreaterThan(3);
+        return els;
+      });
+
+      fireEvent.mouseDown(bytes[0]);
+      fireEvent.mouseEnter(bytes[2]);
+      // Released outside any byte span entirely -- the real user gesture this covers.
+      fireEvent.mouseUp(window);
+
+      await waitFor(() => {
+        for (const i of [0, 1, 2]) {
+          expect((bytes[i] as HTMLElement).style.backgroundColor).toBe(
+            "rgba(255, 180, 80, 0.2)",
+          );
+        }
+      });
     });
   });
 
@@ -329,6 +478,95 @@ describe("HexViewTab", () => {
       expect(firstLine?.querySelectorAll(".hex-separator")).toHaveLength(2);
       expect(firstLine?.querySelector(".hex-bytes")).toBeInTheDocument();
       expect(firstLine?.querySelector(".hex-ascii")).toBeInTheDocument();
+    });
+  });
+
+  // Context-menu "Copy Offset" / "Copy Bit Range" items (real backend catalog entries added
+  // alongside INT-01's hover tooltip -- previously only Copy Bytes existed).
+  describe("Copy Offset / Copy Bit Range context menu items", () => {
+    const menuItems = [
+      {
+        id: "copy_bytes",
+        label: "Copy Bytes",
+        command: "Copy.Bytes",
+        enabled: true,
+        disabled_reason: null,
+      },
+      {
+        id: "copy_offset",
+        label: "Copy Offset",
+        command: "Copy.Offset",
+        enabled: true,
+        disabled_reason: null,
+      },
+      {
+        id: "copy_bit_range",
+        label: "Copy Bit Range",
+        command: "Copy.BitRange",
+        enabled: true,
+        disabled_reason: null,
+      },
+    ];
+
+    beforeEach(() => {
+      getContextMenuItems.mockResolvedValue(menuItems);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText: vi.fn().mockResolvedValue(undefined) },
+        configurable: true,
+      });
+    });
+
+    it("copies the range start as a hex offset via Copy Offset", async () => {
+      const { container } = render(
+        <HexViewTab frameIndex={0} frames={mockFrames} />,
+      );
+
+      const bytes = await waitFor(() => {
+        const els = container.querySelectorAll(".hex-byte:not(.hex-padding)");
+        expect(els.length).toBeGreaterThan(3);
+        return els;
+      });
+
+      fireEvent.mouseDown(bytes[2]);
+      fireEvent.mouseEnter(bytes[4]);
+      fireEvent.mouseUp(bytes[4]);
+
+      fireEvent.contextMenu(container.querySelector(".hex-dump-content")!);
+      const copyOffsetBtn = await screen.findByRole("menuitem", {
+        name: "Copy Offset",
+      });
+      fireEvent.click(copyOffsetBtn);
+
+      await waitFor(() => {
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith("0x2");
+      });
+    });
+
+    it("copies the [startBit, endBit) range via Copy Bit Range", async () => {
+      const { container } = render(
+        <HexViewTab frameIndex={0} frames={mockFrames} />,
+      );
+
+      const bytes = await waitFor(() => {
+        const els = container.querySelectorAll(".hex-byte:not(.hex-padding)");
+        expect(els.length).toBeGreaterThan(3);
+        return els;
+      });
+
+      fireEvent.mouseDown(bytes[0]);
+      fireEvent.mouseEnter(bytes[3]);
+      fireEvent.mouseUp(bytes[3]);
+
+      fireEvent.contextMenu(container.querySelector(".hex-dump-content")!);
+      const copyBitRangeBtn = await screen.findByRole("menuitem", {
+        name: "Copy Bit Range",
+      });
+      fireEvent.click(copyBitRangeBtn);
+
+      await waitFor(() => {
+        // Bytes 0-3 inclusive -> bits [0, 32).
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith("0-32");
+      });
     });
   });
 
