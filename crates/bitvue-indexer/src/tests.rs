@@ -298,6 +298,73 @@ fn index_stream_frame_types_are_not_all_the_same() {
     );
 }
 
+/// Real bug, found via live interactive UI testing (clicking frame 40 then frame 80 in the
+/// Filmstrip panel showed the exact same `ref_frames` array for both, despite them being 40
+/// frames apart -- impossible if these were real frame indices, expected if they were raw DPB
+/// slot numbers (0-7) coincidentally repeating). `ref_frame_idx` (spec 5.9.2) is a `u(3)` DPB slot
+/// number, not a frame index -- `index_ivf_av1` must translate it via the real, sequentially-
+/// threaded slot state before storing it as `ref_frames`, not just cast the raw slot number.
+#[test]
+fn index_stream_ref_frames_are_real_frame_indices_not_raw_dpb_slot_numbers() {
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    index_stream(&core, StreamId::A);
+
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    let units = &state.units.as_ref().unwrap().units;
+    assert!(units.len() > 80, "fixture must have at least 81 frames");
+
+    let refs_40 = units[40].ref_frames.clone();
+    let refs_80 = units[80].ref_frames.clone();
+    assert!(
+        refs_40.is_some() && refs_80.is_some(),
+        "both frame 40 and frame 80 should have real ref_frames in this fixture (both are P \
+         frames referencing earlier pictures): got {refs_40:?} / {refs_80:?}"
+    );
+    assert_ne!(
+        refs_40, refs_80,
+        "frame 40 and frame 80 got the exact same ref_frames array ({refs_40:?}) -- this is the \
+         raw-DPB-slot-number bug: two frames 40 apart cannot legitimately reference the exact \
+         same set of real earlier frames, but they easily can share the same small (0-7) raw \
+         slot numbers"
+    );
+
+    // A frame can only reference a picture that was already decoded before it (real frame
+    // indices are always strictly less than the referencing frame's own index) -- true for every
+    // frame's ref_frames in the whole stream, not just frames 40/80, and is exactly the kind of
+    // invariant that raw DPB slot numbers (always in [0,7] regardless of frame_index) would
+    // violate for any frame past index 7.
+    for (i, unit) in units.iter().enumerate() {
+        if let Some(refs) = &unit.ref_frames {
+            for &r in refs {
+                assert!(
+                    r < i,
+                    "frame {i}'s ref_frames contains {r}, which is not strictly earlier in \
+                     decode order -- looks like an untranslated raw DPB slot number, not a real \
+                     frame index"
+                );
+            }
+        }
+    }
+}
+
+/// The very first frame is a real keyframe (intra-only, spec: no `ref_frame_idx` is signaled at
+/// all for an intra frame) -- `ref_frames` must stay unset, not default to some fabricated value.
+#[test]
+fn index_stream_keyframe_has_no_ref_frames() {
+    let core = Core::new();
+    open_fixture(&core, StreamId::A);
+    index_stream(&core, StreamId::A);
+
+    let stream_state = core.get_stream(StreamId::A);
+    let state = stream_state.read();
+    let units = &state.units.as_ref().unwrap().units;
+
+    assert_eq!(units[0].frame_type.as_deref(), Some("I"));
+    assert_eq!(units[0].ref_frames, None);
+}
+
 /// Ground-truth check (independent of `bitvue-indexer`'s own code) for the fixture's real OBU
 /// layout, using `ObuIterator` directly -- pins the exact structure that [`find_frame_obu`] must
 /// keep navigating correctly: frame 0's IVF chunk is Temporal Delimiter, then Sequence Header,
