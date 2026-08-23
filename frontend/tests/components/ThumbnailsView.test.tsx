@@ -390,9 +390,21 @@ describe("ThumbnailsView", () => {
       // Use the module-level mock reference (vi.mock is hoisted above imports)
       vi.mocked(PreRenderedArrows.usePreRenderedArrows).mockReturnValue({
         allArrowData: [
-          { sourceFrameIndex: 1, targetFrameIndex: 0, pathData: "M0,0 L10,10" },
+          {
+            sourceFrameIndex: 1,
+            targetFrameIndex: 0,
+            slotIndex: 0,
+            label: "REF0",
+            color: "#ff4444",
+            pathData: "M0,0 L10,10",
+            sourceX: 10,
+            sourceY: 10,
+            labelY: 10,
+          },
         ],
         svgWidth: 1000,
+        maxStackDepth: 1,
+        isReady: true,
       });
 
       render(<ThumbnailsView {...defaultProps} />);

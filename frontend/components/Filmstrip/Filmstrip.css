@@ -12,33 +12,33 @@
 @import url("./views/FrameSizesView.css");
 @import url("./views/BPyramidView.css");
 
-/* Main Filmstrip Container */
+/* Main Filmstrip Container
+   `.filmstrip` now lives inside a real resizable `Panel` (`DockableLayout.tsx`'s `filmstrip-bar`,
+   `react-resizable-panels`) -- that Panel's own wrapper div hardcodes `overflow: hidden` with NO
+   prop to override it ("Prevent Panel content from interfering with panel size", see the
+   library's `Ot`/Panel source) and sizes itself via `PANEL_SIZES.FILMSTRIP_BAR` (resizable,
+   user-draggable), not via anything in this file. The `height: auto; min-height: 140px;
+   max-height: var(--filmstrip-height, 180px); overflow: visible;` this rule used to have predates
+   that Panel wrapper (see the stale comment this replaced, which called it "a fixed
+   (non-resizable-Panel) flex slot") and actively fought it: `--filmstrip-height` resolves to a
+   static 140px (`theme/colors.css`), so `.filmstrip` was hard-capping itself well below whatever
+   room the Panel actually granted, then `overflow: visible` let anything past that self-imposed
+   cap spill upward into the Panel's hardcoded, un-stylable `overflow: hidden` -- clipped with
+   *no* scrollbar possible at that boundary, ever (confirmed via real screenshot + computed-style
+   debugging: a deep reference-arrow stack measured a genuinely-configured, genuinely-overflowing
+   `overflow-y: auto` several layers below this, yet no scrollbar ever became visible, because it
+   never even got a chance -- the excess was clipped one level up first). Fixed by making
+   `.filmstrip` just fill whatever box the Panel gives it and pushing all scroll handling down to
+   `.filmstrip-content` (below), which the Panel's own `overflow: hidden` can never fight since it
+   never needs to grow past its box in the first place. */
 .filmstrip {
   display: flex;
   flex-direction: column;
-  height: auto;
-  min-height: 140px;
-  max-height: var(--filmstrip-height, 180px);
+  height: 100%;
   background: var(--bg-app);
   border-bottom: 1px solid var(--border);
-  overflow: visible;
-  transition: min-height var(--transition-normal) var(--ease-default);
+  overflow: hidden;
 }
-
-/* Expand filmstrip when showing reference lines */
-.filmstrip.showing-references {
-  min-height: 280px;
-}
-
-/* B-Pyramid's "Show All Refs" toggle draws every frame's reference arrows below the row at once
-   (BPyramidTimeline's showAllArrows path), which needs more vertical room than a single row of
-   circles ever did. Tried growing .filmstrip's own min/max-height for this (like
-   .showing-references does below), but this panel sits in a fixed (non-resizable-Panel) flex
-   slot -- see .filmstrip-bar in DockableLayout.css -- growing it left a large dead gap before the
-   panels below rather than cleanly reflowing them, a real layout bug in that flex chain not worth
-   chasing here. Scrolling the existing box (via .filmstrip-content's overflow-y override below)
-   is the safe fix instead: same available height as every other view, just no longer
-   hard-clipped. */
 
 /* ═════════════════════════════════════════════════════════════════════════
    Filmstrip Header
@@ -138,10 +138,16 @@
    Filmstrip Content
    ═════════════════════════════════════════════════════════════════════════ */
 
+/* y: auto unconditionally -- this is the box that actually owns vertical scrolling now that
+   `.filmstrip` just fills the Panel's box (see that rule's comment). Used to be `auto hidden`
+   (y clipped outright) with 3 separate per-view-mode overrides re-enabling `auto` only for
+   bpyramid/enhanced/hrdbuffer; consolidated to one rule since every view can in principle need
+   more room than the Panel's current (user-resizable) height, and a silently-clipped view is a
+   bug regardless of which one it is. */
 .filmstrip-content {
   position: relative;
   flex: 1;
-  overflow: auto hidden;
+  overflow: auto;
   background: var(--bg-app);
 
   /* Show scroll indicators */
@@ -183,31 +189,14 @@
   animation: fadeIn 0.3s ease-out;
 }
 
-/* Allow reference arrows to extend beyond filmstrip content */
-.filmstrip-content.showing-reference-lines {
-  overflow-y: visible;
-}
-
-/* B-Pyramid "Show All Refs" mode: let the (now taller, see .filmstrip.bpyramid-all-arrows-mode)
-   panel actually scroll vertically instead of clipping -- the default `auto hidden` here hides
-   the y-axis outright. */
-.filmstrip.bpyramid-all-arrows-mode .filmstrip-content {
-  overflow-y: auto;
-}
-
-/* Enhanced view's nav bar (components/EnhancedView.css's `.enhanced-nav-bar`) wraps its GOP/Scene
-   sections onto two lines in the filmstrip's default width, and without this the fixed-height
-   panel's `auto hidden` clips the wrapped-away first line entirely instead of scrolling to it. */
-.filmstrip.enhanced-view-mode .filmstrip-content {
-  overflow-y: auto;
-}
-
-/* HRD Buffer view: pairs with .hrd-canvas-container's min-height (HRDBufferPanel.css) -- that
-   min-height makes the panel overflow this box instead of shrinking the canvas down to
-   illegible axis labels, so this box needs to actually scroll instead of clipping it. */
-.filmstrip.hrdbuffer-view-mode .filmstrip-content {
-  overflow-y: auto;
-}
+/* NOTE: this used to also carry a `.filmstrip-content.showing-reference-lines { overflow-y:
+   visible }` override (the 50ms flash triggered on selecting a frame with references, see
+   Filmstrip.tsx's `showingReferences`) and 3 separate per-view-mode `overflow-y: auto`
+   overrides (bpyramid-all-arrows-mode / enhanced-view-mode / hrdbuffer-view-mode). Both are gone
+   now that `.filmstrip-content`'s base rule (above) is unconditionally `overflow: auto` -- the
+   `visible` override in particular was actively wrong post-Panel-wrapping: it let content spill
+   past this box straight into the Panel ancestor's hardcoded, un-scrollable `overflow: hidden`
+   (see `.filmstrip`'s comment) instead of scrolling into view. */
 
 .reference-lines-overlay path {
   animation: drawLine 0.5s ease-out forwards;

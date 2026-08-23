@@ -126,7 +126,7 @@ describe("VirtualizedThumbnailsView", () => {
     expect(
       document.querySelector(".thumbnail-arrows-overlay"),
     ).toBeInTheDocument();
-    const path = document.querySelector(".thumbnail-arrows-overlay > g > path");
+    const path = document.querySelector(".thumbnail-arrows-overlay > path");
     expect(path).toHaveAttribute("visibility", "visible");
   });
 
@@ -145,5 +145,80 @@ describe("VirtualizedThumbnailsView", () => {
 
     const firstCallArgs = vi.mocked(usePreRenderedArrows).mock.calls[0][0];
     expect(firstCallArgs.recalcKey).toBe("0-51");
+  });
+});
+
+// A reference arrow can only be drawn to a target that's actually mounted -- these cover the
+// window-widening fix for references that fall outside the normal `currentFrameIndex ± 50`
+// window (found via real interactive testing: clicking a frame whose references had scrolled out
+// of the window drew zero arrows, with no explanation).
+describe("VirtualizedThumbnailsView window widening for off-window references", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(usePreRenderedArrows).mockReturnValue({
+      allArrowData: [],
+      svgWidth: 0,
+    });
+  });
+
+  it("widens the window to include a nearby reference that falls just outside the normal window", () => {
+    const frames = makeFrames(300);
+    // currentFrameIndex=60 -> normal window is [10, 111). Frame 5 is just outside it.
+    frames[60] = { ...frames[60], ref_frames: [5] };
+
+    render(
+      <VirtualizedThumbnailsView
+        {...defaultProps}
+        frames={frames}
+        currentFrameIndex={60}
+      />,
+    );
+
+    const requested = defaultProps.loadThumbnails.mock.calls.at(
+      -1,
+    )![0] as number[];
+    expect(requested).toContain(5);
+  });
+
+  it("caps the widening so a very distant reference doesn't force-mount the entire stream", () => {
+    const frames = makeFrames(6000);
+    // currentFrameIndex=5000 -> normal window start is 4950. Frame 0 is 4950 frames before that,
+    // far past the MAX_EXTRA_WINDOW_FOR_REFS=100 cap.
+    frames[5000] = { ...frames[5000], ref_frames: [0] };
+
+    render(
+      <VirtualizedThumbnailsView
+        {...defaultProps}
+        frames={frames}
+        currentFrameIndex={5000}
+      />,
+    );
+
+    const requested = defaultProps.loadThumbnails.mock.calls.at(
+      -1,
+    )![0] as number[];
+    // The cap keeps the window a bounded ~200 frames (VISIBLE_WINDOW*2 + the 100-frame cap),
+    // nowhere near the 5000+ it would take to reach frame 0 -- confirms virtualization's
+    // DOM-node bound is actually preserved.
+    expect(requested.length).toBeLessThan(210);
+    expect(requested).not.toContain(0);
+    expect(Math.min(...requested)).toBeGreaterThanOrEqual(4950 - 100);
+  });
+
+  it("does not widen the window when the current frame's references are already inside it", () => {
+    const frames = makeFrames(300);
+    // currentFrameIndex=60, default ref_frames=[59] -- well within [10, 111).
+    render(
+      <VirtualizedThumbnailsView
+        {...defaultProps}
+        frames={frames}
+        currentFrameIndex={60}
+      />,
+    );
+
+    const requested = defaultProps.loadThumbnails.mock.calls.at(
+      -1,
+    )![0] as number[];
+    expect(Math.min(...requested)).toBe(10);
   });
 });

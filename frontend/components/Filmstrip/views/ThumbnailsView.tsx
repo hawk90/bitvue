@@ -17,6 +17,13 @@ import {
 } from "../../usePreRenderedArrows";
 import { getFrameTypeColor } from "../../../types/video";
 
+// Shared with `calculateThumbnailPath` (draws each stacked line's turn point at
+// `sourceBottom + ARROW_BASE_OFFSET + slotIndex * ARROW_SPACING_PER_SLOT`) and with the
+// `arrowAreaHeight` reservation below -- keeping one source of truth for both means the reserved
+// space and the actual line positions can never drift apart.
+const ARROW_BASE_OFFSET = 30;
+const ARROW_SPACING_PER_SLOT = 12;
+
 interface ThumbnailsViewProps {
   frames: FrameInfo[];
   currentFrameIndex: number;
@@ -56,9 +63,8 @@ function ThumbnailsView({
       slotIndex: number,
     ) => {
       // Each outgoing arrow gets a different vertical offset to space them out
-      const baseOffset = 30;
-      const spacingPerSlot = 12;
-      const verticalOffset = baseOffset + slotIndex * spacingPerSlot;
+      const verticalOffset =
+        ARROW_BASE_OFFSET + slotIndex * ARROW_SPACING_PER_SLOT;
       // ㄷ-shaped path: down from source, then horizontal, then up to target
       // Use default values for bottom position in case DOM elements are not rendered
       const sourceBottom = sourcePos.bottom ?? 0;
@@ -69,13 +75,21 @@ function ThumbnailsView({
   );
 
   // Use shared hook for pre-rendered arrows
-  const { allArrowData, svgWidth } = usePreRenderedArrows({
+  const { allArrowData, svgWidth, maxStackDepth } = usePreRenderedArrows({
     containerRef,
     frames,
     getFrameTypeColor,
     calculatePath: calculateThumbnailPath,
     enabled: true,
   });
+
+  // Reserve exactly as much room below the frame cards as the *real* data needs for its deepest
+  // reference stack, instead of a fixed constant sized for AV1's worst case (7 slots) even when
+  // the actual stream never goes past 1-2 -- see VirtualizedThumbnailsView's identical comment.
+  const arrowAreaHeight =
+    maxStackDepth > 0
+      ? ARROW_BASE_OFFSET + (maxStackDepth - 1) * ARROW_SPACING_PER_SLOT + 20
+      : 0;
 
   const handleMouseEnter = (frame: FrameInfo, e: React.MouseEvent) => {
     onHoverFrame(frame, e.clientX, e.clientY);
@@ -103,7 +117,11 @@ function ThumbnailsView({
         aria-label="Frame thumbnails"
         ref={containerRef}
         onWheel={handleWheel}
-        style={{ transform: `scaleX(${zoom})`, transformOrigin: "left center" }}
+        style={{
+          transform: `scaleX(${zoom})`,
+          transformOrigin: "left center",
+          paddingBottom: `${arrowAreaHeight}px`,
+        }}
       >
         {/* Reference arrows SVG overlay - scrolls with thumbnails */}
         {allArrowData.length > 0 && svgWidth > 0 && (
@@ -135,26 +153,61 @@ function ThumbnailsView({
                 <path d="M 0 0 L 6 3 L 0 6 z" fill="currentColor" />
               </marker>
             </defs>
+            {/* Two separate passes over the SAME arrow list -- all lines, THEN all labels --
+            rather than one pass emitting each arrow's own path+label together. `.thumbnail-
+            arrows-overlay path` forces every `<path>` onto its own compositing layer
+            (`transform: translateZ(0)`, kept for off-screen rendering -- see that rule's own
+            comment); promoted elements paint in a separate, LATER phase than normal-flow content,
+            ordered among themselves by document order. Interleaving path-then-label per arrow
+            only fixed a label against its OWN arrow's line: a *different* arrow's line, coming
+            later in document order, still painted on top of an earlier arrow's already-"fixed"
+            label whenever their geometries crossed (found via a real screenshot: a second arrow's
+            vertical segment cut clean through a first arrow's label, tested with a fixture where
+            two arrows visibly overlap). Rendering every path first, then every label-chip
+            afterward (both passes still promoted, via `.thumbnail-arrows-overlay .arrow-label`
+            below), guarantees every label's document-order position is after every path's,
+            system-wide -- not just within its own arrow. */}
             {allArrowData.map((arrow) => {
-              // Use opacity instead of visibility to ensure rendering
-              // Force render all arrows by using opacity 0 instead of visibility hidden
               const isVisible = arrow.sourceFrameIndex === currentFrameIndex;
               const opacity = isVisible ? 0.7 : 0;
               const renderVisibility = isVisible ? "visible" : "hidden";
-
+              return (
+                <path
+                  key={`line-${arrow.sourceFrameIndex}-${arrow.targetFrameIndex}-${arrow.slotIndex}`}
+                  d={arrow.pathData}
+                  fill="none"
+                  stroke={arrow.color}
+                  strokeWidth="2"
+                  strokeOpacity={opacity}
+                  visibility={renderVisibility}
+                  style={{ willChange: "opacity, visibility" }}
+                  markerEnd="url(#thumbnail-arrowhead)"
+                />
+              );
+            })}
+            {allArrowData.map((arrow) => {
+              const isVisible = arrow.sourceFrameIndex === currentFrameIndex;
+              const opacity = isVisible ? 0.7 : 0;
+              const renderVisibility = isVisible ? "visible" : "hidden";
               return (
                 <g
-                  key={`${arrow.sourceFrameIndex}-${arrow.targetFrameIndex}-${arrow.slotIndex}`}
+                  key={`label-${arrow.sourceFrameIndex}-${arrow.targetFrameIndex}-${arrow.slotIndex}`}
+                  className="arrow-label"
                 >
-                  <path
-                    d={arrow.pathData}
-                    fill="none"
-                    stroke={arrow.color}
-                    strokeWidth="2"
-                    strokeOpacity={opacity}
+                  {/* Background chip behind the label -- the label sits ON its own line's turn
+                  point (see usePreRenderedArrows' labelY comment), so for a long merged label
+                  spanning back to a distant target, a line's horizontal run would otherwise pass
+                  directly through the bare glyphs with nothing to occlude it, reading as a
+                  strikethrough. Hides that segment behind the label instead, a standard
+                  labeled-edge technique. */}
+                  <rect
+                    x={arrow.sourceX - (arrow.label.length * 5.5 + 6) / 2}
+                    y={arrow.labelY - 7}
+                    width={arrow.label.length * 5.5 + 6}
+                    height={14}
+                    style={{ fill: "var(--bg-app)" }}
+                    opacity={isVisible ? 0.95 : 0}
                     visibility={renderVisibility}
-                    style={{ willChange: "opacity, visibility" }}
-                    markerEnd="url(#thumbnail-arrowhead)"
                   />
                   {/* Slot label at the start of the arrow */}
                   <text

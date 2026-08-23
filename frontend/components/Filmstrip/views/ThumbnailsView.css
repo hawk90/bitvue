@@ -13,7 +13,17 @@
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  /* x hidden (the inner `.filmstrip-thumbnails` owns horizontal scrolling), y auto -- a real,
+     panel-height-clipping bug (found via real interactive testing + confirmed via
+     `container.clientHeight` debug instrumentation: a 6-deep reference stack needed ~190px of
+     content but the panel was only rendering 116px tall) showed that `arrowAreaHeight`
+     (`ThumbnailsView.tsx`) reserving the *correct* padding inside `.filmstrip-thumbnails` means
+     nothing if THIS element -- the actual fixed-height, resizable `Panel` boundary -- clips
+     anything past its own height with `overflow: hidden`, silently hiding the deeper arrows in a
+     stack instead of making them reachable. `y: auto` means a stream that needs more room than
+     the panel's current (user-resizable, see `DockableLayout.tsx`'s `FILMSTRIP_BAR`) height gets
+     a scrollbar instead of losing data -- never invisible, at worst one scroll away. */
+  overflow: hidden auto;
 }
 
 .filmstrip-thumbnails {
@@ -21,6 +31,20 @@
   display: flex;
   gap: var(--thumb-spacing);
   padding: 8px;
+  /* Reserves real draw room below the frame cards for reference arrows (see
+     `usePreRenderedArrows`'s doc: a "down, across, up" ㄷ-shaped path with
+     `verticalOffset = 30 + arrowOrdinal*12`px). Without this, the cards filled the container's
+     full height with zero slack, so `.filmstrip-thumbnails-container`'s `overflow: hidden`
+     clipped every arrow to an invisible 1px stub right at the card's bottom edge regardless of
+     which frame was clicked (found via a real Electron screenshot -- a UI/UX parity pass, then
+     confirmed reproducible by reading the arrow-path math). Two earlier, too-small fixed attempts
+     (50px/80px, then a 130px worst-case constant sized for AV1's 7-slot max) always reserved the
+     same space regardless of what the actual mounted frames needed. Computed dynamically now
+     instead, from `usePreRenderedArrows`' `maxStackDepth` (`ThumbnailsView.tsx`'s inline
+     `paddingBottom` style, which always overrides this rule -- kept at 0 here mainly as
+     documentation of the fallback shape, since the inline style is present from the very first
+     render). */
+  padding-bottom: 0;
   min-height: 100%;
   align-items: flex-start;
   overflow: auto hidden;
@@ -41,6 +65,17 @@
 
 .thumbnail-arrows-overlay path {
   /* Ensure arrows are always rendered, just hidden with opacity/visibility */
+  contain: layout style;
+  transform: translateZ(0);
+}
+
+/* Promotes each label's chip+text onto its own compositing layer, same technique as `path`
+   above. Necessary so labels reliably paint ABOVE every line system-wide: `ThumbnailsView.tsx`/
+   `VirtualizedThumbnailsView.tsx` render all `path`s first, then all `.arrow-label`s, specifically
+   so this ordering holds regardless of which arrow a line or label belongs to (a non-promoted
+   later element does NOT reliably paint above an EARLIER promoted one -- promoted elements paint
+   in a separate, later phase, ordered among themselves by document order). */
+.thumbnail-arrows-overlay .arrow-label {
   contain: layout style;
   transform: translateZ(0);
 }
