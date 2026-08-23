@@ -6,6 +6,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { useSelection } from "../contexts/SelectionContext";
+import { useFrameData } from "../contexts/FrameDataContext";
 import { TimelineHeader } from "./TimelineHeader";
 import { TimelineTooltip } from "./TimelineTooltip";
 import { TimelineThumbnails } from "./TimelineThumbnails";
@@ -24,7 +25,8 @@ interface TimelineProps {
 }
 
 function Timeline({ frames, className = "" }: TimelineProps) {
-  const { selection, setFrameSelection } = useSelection();
+  const { selection, setFrameSelection, setTemporalSelection } = useSelection();
+  const { streamInfo } = useFrameData();
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
   // Local state for the highlighted frame - single source of truth
   const [highlightedFrameIndex, setHighlightedFrameIndex] = useState<number>(0);
@@ -32,6 +34,48 @@ function Timeline({ frames, className = "" }: TimelineProps) {
   const isDraggingRef = useRef(false);
   // Ref to store current drag index for the closure
   const dragIndexRef = useRef<number>(0);
+
+  // INT-02: visual (CSS transform) zoom, Ctrl/Cmd-gated -- same `scaleX(zoom)` technique as
+  // `Filmstrip/views/ThumbnailsView.tsx`'s existing wheel-zoom, applied to `.timeline-thumbnails`
+  // (already the horizontally-scrolling element, see that class's own doc). Real click/drag
+  // hit-testing needs no change: it primary-paths through `document.elementFromPoint`, which
+  // already accounts for any CSS transform on an ancestor.
+  const [zoom, setZoom] = useState(1);
+  // A real DOM `ref` + `addEventListener("wheel", ..., {passive: false})` is required here, NOT
+  // a React `onWheel` JSX prop -- React marks wheel listeners passive by default, so
+  // `e.preventDefault()` from an `onWheel` handler throws "Unable to preventDefault inside
+  // passive event listener invocation." (found via a real Electron screenshot run, not a unit
+  // test -- jsdom's synthetic `fireEvent.wheel` doesn't reproduce a real passive listener, so this
+  // was invisible to every test in this change until then; `ThumbnailsView.tsx`'s
+  // `onWheel={handleWheel}` has this exact same latent bug, confirmed by inspection, left as-is
+  // since fixing it is out of scope here).
+  const thumbnailsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = thumbnailsRef.current;
+    if (!el) return;
+    const handleWheelZoom = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom((z) => Math.max(0.5, Math.min(3, z + delta)));
+    };
+    el.addEventListener("wheel", handleWheelZoom, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheelZoom);
+  }, []);
+
+  // INT-02: Shift+drag range-select. Frontend-only -- `setTemporalSelection`'s "range" type
+  // already exists (`types/selection.ts`) and matches the real backend Block>Point>Range>Marker
+  // precedence, but there's no backend `Command::SelectRange` counterpart to `select_spatial_block`
+  // to round-trip through (see PARITY_CHECKLIST.md INT-02's note) -- same shape `setSyntaxSelection`
+  // already legitimately uses with no bridge call. `rangeStartRef`/`rangeEndRef` mirror the
+  // existing `dragIndexRef` pattern (closure-safe values for the global-listener callbacks);
+  // `activeDragRange` is the separate live-render state.
+  const rangeStartRef = useRef<number>(0);
+  const rangeEndRef = useRef<number>(0);
+  const [activeDragRange, setActiveDragRange] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
 
   // Ref to the timeline container
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -190,8 +234,54 @@ function Timeline({ frames, className = "" }: TimelineProps) {
     [getTimelineRect],
   );
 
+  // INT-02: Shift+drag range-select -- same mousedown->global-mousemove->global-mouseup structure
+  // as the plain scrub-drag below (and HexViewTab's INT-03 byte drag before that), substituting
+  // `frameIndexFromPoint` for the byte-offset lookup.
+  const handleShiftDragStart = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const startFrame = getFrameIndexFromEvent(e);
+      rangeStartRef.current = startFrame;
+      rangeEndRef.current = startFrame;
+      setActiveDragRange({ start: startFrame, end: startFrame });
+
+      const timelineEl = timelineRef.current;
+      if (!timelineEl) return;
+      const timelineRect = timelineEl.getBoundingClientRect();
+
+      const handleDragMove = (moveEvent: MouseEvent) => {
+        const idx = frameIndexFromPoint(
+          moveEvent.clientX,
+          moveEvent.clientY,
+          timelineRect,
+        );
+        rangeEndRef.current = idx;
+        setActiveDragRange({ start: rangeStartRef.current, end: idx });
+      };
+
+      const handleDragUp = () => {
+        const rangeStart = Math.min(rangeStartRef.current, rangeEndRef.current);
+        const rangeEnd = Math.max(rangeStartRef.current, rangeEndRef.current);
+        setTemporalSelection(
+          { type: "range", frameIndex: rangeStart, rangeStart, rangeEnd },
+          "timeline",
+        );
+        setActiveDragRange(null);
+        window.removeEventListener("mousemove", handleDragMove);
+        window.removeEventListener("mouseup", handleDragUp);
+      };
+
+      window.addEventListener("mousemove", handleDragMove);
+      window.addEventListener("mouseup", handleDragUp);
+    },
+    [getFrameIndexFromEvent, frameIndexFromPoint, setTemporalSelection],
+  );
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.shiftKey) {
+        handleShiftDragStart(e);
+        return;
+      }
       const frameIndex = getFrameIndexFromEvent(e);
       setHighlightedFrameIndex(frameIndex);
       dragIndexRef.current = frameIndex;
@@ -248,7 +338,12 @@ function Timeline({ frames, className = "" }: TimelineProps) {
       window.addEventListener("mousemove", handleDragMove, { passive: true });
       window.addEventListener("mouseup", handleDragUp);
     },
-    [getFrameIndexFromEvent, setFrameSelection, frames.length],
+    [
+      getFrameIndexFromEvent,
+      setFrameSelection,
+      frames.length,
+      handleShiftDragStart,
+    ],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -290,6 +385,20 @@ function Timeline({ frames, className = "" }: TimelineProps) {
       ? Math.min(Math.floor(hoverPosition * frames.length), frames.length - 1)
       : null;
 
+  // INT-02: range highlight -- the live drag preview while shift-dragging, falling back to the
+  // last committed "range" temporal selection once the drag ends (so the highlight doesn't just
+  // disappear on mouseup).
+  const committedRange =
+    selection?.temporal?.type === "range" ? selection.temporal : null;
+  const displayRange =
+    activeDragRange ??
+    (committedRange
+      ? {
+          start: committedRange.rangeStart ?? committedRange.frameIndex,
+          end: committedRange.rangeEnd ?? committedRange.frameIndex,
+        }
+      : null);
+
   if (frames.length === 0) {
     return (
       <div
@@ -297,7 +406,11 @@ function Timeline({ frames, className = "" }: TimelineProps) {
         role="region"
         aria-label="Timeline"
       >
-        <TimelineHeader currentFrame={0} totalFrames={0} />
+        <TimelineHeader
+          currentFrame={0}
+          totalFrames={0}
+          ptsQuality={streamInfo?.ptsQuality}
+        />
         <div className="timeline-content">
           <div
             className="timeline-empty"
@@ -321,6 +434,7 @@ function Timeline({ frames, className = "" }: TimelineProps) {
       <TimelineHeader
         currentFrame={highlightedFrameIndex}
         totalFrames={frames.length}
+        ptsQuality={streamInfo?.ptsQuality}
       />
       {/* Timeline Content */}
       <div
@@ -331,6 +445,7 @@ function Timeline({ frames, className = "" }: TimelineProps) {
         {/* Compressed thumbnails (Touch Bar style) -- renders the cursor internally as its own
             scroll-following child, see TimelineCursor's doc. */}
         <TimelineThumbnails
+          ref={thumbnailsRef}
           frames={frames}
           highlightedFrameIndex={highlightedFrameIndex}
           cursorPositionPx={cursorPosition}
@@ -339,6 +454,8 @@ function Timeline({ frames, className = "" }: TimelineProps) {
           onMouseLeave={handleMouseLeave}
           onKeyDown={handleKeyDown}
           onFrameRefsChange={handleFrameRefsChange}
+          zoom={zoom}
+          rangeSelection={displayRange}
         />
       </div>
 

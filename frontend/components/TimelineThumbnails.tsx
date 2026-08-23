@@ -34,6 +34,14 @@ interface TimelineThumbnailsProps {
   onMouseLeave: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   onFrameRefsChange?: (refs: (HTMLDivElement | null)[]) => void;
+  /** INT-02: visual CSS-transform zoom factor (1 = 100%), applied as `scaleX` -- same technique
+   *  as `Filmstrip/views/ThumbnailsView.tsx`'s existing wheel-zoom. The wheel listener itself is
+   *  NOT wired here as a React `onWheel` prop -- see Timeline.tsx's `thumbnailsRef` doc for why
+   *  (needs a real non-passive `addEventListener`, attached via the forwarded `ref` below). */
+  zoom?: number;
+  /** INT-02: inclusive frame-index range to highlight (live shift-drag preview or the last
+   *  committed "range" temporal selection) -- `null` when there's nothing to highlight. */
+  rangeSelection?: { start: number; end: number } | null;
 }
 
 export const TimelineThumbnails = forwardRef<
@@ -50,6 +58,8 @@ export const TimelineThumbnails = forwardRef<
       onMouseLeave,
       onKeyDown,
       onFrameRefsChange,
+      zoom = 1,
+      rangeSelection = null,
     },
     ref,
   ) => {
@@ -77,6 +87,7 @@ export const TimelineThumbnails = forwardRef<
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseLeave={() => onMouseLeave()}
+        style={{ transform: `scaleX(${zoom})`, transformOrigin: "left center" }}
         role="slider"
         aria-label="Frame position"
         aria-valuemin={0}
@@ -85,10 +96,14 @@ export const TimelineThumbnails = forwardRef<
         aria-valuetext={`Frame ${highlightedFrameIndex} of ${frames.length}`}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        title="Click to seek, drag to scrub"
+        title="Click to seek, drag to scrub, Shift+drag to select a range, Ctrl/Cmd+wheel to zoom"
       >
         {frames.map((frame, idx) => {
           const isSelected = frame.frame_index === highlightedFrameIndex;
+          const isInRange =
+            rangeSelection !== null &&
+            frame.frame_index >= rangeSelection.start &&
+            frame.frame_index <= rangeSelection.end;
 
           return (
             <div
@@ -98,7 +113,7 @@ export const TimelineThumbnails = forwardRef<
               }}
               className={`timeline-thumb ${getFrameBarClass(frame.frame_type)} ${
                 isSelected ? "selected" : ""
-              }`}
+              } ${isInRange ? "in-range" : ""}`}
               data-frame-index={frame.frame_index}
               title={`Frame ${frame.frame_index}: ${frame.frame_type}`}
               aria-label={`Frame ${frame.frame_index}, type ${frame.frame_type}`}

@@ -174,7 +174,10 @@ describe("TimelineThumbnails", () => {
     renderWithoutProviders(<TimelineThumbnails {...defaultProps} />);
 
     const container = document.querySelector(".timeline-thumbnails");
-    expect(container).toHaveAttribute("title", "Click to seek, drag to scrub");
+    expect(container).toHaveAttribute(
+      "title",
+      "Click to seek, drag to scrub, Shift+drag to select a range, Ctrl/Cmd+wheel to zoom",
+    );
   });
 
   it("should update aria-valuenow when highlighted frame changes", () => {

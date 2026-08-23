@@ -186,6 +186,14 @@
   background: var(--frame-unknown);
 }
 
+/* INT-02: Shift+drag range-select highlight (live drag preview or last committed range) --
+   flat outline, deliberately no glow/box-shadow (unlike .selected above). */
+.timeline-thumb.in-range {
+  opacity: 1;
+  outline: 1px solid rgb(255 255 255 / 60%);
+  outline-offset: -1px;
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Cursor (Touch Bar Style Draggable Indicator)
    ═════════════════════════════════════════════════════════════════════════ */

@@ -3,7 +3,7 @@
  * Tests timeline navigation, drag interaction, and visualization
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   render,
   screen,
@@ -19,6 +19,14 @@ import type { FrameInfo } from "@/types/video";
 vi.mock("@/contexts/SelectionContext", () => ({
   useSelection: vi.fn(),
   SelectionProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+// Timeline.tsx reads streamInfo.ptsQuality (EDGE-03) via useFrameData -- a stable default
+// returned directly from the factory (not per-test mockReturnValue) since none of this file's
+// many describe blocks need to vary it; vi.clearAllMocks() doesn't reset factory-level behavior.
+vi.mock("@/contexts/FrameDataContext", () => ({
+  useFrameData: vi.fn(() => ({ streamInfo: null })),
+  FrameDataProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 const mockFrames: FrameInfo[] = [
@@ -1184,5 +1192,237 @@ describe("TimelineMemoized vs default export", () => {
     expect(
       screen.queryByRole("region", { name: "Timeline" }),
     ).toBeInTheDocument();
+  });
+});
+
+// EDGE-03: real integration -- streamInfo.ptsQuality (FrameDataContext) reaches the
+// TimelineHeader badge through Timeline.tsx's prop-threading, not just TimelineHeader in
+// isolation.
+describe("Timeline PTS quality badge", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
+  });
+
+  it("passes streamInfo.ptsQuality through to the TimelineHeader badge", async () => {
+    const { useFrameData } = await import("@/contexts/FrameDataContext");
+    vi.mocked(useFrameData).mockReturnValue({
+      streamInfo: {
+        width: 320,
+        height: 240,
+        codec: "AV1",
+        bitDepth: 8,
+        ptsQuality: "Bad",
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    render(<Timeline {...defaultProps} />);
+
+    expect(screen.getByText("PTS: BAD")).toBeInTheDocument();
+  });
+
+  it("renders no badge when streamInfo is null (not yet loaded)", async () => {
+    const { useFrameData } = await import("@/contexts/FrameDataContext");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useFrameData).mockReturnValue({ streamInfo: null } as any);
+
+    render(<Timeline {...defaultProps} />);
+
+    expect(
+      document.querySelector(".pts-quality-badge"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+// INT-02: Ctrl/Cmd+wheel visual zoom
+describe("Timeline wheel zoom", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useSelection).mockReturnValue(createMockSelectionContext());
+  });
+
+  it("zooms in on Ctrl+wheel (deltaY < 0)", () => {
+    const { container } = render(<Timeline {...defaultProps} />);
+    const thumbnails = container.querySelector(
+      ".timeline-thumbnails",
+    ) as HTMLElement;
+
+    fireEvent.wheel(thumbnails, { deltaY: -100, ctrlKey: true });
+
+    expect(thumbnails.style.transform).toBe("scaleX(1.1)");
+  });
+
+  it("zooms out on Ctrl+wheel (deltaY > 0)", () => {
+    const { container } = render(<Timeline {...defaultProps} />);
+    const thumbnails = container.querySelector(
+      ".timeline-thumbnails",
+    ) as HTMLElement;
+
+    fireEvent.wheel(thumbnails, { deltaY: 100, ctrlKey: true });
+
+    expect(thumbnails.style.transform).toBe("scaleX(0.9)");
+  });
+
+  it("also responds to Cmd (metaKey)+wheel", () => {
+    const { container } = render(<Timeline {...defaultProps} />);
+    const thumbnails = container.querySelector(
+      ".timeline-thumbnails",
+    ) as HTMLElement;
+
+    fireEvent.wheel(thumbnails, { deltaY: -100, metaKey: true });
+
+    expect(thumbnails.style.transform).toBe("scaleX(1.1)");
+  });
+
+  it("ignores a plain wheel (no modifier) -- reserved for future vertical scroll, matches Player's requireModifierKey convention", () => {
+    const { container } = render(<Timeline {...defaultProps} />);
+    const thumbnails = container.querySelector(
+      ".timeline-thumbnails",
+    ) as HTMLElement;
+
+    fireEvent.wheel(thumbnails, { deltaY: -100 });
+
+    expect(thumbnails.style.transform).toBe("scaleX(1)");
+  });
+
+  it("clamps zoom to the [0.5, 3] range", () => {
+    const { container } = render(<Timeline {...defaultProps} />);
+    const thumbnails = container.querySelector(
+      ".timeline-thumbnails",
+    ) as HTMLElement;
+
+    for (let i = 0; i < 30; i++) {
+      fireEvent.wheel(thumbnails, { deltaY: -100, ctrlKey: true });
+    }
+    expect(thumbnails.style.transform).toBe("scaleX(3)");
+
+    for (let i = 0; i < 60; i++) {
+      fireEvent.wheel(thumbnails, { deltaY: 100, ctrlKey: true });
+    }
+    expect(thumbnails.style.transform).toBe("scaleX(0.5)");
+  });
+});
+
+// INT-02: Shift+drag range-select
+describe("Timeline shift-drag range select", () => {
+  let setTemporalSelectionMock: ReturnType<typeof vi.fn>;
+  let setFrameSelectionMock: ReturnType<typeof vi.fn>;
+  let elementFromPointSpy: ReturnType<typeof vi.fn> | null = null;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setTemporalSelectionMock = vi.fn();
+    setFrameSelectionMock = vi.fn();
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        setTemporalSelection: setTemporalSelectionMock,
+        setFrameSelection: setFrameSelectionMock,
+      }),
+    );
+  });
+
+  afterEach(() => {
+    if (elementFromPointSpy) {
+      // @ts-expect-error -- jsdom doesn't implement this at all; deleted, not restored.
+      delete document.elementFromPoint;
+    }
+    elementFromPointSpy = null;
+  });
+
+  it("Shift+mousedown then mouseup with no movement commits a single-frame range", () => {
+    render(<Timeline {...defaultProps} />);
+    const frame2 = document.querySelector('[data-frame-index="2"]')!;
+
+    fireEvent.mouseDown(frame2, { shiftKey: true });
+    fireEvent.mouseUp(window);
+
+    expect(setTemporalSelectionMock).toHaveBeenCalledWith(
+      { type: "range", frameIndex: 2, rangeStart: 2, rangeEnd: 2 },
+      "timeline",
+    );
+    // A shift-drag is a distinct gesture from the plain scrub-drag -- it must not also fire the
+    // single-frame selection path.
+    expect(setFrameSelectionMock).not.toHaveBeenCalled();
+  });
+
+  it("Shift+drag across multiple frames commits the full [min,max] range, regardless of drag direction", () => {
+    render(<Timeline {...defaultProps} />);
+    const frame1 = document.querySelector('[data-frame-index="1"]')!;
+    const frame3 = document.querySelector('[data-frame-index="3"]')!;
+
+    elementFromPointSpy = vi.fn().mockReturnValue(frame3 as Element);
+    // @ts-expect-error -- jsdom doesn't implement this at all; add it for the test.
+    document.elementFromPoint = elementFromPointSpy;
+
+    fireEvent.mouseDown(frame1, { shiftKey: true });
+    fireEvent.mouseMove(window, { clientX: 999, clientY: 999 });
+    fireEvent.mouseUp(window);
+
+    expect(setTemporalSelectionMock).toHaveBeenCalledWith(
+      { type: "range", frameIndex: 1, rangeStart: 1, rangeEnd: 3 },
+      "timeline",
+    );
+  });
+
+  it("supports dragging backwards (later frame first, earlier frame released)", () => {
+    render(<Timeline {...defaultProps} />);
+    const frame3 = document.querySelector('[data-frame-index="3"]')!;
+    const frame1 = document.querySelector('[data-frame-index="1"]')!;
+
+    elementFromPointSpy = vi.fn().mockReturnValue(frame1 as Element);
+    // @ts-expect-error -- jsdom doesn't implement this at all; add it for the test.
+    document.elementFromPoint = elementFromPointSpy;
+
+    fireEvent.mouseDown(frame3, { shiftKey: true });
+    fireEvent.mouseMove(window, { clientX: 999, clientY: 999 });
+    fireEvent.mouseUp(window);
+
+    // rangeStart/rangeEnd are normalized to [min, max] regardless of drag direction.
+    expect(setTemporalSelectionMock).toHaveBeenCalledWith(
+      { type: "range", frameIndex: 1, rangeStart: 1, rangeEnd: 3 },
+      "timeline",
+    );
+  });
+
+  it("a plain (non-shift) drag is unaffected -- still uses the single-frame scrub path", () => {
+    render(<Timeline {...defaultProps} />);
+    const frame1 = document.querySelector('[data-frame-index="1"]')!;
+
+    fireEvent.mouseDown(frame1);
+    fireEvent.mouseUp(window);
+
+    expect(setFrameSelectionMock).toHaveBeenCalled();
+    expect(setTemporalSelectionMock).not.toHaveBeenCalled();
+  });
+
+  it("highlights every bar within the last committed range", () => {
+    vi.mocked(useSelection).mockReturnValue(
+      createMockSelectionContext({
+        selection: {
+          frame: { frameIndex: 1 },
+          temporal: {
+            type: "range",
+            frameIndex: 1,
+            rangeStart: 1,
+            rangeEnd: 3,
+          },
+        },
+      }),
+    );
+
+    render(<Timeline {...defaultProps} />);
+
+    for (const idx of [1, 2, 3]) {
+      expect(document.querySelector(`[data-frame-index="${idx}"]`)).toHaveClass(
+        "in-range",
+      );
+    }
+    expect(document.querySelector('[data-frame-index="0"]')).not.toHaveClass(
+      "in-range",
+    );
+    expect(document.querySelector('[data-frame-index="4"]')).not.toHaveClass(
+      "in-range",
+    );
   });
 });

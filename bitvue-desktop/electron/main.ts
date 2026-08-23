@@ -703,9 +703,19 @@ async function runSelfTestAndExit(win: BrowserWindow): Promise<void> {
  * `"menu-toggle-overlay:qp-map,menu-clear-overlays"`.
  *
  * `BITVUE_ELECTRON_SCREENSHOT_CONTEXT_MENU=<css selector>[,<css selector>...]` (optional): runs
- * last, right before capture -- dispatches a real `contextmenu` `MouseEvent` (bubbling,
- * cancelable) at the matched element's center, for right-click-only UI (context menus on
+ * after DISPATCH -- dispatches a real `contextmenu` `MouseEvent` (bubbling, cancelable) at the
+ * matched element's center, for right-click-only UI (context menus on
  * HexView/StreamView/Timeline/DiagnosticsPanel/Player) that a plain `click()` can't reach.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_MOUSEMOVE=<css selector>[,<css selector>...]` (optional): runs
+ * after CONTEXT_MENU -- dispatches a real `mousemove` `MouseEvent` (bubbling, cancelable) at the
+ * matched element's center, for hover-only UI (e.g. INT-01's Player pixel/block tooltip) that
+ * neither CLICK_SELECTOR (mousedown+click only) nor a keyboard event can reach.
+ *
+ * `BITVUE_ELECTRON_SCREENSHOT_CTRL_WHEEL=<css selector>[,<css selector>...]` (optional): runs
+ * last, right before capture -- dispatches a real Ctrl+wheel `WheelEvent` (bubbling, cancelable,
+ * `deltaY: -300`, `ctrlKey: true`, i.e. zoom-in) at the matched element's center, for
+ * modifier-gated-wheel UI (e.g. INT-02's Timeline zoom) no other hook can reach.
  *
  * `BITVUE_ELECTRON_SCREENSHOT_SKIP_OPEN=1` (optional): skips the automatic
  * `"menu-open-bitstream"` dispatch (and its settle wait) entirely, capturing whatever the app
@@ -869,6 +879,60 @@ async function runScreenshotAndExit(
             cancelable: true,
             clientX: rect.left + rect.width / 2,
             clientY: rect.top + rect.height / 2,
+          }));
+        })()
+      `);
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
+    }
+    // BITVUE_ELECTRON_SCREENSHOT_MOUSEMOVE=<css selector> (optional): same real-bubbling-event
+    // pattern as CONTEXT_MENU above (getBoundingClientRect center -> clientX/clientY), for
+    // hover-only interactions (e.g. INT-01's Player pixel/block tooltip) that CLICK_SELECTOR
+    // can't exercise -- that one only synthesizes mousedown+click, never a bare mousemove.
+    const mouseMoveSelectors =
+      process.env.BITVUE_ELECTRON_SCREENSHOT_MOUSEMOVE?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    for (const selector of mouseMoveSelectors ?? []) {
+      await win.webContents.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) throw new Error(${JSON.stringify(`selector not found: ${selector}`)});
+          const rect = el.getBoundingClientRect();
+          el.dispatchEvent(new MouseEvent("mousemove", {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+          }));
+        })()
+      `);
+      await win.webContents.executeJavaScript(
+        "new Promise((r) => setTimeout(r, 500))",
+      );
+    }
+    // BITVUE_ELECTRON_SCREENSHOT_CTRL_WHEEL=<css selector>[,<css selector>...] (optional): runs
+    // last, right before capture -- dispatches a real Ctrl+wheel `WheelEvent` (bubbling,
+    // cancelable, deltaY=-300 i.e. zoom-in) at the matched element's center, for
+    // modifier-gated-wheel UI (e.g. INT-02's Timeline zoom) that no other hook can reach.
+    const ctrlWheelSelectors =
+      process.env.BITVUE_ELECTRON_SCREENSHOT_CTRL_WHEEL?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    for (const selector of ctrlWheelSelectors ?? []) {
+      await win.webContents.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) throw new Error(${JSON.stringify(`selector not found: ${selector}`)});
+          const rect = el.getBoundingClientRect();
+          el.dispatchEvent(new WheelEvent("wheel", {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+            deltaY: -300,
+            ctrlKey: true,
           }));
         })()
       `);
