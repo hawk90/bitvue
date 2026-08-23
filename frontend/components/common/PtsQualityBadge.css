@@ -1,0 +1,24 @@
+.pts-quality-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  margin-left: 6px;
+  cursor: default;
+}
+
+.pts-quality-warn {
+  background: var(--color-warning-bg);
+  color: var(--warning-fg);
+  border: 1px solid var(--color-warning-bg-subtle);
+}
+
+.pts-quality-bad {
+  background: var(--color-error-bg);
+  color: var(--error-fg);
+  border: 1px solid var(--color-error-bg-subtle);
+}

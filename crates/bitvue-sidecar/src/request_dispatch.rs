@@ -17,12 +17,78 @@ use bitvue_protocol::{
 use std::collections::HashMap;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 /// `correlation_id` → cancellation flag, for requests currently being computed on a worker
 /// thread. Entries are removed once that thread finishes (success, failure, or cancellation).
 pub type CancelRegistry = Arc<Mutex<HashMap<u32, Arc<AtomicBool>>>>;
+
+/// EDGE-02: caps actual concurrent request *execution*. Before this, `spawn_request` spawned an
+/// unbounded OS thread per incoming request with no limit at all -- a pathological burst (a
+/// buggy frontend loop, or many rapid scrub events each firing `get_decoded_frame_yuv`) could
+/// spawn unboundedly many concurrent decode/analysis threads, each doing real CPU-bound work,
+/// with no backpressure. This is a separate concern from `CancelRegistry`'s cancellation/
+/// staleness-discarding, which was already real and well-tested -- this caps *how many* requests
+/// run at once, cancellation controls *which* ones a client still wants the result of.
+pub const MAX_CONCURRENT_REQUESTS: usize = 16;
+
+/// Minimal std-only counting semaphore. `main.rs`'s reader loop must stay non-blocking (see its
+/// "Concurrency model" doc -- it spawns a thread per request and immediately goes back to
+/// reading, so a slow request can't block `cancel_request`/`hello` arriving concurrently); a
+/// std::sync channel/mpsc-based pool would require the reader loop itself to block handing off
+/// work, which would reintroduce exactly that problem. Instead, `spawn_request` still spawns a
+/// thread immediately (reader loop stays unblocked), and that thread blocks on `acquire()` before
+/// doing any real work -- bounding actual concurrent execution without bounding how fast the
+/// reader loop can accept new requests.
+pub(crate) struct Semaphore {
+    permits: Mutex<usize>,
+    condvar: Condvar,
+}
+
+impl Semaphore {
+    fn new(permits: usize) -> Self {
+        Self {
+            permits: Mutex::new(permits),
+            condvar: Condvar::new(),
+        }
+    }
+
+    /// Blocks the calling thread until a permit is available, then holds it until the returned
+    /// guard drops.
+    fn acquire(self: &Arc<Self>) -> SemaphorePermit {
+        let mut count = self.permits.lock().unwrap();
+        while *count == 0 {
+            count = self.condvar.wait(count).unwrap();
+        }
+        *count -= 1;
+        drop(count);
+        SemaphorePermit {
+            semaphore: Arc::clone(self),
+        }
+    }
+}
+
+struct SemaphorePermit {
+    semaphore: Arc<Semaphore>,
+}
+
+impl Drop for SemaphorePermit {
+    fn drop(&mut self) {
+        *self.semaphore.permits.lock().unwrap() += 1;
+        self.semaphore.condvar.notify_one();
+    }
+}
+
+/// Shared across all `spawn_request` calls for the process's lifetime -- one process-wide cap,
+/// constructed once in `main()`.
+pub type RequestSemaphore = Arc<Semaphore>;
+
+/// Constructs the process-wide semaphore at `MAX_CONCURRENT_REQUESTS` -- the one place `main.rs`
+/// needs to call to get a `RequestSemaphore` (keeps `Semaphore` itself private to this module).
+pub fn new_request_semaphore() -> RequestSemaphore {
+    Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS))
+}
 
 /// The one currently-loaded debug YUV reference file (if any) -- see `debug_yuv`'s module doc for
 /// why this lives here rather than in `Core`/`StreamState`. Not per-`correlation_id` like
@@ -52,6 +118,7 @@ pub fn spawn_request(
     decode_sessions: DecodeSessionsSlot,
     writer: Arc<Mutex<io::Stdout>>,
     registry: CancelRegistry,
+    semaphore: RequestSemaphore,
     correlation_id: u32,
     request: Request,
 ) -> thread::JoinHandle<()> {
@@ -62,7 +129,7 @@ pub fn spawn_request(
         .insert(correlation_id, Arc::clone(&cancel_flag));
 
     thread::spawn(move || {
-        let frames = if cancel_flag.load(Ordering::SeqCst) {
+        let cancelled_response = || {
             let response = Response::failure(
                 request.id,
                 WireError {
@@ -75,15 +142,28 @@ pub fn spawn_request(
                 FrameKind::Control,
                 serde_json::to_vec(&response).expect("Response always serializes"),
             )]
+        };
+
+        let frames = if cancel_flag.load(Ordering::SeqCst) {
+            cancelled_response()
         } else {
-            compute_frames_with_panic_guard(
-                &core,
-                &debug_yuv_state,
-                &compare_state,
-                &decode_sessions,
-                &request,
-                &cancel_flag,
-            )
+            // EDGE-02: blocks here (not in main.rs's reader loop, see Semaphore's doc) until
+            // fewer than MAX_CONCURRENT_REQUESTS requests are actually executing.
+            let _permit = semaphore.acquire();
+            // Re-check: this request may have been cancelled while it was queued waiting for a
+            // permit -- still "before execution started" (compute_frames hasn't run yet).
+            if cancel_flag.load(Ordering::SeqCst) {
+                cancelled_response()
+            } else {
+                compute_frames_with_panic_guard(
+                    &core,
+                    &debug_yuv_state,
+                    &compare_state,
+                    &decode_sessions,
+                    &request,
+                    &cancel_flag,
+                )
+            }
         };
 
         registry.lock().unwrap().remove(&correlation_id);
@@ -412,6 +492,72 @@ mod tests {
     use super::*;
     use crate::test_support::open_real_fixture;
     use bitvue_protocol::CancelParams;
+
+    // EDGE-02: real multi-threaded proof the Semaphore actually bounds concurrency, not just
+    // structural plausibility -- same reasoning as this file's other "real threads, not a
+    // sequential stand-in" tests below.
+    #[test]
+    fn semaphore_never_exceeds_configured_permit_count() {
+        use std::sync::atomic::AtomicUsize;
+        use std::time::Duration;
+
+        let permits = 3;
+        let semaphore = Arc::new(Semaphore::new(permits));
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let semaphore = Arc::clone(&semaphore);
+                let active = Arc::clone(&active);
+                let peak = Arc::clone(&peak);
+                thread::spawn(move || {
+                    let _permit = semaphore.acquire();
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(20));
+                    active.fetch_sub(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let observed = peak.load(Ordering::SeqCst);
+        assert!(
+            observed <= permits,
+            "observed {observed} concurrent permit holders, cap was {permits}"
+        );
+    }
+
+    #[test]
+    fn semaphore_releases_a_permit_when_the_guard_drops_so_a_waiter_can_proceed() {
+        use std::time::Duration;
+
+        let semaphore = Arc::new(Semaphore::new(1));
+        let first_permit = semaphore.acquire();
+
+        let semaphore2 = Arc::clone(&semaphore);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let waiter = thread::spawn(move || {
+            let _permit = semaphore2.acquire();
+            tx.send(()).unwrap();
+        });
+
+        // The waiter must still be blocked with all permits held.
+        assert!(
+            rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "waiter acquired a permit while the only one was still held"
+        );
+
+        drop(first_permit);
+
+        rx.recv_timeout(Duration::from_secs(1))
+            .expect("waiter should acquire the permit once it's released");
+        waiter.join().unwrap();
+    }
 
     #[test]
     fn unknown_method_returns_internal_error() {

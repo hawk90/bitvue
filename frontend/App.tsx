@@ -1,4 +1,12 @@
-import { useEffect, memo, lazy, Suspense, useCallback, useState } from "react";
+import {
+  useEffect,
+  memo,
+  lazy,
+  Suspense,
+  useCallback,
+  useState,
+  useMemo,
+} from "react";
 import { closeWindow } from "./services/electronBridgeService";
 import { useOpenFileStatus } from "./hooks/useOpenFileStatus";
 import "./App.css";
@@ -7,6 +15,7 @@ import { WelcomeContainer } from "./components/WelcomeContainer";
 import { TitleBar } from "./components/TitleBar";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PanelErrorBoundary } from "./components/PanelErrorBoundary";
 import { SelectionProvider } from "./contexts/SelectionContext";
 import { ModeProvider, useMode } from "./contexts/ModeContext";
 import {
@@ -37,6 +46,7 @@ import {
   DetailsPanel,
   YuvDiffPanel,
   DiagnosticsPanel,
+  bridgeDiagnosticToDiagnostic,
 } from "./components/panels";
 import { GoToFrameDialog } from "./components/GoToFrameDialog";
 
@@ -133,24 +143,55 @@ function App() {
   );
 }
 
-// Stable panel component wrappers — defined outside AppContent to avoid remounting
+// Stable panel component wrappers — defined outside AppContent to avoid remounting. Each is also
+// wrapped in its own PanelErrorBoundary (EDGE-01) so a render-time throw in one panel can't take
+// down the whole app -- see that component's doc.
 const StreamTreePanelWrapper = memo(function StreamTreePanelWrapper() {
-  return <StreamTreePanel />;
+  return (
+    <PanelErrorBoundary panelName="Stream">
+      <StreamTreePanel />
+    </PanelErrorBoundary>
+  );
 });
 const SyntaxDetailPanelWrapper = memo(function SyntaxDetailPanelWrapper() {
-  return <SyntaxDetailPanel />;
+  return (
+    <PanelErrorBoundary panelName="Syntax">
+      <SyntaxDetailPanel />
+    </PanelErrorBoundary>
+  );
 });
 const SelectionInfoPanelWrapper = memo(function SelectionInfoPanelWrapper() {
-  return <SelectionInfoPanel />;
+  return (
+    <PanelErrorBoundary panelName="Selection">
+      <SelectionInfoPanel />
+    </PanelErrorBoundary>
+  );
 });
 const UnitHexPanelWrapper = memo(function UnitHexPanelWrapper() {
-  return <UnitHexPanel />;
+  return (
+    <PanelErrorBoundary panelName="Unit HEX">
+      <UnitHexPanel />
+    </PanelErrorBoundary>
+  );
 });
 const StatisticsPanelWrapper = memo(function StatisticsPanelWrapper() {
-  return <StatisticsPanel />;
+  return (
+    <PanelErrorBoundary panelName="Stats">
+      <StatisticsPanel />
+    </PanelErrorBoundary>
+  );
 });
 const DiagnosticsPanelWrapper = memo(function DiagnosticsPanelWrapper() {
-  return <DiagnosticsPanel />;
+  const { diagnostics } = useFileState();
+  const mappedDiagnostics = useMemo(
+    () => diagnostics.map(bridgeDiagnosticToDiagnostic),
+    [diagnostics],
+  );
+  return (
+    <PanelErrorBoundary panelName="Diagnostics">
+      <DiagnosticsPanel diagnostics={mappedDiagnostics} />
+    </PanelErrorBoundary>
+  );
 });
 
 /**
@@ -161,11 +202,13 @@ const MainViewFromContext = memo(function MainViewFromContext() {
   const { frames } = useFrameData();
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
   return (
-    <YuvViewerPanel
-      currentFrameIndex={currentFrameIndex}
-      totalFrames={frames.length}
-      onFrameChange={setCurrentFrameIndex}
-    />
+    <PanelErrorBoundary panelName="Player">
+      <YuvViewerPanel
+        currentFrameIndex={currentFrameIndex}
+        totalFrames={frames.length}
+        onFrameChange={setCurrentFrameIndex}
+      />
+    </PanelErrorBoundary>
   );
 });
 
@@ -179,14 +222,16 @@ const CompareWorkspaceFromContext = memo(
     const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
     const { framesB, currentFrameB, setFrameB } = useCompare();
     return (
-      <CompareWorkspace
-        framesA={frames}
-        framesB={framesB}
-        currentFrameA={currentFrameIndex}
-        currentFrameB={currentFrameB}
-        onFrameChangeA={setCurrentFrameIndex}
-        onFrameChangeB={setFrameB}
-      />
+      <PanelErrorBoundary panelName="Compare">
+        <CompareWorkspace
+          framesA={frames}
+          framesB={framesB}
+          currentFrameA={currentFrameIndex}
+          currentFrameB={currentFrameB}
+          onFrameChangeA={setCurrentFrameIndex}
+          onFrameChangeB={setFrameB}
+        />
+      </PanelErrorBoundary>
     );
   },
 );
@@ -194,7 +239,11 @@ const CompareWorkspaceFromContext = memo(
 /** Stable filmstrip panel — reads frames from context */
 const FilmstripPanelFromContext = memo(function FilmstripPanelFromContext() {
   const { frames } = useFrameData();
-  return <FilmstripPanel frames={frames} />;
+  return (
+    <PanelErrorBoundary panelName="Filmstrip">
+      <FilmstripPanel frames={frames} />
+    </PanelErrorBoundary>
+  );
 });
 
 /** Stable info panel — reads state from context */
@@ -203,12 +252,14 @@ const InfoPanelFromContext = memo(function InfoPanelFromContext() {
   const { currentFrameIndex } = useCurrentFrame();
   const { filePath } = useFileState();
   return (
-    <InfoPanel
-      filePath={filePath ?? undefined}
-      frameCount={frames.length}
-      currentFrameIndex={currentFrameIndex}
-      currentFrame={frames[currentFrameIndex] || null}
-    />
+    <PanelErrorBoundary panelName="Info">
+      <InfoPanel
+        filePath={filePath ?? undefined}
+        frameCount={frames.length}
+        currentFrameIndex={currentFrameIndex}
+        currentFrame={frames[currentFrameIndex] || null}
+      />
+    </PanelErrorBoundary>
   );
 });
 
@@ -216,17 +267,23 @@ const InfoPanelFromContext = memo(function InfoPanelFromContext() {
 const DetailsPanelFromContext = memo(function DetailsPanelFromContext() {
   const { frames } = useFrameData();
   const { currentFrameIndex } = useCurrentFrame();
-  return <DetailsPanel frame={frames[currentFrameIndex] || null} />;
+  return (
+    <PanelErrorBoundary panelName="Details">
+      <DetailsPanel frame={frames[currentFrameIndex] || null} />
+    </PanelErrorBoundary>
+  );
 });
 
 /** Stable YUV diff panel — reads frame index and provides jump callback */
 const YuvDiffPanelFromContext = memo(function YuvDiffPanelFromContext() {
   const { currentFrameIndex, setCurrentFrameIndex } = useCurrentFrame();
   return (
-    <YuvDiffPanel
-      currentFrameIndex={currentFrameIndex}
-      onJumpToFrame={setCurrentFrameIndex}
-    />
+    <PanelErrorBoundary panelName="YUV Diff">
+      <YuvDiffPanel
+        currentFrameIndex={currentFrameIndex}
+        onJumpToFrame={setCurrentFrameIndex}
+      />
+    </PanelErrorBoundary>
   );
 });
 

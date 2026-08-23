@@ -1,0 +1,49 @@
+.panel-error-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  padding: 1rem;
+  background: var(--bg-primary);
+  color: var(--fg-secondary);
+  text-align: center;
+  overflow: auto;
+}
+
+.panel-error-fallback .codicon-error {
+  font-size: 20px;
+  color: var(--error-fg);
+}
+
+.panel-error-message strong {
+  color: var(--fg-primary);
+}
+
+.panel-error-detail {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  color: var(--fg-secondary);
+  word-break: break-word;
+}
+
+.panel-error-retry {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--fg-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.panel-error-retry:hover {
+  background: var(--bg-hover);
+}

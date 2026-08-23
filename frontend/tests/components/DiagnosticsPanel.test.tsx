@@ -5,29 +5,16 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@/test/test-utils";
-import { DiagnosticsPanel } from "@/components/panels/DiagnosticsPanel";
-import type { FrameInfo } from "@/types/video";
+import {
+  DiagnosticsPanel,
+  bridgeDiagnosticToDiagnostic,
+} from "@/components/panels/DiagnosticsPanel";
+import type { BridgeDiagnostic } from "@/services/electronBridgeService";
 
-// Mock individual context hooks that DiagnosticsPanel uses
-const mockFrames = [
-  { frame_index: 0, frame_type: "I", size: 150000, key_frame: true },
-  { frame_index: 1, frame_type: "P", size: 25000, key_frame: false },
-] as FrameInfo[];
-
-vi.mock("@/contexts/FrameDataContext", () => ({
-  useFrameData: vi.fn(),
-  FrameDataProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-}));
-
-vi.mock("@/contexts/SelectionContext", () => ({
-  useCurrentFrame: vi.fn(),
-  SelectionProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-}));
-
+// DiagnosticsPanel only reads `error` from FileStateContext -- frames/current-frame are no
+// longer consumed here at all (removed with the "mock diagnostics for demonstration" fallback,
+// see DIV-02 in docs/PARITY_CHECKLIST.md; real diagnostics now flow in entirely via the
+// `diagnostics` prop, mapped from real backend events by App.tsx).
 vi.mock("@/contexts/FileStateContext", () => ({
   useFileState: vi.fn(),
   FileStateProvider: ({ children }: { children: React.ReactNode }) => (
@@ -54,21 +41,10 @@ vi.mock("@/contexts/StreamDataContext", () => ({
   ),
 }));
 
-import { useFrameData } from "@/contexts/FrameDataContext";
-import { useCurrentFrame } from "@/contexts/SelectionContext";
 import { useFileState } from "@/contexts/FileStateContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 beforeEach(() => {
-  vi.mocked(useFrameData).mockReturnValue({
-    frames: mockFrames,
-    setFrames: vi.fn(),
-    getFrameStats: vi.fn(),
-  } as any);
-  vi.mocked(useCurrentFrame).mockReturnValue({
-    currentFrameIndex: 1,
-    setCurrentFrameIndex: vi.fn(),
-  } as any);
   vi.mocked(useFileState).mockReturnValue({
     filePath: null,
     loading: false,
@@ -120,24 +96,6 @@ describe("DiagnosticsPanel", () => {
   });
 
   it("should render empty state when no diagnostics", () => {
-    // Provide frames with size < 100000 to avoid auto-generated diagnostics
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    vi.mocked(useFrameData).mockReturnValue({
-      frames: [
-        { frame_index: 0, frame_type: "I", size: 50000, key_frame: true },
-        {
-          frame_index: 1,
-          frame_type: "P",
-          size: 25000,
-          key_frame: false,
-          ref_frames: ["frame_0"],
-        },
-      ] as FrameInfo[],
-      setFrames: vi.fn(),
-      getFrameStats: vi.fn(),
-    } as any);
-    /* eslint-enable @typescript-eslint/no-explicit-any */
-
     render(<DiagnosticsPanel diagnostics={[]} />);
 
     // The empty state shows "No diagnostics" without any filter
@@ -390,5 +348,66 @@ describe("DiagnosticsPanel filtering", () => {
         });
       }
     }
+  });
+});
+
+// DIV-02: real backend Diagnostic (bitvue_engine::event::Diagnostic, via indexStream's
+// DiagnosticAdded events) -> this panel's local Diagnostic shape.
+describe("bridgeDiagnosticToDiagnostic", () => {
+  function bridgeDiagnostic(
+    overrides: Partial<BridgeDiagnostic> = {},
+  ): BridgeDiagnostic {
+    return {
+      id: 1,
+      severity: "Error",
+      message: "Indexing is only implemented for IVF/AV1 streams so far",
+      category: "Container",
+      offset_bytes: 0,
+      timestamp_ms: 1_700_000_000_000,
+      frame_index: null,
+      count: 1,
+      impact_score: 60,
+      ...overrides,
+    };
+  }
+
+  it.each([
+    ["Info", "info"],
+    ["Warn", "warning"],
+    ["Error", "error"],
+    // No frontend "fatal" tier exists -- collapses into "error" rather than being dropped.
+    ["Fatal", "error"],
+  ] as const)("maps backend severity %s to %s", (backend, frontend) => {
+    const result = bridgeDiagnosticToDiagnostic(
+      bridgeDiagnostic({ severity: backend }),
+    );
+    expect(result.severity).toBe(frontend);
+  });
+
+  it("maps message/category/offset/timestamp/count through directly", () => {
+    const result = bridgeDiagnosticToDiagnostic(
+      bridgeDiagnostic({
+        id: 42,
+        message: 'IVF fourcc is "VP90", not "AV01"',
+        category: "Bitstream",
+        timestamp_ms: 1_234,
+      }),
+    );
+
+    expect(result.id).toBe("diag-42");
+    expect(result.message).toBe('IVF fourcc is "VP90", not "AV01"');
+    expect(result.code).toBe("Bitstream");
+    expect(result.timestamp).toBe(1_234);
+  });
+
+  it("maps a present frame_index to frameIndex, and null to undefined (not fabricated 0)", () => {
+    expect(
+      bridgeDiagnosticToDiagnostic(bridgeDiagnostic({ frame_index: 7 }))
+        .frameIndex,
+    ).toBe(7);
+    expect(
+      bridgeDiagnosticToDiagnostic(bridgeDiagnostic({ frame_index: null }))
+        .frameIndex,
+    ).toBeUndefined();
   });
 });

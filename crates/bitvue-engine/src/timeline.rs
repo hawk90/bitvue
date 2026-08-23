@@ -5,6 +5,7 @@
 //! - Scrub/Jump integrated with selection tri-sync
 //! - Timeline marker follows SelectionState.temporal
 
+use crate::frame_identity::PtsQuality;
 use serde::{Deserialize, Serialize};
 
 /// Frame marker type for timeline visualization
@@ -197,6 +198,13 @@ pub struct TimelineBase {
 
     /// Vertical viewport range (first visible lane, lane count)
     pub vertical_viewport: (usize, usize),
+
+    /// Stream-wide PTS quality (EDGE-03) -- computed once by `FrameIndexMap::assess_pts_quality`
+    /// over the whole stream, not per-frame. See `frame_identity::PtsQuality`'s doc for exactly
+    /// what triggers Warn/Bad. Defaults to `Ok` (matches `FrameIndexMap::empty()`'s convention)
+    /// until a real `TimelineExtractor::extract_timeline` call sets it from a real
+    /// `FrameIndexMap`.
+    pub pts_quality: PtsQuality,
 }
 
 impl TimelineBase {
@@ -209,6 +217,7 @@ impl TimelineBase {
             scrub_mode: ScrubMode::Idle,
             viewport: (0, 0),
             vertical_viewport: (0, 0),
+            pts_quality: PtsQuality::Ok,
         }
     }
 

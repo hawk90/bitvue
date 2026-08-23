@@ -9,7 +9,10 @@ export { StreamTreePanel } from "./StreamTreePanel";
 export { SyntaxDetailPanel } from "./SyntaxDetailPanel";
 export { SelectionInfoPanel } from "./SelectionInfoPanel";
 export { ReferenceGraphPanel } from "./ReferenceGraphPanel";
-export { DiagnosticsPanel } from "./DiagnosticsPanel";
+export {
+  DiagnosticsPanel,
+  bridgeDiagnosticToDiagnostic,
+} from "./DiagnosticsPanel";
 export { UnitHexPanel } from "./UnitHexPanel";
 export { YuvViewerPanel } from "./YuvViewerPanel";
 export { StatisticsPanel } from "./StatisticsPanel";

@@ -34,6 +34,9 @@ interface StreamInfo {
   height: number;
   codec: string;
   bitDepth: number | null;
+  /** Stream-wide PTS quality (EDGE-03) -- `null` until `applyDisplayOrder` resolves (non-fatal,
+   *  same "falls back to N/A" convention as the rest of that function), not fabricated. */
+  ptsQuality: "Ok" | "Warn" | "Bad" | null;
 }
 
 interface FrameDataContextType {

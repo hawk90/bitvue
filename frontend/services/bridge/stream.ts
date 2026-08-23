@@ -73,7 +73,10 @@ export interface BridgeTimelineFrame {
   is_selected: boolean;
 }
 
-/** Mirrors `bitvue_engine::timeline::TimelineBase`. */
+/** Mirrors `bitvue_engine::timeline::TimelineBase`. `pts_quality` is a stream-wide verdict
+ *  (not per-frame) -- see `frame_identity::PtsQuality`'s doc for exactly what triggers
+ *  Warn/Bad (duplicate PTS or >50% missing -> Bad; some missing or VFR -> Warn; decode-order
+ *  non-monotonicity from B-frames is expected and NOT a quality issue). */
 export interface BridgeTimeline {
   stream_id: string;
   frames: BridgeTimelineFrame[];
@@ -81,6 +84,7 @@ export interface BridgeTimeline {
   scrub_mode: "Idle" | "Active";
   viewport: [number, number];
   vertical_viewport: [number, number];
+  pts_quality: "Ok" | "Warn" | "Bad";
 }
 
 /** Mirrors `get_thumbnails`'s JSON array response (`bitvue-sidecar`'s `decode_bridge` module).
@@ -128,6 +132,34 @@ export async function indexStream(stream: StreamId): Promise<BridgeEvent[]> {
   return events;
 }
 
+/** Structured shape of a `DiagnosticAdded` event's `diagnostic` field -- mirrors
+ *  `bitvue_engine::event::Diagnostic`'s hand-mapped JSON (`command_support.rs`'s
+ *  `event_to_json`). `severity`/`category` are the Rust enum variant names verbatim (`Debug`
+ *  formatted), not lowercased -- callers map them to whatever local vocabulary they need
+ *  (see `DiagnosticsPanel.tsx`'s severity mapping). */
+export interface BridgeDiagnostic {
+  id: number;
+  severity: "Info" | "Warn" | "Error" | "Fatal";
+  message: string;
+  category: "Container" | "Bitstream" | "Decode" | "Metric" | "IO" | "Worker";
+  offset_bytes: number;
+  timestamp_ms: number;
+  frame_index: number | null;
+  count: number;
+  impact_score: number;
+}
+
+/** Pulls the real, structured diagnostics out of a `BridgeEvent[]` (e.g. `indexStream`'s
+ *  return) -- skips every other event type. `BridgeEvent`'s `diagnostic` field is typed
+ *  `unknown` at that layer since `BridgeEvent` is generic across all event types; this is the
+ *  one place that narrows it back to `BridgeDiagnostic` for real `DiagnosticAdded` events. */
+export function extractDiagnostics(events: BridgeEvent[]): BridgeDiagnostic[] {
+  return events
+    .filter((e) => e.type === "DiagnosticAdded")
+    .map((e) => e.diagnostic as BridgeDiagnostic)
+    .filter((d): d is BridgeDiagnostic => d != null && typeof d === "object");
+}
+
 /** Container metadata populated by `indexStream`. `indexed: false` (not a thrown error) when
  *  nothing's been indexed yet -- that's a normal, expected state. */
 export async function getStreamInfo(
@@ -145,11 +177,11 @@ export async function getFramesChunk(
   return requireBridge().getFramesChunk(stream, offset, limit);
 }
 
-/** Display-order timeline (frame types/sizes/markers), built from already-indexed units via
- *  `bitvue_engine::frame_identity::TimelineMapper` (AV1 only so far -- see `bitvue-indexer`'s
- *  `get_timeline` doc). No component consumes this yet as of 2026-08-08 (grepped for an existing
- *  dead call site the way `getFramesChunk`/`getFrameSyntax` had -- none found); wired because the
- *  backend capability is real and tested, not because a specific UI feature needs it. Throws on
+/** Display-order timeline (frame types/sizes/markers/pts_quality), built from already-indexed
+ *  units via `bitvue_engine::frame_identity::TimelineMapper` (AV1 only so far -- see
+ *  `bitvue-indexer`'s `get_timeline` doc). As of 2026-08-23, `FileStateContext.tsx`'s
+ *  `applyDisplayOrder` calls this once per `refreshFrames` to join real `display_order`/
+ *  `coding_order` (CTX-02) and `pts_quality` (EDGE-03) into the frames it already has. Throws on
  *  failure (no units indexed yet, wrong codec) -- same reasoning as `getFrameSyntax`. */
 export async function getTimeline(stream: StreamId): Promise<BridgeTimeline> {
   return requireBridge().getTimeline(stream);

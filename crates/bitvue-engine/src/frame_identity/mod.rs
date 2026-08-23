@@ -337,7 +337,10 @@ impl PtsQuality {
                 "Some PTS values missing or variable frame rate detected. Timeline uses frame index fallback."
             }
             PtsQuality::Bad => {
-                "Major PTS issues detected (duplicates, non-monotonic, or >50% missing). Timeline uses frame index."
+                // Duplicates and >50% missing are the only two triggers here -- decode-order
+                // non-monotonicity (B-frames) is expected and deliberately NOT checked, see
+                // assess_pts_quality's own comment above.
+                "Major PTS issues detected (duplicates, or >50% missing). Timeline uses frame index."
             }
         }
     }

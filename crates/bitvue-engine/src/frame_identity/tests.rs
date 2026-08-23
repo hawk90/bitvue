@@ -535,6 +535,43 @@ mod tests {
         assert_eq!(timeline.frame_count(), 4);
     }
 
+    /// EDGE-03: TimelineBase.pts_quality must round-trip a real FrameIndexMap's assessment, not
+    /// just default to Ok -- extract_timeline's default impl sets it from index_map.pts_quality().
+    #[test]
+    fn test_build_timeline_av1_pts_quality_reflects_a_real_duplicate_pts_stream() {
+        // Arrange
+        let frames = create_test_frames_duplicate_pts();
+        let sizes = vec![1000, 2000, 3000, 4000];
+        let types = vec!["I".to_string(), "P".to_string(), "P".to_string(), "P".to_string()];
+        let mapper = TimelineMapper::new("stream_A".to_string(), frames, sizes, types);
+        assert_eq!(
+            mapper.index_map().pts_quality(),
+            PtsQuality::Bad,
+            "sanity check: duplicate PTS must actually assess as Bad"
+        );
+
+        // Act
+        let timeline = mapper.build_timeline_av1();
+
+        // Assert
+        assert_eq!(timeline.pts_quality, PtsQuality::Bad);
+    }
+
+    #[test]
+    fn test_build_timeline_av1_pts_quality_is_ok_for_a_clean_stream() {
+        // Arrange
+        let frames = create_test_frames_simple();
+        let sizes = vec![1000, 2000, 3000, 4000];
+        let types = vec!["I".to_string(), "P".to_string(), "P".to_string(), "P".to_string()];
+        let mapper = TimelineMapper::new("stream_A".to_string(), frames, sizes, types);
+
+        // Act
+        let timeline = mapper.build_timeline_av1();
+
+        // Assert
+        assert_eq!(timeline.pts_quality, PtsQuality::Ok);
+    }
+
     // ============================================================================
     // FrameMapper Tests
     // ============================================================================

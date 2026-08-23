@@ -19,6 +19,12 @@
 //! the simpler fit — pulling in an async runtime would just mean wrapping every `Core` call in
 //! `spawn_blocking` anyway.
 //!
+//! A spawned thread still bounds its own *execution* against `request_dispatch::MAX_CONCURRENT_REQUESTS`
+//! (EDGE-02) before doing any real work — the reader loop above stays unbounded/non-blocking (still
+//! spawns immediately), but actual concurrent CPU-bound work is capped so a request burst can't spawn
+//! unboundedly many simultaneously-executing decode/analysis threads. See `request_dispatch::Semaphore`'s
+//! doc for why the wait happens inside the worker thread rather than in this reader loop.
+//!
 //! Response computation (`request_dispatch::compute_frames`) is pure — no I/O, doesn't touch the
 //! writer — so it runs fully unlocked/in parallel across threads. Only the final write is
 //! serialized (one `Mutex<Stdout>` lock per request, held just long enough to write that
@@ -95,6 +101,9 @@ fn main() {
     let decode_sessions: DecodeSessionsSlot = Arc::new(decode_session::DecodeSessions::new());
     let writer = Arc::new(Mutex::new(io::stdout()));
     let registry: request_dispatch::CancelRegistry = Arc::new(Mutex::new(HashMap::new()));
+    // EDGE-02: bounds actual concurrent request execution (see request_dispatch::Semaphore's
+    // doc) -- doesn't block this reader loop itself.
+    let semaphore = request_dispatch::new_request_semaphore();
     // In-flight worker handles. Rust does NOT wait for detached `thread::spawn`ed threads when
     // `main()` returns — a request whose worker hasn't finished writing yet when stdin closes
     // would silently lose its response otherwise. Joined below, right before exit. Pruned
@@ -146,6 +155,7 @@ fn main() {
                     Arc::clone(&decode_sessions),
                     Arc::clone(&writer),
                     Arc::clone(&registry),
+                    Arc::clone(&semaphore),
                     header.correlation_id,
                     request,
                 ));

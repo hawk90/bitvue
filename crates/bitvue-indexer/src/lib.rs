@@ -63,6 +63,30 @@ fn diagnostic_event(stream: StreamId, message: String) -> bitvue_engine::Event {
     }
 }
 
+/// Same shape as [`diagnostic_event`], but for a real per-frame parse issue found inside
+/// [`index_ivf_av1`] (Warn, not Error -- indexing still produces a usable, if partial, result for
+/// this frame, unlike the whole-request-fatal cases `diagnostic_event` covers).
+fn frame_parse_diagnostic(
+    stream: StreamId,
+    frame_index: usize,
+    message: String,
+) -> bitvue_engine::Event {
+    bitvue_engine::Event::DiagnosticAdded {
+        diagnostic: Diagnostic {
+            id: NEXT_DIAGNOSTIC_ID.fetch_add(1, Ordering::Relaxed),
+            severity: Severity::Warn,
+            stream_id: stream,
+            message,
+            category: Category::Bitstream,
+            offset_bytes: 0,
+            timestamp_ms: now_ms(),
+            frame_index: Some(frame_index),
+            count: 1,
+            impact_score: 30,
+        },
+    }
+}
+
 /// Index the given stream's already-open file: detect the container, parse its units, and write
 /// `ContainerModel`/`UnitModel` into `StreamState`. Returns the resulting events (mirrors
 /// `Core::handle_command`'s convention of reporting failures as `DiagnosticAdded` events rather
@@ -131,7 +155,7 @@ pub fn index_stream_with_cancel(
         );
     }
 
-    let (ivf_header, units) = match index_ivf_av1(data, stream, cancel_flag) {
+    let (ivf_header, units, frame_diagnostics) = match index_ivf_av1(data, stream, cancel_flag) {
         Ok(Some(result)) => result,
         Ok(None) => return (Vec::new(), true),
         Err(e) => {
@@ -169,19 +193,19 @@ pub fn index_stream_with_cancel(
         state.units = Some(unit_model);
     }
 
-    (
-        vec![
-            bitvue_engine::Event::ModelUpdated {
-                kind: bitvue_engine::event::ModelKind::Container,
-                stream,
-            },
-            bitvue_engine::Event::ModelUpdated {
-                kind: bitvue_engine::event::ModelKind::Units,
-                stream,
-            },
-        ],
-        false,
-    )
+    let mut events = vec![
+        bitvue_engine::Event::ModelUpdated {
+            kind: bitvue_engine::event::ModelKind::Container,
+            stream,
+        },
+        bitvue_engine::Event::ModelUpdated {
+            kind: bitvue_engine::event::ModelKind::Units,
+            stream,
+        },
+    ];
+    events.extend(frame_diagnostics);
+
+    (events, false)
 }
 
 /// Parses one unit's syntax tree on demand (AV1 only, matching [`index_stream`]'s scope) and
@@ -391,15 +415,36 @@ fn find_frame_obu(chunk_data: &[u8]) -> Option<bitvue_av1_codec::obu::ObuWithOff
 /// Returns `Ok(None)` if `cancel_flag` was set before the per-frame loop finished -- checked once
 /// per frame, which is coarse enough to not matter perf-wise on the common case (a stream that
 /// finishes) while still bailing out promptly on a long stream that gets cancelled.
+/// `(header, units, per-frame diagnostics)`.
+type IndexIvfAv1Result = (
+    bitvue_av1_codec::ivf::IvfHeader,
+    Vec<UnitNode>,
+    Vec<bitvue_engine::Event>,
+);
+
 fn index_ivf_av1(
     data: &[u8],
     stream: StreamId,
     cancel_flag: &std::sync::atomic::AtomicBool,
-) -> Result<
-    Option<(bitvue_av1_codec::ivf::IvfHeader, Vec<UnitNode>)>,
-    bitvue_engine::error::BitvueError,
-> {
+) -> Result<Option<IndexIvfAv1Result>, bitvue_engine::error::BitvueError> {
     let (header, frames) = parse_ivf_frames(data)?;
+
+    let mut diagnostics = Vec::new();
+    // Real, previously-silent gap: the fourcc is parsed but was never checked against what this
+    // function actually parses (AV1 OBUs) -- an IVF file with any other fourcc (VP9, etc.) would
+    // silently mis-parse every frame as AV1 with no indication why. Doesn't abort (this function
+    // still attempts the parse, same as before -- adding real non-AV1 codec support here is a
+    // separate, much larger scope), just makes the resulting garbage/partial data explicable.
+    if &header.fourcc != b"AV01" {
+        let fourcc_str = String::from_utf8_lossy(&header.fourcc);
+        diagnostics.push(diagnostic_event(
+            stream,
+            format!(
+                "IVF fourcc is \"{fourcc_str}\", not \"AV01\" -- only AV1 is currently \
+                 supported, frame parsing below is likely to fail or produce incorrect results"
+            ),
+        ));
+    }
 
     let mut units = Vec::with_capacity(frames.len());
     let mut offset = header.header_size as u64;
@@ -411,8 +456,27 @@ fn index_ivf_av1(
         let chunk_size = 12u64 + frame.size as u64;
         let frame_start = offset;
 
-        let frame_header = find_frame_obu(&frame.data)
+        let found_obu = find_frame_obu(&frame.data);
+        let frame_header = found_obu
+            .as_ref()
             .and_then(|found| parse_frame_header_basic(&found.obu.payload).ok());
+
+        // Real, previously-silent per-frame signal: both steps already fail gracefully (frame
+        // just gets frame_type "?", no ref_frames/qp_avg below) -- this makes that visible
+        // instead of thrown away, without changing the existing fallback behavior at all.
+        if found_obu.is_none() {
+            diagnostics.push(frame_parse_diagnostic(
+                stream,
+                frame_index,
+                "No frame OBU found in this IVF chunk".to_string(),
+            ));
+        } else if frame_header.is_none() {
+            diagnostics.push(frame_parse_diagnostic(
+                stream,
+                frame_index,
+                "Failed to parse this frame's AV1 frame header".to_string(),
+            ));
+        }
 
         let frame_type_str = match frame_header.as_ref().map(|fh| fh.frame_type) {
             Some(bitvue_engine::FrameType::Key) => "I",
@@ -453,7 +517,7 @@ fn index_ivf_av1(
         offset += chunk_size;
     }
 
-    Ok(Some((header, units)))
+    Ok(Some((header, units, diagnostics)))
 }
 
 #[cfg(test)]

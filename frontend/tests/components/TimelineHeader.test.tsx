@@ -49,4 +49,44 @@ describe("TimelineHeader", () => {
     const info = screen.getByRole("status");
     expect(info).toHaveAttribute("aria-live", "polite");
   });
+
+  // EDGE-03: PTS quality badge
+  it("renders no PTS badge when ptsQuality is omitted, null, or Ok", () => {
+    const { rerender } = render(
+      <TimelineHeader currentFrame={0} totalFrames={100} />,
+    );
+    expect(
+      document.querySelector(".pts-quality-badge"),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <TimelineHeader currentFrame={0} totalFrames={100} ptsQuality={null} />,
+    );
+    expect(
+      document.querySelector(".pts-quality-badge"),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <TimelineHeader currentFrame={0} totalFrames={100} ptsQuality="Ok" />,
+    );
+    expect(
+      document.querySelector(".pts-quality-badge"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a PTS: WARN badge when ptsQuality is Warn", () => {
+    render(
+      <TimelineHeader currentFrame={0} totalFrames={100} ptsQuality="Warn" />,
+    );
+    expect(screen.getByText("PTS: WARN")).toBeInTheDocument();
+    expect(document.querySelector(".pts-quality-warn")).toBeInTheDocument();
+  });
+
+  it("renders a PTS: BAD badge when ptsQuality is Bad", () => {
+    render(
+      <TimelineHeader currentFrame={0} totalFrames={100} ptsQuality="Bad" />,
+    );
+    expect(screen.getByText("PTS: BAD")).toBeInTheDocument();
+    expect(document.querySelector(".pts-quality-bad")).toBeInTheDocument();
+  });
 });

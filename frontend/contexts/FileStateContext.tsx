@@ -33,7 +33,10 @@ import {
   indexStream,
   getFramesChunk,
   getStreamInfo,
+  getTimeline,
+  extractDiagnostics,
   type BridgeUnitNode,
+  type BridgeDiagnostic,
 } from "../services/electronBridgeService";
 
 const logger = createLogger("FileStateContext");
@@ -77,10 +80,76 @@ function mergePreservingAnalysis(
   );
 }
 
+/** Populates `display_order`/`coding_order` on already-loaded decode-order `frames` by joining
+ *  against `get_timeline`'s real PTS-sorted display index (`bitvue_engine::frame_identity::
+ *  FrameIndexMap`, CTX-02 fix). These two fields were always left `undefined` by
+ *  `unitNodeToFrameInfo` above ("no bitvue-indexer equivalent yet") even though several real
+ *  consumers already render them when present (DetailsPanel/StatisticsTab/FrameSyntaxTab/
+ *  ThumbnailsView/VirtualizedThumbnailsView/DebugPanel/dataExport CSV+JSON). Joins by `pts`, not
+ *  `decode_idx` -- `FrameIndexMap`'s decode_idx is intentionally internal-only per
+ *  `frame_identity/timeline_extractor.rs`'s module doc ("decode_idx is internal only and must not
+ *  be exposed"), and `get_timeline`'s response already carries real per-entry `pts`, so no wire
+ *  change is needed to do this join. PTS is assumed unique per frame in a well-formed stream;
+ *  frames whose PTS is missing or duplicated in the timeline response (i.e. `PtsQuality::Bad`/
+ *  `Warn`) are left with `display_order`/`coding_order` undefined rather than a fabricated guess
+ *  -- same "don't fabricate" convention as `unitNodeToFrameInfo`.
+ *
+ *  Scope note: this fixes the *data* only. `coding_order` here is just the frame's existing
+ *  `frame_index` (decode order) -- every backend frame-fetch call (`getDecodedFrameYuv`,
+ *  `getFrameAnalysis`, ...) still keys on and must keep keying on that same decode-order array
+ *  position. `Timeline.tsx`'s bars still render/scrub/key by array position, not by this new
+ *  `display_order` -- physically reordering the visual timeline to match display order is a
+ *  separate, larger, riskier UI change (arrow-key nav, hit-testing, and every
+ *  `setFrameSelection` call currently assume array position === decode-order `frame_index`),
+ *  deliberately deferred rather than attempted here. */
+interface DisplayOrderResult {
+  frames: FrameInfo[];
+  /** EDGE-03: stream-wide PTS quality from the same `getTimeline` call -- `null` if the call
+   *  failed (same non-fatal fallback as `display_order`/`coding_order` below). */
+  ptsQuality: "Ok" | "Warn" | "Bad" | null;
+}
+
+async function applyDisplayOrder(
+  frames: FrameInfo[],
+): Promise<DisplayOrderResult> {
+  try {
+    const timeline = await getTimeline("A");
+    const displayIdxByPts = new Map<number, number>();
+    const ambiguousPts = new Set<number>();
+    for (const entry of timeline.frames) {
+      if (entry.pts === null) continue;
+      if (displayIdxByPts.has(entry.pts)) {
+        ambiguousPts.add(entry.pts);
+        continue;
+      }
+      displayIdxByPts.set(entry.pts, entry.display_idx);
+    }
+    for (const pts of ambiguousPts) displayIdxByPts.delete(pts);
+
+    const withDisplayOrder = frames.map((f) => {
+      if (f.pts === undefined) return f;
+      const display_order = displayIdxByPts.get(f.pts);
+      if (display_order === undefined) return f;
+      return { ...f, display_order, coding_order: f.frame_index };
+    });
+    return { frames: withDisplayOrder, ptsQuality: timeline.pts_quality };
+  } catch (err) {
+    // Non-fatal, same reasoning as getStreamInfo above -- decode-order frame data is the
+    // primary path, display_order/ptsQuality are supplementary (fall back to existing "N/A"
+    // rendering / null).
+    logger.error("Failed to load display-order timeline:", err);
+    return { frames, ptsQuality: null };
+  }
+}
+
 interface FileStateContextType {
   filePath: string | null;
   loading: boolean;
   error: string | null;
+  /** Real `DiagnosticAdded` events surfaced by the most recent `indexStream` call (e.g.
+   *  unsupported codec/container, a mismatched IVF fourcc, a per-frame parse failure) -- see
+   *  `DiagnosticsPanel.tsx`, which renders these instead of fabricated data. */
+  diagnostics: BridgeDiagnostic[];
   setFilePath: (path: string | null) => void;
   refreshFrames: () => Promise<FrameInfo[]>;
   loadMoreFrames: () => Promise<FrameInfo[]>;
@@ -105,6 +174,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [hasMoreFrames, setHasMoreFrames] = useState(false);
   const [totalFrames, setTotalFrames] = useState(0);
+  const [diagnostics, setDiagnostics] = useState<BridgeDiagnostic[]>([]);
 
   const currentOffsetRef = useRef(0);
   const isLoadingMoreRef = useRef(false);
@@ -118,6 +188,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     setTotalFrames(0);
     setFrames([]);
     setStreamInfo(null);
+    setDiagnostics([]);
 
     try {
       logger.info(
@@ -125,7 +196,8 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       );
       const startTime = performance.now();
 
-      await indexStream("A");
+      const indexEvents = await indexStream("A");
+      setDiagnostics(extractDiagnostics(indexEvents));
 
       // Container-level width/height/codec (`get_stream_info`, populated by `index_stream` above)
       // -- real data for `SelectionInfoPanel`'s "Video Properties" section, which used to have no
@@ -138,6 +210,9 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
             height: info.container.height ?? 0,
             codec: info.container.codec,
             bitDepth: info.container.bit_depth,
+            // Filled in below once applyDisplayOrder's getTimeline call resolves -- a separate
+            // sidecar call, not part of get_stream_info's response.
+            ptsQuality: null,
           });
         }
       } catch (streamInfoErr) {
@@ -197,8 +272,19 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      // CTX-02/EDGE-03 fix: populate real display_order/coding_order and pts_quality (see
+      // applyDisplayOrder's doc). Done once over the full stream (not per-chunk) since
+      // FrameIndexMap's PTS sort needs the whole stream to be correct -- a per-chunk sort could
+      // split a reordered GOP across a chunk boundary.
+      const { frames: framesWithDisplayOrder, ptsQuality } =
+        await applyDisplayOrder(allFrames);
+      setFrames((prev) =>
+        mergePreservingAnalysis(prev, framesWithDisplayOrder),
+      );
+      setStreamInfo((prev) => (prev ? { ...prev, ptsQuality } : prev));
+
       setHasMoreFrames(false);
-      return allFrames;
+      return framesWithDisplayOrder;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       setError(errorMsg);
@@ -263,6 +349,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
     isLoadingMoreRef.current = false;
     setFrames([]);
     setStreamInfo(null);
+    setDiagnostics([]);
   }, [setFrames, setStreamInfo]);
 
   const contextValue = useMemo<FileStateContextType>(
@@ -270,6 +357,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       filePath,
       loading,
       error,
+      diagnostics,
       setFilePath,
       refreshFrames,
       loadMoreFrames,
@@ -281,6 +369,7 @@ export function FileStateProvider({ children }: { children: ReactNode }) {
       filePath,
       loading,
       error,
+      diagnostics,
       refreshFrames,
       loadMoreFrames,
       hasMoreFrames,

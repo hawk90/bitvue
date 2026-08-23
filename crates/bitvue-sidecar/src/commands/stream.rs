@@ -117,7 +117,7 @@ mod tests {
             .clone();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0]["type"], "DiagnosticAdded");
-        assert!(events[0]["diagnostic"].as_str().unwrap().contains("Error"));
+        assert_eq!(events[0]["diagnostic"]["severity"], "Error");
     }
 
     #[test]

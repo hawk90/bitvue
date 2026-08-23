@@ -326,3 +326,49 @@ fn frame_zero_chunk_starts_with_a_temporal_delimiter_not_a_frame_obu() {
          get_frame_syntax_bit_range_is_a_real_bit_offset_not_a_byte_offset needs updating too"
     );
 }
+
+/// Real regression test for the fourcc-blindness fix (DIV-02/PARITY_CHECKLIST.md): before this,
+/// an IVF file with any non-AV01 fourcc silently mis-parsed every frame as AV1 with no
+/// indication why. Builds a real, byte-accurate 32-byte IVF header (no frame data needed --
+/// `parse_ivf_frames` returns an empty frame list once it runs out of chunks, which is enough to
+/// reach the fourcc check) with fourcc "VP90" and asserts a real `DiagnosticAdded` event
+/// surfaces, distinct from the pre-existing "not DKIF at all" and "no file open" diagnostics.
+#[test]
+fn index_stream_reports_a_diagnostic_for_a_non_av01_fourcc_in_an_ivf_container() {
+    let mut header = vec![0u8; 32];
+    header[0..4].copy_from_slice(b"DKIF"); // signature
+    header[6..8].copy_from_slice(&32u16.to_le_bytes()); // header_size
+    header[8..12].copy_from_slice(b"VP90"); // fourcc -- the actual codec under test
+    header[12..14].copy_from_slice(&320u16.to_le_bytes()); // width
+    header[14..16].copy_from_slice(&240u16.to_le_bytes()); // height
+    header[16..20].copy_from_slice(&1u32.to_le_bytes()); // framerate_den
+    header[20..24].copy_from_slice(&30u32.to_le_bytes()); // framerate_num
+    header[24..28].copy_from_slice(&0u32.to_le_bytes()); // frame_count
+
+    let core = Core::new();
+    let mut file = tempfile::NamedTempFile::new().expect("create temp file");
+    file.write_all(&header).expect("write synthetic IVF header");
+    core.handle_command(Command::OpenFile {
+        stream: StreamId::A,
+        path: file.path().to_path_buf(),
+    });
+    std::mem::forget(file);
+
+    let events = index_stream(&core, StreamId::A);
+    let diagnostic_messages: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            bitvue_engine::Event::DiagnosticAdded { diagnostic } => {
+                Some(diagnostic.message.clone())
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        diagnostic_messages
+            .iter()
+            .any(|m| m.contains("VP90") && m.contains("AV01")),
+        "expected a diagnostic naming the mismatched fourcc, got: {diagnostic_messages:?}"
+    );
+}

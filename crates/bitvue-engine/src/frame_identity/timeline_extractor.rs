@@ -41,6 +41,7 @@ pub trait TimelineExtractor {
         frame_types: &[String],
     ) -> TimelineBase {
         let mut timeline = TimelineBase::new(stream_id);
+        timeline.pts_quality = index_map.pts_quality();
 
         for display_idx in 0..index_map.frame_count() {
             let size = frame_sizes.get(display_idx).copied().unwrap_or(0);

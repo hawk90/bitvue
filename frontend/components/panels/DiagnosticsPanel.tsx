@@ -6,12 +6,11 @@
  */
 
 import { useState, useMemo, memo, useCallback } from "react";
-import { useFrameData } from "../../contexts/FrameDataContext";
-import { useCurrentFrame } from "../../contexts/SelectionContext";
 import { useFileState } from "../../contexts/FileStateContext";
 import {
   getContextMenuItems,
   type ContextMenuItemWire,
+  type BridgeDiagnostic,
 } from "../../services/electronBridgeService";
 import { useExportEvidenceBundle } from "../../hooks/useExportEvidenceBundle";
 import { ContextMenu } from "../ContextMenu";
@@ -33,6 +32,29 @@ export interface Diagnostic {
   timestamp: number;
 }
 
+const SEVERITY_MAP: Record<BridgeDiagnostic["severity"], DiagnosticSeverity> = {
+  Info: "info",
+  Warn: "warning",
+  Error: "error",
+  // No frontend "fatal" tier exists (DiagnosticSeverity has none) -- collapses into "error",
+  // the most severe tier that does exist, rather than being silently dropped/miscategorized.
+  Fatal: "error",
+};
+
+/** Real `DiagnosticAdded` events (`bitvue_engine::event::Diagnostic`, via `indexStream` --
+ *  see `FileStateContext.tsx`'s `diagnostics` state) -> this panel's local `Diagnostic` shape. */
+export function bridgeDiagnosticToDiagnostic(d: BridgeDiagnostic): Diagnostic {
+  return {
+    id: `diag-${d.id}`,
+    severity: SEVERITY_MAP[d.severity],
+    code: d.category,
+    message: d.message,
+    frameIndex: d.frame_index ?? undefined,
+    source: "Indexer",
+    timestamp: d.timestamp_ms,
+  };
+}
+
 interface DiagnosticsPanelProps {
   diagnostics?: Diagnostic[];
 }
@@ -40,8 +62,6 @@ interface DiagnosticsPanelProps {
 export const DiagnosticsPanel = memo(function DiagnosticsPanel({
   diagnostics: propDiagnostics,
 }: DiagnosticsPanelProps) {
-  const { frames } = useFrameData();
-  const { currentFrameIndex } = useCurrentFrame();
   const { error } = useFileState();
   const [filterSeverity, setFilterSeverity] = useState<
     DiagnosticSeverity | "all"
@@ -65,44 +85,8 @@ export const DiagnosticsPanel = memo(function DiagnosticsPanel({
       });
     }
 
-    // Add mock diagnostics for demonstration
-    if (diags.length === 0 && frames.length > 0) {
-      // Simulate some potential issues
-      const frame = frames[currentFrameIndex];
-      if (frame) {
-        // Check for large frames (potential quality issue)
-        if (frame.size > 100000) {
-          diags.push({
-            id: `frame-${frame.frame_index}-size`,
-            severity: "warning",
-            code: "LARGE_FRAME",
-            message: `Frame ${frame.frame_index} is unusually large (${(frame.size / 1024).toFixed(1)} KB)`,
-            frameIndex: frame.frame_index,
-            source: "FrameAnalyzer",
-            timestamp: Date.now(),
-          });
-        }
-
-        // Check for missing references (should have refs for P/B frames)
-        if (
-          (frame.frame_type === "P" || frame.frame_type === "B") &&
-          !frame.ref_frames?.length
-        ) {
-          diags.push({
-            id: `frame-${frame.frame_index}-no-refs`,
-            severity: "info",
-            code: "NO_REFERENCES",
-            message: `Frame ${frame.frame_index} (${frame.frame_type}) has no reference frames`,
-            frameIndex: frame.frame_index,
-            source: "FrameAnalyzer",
-            timestamp: Date.now(),
-          });
-        }
-      }
-    }
-
     return diags;
-  }, [propDiagnostics, error, frames, currentFrameIndex]);
+  }, [propDiagnostics, error]);
 
   // Filter by severity
   const filteredDiagnostics = useMemo(() => {

@@ -12,21 +12,64 @@ import { FrameDataProvider, useFrameData } from "@/contexts/FrameDataContext";
 import { FileStateProvider, useFileState } from "@/contexts/FileStateContext";
 import type {
   BridgeUnitNode,
+  BridgeTimeline,
   FramesChunkResult,
   StreamInfoResult,
 } from "@/services/electronBridgeService";
 
-const { indexStream, getFramesChunk, getStreamInfo } = vi.hoisted(() => ({
-  indexStream: vi.fn(),
-  getFramesChunk: vi.fn(),
-  getStreamInfo: vi.fn(),
-}));
+const { indexStream, getFramesChunk, getStreamInfo, getTimeline } = vi.hoisted(
+  () => ({
+    indexStream: vi.fn(),
+    getFramesChunk: vi.fn(),
+    getStreamInfo: vi.fn(),
+    getTimeline: vi.fn(),
+  }),
+);
 
-vi.mock("@/services/electronBridgeService", () => ({
-  indexStream,
-  getFramesChunk,
-  getStreamInfo,
-}));
+vi.mock("@/services/electronBridgeService", async (importOriginal) => {
+  // extractDiagnostics is a pure function (no bridge dependency) -- use the real
+  // implementation rather than re-mocking it, same reasoning as YuvViewerPanel.test.tsx's
+  // Tauri-mock comment for keeping non-bridge logic real.
+  const actual =
+    await importOriginal<typeof import("@/services/electronBridgeService")>();
+  return {
+    ...actual,
+    indexStream,
+    getFramesChunk,
+    getStreamInfo,
+    getTimeline,
+  };
+});
+
+function timeline(
+  frames: BridgeTimeline["frames"],
+  ptsQuality: BridgeTimeline["pts_quality"] = "Ok",
+): BridgeTimeline {
+  return {
+    stream_id: "A",
+    frames,
+    current_frame: null,
+    scrub_mode: "Idle",
+    viewport: [0, 0],
+    vertical_viewport: [0, 0],
+    pts_quality: ptsQuality,
+  };
+}
+
+function timelineFrame(
+  overrides: Partial<BridgeTimeline["frames"][number]>,
+): BridgeTimeline["frames"][number] {
+  return {
+    display_idx: 0,
+    size_bytes: 100,
+    frame_type: "P",
+    marker: "None",
+    pts: null,
+    dts: null,
+    is_selected: false,
+    ...overrides,
+  };
+}
 
 function wrapper({ children }: { children: ReactNode }) {
   return (
@@ -70,6 +113,7 @@ describe("FileStateContext", () => {
     vi.clearAllMocks();
     indexStream.mockResolvedValue([{ type: "ModelUpdated" }]);
     getStreamInfo.mockResolvedValue({ indexed: false, container: null });
+    getTimeline.mockResolvedValue(timeline([]));
   });
 
   it("refreshFrames indexes the stream, then fetches and maps all frames in one page", async () => {
@@ -135,6 +179,9 @@ describe("FileStateContext", () => {
         height: 240,
         codec: "AV1",
         bitDepth: 8,
+        // Merged in afterward by applyDisplayOrder once get_timeline resolves (EDGE-03) --
+        // "Ok" here because beforeEach's default getTimeline mock returns pts_quality: "Ok".
+        ptsQuality: "Ok",
       }),
     );
   });
@@ -252,5 +299,181 @@ describe("FileStateContext", () => {
 
     expect(getFramesChunk).not.toHaveBeenCalled();
     expect(more).toEqual([]);
+  });
+
+  // CTX-02 fix: display_order/coding_order were always left undefined (docs/PARITY_CHECKLIST.md
+  // CTX-02) -- these cover the real PTS-join against get_timeline that now populates them.
+  it("populates display_order/coding_order by joining frames against get_timeline's PTS-sorted display index (reordered stream: decode order I,P,B but display order I,B,P)", async () => {
+    getFramesChunk.mockResolvedValueOnce(
+      chunk(
+        [
+          unit({ frame_index: 0, frame_type: "I", pts: 0 }),
+          unit({ frame_index: 1, frame_type: "P", pts: 2000 }),
+          unit({ frame_index: 2, frame_type: "B", pts: 1000 }),
+        ],
+        3,
+      ),
+    );
+    getTimeline.mockResolvedValueOnce(
+      timeline([
+        timelineFrame({ display_idx: 0, pts: 0 }),
+        timelineFrame({ display_idx: 1, pts: 1000 }),
+        timelineFrame({ display_idx: 2, pts: 2000 }),
+      ]),
+    );
+
+    const { result } = renderHook(
+      () => ({ file: useFileState(), data: useFrameData() }),
+      { wrapper },
+    );
+    await act(async () => {
+      await result.current.file.refreshFrames();
+    });
+
+    await waitFor(() => expect(result.current.data.frames).toHaveLength(3));
+    const [frameI, frameP, frameB] = result.current.data.frames;
+    // decode_order stays array position (backend frame_index) -- unchanged, still what every
+    // getDecodedFrameYuv/getFrameAnalysis call keys on.
+    expect(frameI.coding_order).toBe(0);
+    expect(frameP.coding_order).toBe(1);
+    expect(frameB.coding_order).toBe(2);
+    // display_order is the real PTS-sorted position -- P (pts=2000) is last, B (pts=1000) is
+    // before it, despite B being decoded after P.
+    expect(frameI.display_order).toBe(0);
+    expect(frameP.display_order).toBe(2);
+    expect(frameB.display_order).toBe(1);
+  });
+
+  it("leaves display_order/coding_order undefined for a frame whose PTS is missing or duplicated in the timeline response, instead of fabricating a guess", async () => {
+    getFramesChunk.mockResolvedValueOnce(
+      chunk(
+        [
+          unit({ frame_index: 0, frame_type: "I", pts: 0 }),
+          unit({ frame_index: 1, frame_type: "P", pts: 500 }),
+          unit({ frame_index: 2, frame_type: "P", pts: null }),
+        ],
+        3,
+      ),
+    );
+    // pts=500 appears twice in the timeline (ambiguous PTS, PtsQuality::Bad) -- must not guess.
+    getTimeline.mockResolvedValueOnce(
+      timeline([
+        timelineFrame({ display_idx: 0, pts: 0 }),
+        timelineFrame({ display_idx: 1, pts: 500 }),
+        timelineFrame({ display_idx: 2, pts: 500 }),
+      ]),
+    );
+
+    const { result } = renderHook(
+      () => ({ file: useFileState(), data: useFrameData() }),
+      { wrapper },
+    );
+    await act(async () => {
+      await result.current.file.refreshFrames();
+    });
+
+    await waitFor(() => expect(result.current.data.frames).toHaveLength(3));
+    const [frameI, frameAmbiguous, frameNoPts] = result.current.data.frames;
+    expect(frameI.display_order).toBe(0);
+    expect(frameAmbiguous.display_order).toBeUndefined();
+    expect(frameAmbiguous.coding_order).toBeUndefined();
+    expect(frameNoPts.display_order).toBeUndefined();
+    expect(frameNoPts.coding_order).toBeUndefined();
+  });
+
+  it("does not fail refreshFrames when get_timeline rejects (e.g. non-AV1 codec) -- display_order stays undefined, decode-order frame data is unaffected", async () => {
+    getFramesChunk.mockResolvedValueOnce(
+      chunk([unit({ frame_index: 0, frame_type: "I", pts: 0 })], 1),
+    );
+    getTimeline.mockRejectedValueOnce(new Error("codec not supported"));
+
+    const { result } = renderHook(
+      () => ({ file: useFileState(), data: useFrameData() }),
+      { wrapper },
+    );
+    await act(async () => {
+      await result.current.file.refreshFrames();
+    });
+
+    await waitFor(() => expect(result.current.data.frames).toHaveLength(1));
+    expect(result.current.file.error).toBeNull();
+    expect(result.current.data.frames[0].display_order).toBeUndefined();
+  });
+
+  // EDGE-03: PtsQuality (Ok/Warn/Bad), a stream-wide verdict from the same get_timeline call
+  // display_order/coding_order already join against, surfaced into FrameDataContext's streamInfo.
+  it.each(["Ok", "Warn", "Bad"] as const)(
+    "surfaces get_timeline's pts_quality (%s) into streamInfo.ptsQuality",
+    async (ptsQuality) => {
+      getFramesChunk.mockResolvedValueOnce(
+        chunk([unit({ frame_index: 0, frame_type: "I", pts: 0 })], 1),
+      );
+      getStreamInfo.mockResolvedValueOnce({
+        indexed: true,
+        container: {
+          format: "IVF",
+          codec: "AV1",
+          track_count: 1,
+          duration_ms: 10000,
+          bitrate_bps: 177000,
+          width: 320,
+          height: 240,
+          bit_depth: 8,
+        },
+      } satisfies StreamInfoResult);
+      getTimeline.mockResolvedValueOnce(
+        timeline([timelineFrame({ display_idx: 0, pts: 0 })], ptsQuality),
+      );
+
+      const { result } = renderHook(
+        () => ({ file: useFileState(), data: useFrameData() }),
+        { wrapper },
+      );
+      await act(async () => {
+        await result.current.file.refreshFrames();
+      });
+
+      await waitFor(() =>
+        expect(result.current.data.streamInfo?.ptsQuality).toBe(ptsQuality),
+      );
+    },
+  );
+
+  it("leaves streamInfo.ptsQuality null when get_timeline rejects, without discarding the real container info", async () => {
+    getFramesChunk.mockResolvedValueOnce(
+      chunk([unit({ frame_index: 0, frame_type: "I", pts: 0 })], 1),
+    );
+    getStreamInfo.mockResolvedValueOnce({
+      indexed: true,
+      container: {
+        format: "IVF",
+        codec: "AV1",
+        track_count: 1,
+        duration_ms: 10000,
+        bitrate_bps: 177000,
+        width: 320,
+        height: 240,
+        bit_depth: 8,
+      },
+    } satisfies StreamInfoResult);
+    getTimeline.mockRejectedValueOnce(new Error("codec not supported"));
+
+    const { result } = renderHook(
+      () => ({ file: useFileState(), data: useFrameData() }),
+      { wrapper },
+    );
+    await act(async () => {
+      await result.current.file.refreshFrames();
+    });
+
+    await waitFor(() =>
+      expect(result.current.data.streamInfo).toEqual({
+        width: 320,
+        height: 240,
+        codec: "AV1",
+        bitDepth: 8,
+        ptsQuality: null,
+      }),
+    );
   });
 });

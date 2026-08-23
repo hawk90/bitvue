@@ -106,7 +106,20 @@ pub fn event_to_json(event: &Event) -> serde_json::Value {
             serde_json::json!({"type": "WorkerError", "job_id": job_id, "error": error})
         }
         Event::DiagnosticAdded { diagnostic } => {
-            serde_json::json!({"type": "DiagnosticAdded", "diagnostic": format!("{diagnostic:?}")})
+            serde_json::json!({
+                "type": "DiagnosticAdded",
+                "diagnostic": {
+                    "id": diagnostic.id,
+                    "severity": format!("{:?}", diagnostic.severity),
+                    "message": diagnostic.message,
+                    "category": format!("{:?}", diagnostic.category),
+                    "offset_bytes": diagnostic.offset_bytes,
+                    "timestamp_ms": diagnostic.timestamp_ms,
+                    "frame_index": diagnostic.frame_index,
+                    "count": diagnostic.count,
+                    "impact_score": diagnostic.impact_score,
+                },
+            })
         }
         Event::DiagnosticsCleared { stream } => {
             serde_json::json!({"type": "DiagnosticsCleared", "stream": format!("{stream:?}")})
