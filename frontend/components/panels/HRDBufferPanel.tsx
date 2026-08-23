@@ -46,6 +46,24 @@ const HRDBufferPanelInternal = ({
     underflow: boolean;
   } | null>(null);
 
+  // No caller currently passes a real signaled `targetBitrate` -- AV1's decoder_model_info /
+  // operating_parameters_info (the actual HRD bitrate/CPB-size syntax) isn't parsed anywhere in
+  // this codebase yet (a real gap, tracked separately, comparable in size to DIV-06's HRD/HDR
+  // scoping). Falling back to "drain exactly one frame's own bytes per frame" made the whole
+  // curve a mathematical no-op -- `occupancy - frameSize + frameSize` is always the starting
+  // value, so the buffer line was *always* perfectly flat regardless of stream content (found via
+  // a real Electron screenshot: a genuinely constant 50.0%/488KB line). An honest average-bitrate
+  // estimate (real per-frame sizes already loaded, no new backend work) at least reflects actual
+  // bursty/quiet frame-size variance; the UI labels it "(est.)" rather than "Target" so it isn't
+  // mistaken for a real signaled HRD parameter.
+  const isEstimatedBitrate = targetBitrate === undefined;
+  const effectiveTargetBitrate = useMemo(() => {
+    if (targetBitrate !== undefined) return targetBitrate;
+    if (frames.length === 0) return undefined;
+    const totalBytes = frames.reduce((sum, f) => sum + (f?.size || 0), 0);
+    return (totalBytes / frames.length) * frameRate * 8;
+  }, [targetBitrate, frames, frameRate]);
+
   // Calculate HRD buffer state for each frame
   const hrdState = useMemo(() => {
     const state: HRDState = {
@@ -62,10 +80,12 @@ const HRDBufferPanelInternal = ({
 
       const frameSize = frame.size || 0;
 
-      // Proper HRD model: decoder drains at target bitrate, then frame is added
-      const drainPerFrame = targetBitrate
-        ? targetBitrate / frameRate / 8 // bytes drained per frame interval
-        : frameSize; // fallback: drain same as frame size
+      // Decoder drains at (real or estimated) target bitrate, then the frame's own bytes are
+      // added -- a frame bigger than the average causes real net buildup, a smaller one real
+      // net drain, unlike the old same-as-frameSize fallback (see doc above).
+      const drainPerFrame = effectiveTargetBitrate
+        ? effectiveTargetBitrate / frameRate / 8 // bytes drained per frame interval
+        : frameSize; // only reachable with zero frames loaded
       currentOccupancy = Math.max(0, currentOccupancy - drainPerFrame);
       currentOccupancy = Math.min(bufferSize, currentOccupancy + frameSize);
 
@@ -86,7 +106,7 @@ const HRDBufferPanelInternal = ({
 
     state.occupancy = currentOccupancy;
     return state;
-  }, [frames, bufferSize, targetBitrate, frameRate]);
+  }, [frames, bufferSize, effectiveTargetBitrate, frameRate]);
 
   // Draw HRD buffer graph — wrapped in useCallback so the ResizeObserver can
   // call it directly without re-subscribing on every render.
@@ -155,9 +175,9 @@ const HRDBufferPanelInternal = ({
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw target bitrate line
-    if (targetBitrate) {
-      const targetBitsPerFrame = targetBitrate / frameRate;
+    // Draw target/estimated bitrate line
+    if (effectiveTargetBitrate) {
+      const targetBitsPerFrame = effectiveTargetBitrate / frameRate;
       const targetY =
         margin.top + ((targetBitsPerFrame * 5) / maxOccupancy) * graphHeight;
       ctx.strokeStyle = "#51cf66";
@@ -264,7 +284,13 @@ const HRDBufferPanelInternal = ({
       const x = margin.left + i * stepX;
       ctx.fillText(`${history[i].frame}`, x, margin.top + graphHeight + 8);
     }
-  }, [hrdState, currentFrameIndex, bufferSize, targetBitrate, frameRate]);
+  }, [
+    hrdState,
+    currentFrameIndex,
+    bufferSize,
+    effectiveTargetBitrate,
+    frameRate,
+  ]);
 
   // Redraw when data changes
   useEffect(() => {
@@ -315,7 +341,14 @@ const HRDBufferPanelInternal = ({
   const underflowCount = hrdState.occupancyHistory.filter(
     (p) => p.underflow,
   ).length;
-  const currentPercent = (hrdState.occupancy / bufferSize) * 100;
+  // The header "Buffer:" stat must track the currently viewed frame, not the stream's last frame
+  // -- `hrdState.occupancy` is left over from the end of the simulation loop regardless of
+  // `currentFrameIndex`, which previously made this stat show the same (coincidentally
+  // math-guaranteed-to-return-to-baseline) value no matter which frame was selected.
+  const currentOccupancyAtFrame =
+    hrdState.occupancyHistory[currentFrameIndex]?.occupancy ??
+    hrdState.occupancy;
+  const currentPercent = (currentOccupancyAtFrame / bufferSize) * 100;
 
   return (
     <div className="hrd-buffer-panel">
@@ -326,11 +359,13 @@ const HRDBufferPanelInternal = ({
             <span className="stat-label">Buffer:</span>
             <span className="stat-value">{currentPercent.toFixed(1)}%</span>
           </span>
-          {targetBitrate && (
+          {effectiveTargetBitrate !== undefined && (
             <span className="hrd-stat">
-              <span className="stat-label">Target:</span>
+              <span className="stat-label">
+                {isEstimatedBitrate ? "Avg bitrate (est.):" : "Target:"}
+              </span>
               <span className="stat-value">
-                {(targetBitrate / 1000000).toFixed(2)} Mbps
+                {(effectiveTargetBitrate / 1000000).toFixed(2)} Mbps
               </span>
             </span>
           )}
