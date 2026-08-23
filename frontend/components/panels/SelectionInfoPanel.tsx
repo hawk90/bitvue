@@ -9,7 +9,7 @@
  */
 
 import { useFrameData } from "../../contexts/FrameDataContext";
-import { useCurrentFrame } from "../../contexts/SelectionContext";
+import { useCurrentFrame, useSelection } from "../../contexts/SelectionContext";
 import { memo } from "react";
 import { FrameTypeBadge } from "../common/FrameTypeBadge";
 import "./SelectionInfoPanel.css";
@@ -56,6 +56,9 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
 }: SelectionInfoPanelProps) {
   const { frames, getFrameStats, streamInfo } = useFrameData();
   const { currentFrameIndex } = useCurrentFrame();
+  const { selection } = useSelection();
+  const selectedBlock =
+    selection?.temporal?.type === "block" ? selection.temporal.block : null;
   const stats = getFrameStats();
   const currentFrame = frames[currentFrameIndex] || null;
   // Explicit props win (callers that already know the real values), then the real
@@ -167,10 +170,23 @@ export const SelectionInfoPanel = memo(function SelectionInfoPanel({
 
         {/* Current Selection Section */}
         <InfoSection title="Selection">
-          <div className="selection-empty">
-            <span className="codicon codicon-location"></span>
-            <span>Click on the video to select a block</span>
-          </div>
+          {selectedBlock ? (
+            <>
+              <InfoRow
+                label="Position"
+                value={`${selectedBlock.x}, ${selectedBlock.y}`}
+              />
+              <InfoRow
+                label="Size"
+                value={`${selectedBlock.w} × ${selectedBlock.h}`}
+              />
+            </>
+          ) : (
+            <div className="selection-empty">
+              <span className="codicon codicon-location"></span>
+              <span>Click on the video to select a block</span>
+            </div>
+          )}
         </InfoSection>
 
         {/* Codec Badge */}

@@ -12,6 +12,9 @@ interface ZoomControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
+  /** INT-01: Fit-to-window preset (key "1") -- optional so callers that haven't wired it (if
+   *  any exist) don't need a stub. */
+  onZoomToFit?: () => void;
 }
 
 export const ZoomControls = memo(function ZoomControls({
@@ -19,9 +22,19 @@ export const ZoomControls = memo(function ZoomControls({
   onZoomIn,
   onZoomOut,
   onResetZoom,
+  onZoomToFit,
 }: ZoomControlsProps) {
   return (
     <div className="yuv-toolbar-group">
+      {onZoomToFit && (
+        <button
+          onClick={onZoomToFit}
+          title="Fit to Window (1)"
+          aria-label="Fit to window"
+        >
+          <span className="codicon codicon-screen-full"></span>
+        </button>
+      )}
       <button onClick={onZoomOut} title="Zoom Out (-)" aria-label="Zoom out">
         <span className="codicon codicon-zoom-out"></span>
       </button>

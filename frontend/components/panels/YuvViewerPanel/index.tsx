@@ -36,12 +36,14 @@ import { useCanvasInteraction } from "../../../hooks/useCanvasInteraction";
 import { useAv1Features } from "../../../hooks/useAv1Features";
 import { ZOOM, TIMING } from "../../../constants/ui";
 import { VideoCanvas } from "./VideoCanvas";
+import type { SpatialBlockRect } from "../../../utils/spatialBlockHitTest";
 import {
   YUVFrame,
   Colorspace,
   type ChannelMode,
 } from "../../../utils/yuvRenderer";
 import { useYuvDiff } from "../../../contexts/YuvDiffContext";
+import { useSelection } from "../../../contexts/SelectionContext";
 import { FrameNavigationControls } from "./FrameNavigationControls";
 import { PlaybackControls } from "./PlaybackControls";
 import { ModeSelector } from "./ModeSelector";
@@ -99,6 +101,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     zoomIn,
     zoomOut,
     resetZoom,
+    setZoom,
+    setPan,
     handlers: canvasHandlers,
   } = useCanvasInteraction({
     minZoom: ZOOM.MIN,
@@ -106,6 +110,45 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     zoomStep: ZOOM.STEP,
     requireModifierKey: true,
   });
+
+  // INT-01: Fit/100%/200% zoom presets (previously documented-but-empty `1`/`2`/`3` shortcut
+  // stubs in keyboardShortcuts.ts -- see handleKeyDown below for the real bindings). "Fit"
+  // needs the canvas container's actual on-screen size, which only VideoCanvas's DOM owns --
+  // measured via this ref rather than duplicating VideoCanvas's own layout.
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  const zoomToFit = useCallback(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    // Same three-way fallback VideoCanvas.tsx uses internally for its own logical canvas size
+    // -- this must match, or "Fit" would compute against the wrong frame dimensions.
+    const logicalWidth = decodedFrame?.width ?? frameImage?.width ?? 640;
+    const logicalHeight = decodedFrame?.height ?? frameImage?.height ?? 360;
+    if (
+      container.clientWidth <= 0 ||
+      container.clientHeight <= 0 ||
+      logicalWidth <= 0 ||
+      logicalHeight <= 0
+    ) {
+      return;
+    }
+    const fitZoom = Math.min(
+      container.clientWidth / logicalWidth,
+      container.clientHeight / logicalHeight,
+    );
+    setZoom(Math.max(ZOOM.MIN, Math.min(ZOOM.MAX, fitZoom)));
+    setPan({ x: 0, y: 0 });
+  }, [decodedFrame, frameImage, setZoom, setPan]);
+
+  const zoomTo100 = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [setZoom, setPan]);
+
+  const zoomTo200 = useCallback(() => {
+    setZoom(Math.min(ZOOM.MAX, 2));
+    setPan({ x: 0, y: 0 });
+  }, [setZoom, setPan]);
 
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -126,36 +169,57 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
 
   // Right-click context menu (Phase 7.6, "Player" scope) -- see ContextMenu component doc.
   const exportEvidence = useExportEvidenceBundle();
+  const { selection, setSpatialBlockSelection } = useSelection();
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     items: ContextMenuItemWire[];
   } | null>(null);
 
-  const handleCanvasContextMenu = useCallback((event: React.MouseEvent) => {
-    event.preventDefault();
-    // TODO(Phase 7.6 follow-up): thread real selection state in (SelectionContext isn't
-    // currently a dependency of this component, and this is the only place that would need it --
-    // deferred rather than adding a hard context dependency here for one guard on one item
-    // (Player's "toggle_detail") that isn't wired to a real action yet anyway).
-    const hasSelection = false;
-    const hasByteRange = false;
-    const x = event.clientX;
-    const y = event.clientY;
-    getContextMenuItems("Player", hasSelection, hasByteRange)
-      .then((items) => setContextMenu({ x, y, items }))
-      .catch(() => setContextMenu(null));
-  }, []);
+  const handleCanvasContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      // Same has_selection/has_byte_range convention as Timeline.tsx/HexViewTab.tsx.
+      const hasSelection = selection?.frame?.frameIndex !== undefined;
+      const hasByteRange = selection?.bitRange != null;
+      const x = event.clientX;
+      const y = event.clientY;
+      getContextMenuItems("Player", hasSelection, hasByteRange)
+        .then((items) => setContextMenu({ x, y, items }))
+        .catch(() => setContextMenu(null));
+    },
+    [selection],
+  );
+
+  // INT-01: click (not drag-pan) -> spatialBlock select, completing one of the two missing legs
+  // of IA_TRISYNC_PANELS_PRESENT's Player row.
+  const handleSpatialBlockClick = useCallback(
+    (block: SpatialBlockRect) => {
+      setSpatialBlockSelection(block, currentFrameIndex, "main");
+    },
+    [setSpatialBlockSelection, currentFrameIndex],
+  );
 
   const handleContextMenuSelect = useCallback(
     (command: string) => {
       if (command === "Export.EvidenceBundle") {
         void exportEvidence();
+      } else if (command === "Copy.Selection") {
+        // Copies the currently *selected* (clicked, persisted) block -- not whatever pixel is
+        // transiently under the cursor, which the INT-01 hover tooltip shows but has no
+        // click-triggered mechanism to copy (see PARITY_CHECKLIST.md INT-01 note).
+        const block = selection?.temporal?.block;
+        const frameIndex = selection?.frame?.frameIndex;
+        if (block) {
+          void navigator.clipboard.writeText(
+            `Frame ${frameIndex ?? "?"}: block ${block.w}x${block.h} @ (${block.x}, ${block.y})`,
+          );
+        }
       }
-      // Other Player-scope commands (Toggle.DetailMode, Copy.Selection) aren't wired to a real
-      // action yet -- deliberately out of scope for this pass (see Phase 7.6 doc).
+      // Toggle.DetailMode isn't wired to a real action yet -- deliberately out of scope for this
+      // pass (see Phase 7.6 doc).
     },
-    [exportEvidence],
+    [exportEvidence, selection],
   );
 
   // Load frame and analysis data when currentFrameIndex changes
@@ -422,6 +486,24 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
             resetZoom();
           }
           break;
+        case "1":
+          if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            zoomToFit();
+          }
+          break;
+        case "2":
+          if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            zoomTo100();
+          }
+          break;
+        case "3":
+          if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            zoomTo200();
+          }
+          break;
         case "F1":
         case "F2":
         case "F3":
@@ -452,6 +534,9 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     zoomIn,
     zoomOut,
     resetZoom,
+    zoomToFit,
+    zoomTo100,
+    zoomTo200,
     handleFKey,
   ]);
 
@@ -517,6 +602,7 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onResetZoom={resetZoom}
+          onZoomToFit={zoomToFit}
         />
       </div>
 
@@ -572,6 +658,8 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
           onMouseMove={canvasHandlers.onMouseMove}
           onMouseUp={canvasHandlers.onMouseUp}
           onContextMenu={handleCanvasContextMenu}
+          onSpatialBlockClick={handleSpatialBlockClick}
+          containerRef={canvasContainerRef}
           isDragging={isDragging}
           yuvData={decodedFrame ?? undefined}
           activeOverlays={activeOverlays}

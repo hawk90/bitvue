@@ -465,3 +465,28 @@
 .yuv-overlay-btn--active:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
 }
+
+/* INT-01: Player hover pixel/block tooltip -- same flat dark-panel treatment as
+   Timeline.css's .timeline-tooltip, deliberately not restyled per-surface. */
+.player-pixel-tooltip {
+  position: fixed;
+  z-index: 100;
+  background: rgb(30 30 30 / 95%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-primary, #ccc);
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 50%);
+  pointer-events: none;
+}
+
+.player-pixel-tooltip-row {
+  white-space: nowrap;
+}
+
+.player-pixel-tooltip-overlays {
+  color: var(--text-secondary, #999);
+}

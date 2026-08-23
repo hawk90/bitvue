@@ -6,7 +6,15 @@
  * Supports both image-based and YUV-based rendering
  */
 
-import { useRef, useEffect, useState, memo, useMemo } from "react";
+import {
+  useRef,
+  useEffect,
+  useState,
+  memo,
+  useMemo,
+  useCallback,
+  type RefObject,
+} from "react";
 import { renderModeOverlay } from "../OverlayRenderer";
 import type { VisualizationMode } from "../../../contexts/ModeContext";
 import type { OverlayRenderOptionsExtended } from "../OverlayRenderer";
@@ -21,6 +29,16 @@ import {
 import { WebGpuFrameRenderer } from "../../../utils/gpu/frameRenderer";
 import { isWebGpuDisabledByFlag } from "../../../utils/gpu/featureFlag";
 import { createLogger } from "../../../utils/logger";
+import {
+  resolveSpatialBlockAtPoint,
+  type SpatialBlockRect,
+} from "../../../utils/spatialBlockHitTest";
+import { resolvePixelValueAtPoint } from "../../../utils/pixelValueLookup";
+import { PlayerPixelTooltip } from "./PlayerPixelTooltip";
+
+/** Max pointer movement (px) between mousedown and mouseup still counted as a click, not a
+ *  drag-pan -- matches the existing pan-vs-click ambiguity every drag-to-pan surface has. */
+const CLICK_MOVE_THRESHOLD_PX = 5;
 
 const logger = createLogger("VideoCanvas");
 
@@ -93,6 +111,14 @@ interface VideoCanvasProps {
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** INT-01: fires on a real click (not a drag-pan) that lands inside a resolvable coding-unit
+   *  block -- see `resolveSpatialBlockAtPoint`'s doc for the partition_grid/qp_grid fallback. */
+  onSpatialBlockClick?: (block: SpatialBlockRect) => void;
+  /** INT-01: Fit-to-window zoom needs the container's real on-screen size, which only this
+   *  component's DOM has -- exposed via this optional ref rather than duplicating the layout in
+   *  the parent. Attached to `.yuv-canvas-container`, not either `<canvas>`, since the container
+   *  is what CSS actually sizes to the available panel space. */
+  containerRef?: RefObject<HTMLDivElement>;
   isDragging: boolean;
   /** Raw YUV data if available (overrides frameImage when present) */
   yuvData?: YUVFrame;
@@ -118,6 +144,8 @@ export const VideoCanvas = memo(function VideoCanvas({
   onMouseMove,
   onMouseUp,
   onContextMenu,
+  onSpatialBlockClick,
+  containerRef,
   isDragging,
   yuvData,
   activeOverlays,
@@ -158,6 +186,136 @@ export const VideoCanvas = memo(function VideoCanvas({
       height: `${logicalHeight}px`,
     }),
     [canvasStyle, logicalWidth, logicalHeight],
+  );
+
+  // INT-01: click (not drag-pan) -> spatialBlock select. mousedown position is recorded here
+  // and compared against mouseup position to distinguish a click from a drag -- `isDragging`
+  // (from useCanvasInteraction) isn't usable for this since it's already true immediately on
+  // mousedown, before any real movement happens.
+  const clickStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Client (viewport) coordinates -> frame-native pixel coordinates, shared by the click handler
+  // below and the hover-tooltip handler -- same getBoundingClientRect()-based math either way,
+  // robust regardless of the current zoom/pan CSS transform.
+  const clientToFrameCoords = useCallback(
+    (
+      clientX: number,
+      clientY: number,
+    ): { frameX: number; frameY: number } | null => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+      const scaleX = rect.width / logicalWidth;
+      const scaleY = rect.height / logicalHeight;
+      return {
+        frameX: (clientX - rect.left) / scaleX,
+        frameY: (clientY - rect.top) / scaleY,
+      };
+    },
+    [logicalWidth, logicalHeight],
+  );
+
+  const handleContainerMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      clickStartRef.current = { x: e.clientX, y: e.clientY };
+      onMouseDown(e);
+    },
+    [onMouseDown],
+  );
+
+  const handleContainerMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      const start = clickStartRef.current;
+      clickStartRef.current = null;
+
+      if (start && onSpatialBlockClick && currentFrame) {
+        const dx = e.clientX - start.x;
+        const dy = e.clientY - start.y;
+        if (Math.hypot(dx, dy) <= CLICK_MOVE_THRESHOLD_PX) {
+          const coords = clientToFrameCoords(e.clientX, e.clientY);
+          if (coords) {
+            const block = resolveSpatialBlockAtPoint(
+              coords.frameX,
+              coords.frameY,
+              currentFrame,
+            );
+            if (block) onSpatialBlockClick(block);
+          }
+        }
+      }
+
+      onMouseUp(e);
+    },
+    [onMouseUp, onSpatialBlockClick, currentFrame, clientToFrameCoords],
+  );
+
+  // INT-01: Player hover pixel/block tooltip -- per UX_PARITY_MATRIX.md §4's Player tooltip
+  // contract (frame idx, pixel x/y, luma/chroma values, block info, active overlays list).
+  // Recomputed on every mousemove rather than debounced: both lookups are pure array-index reads
+  // (no re-render-triggering work, no async), so there's no jank to guard against.
+  const [hoverInfo, setHoverInfo] = useState<{
+    clientX: number;
+    clientY: number;
+    pixelX: number;
+    pixelY: number;
+    pixel: ReturnType<typeof resolvePixelValueAtPoint>;
+    block: SpatialBlockRect | null;
+  } | null>(null);
+
+  const handleContainerMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      onMouseMove(e);
+      if (isDragging) {
+        setHoverInfo(null);
+        return;
+      }
+      const coords = clientToFrameCoords(e.clientX, e.clientY);
+      if (!coords) {
+        setHoverInfo(null);
+        return;
+      }
+      const pixelX = Math.floor(coords.frameX);
+      const pixelY = Math.floor(coords.frameY);
+      if (
+        pixelX < 0 ||
+        pixelY < 0 ||
+        pixelX >= logicalWidth ||
+        pixelY >= logicalHeight
+      ) {
+        setHoverInfo(null);
+        return;
+      }
+      const pixel = yuvData
+        ? resolvePixelValueAtPoint(coords.frameX, coords.frameY, yuvData)
+        : null;
+      const block = currentFrame
+        ? resolveSpatialBlockAtPoint(coords.frameX, coords.frameY, currentFrame)
+        : null;
+      setHoverInfo({
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pixelX,
+        pixelY,
+        pixel,
+        block,
+      });
+    },
+    [
+      onMouseMove,
+      isDragging,
+      clientToFrameCoords,
+      logicalWidth,
+      logicalHeight,
+      yuvData,
+      currentFrame,
+    ],
+  );
+
+  const handleContainerMouseLeave = useCallback(
+    (e: React.MouseEvent) => {
+      setHoverInfo(null);
+      onMouseUp(e);
+    },
+    [onMouseUp],
   );
 
   // Memoize container cursor style
@@ -325,12 +483,13 @@ export const VideoCanvas = memo(function VideoCanvas({
 
   return (
     <div
+      ref={containerRef}
       className="yuv-canvas-container"
       onWheel={onWheel}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
+      onMouseDown={handleContainerMouseDown}
+      onMouseMove={handleContainerMouseMove}
+      onMouseUp={handleContainerMouseUp}
+      onMouseLeave={handleContainerMouseLeave}
       onContextMenu={onContextMenu}
       style={containerStyle}
     >
@@ -362,6 +521,18 @@ export const VideoCanvas = memo(function VideoCanvas({
         }}
         aria-hidden
       />
+      {hoverInfo && (
+        <PlayerPixelTooltip
+          clientX={hoverInfo.clientX}
+          clientY={hoverInfo.clientY}
+          frameIndex={currentFrameIndex}
+          pixelX={hoverInfo.pixelX}
+          pixelY={hoverInfo.pixelY}
+          pixel={hoverInfo.pixel}
+          block={hoverInfo.block}
+          activeOverlays={activeOverlays}
+        />
+      )}
     </div>
   );
 });

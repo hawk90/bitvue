@@ -18,15 +18,21 @@ import type {
   SyntaxNodeId,
   BitRange,
 } from "@/contexts/SelectionContext";
-import { selectBitRange } from "@/services/electronBridgeService";
+import {
+  selectBitRange,
+  selectSpatialBlock,
+} from "@/services/electronBridgeService";
 
-// setBitRangeSelection calls the real select_bit_range bridge round trip (see
-// SelectionContext.tsx's doc) -- mocked here so tests control what it resolves to instead of
+// setBitRangeSelection/setSpatialBlockSelection call real bridge round trips (see
+// SelectionContext.tsx's doc) -- mocked here so tests control what they resolve to instead of
 // hitting the real (absent in jsdom) window.bitvue. Tests that don't care about the resolved
-// syntax_node just let it reject (the default unmocked behavior would too, via requireBridge()),
-// which setBitRangeSelection already catches and logs, not a test failure.
+// value just let them reject (the default unmocked behavior would too, via requireBridge()),
+// which both setters already catch and log, not a test failure.
 vi.mock("@/services/electronBridgeService", () => ({
   selectBitRange: vi.fn().mockRejectedValue(new Error("no bridge in tests")),
+  selectSpatialBlock: vi
+    .fn()
+    .mockRejectedValue(new Error("no bridge in tests")),
 }));
 
 describe("SelectionContext", () => {
@@ -432,6 +438,48 @@ describe("SelectionContext bitRange selection", () => {
       expect(selectBitRange).toHaveBeenCalled();
     });
     expect(result.current.selection?.syntaxNode).toBeNull();
+  });
+
+  // INT-01: Player click -> spatialBlock select
+  it("sets a block temporal selection and calls the real select_spatial_block bridge round trip", async () => {
+    const { result } = renderHook(() => useSelection(), { wrapper });
+
+    act(() => {
+      result.current.setSpatialBlockSelection(
+        { x: 16, y: 32, w: 8, h: 8 },
+        5,
+        "main",
+      );
+    });
+
+    expect(result.current.selection?.temporal).toEqual({
+      type: "block",
+      frameIndex: 5,
+      block: { x: 16, y: 32, w: 8, h: 8 },
+    });
+    await waitFor(() => {
+      expect(selectSpatialBlock).toHaveBeenCalledWith("A", 16, 32, 8, 8);
+    });
+  });
+
+  it("does not throw when select_spatial_block rejects -- the optimistic local update still stands", async () => {
+    const { result } = renderHook(() => useSelection(), { wrapper });
+
+    expect(() => {
+      act(() => {
+        result.current.setSpatialBlockSelection(
+          { x: 0, y: 0, w: 16, h: 16 },
+          0,
+          "main",
+        );
+      });
+    }).not.toThrow();
+
+    expect(result.current.selection?.temporal).toEqual({
+      type: "block",
+      frameIndex: 0,
+      block: { x: 0, y: 0, w: 16, h: 16 },
+    });
   });
 });
 

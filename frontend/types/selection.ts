@@ -122,6 +122,15 @@ export interface SelectionContextType {
   /** Also calls the real backend `select_bit_range` round trip and merges the resolved
    *  `syntaxNode` back in once it resolves -- see contexts/SelectionContext.tsx's doc. */
   setBitRangeSelection: (range: BitRange, source: SelectionPanel) => void;
+  /** INT-01 (Player click→spatialBlock select): optimistically sets local `temporal` state
+   *  (type "block"), then also calls the real backend `select_spatial_block` so server-side
+   *  selection state stays in sync -- same "optimistic local + real bridge call" shape as
+   *  `setBitRangeSelection`. */
+  setSpatialBlockSelection: (
+    block: SpatialBlock,
+    frameIndex: number,
+    source: SelectionPanel,
+  ) => void;
   clearTemporal: () => void;
   clearAll: () => void;
   subscribe: (callback: (event: SelectionChangeEvent) => void) => () => void;

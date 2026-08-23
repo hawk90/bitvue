@@ -188,4 +188,56 @@ describe("ZoomControls", () => {
       container.querySelector(".codicon-screen-normal"),
     ).toBeInTheDocument();
   });
+
+  // INT-01: Fit-to-window preset button (optional prop)
+  it("does not render a fit-to-window button when onZoomToFit is omitted", () => {
+    const { container } = render(
+      <ZoomControls
+        zoom={1}
+        onZoomIn={vi.fn()}
+        onZoomOut={vi.fn()}
+        onResetZoom={vi.fn()}
+      />,
+    );
+
+    expect(
+      container.querySelector(".codicon-screen-full"),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button").length).toBe(3);
+  });
+
+  it("renders a fit-to-window button when onZoomToFit is provided", () => {
+    const { container } = render(
+      <ZoomControls
+        zoom={1}
+        onZoomIn={vi.fn()}
+        onZoomOut={vi.fn()}
+        onResetZoom={vi.fn()}
+        onZoomToFit={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".codicon-screen-full")).toBeInTheDocument();
+    expect(screen.getAllByRole("button").length).toBe(4);
+  });
+
+  it("calls onZoomToFit when the fit-to-window button is clicked", () => {
+    const handleZoomToFit = vi.fn();
+    const { container } = render(
+      <ZoomControls
+        zoom={1}
+        onZoomIn={vi.fn()}
+        onZoomOut={vi.fn()}
+        onResetZoom={vi.fn()}
+        onZoomToFit={handleZoomToFit}
+      />,
+    );
+
+    const fitButton = container.querySelector(
+      "button:has(.codicon-screen-full)",
+    );
+    expect(fitButton).toBeInTheDocument();
+    fireEvent.click(fitButton!);
+    expect(handleZoomToFit).toHaveBeenCalledTimes(1);
+  });
 });

@@ -3,9 +3,10 @@
  * Tests selection info panel with frame and stream statistics
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@/test/test-utils";
 import { SelectionInfoPanel } from "../SelectionInfoPanel";
+import { useSelection } from "@/contexts/SelectionContext";
 
 // Mock context
 const _selectionInfoMockFrames = [
@@ -91,6 +92,7 @@ vi.mock("@/contexts/SelectionContext", () => ({
     currentFrameIndex: 1,
     setCurrentFrameIndex: () => {},
   }),
+  useSelection: vi.fn(() => ({ selection: null })),
   SelectionProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
@@ -215,6 +217,56 @@ describe("SelectionInfoPanel", () => {
     render(<SelectionInfoPanel />);
 
     expect(screen.getByText("Selection")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Click on the video to select a block/),
+    ).toBeInTheDocument();
+  });
+
+  // INT-01: Player click -> spatialBlock select. Selection.temporal.block, once real, is
+  // rendered here instead of the static placeholder.
+  it("shows the real selected block's position/size when a block is selected", () => {
+    vi.mocked(useSelection).mockReturnValueOnce({
+      selection: {
+        streamId: "A",
+        temporal: {
+          type: "block",
+          frameIndex: 5,
+          block: { x: 16, y: 32, w: 8, h: 8 },
+        },
+        frame: null,
+        unit: null,
+        syntaxNode: null,
+        bitRange: null,
+        source: { panel: "main", timestamp: 0 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    });
+
+    render(<SelectionInfoPanel />);
+
+    expect(
+      screen.queryByText(/Click on the video to select a block/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("16, 32")).toBeInTheDocument();
+    expect(screen.getByText("8 × 8")).toBeInTheDocument();
+  });
+
+  it("falls back to the placeholder when temporal selection is a non-block type (point/range/marker)", () => {
+    vi.mocked(useSelection).mockReturnValueOnce({
+      selection: {
+        streamId: "A",
+        temporal: { type: "point", frameIndex: 5 },
+        frame: null,
+        unit: null,
+        syntaxNode: null,
+        bitRange: null,
+        source: { panel: "main", timestamp: 0 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    });
+
+    render(<SelectionInfoPanel />);
+
     expect(
       screen.getByText(/Click on the video to select a block/),
     ).toBeInTheDocument();

@@ -25,6 +25,7 @@ import type {
   SelectionContextType,
   SelectionChangeEvent,
   FrameKey,
+  SpatialBlock,
 } from "../types/selection";
 import {
   applyTriSyncRules,
@@ -32,6 +33,7 @@ import {
 } from "../utils/selectionSync";
 import {
   selectBitRange,
+  selectSpatialBlock,
   type SelectionUpdatedEvent,
 } from "../services/electronBridgeService";
 
@@ -280,6 +282,26 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     [updateSelection],
   );
 
+  const setSpatialBlockSelection = useCallback(
+    (
+      block: SpatialBlock,
+      frameIndex: number,
+      source: SelectionState["source"]["panel"],
+    ) => {
+      updateSelection(
+        { temporal: { type: "block", frameIndex, block } },
+        source,
+      );
+      const stream = selectionRef.current?.streamId ?? "A";
+      selectSpatialBlock(stream, block.x, block.y, block.w, block.h).catch(
+        (err) => {
+          console.error("[SelectionContext] selectSpatialBlock failed:", err);
+        },
+      );
+    },
+    [updateSelection],
+  );
+
   const clearTemporal = useCallback(() => {
     setSelection((prev) => {
       if (!prev) return null;
@@ -315,6 +337,7 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     setUnitSelection,
     setSyntaxSelection,
     setBitRangeSelection,
+    setSpatialBlockSelection,
     clearTemporal,
     clearAll,
     subscribe,

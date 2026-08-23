@@ -12,6 +12,25 @@ vi.mock("../OverlayRenderer", () => ({
   renderModeOverlay: vi.fn(),
 }));
 
+// jsdom's getBoundingClientRect always returns an all-zero rect -- stub it to a chosen logical
+// size so client->frame coordinate conversion is a 1:1 mapping at zoom=1. Shared by the spatial
+// click and hover-tooltip suites below.
+function stubCanvasRect(width: number, height: number) {
+  return vi
+    .spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect")
+    .mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: width,
+      bottom: height,
+      width,
+      height,
+      toJSON: () => {},
+    });
+}
+
 describe("VideoCanvas", () => {
   const defaultProps = {
     frameImage: null,
@@ -177,5 +196,242 @@ describe("VideoCanvas with frame image", () => {
 
     const canvas = container.querySelector(".yuv-canvas");
     expect(canvas?.style.transformOrigin).toBe("top left");
+  });
+});
+
+// INT-01: Player click (not drag-pan) -> spatialBlock select
+describe("VideoCanvas spatial block click", () => {
+  const frameWithQpGrid = {
+    frame_index: 0,
+    frame_type: "I",
+    size: 50000,
+    qp_grid: {
+      grid_w: 4,
+      grid_h: 4,
+      block_w: 16,
+      block_h: 16,
+      qp: new Array(16).fill(20),
+      qp_min: 20,
+      qp_max: 20,
+    },
+  };
+
+  const defaultProps = {
+    frameImage: null,
+    currentFrameIndex: 0,
+    currentFrame: frameWithQpGrid,
+    currentMode: "overview" as const,
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+    onWheel: vi.fn(),
+    onMouseDown: vi.fn(),
+    onMouseMove: vi.fn(),
+    onMouseUp: vi.fn(),
+    isDragging: false,
+  };
+
+  it("fires onSpatialBlockClick with the resolved block on a real click (no movement)", () => {
+    stubCanvasRect(640, 360);
+    const handleClick = vi.fn();
+    const { container } = render(
+      <VideoCanvas {...defaultProps} onSpatialBlockClick={handleClick} />,
+    );
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseDown(canvasContainer, { clientX: 20, clientY: 5 });
+    fireEvent.mouseUp(canvasContainer, { clientX: 20, clientY: 5 });
+
+    // (20, 5) falls in qp_grid cell col=1,row=0 -> block at (16, 0), 16x16.
+    expect(handleClick).toHaveBeenCalledWith({ x: 16, y: 0, w: 16, h: 16 });
+  });
+
+  it("does not fire onSpatialBlockClick when the pointer moved beyond the click threshold (a drag-pan)", () => {
+    stubCanvasRect(640, 360);
+    const handleClick = vi.fn();
+    const { container } = render(
+      <VideoCanvas {...defaultProps} onSpatialBlockClick={handleClick} />,
+    );
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseDown(canvasContainer, { clientX: 10, clientY: 10 });
+    fireEvent.mouseUp(canvasContainer, { clientX: 40, clientY: 40 });
+
+    expect(handleClick).not.toHaveBeenCalled();
+  });
+
+  it("does not fire onSpatialBlockClick when the click lands outside every resolvable block", () => {
+    stubCanvasRect(640, 360);
+    const handleClick = vi.fn();
+    const { container } = render(
+      <VideoCanvas {...defaultProps} onSpatialBlockClick={handleClick} />,
+    );
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseDown(canvasContainer, { clientX: 500, clientY: 500 });
+    fireEvent.mouseUp(canvasContainer, { clientX: 500, clientY: 500 });
+
+    expect(handleClick).not.toHaveBeenCalled();
+  });
+
+  it("still calls the underlying onMouseDown/onMouseUp props for pan even when onSpatialBlockClick is provided", () => {
+    stubCanvasRect(640, 360);
+    const handleMouseDown = vi.fn();
+    const handleMouseUp = vi.fn();
+    const { container } = render(
+      <VideoCanvas
+        {...defaultProps}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onSpatialBlockClick={vi.fn()}
+      />,
+    );
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseDown(canvasContainer, { clientX: 20, clientY: 5 });
+    fireEvent.mouseUp(canvasContainer, { clientX: 20, clientY: 5 });
+
+    expect(handleMouseDown).toHaveBeenCalled();
+    expect(handleMouseUp).toHaveBeenCalled();
+  });
+
+  it("does not throw when onSpatialBlockClick is omitted (optional prop)", () => {
+    stubCanvasRect(640, 360);
+    const { container } = render(<VideoCanvas {...defaultProps} />);
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    expect(() => {
+      fireEvent.mouseDown(canvasContainer, { clientX: 20, clientY: 5 });
+      fireEvent.mouseUp(canvasContainer, { clientX: 20, clientY: 5 });
+    }).not.toThrow();
+  });
+});
+
+// INT-01: Player hover pixel/block tooltip
+describe("VideoCanvas hover pixel tooltip", () => {
+  const frameWithQpGrid = {
+    frame_index: 0,
+    frame_type: "I",
+    size: 50000,
+    qp_grid: {
+      grid_w: 4,
+      grid_h: 4,
+      block_w: 16,
+      block_h: 16,
+      qp: new Array(16).fill(20),
+      qp_min: 20,
+      qp_max: 20,
+    },
+  };
+
+  function makeYuv420(width: number, height: number) {
+    const chromaW = width / 2;
+    const chromaH = height / 2;
+    return {
+      y: new Uint8Array(width * height).fill(100),
+      u: new Uint8Array(chromaW * chromaH).fill(50),
+      v: new Uint8Array(chromaW * chromaH).fill(150),
+      width,
+      height,
+      yStride: width,
+      uStride: chromaW,
+      vStride: chromaW,
+      chromaSubsampling: "420" as const,
+    };
+  }
+
+  const defaultProps = {
+    frameImage: null,
+    currentFrameIndex: 3,
+    currentFrame: frameWithQpGrid,
+    currentMode: "overview" as const,
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+    onWheel: vi.fn(),
+    onMouseDown: vi.fn(),
+    onMouseMove: vi.fn(),
+    onMouseUp: vi.fn(),
+    isDragging: false,
+    yuvData: makeYuv420(640, 360),
+  };
+
+  it("shows a tooltip with frame index, pixel value, and block info on hover", () => {
+    stubCanvasRect(640, 360);
+    const { container } = render(<VideoCanvas {...defaultProps} />);
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseMove(canvasContainer, { clientX: 20, clientY: 5 });
+
+    const tooltip = container.querySelector(".player-pixel-tooltip");
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip?.textContent).toContain("Frame #3");
+    expect(tooltip?.textContent).toContain("Y 100");
+    expect(tooltip?.textContent).toContain("U 50");
+    expect(tooltip?.textContent).toContain("V 150");
+    expect(tooltip?.textContent).toContain("Block 16×16");
+  });
+
+  it("still calls the underlying onMouseMove prop for panning", () => {
+    stubCanvasRect(640, 360);
+    const handleMouseMove = vi.fn();
+    const { container } = render(
+      <VideoCanvas {...defaultProps} onMouseMove={handleMouseMove} />,
+    );
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseMove(canvasContainer, { clientX: 20, clientY: 5 });
+
+    expect(handleMouseMove).toHaveBeenCalled();
+  });
+
+  it("hides the tooltip once the pointer leaves the canvas", () => {
+    stubCanvasRect(640, 360);
+    const { container } = render(<VideoCanvas {...defaultProps} />);
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseMove(canvasContainer, { clientX: 20, clientY: 5 });
+    expect(
+      container.querySelector(".player-pixel-tooltip"),
+    ).toBeInTheDocument();
+
+    fireEvent.mouseLeave(canvasContainer);
+    expect(container.querySelector(".player-pixel-tooltip")).toBeNull();
+  });
+
+  it("suppresses the tooltip while dragging (drag-pan, not hover)", () => {
+    stubCanvasRect(640, 360);
+    const { container } = render(
+      <VideoCanvas {...defaultProps} isDragging={true} />,
+    );
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseMove(canvasContainer, { clientX: 20, clientY: 5 });
+
+    expect(container.querySelector(".player-pixel-tooltip")).toBeNull();
+  });
+
+  it("does not show a tooltip when the pointer is outside the frame bounds", () => {
+    stubCanvasRect(640, 360);
+    const { container } = render(<VideoCanvas {...defaultProps} />);
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseMove(canvasContainer, { clientX: 900, clientY: 900 });
+
+    expect(container.querySelector(".player-pixel-tooltip")).toBeNull();
+  });
+
+  it("omits pixel/block rows gracefully when there is no yuvData or currentFrame", () => {
+    stubCanvasRect(640, 360);
+    const { container } = render(
+      <VideoCanvas {...defaultProps} yuvData={undefined} currentFrame={null} />,
+    );
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+
+    fireEvent.mouseMove(canvasContainer, { clientX: 20, clientY: 5 });
+
+    const tooltip = container.querySelector(".player-pixel-tooltip");
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip?.textContent).toContain("Frame #3");
+    expect(tooltip?.textContent).not.toContain("Y ");
+    expect(tooltip?.textContent).not.toContain("Block");
   });
 });

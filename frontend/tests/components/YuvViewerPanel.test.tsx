@@ -5,12 +5,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { YuvViewerPanel } from "../YuvViewerPanel";
 import { useMode } from "@/contexts/ModeContext";
 import { useStreamData } from "@/contexts/StreamDataContext";
 import { useFrameData } from "@/contexts/FrameDataContext";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
+import { useSelection } from "@/contexts/SelectionContext";
+import { getContextMenuItems } from "@/services/electronBridgeService";
 
 // Mock contexts
 vi.mock("@/contexts/ModeContext");
@@ -45,6 +47,12 @@ vi.mock("@/contexts/FileStateContext", () => ({
   ),
 }));
 vi.mock("@/hooks/useCanvasInteraction");
+vi.mock("@/contexts/SelectionContext", () => ({
+  useSelection: vi.fn(() => ({ selection: null })),
+  SelectionProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
 vi.mock("@/contexts/YuvDiffContext", () => ({
   YuvDiffProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -86,6 +94,7 @@ vi.mock("@/services/electronBridgeService", () => {
         cancel: vi.fn(),
       }),
     ),
+    getContextMenuItems: vi.fn(),
   };
 });
 
@@ -122,6 +131,8 @@ const mockCanvasInteraction = {
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
   resetZoom: vi.fn(),
+  setZoom: vi.fn(),
+  setPan: vi.fn(),
   handlers: {
     onWheel: vi.fn(),
     onMouseDown: vi.fn(),
@@ -522,6 +533,33 @@ describe("YuvViewerPanel zoom controls", () => {
 
     expect(mockCanvasInteraction.resetZoom).toHaveBeenCalled();
   });
+
+  // INT-01: Fit-to-window toolbar button
+  it("should have a fit-to-window button", () => {
+    render(<YuvViewerPanel {...mockProps} />);
+
+    const fitButton = screen.queryByRole("button", { name: /fit/i });
+    expect(fitButton).toBeInTheDocument();
+  });
+
+  it("should call setZoom/setPan when the fit-to-window button is clicked", () => {
+    Object.defineProperty(HTMLDivElement.prototype, "clientWidth", {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      value: 450,
+    });
+
+    render(<YuvViewerPanel {...mockProps} />);
+
+    const fitButton = screen.queryByRole("button", { name: /fit/i });
+    fireEvent.click(fitButton!);
+
+    expect(mockCanvasInteraction.setZoom).toHaveBeenCalledWith(1.25);
+    expect(mockCanvasInteraction.setPan).toHaveBeenCalledWith({ x: 0, y: 0 });
+  });
 });
 
 describe("YuvViewerPanel mode selector", () => {
@@ -807,6 +845,56 @@ describe("YuvViewerPanel keyboard shortcuts - zoom", () => {
 
     expect(mockCanvasInteraction.resetZoom).not.toHaveBeenCalled();
   });
+
+  // INT-01: Fit/100%/200% zoom presets -- previously documented-but-empty "1"/"2"/"3" stubs.
+  it("should set zoom to 100% and reset pan on '2'", () => {
+    render(<YuvViewerPanel {...mockProps} />);
+
+    fireEvent.keyDown(document, { key: "2" });
+
+    expect(mockCanvasInteraction.setZoom).toHaveBeenCalledWith(1);
+    expect(mockCanvasInteraction.setPan).toHaveBeenCalledWith({ x: 0, y: 0 });
+  });
+
+  it("should set zoom to 200% and reset pan on '3'", () => {
+    render(<YuvViewerPanel {...mockProps} />);
+
+    fireEvent.keyDown(document, { key: "3" });
+
+    expect(mockCanvasInteraction.setZoom).toHaveBeenCalledWith(2);
+    expect(mockCanvasInteraction.setPan).toHaveBeenCalledWith({ x: 0, y: 0 });
+  });
+
+  it("should compute and apply a real fit-to-window zoom on '1'", () => {
+    // jsdom elements report 0x0 by default -- stub the container's real on-screen size the
+    // same way VideoCanvas.test.tsx stubs getBoundingClientRect for its own coordinate math.
+    Object.defineProperty(HTMLDivElement.prototype, "clientWidth", {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      value: 450,
+    });
+
+    render(<YuvViewerPanel {...mockProps} />);
+    fireEvent.keyDown(document, { key: "1" });
+
+    // No yuvData/frameImage in this test -> VideoCanvas's logical size fallback is 640x360;
+    // fitZoom = min(800/640, 450/360) = min(1.25, 1.25) = 1.25.
+    expect(mockCanvasInteraction.setZoom).toHaveBeenCalledWith(1.25);
+    expect(mockCanvasInteraction.setPan).toHaveBeenCalledWith({ x: 0, y: 0 });
+  });
+
+  it("should not trigger a preset when a modifier key is held with 1/2/3", () => {
+    render(<YuvViewerPanel {...mockProps} />);
+
+    fireEvent.keyDown(document, { key: "1", ctrlKey: true });
+    fireEvent.keyDown(document, { key: "2", metaKey: true });
+    fireEvent.keyDown(document, { key: "3", altKey: true });
+
+    expect(mockCanvasInteraction.setZoom).not.toHaveBeenCalled();
+  });
 });
 
 describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
@@ -910,6 +998,115 @@ describe("YuvViewerPanel keyboard shortcuts - mode switching (F1-F7)", () => {
     fireEvent.keyDown(document, { key: "F7" });
 
     expect(handleFKeyMock).toHaveBeenCalledWith(7);
+  });
+});
+
+// Player context menu: "Copy Selection" now copies the currently-selected block's position/size
+// (was a hardcoded no-op stub -- see PARITY_CHECKLIST.md INT-01's 2026-08-23 note).
+describe("YuvViewerPanel Player context menu", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useMode).mockReturnValue({
+      currentMode: "overview",
+      setMode: vi.fn(),
+      cycleMode: vi.fn(),
+      componentMask: "yuv",
+      toggleComponent: vi.fn(),
+      setComponentMask: vi.fn(),
+      showGrid: false,
+      toggleGrid: vi.fn(),
+      showLabels: true,
+      toggleLabels: vi.fn(),
+      showBlockTypes: false,
+      toggleBlockTypes: vi.fn(),
+      availableModes: [],
+      availableOverlays: [],
+      activeOverlays: new Set(),
+      toggleOverlay: vi.fn(),
+      activeCodec: null,
+      handleFKey: vi.fn(),
+      setActiveCodec: vi.fn(),
+    });
+    vi.mocked(useStreamData).mockReturnValue({
+      frames: mockFrames,
+      currentFrameIndex: 1,
+      loading: false,
+      error: null,
+      filePath: "/test/path",
+      setCurrentFrameIndex: vi.fn(),
+      refreshFrames: vi.fn(),
+      clearData: vi.fn(),
+      getFrameStats: vi.fn(),
+      setFrames: vi.fn(),
+    } as any);
+    vi.mocked(useFrameData).mockReturnValue({
+      frames: mockFrames,
+      setFrames: vi.fn(),
+      getFrameStats: vi.fn(),
+    } as any);
+    vi.mocked(useCanvasInteraction).mockReturnValue(mockCanvasInteraction);
+    vi.mocked(getContextMenuItems).mockResolvedValue([
+      {
+        id: "copy_selection",
+        label: "Copy Selection",
+        command: "Copy.Selection",
+        enabled: true,
+        disabled_reason: null,
+      },
+    ] as any);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+  });
+
+  it("copies the selected block's position/size via Copy Selection", async () => {
+    vi.mocked(useSelection).mockReturnValue({
+      selection: {
+        frame: { frameIndex: 1 },
+        temporal: {
+          type: "block",
+          frameIndex: 1,
+          block: { x: 16, y: 32, w: 16, h: 16 },
+        },
+      },
+      setSpatialBlockSelection: vi.fn(),
+    } as any);
+
+    const { container } = render(<YuvViewerPanel {...mockProps} />);
+
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+    fireEvent.contextMenu(canvasContainer);
+
+    const copySelectionBtn = await screen.findByRole("menuitem", {
+      name: "Copy Selection",
+    });
+    fireEvent.click(copySelectionBtn);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "Frame 1: block 16x16 @ (16, 32)",
+      );
+    });
+  });
+
+  it("does nothing when Copy Selection is invoked with no block selected", async () => {
+    vi.mocked(useSelection).mockReturnValue({
+      selection: { frame: { frameIndex: 1 }, temporal: null },
+      setSpatialBlockSelection: vi.fn(),
+    } as any);
+
+    const { container } = render(<YuvViewerPanel {...mockProps} />);
+
+    const canvasContainer = container.querySelector(".yuv-canvas-container")!;
+    fireEvent.contextMenu(canvasContainer);
+
+    const copySelectionBtn = await screen.findByRole("menuitem", {
+      name: "Copy Selection",
+    });
+    fireEvent.click(copySelectionBtn);
+
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
   });
 });
 
