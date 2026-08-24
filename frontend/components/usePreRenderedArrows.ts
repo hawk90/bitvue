@@ -154,7 +154,15 @@ export function usePreRenderedArrows({
     });
 
     // Calculate arrows for all frames
-    let maxArrowOrdinal = -1;
+    // Stacking depth is tracked separately for backward references (target frame index < source
+    // -- the overwhelming majority: I/P frames and most B-frame refs) and forward references
+    // (target > source -- B-frames referencing a not-yet-displayed future frame). The two groups'
+    // lines diverge in opposite horizontal directions the moment they leave the source, so they
+    // never visually compete for the same vertical band and don't need to share one stack --
+    // sharing one caused a frame with e.g. 4 backward + 3 forward refs to reserve a 7-deep tower
+    // when neither direction is actually more than 4 deep on its own.
+    let maxBackwardOrdinal = -1;
+    let maxForwardOrdinal = -1;
     frames.forEach((frame) => {
       const refFrameIndices = extractRefFrameIndices(frame);
       if (refFrameIndices.length === 0) return;
@@ -181,8 +189,10 @@ export function usePreRenderedArrows({
 
       // Stacking ordinal among this frame's *unique* targets (not the raw 0-6 slot index) --
       // deduping means a frame with duplicate slots needs fewer stacked lines than its raw slot
-      // count, so this can be smaller than `REFS_PER_FRAME - 1`.
-      let arrowOrdinal = 0;
+      // count, so this can be smaller than `REFS_PER_FRAME - 1`. Tracked per-direction (see
+      // above) rather than as one shared counter.
+      let backwardOrdinal = 0;
+      let forwardOrdinal = 0;
       slotsByTarget.forEach((slotIndices, refIdx) => {
         const targetPos = framePositions.get(refIdx);
         if (!targetPos) return; // target frame isn't mounted in the current (possibly
@@ -195,6 +205,14 @@ export function usePreRenderedArrows({
 
         const refFrame = frames.find((f) => f.frame_index === refIdx);
         if (!refFrame) return;
+
+        // AV1 references are almost always backward (5.9.2 requires already-decoded pictures),
+        // but B-frames can hold a forward-in-index reference to a future frame that was actually
+        // *decoded* earlier in bitstream order -- either way, "which side does this line's
+        // horizontal segment travel toward" is what determines whether it competes for vertical
+        // room with the other group.
+        const isForward = refIdx > frame.frame_index;
+        const arrowOrdinal = isForward ? forwardOrdinal : backwardOrdinal;
 
         const label = slotIndices.map((s) => getSlotLabel(frame, s)).join(",");
         const pathData = calculatePath(
@@ -217,7 +235,18 @@ export function usePreRenderedArrows({
         const baseOffset = 30;
         const spacingPerSlot = 12;
         const verticalOffset = baseOffset + arrowOrdinal * spacingPerSlot;
-        const sourceX = sourcePos.centerX;
+        // Fan the takeoff point out from the source frame's center instead of every stacked
+        // line sharing the exact same X -- previously all of a frame's arrows (up to 7 for AV1)
+        // dropped straight down from one shared pixel before turning, reading as a single thick
+        // "trunk" that only separated into a comb of lines well below the frame. Leaning each
+        // slot's takeoff a little further toward the direction it's actually traveling (must
+        // match the `calculateThumbnailPath`/`calculateBelowPath` implementations in
+        // ThumbnailsView/VirtualizedThumbnailsView/BPyramidTimeline, which draw the corresponding
+        // vertical segment) turns that single trunk into a visible fan, and reads naturally since
+        // each line is already leaning the way it's about to turn.
+        const fanSpacing = 6;
+        const sourceX =
+          sourcePos.centerX + (isForward ? 1 : -1) * arrowOrdinal * fanSpacing;
         const sourceY = sourcePos.bottom ?? sourcePos.top;
         const labelY = sourceY + verticalOffset;
 
@@ -232,12 +261,20 @@ export function usePreRenderedArrows({
           sourceY,
           labelY,
         });
-        maxArrowOrdinal = Math.max(maxArrowOrdinal, arrowOrdinal);
-        arrowOrdinal++;
+        if (isForward) {
+          maxForwardOrdinal = Math.max(maxForwardOrdinal, arrowOrdinal);
+          forwardOrdinal++;
+        } else {
+          maxBackwardOrdinal = Math.max(maxBackwardOrdinal, arrowOrdinal);
+          backwardOrdinal++;
+        }
       });
     });
 
-    return { arrows, maxStackDepth: maxArrowOrdinal + 1 };
+    // The two directions' stacks render independently (see above), so the room to reserve is
+    // however deep the taller of the two gets, not their sum.
+    const maxStackDepth = Math.max(maxBackwardOrdinal, maxForwardOrdinal) + 1;
+    return { arrows, maxStackDepth };
   }, [containerRef, frames, getFrameTypeColor, calculatePath]);
 
   /**

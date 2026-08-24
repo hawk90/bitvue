@@ -181,16 +181,26 @@ export const BPyramidTimeline = forwardRef<
       (
         sourcePos: ArrowPosition,
         targetPos: ArrowPosition,
-        _sourceFrame: FrameInfoBase,
-        _targetFrame: FrameInfoBase,
+        sourceFrame: FrameInfoBase,
+        targetFrame: FrameInfoBase,
         slotIndex: number,
       ) => {
+        // `slotIndex` is already scoped per direction (usePreRenderedArrows tracks
+        // backward/forward refs as separate stacks), so refs on both sides don't pile into one
+        // tower.
         const baseOffset = 16;
         const spacingPerSlot = 8;
         const verticalOffset = baseOffset + slotIndex * spacingPerSlot;
+        // Fan the takeoff point instead of every stacked line dropping from the exact same pixel
+        // (must match usePreRenderedArrows' identical `sourceX` formula, which positions this
+        // slot's label on the same point) -- leans each line toward the side it's about to turn.
+        const isForward = targetFrame.frame_index > sourceFrame.frame_index;
+        const fanSpacing = 6;
+        const fannedSourceX =
+          sourcePos.centerX + (isForward ? 1 : -1) * slotIndex * fanSpacing;
         const sourceBottom = sourcePos.bottom ?? sourcePos.top;
         const targetBottom = targetPos.bottom ?? targetPos.top;
-        return `M ${sourcePos.centerX} ${sourceBottom} L ${sourcePos.centerX} ${sourceBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom}`;
+        return `M ${fannedSourceX} ${sourceBottom} L ${fannedSourceX} ${sourceBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom + verticalOffset} L ${targetPos.centerX} ${targetBottom}`;
       },
       [],
     );

@@ -184,4 +184,45 @@ describe("usePreRenderedArrows", () => {
     // The merged arrow's label names both slots that share this target, not just the first one.
     expect(arrowsToZero[0].label).toBe("REF0,REF2");
   });
+
+  it("stacks backward and forward references as two independent depths, not one shared tower", async () => {
+    vi.useFakeTimers();
+    // Frame 5 has 2 backward refs (0, 1 -- both < 5) and 1 forward ref (9 -- a B-frame-style
+    // reference to a not-yet-displayed future frame, > 5). Sharing one ordinal counter across
+    // both directions would give these slotIndex 0, 1, 2 and a maxStackDepth of 3; since the two
+    // directions' lines diverge in opposite screen directions the moment they leave the source,
+    // they don't compete for vertical room and should stack independently instead.
+    const frames: FrameInfoBase[] = [
+      { frame_index: 0, frame_type: "I", size: 100 },
+      { frame_index: 1, frame_type: "P", size: 100 },
+      { frame_index: 5, frame_type: "B", size: 100, ref_frames: [0, 1, 9] },
+      { frame_index: 9, frame_type: "P", size: 100 },
+    ];
+
+    let latest: ReturnType<typeof usePreRenderedArrows> | null = null;
+    const { container } = render(
+      <TestHarness frames={frames} onResult={(r) => (latest = r)} />,
+    );
+    stubFrameRects(container);
+    await vi.advanceTimersByTimeAsync(150);
+
+    const arrows = latest!.allArrowData;
+    expect(arrows.length).toBe(3);
+
+    const toZero = arrows.find((a) => a.targetFrameIndex === 0)!;
+    const toOne = arrows.find((a) => a.targetFrameIndex === 1)!;
+    const toNine = arrows.find((a) => a.targetFrameIndex === 9)!;
+
+    // The two backward refs still stack against each other (ordinals 0, 1).
+    expect(toZero.slotIndex).toBe(0);
+    expect(toOne.slotIndex).toBe(1);
+    // The lone forward ref starts its own stack at 0, not 2 -- it isn't piled on top of the
+    // backward group.
+    expect(toNine.slotIndex).toBe(0);
+
+    // Deepest group is the 2-deep backward stack, so maxStackDepth is 2, not 3.
+    expect(latest!.maxStackDepth).toBe(2);
+
+    vi.useRealTimers();
+  });
 });
