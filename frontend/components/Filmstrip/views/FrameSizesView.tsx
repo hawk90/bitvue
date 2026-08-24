@@ -57,6 +57,15 @@ function getFrameQP(frame: FrameInfo, maxSize: number): number {
   return Math.round(51 * (1 - normalizedSize * 0.7));
 }
 
+// Headroom above the tallest bar/curve point, as a multiplier on the true max value used for
+// scaling. Without it, a bar for the single largest frame renders at exactly 100% height and
+// touches the chart container's top edge flush -- reading as "cut off" (found via a real
+// screenshot: frame 0, almost always the biggest frame in any real stream since it's the I-frame,
+// sits directly against the ceiling while the "10 KB" axis label above it has visible padding,
+// making the two look misaligned even though both are technically correct). The axis labels still
+// show the true max/mid/min (unaffected) -- only the bar/line *scaling* gets this margin.
+const Y_AXIS_HEADROOM = 1.08;
+
 // Calculate bitrate from frame size and duration
 // Returns bitrate in bits per time_unit (arbitrary units for relative comparison)
 function calculateBitrate(frame: FrameInfo): number | null {
@@ -106,6 +115,11 @@ function FrameSizesView({
     return Math.max(...bitrates);
   }, [frameBitrates]);
 
+  // Denominators actually used for bar/line height math (see Y_AXIS_HEADROOM) -- axis labels
+  // below deliberately keep using the unscaled `maxFrameSize`/`maxBitrate`.
+  const scaledMaxFrameSize = maxFrameSize * Y_AXIS_HEADROOM;
+  const scaledMaxBitrate = maxBitrate * Y_AXIS_HEADROOM;
+
   const isFrameTypeVisible = useCallback(
     (frameType: string): boolean => {
       return visibleFrameTypes.has(frameType);
@@ -126,124 +140,148 @@ function FrameSizesView({
     <div className="filmstrip-sizes">
       {/* Left Y-axis - Bitrate (KB) */}
       <div className="frame-sizes-axis axis-left">
-        <div className="axis-label max">
-          {(maxFrameSize / 1024).toFixed(0)} KB
+        <div className="axis-scale">
+          <div className="axis-label max">
+            {(maxFrameSize / 1024).toFixed(0)} KB
+          </div>
+          <div className="axis-label mid">
+            {(maxFrameSize / 2 / 1024).toFixed(0)} KB
+          </div>
+          <div className="axis-label min">0</div>
         </div>
-        <div className="axis-label mid">
-          {(maxFrameSize / 2 / 1024).toFixed(0)} KB
-        </div>
-        <div className="axis-label min">0</div>
         <div className="axis-title">Bitrate</div>
       </div>
 
       {/* Chart Container */}
       <div className="frame-sizes-chart">
-        {/* Bar Chart */}
-        <div className="frame-sizes-bars">
-          {filteredFrames.map((frame) => {
-            const qp = getFrameQP(frame, maxSize);
-            const barHeight = (frame.size / maxFrameSize) * 100;
+        {/* Plot area -- must span exactly the same height as each axis's `.axis-scale` (both are
+            the sibling of a same-height `.axis-title`/`.frame-sizes-chart-footer` reserving equal
+            space below) so a bar/line's 0%/50%/100% lines up with the axis labels marking those
+            same points, on both the left and right axis. Before this, `.axis-label`s sat inside a
+            4-item `justify-content: space-between` column that also included `.axis-title`, so
+            "50%"/"0%" landed wherever a 4-way space-between put them -- not at the plot's actual
+            50%/0% -- while this plot area had no such extra item eating into its own 0-100% box.
+            Found via the user reporting the Y-axis "looks unaligned" on both the left and right
+            side, not just one -- consistent with a shared structural cause, not a one-off. */}
+        <div className="frame-sizes-plot">
+          {/* Bar Chart */}
+          <div className="frame-sizes-bars">
+            {filteredFrames.map((frame) => {
+              const qp = getFrameQP(frame, maxSize);
+              const barHeight = (frame.size / scaledMaxFrameSize) * 100;
 
-            return (
-              <div
-                key={frame.frame_index}
-                data-frame-index={frame.frame_index}
-                className={`frame-size-bar ${getFrameTypeColorClass(frame.frame_type)} ${
-                  frame.frame_index === currentFrameIndex ? "selected" : ""
-                }`}
-                onClick={() => onFrameClick(frame.frame_index)}
-                style={{
-                  height: `${barHeight}%`,
-                  backgroundColor: getFrameTypeColor(frame.frame_type),
-                }}
-                title={`Frame ${frame.frame_index}: ${(frame.size / 1024).toFixed(1)} KB, QP: ${qp}`}
+              return (
+                <div
+                  key={frame.frame_index}
+                  data-frame-index={frame.frame_index}
+                  className={`frame-size-bar ${getFrameTypeColorClass(frame.frame_type)} ${
+                    frame.frame_index === currentFrameIndex ? "selected" : ""
+                  }`}
+                  onClick={() => onFrameClick(frame.frame_index)}
+                  style={{
+                    height: `${barHeight}%`,
+                    backgroundColor: getFrameTypeColor(frame.frame_type),
+                  }}
+                  title={`Frame ${frame.frame_index}: ${(frame.size / 1024).toFixed(1)} KB, QP: ${qp}`}
+                />
+              );
+            })}
+          </div>
+
+          {/* Line Chart Overlay (SVG) - Bitrate Curve */}
+          {sizeMetrics.showBitrateCurve && filteredFrames.length > 1 && (
+            <svg
+              className="frame-sizes-line-chart"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <polyline
+                points={filteredFrames
+                  .map((frame, idx) => {
+                    const x = (idx / (filteredFrames.length - 1)) * 100;
+                    const bitrate = calculateBitrate(frame);
+                    // Use bitrate for the line, scaled by maxBitrate
+                    const y =
+                      bitrate !== null
+                        ? 100 - (bitrate / scaledMaxBitrate) * 100
+                        : 100;
+                    return `${x},${y}`;
+                  })
+                  .join(" ")}
+                fill="none"
+                stroke="rgba(0, 220, 220, 1)"
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
               />
-            );
-          })}
+            </svg>
+          )}
+
+          {/* Moving Average Line - frame size moving average */}
+          {sizeMetrics.showMovingAvg && filteredFrames.length > 1 && (
+            <svg
+              className="frame-sizes-line-chart"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <polyline
+                points={filteredFrames
+                  .map((frame, idx) => {
+                    const x = (idx / (filteredFrames.length - 1)) * 100;
+                    // Find the moving avg for this frame (by original index)
+                    const originalIdx = frames.indexOf(frame);
+                    const avgSize =
+                      originalIdx >= 0 ? movingAvg[originalIdx] : 0;
+                    const y = 100 - (avgSize / scaledMaxFrameSize) * 100;
+                    return `${x},${y}`;
+                  })
+                  .join(" ")}
+                fill="none"
+                stroke="rgba(0, 150, 255, 0.8)"
+                strokeWidth="0.8"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          )}
+
+          {/* Average Size Line */}
+          {sizeMetrics.showAvgSize && (
+            <div
+              className="metric-line avg-line"
+              style={{ bottom: `${(avgSize / scaledMaxFrameSize) * 100}%` }}
+            />
+          )}
+
+          {/* Min Size Line */}
+          {sizeMetrics.showMinSize && (
+            <div
+              className="metric-line min-line"
+              style={{ bottom: `${(minSize / scaledMaxFrameSize) * 100}%` }}
+            />
+          )}
+
+          {/* Max Size Line */}
+          {sizeMetrics.showMaxSize && (
+            <div
+              className="metric-line max-line"
+              style={{
+                bottom: `${(maxFrameSize / scaledMaxFrameSize) * 100}%`,
+              }}
+            />
+          )}
         </div>
-
-        {/* Line Chart Overlay (SVG) - Bitrate Curve */}
-        {sizeMetrics.showBitrateCurve && filteredFrames.length > 1 && (
-          <svg
-            className="frame-sizes-line-chart"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-          >
-            <polyline
-              points={filteredFrames
-                .map((frame, idx) => {
-                  const x = (idx / (filteredFrames.length - 1)) * 100;
-                  const bitrate = calculateBitrate(frame);
-                  // Use bitrate for the line, scaled by maxBitrate
-                  const y =
-                    bitrate !== null ? 100 - (bitrate / maxBitrate) * 100 : 100;
-                  return `${x},${y}`;
-                })
-                .join(" ")}
-              fill="none"
-              stroke="rgba(0, 220, 220, 1)"
-              strokeWidth="1"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-        )}
-
-        {/* Moving Average Line - frame size moving average */}
-        {sizeMetrics.showMovingAvg && filteredFrames.length > 1 && (
-          <svg
-            className="frame-sizes-line-chart"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-          >
-            <polyline
-              points={filteredFrames
-                .map((frame, idx) => {
-                  const x = (idx / (filteredFrames.length - 1)) * 100;
-                  // Find the moving avg for this frame (by original index)
-                  const originalIdx = frames.indexOf(frame);
-                  const avgSize = originalIdx >= 0 ? movingAvg[originalIdx] : 0;
-                  const y = 100 - (avgSize / maxFrameSize) * 100;
-                  return `${x},${y}`;
-                })
-                .join(" ")}
-              fill="none"
-              stroke="rgba(0, 150, 255, 0.8)"
-              strokeWidth="0.8"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-        )}
-
-        {/* Average Size Line */}
-        {sizeMetrics.showAvgSize && (
-          <div
-            className="metric-line avg-line"
-            style={{ bottom: `${(avgSize / maxFrameSize) * 100}%` }}
-          />
-        )}
-
-        {/* Min Size Line */}
-        {sizeMetrics.showMinSize && (
-          <div
-            className="metric-line min-line"
-            style={{ bottom: `${(minSize / maxFrameSize) * 100}%` }}
-          />
-        )}
-
-        {/* Max Size Line */}
-        {sizeMetrics.showMaxSize && (
-          <div
-            className="metric-line max-line"
-            style={{ bottom: `${(maxFrameSize / maxFrameSize) * 100}%` }}
-          />
-        )}
+        {/* Empty spacer matching each axis's `.axis-title` height exactly (see the comment above
+            `.frame-sizes-plot`) -- keeps this plot area's own 0-100% box the same height as the
+            axis scale's, with nothing rendered in it. */}
+        <div className="frame-sizes-chart-footer" />
       </div>
 
       {/* Right Y-axis - QP (0-51) */}
       <div className="frame-sizes-axis axis-right">
-        <div className="axis-label max">{maxQP}</div>
-        <div className="axis-label mid">{Math.round(maxQP / 2)}</div>
-        <div className="axis-label min">{minQP}</div>
+        <div className="axis-scale">
+          <div className="axis-label max">{maxQP}</div>
+          <div className="axis-label mid">{Math.round(maxQP / 2)}</div>
+          <div className="axis-label min">{minQP}</div>
+        </div>
         <div className="axis-title">QP</div>
       </div>
     </div>

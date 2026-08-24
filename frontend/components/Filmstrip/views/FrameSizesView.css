@@ -18,41 +18,84 @@
   position: relative;
 }
 
+/* Column layout so `.frame-sizes-plot` (the actual 0-100% plotting box) and
+   `.frame-sizes-chart-footer` (an empty spacer matching each axis's `.axis-title` height) split
+   this column's height the same way `.frame-sizes-axis` splits its own -- see the JSX comment
+   above `.frame-sizes-plot` for why this has to match on both sides. */
 .frame-sizes-chart {
+  /* `flex: 1` fills the remaining row width between the two axis columns in `.filmstrip-sizes`
+     (that row's main axis) -- unrelated to `flex-direction: column` below, which only governs how
+     THIS element's own children (`.frame-sizes-plot`/`.frame-sizes-chart-footer`) stack vertically.
+     Dropping this during the axis-alignment restructure (PNL-10) let the chart shrink to its
+     min-content width instead of filling the available space -- a real regression, not what fixed
+     the Y-axis alignment. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.frame-sizes-plot {
   position: relative;
   flex: 1;
-  height: 100%;
+  min-height: 0;
   display: flex;
   align-items: flex-end;
+}
+
+.frame-sizes-chart-footer {
+  /* Must match `.axis-title`'s total box height (line-height + padding-top) below -- both are
+     empty/decorative-only spacers whose sole job is shrinking their column's 0-100% scale box by
+     the same amount on all three columns (axis-left, chart, axis-right). */
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .frame-sizes-axis {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 2px 4px;
+  padding: 0 4px;
   min-width: 50px;
   height: 100%;
 }
 
+/* The actual 0%/50%/100% scale box -- sized to exactly match `.frame-sizes-plot`'s height (both
+   are `flex: 1` next to a same-height title/footer spacer), with each label absolutely positioned
+   at its literal percentage instead of a `justify-content: space-between` column. Previously
+   `.axis-title` was a 4th item in that space-between distribution, so "mid"/"min" landed wherever
+   4-way spacing put them -- not at the plot's actual 50%/0% -- on both axes identically (this was
+   reported as "the Y axis isn't aligned, left and right", not a one-sided issue). */
+.frame-sizes-axis .axis-scale {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
 .frame-sizes-axis .axis-label {
+  position: absolute;
+  left: 0;
+  right: 0;
   font-size: 9px;
   color: var(--text-muted);
   font-family: "SF Mono", "Monaco", "Consolas", monospace;
   text-align: right;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 .frame-sizes-axis .axis-label.max {
-  align-self: flex-start;
+  top: 0;
+  text-align: left;
 }
 
 .frame-sizes-axis .axis-label.mid {
-  align-self: center;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
 }
 
 .frame-sizes-axis .axis-label.min {
-  align-self: flex-end;
+  bottom: 0;
+  text-align: right;
 }
 
 .frame-sizes-bars {
@@ -96,23 +139,21 @@
   z-index: 1;
 }
 
-/* Axis styling */
-.frame-sizes-axis.axis-left .axis-label {
-  text-align: right;
-}
-
-.frame-sizes-axis.axis-right .axis-label {
-  text-align: left;
-}
-
 .frame-sizes-axis .axis-title {
+  /* Must match `.frame-sizes-chart-footer`'s height exactly -- see that rule's comment. Explicit
+     height + box-sizing + line-height (rather than letting margin/font metrics determine it)
+     keeps this pixel-exact regardless of font rendering differences. */
+  height: 16px;
+  box-sizing: border-box;
+  padding-top: 4px;
+  line-height: 1;
+  flex-shrink: 0;
   font-size: 8px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   text-align: center;
-  margin-top: 4px;
 }
 
 /* Metric overlays */

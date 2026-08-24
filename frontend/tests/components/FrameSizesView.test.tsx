@@ -341,14 +341,21 @@ describe("FrameSizesView", () => {
   });
 
   describe("FrameSizesView bar heights", () => {
-    it("should calculate bar height proportionally", () => {
+    it("should calculate bar height proportionally, leaving headroom above the tallest bar", () => {
       render(<FrameSizesView {...defaultProps} />);
 
+      // Bars scale against maxFrameSize * 1.08 (Y_AXIS_HEADROOM), not maxFrameSize directly, so
+      // even the single largest frame (frame 0, size === maxFrameSize) stops short of 100% --
+      // it no longer touches the chart container's top edge (see FrameSizesView.tsx's comment).
       const fullBar = document.querySelector('[data-frame-index="0"]');
-      expect(fullBar).toHaveStyle({ height: "100%" });
+      expect(fullBar).toHaveStyle({
+        height: `${(100000 / (100000 * 1.08)) * 100}%`,
+      });
 
       const halfBar = document.querySelector('[data-frame-index="1"]');
-      expect(halfBar).toHaveStyle({ height: "50%" });
+      expect(halfBar).toHaveStyle({
+        height: `${(50000 / (100000 * 1.08)) * 100}%`,
+      });
     });
 
     it("should apply frame type color to bar", () => {
@@ -461,8 +468,12 @@ describe("FrameSizesView", () => {
     it("should calculate max size correctly", () => {
       render(<FrameSizesView {...defaultProps} />);
 
+      // Same headroom as the bars themselves (Y_AXIS_HEADROOM) -- the max-size line marks the
+      // true max value, which now sits short of the container's top edge, not flush against it.
       const maxLine = document.querySelector(".metric-line.max-line");
-      expect(maxLine).toHaveStyle({ bottom: "100%" });
+      expect(maxLine).toHaveStyle({
+        bottom: `${(100000 / (100000 * 1.08)) * 100}%`,
+      });
     });
   });
 
