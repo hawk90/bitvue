@@ -82,14 +82,26 @@
   line-height: 1;
 }
 
+/* `bottom` percentages here, not literal 0%/50%/100% -- bars/lines in `.frame-sizes-plot` scale
+   against `maxFrameSize * Y_AXIS_HEADROOM` (FrameSizesView.tsx), not the raw max, so a bar exactly
+   at the true max value only reaches 100/1.08 = 92.593% height, and a half-max bar reaches
+   50/1.08 = 46.296%, not 50%. Positioning these labels at literal 0/50/100% put "max"/"mid" above
+   where a bar of that exact value would actually peak -- correct-looking in isolation (found via
+   screenshot, labels lined up with each other) but wrong once compared against the data itself
+   (found only after the user reported the axis "still" wrong post-PNL-10, which had fixed
+   axis-vs-axis alignment but not this axis-vs-data-scale gap). These are fixed numbers, not
+   data-dependent, because Y_AXIS_HEADROOM is a constant multiplier -- must be recomputed
+   (100/headroom, 50/headroom) if that constant ever changes. */
 .frame-sizes-axis .axis-label.max {
-  top: 0;
+  /* `top`, not `bottom` -- text should hang DOWN from the 92.593%-from-bottom point (same
+     direction `top: 0` originally hung from the literal top), not up into it. */
+  top: 7.407%;
   text-align: left;
 }
 
 .frame-sizes-axis .axis-label.mid {
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 46.296%;
+  transform: translateY(50%);
   text-align: center;
 }
 
