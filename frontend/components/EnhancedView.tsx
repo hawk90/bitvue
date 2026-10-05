@@ -8,10 +8,11 @@
  * 4. Diagnostic severity heatmap
  */
 
-import { memo, useMemo, useEffect, useState, useCallback } from "react";
+import { memo, useMemo, useEffect, useState, useCallback, useRef } from "react";
 import type { FrameInfo } from "../types/video";
 import ThumbnailsView from "./Filmstrip/views/ThumbnailsView";
 import { getFrameTypeColorClass } from "../types/video";
+import "./EnhancedView.css";
 
 // Constants for diagnostic thresholds
 const DIAGNOSTIC_THRESHOLDS = {
@@ -54,6 +55,46 @@ export const EnhancedView = memo(function EnhancedView({
   const [gopBoundaries, setGopBoundaries] = useState<GOPBoundary[]>([]);
   const [sceneChanges, setSceneChanges] = useState<SceneChange[]>([]);
   const [hoveredFrame, setHoveredFrame] = useState<number | null>(null);
+  const thumbnailsWrapperRef = useRef<HTMLDivElement>(null);
+  const overlaysRef = useRef<HTMLDivElement>(null);
+
+  // GOP/scene-change markers below are positioned via `left: X%` computed against the full frame
+  // count -- meaningless unless `.enhanced-overlays` spans the same width as the actual
+  // scrollable thumbnail strip. `ThumbnailsView` renders every frame (not virtualized here) inside
+  // its own internal `.filmstrip-thumbnails` scroll container, which is almost always far wider
+  // than the visible `.enhanced-thumbnails-container` viewport this overlay sits on top of --
+  // without this sync, `left: 50%` landed at 50% of the visible viewport instead of the true
+  // midpoint frame, and scrolling the strip left every marker pinned in place on screen instead of
+  // moving with its frame (found via direct DOM/CSS inspection: `.enhanced-overlays` was
+  // `position: absolute; inset: 0` on the non-scrolling outer wrapper, with no connection to the
+  // inner element that actually scrolls). Mirrors `.filmstrip-thumbnails`'s own scrollWidth/
+  // scrollLeft directly onto the overlay via imperative DOM writes (not React state) so this
+  // doesn't re-render on every scroll tick.
+  useEffect(() => {
+    const wrapper = thumbnailsWrapperRef.current;
+    const overlays = overlaysRef.current;
+    if (!wrapper || !overlays) return;
+
+    const scrollEl = wrapper.querySelector<HTMLElement>(
+      ".filmstrip-thumbnails",
+    );
+    if (!scrollEl) return;
+
+    const sync = () => {
+      overlays.style.width = `${scrollEl.scrollWidth}px`;
+      overlays.style.transform = `translateX(${-scrollEl.scrollLeft}px)`;
+    };
+
+    sync();
+    scrollEl.addEventListener("scroll", sync);
+    const resizeObserver = new ResizeObserver(sync);
+    resizeObserver.observe(scrollEl);
+
+    return () => {
+      scrollEl.removeEventListener("scroll", sync);
+      resizeObserver.disconnect();
+    };
+  }, [frames]);
 
   // Analyze GOP structure
   useEffect(() => {
@@ -272,7 +313,7 @@ export const EnhancedView = memo(function EnhancedView({
       </div>
 
       {/* Enhanced Thumbnails with overlays */}
-      <div className="enhanced-thumbnails-container">
+      <div className="enhanced-thumbnails-container" ref={thumbnailsWrapperRef}>
         <ThumbnailsView
           frames={frames}
           currentFrameIndex={currentFrameIndex}
@@ -290,7 +331,7 @@ export const EnhancedView = memo(function EnhancedView({
         />
 
         {/* GOP Boundary Markers */}
-        <div className="enhanced-overlays">
+        <div className="enhanced-overlays" ref={overlaysRef}>
           {gopBoundaries.map((boundary) => (
             <div
               key={`gop-${boundary.frameIndex}`}

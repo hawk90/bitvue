@@ -142,20 +142,24 @@ const HRDBufferPanelInternal = ({
     const graphWidth = width - margin.left - margin.right;
     const graphHeight = height - margin.top - margin.bottom;
 
-    // Draw buffer limit line (100%)
+    // All three reference lines below use the same y(value) convention as the occupancy curve
+    // itself (further down this function) and its overflow/underflow markers: bigger value ->
+    // smaller y -> higher on screen (`margin.top + graphHeight - (value / maxOccupancy) *
+    // graphHeight`). The two fixed-percentage lines previously used the opposite-signed
+    // `margin.top + (value / maxOccupancy) * graphHeight` -- a real, confirmed-via-screenshot bug
+    // (Buffer Limit rendered at the very *bottom*, Underflow at the very *top*, both backwards)
+    // found by comparing against the occupancy curve's own (correct) formula, not by assumption.
     const maxOccupancy = Math.max(bufferSize, hrdState.maxOccupancy * 1.1);
+    const yForOccupancy = (value: number) =>
+      margin.top + graphHeight - (value / maxOccupancy) * graphHeight;
+
+    // Draw buffer limit line (100%)
     ctx.strokeStyle = "#ff6b6b";
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.moveTo(
-      margin.left,
-      margin.top + (bufferSize / maxOccupancy) * graphHeight,
-    );
-    ctx.lineTo(
-      margin.left + graphWidth,
-      margin.top + (bufferSize / maxOccupancy) * graphHeight,
-    );
+    ctx.moveTo(margin.left, yForOccupancy(bufferSize));
+    ctx.lineTo(margin.left + graphWidth, yForOccupancy(bufferSize));
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -164,22 +168,24 @@ const HRDBufferPanelInternal = ({
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(
-      margin.left,
-      margin.top + ((bufferSize * 0.1) / maxOccupancy) * graphHeight,
-    );
-    ctx.lineTo(
-      margin.left + graphWidth,
-      margin.top + ((bufferSize * 0.1) / maxOccupancy) * graphHeight,
-    );
+    ctx.moveTo(margin.left, yForOccupancy(bufferSize * 0.1));
+    ctx.lineTo(margin.left + graphWidth, yForOccupancy(bufferSize * 0.1));
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw target/estimated bitrate line
+    // Draw target/estimated-bitrate reference line: the occupancy simulation above starts at
+    // `bufferSize * 0.5` and, every frame, subtracts `drainPerFrame` (derived from
+    // `effectiveTargetBitrate`) then adds that frame's real byte size. For the estimated case,
+    // `effectiveTargetBitrate` is defined as exactly `avgBytesPerFrame * frameRate * 8`, so
+    // `drainPerFrame === avgBytesPerFrame` -- a stream whose every frame matched that average
+    // exactly would drain and add the same amount every time, leaving occupancy flat at its
+    // starting point forever. So "the buffer level implied by the target rate" IS
+    // `bufferSize * 0.5`, confirmed empirically (not just derived): the real occupancy curve for
+    // this fixture already hovers almost exactly there, since per-frame variance mostly averages
+    // out over 250 frames. (Previous formula mixed bits and bytes with no conversion and an
+    // unexplained `* 5` multiplier, rendering this line collided with the buffer-limit line.)
     if (effectiveTargetBitrate) {
-      const targetBitsPerFrame = effectiveTargetBitrate / frameRate;
-      const targetY =
-        margin.top + ((targetBitsPerFrame * 5) / maxOccupancy) * graphHeight;
+      const targetY = yForOccupancy(bufferSize * 0.5);
       ctx.strokeStyle = "#51cf66";
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);

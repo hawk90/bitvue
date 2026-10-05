@@ -76,10 +76,13 @@
 }
 
 .enhanced-overlays {
+  /* `width` and `transform` are set imperatively (EnhancedView.tsx's scroll-sync effect) to match
+     the actual scrollable thumbnail strip's `scrollWidth`/`scrollLeft` -- NOT `right: 0`, which
+     would clip this to the visible viewport width regardless of how much wider the real
+     (non-virtualized, all-frames-rendered) thumbnail strip actually is. */
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
   bottom: 0;
   pointer-events: none;
 }

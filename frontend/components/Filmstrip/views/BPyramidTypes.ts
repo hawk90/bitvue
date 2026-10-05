@@ -30,6 +30,13 @@ export interface FrameWithLevel {
   refFrames: number[];
   level: number;
   isKeyframe: boolean;
+  /** True when this frame's `refFrames` include at least one target whose real `display_order`
+   * is greater than this frame's own -- i.e. it depends on a not-yet-displayed frame, the actual
+   * definition of "hierarchically (backward) referenced" regardless of what the raw bitstream
+   * `frame_type` says (AV1 has no B frame_type at all; this is a derived fact from the reference
+   * graph, not the wire format). Only ever true/false when both display_order values are known --
+   * never guessed when either side is undefined. */
+  hasBackwardRef: boolean;
 }
 
 /** Temporal level containing frames */

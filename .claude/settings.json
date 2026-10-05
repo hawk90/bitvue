@@ -31,7 +31,8 @@
     "deny": [
       "Bash(rm -rf /)",
       "Bash(sudo:*)",
-      "Bash(curl|wget):*credentials*",
+      "Bash(curl *credentials*)",
+      "Bash(wget *credentials*)",
       "Read(**/.env*)",
       "Read(**/*secret*)",
       "Read(**/*credential*)",

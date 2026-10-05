@@ -37,78 +37,79 @@ vi.mock("@/types/video", async (importOriginal) => {
   };
 });
 
+// A single 9-frame GOP encoding the classic dyadic hierarchical-B reference structure, using
+// real `display_order` + `ref_frames` (frame_index pointers) exactly as the real app populates
+// them (see FileStateContext.tsx's applyDisplayOrder + bitvue-indexer's PNL-03 ref_frames fix) --
+// NOT AV1's raw frame_type, which is only ever "I"/"P" in this app (AV1 has no B frame_type at
+// all). Decode order (frame_index, array position) is: I0, P8, then the mid/quarter/eighth-point
+// B-frames, each referencing its two nearest already-coded neighbors in display order:
+//   frame_index: 0    1    2    3    4    5    6    7    8
+//   display_order: 0    8    4    2    6    1    3    5    7
+//   refs (by frame_index): --   [0]  [0,1] [0,2] [2,1] [0,3] [3,2] [2,4] [4,1]
+// Expected derived levels: {0,1}->0 (I/P anchors, forward-only) {2}->1 {3,4}->2 {5,6,7,8}->3.
 const mockFrames: FrameInfo[] = [
   {
     frame_index: 0,
     frame_type: "I",
     size: 50000,
-    poc: 0,
-    temporal_id: 0,
+    display_order: 0,
     key_frame: true,
   },
   {
     frame_index: 1,
-    frame_type: "B",
-    size: 20000,
-    poc: 4,
-    temporal_id: 2,
-    ref_frames: [0, 8],
+    frame_type: "P",
+    size: 40000,
+    display_order: 8,
+    ref_frames: [0],
   },
   {
     frame_index: 2,
-    frame_type: "B",
+    frame_type: "P",
     size: 20000,
-    poc: 2,
-    temporal_id: 1,
-    ref_frames: [0, 4],
+    display_order: 4,
+    ref_frames: [0, 1],
   },
   {
     frame_index: 3,
-    frame_type: "B",
+    frame_type: "P",
     size: 20000,
-    poc: 6,
-    temporal_id: 2,
-    ref_frames: [4, 8],
-  },
-  {
-    frame_index: 4,
-    frame_type: "B",
-    size: 25000,
-    poc: 1,
-    temporal_id: 0,
+    display_order: 2,
     ref_frames: [0, 2],
   },
   {
+    frame_index: 4,
+    frame_type: "P",
+    size: 20000,
+    display_order: 6,
+    ref_frames: [2, 1],
+  },
+  {
     frame_index: 5,
-    frame_type: "B",
+    frame_type: "P",
     size: 22000,
-    poc: 5,
-    temporal_id: 2,
-    ref_frames: [2, 6],
+    display_order: 1,
+    ref_frames: [0, 3],
   },
   {
     frame_index: 6,
-    frame_type: "B",
+    frame_type: "P",
     size: 22000,
-    poc: 3,
-    temporal_id: 1,
-    ref_frames: [2, 4],
+    display_order: 3,
+    ref_frames: [3, 2],
   },
   {
     frame_index: 7,
-    frame_type: "B",
+    frame_type: "P",
     size: 22000,
-    poc: 7,
-    temporal_id: 2,
-    ref_frames: [6, 8],
+    display_order: 5,
+    ref_frames: [2, 4],
   },
   {
     frame_index: 8,
-    frame_type: "I",
-    size: 50000,
-    poc: 8,
-    temporal_id: 0,
-    key_frame: true,
+    frame_type: "P",
+    size: 22000,
+    display_order: 7,
+    ref_frames: [4, 1],
   },
 ];
 
@@ -325,6 +326,7 @@ describe("BPyramidTimeline edge cases", () => {
   it("should render level labels", () => {
     render(<BPyramidTimeline {...defaultProps} />);
 
+    expect(screen.getByText("L3")).toBeInTheDocument();
     expect(screen.getByText("L2")).toBeInTheDocument();
     expect(screen.getByText("L1")).toBeInTheDocument();
     expect(screen.getByText("L0")).toBeInTheDocument();
@@ -386,7 +388,7 @@ describe("BPyramidTimeline frame circles", () => {
     render(<BPyramidTimeline {...defaultProps} />);
 
     const levelLabels = document.querySelectorAll(".bpyramid-level-label");
-    expect(levelLabels[0]).toHaveTextContent("L2");
+    expect(levelLabels[0]).toHaveTextContent("L3");
     expect(levelLabels[levelLabels.length - 1]).toHaveTextContent("L0");
   });
 });
@@ -585,29 +587,103 @@ describe("analyzeTemporalLevels", () => {
     const frame0 = result.frameMap.get(0);
     expect(frame0?.level).toBe(0);
     expect(frame0?.isKeyframe).toBe(true);
+    expect(frame0?.hasBackwardRef).toBe(false);
 
+    // frame_index 1 (display_order 8) only references frame_index 0 (display_order 0) --
+    // forward-only, so it's a level-0 anchor exactly like the keyframe, not a hierarchy-deep
+    // frame. This is the case the old temporal_id-based leveling got wrong (it reported 2).
     const frame1 = result.frameMap.get(1);
-    expect(frame1?.level).toBe(2);
+    expect(frame1?.level).toBe(0);
+    expect(frame1?.hasBackwardRef).toBe(false);
+  });
+
+  it("should derive hierarchy depth from the reference graph, not temporal_id (real dyadic B-pyramid shape)", () => {
+    const result = analyzeTemporalLevels(mockFrames);
+
+    // See mockFrames' header comment for the derivation of this exact table.
+    const expected: Record<number, { level: number; hasBackwardRef: boolean }> =
+      {
+        0: { level: 0, hasBackwardRef: false },
+        1: { level: 0, hasBackwardRef: false },
+        2: { level: 1, hasBackwardRef: true },
+        3: { level: 2, hasBackwardRef: true },
+        4: { level: 2, hasBackwardRef: true },
+        5: { level: 3, hasBackwardRef: true },
+        6: { level: 3, hasBackwardRef: true },
+        7: { level: 3, hasBackwardRef: true },
+        8: { level: 3, hasBackwardRef: true },
+      };
+
+    for (const [frameIndex, exp] of Object.entries(expected)) {
+      const frame = result.frameMap.get(Number(frameIndex));
+      expect(frame?.level).toBe(exp.level);
+      expect(frame?.hasBackwardRef).toBe(exp.hasBackwardRef);
+    }
   });
 
   it("should organize levels in descending order", () => {
     const result = analyzeTemporalLevels(mockFrames);
 
-    expect(result.levels.length).toBe(3);
-    expect(result.levels[0].level).toBe(2);
-    expect(result.levels[1].level).toBe(1);
-    expect(result.levels[2].level).toBe(0);
+    expect(result.levels.length).toBe(4);
+    expect(result.levels[0].level).toBe(3);
+    expect(result.levels[1].level).toBe(2);
+    expect(result.levels[2].level).toBe(1);
+    expect(result.levels[3].level).toBe(0);
   });
 
-  it("should default to level 0 when temporal_id is undefined", () => {
+  it("should default to level 0 when there is no display_order or temporal_id", () => {
     const framesWithoutTemporal = [
-      { frame_index: 0, frame_type: "I", size: 50000, poc: 0 },
+      { frame_index: 0, frame_type: "I", size: 50000 },
     ] as FrameInfo[];
 
     const result = analyzeTemporalLevels(framesWithoutTemporal);
 
     const frame = result.frameMap.get(0);
     expect(frame?.level).toBe(0);
+    expect(frame?.hasBackwardRef).toBe(false);
+  });
+
+  it("should fall back to temporal_id only when the ref-graph method has no display_order to work with", () => {
+    const frames = [
+      { frame_index: 0, frame_type: "I", size: 1000, key_frame: true },
+      { frame_index: 1, frame_type: "P", size: 1000, temporal_id: 2 },
+    ] as FrameInfo[];
+
+    const result = analyzeTemporalLevels(frames);
+
+    const frame1 = result.frameMap.get(1);
+    expect(frame1?.level).toBe(2);
+    // Still honestly "we don't know it's backward-referenced" -- the SVC hint sets the level
+    // number, but isn't proof of hierarchical (backward) prediction.
+    expect(frame1?.hasBackwardRef).toBe(false);
+  });
+
+  it("should not infer a backward reference when the referenced frame's display_order is unknown", () => {
+    const frames = [
+      {
+        frame_index: 0,
+        frame_type: "I",
+        size: 1000,
+        display_order: 0,
+        key_frame: true,
+      },
+      {
+        frame_index: 1,
+        frame_type: "P",
+        size: 1000,
+        display_order: 5,
+        ref_frames: [0, 2],
+      },
+      // frame_index 2 has no display_order -- frame 1's reference to it can't be proven
+      // backward, so it must not be fabricated as one.
+      { frame_index: 2, frame_type: "P", size: 1000, ref_frames: [0] },
+    ] as FrameInfo[];
+
+    const result = analyzeTemporalLevels(frames);
+
+    const frame1 = result.frameMap.get(1);
+    expect(frame1?.hasBackwardRef).toBe(false);
+    expect(frame1?.level).toBe(0);
   });
 
   it("should identify I frames as keyframes", () => {
@@ -616,8 +692,8 @@ describe("analyzeTemporalLevels", () => {
     const frame0 = result.frameMap.get(0);
     expect(frame0?.isKeyframe).toBe(true);
 
-    const frame8 = result.frameMap.get(8);
-    expect(frame8?.isKeyframe).toBe(true);
+    const frame1 = result.frameMap.get(1);
+    expect(frame1?.isKeyframe).toBe(false);
   });
 
   it("should identify frames marked as key_frame", () => {
