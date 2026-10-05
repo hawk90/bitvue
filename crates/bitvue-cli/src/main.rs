@@ -158,8 +158,9 @@ enum Commands {
         #[arg(short, long)]
         file: PathBuf,
 
-        /// Frame index (0-based)
-        #[arg(short = 'f', long)]
+        /// Frame index (0-based). Short form is `-n` (not `-f`): `-f` is `--file` here and on
+        /// every other subcommand, and a duplicate short makes clap panic in debug builds.
+        #[arg(short = 'n', long)]
         frame: usize,
 
         /// Show detailed syntax information
@@ -431,4 +432,39 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// clap only validates the argument graph (duplicate shorts/longs, conflicting ids, ...) via
+    /// `debug_assert`, which otherwise fires lazily -- and only in debug builds -- the first time
+    /// the offending subcommand is parsed. `analyze` used to declare `-f` for both `--file` and
+    /// `--frame`, so `bitvue analyze ...` panicked in every debug build.
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn analyze_accepts_file_short_and_frame_short() {
+        let cli = Cli::try_parse_from(["bitvue", "analyze", "-f", "in.ivf", "-n", "3"])
+            .expect("analyze -f <file> -n <frame> should parse");
+        match cli.command {
+            Commands::Analyze { file, frame, .. } => {
+                assert_eq!(file, PathBuf::from("in.ivf"));
+                assert_eq!(frame, 3);
+            }
+            other => panic!("expected Analyze, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn analyze_accepts_long_frame() {
+        let cli = Cli::try_parse_from(["bitvue", "analyze", "--file", "in.ivf", "--frame", "7"])
+            .expect("analyze --file <file> --frame <frame> should parse");
+        assert!(matches!(cli.command, Commands::Analyze { frame: 7, .. }));
+    }
 }
