@@ -61,3 +61,16 @@ skip = [{run = "test ! -d frontend/node_modules"}]
 
 [commit-msg]
 commands.validate.run = "grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\\(.+\\))?: .{10,}' {1}"
+
+# ================================
+# Keep local deps in sync with the lockfiles after pull / checkout / rebase
+# ================================
+
+[post-merge.commands.sync-deps]
+run = "scripts/sync-deps.sh"
+
+[post-checkout.commands.sync-deps]
+run = "scripts/sync-deps.sh --since {1}"
+
+[post-rewrite.commands.sync-deps]
+run = "scripts/sync-deps.sh"
