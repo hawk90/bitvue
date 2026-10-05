@@ -402,12 +402,11 @@ pub fn lo_ctx(
 ) -> (u8, u32) {
     let mut mag = levels.get(x, y + 1) + levels.get(x + 1, y);
     let hi_mag;
-    let offset;
-    if is_1d {
+    let offset = if is_1d {
         mag += levels.get(x, y + 2);
         hi_mag = mag;
         mag += levels.get(x, y + 3) + levels.get(x, y + 4);
-        offset = 26 + if y > 1 { 10 } else { y * 5 };
+        26 + if y > 1 { 10 } else { y * 5 }
     } else {
         mag += levels.get(x + 1, y + 1);
         hi_mag = mag;
@@ -417,8 +416,8 @@ pub fn lo_ctx(
             std::cmp::Ordering::Greater => &LO_CTX_OFFSETS_WIDE,
             std::cmp::Ordering::Less => &LO_CTX_OFFSETS_TALL,
         };
-        offset = table[y.min(4) as usize][x.min(4) as usize] as u32;
-    }
+        table[y.min(4) as usize][x.min(4) as usize] as u32
+    };
     let ctx = offset + if mag > 512 { 4 } else { (mag + 64) >> 7 };
     (ctx as u8, hi_mag)
 }

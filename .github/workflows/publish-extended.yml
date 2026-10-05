@@ -17,7 +17,7 @@ jobs:
     name: Chocolatey (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Get version
         id: version
@@ -79,9 +79,9 @@ jobs:
 
   snap:
     name: Snap (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: snapcore/action-build@v1
         id: build
@@ -96,12 +96,12 @@ jobs:
 
   flatpak:
     name: Flatpak (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container:
       image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
       options: --privileged
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Generate cargo sources
         run: |
@@ -123,9 +123,9 @@ jobs:
 
   appimage:
     name: AppImage (Linux)
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install deps
         run: |
@@ -155,14 +155,14 @@ jobs:
 
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: appimage
           path: bitvue-*.AppImage
 
   scoop:
     name: Scoop (Windows)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Get version
         id: version
@@ -173,7 +173,7 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/scoop-bucket
           token: ${{ secrets.SCOOP_TOKEN }}
@@ -214,7 +214,7 @@ jobs:
 
   nixpkgs:
     name: nixpkgs (Nix)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Get version
         id: version
@@ -225,7 +225,7 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: cachix/install-nix-action@v25
 

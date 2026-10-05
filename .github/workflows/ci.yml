@@ -21,13 +21,13 @@ jobs:
 
   changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -49,9 +49,9 @@ jobs:
     name: Rust Smoke Test
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install dav1d
@@ -63,13 +63,13 @@ jobs:
 
   frontend-smoke:
     name: Frontend Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
@@ -90,9 +90,9 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -107,9 +107,9 @@ jobs:
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -151,7 +151,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -220,10 +220,10 @@ jobs:
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       (needs.clippy.result == 'success' || needs.clippy.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install dav1d
@@ -244,10 +244,10 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -278,7 +278,7 @@ jobs:
           done
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: coverage/bitvue-hevc.json,coverage/bitvue-avc.json,coverage/bitvue-vp9.json,coverage/bitvue-av1-codec.json,coverage/bitvue-avs3.json,coverage/bitvue-jpegxs.json,coverage/bitvue-vc3.json,coverage/bitvue-codecs-parser.json,coverage/bitvue-engine.json,coverage/bitvue-formats.json,coverage/bitvue-cli.json
           flags: rust
@@ -286,7 +286,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload coverage JSON (artifact)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -305,12 +305,12 @@ jobs:
     if: |
       github.event_name == 'pull_request' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
@@ -325,12 +325,12 @@ jobs:
       always() &&
       github.event_name == 'pull_request' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
@@ -348,13 +348,13 @@ jobs:
       github.event_name == 'pull_request' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped') &&
       (needs.frontend-lint.result == 'success' || needs.frontend-lint.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       - name: Install dependencies
@@ -370,9 +370,9 @@ jobs:
     name: Documentation
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install native dependencies

@@ -336,9 +336,11 @@ fn downconvert_high_bitdepth_luma(plane: &[u8], bit_depth: u8) -> Vec<u8> {
     debug_assert!(bit_depth > 8, "8-bit planes should not be downconverted");
     let shift = bit_depth.saturating_sub(8);
     plane
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| {
-            let sample16 = u16::from_le_bytes([c[0], c[1]]);
+            let sample16 = u16::from_le_bytes(*c);
             (sample16 >> shift) as u8
         })
         .collect()

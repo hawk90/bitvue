@@ -37,11 +37,7 @@ interface StreamTreePanelProps {
 }
 
 type FrameFilter =
-  | "All"
-  | "KeyOnly"
-  | "InterOnly"
-  | "FramesOnly"
-  | "HeadersOnly";
+  "All" | "KeyOnly" | "InterOnly" | "FramesOnly" | "HeadersOnly";
 
 const FRAME_FILTERS: { value: FrameFilter; label: string }[] = [
   { value: "All", label: "All" },

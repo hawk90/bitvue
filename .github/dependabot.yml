@@ -1,24 +1,50 @@
 version: 2
 updates:
-  # Enable version updates for Rust dependencies
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
-    reviewers:
-      - "your-username"
-    assignees:
-      - "your-username"
     labels:
       - "dependencies"
       - "rust"
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
+    groups:
+      rust-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "dav1d-sys"
 
-  # Enable version updates for GitHub Actions
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/frontend"
+      - "/bitvue-desktop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+        patterns:
+          - "*"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -31,37 +57,7 @@ updates:
     commit-message:
       prefix: "chore(ci)"
       include: "scope"
-
-  # Enable version updates for npm (frontend)
-  - package-ecosystem: "npm"
-    directory: "/src"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "frontend"
-    commit-message:
-      prefix: "chore(deps)"
-      include: "scope"
-
-  # Group minor and patch updates (optional)
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-patch"]
     groups:
-      rust-dependencies:
+      actions:
         patterns:
           - "*"
-        exclude-patterns:
-          - "dav1d-sys"
-        applies-to: version-updates
-    labels:
-      - "dependencies"
-      - "rust"
