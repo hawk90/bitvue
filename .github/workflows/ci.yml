@@ -21,7 +21,7 @@ jobs:
 
   changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -49,7 +49,7 @@ jobs:
     name: Rust Smoke Test
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -63,7 +63,7 @@ jobs:
 
   frontend-smoke:
     name: Frontend Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: true
     steps:
       - uses: actions/checkout@v7
@@ -90,7 +90,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -107,7 +107,7 @@ jobs:
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -220,7 +220,7 @@ jobs:
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       (needs.clippy.result == 'success' || needs.clippy.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -244,7 +244,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -305,7 +305,7 @@ jobs:
     if: |
       github.event_name == 'pull_request' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -325,7 +325,7 @@ jobs:
       always() &&
       github.event_name == 'pull_request' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -348,7 +348,7 @@ jobs:
       github.event_name == 'pull_request' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped') &&
       (needs.frontend-lint.result == 'success' || needs.frontend-lint.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -370,7 +370,7 @@ jobs:
     name: Documentation
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
