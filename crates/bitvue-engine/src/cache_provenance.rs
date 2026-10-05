@@ -120,6 +120,14 @@ pub struct CacheProvenance {
     /// Last access time
     pub last_accessed: SystemTime,
 
+    /// Monotonic access sequence assigned by the tracker (higher = more recent).
+    ///
+    /// LRU ordering uses this instead of `last_accessed`: wall-clock stamps taken
+    /// back-to-back can be identical (coarse timer resolution), which made the
+    /// eviction order depend on `HashMap` iteration order.
+    #[serde(default)]
+    pub access_seq: u64,
+
     /// Access count
     pub access_count: u64,
 
@@ -144,6 +152,7 @@ impl CacheProvenance {
             key,
             created_at: now,
             last_accessed: now,
+            access_seq: 0,
             access_count: 0,
             size_bytes,
             source,
@@ -223,6 +232,9 @@ pub struct CacheProvenanceTracker {
 
     /// Invalidation count
     invalidation_count: u64,
+
+    /// Next value handed out as `CacheProvenance::access_seq`
+    access_clock: u64,
 }
 
 impl CacheProvenanceTracker {
@@ -235,12 +247,19 @@ impl CacheProvenanceTracker {
             miss_count: 0,
             eviction_count: 0,
             invalidation_count: 0,
+            access_clock: 0,
         }
+    }
+
+    fn next_access_seq(&mut self) -> u64 {
+        self.access_clock += 1;
+        self.access_clock
     }
 
     /// Add a cache entry
     pub fn add_entry(&mut self, key: CacheKey, size_bytes: usize, source: String) {
-        let provenance = CacheProvenance::new(key.clone(), size_bytes, source);
+        let mut provenance = CacheProvenance::new(key.clone(), size_bytes, source);
+        provenance.access_seq = self.next_access_seq();
         self.total_size += size_bytes;
         self.entries.insert(key, provenance);
     }
@@ -248,8 +267,10 @@ impl CacheProvenanceTracker {
     /// Record a cache hit
     pub fn record_hit(&mut self, key: &CacheKey) {
         self.hit_count += 1;
+        let seq = self.next_access_seq();
         if let Some(entry) = self.entries.get_mut(key) {
             entry.record_access();
+            entry.access_seq = seq;
         }
     }
 
@@ -345,11 +366,11 @@ impl CacheProvenanceTracker {
             .entries
             .iter()
             .filter(|(_, entry)| entry.is_valid)
-            .map(|(key, entry)| (key.clone(), entry.time_since_access()))
+            .map(|(key, entry)| (key.clone(), entry.access_seq))
             .collect();
 
-        // Sort by time since access (oldest first = largest duration)
-        candidates.sort_by_key(|(_, time)| std::cmp::Reverse(*time));
+        // Sort by access sequence (oldest first = smallest sequence number)
+        candidates.sort_by_key(|(_, seq)| *seq);
 
         // Collect keys until we reach target bytes
         let mut total = 0;
