@@ -553,11 +553,13 @@ describe("calculateRollingAverage edge cases", () => {
     expect(result).toHaveLength(3);
   });
 
+  // 1M samples x 100-wide window is ~10^8 slice/reduce steps: a few seconds
+  // when the suite runs in parallel, so give it room beyond the 5 s default.
   it("should handle very large array", () => {
     const data = Array.from({ length: 1000000 }, () => 5);
     const result = calculateRollingAverage(data, 100);
 
     expect(result).toHaveLength(1000000);
     expect(result[0]).toBeCloseTo(5);
-  });
+  }, 30_000);
 });
