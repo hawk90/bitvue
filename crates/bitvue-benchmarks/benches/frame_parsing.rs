@@ -1,8 +1,9 @@
 //! Benchmarks for frame parsing and PSNR calculation
 
-use bitvue_av1_codec::{parse_ivf_frames, ObuIterator};
+use bitvue_av1_codec::ObuIterator;
 use bitvue_metrics::psnr;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 
 /// Benchmark parsing IVF header (just the header, no frame data)
 fn bench_ivf_header_parse(c: &mut Criterion) {

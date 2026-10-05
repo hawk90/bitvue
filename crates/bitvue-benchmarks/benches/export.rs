@@ -2,21 +2,26 @@
 //!
 //! Export functions can be slow when dealing with large datasets (100K+ frames).
 
-use bitvue_engine::export::{
-    ExportConfig, ExportFormat, FrameExportRow, MetricPoint, QualityMetrics,
-};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use bitvue_engine::export::{ExportConfig, QualityMetrics};
+use bitvue_engine::metrics_distribution::MetricPoint;
+use bitvue_engine::timeline::{FrameMarker, TimelineFrame};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 
-fn create_test_frames(count: usize) -> Vec<FrameExportRow> {
+fn create_test_frames(count: usize) -> Vec<TimelineFrame> {
     (0..count)
-        .map(|i| FrameExportRow {
+        .map(|i| TimelineFrame {
             display_idx: i,
+            size_bytes: 1000 + (i as u64 % 10) * 100,
             frame_type: if i % 3 == 0 { "KEY" } else { "P" }.to_string(),
-            size_bytes: 1000 + (i % 10) * 100,
+            marker: if i % 3 == 0 {
+                FrameMarker::Key
+            } else {
+                FrameMarker::None
+            },
             pts: Some(i as u64 * 100),
-            dts: Some(i as u64 * 100 - 100),
-            is_key: i % 3 == 0,
-            has_error: false,
+            dts: Some((i as u64 * 100).saturating_sub(100)),
+            is_selected: false,
         })
         .collect()
 }
@@ -110,24 +115,15 @@ fn bench_export_frames_json_pretty(c: &mut Criterion) {
 
 fn create_test_metrics(count: usize) -> (Vec<MetricPoint>, Vec<MetricPoint>, Vec<MetricPoint>) {
     let psnr: Vec<MetricPoint> = (0..count)
-        .map(|i| MetricPoint {
-            idx: i,
-            value: 30.0 + (i as f32 % 20.0),
-        })
+        .map(|i| MetricPoint::new(i, 30.0 + (i as f32 % 20.0)))
         .collect();
 
     let ssim: Vec<MetricPoint> = (0..count)
-        .map(|i| MetricPoint {
-            idx: i,
-            value: 0.8 + (i as f32 % 20.0) / 100.0,
-        })
+        .map(|i| MetricPoint::new(i, 0.8 + (i as f32 % 20.0) / 100.0))
         .collect();
 
     let vmaf: Vec<MetricPoint> = (0..count)
-        .map(|i| MetricPoint {
-            idx: i,
-            value: 70.0 + (i as f32 % 30.0),
-        })
+        .map(|i| MetricPoint::new(i, 70.0 + (i as f32 % 30.0)))
         .collect();
 
     (psnr, ssim, vmaf)
@@ -144,12 +140,12 @@ fn bench_export_metrics_csv(c: &mut Criterion) {
             metric_count,
             |b, &count| {
                 let (psnr, ssim, vmaf) = create_test_metrics(count);
-                let metrics = QualityMetrics {
-                    psnr_y: &psnr,
-                    ssim_y: &ssim,
-                    vmaf: &vmaf,
-                };
                 b.iter(|| {
+                    let metrics = QualityMetrics {
+                        psnr_y: &psnr,
+                        ssim_y: &ssim,
+                        vmaf: &vmaf,
+                    };
                     let mut output = Vec::new();
                     black_box(
                         bitvue_engine::export::export_metrics_csv(metrics, &mut output).unwrap(),
