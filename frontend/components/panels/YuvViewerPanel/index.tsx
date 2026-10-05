@@ -35,6 +35,7 @@ import { createLogger } from "../../../utils/logger";
 import { useCanvasInteraction } from "../../../hooks/useCanvasInteraction";
 import { useAv1Features } from "../../../hooks/useAv1Features";
 import { ZOOM, TIMING } from "../../../constants/ui";
+import { MENU_EVENTS } from "../../../../bitvue-desktop/electron/menuEvents";
 import { VideoCanvas } from "./VideoCanvas";
 import type { SpatialBlockRect } from "../../../utils/spatialBlockHitTest";
 import {
@@ -419,22 +420,22 @@ export const YuvViewerPanel = memo(function YuvViewerPanel({
     const onChannelAll = () => setChannelMode("all");
     const onLoopPlayback = () => setIsLooping((v) => !v);
 
-    window.addEventListener("menu-color-bt601", onColorBT601);
-    window.addEventListener("menu-color-bt709", onColorBT709);
-    window.addEventListener("menu-color-bt2020", onColorBT2020);
-    window.addEventListener("menu-color-yuv-rgb", onColorYuvRgb);
-    window.addEventListener("menu-color-yuv-gbr", onColorYuvGbr);
+    window.addEventListener(MENU_EVENTS.colorBt601, onColorBT601);
+    window.addEventListener(MENU_EVENTS.colorBt709, onColorBT709);
+    window.addEventListener(MENU_EVENTS.colorBt2020, onColorBT2020);
+    window.addEventListener(MENU_EVENTS.colorYuvAsRgb, onColorYuvRgb);
+    window.addEventListener(MENU_EVENTS.colorYuvAsGbr, onColorYuvGbr);
     window.addEventListener("viewer-channel-y", onChannelY);
     window.addEventListener("viewer-channel-u", onChannelU);
     window.addEventListener("viewer-channel-v", onChannelV);
     window.addEventListener("viewer-channel-all", onChannelAll);
     window.addEventListener("menu-loop-playback", onLoopPlayback);
     return () => {
-      window.removeEventListener("menu-color-bt601", onColorBT601);
-      window.removeEventListener("menu-color-bt709", onColorBT709);
-      window.removeEventListener("menu-color-bt2020", onColorBT2020);
-      window.removeEventListener("menu-color-yuv-rgb", onColorYuvRgb);
-      window.removeEventListener("menu-color-yuv-gbr", onColorYuvGbr);
+      window.removeEventListener(MENU_EVENTS.colorBt601, onColorBT601);
+      window.removeEventListener(MENU_EVENTS.colorBt709, onColorBT709);
+      window.removeEventListener(MENU_EVENTS.colorBt2020, onColorBT2020);
+      window.removeEventListener(MENU_EVENTS.colorYuvAsRgb, onColorYuvRgb);
+      window.removeEventListener(MENU_EVENTS.colorYuvAsGbr, onColorYuvGbr);
       window.removeEventListener("viewer-channel-y", onChannelY);
       window.removeEventListener("viewer-channel-u", onChannelU);
       window.removeEventListener("viewer-channel-v", onChannelV);

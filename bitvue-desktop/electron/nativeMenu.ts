@@ -29,11 +29,8 @@
  * same shape and can't share a builder.
  */
 
-import {
-  BrowserWindow,
-  Menu,
-  type MenuItemConstructorOptions,
-} from "electron";
+import { BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
+import { MENU_COLOR_SPACES, MENU_EVENTS, MENU_MODES } from "./menuEvents.js";
 
 export function installNativeMacMenu(win: BrowserWindow): void {
   if (process.platform !== "darwin") return;
@@ -99,13 +96,9 @@ export function installNativeMacMenu(win: BrowserWindow): void {
     {
       label: "Mode",
       submenu: [
-        item("Overview", "menu-mode-change", "overview"),
-        item("Coding Flow", "menu-mode-change", "coding"),
-        item("Prediction", "menu-mode-change", "prediction"),
-        item("Transform", "menu-mode-change", "transform"),
-        item("QP Map", "menu-mode-change", "qp"),
-        item("MV Field", "menu-mode-change", "mv"),
-        item("Reference Frames", "menu-mode-change", "reference"),
+        // Same `VisualizationMode` keys as the Windows/Linux TitleBar Mode menu (generated from
+        // ModeContext's MODES); handled by the renderer's useModeMenuEvents -> setMode.
+        ...MENU_MODES.map((m) => item(m.label, MENU_EVENTS.modeChange, m.key)),
         sep,
         item("Extended Modes", "menu-mode-extended"),
       ],
@@ -149,14 +142,9 @@ export function installNativeMacMenu(win: BrowserWindow): void {
       submenu: [
         {
           label: "Color Space",
-          submenu: [
-            item("ITU Rec. 601", "menu-color-bt601"),
-            item("ITU Rec. 709", "menu-color-bt709"),
-            item("ITU Rec. 2020", "menu-color-bt2020"),
-            sep,
-            item("YUV as RGB", "menu-color-yuv-rgb"),
-            item("YUV as GBR", "menu-color-yuv-gbr"),
-          ],
+          submenu: MENU_COLOR_SPACES.map((c) =>
+            c === null ? sep : item(c.label, c.event),
+          ),
         },
         {
           label: "CPU & Performance",
@@ -182,8 +170,8 @@ export function installNativeMacMenu(win: BrowserWindow): void {
           ],
         },
         sep,
-        item("Dark Theme", "menu-theme-change", "dark"),
-        item("Light Theme", "menu-theme-change", "light"),
+        item("Dark Theme", MENU_EVENTS.themeChange, "dark"),
+        item("Light Theme", MENU_EVENTS.themeChange, "light"),
         sep,
         item("Save Layout...", "menu-save-layout"),
         item("Load Layout...", "menu-load-layout"),
@@ -243,7 +231,7 @@ export function installNativeMacMenu(win: BrowserWindow): void {
       label: "Help",
       submenu: [
         item("Documentation", "menu-documentation"),
-        item("Keyboard Shortcuts", "menu-keyboard-shortcuts"),
+        item("Keyboard Shortcuts", MENU_EVENTS.keyboardShortcuts),
         sep,
         item("About Bitvue", "menu-about"),
       ],

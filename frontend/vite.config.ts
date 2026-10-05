@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
@@ -29,6 +29,15 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    fs: {
+      // The renderer imports one file from outside frontend/: the menu event-name constants shared
+      // with the Electron main process (bitvue-desktop/electron/menuEvents.ts). `vite build` and
+      // vitest don't care, but the dev server's fs.strict would 403 it without this allow entry.
+      allow: [
+        searchForWorkspaceRoot(process.cwd()),
+        path.resolve(__dirname, "../bitvue-desktop/electron/menuEvents.ts"),
+      ],
+    },
     watch: {
       // Tell vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],

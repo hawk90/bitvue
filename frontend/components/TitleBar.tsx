@@ -4,7 +4,8 @@
  * Complete menu implementation matching egui reference with full submenu structure.
  *
  * This component is shown on Windows/Linux only. On macOS, the native
- * system menu is used instead (see utils/menu/setup.ts).
+ * system menu is used instead (bitvue-desktop/electron/nativeMenu.ts); both
+ * share event names via bitvue-desktop/electron/menuEvents.ts.
  */
 
 import { useState, useRef, memo, useCallback, useMemo } from "react";
@@ -13,6 +14,10 @@ import {
   toggleMaximizeWindow,
 } from "../services/electronBridgeService";
 import { MODES, type VisualizationMode } from "../contexts/ModeContext";
+import {
+  MENU_COLOR_SPACES,
+  MENU_EVENTS,
+} from "../../bitvue-desktop/electron/menuEvents";
 import "./TitleBar.css";
 
 interface MenuItem {
@@ -24,6 +29,19 @@ interface MenuItem {
   action?: () => void;
   separator?: boolean;
   items?: MenuItem[]; // For submenus
+}
+
+/**
+ * Dispatch the same `window` CustomEvent the macOS native menu (`nativeMenu.ts`) sends, so items
+ * whose handlers live outside App's prop surface (theme listener in App, colour-space listener in
+ * YuvViewerPanel) behave identically on every platform.
+ */
+function dispatchMenuEvent(event: string, detail?: unknown): void {
+  window.dispatchEvent(
+    detail === undefined
+      ? new CustomEvent(event)
+      : new CustomEvent(event, { detail }),
+  );
 }
 
 interface MenuConfig {
@@ -168,14 +186,15 @@ export const TitleBar = memo(function TitleBar({
           {
             id: "color-space",
             label: "Color Space",
-            items: [
-              { id: "color-bt601", label: "ITU Rec. 601" },
-              { id: "color-bt709", label: "ITU Rec. 709" },
-              { id: "color-bt2020", label: "ITU Rec. 2020" },
-              { id: "sep1", label: "", separator: true },
-              { id: "color-yuv-rgb", label: "YUV as RGB" },
-              { id: "color-yuv-gbr", label: "YUV as GBR" },
-            ],
+            items: MENU_COLOR_SPACES.map((c, i) =>
+              c === null
+                ? { id: `color-sep${i}`, label: "", separator: true }
+                : {
+                    id: c.event.replace(/^menu-/, ""),
+                    label: c.label,
+                    action: () => dispatchMenuEvent(c.event),
+                  },
+            ),
           },
           {
             id: "cpu-perf",
@@ -203,8 +222,16 @@ export const TitleBar = memo(function TitleBar({
             ],
           },
           { id: "sep1", label: "", separator: true },
-          { id: "theme-dark", label: "Dark Theme" },
-          { id: "theme-light", label: "Light Theme" },
+          {
+            id: "theme-dark",
+            label: "Dark Theme",
+            action: () => dispatchMenuEvent(MENU_EVENTS.themeChange, "dark"),
+          },
+          {
+            id: "theme-light",
+            label: "Light Theme",
+            action: () => dispatchMenuEvent(MENU_EVENTS.themeChange, "light"),
+          },
           { id: "sep2", label: "", separator: true },
           { id: "save-layout", label: "Save Layout..." },
           { id: "load-layout", label: "Load Layout..." },

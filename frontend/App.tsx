@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  memo,
-  lazy,
-  Suspense,
-  useCallback,
-  useState,
-  useMemo,
-} from "react";
+import { memo, lazy, Suspense, useCallback, useState, useMemo } from "react";
 import { closeWindow } from "./services/electronBridgeService";
 import { useOpenFileStatus } from "./hooks/useOpenFileStatus";
 import "./App.css";
@@ -31,7 +23,6 @@ import { YuvDiffProvider, useYuvDiff } from "./contexts/YuvDiffContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { useLayout } from "./contexts/LayoutContext";
 import { isMacOS, shouldShowTitleBar } from "./utils/platform";
-import type { ThemeChangeEvent } from "./types/video";
 import { isKeyframe } from "./types/video";
 import {
   DockableLayout,
@@ -60,6 +51,8 @@ import { useFileMenuEvents } from "./hooks/useFileMenuEvents";
 import { useLayoutMenuEvents } from "./hooks/useLayoutMenuEvents";
 import { useOptionsMenuEvents } from "./hooks/useOptionsMenuEvents";
 import { useOverlayMenuEvents } from "./hooks/useOverlayMenuEvents";
+import { useModeMenuEvents } from "./hooks/useModeMenuEvents";
+import { useThemeMenuEvents } from "./hooks/useThemeMenuEvents";
 import { useSidecarLifecycleEvents } from "./hooks/useSidecarLifecycleEvents";
 
 // Lazy load dialog components - only loaded when needed
@@ -115,17 +108,8 @@ function LazyDialogWrapper({
 function App() {
   const { setTheme } = useTheme();
 
-  // Theme changes
-  useEffect(() => {
-    const handleThemeChange = (e: Event) => {
-      const themeEvent = e as ThemeChangeEvent;
-      setTheme(themeEvent.detail);
-    };
-    window.addEventListener("menu-theme-change", handleThemeChange);
-    return () => {
-      window.removeEventListener("menu-theme-change", handleThemeChange);
-    };
-  }, [setTheme]);
+  // Theme changes (Options > Dark/Light Theme, mac native menu and Win/Linux TitleBar alike)
+  useThemeMenuEvents(setTheme);
   return (
     <ModeProvider>
       <FrameDataProvider>
@@ -559,6 +543,7 @@ function AppContent() {
   useLayoutMenuEvents(saveLayout, loadLayout, resetLayout);
   useOptionsMenuEvents();
   useOverlayMenuEvents(toggleOverlay, clearOverlays, availableOverlays);
+  useModeMenuEvents(setMode);
   useSidecarLifecycleEvents({ showErrorDialog });
   useFileMenuEvents({
     openFileAtPath,
