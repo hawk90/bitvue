@@ -9,6 +9,10 @@ on:
         description: 'Version to publish'
         required: true
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -138,6 +142,10 @@ jobs:
         with:
           cache: false
           build-warnings: allow
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "publish"
 
       - name: Build
         run: cargo build --release
