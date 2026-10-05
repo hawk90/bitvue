@@ -234,6 +234,7 @@ pub struct CacheProvenanceTracker {
     invalidation_count: u64,
 
     /// Next value handed out as `CacheProvenance::access_seq`
+    #[serde(default)]
     access_clock: u64,
 }
 
