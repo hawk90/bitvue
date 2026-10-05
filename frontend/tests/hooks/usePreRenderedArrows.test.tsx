@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { useRef } from "react";
 import {
   usePreRenderedArrows,
@@ -103,7 +103,9 @@ describe("usePreRenderedArrows", () => {
     stubFrameRects(container);
 
     // The hook's internal calculation runs after a 100ms settle timer.
-    await vi.advanceTimersByTimeAsync(150);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
 
     expect(latest).not.toBeNull();
     const arrows = latest!.allArrowData;
@@ -139,7 +141,9 @@ describe("usePreRenderedArrows", () => {
       <TestHarness frames={frames} onResult={(r) => (latest = r)} />,
     );
     stubFrameRects(container);
-    await vi.advanceTimersByTimeAsync(150);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
 
     const arrow = latest!.allArrowData[0];
     // pathData = "M x1 y1 L x1 y2 L x2 y2 L x2 y3" (tokens 0-11) -- token [5] is y2, the y where
@@ -173,7 +177,9 @@ describe("usePreRenderedArrows", () => {
       <TestHarness frames={frames} onResult={(r) => (latest = r)} />,
     );
     stubFrameRects(container);
-    await vi.advanceTimersByTimeAsync(150);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
 
     const arrows = latest!.allArrowData;
     // 2 unique targets (0 and 60), not 3 raw slots -- exactly one arrow per real target.
@@ -204,7 +210,9 @@ describe("usePreRenderedArrows", () => {
       <TestHarness frames={frames} onResult={(r) => (latest = r)} />,
     );
     stubFrameRects(container);
-    await vi.advanceTimersByTimeAsync(150);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
 
     const arrows = latest!.allArrowData;
     expect(arrows.length).toBe(3);

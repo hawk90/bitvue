@@ -152,7 +152,7 @@ export const LineChart = memo(function LineChart({
   const gridLines = useMemo(() => {
     if (!showGrid) return [];
 
-    const lines: JSX.Element[] = [];
+    const lines: React.JSX.Element[] = [];
 
     // Vertical grid lines (X-axis)
     for (let i = 0; i <= 5; i++) {

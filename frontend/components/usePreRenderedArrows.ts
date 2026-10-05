@@ -52,7 +52,7 @@ export type PathCalculator = (
 ) => string;
 
 interface UsePreRenderedArrowsProps {
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
   frames: FrameInfoBase[];
   getFrameTypeColor: (frameType: string) => string;
   calculatePath: PathCalculator;

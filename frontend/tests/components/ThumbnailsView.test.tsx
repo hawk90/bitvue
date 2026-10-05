@@ -19,23 +19,23 @@ vi.mock("@/components/usePreRenderedArrows", () => ({
   FrameInfoBase: null,
 }));
 
-describe("ThumbnailsView", () => {
-  // Mock getFrameTypeColor
-  vi.mock("@/types/video", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("@/types/video")>();
-    return {
-      ...actual,
-      getFrameTypeColor: vi.fn((type) => {
-        const colors: Record<string, string> = {
-          I: "#ff4444",
-          P: "#44ff44",
-          B: "#4444ff",
-        };
-        return colors[type] || "#888888";
-      }),
-    };
-  });
+// Mock getFrameTypeColor
+vi.mock("@/types/video", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/types/video")>();
+  return {
+    ...actual,
+    getFrameTypeColor: vi.fn((type) => {
+      const colors: Record<string, string> = {
+        I: "#ff4444",
+        P: "#44ff44",
+        B: "#4444ff",
+      };
+      return colors[type] || "#888888";
+    }),
+  };
+});
 
+describe("ThumbnailsView", () => {
   const mockFrames: FrameInfo[] = [
     {
       frame_index: 0,

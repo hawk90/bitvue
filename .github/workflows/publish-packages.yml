@@ -35,7 +35,7 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
@@ -84,7 +84,7 @@ jobs:
           fi
 
       - name: Checkout tap repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ${{ github.repository_owner }}/homebrew-bitvue
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
@@ -195,7 +195,7 @@ jobs:
     name: Create Debian Package
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install dependencies
         run: |
@@ -209,7 +209,7 @@ jobs:
           build-warnings: allow
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "publish"
 
@@ -274,7 +274,7 @@ jobs:
           dpkg-deb --build bitvue-gui_${VERSION}
 
       - name: Upload debian packages
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: debian-packages
           path: |
@@ -308,7 +308,7 @@ jobs:
           fi
 
       - name: Checkout AUR repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: aur/bitvue-bin
           token: ${{ secrets.AUR_SSH_KEY }}

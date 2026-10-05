@@ -28,7 +28,7 @@
   font-size: 0.75rem;
   font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
   color: var(--fg-secondary);
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .panel-error-retry {

@@ -49,7 +49,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
   const offset = visibleRange.start * itemWidth;
 
   // Handle scroll with requestAnimationFrame for smooth updates
-  const rafRef = useRef<number>();
+  const rafRef = useRef<number | undefined>(undefined);
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const scrollLeft = e.currentTarget.scrollLeft; // extract synchronously before event is recycled
     // Cancel any pending animation frame
@@ -170,7 +170,7 @@ export const VirtualizedFilmstrip = memo(function VirtualizedFilmstrip({
 
   // Render visible frames
   const visibleFrames = useMemo(() => {
-    const result: JSX.Element[] = [];
+    const result: React.JSX.Element[] = [];
     for (let i = visibleRange.start; i < visibleRange.end; i++) {
       const frame = frames[i];
       if (!frame) continue;
