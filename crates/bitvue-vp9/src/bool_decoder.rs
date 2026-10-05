@@ -63,15 +63,14 @@ impl<'a> Vp9BoolDecoder<'a> {
     pub fn read_bool(&mut self, prob: u8) -> bool {
         let split = 1 + (((self.range - 1) * prob as u32) >> 8);
         let big_split = split << self.count;
-        let bit;
-        if self.value >= big_split {
+        let bit = if self.value >= big_split {
             self.range -= split;
             self.value -= big_split;
-            bit = true;
+            true
         } else {
             self.range = split;
-            bit = false;
-        }
+            false
+        };
         // Renormalize: shift until range >= 128.
         // For u32 in [1, 255]: leading_zeros() - 24 gives the shift needed.
         if self.range > 0 {
