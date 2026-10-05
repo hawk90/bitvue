@@ -23,7 +23,7 @@ abseil = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-twox-hash = "1"
+twox-hash = "2"
 
 [dev-dependencies]
 criterion = "0.5"
