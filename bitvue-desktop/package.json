@@ -20,7 +20,7 @@
     "package:win": "npm run build:electron && electron-builder --win --publish=never"
   },
   "devDependencies": {
-    "@types/node": "^22.20.4",
+    "@types/node": "^26.6.4",
     "electron": "^43.7.7",
     "electron-builder": "^25.1.8",
     "typescript": "^5.9.3",
