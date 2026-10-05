@@ -217,8 +217,14 @@ describe("renderModeOverlay", () => {
     renderModeOverlay(options);
     const finalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // Image data should be unchanged (no overlay drawn)
-    expect(initialImageData.data).toEqual(finalImageData.data);
+    // Image data should be unchanged (no overlay drawn). Compare the bytes
+    // with a single pass: `toEqual` on a 640*480*4 Uint8ClampedArray walks
+    // every element through the deep-equality matcher and exceeds the 5 s
+    // test timeout on vitest 3.
+    expect(finalImageData.data.length).toBe(initialImageData.data.length);
+    expect(
+      finalImageData.data.some((v, i) => v !== initialImageData.data[i]),
+    ).toBe(false);
   });
 });
 
