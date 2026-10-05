@@ -159,13 +159,17 @@ if (typeof ImageData === "undefined") {
   } as unknown as typeof ImageData;
 }
 
-// Mock IntersectionObserver for components that use it
-const mockIntersectionObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-  takeRecords: vi.fn().mockReturnValue([]),
-}));
+// Mock IntersectionObserver for components that use it.
+// vitest 4 only lets a mock be called with `new` when its implementation is
+// constructible, so these observer mocks use `function`, not arrow functions.
+const mockIntersectionObserver = vi.fn().mockImplementation(function () {
+  return {
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+    takeRecords: vi.fn().mockReturnValue([]),
+  };
+});
 Object.defineProperty(window, "IntersectionObserver", {
   writable: true,
   configurable: true,
@@ -174,11 +178,13 @@ Object.defineProperty(window, "IntersectionObserver", {
 global.IntersectionObserver = mockIntersectionObserver;
 
 // Mock ResizeObserver for components that use it
-const mockResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+const mockResizeObserver = vi.fn().mockImplementation(function () {
+  return {
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  };
+});
 Object.defineProperty(window, "ResizeObserver", {
   writable: true,
   configurable: true,

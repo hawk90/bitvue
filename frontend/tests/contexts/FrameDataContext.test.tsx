@@ -49,7 +49,9 @@ let workerInstances: MockWorkerInstance[] = [];
 function setupWorkerMock(autoReply = false) {
   workerInstances = [];
 
-  global.Worker = vi.fn().mockImplementation(() => {
+  // `function`, not an arrow: vitest 4 rejects `new Worker()` on a mock
+  // whose implementation is not constructible.
+  global.Worker = vi.fn().mockImplementation(function () {
     const instance: MockWorkerInstance = {
       postMessage: vi.fn((data) => {
         if (autoReply && instance.onmessage) {
@@ -342,7 +344,7 @@ describe("FrameDataContext worker error fallback", () => {
     // Set up worker mock that fires onerror synchronously on postMessage
     workerInstances = [];
 
-    global.Worker = vi.fn().mockImplementation(() => {
+    global.Worker = vi.fn().mockImplementation(function () {
       const instance: MockWorkerInstance = {
         postMessage: vi.fn(() => {
           if (instance.onerror) {
