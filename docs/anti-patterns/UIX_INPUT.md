@@ -1,6 +1,6 @@
 # Anti-Pattern Catalog — UIX_INPUT: 조작과 키보드 UX
 
-이 문서는 더 큰 안티패턴 카탈로그의 일부입니다(전체 목차는 별도 작성 중인 `docs/anti-patterns/INDEX.md` 참고). UI/UX+Tauri Phase 3 웨이브에 속하며, Phase 1(Rust/미디어 엔지니어링)·Phase 2(VQ-Probe 도메인)에 이어 마우스 없이도 생산적으로 작업해야 하는 파워유저 도구(비트스트림 분석기)의 조작·키보드 UX를 다룹니다. 이 파일은 1단계(일반 참조 카탈로그)이며, 2단계에서 Bitvue 저장소를 실제로 감사해 각 항목의 "Bitvue 판정"을 채웁니다. Bitvue에는 이미 문서화된 키보드 단축키 표(`docs/PARITY_CHECKLIST.md` Layer 4)가 있으므로, 2단계 감사 시 modifier key 일관성(UIX-INPUT-011)을 그 표와 교차 검증할 가치가 있습니다.
+이 문서는 더 큰 안티패턴 카탈로그의 일부입니다(전체 목차는 별도 작성 중인 `docs/anti-patterns/INDEX.md` 참고). UI/UX+Tauri Phase 3 웨이브에 속하며, Phase 1(Rust/미디어 엔지니어링)·Phase 2(VQ-Probe 도메인)에 이어 마우스 없이도 생산적으로 작업해야 하는 파워유저 도구(비트스트림 분석기)의 조작·키보드 UX를 다룹니다. 이 파일은 1단계(일반 참조 카탈로그)이며, 2단계에서 Bitvue 저장소를 실제로 감사해 각 항목의 "Bitvue 판정"을 채웁니다. Bitvue에는 이미 문서화된 키보드 단축키 표(`docs/history/parity-checklist-log.md` Layer 4, 현재 상태는 `docs/specs/features.yaml`)가 있으므로, 2단계 감사 시 modifier key 일관성(UIX-INPUT-011)을 그 표와 교차 검증할 가치가 있습니다.
 
 ---
 
@@ -394,13 +394,13 @@ macOS 사용자 비중이 높은 크리에이티브/미디어 툴 시장에서 �
 - modifier 검사를 플랫폼 추상화 레이어(`isPrimaryModifier(event)` 같은 헬퍼)로 감싸 macOS에서는 `metaKey`, 그 외에는 `ctrlKey`를 검사하도록 단일화한다.
 - 단축키 표시 문자열도 같은 추상화에서 플랫폼에 맞게 생성한다(`⌘`/`Ctrl` 자동 전환).
 - 네이티브 메뉴 accelerator와 WebView 단축키 정의를 단일 소스(설정 테이블)에서 파생시켜 두 군데가 어긋나지 않게 한다.
-- Bitvue의 경우 `docs/PARITY_CHECKLIST.md` Layer 4에 이미 정리된 단축키 표를 이 항목의 modifier 일관성 여부로 재검토할 가치가 있다(감사 시 상호 참조).
+- Bitvue의 경우 `docs/history/parity-checklist-log.md` Layer 4에 정리된 단축키 표(동결본; 현재 상태는 `docs/specs/features.yaml` UX 항목)를 이 항목의 modifier 일관성 여부로 재검토할 가치가 있다(감사 시 상호 참조).
 
 **탐지**:
 - 크로스플랫폼 CI 매트릭스에서 동일 단축키 시나리오를 macOS/Windows/Linux 각각 실행해 결과 비교.
 - 코드 스캔: `ctrlKey`와 `metaKey` 사용 빈도/위치 대조, 단일 추상화 함수 경유 여부 확인.
 
-**Bitvue 판정**: Confirmed (심각) — `useKeyboardNavigation.ts`의 Open/Close/Export/Save/Go-to-frame/Reload/Undo/Copy 단축키가 전부 `ctrl: true, meta: true`를 동시에 요구하도록 등록됨(예: 191-218행, 270-283행). `keyboardShortcuts.ts:371-389`의 `getShortcutKey`/`getEventKey`는 `ctrlKey`와 `metaKey` 둘 다 정확히 일치해야 매치되는데, 실제 키 이벤트는 Windows/Linux에서 Ctrl+O 시 `ctrlKey=true,metaKey=false`, macOS에서 Cmd+O 시 `metaKey=true,ctrlKey=false`로 둘 중 하나만 켜진다 — 즉 이 단축키들은 어느 플랫폼에서도 정상적인 한 손 입력으로는 절대 발동하지 않는다(Ctrl과 Cmd를 동시에 눌러야만 매치). 플랫폼별 분기 헬퍼(`isPrimaryModifier` 등)가 전무하고, `platform.ts`/`keyboardShortcuts.ts`의 `isMac()`은 표시 문자열 생성에만 쓰이고 실제 매칭 로직과 분리되어 있음. `docs/PARITY_CHECKLIST.md` Layer 4 단축키 표와 교차 검증 시 이 불일치를 반드시 반영해야 함.
+**Bitvue 판정**: Confirmed (심각) — `useKeyboardNavigation.ts`의 Open/Close/Export/Save/Go-to-frame/Reload/Undo/Copy 단축키가 전부 `ctrl: true, meta: true`를 동시에 요구하도록 등록됨(예: 191-218행, 270-283행). `keyboardShortcuts.ts:371-389`의 `getShortcutKey`/`getEventKey`는 `ctrlKey`와 `metaKey` 둘 다 정확히 일치해야 매치되는데, 실제 키 이벤트는 Windows/Linux에서 Ctrl+O 시 `ctrlKey=true,metaKey=false`, macOS에서 Cmd+O 시 `metaKey=true,ctrlKey=false`로 둘 중 하나만 켜진다 — 즉 이 단축키들은 어느 플랫폼에서도 정상적인 한 손 입력으로는 절대 발동하지 않는다(Ctrl과 Cmd를 동시에 눌러야만 매치). 플랫폼별 분기 헬퍼(`isPrimaryModifier` 등)가 전무하고, `platform.ts`/`keyboardShortcuts.ts`의 `isMac()`은 표시 문자열 생성에만 쓰이고 실제 매칭 로직과 분리되어 있음. `docs/history/parity-checklist-log.md` Layer 4 단축키 표(현재 상태: `docs/specs/features.yaml` UX 항목)와 교차 검증 시 이 불일치를 반드시 반영해야 함.
 
 ---
 
