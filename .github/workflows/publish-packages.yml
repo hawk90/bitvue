@@ -22,6 +22,10 @@ on:
       AUR_SSH_KEY:
         required: false
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -203,6 +207,11 @@ jobs:
         with:
           cache: false
           build-warnings: allow
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "publish"
 
       - name: Build release
         run: cargo build --release -p bitvue-cli -p bitvue-gui
