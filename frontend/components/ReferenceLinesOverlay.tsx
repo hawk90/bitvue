@@ -18,7 +18,7 @@ interface ExpansionInfo {
 
 interface ReferenceLinesOverlayProps {
   expansionInfo: ExpansionInfo[];
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const ReferenceLinesOverlay = memo(function ReferenceLinesOverlay({

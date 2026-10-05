@@ -28,7 +28,7 @@ export interface UseIntersectionObserverOptions {
 
 export interface UseIntersectionObserverResult {
   /** The ref to attach to the target element */
-  ref: RefObject<Element>;
+  ref: RefObject<Element | null>;
   /** Whether the element is currently intersecting */
   isVisible: boolean;
   /** The entry object from IntersectionObserver */
@@ -94,7 +94,7 @@ export function useIntersectionObserver(
  * @returns Whether the element is intersecting
  */
 export function useIntersectionObserverRef(
-  targetRef: RefObject<Element>,
+  targetRef: RefObject<Element | null>,
   options: UseIntersectionObserverOptions = {},
 ): boolean {
   const {

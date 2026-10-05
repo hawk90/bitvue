@@ -30,9 +30,9 @@ export interface UseDropdownReturn {
   /** Toggle the dropdown open/close */
   toggle: () => void;
   /** Ref to attach to the dropdown container element */
-  dropdownRef: React.RefObject<HTMLDivElement>;
+  dropdownRef: React.RefObject<HTMLDivElement | null>;
   /** Ref to attach to the trigger element */
-  triggerRef: React.RefObject<HTMLElement>;
+  triggerRef: React.RefObject<HTMLElement | null>;
 }
 
 /**

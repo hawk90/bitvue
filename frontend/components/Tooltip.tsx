@@ -10,7 +10,9 @@ import "./Tooltip.css";
 
 interface TooltipProps {
   content: string;
-  children: React.ReactElement;
+  children: React.ReactElement<
+    React.HTMLAttributes<HTMLElement> & { ref?: React.Ref<HTMLElement> }
+  >;
   placement?: "top" | "bottom" | "left" | "right";
   delay?: number;
   disabled?: boolean;

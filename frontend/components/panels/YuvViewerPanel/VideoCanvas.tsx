@@ -118,7 +118,7 @@ interface VideoCanvasProps {
    *  component's DOM has -- exposed via this optional ref rather than duplicating the layout in
    *  the parent. Attached to `.yuv-canvas-container`, not either `<canvas>`, since the container
    *  is what CSS actually sizes to the available panel space. */
-  containerRef?: RefObject<HTMLDivElement>;
+  containerRef?: RefObject<HTMLDivElement | null>;
   isDragging: boolean;
   /** Raw YUV data if available (overrides frameImage when present) */
   yuvData?: YUVFrame;

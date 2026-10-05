@@ -21,7 +21,7 @@ interface FrameSizesLegendProps {
    * draggable panel just *below* the chart instead of a `window.innerWidth`-relative guess --
    * the old default (top-right of the whole viewport) landed squarely on top of the chart's own
    * right-edge QP axis labels on first open, every time, regardless of window size. */
-  anchorRef?: RefObject<HTMLElement>;
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
 interface Position {
