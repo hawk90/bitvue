@@ -4,7 +4,8 @@
 //! millions of times during video bitstream parsing.
 
 use bitvue_engine::BitReader;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 
 /// Benchmark reading 8 bits (single byte) repeatedly
 fn bench_read_bits_8(c: &mut Criterion) {

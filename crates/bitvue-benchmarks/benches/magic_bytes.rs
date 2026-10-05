@@ -3,7 +3,8 @@
 //! Tests the performance of type-safe magic byte matching vs traditional byte array comparisons.
 
 use bitvue_formats::container::MagicBytes;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 
 /// Benchmark MagicBytes::matches vs manual byte slice comparison
 fn bench_magic_bytes_matches(c: &mut Criterion) {
@@ -100,7 +101,7 @@ fn bench_magic_bytes_creation(c: &mut Criterion) {
     c.bench_function("create_byte_array", |b| {
         b.iter(|| {
             black_box(b"TEST" as &[u8]);
-            black_box([0x1A, 0x45, 0xDF, 0xA3] as &[u8]);
+            black_box(&[0x1A_u8, 0x45, 0xDF, 0xA3] as &[u8]);
         });
     });
 }

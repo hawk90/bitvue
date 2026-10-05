@@ -11,10 +11,10 @@ path = "src/main.rs"
 [dependencies]
 bitvue-engine = { path = "../bitvue-engine" }
 bitvue-av1-codec = { path = "../bitvue-av1-codec" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tokio = { version = "1.0", features = ["full"] }
-async-trait = "0.1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-anyhow = "1.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.2", features = ["full"] }
+async-trait = "0.1.92"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+anyhow = "1.0.104"

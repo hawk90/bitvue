@@ -126,6 +126,8 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libdav1d-dev
       - run: cargo clippy --workspace --lib --exclude abseil -- -D warnings
+      # Benches are never run in CI; compile them so they cannot silently rot again.
+      - run: cargo check --workspace --exclude abseil --benches
 
   test:
     name: Test (${{ matrix.crate }}, ${{ matrix.os }})

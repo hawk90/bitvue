@@ -1,7 +1,10 @@
 //! Metrics export (CSV)
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::Write;
+
+use crate::metrics_distribution::MetricPoint;
 
 use super::types::{ExportFormat, ExportResult, QualityMetrics};
 
@@ -35,21 +38,26 @@ pub fn export_metrics_csv<W: Write>(
     .max()
     .unwrap_or(0);
 
+    // Index each series once (first point wins on duplicate idx, matching the old linear `find`)
+    // so the row loop is O(n) rather than O(n^2).
+    let by_idx = |points: &[MetricPoint]| {
+        let mut map = HashMap::with_capacity(points.len());
+        for p in points {
+            map.entry(p.idx).or_insert(p.value);
+        }
+        map
+    };
+    let psnr = by_idx(metrics.psnr_y);
+    let ssim = by_idx(metrics.ssim_y);
+    let vmaf = by_idx(metrics.vmaf);
+
     let mut row_count = 0;
     let mut bytes_written = 0;
 
     for idx in 0..=max_idx {
-        let psnr_val = metrics
-            .psnr_y
-            .iter()
-            .find(|p| p.idx == idx)
-            .map(|p| p.value);
-        let ssim_val = metrics
-            .ssim_y
-            .iter()
-            .find(|p| p.idx == idx)
-            .map(|p| p.value);
-        let vmaf_val = metrics.vmaf.iter().find(|p| p.idx == idx).map(|p| p.value);
+        let psnr_val = psnr.get(&idx).copied();
+        let ssim_val = ssim.get(&idx).copied();
+        let vmaf_val = vmaf.get(&idx).copied();
 
         // Skip rows with no data
         if psnr_val.is_none() && ssim_val.is_none() && vmaf_val.is_none() {

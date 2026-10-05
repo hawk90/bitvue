@@ -6,7 +6,7 @@ publish = false
 license = "AGPL-3.0-or-later"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
 
 bitvue-engine = { path = "../bitvue-engine" }
 bitvue-av1-codec = { path = "../bitvue-av1-codec" }

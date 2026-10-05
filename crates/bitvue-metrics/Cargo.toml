@@ -16,7 +16,7 @@ libvmaf-rs = { version = "0.5", optional = true }
 # turbo-metrics = { version = "0.3", optional = true }
 
 # Multi-threading support (Rust alternative to OpenMP)
-rayon = { version = "1.10", optional = true }
+rayon = { version = "1.12.0", optional = true }
 
 # SIMD support (AVX, AVX2, AVX-512 on x86_64, NEON on ARM)
 # Using standard library SIMD (requires nightly) or fallback to scalar
