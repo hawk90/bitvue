@@ -57,6 +57,8 @@ jobs:
           cache: false
           build-warnings: allow
       - uses: Swatinem/rust-cache@v2
+      - name: Verify Cargo.lock is current
+        run: cargo fetch --locked
       - name: Install dav1d
         run: sudo apt-get install -y libdav1d-dev
       - name: Check formatting

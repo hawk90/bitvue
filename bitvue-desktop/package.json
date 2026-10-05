@@ -4,6 +4,10 @@
   "description": "Electron main-process side of the bitvue-sidecar bridge (Node child_process client for bitvue-protocol over stdio). Standalone package, not an npm workspace member.",
   "private": true,
   "type": "module",
+  "packageManager": "npm@12.2.0",
+  "engines": {
+    "node": ">=24"
+  },
   "main": "dist/electron/main.js",
   "scripts": {
     "postinstall": "node scripts/patch-electron-app-name.mjs",

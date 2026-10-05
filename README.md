@@ -59,6 +59,8 @@ cd bitvue
 ./scripts/package_electron.sh mac    # or: linux | win
 ```
 
+Local setup: `scripts/bootstrap.sh` (installs the pinned Node via mise, the pinned Rust via rustup, dependencies from the lockfiles, and git hooks that re-sync deps after pull/checkout).
+
 Bitvue is a **desktop app split across two processes**: a React/TypeScript
 frontend running inside Electron, talking over stdio to `bitvue-sidecar` — a
 Rust binary that owns codec parsing, decoding, and all analysis logic. See
