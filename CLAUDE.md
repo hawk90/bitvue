@@ -9,24 +9,26 @@ with commercial tools (VQ Analyzer, VQ Probe, VEGA, StreamEye). Migrated off Tau
 
 | Doc | Owns |
 |---|---|
-| `docs/VQA_PARITY_SPEC_V3.md` | Backend/codec feature spec, priorities |
-| `docs/PARITY_CHECKLIST.md` | Implementation tracking — **the only ✅/⚠️/❌ source of truth**; also owns parity validation strategy/test sources |
-| `docs/COMPETITOR_FEATURE_MATRIX.md` | Per-product feature-by-feature matrix (VQ Analyzer/VQ Probe/VEGA/StreamEye/Codecian) |
-| `docs/UX_PARITY_MATRIX.md` | UI/UX interaction parity (mouse/tooltip/zoom contracts, workspace specs, menu structure, overlay color scale) |
-| `docs/DEVELOPMENT_PHASES.md` | Phase 0-12 implementation roadmap (Rust sketches, task checklists, time estimates) |
+| `docs/specs/features.yaml` | **The only feature status / parity source of truth** (id, area, priority, status, acceptance, evidence, competitors, legacy ids). Schema + update rules: `docs/specs/README.md` |
+| `docs/VQA_PARITY_SPEC_V3.md` | Backend/codec spec narrative: goals, tech stack, §1.5 priority rationale, F-key numbering |
+| `docs/PARITY_CHECKLIST.md` | Parity validation strategy, test sources, verification tiers, regression suite, fixtures |
+| `docs/COMPETITOR_FEATURE_MATRIX.md` | Competitor research provenance, out-of-scope rationale, per-product counts |
+| `docs/UX_PARITY_MATRIX.md` | UI/UX contracts narrative, menu tree, overlay colour scale, shortcuts ownership |
+| `docs/DEVELOPMENT_PHASES.md` | Architecture decisions (sidecar, "제품 아키텍처 확정") + Phase 0-12 goals/rationale |
+| `docs/history/` | Dated dev logs + frozen old checklist notes — history, not current state |
 | `archive_docs/` | Retired docs, kept for history — don't treat as current |
 
-All four active docs cross-link via a "See also" header — follow it before assuming a doc is standalone.
-Don't create a 5th parity doc; extend one of the four above.
+Status changes go in `features.yaml` only (edit the item, keep its id, add evidence) — never ✅/❌ in Markdown.
+Don't create new parity docs.
 
 ## Known doc drift
 
 - **Resolved 2026-08-10** (`3dcd0dc`, user sign-off given): `README.md`'s Tauri-era build instructions
   (`npm run tauri:dev`/`tauri:build`, WebView2 prereq, `src-tauri/` architecture tree) reconciled with the
   Electron migration, and the VMAF/BD-rate "shipped feature" claim corrected to match `PARITY_CHECKLIST.md`
-  Layer 6 (CMP-05/CMP-06: BD-rate unwired, VMAF behind an optional unwired-by-default Cargo feature). If
+  Layer 6 (CMP-05/CMP-06 — now in `features.yaml`: BD-rate unwired, VMAF behind an optional unwired-by-default Cargo feature). If
   README drifts again (new features shipped, build flow changes), re-run the same reconciliation — grep
-  actual `Cargo.toml` workspace members / `package.json` scripts / `PARITY_CHECKLIST.md` status rather than
+  actual `Cargo.toml` workspace members / `package.json` scripts / `docs/specs/features.yaml` status rather than
   trusting README's existing prose, and get user sign-off before changing public-facing marketing claims.
 
 ## Working conventions (established this session, confirmed by user correction)
@@ -54,27 +56,16 @@ Don't create a 5th parity doc; extend one of the four above.
 
 ## Agents
 
-Bitvue-specific expert agents (`bitvue-master`, `rust-master`, `tauri-master`, `video-codec-expert`,
-`video-formats-expert`, `documentation-writer`, `performance-profiler`, `test-engineer`, `ui-ux-designer`) are
-defined **globally** (`~/.claude/agents/`), not in this repo's `.claude/agents/` (which holds generic
-general-purpose agent templates: `api-documenter`, `architect-reviewer`, `changelog-generator`, `code-reviewer`,
-`context-manager`, `debugger`, `dependency-manager`, `product-strategist`, `research-coordinator`, `rust-pro`,
-`security-auditor`, `technical-writer`). Prefer the global Bitvue-tuned ones when a name overlaps in spirit
-(e.g. `rust-master` over `rust-pro`, `documentation-writer` over `technical-writer`).
+Bitvue-specific expert agents live in this repo's `.claude/agents/` (`bitvue-master`, `rust-master`,
+`video-codec-expert`, `video-formats-expert`, `documentation-writer`, `performance-profiler`, `test-engineer`,
+`ui-ux-designer`). Skills in `.claude/skills/`: `bitstream` (inspect streams via `bitvue` CLI/MCP, codec &
+container reference), `optimize` (benches, profiling, hotspots, performance targets), `test-bitvue` (test
+layout/commands, llvm-cov, coverage targets). No project commands. For generic code review / security review
+use the built-in `/code-review` and `/security-review`.
 
-**2026-07-31 cleanup:** deleted local `.claude/agents/{performance-profiler,test-engineer,ui-ux-designer}.md`
-— they had the *exact same names* as better, Bitvue-tuned global agents but were generic 200-900 line
-boilerplate stubs silently shadowing them (verified by diff: global versions are concise, project-specific;
-local ones were generic "specializing in ... across all technology stacks" filler). Also deleted
-`video-editor.md` (FFmpeg video editing/color-grading — not this project's domain at all). If a future local
-agent file collides in name with a global one, diff them before assuming the local copy is the customization —
-here it was the reverse.
-
-**Unresolved, flagged not fixed:** `.claude/commands/generate-tests.md` (Bitvue-tuned) and the global skill
-`~/.claude/skills/generate-tests.md` (generic) share the name `generate-tests` — precedence between a
-project command and a same-named global skill wasn't verified. If `/generate-tests` ever produces generic
-output instead of Bitvue-aware output, this collision is why — investigate before adding more project commands
-with names that might collide globally.
+**2026-10-05:** moved the Bitvue agents/commands/skills here from `~/.claude/`; deleted the 12 generic
+template agents, `commands/generate-tests.md`, and `tauri-master` (Tauri removed 2026-08-08). Same day:
+merged the 4 commands + 7 skills into the 3 skills above and fact-checked the agents against the code.
 
 ## Workflows
 

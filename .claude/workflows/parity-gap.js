@@ -8,7 +8,7 @@ export const meta = {
     'anything else (e.g. a new competitor, or a specific changelog/release-notes page to re-check).',
   phases: [
     { title: 'Research', detail: 'web research per source URL, schema-constrained feature extraction' },
-    { title: 'Compact', detail: 'merge findings into docs/COMPETITOR_FEATURE_MATRIX.md + PARITY_CHECKLIST.md as dense tables' },
+    { title: 'Compact', detail: 'merge findings into docs/specs/features.yaml items (competitors: map, new items)' },
     { title: 'Cross-reference', detail: 'fix stale section/ID references across the 4 parity docs' },
   ],
 }
@@ -111,18 +111,20 @@ const compactSummary = allFeatures.length
   ? await agent(
       `Bitvue project (video bitstream analyzer, docs live in docs/). New competitor research just ran for ` +
         `product "${productName}", producing ${allFeatures.length} concrete features (raw JSON below). Merge this ` +
-        `into the existing parity docs as DENSE TABLES — one row per concrete feature, minimal prose. This is a ` +
-        `hard house-style rule established by prior user correction (see CLAUDE.md "Working conventions" if present) ` +
-        `— do not write narrative summaries.\n\n` +
+        `into docs/specs/features.yaml, the only feature/parity status source of truth (schema + update rules: ` +
+        `docs/specs/README.md). One item per concrete feature; do not put status marks in Markdown and do not ` +
+        `write narrative summaries.\n\n` +
         `Steps:\n` +
-        `1. Read docs/COMPETITOR_FEATURE_MATRIX.md, docs/PARITY_CHECKLIST.md, docs/VQA_PARITY_SPEC_V3.md.\n` +
-        `2. For each new feature, check if an equivalent row already exists (match by intent, not exact string). ` +
-        `If new, add a row to the right section of COMPETITOR_FEATURE_MATRIX.md with a Bitvue status mark ` +
-        `(✅/⚠️/❌/—) — grep the codebase to confirm ✅ rather than guessing; use ⚠️ "unverified" if you can't check.\n` +
-        `3. If a new feature is a real, currently-untracked parity gap (not already a Layer 1-6 item), add it to ` +
-        `PARITY_CHECKLIST.md Layer 6 with a fresh CMP-N ID, or propose a new Layer if it doesn't fit CMP's scope.\n` +
-        `4. Fold any unverified_notes into the doc as explicitly-flagged "unverified/gated" items, not as fact.\n` +
-        `5. Report a short changelog of rows added/changed — do not restate full row content back.\n\n` +
+        `1. Read docs/specs/README.md, then grep docs/specs/features.yaml (titles, acceptance, legacy_ids).\n` +
+        `2. For each new feature, check if an equivalent item already exists (match by intent, not exact string). ` +
+        `If it exists, set/adjust its competitors: entry for this product (yes/partial/no) and add the doc to source. ` +
+        `If new, append an item in the right area block with the next free id; set status by grepping the codebase ` +
+        `(done only if reachable from the desktop app, CLI or MCP), evidence = real paths, notes for anything unverified.\n` +
+        `3. Out-of-scope features (broadcast QC, ABR ladder, bundled tools) get status: dropped with the reason in notes ` +
+        `(see COMPETITOR_FEATURE_MATRIX.md "Out of scope"). Add the research URL to that doc's provenance section.\n` +
+        `4. Fold any unverified_notes into item notes, explicitly flagged "unverified/gated", not as fact. Validate with ` +
+        `the python snippet in docs/specs/README.md and bump updated:.\n` +
+        `5. Report a short changelog of items added/changed (ids) — do not restate full item content back.\n\n` +
         `Raw findings JSON:\n${JSON.stringify({ features: allFeatures, unverified_notes: allNotes }, null, 2)}`,
       { phase: 'Compact', label: 'compact-findings' }
     )
@@ -131,10 +133,10 @@ log(compactSummary)
 
 phase('Cross-reference')
 const xrefSummary = await agent(
-  `Bitvue project. docs/VQA_PARITY_SPEC_V3.md, docs/PARITY_CHECKLIST.md, docs/COMPETITOR_FEATURE_MATRIX.md, ` +
-    `docs/UX_PARITY_MATRIX.md may have just been edited by a prior step. Grep all four for section/ID references ` +
-    `(e.g. "§4.9", "Layer 6", "CMP-0N") that might now be stale, and fix any pointing at content that moved or no ` +
-    `longer exists. Confirm each doc's "See also" header still lists all four filenames correctly. Report a ` +
+  `Bitvue project. docs/specs/features.yaml and docs/COMPETITOR_FEATURE_MATRIX.md may have just been edited by a ` +
+    `prior step. Validate features.yaml with the snippet in docs/specs/README.md (unique ids, evidence paths exist), ` +
+    `then grep docs/*.md for section/ID references (e.g. "§4.9", "OVL-012") that might now be stale, and fix any pointing at content that moved or no ` +
+    `longer exists. Confirm each parity doc's "See also" header still points at docs/specs/features.yaml. Report a ` +
     `one-line confirmation, or a list of fixes made if any were needed.`,
   { phase: 'Cross-reference', label: 'xref-fix' }
 )
