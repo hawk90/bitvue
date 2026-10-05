@@ -3355,7 +3355,7 @@ items:
     title: HRD Buffer reference lines at correct Y positions
     area: ui
     priority: P2
-    status: done
+    status: todo
     acceptance:
       - Buffer Limit at top, Underflow at bottom, Target at bufferSize*0.5 via shared yForOccupancy
     evidence:
@@ -3364,13 +3364,12 @@ items:
       - PNL-11
     source:
       - PARITY_CHECKLIST.md §Layer 11
-    notes: Panel itself is still a client-side simulation (DIV-06/UI-008). The underflow line is drawn at bufferSize*0.1,
-      not at the bottom edge.
+    notes: "2026-10-05: fix not on main yet (only in uncommitted frontend work on another branch) → todo until merged. | Panel itself is still a client-side simulation (DIV-06/UI-008). The underflow line is drawn at bufferSize*0.1, not at the bottom edge."
   - id: UI-021
     title: Enhanced filmstrip view stylesheet loaded + overlay scroll sync
     area: ui
     priority: P1
-    status: done
+    status: todo
     acceptance:
       - EnhancedView.css imported
       - Scene-change/GOP markers track the inner scroll width/position
@@ -3381,11 +3380,12 @@ items:
       - PNL-12
     source:
       - PARITY_CHECKLIST.md §Layer 11
+    notes: "2026-10-05: fix not on main yet (only in uncommitted frontend work on another branch) → todo until merged."
   - id: UI-022
     title: B-Pyramid hierarchy derived from reference structure
     area: ui
     priority: P1
-    status: done
+    status: todo
     acceptance:
       - Level = 1 + max(level of refs) when a backward (future-display) ref exists, else 0
       - Hierarchical-B coloring in this view only; temporal_id fallback
@@ -3395,7 +3395,7 @@ items:
       - PNL-13
     source:
       - PARITY_CHECKLIST.md §Layer 11
-    notes: Depends on real ref_frames (PNL-03) + display_order (CTX-02). av1_test.ivf is IPPP so still one flat row.
+    notes: "2026-10-05: fix not on main yet (only in uncommitted frontend work on another branch) → todo until merged. | Depends on real ref_frames (PNL-03) + display_order (CTX-02). av1_test.ivf is IPPP so still one flat row."
   - id: UI-023
     title: Frame Sizes chart auto-scale that doesn't let I-frames crush P/B variation
     area: ui

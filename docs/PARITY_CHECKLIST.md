@@ -13,8 +13,8 @@ scale, shortcuts) · `DEVELOPMENT_PHASES.md` (roadmap).
 
 Computed with PyYAML over `items[]` in `docs/specs/features.yaml`: total by `status`, then by `priority` × `status`.
 
-377 items — done 106 · partial 162 · todo 103 · dropped 6. By priority: P0 33 (24 done / 8 partial / 1 todo) ·
-P1 117 (49/62/6) · P2 146 (27/71/48) · P3 81 (6/21/48, 6 dropped). The single biggest blocker is `INFRA-001`
+377 items — done 103 · partial 162 · todo 106 · dropped 6. By priority: P0 33 (24 done / 8 partial / 1 todo) ·
+P1 117 (47/62/8) · P2 146 (26/71/49) · P3 81 (6/21/48, 6 dropped). The single biggest blocker is `INFRA-001`
 (desktop sidecar/indexer only wired for AV1/IVF).
 Dated fix/verification notes from the old Layer tables: `docs/history/parity-checklist-log.md`.
 
