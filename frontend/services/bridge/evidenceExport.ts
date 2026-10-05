@@ -10,11 +10,7 @@ import { requireBridge } from "./core";
 /** Matches `bitvue_engine::export::types::ContextMenuScope` (5 variants) -- serialized as the
  *  bare variant name (no `serde(rename_all)` on the Rust side). */
 export type ContextMenuScopeWire =
-  | "Player"
-  | "HexView"
-  | "StreamView"
-  | "Timeline"
-  | "DiagnosticsPanel";
+  "Player" | "HexView" | "StreamView" | "Timeline" | "DiagnosticsPanel";
 
 export interface ContextMenuItemWire {
   id: string;

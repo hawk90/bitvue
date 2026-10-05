@@ -391,10 +391,7 @@ export const DualVideoView = memo(function DualVideoView({
               onChange={(e) =>
                 setCurrentViewMode(
                   e.target.value as
-                    | "side-by-side"
-                    | "top-bottom"
-                    | "difference"
-                    | "slide",
+                    "side-by-side" | "top-bottom" | "difference" | "slide",
                 )
               }
               className="text-sm border rounded px-2 py-1"

@@ -21,10 +21,7 @@ export type { SyncMode };
 
 export type DebugYuvFormat = "i420" | "nv12" | "nv21" | "i422" | "i444";
 export type DebugYuvDisplayMode =
-  | "decoded"
-  | "reference"
-  | "diff"
-  | "amplified";
+  "decoded" | "reference" | "diff" | "amplified";
 
 export interface DebugYuvCrop {
   left: number;

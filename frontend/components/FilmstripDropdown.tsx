@@ -9,11 +9,7 @@ import { createPortal } from "react-dom";
 import "./FilmstripDropdown.css";
 
 export type DisplayView =
-  | "thumbnails"
-  | "sizes"
-  | "bpyramid"
-  | "hrdbuffer"
-  | "enhanced";
+  "thumbnails" | "sizes" | "bpyramid" | "hrdbuffer" | "enhanced";
 
 interface FilmstripDropdownProps {
   displayView: DisplayView;
