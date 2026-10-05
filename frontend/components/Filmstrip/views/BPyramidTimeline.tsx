@@ -27,8 +27,17 @@ import {
 import { getFrameTypeColor, isKeyframe } from "../../../types/video";
 
 /**
- * Analyze all frames and use temporal_id from AV1 bitstream
- * Falls back to calculated level for codecs without temporal_id
+ * Analyze all frames and derive a real GOP-hierarchy level per frame from the reference graph:
+ * a frame's level is 1 + the deepest level among any of its `ref_frames` that it depends on
+ * *backward* in display order (i.e. a not-yet-displayed frame -- the actual definition of
+ * hierarchical/B-like prediction), computed via a single forward pass since AV1 references only
+ * ever point to already-decoded (lower frame_index) frames. Frames with no such backward
+ * reference -- keyframes and ordinary forward-only P-frames -- are level 0. This replaces the
+ * old `temporal_id`-only leveling: `temporal_id` is AV1's SVC scalability field, which ordinary
+ * (non-SVC) encodes never set above 0, so it produced a flat "pyramid" for essentially all real
+ * content. `temporal_id` is kept as a last-resort fallback only when a frame's level comes out 0
+ * via the ref-graph method *and* temporal_id is itself a defined value > 0 (a stream with real
+ * temporal layering but no usable display_order data) -- untested against any local fixture.
  */
 export function analyzeTemporalLevels(frames: FrameInfo[]): TemporalAnalysis {
   if (frames.length === 0) {
@@ -48,22 +57,63 @@ export function analyzeTemporalLevels(frames: FrameInfo[]): TemporalAnalysis {
       .map((f) => f.frame_index),
   ];
 
-  // Use temporal_id from AV1 bitstream, fallback to 0
+  const displayOrderByIndex = new Map<number, number>();
+  for (const f of frames) {
+    if (f.display_order !== undefined) {
+      displayOrderByIndex.set(f.frame_index, f.display_order);
+    }
+  }
+
   const frameMap = new Map<number, FrameWithLevel>();
   const levelMap = new Map<number, FrameWithLevel[]>();
+  const levelByIndex = new Map<number, number>();
 
   frames.forEach((frame) => {
-    // Use real temporal_id from AV1 OBU header
-    const level = frame.temporal_id ?? 0;
     const isKey = isKeyframe(frame.frame_type, frame.key_frame);
+    const refFrames = frame.ref_frames || [];
+    const ownDisplayOrder = displayOrderByIndex.get(frame.frame_index);
+
+    const backwardRefs =
+      ownDisplayOrder === undefined
+        ? []
+        : refFrames.filter((refIdx) => {
+            const refDisplayOrder = displayOrderByIndex.get(refIdx);
+            return (
+              refDisplayOrder !== undefined && refDisplayOrder > ownDisplayOrder
+            );
+          });
+    const hasBackwardRef = backwardRefs.length > 0;
+
+    // A hierarchically-referenced frame's depth is bounded by *all* its references' depths, not
+    // just the backward one(s) -- e.g. a frame can forward-reference an already-deep frame (one
+    // nested several levels in from an earlier bisection) while its only backward ref is a
+    // shallow anchor; the frame is still exactly as deep as its deepest dependency either way.
+    // `hasBackwardRef` (computed above from backwardRefs alone) is what decides *whether* this is
+    // a nested frame at all -- a purely forward-referencing frame stays level 0 regardless of
+    // what its references' own levels are.
+    let level = hasBackwardRef
+      ? 1 +
+        Math.max(...refFrames.map((refIdx) => levelByIndex.get(refIdx) ?? 0))
+      : 0;
+
+    if (
+      level === 0 &&
+      frame.temporal_id !== undefined &&
+      frame.temporal_id > 0
+    ) {
+      level = frame.temporal_id;
+    }
+
+    levelByIndex.set(frame.frame_index, level);
 
     const frameWithLevel: FrameWithLevel = {
       index: frame.frame_index,
       frameIndex: frame.frame_index,
       frameType: frame.frame_type,
-      refFrames: frame.ref_frames || [],
+      refFrames,
       level,
       isKeyframe: isKey,
+      hasBackwardRef,
     };
 
     frameMap.set(frame.frame_index, frameWithLevel);
@@ -258,21 +308,32 @@ export const BPyramidTimeline = forwardRef<
                   const isGopBoundary = gopBoundaries.includes(
                     frame.frame_index,
                   );
+                  // AV1's real frame_type is never "B" (spec has no B frame_type at all) -- a
+                  // frame that actually depends on a not-yet-displayed reference is still
+                  // hierarchically B-like, so this view colors it as B while keeping the raw
+                  // wire type visible in the tooltip rather than overwriting it.
+                  const displayType = frameWithLevel.hasBackwardRef
+                    ? "B"
+                    : frame.frame_type;
 
                   return (
                     <div
                       key={frame.frame_index}
                       data-frame-index={frame.frame_index}
-                      className={`bpyramid-frame-circle ${getFrameTypeColorClass(frame.frame_type)} ${
+                      className={`bpyramid-frame-circle ${getFrameTypeColorClass(displayType)} ${
                         isSelected ? "selected" : ""
                       } ${isGopBoundary ? "gop-boundary" : ""}`}
                       onClick={() => onFrameClick(frame.frame_index)}
                       style={{
                         width: `${circleSize}px`,
                         height: `${circleSize}px`,
-                        backgroundColor: getFrameTypeColor(frame.frame_type),
+                        backgroundColor: getFrameTypeColor(displayType),
                       }}
-                      title={`Frame ${frame.frame_index}: ${frame.frame_type} (Level ${levelData.level})`}
+                      title={
+                        frameWithLevel.hasBackwardRef
+                          ? `Frame ${frame.frame_index}: ${frame.frame_type} (hierarchical B, Level ${levelData.level})`
+                          : `Frame ${frame.frame_index}: ${frame.frame_type} (Level ${levelData.level})`
+                      }
                     />
                   );
                 })}
