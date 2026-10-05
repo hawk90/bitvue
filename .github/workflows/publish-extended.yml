@@ -83,7 +83,7 @@ jobs:
 
   snap:
     name: Snap (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -100,7 +100,7 @@ jobs:
 
   flatpak:
     name: Flatpak (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container:
       image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
       options: --privileged
@@ -173,7 +173,7 @@ jobs:
 
   scoop:
     name: Scoop (Windows)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Get version
         id: version
@@ -225,7 +225,7 @@ jobs:
 
   nixpkgs:
     name: nixpkgs (Nix)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Get version
         id: version

@@ -21,7 +21,7 @@ jobs:
 
   changes:
     name: Detect Changes
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -49,7 +49,7 @@ jobs:
     name: Rust Smoke Test
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
@@ -68,7 +68,7 @@ jobs:
 
   frontend-smoke:
     name: Frontend Smoke Test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -95,7 +95,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
@@ -114,7 +114,7 @@ jobs:
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
@@ -139,7 +139,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+        os: [ubuntu-26.04, macos-latest, windows-latest]
         crate:
           - bitvue-engine
           - bitvue-formats
@@ -172,7 +172,7 @@ jobs:
         run: brew install dav1d
 
       - name: Free up disk space (Linux)
-        if: matrix.os == 'ubuntu-24.04'
+        if: matrix.os == 'ubuntu-26.04'
         run: |
           echo "Disk space before cleanup:"
           df -h
@@ -194,7 +194,7 @@ jobs:
           df -h
 
       - name: Install dav1d (Linux)
-        if: matrix.os == 'ubuntu-24.04'
+        if: matrix.os == 'ubuntu-26.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libdav1d-dev pkg-config
@@ -232,7 +232,7 @@ jobs:
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       (needs.clippy.result == 'success' || needs.clippy.result == 'skipped')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -259,7 +259,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -330,7 +330,7 @@ jobs:
     if: |
       github.event_name == 'pull_request' &&
       github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -350,7 +350,7 @@ jobs:
       always() &&
       github.event_name == 'pull_request' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -373,7 +373,7 @@ jobs:
       github.event_name == 'pull_request' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped') &&
       (needs.frontend-lint.result == 'success' || needs.frontend-lint.result == 'skipped')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -395,7 +395,7 @@ jobs:
     name: Documentation
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
