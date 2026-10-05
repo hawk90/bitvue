@@ -9,6 +9,7 @@
 
 import { useEffect } from "react";
 import { closeWindow, showOpenDialog } from "../services/electronBridgeService";
+import { MENU_EVENTS } from "../../bitvue-desktop/electron/menuEvents";
 
 export interface UseFileMenuEventsParams {
   openFileAtPath: (path: string) => void | Promise<void>;
@@ -83,7 +84,7 @@ export function useFileMenuEvents({
     );
     window.addEventListener("menu-close-bitstream", handleCloseBitstream);
     window.addEventListener("menu-quit", handleQuit);
-    window.addEventListener("menu-shortcuts", handleShowShortcuts);
+    window.addEventListener(MENU_EVENTS.keyboardShortcuts, handleShowShortcuts);
     window.addEventListener("menu-export", handleExportListener);
     window.addEventListener("menu-export-evidence", handleExportEvidence);
     const handleOpenDebugYuvEvent = () => void handleOpenDebugYuv();
@@ -102,7 +103,10 @@ export function useFileMenuEvents({
       );
       window.removeEventListener("menu-close-bitstream", handleCloseBitstream);
       window.removeEventListener("menu-quit", handleQuit);
-      window.removeEventListener("menu-shortcuts", handleShowShortcuts);
+      window.removeEventListener(
+        MENU_EVENTS.keyboardShortcuts,
+        handleShowShortcuts,
+      );
       window.removeEventListener("menu-export", handleExportListener);
       window.removeEventListener("menu-export-evidence", handleExportEvidence);
       window.removeEventListener(
