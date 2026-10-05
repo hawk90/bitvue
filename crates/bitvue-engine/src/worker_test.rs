@@ -679,9 +679,13 @@ mod spawn_tests {
             executed_clone.store(true, Ordering::SeqCst);
         });
 
-        // Wait for thread (max 1s)
+        // Wait for the work to run AND for the manager to retire the job (max 1s).
+        // The worker flips `executed` before it decrements the in-flight count, so
+        // polling only `executed` races with the bookkeeping on slow CI runners.
         let start = std::time::Instant::now();
-        while !executed.load(Ordering::SeqCst) && start.elapsed().as_millis() < 1000 {
+        while (!executed.load(Ordering::SeqCst) || manager.in_flight_count(StreamId::A) != 0)
+            && start.elapsed().as_millis() < 1000
+        {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
