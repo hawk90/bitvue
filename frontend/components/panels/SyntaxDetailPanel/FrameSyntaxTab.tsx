@@ -176,10 +176,11 @@ export const FrameSyntaxTab = memo(function FrameSyntaxTab({
         .querySelector(`[data-syntax-path="${CSS.escape(targetPath)}"]`)
         ?.scrollIntoView({ block: "center" });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- expandedNodes/onToggleNode
-    // intentionally excluded: this effect's own onToggleNode calls change expandedNodes, and
-    // re-running on every resulting expandedNodes change would re-scroll on every manual
-    // expand/collapse the user does afterward, not just on a new resolved selection.
+    // expandedNodes/onToggleNode intentionally excluded from the deps: this effect's own
+    // onToggleNode calls change expandedNodes, and re-running on every resulting expandedNodes
+    // change would re-scroll on every manual expand/collapse the user does afterward, not just
+    // on a new resolved selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedSyntaxNodeId, syntaxTree]);
 
   if (!frame) {

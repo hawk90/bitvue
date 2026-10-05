@@ -340,8 +340,8 @@ function Timeline({ frames, className = "" }: TimelineProps) {
     },
     [
       getFrameIndexFromEvent,
+      frameIndexFromPoint,
       setFrameSelection,
-      frames.length,
       handleShiftDragStart,
     ],
   );

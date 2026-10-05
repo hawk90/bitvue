@@ -53,9 +53,8 @@ function createMockCanvas(
   // spying on `canvas` alone (see renderer.ts's own doc comment on why: putImageData ignores the
   // canvas transform entirely, so painting straight onto a devicePixelRatio-scaled display canvas
   // would only fill its top-left corner).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
-    mockCtx as any,
+    mockCtx as unknown as CanvasRenderingContext2D,
   );
   return { canvas, putImageData, drawImage };
 }
