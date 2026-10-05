@@ -11,8 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# dorny/paths-filter reads the pull request's file list through the API, so
+# it needs pull-requests: read on top of what the checkout needs.
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   CARGO_TERM_COLOR: always
