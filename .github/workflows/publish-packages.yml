@@ -31,7 +31,7 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -77,7 +77,7 @@ jobs:
           fi
 
       - name: Checkout tap repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/homebrew-bitvue
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
@@ -188,7 +188,7 @@ jobs:
     name: Create Debian Package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install dependencies
         run: |
@@ -259,7 +259,7 @@ jobs:
           dpkg-deb --build bitvue-gui_${VERSION}
 
       - name: Upload debian packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: debian-packages
           path: |
@@ -293,7 +293,7 @@ jobs:
           fi
 
       - name: Checkout AUR repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: aur/bitvue-bin
           token: ${{ secrets.AUR_SSH_KEY }}

@@ -118,7 +118,7 @@ tempfile = "3.10"
 # File I/O
 memmap2 = "0.9"
 bytes = "1.11"  # 1.11.1+ fixes GHSA-434x-w66g-qw3r
-lru = "0.16"
+lru = "0.18"
 
 # Release profile optimizations
 [profile.release]
