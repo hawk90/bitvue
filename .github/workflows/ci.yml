@@ -264,6 +264,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+          with:
+            build-warnings: allow
         with:
           components: llvm-tools-preview
           cache: false
@@ -274,12 +276,12 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libdav1d-dev pkg-config
 
-      # Use short CARGO_TARGET_DIR (/t) and per-crate approach to stay under
+      # Use a short CARGO_TARGET_DIR (/tmp/t; the runner cannot create /t) and a per-crate approach to stay under
       # the Linux ARG_MAX limit (131072 bytes).  Each crate is measured
       # independently; reports are merged into a single Codecov upload.
       - name: Generate coverage (codec crates)
         env:
-          CARGO_TARGET_DIR: /t
+          CARGO_TARGET_DIR: /tmp/t
         run: |
           mkdir -p coverage
           for CRATE in bitvue-hevc bitvue-avc bitvue-vp9 bitvue-av1-codec bitvue-avs3 bitvue-jpegxs bitvue-vc3 bitvue-codecs-parser bitvue-engine bitvue-formats bitvue-cli; do
