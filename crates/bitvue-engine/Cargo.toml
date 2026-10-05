@@ -19,7 +19,7 @@ bytes = { workspace = true }
 lru = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3.8"
+tempfile = "3.27.0"
 
 [features]
 # Codec-specific indexer features (optional, for faster compilation)

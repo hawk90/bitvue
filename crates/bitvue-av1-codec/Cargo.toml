@@ -26,6 +26,6 @@ tracing = { workspace = true }
 twox-hash = "2"
 
 [dev-dependencies]
-criterion = "0.5"
-proptest = "1.4"
-proptest-derive = "0.4"
+criterion = "0.8"
+proptest = "1.11.0"
+proptest-derive = "0.8"

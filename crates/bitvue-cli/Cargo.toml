@@ -30,7 +30,7 @@ bitvue-vc3 = { path = "../bitvue-vc3" }
 bitvue-metrics = { path = "../bitvue-metrics" }
 
 # MD5 for per-frame checksums (-md5 flag)
-md5 = "0.7"
+md5 = "0.7.0"
 
 # Parallelism for batch operations (--md5 with large files)
 rayon = { workspace = true }
