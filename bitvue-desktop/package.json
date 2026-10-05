@@ -23,7 +23,7 @@
     "@types/node": "^22.20.4",
     "electron": "^43.7.7",
     "electron-builder": "^25.1.8",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^1.6.1"
   },
   "build": {
