@@ -1205,7 +1205,7 @@ items:
     title: YUV→RGB conversion with BT.601/709/2020 colour-gamut switch
     area: decode
     priority: P1
-    status: partial
+    status: done
     phase: '11'
     acceptance:
       - Decoded frame rendered with selectable BT.601/BT.709/BT.2020 matrix
@@ -1215,6 +1215,8 @@ items:
       - frontend/components/panels/YuvViewerPanel/index.tsx:411
       - frontend/utils/gpu/frameRenderer.ts:176
       - bitvue-desktop/electron/nativeMenu.ts::installNativeMacMenu
+      - bitvue-desktop/electron/menuEvents.ts
+      - frontend/tests/components/YuvViewerPanelColorspace.test.tsx
     competitors:
       vqa: 'yes'
       vqp: 'no'
@@ -1226,7 +1228,7 @@ items:
       - COMPETITOR_FEATURE_MATRIX.md §5 (Color-gamut switch)
       - DEVELOPMENT_PHASES.md §Phase 11
       - UX_PARITY_MATRIX.md §10
-    notes: "2026-10-05: one-platform-only → partial (README rule) | Options > Color Space dispatches menu-color-bt601/709/2020 from the macOS native menu, handled in YuvViewerPanel\" and applied via COLORSPACE_MATRICES. On Windows/Linux the TitleBar color-space items have no action and render disabled. YUV-as-RGB/GBR map to a BT.709 placeholder."
+    notes: "#31 (2026-10-05): Win/Linux TitleBar Color Space items wired; all platforms switch BT.601/709/2020. YUV-as-RGB/GBR remain a BT.709 placeholder. | Options > Color Space dispatches menu-color-bt601/709/2020 from the macOS native menu, handled in YuvViewerPanel\" and applied via COLORSPACE_MATRICES. On Windows/Linux the TitleBar color-space items have no action and render disabled. YUV-as-RGB/GBR map to a BT.709 placeholder."
   - id: DEC-009
     title: YUV viewer raw pixel formats (20+) and endianness selection
     area: decode
@@ -2495,7 +2497,7 @@ items:
     area: overlay
     priority: P2
     priority_inferred: true
-    status: partial
+    status: done
     codecs:
       - av1
     acceptance:
@@ -2507,6 +2509,8 @@ items:
       - frontend/hooks/useAv1Features.ts::useAv1Features
       - frontend/components/Player/views/AV1FeaturesView.tsx::AV1FeaturesView
       - frontend/components/panels/YuvViewerPanel/index.tsx:642
+      - frontend/hooks/useModeMenuEvents.ts
+      - frontend/tests/hooks/menuWiring.test.tsx
     competitors:
       vqa: 'yes'
       vqp: 'no'
@@ -2516,7 +2520,7 @@ items:
     source:
       - DEVELOPMENT_PHASES.md §get_av1_features 구현
       - COMPETITOR_FEATURE_MATRIX.md §5 (AV1 Analyzer Frame Buffer/MV/Coefficient/Filtering View)
-    notes: "2026-10-05: one-platform-only → partial (README rule) | Data is real but header-level: CDEF strength and LR type are frame-level values replicated per block/unit (see OVL-007/008). AV1FeaturesView ('av1-features' mode) is reachable only via the Windows/Linux TitleBar Mode menu; the per-feature F6-F9 overlays use the same command."
+    notes: "#31 (2026-10-05): mac Mode menu now reaches av1-features. Data still header-level (CDEF/LR frame values replicated, see OVL-007/008). | Data is real but header-level: CDEF strength and LR type are frame-level values replicated per block/unit (see OVL-007/008). AV1FeaturesView ('av1-features' mode) is reachable only via the Windows/Linux TitleBar Mode menu; the per-feature F6-F9 overlays use the same command."
   - id: OVL-044
     title: Coding flow analysis (get_coding_flow_analysis)
     area: overlay
@@ -2541,7 +2545,7 @@ items:
     area: overlay
     priority: P2
     priority_inferred: true
-    status: partial
+    status: done
     codecs:
       - av1
     acceptance:
@@ -2551,9 +2555,11 @@ items:
       - frontend/components/Player/views/ResidualsView.tsx::ResidualsView
       - frontend/components/panels/YuvViewerPanel/index.tsx:623
       - frontend/components/TitleBar.tsx:122
+      - frontend/hooks/useModeMenuEvents.ts
+      - frontend/tests/hooks/menuWiring.test.tsx
     source:
       - DEVELOPMENT_PHASES.md §get_residual_analysis 구현
-    notes: "2026-10-05: one-platform-only → partial (README rule) | 'residuals' is not in AV1_MODES; it is reachable only as a legacy mode via the custom TitleBar Mode menu (Windows/Linux). On macOS the native Mode menu sends menu-mode-change with no listener, so ResidualsView is unreachable there. Residual magnitudes use representative CDFs (see residual_analysis.rs doc)."
+    notes: "#31 (2026-10-05): mac Mode menu now reaches residuals. Residual magnitudes use representative CDFs. | 'residuals' is not in AV1_MODES; it is reachable only as a legacy mode via the custom TitleBar Mode menu (Windows/Linux). On macOS the native Mode menu sends menu-mode-change with no listener, so ResidualsView is unreachable there. Residual magnitudes use representative CDFs (see residual_analysis.rs doc)."
   - id: SYN-001
     title: Per-codec syntax tree panel
     area: syntax
@@ -3753,10 +3759,7 @@ items:
       - UX_PARITY_MATRIX.md §10
       - DEVELOPMENT_PHASES.md §Phase 1
       - VQA_PARITY_SPEC_V3.md §2.3
-    notes: TitleBar Mode items wired (onModeChange). The macOS native menu dispatches 'menu-mode-change' with no listener
-      (its values 'coding'/'qp' also don't match MODES keys like 'coding-flow'/'qp-map'), so it is a no-op on mac. Overlay
-      toggles wired on mac; PSNR/SSIM overlays have no renderer (MET-303). activeCodec comes from get_stream_info after the
-      IVF/AV1-only index_stream, so this works end to end for AV1 only.
+    notes: "#31 (2026-10-05): mac Mode menu wired (shared MENU_MODES, listener useModeMenuEvents); remaining gaps: PSNR/SSIM overlay renderer (MET-303), AV1-only activeCodec. | TitleBar Mode items wired (onModeChange). The macOS native menu dispatches 'menu-mode-change' with no listener (its values 'coding'/'qp' also don't match MODES keys like 'coding-flow'/'qp-map'), so it is a no-op on mac. Overlay toggles wired on mac; PSNR/SSIM overlays have no renderer (MET-303). activeCodec comes from get_stream_info after the IVF/AV1-only index_stream, so this works end to end for AV1 only."
   - id: UI-041
     title: View menu (panel toggles, stream-view modes, Y/U/V component, zoom, fullscreen)
     area: ui
@@ -3938,7 +3941,7 @@ items:
     area: ui
     priority: P3
     priority_inferred: true
-    status: partial
+    status: done
     phase: '11'
     acceptance:
       - Theme toggles dark/light via data-theme with CSS variables
@@ -3946,9 +3949,12 @@ items:
       - frontend/contexts/ThemeContext.tsx:39
       - frontend/App.tsx:124
       - frontend/theme/colors.css
+      - bitvue-desktop/electron/menuEvents.ts
+      - frontend/hooks/useThemeMenuEvents.ts
+      - frontend/tests/hooks/menuWiring.test.tsx
     source:
       - DEVELOPMENT_PHASES.md §Phase 11
-    notes: "2026-10-05: one-platform-only → partial (README rule) | doc said [ ]; code: ThemeContext sets data-theme; switching only via the mac native menu ('menu-theme-change' listener in App.tsx). TitleBar Dark/Light items have no action (disabled on Win/Linux). Theme not persisted. Light-theme visual completeness not checked."
+    notes: "#31 (2026-10-05): Win/Linux TitleBar Dark/Light now dispatch the same event as the mac menu. Theme still not persisted; light-theme visual completeness unchecked. | doc said [ ]; code: ThemeContext sets data-theme; switching only via the mac native menu ('menu-theme-change' listener in App.tsx). TitleBar Dark/Light items have no action (disabled on Win/Linux). Theme not persisted. Light-theme visual completeness not checked."
   - id: UX-001
     title: 'Frame navigation keys: Left/Right, Space, Home/End'
     area: ux
@@ -6188,8 +6194,7 @@ items:
     source:
       - COMPETITOR_FEATURE_MATRIX.md §2
       - DEVELOPMENT_PHASES.md §Phase 9
-    notes: '`analyze --frame N` inspects one AV1 frame (its `-f` short collides with `--file`, so only the long form can work);
-      `frames -n` is a list limit; decode has no seek.'
+    notes: "#31 (2026-10-05): analyze frame option is now -n/--frame (no -f clash). | `analyze --frame N` inspects one AV1 frame (its `-f` short collides with `--file`, so only the long form can work); `frames -n` is a list limit; decode has no seek."
   - id: CLI-008
     title: Debug-YUV / dependent-stream compare in CLI (-debug_yuv, -dependent)
     area: cli
@@ -6398,8 +6403,7 @@ items:
     source:
       - COMPETITOR_FEATURE_MATRIX.md §2
       - DEVELOPMENT_PHASES.md §Phase 9
-    notes: '`analyze --syntax` prints one AV1 frame''s OBU syntax; no stream-wide header dump or filter. analyze has duplicate
-      `-f` short (file/frame).'
+    notes: "#31 (2026-10-05): -f duplicate fixed (frame is -n). | `analyze --syntax` prints one AV1 frame's OBU syntax; no stream-wide header dump or filter. analyze has duplicate `-f` short (file/frame)."
   - id: CLI-017
     title: Operating point / output layer set (-oppoint, -ols)
     area: cli

@@ -60,5 +60,5 @@ indented lists, `width=120`; keep the order when editing by hand):
    ```
 5. Bump `updated:` at the top of the file.
 
-Snapshot on 2026-10-05 (after deep verification): 377 items, with 103 done, 162 partial, 106 todo and 6 dropped (after the 2026-10-05 one-platform rule). Per-phase counts are in
+Snapshot on 2026-10-05 (after deep verification): 377 items, with 107 done, 158 partial, 106 todo and 6 dropped (after the 2026-10-05 one-platform rule). Per-phase counts are in
 `docs/DEVELOPMENT_PHASES.md`, and per-product counts are in `docs/COMPETITOR_FEATURE_MATRIX.md`.
