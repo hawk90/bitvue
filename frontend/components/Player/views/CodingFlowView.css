@@ -159,6 +159,7 @@
     opacity: 1;
     transform: translateX(0);
   }
+
   50% {
     opacity: 0.6;
     transform: translateX(2px);
@@ -173,7 +174,7 @@
 }
 
 .coding-flow-features h4 {
-  margin: 0 0 8px 0;
+  margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
   color: var(--bitvue-fg-primary);

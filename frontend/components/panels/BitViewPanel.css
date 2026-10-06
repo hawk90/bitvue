@@ -65,8 +65,8 @@
 /* Error */
 .bitview-error {
   padding: 6px 8px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgb(239 68 68 / 10%);
+  border: 1px solid rgb(239 68 68 / 30%);
   border-radius: 4px;
   color: #f87171;
   font-size: 11px;
@@ -76,8 +76,7 @@
 /* Tree container */
 .bitview-tree {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden auto;
   font-family: monospace;
   font-size: 11px;
   line-height: 1.5;
@@ -103,7 +102,7 @@
 }
 
 .sv-row.sv-expandable:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(255 255 255 / 5%);
 }
 
 .sv-toggle {

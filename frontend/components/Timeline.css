@@ -107,12 +107,12 @@
   border-radius: 8px;
   padding: 3px 5px;
   cursor: pointer;
+
   /* Bars grow to fill the row when there's room (`.timeline-thumb`'s `flex: 1 1 0`) and shrink
      down to their `min-width` floor when there isn't -- once every bar hits that floor and the
      row still doesn't fit, this scrolls horizontally instead of squashing bars past legibility
      (previously `overflow: hidden` silently clipped/over-compressed instead of scrolling). */
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto hidden;
 }
 
 .timeline-thumbnails::-webkit-scrollbar {

@@ -112,7 +112,7 @@
 
 .bitrate-bar.hovered {
   opacity: 1;
-  outline: 1px solid rgba(255, 255, 255, 0.5);
+  outline: 1px solid rgb(255 255 255 / 50%);
 }
 
 .bitrate-truncated {
@@ -174,8 +174,8 @@
 
 .bitrate-error {
   padding: 8px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgb(239 68 68 / 10%);
+  border: 1px solid rgb(239 68 68 / 30%);
   border-radius: 4px;
   color: #f87171;
   font-size: 12px;

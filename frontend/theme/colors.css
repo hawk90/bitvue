@@ -359,6 +359,7 @@
    ═════════════════════════════════════════════════════════════════════════ */
 [data-theme="dark"] {
   /* Dark theme uses the same values as :root (already defined above) */
+
   /* No need to redefine, this selector exists for explicit theme switching */
 }
 

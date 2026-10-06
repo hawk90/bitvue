@@ -251,16 +251,16 @@
   display: grid;
   grid-template-columns: 30px 80px 40px 1fr;
   gap: 8px;
-  align-items: center;
+  place-items: center start;
   padding: 6px 8px;
   background: var(--bg-panel-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-size: 11px;
   transition: all var(--transition-fast) var(--ease-default);
+
   /* Grid's default `justify-items: stretch` would blockify the `FrameTypeBadge` grid child and
      stretch it to fill the 40px column instead of shrinking to the single-letter content. */
-  justify-items: start;
 }
 
 .ref-item:hover {
@@ -497,7 +497,7 @@
   display: grid;
   grid-template-columns: 30px 60px 80px 1fr;
   gap: 8px;
-  align-items: center;
+  place-items: center start;
   padding: 6px 8px;
   background: var(--bg-panel-secondary);
   border: 1px solid var(--border);
@@ -505,9 +505,9 @@
   font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast) var(--ease-default);
+
   /* Same fix as `.ref-item` above -- the `FrameTypeBadge` grid child otherwise stretches to fill
      its column instead of shrinking to its single-letter content. */
-  justify-items: start;
 }
 
 .search-result-item:hover {
@@ -725,7 +725,7 @@
   top: 50%;
   transform: translateY(-50%);
   font-size: 8px;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgb(255 255 255 / 85%);
   font-family: "SF Mono", "Monaco", "Cascadia Code", "Consolas", monospace;
 }
 
@@ -799,12 +799,12 @@
 }
 
 .aps-status--on {
-  background: rgba(102, 187, 106, 0.25);
+  background: rgb(102 187 106 / 25%);
   color: #66bb6a;
 }
 
 .aps-status--off {
-  background: rgba(120, 144, 156, 0.2);
+  background: rgb(120 144 156 / 20%);
   color: var(--text-secondary);
 }
 
@@ -843,12 +843,12 @@
 }
 
 .reflist-list-l0 {
-  background: rgba(79, 195, 247, 0.2);
+  background: rgb(79 195 247 / 20%);
   color: #4fc3f7;
 }
 
 .reflist-list-l1 {
-  background: rgba(255, 167, 38, 0.2);
+  background: rgb(255 167 38 / 20%);
   color: #ffa726;
 }
 
@@ -901,7 +901,7 @@
   font-size: 9px;
   font-weight: 600;
   padding: 1px 4px;
-  background: rgba(171, 71, 188, 0.2);
+  background: rgb(171 71 188 / 20%);
   color: #ab47bc;
   border-radius: 3px;
 }
@@ -958,8 +958,8 @@
 /* ─── Virtual syntax tree scroll container ──────────────────────────────── */
 .syntax-virtual-scroll {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden auto;
+
   /* Fill the remaining height inside .syntax-tree */
   height: 100%;
   min-height: 0;
