@@ -7,12 +7,11 @@ Video quality metrics library for bitvue with hardware acceleration support.
 ### Core Metrics
 - **PSNR** (Peak Signal-to-Noise Ratio) - Industry standard quality metric
 - **SSIM** (Structural Similarity Index) - Perceptual quality metric
-- **VMAF** (Video Multimethod Assessment Fusion) - Netflix's perceptual metric (optional)
+- **VMAF** (Video Multimethod Assessment Fusion) - Netflix's perceptual metric (optional, CPU; libvmaf is vendored)
 
 ### Hardware Acceleration
 - **CPU SIMD**: AVX2, AVX, SSE2 (x86_64), NEON (ARM/Apple Silicon)
 - **Multi-threading**: Rayon-based parallelism (OpenMP alternative)
-- **GPU**: CUDA acceleration via VMAF-CUDA (optional)
 
 ## Usage
 
@@ -68,15 +67,26 @@ let scores = batch_psnr_parallel(&ref_frames, &dist_frames, 1920, 1080)?;
 use bitvue_metrics::vmaf::{compute_vmaf, VmafFrame, VmafConfig};
 
 let config = VmafConfig {
-    model_path: None,  // Use default model
+    model_path: None,  // built-in vmaf_v0.6.1
     n_threads: Some(8),
-    use_cuda: true,    // Enable CUDA if available
     log_level: 1,
 };
 
+// mean over frames
 let score = compute_vmaf(&ref_frames, &dist_frames, 1920, 1080, Some(config))?;
 println!("VMAF Score: {:.2}", score);
+
+// one score per frame pair
+let per_frame = compute_vmaf_per_frame(&ref_frames, &dist_frames, 1920, 1080, None)?;
 ```
+
+`VmafFrame` is YUV 4:2:0 with tightly packed planes: 8-bit samples are one byte, 10/12-bit
+samples are 16-bit little-endian. Plane lengths are validated exactly (a wrong length is an
+error, not an out-of-bounds read).
+
+Scores match upstream libvmaf (checked against FFmpeg's `libvmaf` filter). libvmaf selects SIMD
+kernels at runtime, so compare scores with a tolerance, not for equality: on real video the
+difference between arm64 / AVX2 / AVX-512 machines is below 1e-3.
 
 ## Feature Flags
 
@@ -92,8 +102,7 @@ bitvue-metrics = { version = "0.1", features = ["parallel", "vmaf"] }
 | Feature | Description | Requirements |
 |---------|-------------|--------------|
 | `parallel` | Multi-threaded batch processing with Rayon | None |
-| `vmaf` | VMAF support (CPU-only) | libvmaf installed |
-| `vmaf-cuda` | CUDA-accelerated VMAF | libvmaf with CUDA, NVIDIA GPU |
+| `vmaf` | VMAF support (CPU-only, libvmaf vendored and statically linked) | meson, ninja, C/C++ compiler (+ nasm on x86) at build time |
 
 ## Performance
 
@@ -110,45 +119,24 @@ bitvue-metrics = { version = "0.1", features = ["parallel", "vmaf"] }
 - NEON: Process 16 bytes per instruction
 - TODO: Currently disabled, proper MSE implementation needed
 
-### GPU Acceleration
-
-**VMAF-CUDA** (when available):
-- 4.4x throughput improvement
-- 37x lower latency at 4K
-- 287 FPS at 1080p on AWS g4dn.2xlarge
-
 ## Building with VMAF
 
-### Install libvmaf
+libvmaf is compiled from source by the `vmaf-head-sys` crate and linked statically, so no system
+libvmaf and no FFmpeg are needed. The build needs:
 
-**macOS** (Homebrew):
-```bash
-brew install libvmaf
-```
+**macOS** (Homebrew): `brew install meson ninja`
 
-**Ubuntu/Debian**:
-```bash
-sudo apt install libvmaf-dev
-```
+**Ubuntu/Debian**: `sudo apt install meson ninja-build nasm xxd build-essential`
 
-**From source** (with CUDA):
-```bash
-git clone https://github.com/Netflix/vmaf.git
-cd vmaf/libvmaf
-meson build --buildtype release -Denable_cuda=true
-ninja -C build
-sudo ninja -C build install
-```
-
-### Build bitvue-metrics
+**Windows**: MSVC build tools in the environment (run from a "x64 Native Tools" prompt, or
+`ilammy/msvc-dev-cmd` in CI), plus `meson`, `ninja` and `nasm` on `PATH`. Without the MSVC
+environment meson may pick a different compiler and the final link fails with `LNK1143`.
 
 ```bash
-# CPU-only VMAF
-cargo build --features vmaf
-
-# VMAF with CUDA acceleration
-cargo build --features vmaf-cuda
+cargo build -p bitvue-metrics --features vmaf
 ```
+
+CUDA is not supported (`vmaf-head-sys` builds libvmaf without it).
 
 ## Benchmark Results
 
