@@ -14,7 +14,6 @@ import { useMode } from "@/contexts/ModeContext";
 import { useStreamData } from "@/contexts/StreamDataContext";
 import { useFrameData } from "@/contexts/FrameDataContext";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
-import { useSelection } from "@/contexts/SelectionContext";
 import { MENU_EVENTS } from "../../../bitvue-desktop/electron/menuEvents";
 import { TitleBar } from "@/components/TitleBar";
 import { COLORSPACE_MATRICES, Colorspace } from "@/types/yuv";

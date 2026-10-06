@@ -290,13 +290,7 @@ const HRDBufferPanelInternal = ({
       const x = margin.left + i * stepX;
       ctx.fillText(`${history[i].frame}`, x, margin.top + graphHeight + 8);
     }
-  }, [
-    hrdState,
-    currentFrameIndex,
-    bufferSize,
-    effectiveTargetBitrate,
-    frameRate,
-  ]);
+  }, [hrdState, currentFrameIndex, bufferSize, effectiveTargetBitrate]);
 
   // Redraw when data changes
   useEffect(() => {
