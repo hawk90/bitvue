@@ -449,6 +449,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libdav1d-dev \
+            libvmaf-dev \
             libavutil-dev \
             libavcodec-dev \
             libavformat-dev \
@@ -458,6 +459,8 @@ jobs:
             libavdevice-dev \
             pkg-config
       - name: Build documentation
+        # --all-features pulls in bitvue-metrics' `vmaf` feature, whose
+        # libvmaf-sys build script needs the system libvmaf (libvmaf-dev above).
         run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: -A dead_code -A unused_variables -A unused_functions -A unused_macros -A non_snake_case -A non_camel_case_types
