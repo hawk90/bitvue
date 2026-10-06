@@ -14,6 +14,19 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Packaging takes minutes on three OSes; skip it for PRs that cannot change the package
+    # (docs, CI-only edits to other workflows). Tags and manual runs always build.
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'frontend/**'
+      - 'bitvue-desktop/**'
+      - 'resources/**'
+      - 'samples/**'
+      - '.github/workflows/build-electron-app.yml'
+      - '.github/actions/**'
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -67,27 +80,12 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: electron-${{ matrix.os }}
+          # PR runs restore main's cache but do not write their own (see ci.yml)
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Install dav1d (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install dav1d
-
-      - name: Install dav1d (Linux)
-        if: matrix.os == 'ubuntu-24.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libdav1d-dev pkg-config
-
-      - name: Install dav1d (Windows) - vcpkg
-        if: matrix.os == 'windows-latest'
-        run: |
-          if (-not (Test-Path "D:\vcpkg\vcpkg.exe")) {
-            git clone https://github.com/microsoft/vcpkg D:\vcpkg
-            D:\vcpkg\bootstrap-vcpkg.bat
-          }
-          D:\vcpkg\vcpkg install dav1d:x64-windows-static pkgconf:x64-windows-static --clean-after-build
-          echo "PKG_CONFIG_PATH=D:\vcpkg\installed\x64-windows-static\lib\pkgconfig" >> $env:GITHUB_ENV
-          echo "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" >> $env:GITHUB_PATH
+      - uses: ./.github/actions/install-dav1d
 
       - name: Build sidecar (release)
         run: cargo build --release -p bitvue-sidecar
