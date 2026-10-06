@@ -110,14 +110,13 @@ jobs:
         run: cd frontend && npm run build
 
   # ================================
-  # 3. Rust Full Checks (PR only)
+  # 3. Rust Full Checks (PR + main)
   # ================================
 
   fmt:
     name: Format (Rust)
     needs: changes
     if: |
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-26.04
@@ -136,7 +135,6 @@ jobs:
     needs: [changes, fmt]
     if: |
       always() &&
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       github.actor != 'dependabot[bot]'
@@ -161,7 +159,6 @@ jobs:
     needs: [changes, fmt, clippy]
     if: |
       always() &&
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
       (needs.clippy.result == 'success' || needs.clippy.result == 'skipped')
@@ -172,7 +169,9 @@ jobs:
       # up to 18 minutes; capping the matrix leaves slots for the rest.
       max-parallel: 12
       matrix:
-        os: [ubuntu-26.04, macos-latest, windows-latest]
+        # Pull requests: all three OSes. Pushes to main: ubuntu only (a merged commit already passed
+        # the full matrix on its PR; this catches semantic conflicts between PRs merged separately).
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-26.04","macos-latest","windows-latest"]') || fromJSON('["ubuntu-26.04"]') }}
         # Every workspace member with tests. Not listed, with the reason:
         #   bitvue, bitvue-codecs       re-export facades, no tests
         #   bitvue-benchmarks           criterion benches only
@@ -297,7 +296,6 @@ jobs:
     name: Code Coverage
     needs: changes
     if: |
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.rust == 'true' &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-26.04
@@ -364,14 +362,13 @@ jobs:
           echo "Crates measured: bitvue-hevc, bitvue-avc, bitvue-vp9, bitvue-av1-codec, bitvue-avs3, bitvue-jpegxs, bitvue-vc3, bitvue-codecs-parser, bitvue-engine, bitvue-formats, bitvue-cli" >> $GITHUB_STEP_SUMMARY
 
   # ================================
-  # 5. Frontend Full Checks (PR only)
+  # 5. Frontend Full Checks (PR + main)
   # ================================
 
   frontend-fmt:
     name: Format (Frontend)
     needs: changes
     if: |
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.frontend == 'true' &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-26.04
@@ -393,7 +390,6 @@ jobs:
     needs: [changes, frontend-fmt]
     if: |
       always() &&
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.frontend == 'true' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped')
     runs-on: ubuntu-26.04
@@ -417,7 +413,6 @@ jobs:
     needs: [changes, frontend-fmt, frontend-lint]
     if: |
       always() &&
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.frontend == 'true' &&
       (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped') &&
       (needs.frontend-lint.result == 'success' || needs.frontend-lint.result == 'skipped')
@@ -445,7 +440,6 @@ jobs:
     name: Test (bitvue-desktop)
     needs: changes
     if: |
-      github.event_name == 'pull_request' &&
       needs.changes.outputs.desktop == 'true' &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-26.04
