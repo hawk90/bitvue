@@ -95,19 +95,6 @@
       "enabled": false
     },
     {
-      "description": "ffmpeg-next >= 7 is blocked by libvmaf-rs (0.5.2, last release 2024-05) which requires ffmpeg-next ^6 -> ffmpeg-sys-next version conflict in the workspace; checked 2026-10-07",
-      "matchManagers": [
-        "cargo"
-      ],
-      "matchPackageNames": [
-        "ffmpeg-next"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "enabled": false
-    },
-    {
       "description": "Rust toolchain pin (rust-toolchain.toml): manual, one PR per release",
       "matchDepNames": [
         "rust-toolchain"
