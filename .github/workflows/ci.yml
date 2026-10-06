@@ -313,16 +313,17 @@ jobs:
           cd ../bitvue-desktop && npm run build:electron
       # The selftest drives the real renderer <-> preload <-> main <-> sidecar chain and also
       # fails on renderer console errors. --no-sandbox: the unpackaged Electron binary has no
-      # setuid chrome-sandbox on a CI runner.
+      # setuid chrome-sandbox on a CI runner. --disable-gpu: there is no GPU on the runner and
+      # the GPU path made capturePage() fail with UnknownVizError.
       - name: Electron selftest (xvfb)
-        run: cd bitvue-desktop && BITVUE_ELECTRON_SELFTEST=1 xvfb-run -a npx electron --no-sandbox .
+        run: cd bitvue-desktop && BITVUE_ELECTRON_SELFTEST=1 xvfb-run -a npx electron --no-sandbox --disable-gpu .
       - name: Electron screenshot (visual evidence)
         if: always()
         run: |
           cd bitvue-desktop
           BITVUE_ELECTRON_SCREENSHOT="$RUNNER_TEMP/bitvue-main.png" \
           BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH="$GITHUB_WORKSPACE/test_data/av1_test.ivf" \
-            xvfb-run -a npx electron --no-sandbox .
+            xvfb-run -a npx electron --no-sandbox --disable-gpu .
       - name: Upload screenshot
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
