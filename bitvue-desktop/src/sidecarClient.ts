@@ -165,6 +165,12 @@ export class SidecarClient extends EventEmitter {
     child.stdout.on("data", (chunk: Buffer) => this.onStdout(chunk));
     child.stderr.on("data", (chunk: Buffer) => this.onStderr(chunk));
     child.on("error", (err) => this.onChildGone(`spawn error: ${err.message}`));
+    // Writing to a sidecar that has just died makes the stdin socket emit 'error' (EPIPE) *in
+    // addition to* failing the write callback. With no listener that 'error' becomes an uncaught
+    // exception in the Electron main process (seen as an unhandled error on Linux CI in the
+    // crash-recovery tests). The per-write callbacks and the 'exit' handler already reject every
+    // pending request, so there is nothing left to do here but not crash.
+    child.stdin.on("error", () => {});
     child.on("exit", (code, signal) => {
       this.exited = true;
       this.emit("exit", code, signal);
