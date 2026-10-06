@@ -20,11 +20,23 @@
 use std::fs;
 use std::path::PathBuf;
 
-const TEST_DATA_DIR: &str = "test_data/corrupt_samples";
+/// `test_data/` at the workspace root, resolved from this crate's manifest
+/// directory. `cargo test` runs with the package directory as cwd, and the
+/// checkout is not necessarily named `bitvue` (worktrees are not), so neither
+/// a cwd-relative path nor walking up to a directory called `bitvue` works.
+fn test_data_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("test_data")
+        .join(relative)
+}
+
+/// Generated corrupt samples, under `test_data/` at the workspace root.
+const CORRUPT_SAMPLES_DIR: &str = "corrupt_samples";
 
 #[test]
 fn test_corrupt_samples_exist() {
-    let samples_dir = PathBuf::from(TEST_DATA_DIR);
+    let samples_dir = test_data_path(CORRUPT_SAMPLES_DIR);
 
     if !samples_dir.exists() {
         eprintln!(
@@ -56,7 +68,7 @@ fn test_corrupt_samples_exist() {
 
 #[test]
 fn test_truncated_file_sizes() {
-    let samples_dir = PathBuf::from(TEST_DATA_DIR);
+    let samples_dir = test_data_path(CORRUPT_SAMPLES_DIR);
 
     if !samples_dir.exists() {
         eprintln!("⚠️  Corrupt samples not generated. Skipping test.");
@@ -64,7 +76,7 @@ fn test_truncated_file_sizes() {
     }
 
     // Get reference file size
-    let reference_file = PathBuf::from("test_data/av1_test.ivf");
+    let reference_file = test_data_path("av1_test.ivf");
     if !reference_file.exists() {
         eprintln!("⚠️  Reference file not found. Skipping test.");
         return;
@@ -103,14 +115,14 @@ fn test_truncated_file_sizes() {
 
 #[test]
 fn test_corrupted_file_sizes_match_original() {
-    let samples_dir = PathBuf::from(TEST_DATA_DIR);
+    let samples_dir = test_data_path(CORRUPT_SAMPLES_DIR);
 
     if !samples_dir.exists() {
         eprintln!("⚠️  Corrupt samples not generated. Skipping test.");
         return;
     }
 
-    let reference_file = PathBuf::from("test_data/av1_test.ivf");
+    let reference_file = test_data_path("av1_test.ivf");
     if !reference_file.exists() {
         eprintln!("⚠️  Reference file not found. Skipping test.");
         return;
@@ -142,7 +154,7 @@ fn test_corrupted_file_sizes_match_original() {
 
 #[test]
 fn test_ivf_header_preservation() {
-    let samples_dir = PathBuf::from(TEST_DATA_DIR);
+    let samples_dir = test_data_path(CORRUPT_SAMPLES_DIR);
 
     if !samples_dir.exists() {
         eprintln!("⚠️  Corrupt samples not generated. Skipping test.");
@@ -151,7 +163,7 @@ fn test_ivf_header_preservation() {
 
     // IVF header should be preserved (first 32 bytes)
     // Signature: "DKIF" (0x46, 0x4B, 0x49, 0x44 in little endian)
-    let expected_signature = [b'D', b'K', b'I', b'F'];
+    let expected_signature = b"DKIF";
 
     let test_files = vec![
         "01_light_1error.ivf",
@@ -172,7 +184,7 @@ fn test_ivf_header_preservation() {
 
             let signature = &data[0..4];
             assert_eq!(
-                signature, &expected_signature,
+                signature, expected_signature,
                 "{}: IVF header signature mismatch. Expected 'DKIF', got {:?}",
                 filename, signature
             );
@@ -182,7 +194,7 @@ fn test_ivf_header_preservation() {
 
 #[test]
 fn test_file_readability() {
-    let samples_dir = PathBuf::from(TEST_DATA_DIR);
+    let samples_dir = test_data_path(CORRUPT_SAMPLES_DIR);
 
     if !samples_dir.exists() {
         eprintln!("⚠️  Corrupt samples not generated. Skipping test.");
@@ -214,10 +226,7 @@ fn test_file_readability() {
 
 #[test]
 fn test_reference_file_exists() {
-    // Resolve from this crate's manifest dir (crates/bitvue-engine), not by searching the cwd for
-    // a directory literally named "bitvue" -- that broke in any checkout/worktree named otherwise.
-    let reference_file =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test_data/av1_test.ivf");
+    let reference_file = test_data_path("av1_test.ivf");
 
     assert!(
         reference_file.exists(),
@@ -253,7 +262,7 @@ fn test_generate_corrupt_samples() {
     );
 
     // Verify files were created
-    let samples_dir = PathBuf::from(TEST_DATA_DIR);
+    let samples_dir = test_data_path(CORRUPT_SAMPLES_DIR);
     assert!(
         samples_dir.exists(),
         "Corrupt samples directory not created"
