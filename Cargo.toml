@@ -121,6 +121,13 @@ bytes = "1.12.1"  # 1.11.1+ fixes GHSA-434x-w66g-qw3r
 lru = "0.18.5"
 
 # Release profile optimizations
+[profile.dev]
+# Line tables only: panic/backtrace file:line stay exact, variable-level lldb/gdb inspection is
+# gone. Measured on bitvue-engine/-av1-codec/-hevc/-vvc tests: ~10% smaller target/ with the same
+# clean-build and edit-rebuild time. (Incremental compilation stays on: turning it off halves
+# target/ but makes a one-line-edit rebuild 2.5-6x slower. Use scripts/prune.sh to reclaim it.)
+debug = "line-tables-only"
+
 [profile.release]
 opt-level = 3           # Maximum optimization
 lto = "thin"            # Link-time optimization (thin for faster builds)
