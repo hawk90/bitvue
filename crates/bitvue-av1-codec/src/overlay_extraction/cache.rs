@@ -164,6 +164,17 @@ pub fn cu_cache_size() -> usize {
     cache.len()
 }
 
+/// Whether the global coding unit cache holds `key` (for testing).
+///
+/// Tests that run in parallel share `CODING_UNIT_CACHE` (cu_parser goes
+/// through it), so a test can only reason about the entries it inserted
+/// itself, never about the total size.
+#[cfg(test)]
+pub fn cu_cache_contains(key: u64) -> bool {
+    let cache = CODING_UNIT_CACHE.lock().unwrap();
+    cache.contains_key(&key)
+}
+
 /// A self-contained, non-global coding unit cache for use in tests.
 ///
 /// Using this type avoids the shared-state problems of `CODING_UNIT_CACHE`
@@ -222,8 +233,17 @@ impl LocalCodingUnitCache {
 mod tests {
     use super::*;
 
+    /// Serialises the tests that touch the global `CODING_UNIT_CACHE`.
+    /// `cargo test` runs tests in parallel, and `clear_cu_cache()` in one
+    /// test raced the insert/lookup of another (seen as
+    /// `test_clear_cu_cache` failing on the Windows runner).
+    static GLOBAL_CACHE_TESTS: Mutex<()> = Mutex::new(());
+
     #[test]
     fn test_cache_hit_and_miss() {
+        let _serial = GLOBAL_CACHE_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         // Clear cache before test
         clear_cu_cache();
 
@@ -259,16 +279,21 @@ mod tests {
 
     #[test]
     fn test_clear_cu_cache() {
+        let _serial = GLOBAL_CACHE_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         // Add something to cache
         let tile_data = vec![1u8, 2, 3];
         let cache_key = compute_cache_key(&tile_data, 32);
 
         let _ = get_or_parse_coding_units(cache_key, || Ok(vec![]));
-        assert!(cu_cache_size() > 0);
+        assert!(cu_cache_contains(cache_key));
 
-        // Clear and verify empty
+        // Clear and verify this entry is gone. Other tests (cu_parser goes
+        // through the same global cache) may insert concurrently, so the
+        // total size is not something this test can assert on.
         clear_cu_cache();
-        assert_eq!(cu_cache_size(), 0);
+        assert!(!cu_cache_contains(cache_key));
     }
 
     // Previously ignored due to shared global cache state pollution during parallel test
