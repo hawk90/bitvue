@@ -397,7 +397,9 @@ jobs:
     name: Documentation
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-26.04
+    # Stays on 24.04: `--all-features` builds ffmpeg-next 6 (pinned by libvmaf-rs), which needs
+    # FFmpeg 6; 26.04 ships FFmpeg 8 (no libpostproc-dev, avfft.h removed).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
