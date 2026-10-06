@@ -3,7 +3,7 @@ name: CI
 # Pipeline shape (everything below `changes` runs in parallel -- there is no serial gate chain):
 #
 #   changes ─┬─ rust-lint   fmt + clippy + bench compile + `--locked`     (ubuntu, ~2 min)
-#            ├─ rust-test   one `cargo test --workspace` job per OS       (ubuntu / macOS / Windows)
+#            ├─ rust-test   one job per crate per OS (19 x 3, 12 at a time, as in #37)
 #            ├─ parity      scripts/parity_check.sh --local against the CLI
 #            ├─ coverage    cargo-llvm-cov -> Codecov
 #            ├─ docs        cargo doc
@@ -120,31 +120,61 @@ jobs:
         run: cargo check --workspace --exclude abseil --benches --locked
 
   rust-test:
-    name: Rust Test (${{ matrix.os }})
+    name: Test (${{ matrix.crate }}, ${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
+      # 19 crates x 3 OSes = 57 jobs. The account has 20 concurrent runners, so letting all 57
+      # queue at once starves every other run; capping the matrix leaves slots for the rest.
+      max-parallel: 12
       matrix:
         os: [ubuntu-26.04, macos-latest, windows-latest]
+        # Every workspace member with tests. Not listed, with the reason:
+        #   bitvue, bitvue-codecs       re-export facades, no tests
+        #   bitvue-benchmarks           criterion benches only (compiled by rust-lint)
+        #   bitvue-test-data            fixtures only
+        #   abseil (crates/vendor)      private fork, excluded everywhere (CLAUDE.md)
+        crate:
+          - bitvue-engine
+          - bitvue-protocol
+          - bitvue-sidecar
+          - bitvue-indexer
+          - bitvue-formats
+          - bitvue-avc
+          - bitvue-hevc
+          - bitvue-vp9
+          - bitvue-vvc
+          - bitvue-av1-codec
+          - bitvue-mpeg2-codec
+          - bitvue-avs3
+          - bitvue-jpegxs
+          - bitvue-vc3
+          - bitvue-codecs-parser
+          - bitvue-decode
+          - bitvue-metrics
+          - bitvue-cli
+          - bitvue-mcp
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           cache: false
           build-warnings: allow
+      # One cache per OS, written from main by a single representative job. bitvue-cli has the
+      # largest third-party dependency set, so its cache serves every other crate's job.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: test-${{ matrix.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.crate == 'bitvue-cli' }}
+      # Only these crates link dav1d (checked with `cargo tree -i dav1d-sys --edges all`).
+      # Everything else skips the install -- on Windows it is a ~3.5 minute vcpkg build.
       - uses: ./.github/actions/install-dav1d
-      # One workspace-wide run per OS instead of one job per crate: shared dependencies compile
-      # once, and 3 jobs queue instead of 57. Excluded: abseil (private vendored fork, see
-      # CLAUDE.md). Doc tests are included. --no-fail-fast reports every failing crate.
-      - name: Test workspace
-        run: cargo test --workspace --exclude abseil --no-fail-fast
+        if: contains(fromJSON('["bitvue-cli", "bitvue-decode", "bitvue-sidecar"]'), matrix.crate)
+      - name: Run tests
+        run: cargo test -p ${{ matrix.crate }} --no-fail-fast
 
   parity-regression:
     name: Parity Regression Suite
