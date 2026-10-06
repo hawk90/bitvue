@@ -34,6 +34,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      desktop: ${{ steps.filter.outputs.desktop }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
@@ -48,11 +49,18 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
+            # The frontend's vitest config aliases bitvue-desktop/electron/menuEvents.ts, so a
+            # desktop change can break frontend tests too.
             frontend:
               - 'frontend/**'
+              - 'bitvue-desktop/electron/**'
               - 'package.json'
-              - 'vite.config.ts'
-              - 'vitest.config.ts'
+              - '.github/workflows/ci.yml'
+            desktop:
+              - 'bitvue-desktop/**'
+              - 'crates/bitvue-protocol/**'
+              - 'crates/bitvue-sidecar/**'
+              - 'Cargo.lock'
               - '.github/workflows/ci.yml'
 
   # ================================
@@ -400,9 +408,9 @@ jobs:
       - name: Install dependencies
         run: cd frontend && npm ci
       - name: Lint TypeScript
-        run: cd frontend && npm run lint
+        run: cd frontend && npm run lint:check
       - name: Lint CSS
-        run: cd frontend && npm run lint:css
+        run: cd frontend && npm run lint:css:check
 
   frontend-test:
     name: Test (Frontend)
@@ -426,6 +434,44 @@ jobs:
         run: cd frontend && npm ci
       - name: Run tests
         run: cd frontend && npm run test:run
+
+  # ================================
+  # 5b. Electron main process (bitvue-desktop)
+  # ================================
+  # The main process, preload and sidecar client had no CI at all. Type-checks the package and runs
+  # its vitest suites, including the integration tests that spawn the real bitvue-sidecar binary.
+
+  desktop-test:
+    name: Test (bitvue-desktop)
+    needs: changes
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.desktop == 'true' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+          build-warnings: allow
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Install dav1d
+        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev pkg-config
+      - name: Build sidecar (debug; the integration tests spawn target/debug/bitvue-sidecar)
+        run: cargo build -p bitvue-sidecar
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'bitvue-desktop/package-lock.json'
+      - name: Install dependencies
+        run: cd bitvue-desktop && npm ci
+      - name: Type-check
+        run: cd bitvue-desktop && npm run typecheck
+      - name: Test
+        run: cd bitvue-desktop && npm run test:run
 
   # ================================
   # 6. Documentation (always runs if Rust changes)

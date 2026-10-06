@@ -13,6 +13,7 @@
   position: relative;
   width: 100%;
   height: 100%;
+
   /* x hidden (the inner `.filmstrip-thumbnails` owns horizontal scrolling), y auto -- a real,
      panel-height-clipping bug (found via real interactive testing + confirmed via
      `container.clientHeight` debug instrumentation: a 6-deep reference stack needed ~190px of
@@ -31,6 +32,7 @@
   display: flex;
   gap: var(--thumb-spacing);
   padding: 8px;
+
   /* Reserves real draw room below the frame cards for reference arrows (see
      `usePreRenderedArrows`'s doc: a "down, across, up" ㄷ-shaped path with
      `verticalOffset = 30 + arrowOrdinal*12`px). Without this, the cards filled the container's
@@ -255,6 +257,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }

@@ -39,7 +39,7 @@
   min-width: 0;
 }
 
-@media (max-width: 760px) {
+@media (width <= 760px) {
   .welcome-columns {
     grid-template-columns: 1fr;
     gap: 0;

@@ -152,13 +152,13 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 16px;
-  align-items: center;
+  place-items: center start;
+
   /* Grid's default `justify-items: stretch` blockifies each value `<span>` and stretches it to
      fill the `1fr` column -- invisible for plain-color text values, but the Frame Type row's
      value also gets a `.frame-type-*` border+background (a badge, meant to be pill-sized like
      the equivalent in SelectionInfoPanel's flex-based layout), which then visibly stretches into
      a near-full-width box instead of a tight badge. */
-  justify-items: start;
 }
 
 .frame-info-label {
@@ -326,6 +326,7 @@
   padding: 4px 8px;
   font-size: 10px;
   color: var(--text-primary);
+
   /* Same fix as `.frame-info-row` above: grid's default `justify-items: stretch` blockifies the
      Type column's `.frame-type-*` span (a border+background badge, defined in
      SelectionInfoPanel.css and shared globally since these aren't CSS-modules-scoped) and

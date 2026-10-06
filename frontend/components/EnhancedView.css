@@ -107,7 +107,7 @@
 .enhanced-gop-label {
   margin-top: 4px;
   padding: 2px 4px;
-  background: rgba(255, 212, 59, 0.9);
+  background: rgb(255 212 59 / 90%);
   color: #000;
   border-radius: 3px;
   font-size: 9px;
@@ -125,7 +125,7 @@
 
 .enhanced-scene-icon {
   padding: 2px 4px;
-  background: rgba(255, 100, 100, 0.8);
+  background: rgb(255 100 100 / 80%);
   color: white;
   border-radius: 3px;
   font-size: 10px;
@@ -144,7 +144,7 @@
 .enhanced-heatmap-cell {
   height: 100%;
   background: var(--bitvue-bg-tertiary);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-right: 1px solid rgb(255 255 255 / 5%);
 }
 
 .enhanced-heatmap-cell.heatmap-gop-start {
@@ -156,11 +156,11 @@
 }
 
 .enhanced-heatmap-cell.diagnostic-high-qp {
-  background: rgba(255, 100, 100, 0.5);
+  background: rgb(255 100 100 / 50%);
 }
 
 .enhanced-heatmap-cell.diagnostic-large-frame {
-  background: rgba(255, 150, 50, 0.5);
+  background: rgb(255 150 50 / 50%);
 }
 
 /* Legend */
@@ -193,7 +193,7 @@
 }
 
 .enhanced-legend-box.enhanced-scene-marker {
-  background: rgba(255, 100, 100, 0.8);
+  background: rgb(255 100 100 / 80%);
 }
 
 .enhanced-legend-box.heatmap-gop-start {
@@ -201,11 +201,11 @@
 }
 
 .enhanced-legend-box.diagnostic-high-qp {
-  background: rgba(255, 100, 100, 0.5);
+  background: rgb(255 100 100 / 50%);
 }
 
 .enhanced-legend-box.diagnostic-large-frame {
-  background: rgba(255, 150, 50, 0.5);
+  background: rgb(255 150 50 / 50%);
 }
 
 /* Hover Info */
@@ -217,7 +217,7 @@
   background: var(--bitvue-bg-primary);
   border: 1px solid var(--bitvue-border);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
   z-index: 100;
   min-width: 120px;
 }
