@@ -214,21 +214,10 @@ fn test_file_readability() {
 
 #[test]
 fn test_reference_file_exists() {
-    // Tests run from target/debug/deps, so go up to workspace root
-    let mut reference_file = std::env::current_dir().unwrap();
-
-    // Go up from target/debug/deps to workspace root
-    while reference_file.file_name() != Some(std::ffi::OsStr::new("bitvue")) {
-        if !reference_file.pop() {
-            // If we can't find bitvue directory, try relative path from workspace root
-            reference_file = PathBuf::from("../../../test_data/av1_test.ivf");
-            break;
-        }
-    }
-
-    if reference_file.file_name() == Some(std::ffi::OsStr::new("bitvue")) {
-        reference_file.push("test_data/av1_test.ivf");
-    }
+    // Resolve from this crate's manifest dir (crates/bitvue-engine), not by searching the cwd for
+    // a directory literally named "bitvue" -- that broke in any checkout/worktree named otherwise.
+    let reference_file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test_data/av1_test.ivf");
 
     assert!(
         reference_file.exists(),
