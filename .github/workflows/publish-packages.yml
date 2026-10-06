@@ -243,7 +243,7 @@ jobs:
           Section: video
           Priority: optional
           Architecture: amd64
-          Depends: libdav1d6
+          Depends: libdav1d7
           Maintainer: bitvue contributors <noreply@github.com>
           Description: AV1 bitstream analyzer - CLI
            Professional AV1 bitstream analyzer command-line tool.
@@ -263,7 +263,7 @@ jobs:
           Section: video
           Priority: optional
           Architecture: amd64
-          Depends: libdav1d6
+          Depends: libdav1d7
           Maintainer: bitvue contributors <noreply@github.com>
           Description: AV1 bitstream analyzer - GUI
            Professional AV1 bitstream analyzer with graphical interface.
