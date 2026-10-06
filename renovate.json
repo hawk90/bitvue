@@ -68,6 +68,46 @@
       "dependencyDashboardApproval": true
     },
     {
+      "description": "typescript 7 is blocked until typescript-eslint supports TS >= 7.1 (typescript-eslint/typescript-eslint#10940); checked 2026-10-07 against typescript-eslint 8.71.1 (peer typescript <6.1.0). Also needs tsconfig work: baseUrl removed, side-effect CSS imports are errors (TS2882)",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "eslint 10 is blocked by eslint-plugin-react (7.37.5 peer eslint <= ^9.7, no eslint 10 release yet); checked 2026-10-07. typescript-eslint 8.71.1 and eslint-plugin-react-hooks 7.1.1 already allow eslint 10",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "eslint",
+        "@eslint/js"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "ffmpeg-next >= 7 is blocked by libvmaf-rs (0.5.2, last release 2024-05) which requires ffmpeg-next ^6 -> ffmpeg-sys-next version conflict in the workspace; checked 2026-10-07",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "ffmpeg-next"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Rust toolchain pin (rust-toolchain.toml): manual, one PR per release",
       "matchDepNames": [
         "rust-toolchain"
