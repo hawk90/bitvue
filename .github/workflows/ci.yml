@@ -1,5 +1,20 @@
 name: CI
 
+# Pipeline shape (everything below `changes` runs in parallel -- there is no serial gate chain):
+#
+#   changes ─┬─ rust-lint   fmt + clippy + bench compile + `--locked`     (ubuntu, ~2 min)
+#            ├─ rust-test   one `cargo test --workspace` job per OS       (ubuntu / macOS / Windows)
+#            ├─ parity      scripts/parity_check.sh --local against the CLI
+#            ├─ coverage    cargo-llvm-cov -> Codecov
+#            ├─ docs        cargo doc
+#            ├─ frontend    prettier, eslint, stylelint, tsc, vitest, vite build
+#            └─ desktop     sidecar build, tsc, vitest, Electron selftest under xvfb
+#   ci-ok    aggregate: the single check to require in branch protection (skipped jobs count as ok)
+#
+# A job is skipped when its inputs did not change (see the `changes` filters). Caches are saved
+# only from `main`: PR runs restore main's cache but never write one, otherwise per-PR caches
+# evict main's (the repo's Actions cache was over its 10 GB limit with 57 PR-scoped entries).
+
 on:
   push:
     branches: [main]
@@ -24,7 +39,7 @@ env:
 
 jobs:
   # ================================
-  # 1. Detect Changes
+  # 1. Detect changes
   # ================================
 
   changes:
@@ -41,34 +56,98 @@ jobs:
         id: filter
         with:
           filters: |
-            # A workflow edit counts as both: it is the one change that can
-            # break a job without touching the code the job tests.
+            # A workflow/action edit counts as a change for every filter: it is the one change
+            # that can break a job without touching the code the job tests.
             rust:
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
+              # fixtures and scripts that the tests and the parity job read
+              - 'test_data/**'
+              - 'scripts/parity_check.sh'
+              - 'scripts/run_regression_suite.sh'
               - '.github/workflows/ci.yml'
+              - '.github/actions/**'
             # The frontend's vitest config aliases bitvue-desktop/electron/menuEvents.ts, so a
             # desktop change can break frontend tests too.
             frontend:
               - 'frontend/**'
               - 'bitvue-desktop/electron/**'
               - 'package.json'
+              - 'package-lock.json'
               - '.github/workflows/ci.yml'
+            # The desktop job is the end-to-end one (real sidecar, real renderer), so anything
+            # in the app stack triggers it.
             desktop:
               - 'bitvue-desktop/**'
-              - 'crates/bitvue-protocol/**'
-              - 'crates/bitvue-sidecar/**'
+              - 'frontend/**'
+              - 'crates/**'
+              - 'Cargo.toml'
               - 'Cargo.lock'
+              - 'test_data/**'
               - '.github/workflows/ci.yml'
+              - '.github/actions/**'
 
   # ================================
-  # 2. Quick Smoke Tests (run on push + PR)
+  # 2. Rust
   # ================================
 
-  rust-smoke:
-    name: Rust Smoke Test
+  rust-lint:
+    name: Rust Lint (fmt, clippy)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          components: rustfmt, clippy
+          cache: false
+          build-warnings: allow
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: lint
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - uses: ./.github/actions/install-dav1d
+      - name: Clippy (also verifies Cargo.lock is current)
+        run: cargo clippy --workspace --lib --exclude abseil --locked -- -D warnings
+      # Benches are never run in CI; compile them so they cannot silently rot again.
+      - name: Compile benches
+        run: cargo check --workspace --exclude abseil --benches --locked
+
+  rust-test:
+    name: Rust Test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+          build-warnings: allow
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: test-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/install-dav1d
+      # One workspace-wide run per OS instead of one job per crate: shared dependencies compile
+      # once, and 3 jobs queue instead of 57. Excluded: abseil (private vendored fork, see
+      # CLAUDE.md). Doc tests are included. --no-fail-fast reports every failing crate.
+      - name: Test workspace
+        run: cargo test --workspace --exclude abseil --no-fail-fast
+
+  parity-regression:
+    name: Parity Regression Suite
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
@@ -80,224 +159,20 @@ jobs:
           cache: false
           build-warnings: allow
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Verify Cargo.lock is current
-        run: cargo fetch --locked
-      - name: Install dav1d
-        run: sudo apt-get install -y libdav1d-dev
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-      - name: Cargo check
-        run: cargo check --workspace
-
-  frontend-smoke:
-    name: Frontend Smoke Test
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-      - name: Install dependencies
-        run: cd frontend && npm ci
-      - name: Check formatting
-        run: cd frontend && npm run format:check
-      - name: Build frontend
-        run: cd frontend && npm run build
-
-  # ================================
-  # 3. Rust Full Checks (PR + main)
-  # ================================
-
-  fmt:
-    name: Format (Rust)
-    needs: changes
-    if: |
-      needs.changes.outputs.rust == 'true' &&
-      github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
-        with:
-          components: rustfmt
-          cache: false
-          build-warnings: allow
-      - run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy (Rust)
-    needs: [changes, fmt]
-    if: |
-      always() &&
-      needs.changes.outputs.rust == 'true' &&
-      (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
-      github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
-        with:
-          components: clippy
-          cache: false
-          build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev
-      - run: cargo clippy --workspace --lib --exclude abseil -- -D warnings
-      # Benches are never run in CI; compile them so they cannot silently rot again.
-      - run: cargo check --workspace --exclude abseil --benches
-
-  test:
-    name: Test (${{ matrix.crate }}, ${{ matrix.os }})
-    needs: [changes, fmt, clippy]
-    if: |
-      always() &&
-      needs.changes.outputs.rust == 'true' &&
-      (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
-      (needs.clippy.result == 'success' || needs.clippy.result == 'skipped')
-    strategy:
-      fail-fast: false
-      # 19 crates x 3 OSes = 57 jobs. The account has 20 concurrent runners, so
-      # letting all 57 queue at once starves every other run (PR and main) for
-      # up to 18 minutes; capping the matrix leaves slots for the rest.
-      max-parallel: 12
-      matrix:
-        # Pull requests: all three OSes. Pushes to main: ubuntu only (a merged commit already passed
-        # the full matrix on its PR; this catches semantic conflicts between PRs merged separately).
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-26.04","macos-latest","windows-latest"]') || fromJSON('["ubuntu-26.04"]') }}
-        # Every workspace member with tests. Not listed, with the reason:
-        #   bitvue, bitvue-codecs       re-export facades, no tests
-        #   bitvue-benchmarks           criterion benches only
-        #   bitvue-test-data            fixtures only
-        #   abseil (crates/vendor)      private fork, excluded everywhere (CLAUDE.md)
-        crate:
-          - bitvue-engine
-          - bitvue-protocol
-          - bitvue-sidecar
-          - bitvue-indexer
-          - bitvue-formats
-          - bitvue-avc
-          - bitvue-hevc
-          - bitvue-vp9
-          - bitvue-vvc
-          - bitvue-av1-codec
-          - bitvue-mpeg2-codec
-          - bitvue-avs3
-          - bitvue-jpegxs
-          - bitvue-vc3
-          - bitvue-codecs-parser
-          - bitvue-decode
-          - bitvue-metrics
-          - bitvue-cli
-          - bitvue-mcp
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
-        with:
-          cache: false
-          build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-
-      - name: Install dav1d (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install dav1d
-
-      - name: Free up disk space (Linux)
-        if: matrix.os == 'ubuntu-26.04'
-        run: |
-          echo "Disk space before cleanup:"
-          df -h
-          # Remove unnecessary packages and files to free up ~30GB+
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/local/graalvm/
-          sudo rm -rf /usr/local/.ghcup/
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/local/share/chromium
-          sudo rm -rf /usr/local/lib/node_modules
-          sudo apt-get clean
-          docker rmi $(docker image ls -aq) || true
-          echo "Disk space after cleanup:"
-          df -h
-
-      - name: Install dav1d (Linux)
-        if: matrix.os == 'ubuntu-26.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libdav1d-dev pkg-config
-
-      - name: Install dav1d (Windows) - vcpkg
-        if: matrix.os == 'windows-latest'
-        run: |
-          if (-not (Test-Path "D:\vcpkg\vcpkg.exe")) {
-            git clone https://github.com/microsoft/vcpkg D:\vcpkg
-            D:\vcpkg\bootstrap-vcpkg.bat
-          }
-          D:\vcpkg\vcpkg install dav1d:x64-windows-static pkgconf:x64-windows-static --clean-after-build
-          echo "PKG_CONFIG_PATH=D:\vcpkg\installed\x64-windows-static\lib\pkgconfig" >> $env:GITHUB_ENV
-          echo "D:\vcpkg\installed\x64-windows-static\tools\pkgconf" >> $env:GITHUB_PATH
-
-      - name: Run tests
-        run: cargo test -p ${{ matrix.crate }} --no-fail-fast
-        env:
-          # Disable incremental compilation to save disk space
-          CARGO_INCREMENTAL: 0
-
-  # ================================
-  # 3b. Parity Regression Suite (PR + main)
-  # ================================
-  # Keeps docs/PARITY_CHECKLIST.md honest — that doc's "Last run" section was
-  # manually pasted and went stale for 3+ months before this job existed.
-  # Runs scripts/parity_check.sh --local (fixtures only, no network) against
-  # a debug build of the CLI. See docs/PARITY_CHECKLIST.md for what it checks.
-
-  parity-regression:
-    name: Parity Regression Suite
-    needs: [changes, fmt, clippy]
-    if: |
-      always() &&
-      needs.changes.outputs.rust == 'true' &&
-      (needs.fmt.result == 'success' || needs.fmt.result == 'skipped') &&
-      (needs.clippy.result == 'success' || needs.clippy.result == 'skipped')
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
-        with:
-          cache: false
-          build-warnings: allow
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Install dav1d
-        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev pkg-config
+          shared-key: parity
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/install-dav1d
       - name: Build CLI (debug)
         run: cargo build -p bitvue-cli --bin bitvue
       - name: Run parity regression suite
         run: ./scripts/parity_check.sh --local
 
-  # ================================
-  # 4. Code Coverage (PR + main)
-  # ================================
-
+  # Coverage on every PR and every push to main (main seeds the Codecov baseline).
   coverage:
     name: Code Coverage
     needs: changes
-    if: |
-      needs.changes.outputs.rust == 'true' &&
-      github.actor != 'dependabot[bot]'
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -317,6 +192,7 @@ jobs:
         with:
           workspaces: ". -> ../../../../../tmp/t"
           shared-key: "coverage"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
@@ -362,17 +238,16 @@ jobs:
           echo "Crates measured: bitvue-hevc, bitvue-avc, bitvue-vp9, bitvue-av1-codec, bitvue-avs3, bitvue-jpegxs, bitvue-vc3, bitvue-codecs-parser, bitvue-engine, bitvue-formats, bitvue-cli" >> $GITHUB_STEP_SUMMARY
 
   # ================================
-  # 5. Frontend Full Checks (PR + main)
+  # 3. Frontend
   # ================================
+  # One job: the steps share a single `npm ci`, and a failing step stops the rest.
 
-  frontend-fmt:
-    name: Format (Frontend)
+  frontend:
+    name: Frontend
     needs: changes
-    if: |
-      needs.changes.outputs.frontend == 'true' &&
-      github.actor != 'dependabot[bot]'
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -384,64 +259,24 @@ jobs:
         run: cd frontend && npm ci
       - name: Check formatting
         run: cd frontend && npm run format:check
-
-  frontend-lint:
-    name: Lint (Frontend)
-    needs: [changes, frontend-fmt]
-    if: |
-      always() &&
-      needs.changes.outputs.frontend == 'true' &&
-      (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped')
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-      - name: Install dependencies
-        run: cd frontend && npm ci
       - name: Lint TypeScript
         run: cd frontend && npm run lint:check
       - name: Lint CSS
         run: cd frontend && npm run lint:css:check
-
-  frontend-test:
-    name: Test (Frontend)
-    needs: [changes, frontend-fmt, frontend-lint]
-    if: |
-      always() &&
-      needs.changes.outputs.frontend == 'true' &&
-      (needs.frontend-fmt.result == 'success' || needs.frontend-fmt.result == 'skipped') &&
-      (needs.frontend-lint.result == 'success' || needs.frontend-lint.result == 'skipped')
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-      - name: Install dependencies
-        run: cd frontend && npm ci
-      - name: Run tests
+      - name: Tests
         run: cd frontend && npm run test:run
+      # `build` = `tsc && vite build`, i.e. also the type-check
+      - name: Type-check and build
+        run: cd frontend && npm run build
 
   # ================================
-  # 5b. Electron main process (bitvue-desktop)
+  # 4. Desktop (Electron main process + the whole stack end to end)
   # ================================
-  # The main process, preload and sidecar client had no CI at all. Type-checks the package and runs
-  # its vitest suites, including the integration tests that spawn the real bitvue-sidecar binary.
 
-  desktop-test:
-    name: Test (bitvue-desktop)
+  desktop:
+    name: Desktop (Electron)
     needs: changes
-    if: |
-      needs.changes.outputs.desktop == 'true' &&
-      github.actor != 'dependabot[bot]'
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -451,24 +286,53 @@ jobs:
           cache: false
           build-warnings: allow
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Install dav1d
-        run: sudo apt-get update && sudo apt-get install -y libdav1d-dev pkg-config
-      - name: Build sidecar (debug; the integration tests spawn target/debug/bitvue-sidecar)
+        with:
+          shared-key: desktop
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/install-dav1d
+      - name: Build sidecar (debug; the integration tests and the selftest spawn target/debug/bitvue-sidecar)
         run: cargo build -p bitvue-sidecar
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: 'bitvue-desktop/package-lock.json'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            bitvue-desktop/package-lock.json
       - name: Install dependencies
-        run: cd bitvue-desktop && npm ci
+        run: |
+          cd frontend && npm ci
+          cd ../bitvue-desktop && npm ci
       - name: Type-check
         run: cd bitvue-desktop && npm run typecheck
-      - name: Test
+      - name: Unit and integration tests
         run: cd bitvue-desktop && npm run test:run
+      - name: Build renderer and Electron main
+        run: |
+          cd frontend && npm run build
+          cd ../bitvue-desktop && npm run build:electron
+      # The selftest drives the real renderer <-> preload <-> main <-> sidecar chain and also
+      # fails on renderer console errors. --no-sandbox: the unpackaged Electron binary has no
+      # setuid chrome-sandbox on a CI runner.
+      - name: Electron selftest (xvfb)
+        run: cd bitvue-desktop && BITVUE_ELECTRON_SELFTEST=1 xvfb-run -a npx electron --no-sandbox .
+      - name: Electron screenshot (visual evidence)
+        if: always()
+        run: |
+          cd bitvue-desktop
+          BITVUE_ELECTRON_SCREENSHOT="$RUNNER_TEMP/bitvue-main.png" \
+          BITVUE_ELECTRON_SELFTEST_FIXTURE_PATH="$GITHUB_WORKSPACE/test_data/av1_test.ivf" \
+            xvfb-run -a npx electron --no-sandbox .
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: electron-screenshot
+          path: ${{ runner.temp }}/bitvue-main.png
+          if-no-files-found: warn
 
   # ================================
-  # 6. Documentation (always runs if Rust changes)
+  # 5. Documentation
   # ================================
 
   docs:
@@ -484,6 +348,9 @@ jobs:
           cache: false
           build-warnings: allow
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: docs
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install native dependencies
         run: |
           sudo apt-get update
@@ -497,3 +364,23 @@ jobs:
         env:
           RUSTDOCFLAGS: -A dead_code -A unused_variables -A unused_functions -A unused_macros -A non_snake_case -A non_camel_case_types
           PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+
+  # ================================
+  # 6. Aggregate
+  # ================================
+  # Require this one check in branch protection: jobs skipped by the path filters count as
+  # success, a failed or cancelled job does not.
+
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [changes, rust-lint, rust-test, parity-regression, coverage, frontend, desktop, docs]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any job failed or was cancelled
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if [ '${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}' = 'true' ]; then
+            exit 1
+          fi

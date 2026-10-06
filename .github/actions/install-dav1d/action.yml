@@ -1,0 +1,36 @@
+name: Install dav1d
+description: >-
+  Installs the dav1d AV1 decoder library (and pkg-config) on the current runner. On Windows the
+  static vcpkg build takes ~3.5 minutes, so the vcpkg `installed` tree is cached.
+
+runs:
+  using: composite
+  steps:
+    - name: Install dav1d (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y libdav1d-dev pkg-config
+
+    - name: Install dav1d (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install dav1d
+
+    # windows-latest ships vcpkg at C:\vcpkg; the cache key is bumped manually (v1) if the port
+    # set below changes.
+    - name: Cache vcpkg dav1d (Windows)
+      if: runner.os == 'Windows'
+      id: vcpkg-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: C:\vcpkg\installed
+        key: vcpkg-dav1d-pkgconf-x64-windows-static-v1
+
+    - name: Install dav1d (Windows) - vcpkg
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) { throw "C:\vcpkg\vcpkg.exe missing on this runner image" }
+        C:\vcpkg\vcpkg.exe install dav1d:x64-windows-static pkgconf:x64-windows-static --clean-after-build
+        echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows-static\lib\pkgconfig" >> $env:GITHUB_ENV
+        echo "C:\vcpkg\installed\x64-windows-static\tools\pkgconf" >> $env:GITHUB_PATH
