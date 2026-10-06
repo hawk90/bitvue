@@ -447,21 +447,13 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libdav1d-dev \
-            libvmaf-dev \
-            libavutil-dev \
-            libavcodec-dev \
-            libavformat-dev \
-            libavfilter-dev \
-            libswscale-dev \
-            libswresample-dev \
-            libavdevice-dev \
-            pkg-config
+          sudo apt-get install -y libdav1d-dev pkg-config
       - name: Build documentation
-        # --all-features pulls in bitvue-metrics' `vmaf` feature, whose
-        # libvmaf-sys build script needs the system libvmaf (libvmaf-dev above).
-        run: cargo doc --no-deps --all-features
+        # Not `--all-features`: the `ffmpeg`/`vmaf` features pull in ffmpeg-next 6 (pinned by
+        # libvmaf-rs), which cannot build against FFmpeg >= 7. Revisit once libvmaf-rs moves on.
+        run: >-
+          cargo doc --no-deps --workspace --exclude abseil
+          --features bitvue-av1-codec/debug-strings
         env:
           RUSTDOCFLAGS: -A dead_code -A unused_variables -A unused_functions -A unused_macros -A non_snake_case -A non_camel_case_types
           PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
