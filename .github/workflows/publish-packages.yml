@@ -33,7 +33,7 @@ env:
 jobs:
   publish-crates-io:
     name: Publish to crates.io
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -67,7 +67,7 @@ jobs:
 
   update-homebrew-tap:
     name: Update Homebrew Tap
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     needs: publish-crates-io
     steps:
       - name: Get version
@@ -193,7 +193,7 @@ jobs:
 
   create-debian-package:
     name: Create Debian Package
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -291,7 +291,7 @@ jobs:
 
   update-aur:
     name: Update AUR Package
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     needs: publish-crates-io
     steps:
       - name: Get version
