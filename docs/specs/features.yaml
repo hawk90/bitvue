@@ -5683,7 +5683,7 @@ items:
       - VQA_PARITY_SPEC_V3.md §1.2
     notes: 'Engine-only behind optional `vmaf` feature: vendored libvmaf via vmaf-head-sys (static, CPU only, no FFmpeg; build needs
       meson+ninja+C/C++ compiler, nasm on x86). Real per-frame + pooled scores, checked against FFmpeg libvmaf 3.2.0 on macOS/Ubuntu/Windows
-      (tests/vmaf_reference.rs; <=4.2e-4 apart on real content). The old libvmaf-rs wrapper (GPL-3.0, pinned ffmpeg-next 6) is gone, and
+      (tests/vmaf_reference.rs; identical on arm64, within 4e-4..3e-2 on x86-64 depending on content). The old libvmaf-rs wrapper (GPL-3.0, pinned ffmpeg-next 6) is gone, and
       its per-frame function returned the pooled score repeated per frame. Gaps: CLI quality handles only psnr/ssim (`-m vmaf` alone errors, `psnr,vmaf` silently ignores vmaf); not in sidecar; QualityMetricsPanel
       passes calculateVmaf=false; only the built-in vmaf_v0.6.1 model or a model path (no 4K/NEG selection).'
   - id: MET-003

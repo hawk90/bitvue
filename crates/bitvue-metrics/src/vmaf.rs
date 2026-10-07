@@ -9,10 +9,11 @@
 //! ([`Picture`], [`Session`]) whose ownership rules are taken from the vendored libvmaf sources
 //! (`libvmaf/src/libvmaf.c`, `picture.c`), cited where they matter.
 //!
-//! Scores match upstream libvmaf: on real content they agree with FFmpeg's `libvmaf` filter to
-//! well under 1e-3 across arm64 and x86-64. Pathological synthetic input can differ by up to
-//! ~0.6 between AVX2 and AVX-512 machines (libvmaf picks SIMD kernels at runtime), so compare
-//! with a tolerance, not for equality.
+//! Scores match upstream libvmaf: they are identical to FFmpeg's `libvmaf` filter on arm64, and
+//! within 4e-4 (a 352x288 clip) to 3e-2 (a small, noisy 176x144 clip) between arm64 and x86-64.
+//! libvmaf picks SIMD kernels at runtime (NEON / AVX2 / AVX-512), and pathological synthetic
+//! input can differ by ~0.6 between AVX2 and AVX-512 machines, so compare with a tolerance, not
+//! for equality.
 
 use std::ffi::{c_uint, CString};
 use std::ptr;
@@ -414,8 +415,13 @@ fn run_session(
 /// ```no_run
 /// use bitvue_metrics::vmaf::{compute_vmaf, VmafFrame};
 ///
-/// let reference = vec![VmafFrame { /* ... */ }];
-/// let distorted = vec![VmafFrame { /* ... */ }];
+/// // Decode two clips into 4:2:0 frames (tightly packed Y, U, V planes) however you like.
+/// fn load(_path: &str) -> Vec<VmafFrame> {
+///     unimplemented!("decode the clip")
+/// }
+///
+/// let reference = load("reference.ivf");
+/// let distorted = load("distorted.ivf");
 ///
 /// let score = compute_vmaf(&reference, &distorted, 1920, 1080, None).unwrap();
 /// println!("VMAF Score: {:.2}", score);
@@ -534,6 +540,37 @@ mod tests {
         (0..n)
             .map(|i| frame(176, 144, bit_depth, i, distortion))
             .collect()
+    }
+
+    /// The score cannot check this: the default model only looks at luma, so a wrong chroma
+    /// plane (U/V swapped, bad crop, wrong stride) would pass every score comparison. Read the
+    /// planes back out of the libvmaf picture and compare them with the source, row by row.
+    #[test]
+    fn picture_planes_hold_exactly_the_source_samples() {
+        for (w, h, depth) in [(176usize, 144usize, 8u8), (175, 143, 8), (176, 144, 10)] {
+            let f = frame(w, h, depth, 3, 4);
+            assert_ne!(f.u, f.v, "test frame must have distinct U and V planes");
+            let pic = Picture::from_frame(&f).unwrap();
+            let bps = if depth > 8 { 2 } else { 1 };
+
+            for (i, src) in [&f.y, &f.u, &f.v].into_iter().enumerate() {
+                let src_w = if i == 0 { w } else { w.div_ceil(2) };
+                let (pw, ph) = (pic.raw.w[i] as usize, pic.raw.h[i] as usize);
+                let stride = pic.raw.stride[i] as usize;
+                let base = pic.raw.data[i] as *const u8;
+                for row in 0..ph {
+                    // SAFETY: libvmaf allocated `stride * ph` bytes for plane `i`.
+                    let got =
+                        unsafe { std::slice::from_raw_parts(base.add(row * stride), pw * bps) };
+                    let start = row * src_w * bps;
+                    assert_eq!(
+                        got,
+                        &src[start..start + pw * bps],
+                        "plane {i} row {row} ({w}x{h}, {depth}-bit)"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

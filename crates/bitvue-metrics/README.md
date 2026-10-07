@@ -84,9 +84,9 @@ let per_frame = compute_vmaf_per_frame(&ref_frames, &dist_frames, 1920, 1080, No
 samples are 16-bit little-endian. Plane lengths are validated exactly (a wrong length is an
 error, not an out-of-bounds read).
 
-Scores match upstream libvmaf (checked against FFmpeg's `libvmaf` filter). libvmaf selects SIMD
-kernels at runtime, so compare scores with a tolerance, not for equality: on real video the
-difference between arm64 / AVX2 / AVX-512 machines is below 1e-3.
+Scores match upstream libvmaf (checked against FFmpeg's `libvmaf` filter): identical on arm64,
+and between arm64 and x86-64 within 4e-4 on a 352x288 clip and 3e-2 on a small noisy 176x144 clip.
+libvmaf selects SIMD kernels at runtime, so compare scores with a tolerance, not for equality.
 
 ## Feature Flags
 

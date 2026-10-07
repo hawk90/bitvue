@@ -1,10 +1,12 @@
 //! Checks bitvue's VMAF against the scores Netflix's libvmaf produced for the same input.
 //!
 //! The expected numbers come from FFmpeg's `libvmaf` filter (libvmaf 3.2.0, model
-//! `vmaf_v0.6.1`); see `tests/fixtures/vmaf/README.md` for how they were generated. libvmaf picks
-//! SIMD kernels at runtime, and across arm64 / AVX2 / AVX-512 machines real content differed by
-//! at most 4.2e-4 (verified on macOS, Ubuntu 24.04/26.04 and Windows CI runners), so the
-//! comparison uses a tolerance of 0.01, not equality.
+//! `vmaf_v0.6.1`) on an arm64 Mac; see `tests/fixtures/vmaf/README.md` for how they were
+//! generated. libvmaf picks SIMD kernels at runtime (NEON / AVX2 / AVX-512), so other machines
+//! differ slightly. Measured on this fixture: arm64 matches exactly, the x86-64 CI runners (Ubuntu,
+//! Windows) are up to 0.030 per frame and 0.017 pooled away (~0.06% of the score); a larger
+//! 352x288 clip differed by only 4e-4. The tolerance is 0.05: far below any real regression (a
+//! wrong luma copy or stride moves the score by whole points) but above the SIMD spread.
 
 #![cfg(feature = "vmaf")]
 
@@ -13,7 +15,7 @@ use bitvue_metrics::vmaf::{compute_vmaf, compute_vmaf_per_frame, VmafFrame};
 const WIDTH: usize = 176;
 const HEIGHT: usize = 144;
 const FRAMES: usize = 5;
-const TOLERANCE: f64 = 0.01;
+const TOLERANCE: f64 = 0.05;
 
 /// libvmaf 3.2.0 via FFmpeg, per frame. The last frame's value depends on it being last (the
 /// motion feature looks one frame ahead), so it is only comparable for exactly this input.
