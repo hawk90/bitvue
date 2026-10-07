@@ -45,7 +45,7 @@ mod types;
 pub use palette::PaletteInfo;
 pub use types::*;
 
-use crate::tile::{FrameCodingParams, TileState};
+use crate::tile::{BlockRect, FrameCodingParams, SuperblockCtx, TileState};
 
 use crate::symbol::cdf::tx_size_class;
 use crate::symbol::{ResidualBlockStats, SymbolDecoder};
@@ -65,33 +65,35 @@ use palette::{read_palette_mode_info, read_palette_tokens};
 ///
 /// * `state` - The tile's shared mutable state: symbol decoder, MV predictor context and the
 ///   above/left entropy-context tracker (currently only `skip` uses it) -- see [`TileState`]
-/// * `x`, `y` - Block position in pixels
-/// * `width`, `height` - Block dimensions in pixels
+/// * `sb` - The enclosing superblock's origin/size and `cdef_idx()` tracker (see
+///   [`SuperblockCtx`]); real spec's `delta_q`/`delta_lf` are read only once per superblock
+/// * `rect` - Block position and dimensions in pixels
 /// * `frame` - Frame-level, read-only flags (see [`FrameCodingParams`] for what each gates)
 /// * `current_qp` - Current quantization parameter value
-/// * `sb_x4`/`sb_y4`/`sb_size4` - This CU's enclosing superblock's origin and size, all in 4x4
-///   ("MI") units -- real spec's `delta_q`/`delta_lf` are read only once per superblock, at
-///   whichever leaf sits at `(sb_x4, sb_y4)` (always the first leaf visited in partition-tree
-///   order, spec 5.11.4's decode order), not once per CU.
-/// * `cdef_idx_state` - `cdef_idx()`'s per-superblock "already read" tracker (spec 5.11.56)
 ///
 /// # Returns
 ///
 /// Parsed coding unit with prediction info, motion vectors (if INTER), and QP value
-#[allow(clippy::too_many_arguments)]
 pub fn parse_coding_unit(
     state: &mut TileState<'_>,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+    sb: &mut SuperblockCtx,
+    rect: BlockRect,
     frame: &FrameCodingParams,
     current_qp: i16,
-    sb_x4: u32,
-    sb_y4: u32,
-    sb_size4: u32,
-    cdef_idx_state: &mut [i8; 4],
 ) -> Result<(CodingUnit, i16)> {
+    let BlockRect {
+        x,
+        y,
+        width,
+        height,
+    } = rect;
+    let SuperblockCtx {
+        x4: sb_x4,
+        y4: sb_y4,
+        size4: sb_size4,
+        cdef_idx: cdef_idx_state,
+    } = sb;
+    let (sb_x4, sb_y4, sb_size4) = (*sb_x4, *sb_y4, *sb_size4);
     let TileState {
         decoder,
         mv_ctx,

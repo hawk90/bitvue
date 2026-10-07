@@ -13,8 +13,8 @@
 //! 4. Build MVGrid for visualization
 
 use crate::tile::{
-    parse_coding_unit, BlockSize, CodingUnit, FrameCodingParams, MotionVector, PartitionNode,
-    PartitionType, TileState,
+    parse_coding_unit, BlockRect, BlockSize, CodingUnit, FrameCodingParams, MotionVector,
+    PartitionNode, PartitionType, SuperblockCtx, TileState,
 };
 use bitvue_engine::Result;
 use serde::{Deserialize, Serialize};
@@ -102,12 +102,9 @@ pub fn parse_superblock(
         _ => BlockSize::Block64x64, // Default
     };
 
-    // `cdef_idx()`'s per-superblock "already read" tracker (spec 5.11.56, see
-    // `crate::tile::coding_unit::parse_coding_unit`'s doc) -- reset fresh for every superblock,
-    // mirroring dav1d's `cur_sb_cdef_idx_ptr` (`decode_b`'s caller resets it per-superblock too).
-    // `-1` (real dav1d sentinel) = "not yet read"; up to 4 slots for `sb128`'s 2x2 grid of 64x64
-    // CDEF units (`sb64` only ever touches slot `0`).
-    let mut cdef_idx_state: [i8; 4] = [-1; 4];
+    // Per-superblock state (including `cdef_idx()`'s "already read" tracker, spec 5.11.56) is
+    // created fresh for every superblock, mirroring dav1d's `cur_sb_cdef_idx_ptr`.
+    let mut sb_ctx = SuperblockCtx::new(x, y, sb_size);
 
     // Parse partition tree -- see `tile::partition::parse_partition_recursive`'s doc for why this
     // module no longer keeps its own copy. `None` (superblock origin fully outside the frame)
@@ -134,12 +131,9 @@ pub fn parse_superblock(
     let final_qp = parse_coding_units_recursive(
         state,
         &partition,
+        &mut sb_ctx,
         frame,
         current_qp,
-        x / 4,
-        y / 4,
-        sb_size / 4,
-        &mut cdef_idx_state,
         &mut sb.coding_units,
     )?;
 
@@ -157,33 +151,23 @@ pub fn parse_superblock(
 }
 
 /// Recursively parse coding units for leaf blocks
-#[allow(clippy::too_many_arguments)]
 fn parse_coding_units_recursive(
     state: &mut TileState<'_>,
     partition: &PartitionNode,
+    sb_ctx: &mut SuperblockCtx,
     frame: &FrameCodingParams,
     current_qp: i16,
-    sb_x4: u32,
-    sb_y4: u32,
-    sb_size4: u32,
-    cdef_idx_state: &mut [i8; 4],
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
         // Leaf block - parse coding unit
-        let (cu, new_qp) = parse_coding_unit(
-            state,
-            partition.x,
-            partition.y,
-            partition.size.width(),
-            partition.size.height(),
-            frame,
-            current_qp,
-            sb_x4,
-            sb_y4,
-            sb_size4,
-            cdef_idx_state,
-        )?;
+        let rect = BlockRect {
+            x: partition.x,
+            y: partition.y,
+            width: partition.size.width(),
+            height: partition.size.height(),
+        };
+        let (cu, new_qp) = parse_coding_unit(state, sb_ctx, rect, frame, current_qp)?;
 
         coding_units.push(cu);
         Ok(new_qp)
@@ -191,17 +175,7 @@ fn parse_coding_units_recursive(
         // Non-leaf - recurse into children
         let mut qp = current_qp;
         for child in &partition.children {
-            qp = parse_coding_units_recursive(
-                state,
-                child,
-                frame,
-                qp,
-                sb_x4,
-                sb_y4,
-                sb_size4,
-                cdef_idx_state,
-                coding_units,
-            )?;
+            qp = parse_coding_units_recursive(state, child, sb_ctx, frame, qp, coding_units)?;
         }
         Ok(qp)
     }
