@@ -195,6 +195,47 @@ impl Default for FrameDimensions {
 }
 
 impl ParsedFrame {
+    /// Frame-level inputs to coding-unit parsing, derived from this frame's headers. The single
+    /// place that maps `ParsedFrame`'s fields onto [`crate::tile::FrameCodingParams`].
+    pub fn coding_params(&self) -> crate::tile::FrameCodingParams {
+        crate::tile::FrameCodingParams {
+            is_key_frame: self.frame_type.is_intra_only,
+            delta_q_enabled: self.delta_q_enabled,
+            reference_select: self.reference_select,
+            allow_intrabc: self.allow_intrabc,
+            allow_screen_content_tools: self.allow_screen_content_tools,
+            enable_filter_intra: self.enable_filter_intra,
+            delta_lf_present: self.delta_lf_present,
+            delta_lf_multi: self.delta_lf_multi,
+            use_ref_frame_mvs: self.use_ref_frame_mvs,
+            segmentation: self.segmentation,
+            tx_type_flags: crate::tile::TxTypeFrameFlags {
+                coded_lossless: self.coded_lossless,
+                qidx_is_zero: self.frame_type.base_qp == Some(0),
+                reduced_tx_set: self.reduced_tx_set,
+                txfm_mode: self.txfm_mode,
+                mono_chrome: self.mono_chrome,
+                subsampling_x: self.subsampling_x,
+                subsampling_y: self.subsampling_y,
+            },
+            inter_mode_flags: crate::tile::InterModeFlags {
+                switchable_motion_mode: self.switchable_motion_mode,
+                allow_warped_motion: self.allow_warped_motion,
+                enable_interintra_compound: self.enable_interintra_compound,
+                enable_masked_compound: self.enable_masked_compound,
+                enable_jnt_comp: self.enable_jnt_comp,
+                subpel_filter_switchable: self.subpel_filter_switchable,
+                force_integer_mv: self.force_integer_mv,
+                gm_type: self.gm_type,
+            },
+            mi_rows: crate::tile::partition::mi_units(self.dimensions.height),
+            mi_cols: crate::tile::partition::mi_units(self.dimensions.width),
+            cdef_bits: self.cdef_bits,
+            skip_mode_present: self.skip_mode_present,
+            skip_mode_refs: self.skip_mode_refs,
+        }
+    }
+
     /// Parse OBU data and cache all relevant information
     ///
     /// This is the main entry point for overlay extraction.

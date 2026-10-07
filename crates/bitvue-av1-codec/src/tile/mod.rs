@@ -23,6 +23,7 @@
 
 pub mod coding_unit;
 pub mod context;
+pub mod frame_params;
 pub mod motion_field;
 pub mod mv_prediction;
 pub mod partition;
@@ -34,6 +35,7 @@ pub use coding_unit::{
     RefFrame, TxSize, TxTypeFrameFlags,
 };
 pub use context::TileContext;
+pub use frame_params::FrameCodingParams;
 pub use motion_field::{
     add_temporal_candidates, project_motion_field, select_motion_field_sources, store_motion_field,
     MfmvSource, MotionFieldGrid, MotionFieldState, ProjectedMotionField, ProjectedMv, SavedMv,

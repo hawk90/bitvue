@@ -44,40 +44,7 @@ pub fn parse_all_coding_units_with_temporal(
     let sb_size = parsed.dimensions.sb_size;
     let sb_cols = parsed.dimensions.sb_cols;
     let sb_rows = parsed.dimensions.sb_rows;
-    let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
-    let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
-    let is_key_frame = parsed.frame_type.is_intra_only;
-    let delta_q_enabled = parsed.delta_q_enabled;
-    let reference_select = parsed.reference_select;
-    let allow_intrabc = parsed.allow_intrabc;
-    let allow_screen_content_tools = parsed.allow_screen_content_tools;
-    let enable_filter_intra = parsed.enable_filter_intra;
-    let delta_lf_present = parsed.delta_lf_present;
-    let delta_lf_multi = parsed.delta_lf_multi;
-    let use_ref_frame_mvs = parsed.use_ref_frame_mvs;
-    let segmentation = parsed.segmentation;
-    let cdef_bits = parsed.cdef_bits;
-    let skip_mode_present = parsed.skip_mode_present;
-    let skip_mode_refs = parsed.skip_mode_refs;
-    let inter_mode_flags = crate::tile::InterModeFlags {
-        switchable_motion_mode: parsed.switchable_motion_mode,
-        allow_warped_motion: parsed.allow_warped_motion,
-        enable_interintra_compound: parsed.enable_interintra_compound,
-        enable_masked_compound: parsed.enable_masked_compound,
-        enable_jnt_comp: parsed.enable_jnt_comp,
-        subpel_filter_switchable: parsed.subpel_filter_switchable,
-        force_integer_mv: parsed.force_integer_mv,
-        gm_type: parsed.gm_type,
-    };
-    let tx_type_flags = crate::tile::TxTypeFrameFlags {
-        coded_lossless: parsed.coded_lossless,
-        qidx_is_zero: parsed.frame_type.base_qp == Some(0),
-        reduced_tx_set: parsed.reduced_tx_set,
-        txfm_mode: parsed.txfm_mode,
-        mono_chrome: parsed.mono_chrome,
-        subsampling_x: parsed.subsampling_x,
-        subsampling_y: parsed.subsampling_y,
-    };
+    let frame_params = parsed.coding_params();
 
     let mut all_cus = Vec::new();
 
@@ -120,26 +87,10 @@ pub fn parse_all_coding_units_with_temporal(
                 sb_pixel_x,
                 sb_pixel_y,
                 sb_size,
-                is_key_frame,
+                &frame_params,
                 current_qp,
-                delta_q_enabled,
                 &mut mv_ctx,
-                reference_select,
-                allow_intrabc,
-                allow_screen_content_tools,
-                enable_filter_intra,
-                delta_lf_present,
-                delta_lf_multi,
-                use_ref_frame_mvs,
-                segmentation,
                 &mut tile_ctx,
-                tx_type_flags,
-                mi_rows,
-                mi_cols,
-                cdef_bits,
-                skip_mode_present,
-                skip_mode_refs,
-                inter_mode_flags,
             ) {
                 Ok((sb, new_qp)) => {
                     // Collect all coding units from this superblock
