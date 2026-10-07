@@ -121,25 +121,18 @@ fn test_mv_extraction_with_spec_cdfs() {
         // MiRows/MiCols (spec 5.9.5) for a 1920x1080 frame, matching the comment above.
         let mi_rows = 2 * ((1080u32 + 7) >> 3);
         let mi_cols = 2 * ((1920u32 + 7) >> 3);
-        match parse_superblock(
-            &mut decoder,
-            0,
-            0,
-            sb_size,
-            false,
-            128,
-            false,
-            &mut mv_ctx,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            bitvue_av1_codec::frame_header_full::SegmentationInfo::default(),
-            &mut tile_ctx,
-            bitvue_av1_codec::tile::TxTypeFrameFlags {
+        let frame_params = bitvue_av1_codec::tile::FrameCodingParams {
+            is_key_frame: false,
+            delta_q_enabled: false,
+            reference_select: false,
+            allow_intrabc: false,
+            allow_screen_content_tools: false,
+            enable_filter_intra: false,
+            delta_lf_present: false,
+            delta_lf_multi: false,
+            use_ref_frame_mvs: false,
+            segmentation: bitvue_av1_codec::frame_header_full::SegmentationInfo::default(),
+            tx_type_flags: bitvue_av1_codec::tile::TxTypeFrameFlags {
                 coded_lossless: false,
                 qidx_is_zero: false,
                 reduced_tx_set: false,
@@ -148,12 +141,7 @@ fn test_mv_extraction_with_spec_cdfs() {
                 subsampling_x: false,
                 subsampling_y: false,
             },
-            mi_rows,
-            mi_cols,
-            0,
-            false,
-            [0u8, 0u8],
-            bitvue_av1_codec::tile::InterModeFlags {
+            inter_mode_flags: bitvue_av1_codec::tile::InterModeFlags {
                 switchable_motion_mode: false,
                 allow_warped_motion: false,
                 enable_interintra_compound: false,
@@ -163,6 +151,21 @@ fn test_mv_extraction_with_spec_cdfs() {
                 force_integer_mv: false,
                 gm_type: [0u8; 8],
             },
+            mi_rows,
+            mi_cols,
+            cdef_bits: 0,
+            skip_mode_present: false,
+            skip_mode_refs: [0u8, 0u8],
+        };
+        match parse_superblock(
+            &mut decoder,
+            0,
+            0,
+            sb_size,
+            &frame_params,
+            128,
+            &mut mv_ctx,
+            &mut tile_ctx,
         ) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(

@@ -131,7 +131,7 @@ fn parse_partition_trees_from_tile_data(
         BlockSize::Block64x64
     };
 
-    let is_key_frame = parsed.frame_type.is_intra_only;
+    let frame_params = parsed.coding_params();
 
     // Entropy-context tracker (currently only `skip` uses it -- see `crate::tile::TileContext`'s
     // doc). Created once for the whole tile, unlike `mv_ctx` below (which -- pre-existing, not
@@ -141,8 +141,6 @@ fn parse_partition_trees_from_tile_data(
         (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
         (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
     );
-    let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
-    let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
 
     // Parse each superblock
     for sb_y in 0..parsed.dimensions.sb_rows {
@@ -185,43 +183,10 @@ fn parse_partition_trees_from_tile_data(
                 sb_pixel_x,
                 sb_pixel_y,
                 actual_block_size.width(),
-                is_key_frame,
+                &frame_params,
                 base_qp,
-                parsed.delta_q_enabled,
                 &mut mv_ctx,
-                parsed.reference_select,
-                parsed.allow_intrabc,
-                parsed.allow_screen_content_tools,
-                parsed.enable_filter_intra,
-                parsed.delta_lf_present,
-                parsed.delta_lf_multi,
-                parsed.use_ref_frame_mvs,
-                parsed.segmentation,
                 &mut tile_ctx,
-                crate::tile::TxTypeFrameFlags {
-                    coded_lossless: parsed.coded_lossless,
-                    qidx_is_zero: parsed.frame_type.base_qp == Some(0),
-                    reduced_tx_set: parsed.reduced_tx_set,
-                    txfm_mode: parsed.txfm_mode,
-                    mono_chrome: parsed.mono_chrome,
-                    subsampling_x: parsed.subsampling_x,
-                    subsampling_y: parsed.subsampling_y,
-                },
-                mi_rows,
-                mi_cols,
-                parsed.cdef_bits,
-                parsed.skip_mode_present,
-                parsed.skip_mode_refs,
-                crate::tile::InterModeFlags {
-                    switchable_motion_mode: parsed.switchable_motion_mode,
-                    allow_warped_motion: parsed.allow_warped_motion,
-                    enable_interintra_compound: parsed.enable_interintra_compound,
-                    enable_masked_compound: parsed.enable_masked_compound,
-                    enable_jnt_comp: parsed.enable_jnt_comp,
-                    subpel_filter_switchable: parsed.subpel_filter_switchable,
-                    force_integer_mv: parsed.force_integer_mv,
-                    gm_type: parsed.gm_type,
-                },
             );
 
             match sb_result {
@@ -905,7 +870,6 @@ mod tests {
         delta_q_enabled: bool,
     ) -> Result<Vec<crate::tile::CodingUnit>, BitvueError> {
         let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-        let is_key_frame = parsed.frame_type.is_intra_only;
         let sb_size = parsed.dimensions.sb_size;
 
         let mut decoder = crate::SymbolDecoder::new(&parsed.tile_data)?;
@@ -917,8 +881,11 @@ mod tests {
             (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
             (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
         );
-        let mi_rows = crate::tile::partition::mi_units(parsed.dimensions.height);
-        let mi_cols = crate::tile::partition::mi_units(parsed.dimensions.width);
+        // Everything the real path derives, except `delta_q_enabled`, which this helper overrides.
+        let frame_params = crate::tile::FrameCodingParams {
+            delta_q_enabled,
+            ..parsed.coding_params()
+        };
         let mut current_qp = base_qp;
         let mut all_cus = Vec::new();
         for sb_y in 0..parsed.dimensions.sb_rows {
@@ -929,43 +896,10 @@ mod tests {
                     sb_x * sb_size,
                     sb_y * sb_size,
                     sb_size,
-                    is_key_frame,
+                    &frame_params,
                     current_qp,
-                    delta_q_enabled,
                     &mut mv_ctx,
-                    parsed.reference_select,
-                    parsed.allow_intrabc,
-                    parsed.allow_screen_content_tools,
-                    parsed.enable_filter_intra,
-                    parsed.delta_lf_present,
-                    parsed.delta_lf_multi,
-                    parsed.use_ref_frame_mvs,
-                    parsed.segmentation,
                     &mut tile_ctx,
-                    crate::tile::TxTypeFrameFlags {
-                        coded_lossless: parsed.coded_lossless,
-                        qidx_is_zero: parsed.frame_type.base_qp == Some(0),
-                        reduced_tx_set: parsed.reduced_tx_set,
-                        txfm_mode: parsed.txfm_mode,
-                        mono_chrome: parsed.mono_chrome,
-                        subsampling_x: parsed.subsampling_x,
-                        subsampling_y: parsed.subsampling_y,
-                    },
-                    mi_rows,
-                    mi_cols,
-                    parsed.cdef_bits,
-                    parsed.skip_mode_present,
-                    parsed.skip_mode_refs,
-                    crate::tile::InterModeFlags {
-                        switchable_motion_mode: parsed.switchable_motion_mode,
-                        allow_warped_motion: parsed.allow_warped_motion,
-                        enable_interintra_compound: parsed.enable_interintra_compound,
-                        enable_masked_compound: parsed.enable_masked_compound,
-                        enable_jnt_comp: parsed.enable_jnt_comp,
-                        subpel_filter_switchable: parsed.subpel_filter_switchable,
-                        force_integer_mv: parsed.force_integer_mv,
-                        gm_type: parsed.gm_type,
-                    },
                 )?;
                 current_qp = new_qp;
                 all_cus.extend(sb.coding_units);

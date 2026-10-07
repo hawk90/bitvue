@@ -14,8 +14,8 @@
 
 use crate::symbol::SymbolDecoder;
 use crate::tile::{
-    parse_coding_unit, BlockSize, CodingUnit, MotionVector, PartitionNode, PartitionType,
-    TxTypeFrameFlags,
+    parse_coding_unit, BlockSize, CodingUnit, FrameCodingParams, MotionVector, PartitionNode,
+    PartitionType,
 };
 use bitvue_engine::Result;
 use serde::{Deserialize, Serialize};
@@ -79,28 +79,13 @@ impl Superblock {
 /// * `decoder` - Symbol decoder for reading bitstream
 /// * `x`, `y` - Superblock position in pixels
 /// * `sb_size` - Superblock size (64 or 128)
-/// * `is_key_frame` - True if KEY frame (INTRA only)
+/// * `frame` - Frame-level, read-only flags (see [`FrameCodingParams`]); `frame.mi_rows`/
+///   `mi_cols` must be the real frame extent, not the superblock-rounded one
 /// * `current_qp` - Current quantization parameter value
-/// * `delta_q_enabled` - True if delta Q is enabled for this frame
-/// * `reference_select` - Frame header's `reference_select` flag (see `parse_coding_unit`'s doc)
-/// * `allow_intrabc` - Frame header's `allow_intrabc` flag (see `parse_coding_unit`'s doc)
-/// * `allow_screen_content_tools` - Frame header's `allow_screen_content_tools` flag (see
-///   `parse_coding_unit`'s doc)
-/// * `enable_filter_intra` - Sequence header's `enable_filter_intra` flag (see
-///   `parse_coding_unit`'s doc)
-/// * `use_ref_frame_mvs` - Frame header's `use_ref_frame_mvs` flag, used as `inter_mode`'s
-///   `globalmv_ctx` (see `crate::tile::context::SpatialRefContext::inter_mode_context`'s doc)
+/// * `mv_ctx` - MV predictor context
 /// * `tile_ctx` - Above/left neighbor-state tracker for entropy context, shared across every
 ///   superblock in the tile (see `crate::tile::TileContext`'s doc). Callers looping over
 ///   superblock rows should call `tile_ctx.start_superblock_row()` at the start of each row.
-/// * `tx_type_flags` - Frame header flags for `transform_type()` (see `parse_coding_unit`'s doc)
-/// * `mi_rows`, `mi_cols` - Frame extent in AV1 "MI" (4x4) units (`tile::partition::mi_units` of
-///   the real frame pixel width/height) -- drives `parse_partition_recursive`'s real `hasRows`/
-///   `hasCols` frame-edge partition legality (spec 5.11.4). Callers with a frame smaller than
-///   this superblock loop's `sb_cols * sb_size`/`sb_rows * sb_size` extent (i.e. any frame whose
-///   dimensions aren't an exact multiple of `sb_size`) need real values here -- passing the
-///   superblock-rounded extent instead would make `has_rows`/`has_cols` always true, silently
-///   defeating this parameter.
 ///
 /// # Returns
 ///
@@ -111,26 +96,10 @@ pub fn parse_superblock(
     x: u32,
     y: u32,
     sb_size: u32,
-    is_key_frame: bool,
+    frame: &FrameCodingParams,
     current_qp: i16,
-    delta_q_enabled: bool,
     mv_ctx: &mut crate::tile::MvPredictorContext,
-    reference_select: bool,
-    allow_intrabc: bool,
-    allow_screen_content_tools: bool,
-    enable_filter_intra: bool,
-    delta_lf_present: bool,
-    delta_lf_multi: bool,
-    use_ref_frame_mvs: bool,
-    segmentation: crate::frame_header_full::SegmentationInfo,
     tile_ctx: &mut crate::tile::TileContext,
-    tx_type_flags: TxTypeFrameFlags,
-    mi_rows: u32,
-    mi_cols: u32,
-    cdef_bits: u8,
-    skip_mode_present: bool,
-    skip_mode_refs: [u8; 2],
-    inter_mode_flags: crate::tile::InterModeFlags,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -153,7 +122,13 @@ pub fn parse_superblock(
     // frame_width`/`frame_height` -- fall back to an empty superblock defensively rather than
     // panic if that invariant is ever violated.
     let partition = crate::tile::partition::parse_partition_recursive(
-        decoder, x, y, block_size, mi_rows, mi_cols, 0, // depth
+        decoder,
+        x,
+        y,
+        block_size,
+        frame.mi_rows,
+        frame.mi_cols,
+        0, // depth
         tile_ctx,
     )?
     .unwrap_or_else(|| PartitionNode::new(x, y, block_size, PartitionType::None));
@@ -165,30 +140,14 @@ pub fn parse_superblock(
     let final_qp = parse_coding_units_recursive(
         decoder,
         &partition,
-        is_key_frame,
+        frame,
         current_qp,
-        delta_q_enabled,
         mv_ctx,
-        reference_select,
-        allow_intrabc,
-        allow_screen_content_tools,
-        enable_filter_intra,
-        delta_lf_present,
-        delta_lf_multi,
-        use_ref_frame_mvs,
-        segmentation,
         tile_ctx,
-        tx_type_flags,
-        mi_rows,
-        mi_cols,
         x / 4,
         y / 4,
         sb_size / 4,
-        cdef_bits,
         &mut cdef_idx_state,
-        skip_mode_present,
-        skip_mode_refs,
-        inter_mode_flags,
         &mut sb.coding_units,
     )?;
 
@@ -210,30 +169,14 @@ pub fn parse_superblock(
 fn parse_coding_units_recursive(
     decoder: &mut SymbolDecoder,
     partition: &PartitionNode,
-    is_key_frame: bool,
+    frame: &FrameCodingParams,
     current_qp: i16,
-    delta_q_enabled: bool,
     mv_ctx: &mut crate::tile::MvPredictorContext,
-    reference_select: bool,
-    allow_intrabc: bool,
-    allow_screen_content_tools: bool,
-    enable_filter_intra: bool,
-    delta_lf_present: bool,
-    delta_lf_multi: bool,
-    use_ref_frame_mvs: bool,
-    segmentation: crate::frame_header_full::SegmentationInfo,
     tile_ctx: &mut crate::tile::TileContext,
-    tx_type_flags: TxTypeFrameFlags,
-    mi_rows: u32,
-    mi_cols: u32,
     sb_x4: u32,
     sb_y4: u32,
     sb_size4: u32,
-    cdef_bits: u8,
     cdef_idx_state: &mut [i8; 4],
-    skip_mode_present: bool,
-    skip_mode_refs: [u8; 2],
-    inter_mode_flags: crate::tile::InterModeFlags,
     coding_units: &mut Vec<CodingUnit>,
 ) -> Result<i16> {
     if partition.is_leaf() {
@@ -244,30 +187,14 @@ fn parse_coding_units_recursive(
             partition.y,
             partition.size.width(),
             partition.size.height(),
-            is_key_frame,
+            frame,
             current_qp,
-            delta_q_enabled,
             mv_ctx,
-            reference_select,
-            allow_intrabc,
-            allow_screen_content_tools,
-            enable_filter_intra,
-            delta_lf_present,
-            delta_lf_multi,
-            use_ref_frame_mvs,
-            segmentation,
             tile_ctx,
-            tx_type_flags,
-            mi_rows,
-            mi_cols,
             sb_x4,
             sb_y4,
             sb_size4,
-            cdef_bits,
             cdef_idx_state,
-            skip_mode_present,
-            skip_mode_refs,
-            inter_mode_flags,
         )?;
 
         coding_units.push(cu);
@@ -279,30 +206,14 @@ fn parse_coding_units_recursive(
             qp = parse_coding_units_recursive(
                 decoder,
                 child,
-                is_key_frame,
+                frame,
                 qp,
-                delta_q_enabled,
                 mv_ctx,
-                reference_select,
-                allow_intrabc,
-                allow_screen_content_tools,
-                enable_filter_intra,
-                delta_lf_present,
-                delta_lf_multi,
-                use_ref_frame_mvs,
-                segmentation,
                 tile_ctx,
-                tx_type_flags,
-                mi_rows,
-                mi_cols,
                 sb_x4,
                 sb_y4,
                 sb_size4,
-                cdef_bits,
                 cdef_idx_state,
-                skip_mode_present,
-                skip_mode_refs,
-                inter_mode_flags,
                 coding_units,
             )?;
         }

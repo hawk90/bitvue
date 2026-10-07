@@ -45,6 +45,8 @@ mod types;
 pub use palette::PaletteInfo;
 pub use types::*;
 
+use crate::tile::FrameCodingParams;
+
 use crate::symbol::cdf::tx_size_class;
 use crate::symbol::{ResidualBlockStats, SymbolDecoder};
 use bitvue_engine::Result;
@@ -64,28 +66,16 @@ use palette::{read_palette_mode_info, read_palette_tokens};
 /// * `decoder` - Symbol decoder for reading entropy-coded symbols
 /// * `x`, `y` - Block position in pixels
 /// * `width`, `height` - Block dimensions in pixels
-/// * `is_key_frame` - True if this is a KEY frame (INTRA only)
+/// * `frame` - Frame-level, read-only flags (see [`FrameCodingParams`] for what each gates)
 /// * `current_qp` - Current quantization parameter value
-/// * `delta_q_enabled` - True if delta Q is enabled for this frame
 /// * `mv_ctx` - MV predictor context for calculating motion vector predictors
-/// * `reference_select` - Frame header's `reference_select` flag (compound prediction enabled
-///   for this frame at all) -- see `ParsedFrame::reference_select`'s doc for how it's sourced.
-/// * `allow_intrabc` - Frame header's `allow_intrabc` flag (only meaningful when `is_key_frame`)
-/// * `allow_screen_content_tools` - Frame header's `allow_screen_content_tools` flag (spec 5.9.2,
-///   only meaningful when `is_key_frame` -- gates `palette_mode_info()`'s real eligibility
-///   independently of `allow_intrabc`, see `FrameHeader::allow_screen_content_tools`'s doc)
-/// * `enable_filter_intra` - Sequence header's `enable_filter_intra` flag (spec 5.5.1, gates
-///   `filter_intra_mode_info()`'s real eligibility)
-/// * `delta_lf_present`/`delta_lf_multi` - Frame header's `delta_lf_params()` flags (spec 5.9.14,
-///   see `FrameHeader::delta_lf_present`'s doc) -- gate the real `delta_lf` read alongside
-///   `delta_q_enabled`.
+/// * `tile_ctx` - Above/left neighbor-state tracker for entropy context (currently only `skip`
+///   uses it -- see `crate::tile::TileContext`'s doc)
 /// * `sb_x4`/`sb_y4`/`sb_size4` - This CU's enclosing superblock's origin and size, all in 4x4
 ///   ("MI") units -- real spec's `delta_q`/`delta_lf` are read only once per superblock, at
 ///   whichever leaf sits at `(sb_x4, sb_y4)` (always the first leaf visited in partition-tree
 ///   order, spec 5.11.4's decode order), not once per CU.
-/// * `tile_ctx` - Above/left neighbor-state tracker for entropy context (currently only `skip`
-///   uses it -- see `crate::tile::TileContext`'s doc)
-/// * `tx_type_flags` - Frame header flags for `transform_type()` -- see `TxTypeFrameFlags`'s doc.
+/// * `cdef_idx_state` - `cdef_idx()`'s per-superblock "already read" tracker (spec 5.11.56)
 ///
 /// # Returns
 ///
@@ -97,31 +87,34 @@ pub fn parse_coding_unit(
     y: u32,
     width: u32,
     height: u32,
-    is_key_frame: bool,
+    frame: &FrameCodingParams,
     current_qp: i16,
-    delta_q_enabled: bool,
     mv_ctx: &mut crate::tile::MvPredictorContext,
-    reference_select: bool,
-    allow_intrabc: bool,
-    allow_screen_content_tools: bool,
-    enable_filter_intra: bool,
-    delta_lf_present: bool,
-    delta_lf_multi: bool,
-    use_ref_frame_mvs: bool,
-    segmentation: crate::frame_header_full::SegmentationInfo,
     tile_ctx: &mut crate::tile::TileContext,
-    tx_type_flags: TxTypeFrameFlags,
-    mi_rows: u32,
-    mi_cols: u32,
     sb_x4: u32,
     sb_y4: u32,
     sb_size4: u32,
-    cdef_bits: u8,
     cdef_idx_state: &mut [i8; 4],
-    skip_mode_present: bool,
-    skip_mode_refs: [u8; 2],
-    inter_mode_flags: InterModeFlags,
 ) -> Result<(CodingUnit, i16)> {
+    let FrameCodingParams {
+        is_key_frame,
+        delta_q_enabled,
+        reference_select,
+        allow_intrabc,
+        allow_screen_content_tools,
+        enable_filter_intra,
+        delta_lf_present,
+        delta_lf_multi,
+        use_ref_frame_mvs,
+        segmentation,
+        tx_type_flags,
+        inter_mode_flags,
+        mi_rows,
+        mi_cols,
+        cdef_bits,
+        skip_mode_present,
+        skip_mode_refs,
+    } = *frame;
     let mut cu = CodingUnit::new(x, y, width, height);
     let (x4, y4) = (x / 4, y / 4);
     let (width_4x4, height_4x4) = (width.div_ceil(4).max(1), height.div_ceil(4).max(1));
