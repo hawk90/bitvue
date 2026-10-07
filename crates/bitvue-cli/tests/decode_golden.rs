@@ -39,18 +39,11 @@ fn digest(args: &[&str], dump: bool) -> u64 {
     }
     let o = cmd.output().unwrap();
     assert!(o.status.success(), "decode {args:?} failed: {o:?}");
-    // The "Wrote N frame(s) to <path>" line is skipped: the frame count is decoder-batch
-    // dependent (fixed separately), and it echoes the temp path.
-    let stdout: String = String::from_utf8_lossy(&o.stdout)
-        .lines()
-        .filter(|l| !l.starts_with("Wrote "))
-        .map(|l| format!("{l}\n"))
-        .collect();
+    // The "Wrote N frame(s) to <path>" line echoes the temp path; mask it.
+    let stdout = String::from_utf8_lossy(&o.stdout).replace(out.to_str().unwrap(), "<out>");
     let mut h = fnv1a(stdout.as_bytes(), 0xcbf2_9ce4_8422_2325);
-    // Only the first frame (320x240 4:2:0) is hashed: later frames in the dump vary by platform.
     if dump {
-        let yuv = std::fs::read(&out).unwrap();
-        h = fnv1a(&yuv[..115_200], h);
+        h = fnv1a(&std::fs::read(&out).unwrap(), h);
     }
     h
 }
@@ -130,6 +123,29 @@ fn av1_yuv_dump() {
         "av1_yuv",
         &["test_data/av1_test.ivf", "--av1", "--frames", "3"],
         true,
-        0x383b2ddeed4aaadb,
+        0x151f87514f3fb7e7,
     );
+}
+
+/// `--frames N` with `-o` must write exactly N frames (320x240 4:2:0 = 115_200 bytes each).
+#[test]
+fn yuv_dump_honours_frames_limit() {
+    for n in [1usize, 2, 3, 4, 5] {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("o.yuv");
+        let o = Command::new(env!("CARGO_BIN_EXE_bitvue"))
+            .current_dir(workspace_root())
+            .args(["decode", "test_data/av1_test.ivf", "--av1", "--frames"])
+            .arg(n.to_string())
+            .arg("-o")
+            .arg(&out)
+            .output()
+            .unwrap();
+        assert!(o.status.success());
+        assert_eq!(
+            std::fs::metadata(&out).unwrap().len(),
+            (n * 115_200) as u64,
+            "--frames {n}"
+        );
+    }
 }
