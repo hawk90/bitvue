@@ -45,7 +45,7 @@ mod types;
 pub use palette::PaletteInfo;
 pub use types::*;
 
-use crate::tile::FrameCodingParams;
+use crate::tile::{FrameCodingParams, TileState};
 
 use crate::symbol::cdf::tx_size_class;
 use crate::symbol::{ResidualBlockStats, SymbolDecoder};
@@ -63,14 +63,12 @@ use palette::{read_palette_mode_info, read_palette_tokens};
 ///
 /// # Arguments
 ///
-/// * `decoder` - Symbol decoder for reading entropy-coded symbols
+/// * `state` - The tile's shared mutable state: symbol decoder, MV predictor context and the
+///   above/left entropy-context tracker (currently only `skip` uses it) -- see [`TileState`]
 /// * `x`, `y` - Block position in pixels
 /// * `width`, `height` - Block dimensions in pixels
 /// * `frame` - Frame-level, read-only flags (see [`FrameCodingParams`] for what each gates)
 /// * `current_qp` - Current quantization parameter value
-/// * `mv_ctx` - MV predictor context for calculating motion vector predictors
-/// * `tile_ctx` - Above/left neighbor-state tracker for entropy context (currently only `skip`
-///   uses it -- see `crate::tile::TileContext`'s doc)
 /// * `sb_x4`/`sb_y4`/`sb_size4` - This CU's enclosing superblock's origin and size, all in 4x4
 ///   ("MI") units -- real spec's `delta_q`/`delta_lf` are read only once per superblock, at
 ///   whichever leaf sits at `(sb_x4, sb_y4)` (always the first leaf visited in partition-tree
@@ -82,20 +80,23 @@ use palette::{read_palette_mode_info, read_palette_tokens};
 /// Parsed coding unit with prediction info, motion vectors (if INTER), and QP value
 #[allow(clippy::too_many_arguments)]
 pub fn parse_coding_unit(
-    decoder: &mut SymbolDecoder,
+    state: &mut TileState<'_>,
     x: u32,
     y: u32,
     width: u32,
     height: u32,
     frame: &FrameCodingParams,
     current_qp: i16,
-    mv_ctx: &mut crate::tile::MvPredictorContext,
-    tile_ctx: &mut crate::tile::TileContext,
     sb_x4: u32,
     sb_y4: u32,
     sb_size4: u32,
     cdef_idx_state: &mut [i8; 4],
 ) -> Result<(CodingUnit, i16)> {
+    let TileState {
+        decoder,
+        mv_ctx,
+        tile_ctx,
+    } = state;
     let FrameCodingParams {
         is_key_frame,
         delta_q_enabled,

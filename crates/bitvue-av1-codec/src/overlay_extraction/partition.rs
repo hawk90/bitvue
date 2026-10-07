@@ -122,7 +122,7 @@ fn parse_partition_trees_from_tile_data(
     // (`qcat`) residual-coefficient CDF defaults -- see `crate::symbol::cdf::CdfContext::
     // new_with_qcat`'s doc for the real dav1d selection formula this mirrors.
     let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-    let mut decoder = crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat)?;
+    let decoder = crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat)?;
 
     let sb_size = parsed.dimensions.sb_size;
     let block_size = if sb_size == 128 {
@@ -134,17 +134,25 @@ fn parse_partition_trees_from_tile_data(
     let frame_params = parsed.coding_params();
 
     // Entropy-context tracker (currently only `skip` uses it -- see `crate::tile::TileContext`'s
-    // doc). Created once for the whole tile, unlike `mv_ctx` below (which -- pre-existing, not
-    // touched here -- is recreated fresh every superblock instead of persisting across the tile);
+    // doc). Created once for the whole tile, unlike `mv_ctx` (which -- pre-existing, see #61 --
+    // is recreated fresh every superblock below instead of persisting across the tile);
     // `tile_ctx` must persist across superblocks or every context lookup would degenerate to 0.
-    let mut tile_ctx = crate::tile::TileContext::new(
+    let tile_ctx = crate::tile::TileContext::new(
         (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
         (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
     );
+    let mut state = crate::tile::TileState {
+        decoder,
+        mv_ctx: crate::tile::MvPredictorContext::new(
+            parsed.dimensions.sb_cols,
+            parsed.dimensions.sb_rows,
+        ),
+        tile_ctx,
+    };
 
     // Parse each superblock
     for sb_y in 0..parsed.dimensions.sb_rows {
-        tile_ctx.start_superblock_row();
+        state.tile_ctx.start_superblock_row();
         for sb_x in 0..parsed.dimensions.sb_cols {
             let sb_pixel_x = sb_x * sb_size;
             let sb_pixel_y = sb_y * sb_size;
@@ -172,21 +180,20 @@ fn parse_partition_trees_from_tile_data(
             // Try to parse the superblock (base_qp computed once above, before the tile loop --
             // it's a per-frame constant, not per-superblock).
 
-            // Create MV predictor context (local for partition extraction)
-            let mut mv_ctx = crate::tile::MvPredictorContext::new(
+            // Fresh MV predictor context for every superblock (local for partition extraction;
+            // differs from `cu_parser`, which keeps one per tile -- see #61).
+            state.mv_ctx = crate::tile::MvPredictorContext::new(
                 parsed.dimensions.sb_cols,
                 parsed.dimensions.sb_rows,
             );
 
             let sb_result = crate::parse_superblock(
-                &mut decoder,
+                &mut state,
                 sb_pixel_x,
                 sb_pixel_y,
                 actual_block_size.width(),
                 &frame_params,
                 base_qp,
-                &mut mv_ctx,
-                &mut tile_ctx,
             );
 
             match sb_result {
@@ -872,15 +879,17 @@ mod tests {
         let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
         let sb_size = parsed.dimensions.sb_size;
 
-        let mut decoder = crate::SymbolDecoder::new(&parsed.tile_data)?;
-        let mut mv_ctx = crate::tile::MvPredictorContext::new(
-            parsed.dimensions.sb_cols,
-            parsed.dimensions.sb_rows,
-        );
-        let mut tile_ctx = crate::tile::TileContext::new(
-            (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
-            (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
-        );
+        let mut state = crate::tile::TileState {
+            decoder: crate::SymbolDecoder::new(&parsed.tile_data)?,
+            mv_ctx: crate::tile::MvPredictorContext::new(
+                parsed.dimensions.sb_cols,
+                parsed.dimensions.sb_rows,
+            ),
+            tile_ctx: crate::tile::TileContext::new(
+                (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
+                (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
+            ),
+        };
         // Everything the real path derives, except `delta_q_enabled`, which this helper overrides.
         let frame_params = crate::tile::FrameCodingParams {
             delta_q_enabled,
@@ -889,17 +898,15 @@ mod tests {
         let mut current_qp = base_qp;
         let mut all_cus = Vec::new();
         for sb_y in 0..parsed.dimensions.sb_rows {
-            tile_ctx.start_superblock_row();
+            state.tile_ctx.start_superblock_row();
             for sb_x in 0..parsed.dimensions.sb_cols {
                 let (sb, new_qp) = crate::parse_superblock(
-                    &mut decoder,
+                    &mut state,
                     sb_x * sb_size,
                     sb_y * sb_size,
                     sb_size,
                     &frame_params,
                     current_qp,
-                    &mut mv_ctx,
-                    &mut tile_ctx,
                 )?;
                 current_qp = new_qp;
                 all_cus.extend(sb.coding_units);

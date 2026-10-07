@@ -29,6 +29,7 @@ pub mod mv_prediction;
 pub mod partition;
 pub mod superblock;
 pub mod tile_group;
+pub mod tile_state;
 
 pub use coding_unit::{
     parse_coding_unit, CodingUnit, InterModeFlags, MotionVector, PaletteInfo, PredictionMode,
@@ -46,6 +47,7 @@ pub use partition::{
 };
 pub use superblock::{parse_superblock, Superblock};
 pub use tile_group::{parse_tile_group, TileGroup, TileInfo};
+pub use tile_state::TileState;
 
 use serde::{Deserialize, Serialize};
 

@@ -16,7 +16,7 @@
 
 use bitvue_av1_codec::{
     parse_all_obus, parse_frame_header_basic, parse_superblock,
-    tile::{MvPredictorContext, TileContext},
+    tile::{MvPredictorContext, TileContext, TileState},
     FrameType, SymbolDecoder,
 };
 
@@ -106,7 +106,7 @@ fn test_mv_extraction_with_spec_cdfs() {
         );
 
         // Try to decode first superblock
-        let mut decoder = match SymbolDecoder::new(tile_data) {
+        let decoder = match SymbolDecoder::new(tile_data) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("  Failed to create symbol decoder: {}", e);
@@ -116,8 +116,11 @@ fn test_mv_extraction_with_spec_cdfs() {
 
         // Parse first superblock (at 0, 0)
         let sb_size = 64;
-        let mut mv_ctx = MvPredictorContext::new(30, 17); // Typical 1920x1080 frame in 64x64 superblocks
-        let mut tile_ctx = TileContext::new(30 * sb_size / 4, 17 * sb_size / 4);
+        let mut state = TileState {
+            decoder,
+            mv_ctx: MvPredictorContext::new(30, 17), // Typical 1920x1080 frame in 64x64 superblocks
+            tile_ctx: TileContext::new(30 * sb_size / 4, 17 * sb_size / 4),
+        };
         // MiRows/MiCols (spec 5.9.5) for a 1920x1080 frame, matching the comment above.
         let mi_rows = 2 * ((1080u32 + 7) >> 3);
         let mi_cols = 2 * ((1920u32 + 7) >> 3);
@@ -157,16 +160,7 @@ fn test_mv_extraction_with_spec_cdfs() {
             skip_mode_present: false,
             skip_mode_refs: [0u8, 0u8],
         };
-        match parse_superblock(
-            &mut decoder,
-            0,
-            0,
-            sb_size,
-            &frame_params,
-            128,
-            &mut mv_ctx,
-            &mut tile_ctx,
-        ) {
+        match parse_superblock(&mut state, 0, 0, sb_size, &frame_params, 128) {
             Ok((superblock, _final_qp)) => {
                 eprintln!(
                     "  Superblock has {} coding units",

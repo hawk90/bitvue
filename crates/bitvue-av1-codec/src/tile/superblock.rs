@@ -12,10 +12,9 @@
 //! 3. Extract motion vectors from INTER blocks
 //! 4. Build MVGrid for visualization
 
-use crate::symbol::SymbolDecoder;
 use crate::tile::{
     parse_coding_unit, BlockSize, CodingUnit, FrameCodingParams, MotionVector, PartitionNode,
-    PartitionType,
+    PartitionType, TileState,
 };
 use bitvue_engine::Result;
 use serde::{Deserialize, Serialize};
@@ -76,30 +75,25 @@ impl Superblock {
 ///
 /// # Arguments
 ///
-/// * `decoder` - Symbol decoder for reading bitstream
+/// * `state` - The tile's shared mutable state (symbol decoder, MV predictor context, entropy-
+///   context tracker -- see [`TileState`]). Callers looping over superblock rows should call
+///   `state.tile_ctx.start_superblock_row()` at the start of each row.
 /// * `x`, `y` - Superblock position in pixels
 /// * `sb_size` - Superblock size (64 or 128)
 /// * `frame` - Frame-level, read-only flags (see [`FrameCodingParams`]); `frame.mi_rows`/
 ///   `mi_cols` must be the real frame extent, not the superblock-rounded one
 /// * `current_qp` - Current quantization parameter value
-/// * `mv_ctx` - MV predictor context
-/// * `tile_ctx` - Above/left neighbor-state tracker for entropy context, shared across every
-///   superblock in the tile (see `crate::tile::TileContext`'s doc). Callers looping over
-///   superblock rows should call `tile_ctx.start_superblock_row()` at the start of each row.
 ///
 /// # Returns
 ///
 /// Parsed superblock with partition tree and coding units, plus final QP value
-#[allow(clippy::too_many_arguments)]
 pub fn parse_superblock(
-    decoder: &mut SymbolDecoder,
+    state: &mut TileState<'_>,
     x: u32,
     y: u32,
     sb_size: u32,
     frame: &FrameCodingParams,
     current_qp: i16,
-    mv_ctx: &mut crate::tile::MvPredictorContext,
-    tile_ctx: &mut crate::tile::TileContext,
 ) -> Result<(Superblock, i16)> {
     // Convert superblock size to BlockSize
     let block_size = match sb_size {
@@ -122,14 +116,14 @@ pub fn parse_superblock(
     // frame_width`/`frame_height` -- fall back to an empty superblock defensively rather than
     // panic if that invariant is ever violated.
     let partition = crate::tile::partition::parse_partition_recursive(
-        decoder,
+        &mut state.decoder,
         x,
         y,
         block_size,
         frame.mi_rows,
         frame.mi_cols,
         0, // depth
-        tile_ctx,
+        &mut state.tile_ctx,
     )?
     .unwrap_or_else(|| PartitionNode::new(x, y, block_size, PartitionType::None));
 
@@ -138,12 +132,10 @@ pub fn parse_superblock(
 
     // Parse coding units for each leaf block
     let final_qp = parse_coding_units_recursive(
-        decoder,
+        state,
         &partition,
         frame,
         current_qp,
-        mv_ctx,
-        tile_ctx,
         x / 4,
         y / 4,
         sb_size / 4,
@@ -167,12 +159,10 @@ pub fn parse_superblock(
 /// Recursively parse coding units for leaf blocks
 #[allow(clippy::too_many_arguments)]
 fn parse_coding_units_recursive(
-    decoder: &mut SymbolDecoder,
+    state: &mut TileState<'_>,
     partition: &PartitionNode,
     frame: &FrameCodingParams,
     current_qp: i16,
-    mv_ctx: &mut crate::tile::MvPredictorContext,
-    tile_ctx: &mut crate::tile::TileContext,
     sb_x4: u32,
     sb_y4: u32,
     sb_size4: u32,
@@ -182,15 +172,13 @@ fn parse_coding_units_recursive(
     if partition.is_leaf() {
         // Leaf block - parse coding unit
         let (cu, new_qp) = parse_coding_unit(
-            decoder,
+            state,
             partition.x,
             partition.y,
             partition.size.width(),
             partition.size.height(),
             frame,
             current_qp,
-            mv_ctx,
-            tile_ctx,
             sb_x4,
             sb_y4,
             sb_size4,
@@ -204,12 +192,10 @@ fn parse_coding_units_recursive(
         let mut qp = current_qp;
         for child in &partition.children {
             qp = parse_coding_units_recursive(
-                decoder,
+                state,
                 child,
                 frame,
                 qp,
-                mv_ctx,
-                tile_ctx,
                 sb_x4,
                 sb_y4,
                 sb_size4,
