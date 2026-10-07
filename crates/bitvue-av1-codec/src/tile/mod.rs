@@ -27,6 +27,7 @@ pub mod frame_params;
 pub mod motion_field;
 pub mod mv_prediction;
 pub mod partition;
+pub mod position;
 pub mod superblock;
 pub mod tile_group;
 pub mod tile_state;
@@ -45,6 +46,7 @@ pub use mv_prediction::MvPredictorContext;
 pub use partition::{
     parse_partition_tree, partition_tree_to_grid, BlockSize, PartitionNode, PartitionType,
 };
+pub use position::{BlockRect, SuperblockCtx};
 pub use superblock::{parse_superblock, Superblock};
 pub use tile_group::{parse_tile_group, TileGroup, TileInfo};
 pub use tile_state::TileState;
