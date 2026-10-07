@@ -1,6 +1,6 @@
 [package]
 name = "bitvue-metrics"
-description = "Video quality metrics for bitvue (PSNR, SSIM, VMAF with optional GPU acceleration)"
+description = "Video quality metrics for bitvue (PSNR, SSIM, optional VMAF)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,8 +9,10 @@ license.workspace = true
 bitvue-engine = { workspace = true }
 serde = { workspace = true }
 
-# Optional: VMAF support (CPU) - requires ffmpeg-next ^6.0.0
-libvmaf-rs = { version = "0.5", optional = true }
+# Optional: VMAF (CPU). Netflix's libvmaf is vendored and statically linked (needs meson, ninja,
+# a C/C++ compiler, and nasm on x86 at build time; no system libvmaf, no FFmpeg). Replaces
+# libvmaf-rs, which was GPL-3.0-or-later and pinned ffmpeg-next 6.
+vmaf-head-sys = { version = "0.2", optional = true }
 
 # Optional: GPU-accelerated metrics (NVIDIA CUDA)
 # turbo-metrics = { version = "0.3", optional = true }
@@ -26,10 +28,7 @@ rayon = { version = "1.12.0", optional = true }
 default = []
 
 # Enable VMAF support (CPU-only)
-vmaf = ["dep:libvmaf-rs"]
-
-# Enable VMAF with CUDA acceleration (requires libvmaf built with CUDA)
-vmaf-cuda = ["vmaf", "dep:libvmaf-rs"]
+vmaf = ["dep:vmaf-head-sys"]
 
 # Enable GPU-accelerated PSNR/SSIM via turbo-metrics (requires NVIDIA GPU)
 # gpu-metrics = ["dep:turbo-metrics"]

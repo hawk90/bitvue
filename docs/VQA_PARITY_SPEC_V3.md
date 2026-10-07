@@ -30,7 +30,7 @@
 | VVC decode | vvdec, optional feature `vvdec` (시스템 라이브러리 필요) |
 | Container | `bitvue-formats` 자체 구현 (MP4, MKV, MPEG-TS, 감지). IVF는 `bitvue-av1-codec::ivf` |
 | YUV 처리 | `bitvue-decode` (yuv_to_rgb, YuvLoader), `std::arch` SIMD (`strategy/{avx2,neon}.rs`) |
-| Metrics | `bitvue-metrics` (PSNR/SSIM, BD-rate, VMAF는 optional feature `vmaf` = libvmaf-rs) |
+| Metrics | `bitvue-metrics` (PSNR/SSIM, BD-rate, VMAF는 optional feature `vmaf` = vmaf-head-sys(libvmaf vendored, 정적 링크)) |
 | Async | sidecar는 동기 방식. tokio는 `bitvue-mcp`에서만 사용 |
 | Frontend | React 18 + TypeScript + Vite, Canvas 2D (+ MV용 WebGL), `react-resizable-panels`, React Context, 자체 가상화 필름스트립 |
 | 자동화 | CLI `bitvue` (`bitvue-cli`), MCP 서버 `bitvue-mcp-server` |

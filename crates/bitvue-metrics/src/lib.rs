@@ -8,12 +8,12 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::useless_transmute)]
-//! - VMAF (Video Multimethod Assessment Fusion) - CPU & CUDA-accelerated (optional)
+//! - VMAF (Video Multimethod Assessment Fusion) - CPU, libvmaf vendored (optional)
 //!
 //! # Features
 //!
-//! - `vmaf`: Enable VMAF support (CPU-only, requires libvmaf)
-//! - `vmaf-cuda`: Enable CUDA-accelerated VMAF (requires libvmaf with CUDA)
+//! - `vmaf`: Enable VMAF support (CPU-only; libvmaf is built from source and statically linked,
+//!   needs meson, ninja and a C/C++ compiler at build time)
 //! - `parallel`: Enable multi-threaded CPU metrics using rayon
 //!
 //! # Example

@@ -4,6 +4,7 @@ name: CI
 #
 #   changes ─┬─ rust-lint   fmt + clippy + bench compile + `--locked`     (ubuntu, ~2 min)
 #            ├─ rust-test   one job per crate per OS (19 x 3, 12 at a time, as in #37)
+#            ├─ rust-vmaf   bitvue-metrics with the optional `vmaf` feature, 3 OSes
 #            ├─ parity      scripts/parity_check.sh --local against the CLI
 #            ├─ coverage    cargo-llvm-cov -> Codecov
 #            ├─ docs        cargo doc
@@ -175,6 +176,53 @@ jobs:
         if: contains(fromJSON('["bitvue-cli", "bitvue-decode", "bitvue-sidecar"]'), matrix.crate)
       - name: Run tests
         run: cargo test -p ${{ matrix.crate }} --no-fail-fast
+
+  # The `vmaf` feature of bitvue-metrics is optional (libvmaf is built from source, which needs
+  # meson/ninja/nasm), so the plain crate matrix above never compiles it. Build and test it
+  # here on all three OSes, including the reference test against FFmpeg's libvmaf scores.
+  rust-vmaf:
+    name: VMAF (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+          build-warnings: allow
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: vmaf-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y meson ninja-build nasm xxd build-essential
+      - name: Build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install meson ninja
+      - name: Build tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm ninja -y --no-progress
+          python -m pip install meson
+          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+      # Without the MSVC environment on PATH, meson auto-detects a different compiler (e.g. a
+      # MinGW gcc from the runner image) and the final link fails with LNK1143.
+      - name: MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+      - name: Test bitvue-metrics with VMAF
+        run: cargo test -p bitvue-metrics --features vmaf --no-fail-fast
+      - name: Clippy bitvue-metrics with VMAF
+        if: runner.os == 'Linux'
+        run: cargo clippy -p bitvue-metrics --features vmaf --all-targets -- -D warnings
 
   parity-regression:
     name: Parity Regression Suite
@@ -387,8 +435,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libdav1d-dev pkg-config
       - name: Build documentation
-        # Not `--all-features`: the `ffmpeg`/`vmaf` features pull in ffmpeg-next 6 (pinned by
-        # libvmaf-rs), which cannot build against FFmpeg >= 7. Revisit once libvmaf-rs moves on.
+        # Not `--all-features`: the optional `ffmpeg` feature (ffmpeg-next 9) needs FFmpeg
+        # headers/libs matching ffmpeg-sys-next, which this runner has not been checked for, and
+        # `vmaf` is built and tested by the rust-vmaf job.
         run: >-
           cargo doc --no-deps --workspace --exclude abseil
           --features bitvue-av1-codec/debug-strings
@@ -405,7 +454,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [changes, rust-lint, rust-test, parity-regression, coverage, frontend, desktop, docs]
+    needs: [changes, rust-lint, rust-test, rust-vmaf, parity-regression, coverage, frontend, desktop, docs]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
