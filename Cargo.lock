@@ -413,6 +413,7 @@ dependencies = [
  "dav1d",
  "ffmpeg-next",
  "image",
+ "pkg-config",
  "rayon",
  "tempfile",
  "thiserror",
