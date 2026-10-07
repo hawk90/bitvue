@@ -4,6 +4,16 @@
 //! Both are what `parse_coding_unit` needs besides the tile state and the frame flags, and they
 //! used to travel as six loose scalars plus a bare `&mut [i8; 4]`.
 
+/// A block's position and size in 4x4 ("MI") units -- the unit every entropy-context lookup and
+/// `TileContext::set_*` call works in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MiRect {
+    pub x4: u32,
+    pub y4: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
 /// A block's position and size in pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlockRect {

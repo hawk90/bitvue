@@ -40,12 +40,13 @@
 
 mod contexts;
 mod palette;
+mod segment;
 mod types;
 
 pub use palette::PaletteInfo;
 pub use types::*;
 
-use crate::tile::{BlockRect, FrameCodingParams, SuperblockCtx, TileState};
+use crate::tile::{BlockRect, FrameCodingParams, MiRect, SuperblockCtx, TileState};
 
 use crate::symbol::cdf::tx_size_class;
 use crate::symbol::{ResidualBlockStats, SymbolDecoder};
@@ -53,7 +54,7 @@ use bitvue_engine::Result;
 use contexts::{
     block_size_for_dimensions, compound_mode_from_symbol, global_motion_forces_simple,
     has_overlappable_neighbors, inter_mode_from_symbol, intra_mode_from_symbol,
-    motion_mode_size_index, needs_interp_filter, neg_deinterleave, wedge_ctx, y_mode_size_context,
+    motion_mode_size_index, needs_interp_filter, wedge_ctx, y_mode_size_context,
 };
 use palette::{read_palette_mode_info, read_palette_tokens};
 
@@ -121,32 +122,17 @@ pub fn parse_coding_unit(
     let mut cu = CodingUnit::new(x, y, width, height);
     let (x4, y4) = (x / 4, y / 4);
     let (width_4x4, height_4x4) = (width.div_ceil(4).max(1), height.div_ceil(4).max(1));
+    let mi = MiRect {
+        x4,
+        y4,
+        width: width_4x4,
+        height: height_4x4,
+    };
     let sb128 = sb_size4 == 32;
 
-    // segment_id() (spec 5.11.9/5.11.10), pre-skip position -- ported from dav1d's `decode_b`
-    // (`src/decode.c`) call-site structure, not the spec pseudocode alone, to get the
-    // `update_map`/`seg_id_pre_skip` branching exactly right. Real spec unifies `!update_map`
-    // (pulls from the previous frame's segment map, no bits read) and the `seg_id_pre_skip` real
-    // read into one `if/else if` here; the remaining case (`update_map && !seg_id_pre_skip`) is
-    // deferred to the post-skip position below.
-    if segmentation.enabled {
-        if !segmentation.update_map {
-            // No bits read either way -- see `SegmentationInfo`'s doc for why this crate reports
-            // `0` (no cross-frame segment-map state) rather than the real previous-frame value.
-            cu.segment_id = 0;
-            tile_ctx.set_segment_id(x4, y4, width_4x4, height_4x4, 0);
-        } else if segmentation.seg_id_pre_skip {
-            cu.segment_id = read_segment_id(
-                decoder,
-                tile_ctx,
-                x4,
-                y4,
-                width_4x4,
-                height_4x4,
-                segmentation,
-                None,
-            )?;
-        }
+    // segment_id(), pre-skip position (spec 5.11.9/5.11.10) -- see `segment::read_pre_skip`.
+    if let Some(id) = segment::read_pre_skip(decoder, tile_ctx, mi, segmentation)? {
+        cu.segment_id = id;
     }
 
     // skip_mode (spec 5.11.5) -- real per-context CDF + adaptation, read BEFORE `skip` (dav1d's
@@ -182,20 +168,9 @@ pub fn parse_coding_unit(
     }
     tile_ctx.set_skip(x4, y4, width_4x4, height_4x4, cu.skip);
 
-    // segment_id(), post-skip position -- the remaining `update_map && !seg_id_pre_skip` case
-    // (see the pre-skip block's doc above); `skip` is known here, so a skipped CU takes the
-    // predicted segment id directly with no further bits (`read_segment_id`'s doc).
-    if segmentation.enabled && segmentation.update_map && !segmentation.seg_id_pre_skip {
-        cu.segment_id = read_segment_id(
-            decoder,
-            tile_ctx,
-            x4,
-            y4,
-            width_4x4,
-            height_4x4,
-            segmentation,
-            Some(cu.skip),
-        )?;
+    // segment_id(), post-skip position -- see `segment::read_post_skip`.
+    if let Some(id) = segment::read_post_skip(decoder, tile_ctx, mi, segmentation, cu.skip)? {
+        cu.segment_id = id;
     }
 
     // cdef_idx() (spec 5.11.56) -- previously never read AT ALL anywhere in this crate, a
@@ -1436,60 +1411,4 @@ fn read_explicit_mv(decoder: &mut SymbolDecoder) -> Result<MotionVector> {
         0
     };
     Ok(MotionVector::new(mv_x, mv_y))
-}
-
-/// Real `segment_id()` (spec 5.11.9/5.11.10) -- shared core for both the pre-skip and post-skip
-/// call sites in `parse_coding_unit`, which differ only in whether `skip` is already known.
-/// Ported from dav1d's `decode_b` (`src/decode.c`), not reconstructed from the spec pseudocode
-/// alone, to get the skip/temporal interactions exactly right.
-///
-/// `skip_already_known`: `None` at the pre-skip call site (real spec: `skip` isn't read yet, so
-/// no shortcut is available -- the non-temporal-predicted branch always does a real read).
-/// `Some(skip)` at the post-skip call site (`skip == true` shortcuts straight to the predicted
-/// segment id, no bits read -- matches dav1d's `if (b->skip) { b->seg_id = pred_seg_id; }`) and
-/// also gates whether the temporal `seg_pred` bit itself gets read (`!skip && temporal_update`).
-#[allow(clippy::too_many_arguments)]
-fn read_segment_id(
-    decoder: &mut SymbolDecoder,
-    tile_ctx: &mut crate::tile::TileContext,
-    x4: u32,
-    y4: u32,
-    width_4x4: u32,
-    height_4x4: u32,
-    segmentation: crate::frame_header_full::SegmentationInfo,
-    skip_already_known: Option<bool>,
-) -> Result<u8> {
-    let temporal_eligible = segmentation.temporal_update && skip_already_known != Some(true);
-    let seg_pred = if temporal_eligible {
-        let ctx = tile_ctx.seg_pred_context(x4, y4);
-        decoder.read_seg_pred(ctx)?
-    } else {
-        false
-    };
-    tile_ctx.set_seg_pred(x4, y4, width_4x4, height_4x4, seg_pred);
-
-    let segment_id = if seg_pred {
-        // Temporal prediction: real spec pulls this from the previous frame's segment map. Real
-        // bits (`seg_pred` above) are already consumed correctly regardless -- no further bits
-        // are read here, so reporting `0` (no cross-frame segment-map state, see
-        // `SegmentationInfo`'s doc) doesn't risk desync, only this one CU's reported value.
-        0
-    } else {
-        let (ctx, pred) = tile_ctx.segment_id_context(x4, y4);
-        match skip_already_known {
-            Some(true) => pred,
-            _ => {
-                let diff = decoder.read_segment_id_diff(ctx)?;
-                let max = segmentation.last_active_seg_id as i32 + 1;
-                let decoded = neg_deinterleave(diff as i32, pred as i32, max);
-                if !(0..=segmentation.last_active_seg_id as i32).contains(&decoded) {
-                    0
-                } else {
-                    decoded as u8
-                }
-            }
-        }
-    };
-    tile_ctx.set_segment_id(x4, y4, width_4x4, height_4x4, segment_id);
-    Ok(segment_id)
 }

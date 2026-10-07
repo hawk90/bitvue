@@ -46,7 +46,7 @@ pub use mv_prediction::MvPredictorContext;
 pub use partition::{
     parse_partition_tree, partition_tree_to_grid, BlockSize, PartitionNode, PartitionType,
 };
-pub use position::{BlockRect, SuperblockCtx};
+pub use position::{BlockRect, MiRect, SuperblockCtx};
 pub use superblock::{parse_superblock, Superblock};
 pub use tile_group::{parse_tile_group, TileGroup, TileInfo};
 pub use tile_state::TileState;
