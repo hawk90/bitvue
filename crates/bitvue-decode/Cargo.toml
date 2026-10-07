@@ -22,11 +22,8 @@ tempfile = { workspace = true }
 [features]
 default = []
 ffmpeg = ["ffmpeg-next"]
-vvdec = []
+# H.266/VVC via the system libvvdec 3.x (found with pkg-config, see build.rs)
+vvdec = ["dep:pkg-config"]
 
-# Link configuration for vvdec
-# On macOS: brew install vvdec
-# On Linux: build from https://github.com/fraunhoferhhi/vvdec
-[target.'cfg(target_os = "macos")'.dependencies]
-
-[target.'cfg(target_os = "linux")'.dependencies]
+[build-dependencies]
+pkg-config = { version = "0.3", optional = true }
