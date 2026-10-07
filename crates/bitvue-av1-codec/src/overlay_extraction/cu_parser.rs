@@ -56,15 +56,12 @@ pub fn parse_all_coding_units_with_temporal(
     // (`qcat`) residual-coefficient CDF defaults -- see `crate::symbol::cdf::CdfContext::
     // new_with_qcat`'s doc for the real dav1d selection formula this mirrors.
     let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-    let mut decoder = crate::SymbolDecoder::new_with_qcat(&tile_data, qcat)?;
+    let decoder = crate::SymbolDecoder::new_with_qcat(&tile_data, qcat)?;
 
     // Track running QP value across superblocks
     let mut current_qp = base_qp;
 
-    // Create MV predictor context
-    let mut mv_ctx = crate::tile::MvPredictorContext::new(sb_cols, sb_rows);
-
-    // Create entropy-context tracker (currently only `skip` uses it -- see
+    // Entropy-context tracker (currently only `skip` uses it -- see
     // `crate::tile::TileContext`'s doc), sized to the tile's full extent in 4x4 units.
     let mut tile_ctx = crate::tile::TileContext::new(
         (sb_cols * sb_size).div_ceil(4),
@@ -74,23 +71,27 @@ pub fn parse_all_coding_units_with_temporal(
         tile_ctx.set_temporal_context(projected.clone(), pocdiff);
     }
 
+    let mut state = crate::tile::TileState {
+        decoder,
+        mv_ctx: crate::tile::MvPredictorContext::new(sb_cols, sb_rows),
+        tile_ctx,
+    };
+
     // Parse each superblock
     for sb_y in 0..sb_rows {
-        tile_ctx.start_superblock_row();
+        state.tile_ctx.start_superblock_row();
         for sb_x in 0..sb_cols {
             let sb_pixel_x = sb_x * sb_size;
             let sb_pixel_y = sb_y * sb_size;
 
             // Try to parse the superblock
             match crate::parse_superblock(
-                &mut decoder,
+                &mut state,
                 sb_pixel_x,
                 sb_pixel_y,
                 sb_size,
                 &frame_params,
                 current_qp,
-                &mut mv_ctx,
-                &mut tile_ctx,
             ) {
                 Ok((sb, new_qp)) => {
                     // Collect all coding units from this superblock
