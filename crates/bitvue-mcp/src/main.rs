@@ -23,8 +23,10 @@ use state::AppState;
 
 fn main() -> Result<()> {
     // Initialize logging
+    // stdout is the JSON-RPC channel (MCP stdio transport); logs must go to stderr.
     tracing_subscriber::fmt()
         .with_env_filter("bitvue_mcp=debug,info")
+        .with_writer(io::stderr)
         .init();
 
     tracing::info!("bitvue MCP Server starting...");

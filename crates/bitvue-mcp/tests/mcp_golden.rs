@@ -4,8 +4,7 @@
 //! malformed line) is piped into the real binary; each response line is hashed and
 //! compared with the value recorded before `main.rs` was split by responsibility.
 //!
-//! Only stdout lines that start with `{` are responses: the server currently also
-//! writes tracing logs to stdout (recorded separately), so they are ignored here.
+//! stdout must carry JSON-RPC responses only (MCP stdio transport); logs go to stderr.
 //!
 //! Platform differences are normalised before hashing (see `normalise`): path separators,
 //! the Windows `\\?\` verbatim prefix, the workspace root and OS error wording.
@@ -62,8 +61,8 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Runs the server on [`REQUESTS`]; returns the masked response lines.
-fn responses() -> Vec<String> {
+/// Runs the server on [`REQUESTS`]; returns everything it wrote to stdout.
+fn run_server() -> String {
     let root = workspace_root();
     let mut child = Command::new(env!("CARGO_BIN_EXE_bitvue-mcp-server"))
         .current_dir(&root)
@@ -79,10 +78,15 @@ fn responses() -> Vec<String> {
     drop(stdin);
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success());
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// The normalised response lines.
+fn responses() -> Vec<String> {
+    let root = workspace_root();
     let root_str = root.to_str().unwrap();
-    String::from_utf8_lossy(&out.stdout)
+    run_server()
         .lines()
-        .filter(|l| l.starts_with('{'))
         .map(|l| normalise(serde_json::from_str(l).unwrap(), root_str).to_string())
         .collect()
 }
@@ -177,4 +181,15 @@ fn every_request_gets_the_recorded_response() {
         bad.len(),
         bad.join("\n")
     );
+}
+
+/// MCP's stdio transport reserves stdout for protocol messages: any log line there breaks
+/// clients that parse every line as JSON-RPC.
+#[test]
+fn stdout_carries_only_json_rpc_messages() {
+    for line in run_server().lines() {
+        let v: Value = serde_json::from_str(line)
+            .unwrap_or_else(|e| panic!("non-JSON line on stdout ({e}): {line:?}"));
+        assert_eq!(v["jsonrpc"], "2.0", "not a JSON-RPC message: {line}");
+    }
 }
