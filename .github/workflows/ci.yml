@@ -5,6 +5,7 @@ name: CI
 #   changes ─┬─ rust-lint   fmt + clippy + bench compile + `--locked`     (ubuntu, ~2 min)
 #            ├─ rust-test   one job per crate per OS (19 x 3, 12 at a time, as in #37)
 #            ├─ rust-vmaf   bitvue-metrics with the optional `vmaf` feature, 3 OSes
+#            ├─ rust-vvdec  bitvue-decode with the optional `vvdec` feature (real VVC stream), 2 OSes
 #            ├─ parity      scripts/parity_check.sh --local against the CLI
 #            ├─ coverage    cargo-llvm-cov -> Codecov
 #            ├─ docs        cargo doc
@@ -223,6 +224,50 @@ jobs:
       - name: Clippy bitvue-metrics with VMAF
         if: runner.os == 'Linux'
         run: cargo clippy -p bitvue-metrics --features vmaf --all-targets -- -D warnings
+
+  # The optional `vvdec` feature of bitvue-decode links the system libvvdec 3.x, which nothing else
+  # in CI builds. Debian/Ubuntu ship no vvdec package, so Linux builds v3.2.0 from source (~25 s on
+  # 4 cores); macOS uses Homebrew. Runs the real-stream test (tests/vvdec_real_decode.rs).
+  rust-vvdec:
+    name: VVC (vvdec) (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+          build-warnings: allow
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: vvdec-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/install-dav1d
+      - name: libvvdec (macOS)
+        if: runner.os == 'macOS'
+        run: brew install vvdec
+      - name: libvvdec (Linux, from source)
+        if: runner.os == 'Linux'
+        run: |
+          git clone --depth 1 --branch v3.2.0 https://github.com/fraunhoferhhi/vvdec.git "$RUNNER_TEMP/vvdec-src"
+          cmake -S "$RUNNER_TEMP/vvdec-src" -B "$RUNNER_TEMP/vvdec-build" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DVVDEC_ENABLE_LINK_TIME_OPT=OFF \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/vvdec"
+          cmake --build "$RUNNER_TEMP/vvdec-build" -j"$(nproc)"
+          cmake --install "$RUNNER_TEMP/vvdec-build"
+          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/vvdec/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/vvdec/lib" >> "$GITHUB_ENV"
+      - name: Test bitvue-decode with vvdec
+        run: cargo test -p bitvue-decode --features vvdec --no-fail-fast
+      - name: Clippy bitvue-decode with vvdec
+        if: runner.os == 'Linux'
+        run: cargo clippy -p bitvue-decode --features vvdec --all-targets -- -D warnings
 
   parity-regression:
     name: Parity Regression Suite
@@ -454,7 +499,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [changes, rust-lint, rust-test, rust-vmaf, parity-regression, coverage, frontend, desktop, docs]
+    needs: [changes, rust-lint, rust-test, rust-vmaf, rust-vvdec, parity-regression, coverage, frontend, desktop, docs]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
