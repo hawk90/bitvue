@@ -1096,6 +1096,9 @@ mod tests {
 
     #[test]
     fn test_avx2_default() {
+        // This tests the public `Default` impl itself, so it must call `default()` rather than
+        // name the unit struct (which is what clippy would suggest).
+        #[allow(clippy::default_constructed_unit_structs)]
         let strategy = Avx2Strategy::default();
         assert_eq!(strategy.name(), "AVX2");
     }
