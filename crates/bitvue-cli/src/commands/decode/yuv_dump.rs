@@ -141,6 +141,8 @@ fn decode_av1_yuv(data: &[u8], limit: usize) -> Result<YuvFrames> {
     if out.len() < limit {
         drain_frames_yuv_at_eos(&mut dec, &mut out)?;
     }
+    // Each send drains every frame the decoder has ready, so `out` can overshoot `limit`.
+    out.truncate(limit);
     Ok(out)
 }
 
@@ -195,6 +197,8 @@ fn decode_av1_yuv_with_grain(data: &[u8], limit: usize, apply_grain: bool) -> Re
     if out.len() < limit {
         drain_frames_yuv_at_eos(&mut dec, &mut out)?;
     }
+    // Each send drains every frame the decoder has ready, so `out` can overshoot `limit`.
+    out.truncate(limit);
     Ok(out)
 }
 
