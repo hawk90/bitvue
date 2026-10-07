@@ -41,6 +41,7 @@
 mod contexts;
 mod palette;
 mod segment;
+mod skip;
 mod types;
 
 pub use palette::PaletteInfo;
@@ -135,38 +136,16 @@ pub fn parse_coding_unit(
         cu.segment_id = id;
     }
 
-    // skip_mode (spec 5.11.5) -- real per-context CDF + adaptation, read BEFORE `skip` (dav1d's
-    // `decode_b` order: skip_mode -> skip). Only for non-key frames (`skip_mode_present` is
-    // always `false` from a real intra-only frame's header, per spec's own `skip_mode_params()`
-    // derivation) and only for blocks with `min(bw4, bh4) > 1` (never 4-wide-or-tall). Previously
-    // never read at all -- see this function's doc for the desync this closes.
-    let min_dim4 = width_4x4.min(height_4x4);
-    cu.skip_mode = if !is_key_frame && skip_mode_present && min_dim4 > 1 {
-        let smctx = tile_ctx.skip_mode_context(x4, y4);
-        decoder.read_skip_mode(smctx)?
-    } else {
-        false
-    };
-    tile_ctx.set_skip_mode(x4, y4, width_4x4, height_4x4, cu.skip_mode);
-
-    // Read skip flag -- real per-context CDF + adaptation, see `SymbolDecoder::read_skip`'s doc.
-    // `skip_mode` forces `skip = true` with NO bit read (spec: a skip_mode block has nothing to
-    // signal), real dav1d `if (b->skip_mode || (seg && seg->skip)) { b->skip = 1; } else { read }`
-    // -- the segmentation-forced-skip half (`SEG_LVL_SKIP`) is now real too. `cu.segment_id` is
-    // safe to use here even though the general `update_map && !seg_id_pre_skip` case resolves
-    // segment_id AFTER this point (below): `SEG_LVL_SKIP` is index `SEG_LVL_REF_FRAME..` (`>= 5`),
-    // so if it's active for ANY segment this frame, `segmentation.seg_id_pre_skip` is
-    // unconditionally `true` too (`SegmentationInfo`'s doc) -- meaning `cu.segment_id` was already
-    // resolved by the pre-skip block above whenever this check could possibly fire.
-    if cu.skip_mode
-        || segmentation.seg_feature_active(cu.segment_id, crate::frame_header_full::SEG_LVL_SKIP)
-    {
-        cu.skip = true;
-    } else {
-        let skip_ctx = tile_ctx.skip_context(x4, y4);
-        cu.skip = decoder.read_skip(skip_ctx)?;
-    }
-    tile_ctx.set_skip(x4, y4, width_4x4, height_4x4, cu.skip);
+    // skip_mode then skip (spec 5.11.5) -- see `skip`.
+    cu.skip_mode = skip::read_skip_mode(decoder, tile_ctx, mi, !is_key_frame && skip_mode_present)?;
+    cu.skip = skip::read_skip(
+        decoder,
+        tile_ctx,
+        mi,
+        cu.skip_mode,
+        segmentation,
+        cu.segment_id,
+    )?;
 
     // segment_id(), post-skip position -- see `segment::read_post_skip`.
     if let Some(id) = segment::read_post_skip(decoder, tile_ctx, mi, segmentation, cu.skip)? {
