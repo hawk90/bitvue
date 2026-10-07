@@ -102,107 +102,107 @@ fn seg(
 /// (name, params, superblock size) for every configuration.
 fn configs() -> Vec<(&'static str, FrameCodingParams, u32)> {
     let b = base_params;
-    let mut v: Vec<(&'static str, FrameCodingParams, u32)> = Vec::new();
-    v.push(("inter-plain", b(), 64));
-    v.push(("inter-sb128", b(), 128));
-    v.push((
-        "key",
-        FrameCodingParams {
-            is_key_frame: true,
-            ..b()
-        },
-        64,
-    ));
-    v.push((
-        "key-intrabc",
-        FrameCodingParams {
-            is_key_frame: true,
-            allow_intrabc: true,
-            allow_screen_content_tools: true,
-            ..b()
-        },
-        64,
-    ));
-    v.push((
-        "key-palette-filter",
-        FrameCodingParams {
-            is_key_frame: true,
-            allow_screen_content_tools: true,
-            enable_filter_intra: true,
-            ..b()
-        },
-        64,
-    ));
-    v.push((
-        "skip-mode",
-        FrameCodingParams {
-            skip_mode_present: true,
-            skip_mode_refs: [1, 2],
-            ..b()
-        },
-        64,
-    ));
-    v.push((
-        "compound",
-        FrameCodingParams {
-            reference_select: true,
-            use_ref_frame_mvs: true,
-            ..b()
-        },
-        64,
-    ));
-    v.push((
-        "delta-q-lf",
-        FrameCodingParams {
-            delta_q_enabled: true,
-            delta_lf_present: true,
-            delta_lf_multi: true,
-            ..b()
-        },
-        64,
-    ));
-    v.push((
-        "delta-q-lf-sb128",
-        FrameCodingParams {
-            delta_q_enabled: true,
-            delta_lf_present: true,
-            ..b()
-        },
-        128,
-    ));
     let s = |segmentation| FrameCodingParams {
         segmentation,
         ..b()
     };
-    v.push(("seg-no-update", s(seg(false, false, false, &[])), 64));
-    v.push(("seg-pre-skip", s(seg(true, false, true, &[(1, 5)])), 64));
-    v.push(("seg-post-skip", s(seg(true, false, false, &[(1, 2)])), 64));
-    v.push(("seg-temporal", s(seg(true, true, false, &[(2, 1)])), 64));
-    v.push(("seg-temporal-pre", s(seg(true, true, true, &[(2, 6)])), 64));
-    v.push((
-        "seg-skip-feature",
-        s(seg(true, false, true, &[(1, 6), (3, 6)])),
-        64,
-    ));
-    v.push((
-        "seg-globalmv",
-        s(seg(true, false, true, &[(2, 7), (4, 5)])),
-        64,
-    ));
-    v.push((
-        "seg-everything",
-        FrameCodingParams {
-            segmentation: seg(true, true, true, &[(1, 5), (2, 6), (3, 7)]),
-            skip_mode_present: true,
-            skip_mode_refs: [1, 2],
-            reference_select: true,
-            delta_q_enabled: true,
-            delta_lf_present: true,
-            ..b()
-        },
-        128,
-    ));
-    v
+    vec![
+        ("inter-plain", b(), 64),
+        ("inter-sb128", b(), 128),
+        (
+            "key",
+            FrameCodingParams {
+                is_key_frame: true,
+                ..b()
+            },
+            64,
+        ),
+        (
+            "key-intrabc",
+            FrameCodingParams {
+                is_key_frame: true,
+                allow_intrabc: true,
+                allow_screen_content_tools: true,
+                ..b()
+            },
+            64,
+        ),
+        (
+            "key-palette-filter",
+            FrameCodingParams {
+                is_key_frame: true,
+                allow_screen_content_tools: true,
+                enable_filter_intra: true,
+                ..b()
+            },
+            64,
+        ),
+        (
+            "skip-mode",
+            FrameCodingParams {
+                skip_mode_present: true,
+                skip_mode_refs: [1, 2],
+                ..b()
+            },
+            64,
+        ),
+        (
+            "compound",
+            FrameCodingParams {
+                reference_select: true,
+                use_ref_frame_mvs: true,
+                ..b()
+            },
+            64,
+        ),
+        (
+            "delta-q-lf",
+            FrameCodingParams {
+                delta_q_enabled: true,
+                delta_lf_present: true,
+                delta_lf_multi: true,
+                ..b()
+            },
+            64,
+        ),
+        (
+            "delta-q-lf-sb128",
+            FrameCodingParams {
+                delta_q_enabled: true,
+                delta_lf_present: true,
+                ..b()
+            },
+            128,
+        ),
+        ("seg-no-update", s(seg(false, false, false, &[])), 64),
+        ("seg-pre-skip", s(seg(true, false, true, &[(1, 5)])), 64),
+        ("seg-post-skip", s(seg(true, false, false, &[(1, 2)])), 64),
+        ("seg-temporal", s(seg(true, true, false, &[(2, 1)])), 64),
+        ("seg-temporal-pre", s(seg(true, true, true, &[(2, 6)])), 64),
+        (
+            "seg-skip-feature",
+            s(seg(true, false, true, &[(1, 6), (3, 6)])),
+            64,
+        ),
+        (
+            "seg-globalmv",
+            s(seg(true, false, true, &[(2, 7), (4, 5)])),
+            64,
+        ),
+        (
+            "seg-everything",
+            FrameCodingParams {
+                segmentation: seg(true, true, true, &[(1, 5), (2, 6), (3, 7)]),
+                skip_mode_present: true,
+                skip_mode_refs: [1, 2],
+                reference_select: true,
+                delta_q_enabled: true,
+                delta_lf_present: true,
+                ..b()
+            },
+            128,
+        ),
+    ]
 }
 
 /// Parses every superblock of a 128x128 frame from seeded tile data; folds results into a digest.
