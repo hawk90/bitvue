@@ -60,7 +60,12 @@ impl AppState {
     fn new() -> Self {
         // Initialize with current directory as the only allowed path
         // This prevents access to sensitive files outside the project
-        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // Canonicalize so it is comparable with `validate_path`'s canonical result: on Windows
+        // `canonicalize` yields a `\\?\C:\...` verbatim path that never `starts_with` the plain
+        // `current_dir()`, which rejected every file.
+        let current_dir = std::env::current_dir()
+            .and_then(|d| d.canonicalize())
+            .unwrap_or_else(|_| PathBuf::from("."));
 
         Self {
             core: Arc::new(Mutex::new(Core::new())),
