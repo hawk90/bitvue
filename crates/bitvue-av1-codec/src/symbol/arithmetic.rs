@@ -82,10 +82,11 @@ pub struct ArithmeticDecoder<'a> {
     /// When false (e.g., for intra-only frames or when `disable_cdf_update` is
     /// signalled in the frame header), CDF tables remain fixed.
     pub allow_update_cdf: bool,
-    /// Test-only: when `Some`, the decoder's `range` after every decoded symbol is appended, so a
-    /// test can compare the sequence with a reference decoder's trace.
+    /// Test-only: when `Some`, the decoder's `(range, cnt, value)` after every decoded symbol of
+    /// a multi-symbol alphabet is appended, so a test can compare the sequence with a reference
+    /// decoder's trace (one-symbol alphabets consume nothing and are not traced).
     #[cfg(test)]
-    pub range_trace: Option<Vec<u32>>,
+    pub range_trace: Option<Vec<(u32, i32, usize)>>,
 }
 
 /// Update a CDF table after decoding symbol `s`, per AV1 spec Section 8.3 (`update_cdf`) --
@@ -239,8 +240,10 @@ impl<'a> ArithmeticDecoder<'a> {
 
         self.count += 1;
         #[cfg(test)]
-        if let Some(trace) = &mut self.range_trace {
-            trace.push(self.range);
+        if n_symbols > 1 {
+            if let Some(trace) = &mut self.range_trace {
+                trace.push((self.range, self.cnt, self.value));
+            }
         }
         Ok(val as u8)
     }

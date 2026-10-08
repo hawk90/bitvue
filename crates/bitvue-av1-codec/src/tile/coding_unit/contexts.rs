@@ -96,12 +96,8 @@ pub(super) fn neg_deinterleave(diff: i32, ref_val: i32, max: i32) -> i32 {
 
 /// Map a CU's real pixel dimensions to this crate's `BlockSize` enum -- used only by
 /// `read_use_filter_intra`'s CDF lookup (the real spec table is indexed by exact block size, not
-/// by the coarser `bsize_ctx`/`tx_size` classes used elsewhere). Every dimension pair this crate's
-/// own partition tree can actually produce (`tile::partition::BlockSize`'s 22 variants) is
-/// covered; the fallback exists only for defensive safety (this crate's enum has no `Block4x16`/
-/// `Block16x4` variant at all -- see `CdfContext::use_filter_intra_cdf`'s doc -- but the partition
-/// tree that produces `width`/`height` here can't emit those sizes either, since it's built from
-/// the same enum).
+/// by the coarser `bsize_ctx`/`tx_size` classes used elsewhere). Every block size the partition
+/// tree can produce is covered; the fallback exists only for defensive safety.
 pub(super) fn block_size_for_dimensions(width: u32, height: u32) -> crate::tile::BlockSize {
     use crate::tile::BlockSize::*;
     match (width, height) {
@@ -121,6 +117,8 @@ pub(super) fn block_size_for_dimensions(width: u32, height: u32) -> crate::tile:
         (64, 128) => Block64x128,
         (128, 64) => Block128x64,
         (128, 128) => Block128x128,
+        (16, 4) => Block16x4,
+        (4, 16) => Block4x16,
         (32, 8) => Block32x8,
         (64, 16) => Block64x16,
         (128, 32) => Block128x32,
@@ -271,6 +269,17 @@ pub(super) fn wedge_ctx(width_4x4: u32, height_4x4: u32) -> Option<u8> {
         (2, 2) => Some(0), // 8x8
         _ => None,
     }
+}
+
+/// `HasChroma` (dav1d `decode_b`, spec 5.11.5): whether this block codes the chroma of its area.
+/// Blocks narrower or shorter than 8 luma samples share one chroma block with their neighbours
+/// (4:2:0), and only the last of them -- the one at an odd 4x4 column / row -- codes it.
+pub(super) fn has_chroma(mi: crate::tile::MiRect, flags: &crate::tile::TxTypeFrameFlags) -> bool {
+    let ss_x = u32::from(flags.subsampling_x);
+    let ss_y = u32::from(flags.subsampling_y);
+    !flags.mono_chrome
+        && (mi.width > ss_x || (mi.x4 & 1) == 1)
+        && (mi.height > ss_y || (mi.y4 & 1) == 1)
 }
 
 #[cfg(test)]

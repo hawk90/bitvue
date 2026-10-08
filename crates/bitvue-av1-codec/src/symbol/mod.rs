@@ -1185,11 +1185,15 @@ impl<'a> SymbolDecoder<'a> {
     /// bitstream position for everything after it -- found while root-causing why this crate's
     /// only committed key-frame fixture was fragile to any bit-position shift at all (see
     /// `docs/DEVELOPMENT_PHASES.md`'s entropy-decoding notes).
-    pub fn read_txb_skip(&mut self, tx_size_px_max: u32, txb_skip_ctx: u8) -> Result<bool> {
-        let tx_class = cdf::tx_size_class(tx_size_px_max);
+    pub fn read_txb_skip(
+        &mut self,
+        tx_width_px: u32,
+        tx_height_px: u32,
+        txb_skip_ctx: u8,
+    ) -> Result<bool> {
         let cdf = self
             .cdf_context
-            .get_txb_skip_cdf_mut(tx_class, txb_skip_ctx);
+            .get_txb_skip_cdf_mut(tx_size_ctx(tx_width_px, tx_height_px), txb_skip_ctx);
         Ok(self.decoder.read_symbol_adaptive(cdf)? == 1)
     }
 
@@ -1205,30 +1209,50 @@ impl<'a> SymbolDecoder<'a> {
         class: TxClass1d,
         dc_sign_ctx: u8,
     ) -> Result<ResidualBlockStats> {
-        // Real spec `txSzCtx` (`Tx_Size_Sqr_Up`, capped): CDF-family selection is by the
-        // square-up class of the *larger* dimension, not either axis alone -- for a square
-        // transform this is identical to the old single-scalar `tx_class`.
-        let tx_class = cdf::tx_size_class(width_px.max(height_px));
+        self.read_coefficients(false, width_px, height_px, class, dc_sign_ctx)
+    }
+
+    /// dav1d's `decode_coefs` after the `all_zero` flag and the transform type: `eob`, the
+    /// coefficient tokens, then signs and Golomb tails. Shared by luma and chroma; they differ
+    /// only in which CDF set they use (`chroma`).
+    fn read_coefficients(
+        &mut self,
+        chroma: bool,
+        width_px: u32,
+        height_px: u32,
+        class: TxClass1d,
+        dc_sign_ctx: u8,
+    ) -> Result<ResidualBlockStats> {
+        // Spec `txSzCtx` (dav1d `t_dim->ctx`): the CDF family is chosen by the average of the
+        // smaller and larger side's size class, rounded up -- the larger side alone for a square
+        // or 2:1 transform, one class lower for a 4:1 one (4x16, 16x64, ...).
+        let tx_class = tx_size_ctx(width_px, height_px);
         let is_1d = class.is_1d();
 
-        // Real coefficient scan order + per-position neighbor context (spec 8.3.2's
-        // `get_coef_base_ctx`/`get_br_ctx`) -- see `symbol::scan`'s module doc. Each axis is
-        // independently capped at 32 (real AV1 never scans/contexts past the top-left 32-sample
-        // extent on either axis, even for a transform with a 64-sample side -- see
-        // `scan::scan_table`'s doc).
+        // Each axis is independently capped at 32 (real AV1 never scans/contexts past the
+        // top-left 32-sample extent on either axis, even for a transform with a 64-sample side --
+        // see `scan::scan_table`'s doc).
         let capped_width = width_px.min(32);
         let capped_height = height_px.min(32);
         let capped_class = tx_class.min(3);
 
-        let eob_bin_cdf = self
-            .cdf_context
-            .get_eob_bin_cdf_mut(capped_width, capped_height, is_1d);
+        let eob_bin_cdf = if chroma {
+            self.cdf_context
+                .get_eob_bin_cdf_chroma_mut(capped_width, capped_height)
+        } else {
+            self.cdf_context
+                .get_eob_bin_cdf_mut(capped_width, capped_height, is_1d)
+        };
         let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
 
         let eob: u32 = if eob_bin > 1 {
-            let eob_hi_bit_cdf = self
-                .cdf_context
-                .get_eob_hi_bit_cdf_mut(tx_class, eob_bin as u8);
+            let eob_hi_bit_cdf = if chroma {
+                self.cdf_context
+                    .get_eob_hi_bit_cdf_chroma_mut(tx_class, eob_bin as u8)
+            } else {
+                self.cdf_context
+                    .get_eob_hi_bit_cdf_mut(tx_class, eob_bin as u8)
+            };
             let eob_hi_bit = self.decoder.read_symbol_adaptive(eob_hi_bit_cdf)? as u32;
             let num_extra_bits = eob_bin - 2;
             let mut extra = 0u32;
@@ -1247,17 +1271,13 @@ impl<'a> SymbolDecoder<'a> {
         };
 
         let mut levels = scan::LevelBuffer::new(capped_width as usize, capped_height as usize);
+        let mut nonzero: Vec<(u32, u32)> = Vec::new();
 
         // `eob` (as computed above) is the raw last-scan-index value (rav1d's own local `eob`
-        // convention), NOT a coefficient count: real spec has `eob + 1` total positions to read
-        // (index `eob` itself down through `0`), with the top position (`c == eob`) using
-        // `coeff_base_eob`'s CDF and everything below it using ordinary `coeff_base` -- confirmed
-        // against rav1d's `decode_coefs`, whose "dc-only" branch (taken when this raw `eob` is
-        // `0`) still reads exactly one `coeff_base_eob`-family symbol for the single coefficient,
-        // never zero. Previously this looped `0..eob` (`eob` positions) with `is_eob_pos = c ==
-        // eob - 1`, silently dropping the true top coefficient (and for `eob == 0`, reading zero
-        // symbols instead of one) -- a real per-block desync, found while tracing this crate's
-        // persistent key-frame-intra fragility (see `docs/DEVELOPMENT_PHASES.md`).
+        // convention), NOT a coefficient count: there are `eob + 1` positions to read (index
+        // `eob` itself down through `0`), with the top position (`c == eob`) using
+        // `coeff_base_eob`'s CDF and everything below it using ordinary `coeff_base` -- dav1d's
+        // "dc-only" branch (raw `eob == 0`) still reads exactly one `coeff_base_eob`-family symbol.
         for c in (0..=eob).rev() {
             let (x, y) =
                 scan::coeff_position(capped_width, capped_height, is_1d, class.is_vertical(), c);
@@ -1265,33 +1285,52 @@ impl<'a> SymbolDecoder<'a> {
 
             // `br_ctx`: `coeff_br`'s context if this position's token turns out to need
             // extending (`base_level > 2`) -- computed alongside `base_level` since both draw
-            // from the same neighbor lookup (`lo_ctx`'s `hi_mag` output, per its doc), matching
-            // rav1d's `get_lo_ctx` call site producing both values together.
+            // from the same neighbor lookup (`lo_ctx`'s `hi_mag` output), matching dav1d's
+            // `get_lo_ctx` call site producing both values together.
             let (base_level, br_ctx) = if is_eob_pos {
-                // No neighbors decoded yet (this is the first position visited) -- `coeff_br`'s
-                // context here is purely positional (spec: no magnitude bucket for the eob
-                // position specifically), unlike every other position below.
-                let ctx = coeff_base_eob_context(eob, width_px.max(height_px));
-                let cdf = self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx);
+                let ctx = coeff_base_eob_context(eob, width_px, height_px);
+                let cdf = if chroma {
+                    self.cdf_context
+                        .get_coeff_base_eob_cdf_chroma_mut(tx_class, ctx)
+                } else {
+                    self.cdf_context.get_coeff_base_eob_cdf_mut(tx_class, ctx)
+                };
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32 + 1;
                 let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
-                (level, if pos_band { 14 } else { 7 })
+                // dav1d's dc-only branch (`eob == 0`) decodes its high token with `hi_cdf[0]`.
+                let br_ctx = if eob == 0 {
+                    0
+                } else if pos_band {
+                    14
+                } else {
+                    7
+                };
+                (level, br_ctx)
             } else if c == 0 {
-                // DC position: 2D's `coeff_base` context is hardcoded to `0` (spec/rav1d), but
-                // `coeff_br`'s magnitude still comes from the same 3-neighbor sum `lo_ctx` would
-                // produce -- call it regardless of `is_1d` and only override the `coeff_base`
-                // context choice, matching dav1d's manual-recompute-for-2D special case.
-                let (lo_ctx_val, hi_mag) =
-                    scan::lo_ctx(&levels, 0, 0, is_1d, capped_width, capped_height);
+                // DC position: 2D's `coeff_base` context is hardcoded to `0`, but `coeff_br`'s
+                // magnitude still comes from the same 3-neighbor sum `lo_ctx` would produce --
+                // call it regardless of `is_1d` and only override the `coeff_base` context choice,
+                // matching dav1d's manual-recompute-for-2D special case.
+                let (lo_ctx_val, hi_mag) = scan::lo_ctx(&levels, 0, 0, is_1d, width_px, height_px);
                 let base_ctx = if is_1d { lo_ctx_val } else { 0 };
-                let cdf = self.cdf_context.get_coeff_base_cdf_mut(tx_class, base_ctx);
+                let cdf = if chroma {
+                    self.cdf_context
+                        .get_coeff_base_cdf_chroma_mut(tx_class, base_ctx)
+                } else {
+                    self.cdf_context.get_coeff_base_cdf_mut(tx_class, base_ctx)
+                };
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
                 let mag = hi_mag & 63;
-                // DC's `coeff_br` context has no position-band offset (spec's lowest band).
+                // DC's `coeff_br` context has no position-band offset (the lowest band).
                 (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
             } else {
-                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, is_1d, capped_width, capped_height);
-                let cdf = self.cdf_context.get_coeff_base_cdf_mut(tx_class, ctx);
+                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, is_1d, width_px, height_px);
+                let cdf = if chroma {
+                    self.cdf_context
+                        .get_coeff_base_cdf_chroma_mut(tx_class, ctx)
+                } else {
+                    self.cdf_context.get_coeff_base_cdf_mut(tx_class, ctx)
+                };
                 let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
                 let mag = hi_mag & 63;
                 let pos_band = if is_1d { y > 0 } else { (x | y) > 1 };
@@ -1305,7 +1344,12 @@ impl<'a> SymbolDecoder<'a> {
             let mut level = base_level;
             let extended = level > 2;
             if extended {
-                let coeff_br_cdf = self.cdf_context.get_coeff_br_cdf_mut(capped_class, br_ctx);
+                let coeff_br_cdf = if chroma {
+                    self.cdf_context
+                        .get_coeff_br_cdf_chroma_mut(capped_class, br_ctx)
+                } else {
+                    self.cdf_context.get_coeff_br_cdf_mut(capped_class, br_ctx)
+                };
                 for _ in 0..4 {
                     let br = self.decoder.read_symbol_adaptive(coeff_br_cdf)? as u32;
                     level += br;
@@ -1317,38 +1361,55 @@ impl<'a> SymbolDecoder<'a> {
             levels.set(x, y, extended, level);
 
             if level > 0 {
-                if c == 0 {
-                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf_mut(dc_sign_ctx);
-                    let sign = self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
-                    stats.dc_sign_value = Some(sign);
-                } else {
-                    self.decoder.read_bool(16384)?;
-                }
-
-                if level > 14 {
-                    let mut length = 0u32;
-                    loop {
-                        length += 1;
-                        let terminate = self.decoder.read_bool(16384)?;
-                        if terminate || length >= 20 {
-                            break;
-                        }
-                    }
-                    let mut extra = 1u32;
-                    for _ in 0..length.saturating_sub(1) {
-                        let bit = self.decoder.read_bool(16384)? as u32;
-                        extra = (extra << 1) | bit;
-                    }
-                    level = extra + 14;
-                }
-
-                stats.nonzero_count += 1;
-                stats.sum_abs_level += level as u64;
-                stats.max_level = stats.max_level.max(level.min(u16::MAX as u32) as u16);
+                nonzero.push((c, level));
             }
         }
 
+        // Second pass (dav1d `decode_coefs`, "residual and sign"): after every token has been
+        // read, the DC coefficient's sign and Golomb tail, then each non-zero AC coefficient's
+        // sign and Golomb tail from the lowest scan position up. Signs and tails never feed back
+        // into the token contexts. `nonzero` is in descending scan order, so a DC coefficient
+        // (scan position 0) is last.
+        if let Some(&(0, level)) = nonzero.last() {
+            let dc_sign_cdf = if chroma {
+                self.cdf_context.get_dc_sign_cdf_chroma_mut(dc_sign_ctx)
+            } else {
+                self.cdf_context.get_dc_sign_cdf_mut(dc_sign_ctx)
+            };
+            stats.dc_sign_value = Some(self.decoder.read_symbol_adaptive(dc_sign_cdf)?);
+            let level = self.read_golomb_tail(level)?;
+            stats.add_level(level);
+        }
+        // dav1d walks a linked list built while reading tokens from the end of the block back to
+        // the start, so the list runs from the LOWEST scan position up to the end-of-block one.
+        for &(c, level) in nonzero.iter().rev() {
+            if c == 0 {
+                continue;
+            }
+            self.decoder.read_bool(16384)?;
+            let level = self.read_golomb_tail(level)?;
+            stats.add_level(level);
+        }
+
         Ok(stats)
+    }
+
+    /// A coefficient token of 15 is followed by an Exp-Golomb tail (dav1d `read_golomb`): count
+    /// zero bits up to a one (at most 32 of them), then read that many more bits; the value is
+    /// `15 + (1 << len | bits) - 1`. Any other token is its own level.
+    fn read_golomb_tail(&mut self, level: u32) -> Result<u32> {
+        if level < 15 {
+            return Ok(level);
+        }
+        let mut len = 0u32;
+        while !self.decoder.read_bool(16384)? && len < 32 {
+            len += 1;
+        }
+        let mut val = 1u32;
+        for _ in 0..len {
+            val = (val << 1).wrapping_add(self.decoder.read_bool(16384)? as u32);
+        }
+        Ok(val.wrapping_sub(1).wrapping_add(15))
     }
 
     /// Read one chroma-plane (U or V) transform block's residual coefficients -- the chroma
@@ -1421,10 +1482,9 @@ impl<'a> SymbolDecoder<'a> {
         txb_skip_ctx: u8,
         dc_sign_ctx: u8,
     ) -> Result<ResidualBlockStats> {
-        // Real spec `txSzCtx`: square-up class of the *larger* dimension (see
-        // `read_residual_block`'s identical derivation) -- for a square chroma tile these are the
-        // same value, matching this function's pre-rect behavior exactly.
-        let tx_class = cdf::tx_size_class(width_px.max(height_px)).min(3);
+        // Spec `txSzCtx` (see `tx_size_ctx`): not the larger side's class for a 4:1 tile such as
+        // the 4x16 chroma block of an 8x32 luma block.
+        let tx_class = tx_size_ctx(width_px, height_px).min(3);
 
         let txb_skip_cdf = self
             .cdf_context
@@ -1437,117 +1497,8 @@ impl<'a> SymbolDecoder<'a> {
             });
         }
 
-        let eob_bin_cdf = self
-            .cdf_context
-            .get_eob_bin_cdf_chroma_mut(width_px, height_px);
-        let eob_bin = self.decoder.read_symbol_adaptive(eob_bin_cdf)? as u32;
-
-        let eob: u32 = if eob_bin > 1 {
-            let eob_hi_bit_cdf = self
-                .cdf_context
-                .get_eob_hi_bit_cdf_chroma_mut(tx_class, eob_bin as u8);
-            let eob_hi_bit = self.decoder.read_symbol_adaptive(eob_hi_bit_cdf)? as u32;
-            let num_extra_bits = eob_bin - 2;
-            let mut extra = 0u32;
-            for _ in 0..num_extra_bits {
-                let bit = self.decoder.read_bool(16384)? as u32;
-                extra = (extra << 1) | bit;
-            }
-            ((eob_hi_bit | 2) << (eob_bin - 2)) | extra
-        } else {
-            eob_bin
-        };
-
-        let mut stats = ResidualBlockStats {
-            all_zero: false,
-            ..Default::default()
-        };
-        let mut levels = scan::LevelBuffer::new(width_px as usize, height_px as usize);
-
-        // Same raw-`eob`-is-a-last-index (not a count) fix as `read_residual_block` -- see that
-        // method's identical comment for the full derivation against rav1d's `decode_coefs`.
-        for c in (0..=eob).rev() {
-            let (x, y) = scan::coeff_position(width_px, height_px, false, false, c);
-            let is_eob_pos = c == eob;
-
-            let (base_level, br_ctx) = if is_eob_pos {
-                let ctx = coeff_base_eob_context(eob, width_px.max(height_px));
-                let cdf = self
-                    .cdf_context
-                    .get_coeff_base_eob_cdf_chroma_mut(tx_class, ctx);
-                let level = self.decoder.read_symbol_adaptive(cdf)? as u32 + 1;
-                let pos_band = (x | y) > 1;
-                (level, if pos_band { 14 } else { 7 })
-            } else if c == 0 {
-                let cdf = self.cdf_context.get_coeff_base_cdf_chroma_mut(tx_class, 0);
-                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
-                let (_, hi_mag) = scan::lo_ctx(&levels, 0, 0, false, width_px, height_px);
-                let mag = hi_mag & 63;
-                (level, (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8)
-            } else {
-                let (ctx, hi_mag) = scan::lo_ctx(&levels, x, y, false, width_px, height_px);
-                let cdf = self
-                    .cdf_context
-                    .get_coeff_base_cdf_chroma_mut(tx_class, ctx);
-                let level = self.decoder.read_symbol_adaptive(cdf)? as u32;
-                let mag = hi_mag & 63;
-                let pos_band = (x | y) > 1;
-                let band = if pos_band { 14 } else { 7 };
-                (
-                    level,
-                    band + (if mag > 12 { 6 } else { (mag + 1) >> 1 }) as u8,
-                )
-            };
-
-            let mut level = base_level;
-            let extended = level > 2;
-            if extended {
-                let coeff_br_cdf = self
-                    .cdf_context
-                    .get_coeff_br_cdf_chroma_mut(tx_class, br_ctx);
-                for _ in 0..4 {
-                    let br = self.decoder.read_symbol_adaptive(coeff_br_cdf)? as u32;
-                    level += br;
-                    if br < 3 {
-                        break;
-                    }
-                }
-            }
-            levels.set(x, y, extended, level);
-
-            if level > 0 {
-                if c == 0 {
-                    let dc_sign_cdf = self.cdf_context.get_dc_sign_cdf_chroma_mut(dc_sign_ctx);
-                    let sign = self.decoder.read_symbol_adaptive(dc_sign_cdf)?;
-                    stats.dc_sign_value = Some(sign);
-                } else {
-                    self.decoder.read_bool(16384)?;
-                }
-
-                if level > 14 {
-                    let mut length = 0u32;
-                    loop {
-                        length += 1;
-                        let terminate = self.decoder.read_bool(16384)?;
-                        if terminate || length >= 20 {
-                            break;
-                        }
-                    }
-                    let mut extra = 1u32;
-                    for _ in 0..length.saturating_sub(1) {
-                        let bit = self.decoder.read_bool(16384)? as u32;
-                        extra = (extra << 1) | bit;
-                    }
-                    level = extra + 14;
-                }
-
-                stats.nonzero_count += 1;
-                stats.sum_abs_level += level as u64;
-                stats.max_level = stats.max_level.max(level.min(u16::MAX as u32) as u16);
-            }
-        }
-
-        Ok(stats)
+        // Chroma transform types are derived from the chroma mode and are always 2D here.
+        self.read_coefficients(true, width_px, height_px, TxClass1d::TwoD, dc_sign_ctx)
     }
 }
 
@@ -1561,12 +1512,24 @@ impl<'a> SymbolDecoder<'a> {
 /// `eob >= 1` goes through `1 + (eob > 2<<tx2dszctx) + (eob > 4<<tx2dszctx)`, where `tx2dszctx` is
 /// `2 * min(tx_size_class, 3)` for a square transform (real AV1 caps the 2D coefficient scan's
 /// size class at 32x32).
-fn coeff_base_eob_context(eob: u32, tx_size_px: u32) -> u8 {
+fn coeff_base_eob_context(eob: u32, tx_width_px: u32, tx_height_px: u32) -> u8 {
     if eob == 0 {
         return 0;
     }
-    let tx2dszctx = 2 * cdf::tx_size_class(tx_size_px).min(3) as u32;
+    // dav1d: `tx2dszctx = min(lw, TX_32X32) + min(lh, TX_32X32)` (log2 of px / 4 per side).
+    let tx2dszctx =
+        (cdf::tx_size_class(tx_width_px).min(3) + cdf::tx_size_class(tx_height_px).min(3)) as u32;
     1 + u8::from(eob > (2 << tx2dszctx)) + u8::from(eob > (4 << tx2dszctx))
+}
+
+/// Spec `txSzCtx` (dav1d `TxfmInfo.ctx`) of a transform: `(Tx_Size_Sqr + Tx_Size_Sqr_Up + 1) >> 1`,
+/// i.e. the average of the smaller and the larger side's size class (log2 of px / 4), rounded up.
+/// It selects the coefficient CDF family. Equal to the larger side's class for square and 2:1
+/// transforms and one lower for 4:1 ones.
+pub(crate) fn tx_size_ctx(tx_width_px: u32, tx_height_px: u32) -> usize {
+    let a = cdf::tx_size_class(tx_width_px);
+    let b = cdf::tx_size_class(tx_height_px);
+    (a.min(b) + a.max(b) + 1) >> 1
 }
 
 /// Real transform class for one transform block -- `TwoD` (default scan table), or `Horizontal` /
@@ -1615,6 +1578,15 @@ pub struct ResidualBlockStats {
     /// position's level decoded to `0`) -- feeds `TileContext::set_residual_ctx`'s
     /// `dc_sign_symbol` param, see its doc for the "neutral" convention this maps to.
     pub dc_sign_value: Option<u8>,
+}
+
+impl ResidualBlockStats {
+    /// Accounts for one non-zero coefficient of absolute value `level`.
+    fn add_level(&mut self, level: u32) {
+        self.nonzero_count += 1;
+        self.sum_abs_level += u64::from(level);
+        self.max_level = self.max_level.max(level.min(u32::from(u16::MAX)) as u16);
+    }
 }
 
 #[cfg(test)]
@@ -1776,9 +1748,19 @@ mod tests {
     #[test]
     fn test_coeff_base_eob_context_increases_with_eob() {
         // tx_size_px=16 -> tx_size_class=2 -> tx2dszctx=4 -> thresholds 2<<4=32, 4<<4=64.
-        assert_eq!(coeff_base_eob_context(10, 16), 1); // below both thresholds
-        assert_eq!(coeff_base_eob_context(40, 16), 2); // above first only
-        assert_eq!(coeff_base_eob_context(100, 16), 3); // above both
+        assert_eq!(coeff_base_eob_context(10, 16, 16), 1); // below both thresholds
+        assert_eq!(coeff_base_eob_context(40, 16, 16), 2); // above first only
+        assert_eq!(coeff_base_eob_context(100, 16, 16), 3); // above both
+    }
+
+    /// dav1d: `tx2dszctx = min(lw, 3) + min(lh, 3)` -- the sum of the two sides' size classes, not
+    /// twice the larger one. A 4x8 transform has `tx2dszctx = 0 + 1 = 1` (thresholds 4 and 8), where
+    /// a square 8x8 has 2.
+    #[test]
+    fn test_coeff_base_eob_context_uses_the_sum_of_both_sides() {
+        assert_eq!(coeff_base_eob_context(5, 4, 8), 2); // 4 < 5 <= 8
+        assert_eq!(coeff_base_eob_context(9, 4, 8), 3); // 9 > 8
+        assert_eq!(coeff_base_eob_context(5, 8, 8), 1); // 8x8: thresholds 8 and 16
     }
 
     #[test]
@@ -1786,8 +1768,8 @@ mod tests {
         // 32x32 and 64x64 share the same tx2dszctx (real AV1 caps the 2D coefficient scan's size
         // class at 32x32) -- same context for the same `eob`.
         assert_eq!(
-            coeff_base_eob_context(500, 32),
-            coeff_base_eob_context(500, 64)
+            coeff_base_eob_context(500, 32, 32),
+            coeff_base_eob_context(500, 64, 64)
         );
     }
 
@@ -1796,7 +1778,7 @@ mod tests {
     /// see this function's doc for the desync this closes.
     #[test]
     fn test_coeff_base_eob_context_dc_only_is_context_zero() {
-        assert_eq!(coeff_base_eob_context(0, 16), 0);
-        assert_eq!(coeff_base_eob_context(0, 32), 0);
+        assert_eq!(coeff_base_eob_context(0, 16, 16), 0);
+        assert_eq!(coeff_base_eob_context(0, 32, 32), 0);
     }
 }

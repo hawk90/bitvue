@@ -234,7 +234,7 @@ pub struct CdfContext {
     /// block sizes -- see that doc) get the same harmless `16384` placeholder dav1d itself uses for
     /// every size the real `filter_intra` gate (`max(bw4,bh4) <= 8`, i.e. both dims `<=32px`) can
     /// never actually select.
-    use_filter_intra_cdf: [Vec<u16>; 22],
+    use_filter_intra_cdf: [Vec<u16>; 24],
     /// `filter_intra_mode` CDF (spec 5.11.??? `filter_intra_mode_info()`, 5-symbol) -- real
     /// spec/rav1d default values (`default_cdf.m.filter_intra`), no context (single fixed slot).
     filter_intra_mode_cdf: Vec<u16>,
@@ -1133,7 +1133,11 @@ impl CdfContext {
         // Block8x32=19, Block16x64=20, Block32x128=21` -- see `tile::partition::BlockSize`).
         // `Block128x32`/`Block32x128` have no dav1d/spec counterpart (see field doc) -- given the
         // same harmless `16384` dav1d itself uses for every size the real gate can't select.
-        let use_filter_intra_cdf: [Vec<u16>; 22] = [
+        // Indexed by `BlockSize`'s discriminant (declaration order: the 16 square/2:1 sizes, then
+        // 16x4, 32x8, 64x16, 128x32, 4x16, 8x32, 16x64, 32x128). Values are dav1d's
+        // `default_cdf.m.use_filter_intra`, which indexes by `BS_*` name; 128x32 and 32x128 do not
+        // exist in dav1d (never coded) and keep the neutral 16384.
+        let use_filter_intra_cdf: [Vec<u16>; 24] = [
             binary_ctx_cdf(4621),  // Block4x4
             binary_ctx_cdf(6743),  // Block4x8
             binary_ctx_cdf(5893),  // Block8x4
@@ -1150,12 +1154,14 @@ impl CdfContext {
             binary_ctx_cdf(16384), // Block64x128
             binary_ctx_cdf(16384), // Block128x64
             binary_ctx_cdf(16384), // Block128x128
+            binary_ctx_cdf(10368), // Block16x4
             binary_ctx_cdf(18101), // Block32x8
             binary_ctx_cdf(16384), // Block64x16
-            binary_ctx_cdf(16384), // Block128x32 (no dav1d/spec counterpart, see field doc)
+            binary_ctx_cdf(16384), // Block128x32
+            binary_ctx_cdf(12770), // Block4x16
             binary_ctx_cdf(20229), // Block8x32
             binary_ctx_cdf(16384), // Block16x64
-            binary_ctx_cdf(16384), // Block32x128 (no dav1d/spec counterpart, see field doc)
+            binary_ctx_cdf(16384), // Block32x128
         ];
         // filter_intra_mode (5-symbol) CDF -- real spec/rav1d default values
         // (`default_cdf.m.filter_intra`).
@@ -4846,7 +4852,7 @@ impl CdfContext {
     /// Get mutable `use_filter_intra` CDF for the given `BlockSize` (see field doc for the
     /// discriminant-order mapping).
     pub fn get_use_filter_intra_cdf_mut(&mut self, bs: crate::tile::BlockSize) -> &mut [u16] {
-        &mut self.use_filter_intra_cdf[(bs as usize).min(21)]
+        &mut self.use_filter_intra_cdf[(bs as usize).min(23)]
     }
 
     /// Get mutable `filter_intra_mode` CDF (no context, see field doc).

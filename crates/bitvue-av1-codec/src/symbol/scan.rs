@@ -341,22 +341,25 @@ pub fn coeff_position(
 /// without explicit bounds checks, matching dav1d's own padding.
 pub struct LevelBuffer {
     data: Vec<u8>,
-    height: usize,
+    stride: usize,
 }
 
 impl LevelBuffer {
+    /// `width`/`height`: the transform's dimensions. The buffer is square in the larger one: for
+    /// the 1D classes `coeff_position` transposes the grid (`TX_CLASS_H` indexes `x` along the
+    /// height and `y` along the width), so either axis may be the long one, and an index outside
+    /// the allocation would silently read as zero / drop its write (see `get`/`set`).
     pub fn new(width: usize, height: usize) -> Self {
-        let stride = height + 2;
+        let stride = width.max(height) + 2;
         Self {
-            data: vec![0u8; (width + 2) * stride],
-            height,
+            data: vec![0u8; stride * stride],
+            stride,
         }
     }
 
     fn get(&self, x: u32, y: u32) -> u32 {
-        let stride = self.height + 2;
         self.data
-            .get(x as usize * stride + y as usize)
+            .get(x as usize * self.stride + y as usize)
             .copied()
             .unwrap_or(0) as u32
     }
@@ -365,8 +368,8 @@ impl LevelBuffer {
     /// pre-golomb token/magnitude (`base_level`, or the post-`coeff_br`-extension value when
     /// `extended`).
     pub fn set(&mut self, x: u32, y: u32, extended: bool, level: u32) {
-        let stride = self.height + 2;
-        let idx = x as usize * stride + y as usize;
+        let idx = x as usize * self.stride + y as usize;
+        debug_assert!(idx < self.data.len(), "level written outside the buffer");
         if let Some(slot) = self.data.get_mut(idx) {
             *slot = if extended {
                 (level.min(63) + 192) as u8
@@ -387,7 +390,10 @@ impl LevelBuffer {
 /// *higher*-frequency scan positions (already visited, since decode goes high-to-low frequency),
 /// so causality holds without an explicit "already decoded" check.
 ///
-/// `width_dim`/`height_dim` (only used by the 2D branch's offset-table selection): real dav1d
+/// `width_dim`/`height_dim` (only used by the 2D branch's offset-table selection) are the
+/// transform's real dimensions, NOT the 32-capped ones the scan uses: a 64x32 transform has a
+/// 32x32 coefficient area but still selects the "wide" table (dav1d keys it on the `tx` enum).
+/// Real dav1d
 /// selects a different 5x5 offset table for square vs `width > height` vs `width < height`
 /// transforms (`LO_CTX_OFFSETS_SQUARE`/`_WIDE`/`_TALL`'s doc) -- for a square transform these
 /// dims are equal and the square table is always selected, matching this function's pre-rect
