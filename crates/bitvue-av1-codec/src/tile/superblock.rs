@@ -106,36 +106,44 @@ pub fn parse_superblock(
     // created fresh for every superblock, mirroring dav1d's `cur_sb_cdef_idx_ptr`.
     let mut sb_ctx = SuperblockCtx::new(x, y, sb_size);
 
-    // Parse partition tree -- see `tile::partition::parse_partition_recursive`'s doc for why this
-    // module no longer keeps its own copy. `None` (superblock origin fully outside the frame)
-    // can't happen for a real caller: superblock loops enumerate `sb_x < sb_cols =
-    // frame_width.div_ceil(sb_size)`, which guarantees every superblock's pixel origin is `<
-    // frame_width`/`frame_height` -- fall back to an empty superblock defensively rather than
-    // panic if that invariant is ever violated.
+    // Walk the partition tree, decoding each block the moment its partition is known. Spec 5.11.4
+    // interleaves the two: `decode_partition` reads a `partition` symbol and, at every leaf,
+    // immediately calls `decode_block` (skip, modes, residual, ...) before the next partition
+    // symbol. Reading the whole tree first and the blocks afterwards (as this function used to)
+    // puts every block's symbols after all of the superblock's partition symbols, which is wrong
+    // for any superblock with more than one leaf.
+    //
+    // `None` (superblock origin fully outside the frame) can't happen for a real caller:
+    // superblock loops enumerate `sb_x < sb_cols = frame_width.div_ceil(sb_size)`, which
+    // guarantees every superblock's pixel origin is `< frame_width`/`frame_height` -- fall back to
+    // an empty superblock defensively rather than panic if that invariant is ever violated.
+    let mut coding_units: Vec<CodingUnit> = Vec::new();
+    let mut final_qp = current_qp;
     let partition = crate::tile::partition::parse_partition_recursive(
-        &mut state.decoder,
+        state,
         x,
         y,
         block_size,
         frame.mi_rows,
         frame.mi_cols,
         0, // depth
-        &mut state.tile_ctx,
+        &mut |state, leaf| {
+            let rect = BlockRect {
+                x: leaf.x,
+                y: leaf.y,
+                width: leaf.size.width(),
+                height: leaf.size.height(),
+            };
+            let (cu, new_qp) = parse_coding_unit(state, &mut sb_ctx, rect, frame, final_qp)?;
+            final_qp = new_qp;
+            coding_units.push(cu);
+            Ok(())
+        },
     )?
     .unwrap_or_else(|| PartitionNode::new(x, y, block_size, PartitionType::None));
 
-    // Create superblock
-    let mut sb = Superblock::new(x, y, sb_size, partition.clone());
-
-    // Parse coding units for each leaf block
-    let final_qp = parse_coding_units_recursive(
-        state,
-        &partition,
-        &mut sb_ctx,
-        frame,
-        current_qp,
-        &mut sb.coding_units,
-    )?;
+    let mut sb = Superblock::new(x, y, sb_size, partition);
+    sb.coding_units = coding_units;
 
     tracing::debug!(
         "Parsed superblock with {} coding units (QP: {} -> {})",
@@ -148,37 +156,6 @@ pub fn parse_superblock(
     tracing::debug!("  INTER: {}, INTRA: {}", inter_count, intra_count);
 
     Ok((sb, final_qp))
-}
-
-/// Recursively parse coding units for leaf blocks
-fn parse_coding_units_recursive(
-    state: &mut TileState<'_>,
-    partition: &PartitionNode,
-    sb_ctx: &mut SuperblockCtx,
-    frame: &FrameCodingParams,
-    current_qp: i16,
-    coding_units: &mut Vec<CodingUnit>,
-) -> Result<i16> {
-    if partition.is_leaf() {
-        // Leaf block - parse coding unit
-        let rect = BlockRect {
-            x: partition.x,
-            y: partition.y,
-            width: partition.size.width(),
-            height: partition.size.height(),
-        };
-        let (cu, new_qp) = parse_coding_unit(state, sb_ctx, rect, frame, current_qp)?;
-
-        coding_units.push(cu);
-        Ok(new_qp)
-    } else {
-        // Non-leaf - recurse into children
-        let mut qp = current_qp;
-        for child in &partition.children {
-            qp = parse_coding_units_recursive(state, child, sb_ctx, frame, qp, coding_units)?;
-        }
-        Ok(qp)
-    }
 }
 
 #[cfg(test)]

@@ -759,7 +759,7 @@ mod spec_oracle_tests {
             let n = icdf.len() - 2; // libaom's `N = nsyms - 1`
             let (mut low, mut rng) = (self.low, self.rng);
             let fh = u32::from(icdf[symbol]);
-            let term = |f: u32, k: usize| ((rng >> 8) * (f >> 6) >> 1) + 4 * (n - k) as u32;
+            let term = |f: u32, k: usize| (((rng >> 8) * (f >> 6)) >> 1) + 4 * (n - k) as u32;
             if symbol > 0 {
                 let fl = u32::from(icdf[symbol - 1]);
                 let u = term(fl, symbol - 1);

@@ -320,6 +320,81 @@ mod tests {
         );
     }
 
+    /// Ground truth from a dav1d 1.5.1 build with `DEBUG_BLOCK_INFO` enabled (single-threaded,
+    /// decoding `test_data/av1_test.ivf`): the arithmetic decoder's `rng` right after each
+    /// `partition` symbol of the first 128x128 superblock of frame 0 (`poc=0`), and right after
+    /// the *first block's* `skip` symbol.
+    ///
+    /// ```text
+    /// poc=0,y=0,x=0,bl=0,ctx=0,bp=3: r=63552
+    /// poc=0,y=0,x=0,bl=1,ctx=0,bp=3: r=50112
+    /// poc=0,y=0,x=0,bl=2,ctx=0,bp=3: r=54632
+    /// poc=0,y=0,x=0,bl=3,ctx=0,bp=7: r=51232
+    /// Post-skip[0]: r=49528
+    /// ```
+    ///
+    /// The point is the order: AV1 decodes a block as soon as its partition is known, so the first
+    /// block must be visited right after the 4th partition symbol (`r=51232`) and its `skip` must
+    /// come next, before any further partition symbol. The parser used to read the superblock's
+    /// whole partition tree first and every block afterwards.
+    #[test]
+    fn frame_0_blocks_are_decoded_between_partition_symbols_like_dav1d() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let obu_data: Vec<u8> = [seq_bytes.as_slice(), frames[0].data.as_slice()].concat();
+        let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+        let params = parsed.coding_params();
+
+        // dav1d reads no delta_q for this frame (it would show up as `Post-delta_q` right after
+        // `Post-cdef_idx` on the first block, which sits at a superblock origin).
+        assert!(!params.delta_q_enabled, "frame 0 has delta_q_present = 0");
+
+        let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
+        let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+        let mut state = crate::tile::TileState {
+            decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
+            mv_ctx: crate::tile::MvPredictorContext::new(
+                parsed.dimensions.sb_cols,
+                parsed.dimensions.sb_rows,
+            ),
+            tile_ctx: crate::tile::TileContext::new(
+                (parsed.dimensions.sb_cols * parsed.dimensions.sb_size).div_ceil(4),
+                (parsed.dimensions.sb_rows * parsed.dimensions.sb_size).div_ceil(4),
+            ),
+        };
+        state.tile_ctx.start_superblock_row();
+
+        // Stop at the first leaf and report where the decoder stood when it was reached.
+        let mut first_leaf = None;
+        let result = crate::tile::partition::parse_partition_recursive(
+            &mut state,
+            0,
+            0,
+            crate::tile::BlockSize::Block128x128,
+            params.mi_rows,
+            params.mi_cols,
+            0,
+            &mut |state, leaf| {
+                first_leaf = Some((leaf.x, leaf.y, leaf.size, state.decoder.decoder.range));
+                Err(bitvue_engine::BitvueError::InvalidData(
+                    "stop at the first leaf".to_string(),
+                ))
+            },
+        );
+        assert!(result.is_err());
+        let (x, y, size, range) = first_leaf.expect("a leaf was reached");
+        assert_eq!((x, y), (0, 0));
+        assert_eq!(
+            (size.width(), size.height()),
+            (8, 16),
+            "VERT_B's first block is the full-height left one"
+        );
+        assert_eq!(
+            range, 51232,
+            "the first leaf follows the 4th partition symbol"
+        );
+    }
+
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential
     /// full-fixture regression, threading one `MotionFieldState` across all 250 frames in decode
     /// order (mirroring `bitvue-sidecar/src/av1_features.rs`'s own sequential
