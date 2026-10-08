@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use bitvue_engine::BitvueError;
 
-use super::cache::{compute_cache_key, get_or_parse_coding_units};
+use super::cache::{compute_frame_cache_key, get_or_parse_coding_units};
 use super::parser::ParsedFrame;
 
 /// Parse all coding units from tile data
@@ -22,7 +22,15 @@ pub fn parse_all_coding_units(
     parsed: &ParsedFrame,
 ) -> Result<Arc<Vec<crate::tile::CodingUnit>>, BitvueError> {
     let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-    let cache_key = compute_cache_key(&parsed.tile_data, base_qp);
+    // Everything besides the tile bytes that the parse reads (see `compute_frame_cache_key`).
+    let context = format!(
+        "{:?}|{}|{}|{}",
+        parsed.coding_params(),
+        parsed.dimensions.sb_size,
+        parsed.dimensions.sb_cols,
+        parsed.dimensions.sb_rows
+    );
+    let cache_key = compute_frame_cache_key(&parsed.tile_data, base_qp, &context);
     get_or_parse_coding_units(cache_key, || {
         parse_all_coding_units_with_temporal(parsed, None)
     })
@@ -251,6 +259,65 @@ mod tests {
                 result.err()
             );
         }
+    }
+
+    /// Regression test: the coding-unit cache used to key on `(tile_data, base_qp)` only, so two
+    /// frames with identical tile bytes but different header flags got each other's cached result
+    /// (which one depended on cache eviction order, i.e. on the run). Builds such pairs from real
+    /// fixture frames -- same bytes, one header flag flipped -- keeps those whose fresh parses
+    /// actually differ, and requires the cached lookup of each to equal its own fresh parse.
+    #[test]
+    fn frames_with_identical_tile_bytes_but_different_headers_do_not_share_a_cache_entry() {
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let render = |p: &super::super::parser::ParsedFrame| {
+            format!(
+                "{:?}",
+                parse_all_coding_units_with_temporal(p, None).unwrap()
+            )
+        };
+
+        let mut checked = 0;
+        for frame in frames.iter().take(12) {
+            let obu_data: Vec<u8> = [seq_bytes.as_slice(), frame.data.as_slice()].concat();
+            let original = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+            if !original.has_tile_data() {
+                continue;
+            }
+            type Flip = fn(&mut super::super::parser::ParsedFrame);
+            let flips: [Flip; 4] = [
+                |p| p.reference_select = !p.reference_select,
+                |p| p.delta_q_enabled = !p.delta_q_enabled,
+                |p| p.allow_screen_content_tools = !p.allow_screen_content_tools,
+                |p| p.enable_filter_intra = !p.enable_filter_intra,
+            ];
+            for flip in flips {
+                let mut variant = original.clone();
+                flip(&mut variant);
+                let (fresh_a, fresh_b) = (render(&original), render(&variant));
+                if fresh_a == fresh_b {
+                    continue; // this flag does not change what this frame parses to
+                }
+                // Same tile bytes and QP, different parses: the cache must tell them apart, in
+                // either request order.
+                for pair in [[&original, &variant], [&variant, &original]] {
+                    for p in pair {
+                        let want = if std::ptr::eq(p, &original) {
+                            &fresh_a
+                        } else {
+                            &fresh_b
+                        };
+                        let got = format!("{:?}", parse_all_coding_units(p).unwrap());
+                        assert_eq!(&got, want, "cached parse differs from a fresh parse");
+                    }
+                }
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 0,
+            "no frame/flag pair parsed differently; test is vacuous"
+        );
     }
 
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential

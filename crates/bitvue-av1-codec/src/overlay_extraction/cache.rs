@@ -43,27 +43,22 @@ static CODING_UNIT_CACHE: LazyLock<Mutex<CodingUnitCache>> =
 /// Prevents unbounded memory growth from processing many different frames
 const MAX_CACHE_ENTRIES: usize = 64;
 
-/// Compute cache key from tile data
+/// Cache key for a parsed frame: tile data and QP plus everything else the parse depends on.
 ///
-/// Uses XXH3 (via twox-hash) for 5-10x faster hashing on large tile data
-/// compared to Rust's DefaultHasher (SipHash-1-3).
+/// Parsing a tile is not a function of `tile_data` and `base_qp` alone -- the frame-header flags
+/// (`reference_select`, `skip_mode`, segmentation, delta-q, ...) and the frame size change which
+/// syntax elements are read. Two frames with identical tile bytes (common for tiny, near-empty
+/// payloads) but different headers must therefore not share an entry; `context` carries those
+/// remaining inputs (see `parse_all_coding_units`).
 ///
-/// For 1-10 MB tile data:
-/// - Before (DefaultHasher): ~1ms per hash call
-/// - After (XXH3): ~0.1ms per hash call
-///
-/// # Type Safety
-///
-/// Validates that base_qp is in valid range [0, 255] to prevent
-/// invalid QP values from being used in cache lookups.
-pub fn compute_cache_key(tile_data: &[u8], base_qp: i16) -> u64 {
-    // Validate QP range for cache correctness
-    // Invalid QP values could lead to cache inconsistencies
-    let qp = Qp::new(base_qp);
-    if qp.is_err() {
-        // For cache key purposes, we still compute a hash even with invalid QP
-        // This allows callers to handle the error appropriately
-        // Log a warning to help debugging
+/// Hashed with XXH3-family `XxHash64`, several times faster than the default SipHash on
+/// megabyte-sized tile data. An out-of-range `base_qp` (valid: 0..=255) is logged but still
+/// hashed, so callers can handle the error themselves.
+pub fn compute_frame_cache_key(tile_data: &[u8], base_qp: i16, context: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    use twox_hash::XxHash64;
+
+    if Qp::new(base_qp).is_err() {
         abseil::vlog!(
             1,
             "Cache key computed with invalid QP value: {} (valid range: 0-255)",
@@ -71,20 +66,10 @@ pub fn compute_cache_key(tile_data: &[u8], base_qp: i16) -> u64 {
         );
     }
 
-    compute_cache_key_impl(tile_data, base_qp)
-}
-
-/// Internal implementation of cache key computation
-///
-/// Does not validate QP range, allowing cache to be computed
-/// even for debugging purposes with invalid values.
-fn compute_cache_key_impl(tile_data: &[u8], base_qp: i16) -> u64 {
-    use std::hash::{Hash, Hasher};
-    use twox_hash::XxHash64;
-
     let mut hasher = XxHash64::with_seed(0);
     tile_data.hash(&mut hasher);
     base_qp.hash(&mut hasher);
+    context.hash(&mut hasher);
     hasher.finish()
 }
 
@@ -249,7 +234,7 @@ mod tests {
 
         let tile_data = vec![1u8, 2, 3, 4, 5];
         let base_qp: i16 = 32;
-        let cache_key = compute_cache_key(&tile_data, base_qp);
+        let cache_key = compute_frame_cache_key(&tile_data, base_qp, "");
 
         // First call should be a cache miss
         let parse_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -284,7 +269,7 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         // Add something to cache
         let tile_data = vec![1u8, 2, 3];
-        let cache_key = compute_cache_key(&tile_data, 32);
+        let cache_key = compute_frame_cache_key(&tile_data, 32, "");
 
         let _ = get_or_parse_coding_units(cache_key, || Ok(vec![]));
         assert!(cu_cache_contains(cache_key));
@@ -316,7 +301,7 @@ mod tests {
                 (i.wrapping_mul(31)) as u8,
                 (i.wrapping_mul(37)) as u8,
             ];
-            let cache_key = compute_cache_key(&tile_data, 32);
+            let cache_key = compute_frame_cache_key(&tile_data, 32, "");
             let result = cache.get_or_parse(cache_key, || {
                 added += 1;
                 Ok(vec![])
@@ -339,7 +324,7 @@ mod tests {
         // not grow unboundedly.
         if size_at_limit >= MAX_CACHE_ENTRIES {
             let extra_tile = vec![9u8, 9u8, 9u8, 9u8, 9u8, 9u8];
-            let extra_key = compute_cache_key(&extra_tile, 33);
+            let extra_key = compute_frame_cache_key(&extra_tile, 33, "");
             let _ = cache.get_or_parse(extra_key, || Ok(vec![]));
 
             let size_after_eviction = cache.len();
