@@ -71,6 +71,11 @@ impl<'a> SymbolDecoder<'a> {
         })
     }
 
+    /// See `ArithmeticDecoder::padding_is_conformant`: call after the last symbol of a tile.
+    pub fn padding_is_conformant(&self) -> bool {
+        self.decoder.padding_is_conformant()
+    }
+
     /// Starts from an existing CDF context instead of the defaults: a frame whose
     /// `primary_ref_frame` names a reference begins with that reference's saved CDFs (spec
     /// `load_cdfs`), not the qindex-bucketed defaults.

@@ -99,7 +99,7 @@ fn extract_qp_grid_from_parsed_typed(
     let base_qp_value = base_qp.value();
 
     // If we have tile data, try to parse actual QP values
-    if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
+    if super::provenance::has_decodable_tile(parsed) {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
                 tracing::debug!(

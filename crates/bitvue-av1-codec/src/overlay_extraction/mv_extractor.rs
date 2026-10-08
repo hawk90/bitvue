@@ -54,7 +54,7 @@ pub fn extract_mv_grid_from_parsed(parsed: &ParsedFrame) -> Result<MVGrid, Bitvu
     let mut mode = Vec::with_capacity(total_blocks);
 
     // If we have tile data, try to parse actual motion vectors
-    if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
+    if super::provenance::has_decodable_tile(parsed) {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
                 tracing::debug!("Extracting MV from {} coding units", coding_units.len());

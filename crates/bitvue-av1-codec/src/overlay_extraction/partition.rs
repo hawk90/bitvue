@@ -11,7 +11,7 @@ use bitvue_engine::{
 
 use super::cu_parser::parse_all_coding_units;
 use super::parser::ParsedFrame;
-use crate::tile::{BlockSize, PredictionMode, TxSize};
+use crate::tile::{PredictionMode, TxSize};
 
 /// Extract Partition Grid from AV1 bitstream data
 ///
@@ -43,7 +43,7 @@ pub fn extract_partition_grid_from_parsed(
     parsed: &ParsedFrame,
 ) -> Result<PartitionGrid, BitvueError> {
     // If we have tile data, try to parse actual partitions first
-    if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
+    if super::provenance::has_decodable_tile(parsed) {
         // Try to parse actual partition trees using SymbolDecoder
         match parse_partition_trees_from_tile_data(parsed) {
             Ok(grid) => {
@@ -103,134 +103,32 @@ pub fn extract_partition_grid_from_parsed(
     Ok(grid)
 }
 
-/// Parse partition trees from tile data using SymbolDecoder
+/// The partition grid of a decoded frame: one block per coding unit of the canonical parse (the
+/// same cached one every other extractor uses, so the grids always agree with each other).
 ///
-/// Attempts to parse actual partition structures from tile group payload.
+/// This used to run its own parse, with a fresh MV context per superblock, smaller superblocks
+/// at the frame edge, and an invented block wherever a superblock failed -- a second decoder
+/// that disagreed with the real one. A frame the decode does not complete simply has no blocks
+/// past that point; its provenance (`frame_provenance`) says so.
 fn parse_partition_trees_from_tile_data(
     parsed: &ParsedFrame,
 ) -> Result<PartitionGrid, BitvueError> {
+    let units = parse_all_coding_units(parsed)?;
     let mut grid = PartitionGrid::new(
         parsed.dimensions.width,
         parsed.dimensions.height,
         parsed.dimensions.sb_size,
     );
-
-    // Note: For MVP, we use default QP=128 if the frame type doesn't carry a real one.
-    let base_qp = parsed.frame_type.base_qp.unwrap_or(128) as i16;
-
-    // Create SymbolDecoder for tile data, seeded with the real per-frame qindex-bucket
-    // (`qcat`) residual-coefficient CDF defaults -- see `crate::symbol::cdf::CdfContext::
-    // new_with_qcat`'s doc for the real dav1d selection formula this mirrors.
-    let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
-    let decoder = crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat)?;
-
-    let sb_size = parsed.dimensions.sb_size;
-    let block_size = if sb_size == 128 {
-        BlockSize::Block128x128
-    } else {
-        BlockSize::Block64x64
-    };
-
-    let frame_params = parsed.coding_params();
-
-    // Entropy-context tracker (currently only `skip` uses it -- see `crate::tile::TileContext`'s
-    // doc). Created once for the whole tile, unlike `mv_ctx` (which -- pre-existing, see #61 --
-    // is recreated fresh every superblock below instead of persisting across the tile);
-    // `tile_ctx` must persist across superblocks or every context lookup would degenerate to 0.
-    let tile_ctx = crate::tile::TileContext::new(
-        (parsed.dimensions.sb_cols * sb_size).div_ceil(4),
-        (parsed.dimensions.sb_rows * sb_size).div_ceil(4),
-    );
-    let mut state = crate::tile::TileState {
-        decoder,
-        mv_ctx: crate::tile::MvPredictorContext::new(
-            parsed.dimensions.sb_cols,
-            parsed.dimensions.sb_rows,
-        ),
-        tile_ctx,
-    };
-
-    // Parse each superblock
-    for sb_y in 0..parsed.dimensions.sb_rows {
-        state.tile_ctx.start_superblock_row();
-        for sb_x in 0..parsed.dimensions.sb_cols {
-            let sb_pixel_x = sb_x * sb_size;
-            let sb_pixel_y = sb_y * sb_size;
-
-            // Ensure we don't go out of bounds
-            let remaining_w = sb_size.min(parsed.dimensions.width.saturating_sub(sb_pixel_x));
-            let remaining_h = sb_size.min(parsed.dimensions.height.saturating_sub(sb_pixel_y));
-
-            // Adjust for edge superblocks
-            let actual_block_size =
-                if remaining_w < block_size.width() || remaining_h < block_size.height() {
-                    // Adjust to smaller block size at edges
-                    let w = remaining_w.max(block_size.width() / 2);
-                    let h = remaining_h.max(block_size.height() / 2);
-                    match (w, h) {
-                        (w, h) if w <= 32 && h <= 32 => BlockSize::Block32x32,
-                        (w, h) if w <= 16 && h <= 16 => BlockSize::Block16x16,
-                        (w, h) if w <= 8 && h <= 8 => BlockSize::Block8x8,
-                        _ => BlockSize::Block4x4,
-                    }
-                } else {
-                    block_size
-                };
-
-            // Try to parse the superblock (base_qp computed once above, before the tile loop --
-            // it's a per-frame constant, not per-superblock).
-
-            // Fresh MV predictor context for every superblock (local for partition extraction;
-            // differs from `cu_parser`, which keeps one per tile -- see #61).
-            state.mv_ctx = crate::tile::MvPredictorContext::new(
-                parsed.dimensions.sb_cols,
-                parsed.dimensions.sb_rows,
-            );
-
-            let sb_result = crate::parse_superblock(
-                &mut state,
-                sb_pixel_x,
-                sb_pixel_y,
-                actual_block_size.width(),
-                &frame_params,
-                base_qp,
-            );
-
-            match sb_result {
-                Ok((sb, _final_qp)) => {
-                    // Convert partition tree to grid blocks
-                    for cu in &sb.coding_units {
-                        grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
-                            cu.x,
-                            cu.y,
-                            cu.width,
-                            cu.height,
-                            partition_type_from_prediction_mode(cu.mode),
-                            0,
-                        ));
-                    }
-                }
-                Err(e) => {
-                    // On parse error, add scaffold block
-                    tracing::warn!(
-                        "Failed to parse superblock ({}, {}): {}, using scaffold",
-                        sb_pixel_x,
-                        sb_pixel_y,
-                        e
-                    );
-                    grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
-                        sb_pixel_x,
-                        sb_pixel_y,
-                        remaining_w,
-                        remaining_h,
-                        PartitionType::None,
-                        0,
-                    ));
-                }
-            }
-        }
+    for cu in units.iter() {
+        grid.add_block(bitvue_engine::partition_grid::PartitionBlock::new(
+            cu.x,
+            cu.y,
+            cu.width,
+            cu.height,
+            partition_type_from_prediction_mode(cu.mode),
+            0,
+        ));
     }
-
     Ok(grid)
 }
 
@@ -365,7 +263,7 @@ pub fn extract_prediction_mode_grid_from_parsed(
     let mut modes = Vec::with_capacity(total_blocks);
 
     // If we have tile data, try to parse actual prediction modes
-    if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
+    if super::provenance::has_decodable_tile(parsed) {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
                 tracing::debug!(
@@ -592,7 +490,7 @@ pub fn extract_transform_grid_from_parsed(
     let mut tx_sizes = Vec::with_capacity(total_blocks);
 
     // If we have tile data, try to parse actual transform sizes
-    if parsed.has_tile_data() && parsed.tile_data.len() > 10 {
+    if super::provenance::has_decodable_tile(parsed) {
         match parse_all_coding_units(parsed) {
             Ok(coding_units) => {
                 tracing::debug!(

@@ -15,7 +15,7 @@ use bitvue_av1_codec::frame_header_full::thread_ref_state_before;
 use bitvue_av1_codec::obu::{ObuIterator, ObuType};
 use bitvue_av1_codec::overlay_extraction::{
     extract_prediction_mode_grid_from_parsed, extract_qp_grid_from_parsed,
-    extract_transform_grid_from_parsed, ParsedFrame,
+    extract_transform_grid_from_parsed, frame_provenance, ParsedFrame, Provenance,
 };
 use bitvue_av1_codec::sequence::{parse_sequence_header, SequenceHeader};
 use serde_json::{json, Value};
@@ -151,6 +151,15 @@ pub fn get_coding_flow_analysis(data: &[u8], frame_index: usize) -> Result<Value
         .count();
     let qp_count = qp_grid.qp.len();
 
+    // A frame that was never decoded has only invented scaffold grids: none of the decode
+    // stages happened.
+    let provenance = frame_provenance(&parsed);
+    let (prediction_count, transform_count, qp_count) = if provenance == Provenance::Scaffold {
+        (0, 0, 0)
+    } else {
+        (prediction_count, transform_count, qp_count)
+    };
+
     // (completed, data_size) per stage, same order as STAGE_ORDER.
     let stage_data: [(bool, Option<u64>); 6] = [
         (true, Some(frames[frame_index].data.len() as u64)),
@@ -186,6 +195,7 @@ pub fn get_coding_flow_analysis(data: &[u8], frame_index: usize) -> Result<Value
         "stages": stages,
         "current_stage": current_stage,
         "codec_features": codec_features(&seq),
+        "provenance": provenance.as_str(),
     }))
 }
 
@@ -346,5 +356,43 @@ mod tests {
         );
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, WireErrorCode::NotFound);
+    }
+
+    #[test]
+    fn get_coding_flow_analysis_reports_whether_the_frame_was_verified() {
+        // The key frame decodes exactly; an inter frame parsed on its own does not.
+        assert_eq!(
+            get_coding_flow_analysis(AV1_IVF_FIXTURE, 0).unwrap()["provenance"],
+            "verified"
+        );
+        assert_eq!(
+            get_coding_flow_analysis(AV1_IVF_FIXTURE, 2).unwrap()["provenance"],
+            "unverified"
+        );
+    }
+
+    /// A frame that was never decoded has no prediction, transform or quantization stage to show.
+    #[test]
+    fn get_coding_flow_analysis_completes_no_decode_stage_for_an_undecoded_frame() {
+        let (_hdr, frames) = bitvue_av1_codec::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let mut ivf = AV1_IVF_FIXTURE[..32].to_vec();
+        ivf[24..28].copy_from_slice(&2u32.to_le_bytes());
+        // Chunk 1: temporal delimiter + a `show_existing_frame` header, no tile.
+        for (pts, data) in [
+            (0u64, frames[0].data.as_slice()),
+            (1, &[0x12, 0x00, 0x1A, 0x01, 0x80][..]),
+        ] {
+            ivf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            ivf.extend_from_slice(&pts.to_le_bytes());
+            ivf.extend_from_slice(data);
+        }
+        let result = get_coding_flow_analysis(&ivf, 1).unwrap();
+        assert_eq!(result["provenance"], "scaffold");
+        for stage in result["stages"].as_array().unwrap() {
+            let id = stage["id"].as_str().unwrap();
+            if ["prediction", "transform", "quantization"].contains(&id) {
+                assert_eq!(stage["completed"], false, "{id}");
+            }
+        }
     }
 }
