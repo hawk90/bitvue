@@ -395,6 +395,101 @@ mod tests {
         );
     }
 
+    /// Ground truth from the same dav1d 1.5.1 trace (see
+    /// `frame_0_blocks_are_decoded_between_partition_symbols_like_dav1d`): the decoder's `rng`
+    /// after each syntax element of frame 0's first block, up to its first coefficient token.
+    ///
+    /// ```text
+    /// poc=0,y=0,x=0,bl=0..3 ...                   r=63552, 50112, 54632, 51232   (partition x4)
+    /// Post-skip[0]: r=49528          Post-cdef_idx[0]: r=49864
+    /// Post-ymode[0]: r=47640         Post-uvmode[0]: r=60524
+    /// Post-y_pal[1]: r=49216         Post-pal[pl=0,sz=2,...]: r=43528
+    /// Post-uv_pal[0]: r=57128        Post-y-pal-indices: r=33029   (128 symbols)
+    /// Post-tx[7]: r=49524            Post-non-zero[2][0][0]: r=48266
+    /// Post-txtp-intra[7->1][0][6->2]: r=59440
+    /// Post-eob_bin_128[0][0][4]: r=59456  Post-eob_hi_bit: r=56960  Post-eob[9]: r=56840
+    /// Post-lo_tok[2][0][1][9=3=1]: r=55611
+    /// ```
+    ///
+    /// The block is an 8x16 palette block with `tx=7` (`RTX_8X16`): one rectangular transform
+    /// (not a 16x16 one, which would read a 256-coefficient `eob_bin` alphabet), a transform type
+    /// chosen from the 7-symbol intra set because the *smaller* side is 8, then `eob` and the
+    /// end-of-block token. Each value pins a decision that was once wrong here: `tx_size` for a
+    /// rectangular block and its per-axis context, and the `get_tx_set` side that picks the CDF.
+    #[test]
+    fn frame_0_first_block_matches_the_dav1d_trace_through_its_end_of_block_token() {
+        const ORACLE: &[u32] = &[
+            63552, 50112, 54632, 51232, // partition symbols
+            49528, 49864, 47640, 60524, // skip, cdef_idx, ymode, uvmode
+            49216, 43528, 57128, 33029, // y_pal, palette colours, uv_pal, palette indices
+            49524, 48266, 59440, // tx_size, all_zero, transform type
+            59456, 56960, 56840, 55611, // eob_bin, eob_hi_bit, eob, first token
+        ];
+        let (_hdr, frames) = crate::ivf::parse_ivf_frames(AV1_IVF_FIXTURE).unwrap();
+        let seq_bytes = find_seq_header_bytes(&frames).expect("fixture has a sequence header");
+        let obu_data: Vec<u8> = [seq_bytes.as_slice(), frames[0].data.as_slice()].concat();
+        let parsed = super::super::parser::ParsedFrame::parse(&obu_data).unwrap();
+        let params = parsed.coding_params();
+
+        let base_qp = parsed.frame_type.base_qp.unwrap() as i16;
+        let qcat = (base_qp > 20) as u8 + (base_qp > 60) as u8 + (base_qp > 120) as u8;
+        let mut state = crate::tile::TileState {
+            decoder: crate::SymbolDecoder::new_with_qcat(&parsed.tile_data, qcat).unwrap(),
+            mv_ctx: crate::tile::MvPredictorContext::new(
+                parsed.dimensions.sb_cols,
+                parsed.dimensions.sb_rows,
+            ),
+            tile_ctx: crate::tile::TileContext::new(
+                (parsed.dimensions.sb_cols * parsed.dimensions.sb_size).div_ceil(4),
+                (parsed.dimensions.sb_rows * parsed.dimensions.sb_size).div_ceil(4),
+            ),
+        };
+        state.tile_ctx.start_superblock_row();
+        state.decoder.decoder.range_trace = Some(Vec::new());
+
+        let mut sb_ctx = crate::tile::SuperblockCtx::new(0, 0, parsed.dimensions.sb_size);
+        let _ = crate::tile::partition::parse_partition_recursive(
+            &mut state,
+            0,
+            0,
+            crate::tile::BlockSize::Block128x128,
+            params.mi_rows,
+            params.mi_cols,
+            0,
+            &mut |state, leaf| {
+                let rect = crate::tile::BlockRect {
+                    x: leaf.x,
+                    y: leaf.y,
+                    width: leaf.size.width(),
+                    height: leaf.size.height(),
+                };
+                // Decode the first block only; whatever follows its end-of-block token is
+                // covered by later oracle checkpoints.
+                let _ = crate::tile::parse_coding_unit(state, &mut sb_ctx, rect, &params, base_qp);
+                Err(bitvue_engine::BitvueError::InvalidData(
+                    "stop after the first block".to_string(),
+                ))
+            },
+        );
+        let trace = state.decoder.decoder.range_trace.take().unwrap();
+
+        // The four partition symbols come first, back to back.
+        assert_eq!(&trace[..4], &ORACLE[..4]);
+        // Everything after is an in-order subsequence; the palette index map is the longest gap
+        // (127 context-coded symbols between `uv_pal` and `tx_size`).
+        let mut at = 4;
+        for (i, want) in ORACLE.iter().enumerate().skip(4) {
+            let found = trace[at..]
+                .iter()
+                .take(140)
+                .position(|r| r == want)
+                .unwrap_or_else(|| {
+                    panic!("oracle checkpoint #{i} (r={want}) not reached after symbol {at}")
+                });
+            at += found + 1;
+        }
+    }
+
     /// Real temporal MV candidates (spec 7.9/7.10, `crate::tile::motion_field`) -- sequential
     /// full-fixture regression, threading one `MotionFieldState` across all 250 frames in decode
     /// order (mirroring `bitvue-sidecar/src/av1_features.rs`'s own sequential

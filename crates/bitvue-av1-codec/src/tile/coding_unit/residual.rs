@@ -100,7 +100,8 @@ fn read_luma_residual(
                 tx_type_flags.coded_lossless,
                 tx_type_flags.qidx_is_zero,
                 tx_type_flags.reduced_tx_set,
-                tx_w_px.max(tx_h_px),
+                tx_w_px,
+                tx_h_px,
                 y_mode_raw,
             )?;
             decoder.read_residual_block(tx_w_px, tx_h_px, tx_class_1d, dc_sign_ctx)?

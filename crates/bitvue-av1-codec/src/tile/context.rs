@@ -1528,36 +1528,39 @@ impl TileContext {
         }
     }
 
-    /// Intra `tx_size()` context (0..=2) for a block at absolute 4x4 position `(x4, y4)` with
-    /// max transform class `max_tx_class` (0..=4, `TxSize`'s discriminant order) -- per
-    /// spec/rav1d `get_tx_ctx`: `(left_tx_class[y4] >= max_tx_class) + (above_tx_class[x4] >=
-    /// max_tx_class)`. An unwritten neighbor (`-1`, see the struct field doc) never satisfies
-    /// `>=` for any real class, so it correctly contributes `0` without needing an explicit
-    /// `have_top`/`have_left` check (same "default array value" pattern as `skip_context`).
-    pub fn tx_size_context(&self, x4: u32, y4: u32, max_tx_class: u8) -> u8 {
+    /// Intra `tx_size()` context (0..=2) for a block at absolute 4x4 position `(x4, y4)` whose
+    /// largest transform has width/height classes `max_w_class`/`max_h_class` (0..=4, log2 of
+    /// px / 4) -- per dav1d `get_tx_ctx`: `(left_tx_h[y4] >= max_h_class) + (above_tx_w[x4] >=
+    /// max_w_class)`. Width is compared against the above neighbour and height against the left
+    /// one; they differ for a rectangular block. An unwritten neighbor (`-1`, see the struct field
+    /// doc) never satisfies `>=` for any real class, so it correctly contributes `0` without an
+    /// explicit `have_top`/`have_left` check (same "default array value" pattern as
+    /// `skip_context`).
+    pub fn tx_size_context(&self, x4: u32, y4: u32, max_w_class: u8, max_h_class: u8) -> u8 {
         let above = self.above_tx_class.get(x4 as usize).copied().unwrap_or(-1);
         let left = self.left_tx_class.get(y4 as usize).copied().unwrap_or(-1);
-        u8::from(left >= max_tx_class as i8) + u8::from(above >= max_tx_class as i8)
+        u8::from(left >= max_h_class as i8) + u8::from(above >= max_w_class as i8)
     }
 
-    /// Record a decoded (or table-derived, for non-`Switchable` `TxMode`s) transform's size
-    /// class across the block's 4x4-unit footprint, for future `tx_size_context` lookups.
+    /// Record a decoded (or table-derived, for non-`Switchable` `TxMode`s) transform's width and
+    /// height classes across the block's 4x4-unit footprint, for future `tx_size_context`
+    /// lookups: the above array keeps the width class, the left array the height class.
     pub fn set_tx_class(
         &mut self,
         x4: u32,
         y4: u32,
         width_4x4: u32,
         height_4x4: u32,
-        tx_class: u8,
+        w_class: u8,
+        h_class: u8,
     ) {
-        let tx_class = tx_class as i8;
         let x_end = (x4 + width_4x4).min(self.above_tx_class.len() as u32);
         for x in x4..x_end {
-            self.above_tx_class[x as usize] = tx_class;
+            self.above_tx_class[x as usize] = w_class as i8;
         }
         let y_end = (y4 + height_4x4).min(self.left_tx_class.len() as u32);
         for y in y4..y_end {
-            self.left_tx_class[y as usize] = tx_class;
+            self.left_tx_class[y as usize] = h_class as i8;
         }
     }
 
@@ -3282,41 +3285,56 @@ mod tests {
     #[test]
     fn test_tx_size_context_no_neighbors_is_zero() {
         let ctx = TileContext::new(16, 16);
-        assert_eq!(ctx.tx_size_context(0, 0, 4), 0);
+        assert_eq!(ctx.tx_size_context(0, 0, 4, 4), 0);
     }
 
     #[test]
     fn test_tx_size_context_above_neighbor_at_least_as_large_contributes() {
         let mut ctx = TileContext::new(16, 16);
-        ctx.set_tx_class(0, 0, 4, 4, 4); // neighbor's tx class = Tx64x64 (4)
-                                         // Query at (0, 5): above-only (x4=0 means have_left irrelevant here since query itself
-                                         // reads left_tx_class[y4=5], untouched -> only above contributes).
-        assert_eq!(ctx.tx_size_context(0, 5, 3), 1); // 4 >= 3
+        ctx.set_tx_class(0, 0, 4, 4, 4, 4); // neighbor's tx class = Tx64x64 (4)
+                                            // Query at (0, 5): above-only (x4=0 means have_left irrelevant here since query itself
+                                            // reads left_tx_class[y4=5], untouched -> only above contributes).
+        assert_eq!(ctx.tx_size_context(0, 5, 3, 3), 1); // 4 >= 3
+    }
+
+    /// The above neighbour is compared on width and the left one on height (dav1d `get_tx_ctx`):
+    /// for a rectangular block the two thresholds differ.
+    #[test]
+    fn test_tx_size_context_compares_width_above_and_height_left() {
+        let mut ctx = TileContext::new(16, 16);
+        // A 16x8 transform (width class 2, height class 1) written at the origin.
+        ctx.set_tx_class(0, 0, 4, 2, 2, 1);
+        // Block below it: only the above array is relevant. Its width class threshold is 2.
+        assert_eq!(ctx.tx_size_context(0, 2, 2, 3), 1); // above 2 >= 2
+        assert_eq!(ctx.tx_size_context(0, 2, 3, 3), 0); // above 2 < 3
+                                                        // Block to its right: only the left array is relevant. Its height class threshold is 1.
+        assert_eq!(ctx.tx_size_context(4, 0, 3, 1), 1); // left 1 >= 1
+        assert_eq!(ctx.tx_size_context(4, 0, 3, 2), 0); // left 1 < 2
     }
 
     #[test]
     fn test_tx_size_context_left_neighbor_smaller_does_not_contribute() {
         let mut ctx = TileContext::new(16, 16);
-        ctx.set_tx_class(0, 0, 4, 4, 1); // neighbor's tx class = Tx8x8 (1)
-        assert_eq!(ctx.tx_size_context(5, 0, 3), 0); // 1 < 3
+        ctx.set_tx_class(0, 0, 4, 4, 1, 1); // neighbor's tx class = Tx8x8 (1)
+        assert_eq!(ctx.tx_size_context(5, 0, 3, 3), 0); // 1 < 3
     }
 
     #[test]
     fn test_tx_size_context_sums_both_neighbors() {
         let mut ctx = TileContext::new(16, 16);
         // Isolated placements: above contribution at column x4=5 (query x4), left at row y4=5.
-        ctx.set_tx_class(5, 0, 4, 4, 4);
-        ctx.set_tx_class(0, 5, 4, 4, 4);
-        assert_eq!(ctx.tx_size_context(5, 5, 3), 2);
+        ctx.set_tx_class(5, 0, 4, 4, 4, 4);
+        ctx.set_tx_class(0, 5, 4, 4, 4, 4);
+        assert_eq!(ctx.tx_size_context(5, 5, 3, 3), 2);
     }
 
     #[test]
     fn test_start_superblock_row_resets_left_tx_class_but_not_above() {
         let mut ctx = TileContext::new(16, 16);
-        ctx.set_tx_class(0, 0, 4, 4, 4);
+        ctx.set_tx_class(0, 0, 4, 4, 4, 4);
         ctx.start_superblock_row();
-        assert_eq!(ctx.tx_size_context(5, 0, 3), 0); // left reset to -1
-        assert_eq!(ctx.tx_size_context(0, 5, 3), 1); // above persists
+        assert_eq!(ctx.tx_size_context(5, 0, 3, 3), 0); // left reset to -1
+        assert_eq!(ctx.tx_size_context(0, 5, 3, 3), 1); // above persists
     }
 
     // `read_var_tx_size` (inter/IntraBC var-tx) context tests.
