@@ -100,7 +100,6 @@ pub fn parse_coding_unit(
         allow_intrabc,
         segmentation,
         tx_type_flags,
-        inter_mode_flags,
         mi_rows,
         mi_cols,
         cdef_bits,
@@ -221,7 +220,6 @@ pub fn parse_coding_unit(
         // ref_frame() (spec 5.11.25) -- see `ref_frames`.
         cu.ref_frames = ref_frames::read_ref_frames(decoder, tile_ctx, rect, mi, frame, &cu)?;
         let is_compound = cu.ref_frames[1] != RefFrame::Intra;
-        let rav1d_ref0 = cu.ref_frames[0] as i8 - 1;
 
         if is_compound {
             compound::read_compound_mode_info(decoder, tile_ctx, mv_ctx, rect, mi, frame, &mut cu)?;
