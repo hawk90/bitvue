@@ -46,10 +46,8 @@ use crate::tile::{CodingUnit, PredictionMode};
 /// matches the spec's 4-pixel loop-filter grid.
 const SAMPLE: u32 = 4;
 
-/// A full-pixel motion-vector difference, in this crate's quarter-pel `MotionVector` units (spec
-/// 7.14.2 uses 1/8-pel units and a threshold of 8; this codebase's MVs are quarter-pel, so the
-/// equivalent one-pixel threshold is 4).
-const MV_DIFF_ONE_PIXEL_QPEL: i32 = 4;
+/// A full-pixel motion-vector difference in `MotionVector`'s 1/8-sample units (spec 7.14.2).
+const MV_DIFF_ONE_PIXEL: i32 = 8;
 
 #[derive(Debug, Clone)]
 pub struct DeblockingEdge {
@@ -102,8 +100,8 @@ fn boundary_strength(a: &CodingUnit, b: &CodingUnit) -> u8 {
         return 1;
     }
     for i in 0..2 {
-        if (a.mv[i].x - b.mv[i].x).abs() >= MV_DIFF_ONE_PIXEL_QPEL
-            || (a.mv[i].y - b.mv[i].y).abs() >= MV_DIFF_ONE_PIXEL_QPEL
+        if (a.mv[i].x - b.mv[i].x).abs() >= MV_DIFF_ONE_PIXEL
+            || (a.mv[i].y - b.mv[i].y).abs() >= MV_DIFF_ONE_PIXEL
         {
             return 1;
         }
@@ -246,8 +244,8 @@ mod tests {
         let mut b = cu(8, 0, 8, 8, PredictionMode::NewMv, true);
         a.ref_frames = [RefFrame::Last, RefFrame::Intra];
         b.ref_frames = [RefFrame::Last, RefFrame::Intra];
-        a.mv[0] = MotionVector::new(4, 0);
-        b.mv[0] = MotionVector::new(6, 0); // 2 qpel diff < 4 threshold
+        a.mv[0] = MotionVector::new(8, 0);
+        b.mv[0] = MotionVector::new(12, 0); // 4/8-sample diff < 8 threshold
         assert_eq!(boundary_strength(&a, &b), 0);
     }
 
@@ -258,7 +256,7 @@ mod tests {
         a.ref_frames = [RefFrame::Last, RefFrame::Intra];
         b.ref_frames = [RefFrame::Last, RefFrame::Intra];
         a.mv[0] = MotionVector::new(0, 0);
-        b.mv[0] = MotionVector::new(4, 0); // exactly 1 pixel (4 qpel) diff
+        b.mv[0] = MotionVector::new(8, 0); // exactly 1 pixel (8 eighth-samples) diff
         assert_eq!(boundary_strength(&a, &b), 1);
     }
 

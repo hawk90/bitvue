@@ -119,7 +119,7 @@ pub(super) fn read_compound_mode_info(
         // single-ref `GlobalMv` below).
         cu.mv[0] = match l0_kind {
             Some(MvKind::New) => {
-                let explicit_mv = read_explicit_mv(decoder)?;
+                let explicit_mv = read_explicit_mv(decoder, frame.inter_mode_flags.mv_precision())?;
                 explicit_mv.add(stack[drl_idx].mv[0])
             }
             Some(MvKind::Nearest) | Some(MvKind::Near) => stack[drl_idx].mv[0],
@@ -128,7 +128,7 @@ pub(super) fn read_compound_mode_info(
         };
         cu.mv[1] = match l1_kind {
             Some(MvKind::New) => {
-                let explicit_mv = read_explicit_mv(decoder)?;
+                let explicit_mv = read_explicit_mv(decoder, frame.inter_mode_flags.mv_precision())?;
                 explicit_mv.add(stack[drl_idx].mv[1])
             }
             Some(MvKind::Nearest) | Some(MvKind::Near) => stack[drl_idx].mv[1],

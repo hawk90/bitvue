@@ -12,6 +12,7 @@ pub(super) fn read_interp_filter(
     mi: MiRect,
     frame: &FrameCodingParams,
     cu: &CodingUnit,
+    is_warp: bool,
 ) -> Result<()> {
     let MiRect {
         x4,
@@ -36,7 +37,10 @@ pub(super) fn read_interp_filter(
     // read when the block is minimal size (`min(width_4x4, height_4x4) == 1`) or the
     // relevant ref's `GmType` is exactly TRANSLATION (not `>` -- IDENTITY/ROTZOOM/AFFINE all
     // suppress the read).
+    // A WARPED_CAUSAL block (`motion_mode == 2`) reads no filter either (dav1d: `has_subpel_filter
+    // = 0` when `b->motion_mode == MM_WARP`).
     let has_subpel_filter = !cu.skip_mode
+        && !is_warp
         && needs_interp_filter(
             cu.mode,
             width_4x4,

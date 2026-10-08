@@ -1161,10 +1161,13 @@ pub fn parse_frame_header_full(
             switchable_motion_mode: false,
             allow_warped_motion: false,
             force_integer_mv: false,
+            allow_high_precision_mv: false,
             gm_type: [0u8; 8],
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
+            primary_ref_frame: 7,
+            disable_frame_end_update_cdf: true,
             segmentation: SegmentationInfo::default(),
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
@@ -1356,7 +1359,6 @@ pub fn parse_frame_header_full(
     } else {
         reader.read_bit()?
     };
-    let _ = disable_frame_end_update_cdf;
 
     read_tile_info(&mut reader, seq, width, height)?;
 
@@ -1503,10 +1505,13 @@ pub fn parse_frame_header_full(
         switchable_motion_mode,
         allow_warped_motion,
         force_integer_mv,
+        allow_high_precision_mv,
         gm_type,
         reduced_tx_set,
         txfm_mode,
         use_ref_frame_mvs,
+        primary_ref_frame,
+        disable_frame_end_update_cdf,
         segmentation,
         loop_filter,
         cdef_damping: cdef.clone(),

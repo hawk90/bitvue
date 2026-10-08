@@ -13,6 +13,7 @@ use bitvue_engine::Result;
 
 /// Fills `cu.mode` and `cu.mv`, reads the interintra/motion-mode symbols, and records the block
 /// in the spatial reference context. `cu.ref_frames[0]` must already hold the reference.
+/// Returns whether the block uses `WARPED_CAUSAL` motion, which skips the interpolation filter.
 pub(super) fn read_single_ref_mode_info(
     decoder: &mut SymbolDecoder,
     tile_ctx: &mut TileContext,
@@ -21,7 +22,7 @@ pub(super) fn read_single_ref_mode_info(
     mi: MiRect,
     frame: &FrameCodingParams,
     cu: &mut CodingUnit,
-) -> Result<()> {
+) -> Result<bool> {
     let BlockRect { x, y, .. } = rect;
     let MiRect {
         x4,
@@ -48,7 +49,6 @@ pub(super) fn read_single_ref_mode_info(
     // index 0 -- `MvPredictorContext::predict_nearest_mv`'s single-neighbor heuristic).
     // Not read for GLOBALMV (real spec: no DRL for that mode at all).
     if cu.mode == PredictionMode::NewMv {
-        let explicit_mv = read_explicit_mv(decoder)?;
         let (stack, n_mvs) = tile_ctx.single_ref_mv_stack(
             x4,
             y4,
@@ -69,6 +69,9 @@ pub(super) fn read_single_ref_mode_info(
                 drl_idx += 1;
             }
         }
+        // The difference is read after the DRL bits (dav1d: `Post-intermode` precedes
+        // `Post-residualmv`).
+        let explicit_mv = read_explicit_mv(decoder, inter_mode_flags.mv_precision())?;
         let predictor = stack[drl_idx].mv;
         cu.mv[0] = MotionVector::new(explicit_mv.x + predictor.x, explicit_mv.y + predictor.y);
         cu.mv[1] = MotionVector::zero();
@@ -130,18 +133,6 @@ pub(super) fn read_single_ref_mode_info(
         );
     }
 
-    tile_ctx.set_spatial_ref_block(
-        x4,
-        y4,
-        width_4x4,
-        height_4x4,
-        rav1d_ref0,
-        rav1d_ref1,
-        cu.mode == PredictionMode::NewMv,
-        cu.mv[0],
-        cu.mv[1],
-    );
-
     // interintra (spec 5.11.29) -- real per-context CDF + adaptation, see
     // `SymbolDecoder::read_interintra`'s doc for the desync this closes (previously never
     // read at all for any single-ref inter block).
@@ -150,6 +141,20 @@ pub(super) fn read_single_ref_mode_info(
     let is_interintra = inter_mode_flags.enable_interintra_compound
         && interintra_wedge_ctx.is_some()
         && decoder.read_interintra(ii_sz_grp)?;
+    // dav1d stores an inter-intra block's second reference as "intra" (0), which no neighbour
+    // scan matches -- not as "none" (-1) -- so it is not a plain single-reference neighbour
+    // (`find_matching_ref` requires `ref[1] == -1`). `-2` is that marker here.
+    tile_ctx.set_spatial_ref_block(
+        x4,
+        y4,
+        width_4x4,
+        height_4x4,
+        rav1d_ref0,
+        if is_interintra { -2 } else { rav1d_ref1 },
+        cu.mode == PredictionMode::NewMv,
+        cu.mv[0],
+        cu.mv[1],
+    );
     if is_interintra {
         decoder.read_interintra_mode(ii_sz_grp)?;
         // `interintra_wedge_ctx` is real here (`is_interintra` only true when `Some`).
@@ -168,14 +173,13 @@ pub(super) fn read_single_ref_mode_info(
     // zero bits here, matching real spec's forced `motion_mode = SIMPLE`; `!force_integer_
     // mv` gates the whole check per spec, same as `read_motion_mode`'s other real gates),
     // and has a real overlappable (non-intra) above/left neighbor.
-    let have_top = y4 > 0;
-    let have_left = x4 > 0;
     let gm_forces_simple = global_motion_forces_simple(
         cu.mode,
         inter_mode_flags.force_integer_mv,
         &inter_mode_flags.gm_type,
         cu.ref_frames[0],
     );
+    let mut is_warp = false;
     if inter_mode_flags.switchable_motion_mode
         && !is_interintra
         && !gm_forces_simple
@@ -190,14 +194,23 @@ pub(super) fn read_single_ref_mode_info(
         // why a full port is deferred). SVC reference scaling isn't modeled (assumed
         // never scaled, matching this crate's existing no-SVC-support scope).
         let allow_warp = inter_mode_flags.allow_warped_motion
-            && tile_ctx.has_matching_single_ref(x4, y4, have_top, have_left, rav1d_ref0);
+            && tile_ctx.has_matching_edge_ref(
+                x4,
+                y4,
+                width_4x4,
+                height_4x4,
+                width_4x4.min(frame.mi_cols.saturating_sub(x4)),
+                height_4x4.min(frame.mi_rows.saturating_sub(y4)),
+                frame.mi_cols,
+                rav1d_ref0,
+            );
         if allow_warp {
             if let Some(idx) = motion_mode_size_index(width_4x4, height_4x4) {
-                decoder.read_motion_mode(idx)?;
+                is_warp = decoder.read_motion_mode(idx)? == 2;
             }
         } else if let Some(idx) = motion_mode_size_index(width_4x4, height_4x4) {
             decoder.read_obmc(idx)?;
         }
     }
-    Ok(())
+    Ok(is_warp)
 }

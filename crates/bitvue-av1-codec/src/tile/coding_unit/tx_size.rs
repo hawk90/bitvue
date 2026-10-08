@@ -70,14 +70,11 @@ pub(super) fn read_intra_tx_size(
     }
 
     cu.tx_size = TxSize::from_class(tx_size_class(tx_w.max(tx_h)) as u8);
-    tile_ctx.set_tx_class(
-        mi.x4,
-        mi.y4,
-        mi.width,
-        mi.height,
-        tx_size_class(tx_w) as u8,
-        tx_size_class(tx_h) as u8,
-    );
+    let (w_class, h_class) = (tx_size_class(tx_w) as u8, tx_size_class(tx_h) as u8);
+    tile_ctx.set_tx_class(mi.x4, mi.y4, mi.width, mi.height, w_class, h_class);
+    // dav1d's intra `set_ctx` writes the same sizes into the var-tx arrays (`edge->tx`) that a
+    // later inter block's `txfm_split` context reads.
+    tile_ctx.set_var_tx_class(mi.x4, mi.y4, mi.width, mi.height, w_class, h_class);
     cu.tx_blocks = Some(luma_tx_blocks(rect, mi, (tx_w, tx_h), frame));
     Ok(())
 }

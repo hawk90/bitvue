@@ -92,6 +92,7 @@ impl FrameCodingParams {
                 enable_jnt_comp: false,
                 subpel_filter_switchable: true,
                 force_integer_mv: false,
+                allow_high_precision_mv: false,
                 gm_type: [0; 8],
             },
             mi_rows: 16,

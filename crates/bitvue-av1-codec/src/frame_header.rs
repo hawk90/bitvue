@@ -240,6 +240,10 @@ pub struct FrameHeader {
     /// `parse_frame_header_basic` (same basic-vs-full caveat as `reference_select` -- `false` is
     /// the common case anyway, since it requires `allow_screen_content_tools`).
     pub force_integer_mv: bool,
+    /// `allow_high_precision_mv` (spec 5.9.2) -- whether MV differences carry the eighth-sample
+    /// bit. Always `false` from `parse_frame_header_basic`; real value from
+    /// `frame_header_full`.
+    pub allow_high_precision_mv: bool,
     /// `GmType[ref]` (spec 5.9.24 `global_motion_params()`) for each of the 8 `RefFrame` values
     /// (index 0/`RefFrame::Intra` unused, stays `IDENTITY`) -- `0`=IDENTITY, `1`=TRANSLATION,
     /// `2`=ROTZOOM, `3`=AFFINE. Closes `read_motion_mode`'s documented gap: real spec forces
@@ -269,6 +273,12 @@ pub struct FrameHeader {
     /// it -- a strictly closer approximation than a hardcoded `false`, not a full implementation
     /// of the temporal subsystem itself. Same basic-vs-full caveat as `reference_select`.
     pub use_ref_frame_mvs: bool,
+    /// `primary_ref_frame` (spec 5.9.2): which reference's saved CDFs this frame starts from, or
+    /// `7` (`PRIMARY_REF_NONE`) for the defaults. Only the full parser reads it.
+    pub primary_ref_frame: u32,
+    /// `disable_frame_end_update_cdf` (spec 5.9.2): when set, the CDFs this frame saves for its
+    /// refreshed slots are the ones it started with, not the adapted ones.
+    pub disable_frame_end_update_cdf: bool,
     /// Real segmentation state (spec 5.9.14) -- see `crate::frame_header_full::SegmentationInfo`'s
     /// doc for the exact fields and known gap. Always `SegmentationInfo::default()` (all-disabled)
     /// from `parse_frame_header_basic` (same basic-vs-full caveat as `reference_select`).
@@ -634,10 +644,13 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
             switchable_motion_mode: false,
             allow_warped_motion: false,
             force_integer_mv: false,
+            allow_high_precision_mv: false,
             gm_type: [0u8; 8],
             reduced_tx_set: false,
             txfm_mode: TxfmMode::Largest,
             use_ref_frame_mvs: false,
+            primary_ref_frame: 7,
+            disable_frame_end_update_cdf: true,
             segmentation: crate::frame_header_full::SegmentationInfo::default(),
             loop_filter: LoopFilterInfo::default(),
             cdef_damping: CdefInfo::default(),
@@ -815,10 +828,13 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
         switchable_motion_mode: false,
         allow_warped_motion: false,
         force_integer_mv: false,
+        allow_high_precision_mv: false,
         gm_type: [0u8; 8],
         reduced_tx_set: false,
         txfm_mode: TxfmMode::Largest,
         use_ref_frame_mvs: false,
+        primary_ref_frame: 7,
+        disable_frame_end_update_cdf: true,
         segmentation: crate::frame_header_full::SegmentationInfo::default(),
         loop_filter: LoopFilterInfo::default(),
         cdef_damping: CdefInfo::default(),

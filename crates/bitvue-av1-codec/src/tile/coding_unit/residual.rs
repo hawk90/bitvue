@@ -3,7 +3,7 @@
 //! residual statistics -- see `SymbolDecoder::read_residual_block`'s doc.
 
 use super::types::CodingUnit;
-use crate::symbol::{ResidualBlockStats, SymbolDecoder};
+use crate::symbol::{LumaTxType, ResidualBlockStats, SymbolDecoder, TxClass1d};
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, TileContext};
 use bitvue_engine::Result;
 
@@ -19,8 +19,9 @@ pub(super) fn read_residual(
     cu: &mut CodingUnit,
     y_mode_raw: u8,
 ) -> Result<()> {
-    let summary = read_luma_residual(decoder, tile_ctx, rect, mi, frame, cu, y_mode_raw)?;
-    read_chroma_residual(decoder, tile_ctx, mi, frame, cu)?;
+    let (summary, luma_types) =
+        read_luma_residual(decoder, tile_ctx, rect, mi, frame, cu, y_mode_raw)?;
+    read_chroma_residual(decoder, tile_ctx, mi, frame, cu, &luma_types)?;
     cu.residual = Some(summary);
     Ok(())
 }
@@ -33,7 +34,7 @@ fn read_luma_residual(
     frame: &FrameCodingParams,
     cu: &CodingUnit,
     y_mode_raw: u8,
-) -> Result<ResidualBlockStats> {
+) -> Result<(ResidualBlockStats, Vec<LumaTxType>)> {
     let BlockRect { width, height, .. } = rect;
     let MiRect { x4, y4, .. } = mi;
     let FrameCodingParams {
@@ -68,8 +69,14 @@ fn read_luma_residual(
     // fixed-context-0 fallback and never touch `tile_ctx`'s residual arrays, matching
     // `SymbolDecoder::read_residual_block`'s doc.
     let use_real_residual_ctx = (is_key_frame && !cu.use_intrabc) || cu.tx_blocks.is_some();
+    // dav1d's `b->intra`: a block's own prediction kind, not the frame type (intra blocks occur in
+    // inter frames), and IntraBC blocks count as inter for the transform-set choice.
+    let is_intra_block = cu.is_intra() && !cu.use_intrabc;
     let is_single_tx_block = tx_positions.len() == 1;
     let mut summary = ResidualBlockStats::default();
+    // Luma transform type at every 4x4 of the block (dav1d `txtp_map`), which an inter block's
+    // chroma transforms inherit from.
+    let mut luma_types = vec![LumaTxType::DCT; (mi.width * mi.height) as usize];
     for (tx_x4, tx_y4, tx_w_px, tx_h_px) in tx_positions {
         let (tx_w4, tx_h4) = (tx_w_px / 4, tx_h_px / 4);
 
@@ -95,8 +102,8 @@ fn read_luma_residual(
                 ..Default::default()
             }
         } else {
-            let tx_class_1d = decoder.read_transform_type_is_1d(
-                is_key_frame,
+            let tx_type = decoder.read_transform_type(
+                is_intra_block,
                 tx_type_flags.coded_lossless,
                 tx_type_flags.qidx_is_zero,
                 tx_type_flags.reduced_tx_set,
@@ -104,7 +111,15 @@ fn read_luma_residual(
                 tx_h_px,
                 y_mode_raw,
             )?;
-            decoder.read_residual_block(tx_w_px, tx_h_px, tx_class_1d, dc_sign_ctx)?
+            let block =
+                decoder.read_residual_block(tx_w_px, tx_h_px, tx_type.class, dc_sign_ctx)?;
+            for ly in tx_y4.saturating_sub(y4)..(tx_y4 + tx_h4).saturating_sub(y4).min(mi.height) {
+                for lx in tx_x4.saturating_sub(x4)..(tx_x4 + tx_w4).saturating_sub(x4).min(mi.width)
+                {
+                    luma_types[(ly * mi.width + lx) as usize] = tx_type;
+                }
+            }
+            block
         };
 
         if use_real_residual_ctx {
@@ -116,7 +131,7 @@ fn read_luma_residual(
         summary.sum_abs_level += block.sum_abs_level;
         summary.max_level = summary.max_level.max(block.max_level);
     }
-    Ok(summary)
+    Ok((summary, luma_types))
 }
 
 fn read_chroma_residual(
@@ -125,6 +140,7 @@ fn read_chroma_residual(
     mi: MiRect,
     frame: &FrameCodingParams,
     cu: &CodingUnit,
+    luma_types: &[LumaTxType],
 ) -> Result<()> {
     let MiRect { x4, y4, .. } = mi;
     let tx_type_flags = frame.tx_type_flags;
@@ -180,11 +196,22 @@ fn read_chroma_residual(
                         chroma_tx_w4,
                         chroma_tx_h4,
                     );
+                    // Intra chroma types come from the chroma mode (all 2D); inter chroma inherits
+                    // the luma type at the co-located 4x4 (dav1d reads `txtp_map` there).
+                    let class = if cu.is_intra() && !cu.use_intrabc {
+                        TxClass1d::TwoD
+                    } else {
+                        let lx = (tile_col * chroma_tx_w4 * 2).min(mi.width.saturating_sub(1));
+                        let ly = (tile_row * chroma_tx_h4 * 2).min(mi.height.saturating_sub(1));
+                        luma_types[(ly * mi.width + lx) as usize]
+                            .chroma_class(chroma_tx_w, chroma_tx_h)
+                    };
                     let block = decoder.read_chroma_residual_block(
                         chroma_tx_w,
                         chroma_tx_h,
                         txb_skip_ctx,
                         dc_sign_ctx,
+                        class,
                     )?;
                     let cul_level = block.sum_abs_level.min(63) as u8;
                     tile_ctx.set_residual_ctx_chroma(

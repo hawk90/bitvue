@@ -44,7 +44,18 @@ pub struct InterModeFlags {
     /// `GmType[RefFrame[0]] > TRANSLATION` exclusion for `GLOBALMV`/`GLOBAL_GLOBALMV` blocks (see
     /// the call site's doc). `gm_type` indexed by `RefFrame as usize` (0=Intra unused).
     pub force_integer_mv: bool,
+    /// `allow_high_precision_mv` (spec 5.9.2): with `force_integer_mv`, decides how many
+    /// fractional MV bits are coded -- see [`InterModeFlags::mv_precision`].
+    pub allow_high_precision_mv: bool,
     pub gm_type: [u8; 8],
+}
+
+impl InterModeFlags {
+    /// dav1d's `mv_prec` (`hp - force_integer_mv`): `-1` integer MVs, `0` quarter-sample, `1`
+    /// eighth-sample.
+    pub fn mv_precision(&self) -> i8 {
+        i8::from(self.allow_high_precision_mv) - i8::from(self.force_integer_mv)
+    }
 }
 
 /// Prediction mode for intra and inter prediction
@@ -249,12 +260,13 @@ impl RefFrame {
     }
 }
 
-/// Motion Vector (quarter-pel precision)
+/// Motion vector in AV1's native 1/8-sample units (spec `Mv`, dav1d `mv.x`/`mv.y`). The overlay
+/// grids use quarter-sample units; `overlay_extraction::mv_extractor` converts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MotionVector {
-    /// Horizontal component (quarter-pel units)
+    /// Horizontal component (1/8-sample units)
     pub x: i32,
-    /// Vertical component (quarter-pel units)
+    /// Vertical component (1/8-sample units)
     pub y: i32,
 }
 

@@ -69,6 +69,10 @@ pub struct ParsedFrame {
     /// `use_ref_frame_mvs` (spec 5.9.2) -- see `FrameHeader::use_ref_frame_mvs`'s doc. Same
     /// sourcing/fallback story as `reference_select`.
     pub use_ref_frame_mvs: bool,
+    /// `primary_ref_frame` / `disable_frame_end_update_cdf` -- see `FrameHeader`'s fields. The
+    /// CDF context a frame starts from depends on them.
+    pub primary_ref_frame: u32,
+    pub disable_frame_end_update_cdf: bool,
     /// `order_hint` (spec 5.9.2) -- this frame's own display-order hint. Same sourcing/fallback
     /// story as `reference_select`; `0` if the full header wasn't parsed. Read *before*
     /// `skip_mode_params` in bitstream order, so (like `use_ref_frame_mvs`) its value is correct
@@ -132,6 +136,8 @@ pub struct ParsedFrame {
     /// `crate::frame_header::FrameHeader`'s matching fields' docs. Same sourcing/fallback story as
     /// `reference_select`.
     pub force_integer_mv: bool,
+    /// `allow_high_precision_mv` (spec 5.9.2) -- see `FrameHeader::allow_high_precision_mv`.
+    pub allow_high_precision_mv: bool,
     pub gm_type: [u8; 8],
     /// `enable_interintra_compound`/`enable_masked_compound`/`enable_jnt_comp`/
     /// `enable_warped_motion` (sequence header) -- gate `interintra`/`compound_type`(wedge/seg)/
@@ -226,6 +232,7 @@ impl ParsedFrame {
                 enable_jnt_comp: self.enable_jnt_comp,
                 subpel_filter_switchable: self.subpel_filter_switchable,
                 force_integer_mv: self.force_integer_mv,
+                allow_high_precision_mv: self.allow_high_precision_mv,
                 gm_type: self.gm_type,
             },
             mi_rows: crate::tile::partition::mi_units(self.dimensions.height),
@@ -308,6 +315,8 @@ impl ParsedFrame {
                 coded_lossless: false,
                 txfm_mode: TxfmMode::default(),
                 use_ref_frame_mvs: false,
+                primary_ref_frame: 7,
+                disable_frame_end_update_cdf: true,
                 order_hint: 0,
                 ref_frame_idx: None,
                 refresh_frame_flags: 0,
@@ -323,6 +332,7 @@ impl ParsedFrame {
                 switchable_motion_mode: false,
                 allow_warped_motion: false,
                 force_integer_mv: false,
+                allow_high_precision_mv: false,
                 gm_type: [0u8; 8],
                 enable_interintra_compound: false,
                 enable_masked_compound: false,
@@ -366,6 +376,8 @@ impl ParsedFrame {
         let mut coded_lossless = false;
         let mut txfm_mode = TxfmMode::default();
         let mut use_ref_frame_mvs = false;
+        let mut primary_ref_frame = 7u32;
+        let mut disable_frame_end_update_cdf = true;
         let mut order_hint = 0u32;
         let mut ref_frame_idx: Option<[u8; 7]> = None;
         let mut refresh_frame_flags = 0u8;
@@ -381,6 +393,7 @@ impl ParsedFrame {
         let mut switchable_motion_mode = false;
         let mut allow_warped_motion = false;
         let mut force_integer_mv = false;
+        let mut allow_high_precision_mv = false;
         let mut gm_type = [0u8; 8];
         let mut enable_interintra_compound = false;
         let mut enable_masked_compound = false;
@@ -499,6 +512,8 @@ impl ParsedFrame {
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            primary_ref_frame = full_hdr.primary_ref_frame;
+                            disable_frame_end_update_cdf = full_hdr.disable_frame_end_update_cdf;
                             order_hint = full_hdr.order_hint;
                             ref_frame_idx = full_hdr.ref_frame_idx;
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
@@ -510,6 +525,7 @@ impl ParsedFrame {
                             switchable_motion_mode = full_hdr.switchable_motion_mode;
                             allow_warped_motion = full_hdr.allow_warped_motion;
                             force_integer_mv = full_hdr.force_integer_mv;
+                            allow_high_precision_mv = full_hdr.allow_high_precision_mv;
                             gm_type = full_hdr.gm_type;
                             if full_hdr.header_size_bytes < obu.payload.len() {
                                 tile_data
@@ -546,6 +562,8 @@ impl ParsedFrame {
                                 && full_hdr.uv_dc_delta_q.unwrap_or(0) == 0;
                             txfm_mode = full_hdr.txfm_mode;
                             use_ref_frame_mvs = full_hdr.use_ref_frame_mvs;
+                            primary_ref_frame = full_hdr.primary_ref_frame;
+                            disable_frame_end_update_cdf = full_hdr.disable_frame_end_update_cdf;
                             order_hint = full_hdr.order_hint;
                             ref_frame_idx = full_hdr.ref_frame_idx;
                             refresh_frame_flags = full_hdr.refresh_frame_flags.unwrap_or(0);
@@ -557,6 +575,7 @@ impl ParsedFrame {
                             switchable_motion_mode = full_hdr.switchable_motion_mode;
                             allow_warped_motion = full_hdr.allow_warped_motion;
                             force_integer_mv = full_hdr.force_integer_mv;
+                            allow_high_precision_mv = full_hdr.allow_high_precision_mv;
                             gm_type = full_hdr.gm_type;
                         }
                     }
@@ -592,6 +611,8 @@ impl ParsedFrame {
             coded_lossless,
             txfm_mode,
             use_ref_frame_mvs,
+            primary_ref_frame,
+            disable_frame_end_update_cdf,
             order_hint,
             ref_frame_idx,
             refresh_frame_flags,
@@ -607,6 +628,7 @@ impl ParsedFrame {
             switchable_motion_mode,
             allow_warped_motion,
             force_integer_mv,
+            allow_high_precision_mv,
             gm_type,
             enable_interintra_compound,
             enable_masked_compound,

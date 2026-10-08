@@ -152,6 +152,7 @@ fn test_mv_extraction_with_spec_cdfs() {
                 enable_jnt_comp: false,
                 subpel_filter_switchable: false,
                 force_integer_mv: false,
+                allow_high_precision_mv: false,
                 gm_type: [0u8; 8],
             },
             mi_rows,
