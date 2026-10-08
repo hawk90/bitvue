@@ -221,7 +221,9 @@ pub(super) fn decoded_to_planes8(frame: &DecodedYuvFrame, crop: Crop) -> Planes8
             bytes.to_vec()
         } else {
             bytes
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| {
                     let sample = (c[0] as u16) | ((c[1] as u16) << 8);
                     (sample >> downshift) as u8

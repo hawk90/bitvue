@@ -41,7 +41,7 @@ fn bench_magic_bytes_matches(c: &mut Criterion) {
                 black_box(data.len() >= 4 && &data[..4] == b"DKIF");
                 black_box(data.len() >= 4 && &data[..4] == b"ftyp");
                 black_box(data.len() >= 4 && &data[..4] == b"RIFF");
-                black_box(data.len() >= 4 && &data[..4] == &[0x1A, 0x45, 0xDF, 0xA3]);
+                black_box(data.len() >= 4 && data[..4] == [0x1A, 0x45, 0xDF, 0xA3]);
             }
         });
     });

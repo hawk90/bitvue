@@ -72,7 +72,8 @@ fn bench_skip_bits(c: &mut Criterion) {
                 b.iter(|| {
                     let mut reader = BitReader::new(&data);
                     for _ in 0..(65536 * 8 / skip) {
-                        black_box(reader.skip_bits(skip).unwrap());
+                        reader.skip_bits(skip).unwrap();
+                        black_box(());
                     }
                 });
             },
@@ -96,7 +97,8 @@ fn bench_read_bytes(c: &mut Criterion) {
                 b.iter(|| {
                     let mut reader = BitReader::new(&data);
                     let mut buf = vec![0u8; size];
-                    black_box(reader.read_bytes(&mut buf).unwrap());
+                    reader.read_bytes(&mut buf).unwrap();
+                    black_box(());
                 });
             },
         );

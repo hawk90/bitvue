@@ -46,7 +46,7 @@ fn test_mp4_box_header() {
 
     let header = BoxHeader {
         size: 32,
-        box_type: [b'f', b't', b'y', b'p'],
+        box_type: *b"ftyp",
         extended_size: None,
     };
 
@@ -64,9 +64,9 @@ fn test_mp4_ftyp_brands() {
     }
 
     let ftyp = FtypBox {
-        major_brand: [b'i', b's', b'o', b'm'],
+        major_brand: *b"isom",
         minor_version: 512,
-        compatible_brands: vec![[b'i', b's', b'o', b'm'], [b'm', b'p', b'4', b'2']],
+        compatible_brands: vec![*b"isom", *b"mp42"],
     };
 
     assert_eq!(&ftyp.major_brand, b"isom");
@@ -327,10 +327,10 @@ fn test_ivf_header() {
     }
 
     let header = IvfHeader {
-        signature: [b'D', b'K', b'I', b'F'],
+        signature: *b"DKIF",
         version: 0,
         header_size: 32,
-        fourcc: [b'A', b'V', b'0', b'1'],
+        fourcc: *b"AV01",
         width: 1920,
         height: 1080,
         framerate_num: 30,
