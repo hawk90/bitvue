@@ -50,6 +50,7 @@ mod residual;
 mod segment;
 mod single_ref;
 mod skip;
+mod tx_size;
 mod types;
 mod var_tx;
 

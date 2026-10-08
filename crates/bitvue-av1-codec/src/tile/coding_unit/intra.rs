@@ -11,7 +11,7 @@ use super::contexts::{block_size_for_dimensions, intra_mode_from_symbol, y_mode_
 use super::palette::{read_palette_mode_info, read_palette_tokens};
 use super::types::CodingUnit;
 use crate::symbol::SymbolDecoder;
-use crate::tile::{BlockRect, FrameCodingParams, MiRect, TileContext, TxSize};
+use crate::tile::{BlockRect, FrameCodingParams, MiRect, TileContext};
 use bitvue_engine::Result;
 
 /// Fills `cu.mode`, `cu.palette` and `cu.tx_size`. Returns the raw intra `y_mode` symbol
@@ -144,20 +144,6 @@ pub(super) fn read_intra_mode_info(
         )?;
     }
 
-    let max_tx_class = cu.tx_size as u8; // from_dimensions's heuristic starting point
-    let resolved_class = if tx_type_flags.coded_lossless {
-        0
-    } else {
-        match tx_type_flags.txfm_mode {
-            crate::frame_header::TxfmMode::Only4x4 => 0,
-            crate::frame_header::TxfmMode::Largest => max_tx_class,
-            crate::frame_header::TxfmMode::Switchable => {
-                let ctx = tile_ctx.tx_size_context(x4, y4, max_tx_class);
-                decoder.read_tx_size(max_tx_class, ctx)?
-            }
-        }
-    };
-    cu.tx_size = TxSize::from_class(resolved_class);
-    tile_ctx.set_tx_class(x4, y4, width_4x4, height_4x4, resolved_class);
+    super::tx_size::read_intra_tx_size(decoder, tile_ctx, rect, mi, frame, cu)?;
     Ok(mode_symbol)
 }

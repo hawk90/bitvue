@@ -1015,8 +1015,8 @@ impl<'a> SymbolDecoder<'a> {
     /// `is_intra`: whether this is an intra-predicted block (compound/inter blocks are never
     /// "intra" for this purpose). `coded_lossless`/`reduced_tx_set`: frame header flags (see
     /// `ParsedFrame`'s doc). `qidx_is_zero`: the frame's `base_q_idx == 0` (a real spec shortcut
-    /// distinct from `coded_lossless`, which additionally requires zero delta-Q). `tx_size_px`:
-    /// transform block size in pixels per side. `y_mode_raw`: the intra prediction mode symbol
+    /// distinct from `coded_lossless`, which additionally requires zero delta-Q).
+    /// `tx_width_px`/`tx_height_px`: transform block size in pixels. `y_mode_raw`: the intra prediction mode symbol
     /// (0..=12, only meaningful when `is_intra`) -- spec's `FILTER_PRED` substitution never
     /// applies since this crate's `PredictionMode` has no such variant.
     ///
@@ -1030,30 +1030,36 @@ impl<'a> SymbolDecoder<'a> {
         coded_lossless: bool,
         qidx_is_zero: bool,
         reduced_tx_set: bool,
-        tx_size_px: u32,
+        tx_width_px: u32,
+        tx_height_px: u32,
         y_mode_raw: u8,
     ) -> Result<TxClass1d> {
-        let tx_class = cdf::tx_size_class(tx_size_px);
+        // dav1d's `t_dim->max` / `t_dim->min`: size classes (log2 of px / 4) of the larger and the
+        // smaller transform dimension. Which one applies depends on the decision (spec 5.11.47's
+        // `get_tx_set` uses the square-up of the larger side for "too big" and the square of the
+        // smaller side for the 16x16 test and for indexing the CDF).
+        let max_class = cdf::tx_size_class(tx_width_px.max(tx_height_px));
+        let min_class = cdf::tx_size_class(tx_width_px.min(tx_height_px));
         // `t_dim->max + intra >= TX_64X64`: intra additionally forces DCT_DCT (2D, no bits) one
         // tx-size class earlier than inter (at 32x32, not just 64x64) -- real spec asymmetry, not
         // a simplification.
-        if coded_lossless || qidx_is_zero || tx_class + usize::from(is_intra) >= 4 {
+        if coded_lossless || qidx_is_zero || max_class + usize::from(is_intra) >= 4 {
             return Ok(TxClass1d::TwoD);
         }
         if is_intra {
-            if reduced_tx_set || tx_class == 2 {
+            if reduced_tx_set || min_class == 2 {
                 // Intra2 alphabet (IDTX/DCT_DCT/ADST_ADST/ADST_DCT/DCT_ADST) is entirely
                 // TX_CLASS_2D -- no symbol value here can ever produce a 1D class.
                 let cdf = self
                     .cdf_context
-                    .get_txtp_intra2_cdf_mut(tx_class, y_mode_raw);
+                    .get_txtp_intra2_cdf_mut(min_class, y_mode_raw);
                 self.decoder.read_symbol_adaptive(cdf)?;
                 Ok(TxClass1d::TwoD)
             } else {
                 // Intra1 alphabet: IDTX, DCT_DCT, V_DCT, H_DCT, ADST_ADST, ADST_DCT, DCT_ADST.
                 let cdf = self
                     .cdf_context
-                    .get_txtp_intra1_cdf_mut(tx_class, y_mode_raw);
+                    .get_txtp_intra1_cdf_mut(min_class, y_mode_raw);
                 let idx = self.decoder.read_symbol_adaptive(cdf)?;
                 Ok(match idx {
                     2 => TxClass1d::Vertical,
@@ -1061,12 +1067,12 @@ impl<'a> SymbolDecoder<'a> {
                     _ => TxClass1d::TwoD,
                 })
             }
-        } else if reduced_tx_set || tx_class == 3 {
+        } else if reduced_tx_set || max_class == 3 {
             // Inter3 alphabet is a single bit choosing between IDTX and DCT_DCT -- both 2D.
-            let cdf = self.cdf_context.get_txtp_inter3_cdf_mut(tx_class);
+            let cdf = self.cdf_context.get_txtp_inter3_cdf_mut(min_class);
             self.decoder.read_symbol_adaptive(cdf)?;
             Ok(TxClass1d::TwoD)
-        } else if tx_class == 2 {
+        } else if min_class == 2 {
             // Inter2 alphabet: IDTX, V_DCT, H_DCT, DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT,
             // DCT_FLIPADST, ADST_ADST, FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST.
             let cdf = self.cdf_context.get_txtp_inter2_cdf_mut();
@@ -1081,7 +1087,7 @@ impl<'a> SymbolDecoder<'a> {
             // DCT_DCT, ADST_DCT, DCT_ADST, FLIPADST_DCT, DCT_FLIPADST, ADST_ADST,
             // FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST -- V_* at odd idx (1,3,5), H_* at
             // even idx (2,4,6), everything else (0, 7..=15) 2D.
-            let cdf = self.cdf_context.get_txtp_inter1_cdf_mut(tx_class);
+            let cdf = self.cdf_context.get_txtp_inter1_cdf_mut(min_class);
             let idx = self.decoder.read_symbol_adaptive(cdf)?;
             Ok(match idx {
                 1 | 3 | 5 => TxClass1d::Vertical,
@@ -1682,7 +1688,7 @@ mod tests {
         let mut decoder = SymbolDecoder::new(&data).unwrap();
         let before = decoder_state(&decoder);
         let is_1d = decoder
-            .read_transform_type_is_1d(true, true, false, false, 16, 0)
+            .read_transform_type_is_1d(true, true, false, false, 16, 16, 0)
             .unwrap();
         assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
@@ -1694,7 +1700,7 @@ mod tests {
         let mut decoder = SymbolDecoder::new(&data).unwrap();
         let before = decoder_state(&decoder);
         let is_1d = decoder
-            .read_transform_type_is_1d(false, false, true, false, 16, 0)
+            .read_transform_type_is_1d(false, false, true, false, 16, 16, 0)
             .unwrap();
         assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
@@ -1707,7 +1713,7 @@ mod tests {
         let before = decoder_state(&decoder);
         // 64x64 (tx_size_px=64 -> tx_size_class=4), inter (is_intra=false): 4+0>=4 -> large tx.
         let is_1d = decoder
-            .read_transform_type_is_1d(false, false, false, false, 64, 0)
+            .read_transform_type_is_1d(false, false, false, false, 64, 64, 0)
             .unwrap();
         assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
@@ -1721,7 +1727,7 @@ mod tests {
         // 32x32 (tx_size_class=3), intra: 3+1>=4 -> large tx, zero bits (unlike inter at the same
         // size -- see `read_transform_type_is_1d`'s doc on this real spec asymmetry).
         let is_1d = decoder
-            .read_transform_type_is_1d(true, false, false, false, 32, 0)
+            .read_transform_type_is_1d(true, false, false, false, 32, 32, 0)
             .unwrap();
         assert!(!is_1d.is_1d());
         assert_eq!(decoder_state(&decoder), before);
@@ -1735,7 +1741,7 @@ mod tests {
         // 32x32, inter: 3+0<4, not large -- falls into the real txtp_inter3 read (reduced/32x32
         // branch), which must consume real bits.
         let _is_1d = decoder
-            .read_transform_type_is_1d(false, false, false, false, 32, 0)
+            .read_transform_type_is_1d(false, false, false, false, 32, 32, 0)
             .unwrap();
         assert_ne!(decoder_state(&decoder), before);
     }
@@ -1749,7 +1755,7 @@ mod tests {
             let data = vec![0x80, seed, 0xFF, 0xFF, 0xAA ^ seed, 0xBB];
             let mut decoder = SymbolDecoder::new(&data).unwrap();
             let is_1d = decoder
-                .read_transform_type_is_1d(true, false, false, true, 4, 0)
+                .read_transform_type_is_1d(true, false, false, true, 4, 4, 0)
                 .unwrap();
             assert!(!is_1d.is_1d());
         }
@@ -1762,7 +1768,7 @@ mod tests {
         let before = decoder_state(&decoder);
         // 4x4, intra, not reduced -- reaches txtp_intra1 (real 7-symbol read).
         let _is_1d = decoder
-            .read_transform_type_is_1d(true, false, false, false, 4, 0)
+            .read_transform_type_is_1d(true, false, false, false, 4, 4, 0)
             .unwrap();
         assert_ne!(decoder_state(&decoder), before);
     }
