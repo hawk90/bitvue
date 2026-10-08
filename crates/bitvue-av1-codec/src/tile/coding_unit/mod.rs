@@ -251,6 +251,30 @@ pub fn parse_coding_unit(
         )?;
     }
 
+    // Record this block in the above/left neighbour contexts only now that all of its mode info
+    // has been parsed. Mode-info syntax of the block itself (`motion_mode`'s overlappable-neighbour
+    // and matching-reference checks, the interpolation-filter and compound-type contexts) must see
+    // the *neighbours'* values; writing these any earlier makes them read the block itself.
+    // dav1d does the same: its `decode_b` updates the context arrays after parsing the block.
+    tile_ctx.set_intra_flag(x4, y4, width_4x4, height_4x4, !is_inter);
+    if is_inter {
+        let is_compound = cu.ref_frames[1] != RefFrame::Intra;
+        tile_ctx.set_ref_frames(
+            x4,
+            y4,
+            width_4x4,
+            height_4x4,
+            false,
+            is_compound,
+            cu.ref_frames[0] as i8 - 1,
+            if is_compound {
+                cu.ref_frames[1] as i8 - 1
+            } else {
+                -1
+            },
+        );
+    }
+
     // Add this CU to the MV predictor context for future blocks
     // Now uses zero-copy reference instead of cloning the entire CU
     mv_ctx.add_cu(&cu);

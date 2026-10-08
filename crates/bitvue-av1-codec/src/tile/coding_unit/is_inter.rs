@@ -40,6 +40,41 @@ pub(super) fn read_is_inter(
         let ictx = tile_ctx.intra_ctx(mi.x4, mi.y4);
         decoder.read_is_inter(ictx)?
     };
-    tile_ctx.set_intra_flag(mi.x4, mi.y4, mi.width, mi.height, !is_inter);
     Ok(is_inter)
+}
+
+#[cfg(test)]
+mod context_order_tests {
+    use super::*;
+
+    /// Same rule as for `ref_frames`: `motion_mode` asks whether the neighbours are intra, and
+    /// must not find the block's own (inter) flag there.
+    #[test]
+    fn reading_is_inter_leaves_the_neighbours_flag_in_the_context() {
+        let mut tile_ctx = TileContext::new(16, 16);
+        tile_ctx.set_intra_flag(0, 0, 4, 4, true); // intra neighbour on the left
+        let data = [0u8; 16];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let mi = MiRect {
+            x4: 4,
+            y4: 0,
+            width: 4,
+            height: 4,
+        };
+        let is_inter = read_is_inter(
+            &mut decoder,
+            &mut tile_ctx,
+            mi,
+            false,
+            true, // skip_mode: inter, no bits read
+            SegmentationInfo::default(),
+            0,
+        )
+        .unwrap();
+        assert!(is_inter);
+        assert!(
+            tile_ctx.left_is_intra(0),
+            "the neighbour's intra flag was overwritten"
+        );
+    }
 }
