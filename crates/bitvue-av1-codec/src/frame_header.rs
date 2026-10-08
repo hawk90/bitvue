@@ -320,60 +320,70 @@ fn read_delta_q(reader: &mut BitReader) -> Result<Option<i8>, BitvueError> {
     }
 }
 
-/// Parse quantization_params() per AV1 spec Section 5.9.14.
+/// `quantization_params()` (spec 5.9.12): the frame's base index and its five delta-Q terms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct QuantizationParams {
+    pub base_q_idx: u8,
+    pub y_dc: i8,
+    pub u_dc: i8,
+    pub u_ac: i8,
+    pub v_dc: i8,
+    pub v_ac: i8,
+}
+
+impl QuantizationParams {
+    /// Spec `CodedLossless` needs every delta to be zero (as well as `base_q_idx == 0`).
+    pub(crate) fn all_deltas_zero(&self) -> bool {
+        self.y_dc == 0 && self.u_dc == 0 && self.u_ac == 0 && self.v_dc == 0 && self.v_ac == 0
+    }
+}
+
+/// Parse quantization_params() per AV1 spec Section 5.9.12.
 ///
-/// Returns `(base_q_idx, y_dc_delta_q, uv_dc_delta_q, uv_ac_delta_q)`. `uv_ac_delta_q` is
-/// `DeltaQUAc` -- previously read for bit-position sync only, then discarded, even though real
-/// spec's `CodedLossless` derivation needs it (`parse_frame_header_full`'s `coded_lossless`
-/// doc). When `separate_uv_delta_q`, V's own separate `DeltaQVDc`/`DeltaQVAc` are still read (for
-/// sync) but not retained -- a narrower, still-open version of the same gap (real spec's
-/// `CodedLossless` also needs those two whenever they can legally differ from U's), left
-/// undertested/unfixed here since `separate_uv_delta_q` is itself the rarer path.
-///
-/// `separate_uv_delta_q` comes from the sequence header color config.
-/// We assume false (the most common case) when no sequence header is available.
-#[allow(clippy::type_complexity)]
+/// `num_planes` and `separate_uv_delta_q` come from the sequence header color config; a stream
+/// with `separate_uv_delta_q` (rav1e writes it) codes a `diff_uv_delta` flag before the U deltas
+/// and, when set, separate V deltas, and a `qm_v` of its own. The V terms equal the U ones
+/// otherwise. A monochrome stream has no chroma deltas at all.
 pub(crate) fn parse_quantization_params(
     reader: &mut BitReader,
+    num_planes: u8,
     separate_uv_delta_q: bool,
-) -> Result<(Option<u8>, Option<i8>, Option<i8>, Option<i8>), BitvueError> {
+) -> Result<QuantizationParams, BitvueError> {
+    let delta = |reader: &mut BitReader| -> Result<i8, BitvueError> {
+        Ok(read_delta_q(reader)?.unwrap_or(0))
+    };
     // base_q_idx  u(8)
     let base_q_idx = reader.read_bits(8)? as u8;
-
-    // DeltaQYDc  read_delta_q()
-    let y_dc = read_delta_q(reader)?;
-
-    let (uv_dc, uv_ac) = if !separate_uv_delta_q {
-        // DeltaQUDc  read_delta_q()
-        let uv_dc = read_delta_q(reader)?;
-        // DeltaQUAc  read_delta_q()
-        let uv_ac = read_delta_q(reader)?;
-        // DeltaQVDc = DeltaQUDc, DeltaQVAc = DeltaQUAc (implicit)
-        (uv_dc, uv_ac)
-    } else {
-        // DeltaQUDc  read_delta_q()
-        let udc = read_delta_q(reader)?;
-        // DeltaQUAc  read_delta_q()
-        let uac = read_delta_q(reader)?;
-        // DeltaQVDc  read_delta_q()
-        let _vdc = read_delta_q(reader)?;
-        // DeltaQVAc  read_delta_q()
-        let _vac = read_delta_q(reader)?;
-        (udc, uac)
-    };
-
-    // using_qmatrix (1 bit)
-    let using_qmatrix = reader.read_bit()?;
-    if using_qmatrix {
-        // qm_y  u(4)
-        reader.read_bits(4)?;
-        // qm_u  u(4)
-        reader.read_bits(4)?;
-        // qm_v  u(4)
-        reader.read_bits(4)?;
+    let y_dc = delta(reader)?;
+    let (mut u_dc, mut u_ac, mut v_dc, mut v_ac) = (0, 0, 0, 0);
+    if num_planes > 1 {
+        let diff_uv_delta = separate_uv_delta_q && reader.read_bit()?;
+        u_dc = delta(reader)?;
+        u_ac = delta(reader)?;
+        if diff_uv_delta {
+            v_dc = delta(reader)?;
+            v_ac = delta(reader)?;
+        } else {
+            v_dc = u_dc;
+            v_ac = u_ac;
+        }
     }
-
-    Ok((Some(base_q_idx), y_dc, uv_dc, uv_ac))
+    // using_qmatrix (1 bit), then qm_y, qm_u and -- only with separate U/V deltas -- qm_v.
+    if reader.read_bit()? {
+        reader.read_bits(4)?;
+        reader.read_bits(4)?;
+        if separate_uv_delta_q {
+            reader.read_bits(4)?;
+        }
+    }
+    Ok(QuantizationParams {
+        base_q_idx,
+        y_dc,
+        u_dc,
+        u_ac,
+        v_dc,
+        v_ac,
+    })
 }
 
 /// Parse delta_q_params() per AV1 spec Section 5.9.17.
@@ -785,11 +795,10 @@ pub fn parse_frame_header_basic(payload: &[u8]) -> Result<FrameHeader, BitvueErr
     // If it fails we still return a valid (partial) header.
 
     let (base_q_idx_opt, y_dc_delta_q, uv_dc_delta_q, delta_q_present) =
-        match parse_quantization_params(&mut reader, false) {
-            Ok((base, y_dc, uv_dc, _uv_ac)) => {
-                let base_val = base.unwrap_or(0);
-                let dq = parse_delta_q_params(&mut reader, base_val).unwrap_or(false);
-                (base, y_dc, uv_dc, dq)
+        match parse_quantization_params(&mut reader, 3, false) {
+            Ok(q) => {
+                let dq = parse_delta_q_params(&mut reader, q.base_q_idx).unwrap_or(false);
+                (Some(q.base_q_idx), Some(q.y_dc), Some(q.u_dc), dq)
             }
             Err(_) => (None, None, None, false),
         };
@@ -882,13 +891,95 @@ mod tests {
         let payload = pack(&bits);
         let mut reader = BitReader::new(&payload);
 
-        let (base_q_idx, y_dc, uv_dc, uv_ac) =
-            parse_quantization_params(&mut reader, false).unwrap();
+        let q = parse_quantization_params(&mut reader, 3, false).unwrap();
 
-        assert_eq!(base_q_idx, Some(0));
-        assert_eq!(y_dc, Some(0));
-        assert_eq!(uv_dc, Some(0));
-        assert_eq!(uv_ac, Some(3), "DeltaQUAc must be retained, not discarded");
+        assert_eq!((q.base_q_idx, q.y_dc, q.u_dc), (0, 0, 0));
+        assert_eq!(q.u_ac, 3, "DeltaQUAc must be retained, not discarded");
+        assert_eq!(
+            (q.v_dc, q.v_ac),
+            (0, 3),
+            "V mirrors U without diff_uv_delta"
+        );
+        assert_eq!(reader.position(), 8 + 1 + 1 + 8 + 1);
+    }
+
+    /// With `separate_uv_delta_q` a `diff_uv_delta` flag precedes the U deltas, and when it is set
+    /// the V deltas follow -- and `qm_v` is read only with separate U/V deltas. rav1e writes
+    /// this (every delta coded, 49 bits before the quantizer matrix flag), and the parse used to
+    /// miss the flag and run 5 bits long on its key frame.
+    #[test]
+    fn parse_quantization_params_reads_separate_uv_deltas_and_qm_v() {
+        let (mut bits, mut push) = bits_writer();
+        push(&mut bits, 100, 8); // base_q_idx
+        push(&mut bits, 1, 1); // DeltaQYDc coded
+        push(&mut bits, 5, 7); //   = 5
+        push(&mut bits, 1, 1); // diff_uv_delta
+        push(&mut bits, 1, 1); // DeltaQUDc coded
+        push(&mut bits, 2, 7); //   = 2
+        push(&mut bits, 1, 1); // DeltaQUAc coded
+        push(&mut bits, 3, 7); //   = 3
+        push(&mut bits, 1, 1); // DeltaQVDc coded
+        push(&mut bits, 4, 7); //   = 4
+        push(&mut bits, 1, 1); // DeltaQVAc coded
+        push(&mut bits, 6, 7); //   = 6
+        push(&mut bits, 1, 1); // using_qmatrix
+        push(&mut bits, 7, 4); // qm_y
+        push(&mut bits, 8, 4); // qm_u
+        push(&mut bits, 9, 4); // qm_v (separate_uv_delta_q)
+        let payload = pack(&bits);
+        let mut reader = BitReader::new(&payload);
+
+        let q = parse_quantization_params(&mut reader, 3, true).unwrap();
+
+        assert_eq!(
+            q,
+            QuantizationParams {
+                base_q_idx: 100,
+                y_dc: 5,
+                u_dc: 2,
+                u_ac: 3,
+                v_dc: 4,
+                v_ac: 6
+            }
+        );
+        assert_eq!(reader.position(), 8 + 8 + 1 + 4 * 8 + 1 + 12);
+    }
+
+    /// Without separate U/V deltas the quantizer matrix level of V is U's: only `qm_y` and
+    /// `qm_u` are coded.
+    #[test]
+    fn parse_quantization_params_reads_qm_v_only_with_separate_uv_deltas() {
+        let (mut bits, mut push) = bits_writer();
+        push(&mut bits, 80, 8); // base_q_idx
+        push(&mut bits, 0, 1); // DeltaQYDc
+        push(&mut bits, 0, 1); // DeltaQUDc
+        push(&mut bits, 0, 1); // DeltaQUAc
+        push(&mut bits, 1, 1); // using_qmatrix
+        push(&mut bits, 3, 4); // qm_y
+        push(&mut bits, 4, 4); // qm_u
+        push(&mut bits, 0xA5, 8); // what follows the quantizer params
+        let payload = pack(&bits);
+        let mut reader = BitReader::new(&payload);
+
+        parse_quantization_params(&mut reader, 3, false).unwrap();
+
+        assert_eq!(reader.position(), 8 + 3 + 1 + 8);
+        assert_eq!(reader.read_bits(8).unwrap(), 0xA5);
+    }
+
+    #[test]
+    fn parse_quantization_params_reads_no_chroma_deltas_for_monochrome() {
+        let (mut bits, mut push) = bits_writer();
+        push(&mut bits, 50, 8);
+        push(&mut bits, 0, 1); // DeltaQYDc not coded
+        push(&mut bits, 0, 1); // using_qmatrix = 0
+        let payload = pack(&bits);
+        let mut reader = BitReader::new(&payload);
+
+        let q = parse_quantization_params(&mut reader, 1, false).unwrap();
+
+        assert_eq!((q.u_dc, q.u_ac, q.v_dc, q.v_ac), (0, 0, 0, 0));
+        assert_eq!(reader.position(), 10);
     }
 
     #[test]

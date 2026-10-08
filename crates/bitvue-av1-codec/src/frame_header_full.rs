@@ -1362,12 +1362,13 @@ pub fn parse_frame_header_full(
 
     read_tile_info(&mut reader, seq, width, height)?;
 
-    let (base_q_idx_opt, y_dc_delta_q, uv_dc_delta_q, uv_ac_delta_q) =
-        crate::frame_header::parse_quantization_params(
-            &mut reader,
-            seq.color_config.separate_uv_delta_q,
-        )?;
-    let base_q_idx = base_q_idx_opt.unwrap_or(0);
+    let quant = crate::frame_header::parse_quantization_params(
+        &mut reader,
+        seq.color_config.num_planes,
+        seq.color_config.separate_uv_delta_q,
+    )?;
+    let base_q_idx = quant.base_q_idx;
+    let (y_dc_delta_q, uv_dc_delta_q) = (Some(quant.y_dc), Some(quant.u_dc));
 
     let segmentation = parse_segmentation_params(&mut reader, primary_ref_frame)?;
 
@@ -1400,10 +1401,7 @@ pub fn parse_frame_header_full(
     // `separate_uv_delta_q`'s separate V deltas aren't retained (`parse_quantization_params`'s
     // doc), so a frame using that rarer path with V deltas differing from U's could still be
     // mis-classified either direction.
-    let coded_lossless = base_q_idx == 0
-        && y_dc_delta_q.unwrap_or(0) == 0
-        && uv_dc_delta_q.unwrap_or(0) == 0
-        && uv_ac_delta_q.unwrap_or(0) == 0;
+    let coded_lossless = base_q_idx == 0 && quant.all_deltas_zero();
     let all_lossless = coded_lossless && width == upscaled_width;
 
     let loop_filter = parse_loop_filter_params(
