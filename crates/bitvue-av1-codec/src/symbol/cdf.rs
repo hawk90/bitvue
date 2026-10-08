@@ -489,6 +489,11 @@ pub struct CdfContext {
     /// `use_intrabc` (spec 5.11.6) -- intra block copy flag, read for intra-frame blocks only
     /// when the frame header's `allow_intrabc` is set (rare, screen-content-coding use case).
     use_intrabc_cdf: Vec<u16>,
+    /// Loop-restoration unit type CDFs (spec 5.11.58): `restore_switchable` (3 symbols, one of
+    /// NONE/WIENER/SGRPROJ), and the on/off flags `use_wiener`/`use_sgrproj`.
+    restore_switchable_cdf: Vec<u16>,
+    restore_wiener_cdf: Vec<u16>,
+    restore_sgrproj_cdf: Vec<u16>,
 }
 
 /// Maps a transform block's size in pixels per side (4/8/16/32/64) to rav1d's square `TxfmSize`
@@ -4629,6 +4634,10 @@ impl CdfContext {
         // use_intrabc (screen-content coding only): dav1d `m.intrabc` default. It was a
         // hand-picked 0.97 placeholder before.
         let use_intrabc_cdf = binary_ctx_cdf(30531);
+        // Loop restoration: dav1d `m.restore_switchable`/`restore_wiener`/`restore_sgrproj`.
+        let restore_switchable_cdf = multi_ctx_cdf(&[9413, 22581]);
+        let restore_wiener_cdf = binary_ctx_cdf(11570);
+        let restore_sgrproj_cdf = binary_ctx_cdf(16855);
 
         Self {
             partition_cdfs,
@@ -4718,6 +4727,9 @@ impl CdfContext {
             comp_bwdref_cdf,
             comp_bwdref_p1_cdf,
             use_intrabc_cdf,
+            restore_switchable_cdf,
+            restore_wiener_cdf,
+            restore_sgrproj_cdf,
         }
     }
 
@@ -5222,6 +5234,21 @@ impl CdfContext {
     /// Get `use_intrabc` CDF (intra block copy flag).
     pub fn get_use_intrabc_cdf_mut(&mut self) -> &mut [u16] {
         &mut self.use_intrabc_cdf
+    }
+
+    /// Get the `restore_switchable` CDF (3 symbols: NONE, WIENER, SGRPROJ).
+    pub fn get_restore_switchable_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.restore_switchable_cdf
+    }
+
+    /// Get the `use_wiener` flag CDF.
+    pub fn get_restore_wiener_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.restore_wiener_cdf
+    }
+
+    /// Get the `use_sgrproj` flag CDF.
+    pub fn get_restore_sgrproj_cdf_mut(&mut self) -> &mut [u16] {
+        &mut self.restore_sgrproj_cdf
     }
 }
 

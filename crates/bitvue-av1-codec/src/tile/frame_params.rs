@@ -6,7 +6,7 @@
 //! `ParsedFrame::coding_params` is the one place that derives them from a parsed frame.
 
 use crate::frame_header_full::SegmentationInfo;
-use crate::tile::{InterModeFlags, TxTypeFrameFlags};
+use crate::tile::{InterModeFlags, RestorationParams, TxTypeFrameFlags};
 
 /// See the module doc. Every field is `Copy`, so this is passed by shared reference and
 /// destructured by the parser that needs the individual flags.
@@ -54,6 +54,8 @@ pub struct FrameCodingParams {
     pub mi_cols: u32,
     /// `cdef_bits` from the frame header (width of the per-superblock `cdef_idx` read).
     pub cdef_bits: u8,
+    /// Loop-restoration parameters (gate the per-superblock coefficient reads).
+    pub restoration: RestorationParams,
     /// `skip_mode_present` and the two `skip_mode_frame` references (spec 5.9.22).
     pub skip_mode_present: bool,
     /// See `skip_mode_present`.
@@ -98,6 +100,7 @@ impl FrameCodingParams {
             mi_rows: 16,
             mi_cols: 16,
             cdef_bits: 0,
+            restoration: RestorationParams::none(),
             skip_mode_present: false,
             skip_mode_refs: [0, 0],
         }

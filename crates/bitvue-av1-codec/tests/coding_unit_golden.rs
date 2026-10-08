@@ -96,16 +96,16 @@ const GOLDEN: &[u64] = &[
     0x0f737bd3e590fc20,
     0x123b05731ba3f24c,
     0xe1d3709a71b989e2,
-    0xa930b68546b31fd7,
-    0x43c0df98b2096953,
+    0xca3ef18a107bc4e9,
+    0x556a60fb8114b831,
     0x0961d18382c36aa3,
     0x8f4be84d96dff9a9,
     0x0c0448101b94339c,
-    0xa6fa694fcc214560,
+    0x78058947ef31ff9f,
     0x1c1cd27aba9562b4,
     0x1b9e925e7605670c,
 ];
-const GOLDEN_TOTAL_CUS: usize = 8468;
+const GOLDEN_TOTAL_CUS: usize = 8807;
 
 #[test]
 fn real_fixture_coding_units_match_the_recorded_digests() {
@@ -209,12 +209,12 @@ const GOLDEN_PARTITION: &[u64] = &[
     0x793ca154bedafc17,
     0xd968fc8d9119e887,
     0xfbe5a38e7d293a8c,
-    0x8a4ab4d11ed318b4,
-    0xe6e8eebc1157744e,
+    0x841c1fc3a8645296,
+    0x3cd2f392c0a4e2e9,
     0x5cae88df9a0e1ce8,
     0x4616bee9b5207969,
     0xa3fe018d30cbbdd8,
-    0xcd627dd296972505,
+    0x551eefa987bfa548,
     0x59a55cc0caf05476,
     0x5b09708bf314cb29,
 ];
@@ -236,12 +236,12 @@ const GOLDEN_PREDICTION_MODE: &[u64] = &[
     0xf3fbc55dc5145942,
     0xb1030366875b56d5,
     0xc28de591442e0aa5,
-    0x87dbce1a179729a9,
-    0xdf2ef7ffb5435d04,
+    0x1dafb839c01a5e07,
+    0x8f2f75951fb5c6f7,
     0x1e3a3f9ea34b0118,
     0x442e1ef711e635de,
     0x59f302b34e43a784,
-    0xa16cf861b137dab5,
+    0x96ecef0036015a79,
     0x5a54cf91e5ed96ab,
     0xec0a517223b4d3ba,
 ];
@@ -263,12 +263,12 @@ const GOLDEN_TRANSFORM: &[u64] = &[
     0xfddddba69518123e,
     0xf616d92c9b07423c,
     0xf731cffe8b9b99da,
-    0xd14e9d50f5fc88d0,
-    0x24d20bb404ef38fa,
+    0x1c7aed3411a9389c,
+    0x3846d2c468ad9382,
     0xcd0d0ceaba933b78,
     0x0aaa0b76cbffd464,
     0x02d047a54d25f4c8,
-    0x3fc712a0ca275e02,
+    0x2b170ad2ad158ed8,
     0x9c2e27d4d3c0b55c,
     0xff70c6e3ab32c3c0,
 ];
