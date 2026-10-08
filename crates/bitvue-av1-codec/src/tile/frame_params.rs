@@ -59,3 +59,46 @@ pub struct FrameCodingParams {
     /// See `skip_mode_present`.
     pub skip_mode_refs: [u8; 2],
 }
+
+#[cfg(test)]
+impl FrameCodingParams {
+    /// An inter frame with every optional tool off, for unit tests of single parsing stages.
+    pub(crate) fn for_tests() -> Self {
+        Self {
+            is_key_frame: false,
+            delta_q_enabled: false,
+            reference_select: false,
+            allow_intrabc: false,
+            allow_screen_content_tools: false,
+            enable_filter_intra: false,
+            delta_lf_present: false,
+            delta_lf_multi: false,
+            use_ref_frame_mvs: false,
+            segmentation: SegmentationInfo::default(),
+            tx_type_flags: TxTypeFrameFlags {
+                coded_lossless: false,
+                qidx_is_zero: false,
+                reduced_tx_set: false,
+                txfm_mode: Default::default(),
+                mono_chrome: false,
+                subsampling_x: true,
+                subsampling_y: true,
+            },
+            inter_mode_flags: InterModeFlags {
+                switchable_motion_mode: true,
+                allow_warped_motion: true,
+                enable_interintra_compound: false,
+                enable_masked_compound: false,
+                enable_jnt_comp: false,
+                subpel_filter_switchable: true,
+                force_integer_mv: false,
+                gm_type: [0; 8],
+            },
+            mi_rows: 16,
+            mi_cols: 16,
+            cdef_bits: 0,
+            skip_mode_present: false,
+            skip_mode_refs: [0, 0],
+        }
+    }
+}

@@ -9,8 +9,10 @@ use crate::symbol::SymbolDecoder;
 use crate::tile::{BlockRect, FrameCodingParams, MiRect, TileContext};
 use bitvue_engine::Result;
 
-/// Reads (or derives) `cu.ref_frames`'s value and records it in `tile_ctx`; the caller stores the
-/// result. Real per-context CDF + adaptation, see `SymbolDecoder::read_ref_frames`.
+/// Reads (or derives) the reference pair; the caller stores it. This does NOT touch the above/left
+/// reference contexts: later syntax of the same block (motion mode, filter, compound type) still
+/// reads the *neighbours'* values from them, so the block's own refs are recorded only once all of
+/// its mode info is parsed (see `parse_coding_unit`). Real per-context CDF + adaptation, see `SymbolDecoder::read_ref_frames`.
 ///
 /// Spec priority order (dav1d `decode.c:1401` vs `1424`):
 /// 1. `skip_mode` beats everything, forcing the refs from `skip_mode_refs` (the spec's
@@ -43,21 +45,6 @@ pub(super) fn read_ref_frames(
             rect.width.min(rect.height),
         )?,
     };
-    let is_compound = ref_frames[1] != RefFrame::Intra;
-    tile_ctx.set_ref_frames(
-        mi.x4,
-        mi.y4,
-        mi.width,
-        mi.height,
-        false, // inter block
-        is_compound,
-        ref_frames[0] as i8 - 1,
-        if is_compound {
-            ref_frames[1] as i8 - 1
-        } else {
-            -1
-        },
-    );
     Ok(ref_frames)
 }
 
@@ -128,5 +115,44 @@ mod tests {
             forced_ref_frames(false, [0, 0], &seg_with(SEG_LVL_SKIP, 0), 2),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod context_order_tests {
+    use super::*;
+
+    /// A block's own reference must not be visible in the above/left reference context while the
+    /// rest of its mode info is still being parsed: `motion_mode` asks "does a neighbour use my
+    /// reference?" and would otherwise find the block itself.
+    #[test]
+    fn reading_ref_frames_leaves_the_neighbours_values_in_the_context() {
+        let mut tile_ctx = TileContext::new(16, 16);
+        // Left neighbour at x4 0..4 uses reference index 3 (rav1d numbering).
+        tile_ctx.set_ref_frames(0, 0, 4, 4, false, false, 3, -1);
+
+        let mut cu = CodingUnit::new(16, 0, 16, 16);
+        cu.skip_mode = true; // forces [Last, Last2] with no bits read
+        let mut frame = FrameCodingParams::for_tests();
+        frame.skip_mode_refs = [1, 2];
+        let data = [0u8; 16];
+        let mut decoder = SymbolDecoder::new(&data).unwrap();
+        let rect = BlockRect {
+            x: 16,
+            y: 0,
+            width: 16,
+            height: 16,
+        };
+        let mi = MiRect {
+            x4: 4,
+            y4: 0,
+            width: 4,
+            height: 4,
+        };
+        let refs = read_ref_frames(&mut decoder, &mut tile_ctx, rect, mi, &frame, &cu).unwrap();
+        assert_eq!(refs, [RefFrame::Last, RefFrame::Last2]);
+        // The block uses rav1d reference 0; the neighbour's 3 must still be what a lookup finds.
+        assert!(!tile_ctx.has_matching_single_ref(4, 0, false, true, 0));
+        assert!(tile_ctx.has_matching_single_ref(4, 0, false, true, 3));
     }
 }
